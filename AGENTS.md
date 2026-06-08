@@ -35,6 +35,31 @@ project.json
 
 后期再补 CLI 工具链、打包、导表、资源依赖图、场景/模型/材质/脚本编辑器，并逐步演进到 Unity/UE 式高编辑度和先进生产管线。
 
+## Corrected Execution Policy
+
+用户已明确纠正：不要把“最小验证”“最小入口”“小工具”当成工程阶段完成。
+
+当前执行方式改为完整引擎主干优先：
+
+```text
+C++ runtime spine
+-> project/runtime lifecycle
+-> VFS/resource system
+-> script module/VM layer
+-> native/API service registry
+-> original sample project boot
+-> script-driven title/new-game/scene
+-> actor/camera/input/tutorial flow
+```
+
+允许在证据不足时启动 runtime 主干建设，但必须遵守：
+
+- 未确认 native 行为必须是显式 obligation，不能 silent no-op。
+- 未采样 oracle 的行为不能声称 original-correct。
+- 可运行诊断不等于游戏可运行。
+- 不能再以蓝底、手写菜单、mesh preview 或 T pose 作为进度。
+- 每轮完成一个任务后自动进入下一任务，除非用户中断或没有非阻塞任务。
+
 ## Current State
 
 `YuEngine` 仓库已经进入第一轮落地状态，不再是空仓库。
@@ -42,6 +67,8 @@ project.json
 当前已提交的本仓库内容：
 
 - `AGENTS.md`: agent handoff 和长期工程约束。
+- `docs/ENGINE_RECONSTRUCTION_MASTER_PLAN.md`: 修正后的完整引擎重建总计划。
+- `docs/LOOP_TASKS.md`: 长循环任务队列，新 agent 应按队列持续推进。
 - `docs/IMPORT_AUDIT.md`: `Project2` 材料迁移审计。
 - `docs/SCRIPT_IR_STATUS.md`: P3 Script IR 当前状态、验收和残留缺口。
 - `docs/NATIVE_BOUNDARY_SPEC_STATUS.md`: P4 native/API boundary spec 当前状态和残留缺口。
@@ -408,7 +435,7 @@ R7: Production without editor
 R8: Editor and advanced pipeline
 ```
 
-当前应视为 R0 准备阶段附近并开始触碰 R1 输入：证据图、entrypoint closure、native inventory 已有；YuEngine 已有 P3 Script IR baseline tool、P4 native boundary baseline table、P1 title boot oracle 准备工具、P5 original/generic sample manifests 和 P6 engine API surface baseline。P1 仍不是完成态，因为原游戏 title boot 尚未完成三次稳定采样；P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P5 仍不是完成态，因为还没有 runtime manifest consumer；P6 仍不是完成态，因为 API surface 还没有落成 C++ module interfaces。
+当前应视为 R0 准备阶段附近并开始进入 runtime spine：证据图、entrypoint closure、native inventory 已有；YuEngine 已有 P3 Script IR baseline tool、P4 native boundary baseline table、P1 title boot oracle 准备工具、P5 original/generic sample manifests 和 P6 engine API surface baseline。现在必须推进 C++ runtime spine。P1 仍不是完成态，因为原游戏 title boot 尚未完成三次稳定采样；P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P5 仍不是完成态，因为还没有 runtime manifest consumer；P6 仍不是完成态，因为 API surface 还没有落成 C++ module interfaces。
 
 ## Milestones
 
@@ -432,16 +459,9 @@ X8: Editor And Advanced Pipeline Later
 
 优先任务不是写游戏窗口。
 
-当前下一步：
+当前下一步见 `docs/LOOP_TASKS.md`，优先 L1: C++ Runtime Spine。
 
-1. 执行 P1: Oracle Title Boot 真采样，优先接入 Procmon/apitrace/RenderDoc/PIX 或用户交互运行。
-2. 做 P2: Oracle New Game，采样 `MakeNewGame` / `StartGame` 输出和 save/profile mutation。
-3. 增强 P4: Native Boundary Spec Table，逐行补 confirmed native/static、argument/return shape、side effects。
-4. 继续增强 P3: Script IR Tool，补 argument-shape、control-flow/state-machine 边和 native-call context。
-5. 增强 P5: Generic Project Manifest，补 runtime manifest consumer。
-6. 增强 P6: Engine API Surface Map，开始映射到 C++ module interface 草案。
-
-Do not start runtime implementation until P1-P4 have enough signal for the target slice.
+Runtime implementation 可以开始，但只能按完整引擎主干推进，不能写临时视觉 demo。所有未确认 native 行为必须进入 obligation/diagnostics。
 
 ## Do Not Repeat Previous Failure
 
