@@ -8,7 +8,7 @@
 - 当前正式 git 仓库是 `YuEngine`。
 - 后续长期工程、可提交代码、可维护计划和工具，优先落在本仓库内。
 - 外层 `TouhouNewWorld` 是材料区，不是正式工程根。
-- 旧 `Project2` 是前置准备区，里面已有计划、研究输出和工具；后续应逐步把仍然有效的内容迁移或重建进 `YuEngine`。
+- 旧 `Project2` 是前置准备区，里面已有计划、研究输出和工具；迁移到 `YuEngine` 前必须先做审计和筛选，不能批量复制。
 - 旧 `Project/reimplementation` 不能作为实现基础，只能作为反例或材料。
 
 ## Target
@@ -96,6 +96,92 @@ python ..\Project2\tools\entrypoint_closure.py script/menu/titlemenu.b64.sqasm
 - 157 source path hints
 
 这些数字来自 `..\Project2\tools\evidence_indexer.py`。如果新 agent 继续工作，先用 query 工具复查，不要靠手动搜索猜。
+
+## First-Turn Protocol
+
+新 agent 第一次接力时，默认目标是校准，不是大规模改仓库。
+
+收到一句“继续”或“按 AGENTS 做”时，只允许做这些事：
+
+- 读取 `AGENTS.md`。
+- 运行 `git status --short --branch`。
+- 读取 `..\Project2\research\RECONSTRUCTION_FRONTIER.md`。
+- 运行一到三个 evidence query 验证前线基线。
+- 选择一个 lane，说明下一步最小可验证切片。
+- 如果要改文件，只能改一个小而明确的文件，并给出验证命令。
+
+第一次接力禁止做这些事，除非用户明确要求：
+
+- 批量复制 `..\Project2` 到 `YuEngine`。
+- 批量创建 `docs/`、`research/`、`tools/`、`samples/`。
+- 把 generated artifacts 放进 git。
+- 把 service-owner tracking 表说成 P4/P6 已完成。
+- 把“0 unowned”说成 native/API 行为已经确认。
+- 改写 `AGENTS.md` 的 Current State，让仓库看起来已经完成正式迁移。
+
+## Migration Policy
+
+`Project2` 的内容可以迁移，但必须按以下顺序：
+
+```text
+audit
+-> select
+-> import one category
+-> verify commands still work
+-> update AGENTS.md current state only after verification
+```
+
+迁移分类：
+
+- `source-of-truth docs`: 可以优先迁移，但要保留与 `Project2` 的关系说明。
+- `tools`: 可以迁移，但迁移后必须能从 `YuEngine` 根目录运行。
+- `samples`: 可以迁移，但路径必须可解释，不能偷偷依赖错误 cwd。
+- `research summaries`: 可以迁移小型摘要、frontier、inventory、closure markdown。
+- `generated heavy artifacts`: 默认不迁移。
+
+Generated artifacts 包括：
+
+- `evidence_graph.sqlite`
+- `evidence_graph.jsonl`
+- 大型 closure JSON
+- trace 文件
+- screenshots/frame dumps
+- apitrace/PIX capture
+- 自动生成的 status table 输出
+
+这些默认留在 `Project2` 或 runtime output/cache 目录。要进入 git，必须说明为什么源码仓库需要它，而不是只保留生成命令。
+
+## Status Table Policy
+
+Native/API status table 是 tracking artifact，不是行为还原证明。
+
+Service owner 有三种等级：
+
+```text
+proposed_owner     来自名称规则、service map 或脚本语境
+supported_owner    至少有两类证据支持
+accepted_owner     已被 oracle/static evidence 验证并用于实现
+```
+
+`0 unowned` 只表示所有行都有 proposed owner，不能表示：
+
+- native 已确认；
+- 参数/返回值已确认；
+- 副作用已确认；
+- P4 已完成；
+- 可以开始 runtime 实现。
+
+P4 完成至少需要：
+
+- boundary list 覆盖 title/newgame/first-mission；
+- 每行有 owner 等级；
+- confirmed native 状态；
+- oracle/static evidence 状态；
+- argument shape；
+- return shape；
+- side effect notes；
+- implementation status；
+- residual unknowns。
 
 ## Material Map
 
@@ -305,15 +391,14 @@ X8: Editor And Advanced Pipeline Later
 
 当前下一步：
 
-1. 把仍然有效的 `Project2` 计划、工具和研究输出整理进 `YuEngine` 仓库结构。
-2. 建立 `YuEngine` 内的 `docs/`、`tools/`、`research/`、`src/`、`tests/`、`samples/` 目录。
-3. 保留 `Project2` 作为前置材料，不再让正式工程继续散在外层目录。
-4. 做 P1: Oracle Title Boot。
-5. 做 P2: Oracle New Game。
-6. 做 P3: Script IR Tool。
-7. 做 P4: Native Boundary Spec Table。
-8. 做 P5: Generic Project Manifest。
-9. 做 P6: Engine API Surface Map。
+1. 做一次 import audit：列出哪些 `Project2` 文件应该迁入、哪些只保留生成命令、哪些必须留作外部材料。
+2. 建立最小仓库结构，只创建当前切片需要的目录。
+3. 做 P1: Oracle Title Boot。
+4. 做 P2: Oracle New Game。
+5. 做 P3: Script IR Tool。
+6. 做 P4: Native Boundary Spec Table。
+7. 做 P5: Generic Project Manifest。
+8. 做 P6: Engine API Surface Map。
 
 Do not start runtime implementation until P1-P4 have enough signal for the target slice.
 
@@ -401,6 +486,8 @@ service owner 未知时，不要开始实现。
 - 每个 agent 只修改自己 lane 的文件，跨 lane 修改要在最终汇总时处理。
 - 每个 lane 的产出必须有命令、trace、test 或 query 证明。
 - 如果没有验证路径，先建验证路径，再写实现。
+- 多 agent 第一轮不要同时修改 `AGENTS.md`。除非任务就是维护接力规范，否则只能读它。
+- 大型 generated artifacts 不进入默认分支。并行 agent 需要共享时，写生成命令和相对路径，不直接提交大文件。
 
 ## Git Rules
 
@@ -410,6 +497,8 @@ service owner 未知时，不要开始实现。
 - 不要自动 push。需要 push 时明确告诉用户。
 - 不要 reset、checkout、clean 用户改动。
 - 如果遇到不属于自己的改动，保留并绕开；如果影响当前任务，先说明冲突。
+- 不要把未审计的 `Project2` 批量迁移结果直接提交。
+- 不要提交 10MB 以上的 generated artifact，除非用户明确要求并说明原因。
 
 ## Engineering Rules
 
