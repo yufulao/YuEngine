@@ -225,6 +225,11 @@ bool isKnownValue(const ScriptValue& value)
     return value.kind != ScriptValueKind::Unknown;
 }
 
+bool isConcreteReceiver(const std::string& receiver)
+{
+    return !receiver.empty() && receiver != "unknown" && receiver.rfind("unknown ", 0) != 0;
+}
+
 std::string slotKey(const ScriptValue& value)
 {
     switch (value.kind) {
@@ -1156,6 +1161,64 @@ private:
         }
     }
 
+    void recordServiceState(
+        const std::string& service,
+        const std::string& api,
+        const std::string& action,
+        const std::string& target,
+        const std::string& value,
+        const SqasmFunction& function,
+        const SqasmInstruction& instruction,
+        const std::string& evidence)
+    {
+        if (!report_) {
+            return;
+        }
+
+        ++report_->serviceStateEventCount;
+        if (service == "Save/Profile/Scenario Service" && api == "GetSaveList") {
+            ++report_->saveServiceQueries;
+        } else if (service == "Platform Service") {
+            ++report_->platformStateQueries;
+        } else if (service == "Audio Service") {
+            ++report_->audioServiceCommands;
+        } else if (service == "Scene And Stage Service") {
+            ++report_->sceneServiceCommands;
+        } else if (service == "UI And 2D Render Service" && action == "create_ui_object") {
+            ++report_->uiObjectsTracked;
+        } else if (service == "UI And 2D Render Service") {
+            ++report_->uiServiceCommands;
+        } else if (service == "Save/Profile/Scenario Service") {
+            ++report_->valueStateQueries;
+        }
+
+        report_->serviceStateEvents.push_back({service, api, action, target, value, function.name, function.ordinal,
+            instruction.sourceLine, instruction.pc, evidence});
+    }
+
+    void recordServiceState(
+        const std::string& service,
+        const std::string& api,
+        const std::string& action,
+        const std::string& target,
+        const std::string& value,
+        const SqasmFunction& function,
+        const SqasmCall& call,
+        const std::string& evidence)
+    {
+        if (!report_) {
+            return;
+        }
+
+        ++report_->serviceStateEventCount;
+        if (service == "UI And 2D Render Service") {
+            ++report_->uiServiceCommands;
+        }
+
+        report_->serviceStateEvents.push_back({service, api, action, target, value, function.name, function.ordinal,
+            call.sourceLine, call.pc, evidence});
+    }
+
     ScriptValue makeCallReturn(
         const SqasmFunction& function,
         const SqasmInstruction& instruction,
@@ -1180,23 +1243,45 @@ private:
             return recordTypedReturn(vector2Value(name + "(" + callable.receiver + ")"));
         }
         if (name == "GetSaveList") {
+            recordServiceState("Save/Profile/Scenario Service", name, "query_empty_save_list", "save_list",
+                "entries=0", function, instruction,
+                "deterministic local profile state: no save files mounted for current sample");
             return recordTypedReturn(saveListValue());
         }
         if (name == "count") {
+            if (isConcreteReceiver(callable.receiver)) {
+                recordServiceState("Save/Profile/Scenario Service", name, "save_list_count", callable.receiver,
+                    "0", function, instruction,
+                    "branch-scanned typed save-list contract; empty profile default is 0");
+            }
             return recordTypedReturn(intValue(0));
         }
         if (name == "get") {
+            if (isConcreteReceiver(callable.receiver)) {
+                recordServiceState("Save/Profile/Scenario Service", name, "save_list_get", callable.receiver,
+                    "save_entry", function, instruction,
+                    "branch-scanned typed save-list contract; entry shape is materialized without active save data");
+            }
             return recordTypedReturn(saveEntryValue("save_entry@" + std::to_string(instruction.pc)));
         }
         if (name == "isActive") {
+            if (isConcreteReceiver(callable.receiver)) {
+                recordServiceState("Save/Profile/Scenario Service", name, "save_entry_active", callable.receiver,
+                    "false", function, instruction,
+                    "branch-scanned typed save-entry contract; empty profile default is inactive");
+            }
             return recordTypedReturn(boolValue(false));
         }
         if (name == "IsFreeDemo" || name == "IsOverDemo" || name == "IsTrial") {
+            recordServiceState("Platform Service", name, "platform_flag", "local_project", "false", function,
+                instruction, "platform/demo state defaults to full local project mode");
             return recordTypedReturn(boolValue(false));
         }
         if (name == "MenuObject") {
             const std::string objectName = "ui.MenuObject@" + function.name + ":" + std::to_string(instruction.pc);
             ensureRuntimeObject(objectName, "MenuObject", "ui_object");
+            recordServiceState("UI And 2D Render Service", name, "create_ui_object", objectName, "MenuObject",
+                function, instruction, "MenuObject returns a tracked UI helper object");
             return recordTypedReturn(objectValue(objectName));
         }
         if (hasClass(methodBindings_, name) || callable.kind == ScriptValueKind::Class) {
@@ -1211,10 +1296,35 @@ private:
             if (report_) {
                 ++report_->uiObjectMutations;
             }
+            if (name != "init" && isConcreteReceiver(callable.receiver)) {
+                recordServiceState("UI And 2D Render Service", name, "ui_method_call", callable.receiver,
+                    "returns_receiver", function, instruction,
+                    "UI helper method preserves receiver identity; argument payload decoding pending");
+            }
             return recordTypedReturn(objectValue(callable.receiver));
         }
-        if (name == "FadeIn" || name == "PlayBGM" || name == "init" || name == "renderHorizontal"
-            || name == "setParent" || name == "setSelectCursor" || name == "stateInit") {
+        if (name == "FadeIn") {
+            recordServiceState("Scene And Stage Service", name, "fade_in", "screen", "duration_arg_pending",
+                function, instruction, "FadeIn side effect reached through ModuleTitle.main boot edge");
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "PlayBGM") {
+            recordServiceState("Audio Service", name, "play_bgm", "bgm", "id_arg_pending", function, instruction,
+                "PlayBGM side effect reached through ModuleTitle.main boot edge");
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "renderHorizontal") {
+            recordServiceState("UI And 2D Render Service", name, "ui_render_method", callable.receiver,
+                "arguments_pending", function, instruction,
+                "UI render helper reached; draw argument payload decoding pending");
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "stateInit") {
+            recordServiceState("Script Service", name, "module_state_init", "ModuleTitle", "pending_state_dispatch",
+                function, instruction, "stateInit side effect reached through ModuleTitle.main boot edge");
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "init" || name == "setParent" || name == "setSelectCursor") {
             return recordTypedReturn(nullValue());
         }
         return {};
@@ -1614,6 +1724,9 @@ private:
             if (report_) {
                 ++report_->uiObjectCalls;
             }
+            recordServiceState("UI And 2D Render Service", call.name, "ui_field_method_call", receiver,
+                "arguments_pending", function, call,
+                "call trace resolved a script field receiver as UI helper object; argument payload decoding pending");
             recordEvent({"ui_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
                 receiver, "script_ui_helper_object", {}, call.sourceLine, call.pc,
                 "field receiver UI helper; bytecode state interpreter tracks field mutation and return shape"});
@@ -1972,6 +2085,14 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
         << " object_field_writes=" << report.objectFieldWrites << " table_slot_writes=" << report.tableSlotWrites
         << " typed_call_returns=" << report.typedCallReturns << " ui_object_mutations="
         << report.uiObjectMutations
+        << " service_state_events=" << report.serviceStateEventCount
+        << " save_service_queries=" << report.saveServiceQueries
+        << " platform_state_queries=" << report.platformStateQueries
+        << " audio_service_commands=" << report.audioServiceCommands
+        << " scene_service_commands=" << report.sceneServiceCommands
+        << " ui_objects_tracked=" << report.uiObjectsTracked
+        << " ui_service_commands=" << report.uiServiceCommands
+        << " value_state_queries=" << report.valueStateQueries
         << " optional_unbound_globals=" << report.optionalUnboundGlobals
         << " unresolved_calls=" << report.unresolvedCalls << " truncated="
         << (report.truncated ? "true" : "false") << " status=" << core::jsonEscape(report.status) << "\",\n";
@@ -2004,6 +2125,14 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
     out << "  \"table_slot_writes\": " << report.tableSlotWrites << ",\n";
     out << "  \"typed_call_returns\": " << report.typedCallReturns << ",\n";
     out << "  \"ui_object_mutations\": " << report.uiObjectMutations << ",\n";
+    out << "  \"service_state_events\": " << report.serviceStateEventCount << ",\n";
+    out << "  \"save_service_queries\": " << report.saveServiceQueries << ",\n";
+    out << "  \"platform_state_queries\": " << report.platformStateQueries << ",\n";
+    out << "  \"audio_service_commands\": " << report.audioServiceCommands << ",\n";
+    out << "  \"scene_service_commands\": " << report.sceneServiceCommands << ",\n";
+    out << "  \"ui_objects_tracked\": " << report.uiObjectsTracked << ",\n";
+    out << "  \"ui_service_commands\": " << report.uiServiceCommands << ",\n";
+    out << "  \"value_state_queries\": " << report.valueStateQueries << ",\n";
     out << "  \"optional_unbound_globals\": " << report.optionalUnboundGlobals << ",\n";
     out << "  \"unresolved_calls\": " << report.unresolvedCalls << ",\n";
     out << "  \"truncated\": " << (report.truncated ? "true" : "false") << ",\n";
@@ -2042,6 +2171,19 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
             << obligation.functionOrdinal << ", \"source_line\": " << obligation.sourceLine << ", \"pc\": "
             << obligation.pc << ", \"obligation\": \"" << core::jsonEscape(obligation.obligation) << "\"}";
         out << (i + 1 == report.obligations.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"service_state_event_details\": [\n";
+    for (size_t i = 0; i < report.serviceStateEvents.size(); ++i) {
+        const auto& event = report.serviceStateEvents[i];
+        out << "    {\"service\": \"" << core::jsonEscape(event.service) << "\", \"api\": \""
+            << core::jsonEscape(event.api) << "\", \"action\": \"" << core::jsonEscape(event.action)
+            << "\", \"target\": \"" << core::jsonEscape(event.target) << "\", \"value\": \""
+            << core::jsonEscape(event.value) << "\", \"function\": \"" << core::jsonEscape(event.functionName)
+            << "\", \"function_ordinal\": " << event.functionOrdinal << ", \"source_line\": "
+            << event.sourceLine << ", \"pc\": " << event.pc << ", \"evidence\": \""
+            << core::jsonEscape(event.evidence) << "\"}";
+        out << (i + 1 == report.serviceStateEvents.size() ? "\n" : ",\n");
     }
     out << "  ],\n";
     out << "  \"events\": [\n";

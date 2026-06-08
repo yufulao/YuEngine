@@ -6,6 +6,7 @@
 #include "yuengine/script/ScriptRuntime.h"
 #include "yuengine/script/SqasmModule.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -177,7 +178,12 @@ int main(int argc, char** argv)
             const auto module = yu::script::loadSqasmModule(modulePath);
             const auto report = yu::script::runEntryScript(module, entryFunction, registry, catalog, frames);
             const auto json = yu::script::scriptExecutionReportToJson(report);
-            std::cout.write(json.data(), static_cast<std::streamsize>(json.size()));
+            const size_t written = std::fwrite(json.data(), 1, json.size(), stdout);
+            std::fflush(stdout);
+            if (written != json.size()) {
+                std::cerr << "yuengine_cli: failed to write script-run report\n";
+                return 1;
+            }
             return report.entryFound && report.executed ? 0 : 1;
         }
         if (command == "native-services") {

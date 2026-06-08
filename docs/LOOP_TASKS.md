@@ -296,15 +296,24 @@ Progress:
   - 4 table slot writes;
   - 131 typed call returns;
   - 19 UI object mutations.
+- Service state events now expose the first concrete runtime contracts without fabricating
+  unresolved arguments:
+  - 66 service state events;
+  - 4 save/profile queries;
+  - 4 platform state queries;
+  - 1 audio command;
+  - 1 scene fade command;
+  - 20 tracked UI objects;
+  - 24 UI service commands;
+  - 12 save/value state queries.
 
 Current next edge:
 
-- promote the current bytecode state pass into concrete service behavior and side effects for the
-  opcodes and API calls already encountered in title boot;
-- model script tables/objects and UI helper objects enough to execute `_menuWindow`, `_listWindow`,
-  `float2`, `bl/tr`, `setParent`, and `stateInit` as runtime behavior rather than categories;
-- begin typed behavior contracts for the 6 APIs reached by script-run, starting with
-  `GetSaveList` and `MenuObject`, because these control menu state and UI command output;
+- decode argument payloads for the current service state events, especially `MenuObject`,
+  `_menuWindow`, `_listWindow`, `setParent`, `setSelectCursor`, `bl/tr`, `float2`, and
+  `renderHorizontal`;
+- move the reported save/profile, platform, audio, scene fade, and UI helper contracts into
+  runtime-owned service state instead of report-only events;
 - once value state is reliable, advance from boot edge into `ModuleTitle.main` scene dispatch and
   then `MakeNewGame` / `StartGame`.
 

@@ -108,6 +108,19 @@ struct ScriptExecutionEvent {
     std::string evidence;
 };
 
+struct ScriptServiceStateEvent {
+    std::string service;
+    std::string api;
+    std::string action;
+    std::string target;
+    std::string value;
+    std::string functionName;
+    int functionOrdinal = -1;
+    int sourceLine = -1;
+    int pc = -1;
+    std::string evidence;
+};
+
 struct ScriptExecutionReport {
     std::string modulePath;
     std::string entryFunction;
@@ -139,12 +152,21 @@ struct ScriptExecutionReport {
     int tableSlotWrites = 0;
     int typedCallReturns = 0;
     int uiObjectMutations = 0;
+    int serviceStateEventCount = 0;
+    int saveServiceQueries = 0;
+    int platformStateQueries = 0;
+    int audioServiceCommands = 0;
+    int sceneServiceCommands = 0;
+    int uiObjectsTracked = 0;
+    int uiServiceCommands = 0;
+    int valueStateQueries = 0;
     int optionalUnboundGlobals = 0;
     int unresolvedCalls = 0;
     bool truncated = false;
     std::vector<ScriptConstructedObject> constructedObjectDetails;
     std::vector<ScriptObjectMethodSlot> objectMethodSlots;
     std::vector<ScriptNativeObligation> obligations;
+    std::vector<ScriptServiceStateEvent> serviceStateEvents;
     std::vector<ScriptExecutionEvent> events;
 };
 

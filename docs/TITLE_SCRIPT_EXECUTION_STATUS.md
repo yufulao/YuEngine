@@ -43,6 +43,11 @@ still not a full Squirrel VM, title UI, or gameplay runtime.
   - class default materialization onto constructed script objects;
   - typed placeholder returns for `MenuObject`, `GetSaveList`, demo/platform checks, vector helpers,
     save-list methods, and current side-effect calls.
+- Service state event report sourced from bytecode state and original call trace:
+  - deterministic empty save-list/profile contract;
+  - platform/demo flags for local project mode;
+  - `FadeIn` and `PlayBGM` side-effect commands;
+  - tracked `MenuObject` creation and UI helper method calls with argument decoding still pending.
 
 ## Verified Title Entry Plan
 
@@ -130,6 +135,14 @@ object_field_writes=116
 table_slot_writes=4
 typed_call_returns=131
 ui_object_mutations=19
+service_state_events=66
+save_service_queries=4
+platform_state_queries=4
+audio_service_commands=1
+scene_service_commands=1
+ui_objects_tracked=20
+ui_service_commands=24
+value_state_queries=12
 optional_unbound_globals=4
 unresolved_calls=0
 truncated=false
@@ -138,8 +151,9 @@ status=trace_ready_not_full_vm
 
 `unresolved_calls=0` means every call in the current trace has a runtime category. The new
 bytecode-state counters prove the runtime is now carrying original script state through the boot
-edge, but concrete native side effects, UI command output, and later branch correctness are still
-not complete.
+edge. Service state counters now expose the first concrete runtime contracts for save/profile,
+platform, audio, scene fade, and UI helper calls. Argument payload decoding, real UI command
+geometry/text, and later branch correctness are still not complete.
 
 Constructed original script objects:
 
@@ -189,8 +203,10 @@ Python unittest: 6/6 passed
   - 16 value methods;
   - 1 Module lifecycle hook.
 - UI command buffer for helper objects such as `_menuWindow`, `_listWindow`, and `MenuObject`.
-- Typed service behavior for `GetSaveList`, `IsFreeDemo`, `IsOverDemo`, `FadeIn`, `PlayBGM`, and
-  `MenuObject`.
+- Decode argument payloads for `MenuObject`, `_menuWindow`, `_listWindow`, `setParent`,
+  `setSelectCursor`, `bl`, `tr`, and `renderHorizontal` into real UI command data.
+- Expand typed service behavior for `GetSaveList`, `IsFreeDemo`, `IsOverDemo`, `FadeIn`, `PlayBGM`,
+  and `MenuObject` from reported contracts into runtime-owned services.
 - Save/new-game transition through `MakeNewGame` and `StartGame`.
 - UI/render command buffer sourced from original script calls, not handwritten UI.
 
