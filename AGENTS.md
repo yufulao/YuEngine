@@ -49,16 +49,20 @@ project.json
 - `docs/ORACLE_TITLE_BOOT_STATUS.md`: P1 oracle title boot 准备状态和残留缺口。
 - `docs/oracle/title_boot_runbook.md`: 原游戏 title boot 采样步骤；不包含 bypass。
 - `docs/PROJECT_MANIFEST_STATUS.md`: P5 project manifest 当前状态和残留缺口。
+- `docs/API_SURFACE_STATUS.md`: P6 engine API surface 当前状态和残留缺口。
+- `docs/engine_api_surface/title_first_mission.md`: title/new-game/first-mission API surface baseline，11 services、84 APIs、303 call sites。
 - `samples/touhou_new_world/project.json`: 原游戏作为 sample/oracle project 的 YuEngine manifest。
 - `samples/empty_project/project.json`: 不依赖原游戏资源的 generic sample manifest。
 - `tools/sqir.py`: `.sqasm` -> JSON IR / state-machine summary 工具，可选接入 `Project2` evidence graph。
 - `tools/native_spec.py`: 从 Script IR/evidence 生成 native/API boundary spec 的工具。
 - `tools/oracle_title_boot.py`: 原游戏 title boot 的 inspect/snapshot/runbook/显式 launch 准备工具。
 - `tools/project_manifest.py`: `project.json` validator。
+- `tools/api_surface.py`: 从 Script IR/native boundary spec 生成 engine API surface map。
 - `tests/test_sqir.py`: Script IR parser smoke test。
 - `tests/test_native_spec.py`: 关键 service owner 规则 smoke test。
 - `tests/test_oracle_title_boot.py`: oracle title boot inspect/snapshot smoke test。
 - `tests/test_project_manifest.py`: project manifest validator smoke test。
+- `tests/test_api_surface.py`: API surface service module naming smoke test。
 
 生成出的 Script IR 默认写到：
 
@@ -404,7 +408,7 @@ R7: Production without editor
 R8: Editor and advanced pipeline
 ```
 
-当前应视为 R0 准备阶段附近并开始触碰 R1 输入：证据图、entrypoint closure、native inventory 已有；YuEngine 已有 P3 Script IR baseline tool、P4 native boundary baseline table、P1 title boot oracle 准备工具、P5 original sample project manifest 和 generic empty sample manifest。P1 仍不是完成态，因为原游戏 title boot 尚未完成三次稳定采样；P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P5 仍不是完成态，因为还没有 runtime manifest consumer。
+当前应视为 R0 准备阶段附近并开始触碰 R1 输入：证据图、entrypoint closure、native inventory 已有；YuEngine 已有 P3 Script IR baseline tool、P4 native boundary baseline table、P1 title boot oracle 准备工具、P5 original/generic sample manifests 和 P6 engine API surface baseline。P1 仍不是完成态，因为原游戏 title boot 尚未完成三次稳定采样；P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P5 仍不是完成态，因为还没有 runtime manifest consumer；P6 仍不是完成态，因为 API surface 还没有落成 C++ module interfaces。
 
 ## Milestones
 
@@ -435,7 +439,7 @@ X8: Editor And Advanced Pipeline Later
 3. 增强 P4: Native Boundary Spec Table，逐行补 confirmed native/static、argument/return shape、side effects。
 4. 继续增强 P3: Script IR Tool，补 argument-shape、control-flow/state-machine 边和 native-call context。
 5. 增强 P5: Generic Project Manifest，补 runtime manifest consumer。
-6. 做 P6: Engine API Surface Map。
+6. 增强 P6: Engine API Surface Map，开始映射到 C++ module interface 草案。
 
 Do not start runtime implementation until P1-P4 have enough signal for the target slice.
 
