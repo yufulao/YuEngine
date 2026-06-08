@@ -245,8 +245,8 @@ render/audio trace was sampled in this loop.
 
 ### L7: Title Script Execution
 
-Status: active. Title entry execution-trace bridge checkpoint implemented on 2026-06-09; L7
-is not complete and must continue without waiting.
+Status: active. Title entry bytecode-state checkpoint implemented on 2026-06-09; L7 is not
+complete and must continue without waiting.
 
 Deliver:
 
@@ -287,20 +287,29 @@ Progress:
   - 8 value helper calls;
   - 16 value method calls;
   - 1 Module lifecycle hook.
+- `script-run --frames 1` now executes a scoped bytecode state pass over the title boot edge:
+  - 36 state-scanned functions;
+  - 1,859 state-scanned instructions;
+  - 4 root slot writes;
+  - 32 class slot writes;
+  - 116 object field writes;
+  - 4 table slot writes;
+  - 131 typed call returns;
+  - 19 UI object mutations.
 
 Current next edge:
 
-- replace the classified UI/value/lifecycle categories with concrete value/register/table semantics
-  for the opcodes already encountered in title boot;
-- model script tables/objects enough to execute `_menuWindow`, `_listWindow`, `float2`, `bl/tr`,
-  `setParent`, and `stateInit` as runtime behavior rather than categories;
+- promote the current bytecode state pass into concrete service behavior and side effects for the
+  opcodes and API calls already encountered in title boot;
+- model script tables/objects and UI helper objects enough to execute `_menuWindow`, `_listWindow`,
+  `float2`, `bl/tr`, `setParent`, and `stateInit` as runtime behavior rather than categories;
 - begin typed behavior contracts for the 6 APIs reached by script-run, starting with
   `GetSaveList` and `MenuObject`, because these control menu state and UI command output;
 - once value state is reliable, advance from boot edge into `ModuleTitle.main` scene dispatch and
   then `MakeNewGame` / `StartGame`.
 
-Boundary: L7 is not complete. The current checkpoint is an execution-trace bridge, not a full
-Squirrel VM, title UI, or gameplay.
+Boundary: L7 is not complete. The current checkpoint is bytecode-state execution for the title
+boot edge, not a full Squirrel VM, title UI, or gameplay.
 
 ### L8: Save/New Game And Scene Entry
 

@@ -1,9 +1,10 @@
 # L7 Title Script Execution Status
 
-Status: active. Title entry execution-trace bridge checkpoint completed on 2026-06-09.
+Status: active. Title entry bytecode-state checkpoint completed on 2026-06-09.
 
 This document tracks L7. The current implementation executes a branch-aware boot-edge call trace
-from original `.sqasm`, but it is not a full Squirrel value VM yet.
+from original `.sqasm` and now runs a scoped bytecode state pass for the title boot edge. It is
+still not a full Squirrel VM, title UI, or gameplay runtime.
 
 ## Implemented So Far
 
@@ -36,6 +37,12 @@ from original `.sqasm`, but it is not a full Squirrel value VM yet.
   - value helper calls;
   - Squirrel/native value method calls;
   - Module lifecycle hooks.
+- Bytecode state pass for the executed title boot edge:
+  - register slots for the recovered functions;
+  - root/class/object/table slot writes;
+  - class default materialization onto constructed script objects;
+  - typed placeholder returns for `MenuObject`, `GetSaveList`, demo/platform checks, vector helpers,
+    save-list methods, and current side-effect calls.
 
 ## Verified Title Entry Plan
 
@@ -115,14 +122,24 @@ ui_object_calls=21
 value_helper_calls=8
 value_method_calls=16
 module_lifecycle_calls=1
+bytecode_state_functions=36
+bytecode_state_instructions=1859
+root_slot_writes=4
+class_slot_writes=32
+object_field_writes=116
+table_slot_writes=4
+typed_call_returns=131
+ui_object_mutations=19
 optional_unbound_globals=4
 unresolved_calls=0
 truncated=false
 status=trace_ready_not_full_vm
 ```
 
-`unresolved_calls=0` means every call in the current trace has a runtime category. It does not
-mean the value behavior is implemented.
+`unresolved_calls=0` means every call in the current trace has a runtime category. The new
+bytecode-state counters prove the runtime is now carrying original script state through the boot
+edge, but concrete native side effects, UI command output, and later branch correctness are still
+not complete.
 
 Constructed original script objects:
 
@@ -158,22 +175,22 @@ python -m unittest discover -s tests
 Verified result:
 
 ```text
-CTest: 10/10 passed
+CTest: 11/11 passed
 Python unittest: 6/6 passed
 ```
 
 ## Remaining L7 Work
 
-- Full Squirrel value/register/table VM semantics for the executed opcode subset.
 - Branch/value correctness for `ModuleTitle.main` beyond the `_nextState == 300` boot edge.
-- Concrete object/value model for current classified categories:
+- Convert current classified categories and typed placeholders into concrete service behavior:
   - 12 engine object calls;
   - 21 UI helper object calls;
   - 8 value helper calls;
   - 16 value methods;
   - 1 Module lifecycle hook.
-- Object/value model for UI helper objects such as `_menuWindow`, `_listWindow`, and `MenuObject`.
-- Typed behavior for `GetSaveList`, `IsFreeDemo`, `IsOverDemo`, `FadeIn`, `PlayBGM`, and `MenuObject`.
+- UI command buffer for helper objects such as `_menuWindow`, `_listWindow`, and `MenuObject`.
+- Typed service behavior for `GetSaveList`, `IsFreeDemo`, `IsOverDemo`, `FadeIn`, `PlayBGM`, and
+  `MenuObject`.
 - Save/new-game transition through `MakeNewGame` and `StartGame`.
 - UI/render command buffer sourced from original script calls, not handwritten UI.
 

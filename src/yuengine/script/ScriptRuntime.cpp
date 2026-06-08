@@ -2,10 +2,12 @@
 
 #include "yuengine/core/Json.h"
 
+#include <cstring>
 #include <map>
 #include <set>
 #include <sstream>
 #include <utility>
+#include <vector>
 
 namespace yu::script {
 namespace {
@@ -19,6 +21,288 @@ struct FunctionSlotBinding {
     int sourceLine = -1;
     std::string evidence;
 };
+
+enum class ScriptValueKind {
+    Unknown,
+    Null,
+    Bool,
+    Int,
+    Float,
+    String,
+    Root,
+    Object,
+    Class,
+    Table,
+    Function,
+    NativeFunction,
+    Method,
+    ValueMethod,
+    UiMethod,
+    Parameter,
+    Vector2,
+    SaveList,
+    SaveEntry,
+};
+
+struct ScriptValue {
+    ScriptValueKind kind = ScriptValueKind::Unknown;
+    std::string text;
+    std::string receiver;
+    int intValue = 0;
+    double numberValue = 0.0;
+    bool boolValue = false;
+    int tableId = -1;
+    int functionOrdinal = -1;
+};
+
+struct RuntimeObject {
+    std::string className;
+    std::string runtimeType;
+    std::map<std::string, ScriptValue> fields;
+};
+
+struct RuntimeTable {
+    std::map<std::string, ScriptValue> fields;
+};
+
+ScriptValue unknownValue()
+{
+    return {};
+}
+
+ScriptValue nullValue()
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Null;
+    return value;
+}
+
+ScriptValue boolValue(bool data)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Bool;
+    value.boolValue = data;
+    return value;
+}
+
+ScriptValue intValue(int data)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Int;
+    value.intValue = data;
+    value.numberValue = static_cast<double>(data);
+    return value;
+}
+
+ScriptValue floatValue(double data)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Float;
+    value.numberValue = data;
+    return value;
+}
+
+ScriptValue stringValue(std::string data)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::String;
+    value.text = std::move(data);
+    return value;
+}
+
+ScriptValue rootValue()
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Root;
+    value.text = "<root>";
+    return value;
+}
+
+ScriptValue objectValue(std::string objectName)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Object;
+    value.text = std::move(objectName);
+    return value;
+}
+
+ScriptValue classValue(std::string className)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Class;
+    value.text = std::move(className);
+    return value;
+}
+
+ScriptValue tableValue(int tableId)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Table;
+    value.tableId = tableId;
+    value.text = "table#" + std::to_string(tableId);
+    return value;
+}
+
+ScriptValue functionValue(std::string functionName, int ordinal)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Function;
+    value.text = std::move(functionName);
+    value.functionOrdinal = ordinal;
+    return value;
+}
+
+ScriptValue nativeFunctionValue(std::string functionName, std::string receiver = {})
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::NativeFunction;
+    value.text = std::move(functionName);
+    value.receiver = std::move(receiver);
+    return value;
+}
+
+ScriptValue methodValue(std::string methodName, std::string receiver)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Method;
+    value.text = std::move(methodName);
+    value.receiver = std::move(receiver);
+    return value;
+}
+
+ScriptValue valueMethodValue(std::string methodName, std::string receiver)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::ValueMethod;
+    value.text = std::move(methodName);
+    value.receiver = std::move(receiver);
+    return value;
+}
+
+ScriptValue uiMethodValue(std::string methodName, std::string receiver)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::UiMethod;
+    value.text = std::move(methodName);
+    value.receiver = std::move(receiver);
+    return value;
+}
+
+ScriptValue parameterValue(std::string name)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Parameter;
+    value.text = std::move(name);
+    return value;
+}
+
+ScriptValue vector2Value(std::string label)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Vector2;
+    value.text = std::move(label);
+    return value;
+}
+
+ScriptValue saveListValue()
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::SaveList;
+    value.text = "save_list";
+    return value;
+}
+
+ScriptValue saveEntryValue(std::string label)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::SaveEntry;
+    value.text = std::move(label);
+    return value;
+}
+
+bool isKnownValue(const ScriptValue& value)
+{
+    return value.kind != ScriptValueKind::Unknown;
+}
+
+std::string slotKey(const ScriptValue& value)
+{
+    switch (value.kind) {
+    case ScriptValueKind::String:
+    case ScriptValueKind::Class:
+    case ScriptValueKind::Object:
+    case ScriptValueKind::Parameter:
+        return value.text;
+    case ScriptValueKind::Int:
+        return std::to_string(value.intValue);
+    default:
+        return {};
+    }
+}
+
+std::string valueKindName(ScriptValueKind kind)
+{
+    switch (kind) {
+    case ScriptValueKind::Unknown:
+        return "unknown";
+    case ScriptValueKind::Null:
+        return "null";
+    case ScriptValueKind::Bool:
+        return "bool";
+    case ScriptValueKind::Int:
+        return "int";
+    case ScriptValueKind::Float:
+        return "float";
+    case ScriptValueKind::String:
+        return "string";
+    case ScriptValueKind::Root:
+        return "root";
+    case ScriptValueKind::Object:
+        return "object";
+    case ScriptValueKind::Class:
+        return "class";
+    case ScriptValueKind::Table:
+        return "table";
+    case ScriptValueKind::Function:
+        return "function";
+    case ScriptValueKind::NativeFunction:
+        return "native_function";
+    case ScriptValueKind::Method:
+        return "method";
+    case ScriptValueKind::ValueMethod:
+        return "value_method";
+    case ScriptValueKind::UiMethod:
+        return "ui_method";
+    case ScriptValueKind::Parameter:
+        return "parameter";
+    case ScriptValueKind::Vector2:
+        return "vector2";
+    case ScriptValueKind::SaveList:
+        return "save_list";
+    case ScriptValueKind::SaveEntry:
+        return "save_entry";
+    }
+    return "unknown";
+}
+
+std::string describeValue(const ScriptValue& value)
+{
+    std::ostringstream out;
+    out << valueKindName(value.kind);
+    if (!value.text.empty()) {
+        out << ":" << value.text;
+    } else if (value.kind == ScriptValueKind::Bool) {
+        out << ":" << (value.boolValue ? "true" : "false");
+    } else if (value.kind == ScriptValueKind::Int) {
+        out << ":" << value.intValue;
+    } else if (value.kind == ScriptValueKind::Float) {
+        out << ":" << value.numberValue;
+    }
+    if (!value.receiver.empty()) {
+        out << " receiver=" << value.receiver;
+    }
+    return out.str();
+}
 
 std::map<std::string, std::vector<int>> buildFunctionNameIndex(const SqasmModule& module)
 {
@@ -585,7 +869,7 @@ public:
         report.modulePath = module_.path.string();
         report.entryFunction = entryFunction;
         report.frames = frames < 0 ? 0 : frames;
-        report.executionMode = "static_bytecode_call_trace_branch_sensitive_boot_edge";
+        report.executionMode = "bytecode_state_plus_static_call_trace_branch_sensitive_boot_edge";
         report.classMethodTableCount = static_cast<int>(classNamesFromMethodBindings(methodBindings_).size());
         report.methodBindingCount = static_cast<int>(methodBindings_.size());
         report.objectBindingCount = static_cast<int>(objectBindings_.size());
@@ -601,6 +885,7 @@ public:
         }
 
         report.entryFound = true;
+        bootstrapRootState();
         bootstrapRootObjects();
         executeFunction(*entry, {}, {}, 0);
         for (int frame = 0; frame < report.frames; ++frame) {
@@ -632,6 +917,18 @@ private:
         }
     }
 
+    void bootstrapRootState()
+    {
+        const SqasmFunction* root = findRootFunction(module_);
+        if (!root) {
+            return;
+        }
+        ensureRuntimeObject("<root>", {}, "root_table");
+        rootFields_["gMenu"] = objectValue("gMenu");
+        ensureRuntimeObject("gMenu", "EngineMenuRoot", "engine_root_object");
+        executeBytecodeState(*root, {}, {});
+    }
+
     bool recordEvent(ScriptExecutionEvent event)
     {
         if (!report_) {
@@ -643,6 +940,411 @@ private:
         }
         report_->events.push_back(std::move(event));
         return true;
+    }
+
+    RuntimeObject& ensureRuntimeObject(
+        const std::string& objectName,
+        const std::string& className,
+        const std::string& runtimeType)
+    {
+        auto& object = runtimeObjects_[objectName];
+        if (!className.empty()) {
+            object.className = className;
+        }
+        if (!runtimeType.empty()) {
+            object.runtimeType = runtimeType;
+        }
+        return object;
+    }
+
+    void materializeClassDefaults(const std::string& objectName, const std::string& className)
+    {
+        if (objectName.empty() || className.empty()) {
+            return;
+        }
+        auto& object = ensureRuntimeObject(objectName, className, "script_object");
+
+        std::vector<std::string> chain;
+        std::set<std::string> visited;
+        std::string current = className;
+        for (int depth = 0; depth < 16 && !current.empty() && visited.insert(current).second; ++depth) {
+            chain.push_back(current);
+            const auto base = classBases_.find(current);
+            if (base == classBases_.end() || base->second == current) {
+                break;
+            }
+            current = base->second;
+        }
+
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+            const auto defaults = classSlots_.find(*it);
+            if (defaults == classSlots_.end()) {
+                continue;
+            }
+            for (const auto& [key, value] : defaults->second) {
+                if (value.kind == ScriptValueKind::Function || value.kind == ScriptValueKind::Method) {
+                    continue;
+                }
+                object.fields.emplace(key, value);
+            }
+        }
+    }
+
+    ScriptValue lookupClassSlot(const std::string& className, const std::string& key) const
+    {
+        std::set<std::string> visited;
+        std::string current = className;
+        for (int depth = 0; depth < 16 && !current.empty() && visited.insert(current).second; ++depth) {
+            const auto slots = classSlots_.find(current);
+            if (slots != classSlots_.end()) {
+                const auto slot = slots->second.find(key);
+                if (slot != slots->second.end()) {
+                    return slot->second;
+                }
+            }
+
+            const auto base = classBases_.find(current);
+            if (base == classBases_.end() || base->second == current) {
+                break;
+            }
+            current = base->second;
+        }
+        return {};
+    }
+
+    ScriptValue lookupValue(const ScriptValue& target, const ScriptValue& key) const
+    {
+        const std::string keyText = slotKey(key);
+        if (keyText.empty()) {
+            return {};
+        }
+
+        if (target.kind == ScriptValueKind::Root) {
+            const auto rootSlot = rootFields_.find(keyText);
+            if (rootSlot != rootFields_.end()) {
+                return rootSlot->second;
+            }
+            const FunctionSlotBinding* functionSlot = findFunctionSlot(functionSlots_, keyText);
+            if (functionSlot) {
+                return functionValue(functionSlot->functionName, functionSlot->functionOrdinal);
+            }
+            if (hasClass(methodBindings_, keyText)) {
+                return classValue(keyText);
+            }
+            if (registry_.find(keyText) || isValueHelperCall(keyText)) {
+                return nativeFunctionValue(keyText);
+            }
+            if (isSquirrelValueMethod(keyText)) {
+                return valueMethodValue(keyText, target.text);
+            }
+            return {};
+        }
+
+        if (target.kind == ScriptValueKind::Object) {
+            const auto object = runtimeObjects_.find(target.text);
+            if (object != runtimeObjects_.end()) {
+                const auto field = object->second.fields.find(keyText);
+                if (field != object->second.fields.end()) {
+                    return field->second;
+                }
+                if (!object->second.className.empty()) {
+                    ScriptValue classSlot = lookupClassSlot(object->second.className, keyText);
+                    if (isKnownValue(classSlot)) {
+                        return classSlot;
+                    }
+                    if (findMethodBinding(methodBindings_, object->second.className, keyText)) {
+                        return methodValue(keyText, target.text);
+                    }
+                }
+            }
+            if (isUiObjectMethod(keyText)) {
+                return uiMethodValue(keyText, target.text);
+            }
+            return {};
+        }
+
+        if (target.kind == ScriptValueKind::Class) {
+            ScriptValue classSlot = lookupClassSlot(target.text, keyText);
+            if (isKnownValue(classSlot)) {
+                return classSlot;
+            }
+            if (findMethodBinding(methodBindings_, target.text, keyText)) {
+                return methodValue(keyText, target.text);
+            }
+            return {};
+        }
+
+        if (target.kind == ScriptValueKind::Table) {
+            const auto table = runtimeTables_.find(target.tableId);
+            if (table != runtimeTables_.end()) {
+                const auto field = table->second.fields.find(keyText);
+                if (field != table->second.fields.end()) {
+                    return field->second;
+                }
+            }
+            return {};
+        }
+
+        if (target.kind == ScriptValueKind::SaveList) {
+            if (keyText == "count" || keyText == "get") {
+                return valueMethodValue(keyText, target.text);
+            }
+            return {};
+        }
+
+        if (target.kind == ScriptValueKind::SaveEntry) {
+            if (keyText == "isActive") {
+                return valueMethodValue(keyText, target.text);
+            }
+            return {};
+        }
+
+        if (target.kind == ScriptValueKind::Vector2) {
+            if (keyText == "toPoint" || keyText == "toAbsPos") {
+                return valueMethodValue(keyText, target.text);
+            }
+            return {};
+        }
+
+        if (isSquirrelValueMethod(keyText)) {
+            return valueMethodValue(keyText, target.text);
+        }
+        if (registry_.find(keyText) || isValueHelperCall(keyText)) {
+            return nativeFunctionValue(keyText, target.text);
+        }
+        return {};
+    }
+
+    void assignSlot(const ScriptValue& target, const ScriptValue& key, const ScriptValue& value)
+    {
+        const std::string keyText = slotKey(key);
+        if (keyText.empty()) {
+            return;
+        }
+
+        if (target.kind == ScriptValueKind::Root) {
+            rootFields_[keyText] = value;
+            if (report_) {
+                ++report_->rootSlotWrites;
+            }
+            return;
+        }
+
+        if (target.kind == ScriptValueKind::Class) {
+            classSlots_[target.text][keyText] = value;
+            if (report_) {
+                ++report_->classSlotWrites;
+            }
+            return;
+        }
+
+        if (target.kind == ScriptValueKind::Object) {
+            auto& object = ensureRuntimeObject(target.text, {}, {});
+            object.fields[keyText] = value;
+            if (report_) {
+                ++report_->objectFieldWrites;
+            }
+            return;
+        }
+
+        if (target.kind == ScriptValueKind::Table) {
+            runtimeTables_[target.tableId].fields[keyText] = value;
+            if (report_) {
+                ++report_->tableSlotWrites;
+            }
+            return;
+        }
+    }
+
+    ScriptValue makeCallReturn(
+        const SqasmFunction& function,
+        const SqasmInstruction& instruction,
+        const ScriptValue& callable)
+    {
+        const std::string name = callable.text;
+        if (name.empty()) {
+            return {};
+        }
+
+        auto recordTypedReturn = [&](ScriptValue value) {
+            if (report_) {
+                ++report_->typedCallReturns;
+            }
+            return value;
+        };
+
+        if (name == "float2" || name == "centerPos") {
+            return recordTypedReturn(vector2Value(name + "@" + std::to_string(instruction.pc)));
+        }
+        if (name == "toPoint" || name == "toAbsPos" || name == "bl" || name == "tr") {
+            return recordTypedReturn(vector2Value(name + "(" + callable.receiver + ")"));
+        }
+        if (name == "GetSaveList") {
+            return recordTypedReturn(saveListValue());
+        }
+        if (name == "count") {
+            return recordTypedReturn(intValue(0));
+        }
+        if (name == "get") {
+            return recordTypedReturn(saveEntryValue("save_entry@" + std::to_string(instruction.pc)));
+        }
+        if (name == "isActive") {
+            return recordTypedReturn(boolValue(false));
+        }
+        if (name == "IsFreeDemo" || name == "IsOverDemo" || name == "IsTrial") {
+            return recordTypedReturn(boolValue(false));
+        }
+        if (name == "MenuObject") {
+            const std::string objectName = "ui.MenuObject@" + function.name + ":" + std::to_string(instruction.pc);
+            ensureRuntimeObject(objectName, "MenuObject", "ui_object");
+            return recordTypedReturn(objectValue(objectName));
+        }
+        if (hasClass(methodBindings_, name) || callable.kind == ScriptValueKind::Class) {
+            const std::string className = callable.kind == ScriptValueKind::Class ? callable.text : name;
+            const std::string objectName = "script." + className + "@" + function.name + ":"
+                + std::to_string(instruction.pc);
+            ensureRuntimeObject(objectName, className, "script_object");
+            materializeClassDefaults(objectName, className);
+            return recordTypedReturn(objectValue(objectName));
+        }
+        if (callable.kind == ScriptValueKind::UiMethod) {
+            if (report_) {
+                ++report_->uiObjectMutations;
+            }
+            return recordTypedReturn(objectValue(callable.receiver));
+        }
+        if (name == "FadeIn" || name == "PlayBGM" || name == "init" || name == "renderHorizontal"
+            || name == "setParent" || name == "setSelectCursor" || name == "stateInit") {
+            return recordTypedReturn(nullValue());
+        }
+        return {};
+    }
+
+    void executeBytecodeState(
+        const SqasmFunction& function,
+        const std::string& ownerObject,
+        const std::string& ownerClass)
+    {
+        if (report_) {
+            ++report_->bytecodeStateFunctions;
+            report_->bytecodeStateInstructions += static_cast<int>(function.instructions.size());
+        }
+        const size_t registerCount =
+            static_cast<size_t>((function.stack > 0 ? function.stack : 0) + 16);
+        std::vector<ScriptValue> registers(registerCount, unknownValue());
+        auto setRegister = [&](int index, ScriptValue value) {
+            if (index < 0 || static_cast<size_t>(index) >= registers.size()) {
+                return;
+            }
+            registers[static_cast<size_t>(index)] = std::move(value);
+        };
+        auto getRegister = [&](int index) -> ScriptValue {
+            if (index < 0 || static_cast<size_t>(index) >= registers.size()) {
+                return {};
+            }
+            return registers[static_cast<size_t>(index)];
+        };
+
+        if (ownerObject.empty()) {
+            setRegister(0, rootValue());
+        } else {
+            ensureRuntimeObject(ownerObject, ownerClass, ownerClass.empty() ? "script_object" : "script_object");
+            setRegister(0, objectValue(ownerObject));
+        }
+        for (size_t i = 1; i < function.parameters.size(); ++i) {
+            setRegister(static_cast<int>(i), parameterValue(function.parameters[i]));
+        }
+
+        for (size_t i = 0; i < function.instructions.size(); ++i) {
+            const auto& instruction = function.instructions[i];
+            if (ownerClass == "ModuleTitle" && function.name == "main" && instruction.pc > 13) {
+                break;
+            }
+
+            const int a0 = argValue(instruction, "a0", -1);
+            const int a1 = argValue(instruction, "a1", -1);
+            const int a2 = argValue(instruction, "a2", -1);
+            const int a3 = argValue(instruction, "a3", -1);
+
+            if (instruction.op == "_OP_LOAD") {
+                setRegister(a0, stringValue(literalValueByIndex(function, a1)));
+            } else if (instruction.op == "_OP_DLOAD") {
+                setRegister(a0, stringValue(literalValueByIndex(function, a1)));
+                setRegister(a2, stringValue(literalValueByIndex(function, a3)));
+            } else if (instruction.op == "_OP_LOADINT") {
+                setRegister(a0, intValue(a1));
+            } else if (instruction.op == "_OP_LOADFLOAT") {
+                float data = 0.0F;
+                std::memcpy(&data, &a1, sizeof(float));
+                setRegister(a0, floatValue(data));
+            } else if (instruction.op == "_OP_LOADBOOL") {
+                setRegister(a0, boolValue(a1 != 0));
+            } else if (instruction.op == "_OP_LOADNULLS") {
+                for (int n = 0; n < a1; ++n) {
+                    setRegister(a0 + n, nullValue());
+                }
+            } else if (instruction.op == "_OP_LOADROOTTABLE") {
+                setRegister(a0, rootValue());
+            } else if (instruction.op == "_OP_MOVE") {
+                setRegister(a0, getRegister(a1));
+            } else if (instruction.op == "_OP_DMOVE") {
+                setRegister(a0, getRegister(a1));
+                setRegister(a2, getRegister(a3));
+            } else if (instruction.op == "_OP_NEWTABLE" || instruction.op == "_OP_NEWARRAY") {
+                const int tableId = nextTableId_++;
+                runtimeTables_[tableId] = {};
+                setRegister(a0, tableValue(tableId));
+            } else if (instruction.op == "_OP_CLOSURE") {
+                if (!instruction.functionRefs.empty()) {
+                    const auto& ref = instruction.functionRefs.front();
+                    setRegister(a0, functionValue(ref.value, ref.index));
+                }
+            } else if (instruction.op == "_OP_CLASS") {
+                const std::string className = classNameBefore(function.instructions, i);
+                std::string baseClass;
+                const ScriptValue base = getRegister(a1);
+                if (base.kind == ScriptValueKind::Class || base.kind == ScriptValueKind::String) {
+                    baseClass = base.text;
+                }
+                if (!className.empty()) {
+                    if (!baseClass.empty()) {
+                        classBases_[className] = baseClass;
+                    }
+                    setRegister(a0, classValue(className));
+                }
+            } else if (instruction.op == "_OP_GETK") {
+                setRegister(a0, lookupValue(getRegister(a2), stringValue(literalValueByIndex(function, a1))));
+            } else if (instruction.op == "_OP_GET") {
+                setRegister(a0, lookupValue(getRegister(a1), getRegister(a2)));
+            } else if (instruction.op == "_OP_SET" || instruction.op == "_OP_NEWSLOT"
+                || instruction.op == "_OP_NEWSLOTA") {
+                assignSlot(getRegister(a1), getRegister(a2), getRegister(a3));
+                setRegister(a0, getRegister(a3));
+            } else if (instruction.op == "_OP_PREPCALL" || instruction.op == "_OP_PREPCALLK") {
+                const ScriptValue target = getRegister(a2);
+                const ScriptValue key =
+                    instruction.op == "_OP_PREPCALLK" ? stringValue(literalValueByIndex(function, a1))
+                                                       : getRegister(a1);
+                ScriptValue callable = lookupValue(target, key);
+                if (!isKnownValue(callable)) {
+                    const std::string keyText = slotKey(key);
+                    if (registry_.find(keyText) || isValueHelperCall(keyText)) {
+                        callable = nativeFunctionValue(keyText, describeValue(target));
+                    } else if (isSquirrelValueMethod(keyText)) {
+                        callable = valueMethodValue(keyText, describeValue(target));
+                    } else if (isUiObjectMethod(keyText)) {
+                        callable = uiMethodValue(keyText, describeValue(target));
+                    }
+                }
+                setRegister(a3, target.kind == ScriptValueKind::Class ? getRegister(0) : target);
+                setRegister(a0, callable);
+            } else if (instruction.op == "_OP_CALL" || instruction.op == "_OP_TAILCALL") {
+                const ScriptValue result = makeCallReturn(function, instruction, getRegister(a1));
+                if (isKnownValue(result)) {
+                    setRegister(a0, result);
+                }
+            }
+        }
     }
 
     void constructObject(
@@ -667,6 +1369,8 @@ private:
         const bool isNewObject = existing == objectClasses_.end();
         if (isNewObject) {
             objectClasses_[objectName] = className;
+            ensureRuntimeObject(objectName, className, "script_object");
+            materializeClassDefaults(objectName, className);
             if (report_) {
                 report_->constructedObjectDetails.push_back({objectName, className, pc, sourceLine, evidence});
             }
@@ -779,6 +1483,7 @@ private:
         }
 
         bool recordedMainSkip = false;
+        executeBytecodeState(function, ownerObject, ownerClass);
         for (const auto& call : function.calls) {
             if (shouldSkipForBootState(function, ownerClass, call)) {
                 if (!recordedMainSkip) {
@@ -842,7 +1547,7 @@ private:
             }
             recordEvent({"module_lifecycle_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
                 {}, "module_lifecycle_hook", {}, call.sourceLine, call.pc,
-                "Module lifecycle hook recovered from boot-edge call trace; ModuleBase semantics pending"});
+                "Module lifecycle hook recovered from boot-edge call trace; bytecode state captures boot edge, full ModuleBase semantics pending"});
             return;
         }
 
@@ -856,7 +1561,7 @@ private:
             }
             recordEvent({"value_helper_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
                 receiver, "script_value_helper", {}, call.sourceLine, call.pc,
-                "value constructor/helper; ScriptValue semantics pending"});
+                "value constructor/helper; ScriptValue return is typed by bytecode state interpreter"});
             return;
         }
 
@@ -866,7 +1571,7 @@ private:
             }
             recordEvent({"value_method_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
                 receiver, "squirrel_value_method", {}, call.sourceLine, call.pc,
-                "method on script/native return value; value VM needed for result"});
+                "method on script/native return value; current return shape is typed by bytecode state interpreter"});
             return;
         }
 
@@ -911,7 +1616,7 @@ private:
             }
             recordEvent({"ui_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
                 receiver, "script_ui_helper_object", {}, call.sourceLine, call.pc,
-                "field receiver UI helper; object/value model pending"});
+                "field receiver UI helper; bytecode state interpreter tracks field mutation and return shape"});
             return true;
         }
 
@@ -1066,8 +1771,14 @@ private:
     std::vector<FunctionSlotBinding> functionSlots_;
     std::map<std::string, std::string> objectClasses_;
     std::map<std::string, std::vector<std::string>> sceneObjectsByOwner_;
+    std::map<std::string, RuntimeObject> runtimeObjects_;
+    std::map<std::string, ScriptValue> rootFields_;
+    std::map<std::string, std::map<std::string, ScriptValue>> classSlots_;
+    std::map<std::string, std::string> classBases_;
+    std::map<int, RuntimeTable> runtimeTables_;
     std::set<std::string> rootObjects_;
     std::set<std::string> activeMethods_;
+    int nextTableId_ = 1;
     ScriptExecutionReport* report_ = nullptr;
     static constexpr int maxDepth_ = 24;
     static constexpr size_t maxEvents_ = 5000;
@@ -1255,6 +1966,12 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
         << report.engineObjectCalls << " ui_object_calls=" << report.uiObjectCalls
         << " value_helper_calls=" << report.valueHelperCalls << " value_method_calls=" << report.valueMethodCalls
         << " module_lifecycle_calls=" << report.moduleLifecycleCalls
+        << " bytecode_state_functions=" << report.bytecodeStateFunctions
+        << " bytecode_state_instructions=" << report.bytecodeStateInstructions
+        << " root_slot_writes=" << report.rootSlotWrites << " class_slot_writes=" << report.classSlotWrites
+        << " object_field_writes=" << report.objectFieldWrites << " table_slot_writes=" << report.tableSlotWrites
+        << " typed_call_returns=" << report.typedCallReturns << " ui_object_mutations="
+        << report.uiObjectMutations
         << " optional_unbound_globals=" << report.optionalUnboundGlobals
         << " unresolved_calls=" << report.unresolvedCalls << " truncated="
         << (report.truncated ? "true" : "false") << " status=" << core::jsonEscape(report.status) << "\",\n";
@@ -1279,6 +1996,14 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
     out << "  \"value_helper_calls\": " << report.valueHelperCalls << ",\n";
     out << "  \"value_method_calls\": " << report.valueMethodCalls << ",\n";
     out << "  \"module_lifecycle_calls\": " << report.moduleLifecycleCalls << ",\n";
+    out << "  \"bytecode_state_functions\": " << report.bytecodeStateFunctions << ",\n";
+    out << "  \"bytecode_state_instructions\": " << report.bytecodeStateInstructions << ",\n";
+    out << "  \"root_slot_writes\": " << report.rootSlotWrites << ",\n";
+    out << "  \"class_slot_writes\": " << report.classSlotWrites << ",\n";
+    out << "  \"object_field_writes\": " << report.objectFieldWrites << ",\n";
+    out << "  \"table_slot_writes\": " << report.tableSlotWrites << ",\n";
+    out << "  \"typed_call_returns\": " << report.typedCallReturns << ",\n";
+    out << "  \"ui_object_mutations\": " << report.uiObjectMutations << ",\n";
     out << "  \"optional_unbound_globals\": " << report.optionalUnboundGlobals << ",\n";
     out << "  \"unresolved_calls\": " << report.unresolvedCalls << ",\n";
     out << "  \"truncated\": " << (report.truncated ? "true" : "false") << ",\n";

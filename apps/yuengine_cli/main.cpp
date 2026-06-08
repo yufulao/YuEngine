@@ -176,7 +176,8 @@ int main(int argc, char** argv)
             yu::native::NativeServiceCatalog catalog;
             const auto module = yu::script::loadSqasmModule(modulePath);
             const auto report = yu::script::runEntryScript(module, entryFunction, registry, catalog, frames);
-            std::cout << yu::script::scriptExecutionReportToJson(report);
+            const auto json = yu::script::scriptExecutionReportToJson(report);
+            std::cout.write(json.data(), static_cast<std::streamsize>(json.size()));
             return report.entryFound && report.executed ? 0 : 1;
         }
         if (command == "native-services") {

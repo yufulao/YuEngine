@@ -131,6 +131,14 @@ struct ScriptExecutionReport {
     int valueHelperCalls = 0;
     int valueMethodCalls = 0;
     int moduleLifecycleCalls = 0;
+    int bytecodeStateFunctions = 0;
+    int bytecodeStateInstructions = 0;
+    int rootSlotWrites = 0;
+    int classSlotWrites = 0;
+    int objectFieldWrites = 0;
+    int tableSlotWrites = 0;
+    int typedCallReturns = 0;
+    int uiObjectMutations = 0;
     int optionalUnboundGlobals = 0;
     int unresolvedCalls = 0;
     bool truncated = false;
