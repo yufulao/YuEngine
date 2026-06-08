@@ -51,7 +51,7 @@ if(BUILD_TESTING)
     )
     set_tests_properties(yuengine_boot_touhou_sample PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        PASS_REGULAR_EXPRESSION "ok=true phases=7 failed_phases=0 native_apis=84 native_services=11 obligations=36"
+        PASS_REGULAR_EXPRESSION "ok=true phases=7 failed_phases=0 native_apis=84 native_services=11 obligations=39"
         FAIL_REGULAR_EXPRESSION "\"status\": \"E1\""
     )
 
@@ -125,6 +125,6 @@ if(BUILD_TESTING)
     )
     set_tests_properties(yuengine_script_run_title_entry PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        PASS_REGULAR_EXPRESSION "entry=setupProc found=true executed=true frames=1 constructed_objects=5 script_methods=29 script_functions=5 builtin_calls=1 native_obligations=12 native_implemented_calls=0 unique_native_apis=6 engine_object_calls=12 ui_object_calls=21 value_helper_calls=8 value_method_calls=16 module_lifecycle_calls=1 bytecode_state_functions=36 bytecode_state_instructions=1859 root_slot_writes=4 class_slot_writes=32 object_field_writes=116 table_slot_writes=4 typed_call_returns=131 ui_object_mutations=19 service_state_events=66 save_service_queries=4 platform_state_queries=4 audio_service_commands=1 scene_service_commands=1 ui_objects_tracked=20 ui_service_commands=24 value_state_queries=12 optional_unbound_globals=4 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm;FadeIn.*GetSaveList.*IsFreeDemo.*IsOverDemo.*MenuObject.*PlayBGM"
+        PASS_REGULAR_EXPRESSION "entry=setupProc found=true executed=true frames=1 baseline_modules=2 constructed_objects=5 script_methods=29 script_functions=5 builtin_calls=1 native_obligations=12 native_implemented_calls=0 unique_native_apis=6 engine_object_calls=12 ui_object_calls=21 value_helper_calls=8 value_method_calls=16 module_lifecycle_calls=1 bytecode_state_functions=38 bytecode_state_instructions=4087 root_slot_writes=31 class_slot_writes=405 object_field_writes=132 table_slot_writes=213 typed_call_returns=150 ui_object_mutations=15 service_state_events=67 save_service_queries=4 platform_state_queries=4 audio_service_commands=1 scene_service_commands=1 ui_objects_tracked=21 ui_service_commands=24 value_state_queries=12 decoded_service_arguments=6 optional_unbound_globals=4 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm;FadeIn.*duration=0.7.*GetSaveList.*IsFreeDemo.*IsOverDemo.*MenuObject.*PlayBGM"
     )
 endif()

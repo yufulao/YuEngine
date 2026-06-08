@@ -33,6 +33,7 @@
   ],
   "startup": {
     "preload_scripts": ["preload.b64"],
+    "dependency_scripts": ["script/menu/menudef.b64"],
     "entry_module": "script/menu/titlemenu.b64",
     "entry_function": "setupProc"
   },

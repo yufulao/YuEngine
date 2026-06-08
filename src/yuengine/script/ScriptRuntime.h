@@ -114,6 +114,7 @@ struct ScriptServiceStateEvent {
     std::string action;
     std::string target;
     std::string value;
+    std::string arguments;
     std::string functionName;
     int functionOrdinal = -1;
     int sourceLine = -1;
@@ -129,6 +130,7 @@ struct ScriptExecutionReport {
     int frames = 0;
     std::string status;
     std::string executionMode;
+    int baselineModules = 0;
     int classMethodTableCount = 0;
     int methodBindingCount = 0;
     int objectBindingCount = 0;
@@ -160,9 +162,11 @@ struct ScriptExecutionReport {
     int uiObjectsTracked = 0;
     int uiServiceCommands = 0;
     int valueStateQueries = 0;
+    int decodedServiceArguments = 0;
     int optionalUnboundGlobals = 0;
     int unresolvedCalls = 0;
     bool truncated = false;
+    std::vector<std::string> baselineModulePaths;
     std::vector<ScriptConstructedObject> constructedObjectDetails;
     std::vector<ScriptObjectMethodSlot> objectMethodSlots;
     std::vector<ScriptNativeObligation> obligations;
@@ -179,6 +183,14 @@ std::string scriptExecutionPlanToJson(const ScriptExecutionPlan& plan);
 
 ScriptExecutionReport runEntryScript(
     const SqasmModule& module,
+    const std::string& entryFunction,
+    const native::NativeRegistry& registry,
+    const native::NativeServiceCatalog& catalog,
+    int frames);
+
+ScriptExecutionReport runEntryScript(
+    const SqasmModule& module,
+    const std::vector<SqasmModule>& baselineModules,
     const std::string& entryFunction,
     const native::NativeRegistry& registry,
     const native::NativeServiceCatalog& catalog,

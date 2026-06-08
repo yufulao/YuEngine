@@ -287,31 +287,37 @@ Progress:
   - 8 value helper calls;
   - 16 value method calls;
   - 1 Module lifecycle hook.
-- `script-run --frames 1` now executes a scoped bytecode state pass over the title boot edge:
-  - 36 state-scanned functions;
-  - 1,859 state-scanned instructions;
-  - 4 root slot writes;
-  - 32 class slot writes;
-  - 116 object field writes;
-  - 4 table slot writes;
-  - 131 typed call returns;
-  - 19 UI object mutations.
+- `script-run --frames 1` now executes a scoped multi-module bytecode state pass over the title
+  boot edge with 2 baseline modules: `preload.b64` and `script/menu/menudef.b64`.
+- `_OP_NEWSLOT/_OP_NEWSLOTA` now follow slot-write semantics and no longer overwrite register
+  `a0`; this is required for `menudef` to publish `ModuleBase` into the root table.
+- `ModuleTitle : ModuleBase` now inherits `ModuleBase._fadeInTime`; `FadeIn` decodes as
+  `duration=0.7; blend=0`.
+- Current state counters:
+  - 38 state-scanned functions;
+  - 4,087 state-scanned instructions;
+  - 31 root slot writes;
+  - 405 class slot writes;
+  - 132 object field writes;
+  - 213 table slot writes;
+  - 150 typed call returns;
+  - 15 UI object mutations.
 - Service state events now expose the first concrete runtime contracts without fabricating
   unresolved arguments:
-  - 66 service state events;
+  - 67 service state events;
   - 4 save/profile queries;
   - 4 platform state queries;
   - 1 audio command;
   - 1 scene fade command;
-  - 20 tracked UI objects;
+  - 21 tracked UI objects;
   - 24 UI service commands;
   - 12 save/value state queries.
+  - 6 decoded service argument payloads.
 
 Current next edge:
 
-- decode argument payloads for the current service state events, especially `MenuObject`,
-  `_menuWindow`, `_listWindow`, `setParent`, `setSelectCursor`, `bl/tr`, `float2`, and
-  `renderHorizontal`;
+- finish argument payload decoding for the current service state events, especially `MenuObject`,
+  `_menuWindow`, `_listWindow`, `setSelectCursor`, `bl/tr`, `float2`, and `renderHorizontal`;
 - move the reported save/profile, platform, audio, scene fade, and UI helper contracts into
   runtime-owned service state instead of report-only events;
 - once value state is reliable, advance from boot edge into `ModuleTitle.main` scene dispatch and

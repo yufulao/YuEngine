@@ -8,8 +8,10 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -59,6 +61,40 @@ std::vector<std::filesystem::path> scriptRoots(const yu::project::ProjectManifes
         roots.push_back(root.path);
     }
     return roots;
+}
+
+void appendUnique(std::vector<std::string>& values, const std::string& value)
+{
+    if (std::find(values.begin(), values.end(), value) == values.end()) {
+        values.push_back(value);
+    }
+}
+
+std::vector<yu::script::SqasmModule> loadStartupBaselineModules(
+    const yu::project::ProjectManifest& manifest,
+    const std::string& entryModule)
+{
+    std::vector<std::string> moduleNames;
+    for (const auto& preload : manifest.startup.preloadScripts) {
+        appendUnique(moduleNames, preload);
+    }
+    for (const auto& dependency : manifest.startup.dependencyScripts) {
+        appendUnique(moduleNames, dependency);
+    }
+
+    std::vector<yu::script::SqasmModule> modules;
+    const auto roots = scriptRoots(manifest);
+    for (const auto& moduleName : moduleNames) {
+        if (moduleName == entryModule) {
+            continue;
+        }
+        const auto modulePath = yu::script::resolveScriptModule(roots, moduleName);
+        if (modulePath.empty()) {
+            throw std::runtime_error("startup baseline script module not found: " + moduleName);
+        }
+        modules.push_back(yu::script::loadSqasmModule(modulePath));
+    }
+    return modules;
 }
 
 std::vector<std::string> positionalArgs(int argc, char** argv, int begin)
@@ -176,7 +212,9 @@ int main(int argc, char** argv)
             registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
             yu::native::NativeServiceCatalog catalog;
             const auto module = yu::script::loadSqasmModule(modulePath);
-            const auto report = yu::script::runEntryScript(module, entryFunction, registry, catalog, frames);
+            const auto baselineModules = loadStartupBaselineModules(loaded, moduleName);
+            const auto report =
+                yu::script::runEntryScript(module, baselineModules, entryFunction, registry, catalog, frames);
             const auto json = yu::script::scriptExecutionReportToJson(report);
             const size_t written = std::fwrite(json.data(), 1, json.size(), stdout);
             std::fflush(stdout);

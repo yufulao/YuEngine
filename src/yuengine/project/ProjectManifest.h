@@ -19,6 +19,7 @@ struct ScriptRoot {
 
 struct Startup {
     std::vector<std::string> preloadScripts;
+    std::vector<std::string> dependencyScripts;
     std::string entryModule;
     std::string entryFunction;
 };

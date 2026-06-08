@@ -22,6 +22,23 @@ std::string optionalString(const core::JsonValue& object, const std::string& key
     return value.isString() ? value.asString() : std::string();
 }
 
+void appendOptionalStringArray(
+    const core::JsonValue& object,
+    const std::string& key,
+    std::vector<std::string>& output)
+{
+    const auto& value = object.getOrNull(key);
+    if (!value.isArray()) {
+        return;
+    }
+    for (const auto& item : value.asArray()) {
+        if (!item.isString()) {
+            throw std::runtime_error("manifest array field must contain strings: " + key);
+        }
+        output.push_back(item.asString());
+    }
+}
+
 } // namespace
 
 std::filesystem::path resolveProjectPath(const std::filesystem::path& projectRoot, const std::string& value)
@@ -75,9 +92,8 @@ ProjectManifest loadProjectManifest(const std::filesystem::path& path)
     }
 
     const auto& startup = root.at("startup");
-    for (const auto& item : startup.getOrNull("preload_scripts").asArray()) {
-        manifest.startup.preloadScripts.push_back(item.asString());
-    }
+    appendOptionalStringArray(startup, "preload_scripts", manifest.startup.preloadScripts);
+    appendOptionalStringArray(startup, "dependency_scripts", manifest.startup.dependencyScripts);
     manifest.startup.entryModule = requireString(startup, "entry_module");
     manifest.startup.entryFunction = requireString(startup, "entry_function");
 

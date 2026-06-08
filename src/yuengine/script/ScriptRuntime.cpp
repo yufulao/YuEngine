@@ -28,6 +28,7 @@ enum class ScriptValueKind {
     Bool,
     Int,
     Float,
+    Expression,
     String,
     Root,
     Object,
@@ -99,6 +100,14 @@ ScriptValue floatValue(double data)
     ScriptValue value;
     value.kind = ScriptValueKind::Float;
     value.numberValue = data;
+    return value;
+}
+
+ScriptValue expressionValue(std::string data)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Expression;
+    value.text = std::move(data);
     return value;
 }
 
@@ -258,6 +267,8 @@ std::string valueKindName(ScriptValueKind kind)
         return "int";
     case ScriptValueKind::Float:
         return "float";
+    case ScriptValueKind::Expression:
+        return "expression";
     case ScriptValueKind::String:
         return "string";
     case ScriptValueKind::Root:
@@ -290,6 +301,78 @@ std::string valueKindName(ScriptValueKind kind)
     return "unknown";
 }
 
+std::string conciseNumber(double value)
+{
+    std::ostringstream out;
+    out << value;
+    return out.str();
+}
+
+std::string valueSummary(const ScriptValue& value)
+{
+    switch (value.kind) {
+    case ScriptValueKind::Unknown:
+        return "unknown";
+    case ScriptValueKind::Null:
+        return "null";
+    case ScriptValueKind::Bool:
+        return value.boolValue ? "true" : "false";
+    case ScriptValueKind::Int:
+        return std::to_string(value.intValue);
+    case ScriptValueKind::Float:
+        return conciseNumber(value.numberValue);
+    case ScriptValueKind::Expression:
+    case ScriptValueKind::String:
+    case ScriptValueKind::Root:
+    case ScriptValueKind::Object:
+    case ScriptValueKind::Class:
+    case ScriptValueKind::Table:
+    case ScriptValueKind::Function:
+    case ScriptValueKind::NativeFunction:
+    case ScriptValueKind::Method:
+    case ScriptValueKind::ValueMethod:
+    case ScriptValueKind::UiMethod:
+    case ScriptValueKind::Parameter:
+    case ScriptValueKind::Vector2:
+    case ScriptValueKind::SaveList:
+    case ScriptValueKind::SaveEntry:
+        return value.text.empty() ? valueKindName(value.kind) : value.text;
+    }
+    return "unknown";
+}
+
+std::string argumentSummary(const std::vector<ScriptValue>& arguments)
+{
+    if (arguments.empty()) {
+        return {};
+    }
+    std::ostringstream out;
+    for (size_t i = 0; i < arguments.size(); ++i) {
+        if (i != 0) {
+            out << "; ";
+        }
+        out << "arg" << i << "=" << valueSummary(arguments[i]);
+    }
+    return out.str();
+}
+
+std::string positionalArgumentSummary(const std::vector<ScriptValue>& arguments)
+{
+    std::ostringstream out;
+    for (size_t i = 0; i < arguments.size(); ++i) {
+        if (i != 0) {
+            out << ", ";
+        }
+        out << valueSummary(arguments[i]);
+    }
+    return out.str();
+}
+
+bool hasDecodedArgumentPayload(const std::string& arguments)
+{
+    return !arguments.empty() && arguments.find("pending") == std::string::npos;
+}
+
 std::string describeValue(const ScriptValue& value)
 {
     std::ostringstream out;
@@ -307,6 +390,90 @@ std::string describeValue(const ScriptValue& value)
         out << " receiver=" << value.receiver;
     }
     return out.str();
+}
+
+bool numericValue(const ScriptValue& value, double& out)
+{
+    if (value.kind == ScriptValueKind::Int) {
+        out = static_cast<double>(value.intValue);
+        return true;
+    }
+    if (value.kind == ScriptValueKind::Float) {
+        out = value.numberValue;
+        return true;
+    }
+    return false;
+}
+
+bool valuesEqual(const ScriptValue& lhs, const ScriptValue& rhs)
+{
+    double lhsNumber = 0.0;
+    double rhsNumber = 0.0;
+    if (numericValue(lhs, lhsNumber) && numericValue(rhs, rhsNumber)) {
+        return lhsNumber == rhsNumber;
+    }
+    if (lhs.kind == ScriptValueKind::Bool && rhs.kind == ScriptValueKind::Bool) {
+        return lhs.boolValue == rhs.boolValue;
+    }
+    if ((lhs.kind == ScriptValueKind::String || lhs.kind == ScriptValueKind::Expression)
+        && (rhs.kind == ScriptValueKind::String || rhs.kind == ScriptValueKind::Expression)) {
+        return lhs.text == rhs.text;
+    }
+    if (lhs.kind == ScriptValueKind::Null || rhs.kind == ScriptValueKind::Null) {
+        return lhs.kind == rhs.kind;
+    }
+    return false;
+}
+
+bool truthyValue(const ScriptValue& value)
+{
+    switch (value.kind) {
+    case ScriptValueKind::Unknown:
+    case ScriptValueKind::Null:
+        return false;
+    case ScriptValueKind::Bool:
+        return value.boolValue;
+    case ScriptValueKind::Int:
+        return value.intValue != 0;
+    case ScriptValueKind::Float:
+        return value.numberValue != 0.0;
+    default:
+        return true;
+    }
+}
+
+ScriptValue arithmeticValue(const ScriptValue& lhs, const ScriptValue& rhs, int op)
+{
+    double lhsNumber = 0.0;
+    double rhsNumber = 0.0;
+    const bool lhsIsNumber = numericValue(lhs, lhsNumber);
+    const bool rhsIsNumber = numericValue(rhs, rhsNumber);
+    if (lhsIsNumber && rhsIsNumber) {
+        if (op == 43) {
+            return floatValue(lhsNumber + rhsNumber);
+        }
+        if (op == 45) {
+            return floatValue(lhsNumber - rhsNumber);
+        }
+        if (op == 42) {
+            return floatValue(lhsNumber * rhsNumber);
+        }
+        if (op == 44 && rhsNumber != 0.0) {
+            return floatValue(lhsNumber / rhsNumber);
+        }
+    }
+
+    std::string symbol = "?";
+    if (op == 43) {
+        symbol = "+";
+    } else if (op == 45) {
+        symbol = "-";
+    } else if (op == 42) {
+        symbol = "*";
+    } else if (op == 44) {
+        symbol = "/";
+    }
+    return expressionValue("(" + valueSummary(lhs) + " " + symbol + " " + valueSummary(rhs) + ")");
 }
 
 std::map<std::string, std::vector<int>> buildFunctionNameIndex(const SqasmModule& module)
@@ -853,9 +1020,11 @@ class StaticScriptExecutor {
 public:
     StaticScriptExecutor(
         const SqasmModule& module,
+        const std::vector<SqasmModule>& baselineModules,
         const native::NativeRegistry& registry,
         const native::NativeServiceCatalog& catalog)
         : module_(module)
+        , baselineModules_(baselineModules)
         , registry_(registry)
         , catalog_(catalog)
         , methodBindings_(buildMethodBindings(module))
@@ -874,7 +1043,11 @@ public:
         report.modulePath = module_.path.string();
         report.entryFunction = entryFunction;
         report.frames = frames < 0 ? 0 : frames;
-        report.executionMode = "bytecode_state_plus_static_call_trace_branch_sensitive_boot_edge";
+        report.executionMode = "multi_module_bytecode_state_plus_static_call_trace_branch_sensitive_boot_edge";
+        report.baselineModules = static_cast<int>(baselineModules_.size());
+        for (const auto& baselineModule : baselineModules_) {
+            report.baselineModulePaths.push_back(baselineModule.path.string());
+        }
         report.classMethodTableCount = static_cast<int>(classNamesFromMethodBindings(methodBindings_).size());
         report.methodBindingCount = static_cast<int>(methodBindings_.size());
         report.objectBindingCount = static_cast<int>(objectBindings_.size());
@@ -924,14 +1097,21 @@ private:
 
     void bootstrapRootState()
     {
-        const SqasmFunction* root = findRootFunction(module_);
-        if (!root) {
-            return;
-        }
         ensureRuntimeObject("<root>", {}, "root_table");
         rootFields_["gMenu"] = objectValue("gMenu");
         ensureRuntimeObject("gMenu", "EngineMenuRoot", "engine_root_object");
-        executeBytecodeState(*root, {}, {});
+        for (const auto& baselineModule : baselineModules_) {
+            executeRootBytecodeState(baselineModule);
+        }
+        executeRootBytecodeState(module_);
+    }
+
+    void executeRootBytecodeState(const SqasmModule& module)
+    {
+        const SqasmFunction* root = findRootFunction(module);
+        if (root) {
+            executeBytecodeState(*root, {}, {});
+        }
     }
 
     bool recordEvent(ScriptExecutionEvent event)
@@ -1169,13 +1349,17 @@ private:
         const std::string& value,
         const SqasmFunction& function,
         const SqasmInstruction& instruction,
-        const std::string& evidence)
+        const std::string& evidence,
+        std::string arguments = {})
     {
         if (!report_) {
             return;
         }
 
         ++report_->serviceStateEventCount;
+        if (hasDecodedArgumentPayload(arguments)) {
+            ++report_->decodedServiceArguments;
+        }
         if (service == "Save/Profile/Scenario Service" && api == "GetSaveList") {
             ++report_->saveServiceQueries;
         } else if (service == "Platform Service") {
@@ -1192,8 +1376,19 @@ private:
             ++report_->valueStateQueries;
         }
 
-        report_->serviceStateEvents.push_back({service, api, action, target, value, function.name, function.ordinal,
-            instruction.sourceLine, instruction.pc, evidence});
+        ScriptServiceStateEvent event;
+        event.service = service;
+        event.api = api;
+        event.action = action;
+        event.target = target;
+        event.value = value;
+        event.arguments = arguments;
+        event.functionName = function.name;
+        event.functionOrdinal = function.ordinal;
+        event.sourceLine = instruction.sourceLine;
+        event.pc = instruction.pc;
+        event.evidence = evidence;
+        report_->serviceStateEvents.push_back(event);
     }
 
     void recordServiceState(
@@ -1204,25 +1399,41 @@ private:
         const std::string& value,
         const SqasmFunction& function,
         const SqasmCall& call,
-        const std::string& evidence)
+        const std::string& evidence,
+        std::string arguments = {})
     {
         if (!report_) {
             return;
         }
 
         ++report_->serviceStateEventCount;
+        if (hasDecodedArgumentPayload(arguments)) {
+            ++report_->decodedServiceArguments;
+        }
         if (service == "UI And 2D Render Service") {
             ++report_->uiServiceCommands;
         }
 
-        report_->serviceStateEvents.push_back({service, api, action, target, value, function.name, function.ordinal,
-            call.sourceLine, call.pc, evidence});
+        ScriptServiceStateEvent event;
+        event.service = service;
+        event.api = api;
+        event.action = action;
+        event.target = target;
+        event.value = value;
+        event.arguments = arguments;
+        event.functionName = function.name;
+        event.functionOrdinal = function.ordinal;
+        event.sourceLine = call.sourceLine;
+        event.pc = call.pc;
+        event.evidence = evidence;
+        report_->serviceStateEvents.push_back(event);
     }
 
     ScriptValue makeCallReturn(
         const SqasmFunction& function,
         const SqasmInstruction& instruction,
-        const ScriptValue& callable)
+        const ScriptValue& callable,
+        const std::vector<ScriptValue>& arguments)
     {
         const std::string name = callable.text;
         if (name.empty()) {
@@ -1236,10 +1447,22 @@ private:
             return value;
         };
 
+        const std::string argsText = argumentSummary(arguments);
+        const std::string positionalArgsText = positionalArgumentSummary(arguments);
+
         if (name == "float2" || name == "centerPos") {
-            return recordTypedReturn(vector2Value(name + "@" + std::to_string(instruction.pc)));
+            const std::string label = positionalArgsText.empty()
+                ? name + "@" + std::to_string(instruction.pc)
+                : name + "(" + positionalArgsText + ")";
+            return recordTypedReturn(vector2Value(label));
         }
         if (name == "toPoint" || name == "toAbsPos" || name == "bl" || name == "tr") {
+            if ((name == "bl" || name == "tr") && callable.kind == ScriptValueKind::UiMethod
+                && isConcreteReceiver(callable.receiver)) {
+                recordServiceState("UI And 2D Render Service", name, "ui_anchor_query", callable.receiver,
+                    name + "(" + callable.receiver + ")", function, instruction,
+                    "UI helper anchor query returns a vector used by layout code", argsText);
+            }
             return recordTypedReturn(vector2Value(name + "(" + callable.receiver + ")"));
         }
         if (name == "GetSaveList") {
@@ -1259,8 +1482,9 @@ private:
         if (name == "get") {
             if (isConcreteReceiver(callable.receiver)) {
                 recordServiceState("Save/Profile/Scenario Service", name, "save_list_get", callable.receiver,
-                    "save_entry", function, instruction,
-                    "branch-scanned typed save-list contract; entry shape is materialized without active save data");
+                    argsText.empty() ? "save_entry" : "save_entry " + argsText, function, instruction,
+                    "branch-scanned typed save-list contract; entry shape is materialized without active save data",
+                    argsText);
             }
             return recordTypedReturn(saveEntryValue("save_entry@" + std::to_string(instruction.pc)));
         }
@@ -1297,26 +1521,38 @@ private:
                 ++report_->uiObjectMutations;
             }
             if (name != "init" && isConcreteReceiver(callable.receiver)) {
+                std::string value = "returns_receiver";
+                if (name == "setParent" && !arguments.empty()) {
+                    value = "parent=" + valueSummary(arguments.front());
+                } else if (name == "setSelectCursor") {
+                    value = argsText.empty() ? "select_cursor" : argsText;
+                } else if (!argsText.empty()) {
+                    value = argsText;
+                }
                 recordServiceState("UI And 2D Render Service", name, "ui_method_call", callable.receiver,
-                    "returns_receiver", function, instruction,
-                    "UI helper method preserves receiver identity; argument payload decoding pending");
+                    value, function, instruction,
+                    "UI helper method preserves receiver identity with decoded Squirrel call arguments",
+                    argsText);
             }
             return recordTypedReturn(objectValue(callable.receiver));
         }
         if (name == "FadeIn") {
-            recordServiceState("Scene And Stage Service", name, "fade_in", "screen", "duration_arg_pending",
-                function, instruction, "FadeIn side effect reached through ModuleTitle.main boot edge");
+            const std::string value = arguments.empty() ? "duration=unknown" : "duration=" + valueSummary(arguments[0])
+                + (arguments.size() > 1 ? "; blend=" + valueSummary(arguments[1]) : std::string());
+            recordServiceState("Scene And Stage Service", name, "fade_in", "screen", value,
+                function, instruction, "FadeIn side effect reached through ModuleTitle.main boot edge", argsText);
             return recordTypedReturn(nullValue());
         }
         if (name == "PlayBGM") {
-            recordServiceState("Audio Service", name, "play_bgm", "bgm", "id_arg_pending", function, instruction,
-                "PlayBGM side effect reached through ModuleTitle.main boot edge");
+            const std::string value = arguments.empty() ? "bgm_id=unknown" : "bgm_id=" + valueSummary(arguments[0]);
+            recordServiceState("Audio Service", name, "play_bgm", "bgm", value, function, instruction,
+                "PlayBGM side effect reached through ModuleTitle.main boot edge", argsText);
             return recordTypedReturn(nullValue());
         }
         if (name == "renderHorizontal") {
             recordServiceState("UI And 2D Render Service", name, "ui_render_method", callable.receiver,
-                "arguments_pending", function, instruction,
-                "UI render helper reached; draw argument payload decoding pending");
+                argsText.empty() ? "arguments_empty" : argsText, function, instruction,
+                "UI render helper reached with decoded Squirrel call arguments", argsText);
             return recordTypedReturn(nullValue());
         }
         if (name == "stateInit") {
@@ -1353,6 +1589,15 @@ private:
                 return {};
             }
             return registers[static_cast<size_t>(index)];
+        };
+        auto getCallArguments = [&](int receiverReg, int rawArgumentCount) {
+            std::vector<ScriptValue> arguments;
+            const int actualArgumentCount = rawArgumentCount > 0 ? rawArgumentCount - 1 : 0;
+            arguments.reserve(static_cast<size_t>(actualArgumentCount));
+            for (int n = 0; n < actualArgumentCount; ++n) {
+                arguments.push_back(getRegister(receiverReg + 1 + n));
+            }
+            return arguments;
         };
 
         if (ownerObject.empty()) {
@@ -1395,11 +1640,38 @@ private:
                 }
             } else if (instruction.op == "_OP_LOADROOTTABLE") {
                 setRegister(a0, rootValue());
+            } else if (instruction.op == "_OP_CLONE") {
+                setRegister(a0, getRegister(a1));
             } else if (instruction.op == "_OP_MOVE") {
                 setRegister(a0, getRegister(a1));
             } else if (instruction.op == "_OP_DMOVE") {
                 setRegister(a0, getRegister(a1));
                 setRegister(a2, getRegister(a3));
+            } else if (instruction.op == "_OP_ARITH") {
+                setRegister(a0, arithmeticValue(getRegister(a2), getRegister(a1), a3));
+            } else if (instruction.op == "_OP_EQ") {
+                setRegister(a0, boolValue(valuesEqual(getRegister(a2), getRegister(a1))));
+            } else if (instruction.op == "_OP_NE") {
+                setRegister(a0, boolValue(!valuesEqual(getRegister(a2), getRegister(a1))));
+            } else if (instruction.op == "_OP_NOT") {
+                setRegister(a0, boolValue(!truthyValue(getRegister(a1))));
+            } else if (instruction.op == "_OP_CMP") {
+                double lhs = 0.0;
+                double rhs = 0.0;
+                setRegister(a0, boolValue(numericValue(getRegister(a2), lhs) && numericValue(getRegister(a1), rhs)
+                    && lhs > rhs));
+            } else if (instruction.op == "_OP_EXISTS") {
+                const ScriptValue table = getRegister(a2);
+                const std::string key = slotKey(getRegister(a1));
+                bool exists = false;
+                if (table.kind == ScriptValueKind::Table) {
+                    const auto found = runtimeTables_.find(table.tableId);
+                    exists = found != runtimeTables_.end() && found->second.fields.find(key) != found->second.fields.end();
+                } else if (table.kind == ScriptValueKind::Object) {
+                    const auto found = runtimeObjects_.find(table.text);
+                    exists = found != runtimeObjects_.end() && found->second.fields.find(key) != found->second.fields.end();
+                }
+                setRegister(a0, boolValue(exists));
             } else if (instruction.op == "_OP_NEWTABLE" || instruction.op == "_OP_NEWARRAY") {
                 const int tableId = nextTableId_++;
                 runtimeTables_[tableId] = {};
@@ -1426,10 +1698,11 @@ private:
                 setRegister(a0, lookupValue(getRegister(a2), stringValue(literalValueByIndex(function, a1))));
             } else if (instruction.op == "_OP_GET") {
                 setRegister(a0, lookupValue(getRegister(a1), getRegister(a2)));
-            } else if (instruction.op == "_OP_SET" || instruction.op == "_OP_NEWSLOT"
-                || instruction.op == "_OP_NEWSLOTA") {
+            } else if (instruction.op == "_OP_SET") {
                 assignSlot(getRegister(a1), getRegister(a2), getRegister(a3));
                 setRegister(a0, getRegister(a3));
+            } else if (instruction.op == "_OP_NEWSLOT" || instruction.op == "_OP_NEWSLOTA") {
+                assignSlot(getRegister(a1), getRegister(a2), getRegister(a3));
             } else if (instruction.op == "_OP_PREPCALL" || instruction.op == "_OP_PREPCALLK") {
                 const ScriptValue target = getRegister(a2);
                 const ScriptValue key =
@@ -1449,7 +1722,8 @@ private:
                 setRegister(a3, target.kind == ScriptValueKind::Class ? getRegister(0) : target);
                 setRegister(a0, callable);
             } else if (instruction.op == "_OP_CALL" || instruction.op == "_OP_TAILCALL") {
-                const ScriptValue result = makeCallReturn(function, instruction, getRegister(a1));
+                const auto arguments = getCallArguments(a2, a3);
+                const ScriptValue result = makeCallReturn(function, instruction, getRegister(a1), arguments);
                 if (isKnownValue(result)) {
                     setRegister(a0, result);
                 }
@@ -1876,6 +2150,7 @@ private:
     }
 
     const SqasmModule& module_;
+    const std::vector<SqasmModule>& baselineModules_;
     const native::NativeRegistry& registry_;
     const native::NativeServiceCatalog& catalog_;
     std::vector<ScriptMethodBinding> methodBindings_;
@@ -2052,7 +2327,20 @@ ScriptExecutionReport runEntryScript(
     const native::NativeServiceCatalog& catalog,
     int frames)
 {
-    StaticScriptExecutor executor(module, registry, catalog);
+    const std::vector<SqasmModule> baselineModules;
+    StaticScriptExecutor executor(module, baselineModules, registry, catalog);
+    return executor.run(entryFunction, frames);
+}
+
+ScriptExecutionReport runEntryScript(
+    const SqasmModule& module,
+    const std::vector<SqasmModule>& baselineModules,
+    const std::string& entryFunction,
+    const native::NativeRegistry& registry,
+    const native::NativeServiceCatalog& catalog,
+    int frames)
+{
+    StaticScriptExecutor executor(module, baselineModules, registry, catalog);
     return executor.run(entryFunction, frames);
 }
 
@@ -2071,6 +2359,7 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
     out << "  \"metrics\": \"entry=" << core::jsonEscape(report.entryFunction)
         << " found=" << (report.entryFound ? "true" : "false")
         << " executed=" << (report.executed ? "true" : "false") << " frames=" << report.frames
+        << " baseline_modules=" << report.baselineModules
         << " constructed_objects=" << report.constructedObjects << " script_methods=" << report.scriptMethods
         << " script_functions=" << report.scriptFunctions << " builtin_calls=" << report.builtinCalls
         << " native_obligations=" << report.nativeObligations
@@ -2093,6 +2382,7 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
         << " ui_objects_tracked=" << report.uiObjectsTracked
         << " ui_service_commands=" << report.uiServiceCommands
         << " value_state_queries=" << report.valueStateQueries
+        << " decoded_service_arguments=" << report.decodedServiceArguments
         << " optional_unbound_globals=" << report.optionalUnboundGlobals
         << " unresolved_calls=" << report.unresolvedCalls << " truncated="
         << (report.truncated ? "true" : "false") << " status=" << core::jsonEscape(report.status) << "\",\n";
@@ -2101,6 +2391,10 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
     out << "  \"frames\": " << report.frames << ",\n";
     out << "  \"status\": \"" << core::jsonEscape(report.status) << "\",\n";
     out << "  \"execution_mode\": \"" << core::jsonEscape(report.executionMode) << "\",\n";
+    out << "  \"baseline_modules\": " << report.baselineModules << ",\n";
+    out << "  \"baseline_module_paths\": ";
+    writeStringArray(out, report.baselineModulePaths);
+    out << ",\n";
     out << "  \"class_method_tables\": " << report.classMethodTableCount << ",\n";
     out << "  \"method_bindings\": " << report.methodBindingCount << ",\n";
     out << "  \"object_bindings\": " << report.objectBindingCount << ",\n";
@@ -2133,6 +2427,7 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
     out << "  \"ui_objects_tracked\": " << report.uiObjectsTracked << ",\n";
     out << "  \"ui_service_commands\": " << report.uiServiceCommands << ",\n";
     out << "  \"value_state_queries\": " << report.valueStateQueries << ",\n";
+    out << "  \"decoded_service_arguments\": " << report.decodedServiceArguments << ",\n";
     out << "  \"optional_unbound_globals\": " << report.optionalUnboundGlobals << ",\n";
     out << "  \"unresolved_calls\": " << report.unresolvedCalls << ",\n";
     out << "  \"truncated\": " << (report.truncated ? "true" : "false") << ",\n";
@@ -2179,9 +2474,11 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
         out << "    {\"service\": \"" << core::jsonEscape(event.service) << "\", \"api\": \""
             << core::jsonEscape(event.api) << "\", \"action\": \"" << core::jsonEscape(event.action)
             << "\", \"target\": \"" << core::jsonEscape(event.target) << "\", \"value\": \""
-            << core::jsonEscape(event.value) << "\", \"function\": \"" << core::jsonEscape(event.functionName)
-            << "\", \"function_ordinal\": " << event.functionOrdinal << ", \"source_line\": "
-            << event.sourceLine << ", \"pc\": " << event.pc << ", \"evidence\": \""
+            << core::jsonEscape(event.value) << "\", \"arguments\": \""
+            << core::jsonEscape(event.arguments) << "\", \"function\": \""
+            << core::jsonEscape(event.functionName) << "\", \"function_ordinal\": "
+            << event.functionOrdinal << ", \"source_line\": " << event.sourceLine << ", \"pc\": " << event.pc
+            << ", \"evidence\": \""
             << core::jsonEscape(event.evidence) << "\"}";
         out << (i + 1 == report.serviceStateEvents.size() ? "\n" : ",\n");
     }

@@ -175,6 +175,15 @@ BootReport bootProject(const std::filesystem::path& manifestPath, const std::fil
                 context.services().nativeServices(),
                 obligations);
         }
+        for (const auto& dependency : manifest.startup.dependencyScripts) {
+            loadModule(
+                report,
+                roots,
+                dependency,
+                context.services().nativeRegistry(),
+                context.services().nativeServices(),
+                obligations);
+        }
         loadModule(
             report,
             roots,

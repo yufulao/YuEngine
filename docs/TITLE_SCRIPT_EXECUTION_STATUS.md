@@ -3,8 +3,8 @@
 Status: active. Title entry bytecode-state checkpoint completed on 2026-06-09.
 
 This document tracks L7. The current implementation executes a branch-aware boot-edge call trace
-from original `.sqasm` and now runs a scoped bytecode state pass for the title boot edge. It is
-still not a full Squirrel VM, title UI, or gameplay runtime.
+from original `.sqasm` and now runs a scoped multi-module bytecode state pass for the title boot
+edge. It is still not a full Squirrel VM, title UI, or gameplay runtime.
 
 ## Implemented So Far
 
@@ -21,6 +21,9 @@ still not a full Squirrel VM, title UI, or gameplay runtime.
   - ambiguous script function;
   - unresolved.
 - `yuengine_cli script-run`
+- Startup baseline module loading from manifest `preload_scripts` and `dependency_scripts`.
+  Current Touhou title baseline loads `preload.b64` and `script/menu/menudef.b64` before
+  `script/menu/titlemenu.b64`, so `ModuleTitle : ModuleBase` sees inherited class defaults.
 - Root function export recovery from root `_OP_LOAD/_OP_CLOSURE/_OP_NEWSLOT`.
 - Root object method slot recovery for `gMenu.*` closures.
 - Static execution bridge:
@@ -41,13 +44,17 @@ still not a full Squirrel VM, title UI, or gameplay runtime.
   - register slots for the recovered functions;
   - root/class/object/table slot writes;
   - class default materialization onto constructed script objects;
+  - corrected `_OP_NEWSLOT/_OP_NEWSLOTA` semantics: these write slots but do not overwrite
+    register `a0`;
   - typed placeholder returns for `MenuObject`, `GetSaveList`, demo/platform checks, vector helpers,
     save-list methods, and current side-effect calls.
 - Service state event report sourced from bytecode state and original call trace:
   - deterministic empty save-list/profile contract;
   - platform/demo flags for local project mode;
   - `FadeIn` and `PlayBGM` side-effect commands;
-  - tracked `MenuObject` creation and UI helper method calls with argument decoding still pending.
+  - tracked `MenuObject` creation and UI helper method calls;
+  - decoded call arguments for confirmed paths such as `FadeIn(0.7, 0)`, `PlayBGM(3)`,
+    save-list `get(0)`, and several UI parent/method calls.
 
 ## Verified Title Entry Plan
 
@@ -115,6 +122,7 @@ entry=setupProc
 found=true
 executed=true
 frames=1
+baseline_modules=2
 constructed_objects=5
 script_methods=29
 script_functions=5
@@ -127,22 +135,23 @@ ui_object_calls=21
 value_helper_calls=8
 value_method_calls=16
 module_lifecycle_calls=1
-bytecode_state_functions=36
-bytecode_state_instructions=1859
-root_slot_writes=4
-class_slot_writes=32
-object_field_writes=116
-table_slot_writes=4
-typed_call_returns=131
-ui_object_mutations=19
-service_state_events=66
+bytecode_state_functions=38
+bytecode_state_instructions=4087
+root_slot_writes=31
+class_slot_writes=405
+object_field_writes=132
+table_slot_writes=213
+typed_call_returns=150
+ui_object_mutations=15
+service_state_events=67
 save_service_queries=4
 platform_state_queries=4
 audio_service_commands=1
 scene_service_commands=1
-ui_objects_tracked=20
+ui_objects_tracked=21
 ui_service_commands=24
 value_state_queries=12
+decoded_service_arguments=6
 optional_unbound_globals=4
 unresolved_calls=0
 truncated=false
@@ -151,9 +160,11 @@ status=trace_ready_not_full_vm
 
 `unresolved_calls=0` means every call in the current trace has a runtime category. The new
 bytecode-state counters prove the runtime is now carrying original script state through the boot
-edge. Service state counters now expose the first concrete runtime contracts for save/profile,
-platform, audio, scene fade, and UI helper calls. Argument payload decoding, real UI command
-geometry/text, and later branch correctness are still not complete.
+edge with the preload/menudef/title module baseline. Service state counters now expose the first
+concrete runtime contracts for save/profile, platform, audio, scene fade, and UI helper calls.
+`FadeIn` is now decoded through inherited `ModuleBase._fadeInTime` from `menudef` as
+`duration=0.7; blend=0`. Real UI command geometry/text and later branch correctness are still not
+complete.
 
 Constructed original script objects:
 
@@ -203,7 +214,7 @@ Python unittest: 6/6 passed
   - 16 value methods;
   - 1 Module lifecycle hook.
 - UI command buffer for helper objects such as `_menuWindow`, `_listWindow`, and `MenuObject`.
-- Decode argument payloads for `MenuObject`, `_menuWindow`, `_listWindow`, `setParent`,
+- Finish decoding argument payloads for `MenuObject`, `_menuWindow`, `_listWindow`,
   `setSelectCursor`, `bl`, `tr`, and `renderHorizontal` into real UI command data.
 - Expand typed service behavior for `GetSaveList`, `IsFreeDemo`, `IsOverDemo`, `FadeIn`, `PlayBGM`,
   and `MenuObject` from reported contracts into runtime-owned services.
