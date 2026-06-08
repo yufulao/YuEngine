@@ -3,6 +3,7 @@
 #include "yuengine/project/ProjectManifest.h"
 #include "yuengine/resource/ResourceDiagnostics.h"
 #include "yuengine/runtime/EngineRuntime.h"
+#include "yuengine/script/ScriptRuntime.h"
 #include "yuengine/script/SqasmModule.h"
 
 #include <cstdlib>
@@ -32,6 +33,7 @@ void usage()
               << "  yuengine_cli boot <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli resources <project.json>\n"
               << "  yuengine_cli script <project.json> <module>\n"
+              << "  yuengine_cli script-plan <project.json> [module] [function] [--repo-root <path>]\n"
               << "  yuengine_cli native-services <project.json> [--repo-root <path>]\n";
 }
 
@@ -55,6 +57,19 @@ std::vector<std::filesystem::path> scriptRoots(const yu::project::ProjectManifes
         roots.push_back(root.path);
     }
     return roots;
+}
+
+std::vector<std::string> positionalArgs(int argc, char** argv, int begin)
+{
+    std::vector<std::string> args;
+    for (int i = begin; i < argc; ++i) {
+        if (std::string(argv[i]) == "--repo-root" && i + 1 < argc) {
+            ++i;
+            continue;
+        }
+        args.push_back(argv[i]);
+    }
+    return args;
 }
 
 } // namespace
@@ -112,6 +127,23 @@ int main(int argc, char** argv)
             const auto module = yu::script::loadSqasmModule(modulePath);
             std::cout << yu::script::sqasmModuleReportToJson(module);
             return 0;
+        }
+        if (command == "script-plan") {
+            const auto loaded = yu::project::loadProjectManifest(manifest);
+            const auto args = positionalArgs(argc, argv, 3);
+            const std::string moduleName = args.empty() ? loaded.startup.entryModule : args[0];
+            const std::string entryFunction = args.size() < 2 ? loaded.startup.entryFunction : args[1];
+            const auto modulePath = yu::script::resolveScriptModule(scriptRoots(loaded), moduleName);
+            if (modulePath.empty()) {
+                std::cerr << "yuengine_cli: script module not found: " << moduleName << "\n";
+                return 1;
+            }
+            yu::native::NativeRegistry registry;
+            registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
+            const auto module = yu::script::loadSqasmModule(modulePath);
+            const auto plan = yu::script::planEntryExecution(module, entryFunction, registry);
+            std::cout << yu::script::scriptExecutionPlanToJson(plan);
+            return plan.entryFound ? 0 : 1;
         }
         if (command == "native-services") {
             yu::project::loadProjectManifest(manifest);

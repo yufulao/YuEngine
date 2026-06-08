@@ -216,6 +216,8 @@ render/audio trace was sampled in this loop.
 
 ### L7: Title Script Execution
 
+Status: active. Entry execution plan slice completed on 2026-06-09.
+
 Deliver:
 
 - Squirrel VM plan/embedding or bytecode execution bridge;
@@ -226,6 +228,16 @@ Acceptance:
 
 - no hand-written replacement menu.
 - every missing native call is a named obligation.
+
+Progress:
+
+- `yuengine_cli script-plan` resolves the manifest startup entry.
+- Title entry `setupProc` is found with 2 direct calls.
+- `print` is currently `unresolved_or_builtin`.
+- `init` is `ambiguous_script_function` with candidate ordinals `15, 30, 61, 78`.
+- CTest passes 10/10 with the title entry plan test included.
+
+Boundary: L7 is not complete. The current slice is a VM entry plan, not bytecode execution.
 
 ### L8: Save/New Game And Scene Entry
 

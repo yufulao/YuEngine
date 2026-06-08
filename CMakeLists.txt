@@ -15,6 +15,7 @@ add_library(yuengine_runtime
     src/yuengine/resource/VirtualFileSystem.cpp
     src/yuengine/runtime/EngineRuntime.cpp
     src/yuengine/runtime/RuntimeContext.cpp
+    src/yuengine/script/ScriptRuntime.cpp
     src/yuengine/script/SqasmModule.cpp
 )
 
@@ -107,5 +108,14 @@ if(BUILD_TESTING)
     set_tests_properties(yuengine_native_services_surface PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "services=11 native_apis=84 unowned_apis=0 unbound_apis=0 not_started=84"
+    )
+
+    add_test(
+        NAME yuengine_script_plan_title_entry
+        COMMAND yuengine_cli script-plan samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_script_plan_title_entry PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "entry=setupProc found=true direct_calls=2 native_obligations=0 script_calls=0 ambiguous_calls=1 unresolved_calls=1 status=vm_not_implemented"
     )
 endif()
