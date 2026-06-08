@@ -65,6 +65,9 @@ struct ScriptValue {
 
 struct BytecodeStateResult {
     std::set<int> executedCallPcs;
+    std::map<int, std::string> callReceivers;
+    std::map<int, std::vector<ScriptValue>> callArguments;
+    ScriptValue returnValue;
     int executedInstructions = 0;
     bool controlFlowUnknown = false;
 };
@@ -1453,6 +1456,23 @@ private:
         return {};
     }
 
+    std::string rootObjectReceiverForValue(const ScriptValue& value) const
+    {
+        if (value.kind == ScriptValueKind::Object && rootObjects_.find(value.text) != rootObjects_.end()) {
+            return value.text;
+        }
+        if (value.kind == ScriptValueKind::Table) {
+            for (const auto& [rootName, rootValue] : rootFields_) {
+                if (rootObjects_.find(rootName) != rootObjects_.end()
+                    && rootValue.kind == ScriptValueKind::Table
+                    && rootValue.tableId == value.tableId) {
+                    return rootName;
+                }
+            }
+        }
+        return {};
+    }
+
     ScriptValue lookupValue(const ScriptValue& target, const ScriptValue& key) const
     {
         const std::string keyText = slotKey(key);
@@ -1472,12 +1492,12 @@ private:
                     return field->second;
                 }
                 if (!object->second.className.empty()) {
+                    if (findMethodBindingInHierarchy(object->second.className, keyText)) {
+                        return methodValue(keyText, target.text);
+                    }
                     ScriptValue classSlot = lookupClassSlot(object->second.className, keyText);
                     if (isKnownValue(classSlot)) {
                         return classSlot;
-                    }
-                    if (findMethodBinding(methodBindings_, object->second.className, keyText)) {
-                        return methodValue(keyText, target.text);
                     }
                 }
             }
@@ -1562,6 +1582,62 @@ private:
         return objectValue(keyText);
     }
 
+    ScriptValue canonicalizeTableSlotAssignment(int tableId, const std::string& keyText, const ScriptValue& value)
+    {
+        if (value.kind != ScriptValueKind::Object || keyText.empty()) {
+            return value;
+        }
+
+        std::string ownerObject;
+        for (const auto& [objectName, object] : runtimeObjects_) {
+            const auto sceneField = object.fields.find("_scenes");
+            if (sceneField != object.fields.end() && sceneField->second.kind == ScriptValueKind::Table
+                && sceneField->second.tableId == tableId) {
+                ownerObject = objectName;
+                break;
+            }
+        }
+        if (ownerObject.empty()) {
+            return value;
+        }
+
+        int sceneIndex = -1;
+        try {
+            size_t parsed = 0;
+            sceneIndex = std::stoi(keyText, &parsed);
+            if (parsed != keyText.size() || sceneIndex < 0) {
+                return value;
+            }
+        } catch (...) {
+            return value;
+        }
+
+        const std::string canonicalObject = ownerObject + "._scenes[" + std::to_string(sceneIndex) + "]";
+        const auto source = runtimeObjects_.find(value.text);
+        if (source == runtimeObjects_.end()) {
+            return value;
+        }
+
+        const std::string className = source->second.className;
+        if (className.empty()) {
+            return value;
+        }
+
+        objectClasses_[canonicalObject] = className;
+        RuntimeObject sourceObject = source->second;
+        auto& canonical = ensureRuntimeObject(canonicalObject, className,
+            sourceObject.runtimeType.empty() ? "script_object" : sourceObject.runtimeType);
+        for (const auto& [field, fieldValue] : sourceObject.fields) {
+            canonical.fields[field] = fieldValue;
+        }
+
+        if (value.text != canonicalObject) {
+            runtimeObjects_.erase(value.text);
+            objectClasses_.erase(value.text);
+        }
+        return objectValue(canonicalObject);
+    }
+
     void assignSlot(const ScriptValue& target, const ScriptValue& key, const ScriptValue& value)
     {
         const std::string keyText = slotKey(key);
@@ -1595,7 +1671,8 @@ private:
         }
 
         if (target.kind == ScriptValueKind::Table) {
-            runtimeTables_[target.tableId].fields[keyText] = value;
+            runtimeTables_[target.tableId].fields[keyText] =
+                canonicalizeTableSlotAssignment(target.tableId, keyText, value);
             if (report_) {
                 ++report_->tableSlotWrites;
             }
@@ -1714,6 +1791,15 @@ private:
         const std::string argsText = argumentSummary(arguments);
         const std::string positionalArgsText = positionalArgumentSummary(arguments);
 
+        auto readObjectField = [&](const std::string& objectName, const std::string& key) {
+            return lookupValue(objectValue(objectName), stringValue(key));
+        };
+        auto writeObjectField = [&](const std::string& objectName, const std::string& key, const ScriptValue& value) {
+            if (isConcreteReceiver(objectName)) {
+                assignSlot(objectValue(objectName), stringValue(key), value);
+            }
+        };
+
         if (name == "float2" || name == "centerPos") {
             const std::string label = positionalArgsText.empty()
                 ? name + "@" + std::to_string(instruction.pc)
@@ -1774,17 +1860,85 @@ private:
                 instruction, "platform/demo state defaults to full local project mode");
             return recordTypedReturn(boolValue(false));
         }
+        if (callable.receiver == "gMenu"
+            && (name == "isDecide" || name == "isMenuDown" || name == "isMenuUp")) {
+            recordServiceState("Script Service", name, "menu_input_query", "gMenu", "false", function,
+                instruction, "deterministic title boot input state: no pressed menu button in passive frame", argsText);
+            return recordTypedReturn(boolValue(false));
+        }
+        if (callable.receiver == "gMenu" && name == "savesIsEmpty") {
+            recordServiceState("Script Service", name, "menu_save_state_query", "gMenu", "true", function,
+                instruction, "empty local profile makes load menu unavailable until save service is populated", argsText);
+            return recordTypedReturn(boolValue(true));
+        }
+        if (callable.receiver == "gMenu" && name == "continueDisabled") {
+            recordServiceState("Script Service", name, "menu_continue_state_query", "gMenu", "true", function,
+                instruction, "empty local profile disables continue in title menu", argsText);
+            return recordTypedReturn(boolValue(true));
+        }
         if (name == "MenuObject") {
             const std::string objectName = "ui.MenuObject@" + function.name + ":" + std::to_string(instruction.pc);
+            objectClasses_[objectName] = "MenuObject";
             ensureRuntimeObject(objectName, "MenuObject", "ui_object");
+            materializeClassDefaults(objectName, "MenuObject");
             recordServiceState("UI And 2D Render Service", name, "create_ui_object", objectName, "MenuObject",
                 function, instruction, "MenuObject returns a tracked UI helper object");
             return recordTypedReturn(objectValue(objectName));
+        }
+        if (callable.kind == ScriptValueKind::Method && name == "setSelectCursor"
+            && isConcreteReceiver(callable.receiver)) {
+            if (!arguments.empty()) {
+                writeObjectField(callable.receiver, "_sel", arguments[0]);
+            }
+            if (arguments.size() > 1) {
+                writeObjectField(callable.receiver, "_elemCount", arguments[1]);
+            }
+            recordServiceState("Script Service", name, "menu_cursor_set", callable.receiver,
+                argsText.empty() ? "select_cursor" : argsText, function, instruction,
+                "ScrollWindow.setSelectCursor applies recovered Squirrel arguments to runtime object state",
+                argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (callable.kind == ScriptValueKind::Method && name == "selectCursorY"
+            && isConcreteReceiver(callable.receiver)) {
+            if (!arguments.empty()) {
+                writeObjectField(callable.receiver, "_elemCount", arguments[0]);
+            }
+            ScriptValue selected = readObjectField(callable.receiver, "_sel");
+            if (!isKnownValue(selected)) {
+                selected = intValue(0);
+            }
+            recordServiceState("Script Service", name, "menu_cursor_select", callable.receiver,
+                valueSummary(selected), function, instruction,
+                "ScrollWindow.selectCursorY returns the current selected row under passive input state", argsText);
+            return recordTypedReturn(selected);
+        }
+        if (callable.kind == ScriptValueKind::Method && name == "getDrawEnd"
+            && isConcreteReceiver(callable.receiver)) {
+            ScriptValue elemCount = readObjectField(callable.receiver, "_elemCount");
+            ScriptValue drawCount = readObjectField(callable.receiver, "_drawCount");
+            ScriptValue drawBegin = readObjectField(callable.receiver, "_drawBegin");
+            double elem = 0.0;
+            double draw = 0.0;
+            double begin = 0.0;
+            ScriptValue end = elemCount;
+            if (numericValue(elemCount, elem) && numericValue(drawCount, draw) && numericValue(drawBegin, begin)) {
+                end = intValue(static_cast<int>(std::min(elem, begin + draw)));
+            }
+            return recordTypedReturn(end);
+        }
+        if (callable.kind == ScriptValueKind::Method && name == "main" && isConcreteReceiver(callable.receiver)) {
+            ScriptValue nextState = lookupValue(objectValue(callable.receiver), stringValue("_nextState"));
+            if (!isKnownValue(nextState)) {
+                nextState = intValue(0);
+            }
+            return recordTypedReturn(nextState);
         }
         if (hasClass(methodBindings_, name) || callable.kind == ScriptValueKind::Class) {
             const std::string className = callable.kind == ScriptValueKind::Class ? callable.text : name;
             const std::string objectName = "script." + className + "@" + function.name + ":"
                 + std::to_string(instruction.pc);
+            objectClasses_[objectName] = className;
             ensureRuntimeObject(objectName, className, "script_object");
             materializeClassDefaults(objectName, className);
             return recordTypedReturn(objectValue(objectName));
@@ -1842,7 +1996,8 @@ private:
     BytecodeStateResult executeBytecodeState(
         const SqasmFunction& function,
         const std::string& ownerObject,
-        const std::string& ownerClass)
+        const std::string& ownerClass,
+        const std::vector<ScriptValue>& arguments = {})
     {
         BytecodeStateResult result;
         if (report_) {
@@ -1933,11 +2088,15 @@ private:
             setRegister(0, objectValue(ownerObject));
         }
         for (size_t i = 1; i < function.parameters.size(); ++i) {
-            setRegister(static_cast<int>(i), parameterValue(function.parameters[i]));
+            const size_t argumentIndex = i - 1;
+            setRegister(static_cast<int>(i), argumentIndex < arguments.size()
+                ? arguments[argumentIndex]
+                : parameterValue(function.parameters[i]));
         }
 
         size_t i = 0;
         std::map<int, size_t> foreachCursorByPc;
+        std::map<int, int> callPcByCallableRegister;
         const size_t maxInstructionExecutions =
             std::max<size_t>(512, function.instructions.size() * 16);
         while (i < function.instructions.size()) {
@@ -1981,6 +2140,9 @@ private:
                 continue;
             }
             if (instruction.op == "_OP_RETURN") {
+                if (a0 == 1) {
+                    result.returnValue = getRegister(a1);
+                }
                 break;
             }
             if (instruction.op == "_OP_FOREACH") {
@@ -2064,8 +2226,8 @@ private:
                         + valueSummary(getRegister(a1))));
                 }
             } else if (instruction.op == "_OP_EXISTS") {
-                const ScriptValue table = getRegister(a2);
-                const std::string key = slotKey(getRegister(a1));
+                const ScriptValue table = getRegister(a1);
+                const std::string key = slotKey(getRegister(a2));
                 bool exists = false;
                 if (table.kind == ScriptValueKind::Table) {
                     const auto found = runtimeTables_.find(table.tableId);
@@ -2125,13 +2287,15 @@ private:
                 assignSlot(getRegister(a1), getRegister(a2), getRegister(a3));
             } else if (instruction.op == "_OP_PREPCALL" || instruction.op == "_OP_PREPCALLK") {
                 result.executedCallPcs.insert(instruction.pc);
+                callPcByCallableRegister[a0] = instruction.pc;
                 const ScriptValue target = getRegister(a2);
                 const ScriptValue key =
                     instruction.op == "_OP_PREPCALLK" ? stringValue(literalValueByIndex(function, a1))
                                                        : getRegister(a1);
+                const std::string keyText = slotKey(key);
+                const std::string rootObjectReceiver = rootObjectReceiverForValue(target);
                 ScriptValue callable = lookupValue(target, key);
                 if (!isKnownValue(callable)) {
-                    const std::string keyText = slotKey(key);
                     if (registry_.find(keyText) || isValueHelperCall(keyText)) {
                         callable = nativeFunctionValue(keyText, describeValue(target));
                     } else if (isSquirrelValueMethod(keyText)) {
@@ -2140,11 +2304,33 @@ private:
                         callable = uiMethodValue(keyText, describeValue(target));
                     }
                 }
+                if (!rootObjectReceiver.empty()) {
+                    callable = valueMethodValue(keyText, rootObjectReceiver);
+                }
+                if (a2 > 0) {
+                    std::string receiver;
+                    if ((callable.kind == ScriptValueKind::Method || callable.kind == ScriptValueKind::UiMethod)
+                        && isConcreteReceiver(callable.receiver) && callable.receiver != "null") {
+                        receiver = callable.receiver;
+                    } else if (!rootObjectReceiver.empty()) {
+                        receiver = rootObjectReceiver;
+                    } else if ((target.kind == ScriptValueKind::Object || target.kind == ScriptValueKind::Class)
+                        && isConcreteReceiver(target.text)) {
+                        receiver = target.text;
+                    }
+                    if (!receiver.empty()) {
+                        result.callReceivers[instruction.pc] = receiver;
+                    }
+                }
                 setRegister(a3, target.kind == ScriptValueKind::Class ? getRegister(0) : target);
                 setRegister(a0, callable);
             } else if (instruction.op == "_OP_CALL" || instruction.op == "_OP_TAILCALL") {
-                const auto arguments = getCallArguments(a2, a3);
-                const ScriptValue callResult = makeCallReturn(function, instruction, getRegister(a1), arguments);
+                const auto callArguments = getCallArguments(a2, a3);
+                const auto callPc = callPcByCallableRegister.find(a1);
+                if (callPc != callPcByCallableRegister.end()) {
+                    result.callArguments[callPc->second] = callArguments;
+                }
+                const ScriptValue callResult = makeCallReturn(function, instruction, getRegister(a1), callArguments);
                 if (isKnownValue(callResult)) {
                     setRegister(a0, callResult);
                 }
@@ -2163,7 +2349,8 @@ private:
         int pc,
         int sourceLine,
         const std::string& evidence,
-        int depth)
+        int depth,
+        const std::vector<ScriptValue>& constructorArguments = {})
     {
         if (objectName.empty() || className.empty()) {
             return;
@@ -2195,7 +2382,7 @@ private:
 
         const ScriptMethodBinding* constructor = findMethodBinding(methodBindings_, className, "constructor");
         if (constructor) {
-            executeMethod(*constructor, objectName, className, depth + 1, "script_constructor");
+            executeMethod(*constructor, objectName, className, depth + 1, "script_constructor", constructorArguments);
         }
     }
 
@@ -2223,7 +2410,8 @@ private:
         const ScriptObjectMethodSlot& binding,
         const std::string& receiver,
         const SqasmCall& call,
-        int depth)
+        int depth,
+        const std::vector<ScriptValue>& arguments = {})
     {
         const SqasmFunction* function = findFunctionByOrdinal(module_, binding.functionOrdinal);
         if (!function) {
@@ -2235,7 +2423,7 @@ private:
         if (report_) {
             ++report_->scriptFunctions;
         }
-        executeFunction(*function, receiver, {}, depth + 1);
+        executeFunction(*function, receiver, {}, depth + 1, arguments);
     }
 
     void executeMethod(
@@ -2243,7 +2431,8 @@ private:
         const std::string& ownerObject,
         const std::string& ownerClass,
         int depth,
-        const std::string& category)
+        const std::string& category,
+        const std::vector<ScriptValue>& arguments = {})
     {
         if (depth > maxDepth_) {
             if (report_) {
@@ -2277,7 +2466,7 @@ private:
         if (report_) {
             ++report_->scriptMethods;
         }
-        executeFunction(*function, ownerObject, ownerClass, depth + 1);
+        executeFunction(*function, ownerObject, ownerClass, depth + 1, arguments);
         activeMethods_.erase(activeKey);
     }
 
@@ -2285,7 +2474,8 @@ private:
         const SqasmFunction& function,
         const std::string& ownerObject,
         const std::string& ownerClass,
-        int depth)
+        int depth,
+        const std::vector<ScriptValue>& arguments = {})
     {
         if (depth > maxDepth_) {
             if (report_) {
@@ -2294,12 +2484,23 @@ private:
             return;
         }
 
-        const BytecodeStateResult bytecodeState = executeBytecodeState(function, ownerObject, ownerClass);
+        const BytecodeStateResult bytecodeState = executeBytecodeState(function, ownerObject, ownerClass, arguments);
         for (const auto& call : function.calls) {
             if (bytecodeState.executedCallPcs.find(call.pc) == bytecodeState.executedCallPcs.end()) {
                 continue;
             }
-            resolveAndExecuteCall(function, ownerObject, ownerClass, call, depth + 1);
+            std::string runtimeReceiver;
+            const auto receiver = bytecodeState.callReceivers.find(call.pc);
+            if (receiver != bytecodeState.callReceivers.end()) {
+                runtimeReceiver = receiver->second;
+            }
+            std::vector<ScriptValue> runtimeArguments;
+            const auto argumentIt = bytecodeState.callArguments.find(call.pc);
+            if (argumentIt != bytecodeState.callArguments.end()) {
+                runtimeArguments = argumentIt->second;
+            }
+            resolveAndExecuteCall(
+                function, ownerObject, ownerClass, call, runtimeReceiver, runtimeArguments, depth + 1);
         }
     }
 
@@ -2308,6 +2509,8 @@ private:
         const std::string& ownerObject,
         const std::string& ownerClass,
         const SqasmCall& call,
+        const std::string& runtimeReceiver,
+        const std::vector<ScriptValue>& arguments,
         int depth)
     {
         if (isBuiltinCall(call.name)) {
@@ -2319,9 +2522,9 @@ private:
             return;
         }
 
-        const std::string receiver = receiverForCall(function, call);
+        const std::string receiver = runtimeReceiver.empty() ? receiverForCall(function, call) : runtimeReceiver;
         if (!receiver.empty()) {
-            if (executeReceiverCall(receiver, function, ownerObject, ownerClass, call, depth)) {
+            if (executeReceiverCall(receiver, function, ownerObject, ownerClass, call, arguments, depth)) {
                 return;
             }
         }
@@ -2330,11 +2533,11 @@ private:
             return;
         }
 
-        if (executeOwnerClassCall(ownerObject, ownerClass, call, depth)) {
+        if (executeOwnerClassCall(ownerObject, ownerClass, call, arguments, depth)) {
             return;
         }
 
-        if (executeClassConstructorCall(function, ownerObject, call, depth)) {
+        if (executeClassConstructorCall(function, ownerObject, call, arguments, depth)) {
             return;
         }
 
@@ -2381,11 +2584,12 @@ private:
         const std::string& ownerObject,
         const std::string& ownerClass,
         const SqasmCall& call,
+        const std::vector<ScriptValue>& arguments,
         int depth)
     {
         const ScriptObjectMethodSlot* objectSlot = findObjectMethodSlot(objectMethodSlots_, receiver, call.name);
         if (objectSlot) {
-            executeObjectMethodSlot(*objectSlot, receiver, call, depth);
+            executeObjectMethodSlot(*objectSlot, receiver, call, depth, arguments);
             return true;
         }
 
@@ -2395,7 +2599,7 @@ private:
             if (method) {
                 const std::string category =
                     method->ownerClass == objectClass->second ? "script_object_method" : "script_inherited_object_method";
-                executeMethod(*method, receiver, method->ownerClass, depth, category);
+                executeMethod(*method, receiver, method->ownerClass, depth, category, arguments);
                 return true;
             }
         }
@@ -2404,7 +2608,7 @@ private:
             const ScriptMethodBinding* method = findMethodBinding(methodBindings_, receiver, call.name);
             if (method) {
                 const std::string targetObject = ownerObject.empty() ? receiver : ownerObject;
-                executeMethod(*method, targetObject, receiver, depth, "script_super_or_class_method");
+                executeMethod(*method, targetObject, receiver, depth, "script_super_or_class_method", arguments);
                 return true;
             }
         }
@@ -2449,18 +2653,27 @@ private:
         const std::string& ownerObject,
         const std::string& ownerClass,
         const SqasmCall& call,
+        const std::vector<ScriptValue>& arguments,
         int depth)
     {
         if (ownerClass.empty()) {
             return false;
         }
-        const ScriptMethodBinding* method = findMethodBindingInHierarchy(ownerClass, call.name);
+
+        std::string dispatchClass = ownerClass;
+        const auto objectClass = objectClasses_.find(ownerObject);
+        if (objectClass != objectClasses_.end() && !objectClass->second.empty()) {
+            dispatchClass = objectClass->second;
+        }
+
+        const ScriptMethodBinding* method = findMethodBindingInHierarchy(dispatchClass, call.name);
         if (!method) {
             return false;
         }
-        const std::string category =
-            method->ownerClass == ownerClass ? "script_owner_method" : "script_inherited_owner_method";
-        executeMethod(*method, ownerObject, method->ownerClass, depth, category);
+        const std::string category = method->ownerClass == ownerClass
+            ? "script_owner_method"
+            : (dispatchClass == ownerClass ? "script_inherited_owner_method" : "script_virtual_owner_method");
+        executeMethod(*method, ownerObject, method->ownerClass, depth, category, arguments);
         return true;
     }
 
@@ -2499,6 +2712,7 @@ private:
         const SqasmFunction& function,
         const std::string& ownerObject,
         const SqasmCall& call,
+        const std::vector<ScriptValue>& arguments,
         int depth)
     {
         if (!hasClass(methodBindings_, call.name)) {
@@ -2517,7 +2731,8 @@ private:
             call.pc,
             call.sourceLine,
             "class constructor call recovered from _OP_PREPCALLK",
-            depth);
+            depth,
+            arguments);
         return true;
     }
 
