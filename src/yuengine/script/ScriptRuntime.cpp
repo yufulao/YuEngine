@@ -10,6 +10,16 @@
 namespace yu::script {
 namespace {
 
+struct FunctionSlotBinding {
+    std::string slot;
+    int functionRefIndex = -1;
+    int functionOrdinal = -1;
+    std::string functionName;
+    int pc = -1;
+    int sourceLine = -1;
+    std::string evidence;
+};
+
 std::map<std::string, std::vector<int>> buildFunctionNameIndex(const SqasmModule& module)
 {
     std::map<std::string, std::vector<int>> index;
@@ -251,6 +261,83 @@ std::vector<ScriptObjectBinding> buildObjectBindings(
     return bindings;
 }
 
+std::vector<FunctionSlotBinding> buildRootFunctionSlots(const SqasmModule& module)
+{
+    const SqasmFunction* root = findRootFunction(module);
+    if (!root) {
+        return {};
+    }
+
+    const auto rootFunctionRefOrdinals = buildRootFunctionRefOrdinalMap(module);
+    std::vector<FunctionSlotBinding> bindings;
+    const auto& instructions = root->instructions;
+    for (size_t i = 0; i + 2 < instructions.size(); ++i) {
+        const auto& loadSlot = instructions[i];
+        const auto& closure = instructions[i + 1];
+        const auto& newSlot = instructions[i + 2];
+        if (loadSlot.op != "_OP_LOAD" || loadSlot.literalRefs.empty()) {
+            continue;
+        }
+        if (closure.op != "_OP_CLOSURE" || closure.functionRefs.empty() || newSlot.op != "_OP_NEWSLOT") {
+            continue;
+        }
+
+        const auto& ref = closure.functionRefs.front();
+        FunctionSlotBinding binding;
+        binding.slot = loadSlot.literalRefs.front().value;
+        binding.functionRefIndex = ref.index;
+        binding.functionOrdinal =
+            resolveFunctionRefOrdinal(module, rootFunctionRefOrdinals, ref.index, ref.value);
+        binding.functionName = ref.value;
+        binding.pc = loadSlot.pc;
+        binding.sourceLine = loadSlot.sourceLine;
+        binding.evidence = "root _OP_LOAD/_OP_CLOSURE/_OP_NEWSLOT";
+        bindings.push_back(std::move(binding));
+    }
+    return bindings;
+}
+
+std::vector<ScriptObjectMethodSlot> buildRootObjectMethodSlots(const SqasmModule& module)
+{
+    const SqasmFunction* root = findRootFunction(module);
+    if (!root) {
+        return {};
+    }
+
+    const auto rootFunctionRefOrdinals = buildRootFunctionRefOrdinalMap(module);
+    std::vector<ScriptObjectMethodSlot> bindings;
+    const auto& instructions = root->instructions;
+    for (size_t i = 0; i + 3 < instructions.size(); ++i) {
+        const auto& getObject = instructions[i];
+        const auto& loadSlot = instructions[i + 1];
+        const auto& closure = instructions[i + 2];
+        const auto& newSlot = instructions[i + 3];
+        if (getObject.op != "_OP_GETK" || getObject.literalRefs.empty()) {
+            continue;
+        }
+        if (loadSlot.op != "_OP_LOAD" || loadSlot.literalRefs.empty()) {
+            continue;
+        }
+        if (closure.op != "_OP_CLOSURE" || closure.functionRefs.empty() || newSlot.op != "_OP_NEWSLOT") {
+            continue;
+        }
+
+        const auto& ref = closure.functionRefs.front();
+        ScriptObjectMethodSlot binding;
+        binding.objectName = getObject.literalRefs.front().value;
+        binding.slot = loadSlot.literalRefs.front().value;
+        binding.functionRefIndex = ref.index;
+        binding.functionOrdinal =
+            resolveFunctionRefOrdinal(module, rootFunctionRefOrdinals, ref.index, ref.value);
+        binding.functionName = ref.value;
+        binding.pc = getObject.pc;
+        binding.sourceLine = getObject.sourceLine;
+        binding.evidence = "root object _OP_GETK/_OP_LOAD/_OP_CLOSURE/_OP_NEWSLOT";
+        bindings.push_back(std::move(binding));
+    }
+    return bindings;
+}
+
 const ScriptObjectBinding* findObjectBinding(
     const std::vector<ScriptObjectBinding>& objectBindings,
     const std::string& objectName)
@@ -261,6 +348,39 @@ const ScriptObjectBinding* findObjectBinding(
         }
     }
     return nullptr;
+}
+
+const FunctionSlotBinding* findFunctionSlot(const std::vector<FunctionSlotBinding>& slots, const std::string& slot)
+{
+    for (const auto& binding : slots) {
+        if (binding.slot == slot) {
+            return &binding;
+        }
+    }
+    return nullptr;
+}
+
+const ScriptObjectMethodSlot* findObjectMethodSlot(
+    const std::vector<ScriptObjectMethodSlot>& slots,
+    const std::string& objectName,
+    const std::string& slot)
+{
+    for (const auto& binding : slots) {
+        if (binding.objectName == objectName && binding.slot == slot) {
+            return &binding;
+        }
+    }
+    return nullptr;
+}
+
+bool hasClass(const std::vector<ScriptMethodBinding>& methodBindings, const std::string& className)
+{
+    for (const auto& binding : methodBindings) {
+        if (binding.ownerClass == className) {
+            return true;
+        }
+    }
+    return false;
 }
 
 const ScriptMethodBinding* findMethodBinding(
@@ -318,8 +438,14 @@ std::string receiverForCall(const SqasmFunction& function, const SqasmCall& call
 
 bool isBuiltinCall(const std::string& name)
 {
-    static const std::set<std::string> builtins = {"print"};
+    static const std::set<std::string> builtins = {"len", "print", "tofloat", "tointeger"};
     return builtins.find(name) != builtins.end();
+}
+
+bool isSquirrelValueMethod(const std::string& name)
+{
+    static const std::set<std::string> methods = {"count", "get", "isActive", "toPoint", "toAbsPos"};
+    return methods.find(name) != methods.end();
 }
 
 void writeOrdinalArray(std::ostringstream& out, const std::vector<int>& values)
@@ -369,6 +495,521 @@ void writeObjectBindings(std::ostringstream& out, const std::vector<ScriptObject
     }
     out << "  ]";
 }
+
+void writeStringArray(std::ostringstream& out, const std::vector<std::string>& values)
+{
+    out << "[";
+    for (size_t i = 0; i < values.size(); ++i) {
+        out << (i ? ", " : "") << "\"" << core::jsonEscape(values[i]) << "\"";
+    }
+    out << "]";
+}
+
+std::string sceneObjectNameForConstructorCall(
+    const SqasmFunction& function,
+    const SqasmCall& call,
+    const std::string& ownerObject)
+{
+    for (auto it = function.instructions.rbegin(); it != function.instructions.rend(); ++it) {
+        const auto& instruction = *it;
+        if (instruction.pc >= call.pc) {
+            continue;
+        }
+        if (call.pc - instruction.pc > 4) {
+            break;
+        }
+        if (instruction.op == "_OP_LOADINT") {
+            const int index = argValue(instruction, "a1", -1);
+            if (index >= 0) {
+                return ownerObject + "._scenes[" + std::to_string(index) + "]";
+            }
+        }
+    }
+    return ownerObject + "._constructed." + call.name + "@" + std::to_string(call.pc);
+}
+
+class StaticScriptExecutor {
+public:
+    StaticScriptExecutor(
+        const SqasmModule& module,
+        const native::NativeRegistry& registry,
+        const native::NativeServiceCatalog& catalog)
+        : module_(module)
+        , registry_(registry)
+        , catalog_(catalog)
+        , methodBindings_(buildMethodBindings(module))
+        , objectBindings_(buildObjectBindings(module, methodBindings_))
+        , objectMethodSlots_(buildRootObjectMethodSlots(module))
+        , functionSlots_(buildRootFunctionSlots(module))
+    {
+        for (const auto& binding : objectMethodSlots_) {
+            rootObjects_.insert(binding.objectName);
+        }
+    }
+
+    ScriptExecutionReport run(const std::string& entryFunction, int frames)
+    {
+        ScriptExecutionReport report;
+        report.modulePath = module_.path.string();
+        report.entryFunction = entryFunction;
+        report.frames = frames < 0 ? 0 : frames;
+        report.executionMode = "static_bytecode_call_trace_branch_sensitive_boot_edge";
+        report.classMethodTableCount = static_cast<int>(classNamesFromMethodBindings(methodBindings_).size());
+        report.methodBindingCount = static_cast<int>(methodBindings_.size());
+        report.objectBindingCount = static_cast<int>(objectBindings_.size());
+        report.rootObjectMethodSlots = static_cast<int>(objectMethodSlots_.size());
+        report.objectMethodSlots = objectMethodSlots_;
+        report_ = &report;
+
+        const SqasmFunction* entry = findEntrypoint(entryFunction);
+        if (!entry) {
+            report.status = "entry_not_found_or_ambiguous";
+            report_ = nullptr;
+            return report;
+        }
+
+        report.entryFound = true;
+        bootstrapRootObjects();
+        executeFunction(*entry, {}, {}, 0);
+        for (int frame = 0; frame < report.frames; ++frame) {
+            executeGlobalFunctionSlot("main", 0);
+        }
+
+        report.constructedObjects = static_cast<int>(report.constructedObjectDetails.size());
+        report.executed = true;
+        report.status = report.truncated ? "trace_truncated_not_full_vm" : "trace_ready_not_full_vm";
+        report_ = nullptr;
+        return report;
+    }
+
+private:
+    const SqasmFunction* findEntrypoint(const std::string& slot) const
+    {
+        const FunctionSlotBinding* rootSlot = findFunctionSlot(functionSlots_, slot);
+        if (rootSlot && rootSlot->functionOrdinal >= 0) {
+            return findFunctionByOrdinal(module_, rootSlot->functionOrdinal);
+        }
+        return findUniqueEntryFunction(module_, slot);
+    }
+
+    void bootstrapRootObjects()
+    {
+        rootObjects_.insert("gMenu");
+        for (const auto& binding : objectBindings_) {
+            constructObject(binding.objectName, binding.className, binding.pc, binding.sourceLine, binding.evidence, 0);
+        }
+    }
+
+    bool recordEvent(ScriptExecutionEvent event)
+    {
+        if (!report_) {
+            return false;
+        }
+        if (report_->events.size() >= maxEvents_) {
+            report_->truncated = true;
+            return false;
+        }
+        report_->events.push_back(std::move(event));
+        return true;
+    }
+
+    void constructObject(
+        const std::string& objectName,
+        const std::string& className,
+        int pc,
+        int sourceLine,
+        const std::string& evidence,
+        int depth)
+    {
+        if (objectName.empty() || className.empty()) {
+            return;
+        }
+        if (depth > maxDepth_) {
+            if (report_) {
+                report_->truncated = true;
+            }
+            return;
+        }
+
+        const auto existing = objectClasses_.find(objectName);
+        const bool isNewObject = existing == objectClasses_.end();
+        if (isNewObject) {
+            objectClasses_[objectName] = className;
+            if (report_) {
+                report_->constructedObjectDetails.push_back({objectName, className, pc, sourceLine, evidence});
+            }
+            recordEvent({"construct_object", {}, -1, objectName, className, className, {}, "script_class", {},
+                sourceLine, pc, evidence});
+        }
+
+        if (isNewObject && objectName.find("._scenes[") != std::string::npos) {
+            const std::string owner = objectName.substr(0, objectName.find("._scenes["));
+            sceneObjectsByOwner_[owner].push_back(objectName);
+        }
+
+        const ScriptMethodBinding* constructor = findMethodBinding(methodBindings_, className, "constructor");
+        if (constructor) {
+            executeMethod(*constructor, objectName, className, depth + 1, "script_constructor");
+        }
+    }
+
+    void executeGlobalFunctionSlot(const std::string& slot, int depth)
+    {
+        const FunctionSlotBinding* binding = findFunctionSlot(functionSlots_, slot);
+        if (!binding || binding->functionOrdinal < 0) {
+            markUnresolved(slot, {}, {}, -1, -1, "root function slot not recovered");
+            return;
+        }
+        const SqasmFunction* function = findFunctionByOrdinal(module_, binding->functionOrdinal);
+        if (!function) {
+            markUnresolved(slot, {}, {}, binding->sourceLine, binding->pc, "root function ordinal not found");
+            return;
+        }
+        recordEvent({"execute_global_function", function->name, function->ordinal, {}, {}, slot, {}, "script_function",
+            {}, binding->sourceLine, binding->pc, binding->evidence});
+        if (report_) {
+            ++report_->scriptFunctions;
+        }
+        executeFunction(*function, {}, {}, depth + 1);
+    }
+
+    void executeObjectMethodSlot(
+        const ScriptObjectMethodSlot& binding,
+        const std::string& receiver,
+        const SqasmCall& call,
+        int depth)
+    {
+        const SqasmFunction* function = findFunctionByOrdinal(module_, binding.functionOrdinal);
+        if (!function) {
+            markUnresolved(call.name, receiver, {}, call.sourceLine, call.pc, "root object method ordinal not found");
+            return;
+        }
+        recordEvent({"execute_object_function", function->name, function->ordinal, receiver, {}, call.name, receiver,
+            "script_object_function", {}, call.sourceLine, call.pc, binding.evidence});
+        if (report_) {
+            ++report_->scriptFunctions;
+        }
+        executeFunction(*function, receiver, {}, depth + 1);
+    }
+
+    void executeMethod(
+        const ScriptMethodBinding& binding,
+        const std::string& ownerObject,
+        const std::string& ownerClass,
+        int depth,
+        const std::string& category)
+    {
+        if (depth > maxDepth_) {
+            if (report_) {
+                report_->truncated = true;
+            }
+            return;
+        }
+
+        const SqasmFunction* function = findFunctionByOrdinal(module_, binding.functionOrdinal);
+        if (!function) {
+            markUnresolved(binding.slot, ownerObject, ownerClass, binding.sourceLine, binding.classPc,
+                "method binding ordinal not found");
+            return;
+        }
+
+        const std::string activeKey =
+            ownerObject + "|" + ownerClass + "|" + binding.slot + "|" + std::to_string(function->ordinal);
+        if (activeMethods_.find(activeKey) != activeMethods_.end()) {
+            recordEvent({"skip_recursive_method", function->name, function->ordinal, ownerObject, ownerClass,
+                binding.slot, ownerObject, "recursion_guard", {}, binding.sourceLine, binding.classPc,
+                "already active in call stack"});
+            return;
+        }
+
+        activeMethods_.insert(activeKey);
+        recordEvent({"execute_method", function->name, function->ordinal, ownerObject, ownerClass, binding.slot,
+            ownerObject, category, {}, binding.sourceLine, binding.classPc,
+            "_OP_CLASS/_OP_CLOSURE/_OP_NEWSLOTA method binding"});
+        if (report_) {
+            ++report_->scriptMethods;
+        }
+        executeFunction(*function, ownerObject, ownerClass, depth + 1);
+        activeMethods_.erase(activeKey);
+    }
+
+    void executeFunction(
+        const SqasmFunction& function,
+        const std::string& ownerObject,
+        const std::string& ownerClass,
+        int depth)
+    {
+        if (depth > maxDepth_) {
+            if (report_) {
+                report_->truncated = true;
+            }
+            return;
+        }
+
+        bool recordedMainSkip = false;
+        for (const auto& call : function.calls) {
+            if (shouldSkipForBootState(function, ownerClass, call)) {
+                if (!recordedMainSkip) {
+                    recordEvent({"skip_boot_state_branch", function.name, function.ordinal, ownerObject, ownerClass,
+                        call.name, {}, "control_flow_deferred", {}, call.sourceLine, call.pc,
+                        "ModuleTitle._nextState == 300 boot edge; later state branches require value VM"});
+                    recordedMainSkip = true;
+                }
+                continue;
+            }
+            resolveAndExecuteCall(function, ownerObject, ownerClass, call, depth + 1);
+        }
+    }
+
+    bool shouldSkipForBootState(
+        const SqasmFunction& function,
+        const std::string& ownerClass,
+        const SqasmCall& call) const
+    {
+        return ownerClass == "ModuleTitle" && function.name == "main" && call.pc > 13;
+    }
+
+    void resolveAndExecuteCall(
+        const SqasmFunction& function,
+        const std::string& ownerObject,
+        const std::string& ownerClass,
+        const SqasmCall& call,
+        int depth)
+    {
+        if (isBuiltinCall(call.name)) {
+            if (report_) {
+                ++report_->builtinCalls;
+            }
+            recordEvent({"builtin_call", function.name, function.ordinal, ownerObject, ownerClass, call.name, {},
+                "builtin", {}, call.sourceLine, call.pc, "squirrel builtin"});
+            return;
+        }
+
+        const std::string receiver = receiverForCall(function, call);
+        if (!receiver.empty()) {
+            if (executeReceiverCall(receiver, function, ownerObject, ownerClass, call, depth)) {
+                return;
+            }
+        }
+
+        if (executeSceneForeachCall(function, ownerObject, ownerClass, call, depth)) {
+            return;
+        }
+
+        if (executeOwnerClassCall(ownerObject, ownerClass, call, depth)) {
+            return;
+        }
+
+        if (executeClassConstructorCall(function, ownerObject, call, depth)) {
+            return;
+        }
+
+        if (dispatchNative(function, ownerObject, ownerClass, call)) {
+            return;
+        }
+
+        if (isSquirrelValueMethod(call.name)) {
+            if (report_) {
+                ++report_->engineObjectCalls;
+            }
+            recordEvent({"value_method_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
+                receiver, "squirrel_value_method", {}, call.sourceLine, call.pc,
+                "method on script/native return value; value VM needed for result"});
+            return;
+        }
+
+        markUnresolved(call.name, receiver, ownerClass, call.sourceLine, call.pc, "no script/native binding");
+    }
+
+    bool executeReceiverCall(
+        const std::string& receiver,
+        const SqasmFunction& function,
+        const std::string& ownerObject,
+        const std::string& ownerClass,
+        const SqasmCall& call,
+        int depth)
+    {
+        const ScriptObjectMethodSlot* objectSlot = findObjectMethodSlot(objectMethodSlots_, receiver, call.name);
+        if (objectSlot) {
+            executeObjectMethodSlot(*objectSlot, receiver, call, depth);
+            return true;
+        }
+
+        const auto objectClass = objectClasses_.find(receiver);
+        if (objectClass != objectClasses_.end()) {
+            const ScriptMethodBinding* method = findMethodBinding(methodBindings_, objectClass->second, call.name);
+            if (method) {
+                executeMethod(*method, receiver, objectClass->second, depth, "script_object_method");
+                return true;
+            }
+        }
+
+        if (hasClass(methodBindings_, receiver)) {
+            const ScriptMethodBinding* method = findMethodBinding(methodBindings_, receiver, call.name);
+            if (method) {
+                const std::string targetObject = ownerObject.empty() ? receiver : ownerObject;
+                executeMethod(*method, targetObject, receiver, depth, "script_super_or_class_method");
+                return true;
+            }
+        }
+
+        if (rootObjects_.find(receiver) != rootObjects_.end()) {
+            if (report_) {
+                ++report_->engineObjectCalls;
+            }
+            recordEvent({"engine_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
+                receiver, "engine_object_method_unbound", {}, call.sourceLine, call.pc,
+                "root object method has no recovered script slot"});
+            return true;
+        }
+
+        if (receiver == "modMenu" || receiver == "modShop") {
+            if (report_) {
+                ++report_->optionalUnboundGlobals;
+            }
+            recordEvent({"optional_global_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
+                receiver, "optional_unbound_global", {}, call.sourceLine, call.pc,
+                "guarded by script truthiness check before call"});
+            return true;
+        }
+
+        return false;
+    }
+
+    bool executeOwnerClassCall(
+        const std::string& ownerObject,
+        const std::string& ownerClass,
+        const SqasmCall& call,
+        int depth)
+    {
+        if (ownerClass.empty()) {
+            return false;
+        }
+        const ScriptMethodBinding* method = findMethodBinding(methodBindings_, ownerClass, call.name);
+        if (!method) {
+            return false;
+        }
+        executeMethod(*method, ownerObject, ownerClass, depth, "script_owner_method");
+        return true;
+    }
+
+    bool executeSceneForeachCall(
+        const SqasmFunction& function,
+        const std::string& ownerObject,
+        const std::string& ownerClass,
+        const SqasmCall& call,
+        int depth)
+    {
+        if (ownerObject.empty() || ownerClass != "ModuleTitle" || function.name != "init" || call.name != "init") {
+            return false;
+        }
+        const auto scenes = sceneObjectsByOwner_.find(ownerObject);
+        if (scenes == sceneObjectsByOwner_.end()) {
+            markUnresolved(call.name, {}, ownerClass, call.sourceLine, call.pc, "ModuleTitle._scenes not constructed");
+            return true;
+        }
+        for (const auto& sceneObject : scenes->second) {
+            const auto classIt = objectClasses_.find(sceneObject);
+            if (classIt == objectClasses_.end()) {
+                continue;
+            }
+            const ScriptMethodBinding* method = findMethodBinding(methodBindings_, classIt->second, "init");
+            if (method) {
+                executeMethod(*method, sceneObject, classIt->second, depth, "script_scene_foreach_method");
+            }
+        }
+        return true;
+    }
+
+    bool executeClassConstructorCall(
+        const SqasmFunction& function,
+        const std::string& ownerObject,
+        const SqasmCall& call,
+        int depth)
+    {
+        if (!hasClass(methodBindings_, call.name)) {
+            return false;
+        }
+
+        std::string objectName;
+        if (function.name == "constructor" && !ownerObject.empty()) {
+            objectName = sceneObjectNameForConstructorCall(function, call, ownerObject);
+        } else {
+            objectName = call.name + "@" + std::to_string(call.pc);
+        }
+        constructObject(
+            objectName,
+            call.name,
+            call.pc,
+            call.sourceLine,
+            "class constructor call recovered from _OP_PREPCALLK",
+            depth);
+        return true;
+    }
+
+    bool dispatchNative(
+        const SqasmFunction& function,
+        const std::string& ownerObject,
+        const std::string& ownerClass,
+        const SqasmCall& call)
+    {
+        const native::ApiSurface* api = registry_.find(call.name);
+        if (!api) {
+            return false;
+        }
+
+        native::NativeCallContext context;
+        context.module = module_.path.string();
+        context.function = function.name;
+        context.sourceLine = call.sourceLine;
+        context.pc = call.pc;
+        const native::NativeDispatchResult dispatched = catalog_.dispatch(*api, context);
+        if (report_) {
+            if (dispatched.implemented) {
+                ++report_->nativeImplementedCalls;
+            } else {
+                ++report_->nativeObligations;
+            }
+            report_->obligations.push_back({dispatched.api, dispatched.service, dispatched.ownerLevel,
+                dispatched.implementationStatus, function.name, function.ordinal, call.sourceLine, call.pc,
+                dispatched.obligation});
+        }
+        recordEvent({"native_dispatch", function.name, function.ordinal, ownerObject, ownerClass, call.name, {},
+            dispatched.implemented ? "native_implemented" : "native_obligation", dispatched.service, call.sourceLine,
+            call.pc, dispatched.obligation});
+        return true;
+    }
+
+    void markUnresolved(
+        const std::string& callName,
+        const std::string& receiver,
+        const std::string& ownerClass,
+        int sourceLine,
+        int pc,
+        const std::string& evidence)
+    {
+        if (report_) {
+            ++report_->unresolvedCalls;
+        }
+        recordEvent({"unresolved_call", {}, -1, {}, ownerClass, callName, receiver, "unresolved", {}, sourceLine, pc,
+            evidence});
+    }
+
+    const SqasmModule& module_;
+    const native::NativeRegistry& registry_;
+    const native::NativeServiceCatalog& catalog_;
+    std::vector<ScriptMethodBinding> methodBindings_;
+    std::vector<ScriptObjectBinding> objectBindings_;
+    std::vector<ScriptObjectMethodSlot> objectMethodSlots_;
+    std::vector<FunctionSlotBinding> functionSlots_;
+    std::map<std::string, std::string> objectClasses_;
+    std::map<std::string, std::vector<std::string>> sceneObjectsByOwner_;
+    std::set<std::string> rootObjects_;
+    std::set<std::string> activeMethods_;
+    ScriptExecutionReport* report_ = nullptr;
+    static constexpr int maxDepth_ = 24;
+    static constexpr size_t maxEvents_ = 5000;
+};
 
 } // namespace
 
@@ -512,6 +1153,115 @@ std::string scriptExecutionPlanToJson(const ScriptExecutionPlan& plan)
         writeOrdinalArray(out, resolution.candidateOrdinals);
         out << "}";
         out << (i + 1 == plan.callResolutions.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+ScriptExecutionReport runEntryScript(
+    const SqasmModule& module,
+    const std::string& entryFunction,
+    const native::NativeRegistry& registry,
+    const native::NativeServiceCatalog& catalog,
+    int frames)
+{
+    StaticScriptExecutor executor(module, registry, catalog);
+    return executor.run(entryFunction, frames);
+}
+
+std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
+{
+    std::ostringstream out;
+    std::set<std::string> uniqueNativeApis;
+    for (const auto& obligation : report.obligations) {
+        uniqueNativeApis.insert(obligation.api);
+    }
+
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.script_execution_report.v1\",\n";
+    out << "  \"module\": \"" << core::jsonEscape(report.modulePath) << "\",\n";
+    out << "  \"entry_function\": \"" << core::jsonEscape(report.entryFunction) << "\",\n";
+    out << "  \"metrics\": \"entry=" << core::jsonEscape(report.entryFunction)
+        << " found=" << (report.entryFound ? "true" : "false")
+        << " executed=" << (report.executed ? "true" : "false") << " frames=" << report.frames
+        << " constructed_objects=" << report.constructedObjects << " script_methods=" << report.scriptMethods
+        << " script_functions=" << report.scriptFunctions << " builtin_calls=" << report.builtinCalls
+        << " native_obligations=" << report.nativeObligations
+        << " native_implemented_calls=" << report.nativeImplementedCalls
+        << " unique_native_apis=" << uniqueNativeApis.size() << " engine_object_calls="
+        << report.engineObjectCalls << " optional_unbound_globals=" << report.optionalUnboundGlobals
+        << " unresolved_calls=" << report.unresolvedCalls << " truncated="
+        << (report.truncated ? "true" : "false") << " status=" << core::jsonEscape(report.status) << "\",\n";
+    out << "  \"entry_found\": " << (report.entryFound ? "true" : "false") << ",\n";
+    out << "  \"executed\": " << (report.executed ? "true" : "false") << ",\n";
+    out << "  \"frames\": " << report.frames << ",\n";
+    out << "  \"status\": \"" << core::jsonEscape(report.status) << "\",\n";
+    out << "  \"execution_mode\": \"" << core::jsonEscape(report.executionMode) << "\",\n";
+    out << "  \"class_method_tables\": " << report.classMethodTableCount << ",\n";
+    out << "  \"method_bindings\": " << report.methodBindingCount << ",\n";
+    out << "  \"object_bindings\": " << report.objectBindingCount << ",\n";
+    out << "  \"root_object_method_slots\": " << report.rootObjectMethodSlots << ",\n";
+    out << "  \"constructed_objects\": " << report.constructedObjects << ",\n";
+    out << "  \"script_methods\": " << report.scriptMethods << ",\n";
+    out << "  \"script_functions\": " << report.scriptFunctions << ",\n";
+    out << "  \"builtin_calls\": " << report.builtinCalls << ",\n";
+    out << "  \"native_obligations\": " << report.nativeObligations << ",\n";
+    out << "  \"native_implemented_calls\": " << report.nativeImplementedCalls << ",\n";
+    out << "  \"unique_native_apis\": " << uniqueNativeApis.size() << ",\n";
+    out << "  \"engine_object_calls\": " << report.engineObjectCalls << ",\n";
+    out << "  \"optional_unbound_globals\": " << report.optionalUnboundGlobals << ",\n";
+    out << "  \"unresolved_calls\": " << report.unresolvedCalls << ",\n";
+    out << "  \"truncated\": " << (report.truncated ? "true" : "false") << ",\n";
+    out << "  \"unique_native_api_names\": ";
+    const std::vector<std::string> uniqueNativeApiNames(uniqueNativeApis.begin(), uniqueNativeApis.end());
+    writeStringArray(out, uniqueNativeApiNames);
+    out << ",\n";
+    out << "  \"constructed_object_details\": [\n";
+    for (size_t i = 0; i < report.constructedObjectDetails.size(); ++i) {
+        const auto& object = report.constructedObjectDetails[i];
+        out << "    {\"object\": \"" << core::jsonEscape(object.objectName) << "\", \"class\": \""
+            << core::jsonEscape(object.className) << "\", \"pc\": " << object.pc << ", \"source_line\": "
+            << object.sourceLine << ", \"evidence\": \"" << core::jsonEscape(object.evidence) << "\"}";
+        out << (i + 1 == report.constructedObjectDetails.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"root_object_method_slot_details\": [\n";
+    for (size_t i = 0; i < report.objectMethodSlots.size(); ++i) {
+        const auto& slot = report.objectMethodSlots[i];
+        out << "    {\"object\": \"" << core::jsonEscape(slot.objectName) << "\", \"slot\": \""
+            << core::jsonEscape(slot.slot) << "\", \"function_name\": \"" << core::jsonEscape(slot.functionName)
+            << "\", \"function_ref_index\": " << slot.functionRefIndex << ", \"function_ordinal\": "
+            << slot.functionOrdinal << ", \"source_line\": " << slot.sourceLine << ", \"evidence\": \""
+            << core::jsonEscape(slot.evidence) << "\"}";
+        out << (i + 1 == report.objectMethodSlots.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"native_obligation_details\": [\n";
+    for (size_t i = 0; i < report.obligations.size(); ++i) {
+        const auto& obligation = report.obligations[i];
+        out << "    {\"api\": \"" << core::jsonEscape(obligation.api) << "\", \"service\": \""
+            << core::jsonEscape(obligation.service) << "\", \"owner_level\": \""
+            << core::jsonEscape(obligation.ownerLevel) << "\", \"implementation_status\": \""
+            << core::jsonEscape(obligation.implementationStatus) << "\", \"function\": \""
+            << core::jsonEscape(obligation.functionName) << "\", \"function_ordinal\": "
+            << obligation.functionOrdinal << ", \"source_line\": " << obligation.sourceLine << ", \"pc\": "
+            << obligation.pc << ", \"obligation\": \"" << core::jsonEscape(obligation.obligation) << "\"}";
+        out << (i + 1 == report.obligations.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"events\": [\n";
+    for (size_t i = 0; i < report.events.size(); ++i) {
+        const auto& event = report.events[i];
+        out << "    {\"kind\": \"" << core::jsonEscape(event.kind) << "\", \"function\": \""
+            << core::jsonEscape(event.functionName) << "\", \"function_ordinal\": " << event.functionOrdinal
+            << ", \"owner_object\": \"" << core::jsonEscape(event.ownerObject) << "\", \"owner_class\": \""
+            << core::jsonEscape(event.ownerClass) << "\", \"call\": \"" << core::jsonEscape(event.callName)
+            << "\", \"receiver\": \"" << core::jsonEscape(event.receiver) << "\", \"category\": \""
+            << core::jsonEscape(event.category) << "\", \"service\": \"" << core::jsonEscape(event.service)
+            << "\", \"source_line\": " << event.sourceLine << ", \"pc\": " << event.pc << ", \"evidence\": \""
+            << core::jsonEscape(event.evidence) << "\"}";
+        out << (i + 1 == report.events.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

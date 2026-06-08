@@ -52,6 +52,15 @@ C++ runtime spine
 -> actor/camera/input/tutorial flow
 ```
 
+当前最新硬约束：
+
+- 不允许把任何“最小可运行”“最小入口”“最小 VM”“最小菜单”“最小场景”作为默认策略或阶段终点。
+- 允许为了降低风险切出可验证的子边，但这个子边必须属于完整 runtime contract，完成后立即接下一条边。
+- 每个提交只是循环 checkpoint，不是停止理由。提交后继续推进下一个非阻塞 contract edge。
+- 文档、计划、readiness、统计、trace、binding report、CLI 输出只算证据输入；必须继续进入 C++ runtime/service/VM 行为。
+- 若当前阶段还没达到用户目标：原脚本驱动主菜单、存档/新游戏、进场景、角色/相机/教程流程，就不能把阶段说成完成。
+- agent 不得用“先做个小 demo 看看”来替代工程拆解。正确拆法是 layer contract -> evidence -> service/API -> runtime implementation -> regression test -> residual unknowns。
+
 允许在证据不足时启动 runtime 主干建设，但必须遵守：
 
 - 未确认 native 行为必须是显式 obligation，不能 silent no-op。
@@ -61,6 +70,36 @@ C++ runtime spine
 - 每轮完成一个任务后自动进入下一任务，除非用户中断或没有非阻塞任务。
 - 计划、报告、readiness、统计表和解析器只是工程输入，不是可停点；提交 checkpoint 后继续把它接入 runtime contract。
 - 接力 agent 不允许把“先做一个最小验证”作为默认策略。默认策略是补齐当前层的完整证据链、接口、实现、验收和残留未知。
+
+## Non-Stop Loop Rule
+
+如果用户说“继续”“落地”“自己 plan”“token 随便花”，agent 的行为必须是：
+
+```text
+read current state
+-> choose the next non-blocked layer edge
+-> implement runtime/tooling contract
+-> verify
+-> document exact unknowns
+-> commit
+-> continue immediately
+```
+
+禁止在以下状态停止：
+
+- 只修了规范或计划；
+- 只跑了 build/test；
+- 只新增了分析报告；
+- 只证明某个 entry/binding/call 能解析；
+- 只把 native/API 标出来但没有接 service dispatch；
+- 只实现了一个临时可视化窗口；
+- 只输出“下一步建议”但当前下一步可以自己执行。
+
+停止只允许发生在：
+
+- 用户明确要求暂停或改目标；
+- 完整目标已达成；
+- 同一硬 blocker 已连续三轮确认，且没有其他非阻塞工程边可以推进。
 
 ## Project Failure Correction
 
@@ -474,7 +513,7 @@ R7: Production without editor
 R8: Editor and advanced pipeline
 ```
 
-当前已达到 R1 诊断启动，并完成 L2 资源依赖诊断、L3 脚本模块模型、L4 native service interface baseline、L5 service-backed runtime lifecycle、L6 oracle capture readiness，并启动 L7 title script execution，不是游戏执行：C++ runtime spine 已能通过 `project.json` 加载原 sample 和 empty sample，挂载 VFS，解析 pack manifest 索引，加载 preload/title `.sqasm` 诊断，并通过 runtime-owned 11 个 native service interfaces 报告 native/API obligations。已验证原 sample：7 个 boot phases、2 个 loose mounts、13,028 个 pack resources、84 个 native registry APIs、11 个 native services、36 个 title/preload obligations，全部仍是 `not_started`。L2 已验证 title background/logo/DLC stems、title script resource refs、first-mission stage/rail-camera resources 都能通过 VFS 解析，resource report required missing 为 0。L3 已验证 title module 为 81 functions / 4,466 instructions / 593 calls / 80 closure bindings，first mission candidate 为 62 functions / 4,068 instructions / 640 calls / 61 closure bindings，且 C++ parser 可在秒级输出结构化报告。L4 已验证 11 services / 84 native APIs / 0 unowned APIs / 0 unbound APIs，但 native 行为仍没有实现。L5 已验证 original 和 empty sample 都是 `ok=true phases=7 failed_phases=0`。L6 已验证原 exe 可定位，但无 file-IO/render 捕获工具且没有用户驱动 title boot 记录，所以 P1 仍不是完成态；不要伪造 oracle。L7 当前完成 entry object/method binding checkpoint：`setupProc` 找到，直接调用为 `print` builtin 和 `modTitle.init` script object method；title root 恢复 8 个 class method tables / 64 个 method bindings / 1 个 object binding，`modTitle -> ModuleTitle`，`ModuleTitle.init -> function #78`，入口处 `init` 名称模糊已消除，状态仍是 `vm_not_implemented`。P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 现在已有 C++ service interface baseline，但还不是完成态，因为 API behavior implementation、typed argument/return contracts 和 service state 尚未落地；R2 也不是完成态，因为 Squirrel VM 尚未执行原 title script。
+当前已达到 R1 诊断启动，并完成 L2 资源依赖诊断、L3 脚本模块模型、L4 native service interface baseline、L5 service-backed runtime lifecycle、L6 oracle capture readiness，并启动 L7 title script execution，不是游戏执行：C++ runtime spine 已能通过 `project.json` 加载原 sample 和 empty sample，挂载 VFS，解析 pack manifest 索引，加载 preload/title `.sqasm` 诊断，并通过 runtime-owned 11 个 native service interfaces 报告 native/API obligations。已验证原 sample：7 个 boot phases、2 个 loose mounts、13,028 个 pack resources、84 个 native registry APIs、11 个 native services、36 个 title/preload obligations，全部仍是 `not_started`。L2 已验证 title background/logo/DLC stems、title script resource refs、first-mission stage/rail-camera resources 都能通过 VFS 解析，resource report required missing 为 0。L3 已验证 title module 为 81 functions / 4,466 instructions / 593 calls / 80 closure bindings，first mission candidate 为 62 functions / 4,068 instructions / 640 calls / 61 closure bindings，且 C++ parser 可在秒级输出结构化报告。L4 已验证 11 services / 84 native APIs / 0 unowned APIs / 0 unbound APIs，但 native 行为仍没有实现。L5 已验证 original 和 empty sample 都是 `ok=true phases=7 failed_phases=0`。L6 已验证原 exe 可定位，但无 file-IO/render 捕获工具且没有用户驱动 title boot 记录，所以 P1 仍不是完成态；不要伪造 oracle。L7 当前已有 `script-plan` 和 `script-run`：`script-plan` 解析 `setupProc -> print + modTitle.init`；`script-run --frames 1` 构造 `modTitle -> ModuleTitle` 和 4 个原脚本 scene object，执行 `setupProc`、`ModuleTitle.init` foreach scene init、首帧 `main` boot edge，并通过 `NativeServiceCatalog` 触发 12 个 native/API obligations，覆盖 `FadeIn`、`PlayBGM`、`MenuObject`、`GetSaveList`、`IsFreeDemo`、`IsOverDemo`，状态是 `trace_ready_not_full_vm`。P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 现在已有 C++ service interface baseline，但还不是完成态，因为 API behavior implementation、typed argument/return contracts 和 service state 尚未落地；R2 也不是完成态，因为当前只是 execution-trace bridge，不是完整 Squirrel value VM，也没有真实 title UI/gameplay。
 
 ## Milestones
 
@@ -498,10 +537,11 @@ X8: Editor And Advanced Pipeline Later
 
 优先任务不是写游戏窗口。
 
-当前下一步见 `docs/LOOP_TASKS.md`，优先 L7: Title Script Execution。当前 L7 的入口
-object/method binding 只是诊断 checkpoint，不是阶段完成。下一条边是执行已解析的
-`setupProc -> print + modTitle.init(ModuleTitle.init #78)`，实现所需 VM opcode 子集，
-然后进入 VM/native dispatch。
+当前下一步见 `docs/LOOP_TASKS.md`，优先 L7: Title Script Execution。当前 L7 已有
+execution-trace bridge，但不是完整 VM。下一条边是把当前 trace 中的 unresolved/value
+缺口转成 runtime contract：实现寄存器/表/对象值语义、UI helper object model、`MenuObject`
+命令缓冲和 `GetSaveList` typed behavior，然后推进 `ModuleTitle.main` 的真实状态分支、
+scene main dispatch、`MakeNewGame` / `StartGame`。
 
 Runtime implementation 已开始，但只能按完整引擎主干推进，不能写临时视觉 demo。所有未确认 native 行为必须进入 obligation/diagnostics。
 

@@ -30,6 +30,11 @@ project.json
 
 Runtime work must start as a full engine spine, not as isolated visual prototypes.
 
+The previous `Project` failed because it chased visible gaps and built a replacement shell.
+`YuEngine` must stay bottom-up and contract-driven. Small slices are acceptable only as verified
+edges of the full runtime path; they are never a license to ship a minimal entry, fake menu, or
+scene preview.
+
 Allowed now:
 
 - build C++ project/runtime infrastructure;
@@ -45,6 +50,8 @@ Still forbidden:
 - hard-coding `map/Doujou`, `titlemenu`, or first mission into engine code;
 - claiming original behavior without oracle/static evidence;
 - using Steam/login bypasses.
+- stopping after plans, readiness reports, parser statistics, or call binding diagnostics when a
+  non-blocked runtime edge remains.
 
 ## Completion Meaning
 
@@ -80,4 +87,18 @@ Every loop must either:
 - reduce unknown native/API behavior with evidence;
 - add tests/diagnostics that prevent fake progress.
 
-Do not stop after a single small validation if a next task is available.
+Do not stop after a single small validation if a next task is available. The standing loop is:
+
+```text
+evidence
+-> runtime/service contract
+-> implementation
+-> regression test or diagnostic gate
+-> exact unknowns
+-> commit
+-> next contract edge
+```
+
+Current target state remains original-script driven title, save/new-game, scene entry, actor,
+camera, input, tutorial, and then generic reusable runtime. Anything below that is an in-progress
+checkpoint, not a finished engine.

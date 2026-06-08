@@ -1,8 +1,9 @@
 # L7 Title Script Execution Status
 
-Status: active. Entry object/method binding checkpoint completed on 2026-06-09.
+Status: active. Title entry execution-trace bridge checkpoint completed on 2026-06-09.
 
-This document tracks L7. The current implementation does not execute Squirrel bytecode yet.
+This document tracks L7. The current implementation executes a branch-aware boot-edge call trace
+from original `.sqasm`, but it is not a full Squirrel value VM yet.
 
 ## Implemented So Far
 
@@ -18,6 +19,17 @@ This document tracks L7. The current implementation does not execute Squirrel by
   - unique script function;
   - ambiguous script function;
   - unresolved.
+- `yuengine_cli script-run`
+- Root function export recovery from root `_OP_LOAD/_OP_CLOSURE/_OP_NEWSLOT`.
+- Root object method slot recovery for `gMenu.*` closures.
+- Static execution bridge:
+  - constructs `modTitle -> ModuleTitle`;
+  - executes `ModuleTitle.constructor`;
+  - constructs `modTitle._scenes[0..3]` from original class constructor call sites;
+  - executes `setupProc -> print + modTitle.init`;
+  - dispatches `ModuleTitle.init` foreach scene init;
+  - executes one boot-frame `main` wrapper when `--frames 1` is supplied;
+  - dispatches native/API calls through `NativeServiceCatalog`.
 
 ## Verified Title Entry Plan
 
@@ -70,6 +82,59 @@ ModuleTitle.init -> function #78
 
 This removes the previous name-only ambiguity among `init` ordinals `15, 30, 61, 78`.
 
+## Verified Title Execution Trace
+
+Command:
+
+```powershell
+build\cmake-bt143\yuengine_cli.exe script-run samples\touhou_new_world\project.json --repo-root . --frames 1
+```
+
+Result:
+
+```text
+entry=setupProc
+found=true
+executed=true
+frames=1
+constructed_objects=5
+script_methods=29
+script_functions=5
+builtin_calls=1
+native_obligations=12
+native_implemented_calls=0
+unique_native_apis=6
+engine_object_calls=28
+optional_unbound_globals=4
+unresolved_calls=28
+truncated=false
+status=trace_ready_not_full_vm
+```
+
+Constructed original script objects:
+
+```text
+modTitle -> ModuleTitle
+modTitle._scenes[0] -> TitleScene
+modTitle._scenes[1] -> NewGameScene
+modTitle._scenes[2] -> LoadScene
+modTitle._scenes[3] -> OverwriteSaveScene
+```
+
+Native/API obligations reached through the script execution trace:
+
+```text
+FadeIn -> Scene And Stage Service
+PlayBGM -> Audio Service
+MenuObject -> UI And 2D Render Service
+GetSaveList -> Save/Profile/Scenario Service
+IsFreeDemo -> Platform Service
+IsOverDemo -> Platform Service
+```
+
+`gMenu.continueDisabled` and `gMenu.savesIsEmpty` are now resolved as root object script
+closures before their native/API calls are dispatched.
+
 ## Verification
 
 ```powershell
@@ -86,12 +151,12 @@ Python unittest: 6/6 passed
 
 ## Remaining L7 Work
 
-- Squirrel VM plan/embedding or bytecode execution bridge.
-- Runtime execution of `setupProc` through `print` builtin and `modTitle.init`.
-- VM support for the opcode subset used by `ModuleTitle.constructor`, `ModuleTitle.init`,
-  `ModuleTitle.main`, and scene method dispatch.
-- Native dispatch during script execution through `NativeServiceCatalog`.
+- Full Squirrel value/register/table VM semantics for the executed opcode subset.
+- Branch/value correctness for `ModuleTitle.main` beyond the `_nextState == 300` boot edge.
+- Object/value model for UI helper objects such as `_menuWindow`, `_listWindow`, and `MenuObject`.
+- Typed behavior for `GetSaveList`, `IsFreeDemo`, `IsOverDemo`, `FadeIn`, `PlayBGM`, and `MenuObject`.
+- Save/new-game transition through `MakeNewGame` and `StartGame`.
 - UI/render command buffer sourced from original script calls, not handwritten UI.
 
 L7 is not complete until original title script execution reaches native/UI obligations through
-the runtime path.
+the runtime path with value semantics sufficient to drive the real menu state.

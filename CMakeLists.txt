@@ -118,4 +118,13 @@ if(BUILD_TESTING)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "entry=setupProc found=true direct_calls=2 builtin_calls=1 native_obligations=0 object_method_calls=1 script_calls=0 ambiguous_calls=0 unresolved_calls=0 class_method_tables=8 object_bindings=1 status=vm_not_implemented"
     )
+
+    add_test(
+        NAME yuengine_script_run_title_entry
+        COMMAND yuengine_cli script-run samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR} --frames 1
+    )
+    set_tests_properties(yuengine_script_run_title_entry PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "entry=setupProc found=true executed=true frames=1 constructed_objects=5 script_methods=29 script_functions=5 builtin_calls=1 native_obligations=12 native_implemented_calls=0 unique_native_apis=6 engine_object_calls=28 optional_unbound_globals=4 unresolved_calls=28 truncated=false status=trace_ready_not_full_vm;FadeIn.*GetSaveList.*IsFreeDemo.*IsOverDemo.*MenuObject.*PlayBGM"
+    )
 endif()

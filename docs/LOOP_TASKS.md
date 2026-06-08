@@ -23,6 +23,20 @@ Partial diagnostics are not loop completion. If a task produces a plan, table, r
 or readiness check, the next action is to use that output to advance the runtime contract in the
 same lane. A commit can checkpoint the work, but it is not a stopping condition.
 
+Do not interpret "small verified slice" as "minimal engine." A slice is valid only when it is a
+bounded edge of the full engine route and preserves the original project's contract. If the slice
+cannot be connected to project boot, VFS, script VM, native services, save/new-game, scene, actor,
+camera, input, or tutorial flow, it is not a YuEngine loop task.
+
+Hard current directive:
+
+- no handwritten substitute title menu;
+- no blue-screen or mesh-preview progress claims;
+- no smallest-entry replacement runtime;
+- no silent native/API stubs;
+- no stop after docs, readiness, statistics, binding reports, or test-only maintenance;
+- every checkpoint must leave a named next contract edge and then continue to that edge.
+
 Autonomous cycle:
 
 ```text
@@ -231,7 +245,7 @@ render/audio trace was sampled in this loop.
 
 ### L7: Title Script Execution
 
-Status: active. Entry object/method binding diagnostic checkpoint committed on 2026-06-09; L7
+Status: active. Title entry execution-trace bridge checkpoint implemented on 2026-06-09; L7
 is not complete and must continue without waiting.
 
 Deliver:
@@ -254,17 +268,33 @@ Progress:
 - `modTitle` is bound to `ModuleTitle` through root object construction evidence.
 - `setupProc -> modTitle.init` resolves to `ModuleTitle.init`, function ordinal `78`.
 - name-only ambiguity among `init` ordinals `15, 30, 61, 78` is removed for this entry.
-- CTest passes 10/10 with the title entry plan test included.
+- `yuengine_cli script-run` executes the original title boot-edge call trace:
+  - `modTitle -> ModuleTitle`;
+  - `modTitle._scenes[0] -> TitleScene`;
+  - `modTitle._scenes[1] -> NewGameScene`;
+  - `modTitle._scenes[2] -> LoadScene`;
+  - `modTitle._scenes[3] -> OverwriteSaveScene`;
+  - `setupProc -> print + modTitle.init`;
+  - `ModuleTitle.init` foreach scene init;
+  - optional first boot-frame `main` wrapper with `--frames 1`.
+- `gMenu.continueDisabled` and `gMenu.savesIsEmpty` resolve through recovered root object method
+  slots before native/API dispatch.
+- Current title trace reaches 12 native/API obligations across 6 APIs: `FadeIn`, `PlayBGM`,
+  `MenuObject`, `GetSaveList`, `IsFreeDemo`, and `IsOverDemo`.
 
 Current next edge:
 
-- execute the resolved entry chain, starting with builtin `print` and `ModuleTitle.init`;
-- implement the VM opcode subset needed by `ModuleTitle.constructor`, `ModuleTitle.init`,
-  `ModuleTitle.main`, and the first scene dispatch edge;
-- emit native/API obligations from executed bytecode through `NativeServiceCatalog`.
+- replace the branch-insensitive static call trace inside scene/helper functions with value/register
+  semantics for the opcodes already encountered in title boot;
+- model script tables/objects enough to remove `_menuWindow`, `_listWindow`, `float2`, `bl/tr`,
+  `setParent`, and `stateInit` unresolved calls;
+- begin typed behavior contracts for the 6 APIs reached by script-run, starting with
+  `GetSaveList` and `MenuObject`, because these control menu state and UI command output;
+- once value state is reliable, advance from boot edge into `ModuleTitle.main` scene dispatch and
+  then `MakeNewGame` / `StartGame`.
 
-Boundary: L7 is not complete. The current checkpoint is a VM entry diagnostic, not bytecode
-execution, title UI, or gameplay.
+Boundary: L7 is not complete. The current checkpoint is an execution-trace bridge, not a full
+Squirrel VM, title UI, or gameplay.
 
 ### L8: Save/New Game And Scene Entry
 
