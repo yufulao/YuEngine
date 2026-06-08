@@ -1,4 +1,5 @@
 #include "yuengine/project/ProjectManifest.h"
+#include "yuengine/resource/ResourceDiagnostics.h"
 #include "yuengine/runtime/EngineRuntime.h"
 
 #include <cstdlib>
@@ -24,7 +25,8 @@ void usage()
 {
     std::cout << "usage:\n"
               << "  yuengine_cli validate <project.json>\n"
-              << "  yuengine_cli boot <project.json> [--repo-root <path>]\n";
+              << "  yuengine_cli boot <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli resources <project.json>\n";
 }
 
 bool traceEnabled()
@@ -73,6 +75,11 @@ int main(int argc, char** argv)
             traceCli("boot json built");
             std::cout << json;
             traceCli("boot json written");
+            return report.ok ? 0 : 1;
+        }
+        if (command == "resources") {
+            auto report = yu::resource::inspectProjectResources(manifest);
+            std::cout << yu::resource::resourceReportToJson(report);
             return report.ok ? 0 : 1;
         }
     } catch (const std::exception& ex) {

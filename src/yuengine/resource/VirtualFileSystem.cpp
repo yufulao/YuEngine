@@ -3,6 +3,7 @@
 #include "yuengine/core/Json.h"
 
 #include <algorithm>
+#include <cstdint>
 
 namespace yu::resource {
 namespace {
@@ -10,6 +11,32 @@ namespace {
 bool startsWith(const std::string& value, const std::string& prefix)
 {
     return value.rfind(prefix, 0) == 0;
+}
+
+int64_t optionalInt64(const core::JsonValue& object, const std::string& key)
+{
+    const auto& value = object.getOrNull(key);
+    return value.isNumber() ? static_cast<int64_t>(value.asNumber()) : -1;
+}
+
+std::string optionalString(const core::JsonValue& object, const std::string& key)
+{
+    const auto& value = object.getOrNull(key);
+    return value.isString() ? value.asString() : std::string();
+}
+
+int64_t fileSizeOrUnknown(const std::filesystem::path& path)
+{
+    std::error_code error;
+    const auto size = std::filesystem::file_size(path, error);
+    return error ? -1 : static_cast<int64_t>(size);
+}
+
+std::filesystem::path stablePhysicalPath(const std::filesystem::path& path)
+{
+    std::error_code error;
+    const auto resolved = std::filesystem::weakly_canonical(path, error);
+    return error ? std::filesystem::absolute(path) : resolved;
 }
 
 } // namespace
@@ -36,7 +63,14 @@ void VirtualFileSystem::mountProject(const project::ProjectManifest& manifest)
             for (const auto& item : root.asArray()) {
                 const auto& path = item.getOrNull("path");
                 if (path.isString()) {
-                    packResources_.insert(normalizeResourcePath(path.asString()));
+                    ResourceEntry entry;
+                    entry.virtualPath = normalizeResourcePath(path.asString());
+                    entry.mountType = "pack_manifest";
+                    entry.pack = optionalString(item, "pack");
+                    entry.size = optionalInt64(item, "size");
+                    entry.relativeOffset = optionalInt64(item, "relative_offset");
+                    entry.absoluteOffset = optionalInt64(item, "absolute_offset");
+                    packResources_[entry.virtualPath] = std::move(entry);
                 }
             }
         }
@@ -46,13 +80,19 @@ void VirtualFileSystem::mountProject(const project::ProjectManifest& manifest)
 ResourceResolution VirtualFileSystem::resolvePath(const std::string& path) const
 {
     const std::string normalized = normalizeResourcePath(path);
-    if (packResources_.contains(normalized)) {
-        return {true, "pack_manifest", {}, normalized};
+    auto pack = packResources_.find(normalized);
+    if (pack != packResources_.end()) {
+        return {true, pack->second};
     }
     for (const auto& root : looseRoots_) {
         std::filesystem::path physical = root / path;
         if (std::filesystem::exists(physical)) {
-            return {true, "loose", physical, normalized};
+            ResourceEntry entry;
+            entry.virtualPath = normalized;
+            entry.mountType = "loose";
+            entry.physicalPath = stablePhysicalPath(physical);
+            entry.size = fileSizeOrUnknown(physical);
+            return {true, entry};
         }
     }
     return {};
@@ -62,9 +102,9 @@ std::vector<ResourceResolution> VirtualFileSystem::resolveStem(const std::string
 {
     std::vector<ResourceResolution> results;
     const std::string normalized = normalizeResourcePath(stem);
-    for (const auto& path : packResources_) {
+    for (const auto& [path, entry] : packResources_) {
         if (startsWith(path, normalized)) {
-            results.push_back({true, "pack_manifest", {}, path});
+            results.push_back({true, entry});
         }
     }
     for (const auto& root : looseRoots_) {
@@ -72,17 +112,25 @@ std::vector<ResourceResolution> VirtualFileSystem::resolveStem(const std::string
         if (!std::filesystem::exists(parent)) {
             continue;
         }
-        std::string name = std::filesystem::path(stem).filename().string();
+        std::string name = normalizeResourcePath(std::filesystem::path(stem).filename().string());
         for (const auto& entry : std::filesystem::directory_iterator(parent)) {
             if (!entry.is_regular_file()) {
                 continue;
             }
             std::string filename = entry.path().filename().string();
-            if (filename.rfind(name, 0) == 0) {
-                results.push_back({true, "loose", entry.path(), normalizeResourcePath((std::filesystem::path(stem).parent_path() / filename).string())});
+            if (normalizeResourcePath(filename).rfind(name, 0) == 0) {
+                ResourceEntry resource;
+                resource.virtualPath = normalizeResourcePath((std::filesystem::path(stem).parent_path() / filename).string());
+                resource.mountType = "loose";
+                resource.physicalPath = stablePhysicalPath(entry.path());
+                resource.size = fileSizeOrUnknown(entry.path());
+                results.push_back({true, resource});
             }
         }
     }
+    std::sort(results.begin(), results.end(), [](const auto& a, const auto& b) {
+        return a.entry.virtualPath < b.entry.virtualPath;
+    });
     return results;
 }
 

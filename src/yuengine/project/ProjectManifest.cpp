@@ -26,13 +26,20 @@ std::string optionalString(const core::JsonValue& object, const std::string& key
 
 std::filesystem::path resolveProjectPath(const std::filesystem::path& projectRoot, const std::string& value)
 {
-    return std::filesystem::weakly_canonical(projectRoot / value);
+    const std::filesystem::path path = projectRoot / value;
+    std::error_code error;
+    const auto resolved = std::filesystem::weakly_canonical(path, error);
+    return error ? std::filesystem::absolute(path) : resolved;
 }
 
 ProjectManifest loadProjectManifest(const std::filesystem::path& path)
 {
     ProjectManifest manifest;
-    manifest.manifestPath = std::filesystem::weakly_canonical(path);
+    std::error_code error;
+    manifest.manifestPath = std::filesystem::weakly_canonical(path, error);
+    if (error) {
+        manifest.manifestPath = std::filesystem::absolute(path);
+    }
     manifest.projectRoot = manifest.manifestPath.parent_path();
 
     core::JsonValue root = core::parseJson(core::readTextFile(manifest.manifestPath.string()));
@@ -99,6 +106,12 @@ ProjectManifest loadProjectManifest(const std::filesystem::path& path)
                 manifest.requiredResources.push_back(std::move(resource));
             }
         }
+    }
+
+    const auto& oracle = root.getOrNull("oracle");
+    if (oracle.isObject()) {
+        manifest.oracle.titleEntryScript = optionalString(oracle, "title_entry_script");
+        manifest.oracle.firstMissionCandidate = optionalString(oracle, "first_mission_candidate");
     }
 
     return manifest;

@@ -3,17 +3,25 @@
 #include "yuengine/project/ProjectManifest.h"
 
 #include <filesystem>
-#include <set>
+#include <map>
 #include <string>
 #include <vector>
 
 namespace yu::resource {
 
-struct ResourceResolution {
-    bool found = false;
+struct ResourceEntry {
+    std::string virtualPath;
     std::string mountType;
     std::filesystem::path physicalPath;
-    std::string virtualPath;
+    std::string pack;
+    int64_t size = -1;
+    int64_t relativeOffset = -1;
+    int64_t absoluteOffset = -1;
+};
+
+struct ResourceResolution {
+    bool found = false;
+    ResourceEntry entry;
 };
 
 class VirtualFileSystem {
@@ -26,7 +34,7 @@ public:
 
 private:
     std::vector<std::filesystem::path> looseRoots_;
-    std::set<std::string> packResources_;
+    std::map<std::string, ResourceEntry> packResources_;
 };
 
 std::string normalizeResourcePath(const std::string& path);

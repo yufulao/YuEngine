@@ -42,9 +42,9 @@ Verified:
 
 Boundary: this is diagnostic boot only. It is not script execution or gameplay.
 
-## Active Loop
-
 ### L2: VFS And Pack Manifest Depth
+
+Status: completed as resource dependency diagnostics on 2026-06-09.
 
 Deliver:
 
@@ -58,6 +58,22 @@ Acceptance:
 
 - title background/logo/DLC stems resolve to language variants.
 - `map/doujou/doujou.sge` and `map/doujou/doujou.rcm` resolve through project mounts.
+
+Verified:
+
+- `yuengine_cli resources samples/touhou_new_world/project.json` passes.
+- `yuengine_cli resources samples/empty_project/project.json` passes.
+- CTest passes 6/6 with resources tests included.
+- Original sample required resources have 0 missing.
+- Title background/logo/DLC stems resolve to pack and merged loose variants.
+- Title script resource refs: 8, unresolved: 0.
+- First mission script resource refs: 3, unresolved: 0.
+- `map/doujou/doujou.sge` and `map/doujou/doujou.rcm` resolve as pack resources.
+- Resource literal pollution from `/`, date placeholders, and script keys is filtered.
+
+Boundary: this is VFS/dependency diagnostics only. It is not asset payload parsing or rendering.
+
+## Active Loop
 
 ### L3: Script Module Model
 

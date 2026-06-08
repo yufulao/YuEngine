@@ -37,8 +37,12 @@ This document tracks L1 C++ Runtime Spine.
 
 ## Verification Commands
 
+Use `--clean-first` with the current Ninja/MSVC build on this machine. CMake's localized
+`/showIncludes` dependency prefix is mis-encoded, so header changes can otherwise leave stale
+object files.
+
 ```powershell
-cmd.exe /d /s /c '"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 -vcvars_ver=14.43 && "D:\app\CMake\bin\cmake.exe" -S . -B build\cmake-bt143 -G Ninja -DCMAKE_MAKE_PROGRAM="D:/opt/Python311/Scripts/ninja.exe" && "D:\app\CMake\bin\cmake.exe" --build build\cmake-bt143'
+cmd.exe /d /s /c '"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 -vcvars_ver=14.43 && "D:\app\CMake\bin\cmake.exe" -S . -B build\cmake-bt143 -G Ninja -DCMAKE_MAKE_PROGRAM="D:/opt/Python311/Scripts/ninja.exe" && "D:\app\CMake\bin\cmake.exe" --build build\cmake-bt143 --clean-first'
 build\cmake-bt143\yuengine_cli.exe validate samples\touhou_new_world\project.json
 build\cmake-bt143\yuengine_cli.exe boot samples\touhou_new_world\project.json --repo-root .
 build\cmake-bt143\yuengine_cli.exe boot samples\empty_project\project.json --repo-root .

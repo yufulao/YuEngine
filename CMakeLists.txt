@@ -10,6 +10,7 @@ add_library(yuengine_runtime
     src/yuengine/core/Json.cpp
     src/yuengine/native/NativeRegistry.cpp
     src/yuengine/project/ProjectManifest.cpp
+    src/yuengine/resource/ResourceDiagnostics.cpp
     src/yuengine/resource/VirtualFileSystem.cpp
     src/yuengine/runtime/EngineRuntime.cpp
     src/yuengine/script/SqasmModule.cpp
@@ -58,5 +59,24 @@ if(BUILD_TESTING)
     set_tests_properties(yuengine_boot_empty_sample PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "\"native_apis\": 84"
+    )
+
+    add_test(
+        NAME yuengine_resources_touhou_sample
+        COMMAND yuengine_cli resources samples/touhou_new_world/project.json
+    )
+    set_tests_properties(yuengine_resources_touhou_sample PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "menu/title/title_back_sc.dds;menu/title/logo_sc.dds;menu/title/dlc_sc.dds;map/doujou/doujou.sge;map/doujou/doujou.rcm"
+        FAIL_REGULAR_EXPRESSION "\"found\": false;\"query\": \"/\";88/88;titlemenu setup;C:\\\\DumpStack"
+    )
+
+    add_test(
+        NAME yuengine_resources_empty_sample
+        COMMAND yuengine_cli resources samples/empty_project/project.json
+    )
+    set_tests_properties(yuengine_resources_empty_sample PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "\"ok\": true"
     )
 endif()

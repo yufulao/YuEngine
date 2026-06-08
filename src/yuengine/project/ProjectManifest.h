@@ -29,6 +29,11 @@ struct RequiredResource {
     std::string purpose;
 };
 
+struct OracleHints {
+    std::string titleEntryScript;
+    std::string firstMissionCandidate;
+};
+
 struct ProjectManifest {
     std::filesystem::path manifestPath;
     std::filesystem::path projectRoot;
@@ -48,6 +53,7 @@ struct ProjectManifest {
     std::string audio;
     std::string savePolicy;
     std::vector<RequiredResource> requiredResources;
+    OracleHints oracle;
 };
 
 ProjectManifest loadProjectManifest(const std::filesystem::path& path);

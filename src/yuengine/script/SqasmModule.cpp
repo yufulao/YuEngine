@@ -1,6 +1,7 @@
 #include "yuengine/script/SqasmModule.h"
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <regex>
 #include <set>
@@ -30,11 +31,19 @@ std::string stripQuotes(std::string value)
 
 bool looksLikeResource(const std::string& value)
 {
+    if (value.empty() || value.front() == '/') {
+        return false;
+    }
     if (value.find('/') == std::string::npos && value.find('\\') == std::string::npos) {
         return false;
     }
-    if (value.rfind("../", 0) == 0) {
+    if (value.rfind("../", 0) == 0 || value.rfind("..\\", 0) == 0) {
         return false;
+    }
+    for (unsigned char c : value) {
+        if (std::isspace(c) || std::iscntrl(c)) {
+            return false;
+        }
     }
     return true;
 }
@@ -113,7 +122,9 @@ std::filesystem::path resolveScriptModule(const std::vector<std::filesystem::pat
         }
         for (const auto& candidate : candidates) {
             if (std::filesystem::exists(candidate)) {
-                return std::filesystem::weakly_canonical(candidate);
+                std::error_code error;
+                const auto resolved = std::filesystem::weakly_canonical(candidate, error);
+                return error ? std::filesystem::absolute(candidate) : resolved;
             }
         }
     }
