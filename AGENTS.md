@@ -68,6 +68,14 @@ python ..\Project2\tools\evidence_query.py script script/menu/titlemenu.b64.sqas
 python ..\Project2\tools\entrypoint_closure.py script/menu/titlemenu.b64.sqasm
 ```
 
+工具副作用规则：
+
+- `evidence_query.py` 当前视为只读查询工具，适合第一轮校准。
+- `entrypoint_closure.py` 会刷新 `..\Project2\research\entrypoints\...` 输出，不属于第一轮校准命令。
+- `evidence_indexer.py` 会重建 evidence graph，不属于第一轮校准命令。
+- oracle tracer、code generator、status table generator、closure generator 都默认视为有写入副作用。
+- 如果不确定工具是否会写文件，先读源码或用 `--help` 检查，再决定是否运行。
+
 已有研究输出：
 
 - `..\Project2\research\evidence_graph.sqlite`
@@ -106,12 +114,14 @@ python ..\Project2\tools\entrypoint_closure.py script/menu/titlemenu.b64.sqasm
 - 读取 `AGENTS.md`。
 - 运行 `git status --short --branch`。
 - 读取 `..\Project2\research\RECONSTRUCTION_FRONTIER.md`。
-- 运行一到三个 evidence query 验证前线基线。
+- 运行一到三个只读 `evidence_query.py` 查询验证前线基线。
 - 选择一个 lane，说明下一步最小可验证切片。
 - 如果要改文件，只能改一个小而明确的文件，并给出验证命令。
 
 第一次接力禁止做这些事，除非用户明确要求：
 
+- 修改 sibling `..\Project2`、外层 `TouhouNewWorld` 或其他材料目录。
+- 运行会写输出的工具，包括 `entrypoint_closure.py`、`evidence_indexer.py`、oracle tracer、code generator、status table generator。
 - 批量复制 `..\Project2` 到 `YuEngine`。
 - 批量创建 `docs/`、`research/`、`tools/`、`samples/`。
 - 把 generated artifacts 放进 git。
@@ -548,10 +558,17 @@ Test-Path ..\Project2
 Get-Content -Raw ..\Project2\research\RECONSTRUCTION_FRONTIER.md
 python ..\Project2\tools\evidence_query.py summary
 python ..\Project2\tools\evidence_query.py script script/menu/titlemenu.b64.sqasm
-python ..\Project2\tools\entrypoint_closure.py script/menu/titlemenu.b64.sqasm
 ```
 
 如果 sibling `..\Project2` 不可访问，先不要继续猜。需要把历史准备材料导入 `YuEngine`。
+
+不是第一轮校准命令，但后续 lane 可以使用：
+
+```powershell
+python ..\Project2\tools\entrypoint_closure.py script/menu/titlemenu.b64.sqasm
+```
+
+运行这类命令前，必须说明会写哪些输出；如果只是探索，优先写到临时目录或当前 lane 的明确 output/cache 目录。
 
 ## Implementation Trace Shape
 
