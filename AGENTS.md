@@ -37,7 +37,23 @@ project.json
 
 ## Current State
 
-`YuEngine` 仓库刚建立，目前只有 `LICENSE` 和本文件。
+`YuEngine` 仓库已经进入第一轮落地状态，不再是空仓库。
+
+当前已提交的本仓库内容：
+
+- `AGENTS.md`: agent handoff 和长期工程约束。
+- `docs/IMPORT_AUDIT.md`: `Project2` 材料迁移审计。
+- `docs/SCRIPT_IR_STATUS.md`: P3 Script IR 当前状态、验收和残留缺口。
+- `tools/sqir.py`: `.sqasm` -> JSON IR / state-machine summary 工具，可选接入 `Project2` evidence graph。
+- `tests/test_sqir.py`: Script IR parser smoke test。
+
+生成出的 Script IR 默认写到：
+
+```text
+build/script_ir
+```
+
+该目录被 `.gitignore` 排除，不作为源码提交。
 
 前置准备主要在 sibling path：
 
@@ -375,7 +391,7 @@ R7: Production without editor
 R8: Editor and advanced pipeline
 ```
 
-当前应视为 R0 准备阶段附近：证据图、entrypoint closure、native inventory 已有，但 oracle trace、Script IR 工具、native status table 仍需继续完成。
+当前应视为 R0 准备阶段附近：证据图、entrypoint closure、native inventory 已有；YuEngine 已有 P3 Script IR baseline tool，但 oracle trace、native status table 仍需继续完成。
 
 ## Milestones
 
@@ -401,14 +417,12 @@ X8: Editor And Advanced Pipeline Later
 
 当前下一步：
 
-1. 做一次 import audit：列出哪些 `Project2` 文件应该迁入、哪些只保留生成命令、哪些必须留作外部材料。
-2. 建立最小仓库结构，只创建当前切片需要的目录。
-3. 做 P1: Oracle Title Boot。
-4. 做 P2: Oracle New Game。
-5. 做 P3: Script IR Tool。
-6. 做 P4: Native Boundary Spec Table。
-7. 做 P5: Generic Project Manifest。
-8. 做 P6: Engine API Surface Map。
+1. 做 P4: Native Boundary Spec Table，先覆盖 title/new-game 和 first-mission 关键 boundary。
+2. 做 P1: Oracle Title Boot，采样原游戏 title boot/menu idle 行为。
+3. 做 P2: Oracle New Game，采样 `MakeNewGame` / `StartGame` 输出和 save/profile mutation。
+4. 继续增强 P3: Script IR Tool，补 argument-shape、control-flow/state-machine 边和 native-call context。
+5. 做 P5: Generic Project Manifest。
+6. 做 P6: Engine API Surface Map。
 
 Do not start runtime implementation until P1-P4 have enough signal for the target slice.
 

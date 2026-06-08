@@ -1,0 +1,6 @@
+/build/
+/out/
+/research/script_ir/
+__pycache__/
+*.py[cod]
+.pytest_cache/
