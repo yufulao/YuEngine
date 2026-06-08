@@ -448,6 +448,38 @@ bool isSquirrelValueMethod(const std::string& name)
     return methods.find(name) != methods.end();
 }
 
+bool isScriptFieldReceiver(const std::string& receiver)
+{
+    return !receiver.empty() && receiver.front() == '_';
+}
+
+bool isUiObjectMethod(const std::string& name)
+{
+    static const std::set<std::string> methods = {
+        "bl",
+        "init",
+        "renderHorizontal",
+        "setParent",
+        "setSelectCursor",
+        "tr",
+    };
+    return methods.find(name) != methods.end();
+}
+
+bool isValueHelperCall(const std::string& name)
+{
+    static const std::set<std::string> helpers = {
+        "centerPos",
+        "float2",
+    };
+    return helpers.find(name) != helpers.end();
+}
+
+bool isModuleLifecycleCall(const std::string& ownerClass, const std::string& name)
+{
+    return ownerClass.rfind("Module", 0) == 0 && name == "stateInit";
+}
+
 void writeOrdinalArray(std::ostringstream& out, const std::vector<int>& values)
 {
     out << "[";
@@ -804,13 +836,33 @@ private:
             return;
         }
 
+        if (isModuleLifecycleCall(ownerClass, call.name)) {
+            if (report_) {
+                ++report_->moduleLifecycleCalls;
+            }
+            recordEvent({"module_lifecycle_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
+                {}, "module_lifecycle_hook", {}, call.sourceLine, call.pc,
+                "Module lifecycle hook recovered from boot-edge call trace; ModuleBase semantics pending"});
+            return;
+        }
+
         if (dispatchNative(function, ownerObject, ownerClass, call)) {
+            return;
+        }
+
+        if (isValueHelperCall(call.name)) {
+            if (report_) {
+                ++report_->valueHelperCalls;
+            }
+            recordEvent({"value_helper_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
+                receiver, "script_value_helper", {}, call.sourceLine, call.pc,
+                "value constructor/helper; ScriptValue semantics pending"});
             return;
         }
 
         if (isSquirrelValueMethod(call.name)) {
             if (report_) {
-                ++report_->engineObjectCalls;
+                ++report_->valueMethodCalls;
             }
             recordEvent({"value_method_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
                 receiver, "squirrel_value_method", {}, call.sourceLine, call.pc,
@@ -851,6 +903,16 @@ private:
                 executeMethod(*method, targetObject, receiver, depth, "script_super_or_class_method");
                 return true;
             }
+        }
+
+        if (isScriptFieldReceiver(receiver) && isUiObjectMethod(call.name)) {
+            if (report_) {
+                ++report_->uiObjectCalls;
+            }
+            recordEvent({"ui_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
+                receiver, "script_ui_helper_object", {}, call.sourceLine, call.pc,
+                "field receiver UI helper; object/value model pending"});
+            return true;
         }
 
         if (rootObjects_.find(receiver) != rootObjects_.end()) {
@@ -1190,7 +1252,10 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
         << " native_obligations=" << report.nativeObligations
         << " native_implemented_calls=" << report.nativeImplementedCalls
         << " unique_native_apis=" << uniqueNativeApis.size() << " engine_object_calls="
-        << report.engineObjectCalls << " optional_unbound_globals=" << report.optionalUnboundGlobals
+        << report.engineObjectCalls << " ui_object_calls=" << report.uiObjectCalls
+        << " value_helper_calls=" << report.valueHelperCalls << " value_method_calls=" << report.valueMethodCalls
+        << " module_lifecycle_calls=" << report.moduleLifecycleCalls
+        << " optional_unbound_globals=" << report.optionalUnboundGlobals
         << " unresolved_calls=" << report.unresolvedCalls << " truncated="
         << (report.truncated ? "true" : "false") << " status=" << core::jsonEscape(report.status) << "\",\n";
     out << "  \"entry_found\": " << (report.entryFound ? "true" : "false") << ",\n";
@@ -1210,6 +1275,10 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
     out << "  \"native_implemented_calls\": " << report.nativeImplementedCalls << ",\n";
     out << "  \"unique_native_apis\": " << uniqueNativeApis.size() << ",\n";
     out << "  \"engine_object_calls\": " << report.engineObjectCalls << ",\n";
+    out << "  \"ui_object_calls\": " << report.uiObjectCalls << ",\n";
+    out << "  \"value_helper_calls\": " << report.valueHelperCalls << ",\n";
+    out << "  \"value_method_calls\": " << report.valueMethodCalls << ",\n";
+    out << "  \"module_lifecycle_calls\": " << report.moduleLifecycleCalls << ",\n";
     out << "  \"optional_unbound_globals\": " << report.optionalUnboundGlobals << ",\n";
     out << "  \"unresolved_calls\": " << report.unresolvedCalls << ",\n";
     out << "  \"truncated\": " << (report.truncated ? "true" : "false") << ",\n";

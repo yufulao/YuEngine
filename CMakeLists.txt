@@ -125,6 +125,6 @@ if(BUILD_TESTING)
     )
     set_tests_properties(yuengine_script_run_title_entry PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        PASS_REGULAR_EXPRESSION "entry=setupProc found=true executed=true frames=1 constructed_objects=5 script_methods=29 script_functions=5 builtin_calls=1 native_obligations=12 native_implemented_calls=0 unique_native_apis=6 engine_object_calls=28 optional_unbound_globals=4 unresolved_calls=28 truncated=false status=trace_ready_not_full_vm;FadeIn.*GetSaveList.*IsFreeDemo.*IsOverDemo.*MenuObject.*PlayBGM"
+        PASS_REGULAR_EXPRESSION "entry=setupProc found=true executed=true frames=1 constructed_objects=5 script_methods=29 script_functions=5 builtin_calls=1 native_obligations=12 native_implemented_calls=0 unique_native_apis=6 engine_object_calls=12 ui_object_calls=21 value_helper_calls=8 value_method_calls=16 module_lifecycle_calls=1 optional_unbound_globals=4 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm;FadeIn.*GetSaveList.*IsFreeDemo.*IsOverDemo.*MenuObject.*PlayBGM"
     )
 endif()

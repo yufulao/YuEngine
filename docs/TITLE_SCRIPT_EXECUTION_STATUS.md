@@ -30,6 +30,12 @@ from original `.sqasm`, but it is not a full Squirrel value VM yet.
   - dispatches `ModuleTitle.init` foreach scene init;
   - executes one boot-frame `main` wrapper when `--frames 1` is supplied;
   - dispatches native/API calls through `NativeServiceCatalog`.
+- Runtime gap classification for the current trace:
+  - engine object calls;
+  - UI helper object calls;
+  - value helper calls;
+  - Squirrel/native value method calls;
+  - Module lifecycle hooks.
 
 ## Verified Title Entry Plan
 
@@ -104,12 +110,19 @@ builtin_calls=1
 native_obligations=12
 native_implemented_calls=0
 unique_native_apis=6
-engine_object_calls=28
+engine_object_calls=12
+ui_object_calls=21
+value_helper_calls=8
+value_method_calls=16
+module_lifecycle_calls=1
 optional_unbound_globals=4
-unresolved_calls=28
+unresolved_calls=0
 truncated=false
 status=trace_ready_not_full_vm
 ```
+
+`unresolved_calls=0` means every call in the current trace has a runtime category. It does not
+mean the value behavior is implemented.
 
 Constructed original script objects:
 
@@ -153,6 +166,12 @@ Python unittest: 6/6 passed
 
 - Full Squirrel value/register/table VM semantics for the executed opcode subset.
 - Branch/value correctness for `ModuleTitle.main` beyond the `_nextState == 300` boot edge.
+- Concrete object/value model for current classified categories:
+  - 12 engine object calls;
+  - 21 UI helper object calls;
+  - 8 value helper calls;
+  - 16 value methods;
+  - 1 Module lifecycle hook.
 - Object/value model for UI helper objects such as `_menuWindow`, `_listWindow`, and `MenuObject`.
 - Typed behavior for `GetSaveList`, `IsFreeDemo`, `IsOverDemo`, `FadeIn`, `PlayBGM`, and `MenuObject`.
 - Save/new-game transition through `MakeNewGame` and `StartGame`.

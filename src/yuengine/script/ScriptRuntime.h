@@ -127,6 +127,10 @@ struct ScriptExecutionReport {
     int nativeObligations = 0;
     int nativeImplementedCalls = 0;
     int engineObjectCalls = 0;
+    int uiObjectCalls = 0;
+    int valueHelperCalls = 0;
+    int valueMethodCalls = 0;
+    int moduleLifecycleCalls = 0;
     int optionalUnboundGlobals = 0;
     int unresolvedCalls = 0;
     bool truncated = false;

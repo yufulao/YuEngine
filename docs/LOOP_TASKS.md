@@ -281,13 +281,19 @@ Progress:
   slots before native/API dispatch.
 - Current title trace reaches 12 native/API obligations across 6 APIs: `FadeIn`, `PlayBGM`,
   `MenuObject`, `GetSaveList`, `IsFreeDemo`, and `IsOverDemo`.
+- Current title trace has 0 unresolved calls after runtime gap classification:
+  - 12 engine object calls;
+  - 21 UI helper object calls;
+  - 8 value helper calls;
+  - 16 value method calls;
+  - 1 Module lifecycle hook.
 
 Current next edge:
 
-- replace the branch-insensitive static call trace inside scene/helper functions with value/register
-  semantics for the opcodes already encountered in title boot;
-- model script tables/objects enough to remove `_menuWindow`, `_listWindow`, `float2`, `bl/tr`,
-  `setParent`, and `stateInit` unresolved calls;
+- replace the classified UI/value/lifecycle categories with concrete value/register/table semantics
+  for the opcodes already encountered in title boot;
+- model script tables/objects enough to execute `_menuWindow`, `_listWindow`, `float2`, `bl/tr`,
+  `setParent`, and `stateInit` as runtime behavior rather than categories;
 - begin typed behavior contracts for the 6 APIs reached by script-run, starting with
   `GetSaveList` and `MenuObject`, because these control menu state and UI command output;
 - once value state is reliable, advance from boot edge into `ModuleTitle.main` scene dispatch and
