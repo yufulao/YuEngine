@@ -68,6 +68,13 @@ class ProjectManifestTest(unittest.TestCase):
         self.assertTrue(result.ok, result.errors)
         self.assertIn("entry_module", result.resolved)
 
+    def test_repo_empty_sample_manifest_validates(self) -> None:
+        manifest = Path(__file__).resolve().parents[1] / "samples" / "empty_project" / "project.json"
+        result = validate_manifest(manifest)
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertEqual(result.resolved["project_id"], "empty_sample")
+
 
 if __name__ == "__main__":
     unittest.main()

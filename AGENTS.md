@@ -50,6 +50,7 @@ project.json
 - `docs/oracle/title_boot_runbook.md`: 原游戏 title boot 采样步骤；不包含 bypass。
 - `docs/PROJECT_MANIFEST_STATUS.md`: P5 project manifest 当前状态和残留缺口。
 - `samples/touhou_new_world/project.json`: 原游戏作为 sample/oracle project 的 YuEngine manifest。
+- `samples/empty_project/project.json`: 不依赖原游戏资源的 generic sample manifest。
 - `tools/sqir.py`: `.sqasm` -> JSON IR / state-machine summary 工具，可选接入 `Project2` evidence graph。
 - `tools/native_spec.py`: 从 Script IR/evidence 生成 native/API boundary spec 的工具。
 - `tools/oracle_title_boot.py`: 原游戏 title boot 的 inspect/snapshot/runbook/显式 launch 准备工具。
@@ -403,7 +404,7 @@ R7: Production without editor
 R8: Editor and advanced pipeline
 ```
 
-当前应视为 R0 准备阶段附近并开始触碰 R1 输入：证据图、entrypoint closure、native inventory 已有；YuEngine 已有 P3 Script IR baseline tool、P4 native boundary baseline table、P1 title boot oracle 准备工具和 P5 original sample project manifest。P1 仍不是完成态，因为原游戏 title boot 尚未完成三次稳定采样；P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P5 仍不是完成态，因为还没有 generic empty sample 和 runtime manifest consumer。
+当前应视为 R0 准备阶段附近并开始触碰 R1 输入：证据图、entrypoint closure、native inventory 已有；YuEngine 已有 P3 Script IR baseline tool、P4 native boundary baseline table、P1 title boot oracle 准备工具、P5 original sample project manifest 和 generic empty sample manifest。P1 仍不是完成态，因为原游戏 title boot 尚未完成三次稳定采样；P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P5 仍不是完成态，因为还没有 runtime manifest consumer。
 
 ## Milestones
 
@@ -433,7 +434,7 @@ X8: Editor And Advanced Pipeline Later
 2. 做 P2: Oracle New Game，采样 `MakeNewGame` / `StartGame` 输出和 save/profile mutation。
 3. 增强 P4: Native Boundary Spec Table，逐行补 confirmed native/static、argument/return shape、side effects。
 4. 继续增强 P3: Script IR Tool，补 argument-shape、control-flow/state-machine 边和 native-call context。
-5. 增强 P5: Generic Project Manifest，补 empty sample project 和 runtime manifest consumer。
+5. 增强 P5: Generic Project Manifest，补 runtime manifest consumer。
 6. 做 P6: Engine API Surface Map。
 
 Do not start runtime implementation until P1-P4 have enough signal for the target slice.

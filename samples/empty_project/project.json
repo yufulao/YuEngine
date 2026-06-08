@@ -1,0 +1,39 @@
+{
+  "schema": "YuEngine.Project/0.1",
+  "project_id": "empty_sample",
+  "display_name": "Empty Sample",
+  "role": "generic_sample",
+  "engine_profile": "yuengine_generic",
+  "language": {
+    "default": "en",
+    "supported": ["en"]
+  },
+  "mounts": [
+    {
+      "id": "loose_resource",
+      "type": "loose",
+      "path": "resource"
+    }
+  ],
+  "script_roots": [
+    {
+      "type": "sqasm",
+      "path": "scripts"
+    }
+  ],
+  "startup": {
+    "preload_scripts": [],
+    "entry_module": "script/main.b64",
+    "entry_function": "setupProc"
+  },
+  "data": {},
+  "runtime": {
+    "renderer": "headless_validation",
+    "script_vm": "squirrel_2_2_4",
+    "audio": "none",
+    "save_policy": "memory"
+  },
+  "resources": {
+    "required": []
+  }
+}
