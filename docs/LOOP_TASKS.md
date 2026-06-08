@@ -19,6 +19,21 @@ After a loop is committed, continue to the next non-blocked loop. Do not stop at
 resource previews, mesh previews, handwritten UI, or blue-screen runtime output. Those can be
 intermediate diagnostics only when they are connected to the next runtime layer.
 
+Partial diagnostics are not loop completion. If a task produces a plan, table, report, parser,
+or readiness check, the next action is to use that output to advance the runtime contract in the
+same lane. A commit can checkpoint the work, but it is not a stopping condition.
+
+Autonomous cycle:
+
+```text
+audit current layer evidence
+-> encode the contract in runtime/tooling
+-> wire it into CLI/tests
+-> document exact remaining unknowns
+-> commit
+-> immediately continue the next non-blocked contract edge
+```
+
 The current long target remains:
 
 ```text
@@ -216,7 +231,8 @@ render/audio trace was sampled in this loop.
 
 ### L7: Title Script Execution
 
-Status: active. Entry execution plan slice completed on 2026-06-09.
+Status: active. Entry object/method binding diagnostic checkpoint committed on 2026-06-09; L7
+is not complete and must continue without waiting.
 
 Deliver:
 
@@ -233,11 +249,22 @@ Progress:
 
 - `yuengine_cli script-plan` resolves the manifest startup entry.
 - Title entry `setupProc` is found with 2 direct calls.
-- `print` is currently `unresolved_or_builtin`.
-- `init` is `ambiguous_script_function` with candidate ordinals `15, 30, 61, 78`.
+- `print` is resolved as `builtin`.
+- title root recovers 8 class method tables and 64 method bindings.
+- `modTitle` is bound to `ModuleTitle` through root object construction evidence.
+- `setupProc -> modTitle.init` resolves to `ModuleTitle.init`, function ordinal `78`.
+- name-only ambiguity among `init` ordinals `15, 30, 61, 78` is removed for this entry.
 - CTest passes 10/10 with the title entry plan test included.
 
-Boundary: L7 is not complete. The current slice is a VM entry plan, not bytecode execution.
+Current next edge:
+
+- execute the resolved entry chain, starting with builtin `print` and `ModuleTitle.init`;
+- implement the VM opcode subset needed by `ModuleTitle.constructor`, `ModuleTitle.init`,
+  `ModuleTitle.main`, and the first scene dispatch edge;
+- emit native/API obligations from executed bytecode through `NativeServiceCatalog`.
+
+Boundary: L7 is not complete. The current checkpoint is a VM entry diagnostic, not bytecode
+execution, title UI, or gameplay.
 
 ### L8: Save/New Game And Scene Entry
 

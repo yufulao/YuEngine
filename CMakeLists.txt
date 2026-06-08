@@ -116,6 +116,6 @@ if(BUILD_TESTING)
     )
     set_tests_properties(yuengine_script_plan_title_entry PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        PASS_REGULAR_EXPRESSION "entry=setupProc found=true direct_calls=2 native_obligations=0 script_calls=0 ambiguous_calls=1 unresolved_calls=1 status=vm_not_implemented"
+        PASS_REGULAR_EXPRESSION "entry=setupProc found=true direct_calls=2 builtin_calls=1 native_obligations=0 object_method_calls=1 script_calls=0 ambiguous_calls=0 unresolved_calls=0 class_method_tables=8 object_bindings=1 status=vm_not_implemented"
     )
 endif()

@@ -59,6 +59,8 @@ C++ runtime spine
 - 可运行诊断不等于游戏可运行。
 - 不能再以蓝底、手写菜单、mesh preview 或 T pose 作为进度。
 - 每轮完成一个任务后自动进入下一任务，除非用户中断或没有非阻塞任务。
+- 计划、报告、readiness、统计表和解析器只是工程输入，不是可停点；提交 checkpoint 后继续把它接入 runtime contract。
+- 接力 agent 不允许把“先做一个最小验证”作为默认策略。默认策略是补齐当前层的完整证据链、接口、实现、验收和残留未知。
 
 ## Project Failure Correction
 
@@ -81,6 +83,7 @@ engine layer contract
 - 只会 preview mesh、不会进入脚本驱动流程；
 - actor/camera/input/tutorial 不受原脚本和 service state 控制；
 - 只有 CLI 统计，没有进入下一层 runtime contract；
+- 只有 plan/diagnostic/readiness，没有继续进入执行层；
 - 为了“先跑起来”绕开 `project.json`、VFS、Script Service、Native Service。
 
 允许做工具和诊断，但它们必须服务于主干 runtime，并且完成后自动进入下一层实现。
@@ -471,7 +474,7 @@ R7: Production without editor
 R8: Editor and advanced pipeline
 ```
 
-当前已达到 R1 诊断启动，并完成 L2 资源依赖诊断、L3 脚本模块模型、L4 native service interface baseline、L5 service-backed runtime lifecycle、L6 oracle capture readiness，并启动 L7 title script execution，不是游戏执行：C++ runtime spine 已能通过 `project.json` 加载原 sample 和 empty sample，挂载 VFS，解析 pack manifest 索引，加载 preload/title `.sqasm` 诊断，并通过 runtime-owned 11 个 native service interfaces 报告 native/API obligations。已验证原 sample：7 个 boot phases、2 个 loose mounts、13,028 个 pack resources、84 个 native registry APIs、11 个 native services、36 个 title/preload obligations，全部仍是 `not_started`。L2 已验证 title background/logo/DLC stems、title script resource refs、first-mission stage/rail-camera resources 都能通过 VFS 解析，resource report required missing 为 0。L3 已验证 title module 为 81 functions / 4,466 instructions / 593 calls / 80 closure bindings，first mission candidate 为 62 functions / 4,068 instructions / 640 calls / 61 closure bindings，且 C++ parser 可在秒级输出结构化报告。L4 已验证 11 services / 84 native APIs / 0 unowned APIs / 0 unbound APIs，但 native 行为仍没有实现。L5 已验证 original 和 empty sample 都是 `ok=true phases=7 failed_phases=0`。L6 已验证原 exe 可定位，但无 file-IO/render 捕获工具且没有用户驱动 title boot 记录，所以 P1 仍不是完成态；不要伪造 oracle。L7 当前只完成 entry execution plan：`setupProc` 找到，直接调用为 `print` builtin/unresolved 和 `init` ambiguous candidates `15,30,61,78`，状态仍是 `vm_not_implemented`。P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 现在已有 C++ service interface baseline，但还不是完成态，因为 API behavior implementation、typed argument/return contracts 和 service state 尚未落地；R2 也不是完成态，因为 Squirrel VM 尚未执行原 title script。
+当前已达到 R1 诊断启动，并完成 L2 资源依赖诊断、L3 脚本模块模型、L4 native service interface baseline、L5 service-backed runtime lifecycle、L6 oracle capture readiness，并启动 L7 title script execution，不是游戏执行：C++ runtime spine 已能通过 `project.json` 加载原 sample 和 empty sample，挂载 VFS，解析 pack manifest 索引，加载 preload/title `.sqasm` 诊断，并通过 runtime-owned 11 个 native service interfaces 报告 native/API obligations。已验证原 sample：7 个 boot phases、2 个 loose mounts、13,028 个 pack resources、84 个 native registry APIs、11 个 native services、36 个 title/preload obligations，全部仍是 `not_started`。L2 已验证 title background/logo/DLC stems、title script resource refs、first-mission stage/rail-camera resources 都能通过 VFS 解析，resource report required missing 为 0。L3 已验证 title module 为 81 functions / 4,466 instructions / 593 calls / 80 closure bindings，first mission candidate 为 62 functions / 4,068 instructions / 640 calls / 61 closure bindings，且 C++ parser 可在秒级输出结构化报告。L4 已验证 11 services / 84 native APIs / 0 unowned APIs / 0 unbound APIs，但 native 行为仍没有实现。L5 已验证 original 和 empty sample 都是 `ok=true phases=7 failed_phases=0`。L6 已验证原 exe 可定位，但无 file-IO/render 捕获工具且没有用户驱动 title boot 记录，所以 P1 仍不是完成态；不要伪造 oracle。L7 当前完成 entry object/method binding checkpoint：`setupProc` 找到，直接调用为 `print` builtin 和 `modTitle.init` script object method；title root 恢复 8 个 class method tables / 64 个 method bindings / 1 个 object binding，`modTitle -> ModuleTitle`，`ModuleTitle.init -> function #78`，入口处 `init` 名称模糊已消除，状态仍是 `vm_not_implemented`。P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 现在已有 C++ service interface baseline，但还不是完成态，因为 API behavior implementation、typed argument/return contracts 和 service state 尚未落地；R2 也不是完成态，因为 Squirrel VM 尚未执行原 title script。
 
 ## Milestones
 
@@ -495,7 +498,10 @@ X8: Editor And Advanced Pipeline Later
 
 优先任务不是写游戏窗口。
 
-当前下一步见 `docs/LOOP_TASKS.md`，优先 L7: Title Script Execution。
+当前下一步见 `docs/LOOP_TASKS.md`，优先 L7: Title Script Execution。当前 L7 的入口
+object/method binding 只是诊断 checkpoint，不是阶段完成。下一条边是执行已解析的
+`setupProc -> print + modTitle.init(ModuleTitle.init #78)`，实现所需 VM opcode 子集，
+然后进入 VM/native dispatch。
 
 Runtime implementation 已开始，但只能按完整引擎主干推进，不能写临时视觉 demo。所有未确认 native 行为必须进入 obligation/diagnostics。
 
