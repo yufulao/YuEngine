@@ -3,6 +3,37 @@
 This file is the queue for long-running agents. Work top to bottom. When a task is completed,
 commit it and continue to the next task without waiting for a new prompt.
 
+## Execution Doctrine
+
+Each loop closes one engine layer contract. It is not a minimal demo, a temporary entrypoint,
+or a visual placeholder. A loop is only complete when it has:
+
+- a named runtime/service contract;
+- evidence inputs from scripts/resources/native/API/oracle where available;
+- implementation in the C++ runtime spine or an explicitly staged tool feeding that spine;
+- diagnostics or tests that fail on the important regression;
+- documentation of remaining unknowns;
+- a git commit.
+
+After a loop is committed, continue to the next non-blocked loop. Do not stop at CLI statistics,
+resource previews, mesh previews, handwritten UI, or blue-screen runtime output. Those can be
+intermediate diagnostics only when they are connected to the next runtime layer.
+
+The current long target remains:
+
+```text
+project.json
+-> VFS/resource system
+-> script module model
+-> script VM/native service registry
+-> script-driven title menu
+-> save/new-game/profile flow
+-> scene/stage load
+-> actor/player/camera/input/tutorial flow
+-> first playable sample flow
+-> generic reusable engine runtime
+```
+
 ## Completed Loops
 
 ### L1: C++ Runtime Spine
@@ -73,9 +104,9 @@ Verified:
 
 Boundary: this is VFS/dependency diagnostics only. It is not asset payload parsing or rendering.
 
-## Active Loop
-
 ### L3: Script Module Model
+
+Status: completed as C++ script module diagnostics on 2026-06-09.
 
 Deliver:
 
@@ -87,6 +118,19 @@ Acceptance:
 
 - title module reports 81 functions, 4466 instructions, 593 calls.
 - first mission module reports 62 functions, 4068 instructions, 640 calls.
+
+Verified:
+
+- `yuengine_cli script samples/touhou_new_world/project.json script/menu/titlemenu.b64` reports
+  81 functions, 4,466 instructions, 593 calls, 146 unique calls, 8 resource refs, 80 closure bindings.
+- `yuengine_cli script samples/touhou_new_world/project.json mission/sc01/main/ms010_0.b64` reports
+  62 functions, 4,068 instructions, 640 calls, 123 unique calls, 7 resource refs, 61 closure bindings.
+- CTest passes 8/8 with script tests included.
+- Python unittest suite passes 6/6.
+
+Boundary: this is script module diagnostics only. It is not Squirrel VM execution or native side effects.
+
+## Active Loop
 
 ### L4: Native Service Interfaces
 

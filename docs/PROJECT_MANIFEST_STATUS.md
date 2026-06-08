@@ -2,7 +2,7 @@
 
 Lane: `project-runtime`
 
-P5 target: define the minimal project manifest needed to describe the original game as the
+P5 target: define the bootstrap project manifest needed to describe the original game as the
 first sample/oracle project and later describe new projects without hard-coded game paths.
 
 ## Implemented

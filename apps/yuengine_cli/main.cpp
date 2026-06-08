@@ -1,11 +1,13 @@
 #include "yuengine/project/ProjectManifest.h"
 #include "yuengine/resource/ResourceDiagnostics.h"
 #include "yuengine/runtime/EngineRuntime.h"
+#include "yuengine/script/SqasmModule.h"
 
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -26,7 +28,8 @@ void usage()
     std::cout << "usage:\n"
               << "  yuengine_cli validate <project.json>\n"
               << "  yuengine_cli boot <project.json> [--repo-root <path>]\n"
-              << "  yuengine_cli resources <project.json>\n";
+              << "  yuengine_cli resources <project.json>\n"
+              << "  yuengine_cli script <project.json> <module>\n";
 }
 
 bool traceEnabled()
@@ -40,6 +43,15 @@ void traceCli(const std::string& phase)
     if (traceEnabled()) {
         std::cerr << "[yuengine cli] " << phase << std::endl;
     }
+}
+
+std::vector<std::filesystem::path> scriptRoots(const yu::project::ProjectManifest& manifest)
+{
+    std::vector<std::filesystem::path> roots;
+    for (const auto& root : manifest.scriptRoots) {
+        roots.push_back(root.path);
+    }
+    return roots;
 }
 
 } // namespace
@@ -81,6 +93,22 @@ int main(int argc, char** argv)
             auto report = yu::resource::inspectProjectResources(manifest);
             std::cout << yu::resource::resourceReportToJson(report);
             return report.ok ? 0 : 1;
+        }
+        if (command == "script") {
+            if (argc < 4) {
+                usage();
+                return 2;
+            }
+            const auto loaded = yu::project::loadProjectManifest(manifest);
+            const auto roots = scriptRoots(loaded);
+            const auto modulePath = yu::script::resolveScriptModule(roots, argv[3]);
+            if (modulePath.empty()) {
+                std::cerr << "yuengine_cli: script module not found: " << argv[3] << "\n";
+                return 1;
+            }
+            const auto module = yu::script::loadSqasmModule(modulePath);
+            std::cout << yu::script::sqasmModuleReportToJson(module);
+            return 0;
         }
     } catch (const std::exception& ex) {
         std::cerr << "yuengine_cli: " << ex.what() << "\n";

@@ -79,4 +79,22 @@ if(BUILD_TESTING)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "\"ok\": true"
     )
+
+    add_test(
+        NAME yuengine_script_title_sample
+        COMMAND yuengine_cli script samples/touhou_new_world/project.json script/menu/titlemenu.b64
+    )
+    set_tests_properties(yuengine_script_title_sample PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "functions=81 instructions=4466 calls=593 resources=[0-9]+ closure_bindings=80"
+    )
+
+    add_test(
+        NAME yuengine_script_first_mission_sample
+        COMMAND yuengine_cli script samples/touhou_new_world/project.json mission/sc01/main/ms010_0.b64
+    )
+    set_tests_properties(yuengine_script_first_mission_sample PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "functions=62 instructions=4068 calls=640 resources=[0-9]+ closure_bindings=61"
+    )
 endif()

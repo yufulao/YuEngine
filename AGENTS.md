@@ -60,6 +60,31 @@ C++ runtime spine
 - 不能再以蓝底、手写菜单、mesh preview 或 T pose 作为进度。
 - 每轮完成一个任务后自动进入下一任务，除非用户中断或没有非阻塞任务。
 
+## Project Failure Correction
+
+旧 `Project` 的失败不是资源不足，而是工程路线错误：从可见缺口反向补 UI、mesh、camera、
+actor，最后得到的是互相不受约束的碎片。`YuEngine` 的工作单位必须反过来定义：
+
+```text
+engine layer contract
+-> evidence/oracle/script/resource inputs
+-> service interface
+-> runtime implementation
+-> diagnostics/tests
+-> sample project behavior
+```
+
+禁止把以下内容当成阶段成果：
+
+- 手写临时菜单或蓝底窗口；
+- 只为当前画面补一个 native stub；
+- 只会 preview mesh、不会进入脚本驱动流程；
+- actor/camera/input/tutorial 不受原脚本和 service state 控制；
+- 只有 CLI 统计，没有进入下一层 runtime contract；
+- 为了“先跑起来”绕开 `project.json`、VFS、Script Service、Native Service。
+
+允许做工具和诊断，但它们必须服务于主干 runtime，并且完成后自动进入下一层实现。
+
 ## Current State
 
 `YuEngine` 仓库已经进入第一轮落地状态，不再是空仓库。
@@ -80,9 +105,10 @@ C++ runtime spine
 - `docs/engine_api_surface/title_first_mission.md`: title/new-game/first-mission API surface baseline，11 services、84 APIs、303 call sites。
 - `docs/RUNTIME_SPINE_STATUS.md`: L1 C++ runtime spine 当前状态、验证命令和边界。
 - `docs/VFS_RESOURCE_STATUS.md`: L2 VFS/resource dependency diagnostics 当前状态、验证命令和边界。
+- `docs/SCRIPT_MODULE_STATUS.md`: L3 C++ script module model 当前状态、验证命令和边界。
 - `CMakeLists.txt`: C++20 runtime/CLI build 和 CTest 验收入口。
 - `src/yuengine/...`: core JSON、project manifest、VFS/resource diagnostics、`.sqasm` diagnostics、native registry、runtime boot report。
-- `apps/yuengine_cli`: `validate`、`boot` 和 `resources` CLI。
+- `apps/yuengine_cli`: `validate`、`boot`、`resources` 和 `script` CLI。
 - `samples/touhou_new_world/project.json`: 原游戏作为 sample/oracle project 的 YuEngine manifest。
 - `samples/empty_project/project.json`: 不依赖原游戏资源的 generic sample manifest。
 - `tools/sqir.py`: `.sqasm` -> JSON IR / state-machine summary 工具，可选接入 `Project2` evidence graph。
@@ -172,7 +198,7 @@ python ..\Project2\tools\entrypoint_closure.py script/menu/titlemenu.b64.sqasm
 
 ## First-Turn Protocol
 
-新 agent 第一次接力时，默认目标是校准，不是大规模改仓库。
+新 agent 第一次接力时，默认目标是校准并接入当前主干，不是重新发明路线，也不是做最小 demo。
 
 收到一句“继续”或“按 AGENTS 做”时，只允许做这些事：
 
@@ -180,8 +206,8 @@ python ..\Project2\tools\entrypoint_closure.py script/menu/titlemenu.b64.sqasm
 - 运行 `git status --short --branch`。
 - 读取 `..\Project2\research\RECONSTRUCTION_FRONTIER.md`。
 - 运行一到三个只读 `evidence_query.py` 查询验证前线基线。
-- 选择一个 lane，说明下一步最小可验证切片。
-- 如果要改文件，只能改一个小而明确的文件，并给出验证命令。
+- 选择一个 lane，说明下一步可进入主干的完整层级闭环。
+- 如果要改文件，改动必须落到 `YuEngine` 主干 contract、实现、测试或文档之一；不限单文件，但必须有明确验收。
 
 第一次接力禁止做这些事，除非用户明确要求：
 
@@ -193,6 +219,7 @@ python ..\Project2\tools\entrypoint_closure.py script/menu/titlemenu.b64.sqasm
 - 把 service-owner tracking 表说成 P4/P6 已完成。
 - 把“0 unowned”说成 native/API 行为已经确认。
 - 改写 `AGENTS.md` 的 Current State，让仓库看起来已经完成正式迁移。
+- 新建手写菜单、mesh preview、蓝底场景或其他绕开脚本/runtime 主干的可视化壳。
 
 ## Migration Policy
 
@@ -440,7 +467,7 @@ R7: Production without editor
 R8: Editor and advanced pipeline
 ```
 
-当前已达到 R1 诊断启动，并完成 L2 资源依赖诊断，不是游戏执行：C++ runtime spine 已能通过 `project.json` 加载原 sample 和 empty sample，挂载 VFS，解析 pack manifest 索引，加载 preload/title `.sqasm` 诊断，并报告 native/API obligations。已验证原 sample：2 个 loose mounts、13,028 个 pack resources、84 个 native registry APIs、36 个 title/preload obligations，全部仍是 `not_started`。L2 已验证 title background/logo/DLC stems、title script resource refs、first-mission stage/rail-camera resources 都能通过 VFS 解析，resource report required missing 为 0。P1 仍不是完成态，因为原游戏 title boot 尚未完成三次稳定采样；P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 仍不是完成态，因为 API surface 还没有落成 C++ service module interfaces；R2 也不是完成态，因为 Squirrel VM 尚未执行原 title script。
+当前已达到 R1 诊断启动，并完成 L2 资源依赖诊断和 L3 脚本模块模型，不是游戏执行：C++ runtime spine 已能通过 `project.json` 加载原 sample 和 empty sample，挂载 VFS，解析 pack manifest 索引，加载 preload/title `.sqasm` 诊断，并报告 native/API obligations。已验证原 sample：2 个 loose mounts、13,028 个 pack resources、84 个 native registry APIs、36 个 title/preload obligations，全部仍是 `not_started`。L2 已验证 title background/logo/DLC stems、title script resource refs、first-mission stage/rail-camera resources 都能通过 VFS 解析，resource report required missing 为 0。L3 已验证 title module 为 81 functions / 4,466 instructions / 593 calls / 80 closure bindings，first mission candidate 为 62 functions / 4,068 instructions / 640 calls / 61 closure bindings，且 C++ parser 可在秒级输出结构化报告。P1 仍不是完成态，因为原游戏 title boot 尚未完成三次稳定采样；P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 仍不是完成态，因为 API surface 还没有落成 C++ service module interfaces；R2 也不是完成态，因为 Squirrel VM 尚未执行原 title script。
 
 ## Milestones
 
@@ -464,7 +491,7 @@ X8: Editor And Advanced Pipeline Later
 
 优先任务不是写游戏窗口。
 
-当前下一步见 `docs/LOOP_TASKS.md`，优先 L3: Script Module Model。
+当前下一步见 `docs/LOOP_TASKS.md`，优先 L4: Native Service Interfaces。
 
 Runtime implementation 已开始，但只能按完整引擎主干推进，不能写临时视觉 demo。所有未确认 native 行为必须进入 obligation/diagnostics。
 
@@ -577,7 +604,7 @@ service owner 未知时，不要开始实现。
 - 先建立反馈回路，再调试或实现。
 - 修 bug 走 reproduce -> minimize -> hypotheses -> instrument -> fix -> regression。
 - 测试行为，不测内部形状。
-- 垂直切片，不做横向堆文件。
+- 完整层级闭环，不做横向堆文件，也不做临时壳式最小入口。
 - 追求 deep modules：小 interface，大 implementation，高 leverage。
 - silent no-op 禁止。
 - 残留 mismatch 必须命名。
