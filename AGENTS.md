@@ -44,8 +44,12 @@ project.json
 - `AGENTS.md`: agent handoff 和长期工程约束。
 - `docs/IMPORT_AUDIT.md`: `Project2` 材料迁移审计。
 - `docs/SCRIPT_IR_STATUS.md`: P3 Script IR 当前状态、验收和残留缺口。
+- `docs/NATIVE_BOUNDARY_SPEC_STATUS.md`: P4 native/API boundary spec 当前状态和残留缺口。
+- `docs/native_boundary_spec/title_first_mission.md`: title/new-game/first-mission boundary baseline，84 APIs、303 call sites、0 unassigned owners。
 - `tools/sqir.py`: `.sqasm` -> JSON IR / state-machine summary 工具，可选接入 `Project2` evidence graph。
+- `tools/native_spec.py`: 从 Script IR/evidence 生成 native/API boundary spec 的工具。
 - `tests/test_sqir.py`: Script IR parser smoke test。
+- `tests/test_native_spec.py`: 关键 service owner 规则 smoke test。
 
 生成出的 Script IR 默认写到：
 
@@ -391,7 +395,7 @@ R7: Production without editor
 R8: Editor and advanced pipeline
 ```
 
-当前应视为 R0 准备阶段附近：证据图、entrypoint closure、native inventory 已有；YuEngine 已有 P3 Script IR baseline tool，但 oracle trace、native status table 仍需继续完成。
+当前应视为 R0 准备阶段附近：证据图、entrypoint closure、native inventory 已有；YuEngine 已有 P3 Script IR baseline tool 和 P4 native boundary baseline table。P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认。
 
 ## Milestones
 
@@ -417,9 +421,9 @@ X8: Editor And Advanced Pipeline Later
 
 当前下一步：
 
-1. 做 P4: Native Boundary Spec Table，先覆盖 title/new-game 和 first-mission 关键 boundary。
-2. 做 P1: Oracle Title Boot，采样原游戏 title boot/menu idle 行为。
-3. 做 P2: Oracle New Game，采样 `MakeNewGame` / `StartGame` 输出和 save/profile mutation。
+1. 做 P1: Oracle Title Boot，采样原游戏 title boot/menu idle 行为。
+2. 做 P2: Oracle New Game，采样 `MakeNewGame` / `StartGame` 输出和 save/profile mutation。
+3. 增强 P4: Native Boundary Spec Table，逐行补 confirmed native/static、argument/return shape、side effects。
 4. 继续增强 P3: Script IR Tool，补 argument-shape、control-flow/state-machine 边和 native-call context。
 5. 做 P5: Generic Project Manifest。
 6. 做 P6: Engine API Surface Map。
