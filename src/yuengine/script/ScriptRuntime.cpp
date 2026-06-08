@@ -405,6 +405,94 @@ std::string describeValue(const ScriptValue& value)
     return out.str();
 }
 
+void writeScriptValueJson(std::ostringstream& out, const ScriptValue& value)
+{
+    out << "{\"kind\": \"" << valueKindName(value.kind) << "\"";
+    if (!value.text.empty()) {
+        out << ", \"text\": \"" << core::jsonEscape(value.text) << "\"";
+    }
+    if (!value.receiver.empty()) {
+        out << ", \"receiver\": \"" << core::jsonEscape(value.receiver) << "\"";
+    }
+    if (value.kind == ScriptValueKind::Bool) {
+        out << ", \"bool\": " << (value.boolValue ? "true" : "false");
+    } else if (value.kind == ScriptValueKind::Int) {
+        out << ", \"int\": " << value.intValue;
+    } else if (value.kind == ScriptValueKind::Float) {
+        out << ", \"number\": " << value.numberValue;
+    } else if (value.kind == ScriptValueKind::Table) {
+        out << ", \"table_id\": " << value.tableId;
+    } else if (value.kind == ScriptValueKind::Function) {
+        out << ", \"function_ordinal\": " << value.functionOrdinal;
+    }
+    out << "}";
+}
+
+void writeScriptValueMapJson(std::ostringstream& out, const std::map<std::string, ScriptValue>& values)
+{
+    out << "{";
+    size_t index = 0;
+    for (const auto& [key, value] : values) {
+        out << (index++ == 0 ? "" : ", ") << "\"" << core::jsonEscape(key) << "\": ";
+        writeScriptValueJson(out, value);
+    }
+    out << "}";
+}
+
+void writeStringStringMapJson(std::ostringstream& out, const std::map<std::string, std::string>& values)
+{
+    out << "{";
+    size_t index = 0;
+    for (const auto& [key, value] : values) {
+        out << (index++ == 0 ? "" : ", ") << "\"" << core::jsonEscape(key) << "\": \""
+            << core::jsonEscape(value) << "\"";
+    }
+    out << "}";
+}
+
+void writeRuntimeObjectsJson(std::ostringstream& out, const std::map<std::string, RuntimeObject>& objects)
+{
+    out << "[";
+    size_t index = 0;
+    for (const auto& [name, object] : objects) {
+        out << (index++ == 0 ? "" : ", ") << "{\"name\": \"" << core::jsonEscape(name)
+            << "\", \"class\": \"" << core::jsonEscape(object.className)
+            << "\", \"runtime_type\": \"" << core::jsonEscape(object.runtimeType)
+            << "\", \"field_count\": " << object.fields.size() << ", \"fields\": ";
+        writeScriptValueMapJson(out, object.fields);
+        out << "}";
+    }
+    out << "]";
+}
+
+void writeRuntimeTablesJson(std::ostringstream& out, const std::map<int, RuntimeTable>& tables)
+{
+    out << "[";
+    size_t index = 0;
+    for (const auto& [id, table] : tables) {
+        out << (index++ == 0 ? "" : ", ") << "{\"id\": " << id << ", \"field_count\": "
+            << table.fields.size() << ", \"fields\": ";
+        writeScriptValueMapJson(out, table.fields);
+        out << "}";
+    }
+    out << "]";
+}
+
+void writeClassSlotsJson(
+    std::ostringstream& out,
+    const std::map<std::string, std::map<std::string, ScriptValue>>& classSlots)
+{
+    out << "{";
+    size_t index = 0;
+    for (const auto& [name, slots] : classSlots) {
+        out << (index++ == 0 ? "" : ", ") << "\"" << core::jsonEscape(name) << "\": {\"slot_count\": "
+            << slots.size() << ", \"slots\": ";
+        writeScriptValueMapJson(out, slots);
+        out << "}";
+    }
+    out << "}";
+}
+
 bool numericValue(const ScriptValue& value, double& out)
 {
     if (value.kind == ScriptValueKind::Int) {
@@ -1128,6 +1216,7 @@ public:
         if (!entry) {
             report.status = "entry_not_found_or_ambiguous";
             report.runtimeServiceStateJson = catalog_.runtimeStateToJson();
+            report.runtimeScriptStateJson = runtimeScriptStateToJson();
             report_ = nullptr;
             return report;
         }
@@ -1144,11 +1233,35 @@ public:
         report.executed = true;
         report.status = report.truncated ? "trace_truncated_not_full_vm" : "trace_ready_not_full_vm";
         report.runtimeServiceStateJson = catalog_.runtimeStateToJson();
+        report.runtimeScriptStateJson = runtimeScriptStateToJson();
         report_ = nullptr;
         return report;
     }
 
 private:
+    std::string runtimeScriptStateToJson() const
+    {
+        std::ostringstream out;
+        out << "{";
+        out << "\"root_field_count\": " << rootFields_.size() << ", ";
+        out << "\"object_count\": " << runtimeObjects_.size() << ", ";
+        out << "\"table_count\": " << runtimeTables_.size() << ", ";
+        out << "\"class_slot_table_count\": " << classSlots_.size() << ", ";
+        out << "\"class_base_count\": " << classBases_.size() << ", ";
+        out << "\"root_fields\": ";
+        writeScriptValueMapJson(out, rootFields_);
+        out << ", \"class_bases\": ";
+        writeStringStringMapJson(out, classBases_);
+        out << ", \"objects\": ";
+        writeRuntimeObjectsJson(out, runtimeObjects_);
+        out << ", \"tables\": ";
+        writeRuntimeTablesJson(out, runtimeTables_);
+        out << ", \"class_slots\": ";
+        writeClassSlotsJson(out, classSlots_);
+        out << "}";
+        return out.str();
+    }
+
     const SqasmFunction* findEntrypoint(const std::string& slot) const
     {
         const FunctionSlotBinding* rootSlot = findFunctionSlot(functionSlots_, slot);
@@ -1204,7 +1317,7 @@ private:
         const std::string& runtimeType)
     {
         auto& object = runtimeObjects_[objectName];
-        if (!className.empty()) {
+        if (!className.empty() && object.className.empty()) {
             object.className = className;
         }
         if (!runtimeType.empty()) {
@@ -1379,6 +1492,29 @@ private:
         return {};
     }
 
+    ScriptValue canonicalizeRootSlotAssignment(const std::string& keyText, const ScriptValue& value)
+    {
+        if (value.kind != ScriptValueKind::Object) {
+            return value;
+        }
+
+        const ScriptObjectBinding* binding = findObjectBinding(objectBindings_, keyText);
+        if (!binding) {
+            return value;
+        }
+
+        const auto object = runtimeObjects_.find(value.text);
+        if (object == runtimeObjects_.end() || object->second.className != binding->className) {
+            return value;
+        }
+
+        ensureRuntimeObject(keyText, binding->className, "script_object");
+        if (value.text != keyText) {
+            runtimeObjects_.erase(value.text);
+        }
+        return objectValue(keyText);
+    }
+
     void assignSlot(const ScriptValue& target, const ScriptValue& key, const ScriptValue& value)
     {
         const std::string keyText = slotKey(key);
@@ -1387,7 +1523,7 @@ private:
         }
 
         if (target.kind == ScriptValueKind::Root) {
-            rootFields_[keyText] = value;
+            rootFields_[keyText] = canonicalizeRootSlotAssignment(keyText, value);
             if (report_) {
                 ++report_->rootSlotWrites;
             }
@@ -2665,6 +2801,8 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
     out << ",\n";
     out << "  \"runtime_service_state\": "
         << (report.runtimeServiceStateJson.empty() ? "{}" : report.runtimeServiceStateJson) << ",\n";
+    out << "  \"runtime_script_state\": "
+        << (report.runtimeScriptStateJson.empty() ? "{}" : report.runtimeScriptStateJson) << ",\n";
     out << "  \"constructed_object_details\": [\n";
     for (size_t i = 0; i < report.constructedObjectDetails.size(); ++i) {
         const auto& object = report.constructedObjectDetails[i];

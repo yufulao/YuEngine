@@ -167,6 +167,7 @@ struct ScriptExecutionReport {
     int unresolvedCalls = 0;
     bool truncated = false;
     std::string runtimeServiceStateJson;
+    std::string runtimeScriptStateJson;
     std::vector<std::string> baselineModulePaths;
     std::vector<ScriptConstructedObject> constructedObjectDetails;
     std::vector<ScriptObjectMethodSlot> objectMethodSlots;

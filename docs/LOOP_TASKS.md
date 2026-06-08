@@ -328,11 +328,22 @@ Progress:
   - `scene.fade_in_blend=0`;
   - `ui.created_objects=20`;
   - `ui.command_count=24`.
+- Runtime script state snapshot now records:
+  - `root_field_count=31`;
+  - `object_count=28`;
+  - `table_count=17`;
+  - `class_slot_table_count=24`;
+  - `class_base_count=16`;
+  - `root.gMenu=table#1` with 87 table fields;
+  - `root.modTitle=object:modTitle`;
+  - `modTitle._nextState=300`;
+  - `modTitle._scenes[0..3]=TitleScene/NewGameScene/LoadScene/OverwriteSaveScene`.
 
 Current next edge:
 
-- extend runtime-owned state into `gMenu`, title scenes, concrete UI helper objects, and
-  decoded UI command payloads;
+- consume runtime-owned `gMenu` table state and canonical `modTitle`/title scene objects in
+  `ModuleTitle.main` state transitions;
+- extend concrete UI helper objects into decoded UI command payloads;
 - finish argument payload decoding for the current service state events, especially `MenuObject`,
   `_menuWindow`, `_listWindow`, `setSelectCursor`, `bl/tr`, `float2`, and `renderHorizontal`;
 - once value state is reliable, advance from boot edge into `ModuleTitle.main` scene dispatch and

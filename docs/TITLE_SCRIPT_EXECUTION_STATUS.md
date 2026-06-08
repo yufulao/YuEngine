@@ -188,6 +188,25 @@ ui.created_objects=20
 ui.command_count=24
 ```
 
+Runtime script state produced by the same original title boot path:
+
+```text
+root_field_count=31
+object_count=28
+table_count=17
+class_slot_table_count=24
+class_base_count=16
+root.gMenu=table#1
+root.modTitle=object:modTitle
+gMenu.table_fields=87
+modTitle._nextState=300
+modTitle._scenes=table#15
+modTitle._scenes[0]=TitleScene
+modTitle._scenes[1]=NewGameScene
+modTitle._scenes[2]=LoadScene
+modTitle._scenes[3]=OverwriteSaveScene
+```
+
 Constructed original script objects:
 
 ```text
@@ -235,8 +254,9 @@ Python unittest: 6/6 passed
   - 8 value helper calls;
   - 8 value methods;
   - 1 Module lifecycle hook.
-- Extend runtime-owned state beyond save/profile, platform flags, audio, fade, and current UI
-  command tracking into `gMenu`, title scenes, and concrete UI helper object layouts.
+- Consume runtime-owned `gMenu` table state and canonical `modTitle`/title scene objects in the
+  next `ModuleTitle.main` state transition.
+- Extend concrete UI helper object layouts into decoded UI command payloads.
 - UI command buffer for helper objects such as `_menuWindow`, `_listWindow`, and `MenuObject`.
 - Finish decoding argument payloads for `MenuObject`, `_menuWindow`, `_listWindow`,
   `setSelectCursor`, `bl`, `tr`, and `renderHorizontal` into real UI command data.
