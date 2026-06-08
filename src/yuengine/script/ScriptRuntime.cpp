@@ -1107,6 +1107,7 @@ public:
 
     ScriptExecutionReport run(const std::string& entryFunction, int frames)
     {
+        catalog_.resetRuntimeState();
         ScriptExecutionReport report;
         report.modulePath = module_.path.string();
         report.entryFunction = entryFunction;
@@ -1126,6 +1127,7 @@ public:
         const SqasmFunction* entry = findEntrypoint(entryFunction);
         if (!entry) {
             report.status = "entry_not_found_or_ambiguous";
+            report.runtimeServiceStateJson = catalog_.runtimeStateToJson();
             report_ = nullptr;
             return report;
         }
@@ -1141,6 +1143,7 @@ public:
         report.constructedObjects = static_cast<int>(report.constructedObjectDetails.size());
         report.executed = true;
         report.status = report.truncated ? "trace_truncated_not_full_vm" : "trace_ready_not_full_vm";
+        report.runtimeServiceStateJson = catalog_.runtimeStateToJson();
         report_ = nullptr;
         return report;
     }
@@ -1428,6 +1431,7 @@ private:
         const std::string& evidence,
         std::string arguments = {})
     {
+        catalog_.recordStateMutation({service, api, action, target, value, arguments});
         if (!report_) {
             return;
         }
@@ -1478,6 +1482,7 @@ private:
         const std::string& evidence,
         std::string arguments = {})
     {
+        catalog_.recordStateMutation({service, api, action, target, value, arguments});
         if (!report_) {
             return;
         }
@@ -2658,6 +2663,8 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
     const std::vector<std::string> uniqueNativeApiNames(uniqueNativeApis.begin(), uniqueNativeApis.end());
     writeStringArray(out, uniqueNativeApiNames);
     out << ",\n";
+    out << "  \"runtime_service_state\": "
+        << (report.runtimeServiceStateJson.empty() ? "{}" : report.runtimeServiceStateJson) << ",\n";
     out << "  \"constructed_object_details\": [\n";
     for (size_t i = 0; i < report.constructedObjectDetails.size(); ++i) {
         const auto& object = report.constructedObjectDetails[i];

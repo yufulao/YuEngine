@@ -52,6 +52,47 @@ void writeStringArray(std::ostringstream& out, const std::vector<std::string>& v
     out << "]";
 }
 
+void writeStringMap(std::ostringstream& out, const std::map<std::string, std::string>& values)
+{
+    out << "{";
+    size_t index = 0;
+    for (const auto& [key, value] : values) {
+        out << (index++ == 0 ? "" : ", ") << "\"" << core::jsonEscape(key) << "\": \""
+            << core::jsonEscape(value) << "\"";
+    }
+    out << "}";
+}
+
+std::string valueAfterPrefix(const std::string& value, const std::string& prefix)
+{
+    const size_t begin = value.find(prefix);
+    if (begin == std::string::npos) {
+        return {};
+    }
+    const size_t valueBegin = begin + prefix.size();
+    size_t valueEnd = value.find(';', valueBegin);
+    if (valueEnd == std::string::npos) {
+        valueEnd = value.size();
+    }
+    while (valueEnd > valueBegin && value[valueEnd - 1] == ' ') {
+        --valueEnd;
+    }
+    return value.substr(valueBegin, valueEnd - valueBegin);
+}
+
+UiRuntimeObjectState& ensureUiObject(NativeRuntimeServiceState& state, const std::string& objectName)
+{
+    return state.uiRender2d.objects[objectName];
+}
+
+void appendUiCommand(UiRuntimeObjectState& object, const std::string& command)
+{
+    ++object.commandCount;
+    if (object.commands.size() < 64) {
+        object.commands.push_back(command);
+    }
+}
+
 } // namespace
 
 NativeServiceCatalog::NativeServiceCatalog()
@@ -101,6 +142,72 @@ NativeDispatchResult NativeServiceCatalog::dispatch(const ApiSurface& api, const
     return result;
 }
 
+void NativeServiceCatalog::resetRuntimeState() const
+{
+    runtimeState_ = {};
+}
+
+void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation& mutation) const
+{
+    ++runtimeState_.mutations;
+
+    if (mutation.service == "Save/Profile/Scenario Service") {
+        if (mutation.action == "query_empty_save_list") {
+            ++runtimeState_.saveProfileScenario.emptySaveListQueries;
+            runtimeState_.saveProfileScenario.saveListEntries = 0;
+        } else if (mutation.action == "save_list_count") {
+            ++runtimeState_.saveProfileScenario.saveListCountQueries;
+        } else if (mutation.action == "save_list_get") {
+            ++runtimeState_.saveProfileScenario.saveListGetQueries;
+        } else if (mutation.action == "save_entry_active") {
+            ++runtimeState_.saveProfileScenario.saveEntryActiveQueries;
+        }
+        return;
+    }
+
+    if (mutation.service == "Platform Service" && mutation.action == "platform_flag") {
+        runtimeState_.platform.flags[mutation.api] = mutation.value;
+        return;
+    }
+
+    if (mutation.service == "Audio Service" && mutation.action == "play_bgm") {
+        ++runtimeState_.audio.playBgmCommands;
+        runtimeState_.audio.currentBgmId = valueAfterPrefix(mutation.value, "bgm_id=");
+        return;
+    }
+
+    if (mutation.service == "Scene And Stage Service" && mutation.action == "fade_in") {
+        ++runtimeState_.sceneStage.fadeInCommands;
+        runtimeState_.sceneStage.fadeInDuration = valueAfterPrefix(mutation.value, "duration=");
+        runtimeState_.sceneStage.fadeInBlend = valueAfterPrefix(mutation.value, "blend=");
+        return;
+    }
+
+    if (mutation.service == "UI And 2D Render Service") {
+        if (mutation.action == "create_ui_object") {
+            ++runtimeState_.uiRender2d.createdObjects;
+            auto& object = ensureUiObject(runtimeState_, mutation.target);
+            object.className = mutation.value;
+            return;
+        }
+
+        ++runtimeState_.uiRender2d.commandCount;
+        auto& object = ensureUiObject(runtimeState_, mutation.target.empty() ? "<unknown_ui_target>" : mutation.target);
+        appendUiCommand(object, mutation.api + ":" + mutation.action + "=" + mutation.value);
+        return;
+    }
+}
+
+const NativeRuntimeServiceState& NativeServiceCatalog::runtimeState() const
+{
+    return runtimeState_;
+}
+
+std::string NativeServiceCatalog::runtimeStateToJson() const
+{
+    return nativeRuntimeServiceStateToJson(runtimeState_);
+}
+
 std::vector<std::string> NativeServiceCatalog::serviceNames() const
 {
     std::vector<std::string> names;
@@ -124,6 +231,39 @@ std::vector<std::string> NativeServiceCatalog::unboundApis(const NativeRegistry&
 size_t NativeServiceCatalog::size() const
 {
     return services_.size();
+}
+
+std::string nativeRuntimeServiceStateToJson(const NativeRuntimeServiceState& state)
+{
+    std::ostringstream out;
+    out << "{";
+    out << "\"mutations\": " << state.mutations << ", ";
+    out << "\"save_profile_scenario\": {";
+    out << "\"empty_save_list_queries\": " << state.saveProfileScenario.emptySaveListQueries << ", ";
+    out << "\"save_list_count_queries\": " << state.saveProfileScenario.saveListCountQueries << ", ";
+    out << "\"save_list_get_queries\": " << state.saveProfileScenario.saveListGetQueries << ", ";
+    out << "\"save_entry_active_queries\": " << state.saveProfileScenario.saveEntryActiveQueries << ", ";
+    out << "\"save_list_entries\": " << state.saveProfileScenario.saveListEntries << "}, ";
+    out << "\"platform\": {\"flags\": ";
+    writeStringMap(out, state.platform.flags);
+    out << "}, ";
+    out << "\"audio\": {\"play_bgm_commands\": " << state.audio.playBgmCommands
+        << ", \"current_bgm_id\": \"" << core::jsonEscape(state.audio.currentBgmId) << "\"}, ";
+    out << "\"scene_stage\": {\"fade_in_commands\": " << state.sceneStage.fadeInCommands
+        << ", \"fade_in_duration\": \"" << core::jsonEscape(state.sceneStage.fadeInDuration)
+        << "\", \"fade_in_blend\": \"" << core::jsonEscape(state.sceneStage.fadeInBlend) << "\"}, ";
+    out << "\"ui_render_2d\": {\"created_objects\": " << state.uiRender2d.createdObjects
+        << ", \"command_count\": " << state.uiRender2d.commandCount << ", \"objects\": [";
+    size_t index = 0;
+    for (const auto& [name, object] : state.uiRender2d.objects) {
+        out << (index++ == 0 ? "" : ", ") << "{\"name\": \"" << core::jsonEscape(name)
+            << "\", \"class\": \"" << core::jsonEscape(object.className)
+            << "\", \"command_count\": " << object.commandCount << ", \"commands\": ";
+        writeStringArray(out, object.commands);
+        out << "}";
+    }
+    out << "]}}";
+    return out.str();
 }
 
 std::string nativeServiceReportToJson(const NativeRegistry& registry, const NativeServiceCatalog& catalog)

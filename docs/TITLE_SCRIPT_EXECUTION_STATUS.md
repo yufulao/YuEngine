@@ -166,13 +166,27 @@ status=trace_ready_not_full_vm
 `unresolved_calls=0`, `control_flow_unknown=0`, and `truncated=false` mean every call in the
 current trace has a runtime category, and the title boot path no longer depends on linear
 branch scanning. The bytecode-state counters prove the runtime is now carrying original script
-state through the boot edge with the preload/menudef/title module baseline. Service state counters
-now expose the first concrete runtime contracts for save/profile, platform, audio, scene fade, and
-UI helper calls.
+state through the boot edge with the preload/menudef/title module baseline. Service calls now also
+mutate a runtime-owned service state snapshot instead of existing only as report events.
 `FadeIn` is now decoded through inherited `ModuleBase._fadeInTime` from `menudef` as
 `duration=0.7; blend=0`. `IsOverDemo` is no longer counted for this path because branch-aware
 execution does not enter the later unselected branch that previously polluted the trace. Real UI
 command geometry/text and later state transitions are still not complete.
+
+Runtime service state produced by the same original title boot path:
+
+```text
+mutations=57
+save.empty_save_list_queries=4
+save.save_list_count_queries=4
+save.save_list_entries=0
+platform.flags.IsFreeDemo=false
+audio.current_bgm_id=3
+scene.fade_in_duration=0.7
+scene.fade_in_blend=0
+ui.created_objects=20
+ui.command_count=24
+```
 
 Constructed original script objects:
 
@@ -221,8 +235,8 @@ Python unittest: 6/6 passed
   - 8 value helper calls;
   - 8 value methods;
   - 1 Module lifecycle hook.
-- Move report-only bytecode state into runtime-owned service state for `gMenu`, title scenes,
-  UI helper objects, save/profile, platform flags, audio, and fade state.
+- Extend runtime-owned state beyond save/profile, platform flags, audio, fade, and current UI
+  command tracking into `gMenu`, title scenes, and concrete UI helper object layouts.
 - UI command buffer for helper objects such as `_menuWindow`, `_listWindow`, and `MenuObject`.
 - Finish decoding argument payloads for `MenuObject`, `_menuWindow`, `_listWindow`,
   `setSelectCursor`, `bl`, `tr`, and `renderHorizontal` into real UI command data.

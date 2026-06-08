@@ -308,9 +308,8 @@ Progress:
   - 198 table slot writes;
   - 144 typed call returns;
   - 0 UI object mutations.
-- Service state events now expose the first concrete runtime contracts without fabricating
-  unresolved arguments:
-  - 57 service state events;
+- Service calls now mutate runtime-owned service state while still emitting event evidence:
+  - 57 service state mutations;
   - 4 save/profile queries;
   - 2 platform state queries;
   - 1 audio command;
@@ -319,15 +318,23 @@ Progress:
   - 24 UI service commands;
   - 4 save/value state queries.
   - 2 decoded service argument payloads.
+- Runtime service state snapshot now records:
+  - `save.empty_save_list_queries=4`;
+  - `save.save_list_count_queries=4`;
+  - `save.save_list_entries=0`;
+  - `platform.flags.IsFreeDemo=false`;
+  - `audio.current_bgm_id=3`;
+  - `scene.fade_in_duration=0.7`;
+  - `scene.fade_in_blend=0`;
+  - `ui.created_objects=20`;
+  - `ui.command_count=24`.
 
 Current next edge:
 
-- move report-only bytecode state into runtime-owned service state for `gMenu`, title scenes,
-  UI helper objects, save/profile, platform flags, audio, and fade state;
+- extend runtime-owned state into `gMenu`, title scenes, concrete UI helper objects, and
+  decoded UI command payloads;
 - finish argument payload decoding for the current service state events, especially `MenuObject`,
   `_menuWindow`, `_listWindow`, `setSelectCursor`, `bl/tr`, `float2`, and `renderHorizontal`;
-- move the reported save/profile, platform, audio, scene fade, and UI helper contracts into
-  runtime-owned service state instead of report-only events;
 - once value state is reliable, advance from boot edge into `ModuleTitle.main` scene dispatch and
   then `MakeNewGame` / `StartGame`.
 

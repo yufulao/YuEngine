@@ -28,6 +28,59 @@ struct NativeDispatchResult {
     bool implemented = false;
 };
 
+struct NativeServiceStateMutation {
+    std::string service;
+    std::string api;
+    std::string action;
+    std::string target;
+    std::string value;
+    std::string arguments;
+};
+
+struct SaveProfileScenarioRuntimeState {
+    int emptySaveListQueries = 0;
+    int saveListCountQueries = 0;
+    int saveListGetQueries = 0;
+    int saveEntryActiveQueries = 0;
+    int saveListEntries = 0;
+};
+
+struct PlatformRuntimeState {
+    std::map<std::string, std::string> flags;
+};
+
+struct AudioRuntimeState {
+    int playBgmCommands = 0;
+    std::string currentBgmId;
+};
+
+struct SceneStageRuntimeState {
+    int fadeInCommands = 0;
+    std::string fadeInDuration;
+    std::string fadeInBlend;
+};
+
+struct UiRuntimeObjectState {
+    std::string className;
+    int commandCount = 0;
+    std::vector<std::string> commands;
+};
+
+struct UiRender2dRuntimeState {
+    int createdObjects = 0;
+    int commandCount = 0;
+    std::map<std::string, UiRuntimeObjectState> objects;
+};
+
+struct NativeRuntimeServiceState {
+    int mutations = 0;
+    SaveProfileScenarioRuntimeState saveProfileScenario;
+    PlatformRuntimeState platform;
+    AudioRuntimeState audio;
+    SceneStageRuntimeState sceneStage;
+    UiRender2dRuntimeState uiRender2d;
+};
+
 class NativeService {
 public:
     virtual ~NativeService() = default;
@@ -53,6 +106,10 @@ public:
 
     const NativeService* find(const std::string& serviceName) const;
     NativeDispatchResult dispatch(const ApiSurface& api, const NativeCallContext& context) const;
+    void resetRuntimeState() const;
+    void recordStateMutation(const NativeServiceStateMutation& mutation) const;
+    const NativeRuntimeServiceState& runtimeState() const;
+    std::string runtimeStateToJson() const;
     std::vector<std::string> serviceNames() const;
     std::vector<std::string> unboundApis(const NativeRegistry& registry) const;
     size_t size() const;
@@ -61,8 +118,10 @@ private:
     void registerService(std::unique_ptr<NativeService> service);
 
     std::map<std::string, std::unique_ptr<NativeService>> services_;
+    mutable NativeRuntimeServiceState runtimeState_;
 };
 
 std::string nativeServiceReportToJson(const NativeRegistry& registry, const NativeServiceCatalog& catalog);
+std::string nativeRuntimeServiceStateToJson(const NativeRuntimeServiceState& state);
 
 } // namespace yu::native
