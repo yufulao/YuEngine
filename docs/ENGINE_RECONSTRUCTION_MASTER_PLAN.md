@@ -35,6 +35,12 @@ The previous `Project` failed because it chased visible gaps and built a replace
 edges of the full runtime path; they are never a license to ship a minimal entry, fake menu, or
 scene preview.
 
+The word "slice" here means a contract edge inside the final runtime, not a separate miniature
+engine. A valid edge must preserve the original layers on both sides: project manifest, VFS,
+script module/VM state, native service ownership, runtime-owned state, and sample behavior.
+If a change cannot be extended directly toward original title/menu/save/scene/actor/camera/input
+flow, it is not a valid phase endpoint.
+
 Allowed now:
 
 - build C++ project/runtime infrastructure;
@@ -52,6 +58,8 @@ Still forbidden:
 - using Steam/login bypasses.
 - stopping after plans, readiness reports, parser statistics, or call binding diagnostics when a
   non-blocked runtime edge remains.
+- marking a smallest launcher, smallest VM, smallest renderer, or smallest menu as a completed
+  reconstruction phase.
 
 ## Completion Meaning
 
@@ -102,3 +110,8 @@ evidence
 Current target state remains original-script driven title, save/new-game, scene entry, actor,
 camera, input, tutorial, and then generic reusable runtime. Anything below that is an in-progress
 checkpoint, not a finished engine.
+
+The current L7 route is: original title bytecode -> cross-module class/method inheritance ->
+runtime-owned script/service state -> title scene dispatch -> original menu state -> save/new-game
+services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
+regression gate around an already verified arrow.

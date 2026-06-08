@@ -33,6 +33,7 @@ Hard current directive:
 - no handwritten substitute title menu;
 - no blue-screen or mesh-preview progress claims;
 - no smallest-entry replacement runtime;
+- no "minimal engine" stage or "first make a tiny launcher" detour;
 - no silent native/API stubs;
 - no stop after docs, readiness, statistics, binding reports, or test-only maintenance;
 - every checkpoint must leave a named next contract edge and then continue to that edge.
@@ -279,15 +280,16 @@ Progress:
   - optional first boot-frame `main` wrapper with `--frames 1`.
 - `gMenu.continueDisabled` and `gMenu.savesIsEmpty` resolve through recovered root object method
   slots before native/API dispatch.
-- Current title trace reaches 10 native/API obligations across 5 APIs: `FadeIn`, `PlayBGM`,
-  `MenuObject`, `GetSaveList`, and `IsFreeDemo`. `IsOverDemo` is no longer counted on this path
-  because branch-aware execution does not enter the later unselected branch.
+- Current title trace reaches 8 native/API obligations across 4 APIs: `FadeIn`, `PlayBGM`,
+  `GetSaveList`, and `IsFreeDemo`. `MenuObject` is now counted in UI helper/object behavior for
+  this trace. `IsOverDemo` is no longer counted on this path because branch-aware execution does
+  not enter the later unselected branch.
 - Current title trace has 0 unresolved calls after runtime gap classification:
   - 12 engine object calls;
-  - 21 UI helper object calls;
+  - 23 UI helper object calls;
   - 8 value helper calls;
   - 8 value method calls;
-  - 1 Module lifecycle hook.
+  - 0 Module lifecycle hooks.
 - `script-run --frames 1` now executes a scoped multi-module bytecode state pass over the title
   boot path with 2 baseline modules: `preload.b64` and `script/menu/menudef.b64`.
 - The bytecode state pass is PC-branch aware for `_OP_JZ/_OP_JNZ/_OP_JMP`, handles
@@ -299,23 +301,27 @@ Progress:
   `a0`; this is required for `menudef` to publish `ModuleBase` into the root table.
 - `ModuleTitle : ModuleBase` now inherits `ModuleBase._fadeInTime`; `FadeIn` decodes as
   `duration=0.7; blend=0`.
+- Cross-module method dispatch now walks class-base chains across `titlemenu.b64`,
+  `menudef.b64`, and preload baseline modules. `ModuleBase.stateInit` executes as
+  `script_inherited_owner_method`, mutating `modTitle._nextState` to `0`; the older
+  `module_lifecycle_hook` fallback is no longer part of the current trace.
 - Current state counters:
-  - 38 state-scanned functions;
-  - 3,627 state-scanned instructions;
+  - 53 state-scanned functions;
+  - 3,690 state-scanned instructions;
   - 31 root slot writes;
   - 405 class slot writes;
-  - 121 object field writes;
+  - 131 object field writes;
   - 198 table slot writes;
-  - 144 typed call returns;
+  - 148 typed call returns;
   - 0 UI object mutations.
 - Service calls now mutate runtime-owned service state while still emitting event evidence:
-  - 57 service state mutations;
+  - 59 service state mutations;
   - 4 save/profile queries;
   - 2 platform state queries;
   - 1 audio command;
   - 1 scene fade command;
   - 20 tracked UI objects;
-  - 24 UI service commands;
+  - 26 UI service commands;
   - 4 save/value state queries.
   - 2 decoded service argument payloads.
 - Runtime service state snapshot now records:
@@ -327,27 +333,28 @@ Progress:
   - `scene.fade_in_duration=0.7`;
   - `scene.fade_in_blend=0`;
   - `ui.created_objects=20`;
-  - `ui.command_count=24`.
+  - `ui.command_count=26`.
 - Runtime script state snapshot now records:
   - `root_field_count=31`;
-  - `object_count=28`;
+  - `object_count=30`;
   - `table_count=17`;
   - `class_slot_table_count=24`;
   - `class_base_count=16`;
   - `root.gMenu=table#1` with 87 table fields;
   - `root.modTitle=object:modTitle`;
-  - `modTitle._nextState=300`;
+  - `modTitle._nextState=0`;
   - `modTitle._scenes[0..3]=TitleScene/NewGameScene/LoadScene/OverwriteSaveScene`.
 
 Current next edge:
 
-- consume runtime-owned `gMenu` table state and canonical `modTitle`/title scene objects in
-  `ModuleTitle.main` state transitions;
+- execute the next `ModuleTitle.main` frame with `_nextState == 0`, dispatch
+  `modTitle._scenes[0].main`, and verify `TitleSceneBase/TitleScene` state changes through the
+  same original bytecode path;
 - extend concrete UI helper objects into decoded UI command payloads;
 - finish argument payload decoding for the current service state events, especially `MenuObject`,
   `_menuWindow`, `_listWindow`, `setSelectCursor`, `bl/tr`, `float2`, and `renderHorizontal`;
-- once value state is reliable, advance from boot edge into `ModuleTitle.main` scene dispatch and
-  then `MakeNewGame` / `StartGame`.
+- after title scene state can consume input/menu selection, advance to save/new-game and then
+  `MakeNewGame` / `StartGame`.
 
 Boundary: L7 is not complete. The current checkpoint is bytecode-state execution for the title
 boot edge, not a full Squirrel VM, title UI, or gameplay.

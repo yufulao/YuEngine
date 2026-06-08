@@ -23,6 +23,7 @@ struct ScriptCallResolution {
 };
 
 struct ScriptMethodBinding {
+    std::string modulePath;
     std::string ownerClass;
     int classPc = -1;
     int sourceLine = -1;

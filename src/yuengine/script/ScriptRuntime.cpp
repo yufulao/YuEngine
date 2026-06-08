@@ -802,6 +802,7 @@ std::vector<ScriptMethodBinding> buildMethodBindings(const SqasmModule& module)
 
             const auto& ref = current.functionRefs.front();
             ScriptMethodBinding binding;
+            binding.modulePath = module.path.string();
             binding.ownerClass = ownerClass;
             binding.classPc = instruction.pc;
             binding.sourceLine = instruction.sourceLine;
@@ -814,6 +815,18 @@ std::vector<ScriptMethodBinding> buildMethodBindings(const SqasmModule& module)
         }
     }
 
+    return bindings;
+}
+
+std::vector<ScriptMethodBinding> buildCombinedMethodBindings(
+    const SqasmModule& module,
+    const std::vector<SqasmModule>& baselineModules)
+{
+    std::vector<ScriptMethodBinding> bindings = buildMethodBindings(module);
+    for (const auto& baselineModule : baselineModules) {
+        std::vector<ScriptMethodBinding> baselineBindings = buildMethodBindings(baselineModule);
+        bindings.insert(bindings.end(), baselineBindings.begin(), baselineBindings.end());
+    }
     return bindings;
 }
 
@@ -1183,7 +1196,7 @@ public:
         , baselineModules_(baselineModules)
         , registry_(registry)
         , catalog_(catalog)
-        , methodBindings_(buildMethodBindings(module))
+        , methodBindings_(buildCombinedMethodBindings(module, baselineModules))
         , objectBindings_(buildObjectBindings(module, methodBindings_))
         , objectMethodSlots_(buildRootObjectMethodSlots(module))
         , functionSlots_(buildRootFunctionSlots(module))
@@ -1239,6 +1252,19 @@ public:
     }
 
 private:
+    const SqasmModule& moduleForBinding(const ScriptMethodBinding& binding) const
+    {
+        if (binding.modulePath.empty() || binding.modulePath == module_.path.string()) {
+            return module_;
+        }
+        for (const auto& baselineModule : baselineModules_) {
+            if (binding.modulePath == baselineModule.path.string()) {
+                return baselineModule;
+            }
+        }
+        return module_;
+    }
+
     std::string runtimeScriptStateToJson() const
     {
         std::ostringstream out;
@@ -1379,6 +1405,27 @@ private:
             current = base->second;
         }
         return {};
+    }
+
+    const ScriptMethodBinding* findMethodBindingInHierarchy(
+        const std::string& className,
+        const std::string& slot) const
+    {
+        std::set<std::string> visited;
+        std::string current = className;
+        for (int depth = 0; depth < 16 && !current.empty() && visited.insert(current).second; ++depth) {
+            const ScriptMethodBinding* method = findMethodBinding(methodBindings_, current, slot);
+            if (method) {
+                return method;
+            }
+
+            const auto base = classBases_.find(current);
+            if (base == classBases_.end() || base->second == current) {
+                break;
+            }
+            current = base->second;
+        }
+        return nullptr;
     }
 
     ScriptValue lookupRootSlot(const std::string& keyText) const
@@ -2205,7 +2252,8 @@ private:
             return;
         }
 
-        const SqasmFunction* function = findFunctionByOrdinal(module_, binding.functionOrdinal);
+        const SqasmModule& bindingModule = moduleForBinding(binding);
+        const SqasmFunction* function = findFunctionByOrdinal(bindingModule, binding.functionOrdinal);
         if (!function) {
             markUnresolved(binding.slot, ownerObject, ownerClass, binding.sourceLine, binding.classPc,
                 "method binding ordinal not found");
@@ -2213,7 +2261,8 @@ private:
         }
 
         const std::string activeKey =
-            ownerObject + "|" + ownerClass + "|" + binding.slot + "|" + std::to_string(function->ordinal);
+            ownerObject + "|" + ownerClass + "|" + binding.slot + "|" + binding.modulePath + "|"
+            + std::to_string(function->ordinal);
         if (activeMethods_.find(activeKey) != activeMethods_.end()) {
             recordEvent({"skip_recursive_method", function->name, function->ordinal, ownerObject, ownerClass,
                 binding.slot, ownerObject, "recursion_guard", {}, binding.sourceLine, binding.classPc,
@@ -2342,9 +2391,11 @@ private:
 
         const auto objectClass = objectClasses_.find(receiver);
         if (objectClass != objectClasses_.end()) {
-            const ScriptMethodBinding* method = findMethodBinding(methodBindings_, objectClass->second, call.name);
+            const ScriptMethodBinding* method = findMethodBindingInHierarchy(objectClass->second, call.name);
             if (method) {
-                executeMethod(*method, receiver, objectClass->second, depth, "script_object_method");
+                const std::string category =
+                    method->ownerClass == objectClass->second ? "script_object_method" : "script_inherited_object_method";
+                executeMethod(*method, receiver, method->ownerClass, depth, category);
                 return true;
             }
         }
@@ -2403,11 +2454,13 @@ private:
         if (ownerClass.empty()) {
             return false;
         }
-        const ScriptMethodBinding* method = findMethodBinding(methodBindings_, ownerClass, call.name);
+        const ScriptMethodBinding* method = findMethodBindingInHierarchy(ownerClass, call.name);
         if (!method) {
             return false;
         }
-        executeMethod(*method, ownerObject, ownerClass, depth, "script_owner_method");
+        const std::string category =
+            method->ownerClass == ownerClass ? "script_owner_method" : "script_inherited_owner_method";
+        executeMethod(*method, ownerObject, method->ownerClass, depth, category);
         return true;
     }
 
@@ -2431,9 +2484,12 @@ private:
             if (classIt == objectClasses_.end()) {
                 continue;
             }
-            const ScriptMethodBinding* method = findMethodBinding(methodBindings_, classIt->second, "init");
+            const ScriptMethodBinding* method = findMethodBindingInHierarchy(classIt->second, "init");
             if (method) {
-                executeMethod(*method, sceneObject, classIt->second, depth, "script_scene_foreach_method");
+                const std::string category =
+                    method->ownerClass == classIt->second ? "script_scene_foreach_method"
+                                                          : "script_inherited_scene_foreach_method";
+                executeMethod(*method, sceneObject, method->ownerClass, depth, category);
             }
         }
         return true;

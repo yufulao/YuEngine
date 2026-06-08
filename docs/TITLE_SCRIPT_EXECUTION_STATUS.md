@@ -5,8 +5,8 @@ Status: active. Title entry bytecode-state checkpoint completed on 2026-06-09.
 This document tracks L7. The current implementation executes original `.sqasm` with a scoped
 multi-module bytecode state pass for the title boot path. It is now PC-branch aware for
 `_OP_JZ/_OP_JNZ/_OP_JMP`, handles `_OP_FOREACH/_OP_POSTFOREACH` table iteration for the title
-scene list, and no longer relies on a hard stop inside `ModuleTitle.main`. It is still not a full
-Squirrel VM, title UI, or gameplay runtime.
+scene list, resolves inherited methods across baseline modules, and no longer relies on a hard
+stop inside `ModuleTitle.main`. It is still not a full Squirrel VM, title UI, or gameplay runtime.
 
 ## Implemented So Far
 
@@ -26,6 +26,10 @@ Squirrel VM, title UI, or gameplay runtime.
 - Startup baseline module loading from manifest `preload_scripts` and `dependency_scripts`.
   Current Touhou title baseline loads `preload.b64` and `script/menu/menudef.b64` before
   `script/menu/titlemenu.b64`, so `ModuleTitle : ModuleBase` sees inherited class defaults.
+- Cross-module method identity and dispatch:
+  - method bindings retain the source `.sqasm` module path;
+  - object/owner/scene method lookup walks class-base chains;
+  - inherited methods execute against their defining module instead of the entry module.
 - Root function export recovery from root `_OP_LOAD/_OP_CLOSURE/_OP_NEWSLOT`.
 - Root object method slot recovery for `gMenu.*` closures.
 - Static execution bridge:
@@ -41,7 +45,7 @@ Squirrel VM, title UI, or gameplay runtime.
   - UI helper object calls;
   - value helper calls;
   - Squirrel/native value method calls;
-  - Module lifecycle hooks.
+  - inherited script methods, with lifecycle hooks only as an obsolete fallback category.
 - Bytecode state pass for the executed title boot edge:
   - register slots for the recovered functions;
   - PC-indexed branch execution for `_OP_JZ`, `_OP_JNZ`, `_OP_JMP`, and `_OP_RETURN`;
@@ -128,33 +132,33 @@ found=true
 executed=true
 frames=1
 baseline_modules=2
-constructed_objects=5
-script_methods=29
+constructed_objects=7
+script_methods=44
 script_functions=5
 builtin_calls=3
-native_obligations=10
+native_obligations=8
 native_implemented_calls=0
-unique_native_apis=5
+unique_native_apis=4
 engine_object_calls=12
-ui_object_calls=21
+ui_object_calls=23
 value_helper_calls=8
 value_method_calls=8
-module_lifecycle_calls=1
-bytecode_state_functions=38
-bytecode_state_instructions=3627
+module_lifecycle_calls=0
+bytecode_state_functions=53
+bytecode_state_instructions=3690
 root_slot_writes=31
 class_slot_writes=405
-object_field_writes=121
+object_field_writes=131
 table_slot_writes=198
-typed_call_returns=144
+typed_call_returns=148
 ui_object_mutations=0
-service_state_events=57
+service_state_events=59
 save_service_queries=4
 platform_state_queries=2
 audio_service_commands=1
 scene_service_commands=1
 ui_objects_tracked=20
-ui_service_commands=24
+ui_service_commands=26
 value_state_queries=4
 decoded_service_arguments=2
 optional_unbound_globals=0
@@ -169,14 +173,17 @@ branch scanning. The bytecode-state counters prove the runtime is now carrying o
 state through the boot edge with the preload/menudef/title module baseline. Service calls now also
 mutate a runtime-owned service state snapshot instead of existing only as report events.
 `FadeIn` is now decoded through inherited `ModuleBase._fadeInTime` from `menudef` as
-`duration=0.7; blend=0`. `IsOverDemo` is no longer counted for this path because branch-aware
-execution does not enter the later unselected branch that previously polluted the trace. Real UI
-command geometry/text and later state transitions are still not complete.
+`duration=0.7; blend=0`. `ModuleBase.stateInit` now executes as
+`script_inherited_owner_method`, so the boot-frame mutates `modTitle._nextState` from `300` to
+`0` through original class inheritance instead of the older module lifecycle fallback.
+`IsOverDemo` is no longer counted for this path because branch-aware execution does not enter the
+later unselected branch that previously polluted the trace. Real UI command geometry/text and
+later state transitions are still not complete.
 
 Runtime service state produced by the same original title boot path:
 
 ```text
-mutations=57
+mutations=59
 save.empty_save_list_queries=4
 save.save_list_count_queries=4
 save.save_list_entries=0
@@ -185,21 +192,21 @@ audio.current_bgm_id=3
 scene.fade_in_duration=0.7
 scene.fade_in_blend=0
 ui.created_objects=20
-ui.command_count=24
+ui.command_count=26
 ```
 
 Runtime script state produced by the same original title boot path:
 
 ```text
 root_field_count=31
-object_count=28
+object_count=30
 table_count=17
 class_slot_table_count=24
 class_base_count=16
 root.gMenu=table#1
 root.modTitle=object:modTitle
 gMenu.table_fields=87
-modTitle._nextState=300
+modTitle._nextState=0
 modTitle._scenes=table#15
 modTitle._scenes[0]=TitleScene
 modTitle._scenes[1]=NewGameScene
@@ -230,6 +237,18 @@ IsFreeDemo -> Platform Service
 `gMenu.continueDisabled` and `gMenu.savesIsEmpty` are now resolved as root object script
 closures before their native/API calls are dispatched.
 
+`ModuleTitle.main -> stateInit` is now real inherited script execution:
+
+```text
+modTitle class: ModuleTitle
+ModuleTitle base: ModuleBase
+stateInit binding module: script/menu/menudef.b64
+stateInit function ordinal: 221
+event category: script_inherited_owner_method
+post-state: modTitle._nextState=0
+module_lifecycle_calls=0
+```
+
 ## Verification
 
 ```powershell
@@ -247,15 +266,16 @@ Python unittest: 6/6 passed
 ## Remaining L7 Work
 
 - Advance `ModuleTitle.main` from the boot state into later real state transitions
-  (`_nextState == 200/100/scene dispatch`) without reintroducing linear branch pollution.
+  (`_nextState == 0` scene dispatch, then `_nextState == 200/100`) without reintroducing linear
+  branch pollution.
 - Convert current classified categories and typed placeholders into concrete service behavior:
   - 12 engine object calls;
-  - 21 UI helper object calls;
+  - 23 UI helper object calls;
   - 8 value helper calls;
   - 8 value methods;
-  - 1 Module lifecycle hook.
+  - 0 Module lifecycle hooks, because `ModuleBase.stateInit` is now executed as inherited bytecode.
 - Consume runtime-owned `gMenu` table state and canonical `modTitle`/title scene objects in the
-  next `ModuleTitle.main` state transition.
+  next `ModuleTitle.main` scene dispatch.
 - Extend concrete UI helper object layouts into decoded UI command payloads.
 - UI command buffer for helper objects such as `_menuWindow`, `_listWindow`, and `MenuObject`.
 - Finish decoding argument payloads for `MenuObject`, `_menuWindow`, `_listWindow`,
