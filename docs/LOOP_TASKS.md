@@ -3,9 +3,11 @@
 This file is the queue for long-running agents. Work top to bottom. When a task is completed,
 commit it and continue to the next task without waiting for a new prompt.
 
-## Active Loop
+## Completed Loops
 
 ### L1: C++ Runtime Spine
+
+Status: completed as diagnostic runtime spine on 2026-06-09.
 
 Deliver:
 
@@ -21,6 +23,26 @@ Acceptance:
 - `yuengine_cli boot samples/touhou_new_world/project.json` loads project, mounts VFS, loads
   preload and title `.sqasm`, and reports native/API obligations.
 - `yuengine_cli boot samples/empty_project/project.json` boots without original resources.
+
+Verified:
+
+- CMake BuildTools 14.43/Ninja build passes.
+- CTest passes 4/4.
+- Python unittest suite passes 6/6.
+- Original sample diagnostic boot reports:
+  - loose mounts: 2
+  - pack resources: 13,028
+  - native registry APIs: 84
+  - loaded modules: preload and titlemenu
+  - title/preload obligations: 36, all `not_started`
+- Empty sample diagnostic boot reports:
+  - loose mounts: 1
+  - native registry APIs: 84
+  - native obligations: 0
+
+Boundary: this is diagnostic boot only. It is not script execution or gameplay.
+
+## Active Loop
 
 ### L2: VFS And Pack Manifest Depth
 
@@ -63,19 +85,20 @@ Acceptance:
 - 84 title/first-mission APIs are present in registry.
 - no call used by current boot scope is unowned.
 
-### L5: Runtime Manifest Consumer To R1
+### L5: Service-Backed Runtime Lifecycle
 
 Deliver:
 
-- runtime lifecycle reads `project.json`;
-- initializes core/project/VFS/script/native services;
-- loads preload scripts and entry module;
-- produces deterministic boot report.
+- service container for core/project/VFS/script/native layers;
+- deterministic boot phases with explicit diagnostics;
+- preload and entry-module ownership by Script Service;
+- native/API obligation emission through Native Service interfaces.
 
 Acceptance:
 
-- original and empty sample both pass boot diagnostics.
-- R1 can be marked only as "diagnostic boot", not game-play boot.
+- original and empty sample still pass boot diagnostics.
+- no script-visible native/API call can disappear as a silent no-op.
+- R1 remains diagnostic boot until original scripts execute; do not mark R2 here.
 
 ### L6: Oracle Capture Execution
 

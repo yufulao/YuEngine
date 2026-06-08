@@ -1,0 +1,62 @@
+cmake_minimum_required(VERSION 3.24)
+
+project(YuEngine VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+add_library(yuengine_runtime
+    src/yuengine/core/Json.cpp
+    src/yuengine/native/NativeRegistry.cpp
+    src/yuengine/project/ProjectManifest.cpp
+    src/yuengine/resource/VirtualFileSystem.cpp
+    src/yuengine/runtime/EngineRuntime.cpp
+    src/yuengine/script/SqasmModule.cpp
+)
+
+target_include_directories(yuengine_runtime PUBLIC src)
+
+if(MSVC)
+    target_compile_options(yuengine_runtime PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(yuengine_runtime PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+add_executable(yuengine_cli apps/yuengine_cli/main.cpp)
+target_link_libraries(yuengine_cli PRIVATE yuengine_runtime)
+
+include(CTest)
+
+if(BUILD_TESTING)
+    add_test(
+        NAME yuengine_validate_touhou_sample
+        COMMAND yuengine_cli validate samples/touhou_new_world/project.json
+    )
+    set_tests_properties(yuengine_validate_touhou_sample PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    add_test(
+        NAME yuengine_validate_empty_sample
+        COMMAND yuengine_cli validate samples/empty_project/project.json
+    )
+    set_tests_properties(yuengine_validate_empty_sample PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    add_test(
+        NAME yuengine_boot_touhou_sample
+        COMMAND yuengine_cli boot samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_boot_touhou_sample PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "\"native_apis\": 84"
+        FAIL_REGULAR_EXPRESSION "\"status\": \"E1\""
+    )
+
+    add_test(
+        NAME yuengine_boot_empty_sample
+        COMMAND yuengine_cli boot samples/empty_project/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_boot_empty_sample PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "\"native_apis\": 84"
+    )
+endif()

@@ -78,6 +78,10 @@ C++ runtime spine
 - `docs/PROJECT_MANIFEST_STATUS.md`: P5 project manifest 当前状态和残留缺口。
 - `docs/API_SURFACE_STATUS.md`: P6 engine API surface 当前状态和残留缺口。
 - `docs/engine_api_surface/title_first_mission.md`: title/new-game/first-mission API surface baseline，11 services、84 APIs、303 call sites。
+- `docs/RUNTIME_SPINE_STATUS.md`: L1 C++ runtime spine 当前状态、验证命令和边界。
+- `CMakeLists.txt`: C++20 runtime/CLI build 和 CTest 验收入口。
+- `src/yuengine/...`: core JSON、project manifest、VFS、`.sqasm` diagnostics、native registry、runtime boot report。
+- `apps/yuengine_cli`: `validate` 和 `boot` CLI。
 - `samples/touhou_new_world/project.json`: 原游戏作为 sample/oracle project 的 YuEngine manifest。
 - `samples/empty_project/project.json`: 不依赖原游戏资源的 generic sample manifest。
 - `tools/sqir.py`: `.sqasm` -> JSON IR / state-machine summary 工具，可选接入 `Project2` evidence graph。
@@ -435,7 +439,7 @@ R7: Production without editor
 R8: Editor and advanced pipeline
 ```
 
-当前应视为 R0 准备阶段附近并开始进入 runtime spine：证据图、entrypoint closure、native inventory 已有；YuEngine 已有 P3 Script IR baseline tool、P4 native boundary baseline table、P1 title boot oracle 准备工具、P5 original/generic sample manifests 和 P6 engine API surface baseline。现在必须推进 C++ runtime spine。P1 仍不是完成态，因为原游戏 title boot 尚未完成三次稳定采样；P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P5 仍不是完成态，因为还没有 runtime manifest consumer；P6 仍不是完成态，因为 API surface 还没有落成 C++ module interfaces。
+当前已达到 R1 诊断启动，不是游戏执行：C++ runtime spine 已能通过 `project.json` 加载原 sample 和 empty sample，挂载 VFS，解析 pack manifest 索引，加载 preload/title `.sqasm` 诊断，并报告 native/API obligations。已验证原 sample：2 个 loose mounts、13,028 个 pack resources、84 个 native registry APIs、36 个 title/preload obligations，全部仍是 `not_started`。P1 仍不是完成态，因为原游戏 title boot 尚未完成三次稳定采样；P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 仍不是完成态，因为 API surface 还没有落成 C++ service module interfaces；R2 也不是完成态，因为 Squirrel VM 尚未执行原 title script。
 
 ## Milestones
 
@@ -459,9 +463,9 @@ X8: Editor And Advanced Pipeline Later
 
 优先任务不是写游戏窗口。
 
-当前下一步见 `docs/LOOP_TASKS.md`，优先 L1: C++ Runtime Spine。
+当前下一步见 `docs/LOOP_TASKS.md`，优先 L2: VFS And Pack Manifest Depth。
 
-Runtime implementation 可以开始，但只能按完整引擎主干推进，不能写临时视觉 demo。所有未确认 native 行为必须进入 obligation/diagnostics。
+Runtime implementation 已开始，但只能按完整引擎主干推进，不能写临时视觉 demo。所有未确认 native 行为必须进入 obligation/diagnostics。
 
 ## Do Not Repeat Previous Failure
 
