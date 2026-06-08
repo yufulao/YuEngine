@@ -14,6 +14,7 @@ add_library(yuengine_runtime
     src/yuengine/resource/ResourceDiagnostics.cpp
     src/yuengine/resource/VirtualFileSystem.cpp
     src/yuengine/runtime/EngineRuntime.cpp
+    src/yuengine/runtime/RuntimeContext.cpp
     src/yuengine/script/SqasmModule.cpp
 )
 
@@ -49,7 +50,7 @@ if(BUILD_TESTING)
     )
     set_tests_properties(yuengine_boot_touhou_sample PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        PASS_REGULAR_EXPRESSION "\"native_apis\": 84"
+        PASS_REGULAR_EXPRESSION "ok=true phases=7 failed_phases=0 native_apis=84 native_services=11 obligations=36"
         FAIL_REGULAR_EXPRESSION "\"status\": \"E1\""
     )
 
@@ -59,7 +60,7 @@ if(BUILD_TESTING)
     )
     set_tests_properties(yuengine_boot_empty_sample PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        PASS_REGULAR_EXPRESSION "\"native_apis\": 84"
+        PASS_REGULAR_EXPRESSION "ok=true phases=7 failed_phases=0 native_apis=84 native_services=11 obligations=0"
     )
 
     add_test(

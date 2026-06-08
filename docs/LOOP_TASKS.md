@@ -157,9 +157,9 @@ Verified:
 Boundary: this is service ownership and obligation dispatch only. It is not native behavior
 implementation, argument/return confirmation, or oracle-diff acceptance.
 
-## Active Loop
-
 ### L5: Service-Backed Runtime Lifecycle
+
+Status: completed as service-backed diagnostic boot lifecycle on 2026-06-09.
 
 Deliver:
 
@@ -173,6 +173,21 @@ Acceptance:
 - original and empty sample still pass boot diagnostics.
 - no script-visible native/API call can disappear as a silent no-op.
 - R1 remains diagnostic boot until original scripts execute; do not mark R2 here.
+
+Verified:
+
+- Boot report now has deterministic phases:
+  `load_project_manifest`, `mount_vfs`, `verify_required_resources`, `load_native_registry`,
+  `bind_native_services`, `load_startup_scripts`, `collect_native_obligations`.
+- Original sample reports `ok=true phases=7 failed_phases=0 native_apis=84 native_services=11 obligations=36`.
+- Empty sample reports `ok=true phases=7 failed_phases=0 native_apis=84 native_services=11 obligations=0`.
+- CTest passes 9/9.
+- Python unittest suite passes 6/6.
+
+Boundary: this is service-backed diagnostic boot only. It is not script VM execution, title UI,
+native behavior implementation, or gameplay.
+
+## Active Loop
 
 ### L6: Oracle Capture Execution
 

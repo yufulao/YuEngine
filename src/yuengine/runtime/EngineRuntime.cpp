@@ -44,15 +44,6 @@ void traceBoot(const std::string& phase)
     }
 }
 
-std::vector<std::filesystem::path> scriptRoots(const project::ProjectManifest& manifest)
-{
-    std::vector<std::filesystem::path> roots;
-    for (const auto& root : manifest.scriptRoots) {
-        roots.push_back(root.path);
-    }
-    return roots;
-}
-
 void loadModule(
     BootReport& report,
     const std::vector<std::filesystem::path>& roots,
@@ -95,55 +86,106 @@ void loadModule(
     }
 }
 
+size_t failedPhaseCount(const BootReport& report)
+{
+    size_t count = 0;
+    for (const auto& phase : report.phases) {
+        if (phase.status != "ok") {
+            ++count;
+        }
+    }
+    return count;
+}
+
 } // namespace
 
 BootReport bootProject(const std::filesystem::path& manifestPath, const std::filesystem::path& repoRoot)
 {
     BootReport report;
+    RuntimeContext context;
     try {
         traceBoot("enter boot project");
+
         traceBoot("load manifest");
-        project::ProjectManifest manifest = project::loadProjectManifest(manifestPath);
+        context.services().setManifest(project::loadProjectManifest(manifestPath));
+        const auto& manifest = context.services().manifest();
         report.projectId = manifest.projectId;
+        context.recordPhase("load_project_manifest", "ok", manifest.projectId);
 
         traceBoot("mount vfs");
-        resource::VirtualFileSystem vfs;
-        vfs.mountProject(manifest);
-        report.looseMounts = vfs.looseMountCount();
-        report.packResources = vfs.packResourceCount();
+        context.services().vfs().mountProject(manifest);
+        report.looseMounts = context.services().vfs().looseMountCount();
+        report.packResources = context.services().vfs().packResourceCount();
+        context.recordPhase(
+            "mount_vfs",
+            "ok",
+            "loose=" + std::to_string(report.looseMounts) + " pack=" + std::to_string(report.packResources));
 
         traceBoot("verify required resources");
+        int missingResources = 0;
         for (const auto& required : manifest.requiredResources) {
-            if (required.kind == "path" && !vfs.resolvePath(required.path).found) {
+            if (required.kind == "path" && !context.services().vfs().resolvePath(required.path).found) {
                 addError(report, "required resource not resolved: " + required.path);
+                ++missingResources;
             }
-            if (required.kind == "stem" && vfs.resolveStem(required.path).empty()) {
+            if (required.kind == "stem" && context.services().vfs().resolveStem(required.path).empty()) {
                 addError(report, "required resource stem not resolved: " + required.path);
+                ++missingResources;
             }
         }
+        context.recordPhase(
+            "verify_required_resources",
+            missingResources == 0 ? "ok" : "failed",
+            "required=" + std::to_string(manifest.requiredResources.size()) + " missing="
+                + std::to_string(missingResources));
 
         traceBoot("load native registry");
-        native::NativeRegistry registry;
         std::filesystem::path surfacePath = repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md";
         if (std::filesystem::exists(surfacePath)) {
-            registry.loadMarkdownSurface(surfacePath);
+            context.services().nativeRegistry().loadMarkdownSurface(surfacePath);
         } else {
             report.warnings.push_back("native surface markdown not found: " + surfacePath.string());
         }
-        report.nativeApis = registry.size();
-        native::NativeServiceCatalog serviceCatalog;
-        const auto unboundApis = serviceCatalog.unboundApis(registry);
+        report.nativeApis = context.services().nativeRegistry().size();
+        context.recordPhase("load_native_registry", "ok", "apis=" + std::to_string(report.nativeApis));
+
+        traceBoot("bind native services");
+        report.nativeServices = context.services().nativeServices().size();
+        const auto unboundApis =
+            context.services().nativeServices().unboundApis(context.services().nativeRegistry());
+        report.unboundNativeApis = unboundApis.size();
         if (!unboundApis.empty()) {
             addError(report, "native APIs have no service interface: " + std::to_string(unboundApis.size()));
         }
+        context.recordPhase(
+            "bind_native_services",
+            unboundApis.empty() ? "ok" : "failed",
+            "services=" + std::to_string(report.nativeServices) + " unbound=" + std::to_string(unboundApis.size()));
 
         traceBoot("load script modules");
         std::map<std::string, ObligationReport> obligations;
-        auto roots = scriptRoots(manifest);
+        const auto errorsBeforeScripts = report.errors.size();
+        auto roots = context.services().scriptRoots();
         for (const auto& preload : manifest.startup.preloadScripts) {
-            loadModule(report, roots, preload, registry, serviceCatalog, obligations);
+            loadModule(
+                report,
+                roots,
+                preload,
+                context.services().nativeRegistry(),
+                context.services().nativeServices(),
+                obligations);
         }
-        loadModule(report, roots, manifest.startup.entryModule, registry, serviceCatalog, obligations);
+        loadModule(
+            report,
+            roots,
+            manifest.startup.entryModule,
+            context.services().nativeRegistry(),
+            context.services().nativeServices(),
+            obligations);
+        context.recordPhase(
+            "load_startup_scripts",
+            report.errors.size() == errorsBeforeScripts ? "ok" : "failed",
+            "modules=" + std::to_string(report.modules.size()));
 
         traceBoot("collect native obligations");
         for (const auto& [_, obligation] : obligations) {
@@ -155,10 +197,13 @@ BootReport bootProject(const std::filesystem::path& manifestPath, const std::fil
             }
             return a.service < b.service;
         });
+        context.recordPhase("collect_native_obligations", "ok", "apis=" + std::to_string(report.obligations.size()));
         traceBoot("boot report ready");
     } catch (const std::exception& ex) {
         addError(report, ex.what());
+        context.recordPhase("boot", "failed", ex.what());
     }
+    report.phases = context.phases();
     return report;
 }
 
@@ -169,9 +214,14 @@ std::string bootReportToJson(const BootReport& report)
     out << "  \"schema\": \"yuengine.boot_report.v1\",\n";
     out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
     out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false") << " phases=" << report.phases.size()
+        << " failed_phases=" << failedPhaseCount(report) << " native_apis=" << report.nativeApis
+        << " native_services=" << report.nativeServices << " obligations=" << report.obligations.size() << "\",\n";
     out << "  \"loose_mounts\": " << report.looseMounts << ",\n";
     out << "  \"pack_resources\": " << report.packResources << ",\n";
     out << "  \"native_apis\": " << report.nativeApis << ",\n";
+    out << "  \"native_services\": " << report.nativeServices << ",\n";
+    out << "  \"unbound_native_apis\": " << report.unboundNativeApis << ",\n";
     out << "  \"errors\": [";
     for (size_t i = 0; i < report.errors.size(); ++i) {
         out << (i ? ", " : "") << "\"" << core::jsonEscape(report.errors[i]) << "\"";
@@ -182,6 +232,14 @@ std::string bootReportToJson(const BootReport& report)
         out << (i ? ", " : "") << "\"" << core::jsonEscape(report.warnings[i]) << "\"";
     }
     out << "],\n";
+    out << "  \"phases\": [\n";
+    for (size_t i = 0; i < report.phases.size(); ++i) {
+        const auto& phase = report.phases[i];
+        out << "    {\"name\": \"" << core::jsonEscape(phase.name) << "\", \"status\": \""
+            << core::jsonEscape(phase.status) << "\", \"detail\": \"" << core::jsonEscape(phase.detail) << "\"}";
+        out << (i + 1 == report.phases.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
     out << "  \"modules\": [\n";
     for (size_t i = 0; i < report.modules.size(); ++i) {
         const auto& module = report.modules[i];

@@ -107,6 +107,7 @@ engine layer contract
 - `docs/VFS_RESOURCE_STATUS.md`: L2 VFS/resource dependency diagnostics 当前状态、验证命令和边界。
 - `docs/SCRIPT_MODULE_STATUS.md`: L3 C++ script module model 当前状态、验证命令和边界。
 - `docs/NATIVE_SERVICE_INTERFACES_STATUS.md`: L4 C++ native service interfaces 当前状态、验证命令和边界。
+- `docs/SERVICE_BACKED_RUNTIME_STATUS.md`: L5 service-backed runtime lifecycle 当前状态、验证命令和边界。
 - `CMakeLists.txt`: C++20 runtime/CLI build 和 CTest 验收入口。
 - `src/yuengine/...`: core JSON、project manifest、VFS/resource diagnostics、`.sqasm` diagnostics、native registry、native service catalog、runtime boot report。
 - `apps/yuengine_cli`: `validate`、`boot`、`resources`、`script` 和 `native-services` CLI。
@@ -468,7 +469,7 @@ R7: Production without editor
 R8: Editor and advanced pipeline
 ```
 
-当前已达到 R1 诊断启动，并完成 L2 资源依赖诊断、L3 脚本模块模型和 L4 native service interface baseline，不是游戏执行：C++ runtime spine 已能通过 `project.json` 加载原 sample 和 empty sample，挂载 VFS，解析 pack manifest 索引，加载 preload/title `.sqasm` 诊断，并通过 11 个 native service interfaces 报告 native/API obligations。已验证原 sample：2 个 loose mounts、13,028 个 pack resources、84 个 native registry APIs、36 个 title/preload obligations，全部仍是 `not_started`。L2 已验证 title background/logo/DLC stems、title script resource refs、first-mission stage/rail-camera resources 都能通过 VFS 解析，resource report required missing 为 0。L3 已验证 title module 为 81 functions / 4,466 instructions / 593 calls / 80 closure bindings，first mission candidate 为 62 functions / 4,068 instructions / 640 calls / 61 closure bindings，且 C++ parser 可在秒级输出结构化报告。L4 已验证 11 services / 84 native APIs / 0 unowned APIs / 0 unbound APIs，但 native 行为仍没有实现。P1 仍不是完成态，因为原游戏 title boot 尚未完成三次稳定采样；P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 现在已有 C++ service interface baseline，但还不是完成态，因为 API behavior implementation、typed argument/return contracts 和 service state 尚未落地；R2 也不是完成态，因为 Squirrel VM 尚未执行原 title script。
+当前已达到 R1 诊断启动，并完成 L2 资源依赖诊断、L3 脚本模块模型、L4 native service interface baseline 和 L5 service-backed runtime lifecycle，不是游戏执行：C++ runtime spine 已能通过 `project.json` 加载原 sample 和 empty sample，挂载 VFS，解析 pack manifest 索引，加载 preload/title `.sqasm` 诊断，并通过 runtime-owned 11 个 native service interfaces 报告 native/API obligations。已验证原 sample：7 个 boot phases、2 个 loose mounts、13,028 个 pack resources、84 个 native registry APIs、11 个 native services、36 个 title/preload obligations，全部仍是 `not_started`。L2 已验证 title background/logo/DLC stems、title script resource refs、first-mission stage/rail-camera resources 都能通过 VFS 解析，resource report required missing 为 0。L3 已验证 title module 为 81 functions / 4,466 instructions / 593 calls / 80 closure bindings，first mission candidate 为 62 functions / 4,068 instructions / 640 calls / 61 closure bindings，且 C++ parser 可在秒级输出结构化报告。L4 已验证 11 services / 84 native APIs / 0 unowned APIs / 0 unbound APIs，但 native 行为仍没有实现。L5 已验证 original 和 empty sample 都是 `ok=true phases=7 failed_phases=0`。P1 仍不是完成态，因为原游戏 title boot 尚未完成三次稳定采样；P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 现在已有 C++ service interface baseline，但还不是完成态，因为 API behavior implementation、typed argument/return contracts 和 service state 尚未落地；R2 也不是完成态，因为 Squirrel VM 尚未执行原 title script。
 
 ## Milestones
 
@@ -492,7 +493,7 @@ X8: Editor And Advanced Pipeline Later
 
 优先任务不是写游戏窗口。
 
-当前下一步见 `docs/LOOP_TASKS.md`，优先 L5: Service-Backed Runtime Lifecycle。
+当前下一步见 `docs/LOOP_TASKS.md`，优先 L6: Oracle Capture Execution。
 
 Runtime implementation 已开始，但只能按完整引擎主干推进，不能写临时视觉 demo。所有未确认 native 行为必须进入 obligation/diagnostics。
 

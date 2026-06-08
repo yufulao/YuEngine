@@ -1,5 +1,7 @@
 #pragma once
 
+#include "yuengine/runtime/RuntimeContext.h"
+
 #include <filesystem>
 #include <map>
 #include <string>
@@ -27,11 +29,14 @@ struct BootReport {
     std::string projectId;
     std::vector<std::string> errors;
     std::vector<std::string> warnings;
+    std::vector<BootPhaseReport> phases;
     std::vector<ModuleReport> modules;
     std::vector<ObligationReport> obligations;
     size_t looseMounts = 0;
     size_t packResources = 0;
     size_t nativeApis = 0;
+    size_t nativeServices = 0;
+    size_t unboundNativeApis = 0;
 };
 
 BootReport bootProject(const std::filesystem::path& manifestPath, const std::filesystem::path& repoRoot);
