@@ -2,6 +2,7 @@
 
 #include "yuengine/core/Json.h"
 #include "yuengine/native/NativeRegistry.h"
+#include "yuengine/native/NativeServices.h"
 #include "yuengine/project/ProjectManifest.h"
 #include "yuengine/resource/VirtualFileSystem.h"
 #include "yuengine/script/SqasmModule.h"
@@ -57,6 +58,7 @@ void loadModule(
     const std::vector<std::filesystem::path>& roots,
     const std::string& moduleName,
     const native::NativeRegistry& registry,
+    const native::NativeServiceCatalog& serviceCatalog,
     std::map<std::string, ObligationReport>& obligations)
 {
     std::filesystem::path path = script::resolveScriptModule(roots, moduleName);
@@ -78,10 +80,16 @@ void loadModule(
             if (!surface) {
                 continue;
             }
+            const auto dispatch = serviceCatalog.dispatch(*surface, {
+                module.path.string(),
+                function.name,
+                call.sourceLine,
+                call.pc,
+            });
             auto& obligation = obligations[call.name];
             obligation.api = call.name;
-            obligation.service = surface->service;
-            obligation.status = surface->implementationStatus.empty() ? "not_started" : surface->implementationStatus;
+            obligation.service = dispatch.service;
+            obligation.status = dispatch.implementationStatus;
             ++obligation.calls;
         }
     }
@@ -123,14 +131,19 @@ BootReport bootProject(const std::filesystem::path& manifestPath, const std::fil
             report.warnings.push_back("native surface markdown not found: " + surfacePath.string());
         }
         report.nativeApis = registry.size();
+        native::NativeServiceCatalog serviceCatalog;
+        const auto unboundApis = serviceCatalog.unboundApis(registry);
+        if (!unboundApis.empty()) {
+            addError(report, "native APIs have no service interface: " + std::to_string(unboundApis.size()));
+        }
 
         traceBoot("load script modules");
         std::map<std::string, ObligationReport> obligations;
         auto roots = scriptRoots(manifest);
         for (const auto& preload : manifest.startup.preloadScripts) {
-            loadModule(report, roots, preload, registry, obligations);
+            loadModule(report, roots, preload, registry, serviceCatalog, obligations);
         }
-        loadModule(report, roots, manifest.startup.entryModule, registry, obligations);
+        loadModule(report, roots, manifest.startup.entryModule, registry, serviceCatalog, obligations);
 
         traceBoot("collect native obligations");
         for (const auto& [_, obligation] : obligations) {

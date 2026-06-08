@@ -38,6 +38,15 @@ std::string stripBackticks(std::string value)
     return value;
 }
 
+int parseInt(const std::string& value)
+{
+    try {
+        return std::stoi(value);
+    } catch (...) {
+        return 0;
+    }
+}
+
 } // namespace
 
 void NativeRegistry::loadMarkdownSurface(const std::filesystem::path& path)
@@ -60,6 +69,8 @@ void NativeRegistry::loadMarkdownSurface(const std::filesystem::path& path)
         api.name = stripBackticks(parts[1]);
         api.service = parts[2];
         api.ownerLevel = parts[3];
+        api.documentedCalls = parseInt(parts[4]);
+        api.evidence = parts[6];
         api.implementationStatus = parts[7];
         apis_[api.name] = std::move(api);
     }
@@ -69,6 +80,51 @@ const ApiSurface* NativeRegistry::find(const std::string& name) const
 {
     auto it = apis_.find(name);
     return it == apis_.end() ? nullptr : &it->second;
+}
+
+const std::map<std::string, ApiSurface>& NativeRegistry::apis() const
+{
+    return apis_;
+}
+
+std::map<std::string, int> NativeRegistry::serviceApiCounts() const
+{
+    std::map<std::string, int> counts;
+    for (const auto& [_, api] : apis_) {
+        ++counts[api.service];
+    }
+    return counts;
+}
+
+std::map<std::string, int> NativeRegistry::serviceCallCounts() const
+{
+    std::map<std::string, int> counts;
+    for (const auto& [_, api] : apis_) {
+        counts[api.service] += api.documentedCalls;
+    }
+    return counts;
+}
+
+size_t NativeRegistry::implementationStatusCount(const std::string& status) const
+{
+    size_t count = 0;
+    for (const auto& [_, api] : apis_) {
+        if (api.implementationStatus == status) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+size_t NativeRegistry::unownedCount() const
+{
+    size_t count = 0;
+    for (const auto& [_, api] : apis_) {
+        if (api.service.empty() || api.service == "Unassigned" || api.service == "unassigned") {
+            ++count;
+        }
+    }
+    return count;
 }
 
 size_t NativeRegistry::size() const

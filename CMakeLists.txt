@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(yuengine_runtime
     src/yuengine/core/Json.cpp
     src/yuengine/native/NativeRegistry.cpp
+    src/yuengine/native/NativeServices.cpp
     src/yuengine/project/ProjectManifest.cpp
     src/yuengine/resource/ResourceDiagnostics.cpp
     src/yuengine/resource/VirtualFileSystem.cpp
@@ -96,5 +97,14 @@ if(BUILD_TESTING)
     set_tests_properties(yuengine_script_first_mission_sample PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "functions=62 instructions=4068 calls=640 resources=[0-9]+ closure_bindings=61"
+    )
+
+    add_test(
+        NAME yuengine_native_services_surface
+        COMMAND yuengine_cli native-services samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_native_services_surface PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "services=11 native_apis=84 unowned_apis=0 unbound_apis=0 not_started=84"
     )
 endif()

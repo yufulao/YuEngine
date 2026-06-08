@@ -1,3 +1,5 @@
+#include "yuengine/native/NativeRegistry.h"
+#include "yuengine/native/NativeServices.h"
 #include "yuengine/project/ProjectManifest.h"
 #include "yuengine/resource/ResourceDiagnostics.h"
 #include "yuengine/runtime/EngineRuntime.h"
@@ -29,7 +31,8 @@ void usage()
               << "  yuengine_cli validate <project.json>\n"
               << "  yuengine_cli boot <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli resources <project.json>\n"
-              << "  yuengine_cli script <project.json> <module>\n";
+              << "  yuengine_cli script <project.json> <module>\n"
+              << "  yuengine_cli native-services <project.json> [--repo-root <path>]\n";
 }
 
 bool traceEnabled()
@@ -109,6 +112,15 @@ int main(int argc, char** argv)
             const auto module = yu::script::loadSqasmModule(modulePath);
             std::cout << yu::script::sqasmModuleReportToJson(module);
             return 0;
+        }
+        if (command == "native-services") {
+            yu::project::loadProjectManifest(manifest);
+            yu::native::NativeRegistry registry;
+            registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
+            yu::native::NativeServiceCatalog catalog;
+            const auto unbound = catalog.unboundApis(registry);
+            std::cout << yu::native::nativeServiceReportToJson(registry, catalog);
+            return unbound.empty() && registry.unownedCount() == 0 ? 0 : 1;
         }
     } catch (const std::exception& ex) {
         std::cerr << "yuengine_cli: " << ex.what() << "\n";

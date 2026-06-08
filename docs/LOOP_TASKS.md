@@ -130,9 +130,9 @@ Verified:
 
 Boundary: this is script module diagnostics only. It is not Squirrel VM execution or native side effects.
 
-## Active Loop
-
 ### L4: Native Service Interfaces
+
+Status: completed as C++ native service contract baseline on 2026-06-09.
 
 Deliver:
 
@@ -144,6 +144,20 @@ Acceptance:
 
 - 84 title/first-mission APIs are present in registry.
 - no call used by current boot scope is unowned.
+
+Verified:
+
+- `yuengine_cli native-services samples/touhou_new_world/project.json --repo-root .` reports
+  11 services, 84 native APIs, 0 unowned APIs, 0 unbound APIs, 84 `not_started` obligations.
+- Original sample diagnostic boot remains `ok: true` and still reports 36 title/preload
+  native obligations through the service catalog.
+- CTest passes 9/9.
+- Python unittest suite passes 6/6.
+
+Boundary: this is service ownership and obligation dispatch only. It is not native behavior
+implementation, argument/return confirmation, or oracle-diff acceptance.
+
+## Active Loop
 
 ### L5: Service-Backed Runtime Lifecycle
 
