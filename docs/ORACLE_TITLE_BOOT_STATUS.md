@@ -11,6 +11,7 @@ forcing entitlement state.
   candidates, and local capture tool availability.
 - `tools/oracle_title_boot.py snapshot`: records install and save/config candidate snapshots.
 - `tools/oracle_title_boot.py runbook`: writes a concrete title boot sampling protocol.
+- `tools/oracle_title_boot.py readiness`: reports capture readiness and explicit blockers.
 - `tools/oracle_title_boot.py launch`: optional explicit launch helper. It is not used by tests
   and should only be run when an interactive original-game launch is intended.
 
@@ -20,6 +21,7 @@ From `YuEngine` root:
 
 ```powershell
 python tools\oracle_title_boot.py inspect --out build\oracle_title_boot\inspect.json
+python tools\oracle_title_boot.py readiness --out build\oracle_title_boot\readiness.json
 python tools\oracle_title_boot.py snapshot --out build\oracle_title_boot\pre_title_snapshot.json
 python tools\oracle_title_boot.py runbook --out docs\oracle\title_boot_runbook.md
 python -m unittest discover -s tests
@@ -41,6 +43,12 @@ The install root contains:
 - `resource/rpack03.dat`
 
 PATH did not expose Procmon, apitrace, RenderDoc, PIX, or procdump during this preparation.
+
+Current readiness blockers:
+
+- no file-IO capture tool found on PATH;
+- no D3D/render capture tool found on PATH;
+- no user-driven title boot run has been recorded in this workspace.
 
 ## Residual Gaps
 

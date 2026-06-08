@@ -187,9 +187,9 @@ Verified:
 Boundary: this is service-backed diagnostic boot only. It is not script VM execution, title UI,
 native behavior implementation, or gameplay.
 
-## Active Loop
-
 ### L6: Oracle Capture Execution
+
+Status: completed as oracle capture readiness on 2026-06-09. P1 title boot sampling remains incomplete.
 
 Deliver:
 
@@ -200,6 +200,19 @@ Acceptance:
 
 - title boot trace maps to `titlemenu.b64`.
 - save list/resource/audio/render observations are recorded or explicitly blocked.
+
+Verified:
+
+- `oracle_title_boot.py readiness` reports `can_launch_original_exe=true` and `safe_to_bypass_platform=false`.
+- Current blockers are explicit: no file-IO capture tool, no D3D/render capture tool, and no
+  user-driven title boot run recorded in this workspace.
+- `inspect`, `readiness`, `snapshot`, and `runbook` commands complete.
+- Python unittest suite passes 6/6.
+
+Boundary: P1 is not complete. No original-game process was launched and no title frame/file-IO/
+render/audio trace was sampled in this loop.
+
+## Active Loop
 
 ### L7: Title Script Execution
 

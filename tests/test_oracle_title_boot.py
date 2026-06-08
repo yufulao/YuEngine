@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.oracle_title_boot import build_snapshot, inspect_game
+from tools.oracle_title_boot import build_readiness, build_snapshot, inspect_game
 
 
 class OracleTitleBootTest(unittest.TestCase):
@@ -22,12 +22,16 @@ class OracleTitleBootTest(unittest.TestCase):
 
             inspection = inspect_game(root)
             snapshot = build_snapshot(root)
+            readiness = build_readiness(root)
 
         self.assertTrue(inspection["game_exe_exists"])
         self.assertTrue(inspection["steam_api_exists"])
         self.assertEqual(len(inspection["pack_files"]), 1)
         existing = [row for row in snapshot["install_files"] if row["exists"]]
         self.assertGreaterEqual(len(existing), 5)
+        self.assertTrue(readiness["can_launch_original_exe"])
+        self.assertFalse(readiness["safe_to_bypass_platform"])
+        self.assertIn("no user-driven title boot run has been recorded in this workspace", readiness["blockers"])
 
 
 if __name__ == "__main__":

@@ -173,6 +173,46 @@ def inspect_game(game_root: Path) -> dict[str, Any]:
     }
 
 
+def build_readiness(game_root: Path) -> dict[str, Any]:
+    inspection = inspect_game(game_root)
+    tool_rows = {row["name"]: row for row in inspection["capture_tools"]}
+    file_io_tools = ["procmon", "procmon64"]
+    render_tools = ["apitrace", "renderdoccmd", "pixwin"]
+    dump_tools = ["procdump"]
+
+    available_file_io = [name for name in file_io_tools if tool_rows.get(name, {}).get("available")]
+    available_render = [name for name in render_tools if tool_rows.get(name, {}).get("available")]
+    available_dump = [name for name in dump_tools if tool_rows.get(name, {}).get("available")]
+
+    blockers: list[str] = []
+    if not inspection["game_exe_exists"]:
+        blockers.append("original game executable is missing")
+    if not available_file_io:
+        blockers.append("no file-IO capture tool found on PATH")
+    if not available_render:
+        blockers.append("no D3D/render capture tool found on PATH")
+    blockers.append("no user-driven title boot run has been recorded in this workspace")
+
+    return {
+        "schema": "yuengine.oracle_title_boot.readiness.v1",
+        "game_root": inspection["game_root"],
+        "can_launch_original_exe": inspection["game_exe_exists"],
+        "requires_user_driven_launch": True,
+        "safe_to_bypass_platform": False,
+        "file_io_capture_tools": available_file_io,
+        "render_capture_tools": available_render,
+        "dump_capture_tools": available_dump,
+        "capture_tool_status": inspection["capture_tools"],
+        "blockers": blockers,
+        "non_blocked_preparation": [
+            "install and state snapshots can be recorded",
+            "runbook can be generated",
+            "manual title-frame observations can be recorded after user-driven launch",
+        ],
+        "p1_complete": False,
+    }
+
+
 def snapshot_tree(path: Path, hash_large: bool, limit_files: int) -> list[dict[str, Any]]:
     if not path.exists() or not path.is_dir():
         return []
@@ -304,6 +344,14 @@ def cmd_runbook(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_readiness(args: argparse.Namespace) -> int:
+    data = build_readiness(args.game_root)
+    if args.out:
+        write_json(args.out, data)
+    print(json.dumps(data, indent=2, ensure_ascii=False))
+    return 0
+
+
 def cmd_launch(args: argparse.Namespace) -> int:
     game_root = args.game_root.resolve()
     exe = game_root / "bin" / "game.exe"
@@ -354,6 +402,10 @@ def build_parser() -> argparse.ArgumentParser:
     runbook = sub.add_parser("runbook")
     runbook.add_argument("--out", type=Path, required=True)
     runbook.set_defaults(func=cmd_runbook)
+
+    readiness = sub.add_parser("readiness")
+    readiness.add_argument("--out", type=Path)
+    readiness.set_defaults(func=cmd_readiness)
 
     launch = sub.add_parser("launch")
     launch.add_argument("--duration", type=float, default=20.0)
