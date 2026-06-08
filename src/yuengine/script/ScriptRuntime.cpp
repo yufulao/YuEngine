@@ -2,6 +2,7 @@
 
 #include "yuengine/core/Json.h"
 
+#include <algorithm>
 #include <cstring>
 #include <map>
 #include <set>
@@ -45,6 +46,12 @@ enum class ScriptValueKind {
     SaveEntry,
 };
 
+enum class Truthiness {
+    Unknown,
+    False,
+    True,
+};
+
 struct ScriptValue {
     ScriptValueKind kind = ScriptValueKind::Unknown;
     std::string text;
@@ -54,6 +61,12 @@ struct ScriptValue {
     bool boolValue = false;
     int tableId = -1;
     int functionOrdinal = -1;
+};
+
+struct BytecodeStateResult {
+    std::set<int> executedCallPcs;
+    int executedInstructions = 0;
+    bool controlFlowUnknown = false;
 };
 
 struct RuntimeObject {
@@ -405,41 +418,88 @@ bool numericValue(const ScriptValue& value, double& out)
     return false;
 }
 
-bool valuesEqual(const ScriptValue& lhs, const ScriptValue& rhs)
+bool parseNumberText(const std::string& text, double& out)
+{
+    if (text.empty()) {
+        return false;
+    }
+    try {
+        size_t parsed = 0;
+        out = std::stod(text, &parsed);
+        return parsed == text.size();
+    } catch (...) {
+        return false;
+    }
+}
+
+int signedBytecodeDelta(int encoded)
+{
+    return encoded > 127 ? encoded - 256 : encoded;
+}
+
+ScriptValue tableKeyValue(const std::string& key)
+{
+    try {
+        size_t parsed = 0;
+        const int value = std::stoi(key, &parsed);
+        if (parsed == key.size()) {
+            return intValue(value);
+        }
+    } catch (...) {
+    }
+    return stringValue(key);
+}
+
+Truthiness equalityTruthiness(const ScriptValue& lhs, const ScriptValue& rhs)
 {
     double lhsNumber = 0.0;
     double rhsNumber = 0.0;
     if (numericValue(lhs, lhsNumber) && numericValue(rhs, rhsNumber)) {
-        return lhsNumber == rhsNumber;
+        return lhsNumber == rhsNumber ? Truthiness::True : Truthiness::False;
     }
     if (lhs.kind == ScriptValueKind::Bool && rhs.kind == ScriptValueKind::Bool) {
-        return lhs.boolValue == rhs.boolValue;
+        return lhs.boolValue == rhs.boolValue ? Truthiness::True : Truthiness::False;
     }
     if ((lhs.kind == ScriptValueKind::String || lhs.kind == ScriptValueKind::Expression)
         && (rhs.kind == ScriptValueKind::String || rhs.kind == ScriptValueKind::Expression)) {
-        return lhs.text == rhs.text;
+        return lhs.text == rhs.text ? Truthiness::True : Truthiness::False;
     }
     if (lhs.kind == ScriptValueKind::Null || rhs.kind == ScriptValueKind::Null) {
-        return lhs.kind == rhs.kind;
+        return lhs.kind == rhs.kind ? Truthiness::True : Truthiness::False;
     }
-    return false;
+    return Truthiness::Unknown;
+}
+
+bool valuesEqual(const ScriptValue& lhs, const ScriptValue& rhs)
+{
+    return equalityTruthiness(lhs, rhs) == Truthiness::True;
+}
+
+Truthiness valueTruthiness(const ScriptValue& value)
+{
+    switch (value.kind) {
+    case ScriptValueKind::Unknown:
+    case ScriptValueKind::Expression:
+    case ScriptValueKind::Parameter:
+        return Truthiness::Unknown;
+    case ScriptValueKind::Null:
+        return Truthiness::False;
+    case ScriptValueKind::Bool:
+        return value.boolValue ? Truthiness::True : Truthiness::False;
+    case ScriptValueKind::Int:
+        return value.intValue != 0 ? Truthiness::True : Truthiness::False;
+    case ScriptValueKind::Float:
+        return value.numberValue != 0.0 ? Truthiness::True : Truthiness::False;
+    case ScriptValueKind::String:
+        return value.text.empty() ? Truthiness::False : Truthiness::True;
+    default:
+        return Truthiness::True;
+    }
 }
 
 bool truthyValue(const ScriptValue& value)
 {
-    switch (value.kind) {
-    case ScriptValueKind::Unknown:
-    case ScriptValueKind::Null:
-        return false;
-    case ScriptValueKind::Bool:
-        return value.boolValue;
-    case ScriptValueKind::Int:
-        return value.intValue != 0;
-    case ScriptValueKind::Float:
-        return value.numberValue != 0.0;
-    default:
-        return true;
-    }
+    return valueTruthiness(value) == Truthiness::True;
 }
 
 ScriptValue arithmeticValue(const ScriptValue& lhs, const ScriptValue& rhs, int op)
@@ -900,7 +960,15 @@ bool isBuiltinCall(const std::string& name)
 
 bool isSquirrelValueMethod(const std::string& name)
 {
-    static const std::set<std::string> methods = {"count", "get", "isActive", "toPoint", "toAbsPos"};
+    static const std::set<std::string> methods = {
+        "count",
+        "get",
+        "isActive",
+        "toAbsPos",
+        "tofloat",
+        "tointeger",
+        "toPoint",
+    };
     return methods.find(name) != methods.end();
 }
 
@@ -1197,6 +1265,31 @@ private:
         return {};
     }
 
+    ScriptValue lookupRootSlot(const std::string& keyText) const
+    {
+        const auto rootSlot = rootFields_.find(keyText);
+        if (rootSlot != rootFields_.end()) {
+            return rootSlot->second;
+        }
+        const FunctionSlotBinding* functionSlot = findFunctionSlot(functionSlots_, keyText);
+        if (functionSlot) {
+            return functionValue(functionSlot->functionName, functionSlot->functionOrdinal);
+        }
+        if (hasClass(methodBindings_, keyText)) {
+            return classValue(keyText);
+        }
+        if (registry_.find(keyText) || isValueHelperCall(keyText)) {
+            return nativeFunctionValue(keyText);
+        }
+        if (isSquirrelValueMethod(keyText)) {
+            return valueMethodValue(keyText, keyText);
+        }
+        if (keyText == "modMenu" || keyText == "modShop") {
+            return nullValue();
+        }
+        return {};
+    }
+
     ScriptValue lookupValue(const ScriptValue& target, const ScriptValue& key) const
     {
         const std::string keyText = slotKey(key);
@@ -1205,24 +1298,7 @@ private:
         }
 
         if (target.kind == ScriptValueKind::Root) {
-            const auto rootSlot = rootFields_.find(keyText);
-            if (rootSlot != rootFields_.end()) {
-                return rootSlot->second;
-            }
-            const FunctionSlotBinding* functionSlot = findFunctionSlot(functionSlots_, keyText);
-            if (functionSlot) {
-                return functionValue(functionSlot->functionName, functionSlot->functionOrdinal);
-            }
-            if (hasClass(methodBindings_, keyText)) {
-                return classValue(keyText);
-            }
-            if (registry_.find(keyText) || isValueHelperCall(keyText)) {
-                return nativeFunctionValue(keyText);
-            }
-            if (isSquirrelValueMethod(keyText)) {
-                return valueMethodValue(keyText, target.text);
-            }
-            return {};
+            return lookupRootSlot(keyText);
         }
 
         if (target.kind == ScriptValueKind::Object) {
@@ -1245,7 +1321,7 @@ private:
             if (isUiObjectMethod(keyText)) {
                 return uiMethodValue(keyText, target.text);
             }
-            return {};
+            return lookupRootSlot(keyText);
         }
 
         if (target.kind == ScriptValueKind::Class) {
@@ -1272,27 +1348,27 @@ private:
 
         if (target.kind == ScriptValueKind::SaveList) {
             if (keyText == "count" || keyText == "get") {
-                return valueMethodValue(keyText, target.text);
+                return valueMethodValue(keyText, valueSummary(target));
             }
             return {};
         }
 
         if (target.kind == ScriptValueKind::SaveEntry) {
             if (keyText == "isActive") {
-                return valueMethodValue(keyText, target.text);
+                return valueMethodValue(keyText, valueSummary(target));
             }
             return {};
         }
 
         if (target.kind == ScriptValueKind::Vector2) {
             if (keyText == "toPoint" || keyText == "toAbsPos") {
-                return valueMethodValue(keyText, target.text);
+                return valueMethodValue(keyText, valueSummary(target));
             }
             return {};
         }
 
         if (isSquirrelValueMethod(keyText)) {
-            return valueMethodValue(keyText, target.text);
+            return valueMethodValue(keyText, valueSummary(target));
         }
         if (registry_.find(keyText) || isValueHelperCall(keyText)) {
             return nativeFunctionValue(keyText, target.text);
@@ -1465,6 +1541,15 @@ private:
             }
             return recordTypedReturn(vector2Value(name + "(" + callable.receiver + ")"));
         }
+        if (name == "tofloat" || name == "tointeger") {
+            double data = 0.0;
+            if (!parseNumberText(callable.receiver, data)) {
+                return {};
+            }
+            return name == "tofloat"
+                ? recordTypedReturn(floatValue(data))
+                : recordTypedReturn(intValue(static_cast<int>(data)));
+        }
         if (name == "GetSaveList") {
             recordServiceState("Save/Profile/Scenario Service", name, "query_empty_save_list", "save_list",
                 "entries=0", function, instruction,
@@ -1566,14 +1651,18 @@ private:
         return {};
     }
 
-    void executeBytecodeState(
+    BytecodeStateResult executeBytecodeState(
         const SqasmFunction& function,
         const std::string& ownerObject,
         const std::string& ownerClass)
     {
+        BytecodeStateResult result;
         if (report_) {
             ++report_->bytecodeStateFunctions;
-            report_->bytecodeStateInstructions += static_cast<int>(function.instructions.size());
+        }
+        std::map<int, size_t> instructionIndexByPc;
+        for (size_t i = 0; i < function.instructions.size(); ++i) {
+            instructionIndexByPc[function.instructions[i].pc] = i;
         }
         const size_t registerCount =
             static_cast<size_t>((function.stack > 0 ? function.stack : 0) + 16);
@@ -1599,6 +1688,55 @@ private:
             }
             return arguments;
         };
+        auto jumpTargetPc = [](const SqasmInstruction& instruction) {
+            if (instruction.target >= 0) {
+                return instruction.target;
+            }
+            return instruction.pc + argValue(instruction, "a1", 0) + 1;
+        };
+        auto jumpTo = [&](int targetPc, size_t& instructionIndex) {
+            const auto found = instructionIndexByPc.find(targetPc);
+            if (found == instructionIndexByPc.end()) {
+                instructionIndex = function.instructions.size();
+                return;
+            }
+            instructionIndex = found->second;
+        };
+        auto recordUnknownBranch = [&](const SqasmInstruction& instruction, const ScriptValue& condition) {
+            result.controlFlowUnknown = true;
+            recordEvent({"control_flow_unknown", function.name, function.ordinal, ownerObject, ownerClass,
+                instruction.op, describeValue(condition), "bytecode_control_flow", {}, instruction.sourceLine,
+                instruction.pc, "branch condition is not concrete yet; following fallthrough path only"});
+        };
+        auto foreachItems = [&](const ScriptValue& container) {
+            std::vector<std::pair<std::string, ScriptValue>> items;
+            if (container.kind == ScriptValueKind::Table) {
+                const auto table = runtimeTables_.find(container.tableId);
+                if (table != runtimeTables_.end()) {
+                    for (const auto& field : table->second.fields) {
+                        items.push_back(field);
+                    }
+                }
+            } else if (container.kind == ScriptValueKind::Object) {
+                const auto object = runtimeObjects_.find(container.text);
+                if (object != runtimeObjects_.end()) {
+                    for (const auto& field : object->second.fields) {
+                        items.push_back(field);
+                    }
+                }
+            }
+            return items;
+        };
+        auto foreachExitIndex = [&](size_t foreachIndex) {
+            const int foreachPc = function.instructions[foreachIndex].pc;
+            for (size_t n = foreachIndex + 1; n < function.instructions.size(); ++n) {
+                const auto& candidate = function.instructions[n];
+                if (candidate.op == "_OP_JMP" && jumpTargetPc(candidate) == foreachPc) {
+                    return n + 1;
+                }
+            }
+            return function.instructions.size();
+        };
 
         if (ownerObject.empty()) {
             setRegister(0, rootValue());
@@ -1610,16 +1748,72 @@ private:
             setRegister(static_cast<int>(i), parameterValue(function.parameters[i]));
         }
 
-        for (size_t i = 0; i < function.instructions.size(); ++i) {
-            const auto& instruction = function.instructions[i];
-            if (ownerClass == "ModuleTitle" && function.name == "main" && instruction.pc > 13) {
+        size_t i = 0;
+        std::map<int, size_t> foreachCursorByPc;
+        const size_t maxInstructionExecutions =
+            std::max<size_t>(512, function.instructions.size() * 16);
+        while (i < function.instructions.size()) {
+            if (static_cast<size_t>(result.executedInstructions) >= maxInstructionExecutions) {
+                if (report_) {
+                    report_->truncated = true;
+                }
+                recordEvent({"bytecode_state_truncated", function.name, function.ordinal, ownerObject, ownerClass,
+                    {}, {}, "bytecode_control_flow", {}, -1, -1,
+                    "instruction execution limit reached while following bytecode control flow"});
                 break;
             }
+            const auto& instruction = function.instructions[i];
+            ++result.executedInstructions;
 
             const int a0 = argValue(instruction, "a0", -1);
             const int a1 = argValue(instruction, "a1", -1);
             const int a2 = argValue(instruction, "a2", -1);
             const int a3 = argValue(instruction, "a3", -1);
+
+            if (instruction.op == "_OP_JMP") {
+                jumpTo(jumpTargetPc(instruction), i);
+                continue;
+            }
+            if (instruction.op == "_OP_JZ" || instruction.op == "_OP_JNZ") {
+                const ScriptValue condition = getRegister(a0);
+                const Truthiness truth = valueTruthiness(condition);
+                if (truth == Truthiness::Unknown) {
+                    recordUnknownBranch(instruction, condition);
+                    ++i;
+                    continue;
+                }
+                const bool shouldJump = instruction.op == "_OP_JZ"
+                    ? truth == Truthiness::False
+                    : truth == Truthiness::True;
+                if (shouldJump) {
+                    jumpTo(jumpTargetPc(instruction), i);
+                } else {
+                    ++i;
+                }
+                continue;
+            }
+            if (instruction.op == "_OP_RETURN") {
+                break;
+            }
+            if (instruction.op == "_OP_FOREACH") {
+                const auto items = foreachItems(getRegister(a0));
+                size_t& cursor = foreachCursorByPc[instruction.pc];
+                if (cursor >= items.size()) {
+                    foreachCursorByPc.erase(instruction.pc);
+                    i = foreachExitIndex(i);
+                    continue;
+                }
+                const auto& item = items[cursor++];
+                setRegister(a1, intValue(static_cast<int>(cursor)));
+                setRegister(a2, tableKeyValue(item.first));
+                setRegister(a2 + 1, item.second);
+                ++i;
+                continue;
+            }
+            if (instruction.op == "_OP_POSTFOREACH") {
+                ++i;
+                continue;
+            }
 
             if (instruction.op == "_OP_LOAD") {
                 setRegister(a0, stringValue(literalValueByIndex(function, a1)));
@@ -1650,16 +1844,37 @@ private:
             } else if (instruction.op == "_OP_ARITH") {
                 setRegister(a0, arithmeticValue(getRegister(a2), getRegister(a1), a3));
             } else if (instruction.op == "_OP_EQ") {
-                setRegister(a0, boolValue(valuesEqual(getRegister(a2), getRegister(a1))));
+                const Truthiness truth = equalityTruthiness(getRegister(a2), getRegister(a1));
+                if (truth == Truthiness::Unknown) {
+                    setRegister(a0, expressionValue(valueSummary(getRegister(a2)) + " == "
+                        + valueSummary(getRegister(a1))));
+                } else {
+                    setRegister(a0, boolValue(truth == Truthiness::True));
+                }
             } else if (instruction.op == "_OP_NE") {
-                setRegister(a0, boolValue(!valuesEqual(getRegister(a2), getRegister(a1))));
+                const Truthiness truth = equalityTruthiness(getRegister(a2), getRegister(a1));
+                if (truth == Truthiness::Unknown) {
+                    setRegister(a0, expressionValue(valueSummary(getRegister(a2)) + " != "
+                        + valueSummary(getRegister(a1))));
+                } else {
+                    setRegister(a0, boolValue(truth == Truthiness::False));
+                }
             } else if (instruction.op == "_OP_NOT") {
-                setRegister(a0, boolValue(!truthyValue(getRegister(a1))));
+                const Truthiness truth = valueTruthiness(getRegister(a1));
+                if (truth == Truthiness::Unknown) {
+                    setRegister(a0, expressionValue("!(" + valueSummary(getRegister(a1)) + ")"));
+                } else {
+                    setRegister(a0, boolValue(truth == Truthiness::False));
+                }
             } else if (instruction.op == "_OP_CMP") {
                 double lhs = 0.0;
                 double rhs = 0.0;
-                setRegister(a0, boolValue(numericValue(getRegister(a2), lhs) && numericValue(getRegister(a1), rhs)
-                    && lhs > rhs));
+                if (numericValue(getRegister(a2), lhs) && numericValue(getRegister(a1), rhs)) {
+                    setRegister(a0, boolValue(lhs > rhs));
+                } else {
+                    setRegister(a0, expressionValue(valueSummary(getRegister(a2)) + " > "
+                        + valueSummary(getRegister(a1))));
+                }
             } else if (instruction.op == "_OP_EXISTS") {
                 const ScriptValue table = getRegister(a2);
                 const std::string key = slotKey(getRegister(a1));
@@ -1701,9 +1916,27 @@ private:
             } else if (instruction.op == "_OP_SET") {
                 assignSlot(getRegister(a1), getRegister(a2), getRegister(a3));
                 setRegister(a0, getRegister(a3));
+            } else if (instruction.op == "_OP_INCL") {
+                double data = 0.0;
+                if (numericValue(getRegister(a1), data)) {
+                    const int delta = signedBytecodeDelta(a3);
+                    const double next = data + static_cast<double>(delta);
+                    setRegister(a0, floatValue(next));
+                    setRegister(a1, floatValue(next));
+                }
+            } else if (instruction.op == "_OP_PINC" || instruction.op == "_OP_PINCL") {
+                const ScriptValue target = getRegister(a0);
+                const ScriptValue key = getRegister(a2);
+                const ScriptValue current = lookupValue(target, key);
+                double data = 0.0;
+                if (numericValue(current, data)) {
+                    const int delta = signedBytecodeDelta(a3);
+                    assignSlot(target, key, floatValue(data + static_cast<double>(delta)));
+                }
             } else if (instruction.op == "_OP_NEWSLOT" || instruction.op == "_OP_NEWSLOTA") {
                 assignSlot(getRegister(a1), getRegister(a2), getRegister(a3));
             } else if (instruction.op == "_OP_PREPCALL" || instruction.op == "_OP_PREPCALLK") {
+                result.executedCallPcs.insert(instruction.pc);
                 const ScriptValue target = getRegister(a2);
                 const ScriptValue key =
                     instruction.op == "_OP_PREPCALLK" ? stringValue(literalValueByIndex(function, a1))
@@ -1723,12 +1956,17 @@ private:
                 setRegister(a0, callable);
             } else if (instruction.op == "_OP_CALL" || instruction.op == "_OP_TAILCALL") {
                 const auto arguments = getCallArguments(a2, a3);
-                const ScriptValue result = makeCallReturn(function, instruction, getRegister(a1), arguments);
-                if (isKnownValue(result)) {
-                    setRegister(a0, result);
+                const ScriptValue callResult = makeCallReturn(function, instruction, getRegister(a1), arguments);
+                if (isKnownValue(callResult)) {
+                    setRegister(a0, callResult);
                 }
             }
+            ++i;
         }
+        if (report_) {
+            report_->bytecodeStateInstructions += result.executedInstructions;
+        }
+        return result;
     }
 
     void constructObject(
@@ -1866,28 +2104,13 @@ private:
             return;
         }
 
-        bool recordedMainSkip = false;
-        executeBytecodeState(function, ownerObject, ownerClass);
+        const BytecodeStateResult bytecodeState = executeBytecodeState(function, ownerObject, ownerClass);
         for (const auto& call : function.calls) {
-            if (shouldSkipForBootState(function, ownerClass, call)) {
-                if (!recordedMainSkip) {
-                    recordEvent({"skip_boot_state_branch", function.name, function.ordinal, ownerObject, ownerClass,
-                        call.name, {}, "control_flow_deferred", {}, call.sourceLine, call.pc,
-                        "ModuleTitle._nextState == 300 boot edge; later state branches require value VM"});
-                    recordedMainSkip = true;
-                }
+            if (bytecodeState.executedCallPcs.find(call.pc) == bytecodeState.executedCallPcs.end()) {
                 continue;
             }
             resolveAndExecuteCall(function, ownerObject, ownerClass, call, depth + 1);
         }
-    }
-
-    bool shouldSkipForBootState(
-        const SqasmFunction& function,
-        const std::string& ownerClass,
-        const SqasmCall& call) const
-    {
-        return ownerClass == "ModuleTitle" && function.name == "main" && call.pc > 13;
     }
 
     void resolveAndExecuteCall(

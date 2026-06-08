@@ -268,7 +268,7 @@ Progress:
 - `modTitle` is bound to `ModuleTitle` through root object construction evidence.
 - `setupProc -> modTitle.init` resolves to `ModuleTitle.init`, function ordinal `78`.
 - name-only ambiguity among `init` ordinals `15, 30, 61, 78` is removed for this entry.
-- `yuengine_cli script-run` executes the original title boot-edge call trace:
+- `yuengine_cli script-run` executes the original title boot path:
   - `modTitle -> ModuleTitle`;
   - `modTitle._scenes[0] -> TitleScene`;
   - `modTitle._scenes[1] -> NewGameScene`;
@@ -279,43 +279,51 @@ Progress:
   - optional first boot-frame `main` wrapper with `--frames 1`.
 - `gMenu.continueDisabled` and `gMenu.savesIsEmpty` resolve through recovered root object method
   slots before native/API dispatch.
-- Current title trace reaches 12 native/API obligations across 6 APIs: `FadeIn`, `PlayBGM`,
-  `MenuObject`, `GetSaveList`, `IsFreeDemo`, and `IsOverDemo`.
+- Current title trace reaches 10 native/API obligations across 5 APIs: `FadeIn`, `PlayBGM`,
+  `MenuObject`, `GetSaveList`, and `IsFreeDemo`. `IsOverDemo` is no longer counted on this path
+  because branch-aware execution does not enter the later unselected branch.
 - Current title trace has 0 unresolved calls after runtime gap classification:
   - 12 engine object calls;
   - 21 UI helper object calls;
   - 8 value helper calls;
-  - 16 value method calls;
+  - 8 value method calls;
   - 1 Module lifecycle hook.
 - `script-run --frames 1` now executes a scoped multi-module bytecode state pass over the title
-  boot edge with 2 baseline modules: `preload.b64` and `script/menu/menudef.b64`.
+  boot path with 2 baseline modules: `preload.b64` and `script/menu/menudef.b64`.
+- The bytecode state pass is PC-branch aware for `_OP_JZ/_OP_JNZ/_OP_JMP`, handles
+  `_OP_FOREACH/_OP_POSTFOREACH` for the title `_scenes` loop, and has
+  `control_flow_unknown=0`, `unresolved_calls=0`, `truncated=false`.
+- Method-context object lookup now falls back to root/global slots, so original bytecode resolves
+  `gMenu` from `ModuleTitle.main` without a hard-coded shortcut.
 - `_OP_NEWSLOT/_OP_NEWSLOTA` now follow slot-write semantics and no longer overwrite register
   `a0`; this is required for `menudef` to publish `ModuleBase` into the root table.
 - `ModuleTitle : ModuleBase` now inherits `ModuleBase._fadeInTime`; `FadeIn` decodes as
   `duration=0.7; blend=0`.
 - Current state counters:
   - 38 state-scanned functions;
-  - 4,087 state-scanned instructions;
+  - 3,627 state-scanned instructions;
   - 31 root slot writes;
   - 405 class slot writes;
-  - 132 object field writes;
-  - 213 table slot writes;
-  - 150 typed call returns;
-  - 15 UI object mutations.
+  - 121 object field writes;
+  - 198 table slot writes;
+  - 144 typed call returns;
+  - 0 UI object mutations.
 - Service state events now expose the first concrete runtime contracts without fabricating
   unresolved arguments:
-  - 67 service state events;
+  - 57 service state events;
   - 4 save/profile queries;
-  - 4 platform state queries;
+  - 2 platform state queries;
   - 1 audio command;
   - 1 scene fade command;
-  - 21 tracked UI objects;
+  - 20 tracked UI objects;
   - 24 UI service commands;
-  - 12 save/value state queries.
-  - 6 decoded service argument payloads.
+  - 4 save/value state queries.
+  - 2 decoded service argument payloads.
 
 Current next edge:
 
+- move report-only bytecode state into runtime-owned service state for `gMenu`, title scenes,
+  UI helper objects, save/profile, platform flags, audio, and fade state;
 - finish argument payload decoding for the current service state events, especially `MenuObject`,
   `_menuWindow`, `_listWindow`, `setSelectCursor`, `bl/tr`, `float2`, and `renderHorizontal`;
 - move the reported save/profile, platform, audio, scene fade, and UI helper contracts into

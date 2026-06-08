@@ -2,9 +2,11 @@
 
 Status: active. Title entry bytecode-state checkpoint completed on 2026-06-09.
 
-This document tracks L7. The current implementation executes a branch-aware boot-edge call trace
-from original `.sqasm` and now runs a scoped multi-module bytecode state pass for the title boot
-edge. It is still not a full Squirrel VM, title UI, or gameplay runtime.
+This document tracks L7. The current implementation executes original `.sqasm` with a scoped
+multi-module bytecode state pass for the title boot path. It is now PC-branch aware for
+`_OP_JZ/_OP_JNZ/_OP_JMP`, handles `_OP_FOREACH/_OP_POSTFOREACH` table iteration for the title
+scene list, and no longer relies on a hard stop inside `ModuleTitle.main`. It is still not a full
+Squirrel VM, title UI, or gameplay runtime.
 
 ## Implemented So Far
 
@@ -42,6 +44,9 @@ edge. It is still not a full Squirrel VM, title UI, or gameplay runtime.
   - Module lifecycle hooks.
 - Bytecode state pass for the executed title boot edge:
   - register slots for the recovered functions;
+  - PC-indexed branch execution for `_OP_JZ`, `_OP_JNZ`, `_OP_JMP`, and `_OP_RETURN`;
+  - table/object foreach execution for the title `_scenes` init loop;
+  - method-context object lookup fallback to root/global slots so original bytecode resolves `gMenu`;
   - root/class/object/table slot writes;
   - class default materialization onto constructed script objects;
   - corrected `_OP_NEWSLOT/_OP_NEWSLOTA` semantics: these write slots but do not overwrite
@@ -126,45 +131,48 @@ baseline_modules=2
 constructed_objects=5
 script_methods=29
 script_functions=5
-builtin_calls=1
-native_obligations=12
+builtin_calls=3
+native_obligations=10
 native_implemented_calls=0
-unique_native_apis=6
+unique_native_apis=5
 engine_object_calls=12
 ui_object_calls=21
 value_helper_calls=8
-value_method_calls=16
+value_method_calls=8
 module_lifecycle_calls=1
 bytecode_state_functions=38
-bytecode_state_instructions=4087
+bytecode_state_instructions=3627
 root_slot_writes=31
 class_slot_writes=405
-object_field_writes=132
-table_slot_writes=213
-typed_call_returns=150
-ui_object_mutations=15
-service_state_events=67
+object_field_writes=121
+table_slot_writes=198
+typed_call_returns=144
+ui_object_mutations=0
+service_state_events=57
 save_service_queries=4
-platform_state_queries=4
+platform_state_queries=2
 audio_service_commands=1
 scene_service_commands=1
-ui_objects_tracked=21
+ui_objects_tracked=20
 ui_service_commands=24
-value_state_queries=12
-decoded_service_arguments=6
-optional_unbound_globals=4
+value_state_queries=4
+decoded_service_arguments=2
+optional_unbound_globals=0
 unresolved_calls=0
 truncated=false
 status=trace_ready_not_full_vm
 ```
 
-`unresolved_calls=0` means every call in the current trace has a runtime category. The new
-bytecode-state counters prove the runtime is now carrying original script state through the boot
-edge with the preload/menudef/title module baseline. Service state counters now expose the first
-concrete runtime contracts for save/profile, platform, audio, scene fade, and UI helper calls.
+`unresolved_calls=0`, `control_flow_unknown=0`, and `truncated=false` mean every call in the
+current trace has a runtime category, and the title boot path no longer depends on linear
+branch scanning. The bytecode-state counters prove the runtime is now carrying original script
+state through the boot edge with the preload/menudef/title module baseline. Service state counters
+now expose the first concrete runtime contracts for save/profile, platform, audio, scene fade, and
+UI helper calls.
 `FadeIn` is now decoded through inherited `ModuleBase._fadeInTime` from `menudef` as
-`duration=0.7; blend=0`. Real UI command geometry/text and later branch correctness are still not
-complete.
+`duration=0.7; blend=0`. `IsOverDemo` is no longer counted for this path because branch-aware
+execution does not enter the later unselected branch that previously polluted the trace. Real UI
+command geometry/text and later state transitions are still not complete.
 
 Constructed original script objects:
 
@@ -184,7 +192,6 @@ PlayBGM -> Audio Service
 MenuObject -> UI And 2D Render Service
 GetSaveList -> Save/Profile/Scenario Service
 IsFreeDemo -> Platform Service
-IsOverDemo -> Platform Service
 ```
 
 `gMenu.continueDisabled` and `gMenu.savesIsEmpty` are now resolved as root object script
@@ -206,17 +213,20 @@ Python unittest: 6/6 passed
 
 ## Remaining L7 Work
 
-- Branch/value correctness for `ModuleTitle.main` beyond the `_nextState == 300` boot edge.
+- Advance `ModuleTitle.main` from the boot state into later real state transitions
+  (`_nextState == 200/100/scene dispatch`) without reintroducing linear branch pollution.
 - Convert current classified categories and typed placeholders into concrete service behavior:
   - 12 engine object calls;
   - 21 UI helper object calls;
   - 8 value helper calls;
-  - 16 value methods;
+  - 8 value methods;
   - 1 Module lifecycle hook.
+- Move report-only bytecode state into runtime-owned service state for `gMenu`, title scenes,
+  UI helper objects, save/profile, platform flags, audio, and fade state.
 - UI command buffer for helper objects such as `_menuWindow`, `_listWindow`, and `MenuObject`.
 - Finish decoding argument payloads for `MenuObject`, `_menuWindow`, `_listWindow`,
   `setSelectCursor`, `bl`, `tr`, and `renderHorizontal` into real UI command data.
-- Expand typed service behavior for `GetSaveList`, `IsFreeDemo`, `IsOverDemo`, `FadeIn`, `PlayBGM`,
+- Expand typed service behavior for `GetSaveList`, `IsFreeDemo`, `FadeIn`, `PlayBGM`,
   and `MenuObject` from reported contracts into runtime-owned services.
 - Save/new-game transition through `MakeNewGame` and `StartGame`.
 - UI/render command buffer sourced from original script calls, not handwritten UI.
