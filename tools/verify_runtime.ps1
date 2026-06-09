@@ -14,7 +14,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$currentEdgeContract = "yuengine_backend_font_atlas_contract"
+$currentEdgeContract = "yuengine_backend_material_program_contract"
 
 function Invoke-Checked {
     param(

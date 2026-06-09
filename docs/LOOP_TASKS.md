@@ -1495,26 +1495,59 @@ Boundary:
 
 ### L36: Material Program, Lightmap, And Depth Closure
 
-Status: active after L35.
+Status: completed as backend material-program evidence checkpoint on 2026-06-09, with exact
+selector/depth implementation deliberately still tracked-open.
 
 Deliver:
 
-- recover exact material program/pass ownership for scene mesh draws without guessing from filename
-  suffixes;
-- bind the `ki:tree` lightmap material slot only when its program/pass and `SamplerLight` ownership
-  are proven;
-- recover or implement the sampleable depth texture path separately from the D24S8 depth/stencil
-  surface;
+- turn material program ownership from a loose open gate into per-material records driven by original
+  material blocks, texture-role patterns, `.bfx` CTAB tokens, and renderer profile evidence;
+- bind the `ki:tree` lightmap material slot only when its selected program and `SamplerLight`
+  ownership are proven;
+- prove whether the shipped resources contain a sampleable depth texture path separately from the
+  D24S8 depth/stencil surface;
 - keep draw/present/capture/oracle deferred until these gates close.
 
 Acceptance:
 
-- material program evidence must connect stage material/mesh ownership to recovered `.bfx`
-  technique/pass data;
-- lightmap binding must consume the lone material lightmap slot and recovered `SamplerLight` tokens;
-- depth sampling must not treat the existing D24S8 depth/stencil surface as shader-readable without
-  a proven copy/texture path;
-- CTest must lock ready/open accounting and continue preventing draw execution.
+- `yuengine_cli backend-material-program samples/touhou_new_world/project.json --repo-root .`
+  reports `material_program_rule_selection_ready=true`,
+  `material_sampler_slot_closure_ready=true`, `lightmap_program_binding_ready=true`, and
+  `sampleable_depth_negative_evidence_ready=true`;
+- CTest `yuengine_backend_material_program_contract` locks 16 material program records, 16 original
+  material block scans, 0 material shader/pass token hits, 12 `deferred`, 2 `deferredGrass`, and 2
+  `deferredMulti` program records, 39/39 resolved sampler slots, 1 `SamplerLight` binding, 1 SMAA
+  depth technique pass, 0 sampleable-depth format tokens, and ready/open accounting of 8 resolved
+  and 4 tracked-open obligations;
+- exact original C++ program selector function, sampleable depth implementation,
+  draw/present/capture/oracle remain tracked-open.
+
+Boundary:
+
+- L36 records per-material rule-derived shader choices; it does not claim the original C++ selector
+  function has been recovered;
+- L36 binds `ki:tree` to `SamplerLight` through selected deferred CTAB evidence;
+- L36 does not treat `depthTex2D` as sampleable;
+- L36 does not issue draw/present/capture/oracle calls.
+
+### L36b: Exact Selector And Sampleable Depth Before Draw
+
+Status: active after L36.
+
+Deliver:
+
+- recover the exact original material selector function or a stronger binary-level equivalent for
+  the deferred/deferredGrass/deferredMulti rule;
+- recover the real sampleable depth path, or prove that the runtime uses a non-depth SMAA path for
+  this frame before allowing draw;
+- keep draw/present/capture/oracle deferred until exact selector and depth ownership are closed.
+
+Acceptance:
+
+- no selected program record may rely only on filename or material-name guesswork;
+- the depth path must name a concrete texture format/copy path or a concrete pass selection that
+  avoids `depthTex`;
+- CTest must continue locking ready/open accounting.
 
 ## Stop Conditions
 
@@ -1558,9 +1591,11 @@ Use `-CleanBuild` after C++ header, ABI-like struct, or build-system changes. Ba
 `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs only the smoke validate
 test, not the aggregate suite, not the current deepest edge, and not the old per-contract process
 path. Configure `-DYUENGINE_CTEST_MODE=EDGE` only when CTest integration for the current deepest
-contract must be checked. Legacy per-contract CTest requires both `-DYUENGINE_CTEST_MODE=LEGACY`
-and `-DYUENGINE_ENABLE_LEGACY_CTESTS=ON`; a stale LEGACY cache value without the opt-in is forced
-back to FAST smoke.
+contract must be checked, and pair it with `-DYUENGINE_ENABLE_SLOW_CTESTS=ON`. Full aggregate
+CTest has the same slow-test opt-in. Legacy per-contract CTest requires
+`-DYUENGINE_ENABLE_SLOW_CTESTS=ON`, `-DYUENGINE_CTEST_MODE=LEGACY`, and
+`-DYUENGINE_ENABLE_LEGACY_CTESTS=ON`; stale EDGE/FULL/LEGACY cache values without the slow-test
+opt-in are forced back to FAST smoke.
 
 Current measured speed after caching and scene reuse:
 
@@ -1569,8 +1604,8 @@ Current measured speed after caching and scene reuse:
   about 0.06 seconds.
 - `tools\verify_runtime.ps1 -NoBuild`: after the smoke split, smoke validate plus Python unittest
   and `git diff --check`, about 0.354 seconds.
-- `tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck`: current deepest L35
-  edge filter, elapsed_ms=42290, outer measurement about 42.458 seconds.
+- `tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck`: current deepest L36
+  edge filter, elapsed_ms=42281.
 - `yuengine_backend_device_creation_contract`: 1/1 CTest passed in 21.88 seconds.
 - `yuengine_backend_resource_creation_contract`: 1/1 CTest passed in about 22 seconds.
 - `yuengine_backend_upload_binding_contract`: 1/1 CTest passed in about 25 seconds.
@@ -1592,5 +1627,8 @@ Current measured speed after caching and scene reuse:
 - `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: after L35, clean build, Python
   unittest, 41/41 contracts, and `git diff --check` passed in about 93.6 seconds; runtime suite
   elapsed_ms=69923.
+- `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: after L36, clean build, Python
+  unittest, 42/42 contracts, and `git diff --check` passed in about 138 seconds; runtime suite
+  elapsed_ms=114358.
 - direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.
-- direct `runtime-contract-suite`: 41/41 contracts after L35.
+- direct `runtime-contract-suite`: 42/42 contracts after L36 material-program checkpoint.

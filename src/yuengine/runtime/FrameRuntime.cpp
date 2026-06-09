@@ -187,6 +187,12 @@ void addError(BackendFontAtlasRuntimeReport& report, const std::string& message)
     report.errors.push_back(message);
 }
 
+void addError(BackendMaterialProgramRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -3165,6 +3171,188 @@ int countMaterialProgramTokenHits(const std::vector<MaterialSemanticsMaterialRep
                     ++hits;
                 }
             }
+        }
+    }
+    return hits;
+}
+
+std::vector<std::string> materialProgramProbeTokens()
+{
+    return {
+        ".bfx",
+        "shader",
+        "technique",
+        "pass",
+        "mesh20",
+        "mesh30",
+        "deferred",
+        "grass20",
+        "grass30",
+    };
+}
+
+int countProgramTokenHitsInByteRange(
+    const std::vector<std::byte>& bytes,
+    size_t begin,
+    size_t end)
+{
+    if (begin >= bytes.size() || begin >= end) {
+        return 0;
+    }
+    end = std::min(end, bytes.size());
+    std::string text;
+    text.reserve(end - begin);
+    for (size_t i = begin; i < end; ++i) {
+        const auto ch = static_cast<unsigned char>(bytes[i]);
+        text.push_back(ch >= 32 && ch <= 126 ? static_cast<char>(std::tolower(ch)) : '\n');
+    }
+
+    int hits = 0;
+    for (const auto& token : materialProgramProbeTokens()) {
+        hits += countOccurrences(text, token);
+    }
+    return hits;
+}
+
+int countTextureRole(const ModelMaterialRuntimeHandle& material, const std::string& role)
+{
+    return static_cast<int>(std::count_if(
+        material.textureSlots.begin(),
+        material.textureSlots.end(),
+        [&](const auto& slot) {
+            return slot.slot == role;
+        }));
+}
+
+int countMultiTextureRoleSets(const ModelMaterialRuntimeHandle& material)
+{
+    int sets = 0;
+    for (const auto& role : {
+             "base_color_candidate",
+             "normal_candidate",
+             "specular_candidate",
+             "emissive_candidate",
+         }) {
+        if (countTextureRole(material, role) > 1) {
+            ++sets;
+        }
+    }
+    return sets;
+}
+
+bool materialHasTextureRole(const ModelMaterialRuntimeHandle& material, const std::string& role)
+{
+    return countTextureRole(material, role) > 0;
+}
+
+bool isStageGrassMaterialCandidate(const ModelMaterialRuntimeHandle& material)
+{
+    const std::string lowerName = lowerAscii(material.name);
+    if (lowerName.find("kusa") != std::string::npos || lowerName.find("hana") != std::string::npos) {
+        return true;
+    }
+    for (const auto& slot : material.textureSlots) {
+        const std::string lowerPath = lowerAscii(slot.path + "|" + slot.token);
+        if (lowerPath.find("syokubutu") != std::string::npos
+            || lowerPath.find("genbu_kusa") != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string selectStageMaterialShaderFile(const ModelMaterialRuntimeHandle& material)
+{
+    if (countMultiTextureRoleSets(material) > 0) {
+        return "system/shader/deferredMulti.bfx";
+    }
+    if (isStageGrassMaterialCandidate(material)) {
+        return "system/shader/deferredGrass.bfx";
+    }
+    return "system/shader/deferred.bfx";
+}
+
+std::string materialProgramSelectionRule(const ModelMaterialRuntimeHandle& material)
+{
+    if (countMultiTextureRoleSets(material) > 0) {
+        return "deferred_multi_from_repeated_material_texture_roles";
+    }
+    if (isStageGrassMaterialCandidate(material)) {
+        return "deferred_grass_from_stage_vegetation_material_tokens";
+    }
+    if (materialHasTextureRole(material, "lightmap_candidate")) {
+        return "deferred_lightmap_from_lm_texture_slot_and_sampler_light";
+    }
+    return "deferred_static_stage_material_default";
+}
+
+std::string samplerForTextureRoleOccurrence(const std::string& role, int occurrence)
+{
+    if (role == "base_color_candidate") {
+        return occurrence <= 1 ? "SamplerDiffuse" : "SamplerDiffuse2";
+    }
+    if (role == "normal_candidate") {
+        return occurrence <= 1 ? "SamplerNormal" : "SamplerNormal2";
+    }
+    if (role == "specular_candidate") {
+        return occurrence <= 1 ? "SamplerSpecular" : "SamplerSpecular2";
+    }
+    if (role == "emissive_candidate") {
+        return occurrence <= 1 ? "SamplerEmissive" : "SamplerEmissive2";
+    }
+    if (role == "lightmap_candidate") {
+        return "SamplerLight";
+    }
+    return {};
+}
+
+int samplerRegisterForShader(
+    const std::vector<BackendShaderSamplerReflectionRecord>& records,
+    const std::string& shaderFile,
+    const std::string& samplerName)
+{
+    for (const auto& record : records) {
+        if (record.shaderFile == shaderFile && record.targetProfile == "ps_3_0"
+            && record.samplerName == samplerName) {
+            return record.registerIndex;
+        }
+    }
+    return -1;
+}
+
+bool shaderBinaryContainsToken(
+    const resource::VirtualFileSystem& vfs,
+    const std::string& shaderFile,
+    const std::string& token)
+{
+    const auto payload = vfs.readBytes(shaderFile);
+    return payload.found && bytesToText(payload.bytes).find(token) != std::string::npos;
+}
+
+int countSampleableDepthFormatTokenHits(const resource::VirtualFileSystem& vfs)
+{
+    const std::vector<std::string> tokens = {
+        "INTZ",
+        "RAWZ",
+        "DF24",
+        "DF16",
+        "D24X8",
+        "R32F",
+        "RESZ",
+    };
+
+    int hits = 0;
+    auto files = shaderSamplerReflectionFiles();
+    files.push_back("SMAA.fx");
+    files.push_back("SMAA.h");
+    for (const auto& file : files) {
+        const auto payload = vfs.readBytes(file);
+        if (!payload.found || payload.bytes.empty()) {
+            continue;
+        }
+        const std::string text = bytesToText(payload.bytes);
+        for (const auto& token : tokens) {
+            hits += countOccurrences(text, token);
         }
     }
     return hits;
@@ -6896,6 +7084,279 @@ BackendFontAtlasRuntimeReport buildBackendFontAtlasRuntimeReport(
     return storeCachedReport(cache, cacheKey, report);
 }
 
+BackendMaterialProgramRuntimeReport buildBackendMaterialProgramRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "backend-material-program");
+    static std::map<std::string, BackendMaterialProgramRuntimeReport> cache;
+    BackendMaterialProgramRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
+    BackendMaterialProgramRuntimeReport report;
+    const auto fontAtlas = buildBackendFontAtlasRuntimeReport(inputs, rendererProfile, vfs);
+    const auto programDepthFont =
+        buildBackendProgramDepthFontRuntimeReport(inputs, rendererProfile, vfs);
+    const auto shaderSampler =
+        buildBackendShaderSamplerRuntimeReport(inputs, rendererProfile, vfs);
+    const auto materialSemantics = buildMaterialSemanticsRuntimeReport(inputs, rendererProfile, vfs);
+    const auto& stage = inputs.sceneRuntime.stage;
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.fontAtlasOk = fontAtlas.ok;
+    report.programDepthFontOk = programDepthFont.ok;
+    report.shaderSamplerOk = shaderSampler.ok;
+    report.materialSemanticsOk = materialSemantics.ok;
+    report.materials = stage.materialCount;
+    report.materialTextureSlots = stage.materialTextureSlotCount;
+    report.preservedDepthTextureBindings = fontAtlas.preservedDepthTextureBindings;
+    report.preservedMaterialProgramBindings = fontAtlas.preservedMaterialProgramBindings;
+    report.drawPresentCaptureRecordsDeferred = fontAtlas.drawPresentCaptureRecordsDeferred;
+    report.backbufferWidth = fontAtlas.backbufferWidth;
+    report.backbufferHeight = fontAtlas.backbufferHeight;
+
+    const auto modelPayload = vfs.readBytes(stage.modelPath);
+    if (modelPayload.found) {
+        for (const auto& material : stage.materials) {
+            if (material.byteOffset < 0 || material.byteSize <= 0) {
+                continue;
+            }
+            ++report.materialBlockScanRecords;
+            const size_t begin = static_cast<size_t>(material.byteOffset);
+            const size_t end = begin + static_cast<size_t>(material.byteSize);
+            report.materialBlockProgramTokenHits +=
+                countProgramTokenHitsInByteRange(modelPayload.bytes, begin, end);
+        }
+    }
+    report.materialBlockProgramTokenProbeReady =
+        modelPayload.found && report.materialBlockScanRecords == 16
+        && report.materialBlockProgramTokenHits == 0;
+
+    for (const auto& material : stage.materials) {
+        BackendMaterialProgramSelectionRecord record;
+        record.materialIndex = material.index;
+        record.materialName = material.name;
+        record.shaderFile = selectStageMaterialShaderFile(material);
+        record.technique = "TNonSkin";
+        record.vertexShaderProfile = "vs_3_0";
+        record.pixelShaderProfile = "ps_3_0";
+        record.selectionRule = materialProgramSelectionRule(material);
+        record.textureSlotCount = material.textureSlotCount;
+        record.meshBindingCount = material.meshBindingCount;
+        record.multiTextureRoleSets = countMultiTextureRoleSets(material);
+        record.lightmapSlots = countTextureRole(material, "lightmap_candidate");
+        record.ruleDerived = true;
+
+        const bool hasTechnique = shaderBinaryContainsToken(vfs, record.shaderFile, "TNonSkin");
+        const bool hasVertexProfile = shaderBinaryContainsToken(vfs, record.shaderFile, "vs_3_0");
+        const bool hasPixelProfile = shaderBinaryContainsToken(vfs, record.shaderFile, "ps_3_0");
+        record.shaderTokenEvidenceReady = hasTechnique && hasVertexProfile && hasPixelProfile;
+
+        std::map<std::string, int> roleOccurrences;
+        for (const auto& slot : material.textureSlots) {
+            const int occurrence = ++roleOccurrences[slot.slot];
+            const std::string samplerName = samplerForTextureRoleOccurrence(slot.slot, occurrence);
+            if (!samplerName.empty()
+                && samplerRegisterForShader(
+                       shaderSampler.reflectionRecords,
+                       record.shaderFile,
+                       samplerName) >= 0) {
+                ++record.resolvedSamplerSlots;
+                if (slot.slot == "lightmap_candidate") {
+                    ++report.lightmapSamplerBindings;
+                }
+            } else {
+                ++record.missingSamplerSlots;
+            }
+        }
+
+        record.samplerClosureReady =
+            record.resolvedSamplerSlots == record.textureSlotCount
+            && record.missingSamplerSlots == 0;
+        record.lightmapBindingReady =
+            record.lightmapSlots == 0
+            || (record.lightmapSlots == 1 && record.shaderFile == "system/shader/deferred.bfx"
+                && record.samplerClosureReady);
+        record.status = record.ruleDerived && record.shaderTokenEvidenceReady
+                && record.samplerClosureReady && record.lightmapBindingReady
+            ? "contract_ready"
+            : "blocked";
+        record.evidence = record.status == "contract_ready"
+            ? "stage material rule selects a deferred ps_3_0 TNonSkin program and all texture roles resolve to CTAB sampler registers"
+            : "material program rule selection, technique token, or sampler closure is incomplete";
+
+        ++report.programSelectionRecords;
+        if (record.ruleDerived) {
+            ++report.ruleDerivedProgramRecords;
+        }
+        if (record.shaderFile == "system/shader/deferred.bfx") {
+            ++report.deferredProgramRecords;
+        } else if (record.shaderFile == "system/shader/deferredGrass.bfx") {
+            ++report.deferredGrassProgramRecords;
+        } else if (record.shaderFile == "system/shader/deferredMulti.bfx") {
+            ++report.deferredMultiProgramRecords;
+        }
+        if (hasTechnique) {
+            ++report.nonSkinTechniqueRecords;
+        }
+        if (hasVertexProfile) {
+            ++report.vs30ProgramRecords;
+        }
+        if (hasPixelProfile) {
+            ++report.ps30ProgramRecords;
+        }
+        report.resolvedProgramSamplerSlots += record.resolvedSamplerSlots;
+        report.missingProgramSamplerSlots += record.missingSamplerSlots;
+        report.selectionRecords.push_back(std::move(record));
+    }
+
+    const auto smaaFx = vfs.readBytes("SMAA.fx");
+    if (smaaFx.found) {
+        const std::string text = bytesToText(smaaFx.bytes);
+        report.smaaDepthTextureDeclarations = countOccurrences(text, "texture2D depthTex2D");
+        report.smaaDepthSamplerDeclarations = countOccurrences(text, "sampler2D depthTex");
+        if (text.find("technique DepthEdgeDetection") != std::string::npos
+            && text.find("pass DepthEdgeDetection") != std::string::npos
+            && text.find("DX9_SMAADepthEdgeDetectionPS(depthTex)") != std::string::npos) {
+            report.smaaDepthTechniquePasses = 1;
+        }
+    }
+    report.sampleableDepthFormatTokenHits = countSampleableDepthFormatTokenHits(vfs);
+
+    report.shaderTechniqueTokenEvidenceReady =
+        report.programSelectionRecords == 16
+        && report.nonSkinTechniqueRecords == 16
+        && report.vs30ProgramRecords == 16
+        && report.ps30ProgramRecords == 16;
+    report.materialProgramRuleSelectionReady =
+        report.materialBlockProgramTokenProbeReady
+        && report.shaderTechniqueTokenEvidenceReady
+        && report.programSelectionRecords == 16
+        && report.ruleDerivedProgramRecords == 16
+        && report.deferredProgramRecords == 12
+        && report.deferredGrassProgramRecords == 2
+        && report.deferredMultiProgramRecords == 2;
+    report.materialSamplerSlotClosureReady =
+        report.materialTextureSlots == 39
+        && report.resolvedProgramSamplerSlots == 39
+        && report.missingProgramSamplerSlots == 0;
+    report.lightmapProgramBindingReady =
+        report.lightmapSamplerBindings == 1
+        && report.materialSamplerSlotClosureReady;
+    report.smaaDepthSamplerSourceEvidenceReady =
+        report.smaaDepthTextureDeclarations == 1
+        && report.smaaDepthSamplerDeclarations == 1
+        && report.smaaDepthTechniquePasses == 1;
+    report.sampleableDepthNegativeEvidenceReady =
+        report.smaaDepthSamplerSourceEvidenceReady
+        && report.sampleableDepthFormatTokenHits == 0
+        && report.preservedDepthTextureBindings == 1;
+    report.exactProgramSelectorFunctionStillOpen =
+        report.materialProgramRuleSelectionReady
+        && report.materialBlockProgramTokenHits == 0;
+    report.sampleableDepthImplementationStillOpen =
+        report.sampleableDepthNegativeEvidenceReady;
+    report.downstreamDrawPresentDeferred =
+        fontAtlas.downstreamDrawPresentDeferred
+        && report.drawPresentCaptureRecordsDeferred == 124;
+    report.backbufferExtentCarried =
+        report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+
+    report.contracts.push_back(makeBackendObligation(
+        "inherited_font_atlas_runtime",
+        report.fontAtlasOk ? "contract_ready" : "blocked",
+        "L36 consumes L35 font atlas upload while preserving material/depth/draw gates"));
+    report.contracts.push_back(makeBackendObligation(
+        "material_block_program_token_probe",
+        report.materialBlockProgramTokenProbeReady ? "contract_ready" : "blocked",
+        "16 original material blocks were scanned and contain no direct shader/effect/technique/pass token"));
+    report.contracts.push_back(makeBackendObligation(
+        "bfx_static_stage_technique_tokens",
+        report.shaderTechniqueTokenEvidenceReady ? "contract_ready" : "blocked",
+        "selected deferred shader binaries expose TNonSkin with vs_3_0 and ps_3_0 profiles"));
+    report.contracts.push_back(makeBackendObligation(
+        "deferred_stage_material_rule_selection",
+        report.materialProgramRuleSelectionReady ? "contract_ready" : "blocked",
+        "16 stage material records map to deferred/deferredGrass/deferredMulti by recovered material texture-role rules"));
+    report.contracts.push_back(makeBackendObligation(
+        "material_program_sampler_slot_closure",
+        report.materialSamplerSlotClosureReady ? "contract_ready" : "blocked",
+        "all 39 material texture roles resolve to selected shader CTAB sampler registers, including *2 multi slots"));
+    report.contracts.push_back(makeBackendObligation(
+        "lightmap_sampler_binding",
+        report.lightmapProgramBindingReady ? "contract_ready" : "blocked",
+        "ki:tree lightmap texture resolves to SamplerLight in the selected deferred program"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_depth_sampler_source_evidence",
+        report.smaaDepthSamplerSourceEvidenceReady ? "contract_ready" : "blocked",
+        "SMAA.fx declares depthTex2D/depthTex and compiles DepthEdgeDetection against depthTex"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampleable_depth_negative_evidence",
+        report.sampleableDepthNegativeEvidenceReady ? "contract_ready" : "blocked",
+        "shader/filter resources expose depth samplers but no INTZ/RAWZ/DF24/R32F/RESZ sampleable-depth format token"));
+    report.contracts.push_back(makeBackendObligation(
+        "exact_original_program_selector_function",
+        report.exactProgramSelectorFunctionStillOpen ? "tracked_open" : "blocked",
+        "material program records are rule-derived; the original C++ selector function is still not recovered"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampleable_depth_texture_implementation",
+        report.sampleableDepthImplementationStillOpen ? "tracked_open" : "blocked",
+        "depthTex2D remains D24S8 depth/stencil evidence only; do not invent a sampleable depth texture"));
+    report.contracts.push_back(makeBackendObligation(
+        "draw_present_capture_after_material_program",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "draw, present, and capture remain deferred until exact selector and sampleable depth ownership are closed"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_after_capture",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "original-frame oracle remains deferred until YuEngine can capture an executed frame"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedMaterialProgramContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedMaterialProgramObligations;
+            ++report.openMaterialProgramObligations;
+        } else {
+            ++report.openMaterialProgramObligations;
+        }
+    }
+
+    if (!report.fontAtlasOk || !report.programDepthFontOk || !report.shaderSamplerOk
+        || !report.materialSemanticsOk) {
+        addError(report, "upstream font/program/shader/material contracts are not ready");
+    }
+    if (!report.materialBlockProgramTokenProbeReady
+        || !report.shaderTechniqueTokenEvidenceReady
+        || !report.materialProgramRuleSelectionReady) {
+        addError(report, "material program selection evidence is incomplete");
+    }
+    if (!report.materialSamplerSlotClosureReady || !report.lightmapProgramBindingReady) {
+        addError(report, "material sampler slot or lightmap binding closure is incomplete");
+    }
+    if (!report.smaaDepthSamplerSourceEvidenceReady
+        || !report.sampleableDepthNegativeEvidenceReady
+        || !report.sampleableDepthImplementationStillOpen) {
+        addError(report, "sampleable depth evidence is not explicitly preserved as open");
+    }
+    if (!report.exactProgramSelectorFunctionStillOpen) {
+        addError(report, "exact original material program selector function gap is not tracked");
+    }
+    if (!report.downstreamDrawPresentDeferred || !report.backbufferExtentCarried) {
+        addError(report, "draw/present or backbuffer gate was not preserved");
+    }
+    if (report.resolvedMaterialProgramContracts != 8
+        || report.trackedMaterialProgramObligations != 4
+        || report.openMaterialProgramObligations != 4) {
+        addError(report, "material program obligation accounting is inconsistent");
+    }
+
+    return storeCachedReport(cache, cacheKey, report);
+}
+
 } // namespace
 
 FirstFrameRuntimeReport buildFirstFrameRuntimeReport(
@@ -10168,6 +10629,163 @@ MissionEventThreadRuntimeReport buildMissionEventThreadRuntimeReport(
         addError(report, ex.what());
     }
     return report;
+}
+
+BackendMaterialProgramRuntimeReport runBackendMaterialProgramRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendMaterialProgramRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendMaterialProgramRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendMaterialProgramRuntimeReportToJson(
+    const BackendMaterialProgramRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_material_program_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " font_atlas_ok=" << (report.fontAtlasOk ? "true" : "false")
+        << " program_depth_font_ok=" << (report.programDepthFontOk ? "true" : "false")
+        << " shader_sampler_ok=" << (report.shaderSamplerOk ? "true" : "false")
+        << " material_semantics_ok=" << (report.materialSemanticsOk ? "true" : "false")
+        << " material_block_program_token_probe_ready="
+        << (report.materialBlockProgramTokenProbeReady ? "true" : "false")
+        << " shader_technique_token_evidence_ready="
+        << (report.shaderTechniqueTokenEvidenceReady ? "true" : "false")
+        << " material_program_rule_selection_ready="
+        << (report.materialProgramRuleSelectionReady ? "true" : "false")
+        << " material_sampler_slot_closure_ready="
+        << (report.materialSamplerSlotClosureReady ? "true" : "false")
+        << " lightmap_program_binding_ready="
+        << (report.lightmapProgramBindingReady ? "true" : "false")
+        << " smaa_depth_sampler_source_evidence_ready="
+        << (report.smaaDepthSamplerSourceEvidenceReady ? "true" : "false")
+        << " sampleable_depth_negative_evidence_ready="
+        << (report.sampleableDepthNegativeEvidenceReady ? "true" : "false")
+        << " exact_program_selector_function_still_open="
+        << (report.exactProgramSelectorFunctionStillOpen ? "true" : "false")
+        << " sampleable_depth_implementation_still_open="
+        << (report.sampleableDepthImplementationStillOpen ? "true" : "false")
+        << " downstream_draw_present_deferred="
+        << (report.downstreamDrawPresentDeferred ? "true" : "false")
+        << " backbuffer_extent_carried=" << (report.backbufferExtentCarried ? "true" : "false")
+        << " materials=" << report.materials
+        << " material_block_scan_records=" << report.materialBlockScanRecords
+        << " material_block_program_token_hits=" << report.materialBlockProgramTokenHits
+        << " program_selection_records=" << report.programSelectionRecords
+        << " rule_derived_program_records=" << report.ruleDerivedProgramRecords
+        << " deferred_program_records=" << report.deferredProgramRecords
+        << " deferred_grass_program_records=" << report.deferredGrassProgramRecords
+        << " deferred_multi_program_records=" << report.deferredMultiProgramRecords
+        << " non_skin_technique_records=" << report.nonSkinTechniqueRecords
+        << " ps30_program_records=" << report.ps30ProgramRecords
+        << " vs30_program_records=" << report.vs30ProgramRecords
+        << " material_texture_slots=" << report.materialTextureSlots
+        << " resolved_program_sampler_slots=" << report.resolvedProgramSamplerSlots
+        << " missing_program_sampler_slots=" << report.missingProgramSamplerSlots
+        << " lightmap_sampler_bindings=" << report.lightmapSamplerBindings
+        << " smaa_depth_texture_declarations=" << report.smaaDepthTextureDeclarations
+        << " smaa_depth_sampler_declarations=" << report.smaaDepthSamplerDeclarations
+        << " smaa_depth_technique_passes=" << report.smaaDepthTechniquePasses
+        << " sampleable_depth_format_token_hits=" << report.sampleableDepthFormatTokenHits
+        << " preserved_depth_texture_bindings=" << report.preservedDepthTextureBindings
+        << " preserved_material_program_bindings=" << report.preservedMaterialProgramBindings
+        << " draw_present_capture_records_deferred=" << report.drawPresentCaptureRecordsDeferred
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_material_program_contracts=" << report.resolvedMaterialProgramContracts
+        << " tracked_material_program_obligations=" << report.trackedMaterialProgramObligations
+        << " open_material_program_obligations="
+        << report.openMaterialProgramObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"program_summary\": {";
+    out << "\"material_block_scan_records\": " << report.materialBlockScanRecords
+        << ", \"material_block_program_token_hits\": "
+        << report.materialBlockProgramTokenHits
+        << ", \"program_selection_records\": " << report.programSelectionRecords
+        << ", \"rule_derived_program_records\": " << report.ruleDerivedProgramRecords
+        << ", \"deferred_program_records\": " << report.deferredProgramRecords
+        << ", \"deferred_grass_program_records\": " << report.deferredGrassProgramRecords
+        << ", \"deferred_multi_program_records\": " << report.deferredMultiProgramRecords
+        << ", \"non_skin_technique_records\": " << report.nonSkinTechniqueRecords
+        << ", \"ps30_program_records\": " << report.ps30ProgramRecords
+        << ", \"vs30_program_records\": " << report.vs30ProgramRecords << "},\n";
+    out << "  \"sampler_summary\": {";
+    out << "\"material_texture_slots\": " << report.materialTextureSlots
+        << ", \"resolved_program_sampler_slots\": " << report.resolvedProgramSamplerSlots
+        << ", \"missing_program_sampler_slots\": " << report.missingProgramSamplerSlots
+        << ", \"lightmap_sampler_bindings\": " << report.lightmapSamplerBindings << "},\n";
+    out << "  \"depth_summary\": {";
+    out << "\"smaa_depth_texture_declarations\": " << report.smaaDepthTextureDeclarations
+        << ", \"smaa_depth_sampler_declarations\": " << report.smaaDepthSamplerDeclarations
+        << ", \"smaa_depth_technique_passes\": " << report.smaaDepthTechniquePasses
+        << ", \"sampleable_depth_format_token_hits\": "
+        << report.sampleableDepthFormatTokenHits
+        << ", \"preserved_depth_texture_bindings\": "
+        << report.preservedDepthTextureBindings << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_material_program_contracts\": "
+        << report.resolvedMaterialProgramContracts
+        << ", \"tracked_material_program_obligations\": "
+        << report.trackedMaterialProgramObligations
+        << ", \"open_material_program_obligations\": "
+        << report.openMaterialProgramObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"selection_records\": [\n";
+    for (size_t i = 0; i < report.selectionRecords.size(); ++i) {
+        const auto& record = report.selectionRecords[i];
+        out << "    {\"material_index\": " << record.materialIndex
+            << ", \"material_name\": \"" << core::jsonEscape(record.materialName)
+            << "\", \"shader_file\": \"" << core::jsonEscape(record.shaderFile)
+            << "\", \"technique\": \"" << core::jsonEscape(record.technique)
+            << "\", \"vertex_shader_profile\": \"" << core::jsonEscape(record.vertexShaderProfile)
+            << "\", \"pixel_shader_profile\": \"" << core::jsonEscape(record.pixelShaderProfile)
+            << "\", \"selection_rule\": \"" << core::jsonEscape(record.selectionRule)
+            << "\", \"texture_slot_count\": " << record.textureSlotCount
+            << ", \"mesh_binding_count\": " << record.meshBindingCount
+            << ", \"resolved_sampler_slots\": " << record.resolvedSamplerSlots
+            << ", \"missing_sampler_slots\": " << record.missingSamplerSlots
+            << ", \"lightmap_slots\": " << record.lightmapSlots
+            << ", \"multi_texture_role_sets\": " << record.multiTextureRoleSets
+            << ", \"rule_derived\": " << (record.ruleDerived ? "true" : "false")
+            << ", \"shader_token_evidence_ready\": "
+            << (record.shaderTokenEvidenceReady ? "true" : "false")
+            << ", \"sampler_closure_ready\": "
+            << (record.samplerClosureReady ? "true" : "false")
+            << ", \"lightmap_binding_ready\": "
+            << (record.lightmapBindingReady ? "true" : "false")
+            << ", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(record.evidence) << "\"}";
+        out << (i + 1 == report.selectionRecords.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
 }
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(

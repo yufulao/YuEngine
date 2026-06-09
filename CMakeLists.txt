@@ -39,9 +39,10 @@ endif()
 include(CTest)
 
 option(YUENGINE_ENABLE_LEGACY_CTESTS "Register the older per-contract CTest cases" OFF)
+option(YUENGINE_ENABLE_SLOW_CTESTS "Allow registering EDGE/FULL/LEGACY runtime CTest cases" OFF)
 set(YUENGINE_CTEST_MODE "FAST" CACHE STRING "CTest registration mode: FAST, EDGE, FULL, or LEGACY")
 set_property(CACHE YUENGINE_CTEST_MODE PROPERTY STRINGS FAST EDGE FULL LEGACY)
-set(YUENGINE_CURRENT_EDGE_CONTRACT "yuengine_backend_font_atlas_contract" CACHE STRING "Runtime contract-suite filter used by EDGE CTest" FORCE)
+set(YUENGINE_CURRENT_EDGE_CONTRACT "yuengine_backend_material_program_contract" CACHE STRING "Runtime contract-suite filter used by EDGE CTest" FORCE)
 
 string(TOUPPER "${YUENGINE_CTEST_MODE}" YUENGINE_CTEST_MODE_NORMALIZED)
 if(NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "FAST"
@@ -50,9 +51,15 @@ if(NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "FAST"
     AND NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "LEGACY")
     message(FATAL_ERROR "YUENGINE_CTEST_MODE must be FAST, EDGE, FULL, or LEGACY")
 endif()
+if(NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "FAST" AND NOT YUENGINE_ENABLE_SLOW_CTESTS)
+    message(WARNING "YUENGINE_CTEST_MODE=${YUENGINE_CTEST_MODE_NORMALIZED} is ignored unless YUENGINE_ENABLE_SLOW_CTESTS=ON; using FAST smoke")
+    set(YUENGINE_CTEST_MODE_NORMALIZED "FAST")
+    set(YUENGINE_CTEST_MODE "FAST" CACHE STRING "CTest registration mode: FAST, EDGE, FULL, or LEGACY" FORCE)
+endif()
 if(YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "LEGACY" AND NOT YUENGINE_ENABLE_LEGACY_CTESTS)
     message(WARNING "YUENGINE_CTEST_MODE=LEGACY is ignored unless YUENGINE_ENABLE_LEGACY_CTESTS=ON; using FAST smoke")
     set(YUENGINE_CTEST_MODE_NORMALIZED "FAST")
+    set(YUENGINE_CTEST_MODE "FAST" CACHE STRING "CTest registration mode: FAST, EDGE, FULL, or LEGACY" FORCE)
 endif()
 if(YUENGINE_ENABLE_LEGACY_CTESTS AND NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "LEGACY")
     message(WARNING "YUENGINE_ENABLE_LEGACY_CTESTS is ignored unless YUENGINE_CTEST_MODE=LEGACY")
@@ -90,7 +97,7 @@ if(BUILD_TESTING)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         LABELS "full"
         TIMEOUT 300
-        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=41 failed=0"
+        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=42 failed=0"
     )
     elseif(YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "LEGACY")
     add_test(
@@ -101,7 +108,7 @@ if(BUILD_TESTING)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         LABELS "full"
         TIMEOUT 300
-        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=41 failed=0"
+        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=42 failed=0"
     )
 
     add_test(
@@ -449,6 +456,15 @@ if(BUILD_TESTING)
     set_tests_properties(yuengine_backend_font_atlas_contract PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "ok=true program_depth_font_ok=true device_creation_ok=true persistent_device_service_ready=true font_atlas_resource_evidence_ready=true fmp_glyph_layout_probe_ready=true font_atlas_texture_records_ready=true font_atlas_d3d_texture_creation_executed=true font_atlas_payload_upload_executed=true font_atlas_upload_payload_parity_ready=true exact_codepoint_encoding_tracked_open=true text_draw_backend_binding_deferred=true material_program_selection_still_deferred=true sampleable_depth_still_deferred=true downstream_draw_present_deferred=true backbuffer_extent_carried=true font_map_files=4 fmp_glyph_records=20854 fmp_glyph_record_stride32_files=4 fmp_atlas_tail_links=7 fmp_metric_records_in_range=20854 fmp_ascii_glyph_records=380 fmp_ascii_packed_key_matches=380 fmp_monotonic_glyph_maps=4 font_atlas_texture_records=7 font_atlas_textures_created=7 font_atlas_upload_records=7 font_atlas_uploaded_subresources=14 font_atlas_failed_records=0 font_atlas_4096=7 font_atlas_a8=7 font_atlas_mip2=7 font_atlas_payload_matches=7 font_atlas_payload_bytes=146800640 font_atlas_uploaded_payload_bytes=146800640 font_query_records=6 text_draw_commands=6 string_size_queries=5 preserved_depth_texture_bindings=1 preserved_material_program_bindings=38 draw_present_capture_records_deferred=124 backbuffer_width=1280 backbuffer_height=720 resolved_font_atlas_contracts=5 tracked_font_atlas_obligations=6 open_font_atlas_obligations=6;glyph_layout_summary.*fmp_glyph_records.: 20854.*fmp_atlas_tail_links.: 7.*fmp_ascii_packed_key_matches.: 380;font_atlas_upload_summary.*font_atlas_textures_created.: 7.*font_atlas_uploaded_subresources.: 14.*font_atlas_uploaded_payload_bytes.: 146800640;fmp_glyph_record_layout_probe.*contract_ready;font_atlas_texture_creation_execution.*contract_ready;font_atlas_payload_upload_execution.*contract_ready;exact_fmp_codepoint_encoding.*tracked_open;font_text_draw_backend_binding.*tracked_open;draw_present_capture_after_font_atlas.*tracked_open"
+    )
+
+    add_test(
+        NAME yuengine_backend_material_program_contract
+        COMMAND yuengine_cli backend-material-program samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_backend_material_program_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true font_atlas_ok=true program_depth_font_ok=true shader_sampler_ok=true material_semantics_ok=true material_block_program_token_probe_ready=true shader_technique_token_evidence_ready=true material_program_rule_selection_ready=true material_sampler_slot_closure_ready=true lightmap_program_binding_ready=true smaa_depth_sampler_source_evidence_ready=true sampleable_depth_negative_evidence_ready=true exact_program_selector_function_still_open=true sampleable_depth_implementation_still_open=true downstream_draw_present_deferred=true backbuffer_extent_carried=true materials=16 material_block_scan_records=16 material_block_program_token_hits=0 program_selection_records=16 rule_derived_program_records=16 deferred_program_records=12 deferred_grass_program_records=2 deferred_multi_program_records=2 non_skin_technique_records=16 ps30_program_records=16 vs30_program_records=16 material_texture_slots=39 resolved_program_sampler_slots=39 missing_program_sampler_slots=0 lightmap_sampler_bindings=1 smaa_depth_texture_declarations=1 smaa_depth_sampler_declarations=1 smaa_depth_technique_passes=1 sampleable_depth_format_token_hits=0 preserved_depth_texture_bindings=1 preserved_material_program_bindings=38 draw_present_capture_records_deferred=124 backbuffer_width=1280 backbuffer_height=720 resolved_material_program_contracts=8 tracked_material_program_obligations=4 open_material_program_obligations=4;program_summary.*program_selection_records.: 16.*deferred_program_records.: 12.*deferred_grass_program_records.: 2.*deferred_multi_program_records.: 2;sampler_summary.*resolved_program_sampler_slots.: 39.*missing_program_sampler_slots.: 0.*lightmap_sampler_bindings.: 1;depth_summary.*sampleable_depth_format_token_hits.: 0.*preserved_depth_texture_bindings.: 1;material_program_sampler_slot_closure.*contract_ready;lightmap_sampler_binding.*contract_ready;sampleable_depth_texture_implementation.*tracked_open;exact_original_program_selector_function.*tracked_open;draw_present_capture_after_material_program.*tracked_open"
     )
 
     add_test(

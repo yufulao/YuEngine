@@ -116,6 +116,14 @@ clean build, Python unittest, 41/41 contracts, and git diff --check passed; runt
 elapsed_ms=69923, wall time about 93.6 seconds
 ```
 
+Measured after L36:
+
+```text
+tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
+clean build, Python unittest, 42/42 contracts, and git diff --check passed; runtime suite
+elapsed_ms=114358, wall time about 138 seconds
+```
+
 Measured after splitting default smoke from the current deepest edge:
 
 ```text
@@ -130,10 +138,14 @@ tools\verify_runtime.ps1 -NoBuild
 smoke validate plus Python unittest and git diff --check, about 0.354 seconds
 
 tools\verify_runtime.ps1 -Mode edge -Jobs 8
-current deepest L35 edge; same font-atlas runtime-contract-suite filter as above
+current deepest L36 edge; backend-material-program runtime-contract-suite filter
 
 tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck
-current deepest L35 edge, elapsed_ms=42290, outer measurement about 42.458 seconds
+current deepest L36 edge, elapsed_ms=42281
+
+tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
+current L36 clean full, 42/42 contracts, runtime suite elapsed_ms=114358, wall time about 138
+seconds
 ```
 
 Default bare CTest is now acceptable for an edit-loop check because it runs only the smoke validate.
@@ -158,7 +170,7 @@ Current deepest edge example:
 
 ```powershell
 tools\verify_runtime.ps1 -Mode edge -Jobs 8
-tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_font_atlas_contract -Jobs 8
+tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_material_program_contract -Jobs 8
 ```
 
 Full checkpoint verification before commit:
@@ -185,12 +197,14 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 - Use `-Mode full` before committing major checkpoints; this runs direct
   `yuengine_cli runtime-contract-suite` and avoids CTest process fan-out.
 - Use EDGE CTest only when CTest integration itself must be checked for the current deepest
-  contract: `cmake -S . -B build\cmake-bt143 -DYUENGINE_CTEST_MODE=EDGE`.
+  contract:
+  `cmake -S . -B build\cmake-bt143 -DYUENGINE_ENABLE_SLOW_CTESTS=ON -DYUENGINE_CTEST_MODE=EDGE`.
 - Use full aggregate CTest only when CTest integration itself must be checked:
-  `cmake -S . -B build\cmake-bt143 -DYUENGINE_CTEST_MODE=FULL`.
+  `cmake -S . -B build\cmake-bt143 -DYUENGINE_ENABLE_SLOW_CTESTS=ON -DYUENGINE_CTEST_MODE=FULL`.
 - Enable older per-contract CTest cases only when diagnosing one of those cases. It requires both
-  switches so stale cache values cannot accidentally re-enable the one-hour path:
-  `cmake -S . -B build\cmake-bt143 -DYUENGINE_CTEST_MODE=LEGACY -DYUENGINE_ENABLE_LEGACY_CTESTS=ON`.
+  slow-test and legacy switches so stale cache values cannot accidentally re-enable the one-hour
+  path:
+  `cmake -S . -B build\cmake-bt143 -DYUENGINE_ENABLE_SLOW_CTESTS=ON -DYUENGINE_CTEST_MODE=LEGACY -DYUENGINE_ENABLE_LEGACY_CTESTS=ON`.
 - Keep `git diff --check` in the standard verification path.
 - Keep `--clean-first` only when C++ headers, ABI-like structs, or build system files changed.
 

@@ -87,7 +87,8 @@ Measured on 2026-06-09:
 - Pre-smoke-split `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`: 43.94
   seconds.
 - Post-smoke-split default `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` does
-  not run this L35 edge; use `tools\verify_runtime.ps1 -Mode edge` for the current deepest edge.
+  not run this L35 edge; use
+  `tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_font_atlas_contract` to rerun it.
 - `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: 41/41 contracts, runtime suite
   elapsed_ms=69923, wall time about 93.6 seconds.
 
@@ -122,7 +123,8 @@ L35 does not:
 - convert the D24S8 depth surface into a sampleable texture;
 - issue draw calls, call `Present`, capture frames, or run oracle comparison.
 
-## Next Edge
+## Follow-Up
 
-L36 should close material program/pass selection, lightmap material binding, and sampleable depth
-texture evidence enough to allow draw submission work to start without guessing shader ownership.
+L36 now consumes this checkpoint through `backend-material-program`: 16 material program records,
+39/39 selected shader sampler slots, and the `ki:tree` lightmap binding are locked. Exact original
+selector ownership and sampleable depth texture implementation remain L36b open work before draw.

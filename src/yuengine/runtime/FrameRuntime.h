@@ -1391,6 +1391,78 @@ struct BackendFontAtlasRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendMaterialProgramSelectionRecord {
+    int materialIndex = -1;
+    std::string materialName;
+    std::string shaderFile;
+    std::string technique;
+    std::string vertexShaderProfile;
+    std::string pixelShaderProfile;
+    std::string selectionRule;
+    std::string status;
+    std::string evidence;
+    int textureSlotCount = 0;
+    int meshBindingCount = 0;
+    int resolvedSamplerSlots = 0;
+    int missingSamplerSlots = 0;
+    int lightmapSlots = 0;
+    int multiTextureRoleSets = 0;
+    bool ruleDerived = false;
+    bool shaderTokenEvidenceReady = false;
+    bool samplerClosureReady = false;
+    bool lightmapBindingReady = false;
+};
+
+struct BackendMaterialProgramRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool fontAtlasOk = false;
+    bool programDepthFontOk = false;
+    bool shaderSamplerOk = false;
+    bool materialSemanticsOk = false;
+    bool materialBlockProgramTokenProbeReady = false;
+    bool shaderTechniqueTokenEvidenceReady = false;
+    bool materialProgramRuleSelectionReady = false;
+    bool materialSamplerSlotClosureReady = false;
+    bool lightmapProgramBindingReady = false;
+    bool smaaDepthSamplerSourceEvidenceReady = false;
+    bool sampleableDepthNegativeEvidenceReady = false;
+    bool exactProgramSelectorFunctionStillOpen = false;
+    bool sampleableDepthImplementationStillOpen = false;
+    bool downstreamDrawPresentDeferred = false;
+    bool backbufferExtentCarried = false;
+    int materials = 0;
+    int materialBlockScanRecords = 0;
+    int materialBlockProgramTokenHits = 0;
+    int programSelectionRecords = 0;
+    int ruleDerivedProgramRecords = 0;
+    int deferredProgramRecords = 0;
+    int deferredGrassProgramRecords = 0;
+    int deferredMultiProgramRecords = 0;
+    int nonSkinTechniqueRecords = 0;
+    int ps30ProgramRecords = 0;
+    int vs30ProgramRecords = 0;
+    int materialTextureSlots = 0;
+    int resolvedProgramSamplerSlots = 0;
+    int missingProgramSamplerSlots = 0;
+    int lightmapSamplerBindings = 0;
+    int smaaDepthTextureDeclarations = 0;
+    int smaaDepthSamplerDeclarations = 0;
+    int smaaDepthTechniquePasses = 0;
+    int sampleableDepthFormatTokenHits = 0;
+    int preservedDepthTextureBindings = 0;
+    int preservedMaterialProgramBindings = 0;
+    int drawPresentCaptureRecordsDeferred = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedMaterialProgramContracts = 0;
+    int trackedMaterialProgramObligations = 0;
+    int openMaterialProgramObligations = 0;
+    std::vector<BackendMaterialProgramSelectionRecord> selectionRecords;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -1631,6 +1703,13 @@ BackendFontAtlasRuntimeReport runBackendFontAtlasRuntime(
 
 std::string backendFontAtlasRuntimeReportToJson(
     const BackendFontAtlasRuntimeReport& report);
+
+BackendMaterialProgramRuntimeReport runBackendMaterialProgramRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendMaterialProgramRuntimeReportToJson(
+    const BackendMaterialProgramRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

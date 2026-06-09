@@ -65,6 +65,7 @@ void usage()
               << "  yuengine_cli backend-shader-sampler <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-program-depth-font <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-font-atlas <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli backend-material-program <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli runtime-contract-suite <project.json> [--repo-root <path>] [--filter <test-name>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
@@ -961,6 +962,49 @@ int runRuntimeContractSuite(
         requireContract(errors, report.openFontAtlasObligations == 6, "font atlas open obligation count changed");
     });
 
+    runContractSuiteCheck(suite, "yuengine_backend_material_program_contract", filter, [&](auto& errors) {
+        const auto report = yu::runtime::runBackendMaterialProgramRuntime(manifestPath, repoRoot);
+        requireContract(errors, report.ok, "material program report is not ok");
+        requireContract(errors, report.fontAtlasOk, "font atlas upstream not ready");
+        requireContract(errors, report.programDepthFontOk, "program/depth/font upstream not ready");
+        requireContract(errors, report.shaderSamplerOk, "shader sampler upstream not ready");
+        requireContract(errors, report.materialSemanticsOk, "material semantics upstream not ready");
+        requireContract(errors, report.materialBlockProgramTokenProbeReady, "material block token probe not ready");
+        requireContract(errors, report.shaderTechniqueTokenEvidenceReady, "shader technique token evidence not ready");
+        requireContract(errors, report.materialProgramRuleSelectionReady, "material program rule selection not ready");
+        requireContract(errors, report.materialSamplerSlotClosureReady, "material sampler closure not ready");
+        requireContract(errors, report.lightmapProgramBindingReady, "lightmap program binding not ready");
+        requireContract(errors, report.smaaDepthSamplerSourceEvidenceReady, "SMAA depth sampler evidence not ready");
+        requireContract(errors, report.sampleableDepthNegativeEvidenceReady, "sampleable depth negative evidence not ready");
+        requireContract(errors, report.exactProgramSelectorFunctionStillOpen, "exact selector gap not tracked");
+        requireContract(errors, report.sampleableDepthImplementationStillOpen, "sampleable depth implementation gap not tracked");
+        requireContract(errors, report.downstreamDrawPresentDeferred, "downstream draw/present was not deferred");
+        requireContract(errors, report.materials == 16, "material count changed");
+        requireContract(errors, report.materialBlockScanRecords == 16, "material block scan count changed");
+        requireContract(errors, report.materialBlockProgramTokenHits == 0, "material program token hits changed");
+        requireContract(errors, report.programSelectionRecords == 16, "program selection record count changed");
+        requireContract(errors, report.ruleDerivedProgramRecords == 16, "rule-derived program record count changed");
+        requireContract(errors, report.deferredProgramRecords == 12, "deferred program count changed");
+        requireContract(errors, report.deferredGrassProgramRecords == 2, "deferred grass program count changed");
+        requireContract(errors, report.deferredMultiProgramRecords == 2, "deferred multi program count changed");
+        requireContract(errors, report.nonSkinTechniqueRecords == 16, "TNonSkin record count changed");
+        requireContract(errors, report.ps30ProgramRecords == 16, "ps_3_0 program count changed");
+        requireContract(errors, report.vs30ProgramRecords == 16, "vs_3_0 program count changed");
+        requireContract(errors, report.materialTextureSlots == 39, "material texture slot count changed");
+        requireContract(errors, report.resolvedProgramSamplerSlots == 39, "resolved program sampler slot count changed");
+        requireContract(errors, report.missingProgramSamplerSlots == 0, "missing program sampler slot count changed");
+        requireContract(errors, report.lightmapSamplerBindings == 1, "lightmap sampler binding count changed");
+        requireContract(errors, report.smaaDepthTextureDeclarations == 1, "SMAA depth texture declaration count changed");
+        requireContract(errors, report.smaaDepthSamplerDeclarations == 1, "SMAA depth sampler declaration count changed");
+        requireContract(errors, report.smaaDepthTechniquePasses == 1, "SMAA depth technique count changed");
+        requireContract(errors, report.sampleableDepthFormatTokenHits == 0, "sampleable depth format token hits changed");
+        requireContract(errors, report.preservedDepthTextureBindings == 1, "preserved depth binding count changed");
+        requireContract(errors, report.preservedMaterialProgramBindings == 38, "preserved material program binding count changed");
+        requireContract(errors, report.resolvedMaterialProgramContracts == 8, "material program resolved contract count changed");
+        requireContract(errors, report.trackedMaterialProgramObligations == 4, "material program tracked obligation count changed");
+        requireContract(errors, report.openMaterialProgramObligations == 4, "material program open obligation count changed");
+    });
+
     runContractSuiteCheck(suite, "yuengine_mission_event_thread_contract", filter, [&](auto& errors) {
         const auto report = yu::runtime::runMissionEventThreadRuntime(manifestPath, repoRoot);
         requireContract(errors, report.ok && report.sceneRuntimeOk, "mission event thread report is not ok");
@@ -1173,6 +1217,11 @@ int main(int argc, char** argv)
         if (command == "backend-font-atlas") {
             auto report = yu::runtime::runBackendFontAtlasRuntime(manifest, repoRoot);
             std::cout << yu::runtime::backendFontAtlasRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "backend-material-program") {
+            auto report = yu::runtime::runBackendMaterialProgramRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendMaterialProgramRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "runtime-contract-suite") {
