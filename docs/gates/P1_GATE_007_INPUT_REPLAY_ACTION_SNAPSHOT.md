@@ -6,7 +6,7 @@ Owner: 八云紫
 Reviewers: 红美铃, 博丽灵梦, 大妖精, 雾雨魔理沙 when implementation exists
 Depends on: ADR-0010
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0007
-Source baseline: Phase 1 through `9389d50`
+Source baseline: Phase 1 through `89ea783`
 
 ## Layer
 
