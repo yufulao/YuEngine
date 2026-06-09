@@ -7,6 +7,7 @@
 #include "yuengine/script/SqasmModule.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -17,6 +18,7 @@
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 #if defined(_WIN32)
@@ -168,6 +170,12 @@ void addError(BackendSurfaceMaterialFontRuntimeReport& report, const std::string
 }
 
 void addError(BackendShaderSamplerRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
+void addError(BackendProgramDepthFontRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
     report.errors.push_back(message);
@@ -3049,6 +3057,250 @@ int canonicalMaterialSamplerRegister(
         }
     }
     return -1;
+}
+
+std::string lowerAscii(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
+
+std::string shaderProgramFamily(const std::string& shaderFile)
+{
+    const std::string lower = lowerAscii(shaderFile);
+    if (lower.find("deferred") != std::string::npos) {
+        return "deferred";
+    }
+    if (lower.find("grass") != std::string::npos) {
+        return "grass";
+    }
+    if (lower.find("mesh") != std::string::npos) {
+        return "mesh";
+    }
+    return {};
+}
+
+std::vector<BackendShaderProgramCandidateRecord> buildShaderProgramCandidateRecords(
+    const std::vector<BackendShaderSamplerReflectionRecord>& reflectionRecords)
+{
+    std::map<std::string, BackendShaderProgramCandidateRecord> byShaderFile;
+    for (const auto& sampler : reflectionRecords) {
+        const std::string family = shaderProgramFamily(sampler.shaderFile);
+        if (family.empty() || sampler.shaderFile.find("system/shader/") != 0) {
+            continue;
+        }
+
+        auto& candidate = byShaderFile[sampler.shaderFile];
+        candidate.shaderFile = sampler.shaderFile;
+        candidate.family = family;
+        if (sampler.materialCompatible) {
+            ++candidate.materialSamplerRecords;
+        }
+        if (sampler.samplerName == "SamplerLight") {
+            ++candidate.lightSamplerRecords;
+        }
+        if (sampler.samplerName.find("Depth") != std::string::npos) {
+            ++candidate.depthSamplerRecords;
+        }
+    }
+
+    std::vector<BackendShaderProgramCandidateRecord> records;
+    for (auto& [_, candidate] : byShaderFile) {
+        candidate.candidateReady = candidate.materialSamplerRecords > 0;
+        if (candidate.candidateReady) {
+            records.push_back(std::move(candidate));
+        }
+    }
+    return records;
+}
+
+int countMaterialProgramTokenHits(const std::vector<MaterialSemanticsMaterialReport>& materials)
+{
+    const std::vector<std::string> tokens = {
+        ".bfx",
+        "shader",
+        "technique",
+        "pass",
+        "mesh20",
+        "mesh30",
+        "deferred",
+        "grass20",
+        "grass30",
+    };
+
+    int hits = 0;
+    for (const auto& material : materials) {
+        const std::string materialName = lowerAscii(material.name);
+        for (const auto& token : tokens) {
+            if (materialName.find(token) != std::string::npos) {
+                ++hits;
+            }
+        }
+        for (const auto& slot : material.textureSlots) {
+            const std::string lowerSlot = lowerAscii(slot);
+            for (const auto& token : tokens) {
+                if (lowerSlot.find(token) != std::string::npos) {
+                    ++hits;
+                }
+            }
+        }
+    }
+    return hits;
+}
+
+std::vector<std::string> fontMapResourceFiles()
+{
+    return {
+        "font/fontmap00.fmp",
+        "font/fontmap01.fmp",
+        "font/fontmap02.fmp",
+        "font/fontmap03.fmp",
+    };
+}
+
+std::vector<std::string> extractFontAtlasPathsFromFmp(const std::vector<std::byte>& bytes)
+{
+    std::vector<std::string> paths;
+    std::set<std::string> seen;
+    constexpr std::string_view prefix = "font/";
+    for (size_t i = 0; i + prefix.size() < bytes.size(); ++i) {
+        bool prefixMatches = true;
+        for (size_t j = 0; j < prefix.size(); ++j) {
+            if (static_cast<char>(std::to_integer<unsigned char>(bytes[i + j])) != prefix[j]) {
+                prefixMatches = false;
+                break;
+            }
+        }
+        if (!prefixMatches) {
+            continue;
+        }
+
+        std::string path;
+        for (size_t j = i; j < bytes.size() && path.size() < 128; ++j) {
+            const char ch = static_cast<char>(std::to_integer<unsigned char>(bytes[j]));
+            if (ch == '\0') {
+                break;
+            }
+            if (ch < 32 || ch > 126) {
+                path.clear();
+                break;
+            }
+            path.push_back(ch);
+        }
+        if (path.ends_with(".dds") && seen.insert(path).second) {
+            paths.push_back(path);
+        }
+    }
+    return paths;
+}
+
+int64_t ddsUncompressedPayloadBytes(int width, int height, int mipCount, int bytesPerPixel)
+{
+    if (width <= 0 || height <= 0 || mipCount <= 0 || bytesPerPixel <= 0) {
+        return 0;
+    }
+
+    int64_t total = 0;
+    int levelWidth = width;
+    int levelHeight = height;
+    for (int level = 0; level < mipCount; ++level) {
+        total += static_cast<int64_t>(levelWidth) * static_cast<int64_t>(levelHeight)
+            * bytesPerPixel;
+        levelWidth = std::max(1, levelWidth / 2);
+        levelHeight = std::max(1, levelHeight / 2);
+    }
+    return total;
+}
+
+BackendFontAtlasResourceRecord decodeFontAtlasResourceRecord(
+    const resource::VirtualFileSystem& vfs,
+    const std::string& fontMapPath,
+    const std::vector<std::byte>& fmpBytes,
+    const std::string& atlasPath)
+{
+    BackendFontAtlasResourceRecord record;
+    record.fontMapPath = fontMapPath;
+    record.atlasPath = atlasPath;
+    record.fontMapBytes = static_cast<int>(fmpBytes.size());
+    record.fmpReferencesAtlas = true;
+    record.status = "blocked";
+    record.evidence = "font atlas DDS payload is not available";
+
+    const auto payload = vfs.readBytes(atlasPath);
+    if (!payload.found || payload.bytes.size() < 128 || !isDdsPayload(payload.bytes)) {
+        return record;
+    }
+
+    constexpr uint32_t ddsAlphaPixels = 0x00000002;
+    const uint32_t headerSize = readLe32(payload.bytes, 4);
+    const uint32_t height = readLe32(payload.bytes, 12);
+    const uint32_t width = readLe32(payload.bytes, 16);
+    const uint32_t mipCount = readLe32(payload.bytes, 28);
+    const uint32_t pixelFormatSize = readLe32(payload.bytes, 76);
+    const uint32_t pixelFormatFlags = readLe32(payload.bytes, 80);
+    const std::string fourCc = readDdsFourCc(payload.bytes, 84);
+    const uint32_t rgbBitCount = readLe32(payload.bytes, 88);
+    const uint32_t alphaMask = readLe32(payload.bytes, 104);
+
+    record.atlasBytes = static_cast<int>(payload.bytes.size());
+    record.width = static_cast<int>(width);
+    record.height = static_cast<int>(height);
+    record.mipLevels = static_cast<int>(mipCount == 0 ? 1 : mipCount);
+    record.payloadBytes = static_cast<int>(payload.bytes.size() - 128);
+    const bool a8Header = headerSize == 124 && pixelFormatSize == 32
+        && (pixelFormatFlags & ddsAlphaPixels) != 0 && fourCc.empty()
+        && rgbBitCount == 8 && alphaMask == 0xff;
+    if (a8Header) {
+        record.format = "D3DFMT_A8";
+        record.expectedPayloadBytes = static_cast<int>(
+            ddsUncompressedPayloadBytes(record.width, record.height, record.mipLevels, 1));
+    }
+    record.ddsHeaderReady = a8Header && record.width == 4096 && record.height == 4096
+        && record.mipLevels == 2 && record.expectedPayloadBytes == record.payloadBytes;
+    record.status = record.ddsHeaderReady ? "contract_ready" : "blocked";
+    record.evidence = record.ddsHeaderReady
+        ? "FMP references a 4096x4096 two-mip alpha DDS font atlas"
+        : "font atlas DDS header does not match the recovered A8 atlas contract";
+    return record;
+}
+
+std::vector<BackendFontAtlasResourceRecord> buildFontAtlasResourceRecords(
+    const resource::VirtualFileSystem& vfs)
+{
+    std::vector<BackendFontAtlasResourceRecord> records;
+    for (const auto& fontMapPath : fontMapResourceFiles()) {
+        const auto fontMap = vfs.readBytes(fontMapPath);
+        if (!fontMap.found || fontMap.bytes.empty()) {
+            BackendFontAtlasResourceRecord record;
+            record.fontMapPath = fontMapPath;
+            record.status = "blocked";
+            record.evidence = "FMP font map payload is not available";
+            records.push_back(std::move(record));
+            continue;
+        }
+
+        const auto atlasPaths = extractFontAtlasPathsFromFmp(fontMap.bytes);
+        if (atlasPaths.empty()) {
+            BackendFontAtlasResourceRecord record;
+            record.fontMapPath = fontMapPath;
+            record.fontMapBytes = static_cast<int>(fontMap.bytes.size());
+            record.status = "blocked";
+            record.evidence = "FMP font map does not reference any atlas DDS path";
+            records.push_back(std::move(record));
+            continue;
+        }
+
+        for (const auto& atlasPath : atlasPaths) {
+            records.push_back(decodeFontAtlasResourceRecord(
+                vfs,
+                fontMapPath,
+                fontMap.bytes,
+                atlasPath));
+        }
+    }
+    return records;
 }
 
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
@@ -5985,6 +6237,214 @@ BackendShaderSamplerRuntimeReport buildBackendShaderSamplerRuntimeReport(
     return storeCachedReport(cache, cacheKey, report);
 }
 
+BackendProgramDepthFontRuntimeReport buildBackendProgramDepthFontRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "backend-program-depth-font");
+    static std::map<std::string, BackendProgramDepthFontRuntimeReport> cache;
+    BackendProgramDepthFontRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
+    BackendProgramDepthFontRuntimeReport report;
+    const auto shaderSampler =
+        buildBackendShaderSamplerRuntimeReport(inputs, rendererProfile, vfs);
+    const auto backendState = buildBackendStateRuntimeReport(inputs, rendererProfile, vfs);
+    const auto materialSemantics = buildMaterialSemanticsRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.shaderSamplerOk = shaderSampler.ok;
+    report.backendStateOk = backendState.ok;
+    report.materialSemanticsOk = materialSemantics.ok;
+    report.backbufferWidth = shaderSampler.backbufferWidth;
+    report.backbufferHeight = shaderSampler.backbufferHeight;
+    report.materials = materialSemantics.materials;
+    report.materialTextureSlots = materialSemantics.textureSlots;
+    report.namedMeshMaterialBindings = materialSemantics.meshMaterialBindings;
+    report.unresolvedMeshMaterialBindings = materialSemantics.unresolvedMeshMaterialBindings;
+    report.lightmapTextureSlots = shaderSampler.lightmapTextureSlots;
+    report.preservedDepthTextureBindings = shaderSampler.preservedDepthTextureBindings;
+    report.preservedMaterialProgramBindings = shaderSampler.preservedMaterialProgramBindings;
+    report.drawPresentCaptureRecordsDeferred = shaderSampler.drawPresentCaptureRecordsDeferred;
+    report.fontQueryRecords = backendState.fontQueryRecords;
+    report.textDrawCommands = backendState.textDrawCommands;
+    report.stringSizeQueries = backendState.stringSizeQueries;
+
+    report.shaderProgramCandidates =
+        buildShaderProgramCandidateRecords(shaderSampler.reflectionRecords);
+    report.shaderProgramCandidateFiles =
+        static_cast<int>(report.shaderProgramCandidates.size());
+    for (const auto& candidate : report.shaderProgramCandidates) {
+        if (candidate.family == "mesh") {
+            ++report.meshShaderCandidateFiles;
+        } else if (candidate.family == "grass") {
+            ++report.grassShaderCandidateFiles;
+        } else if (candidate.family == "deferred") {
+            ++report.deferredShaderCandidateFiles;
+        }
+    }
+
+    std::set<std::string> depthSamplerShaderFiles;
+    for (const auto& sampler : shaderSampler.reflectionRecords) {
+        if (sampler.samplerName == "SamplerLight") {
+            ++report.samplerLightRecords;
+        }
+        if (sampler.samplerName.find("Depth") != std::string::npos) {
+            ++report.samplerDepthRecords;
+            depthSamplerShaderFiles.insert(sampler.shaderFile);
+        }
+    }
+    report.samplerDepthShaderFiles = static_cast<int>(depthSamplerShaderFiles.size());
+    report.materialProgramTokenHits =
+        countMaterialProgramTokenHits(materialSemantics.materialReports);
+
+    report.fontAtlasRecords = buildFontAtlasResourceRecords(vfs);
+    std::set<std::string> fontMapFiles;
+    for (const auto& record : report.fontAtlasRecords) {
+        if (!record.fontMapPath.empty()) {
+            fontMapFiles.insert(record.fontMapPath);
+        }
+        if (record.fmpReferencesAtlas) {
+            ++report.fontAtlasLinks;
+        }
+        if (record.ddsHeaderReady) {
+            ++report.fontAtlasDdsReady;
+        }
+        if (record.width == 4096 && record.height == 4096) {
+            ++report.fontAtlas4096;
+        }
+        if (record.format == "D3DFMT_A8") {
+            ++report.fontAtlasA8;
+        }
+        if (record.mipLevels == 2) {
+            ++report.fontAtlasMip2;
+        }
+        if (record.payloadBytes > 0 && record.payloadBytes == record.expectedPayloadBytes) {
+            ++report.fontAtlasPayloadMatches;
+        }
+    }
+    report.fontMapFiles = static_cast<int>(fontMapFiles.size());
+
+    report.shaderProgramCandidateEvidenceReady =
+        shaderSampler.ok && materialSemantics.ok
+        && report.shaderProgramCandidateFiles == 12
+        && report.meshShaderCandidateFiles == 4
+        && report.grassShaderCandidateFiles == 5
+        && report.deferredShaderCandidateFiles == 3
+        && report.materialProgramTokenHits == 0
+        && report.materials == 16 && report.materialTextureSlots == 39
+        && report.namedMeshMaterialBindings >= 110
+        && report.unresolvedMeshMaterialBindings == 1;
+    report.materialProgramSelectionGapTracked =
+        report.shaderProgramCandidateEvidenceReady
+        && report.preservedMaterialProgramBindings == 38
+        && report.materialProgramTokenHits == 0;
+    report.lightmapSamplerTokenEvidenceReady =
+        report.samplerLightRecords == 3 && report.lightmapTextureSlots == 1;
+    report.lightmapMaterialBindingGateTracked =
+        report.lightmapSamplerTokenEvidenceReady && report.materialProgramSelectionGapTracked;
+    report.depthSamplerTokenEvidenceReady =
+        report.samplerDepthRecords >= 30 && report.samplerDepthShaderFiles >= 15
+        && backendState.samplerStateRecordsReady;
+    report.sampleableDepthTextureGateTracked =
+        report.depthSamplerTokenEvidenceReady && report.preservedDepthTextureBindings == 1;
+    report.fontAtlasResourceEvidenceReady =
+        backendState.fontAtlasRecordsReady
+        && report.fontMapFiles == 4 && report.fontAtlasLinks == 7
+        && report.fontAtlasDdsReady == 7 && report.fontAtlas4096 == 7
+        && report.fontAtlasA8 == 7 && report.fontAtlasMip2 == 7
+        && report.fontAtlasPayloadMatches == 7;
+    report.fontAtlasTextureImplementationGateTracked =
+        report.fontAtlasResourceEvidenceReady;
+    report.downstreamDrawPresentDeferred = report.drawPresentCaptureRecordsDeferred == 124;
+    report.backbufferExtentCarried =
+        report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+
+    report.contracts.push_back(makeBackendObligation(
+        "inherited_shader_sampler_runtime",
+        report.shaderSamplerOk ? "contract_ready" : "blocked",
+        "L34 consumes L33 shader sampler reflection and material sampler role mapping"));
+    report.contracts.push_back(makeBackendObligation(
+        "shader_program_candidate_inventory",
+        report.shaderProgramCandidateEvidenceReady ? "contract_ready" : "blocked",
+        "12 mesh/grass/deferred shader program candidate files expose material sampler records while material blocks expose no program token"));
+    report.contracts.push_back(makeBackendObligation(
+        "lightmap_sampler_token_evidence",
+        report.lightmapSamplerTokenEvidenceReady ? "contract_ready" : "blocked",
+        "deferred shader candidates expose 3 SamplerLight records for the lone lightmap material slot"));
+    report.contracts.push_back(makeBackendObligation(
+        "depth_sampler_token_evidence",
+        report.depthSamplerTokenEvidenceReady ? "contract_ready" : "blocked",
+        "BFX/SMAA evidence exposes depth samplers, but not a sampleable D24S8 texture implementation"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_resource_evidence",
+        report.fontAtlasResourceEvidenceReady ? "contract_ready" : "blocked",
+        "4 FMP font maps reference 7 4096x4096 two-mip D3DFMT_A8 atlas DDS payloads"));
+    report.contracts.push_back(makeBackendObligation(
+        "exact_material_program_selection_binding",
+        report.materialProgramSelectionGapTracked ? "tracked_open" : "blocked",
+        "scene material blocks still do not choose an exact shader file, technique, or pass"));
+    report.contracts.push_back(makeBackendObligation(
+        "lightmap_material_program_binding",
+        report.lightmapMaterialBindingGateTracked ? "tracked_open" : "blocked",
+        "SamplerLight token evidence exists, but the lightmap material slot is not bound to an exact program/pass"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampleable_depth_texture_implementation",
+        report.sampleableDepthTextureGateTracked ? "tracked_open" : "blocked",
+        "depthTex remains a preserved D24S8 depth/stencil surface without recovered sampleable texture ownership"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_texture_upload_and_glyph_layout",
+        report.fontAtlasTextureImplementationGateTracked ? "tracked_open" : "blocked",
+        "atlas DDS/FMP ownership is known, but glyph record layout and D3D texture upload are not implemented"));
+    report.contracts.push_back(makeBackendObligation(
+        "draw_present_capture_after_program_depth_font",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "draw, present, and capture remain deferred until program, lightmap, depth, and font gates close"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_after_capture",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "original-frame oracle remains deferred until YuEngine can capture an executed frame"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedProgramDepthFontContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedProgramDepthFontObligations;
+            ++report.openProgramDepthFontObligations;
+        } else {
+            ++report.openProgramDepthFontObligations;
+        }
+    }
+
+    if (!report.shaderSamplerOk || !report.backendStateOk || !report.materialSemanticsOk) {
+        addError(report, "upstream shader sampler, backend state, or material semantics contract is not ready");
+    }
+    if (!report.shaderProgramCandidateEvidenceReady) {
+        addError(report, "shader program candidate evidence is incomplete");
+    }
+    if (!report.materialProgramSelectionGapTracked || !report.lightmapMaterialBindingGateTracked
+        || !report.sampleableDepthTextureGateTracked
+        || !report.fontAtlasTextureImplementationGateTracked) {
+        addError(report, "program/lightmap/depth/font gates are not explicitly tracked");
+    }
+    if (!report.fontAtlasResourceEvidenceReady) {
+        addError(report, "font atlas FMP/DDS resource evidence is incomplete");
+    }
+    if (!report.downstreamDrawPresentDeferred || !report.backbufferExtentCarried) {
+        addError(report, "downstream draw/present or backbuffer extent gate is not preserved");
+    }
+    if (report.resolvedProgramDepthFontContracts != 5
+        || report.trackedProgramDepthFontObligations != 6
+        || report.openProgramDepthFontObligations != 6) {
+        addError(report, "program/depth/font obligation accounting is inconsistent");
+    }
+
+    return storeCachedReport(cache, cacheKey, report);
+}
+
 } // namespace
 
 FirstFrameRuntimeReport buildFirstFrameRuntimeReport(
@@ -8808,6 +9268,173 @@ std::string backendShaderSamplerRuntimeReportToJson(
             << "\", \"resolved\": " << (record.resolved ? "true" : "false")
             << "}";
         out << (i + 1 == report.materialSlotRecords.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendProgramDepthFontRuntimeReport runBackendProgramDepthFontRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendProgramDepthFontRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendProgramDepthFontRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendProgramDepthFontRuntimeReportToJson(
+    const BackendProgramDepthFontRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_program_depth_font_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " shader_sampler_ok=" << (report.shaderSamplerOk ? "true" : "false")
+        << " backend_state_ok=" << (report.backendStateOk ? "true" : "false")
+        << " material_semantics_ok=" << (report.materialSemanticsOk ? "true" : "false")
+        << " shader_program_candidate_evidence_ready="
+        << (report.shaderProgramCandidateEvidenceReady ? "true" : "false")
+        << " material_program_selection_gap_tracked="
+        << (report.materialProgramSelectionGapTracked ? "true" : "false")
+        << " lightmap_sampler_token_evidence_ready="
+        << (report.lightmapSamplerTokenEvidenceReady ? "true" : "false")
+        << " lightmap_material_binding_gate_tracked="
+        << (report.lightmapMaterialBindingGateTracked ? "true" : "false")
+        << " depth_sampler_token_evidence_ready="
+        << (report.depthSamplerTokenEvidenceReady ? "true" : "false")
+        << " sampleable_depth_texture_gate_tracked="
+        << (report.sampleableDepthTextureGateTracked ? "true" : "false")
+        << " font_atlas_resource_evidence_ready="
+        << (report.fontAtlasResourceEvidenceReady ? "true" : "false")
+        << " font_atlas_texture_implementation_gate_tracked="
+        << (report.fontAtlasTextureImplementationGateTracked ? "true" : "false")
+        << " downstream_draw_present_deferred="
+        << (report.downstreamDrawPresentDeferred ? "true" : "false")
+        << " backbuffer_extent_carried=" << (report.backbufferExtentCarried ? "true" : "false")
+        << " shader_program_candidate_files=" << report.shaderProgramCandidateFiles
+        << " mesh_shader_candidate_files=" << report.meshShaderCandidateFiles
+        << " grass_shader_candidate_files=" << report.grassShaderCandidateFiles
+        << " deferred_shader_candidate_files=" << report.deferredShaderCandidateFiles
+        << " material_program_token_hits=" << report.materialProgramTokenHits
+        << " materials=" << report.materials
+        << " material_texture_slots=" << report.materialTextureSlots
+        << " named_mesh_material_bindings=" << report.namedMeshMaterialBindings
+        << " unresolved_mesh_material_bindings=" << report.unresolvedMeshMaterialBindings
+        << " lightmap_texture_slots=" << report.lightmapTextureSlots
+        << " sampler_light_records=" << report.samplerLightRecords
+        << " sampler_depth_records=" << report.samplerDepthRecords
+        << " sampler_depth_shader_files=" << report.samplerDepthShaderFiles
+        << " font_map_files=" << report.fontMapFiles
+        << " font_atlas_links=" << report.fontAtlasLinks
+        << " font_atlas_dds_ready=" << report.fontAtlasDdsReady
+        << " font_atlas_4096=" << report.fontAtlas4096
+        << " font_atlas_a8=" << report.fontAtlasA8
+        << " font_atlas_mip2=" << report.fontAtlasMip2
+        << " font_atlas_payload_matches=" << report.fontAtlasPayloadMatches
+        << " font_query_records=" << report.fontQueryRecords
+        << " text_draw_commands=" << report.textDrawCommands
+        << " string_size_queries=" << report.stringSizeQueries
+        << " preserved_depth_texture_bindings=" << report.preservedDepthTextureBindings
+        << " preserved_material_program_bindings=" << report.preservedMaterialProgramBindings
+        << " draw_present_capture_records_deferred=" << report.drawPresentCaptureRecordsDeferred
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_program_depth_font_contracts="
+        << report.resolvedProgramDepthFontContracts
+        << " tracked_program_depth_font_obligations="
+        << report.trackedProgramDepthFontObligations
+        << " open_program_depth_font_obligations="
+        << report.openProgramDepthFontObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"program_summary\": {";
+    out << "\"shader_program_candidate_files\": " << report.shaderProgramCandidateFiles
+        << ", \"mesh_shader_candidate_files\": " << report.meshShaderCandidateFiles
+        << ", \"grass_shader_candidate_files\": " << report.grassShaderCandidateFiles
+        << ", \"deferred_shader_candidate_files\": " << report.deferredShaderCandidateFiles
+        << ", \"material_program_token_hits\": " << report.materialProgramTokenHits
+        << ", \"named_mesh_material_bindings\": " << report.namedMeshMaterialBindings
+        << ", \"unresolved_mesh_material_bindings\": "
+        << report.unresolvedMeshMaterialBindings << "},\n";
+    out << "  \"sampler_gate_summary\": {";
+    out << "\"lightmap_texture_slots\": " << report.lightmapTextureSlots
+        << ", \"sampler_light_records\": " << report.samplerLightRecords
+        << ", \"sampler_depth_records\": " << report.samplerDepthRecords
+        << ", \"sampler_depth_shader_files\": " << report.samplerDepthShaderFiles
+        << ", \"preserved_depth_texture_bindings\": "
+        << report.preservedDepthTextureBindings << "},\n";
+    out << "  \"font_atlas_summary\": {";
+    out << "\"font_map_files\": " << report.fontMapFiles
+        << ", \"font_atlas_links\": " << report.fontAtlasLinks
+        << ", \"font_atlas_dds_ready\": " << report.fontAtlasDdsReady
+        << ", \"font_atlas_4096\": " << report.fontAtlas4096
+        << ", \"font_atlas_a8\": " << report.fontAtlasA8
+        << ", \"font_atlas_mip2\": " << report.fontAtlasMip2
+        << ", \"font_atlas_payload_matches\": "
+        << report.fontAtlasPayloadMatches << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_program_depth_font_contracts\": "
+        << report.resolvedProgramDepthFontContracts
+        << ", \"tracked_program_depth_font_obligations\": "
+        << report.trackedProgramDepthFontObligations
+        << ", \"open_program_depth_font_obligations\": "
+        << report.openProgramDepthFontObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"shader_program_candidates\": [\n";
+    for (size_t i = 0; i < report.shaderProgramCandidates.size(); ++i) {
+        const auto& candidate = report.shaderProgramCandidates[i];
+        out << "    {\"shader_file\": \"" << core::jsonEscape(candidate.shaderFile)
+            << "\", \"family\": \"" << core::jsonEscape(candidate.family)
+            << "\", \"material_sampler_records\": " << candidate.materialSamplerRecords
+            << ", \"light_sampler_records\": " << candidate.lightSamplerRecords
+            << ", \"depth_sampler_records\": " << candidate.depthSamplerRecords
+            << ", \"candidate_ready\": "
+            << (candidate.candidateReady ? "true" : "false") << "}";
+        out << (i + 1 == report.shaderProgramCandidates.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"font_atlas_records\": [\n";
+    for (size_t i = 0; i < report.fontAtlasRecords.size(); ++i) {
+        const auto& record = report.fontAtlasRecords[i];
+        out << "    {\"font_map_path\": \"" << core::jsonEscape(record.fontMapPath)
+            << "\", \"atlas_path\": \"" << core::jsonEscape(record.atlasPath)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"format\": \"" << core::jsonEscape(record.format)
+            << "\", \"width\": " << record.width
+            << ", \"height\": " << record.height
+            << ", \"mip_levels\": " << record.mipLevels
+            << ", \"font_map_bytes\": " << record.fontMapBytes
+            << ", \"atlas_bytes\": " << record.atlasBytes
+            << ", \"payload_bytes\": " << record.payloadBytes
+            << ", \"expected_payload_bytes\": " << record.expectedPayloadBytes
+            << ", \"fmp_references_atlas\": "
+            << (record.fmpReferencesAtlas ? "true" : "false")
+            << ", \"dds_header_ready\": "
+            << (record.ddsHeaderReady ? "true" : "false")
+            << ", \"evidence\": \"" << core::jsonEscape(record.evidence) << "\"}";
+        out << (i + 1 == report.fontAtlasRecords.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

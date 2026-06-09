@@ -74,6 +74,27 @@ tools\verify_runtime.ps1 -Mode full -SkipPython -SkipDiffCheck -NoBuild
 
 tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 clean build, Python unittest, 39/39 contracts, and git diff --check, 75.02 seconds
+
+Measured after L34:
+
+build\cmake-bt143\yuengine_cli.exe runtime-contract-suite samples\touhou_new_world\project.json --repo-root . --filter yuengine_backend_program_depth_font_contract
+1/1 L34 contract passed, 34.04 seconds
+
+tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild
+fast L34 contract through runtime-contract-suite filter, 33.73 seconds
+
+ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure
+1/1 yuengine_current_backend_contract passed with L34 filter, 34.41 seconds
+
+ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure
+1/1 yuengine_current_backend_contract passed with L34 filter, 34.08-34.35 seconds
+
+cmake -S . -B build\cmake-ctest-guard -DYUENGINE_CTEST_MODE=LEGACY
+legacy cache guard forced FAST because YUENGINE_ENABLE_LEGACY_CTESTS was not ON
+
+tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
+clean build, Python unittest, 40/40 contracts, and git diff --check passed; runtime suite
+elapsed_ms=62881, wall time about 86.8 seconds
 ```
 
 Default bare CTest is now acceptable for an edit-loop check because it runs only the current fast
@@ -96,7 +117,7 @@ tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_upload_binding_cont
 Current deepest edge example:
 
 ```powershell
-tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_shader_sampler_contract -Jobs 8
+tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_program_depth_font_contract -Jobs 8
 ```
 
 Full checkpoint verification before commit:
@@ -115,7 +136,7 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 
 - Default bare `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs only
   `yuengine_current_backend_contract`, currently filtered to
-  `yuengine_backend_shader_sampler_contract`.
+  `yuengine_backend_program_depth_font_contract`.
 - The default loop command is `tools\verify_runtime.ps1`, which runs the current fast backend
   contract and `git diff --check`.
 - Use `-Mode edge -Filter <test>` after narrow changes; this calls
@@ -124,8 +145,9 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
   `yuengine_cli runtime-contract-suite` and avoids CTest process fan-out.
 - Use full aggregate CTest only when CTest integration itself must be checked:
   `cmake -S . -B build\cmake-bt143 -DYUENGINE_CTEST_MODE=FULL`.
-- Enable older per-contract CTest cases only when diagnosing one of those cases:
-  `cmake -S . -B build\cmake-bt143 -DYUENGINE_CTEST_MODE=LEGACY`.
+- Enable older per-contract CTest cases only when diagnosing one of those cases. It requires both
+  switches so stale cache values cannot accidentally re-enable the one-hour path:
+  `cmake -S . -B build\cmake-bt143 -DYUENGINE_CTEST_MODE=LEGACY -DYUENGINE_ENABLE_LEGACY_CTESTS=ON`.
 - Keep `git diff --check` in the standard verification path.
 - Keep `--clean-first` only when C++ headers, ABI-like structs, or build system files changed.
 
@@ -133,4 +155,4 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 
 The fast CTest mode removes the one-hour edit-loop path. Remaining performance work is to share the
 boot, resource, and title script-run reports inside the suite so full regression can approach the
-current 24 second deepest-contract cost instead of about 52 seconds.
+current 34 second deepest-contract cost instead of about 63 seconds.

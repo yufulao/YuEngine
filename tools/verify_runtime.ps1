@@ -86,7 +86,7 @@ try {
             "--repo-root",
             ".",
             "--filter",
-            "yuengine_backend_shader_sampler_contract"
+            "yuengine_backend_program_depth_font_contract"
         )
     } elseif ($Mode -eq "edge") {
         Invoke-CheckedCapture "runtime contract suite edge" $cliPath @(

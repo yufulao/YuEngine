@@ -1424,31 +1424,62 @@ Boundary:
 - L33 does not create or populate a font atlas;
 - L33 does not issue draw/present/capture/oracle calls.
 
-### L34: Material Program, Lightmap, Depth, And Font Closure
+### L34: Material Program, Lightmap, Depth, And Font Evidence Gate
 
-Status: active after L33.
+Status: completed as backend program/depth/font evidence checkpoint on 2026-06-09.
 
 Deliver:
 
-- recover exact material program/pass selection for mesh submissions from shader, model/material,
-  render-state, and executable/string evidence;
-- recover or explicitly block the lightmap sampler owner and register;
-- recover a sampleable DX9 depth texture path for `depthTex`, or lock why D24S8 surface-only state
-  cannot satisfy SMAA/depth sampling;
-- recover title/menu font atlas dimensions, glyph cache ownership, and texture format before
-  allocating the font atlas;
-- keep draw/present/capture/oracle deferred until these gates are no longer open.
+- inventory recovered mesh/grass/deferred shader program candidates without choosing a guessed draw
+  program;
+- prove material program/pass tokens are absent from parsed material records and keep exact program
+  selection blocked;
+- prove lightmap/depth sampler token evidence while keeping exact lightmap binding and sampleable
+  depth implementation blocked;
+- recover title/menu font atlas FMP/DDS resource ownership, dimensions, mip count, format, and
+  payload parity;
+- keep draw/present/capture/oracle deferred.
 
 Acceptance:
 
-- material program/pass binding must be one-to-one with recovered evidence, not inferred from suffix
-  names alone;
-- lightmap and depth texture behavior must be resolved or remain explicitly tracked-open with exact
-  evidence;
-- font atlas allocation must name dimensions, glyph ownership, source evidence, and backend texture
-  format;
-- CTest must lock ready/open accounting and continue preventing draw execution while any of these
-  gates remain open.
+- `yuengine_cli backend-program-depth-font samples/touhou_new_world/project.json --repo-root .`
+  reports `shader_program_candidate_evidence_ready=true`,
+  `font_atlas_resource_evidence_ready=true`, and `downstream_draw_present_deferred=true`;
+- CTest `yuengine_backend_program_depth_font_contract` locks 12 shader program candidate files, 0
+  material program token hits, 3 `SamplerLight` records, 33 depth sampler records, 4 FMP font maps,
+  7 font atlas links, 7 ready `D3DFMT_A8` 4096x4096 two-mip atlas DDS payloads, and ready/open
+  accounting of 5 resolved and 6 tracked-open obligations;
+- exact material program/pass selection, lightmap material binding, sampleable depth texture,
+  glyph-record layout/font texture upload, draw/present/capture/oracle remain tracked-open.
+
+Boundary:
+
+- L34 does not select a scene mesh shader program/pass;
+- L34 does not bind the lightmap slot to `SamplerLight`;
+- L34 does not sample from `depthTex2D`;
+- L34 does not create/upload/bind font atlas textures or decode the FMP glyph record stride;
+- L34 does not issue draw/present/capture/oracle calls.
+
+### L35: Font Atlas Texture And Glyph Layout Runtime
+
+Status: active after L34.
+
+Deliver:
+
+- use L34 FMP/DDS evidence to define and execute font atlas D3D9 texture creation and DDS payload
+  upload records;
+- recover enough FMP glyph record layout to map title text/string-size commands to atlas regions, or
+  keep the exact missing fields as tracked-open;
+- keep scene material program selection, lightmap program binding, sampleable depth texture, and
+  draw/present/capture/oracle deferred until their evidence gates close.
+
+Acceptance:
+
+- font atlas texture creation must consume the recovered `D3DFMT_A8` 4096x4096 two-mip DDS records,
+  not allocate a placeholder atlas;
+- glyph layout parsing must be validated against FMP byte sizes and atlas references;
+- CTest must lock font resource handle counts, upload payload parity, glyph layout readiness/open
+  accounting, and continue preventing draw execution.
 
 ## Stop Conditions
 
@@ -1484,7 +1515,9 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8
 
 Use `-CleanBuild` after C++ header, ABI-like struct, or build-system changes. Bare
 `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs the current fast
-contract, not the aggregate suite and not the old per-contract process path.
+contract, not the aggregate suite and not the old per-contract process path. Legacy per-contract
+CTest requires both `-DYUENGINE_CTEST_MODE=LEGACY` and `-DYUENGINE_ENABLE_LEGACY_CTESTS=ON`; a stale
+LEGACY cache value without the opt-in is forced back to FAST.
 
 Current measured speed after caching and scene reuse:
 
@@ -1493,13 +1526,15 @@ Current measured speed after caching and scene reuse:
 - `yuengine_backend_upload_binding_contract`: 1/1 CTest passed in about 25 seconds.
 - `yuengine_backend_surface_material_font_contract`: suite filter passed in 23.35-24.8 seconds.
 - `yuengine_backend_shader_sampler_contract`: default bare CTest passed in 23.97-24.63 seconds.
-- `tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild`: fast L33 contract in 23.88
+- `yuengine_backend_program_depth_font_contract`: suite filter passed in 34.04 seconds; default
+  bare CTest passed in 34.08-34.41 seconds.
+- `tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild`: fast L34 contract passed in 33.73
   seconds.
 - `tools\verify_runtime.ps1 -Mode full -SkipPython -SkipDiffCheck -NoBuild`: direct
   `runtime-contract-suite` passed 39/39 contracts in 51.78 seconds.
-- `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: clean build, Python unittest, 39/39
-  contracts, and `git diff --check` passed in 75.02 seconds.
+- `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: clean build, Python unittest, 40/40
+  contracts, and `git diff --check` passed in about 86.8 seconds; runtime suite elapsed_ms=62881.
 - direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.
 - default `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`: 1/1 fast contract
-  after L33.
-- direct `runtime-contract-suite`: 39/39 contracts after L33.
+  after L34.
+- direct `runtime-contract-suite`: 40/40 contracts after L34.

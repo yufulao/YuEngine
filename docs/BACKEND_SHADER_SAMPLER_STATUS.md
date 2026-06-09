@@ -98,5 +98,6 @@ Measured on 2026-06-09:
 
 ## Next Edge
 
-L34 must recover or explicitly block material program/pass selection, the lightmap sampler, depth
-texture sampling, and font atlas/cache ownership before any draw execution is allowed.
+L34 completed the program/depth/font evidence gate by inventorying shader candidates, light/depth
+sampler evidence, and FMP/DDS font atlas resources. L35 must use the font atlas evidence for real
+font atlas texture creation/upload and FMP glyph layout recovery. Draw remains blocked.

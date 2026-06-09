@@ -63,6 +63,7 @@ void usage()
               << "  yuengine_cli backend-upload-bind <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-surface-material-font <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-shader-sampler <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli backend-program-depth-font <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli runtime-contract-suite <project.json> [--repo-root <path>] [--filter <test-name>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
@@ -887,6 +888,38 @@ int runRuntimeContractSuite(
         requireContract(errors, report.fontAtlasGateTracked, "font atlas gate was not tracked");
     });
 
+    runContractSuiteCheck(suite, "yuengine_backend_program_depth_font_contract", filter, [&](auto& errors) {
+        const auto report = yu::runtime::runBackendProgramDepthFontRuntime(manifestPath, repoRoot);
+        requireContract(errors, report.ok, "program/depth/font report is not ok");
+        requireContract(errors, report.shaderProgramCandidateEvidenceReady, "shader program candidate evidence not ready");
+        requireContract(errors, report.materialProgramSelectionGapTracked, "material program gap not tracked");
+        requireContract(errors, report.lightmapSamplerTokenEvidenceReady, "lightmap sampler token evidence not ready");
+        requireContract(errors, report.lightmapMaterialBindingGateTracked, "lightmap material binding gate not tracked");
+        requireContract(errors, report.depthSamplerTokenEvidenceReady, "depth sampler token evidence not ready");
+        requireContract(errors, report.sampleableDepthTextureGateTracked, "sampleable depth texture gate not tracked");
+        requireContract(errors, report.fontAtlasResourceEvidenceReady, "font atlas resource evidence not ready");
+        requireContract(errors, report.fontAtlasTextureImplementationGateTracked, "font atlas implementation gate not tracked");
+        requireContract(errors, report.downstreamDrawPresentDeferred, "downstream draw/present was not deferred");
+        requireContract(errors, report.shaderProgramCandidateFiles == 12, "shader program candidate count changed");
+        requireContract(errors, report.meshShaderCandidateFiles == 4, "mesh shader candidate count changed");
+        requireContract(errors, report.grassShaderCandidateFiles == 5, "grass shader candidate count changed");
+        requireContract(errors, report.deferredShaderCandidateFiles == 3, "deferred shader candidate count changed");
+        requireContract(errors, report.materialProgramTokenHits == 0, "material program token hits changed");
+        requireContract(errors, report.samplerLightRecords == 3, "SamplerLight record count changed");
+        requireContract(errors, report.samplerDepthRecords >= 30, "depth sampler record count too low");
+        requireContract(errors, report.samplerDepthShaderFiles >= 15, "depth sampler shader file count too low");
+        requireContract(errors, report.fontMapFiles == 4, "font map file count changed");
+        requireContract(errors, report.fontAtlasLinks == 7, "font atlas link count changed");
+        requireContract(errors, report.fontAtlasDdsReady == 7, "font atlas DDS ready count changed");
+        requireContract(errors, report.fontAtlas4096 == 7, "font atlas dimension count changed");
+        requireContract(errors, report.fontAtlasA8 == 7, "font atlas format count changed");
+        requireContract(errors, report.fontAtlasMip2 == 7, "font atlas mip count changed");
+        requireContract(errors, report.fontAtlasPayloadMatches == 7, "font atlas payload parity changed");
+        requireContract(errors, report.resolvedProgramDepthFontContracts == 5, "program/depth/font resolved contract count changed");
+        requireContract(errors, report.trackedProgramDepthFontObligations == 6, "program/depth/font tracked obligation count changed");
+        requireContract(errors, report.openProgramDepthFontObligations == 6, "program/depth/font open obligation count changed");
+    });
+
     runContractSuiteCheck(suite, "yuengine_mission_event_thread_contract", filter, [&](auto& errors) {
         const auto report = yu::runtime::runMissionEventThreadRuntime(manifestPath, repoRoot);
         requireContract(errors, report.ok && report.sceneRuntimeOk, "mission event thread report is not ok");
@@ -1089,6 +1122,11 @@ int main(int argc, char** argv)
         if (command == "backend-shader-sampler") {
             auto report = yu::runtime::runBackendShaderSamplerRuntime(manifest, repoRoot);
             std::cout << yu::runtime::backendShaderSamplerRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "backend-program-depth-font") {
+            auto report = yu::runtime::runBackendProgramDepthFontRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendProgramDepthFontRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "runtime-contract-suite") {
