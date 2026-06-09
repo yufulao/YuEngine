@@ -1463,6 +1463,56 @@ struct BackendMaterialProgramRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendBinaryEvidenceRecord {
+    std::string token;
+    std::string category;
+    std::string sourceFile;
+    std::string context;
+    long long offset = -1;
+};
+
+struct BackendMaterialProgramBinaryRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::string originalBinaryPath;
+    std::vector<std::string> errors;
+    bool materialProgramOk = false;
+    bool originalBinaryFound = false;
+    bool binaryShaderPathTableReady = false;
+    bool binaryDeferredSelectorTableReady = false;
+    bool selectedProgramsBackedByBinaryTable = false;
+    bool binarySmaaDepthTechniqueEvidenceReady = false;
+    bool binaryDepthPostFilterEvidenceReady = false;
+    bool binaryDepthFormatTableEvidenceReady = false;
+    bool sampleableDepthBinaryCandidateReady = false;
+    bool selectorControlFlowStillOpen = false;
+    bool sampleableDepthSelectionStillOpen = false;
+    bool downstreamDrawPresentDeferred = false;
+    bool backbufferExtentCarried = false;
+    int binaryShaderPathTokens = 0;
+    int binaryFilterPathTokens = 0;
+    int binaryDeferredSelectorTokens = 0;
+    int selectedProgramBinaryPathHits = 0;
+    int renderMeshSourceMarkers = 0;
+    int smaaBinaryDepthTokens = 0;
+    int depthTextureNameTokens = 0;
+    int postFilterSourceMarkers = 0;
+    int postFilterDepthPackedFormatHits = 0;
+    int renderSourceMarkers = 0;
+    int renderDepthFormatTokens = 0;
+    int rsmDepthBinaryTokens = 0;
+    int preservedDepthTextureBindings = 0;
+    int preservedMaterialProgramBindings = 0;
+    int drawPresentCaptureRecordsDeferred = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedBinaryMaterialProgramContracts = 0;
+    int trackedBinaryMaterialProgramObligations = 0;
+    int openBinaryMaterialProgramObligations = 0;
+    std::vector<BackendBinaryEvidenceRecord> binaryEvidenceRecords;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -1710,6 +1760,13 @@ BackendMaterialProgramRuntimeReport runBackendMaterialProgramRuntime(
 
 std::string backendMaterialProgramRuntimeReportToJson(
     const BackendMaterialProgramRuntimeReport& report);
+
+BackendMaterialProgramBinaryRuntimeReport runBackendMaterialProgramBinaryRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendMaterialProgramBinaryRuntimeReportToJson(
+    const BackendMaterialProgramBinaryRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

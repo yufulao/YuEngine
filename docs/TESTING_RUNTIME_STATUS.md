@@ -138,13 +138,23 @@ tools\verify_runtime.ps1 -NoBuild
 smoke validate plus Python unittest and git diff --check, about 0.354 seconds
 
 tools\verify_runtime.ps1 -Mode edge -Jobs 8
-current deepest L36 edge; backend-material-program runtime-contract-suite filter
+current deepest L36b edge; backend-material-program-binary runtime-contract-suite filter
 
 tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck
-current deepest L36 edge, elapsed_ms=42281
+previous L36 edge, elapsed_ms=42281
+
+build\cmake-bt143\yuengine_cli.exe runtime-contract-suite samples\touhou_new_world\project.json --repo-root . --filter yuengine_backend_material_program_binary_contract
+current L36b edge, elapsed_ms=64216
+
+tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck
+current L36b edge, elapsed_ms=65678
 
 tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 current L36 clean full, 42/42 contracts, runtime suite elapsed_ms=114358, wall time about 138
+seconds
+
+tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
+current L36b clean full, 43/43 contracts, runtime suite elapsed_ms=107854, wall time about 140
 seconds
 ```
 
@@ -170,7 +180,7 @@ Current deepest edge example:
 
 ```powershell
 tools\verify_runtime.ps1 -Mode edge -Jobs 8
-tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_material_program_contract -Jobs 8
+tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_material_program_binary_contract -Jobs 8
 ```
 
 Full checkpoint verification before commit:

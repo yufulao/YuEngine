@@ -1530,24 +1530,57 @@ Boundary:
 - L36 does not treat `depthTex2D` as sampleable;
 - L36 does not issue draw/present/capture/oracle calls.
 
-### L36b: Exact Selector And Sampleable Depth Before Draw
+### L36b: Binary Selector And Depth Candidate Evidence
 
-Status: active after L36.
+Status: completed as binary-evidence checkpoint on 2026-06-09, with selector CFG and depth runtime
+selection deliberately still tracked-open.
 
 Deliver:
 
-- recover the exact original material selector function or a stronger binary-level equivalent for
-  the deferred/deferredGrass/deferredMulti rule;
-- recover the real sampleable depth path, or prove that the runtime uses a non-depth SMAA path for
-  this frame before allowing draw;
-- keep draw/present/capture/oracle deferred until exact selector and depth ownership are closed.
+- consume original `bin/game.exe` as read-only binary evidence;
+- prove the L36 deferred/deferredGrass/deferredMulti selected programs are present in the original
+  `mgRenderMesh.cpp` shader table;
+- prove the original binary contains SMAA depth and DX9 sampleable-depth candidate format evidence;
+- keep draw/present/capture/oracle deferred until selector CFG and depth runtime selection are
+  reconstructed.
 
 Acceptance:
 
-- no selected program record may rely only on filename or material-name guesswork;
-- the depth path must name a concrete texture format/copy path or a concrete pass selection that
-  avoids `depthTex`;
-- CTest must continue locking ready/open accounting.
+- `yuengine_cli backend-material-program-binary samples/touhou_new_world/project.json --repo-root .`
+  reports `binary_deferred_selector_table_ready=true`,
+  `selected_programs_backed_by_binary_table=true`,
+  `sampleable_depth_binary_candidate_ready=true`,
+  `selector_control_flow_still_open=true`, and
+  `sampleable_depth_selection_still_open=true`;
+- CTest `yuengine_backend_material_program_binary_contract` locks 28 original binary shader path
+  tokens, 10 filter path tokens, 3 deferred selector tokens, 2 SMAA depth tokens, 1 packed
+  `INTZ/RAWZ/DF24/DF16` post-filter format record, 6 render depth format tokens, 2 RSM depth
+  labels, and ready/open accounting of 9 resolved and 4 tracked-open obligations;
+- draw/present/capture/oracle remain tracked-open.
+
+Boundary:
+
+- L36b proves binary string-table ownership, not control-flow ownership;
+- L36b proves sampleable-depth candidates exist, not which candidate is selected for the running
+  frame;
+- L36b does not issue draw/present/capture/oracle calls.
+
+### L36c: Selector CFG And Depth Runtime Selection Before Draw
+
+Status: active after L36b.
+
+Deliver:
+
+- reconstruct the material selector branch/control-flow around the original shader path table;
+- reconstruct sampleable-depth format selection/copy behavior around `INTZ/RAWZ/DF24/DF16` and
+  `depthTex2D`;
+- only after those are closed, unlock draw submission as the next edge.
+
+Acceptance:
+
+- selected program records must be backed by selector CFG evidence, not only binary strings;
+- depth path must name the concrete selected format/copy/resolve path for the frame;
+- draw/present/capture/oracle must remain deferred until the above evidence is locked.
 
 ## Stop Conditions
 
@@ -1604,8 +1637,12 @@ Current measured speed after caching and scene reuse:
   about 0.06 seconds.
 - `tools\verify_runtime.ps1 -NoBuild`: after the smoke split, smoke validate plus Python unittest
   and `git diff --check`, about 0.354 seconds.
-- `tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck`: current deepest L36
-  edge filter, elapsed_ms=42281.
+- `tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck`: previous L36 edge
+  filter, elapsed_ms=42281.
+- `runtime-contract-suite --filter yuengine_backend_material_program_binary_contract`: current
+  deepest L36b edge filter, elapsed_ms=64216.
+- `tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck`: current deepest L36b
+  edge filter, elapsed_ms=65678.
 - `yuengine_backend_device_creation_contract`: 1/1 CTest passed in 21.88 seconds.
 - `yuengine_backend_resource_creation_contract`: 1/1 CTest passed in about 22 seconds.
 - `yuengine_backend_upload_binding_contract`: 1/1 CTest passed in about 25 seconds.
@@ -1630,5 +1667,8 @@ Current measured speed after caching and scene reuse:
 - `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: after L36, clean build, Python
   unittest, 42/42 contracts, and `git diff --check` passed in about 138 seconds; runtime suite
   elapsed_ms=114358.
+- `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: after L36b, clean build, Python
+  unittest, 43/43 contracts, and `git diff --check` passed in about 140 seconds; runtime suite
+  elapsed_ms=107854.
 - direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.
-- direct `runtime-contract-suite`: 42/42 contracts after L36 material-program checkpoint.
+- direct `runtime-contract-suite`: 43/43 contracts after L36b binary-evidence checkpoint.

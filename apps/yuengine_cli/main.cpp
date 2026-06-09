@@ -66,6 +66,7 @@ void usage()
               << "  yuengine_cli backend-program-depth-font <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-font-atlas <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-material-program <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli backend-material-program-binary <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli runtime-contract-suite <project.json> [--repo-root <path>] [--filter <test-name>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
@@ -1005,6 +1006,40 @@ int runRuntimeContractSuite(
         requireContract(errors, report.openMaterialProgramObligations == 4, "material program open obligation count changed");
     });
 
+    runContractSuiteCheck(suite, "yuengine_backend_material_program_binary_contract", filter, [&](auto& errors) {
+        const auto report = yu::runtime::runBackendMaterialProgramBinaryRuntime(manifestPath, repoRoot);
+        requireContract(errors, report.ok, "binary material program report is not ok");
+        requireContract(errors, report.materialProgramOk, "material program upstream not ready");
+        requireContract(errors, report.originalBinaryFound, "original game binary was not found");
+        requireContract(errors, report.binaryShaderPathTableReady, "binary shader path table not ready");
+        requireContract(errors, report.binaryDeferredSelectorTableReady, "binary deferred selector table not ready");
+        requireContract(errors, report.selectedProgramsBackedByBinaryTable, "selected programs not backed by binary table");
+        requireContract(errors, report.binarySmaaDepthTechniqueEvidenceReady, "binary SMAA depth evidence not ready");
+        requireContract(errors, report.binaryDepthPostFilterEvidenceReady, "binary depth post-filter evidence not ready");
+        requireContract(errors, report.binaryDepthFormatTableEvidenceReady, "binary depth format table not ready");
+        requireContract(errors, report.sampleableDepthBinaryCandidateReady, "sampleable depth binary candidate not ready");
+        requireContract(errors, report.selectorControlFlowStillOpen, "selector control-flow gap not tracked");
+        requireContract(errors, report.sampleableDepthSelectionStillOpen, "sampleable depth runtime selection gap not tracked");
+        requireContract(errors, report.downstreamDrawPresentDeferred, "downstream draw/present was not deferred");
+        requireContract(errors, report.binaryShaderPathTokens == 28, "binary shader path token count changed");
+        requireContract(errors, report.binaryFilterPathTokens == 10, "binary filter path token count changed");
+        requireContract(errors, report.binaryDeferredSelectorTokens == 3, "binary deferred selector token count changed");
+        requireContract(errors, report.selectedProgramBinaryPathHits == 3, "selected program binary hit count changed");
+        requireContract(errors, report.renderMeshSourceMarkers == 1, "mgRenderMesh source marker count changed");
+        requireContract(errors, report.smaaBinaryDepthTokens == 2, "SMAA binary depth token count changed");
+        requireContract(errors, report.depthTextureNameTokens == 2, "depth texture name token count changed");
+        requireContract(errors, report.postFilterSourceMarkers == 1, "post-filter source marker count changed");
+        requireContract(errors, report.postFilterDepthPackedFormatHits == 1, "post-filter packed format count changed");
+        requireContract(errors, report.renderSourceMarkers == 6, "render source marker count changed");
+        requireContract(errors, report.renderDepthFormatTokens == 6, "render depth format token count changed");
+        requireContract(errors, report.rsmDepthBinaryTokens == 2, "RSM depth binary token count changed");
+        requireContract(errors, report.preservedDepthTextureBindings == 1, "preserved depth binding count changed");
+        requireContract(errors, report.preservedMaterialProgramBindings == 38, "preserved material program binding count changed");
+        requireContract(errors, report.resolvedBinaryMaterialProgramContracts == 9, "binary material program resolved contract count changed");
+        requireContract(errors, report.trackedBinaryMaterialProgramObligations == 4, "binary material program tracked obligation count changed");
+        requireContract(errors, report.openBinaryMaterialProgramObligations == 4, "binary material program open obligation count changed");
+    });
+
     runContractSuiteCheck(suite, "yuengine_mission_event_thread_contract", filter, [&](auto& errors) {
         const auto report = yu::runtime::runMissionEventThreadRuntime(manifestPath, repoRoot);
         requireContract(errors, report.ok && report.sceneRuntimeOk, "mission event thread report is not ok");
@@ -1222,6 +1257,11 @@ int main(int argc, char** argv)
         if (command == "backend-material-program") {
             auto report = yu::runtime::runBackendMaterialProgramRuntime(manifest, repoRoot);
             std::cout << yu::runtime::backendMaterialProgramRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "backend-material-program-binary") {
+            auto report = yu::runtime::runBackendMaterialProgramBinaryRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendMaterialProgramBinaryRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "runtime-contract-suite") {

@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <limits>
 #include <map>
 #include <memory>
@@ -188,6 +189,12 @@ void addError(BackendFontAtlasRuntimeReport& report, const std::string& message)
 }
 
 void addError(BackendMaterialProgramRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
+void addError(BackendMaterialProgramBinaryRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
     report.errors.push_back(message);
@@ -1074,6 +1081,144 @@ std::string bytesToText(const std::vector<std::byte>& bytes)
         text.push_back(static_cast<char>(byte));
     }
     return text;
+}
+
+std::vector<std::byte> readPhysicalBytes(const std::filesystem::path& path)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        return {};
+    }
+    in.seekg(0, std::ios::end);
+    const auto size = in.tellg();
+    if (size <= 0) {
+        return {};
+    }
+    in.seekg(0, std::ios::beg);
+    std::vector<std::byte> bytes(static_cast<size_t>(size));
+    in.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (!in) {
+        return {};
+    }
+    return bytes;
+}
+
+struct BinaryAsciiString {
+    long long offset = -1;
+    std::string text;
+};
+
+std::vector<BinaryAsciiString> extractAsciiStrings(const std::vector<std::byte>& bytes)
+{
+    std::vector<BinaryAsciiString> strings;
+    size_t offset = 0;
+    while (offset < bytes.size()) {
+        const auto value = static_cast<unsigned char>(bytes[offset]);
+        if (value >= 32 && value <= 126) {
+            const size_t begin = offset;
+            while (offset < bytes.size()) {
+                const auto current = static_cast<unsigned char>(bytes[offset]);
+                if (current < 32 || current > 126) {
+                    break;
+                }
+                ++offset;
+            }
+            const size_t length = offset - begin;
+            if (length >= 4) {
+                std::string text;
+                text.reserve(length);
+                for (size_t i = begin; i < offset; ++i) {
+                    text.push_back(static_cast<char>(bytes[i]));
+                }
+                strings.push_back({static_cast<long long>(begin), std::move(text)});
+            }
+        } else {
+            ++offset;
+        }
+    }
+    return strings;
+}
+
+bool startsWith(const std::string& value, const std::string& prefix)
+{
+    return value.size() >= prefix.size()
+        && value.compare(0, prefix.size(), prefix) == 0;
+}
+
+int countAsciiStringsStartingWith(
+    const std::vector<BinaryAsciiString>& strings,
+    const std::string& prefix)
+{
+    int count = 0;
+    for (const auto& item : strings) {
+        if (startsWith(item.text, prefix)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+int countAsciiStringContaining(
+    const std::vector<BinaryAsciiString>& strings,
+    const std::string& needle)
+{
+    int count = 0;
+    for (const auto& item : strings) {
+        if (item.text.find(needle) != std::string::npos) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+int countExactAsciiString(
+    const std::vector<BinaryAsciiString>& strings,
+    const std::string& token)
+{
+    int count = 0;
+    for (const auto& item : strings) {
+        if (item.text == token) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+long long findAsciiStringOffset(
+    const std::vector<BinaryAsciiString>& strings,
+    const std::string& needle)
+{
+    for (const auto& item : strings) {
+        if (item.text.find(needle) != std::string::npos) {
+            return item.offset;
+        }
+    }
+    return -1;
+}
+
+void appendBinaryEvidenceRecord(
+    BackendMaterialProgramBinaryRuntimeReport& report,
+    const std::vector<BinaryAsciiString>& strings,
+    const std::string& token,
+    const std::string& category,
+    const std::string& sourceFile,
+    const std::string& context)
+{
+    BackendBinaryEvidenceRecord record;
+    record.token = token;
+    record.category = category;
+    record.sourceFile = sourceFile;
+    record.context = context;
+    record.offset = findAsciiStringOffset(strings, token);
+    report.binaryEvidenceRecords.push_back(std::move(record));
+}
+
+std::filesystem::path originalGameBinaryPath(const std::filesystem::path& repoRoot)
+{
+    const auto path = repoRoot / ".." / "bin" / "game.exe";
+    std::error_code error;
+    const auto resolved = std::filesystem::weakly_canonical(path, error);
+    return error ? std::filesystem::absolute(path) : resolved;
 }
 
 int countOccurrences(const std::string& text, const std::string& needle)
@@ -7357,6 +7502,273 @@ BackendMaterialProgramRuntimeReport buildBackendMaterialProgramRuntimeReport(
     return storeCachedReport(cache, cacheKey, report);
 }
 
+BackendMaterialProgramBinaryRuntimeReport buildBackendMaterialProgramBinaryRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs,
+    const std::filesystem::path& repoRoot)
+{
+    const auto binaryPath = originalGameBinaryPath(repoRoot);
+    const auto cacheKey =
+        runtimeReportCacheKey(inputs, rendererProfile, "backend-material-program-binary")
+        + "|" + pathCacheKey(binaryPath);
+    static std::map<std::string, BackendMaterialProgramBinaryRuntimeReport> cache;
+    BackendMaterialProgramBinaryRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
+    BackendMaterialProgramBinaryRuntimeReport report;
+    const auto materialProgram =
+        buildBackendMaterialProgramRuntimeReport(inputs, rendererProfile, vfs);
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.originalBinaryPath = binaryPath.string();
+    report.materialProgramOk = materialProgram.ok;
+    report.preservedDepthTextureBindings = materialProgram.preservedDepthTextureBindings;
+    report.preservedMaterialProgramBindings = materialProgram.preservedMaterialProgramBindings;
+    report.drawPresentCaptureRecordsDeferred =
+        materialProgram.drawPresentCaptureRecordsDeferred;
+    report.backbufferWidth = materialProgram.backbufferWidth;
+    report.backbufferHeight = materialProgram.backbufferHeight;
+
+    const auto binaryBytes = readPhysicalBytes(binaryPath);
+    report.originalBinaryFound = !binaryBytes.empty();
+    const auto strings = extractAsciiStrings(binaryBytes);
+    if (report.originalBinaryFound) {
+        report.binaryShaderPathTokens = countAsciiStringsStartingWith(strings, "system/shader/");
+        report.binaryFilterPathTokens = countAsciiStringsStartingWith(strings, "system/filter/");
+        report.renderMeshSourceMarkers = countAsciiStringContaining(strings, "mgRenderMesh.cpp");
+        report.binaryDeferredSelectorTokens =
+            countExactAsciiString(strings, "system/shader/deferred.bfx")
+            + countExactAsciiString(strings, "system/shader/deferredGrass.bfx")
+            + countExactAsciiString(strings, "system/shader/deferredMulti.bfx");
+
+        std::set<std::string> selectedPrograms;
+        for (const auto& record : materialProgram.selectionRecords) {
+            selectedPrograms.insert(record.shaderFile);
+        }
+        for (const auto& shaderFile : selectedPrograms) {
+            if (countExactAsciiString(strings, shaderFile) > 0) {
+                ++report.selectedProgramBinaryPathHits;
+            }
+        }
+
+        report.depthTextureNameTokens =
+            countExactAsciiString(strings, "Depth Texture")
+            + countExactAsciiString(strings, "depthTex2D");
+        report.smaaBinaryDepthTokens =
+            countExactAsciiString(strings, "depthTex2D")
+            + countExactAsciiString(strings, "DepthEdgeDetection");
+        report.postFilterSourceMarkers =
+            countAsciiStringContaining(strings, "mgRenderPostFilter.cpp");
+        report.postFilterDepthPackedFormatHits =
+            countAsciiStringContaining(strings, "INTZRAWZDF24DF16");
+        report.renderSourceMarkers = countAsciiStringContaining(strings, "mgRender.cpp");
+        report.renderDepthFormatTokens =
+            countExactAsciiString(strings, "D24S8")
+            + countExactAsciiString(strings, "R32F")
+            + countExactAsciiString(strings, "RAWZ")
+            + countExactAsciiString(strings, "DF16")
+            + countExactAsciiString(strings, "DF24")
+            + countExactAsciiString(strings, "INTZ");
+        report.rsmDepthBinaryTokens =
+            countExactAsciiString(strings, "cascade intz")
+            + countExactAsciiString(strings, "RSM DS");
+
+        appendBinaryEvidenceRecord(
+            report,
+            strings,
+            "system/shader/deferred.bfx",
+            "material_program_selector_table",
+            "mgRenderMesh.cpp",
+            "original binary shader path table contains the static deferred program");
+        appendBinaryEvidenceRecord(
+            report,
+            strings,
+            "system/shader/deferredGrass.bfx",
+            "material_program_selector_table",
+            "mgRenderMesh.cpp",
+            "original binary shader path table contains the grass deferred program");
+        appendBinaryEvidenceRecord(
+            report,
+            strings,
+            "system/shader/deferredMulti.bfx",
+            "material_program_selector_table",
+            "mgRenderMesh.cpp",
+            "original binary shader path table contains the multi-texture deferred program");
+        appendBinaryEvidenceRecord(
+            report,
+            strings,
+            "depthTex2D",
+            "smaa_depth_technique",
+            "mgRender.cpp",
+            "original binary contains the SMAA depth texture symbol");
+        appendBinaryEvidenceRecord(
+            report,
+            strings,
+            "DepthEdgeDetection",
+            "smaa_depth_technique",
+            "mgRender.cpp",
+            "original binary contains the SMAA depth edge technique symbol");
+        appendBinaryEvidenceRecord(
+            report,
+            strings,
+            "INTZRAWZDF24DF16",
+            "depth_texture_candidate_formats",
+            "mgRenderPostFilter.cpp",
+            "original post-filter code embeds packed DX9 depth texture format candidates");
+        appendBinaryEvidenceRecord(
+            report,
+            strings,
+            "D24S8",
+            "render_format_table",
+            "mgRender.cpp",
+            "original render format table names D24S8");
+        appendBinaryEvidenceRecord(
+            report,
+            strings,
+            "R32F",
+            "render_format_table",
+            "mgRender.cpp",
+            "original render format table names R32F");
+        appendBinaryEvidenceRecord(
+            report,
+            strings,
+            "cascade intz",
+            "rsm_depth_candidate",
+            "mgShaderRSM.cpp",
+            "original binary contains an RSM cascade intz label");
+    }
+
+    report.binaryShaderPathTableReady =
+        report.originalBinaryFound
+        && report.binaryShaderPathTokens == 28
+        && report.binaryFilterPathTokens == 10
+        && report.renderMeshSourceMarkers == 1;
+    report.binaryDeferredSelectorTableReady =
+        report.binaryShaderPathTableReady
+        && report.binaryDeferredSelectorTokens == 3;
+    report.selectedProgramsBackedByBinaryTable =
+        report.materialProgramOk
+        && report.binaryDeferredSelectorTableReady
+        && report.selectedProgramBinaryPathHits == 3;
+    report.binarySmaaDepthTechniqueEvidenceReady =
+        report.smaaBinaryDepthTokens == 2
+        && report.depthTextureNameTokens == 2;
+    report.binaryDepthPostFilterEvidenceReady =
+        report.postFilterSourceMarkers == 1
+        && report.postFilterDepthPackedFormatHits == 1;
+    report.binaryDepthFormatTableEvidenceReady =
+        report.renderSourceMarkers == 6
+        && report.renderDepthFormatTokens == 6
+        && report.rsmDepthBinaryTokens == 2;
+    report.sampleableDepthBinaryCandidateReady =
+        report.binarySmaaDepthTechniqueEvidenceReady
+        && report.binaryDepthPostFilterEvidenceReady
+        && report.binaryDepthFormatTableEvidenceReady
+        && report.preservedDepthTextureBindings == 1;
+    report.selectorControlFlowStillOpen =
+        report.selectedProgramsBackedByBinaryTable;
+    report.sampleableDepthSelectionStillOpen =
+        report.sampleableDepthBinaryCandidateReady;
+    report.downstreamDrawPresentDeferred =
+        materialProgram.downstreamDrawPresentDeferred
+        && report.drawPresentCaptureRecordsDeferred == 124;
+    report.backbufferExtentCarried =
+        report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+
+    report.contracts.push_back(makeBackendObligation(
+        "inherited_material_program_runtime",
+        report.materialProgramOk ? "contract_ready" : "blocked",
+        "L36b consumes L36 material program/lightmap/depth evidence"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_game_binary_presence",
+        report.originalBinaryFound ? "contract_ready" : "blocked",
+        "original game.exe is available as read-only binary evidence"));
+    report.contracts.push_back(makeBackendObligation(
+        "binary_shader_path_table",
+        report.binaryShaderPathTableReady ? "contract_ready" : "blocked",
+        "game.exe exposes 28 system/shader paths, 10 system/filter paths, and the mgRenderMesh.cpp source marker"));
+    report.contracts.push_back(makeBackendObligation(
+        "binary_deferred_selector_table",
+        report.binaryDeferredSelectorTableReady ? "contract_ready" : "blocked",
+        "mgRenderMesh binary string table contains deferred, deferredGrass, and deferredMulti program paths"));
+    report.contracts.push_back(makeBackendObligation(
+        "selected_programs_backed_by_binary_table",
+        report.selectedProgramsBackedByBinaryTable ? "contract_ready" : "blocked",
+        "all three unique L36 selected deferred programs are present in the original binary shader table"));
+    report.contracts.push_back(makeBackendObligation(
+        "binary_smaa_depth_technique_names",
+        report.binarySmaaDepthTechniqueEvidenceReady ? "contract_ready" : "blocked",
+        "game.exe contains depthTex2D and DepthEdgeDetection symbols used by SMAA depth edge detection"));
+    report.contracts.push_back(makeBackendObligation(
+        "binary_postfilter_depth_texture_formats",
+        report.binaryDepthPostFilterEvidenceReady ? "contract_ready" : "blocked",
+        "mgRenderPostFilter binary evidence contains packed INTZ/RAWZ/DF24/DF16 depth texture candidates"));
+    report.contracts.push_back(makeBackendObligation(
+        "binary_render_depth_format_table",
+        report.binaryDepthFormatTableEvidenceReady ? "contract_ready" : "blocked",
+        "mgRender/mgShaderRSM binary evidence exposes D24S8/R32F/RAWZ/DF16/DF24/INTZ and RSM depth labels"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampleable_depth_binary_candidate",
+        report.sampleableDepthBinaryCandidateReady ? "contract_ready" : "blocked",
+        "binary evidence proves sampleable depth candidates exist, superseding the resource-only negative evidence"));
+    report.contracts.push_back(makeBackendObligation(
+        "exact_selector_control_flow",
+        report.selectorControlFlowStillOpen ? "tracked_open" : "blocked",
+        "shader path table is binary-backed, but the selector branch/control-flow is not yet reconstructed"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampleable_depth_runtime_selection",
+        report.sampleableDepthSelectionStillOpen ? "tracked_open" : "blocked",
+        "depth format candidates exist, but the runtime selection/copy path is not yet reconstructed"));
+    report.contracts.push_back(makeBackendObligation(
+        "draw_present_capture_after_binary_evidence",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "draw, present, and capture remain deferred until selector CFG and depth runtime selection are closed"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_after_capture",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "original-frame oracle remains deferred until YuEngine can execute and capture the frame"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedBinaryMaterialProgramContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedBinaryMaterialProgramObligations;
+            ++report.openBinaryMaterialProgramObligations;
+        } else {
+            ++report.openBinaryMaterialProgramObligations;
+        }
+    }
+
+    if (!report.materialProgramOk || !report.originalBinaryFound) {
+        addError(report, "upstream material program report or original binary evidence is missing");
+    }
+    if (!report.binaryShaderPathTableReady || !report.binaryDeferredSelectorTableReady
+        || !report.selectedProgramsBackedByBinaryTable) {
+        addError(report, "binary material selector evidence is incomplete");
+    }
+    if (!report.binarySmaaDepthTechniqueEvidenceReady
+        || !report.binaryDepthPostFilterEvidenceReady
+        || !report.binaryDepthFormatTableEvidenceReady
+        || !report.sampleableDepthBinaryCandidateReady) {
+        addError(report, "binary sampleable depth evidence is incomplete");
+    }
+    if (!report.selectorControlFlowStillOpen || !report.sampleableDepthSelectionStillOpen) {
+        addError(report, "binary evidence did not preserve selector/depth runtime open gates");
+    }
+    if (!report.downstreamDrawPresentDeferred || !report.backbufferExtentCarried) {
+        addError(report, "draw/present or backbuffer gate was not preserved");
+    }
+    if (report.resolvedBinaryMaterialProgramContracts != 9
+        || report.trackedBinaryMaterialProgramObligations != 4
+        || report.openBinaryMaterialProgramObligations != 4) {
+        addError(report, "binary material program obligation accounting is inconsistent");
+    }
+
+    return storeCachedReport(cache, cacheKey, report);
+}
+
 } // namespace
 
 FirstFrameRuntimeReport buildFirstFrameRuntimeReport(
@@ -10782,6 +11194,139 @@ std::string backendMaterialProgramRuntimeReportToJson(
             << ", \"status\": \"" << core::jsonEscape(record.status)
             << "\", \"evidence\": \"" << core::jsonEscape(record.evidence) << "\"}";
         out << (i + 1 == report.selectionRecords.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendMaterialProgramBinaryRuntimeReport runBackendMaterialProgramBinaryRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendMaterialProgramBinaryRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendMaterialProgramBinaryRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs,
+            repoRoot);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendMaterialProgramBinaryRuntimeReportToJson(
+    const BackendMaterialProgramBinaryRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_material_program_binary_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"original_binary_path\": \""
+        << core::jsonEscape(report.originalBinaryPath) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " material_program_ok=" << (report.materialProgramOk ? "true" : "false")
+        << " original_binary_found=" << (report.originalBinaryFound ? "true" : "false")
+        << " binary_shader_path_table_ready="
+        << (report.binaryShaderPathTableReady ? "true" : "false")
+        << " binary_deferred_selector_table_ready="
+        << (report.binaryDeferredSelectorTableReady ? "true" : "false")
+        << " selected_programs_backed_by_binary_table="
+        << (report.selectedProgramsBackedByBinaryTable ? "true" : "false")
+        << " binary_smaa_depth_technique_evidence_ready="
+        << (report.binarySmaaDepthTechniqueEvidenceReady ? "true" : "false")
+        << " binary_depth_postfilter_evidence_ready="
+        << (report.binaryDepthPostFilterEvidenceReady ? "true" : "false")
+        << " binary_depth_format_table_evidence_ready="
+        << (report.binaryDepthFormatTableEvidenceReady ? "true" : "false")
+        << " sampleable_depth_binary_candidate_ready="
+        << (report.sampleableDepthBinaryCandidateReady ? "true" : "false")
+        << " selector_control_flow_still_open="
+        << (report.selectorControlFlowStillOpen ? "true" : "false")
+        << " sampleable_depth_selection_still_open="
+        << (report.sampleableDepthSelectionStillOpen ? "true" : "false")
+        << " downstream_draw_present_deferred="
+        << (report.downstreamDrawPresentDeferred ? "true" : "false")
+        << " backbuffer_extent_carried=" << (report.backbufferExtentCarried ? "true" : "false")
+        << " binary_shader_path_tokens=" << report.binaryShaderPathTokens
+        << " binary_filter_path_tokens=" << report.binaryFilterPathTokens
+        << " binary_deferred_selector_tokens=" << report.binaryDeferredSelectorTokens
+        << " selected_program_binary_path_hits=" << report.selectedProgramBinaryPathHits
+        << " render_mesh_source_markers=" << report.renderMeshSourceMarkers
+        << " smaa_binary_depth_tokens=" << report.smaaBinaryDepthTokens
+        << " depth_texture_name_tokens=" << report.depthTextureNameTokens
+        << " postfilter_source_markers=" << report.postFilterSourceMarkers
+        << " postfilter_depth_packed_format_hits="
+        << report.postFilterDepthPackedFormatHits
+        << " render_source_markers=" << report.renderSourceMarkers
+        << " render_depth_format_tokens=" << report.renderDepthFormatTokens
+        << " rsm_depth_binary_tokens=" << report.rsmDepthBinaryTokens
+        << " preserved_depth_texture_bindings=" << report.preservedDepthTextureBindings
+        << " preserved_material_program_bindings="
+        << report.preservedMaterialProgramBindings
+        << " draw_present_capture_records_deferred="
+        << report.drawPresentCaptureRecordsDeferred
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_binary_material_program_contracts="
+        << report.resolvedBinaryMaterialProgramContracts
+        << " tracked_binary_material_program_obligations="
+        << report.trackedBinaryMaterialProgramObligations
+        << " open_binary_material_program_obligations="
+        << report.openBinaryMaterialProgramObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"binary_selector_summary\": {";
+    out << "\"binary_shader_path_tokens\": " << report.binaryShaderPathTokens
+        << ", \"binary_filter_path_tokens\": " << report.binaryFilterPathTokens
+        << ", \"binary_deferred_selector_tokens\": "
+        << report.binaryDeferredSelectorTokens
+        << ", \"selected_program_binary_path_hits\": "
+        << report.selectedProgramBinaryPathHits
+        << ", \"render_mesh_source_markers\": " << report.renderMeshSourceMarkers
+        << "},\n";
+    out << "  \"binary_depth_summary\": {";
+    out << "\"smaa_binary_depth_tokens\": " << report.smaaBinaryDepthTokens
+        << ", \"depth_texture_name_tokens\": " << report.depthTextureNameTokens
+        << ", \"postfilter_source_markers\": " << report.postFilterSourceMarkers
+        << ", \"postfilter_depth_packed_format_hits\": "
+        << report.postFilterDepthPackedFormatHits
+        << ", \"render_source_markers\": " << report.renderSourceMarkers
+        << ", \"render_depth_format_tokens\": " << report.renderDepthFormatTokens
+        << ", \"rsm_depth_binary_tokens\": " << report.rsmDepthBinaryTokens
+        << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_binary_material_program_contracts\": "
+        << report.resolvedBinaryMaterialProgramContracts
+        << ", \"tracked_binary_material_program_obligations\": "
+        << report.trackedBinaryMaterialProgramObligations
+        << ", \"open_binary_material_program_obligations\": "
+        << report.openBinaryMaterialProgramObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"binary_evidence_records\": [\n";
+    for (size_t i = 0; i < report.binaryEvidenceRecords.size(); ++i) {
+        const auto& record = report.binaryEvidenceRecords[i];
+        out << "    {\"token\": \"" << core::jsonEscape(record.token)
+            << "\", \"category\": \"" << core::jsonEscape(record.category)
+            << "\", \"source_file\": \"" << core::jsonEscape(record.sourceFile)
+            << "\", \"context\": \"" << core::jsonEscape(record.context)
+            << "\", \"offset\": " << record.offset << "}";
+        out << (i + 1 == report.binaryEvidenceRecords.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

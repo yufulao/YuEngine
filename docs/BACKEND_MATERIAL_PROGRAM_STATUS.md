@@ -120,5 +120,7 @@ L36 does not:
 
 ## Next Edge
 
-L36b should recover the exact original selector function or a stronger binary-level equivalent, and
-recover the real sampleable depth path. Draw submission must stay deferred until those are closed.
+L36b consumes original `game.exe` binary evidence. It proves the deferred shader path table and
+sampleable-depth candidate formats exist in the original binary, superseding L36's resource-only
+negative evidence. L36c must still recover selector control-flow and runtime depth selection before
+draw submission.
