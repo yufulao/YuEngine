@@ -42,10 +42,18 @@ enum class ScriptValueKind {
     UiMethod,
     Parameter,
     Vector2,
+    Vector3,
+    Quaternion,
     SaveList,
     SaveEntry,
     ScenarioKeys,
     Mission,
+    MissionRequest,
+    Marker,
+    Actor,
+    Loader,
+    PlaceParams,
+    CameraTask,
 };
 
 enum class Truthiness {
@@ -237,6 +245,22 @@ ScriptValue vector2Value(std::string label)
     return value;
 }
 
+ScriptValue vector3Value(std::string label)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Vector3;
+    value.text = std::move(label);
+    return value;
+}
+
+ScriptValue quaternionValue(std::string label)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Quaternion;
+    value.text = std::move(label);
+    return value;
+}
+
 ScriptValue saveListValue()
 {
     ScriptValue value;
@@ -249,6 +273,54 @@ ScriptValue saveEntryValue(std::string label)
 {
     ScriptValue value;
     value.kind = ScriptValueKind::SaveEntry;
+    value.text = std::move(label);
+    return value;
+}
+
+ScriptValue missionRequestValue(std::string label)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::MissionRequest;
+    value.text = std::move(label);
+    return value;
+}
+
+ScriptValue markerValue(std::string label)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Marker;
+    value.text = std::move(label);
+    return value;
+}
+
+ScriptValue actorValue(std::string label)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Actor;
+    value.text = std::move(label);
+    return value;
+}
+
+ScriptValue loaderValue(std::string label)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Loader;
+    value.text = std::move(label);
+    return value;
+}
+
+ScriptValue placeParamsValue(std::string label)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::PlaceParams;
+    value.text = std::move(label);
+    return value;
+}
+
+ScriptValue cameraTaskValue(std::string label)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::CameraTask;
     value.text = std::move(label);
     return value;
 }
@@ -333,6 +405,10 @@ std::string valueKindName(ScriptValueKind kind)
         return "parameter";
     case ScriptValueKind::Vector2:
         return "vector2";
+    case ScriptValueKind::Vector3:
+        return "vector3";
+    case ScriptValueKind::Quaternion:
+        return "quaternion";
     case ScriptValueKind::SaveList:
         return "save_list";
     case ScriptValueKind::SaveEntry:
@@ -341,6 +417,18 @@ std::string valueKindName(ScriptValueKind kind)
         return "scenario_keys";
     case ScriptValueKind::Mission:
         return "mission";
+    case ScriptValueKind::MissionRequest:
+        return "mission_request";
+    case ScriptValueKind::Marker:
+        return "marker";
+    case ScriptValueKind::Actor:
+        return "actor";
+    case ScriptValueKind::Loader:
+        return "loader";
+    case ScriptValueKind::PlaceParams:
+        return "place_params";
+    case ScriptValueKind::CameraTask:
+        return "camera_task";
     }
     return "unknown";
 }
@@ -378,13 +466,26 @@ std::string valueSummary(const ScriptValue& value)
     case ScriptValueKind::UiMethod:
     case ScriptValueKind::Parameter:
     case ScriptValueKind::Vector2:
+    case ScriptValueKind::Vector3:
+    case ScriptValueKind::Quaternion:
     case ScriptValueKind::SaveList:
     case ScriptValueKind::SaveEntry:
     case ScriptValueKind::ScenarioKeys:
     case ScriptValueKind::Mission:
+    case ScriptValueKind::MissionRequest:
+    case ScriptValueKind::Marker:
+    case ScriptValueKind::Actor:
+    case ScriptValueKind::Loader:
+    case ScriptValueKind::PlaceParams:
+    case ScriptValueKind::CameraTask:
         return value.text.empty() ? valueKindName(value.kind) : value.text;
     }
     return "unknown";
+}
+
+std::string argumentValueText(const ScriptValue& value)
+{
+    return value.kind == ScriptValueKind::String ? value.text : valueSummary(value);
 }
 
 std::string argumentSummary(const std::vector<ScriptValue>& arguments)
@@ -397,7 +498,7 @@ std::string argumentSummary(const std::vector<ScriptValue>& arguments)
         if (i != 0) {
             out << "; ";
         }
-        out << "arg" << i << "=" << valueSummary(arguments[i]);
+        out << "arg" << i << "=" << argumentValueText(arguments[i]);
     }
     return out.str();
 }
@@ -409,7 +510,7 @@ std::string positionalArgumentSummary(const std::vector<ScriptValue>& arguments)
         if (i != 0) {
             out << ", ";
         }
-        out << valueSummary(arguments[i]);
+        out << argumentValueText(arguments[i]);
     }
     return out.str();
 }
@@ -602,6 +703,12 @@ std::string missionLabelForScenarioKey(const std::string& scenarioKey)
 constexpr const char* kFirstMissionScript = "mission/sc01/main/ms010_0.b64.sqasm";
 constexpr const char* kFirstMissionStage = "map/Doujou/doujou.sge";
 constexpr const char* kFirstMissionRailCamera = "map/Doujou/doujou.rcm";
+constexpr const char* kFirstMissionEventScript = "sc01/main/ms010_0";
+constexpr const char* kFirstMissionEventObject = "ev_sc01_main_ms010_0";
+constexpr const char* kFirstMissionPlayer = "reimuEx";
+constexpr const char* kFirstMissionMarker = "marker:sc01/main/ms010_0:eventMap";
+constexpr const char* kFirstMissionPlayerPos = "marker:sc01/main/ms010_0:eventMap._pos";
+constexpr const char* kFirstMissionPlayerRot = "marker:sc01/main/ms010_0:eventMap._rot";
 
 ScriptValue tableKeyValue(const std::string& key)
 {
@@ -1140,9 +1247,13 @@ bool isBuiltinCall(const std::string& name)
 bool isSquirrelValueMethod(const std::string& name)
 {
     static const std::set<std::string> methods = {
+        "checkFall",
         "count",
         "get",
+        "getRequest",
         "isActive",
+        "toQuat",
+        "toVec3",
         "toAbsPos",
         "tofloat",
         "tointeger",
@@ -1190,8 +1301,40 @@ bool isValueHelperCall(const std::string& name)
     static const std::set<std::string> helpers = {
         "centerPos",
         "float2",
+        "Vec3",
     };
     return helpers.find(name) != helpers.end();
+}
+
+bool isActorRuntimeMethod(const std::string& name)
+{
+    static const std::set<std::string> methods = {
+        "fillHealProgress",
+        "playEffect",
+        "setArmed",
+        "setWaitForLanding",
+    };
+    return methods.find(name) != methods.end();
+}
+
+bool isLoaderRuntimeMethod(const std::string& name)
+{
+    return name == "end";
+}
+
+bool isPlaceParamsRuntimeMethod(const std::string& name)
+{
+    static const std::set<std::string> methods = {
+        "setEnabledRetWorld",
+        "setLabel",
+        "setSlaveDisp",
+    };
+    return methods.find(name) != methods.end();
+}
+
+bool isMissionRuntimeMethod(const std::string& name)
+{
+    return name == "checkFall";
 }
 
 bool isModuleLifecycleCall(const std::string& ownerClass, const std::string& name)
@@ -1573,6 +1716,9 @@ private:
         if (keyText == "modMenu" || keyText == "modShop") {
             return nullValue();
         }
+        if (keyText == "ms") {
+            return objectValue("ms");
+        }
         return {};
     }
 
@@ -1623,6 +1769,9 @@ private:
             }
             if (isUiObjectMethod(keyText)) {
                 return uiMethodValue(keyText, target.text);
+            }
+            if (isMissionRuntimeMethod(keyText)) {
+                return valueMethodValue(keyText, target.text);
             }
             return lookupRootSlot(keyText);
         }
@@ -1675,6 +1824,40 @@ private:
                 return valueMethodValue(keyText, valueSummary(target));
             }
             return {};
+        }
+
+        if (target.kind == ScriptValueKind::Vector3 && keyText == "toVec3") {
+            return valueMethodValue(keyText, valueSummary(target));
+        }
+
+        if (target.kind == ScriptValueKind::Quaternion && keyText == "toQuat") {
+            return valueMethodValue(keyText, valueSummary(target));
+        }
+
+        if (target.kind == ScriptValueKind::Parameter && keyText == "getRequest") {
+            return valueMethodValue(keyText, valueSummary(target));
+        }
+
+        if (target.kind == ScriptValueKind::Marker) {
+            if (keyText == "_pos") {
+                return vector3Value(valueSummary(target) + "._pos");
+            }
+            if (keyText == "_rot") {
+                return quaternionValue(valueSummary(target) + "._rot");
+            }
+            return {};
+        }
+
+        if (target.kind == ScriptValueKind::Actor && isActorRuntimeMethod(keyText)) {
+            return valueMethodValue(keyText, valueSummary(target));
+        }
+
+        if (target.kind == ScriptValueKind::Loader && isLoaderRuntimeMethod(keyText)) {
+            return valueMethodValue(keyText, valueSummary(target));
+        }
+
+        if (target.kind == ScriptValueKind::PlaceParams && isPlaceParamsRuntimeMethod(keyText)) {
+            return valueMethodValue(keyText, valueSummary(target));
         }
 
         if (isSquirrelValueMethod(keyText)) {
@@ -1933,6 +2116,12 @@ private:
                 : name + "(" + positionalArgsText + ")";
             return recordTypedReturn(vector2Value(label));
         }
+        if (name == "Vec3") {
+            const std::string label = positionalArgsText.empty()
+                ? name + "@" + std::to_string(instruction.pc)
+                : name + "(" + positionalArgsText + ")";
+            return recordTypedReturn(vector3Value(label));
+        }
         if (name == "toPoint" || name == "toAbsPos" || name == "bl" || name == "tr") {
             if ((name == "bl" || name == "tr") && callable.kind == ScriptValueKind::UiMethod
                 && isConcreteReceiver(callable.receiver)) {
@@ -1942,6 +2131,12 @@ private:
             }
             return recordTypedReturn(vector2Value(name + "(" + callable.receiver + ")"));
         }
+        if (name == "toVec3") {
+            return recordTypedReturn(vector3Value("toVec3(" + callable.receiver + ")"));
+        }
+        if (name == "toQuat") {
+            return recordTypedReturn(quaternionValue("toQuat(" + callable.receiver + ")"));
+        }
         if (name == "tofloat" || name == "tointeger") {
             double data = 0.0;
             if (!parseNumberText(callable.receiver, data)) {
@@ -1950,6 +2145,13 @@ private:
             return name == "tofloat"
                 ? recordTypedReturn(floatValue(data))
                 : recordTypedReturn(intValue(static_cast<int>(data)));
+        }
+        if (name == "getRequest") {
+            const std::string request = "mission_request:" + std::string(kFirstMissionEventScript);
+            recordServiceState("Event/Quest/Flag Service", name, "mission_request",
+                callable.receiver.empty() ? "This" : callable.receiver, request, function, instruction,
+                "mission setupProcess asks the runtime request object for spawn marker context", argsText);
+            return recordTypedReturn(missionRequestValue(request));
         }
         if (name == "GetSaveList") {
             recordServiceState("Save/Profile/Scenario Service", name, "query_empty_save_list", "save_list",
@@ -2067,7 +2269,7 @@ private:
         }
         if (callable.receiver == "gMenu" && name == "setMission") {
             const std::string mission =
-                arguments.empty() ? "unknown" : valueSummary(arguments.front());
+                arguments.empty() ? "unknown" : argumentValueText(arguments.front());
             recordServiceState("Save/Profile/Scenario Service", name, "set_current_mission", "gMenu",
                 "mission=" + mission, function, instruction,
                 "title continue/load branch forwards recovered save mission to gMenu", argsText);
@@ -2110,7 +2312,7 @@ private:
         }
         if (name == "StartGame") {
             const std::string mission =
-                arguments.empty() ? "unknown" : valueSummary(arguments.front());
+                arguments.empty() ? "unknown" : argumentValueText(arguments.front());
             const bool newGame =
                 arguments.size() > 1 && arguments[1].kind == ScriptValueKind::Bool && arguments[1].boolValue;
             recordServiceState("Save/Profile/Scenario Service", name, "start_game", "save_profile",
@@ -2122,6 +2324,194 @@ private:
                 function, instruction,
                 "StartGame queues the first mission script and setupProcess stage resources proven by the oracle",
                 argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "Loader") {
+            const std::string missionScript =
+                arguments.empty() ? kFirstMissionEventScript : argumentValueText(arguments.front());
+            const std::string loader = "loader:" + missionScript;
+            recordServiceState("Scene And Stage Service", name, "create_loader", loader,
+                "loader=" + loader + "; event_script=" + missionScript, function, instruction,
+                "first mission setupProcess creates the loader for the original mission script", argsText);
+            return recordTypedReturn(loaderValue(loader));
+        }
+        if (name == "LoadStage") {
+            const std::string stage = arguments.empty() ? kFirstMissionStage : argumentValueText(arguments.front());
+            const std::string blocking = arguments.size() > 1 ? valueSummary(arguments[1]) : "unknown";
+            recordServiceState("Scene And Stage Service", name, "load_stage", stage,
+                "stage=" + stage + "; blocking=" + blocking, function, instruction,
+                "first mission setupProcess loads the stage resource before event setup", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "LoadEventsScriptViaMission") {
+            const std::string eventScript =
+                arguments.empty() ? kFirstMissionEventScript : argumentValueText(arguments.front());
+            recordServiceState("Scene And Stage Service", name, "load_events_script_via_mission",
+                eventScript,
+                "event_script=" + eventScript + "; mission_script=" + kFirstMissionScript,
+                function, instruction,
+                "first mission setupProcess gates later setup on event script load success", argsText);
+            return recordTypedReturn(boolValue(true));
+        }
+        if (name == "ClearCurrentQuest") {
+            recordServiceState("Event/Quest/Flag Service", name, "clear_current_quest", "quest_state",
+                "cleared", function, instruction,
+                "mission setup clears current quest before calling setup events", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "CallSetupEvents") {
+            const std::string changed = arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Scene And Stage Service", name, "call_setup_events",
+                kFirstMissionEventObject, "quest_changed=" + changed, function, instruction,
+                "mission setup calls recovered event setup after loading event script", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "GetMarkerFromRequest") {
+            recordServiceState("Event/Quest/Flag Service", name, "marker_from_request", "eventMap",
+                std::string("marker=") + kFirstMissionMarker + "; request="
+                    + (arguments.size() > 1 ? valueSummary(arguments[1]) : "unknown"),
+                function, instruction,
+                "mission setup resolves player spawn marker from eventMap and mission request", argsText);
+            return recordTypedReturn(markerValue(kFirstMissionMarker));
+        }
+        if (name == "QuatToRotYDegree") {
+            recordServiceState("Script Service", name, "quat_to_rot_y_degree", "marker_rotation",
+                arguments.empty() ? "rot_y=0" : "rot_y=0; quat=" + valueSummary(arguments.front()),
+                function, instruction,
+                "mission setup converts marker quaternion to player Y rotation", argsText);
+            return recordTypedReturn(floatValue(0.0));
+        }
+        if (name == "PushPlayerChara") {
+            const std::string chara = arguments.empty() ? kFirstMissionPlayer : argumentValueText(arguments.front());
+            const std::string pos = arguments.size() > 1 ? valueSummary(arguments[1]) : kFirstMissionPlayerPos;
+            const std::string rotY = arguments.size() > 2 ? valueSummary(arguments[2]) : "0";
+            const std::string actor = "actor:player:" + chara;
+            recordServiceState("Actor And Task Service", name, "push_player_chara", actor,
+                "chara=" + chara + "; pos=" + pos + "; rot_y=" + rotY, function, instruction,
+                "mission setup pushes the playable character actor from original spawn marker", argsText);
+            return recordTypedReturn(actorValue(actor));
+        }
+        if (name == "setWaitForLanding") {
+            const std::string enabled = arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Actor And Task Service", name, "set_wait_for_landing", callable.receiver,
+                "enabled=" + enabled, function, instruction,
+                "mission setup configures the spawned player actor landing wait flag", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "fillHealProgress") {
+            recordServiceState("Actor And Task Service", name, "fill_heal_progress", callable.receiver,
+                "filled", function, instruction,
+                "mission setup fills the spawned player actor heal progress", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "setArmed") {
+            const std::string armed = arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Actor And Task Service", name, "set_armed", callable.receiver,
+                "armed=" + armed, function, instruction,
+                "mission setup arms the spawned player actor", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "playEffect") {
+            const std::string effect = arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            const std::string pos = arguments.size() > 1 ? valueSummary(arguments[1]) : "unknown";
+            recordServiceState("Actor And Task Service", name, "play_effect", callable.receiver,
+                "effect=" + effect + "; pos=" + pos, function, instruction,
+                "mission setup plays spawn effect on the player actor", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "PushTaskGameCamera") {
+            recordServiceState("Camera Service", name, "push_task_game_camera", "camera_task",
+                "pushed", function, instruction,
+                "mission setup pushes the game camera task before checkpoint and rail camera setup", argsText);
+            return recordTypedReturn(cameraTaskValue("camera:game"));
+        }
+        if (name == "SetCheckPoint") {
+            const std::string checkpoint = arguments.empty() ? kFirstMissionPlayerPos : valueSummary(arguments.front());
+            recordServiceState("Event/Quest/Flag Service", name, "set_checkpoint", "checkpoint",
+                "checkpoint=" + checkpoint, function, instruction,
+                "mission setup writes checkpoint from player spawn position", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "LoadRailCamera") {
+            const std::string railCamera =
+                arguments.empty() ? kFirstMissionRailCamera : argumentValueText(arguments.front());
+            recordServiceState("Camera Service", name, "load_rail_camera", "rail_camera",
+                "rail_camera=" + railCamera, function, instruction,
+                "mission setup loads rail camera resource for the first stage", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "SetEnableRailCamera") {
+            const std::string enabled = arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Camera Service", name, "set_enable_rail_camera", "rail_camera",
+                "enabled=" + enabled, function, instruction,
+                "mission setup enables rail camera after loading the resource", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "SetEnableAutoCameraAdjust") {
+            const std::string enabled = arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Camera Service", name, "set_enable_auto_camera_adjust", "game_camera",
+                "enabled=" + enabled, function, instruction,
+                "mission setup disables automatic camera adjust for the first scripted spawn", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "SetDefaultCameraState") {
+            recordServiceState("Camera Service", name, "set_default_camera_state", "game_camera",
+                callable.receiver.empty() ? kFirstMissionEventObject : callable.receiver,
+                function, instruction,
+                "mission setup applies default camera state through the event object", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "LoadCharaPlace") {
+            const std::string place = arguments.empty() ? "" : argumentValueText(arguments.front());
+            recordServiceState("Scene And Stage Service", name, "load_chara_place", "chara_place",
+                "place=" + place, function, instruction,
+                "mission setup loads character placement data for the current stage", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "FadeOutBGM") {
+            const std::string duration = arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Audio Service", name, "fade_out_bgm", "bgm",
+                "duration=" + duration, function, instruction,
+                "mission setup fades out title/menu BGM before stage gameplay", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "GetPlaceParams") {
+            recordServiceState("Scene And Stage Service", name, "get_place_params", "place_params",
+                "place_params=current", function, instruction,
+                "mission setup fetches place parameters for current location UI/world state", argsText);
+            return recordTypedReturn(placeParamsValue("place_params:current"));
+        }
+        if (name == "setLabel") {
+            const std::string label = arguments.empty() ? "unknown" : argumentValueText(arguments.front());
+            recordServiceState("Scene And Stage Service", name, "set_place_label", callable.receiver,
+                "label=" + label, function, instruction,
+                "mission setup labels the active place params with original text id", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "setEnabledRetWorld") {
+            const std::string enabled = arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Scene And Stage Service", name, "set_enabled_ret_world", callable.receiver,
+                "enabled=" + enabled, function, instruction,
+                "mission setup enables return-to-world state on place params", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "setSlaveDisp") {
+            const std::string mode = arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Scene And Stage Service", name, "set_slave_disp", callable.receiver,
+                "mode=" + mode, function, instruction,
+                "mission setup applies slave display mode on place params", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "end") {
+            recordServiceState("Scene And Stage Service", name, "loader_end", callable.receiver,
+                "ended", function, instruction,
+                "mission setup finalizes the loader after stage/event/player/camera setup", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "checkFall") {
+            recordServiceState("Event/Quest/Flag Service", name, "check_fall", "mission_state",
+                "checked", function, instruction,
+                "mission main tick checks player fall state after setupProcess", argsText);
             return recordTypedReturn(nullValue());
         }
         if (name == "MenuObject") {
@@ -2647,7 +3037,8 @@ private:
                 }
                 if (a2 > 0) {
                     std::string receiver;
-                    if ((callable.kind == ScriptValueKind::Method || callable.kind == ScriptValueKind::UiMethod)
+                    if ((callable.kind == ScriptValueKind::Method || callable.kind == ScriptValueKind::UiMethod
+                            || callable.kind == ScriptValueKind::ValueMethod)
                         && isConcreteReceiver(callable.receiver) && callable.receiver != "null") {
                         receiver = callable.receiver;
                     } else if (!rootObjectReceiver.empty()) {
@@ -2994,6 +3385,46 @@ private:
             recordEvent({"ui_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
                 receiver, "script_ui_helper_object", {}, call.sourceLine, call.pc,
                 "field receiver UI helper; bytecode state interpreter tracks field mutation and return shape"});
+            return true;
+        }
+
+        if (receiver.rfind("actor:", 0) == 0 && isActorRuntimeMethod(call.name)) {
+            if (report_) {
+                ++report_->engineObjectCalls;
+            }
+            recordEvent({"engine_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
+                receiver, "runtime_owned_actor_method", "Actor And Task Service", call.sourceLine, call.pc,
+                "actor method service state was modeled during bytecode execution"});
+            return true;
+        }
+
+        if (receiver.rfind("loader:", 0) == 0 && isLoaderRuntimeMethod(call.name)) {
+            if (report_) {
+                ++report_->engineObjectCalls;
+            }
+            recordEvent({"engine_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
+                receiver, "runtime_owned_loader_method", "Scene And Stage Service", call.sourceLine, call.pc,
+                "loader method service state was modeled during bytecode execution"});
+            return true;
+        }
+
+        if (receiver.rfind("place_params:", 0) == 0 && isPlaceParamsRuntimeMethod(call.name)) {
+            if (report_) {
+                ++report_->engineObjectCalls;
+            }
+            recordEvent({"engine_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
+                receiver, "runtime_owned_place_params_method", "Scene And Stage Service", call.sourceLine, call.pc,
+                "place parameter method service state was modeled during bytecode execution"});
+            return true;
+        }
+
+        if (receiver == "ms" && isMissionRuntimeMethod(call.name)) {
+            if (report_) {
+                ++report_->engineObjectCalls;
+            }
+            recordEvent({"engine_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
+                receiver, "runtime_owned_mission_method", "Event/Quest/Flag Service", call.sourceLine, call.pc,
+                "mission runtime method service state was modeled during bytecode execution"});
             return true;
         }
 

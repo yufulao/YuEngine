@@ -376,11 +376,11 @@ Progress:
 
 Current next edge:
 
-- execute the queued first mission script from the `StartGame` scene/stage request:
-  `mission/sc01/main/ms010_0.b64.sqasm` entry `setupProcess`;
-- implement first mission native/service behavior for `Loader`, `LoadStage`,
-  `LoadEventsScriptViaMission`, `CallSetupEvents`, `PushPlayerChara`, `PushTaskGameCamera`,
-  `SetCheckPoint`, and `LoadRailCamera`;
+- drive the next scene/runtime contract from the first mission service state:
+  stage resource, event script, player actor, camera, checkpoint, and place params;
+- convert the current first mission native service mutations into deeper runtime subsystems:
+  resource load handles, stage graph, actor component/task state, camera task stack, and event-map
+  marker data;
 - expand runtime input scenarios for `gMenu` beyond `title-new-game`: Continue enabled/disabled,
   Load empty/non-empty, Option, Exit denied/allowed, cursor up/down;
 - extend concrete UI helper objects into decoded UI command payloads;
@@ -405,6 +405,25 @@ Acceptance:
 - StartGame selects a mission candidate through data/service state, not hard-coded scene boot.
 - Mission setupProcess executes through original bytecode and produces stage, player, camera,
   event-script, and checkpoint service state.
+
+Progress:
+
+- `script-run samples/touhou_new_world/project.json mission/sc01/main/ms010_0.b64 setupProcess
+  --frames 1` now executes the original first mission `setupProcess` entry with 0 unresolved
+  calls.
+- Current first mission metrics:
+  `script_functions=2`, `native_obligations=18`, `unique_native_apis=18`,
+  `engine_object_calls=9`, `typed_call_returns=35`, `service_state_events=27`,
+  `audio_service_commands=1`, `scene_service_commands=10`, `decoded_service_arguments=19`,
+  `unresolved_calls=0`, `truncated=false`.
+- Runtime-owned first mission service state records:
+  - loader: `loader:sc01/main/ms010_0`;
+  - stage: `map/Doujou/doujou.sge`;
+  - event script: `sc01/main/ms010_0`;
+  - player: `reimuEx` at `toVec3(marker:sc01/main/ms010_0:eventMap._pos)`;
+  - camera: `map/Doujou/doujou.rcm`, rail enabled true, auto adjust false;
+  - checkpoint: `toVec3(marker:sc01/main/ms010_0:eventMap._pos)`;
+  - place params: label `<tid=plac.0001>`, return-to-world enabled, slave display mode 0.
 
 ## Stop Conditions
 

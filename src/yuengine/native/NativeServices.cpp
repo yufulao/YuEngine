@@ -200,6 +200,12 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
         return;
     }
 
+    if (mutation.service == "Audio Service" && mutation.action == "fade_out_bgm") {
+        ++runtimeState_.audio.fadeOutBgmCommands;
+        runtimeState_.audio.bgmFadeOutDuration = valueAfterPrefix(mutation.value, "duration=");
+        return;
+    }
+
     if (mutation.service == "Scene And Stage Service" && mutation.action == "fade_in") {
         ++runtimeState_.sceneStage.fadeInCommands;
         runtimeState_.sceneStage.fadeInDuration = valueAfterPrefix(mutation.value, "duration=");
@@ -217,6 +223,101 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
         runtimeState_.sceneStage.currentMissionScript = valueAfterPrefix(mutation.value, "mission_script=");
         runtimeState_.sceneStage.currentStage = valueAfterPrefix(mutation.value, "stage=");
         runtimeState_.sceneStage.currentRailCamera = valueAfterPrefix(mutation.value, "rail_camera=");
+        return;
+    }
+
+    if (mutation.service == "Scene And Stage Service" && mutation.action == "create_loader") {
+        ++runtimeState_.sceneStage.loaderCommands;
+        runtimeState_.sceneStage.activeLoader = valueAfterPrefix(mutation.value, "loader=");
+        return;
+    }
+
+    if (mutation.service == "Scene And Stage Service" && mutation.action == "load_stage") {
+        ++runtimeState_.sceneStage.loadedStageCommands;
+        runtimeState_.sceneStage.currentStage = valueAfterPrefix(mutation.value, "stage=");
+        return;
+    }
+
+    if (mutation.service == "Scene And Stage Service" && mutation.action == "load_events_script_via_mission") {
+        ++runtimeState_.sceneStage.loadedEventScriptCommands;
+        runtimeState_.sceneStage.currentEventScript = valueAfterPrefix(mutation.value, "event_script=");
+        runtimeState_.sceneStage.currentMissionScript = valueAfterPrefix(mutation.value, "mission_script=");
+        return;
+    }
+
+    if (mutation.service == "Scene And Stage Service" && mutation.action == "call_setup_events") {
+        ++runtimeState_.sceneStage.callSetupEventsCommands;
+        return;
+    }
+
+    if (mutation.service == "Scene And Stage Service" && mutation.action == "load_chara_place") {
+        ++runtimeState_.sceneStage.charaPlaceLoads;
+        runtimeState_.sceneStage.currentCharaPlace = valueAfterPrefix(mutation.value, "place=");
+        return;
+    }
+
+    if (mutation.service == "Scene And Stage Service" && mutation.action == "get_place_params") {
+        ++runtimeState_.sceneStage.placeParamQueries;
+        return;
+    }
+
+    if (mutation.service == "Actor And Task Service") {
+        if (mutation.action == "push_player_chara") {
+            ++runtimeState_.actorTask.pushPlayerCharaCommands;
+            runtimeState_.actorTask.currentPlayerChara = valueAfterPrefix(mutation.value, "chara=");
+            runtimeState_.actorTask.currentPlayerPosition = valueAfterPrefix(mutation.value, "pos=");
+            runtimeState_.actorTask.currentPlayerRotY = valueAfterPrefix(mutation.value, "rot_y=");
+            return;
+        }
+
+        ++runtimeState_.actorTask.actorMethodCommands;
+        if (mutation.action == "set_wait_for_landing") {
+            runtimeState_.actorTask.waitForLanding = valueAfterPrefix(mutation.value, "enabled=");
+        } else if (mutation.action == "fill_heal_progress") {
+            runtimeState_.actorTask.healProgressFilled = mutation.value;
+        } else if (mutation.action == "set_armed") {
+            runtimeState_.actorTask.armed = valueAfterPrefix(mutation.value, "armed=");
+        } else if (mutation.action == "play_effect") {
+            runtimeState_.actorTask.lastEffect = valueAfterPrefix(mutation.value, "effect=");
+        }
+        return;
+    }
+
+    if (mutation.service == "Camera Service") {
+        if (mutation.action == "push_task_game_camera") {
+            ++runtimeState_.camera.pushGameCameraCommands;
+            runtimeState_.camera.gameCameraPushed = mutation.value;
+        } else if (mutation.action == "load_rail_camera") {
+            ++runtimeState_.camera.railCameraLoads;
+            runtimeState_.camera.railCameraPath = valueAfterPrefix(mutation.value, "rail_camera=");
+        } else if (mutation.action == "set_enable_rail_camera") {
+            ++runtimeState_.camera.enableRailCameraCommands;
+            runtimeState_.camera.railCameraEnabled = valueAfterPrefix(mutation.value, "enabled=");
+        } else if (mutation.action == "set_enable_auto_camera_adjust") {
+            ++runtimeState_.camera.enableAutoAdjustCommands;
+            runtimeState_.camera.autoCameraAdjustEnabled = valueAfterPrefix(mutation.value, "enabled=");
+        } else if (mutation.action == "set_default_camera_state") {
+            ++runtimeState_.camera.defaultCameraStateCommands;
+            runtimeState_.camera.defaultCameraStateTarget = mutation.value;
+        }
+        return;
+    }
+
+    if (mutation.service == "Event/Quest/Flag Service") {
+        if (mutation.action == "clear_current_quest") {
+            ++runtimeState_.eventQuestFlag.clearCurrentQuestCommands;
+        } else if (mutation.action == "mission_request") {
+            ++runtimeState_.eventQuestFlag.missionRequestQueries;
+            runtimeState_.eventQuestFlag.currentRequest = mutation.value;
+        } else if (mutation.action == "marker_from_request") {
+            ++runtimeState_.eventQuestFlag.markerQueries;
+            runtimeState_.eventQuestFlag.currentMarker = valueAfterPrefix(mutation.value, "marker=");
+        } else if (mutation.action == "set_checkpoint") {
+            ++runtimeState_.eventQuestFlag.checkpointCommands;
+            runtimeState_.eventQuestFlag.currentCheckpoint = valueAfterPrefix(mutation.value, "checkpoint=");
+        } else if (mutation.action == "check_fall") {
+            ++runtimeState_.eventQuestFlag.checkFallCommands;
+        }
         return;
     }
 
@@ -295,15 +396,57 @@ std::string nativeRuntimeServiceStateToJson(const NativeRuntimeServiceState& sta
     writeStringMap(out, state.platform.flags);
     out << "}, ";
     out << "\"audio\": {\"play_bgm_commands\": " << state.audio.playBgmCommands
-        << ", \"current_bgm_id\": \"" << core::jsonEscape(state.audio.currentBgmId) << "\"}, ";
+        << ", \"fade_out_bgm_commands\": " << state.audio.fadeOutBgmCommands
+        << ", \"current_bgm_id\": \"" << core::jsonEscape(state.audio.currentBgmId)
+        << "\", \"bgm_fade_out_duration\": \"" << core::jsonEscape(state.audio.bgmFadeOutDuration) << "\"}, ";
     out << "\"scene_stage\": {\"fade_in_commands\": " << state.sceneStage.fadeInCommands
         << ", \"fade_out_commands\": " << state.sceneStage.fadeOutCommands
         << ", \"queued_stage_loads\": " << state.sceneStage.queuedStageLoads
+        << ", \"loader_commands\": " << state.sceneStage.loaderCommands
+        << ", \"loaded_stage_commands\": " << state.sceneStage.loadedStageCommands
+        << ", \"loaded_event_script_commands\": " << state.sceneStage.loadedEventScriptCommands
+        << ", \"call_setup_events_commands\": " << state.sceneStage.callSetupEventsCommands
+        << ", \"chara_place_loads\": " << state.sceneStage.charaPlaceLoads
+        << ", \"place_param_queries\": " << state.sceneStage.placeParamQueries
         << ", \"fade_in_duration\": \"" << core::jsonEscape(state.sceneStage.fadeInDuration)
         << "\", \"fade_in_blend\": \"" << core::jsonEscape(state.sceneStage.fadeInBlend)
         << "\", \"current_mission_script\": \"" << core::jsonEscape(state.sceneStage.currentMissionScript)
         << "\", \"current_stage\": \"" << core::jsonEscape(state.sceneStage.currentStage)
-        << "\", \"current_rail_camera\": \"" << core::jsonEscape(state.sceneStage.currentRailCamera) << "\"}, ";
+        << "\", \"current_rail_camera\": \"" << core::jsonEscape(state.sceneStage.currentRailCamera)
+        << "\", \"active_loader\": \"" << core::jsonEscape(state.sceneStage.activeLoader)
+        << "\", \"current_event_script\": \"" << core::jsonEscape(state.sceneStage.currentEventScript)
+        << "\", \"current_chara_place\": \"" << core::jsonEscape(state.sceneStage.currentCharaPlace) << "\"}, ";
+    out << "\"actor_task\": {\"push_player_chara_commands\": "
+        << state.actorTask.pushPlayerCharaCommands
+        << ", \"actor_method_commands\": " << state.actorTask.actorMethodCommands
+        << ", \"current_player_chara\": \"" << core::jsonEscape(state.actorTask.currentPlayerChara)
+        << "\", \"current_player_position\": \"" << core::jsonEscape(state.actorTask.currentPlayerPosition)
+        << "\", \"current_player_rot_y\": \"" << core::jsonEscape(state.actorTask.currentPlayerRotY)
+        << "\", \"wait_for_landing\": \"" << core::jsonEscape(state.actorTask.waitForLanding)
+        << "\", \"heal_progress_filled\": \"" << core::jsonEscape(state.actorTask.healProgressFilled)
+        << "\", \"armed\": \"" << core::jsonEscape(state.actorTask.armed)
+        << "\", \"last_effect\": \"" << core::jsonEscape(state.actorTask.lastEffect) << "\"}, ";
+    out << "\"camera\": {\"push_game_camera_commands\": " << state.camera.pushGameCameraCommands
+        << ", \"rail_camera_loads\": " << state.camera.railCameraLoads
+        << ", \"enable_rail_camera_commands\": " << state.camera.enableRailCameraCommands
+        << ", \"enable_auto_adjust_commands\": " << state.camera.enableAutoAdjustCommands
+        << ", \"default_camera_state_commands\": " << state.camera.defaultCameraStateCommands
+        << ", \"game_camera_pushed\": \"" << core::jsonEscape(state.camera.gameCameraPushed)
+        << "\", \"rail_camera_path\": \"" << core::jsonEscape(state.camera.railCameraPath)
+        << "\", \"rail_camera_enabled\": \"" << core::jsonEscape(state.camera.railCameraEnabled)
+        << "\", \"auto_camera_adjust_enabled\": \"" << core::jsonEscape(state.camera.autoCameraAdjustEnabled)
+        << "\", \"default_camera_state_target\": \""
+        << core::jsonEscape(state.camera.defaultCameraStateTarget) << "\"}, ";
+    out << "\"event_quest_flag\": {\"clear_current_quest_commands\": "
+        << state.eventQuestFlag.clearCurrentQuestCommands
+        << ", \"mission_request_queries\": " << state.eventQuestFlag.missionRequestQueries
+        << ", \"marker_queries\": " << state.eventQuestFlag.markerQueries
+        << ", \"checkpoint_commands\": " << state.eventQuestFlag.checkpointCommands
+        << ", \"check_fall_commands\": " << state.eventQuestFlag.checkFallCommands
+        << ", \"current_request\": \"" << core::jsonEscape(state.eventQuestFlag.currentRequest)
+        << "\", \"current_marker\": \"" << core::jsonEscape(state.eventQuestFlag.currentMarker)
+        << "\", \"current_checkpoint\": \"" << core::jsonEscape(state.eventQuestFlag.currentCheckpoint)
+        << "\"}, ";
     out << "\"ui_render_2d\": {\"created_objects\": " << state.uiRender2d.createdObjects
         << ", \"command_count\": " << state.uiRender2d.commandCount << ", \"objects\": [";
     size_t index = 0;

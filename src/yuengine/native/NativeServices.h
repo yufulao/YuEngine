@@ -61,18 +61,65 @@ struct PlatformRuntimeState {
 
 struct AudioRuntimeState {
     int playBgmCommands = 0;
+    int fadeOutBgmCommands = 0;
     std::string currentBgmId;
+    std::string bgmFadeOutDuration;
 };
 
 struct SceneStageRuntimeState {
     int fadeInCommands = 0;
     int fadeOutCommands = 0;
     int queuedStageLoads = 0;
+    int loaderCommands = 0;
+    int loadedStageCommands = 0;
+    int loadedEventScriptCommands = 0;
+    int callSetupEventsCommands = 0;
+    int charaPlaceLoads = 0;
+    int placeParamQueries = 0;
     std::string fadeInDuration;
     std::string fadeInBlend;
     std::string currentMissionScript;
     std::string currentStage;
     std::string currentRailCamera;
+    std::string activeLoader;
+    std::string currentEventScript;
+    std::string currentCharaPlace;
+};
+
+struct ActorTaskRuntimeState {
+    int pushPlayerCharaCommands = 0;
+    int actorMethodCommands = 0;
+    std::string currentPlayerChara;
+    std::string currentPlayerPosition;
+    std::string currentPlayerRotY;
+    std::string waitForLanding;
+    std::string healProgressFilled;
+    std::string armed;
+    std::string lastEffect;
+};
+
+struct CameraRuntimeState {
+    int pushGameCameraCommands = 0;
+    int railCameraLoads = 0;
+    int enableRailCameraCommands = 0;
+    int enableAutoAdjustCommands = 0;
+    int defaultCameraStateCommands = 0;
+    std::string gameCameraPushed;
+    std::string railCameraPath;
+    std::string railCameraEnabled;
+    std::string autoCameraAdjustEnabled;
+    std::string defaultCameraStateTarget;
+};
+
+struct EventQuestFlagRuntimeState {
+    int clearCurrentQuestCommands = 0;
+    int missionRequestQueries = 0;
+    int markerQueries = 0;
+    int checkpointCommands = 0;
+    int checkFallCommands = 0;
+    std::string currentRequest;
+    std::string currentMarker;
+    std::string currentCheckpoint;
 };
 
 struct UiRuntimeObjectState {
@@ -93,6 +140,9 @@ struct NativeRuntimeServiceState {
     PlatformRuntimeState platform;
     AudioRuntimeState audio;
     SceneStageRuntimeState sceneStage;
+    ActorTaskRuntimeState actorTask;
+    CameraRuntimeState camera;
+    EventQuestFlagRuntimeState eventQuestFlag;
     UiRender2dRuntimeState uiRender2d;
 };
 

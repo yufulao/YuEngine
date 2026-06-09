@@ -318,7 +318,7 @@ python -m unittest discover -s tests
 Verified result:
 
 ```text
-CTest: 12/12 passed
+CTest: 13/13 passed
 Python unittest: 6/6 passed
 ```
 
@@ -343,9 +343,12 @@ Python unittest: 6/6 passed
 - Expand typed service behavior for `FadeIn`, `PlayBGM`, `PlaySE`, `MenuObject`, `GetSaveList`,
   `GetScenarioKeys`, `IsSaveFull`, `SetDifficultyMode`, `MakeNewGame`, and `StartGame` from
   current runtime-owned behavior into complete original-compatible contracts.
-- Execute the queued first mission script and scene/stage service layer:
+- The queued first mission script now has its own L8 checkpoint in `docs/LOOP_TASKS.md`:
   `mission/sc01/main/ms010_0.b64.sqasm -> setupProcess -> LoadStage ->
-  LoadEventsScriptViaMission -> CallSetupEvents -> PushPlayerChara -> LoadRailCamera`.
+  LoadEventsScriptViaMission -> CallSetupEvents -> PushPlayerChara -> LoadRailCamera`
+  executes with 0 unresolved calls and produces runtime-owned stage/player/camera/checkpoint
+  state. The remaining work is to consume that state in scene, actor, camera, and renderer
+  subsystems.
 - UI/render command buffer sourced from original script calls, not handwritten UI.
 
 L7 is not complete until original title script execution can drive menu selection, save/new-game
