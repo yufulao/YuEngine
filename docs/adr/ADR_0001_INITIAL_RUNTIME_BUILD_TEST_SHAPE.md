@@ -1,9 +1,10 @@
 # ADR-0001: Initial Runtime, Build, And Test Shape
 
-Status: Proposed
+Status: Accepted
 Owner: 八云紫, 总架构师
 Reviewers: 红美铃, 博丽灵梦, 雾雨魔理沙 when code review starts
 Date: 2026-06-10
+Accepted: 2026-06-10
 
 ## Context
 
@@ -131,6 +132,6 @@ Those require later ADRs and gate proposals.
 
 ## Gate Request
 
-If accepted, ADR-0001 allows P1-GATE-001 to request `APPROVED_FOR_FIRST_SLICE` for the build/test plus headless Platform/Kernel bootstrap.
+ADR-0001 allows P1-GATE-001 to request `APPROVED_FOR_FIRST_SLICE` for the build/test plus headless Platform/Kernel bootstrap.
 
-If rejected, no implementation task should be created. The architecture queue returns to language/build/runtime shape.
+This acceptance does not approve implementation by itself. P1-GATE-001 still requires module-entry and performance sign-off.

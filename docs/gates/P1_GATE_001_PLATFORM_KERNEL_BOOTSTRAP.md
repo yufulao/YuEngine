@@ -5,6 +5,7 @@ Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫, 总架构师
 Reviewers: 红美铃, 博丽灵梦, 雾雨魔理沙 when implementation exists
 Depends on: ADR-0001
+Related source-layout proposal: ADR-0002
 Source baseline: Phase 0 inputs through `90c9a34`
 
 ## Layer
@@ -195,6 +196,6 @@ Request `APPROVED_FOR_FIRST_SLICE` only after:
 - ADR-0001 is accepted;
 - 红美铃 confirms the proposal satisfies module-entry gate requirements;
 - 博丽灵梦 confirms the performance signals are sufficient for the first slice;
-- any missing source layout concern is either accepted here or moved to ADR-0002 before implementation.
+- ADR-0002 is accepted or source-layout concerns are explicitly constrained to the first-slice paths listed in this proposal.
 
 If those conditions are not met, return `NEEDS_ARCHITECTURE` or `NEEDS_PERFORMANCE` with exact missing fields.
