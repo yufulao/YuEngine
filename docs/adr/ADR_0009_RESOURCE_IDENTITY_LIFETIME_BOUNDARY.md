@@ -69,9 +69,13 @@ First-slice handle states:
 Rules:
 
 - acquiring an invalid or stale-generation handle fails explicitly;
+- acquiring with an expected `ResourceTypeId` that differs from the registered type fails explicitly and does not change reference count;
+- repeated acquire of the same valid handle increments the `uint32_t` reference count and returns success;
+- acquiring when reference count is already `UINT32_MAX` fails explicitly and does not change reference count;
 - releasing a handle not currently acquired fails explicitly;
+- releasing an acquired handle decrements the `uint32_t` reference count;
 - retiring a resource with outstanding acquisitions fails explicitly;
-- retiring a dependency while a dependent resource is acquired fails explicitly;
+- retiring a resource with any live dependent edge fails explicitly;
 - generation increments on retire/reuse so stale handles cannot reacquire a new resource.
 
 ## Dependency Boundary
@@ -85,6 +89,10 @@ Rules:
 - self-dependency fails explicitly;
 - dependency cycle validation fails explicitly;
 - dependency edges are bounded and setup-time only;
+- a dependency edge is live while the dependent resource is registered and not retired;
+- P1-GATE-006 has no separate dependency-edge removal API;
+- successfully retiring a resource clears that resource's own outbound dependency edges;
+- retiring a resource with any live inbound dependent edge fails with explicit `StillDependedOn` or equivalent status;
 - no automatic load graph, async job graph, streaming policy, or cache eviction is introduced.
 
 Future Resource gates may add dependency load order and async scheduling only
@@ -104,9 +112,10 @@ First-slice statuses include:
 - `InvalidHandle`;
 - `GenerationMismatch`;
 - `TypeMismatch`;
-- `AlreadyAcquired`;
 - `NotAcquired`;
+- `ReferenceCountOverflow`;
 - `StillReferenced`;
+- `StillDependedOn`;
 - `DependencyMissing`;
 - `DependencyCycle`;
 - `UnsupportedInThisGate`.

@@ -25,6 +25,7 @@ This gate owns the first `YuResource` implementation slice for:
 - bounded synthetic registry;
 - direct dependency-edge validation;
 - acquire/release/retire behavior;
+- dependency-edge lifetime and retire blocking;
 - explicit resource statuses/results;
 - deterministic snapshots/counters for tests.
 
@@ -82,7 +83,13 @@ Failure behavior:
 - self-dependency returns explicit dependency-cycle or invalid-dependency status;
 - dependency cycle returns explicit dependency-cycle status;
 - stale generation handle returns explicit generation-mismatch status;
+- acquire with mismatched expected `ResourceTypeId` returns explicit type-mismatch status and does not mutate reference count;
+- repeated acquire of a valid handle increments `uint32_t` reference count and returns success;
+- acquire when reference count is already `UINT32_MAX` returns explicit reference-count-overflow status and does not mutate reference count;
+- release decrements reference count, and release at zero returns explicit not-acquired status without mutation;
 - retiring an acquired resource or an acquired dependency returns explicit still-referenced status;
+- retiring a resource with any live inbound dependent edge returns explicit still-depended-on status and does not mutate registry state;
+- successfully retiring a resource clears that resource's own outbound dependency edges;
 - disabled diagnostics/logging does not change any Resource result.
 
 ## Dependencies
@@ -158,8 +165,12 @@ Fast gate tests required before the slice can be considered complete:
 - `Resource_RegisterDuplicate_ReturnsExplicitStatus`
 - `Resource_RegistryRejectsCapacityOverflowWithoutMutation`
 - `Resource_HandleRejectsWrongGeneration`
+- `Resource_HandleRejectsTypeMismatch`
 - `Resource_AcquireRelease_TracksReferenceCount`
+- `Resource_RepeatedAcquire_IncrementsReferenceCount`
+- `Resource_AcquireRejectsReferenceCountOverflow`
 - `Resource_RetireRejectsOutstandingAcquire`
+- `Resource_RetireRejectsLiveDependentEdge`
 - `Resource_DependencyValidationRejectsMissingDependency`
 - `Resource_DependencyValidationRejectsCycle`
 - `Resource_NoFileOrPackageDependency_ForHandleRegistry`
