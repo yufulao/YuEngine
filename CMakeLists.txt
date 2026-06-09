@@ -39,18 +39,19 @@ endif()
 include(CTest)
 
 option(YUENGINE_ENABLE_LEGACY_CTESTS "Register the older per-contract CTest cases" OFF)
-set(YUENGINE_CTEST_MODE "FAST" CACHE STRING "CTest registration mode: FAST, FULL, or LEGACY")
-set_property(CACHE YUENGINE_CTEST_MODE PROPERTY STRINGS FAST FULL LEGACY)
-set(YUENGINE_CURRENT_FAST_CONTRACT "yuengine_backend_font_atlas_contract" CACHE STRING "Runtime contract-suite filter used by default FAST CTest" FORCE)
+set(YUENGINE_CTEST_MODE "FAST" CACHE STRING "CTest registration mode: FAST, EDGE, FULL, or LEGACY")
+set_property(CACHE YUENGINE_CTEST_MODE PROPERTY STRINGS FAST EDGE FULL LEGACY)
+set(YUENGINE_CURRENT_EDGE_CONTRACT "yuengine_backend_font_atlas_contract" CACHE STRING "Runtime contract-suite filter used by EDGE CTest" FORCE)
 
 string(TOUPPER "${YUENGINE_CTEST_MODE}" YUENGINE_CTEST_MODE_NORMALIZED)
 if(NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "FAST"
+    AND NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "EDGE"
     AND NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "FULL"
     AND NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "LEGACY")
-    message(FATAL_ERROR "YUENGINE_CTEST_MODE must be FAST, FULL, or LEGACY")
+    message(FATAL_ERROR "YUENGINE_CTEST_MODE must be FAST, EDGE, FULL, or LEGACY")
 endif()
 if(YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "LEGACY" AND NOT YUENGINE_ENABLE_LEGACY_CTESTS)
-    message(WARNING "YUENGINE_CTEST_MODE=LEGACY is ignored unless YUENGINE_ENABLE_LEGACY_CTESTS=ON; using FAST")
+    message(WARNING "YUENGINE_CTEST_MODE=LEGACY is ignored unless YUENGINE_ENABLE_LEGACY_CTESTS=ON; using FAST smoke")
     set(YUENGINE_CTEST_MODE_NORMALIZED "FAST")
 endif()
 if(YUENGINE_ENABLE_LEGACY_CTESTS AND NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "LEGACY")
@@ -60,12 +61,23 @@ endif()
 if(BUILD_TESTING)
     if(YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "FAST")
     add_test(
+        NAME yuengine_smoke_validate_touhou
+        COMMAND yuengine_cli validate samples/touhou_new_world/project.json
+    )
+    set_tests_properties(yuengine_smoke_validate_touhou PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        LABELS "smoke;fast"
+        TIMEOUT 30
+        PASS_REGULAR_EXPRESSION "project-manifest: touhou_new_world_sample ok"
+    )
+    elseif(YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "EDGE")
+    add_test(
         NAME yuengine_current_backend_contract
-        COMMAND yuengine_cli runtime-contract-suite samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR} --filter ${YUENGINE_CURRENT_FAST_CONTRACT}
+        COMMAND yuengine_cli runtime-contract-suite samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR} --filter ${YUENGINE_CURRENT_EDGE_CONTRACT}
     )
     set_tests_properties(yuengine_current_backend_contract PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        LABELS "fast"
+        LABELS "edge"
         TIMEOUT 180
         PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=1 failed=0"
     )

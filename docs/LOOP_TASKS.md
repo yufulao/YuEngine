@@ -1527,10 +1527,10 @@ Do not stop unless:
 ## Verification Speed
 
 Old full CTest was too slow because backend contract tests started separate CLI processes and
-repeatedly rebuilt the runtime chain. Default CTest now registers only
-`yuengine_current_backend_contract`, a single-process `runtime-contract-suite --filter` fast gate.
-Full aggregate CTest and legacy per-contract CTest are explicit CMake modes. The default edit-loop
-verification path is:
+repeatedly rebuilt the runtime chain. Default CTest now registers only the second-level
+`yuengine_smoke_validate_touhou` project manifest check. Current deepest runtime contracts are
+explicit EDGE checks, not default CTest checks. Full aggregate CTest and legacy per-contract CTest
+are explicit CMake modes. The default edit-loop verification path is:
 
 ```powershell
 tools\verify_runtime.ps1
@@ -1542,6 +1542,12 @@ Use targeted edge verification when a named contract must be exercised:
 tools\verify_runtime.ps1 -Mode edge -Filter <contract-name> -Jobs 8
 ```
 
+The current deepest edge can be run without spelling the filter:
+
+```powershell
+tools\verify_runtime.ps1 -Mode edge -Jobs 8
+```
+
 Use full parallel verification before major commits:
 
 ```powershell
@@ -1549,13 +1555,22 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8
 ```
 
 Use `-CleanBuild` after C++ header, ABI-like struct, or build-system changes. Bare
-`ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs the current fast
-contract, not the aggregate suite and not the old per-contract process path. Legacy per-contract
-CTest requires both `-DYUENGINE_CTEST_MODE=LEGACY` and `-DYUENGINE_ENABLE_LEGACY_CTESTS=ON`; a stale
-LEGACY cache value without the opt-in is forced back to FAST.
+`ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs only the smoke validate
+test, not the aggregate suite, not the current deepest edge, and not the old per-contract process
+path. Configure `-DYUENGINE_CTEST_MODE=EDGE` only when CTest integration for the current deepest
+contract must be checked. Legacy per-contract CTest requires both `-DYUENGINE_CTEST_MODE=LEGACY`
+and `-DYUENGINE_ENABLE_LEGACY_CTESTS=ON`; a stale LEGACY cache value without the opt-in is forced
+back to FAST smoke.
 
 Current measured speed after caching and scene reuse:
 
+- `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`: after the smoke split, 1/1
+  `yuengine_smoke_validate_touhou` passed; CTest total 0.01 seconds, PowerShell outer measurement
+  about 0.06 seconds.
+- `tools\verify_runtime.ps1 -NoBuild`: after the smoke split, smoke validate plus Python unittest
+  and `git diff --check`, about 0.354 seconds.
+- `tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck`: current deepest L35
+  edge filter, elapsed_ms=42290, outer measurement about 42.458 seconds.
 - `yuengine_backend_device_creation_contract`: 1/1 CTest passed in 21.88 seconds.
 - `yuengine_backend_resource_creation_contract`: 1/1 CTest passed in about 22 seconds.
 - `yuengine_backend_upload_binding_contract`: 1/1 CTest passed in about 25 seconds.
@@ -1564,9 +1579,10 @@ Current measured speed after caching and scene reuse:
 - `yuengine_backend_program_depth_font_contract`: suite filter passed in 34.04 seconds; default
   bare CTest passed in 34.08-34.41 seconds.
 - `yuengine_backend_font_atlas_contract`: direct `backend-font-atlas` passed in about 43.9 seconds;
-  suite filter passed in 43.883 seconds; default bare CTest passed in 43.94 seconds.
-- `tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild`: fast L35 contract passed with
-  elapsed_ms=43247.
+  suite filter passed in 43.883 seconds; pre-smoke-split default bare CTest passed in 43.94
+  seconds.
+- `tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild`: pre-smoke-split fast L35
+  contract passed with elapsed_ms=43247.
 - `tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild`: fast L34 contract passed in 33.73
   seconds.
 - `tools\verify_runtime.ps1 -Mode full -SkipPython -SkipDiffCheck -NoBuild`: direct
@@ -1577,6 +1593,4 @@ Current measured speed after caching and scene reuse:
   unittest, 41/41 contracts, and `git diff --check` passed in about 93.6 seconds; runtime suite
   elapsed_ms=69923.
 - direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.
-- default `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`: 1/1 fast contract
-  after L35.
 - direct `runtime-contract-suite`: 41/41 contracts after L35.

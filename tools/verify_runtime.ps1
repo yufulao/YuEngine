@@ -1,6 +1,6 @@
 param(
-    [ValidateSet("full", "edge", "fast")]
-    [string]$Mode = "fast",
+    [ValidateSet("full", "edge", "fast", "smoke")]
+    [string]$Mode = "smoke",
 
     [string]$BuildDir = "build\cmake-bt143",
     [string]$Config = "Debug",
@@ -14,6 +14,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$currentEdgeContract = "yuengine_backend_font_atlas_contract"
 
 function Invoke-Checked {
     param(
@@ -58,7 +59,7 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Push-Location $repoRoot
 try {
     if ($Mode -eq "edge" -and [string]::IsNullOrWhiteSpace($Filter)) {
-        throw "Mode=edge requires -Filter, for example -Filter yuengine_backend_upload_binding_contract"
+        $Filter = $currentEdgeContract
     }
 
     if (-not $NoBuild) {
@@ -79,14 +80,10 @@ try {
         $cliPath = Join-Path (Join-Path $BuildDir $Config) "yuengine_cli.exe"
     }
 
-    if ($Mode -eq "fast") {
-        Invoke-CheckedCapture "runtime fast contract" $cliPath @(
-            "runtime-contract-suite",
-            "samples\touhou_new_world\project.json",
-            "--repo-root",
-            ".",
-            "--filter",
-            "yuengine_backend_font_atlas_contract"
+    if ($Mode -eq "smoke" -or $Mode -eq "fast") {
+        Invoke-Checked "runtime smoke validate" $cliPath @(
+            "validate",
+            "samples\touhou_new_world\project.json"
         )
     } elseif ($Mode -eq "edge") {
         Invoke-CheckedCapture "runtime contract suite edge" $cliPath @(

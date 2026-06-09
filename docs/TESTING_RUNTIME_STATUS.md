@@ -1,9 +1,10 @@
 # Testing Runtime Status
 
 Full CTest used to be too slow because every contract test started a new CLI process and repeatedly
-rebuilt the same runtime evidence chain. The default CTest registration now uses `FAST` mode and
-registers only the current deepest contract through the single-process `runtime-contract-suite`
-filter. Full aggregate CTest and legacy per-contract CTest are explicit configuration modes.
+rebuilt the same runtime evidence chain. The default CTest registration now uses `FAST` mode as a
+smoke check and registers only `yuengine_smoke_validate_touhou`. Current deepest runtime evidence
+contracts are explicit `EDGE` checks. Full aggregate CTest and legacy per-contract CTest are
+explicit configuration modes.
 
 ## Current Timing
 
@@ -105,22 +106,43 @@ build\cmake-bt143\yuengine_cli.exe runtime-contract-suite samples\touhou_new_wor
 1/1 L35 contract passed, elapsed_ms=43883
 
 tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild
-fast L35 contract through runtime-contract-suite filter, elapsed_ms=43247
+pre-smoke-split fast L35 contract through runtime-contract-suite filter, elapsed_ms=43247
 
 ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure
-1/1 yuengine_current_backend_contract passed with L35 filter, 43.94 seconds
+1/1 yuengine_current_backend_contract passed with L35 filter before the smoke split, 43.94 seconds
 
 tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 clean build, Python unittest, 41/41 contracts, and git diff --check passed; runtime suite
 elapsed_ms=69923, wall time about 93.6 seconds
 ```
 
-Default bare CTest is now acceptable for an edit-loop check because it runs only the current fast
-contract. Full regression remains available through `tools\verify_runtime.ps1 -Mode full`.
+Measured after splitting default smoke from the current deepest edge:
+
+```text
+build\cmake-bt143\yuengine_cli.exe validate samples\touhou_new_world\project.json
+project manifest validate, about 0.04 seconds
+
+ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure
+1/1 yuengine_smoke_validate_touhou passed; CTest total 0.01 seconds, outer measurement about 0.06
+seconds
+
+tools\verify_runtime.ps1 -NoBuild
+smoke validate plus Python unittest and git diff --check, about 0.354 seconds
+
+tools\verify_runtime.ps1 -Mode edge -Jobs 8
+current deepest L35 edge; same font-atlas runtime-contract-suite filter as above
+
+tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck
+current deepest L35 edge, elapsed_ms=42290, outer measurement about 42.458 seconds
+```
+
+Default bare CTest is now acceptable for an edit-loop check because it runs only the smoke validate.
+Current-edge and full regressions remain available through explicit `tools\verify_runtime.ps1`
+modes.
 
 ## Standard Commands
 
-Default fast verification while developing the current deepest contract:
+Default smoke verification while editing:
 
 ```powershell
 tools\verify_runtime.ps1
@@ -135,6 +157,7 @@ tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_upload_binding_cont
 Current deepest edge example:
 
 ```powershell
+tools\verify_runtime.ps1 -Mode edge -Jobs 8
 tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_font_atlas_contract -Jobs 8
 ```
 
@@ -153,14 +176,16 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 ## Policy
 
 - Default bare `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs only
-  `yuengine_current_backend_contract`, currently filtered to
-  `yuengine_backend_font_atlas_contract`.
-- The default loop command is `tools\verify_runtime.ps1`, which runs the current fast backend
-  contract and `git diff --check`.
-- Use `-Mode edge -Filter <test>` after narrow changes; this calls
+  `yuengine_smoke_validate_touhou`.
+- The default loop command is `tools\verify_runtime.ps1`, which runs smoke validate and
+  `git diff --check`.
+- Use `-Mode edge` for the current deepest contract and `-Mode edge -Filter <test>` after narrow
+  changes; this calls
   `yuengine_cli runtime-contract-suite --filter <test>` instead of starting legacy CTest cases.
 - Use `-Mode full` before committing major checkpoints; this runs direct
   `yuengine_cli runtime-contract-suite` and avoids CTest process fan-out.
+- Use EDGE CTest only when CTest integration itself must be checked for the current deepest
+  contract: `cmake -S . -B build\cmake-bt143 -DYUENGINE_CTEST_MODE=EDGE`.
 - Use full aggregate CTest only when CTest integration itself must be checked:
   `cmake -S . -B build\cmake-bt143 -DYUENGINE_CTEST_MODE=FULL`.
 - Enable older per-contract CTest cases only when diagnosing one of those cases. It requires both
@@ -171,6 +196,6 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 
 ## Remaining Performance Work
 
-The fast CTest mode removes the one-hour edit-loop path. Remaining performance work is to share the
+The smoke CTest mode removes the one-hour edit-loop path. Remaining performance work is to share the
 boot, resource, and title script-run reports inside the suite so full regression can approach the
-current 44 second deepest-contract cost instead of the full-suite cost.
+current deepest-contract cost instead of the full-suite cost.

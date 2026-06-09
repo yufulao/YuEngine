@@ -664,16 +664,17 @@ Runtime implementation 已开始，但只能按完整引擎主干推进，不能
 
 当前 Ninja/MSVC 构建的 `/showIncludes` dependency prefix 是乱码。改 C++ header 后必须做 clean build 验证，否则可能复用旧对象导致 ABI 崩溃。
 
-CTest 不允许再回到旧逐项串行全量。旧路径实测 34/34 约 1124 秒、并行 8 约 358 秒；当前默认 CTest 是 `YUENGINE_CTEST_MODE=FAST`，只注册 `yuengine_current_backend_contract` 并通过 `runtime-contract-suite --filter yuengine_backend_font_atlas_contract` 跑当前 L35 fast gate，filter 实测约 43.883 秒，裸 CTest 实测 43.94 秒。full regression 走 direct `tools\verify_runtime.ps1 -Mode full`，当前 41/41 合同；clean full 实测 runtime suite elapsed_ms=69923，整条约 93.6 秒。只有显式 `YUENGINE_CTEST_MODE=FULL` 才注册 aggregate CTest；旧逐项 CTest 必须同时显式 `YUENGINE_CTEST_MODE=LEGACY` 和 `YUENGINE_ENABLE_LEGACY_CTESTS=ON`，否则 stale LEGACY cache 会被强制压回 FAST。runtime report cache、scene-runtime 复用和 `.sqasm` module cache 已把最深 backend adapter CLI 从 113.06 秒降到 21.46 秒。标准入口：
+CTest 不允许再回到旧逐项串行全量。旧路径实测 34/34 约 1124 秒、并行 8 约 358 秒；`YUENGINE_CTEST_MODE=FAST` 现在只注册秒级 `yuengine_smoke_validate_touhou`，用于裸 `ctest`/编辑循环，实测 CTest 总时间约 0.01 秒、外层约 0.06 秒。当前最深 L35 font atlas gate 已从默认 CTest 移到显式 `YUENGINE_CTEST_MODE=EDGE` 或 `tools\verify_runtime.ps1 -Mode edge`；该 edge filter 最新实测 elapsed_ms=42290、外层约 42.458 秒。full regression 走 direct `tools\verify_runtime.ps1 -Mode full`，当前 41/41 合同；clean full 实测 runtime suite elapsed_ms=69923，整条约 93.6 秒。只有显式 `YUENGINE_CTEST_MODE=FULL` 才注册 aggregate CTest；旧逐项 CTest 必须同时显式 `YUENGINE_CTEST_MODE=LEGACY` 和 `YUENGINE_ENABLE_LEGACY_CTESTS=ON`，否则 stale LEGACY cache 会被强制压回 FAST smoke。runtime report cache、scene-runtime 复用和 `.sqasm` module cache 已把最深 backend adapter CLI 从 113.06 秒降到 21.46 秒。标准入口：
 
 ```powershell
 tools\verify_runtime.ps1
+tools\verify_runtime.ps1 -Mode edge -Jobs 8
 tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_font_atlas_contract -Jobs 8
 tools\verify_runtime.ps1 -Mode full -Jobs 8
 tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 ```
 
-默认编辑循环跑 `tools\verify_runtime.ps1`，当前 fast L35 contract 加 `git diff --check` 约 44 秒级。全量 checkpoint 提交前跑 `-Mode full -Jobs 8`；C++ header/ABI/build 改动后跑 `-CleanBuild`。裸 `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` 现在只跑当前 fast contract。旧逐项 CTest 只在定位单项时显式启用：`cmake -S . -B build\cmake-bt143 -DYUENGINE_CTEST_MODE=LEGACY -DYUENGINE_ENABLE_LEGACY_CTESTS=ON`。
+默认编辑循环跑 `tools\verify_runtime.ps1`，现在只做 smoke validate、Python unittest 和 `git diff --check`，`-NoBuild` 实测约 0.354 秒。当前最深还原边跑 `tools\verify_runtime.ps1 -Mode edge -Jobs 8`；全量 checkpoint 提交前跑 `-Mode full -Jobs 8`；C++ header/ABI/build 改动后跑 `-CleanBuild`。裸 `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` 现在只跑 smoke validate。旧逐项 CTest 只在定位单项时显式启用：`cmake -S . -B build\cmake-bt143 -DYUENGINE_CTEST_MODE=LEGACY -DYUENGINE_ENABLE_LEGACY_CTESTS=ON`。
 
 ## Do Not Repeat Previous Failure
 

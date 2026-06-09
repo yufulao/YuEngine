@@ -84,7 +84,10 @@ Measured on 2026-06-09:
 - Direct `backend-font-atlas`: about 43.9 seconds.
 - `runtime-contract-suite --filter yuengine_backend_font_atlas_contract`: 43.883 seconds.
 - `tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild`: 43.247 seconds.
-- `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`: 43.94 seconds.
+- Pre-smoke-split `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`: 43.94
+  seconds.
+- Post-smoke-split default `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` does
+  not run this L35 edge; use `tools\verify_runtime.ps1 -Mode edge` for the current deepest edge.
 - `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: 41/41 contracts, runtime suite
   elapsed_ms=69923, wall time about 93.6 seconds.
 
