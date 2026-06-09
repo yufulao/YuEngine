@@ -76,6 +76,7 @@ create a GPU device, upload textures, render fonts, or compare against original 
 
 ## Next Edges
 
-- L19: decode and model shader/effect/material binding semantics from model/effect evidence.
+- L19 has since decoded model material blocks into runtime material/texture-slot/mesh-binding
+  semantics while keeping per-material shader program semantics open and tracked.
 - L20: attach a real device/swapchain presentation contract only after shader/material and
   texture upload have failure gates.

@@ -5,12 +5,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <map>
 #include <optional>
 #include <set>
 #include <sstream>
+#include <utility>
 
 namespace yu::runtime {
 namespace {
@@ -19,6 +21,11 @@ constexpr size_t kResourceHeaderSize = 0x100;
 constexpr size_t kCollisionBodyOffset = 0x120;
 constexpr uint32_t kModelMeshTag = 0x0068736D; // "msh\0"
 constexpr uint32_t kModelMaterialTag = 0x0074616D; // "mat\0"
+
+struct AsciiTokenSpan {
+    size_t offset = 0;
+    std::string value;
+};
 
 void addError(SceneRuntimeMaterializationReport& report, const std::string& message)
 {
@@ -124,12 +131,12 @@ std::string resolveSiblingPath(
     return normalized;
 }
 
-std::vector<std::string> extractAsciiTokens(
+std::vector<AsciiTokenSpan> extractAsciiTokenSpans(
     const std::vector<std::byte>& bytes,
     size_t beginOffset,
     size_t endOffset)
 {
-    std::vector<std::string> tokens;
+    std::vector<AsciiTokenSpan> tokens;
     const size_t end = std::min(endOffset, bytes.size());
     for (size_t offset = beginOffset; offset < end;) {
         const auto c = static_cast<unsigned char>(bytes[offset]);
@@ -145,7 +152,19 @@ std::vector<std::string> extractAsciiTokens(
             }
             ++offset;
         }
-        tokens.emplace_back(reinterpret_cast<const char*>(bytes.data() + start), offset - start);
+        tokens.push_back({start, std::string(reinterpret_cast<const char*>(bytes.data() + start), offset - start)});
+    }
+    return tokens;
+}
+
+std::vector<std::string> extractAsciiTokens(
+    const std::vector<std::byte>& bytes,
+    size_t beginOffset,
+    size_t endOffset)
+{
+    std::vector<std::string> tokens;
+    for (const auto& token : extractAsciiTokenSpans(bytes, beginOffset, endOffset)) {
+        tokens.push_back(token.value);
     }
     return tokens;
 }
@@ -336,6 +355,232 @@ int countPlausibleModelMeshes(const std::vector<std::byte>& bytes)
     return count;
 }
 
+std::vector<size_t> findTagOffsets(const std::vector<std::byte>& bytes, uint32_t tag)
+{
+    std::vector<size_t> offsets;
+    for (size_t offset = kResourceHeaderSize; offset + sizeof(uint32_t) <= bytes.size(); ++offset) {
+        uint32_t value = 0;
+        if (readU32(bytes, offset, value) && value == tag) {
+            offsets.push_back(offset);
+        }
+    }
+    return offsets;
+}
+
+std::string toLowerAscii(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+bool endsWithText(const std::string& value, const std::string& suffix)
+{
+    return value.size() >= suffix.size()
+        && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+std::string inferTextureSlot(const std::string& token)
+{
+    const std::string lower = toLowerAscii(token);
+    if (endsWithText(lower, "_n.dds")) {
+        return "normal_candidate";
+    }
+    if (endsWithText(lower, "_s.dds")) {
+        return "specular_candidate";
+    }
+    if (endsWithText(lower, "_e.dds")) {
+        return "emissive_candidate";
+    }
+    if (endsWithText(lower, "_lm.dds")) {
+        return "lightmap_candidate";
+    }
+    if (endsWithText(lower, "_d.dds")) {
+        return "base_color_candidate";
+    }
+    return "base_color_candidate";
+}
+
+std::string readLengthPrefixedStringBefore(const std::vector<std::byte>& bytes, size_t offset)
+{
+    if (offset == 0 || offset > bytes.size()) {
+        return {};
+    }
+    size_t end = offset;
+    if (bytes[offset - 1] == std::byte{0}) {
+        --end;
+    }
+    size_t begin = end;
+    while (begin > 0) {
+        const auto c = static_cast<unsigned char>(bytes[begin - 1]);
+        if (c < 0x20 || c > 0x7E) {
+            break;
+        }
+        --begin;
+    }
+    if (begin + 3 > end || begin < sizeof(uint32_t)) {
+        return {};
+    }
+    uint32_t length = 0;
+    if (!readU32(bytes, begin - sizeof(uint32_t), length) || length != end - begin || length > 256) {
+        return {};
+    }
+    return std::string(reinterpret_cast<const char*>(bytes.data() + begin), end - begin);
+}
+
+void addUniqueAlias(std::vector<std::pair<int, std::string>>& aliases, int index, const std::string& alias)
+{
+    if (alias.empty()) {
+        return;
+    }
+    const std::string lower = toLowerAscii(alias);
+    const auto exists = std::find_if(aliases.begin(), aliases.end(), [&](const auto& current) {
+        return current.first == index && current.second == lower;
+    });
+    if (exists == aliases.end()) {
+        aliases.push_back({index, lower});
+    }
+}
+
+std::vector<std::pair<int, std::string>> materialAliases(const std::vector<ModelMaterialRuntimeHandle>& materials)
+{
+    std::vector<std::pair<int, std::string>> aliases;
+    for (const auto& material : materials) {
+        addUniqueAlias(aliases, material.index, material.name);
+        const size_t colon = material.name.find(':');
+        if (colon != std::string::npos) {
+            addUniqueAlias(aliases, material.index, material.name.substr(0, colon));
+            addUniqueAlias(aliases, material.index, material.name.substr(colon + 1));
+        }
+    }
+    std::sort(aliases.begin(), aliases.end(), [](const auto& left, const auto& right) {
+        if (left.second.size() != right.second.size()) {
+            return left.second.size() > right.second.size();
+        }
+        return left.second < right.second;
+    });
+    return aliases;
+}
+
+bool meshNameMatchesAlias(const std::string& meshName, const std::string& alias)
+{
+    return meshName == alias
+        || endsWithText(meshName, "_" + alias)
+        || endsWithText(meshName, ":" + alias)
+        || endsWithText(meshName, alias);
+}
+
+std::vector<ModelMaterialRuntimeHandle> extractModelMaterials(
+    const resource::VirtualFileSystem& vfs,
+    const std::string& modelPath,
+    const std::vector<std::byte>& bytes)
+{
+    std::vector<ModelMaterialRuntimeHandle> materials;
+    const auto materialOffsets = findTagOffsets(bytes, kModelMaterialTag);
+    for (size_t i = 0; i < materialOffsets.size(); ++i) {
+        const size_t offset = materialOffsets[i];
+        const size_t nextOffset =
+            i + 1 < materialOffsets.size() ? materialOffsets[i + 1] : std::min(bytes.size(), offset + 4096);
+        ModelMaterialRuntimeHandle material;
+        material.index = static_cast<int>(i);
+        material.byteOffset = static_cast<int64_t>(offset);
+        material.byteSize = static_cast<int64_t>(nextOffset - offset);
+
+        uint32_t flag0 = 0;
+        uint32_t flag1 = 0;
+        uint32_t flag2 = 0;
+        if (readU32(bytes, offset + 4, flag0)) {
+            material.headerFlag0 = static_cast<int>(flag0);
+        }
+        if (readU32(bytes, offset + 8, flag1)) {
+            material.headerFlag1 = static_cast<int>(flag1);
+        }
+        if (readU32(bytes, offset + 12, flag2)) {
+            material.headerFlag2 = static_cast<int>(flag2);
+        }
+        readF32(bytes, offset + 0x10, material.colorCandidate.x);
+        readF32(bytes, offset + 0x14, material.colorCandidate.y);
+        readF32(bytes, offset + 0x18, material.colorCandidate.z);
+
+        std::vector<std::string> nameCandidates;
+        for (const auto& token : extractAsciiTokenSpans(bytes, offset, nextOffset)) {
+            if (token.offset < offset + 0x200 || token.value == "mat") {
+                continue;
+            }
+            if (hasExtension(token.value, ".dds")) {
+                ModelTextureSlotRuntimeHandle slot;
+                slot.slot = inferTextureSlot(token.value);
+                slot.token = token.value;
+                slot.path = resolveSiblingPath(vfs, modelPath, token.value);
+                const auto textureBytes = vfs.readBytes(slot.path);
+                slot.found = textureBytes.found;
+                slot.byteSize = textureBytes.found ? static_cast<int64_t>(textureBytes.bytes.size()) : -1;
+                if (slot.found) {
+                    ++material.resolvedTextureSlots;
+                }
+                material.textureSlots.push_back(std::move(slot));
+                continue;
+            }
+            if (token.value.size() <= 128 && isPrintableAscii(token.value)) {
+                nameCandidates.push_back(token.value);
+            }
+        }
+        material.name = nameCandidates.empty()
+            ? "material_" + std::to_string(material.index)
+            : nameCandidates.back();
+        material.textureSlotCount = static_cast<int>(material.textureSlots.size());
+        materials.push_back(std::move(material));
+    }
+    return materials;
+}
+
+std::vector<ModelMeshRuntimeHandle> extractModelMeshes(
+    const std::vector<std::byte>& bytes,
+    const std::vector<ModelMaterialRuntimeHandle>& materials)
+{
+    std::vector<ModelMeshRuntimeHandle> meshes;
+    const auto aliases = materialAliases(materials);
+    for (const auto offset : findTagOffsets(bytes, kModelMeshTag)) {
+        uint32_t stride = 0;
+        uint32_t vertices = 0;
+        uint32_t triangles = 0;
+        if (!readU32(bytes, offset + 0x08, stride)
+            || !readU32(bytes, offset + 0x0C, vertices)
+            || !readU32(bytes, offset + 0x10, triangles)) {
+            continue;
+        }
+        const uint64_t vertexStart = offset + 0x20;
+        const uint64_t vertexBytes = static_cast<uint64_t>(stride) * vertices;
+        const uint64_t indexBytes = static_cast<uint64_t>(triangles) * 3U * sizeof(uint16_t);
+        if (stride < 12 || stride > 256 || vertices == 0 || vertices >= 1'000'000
+            || triangles == 0 || triangles >= 1'000'000
+            || vertexStart + vertexBytes + indexBytes > bytes.size()) {
+            continue;
+        }
+
+        ModelMeshRuntimeHandle mesh;
+        mesh.index = static_cast<int>(meshes.size());
+        mesh.byteOffset = static_cast<int64_t>(offset);
+        mesh.vertexStride = static_cast<int>(stride);
+        mesh.vertexCount = static_cast<int>(vertices);
+        mesh.triangleCount = static_cast<int>(triangles);
+        mesh.name = readLengthPrefixedStringBefore(bytes, offset);
+
+        const std::string lowerName = toLowerAscii(mesh.name);
+        for (const auto& [materialIndex, alias] : aliases) {
+            if (meshNameMatchesAlias(lowerName, alias)) {
+                mesh.materialIndex = materialIndex;
+                mesh.materialName = materials[static_cast<size_t>(materialIndex)].name;
+                mesh.materialMatchRule = "mesh_name_suffix:" + alias;
+                break;
+            }
+        }
+        meshes.push_back(std::move(mesh));
+    }
+    return meshes;
+}
+
 std::vector<std::string> extractModelTextures(
     const resource::VirtualFileSystem& vfs,
     const std::string& modelPath,
@@ -404,6 +649,36 @@ void writeDependency(std::ostringstream& out, const StageDependencyHandle& depen
         << ", \"byte_size\": " << dependency.byteSize << "}";
 }
 
+void writeTextureSlot(std::ostringstream& out, const ModelTextureSlotRuntimeHandle& slot)
+{
+    out << "{\"slot\": \"" << core::jsonEscape(slot.slot)
+        << "\", \"token\": \"" << core::jsonEscape(slot.token)
+        << "\", \"path\": \"" << core::jsonEscape(slot.path)
+        << "\", \"found\": " << (slot.found ? "true" : "false")
+        << ", \"byte_size\": " << slot.byteSize << "}";
+}
+
+void writeMaterial(std::ostringstream& out, const ModelMaterialRuntimeHandle& material)
+{
+    out << "{\"index\": " << material.index
+        << ", \"name\": \"" << core::jsonEscape(material.name)
+        << "\", \"byte_offset\": " << material.byteOffset
+        << ", \"byte_size\": " << material.byteSize
+        << ", \"header_flags\": [" << material.headerFlag0 << ", " << material.headerFlag1
+        << ", " << material.headerFlag2 << "]"
+        << ", \"color_candidate\": ";
+    writeVec3(out, material.colorCandidate);
+    out << ", \"texture_slot_count\": " << material.textureSlotCount
+        << ", \"resolved_texture_slots\": " << material.resolvedTextureSlots
+        << ", \"mesh_binding_count\": " << material.meshBindingCount
+        << ", \"texture_slots\": [";
+    for (size_t i = 0; i < material.textureSlots.size(); ++i) {
+        out << (i == 0 ? "" : ", ");
+        writeTextureSlot(out, material.textureSlots[i]);
+    }
+    out << "]}";
+}
+
 } // namespace
 
 SceneRuntimeMaterializationReport materializeSceneEntryRuntime(
@@ -438,6 +713,8 @@ SceneRuntimeMaterializationReport materializeSceneEntryRuntime(
 
     report.stage.stagePath = resource::normalizeResourcePath(sceneEntry.stagePath);
     report.stage.stageByteSize = stageBytes.found ? static_cast<int64_t>(stageBytes.bytes.size()) : -1;
+    report.stage.modelPath = resource::normalizeResourcePath(sceneEntry.stageModelPath);
+    report.stage.modelByteSize = modelBytes.found ? static_cast<int64_t>(modelBytes.bytes.size()) : -1;
     if (stageBytes.found) {
         auto dependencyPaths =
             extractStageDependencies(vfs, sceneEntry.stagePath, stageBytes.bytes, report.stage.stageElementCandidates);
@@ -473,8 +750,32 @@ SceneRuntimeMaterializationReport materializeSceneEntryRuntime(
     }
 
     if (modelBytes.found) {
-        report.stage.modelMeshCount = countPlausibleModelMeshes(modelBytes.bytes);
-        report.stage.materialCount = countTag(modelBytes.bytes, kModelMaterialTag);
+        report.stage.materials = extractModelMaterials(vfs, sceneEntry.stageModelPath, modelBytes.bytes);
+        report.stage.meshes = extractModelMeshes(modelBytes.bytes, report.stage.materials);
+        report.stage.modelMeshCount = static_cast<int>(report.stage.meshes.size());
+        report.stage.materialCount = static_cast<int>(report.stage.materials.size());
+        for (const auto& material : report.stage.materials) {
+            report.stage.materialTextureSlotCount += material.textureSlotCount;
+            report.stage.materialTextureResolvedCount += material.resolvedTextureSlots;
+        }
+        for (const auto& mesh : report.stage.meshes) {
+            if (!mesh.name.empty()) {
+                ++report.stage.namedMeshCount;
+            }
+            if (mesh.materialIndex >= 0
+                && static_cast<size_t>(mesh.materialIndex) < report.stage.materials.size()) {
+                ++report.stage.meshMaterialBindingCount;
+                ++report.stage.materials[static_cast<size_t>(mesh.materialIndex)].meshBindingCount;
+            } else {
+                ++report.stage.unresolvedMeshMaterialBindingCount;
+            }
+        }
+        if (report.stage.modelMeshCount == 0) {
+            report.stage.modelMeshCount = countPlausibleModelMeshes(modelBytes.bytes);
+        }
+        if (report.stage.materialCount == 0) {
+            report.stage.materialCount = countTag(modelBytes.bytes, kModelMaterialTag);
+        }
     }
     if (collisionBytes.found) {
         parseCollision(report.stage, collisionBytes.bytes);
@@ -572,6 +873,8 @@ std::string sceneRuntimeMaterializationReportToJson(const SceneRuntimeMaterializ
     out << "\"ready\": " << (report.stage.ready ? "true" : "false")
         << ", \"stage_path\": \"" << core::jsonEscape(report.stage.stagePath)
         << "\", \"stage_byte_size\": " << report.stage.stageByteSize
+        << ", \"model_path\": \"" << core::jsonEscape(report.stage.modelPath)
+        << "\", \"model_byte_size\": " << report.stage.modelByteSize
         << ", \"stage_element_candidates\": " << report.stage.stageElementCandidates
         << ", \"dependency_count\": " << report.stage.dependencyCount
         << ", \"model_dependency_count\": " << report.stage.modelDependencyCount
@@ -580,6 +883,11 @@ std::string sceneRuntimeMaterializationReportToJson(const SceneRuntimeMaterializ
         << ", \"missing_dependency_count\": " << report.stage.missingDependencyCount
         << ", \"model_mesh_count\": " << report.stage.modelMeshCount
         << ", \"material_count\": " << report.stage.materialCount
+        << ", \"material_texture_slot_count\": " << report.stage.materialTextureSlotCount
+        << ", \"material_texture_resolved_count\": " << report.stage.materialTextureResolvedCount
+        << ", \"named_mesh_count\": " << report.stage.namedMeshCount
+        << ", \"mesh_material_binding_count\": " << report.stage.meshMaterialBindingCount
+        << ", \"unresolved_mesh_material_binding_count\": " << report.stage.unresolvedMeshMaterialBindingCount
         << ", \"collision_vertex_count\": " << report.stage.collisionVertexCount
         << ", \"collision_index_count\": " << report.stage.collisionIndexCount
         << ", \"collision_triangle_count\": " << report.stage.collisionTriangleCount
@@ -591,6 +899,11 @@ std::string sceneRuntimeMaterializationReportToJson(const SceneRuntimeMaterializ
     for (size_t i = 0; i < report.stage.dependencies.size(); ++i) {
         out << (i == 0 ? "" : ", ");
         writeDependency(out, report.stage.dependencies[i]);
+    }
+    out << "], \"materials\": [";
+    for (size_t i = 0; i < report.stage.materials.size(); ++i) {
+        out << (i == 0 ? "" : ", ");
+        writeMaterial(out, report.stage.materials[i]);
     }
     out << "]},\n";
     out << "  \"actor\": {";

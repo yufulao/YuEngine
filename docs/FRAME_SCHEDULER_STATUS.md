@@ -89,5 +89,7 @@ subsystems should attach to scheduler nodes instead of creating standalone diagn
 
 - L18 has since resolved texture upload format and material binding contracts while keeping
   shader/effect, font, device/swapchain, and oracle parity as tracked open obligations.
-- L19: decode shader/effect and material semantics behind the 16 material tags and 111 mesh
-  submissions.
+- L19 has since materialized shader/effect tracking and material semantics behind the 16 material
+  tags and 111 mesh submissions.
+- L20: define the device/swapchain and render-state presentation contract that consumes the
+  scheduler, renderer submission, backend obligations, and material semantics.

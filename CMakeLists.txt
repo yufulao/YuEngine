@@ -230,6 +230,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_material_semantics_contract
+        COMMAND yuengine_cli material-semantics samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_material_semantics_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true scene_runtime_ok=true renderer_submission_ok=true backend_obligations_ok=true material_semantics_contract_ready=true texture_slot_contract_ready=true mesh_material_contract_ready=true shader_effect_contract_tracked=true post_effect_source_tracked=true materials=16 material_parameter_blocks=16 texture_slots=39 resolved_texture_slots=39 mesh_submissions=111 named_mesh_submissions=110 mesh_material_bindings=110 unresolved_mesh_material_bindings=1 post_effect_techniques=5 post_effect_passes=5 post_effect_samplers=7;material_summary.*unresolved_texture_slots.: 0.*unresolved_mesh_material_bindings.: 1;post_effect.*techniques.: 5.*passes.: 5.*samplers.: 7;kabe1.*mesh_binding_count.: 22.*kabeb_d.dds;ki:tree.*lightmap_candidate.*t_treeb_lm.dds;material_shader_program_semantics.*tracked_open;unnamed_mesh_material_binding.*tracked_open"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )

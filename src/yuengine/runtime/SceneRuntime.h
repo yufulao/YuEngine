@@ -35,10 +35,47 @@ struct StageDependencyHandle {
     int64_t byteSize = -1;
 };
 
+struct ModelTextureSlotRuntimeHandle {
+    std::string slot;
+    std::string token;
+    std::string path;
+    bool found = false;
+    int64_t byteSize = -1;
+};
+
+struct ModelMaterialRuntimeHandle {
+    int index = -1;
+    std::string name;
+    int64_t byteOffset = -1;
+    int64_t byteSize = -1;
+    int headerFlag0 = 0;
+    int headerFlag1 = 0;
+    int headerFlag2 = 0;
+    RuntimeVec3 colorCandidate;
+    int textureSlotCount = 0;
+    int resolvedTextureSlots = 0;
+    int meshBindingCount = 0;
+    std::vector<ModelTextureSlotRuntimeHandle> textureSlots;
+};
+
+struct ModelMeshRuntimeHandle {
+    int index = -1;
+    std::string name;
+    int64_t byteOffset = -1;
+    int vertexStride = 0;
+    int vertexCount = 0;
+    int triangleCount = 0;
+    int materialIndex = -1;
+    std::string materialName;
+    std::string materialMatchRule;
+};
+
 struct StageGraphRuntimeHandle {
     bool ready = false;
     std::string stagePath;
     int64_t stageByteSize = -1;
+    std::string modelPath;
+    int64_t modelByteSize = -1;
     int stageElementCandidates = 0;
     int dependencyCount = 0;
     int modelDependencyCount = 0;
@@ -47,12 +84,19 @@ struct StageGraphRuntimeHandle {
     int missingDependencyCount = 0;
     int modelMeshCount = 0;
     int materialCount = 0;
+    int materialTextureSlotCount = 0;
+    int materialTextureResolvedCount = 0;
+    int namedMeshCount = 0;
+    int meshMaterialBindingCount = 0;
+    int unresolvedMeshMaterialBindingCount = 0;
     int collisionVertexCount = 0;
     int collisionIndexCount = 0;
     int collisionTriangleCount = 0;
     RuntimeVec3 collisionBoundsMin;
     RuntimeVec3 collisionBoundsMax;
     std::vector<StageDependencyHandle> dependencies;
+    std::vector<ModelMaterialRuntimeHandle> materials;
+    std::vector<ModelMeshRuntimeHandle> meshes;
 };
 
 struct ActorRuntimeHandle {

@@ -869,7 +869,7 @@ Boundary:
 
 ### L19: Shader/Effect And Material Semantics Contract
 
-Status: active after L18.
+Status: completed as material semantics and shader/effect tracking checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -884,6 +884,48 @@ Acceptance:
 - material semantics must consume the L18 texture/material contract;
 - renderer submission and frame scheduler must fail if shader/effect obligations are dropped;
 - no fake shader or hard-coded material defaults can satisfy the contract without evidence.
+
+Verified metric:
+
+```text
+ok=true scene_runtime_ok=true renderer_submission_ok=true backend_obligations_ok=true material_semantics_contract_ready=true texture_slot_contract_ready=true mesh_material_contract_ready=true shader_effect_contract_tracked=true post_effect_source_tracked=true materials=16 material_parameter_blocks=16 texture_slots=39 resolved_texture_slots=39 mesh_submissions=111 named_mesh_submissions=110 mesh_material_bindings=110 unresolved_mesh_material_bindings=1 post_effect_techniques=5 post_effect_passes=5 post_effect_samplers=7
+```
+
+Payload evidence:
+
+- `doujou.mdl` now materializes 16 `mat` blocks as runtime material handles;
+- 39 material texture slots resolve through VFS;
+- material names and texture-slot roles are recovered from model bytes, not hard-coded defaults;
+- 110 named mesh submissions bind to material handles through original mesh-name suffix evidence;
+- one mesh has no length-prefixed name before the `msh` tag and remains a tracked open gap;
+- `resource/SMAA.fx` is tracked as a DX9 HLSL postprocess effect source with 5 techniques, 5
+  passes, and 7 samplers.
+
+Boundary:
+
+- L19 does not create a GPU device and does not compile or bind shader bytecode;
+- per-material shader/effect program semantics are still open because model material blocks expose
+  texture slots but no shader/effect program token;
+- the material semantics are now structured runtime handles and can be consumed by a device/backend
+  layer without falling back to mesh viewers or hard-coded materials.
+
+### L20: Device/Swapchain And Render-State Presentation Contract
+
+Status: active after L19.
+
+Deliver:
+
+- define the D3D9-compatible device/swapchain/presentation contract that consumes L16 renderer
+  submissions, L18 texture upload evidence, and L19 material semantics;
+- separate device creation, resource upload, render-state binding, draw submission, and present
+  obligations instead of treating them as one renderer placeholder;
+- keep blend/depth/sampler/font/oracle parity as explicit failure gates.
+
+Acceptance:
+
+- no blue-screen/window-only launcher can satisfy this stage;
+- device contract must consume renderer submission, material semantics, and scheduler state;
+- every unimplemented GPU behavior remains a named obligation with source evidence and tests.
 
 ## Stop Conditions
 

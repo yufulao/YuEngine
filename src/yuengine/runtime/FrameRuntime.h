@@ -277,6 +277,44 @@ struct BackendObligationsRuntimeReport {
     std::vector<BackendObligationItem> obligations;
 };
 
+struct MaterialSemanticsMaterialReport {
+    int index = -1;
+    std::string name;
+    int textureSlotCount = 0;
+    int resolvedTextureSlots = 0;
+    int meshBindingCount = 0;
+    std::vector<std::string> textureSlots;
+};
+
+struct MaterialSemanticsRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool sceneRuntimeOk = false;
+    bool rendererSubmissionOk = false;
+    bool backendObligationsOk = false;
+    bool materialSemanticsContractReady = false;
+    bool textureSlotContractReady = false;
+    bool meshMaterialContractReady = false;
+    bool shaderEffectContractTracked = false;
+    bool postEffectSourceTracked = false;
+    std::string modelPath;
+    int materials = 0;
+    int materialParameterBlocks = 0;
+    int textureSlots = 0;
+    int resolvedTextureSlots = 0;
+    int unresolvedTextureSlots = 0;
+    int meshSubmissions = 0;
+    int namedMeshSubmissions = 0;
+    int meshMaterialBindings = 0;
+    int unresolvedMeshMaterialBindings = 0;
+    int postEffectTechniques = 0;
+    int postEffectPasses = 0;
+    int postEffectSamplers = 0;
+    std::vector<MaterialSemanticsMaterialReport> materialReports;
+    std::vector<BackendObligationItem> obligations;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -402,6 +440,12 @@ BackendObligationsRuntimeReport runBackendObligationsRuntime(
     const std::filesystem::path& repoRoot);
 
 std::string backendObligationsRuntimeReportToJson(const BackendObligationsRuntimeReport& report);
+
+MaterialSemanticsRuntimeReport runMaterialSemanticsRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string materialSemanticsRuntimeReportToJson(const MaterialSemanticsRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

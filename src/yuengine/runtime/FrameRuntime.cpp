@@ -11,6 +11,7 @@
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 namespace yu::runtime {
 namespace {
@@ -52,6 +53,12 @@ void addError(FrameSchedulerRuntimeReport& report, const std::string& message)
 }
 
 void addError(BackendObligationsRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
+void addError(MaterialSemanticsRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
     report.errors.push_back(message);
@@ -642,6 +649,142 @@ BackendObligationsRuntimeReport buildBackendObligationsRuntimeReport(
     if (report.resolvedBackendContracts < 2 || report.trackedBackendObligations < 4
         || report.openBackendObligations != 4) {
         addError(report, "backend obligation accounting is inconsistent");
+    }
+
+    return report;
+}
+
+std::string bytesToText(const std::vector<std::byte>& bytes)
+{
+    std::string text;
+    text.reserve(bytes.size());
+    for (const auto byte : bytes) {
+        text.push_back(static_cast<char>(byte));
+    }
+    return text;
+}
+
+int countOccurrences(const std::string& text, const std::string& needle)
+{
+    if (needle.empty()) {
+        return 0;
+    }
+    int count = 0;
+    size_t offset = 0;
+    while ((offset = text.find(needle, offset)) != std::string::npos) {
+        ++count;
+        offset += needle.size();
+    }
+    return count;
+}
+
+MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    MaterialSemanticsRuntimeReport report;
+    const auto rendererSubmission = buildRendererBackendSubmissionReport(inputs, rendererProfile);
+    const auto backendObligations = buildBackendObligationsRuntimeReport(inputs, rendererProfile, vfs);
+    const auto& stage = inputs.sceneRuntime.stage;
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.sceneRuntimeOk = inputs.sceneRuntime.ok;
+    report.rendererSubmissionOk = rendererSubmission.ok;
+    report.backendObligationsOk = backendObligations.ok;
+    report.modelPath = stage.modelPath;
+    report.materials = stage.materialCount;
+    report.textureSlots = stage.materialTextureSlotCount;
+    report.resolvedTextureSlots = stage.materialTextureResolvedCount;
+    report.unresolvedTextureSlots = report.textureSlots - report.resolvedTextureSlots;
+    report.meshSubmissions = stage.modelMeshCount;
+    report.namedMeshSubmissions = stage.namedMeshCount;
+    report.meshMaterialBindings = stage.meshMaterialBindingCount;
+    report.unresolvedMeshMaterialBindings = stage.unresolvedMeshMaterialBindingCount;
+
+    for (const auto& material : stage.materials) {
+        if (material.byteOffset >= 0 && material.headerFlag1 == 5 && material.headerFlag2 == 1) {
+            ++report.materialParameterBlocks;
+        }
+        MaterialSemanticsMaterialReport materialReport;
+        materialReport.index = material.index;
+        materialReport.name = material.name;
+        materialReport.textureSlotCount = material.textureSlotCount;
+        materialReport.resolvedTextureSlots = material.resolvedTextureSlots;
+        materialReport.meshBindingCount = material.meshBindingCount;
+        for (const auto& slot : material.textureSlots) {
+            materialReport.textureSlots.push_back(slot.slot + ":" + slot.path);
+        }
+        report.materialReports.push_back(std::move(materialReport));
+    }
+
+    const auto smaaFx = vfs.readBytes("SMAA.fx");
+    if (smaaFx.found) {
+        const std::string text = bytesToText(smaaFx.bytes);
+        report.postEffectTechniques = countOccurrences(text, "\ntechnique ");
+        report.postEffectPasses = countOccurrences(text, "\n    pass ");
+        report.postEffectSamplers = countOccurrences(text, "\nsampler2D ");
+    }
+    report.postEffectSourceTracked =
+        smaaFx.found && report.postEffectTechniques >= 5 && report.postEffectPasses >= 5
+        && report.postEffectSamplers >= 7;
+
+    report.textureSlotContractReady = report.materials == 16 && report.materialParameterBlocks == 16
+        && report.textureSlots == 39 && report.resolvedTextureSlots == 39
+        && report.unresolvedTextureSlots == 0;
+    report.meshMaterialContractReady = report.meshSubmissions == 111 && report.namedMeshSubmissions >= 110
+        && report.meshMaterialBindings >= 110 && report.unresolvedMeshMaterialBindings <= 1;
+    report.materialSemanticsContractReady = report.sceneRuntimeOk && report.rendererSubmissionOk
+        && report.backendObligationsOk && report.textureSlotContractReady
+        && report.meshMaterialContractReady;
+    report.shaderEffectContractTracked =
+        report.materialSemanticsContractReady && report.postEffectSourceTracked;
+
+    report.obligations.push_back(makeBackendObligation(
+        "model_material_block_semantics",
+        report.materialSemanticsContractReady ? "contract_ready" : "blocked",
+        "16 mat blocks decoded with header flags, color candidates, names, and texture slots"));
+    report.obligations.push_back(makeBackendObligation(
+        "material_texture_slot_semantics",
+        report.textureSlotContractReady ? "contract_ready" : "blocked",
+        "39 material texture slots resolve through VFS"));
+    report.obligations.push_back(makeBackendObligation(
+        "mesh_material_name_binding",
+        report.meshMaterialContractReady ? "contract_ready" : "blocked",
+        "110 named mesh submissions match material names through original mesh-name suffixes"));
+    report.obligations.push_back(makeBackendObligation(
+        "postprocess_smaa_effect_source",
+        report.postEffectSourceTracked ? "contract_ready" : "blocked",
+        "SMAA.fx exposes DX9 HLSL techniques, passes, and samplers"));
+    report.obligations.push_back(makeBackendObligation(
+        "material_shader_program_semantics",
+        report.shaderEffectContractTracked ? "tracked_open" : "blocked",
+        "model material blocks expose texture slots but no per-material shader/effect program token"));
+    report.obligations.push_back(makeBackendObligation(
+        "unnamed_mesh_material_binding",
+        report.unresolvedMeshMaterialBindings <= 1 ? "tracked_open" : "blocked",
+        "one mesh block has no length-prefixed name before the msh tag"));
+
+    if (!report.sceneRuntimeOk) {
+        addError(report, "scene runtime contract is not ready for material semantics");
+    }
+    if (!report.rendererSubmissionOk) {
+        addError(report, "renderer submission contract is not ready for material semantics");
+    }
+    if (!report.backendObligationsOk) {
+        addError(report, "backend obligations contract is not ready for material semantics");
+    }
+    if (!report.textureSlotContractReady) {
+        addError(report, "material texture slot contract is incomplete");
+    }
+    if (!report.meshMaterialContractReady) {
+        addError(report, "mesh to material binding contract is incomplete");
+    }
+    if (!report.postEffectSourceTracked) {
+        addError(report, "postprocess SMAA effect source is not tracked");
+    }
+    if (!report.shaderEffectContractTracked) {
+        addError(report, "shader/effect semantics are not tracked through material semantics");
     }
 
     return report;
@@ -1422,6 +1565,98 @@ std::string backendObligationsRuntimeReportToJson(const BackendObligationsRuntim
     out << "\"resolved_backend_contracts\": " << report.resolvedBackendContracts
         << ", \"tracked_backend_obligations\": " << report.trackedBackendObligations
         << ", \"open_backend_obligations\": " << report.openBackendObligations << "},\n";
+    out << "  \"obligations\": [\n";
+    for (size_t i = 0; i < report.obligations.size(); ++i) {
+        const auto& obligation = report.obligations[i];
+        out << "    {\"obligation\": \"" << core::jsonEscape(obligation.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(obligation.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(obligation.evidence) << "\"}";
+        out << (i + 1 == report.obligations.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+MaterialSemanticsRuntimeReport runMaterialSemanticsRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    MaterialSemanticsRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildMaterialSemanticsRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string materialSemanticsRuntimeReportToJson(const MaterialSemanticsRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.material_semantics_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " scene_runtime_ok=" << (report.sceneRuntimeOk ? "true" : "false")
+        << " renderer_submission_ok=" << (report.rendererSubmissionOk ? "true" : "false")
+        << " backend_obligations_ok=" << (report.backendObligationsOk ? "true" : "false")
+        << " material_semantics_contract_ready=" << (report.materialSemanticsContractReady ? "true" : "false")
+        << " texture_slot_contract_ready=" << (report.textureSlotContractReady ? "true" : "false")
+        << " mesh_material_contract_ready=" << (report.meshMaterialContractReady ? "true" : "false")
+        << " shader_effect_contract_tracked=" << (report.shaderEffectContractTracked ? "true" : "false")
+        << " post_effect_source_tracked=" << (report.postEffectSourceTracked ? "true" : "false")
+        << " materials=" << report.materials
+        << " material_parameter_blocks=" << report.materialParameterBlocks
+        << " texture_slots=" << report.textureSlots
+        << " resolved_texture_slots=" << report.resolvedTextureSlots
+        << " mesh_submissions=" << report.meshSubmissions
+        << " named_mesh_submissions=" << report.namedMeshSubmissions
+        << " mesh_material_bindings=" << report.meshMaterialBindings
+        << " unresolved_mesh_material_bindings=" << report.unresolvedMeshMaterialBindings
+        << " post_effect_techniques=" << report.postEffectTechniques
+        << " post_effect_passes=" << report.postEffectPasses
+        << " post_effect_samplers=" << report.postEffectSamplers << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"material_summary\": {";
+    out << "\"model_path\": \"" << core::jsonEscape(report.modelPath)
+        << "\", \"materials\": " << report.materials
+        << ", \"material_parameter_blocks\": " << report.materialParameterBlocks
+        << ", \"texture_slots\": " << report.textureSlots
+        << ", \"resolved_texture_slots\": " << report.resolvedTextureSlots
+        << ", \"unresolved_texture_slots\": " << report.unresolvedTextureSlots
+        << ", \"mesh_submissions\": " << report.meshSubmissions
+        << ", \"named_mesh_submissions\": " << report.namedMeshSubmissions
+        << ", \"mesh_material_bindings\": " << report.meshMaterialBindings
+        << ", \"unresolved_mesh_material_bindings\": " << report.unresolvedMeshMaterialBindings << "},\n";
+    out << "  \"post_effect\": {";
+    out << "\"tracked\": " << (report.postEffectSourceTracked ? "true" : "false")
+        << ", \"techniques\": " << report.postEffectTechniques
+        << ", \"passes\": " << report.postEffectPasses
+        << ", \"samplers\": " << report.postEffectSamplers << "},\n";
+    out << "  \"materials\": [\n";
+    for (size_t i = 0; i < report.materialReports.size(); ++i) {
+        const auto& material = report.materialReports[i];
+        out << "    {\"index\": " << material.index
+            << ", \"name\": \"" << core::jsonEscape(material.name)
+            << "\", \"texture_slot_count\": " << material.textureSlotCount
+            << ", \"resolved_texture_slots\": " << material.resolvedTextureSlots
+            << ", \"mesh_binding_count\": " << material.meshBindingCount
+            << ", \"texture_slots\": ";
+        writeStringArray(out, material.textureSlots);
+        out << "}";
+        out << (i + 1 == report.materialReports.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
     out << "  \"obligations\": [\n";
     for (size_t i = 0; i < report.obligations.size(); ++i) {
         const auto& obligation = report.obligations[i];
