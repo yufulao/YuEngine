@@ -1,7 +1,7 @@
 #include <cstddef>
 #include <iostream>
 #include <string>
-#include <vector>
+#include <array>
 
 #include "ThreadTestContext.h"
 #include "yuengine/memory/CountingMemoryTracker.h"
@@ -15,6 +15,7 @@ using DisabledMemoryTracker = yuengine::memory::DisabledMemoryTracker;
 using InlineTaskExecutor = yuengine::thread::InlineTaskExecutor;
 using ShutdownPolicy = yuengine::thread::ShutdownPolicy;
 using TaskStatus = yuengine::thread::TaskStatus;
+using FixedTraceBuffer = yuengine::thread::tests::FixedTraceBuffer;
 using ThreadTestContext = yuengine::thread::tests::ThreadTestContext;
 
 namespace
@@ -40,10 +41,50 @@ int Fail(const std::string& message)
     return 1;
 }
 
+template <std::size_t ExpectedCount>
+bool TraceEquals(const FixedTraceBuffer& trace, const std::array<int, ExpectedCount>& expected)
+{
+    if (trace.Count != expected.size())
+    {
+        return false;
+    }
+
+    for (std::size_t index = 0U; index < trace.Count; ++index)
+    {
+        if (trace.Values[index] != expected[index])
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool TraceEquals(const FixedTraceBuffer& left, const FixedTraceBuffer& right)
+{
+    if (left.Count != right.Count)
+    {
+        return false;
+    }
+
+    for (std::size_t index = 0U; index < left.Count; ++index)
+    {
+        if (left.Values[index] != right.Values[index])
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 TaskStatus RecordTask(void* context)
 {
     ThreadTestContext* taskContext = static_cast<ThreadTestContext*>(context);
-    taskContext->Trace->push_back(taskContext->Value);
+    if (!taskContext->Trace->Append(taskContext->Value))
+    {
+        return TaskStatus::Failed;
+    }
 
     if (taskContext->ShouldFail)
     {
@@ -57,7 +98,7 @@ int ThreadQueueEnqueueWithinCapacitySucceeds()
 {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
-    std::vector<int> trace;
+    FixedTraceBuffer trace;
     ThreadTestContext context{&trace, FIRST_VALUE, false};
 
     if (queue.Snapshot().MaxQueueDepth != 0U)
@@ -94,7 +135,7 @@ int ThreadQueueEnqueueBeyondCapacityRejects()
 {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
-    std::vector<int> trace;
+    FixedTraceBuffer trace;
     ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
     ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
     ThreadTestContext thirdContext{&trace, THIRD_VALUE, false};
@@ -127,7 +168,7 @@ int ThreadDrainExecutesTasksInDeterministicOrder()
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(LARGE_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
-    std::vector<int> trace;
+    FixedTraceBuffer trace;
     ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
     ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
     ThreadTestContext thirdContext{&trace, THIRD_VALUE, false};
@@ -142,8 +183,8 @@ int ThreadDrainExecutesTasksInDeterministicOrder()
         return Fail("drain did not complete");
     }
 
-    const std::vector<int> expectedTrace{FIRST_VALUE, SECOND_VALUE, THIRD_VALUE};
-    if (trace != expectedTrace)
+    const std::array<int, 3U> expectedTrace{FIRST_VALUE, SECOND_VALUE, THIRD_VALUE};
+    if (!TraceEquals(trace, expectedTrace))
     {
         return Fail("drain order was not FIFO");
     }
@@ -167,7 +208,7 @@ int ThreadTaskFailureReturnsFailedResult()
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
-    std::vector<int> trace;
+    FixedTraceBuffer trace;
     ThreadTestContext context{&trace, FIRST_VALUE, true};
 
     queue.Submit(&RecordTask, &context);
@@ -197,7 +238,7 @@ int ThreadShutdownRejectsNewSubmission()
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
-    std::vector<int> trace;
+    FixedTraceBuffer trace;
     ThreadTestContext context{&trace, FIRST_VALUE, false};
 
     queue.Shutdown(ShutdownPolicy::DrainQueued, executor);
@@ -227,7 +268,7 @@ int ThreadShutdownDrainPolicyExecutesQueuedTasks()
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
-    std::vector<int> trace;
+    FixedTraceBuffer trace;
     ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
     ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
 
@@ -240,8 +281,8 @@ int ThreadShutdownDrainPolicyExecutesQueuedTasks()
         return Fail("drain shutdown did not complete");
     }
 
-    const std::vector<int> expectedTrace{FIRST_VALUE, SECOND_VALUE};
-    if (trace != expectedTrace)
+    const std::array<int, 2U> expectedTrace{FIRST_VALUE, SECOND_VALUE};
+    if (!TraceEquals(trace, expectedTrace))
     {
         return Fail("drain shutdown did not execute queued tasks");
     }
@@ -260,7 +301,7 @@ int ThreadShutdownCancelPolicyCancelsQueuedTasks()
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
-    std::vector<int> trace;
+    FixedTraceBuffer trace;
     ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
     ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
 
@@ -273,7 +314,7 @@ int ThreadShutdownCancelPolicyCancelsQueuedTasks()
         return Fail("cancel shutdown did not return canceled");
     }
 
-    if (!trace.empty())
+    if (!trace.IsEmpty())
     {
         return Fail("cancel shutdown executed a queued task");
     }
@@ -297,7 +338,7 @@ int ThreadQueueCapacityDoesNotGrowDuringFixture()
     CountingMemoryTracker memoryTracker;
     BoundedTaskQueue queue(LARGE_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
-    std::vector<int> trace;
+    FixedTraceBuffer trace;
     ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
     ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
 
@@ -330,7 +371,7 @@ int ThreadDiagnosticsDisabledDoesNotChangeBehavior()
     DisabledMemoryTracker enabledLikeMemoryTracker;
     BoundedTaskQueue enabledLikeQueue(SMALL_CAPACITY, enabledLikeMemoryTracker);
     InlineTaskExecutor enabledLikeExecutor;
-    std::vector<int> enabledLikeTrace;
+    FixedTraceBuffer enabledLikeTrace;
     ThreadTestContext enabledLikeContext{&enabledLikeTrace, FIRST_VALUE, false};
 
     enabledLikeQueue.Submit(&RecordTask, &enabledLikeContext);
@@ -339,13 +380,13 @@ int ThreadDiagnosticsDisabledDoesNotChangeBehavior()
     DisabledMemoryTracker disabledMemoryTracker;
     BoundedTaskQueue disabledQueue(SMALL_CAPACITY, disabledMemoryTracker);
     InlineTaskExecutor disabledExecutor;
-    std::vector<int> disabledTrace;
+    FixedTraceBuffer disabledTrace;
     ThreadTestContext disabledContext{&disabledTrace, FIRST_VALUE, false};
 
     disabledQueue.Submit(&RecordTask, &disabledContext);
     disabledQueue.Drain(disabledExecutor);
 
-    if (enabledLikeTrace != disabledTrace)
+    if (!TraceEquals(enabledLikeTrace, disabledTrace))
     {
         return Fail("diagnostics-disabled fixture changed task behavior");
     }
