@@ -146,6 +146,42 @@ struct TitleBranchesRuntimeReport {
     std::vector<TitleBranchScenarioReport> scenarios;
 };
 
+struct GameplayFrameRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool sceneRuntimeOk = false;
+    bool titleUiOk = false;
+    bool titleBranchesOk = false;
+    bool missionEventThreadOk = false;
+    bool missionTutorialOk = false;
+    int frameUpdates = 0;
+    bool rendererFrameReady = false;
+    bool uiFrameReady = false;
+    bool saveFrameReady = false;
+    bool actorFrameReady = false;
+    bool cameraFrameReady = false;
+    bool inputFrameReady = false;
+    bool eventFrameReady = false;
+    bool audioFrameReady = false;
+    int meshDrawCandidates = 0;
+    int materialBindings = 0;
+    int textureBindings = 0;
+    int titleUiCommands = 0;
+    int titleUiDrawCommands = 0;
+    int saveStartGameScenarios = 0;
+    int saveLoadAutoSaveScenarios = 0;
+    int saveMakeNewGameScenarios = 0;
+    int actorInstances = 0;
+    int playerControlCommands = 0;
+    int cameraCommands = 0;
+    int railNodes = 0;
+    int eventCommands = 0;
+    int tutorialUpdateCommands = 0;
+    int audioCommands = 0;
+    int gameplayCommandCount = 0;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -247,6 +283,12 @@ TitleBranchesRuntimeReport runTitleBranchesRuntime(
     const std::filesystem::path& repoRoot);
 
 std::string titleBranchesRuntimeReportToJson(const TitleBranchesRuntimeReport& report);
+
+GameplayFrameRuntimeReport runGameplayFrameRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string gameplayFrameRuntimeReportToJson(const GameplayFrameRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

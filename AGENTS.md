@@ -62,6 +62,8 @@ C++ runtime spine
 - 若当前阶段还没达到用户目标：原脚本驱动主菜单、存档/新游戏、进场景、角色/相机/教程流程，就不能把阶段说成完成。
 - agent 不得用“先做个小 demo 看看”来替代工程拆解。正确拆法是 layer contract -> evidence -> service/API -> runtime implementation -> regression test -> residual unknowns。
 - 严禁“缺什么补什么”的横向试探路线。每个循环必须从当前层 contract 出发，向下补 evidence/API/service，向上接 sample project behavior。
+- 严禁把“最小验证”改名成“合同”后停止。合同必须同时有 C++ 实现、service ownership、CLI/CTest 验收、残留未知和下一层消费方。
+- 不允许只聚合统计数字后称为 engine progress。统计必须约束真实 runtime/service state，并且下一轮必须把这些 state 交给更具体的 backend/update/scheduler。
 
 允许在证据不足时启动 runtime 主干建设，但必须遵守：
 
@@ -94,6 +96,7 @@ read current state
 - 不要只补当前可见缺口。每个循环必须先声明当前 layer contract，再补证据、API、service、runtime、验收和残留未知。
 - 当前长期目标没变：引擎做好、原游戏能通过这个引擎跑到主菜单、存档/新游戏、进场景、角色/相机/教程流程，业务逻辑尽量由原 bytecode/resource/native contract 驱动。
 - 如果还没有达到上述目标，agent 只能在 commit 后继续下一个非阻塞 contract edge，不能停在“下一步建议”。
+- 六小时无人看守时也按同一循环执行：实现、验证、记录、提交、继续。不要因为完成了一个 checkpoint 就 final。
 
 禁止在以下状态停止：
 
@@ -169,6 +172,7 @@ engine layer contract
 - `docs/FIRST_MISSION_TUTORIAL_STATUS.md`: L12 first mission tutorial/business-state contract 当前进度、验证命令和剩余缺口。
 - `docs/TITLE_UI_COMMAND_PAYLOAD_STATUS.md`: L13 script-driven title UI command payload contract 当前进度、验证命令和剩余缺口。
 - `docs/TITLE_BRANCHES_RUNTIME_STATUS.md`: L14 title Continue/NewGame/Load/Option/Exit branch contract 当前进度、验证命令和剩余缺口。
+- `docs/GAMEPLAY_FRAME_RUNTIME_STATUS.md`: L15 joined gameplay-frame runtime contract 当前进度、验证命令和剩余缺口。
 - `CMakeLists.txt`: C++20 runtime/CLI build 和 CTest 验收入口。
 - `src/yuengine/...`: core JSON、project manifest、VFS/resource diagnostics、`.sqasm` diagnostics、native registry、native service catalog、runtime boot report。
 - `apps/yuengine_cli`: `validate`、`boot`、`resources`、`script` 和 `native-services` CLI。
@@ -556,7 +560,9 @@ L7 当前已有 `script-plan` 和 `script-run`：`script-plan` 解析 `setupProc
 
 `yuengine_cli title-branches samples/touhou_new_world/project.json --repo-root .` 已跑完整 title branch scenario matrix：Continue disabled、Continue、New Game、Load empty、Load、Option、Exit denied、Exit allowed。当前 L14 指标：`ok=true`、`scenario_count=8`、`executed_scenarios=8`、`start_game_scenarios=3`、`load_auto_save_scenarios=2`、`make_new_game_scenarios=1`、`shutdown_permission_scenarios=2`、`shutdown_game_scenarios=1`、`option_ui_mutations=2`、`unresolved_calls=0`、`truncated=false`。Continue/Load 现在按原脚本 autosave branch 验收，不强行套 New Game 的 mission 参数语义。
 
-重要语义修复：`_OP_NEWSLOT/_OP_NEWSLOTA` 是 slot write，不得覆盖 register `a0`，否则 root table 会被污染并丢失 `ModuleBase`。root slot 写入会把 `modTitle = ModuleTitle()` 规范化到 canonical `modTitle` 对象，基类/super 方法执行也不会覆盖对象的 concrete class。L13 另一个关键修复是 `ScrollWindow.drawList` 会物化原脚本菜单行对象并执行 recovered callback，而不是写替代菜单。L14 增加了 Save/Profile/Scenario 与 Platform branch state 字段，能区分 autosave load、MakeNewGame、StartGame、CanShutdown、ShutdownGame。P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 现在已有 C++ service interface baseline、首批 runtime-owned service state、首批 runtime-owned script/object state、UI command payload 和 title branch matrix，但还不是完成态，因为完整 API behavior implementation、typed argument/return contracts 和真实 backend submission 尚未落地；R2 也不是完成态，因为当前是 title/menu branch checkpoint，不是完整 Squirrel VM，也不是可交互游戏循环。
+`yuengine_cli gameplay-frame samples/touhou_new_world/project.json --repo-root .` 已把 L9 scene-runtime、L13 title UI、L14 title branches、L11 mission event thread、L12 mission tutorial/updateUnits 合并成 L15 gameplay-frame runtime contract。当前 L15 指标：`ok=true`、`scene_runtime_ok=true`、`title_ui_ok=true`、`title_branches_ok=true`、`mission_event_thread_ok=true`、`mission_tutorial_ok=true`、`frame_updates=2`、`renderer_frame_ready=true`、`ui_frame_ready=true`、`save_frame_ready=true`、`actor_frame_ready=true`、`camera_frame_ready=true`、`input_frame_ready=true`、`event_frame_ready=true`、`audio_frame_ready=true`、`gameplay_command_count=221`。payload 计数：111 mesh、16 material、39 texture、55 title UI commands、9 UI draw commands、3 StartGame branch scenarios、2 LoadAutoSave scenarios、1 MakeNewGame scenario、1 actor instance、6 player-control commands、2 camera commands、3 rail nodes、16 event/tutorial commands、1 updateUnits、28 audio commands。这仍不是可玩游戏或 renderer backend；下一边界是 L16 backend-facing renderer submission。
+
+重要语义修复：`_OP_NEWSLOT/_OP_NEWSLOTA` 是 slot write，不得覆盖 register `a0`，否则 root table 会被污染并丢失 `ModuleBase`。root slot 写入会把 `modTitle = ModuleTitle()` 规范化到 canonical `modTitle` 对象，基类/super 方法执行也不会覆盖对象的 concrete class。L13 另一个关键修复是 `ScrollWindow.drawList` 会物化原脚本菜单行对象并执行 recovered callback，而不是写替代菜单。L14 增加了 Save/Profile/Scenario 与 Platform branch state 字段，能区分 autosave load、MakeNewGame、StartGame、CanShutdown、ShutdownGame。L15 的关键修复是把这些分散合同接到一个 frame-level readiness gate，避免再次回到“能看到 mesh 但流程断裂”的 Project 失败模式。P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 现在已有 C++ service interface baseline、首批 runtime-owned service state、首批 runtime-owned script/object state、UI command payload、title branch matrix 和 joined gameplay-frame contract，但还不是完成态，因为完整 API behavior implementation、typed argument/return contracts 和真实 backend submission 尚未落地；R2 也不是完成态，因为当前是 gameplay-frame contract checkpoint，不是完整 Squirrel VM，也不是可交互游戏循环。
 
 ## Milestones
 
@@ -580,13 +586,13 @@ X8: Editor And Advanced Pipeline Later
 
 优先任务不是写游戏窗口。
 
-当前下一步见 `docs/LOOP_TASKS.md`，优先 L15/L16 边界。当前 L7 已有 multi-module title boot/title idle/new-game bytecode/service/script-object state checkpoint；L8 已执行 `mission/sc01/main/ms010_0.b64.sqasm` 的 `setupProcess` 并通过 `scene-entry` 产出 binding contract；L9 已把这些 binding 物化成 stage graph、event marker、actor task、camera task payload handles；L10 已把 handles 接到 renderer/input/event first-frame contract；L11 已执行或建模 first mission event thread/player-control 行为；L12 已执行 first mission tutorial/business-state 行为；L13 已把原始 title renderProc 转成 UI command payload；L14 已覆盖标题 Continue/NewGame/Load/Option/Exit 分支。下一条边是 gameplay-frame command-buffer/update loop 和 renderer/backend submission。
+当前下一步见 `docs/LOOP_TASKS.md`，优先 L16 renderer/backend submission。当前 L7 已有 multi-module title boot/title idle/new-game bytecode/service/script-object state checkpoint；L8 已执行 `mission/sc01/main/ms010_0.b64.sqasm` 的 `setupProcess` 并通过 `scene-entry` 产出 binding contract；L9 已把这些 binding 物化成 stage graph、event marker、actor task、camera task payload handles；L10 已把 handles 接到 renderer/input/event first-frame contract；L11 已执行或建模 first mission event thread/player-control 行为；L12 已执行 first mission tutorial/business-state 行为；L13 已把原始 title renderProc 转成 UI command payload；L14 已覆盖标题 Continue/NewGame/Load/Option/Exit 分支；L15 已合并 gameplay-frame readiness。下一条边是 renderer/backend submission。
 
-不要把 L14 当成最终阶段。当前立即进入：
+不要把 L15 当成最终阶段。当前立即进入：
 
 ```text
-L15: gameplay-frame update loop that joins input, actor, camera, event, renderer, audio
 L16: renderer/backend submission that consumes title-ui and scene-runtime command payloads
+L17: service-owned frame scheduler/update graph after renderer submission has a command-buffer consumer
 ```
 
 这些阶段仍然都是完整 runtime 主干的边，不是另起 demo。

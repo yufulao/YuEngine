@@ -32,6 +32,12 @@ void addError(TitleBranchesRuntimeReport& report, const std::string& message)
     report.errors.push_back(message);
 }
 
+void addError(GameplayFrameRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -178,6 +184,15 @@ script::ScriptRunOptions titleBranchOptions(const std::string& scenario)
         throw std::runtime_error("unknown title branch scenario: " + scenario);
     }
     return options;
+}
+
+int titleBranchAudioCommandCount(const TitleBranchesRuntimeReport& report)
+{
+    int commands = 0;
+    for (const auto& scenario : report.scenarios) {
+        commands += scenario.audioServiceCommands;
+    }
+    return commands;
 }
 
 } // namespace
@@ -688,6 +703,161 @@ std::string titleBranchesRuntimeReportToJson(const TitleBranchesRuntimeReport& r
         out << (i + 1 == report.scenarios.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+GameplayFrameRuntimeReport runGameplayFrameRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    GameplayFrameRuntimeReport report;
+    try {
+        const auto sceneRuntime = runSceneRuntimeMaterialization(manifestPath, repoRoot);
+        const auto titleUi = runTitleUiRuntime(manifestPath, repoRoot);
+        const auto titleBranches = runTitleBranchesRuntime(manifestPath, repoRoot);
+        const auto missionEvent = runMissionEventThreadRuntime(manifestPath, repoRoot);
+        const auto missionTutorial = runMissionTutorialRuntime(manifestPath, repoRoot);
+
+        report.projectId = sceneRuntime.projectId;
+        report.sceneRuntimeOk = sceneRuntime.ok;
+        report.titleUiOk = titleUi.ok;
+        report.titleBranchesOk = titleBranches.ok;
+        report.missionEventThreadOk = missionEvent.ok;
+        report.missionTutorialOk = missionTutorial.ok;
+        report.frameUpdates = 2;
+
+        report.meshDrawCandidates = sceneRuntime.stage.modelMeshCount;
+        report.materialBindings = sceneRuntime.stage.materialCount;
+        report.textureBindings = sceneRuntime.stage.textureDependencyCount;
+        report.titleUiCommands = titleUi.commandCount;
+        report.titleUiDrawCommands = titleUi.drawCommands;
+        report.saveStartGameScenarios = titleBranches.startGameScenarios;
+        report.saveLoadAutoSaveScenarios = titleBranches.loadAutoSaveScenarios;
+        report.saveMakeNewGameScenarios = titleBranches.makeNewGameScenarios;
+        report.actorInstances = sceneRuntime.actor.ready ? 1 : 0;
+        report.playerControlCommands = missionEvent.playerControlCommands + missionTutorial.playerControlCommands;
+        report.cameraCommands = missionEvent.setGameCameraIfNotCommands
+            + (sceneRuntime.camera.ready ? 1 : 0);
+        report.railNodes = sceneRuntime.camera.railNodeCountCandidate;
+        report.eventCommands = missionEvent.eventPageSetupCommands + missionEvent.eventPageDoneCommands
+            + missionTutorial.eventFlagAddCommands + missionTutorial.dialogShowCommands
+            + missionTutorial.dialogSpeakCommands + missionTutorial.dialogWaitCommands
+            + missionTutorial.dialogHideCommands;
+        report.tutorialUpdateCommands = missionTutorial.updateUnitsCommands;
+        report.audioCommands = titleBranchAudioCommandCount(titleBranches);
+
+        report.rendererFrameReady = sceneRuntime.stage.ready && report.meshDrawCandidates > 0
+            && report.materialBindings > 0 && report.textureBindings > 0;
+        report.uiFrameReady = titleUi.ok && report.titleUiCommands >= 50 && report.titleUiDrawCommands >= 9;
+        report.saveFrameReady = titleBranches.ok && report.saveStartGameScenarios >= 3
+            && report.saveLoadAutoSaveScenarios >= 2 && report.saveMakeNewGameScenarios >= 1;
+        report.actorFrameReady = sceneRuntime.actor.ready && missionTutorial.tutorialActorCreates >= 1
+            && missionTutorial.pushActorCommands >= 1;
+        report.cameraFrameReady = sceneRuntime.camera.ready && report.railNodes > 0
+            && missionEvent.setGameCameraIfNotCommands >= 1;
+        report.inputFrameReady = report.playerControlCommands >= 6
+            && missionTutorial.playerControlEnabled == "true";
+        report.eventFrameReady = sceneRuntime.eventMarker.ready && report.eventCommands >= 8
+            && report.tutorialUpdateCommands >= 1;
+        report.audioFrameReady = report.audioCommands >= 20;
+        report.gameplayCommandCount = report.meshDrawCandidates + report.titleUiCommands
+            + report.saveStartGameScenarios + report.playerControlCommands + report.cameraCommands
+            + report.eventCommands + report.audioCommands;
+
+        if (!report.sceneRuntimeOk) {
+            addError(report, "scene runtime contract is not ready");
+        }
+        if (!report.titleUiOk) {
+            addError(report, "title UI command payload contract is not ready");
+        }
+        if (!report.titleBranchesOk) {
+            addError(report, "title branch matrix contract is not ready");
+        }
+        if (!report.missionEventThreadOk) {
+            addError(report, "mission event thread contract is not ready");
+        }
+        if (!report.missionTutorialOk) {
+            addError(report, "mission tutorial contract is not ready");
+        }
+        if (!report.rendererFrameReady) {
+            addError(report, "renderer frame payload is incomplete");
+        }
+        if (!report.uiFrameReady) {
+            addError(report, "title UI frame payload is incomplete");
+        }
+        if (!report.saveFrameReady) {
+            addError(report, "save/profile branch frame payload is incomplete");
+        }
+        if (!report.actorFrameReady) {
+            addError(report, "actor/task frame payload is incomplete");
+        }
+        if (!report.cameraFrameReady) {
+            addError(report, "camera frame payload is incomplete");
+        }
+        if (!report.inputFrameReady) {
+            addError(report, "input/player-control frame payload is incomplete");
+        }
+        if (!report.eventFrameReady) {
+            addError(report, "event/tutorial frame payload is incomplete");
+        }
+        if (!report.audioFrameReady) {
+            addError(report, "audio frame payload is incomplete");
+        }
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string gameplayFrameRuntimeReportToJson(const GameplayFrameRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.gameplay_frame_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " scene_runtime_ok=" << (report.sceneRuntimeOk ? "true" : "false")
+        << " title_ui_ok=" << (report.titleUiOk ? "true" : "false")
+        << " title_branches_ok=" << (report.titleBranchesOk ? "true" : "false")
+        << " mission_event_thread_ok=" << (report.missionEventThreadOk ? "true" : "false")
+        << " mission_tutorial_ok=" << (report.missionTutorialOk ? "true" : "false")
+        << " frame_updates=" << report.frameUpdates
+        << " renderer_frame_ready=" << (report.rendererFrameReady ? "true" : "false")
+        << " ui_frame_ready=" << (report.uiFrameReady ? "true" : "false")
+        << " save_frame_ready=" << (report.saveFrameReady ? "true" : "false")
+        << " actor_frame_ready=" << (report.actorFrameReady ? "true" : "false")
+        << " camera_frame_ready=" << (report.cameraFrameReady ? "true" : "false")
+        << " input_frame_ready=" << (report.inputFrameReady ? "true" : "false")
+        << " event_frame_ready=" << (report.eventFrameReady ? "true" : "false")
+        << " audio_frame_ready=" << (report.audioFrameReady ? "true" : "false")
+        << " gameplay_command_count=" << report.gameplayCommandCount << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"renderer\": {";
+    out << "\"mesh_draw_candidates\": " << report.meshDrawCandidates
+        << ", \"material_bindings\": " << report.materialBindings
+        << ", \"texture_bindings\": " << report.textureBindings << "},\n";
+    out << "  \"ui\": {";
+    out << "\"title_ui_commands\": " << report.titleUiCommands
+        << ", \"title_ui_draw_commands\": " << report.titleUiDrawCommands << "},\n";
+    out << "  \"save_profile\": {";
+    out << "\"start_game_scenarios\": " << report.saveStartGameScenarios
+        << ", \"load_auto_save_scenarios\": " << report.saveLoadAutoSaveScenarios
+        << ", \"make_new_game_scenarios\": " << report.saveMakeNewGameScenarios << "},\n";
+    out << "  \"actor_input\": {";
+    out << "\"actor_instances\": " << report.actorInstances
+        << ", \"player_control_commands\": " << report.playerControlCommands << "},\n";
+    out << "  \"camera\": {";
+    out << "\"camera_commands\": " << report.cameraCommands
+        << ", \"rail_nodes\": " << report.railNodes << "},\n";
+    out << "  \"event\": {";
+    out << "\"event_commands\": " << report.eventCommands
+        << ", \"tutorial_update_commands\": " << report.tutorialUpdateCommands << "},\n";
+    out << "  \"audio\": {";
+    out << "\"audio_commands\": " << report.audioCommands << "}\n";
     out << "}\n";
     return out.str();
 }

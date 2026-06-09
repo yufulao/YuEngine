@@ -685,7 +685,7 @@ Boundary:
 
 ### L15: Gameplay Frame Update Loop Contract
 
-Status: active after L14.
+Status: completed as service-owned gameplay-frame contract checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -700,9 +700,33 @@ Acceptance:
 - frame state is sourced from project/VFS/script/native services;
 - residual mismatches are named and become the next loop, not hidden.
 
+Verified metric:
+
+```text
+ok=true scene_runtime_ok=true title_ui_ok=true title_branches_ok=true mission_event_thread_ok=true mission_tutorial_ok=true frame_updates=2 renderer_frame_ready=true ui_frame_ready=true save_frame_ready=true actor_frame_ready=true camera_frame_ready=true input_frame_ready=true event_frame_ready=true audio_frame_ready=true gameplay_command_count=221
+```
+
+Payload counts:
+
+- renderer: 111 mesh draw candidates, 16 material bindings, 39 texture bindings;
+- UI: 55 title UI commands, 9 draw commands;
+- save/profile: 3 StartGame scenarios, 2 LoadAutoSave scenarios, 1 MakeNewGame scenario;
+- actor/input: 1 actor instance, 6 player-control commands;
+- camera: 2 camera commands, 3 rail nodes;
+- event/tutorial: 16 event/dialog/tutorial commands, 1 `updateUnits` command;
+- audio: 28 branch audio commands.
+
+Boundary:
+
+- L15 is not a playable loop and not a renderer backend;
+- it is the first joined frame-level runtime contract across title UI, title branch, scene,
+  actor, camera, input, event, tutorial, audio, and save/profile service state;
+- the next non-blocked work is backend-facing renderer submission, not another isolated
+  diagnostic report.
+
 ### L16: Renderer/Backend Submission Contract
 
-Status: queued after L13, can advance in parallel with L14/L15 if it consumes existing contracts.
+Status: active after L15.
 
 Deliver:
 
@@ -718,6 +742,16 @@ Acceptance:
   one backend-facing frame contract;
 - no renderer path bypasses project.json, VFS, original scripts, or Native Service state;
 - unsupported shader/effect/material semantics remain explicit obligations.
+
+First implementation cycle:
+
+- define a renderer command-buffer model owned by Runtime/Render Service;
+- consume L13 title UI commands as 2D draw submissions;
+- consume L9/L15 stage mesh/material/texture payloads as scene draw submissions;
+- expose one CLI/CTest gate that fails if title and scene submissions drift into separate,
+  disconnected reports;
+- keep unsupported shader, blend, effect, texture format, font, and device behavior as explicit
+  backend obligations.
 
 ## Stop Conditions
 

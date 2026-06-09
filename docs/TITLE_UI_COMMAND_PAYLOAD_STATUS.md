@@ -83,7 +83,7 @@ payload.
 
 - L14 has since executed Continue, New Game, Load, Option, and Exit title branches through
   original bytecode and service inputs.
-- L15: join title/scene/actor/camera/input/event service state into a repeated gameplay-frame
-  update contract.
+- L15 has since joined title/scene/actor/camera/input/event/audio/save service state into a
+  gameplay-frame update contract.
 - L16: build a backend-facing renderer command buffer that consumes both title UI payloads and
   scene mesh/material/texture handles.

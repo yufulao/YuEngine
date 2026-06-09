@@ -75,7 +75,7 @@ Game mission-label schema.
 
 ## Next Edges
 
-- L15: join title/scene/actor/camera/input/event/audio/UI service state into a repeated
+- L15 has since joined title/scene/actor/camera/input/event/audio/UI/save service state into a
   gameplay-frame update contract.
 - L16: consume title UI and scene mesh/material/texture command payloads in a backend-facing
   renderer contract.

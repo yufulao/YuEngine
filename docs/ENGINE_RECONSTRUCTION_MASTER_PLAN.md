@@ -133,13 +133,11 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L14 now executes the original title branch matrix through
-`yuengine_cli title-branches`: Continue disabled, Continue, New Game, Load empty, Load, Option,
-Exit denied, and Exit allowed. All scenarios execute from original title bytecode with
-`unresolved_calls=0`, and service state records autosave load, MakeNewGame, StartGame,
-CanShutdown, ShutdownGame, and option UI mutation evidence. This is still not a playable loop
-and not a renderer backend; the next edges are L15 gameplay-frame update loop and L16 renderer
-backend submission.
+Current latest checkpoint: L15 now joins the original title UI payload, title branch matrix,
+scene-runtime resources, first mission event thread, and first mission tutorial/update state
+through `yuengine_cli gameplay-frame`. The joined contract reports renderer/UI/save/actor/
+camera/input/event/audio readiness and `gameplay_command_count=221`. This is still not a
+playable loop and not a renderer backend; the next edge is L16 renderer backend submission.
 
 The current route is no longer allowed to stop at menu visuals:
 
@@ -150,3 +148,7 @@ original title bytecode
 -> scene/actor/camera/input/event frame state
 -> renderer/audio/save backend submission
 ```
+
+The Project failure rule is now stricter: no new loop may be framed as "minimal." The loop unit
+is a layer contract with implementation and regression coverage. A checkpoint is allowed only
+when it leaves the next contract edge executable and the agent continues into that edge.

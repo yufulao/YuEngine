@@ -194,6 +194,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_gameplay_frame_runtime_contract
+        COMMAND yuengine_cli gameplay-frame samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_gameplay_frame_runtime_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true scene_runtime_ok=true title_ui_ok=true title_branches_ok=true mission_event_thread_ok=true mission_tutorial_ok=true frame_updates=2 renderer_frame_ready=true ui_frame_ready=true save_frame_ready=true actor_frame_ready=true camera_frame_ready=true input_frame_ready=true event_frame_ready=true audio_frame_ready=true gameplay_command_count=221;mesh_draw_candidates.: 111.*material_bindings.: 16.*texture_bindings.: 39;title_ui_commands.: 55.*title_ui_draw_commands.: 9;start_game_scenarios.: 3.*load_auto_save_scenarios.: 2.*make_new_game_scenarios.: 1;actor_instances.: 1.*player_control_commands.: 6;camera_commands.: 2.*rail_nodes.: 3;event_commands.: 16.*tutorial_update_commands.: 1;audio_commands.: 28"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )
