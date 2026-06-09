@@ -518,6 +518,61 @@ struct BackendStateRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendResourceAllocationRecord {
+    std::string name;
+    std::string path;
+    std::string resourceKind;
+    std::string usage;
+    std::string format;
+    std::string status;
+    int width = 0;
+    int height = 0;
+    int mipLevels = 0;
+    int cubeFaces = 1;
+    int materialConsumerCount = 0;
+    int64_t byteSize = 0;
+    int64_t payloadBytes = 0;
+    int64_t expectedPayloadBytes = 0;
+    bool ready = false;
+};
+
+struct BackendResourceAllocationRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool textureUploadOk = false;
+    bool backendStateOk = false;
+    bool stageTextureAllocationRecordsReady = false;
+    bool smaaLookupAllocationRecordsReady = false;
+    bool transientSurfaceAllocationGateTracked = false;
+    bool fontAtlasAllocationGateTracked = false;
+    bool d3dResourceCreationGateTracked = false;
+    bool oracleParityGateTracked = false;
+    bool resourceAllocationRuntimeReady = false;
+    int allocationRecords = 0;
+    int readyAllocationRecords = 0;
+    int trackedOpenAllocationRecords = 0;
+    int stageTextureAllocations = 0;
+    int d3dDxt1Allocations = 0;
+    int d3dDxt5Allocations = 0;
+    int cubeTextureAllocations = 0;
+    int smaaLookupAllocations = 0;
+    int lookupL8Allocations = 0;
+    int lookupA8L8Allocations = 0;
+    int transientSurfaceCandidates = 0;
+    int fontAtlasPlaceholders = 0;
+    int samplerTextureDeclarations = 0;
+    int materialTextureConsumers = 0;
+    int64_t readyAllocationByteTotal = 0;
+    int64_t readyAllocationPayloadBytes = 0;
+    int64_t readyExpectedPayloadBytes = 0;
+    int resolvedAllocationContracts = 0;
+    int trackedAllocationObligations = 0;
+    int openAllocationObligations = 0;
+    std::vector<BackendResourceAllocationRecord> records;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -667,6 +722,13 @@ BackendStateRuntimeReport runBackendStateRuntime(
     const std::filesystem::path& repoRoot);
 
 std::string backendStateRuntimeReportToJson(const BackendStateRuntimeReport& report);
+
+BackendResourceAllocationRuntimeReport runBackendResourceAllocationRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendResourceAllocationRuntimeReportToJson(
+    const BackendResourceAllocationRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

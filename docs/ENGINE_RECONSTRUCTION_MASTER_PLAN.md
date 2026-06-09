@@ -133,15 +133,16 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L22 now defines backend-facing sampler, pass render-state, and font
-glyph metric records through `yuengine_cli backend-state`. The runtime consumes L21 typed texture
-uploads, L20 device presentation, L19 material semantics, and title UI command payloads before it
-can mark backend state records ready. It decodes 7 SMAA sampler records, 5 SMAA pass render-state
-records, 6 title font queries, 5 string-size queries, and keeps 39 texture uploads / 39 material
-slot consumers attached. Swapchain OS surface creation, `Present`, real GPU texture allocation,
-actual sampler/pass state binding, font atlas texture implementation, material shader programs, and
-original-frame parity remain tracked open obligations. This is still not a playable loop or device
-backend; the next edge is L23 D3D9-compatible resource allocation records.
+Current latest checkpoint: L23 now defines D3D9-compatible resource allocation records through
+`yuengine_cli resource-allocation`. The runtime consumes L21 typed texture uploads and L22 backend
+sampler/pass/font records before it can mark allocation records ready. It materializes 46 allocation
+records: 39 stage texture/cube allocations, 2 SMAA lookup textures, 4 tracked-open SMAA transient
+surface candidates, and 1 tracked-open font atlas placeholder. Ready resource evidence includes
+31 `D3DFMT_DXT1`, 8 `D3DFMT_DXT5`, one six-face cube texture, one `D3DFMT_A8L8` SMAA area texture,
+and one `D3DFMT_L8` SMAA search texture. HWND/swapchain creation, `Present`, actual GPU resource
+creation, state binding, material shader programs, font atlas implementation, and original-frame
+parity remain tracked open obligations. This is still not a playable loop or device backend; the
+next edge is L24 device resource creation and state-binding execution records.
 
 The current route is no longer allowed to stop at menu visuals:
 
@@ -158,6 +159,7 @@ original title bytecode
 -> texture upload/render-state/font/oracle parity gates
 -> backend render-state/font atlas records
 -> D3D9-compatible resource allocation records
+-> device resource creation/state-binding execution records
 ```
 
 The Project failure rule is now stricter: no new loop may be framed as "minimal." The loop unit

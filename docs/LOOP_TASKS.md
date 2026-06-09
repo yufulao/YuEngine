@@ -1037,7 +1037,7 @@ Boundary:
 
 ### L23: D3D9-Compatible Resource Allocation Records
 
-Status: queued after L22.
+Status: completed as backend resource allocation record checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -1053,6 +1053,52 @@ Acceptance:
 - transient render targets must map to SMAA pass needs rather than generic fullscreen buffers;
 - font atlas allocation must stay tracked-open unless glyph atlas dimensions and glyph cache
   evidence exist.
+
+Verification:
+
+```text
+ok=true texture_upload_ok=true backend_state_ok=true resource_allocation_runtime_ready=true stage_texture_allocation_records_ready=true smaa_lookup_allocation_records_ready=true transient_surface_allocation_gate_tracked=true font_atlas_allocation_gate_tracked=true d3d_resource_creation_gate_tracked=true oracle_parity_gate_tracked=true allocation_records=46 ready_allocation_records=41 tracked_open_allocation_records=5 stage_texture_allocations=39 d3d_dxt1_allocations=31 d3d_dxt5_allocations=8 cube_texture_allocations=1 smaa_lookup_allocations=2 lookup_l8_allocations=1 lookup_a8l8_allocations=1 transient_surface_candidates=4 font_atlas_placeholders=1 sampler_texture_declarations=6 material_texture_consumers=39 ready_allocation_byte_total=23955042 ready_allocation_payload_bytes=23949794 ready_expected_payload_bytes=23949794 resolved_allocation_contracts=2 tracked_allocation_obligations=5 open_allocation_obligations=5
+```
+
+Evidence now locked:
+
+- 39 stage DDS upload records map to D3D9 allocation records with format, dimensions, mip levels,
+  cube faces, payload bytes, and material consumer counts preserved from L21;
+- stage formats are 31 `D3DFMT_DXT1` and 8 `D3DFMT_DXT5`;
+- `cubeenvmap/doujou_1.dds` is a six-face `D3DFMT_DXT1` cube texture allocation record;
+- `system/glsl/smaa/areatexdx9.dds` is a ready 160x560 `D3DFMT_A8L8` lookup texture;
+- `system/glsl/smaa/searchtex.dds` is a ready 66x33 `D3DFMT_L8` lookup texture;
+- `colorTex2D`, `depthTex2D`, `edgesTex2D`, and `blendTex2D` are 1280x720 tracked-open transient
+  surface candidates;
+- `font_atlas_placeholder` remains tracked-open because no atlas dimensions or glyph cache
+  ownership are recovered.
+
+Boundary:
+
+- L23 does not create an HWND, D3D device, swapchain, or real GPU resource;
+- L23 does not upload texture levels or bind sampler/pass states;
+- L23 does not allocate a font atlas or prove visual parity;
+- the next non-blocked work is device resource creation/state-binding execution, not a visual demo.
+
+### L24: D3D9-Compatible Device Resource Creation And Binding Execution
+
+Status: active after L23.
+
+Deliver:
+
+- consume L23 allocation records into a device-facing creation plan for textures, cube textures,
+  lookup textures, transient surfaces, and font atlas placeholders;
+- define execution records for `CreateTexture`, `CreateCubeTexture`, `CreateRenderTarget`,
+  `CreateDepthStencilSurface`, `SetTexture`, `SetSamplerState`, and `SetRenderState` equivalents;
+- keep HWND/swapchain/present/oracle parity blocked until resource creation and state binding can
+  fail independently.
+
+Acceptance:
+
+- no blue-window, clear-screen, or mesh-preview output can satisfy L24;
+- every execution record must point back to L21/L22/L23 evidence;
+- uncreated resources must stay blocked/tracked-open with named reasons, not disappear as silent
+  backend defaults.
 
 ## Stop Conditions
 

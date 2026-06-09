@@ -266,6 +266,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_resource_allocation_contract
+        COMMAND yuengine_cli resource-allocation samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_resource_allocation_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true texture_upload_ok=true backend_state_ok=true resource_allocation_runtime_ready=true stage_texture_allocation_records_ready=true smaa_lookup_allocation_records_ready=true transient_surface_allocation_gate_tracked=true font_atlas_allocation_gate_tracked=true d3d_resource_creation_gate_tracked=true oracle_parity_gate_tracked=true allocation_records=46 ready_allocation_records=41 tracked_open_allocation_records=5 stage_texture_allocations=39 d3d_dxt1_allocations=31 d3d_dxt5_allocations=8 cube_texture_allocations=1 smaa_lookup_allocations=2 lookup_l8_allocations=1 lookup_a8l8_allocations=1 transient_surface_candidates=4 font_atlas_placeholders=1 sampler_texture_declarations=6 material_texture_consumers=39 ready_allocation_byte_total=23955042 ready_allocation_payload_bytes=23949794 ready_expected_payload_bytes=23949794 resolved_allocation_contracts=2 tracked_allocation_obligations=5 open_allocation_obligations=5;allocation_summary.*stage_texture_allocations.: 39.*smaa_lookup_allocations.: 2.*transient_surface_candidates.: 4.*font_atlas_placeholders.: 1;format_summary.*d3d_dxt1_allocations.: 31.*d3d_dxt5_allocations.: 8.*lookup_l8_allocations.: 1.*lookup_a8l8_allocations.: 1.*cube_texture_allocations.: 1;ready_bytes.*ready_allocation_byte_total.: 23955042.*ready_allocation_payload_bytes.: 23949794.*ready_expected_payload_bytes.: 23949794;cubeenvmap/doujou_1.dds.*cube_texture.*stage_environment_cube.*D3DFMT_DXT1.*cube_faces.: 6;system/glsl/smaa/areatexdx9.dds.*smaa_lookup_texture.*D3DFMT_A8L8.*width.: 160.*height.: 560.*payload_bytes.: 179200;system/glsl/smaa/searchtex.dds.*D3DFMT_L8.*width.: 66.*height.: 33.*payload_bytes.: 2178;edgesTex2D.*smaa_transient_surface.*tracked_open.*width.: 1280.*height.: 720;font_atlas_placeholder.*font_atlas_texture.*tracked_open;stage_texture_allocation_records.*contract_ready;smaa_lookup_texture_allocation_records.*contract_ready;smaa_transient_surface_allocation_candidates.*tracked_open;font_atlas_allocation_placeholder.*tracked_open;d3d_resource_creation_execution.*tracked_open;material_shader_resource_binding.*tracked_open;original_frame_oracle_trace.*tracked_open"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )

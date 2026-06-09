@@ -104,7 +104,7 @@ guess texture dimensions from filenames, or treat unreferenced DDS files as stag
 ## Next Edges
 
 - L22 has since created backend-facing sampler, pass render-state, and font glyph metric records.
-- L23: D3D9-compatible resource allocation records that consume L21 texture uploads and L22 backend
-  state records.
-- Then: real D3D9-compatible device resource allocation/execution only after state/font/allocation
-  gates are independently typed.
+- L23 has since created D3D9-compatible resource allocation records that consume L21 texture
+  uploads and L22 backend state records.
+- L24: real D3D9-compatible device resource allocation/state-binding execution only after
+  state/font/allocation gates are independently typed.

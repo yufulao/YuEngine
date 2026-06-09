@@ -85,6 +85,12 @@ void addError(BackendStateRuntimeReport& report, const std::string& message)
     report.errors.push_back(message);
 }
 
+void addError(BackendResourceAllocationRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -1071,6 +1077,152 @@ std::vector<BackendPassStateRecord> parseSmaaPassStateRecords(const std::string&
     return records;
 }
 
+std::vector<std::string> parseSmaaTextureDeclarations(const std::string& text)
+{
+    std::vector<std::string> declarations;
+    const std::string marker = "\ntexture2D ";
+    size_t offset = 0;
+    while ((offset = text.find(marker, offset)) != std::string::npos) {
+        const size_t nameBegin = offset + marker.size();
+        const std::string name = readIdentifierAfter(text, nameBegin);
+        if (!name.empty()) {
+            declarations.push_back(name);
+        }
+        offset = nameBegin;
+    }
+    return declarations;
+}
+
+std::string d3dFormatFromDdsFourCc(const std::string& fourCc)
+{
+    if (fourCc == "DXT1") {
+        return "D3DFMT_DXT1";
+    }
+    if (fourCc == "DXT5") {
+        return "D3DFMT_DXT5";
+    }
+    return "unsupported";
+}
+
+int bytesPerPixelForDdsLookup(const std::string& d3dFormat)
+{
+    if (d3dFormat == "D3DFMT_L8") {
+        return 1;
+    }
+    if (d3dFormat == "D3DFMT_A8L8") {
+        return 2;
+    }
+    return 0;
+}
+
+std::string d3dLookupFormatFromDdsHeader(const std::vector<std::byte>& bytes)
+{
+    constexpr uint32_t ddsPfAlphaPixels = 0x00000001;
+    constexpr uint32_t ddsPfLuminance = 0x00020000;
+
+    const std::string fourCc = readDdsFourCc(bytes, 84);
+    const uint32_t flags = readLe32(bytes, 80);
+    const uint32_t rgbBitCount = readLe32(bytes, 88);
+    const uint32_t alphaMask = readLe32(bytes, 104);
+    if (!fourCc.empty() || (flags & ddsPfLuminance) == 0) {
+        return {};
+    }
+    if (rgbBitCount == 8) {
+        return "D3DFMT_L8";
+    }
+    if (rgbBitCount == 16 && (flags & ddsPfAlphaPixels) != 0 && alphaMask != 0) {
+        return "D3DFMT_A8L8";
+    }
+    return {};
+}
+
+BackendResourceAllocationRecord makeSmaaLookupAllocationRecord(
+    const std::string& name,
+    const std::string& path,
+    const std::vector<std::byte>& bytes)
+{
+    BackendResourceAllocationRecord record;
+    record.name = name;
+    record.path = path;
+    record.resourceKind = "smaa_lookup_texture";
+    record.usage = "post_effect_lookup";
+    record.status = "blocked";
+    record.byteSize = static_cast<int64_t>(bytes.size());
+    record.payloadBytes = bytes.size() >= 128 ? static_cast<int64_t>(bytes.size()) - 128 : 0;
+
+    if (!isDdsPayload(bytes) || bytes.size() < 128) {
+        return record;
+    }
+
+    const uint32_t headerSize = readLe32(bytes, 4);
+    const uint32_t height = readLe32(bytes, 12);
+    const uint32_t width = readLe32(bytes, 16);
+    const uint32_t mipCount = readLe32(bytes, 28);
+    const uint32_t pixelFormatSize = readLe32(bytes, 76);
+    record.width = static_cast<int>(width);
+    record.height = static_cast<int>(height);
+    record.mipLevels = static_cast<int>(mipCount == 0 ? 1 : mipCount);
+    record.format = d3dLookupFormatFromDdsHeader(bytes);
+    record.expectedPayloadBytes =
+        static_cast<int64_t>(record.width) * record.height * bytesPerPixelForDdsLookup(record.format);
+    record.ready = headerSize == 124 && pixelFormatSize == 32 && record.width > 0 && record.height > 0
+        && record.mipLevels == 1 && !record.format.empty() && record.payloadBytes == record.expectedPayloadBytes;
+    record.status = record.ready ? "contract_ready" : "blocked";
+    return record;
+}
+
+BackendResourceAllocationRecord makeStageTextureAllocationRecord(const TextureUploadRecordReport& upload)
+{
+    BackendResourceAllocationRecord record;
+    record.name = resource::normalizeResourcePath(upload.path);
+    record.path = upload.path;
+    record.resourceKind = upload.cubeMap ? "cube_texture" : "texture_2d";
+    record.usage = upload.cubeMap ? "stage_environment_cube" : "stage_material_texture";
+    record.format = d3dFormatFromDdsFourCc(upload.format);
+    record.status = upload.validDds && record.format != "unsupported" ? "contract_ready" : "blocked";
+    record.width = upload.width;
+    record.height = upload.height;
+    record.mipLevels = upload.mipCount;
+    record.cubeFaces = upload.cubeFaces;
+    record.materialConsumerCount = upload.materialConsumerCount;
+    record.byteSize = upload.byteSize;
+    record.payloadBytes = upload.payloadBytes;
+    record.expectedPayloadBytes = upload.expectedPayloadBytes;
+    record.ready = record.status == "contract_ready";
+    return record;
+}
+
+BackendResourceAllocationRecord makeTransientSurfaceAllocationRecord(
+    const std::string& name,
+    int width,
+    int height)
+{
+    BackendResourceAllocationRecord record;
+    record.name = name;
+    record.resourceKind = "smaa_transient_surface";
+    record.usage = "post_effect_input_or_intermediate";
+    record.format = "unknown_d3d9_surface_format";
+    record.status = "tracked_open";
+    record.width = width;
+    record.height = height;
+    record.mipLevels = 1;
+    record.ready = false;
+    return record;
+}
+
+BackendResourceAllocationRecord makeFontAtlasAllocationPlaceholder()
+{
+    BackendResourceAllocationRecord record;
+    record.name = "font_atlas_placeholder";
+    record.resourceKind = "font_atlas_texture";
+    record.usage = "title_text";
+    record.format = "unknown_font_atlas_format";
+    record.status = "tracked_open";
+    record.mipLevels = 1;
+    record.ready = false;
+    return record;
+}
+
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
     const GameplayFrameInputs& inputs,
     const std::string& rendererProfile,
@@ -1719,6 +1871,196 @@ BackendStateRuntimeReport buildBackendStateRuntimeReport(
     if (report.resolvedBackendStateContracts < 4 || report.trackedBackendStateObligations < 4
         || report.openBackendStateObligations != 4) {
         addError(report, "backend state obligation accounting is inconsistent");
+    }
+
+    return report;
+}
+
+BackendResourceAllocationRuntimeReport buildBackendResourceAllocationRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    BackendResourceAllocationRuntimeReport report;
+    const auto textureUpload = buildTextureUploadRuntimeReport(inputs, rendererProfile, vfs);
+    const auto backendState = buildBackendStateRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.textureUploadOk = textureUpload.ok;
+    report.backendStateOk = backendState.ok;
+
+    for (const auto& upload : textureUpload.records) {
+        report.records.push_back(makeStageTextureAllocationRecord(upload));
+    }
+
+    const auto smaaFx = vfs.readBytes("SMAA.fx");
+    std::vector<std::string> textureDeclarations;
+    int transientWidth = 0;
+    int transientHeight = 0;
+    if (smaaFx.found) {
+        const std::string text = bytesToText(smaaFx.bytes);
+        textureDeclarations = parseSmaaTextureDeclarations(text);
+        extractSmaaPixelSizeCandidate(text, transientWidth, transientHeight);
+    }
+    report.samplerTextureDeclarations = static_cast<int>(textureDeclarations.size());
+
+    const std::map<std::string, std::string> lookupPaths = {
+        {"areaTex2D", "system/glsl/smaa/areatexdx9.dds"},
+        {"searchTex2D", "system/glsl/smaa/searchtex.dds"},
+    };
+    const std::set<std::string> transientNames = {
+        "colorTex2D",
+        "depthTex2D",
+        "edgesTex2D",
+        "blendTex2D",
+    };
+
+    for (const auto& declaration : textureDeclarations) {
+        const auto lookup = lookupPaths.find(declaration);
+        if (lookup != lookupPaths.end()) {
+            const auto bytes = vfs.readBytes(lookup->second);
+            BackendResourceAllocationRecord record;
+            if (bytes.found) {
+                record = makeSmaaLookupAllocationRecord(declaration, lookup->second, bytes.bytes);
+            } else {
+                record.name = declaration;
+                record.path = lookup->second;
+                record.resourceKind = "smaa_lookup_texture";
+                record.usage = "post_effect_lookup";
+                record.status = "blocked";
+            }
+            report.records.push_back(std::move(record));
+            continue;
+        }
+        if (transientNames.find(declaration) != transientNames.end()) {
+            report.records.push_back(makeTransientSurfaceAllocationRecord(
+                declaration,
+                transientWidth,
+                transientHeight));
+        }
+    }
+
+    if (backendState.fontAtlasRecordsReady) {
+        report.records.push_back(makeFontAtlasAllocationPlaceholder());
+    }
+
+    for (const auto& record : report.records) {
+        ++report.allocationRecords;
+        if (record.ready) {
+            ++report.readyAllocationRecords;
+            report.readyAllocationByteTotal += record.byteSize;
+            report.readyAllocationPayloadBytes += record.payloadBytes;
+            report.readyExpectedPayloadBytes += record.expectedPayloadBytes;
+        } else if (record.status == "tracked_open") {
+            ++report.trackedOpenAllocationRecords;
+        }
+
+        if (record.resourceKind == "texture_2d" || record.resourceKind == "cube_texture") {
+            ++report.stageTextureAllocations;
+            report.materialTextureConsumers += record.materialConsumerCount;
+            if (record.format == "D3DFMT_DXT1") {
+                ++report.d3dDxt1Allocations;
+            } else if (record.format == "D3DFMT_DXT5") {
+                ++report.d3dDxt5Allocations;
+            }
+            if (record.resourceKind == "cube_texture") {
+                ++report.cubeTextureAllocations;
+            }
+        } else if (record.resourceKind == "smaa_lookup_texture") {
+            ++report.smaaLookupAllocations;
+            if (record.format == "D3DFMT_L8") {
+                ++report.lookupL8Allocations;
+            } else if (record.format == "D3DFMT_A8L8") {
+                ++report.lookupA8L8Allocations;
+            }
+        } else if (record.resourceKind == "smaa_transient_surface") {
+            ++report.transientSurfaceCandidates;
+        } else if (record.resourceKind == "font_atlas_texture") {
+            ++report.fontAtlasPlaceholders;
+        }
+    }
+
+    report.stageTextureAllocationRecordsReady = textureUpload.textureUploadRuntimeReady
+        && report.stageTextureAllocations == 39 && report.d3dDxt1Allocations == 31
+        && report.d3dDxt5Allocations == 8 && report.cubeTextureAllocations == 1
+        && report.materialTextureConsumers == 39;
+    report.smaaLookupAllocationRecordsReady = report.smaaLookupAllocations == 2
+        && report.lookupL8Allocations == 1 && report.lookupA8L8Allocations == 1
+        && report.readyAllocationPayloadBytes == report.readyExpectedPayloadBytes
+        && report.readyAllocationPayloadBytes > textureUpload.payloadByteTotal;
+    report.transientSurfaceAllocationGateTracked = report.transientSurfaceCandidates == 4
+        && report.samplerTextureDeclarations == 6 && transientWidth == 1280 && transientHeight == 720;
+    report.fontAtlasAllocationGateTracked =
+        backendState.fontAtlasRecordsReady && report.fontAtlasPlaceholders == 1;
+    report.d3dResourceCreationGateTracked =
+        textureUpload.devicePresentationOk && backendState.gpuStateBindingGateTracked;
+    report.oracleParityGateTracked = backendState.oracleParityGateTracked;
+    report.resourceAllocationRuntimeReady = report.textureUploadOk && report.backendStateOk
+        && report.stageTextureAllocationRecordsReady && report.smaaLookupAllocationRecordsReady
+        && report.transientSurfaceAllocationGateTracked && report.fontAtlasAllocationGateTracked
+        && report.d3dResourceCreationGateTracked && report.oracleParityGateTracked
+        && report.allocationRecords == 46 && report.readyAllocationRecords == 41
+        && report.trackedOpenAllocationRecords == 5;
+
+    report.contracts.push_back(makeBackendObligation(
+        "stage_texture_allocation_records",
+        report.stageTextureAllocationRecordsReady ? "contract_ready" : "blocked",
+        "39 DDS stage uploads map to D3D9 texture/cube allocation records"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_lookup_texture_allocation_records",
+        report.smaaLookupAllocationRecordsReady ? "contract_ready" : "blocked",
+        "SMAA area/search lookup DDS payloads map to D3DFMT_A8L8 and D3DFMT_L8"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_transient_surface_allocation_candidates",
+        report.transientSurfaceAllocationGateTracked ? "tracked_open" : "blocked",
+        "SMAA color/depth/edges/blend texture declarations are tracked as 1280x720 surface candidates"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_allocation_placeholder",
+        report.fontAtlasAllocationGateTracked ? "tracked_open" : "blocked",
+        "title font glyph metric inputs exist, but atlas texture dimensions and cache ownership are unknown"));
+    report.contracts.push_back(makeBackendObligation(
+        "d3d_resource_creation_execution",
+        report.d3dResourceCreationGateTracked ? "tracked_open" : "blocked",
+        "resource allocation records are typed but no IDirect3DDevice9 CreateTexture/CreateRenderTarget calls exist"));
+    report.contracts.push_back(makeBackendObligation(
+        "material_shader_resource_binding",
+        backendState.materialShaderProgramGateTracked ? "tracked_open" : "blocked",
+        "stage texture allocations have material consumers but no recovered material shader program token"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_trace",
+        report.oracleParityGateTracked ? "tracked_open" : "blocked",
+        "allocation records still lack original graphics API trace or frame capture parity"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedAllocationContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedAllocationObligations;
+            ++report.openAllocationObligations;
+        } else {
+            ++report.openAllocationObligations;
+        }
+    }
+
+    if (!report.textureUploadOk) {
+        addError(report, "texture upload contract is not ready for resource allocation records");
+    }
+    if (!report.backendStateOk) {
+        addError(report, "backend state contract is not ready for resource allocation records");
+    }
+    if (!report.stageTextureAllocationRecordsReady) {
+        addError(report, "stage texture allocation records are incomplete");
+    }
+    if (!report.smaaLookupAllocationRecordsReady) {
+        addError(report, "SMAA lookup texture allocation records are incomplete");
+    }
+    if (!report.transientSurfaceAllocationGateTracked || !report.fontAtlasAllocationGateTracked
+        || !report.d3dResourceCreationGateTracked || !report.oracleParityGateTracked) {
+        addError(report, "resource allocation open gates are not fully tracked");
+    }
+    if (report.resolvedAllocationContracts != 2 || report.trackedAllocationObligations != 5
+        || report.openAllocationObligations != 5) {
+        addError(report, "resource allocation obligation accounting is inconsistent");
     }
 
     return report;
@@ -2999,6 +3341,135 @@ std::string backendStateRuntimeReportToJson(const BackendStateRuntimeReport& rep
             << "\", \"stencil_ref\": \"" << core::jsonEscape(pass.stencilRef)
             << "\", \"ready\": " << (pass.ready ? "true" : "false") << "}";
         out << (i + 1 == report.passRecords.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendResourceAllocationRuntimeReport runBackendResourceAllocationRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendResourceAllocationRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendResourceAllocationRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendResourceAllocationRuntimeReportToJson(
+    const BackendResourceAllocationRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_resource_allocation_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " texture_upload_ok=" << (report.textureUploadOk ? "true" : "false")
+        << " backend_state_ok=" << (report.backendStateOk ? "true" : "false")
+        << " resource_allocation_runtime_ready=" << (report.resourceAllocationRuntimeReady ? "true" : "false")
+        << " stage_texture_allocation_records_ready=" << (report.stageTextureAllocationRecordsReady ? "true" : "false")
+        << " smaa_lookup_allocation_records_ready=" << (report.smaaLookupAllocationRecordsReady ? "true" : "false")
+        << " transient_surface_allocation_gate_tracked=" << (report.transientSurfaceAllocationGateTracked ? "true" : "false")
+        << " font_atlas_allocation_gate_tracked=" << (report.fontAtlasAllocationGateTracked ? "true" : "false")
+        << " d3d_resource_creation_gate_tracked=" << (report.d3dResourceCreationGateTracked ? "true" : "false")
+        << " oracle_parity_gate_tracked=" << (report.oracleParityGateTracked ? "true" : "false")
+        << " allocation_records=" << report.allocationRecords
+        << " ready_allocation_records=" << report.readyAllocationRecords
+        << " tracked_open_allocation_records=" << report.trackedOpenAllocationRecords
+        << " stage_texture_allocations=" << report.stageTextureAllocations
+        << " d3d_dxt1_allocations=" << report.d3dDxt1Allocations
+        << " d3d_dxt5_allocations=" << report.d3dDxt5Allocations
+        << " cube_texture_allocations=" << report.cubeTextureAllocations
+        << " smaa_lookup_allocations=" << report.smaaLookupAllocations
+        << " lookup_l8_allocations=" << report.lookupL8Allocations
+        << " lookup_a8l8_allocations=" << report.lookupA8L8Allocations
+        << " transient_surface_candidates=" << report.transientSurfaceCandidates
+        << " font_atlas_placeholders=" << report.fontAtlasPlaceholders
+        << " sampler_texture_declarations=" << report.samplerTextureDeclarations
+        << " material_texture_consumers=" << report.materialTextureConsumers
+        << " ready_allocation_byte_total=" << report.readyAllocationByteTotal
+        << " ready_allocation_payload_bytes=" << report.readyAllocationPayloadBytes
+        << " ready_expected_payload_bytes=" << report.readyExpectedPayloadBytes
+        << " resolved_allocation_contracts=" << report.resolvedAllocationContracts
+        << " tracked_allocation_obligations=" << report.trackedAllocationObligations
+        << " open_allocation_obligations=" << report.openAllocationObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"allocation_summary\": {";
+    out << "\"allocation_records\": " << report.allocationRecords
+        << ", \"ready_allocation_records\": " << report.readyAllocationRecords
+        << ", \"tracked_open_allocation_records\": " << report.trackedOpenAllocationRecords
+        << ", \"stage_texture_allocations\": " << report.stageTextureAllocations
+        << ", \"smaa_lookup_allocations\": " << report.smaaLookupAllocations
+        << ", \"transient_surface_candidates\": " << report.transientSurfaceCandidates
+        << ", \"font_atlas_placeholders\": " << report.fontAtlasPlaceholders << "},\n";
+    out << "  \"format_summary\": {";
+    out << "\"d3d_dxt1_allocations\": " << report.d3dDxt1Allocations
+        << ", \"d3d_dxt5_allocations\": " << report.d3dDxt5Allocations
+        << ", \"lookup_l8_allocations\": " << report.lookupL8Allocations
+        << ", \"lookup_a8l8_allocations\": " << report.lookupA8L8Allocations
+        << ", \"cube_texture_allocations\": " << report.cubeTextureAllocations << "},\n";
+    out << "  \"ready_bytes\": {";
+    out << "\"ready_allocation_byte_total\": " << report.readyAllocationByteTotal
+        << ", \"ready_allocation_payload_bytes\": " << report.readyAllocationPayloadBytes
+        << ", \"ready_expected_payload_bytes\": " << report.readyExpectedPayloadBytes << "},\n";
+    out << "  \"gates\": {";
+    out << "\"stage_texture_allocation_records_ready\": "
+        << (report.stageTextureAllocationRecordsReady ? "true" : "false")
+        << ", \"smaa_lookup_allocation_records_ready\": "
+        << (report.smaaLookupAllocationRecordsReady ? "true" : "false")
+        << ", \"transient_surface_allocation_gate_tracked\": "
+        << (report.transientSurfaceAllocationGateTracked ? "true" : "false")
+        << ", \"font_atlas_allocation_gate_tracked\": "
+        << (report.fontAtlasAllocationGateTracked ? "true" : "false")
+        << ", \"d3d_resource_creation_gate_tracked\": "
+        << (report.d3dResourceCreationGateTracked ? "true" : "false")
+        << ", \"oracle_parity_gate_tracked\": " << (report.oracleParityGateTracked ? "true" : "false")
+        << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_allocation_contracts\": " << report.resolvedAllocationContracts
+        << ", \"tracked_allocation_obligations\": " << report.trackedAllocationObligations
+        << ", \"open_allocation_obligations\": " << report.openAllocationObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"records\": [\n";
+    for (size_t i = 0; i < report.records.size(); ++i) {
+        const auto& record = report.records[i];
+        out << "    {\"name\": \"" << core::jsonEscape(record.name)
+            << "\", \"path\": \"" << core::jsonEscape(record.path)
+            << "\", \"resource_kind\": \"" << core::jsonEscape(record.resourceKind)
+            << "\", \"usage\": \"" << core::jsonEscape(record.usage)
+            << "\", \"format\": \"" << core::jsonEscape(record.format)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"width\": " << record.width
+            << ", \"height\": " << record.height
+            << ", \"mip_levels\": " << record.mipLevels
+            << ", \"cube_faces\": " << record.cubeFaces
+            << ", \"material_consumer_count\": " << record.materialConsumerCount
+            << ", \"byte_size\": " << record.byteSize
+            << ", \"payload_bytes\": " << record.payloadBytes
+            << ", \"expected_payload_bytes\": " << record.expectedPayloadBytes
+            << ", \"ready\": " << (record.ready ? "true" : "false") << "}";
+        out << (i + 1 == report.records.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

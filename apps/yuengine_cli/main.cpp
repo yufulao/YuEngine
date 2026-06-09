@@ -50,6 +50,7 @@ void usage()
               << "  yuengine_cli device-presentation <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli texture-upload <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-state <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli resource-allocation <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli script <project.json> <module>\n"
@@ -401,6 +402,11 @@ int main(int argc, char** argv)
         if (command == "backend-state") {
             auto report = yu::runtime::runBackendStateRuntime(manifest, repoRoot);
             std::cout << yu::runtime::backendStateRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "resource-allocation") {
+            auto report = yu::runtime::runBackendResourceAllocationRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendResourceAllocationRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "mission-event-thread") {
