@@ -1,9 +1,10 @@
 # ADR-0006: Memory Accounting And Allocation Policy Skeleton
 
-Status: Proposed
+Status: Accepted
 Owner: 博丽灵梦 with 八云紫
 Reviewers: 红美铃, 雾雨魔理沙 when implementation exists
 Date: 2026-06-10
+Accepted: 2026-06-10
 Depends on: ADR-0001, ADR-0002, ADR-0005, docs/YUENGINE_PERFORMANCE_GATES.md, docs/YUENGINE_PERFORMANCE_COST_STANDARDS.md
 
 ## Context
@@ -236,6 +237,10 @@ This ADR does not decide:
 
 ## Gate Impact
 
-If accepted, ADR-0006 becomes the architecture input for P1-GATE-002 Memory Accounting Skeleton.
+ADR-0006 is the architecture input for P1-GATE-002 Memory Accounting Skeleton.
 
-If rejected, P1-GATE-002 must not proceed and P1-GATE-001 allocation/byte accounting remains explicitly deferred.
+Implementation watch items:
+
+- Owner IDs and tags must stay setup-time stable values, not per-frame owning string construction.
+- Any event history buffer must be fixed-capacity/setup-time or test-only storage with deterministic accepted/dropped counts.
+- Untracked CRT, STL, or general heap paths must be named as limitations, not counted as zero.

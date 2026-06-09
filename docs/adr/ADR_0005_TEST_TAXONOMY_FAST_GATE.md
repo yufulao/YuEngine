@@ -1,9 +1,10 @@
 # ADR-0005: Test Taxonomy And Fast Gate Command
 
-Status: Proposed
+Status: Accepted
 Owner: 八云紫, 总架构师
 Reviewers: 红美铃, 雾雨魔理沙, 博丽灵梦 for performance signals
 Date: 2026-06-10
+Accepted: 2026-06-10
 Depends on: ADR-0001, ADR-0002, docs/YUENGINE_PERFORMANCE_COST_STANDARDS.md
 
 ## Context
@@ -198,6 +199,6 @@ Those require later ADRs and gates.
 
 ## Gate Impact
 
-If accepted, this ADR becomes the test taxonomy for P1-GATE-001 and later module gate proposals.
+ADR-0005 is the test taxonomy for P1-GATE-001 and later module gate proposals.
 
-If rejected, P1-GATE-001 must still provide the tests named in its approved gate, but broader test taxonomy remains unresolved before the next implementation slice.
+Implementation watch item: when a module gate names a performance signal or behavior test, it is required in fast-gate or fixture coverage unless the owning gate explicitly amends it.

@@ -71,8 +71,8 @@ The first slice explicitly excludes:
 | ADR-0002 | Source tree and module boundary layout | 八云紫 | 红美铃, 雾雨魔理沙 later | Accepted | First implementation file layout |
 | ADR-0003 | Module lifecycle and dependency declaration model | 八云紫 | 红美铃, 博丽灵梦 | Accepted | Engine Kernel first slice |
 | ADR-0004 | Logging, diagnostics channel, and report boundary | 八云紫 | 红美铃, 博丽灵梦 | Accepted | Platform/Kernel diagnostics |
-| ADR-0005 | Test taxonomy and fast gate command | 八云紫 | 红美铃, 雾雨魔理沙 later | Pending | Implementation acceptance |
-| ADR-0006 | Memory accounting and allocation policy skeleton | 博丽灵梦 with 八云紫 | 红美铃 | Proposed | Memory first slice |
+| ADR-0005 | Test taxonomy and fast gate command | 八云紫 | 红美铃, 雾雨魔理沙 later | Accepted | Implementation acceptance |
+| ADR-0006 | Memory accounting and allocation policy skeleton | 博丽灵梦 with 八云紫 | 红美铃 | Accepted | Memory first slice |
 | ADR-0007 | Thread/task model skeleton | 博丽灵梦 with 八云紫 | 红美铃 | Pending | Thread/Task first slice |
 | ADR-0008 | File/VFS first boundary | 八云紫 | 红美铃, 射命丸文, 博丽灵梦 | Pending | Future File/VFS gate |
 
