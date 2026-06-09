@@ -82,17 +82,17 @@ ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accept
 
 | Gate | Module | Layer | Requested decision | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
-| P1-GATE-001 | Platform Host + Engine Kernel Bootstrap | L0-L2 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Headless host, timer, log sink, error boundary, module lifecycle, service registry, tests |
-| P1-GATE-002 | Memory Accounting Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Needs ADR-0006; accounting hooks and leak fixtures only, no full allocator |
-| P1-GATE-003 | Thread/Task Primitive Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Needs ADR-0007; bounded queue and inline executor only, no worker pool |
-| P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Needs ADR-0004; bounded synchronous observer only, no reports/profiler/async queue |
-| P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Needs ADR-0008; path normalization and loose fixture reads only, no package parser |
+| P1-GATE-001 | Platform Host + Engine Kernel Bootstrap | L0-L2 | `APPROVED_FOR_FIRST_SLICE` | Implemented | Headless host, timer, log sink, error boundary, module lifecycle, service registry, tests |
+| P1-GATE-002 | Memory Accounting Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0006 accepted; accounting hooks and leak fixtures only, no full allocator |
+| P1-GATE-003 | Thread/Task Primitive Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | Final gate pending | ADR-0007 accepted; bounded queue and inline executor only, no worker pool |
+| P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | `APPROVED_FOR_FIRST_SLICE` | Final gate pending | ADR-0004 accepted; bounded synchronous observer only, no reports/profiler/async queue |
+| P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Final gate pending | ADR-0008 accepted; path normalization and loose fixture reads only, no package parser |
 
-## Current Proposed Gate
+## Current Active Gates
 
-`docs/gates/P1_GATE_001_PLATFORM_KERNEL_BOOTSTRAP.md`
-
-This proposal is intentionally narrow. It asks for approval to create only the build/test skeleton, headless host, minimal platform services, and kernel lifecycle fixture. It does not authorize renderer, resources, audio, input gameplay, UI, script, scene, or game adapter work.
+- P1-GATE-002 implementation is in review as task #14.
+- P1-GATE-003, P1-GATE-004, and P1-GATE-005 await final gate/PM state before implementation tasks are created.
+- No implementation task may be created from a gate until that gate has `APPROVED_FOR_FIRST_SLICE`.
 
 ## Review Routing
 
@@ -116,8 +116,8 @@ The next implementation slice must not be created if any of these remain true:
 
 ## Immediate Next Steps
 
-1. Submit ADR-0001 for architecture review.
-2. Submit P1-GATE-001 for gate and performance review.
-3. Ask 红美铃 to PM-track proposal status and missing review owners.
-4. If accepted, create the first implementation task for build/test plus host/kernel skeleton.
-5. If blocked, route missing items back into the ADR queue instead of stalling.
+1. Close task #14 code/semantic review for the P1-GATE-002 memory implementation.
+2. Obtain final gate/PM state for P1-GATE-003, P1-GATE-004, and P1-GATE-005.
+3. Create implementation tasks only for gates that reach `APPROVED_FOR_FIRST_SLICE`.
+4. Preserve the Phase 1 exclusions: no renderer, resources package parser, async IO, gameplay/world, reports, capture/oracle, or original-game adapter behavior.
+5. If a gate is blocked, amend the owning ADR/gate immediately instead of creating implementation work.
