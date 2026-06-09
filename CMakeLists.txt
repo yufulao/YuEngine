@@ -221,6 +221,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_backend_obligations_contract
+        COMMAND yuengine_cli backend-obligations samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_backend_obligations_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true frame_scheduler_ok=true renderer_submission_ok=true texture_upload_contract_ready=true material_binding_contract_ready=true shader_effect_contract_tracked=true font_contract_tracked=true device_contract_tracked=true oracle_parity_contract_tracked=true texture_dependencies=39 texture_bytes_found=39 dds_textures=39 material_bindings=16 mesh_submissions=111 resolved_backend_contracts=2 tracked_backend_obligations=4 open_backend_obligations=4;texture_upload.*byte_total.: [1-9][0-9]+;material_binding.*title_text_submissions.: 11;texture_upload_format_semantics.*contract_ready;material_binding_semantics.*contract_ready;shader_effect_semantics.*tracked_open;font_atlas_and_glyph_metrics.*tracked_open;device_swapchain_presentation.*tracked_open;original_frame_oracle_parity.*tracked_open"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )

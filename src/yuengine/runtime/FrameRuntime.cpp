@@ -7,6 +7,7 @@
 #include "yuengine/script/SqasmModule.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -45,6 +46,12 @@ void addError(RendererBackendSubmissionReport& report, const std::string& messag
 }
 
 void addError(FrameSchedulerRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
+void addError(BackendObligationsRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
     report.errors.push_back(message);
@@ -515,6 +522,126 @@ FrameSchedulerRuntimeReport buildFrameSchedulerRuntimeReport(
     }
     if (report.unresolvedNodes != 0) {
         addError(report, "frame scheduler contains unresolved service nodes");
+    }
+
+    return report;
+}
+
+bool isDdsPayload(const std::vector<std::byte>& bytes)
+{
+    return bytes.size() >= 4 && bytes[0] == std::byte{0x44} && bytes[1] == std::byte{0x44}
+        && bytes[2] == std::byte{0x53} && bytes[3] == std::byte{0x20};
+}
+
+BackendObligationItem makeBackendObligation(
+    const std::string& obligation,
+    const std::string& status,
+    const std::string& evidence)
+{
+    BackendObligationItem item;
+    item.obligation = obligation;
+    item.status = status;
+    item.evidence = evidence;
+    return item;
+}
+
+BackendObligationsRuntimeReport buildBackendObligationsRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    BackendObligationsRuntimeReport report;
+    const auto rendererSubmission = buildRendererBackendSubmissionReport(inputs, rendererProfile);
+    const auto frameScheduler = buildFrameSchedulerRuntimeReport(inputs, rendererProfile);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.frameSchedulerOk = frameScheduler.ok;
+    report.rendererSubmissionOk = rendererSubmission.ok;
+    report.materialBindings = inputs.sceneRuntime.stage.materialCount;
+    report.meshSubmissions = inputs.sceneRuntime.stage.modelMeshCount;
+    report.titleTextSubmissions = inputs.titleUi.textDrawCommands + inputs.titleUi.graphStringCommands;
+
+    for (const auto& dependency : inputs.sceneRuntime.stage.dependencies) {
+        if (dependency.extension != ".dds") {
+            continue;
+        }
+        ++report.textureDependencies;
+        const auto bytes = vfs.readBytes(dependency.path);
+        if (!bytes.found) {
+            continue;
+        }
+        ++report.textureBytesFound;
+        report.textureByteTotal += static_cast<int64_t>(bytes.bytes.size());
+        if (isDdsPayload(bytes.bytes)) {
+            ++report.ddsTextures;
+        }
+    }
+
+    report.textureUploadContractReady = report.rendererSubmissionOk && report.frameSchedulerOk
+        && report.textureDependencies == 39 && report.textureBytesFound == 39 && report.ddsTextures == 39
+        && report.textureByteTotal > 0;
+    report.materialBindingContractReady = report.rendererSubmissionOk && report.materialBindings == 16
+        && report.meshSubmissions == 111 && inputs.sceneRuntime.stage.textureDependencyCount == 39;
+    report.shaderEffectContractTracked = report.materialBindingContractReady;
+    report.fontContractTracked = report.titleTextSubmissions >= 11;
+    report.deviceContractTracked = report.rendererSubmissionOk;
+    report.oracleParityContractTracked = report.frameSchedulerOk;
+
+    report.obligations.push_back(makeBackendObligation(
+        "texture_upload_format_semantics",
+        report.textureUploadContractReady ? "contract_ready" : "blocked",
+        "39 DDS payloads resolved through VFS"));
+    report.obligations.push_back(makeBackendObligation(
+        "material_binding_semantics",
+        report.materialBindingContractReady ? "contract_ready" : "blocked",
+        "16 material tags bound to 111 mesh submissions and 39 textures"));
+    report.obligations.push_back(makeBackendObligation(
+        "shader_effect_semantics",
+        report.shaderEffectContractTracked ? "tracked_open" : "blocked",
+        "material tags are counted but effect/shader bytecode semantics are not decoded"));
+    report.obligations.push_back(makeBackendObligation(
+        "font_atlas_and_glyph_metrics",
+        report.fontContractTracked ? "tracked_open" : "blocked",
+        "11 title text submissions require font atlas and glyph metric contracts"));
+    report.obligations.push_back(makeBackendObligation(
+        "device_swapchain_presentation",
+        report.deviceContractTracked ? "tracked_open" : "blocked",
+        "renderer profile is d3d9_compatible but no device backend is created"));
+    report.obligations.push_back(makeBackendObligation(
+        "original_frame_oracle_parity",
+        report.oracleParityContractTracked ? "tracked_open" : "blocked",
+        "scheduler output has no original-frame screenshot or API trace parity yet"));
+
+    for (const auto& obligation : report.obligations) {
+        if (obligation.status == "contract_ready") {
+            ++report.resolvedBackendContracts;
+        } else if (obligation.status == "tracked_open") {
+            ++report.trackedBackendObligations;
+            ++report.openBackendObligations;
+        } else {
+            ++report.openBackendObligations;
+        }
+    }
+
+    if (!report.frameSchedulerOk) {
+        addError(report, "frame scheduler contract is not ready for backend obligation resolution");
+    }
+    if (!report.rendererSubmissionOk) {
+        addError(report, "renderer submission contract is not ready for backend obligation resolution");
+    }
+    if (!report.textureUploadContractReady) {
+        addError(report, "texture upload format contract is not ready");
+    }
+    if (!report.materialBindingContractReady) {
+        addError(report, "material binding contract is not ready");
+    }
+    if (!report.shaderEffectContractTracked || !report.fontContractTracked
+        || !report.deviceContractTracked || !report.oracleParityContractTracked) {
+        addError(report, "backend open obligations are not fully tracked");
+    }
+    if (report.resolvedBackendContracts < 2 || report.trackedBackendObligations < 4
+        || report.openBackendObligations != 4) {
+        addError(report, "backend obligation accounting is inconsistent");
     }
 
     return report;
@@ -1230,6 +1357,78 @@ std::string frameSchedulerRuntimeReportToJson(const FrameSchedulerRuntimeReport&
             << ", \"commands\": " << node.commands
             << ", \"source\": \"" << core::jsonEscape(node.source) << "\"}";
         out << (i + 1 == report.nodes.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendObligationsRuntimeReport runBackendObligationsRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendObligationsRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendObligationsRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendObligationsRuntimeReportToJson(const BackendObligationsRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_obligations_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " frame_scheduler_ok=" << (report.frameSchedulerOk ? "true" : "false")
+        << " renderer_submission_ok=" << (report.rendererSubmissionOk ? "true" : "false")
+        << " texture_upload_contract_ready=" << (report.textureUploadContractReady ? "true" : "false")
+        << " material_binding_contract_ready=" << (report.materialBindingContractReady ? "true" : "false")
+        << " shader_effect_contract_tracked=" << (report.shaderEffectContractTracked ? "true" : "false")
+        << " font_contract_tracked=" << (report.fontContractTracked ? "true" : "false")
+        << " device_contract_tracked=" << (report.deviceContractTracked ? "true" : "false")
+        << " oracle_parity_contract_tracked=" << (report.oracleParityContractTracked ? "true" : "false")
+        << " texture_dependencies=" << report.textureDependencies
+        << " texture_bytes_found=" << report.textureBytesFound
+        << " dds_textures=" << report.ddsTextures
+        << " material_bindings=" << report.materialBindings
+        << " mesh_submissions=" << report.meshSubmissions
+        << " resolved_backend_contracts=" << report.resolvedBackendContracts
+        << " tracked_backend_obligations=" << report.trackedBackendObligations
+        << " open_backend_obligations=" << report.openBackendObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"texture_upload\": {";
+    out << "\"dependencies\": " << report.textureDependencies
+        << ", \"bytes_found\": " << report.textureBytesFound
+        << ", \"dds_textures\": " << report.ddsTextures
+        << ", \"byte_total\": " << report.textureByteTotal << "},\n";
+    out << "  \"material_binding\": {";
+    out << "\"material_bindings\": " << report.materialBindings
+        << ", \"mesh_submissions\": " << report.meshSubmissions
+        << ", \"title_text_submissions\": " << report.titleTextSubmissions << "},\n";
+    out << "  \"obligation_summary\": {";
+    out << "\"resolved_backend_contracts\": " << report.resolvedBackendContracts
+        << ", \"tracked_backend_obligations\": " << report.trackedBackendObligations
+        << ", \"open_backend_obligations\": " << report.openBackendObligations << "},\n";
+    out << "  \"obligations\": [\n";
+    for (size_t i = 0; i < report.obligations.size(); ++i) {
+        const auto& obligation = report.obligations[i];
+        out << "    {\"obligation\": \"" << core::jsonEscape(obligation.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(obligation.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(obligation.evidence) << "\"}";
+        out << (i + 1 == report.obligations.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

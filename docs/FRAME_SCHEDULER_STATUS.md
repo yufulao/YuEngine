@@ -87,7 +87,7 @@ subsystems should attach to scheduler nodes instead of creating standalone diagn
 
 ## Next Edges
 
-- L18: start resolving concrete backend obligations, beginning with texture upload format and
-  shader/effect/material contracts.
-- L19: attach real device/swapchain presentation once resource upload and shader/material
-  contracts have explicit failure gates.
+- L18 has since resolved texture upload format and material binding contracts while keeping
+  shader/effect, font, device/swapchain, and oracle parity as tracked open obligations.
+- L19: decode shader/effect and material semantics behind the 16 material tags and 111 mesh
+  submissions.

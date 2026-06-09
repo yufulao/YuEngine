@@ -45,6 +45,7 @@ void usage()
               << "  yuengine_cli gameplay-frame <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli renderer-submit <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli frame-scheduler <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli backend-obligations <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli script <project.json> <module>\n"
@@ -371,6 +372,11 @@ int main(int argc, char** argv)
         if (command == "frame-scheduler") {
             auto report = yu::runtime::runFrameSchedulerRuntime(manifest, repoRoot);
             std::cout << yu::runtime::frameSchedulerRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "backend-obligations") {
+            auto report = yu::runtime::runBackendObligationsRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendObligationsRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "mission-event-thread") {

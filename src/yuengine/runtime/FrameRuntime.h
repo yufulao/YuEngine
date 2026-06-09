@@ -246,6 +246,37 @@ struct FrameSchedulerRuntimeReport {
     std::vector<FrameSchedulerNodeReport> nodes;
 };
 
+struct BackendObligationItem {
+    std::string obligation;
+    std::string status;
+    std::string evidence;
+};
+
+struct BackendObligationsRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool frameSchedulerOk = false;
+    bool rendererSubmissionOk = false;
+    bool textureUploadContractReady = false;
+    bool materialBindingContractReady = false;
+    bool shaderEffectContractTracked = false;
+    bool fontContractTracked = false;
+    bool deviceContractTracked = false;
+    bool oracleParityContractTracked = false;
+    int textureDependencies = 0;
+    int textureBytesFound = 0;
+    int ddsTextures = 0;
+    int64_t textureByteTotal = 0;
+    int materialBindings = 0;
+    int meshSubmissions = 0;
+    int titleTextSubmissions = 0;
+    int resolvedBackendContracts = 0;
+    int trackedBackendObligations = 0;
+    int openBackendObligations = 0;
+    std::vector<BackendObligationItem> obligations;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -365,6 +396,12 @@ FrameSchedulerRuntimeReport runFrameSchedulerRuntime(
     const std::filesystem::path& repoRoot);
 
 std::string frameSchedulerRuntimeReportToJson(const FrameSchedulerRuntimeReport& report);
+
+BackendObligationsRuntimeReport runBackendObligationsRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendObligationsRuntimeReportToJson(const BackendObligationsRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

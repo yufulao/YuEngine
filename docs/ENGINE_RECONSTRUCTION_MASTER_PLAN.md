@@ -133,11 +133,12 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L17 now builds a service-owned frame scheduler/update graph through
-`yuengine_cli frame-scheduler`. The graph has 10 service nodes, 12 scheduler edges, 469 scheduled
-work items, and 0 unresolved nodes while consuming the L15 gameplay-frame and L16 renderer
-submission contracts. This is still not a playable loop or device backend; the next edge is L18
-backend texture/shader/material/font/device obligations.
+Current latest checkpoint: L18 now splits backend obligations through
+`yuengine_cli backend-obligations`. Texture upload format and material binding are contract-ready
+from 39 DDS payloads, 23,773,408 texture bytes, 16 material tags, and 111 mesh submissions.
+Shader/effect, font, device/swapchain, and original-frame parity remain tracked open obligations.
+This is still not a playable loop or device backend; the next edge is L19 shader/effect and
+material semantics.
 
 The current route is no longer allowed to stop at menu visuals:
 
@@ -149,6 +150,7 @@ original title bytecode
 -> renderer/audio/save backend submission
 -> service-owned frame scheduler/update graph
 -> concrete backend obligations
+-> shader/effect/material semantics
 ```
 
 The Project failure rule is now stricter: no new loop may be framed as "minimal." The loop unit

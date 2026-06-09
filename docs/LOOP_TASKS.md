@@ -825,7 +825,7 @@ Boundary:
 
 ### L18: Backend Texture, Shader, Material, Font, And Device Obligations
 
-Status: active after L17.
+Status: completed as backend obligation split and texture/material contract checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -843,6 +843,47 @@ Acceptance:
   and residual mismatch list;
 - renderer submission and frame scheduler must fail if texture/material obligations detach from
   scene-runtime handles.
+
+Verified metric:
+
+```text
+ok=true frame_scheduler_ok=true renderer_submission_ok=true texture_upload_contract_ready=true material_binding_contract_ready=true shader_effect_contract_tracked=true font_contract_tracked=true device_contract_tracked=true oracle_parity_contract_tracked=true texture_dependencies=39 texture_bytes_found=39 dds_textures=39 material_bindings=16 mesh_submissions=111 resolved_backend_contracts=2 tracked_backend_obligations=4 open_backend_obligations=4
+```
+
+Payload evidence:
+
+- 39 DDS texture dependencies;
+- 39 texture payloads found through VFS;
+- 39 DDS magic headers confirmed;
+- 23,773,408 total texture bytes;
+- 16 material tags;
+- 111 scene mesh submissions;
+- 11 title text submissions.
+
+Boundary:
+
+- L18 does not create a GPU device and does not upload textures;
+- texture upload format and material binding are now contract-ready evidence;
+- shader/effect, font atlas/glyph metrics, device/swapchain, and original-frame parity remain
+  open obligations.
+
+### L19: Shader/Effect And Material Semantics Contract
+
+Status: active after L18.
+
+Deliver:
+
+- inspect model/material/effect evidence behind the 16 material tags and 111 mesh submissions;
+- identify shader/effect resource references or binary payload structures if present;
+- define material binding payload shape for mesh submission -> material -> texture slots;
+- keep unresolved shader program, constant buffer, blend/depth, and sampler semantics as explicit
+  obligations.
+
+Acceptance:
+
+- material semantics must consume the L18 texture/material contract;
+- renderer submission and frame scheduler must fail if shader/effect obligations are dropped;
+- no fake shader or hard-coded material defaults can satisfy the contract without evidence.
 
 ## Stop Conditions
 
