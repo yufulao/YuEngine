@@ -108,5 +108,7 @@ font state back into one generic renderer obligation.
 
 - L23 has since created D3D9-compatible backend resource allocation records from L21/L22 evidence.
 - L24 has since created device resource creation/upload/state-binding execution records.
-- L25: swapchain/present execution records only after resource allocation, state binding, font
-  atlas, and oracle parity gates can fail independently.
+- L25 has since created swapchain/present/original-frame oracle parity records that consume L24
+  device execution records.
+- L26: real platform D3D API submission/backend bridge only after resource allocation, state
+  binding, presentation, and oracle gates can fail independently.

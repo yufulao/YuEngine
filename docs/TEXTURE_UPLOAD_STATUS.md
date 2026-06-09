@@ -107,5 +107,6 @@ guess texture dimensions from filenames, or treat unreferenced DDS files as stag
 - L23 has since created D3D9-compatible resource allocation records that consume L21 texture
   uploads and L22 backend state records.
 - L24 has since created device resource allocation/upload/state-binding execution records.
-- L25: swapchain/present/original-frame oracle parity records only after state/font/allocation and
-  device execution gates are independently typed.
+- L25 has since created swapchain/present/original-frame oracle parity records after state,
+  allocation, and device execution gates became independently typed.
+- L26: real platform D3D API submission/backend bridge.

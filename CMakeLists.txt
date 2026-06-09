@@ -284,6 +284,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_present_oracle_contract
+        COMMAND yuengine_cli present-oracle samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_present_oracle_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true device_execution_ok=true device_presentation_ok=true presentation_oracle_runtime_ready=true backbuffer_extent_records_ready=true device_execution_input_records_ready=true window_surface_gate_tracked=true swapchain_creation_gate_tracked=true present_call_gate_tracked=true frame_capture_gate_tracked=true original_frame_oracle_gate_tracked=true presentation_records=7 ready_presentation_records=2 tracked_open_presentation_records=5 backbuffer_extent_records=1 backbuffer_width=1280 backbuffer_height=720 device_execution_frame_inputs=1 linked_device_execution_records=103 linked_device_ready_records=55 linked_device_open_records=48 window_surface_candidates=1 swapchain_creation_candidates=1 present_call_candidates=1 frame_capture_candidates=1 oracle_trace_candidates=1 renderer_backend_commands=181 draw_submissions=121 resolved_presentation_contracts=2 tracked_presentation_obligations=5 open_presentation_obligations=5;presentation_summary.*records.: 7.*ready_records.: 2.*tracked_open_records.: 5.*backbuffer_width.: 1280.*backbuffer_height.: 720.*renderer_backend_commands.: 181.*draw_submissions.: 121;device_execution_link.*device_execution_frame_inputs.: 1.*linked_device_execution_records.: 103.*linked_device_ready_records.: 55.*linked_device_open_records.: 48;oracle_gates.*window_surface_candidates.: 1.*swapchain_creation_candidates.: 1.*present_call_candidates.: 1.*frame_capture_candidates.: 1.*oracle_trace_candidates.: 1;swapchain_backbuffer_extent.*BackbufferExtent.*SMAA_PIXEL_SIZE.*contract_ready.*width.: 1280.*height.: 720;device_execution_frame_input.*DeviceExecutionFrameInput.*device-execution.*contract_ready.*linked_record_count.: 103;window_surface_candidate.*CreateWindowSurfaceCandidate.*tracked_open;swapchain_creation_candidate.*CreateSwapChainCandidate.*tracked_open;present_call_candidate.*PresentCandidate.*tracked_open.*linked_record_count.: 181;frame_capture_candidate.*FrameCaptureCandidate.*tracked_open.*linked_record_count.: 121;original_frame_oracle_trace.*OriginalFrameOracleTraceCandidate.*tracked_open;backbuffer_extent_record.*contract_ready;device_execution_frame_input.*contract_ready;window_surface_creation.*tracked_open;swapchain_creation.*tracked_open;present_call_execution.*tracked_open;frame_capture_artifact.*tracked_open;original_frame_oracle_trace.*tracked_open"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )

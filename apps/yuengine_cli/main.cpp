@@ -52,6 +52,7 @@ void usage()
               << "  yuengine_cli backend-state <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli resource-allocation <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli device-execution <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli present-oracle <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli script <project.json> <module>\n"
@@ -413,6 +414,11 @@ int main(int argc, char** argv)
         if (command == "device-execution") {
             auto report = yu::runtime::runBackendDeviceExecutionRuntime(manifest, repoRoot);
             std::cout << yu::runtime::backendDeviceExecutionRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "present-oracle") {
+            auto report = yu::runtime::runBackendPresentationOracleRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendPresentationOracleRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "mission-event-thread") {

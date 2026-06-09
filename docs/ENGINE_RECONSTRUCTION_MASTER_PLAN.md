@@ -133,17 +133,15 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L24 now defines device resource creation, upload, and state-binding
-execution records through `yuengine_cli device-execution`. The runtime consumes L23 resource
-allocation records, L22 backend sampler/pass/font records, and L20 device presentation before it
-can mark device execution records ready. It materializes 46 device-facing creation records, 41
-ready texture upload execution records, 458 upload subresources, and 57 binding records. Ready
-evidence includes `CreateTexture`/`CreateCubeTexture` records, SMAA lookup texture bindings,
-7 sampler-state records, and 5 pass render-state records. HWND/swapchain creation, `Present`,
-actual `IDirect3DDevice9` calls, material shader programs, font atlas implementation, transient
-surface format ownership, and original-frame parity remain tracked open obligations. This is still
-not a playable loop or real device backend; the next edge is L25 swapchain/present/original-frame
-oracle parity records.
+Current latest checkpoint: L25 now defines swapchain, present, and original-frame oracle parity
+records through `yuengine_cli present-oracle`. The runtime consumes L20 device presentation and
+L24 device execution records before it can mark presentation/oracle records ready. It materializes
+7 presentation records: 2 contract-ready records for the 1280x720 backbuffer extent and L24 device
+execution frame input, plus 5 tracked-open gates for window surface creation, swapchain creation,
+present execution, frame capture artifact, and original graphics trace. It links back to 103 L24
+device execution records, 181 renderer backend commands, and 121 draw submissions. This is still
+not a playable loop or real device backend; the next edge is L26 real platform D3D API submission
+and backend bridge.
 
 The current route is no longer allowed to stop at menu visuals:
 
@@ -162,8 +160,11 @@ original title bytecode
 -> D3D9-compatible resource allocation records
 -> device resource creation/state-binding execution records
 -> swapchain/present/original-frame oracle parity records
+-> real platform D3D API submission/backend bridge
 ```
 
 The Project failure rule is now stricter: no new loop may be framed as "minimal." The loop unit
 is a layer contract with implementation and regression coverage. A checkpoint is allowed only
-when it leaves the next contract edge executable and the agent continues into that edge.
+when it leaves the next contract edge executable and the agent continues into that edge. L26 must
+consume L24/L25 records; a standalone launcher, clear-screen window, or mesh preview remains a
+regression to the failed `Project` route.

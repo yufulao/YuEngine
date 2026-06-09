@@ -91,6 +91,8 @@ to turn upload/state/font/oracle contracts into typed runtime records before any
 
 - L21 has since created typed texture upload records, sampler/blend/depth gates, font atlas/glyph
   metric gates, and original-frame oracle trace gates.
-- L22: backend render-state/font atlas records that consume L21 upload records.
-- Then: real device/swapchain creation only when upload/state/font/oracle gates have executable
-  backend records.
+- L22 has since created backend render-state/font atlas records that consume L21 upload records.
+- L23 has since created resource allocation records; L24 has since created device execution
+  records; L25 has since created swapchain/present/original-frame oracle records.
+- L26: real device/swapchain/API submission only when upload, state, font, presentation, and
+  oracle gates have executable backend records.

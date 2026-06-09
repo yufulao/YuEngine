@@ -97,6 +97,12 @@ void addError(BackendDeviceExecutionRuntimeReport& report, const std::string& me
     report.errors.push_back(message);
 }
 
+void addError(BackendPresentationOracleRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -1321,6 +1327,27 @@ BackendDeviceStateBindingRecord makeRenderStateBindingRecord(const BackendPassSt
     return record;
 }
 
+BackendPresentationOracleRecord makePresentationOracleRecord(
+    const std::string& name,
+    const std::string& operation,
+    const std::string& source,
+    const std::string& status,
+    int width,
+    int height,
+    int linkedRecordCount)
+{
+    BackendPresentationOracleRecord record;
+    record.name = name;
+    record.operation = operation;
+    record.source = source;
+    record.status = status;
+    record.width = width;
+    record.height = height;
+    record.linkedRecordCount = linkedRecordCount;
+    record.ready = status == "contract_ready";
+    return record;
+}
+
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
     const GameplayFrameInputs& inputs,
     const std::string& rendererProfile,
@@ -2352,6 +2379,201 @@ BackendDeviceExecutionRuntimeReport buildBackendDeviceExecutionRuntimeReport(
     if (report.resolvedDeviceExecutionContracts != 4 || report.trackedDeviceExecutionObligations != 5
         || report.openDeviceExecutionObligations != 5) {
         addError(report, "device execution obligation accounting is inconsistent");
+    }
+
+    return report;
+}
+
+BackendPresentationOracleRuntimeReport buildBackendPresentationOracleRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    BackendPresentationOracleRuntimeReport report;
+    const auto deviceExecution = buildBackendDeviceExecutionRuntimeReport(inputs, rendererProfile, vfs);
+    const auto devicePresentation = buildDevicePresentationRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.deviceExecutionOk = deviceExecution.ok;
+    report.devicePresentationOk = devicePresentation.ok;
+    report.backbufferWidth = devicePresentation.backbufferWidthCandidate;
+    report.backbufferHeight = devicePresentation.backbufferHeightCandidate;
+    report.rendererBackendCommands = devicePresentation.rendererBackendCommands;
+    report.drawSubmissions = devicePresentation.drawSubmissions;
+    report.linkedDeviceExecutionRecords =
+        deviceExecution.resourceCreationRecords + deviceExecution.bindingRecords;
+    report.linkedDeviceReadyRecords =
+        deviceExecution.readyResourceCreationRecords + deviceExecution.readyBindingRecords;
+    report.linkedDeviceOpenRecords =
+        deviceExecution.trackedOpenResourceCreationRecords + deviceExecution.trackedOpenBindingRecords;
+
+    report.records.push_back(makePresentationOracleRecord(
+        "swapchain_backbuffer_extent",
+        "BackbufferExtent",
+        "SMAA_PIXEL_SIZE",
+        devicePresentation.swapchainContractTracked ? "contract_ready" : "blocked",
+        report.backbufferWidth,
+        report.backbufferHeight,
+        1));
+    report.records.push_back(makePresentationOracleRecord(
+        "device_execution_frame_input",
+        "DeviceExecutionFrameInput",
+        "yuengine_cli device-execution",
+        deviceExecution.deviceExecutionRuntimeReady ? "contract_ready" : "blocked",
+        report.backbufferWidth,
+        report.backbufferHeight,
+        report.linkedDeviceExecutionRecords));
+    report.records.push_back(makePresentationOracleRecord(
+        "window_surface_candidate",
+        "CreateWindowSurfaceCandidate",
+        "device-presentation",
+        devicePresentation.presentContractTracked ? "tracked_open" : "blocked",
+        report.backbufferWidth,
+        report.backbufferHeight,
+        1));
+    report.records.push_back(makePresentationOracleRecord(
+        "swapchain_creation_candidate",
+        "CreateSwapChainCandidate",
+        "device-presentation",
+        devicePresentation.swapchainContractTracked ? "tracked_open" : "blocked",
+        report.backbufferWidth,
+        report.backbufferHeight,
+        1));
+    report.records.push_back(makePresentationOracleRecord(
+        "present_call_candidate",
+        "PresentCandidate",
+        "renderer scheduler present gate",
+        devicePresentation.presentContractTracked ? "tracked_open" : "blocked",
+        report.backbufferWidth,
+        report.backbufferHeight,
+        report.rendererBackendCommands));
+    report.records.push_back(makePresentationOracleRecord(
+        "frame_capture_candidate",
+        "FrameCaptureCandidate",
+        "oracle title boot readiness",
+        deviceExecution.presentOracleGateTracked ? "tracked_open" : "blocked",
+        report.backbufferWidth,
+        report.backbufferHeight,
+        report.drawSubmissions));
+    report.records.push_back(makePresentationOracleRecord(
+        "original_frame_oracle_trace",
+        "OriginalFrameOracleTraceCandidate",
+        "oracle title boot readiness",
+        deviceExecution.presentOracleGateTracked ? "tracked_open" : "blocked",
+        report.backbufferWidth,
+        report.backbufferHeight,
+        0));
+
+    for (const auto& record : report.records) {
+        ++report.presentationRecords;
+        if (record.ready) {
+            ++report.readyPresentationRecords;
+        } else if (record.status == "tracked_open") {
+            ++report.trackedOpenPresentationRecords;
+        }
+
+        if (record.operation == "BackbufferExtent") {
+            ++report.backbufferExtentRecords;
+        } else if (record.operation == "DeviceExecutionFrameInput") {
+            ++report.deviceExecutionFrameInputs;
+        } else if (record.operation == "CreateWindowSurfaceCandidate") {
+            ++report.windowSurfaceCandidates;
+        } else if (record.operation == "CreateSwapChainCandidate") {
+            ++report.swapchainCreationCandidates;
+        } else if (record.operation == "PresentCandidate") {
+            ++report.presentCallCandidates;
+        } else if (record.operation == "FrameCaptureCandidate") {
+            ++report.frameCaptureCandidates;
+        } else if (record.operation == "OriginalFrameOracleTraceCandidate") {
+            ++report.oracleTraceCandidates;
+        }
+    }
+
+    report.backbufferExtentRecordsReady = devicePresentation.swapchainContractTracked
+        && report.backbufferExtentRecords == 1 && report.backbufferWidth == 1280
+        && report.backbufferHeight == 720;
+    report.deviceExecutionInputRecordsReady = deviceExecution.deviceExecutionRuntimeReady
+        && report.deviceExecutionFrameInputs == 1 && report.linkedDeviceExecutionRecords == 103
+        && report.linkedDeviceReadyRecords == 55 && report.linkedDeviceOpenRecords == 48;
+    report.windowSurfaceGateTracked =
+        devicePresentation.presentContractTracked && report.windowSurfaceCandidates == 1;
+    report.swapchainCreationGateTracked =
+        devicePresentation.swapchainContractTracked && report.swapchainCreationCandidates == 1;
+    report.presentCallGateTracked =
+        devicePresentation.presentContractTracked && report.presentCallCandidates == 1
+        && report.rendererBackendCommands == 181;
+    report.frameCaptureGateTracked =
+        deviceExecution.presentOracleGateTracked && report.frameCaptureCandidates == 1
+        && report.drawSubmissions == 121;
+    report.originalFrameOracleGateTracked =
+        deviceExecution.presentOracleGateTracked && report.oracleTraceCandidates == 1;
+    report.presentationOracleRuntimeReady = report.deviceExecutionOk && report.devicePresentationOk
+        && report.backbufferExtentRecordsReady && report.deviceExecutionInputRecordsReady
+        && report.windowSurfaceGateTracked && report.swapchainCreationGateTracked
+        && report.presentCallGateTracked && report.frameCaptureGateTracked
+        && report.originalFrameOracleGateTracked && report.presentationRecords == 7
+        && report.readyPresentationRecords == 2 && report.trackedOpenPresentationRecords == 5;
+
+    report.contracts.push_back(makeBackendObligation(
+        "backbuffer_extent_record",
+        report.backbufferExtentRecordsReady ? "contract_ready" : "blocked",
+        "SMAA_PIXEL_SIZE and device presentation expose a 1280x720 backbuffer extent"));
+    report.contracts.push_back(makeBackendObligation(
+        "device_execution_frame_input",
+        report.deviceExecutionInputRecordsReady ? "contract_ready" : "blocked",
+        "L24 supplies 103 device execution records, including 55 ready and 48 tracked-open records"));
+    report.contracts.push_back(makeBackendObligation(
+        "window_surface_creation",
+        report.windowSurfaceGateTracked ? "tracked_open" : "blocked",
+        "present requires an HWND/window surface, but no platform surface is created"));
+    report.contracts.push_back(makeBackendObligation(
+        "swapchain_creation",
+        report.swapchainCreationGateTracked ? "tracked_open" : "blocked",
+        "backbuffer extent is known, but no swapchain object is created"));
+    report.contracts.push_back(makeBackendObligation(
+        "present_call_execution",
+        report.presentCallGateTracked ? "tracked_open" : "blocked",
+        "renderer scheduler reaches present gate, but no Present call is executed"));
+    report.contracts.push_back(makeBackendObligation(
+        "frame_capture_artifact",
+        report.frameCaptureGateTracked ? "tracked_open" : "blocked",
+        "draw submissions exist, but no captured frame artifact exists for parity"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_trace",
+        report.originalFrameOracleGateTracked ? "tracked_open" : "blocked",
+        "no original D3D/render trace or screenshot parity has been recorded"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedPresentationContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedPresentationObligations;
+            ++report.openPresentationObligations;
+        } else {
+            ++report.openPresentationObligations;
+        }
+    }
+
+    if (!report.deviceExecutionOk) {
+        addError(report, "device execution contract is not ready for presentation/oracle records");
+    }
+    if (!report.devicePresentationOk) {
+        addError(report, "device presentation contract is not ready for presentation/oracle records");
+    }
+    if (!report.backbufferExtentRecordsReady) {
+        addError(report, "backbuffer extent record is incomplete");
+    }
+    if (!report.deviceExecutionInputRecordsReady) {
+        addError(report, "device execution frame input record is incomplete");
+    }
+    if (!report.windowSurfaceGateTracked || !report.swapchainCreationGateTracked
+        || !report.presentCallGateTracked || !report.frameCaptureGateTracked
+        || !report.originalFrameOracleGateTracked) {
+        addError(report, "presentation/oracle open gates are not fully tracked");
+    }
+    if (report.resolvedPresentationContracts != 2 || report.trackedPresentationObligations != 5
+        || report.openPresentationObligations != 5) {
+        addError(report, "presentation/oracle obligation accounting is inconsistent");
     }
 
     return report;
@@ -3904,6 +4126,117 @@ std::string backendDeviceExecutionRuntimeReportToJson(
             << "\", \"binding_slots\": " << record.bindingSlots
             << ", \"ready\": " << (record.ready ? "true" : "false") << "}";
         out << (i + 1 == report.bindingRecordsDetail.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendPresentationOracleRuntimeReport runBackendPresentationOracleRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendPresentationOracleRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendPresentationOracleRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendPresentationOracleRuntimeReportToJson(
+    const BackendPresentationOracleRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_presentation_oracle_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " device_execution_ok=" << (report.deviceExecutionOk ? "true" : "false")
+        << " device_presentation_ok=" << (report.devicePresentationOk ? "true" : "false")
+        << " presentation_oracle_runtime_ready=" << (report.presentationOracleRuntimeReady ? "true" : "false")
+        << " backbuffer_extent_records_ready=" << (report.backbufferExtentRecordsReady ? "true" : "false")
+        << " device_execution_input_records_ready=" << (report.deviceExecutionInputRecordsReady ? "true" : "false")
+        << " window_surface_gate_tracked=" << (report.windowSurfaceGateTracked ? "true" : "false")
+        << " swapchain_creation_gate_tracked=" << (report.swapchainCreationGateTracked ? "true" : "false")
+        << " present_call_gate_tracked=" << (report.presentCallGateTracked ? "true" : "false")
+        << " frame_capture_gate_tracked=" << (report.frameCaptureGateTracked ? "true" : "false")
+        << " original_frame_oracle_gate_tracked=" << (report.originalFrameOracleGateTracked ? "true" : "false")
+        << " presentation_records=" << report.presentationRecords
+        << " ready_presentation_records=" << report.readyPresentationRecords
+        << " tracked_open_presentation_records=" << report.trackedOpenPresentationRecords
+        << " backbuffer_extent_records=" << report.backbufferExtentRecords
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " device_execution_frame_inputs=" << report.deviceExecutionFrameInputs
+        << " linked_device_execution_records=" << report.linkedDeviceExecutionRecords
+        << " linked_device_ready_records=" << report.linkedDeviceReadyRecords
+        << " linked_device_open_records=" << report.linkedDeviceOpenRecords
+        << " window_surface_candidates=" << report.windowSurfaceCandidates
+        << " swapchain_creation_candidates=" << report.swapchainCreationCandidates
+        << " present_call_candidates=" << report.presentCallCandidates
+        << " frame_capture_candidates=" << report.frameCaptureCandidates
+        << " oracle_trace_candidates=" << report.oracleTraceCandidates
+        << " renderer_backend_commands=" << report.rendererBackendCommands
+        << " draw_submissions=" << report.drawSubmissions
+        << " resolved_presentation_contracts=" << report.resolvedPresentationContracts
+        << " tracked_presentation_obligations=" << report.trackedPresentationObligations
+        << " open_presentation_obligations=" << report.openPresentationObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"presentation_summary\": {";
+    out << "\"records\": " << report.presentationRecords
+        << ", \"ready_records\": " << report.readyPresentationRecords
+        << ", \"tracked_open_records\": " << report.trackedOpenPresentationRecords
+        << ", \"backbuffer_width\": " << report.backbufferWidth
+        << ", \"backbuffer_height\": " << report.backbufferHeight
+        << ", \"renderer_backend_commands\": " << report.rendererBackendCommands
+        << ", \"draw_submissions\": " << report.drawSubmissions << "},\n";
+    out << "  \"device_execution_link\": {";
+    out << "\"device_execution_frame_inputs\": " << report.deviceExecutionFrameInputs
+        << ", \"linked_device_execution_records\": " << report.linkedDeviceExecutionRecords
+        << ", \"linked_device_ready_records\": " << report.linkedDeviceReadyRecords
+        << ", \"linked_device_open_records\": " << report.linkedDeviceOpenRecords << "},\n";
+    out << "  \"oracle_gates\": {";
+    out << "\"window_surface_candidates\": " << report.windowSurfaceCandidates
+        << ", \"swapchain_creation_candidates\": " << report.swapchainCreationCandidates
+        << ", \"present_call_candidates\": " << report.presentCallCandidates
+        << ", \"frame_capture_candidates\": " << report.frameCaptureCandidates
+        << ", \"oracle_trace_candidates\": " << report.oracleTraceCandidates << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_presentation_contracts\": " << report.resolvedPresentationContracts
+        << ", \"tracked_presentation_obligations\": " << report.trackedPresentationObligations
+        << ", \"open_presentation_obligations\": " << report.openPresentationObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"records\": [\n";
+    for (size_t i = 0; i < report.records.size(); ++i) {
+        const auto& record = report.records[i];
+        out << "    {\"name\": \"" << core::jsonEscape(record.name)
+            << "\", \"operation\": \"" << core::jsonEscape(record.operation)
+            << "\", \"source\": \"" << core::jsonEscape(record.source)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"width\": " << record.width
+            << ", \"height\": " << record.height
+            << ", \"linked_record_count\": " << record.linkedRecordCount
+            << ", \"ready\": " << (record.ready ? "true" : "false") << "}";
+        out << (i + 1 == report.records.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

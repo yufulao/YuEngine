@@ -118,6 +118,6 @@ a visual window without proving device API submission, swapchain/present, and or
 
 ## Next Edges
 
-- L25: swapchain/present/original-frame oracle parity records after L24 device execution records.
-- Then: real platform device API submission only after creation, binding, present, and oracle
-  gates can fail independently.
+- L25 has since created swapchain/present/original-frame oracle parity records from L20 and L24.
+- L26: real platform D3D API submission/backend bridge. It must consume L24 device execution
+  records and L25 presentation/oracle records before issuing concrete calls.

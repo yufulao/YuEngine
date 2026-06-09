@@ -647,6 +647,55 @@ struct BackendDeviceExecutionRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendPresentationOracleRecord {
+    std::string name;
+    std::string operation;
+    std::string source;
+    std::string status;
+    int width = 0;
+    int height = 0;
+    int linkedRecordCount = 0;
+    bool ready = false;
+};
+
+struct BackendPresentationOracleRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool deviceExecutionOk = false;
+    bool devicePresentationOk = false;
+    bool presentationOracleRuntimeReady = false;
+    bool backbufferExtentRecordsReady = false;
+    bool deviceExecutionInputRecordsReady = false;
+    bool windowSurfaceGateTracked = false;
+    bool swapchainCreationGateTracked = false;
+    bool presentCallGateTracked = false;
+    bool frameCaptureGateTracked = false;
+    bool originalFrameOracleGateTracked = false;
+    int presentationRecords = 0;
+    int readyPresentationRecords = 0;
+    int trackedOpenPresentationRecords = 0;
+    int backbufferExtentRecords = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int deviceExecutionFrameInputs = 0;
+    int linkedDeviceExecutionRecords = 0;
+    int linkedDeviceReadyRecords = 0;
+    int linkedDeviceOpenRecords = 0;
+    int windowSurfaceCandidates = 0;
+    int swapchainCreationCandidates = 0;
+    int presentCallCandidates = 0;
+    int frameCaptureCandidates = 0;
+    int oracleTraceCandidates = 0;
+    int rendererBackendCommands = 0;
+    int drawSubmissions = 0;
+    int resolvedPresentationContracts = 0;
+    int trackedPresentationObligations = 0;
+    int openPresentationObligations = 0;
+    std::vector<BackendPresentationOracleRecord> records;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -810,6 +859,13 @@ BackendDeviceExecutionRuntimeReport runBackendDeviceExecutionRuntime(
 
 std::string backendDeviceExecutionRuntimeReportToJson(
     const BackendDeviceExecutionRuntimeReport& report);
+
+BackendPresentationOracleRuntimeReport runBackendPresentationOracleRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendPresentationOracleRuntimeReportToJson(
+    const BackendPresentationOracleRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

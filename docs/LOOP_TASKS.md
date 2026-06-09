@@ -1127,21 +1127,55 @@ Boundary:
 
 ### L25: Swapchain, Present, And Original-Frame Oracle Parity Records
 
-Status: active after L24.
+Status: completed after L24.
 
 Deliver:
 
-- consume L20 device presentation and L24 device execution records into swapchain/present records;
-- define HWND/window surface, backbuffer, present interval, frame capture, and original-frame
-  oracle parity gates as independent records;
-- keep real platform API submission blocked until present/oracle evidence can fail cleanly.
+- consumed L20 device presentation and L24 device execution records into 7 presentation/oracle
+  records;
+- defined HWND/window surface, swapchain, present, frame capture, and original-frame oracle trace
+  gates as independent records;
+- kept real platform API submission blocked until present/oracle evidence can fail cleanly.
 
 Acceptance:
 
+- `yuengine_cli present-oracle samples/touhou_new_world/project.json --repo-root .` reports
+  `presentation_oracle_runtime_ready=true`;
+- CTest `yuengine_present_oracle_contract` locks 7 records, 2 ready records, 5 tracked-open
+  obligations, 1280x720 backbuffer extent, 103 linked L24 device execution records, 181 renderer
+  backend commands, and 121 draw submissions;
+- missing window surface, swapchain creation, present execution, frame capture artifact, and
+  original graphics trace remain explicit obligations.
+
+Boundary:
+
+- L25 does not create an HWND, swapchain, D3D device, captured frame, or original graphics trace;
 - no clear-screen or mesh-only output can satisfy L25;
-- present records must point back to scheduler, renderer submission, device presentation,
-  resource allocation, and device execution evidence;
-- missing original graphics API traces or screenshots must remain explicit obligations.
+- L25 only closes the presentation/oracle record layer so L26 can submit real platform API calls
+  without guessing.
+
+### L26: Real Platform D3D API Submission And Backend Bridge
+
+Status: active after L25.
+
+Deliver:
+
+- introduce a platform/backend bridge that consumes L24 creation/upload/binding execution records
+  and L25 presentation/oracle records;
+- define real call submission records for window surface creation, Direct3D device creation,
+  texture/cube creation, texture upload, sampler/render-state binding, draw queue submission, and
+  present;
+- keep original-frame capture/parity as explicit gates until a captured YuEngine frame and
+  original oracle frame can be compared.
+
+Acceptance:
+
+- no backend bridge path may bypass scheduler, renderer submission, material semantics, resource
+  allocation, device execution, or presentation/oracle records;
+- real platform calls must be behind interfaces that can run in diagnostic/null mode for CTest and
+  concrete D3D mode for later manual/oracle runs;
+- every platform call candidate must preserve source evidence, input record id/name, status, and
+  failure obligation.
 
 ## Stop Conditions
 
