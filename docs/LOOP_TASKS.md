@@ -951,7 +951,7 @@ Boundary:
 
 ### L21: Texture Upload, Render-State, Font, And Oracle Parity Edges
 
-Status: active after L20.
+Status: completed as typed texture upload/runtime gate checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -967,6 +967,50 @@ Acceptance:
 - font and oracle parity cannot be hidden behind generic renderer readiness;
 - every stage remains attached to scheduler, renderer submission, backend obligations, material
   semantics, and device presentation.
+
+Verification:
+
+```text
+ok=true scene_runtime_ok=true backend_obligations_ok=true material_semantics_ok=true device_presentation_ok=true texture_upload_runtime_ready=true dds_header_contract_ready=true payload_layout_contract_ready=true material_consumer_contract_ready=true sampler_state_gate_tracked=true blend_depth_state_gate_tracked=true font_atlas_gate_tracked=true oracle_parity_gate_tracked=true stage_texture_dependencies=39 texture_upload_records=39 valid_dds_headers=39 dxt1_textures=31 dxt5_textures=8 cube_map_textures=1 cube_map_faces=6 material_slot_consumers=39 unique_material_texture_uploads=38 duplicate_material_consumers=1 stage_only_texture_uploads=1 compressed_payload_matches=39 payload_byte_total=23768416 expected_payload_byte_total=23768416 mip9_textures=2 mip10_textures=14 mip11_textures=23 texture_width_min=256 texture_width_max=1024 post_effect_samplers=7 title_text_submissions=11 resolved_upload_contracts=4 tracked_upload_obligations=4 open_upload_obligations=4
+```
+
+Evidence now locked:
+
+- 39 stage DDS dependencies become typed upload records, not directory-scan guesses;
+- DDS formats are 31 DXT1 and 8 DXT5;
+- mip distribution is 2 with 9 mips, 14 with 10 mips, and 23 with 11 mips;
+- compressed payload totals match computed DDS mip-chain sizes: 23,768,416 bytes;
+- 39 material slot consumers map to 38 unique material texture uploads;
+- `kamidana_d.dds` has 2 material consumers;
+- `cubeenvmap/doujou_1.dds` is a stage-only six-face DXT1 cube upload record;
+- sampler, blend/depth, font atlas/glyph metrics, and original-frame oracle trace are separate
+  tracked-open gates.
+
+Boundary:
+
+- L21 does not allocate GPU textures or call D3D;
+- L21 does not bind sampler/blend/depth states;
+- L21 does not implement font atlas rendering;
+- L21 does not prove visual parity.
+
+### L22: Backend Render-State And Font Atlas Records
+
+Status: queued after L21.
+
+Deliver:
+
+- consume L21 texture upload records and L20 render-state gates in a backend-facing state record;
+- split material texture sampling, SMAA sampler declarations, blend/depth obligations, and title
+  font metrics into typed backend records;
+- keep actual D3D device allocation blocked until render-state and font records can fail with
+  concrete missing evidence.
+
+Acceptance:
+
+- sampler/blend/depth cannot remain a single generic obligation;
+- title text rendering cannot be marked ready without font atlas/glyph metric evidence;
+- backend state records must consume scheduler, renderer submission, device presentation, and L21
+  texture upload reports.
 
 ## Stop Conditions
 

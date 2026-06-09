@@ -350,6 +350,77 @@ struct DevicePresentationRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct TextureUploadRecordReport {
+    std::string path;
+    std::string role;
+    std::string format;
+    bool found = false;
+    bool validDds = false;
+    bool cubeMap = false;
+    bool compressedPayloadMatches = false;
+    int width = 0;
+    int height = 0;
+    int mipCount = 0;
+    int blockBytes = 0;
+    int cubeFaces = 1;
+    int materialConsumerCount = 0;
+    int64_t byteSize = -1;
+    int64_t payloadBytes = 0;
+    int64_t expectedPayloadBytes = 0;
+};
+
+struct TextureUploadRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool sceneRuntimeOk = false;
+    bool backendObligationsOk = false;
+    bool materialSemanticsOk = false;
+    bool devicePresentationOk = false;
+    bool textureUploadRuntimeReady = false;
+    bool ddsHeaderContractReady = false;
+    bool payloadLayoutContractReady = false;
+    bool materialConsumerContractReady = false;
+    bool samplerStateGateTracked = false;
+    bool blendDepthStateGateTracked = false;
+    bool fontAtlasGateTracked = false;
+    bool oracleParityGateTracked = false;
+    int stageTextureDependencies = 0;
+    int textureUploadRecords = 0;
+    int ddsMagicRecords = 0;
+    int validDdsHeaders = 0;
+    int dxt1Textures = 0;
+    int dxt5Textures = 0;
+    int unsupportedTextureFormats = 0;
+    int cubeMapTextures = 0;
+    int cubeMapFaces = 0;
+    int compressedPayloadMatches = 0;
+    int materialSlotConsumers = 0;
+    int uniqueMaterialTextureUploads = 0;
+    int duplicateMaterialConsumers = 0;
+    int stageOnlyTextureUploads = 0;
+    int textureWidthMin = 0;
+    int textureWidthMax = 0;
+    int textureHeightMin = 0;
+    int textureHeightMax = 0;
+    int mip9Textures = 0;
+    int mip10Textures = 0;
+    int mip11Textures = 0;
+    int postEffectSamplers = 0;
+    int resourceUploadSubmissions = 0;
+    int titleTextSubmissions = 0;
+    int titleStringSizeQueries = 0;
+    int localizedMenuTextCommands = 0;
+    int64_t textureByteTotal = 0;
+    int64_t payloadByteTotal = 0;
+    int64_t expectedPayloadByteTotal = 0;
+    int resolvedUploadContracts = 0;
+    int trackedUploadObligations = 0;
+    int openUploadObligations = 0;
+    std::vector<TextureUploadRecordReport> records;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -487,6 +558,12 @@ DevicePresentationRuntimeReport runDevicePresentationRuntime(
     const std::filesystem::path& repoRoot);
 
 std::string devicePresentationRuntimeReportToJson(const DevicePresentationRuntimeReport& report);
+
+TextureUploadRuntimeReport runTextureUploadRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string textureUploadRuntimeReportToJson(const TextureUploadRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

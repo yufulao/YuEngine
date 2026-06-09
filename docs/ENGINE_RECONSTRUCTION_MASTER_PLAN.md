@@ -133,14 +133,16 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L20 now defines device/swapchain/render-state presentation through
-`yuengine_cli device-presentation`. The runtime has a D3D9-compatible device profile contract,
-57 resource upload submissions, 121 draw submissions, 39 material texture slots, 39 texture
-payload reads, a 1280x720 backbuffer candidate from `SMAA_PIXEL_SIZE`, and 7 tracked SMAA samplers.
-Swapchain OS surface creation, `Present`, sampler/blend/depth binding, font atlas/glyph metrics,
+Current latest checkpoint: L21 now defines typed texture upload records through
+`yuengine_cli texture-upload`. The runtime consumes the L17 scheduler, L16 renderer submission,
+L18 backend obligations, L19 material semantics, and L20 device presentation contract before it can
+mark upload records ready. It decodes 39 stage DDS dependencies, 31 DXT1 textures, 8 DXT5 textures,
+one six-face cube environment upload, 39 material slot consumers over 38 unique material texture
+uploads, and 23,768,416 bytes of computed compressed payload. Swapchain OS surface creation,
+`Present`, real GPU texture allocation, sampler/blend/depth binding, font atlas/glyph metrics,
 material shader programs, and original-frame parity remain tracked open obligations. This is still
-not a playable loop or device backend; the next edge is L21 texture upload/render-state/font/oracle
-parity gates.
+not a playable loop or device backend; the next edge is L22 backend render-state and font atlas
+records.
 
 The current route is no longer allowed to stop at menu visuals:
 
@@ -155,6 +157,7 @@ original title bytecode
 -> shader/effect/material semantics
 -> device/swapchain/render-state presentation
 -> texture upload/render-state/font/oracle parity gates
+-> backend render-state/font atlas records
 ```
 
 The Project failure rule is now stricter: no new loop may be framed as "minimal." The loop unit

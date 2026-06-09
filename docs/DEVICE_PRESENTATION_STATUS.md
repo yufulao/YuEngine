@@ -89,7 +89,8 @@ to turn upload/state/font/oracle contracts into typed runtime records before any
 
 ## Next Edges
 
-- L21: texture upload records, sampler/blend/depth split, font atlas/glyph metrics, and original
-  frame oracle parity gates.
-- Then: real device/swapchain creation only when upload/state/font/oracle gates have failure
-  evidence.
+- L21 has since created typed texture upload records, sampler/blend/depth gates, font atlas/glyph
+  metric gates, and original-frame oracle trace gates.
+- L22: backend render-state/font atlas records that consume L21 upload records.
+- Then: real device/swapchain creation only when upload/state/font/oracle gates have executable
+  backend records.

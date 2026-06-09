@@ -248,6 +248,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_texture_upload_contract
+        COMMAND yuengine_cli texture-upload samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_texture_upload_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true scene_runtime_ok=true backend_obligations_ok=true material_semantics_ok=true device_presentation_ok=true texture_upload_runtime_ready=true dds_header_contract_ready=true payload_layout_contract_ready=true material_consumer_contract_ready=true sampler_state_gate_tracked=true blend_depth_state_gate_tracked=true font_atlas_gate_tracked=true oracle_parity_gate_tracked=true stage_texture_dependencies=39 texture_upload_records=39 valid_dds_headers=39 dxt1_textures=31 dxt5_textures=8 cube_map_textures=1 cube_map_faces=6 material_slot_consumers=39 unique_material_texture_uploads=38 duplicate_material_consumers=1 stage_only_texture_uploads=1 compressed_payload_matches=39 payload_byte_total=23768416 expected_payload_byte_total=23768416 mip9_textures=2 mip10_textures=14 mip11_textures=23 texture_width_min=256 texture_width_max=1024 post_effect_samplers=7 title_text_submissions=11 resolved_upload_contracts=4 tracked_upload_obligations=4 open_upload_obligations=4;dds_summary.*unsupported_texture_formats.: 0.*texture_height_max.: 1024;payload_layout.*texture_byte_total.: 23773408.*compressed_payload_matches.: 39;material_consumers.*cube_map_faces.: 6;gates.*resource_upload_submissions.: 57.*title_string_size_queries.: 5.*localized_menu_text_commands.: 10;cubeenvmap/doujou_1.dds.*cube_environment_candidate.*format.: .DXT1.*width.: 256.*cube_faces.: 6;kabe_d.dds.*base_color_candidate.*format.: .DXT5.*width.: 1024.*material_consumer_count.: 1;kamidana_d.dds.*base_color_candidate.*format.: .DXT5.*material_consumer_count.: 2;dds_header_decode.*contract_ready;dds_compressed_payload_layout.*contract_ready;texture_material_consumer_map.*contract_ready;sampler_state_values.*tracked_open;font_atlas_glyph_metrics.*tracked_open;original_frame_oracle_trace.*tracked_open"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )

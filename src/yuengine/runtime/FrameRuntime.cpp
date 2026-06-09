@@ -8,6 +8,9 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <map>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -65,6 +68,12 @@ void addError(MaterialSemanticsRuntimeReport& report, const std::string& message
 }
 
 void addError(DevicePresentationRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
+void addError(TextureUploadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
     report.errors.push_back(message);
@@ -546,6 +555,174 @@ bool isDdsPayload(const std::vector<std::byte>& bytes)
         && bytes[2] == std::byte{0x53} && bytes[3] == std::byte{0x20};
 }
 
+uint32_t readLe32(const std::vector<std::byte>& bytes, size_t offset)
+{
+    if (offset + 4 > bytes.size()) {
+        return 0;
+    }
+    return static_cast<uint32_t>(std::to_integer<unsigned char>(bytes[offset]))
+        | (static_cast<uint32_t>(std::to_integer<unsigned char>(bytes[offset + 1])) << 8)
+        | (static_cast<uint32_t>(std::to_integer<unsigned char>(bytes[offset + 2])) << 16)
+        | (static_cast<uint32_t>(std::to_integer<unsigned char>(bytes[offset + 3])) << 24);
+}
+
+std::string readDdsFourCc(const std::vector<std::byte>& bytes, size_t offset)
+{
+    std::string value;
+    for (size_t i = 0; i < 4 && offset + i < bytes.size(); ++i) {
+        const char ch = static_cast<char>(std::to_integer<unsigned char>(bytes[offset + i]));
+        if (ch == '\0') {
+            break;
+        }
+        value.push_back(ch);
+    }
+    return value;
+}
+
+int cubeFaceCountFromCaps2(uint32_t caps2)
+{
+    constexpr uint32_t ddsCaps2Cubemap = 0x00000200;
+    constexpr uint32_t ddsCaps2CubemapPositiveX = 0x00000400;
+    constexpr uint32_t ddsCaps2CubemapNegativeX = 0x00000800;
+    constexpr uint32_t ddsCaps2CubemapPositiveY = 0x00001000;
+    constexpr uint32_t ddsCaps2CubemapNegativeY = 0x00002000;
+    constexpr uint32_t ddsCaps2CubemapPositiveZ = 0x00004000;
+    constexpr uint32_t ddsCaps2CubemapNegativeZ = 0x00008000;
+
+    if ((caps2 & ddsCaps2Cubemap) == 0) {
+        return 1;
+    }
+
+    int faces = 0;
+    for (const auto faceBit : {
+             ddsCaps2CubemapPositiveX,
+             ddsCaps2CubemapNegativeX,
+             ddsCaps2CubemapPositiveY,
+             ddsCaps2CubemapNegativeY,
+             ddsCaps2CubemapPositiveZ,
+             ddsCaps2CubemapNegativeZ,
+         }) {
+        if ((caps2 & faceBit) != 0) {
+            ++faces;
+        }
+    }
+    return faces == 0 ? 6 : faces;
+}
+
+int64_t ddsCompressedPayloadBytes(int width, int height, int mipCount, int blockBytes, int faces)
+{
+    if (width <= 0 || height <= 0 || mipCount <= 0 || blockBytes <= 0 || faces <= 0) {
+        return 0;
+    }
+
+    int64_t total = 0;
+    int levelWidth = width;
+    int levelHeight = height;
+    for (int level = 0; level < mipCount; ++level) {
+        const int blocksWide = std::max(1, (levelWidth + 3) / 4);
+        const int blocksHigh = std::max(1, (levelHeight + 3) / 4);
+        total += static_cast<int64_t>(blocksWide) * static_cast<int64_t>(blocksHigh) * blockBytes;
+        levelWidth = std::max(1, levelWidth / 2);
+        levelHeight = std::max(1, levelHeight / 2);
+    }
+    return total * faces;
+}
+
+bool decodeDdsUploadRecord(
+    const std::string& path,
+    const std::vector<std::byte>& bytes,
+    int materialConsumerCount,
+    const std::string& role,
+    TextureUploadRecordReport& record)
+{
+    record.path = path;
+    record.role = role;
+    record.found = true;
+    record.byteSize = static_cast<int64_t>(bytes.size());
+    record.materialConsumerCount = materialConsumerCount;
+
+    if (!isDdsPayload(bytes) || bytes.size() < 128) {
+        return false;
+    }
+
+    const uint32_t headerSize = readLe32(bytes, 4);
+    const uint32_t height = readLe32(bytes, 12);
+    const uint32_t width = readLe32(bytes, 16);
+    const uint32_t mipCount = readLe32(bytes, 28);
+    const uint32_t pixelFormatSize = readLe32(bytes, 76);
+    const std::string fourCc = readDdsFourCc(bytes, 84);
+    const uint32_t caps2 = readLe32(bytes, 112);
+
+    record.width = static_cast<int>(width);
+    record.height = static_cast<int>(height);
+    record.mipCount = static_cast<int>(mipCount);
+    record.format = fourCc;
+    record.cubeFaces = cubeFaceCountFromCaps2(caps2);
+    record.cubeMap = record.cubeFaces > 1;
+    record.payloadBytes = static_cast<int64_t>(bytes.size()) - 128;
+
+    if (fourCc == "DXT1") {
+        record.blockBytes = 8;
+    } else if (fourCc == "DXT3" || fourCc == "DXT5") {
+        record.blockBytes = 16;
+    }
+
+    record.expectedPayloadBytes =
+        ddsCompressedPayloadBytes(record.width, record.height, record.mipCount, record.blockBytes, record.cubeFaces);
+    record.compressedPayloadMatches =
+        record.expectedPayloadBytes > 0 && record.expectedPayloadBytes == record.payloadBytes;
+    record.validDds = headerSize == 124 && pixelFormatSize == 32 && record.width > 0 && record.height > 0
+        && record.mipCount > 0 && record.blockBytes > 0 && record.compressedPayloadMatches;
+    return record.validDds;
+}
+
+struct TextureConsumerSummary {
+    int count = 0;
+    std::string role;
+};
+
+std::map<std::string, TextureConsumerSummary> materialTextureConsumerMap(const StageGraphRuntimeHandle& stage)
+{
+    std::map<std::string, TextureConsumerSummary> consumers;
+    for (const auto& material : stage.materials) {
+        for (const auto& slot : material.textureSlots) {
+            const std::string key = resource::normalizeResourcePath(slot.path);
+            auto& summary = consumers[key];
+            ++summary.count;
+            if (summary.role.empty()) {
+                summary.role = slot.slot;
+            }
+        }
+    }
+    return consumers;
+}
+
+std::string inferTextureUploadRole(
+    const std::string& path,
+    const TextureConsumerSummary& consumer)
+{
+    if (!consumer.role.empty()) {
+        return consumer.role;
+    }
+    const std::string normalized = resource::normalizeResourcePath(path);
+    if (normalized.rfind("cubeenvmap/", 0) == 0) {
+        return "cube_environment_candidate";
+    }
+    if (normalized.find("_n.dds") != std::string::npos) {
+        return "normal_candidate";
+    }
+    if (normalized.find("_s.dds") != std::string::npos) {
+        return "specular_candidate";
+    }
+    if (normalized.find("_e.dds") != std::string::npos) {
+        return "emissive_candidate";
+    }
+    if (normalized.find("_lm.dds") != std::string::npos) {
+        return "lightmap_candidate";
+    }
+    return "base_color_candidate";
+}
+
 BackendObligationItem makeBackendObligation(
     const std::string& obligation,
     const std::string& status,
@@ -960,6 +1137,211 @@ DevicePresentationRuntimeReport buildDevicePresentationRuntimeReport(
     if (report.resolvedDeviceContracts < 3 || report.trackedDeviceObligations < 5
         || report.openDeviceObligations != 5) {
         addError(report, "device presentation obligation accounting is inconsistent");
+    }
+
+    return report;
+}
+
+TextureUploadRuntimeReport buildTextureUploadRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    TextureUploadRuntimeReport report;
+    const auto backendObligations = buildBackendObligationsRuntimeReport(inputs, rendererProfile, vfs);
+    const auto materialSemantics = buildMaterialSemanticsRuntimeReport(inputs, rendererProfile, vfs);
+    const auto devicePresentation = buildDevicePresentationRuntimeReport(inputs, rendererProfile, vfs);
+    const auto& stage = inputs.sceneRuntime.stage;
+    const auto consumers = materialTextureConsumerMap(stage);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.sceneRuntimeOk = inputs.sceneRuntime.ok;
+    report.backendObligationsOk = backendObligations.ok;
+    report.materialSemanticsOk = materialSemantics.ok;
+    report.devicePresentationOk = devicePresentation.ok;
+    report.postEffectSamplers = materialSemantics.postEffectSamplers;
+    report.resourceUploadSubmissions = devicePresentation.resourceUploadSubmissions;
+    report.titleTextSubmissions = inputs.titleUi.textDrawCommands + inputs.titleUi.graphStringCommands;
+    report.titleStringSizeQueries = inputs.titleUi.stringSizeQueries;
+    report.localizedMenuTextCommands = inputs.titleUi.localizedMenuTextCommands;
+    report.textureWidthMin = std::numeric_limits<int>::max();
+    report.textureHeightMin = std::numeric_limits<int>::max();
+
+    for (const auto& dependency : stage.dependencies) {
+        if (dependency.extension != ".dds") {
+            continue;
+        }
+
+        ++report.stageTextureDependencies;
+        TextureUploadRecordReport record;
+        const std::string normalized = resource::normalizeResourcePath(dependency.path);
+        const auto consumerIt = consumers.find(normalized);
+        const TextureConsumerSummary consumer = consumerIt == consumers.end() ? TextureConsumerSummary{} : consumerIt->second;
+        const std::string role = inferTextureUploadRole(dependency.path, consumer);
+        const auto bytes = vfs.readBytes(dependency.path);
+        if (bytes.found) {
+            decodeDdsUploadRecord(dependency.path, bytes.bytes, consumer.count, role, record);
+        } else {
+            record.path = dependency.path;
+            record.role = role;
+            record.materialConsumerCount = consumer.count;
+        }
+
+        ++report.textureUploadRecords;
+        if (record.found && isDdsPayload(bytes.bytes)) {
+            ++report.ddsMagicRecords;
+        }
+        if (record.validDds) {
+            ++report.validDdsHeaders;
+        }
+        if (record.format == "DXT1") {
+            ++report.dxt1Textures;
+        } else if (record.format == "DXT5") {
+            ++report.dxt5Textures;
+        } else {
+            ++report.unsupportedTextureFormats;
+        }
+        if (record.cubeMap) {
+            ++report.cubeMapTextures;
+            report.cubeMapFaces += record.cubeFaces;
+        }
+        if (record.compressedPayloadMatches) {
+            ++report.compressedPayloadMatches;
+        }
+        if (record.materialConsumerCount > 0) {
+            ++report.uniqueMaterialTextureUploads;
+            report.materialSlotConsumers += record.materialConsumerCount;
+            report.duplicateMaterialConsumers += std::max(0, record.materialConsumerCount - 1);
+        } else {
+            ++report.stageOnlyTextureUploads;
+        }
+
+        if (record.width > 0) {
+            report.textureWidthMin = std::min(report.textureWidthMin, record.width);
+            report.textureWidthMax = std::max(report.textureWidthMax, record.width);
+        }
+        if (record.height > 0) {
+            report.textureHeightMin = std::min(report.textureHeightMin, record.height);
+            report.textureHeightMax = std::max(report.textureHeightMax, record.height);
+        }
+        if (record.mipCount == 9) {
+            ++report.mip9Textures;
+        } else if (record.mipCount == 10) {
+            ++report.mip10Textures;
+        } else if (record.mipCount == 11) {
+            ++report.mip11Textures;
+        }
+        if (record.byteSize > 0) {
+            report.textureByteTotal += record.byteSize;
+        }
+        report.payloadByteTotal += record.payloadBytes;
+        report.expectedPayloadByteTotal += record.expectedPayloadBytes;
+        report.records.push_back(std::move(record));
+    }
+
+    if (report.textureWidthMin == std::numeric_limits<int>::max()) {
+        report.textureWidthMin = 0;
+    }
+    if (report.textureHeightMin == std::numeric_limits<int>::max()) {
+        report.textureHeightMin = 0;
+    }
+
+    report.ddsHeaderContractReady = report.stageTextureDependencies == 39
+        && report.textureUploadRecords == 39 && report.ddsMagicRecords == 39
+        && report.validDdsHeaders == 39 && report.unsupportedTextureFormats == 0
+        && report.dxt1Textures == 31 && report.dxt5Textures == 8;
+    report.payloadLayoutContractReady = report.ddsHeaderContractReady
+        && report.compressedPayloadMatches == 39
+        && report.payloadByteTotal == report.expectedPayloadByteTotal
+        && report.payloadByteTotal > 0;
+    report.materialConsumerContractReady = materialSemantics.textureSlotContractReady
+        && report.materialSlotConsumers == 39 && report.uniqueMaterialTextureUploads == 38
+        && report.duplicateMaterialConsumers == 1 && report.stageOnlyTextureUploads == 1
+        && report.cubeMapTextures == 1 && report.cubeMapFaces == 6;
+    report.samplerStateGateTracked =
+        devicePresentation.renderStateContractTracked && report.postEffectSamplers == 7;
+    report.blendDepthStateGateTracked = devicePresentation.renderStateContractTracked;
+    report.fontAtlasGateTracked = backendObligations.fontContractTracked
+        && report.titleTextSubmissions == 11 && report.titleStringSizeQueries == 5
+        && report.localizedMenuTextCommands == 10;
+    report.oracleParityGateTracked =
+        backendObligations.oracleParityContractTracked && devicePresentation.presentContractTracked;
+    report.textureUploadRuntimeReady = report.sceneRuntimeOk && report.backendObligationsOk
+        && report.materialSemanticsOk && report.devicePresentationOk && report.ddsHeaderContractReady
+        && report.payloadLayoutContractReady && report.materialConsumerContractReady;
+
+    report.contracts.push_back(makeBackendObligation(
+        "dds_header_decode",
+        report.ddsHeaderContractReady ? "contract_ready" : "blocked",
+        "39 stage texture dependencies decode to DDS DXT1/DXT5 upload records"));
+    report.contracts.push_back(makeBackendObligation(
+        "dds_compressed_payload_layout",
+        report.payloadLayoutContractReady ? "contract_ready" : "blocked",
+        "computed mip-chain payload bytes match the DDS payload size for every record"));
+    report.contracts.push_back(makeBackendObligation(
+        "texture_material_consumer_map",
+        report.materialConsumerContractReady ? "contract_ready" : "blocked",
+        "39 material slots consume 38 texture uploads plus one cube environment upload"));
+    report.contracts.push_back(makeBackendObligation(
+        "cube_environment_upload_record",
+        report.materialConsumerContractReady ? "contract_ready" : "blocked",
+        "cubeenvmap/doujou_1.dds is tracked as a six-face DXT1 upload"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampler_state_values",
+        report.samplerStateGateTracked ? "tracked_open" : "blocked",
+        "SMAA sampler count is known, but sampler filter/address state values are not bound"));
+    report.contracts.push_back(makeBackendObligation(
+        "blend_depth_state_values",
+        report.blendDepthStateGateTracked ? "tracked_open" : "blocked",
+        "renderer obligations carry blend/depth state, but device render states are not bound"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_glyph_metrics",
+        report.fontAtlasGateTracked ? "tracked_open" : "blocked",
+        "title text commands and string-size queries require font atlas and glyph metrics"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_trace",
+        report.oracleParityGateTracked ? "tracked_open" : "blocked",
+        "upload records still lack original-frame screenshot or graphics API trace parity"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedUploadContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedUploadObligations;
+            ++report.openUploadObligations;
+        } else {
+            ++report.openUploadObligations;
+        }
+    }
+
+    if (!report.sceneRuntimeOk) {
+        addError(report, "scene runtime contract is not ready for texture upload records");
+    }
+    if (!report.backendObligationsOk) {
+        addError(report, "backend obligations contract is not ready for texture upload records");
+    }
+    if (!report.materialSemanticsOk) {
+        addError(report, "material semantics contract is not ready for texture upload records");
+    }
+    if (!report.devicePresentationOk) {
+        addError(report, "device presentation contract is not ready for texture upload records");
+    }
+    if (!report.ddsHeaderContractReady) {
+        addError(report, "DDS header upload records are incomplete");
+    }
+    if (!report.payloadLayoutContractReady) {
+        addError(report, "DDS compressed payload layout does not match upload records");
+    }
+    if (!report.materialConsumerContractReady) {
+        addError(report, "texture material consumer map is incomplete");
+    }
+    if (!report.samplerStateGateTracked || !report.blendDepthStateGateTracked
+        || !report.fontAtlasGateTracked || !report.oracleParityGateTracked) {
+        addError(report, "render-state/font/oracle gates are not fully tracked");
+    }
+    if (report.resolvedUploadContracts < 4 || report.trackedUploadObligations < 4
+        || report.openUploadObligations != 4) {
+        addError(report, "texture upload obligation accounting is inconsistent");
     }
 
     return report;
@@ -1932,6 +2314,148 @@ std::string devicePresentationRuntimeReportToJson(const DevicePresentationRuntim
             << "\", \"status\": \"" << core::jsonEscape(contract.status)
             << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
         out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+TextureUploadRuntimeReport runTextureUploadRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    TextureUploadRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildTextureUploadRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string textureUploadRuntimeReportToJson(const TextureUploadRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.texture_upload_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " scene_runtime_ok=" << (report.sceneRuntimeOk ? "true" : "false")
+        << " backend_obligations_ok=" << (report.backendObligationsOk ? "true" : "false")
+        << " material_semantics_ok=" << (report.materialSemanticsOk ? "true" : "false")
+        << " device_presentation_ok=" << (report.devicePresentationOk ? "true" : "false")
+        << " texture_upload_runtime_ready=" << (report.textureUploadRuntimeReady ? "true" : "false")
+        << " dds_header_contract_ready=" << (report.ddsHeaderContractReady ? "true" : "false")
+        << " payload_layout_contract_ready=" << (report.payloadLayoutContractReady ? "true" : "false")
+        << " material_consumer_contract_ready=" << (report.materialConsumerContractReady ? "true" : "false")
+        << " sampler_state_gate_tracked=" << (report.samplerStateGateTracked ? "true" : "false")
+        << " blend_depth_state_gate_tracked=" << (report.blendDepthStateGateTracked ? "true" : "false")
+        << " font_atlas_gate_tracked=" << (report.fontAtlasGateTracked ? "true" : "false")
+        << " oracle_parity_gate_tracked=" << (report.oracleParityGateTracked ? "true" : "false")
+        << " stage_texture_dependencies=" << report.stageTextureDependencies
+        << " texture_upload_records=" << report.textureUploadRecords
+        << " valid_dds_headers=" << report.validDdsHeaders
+        << " dxt1_textures=" << report.dxt1Textures
+        << " dxt5_textures=" << report.dxt5Textures
+        << " cube_map_textures=" << report.cubeMapTextures
+        << " cube_map_faces=" << report.cubeMapFaces
+        << " material_slot_consumers=" << report.materialSlotConsumers
+        << " unique_material_texture_uploads=" << report.uniqueMaterialTextureUploads
+        << " duplicate_material_consumers=" << report.duplicateMaterialConsumers
+        << " stage_only_texture_uploads=" << report.stageOnlyTextureUploads
+        << " compressed_payload_matches=" << report.compressedPayloadMatches
+        << " payload_byte_total=" << report.payloadByteTotal
+        << " expected_payload_byte_total=" << report.expectedPayloadByteTotal
+        << " mip9_textures=" << report.mip9Textures
+        << " mip10_textures=" << report.mip10Textures
+        << " mip11_textures=" << report.mip11Textures
+        << " texture_width_min=" << report.textureWidthMin
+        << " texture_width_max=" << report.textureWidthMax
+        << " post_effect_samplers=" << report.postEffectSamplers
+        << " title_text_submissions=" << report.titleTextSubmissions
+        << " resolved_upload_contracts=" << report.resolvedUploadContracts
+        << " tracked_upload_obligations=" << report.trackedUploadObligations
+        << " open_upload_obligations=" << report.openUploadObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"dds_summary\": {";
+    out << "\"stage_texture_dependencies\": " << report.stageTextureDependencies
+        << ", \"texture_upload_records\": " << report.textureUploadRecords
+        << ", \"dds_magic_records\": " << report.ddsMagicRecords
+        << ", \"valid_dds_headers\": " << report.validDdsHeaders
+        << ", \"dxt1_textures\": " << report.dxt1Textures
+        << ", \"dxt5_textures\": " << report.dxt5Textures
+        << ", \"unsupported_texture_formats\": " << report.unsupportedTextureFormats
+        << ", \"texture_width_min\": " << report.textureWidthMin
+        << ", \"texture_width_max\": " << report.textureWidthMax
+        << ", \"texture_height_min\": " << report.textureHeightMin
+        << ", \"texture_height_max\": " << report.textureHeightMax
+        << ", \"mip9_textures\": " << report.mip9Textures
+        << ", \"mip10_textures\": " << report.mip10Textures
+        << ", \"mip11_textures\": " << report.mip11Textures << "},\n";
+    out << "  \"payload_layout\": {";
+    out << "\"texture_byte_total\": " << report.textureByteTotal
+        << ", \"payload_byte_total\": " << report.payloadByteTotal
+        << ", \"expected_payload_byte_total\": " << report.expectedPayloadByteTotal
+        << ", \"compressed_payload_matches\": " << report.compressedPayloadMatches << "},\n";
+    out << "  \"material_consumers\": {";
+    out << "\"material_slot_consumers\": " << report.materialSlotConsumers
+        << ", \"unique_material_texture_uploads\": " << report.uniqueMaterialTextureUploads
+        << ", \"duplicate_material_consumers\": " << report.duplicateMaterialConsumers
+        << ", \"stage_only_texture_uploads\": " << report.stageOnlyTextureUploads
+        << ", \"cube_map_textures\": " << report.cubeMapTextures
+        << ", \"cube_map_faces\": " << report.cubeMapFaces << "},\n";
+    out << "  \"gates\": {";
+    out << "\"sampler_state_gate_tracked\": " << (report.samplerStateGateTracked ? "true" : "false")
+        << ", \"blend_depth_state_gate_tracked\": " << (report.blendDepthStateGateTracked ? "true" : "false")
+        << ", \"font_atlas_gate_tracked\": " << (report.fontAtlasGateTracked ? "true" : "false")
+        << ", \"oracle_parity_gate_tracked\": " << (report.oracleParityGateTracked ? "true" : "false")
+        << ", \"post_effect_samplers\": " << report.postEffectSamplers
+        << ", \"resource_upload_submissions\": " << report.resourceUploadSubmissions
+        << ", \"title_text_submissions\": " << report.titleTextSubmissions
+        << ", \"title_string_size_queries\": " << report.titleStringSizeQueries
+        << ", \"localized_menu_text_commands\": " << report.localizedMenuTextCommands << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_upload_contracts\": " << report.resolvedUploadContracts
+        << ", \"tracked_upload_obligations\": " << report.trackedUploadObligations
+        << ", \"open_upload_obligations\": " << report.openUploadObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"records\": [\n";
+    for (size_t i = 0; i < report.records.size(); ++i) {
+        const auto& record = report.records[i];
+        out << "    {\"path\": \"" << core::jsonEscape(record.path)
+            << "\", \"role\": \"" << core::jsonEscape(record.role)
+            << "\", \"found\": " << (record.found ? "true" : "false")
+            << ", \"valid_dds\": " << (record.validDds ? "true" : "false")
+            << ", \"format\": \"" << core::jsonEscape(record.format)
+            << "\", \"width\": " << record.width
+            << ", \"height\": " << record.height
+            << ", \"mip_count\": " << record.mipCount
+            << ", \"block_bytes\": " << record.blockBytes
+            << ", \"cube_faces\": " << record.cubeFaces
+            << ", \"material_consumer_count\": " << record.materialConsumerCount
+            << ", \"byte_size\": " << record.byteSize
+            << ", \"payload_bytes\": " << record.payloadBytes
+            << ", \"expected_payload_bytes\": " << record.expectedPayloadBytes
+            << ", \"compressed_payload_matches\": " << (record.compressedPayloadMatches ? "true" : "false")
+            << "}";
+        out << (i + 1 == report.records.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

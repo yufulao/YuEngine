@@ -48,6 +48,7 @@ void usage()
               << "  yuengine_cli backend-obligations <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli material-semantics <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli device-presentation <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli texture-upload <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli script <project.json> <module>\n"
@@ -389,6 +390,11 @@ int main(int argc, char** argv)
         if (command == "device-presentation") {
             auto report = yu::runtime::runDevicePresentationRuntime(manifest, repoRoot);
             std::cout << yu::runtime::devicePresentationRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "texture-upload") {
+            auto report = yu::runtime::runTextureUploadRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::textureUploadRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "mission-event-thread") {
