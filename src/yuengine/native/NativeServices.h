@@ -70,6 +70,8 @@ struct AudioRuntimeState {
 struct SceneStageRuntimeState {
     int fadeInCommands = 0;
     int fadeOutCommands = 0;
+    int enterTransitionCommands = 0;
+    int leaveTransitionCommands = 0;
     int queuedStageLoads = 0;
     int loaderCommands = 0;
     int loadedStageCommands = 0;
@@ -95,11 +97,21 @@ struct ActorTaskRuntimeState {
     int setPlayerAngleYCommands = 0;
     int landPlayerCommands = 0;
     int getPlayerPosQueries = 0;
+    int currentPlayerNameQueries = 0;
+    int getPlayerQueries = 0;
+    int getPlayerControlQueries = 0;
     int resetPlayerActionCommands = 0;
+    int tutorialActorCreates = 0;
+    int tutorialPageCreates = 0;
+    int pushActorCommands = 0;
+    int waitActorCommands = 0;
     std::string currentPlayerChara;
+    std::string currentPlayerName;
     std::string currentPlayerPosition;
     std::string currentPlayerRotY;
     std::string playerControlEnabled;
+    std::string lastTutorialActor;
+    std::string lastTutorialPage;
     std::string playerLanded;
     std::string waitForLanding;
     std::string healProgressFilled;
@@ -144,14 +156,26 @@ struct EventQuestFlagRuntimeState {
     int eventPageDoneCommands = 0;
     int eventFlagQueries = 0;
     int eventFlagInitCommands = 0;
+    int eventFlagAddCommands = 0;
+    int clearEventsAllCommands = 0;
+    int eventUnitDeployCommands = 0;
+    int updateUnitsCommands = 0;
+    int talkBranchCommands = 0;
+    int waitForCommands = 0;
     int dialogResetCommands = 0;
     int dialogHideCommands = 0;
+    int dialogShowCommands = 0;
+    int dialogSpeakCommands = 0;
+    int dialogWaitCommands = 0;
+    int dialogBgQueries = 0;
+    int dialogCommandCount = 0;
     std::string currentRequest;
     std::string currentMarker;
     std::string currentCheckpoint;
     std::string currentEventUnit;
     std::string currentEventPage;
     std::string currentEventActor;
+    std::string lastDialogText;
 };
 
 struct UiRuntimeObjectState {

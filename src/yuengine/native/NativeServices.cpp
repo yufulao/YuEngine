@@ -222,6 +222,16 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
         return;
     }
 
+    if (mutation.service == "Scene And Stage Service" && mutation.action == "enter_transition") {
+        ++runtimeState_.sceneStage.enterTransitionCommands;
+        return;
+    }
+
+    if (mutation.service == "Scene And Stage Service" && mutation.action == "leave_transition") {
+        ++runtimeState_.sceneStage.leaveTransitionCommands;
+        return;
+    }
+
     if (mutation.service == "Scene And Stage Service" && mutation.action == "queue_scene_stage_load") {
         ++runtimeState_.sceneStage.queuedStageLoads;
         runtimeState_.sceneStage.currentMissionScript = valueAfterPrefix(mutation.value, "mission_script=");
@@ -293,6 +303,26 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
             }
         } else if (mutation.action == "get_player_pos") {
             ++runtimeState_.actorTask.getPlayerPosQueries;
+        } else if (mutation.action == "current_player_name_query") {
+            ++runtimeState_.actorTask.currentPlayerNameQueries;
+            runtimeState_.actorTask.currentPlayerName = mutation.value;
+        } else if (mutation.action == "get_player_query" || mutation.action == "get_player_chara_query") {
+            ++runtimeState_.actorTask.getPlayerQueries;
+            runtimeState_.actorTask.currentPlayerChara = mutation.value;
+        } else if (mutation.action == "get_player_control_query") {
+            ++runtimeState_.actorTask.getPlayerControlQueries;
+        } else if (mutation.action == "tutorial_actor_create") {
+            ++runtimeState_.actorTask.tutorialActorCreates;
+            runtimeState_.actorTask.lastTutorialActor = mutation.target;
+        } else if (mutation.action == "tutorial_page_create") {
+            ++runtimeState_.actorTask.tutorialPageCreates;
+            runtimeState_.actorTask.lastTutorialPage = mutation.target;
+        } else if (mutation.action == "push_actor") {
+            ++runtimeState_.actorTask.pushActorCommands;
+            runtimeState_.actorTask.lastTutorialActor = mutation.target;
+        } else if (mutation.action == "wait_actor") {
+            ++runtimeState_.actorTask.waitActorCommands;
+            runtimeState_.actorTask.lastTutorialActor = mutation.target;
         } else if (mutation.action == "reset_player_action") {
             ++runtimeState_.actorTask.resetPlayerActionCommands;
         } else if (mutation.action == "set_wait_for_landing") {
@@ -381,10 +411,36 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
             ++runtimeState_.eventQuestFlag.eventFlagQueries;
         } else if (mutation.action == "event_flag_init") {
             ++runtimeState_.eventQuestFlag.eventFlagInitCommands;
+        } else if (mutation.action == "event_flag_add") {
+            ++runtimeState_.eventQuestFlag.eventFlagAddCommands;
+        } else if (mutation.action == "clear_events_all") {
+            ++runtimeState_.eventQuestFlag.clearEventsAllCommands;
+        } else if (mutation.action == "event_unit_deploy") {
+            ++runtimeState_.eventQuestFlag.eventUnitDeployCommands;
+        } else if (mutation.action == "update_units") {
+            ++runtimeState_.eventQuestFlag.updateUnitsCommands;
+        } else if (mutation.action == "talk_branch") {
+            ++runtimeState_.eventQuestFlag.talkBranchCommands;
+        } else if (mutation.action == "event_wait_for") {
+            ++runtimeState_.eventQuestFlag.waitForCommands;
         } else if (mutation.action == "dialog_reset") {
             ++runtimeState_.eventQuestFlag.dialogResetCommands;
         } else if (mutation.action == "dialog_hide") {
             ++runtimeState_.eventQuestFlag.dialogHideCommands;
+        } else if (mutation.action == "dialog_show") {
+            ++runtimeState_.eventQuestFlag.dialogShowCommands;
+            ++runtimeState_.eventQuestFlag.dialogCommandCount;
+        } else if (mutation.action == "dialog_speak_l") {
+            ++runtimeState_.eventQuestFlag.dialogSpeakCommands;
+            ++runtimeState_.eventQuestFlag.dialogCommandCount;
+            runtimeState_.eventQuestFlag.lastDialogText = mutation.value;
+        } else if (mutation.action == "dialog_wait") {
+            ++runtimeState_.eventQuestFlag.dialogWaitCommands;
+            ++runtimeState_.eventQuestFlag.dialogCommandCount;
+        } else if (mutation.action == "dialog_bg_query") {
+            ++runtimeState_.eventQuestFlag.dialogBgQueries;
+        } else if (mutation.action.rfind("dialog_", 0) == 0 || mutation.action == "message_lookup") {
+            ++runtimeState_.eventQuestFlag.dialogCommandCount;
         }
         return;
     }
@@ -470,6 +526,8 @@ std::string nativeRuntimeServiceStateToJson(const NativeRuntimeServiceState& sta
         << "\", \"bgm_fade_out_duration\": \"" << core::jsonEscape(state.audio.bgmFadeOutDuration) << "\"}, ";
     out << "\"scene_stage\": {\"fade_in_commands\": " << state.sceneStage.fadeInCommands
         << ", \"fade_out_commands\": " << state.sceneStage.fadeOutCommands
+        << ", \"enter_transition_commands\": " << state.sceneStage.enterTransitionCommands
+        << ", \"leave_transition_commands\": " << state.sceneStage.leaveTransitionCommands
         << ", \"queued_stage_loads\": " << state.sceneStage.queuedStageLoads
         << ", \"loader_commands\": " << state.sceneStage.loaderCommands
         << ", \"loaded_stage_commands\": " << state.sceneStage.loadedStageCommands
@@ -493,11 +551,21 @@ std::string nativeRuntimeServiceStateToJson(const NativeRuntimeServiceState& sta
         << ", \"set_player_angle_y_commands\": " << state.actorTask.setPlayerAngleYCommands
         << ", \"land_player_commands\": " << state.actorTask.landPlayerCommands
         << ", \"get_player_pos_queries\": " << state.actorTask.getPlayerPosQueries
+        << ", \"current_player_name_queries\": " << state.actorTask.currentPlayerNameQueries
+        << ", \"get_player_queries\": " << state.actorTask.getPlayerQueries
+        << ", \"get_player_control_queries\": " << state.actorTask.getPlayerControlQueries
         << ", \"reset_player_action_commands\": " << state.actorTask.resetPlayerActionCommands
+        << ", \"tutorial_actor_creates\": " << state.actorTask.tutorialActorCreates
+        << ", \"tutorial_page_creates\": " << state.actorTask.tutorialPageCreates
+        << ", \"push_actor_commands\": " << state.actorTask.pushActorCommands
+        << ", \"wait_actor_commands\": " << state.actorTask.waitActorCommands
         << ", \"current_player_chara\": \"" << core::jsonEscape(state.actorTask.currentPlayerChara)
+        << "\", \"current_player_name\": \"" << core::jsonEscape(state.actorTask.currentPlayerName)
         << "\", \"current_player_position\": \"" << core::jsonEscape(state.actorTask.currentPlayerPosition)
         << "\", \"current_player_rot_y\": \"" << core::jsonEscape(state.actorTask.currentPlayerRotY)
         << "\", \"player_control_enabled\": \"" << core::jsonEscape(state.actorTask.playerControlEnabled)
+        << "\", \"last_tutorial_actor\": \"" << core::jsonEscape(state.actorTask.lastTutorialActor)
+        << "\", \"last_tutorial_page\": \"" << core::jsonEscape(state.actorTask.lastTutorialPage)
         << "\", \"player_landed\": \"" << core::jsonEscape(state.actorTask.playerLanded)
         << "\", \"wait_for_landing\": \"" << core::jsonEscape(state.actorTask.waitForLanding)
         << "\", \"heal_progress_filled\": \"" << core::jsonEscape(state.actorTask.healProgressFilled)
@@ -539,14 +607,26 @@ std::string nativeRuntimeServiceStateToJson(const NativeRuntimeServiceState& sta
         << ", \"event_page_done_commands\": " << state.eventQuestFlag.eventPageDoneCommands
         << ", \"event_flag_queries\": " << state.eventQuestFlag.eventFlagQueries
         << ", \"event_flag_init_commands\": " << state.eventQuestFlag.eventFlagInitCommands
+        << ", \"event_flag_add_commands\": " << state.eventQuestFlag.eventFlagAddCommands
+        << ", \"clear_events_all_commands\": " << state.eventQuestFlag.clearEventsAllCommands
+        << ", \"event_unit_deploy_commands\": " << state.eventQuestFlag.eventUnitDeployCommands
+        << ", \"update_units_commands\": " << state.eventQuestFlag.updateUnitsCommands
+        << ", \"talk_branch_commands\": " << state.eventQuestFlag.talkBranchCommands
+        << ", \"wait_for_commands\": " << state.eventQuestFlag.waitForCommands
         << ", \"dialog_reset_commands\": " << state.eventQuestFlag.dialogResetCommands
         << ", \"dialog_hide_commands\": " << state.eventQuestFlag.dialogHideCommands
+        << ", \"dialog_show_commands\": " << state.eventQuestFlag.dialogShowCommands
+        << ", \"dialog_speak_commands\": " << state.eventQuestFlag.dialogSpeakCommands
+        << ", \"dialog_wait_commands\": " << state.eventQuestFlag.dialogWaitCommands
+        << ", \"dialog_bg_queries\": " << state.eventQuestFlag.dialogBgQueries
+        << ", \"dialog_command_count\": " << state.eventQuestFlag.dialogCommandCount
         << ", \"current_request\": \"" << core::jsonEscape(state.eventQuestFlag.currentRequest)
         << "\", \"current_marker\": \"" << core::jsonEscape(state.eventQuestFlag.currentMarker)
         << "\", \"current_checkpoint\": \"" << core::jsonEscape(state.eventQuestFlag.currentCheckpoint)
         << "\", \"current_event_unit\": \"" << core::jsonEscape(state.eventQuestFlag.currentEventUnit)
         << "\", \"current_event_page\": \"" << core::jsonEscape(state.eventQuestFlag.currentEventPage)
         << "\", \"current_event_actor\": \"" << core::jsonEscape(state.eventQuestFlag.currentEventActor)
+        << "\", \"last_dialog_text\": \"" << core::jsonEscape(state.eventQuestFlag.lastDialogText)
         << "\"}, ";
     out << "\"ui_render_2d\": {\"created_objects\": " << state.uiRender2d.createdObjects
         << ", \"command_count\": " << state.uiRender2d.commandCount << ", \"objects\": [";

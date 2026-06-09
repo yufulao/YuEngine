@@ -133,8 +133,9 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L11 now executes the original first mission `threadEvent0000_00`
-event thread through `yuengine_cli mission-event-thread`, with player control, dialog lifecycle,
-event page setup/done, event volume activation, and camera restoration recorded in service-owned
-state with `unresolved_calls=0`. This is still not a playable loop; the next edge is L12 tutorial
-and mission business-state behavior.
+Current latest checkpoint: L12 now executes the original first mission tutorial branch
+`threadEvent0020_00` through `yuengine_cli mission-tutorial`, and executes `updateUnits` as the
+first mission business-state update edge. Tutorial actor/page creation, scheduler push/wait,
+dialog lifecycle, current-player queries, event flag add, marker placement, player-control
+recovery, and transition lifecycle are recorded in service-owned state with `unresolved_calls=0`.
+This is still not a playable loop; the next edge is L13 script-driven title UI command payloads.

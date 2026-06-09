@@ -534,8 +534,8 @@ SceneEntryRuntimeReport runSceneEntryRuntime(
         traceBoot("scene-entry execute title new-game");
         const auto titleExecution =
             script::runEntryScript(titleModule, titleBaselineModules, manifest.startup.entryFunction, registry, titleCatalog, titleOptions);
-        traceBoot("scene-entry copy title state");
-        const auto titleState = titleCatalog.runtimeState();
+        traceBoot("scene-entry bind title state");
+        const auto& titleState = titleCatalog.runtimeState();
 
         std::string missionModuleName = titleState.sceneStage.currentMissionScript;
         if (missionModuleName.empty()) {
@@ -562,8 +562,8 @@ SceneEntryRuntimeReport runSceneEntryRuntime(
         traceBoot("scene-entry execute mission setup");
         const auto missionExecution =
             script::runEntryScript(missionModule, missionBaselineModules, "setupProcess", registry, missionCatalog, missionOptions);
-        traceBoot("scene-entry copy mission state");
-        const auto missionState = missionCatalog.runtimeState();
+        traceBoot("scene-entry bind mission state");
+        const auto& missionState = missionCatalog.runtimeState();
 
         traceBoot("scene-entry build report");
         report = buildSceneEntryRuntimeReport(manifest, titleState, missionState, vfs);

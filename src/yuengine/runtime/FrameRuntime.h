@@ -94,6 +94,50 @@ struct MissionEventThreadRuntimeReport {
     std::string gameCameraIfNotTarget;
 };
 
+struct MissionTutorialRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool sceneRuntimeOk = false;
+    bool tutorialThreadFound = false;
+    bool tutorialThreadExecuted = false;
+    bool updateUnitsExecuted = false;
+    std::string module;
+    std::string entryFunction;
+    std::string scriptStatus;
+    int scriptFunctions = 0;
+    int scriptMethods = 0;
+    int nativeObligations = 0;
+    int nativeImplementedCalls = 0;
+    int uniqueNativeApis = 0;
+    int serviceStateEvents = 0;
+    int engineObjectCalls = 0;
+    int valueMethodCalls = 0;
+    int unresolvedCalls = 0;
+    bool truncated = false;
+    int eventFlagAddCommands = 0;
+    int currentPlayerNameQueries = 0;
+    int getPlayerQueries = 0;
+    int getPlayerControlQueries = 0;
+    int dialogShowCommands = 0;
+    int dialogSpeakCommands = 0;
+    int dialogWaitCommands = 0;
+    int dialogHideCommands = 0;
+    int tutorialActorCreates = 0;
+    int tutorialPageCreates = 0;
+    int pushActorCommands = 0;
+    int waitActorCommands = 0;
+    int playerControlCommands = 0;
+    std::string playerControlEnabled;
+    int setPlayerAngleYCommands = 0;
+    int landPlayerCommands = 0;
+    int updateUnitsCommands = 0;
+    int enterTransitionCommands = 0;
+    int leaveTransitionCommands = 0;
+    std::string lastTutorialPage;
+    std::string lastDialogText;
+};
+
 FirstFrameRuntimeReport buildFirstFrameRuntimeReport(
     const SceneRuntimeMaterializationReport& sceneRuntime,
     const std::string& rendererProfile);
@@ -109,5 +153,11 @@ MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& repoRoot);
 
 std::string missionEventThreadRuntimeReportToJson(const MissionEventThreadRuntimeReport& report);
+
+MissionTutorialRuntimeReport runMissionTutorialRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string missionTutorialRuntimeReportToJson(const MissionTutorialRuntimeReport& report);
 
 } // namespace yu::runtime

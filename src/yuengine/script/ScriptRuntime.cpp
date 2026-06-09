@@ -73,6 +73,8 @@ struct ScriptValue {
     bool boolValue = false;
     int tableId = -1;
     int functionOrdinal = -1;
+    bool runtimeClosure = false;
+    std::string functionModulePath;
 };
 
 struct BytecodeStateResult {
@@ -98,6 +100,8 @@ struct RuntimeObject {
 
 struct RuntimeTable {
     std::map<std::string, ScriptValue> fields;
+    bool arrayLike = false;
+    int nextArrayIndex = 0;
 };
 
 bool scriptTraceEnabled()
@@ -208,12 +212,18 @@ ScriptValue tableValue(int tableId)
     return value;
 }
 
-ScriptValue functionValue(std::string functionName, int ordinal)
+ScriptValue functionValue(
+    std::string functionName,
+    int ordinal,
+    bool runtimeClosure = false,
+    std::string functionModulePath = {})
 {
     ScriptValue value;
     value.kind = ScriptValueKind::Function;
     value.text = std::move(functionName);
     value.functionOrdinal = ordinal;
+    value.runtimeClosure = runtimeClosure;
+    value.functionModulePath = std::move(functionModulePath);
     return value;
 }
 
@@ -582,6 +592,10 @@ void writeScriptValueJson(std::ostringstream& out, const ScriptValue& value)
         out << ", \"table_id\": " << value.tableId;
     } else if (value.kind == ScriptValueKind::Function) {
         out << ", \"function_ordinal\": " << value.functionOrdinal;
+        out << ", \"runtime_closure\": " << (value.runtimeClosure ? "true" : "false");
+        if (!value.functionModulePath.empty()) {
+            out << ", \"function_module\": \"" << core::jsonEscape(value.functionModulePath) << "\"";
+        }
     }
     out << "}";
 }
@@ -629,7 +643,8 @@ void writeRuntimeTablesJson(std::ostringstream& out, const std::map<int, Runtime
     size_t index = 0;
     for (const auto& [id, table] : tables) {
         out << (index++ == 0 ? "" : ", ") << "{\"id\": " << id << ", \"field_count\": "
-            << table.fields.size() << ", \"fields\": ";
+            << table.fields.size() << ", \"array_like\": " << (table.arrayLike ? "true" : "false")
+            << ", \"next_array_index\": " << table.nextArrayIndex << ", \"fields\": ";
         writeScriptValueMapJson(out, table.fields);
         out << "}";
     }
@@ -675,6 +690,21 @@ bool parseNumberText(const std::string& text, double& out)
         return parsed == text.size();
     } catch (...) {
         return false;
+    }
+}
+
+int tableIdFromText(const std::string& text)
+{
+    constexpr const char* prefix = "table#";
+    if (text.rfind(prefix, 0) != 0) {
+        return -1;
+    }
+    try {
+        size_t parsed = 0;
+        const int value = std::stoi(text.substr(std::strlen(prefix)), &parsed);
+        return parsed == text.size() - std::strlen(prefix) ? value : -1;
+    } catch (...) {
+        return -1;
     }
 }
 
@@ -1312,6 +1342,7 @@ bool isBuiltinCall(const std::string& name)
 bool isSquirrelValueMethod(const std::string& name)
 {
     static const std::set<std::string> methods = {
+        "append",
         "checkFall",
         "count",
         "get",
@@ -1375,12 +1406,15 @@ bool isValueHelperCall(const std::string& name)
 bool isActorRuntimeMethod(const std::string& name)
 {
     static const std::set<std::string> methods = {
+        "addPage",
+        "applyDBLevel",
         "inCamera",
         "setGoingToTarget",
         "setVelocity",
         "fillHealProgress",
         "playEffect",
         "setArmed",
+        "setLifeMin",
         "setWaitForLanding",
     };
     return methods.find(name) != methods.end();
@@ -1394,6 +1428,7 @@ bool isLoaderRuntimeMethod(const std::string& name)
 bool isPlaceParamsRuntimeMethod(const std::string& name)
 {
     static const std::set<std::string> methods = {
+        "setEnabledDropItem",
         "setEnabledRetWorld",
         "setLabel",
         "setSlaveDisp",
@@ -1403,7 +1438,35 @@ bool isPlaceParamsRuntimeMethod(const std::string& name)
 
 bool isMissionRuntimeMethod(const std::string& name)
 {
-    return name == "checkFall";
+    return name == "checkFall" || name == "dlgWait";
+}
+
+bool isThreadSchedulerRuntimeMethod(const std::string& name)
+{
+    static const std::set<std::string> methods = {
+        "ft",
+        "PushActor",
+        "sleep",
+        "WaitActor",
+    };
+    return methods.find(name) != methods.end();
+}
+
+bool isMessageLocalizationRuntimeMethod(const std::string& name)
+{
+    return name == "dlg" || name == "get";
+}
+
+bool isTutorialDemoRuntimeMethod(const std::string& name)
+{
+    static const std::set<std::string> methods = {
+        "tutoCombo",
+        "tutoDash",
+        "tutoGuard",
+        "tutoHeal",
+        "tutoSkills",
+    };
+    return methods.find(name) != methods.end();
 }
 
 bool isEventUnitRuntimeMethod(const std::string& name)
@@ -1415,6 +1478,7 @@ bool isEventUnitRuntimeMethod(const std::string& name)
         "addPage",
         "actorHolder",
         "currentPage",
+        "deploy",
         "isInVolumePlayer",
         "marker",
     };
@@ -1426,13 +1490,21 @@ bool isEventMapRuntimeMethod(const std::string& name)
     return name == "getPage";
 }
 
+bool isEventMarkerRuntimeMethod(const std::string& name)
+{
+    return name == "pos" || name == "rotYDegree";
+}
+
 bool isEventRootRuntimeMethod(const std::string& name)
 {
     static const std::set<std::string> methods = {
         "cameraMove",
+        "flagADD",
         "flagINI",
         "jumpMission",
         "resetPlayerAction",
+        "talkBranch",
+        "waitFor",
     };
     return methods.find(name) != methods.end();
 }
@@ -1440,9 +1512,21 @@ bool isEventRootRuntimeMethod(const std::string& name)
 bool isEventRuntimeGlobal(const std::string& name)
 {
     static const std::set<std::string> globals = {
+        "ClearEventsAll",
+        "dlgExistsBg",
         "dlgHide",
+        "dlgLoadBg",
         "dlgReset",
+        "dlgSetBgSlice",
+        "dlgSetCharaL",
+        "dlgSetCharaR",
+        "dlgSetFrameless",
+        "dlgShow",
+        "dlgSpeakL",
+        "EnterTransition",
         "flagINI",
+        "LeaveTransition",
+        "suspend",
     };
     return globals.find(name) != globals.end();
 }
@@ -1601,7 +1685,7 @@ public:
         bootstrapRootObjects();
         traceScript("root objects complete " + entryFunction);
         traceScript("entry execute begin " + entryFunction);
-        executeFunction(*entry, {}, {}, 0);
+        executeFunction(module_, *entry, {}, {}, 0);
         traceScript("entry execute complete " + entryFunction);
         for (int frame = 0; frame < report.frames; ++frame) {
             traceScript("frame main begin " + std::to_string(frame));
@@ -1651,6 +1735,124 @@ private:
         return module_;
     }
 
+    const SqasmModule& moduleForPath(const std::string& modulePath) const
+    {
+        if (modulePath.empty() || modulePath == module_.path.string()) {
+            return module_;
+        }
+        for (const auto& baselineModule : baselineModules_) {
+            if (modulePath == baselineModule.path.string()) {
+                return baselineModule;
+            }
+        }
+        return module_;
+    }
+
+    size_t functionIndexByOrdinal(const SqasmModule& module, int ordinal) const
+    {
+        for (size_t i = 0; i < module.functions.size(); ++i) {
+            if (module.functions[i].ordinal == ordinal) {
+                return i;
+            }
+        }
+        return module.functions.size();
+    }
+
+    size_t subtreeEndIndex(const SqasmModule& module, size_t functionIndex, int depth = 0) const
+    {
+        if (functionIndex >= module.functions.size()) {
+            return module.functions.size();
+        }
+        if (depth > 48) {
+            return std::min(functionIndex + 1, module.functions.size());
+        }
+
+        size_t cursor = functionIndex + 1;
+        const size_t childCount = module.functions[functionIndex].closureBindings.size();
+        for (size_t n = 0; n < childCount && cursor < module.functions.size(); ++n) {
+            cursor = subtreeEndIndex(module, cursor, depth + 1);
+        }
+        return cursor;
+    }
+
+    int directClosureOrdinal(const SqasmModule& module, const SqasmFunction& owner, int refIndex) const
+    {
+        if (refIndex < 0) {
+            return -1;
+        }
+        const size_t ownerIndex = functionIndexByOrdinal(module, owner.ordinal);
+        if (ownerIndex >= module.functions.size()) {
+            return -1;
+        }
+
+        size_t cursor = ownerIndex + 1;
+        for (int n = 0; n <= refIndex && cursor < module.functions.size(); ++n) {
+            if (n == refIndex) {
+                return module.functions[cursor].ordinal;
+            }
+            cursor = subtreeEndIndex(module, cursor);
+        }
+        return -1;
+    }
+
+    int resolveRuntimeClosureOrdinal(
+        const SqasmModule& module,
+        const SqasmFunction& owner,
+        const SqasmFunctionRef& ref) const
+    {
+        const int directOrdinal = directClosureOrdinal(module, owner, ref.index);
+        if (directOrdinal >= 0) {
+            const SqasmFunction* direct = findFunctionByOrdinal(module, directOrdinal);
+            if (direct && (ref.value.empty() || direct->name == ref.value)) {
+                return direct->ordinal;
+            }
+        }
+
+        if (!ref.value.empty()) {
+            const auto rootFunctionRefOrdinals = buildRootFunctionRefOrdinalMap(module);
+            const int resolved = resolveFunctionRefOrdinal(module, rootFunctionRefOrdinals, ref.index, ref.value);
+            if (resolved >= 0) {
+                return resolved;
+            }
+        }
+
+        const SqasmFunction* byExact = findFunctionByOrdinal(module, ref.index);
+        if (byExact) {
+            return byExact->ordinal;
+        }
+        const SqasmFunction* bySquirrelIndex = findFunctionByOrdinal(module, ref.index + 1);
+        return bySquirrelIndex ? bySquirrelIndex->ordinal : -1;
+    }
+
+    void appendArrayValue(const ScriptValue& arrayValue, const ScriptValue& element)
+    {
+        if (arrayValue.kind != ScriptValueKind::Table) {
+            return;
+        }
+        auto& table = runtimeTables_[arrayValue.tableId];
+        table.arrayLike = true;
+        table.fields[std::to_string(table.nextArrayIndex++)] = element;
+    }
+
+    std::vector<ScriptValue> tableArrayValues(const ScriptValue& arrayValue) const
+    {
+        std::vector<ScriptValue> values;
+        if (arrayValue.kind != ScriptValueKind::Table) {
+            return values;
+        }
+        const auto table = runtimeTables_.find(arrayValue.tableId);
+        if (table == runtimeTables_.end()) {
+            return values;
+        }
+        for (int i = 0; i < table->second.nextArrayIndex; ++i) {
+            const auto field = table->second.fields.find(std::to_string(i));
+            if (field != table->second.fields.end()) {
+                values.push_back(field->second);
+            }
+        }
+        return values;
+    }
+
     std::string runtimeScriptStateToJson() const
     {
         std::ostringstream out;
@@ -1686,6 +1888,10 @@ private:
     void bootstrapRootObjects()
     {
         rootObjects_.insert("gMenu");
+        rootObjects_.insert("th");
+        rootObjects_.insert("ms");
+        rootObjects_.insert("ml");
+        rootObjects_.insert("demo");
         for (const auto& binding : objectBindings_) {
             constructObject(binding.objectName, binding.className, binding.pc, binding.sourceLine, binding.evidence, 0);
         }
@@ -1696,6 +1902,14 @@ private:
         ensureRuntimeObject("<root>", {}, "root_table");
         rootFields_["gMenu"] = objectValue("gMenu");
         ensureRuntimeObject("gMenu", "EngineMenuRoot", "engine_root_object");
+        rootFields_["th"] = objectValue("th");
+        ensureRuntimeObject("th", "ThreadSchedulerRoot", "thread_scheduler");
+        rootFields_["ms"] = objectValue("ms");
+        ensureRuntimeObject("ms", "MissionRuntimeRoot", "mission_runtime");
+        rootFields_["ml"] = objectValue("ml");
+        ensureRuntimeObject("ml", "MessageLocalizationRoot", "message_localization");
+        rootFields_["demo"] = objectValue("demo");
+        ensureRuntimeObject("demo", "TutorialDemoRoot", "tutorial_demo");
         if (module_.path.string().find("ms010_0") != std::string::npos) {
             rootFields_["ev"] = objectValue("ev");
             ensureRuntimeObject("ev", "EngineEventRoot", "engine_event_root");
@@ -1710,7 +1924,7 @@ private:
     {
         const SqasmFunction* root = findRootFunction(module);
         if (root) {
-            executeBytecodeState(*root, {}, {}, 0);
+            executeBytecodeState(module, *root, {}, {}, 0);
         }
     }
 
@@ -1826,7 +2040,7 @@ private:
         }
         const FunctionSlotBinding* functionSlot = findFunctionSlot(functionSlots_, keyText);
         if (functionSlot) {
-            return functionValue(functionSlot->functionName, functionSlot->functionOrdinal);
+            return functionValue(functionSlot->functionName, functionSlot->functionOrdinal, false, module_.path.string());
         }
         if (hasClass(methodBindings_, keyText)) {
             return classValue(keyText);
@@ -1896,7 +2110,23 @@ private:
                 if (object->second.runtimeType == "event_unit" && isEventUnitRuntimeMethod(keyText)) {
                     return valueMethodValue(keyText, target.text);
                 }
+                if (object->second.runtimeType == "event_marker" && isEventMarkerRuntimeMethod(keyText)) {
+                    return valueMethodValue(keyText, target.text);
+                }
                 if (object->second.runtimeType == "engine_event_root" && isEventRootRuntimeMethod(keyText)) {
+                    return valueMethodValue(keyText, target.text);
+                }
+                if (object->second.runtimeType == "thread_scheduler" && isThreadSchedulerRuntimeMethod(keyText)) {
+                    return valueMethodValue(keyText, target.text);
+                }
+                if (object->second.runtimeType == "mission_runtime" && isMissionRuntimeMethod(keyText)) {
+                    return valueMethodValue(keyText, target.text);
+                }
+                if (object->second.runtimeType == "message_localization"
+                    && isMessageLocalizationRuntimeMethod(keyText)) {
+                    return valueMethodValue(keyText, target.text);
+                }
+                if (object->second.runtimeType == "tutorial_demo" && isTutorialDemoRuntimeMethod(keyText)) {
                     return valueMethodValue(keyText, target.text);
                 }
             }
@@ -1936,6 +2166,9 @@ private:
                 return expressionValue(eventRoot + "." + keyText);
             }
             if (isEventMapRuntimeMethod(keyText)) {
+                return valueMethodValue(keyText, valueSummary(target));
+            }
+            if (keyText == "append") {
                 return valueMethodValue(keyText, valueSummary(target));
             }
             return {};
@@ -2288,7 +2521,8 @@ private:
         const SqasmFunction& function,
         const SqasmInstruction& instruction,
         const ScriptValue& callable,
-        const std::vector<ScriptValue>& arguments)
+        const std::vector<ScriptValue>& arguments,
+        int depth)
     {
         const std::string name = callable.text;
         if (name.empty()) {
@@ -2313,6 +2547,26 @@ private:
                 assignSlot(objectValue(objectName), stringValue(key), value);
             }
         };
+        auto executeFunctionArray = [&](const ScriptValue& arrayValue, const std::vector<ScriptValue>& callbackArgs) {
+            for (const auto& element : tableArrayValues(arrayValue)) {
+                if (element.kind != ScriptValueKind::Function) {
+                    continue;
+                }
+                executeScriptCallableForReturn(element, callbackArgs, function, instruction, {}, depth + 1);
+            }
+        };
+
+        if (name == "append") {
+            const int tableId = tableIdFromText(callable.receiver);
+            if (tableId >= 0 && !arguments.empty()) {
+                appendArrayValue(tableValue(tableId), arguments.front());
+                recordServiceState("Script Service", name, "array_append", callable.receiver,
+                    "value=" + valueSummary(arguments.front()), function, instruction,
+                    "Squirrel array append preserved a recovered callback/data list", argsText);
+                return recordTypedReturn(tableValue(tableId));
+            }
+            return recordTypedReturn(nullValue());
+        }
 
         if (name == "float2" || name == "centerPos") {
             const std::string label = positionalArgsText.empty()
@@ -2349,6 +2603,131 @@ private:
             return name == "tofloat"
                 ? recordTypedReturn(floatValue(data))
                 : recordTypedReturn(intValue(static_cast<int>(data)));
+        }
+        if (name == "dlg" || name == "get") {
+            if (callable.receiver == "ml" || name == "dlg") {
+                const std::string textId = arguments.empty() ? "unknown" : argumentValueText(arguments.front());
+                recordServiceState("Event/Quest/Flag Service", name, "message_lookup", callable.receiver,
+                    "text=" + textId, function, instruction,
+                    "message localization root resolves original dialog/tutorial text ids", argsText);
+                return recordTypedReturn(stringValue("localized:" + textId));
+            }
+        }
+        if (name == "GetCurrentPlayerName") {
+            recordServiceState("Actor And Task Service", name, "current_player_name_query", "player",
+                kFirstMissionPlayer, function, instruction,
+                "tutorial/dialog script queries the current player name through the actor service", argsText);
+            return recordTypedReturn(stringValue(kFirstMissionPlayer));
+        }
+        if (name == "GetPlayer" || name == "GetPchar" || name == "GetPcharPointer") {
+            recordServiceState("Actor And Task Service", name,
+                name == "GetPlayer" ? "get_player_query" : "get_player_chara_query",
+                "player", kFirstMissionPlayer, function, instruction,
+                "mission/tutorial script resolves the current player actor handle", argsText);
+            return recordTypedReturn(actorValue("actor:player:" + std::string(kFirstMissionPlayer)));
+        }
+        if (name == "GetPlayerControl") {
+            recordServiceState("Actor And Task Service", name, "get_player_control_query", "player",
+                "enabled=true", function, instruction,
+                "mission/tutorial script queries player-control state through Actor And Task Service", argsText);
+            return recordTypedReturn(boolValue(true));
+        }
+        if (name == "dlgSetFrameless" || name == "dlgSetCharaL" || name == "dlgSetCharaR"
+            || name == "dlgShow" || name == "dlgSetBgSlice" || name == "dlgSpeakL"
+            || name == "dlgWait" || name == "dlgLoadBg") {
+            std::string action = "dialog_command";
+            if (name == "dlgSetFrameless") {
+                action = "dialog_set_frameless";
+            } else if (name == "dlgSetCharaL") {
+                action = "dialog_set_chara_l";
+            } else if (name == "dlgSetCharaR") {
+                action = "dialog_set_chara_r";
+            } else if (name == "dlgShow") {
+                action = "dialog_show";
+            } else if (name == "dlgSetBgSlice") {
+                action = "dialog_set_bg_slice";
+            } else if (name == "dlgSpeakL") {
+                action = "dialog_speak_l";
+            } else if (name == "dlgWait") {
+                action = "dialog_wait";
+            } else if (name == "dlgLoadBg") {
+                action = "dialog_load_bg";
+            }
+            recordServiceState("Event/Quest/Flag Service", name, action, "dialog",
+                argsText.empty() ? name : argsText, function, instruction,
+                "tutorial/event dialog lifecycle is driven by original mission bytecode", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "dlgExistsBg") {
+            recordServiceState("Event/Quest/Flag Service", name, "dialog_bg_query", "dialog",
+                "false", function, instruction,
+                "dialog branch checks whether a background is active before transition", argsText);
+            return recordTypedReturn(boolValue(false));
+        }
+        if (name == "sleep") {
+            recordServiceState("Script Service", name, "thread_sleep", callable.receiver,
+                argsText.empty() ? "sleep" : argsText, function, instruction,
+                "thread scheduler sleep reached from original tutorial/event bytecode", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "ft") {
+            double frames = 0.0;
+            if (!arguments.empty()) {
+                numericValue(arguments.front(), frames);
+            }
+            const double seconds = frames / 60.0;
+            recordServiceState("Script Service", name, "thread_frame_time", callable.receiver,
+                "frames=" + (arguments.empty() ? std::string("unknown") : valueSummary(arguments.front()))
+                    + "; seconds=" + conciseNumber(seconds),
+                function, instruction,
+                "thread scheduler converts original frame counts to deterministic runtime time", argsText);
+            return recordTypedReturn(floatValue(seconds));
+        }
+        if (name == "suspend") {
+            recordServiceState("Script Service", name, "thread_suspend", "scheduler",
+                "suspend", function, instruction,
+                "script generator/yield boundary is represented as a scheduler suspend point", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "EnterTransition" || name == "LeaveTransition") {
+            recordServiceState("Scene And Stage Service", name,
+                name == "EnterTransition" ? "enter_transition" : "leave_transition",
+                "screen_transition", argsText.empty() ? name : argsText, function, instruction,
+                "tutorial/event script drives scene transition timing through the runtime service", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "talkBranch") {
+            recordServiceState("Event/Quest/Flag Service", name, "talk_branch", callable.receiver,
+                "choice=0", function, instruction,
+                "original event talk branch is deterministically resolved to the first branch for local runtime",
+                argsText);
+            return recordTypedReturn(intValue(0));
+        }
+        if (name == "waitFor") {
+            recordServiceState("Event/Quest/Flag Service", name, "event_wait_for", callable.receiver,
+                argsText.empty() ? "wait_for" : argsText, function, instruction,
+                "event root waitFor condition is modeled as satisfied for deterministic tutorial flow", argsText);
+            return recordTypedReturn(boolValue(true));
+        }
+        if (name == "flagADD") {
+            const std::string flag = arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            const std::string delta = arguments.size() > 1 ? valueSummary(arguments[1]) : "unknown";
+            recordServiceState("Event/Quest/Flag Service", name, "event_flag_add", callable.receiver,
+                "flag=" + flag + "; delta=" + delta, function, instruction,
+                "event thread increments the original mission flag after completing a page", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "ClearEventsAll") {
+            recordServiceState("Event/Quest/Flag Service", name, "clear_events_all", "event_runtime",
+                "cleared", function, instruction,
+                "setupPages clears deployed event instances before rebuilding page state", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "UpdateUnits") {
+            recordServiceState("Event/Quest/Flag Service", name, "update_units", kFirstMissionEventObject,
+                "updated", function, instruction,
+                "mission updateUnits tick updates recovered event units through Event/Quest/Flag Service", argsText);
+            return recordTypedReturn(nullValue());
         }
         if (name == "GetFlag") {
             const std::string flag = arguments.empty() ? "unknown" : argumentValueText(arguments.front());
@@ -2402,6 +2781,25 @@ private:
                 "prepareEvents adds a marker to an EventClass unit from original event data", argsText);
             return recordTypedReturn(objectValue(marker));
         }
+        if (name == "ActorTutorial") {
+            const std::string actor = "actor:tutorial:" + function.name + ":" + std::to_string(instruction.pc);
+            ensureRuntimeObject(actor, "ActorTutorial", "tutorial_actor");
+            recordServiceState("Actor And Task Service", name, "tutorial_actor_create", actor,
+                argsText.empty() ? "ActorTutorial" : argsText, function, instruction,
+                "tutorial flow creates an ActorTutorial handle from original mission bytecode", argsText);
+            return recordTypedReturn(actorValue(actor));
+        }
+        if (name == "addPage" && callable.receiver.rfind("actor:tutorial:", 0) == 0) {
+            const std::string page =
+                "tutorial_page:" + callable.receiver + ":" + std::to_string(tutorialPageCounter_++);
+            ensureRuntimeObject(page, "TutorialPage", "tutorial_page");
+            const std::string image = arguments.empty() ? "unknown" : argumentValueText(arguments[0]);
+            recordServiceState("Actor And Task Service", name, "tutorial_page_create", page,
+                "actor=" + callable.receiver + "; image=" + image + "; " + argsText,
+                function, instruction,
+                "tutorial actor receives an original tutorial page with resource/text ids", argsText);
+            return recordTypedReturn(objectValue(page));
+        }
         if (name == "addPage") {
             const std::string unit = eventUnitNameFromReceiver(callable.receiver);
             const int pageIndex = eventPageCountByUnit_[unit]++;
@@ -2425,6 +2823,13 @@ private:
                 argsText.empty() ? "event_actor" : argsText, function, instruction,
                 "event page resolves or creates an event actor holder", argsText);
             return recordTypedReturn(objectValue(actor));
+        }
+        if (name == "deploy") {
+            recordServiceState("Event/Quest/Flag Service", name, "event_unit_deploy",
+                callable.receiver.empty() ? "event_unit" : callable.receiver,
+                argsText.empty() ? "deploy" : argsText, function, instruction,
+                "setupPages deploys recovered event units after prepareEvents", argsText);
+            return recordTypedReturn(nullValue());
         }
         if (name == "getPage" || name == "currentPage") {
             const std::string unit = name == "getPage" ? eventUnitName(arguments)
@@ -2450,6 +2855,19 @@ private:
             const std::string marker = eventMarkerName(unit, arguments);
             ensureRuntimeObject(marker, "EventMarker", "event_marker");
             return recordTypedReturn(objectValue(marker));
+        }
+        if (name == "pos" && callable.receiver.find(":marker:") != std::string::npos) {
+            const std::string pos = callable.receiver + ".pos";
+            recordServiceState("Event/Quest/Flag Service", name, "event_marker_pos_query",
+                callable.receiver, pos, function, instruction,
+                "tutorial flow queries marker position for player relocation", argsText);
+            return recordTypedReturn(vector3Value(pos));
+        }
+        if (name == "rotYDegree" && callable.receiver.find(":marker:") != std::string::npos) {
+            recordServiceState("Event/Quest/Flag Service", name, "event_marker_rot_y_query",
+                callable.receiver, "rot_y=0", function, instruction,
+                "tutorial flow queries marker Y rotation for player relocation", argsText);
+            return recordTypedReturn(floatValue(0.0));
         }
         if (name == "isInVolumePlayer") {
             recordServiceState("Collision And Physics-Lite Service", name, "event_volume_player_query",
@@ -2542,14 +2960,30 @@ private:
                 "event thread queries the current player position for checkpoint/camera scripting", argsText);
             return recordTypedReturn(vector3Value(kFirstMissionPlayerPos));
         }
-        if (name == "GetPchar" || name == "GetPcharPointer") {
-            return recordTypedReturn(actorValue("actor:player:" + std::string(kFirstMissionPlayer)));
-        }
-        if (name == "setGoingToTarget" || name == "setVelocity" || name == "inCamera") {
+        if (name == "setGoingToTarget" || name == "setVelocity" || name == "inCamera"
+            || name == "setLifeMin" || name == "applyDBLevel") {
             recordServiceState("Actor And Task Service", name, "actor_runtime_method", callable.receiver,
                 argsText.empty() ? name : argsText, function, instruction,
                 "event/tutorial thread drives a runtime-owned player actor method", argsText);
             return recordTypedReturn(name == "inCamera" ? boolValue(true) : nullValue());
+        }
+        if (name == "PushActor" || name == "WaitActor") {
+            const std::string actor = arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Actor And Task Service", name,
+                name == "PushActor" ? "push_actor" : "wait_actor",
+                actor, argsText.empty() ? actor : argsText, function, instruction,
+                "thread scheduler executes tutorial actor task from original bytecode", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (isTutorialDemoRuntimeMethod(name)) {
+            recordServiceState("Actor And Task Service", name, "tutorial_demo_run", callable.receiver,
+                argsText.empty() ? name : argsText, function, instruction,
+                "tutorial demo helper executes recovered callback list instead of a hand-written sequence",
+                argsText);
+            if (arguments.size() > 1) {
+                executeFunctionArray(arguments[1], {});
+            }
+            return recordTypedReturn(nullValue());
         }
         if (name == "cameraMove") {
             recordServiceState("Camera Service", name, "event_camera_move",
@@ -2912,6 +3346,13 @@ private:
                 "mission setup enables return-to-world state on place params", argsText);
             return recordTypedReturn(nullValue());
         }
+        if (name == "setEnabledDropItem") {
+            const std::string enabled = arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Scene And Stage Service", name, "set_enabled_drop_item", callable.receiver,
+                "enabled=" + enabled, function, instruction,
+                "mission/event setup controls place drop-item state through original bytecode", argsText);
+            return recordTypedReturn(nullValue());
+        }
         if (name == "setSlaveDisp") {
             const std::string mode = arguments.empty() ? "unknown" : valueSummary(arguments.front());
             recordServiceState("Scene And Stage Service", name, "set_slave_disp", callable.receiver,
@@ -3085,6 +3526,36 @@ private:
         const std::string& ownerObject,
         int depth)
     {
+        if (callable.kind == ScriptValueKind::Function && callable.functionOrdinal >= 0 && callable.runtimeClosure) {
+            const SqasmModule& callableModule = moduleForPath(callable.functionModulePath);
+            const SqasmFunction* function = findFunctionByOrdinal(callableModule, callable.functionOrdinal);
+            if (!function) {
+                recordEvent({"script_function_value_missing", callerFunction.name, callerFunction.ordinal, {}, {},
+                    callable.text, {}, "script_call_return", {}, instruction.sourceLine, instruction.pc,
+                    "function value ordinal was recovered but the target function is not present"});
+                return {};
+            }
+            const std::string activeKey = "function|" + callableModule.path.string() + "|"
+                + std::to_string(function->ordinal);
+            if (activeFunctionValues_.find(activeKey) != activeFunctionValues_.end()) {
+                recordEvent({"skip_recursive_function_value", function->name, function->ordinal, {}, {},
+                    callable.text, {}, "recursion_guard", {}, instruction.sourceLine, instruction.pc,
+                    "function value is already active in the current call stack"});
+                return {true, nullValue()};
+            }
+
+            activeFunctionValues_.insert(activeKey);
+            recordEvent({"execute_function_value", function->name, function->ordinal, {}, {},
+                callable.text, valueSummary(callable), "script_function_value", {}, instruction.sourceLine,
+                instruction.pc, "function value recovered from Squirrel closure/table call"});
+            if (report_) {
+                ++report_->scriptFunctions;
+            }
+            const ScriptValue result = executeFunction(callableModule, *function, {}, {}, depth + 1, arguments);
+            activeFunctionValues_.erase(activeKey);
+            return {true, result};
+        }
+
         const std::string name = callable.text;
         if (name.empty()) {
             return {};
@@ -3138,6 +3609,7 @@ private:
     }
 
     BytecodeStateResult executeBytecodeState(
+        const SqasmModule& executionModule,
         const SqasmFunction& function,
         const std::string& ownerObject,
         const std::string& ownerClass,
@@ -3338,6 +3810,13 @@ private:
                 setRegister(a2, getRegister(a3));
             } else if (instruction.op == "_OP_ARITH") {
                 setRegister(a0, arithmeticValue(getRegister(a2), getRegister(a1), a3));
+            } else if (instruction.op == "_OP_NEG") {
+                double data = 0.0;
+                if (numericValue(getRegister(a1), data)) {
+                    setRegister(a0, floatValue(-data));
+                } else {
+                    setRegister(a0, expressionValue("-(" + valueSummary(getRegister(a1)) + ")"));
+                }
             } else if (instruction.op == "_OP_EQ") {
                 const Truthiness truth = equalityTruthiness(getRegister(a2), getRegister(a1));
                 if (truth == Truthiness::Unknown) {
@@ -3384,12 +3863,20 @@ private:
                 setRegister(a0, boolValue(exists));
             } else if (instruction.op == "_OP_NEWTABLE" || instruction.op == "_OP_NEWARRAY") {
                 const int tableId = nextTableId_++;
-                runtimeTables_[tableId] = {};
+                RuntimeTable table;
+                table.arrayLike = instruction.op == "_OP_NEWARRAY";
+                runtimeTables_[tableId] = table;
                 setRegister(a0, tableValue(tableId));
+            } else if (instruction.op == "_OP_APPENDARRAY") {
+                appendArrayValue(getRegister(a0), getRegister(a1));
             } else if (instruction.op == "_OP_CLOSURE") {
                 if (!instruction.functionRefs.empty()) {
                     const auto& ref = instruction.functionRefs.front();
-                    setRegister(a0, functionValue(ref.value, ref.index));
+                    const int ordinal = resolveRuntimeClosureOrdinal(executionModule, function, ref);
+                    const std::string functionName = ref.value.empty()
+                        ? "anonymous@" + std::to_string(ordinal)
+                        : ref.value;
+                    setRegister(a0, functionValue(functionName, ordinal, true, executionModule.path.string()));
                 }
             } else if (instruction.op == "_OP_CLASS") {
                 const std::string className = classNameBefore(function.instructions, i);
@@ -3496,7 +3983,7 @@ private:
                 }
                 if (!syncHandled) {
                     const ScriptValue callResult =
-                        makeCallReturn(function, instruction, getRegister(a1), callArguments);
+                        makeCallReturn(function, instruction, getRegister(a1), callArguments, depth);
                     if (isKnownValue(callResult)) {
                         setRegister(a0, callResult);
                     }
@@ -3570,7 +4057,7 @@ private:
         if (report_) {
             ++report_->scriptFunctions;
         }
-        executeFunction(*function, {}, {}, depth + 1);
+        executeFunction(module_, *function, {}, {}, depth + 1);
     }
 
     ScriptValue executeObjectMethodSlot(
@@ -3590,7 +4077,7 @@ private:
         if (report_) {
             ++report_->scriptFunctions;
         }
-        return executeFunction(*function, receiver, {}, depth + 1, arguments);
+        return executeFunction(module_, *function, receiver, {}, depth + 1, arguments);
     }
 
     ScriptValue executeMethod(
@@ -3633,12 +4120,14 @@ private:
         if (report_) {
             ++report_->scriptMethods;
         }
-        const ScriptValue result = executeFunction(*function, ownerObject, ownerClass, depth + 1, arguments);
+        const ScriptValue result =
+            executeFunction(bindingModule, *function, ownerObject, ownerClass, depth + 1, arguments);
         activeMethods_.erase(activeKey);
         return result;
     }
 
     ScriptValue executeFunction(
+        const SqasmModule& executionModule,
         const SqasmFunction& function,
         const std::string& ownerObject,
         const std::string& ownerClass,
@@ -3653,7 +4142,7 @@ private:
         }
 
         const BytecodeStateResult bytecodeState =
-            executeBytecodeState(function, ownerObject, ownerClass, depth, arguments);
+            executeBytecodeState(executionModule, function, ownerObject, ownerClass, depth, arguments);
         for (const auto& call : function.calls) {
             if (bytecodeState.executedCallPcs.find(call.pc) == bytecodeState.executedCallPcs.end()) {
                 continue;
@@ -3857,6 +4346,16 @@ private:
             recordEvent({"engine_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
                 receiver, "runtime_owned_event_unit_method", "Event/Quest/Flag Service", call.sourceLine, call.pc,
                 "event unit method service state was modeled during bytecode execution"});
+            return true;
+        }
+
+        if (receiver.find(":marker:") != std::string::npos && isEventMarkerRuntimeMethod(call.name)) {
+            if (report_) {
+                ++report_->engineObjectCalls;
+            }
+            recordEvent({"engine_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
+                receiver, "runtime_owned_event_marker_method", "Event/Quest/Flag Service", call.sourceLine, call.pc,
+                "event marker method service state was modeled during bytecode execution"});
             return true;
         }
 
@@ -4090,7 +4589,9 @@ private:
     std::map<std::string, int> eventPageCountByUnit_;
     std::set<std::string> rootObjects_;
     std::set<std::string> activeMethods_;
+    std::set<std::string> activeFunctionValues_;
     int nextTableId_ = 1;
+    int tutorialPageCounter_ = 0;
     bool setupPagesExecuting_ = false;
     bool setupEventsExecuting_ = false;
     ScriptExecutionReport* report_ = nullptr;

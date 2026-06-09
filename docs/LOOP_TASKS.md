@@ -585,7 +585,7 @@ Next edge:
 
 ### L12: First Mission Tutorial And Business-State Contract
 
-Status: active after L11.
+Status: completed as first mission tutorial/business-state contract checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -596,13 +596,34 @@ Deliver:
 
 Acceptance:
 
-- no scripted tutorial replacement outside original bytecode;
-- tutorial actor/page state mutates only through ScriptRuntime/native service contracts;
-- unconfirmed effect/actor APIs remain visible obligations.
+- no scripted tutorial replacement outside original bytecode: satisfied for `threadEvent0020_00`;
+- tutorial actor/page state mutates only through ScriptRuntime/native service contracts:
+  satisfied through `ActorTutorial`, `addPage`, `PushActor`, and `WaitActor`;
+- unconfirmed effect/actor APIs remain visible obligations: satisfied by retaining unresolved-free
+  script execution while keeping real backend behavior as later runtime work.
+
+Verified metric:
+
+```text
+ok=true scene_runtime_ok=true tutorial_thread_found=true tutorial_thread_executed=true update_units_executed=true entry=threadEvent0020_00 event_flag_add_commands=1 current_player_name_queries=3 dialog_show_commands=3 dialog_speak_commands=3 dialog_wait_commands=3 dialog_hide_commands=4 tutorial_actor_creates=1 tutorial_page_creates=1 push_actor_commands=1 wait_actor_commands=1 player_control_commands=4 player_control_enabled=true set_player_angle_y_commands=1 land_player_commands=1 update_units_commands=1 enter_transition_commands=1 leave_transition_commands=1 unresolved_calls=0 truncated=false
+```
+
+Additional engine hardening:
+
+- Squirrel `Function` values now carry source module paths so baseline module closures and mission
+  closures do not collide by ordinal.
+- Scene-entry binds service runtime state by reference instead of copying the full runtime-state
+  graph after title/mission execution.
+
+Next edge:
+
+- continue immediately into L13 script-driven title UI command payloads;
+- bind title menu background/logo/font/string/menu resources through VFS;
+- turn UI/native draw calls into service-owned command buffers, not a hand-written menu.
 
 ### L13: Script-Driven Title UI Command Payload Contract
 
-Status: queued after L12 or parallel if it does not touch L11 files.
+Status: active after L12.
 
 Deliver:
 
