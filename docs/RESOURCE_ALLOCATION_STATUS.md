@@ -108,5 +108,6 @@ shape from filenames, or treat SMAA transient surfaces and font atlas state as a
   allocation records.
 - L25 has since created swapchain/present/frame-oracle parity records that consume the L24 device
   execution edge.
-- L26: real platform D3D API submission/backend bridge only after allocation, binding, present,
-  and oracle gates can fail independently.
+- L26 has since created the platform/backend bridge submission queue.
+- L27: concrete backend executor interface only after allocation, binding, present, and oracle
+  gates can fail independently.

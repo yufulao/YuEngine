@@ -1156,26 +1156,53 @@ Boundary:
 
 ### L26: Real Platform D3D API Submission And Backend Bridge
 
-Status: active after L25.
+Status: completed after L25.
 
 Deliver:
 
-- introduce a platform/backend bridge that consumes L24 creation/upload/binding execution records
+- introduced a platform/backend bridge that consumes L24 creation/upload/binding execution records
   and L25 presentation/oracle records;
-- define real call submission records for window surface creation, Direct3D device creation,
-  texture/cube creation, texture upload, sampler/render-state binding, draw queue submission, and
-  present;
-- keep original-frame capture/parity as explicit gates until a captured YuEngine frame and
-  original oracle frame can be compared.
+- defined 10 D3D9-style call batches for window surface creation, Direct3D interface/device
+  creation, resource creation, upload, state binding, draw, present, and capture/oracle;
+- kept concrete D3D calls, frame capture, and original-frame parity as explicit gates.
 
 Acceptance:
 
-- no backend bridge path may bypass scheduler, renderer submission, material semantics, resource
-  allocation, device execution, or presentation/oracle records;
-- real platform calls must be behind interfaces that can run in diagnostic/null mode for CTest and
-  concrete D3D mode for later manual/oracle runs;
-- every platform call candidate must preserve source evidence, input record id/name, status, and
-  failure obligation.
+- `yuengine_cli platform-bridge samples/touhou_new_world/project.json --repo-root .` reports
+  `platform_bridge_runtime_ready=true`;
+- CTest `yuengine_platform_bridge_contract` locks 10 call records, 4 ready records, 6 tracked-open
+  records, 103 L24 inputs, 7 L25 inputs, 57 ready platform inputs, 53 tracked-open platform inputs,
+  46 creation calls, 458 upload subresource calls, 57 state-binding calls, 121 draw submissions,
+  1 present call, and 2 capture/oracle calls;
+- no bridge path bypasses scheduler, renderer submission, material semantics, resource allocation,
+  device execution, or presentation/oracle records.
+
+Boundary:
+
+- L26 does not execute `Direct3DCreate9`, `CreateDevice`, `CreateTexture`, `SetTexture`, draw,
+  `Present`, frame capture, or oracle comparison;
+- L26 only defines the platform bridge queue and ready/open accounting;
+- concrete execution must consume these records through an executor interface.
+
+### L27: Concrete Backend Executor Interface And Diagnostic D3D9 Adapter
+
+Status: active after L26.
+
+Deliver:
+
+- introduce a backend executor interface that consumes L26 call records and returns per-call
+  execution results;
+- implement a diagnostic D3D9 adapter mode for CTest that preserves API names, ordering, input
+  counts, and failure obligations without requiring a real HWND;
+- keep the real HWND/D3D9 mode gated until platform window creation, device creation, and frame
+  capture requirements are explicitly satisfied.
+
+Acceptance:
+
+- executor results must map one-to-one to the 10 L26 call records;
+- ready queue records may produce diagnostic success; tracked-open records must remain blocked or
+  tracked-open with specific missing platform/oracle evidence;
+- no standalone renderer, manual mesh path, or clear-screen path can satisfy L27.
 
 ## Stop Conditions
 

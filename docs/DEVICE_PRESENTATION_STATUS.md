@@ -94,5 +94,6 @@ to turn upload/state/font/oracle contracts into typed runtime records before any
 - L22 has since created backend render-state/font atlas records that consume L21 upload records.
 - L23 has since created resource allocation records; L24 has since created device execution
   records; L25 has since created swapchain/present/original-frame oracle records.
-- L26: real device/swapchain/API submission only when upload, state, font, presentation, and
-  oracle gates have executable backend records.
+- L26 has since created the platform/backend bridge submission queue.
+- L27: concrete backend executor interface only when upload, state, font, presentation, and oracle
+  gates have executable backend records.

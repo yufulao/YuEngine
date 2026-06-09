@@ -110,5 +110,6 @@ font state back into one generic renderer obligation.
 - L24 has since created device resource creation/upload/state-binding execution records.
 - L25 has since created swapchain/present/original-frame oracle parity records that consume L24
   device execution records.
-- L26: real platform D3D API submission/backend bridge only after resource allocation, state
-  binding, presentation, and oracle gates can fail independently.
+- L26 has since created the platform/backend bridge submission queue.
+- L27: concrete backend executor interface only after resource allocation, state binding,
+  presentation, and oracle gates can fail independently.

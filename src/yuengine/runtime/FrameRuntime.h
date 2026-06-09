@@ -696,6 +696,74 @@ struct BackendPresentationOracleRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendPlatformBridgeCallRecord {
+    std::string name;
+    std::string api;
+    std::string source;
+    std::string status;
+    int inputRecords = 0;
+    int readyInputs = 0;
+    int trackedOpenInputs = 0;
+    int callCount = 0;
+    int width = 0;
+    int height = 0;
+    bool ready = false;
+};
+
+struct BackendPlatformBridgeRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool deviceExecutionOk = false;
+    bool presentationOracleOk = false;
+    bool platformBridgeRuntimeReady = false;
+    bool diagnosticBridgeReady = false;
+    bool creationSubmissionQueueReady = false;
+    bool uploadSubmissionQueueReady = false;
+    bool stateSubmissionQueueReady = false;
+    bool presentationSubmissionQueueTracked = false;
+    bool d3dConcreteBackendGateTracked = false;
+    bool frameCaptureGateTracked = false;
+    bool originalOracleGateTracked = false;
+    int bridgeCallRecords = 0;
+    int readyBridgeCallRecords = 0;
+    int trackedOpenBridgeCallRecords = 0;
+    int diagnosticCallBatches = 0;
+    int platformSurfaceRecords = 0;
+    int d3dInterfaceRecords = 0;
+    int createDeviceRecords = 0;
+    int resourceCreationCallRecords = 0;
+    int textureCreateCalls = 0;
+    int cubeTextureCreateCalls = 0;
+    int renderTargetCreateCandidates = 0;
+    int depthStencilCreateCandidates = 0;
+    int fontAtlasCreateCandidates = 0;
+    int uploadCallRecords = 0;
+    int uploadSubresourceCalls = 0;
+    int stateBindingCallRecords = 0;
+    int readyStateBindingCalls = 0;
+    int trackedOpenStateBindingCalls = 0;
+    int setTextureCalls = 0;
+    int setSamplerStateCalls = 0;
+    int setRenderStateBundleCalls = 0;
+    int drawSubmissionCalls = 0;
+    int presentCallRecords = 0;
+    int captureOracleCallRecords = 0;
+    int linkedDeviceExecutionRecords = 0;
+    int linkedPresentationRecords = 0;
+    int readyPlatformInputRecords = 0;
+    int trackedOpenPlatformInputRecords = 0;
+    int rendererBackendCommands = 0;
+    int drawSubmissions = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedPlatformBridgeContracts = 0;
+    int trackedPlatformBridgeObligations = 0;
+    int openPlatformBridgeObligations = 0;
+    std::vector<BackendPlatformBridgeCallRecord> records;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -866,6 +934,13 @@ BackendPresentationOracleRuntimeReport runBackendPresentationOracleRuntime(
 
 std::string backendPresentationOracleRuntimeReportToJson(
     const BackendPresentationOracleRuntimeReport& report);
+
+BackendPlatformBridgeRuntimeReport runBackendPlatformBridgeRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendPlatformBridgeRuntimeReportToJson(
+    const BackendPlatformBridgeRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

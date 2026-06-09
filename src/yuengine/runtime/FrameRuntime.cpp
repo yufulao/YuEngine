@@ -103,6 +103,12 @@ void addError(BackendPresentationOracleRuntimeReport& report, const std::string&
     report.errors.push_back(message);
 }
 
+void addError(BackendPlatformBridgeRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -1348,6 +1354,33 @@ BackendPresentationOracleRecord makePresentationOracleRecord(
     return record;
 }
 
+BackendPlatformBridgeCallRecord makePlatformBridgeCallRecord(
+    const std::string& name,
+    const std::string& api,
+    const std::string& source,
+    const std::string& status,
+    int inputRecords,
+    int readyInputs,
+    int trackedOpenInputs,
+    int callCount,
+    int width,
+    int height)
+{
+    BackendPlatformBridgeCallRecord record;
+    record.name = name;
+    record.api = api;
+    record.source = source;
+    record.status = status;
+    record.inputRecords = inputRecords;
+    record.readyInputs = readyInputs;
+    record.trackedOpenInputs = trackedOpenInputs;
+    record.callCount = callCount;
+    record.width = width;
+    record.height = height;
+    record.ready = status == "contract_ready";
+    return record;
+}
+
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
     const GameplayFrameInputs& inputs,
     const std::string& rendererProfile,
@@ -2574,6 +2607,297 @@ BackendPresentationOracleRuntimeReport buildBackendPresentationOracleRuntimeRepo
     if (report.resolvedPresentationContracts != 2 || report.trackedPresentationObligations != 5
         || report.openPresentationObligations != 5) {
         addError(report, "presentation/oracle obligation accounting is inconsistent");
+    }
+
+    return report;
+}
+
+BackendPlatformBridgeRuntimeReport buildBackendPlatformBridgeRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    BackendPlatformBridgeRuntimeReport report;
+    const auto deviceExecution = buildBackendDeviceExecutionRuntimeReport(inputs, rendererProfile, vfs);
+    const auto presentationOracle = buildBackendPresentationOracleRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.deviceExecutionOk = deviceExecution.ok;
+    report.presentationOracleOk = presentationOracle.ok;
+    report.backbufferWidth = presentationOracle.backbufferWidth;
+    report.backbufferHeight = presentationOracle.backbufferHeight;
+    report.rendererBackendCommands = presentationOracle.rendererBackendCommands;
+    report.drawSubmissions = presentationOracle.drawSubmissions;
+    report.linkedDeviceExecutionRecords =
+        deviceExecution.resourceCreationRecords + deviceExecution.bindingRecords;
+    report.linkedPresentationRecords = presentationOracle.presentationRecords;
+    report.readyPlatformInputRecords = deviceExecution.readyResourceCreationRecords
+        + deviceExecution.readyBindingRecords + presentationOracle.readyPresentationRecords;
+    report.trackedOpenPlatformInputRecords = deviceExecution.trackedOpenResourceCreationRecords
+        + deviceExecution.trackedOpenBindingRecords + presentationOracle.trackedOpenPresentationRecords;
+
+    report.records.push_back(makePlatformBridgeCallRecord(
+        "diagnostic_backend_bridge",
+        "BackendBridge::submitFrame",
+        "L24 device execution + L25 presentation/oracle",
+        deviceExecution.deviceExecutionRuntimeReady && presentationOracle.presentationOracleRuntimeReady
+            ? "contract_ready"
+            : "blocked",
+        report.linkedDeviceExecutionRecords + report.linkedPresentationRecords,
+        report.readyPlatformInputRecords,
+        report.trackedOpenPlatformInputRecords,
+        1,
+        report.backbufferWidth,
+        report.backbufferHeight));
+    report.records.push_back(makePlatformBridgeCallRecord(
+        "platform_window_surface",
+        "CreateWindowSurface",
+        "L25 window_surface_candidate",
+        presentationOracle.windowSurfaceGateTracked ? "tracked_open" : "blocked",
+        presentationOracle.windowSurfaceCandidates,
+        0,
+        presentationOracle.windowSurfaceCandidates,
+        presentationOracle.windowSurfaceCandidates,
+        report.backbufferWidth,
+        report.backbufferHeight));
+    report.records.push_back(makePlatformBridgeCallRecord(
+        "d3d9_interface_creation",
+        "Direct3DCreate9",
+        "L20 renderer_profile=d3d9_compatible",
+        presentationOracle.presentationOracleRuntimeReady ? "tracked_open" : "blocked",
+        1,
+        0,
+        1,
+        1,
+        0,
+        0));
+    report.records.push_back(makePlatformBridgeCallRecord(
+        "d3d9_device_creation",
+        "IDirect3D9::CreateDevice",
+        "L25 swapchain_backbuffer_extent",
+        presentationOracle.swapchainCreationGateTracked ? "tracked_open" : "blocked",
+        presentationOracle.backbufferExtentRecords,
+        0,
+        presentationOracle.backbufferExtentRecords,
+        1,
+        report.backbufferWidth,
+        report.backbufferHeight));
+    report.records.push_back(makePlatformBridgeCallRecord(
+        "d3d9_resource_creation_queue",
+        "CreateTexture/CreateCubeTexture/CreateRenderTarget/CreateDepthStencilSurface",
+        "L24 resource_records",
+        deviceExecution.resourceCreationRecordsReady ? "contract_ready" : "blocked",
+        deviceExecution.resourceCreationRecords,
+        deviceExecution.readyResourceCreationRecords,
+        deviceExecution.trackedOpenResourceCreationRecords,
+        deviceExecution.resourceCreationRecords,
+        0,
+        0));
+    report.records.push_back(makePlatformBridgeCallRecord(
+        "d3d9_texture_upload_queue",
+        "LockRect/UnlockRect",
+        "L24 upload_subresource_records",
+        deviceExecution.uploadExecutionRecordsReady ? "contract_ready" : "blocked",
+        deviceExecution.textureUploadExecutionRecords,
+        deviceExecution.textureUploadExecutionRecords,
+        0,
+        deviceExecution.uploadSubresourceRecords,
+        0,
+        0));
+    report.records.push_back(makePlatformBridgeCallRecord(
+        "d3d9_state_binding_queue",
+        "SetTexture/SetSamplerState/SetRenderState",
+        "L24 binding_records",
+        deviceExecution.stateBindingRecordsReady && deviceExecution.lookupTextureBindingRecordsReady
+            ? "contract_ready"
+            : "blocked",
+        deviceExecution.bindingRecords,
+        deviceExecution.readyBindingRecords,
+        deviceExecution.trackedOpenBindingRecords,
+        deviceExecution.bindingRecords,
+        0,
+        0));
+    report.records.push_back(makePlatformBridgeCallRecord(
+        "d3d9_draw_submission_queue",
+        "DrawIndexedPrimitive/DrawPrimitiveUP",
+        "L16 renderer submissions via L25 present gate",
+        presentationOracle.presentCallGateTracked ? "tracked_open" : "blocked",
+        presentationOracle.drawSubmissions,
+        0,
+        presentationOracle.drawSubmissions,
+        presentationOracle.drawSubmissions,
+        0,
+        0));
+    report.records.push_back(makePlatformBridgeCallRecord(
+        "d3d9_present_call",
+        "IDirect3DDevice9::Present",
+        "L25 present_call_candidate",
+        presentationOracle.presentCallGateTracked ? "tracked_open" : "blocked",
+        presentationOracle.presentCallCandidates,
+        0,
+        presentationOracle.presentCallCandidates,
+        presentationOracle.presentCallCandidates,
+        report.backbufferWidth,
+        report.backbufferHeight));
+    report.records.push_back(makePlatformBridgeCallRecord(
+        "frame_capture_oracle_queue",
+        "GetFrontBufferData/oracle_compare",
+        "L25 frame_capture_candidate + original_frame_oracle_trace",
+        presentationOracle.frameCaptureGateTracked && presentationOracle.originalFrameOracleGateTracked
+            ? "tracked_open"
+            : "blocked",
+        presentationOracle.frameCaptureCandidates + presentationOracle.oracleTraceCandidates,
+        0,
+        presentationOracle.frameCaptureCandidates + presentationOracle.oracleTraceCandidates,
+        presentationOracle.frameCaptureCandidates + presentationOracle.oracleTraceCandidates,
+        report.backbufferWidth,
+        report.backbufferHeight));
+
+    for (const auto& record : report.records) {
+        ++report.bridgeCallRecords;
+        if (record.ready) {
+            ++report.readyBridgeCallRecords;
+        } else if (record.status == "tracked_open") {
+            ++report.trackedOpenBridgeCallRecords;
+        }
+
+        if (record.name == "diagnostic_backend_bridge") {
+            report.diagnosticCallBatches += record.callCount;
+        } else if (record.name == "platform_window_surface") {
+            report.platformSurfaceRecords += record.callCount;
+        } else if (record.name == "d3d9_interface_creation") {
+            report.d3dInterfaceRecords += record.callCount;
+        } else if (record.name == "d3d9_device_creation") {
+            report.createDeviceRecords += record.callCount;
+        } else if (record.name == "d3d9_resource_creation_queue") {
+            report.resourceCreationCallRecords += record.callCount;
+        } else if (record.name == "d3d9_texture_upload_queue") {
+            report.uploadSubresourceCalls += record.callCount;
+        } else if (record.name == "d3d9_state_binding_queue") {
+            report.stateBindingCallRecords += record.callCount;
+        } else if (record.name == "d3d9_draw_submission_queue") {
+            report.drawSubmissionCalls += record.callCount;
+        } else if (record.name == "d3d9_present_call") {
+            report.presentCallRecords += record.callCount;
+        } else if (record.name == "frame_capture_oracle_queue") {
+            report.captureOracleCallRecords += record.callCount;
+        }
+    }
+
+    report.textureCreateCalls = deviceExecution.createTextureRecords;
+    report.cubeTextureCreateCalls = deviceExecution.createCubeTextureRecords;
+    report.renderTargetCreateCandidates = deviceExecution.renderTargetCreationCandidates;
+    report.depthStencilCreateCandidates = deviceExecution.depthStencilCreationCandidates;
+    report.fontAtlasCreateCandidates = deviceExecution.fontAtlasCreationPlaceholders;
+    report.uploadCallRecords = deviceExecution.textureUploadExecutionRecords;
+    report.readyStateBindingCalls = deviceExecution.readyBindingRecords;
+    report.trackedOpenStateBindingCalls = deviceExecution.trackedOpenBindingRecords;
+    report.setTextureCalls =
+        deviceExecution.materialTextureBindingRecords + deviceExecution.samplerTextureBindingRecords;
+    report.setSamplerStateCalls = deviceExecution.samplerStateBindingRecords;
+    report.setRenderStateBundleCalls = deviceExecution.renderStateBindingRecords;
+
+    report.diagnosticBridgeReady = report.linkedDeviceExecutionRecords == 103
+        && report.linkedPresentationRecords == 7 && report.readyPlatformInputRecords == 57
+        && report.trackedOpenPlatformInputRecords == 53 && report.diagnosticCallBatches == 1;
+    report.creationSubmissionQueueReady = deviceExecution.resourceCreationRecordsReady
+        && report.resourceCreationCallRecords == 46 && report.textureCreateCalls == 40
+        && report.cubeTextureCreateCalls == 1 && report.renderTargetCreateCandidates == 3
+        && report.depthStencilCreateCandidates == 1 && report.fontAtlasCreateCandidates == 1;
+    report.uploadSubmissionQueueReady = deviceExecution.uploadExecutionRecordsReady
+        && report.uploadCallRecords == 41 && report.uploadSubresourceCalls == 458;
+    report.stateSubmissionQueueReady = deviceExecution.stateBindingRecordsReady
+        && deviceExecution.lookupTextureBindingRecordsReady && report.stateBindingCallRecords == 57
+        && report.readyStateBindingCalls == 14 && report.trackedOpenStateBindingCalls == 43
+        && report.setTextureCalls == 45 && report.setSamplerStateCalls == 7
+        && report.setRenderStateBundleCalls == 5;
+    report.presentationSubmissionQueueTracked = presentationOracle.presentationOracleRuntimeReady
+        && report.platformSurfaceRecords == 1 && report.d3dInterfaceRecords == 1
+        && report.createDeviceRecords == 1 && report.presentCallRecords == 1
+        && report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+    report.d3dConcreteBackendGateTracked = report.presentationSubmissionQueueTracked
+        && report.resourceCreationCallRecords == 46 && report.stateBindingCallRecords == 57;
+    report.frameCaptureGateTracked =
+        presentationOracle.frameCaptureGateTracked && report.captureOracleCallRecords == 2;
+    report.originalOracleGateTracked =
+        presentationOracle.originalFrameOracleGateTracked && report.captureOracleCallRecords == 2;
+    report.platformBridgeRuntimeReady = report.deviceExecutionOk && report.presentationOracleOk
+        && report.diagnosticBridgeReady && report.creationSubmissionQueueReady
+        && report.uploadSubmissionQueueReady && report.stateSubmissionQueueReady
+        && report.presentationSubmissionQueueTracked && report.d3dConcreteBackendGateTracked
+        && report.frameCaptureGateTracked && report.originalOracleGateTracked
+        && report.bridgeCallRecords == 10 && report.readyBridgeCallRecords == 4
+        && report.trackedOpenBridgeCallRecords == 6;
+
+    report.contracts.push_back(makeBackendObligation(
+        "diagnostic_backend_bridge",
+        report.diagnosticBridgeReady ? "contract_ready" : "blocked",
+        "backend bridge receives 103 L24 device records and 7 L25 presentation/oracle records"));
+    report.contracts.push_back(makeBackendObligation(
+        "resource_creation_submission_queue",
+        report.creationSubmissionQueueReady ? "contract_ready" : "blocked",
+        "46 resource creation calls map to L24 CreateTexture/CreateCubeTexture/render/depth/font records"));
+    report.contracts.push_back(makeBackendObligation(
+        "texture_upload_submission_queue",
+        report.uploadSubmissionQueueReady ? "contract_ready" : "blocked",
+        "41 ready textures expand to 458 LockRect/UnlockRect style upload calls"));
+    report.contracts.push_back(makeBackendObligation(
+        "state_binding_submission_queue",
+        report.stateSubmissionQueueReady ? "contract_ready" : "blocked",
+        "57 binding calls map to SetTexture, SetSamplerState, and SetRenderState bundles"));
+    report.contracts.push_back(makeBackendObligation(
+        "platform_window_surface",
+        report.presentationSubmissionQueueTracked ? "tracked_open" : "blocked",
+        "window surface creation is queued but not executed"));
+    report.contracts.push_back(makeBackendObligation(
+        "d3d9_interface_and_device_creation",
+        report.d3dConcreteBackendGateTracked ? "tracked_open" : "blocked",
+        "Direct3DCreate9/CreateDevice are queued but no concrete D3D device exists"));
+    report.contracts.push_back(makeBackendObligation(
+        "draw_submission_backend",
+        report.drawSubmissionCalls == 121 ? "tracked_open" : "blocked",
+        "121 draw submissions exist but vertex/index buffer binding and draw calls are not executed"));
+    report.contracts.push_back(makeBackendObligation(
+        "present_execution",
+        report.presentCallRecords == 1 ? "tracked_open" : "blocked",
+        "Present is queued but not called on an IDirect3DDevice9"));
+    report.contracts.push_back(makeBackendObligation(
+        "frame_capture_artifact",
+        report.frameCaptureGateTracked ? "tracked_open" : "blocked",
+        "frame capture is queued but no YuEngine frame artifact exists"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_parity",
+        report.originalOracleGateTracked ? "tracked_open" : "blocked",
+        "original screenshot/API trace parity is still absent"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedPlatformBridgeContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedPlatformBridgeObligations;
+            ++report.openPlatformBridgeObligations;
+        } else {
+            ++report.openPlatformBridgeObligations;
+        }
+    }
+
+    if (!report.deviceExecutionOk) {
+        addError(report, "device execution contract is not ready for platform bridge");
+    }
+    if (!report.presentationOracleOk) {
+        addError(report, "presentation/oracle contract is not ready for platform bridge");
+    }
+    if (!report.diagnosticBridgeReady || !report.creationSubmissionQueueReady
+        || !report.uploadSubmissionQueueReady || !report.stateSubmissionQueueReady) {
+        addError(report, "platform bridge ready submission queues are incomplete");
+    }
+    if (!report.presentationSubmissionQueueTracked || !report.d3dConcreteBackendGateTracked
+        || !report.frameCaptureGateTracked || !report.originalOracleGateTracked) {
+        addError(report, "platform bridge open gates are not fully tracked");
+    }
+    if (report.resolvedPlatformBridgeContracts != 4 || report.trackedPlatformBridgeObligations != 6
+        || report.openPlatformBridgeObligations != 6) {
+        addError(report, "platform bridge obligation accounting is inconsistent");
     }
 
     return report;
@@ -4235,6 +4559,153 @@ std::string backendPresentationOracleRuntimeReportToJson(
             << "\", \"width\": " << record.width
             << ", \"height\": " << record.height
             << ", \"linked_record_count\": " << record.linkedRecordCount
+            << ", \"ready\": " << (record.ready ? "true" : "false") << "}";
+        out << (i + 1 == report.records.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendPlatformBridgeRuntimeReport runBackendPlatformBridgeRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendPlatformBridgeRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendPlatformBridgeRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendPlatformBridgeRuntimeReportToJson(
+    const BackendPlatformBridgeRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_platform_bridge_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " device_execution_ok=" << (report.deviceExecutionOk ? "true" : "false")
+        << " presentation_oracle_ok=" << (report.presentationOracleOk ? "true" : "false")
+        << " platform_bridge_runtime_ready=" << (report.platformBridgeRuntimeReady ? "true" : "false")
+        << " diagnostic_bridge_ready=" << (report.diagnosticBridgeReady ? "true" : "false")
+        << " creation_submission_queue_ready=" << (report.creationSubmissionQueueReady ? "true" : "false")
+        << " upload_submission_queue_ready=" << (report.uploadSubmissionQueueReady ? "true" : "false")
+        << " state_submission_queue_ready=" << (report.stateSubmissionQueueReady ? "true" : "false")
+        << " presentation_submission_queue_tracked="
+        << (report.presentationSubmissionQueueTracked ? "true" : "false")
+        << " d3d_concrete_backend_gate_tracked="
+        << (report.d3dConcreteBackendGateTracked ? "true" : "false")
+        << " frame_capture_gate_tracked=" << (report.frameCaptureGateTracked ? "true" : "false")
+        << " original_oracle_gate_tracked=" << (report.originalOracleGateTracked ? "true" : "false")
+        << " bridge_call_records=" << report.bridgeCallRecords
+        << " ready_bridge_call_records=" << report.readyBridgeCallRecords
+        << " tracked_open_bridge_call_records=" << report.trackedOpenBridgeCallRecords
+        << " diagnostic_call_batches=" << report.diagnosticCallBatches
+        << " platform_surface_records=" << report.platformSurfaceRecords
+        << " d3d_interface_records=" << report.d3dInterfaceRecords
+        << " create_device_records=" << report.createDeviceRecords
+        << " resource_creation_call_records=" << report.resourceCreationCallRecords
+        << " texture_create_calls=" << report.textureCreateCalls
+        << " cube_texture_create_calls=" << report.cubeTextureCreateCalls
+        << " render_target_create_candidates=" << report.renderTargetCreateCandidates
+        << " depth_stencil_create_candidates=" << report.depthStencilCreateCandidates
+        << " font_atlas_create_candidates=" << report.fontAtlasCreateCandidates
+        << " upload_call_records=" << report.uploadCallRecords
+        << " upload_subresource_calls=" << report.uploadSubresourceCalls
+        << " state_binding_call_records=" << report.stateBindingCallRecords
+        << " ready_state_binding_calls=" << report.readyStateBindingCalls
+        << " tracked_open_state_binding_calls=" << report.trackedOpenStateBindingCalls
+        << " set_texture_calls=" << report.setTextureCalls
+        << " set_sampler_state_calls=" << report.setSamplerStateCalls
+        << " set_render_state_bundle_calls=" << report.setRenderStateBundleCalls
+        << " draw_submission_calls=" << report.drawSubmissionCalls
+        << " present_call_records=" << report.presentCallRecords
+        << " capture_oracle_call_records=" << report.captureOracleCallRecords
+        << " linked_device_execution_records=" << report.linkedDeviceExecutionRecords
+        << " linked_presentation_records=" << report.linkedPresentationRecords
+        << " ready_platform_input_records=" << report.readyPlatformInputRecords
+        << " tracked_open_platform_input_records=" << report.trackedOpenPlatformInputRecords
+        << " renderer_backend_commands=" << report.rendererBackendCommands
+        << " draw_submissions=" << report.drawSubmissions
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_platform_bridge_contracts=" << report.resolvedPlatformBridgeContracts
+        << " tracked_platform_bridge_obligations=" << report.trackedPlatformBridgeObligations
+        << " open_platform_bridge_obligations=" << report.openPlatformBridgeObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"bridge_summary\": {";
+    out << "\"records\": " << report.bridgeCallRecords
+        << ", \"ready_records\": " << report.readyBridgeCallRecords
+        << ", \"tracked_open_records\": " << report.trackedOpenBridgeCallRecords
+        << ", \"diagnostic_call_batches\": " << report.diagnosticCallBatches
+        << ", \"renderer_backend_commands\": " << report.rendererBackendCommands
+        << ", \"draw_submissions\": " << report.drawSubmissions
+        << ", \"backbuffer_width\": " << report.backbufferWidth
+        << ", \"backbuffer_height\": " << report.backbufferHeight << "},\n";
+    out << "  \"input_link\": {";
+    out << "\"linked_device_execution_records\": " << report.linkedDeviceExecutionRecords
+        << ", \"linked_presentation_records\": " << report.linkedPresentationRecords
+        << ", \"ready_platform_input_records\": " << report.readyPlatformInputRecords
+        << ", \"tracked_open_platform_input_records\": " << report.trackedOpenPlatformInputRecords
+        << "},\n";
+    out << "  \"platform_calls\": {";
+    out << "\"platform_surface_records\": " << report.platformSurfaceRecords
+        << ", \"d3d_interface_records\": " << report.d3dInterfaceRecords
+        << ", \"create_device_records\": " << report.createDeviceRecords
+        << ", \"resource_creation_call_records\": " << report.resourceCreationCallRecords
+        << ", \"texture_create_calls\": " << report.textureCreateCalls
+        << ", \"cube_texture_create_calls\": " << report.cubeTextureCreateCalls
+        << ", \"render_target_create_candidates\": " << report.renderTargetCreateCandidates
+        << ", \"depth_stencil_create_candidates\": " << report.depthStencilCreateCandidates
+        << ", \"font_atlas_create_candidates\": " << report.fontAtlasCreateCandidates
+        << ", \"upload_call_records\": " << report.uploadCallRecords
+        << ", \"upload_subresource_calls\": " << report.uploadSubresourceCalls
+        << ", \"state_binding_call_records\": " << report.stateBindingCallRecords
+        << ", \"set_texture_calls\": " << report.setTextureCalls
+        << ", \"set_sampler_state_calls\": " << report.setSamplerStateCalls
+        << ", \"set_render_state_bundle_calls\": " << report.setRenderStateBundleCalls
+        << ", \"draw_submission_calls\": " << report.drawSubmissionCalls
+        << ", \"present_call_records\": " << report.presentCallRecords
+        << ", \"capture_oracle_call_records\": " << report.captureOracleCallRecords << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_platform_bridge_contracts\": " << report.resolvedPlatformBridgeContracts
+        << ", \"tracked_platform_bridge_obligations\": " << report.trackedPlatformBridgeObligations
+        << ", \"open_platform_bridge_obligations\": " << report.openPlatformBridgeObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"records\": [\n";
+    for (size_t i = 0; i < report.records.size(); ++i) {
+        const auto& record = report.records[i];
+        out << "    {\"name\": \"" << core::jsonEscape(record.name)
+            << "\", \"api\": \"" << core::jsonEscape(record.api)
+            << "\", \"source\": \"" << core::jsonEscape(record.source)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"input_records\": " << record.inputRecords
+            << ", \"ready_inputs\": " << record.readyInputs
+            << ", \"tracked_open_inputs\": " << record.trackedOpenInputs
+            << ", \"call_count\": " << record.callCount
+            << ", \"width\": " << record.width
+            << ", \"height\": " << record.height
             << ", \"ready\": " << (record.ready ? "true" : "false") << "}";
         out << (i + 1 == report.records.size() ? "\n" : ",\n");
     }

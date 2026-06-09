@@ -108,7 +108,7 @@ renderer submission, device presentation, resource allocation, and device execut
 
 ## Next Edges
 
-- L26: real platform D3D API submission/backend bridge. It must consume L24 creation/binding
-  records and L25 presentation/oracle gates before issuing real calls.
-- Later: original-frame capture and parity comparison, after YuEngine can present a frame through
-  the same scheduler/backend path.
+- L26 has since created the platform/backend bridge submission queue from L24 and L25 records.
+- L27: concrete backend executor interface and diagnostic D3D9 adapter.
+- Later: real HWND/D3D9 execution, frame capture, and parity comparison, after YuEngine can
+  present a frame through the same scheduler/backend path.
