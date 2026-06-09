@@ -74,7 +74,7 @@ Phase 2 remains blocked from:
 | ID | Title | Owner | Reviewers | Status | Blocks |
 | --- | --- | --- | --- | --- | --- |
 | ADR-0011 | RHI device, command, present, and capture boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精 | Accepted | Null RHI first slice |
-| ADR-0012 | Audio test backend and mixer sink boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精 | Proposed | Audio test backend/mixer first slice |
+| ADR-0012 | Audio test backend and mixer sink boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精 | Accepted | Audio test backend/mixer first slice |
 
 ## Module Gate Proposal Queue
 
@@ -88,7 +88,9 @@ Phase 2 remains blocked from:
 - P2-GATE-001 is approved for first implementation slice; implementation must
   keep a clean or isolated worktree handoff and must not disturb active Phase 1
   implementation reviews.
-- P2-GATE-002 is proposed for review only.
+- P2-GATE-002 gate review is in progress; performance approval is in place
+  after `9895578`, but public-surface review and PM final gate state are still
+  required before any `YuAudio` implementation task exists.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against the active Phase 1 review queue.
 
@@ -105,7 +107,8 @@ Phase 2 remains blocked from:
 
 1. Create a scoped P2-GATE-001 implementation task for the null RHI slice with a
    clean/isolated worktree guard.
-2. Review ADR-0012 and P2-GATE-002.
+2. Close P2-GATE-002 public-surface and PM/final gate review before creating
+   any `YuAudio` implementation task.
 3. Close active Phase 1 implementation reviews before creating additional shared
    CMake implementation work, unless a clean isolated worktree is assigned.
 4. Prepare package/load boundary only after Resource/File implementation review
