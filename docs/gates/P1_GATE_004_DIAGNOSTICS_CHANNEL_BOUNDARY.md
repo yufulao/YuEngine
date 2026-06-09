@@ -6,7 +6,7 @@ Owner: 八云紫
 Reviewers: 红美铃, 博丽灵梦, 雾雨魔理沙
 Depends on: ADR-0004
 Related decisions: ADR-0005, ADR-0006, ADR-0007
-Source baseline: Phase 1 through `98a6253`
+Source baseline: Phase 1 through `1725931`
 
 ## Layer
 
@@ -21,6 +21,7 @@ This gate owns the first diagnostics-channel proposal for:
 
 - diagnostics channel vocabulary;
 - counter ID and event ID value types;
+- `uint64_t` counter values and update semantics;
 - synchronous bounded event/counter recording;
 - disabled diagnostics behavior;
 - snapshot query for tests;
@@ -68,6 +69,7 @@ Failure behavior:
 
 - event capacity overflow increments dropped count and returns explicit dropped status;
 - unknown counter/event ID returns explicit error if validation is enabled and does not mutate counters/events;
+- counter overflow returns explicit overflow status and does not mutate the counter value or successful counter-update count;
 - disabled channel does not change host/kernel/module behavior;
 - no test may pass only by parsing log text or report output.
 
@@ -75,15 +77,17 @@ Failure behavior:
 
 - fixed diagnostics event IDs;
 - fixed counter IDs;
+- `uint64_t` counter update values;
 - explicit channel capacity;
 - fixed test fixture events/counters;
-- optional memory tracker if P1-GATE-002 implementation is done before this implementation starts.
+- YuMemory accounting vocabulary for allocation/byte signals in this baseline.
 
 ## Outputs
 
 - diagnostics snapshot;
 - accepted/dropped event counts;
 - counter values;
+- successful counter update count;
 - explicit status values;
 - no JSON report output as runtime API.
 
@@ -94,14 +98,18 @@ Allowed dependencies:
 - C++ standard library;
 - CMake/CTest tooling;
 - existing `YuDiagnostics` logging target;
-- `YuMemory` only if P1-GATE-002 implementation is done and the integration is limited to allocation/byte fixture signals.
+- `YuMemory` for allocation/byte fixture signals only.
 
 Target dependency expectation:
 
 ```text
 YuDiagnostics
-  -> optional YuMemory after P1-GATE-002 implementation
+  -> YuMemory for accounting vocabulary/signal tests only
 ```
+
+If P1-GATE-002 / task #14 later receives a blocking rewrite that removes the
+current YuMemory vocabulary, this gate must be amended before implementation
+handoff instead of silently taking an untracked allocation deferral.
 
 `YuDiagnostics` must not depend on `YuKernel`, `YuPlatform`, `YuThread`, `YuFile`, resource/RHI/audio/input/script/world/UI modules, tools, reports, or original-game evidence.
 
@@ -117,7 +125,7 @@ Required deterministic signals:
 - snapshot query count;
 - channel capacity;
 - enabled versus disabled behavior equivalence;
-- allocation/accounting status or explicit deferral if `YuMemory` is not integrated;
+- allocation/accounting status using `YuMemory` vocabulary;
 - no report dependency.
 
 First-slice bounds:
@@ -127,8 +135,11 @@ First-slice bounds:
 - accepted event ID capacity: 8 IDs maximum;
 - accepted counter ID capacity: 8 IDs maximum;
 - event payload: fixed event ID plus at most one 64-bit value; no owned strings in measured fixtures;
+- counter value type: `uint64_t`;
+- counter operations: increment by one and add unsigned delta;
+- counter overflow policy: if `current > UINT64_MAX - delta`, return explicit overflow status, leave the value unchanged, and do not increment successful counter-update count;
 - snapshot capacity equals the declared event/counter capacity and may not grow dynamically after setup;
-- allocation/accounting rule: use `YuMemory` only if P1-GATE-002 is done before implementation starts; otherwise explicitly defer only the allocation/accounting signal and do not claim zero CRT/STL/general heap coverage.
+- allocation/accounting rule: use `YuMemory` vocabulary for allocation/read-buffer signals in this baseline; do not claim zero CRT/STL/general heap coverage.
 
 Pass/fail rule:
 
@@ -164,9 +175,11 @@ Fast gate tests required before the slice can be considered complete:
 - `Diagnostics_BoundedChannel_RecordsEventsAndCounters`
 - `Diagnostics_BoundedChannel_DropsWhenFull`
 - `Diagnostics_ChannelSnapshot_ReportsAcceptedDroppedAndCounters`
+- `Diagnostics_ChannelStopped_DoesNotMutateAfterShutdown`
 - `Diagnostics_ChannelRejectsUnknownIds_WhenValidationEnabled`
+- `Diagnostics_CounterOverflow_ReturnsExplicitStatusAndDoesNotMutate`
 - `Diagnostics_NoReportDependency_ForRuntimeResults`
-- `Diagnostics_NoAllocationOrExplicitDeferral_ForMeasuredFixture`
+- `Diagnostics_NoHiddenAllocation_UsesYuMemorySignal`
 
 Expected command family:
 
@@ -217,6 +230,6 @@ Request `APPROVED_FOR_FIRST_SLICE` only after:
 - 红美铃 confirms the proposal satisfies module-entry gate requirements;
 - 博丽灵梦 confirms bounded cost, disabled behavior, and allocation/accounting requirements;
 - 雾雨魔理沙 confirms the first slice is enforceable in code review;
-- any dependency on `YuMemory` implementation is either landed or explicitly narrowed to an accounting-signal deferral.
+- YuMemory allocation/accounting vocabulary remains available from the P1-GATE-002 implementation baseline.
 
 If those conditions are not met, return `NEEDS_ARCHITECTURE` or `NEEDS_PERFORMANCE` with exact missing fields.
