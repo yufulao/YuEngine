@@ -73,13 +73,13 @@ Phase 2 remains blocked from:
 
 | ID | Title | Owner | Reviewers | Status | Blocks |
 | --- | --- | --- | --- | --- | --- |
-| ADR-0011 | RHI device, command, present, and capture boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精 | Proposed | Null RHI first slice |
+| ADR-0011 | RHI device, command, present, and capture boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精 | Accepted | Null RHI first slice |
 
 ## Module Gate Proposal Queue
 
 | Gate | Module | Layer | Requested decision | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
-| P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | Proposed | Null backend only; create target, record clear, submit, present, deterministic capture; no real backend, shader, material, render scene, resource loading, UI, or game adapter |
+| P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | Gate review in progress | Null backend only; create target, record clear, submit, present, deterministic capture; no real backend, shader, material, render scene, resource loading, UI, or game adapter |
 
 ## Current Active Gates
 
