@@ -76,6 +76,7 @@ The first slice explicitly excludes:
 | ADR-0007 | Thread/task model skeleton | 博丽灵梦 with 八云紫 | 雾雨魔理沙, 博丽灵梦 | Accepted | Thread/Task first slice |
 | ADR-0008 | File/VFS first boundary | 八云紫 | 大妖精, 射命丸文, 博丽灵梦 | Accepted | Future File/VFS gate |
 | ADR-0009 | Resource identity and lifetime boundary | 八云紫 | 八云蓝, 博丽灵梦, 射命丸文 | Accepted | Resource handle/dependency first slice |
+| ADR-0010 | Input replay and action snapshot boundary | 八云紫 | 红美铃, 博丽灵梦, 大妖精 | Proposed | Input replay/action snapshot first slice |
 
 ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accepted as the source tree and module boundary layout. ADR-0003 is accepted as the Kernel lifecycle and dependency model for the first slice.
 
@@ -89,12 +90,14 @@ ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accept
 | P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0004 accepted; bounded synchronous observer only, no reports/profiler/async queue |
 | P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0008 accepted; path normalization and loose fixture reads only, no package parser |
 | P1-GATE-006 | Resource Identity And Lifetime Skeleton | L4 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0009 accepted; synthetic handles/dependencies only, no file/package/load/decode |
+| P1-GATE-007 | Input Replay And Action Snapshot Skeleton | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Proposed | ADR-0010 proposed; synthetic replay and snapshots only, no OS device/UI/game adapter input |
 
 ## Current Active Gates
 
 - P1-GATE-002 implementation is in review as task #14.
-- P1-GATE-003, P1-GATE-004, and P1-GATE-005 are approved for first implementation slices; task handoffs must preserve their dependency guards.
+- P1-GATE-003, P1-GATE-004, and P1-GATE-005 are in implementation review; task handoffs must preserve their dependency guards.
 - P1-GATE-006 is approved, but the implementation task should wait until current shared CMake/index integration for P1-GATE-003/004/005 is stable or a separate clean worktree is assigned.
+- P1-GATE-007 is architecture-only proposed; no implementation task may be created until ADR-0010 is accepted and the gate reaches `APPROVED_FOR_FIRST_SLICE`.
 - No implementation task may be created from a gate until that gate has `APPROVED_FOR_FIRST_SLICE`.
 
 ## Review Routing
@@ -120,7 +123,8 @@ The next implementation slice must not be created if any of these remain true:
 ## Immediate Next Steps
 
 1. Close task #14 code/semantic review for the P1-GATE-002 memory implementation.
-2. Create scoped implementation tasks for P1-GATE-003, P1-GATE-004, and P1-GATE-005.
+2. Close task #19, task #20, and task #21 implementation reviews; task #21 currently needs fixture EOL repair before PM pass.
 3. Create the P1-GATE-006 Resource implementation task only after the current shared CMake/index conflict is cleared or isolated.
-4. Preserve the Phase 1 exclusions: no renderer, resources package parser, async IO, gameplay/world, reports, capture/oracle, or original-game adapter behavior.
-5. If a gate is blocked, amend the owning ADR/gate immediately instead of creating implementation work.
+4. Review ADR-0010 / P1-GATE-007 before any Input implementation task is created.
+5. Preserve the Phase 1 exclusions: no renderer, resources package parser, async IO, gameplay/world, reports, capture/oracle, or original-game adapter behavior.
+6. If a gate is blocked, amend the owning ADR/gate immediately instead of creating implementation work.
