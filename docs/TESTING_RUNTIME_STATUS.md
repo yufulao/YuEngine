@@ -95,6 +95,24 @@ legacy cache guard forced FAST because YUENGINE_ENABLE_LEGACY_CTESTS was not ON
 tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 clean build, Python unittest, 40/40 contracts, and git diff --check passed; runtime suite
 elapsed_ms=62881, wall time about 86.8 seconds
+
+Measured after L35:
+
+build\cmake-bt143\yuengine_cli.exe backend-font-atlas samples\touhou_new_world\project.json --repo-root .
+L35 direct command passed, about 43.9 seconds
+
+build\cmake-bt143\yuengine_cli.exe runtime-contract-suite samples\touhou_new_world\project.json --repo-root . --filter yuengine_backend_font_atlas_contract
+1/1 L35 contract passed, elapsed_ms=43883
+
+tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild
+fast L35 contract through runtime-contract-suite filter, elapsed_ms=43247
+
+ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure
+1/1 yuengine_current_backend_contract passed with L35 filter, 43.94 seconds
+
+tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
+clean build, Python unittest, 41/41 contracts, and git diff --check passed; runtime suite
+elapsed_ms=69923, wall time about 93.6 seconds
 ```
 
 Default bare CTest is now acceptable for an edit-loop check because it runs only the current fast
@@ -117,7 +135,7 @@ tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_upload_binding_cont
 Current deepest edge example:
 
 ```powershell
-tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_program_depth_font_contract -Jobs 8
+tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_font_atlas_contract -Jobs 8
 ```
 
 Full checkpoint verification before commit:
@@ -136,7 +154,7 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 
 - Default bare `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs only
   `yuengine_current_backend_contract`, currently filtered to
-  `yuengine_backend_program_depth_font_contract`.
+  `yuengine_backend_font_atlas_contract`.
 - The default loop command is `tools\verify_runtime.ps1`, which runs the current fast backend
   contract and `git diff --check`.
 - Use `-Mode edge -Filter <test>` after narrow changes; this calls
@@ -155,4 +173,4 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 
 The fast CTest mode removes the one-hour edit-loop path. Remaining performance work is to share the
 boot, resource, and title script-run reports inside the suite so full regression can approach the
-current 34 second deepest-contract cost instead of about 63 seconds.
+current 44 second deepest-contract cost instead of the full-suite cost.

@@ -64,6 +64,7 @@ void usage()
               << "  yuengine_cli backend-surface-material-font <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-shader-sampler <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-program-depth-font <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli backend-font-atlas <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli runtime-contract-suite <project.json> [--repo-root <path>] [--filter <test-name>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
@@ -920,6 +921,46 @@ int runRuntimeContractSuite(
         requireContract(errors, report.openProgramDepthFontObligations == 6, "program/depth/font open obligation count changed");
     });
 
+    runContractSuiteCheck(suite, "yuengine_backend_font_atlas_contract", filter, [&](auto& errors) {
+        const auto report = yu::runtime::runBackendFontAtlasRuntime(manifestPath, repoRoot);
+        requireContract(errors, report.ok, "font atlas report is not ok");
+        requireContract(errors, report.programDepthFontOk, "program/depth/font upstream not ready");
+        requireContract(errors, report.persistentDeviceServiceReady, "persistent D3D9 device service not ready");
+        requireContract(errors, report.fontAtlasResourceEvidenceReady, "font atlas resource evidence not ready");
+        requireContract(errors, report.fmpGlyphLayoutProbeReady, "FMP glyph layout probe not ready");
+        requireContract(errors, report.fontAtlasTextureRecordsReady, "font atlas texture records not ready");
+        requireContract(errors, report.fontAtlasD3DTextureCreationExecuted, "font atlas texture creation did not execute");
+        requireContract(errors, report.fontAtlasPayloadUploadExecuted, "font atlas payload upload did not execute");
+        requireContract(errors, report.fontAtlasUploadPayloadParityReady, "font atlas upload payload parity not ready");
+        requireContract(errors, report.exactCodepointEncodingTrackedOpen, "exact codepoint encoding gap not tracked");
+        requireContract(errors, report.textDrawBackendBindingDeferred, "text draw backend binding was not deferred");
+        requireContract(errors, report.materialProgramSelectionStillDeferred, "material program selection was not preserved");
+        requireContract(errors, report.sampleableDepthStillDeferred, "sampleable depth gate was not preserved");
+        requireContract(errors, report.downstreamDrawPresentDeferred, "downstream draw/present was not deferred");
+        requireContract(errors, report.fontMapFiles == 4, "font map file count changed");
+        requireContract(errors, report.fmpGlyphRecords == 20854, "FMP glyph record count changed");
+        requireContract(errors, report.fmpGlyphRecordStride32Files == 4, "FMP glyph stride evidence changed");
+        requireContract(errors, report.fmpAtlasTailLinks == 7, "FMP atlas tail link count changed");
+        requireContract(errors, report.fmpMetricRecordsInRange == 20854, "FMP metric range count changed");
+        requireContract(errors, report.fmpAsciiGlyphRecords == 380, "ASCII glyph count changed");
+        requireContract(errors, report.fmpAsciiPackedKeyMatches == 380, "ASCII packed key evidence changed");
+        requireContract(errors, report.fmpMonotonicGlyphMaps == 4, "monotonic glyph map count changed");
+        requireContract(errors, report.fontAtlasTextureRecords == 7, "font atlas texture record count changed");
+        requireContract(errors, report.fontAtlasTexturesCreated == 7, "font atlas texture creation count changed");
+        requireContract(errors, report.fontAtlasUploadRecords == 7, "font atlas upload record count changed");
+        requireContract(errors, report.fontAtlasUploadedSubresources == 14, "font atlas uploaded subresource count changed");
+        requireContract(errors, report.fontAtlasFailedRecords == 0, "font atlas failure count changed");
+        requireContract(errors, report.fontAtlas4096 == 7, "font atlas dimension count changed");
+        requireContract(errors, report.fontAtlasA8 == 7, "font atlas A8 count changed");
+        requireContract(errors, report.fontAtlasMip2 == 7, "font atlas mip count changed");
+        requireContract(errors, report.fontAtlasPayloadMatches == 7, "font atlas payload match count changed");
+        requireContract(errors, report.fontAtlasPayloadBytes == 146800640, "font atlas payload byte count changed");
+        requireContract(errors, report.fontAtlasUploadedPayloadBytes == 146800640, "font atlas uploaded byte count changed");
+        requireContract(errors, report.resolvedFontAtlasContracts == 5, "font atlas resolved contract count changed");
+        requireContract(errors, report.trackedFontAtlasObligations == 6, "font atlas tracked obligation count changed");
+        requireContract(errors, report.openFontAtlasObligations == 6, "font atlas open obligation count changed");
+    });
+
     runContractSuiteCheck(suite, "yuengine_mission_event_thread_contract", filter, [&](auto& errors) {
         const auto report = yu::runtime::runMissionEventThreadRuntime(manifestPath, repoRoot);
         requireContract(errors, report.ok && report.sceneRuntimeOk, "mission event thread report is not ok");
@@ -1127,6 +1168,11 @@ int main(int argc, char** argv)
         if (command == "backend-program-depth-font") {
             auto report = yu::runtime::runBackendProgramDepthFontRuntime(manifest, repoRoot);
             std::cout << yu::runtime::backendProgramDepthFontRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "backend-font-atlas") {
+            auto report = yu::runtime::runBackendFontAtlasRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendFontAtlasRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "runtime-contract-suite") {

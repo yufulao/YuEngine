@@ -181,6 +181,12 @@ void addError(BackendProgramDepthFontRuntimeReport& report, const std::string& m
     report.errors.push_back(message);
 }
 
+void addError(BackendFontAtlasRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -766,6 +772,14 @@ uint16_t readLe16(const std::vector<std::byte>& bytes, size_t offset)
     return static_cast<uint16_t>(std::to_integer<unsigned char>(bytes[offset]))
         | static_cast<uint16_t>(
             static_cast<uint16_t>(std::to_integer<unsigned char>(bytes[offset + 1])) << 8);
+}
+
+float readLeFloat32(const std::vector<std::byte>& bytes, size_t offset)
+{
+    const uint32_t bits = readLe32(bytes, offset);
+    float value = 0.0f;
+    std::memcpy(&value, &bits, sizeof(value));
+    return value;
 }
 
 std::string readDdsFourCc(const std::vector<std::byte>& bytes, size_t offset)
@@ -2087,6 +2101,9 @@ D3DFORMAT d3dFormatFromResourceRecord(const std::string& format)
     if (format == "D3DFMT_A8L8") {
         return D3DFMT_A8L8;
     }
+    if (format == "D3DFMT_A8") {
+        return D3DFMT_A8;
+    }
     if (format == "D3DFMT_X8R8G8B8") {
         return D3DFMT_X8R8G8B8;
     }
@@ -2230,6 +2247,9 @@ int uploadBytesPerPixelForFormat(const std::string& format)
     }
     if (format == "D3DFMT_A8L8") {
         return 2;
+    }
+    if (format == "D3DFMT_A8") {
+        return 1;
     }
     return 0;
 }
@@ -6445,6 +6465,437 @@ BackendProgramDepthFontRuntimeReport buildBackendProgramDepthFontRuntimeReport(
     return storeCachedReport(cache, cacheKey, report);
 }
 
+BackendDeviceResourceExecutionRecord makeFontAtlasDeviceResourceRecord(
+    const BackendFontAtlasResourceRecord& source)
+{
+    BackendDeviceResourceExecutionRecord record;
+    record.name = resource::normalizeResourcePath(source.atlasPath);
+    record.path = source.atlasPath;
+    record.operation = "CreateTexture";
+    record.resourceKind = "font_atlas_texture";
+    record.format = source.format;
+    record.status = source.status;
+    record.width = source.width;
+    record.height = source.height;
+    record.mipLevels = source.mipLevels;
+    record.cubeFaces = 1;
+    record.subresourceCount = source.ddsHeaderReady ? source.mipLevels : 0;
+    record.byteSize = source.atlasBytes;
+    record.payloadBytes = source.payloadBytes;
+    record.ready = source.ddsHeaderReady && source.format == "D3DFMT_A8";
+    return record;
+}
+
+BackendFontAtlasTextureRuntimeRecord makeFontAtlasTextureRuntimeRecord(
+    const BackendFontAtlasResourceRecord& source,
+    const BackendResourceCreationExecutionRecord& creation,
+    const BackendUploadBindingExecutionRecord& upload)
+{
+    BackendFontAtlasTextureRuntimeRecord record;
+    record.name = resource::normalizeResourcePath(source.atlasPath);
+    record.fontMapPath = source.fontMapPath;
+    record.atlasPath = source.atlasPath;
+    record.operation = "CreateTexture+LockRect/UnlockRect";
+    record.format = source.format;
+    record.status = upload.realCallReady ? "real_success" : upload.status;
+    record.detail = upload.realCallReady
+        ? "font atlas D3DFMT_A8 texture was created and both DDS mip payloads uploaded"
+        : upload.detail;
+    record.width = source.width;
+    record.height = source.height;
+    record.mipLevels = source.mipLevels;
+    record.subresourceCount = source.mipLevels;
+    record.uploadedSubresources = upload.uploadedSubresources;
+    record.atlasBytes = source.atlasBytes;
+    record.payloadBytes = source.payloadBytes;
+    record.expectedPayloadBytes = source.expectedPayloadBytes;
+    record.uploadedPayloadBytes = static_cast<int>(upload.uploadedPayloadBytes);
+    record.sourceReady = source.ddsHeaderReady;
+    record.realHandleReady = creation.realHandleReady;
+    record.realUploadReady = upload.realCallReady;
+    if (!creation.realHandleReady) {
+        record.status = creation.status;
+        record.detail = creation.detail;
+    }
+    return record;
+}
+
+std::string readFixedUtf8String(
+    const std::vector<std::byte>& bytes,
+    size_t offset,
+    size_t maxLength)
+{
+    std::string value;
+    for (size_t i = 0; i < maxLength && offset + i < bytes.size(); ++i) {
+        const char ch = static_cast<char>(std::to_integer<unsigned char>(bytes[offset + i]));
+        if (ch == '\0') {
+            break;
+        }
+        value.push_back(ch);
+    }
+    return value;
+}
+
+BackendFmpGlyphLayoutRecord decodeFmpGlyphLayoutRecord(
+    const std::string& fontMapPath,
+    const std::vector<std::byte>& bytes)
+{
+    BackendFmpGlyphLayoutRecord record;
+    record.fontMapPath = fontMapPath;
+    record.fileBytes = static_cast<int>(bytes.size());
+    record.recordStart = 0x180;
+    record.recordStride = 32;
+    record.status = "blocked";
+    record.evidence = "FMP glyph layout was not decoded";
+
+    const std::string magic = readFixedUtf8String(bytes, 0, 16);
+    const std::string extension = readFixedUtf8String(bytes, 16, 16);
+    if (bytes.size() < static_cast<size_t>(record.recordStart)
+        || magic != "MgResourceHeader" || extension != "fmp") {
+        record.evidence = "FMP header magic is missing";
+        return record;
+    }
+
+    record.glyphCount = static_cast<int>(readLe32(bytes, 0x100));
+    record.atlasCount = static_cast<int>(readLe32(bytes, 0x104));
+    record.cellWidth = static_cast<int>(readLe32(bytes, 0x108));
+    record.cellHeight = static_cast<int>(readLe32(bytes, 0x10c));
+    record.fontFace = readFixedUtf8String(bytes, 0x160, 32);
+    record.headerReady = record.glyphCount > 0 && record.atlasCount > 0
+        && record.cellWidth == 64 && record.cellHeight == 64;
+
+    const int64_t recordBytes =
+        static_cast<int64_t>(record.glyphCount) * static_cast<int64_t>(record.recordStride);
+    record.recordBytes = static_cast<int>(recordBytes);
+    const int64_t tailOffset = static_cast<int64_t>(record.recordStart) + recordBytes;
+    if (tailOffset < 0 || tailOffset > static_cast<int64_t>(bytes.size())) {
+        record.evidence = "FMP glyph record area exceeds file size";
+        return record;
+    }
+    record.tailBytes = static_cast<int>(static_cast<int64_t>(bytes.size()) - tailOffset);
+
+    uint32_t previousGlyphKey = 0;
+    for (int i = 0; i < record.glyphCount; ++i) {
+        const size_t offset = static_cast<size_t>(record.recordStart)
+            + static_cast<size_t>(i) * static_cast<size_t>(record.recordStride);
+        const uint32_t packedKey = readLe32(bytes, offset);
+        const uint32_t glyphKey = readLe32(bytes, offset + 28);
+        if (glyphKey >= previousGlyphKey) {
+            ++record.monotonicGlyphKeys;
+        }
+        previousGlyphKey = glyphKey;
+        if (glyphKey >= 0x20 && glyphKey <= 0x7e) {
+            ++record.asciiGlyphRecords;
+            if ((packedKey >> 16) == glyphKey) {
+                ++record.asciiPackedKeyMatches;
+            }
+        }
+
+        bool metricsInRange = true;
+        for (int field = 2; field <= 6; ++field) {
+            const float value = readLeFloat32(bytes, offset + static_cast<size_t>(field) * 4);
+            if (!(value >= 0.0f && value <= 1.0f)) {
+                metricsInRange = false;
+                break;
+            }
+        }
+        if (metricsInRange) {
+            ++record.metricRecordsInRange;
+        }
+    }
+
+    record.strideReady = record.glyphCount > 0
+        && record.recordBytes + record.recordStart + record.tailBytes == record.fileBytes
+        && record.metricRecordsInRange == record.glyphCount
+        && record.monotonicGlyphKeys == record.glyphCount
+        && record.asciiGlyphRecords > 0
+        && record.asciiPackedKeyMatches == record.asciiGlyphRecords;
+
+    size_t offset = static_cast<size_t>(tailOffset);
+    bool tailReady = offset < bytes.size();
+    while (tailReady && offset < bytes.size()) {
+        if (offset + 4 > bytes.size()) {
+            tailReady = false;
+            break;
+        }
+        const uint32_t pathLength = readLe32(bytes, offset);
+        offset += 4;
+        if (pathLength == 0 || offset + pathLength > bytes.size()) {
+            tailReady = false;
+            break;
+        }
+        std::string path;
+        for (uint32_t i = 0; i < pathLength; ++i) {
+            path.push_back(static_cast<char>(std::to_integer<unsigned char>(bytes[offset + i])));
+        }
+        if (!path.starts_with("font/") || !path.ends_with(".dds")) {
+            tailReady = false;
+            break;
+        }
+        ++record.atlasTailLinks;
+        offset += pathLength;
+        const size_t padding = (4 - (pathLength % 4)) % 4;
+        if (offset + padding > bytes.size()) {
+            tailReady = false;
+            break;
+        }
+        offset += padding;
+    }
+    record.atlasTailReady = tailReady && offset == bytes.size()
+        && record.atlasTailLinks == record.atlasCount;
+    record.metricRangeReady = record.metricRecordsInRange == record.glyphCount;
+    record.exactCodepointEncodingTrackedOpen = record.glyphCount > record.asciiGlyphRecords;
+    record.status = record.headerReady && record.strideReady && record.atlasTailReady
+        && record.metricRangeReady ? "contract_ready" : "blocked";
+    record.evidence = record.status == "contract_ready"
+        ? "FMP header, 32-byte glyph record stride, UV/metric ranges, and tail atlas path table are consistent"
+        : "FMP glyph layout probe failed header, stride, metric, or tail validation";
+    return record;
+}
+
+std::vector<BackendFmpGlyphLayoutRecord> buildFmpGlyphLayoutRecords(
+    const resource::VirtualFileSystem& vfs)
+{
+    std::vector<BackendFmpGlyphLayoutRecord> records;
+    for (const auto& fontMapPath : fontMapResourceFiles()) {
+        const auto fontMap = vfs.readBytes(fontMapPath);
+        if (!fontMap.found || fontMap.bytes.empty()) {
+            BackendFmpGlyphLayoutRecord record;
+            record.fontMapPath = fontMapPath;
+            record.status = "blocked";
+            record.evidence = "FMP font map payload is not available";
+            records.push_back(std::move(record));
+            continue;
+        }
+        records.push_back(decodeFmpGlyphLayoutRecord(fontMapPath, fontMap.bytes));
+    }
+    return records;
+}
+
+BackendFontAtlasRuntimeReport buildBackendFontAtlasRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "backend-font-atlas");
+    static std::map<std::string, BackendFontAtlasRuntimeReport> cache;
+    BackendFontAtlasRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
+    BackendFontAtlasRuntimeReport report;
+    const auto programDepthFont =
+        buildBackendProgramDepthFontRuntimeReport(inputs, rendererProfile, vfs);
+    const auto deviceCreation =
+        buildBackendDeviceCreationRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.programDepthFontOk = programDepthFont.ok;
+    report.deviceCreationOk = deviceCreation.ok;
+    report.backbufferWidth = programDepthFont.backbufferWidth;
+    report.backbufferHeight = programDepthFont.backbufferHeight;
+    report.fontQueryRecords = programDepthFont.fontQueryRecords;
+    report.textDrawCommands = programDepthFont.textDrawCommands;
+    report.stringSizeQueries = programDepthFont.stringSizeQueries;
+    report.preservedDepthTextureBindings = programDepthFont.preservedDepthTextureBindings;
+    report.preservedMaterialProgramBindings =
+        programDepthFont.preservedMaterialProgramBindings;
+    report.drawPresentCaptureRecordsDeferred =
+        programDepthFont.drawPresentCaptureRecordsDeferred;
+
+    report.glyphLayoutRecords = buildFmpGlyphLayoutRecords(vfs);
+    for (const auto& record : report.glyphLayoutRecords) {
+        if (record.headerReady) {
+            ++report.fontMapFiles;
+        }
+        if (record.strideReady && record.recordStride == 32) {
+            ++report.fmpGlyphRecordStride32Files;
+        }
+        if (record.atlasTailReady) {
+            report.fmpAtlasTailLinks += record.atlasTailLinks;
+        }
+        if (record.metricRangeReady) {
+            report.fmpMetricRecordsInRange += record.metricRecordsInRange;
+        }
+        if (record.monotonicGlyphKeys == record.glyphCount && record.glyphCount > 0) {
+            ++report.fmpMonotonicGlyphMaps;
+        }
+        report.fmpGlyphRecords += record.glyphCount;
+        report.fmpAsciiGlyphRecords += record.asciiGlyphRecords;
+        report.fmpAsciiPackedKeyMatches += record.asciiPackedKeyMatches;
+    }
+
+    report.fmpGlyphLayoutProbeReady =
+        report.glyphLayoutRecords.size() == 4
+        && report.fontMapFiles == 4
+        && report.fmpGlyphRecords == 20854
+        && report.fmpGlyphRecordStride32Files == 4
+        && report.fmpAtlasTailLinks == 7
+        && report.fmpMetricRecordsInRange == 20854
+        && report.fmpAsciiGlyphRecords == 380
+        && report.fmpAsciiPackedKeyMatches == 380
+        && report.fmpMonotonicGlyphMaps == 4;
+
+    auto service =
+        createPlatformD3D9DeviceService(report.backbufferWidth, report.backbufferHeight);
+    report.persistentDeviceServiceReady = service->serviceReady;
+
+    for (const auto& source : programDepthFont.fontAtlasRecords) {
+        BackendDeviceResourceExecutionRecord deviceRecord =
+            makeFontAtlasDeviceResourceRecord(source);
+        const auto creation = executeResourceCreationRecord(*service, deviceRecord);
+        const auto upload = executeTextureUploadRecord(*service, deviceRecord, vfs);
+        auto runtimeRecord = makeFontAtlasTextureRuntimeRecord(source, creation, upload);
+
+        ++report.fontAtlasTextureRecords;
+        if (runtimeRecord.realHandleReady) {
+            ++report.fontAtlasTexturesCreated;
+        }
+        if (runtimeRecord.realUploadReady) {
+            ++report.fontAtlasUploadRecords;
+            report.fontAtlasUploadedSubresources += runtimeRecord.uploadedSubresources;
+            report.fontAtlasUploadedPayloadBytes += runtimeRecord.uploadedPayloadBytes;
+        } else {
+            ++report.fontAtlasFailedRecords;
+        }
+        if (runtimeRecord.width == 4096 && runtimeRecord.height == 4096) {
+            ++report.fontAtlas4096;
+        }
+        if (runtimeRecord.format == "D3DFMT_A8") {
+            ++report.fontAtlasA8;
+        }
+        if (runtimeRecord.mipLevels == 2) {
+            ++report.fontAtlasMip2;
+        }
+        if (runtimeRecord.payloadBytes > 0
+            && runtimeRecord.payloadBytes == runtimeRecord.expectedPayloadBytes) {
+            ++report.fontAtlasPayloadMatches;
+        }
+        report.fontAtlasPayloadBytes += runtimeRecord.payloadBytes;
+        report.textureRecords.push_back(std::move(runtimeRecord));
+    }
+
+    report.fontAtlasResourceEvidenceReady =
+        programDepthFont.fontAtlasResourceEvidenceReady
+        && programDepthFont.fontAtlasLinks == 7;
+    report.fontAtlasTextureRecordsReady =
+        report.fontAtlasTextureRecords == 7 && report.fontAtlas4096 == 7
+        && report.fontAtlasA8 == 7 && report.fontAtlasMip2 == 7
+        && report.fontAtlasPayloadMatches == 7
+        && report.fontAtlasPayloadBytes == 146800640;
+    report.fontAtlasD3DTextureCreationExecuted =
+        report.persistentDeviceServiceReady && report.fontAtlasTexturesCreated == 7
+        && report.fontAtlasFailedRecords == 0;
+    report.fontAtlasPayloadUploadExecuted =
+        report.fontAtlasUploadRecords == 7 && report.fontAtlasUploadedSubresources == 14
+        && report.fontAtlasFailedRecords == 0;
+    report.fontAtlasUploadPayloadParityReady =
+        report.fontAtlasPayloadUploadExecuted
+        && report.fontAtlasUploadedPayloadBytes == report.fontAtlasPayloadBytes
+        && report.fontAtlasUploadedPayloadBytes == 146800640;
+    report.exactCodepointEncodingTrackedOpen =
+        report.fmpGlyphLayoutProbeReady
+        && report.fmpAsciiGlyphRecords < report.fmpGlyphRecords;
+    report.textDrawBackendBindingDeferred =
+        report.fontQueryRecords == 6 && report.textDrawCommands == 6
+        && report.stringSizeQueries == 5 && report.exactCodepointEncodingTrackedOpen;
+    report.materialProgramSelectionStillDeferred =
+        programDepthFont.materialProgramSelectionGapTracked
+        && report.preservedMaterialProgramBindings == 38;
+    report.sampleableDepthStillDeferred =
+        programDepthFont.sampleableDepthTextureGateTracked
+        && report.preservedDepthTextureBindings == 1;
+    report.downstreamDrawPresentDeferred =
+        report.drawPresentCaptureRecordsDeferred == 124;
+    report.backbufferExtentCarried =
+        report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+
+    report.contracts.push_back(makeBackendObligation(
+        "inherited_program_depth_font_runtime",
+        report.programDepthFontOk ? "contract_ready" : "blocked",
+        "L35 consumes L34 FMP/DDS atlas evidence and keeps program/depth gates explicit"));
+    report.contracts.push_back(makeBackendObligation(
+        "fmp_glyph_record_layout_probe",
+        report.fmpGlyphLayoutProbeReady ? "contract_ready" : "blocked",
+        "4 FMP files expose 20854 32-byte glyph records plus 7 length-prefixed atlas links"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_texture_creation_execution",
+        report.fontAtlasD3DTextureCreationExecuted ? "contract_ready" : "blocked",
+        "7 recovered D3DFMT_A8 atlas DDS records create real IDirect3DTexture9 handles"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_payload_upload_execution",
+        report.fontAtlasPayloadUploadExecuted ? "contract_ready" : "blocked",
+        "14 font atlas mip subresources upload through LockRect/UnlockRect"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_payload_parity",
+        report.fontAtlasUploadPayloadParityReady ? "contract_ready" : "blocked",
+        "146800640 atlas payload bytes are uploaded exactly from the recovered DDS payloads"));
+    report.contracts.push_back(makeBackendObligation(
+        "exact_fmp_codepoint_encoding",
+        report.exactCodepointEncodingTrackedOpen ? "tracked_open" : "blocked",
+        "ASCII glyph keys are verified, but non-ASCII packed key semantics are not named yet"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_text_draw_backend_binding",
+        report.textDrawBackendBindingDeferred ? "tracked_open" : "blocked",
+        "title text draw/string-size commands are preserved but not bound to glyph quads yet"));
+    report.contracts.push_back(makeBackendObligation(
+        "material_program_selection_binding",
+        report.materialProgramSelectionStillDeferred ? "tracked_open" : "blocked",
+        "font atlas progress does not guess scene material shader programs or passes"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampleable_depth_texture_implementation",
+        report.sampleableDepthStillDeferred ? "tracked_open" : "blocked",
+        "font atlas progress does not convert the D24S8 depth surface into a sampleable texture"));
+    report.contracts.push_back(makeBackendObligation(
+        "draw_present_capture_after_font_atlas",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "draw, present, and capture remain deferred until material/depth/font text draw gates close"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_after_capture",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "original-frame oracle remains deferred until YuEngine can capture an executed frame"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedFontAtlasContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedFontAtlasObligations;
+            ++report.openFontAtlasObligations;
+        } else {
+            ++report.openFontAtlasObligations;
+        }
+    }
+
+    if (!report.programDepthFontOk || !report.deviceCreationOk) {
+        addError(report, "upstream program/depth/font or device creation contract is not ready");
+    }
+    if (!report.persistentDeviceServiceReady) {
+        addError(report, "persistent D3D9 device service is not ready for font atlas upload");
+    }
+    if (!report.fontAtlasResourceEvidenceReady || !report.fmpGlyphLayoutProbeReady) {
+        addError(report, "font atlas resource or FMP glyph layout evidence is incomplete");
+    }
+    if (!report.fontAtlasTextureRecordsReady || !report.fontAtlasD3DTextureCreationExecuted
+        || !report.fontAtlasPayloadUploadExecuted || !report.fontAtlasUploadPayloadParityReady) {
+        addError(report, "font atlas texture creation/upload execution is incomplete");
+    }
+    if (!report.exactCodepointEncodingTrackedOpen || !report.textDrawBackendBindingDeferred
+        || !report.materialProgramSelectionStillDeferred || !report.sampleableDepthStillDeferred) {
+        addError(report, "font atlas downstream open gates are not explicitly preserved");
+    }
+    if (!report.downstreamDrawPresentDeferred || !report.backbufferExtentCarried) {
+        addError(report, "draw/present or backbuffer gate was not preserved");
+    }
+    if (report.resolvedFontAtlasContracts != 5
+        || report.trackedFontAtlasObligations != 6
+        || report.openFontAtlasObligations != 6) {
+        addError(report, "font atlas obligation accounting is inconsistent");
+    }
+
+    return storeCachedReport(cache, cacheKey, report);
+}
+
 } // namespace
 
 FirstFrameRuntimeReport buildFirstFrameRuntimeReport(
@@ -9435,6 +9886,176 @@ std::string backendProgramDepthFontRuntimeReportToJson(
             << (record.ddsHeaderReady ? "true" : "false")
             << ", \"evidence\": \"" << core::jsonEscape(record.evidence) << "\"}";
         out << (i + 1 == report.fontAtlasRecords.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendFontAtlasRuntimeReport runBackendFontAtlasRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendFontAtlasRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendFontAtlasRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendFontAtlasRuntimeReportToJson(
+    const BackendFontAtlasRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_font_atlas_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " program_depth_font_ok=" << (report.programDepthFontOk ? "true" : "false")
+        << " device_creation_ok=" << (report.deviceCreationOk ? "true" : "false")
+        << " persistent_device_service_ready="
+        << (report.persistentDeviceServiceReady ? "true" : "false")
+        << " font_atlas_resource_evidence_ready="
+        << (report.fontAtlasResourceEvidenceReady ? "true" : "false")
+        << " fmp_glyph_layout_probe_ready="
+        << (report.fmpGlyphLayoutProbeReady ? "true" : "false")
+        << " font_atlas_texture_records_ready="
+        << (report.fontAtlasTextureRecordsReady ? "true" : "false")
+        << " font_atlas_d3d_texture_creation_executed="
+        << (report.fontAtlasD3DTextureCreationExecuted ? "true" : "false")
+        << " font_atlas_payload_upload_executed="
+        << (report.fontAtlasPayloadUploadExecuted ? "true" : "false")
+        << " font_atlas_upload_payload_parity_ready="
+        << (report.fontAtlasUploadPayloadParityReady ? "true" : "false")
+        << " exact_codepoint_encoding_tracked_open="
+        << (report.exactCodepointEncodingTrackedOpen ? "true" : "false")
+        << " text_draw_backend_binding_deferred="
+        << (report.textDrawBackendBindingDeferred ? "true" : "false")
+        << " material_program_selection_still_deferred="
+        << (report.materialProgramSelectionStillDeferred ? "true" : "false")
+        << " sampleable_depth_still_deferred="
+        << (report.sampleableDepthStillDeferred ? "true" : "false")
+        << " downstream_draw_present_deferred="
+        << (report.downstreamDrawPresentDeferred ? "true" : "false")
+        << " backbuffer_extent_carried=" << (report.backbufferExtentCarried ? "true" : "false")
+        << " font_map_files=" << report.fontMapFiles
+        << " fmp_glyph_records=" << report.fmpGlyphRecords
+        << " fmp_glyph_record_stride32_files=" << report.fmpGlyphRecordStride32Files
+        << " fmp_atlas_tail_links=" << report.fmpAtlasTailLinks
+        << " fmp_metric_records_in_range=" << report.fmpMetricRecordsInRange
+        << " fmp_ascii_glyph_records=" << report.fmpAsciiGlyphRecords
+        << " fmp_ascii_packed_key_matches=" << report.fmpAsciiPackedKeyMatches
+        << " fmp_monotonic_glyph_maps=" << report.fmpMonotonicGlyphMaps
+        << " font_atlas_texture_records=" << report.fontAtlasTextureRecords
+        << " font_atlas_textures_created=" << report.fontAtlasTexturesCreated
+        << " font_atlas_upload_records=" << report.fontAtlasUploadRecords
+        << " font_atlas_uploaded_subresources=" << report.fontAtlasUploadedSubresources
+        << " font_atlas_failed_records=" << report.fontAtlasFailedRecords
+        << " font_atlas_4096=" << report.fontAtlas4096
+        << " font_atlas_a8=" << report.fontAtlasA8
+        << " font_atlas_mip2=" << report.fontAtlasMip2
+        << " font_atlas_payload_matches=" << report.fontAtlasPayloadMatches
+        << " font_atlas_payload_bytes=" << report.fontAtlasPayloadBytes
+        << " font_atlas_uploaded_payload_bytes=" << report.fontAtlasUploadedPayloadBytes
+        << " font_query_records=" << report.fontQueryRecords
+        << " text_draw_commands=" << report.textDrawCommands
+        << " string_size_queries=" << report.stringSizeQueries
+        << " preserved_depth_texture_bindings=" << report.preservedDepthTextureBindings
+        << " preserved_material_program_bindings=" << report.preservedMaterialProgramBindings
+        << " draw_present_capture_records_deferred=" << report.drawPresentCaptureRecordsDeferred
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_font_atlas_contracts=" << report.resolvedFontAtlasContracts
+        << " tracked_font_atlas_obligations=" << report.trackedFontAtlasObligations
+        << " open_font_atlas_obligations=" << report.openFontAtlasObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"glyph_layout_summary\": {";
+    out << "\"font_map_files\": " << report.fontMapFiles
+        << ", \"fmp_glyph_records\": " << report.fmpGlyphRecords
+        << ", \"fmp_glyph_record_stride32_files\": "
+        << report.fmpGlyphRecordStride32Files
+        << ", \"fmp_atlas_tail_links\": " << report.fmpAtlasTailLinks
+        << ", \"fmp_metric_records_in_range\": " << report.fmpMetricRecordsInRange
+        << ", \"fmp_ascii_glyph_records\": " << report.fmpAsciiGlyphRecords
+        << ", \"fmp_ascii_packed_key_matches\": "
+        << report.fmpAsciiPackedKeyMatches << "},\n";
+    out << "  \"font_atlas_upload_summary\": {";
+    out << "\"font_atlas_texture_records\": " << report.fontAtlasTextureRecords
+        << ", \"font_atlas_textures_created\": " << report.fontAtlasTexturesCreated
+        << ", \"font_atlas_upload_records\": " << report.fontAtlasUploadRecords
+        << ", \"font_atlas_uploaded_subresources\": "
+        << report.fontAtlasUploadedSubresources
+        << ", \"font_atlas_payload_bytes\": " << report.fontAtlasPayloadBytes
+        << ", \"font_atlas_uploaded_payload_bytes\": "
+        << report.fontAtlasUploadedPayloadBytes << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_font_atlas_contracts\": " << report.resolvedFontAtlasContracts
+        << ", \"tracked_font_atlas_obligations\": "
+        << report.trackedFontAtlasObligations
+        << ", \"open_font_atlas_obligations\": "
+        << report.openFontAtlasObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"glyph_layout_records\": [\n";
+    for (size_t i = 0; i < report.glyphLayoutRecords.size(); ++i) {
+        const auto& record = report.glyphLayoutRecords[i];
+        out << "    {\"font_map_path\": \"" << core::jsonEscape(record.fontMapPath)
+            << "\", \"font_face\": \"" << core::jsonEscape(record.fontFace)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"glyph_count\": " << record.glyphCount
+            << ", \"atlas_count\": " << record.atlasCount
+            << ", \"cell_width\": " << record.cellWidth
+            << ", \"cell_height\": " << record.cellHeight
+            << ", \"record_start\": " << record.recordStart
+            << ", \"record_stride\": " << record.recordStride
+            << ", \"tail_bytes\": " << record.tailBytes
+            << ", \"atlas_tail_links\": " << record.atlasTailLinks
+            << ", \"ascii_glyph_records\": " << record.asciiGlyphRecords
+            << ", \"ascii_packed_key_matches\": " << record.asciiPackedKeyMatches
+            << ", \"metric_records_in_range\": " << record.metricRecordsInRange
+            << ", \"exact_codepoint_encoding_tracked_open\": "
+            << (record.exactCodepointEncodingTrackedOpen ? "true" : "false")
+            << ", \"evidence\": \"" << core::jsonEscape(record.evidence) << "\"}";
+        out << (i + 1 == report.glyphLayoutRecords.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"texture_records\": [\n";
+    for (size_t i = 0; i < report.textureRecords.size(); ++i) {
+        const auto& record = report.textureRecords[i];
+        out << "    {\"name\": \"" << core::jsonEscape(record.name)
+            << "\", \"font_map_path\": \"" << core::jsonEscape(record.fontMapPath)
+            << "\", \"atlas_path\": \"" << core::jsonEscape(record.atlasPath)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"format\": \"" << core::jsonEscape(record.format)
+            << "\", \"width\": " << record.width
+            << ", \"height\": " << record.height
+            << ", \"mip_levels\": " << record.mipLevels
+            << ", \"subresource_count\": " << record.subresourceCount
+            << ", \"uploaded_subresources\": " << record.uploadedSubresources
+            << ", \"payload_bytes\": " << record.payloadBytes
+            << ", \"uploaded_payload_bytes\": " << record.uploadedPayloadBytes
+            << ", \"real_handle_ready\": " << (record.realHandleReady ? "true" : "false")
+            << ", \"real_upload_ready\": " << (record.realUploadReady ? "true" : "false")
+            << ", \"detail\": \"" << core::jsonEscape(record.detail) << "\"}";
+        out << (i + 1 == report.textureRecords.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

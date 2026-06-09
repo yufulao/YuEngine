@@ -1289,6 +1289,108 @@ struct BackendProgramDepthFontRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendFontAtlasTextureRuntimeRecord {
+    std::string name;
+    std::string fontMapPath;
+    std::string atlasPath;
+    std::string operation;
+    std::string format;
+    std::string status;
+    std::string detail;
+    int width = 0;
+    int height = 0;
+    int mipLevels = 0;
+    int subresourceCount = 0;
+    int uploadedSubresources = 0;
+    int atlasBytes = 0;
+    int payloadBytes = 0;
+    int expectedPayloadBytes = 0;
+    int uploadedPayloadBytes = 0;
+    bool sourceReady = false;
+    bool realHandleReady = false;
+    bool realUploadReady = false;
+};
+
+struct BackendFmpGlyphLayoutRecord {
+    std::string fontMapPath;
+    std::string fontFace;
+    std::string status;
+    std::string evidence;
+    int fileBytes = 0;
+    int glyphCount = 0;
+    int atlasCount = 0;
+    int cellWidth = 0;
+    int cellHeight = 0;
+    int recordStart = 0;
+    int recordStride = 0;
+    int recordBytes = 0;
+    int tailBytes = 0;
+    int atlasTailLinks = 0;
+    int asciiGlyphRecords = 0;
+    int asciiPackedKeyMatches = 0;
+    int monotonicGlyphKeys = 0;
+    int metricRecordsInRange = 0;
+    bool headerReady = false;
+    bool strideReady = false;
+    bool atlasTailReady = false;
+    bool metricRangeReady = false;
+    bool exactCodepointEncodingTrackedOpen = false;
+};
+
+struct BackendFontAtlasRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool programDepthFontOk = false;
+    bool deviceCreationOk = false;
+    bool persistentDeviceServiceReady = false;
+    bool fontAtlasResourceEvidenceReady = false;
+    bool fmpGlyphLayoutProbeReady = false;
+    bool fontAtlasTextureRecordsReady = false;
+    bool fontAtlasD3DTextureCreationExecuted = false;
+    bool fontAtlasPayloadUploadExecuted = false;
+    bool fontAtlasUploadPayloadParityReady = false;
+    bool exactCodepointEncodingTrackedOpen = false;
+    bool textDrawBackendBindingDeferred = false;
+    bool materialProgramSelectionStillDeferred = false;
+    bool sampleableDepthStillDeferred = false;
+    bool downstreamDrawPresentDeferred = false;
+    bool backbufferExtentCarried = false;
+    int fontMapFiles = 0;
+    int fmpGlyphRecords = 0;
+    int fmpGlyphRecordStride32Files = 0;
+    int fmpAtlasTailLinks = 0;
+    int fmpMetricRecordsInRange = 0;
+    int fmpAsciiGlyphRecords = 0;
+    int fmpAsciiPackedKeyMatches = 0;
+    int fmpMonotonicGlyphMaps = 0;
+    int fontAtlasTextureRecords = 0;
+    int fontAtlasTexturesCreated = 0;
+    int fontAtlasUploadRecords = 0;
+    int fontAtlasUploadedSubresources = 0;
+    int fontAtlasFailedRecords = 0;
+    int fontAtlas4096 = 0;
+    int fontAtlasA8 = 0;
+    int fontAtlasMip2 = 0;
+    int fontAtlasPayloadMatches = 0;
+    int fontAtlasPayloadBytes = 0;
+    int fontAtlasUploadedPayloadBytes = 0;
+    int fontQueryRecords = 0;
+    int textDrawCommands = 0;
+    int stringSizeQueries = 0;
+    int preservedDepthTextureBindings = 0;
+    int preservedMaterialProgramBindings = 0;
+    int drawPresentCaptureRecordsDeferred = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedFontAtlasContracts = 0;
+    int trackedFontAtlasObligations = 0;
+    int openFontAtlasObligations = 0;
+    std::vector<BackendFontAtlasTextureRuntimeRecord> textureRecords;
+    std::vector<BackendFmpGlyphLayoutRecord> glyphLayoutRecords;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -1522,6 +1624,13 @@ BackendProgramDepthFontRuntimeReport runBackendProgramDepthFontRuntime(
 
 std::string backendProgramDepthFontRuntimeReportToJson(
     const BackendProgramDepthFontRuntimeReport& report);
+
+BackendFontAtlasRuntimeReport runBackendFontAtlasRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendFontAtlasRuntimeReportToJson(
+    const BackendFontAtlasRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

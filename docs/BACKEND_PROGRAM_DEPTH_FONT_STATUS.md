@@ -123,6 +123,6 @@ L34 does not:
 
 ## Next Edge
 
-L35 should use the new FMP/DDS evidence to implement font atlas texture creation/upload and start
-recovering the FMP glyph record layout. Material program selection and sampleable depth remain
-separate blockers unless stronger original evidence is found.
+L35 has since used the FMP/DDS evidence to create/upload font atlas textures and probe the FMP glyph
+record layout. The next edge is L36 material program/pass selection, lightmap material binding, and
+sampleable depth texture evidence before draw execution.

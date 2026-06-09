@@ -1462,7 +1462,7 @@ Boundary:
 
 ### L35: Font Atlas Texture And Glyph Layout Runtime
 
-Status: active after L34.
+Status: completed as backend font atlas runtime checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -1475,11 +1475,46 @@ Deliver:
 
 Acceptance:
 
-- font atlas texture creation must consume the recovered `D3DFMT_A8` 4096x4096 two-mip DDS records,
-  not allocate a placeholder atlas;
-- glyph layout parsing must be validated against FMP byte sizes and atlas references;
-- CTest must lock font resource handle counts, upload payload parity, glyph layout readiness/open
-  accounting, and continue preventing draw execution.
+- `yuengine_cli backend-font-atlas samples/touhou_new_world/project.json --repo-root .` reports
+  `font_atlas_d3d_texture_creation_executed=true`,
+  `font_atlas_payload_upload_executed=true`, and `fmp_glyph_layout_probe_ready=true`;
+- CTest `yuengine_backend_font_atlas_contract` locks 4 FMP files, 20854 32-byte glyph records, 7
+  tail atlas links, 7 real `D3DFMT_A8` texture creations, 14 uploaded mip subresources,
+  146800640 uploaded payload bytes, and ready/open accounting of 5 resolved and 6 tracked-open
+  obligations;
+- exact non-ASCII codepoint encoding, glyph quad/text draw backend, material program selection,
+  sampleable depth, draw/present/capture/oracle remain tracked-open.
+
+Boundary:
+
+- L35 does not fully name non-ASCII FMP codepoint encoding;
+- L35 does not build glyph quads or execute a text draw backend;
+- L35 does not choose material shader programs/passes;
+- L35 does not bind lightmaps or make D24S8 depth sampleable;
+- L35 does not issue draw/present/capture/oracle calls.
+
+### L36: Material Program, Lightmap, And Depth Closure
+
+Status: active after L35.
+
+Deliver:
+
+- recover exact material program/pass ownership for scene mesh draws without guessing from filename
+  suffixes;
+- bind the `ki:tree` lightmap material slot only when its program/pass and `SamplerLight` ownership
+  are proven;
+- recover or implement the sampleable depth texture path separately from the D24S8 depth/stencil
+  surface;
+- keep draw/present/capture/oracle deferred until these gates close.
+
+Acceptance:
+
+- material program evidence must connect stage material/mesh ownership to recovered `.bfx`
+  technique/pass data;
+- lightmap binding must consume the lone material lightmap slot and recovered `SamplerLight` tokens;
+- depth sampling must not treat the existing D24S8 depth/stencil surface as shader-readable without
+  a proven copy/texture path;
+- CTest must lock ready/open accounting and continue preventing draw execution.
 
 ## Stop Conditions
 
@@ -1528,13 +1563,20 @@ Current measured speed after caching and scene reuse:
 - `yuengine_backend_shader_sampler_contract`: default bare CTest passed in 23.97-24.63 seconds.
 - `yuengine_backend_program_depth_font_contract`: suite filter passed in 34.04 seconds; default
   bare CTest passed in 34.08-34.41 seconds.
+- `yuengine_backend_font_atlas_contract`: direct `backend-font-atlas` passed in about 43.9 seconds;
+  suite filter passed in 43.883 seconds; default bare CTest passed in 43.94 seconds.
+- `tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild`: fast L35 contract passed with
+  elapsed_ms=43247.
 - `tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild`: fast L34 contract passed in 33.73
   seconds.
 - `tools\verify_runtime.ps1 -Mode full -SkipPython -SkipDiffCheck -NoBuild`: direct
   `runtime-contract-suite` passed 39/39 contracts in 51.78 seconds.
 - `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: clean build, Python unittest, 40/40
   contracts, and `git diff --check` passed in about 86.8 seconds; runtime suite elapsed_ms=62881.
+- `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: after L35, clean build, Python
+  unittest, 41/41 contracts, and `git diff --check` passed in about 93.6 seconds; runtime suite
+  elapsed_ms=69923.
 - direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.
 - default `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`: 1/1 fast contract
-  after L34.
-- direct `runtime-contract-suite`: 40/40 contracts after L34.
+  after L35.
+- direct `runtime-contract-suite`: 41/41 contracts after L35.
