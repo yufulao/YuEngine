@@ -84,18 +84,16 @@ python -m unittest discover -s tests
 Verified result:
 
 ```text
-CTest: 15/15 passed
+CTest: 16/16 passed
 Python unittest: 6/6 passed
 ```
 
 ## Boundary
 
 L9 materializes runtime handles and reads real payloads, but it is still not a rendered playable
-scene. The next edge must consume these handles into renderer/audio/input/gameplay frame state:
+scene. L10 has consumed these handles into a first-frame renderer/input/event contract. The next
+edge must execute or model first mission event threads and player-control behavior:
 
-- renderer resource upload contract for MDL meshes, DDS textures, COL debug/collision geometry,
-  and camera matrices;
-- actor instance contract from `reimuEx` player scripts and task state;
 - event thread/page contract for `threadEvent0000_00` and tutorial/intro control;
 - input/control contract for player movement and camera update;
 - no hand-written menu, no standalone mesh preview, no bypass of title/new-game/setupProcess.

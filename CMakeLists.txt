@@ -14,6 +14,7 @@ add_library(yuengine_runtime
     src/yuengine/resource/ResourceDiagnostics.cpp
     src/yuengine/resource/VirtualFileSystem.cpp
     src/yuengine/runtime/EngineRuntime.cpp
+    src/yuengine/runtime/FrameRuntime.cpp
     src/yuengine/runtime/RuntimeContext.cpp
     src/yuengine/runtime/SceneRuntime.cpp
     src/yuengine/script/ScriptRuntime.cpp
@@ -163,5 +164,14 @@ if(BUILD_TESTING)
     set_tests_properties(yuengine_scene_runtime_materialization PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "ok=true scene_entry_ok=true stage_handle_ready=true actor_handle_ready=true camera_handle_ready=true event_marker_ready=true stage_dependencies=42 missing_stage_dependencies=0 model_meshes=111 collision_triangles=150 rail_nodes=3;stage_byte_size.: 10176.*model_dependency_count.: 2.*collision_dependency_count.: 1.*texture_dependency_count.: 39;collision_vertex_count.: 272.*collision_index_count.: 450.*collision_triangle_count.: 150;player_chara.: .reimuEx.*player_script_bytes.: 406.*player_pcg_bytes.: 13645;rail_node_count_candidate.: 3;marker.: .marker:sc01/main/ms010_0:eventMap"
+    )
+
+    add_test(
+        NAME yuengine_first_frame_runtime_contract
+        COMMAND yuengine_cli first-frame samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_first_frame_runtime_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true scene_runtime_ok=true renderer_frame_ready=true actor_frame_ready=true camera_frame_ready=true input_frame_ready=true event_frame_ready=true mesh_draw_candidates=111 texture_bindings=39 collision_triangles=150 actor_instances=1 rail_nodes=3 event_markers=1;renderer_profile.: .d3d9_compatible.*material_bindings.: 16.*stage_dependency_count.: 42;player_chara.: .reimuEx.*spawn_position_expression.: .toVec3\\(marker:sc01/main/ms010_0:eventMap._pos\\);camera_source.: .map/doujou/doujou.rcm.*default_target.: .ev_sc01_main_ms010_0;owner_service.: .Actor And Task Service.*control_scope.: .player_actor_camera_scene;marker.: .marker:sc01/main/ms010_0:eventMap"
     )
 endif()

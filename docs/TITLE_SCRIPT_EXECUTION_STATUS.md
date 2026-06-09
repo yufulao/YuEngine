@@ -318,7 +318,7 @@ python -m unittest discover -s tests
 Verified result:
 
 ```text
-CTest: 15/15 passed
+CTest: 16/16 passed
 Python unittest: 6/6 passed
 ```
 
@@ -359,6 +359,11 @@ Python unittest: 6/6 passed
   3 rail-node candidates, and 0 missing stage dependencies. The remaining title-lane work is to
   keep broadening original menu scenarios while L10 consumes those handles into renderer/input
   frame contracts.
+- L10 now has its own completed checkpoint in `docs/FIRST_FRAME_RUNTIME_STATUS.md`:
+  `yuengine_cli first-frame` consumes scene-runtime and emits ready renderer/actor/camera/input/
+  event first-frame contracts with 111 mesh draw candidates, 39 texture bindings, 150 collision
+  triangles, 1 actor instance, 3 rail nodes, and 1 event marker. The remaining work is first
+  mission event thread/tutorial/player-control behavior plus broader title menu scenarios.
 - UI/render command buffer sourced from original script calls, not handwritten UI.
 
 L7 is not complete until original title script execution can drive menu selection, save/new-game

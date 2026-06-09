@@ -156,6 +156,7 @@ engine layer contract
 - `docs/TITLE_SCRIPT_EXECUTION_STATUS.md`: L7 title script execution 当前进度、验证命令和剩余缺口。
 - `docs/SCENE_ENTRY_RUNTIME_STATUS.md`: L8 scene-entry runtime contract 当前进度、验证命令和剩余缺口。
 - `docs/SCENE_RUNTIME_MATERIALIZATION_STATUS.md`: L9 scene runtime materialization 当前进度、验证命令和剩余缺口。
+- `docs/FIRST_FRAME_RUNTIME_STATUS.md`: L10 first-frame renderer/input/event contract 当前进度、验证命令和剩余缺口。
 - `CMakeLists.txt`: C++20 runtime/CLI build 和 CTest 验收入口。
 - `src/yuengine/...`: core JSON、project manifest、VFS/resource diagnostics、`.sqasm` diagnostics、native registry、native service catalog、runtime boot report。
 - `apps/yuengine_cli`: `validate`、`boot`、`resources`、`script` 和 `native-services` CLI。
@@ -517,7 +518,7 @@ R7: Production without editor
 R8: Editor and advanced pipeline
 ```
 
-当前已达到 R1 诊断启动，并完成 L2 资源依赖诊断、L3 脚本模块模型、L4 native service interface baseline、L5 service-backed runtime lifecycle、L6 oracle capture readiness、L7 title script execution checkpoint、L8 scene-entry runtime contract checkpoint、L9 scene runtime materialization checkpoint；这仍不是可玩的游戏执行。
+当前已达到 R1 诊断启动，并完成 L2 资源依赖诊断、L3 脚本模块模型、L4 native service interface baseline、L5 service-backed runtime lifecycle、L6 oracle capture readiness、L7 title script execution checkpoint、L8 scene-entry runtime contract checkpoint、L9 scene runtime materialization checkpoint、L10 first-frame runtime contract checkpoint；这仍不是可玩的游戏执行。
 
 C++ runtime spine 已能通过 `project.json` 加载原 sample 和 empty sample，挂载 VFS，解析 pack manifest 索引，加载 startup `.sqasm` 诊断，并通过 runtime-owned 11 个 native service interfaces 报告 native/API obligations。已验证原 sample：7 个 boot phases、2 个 loose mounts、13,028 个 pack resources、84 个 native registry APIs、11 个 native services、39 个 startup obligations，全部仍是 `not_started`。L2 已验证 title background/logo/DLC stems、title script resource refs、first-mission stage/rail-camera resources 都能通过 VFS 解析，resource report required missing 为 0。L3 已验证 title module 为 81 functions / 4,466 instructions / 593 calls / 80 closure bindings，first mission candidate 为 62 functions / 4,068 instructions / 640 calls / 61 closure bindings，且 C++ parser 可在秒级输出结构化报告。L4 已验证 11 services / 84 native APIs / 0 unowned APIs / 0 unbound APIs，但 native 行为仍没有实现。L5 已验证 original 和 empty sample 都是 `ok=true phases=7 failed_phases=0`。L6 已验证原 exe 可定位，但无 file-IO/render 捕获工具且没有用户驱动 title boot 记录，所以 P1 仍不是完成态；不要伪造 oracle。
 
@@ -532,6 +533,8 @@ L7 当前已有 `script-plan` 和 `script-run`：`script-plan` 解析 `setupProc
 `yuengine_cli scene-entry samples/touhou_new_world/project.json --repo-root .` 已把 title new-game 服务状态和 first mission setup 服务状态合并成正式 runtime contract。当前 scene-entry 指标：`ok=true`、`title_new_game_executed=true`、`mission_setup_executed=true`、`stage_ready=true`、`actor_ready=true`、`camera_ready=true`、`event_ready=true`、`resource_bindings=6`、`missing_resources=0`、`script_bindings=5`、`missing_scripts=0`。已绑定 `map/doujou/doujou.sge`、`map/doujou/doujou.mdl`、`map/doujou/doujou.col`、`map/doujou/doujou.rcm`、`player/reimuex.b64`、`player/reimuex_pcg.b64`、mission/event/player script modules。当前边界转为解析和物化 SGE/RCM/COL/MDL、event marker、actor task、camera task、renderer/audio/input runtime handles，而不是停在 path binding。
 
 `yuengine_cli scene-runtime samples/touhou_new_world/project.json --repo-root .` 已消费 L8 scene-entry 并读取真实资源 payload。当前 scene-runtime 指标：`ok=true`、`scene_entry_ok=true`、`stage_handle_ready=true`、`actor_handle_ready=true`、`camera_handle_ready=true`、`event_marker_ready=true`、`stage_dependencies=42`、`missing_stage_dependencies=0`、`model_meshes=111`、`collision_triangles=150`、`rail_nodes=3`。已确认 `MgResourceHeader` 的 SGE/MDL/COL/RCM payload、道场 42 个依赖、39 个 DDS 纹理、272 个碰撞顶点、450 个索引、3 个 rail node 候选、player b64/pcg payload、event marker 表达式。当前边界转为 renderer/audio/input/gameplay frame contract。
+
+`yuengine_cli first-frame samples/touhou_new_world/project.json --repo-root .` 已消费 L9 scene-runtime handles 并产出 renderer/input/event 首帧 runtime contract。当前 first-frame 指标：`ok=true`、`scene_runtime_ok=true`、`renderer_frame_ready=true`、`actor_frame_ready=true`、`camera_frame_ready=true`、`input_frame_ready=true`、`event_frame_ready=true`、`mesh_draw_candidates=111`、`texture_bindings=39`、`collision_triangles=150`、`actor_instances=1`、`rail_nodes=3`、`event_markers=1`。renderer profile 为 `d3d9_compatible`，输入 ownership 为 `Actor And Task Service` / `player_actor_camera_scene`。当前边界转为 first mission event thread/tutorial/player-control 行为和真实 renderer command-buffer/upload 层。
 
 重要语义修复：`_OP_NEWSLOT/_OP_NEWSLOTA` 是 slot write，不得覆盖 register `a0`，否则 root table 会被污染并丢失 `ModuleBase`。root slot 写入会把 `modTitle = ModuleTitle()` 规范化到 canonical `modTitle` 对象，基类/super 方法执行也不会覆盖对象的 concrete class。P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 现在已有 C++ service interface baseline、首批 runtime-owned service state、首批 runtime-owned script/object state，但还不是完成态，因为完整 API behavior implementation、typed argument/return contracts、`gMenu` 可配置输入、save/new-game 分支和 UI command payload 尚未落地；R2 也不是完成态，因为当前只是 title boot/title idle bytecode checkpoint，不是完整 Squirrel VM，也没有真实 title UI/gameplay。
 
@@ -557,7 +560,7 @@ X8: Editor And Advanced Pipeline Later
 
 优先任务不是写游戏窗口。
 
-当前下一步见 `docs/LOOP_TASKS.md`，优先 L10 边界。当前 L7 已有 multi-module title boot/title idle/new-game bytecode/service/script-object state checkpoint；L8 已执行 `mission/sc01/main/ms010_0.b64.sqasm` 的 `setupProcess` 并通过 `scene-entry` 产出 binding contract；L9 已把这些 binding 物化成 stage graph、event marker、actor task、camera task payload handles。下一条边是把这些 handles 接到 renderer/audio/input/gameplay frame contract，同时继续扩展 Continue/Load/Option/Exit 输入场景。
+当前下一步见 `docs/LOOP_TASKS.md`，优先 L11 边界。当前 L7 已有 multi-module title boot/title idle/new-game bytecode/service/script-object state checkpoint；L8 已执行 `mission/sc01/main/ms010_0.b64.sqasm` 的 `setupProcess` 并通过 `scene-entry` 产出 binding contract；L9 已把这些 binding 物化成 stage graph、event marker、actor task、camera task payload handles；L10 已把 handles 接到 renderer/input/event first-frame contract。下一条边是执行或建模 first mission event thread/tutorial/player-control 行为，同时继续扩展 Continue/Load/Option/Exit 输入场景。
 
 Runtime implementation 已开始，但只能按完整引擎主干推进，不能写临时视觉 demo。所有未确认 native 行为必须进入 obligation/diagnostics。
 

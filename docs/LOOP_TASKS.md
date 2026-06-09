@@ -437,7 +437,7 @@ Progress:
 - Required scene-entry script bindings:
   `mission/sc01/main/ms010_0.b64.sqasm`, `mission/sc01/main/ms010_0.b64`,
   `player/reimuex.b64`, `player/reimuex_pcg.b64`.
-- CTest passes 15/15 and Python unittest passes 6/6.
+- CTest passes 16/16 and Python unittest passes 6/6.
 
 Boundary: L8 proves script-driven new-game and scene-entry binding. It is not a rendered playable
 scene and not a generic stage/actor/camera implementation.
@@ -486,14 +486,14 @@ Next edge:
 - Camera handle records rail camera `map/doujou/doujou.rcm`, 3 rail-node count candidate,
   rail enabled true, auto adjust false, and default target `ev_sc01_main_ms010_0`.
 - Event marker handle records `marker:sc01/main/ms010_0:eventMap`.
-- CTest passes 15/15 and Python unittest passes 6/6.
+- CTest passes 16/16 and Python unittest passes 6/6.
 
 Boundary: L9 proves resource payload materialization into runtime handles. It is not a rendered
 playable frame.
 
 ### L10: Renderer, Input, And First Gameplay Frame Contract
 
-Status: active.
+Status: completed as renderer/input/event first-frame contract checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -517,9 +517,56 @@ Acceptance:
 
 Next edge:
 
-- add a renderer-frame report or runtime state object fed by `SceneRuntimeMaterializationReport`;
-- include model/texture/collision/camera/actor/event counts and concrete resource handles;
-- add CTest for first mission frame contract readiness.
+- `yuengine_cli first-frame samples/touhou_new_world/project.json --repo-root .` now consumes
+  L9 scene-runtime handles and emits a first-frame renderer/input/event contract.
+- First-frame metrics:
+  `ok=true`, `scene_runtime_ok=true`, `renderer_frame_ready=true`, `actor_frame_ready=true`,
+  `camera_frame_ready=true`, `input_frame_ready=true`, `event_frame_ready=true`,
+  `mesh_draw_candidates=111`, `texture_bindings=39`, `collision_triangles=150`,
+  `actor_instances=1`, `rail_nodes=3`, `event_markers=1`.
+- Renderer frame records profile `d3d9_compatible`, 111 mesh draw candidates, 16 material
+  bindings, 39 texture bindings, 150 collision triangles, and 42 stage dependencies.
+- Actor frame records player `reimuEx`, 1 actor instance, spawn expression
+  `toVec3(marker:sc01/main/ms010_0:eventMap._pos)`, and rotY `0`.
+- Camera frame records source `map/doujou/doujou.rcm`, default target `ev_sc01_main_ms010_0`,
+  and 3 rail-node candidates.
+- Input frame records owner `Actor And Task Service` and control scope
+  `player_actor_camera_scene`.
+- Event frame records marker `marker:sc01/main/ms010_0:eventMap`.
+- CTest passes 16/16 and Python unittest passes 6/6.
+
+Boundary: L10 proves the renderer-facing first-frame contract. It is not a rendered playable
+frame and not a real backend upload.
+
+### L11: First Mission Event Thread And Player Control Contract
+
+Status: active.
+
+Deliver:
+
+- execute or model first mission event thread/page setup beyond `setupProcess`;
+- recover runtime behavior for `threadEvent0000_00` and related first mission intro/tutorial
+  functions;
+- implement service state for player control and player transform calls:
+  `SetPlayerControl`, `SetPlayerPos`, `SetPlayerAngleY`, `LandPlayer`, `GetPlayerPos`;
+- implement camera/event page contract calls such as `SetGameCameraIfNot`, `CallSetupPages`,
+  and `EventVolume`;
+- feed the resulting player/control/camera/event state back into `first-frame` or a subsequent
+  gameplay-frame contract.
+
+Acceptance:
+
+- no manual tutorial sequence;
+- no fake control state detached from original mission script;
+- first-frame/gameplay-frame state changes only through original bytecode and native service
+  mutations;
+- missing event/page/player-control APIs remain explicit errors or obligations.
+
+Next edge:
+
+- inspect `mission/sc01/main/ms010_0.b64.sqasm` event thread functions and call graph;
+- extend `ScriptRuntime` receiver/native behavior for the first event thread entry;
+- add a CLI/test that proves event thread/player-control state reaches runtime service state.
 
 ## Stop Conditions
 

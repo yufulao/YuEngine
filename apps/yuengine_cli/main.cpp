@@ -3,6 +3,7 @@
 #include "yuengine/project/ProjectManifest.h"
 #include "yuengine/resource/ResourceDiagnostics.h"
 #include "yuengine/runtime/EngineRuntime.h"
+#include "yuengine/runtime/FrameRuntime.h"
 #include "yuengine/runtime/SceneRuntime.h"
 #include "yuengine/script/ScriptRuntime.h"
 #include "yuengine/script/SqasmModule.h"
@@ -38,6 +39,7 @@ void usage()
               << "  yuengine_cli resources <project.json>\n"
               << "  yuengine_cli scene-entry <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli scene-runtime <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli first-frame <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli script <project.json> <module>\n"
               << "  yuengine_cli script-plan <project.json> [module] [function] [--repo-root <path>]\n"
               << "  yuengine_cli script-run <project.json> [module] [function] [--frames N] [--input-scenario <name>] [--repo-root <path>]\n"
@@ -318,6 +320,11 @@ int main(int argc, char** argv)
         if (command == "scene-runtime") {
             auto report = yu::runtime::runSceneRuntimeMaterialization(manifest, repoRoot);
             std::cout << yu::runtime::sceneRuntimeMaterializationReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "first-frame") {
+            auto report = yu::runtime::runFirstFrameRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::firstFrameRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "script") {
