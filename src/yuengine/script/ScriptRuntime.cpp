@@ -44,6 +44,7 @@ enum class ScriptValueKind {
     Vector2,
     SaveList,
     SaveEntry,
+    ScenarioKeys,
 };
 
 enum class Truthiness {
@@ -65,11 +66,17 @@ struct ScriptValue {
 
 struct BytecodeStateResult {
     std::set<int> executedCallPcs;
+    std::set<int> synchronouslyExecutedCallPcs;
     std::map<int, std::string> callReceivers;
     std::map<int, std::vector<ScriptValue>> callArguments;
     ScriptValue returnValue;
     int executedInstructions = 0;
     bool controlFlowUnknown = false;
+};
+
+struct SynchronousCallResult {
+    bool handled = false;
+    ScriptValue value;
 };
 
 struct RuntimeObject {
@@ -245,6 +252,14 @@ ScriptValue saveEntryValue(std::string label)
     return value;
 }
 
+ScriptValue scenarioKeysValue()
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::ScenarioKeys;
+    value.text = "scenario_keys";
+    return value;
+}
+
 bool isKnownValue(const ScriptValue& value)
 {
     return value.kind != ScriptValueKind::Unknown;
@@ -313,6 +328,8 @@ std::string valueKindName(ScriptValueKind kind)
         return "save_list";
     case ScriptValueKind::SaveEntry:
         return "save_entry";
+    case ScriptValueKind::ScenarioKeys:
+        return "scenario_keys";
     }
     return "unknown";
 }
@@ -352,6 +369,7 @@ std::string valueSummary(const ScriptValue& value)
     case ScriptValueKind::Vector2:
     case ScriptValueKind::SaveList:
     case ScriptValueKind::SaveEntry:
+    case ScriptValueKind::ScenarioKeys:
         return value.text.empty() ? valueKindName(value.kind) : value.text;
     }
     return "unknown";
@@ -1094,6 +1112,22 @@ bool isUiObjectMethod(const std::string& name)
     return methods.find(name) != methods.end();
 }
 
+bool isRuntimeOwnedScriptMethod(const std::string& name)
+{
+    static const std::set<std::string> methods = {
+        "getDrawEnd",
+        "init",
+        "move",
+        "resetAnim",
+        "selectCursorX",
+        "selectCursorY",
+        "setFadeIn",
+        "setParent",
+        "setSelectCursor",
+    };
+    return methods.find(name) != methods.end();
+}
+
 bool isValueHelperCall(const std::string& name)
 {
     static const std::set<std::string> helpers = {
@@ -1106,6 +1140,16 @@ bool isValueHelperCall(const std::string& name)
 bool isModuleLifecycleCall(const std::string& ownerClass, const std::string& name)
 {
     return ownerClass.rfind("Module", 0) == 0 && name == "stateInit";
+}
+
+bool isReturnSynchronizedScriptClass(const std::string& className)
+{
+    if (className.rfind("Module", 0) == 0 || className == "TitleSceneBase") {
+        return true;
+    }
+    const std::string suffix = "Scene";
+    return className.size() >= suffix.size()
+        && className.compare(className.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
 void writeOrdinalArray(std::ostringstream& out, const std::vector<int>& values)
@@ -1194,11 +1238,13 @@ public:
         const SqasmModule& module,
         const std::vector<SqasmModule>& baselineModules,
         const native::NativeRegistry& registry,
-        const native::NativeServiceCatalog& catalog)
+        const native::NativeServiceCatalog& catalog,
+        ScriptRunOptions options)
         : module_(module)
         , baselineModules_(baselineModules)
         , registry_(registry)
         , catalog_(catalog)
+        , options_(std::move(options))
         , methodBindings_(buildCombinedMethodBindings(module, baselineModules))
         , objectBindings_(buildObjectBindings(module, methodBindings_))
         , objectMethodSlots_(buildRootObjectMethodSlots(module))
@@ -1209,15 +1255,16 @@ public:
         }
     }
 
-    ScriptExecutionReport run(const std::string& entryFunction, int frames)
+    ScriptExecutionReport run(const std::string& entryFunction)
     {
         catalog_.resetRuntimeState();
         ScriptExecutionReport report;
         report.modulePath = module_.path.string();
         report.entryFunction = entryFunction;
-        report.frames = frames < 0 ? 0 : frames;
+        report.frames = options_.frames < 0 ? 0 : options_.frames;
         report.executionMode = "multi_module_bytecode_state_plus_static_call_trace_branch_sensitive_boot_edge";
         report.baselineModules = static_cast<int>(baselineModules_.size());
+        report.runtimeInputStateJson = runtimeInputStateToJson();
         for (const auto& baselineModule : baselineModules_) {
             report.baselineModulePaths.push_back(baselineModule.path.string());
         }
@@ -1255,6 +1302,22 @@ public:
     }
 
 private:
+    std::string runtimeInputStateToJson() const
+    {
+        std::ostringstream out;
+        out << "{";
+        out << "\"scenario\": \"" << core::jsonEscape(options_.inputScenario) << "\", ";
+        out << "\"menu_selected_index\": " << options_.menuSelectedIndex << ", ";
+        out << "\"menu_decide\": " << (options_.menuDecide ? "true" : "false") << ", ";
+        out << "\"menu_down\": " << (options_.menuDown ? "true" : "false") << ", ";
+        out << "\"menu_up\": " << (options_.menuUp ? "true" : "false") << ", ";
+        out << "\"save_list_empty\": " << (options_.saveListEmpty ? "true" : "false") << ", ";
+        out << "\"continue_disabled\": " << (options_.continueDisabled ? "true" : "false") << ", ";
+        out << "\"can_shutdown\": " << (options_.canShutdown ? "true" : "false");
+        out << "}";
+        return out.str();
+    }
+
     const SqasmModule& moduleForBinding(const ScriptMethodBinding& binding) const
     {
         if (binding.modulePath.empty() || binding.modulePath == module_.path.string()) {
@@ -1323,7 +1386,7 @@ private:
     {
         const SqasmFunction* root = findRootFunction(module);
         if (root) {
-            executeBytecodeState(*root, {}, {});
+            executeBytecodeState(*root, {}, {}, 0);
         }
     }
 
@@ -1508,12 +1571,12 @@ private:
         }
 
         if (target.kind == ScriptValueKind::Class) {
+            if (findMethodBinding(methodBindings_, target.text, keyText)) {
+                return methodValue(keyText, target.text);
+            }
             ScriptValue classSlot = lookupClassSlot(target.text, keyText);
             if (isKnownValue(classSlot)) {
                 return classSlot;
-            }
-            if (findMethodBinding(methodBindings_, target.text, keyText)) {
-                return methodValue(keyText, target.text);
             }
             return {};
         }
@@ -1531,6 +1594,13 @@ private:
 
         if (target.kind == ScriptValueKind::SaveList) {
             if (keyText == "count" || keyText == "get") {
+                return valueMethodValue(keyText, valueSummary(target));
+            }
+            return {};
+        }
+
+        if (target.kind == ScriptValueKind::ScenarioKeys) {
+            if (keyText == "count") {
                 return valueMethodValue(keyText, valueSummary(target));
             }
             return {};
@@ -1826,19 +1896,55 @@ private:
         }
         if (name == "GetSaveList") {
             recordServiceState("Save/Profile/Scenario Service", name, "query_empty_save_list", "save_list",
-                "entries=0", function, instruction,
-                "deterministic local profile state: no save files mounted for current sample");
+                options_.saveListEmpty ? "entries=0" : "entries=1", function, instruction,
+                "runtime input scenario supplies save-list availability for title/menu branch execution");
             return recordTypedReturn(saveListValue());
         }
-        if (name == "count") {
-            if (isConcreteReceiver(callable.receiver)) {
-                recordServiceState("Save/Profile/Scenario Service", name, "save_list_count", callable.receiver,
-                    "0", function, instruction,
-                    "branch-scanned typed save-list contract; empty profile default is 0");
-            }
+        if (name == "GetScenarioKeys") {
+            recordServiceState("Save/Profile/Scenario Service", name, "query_scenario_keys", "scenario_keys",
+                "entries=2", function, instruction,
+                "recovered title new-game flow queries scenario keys before character selection", argsText);
+            return recordTypedReturn(scenarioKeysValue());
+        }
+        if (name == "GetCountActiveDLC") {
+            recordServiceState("Platform Service", name, "active_dlc_count", "local_project", "0",
+                function, instruction,
+                "deterministic local project has no active DLC slots for new-game character count", argsText);
             return recordTypedReturn(intValue(0));
         }
+        if (name == "IsSaveFull") {
+            recordServiceState("Save/Profile/Scenario Service", name, "save_capacity_query", "save_profile",
+                "false", function, instruction,
+                "runtime profile is not full, so NewGameScene can start without overwrite confirmation", argsText);
+            return recordTypedReturn(boolValue(false));
+        }
+        if (name == "SetDifficultyMode") {
+            recordServiceState("Script Service", name, "set_difficulty_mode", "gMenu",
+                argsText.empty() ? "difficulty=unknown" : argsText, function, instruction,
+                "NewGameScene forwards selected difficulty to original game service", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "count") {
+            if (callable.receiver.rfind("scenario_keys", 0) == 0) {
+                recordServiceState("Save/Profile/Scenario Service", name, "scenario_key_count", callable.receiver,
+                    "2", function, instruction,
+                    "scenario key list exposes base-game player choices to NewGameScene.state0", argsText);
+                return recordTypedReturn(intValue(2));
+            }
+            if (isConcreteReceiver(callable.receiver)) {
+                recordServiceState("Save/Profile/Scenario Service", name, "save_list_count", callable.receiver,
+                    options_.saveListEmpty ? "0" : "1", function, instruction,
+                    "runtime input scenario supplies save-list count for branch execution");
+            }
+            return recordTypedReturn(intValue(options_.saveListEmpty ? 0 : 1));
+        }
         if (name == "get") {
+            if (callable.receiver.rfind("scenario_keys", 0) == 0) {
+                recordServiceState("Save/Profile/Scenario Service", name, "scenario_key_get", callable.receiver,
+                    argsText.empty() ? "scenario_key[0]" : "scenario_key " + argsText, function, instruction,
+                    "scenario key list returns the selected new-game player key", argsText);
+                return recordTypedReturn(stringValue("scenario_key[0]"));
+            }
             if (isConcreteReceiver(callable.receiver)) {
                 recordServiceState("Save/Profile/Scenario Service", name, "save_list_get", callable.receiver,
                     argsText.empty() ? "save_entry" : "save_entry " + argsText, function, instruction,
@@ -1850,31 +1956,78 @@ private:
         if (name == "isActive") {
             if (isConcreteReceiver(callable.receiver)) {
                 recordServiceState("Save/Profile/Scenario Service", name, "save_entry_active", callable.receiver,
-                    "false", function, instruction,
-                    "branch-scanned typed save-entry contract; empty profile default is inactive");
+                    options_.saveListEmpty ? "false" : "true", function, instruction,
+                    "runtime input scenario supplies save-entry activity for branch execution");
             }
-            return recordTypedReturn(boolValue(false));
+            return recordTypedReturn(boolValue(!options_.saveListEmpty));
         }
         if (name == "IsFreeDemo" || name == "IsOverDemo" || name == "IsTrial") {
             recordServiceState("Platform Service", name, "platform_flag", "local_project", "false", function,
                 instruction, "platform/demo state defaults to full local project mode");
             return recordTypedReturn(boolValue(false));
         }
+        if (name == "CanShutdown") {
+            recordServiceState("Platform Service", name, "shutdown_permission", "local_project",
+                options_.canShutdown ? "true" : "false", function, instruction,
+                "runtime input scenario supplies platform shutdown permission for title exit branch", argsText);
+            return recordTypedReturn(boolValue(options_.canShutdown));
+        }
+        if (name == "GetDeltaTime") {
+            recordServiceState("Script Service", name, "frame_delta_query", "runtime_clock", "0.0166667",
+                function, instruction,
+                "deterministic runtime clock delta used by recovered title/menu script state", argsText);
+            return recordTypedReturn(floatValue(1.0 / 60.0));
+        }
         if (callable.receiver == "gMenu"
-            && (name == "isDecide" || name == "isMenuDown" || name == "isMenuUp")) {
-            recordServiceState("Script Service", name, "menu_input_query", "gMenu", "false", function,
-                instruction, "deterministic title boot input state: no pressed menu button in passive frame", argsText);
-            return recordTypedReturn(boolValue(false));
+            && (name == "isDecide" || name == "isMenuDown" || name == "isMenuUp" || name == "isCancel")) {
+            bool pressed = options_.menuDecide;
+            if (name == "isMenuDown") {
+                pressed = options_.menuDown;
+            } else if (name == "isMenuUp") {
+                pressed = options_.menuUp;
+            } else if (name == "isCancel") {
+                pressed = false;
+            }
+            recordServiceState("Script Service", name, "menu_input_query", "gMenu",
+                pressed ? "true" : "false", function, instruction,
+                "runtime input scenario answers original gMenu input query", argsText);
+            return recordTypedReturn(boolValue(pressed));
         }
         if (callable.receiver == "gMenu" && name == "savesIsEmpty") {
-            recordServiceState("Script Service", name, "menu_save_state_query", "gMenu", "true", function,
-                instruction, "empty local profile makes load menu unavailable until save service is populated", argsText);
-            return recordTypedReturn(boolValue(true));
+            recordServiceState("Script Service", name, "menu_save_state_query", "gMenu",
+                options_.saveListEmpty ? "true" : "false", function, instruction,
+                "runtime input scenario answers original title save availability query", argsText);
+            return recordTypedReturn(boolValue(options_.saveListEmpty));
         }
         if (callable.receiver == "gMenu" && name == "continueDisabled") {
-            recordServiceState("Script Service", name, "menu_continue_state_query", "gMenu", "true", function,
-                instruction, "empty local profile disables continue in title menu", argsText);
-            return recordTypedReturn(boolValue(true));
+            recordServiceState("Script Service", name, "menu_continue_state_query", "gMenu",
+                options_.continueDisabled ? "true" : "false", function, instruction,
+                "runtime input scenario answers original title continue availability query", argsText);
+            return recordTypedReturn(boolValue(options_.continueDisabled));
+        }
+        if (callable.receiver == "gMenu" && name == "setMission") {
+            recordServiceState("Script Service", name, "set_current_mission", "gMenu",
+                argsText.empty() ? "mission=unknown" : argsText, function, instruction,
+                "title continue/load branch forwards recovered save mission to gMenu", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (callable.receiver == "gMenu" && name == "setMissionKey") {
+            recordServiceState("Script Service", name, "set_current_mission_key", "gMenu",
+                argsText.empty() ? "mission_key=unknown" : argsText, function, instruction,
+                "new-game branch forwards selected scenario key to gMenu", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (callable.receiver == "gMenu" && name == "fadeOut") {
+            recordServiceState("Scene And Stage Service", name, "fade_out", "screen",
+                argsText.empty() ? "fade_out" : argsText, function, instruction,
+                "ModuleTitle transition branch queries gMenu fadeOut before startGame4Menu", argsText);
+            return recordTypedReturn(boolValue(false));
+        }
+        if (callable.receiver == "gMenu" && name == "startGame4Menu") {
+            recordServiceState("Script Service", name, "start_game_from_menu", "gMenu",
+                "startGame4Menu", function, instruction,
+                "ModuleTitle transition branch starts gameplay through original gMenu API", argsText);
+            return recordTypedReturn(nullValue());
         }
         if (name == "MenuObject") {
             const std::string objectName = "ui.MenuObject@" + function.name + ":" + std::to_string(instruction.pc);
@@ -1904,13 +2057,24 @@ private:
             if (!arguments.empty()) {
                 writeObjectField(callable.receiver, "_elemCount", arguments[0]);
             }
-            ScriptValue selected = readObjectField(callable.receiver, "_sel");
-            if (!isKnownValue(selected)) {
-                selected = intValue(0);
-            }
+            ScriptValue selected = intValue(options_.menuSelectedIndex);
+            writeObjectField(callable.receiver, "_sel", selected);
             recordServiceState("Script Service", name, "menu_cursor_select", callable.receiver,
                 valueSummary(selected), function, instruction,
-                "ScrollWindow.selectCursorY returns the current selected row under passive input state", argsText);
+                "ScrollWindow.selectCursorY returns the runtime input scenario selected row", argsText);
+            return recordTypedReturn(selected);
+        }
+        if (callable.kind == ScriptValueKind::Method && name == "selectCursorX"
+            && isConcreteReceiver(callable.receiver)) {
+            if (!arguments.empty()) {
+                writeObjectField(callable.receiver, "_elemCount", arguments[0]);
+            }
+            ScriptValue selected = intValue(0);
+            writeObjectField(callable.receiver, "_sel", selected);
+            recordServiceState("Script Service", name, "menu_cursor_select_x", callable.receiver,
+                valueSummary(selected), function, instruction,
+                "NewGameScene.selectCursorX returns deterministic first player selection for scenario boot",
+                argsText);
             return recordTypedReturn(selected);
         }
         if (callable.kind == ScriptValueKind::Method && name == "getDrawEnd"
@@ -1976,6 +2140,23 @@ private:
                 "PlayBGM side effect reached through ModuleTitle.main boot edge", argsText);
             return recordTypedReturn(nullValue());
         }
+        if (name == "PlaySE") {
+            const std::string value = arguments.empty() ? "se_id=unknown" : "se_id=" + valueSummary(arguments[0]);
+            recordServiceState("Audio Service", name, "play_se", "se", value, function, instruction,
+                "PlaySE side effect reached through recovered title/menu branch", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "LoadAutoSave") {
+            recordServiceState("Save/Profile/Scenario Service", name, "load_auto_save", "save_profile",
+                options_.saveListEmpty ? "false" : "true", function, instruction,
+                "runtime input scenario supplies autosave load outcome for continue branch", argsText);
+            return recordTypedReturn(boolValue(!options_.saveListEmpty));
+        }
+        if (name == "ShutdownGame") {
+            recordServiceState("Platform Service", name, "shutdown_game", "local_project", "requested",
+                function, instruction, "title exit branch reached original ShutdownGame call", argsText);
+            return recordTypedReturn(nullValue());
+        }
         if (name == "renderHorizontal") {
             recordServiceState("UI And 2D Render Service", name, "ui_render_method", callable.receiver,
                 argsText.empty() ? "arguments_empty" : argsText, function, instruction,
@@ -1987,9 +2168,70 @@ private:
                 function, instruction, "stateInit side effect reached through ModuleTitle.main boot edge");
             return recordTypedReturn(nullValue());
         }
-        if (name == "init" || name == "setParent" || name == "setSelectCursor") {
+        if (name == "init" || name == "setParent" || name == "setSelectCursor"
+            || name == "setFadeIn" || name == "resetAnim" || name == "move") {
             return recordTypedReturn(nullValue());
         }
+        return {};
+    }
+
+    SynchronousCallResult executeScriptCallableForReturn(
+        const ScriptValue& callable,
+        const std::vector<ScriptValue>& arguments,
+        const SqasmFunction& callerFunction,
+        const SqasmInstruction& instruction,
+        const std::string& ownerObject,
+        int depth)
+    {
+        const std::string name = callable.text;
+        if (name.empty()) {
+            return {};
+        }
+        if (callable.kind == ScriptValueKind::Method
+            && (name == "selectCursorY" || name == "selectCursorX" || name == "setSelectCursor"
+                || name == "getDrawEnd" || name == "setFadeIn" || name == "resetAnim" || name == "move")) {
+            return {};
+        }
+
+        SqasmCall syntheticCall;
+        syntheticCall.name = name;
+        syntheticCall.sourceLine = instruction.sourceLine;
+        syntheticCall.pc = instruction.pc;
+
+        if (callable.kind != ScriptValueKind::Method || callable.receiver.empty()) {
+            return {};
+        }
+
+        const std::string receiver = callable.receiver;
+        const auto objectClass = objectClasses_.find(receiver);
+        if (objectClass != objectClasses_.end()) {
+            if (!isReturnSynchronizedScriptClass(objectClass->second)) {
+                return {};
+            }
+            const ScriptMethodBinding* method = findMethodBindingInHierarchy(objectClass->second, name);
+            if (method) {
+                const std::string category =
+                    method->ownerClass == objectClass->second ? "script_object_method_sync_return"
+                                                              : "script_inherited_object_method_sync_return";
+                return {true, executeMethod(*method, receiver, method->ownerClass, depth + 1, category, arguments)};
+            }
+        }
+
+        if (hasClass(methodBindings_, receiver)) {
+            if (!isReturnSynchronizedScriptClass(receiver)) {
+                return {};
+            }
+            const ScriptMethodBinding* method = findMethodBinding(methodBindings_, receiver, name);
+            if (method) {
+                const std::string targetObject = ownerObject.empty() ? receiver : ownerObject;
+                return {true, executeMethod(*method, targetObject, receiver, depth + 1,
+                    "script_super_or_class_method_sync_return", arguments)};
+            }
+        }
+
+        recordEvent({"script_sync_return_unresolved", callerFunction.name, callerFunction.ordinal, {}, {},
+            name, receiver, "script_call_return", {}, instruction.sourceLine, instruction.pc,
+            "callsite needed a script return value but no script binding was recovered for receiver"});
         return {};
     }
 
@@ -1997,6 +2239,7 @@ private:
         const SqasmFunction& function,
         const std::string& ownerObject,
         const std::string& ownerClass,
+        int depth,
         const std::vector<ScriptValue>& arguments = {})
     {
         BytecodeStateResult result;
@@ -2330,9 +2573,25 @@ private:
                 if (callPc != callPcByCallableRegister.end()) {
                     result.callArguments[callPc->second] = callArguments;
                 }
-                const ScriptValue callResult = makeCallReturn(function, instruction, getRegister(a1), callArguments);
-                if (isKnownValue(callResult)) {
-                    setRegister(a0, callResult);
+                bool syncHandled = false;
+                if (callPc != callPcByCallableRegister.end()) {
+                    const SynchronousCallResult syncResult =
+                        executeScriptCallableForReturn(
+                            getRegister(a1), callArguments, function, instruction, ownerObject, depth);
+                    if (syncResult.handled) {
+                        syncHandled = true;
+                        result.synchronouslyExecutedCallPcs.insert(callPc->second);
+                        if (isKnownValue(syncResult.value)) {
+                            setRegister(a0, syncResult.value);
+                        }
+                    }
+                }
+                if (!syncHandled) {
+                    const ScriptValue callResult =
+                        makeCallReturn(function, instruction, getRegister(a1), callArguments);
+                    if (isKnownValue(callResult)) {
+                        setRegister(a0, callResult);
+                    }
                 }
             }
             ++i;
@@ -2406,7 +2665,7 @@ private:
         executeFunction(*function, {}, {}, depth + 1);
     }
 
-    void executeObjectMethodSlot(
+    ScriptValue executeObjectMethodSlot(
         const ScriptObjectMethodSlot& binding,
         const std::string& receiver,
         const SqasmCall& call,
@@ -2416,17 +2675,17 @@ private:
         const SqasmFunction* function = findFunctionByOrdinal(module_, binding.functionOrdinal);
         if (!function) {
             markUnresolved(call.name, receiver, {}, call.sourceLine, call.pc, "root object method ordinal not found");
-            return;
+            return {};
         }
         recordEvent({"execute_object_function", function->name, function->ordinal, receiver, {}, call.name, receiver,
             "script_object_function", {}, call.sourceLine, call.pc, binding.evidence});
         if (report_) {
             ++report_->scriptFunctions;
         }
-        executeFunction(*function, receiver, {}, depth + 1, arguments);
+        return executeFunction(*function, receiver, {}, depth + 1, arguments);
     }
 
-    void executeMethod(
+    ScriptValue executeMethod(
         const ScriptMethodBinding& binding,
         const std::string& ownerObject,
         const std::string& ownerClass,
@@ -2438,7 +2697,7 @@ private:
             if (report_) {
                 report_->truncated = true;
             }
-            return;
+            return {};
         }
 
         const SqasmModule& bindingModule = moduleForBinding(binding);
@@ -2446,7 +2705,7 @@ private:
         if (!function) {
             markUnresolved(binding.slot, ownerObject, ownerClass, binding.sourceLine, binding.classPc,
                 "method binding ordinal not found");
-            return;
+            return {};
         }
 
         const std::string activeKey =
@@ -2456,7 +2715,7 @@ private:
             recordEvent({"skip_recursive_method", function->name, function->ordinal, ownerObject, ownerClass,
                 binding.slot, ownerObject, "recursion_guard", {}, binding.sourceLine, binding.classPc,
                 "already active in call stack"});
-            return;
+            return {};
         }
 
         activeMethods_.insert(activeKey);
@@ -2466,11 +2725,12 @@ private:
         if (report_) {
             ++report_->scriptMethods;
         }
-        executeFunction(*function, ownerObject, ownerClass, depth + 1, arguments);
+        const ScriptValue result = executeFunction(*function, ownerObject, ownerClass, depth + 1, arguments);
         activeMethods_.erase(activeKey);
+        return result;
     }
 
-    void executeFunction(
+    ScriptValue executeFunction(
         const SqasmFunction& function,
         const std::string& ownerObject,
         const std::string& ownerClass,
@@ -2481,12 +2741,17 @@ private:
             if (report_) {
                 report_->truncated = true;
             }
-            return;
+            return {};
         }
 
-        const BytecodeStateResult bytecodeState = executeBytecodeState(function, ownerObject, ownerClass, arguments);
+        const BytecodeStateResult bytecodeState =
+            executeBytecodeState(function, ownerObject, ownerClass, depth, arguments);
         for (const auto& call : function.calls) {
             if (bytecodeState.executedCallPcs.find(call.pc) == bytecodeState.executedCallPcs.end()) {
+                continue;
+            }
+            if (bytecodeState.synchronouslyExecutedCallPcs.find(call.pc)
+                != bytecodeState.synchronouslyExecutedCallPcs.end()) {
                 continue;
             }
             std::string runtimeReceiver;
@@ -2502,6 +2767,7 @@ private:
             resolveAndExecuteCall(
                 function, ownerObject, ownerClass, call, runtimeReceiver, runtimeArguments, depth + 1);
         }
+        return bytecodeState.returnValue;
     }
 
     void resolveAndExecuteCall(
@@ -2595,6 +2861,16 @@ private:
 
         const auto objectClass = objectClasses_.find(receiver);
         if (objectClass != objectClasses_.end()) {
+            if (!isReturnSynchronizedScriptClass(objectClass->second)
+                && isRuntimeOwnedScriptMethod(call.name)) {
+                if (report_) {
+                    ++report_->uiObjectCalls;
+                }
+                recordEvent({"runtime_owned_object_call", function.name, function.ordinal, ownerObject, ownerClass,
+                    call.name, receiver, "runtime_owned_ui_helper_method", {}, call.sourceLine, call.pc,
+                    "runtime service state already modeled this helper call during bytecode execution"});
+                return true;
+            }
             const ScriptMethodBinding* method = findMethodBindingInHierarchy(objectClass->second, call.name);
             if (method) {
                 const std::string category =
@@ -2788,6 +3064,7 @@ private:
     const std::vector<SqasmModule>& baselineModules_;
     const native::NativeRegistry& registry_;
     const native::NativeServiceCatalog& catalog_;
+    ScriptRunOptions options_;
     std::vector<ScriptMethodBinding> methodBindings_;
     std::vector<ScriptObjectBinding> objectBindings_;
     std::vector<ScriptObjectMethodSlot> objectMethodSlots_;
@@ -2962,9 +3239,21 @@ ScriptExecutionReport runEntryScript(
     const native::NativeServiceCatalog& catalog,
     int frames)
 {
+    ScriptRunOptions options;
+    options.frames = frames;
+    return runEntryScript(module, entryFunction, registry, catalog, options);
+}
+
+ScriptExecutionReport runEntryScript(
+    const SqasmModule& module,
+    const std::string& entryFunction,
+    const native::NativeRegistry& registry,
+    const native::NativeServiceCatalog& catalog,
+    const ScriptRunOptions& options)
+{
     const std::vector<SqasmModule> baselineModules;
-    StaticScriptExecutor executor(module, baselineModules, registry, catalog);
-    return executor.run(entryFunction, frames);
+    StaticScriptExecutor executor(module, baselineModules, registry, catalog, options);
+    return executor.run(entryFunction);
 }
 
 ScriptExecutionReport runEntryScript(
@@ -2975,8 +3264,21 @@ ScriptExecutionReport runEntryScript(
     const native::NativeServiceCatalog& catalog,
     int frames)
 {
-    StaticScriptExecutor executor(module, baselineModules, registry, catalog);
-    return executor.run(entryFunction, frames);
+    ScriptRunOptions options;
+    options.frames = frames;
+    return runEntryScript(module, baselineModules, entryFunction, registry, catalog, options);
+}
+
+ScriptExecutionReport runEntryScript(
+    const SqasmModule& module,
+    const std::vector<SqasmModule>& baselineModules,
+    const std::string& entryFunction,
+    const native::NativeRegistry& registry,
+    const native::NativeServiceCatalog& catalog,
+    const ScriptRunOptions& options)
+{
+    StaticScriptExecutor executor(module, baselineModules, registry, catalog, options);
+    return executor.run(entryFunction);
 }
 
 std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
@@ -3070,6 +3372,8 @@ std::string scriptExecutionReportToJson(const ScriptExecutionReport& report)
     const std::vector<std::string> uniqueNativeApiNames(uniqueNativeApis.begin(), uniqueNativeApis.end());
     writeStringArray(out, uniqueNativeApiNames);
     out << ",\n";
+    out << "  \"runtime_input_state\": "
+        << (report.runtimeInputStateJson.empty() ? "{}" : report.runtimeInputStateJson) << ",\n";
     out << "  \"runtime_service_state\": "
         << (report.runtimeServiceStateJson.empty() ? "{}" : report.runtimeServiceStateJson) << ",\n";
     out << "  \"runtime_script_state\": "

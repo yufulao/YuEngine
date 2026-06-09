@@ -118,63 +118,88 @@ This removes the previous name-only ambiguity among `init` ordinals `15, 30, 61,
 
 ## Verified Title Execution Trace
 
-Boot-frame command:
+Passive boot-frame command:
 
 ```powershell
 build\cmake-bt143\yuengine_cli.exe script-run samples\touhou_new_world\project.json --repo-root . --frames 1
 ```
 
-Boot-frame result:
+Passive boot-frame result:
 
 ```text
 entry=setupProc found=true executed=true frames=1 baseline_modules=2 constructed_objects=3
-script_methods=58 script_functions=1 builtin_calls=3 native_obligations=2 unique_native_apis=2
-engine_object_calls=14 ui_object_calls=3 value_helper_calls=6 value_method_calls=2
-bytecode_state_functions=63 bytecode_state_instructions=3906 object_field_writes=159
-typed_call_returns=147 service_state_events=29 save_service_queries=0 platform_state_queries=0
-audio_service_commands=1 scene_service_commands=1 ui_objects_tracked=20 ui_service_commands=6
+script_methods=86 script_functions=5 builtin_calls=3 native_obligations=8 unique_native_apis=4
+engine_object_calls=14 ui_object_calls=16 value_helper_calls=6 value_method_calls=6
+bytecode_state_functions=95 bytecode_state_instructions=4129 object_field_writes=186
+typed_call_returns=165 service_state_events=41 save_service_queries=4 platform_state_queries=3
+audio_service_commands=1 scene_service_commands=1 ui_objects_tracked=20 ui_service_commands=0
 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm
 ```
 
-Boot-frame service state:
+Passive boot-frame service state:
 
 ```text
-mutations=29
-save.empty_save_list_queries=0
+mutations=41
+save.empty_save_list_queries=4
 audio.current_bgm_id=3
 scene.fade_in_duration=0.7
 scene.fade_in_blend=0
 ui.created_objects=20
-ui.command_count=6
+ui.command_count=0
 ```
 
-Second-frame title-scene command:
+Passive second-frame command:
 
 ```powershell
 build\cmake-bt143\yuengine_cli.exe script-run samples\touhou_new_world\project.json --repo-root . --frames 2
 ```
 
-Second-frame result:
+Passive second-frame result:
 
 ```text
 entry=setupProc found=true executed=true frames=2 baseline_modules=2 constructed_objects=3
-script_methods=62 script_functions=2 builtin_calls=3 native_obligations=2 unique_native_apis=2
-engine_object_calls=15 ui_object_calls=3 value_helper_calls=6 value_method_calls=2
-bytecode_state_functions=68 bytecode_state_instructions=3992 object_field_writes=164
-typed_call_returns=151 service_state_events=31 save_service_queries=0 platform_state_queries=0
-audio_service_commands=1 scene_service_commands=1 ui_objects_tracked=20 ui_service_commands=6
-decoded_service_arguments=4 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm
+script_methods=89 script_functions=6 builtin_calls=3 native_obligations=8 unique_native_apis=4
+engine_object_calls=15 ui_object_calls=17 value_helper_calls=6 value_method_calls=6
+bytecode_state_functions=99 bytecode_state_instructions=4207 object_field_writes=191
+typed_call_returns=167 service_state_events=43 save_service_queries=4 platform_state_queries=3
+audio_service_commands=1 scene_service_commands=1 ui_objects_tracked=20 ui_service_commands=0
+decoded_service_arguments=8 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm
 ```
 
-The second frame now dispatches through the original object graph:
+New-game scenario command:
+
+```powershell
+build\cmake-bt143\yuengine_cli.exe script-run samples\touhou_new_world\project.json --repo-root . --frames 5 --input-scenario title-new-game
+```
+
+New-game scenario result:
+
+```text
+entry=setupProc found=true executed=true frames=5 baseline_modules=2 constructed_objects=3
+script_methods=101 script_functions=12 builtin_calls=3 native_obligations=18 unique_native_apis=11
+engine_object_calls=18 ui_object_calls=22 value_helper_calls=6 value_method_calls=8
+bytecode_state_functions=117 bytecode_state_instructions=4515 object_field_writes=203
+typed_call_returns=187 service_state_events=60 save_service_queries=4 platform_state_queries=4
+audio_service_commands=4 scene_service_commands=2 ui_objects_tracked=20 ui_service_commands=0
+decoded_service_arguments=18 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm
+```
+
+The original script path now reaches:
 
 ```text
 ModuleTitle.main
 -> modTitle._scenes[0].main
 -> TitleSceneBase.main
 -> TitleScene.state0
--> script.ScrollWindow@constructor:50.selectCursorY(titleMenuCount)
--> gMenu.isDecide(false)
+-> gMenu.isDecide(false) in passive mode
+-> gMenu.isDecide(true) with --input-scenario title-new-game
+-> NewGameScene.state0
+-> NewGameScene.state1
+-> IsSaveFull(false)
+-> setMissionKey + SetDifficultyMode
+-> return 200
+-> ModuleTitle fadeOut
+-> gMenu.startGame4Menu
 ```
 
 Important semantic fixes in this checkpoint:
@@ -184,13 +209,24 @@ Important semantic fixes in this checkpoint:
 - Receiver calls carry runtime receivers from `_OP_PREPCALL/_OP_CALL`, so table/object method
   dispatch uses the concrete receiver instead of static string guesses.
 - Receiver-less owner calls are virtual over the concrete object class. This is why
-  `TitleSceneBase.main` now reaches `TitleScene.state0` instead of the base placeholder `state0`.
+  `TitleSceneBase.main` reaches `TitleScene.state0` and `NewGameScene.state0/state1`.
+- Script method calls that affect caller control flow now execute synchronously enough to
+  propagate `_OP_RETURN` values back into parent bytecode. This is required for
+  `ModuleTitle.main` to consume scene `main()` returns.
+- Class method lookup now prefers recovered method bindings over raw class closure slots, which
+  fixes `NewGameScene.main -> TitleSceneBase.main` tailcall returns.
 - `_OP_CALL` arguments are captured and passed into recovered methods/constructors. The title
-  menu window now records `_elemCount=5` from `selectCursorY(titleMenuCount)`.
-- Root table aliases are recognized: `root.gMenu=table#1` still maps to receiver `gMenu`, so
-  engine-root methods such as `isDecide` can return deterministic input state to bytecode.
-- Passive title frame input is deterministic: `gMenu.isDecide(false)` jumps to the idle path, so
-  the incorrect `TitleScene.state0 -> PlaySE(3)` fallthrough is gone.
+  menu window records `_elemCount=4` from `selectCursorY(titleMenuCount)`.
+- Root table aliases are recognized: `root.gMenu=table#1` maps to receiver `gMenu`, so
+  engine-root methods such as `isDecide`, `isCancel`, `continueDisabled`, and `savesIsEmpty`
+  return deterministic runtime input/profile state to bytecode.
+- `--input-scenario` profiles are runtime state, not branch-result tables. `title-new-game`
+  supplies `menu_selected_index=1` and `menu_decide=true`; original title bytecode performs the
+  branch, state transitions, `PlaySE(2)`, `GetScenarioKeys`, `IsSaveFull(false)`,
+  `SetDifficultyMode`, `fadeOut`, and `startGame4Menu`.
+- Runtime-owned UI helper methods such as `selectCursorY`, `selectCursorX`, `setFadeIn`,
+  `setSelectCursor`, `move`, and `resetAnim` are intercepted as service/helper contracts instead
+  of being expanded into unrelated UI implementation bytecode.
 
 Runtime script state produced by the current original title path:
 
@@ -208,7 +244,7 @@ modTitle._scenes[0]=TitleScene
 modTitle._scenes[1]=NewGameScene
 modTitle._scenes[2]=LoadScene
 modTitle._scenes[3]=OverwriteSaveScene
-script.ScrollWindow@constructor:50._elemCount=5
+script.ScrollWindow@constructor:50._elemCount=4
 script.ScrollWindow@constructor:50._sel=0
 ```
 
@@ -222,11 +258,23 @@ modTitle._scenes[2] -> LoadScene
 modTitle._scenes[3] -> OverwriteSaveScene
 ```
 
-Native/API obligations reached through the script execution trace:
+Native/API obligations reached through the passive script execution trace:
 
 ```text
 FadeIn -> Scene And Stage Service
 PlayBGM -> Audio Service
+GetSaveList -> Save/Profile/Scenario Service
+IsFreeDemo -> Platform Service
+```
+
+Additional native/API obligations reached by `--input-scenario title-new-game`:
+
+```text
+PlaySE
+GetScenarioKeys
+GetCountActiveDLC
+IsSaveFull
+SetDifficultyMode
 ```
 
 `ModuleTitle.main -> stateInit` is now real inherited script execution:
@@ -241,9 +289,10 @@ post-state: modTitle._nextState=0
 module_lifecycle_calls=0
 ```
 
-The save/profile and platform calls are no longer counted in the passive title path because the
-runtime no longer linearly scans unselected branches. They must reappear only when input/service
-state selects Continue/Load/New Game through original menu logic.
+The save/profile and platform calls in the passive boot frame now come from original scene/menu
+initialization contracts, not from linear scanning of unselected title menu branches. Branch-only
+calls such as `PlaySE(2)`, `GetScenarioKeys`, `IsSaveFull`, `SetDifficultyMode`, `fadeOut`, and
+`startGame4Menu` appear when `--input-scenario title-new-game` drives the original bytecode there.
 
 ## Verification
 
@@ -255,32 +304,32 @@ python -m unittest discover -s tests
 Verified result:
 
 ```text
-CTest: 11/11 passed
+CTest: 12/12 passed
 Python unittest: 6/6 passed
 ```
 
 ## Remaining L7 Work
 
-- Add deterministic runtime input scenarios for `gMenu`:
-  passive frame, cursor movement, decide on Continue/New Game/Load/Option/Exit.
-- Drive `TitleScene.state0` through original selected branches without reintroducing linear branch
-  pollution. `GetSaveList`, `IsFreeDemo`, `MakeNewGame`, and `StartGame` must appear only when
-  the selected branch reaches them.
+- Extend deterministic runtime input scenarios beyond `title-new-game`:
+  Continue enabled/disabled, Load empty/non-empty, Option, Exit denied/allowed, cursor up/down.
+- Finish `MakeNewGame` and `StartGame` behavior behind `gMenu.startGame4Menu`; the current
+  checkpoint reaches the call but still records it as a Script Service command, not a completed
+  save/profile mutation plus scene/stage load.
 - Convert current classified categories and typed placeholders into concrete service behavior:
-  - 15 engine object calls in the two-frame passive trace;
-  - 3 UI helper object calls;
+  - 17 engine object calls in the two-frame passive trace;
+  - 17 runtime-owned UI helper object calls;
   - 6 value helper calls;
-  - 2 value methods;
+  - 6 value methods;
   - 0 Module lifecycle hooks, because `ModuleBase.stateInit` is now executed as inherited bytecode.
 - Extend concrete UI helper object layouts into decoded UI command payloads, especially
   `MenuObject`, `_menuWindow`, `_listWindow`, `setSelectCursor`, `bl`, `tr`, and
   `renderHorizontal`.
 - Finish decoding argument payloads for `MenuObject`, `_menuWindow`, `_listWindow`,
   `setSelectCursor`, `bl`, `tr`, and `renderHorizontal` into real UI command data.
-- Expand typed service behavior for `FadeIn`, `PlayBGM`, `MenuObject`, `GetSaveList`,
-  `IsFreeDemo`, `MakeNewGame`, and `StartGame` from reported contracts into runtime-owned
-  services.
-- Save/new-game transition through `MakeNewGame` and `StartGame`.
+- Expand typed service behavior for `FadeIn`, `PlayBGM`, `PlaySE`, `MenuObject`, `GetSaveList`,
+  `GetScenarioKeys`, `IsSaveFull`, `SetDifficultyMode`, `MakeNewGame`, and `StartGame` from
+  reported contracts into runtime-owned services.
+- Save/new-game transition through `MakeNewGame` and `StartGame`, then scene/stage load.
 - UI/render command buffer sourced from original script calls, not handwritten UI.
 
 L7 is not complete until original title script execution can drive menu selection, save/new-game

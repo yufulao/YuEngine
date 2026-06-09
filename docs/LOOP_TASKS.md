@@ -246,8 +246,8 @@ render/audio trace was sampled in this loop.
 
 ### L7: Title Script Execution
 
-Status: active. Title entry bytecode-state checkpoint implemented on 2026-06-09; L7 is not
-complete and must continue without waiting.
+Status: active. Title bytecode-state and runtime input scenario checkpoints are implemented on
+2026-06-09; L7 is not complete and must continue without waiting.
 
 Deliver:
 
@@ -283,19 +283,26 @@ Progress:
 - `TitleSceneBase.main` now uses virtual owner dispatch over the concrete scene object, so
   `TitleScene.state0` runs instead of the base placeholder state.
 - `_OP_CALL` argument capture is wired into recovered method/constructor execution. The title
-  menu window records `script.ScrollWindow@constructor:50._elemCount=5` from
+  menu window records `script.ScrollWindow@constructor:50._elemCount=4` from
   `selectCursorY(titleMenuCount)`.
 - `root.gMenu=table#1` is recognized as receiver `gMenu` through root table aliasing. Passive
   title-frame input returns `gMenu.isDecide(false)`, so the idle branch is followed and the old
   false `TitleScene.state0 -> PlaySE(3)` fallthrough is gone.
-- Current passive title trace reaches only the true selected native/API obligations:
-  `FadeIn` and `PlayBGM`. `GetSaveList`, `IsFreeDemo`, `MakeNewGame`, and `StartGame` must
-  reappear only when an explicit input/service scenario selects those branches.
+- `script-run` now accepts `--input-scenario`; the `title-new-game` profile supplies runtime
+  input state (`menu_selected_index=1`, `menu_decide=true`) and lets original bytecode drive the
+  branch.
+- `script-run --frames 5 --input-scenario title-new-game` now reaches:
+  `TitleScene.state0 -> NewGameScene.state0 -> NewGameScene.state1 -> IsSaveFull(false) ->
+  setMissionKey -> SetDifficultyMode -> return 200 -> ModuleTitle.fadeOut ->
+  gMenu.startGame4Menu`.
+- Branch-only service calls now appear only when selected by input/runtime state: `PlaySE(2)`,
+  `GetScenarioKeys`, `GetCountActiveDLC`, `IsSaveFull`, `SetDifficultyMode`, `fadeOut`, and
+  `startGame4Menu`.
 - Current title trace has 0 unresolved calls after runtime gap classification:
   - 15 engine object calls in the two-frame passive trace;
-  - 3 UI helper object calls;
+  - 17 runtime-owned UI helper object calls;
   - 6 value helper calls;
-  - 2 value method calls;
+  - 6 value method calls;
   - 0 Module lifecycle hooks.
 - `script-run --frames 1` now executes a scoped multi-module bytecode state pass over the title
   boot path with 2 baseline modules: `preload.b64` and `script/menu/menudef.b64`.
@@ -312,34 +319,34 @@ Progress:
   `menudef.b64`, and preload baseline modules. `ModuleBase.stateInit` executes as
   `script_inherited_owner_method`, mutating `modTitle._nextState` to `0`; the older
   `module_lifecycle_hook` fallback is no longer part of the current trace.
-- Current `--frames 2` state counters:
-  - 68 state-scanned functions;
-  - 3,992 state-scanned instructions;
+- Current passive `--frames 2` state counters:
+  - 99 state-scanned functions;
+  - 4,207 state-scanned instructions;
   - 31 root slot writes;
   - 405 class slot writes;
-  - 164 object field writes;
+  - 191 object field writes;
   - 199 table slot writes;
-  - 151 typed call returns;
+  - 167 typed call returns;
   - 0 UI object mutations.
 - Service calls now mutate runtime-owned service state while still emitting event evidence:
-  - 31 service state mutations;
-  - 0 save/profile queries in passive title idle;
-  - 0 platform state queries in passive title idle;
+  - 43 service state mutations in passive two-frame title idle;
+  - 4 save/profile queries in passive title init/idle;
+  - 3 platform state queries in passive title init/idle;
   - 1 audio command;
   - 1 scene fade command;
   - 20 tracked UI objects;
-  - 6 UI service commands;
-  - 0 save/value state queries;
-  - 4 decoded service argument payloads.
+  - 0 UI service commands;
+  - 4 save/value state queries;
+  - 8 decoded service argument payloads.
 - Runtime service state snapshot now records:
-  - `save.empty_save_list_queries=0`;
-  - `save.save_list_count_queries=0`;
+  - `save.empty_save_list_queries=4`;
+  - `save.save_list_count_queries=4`;
   - `save.save_list_entries=0`;
   - `audio.current_bgm_id=3`;
   - `scene.fade_in_duration=0.7`;
   - `scene.fade_in_blend=0`;
   - `ui.created_objects=20`;
-  - `ui.command_count=6`.
+  - `ui.command_count=0`.
 - Runtime script state snapshot now records:
   - `root_field_count=31`;
   - `object_count=26`;
@@ -349,20 +356,20 @@ Progress:
   - `root.gMenu=table#1` with 87 table fields;
   - `modTitle._nextState=0`;
   - `modTitle._scenes[0..3]=TitleScene/NewGameScene/LoadScene/OverwriteSaveScene`;
-  - `script.ScrollWindow@constructor:50._elemCount=5`;
+  - `script.ScrollWindow@constructor:50._elemCount=4`;
   - `script.ScrollWindow@constructor:50._sel=0`.
 
 Current next edge:
 
-- add runtime input scenarios for `gMenu` passive/cursor/decide states without hard-coding menu
-  branch results;
-- drive `TitleScene.state0` through Continue/New Game/Load/Option/Exit with original bytecode and
-  verify branch-specific service calls;
+- expand runtime input scenarios for `gMenu` beyond `title-new-game`: Continue enabled/disabled,
+  Load empty/non-empty, Option, Exit denied/allowed, cursor up/down;
+- implement `gMenu.startGame4Menu` as real Save/Profile/Scenario behavior:
+  `MakeNewGame` / `StartGame` service mutation, scenario selection, and scene/stage transition
+  diagnostics;
 - extend concrete UI helper objects into decoded UI command payloads;
 - finish argument payload decoding for the current service state events, especially `MenuObject`,
   `_menuWindow`, `_listWindow`, `setSelectCursor`, `bl/tr`, `float2`, and `renderHorizontal`;
-- after title scene state consumes input/menu selection, advance to save/new-game and then
-  `MakeNewGame` / `StartGame`.
+- after `StartGame`, advance to scene/stage load for the first mission candidate.
 
 Boundary: L7 is not complete. The current checkpoint is bytecode-state execution for the title
 boot edge, not a full Squirrel VM, title UI, or gameplay.

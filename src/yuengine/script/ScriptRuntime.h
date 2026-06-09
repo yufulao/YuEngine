@@ -167,6 +167,7 @@ struct ScriptExecutionReport {
     int optionalUnboundGlobals = 0;
     int unresolvedCalls = 0;
     bool truncated = false;
+    std::string runtimeInputStateJson;
     std::string runtimeServiceStateJson;
     std::string runtimeScriptStateJson;
     std::vector<std::string> baselineModulePaths;
@@ -175,6 +176,18 @@ struct ScriptExecutionReport {
     std::vector<ScriptNativeObligation> obligations;
     std::vector<ScriptServiceStateEvent> serviceStateEvents;
     std::vector<ScriptExecutionEvent> events;
+};
+
+struct ScriptRunOptions {
+    int frames = 0;
+    std::string inputScenario = "passive";
+    int menuSelectedIndex = 0;
+    bool menuDecide = false;
+    bool menuDown = false;
+    bool menuUp = false;
+    bool saveListEmpty = true;
+    bool continueDisabled = true;
+    bool canShutdown = false;
 };
 
 ScriptExecutionPlan planEntryExecution(
@@ -193,11 +206,26 @@ ScriptExecutionReport runEntryScript(
 
 ScriptExecutionReport runEntryScript(
     const SqasmModule& module,
+    const std::string& entryFunction,
+    const native::NativeRegistry& registry,
+    const native::NativeServiceCatalog& catalog,
+    const ScriptRunOptions& options);
+
+ScriptExecutionReport runEntryScript(
+    const SqasmModule& module,
     const std::vector<SqasmModule>& baselineModules,
     const std::string& entryFunction,
     const native::NativeRegistry& registry,
     const native::NativeServiceCatalog& catalog,
     int frames);
+
+ScriptExecutionReport runEntryScript(
+    const SqasmModule& module,
+    const std::vector<SqasmModule>& baselineModules,
+    const std::string& entryFunction,
+    const native::NativeRegistry& registry,
+    const native::NativeServiceCatalog& catalog,
+    const ScriptRunOptions& options);
 
 std::string scriptExecutionReportToJson(const ScriptExecutionReport& report);
 

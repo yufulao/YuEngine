@@ -37,7 +37,7 @@ void usage()
               << "  yuengine_cli resources <project.json>\n"
               << "  yuengine_cli script <project.json> <module>\n"
               << "  yuengine_cli script-plan <project.json> [module] [function] [--repo-root <path>]\n"
-              << "  yuengine_cli script-run <project.json> [module] [function] [--frames N] [--repo-root <path>]\n"
+              << "  yuengine_cli script-run <project.json> [module] [function] [--frames N] [--input-scenario <name>] [--repo-root <path>]\n"
               << "  yuengine_cli native-services <project.json> [--repo-root <path>]\n";
 }
 
@@ -109,6 +109,38 @@ std::vector<std::string> positionalArgs(int argc, char** argv, int begin)
             ++i;
             continue;
         }
+        if (std::string(argv[i]) == "--input-scenario" && i + 1 < argc) {
+            ++i;
+            continue;
+        }
+        if (std::string(argv[i]) == "--menu-select" && i + 1 < argc) {
+            ++i;
+            continue;
+        }
+        if (std::string(argv[i]) == "--menu-decide" && i + 1 < argc) {
+            ++i;
+            continue;
+        }
+        if (std::string(argv[i]) == "--menu-down" && i + 1 < argc) {
+            ++i;
+            continue;
+        }
+        if (std::string(argv[i]) == "--menu-up" && i + 1 < argc) {
+            ++i;
+            continue;
+        }
+        if (std::string(argv[i]) == "--save-empty" && i + 1 < argc) {
+            ++i;
+            continue;
+        }
+        if (std::string(argv[i]) == "--continue-disabled" && i + 1 < argc) {
+            ++i;
+            continue;
+        }
+        if (std::string(argv[i]) == "--can-shutdown" && i + 1 < argc) {
+            ++i;
+            continue;
+        }
         args.push_back(argv[i]);
     }
     return args;
@@ -122,6 +154,117 @@ int intOption(int argc, char** argv, const std::string& option, int fallback)
         }
     }
     return fallback;
+}
+
+std::string stringOption(int argc, char** argv, const std::string& option, std::string fallback)
+{
+    for (int i = 3; i + 1 < argc; ++i) {
+        if (std::string(argv[i]) == option) {
+            return argv[i + 1];
+        }
+    }
+    return fallback;
+}
+
+bool parseBoolText(const std::string& value)
+{
+    if (value == "1" || value == "true" || value == "yes" || value == "on") {
+        return true;
+    }
+    if (value == "0" || value == "false" || value == "no" || value == "off") {
+        return false;
+    }
+    throw std::runtime_error("invalid boolean option value: " + value);
+}
+
+bool boolOption(int argc, char** argv, const std::string& option, bool fallback)
+{
+    for (int i = 3; i + 1 < argc; ++i) {
+        if (std::string(argv[i]) == option) {
+            return parseBoolText(argv[i + 1]);
+        }
+    }
+    return fallback;
+}
+
+bool hasOption(int argc, char** argv, const std::string& option)
+{
+    for (int i = 3; i < argc; ++i) {
+        if (std::string(argv[i]) == option) {
+            return true;
+        }
+    }
+    return false;
+}
+
+yu::script::ScriptRunOptions scriptRunOptions(int argc, char** argv)
+{
+    yu::script::ScriptRunOptions options;
+    options.frames = intOption(argc, argv, "--frames", 0);
+    options.inputScenario = stringOption(argc, argv, "--input-scenario", "passive");
+
+    if (options.inputScenario == "passive") {
+        options.menuSelectedIndex = 0;
+        options.menuDecide = false;
+    } else if (options.inputScenario == "title-continue-disabled") {
+        options.menuSelectedIndex = 0;
+        options.menuDecide = true;
+        options.saveListEmpty = true;
+        options.continueDisabled = true;
+    } else if (options.inputScenario == "title-continue") {
+        options.menuSelectedIndex = 0;
+        options.menuDecide = true;
+        options.saveListEmpty = false;
+        options.continueDisabled = false;
+    } else if (options.inputScenario == "title-new-game") {
+        options.menuSelectedIndex = 1;
+        options.menuDecide = true;
+    } else if (options.inputScenario == "title-load-empty") {
+        options.menuSelectedIndex = 2;
+        options.menuDecide = true;
+        options.saveListEmpty = true;
+    } else if (options.inputScenario == "title-load") {
+        options.menuSelectedIndex = 2;
+        options.menuDecide = true;
+        options.saveListEmpty = false;
+    } else if (options.inputScenario == "title-option") {
+        options.menuSelectedIndex = 3;
+        options.menuDecide = true;
+    } else if (options.inputScenario == "title-exit-denied") {
+        options.menuSelectedIndex = 4;
+        options.menuDecide = true;
+        options.canShutdown = false;
+    } else if (options.inputScenario == "title-exit-allowed") {
+        options.menuSelectedIndex = 4;
+        options.menuDecide = true;
+        options.canShutdown = true;
+    } else {
+        throw std::runtime_error("unknown script input scenario: " + options.inputScenario);
+    }
+
+    if (hasOption(argc, argv, "--menu-select")) {
+        options.menuSelectedIndex = intOption(argc, argv, "--menu-select", options.menuSelectedIndex);
+    }
+    if (hasOption(argc, argv, "--menu-decide")) {
+        options.menuDecide = boolOption(argc, argv, "--menu-decide", options.menuDecide);
+    }
+    if (hasOption(argc, argv, "--menu-down")) {
+        options.menuDown = boolOption(argc, argv, "--menu-down", options.menuDown);
+    }
+    if (hasOption(argc, argv, "--menu-up")) {
+        options.menuUp = boolOption(argc, argv, "--menu-up", options.menuUp);
+    }
+    if (hasOption(argc, argv, "--save-empty")) {
+        options.saveListEmpty = boolOption(argc, argv, "--save-empty", options.saveListEmpty);
+    }
+    if (hasOption(argc, argv, "--continue-disabled")) {
+        options.continueDisabled = boolOption(argc, argv, "--continue-disabled", options.continueDisabled);
+    }
+    if (hasOption(argc, argv, "--can-shutdown")) {
+        options.canShutdown = boolOption(argc, argv, "--can-shutdown", options.canShutdown);
+    }
+
+    return options;
 }
 
 } // namespace
@@ -202,7 +345,7 @@ int main(int argc, char** argv)
             const auto args = positionalArgs(argc, argv, 3);
             const std::string moduleName = args.empty() ? loaded.startup.entryModule : args[0];
             const std::string entryFunction = args.size() < 2 ? loaded.startup.entryFunction : args[1];
-            const int frames = intOption(argc, argv, "--frames", 0);
+            const yu::script::ScriptRunOptions options = scriptRunOptions(argc, argv);
             const auto modulePath = yu::script::resolveScriptModule(scriptRoots(loaded), moduleName);
             if (modulePath.empty()) {
                 std::cerr << "yuengine_cli: script module not found: " << moduleName << "\n";
@@ -214,7 +357,7 @@ int main(int argc, char** argv)
             const auto module = yu::script::loadSqasmModule(modulePath);
             const auto baselineModules = loadStartupBaselineModules(loaded, moduleName);
             const auto report =
-                yu::script::runEntryScript(module, baselineModules, entryFunction, registry, catalog, frames);
+                yu::script::runEntryScript(module, baselineModules, entryFunction, registry, catalog, options);
             const auto json = yu::script::scriptExecutionReportToJson(report);
             const size_t written = std::fwrite(json.data(), 1, json.size(), stdout);
             std::fflush(stdout);
