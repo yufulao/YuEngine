@@ -6,7 +6,7 @@ Owner: 八云紫
 Reviewers: 红美铃, 八云蓝, 博丽灵梦, 大妖精, 射命丸文 if evidence boundary is questioned, 雾雨魔理沙 when implementation exists
 Depends on: ADR-0012
 Related decisions: ADR-0002, ADR-0005, ADR-0006
-Source baseline: Phase 2 through `2bf993f`
+Source baseline: Phase 2 through `ca2079b`
 
 ## Layer
 
