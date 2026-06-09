@@ -318,7 +318,7 @@ python -m unittest discover -s tests
 Verified result:
 
 ```text
-CTest: 13/13 passed
+CTest: 14/14 passed
 Python unittest: 6/6 passed
 ```
 
@@ -343,12 +343,16 @@ Python unittest: 6/6 passed
 - Expand typed service behavior for `FadeIn`, `PlayBGM`, `PlaySE`, `MenuObject`, `GetSaveList`,
   `GetScenarioKeys`, `IsSaveFull`, `SetDifficultyMode`, `MakeNewGame`, and `StartGame` from
   current runtime-owned behavior into complete original-compatible contracts.
-- The queued first mission script now has its own L8 checkpoint in `docs/LOOP_TASKS.md`:
+- The queued first mission script now has its own completed L8 checkpoint in
+  `docs/LOOP_TASKS.md` and `docs/SCENE_ENTRY_RUNTIME_STATUS.md`:
   `mission/sc01/main/ms010_0.b64.sqasm -> setupProcess -> LoadStage ->
   LoadEventsScriptViaMission -> CallSetupEvents -> PushPlayerChara -> LoadRailCamera`
   executes with 0 unresolved calls and produces runtime-owned stage/player/camera/checkpoint
-  state. The remaining work is to consume that state in scene, actor, camera, and renderer
-  subsystems.
+  state. `yuengine_cli scene-entry` now binds the title new-game transition and first mission
+  setup into one runtime contract with `stage_ready=true`, `actor_ready=true`,
+  `camera_ready=true`, `event_ready=true`, `missing_resources=0`, and `missing_scripts=0`.
+  The remaining work is to materialize those bindings into scene graph, actor task, camera task,
+  event marker, renderer, audio, and input subsystems.
 - UI/render command buffer sourced from original script calls, not handwritten UI.
 
 L7 is not complete until original title script execution can drive menu selection, save/new-game

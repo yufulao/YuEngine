@@ -376,23 +376,23 @@ Progress:
 
 Current next edge:
 
-- drive the next scene/runtime contract from the first mission service state:
-  stage resource, event script, player actor, camera, checkpoint, and place params;
-- convert the current first mission native service mutations into deeper runtime subsystems:
-  resource load handles, stage graph, actor component/task state, camera task stack, and event-map
-  marker data;
+- consume the completed scene-entry runtime contract into deeper runtime subsystems:
+  resource load handles, stage graph, actor component/task state, camera task stack, event-map
+  marker data, and renderer/audio/input contracts;
 - expand runtime input scenarios for `gMenu` beyond `title-new-game`: Continue enabled/disabled,
   Load empty/non-empty, Option, Exit denied/allowed, cursor up/down;
 - extend concrete UI helper objects into decoded UI command payloads;
 - finish argument payload decoding for the current service state events, especially `MenuObject`,
   `_menuWindow`, `_listWindow`, `setSelectCursor`, `bl/tr`, `float2`, and `renderHorizontal`;
-- after mission setup service state exists, feed it into renderer/actor/camera runtime contracts
-  instead of a visual preview path.
+- after scene-entry binding exists, materialize runtime handles instead of remaining at path
+  validation or visual preview.
 
 Boundary: L7 is not complete. The current checkpoint is bytecode-state execution for the title
 boot/new-game edge, not a full Squirrel VM, title UI, scene runtime, or gameplay.
 
 ### L8: Save/New Game And Scene Entry
+
+Status: completed as scene-entry runtime contract checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -424,6 +424,52 @@ Progress:
   - camera: `map/Doujou/doujou.rcm`, rail enabled true, auto adjust false;
   - checkpoint: `toVec3(marker:sc01/main/ms010_0:eventMap._pos)`;
   - place params: label `<tid=plac.0001>`, return-to-world enabled, slave display mode 0.
+- `yuengine_cli scene-entry samples/touhou_new_world/project.json --repo-root .` now runs
+  original title new-game bytecode and original first mission setup bytecode into one runtime
+  contract.
+- Scene-entry metrics:
+  `ok=true`, `title_new_game_executed=true`, `mission_setup_executed=true`,
+  `stage_ready=true`, `actor_ready=true`, `camera_ready=true`, `event_ready=true`,
+  `resource_bindings=6`, `missing_resources=0`, `script_bindings=5`, `missing_scripts=0`.
+- Required scene-entry resource bindings:
+  `map/doujou/doujou.sge`, `map/doujou/doujou.mdl`, `map/doujou/doujou.col`,
+  `map/doujou/doujou.rcm`, `player/reimuex.b64`, `player/reimuex_pcg.b64`.
+- Required scene-entry script bindings:
+  `mission/sc01/main/ms010_0.b64.sqasm`, `mission/sc01/main/ms010_0.b64`,
+  `player/reimuex.b64`, `player/reimuex_pcg.b64`.
+- CTest passes 14/14 and Python unittest passes 6/6.
+
+Boundary: L8 proves script-driven new-game and scene-entry binding. It is not a rendered playable
+scene and not a generic stage/actor/camera implementation.
+
+### L9: Stage, Actor, Camera Runtime Materialization
+
+Status: active.
+
+Deliver:
+
+- consume `scene-entry` binding into runtime handles, not raw strings;
+- parse or model SGE/RCM/COL/MDL headers and dependency payloads needed by the first mission;
+- build stage graph state from `map/Doujou/doujou.sge` and sibling resources;
+- materialize event-map marker data for `eventMap._pos/_rot`;
+- materialize player actor/task state from `PushPlayerChara(reimuEx, pos, rotY)`;
+- materialize camera task stack from `PushTaskGameCamera`, `LoadRailCamera`, rail enable, auto
+  adjust, and default camera state;
+- expose diagnostics/tests that fail if any of those runtime handles are missing.
+
+Acceptance:
+
+- no hand-written visual placeholder or mesh-only preview;
+- no direct hard-coded first scene startup that bypasses title/new-game/setupProcess;
+- scene-entry output feeds stage/actor/camera runtime data structures;
+- missing or malformed SGE/RCM/COL/MDL/player script inputs fail explicitly.
+
+Next edge:
+
+- inspect `MgResourceHeader` payload structure for SGE/RCM/COL/MDL;
+- add runtime structs for stage graph, event marker table, actor spawn task, and camera rail task;
+- wire `yuengine_cli scene-entry` or a new runtime command to emit those handles;
+- add CTest coverage for the first mission handles.
 
 ## Stop Conditions
 

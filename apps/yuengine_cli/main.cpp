@@ -35,6 +35,7 @@ void usage()
               << "  yuengine_cli validate <project.json>\n"
               << "  yuengine_cli boot <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli resources <project.json>\n"
+              << "  yuengine_cli scene-entry <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli script <project.json> <module>\n"
               << "  yuengine_cli script-plan <project.json> [module] [function] [--repo-root <path>]\n"
               << "  yuengine_cli script-run <project.json> [module] [function] [--frames N] [--input-scenario <name>] [--repo-root <path>]\n"
@@ -305,6 +306,11 @@ int main(int argc, char** argv)
         if (command == "resources") {
             auto report = yu::resource::inspectProjectResources(manifest);
             std::cout << yu::resource::resourceReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "scene-entry") {
+            auto report = yu::runtime::runSceneEntryRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::sceneEntryRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "script") {

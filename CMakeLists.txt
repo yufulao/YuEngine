@@ -145,4 +145,13 @@ if(BUILD_TESTING)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "entry=setupProcess found=true executed=true frames=1 baseline_modules=2 constructed_objects=0 script_methods=0 script_functions=2 builtin_calls=0 native_obligations=18 native_implemented_calls=0 unique_native_apis=18 engine_object_calls=9 ui_object_calls=0 value_helper_calls=0 value_method_calls=3 module_lifecycle_calls=0 bytecode_state_functions=6 bytecode_state_instructions=2172 root_slot_writes=41 class_slot_writes=294 object_field_writes=0 table_slot_writes=200 typed_call_returns=35 ui_object_mutations=0 service_state_events=27 save_service_queries=0 platform_state_queries=0 audio_service_commands=1 scene_service_commands=10 ui_objects_tracked=0 ui_service_commands=0 value_state_queries=0 decoded_service_arguments=19 optional_unbound_globals=0 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm;LoadEventsScriptViaMission.*load_events_script_via_mission.*PushPlayerChara.*push_player_chara.*LoadRailCamera.*load_rail_camera;runtime_service_state.*loaded_stage_commands.: 1.*current_stage.: .map/Doujou/doujou.sge.*current_event_script.: .sc01/main/ms010_0.*push_player_chara_commands.: 1.*current_player_chara.: .reimuEx.*rail_camera_path.: .map/Doujou/doujou.rcm.*checkpoint_commands.: 1.*current_checkpoint.: .toVec3\\(marker:sc01/main/ms010_0:eventMap._pos\\)"
     )
+
+    add_test(
+        NAME yuengine_scene_entry_title_new_game
+        COMMAND yuengine_cli scene-entry samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_scene_entry_title_new_game PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true title_new_game_executed=true mission_setup_executed=true stage_ready=true actor_ready=true camera_ready=true event_ready=true resource_bindings=6 missing_resources=0 script_bindings=5 missing_scripts=0;started_mission.: .mission:sc01/main/ms010_0.*queued_mission_script.: .mission/sc01/main/ms010_0.b64.sqasm.*stage.: .map/Doujou/doujou.sge.*stage_model.: .map/Doujou/doujou.mdl.*stage_collision.: .map/Doujou/doujou.col.*rail_camera.: .map/Doujou/doujou.rcm;player_chara.: .reimuEx.*player_script_asset.: .player/reimuex.b64.*player_pcg_asset.: .player/reimuex_pcg.b64;role.: .stage_sge.*found.: true;role.: .rail_camera.*found.: true"
+    )
 endif()

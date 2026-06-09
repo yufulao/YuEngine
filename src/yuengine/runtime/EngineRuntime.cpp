@@ -5,18 +5,27 @@
 #include "yuengine/native/NativeServices.h"
 #include "yuengine/project/ProjectManifest.h"
 #include "yuengine/resource/VirtualFileSystem.h"
+#include "yuengine/script/ScriptRuntime.h"
 #include "yuengine/script/SqasmModule.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <iostream>
 #include <map>
 #include <sstream>
+#include <utility>
 
 namespace yu::runtime {
 namespace {
 
 void addError(BootReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
+void addError(SceneEntryRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
     report.errors.push_back(message);
@@ -42,6 +51,187 @@ void traceBoot(const std::string& phase)
     if (traceEnabled()) {
         std::cerr << "[yuengine boot] " << phase << std::endl;
     }
+}
+
+std::string lowercase(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+std::vector<std::filesystem::path> manifestScriptRoots(const project::ProjectManifest& manifest)
+{
+    std::vector<std::filesystem::path> roots;
+    for (const auto& root : manifest.scriptRoots) {
+        roots.push_back(root.path);
+    }
+    return roots;
+}
+
+void appendUnique(std::vector<std::string>& values, const std::string& value)
+{
+    if (std::find(values.begin(), values.end(), value) == values.end()) {
+        values.push_back(value);
+    }
+}
+
+std::vector<script::SqasmModule> loadStartupBaselineModules(
+    const project::ProjectManifest& manifest,
+    const std::string& entryModule)
+{
+    std::vector<std::string> moduleNames;
+    for (const auto& preload : manifest.startup.preloadScripts) {
+        appendUnique(moduleNames, preload);
+    }
+    for (const auto& dependency : manifest.startup.dependencyScripts) {
+        appendUnique(moduleNames, dependency);
+    }
+
+    std::vector<script::SqasmModule> modules;
+    const auto roots = manifestScriptRoots(manifest);
+    for (const auto& moduleName : moduleNames) {
+        if (moduleName == entryModule) {
+            continue;
+        }
+        const auto modulePath = script::resolveScriptModule(roots, moduleName);
+        if (modulePath.empty()) {
+            throw std::runtime_error("startup baseline script module not found: " + moduleName);
+        }
+        modules.push_back(script::loadSqasmModule(modulePath));
+    }
+    return modules;
+}
+
+int64_t fileSizeOrUnknown(const std::filesystem::path& path)
+{
+    std::error_code error;
+    const auto size = std::filesystem::file_size(path, error);
+    return error ? -1 : static_cast<int64_t>(size);
+}
+
+std::string withExtension(const std::string& path, const std::string& extension)
+{
+    std::filesystem::path value(path);
+    value.replace_extension(extension);
+    return value.generic_string();
+}
+
+std::string eventScriptModuleName(const std::string& eventScript)
+{
+    if (eventScript.empty()) {
+        return {};
+    }
+    if (eventScript.rfind("mission/", 0) == 0) {
+        return eventScript.ends_with(".b64") || eventScript.ends_with(".b64.sqasm") ? eventScript
+                                                                                    : eventScript + ".b64";
+    }
+    return "mission/" + eventScript + ".b64";
+}
+
+bool foundBinding(const SceneEntryRuntimeReport& report, const std::string& role)
+{
+    return std::any_of(report.bindings.begin(), report.bindings.end(), [&](const auto& binding) {
+        return binding.role == role && binding.found;
+    });
+}
+
+void addResourceBinding(
+    SceneEntryRuntimeReport& report,
+    const resource::VirtualFileSystem& vfs,
+    std::string role,
+    std::string query,
+    bool required)
+{
+    RuntimeBindingReport binding;
+    binding.role = std::move(role);
+    binding.kind = "resource_path";
+    binding.query = resource::normalizeResourcePath(query);
+    binding.required = required;
+
+    if (!query.empty()) {
+        const auto resolution = vfs.resolvePath(query);
+        binding.found = resolution.found;
+        if (resolution.found) {
+            binding.mountType = resolution.entry.mountType;
+            binding.virtualPath = resolution.entry.virtualPath;
+            binding.physicalPath = resolution.entry.physicalPath.string();
+            binding.pack = resolution.entry.pack;
+            binding.size = resolution.entry.size;
+        }
+    }
+
+    ++report.resourceBindings;
+    if (required && !binding.found) {
+        ++report.missingResources;
+        addError(report, "required runtime resource not resolved: " + binding.role + "=" + binding.query);
+    }
+    report.bindings.push_back(std::move(binding));
+}
+
+void addScriptBinding(
+    SceneEntryRuntimeReport& report,
+    const project::ProjectManifest& manifest,
+    std::string role,
+    std::string moduleName,
+    bool required)
+{
+    RuntimeBindingReport binding;
+    binding.role = std::move(role);
+    binding.kind = "script_module";
+    binding.query = std::move(moduleName);
+    binding.required = required;
+
+    if (!binding.query.empty()) {
+        const auto resolved = script::resolveScriptModule(manifestScriptRoots(manifest), binding.query);
+        binding.found = !resolved.empty();
+        if (binding.found) {
+            binding.physicalPath = resolved.string();
+            binding.size = fileSizeOrUnknown(resolved);
+        }
+    }
+
+    ++report.scriptBindings;
+    if (required && !binding.found) {
+        ++report.missingScripts;
+        addError(report, "required runtime script module not resolved: " + binding.role + "=" + binding.query);
+    }
+    report.bindings.push_back(std::move(binding));
+}
+
+void writeJsonStringArray(std::ostringstream& out, const std::vector<std::string>& values)
+{
+    out << "[";
+    for (size_t i = 0; i < values.size(); ++i) {
+        out << (i ? ", " : "") << "\"" << core::jsonEscape(values[i]) << "\"";
+    }
+    out << "]";
+}
+
+void writeBinding(std::ostringstream& out, const RuntimeBindingReport& binding)
+{
+    out << "{\"role\": \"" << core::jsonEscape(binding.role) << "\", "
+        << "\"kind\": \"" << core::jsonEscape(binding.kind) << "\", "
+        << "\"query\": \"" << core::jsonEscape(binding.query) << "\", "
+        << "\"required\": " << (binding.required ? "true" : "false") << ", "
+        << "\"found\": " << (binding.found ? "true" : "false");
+    if (!binding.mountType.empty()) {
+        out << ", \"mount_type\": \"" << core::jsonEscape(binding.mountType) << "\"";
+    }
+    if (!binding.virtualPath.empty()) {
+        out << ", \"virtual_path\": \"" << core::jsonEscape(binding.virtualPath) << "\"";
+    }
+    if (!binding.physicalPath.empty()) {
+        out << ", \"physical_path\": \"" << core::jsonEscape(binding.physicalPath) << "\"";
+    }
+    if (!binding.pack.empty()) {
+        out << ", \"pack\": \"" << core::jsonEscape(binding.pack) << "\"";
+    }
+    if (binding.size >= 0) {
+        out << ", \"size\": " << binding.size;
+    }
+    out << "}";
 }
 
 void loadModule(
@@ -216,6 +406,173 @@ BootReport bootProject(const std::filesystem::path& manifestPath, const std::fil
     return report;
 }
 
+SceneEntryRuntimeReport buildSceneEntryRuntimeReport(
+    const project::ProjectManifest& manifest,
+    const native::NativeRuntimeServiceState& titleState,
+    const native::NativeRuntimeServiceState& missionState,
+    const resource::VirtualFileSystem& vfs)
+{
+    SceneEntryRuntimeReport report;
+    report.projectId = manifest.projectId;
+
+    report.makeNewGameCommands = titleState.saveProfileScenario.makeNewGameCommands;
+    report.startGameCommands = titleState.saveProfileScenario.startGameCommands;
+    report.queuedStageLoads = titleState.sceneStage.queuedStageLoads;
+    report.startedMission = titleState.saveProfileScenario.startedMission;
+    report.startNewGame = titleState.saveProfileScenario.startNewGame;
+    report.queuedMissionScript = titleState.sceneStage.currentMissionScript;
+    report.queuedStage = titleState.sceneStage.currentStage;
+    report.queuedRailCamera = titleState.sceneStage.currentRailCamera;
+
+    report.missionScript = missionState.sceneStage.currentMissionScript.empty()
+        ? titleState.sceneStage.currentMissionScript
+        : missionState.sceneStage.currentMissionScript;
+    report.eventScript = missionState.sceneStage.currentEventScript;
+    report.activeLoader = missionState.sceneStage.activeLoader;
+    report.stagePath = missionState.sceneStage.currentStage.empty()
+        ? titleState.sceneStage.currentStage
+        : missionState.sceneStage.currentStage;
+    report.stageModelPath = report.stagePath.empty() ? std::string() : withExtension(report.stagePath, ".mdl");
+    report.stageCollisionPath = report.stagePath.empty() ? std::string() : withExtension(report.stagePath, ".col");
+    report.railCameraPath = missionState.camera.railCameraPath.empty()
+        ? (missionState.sceneStage.currentRailCamera.empty() ? titleState.sceneStage.currentRailCamera
+                                                             : missionState.sceneStage.currentRailCamera)
+        : missionState.camera.railCameraPath;
+
+    report.playerChara = missionState.actorTask.currentPlayerChara;
+    const std::string playerStem = lowercase(report.playerChara);
+    if (!playerStem.empty()) {
+        report.playerScriptAsset = "player/" + playerStem + ".b64";
+        report.playerPcgAsset = "player/" + playerStem + "_pcg.b64";
+        report.playerScriptModule = "player/" + playerStem + ".b64";
+        report.playerPcgModule = "player/" + playerStem + "_pcg.b64";
+    }
+    report.spawnPosition = missionState.actorTask.currentPlayerPosition;
+    report.spawnRotY = missionState.actorTask.currentPlayerRotY;
+    report.checkpoint = missionState.eventQuestFlag.currentCheckpoint;
+    report.railCameraEnabled = missionState.camera.railCameraEnabled;
+    report.autoCameraAdjustEnabled = missionState.camera.autoCameraAdjustEnabled;
+    report.defaultCameraStateTarget = missionState.camera.defaultCameraStateTarget;
+
+    addScriptBinding(report, manifest, "title_queued_mission_script", report.queuedMissionScript, true);
+    addScriptBinding(report, manifest, "mission_setup_script", report.missionScript, true);
+    addScriptBinding(report, manifest, "event_script", eventScriptModuleName(report.eventScript), true);
+    addScriptBinding(report, manifest, "player_script_module", report.playerScriptModule, true);
+    addScriptBinding(report, manifest, "player_pcg_module", report.playerPcgModule, true);
+
+    addResourceBinding(report, vfs, "stage_sge", report.stagePath, true);
+    addResourceBinding(report, vfs, "stage_model", report.stageModelPath, true);
+    addResourceBinding(report, vfs, "stage_collision", report.stageCollisionPath, true);
+    addResourceBinding(report, vfs, "rail_camera", report.railCameraPath, true);
+    addResourceBinding(report, vfs, "player_script_asset", report.playerScriptAsset, true);
+    addResourceBinding(report, vfs, "player_pcg_asset", report.playerPcgAsset, true);
+
+    report.stageReady = missionState.sceneStage.loadedStageCommands > 0 && foundBinding(report, "stage_sge")
+        && foundBinding(report, "stage_model") && foundBinding(report, "stage_collision");
+    report.actorReady = missionState.actorTask.pushPlayerCharaCommands > 0 && !report.playerChara.empty()
+        && !report.spawnPosition.empty() && foundBinding(report, "player_script_asset")
+        && foundBinding(report, "player_pcg_asset") && foundBinding(report, "player_script_module")
+        && foundBinding(report, "player_pcg_module");
+    report.cameraReady = missionState.camera.pushGameCameraCommands > 0 && missionState.camera.railCameraLoads > 0
+        && foundBinding(report, "rail_camera") && !report.defaultCameraStateTarget.empty();
+    report.eventReady = missionState.sceneStage.loadedEventScriptCommands > 0
+        && missionState.sceneStage.callSetupEventsCommands > 0 && missionState.eventQuestFlag.markerQueries > 0
+        && missionState.eventQuestFlag.checkpointCommands > 0 && foundBinding(report, "mission_setup_script")
+        && foundBinding(report, "event_script");
+
+    if (report.makeNewGameCommands <= 0 || report.startGameCommands <= 0 || report.queuedStageLoads <= 0) {
+        addError(report, "title new-game transition did not produce MakeNewGame/StartGame/stage queue commands");
+    }
+    if (!report.stageReady) {
+        addError(report, "scene-entry stage contract is not ready");
+    }
+    if (!report.actorReady) {
+        addError(report, "scene-entry actor contract is not ready");
+    }
+    if (!report.cameraReady) {
+        addError(report, "scene-entry camera contract is not ready");
+    }
+    if (!report.eventReady) {
+        addError(report, "scene-entry event contract is not ready");
+    }
+
+    return report;
+}
+
+SceneEntryRuntimeReport runSceneEntryRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    SceneEntryRuntimeReport report;
+    try {
+        const project::ProjectManifest manifest = project::loadProjectManifest(manifestPath);
+
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+
+        native::NativeRegistry registry;
+        registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
+
+        native::NativeServiceCatalog titleCatalog;
+        const auto titleModulePath = script::resolveScriptModule(manifestScriptRoots(manifest), manifest.startup.entryModule);
+        if (titleModulePath.empty()) {
+            addError(report, "title entry script module not found: " + manifest.startup.entryModule);
+            return report;
+        }
+        const auto titleModule = script::loadSqasmModule(titleModulePath);
+        const auto titleBaselineModules = loadStartupBaselineModules(manifest, manifest.startup.entryModule);
+
+        script::ScriptRunOptions titleOptions;
+        titleOptions.frames = 5;
+        titleOptions.inputScenario = "title-new-game";
+        titleOptions.menuSelectedIndex = 1;
+        titleOptions.menuDecide = true;
+        const auto titleExecution =
+            script::runEntryScript(titleModule, titleBaselineModules, manifest.startup.entryFunction, registry, titleCatalog, titleOptions);
+        const auto titleState = titleCatalog.runtimeState();
+
+        std::string missionModuleName = titleState.sceneStage.currentMissionScript;
+        if (missionModuleName.empty()) {
+            missionModuleName = manifest.oracle.firstMissionCandidate;
+        }
+        if (missionModuleName.empty()) {
+            addError(report, "first mission script is not available from title state or oracle hints");
+            return report;
+        }
+
+        native::NativeServiceCatalog missionCatalog;
+        const auto missionModulePath = script::resolveScriptModule(manifestScriptRoots(manifest), missionModuleName);
+        if (missionModulePath.empty()) {
+            addError(report, "mission setup script module not found: " + missionModuleName);
+            return report;
+        }
+        const auto missionModule = script::loadSqasmModule(missionModulePath);
+        const auto missionBaselineModules = loadStartupBaselineModules(manifest, missionModuleName);
+
+        script::ScriptRunOptions missionOptions;
+        missionOptions.frames = 1;
+        missionOptions.inputScenario = "passive";
+        const auto missionExecution =
+            script::runEntryScript(missionModule, missionBaselineModules, "setupProcess", registry, missionCatalog, missionOptions);
+        const auto missionState = missionCatalog.runtimeState();
+
+        report = buildSceneEntryRuntimeReport(manifest, titleState, missionState, vfs);
+        report.titleNewGameExecuted = titleExecution.entryFound && titleExecution.executed;
+        report.missionSetupExecuted = missionExecution.entryFound && missionExecution.executed;
+        report.titleStatus = titleExecution.status;
+        report.missionStatus = missionExecution.status;
+        if (!report.titleNewGameExecuted) {
+            addError(report, "title new-game script run did not execute");
+        }
+        if (!report.missionSetupExecuted) {
+            addError(report, "mission setup script run did not execute");
+        }
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
 std::string bootReportToJson(const BootReport& report)
 {
     std::ostringstream out;
@@ -265,6 +622,81 @@ std::string bootReportToJson(const BootReport& report)
             << core::jsonEscape(obligation.service) << "\", \"calls\": " << obligation.calls
             << ", \"status\": \"" << core::jsonEscape(obligation.status) << "\"}";
         out << (i + 1 == report.obligations.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+std::string sceneEntryRuntimeReportToJson(const SceneEntryRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.scene_entry_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " title_new_game_executed=" << (report.titleNewGameExecuted ? "true" : "false")
+        << " mission_setup_executed=" << (report.missionSetupExecuted ? "true" : "false")
+        << " stage_ready=" << (report.stageReady ? "true" : "false")
+        << " actor_ready=" << (report.actorReady ? "true" : "false")
+        << " camera_ready=" << (report.cameraReady ? "true" : "false")
+        << " event_ready=" << (report.eventReady ? "true" : "false")
+        << " resource_bindings=" << report.resourceBindings << " missing_resources=" << report.missingResources
+        << " script_bindings=" << report.scriptBindings << " missing_scripts=" << report.missingScripts << "\",\n";
+    out << "  \"errors\": ";
+    writeJsonStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"warnings\": ";
+    writeJsonStringArray(out, report.warnings);
+    out << ",\n";
+    out << "  \"title_transition\": {";
+    out << "\"executed\": " << (report.titleNewGameExecuted ? "true" : "false")
+        << ", \"status\": \"" << core::jsonEscape(report.titleStatus)
+        << "\", \"make_new_game_commands\": " << report.makeNewGameCommands
+        << ", \"start_game_commands\": " << report.startGameCommands
+        << ", \"queued_stage_loads\": " << report.queuedStageLoads
+        << ", \"started_mission\": \"" << core::jsonEscape(report.startedMission)
+        << "\", \"start_new_game\": \"" << core::jsonEscape(report.startNewGame)
+        << "\", \"queued_mission_script\": \"" << core::jsonEscape(report.queuedMissionScript)
+        << "\", \"queued_stage\": \"" << core::jsonEscape(report.queuedStage)
+        << "\", \"queued_rail_camera\": \"" << core::jsonEscape(report.queuedRailCamera) << "\"},\n";
+    out << "  \"mission_setup\": {";
+    out << "\"executed\": " << (report.missionSetupExecuted ? "true" : "false")
+        << ", \"status\": \"" << core::jsonEscape(report.missionStatus)
+        << "\", \"mission_script\": \"" << core::jsonEscape(report.missionScript)
+        << "\", \"event_script\": \"" << core::jsonEscape(report.eventScript)
+        << "\", \"active_loader\": \"" << core::jsonEscape(report.activeLoader)
+        << "\", \"stage\": \"" << core::jsonEscape(report.stagePath)
+        << "\", \"stage_model\": \"" << core::jsonEscape(report.stageModelPath)
+        << "\", \"stage_collision\": \"" << core::jsonEscape(report.stageCollisionPath)
+        << "\", \"rail_camera\": \"" << core::jsonEscape(report.railCameraPath) << "\"},\n";
+    out << "  \"actor\": {";
+    out << "\"ready\": " << (report.actorReady ? "true" : "false")
+        << ", \"player_chara\": \"" << core::jsonEscape(report.playerChara)
+        << "\", \"player_script_asset\": \"" << core::jsonEscape(report.playerScriptAsset)
+        << "\", \"player_pcg_asset\": \"" << core::jsonEscape(report.playerPcgAsset)
+        << "\", \"player_script_module\": \"" << core::jsonEscape(report.playerScriptModule)
+        << "\", \"player_pcg_module\": \"" << core::jsonEscape(report.playerPcgModule)
+        << "\", \"spawn_position\": \"" << core::jsonEscape(report.spawnPosition)
+        << "\", \"spawn_rot_y\": \"" << core::jsonEscape(report.spawnRotY)
+        << "\", \"checkpoint\": \"" << core::jsonEscape(report.checkpoint) << "\"},\n";
+    out << "  \"camera\": {";
+    out << "\"ready\": " << (report.cameraReady ? "true" : "false")
+        << ", \"rail_camera_path\": \"" << core::jsonEscape(report.railCameraPath)
+        << "\", \"rail_camera_enabled\": \"" << core::jsonEscape(report.railCameraEnabled)
+        << "\", \"auto_camera_adjust_enabled\": \"" << core::jsonEscape(report.autoCameraAdjustEnabled)
+        << "\", \"default_camera_state_target\": \"" << core::jsonEscape(report.defaultCameraStateTarget) << "\"},\n";
+    out << "  \"readiness\": {";
+    out << "\"stage_ready\": " << (report.stageReady ? "true" : "false")
+        << ", \"actor_ready\": " << (report.actorReady ? "true" : "false")
+        << ", \"camera_ready\": " << (report.cameraReady ? "true" : "false")
+        << ", \"event_ready\": " << (report.eventReady ? "true" : "false") << "},\n";
+    out << "  \"bindings\": [\n";
+    for (size_t i = 0; i < report.bindings.size(); ++i) {
+        out << "    ";
+        writeBinding(out, report.bindings[i]);
+        out << (i + 1 == report.bindings.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";
