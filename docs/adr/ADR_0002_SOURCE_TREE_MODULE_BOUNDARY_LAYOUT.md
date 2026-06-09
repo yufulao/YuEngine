@@ -56,7 +56,6 @@ YuEngine/
       script/
       world/
       ui/
-      tools_support/
   apps/
     yuengine_headless/
   tests/
@@ -100,6 +99,30 @@ Rules:
 - `tools/*` is never linked into runtime targets.
 - `docs/*` is not a source dependency.
 - Old backup paths are not CMake inputs.
+
+P1-GATE-001 target dependency rule:
+
+```text
+YuHeadless
+  -> YuKernel
+  -> YuPlatform
+  -> YuDiagnostics
+```
+
+Rules for the first slice:
+
+- `YuHeadless` may assemble the approved headless host only.
+- `YuKernel` may depend on `YuPlatform` for host/platform abstractions and `YuDiagnostics` for minimal logging events.
+- `YuPlatform` may depend on `YuDiagnostics` only for the minimal logging sink required by P1-GATE-001.
+- `YuDiagnostics` must not depend on `YuKernel`, `YuPlatform`, `YuHeadless`, original-game evidence, tools, reports, capture, oracle, profiler dashboards, or editor code.
+- No other runtime targets may be introduced by P1-GATE-001.
+
+`YuDiagnostics` scope in P1-GATE-001:
+
+- allowed: default logging sink, disabled logging sink, bounded in-memory test observation needed to prove disabled logging is behavior-neutral;
+- blocked: diagnostics channel architecture, report schema, JSON runtime API, capture/oracle ownership, profiling API, dashboard feed, trace file format, or runtime behavior ownership.
+
+Broader diagnostics work belongs to ADR-0004 and P1-GATE-004.
 
 ## Include Boundary
 
@@ -179,6 +202,8 @@ Tools code:
 - consumes runtime outputs or offline inputs;
 - may depend on file formats and reports;
 - does not define runtime ownership.
+
+There is no `tools_support` runtime module in Phase 1. If future tooling needs shared support code, it must enter through a later L7/tools-only gate and must not be linked into runtime targets without a separate architecture decision.
 
 Samples:
 
