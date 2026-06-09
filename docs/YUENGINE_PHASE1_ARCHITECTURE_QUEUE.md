@@ -75,6 +75,7 @@ The first slice explicitly excludes:
 | ADR-0006 | Memory accounting and allocation policy skeleton | 博丽灵梦 with 八云紫 | 红美铃 | Accepted | Memory first slice |
 | ADR-0007 | Thread/task model skeleton | 博丽灵梦 with 八云紫 | 雾雨魔理沙, 博丽灵梦 | Accepted | Thread/Task first slice |
 | ADR-0008 | File/VFS first boundary | 八云紫 | 大妖精, 射命丸文, 博丽灵梦 | Accepted | Future File/VFS gate |
+| ADR-0009 | Resource identity and lifetime boundary | 八云紫 | 红美铃, 大妖精, 博丽灵梦, 射命丸文 | Proposed | Resource handle/dependency first slice |
 
 ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accepted as the source tree and module boundary layout. ADR-0003 is accepted as the Kernel lifecycle and dependency model for the first slice.
 
@@ -84,14 +85,16 @@ ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accept
 | --- | --- | --- | --- | --- | --- |
 | P1-GATE-001 | Platform Host + Engine Kernel Bootstrap | L0-L2 | `APPROVED_FOR_FIRST_SLICE` | Implemented | Headless host, timer, log sink, error boundary, module lifecycle, service registry, tests |
 | P1-GATE-002 | Memory Accounting Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0006 accepted; accounting hooks and leak fixtures only, no full allocator |
-| P1-GATE-003 | Thread/Task Primitive Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | Final gate pending | ADR-0007 accepted; bounded queue and inline executor only, no worker pool |
-| P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | `APPROVED_FOR_FIRST_SLICE` | Final gate pending | ADR-0004 accepted; bounded synchronous observer only, no reports/profiler/async queue |
-| P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Final gate pending | ADR-0008 accepted; path normalization and loose fixture reads only, no package parser |
+| P1-GATE-003 | Thread/Task Primitive Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0007 accepted; bounded queue and inline executor only, no worker pool |
+| P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0004 accepted; bounded synchronous observer only, no reports/profiler/async queue |
+| P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0008 accepted; path normalization and loose fixture reads only, no package parser |
+| P1-GATE-006 | Resource Identity And Lifetime Skeleton | L4 | `APPROVED_FOR_FIRST_SLICE` | Proposed | Needs ADR-0009; synthetic handles/dependencies only, no file/package/load/decode |
 
 ## Current Active Gates
 
 - P1-GATE-002 implementation is in review as task #14.
-- P1-GATE-003, P1-GATE-004, and P1-GATE-005 await final gate/PM state before implementation tasks are created.
+- P1-GATE-003, P1-GATE-004, and P1-GATE-005 are approved for first implementation slices; task handoffs must preserve their dependency guards.
+- ADR-0009 and P1-GATE-006 are Resource identity/lifetime proposals only; they do not authorize implementation before review.
 - No implementation task may be created from a gate until that gate has `APPROVED_FOR_FIRST_SLICE`.
 
 ## Review Routing
@@ -117,7 +120,7 @@ The next implementation slice must not be created if any of these remain true:
 ## Immediate Next Steps
 
 1. Close task #14 code/semantic review for the P1-GATE-002 memory implementation.
-2. Obtain final gate/PM state for P1-GATE-003, P1-GATE-004, and P1-GATE-005.
-3. Create implementation tasks only for gates that reach `APPROVED_FOR_FIRST_SLICE`.
+2. Create scoped implementation tasks for P1-GATE-003, P1-GATE-004, and P1-GATE-005.
+3. Route ADR-0009 and P1-GATE-006 for Resource identity/lifetime review.
 4. Preserve the Phase 1 exclusions: no renderer, resources package parser, async IO, gameplay/world, reports, capture/oracle, or original-game adapter behavior.
 5. If a gate is blocked, amend the owning ADR/gate immediately instead of creating implementation work.
