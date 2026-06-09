@@ -73,7 +73,7 @@ The first slice explicitly excludes:
 | ADR-0004 | Logging, diagnostics channel, and report boundary | 八云紫 | 红美铃, 博丽灵梦 | Accepted | Platform/Kernel diagnostics |
 | ADR-0005 | Test taxonomy and fast gate command | 八云紫 | 红美铃, 雾雨魔理沙 later | Accepted | Implementation acceptance |
 | ADR-0006 | Memory accounting and allocation policy skeleton | 博丽灵梦 with 八云紫 | 红美铃 | Accepted | Memory first slice |
-| ADR-0007 | Thread/task model skeleton | 博丽灵梦 with 八云紫 | 红美铃 | Pending | Thread/Task first slice |
+| ADR-0007 | Thread/task model skeleton | 博丽灵梦 with 八云紫 | 红美铃 | Proposed | Thread/Task first slice |
 | ADR-0008 | File/VFS first boundary | 八云紫 | 红美铃, 射命丸文, 博丽灵梦 | Pending | Future File/VFS gate |
 
 ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accepted as the source tree and module boundary layout. ADR-0003 is accepted as the Kernel lifecycle and dependency model for the first slice.
@@ -84,7 +84,7 @@ ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accept
 | --- | --- | --- | --- | --- | --- |
 | P1-GATE-001 | Platform Host + Engine Kernel Bootstrap | L0-L2 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Headless host, timer, log sink, error boundary, module lifecycle, service registry, tests |
 | P1-GATE-002 | Memory Accounting Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Needs ADR-0006; accounting hooks and leak fixtures only, no full allocator |
-| P1-GATE-003 | Thread/Task Primitive Skeleton | L1-L2 | TBD | Pending | Needs ADR-0007 |
+| P1-GATE-003 | Thread/Task Primitive Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Needs ADR-0007; bounded queue and inline executor only, no worker pool |
 | P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | TBD | Pending | Needs ADR-0004 |
 | P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | TBD | Pending | Precedes VFS/package work |
 
