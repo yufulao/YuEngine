@@ -1,9 +1,9 @@
 # Testing Runtime Status
 
 Full CTest used to be too slow because every contract test started a new CLI process and repeatedly
-rebuilt the same runtime evidence chain. The default CTest registration now uses one single-process
-aggregate runner, `yuengine_runtime_contract_suite`, and the older per-contract CTest cases are
-opt-in through `YUENGINE_ENABLE_LEGACY_CTESTS=ON`.
+rebuilt the same runtime evidence chain. The default CTest registration now uses `FAST` mode and
+registers only the current deepest contract through the single-process `runtime-contract-suite`
+filter. Full aggregate CTest and legacy per-contract CTest are explicit configuration modes.
 
 ## Current Timing
 
@@ -60,10 +60,24 @@ build\cmake-bt143\yuengine_cli.exe runtime-contract-suite samples\touhou_new_wor
 
 tools\verify_runtime.ps1 -Mode full -SkipPython -SkipDiffCheck -NoBuild
 1/1 yuengine_runtime_contract_suite passed with 38 contracts, 50.89 seconds
+
+Measured after L33 and CTest mode split:
+
+ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure
+1/1 yuengine_current_backend_contract passed, 23.97-24.63 seconds
+
+tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild
+fast L33 yuengine_backend_shader_sampler_contract through runtime-contract-suite filter, 23.88 seconds
+
+tools\verify_runtime.ps1 -Mode full -SkipPython -SkipDiffCheck -NoBuild
+39/39 contracts through direct runtime-contract-suite CLI, 51.78 seconds
+
+tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
+clean build, Python unittest, 39/39 contracts, and git diff --check, 75.02 seconds
 ```
 
-Default bare CTest is now acceptable for a checkpoint because it runs only the aggregate suite.
-The fast script remains the edit-loop command.
+Default bare CTest is now acceptable for an edit-loop check because it runs only the current fast
+contract. Full regression remains available through `tools\verify_runtime.ps1 -Mode full`.
 
 ## Standard Commands
 
@@ -82,7 +96,7 @@ tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_upload_binding_cont
 Current deepest edge example:
 
 ```powershell
-tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_surface_material_font_contract -Jobs 8
+tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_shader_sampler_contract -Jobs 8
 ```
 
 Full checkpoint verification before commit:
@@ -100,19 +114,23 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 ## Policy
 
 - Default bare `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs only
-  `yuengine_runtime_contract_suite`.
+  `yuengine_current_backend_contract`, currently filtered to
+  `yuengine_backend_shader_sampler_contract`.
 - The default loop command is `tools\verify_runtime.ps1`, which runs the current fast backend
   contract and `git diff --check`.
 - Use `-Mode edge -Filter <test>` after narrow changes; this calls
   `yuengine_cli runtime-contract-suite --filter <test>` instead of starting legacy CTest cases.
-- Use `-Mode full` before committing major checkpoints; this runs the aggregate CTest suite.
+- Use `-Mode full` before committing major checkpoints; this runs direct
+  `yuengine_cli runtime-contract-suite` and avoids CTest process fan-out.
+- Use full aggregate CTest only when CTest integration itself must be checked:
+  `cmake -S . -B build\cmake-bt143 -DYUENGINE_CTEST_MODE=FULL`.
 - Enable older per-contract CTest cases only when diagnosing one of those cases:
-  `cmake -S . -B build\cmake-bt143 -DYUENGINE_ENABLE_LEGACY_CTESTS=ON`.
+  `cmake -S . -B build\cmake-bt143 -DYUENGINE_CTEST_MODE=LEGACY`.
 - Keep `git diff --check` in the standard verification path.
 - Keep `--clean-first` only when C++ headers, ABI-like structs, or build system files changed.
 
 ## Remaining Performance Work
 
-The aggregate runner removes the one-hour path. Remaining performance work is to share the boot,
-resource, and title script-run reports inside the suite so full regression can approach the current
-24-25 second deepest-contract cost instead of about 50 seconds.
+The fast CTest mode removes the one-hour edit-loop path. Remaining performance work is to share the
+boot, resource, and title script-run reports inside the suite so full regression can approach the
+current 24 second deepest-contract cost instead of about 52 seconds.

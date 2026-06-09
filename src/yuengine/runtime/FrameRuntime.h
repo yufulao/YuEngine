@@ -1150,6 +1150,66 @@ struct BackendSurfaceMaterialFontRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendShaderSamplerReflectionRecord {
+    std::string shaderFile;
+    std::string targetProfile;
+    std::string samplerName;
+    int registerIndex = -1;
+    int registerCount = 0;
+    bool materialCompatible = false;
+};
+
+struct BackendMaterialSamplerSlotRecord {
+    std::string materialName;
+    std::string textureRole;
+    std::string texturePath;
+    std::string samplerName;
+    std::string shaderFile;
+    std::string status;
+    std::string evidence;
+    int samplerRegister = -1;
+    bool resolved = false;
+};
+
+struct BackendShaderSamplerRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool surfaceMaterialFontOk = false;
+    bool materialSemanticsOk = false;
+    bool shaderCtabReflectionReady = false;
+    bool materialSamplerRoleMapReady = false;
+    bool lightmapSamplerGateTracked = false;
+    bool materialProgramSelectionGateTracked = false;
+    bool depthTextureSamplerGateTracked = false;
+    bool fontAtlasGateTracked = false;
+    bool downstreamDrawPresentDeferred = false;
+    bool backbufferExtentCarried = false;
+    int shaderFilesScanned = 0;
+    int shaderFilesWithCtab = 0;
+    int ctabChunks = 0;
+    int uniqueSamplerRecords = 0;
+    int materialCompatibleSamplerRecords = 0;
+    int materialShaderFilesWithSamplers = 0;
+    int materialTextureSlots = 0;
+    int resolvedMaterialSamplerSlots = 0;
+    int unresolvedMaterialSamplerSlots = 0;
+    int lightmapTextureSlots = 0;
+    int materialTextureBindingRecords = 0;
+    int preservedMaterialProgramBindings = 0;
+    int preservedDepthTextureBindings = 0;
+    int fontAtlasPlaceholders = 0;
+    int drawPresentCaptureRecordsDeferred = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedShaderSamplerContracts = 0;
+    int trackedShaderSamplerObligations = 0;
+    int openShaderSamplerObligations = 0;
+    std::vector<BackendShaderSamplerReflectionRecord> reflectionRecords;
+    std::vector<BackendMaterialSamplerSlotRecord> materialSlotRecords;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -1369,6 +1429,13 @@ BackendSurfaceMaterialFontRuntimeReport runBackendSurfaceMaterialFontRuntime(
 
 std::string backendSurfaceMaterialFontRuntimeReportToJson(
     const BackendSurfaceMaterialFontRuntimeReport& report);
+
+BackendShaderSamplerRuntimeReport runBackendShaderSamplerRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendShaderSamplerRuntimeReportToJson(
+    const BackendShaderSamplerRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

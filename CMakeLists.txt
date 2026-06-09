@@ -39,18 +39,55 @@ endif()
 include(CTest)
 
 option(YUENGINE_ENABLE_LEGACY_CTESTS "Register the older per-contract CTest cases" OFF)
+set(YUENGINE_CTEST_MODE "FAST" CACHE STRING "CTest registration mode: FAST, FULL, or LEGACY")
+set_property(CACHE YUENGINE_CTEST_MODE PROPERTY STRINGS FAST FULL LEGACY)
+set(YUENGINE_CURRENT_FAST_CONTRACT "yuengine_backend_shader_sampler_contract" CACHE STRING "Runtime contract-suite filter used by default FAST CTest")
+
+string(TOUPPER "${YUENGINE_CTEST_MODE}" YUENGINE_CTEST_MODE_NORMALIZED)
+if(NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "FAST"
+    AND NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "FULL"
+    AND NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "LEGACY")
+    message(FATAL_ERROR "YUENGINE_CTEST_MODE must be FAST, FULL, or LEGACY")
+endif()
+if(YUENGINE_ENABLE_LEGACY_CTESTS AND NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "LEGACY")
+    message(WARNING "YUENGINE_ENABLE_LEGACY_CTESTS is ignored unless YUENGINE_CTEST_MODE=LEGACY")
+endif()
 
 if(BUILD_TESTING)
+    if(YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "FAST")
+    add_test(
+        NAME yuengine_current_backend_contract
+        COMMAND yuengine_cli runtime-contract-suite samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR} --filter ${YUENGINE_CURRENT_FAST_CONTRACT}
+    )
+    set_tests_properties(yuengine_current_backend_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        LABELS "fast"
+        TIMEOUT 180
+        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=1 failed=0"
+    )
+    elseif(YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "FULL")
     add_test(
         NAME yuengine_runtime_contract_suite
         COMMAND yuengine_cli runtime-contract-suite samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )
     set_tests_properties(yuengine_runtime_contract_suite PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=38 failed=0"
+        LABELS "full"
+        TIMEOUT 300
+        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=39 failed=0"
+    )
+    elseif(YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "LEGACY")
+    add_test(
+        NAME yuengine_runtime_contract_suite
+        COMMAND yuengine_cli runtime-contract-suite samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_runtime_contract_suite PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        LABELS "full"
+        TIMEOUT 300
+        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=39 failed=0"
     )
 
-    if(YUENGINE_ENABLE_LEGACY_CTESTS)
     add_test(
         NAME yuengine_validate_touhou_sample
         COMMAND yuengine_cli validate samples/touhou_new_world/project.json
@@ -369,6 +406,15 @@ if(BUILD_TESTING)
     set_tests_properties(yuengine_backend_surface_material_font_contract PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "ok=true upload_binding_ok=true resource_creation_ok=true device_execution_ok=true backend_state_ok=true surface_material_font_runtime_ready=true persistent_device_service_ready=true base_resource_handles_ready=true transient_surface_creation_executed=true transient_surface_binding_executed=true material_shader_evidence_tracked=true material_shader_slot_binding_deferred=true font_atlas_evidence_tracked=true font_atlas_creation_deferred=true downstream_draw_present_deferred=true backbuffer_extent_carried=true base_resource_handles_created=41 source_surface_records=4 transient_surface_result_records=4 real_transient_surfaces_created=4 failed_transient_surfaces=0 render_target_surfaces_created=3 depth_stencil_surfaces_created=1 transient_texture_bindings=5 executed_transient_texture_bindings=4 preserved_depth_texture_bindings=1 failed_transient_texture_bindings=0 material_texture_binding_records=38 preserved_material_texture_bindings=38 material_shader_evidence_files=[1-9][0-9]* material_shader_sampler_tokens=[1-9][0-9]* font_atlas_placeholders=1 font_query_records=6 text_draw_commands=6 string_size_queries=5 draw_present_capture_records_deferred=124 backbuffer_width=1280 backbuffer_height=720 resolved_surface_material_font_contracts=6 tracked_surface_material_font_obligations=5 open_surface_material_font_obligations=5;surface_summary.*render_target_surfaces_created.: 3.*depth_stencil_surfaces_created.: 1;binding_summary.*executed_transient_texture_bindings.: 4.*preserved_depth_texture_bindings.: 1.*preserved_material_texture_bindings.: 38;colorTex2D.*CreateRenderTargetTexture.*smaa_render_target_texture.*D3DFMT_X8R8G8B8.*real_success.*width.: 1280.*height.: 720;depthTex2D.*CreateDepthStencilSurface.*smaa_depth_stencil_surface.*D3DFMT_D24S8.*real_success.*width.: 1280.*height.: 720;colorTex.*SetTexture.*colorTex2D.*real_success.*api_calls.: 1;depthTex.*SetTexture.*depthTex2D.*tracked_open;material_shader_binary_evidence.*contract_ready;material_texture_shader_slot_binding.*tracked_open;font_atlas_texture_implementation.*tracked_open;draw_present_capture_after_surface_material_font.*tracked_open"
+    )
+
+    add_test(
+        NAME yuengine_backend_shader_sampler_contract
+        COMMAND yuengine_cli backend-shader-sampler samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_backend_shader_sampler_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true surface_material_font_ok=true material_semantics_ok=true shader_ctab_reflection_ready=true material_sampler_role_map_ready=true lightmap_sampler_gate_tracked=true material_program_selection_gate_tracked=true depth_texture_sampler_gate_tracked=true font_atlas_gate_tracked=true downstream_draw_present_deferred=true backbuffer_extent_carried=true shader_files_scanned=39 shader_files_with_ctab=39 ctab_chunks=[1-9][0-9][0-9][0-9] unique_sampler_records=[3-9][0-9][0-9] material_compatible_sampler_records=[1-9][0-9][0-9] material_shader_files_with_samplers=[1-9][0-9] material_texture_slots=39 resolved_material_sampler_slots=38 unresolved_material_sampler_slots=1 lightmap_texture_slots=1 material_texture_binding_records=38 preserved_material_program_bindings=38 preserved_depth_texture_bindings=1 font_atlas_placeholders=1 draw_present_capture_records_deferred=124 backbuffer_width=1280 backbuffer_height=720 resolved_shader_sampler_contracts=4 tracked_shader_sampler_obligations=6 open_shader_sampler_obligations=6;reflection_summary.*shader_files_with_ctab.: 39.*unique_sampler_records.: [3-9][0-9][0-9].*material_compatible_sampler_records.: [1-9][0-9][0-9];material_sampler_summary.*resolved_material_sampler_slots.: 38.*unresolved_material_sampler_slots.: 1.*lightmap_texture_slots.: 1;kabe1.*base_color_candidate.*SamplerDiffuse.*sampler_register.: 0.*contract_ready;kabe1.*normal_candidate.*SamplerNormal.*sampler_register.: 1.*contract_ready;kabe1.*specular_candidate.*SamplerSpecular.*sampler_register.: 2.*contract_ready;ki:tree.*lightmap_candidate.*tracked_open;bfx_ctab_sampler_reflection.*contract_ready;material_texture_role_sampler_map.*contract_ready;material_program_selection_binding.*tracked_open;lightmap_sampler_semantics.*tracked_open;smaa_depth_texture_sampler_binding.*tracked_open;font_atlas_texture_implementation.*tracked_open"
     )
 
     add_test(

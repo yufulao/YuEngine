@@ -62,6 +62,7 @@ void usage()
               << "  yuengine_cli backend-resource-create <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-upload-bind <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-surface-material-font <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli backend-shader-sampler <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli runtime-contract-suite <project.json> [--repo-root <path>] [--filter <test-name>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
@@ -867,6 +868,25 @@ int runRuntimeContractSuite(
         requireContract(errors, report.fontAtlasCreationDeferred, "font atlas creation was not deferred");
     });
 
+    runContractSuiteCheck(suite, "yuengine_backend_shader_sampler_contract", filter, [&](auto& errors) {
+        const auto report = yu::runtime::runBackendShaderSamplerRuntime(manifestPath, repoRoot);
+        requireContract(errors, report.ok, "shader sampler report is not ok");
+        requireContract(errors, report.shaderCtabReflectionReady, "shader CTAB reflection not ready");
+        requireContract(errors, report.materialSamplerRoleMapReady, "material sampler role map not ready");
+        requireContract(errors, report.shaderFilesScanned == 39, "shader file scan count changed");
+        requireContract(errors, report.shaderFilesWithCtab == 39, "shader CTAB file count changed");
+        requireContract(errors, report.ctabChunks >= 1000, "CTAB chunk count too low");
+        requireContract(errors, report.uniqueSamplerRecords >= 300, "unique sampler record count too low");
+        requireContract(errors, report.materialCompatibleSamplerRecords >= 100, "material sampler evidence too low");
+        requireContract(errors, report.materialTextureSlots == 39, "material texture slot count changed");
+        requireContract(errors, report.resolvedMaterialSamplerSlots == 38, "resolved material sampler slot count changed");
+        requireContract(errors, report.unresolvedMaterialSamplerSlots == 1, "unresolved material sampler slot count changed");
+        requireContract(errors, report.lightmapSamplerGateTracked, "lightmap sampler gate was not tracked");
+        requireContract(errors, report.materialProgramSelectionGateTracked, "program selection gate was not tracked");
+        requireContract(errors, report.depthTextureSamplerGateTracked, "depth texture sampler gate was not tracked");
+        requireContract(errors, report.fontAtlasGateTracked, "font atlas gate was not tracked");
+    });
+
     runContractSuiteCheck(suite, "yuengine_mission_event_thread_contract", filter, [&](auto& errors) {
         const auto report = yu::runtime::runMissionEventThreadRuntime(manifestPath, repoRoot);
         requireContract(errors, report.ok && report.sceneRuntimeOk, "mission event thread report is not ok");
@@ -1064,6 +1084,11 @@ int main(int argc, char** argv)
         if (command == "backend-surface-material-font") {
             auto report = yu::runtime::runBackendSurfaceMaterialFontRuntime(manifest, repoRoot);
             std::cout << yu::runtime::backendSurfaceMaterialFontRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "backend-shader-sampler") {
+            auto report = yu::runtime::runBackendShaderSamplerRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendShaderSamplerRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "runtime-contract-suite") {

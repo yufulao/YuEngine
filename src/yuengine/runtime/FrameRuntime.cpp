@@ -167,6 +167,12 @@ void addError(BackendSurfaceMaterialFontRuntimeReport& report, const std::string
     report.errors.push_back(message);
 }
 
+void addError(BackendShaderSamplerRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -742,6 +748,16 @@ uint32_t readLe32(const std::vector<std::byte>& bytes, size_t offset)
         | (static_cast<uint32_t>(std::to_integer<unsigned char>(bytes[offset + 1])) << 8)
         | (static_cast<uint32_t>(std::to_integer<unsigned char>(bytes[offset + 2])) << 16)
         | (static_cast<uint32_t>(std::to_integer<unsigned char>(bytes[offset + 3])) << 24);
+}
+
+uint16_t readLe16(const std::vector<std::byte>& bytes, size_t offset)
+{
+    if (offset + 2 > bytes.size()) {
+        return 0;
+    }
+    return static_cast<uint16_t>(std::to_integer<unsigned char>(bytes[offset]))
+        | static_cast<uint16_t>(
+            static_cast<uint16_t>(std::to_integer<unsigned char>(bytes[offset + 1])) << 8);
 }
 
 std::string readDdsFourCc(const std::vector<std::byte>& bytes, size_t offset)
@@ -2860,6 +2876,179 @@ int countMaterialShaderEvidenceTokens(const resource::VirtualFileSystem& vfs, in
         }
     }
     return tokenCount;
+}
+
+std::vector<std::string> shaderSamplerReflectionFiles()
+{
+    return {
+        "system/filter/depthFog.bfx",
+        "system/filter/dof.bfx",
+        "system/filter/glare.bfx",
+        "system/filter/heightFog.bfx",
+        "system/filter/motionBlur.bfx",
+        "system/filter/radial.bfx",
+        "system/filter/reflection.bfx",
+        "system/filter/shimmer.bfx",
+        "system/filter/ssao.bfx",
+        "system/filter/system.bfx",
+        "system/filter/template.bfx",
+        "system/shader/deferred.bfx",
+        "system/shader/deferredGrass.bfx",
+        "system/shader/deferredMulti.bfx",
+        "system/shader/effect.bfx",
+        "system/shader/effectSoft.bfx",
+        "system/shader/farEdge20.bfx",
+        "system/shader/grass20.bfx",
+        "system/shader/grass30.bfx",
+        "system/shader/lighting.bfx",
+        "system/shader/lightingVT.bfx",
+        "system/shader/localFog.bfx",
+        "system/shader/mesh20.bfx",
+        "system/shader/mesh20Multi.bfx",
+        "system/shader/mesh30.bfx",
+        "system/shader/mesh30Multi.bfx",
+        "system/shader/omb.bfx",
+        "system/shader/ombHQ.bfx",
+        "system/shader/primitive.bfx",
+        "system/shader/reflectionPlane.bfx",
+        "system/shader/reflectionPlaneGrass.bfx",
+        "system/shader/rlr.bfx",
+        "system/shader/rlrGrass.bfx",
+        "system/shader/rsm.bfx",
+        "system/shader/shadowCaster.bfx",
+        "system/shader/shadowCasterGrass.bfx",
+        "system/shader/water20.bfx",
+        "system/shader/water30.bfx",
+        "system/shader/waterRLR.bfx",
+    };
+}
+
+std::string readRelativeCString(
+    const std::vector<std::byte>& bytes,
+    size_t base,
+    uint32_t offset,
+    size_t maxLength)
+{
+    const size_t absolute = base + offset;
+    if (offset == 0 || absolute >= bytes.size()) {
+        return {};
+    }
+    std::string value;
+    for (size_t i = absolute; i < bytes.size() && value.size() < maxLength; ++i) {
+        const char ch = static_cast<char>(std::to_integer<unsigned char>(bytes[i]));
+        if (ch == '\0') {
+            break;
+        }
+        value.push_back(ch);
+    }
+    return value;
+}
+
+bool isMaterialCompatibleSamplerName(const std::string& name)
+{
+    static const std::set<std::string> names = {
+        "SamplerDiffuse",
+        "SamplerDiffuse2",
+        "SamplerNormal",
+        "SamplerNormal2",
+        "SamplerSpecular",
+        "SamplerSpecular2",
+        "SamplerEmissive",
+        "SamplerEmissive2",
+        "SamplerEnv",
+    };
+    return names.find(name) != names.end();
+}
+
+std::vector<BackendShaderSamplerReflectionRecord> extractShaderSamplerReflectionRecords(
+    const std::string& shaderFile,
+    const std::vector<std::byte>& bytes,
+    int& ctabChunks)
+{
+    std::vector<BackendShaderSamplerReflectionRecord> records;
+    std::set<std::string> uniqueKeys;
+    for (size_t marker = 0; marker + 4 < bytes.size(); ++marker) {
+        if (bytes[marker] != std::byte{'C'} || bytes[marker + 1] != std::byte{'T'}
+            || bytes[marker + 2] != std::byte{'A'} || bytes[marker + 3] != std::byte{'B'}) {
+            continue;
+        }
+
+        const size_t base = marker + 4;
+        if (base + 28 > bytes.size()) {
+            continue;
+        }
+        const uint32_t size = readLe32(bytes, base);
+        const uint32_t constants = readLe32(bytes, base + 12);
+        const uint32_t constantInfoOffset = readLe32(bytes, base + 16);
+        const uint32_t targetOffset = readLe32(bytes, base + 24);
+        if (size != 28 || constants > 256 || constantInfoOffset == 0
+            || base + constantInfoOffset >= bytes.size()) {
+            continue;
+        }
+
+        ++ctabChunks;
+        const std::string targetProfile = readRelativeCString(bytes, base, targetOffset, 32);
+        for (uint32_t i = 0; i < constants; ++i) {
+            const size_t info = base + constantInfoOffset + static_cast<size_t>(i) * 20;
+            if (info + 20 > bytes.size()) {
+                break;
+            }
+            const uint32_t nameOffset = readLe32(bytes, info);
+            const uint16_t registerSet = readLe16(bytes, info + 4);
+            const uint16_t registerIndex = readLe16(bytes, info + 6);
+            const uint16_t registerCount = readLe16(bytes, info + 8);
+            const std::string samplerName = readRelativeCString(bytes, base, nameOffset, 96);
+            if (samplerName.empty()
+                || (registerSet != 3 && !samplerName.starts_with("Sampler"))) {
+                continue;
+            }
+            const std::string key = shaderFile + "|" + targetProfile + "|" + samplerName + "|"
+                + std::to_string(registerIndex);
+            if (!uniqueKeys.insert(key).second) {
+                continue;
+            }
+
+            BackendShaderSamplerReflectionRecord record;
+            record.shaderFile = shaderFile;
+            record.targetProfile = targetProfile;
+            record.samplerName = samplerName;
+            record.registerIndex = static_cast<int>(registerIndex);
+            record.registerCount = static_cast<int>(registerCount);
+            record.materialCompatible = isMaterialCompatibleSamplerName(samplerName);
+            records.push_back(std::move(record));
+        }
+    }
+    return records;
+}
+
+std::string materialSamplerForTextureRole(const std::string& role)
+{
+    if (role == "base_color_candidate") {
+        return "SamplerDiffuse";
+    }
+    if (role == "normal_candidate") {
+        return "SamplerNormal";
+    }
+    if (role == "specular_candidate") {
+        return "SamplerSpecular";
+    }
+    if (role == "emissive_candidate") {
+        return "SamplerEmissive";
+    }
+    return {};
+}
+
+int canonicalMaterialSamplerRegister(
+    const std::vector<BackendShaderSamplerReflectionRecord>& records,
+    const std::string& samplerName)
+{
+    for (const auto& record : records) {
+        if (record.shaderFile == "system/shader/mesh30.bfx"
+            && record.targetProfile == "ps_3_0" && record.samplerName == samplerName) {
+            return record.registerIndex;
+        }
+    }
+    return -1;
 }
 
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
@@ -5595,6 +5784,207 @@ BackendSurfaceMaterialFontRuntimeReport buildBackendSurfaceMaterialFontRuntimeRe
     return storeCachedReport(cache, cacheKey, report);
 }
 
+BackendShaderSamplerRuntimeReport buildBackendShaderSamplerRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "backend-shader-sampler");
+    static std::map<std::string, BackendShaderSamplerRuntimeReport> cache;
+    BackendShaderSamplerRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
+    BackendShaderSamplerRuntimeReport report;
+    const auto surfaceMaterialFont =
+        buildBackendSurfaceMaterialFontRuntimeReport(inputs, rendererProfile, vfs);
+    const auto materialSemantics = buildMaterialSemanticsRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.surfaceMaterialFontOk = surfaceMaterialFont.ok;
+    report.materialSemanticsOk = materialSemantics.ok;
+    report.backbufferWidth = surfaceMaterialFont.backbufferWidth;
+    report.backbufferHeight = surfaceMaterialFont.backbufferHeight;
+
+    const auto shaderFiles = shaderSamplerReflectionFiles();
+    report.shaderFilesScanned = static_cast<int>(shaderFiles.size());
+    std::set<std::string> materialShaderFiles;
+    for (const auto& shaderFile : shaderFiles) {
+        const auto payload = vfs.readBytes(shaderFile);
+        if (!payload.found || payload.bytes.empty()) {
+            continue;
+        }
+        int fileCtabChunks = 0;
+        auto records = extractShaderSamplerReflectionRecords(
+            shaderFile,
+            payload.bytes,
+            fileCtabChunks);
+        if (fileCtabChunks > 0) {
+            ++report.shaderFilesWithCtab;
+            report.ctabChunks += fileCtabChunks;
+        }
+        for (auto& record : records) {
+            if (record.materialCompatible) {
+                ++report.materialCompatibleSamplerRecords;
+                materialShaderFiles.insert(record.shaderFile);
+            }
+            report.reflectionRecords.push_back(std::move(record));
+        }
+    }
+    report.uniqueSamplerRecords = static_cast<int>(report.reflectionRecords.size());
+    report.materialShaderFilesWithSamplers = static_cast<int>(materialShaderFiles.size());
+
+    const int diffuseRegister =
+        canonicalMaterialSamplerRegister(report.reflectionRecords, "SamplerDiffuse");
+    const int normalRegister =
+        canonicalMaterialSamplerRegister(report.reflectionRecords, "SamplerNormal");
+    const int specularRegister =
+        canonicalMaterialSamplerRegister(report.reflectionRecords, "SamplerSpecular");
+    const int emissiveRegister =
+        canonicalMaterialSamplerRegister(report.reflectionRecords, "SamplerEmissive");
+    report.shaderCtabReflectionReady =
+        report.shaderFilesScanned == 39 && report.shaderFilesWithCtab == 39
+        && report.ctabChunks >= 1000 && report.uniqueSamplerRecords >= 300
+        && report.materialCompatibleSamplerRecords >= 100
+        && diffuseRegister == 0 && normalRegister == 1
+        && specularRegister == 2 && emissiveRegister == 3;
+
+    for (const auto& material : materialSemantics.materialReports) {
+        for (const auto& slot : material.textureSlots) {
+            ++report.materialTextureSlots;
+            const size_t split = slot.find(':');
+            const std::string role = split == std::string::npos ? slot : slot.substr(0, split);
+            const std::string texturePath = split == std::string::npos ? "" : slot.substr(split + 1);
+            const std::string samplerName = materialSamplerForTextureRole(role);
+            const int samplerRegister = samplerName.empty()
+                ? -1
+                : canonicalMaterialSamplerRegister(report.reflectionRecords, samplerName);
+
+            BackendMaterialSamplerSlotRecord record;
+            record.materialName = material.name;
+            record.textureRole = role;
+            record.texturePath = texturePath;
+            record.samplerName = samplerName;
+            record.shaderFile = samplerName.empty() ? "" : "system/shader/mesh30.bfx";
+            record.samplerRegister = samplerRegister;
+
+            if (!samplerName.empty() && samplerRegister >= 0) {
+                ++report.resolvedMaterialSamplerSlots;
+                record.status = "contract_ready";
+                record.evidence =
+                    "material texture role maps to recovered mesh30.bfx ps_3_0 sampler register";
+                record.resolved = true;
+            } else {
+                ++report.unresolvedMaterialSamplerSlots;
+                if (role == "lightmap_candidate") {
+                    ++report.lightmapTextureSlots;
+                    record.status = "tracked_open";
+                    record.evidence =
+                        "lightmap material slot has no recovered per-material sampler ownership";
+                } else {
+                    record.status = "blocked";
+                    record.evidence = "material texture role has no recovered sampler mapping";
+                }
+            }
+            report.materialSlotRecords.push_back(std::move(record));
+        }
+    }
+
+    report.materialTextureBindingRecords = surfaceMaterialFont.materialTextureBindingRecords;
+    report.preservedMaterialProgramBindings =
+        surfaceMaterialFont.preservedMaterialTextureBindings;
+    report.preservedDepthTextureBindings =
+        surfaceMaterialFont.preservedDepthTextureBindings;
+    report.fontAtlasPlaceholders = surfaceMaterialFont.fontAtlasPlaceholders;
+    report.lightmapSamplerGateTracked = report.lightmapTextureSlots == 1
+        && report.unresolvedMaterialSamplerSlots == 1;
+    report.materialSamplerRoleMapReady =
+        report.materialTextureSlots == 39 && report.resolvedMaterialSamplerSlots == 38
+        && report.unresolvedMaterialSamplerSlots == 1 && report.lightmapSamplerGateTracked;
+    report.materialProgramSelectionGateTracked =
+        report.materialTextureBindingRecords == 38 && report.preservedMaterialProgramBindings == 38;
+    report.depthTextureSamplerGateTracked = report.preservedDepthTextureBindings == 1;
+    report.fontAtlasGateTracked =
+        surfaceMaterialFont.fontAtlasCreationDeferred && report.fontAtlasPlaceholders == 1;
+    report.drawPresentCaptureRecordsDeferred = surfaceMaterialFont.drawPresentCaptureRecordsDeferred;
+    report.downstreamDrawPresentDeferred = report.drawPresentCaptureRecordsDeferred == 124;
+    report.backbufferExtentCarried =
+        report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+
+    report.contracts.push_back(makeBackendObligation(
+        "inherited_surface_material_font_runtime",
+        report.surfaceMaterialFontOk ? "contract_ready" : "blocked",
+        "L33 consumes L32 transient surface and material/font gate readiness"));
+    report.contracts.push_back(makeBackendObligation(
+        "bfx_ctab_sampler_reflection",
+        report.shaderCtabReflectionReady ? "contract_ready" : "blocked",
+        "39 shipped .bfx files expose CTAB sampler constants and mesh30 material sampler registers"));
+    report.contracts.push_back(makeBackendObligation(
+        "material_texture_role_sampler_map",
+        report.materialSamplerRoleMapReady ? "contract_ready" : "blocked",
+        "38 non-lightmap material texture slots map to recovered mesh30 sampler registers"));
+    report.contracts.push_back(makeBackendObligation(
+        "material_program_selection_preserved",
+        report.materialProgramSelectionGateTracked ? "contract_ready" : "blocked",
+        "material binding records are preserved while shader program selection remains explicit"));
+    report.contracts.push_back(makeBackendObligation(
+        "material_program_selection_binding",
+        report.materialProgramSelectionGateTracked ? "tracked_open" : "blocked",
+        "model material blocks still do not name the exact shader program/pass for each draw"));
+    report.contracts.push_back(makeBackendObligation(
+        "lightmap_sampler_semantics",
+        report.lightmapSamplerGateTracked ? "tracked_open" : "blocked",
+        "1 lightmap material slot remains open until SamplerLight ownership is proven"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_depth_texture_sampler_binding",
+        report.depthTextureSamplerGateTracked ? "tracked_open" : "blocked",
+        "depthTex still lacks a recovered sampleable DX9 depth texture path"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_texture_implementation",
+        report.fontAtlasGateTracked ? "tracked_open" : "blocked",
+        "font atlas dimensions and glyph cache ownership remain unrecovered"));
+    report.contracts.push_back(makeBackendObligation(
+        "draw_present_capture_after_shader_sampler",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "draw, present, and capture remain deferred until material program/depth/font gates close"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_after_capture",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "original-frame oracle remains deferred until YuEngine can capture an executed frame"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedShaderSamplerContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedShaderSamplerObligations;
+            ++report.openShaderSamplerObligations;
+        } else {
+            ++report.openShaderSamplerObligations;
+        }
+    }
+
+    if (!report.surfaceMaterialFontOk || !report.materialSemanticsOk) {
+        addError(report, "upstream surface/material/font or material semantics contract is not ready");
+    }
+    if (!report.shaderCtabReflectionReady) {
+        addError(report, "BFX CTAB sampler reflection is incomplete");
+    }
+    if (!report.materialSamplerRoleMapReady) {
+        addError(report, "material texture role to sampler register map is incomplete");
+    }
+    if (!report.materialProgramSelectionGateTracked || !report.lightmapSamplerGateTracked
+        || !report.depthTextureSamplerGateTracked || !report.fontAtlasGateTracked) {
+        addError(report, "open shader/depth/font gates are not explicitly tracked");
+    }
+    if (report.resolvedShaderSamplerContracts != 4 || report.trackedShaderSamplerObligations != 6
+        || report.openShaderSamplerObligations != 6) {
+        addError(report, "shader sampler obligation accounting is inconsistent");
+    }
+
+    return storeCachedReport(cache, cacheKey, report);
+}
+
 } // namespace
 
 FirstFrameRuntimeReport buildFirstFrameRuntimeReport(
@@ -8284,6 +8674,140 @@ std::string backendSurfaceMaterialFontRuntimeReportToJson(
             << ", \"real_call_ready\": " << (record.realCallReady ? "true" : "false")
             << "}";
         out << (i + 1 == report.records.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendShaderSamplerRuntimeReport runBackendShaderSamplerRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendShaderSamplerRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendShaderSamplerRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendShaderSamplerRuntimeReportToJson(
+    const BackendShaderSamplerRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_shader_sampler_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " surface_material_font_ok=" << (report.surfaceMaterialFontOk ? "true" : "false")
+        << " material_semantics_ok=" << (report.materialSemanticsOk ? "true" : "false")
+        << " shader_ctab_reflection_ready="
+        << (report.shaderCtabReflectionReady ? "true" : "false")
+        << " material_sampler_role_map_ready="
+        << (report.materialSamplerRoleMapReady ? "true" : "false")
+        << " lightmap_sampler_gate_tracked="
+        << (report.lightmapSamplerGateTracked ? "true" : "false")
+        << " material_program_selection_gate_tracked="
+        << (report.materialProgramSelectionGateTracked ? "true" : "false")
+        << " depth_texture_sampler_gate_tracked="
+        << (report.depthTextureSamplerGateTracked ? "true" : "false")
+        << " font_atlas_gate_tracked=" << (report.fontAtlasGateTracked ? "true" : "false")
+        << " downstream_draw_present_deferred="
+        << (report.downstreamDrawPresentDeferred ? "true" : "false")
+        << " backbuffer_extent_carried=" << (report.backbufferExtentCarried ? "true" : "false")
+        << " shader_files_scanned=" << report.shaderFilesScanned
+        << " shader_files_with_ctab=" << report.shaderFilesWithCtab
+        << " ctab_chunks=" << report.ctabChunks
+        << " unique_sampler_records=" << report.uniqueSamplerRecords
+        << " material_compatible_sampler_records=" << report.materialCompatibleSamplerRecords
+        << " material_shader_files_with_samplers=" << report.materialShaderFilesWithSamplers
+        << " material_texture_slots=" << report.materialTextureSlots
+        << " resolved_material_sampler_slots=" << report.resolvedMaterialSamplerSlots
+        << " unresolved_material_sampler_slots=" << report.unresolvedMaterialSamplerSlots
+        << " lightmap_texture_slots=" << report.lightmapTextureSlots
+        << " material_texture_binding_records=" << report.materialTextureBindingRecords
+        << " preserved_material_program_bindings=" << report.preservedMaterialProgramBindings
+        << " preserved_depth_texture_bindings=" << report.preservedDepthTextureBindings
+        << " font_atlas_placeholders=" << report.fontAtlasPlaceholders
+        << " draw_present_capture_records_deferred=" << report.drawPresentCaptureRecordsDeferred
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_shader_sampler_contracts=" << report.resolvedShaderSamplerContracts
+        << " tracked_shader_sampler_obligations=" << report.trackedShaderSamplerObligations
+        << " open_shader_sampler_obligations=" << report.openShaderSamplerObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"reflection_summary\": {";
+    out << "\"shader_files_scanned\": " << report.shaderFilesScanned
+        << ", \"shader_files_with_ctab\": " << report.shaderFilesWithCtab
+        << ", \"ctab_chunks\": " << report.ctabChunks
+        << ", \"unique_sampler_records\": " << report.uniqueSamplerRecords
+        << ", \"material_compatible_sampler_records\": "
+        << report.materialCompatibleSamplerRecords
+        << ", \"material_shader_files_with_samplers\": "
+        << report.materialShaderFilesWithSamplers << "},\n";
+    out << "  \"material_sampler_summary\": {";
+    out << "\"material_texture_slots\": " << report.materialTextureSlots
+        << ", \"resolved_material_sampler_slots\": " << report.resolvedMaterialSamplerSlots
+        << ", \"unresolved_material_sampler_slots\": "
+        << report.unresolvedMaterialSamplerSlots
+        << ", \"lightmap_texture_slots\": " << report.lightmapTextureSlots
+        << ", \"material_texture_binding_records\": " << report.materialTextureBindingRecords
+        << ", \"preserved_material_program_bindings\": "
+        << report.preservedMaterialProgramBindings << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_shader_sampler_contracts\": " << report.resolvedShaderSamplerContracts
+        << ", \"tracked_shader_sampler_obligations\": "
+        << report.trackedShaderSamplerObligations
+        << ", \"open_shader_sampler_obligations\": "
+        << report.openShaderSamplerObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"reflection_records\": [\n";
+    for (size_t i = 0; i < report.reflectionRecords.size(); ++i) {
+        const auto& record = report.reflectionRecords[i];
+        out << "    {\"shader_file\": \"" << core::jsonEscape(record.shaderFile)
+            << "\", \"target_profile\": \"" << core::jsonEscape(record.targetProfile)
+            << "\", \"sampler_name\": \"" << core::jsonEscape(record.samplerName)
+            << "\", \"register_index\": " << record.registerIndex
+            << ", \"register_count\": " << record.registerCount
+            << ", \"material_compatible\": "
+            << (record.materialCompatible ? "true" : "false")
+            << "}";
+        out << (i + 1 == report.reflectionRecords.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"material_slot_records\": [\n";
+    for (size_t i = 0; i < report.materialSlotRecords.size(); ++i) {
+        const auto& record = report.materialSlotRecords[i];
+        out << "    {\"material_name\": \"" << core::jsonEscape(record.materialName)
+            << "\", \"texture_role\": \"" << core::jsonEscape(record.textureRole)
+            << "\", \"texture_path\": \"" << core::jsonEscape(record.texturePath)
+            << "\", \"sampler_name\": \"" << core::jsonEscape(record.samplerName)
+            << "\", \"shader_file\": \"" << core::jsonEscape(record.shaderFile)
+            << "\", \"sampler_register\": " << record.samplerRegister
+            << ", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(record.evidence)
+            << "\", \"resolved\": " << (record.resolved ? "true" : "false")
+            << "}";
+        out << (i + 1 == report.materialSlotRecords.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

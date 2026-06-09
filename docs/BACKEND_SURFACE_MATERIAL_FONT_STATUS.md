@@ -108,7 +108,8 @@ L32 does not:
 
 ## Next Edges
 
-- L33: recover material shader slot/pass ownership or add a stronger blocker if `.bfx` reflection is
-  insufficient.
-- L34: recover depth texture sampler behavior and font atlas/cache dimensions.
+- L33: completed `.bfx` CTAB sampler reflection and 38/39 material texture role to sampler register
+  mapping.
+- L34: recover material program/pass selection, lightmap sampler, depth texture sampler behavior, and
+  font atlas/cache dimensions.
 - L35: execute draw queue only after material/font/depth gates are closed.

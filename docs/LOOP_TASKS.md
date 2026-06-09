@@ -1393,24 +1393,60 @@ Boundary:
 
 ### L33: Material Shader Slot, Depth Texture, And Font Atlas Recovery
 
-Status: active after L32.
+Status: completed as backend shader sampler reflection checkpoint on 2026-06-09.
 
 Deliver:
 
-- recover material shader pass/sampler slot ownership from `.bfx` reflection and model/material
-  records, or lock a stronger blocker if the shipped binary shader evidence cannot prove the map;
-- recover DX9 depth texture sampler behavior for `depthTex`, or keep it blocked with exact evidence
-  of why D24S8 surface-only state is insufficient;
-- recover title/menu font atlas dimensions, glyph cache ownership, and texture format from scripts,
-  native boundary evidence, resources, or executable strings before allocating a font atlas;
-- preserve draw/present/capture/oracle until material, depth, and font gates are no longer open.
+- recover `.bfx` CTAB sampler reflection from shipped shader binaries;
+- map material texture roles to recovered shader sampler registers when evidence exists;
+- preserve material program/pass selection, lightmap sampler, DX9 depth texture sampler, font atlas,
+  draw, present, capture, and oracle as explicit downstream gates.
 
 Acceptance:
 
-- material texture binding must be one-to-one with recovered shader sampler slots, not inferred from
-  texture filename suffixes alone;
-- depth texture binding must prove a sampleable texture path or remain tracked-open;
-- font atlas allocation must name dimensions, glyph ownership, and source evidence;
+- `yuengine_cli backend-shader-sampler samples/touhou_new_world/project.json --repo-root .`
+  reports `shader_ctab_reflection_ready=true` and `material_sampler_role_map_ready=true`;
+- CTest `yuengine_backend_shader_sampler_contract` locks 39 scanned `.bfx` files, 39 files with
+  CTAB, 1105 CTAB chunks, 337 unique sampler records, 107 material-compatible sampler records,
+  24 shader files with material-compatible samplers, 39 material texture slots, 38 resolved sampler
+  slots, 1 unresolved lightmap slot, and the inherited 1280x720 extent;
+- `kabe1` base/normal/specular slots resolve to `SamplerDiffuse` s0, `SamplerNormal` s1, and
+  `SamplerSpecular` s2 in `system/shader/mesh30.bfx` `ps_3_0`;
+- `ki:tree` lightmap remains `tracked_open`;
+- material program/pass selection, depth texture sampler behavior, font atlas/cache ownership, and
+  draw/present/capture/oracle remain blocked until L34+.
+
+Boundary:
+
+- L33 does not choose exact shader programs/passes for mesh draw calls;
+- L33 does not treat the lightmap slot as resolved;
+- L33 does not treat the D24S8 depth/stencil surface as a sampleable depth texture;
+- L33 does not create or populate a font atlas;
+- L33 does not issue draw/present/capture/oracle calls.
+
+### L34: Material Program, Lightmap, Depth, And Font Closure
+
+Status: active after L33.
+
+Deliver:
+
+- recover exact material program/pass selection for mesh submissions from shader, model/material,
+  render-state, and executable/string evidence;
+- recover or explicitly block the lightmap sampler owner and register;
+- recover a sampleable DX9 depth texture path for `depthTex`, or lock why D24S8 surface-only state
+  cannot satisfy SMAA/depth sampling;
+- recover title/menu font atlas dimensions, glyph cache ownership, and texture format before
+  allocating the font atlas;
+- keep draw/present/capture/oracle deferred until these gates are no longer open.
+
+Acceptance:
+
+- material program/pass binding must be one-to-one with recovered evidence, not inferred from suffix
+  names alone;
+- lightmap and depth texture behavior must be resolved or remain explicitly tracked-open with exact
+  evidence;
+- font atlas allocation must name dimensions, glyph ownership, source evidence, and backend texture
+  format;
 - CTest must lock ready/open accounting and continue preventing draw execution while any of these
   gates remain open.
 
@@ -1425,9 +1461,10 @@ Do not stop unless:
 ## Verification Speed
 
 Old full CTest was too slow because backend contract tests started separate CLI processes and
-repeatedly rebuilt the runtime chain. Default CTest now registers only the single-process
-`yuengine_runtime_contract_suite`; the older per-contract CTest cases are opt-in with
-`YUENGINE_ENABLE_LEGACY_CTESTS=ON`. The default edit-loop verification path is:
+repeatedly rebuilt the runtime chain. Default CTest now registers only
+`yuengine_current_backend_contract`, a single-process `runtime-contract-suite --filter` fast gate.
+Full aggregate CTest and legacy per-contract CTest are explicit CMake modes. The default edit-loop
+verification path is:
 
 ```powershell
 tools\verify_runtime.ps1
@@ -1446,8 +1483,8 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8
 ```
 
 Use `-CleanBuild` after C++ header, ABI-like struct, or build-system changes. Bare
-`ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs the aggregate suite, not
-the old per-contract process path.
+`ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs the current fast
+contract, not the aggregate suite and not the old per-contract process path.
 
 Current measured speed after caching and scene reuse:
 
@@ -1455,9 +1492,14 @@ Current measured speed after caching and scene reuse:
 - `yuengine_backend_resource_creation_contract`: 1/1 CTest passed in about 22 seconds.
 - `yuengine_backend_upload_binding_contract`: 1/1 CTest passed in about 25 seconds.
 - `yuengine_backend_surface_material_font_contract`: suite filter passed in 23.35-24.8 seconds.
-- `tools\verify_runtime.ps1 -SkipPython`: fast L32 contract plus `git diff --check` in about 25
+- `yuengine_backend_shader_sampler_contract`: default bare CTest passed in 23.97-24.63 seconds.
+- `tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild`: fast L33 contract in 23.88
   seconds.
+- `tools\verify_runtime.ps1 -Mode full -SkipPython -SkipDiffCheck -NoBuild`: direct
+  `runtime-contract-suite` passed 39/39 contracts in 51.78 seconds.
+- `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: clean build, Python unittest, 39/39
+  contracts, and `git diff --check` passed in 75.02 seconds.
 - direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.
-- default `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`: 1/1 aggregate suite
-  passed in 50.12 seconds before L32; L32 full verify passed in 50.89 seconds.
-- direct `runtime-contract-suite`: 38/38 contracts after L32.
+- default `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`: 1/1 fast contract
+  after L33.
+- direct `runtime-contract-suite`: 39/39 contracts after L33.

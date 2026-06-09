@@ -81,10 +81,12 @@ try {
 
     if ($Mode -eq "fast") {
         Invoke-CheckedCapture "runtime fast contract" $cliPath @(
-            "backend-surface-material-font",
+            "runtime-contract-suite",
             "samples\touhou_new_world\project.json",
             "--repo-root",
-            "."
+            ".",
+            "--filter",
+            "yuengine_backend_shader_sampler_contract"
         )
     } elseif ($Mode -eq "edge") {
         Invoke-CheckedCapture "runtime contract suite edge" $cliPath @(
@@ -96,18 +98,12 @@ try {
             $Filter
         )
     } else {
-        $ctestArgs = @(
-            "--test-dir",
-            $BuildDir,
-            "-C",
-            $Config,
-            "--output-on-failure",
-            "--parallel",
-            "$Jobs",
-            "-R",
-            "yuengine_runtime_contract_suite"
+        Invoke-CheckedCapture "runtime contract suite full" $cliPath @(
+            "runtime-contract-suite",
+            "samples\touhou_new_world\project.json",
+            "--repo-root",
+            "."
         )
-        Invoke-Checked "ctest $Mode" "ctest" $ctestArgs
     }
 
     if (-not $SkipDiffCheck) {
