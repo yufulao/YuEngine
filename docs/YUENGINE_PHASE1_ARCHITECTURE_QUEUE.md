@@ -90,14 +90,17 @@ ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accept
 | P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0004 accepted; bounded synchronous observer only, no reports/profiler/async queue |
 | P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0008 accepted; path normalization and loose fixture reads only, no package parser |
 | P1-GATE-006 | Resource Identity And Lifetime Skeleton | L4 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0009 accepted; synthetic handles/dependencies only, no file/package/load/decode |
-| P1-GATE-007 | Input Replay And Action Snapshot Skeleton | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Gate review in progress | ADR-0010 accepted; synthetic replay and snapshots only, no OS device/UI/game adapter input |
+| P1-GATE-007 | Input Replay And Action Snapshot Skeleton | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0010 accepted; synthetic replay and snapshots only, no OS device/UI/game adapter input |
 
 ## Current Active Gates
 
 - P1-GATE-002 implementation is in review as task #14.
 - P1-GATE-003, P1-GATE-004, and P1-GATE-005 are in implementation review; task handoffs must preserve their dependency guards.
-- P1-GATE-006 is approved, but the implementation task should wait until current implementation review sequencing is stable or a separate clean worktree is assigned.
-- P1-GATE-007 is architecture-only and waiting final PM/gate state; no implementation task may be created until it reaches `APPROVED_FOR_FIRST_SLICE`.
+- P1-GATE-006 is approved and implementation is in progress as task #33 in a
+  clean or isolated worktree.
+- P1-GATE-007 is approved for first implementation slice. Any implementation
+  task must use a clean or isolated worktree if shared CMake/index state is
+  dirty from other implementation work.
 - Phase 2 architecture queue has started in `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md`; Phase 2 implementation remains gated by explicit approvals and sequencing.
 - No implementation task may be created from a gate until that gate has `APPROVED_FOR_FIRST_SLICE`.
 
@@ -125,8 +128,11 @@ The next implementation slice must not be created if any of these remain true:
 
 1. Close task #14 code/semantic review for the P1-GATE-002 memory implementation.
 2. Close task #19, task #20, and task #21 implementation reviews.
-3. Close P1-GATE-007 final PM/gate state before any Input implementation task is created.
-4. Create the P1-GATE-006 Resource implementation task only after current implementation review sequencing is stable or isolated.
-5. Review Phase 2 ADR-0011 / P2-GATE-001 before any RHI implementation task is created.
+3. Create the P1-GATE-007 Input implementation task with the exact approved
+   synthetic replay/action snapshot scope and clean/isolated worktree guard.
+4. Continue task #33 Resource implementation without coupling it to File,
+   package loading, async load, script/scene/UI/gameplay, reports, or tools.
+5. Complete P2-GATE-001 and P2-GATE-002 implementation reviews before expanding
+   Phase 2 beyond the approved first slices.
 6. Preserve the exclusions: no renderer demo, resources package parser, async IO, gameplay/world, reports, capture/oracle, or original-game adapter behavior without their owning gates.
 7. If a gate is blocked, amend the owning ADR/gate immediately instead of creating implementation work.

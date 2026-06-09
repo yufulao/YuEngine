@@ -1,12 +1,16 @@
 # P1-GATE-007: Input Replay And Action Snapshot Skeleton
 
-Status: Proposed
+Status: Approved
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 红美铃, 博丽灵梦, 大妖精, 雾雨魔理沙 when implementation exists
 Depends on: ADR-0010
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0007
-Source baseline: Phase 1 through `89ea783`
+Source baseline: Phase 1 through `6c4dbf6`
+
+Gate decision: `APPROVED_FOR_FIRST_SLICE` after ADR-0010 acceptance,
+P1-GATE-007 semantic amendment, source-baseline alignment, performance
+approval, public-surface review, and final PM/gate approval in task #34.
 
 ## Layer
 
