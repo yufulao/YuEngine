@@ -34,6 +34,9 @@ backend-resource-create direct CLI
 backend-upload-bind direct CLI
 1/1 deepest fast contract, 24.8 seconds
 
+backend-surface-material-font direct CLI
+1/1 deepest fast contract, 24.1-25.3 seconds
+
 tools\verify_runtime.ps1 -SkipPython
 fast contract plus git diff --check, about 25 seconds
 
@@ -44,13 +47,19 @@ ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure
 1/1 yuengine_runtime_contract_suite passed, 50.12 seconds
 
 build\cmake-bt143\yuengine_cli.exe runtime-contract-suite samples\touhou_new_world\project.json --repo-root .
-37/37 contracts passed, 50.41 seconds
+37/37 contracts passed, 50.41 seconds before L32
 
 tools\verify_runtime.ps1 -Mode full -SkipPython -SkipDiffCheck -NoBuild
 1/1 yuengine_runtime_contract_suite passed, 50.55 seconds
 
 tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild
-fast L31 backend-upload-bind contract, 24.9 seconds
+fast L31 backend-upload-bind contract, 24.9 seconds before L32
+
+build\cmake-bt143\yuengine_cli.exe runtime-contract-suite samples\touhou_new_world\project.json --repo-root . --filter yuengine_backend_surface_material_font_contract
+1/1 L32 contract passed, 23.35-24.8 seconds
+
+tools\verify_runtime.ps1 -Mode full -SkipPython -SkipDiffCheck -NoBuild
+1/1 yuengine_runtime_contract_suite passed with 38 contracts, 50.89 seconds
 ```
 
 Default bare CTest is now acceptable for a checkpoint because it runs only the aggregate suite.
@@ -68,6 +77,12 @@ Filtered edge verification when a named contract must be exercised:
 
 ```powershell
 tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_upload_binding_contract -Jobs 8
+```
+
+Current deepest edge example:
+
+```powershell
+tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_surface_material_font_contract -Jobs 8
 ```
 
 Full checkpoint verification before commit:

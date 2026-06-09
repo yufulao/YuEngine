@@ -61,6 +61,7 @@ void usage()
               << "  yuengine_cli backend-device-create <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-resource-create <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-upload-bind <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli backend-surface-material-font <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli runtime-contract-suite <project.json> [--repo-root <path>] [--filter <test-name>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
@@ -848,6 +849,24 @@ int runRuntimeContractSuite(
         requireContract(errors, report.readyPayloadBytesCreated == 23949794, "ready payload bytes changed");
     });
 
+    runContractSuiteCheck(suite, "yuengine_backend_surface_material_font_contract", filter, [&](auto& errors) {
+        const auto report = yu::runtime::runBackendSurfaceMaterialFontRuntime(manifestPath, repoRoot);
+        requireContract(errors, report.ok, "surface/material/font report is not ok");
+        requireContract(errors, report.surfaceMaterialFontRuntimeReady, "surface/material/font runtime not ready");
+        requireContract(errors, report.transientSurfaceCreationExecuted, "transient surface creation did not execute");
+        requireContract(errors, report.transientSurfaceBindingExecuted, "transient surface binding did not execute");
+        requireContract(errors, report.realTransientSurfacesCreated == 4, "transient surface count changed");
+        requireContract(errors, report.renderTargetSurfacesCreated == 3, "render-target surface count changed");
+        requireContract(errors, report.depthStencilSurfacesCreated == 1, "depth/stencil surface count changed");
+        requireContract(errors, report.executedTransientTextureBindings == 4, "transient texture binding count changed");
+        requireContract(errors, report.preservedDepthTextureBindings == 1, "depth texture gate preservation changed");
+        requireContract(errors, report.preservedMaterialTextureBindings == 38, "material binding preservation changed");
+        requireContract(errors, report.materialShaderEvidenceTracked, "material shader evidence was not tracked");
+        requireContract(errors, report.materialShaderSlotBindingDeferred, "material shader slot binding was not deferred");
+        requireContract(errors, report.fontAtlasEvidenceTracked, "font atlas evidence was not tracked");
+        requireContract(errors, report.fontAtlasCreationDeferred, "font atlas creation was not deferred");
+    });
+
     runContractSuiteCheck(suite, "yuengine_mission_event_thread_contract", filter, [&](auto& errors) {
         const auto report = yu::runtime::runMissionEventThreadRuntime(manifestPath, repoRoot);
         requireContract(errors, report.ok && report.sceneRuntimeOk, "mission event thread report is not ok");
@@ -1040,6 +1059,11 @@ int main(int argc, char** argv)
         if (command == "backend-upload-bind") {
             auto report = yu::runtime::runBackendUploadBindingRuntime(manifest, repoRoot);
             std::cout << yu::runtime::backendUploadBindingRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "backend-surface-material-font") {
+            auto report = yu::runtime::runBackendSurfaceMaterialFontRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendSurfaceMaterialFontRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "runtime-contract-suite") {

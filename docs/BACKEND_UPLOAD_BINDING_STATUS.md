@@ -26,7 +26,7 @@ project.json
 ```powershell
 build\cmake-bt143\yuengine_cli.exe backend-upload-bind samples\touhou_new_world\project.json --repo-root .
 ctest --test-dir build\cmake-bt143 -C Debug -R yuengine_backend_upload_binding_contract --output-on-failure --parallel 8
-tools\verify_runtime.ps1
+tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_upload_binding_contract
 ```
 
 Current metric:

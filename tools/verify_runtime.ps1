@@ -81,7 +81,7 @@ try {
 
     if ($Mode -eq "fast") {
         Invoke-CheckedCapture "runtime fast contract" $cliPath @(
-            "backend-upload-bind",
+            "backend-surface-material-font",
             "samples\touhou_new_world\project.json",
             "--repo-root",
             "."

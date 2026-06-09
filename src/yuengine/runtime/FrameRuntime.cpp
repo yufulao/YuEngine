@@ -161,6 +161,12 @@ void addError(BackendUploadBindingRuntimeReport& report, const std::string& mess
     report.errors.push_back(message);
 }
 
+void addError(BackendSurfaceMaterialFontRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -1885,6 +1891,7 @@ struct PlatformD3D9DeviceService {
     std::vector<IUnknown*> resourceHandles;
     std::map<std::string, IDirect3DTexture9*> textureHandles;
     std::map<std::string, IDirect3DCubeTexture9*> cubeTextureHandles;
+    std::map<std::string, IDirect3DSurface9*> surfaceHandles;
 
     ~PlatformD3D9DeviceService()
     {
@@ -2055,6 +2062,12 @@ D3DFORMAT d3dFormatFromResourceRecord(const std::string& format)
     }
     if (format == "D3DFMT_A8L8") {
         return D3DFMT_A8L8;
+    }
+    if (format == "D3DFMT_X8R8G8B8") {
+        return D3DFMT_X8R8G8B8;
+    }
+    if (format == "D3DFMT_D24S8") {
+        return D3DFMT_D24S8;
     }
     return D3DFMT_UNKNOWN;
 }
@@ -2593,6 +2606,260 @@ BackendUploadBindingExecutionRecord executeBindingRecord(
 #endif
 
     return record;
+}
+
+bool isSmaaTransientSurfaceTarget(const std::string& name)
+{
+    return name == "colorTex2D" || name == "depthTex2D" || name == "edgesTex2D"
+        || name == "blendTex2D";
+}
+
+bool isSmaaDepthSurfaceTarget(const std::string& name)
+{
+    return name == "depthTex2D";
+}
+
+BackendSurfaceMaterialFontExecutionRecord makeSurfaceMaterialFontRecord(
+    const std::string& name,
+    const std::string& source,
+    const std::string& operation,
+    const std::string& target,
+    const std::string& resourceKind,
+    const std::string& format,
+    const std::string& status,
+    const std::string& detail,
+    bool sourceReady,
+    bool realCallReady)
+{
+    BackendSurfaceMaterialFontExecutionRecord record;
+    record.name = name;
+    record.source = source;
+    record.operation = operation;
+    record.target = target;
+    record.resourceKind = resourceKind;
+    record.format = format;
+    record.status = status;
+    record.detail = detail;
+    record.sourceReady = sourceReady;
+    record.resultRecorded = true;
+    record.realCallReady = realCallReady;
+    return record;
+}
+
+BackendSurfaceMaterialFontExecutionRecord executeTransientSurfaceRecord(
+    PlatformD3D9DeviceService& service,
+    const BackendDeviceResourceExecutionRecord& source)
+{
+    const bool isDepth = isSmaaDepthSurfaceTarget(source.name);
+    auto record = makeSurfaceMaterialFontRecord(
+        source.name,
+        source.operation,
+        isDepth ? "CreateDepthStencilSurface" : "CreateRenderTargetTexture",
+        source.name,
+        isDepth ? "smaa_depth_stencil_surface" : "smaa_render_target_texture",
+        isDepth ? "D3DFMT_D24S8" : "D3DFMT_X8R8G8B8",
+        "blocked",
+        "transient surface creation did not complete",
+        source.status == "tracked_open" && isSmaaTransientSurfaceTarget(source.name)
+            && source.width > 0 && source.height > 0,
+        false);
+    record.width = source.width;
+    record.height = source.height;
+
+    if (!record.sourceReady) {
+        record.status = source.status == "tracked_open" ? "tracked_open" : "blocked";
+        record.detail = "source resource is not an SMAA transient surface candidate";
+        return record;
+    }
+    if (!service.serviceReady) {
+        record.status = "blocked_by_device";
+        record.detail = service.detail;
+        return record;
+    }
+
+#if defined(_WIN32)
+    if (isDepth) {
+        IDirect3DSurface9* surface = nullptr;
+        const HRESULT hr = service.device->CreateDepthStencilSurface(
+            static_cast<UINT>(std::max(1, source.width)),
+            static_cast<UINT>(std::max(1, source.height)),
+            D3DFMT_D24S8,
+            D3DMULTISAMPLE_NONE,
+            0,
+            TRUE,
+            &surface,
+            nullptr);
+        if (SUCCEEDED(hr) && surface != nullptr) {
+            service.resourceHandles.push_back(surface);
+            service.surfaceHandles[source.name] = surface;
+            record.status = "real_success";
+            record.detail = "IDirect3DDevice9::CreateDepthStencilSurface succeeded for SMAA depth candidate";
+            record.apiCalls = 1;
+            record.realCallReady = true;
+            return record;
+        }
+        if (surface != nullptr) {
+            surface->Release();
+        }
+        record.status = "real_failed";
+        record.detail = hresultDetail("IDirect3DDevice9::CreateDepthStencilSurface", hr);
+        return record;
+    }
+
+    IDirect3DTexture9* texture = nullptr;
+    const HRESULT textureHr = service.device->CreateTexture(
+        static_cast<UINT>(std::max(1, source.width)),
+        static_cast<UINT>(std::max(1, source.height)),
+        1,
+        D3DUSAGE_RENDERTARGET,
+        D3DFMT_X8R8G8B8,
+        D3DPOOL_DEFAULT,
+        &texture,
+        nullptr);
+    if (FAILED(textureHr) || texture == nullptr) {
+        if (texture != nullptr) {
+            texture->Release();
+        }
+        record.status = "real_failed";
+        record.detail = hresultDetail("IDirect3DDevice9::CreateTexture(D3DUSAGE_RENDERTARGET)", textureHr);
+        return record;
+    }
+
+    IDirect3DSurface9* surface = nullptr;
+    const HRESULT surfaceHr = texture->GetSurfaceLevel(0, &surface);
+    if (FAILED(surfaceHr) || surface == nullptr) {
+        texture->Release();
+        if (surface != nullptr) {
+            surface->Release();
+        }
+        record.status = "real_failed";
+        record.detail = hresultDetail("IDirect3DTexture9::GetSurfaceLevel", surfaceHr);
+        return record;
+    }
+
+    service.resourceHandles.push_back(texture);
+    service.resourceHandles.push_back(surface);
+    service.textureHandles[source.name] = texture;
+    service.surfaceHandles[source.name] = surface;
+    record.status = "real_success";
+    record.detail =
+        "IDirect3DDevice9::CreateTexture with D3DUSAGE_RENDERTARGET succeeded and surface level is retained";
+    record.apiCalls = 2;
+    record.realCallReady = true;
+    return record;
+#else
+    record.status = "unsupported_platform";
+    record.detail = service.detail;
+    return record;
+#endif
+}
+
+BackendSurfaceMaterialFontExecutionRecord executeTransientTextureBindingRecord(
+    PlatformD3D9DeviceService& service,
+    const BackendDeviceStateBindingRecord& binding,
+    int readyBindingSlot)
+{
+    auto record = makeSurfaceMaterialFontRecord(
+        binding.name,
+        binding.source,
+        "SetTexture",
+        binding.target,
+        "smaa_transient_texture_binding",
+        binding.target == "depthTex2D" ? "D3DFMT_D24S8" : "D3DFMT_X8R8G8B8",
+        "tracked_open",
+        "transient texture binding remains tracked-open until target surface texture exists",
+        binding.operation == "SetTextureCandidate" && isSmaaTransientSurfaceTarget(binding.target),
+        false);
+    record.bindingSlots = binding.bindingSlots;
+
+    if (!record.sourceReady) {
+        record.status = "blocked";
+        record.detail = "source binding is not an SMAA transient texture candidate";
+        return record;
+    }
+    if (!service.serviceReady) {
+        record.status = "blocked_by_device";
+        record.detail = service.detail;
+        return record;
+    }
+    if (binding.target == "depthTex2D") {
+        record.status = "tracked_open";
+        record.detail =
+            "D3DFMT_D24S8 depth/stencil surface is created, but no recovered DX9 depth-texture sampler handle exists";
+        return record;
+    }
+
+#if defined(_WIN32)
+    auto textureIt = service.textureHandles.find(binding.target);
+    if (textureIt == service.textureHandles.end() || textureIt->second == nullptr) {
+        record.status = "blocked";
+        record.detail = "render-target texture handle is not available";
+        return record;
+    }
+    const HRESULT hr = service.device->SetTexture(
+        static_cast<DWORD>(readyBindingSlot),
+        textureIt->second);
+    if (FAILED(hr)) {
+        record.status = "real_failed";
+        record.detail = hresultDetail("IDirect3DDevice9::SetTexture", hr);
+        return record;
+    }
+    record.status = "real_success";
+    record.detail = "IDirect3DDevice9::SetTexture succeeded for SMAA transient render-target texture";
+    record.apiCalls = 1;
+    record.realCallReady = true;
+    return record;
+#else
+    record.status = "unsupported_platform";
+    record.detail = service.detail;
+    return record;
+#endif
+}
+
+int countMaterialShaderEvidenceTokens(const resource::VirtualFileSystem& vfs, int& filesWithEvidence)
+{
+    const std::vector<std::string> shaderFiles = {
+        "system/shader/mesh20.bfx",
+        "system/shader/mesh20Multi.bfx",
+        "system/shader/mesh30.bfx",
+        "system/shader/mesh30Multi.bfx",
+        "system/shader/grass20.bfx",
+        "system/shader/grass30.bfx",
+        "system/shader/deferred.bfx",
+        "system/shader/deferredMulti.bfx",
+        "system/shader/effect.bfx",
+        "system/shader/lighting.bfx",
+        "system/filter/system.bfx",
+    };
+    const std::vector<std::string> materialTokens = {
+        "SamplerDiffuse",
+        "SamplerNormal",
+        "SamplerSpecular",
+        "SamplerEnv",
+        "SamplerEmissive",
+        "MaterialDiffuse",
+        "MaterialSpecular",
+        "NormalMapFactor",
+    };
+
+    int tokenCount = 0;
+    filesWithEvidence = 0;
+    for (const auto& shaderFile : shaderFiles) {
+        const auto payload = vfs.readBytes(shaderFile);
+        if (!payload.found || payload.bytes.empty()) {
+            continue;
+        }
+        const std::string text = bytesToText(payload.bytes);
+        int fileTokens = 0;
+        for (const auto& token : materialTokens) {
+            fileTokens += countOccurrences(text, token);
+        }
+        if (fileTokens > 0) {
+            ++filesWithEvidence;
+            tokenCount += fileTokens;
+        }
+    }
+    return tokenCount;
 }
 
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
@@ -5099,6 +5366,230 @@ BackendUploadBindingRuntimeReport buildBackendUploadBindingRuntimeReport(
     if (report.resolvedUploadBindingContracts != 6 || report.trackedUploadBindingObligations != 5
         || report.openUploadBindingObligations != 5) {
         addError(report, "upload/binding obligation accounting is inconsistent");
+    }
+
+    return storeCachedReport(cache, cacheKey, report);
+}
+
+BackendSurfaceMaterialFontRuntimeReport buildBackendSurfaceMaterialFontRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "backend-surface-material-font");
+    static std::map<std::string, BackendSurfaceMaterialFontRuntimeReport> cache;
+    BackendSurfaceMaterialFontRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
+    BackendSurfaceMaterialFontRuntimeReport report;
+    const auto uploadBinding = buildBackendUploadBindingRuntimeReport(inputs, rendererProfile, vfs);
+    const auto resourceCreation = buildBackendResourceCreationRuntimeReport(inputs, rendererProfile, vfs);
+    const auto deviceCreation = buildBackendDeviceCreationRuntimeReport(inputs, rendererProfile, vfs);
+    const auto deviceExecution = buildBackendDeviceExecutionRuntimeReport(inputs, rendererProfile, vfs);
+    const auto backendState = buildBackendStateRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.uploadBindingOk = uploadBinding.ok;
+    report.resourceCreationOk = resourceCreation.ok;
+    report.deviceExecutionOk = deviceExecution.ok;
+    report.backendStateOk = backendState.ok;
+    report.backbufferWidth = deviceCreation.backbufferWidth;
+    report.backbufferHeight = deviceCreation.backbufferHeight;
+
+    auto service = createPlatformD3D9DeviceService(report.backbufferWidth, report.backbufferHeight);
+    report.persistentDeviceServiceReady = service->serviceReady;
+
+    for (const auto& source : deviceExecution.resourceRecords) {
+        if (!source.ready) {
+            continue;
+        }
+        const auto creationRecord = executeResourceCreationRecord(*service, source);
+        if (creationRecord.realHandleReady) {
+            ++report.baseResourceHandlesCreated;
+        }
+    }
+    report.baseResourceHandlesReady = report.baseResourceHandlesCreated == 41;
+
+    for (const auto& source : deviceExecution.resourceRecords) {
+        if (!isSmaaTransientSurfaceTarget(source.name)) {
+            continue;
+        }
+        ++report.sourceSurfaceRecords;
+        auto record = executeTransientSurfaceRecord(*service, source);
+        if (record.resultRecorded) {
+            ++report.transientSurfaceResultRecords;
+        }
+        if (record.realCallReady) {
+            ++report.realTransientSurfacesCreated;
+            if (record.resourceKind == "smaa_render_target_texture") {
+                ++report.renderTargetSurfacesCreated;
+            } else if (record.resourceKind == "smaa_depth_stencil_surface") {
+                ++report.depthStencilSurfacesCreated;
+            }
+        } else if (record.status == "real_failed" || record.status == "blocked_by_device"
+            || record.status == "blocked") {
+            ++report.failedTransientSurfaces;
+        }
+        report.records.push_back(std::move(record));
+    }
+
+    std::map<std::string, int> samplerSlotByName;
+    int samplerSlot = 0;
+    for (const auto& sampler : backendState.samplerRecords) {
+        samplerSlotByName[sampler.name] = samplerSlot++;
+    }
+
+    for (const auto& binding : deviceExecution.bindingRecordsDetail) {
+        if (binding.operation != "SetTextureCandidate") {
+            continue;
+        }
+        if (binding.target == "material_texture_slot") {
+            ++report.materialTextureBindingRecords;
+            ++report.preservedMaterialTextureBindings;
+            continue;
+        }
+        if (!isSmaaTransientSurfaceTarget(binding.target)) {
+            continue;
+        }
+        ++report.transientTextureBindings;
+        int bindingSlot = 0;
+        const auto slotIt = samplerSlotByName.find(binding.name);
+        if (slotIt != samplerSlotByName.end()) {
+            bindingSlot = slotIt->second;
+        }
+        auto record = executeTransientTextureBindingRecord(*service, binding, bindingSlot);
+        if (record.realCallReady) {
+            ++report.executedTransientTextureBindings;
+        } else if (binding.target == "depthTex2D" && record.status == "tracked_open") {
+            ++report.preservedDepthTextureBindings;
+        } else if (record.status == "real_failed" || record.status == "blocked_by_device"
+            || record.status == "blocked") {
+            ++report.failedTransientTextureBindings;
+        }
+        report.records.push_back(std::move(record));
+    }
+
+    report.materialShaderSamplerTokens =
+        countMaterialShaderEvidenceTokens(vfs, report.materialShaderEvidenceFiles);
+    report.materialShaderEvidenceTracked =
+        report.materialShaderEvidenceFiles > 0 && report.materialShaderSamplerTokens >= 5;
+    report.materialShaderSlotBindingDeferred =
+        report.materialShaderEvidenceTracked && report.materialTextureBindingRecords == 38
+        && report.preservedMaterialTextureBindings == 38;
+
+    report.fontAtlasPlaceholders = deviceExecution.fontAtlasCreationPlaceholders;
+    report.fontQueryRecords = backendState.fontQueryRecords;
+    report.textDrawCommands = backendState.textDrawCommands;
+    report.stringSizeQueries = backendState.stringSizeQueries;
+    report.fontAtlasEvidenceTracked =
+        backendState.fontAtlasRecordsReady && backendState.fontRecord.glyphMetricInputsReady
+        && report.fontQueryRecords == 6 && report.textDrawCommands == 6
+        && report.stringSizeQueries == 5;
+    report.fontAtlasCreationDeferred =
+        report.fontAtlasEvidenceTracked && report.fontAtlasPlaceholders == 1;
+
+    report.transientSurfaceCreationExecuted =
+        report.sourceSurfaceRecords == 4 && report.transientSurfaceResultRecords == 4
+        && report.realTransientSurfacesCreated == 4 && report.failedTransientSurfaces == 0
+        && report.renderTargetSurfacesCreated == 3 && report.depthStencilSurfacesCreated == 1;
+    report.transientSurfaceBindingExecuted =
+        report.transientTextureBindings == 5 && report.executedTransientTextureBindings == 4
+        && report.preservedDepthTextureBindings == 1 && report.failedTransientTextureBindings == 0;
+    report.drawPresentCaptureRecordsDeferred = 121 + 1 + 2;
+    report.downstreamDrawPresentDeferred = report.drawPresentCaptureRecordsDeferred == 124;
+    report.backbufferExtentCarried =
+        report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+    report.surfaceMaterialFontRuntimeReady =
+        report.uploadBindingOk && report.resourceCreationOk && report.deviceExecutionOk
+        && report.backendStateOk && report.persistentDeviceServiceReady
+        && report.baseResourceHandlesReady && report.transientSurfaceCreationExecuted
+        && report.transientSurfaceBindingExecuted && report.materialShaderSlotBindingDeferred
+        && report.fontAtlasCreationDeferred && report.downstreamDrawPresentDeferred
+        && report.backbufferExtentCarried;
+
+    report.contracts.push_back(makeBackendObligation(
+        "persistent_device_service_for_surfaces",
+        report.persistentDeviceServiceReady && report.baseResourceHandlesReady ? "contract_ready" : "blocked",
+        "L32 reuses a persistent hidden HWND/D3D9 device service after L31 upload/binding readiness"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_render_target_surface_creation",
+        report.renderTargetSurfacesCreated == 3 ? "contract_ready" : "blocked",
+        "colorTex2D, edgesTex2D, and blendTex2D create 1280x720 D3DFMT_X8R8G8B8 render-target textures"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_depth_stencil_surface_creation",
+        report.depthStencilSurfacesCreated == 1 ? "contract_ready" : "blocked",
+        "depthTex2D creates a 1280x720 D3DFMT_D24S8 depth/stencil surface"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_transient_render_target_binding",
+        report.executedTransientTextureBindings == 4 && report.preservedDepthTextureBindings == 1
+            ? "contract_ready"
+            : "blocked",
+        "colorTex/colorTexG/edgesTex/blendTex bind render-target textures; depthTex remains gated by missing depth texture evidence"));
+    report.contracts.push_back(makeBackendObligation(
+        "material_shader_binary_evidence",
+        report.materialShaderEvidenceTracked ? "contract_ready" : "blocked",
+        "system shader .bfx files expose material sampler tokens such as SamplerDiffuse/SamplerNormal/SamplerSpecular"));
+    report.contracts.push_back(makeBackendObligation(
+        "title_font_metric_evidence",
+        report.fontAtlasEvidenceTracked ? "contract_ready" : "blocked",
+        "title UI contributes recovered font queries, text draw commands, and string-size queries"));
+    report.contracts.push_back(makeBackendObligation(
+        "material_texture_shader_slot_binding",
+        report.materialShaderSlotBindingDeferred ? "tracked_open" : "blocked",
+        "38 material texture bindings still need a recovered per-material shader pass and sampler slot ownership map"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_depth_texture_sampler_binding",
+        report.preservedDepthTextureBindings == 1 ? "tracked_open" : "blocked",
+        "DX9 D3DFMT_D24S8 depth surface exists, but no recovered depth texture sampler handle is available"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_texture_implementation",
+        report.fontAtlasCreationDeferred ? "tracked_open" : "blocked",
+        "font atlas creation remains deferred because glyph atlas dimensions and cache ownership are not recovered"));
+    report.contracts.push_back(makeBackendObligation(
+        "draw_present_capture_after_surface_material_font",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "draw, present, and capture remain deferred until material/font/depth gates are closed"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_after_capture",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "original-frame oracle remains deferred until YuEngine can capture an executed frame"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedSurfaceMaterialFontContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedSurfaceMaterialFontObligations;
+            ++report.openSurfaceMaterialFontObligations;
+        } else {
+            ++report.openSurfaceMaterialFontObligations;
+        }
+    }
+
+    if (!report.uploadBindingOk || !report.resourceCreationOk || !report.deviceExecutionOk
+        || !report.backendStateOk) {
+        addError(report, "upstream backend upload/resource/device/state contracts are not ready");
+    }
+    if (!report.persistentDeviceServiceReady || !report.baseResourceHandlesReady) {
+        addError(report, "persistent D3D9 device service or base resource handles are not ready");
+    }
+    if (!report.transientSurfaceCreationExecuted) {
+        addError(report, "SMAA transient surface creation did not complete");
+    }
+    if (!report.transientSurfaceBindingExecuted) {
+        addError(report, "SMAA transient render-target texture binding did not complete");
+    }
+    if (!report.materialShaderSlotBindingDeferred) {
+        addError(report, "material shader evidence or deferred material binding accounting is incomplete");
+    }
+    if (!report.fontAtlasCreationDeferred) {
+        addError(report, "font atlas evidence or deferred font atlas accounting is incomplete");
+    }
+    if (report.resolvedSurfaceMaterialFontContracts != 6
+        || report.trackedSurfaceMaterialFontObligations != 5
+        || report.openSurfaceMaterialFontObligations != 5) {
+        addError(report, "surface/material/font obligation accounting is inconsistent");
     }
 
     return storeCachedReport(cache, cacheKey, report);
@@ -7636,6 +8127,158 @@ std::string backendUploadBindingRuntimeReportToJson(
             << ", \"api_calls\": " << record.apiCalls
             << ", \"payload_bytes\": " << record.payloadBytes
             << ", \"uploaded_payload_bytes\": " << record.uploadedPayloadBytes
+            << ", \"source_ready\": " << (record.sourceReady ? "true" : "false")
+            << ", \"result_recorded\": " << (record.resultRecorded ? "true" : "false")
+            << ", \"real_call_ready\": " << (record.realCallReady ? "true" : "false")
+            << "}";
+        out << (i + 1 == report.records.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendSurfaceMaterialFontRuntimeReport runBackendSurfaceMaterialFontRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendSurfaceMaterialFontRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendSurfaceMaterialFontRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendSurfaceMaterialFontRuntimeReportToJson(
+    const BackendSurfaceMaterialFontRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_surface_material_font_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " upload_binding_ok=" << (report.uploadBindingOk ? "true" : "false")
+        << " resource_creation_ok=" << (report.resourceCreationOk ? "true" : "false")
+        << " device_execution_ok=" << (report.deviceExecutionOk ? "true" : "false")
+        << " backend_state_ok=" << (report.backendStateOk ? "true" : "false")
+        << " surface_material_font_runtime_ready="
+        << (report.surfaceMaterialFontRuntimeReady ? "true" : "false")
+        << " persistent_device_service_ready="
+        << (report.persistentDeviceServiceReady ? "true" : "false")
+        << " base_resource_handles_ready=" << (report.baseResourceHandlesReady ? "true" : "false")
+        << " transient_surface_creation_executed="
+        << (report.transientSurfaceCreationExecuted ? "true" : "false")
+        << " transient_surface_binding_executed="
+        << (report.transientSurfaceBindingExecuted ? "true" : "false")
+        << " material_shader_evidence_tracked="
+        << (report.materialShaderEvidenceTracked ? "true" : "false")
+        << " material_shader_slot_binding_deferred="
+        << (report.materialShaderSlotBindingDeferred ? "true" : "false")
+        << " font_atlas_evidence_tracked="
+        << (report.fontAtlasEvidenceTracked ? "true" : "false")
+        << " font_atlas_creation_deferred="
+        << (report.fontAtlasCreationDeferred ? "true" : "false")
+        << " downstream_draw_present_deferred="
+        << (report.downstreamDrawPresentDeferred ? "true" : "false")
+        << " backbuffer_extent_carried=" << (report.backbufferExtentCarried ? "true" : "false")
+        << " base_resource_handles_created=" << report.baseResourceHandlesCreated
+        << " source_surface_records=" << report.sourceSurfaceRecords
+        << " transient_surface_result_records=" << report.transientSurfaceResultRecords
+        << " real_transient_surfaces_created=" << report.realTransientSurfacesCreated
+        << " failed_transient_surfaces=" << report.failedTransientSurfaces
+        << " render_target_surfaces_created=" << report.renderTargetSurfacesCreated
+        << " depth_stencil_surfaces_created=" << report.depthStencilSurfacesCreated
+        << " transient_texture_bindings=" << report.transientTextureBindings
+        << " executed_transient_texture_bindings=" << report.executedTransientTextureBindings
+        << " preserved_depth_texture_bindings=" << report.preservedDepthTextureBindings
+        << " failed_transient_texture_bindings=" << report.failedTransientTextureBindings
+        << " material_texture_binding_records=" << report.materialTextureBindingRecords
+        << " preserved_material_texture_bindings=" << report.preservedMaterialTextureBindings
+        << " material_shader_evidence_files=" << report.materialShaderEvidenceFiles
+        << " material_shader_sampler_tokens=" << report.materialShaderSamplerTokens
+        << " font_atlas_placeholders=" << report.fontAtlasPlaceholders
+        << " font_query_records=" << report.fontQueryRecords
+        << " text_draw_commands=" << report.textDrawCommands
+        << " string_size_queries=" << report.stringSizeQueries
+        << " draw_present_capture_records_deferred=" << report.drawPresentCaptureRecordsDeferred
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_surface_material_font_contracts="
+        << report.resolvedSurfaceMaterialFontContracts
+        << " tracked_surface_material_font_obligations="
+        << report.trackedSurfaceMaterialFontObligations
+        << " open_surface_material_font_obligations="
+        << report.openSurfaceMaterialFontObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"surface_summary\": {";
+    out << "\"source_surface_records\": " << report.sourceSurfaceRecords
+        << ", \"transient_surface_result_records\": " << report.transientSurfaceResultRecords
+        << ", \"real_transient_surfaces_created\": " << report.realTransientSurfacesCreated
+        << ", \"failed_transient_surfaces\": " << report.failedTransientSurfaces
+        << ", \"render_target_surfaces_created\": " << report.renderTargetSurfacesCreated
+        << ", \"depth_stencil_surfaces_created\": " << report.depthStencilSurfacesCreated
+        << "},\n";
+    out << "  \"binding_summary\": {";
+    out << "\"transient_texture_bindings\": " << report.transientTextureBindings
+        << ", \"executed_transient_texture_bindings\": "
+        << report.executedTransientTextureBindings
+        << ", \"preserved_depth_texture_bindings\": " << report.preservedDepthTextureBindings
+        << ", \"failed_transient_texture_bindings\": "
+        << report.failedTransientTextureBindings
+        << ", \"material_texture_binding_records\": " << report.materialTextureBindingRecords
+        << ", \"preserved_material_texture_bindings\": "
+        << report.preservedMaterialTextureBindings
+        << "},\n";
+    out << "  \"material_font_evidence\": {";
+    out << "\"material_shader_evidence_files\": " << report.materialShaderEvidenceFiles
+        << ", \"material_shader_sampler_tokens\": " << report.materialShaderSamplerTokens
+        << ", \"font_atlas_placeholders\": " << report.fontAtlasPlaceholders
+        << ", \"font_query_records\": " << report.fontQueryRecords
+        << ", \"text_draw_commands\": " << report.textDrawCommands
+        << ", \"string_size_queries\": " << report.stringSizeQueries
+        << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_surface_material_font_contracts\": "
+        << report.resolvedSurfaceMaterialFontContracts
+        << ", \"tracked_surface_material_font_obligations\": "
+        << report.trackedSurfaceMaterialFontObligations
+        << ", \"open_surface_material_font_obligations\": "
+        << report.openSurfaceMaterialFontObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"records\": [\n";
+    for (size_t i = 0; i < report.records.size(); ++i) {
+        const auto& record = report.records[i];
+        out << "    {\"name\": \"" << core::jsonEscape(record.name)
+            << "\", \"source\": \"" << core::jsonEscape(record.source)
+            << "\", \"operation\": \"" << core::jsonEscape(record.operation)
+            << "\", \"target\": \"" << core::jsonEscape(record.target)
+            << "\", \"resource_kind\": \"" << core::jsonEscape(record.resourceKind)
+            << "\", \"format\": \"" << core::jsonEscape(record.format)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"detail\": \"" << core::jsonEscape(record.detail)
+            << "\", \"width\": " << record.width
+            << ", \"height\": " << record.height
+            << ", \"binding_slots\": " << record.bindingSlots
+            << ", \"api_calls\": " << record.apiCalls
             << ", \"source_ready\": " << (record.sourceReady ? "true" : "false")
             << ", \"result_recorded\": " << (record.resultRecorded ? "true" : "false")
             << ", \"real_call_ready\": " << (record.realCallReady ? "true" : "false")

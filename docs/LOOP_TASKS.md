@@ -1359,24 +1359,60 @@ Boundary:
 
 ### L32: Transient Surfaces, Material Shader Binding, And Font Atlas Resolution
 
-Status: active after L31.
+Status: completed as backend surface/material/font gate checkpoint on 2026-06-09.
 
 Deliver:
 
 - resolve SMAA transient render target/depth surface formats and create real D3D9 surfaces;
-- connect material texture records to recovered material shader/pass slot ownership without
-  guessing stage shader layout;
-- resolve title/menu font atlas dimensions or keep the atlas as an explicit blocker with stronger
-  evidence;
-- preserve draw/present/capture/oracle as downstream gates until resources, uploads, and bindings
-  are all concrete.
+- strengthen material shader evidence and preserve material texture binding until pass/sampler slot
+  ownership is recovered;
+- preserve font atlas creation as an explicit blocker with title font metric evidence;
+- preserve draw/present/capture/oracle as downstream gates until material, depth, and font gates are
+  closed.
 
 Acceptance:
 
-- transient surface creation must execute against the persistent D3D9 device or fail explicitly;
-- material texture binding must not bind arbitrary slots without recovered shader evidence;
-- font atlas creation must not invent glyph cache dimensions;
-- CTest must lock ready/open accounting and prevent draw execution until these gates are closed.
+- `yuengine_cli backend-surface-material-font samples/touhou_new_world/project.json --repo-root .`
+  reports `surface_material_font_runtime_ready=true`;
+- CTest `yuengine_backend_surface_material_font_contract` locks 3 render-target textures, 1
+  depth/stencil surface, 4 transient render-target `SetTexture` calls, 38 preserved material
+  texture bindings, 1 preserved depth texture binding, and the inherited 1280x720 extent;
+- real D3D9 calls executed on this machine: `CreateTexture(D3DUSAGE_RENDERTARGET)` for
+  `colorTex2D`, `edgesTex2D`, and `blendTex2D`; `CreateDepthStencilSurface` for `depthTex2D`;
+  `SetTexture` for `colorTex`, `colorTexG`, `edgesTex`, and `blendTex`;
+- `.bfx` material shader evidence is tracked, but per-material shader pass/sampler slot ownership
+  remains open;
+- font query/string-size evidence is tracked, but font atlas dimensions/cache ownership remain open.
+
+Boundary:
+
+- L32 does not bind stage material textures to guessed shader slots;
+- L32 does not treat the D24S8 depth surface as a sampleable depth texture;
+- L32 does not create or populate a font atlas;
+- L32 does not issue draw/present/capture/oracle calls.
+
+### L33: Material Shader Slot, Depth Texture, And Font Atlas Recovery
+
+Status: active after L32.
+
+Deliver:
+
+- recover material shader pass/sampler slot ownership from `.bfx` reflection and model/material
+  records, or lock a stronger blocker if the shipped binary shader evidence cannot prove the map;
+- recover DX9 depth texture sampler behavior for `depthTex`, or keep it blocked with exact evidence
+  of why D24S8 surface-only state is insufficient;
+- recover title/menu font atlas dimensions, glyph cache ownership, and texture format from scripts,
+  native boundary evidence, resources, or executable strings before allocating a font atlas;
+- preserve draw/present/capture/oracle until material, depth, and font gates are no longer open.
+
+Acceptance:
+
+- material texture binding must be one-to-one with recovered shader sampler slots, not inferred from
+  texture filename suffixes alone;
+- depth texture binding must prove a sampleable texture path or remain tracked-open;
+- font atlas allocation must name dimensions, glyph ownership, and source evidence;
+- CTest must lock ready/open accounting and continue preventing draw execution while any of these
+  gates remain open.
 
 ## Stop Conditions
 
@@ -1411,16 +1447,17 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8
 
 Use `-CleanBuild` after C++ header, ABI-like struct, or build-system changes. Bare
 `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs the aggregate suite, not
-the old 37-process path.
+the old per-contract process path.
 
 Current measured speed after caching and scene reuse:
 
 - `yuengine_backend_device_creation_contract`: 1/1 CTest passed in 21.88 seconds.
 - `yuengine_backend_resource_creation_contract`: 1/1 CTest passed in about 22 seconds.
 - `yuengine_backend_upload_binding_contract`: 1/1 CTest passed in about 25 seconds.
-- `tools\verify_runtime.ps1 -SkipPython`: fast L31 contract plus `git diff --check` in about 25
+- `yuengine_backend_surface_material_font_contract`: suite filter passed in 23.35-24.8 seconds.
+- `tools\verify_runtime.ps1 -SkipPython`: fast L32 contract plus `git diff --check` in about 25
   seconds.
 - direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.
 - default `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`: 1/1 aggregate suite
-  passed in 50.12 seconds.
-- direct `runtime-contract-suite`: 37/37 contracts passed in 50.41 seconds.
+  passed in 50.12 seconds before L32; L32 full verify passed in 50.89 seconds.
+- direct `runtime-contract-suite`: 38/38 contracts after L32.

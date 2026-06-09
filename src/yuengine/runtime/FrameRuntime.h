@@ -1084,6 +1084,72 @@ struct BackendUploadBindingRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendSurfaceMaterialFontExecutionRecord {
+    std::string name;
+    std::string source;
+    std::string operation;
+    std::string target;
+    std::string resourceKind;
+    std::string format;
+    std::string status;
+    std::string detail;
+    int width = 0;
+    int height = 0;
+    int bindingSlots = 0;
+    int apiCalls = 0;
+    bool sourceReady = false;
+    bool resultRecorded = false;
+    bool realCallReady = false;
+};
+
+struct BackendSurfaceMaterialFontRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool uploadBindingOk = false;
+    bool resourceCreationOk = false;
+    bool deviceExecutionOk = false;
+    bool backendStateOk = false;
+    bool surfaceMaterialFontRuntimeReady = false;
+    bool persistentDeviceServiceReady = false;
+    bool baseResourceHandlesReady = false;
+    bool transientSurfaceCreationExecuted = false;
+    bool transientSurfaceBindingExecuted = false;
+    bool materialShaderEvidenceTracked = false;
+    bool materialShaderSlotBindingDeferred = false;
+    bool fontAtlasEvidenceTracked = false;
+    bool fontAtlasCreationDeferred = false;
+    bool downstreamDrawPresentDeferred = false;
+    bool backbufferExtentCarried = false;
+    int baseResourceHandlesCreated = 0;
+    int sourceSurfaceRecords = 0;
+    int transientSurfaceResultRecords = 0;
+    int realTransientSurfacesCreated = 0;
+    int failedTransientSurfaces = 0;
+    int renderTargetSurfacesCreated = 0;
+    int depthStencilSurfacesCreated = 0;
+    int transientTextureBindings = 0;
+    int executedTransientTextureBindings = 0;
+    int preservedDepthTextureBindings = 0;
+    int failedTransientTextureBindings = 0;
+    int materialTextureBindingRecords = 0;
+    int preservedMaterialTextureBindings = 0;
+    int materialShaderEvidenceFiles = 0;
+    int materialShaderSamplerTokens = 0;
+    int fontAtlasPlaceholders = 0;
+    int fontQueryRecords = 0;
+    int textDrawCommands = 0;
+    int stringSizeQueries = 0;
+    int drawPresentCaptureRecordsDeferred = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedSurfaceMaterialFontContracts = 0;
+    int trackedSurfaceMaterialFontObligations = 0;
+    int openSurfaceMaterialFontObligations = 0;
+    std::vector<BackendSurfaceMaterialFontExecutionRecord> records;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -1296,6 +1362,13 @@ BackendUploadBindingRuntimeReport runBackendUploadBindingRuntime(
 
 std::string backendUploadBindingRuntimeReportToJson(
     const BackendUploadBindingRuntimeReport& report);
+
+BackendSurfaceMaterialFontRuntimeReport runBackendSurfaceMaterialFontRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendSurfaceMaterialFontRuntimeReportToJson(
+    const BackendSurfaceMaterialFontRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,
