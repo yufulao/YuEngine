@@ -33,6 +33,22 @@ void addError(SceneRuntimeMaterializationReport& report, const std::string& mess
     report.errors.push_back(message);
 }
 
+std::string pathCacheKey(const std::filesystem::path& path)
+{
+    try {
+        return std::filesystem::weakly_canonical(path).generic_string();
+    } catch (const std::exception&) {
+        return path.lexically_normal().generic_string();
+    }
+}
+
+std::string runtimeCacheKey(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    return pathCacheKey(manifestPath) + "|" + pathCacheKey(repoRoot);
+}
+
 bool readU32(const std::vector<std::byte>& bytes, size_t offset, uint32_t& out)
 {
     if (offset + sizeof(uint32_t) > bytes.size()) {
@@ -834,11 +850,20 @@ SceneRuntimeMaterializationReport runSceneRuntimeMaterialization(
     const std::filesystem::path& manifestPath,
     const std::filesystem::path& repoRoot)
 {
+    const auto cacheKey = runtimeCacheKey(manifestPath, repoRoot);
+    static std::map<std::string, SceneRuntimeMaterializationReport> cache;
+    const auto cached = cache.find(cacheKey);
+    if (cached != cache.end()) {
+        return cached->second;
+    }
+
     const auto manifest = project::loadProjectManifest(manifestPath);
     resource::VirtualFileSystem vfs;
     vfs.mountProject(manifest);
     auto sceneEntry = runSceneEntryRuntime(manifestPath, repoRoot);
-    return materializeSceneEntryRuntime(sceneEntry, vfs);
+    auto report = materializeSceneEntryRuntime(sceneEntry, vfs);
+    cache[cacheKey] = report;
+    return report;
 }
 
 std::string sceneRuntimeMaterializationReportToJson(const SceneRuntimeMaterializationReport& report)

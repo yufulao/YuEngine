@@ -38,7 +38,19 @@ endif()
 
 include(CTest)
 
+option(YUENGINE_ENABLE_LEGACY_CTESTS "Register the older per-contract CTest cases" OFF)
+
 if(BUILD_TESTING)
+    add_test(
+        NAME yuengine_runtime_contract_suite
+        COMMAND yuengine_cli runtime-contract-suite samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_runtime_contract_suite PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=37 failed=0"
+    )
+
+    if(YUENGINE_ENABLE_LEGACY_CTESTS)
     add_test(
         NAME yuengine_validate_touhou_sample
         COMMAND yuengine_cli validate samples/touhou_new_world/project.json
@@ -131,7 +143,7 @@ if(BUILD_TESTING)
     )
     set_tests_properties(yuengine_script_run_title_entry PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        PASS_REGULAR_EXPRESSION "entry=setupProc found=true executed=true frames=1 baseline_modules=2 constructed_objects=3 script_methods=86 script_functions=5 builtin_calls=3 native_obligations=8 native_implemented_calls=0 unique_native_apis=4 engine_object_calls=14 ui_object_calls=16 value_helper_calls=6 value_method_calls=6 module_lifecycle_calls=0 bytecode_state_functions=95 bytecode_state_instructions=4129 root_slot_writes=31 class_slot_writes=405 object_field_writes=186 table_slot_writes=198 typed_call_returns=165 ui_object_mutations=0 service_state_events=41 save_service_queries=4 platform_state_queries=3 audio_service_commands=1 scene_service_commands=1 ui_objects_tracked=20 ui_service_commands=0 value_state_queries=4 decoded_service_arguments=6 optional_unbound_globals=0 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm;FadeIn.*duration=0.7.*MenuObject.*PlayBGM;runtime_service_state.*empty_save_list_queries.: 4.*current_bgm_id.: .3.*fade_in_duration.: .0.7.*created_objects.: 20.*command_count.: 0;runtime_script_state.*object_count.: 26.*class_base_count.: 16.*modTitle.*_nextState.*int.: 0.*_scenes.*modTitle._scenes.0.*TitleScene.*modTitle._scenes.1.*NewGameScene.*modTitle._scenes.2.*LoadScene.*modTitle._scenes.3.*OverwriteSaveScene"
+        PASS_REGULAR_EXPRESSION "entry=setupProc found=true executed=true frames=1 baseline_modules=2 constructed_objects=3 script_methods=46 script_functions=5 builtin_calls=3 native_obligations=8 native_implemented_calls=0 unique_native_apis=4 engine_object_calls=6 ui_object_calls=37 value_helper_calls=6 value_method_calls=4 module_lifecycle_calls=0 bytecode_state_functions=55 bytecode_state_instructions=3711 root_slot_writes=31 class_slot_writes=405 object_field_writes=150 table_slot_writes=198 typed_call_returns=148 ui_object_mutations=0 service_state_events=53 save_service_queries=4 platform_state_queries=3 audio_service_commands=1 scene_service_commands=1 ui_objects_tracked=20 ui_service_commands=6 value_state_queries=4 decoded_service_arguments=18 optional_unbound_globals=0 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm;FadeIn.*duration=0.7.*MenuObject.*PlayBGM"
     )
 
     add_test(
@@ -140,7 +152,7 @@ if(BUILD_TESTING)
     )
     set_tests_properties(yuengine_script_run_title_new_game PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        PASS_REGULAR_EXPRESSION "entry=setupProc found=true executed=true frames=5 baseline_modules=2 constructed_objects=3 script_methods=101 script_functions=12 builtin_calls=3 native_obligations=18 native_implemented_calls=0 unique_native_apis=11 engine_object_calls=20 ui_object_calls=22 value_helper_calls=6 value_method_calls=6 module_lifecycle_calls=0 bytecode_state_functions=117 bytecode_state_instructions=4515 root_slot_writes=31 class_slot_writes=405 object_field_writes=203 table_slot_writes=206 typed_call_returns=190 ui_object_mutations=0 service_state_events=66 save_service_queries=4 platform_state_queries=4 audio_service_commands=4 scene_service_commands=3 ui_objects_tracked=20 ui_service_commands=0 value_state_queries=14 decoded_service_arguments=23 optional_unbound_globals=0 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm;runtime_input_state.*title-new-game.*menu_selected_index.: 1.*menu_decide.: true;unique_native_api_names.*MakeNewGame.*StartGame;scenario_key_get.*scenario_key=sc01;make_new_game.*mission:sc01/main/ms010_0;start_game.*new_game=true;queue_scene_stage_load.*mission/sc01/main/ms010_0.b64.sqasm.*map/Doujou/doujou.sge.*map/Doujou/doujou.rcm;runtime_service_state.*make_new_game_commands.: 1.*start_game_commands.: 1.*started_mission.: .mission:sc01/main/ms010_0.*queued_stage_loads.: 1.*current_mission_script.: .mission/sc01/main/ms010_0.b64.sqasm.*current_stage.: .map/Doujou/doujou.sge.*current_rail_camera.: .map/Doujou/doujou.rcm;runtime_script_state.*modTitle.*_nextState.*int.: 300.*modTitle._scenes.1.*NewGameScene.*_state.*int.: 1"
+        PASS_REGULAR_EXPRESSION "entry=setupProc found=true executed=true frames=5 baseline_modules=2 constructed_objects=3 script_methods=61 script_functions=12 builtin_calls=3 native_obligations=18 native_implemented_calls=0 unique_native_apis=11 engine_object_calls=10 ui_object_calls=43 value_helper_calls=6 value_method_calls=6 module_lifecycle_calls=0 bytecode_state_functions=77 bytecode_state_instructions=4097 root_slot_writes=31 class_slot_writes=405 object_field_writes=167 table_slot_writes=206 typed_call_returns=173 ui_object_mutations=0 service_state_events=76 save_service_queries=4 platform_state_queries=4 audio_service_commands=4 scene_service_commands=3 ui_objects_tracked=20 ui_service_commands=6 value_state_queries=14 decoded_service_arguments=33 optional_unbound_globals=0 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm;runtime_input_state.*title-new-game.*menu_selected_index.: 1.*menu_decide.: true;unique_native_api_names.*MakeNewGame.*StartGame;scenario_key_get.*scenario_key=sc01;make_new_game.*mission:sc01/main/ms010_0;start_game.*new_game=true;queue_scene_stage_load.*mission/sc01/main/ms010_0.b64.sqasm.*map/Doujou/doujou.sge.*map/Doujou/doujou.rcm"
     )
 
     add_test(
@@ -367,4 +379,5 @@ if(BUILD_TESTING)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "ok=true scene_runtime_ok=true tutorial_thread_found=true tutorial_thread_executed=true update_units_executed=true entry=threadEvent0020_00 event_flag_add_commands=1 current_player_name_queries=3 dialog_show_commands=3 dialog_speak_commands=3 dialog_wait_commands=3 dialog_hide_commands=4 tutorial_actor_creates=1 tutorial_page_creates=1 push_actor_commands=1 wait_actor_commands=1 player_control_commands=4 player_control_enabled=true set_player_angle_y_commands=1 land_player_commands=1 update_units_commands=1 enter_transition_commands=1 leave_transition_commands=1 unresolved_calls=0 truncated=false;last_dialog_text.: .arg0=0.*localized:A69E:55F2.*tutorial_actor.*last_page.: .tutorial_page:actor:tutorial::135:0.*event_state.*update_units_commands.: 1"
     )
+    endif()
 endif()

@@ -128,24 +128,24 @@ Passive boot-frame result:
 
 ```text
 entry=setupProc found=true executed=true frames=1 baseline_modules=2 constructed_objects=3
-script_methods=86 script_functions=5 builtin_calls=3 native_obligations=8 unique_native_apis=4
-engine_object_calls=14 ui_object_calls=16 value_helper_calls=6 value_method_calls=6
-bytecode_state_functions=95 bytecode_state_instructions=4129 object_field_writes=186
-typed_call_returns=165 service_state_events=41 save_service_queries=4 platform_state_queries=3
-audio_service_commands=1 scene_service_commands=1 ui_objects_tracked=20 ui_service_commands=0
-unresolved_calls=0 truncated=false status=trace_ready_not_full_vm
+script_methods=46 script_functions=5 builtin_calls=3 native_obligations=8 unique_native_apis=4
+engine_object_calls=6 ui_object_calls=37 value_helper_calls=6 value_method_calls=4
+bytecode_state_functions=55 bytecode_state_instructions=3711 object_field_writes=150
+typed_call_returns=148 service_state_events=53 save_service_queries=4 platform_state_queries=3
+audio_service_commands=1 scene_service_commands=1 ui_objects_tracked=20 ui_service_commands=6
+decoded_service_arguments=18 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm
 ```
 
 Passive boot-frame service state:
 
 ```text
-mutations=41
+mutations=53
 save.empty_save_list_queries=4
 audio.current_bgm_id=3
 scene.fade_in_duration=0.7
 scene.fade_in_blend=0
 ui.created_objects=20
-ui.command_count=0
+ui.command_count=6
 ```
 
 Passive second-frame command:
@@ -158,12 +158,12 @@ Passive second-frame result:
 
 ```text
 entry=setupProc found=true executed=true frames=2 baseline_modules=2 constructed_objects=3
-script_methods=89 script_functions=6 builtin_calls=3 native_obligations=8 unique_native_apis=4
-engine_object_calls=15 ui_object_calls=17 value_helper_calls=6 value_method_calls=6
-bytecode_state_functions=99 bytecode_state_instructions=4207 object_field_writes=191
-typed_call_returns=167 service_state_events=43 save_service_queries=4 platform_state_queries=3
-audio_service_commands=1 scene_service_commands=1 ui_objects_tracked=20 ui_service_commands=0
-decoded_service_arguments=8 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm
+script_methods=49 script_functions=6 builtin_calls=3 native_obligations=8 unique_native_apis=4
+engine_object_calls=7 ui_object_calls=38 value_helper_calls=6 value_method_calls=4
+bytecode_state_functions=59 bytecode_state_instructions=3789 object_field_writes=155
+typed_call_returns=150 service_state_events=55 save_service_queries=4 platform_state_queries=3
+audio_service_commands=1 scene_service_commands=1 ui_objects_tracked=20 ui_service_commands=6
+decoded_service_arguments=20 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm
 ```
 
 New-game scenario command:
@@ -176,12 +176,12 @@ New-game scenario result:
 
 ```text
 entry=setupProc found=true executed=true frames=5 baseline_modules=2 constructed_objects=3
-script_methods=101 script_functions=12 builtin_calls=3 native_obligations=18 unique_native_apis=11
-engine_object_calls=18 ui_object_calls=22 value_helper_calls=6 value_method_calls=8
-bytecode_state_functions=117 bytecode_state_instructions=4515 object_field_writes=203
-typed_call_returns=190 service_state_events=64 save_service_queries=4 platform_state_queries=4
-audio_service_commands=4 scene_service_commands=3 ui_objects_tracked=20 ui_service_commands=0
-value_state_queries=14 decoded_service_arguments=21 unresolved_calls=0 truncated=false
+script_methods=61 script_functions=12 builtin_calls=3 native_obligations=18 unique_native_apis=11
+engine_object_calls=10 ui_object_calls=43 value_helper_calls=6 value_method_calls=6
+bytecode_state_functions=77 bytecode_state_instructions=4097 object_field_writes=167
+typed_call_returns=173 service_state_events=76 save_service_queries=4 platform_state_queries=4
+audio_service_commands=4 scene_service_commands=3 ui_objects_tracked=20 ui_service_commands=6
+value_state_queries=14 decoded_service_arguments=33 unresolved_calls=0 truncated=false
 status=trace_ready_not_full_vm
 ```
 

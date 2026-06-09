@@ -1388,17 +1388,19 @@ Do not stop unless:
 
 ## Verification Speed
 
-Full CTest is too slow when run sequentially because backend contract tests start separate CLI
-processes and repeatedly rebuild the runtime chain. The default edit-loop verification path is now:
+Old full CTest was too slow because backend contract tests started separate CLI processes and
+repeatedly rebuilt the runtime chain. Default CTest now registers only the single-process
+`yuengine_runtime_contract_suite`; the older per-contract CTest cases are opt-in with
+`YUENGINE_ENABLE_LEGACY_CTESTS=ON`. The default edit-loop verification path is:
 
 ```powershell
 tools\verify_runtime.ps1
 ```
 
-Use targeted CTest edge verification when a named test must be exercised:
+Use targeted edge verification when a named contract must be exercised:
 
 ```powershell
-tools\verify_runtime.ps1 -Mode edge -Filter <ctest-name> -Jobs 8
+tools\verify_runtime.ps1 -Mode edge -Filter <contract-name> -Jobs 8
 ```
 
 Use full parallel verification before major commits:
@@ -1407,8 +1409,9 @@ Use full parallel verification before major commits:
 tools\verify_runtime.ps1 -Mode full -Jobs 8
 ```
 
-Use `-CleanBuild` after C++ header, ABI-like struct, or build-system changes. Do not default to
-bare sequential `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`.
+Use `-CleanBuild` after C++ header, ABI-like struct, or build-system changes. Bare
+`ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs the aggregate suite, not
+the old 37-process path.
 
 Current measured speed after caching and scene reuse:
 
@@ -1418,3 +1421,6 @@ Current measured speed after caching and scene reuse:
 - `tools\verify_runtime.ps1 -SkipPython`: fast L31 contract plus `git diff --check` in about 25
   seconds.
 - direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.
+- default `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`: 1/1 aggregate suite
+  passed in 50.12 seconds.
+- direct `runtime-contract-suite`: 37/37 contracts passed in 50.41 seconds.

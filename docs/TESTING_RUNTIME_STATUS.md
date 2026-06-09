@@ -1,8 +1,9 @@
 # Testing Runtime Status
 
-Full CTest was too slow because every contract test starts a new CLI process and repeatedly rebuilds
-the same runtime evidence chain. Running it sequentially is no longer the default workflow, and the
-default verification script no longer runs full CTest.
+Full CTest used to be too slow because every contract test started a new CLI process and repeatedly
+rebuilt the same runtime evidence chain. The default CTest registration now uses one single-process
+aggregate runner, `yuengine_runtime_contract_suite`, and the older per-contract CTest cases are
+opt-in through `YUENGINE_ENABLE_LEGACY_CTESTS=ON`.
 
 ## Current Timing
 
@@ -35,10 +36,25 @@ backend-upload-bind direct CLI
 
 tools\verify_runtime.ps1 -SkipPython
 fast contract plus git diff --check, about 25 seconds
+
+Measured after adding `runtime-contract-suite`, default CTest suite registration, and public
+scene-entry/scene-runtime report caches:
+
+ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure
+1/1 yuengine_runtime_contract_suite passed, 50.12 seconds
+
+build\cmake-bt143\yuengine_cli.exe runtime-contract-suite samples\touhou_new_world\project.json --repo-root .
+37/37 contracts passed, 50.41 seconds
+
+tools\verify_runtime.ps1 -Mode full -SkipPython -SkipDiffCheck -NoBuild
+1/1 yuengine_runtime_contract_suite passed, 50.55 seconds
+
+tools\verify_runtime.ps1 -SkipPython -SkipDiffCheck -NoBuild
+fast L31 backend-upload-bind contract, 24.9 seconds
 ```
 
-Parallel full CTest is still the full regression command, but it is not the default edit-loop
-command.
+Default bare CTest is now acceptable for a checkpoint because it runs only the aggregate suite.
+The fast script remains the edit-loop command.
 
 ## Standard Commands
 
@@ -48,7 +64,7 @@ Default fast verification while developing the current deepest contract:
 tools\verify_runtime.ps1
 ```
 
-Filtered CTest edge verification when a named test must be exercised:
+Filtered edge verification when a named contract must be exercised:
 
 ```powershell
 tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_upload_binding_contract -Jobs 8
@@ -68,18 +84,20 @@ tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 
 ## Policy
 
-- Do not run bare full `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` as the
-  default loop command.
+- Default bare `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure` now runs only
+  `yuengine_runtime_contract_suite`.
 - The default loop command is `tools\verify_runtime.ps1`, which runs the current fast backend
   contract and `git diff --check`.
-- Use `--parallel 8` for full CTest on this machine unless a test becomes race-prone.
-- Use `-Mode edge -Filter <test>` after narrow changes, then run full parallel verification before
-  committing.
+- Use `-Mode edge -Filter <test>` after narrow changes; this calls
+  `yuengine_cli runtime-contract-suite --filter <test>` instead of starting legacy CTest cases.
+- Use `-Mode full` before committing major checkpoints; this runs the aggregate CTest suite.
+- Enable older per-contract CTest cases only when diagnosing one of those cases:
+  `cmake -S . -B build\cmake-bt143 -DYUENGINE_ENABLE_LEGACY_CTESTS=ON`.
 - Keep `git diff --check` in the standard verification path.
 - Keep `--clean-first` only when C++ headers, ABI-like structs, or build system files changed.
 
 ## Remaining Performance Work
 
-The current cache removes the largest repeated in-process runtime construction cost. Remaining
-performance work is to add a single-process aggregate CTest runner so full regression does not
-start 35 separate CLI processes.
+The aggregate runner removes the one-hour path. Remaining performance work is to share the boot,
+resource, and title script-run reports inside the suite so full regression can approach the current
+24-25 second deepest-contract cost instead of about 50 seconds.

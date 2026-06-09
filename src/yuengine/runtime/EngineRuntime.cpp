@@ -31,6 +31,22 @@ void addError(SceneEntryRuntimeReport& report, const std::string& message)
     report.errors.push_back(message);
 }
 
+std::string pathCacheKey(const std::filesystem::path& path)
+{
+    try {
+        return std::filesystem::weakly_canonical(path).generic_string();
+    } catch (const std::exception&) {
+        return path.lexically_normal().generic_string();
+    }
+}
+
+std::string runtimeCacheKey(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    return pathCacheKey(manifestPath) + "|" + pathCacheKey(repoRoot);
+}
+
 bool traceEnabled()
 {
 #if defined(_MSC_VER)
@@ -503,6 +519,13 @@ SceneEntryRuntimeReport runSceneEntryRuntime(
     const std::filesystem::path& manifestPath,
     const std::filesystem::path& repoRoot)
 {
+    const auto cacheKey = runtimeCacheKey(manifestPath, repoRoot);
+    static std::map<std::string, SceneEntryRuntimeReport> cache;
+    const auto cached = cache.find(cacheKey);
+    if (cached != cache.end()) {
+        return cached->second;
+    }
+
     SceneEntryRuntimeReport report;
     try {
         traceBoot("scene-entry load manifest");
@@ -581,6 +604,7 @@ SceneEntryRuntimeReport runSceneEntryRuntime(
     } catch (const std::exception& ex) {
         addError(report, ex.what());
     }
+    cache[cacheKey] = report;
     return report;
 }
 
