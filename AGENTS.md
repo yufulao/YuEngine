@@ -11,14 +11,11 @@
 - 只实现明确要求的功能，禁止私自扩展
 
 **代码风格**：
-- 100% 模仿已有代码风格
 - 函数写简要注释，空方法体留空不写注释
 - `if` / `foreach` / `for` / `while` 语句块必须用 `{}`，且 `}` 后空一行
 - 新文件创建后提醒用户在 Unity 中手动编译，Unity 会自动生成 `.meta`
 
 ---
-
-## 框架速查
 
 **命名规范**：
 ```
@@ -31,46 +28,4 @@ private Type _privateField;
 void MethodName() { var localName; }
 const Type CONST_NAME;
 static readonly Type STATIC_NAME;
-```
-
-**方法顺序**：构造函数 → 静态工厂 → interface → abstract → override → public → protected → private
-
-**namespace**：框架层用 `Yu`，业务层不用，禁止调用处加前缀
-
-**单例基类**：`MonoSingleton<T>`（MonoBehaviour）、`BaseSingleTon<T>`（纯 C#）
-
-**Manager 生命周期**：实现 `IMonoManager`，顺序 `OnInit → Update → OnClear`，由 `GameManager` 统一管理
-
-**事件系统**：`EventManager`，AddListener/Dispatch/RemoveListener 泛型参数必须一致；MonoBehaviour 在 OnEnable/OnDisable 订阅，Manager 在 OnInit/OnClear 订阅
-
-**UI**：继承 `UICtrlBase`，MVC 三层分离（Ctrl/Model/View），通过 `UIManager` 打开/关闭面板
-
-**配表**：Luban 自动生成，通过 `ConfigManager.Tables` 访问；现有表：CfgAction、CfgBGM、CfgCondition、CfgFont、CfgGlobal、CfgPlanet、CfgScene、CfgSFX、CfgUI；后处理常量：DefPanel、DefPlanet、DefScene
-
-**存档**：`SaveManager`（EasySave3），Key 用 `DefGlobal` 常量
-
-**对象池**：`PoolManager`，池对象继承 `PoolableGameObject`
-
-**资源加载**：`AssetManager`（Addressable）
-
-**状态机**：`FsmComponent<TOwner,TState>`，层级状态机 `HfsmComponent`，全局 Fsm 继承 `BaseFsm`/`BaseHfsm`
-
-**行为队列**：`GameActionManager`，逻辑帧驱动，`GameActionRequest` 为请求基类
-
-**GameFlow 状态**：`GameFlowNoneState → GameFlowLoadingDataState → GameFlowTitleState → GameFlowGameRunningState`
-
-**框架层结构**：
-```
-Assets/Scripts/
-├── Core/Manager/   ActionManager, CameraManager, ConditionManager, EventManager,
-│                   FsmManager, GameActionManager, GameManager, InputManager,
-│                   PoolManager, TimeScaleManager, UIManager,
-│                   AssetManager, AudioMixerManager, BGMManager, ConfigManager,
-│                   GameLog, SaveManager, SceneManager, SFXManager
-├── Core/Misc/      Base(单例/接口), Extensions, FilterAndSorter, GMCommand, Utils
-├── Config/Base/    CfgXxx / RowCfgXxx / Tables
-├── GameLogic/      GameFlowManager, GameRunning, Localization, SteamManager
-├── UI/             Component, Utils, Panel
-├── Editor/
-└── Misc/           Def(DefGlobal), Utils
 ```
