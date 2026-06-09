@@ -78,5 +78,7 @@ create a GPU device, upload textures, render fonts, or compare against original 
 
 - L19 has since decoded model material blocks into runtime material/texture-slot/mesh-binding
   semantics while keeping per-material shader program semantics open and tracked.
-- L20: attach a real device/swapchain presentation contract only after shader/material and
-  texture upload have failure gates.
+- L20 has since attached a device/swapchain/render-state presentation contract without creating a
+  fake window or GPU device.
+- L21: split texture upload, sampler/blend/depth, font, and oracle parity gates before any real
+  device/swapchain implementation.

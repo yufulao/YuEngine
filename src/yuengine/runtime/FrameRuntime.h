@@ -315,6 +315,41 @@ struct MaterialSemanticsRuntimeReport {
     std::vector<BackendObligationItem> obligations;
 };
 
+struct DevicePresentationRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool frameSchedulerOk = false;
+    bool rendererSubmissionOk = false;
+    bool backendObligationsOk = false;
+    bool materialSemanticsOk = false;
+    bool deviceProfileReady = false;
+    bool swapchainContractTracked = false;
+    bool resourceUploadPlanReady = false;
+    bool renderStateContractTracked = false;
+    bool drawQueueContractReady = false;
+    bool presentContractTracked = false;
+    std::string rendererProfile;
+    int backbufferWidthCandidate = 0;
+    int backbufferHeightCandidate = 0;
+    int rendererBackendCommands = 0;
+    int resourceUploadSubmissions = 0;
+    int drawSubmissions = 0;
+    int title2dSubmissions = 0;
+    int worldMeshSubmissions = 0;
+    int materialTextureSlots = 0;
+    int textureBytesFound = 0;
+    int materialBindings = 0;
+    int meshSubmissions = 0;
+    int postEffectTechniques = 0;
+    int postEffectPasses = 0;
+    int postEffectSamplers = 0;
+    int resolvedDeviceContracts = 0;
+    int trackedDeviceObligations = 0;
+    int openDeviceObligations = 0;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -446,6 +481,12 @@ MaterialSemanticsRuntimeReport runMaterialSemanticsRuntime(
     const std::filesystem::path& repoRoot);
 
 std::string materialSemanticsRuntimeReportToJson(const MaterialSemanticsRuntimeReport& report);
+
+DevicePresentationRuntimeReport runDevicePresentationRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string devicePresentationRuntimeReportToJson(const DevicePresentationRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

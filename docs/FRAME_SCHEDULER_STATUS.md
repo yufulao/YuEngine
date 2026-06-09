@@ -91,5 +91,7 @@ subsystems should attach to scheduler nodes instead of creating standalone diagn
   shader/effect, font, device/swapchain, and oracle parity as tracked open obligations.
 - L19 has since materialized shader/effect tracking and material semantics behind the 16 material
   tags and 111 mesh submissions.
-- L20: define the device/swapchain and render-state presentation contract that consumes the
-  scheduler, renderer submission, backend obligations, and material semantics.
+- L20 has since defined the device/swapchain and render-state presentation contract that consumes
+  the scheduler, renderer submission, backend obligations, and material semantics.
+- L21: split texture upload records, sampler/blend/depth state, font atlas/glyph metrics, and
+  original-frame oracle parity into runtime gates.

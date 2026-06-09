@@ -133,14 +133,14 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L19 now materializes model material semantics through
-`yuengine_cli material-semantics`. The runtime has 16 decoded `mat` blocks, 39 resolved material
-texture slots, 110 mesh-to-material bindings from original mesh-name suffix evidence, one tracked
-unnamed mesh gap, and `resource/SMAA.fx` tracked as a DX9 HLSL postprocess effect source with
-5 techniques, 5 passes, and 7 samplers. Per-material shader/effect program semantics, font,
-device/swapchain, and original-frame parity remain tracked open obligations. This is still not a
-playable loop or device backend; the next edge is L20 device/swapchain and render-state
-presentation.
+Current latest checkpoint: L20 now defines device/swapchain/render-state presentation through
+`yuengine_cli device-presentation`. The runtime has a D3D9-compatible device profile contract,
+57 resource upload submissions, 121 draw submissions, 39 material texture slots, 39 texture
+payload reads, a 1280x720 backbuffer candidate from `SMAA_PIXEL_SIZE`, and 7 tracked SMAA samplers.
+Swapchain OS surface creation, `Present`, sampler/blend/depth binding, font atlas/glyph metrics,
+material shader programs, and original-frame parity remain tracked open obligations. This is still
+not a playable loop or device backend; the next edge is L21 texture upload/render-state/font/oracle
+parity gates.
 
 The current route is no longer allowed to stop at menu visuals:
 
@@ -154,6 +154,7 @@ original title bytecode
 -> concrete backend obligations
 -> shader/effect/material semantics
 -> device/swapchain/render-state presentation
+-> texture upload/render-state/font/oracle parity gates
 ```
 
 The Project failure rule is now stricter: no new loop may be framed as "minimal." The loop unit

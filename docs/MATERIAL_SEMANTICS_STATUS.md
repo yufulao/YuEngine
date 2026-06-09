@@ -103,6 +103,7 @@ Do not invent shader names or assign the unnamed mesh to a material without byte
 
 ## Next Edges
 
-- L20: device/swapchain and render-state presentation contract.
-- Then: texture upload implementation, sampler/blend/depth state, font atlas/glyph metrics, and
+- L20 has since defined the device/swapchain/render-state presentation contract that consumes this
+  material semantics layer.
+- L21: texture upload implementation, sampler/blend/depth state, font atlas/glyph metrics, and
   original-frame oracle parity.

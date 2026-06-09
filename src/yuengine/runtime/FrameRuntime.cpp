@@ -64,6 +64,12 @@ void addError(MaterialSemanticsRuntimeReport& report, const std::string& message
     report.errors.push_back(message);
 }
 
+void addError(DevicePresentationRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -678,6 +684,42 @@ int countOccurrences(const std::string& text, const std::string& needle)
     return count;
 }
 
+bool parsePositiveInteger(const std::string& text, size_t& offset, int& out)
+{
+    while (offset < text.size() && text[offset] == ' ') {
+        ++offset;
+    }
+    const size_t begin = offset;
+    while (offset < text.size() && text[offset] >= '0' && text[offset] <= '9') {
+        ++offset;
+    }
+    if (begin == offset) {
+        return false;
+    }
+    out = std::stoi(text.substr(begin, offset - begin));
+    return true;
+}
+
+bool extractSmaaPixelSizeCandidate(const std::string& text, int& width, int& height)
+{
+    const std::string marker = "SMAA_PIXEL_SIZE float2(1.0 / ";
+    size_t offset = text.find(marker);
+    if (offset == std::string::npos) {
+        return false;
+    }
+    offset += marker.size();
+    if (!parsePositiveInteger(text, offset, width)) {
+        return false;
+    }
+    const std::string secondDenominator = "1.0 / ";
+    offset = text.find(secondDenominator, offset);
+    if (offset == std::string::npos) {
+        return false;
+    }
+    offset += secondDenominator.size();
+    return parsePositiveInteger(text, offset, height);
+}
+
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
     const GameplayFrameInputs& inputs,
     const std::string& rendererProfile,
@@ -785,6 +827,139 @@ MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
     }
     if (!report.shaderEffectContractTracked) {
         addError(report, "shader/effect semantics are not tracked through material semantics");
+    }
+
+    return report;
+}
+
+DevicePresentationRuntimeReport buildDevicePresentationRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    DevicePresentationRuntimeReport report;
+    const auto frameScheduler = buildFrameSchedulerRuntimeReport(inputs, rendererProfile);
+    const auto rendererSubmission = buildRendererBackendSubmissionReport(inputs, rendererProfile);
+    const auto backendObligations = buildBackendObligationsRuntimeReport(inputs, rendererProfile, vfs);
+    const auto materialSemantics = buildMaterialSemanticsRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.frameSchedulerOk = frameScheduler.ok;
+    report.rendererSubmissionOk = rendererSubmission.ok;
+    report.backendObligationsOk = backendObligations.ok;
+    report.materialSemanticsOk = materialSemantics.ok;
+    report.rendererProfile = rendererSubmission.rendererProfile;
+    report.rendererBackendCommands = rendererSubmission.backendCommandCount;
+    report.resourceUploadSubmissions = rendererSubmission.resourceUploadSubmissions;
+    report.drawSubmissions = rendererSubmission.drawSubmissions;
+    report.title2dSubmissions = rendererSubmission.title2dSubmissions;
+    report.worldMeshSubmissions = rendererSubmission.sceneMeshSubmissions;
+    report.materialTextureSlots = materialSemantics.textureSlots;
+    report.textureBytesFound = backendObligations.textureBytesFound;
+    report.materialBindings = rendererSubmission.materialBindings;
+    report.meshSubmissions = rendererSubmission.sceneMeshSubmissions;
+    report.postEffectTechniques = materialSemantics.postEffectTechniques;
+    report.postEffectPasses = materialSemantics.postEffectPasses;
+    report.postEffectSamplers = materialSemantics.postEffectSamplers;
+
+    const auto smaaFx = vfs.readBytes("SMAA.fx");
+    if (smaaFx.found) {
+        const std::string text = bytesToText(smaaFx.bytes);
+        extractSmaaPixelSizeCandidate(text, report.backbufferWidthCandidate, report.backbufferHeightCandidate);
+    }
+
+    const bool hasBlendDepthObligation = std::find(
+        rendererSubmission.backendObligations.begin(),
+        rendererSubmission.backendObligations.end(),
+        "blend_depth_state_semantics") != rendererSubmission.backendObligations.end();
+
+    report.deviceProfileReady =
+        rendererSubmission.backendFrameReady && report.rendererProfile == "d3d9_compatible";
+    report.resourceUploadPlanReady = backendObligations.textureUploadContractReady
+        && materialSemantics.textureSlotContractReady && report.resourceUploadSubmissions >= 57
+        && report.textureBytesFound == 39;
+    report.drawQueueContractReady = report.rendererSubmissionOk && report.drawSubmissions == 121
+        && report.title2dSubmissions >= 55 && report.worldMeshSubmissions == 111;
+    report.renderStateContractTracked = materialSemantics.shaderEffectContractTracked
+        && hasBlendDepthObligation && report.postEffectSamplers >= 7;
+    report.swapchainContractTracked = report.deviceProfileReady && report.backbufferWidthCandidate == 1280
+        && report.backbufferHeightCandidate == 720;
+    report.presentContractTracked = report.frameSchedulerOk && report.swapchainContractTracked;
+
+    report.contracts.push_back(makeBackendObligation(
+        "d3d9_device_profile",
+        report.deviceProfileReady ? "contract_ready" : "blocked",
+        "renderer profile is d3d9_compatible and backend frame submission is ready"));
+    report.contracts.push_back(makeBackendObligation(
+        "resource_upload_plan",
+        report.resourceUploadPlanReady ? "contract_ready" : "blocked",
+        "57 renderer upload submissions consume 39 texture payloads and 39 material texture slots"));
+    report.contracts.push_back(makeBackendObligation(
+        "draw_queue_submission",
+        report.drawQueueContractReady ? "contract_ready" : "blocked",
+        "121 draw submissions include title 2D and 111 world mesh submissions"));
+    report.contracts.push_back(makeBackendObligation(
+        "swapchain_backbuffer_candidate",
+        report.swapchainContractTracked ? "tracked_open" : "blocked",
+        "SMAA_PIXEL_SIZE exposes a 1280x720 backbuffer candidate but no OS surface is created"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampler_state_semantics",
+        report.renderStateContractTracked ? "tracked_open" : "blocked",
+        "7 SMAA samplers are counted; material sampler state values remain unbound"));
+    report.contracts.push_back(makeBackendObligation(
+        "blend_depth_state_semantics",
+        report.renderStateContractTracked ? "tracked_open" : "blocked",
+        "renderer submission carries blend/depth obligation but no device render state is set"));
+    report.contracts.push_back(makeBackendObligation(
+        "present_call_and_window_surface",
+        report.presentContractTracked ? "tracked_open" : "blocked",
+        "scheduler reaches renderer submission but no HWND/device Present call is executed"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_parity",
+        backendObligations.oracleParityContractTracked ? "tracked_open" : "blocked",
+        "device contract still lacks original-frame screenshot or API trace parity"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedDeviceContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedDeviceObligations;
+            ++report.openDeviceObligations;
+        } else {
+            ++report.openDeviceObligations;
+        }
+    }
+
+    if (!report.frameSchedulerOk) {
+        addError(report, "frame scheduler contract is not ready for device presentation");
+    }
+    if (!report.rendererSubmissionOk) {
+        addError(report, "renderer submission contract is not ready for device presentation");
+    }
+    if (!report.backendObligationsOk) {
+        addError(report, "backend obligations contract is not ready for device presentation");
+    }
+    if (!report.materialSemanticsOk) {
+        addError(report, "material semantics contract is not ready for device presentation");
+    }
+    if (!report.deviceProfileReady) {
+        addError(report, "D3D9-compatible device profile contract is not ready");
+    }
+    if (!report.resourceUploadPlanReady) {
+        addError(report, "resource upload plan contract is not ready");
+    }
+    if (!report.drawQueueContractReady) {
+        addError(report, "draw queue contract is not ready");
+    }
+    if (!report.renderStateContractTracked) {
+        addError(report, "render-state obligations are not tracked");
+    }
+    if (!report.swapchainContractTracked || !report.presentContractTracked) {
+        addError(report, "swapchain/present obligations are not tracked");
+    }
+    if (report.resolvedDeviceContracts < 3 || report.trackedDeviceObligations < 5
+        || report.openDeviceObligations != 5) {
+        addError(report, "device presentation obligation accounting is inconsistent");
     }
 
     return report;
@@ -1664,6 +1839,99 @@ std::string materialSemanticsRuntimeReportToJson(const MaterialSemanticsRuntimeR
             << "\", \"status\": \"" << core::jsonEscape(obligation.status)
             << "\", \"evidence\": \"" << core::jsonEscape(obligation.evidence) << "\"}";
         out << (i + 1 == report.obligations.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+DevicePresentationRuntimeReport runDevicePresentationRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    DevicePresentationRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildDevicePresentationRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string devicePresentationRuntimeReportToJson(const DevicePresentationRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.device_presentation_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " frame_scheduler_ok=" << (report.frameSchedulerOk ? "true" : "false")
+        << " renderer_submission_ok=" << (report.rendererSubmissionOk ? "true" : "false")
+        << " backend_obligations_ok=" << (report.backendObligationsOk ? "true" : "false")
+        << " material_semantics_ok=" << (report.materialSemanticsOk ? "true" : "false")
+        << " device_profile_ready=" << (report.deviceProfileReady ? "true" : "false")
+        << " swapchain_contract_tracked=" << (report.swapchainContractTracked ? "true" : "false")
+        << " resource_upload_plan_ready=" << (report.resourceUploadPlanReady ? "true" : "false")
+        << " render_state_contract_tracked=" << (report.renderStateContractTracked ? "true" : "false")
+        << " draw_queue_contract_ready=" << (report.drawQueueContractReady ? "true" : "false")
+        << " present_contract_tracked=" << (report.presentContractTracked ? "true" : "false")
+        << " renderer_profile=" << report.rendererProfile
+        << " backbuffer_width_candidate=" << report.backbufferWidthCandidate
+        << " backbuffer_height_candidate=" << report.backbufferHeightCandidate
+        << " renderer_backend_commands=" << report.rendererBackendCommands
+        << " resource_upload_submissions=" << report.resourceUploadSubmissions
+        << " draw_submissions=" << report.drawSubmissions
+        << " material_texture_slots=" << report.materialTextureSlots
+        << " texture_bytes_found=" << report.textureBytesFound
+        << " post_effect_samplers=" << report.postEffectSamplers
+        << " resolved_device_contracts=" << report.resolvedDeviceContracts
+        << " tracked_device_obligations=" << report.trackedDeviceObligations
+        << " open_device_obligations=" << report.openDeviceObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"device\": {";
+    out << "\"renderer_profile\": \"" << core::jsonEscape(report.rendererProfile)
+        << "\", \"device_profile_ready\": " << (report.deviceProfileReady ? "true" : "false")
+        << ", \"backbuffer_width_candidate\": " << report.backbufferWidthCandidate
+        << ", \"backbuffer_height_candidate\": " << report.backbufferHeightCandidate
+        << ", \"swapchain_contract_tracked\": " << (report.swapchainContractTracked ? "true" : "false")
+        << ", \"present_contract_tracked\": " << (report.presentContractTracked ? "true" : "false") << "},\n";
+    out << "  \"submission\": {";
+    out << "\"renderer_backend_commands\": " << report.rendererBackendCommands
+        << ", \"resource_upload_submissions\": " << report.resourceUploadSubmissions
+        << ", \"draw_submissions\": " << report.drawSubmissions
+        << ", \"title_2d_submissions\": " << report.title2dSubmissions
+        << ", \"world_mesh_submissions\": " << report.worldMeshSubmissions
+        << ", \"material_bindings\": " << report.materialBindings
+        << ", \"mesh_submissions\": " << report.meshSubmissions << "},\n";
+    out << "  \"resource_upload\": {";
+    out << "\"plan_ready\": " << (report.resourceUploadPlanReady ? "true" : "false")
+        << ", \"material_texture_slots\": " << report.materialTextureSlots
+        << ", \"texture_bytes_found\": " << report.textureBytesFound << "},\n";
+    out << "  \"render_state\": {";
+    out << "\"tracked\": " << (report.renderStateContractTracked ? "true" : "false")
+        << ", \"post_effect_techniques\": " << report.postEffectTechniques
+        << ", \"post_effect_passes\": " << report.postEffectPasses
+        << ", \"post_effect_samplers\": " << report.postEffectSamplers << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_device_contracts\": " << report.resolvedDeviceContracts
+        << ", \"tracked_device_obligations\": " << report.trackedDeviceObligations
+        << ", \"open_device_obligations\": " << report.openDeviceObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

@@ -239,6 +239,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_device_presentation_contract
+        COMMAND yuengine_cli device-presentation samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_device_presentation_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true frame_scheduler_ok=true renderer_submission_ok=true backend_obligations_ok=true material_semantics_ok=true device_profile_ready=true swapchain_contract_tracked=true resource_upload_plan_ready=true render_state_contract_tracked=true draw_queue_contract_ready=true present_contract_tracked=true renderer_profile=d3d9_compatible backbuffer_width_candidate=1280 backbuffer_height_candidate=720 renderer_backend_commands=181 resource_upload_submissions=57 draw_submissions=121 material_texture_slots=39 texture_bytes_found=39 post_effect_samplers=7 resolved_device_contracts=3 tracked_device_obligations=5 open_device_obligations=5;device.*backbuffer_width_candidate.: 1280.*backbuffer_height_candidate.: 720;submission.*resource_upload_submissions.: 57.*draw_submissions.: 121.*world_mesh_submissions.: 111;render_state.*post_effect_techniques.: 5.*post_effect_passes.: 5.*post_effect_samplers.: 7;d3d9_device_profile.*contract_ready;resource_upload_plan.*contract_ready;draw_queue_submission.*contract_ready;swapchain_backbuffer_candidate.*tracked_open;present_call_and_window_surface.*tracked_open"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )

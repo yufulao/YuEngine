@@ -911,7 +911,7 @@ Boundary:
 
 ### L20: Device/Swapchain And Render-State Presentation Contract
 
-Status: active after L19.
+Status: completed as device/swapchain/render-state presentation contract checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -926,6 +926,47 @@ Acceptance:
 - no blue-screen/window-only launcher can satisfy this stage;
 - device contract must consume renderer submission, material semantics, and scheduler state;
 - every unimplemented GPU behavior remains a named obligation with source evidence and tests.
+
+Verified metric:
+
+```text
+ok=true frame_scheduler_ok=true renderer_submission_ok=true backend_obligations_ok=true material_semantics_ok=true device_profile_ready=true swapchain_contract_tracked=true resource_upload_plan_ready=true render_state_contract_tracked=true draw_queue_contract_ready=true present_contract_tracked=true renderer_profile=d3d9_compatible backbuffer_width_candidate=1280 backbuffer_height_candidate=720 renderer_backend_commands=181 resource_upload_submissions=57 draw_submissions=121 material_texture_slots=39 texture_bytes_found=39 post_effect_samplers=7 resolved_device_contracts=3 tracked_device_obligations=5 open_device_obligations=5
+```
+
+Payload evidence:
+
+- device profile is `d3d9_compatible` from project manifest and renderer submission;
+- renderer backend frame has 181 commands, 57 resource uploads, and 121 draw submissions;
+- draw queue includes 55 title 2D submissions and 111 world mesh submissions;
+- resource upload plan consumes 39 texture payloads and 39 material texture slots;
+- `SMAA_PIXEL_SIZE` gives a 1280x720 backbuffer candidate;
+- 7 SMAA samplers are tracked for render-state obligations.
+
+Boundary:
+
+- L20 does not create an HWND, D3D device, swapchain, or real `Present` call;
+- sampler, blend/depth, material shader program, font atlas, and original-frame parity remain open;
+- L20 prevents device work from becoming a blue-window demo by requiring scheduler, renderer,
+  backend obligations, and material semantics to be present in the same contract.
+
+### L21: Texture Upload, Render-State, Font, And Oracle Parity Edges
+
+Status: active after L20.
+
+Deliver:
+
+- turn the L20 resource upload plan into typed texture upload records with DDS format, dimensions,
+  mip/count candidates, and material slot consumers;
+- split sampler, blend/depth, font atlas/glyph metrics, and original-frame parity into separate
+  runtime gates;
+- keep device/window creation blocked until upload/state/font contracts have failure evidence.
+
+Acceptance:
+
+- no texture can be marked uploaded without format/dimension evidence;
+- font and oracle parity cannot be hidden behind generic renderer readiness;
+- every stage remains attached to scheduler, renderer submission, backend obligations, material
+  semantics, and device presentation.
 
 ## Stop Conditions
 
