@@ -52,6 +52,22 @@ target_include_directories(YuThread
 )
 target_link_libraries(YuThread PUBLIC YuMemory)
 
+add_library(YuFile
+    src/yuengine/file/src/FileReadResult.cpp
+    src/yuengine/file/src/LooseFileSource.cpp
+    src/yuengine/file/src/MountId.cpp
+    src/yuengine/file/src/MountPoint.cpp
+    src/yuengine/file/src/MountTable.cpp
+    src/yuengine/file/src/NormalizedPath.cpp
+    src/yuengine/file/src/PathNormalizationResult.cpp
+    src/yuengine/file/src/VirtualPath.cpp
+)
+yuengine_apply_compile_options(YuFile)
+target_include_directories(YuFile
+    PUBLIC
+        src/yuengine/file/include
+)
+
 add_library(YuPlatform
     src/yuengine/platform/src/FixedFrameClock.cpp
     src/yuengine/platform/src/HeadlessHost.cpp
@@ -147,3 +163,19 @@ add_test(NAME Thread_ShutdownDrainPolicy_ExecutesQueuedTasks COMMAND YuThreadTes
 add_test(NAME Thread_ShutdownCancelPolicy_CancelsQueuedTasks COMMAND YuThreadTests Thread_ShutdownCancelPolicy_CancelsQueuedTasks)
 add_test(NAME Thread_QueueCapacity_DoesNotGrowDuringFixture COMMAND YuThreadTests Thread_QueueCapacity_DoesNotGrowDuringFixture)
 add_test(NAME Thread_DiagnosticsDisabled_DoesNotChangeBehavior COMMAND YuThreadTests Thread_DiagnosticsDisabled_DoesNotChangeBehavior)
+
+add_executable(YuFileTests
+    tests/file/FileTests.cpp
+)
+yuengine_apply_compile_options(YuFileTests)
+target_link_libraries(YuFileTests PRIVATE YuFile)
+target_compile_definitions(YuFileTests PRIVATE YUENGINE_FILE_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/file")
+add_test(NAME File_PathNormalize_RemovesDotAndRepeatedSeparators COMMAND YuFileTests File_PathNormalize_RemovesDotAndRepeatedSeparators)
+add_test(NAME File_PathNormalize_RejectsTraversalOutsideRoot COMMAND YuFileTests File_PathNormalize_RejectsTraversalOutsideRoot)
+add_test(NAME File_PathNormalize_RejectsEmptyAndAbsolutePath COMMAND YuFileTests File_PathNormalize_RejectsEmptyAndAbsolutePath)
+add_test(NAME File_MountTable_RejectsDuplicateMount COMMAND YuFileTests File_MountTable_RejectsDuplicateMount)
+add_test(NAME File_MountTable_UsesDeterministicPriorityOrder COMMAND YuFileTests File_MountTable_UsesDeterministicPriorityOrder)
+add_test(NAME File_MountTable_ReportsMissingMountOrFile COMMAND YuFileTests File_MountTable_ReportsMissingMountOrFile)
+add_test(NAME File_LooseFixtureRead_ReturnsExactBytes COMMAND YuFileTests File_LooseFixtureRead_ReturnsExactBytes)
+add_test(NAME File_ReadSnapshot_RecordsCountsAndBytes COMMAND YuFileTests File_ReadSnapshot_RecordsCountsAndBytes)
+add_test(NAME File_DiagnosticsDisabled_DoesNotChangeBehavior COMMAND YuFileTests File_DiagnosticsDisabled_DoesNotChangeBehavior)
