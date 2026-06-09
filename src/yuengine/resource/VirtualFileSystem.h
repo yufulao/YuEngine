@@ -2,6 +2,7 @@
 
 #include "yuengine/project/ProjectManifest.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -24,11 +25,19 @@ struct ResourceResolution {
     ResourceEntry entry;
 };
 
+struct ResourceBytes {
+    bool found = false;
+    std::string virtualPath;
+    std::filesystem::path physicalPath;
+    std::vector<std::byte> bytes;
+};
+
 class VirtualFileSystem {
 public:
     void mountProject(const project::ProjectManifest& manifest);
     ResourceResolution resolvePath(const std::string& path) const;
     std::vector<ResourceResolution> resolveStem(const std::string& stem) const;
+    ResourceBytes readBytes(const std::string& path) const;
     size_t packResourceCount() const;
     size_t looseMountCount() const;
 

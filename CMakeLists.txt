@@ -15,6 +15,7 @@ add_library(yuengine_runtime
     src/yuengine/resource/VirtualFileSystem.cpp
     src/yuengine/runtime/EngineRuntime.cpp
     src/yuengine/runtime/RuntimeContext.cpp
+    src/yuengine/runtime/SceneRuntime.cpp
     src/yuengine/script/ScriptRuntime.cpp
     src/yuengine/script/SqasmModule.cpp
 )
@@ -153,5 +154,14 @@ if(BUILD_TESTING)
     set_tests_properties(yuengine_scene_entry_title_new_game PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "ok=true title_new_game_executed=true mission_setup_executed=true stage_ready=true actor_ready=true camera_ready=true event_ready=true resource_bindings=6 missing_resources=0 script_bindings=5 missing_scripts=0;started_mission.: .mission:sc01/main/ms010_0.*queued_mission_script.: .mission/sc01/main/ms010_0.b64.sqasm.*stage.: .map/Doujou/doujou.sge.*stage_model.: .map/Doujou/doujou.mdl.*stage_collision.: .map/Doujou/doujou.col.*rail_camera.: .map/Doujou/doujou.rcm;player_chara.: .reimuEx.*player_script_asset.: .player/reimuex.b64.*player_pcg_asset.: .player/reimuex_pcg.b64;role.: .stage_sge.*found.: true;role.: .rail_camera.*found.: true"
+    )
+
+    add_test(
+        NAME yuengine_scene_runtime_materialization
+        COMMAND yuengine_cli scene-runtime samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_scene_runtime_materialization PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true scene_entry_ok=true stage_handle_ready=true actor_handle_ready=true camera_handle_ready=true event_marker_ready=true stage_dependencies=42 missing_stage_dependencies=0 model_meshes=111 collision_triangles=150 rail_nodes=3;stage_byte_size.: 10176.*model_dependency_count.: 2.*collision_dependency_count.: 1.*texture_dependency_count.: 39;collision_vertex_count.: 272.*collision_index_count.: 450.*collision_triangle_count.: 150;player_chara.: .reimuEx.*player_script_bytes.: 406.*player_pcg_bytes.: 13645;rail_node_count_candidate.: 3;marker.: .marker:sc01/main/ms010_0:eventMap"
     )
 endif()

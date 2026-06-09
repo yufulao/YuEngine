@@ -437,14 +437,14 @@ Progress:
 - Required scene-entry script bindings:
   `mission/sc01/main/ms010_0.b64.sqasm`, `mission/sc01/main/ms010_0.b64`,
   `player/reimuex.b64`, `player/reimuex_pcg.b64`.
-- CTest passes 14/14 and Python unittest passes 6/6.
+- CTest passes 15/15 and Python unittest passes 6/6.
 
 Boundary: L8 proves script-driven new-game and scene-entry binding. It is not a rendered playable
 scene and not a generic stage/actor/camera implementation.
 
 ### L9: Stage, Actor, Camera Runtime Materialization
 
-Status: active.
+Status: completed as runtime-handle materialization checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -466,10 +466,60 @@ Acceptance:
 
 Next edge:
 
-- inspect `MgResourceHeader` payload structure for SGE/RCM/COL/MDL;
-- add runtime structs for stage graph, event marker table, actor spawn task, and camera rail task;
-- wire `yuengine_cli scene-entry` or a new runtime command to emit those handles;
-- add CTest coverage for the first mission handles.
+- `yuengine_cli scene-runtime samples/touhou_new_world/project.json --repo-root .` now consumes
+  the L8 scene-entry contract and emits stage/actor/camera/event runtime handles.
+- Scene-runtime metrics:
+  `ok=true`, `scene_entry_ok=true`, `stage_handle_ready=true`, `actor_handle_ready=true`,
+  `camera_handle_ready=true`, `event_marker_ready=true`, `stage_dependencies=42`,
+  `missing_stage_dependencies=0`, `model_meshes=111`, `collision_triangles=150`,
+  `rail_nodes=3`.
+- Resource payloads confirmed:
+  `map/doujou/doujou.sge` 10,176 bytes, `map/doujou/doujou.mdl` 2,610,633 bytes,
+  `map/doujou/doujou.col` 10,304 bytes, `map/doujou/doujou.rcm` 1,088 bytes.
+- Stage graph handle now records 42 resolved dependencies, 2 model dependencies,
+  1 collision dependency, 39 texture dependencies, 0 missing dependencies, 111 plausible model
+  mesh blocks, 16 material blocks, and collision mesh counts 272 vertices / 450 indices /
+  150 triangles.
+- Actor handle records player `reimuEx`, `player/reimuex.b64` 406 bytes,
+  `player/reimuex_pcg.b64` 13,645 bytes, spawn expression
+  `toVec3(marker:sc01/main/ms010_0:eventMap._pos)`, and rotY `0`.
+- Camera handle records rail camera `map/doujou/doujou.rcm`, 3 rail-node count candidate,
+  rail enabled true, auto adjust false, and default target `ev_sc01_main_ms010_0`.
+- Event marker handle records `marker:sc01/main/ms010_0:eventMap`.
+- CTest passes 15/15 and Python unittest passes 6/6.
+
+Boundary: L9 proves resource payload materialization into runtime handles. It is not a rendered
+playable frame.
+
+### L10: Renderer, Input, And First Gameplay Frame Contract
+
+Status: active.
+
+Deliver:
+
+- consume L9 stage/actor/camera/event handles into renderer-facing scene frame state;
+- define renderer resource upload contract for model meshes, material/texture bindings, collision
+  debug/collision geometry, rail/default camera state, and actor spawn;
+- define first gameplay frame input/control contract from script/native service state;
+- connect event thread/page setup for first mission intro/tutorial control without hand-written
+  scene flow;
+- expose diagnostics/tests that fail if the rendered-frame contract is detached from
+  title/new-game/setupProcess/scene-runtime handles.
+
+Acceptance:
+
+- no blue-screen placeholder;
+- no mesh-only preview as completion;
+- no T-pose actor claim without script/task state;
+- renderer contract consumes `scene-runtime`, not hard-coded `map/Doujou`;
+- first frame state includes stage resources, player actor spawn, camera state, event marker, and
+  input/control ownership.
+
+Next edge:
+
+- add a renderer-frame report or runtime state object fed by `SceneRuntimeMaterializationReport`;
+- include model/texture/collision/camera/actor/event counts and concrete resource handles;
+- add CTest for first mission frame contract readiness.
 
 ## Stop Conditions
 

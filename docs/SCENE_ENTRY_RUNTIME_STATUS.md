@@ -87,7 +87,7 @@ python -m unittest discover -s tests
 Verified result:
 
 ```text
-CTest: 14/14 passed
+CTest: 15/15 passed
 Python unittest: 6/6 passed
 ```
 
@@ -97,8 +97,10 @@ This checkpoint proves that original scripts now drive a coherent scene-entry co
 project manifest, VFS, script roots, native service state, stage resources, player script assets,
 and camera resources.
 
-It is still not a rendered playable scene. The next edge is to consume the resolved bindings into
-runtime subsystems:
+It is still not a rendered playable scene. L9 has consumed these bindings into runtime handles.
+The next edge is to consume those handles into renderer/audio/input/gameplay frame contracts.
+
+L9 consumed the resolved bindings into runtime subsystems:
 
 - parse or model SGE/RCM/COL/MDL headers and dependency payloads;
 - build stage graph/resource handles rather than raw path strings;

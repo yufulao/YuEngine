@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <fstream>
+#include <iterator>
 
 namespace yu::resource {
 namespace {
@@ -30,6 +32,15 @@ int64_t fileSizeOrUnknown(const std::filesystem::path& path)
     std::error_code error;
     const auto size = std::filesystem::file_size(path, error);
     return error ? -1 : static_cast<int64_t>(size);
+}
+
+std::vector<std::byte> readAllBytes(std::ifstream& stream)
+{
+    std::vector<std::byte> bytes;
+    for (std::istreambuf_iterator<char> it(stream), end; it != end; ++it) {
+        bytes.push_back(static_cast<std::byte>(static_cast<unsigned char>(*it)));
+    }
+    return bytes;
 }
 
 std::filesystem::path stablePhysicalPath(const std::filesystem::path& path)
@@ -132,6 +143,46 @@ std::vector<ResourceResolution> VirtualFileSystem::resolveStem(const std::string
         return a.entry.virtualPath < b.entry.virtualPath;
     });
     return results;
+}
+
+ResourceBytes VirtualFileSystem::readBytes(const std::string& path) const
+{
+    const std::string normalized = normalizeResourcePath(path);
+    for (const auto& root : looseRoots_) {
+        std::filesystem::path physical = root / path;
+        if (!std::filesystem::exists(physical)) {
+            physical = root / normalized;
+        }
+        if (!std::filesystem::exists(physical)) {
+            continue;
+        }
+
+        std::ifstream stream(physical, std::ios::binary);
+        if (!stream) {
+            continue;
+        }
+        ResourceBytes out;
+        out.found = true;
+        out.virtualPath = normalized;
+        out.physicalPath = stablePhysicalPath(physical);
+        out.bytes = readAllBytes(stream);
+        return out;
+    }
+
+    const auto resolution = resolvePath(path);
+    if (resolution.found && !resolution.entry.physicalPath.empty()) {
+        std::ifstream stream(resolution.entry.physicalPath, std::ios::binary);
+        if (stream) {
+            ResourceBytes out;
+            out.found = true;
+            out.virtualPath = resolution.entry.virtualPath;
+            out.physicalPath = resolution.entry.physicalPath;
+            out.bytes = readAllBytes(stream);
+            return out;
+        }
+    }
+
+    return {};
 }
 
 size_t VirtualFileSystem::packResourceCount() const

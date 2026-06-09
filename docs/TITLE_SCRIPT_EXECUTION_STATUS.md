@@ -318,7 +318,7 @@ python -m unittest discover -s tests
 Verified result:
 
 ```text
-CTest: 14/14 passed
+CTest: 15/15 passed
 Python unittest: 6/6 passed
 ```
 
@@ -353,6 +353,12 @@ Python unittest: 6/6 passed
   `camera_ready=true`, `event_ready=true`, `missing_resources=0`, and `missing_scripts=0`.
   The remaining work is to materialize those bindings into scene graph, actor task, camera task,
   event marker, renderer, audio, and input subsystems.
+- L9 now has its own completed checkpoint in `docs/SCENE_RUNTIME_MATERIALIZATION_STATUS.md`:
+  `yuengine_cli scene-runtime` consumes scene-entry and emits ready stage/actor/camera/event
+  handles with 42 stage dependencies, 111 model mesh candidates, 150 collision triangles,
+  3 rail-node candidates, and 0 missing stage dependencies. The remaining title-lane work is to
+  keep broadening original menu scenarios while L10 consumes those handles into renderer/input
+  frame contracts.
 - UI/render command buffer sourced from original script calls, not handwritten UI.
 
 L7 is not complete until original title script execution can drive menu selection, save/new-game
