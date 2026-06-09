@@ -27,8 +27,13 @@ private:
     bool IsStarted(std::string_view moduleName) const;
     bool DependenciesStarted(const IModule& module) const;
     bool RequiredServicesAvailable(const IModule& module) const;
+    bool ModulePublishesService(const IModule& module, std::string_view serviceId) const;
+    bool RequiredDependencyChainPublishesService(const IModule& module, std::string_view serviceId) const;
+    bool DependencyChainContains(const IModule& module, std::string_view dependencyName) const;
+    const IModule* FindModule(std::string_view moduleName) const;
     KernelResult ShutdownStarted(std::vector<std::string>& lifecycleTrace);
     KernelResult ShutdownStartedFrom(std::size_t startIndex, std::vector<std::string>& lifecycleTrace);
+    KernelResult ShutdownFailedAndDependents(std::string_view failedModuleName, std::vector<std::string>& lifecycleTrace);
 
     std::vector<IModule*> _modules;
     std::vector<IModule*> _startedModules;

@@ -20,6 +20,7 @@ constexpr const char* TEST_SERVICE_REGISTRY = "Kernel_ServiceRegistry_ResolveAnd
 constexpr const char* MODULE_A = "A";
 constexpr const char* MODULE_B = "B";
 constexpr const char* MODULE_C = "C";
+constexpr const char* MODULE_D = "D";
 constexpr const char* MODULE_FAIL = "Fail";
 constexpr const char* SERVICE_A = "ServiceA";
 constexpr const char* SERVICE_B = "ServiceB";
@@ -136,6 +137,58 @@ int KernelModuleLifecycleDependencyOrder()
         return Fail("update failure did not stop failed module and dependents in reverse order");
     }
 
+    EngineKernel independentUpdateFailureKernel;
+    LifecycleTestModule independentModuleA(MODULE_A, std::vector<std::string_view>(), false);
+    LifecycleTestModule independentModuleB(
+        MODULE_B,
+        std::vector<std::string_view>{MODULE_A},
+        std::vector<std::string_view>(),
+        std::vector<std::string_view>{SERVICE_B},
+        false,
+        true);
+    LifecycleTestModule independentModuleC(MODULE_C, std::vector<std::string_view>(), false);
+    std::vector<std::string> independentUpdateFailureTrace;
+
+    independentUpdateFailureKernel.RegisterModule(independentModuleA);
+    independentUpdateFailureKernel.RegisterModule(independentModuleB);
+    independentUpdateFailureKernel.RegisterModule(independentModuleC);
+
+    const auto independentUpdateFailureStart = independentUpdateFailureKernel.Start(independentUpdateFailureTrace);
+    if (!independentUpdateFailureStart.Succeeded)
+    {
+        return Fail("independent update failure setup did not start");
+    }
+
+    const auto independentUpdateFailureResult = independentUpdateFailureKernel.Update(FRAME_INDEX, TICK_TIME_NANOSECONDS, independentUpdateFailureTrace);
+    if (independentUpdateFailureResult.Succeeded)
+    {
+        return Fail("independent update failure was not surfaced");
+    }
+
+    const auto independentShutdownResult = independentUpdateFailureKernel.Shutdown(independentUpdateFailureTrace);
+    if (!independentShutdownResult.Succeeded)
+    {
+        return Fail("independent update failure cleanup shutdown failed");
+    }
+
+    const std::vector<std::string> expectedIndependentUpdateFailureTrace{
+        "kernel.start",
+        "module.start.A",
+        "module.start.B",
+        "module.start.C",
+        "kernel.update",
+        "module.update.A",
+        "module.update.B",
+        "module.shutdown.B",
+        "kernel.shutdown",
+        "module.shutdown.C",
+        "module.shutdown.A"};
+
+    if (independentUpdateFailureTrace != expectedIndependentUpdateFailureTrace)
+    {
+        return Fail("update failure stopped an independent later-started module");
+    }
+
     return 0;
 }
 
@@ -210,6 +263,47 @@ int KernelModuleStartupFailureTearsDownStartedModules()
     if (missingServiceTrace != expectedMissingServiceTrace)
     {
         return Fail("missing required service ran module startup");
+    }
+
+    EngineKernel unguaranteedServiceKernel;
+    LifecycleTestModule providerModule(
+        MODULE_A,
+        std::vector<std::string_view>(),
+        std::vector<std::string_view>(),
+        std::vector<std::string_view>{SERVICE_A},
+        false,
+        false);
+    LifecycleTestModule serviceConsumerWithoutDependency(
+        MODULE_D,
+        std::vector<std::string_view>(),
+        std::vector<std::string_view>{SERVICE_A},
+        std::vector<std::string_view>(),
+        false,
+        false);
+    std::vector<std::string> unguaranteedServiceTrace;
+
+    unguaranteedServiceKernel.RegisterModule(providerModule);
+    unguaranteedServiceKernel.RegisterModule(serviceConsumerWithoutDependency);
+
+    const auto unguaranteedServiceResult = unguaranteedServiceKernel.Start(unguaranteedServiceTrace);
+    if (unguaranteedServiceResult.Succeeded)
+    {
+        return Fail("available service without dependency edge did not block startup");
+    }
+
+    if (unguaranteedServiceResult.Status != KernelStatus::MissingService)
+    {
+        return Fail("unguaranteed service provider had wrong status");
+    }
+
+    const std::vector<std::string> expectedUnguaranteedServiceTrace{
+        "kernel.start",
+        "module.start.A",
+        "module.shutdown.A"};
+
+    if (unguaranteedServiceTrace != expectedUnguaranteedServiceTrace)
+    {
+        return Fail("unguaranteed service provider ran consumer startup");
     }
 
     return 0;
