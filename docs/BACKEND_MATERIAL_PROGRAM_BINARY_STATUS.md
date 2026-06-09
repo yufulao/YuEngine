@@ -110,3 +110,7 @@ L36b does not:
 
 L36c should reconstruct the selector control-flow and the sampleable-depth runtime selection/copy
 path from binary-level evidence before draw execution can start.
+
+L36c0 now consumes this checkpoint through `backend-material-program-binary-dispatch`: PE64 layout,
+`.pdata` function ranges, adjacent depth/RSM function-table candidates, and D3D/D3DX import probes
+are locked. It still leaves selector CFG and current-frame depth selection open.

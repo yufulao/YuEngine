@@ -1565,15 +1565,51 @@ Boundary:
   frame;
 - L36b does not issue draw/present/capture/oracle calls.
 
+### L36c0: Binary Dispatch Table And Xref Probe Before CFG
+
+Status: completed as PE dispatch evidence checkpoint on 2026-06-10.
+
+Deliver:
+
+- parse original `game.exe` PE64 layout and `.pdata` function ranges inside YuEngine tooling;
+- prove whether shader/depth binary tokens have direct VA/RVA/rel32 executable xrefs;
+- bind packed depth-format anchors to adjacent function-table candidates without claiming selected
+  runtime path;
+- probe D3D/D3DX import presence and direct IAT call edges.
+
+Acceptance:
+
+- `yuengine_cli backend-material-program-binary-dispatch samples/touhou_new_world/project.json --repo-root .`
+  reports `pe_image_ready=true`, `pe_pdata_ready=true`,
+  `binary_string_direct_xref_probe_ready=true`, `selector_direct_xrefs_absent=true`,
+  `depth_adjacent_function_table_ready=true`, `rsm_depth_function_table_ready=true`,
+  `sampleable_depth_dispatch_table_candidate_ready=true`, `d3d_import_table_ready=true`,
+  `d3d_import_direct_calls_absent=true`, `exact_selector_control_flow_still_open=true`, and
+  `sampleable_depth_runtime_selection_still_open=true`;
+- CTest `yuengine_backend_material_program_binary_dispatch_contract` locks 8 PE sections, 2
+  executable sections, 20225 `.pdata` functions, 9/9 binary probe tokens, 0 direct token xrefs,
+  24 packed-depth adjacent pointers with 9 exact function starts, 6 RSM depth adjacent pointers
+  with 5 exact function starts, 5/5 D3D/D3DX imports, and 0 direct IAT call hits;
+- draw/present/capture/oracle remain tracked-open.
+
+Boundary:
+
+- L36c0 proves dispatch-table candidates and absence of simple xrefs, not selector CFG;
+- L36c0 proves adjacent depth function-table evidence, not current-frame depth format selection;
+- D3D/D3DX imports are present, but effect/texture creation wrapper control-flow is still open;
+- L36c0 does not issue draw/present/capture/oracle calls.
+
 ### L36c: Selector CFG And Depth Runtime Selection Before Draw
 
-Status: active after L36b.
+Status: active after L36c0.
 
 Deliver:
 
 - reconstruct the material selector branch/control-flow around the original shader path table;
 - reconstruct sampleable-depth format selection/copy behavior around `INTZ/RAWZ/DF24/DF16` and
   `depthTex2D`;
+- use the L36c0 `.pdata` function-table candidates and D3D/D3DX import-wrapper gap as the next
+  binary control-flow evidence, not as a completion claim;
 - only after those are closed, unlock draw submission as the next edge.
 
 Acceptance:
@@ -1639,10 +1675,14 @@ Current measured speed after caching and scene reuse:
   and `git diff --check`, about 0.354 seconds.
 - `tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck`: previous L36 edge
   filter, elapsed_ms=42281.
-- `runtime-contract-suite --filter yuengine_backend_material_program_binary_contract`: current
-  deepest L36b edge filter, elapsed_ms=64216.
-- `tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck`: current deepest L36b
-  edge filter, elapsed_ms=65678.
+- `runtime-contract-suite --filter yuengine_backend_material_program_binary_contract`: L36b edge
+  filter, elapsed_ms=64216.
+- `tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck`: L36b edge filter,
+  elapsed_ms=65678.
+- `runtime-contract-suite --filter yuengine_backend_material_program_binary_dispatch_contract`:
+  current deepest L36c0 edge filter, elapsed_ms=53143.
+- `tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck`: current deepest
+  L36c0 edge filter, elapsed_ms=48696.
 - `yuengine_backend_device_creation_contract`: 1/1 CTest passed in 21.88 seconds.
 - `yuengine_backend_resource_creation_contract`: 1/1 CTest passed in about 22 seconds.
 - `yuengine_backend_upload_binding_contract`: 1/1 CTest passed in about 25 seconds.
@@ -1670,5 +1710,8 @@ Current measured speed after caching and scene reuse:
 - `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: after L36b, clean build, Python
   unittest, 43/43 contracts, and `git diff --check` passed in about 140 seconds; runtime suite
   elapsed_ms=107854.
+- `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: after L36c0, clean build, Python
+  unittest, 44/44 contracts, and `git diff --check` passed in about 112 seconds; runtime suite
+  elapsed_ms=84995.
 - direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.
-- direct `runtime-contract-suite`: 43/43 contracts after L36b binary-evidence checkpoint.
+- direct `runtime-contract-suite`: 44/44 contracts after L36c0 binary-dispatch checkpoint.

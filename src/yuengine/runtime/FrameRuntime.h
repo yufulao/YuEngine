@@ -1513,6 +1513,84 @@ struct BackendMaterialProgramBinaryRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendBinaryFunctionTableRecord {
+    std::string anchorToken;
+    std::string category;
+    std::string targetSection;
+    long long anchorOffset = -1;
+    long long tableOffset = -1;
+    unsigned long long targetVa = 0;
+    unsigned int targetRva = 0;
+    int pdataIndex = -1;
+    unsigned int functionBeginRva = 0;
+    unsigned int functionEndRva = 0;
+    bool pdataResolved = false;
+    bool exactFunctionStart = false;
+};
+
+struct BackendBinaryImportProbeRecord {
+    std::string importName;
+    std::string dllName;
+    unsigned int iatRva = 0;
+    bool found = false;
+    int directIatCallHits = 0;
+};
+
+struct BackendMaterialProgramBinaryDispatchRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::string originalBinaryPath;
+    std::string imageBaseHex;
+    std::vector<std::string> errors;
+    bool binaryMaterialProgramOk = false;
+    bool originalBinaryFound = false;
+    bool peImageReady = false;
+    bool peSectionTableReady = false;
+    bool pePdataReady = false;
+    bool binaryStringDirectXrefProbeReady = false;
+    bool selectorDirectXrefsAbsent = false;
+    bool selectorFunctionTableStillOpen = false;
+    bool depthAdjacentFunctionTableReady = false;
+    bool rsmDepthFunctionTableReady = false;
+    bool sampleableDepthDispatchTableCandidateReady = false;
+    bool d3dImportTableReady = false;
+    bool d3dImportDirectCallsAbsent = false;
+    bool d3dDispatchWrapperStillOpen = false;
+    bool exactSelectorControlFlowStillOpen = false;
+    bool sampleableDepthRuntimeSelectionStillOpen = false;
+    bool downstreamDrawPresentDeferred = false;
+    bool backbufferExtentCarried = false;
+    int peSections = 0;
+    int peExecutableSections = 0;
+    int pdataFunctionEntries = 0;
+    int binaryProbeTokens = 0;
+    int binaryProbeTokensFound = 0;
+    int binaryStringDirectXrefHits = 0;
+    int selectorDirectXrefHits = 0;
+    int depthPackedTableValidPointers = 0;
+    int depthPackedTableTextPointers = 0;
+    int depthPackedTablePdataResolvedFunctions = 0;
+    int depthPackedTableExactFunctionStarts = 0;
+    int rsmDepthTableValidPointers = 0;
+    int rsmDepthTableTextPointers = 0;
+    int rsmDepthTablePdataResolvedFunctions = 0;
+    int rsmDepthTableExactFunctionStarts = 0;
+    int d3dImportProbeRecords = 0;
+    int d3dImportsFound = 0;
+    int d3dDirectIatCallHits = 0;
+    int preservedDepthTextureBindings = 0;
+    int preservedMaterialProgramBindings = 0;
+    int drawPresentCaptureRecordsDeferred = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedBinaryDispatchContracts = 0;
+    int trackedBinaryDispatchObligations = 0;
+    int openBinaryDispatchObligations = 0;
+    std::vector<BackendBinaryFunctionTableRecord> functionTableRecords;
+    std::vector<BackendBinaryImportProbeRecord> importProbeRecords;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -1767,6 +1845,13 @@ BackendMaterialProgramBinaryRuntimeReport runBackendMaterialProgramBinaryRuntime
 
 std::string backendMaterialProgramBinaryRuntimeReportToJson(
     const BackendMaterialProgramBinaryRuntimeReport& report);
+
+BackendMaterialProgramBinaryDispatchRuntimeReport runBackendMaterialProgramBinaryDispatchRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendMaterialProgramBinaryDispatchRuntimeReportToJson(
+    const BackendMaterialProgramBinaryDispatchRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

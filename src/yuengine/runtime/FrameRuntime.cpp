@@ -200,6 +200,14 @@ void addError(BackendMaterialProgramBinaryRuntimeReport& report, const std::stri
     report.errors.push_back(message);
 }
 
+void addError(
+    BackendMaterialProgramBinaryDispatchRuntimeReport& report,
+    const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -1219,6 +1227,539 @@ std::filesystem::path originalGameBinaryPath(const std::filesystem::path& repoRo
     std::error_code error;
     const auto resolved = std::filesystem::weakly_canonical(path, error);
     return error ? std::filesystem::absolute(path) : resolved;
+}
+
+struct PeSectionEvidence {
+    std::string name;
+    uint32_t virtualAddress = 0;
+    uint32_t virtualSize = 0;
+    uint32_t rawPointer = 0;
+    uint32_t rawSize = 0;
+    uint32_t characteristics = 0;
+};
+
+struct PeFunctionRangeEvidence {
+    uint32_t beginRva = 0;
+    uint32_t endRva = 0;
+    uint32_t unwindRva = 0;
+};
+
+struct PeImportSymbolEvidence {
+    std::string importName;
+    std::string dllName;
+    uint32_t iatRva = 0;
+    bool found = false;
+};
+
+struct PeImageEvidence {
+    bool valid64 = false;
+    uint64_t imageBase = 0;
+    uint32_t importDirectoryRva = 0;
+    uint32_t importDirectorySize = 0;
+    uint32_t exceptionDirectoryRva = 0;
+    uint32_t exceptionDirectorySize = 0;
+    std::vector<PeSectionEvidence> sections;
+    std::vector<PeFunctionRangeEvidence> functions;
+    std::map<std::string, PeImportSymbolEvidence> imports;
+};
+
+bool readU16(const std::vector<std::byte>& bytes, size_t offset, uint16_t& out)
+{
+    if (offset + 2 > bytes.size()) {
+        return false;
+    }
+    out = static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset]))
+        | (static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8);
+    return true;
+}
+
+bool readU32(const std::vector<std::byte>& bytes, size_t offset, uint32_t& out)
+{
+    if (offset + 4 > bytes.size()) {
+        return false;
+    }
+    out = static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset]))
+        | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8)
+        | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 2])) << 16)
+        | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 3])) << 24);
+    return true;
+}
+
+bool readU64(const std::vector<std::byte>& bytes, size_t offset, uint64_t& out)
+{
+    if (offset + 8 > bytes.size()) {
+        return false;
+    }
+    out = 0;
+    for (int i = 0; i < 8; ++i) {
+        out |= static_cast<uint64_t>(
+            static_cast<unsigned char>(bytes[offset + static_cast<size_t>(i)]))
+            << (static_cast<unsigned int>(i) * 8);
+    }
+    return true;
+}
+
+std::string hex64(uint64_t value)
+{
+    std::ostringstream out;
+    out << "0x" << std::hex << std::uppercase << value;
+    return out.str();
+}
+
+bool isExecutablePeSection(const PeSectionEvidence& section)
+{
+    return (section.characteristics & 0x20000000u) != 0;
+}
+
+uint32_t peSectionExtent(const PeSectionEvidence& section)
+{
+    return std::max(section.virtualSize, section.rawSize);
+}
+
+const PeSectionEvidence* findPeSectionForRva(
+    const PeImageEvidence& image,
+    uint32_t rva)
+{
+    for (const auto& section : image.sections) {
+        const uint32_t extent = peSectionExtent(section);
+        if (extent == 0) {
+            continue;
+        }
+        if (rva >= section.virtualAddress
+            && rva < section.virtualAddress + extent) {
+            return &section;
+        }
+    }
+    return nullptr;
+}
+
+long long peRvaToOffset(const PeImageEvidence& image, uint32_t rva)
+{
+    const auto* section = findPeSectionForRva(image, rva);
+    if (section == nullptr || rva < section->virtualAddress) {
+        return -1;
+    }
+    const uint64_t delta = static_cast<uint64_t>(rva - section->virtualAddress);
+    if (delta >= section->rawSize) {
+        return -1;
+    }
+    return static_cast<long long>(section->rawPointer + delta);
+}
+
+uint32_t peOffsetToRva(const PeImageEvidence& image, long long offset)
+{
+    if (offset < 0) {
+        return 0;
+    }
+    const auto unsignedOffset = static_cast<uint32_t>(offset);
+    for (const auto& section : image.sections) {
+        if (unsignedOffset >= section.rawPointer
+            && unsignedOffset < section.rawPointer + section.rawSize) {
+            return section.virtualAddress + (unsignedOffset - section.rawPointer);
+        }
+    }
+    return 0;
+}
+
+std::string readPeCStringAtRva(
+    const std::vector<std::byte>& bytes,
+    const PeImageEvidence& image,
+    uint32_t rva)
+{
+    const long long offset = peRvaToOffset(image, rva);
+    if (offset < 0 || static_cast<size_t>(offset) >= bytes.size()) {
+        return {};
+    }
+    std::string value;
+    for (size_t cursor = static_cast<size_t>(offset);
+         cursor < bytes.size() && static_cast<unsigned char>(bytes[cursor]) != 0
+         && value.size() < 4096;
+         ++cursor) {
+        value.push_back(static_cast<char>(bytes[cursor]));
+    }
+    return value;
+}
+
+bool findPeFunctionRange(
+    const PeImageEvidence& image,
+    uint32_t rva,
+    int& index,
+    PeFunctionRangeEvidence& range)
+{
+    size_t lo = 0;
+    size_t hi = image.functions.size();
+    while (lo < hi) {
+        const size_t mid = lo + (hi - lo) / 2;
+        if (image.functions[mid].beginRva <= rva) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if (lo == 0) {
+        return false;
+    }
+    const size_t candidate = lo - 1;
+    const auto& found = image.functions[candidate];
+    if (rva >= found.beginRva && rva < found.endRva) {
+        index = static_cast<int>(candidate);
+        range = found;
+        return true;
+    }
+    return false;
+}
+
+std::map<std::string, PeImportSymbolEvidence> parsePeImports(
+    const std::vector<std::byte>& bytes,
+    const PeImageEvidence& image)
+{
+    std::map<std::string, PeImportSymbolEvidence> imports;
+    if (image.importDirectoryRva == 0) {
+        return imports;
+    }
+
+    const long long descriptorOffset = peRvaToOffset(image, image.importDirectoryRva);
+    if (descriptorOffset < 0) {
+        return imports;
+    }
+
+    for (size_t descriptor = static_cast<size_t>(descriptorOffset);
+         descriptor + 20 <= bytes.size();
+         descriptor += 20) {
+        uint32_t originalFirstThunk = 0;
+        uint32_t nameRva = 0;
+        uint32_t firstThunk = 0;
+        readU32(bytes, descriptor, originalFirstThunk);
+        readU32(bytes, descriptor + 12, nameRva);
+        readU32(bytes, descriptor + 16, firstThunk);
+        if (originalFirstThunk == 0 && nameRva == 0 && firstThunk == 0) {
+            break;
+        }
+
+        const std::string dllName = readPeCStringAtRva(bytes, image, nameRva);
+        const uint32_t thunkRva = originalFirstThunk != 0 ? originalFirstThunk : firstThunk;
+        const long long thunkOffset = peRvaToOffset(image, thunkRva);
+        if (thunkOffset < 0) {
+            continue;
+        }
+        for (size_t index = 0;; ++index) {
+            uint64_t thunk = 0;
+            const size_t thunkEntryOffset = static_cast<size_t>(thunkOffset) + index * 8;
+            if (!readU64(bytes, thunkEntryOffset, thunk) || thunk == 0) {
+                break;
+            }
+            if ((thunk & 0x8000000000000000ull) != 0) {
+                continue;
+            }
+            const auto importByNameRva = static_cast<uint32_t>(thunk);
+            const std::string importName =
+                readPeCStringAtRva(bytes, image, importByNameRva + 2);
+            if (importName.empty()) {
+                continue;
+            }
+            PeImportSymbolEvidence record;
+            record.importName = importName;
+            record.dllName = dllName;
+            record.iatRva = firstThunk + static_cast<uint32_t>(index * 8);
+            record.found = true;
+            imports.emplace(importName, std::move(record));
+        }
+    }
+    return imports;
+}
+
+PeImageEvidence parsePeImageEvidence(const std::vector<std::byte>& bytes)
+{
+    PeImageEvidence image;
+    uint16_t mz = 0;
+    uint32_t peOffset = 0;
+    if (!readU16(bytes, 0, mz) || mz != 0x5A4Du
+        || !readU32(bytes, 0x3C, peOffset)
+        || peOffset + 24 > bytes.size()) {
+        return image;
+    }
+
+    uint32_t peSignature = 0;
+    if (!readU32(bytes, peOffset, peSignature) || peSignature != 0x00004550u) {
+        return image;
+    }
+
+    const size_t coffOffset = static_cast<size_t>(peOffset) + 4;
+    uint16_t numberOfSections = 0;
+    uint16_t optionalHeaderSize = 0;
+    if (!readU16(bytes, coffOffset + 2, numberOfSections)
+        || !readU16(bytes, coffOffset + 16, optionalHeaderSize)) {
+        return image;
+    }
+
+    const size_t optionalOffset = coffOffset + 20;
+    uint16_t optionalMagic = 0;
+    if (!readU16(bytes, optionalOffset, optionalMagic) || optionalMagic != 0x20Bu) {
+        return image;
+    }
+
+    uint64_t imageBase = 0;
+    if (!readU64(bytes, optionalOffset + 24, imageBase)) {
+        return image;
+    }
+    image.valid64 = true;
+    image.imageBase = imageBase;
+
+    const size_t dataDirectoryOffset = optionalOffset + 112;
+    if (dataDirectoryOffset + 32 <= optionalOffset + optionalHeaderSize) {
+        readU32(bytes, dataDirectoryOffset + 8, image.importDirectoryRva);
+        readU32(bytes, dataDirectoryOffset + 12, image.importDirectorySize);
+        readU32(bytes, dataDirectoryOffset + 24, image.exceptionDirectoryRva);
+        readU32(bytes, dataDirectoryOffset + 28, image.exceptionDirectorySize);
+    }
+
+    const size_t sectionTableOffset = optionalOffset + optionalHeaderSize;
+    for (uint16_t index = 0; index < numberOfSections; ++index) {
+        const size_t offset = sectionTableOffset + static_cast<size_t>(index) * 40;
+        if (offset + 40 > bytes.size()) {
+            break;
+        }
+        PeSectionEvidence section;
+        for (size_t i = 0;
+             i < 8 && static_cast<unsigned char>(bytes[offset + i]) != 0;
+             ++i) {
+            section.name.push_back(static_cast<char>(bytes[offset + i]));
+        }
+        readU32(bytes, offset + 8, section.virtualSize);
+        readU32(bytes, offset + 12, section.virtualAddress);
+        readU32(bytes, offset + 16, section.rawSize);
+        readU32(bytes, offset + 20, section.rawPointer);
+        readU32(bytes, offset + 36, section.characteristics);
+        image.sections.push_back(std::move(section));
+    }
+
+    const long long pdataOffset = peRvaToOffset(image, image.exceptionDirectoryRva);
+    if (pdataOffset >= 0) {
+        const size_t entries = image.exceptionDirectorySize / 12;
+        for (size_t index = 0; index < entries; ++index) {
+            const size_t offset = static_cast<size_t>(pdataOffset) + index * 12;
+            if (offset + 12 > bytes.size()) {
+                break;
+            }
+            PeFunctionRangeEvidence range;
+            readU32(bytes, offset, range.beginRva);
+            readU32(bytes, offset + 4, range.endRva);
+            readU32(bytes, offset + 8, range.unwindRva);
+            if (range.beginRva != 0 && range.endRva > range.beginRva) {
+                image.functions.push_back(range);
+            }
+        }
+        std::sort(
+            image.functions.begin(),
+            image.functions.end(),
+            [](const auto& left, const auto& right) {
+                return left.beginRva < right.beginRva;
+            });
+    }
+
+    image.imports = parsePeImports(bytes, image);
+    return image;
+}
+
+long long findExactAsciiStringOffset(
+    const std::vector<BinaryAsciiString>& strings,
+    const std::string& token)
+{
+    for (const auto& item : strings) {
+        if (item.text == token) {
+            return item.offset;
+        }
+    }
+    return -1;
+}
+
+long long findAsciiTokenOffset(
+    const std::vector<BinaryAsciiString>& strings,
+    const std::string& token)
+{
+    for (const auto& item : strings) {
+        const size_t position = item.text.find(token);
+        if (position != std::string::npos) {
+            return item.offset + static_cast<long long>(position);
+        }
+    }
+    return -1;
+}
+
+int countBytePatternOccurrences(
+    const std::vector<std::byte>& bytes,
+    const std::vector<unsigned char>& pattern)
+{
+    if (pattern.empty() || bytes.size() < pattern.size()) {
+        return 0;
+    }
+    int hits = 0;
+    for (size_t offset = 0; offset + pattern.size() <= bytes.size(); ++offset) {
+        bool matched = true;
+        for (size_t i = 0; i < pattern.size(); ++i) {
+            if (static_cast<unsigned char>(bytes[offset + i]) != pattern[i]) {
+                matched = false;
+                break;
+            }
+        }
+        if (matched) {
+            ++hits;
+        }
+    }
+    return hits;
+}
+
+std::vector<unsigned char> littleEndian32(uint32_t value)
+{
+    return {
+        static_cast<unsigned char>(value & 0xFFu),
+        static_cast<unsigned char>((value >> 8) & 0xFFu),
+        static_cast<unsigned char>((value >> 16) & 0xFFu),
+        static_cast<unsigned char>((value >> 24) & 0xFFu)};
+}
+
+std::vector<unsigned char> littleEndian64(uint64_t value)
+{
+    std::vector<unsigned char> bytes(8);
+    for (int i = 0; i < 8; ++i) {
+        bytes[static_cast<size_t>(i)] =
+            static_cast<unsigned char>((value >> (static_cast<unsigned int>(i) * 8)) & 0xFFu);
+    }
+    return bytes;
+}
+
+int countDirectStringXrefs(
+    const std::vector<std::byte>& bytes,
+    const PeImageEvidence& image,
+    const std::vector<BinaryAsciiString>& strings,
+    const std::string& token)
+{
+    const long long tokenOffset = findAsciiTokenOffset(strings, token);
+    if (tokenOffset < 0 || !image.valid64) {
+        return 0;
+    }
+    const uint32_t tokenRva = peOffsetToRva(image, tokenOffset);
+    if (tokenRva == 0) {
+        return 0;
+    }
+    const uint64_t tokenVa = image.imageBase + tokenRva;
+    int hits = 0;
+    hits += countBytePatternOccurrences(bytes, littleEndian64(tokenVa));
+    hits += countBytePatternOccurrences(bytes, littleEndian32(tokenRva));
+
+    for (const auto& section : image.sections) {
+        if (!isExecutablePeSection(section)) {
+            continue;
+        }
+        const size_t rawBegin = section.rawPointer;
+        const size_t rawEnd =
+            std::min(bytes.size(), static_cast<size_t>(section.rawPointer) + section.rawSize);
+        for (size_t offset = rawBegin; offset + 4 <= rawEnd; ++offset) {
+            uint32_t rawDisp = 0;
+            readU32(bytes, offset, rawDisp);
+            const auto disp = static_cast<int32_t>(rawDisp);
+            const uint32_t sourceRva =
+                section.virtualAddress + static_cast<uint32_t>(offset - rawBegin);
+            const int64_t target =
+                static_cast<int64_t>(sourceRva) + 4 + static_cast<int64_t>(disp);
+            if (target == static_cast<int64_t>(tokenRva)) {
+                ++hits;
+            }
+        }
+    }
+    return hits;
+}
+
+std::vector<BackendBinaryFunctionTableRecord> scanAdjacentVaTable(
+    const std::vector<std::byte>& bytes,
+    const PeImageEvidence& image,
+    const std::vector<BinaryAsciiString>& strings,
+    const std::string& anchorToken,
+    const std::string& category,
+    size_t windowBytes)
+{
+    std::vector<BackendBinaryFunctionTableRecord> records;
+    const long long anchorOffset = findAsciiTokenOffset(strings, anchorToken);
+    if (anchorOffset < 0 || !image.valid64) {
+        return records;
+    }
+    const size_t begin = static_cast<size_t>(anchorOffset);
+    const size_t end = std::min(bytes.size(), begin + windowBytes);
+    for (size_t offset = begin; offset + 8 <= end; offset += 8) {
+        uint64_t targetVa = 0;
+        readU64(bytes, offset, targetVa);
+        if (targetVa < image.imageBase) {
+            continue;
+        }
+        const auto targetRva64 = targetVa - image.imageBase;
+        if (targetRva64 > std::numeric_limits<uint32_t>::max()) {
+            continue;
+        }
+        const auto targetRva = static_cast<uint32_t>(targetRva64);
+        const auto* section = findPeSectionForRva(image, targetRva);
+        if (section == nullptr) {
+            continue;
+        }
+
+        BackendBinaryFunctionTableRecord record;
+        record.anchorToken = anchorToken;
+        record.category = category;
+        record.targetSection = section->name;
+        record.anchorOffset = anchorOffset;
+        record.tableOffset = static_cast<long long>(offset);
+        record.targetVa = targetVa;
+        record.targetRva = targetRva;
+        if (section->name == ".text") {
+            PeFunctionRangeEvidence range;
+            int pdataIndex = -1;
+            if (findPeFunctionRange(image, targetRva, pdataIndex, range)) {
+                record.pdataIndex = pdataIndex;
+                record.functionBeginRva = range.beginRva;
+                record.functionEndRva = range.endRva;
+                record.pdataResolved = true;
+                record.exactFunctionStart = range.beginRva == targetRva;
+            }
+        }
+        records.push_back(std::move(record));
+    }
+    return records;
+}
+
+int countDirectIatCallHits(
+    const std::vector<std::byte>& bytes,
+    const PeImageEvidence& image,
+    uint32_t iatRva)
+{
+    if (iatRva == 0) {
+        return 0;
+    }
+    int hits = 0;
+    for (const auto& section : image.sections) {
+        if (!isExecutablePeSection(section)) {
+            continue;
+        }
+        const size_t rawBegin = section.rawPointer;
+        const size_t rawEnd =
+            std::min(bytes.size(), static_cast<size_t>(section.rawPointer) + section.rawSize);
+        for (size_t offset = rawBegin; offset + 6 <= rawEnd; ++offset) {
+            const unsigned char op0 = static_cast<unsigned char>(bytes[offset]);
+            const unsigned char op1 = static_cast<unsigned char>(bytes[offset + 1]);
+            if (op0 != 0xFFu || (op1 != 0x15u && op1 != 0x25u)) {
+                continue;
+            }
+            uint32_t rawDisp = 0;
+            readU32(bytes, offset + 2, rawDisp);
+            const auto disp = static_cast<int32_t>(rawDisp);
+            const uint32_t sourceRva =
+                section.virtualAddress + static_cast<uint32_t>(offset - rawBegin);
+            const int64_t target =
+                static_cast<int64_t>(sourceRva) + 6 + static_cast<int64_t>(disp);
+            if (target == static_cast<int64_t>(iatRva)) {
+                ++hits;
+            }
+        }
+    }
+    return hits;
 }
 
 int countOccurrences(const std::string& text, const std::string& needle)
@@ -7769,6 +8310,304 @@ BackendMaterialProgramBinaryRuntimeReport buildBackendMaterialProgramBinaryRunti
     return storeCachedReport(cache, cacheKey, report);
 }
 
+BackendMaterialProgramBinaryDispatchRuntimeReport
+buildBackendMaterialProgramBinaryDispatchRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs,
+    const std::filesystem::path& repoRoot)
+{
+    const auto binaryPath = originalGameBinaryPath(repoRoot);
+    const auto cacheKey =
+        runtimeReportCacheKey(inputs, rendererProfile, "backend-material-program-binary-dispatch")
+        + "|" + pathCacheKey(binaryPath);
+    static std::map<std::string, BackendMaterialProgramBinaryDispatchRuntimeReport> cache;
+    BackendMaterialProgramBinaryDispatchRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
+    BackendMaterialProgramBinaryDispatchRuntimeReport report;
+    const auto binaryMaterialProgram =
+        buildBackendMaterialProgramBinaryRuntimeReport(inputs, rendererProfile, vfs, repoRoot);
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.originalBinaryPath = binaryPath.string();
+    report.binaryMaterialProgramOk = binaryMaterialProgram.ok;
+    report.preservedDepthTextureBindings =
+        binaryMaterialProgram.preservedDepthTextureBindings;
+    report.preservedMaterialProgramBindings =
+        binaryMaterialProgram.preservedMaterialProgramBindings;
+    report.drawPresentCaptureRecordsDeferred =
+        binaryMaterialProgram.drawPresentCaptureRecordsDeferred;
+    report.backbufferWidth = binaryMaterialProgram.backbufferWidth;
+    report.backbufferHeight = binaryMaterialProgram.backbufferHeight;
+
+    const auto binaryBytes = readPhysicalBytes(binaryPath);
+    report.originalBinaryFound = !binaryBytes.empty();
+    const auto strings = extractAsciiStrings(binaryBytes);
+    const auto peImage = parsePeImageEvidence(binaryBytes);
+    report.imageBaseHex = peImage.valid64 ? hex64(peImage.imageBase) : "0x0";
+    report.peSections = static_cast<int>(peImage.sections.size());
+    for (const auto& section : peImage.sections) {
+        if (isExecutablePeSection(section)) {
+            ++report.peExecutableSections;
+        }
+    }
+    report.pdataFunctionEntries = static_cast<int>(peImage.functions.size());
+    report.peImageReady =
+        report.originalBinaryFound
+        && peImage.valid64
+        && peImage.imageBase == 0x140000000ull;
+    report.peSectionTableReady =
+        report.peImageReady
+        && report.peSections == 8
+        && report.peExecutableSections == 2;
+    report.pePdataReady =
+        report.peImageReady
+        && peImage.exceptionDirectoryRva == 0x768000u
+        && report.pdataFunctionEntries == 20225;
+
+    const std::vector<std::string> xrefProbeTokens = {
+        "system/shader/deferred.bfx",
+        "system/shader/deferredGrass.bfx",
+        "system/shader/deferredMulti.bfx",
+        "depthTex2D",
+        "DepthEdgeDetection",
+        "INTZRAWZDF24DF16",
+        "D24S8",
+        "R32F",
+        "cascade intz"};
+    const std::set<std::string> selectorProbeTokens = {
+        "system/shader/deferred.bfx",
+        "system/shader/deferredGrass.bfx",
+        "system/shader/deferredMulti.bfx"};
+    report.binaryProbeTokens = static_cast<int>(xrefProbeTokens.size());
+    for (const auto& token : xrefProbeTokens) {
+        if (findAsciiTokenOffset(strings, token) >= 0) {
+            ++report.binaryProbeTokensFound;
+        }
+        const int hits = countDirectStringXrefs(binaryBytes, peImage, strings, token);
+        report.binaryStringDirectXrefHits += hits;
+        if (selectorProbeTokens.count(token) != 0) {
+            report.selectorDirectXrefHits += hits;
+        }
+    }
+    report.binaryStringDirectXrefProbeReady =
+        report.peImageReady
+        && report.binaryProbeTokens == 9
+        && report.binaryProbeTokensFound == 9
+        && report.binaryStringDirectXrefHits == 0;
+    report.selectorDirectXrefsAbsent =
+        report.binaryStringDirectXrefProbeReady
+        && report.selectorDirectXrefHits == 0;
+    report.selectorFunctionTableStillOpen =
+        report.selectorDirectXrefsAbsent
+        && binaryMaterialProgram.selectorControlFlowStillOpen;
+
+    auto depthRecords = scanAdjacentVaTable(
+        binaryBytes,
+        peImage,
+        strings,
+        "INTZRAWZDF24DF16",
+        "postfilter_depth_dispatch_candidate",
+        512);
+    for (const auto& record : depthRecords) {
+        ++report.depthPackedTableValidPointers;
+        if (record.targetSection == ".text") {
+            ++report.depthPackedTableTextPointers;
+        }
+        if (record.pdataResolved) {
+            ++report.depthPackedTablePdataResolvedFunctions;
+        }
+        if (record.exactFunctionStart) {
+            ++report.depthPackedTableExactFunctionStarts;
+        }
+        report.functionTableRecords.push_back(record);
+    }
+    report.depthAdjacentFunctionTableReady =
+        report.depthPackedTableValidPointers == 24
+        && report.depthPackedTableTextPointers == 20
+        && report.depthPackedTablePdataResolvedFunctions == 9
+        && report.depthPackedTableExactFunctionStarts == 9;
+
+    auto rsmRecords = scanAdjacentVaTable(
+        binaryBytes,
+        peImage,
+        strings,
+        "cascade intz",
+        "rsm_depth_dispatch_candidate",
+        512);
+    for (const auto& record : rsmRecords) {
+        ++report.rsmDepthTableValidPointers;
+        if (record.targetSection == ".text") {
+            ++report.rsmDepthTableTextPointers;
+        }
+        if (record.pdataResolved) {
+            ++report.rsmDepthTablePdataResolvedFunctions;
+        }
+        if (record.exactFunctionStart) {
+            ++report.rsmDepthTableExactFunctionStarts;
+        }
+        report.functionTableRecords.push_back(record);
+    }
+    report.rsmDepthFunctionTableReady =
+        report.rsmDepthTableValidPointers == 6
+        && report.rsmDepthTableTextPointers == 5
+        && report.rsmDepthTablePdataResolvedFunctions == 5
+        && report.rsmDepthTableExactFunctionStarts == 5;
+    report.sampleableDepthDispatchTableCandidateReady =
+        binaryMaterialProgram.sampleableDepthBinaryCandidateReady
+        && report.depthAdjacentFunctionTableReady
+        && report.rsmDepthFunctionTableReady;
+
+    const std::vector<std::string> importProbeNames = {
+        "Direct3DCreate9Ex",
+        "D3DXCreateEffect",
+        "D3DXCreateEffectFromFileA",
+        "D3DXCreateTextureFromFileInMemory",
+        "D3DXCreateTextureFromFileInMemoryEx"};
+    for (const auto& importName : importProbeNames) {
+        BackendBinaryImportProbeRecord record;
+        record.importName = importName;
+        const auto found = peImage.imports.find(importName);
+        if (found != peImage.imports.end()) {
+            record.dllName = found->second.dllName;
+            record.iatRva = found->second.iatRva;
+            record.found = found->second.found;
+            record.directIatCallHits =
+                countDirectIatCallHits(binaryBytes, peImage, record.iatRva);
+        }
+        ++report.d3dImportProbeRecords;
+        if (record.found) {
+            ++report.d3dImportsFound;
+        }
+        report.d3dDirectIatCallHits += record.directIatCallHits;
+        report.importProbeRecords.push_back(std::move(record));
+    }
+    report.d3dImportTableReady =
+        report.d3dImportProbeRecords == 5
+        && report.d3dImportsFound == 5;
+    report.d3dImportDirectCallsAbsent =
+        report.d3dImportTableReady
+        && report.d3dDirectIatCallHits == 0;
+    report.d3dDispatchWrapperStillOpen =
+        report.d3dImportDirectCallsAbsent;
+    report.exactSelectorControlFlowStillOpen =
+        report.selectorFunctionTableStillOpen;
+    report.sampleableDepthRuntimeSelectionStillOpen =
+        report.sampleableDepthDispatchTableCandidateReady;
+    report.downstreamDrawPresentDeferred =
+        binaryMaterialProgram.downstreamDrawPresentDeferred
+        && report.drawPresentCaptureRecordsDeferred == 124;
+    report.backbufferExtentCarried =
+        report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+
+    report.contracts.push_back(makeBackendObligation(
+        "inherited_binary_material_program_runtime",
+        report.binaryMaterialProgramOk ? "contract_ready" : "blocked",
+        "L36c0 consumes L36b original binary shader/depth evidence"));
+    report.contracts.push_back(makeBackendObligation(
+        "pe_image_layout",
+        report.peImageReady && report.peSectionTableReady ? "contract_ready" : "blocked",
+        "game.exe is PE64 at image base 0x140000000 with 8 sections and 2 executable sections"));
+    report.contracts.push_back(makeBackendObligation(
+        "pdata_function_ranges",
+        report.pePdataReady ? "contract_ready" : "blocked",
+        ".pdata resolves 20225 function ranges for downstream dispatch-table probes"));
+    report.contracts.push_back(makeBackendObligation(
+        "binary_string_direct_xref_probe",
+        report.binaryStringDirectXrefProbeReady ? "contract_ready" : "blocked",
+        "nine shader/depth binary tokens were scanned for direct VA/RVA/rel32 executable references"));
+    report.contracts.push_back(makeBackendObligation(
+        "selector_direct_xref_absence",
+        report.selectorDirectXrefsAbsent ? "contract_ready" : "blocked",
+        "deferred/deferredGrass/deferredMulti shader paths have no direct VA/RVA/rel32 xrefs"));
+    report.contracts.push_back(makeBackendObligation(
+        "depth_packed_adjacent_function_table",
+        report.depthAdjacentFunctionTableReady ? "contract_ready" : "blocked",
+        "INTZ/RAWZ/DF24/DF16 anchor is followed by 24 valid pointers, including 9 pdata-resolved function starts"));
+    report.contracts.push_back(makeBackendObligation(
+        "rsm_depth_adjacent_function_table",
+        report.rsmDepthFunctionTableReady ? "contract_ready" : "blocked",
+        "cascade intz anchor is followed by 6 valid pointers, including 5 pdata-resolved function starts"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampleable_depth_dispatch_table_candidate",
+        report.sampleableDepthDispatchTableCandidateReady ? "contract_ready" : "blocked",
+        "binary depth candidates now have adjacent function-table evidence, but not runtime path selection"));
+    report.contracts.push_back(makeBackendObligation(
+        "d3d_d3dx_import_presence",
+        report.d3dImportTableReady ? "contract_ready" : "blocked",
+        "Direct3DCreate9Ex and D3DX effect/texture imports are present in the PE import table"));
+    report.contracts.push_back(makeBackendObligation(
+        "d3d_d3dx_direct_iat_probe",
+        report.d3dImportDirectCallsAbsent ? "contract_ready" : "blocked",
+        "direct FF15/FF25 IAT calls to the probed D3D/D3DX imports are absent, so wrapper dispatch remains open"));
+    report.contracts.push_back(makeBackendObligation(
+        "exact_selector_control_flow",
+        report.exactSelectorControlFlowStillOpen ? "tracked_open" : "blocked",
+        "selector string table is binary-backed, but shader path dispatch is not a recovered CFG yet"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampleable_depth_runtime_selection",
+        report.sampleableDepthRuntimeSelectionStillOpen ? "tracked_open" : "blocked",
+        "depth dispatch-table candidates exist, but the selected frame path is not yet reconstructed"));
+    report.contracts.push_back(makeBackendObligation(
+        "d3d_effect_texture_dispatch_wrapper",
+        report.d3dDispatchWrapperStillOpen ? "tracked_open" : "blocked",
+        "D3D/D3DX imports are present, but calls are not direct IAT edges and require wrapper/control-flow recovery"));
+    report.contracts.push_back(makeBackendObligation(
+        "draw_present_capture_after_dispatch_probe",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "draw, present, and capture remain deferred until selector/depth runtime selection is closed"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_after_capture",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "original-frame oracle remains deferred until YuEngine can execute and capture the frame"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedBinaryDispatchContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedBinaryDispatchObligations;
+            ++report.openBinaryDispatchObligations;
+        } else {
+            ++report.openBinaryDispatchObligations;
+        }
+    }
+
+    if (!report.binaryMaterialProgramOk || !report.originalBinaryFound) {
+        addError(report, "upstream binary material-program report or original binary is missing");
+    }
+    if (!report.peImageReady || !report.peSectionTableReady || !report.pePdataReady) {
+        addError(report, "PE image layout or pdata function ranges are incomplete");
+    }
+    if (!report.binaryStringDirectXrefProbeReady || !report.selectorDirectXrefsAbsent
+        || !report.selectorFunctionTableStillOpen) {
+        addError(report, "selector direct-xref probe did not preserve the CFG gap");
+    }
+    if (!report.depthAdjacentFunctionTableReady || !report.rsmDepthFunctionTableReady
+        || !report.sampleableDepthDispatchTableCandidateReady) {
+        addError(report, "sampleable depth dispatch-table evidence is incomplete");
+    }
+    if (!report.d3dImportTableReady || !report.d3dImportDirectCallsAbsent
+        || !report.d3dDispatchWrapperStillOpen) {
+        addError(report, "D3D/D3DX import dispatch evidence is incomplete");
+    }
+    if (!report.exactSelectorControlFlowStillOpen
+        || !report.sampleableDepthRuntimeSelectionStillOpen) {
+        addError(report, "selector/depth runtime open gates were not preserved");
+    }
+    if (!report.downstreamDrawPresentDeferred || !report.backbufferExtentCarried) {
+        addError(report, "draw/present or backbuffer gate was not preserved");
+    }
+    if (report.resolvedBinaryDispatchContracts != 10
+        || report.trackedBinaryDispatchObligations != 5
+        || report.openBinaryDispatchObligations != 5) {
+        addError(report, "binary dispatch obligation accounting is inconsistent");
+    }
+
+    return storeCachedReport(cache, cacheKey, report);
+}
+
 } // namespace
 
 FirstFrameRuntimeReport buildFirstFrameRuntimeReport(
@@ -11327,6 +12166,190 @@ std::string backendMaterialProgramBinaryRuntimeReportToJson(
             << "\", \"context\": \"" << core::jsonEscape(record.context)
             << "\", \"offset\": " << record.offset << "}";
         out << (i + 1 == report.binaryEvidenceRecords.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendMaterialProgramBinaryDispatchRuntimeReport runBackendMaterialProgramBinaryDispatchRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendMaterialProgramBinaryDispatchRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendMaterialProgramBinaryDispatchRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs,
+            repoRoot);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendMaterialProgramBinaryDispatchRuntimeReportToJson(
+    const BackendMaterialProgramBinaryDispatchRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_material_program_binary_dispatch_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"original_binary_path\": \""
+        << core::jsonEscape(report.originalBinaryPath) << "\",\n";
+    out << "  \"image_base\": \"" << core::jsonEscape(report.imageBaseHex) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " binary_material_program_ok="
+        << (report.binaryMaterialProgramOk ? "true" : "false")
+        << " original_binary_found=" << (report.originalBinaryFound ? "true" : "false")
+        << " pe_image_ready=" << (report.peImageReady ? "true" : "false")
+        << " pe_section_table_ready=" << (report.peSectionTableReady ? "true" : "false")
+        << " pe_pdata_ready=" << (report.pePdataReady ? "true" : "false")
+        << " binary_string_direct_xref_probe_ready="
+        << (report.binaryStringDirectXrefProbeReady ? "true" : "false")
+        << " selector_direct_xrefs_absent="
+        << (report.selectorDirectXrefsAbsent ? "true" : "false")
+        << " selector_function_table_still_open="
+        << (report.selectorFunctionTableStillOpen ? "true" : "false")
+        << " depth_adjacent_function_table_ready="
+        << (report.depthAdjacentFunctionTableReady ? "true" : "false")
+        << " rsm_depth_function_table_ready="
+        << (report.rsmDepthFunctionTableReady ? "true" : "false")
+        << " sampleable_depth_dispatch_table_candidate_ready="
+        << (report.sampleableDepthDispatchTableCandidateReady ? "true" : "false")
+        << " d3d_import_table_ready=" << (report.d3dImportTableReady ? "true" : "false")
+        << " d3d_import_direct_calls_absent="
+        << (report.d3dImportDirectCallsAbsent ? "true" : "false")
+        << " d3d_dispatch_wrapper_still_open="
+        << (report.d3dDispatchWrapperStillOpen ? "true" : "false")
+        << " exact_selector_control_flow_still_open="
+        << (report.exactSelectorControlFlowStillOpen ? "true" : "false")
+        << " sampleable_depth_runtime_selection_still_open="
+        << (report.sampleableDepthRuntimeSelectionStillOpen ? "true" : "false")
+        << " downstream_draw_present_deferred="
+        << (report.downstreamDrawPresentDeferred ? "true" : "false")
+        << " backbuffer_extent_carried="
+        << (report.backbufferExtentCarried ? "true" : "false")
+        << " pe_sections=" << report.peSections
+        << " pe_executable_sections=" << report.peExecutableSections
+        << " pdata_function_entries=" << report.pdataFunctionEntries
+        << " binary_probe_tokens=" << report.binaryProbeTokens
+        << " binary_probe_tokens_found=" << report.binaryProbeTokensFound
+        << " binary_string_direct_xref_hits=" << report.binaryStringDirectXrefHits
+        << " selector_direct_xref_hits=" << report.selectorDirectXrefHits
+        << " depth_packed_table_valid_pointers="
+        << report.depthPackedTableValidPointers
+        << " depth_packed_table_text_pointers="
+        << report.depthPackedTableTextPointers
+        << " depth_packed_table_pdata_resolved_functions="
+        << report.depthPackedTablePdataResolvedFunctions
+        << " depth_packed_table_exact_function_starts="
+        << report.depthPackedTableExactFunctionStarts
+        << " rsm_depth_table_valid_pointers=" << report.rsmDepthTableValidPointers
+        << " rsm_depth_table_text_pointers=" << report.rsmDepthTableTextPointers
+        << " rsm_depth_table_pdata_resolved_functions="
+        << report.rsmDepthTablePdataResolvedFunctions
+        << " rsm_depth_table_exact_function_starts="
+        << report.rsmDepthTableExactFunctionStarts
+        << " d3d_import_probe_records=" << report.d3dImportProbeRecords
+        << " d3d_imports_found=" << report.d3dImportsFound
+        << " d3d_direct_iat_call_hits=" << report.d3dDirectIatCallHits
+        << " preserved_depth_texture_bindings=" << report.preservedDepthTextureBindings
+        << " preserved_material_program_bindings="
+        << report.preservedMaterialProgramBindings
+        << " draw_present_capture_records_deferred="
+        << report.drawPresentCaptureRecordsDeferred
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_binary_dispatch_contracts="
+        << report.resolvedBinaryDispatchContracts
+        << " tracked_binary_dispatch_obligations="
+        << report.trackedBinaryDispatchObligations
+        << " open_binary_dispatch_obligations="
+        << report.openBinaryDispatchObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"pe_summary\": {";
+    out << "\"image_base\": \"" << core::jsonEscape(report.imageBaseHex)
+        << "\", \"pe_sections\": " << report.peSections
+        << ", \"pe_executable_sections\": " << report.peExecutableSections
+        << ", \"pdata_function_entries\": " << report.pdataFunctionEntries
+        << "},\n";
+    out << "  \"xref_summary\": {";
+    out << "\"binary_probe_tokens\": " << report.binaryProbeTokens
+        << ", \"binary_probe_tokens_found\": " << report.binaryProbeTokensFound
+        << ", \"binary_string_direct_xref_hits\": "
+        << report.binaryStringDirectXrefHits
+        << ", \"selector_direct_xref_hits\": " << report.selectorDirectXrefHits
+        << "},\n";
+    out << "  \"dispatch_table_summary\": {";
+    out << "\"depth_packed_table_valid_pointers\": "
+        << report.depthPackedTableValidPointers
+        << ", \"depth_packed_table_pdata_resolved_functions\": "
+        << report.depthPackedTablePdataResolvedFunctions
+        << ", \"rsm_depth_table_valid_pointers\": "
+        << report.rsmDepthTableValidPointers
+        << ", \"rsm_depth_table_pdata_resolved_functions\": "
+        << report.rsmDepthTablePdataResolvedFunctions
+        << "},\n";
+    out << "  \"d3d_import_summary\": {";
+    out << "\"d3d_import_probe_records\": " << report.d3dImportProbeRecords
+        << ", \"d3d_imports_found\": " << report.d3dImportsFound
+        << ", \"d3d_direct_iat_call_hits\": " << report.d3dDirectIatCallHits
+        << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_binary_dispatch_contracts\": "
+        << report.resolvedBinaryDispatchContracts
+        << ", \"tracked_binary_dispatch_obligations\": "
+        << report.trackedBinaryDispatchObligations
+        << ", \"open_binary_dispatch_obligations\": "
+        << report.openBinaryDispatchObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"function_table_records\": [\n";
+    for (size_t i = 0; i < report.functionTableRecords.size(); ++i) {
+        const auto& record = report.functionTableRecords[i];
+        out << "    {\"anchor_token\": \"" << core::jsonEscape(record.anchorToken)
+            << "\", \"category\": \"" << core::jsonEscape(record.category)
+            << "\", \"target_section\": \"" << core::jsonEscape(record.targetSection)
+            << "\", \"anchor_offset\": " << record.anchorOffset
+            << ", \"table_offset\": " << record.tableOffset
+            << ", \"target_va\": \"" << core::jsonEscape(hex64(record.targetVa))
+            << "\", \"target_rva\": \"" << core::jsonEscape(hex64(record.targetRva))
+            << "\", \"pdata_index\": " << record.pdataIndex
+            << ", \"function_begin_rva\": \""
+            << core::jsonEscape(hex64(record.functionBeginRva))
+            << "\", \"function_end_rva\": \""
+            << core::jsonEscape(hex64(record.functionEndRva))
+            << "\", \"pdata_resolved\": "
+            << (record.pdataResolved ? "true" : "false")
+            << ", \"exact_function_start\": "
+            << (record.exactFunctionStart ? "true" : "false") << "}";
+        out << (i + 1 == report.functionTableRecords.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"import_probe_records\": [\n";
+    for (size_t i = 0; i < report.importProbeRecords.size(); ++i) {
+        const auto& record = report.importProbeRecords[i];
+        out << "    {\"import_name\": \"" << core::jsonEscape(record.importName)
+            << "\", \"dll_name\": \"" << core::jsonEscape(record.dllName)
+            << "\", \"iat_rva\": \"" << core::jsonEscape(hex64(record.iatRva))
+            << "\", \"found\": " << (record.found ? "true" : "false")
+            << ", \"direct_iat_call_hits\": " << record.directIatCallHits << "}";
+        out << (i + 1 == report.importProbeRecords.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

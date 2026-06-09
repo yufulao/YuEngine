@@ -42,7 +42,7 @@ option(YUENGINE_ENABLE_LEGACY_CTESTS "Register the older per-contract CTest case
 option(YUENGINE_ENABLE_SLOW_CTESTS "Allow registering EDGE/FULL/LEGACY runtime CTest cases" OFF)
 set(YUENGINE_CTEST_MODE "FAST" CACHE STRING "CTest registration mode: FAST, EDGE, FULL, or LEGACY")
 set_property(CACHE YUENGINE_CTEST_MODE PROPERTY STRINGS FAST EDGE FULL LEGACY)
-set(YUENGINE_CURRENT_EDGE_CONTRACT "yuengine_backend_material_program_binary_contract" CACHE STRING "Runtime contract-suite filter used by EDGE CTest" FORCE)
+set(YUENGINE_CURRENT_EDGE_CONTRACT "yuengine_backend_material_program_binary_dispatch_contract" CACHE STRING "Runtime contract-suite filter used by EDGE CTest" FORCE)
 
 string(TOUPPER "${YUENGINE_CTEST_MODE}" YUENGINE_CTEST_MODE_NORMALIZED)
 if(NOT YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "FAST"
@@ -97,7 +97,7 @@ if(BUILD_TESTING)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         LABELS "full"
         TIMEOUT 300
-        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=43 failed=0"
+        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=44 failed=0"
     )
     elseif(YUENGINE_CTEST_MODE_NORMALIZED STREQUAL "LEGACY")
     add_test(
@@ -108,7 +108,7 @@ if(BUILD_TESTING)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         LABELS "full"
         TIMEOUT 300
-        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=43 failed=0"
+        PASS_REGULAR_EXPRESSION "contract-suite ok=true contracts=44 failed=0"
     )
 
     add_test(
@@ -474,6 +474,15 @@ if(BUILD_TESTING)
     set_tests_properties(yuengine_backend_material_program_binary_contract PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "ok=true material_program_ok=true original_binary_found=true binary_shader_path_table_ready=true binary_deferred_selector_table_ready=true selected_programs_backed_by_binary_table=true binary_smaa_depth_technique_evidence_ready=true binary_depth_postfilter_evidence_ready=true binary_depth_format_table_evidence_ready=true sampleable_depth_binary_candidate_ready=true selector_control_flow_still_open=true sampleable_depth_selection_still_open=true downstream_draw_present_deferred=true backbuffer_extent_carried=true binary_shader_path_tokens=28 binary_filter_path_tokens=10 binary_deferred_selector_tokens=3 selected_program_binary_path_hits=3 render_mesh_source_markers=1 smaa_binary_depth_tokens=2 depth_texture_name_tokens=2 postfilter_source_markers=1 postfilter_depth_packed_format_hits=1 render_source_markers=6 render_depth_format_tokens=6 rsm_depth_binary_tokens=2 preserved_depth_texture_bindings=1 preserved_material_program_bindings=38 draw_present_capture_records_deferred=124 backbuffer_width=1280 backbuffer_height=720 resolved_binary_material_program_contracts=9 tracked_binary_material_program_obligations=4 open_binary_material_program_obligations=4;binary_selector_summary.*binary_shader_path_tokens.: 28.*binary_deferred_selector_tokens.: 3.*selected_program_binary_path_hits.: 3;binary_depth_summary.*smaa_binary_depth_tokens.: 2.*postfilter_depth_packed_format_hits.: 1.*render_depth_format_tokens.: 6.*rsm_depth_binary_tokens.: 2;binary_deferred_selector_table.*contract_ready;sampleable_depth_binary_candidate.*contract_ready;exact_selector_control_flow.*tracked_open;sampleable_depth_runtime_selection.*tracked_open;draw_present_capture_after_binary_evidence.*tracked_open"
+    )
+
+    add_test(
+        NAME yuengine_backend_material_program_binary_dispatch_contract
+        COMMAND yuengine_cli backend-material-program-binary-dispatch samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_backend_material_program_binary_dispatch_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true binary_material_program_ok=true original_binary_found=true pe_image_ready=true pe_section_table_ready=true pe_pdata_ready=true binary_string_direct_xref_probe_ready=true selector_direct_xrefs_absent=true selector_function_table_still_open=true depth_adjacent_function_table_ready=true rsm_depth_function_table_ready=true sampleable_depth_dispatch_table_candidate_ready=true d3d_import_table_ready=true d3d_import_direct_calls_absent=true d3d_dispatch_wrapper_still_open=true exact_selector_control_flow_still_open=true sampleable_depth_runtime_selection_still_open=true downstream_draw_present_deferred=true backbuffer_extent_carried=true pe_sections=8 pe_executable_sections=2 pdata_function_entries=20225 binary_probe_tokens=9 binary_probe_tokens_found=9 binary_string_direct_xref_hits=0 selector_direct_xref_hits=0 depth_packed_table_valid_pointers=24 depth_packed_table_text_pointers=20 depth_packed_table_pdata_resolved_functions=9 depth_packed_table_exact_function_starts=9 rsm_depth_table_valid_pointers=6 rsm_depth_table_text_pointers=5 rsm_depth_table_pdata_resolved_functions=5 rsm_depth_table_exact_function_starts=5 d3d_import_probe_records=5 d3d_imports_found=5 d3d_direct_iat_call_hits=0 preserved_depth_texture_bindings=1 preserved_material_program_bindings=38 draw_present_capture_records_deferred=124 backbuffer_width=1280 backbuffer_height=720 resolved_binary_dispatch_contracts=10 tracked_binary_dispatch_obligations=5 open_binary_dispatch_obligations=5;pe_summary.*pe_sections.: 8.*pdata_function_entries.: 20225;xref_summary.*binary_string_direct_xref_hits.: 0.*selector_direct_xref_hits.: 0;dispatch_table_summary.*depth_packed_table_valid_pointers.: 24.*depth_packed_table_pdata_resolved_functions.: 9.*rsm_depth_table_valid_pointers.: 6.*rsm_depth_table_pdata_resolved_functions.: 5;d3d_import_summary.*d3d_import_probe_records.: 5.*d3d_imports_found.: 5.*d3d_direct_iat_call_hits.: 0;sampleable_depth_dispatch_table_candidate.*contract_ready;exact_selector_control_flow.*tracked_open;d3d_effect_texture_dispatch_wrapper.*tracked_open;draw_present_capture_after_dispatch_probe.*tracked_open"
     )
 
     add_test(

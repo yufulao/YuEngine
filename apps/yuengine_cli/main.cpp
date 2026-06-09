@@ -67,6 +67,7 @@ void usage()
               << "  yuengine_cli backend-font-atlas <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-material-program <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-material-program-binary <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli backend-material-program-binary-dispatch <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli runtime-contract-suite <project.json> [--repo-root <path>] [--filter <test-name>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
@@ -1040,6 +1041,51 @@ int runRuntimeContractSuite(
         requireContract(errors, report.openBinaryMaterialProgramObligations == 4, "binary material program open obligation count changed");
     });
 
+    runContractSuiteCheck(suite, "yuengine_backend_material_program_binary_dispatch_contract", filter, [&](auto& errors) {
+        const auto report = yu::runtime::runBackendMaterialProgramBinaryDispatchRuntime(manifestPath, repoRoot);
+        requireContract(errors, report.ok, "binary material program dispatch report is not ok");
+        requireContract(errors, report.binaryMaterialProgramOk, "binary material program upstream not ready");
+        requireContract(errors, report.originalBinaryFound, "original game binary was not found");
+        requireContract(errors, report.peImageReady, "PE image layout not ready");
+        requireContract(errors, report.peSectionTableReady, "PE section table not ready");
+        requireContract(errors, report.pePdataReady, "PE pdata function ranges not ready");
+        requireContract(errors, report.binaryStringDirectXrefProbeReady, "binary string direct-xref probe not ready");
+        requireContract(errors, report.selectorDirectXrefsAbsent, "selector direct-xref absence not preserved");
+        requireContract(errors, report.selectorFunctionTableStillOpen, "selector function-table gap not tracked");
+        requireContract(errors, report.depthAdjacentFunctionTableReady, "depth adjacent function table not ready");
+        requireContract(errors, report.rsmDepthFunctionTableReady, "RSM depth function table not ready");
+        requireContract(errors, report.sampleableDepthDispatchTableCandidateReady, "sampleable depth dispatch candidate not ready");
+        requireContract(errors, report.d3dImportTableReady, "D3D/D3DX import table not ready");
+        requireContract(errors, report.d3dImportDirectCallsAbsent, "D3D/D3DX direct IAT call absence not preserved");
+        requireContract(errors, report.d3dDispatchWrapperStillOpen, "D3D/D3DX dispatch wrapper gap not tracked");
+        requireContract(errors, report.exactSelectorControlFlowStillOpen, "exact selector CFG gap not tracked");
+        requireContract(errors, report.sampleableDepthRuntimeSelectionStillOpen, "sampleable depth runtime gap not tracked");
+        requireContract(errors, report.downstreamDrawPresentDeferred, "downstream draw/present was not deferred");
+        requireContract(errors, report.peSections == 8, "PE section count changed");
+        requireContract(errors, report.peExecutableSections == 2, "PE executable section count changed");
+        requireContract(errors, report.pdataFunctionEntries == 20225, "pdata function entry count changed");
+        requireContract(errors, report.binaryProbeTokens == 9, "binary probe token count changed");
+        requireContract(errors, report.binaryProbeTokensFound == 9, "binary probe token found count changed");
+        requireContract(errors, report.binaryStringDirectXrefHits == 0, "binary string direct-xref hits changed");
+        requireContract(errors, report.selectorDirectXrefHits == 0, "selector direct-xref hits changed");
+        requireContract(errors, report.depthPackedTableValidPointers == 24, "depth packed table pointer count changed");
+        requireContract(errors, report.depthPackedTableTextPointers == 20, "depth packed text pointer count changed");
+        requireContract(errors, report.depthPackedTablePdataResolvedFunctions == 9, "depth packed pdata function count changed");
+        requireContract(errors, report.depthPackedTableExactFunctionStarts == 9, "depth packed exact function start count changed");
+        requireContract(errors, report.rsmDepthTableValidPointers == 6, "RSM depth pointer count changed");
+        requireContract(errors, report.rsmDepthTableTextPointers == 5, "RSM depth text pointer count changed");
+        requireContract(errors, report.rsmDepthTablePdataResolvedFunctions == 5, "RSM depth pdata function count changed");
+        requireContract(errors, report.rsmDepthTableExactFunctionStarts == 5, "RSM depth exact function start count changed");
+        requireContract(errors, report.d3dImportProbeRecords == 5, "D3D/D3DX import probe count changed");
+        requireContract(errors, report.d3dImportsFound == 5, "D3D/D3DX imports found count changed");
+        requireContract(errors, report.d3dDirectIatCallHits == 0, "D3D/D3DX direct IAT call hits changed");
+        requireContract(errors, report.preservedDepthTextureBindings == 1, "preserved depth binding count changed");
+        requireContract(errors, report.preservedMaterialProgramBindings == 38, "preserved material program binding count changed");
+        requireContract(errors, report.resolvedBinaryDispatchContracts == 10, "binary dispatch resolved contract count changed");
+        requireContract(errors, report.trackedBinaryDispatchObligations == 5, "binary dispatch tracked obligation count changed");
+        requireContract(errors, report.openBinaryDispatchObligations == 5, "binary dispatch open obligation count changed");
+    });
+
     runContractSuiteCheck(suite, "yuengine_mission_event_thread_contract", filter, [&](auto& errors) {
         const auto report = yu::runtime::runMissionEventThreadRuntime(manifestPath, repoRoot);
         requireContract(errors, report.ok && report.sceneRuntimeOk, "mission event thread report is not ok");
@@ -1262,6 +1308,12 @@ int main(int argc, char** argv)
         if (command == "backend-material-program-binary") {
             auto report = yu::runtime::runBackendMaterialProgramBinaryRuntime(manifest, repoRoot);
             std::cout << yu::runtime::backendMaterialProgramBinaryRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "backend-material-program-binary-dispatch") {
+            auto report =
+                yu::runtime::runBackendMaterialProgramBinaryDispatchRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendMaterialProgramBinaryDispatchRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "runtime-contract-suite") {
