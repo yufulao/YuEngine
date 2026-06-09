@@ -38,6 +38,17 @@ target_include_directories(YuMemory
         src/yuengine/memory/include
 )
 
+add_library(YuThread
+    src/yuengine/thread/src/BoundedTaskQueue.cpp
+    src/yuengine/thread/src/InlineTaskExecutor.cpp
+)
+yuengine_apply_compile_options(YuThread)
+target_include_directories(YuThread
+    PUBLIC
+        src/yuengine/thread/include
+)
+target_link_libraries(YuThread PUBLIC YuMemory)
+
 add_library(YuPlatform
     src/yuengine/platform/src/FixedFrameClock.cpp
     src/yuengine/platform/src/HeadlessHost.cpp
@@ -108,3 +119,19 @@ add_test(NAME Memory_TrackerRejectsUnmatchedFree COMMAND YuMemoryTests Memory_Tr
 add_test(NAME Memory_TrackerRecordsBudgetClass COMMAND YuMemoryTests Memory_TrackerRecordsBudgetClass)
 add_test(NAME Memory_DisabledTracker_DoesNotChangeBehavior COMMAND YuMemoryTests Memory_DisabledTracker_DoesNotChangeBehavior)
 add_test(NAME Memory_HotPathBudget_FailsOnTrackedAllocation COMMAND YuMemoryTests Memory_HotPathBudget_FailsOnTrackedAllocation)
+
+add_executable(YuThreadTests
+    tests/thread/ThreadTestContext.cpp
+    tests/thread/ThreadTests.cpp
+)
+yuengine_apply_compile_options(YuThreadTests)
+target_link_libraries(YuThreadTests PRIVATE YuThread)
+add_test(NAME Thread_QueueEnqueueWithinCapacity_Succeeds COMMAND YuThreadTests Thread_QueueEnqueueWithinCapacity_Succeeds)
+add_test(NAME Thread_QueueEnqueueBeyondCapacity_Rejects COMMAND YuThreadTests Thread_QueueEnqueueBeyondCapacity_Rejects)
+add_test(NAME Thread_DrainExecutesTasks_InDeterministicOrder COMMAND YuThreadTests Thread_DrainExecutesTasks_InDeterministicOrder)
+add_test(NAME Thread_TaskFailure_ReturnsFailedResult COMMAND YuThreadTests Thread_TaskFailure_ReturnsFailedResult)
+add_test(NAME Thread_ShutdownRejectsNewSubmission COMMAND YuThreadTests Thread_ShutdownRejectsNewSubmission)
+add_test(NAME Thread_ShutdownDrainPolicy_ExecutesQueuedTasks COMMAND YuThreadTests Thread_ShutdownDrainPolicy_ExecutesQueuedTasks)
+add_test(NAME Thread_ShutdownCancelPolicy_CancelsQueuedTasks COMMAND YuThreadTests Thread_ShutdownCancelPolicy_CancelsQueuedTasks)
+add_test(NAME Thread_QueueCapacity_DoesNotGrowDuringFixture COMMAND YuThreadTests Thread_QueueCapacity_DoesNotGrowDuringFixture)
+add_test(NAME Thread_DiagnosticsDisabled_DoesNotChangeBehavior COMMAND YuThreadTests Thread_DiagnosticsDisabled_DoesNotChangeBehavior)

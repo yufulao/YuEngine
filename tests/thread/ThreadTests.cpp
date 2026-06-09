@@ -1,0 +1,423 @@
+#include <cstddef>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#include "ThreadTestContext.h"
+#include "yuengine/memory/CountingMemoryTracker.h"
+#include "yuengine/memory/DisabledMemoryTracker.h"
+#include "yuengine/thread/BoundedTaskQueue.h"
+#include "yuengine/thread/InlineTaskExecutor.h"
+
+using BoundedTaskQueue = yuengine::thread::BoundedTaskQueue;
+using CountingMemoryTracker = yuengine::memory::CountingMemoryTracker;
+using DisabledMemoryTracker = yuengine::memory::DisabledMemoryTracker;
+using InlineTaskExecutor = yuengine::thread::InlineTaskExecutor;
+using ShutdownPolicy = yuengine::thread::ShutdownPolicy;
+using TaskStatus = yuengine::thread::TaskStatus;
+using ThreadTestContext = yuengine::thread::tests::ThreadTestContext;
+
+namespace
+{
+constexpr const char* TEST_ENQUEUE_SUCCEEDS = "Thread_QueueEnqueueWithinCapacity_Succeeds";
+constexpr const char* TEST_ENQUEUE_REJECTS = "Thread_QueueEnqueueBeyondCapacity_Rejects";
+constexpr const char* TEST_FIFO = "Thread_DrainExecutesTasks_InDeterministicOrder";
+constexpr const char* TEST_FAILURE = "Thread_TaskFailure_ReturnsFailedResult";
+constexpr const char* TEST_SHUTDOWN_REJECTS = "Thread_ShutdownRejectsNewSubmission";
+constexpr const char* TEST_SHUTDOWN_DRAIN = "Thread_ShutdownDrainPolicy_ExecutesQueuedTasks";
+constexpr const char* TEST_SHUTDOWN_CANCEL = "Thread_ShutdownCancelPolicy_CancelsQueuedTasks";
+constexpr const char* TEST_CAPACITY = "Thread_QueueCapacity_DoesNotGrowDuringFixture";
+constexpr const char* TEST_DIAGNOSTICS_DISABLED = "Thread_DiagnosticsDisabled_DoesNotChangeBehavior";
+constexpr std::size_t SMALL_CAPACITY = 2U;
+constexpr std::size_t LARGE_CAPACITY = 4U;
+constexpr int FIRST_VALUE = 10;
+constexpr int SECOND_VALUE = 20;
+constexpr int THIRD_VALUE = 30;
+
+int Fail(const std::string& message)
+{
+    std::cerr << message << '\n';
+    return 1;
+}
+
+TaskStatus RecordTask(void* context)
+{
+    ThreadTestContext* taskContext = static_cast<ThreadTestContext*>(context);
+    taskContext->Trace->push_back(taskContext->Value);
+
+    if (taskContext->ShouldFail)
+    {
+        return TaskStatus::Failed;
+    }
+
+    return TaskStatus::Completed;
+}
+
+int ThreadQueueEnqueueWithinCapacitySucceeds()
+{
+    DisabledMemoryTracker memoryTracker;
+    BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
+    std::vector<int> trace;
+    ThreadTestContext context{&trace, FIRST_VALUE, false};
+
+    if (queue.Snapshot().MaxQueueDepth != 0U)
+    {
+        return Fail("initial max queue depth was not zero");
+    }
+
+    const auto result = queue.Submit(&RecordTask, &context);
+    if (result.Status != TaskStatus::Queued)
+    {
+        return Fail("submit within capacity did not queue task");
+    }
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.SubmittedCount != 1U)
+    {
+        return Fail("submitted count did not increment");
+    }
+
+    if (snapshot.PendingCount != 1U)
+    {
+        return Fail("pending count did not increment");
+    }
+
+    if (snapshot.MaxQueueDepth != 1U)
+    {
+        return Fail("max queue depth did not track submitted task");
+    }
+
+    return 0;
+}
+
+int ThreadQueueEnqueueBeyondCapacityRejects()
+{
+    DisabledMemoryTracker memoryTracker;
+    BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
+    std::vector<int> trace;
+    ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
+    ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
+    ThreadTestContext thirdContext{&trace, THIRD_VALUE, false};
+
+    queue.Submit(&RecordTask, &firstContext);
+    queue.Submit(&RecordTask, &secondContext);
+
+    const auto rejectedResult = queue.Submit(&RecordTask, &thirdContext);
+    if (rejectedResult.Status != TaskStatus::Rejected)
+    {
+        return Fail("submit beyond capacity was not rejected");
+    }
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.RejectedCount != 1U)
+    {
+        return Fail("rejected count did not increment");
+    }
+
+    if (snapshot.PendingCount != SMALL_CAPACITY)
+    {
+        return Fail("overflow changed pending count");
+    }
+
+    return 0;
+}
+
+int ThreadDrainExecutesTasksInDeterministicOrder()
+{
+    DisabledMemoryTracker memoryTracker;
+    BoundedTaskQueue queue(LARGE_CAPACITY, memoryTracker);
+    InlineTaskExecutor executor;
+    std::vector<int> trace;
+    ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
+    ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
+    ThreadTestContext thirdContext{&trace, THIRD_VALUE, false};
+
+    queue.Submit(&RecordTask, &firstContext);
+    queue.Submit(&RecordTask, &secondContext);
+    queue.Submit(&RecordTask, &thirdContext);
+
+    const auto drainResult = queue.Drain(executor);
+    if (drainResult.Status != TaskStatus::Completed)
+    {
+        return Fail("drain did not complete");
+    }
+
+    const std::vector<int> expectedTrace{FIRST_VALUE, SECOND_VALUE, THIRD_VALUE};
+    if (trace != expectedTrace)
+    {
+        return Fail("drain order was not FIFO");
+    }
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.ExecutedCount != 3U)
+    {
+        return Fail("executed count was wrong");
+    }
+
+    if (snapshot.PendingCount != 0U)
+    {
+        return Fail("drain left pending tasks");
+    }
+
+    return 0;
+}
+
+int ThreadTaskFailureReturnsFailedResult()
+{
+    DisabledMemoryTracker memoryTracker;
+    BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
+    InlineTaskExecutor executor;
+    std::vector<int> trace;
+    ThreadTestContext context{&trace, FIRST_VALUE, true};
+
+    queue.Submit(&RecordTask, &context);
+
+    const auto drainResult = queue.Drain(executor);
+    if (drainResult.Status != TaskStatus::Failed)
+    {
+        return Fail("failed task did not return failed drain result");
+    }
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.FailedCount != 1U)
+    {
+        return Fail("failed count did not increment");
+    }
+
+    if (snapshot.ExecutedCount != 1U)
+    {
+        return Fail("failed task did not execute exactly once");
+    }
+
+    return 0;
+}
+
+int ThreadShutdownRejectsNewSubmission()
+{
+    DisabledMemoryTracker memoryTracker;
+    BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
+    InlineTaskExecutor executor;
+    std::vector<int> trace;
+    ThreadTestContext context{&trace, FIRST_VALUE, false};
+
+    queue.Shutdown(ShutdownPolicy::DrainQueued, executor);
+
+    const auto submitResult = queue.Submit(&RecordTask, &context);
+    if (submitResult.Status != TaskStatus::Rejected)
+    {
+        return Fail("submit after shutdown was not rejected");
+    }
+
+    const auto snapshot = queue.Snapshot();
+    if (!snapshot.IsShutdown)
+    {
+        return Fail("shutdown state was not recorded");
+    }
+
+    if (snapshot.RejectedCount != 1U)
+    {
+        return Fail("shutdown rejection count was wrong");
+    }
+
+    return 0;
+}
+
+int ThreadShutdownDrainPolicyExecutesQueuedTasks()
+{
+    DisabledMemoryTracker memoryTracker;
+    BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
+    InlineTaskExecutor executor;
+    std::vector<int> trace;
+    ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
+    ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
+
+    queue.Submit(&RecordTask, &firstContext);
+    queue.Submit(&RecordTask, &secondContext);
+
+    const auto shutdownResult = queue.Shutdown(ShutdownPolicy::DrainQueued, executor);
+    if (shutdownResult.Status != TaskStatus::Completed)
+    {
+        return Fail("drain shutdown did not complete");
+    }
+
+    const std::vector<int> expectedTrace{FIRST_VALUE, SECOND_VALUE};
+    if (trace != expectedTrace)
+    {
+        return Fail("drain shutdown did not execute queued tasks");
+    }
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.PendingCount != 0U)
+    {
+        return Fail("drain shutdown left pending tasks");
+    }
+
+    return 0;
+}
+
+int ThreadShutdownCancelPolicyCancelsQueuedTasks()
+{
+    DisabledMemoryTracker memoryTracker;
+    BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
+    InlineTaskExecutor executor;
+    std::vector<int> trace;
+    ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
+    ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
+
+    queue.Submit(&RecordTask, &firstContext);
+    queue.Submit(&RecordTask, &secondContext);
+
+    const auto shutdownResult = queue.Shutdown(ShutdownPolicy::CancelQueued, executor);
+    if (shutdownResult.Status != TaskStatus::Canceled)
+    {
+        return Fail("cancel shutdown did not return canceled");
+    }
+
+    if (!trace.empty())
+    {
+        return Fail("cancel shutdown executed a queued task");
+    }
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.CanceledCount != 2U)
+    {
+        return Fail("cancel count was wrong");
+    }
+
+    if (snapshot.PendingCount != 0U)
+    {
+        return Fail("cancel shutdown left pending tasks");
+    }
+
+    return 0;
+}
+
+int ThreadQueueCapacityDoesNotGrowDuringFixture()
+{
+    CountingMemoryTracker memoryTracker;
+    BoundedTaskQueue queue(LARGE_CAPACITY, memoryTracker);
+    InlineTaskExecutor executor;
+    std::vector<int> trace;
+    ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
+    ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
+
+    const std::size_t capacityBefore = queue.Capacity();
+    queue.Submit(&RecordTask, &firstContext);
+    queue.Submit(&RecordTask, &secondContext);
+    queue.Drain(executor);
+
+    const auto snapshot = queue.Snapshot();
+    if (capacityBefore != LARGE_CAPACITY)
+    {
+        return Fail("queue setup capacity was unexpected");
+    }
+
+    if (snapshot.CapacityBeforeFixture != snapshot.CapacityAfterLastDrain)
+    {
+        return Fail("queue capacity changed during fixture");
+    }
+
+    if (snapshot.TaskExecutionAllocationCount != 0U)
+    {
+        return Fail("task execution recorded tracked job allocations");
+    }
+
+    return 0;
+}
+
+int ThreadDiagnosticsDisabledDoesNotChangeBehavior()
+{
+    DisabledMemoryTracker enabledLikeMemoryTracker;
+    BoundedTaskQueue enabledLikeQueue(SMALL_CAPACITY, enabledLikeMemoryTracker);
+    InlineTaskExecutor enabledLikeExecutor;
+    std::vector<int> enabledLikeTrace;
+    ThreadTestContext enabledLikeContext{&enabledLikeTrace, FIRST_VALUE, false};
+
+    enabledLikeQueue.Submit(&RecordTask, &enabledLikeContext);
+    enabledLikeQueue.Drain(enabledLikeExecutor);
+
+    DisabledMemoryTracker disabledMemoryTracker;
+    BoundedTaskQueue disabledQueue(SMALL_CAPACITY, disabledMemoryTracker);
+    InlineTaskExecutor disabledExecutor;
+    std::vector<int> disabledTrace;
+    ThreadTestContext disabledContext{&disabledTrace, FIRST_VALUE, false};
+
+    disabledQueue.Submit(&RecordTask, &disabledContext);
+    disabledQueue.Drain(disabledExecutor);
+
+    if (enabledLikeTrace != disabledTrace)
+    {
+        return Fail("diagnostics-disabled fixture changed task behavior");
+    }
+
+    const auto enabledLikeSnapshot = enabledLikeQueue.Snapshot();
+    const auto disabledSnapshot = disabledQueue.Snapshot();
+    if (enabledLikeSnapshot.ExecutedCount != disabledSnapshot.ExecutedCount)
+    {
+        return Fail("diagnostics-disabled fixture changed executed count");
+    }
+
+    if (enabledLikeSnapshot.FailedCount != disabledSnapshot.FailedCount)
+    {
+        return Fail("diagnostics-disabled fixture changed failed count");
+    }
+
+    return 0;
+}
+}
+
+int main(int argc, char** argv)
+{
+    if (argc != 2)
+    {
+        return Fail("expected one test name");
+    }
+
+    const std::string testName(argv[1]);
+    if (testName == TEST_ENQUEUE_SUCCEEDS)
+    {
+        return ThreadQueueEnqueueWithinCapacitySucceeds();
+    }
+
+    if (testName == TEST_ENQUEUE_REJECTS)
+    {
+        return ThreadQueueEnqueueBeyondCapacityRejects();
+    }
+
+    if (testName == TEST_FIFO)
+    {
+        return ThreadDrainExecutesTasksInDeterministicOrder();
+    }
+
+    if (testName == TEST_FAILURE)
+    {
+        return ThreadTaskFailureReturnsFailedResult();
+    }
+
+    if (testName == TEST_SHUTDOWN_REJECTS)
+    {
+        return ThreadShutdownRejectsNewSubmission();
+    }
+
+    if (testName == TEST_SHUTDOWN_DRAIN)
+    {
+        return ThreadShutdownDrainPolicyExecutesQueuedTasks();
+    }
+
+    if (testName == TEST_SHUTDOWN_CANCEL)
+    {
+        return ThreadShutdownCancelPolicyCancelsQueuedTasks();
+    }
+
+    if (testName == TEST_CAPACITY)
+    {
+        return ThreadQueueCapacityDoesNotGrowDuringFixture();
+    }
+
+    if (testName == TEST_DIAGNOSTICS_DISABLED)
+    {
+        return ThreadDiagnosticsDisabledDoesNotChangeBehavior();
+    }
+
+    return Fail("unknown test name");
+}
