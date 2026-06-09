@@ -41,6 +41,7 @@ void usage()
               << "  yuengine_cli scene-runtime <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli first-frame <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli title-ui <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli title-branches <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli script <project.json> <module>\n"
@@ -347,6 +348,11 @@ int main(int argc, char** argv)
         if (command == "title-ui") {
             auto report = yu::runtime::runTitleUiRuntime(manifest, repoRoot);
             std::cout << yu::runtime::titleUiRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "title-branches") {
+            auto report = yu::runtime::runTitleBranchesRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::titleBranchesRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "mission-event-thread") {

@@ -154,13 +154,16 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
     if (mutation.service == "Save/Profile/Scenario Service") {
         if (mutation.action == "query_empty_save_list") {
             ++runtimeState_.saveProfileScenario.emptySaveListQueries;
-            runtimeState_.saveProfileScenario.saveListEntries = 0;
+            runtimeState_.saveProfileScenario.saveListEntries =
+                mutation.value.find("entries=0") == std::string::npos ? 1 : 0;
         } else if (mutation.action == "save_list_count") {
             ++runtimeState_.saveProfileScenario.saveListCountQueries;
         } else if (mutation.action == "save_list_get") {
             ++runtimeState_.saveProfileScenario.saveListGetQueries;
         } else if (mutation.action == "save_entry_active") {
             ++runtimeState_.saveProfileScenario.saveEntryActiveQueries;
+        } else if (mutation.action == "save_capacity_query") {
+            ++runtimeState_.saveProfileScenario.saveCapacityQueries;
         } else if (mutation.action == "query_scenario_keys") {
             ++runtimeState_.saveProfileScenario.scenarioKeyQueries;
         } else if (mutation.action == "scenario_key_count") {
@@ -178,6 +181,9 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
             ++runtimeState_.saveProfileScenario.makeNewGameCommands;
             runtimeState_.saveProfileScenario.currentMissionKey = valueAfterPrefix(mutation.value, "scenario_key=");
             runtimeState_.saveProfileScenario.currentMission = valueAfterPrefix(mutation.value, "mission=");
+        } else if (mutation.action == "load_auto_save") {
+            ++runtimeState_.saveProfileScenario.loadAutoSaveCommands;
+            runtimeState_.saveProfileScenario.lastAutoSaveLoaded = mutation.value;
         } else if (mutation.action == "start_game") {
             ++runtimeState_.saveProfileScenario.startGameCommands;
             runtimeState_.saveProfileScenario.startedMission = valueAfterPrefix(mutation.value, "mission=");
@@ -192,6 +198,14 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
     if (mutation.service == "Platform Service") {
         if (mutation.action == "reset_menu_button_holding_times") {
             ++runtimeState_.platform.resetMenuButtonHoldingTimesCommands;
+        } else if (mutation.action == "shutdown_permission") {
+            ++runtimeState_.platform.shutdownPermissionQueries;
+            runtimeState_.platform.shutdownPermission = mutation.value;
+            runtimeState_.platform.flags[mutation.api] = mutation.value;
+        } else if (mutation.action == "shutdown_game") {
+            ++runtimeState_.platform.shutdownGameCommands;
+            runtimeState_.platform.shutdownRequested = mutation.value;
+            runtimeState_.platform.flags[mutation.api] = mutation.value;
         } else {
             runtimeState_.platform.flags[mutation.api] = mutation.value;
         }
@@ -528,18 +542,27 @@ std::string nativeRuntimeServiceStateToJson(const NativeRuntimeServiceState& sta
     out << "\"save_list_get_queries\": " << state.saveProfileScenario.saveListGetQueries << ", ";
     out << "\"save_entry_active_queries\": " << state.saveProfileScenario.saveEntryActiveQueries << ", ";
     out << "\"save_list_entries\": " << state.saveProfileScenario.saveListEntries << ", ";
+    out << "\"save_capacity_queries\": " << state.saveProfileScenario.saveCapacityQueries << ", ";
     out << "\"scenario_key_queries\": " << state.saveProfileScenario.scenarioKeyQueries << ", ";
     out << "\"scenario_key_count_queries\": " << state.saveProfileScenario.scenarioKeyCountQueries << ", ";
     out << "\"scenario_key_get_queries\": " << state.saveProfileScenario.scenarioKeyGetQueries << ", ";
     out << "\"make_new_game_commands\": " << state.saveProfileScenario.makeNewGameCommands << ", ";
+    out << "\"load_auto_save_commands\": " << state.saveProfileScenario.loadAutoSaveCommands << ", ";
     out << "\"start_game_commands\": " << state.saveProfileScenario.startGameCommands << ", ";
     out << "\"current_mission_key\": \"" << core::jsonEscape(state.saveProfileScenario.currentMissionKey) << "\", ";
     out << "\"current_mission\": \"" << core::jsonEscape(state.saveProfileScenario.currentMission) << "\", ";
     out << "\"started_mission\": \"" << core::jsonEscape(state.saveProfileScenario.startedMission) << "\", ";
     out << "\"difficulty_mode\": \"" << core::jsonEscape(state.saveProfileScenario.difficultyMode) << "\", ";
-    out << "\"start_new_game\": \"" << core::jsonEscape(state.saveProfileScenario.startNewGame) << "\"}, ";
+    out << "\"start_new_game\": \"" << core::jsonEscape(state.saveProfileScenario.startNewGame) << "\", ";
+    out << "\"last_auto_save_loaded\": \""
+        << core::jsonEscape(state.saveProfileScenario.lastAutoSaveLoaded) << "\"}, ";
     out << "\"platform\": {\"reset_menu_button_holding_times_commands\": "
-        << state.platform.resetMenuButtonHoldingTimesCommands << ", \"flags\": ";
+        << state.platform.resetMenuButtonHoldingTimesCommands
+        << ", \"shutdown_permission_queries\": " << state.platform.shutdownPermissionQueries
+        << ", \"shutdown_game_commands\": " << state.platform.shutdownGameCommands
+        << ", \"shutdown_permission\": \"" << core::jsonEscape(state.platform.shutdownPermission)
+        << "\", \"shutdown_requested\": \"" << core::jsonEscape(state.platform.shutdownRequested)
+        << "\", \"flags\": ";
     writeStringMap(out, state.platform.flags);
     out << "}, ";
     out << "\"audio\": {\"play_bgm_commands\": " << state.audio.playBgmCommands

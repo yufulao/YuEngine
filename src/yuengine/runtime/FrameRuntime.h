@@ -93,6 +93,59 @@ struct TitleUiRuntimeReport {
     std::string lastCommand;
 };
 
+struct TitleBranchScenarioReport {
+    std::string scenario;
+    bool entryFound = false;
+    bool executed = false;
+    int menuSelectedIndex = 0;
+    int scriptFunctions = 0;
+    int scriptMethods = 0;
+    int nativeObligations = 0;
+    int uniqueNativeApis = 0;
+    int serviceStateEvents = 0;
+    int saveServiceQueries = 0;
+    int platformStateQueries = 0;
+    int audioServiceCommands = 0;
+    int sceneServiceCommands = 0;
+    int uiServiceCommands = 0;
+    int uiObjectMutations = 0;
+    int unresolvedCalls = 0;
+    bool truncated = false;
+    int saveListEntries = 0;
+    int saveCapacityQueries = 0;
+    int scenarioKeyGetQueries = 0;
+    int makeNewGameCommands = 0;
+    int loadAutoSaveCommands = 0;
+    int startGameCommands = 0;
+    int queuedStageLoads = 0;
+    int shutdownPermissionQueries = 0;
+    int shutdownGameCommands = 0;
+    std::string startedMission;
+    std::string startNewGame;
+    std::string lastAutoSaveLoaded;
+    std::string shutdownPermission;
+    std::string shutdownRequested;
+};
+
+struct TitleBranchesRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    std::string module;
+    std::string entryFunction;
+    int scenarioCount = 0;
+    int executedScenarios = 0;
+    int unresolvedCalls = 0;
+    bool truncated = false;
+    int startGameScenarios = 0;
+    int loadAutoSaveScenarios = 0;
+    int makeNewGameScenarios = 0;
+    int shutdownPermissionScenarios = 0;
+    int shutdownGameScenarios = 0;
+    int optionUiMutations = 0;
+    std::vector<TitleBranchScenarioReport> scenarios;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -188,6 +241,12 @@ TitleUiRuntimeReport runTitleUiRuntime(
     const std::filesystem::path& repoRoot);
 
 std::string titleUiRuntimeReportToJson(const TitleUiRuntimeReport& report);
+
+TitleBranchesRuntimeReport runTitleBranchesRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string titleBranchesRuntimeReportToJson(const TitleBranchesRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

@@ -617,9 +617,10 @@ Additional engine hardening:
 
 Next edge:
 
-- continue immediately into L14 save/load/continue/options branch coverage;
-- preserve L13 title UI command payloads as the regression gate for any menu branch change;
-- start L15 gameplay-frame work once branch service state can feed actor/camera/input/event.
+- continue immediately into L15 gameplay-frame work using title branch, scene, actor, camera,
+  input, event, and UI service state;
+- preserve L13 title UI command payloads and L14 title branch matrix as regression gates;
+- begin L16 renderer/backend command buffer work when it can consume these service contracts.
 
 ### L13: Script-Driven Title UI Command Payload Contract
 
@@ -653,13 +654,15 @@ Boundary:
 
 ### L14: Save/Load/Continue/Options Branch Contract
 
-Status: active after L13.
+Status: completed as title branch matrix contract on 2026-06-09.
 
 Deliver:
 
-- execute original title bytecode branches for Continue, Load/Overwrite, Options, and Exit where
-  platform policy allows;
-- expand Save/Profile/Scenario Service return schemas beyond the current empty/new-game path;
+- execute original title bytecode branches for Continue disabled, Continue, New Game, Load empty,
+  Load, Option, Exit denied, and Exit allowed;
+- expand Save/Profile/Scenario Service state for save-list entries, autosave load, capacity query,
+  MakeNewGame, StartGame, and queued stage load;
+- expand Platform Service state for CanShutdown and ShutdownGame;
 - keep Steam/login/entitlement as replaceable Platform Service state, not bypass logic.
 
 Acceptance:
@@ -667,11 +670,22 @@ Acceptance:
 - no fake save menu state;
 - branch transitions and enabled/disabled states are driven by title scripts and service inputs;
 - every unsupported platform/save behavior is an explicit runtime obligation.
+- metrics: `scenario_count=8`, `executed_scenarios=8`, `start_game_scenarios=3`,
+  `load_auto_save_scenarios=2`, `make_new_game_scenarios=1`,
+  `shutdown_permission_scenarios=2`, `shutdown_game_scenarios=1`,
+  `option_ui_mutations=2`, `unresolved_calls=0`, `truncated=false`.
+
+Boundary:
+
+- Continue/Load currently prove autosave-load branch reachability and StartGame/scene queue
+  side effects; their `StartGame` argument shape is preserved as recovered runtime evidence, not
+  forced into New Game's mission-label schema;
+- this is still not a real save browser, save serializer, or interactive menu backend;
+- branch contracts must feed L15 gameplay-frame state rather than becoming a stopping point.
 
 ### L15: Gameplay Frame Update Loop Contract
 
-Status: queued after L14 has enough branch/service state, but renderer/input/event pieces can
-advance in parallel if they consume existing scene-runtime and title-ui payloads.
+Status: active after L14.
 
 Deliver:
 

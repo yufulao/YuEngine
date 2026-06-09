@@ -81,8 +81,8 @@ payload.
 
 ## Next Edges
 
-- L14: execute Continue, Load/Overwrite, Options, and Exit title branches through original
-  bytecode and service inputs.
+- L14 has since executed Continue, New Game, Load, Option, and Exit title branches through
+  original bytecode and service inputs.
 - L15: join title/scene/actor/camera/input/event service state into a repeated gameplay-frame
   update contract.
 - L16: build a backend-facing renderer command buffer that consumes both title UI payloads and

@@ -26,6 +26,12 @@ void addError(TitleUiRuntimeReport& report, const std::string& message)
     report.errors.push_back(message);
 }
 
+void addError(TitleBranchesRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -115,6 +121,63 @@ int uiCommandContainsCount(const native::UiRender2dRuntimeState& uiState, const 
 bool uiCommandContains(const native::UiRender2dRuntimeState& uiState, const std::string& needle)
 {
     return uiCommandContainsCount(uiState, needle) > 0;
+}
+
+std::vector<std::string> titleBranchScenarios()
+{
+    return {
+        "title-continue-disabled",
+        "title-continue",
+        "title-new-game",
+        "title-load-empty",
+        "title-load",
+        "title-option",
+        "title-exit-denied",
+        "title-exit-allowed",
+    };
+}
+
+script::ScriptRunOptions titleBranchOptions(const std::string& scenario)
+{
+    script::ScriptRunOptions options;
+    options.frames = 5;
+    options.inputScenario = scenario;
+    if (scenario == "title-continue-disabled") {
+        options.menuSelectedIndex = 0;
+        options.menuDecide = true;
+        options.saveListEmpty = true;
+        options.continueDisabled = true;
+    } else if (scenario == "title-continue") {
+        options.menuSelectedIndex = 0;
+        options.menuDecide = true;
+        options.saveListEmpty = false;
+        options.continueDisabled = false;
+    } else if (scenario == "title-new-game") {
+        options.menuSelectedIndex = 1;
+        options.menuDecide = true;
+    } else if (scenario == "title-load-empty") {
+        options.menuSelectedIndex = 2;
+        options.menuDecide = true;
+        options.saveListEmpty = true;
+    } else if (scenario == "title-load") {
+        options.menuSelectedIndex = 2;
+        options.menuDecide = true;
+        options.saveListEmpty = false;
+    } else if (scenario == "title-option") {
+        options.menuSelectedIndex = 3;
+        options.menuDecide = true;
+    } else if (scenario == "title-exit-denied") {
+        options.menuSelectedIndex = 4;
+        options.menuDecide = true;
+        options.canShutdown = false;
+    } else if (scenario == "title-exit-allowed") {
+        options.menuSelectedIndex = 4;
+        options.menuDecide = true;
+        options.canShutdown = true;
+    } else {
+        throw std::runtime_error("unknown title branch scenario: " + scenario);
+    }
+    return options;
 }
 
 } // namespace
@@ -395,6 +458,236 @@ std::string titleUiRuntimeReportToJson(const TitleUiRuntimeReport& report)
         << ", \"background_resource_bound\": " << (report.backgroundResourceBound ? "true" : "false")
         << ", \"logo_resource_bound\": " << (report.logoResourceBound ? "true" : "false")
         << ", \"last_command\": \"" << core::jsonEscape(report.lastCommand) << "\"}\n";
+    out << "}\n";
+    return out.str();
+}
+
+TitleBranchesRuntimeReport runTitleBranchesRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    TitleBranchesRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        report.projectId = manifest.projectId;
+
+        const auto modulePath = script::resolveScriptModule(scriptRoots(manifest), manifest.startup.entryModule);
+        if (modulePath.empty()) {
+            addError(report, "title entry script module not found: " + manifest.startup.entryModule);
+            return report;
+        }
+
+        native::NativeRegistry registry;
+        registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
+
+        const auto module = script::loadSqasmModule(modulePath);
+        const auto baselineModules = loadStartupBaselineModules(manifest, manifest.startup.entryModule);
+        report.module = module.path.generic_string();
+        report.entryFunction = manifest.startup.entryFunction;
+
+        const auto scenarios = titleBranchScenarios();
+        report.scenarioCount = static_cast<int>(scenarios.size());
+        for (const auto& scenario : scenarios) {
+            native::NativeServiceCatalog catalog;
+            const auto options = titleBranchOptions(scenario);
+            const auto execution =
+                script::runEntryScript(module, baselineModules, report.entryFunction, registry, catalog, options);
+            const auto& state = catalog.runtimeState();
+
+            TitleBranchScenarioReport branch;
+            branch.scenario = scenario;
+            branch.entryFound = execution.entryFound;
+            branch.executed = execution.executed;
+            branch.menuSelectedIndex = options.menuSelectedIndex;
+            branch.scriptFunctions = execution.scriptFunctions;
+            branch.scriptMethods = execution.scriptMethods;
+            branch.nativeObligations = execution.nativeObligations;
+            branch.uniqueNativeApis = uniqueNativeApiCount(execution);
+            branch.serviceStateEvents = execution.serviceStateEventCount;
+            branch.saveServiceQueries = execution.saveServiceQueries;
+            branch.platformStateQueries = execution.platformStateQueries;
+            branch.audioServiceCommands = execution.audioServiceCommands;
+            branch.sceneServiceCommands = execution.sceneServiceCommands;
+            branch.uiServiceCommands = execution.uiServiceCommands;
+            branch.uiObjectMutations = execution.uiObjectMutations;
+            branch.unresolvedCalls = execution.unresolvedCalls;
+            branch.truncated = execution.truncated;
+            branch.saveListEntries = state.saveProfileScenario.saveListEntries;
+            branch.saveCapacityQueries = state.saveProfileScenario.saveCapacityQueries;
+            branch.scenarioKeyGetQueries = state.saveProfileScenario.scenarioKeyGetQueries;
+            branch.makeNewGameCommands = state.saveProfileScenario.makeNewGameCommands;
+            branch.loadAutoSaveCommands = state.saveProfileScenario.loadAutoSaveCommands;
+            branch.startGameCommands = state.saveProfileScenario.startGameCommands;
+            branch.queuedStageLoads = state.sceneStage.queuedStageLoads;
+            branch.shutdownPermissionQueries = state.platform.shutdownPermissionQueries;
+            branch.shutdownGameCommands = state.platform.shutdownGameCommands;
+            branch.startedMission = state.saveProfileScenario.startedMission;
+            branch.startNewGame = state.saveProfileScenario.startNewGame;
+            branch.lastAutoSaveLoaded = state.saveProfileScenario.lastAutoSaveLoaded;
+            branch.shutdownPermission = state.platform.shutdownPermission;
+            branch.shutdownRequested = state.platform.shutdownRequested;
+
+            if (branch.executed) {
+                ++report.executedScenarios;
+            }
+            report.unresolvedCalls += branch.unresolvedCalls;
+            report.truncated = report.truncated || branch.truncated;
+            if (branch.startGameCommands > 0) {
+                ++report.startGameScenarios;
+            }
+            if (branch.loadAutoSaveCommands > 0) {
+                ++report.loadAutoSaveScenarios;
+            }
+            if (branch.makeNewGameCommands > 0) {
+                ++report.makeNewGameScenarios;
+            }
+            if ((scenario == "title-exit-denied" || scenario == "title-exit-allowed")
+                && branch.shutdownPermissionQueries > 0) {
+                ++report.shutdownPermissionScenarios;
+            }
+            if (branch.shutdownGameCommands > 0) {
+                ++report.shutdownGameScenarios;
+            }
+            if (scenario == "title-option") {
+                report.optionUiMutations = branch.uiObjectMutations;
+            }
+
+            if (!branch.entryFound || !branch.executed) {
+                addError(report, scenario + " did not execute");
+            }
+            if (branch.unresolvedCalls != 0) {
+                addError(report, scenario + " has unresolved calls");
+            }
+            if (branch.truncated) {
+                addError(report, scenario + " execution truncated");
+            }
+
+            if (scenario == "title-continue-disabled") {
+                if (branch.saveListEntries != 0 || branch.loadAutoSaveCommands != 0
+                    || branch.startGameCommands != 0) {
+                    addError(report, "disabled Continue branch started gameplay or exposed saves");
+                }
+            } else if (scenario == "title-continue") {
+                if (branch.saveListEntries < 1 || branch.loadAutoSaveCommands < 1
+                    || branch.startGameCommands < 1 || branch.queuedStageLoads < 1) {
+                    addError(report, "Continue branch did not load autosave and start existing game");
+                }
+            } else if (scenario == "title-new-game") {
+                if (branch.scenarioKeyGetQueries < 1 || branch.saveCapacityQueries < 1
+                    || branch.makeNewGameCommands < 1 || branch.startGameCommands < 1
+                    || branch.startNewGame != "true" || branch.queuedStageLoads < 1) {
+                    addError(report, "New Game branch did not create and start a new game");
+                }
+            } else if (scenario == "title-load-empty") {
+                if (branch.saveListEntries != 0 || branch.loadAutoSaveCommands != 0
+                    || branch.startGameCommands != 0) {
+                    addError(report, "empty Load branch started gameplay or exposed saves");
+                }
+            } else if (scenario == "title-load") {
+                if (branch.saveListEntries < 1 || branch.loadAutoSaveCommands < 1
+                    || branch.startGameCommands < 1 || branch.queuedStageLoads < 1) {
+                    addError(report, "Load branch did not load autosave and start existing game");
+                }
+            } else if (scenario == "title-option") {
+                if (branch.uiObjectMutations < 2 || branch.startGameCommands != 0
+                    || branch.shutdownGameCommands != 0) {
+                    addError(report, "Option branch did not stay inside menu UI state");
+                }
+            } else if (scenario == "title-exit-denied") {
+                if (branch.shutdownPermissionQueries < 1 || branch.shutdownPermission != "false"
+                    || branch.shutdownGameCommands != 0) {
+                    addError(report, "Exit denied branch did not respect platform shutdown policy");
+                }
+            } else if (scenario == "title-exit-allowed") {
+                if (branch.shutdownPermissionQueries < 1 || branch.shutdownPermission != "true"
+                    || branch.shutdownGameCommands < 1) {
+                    addError(report, "Exit allowed branch did not request ShutdownGame");
+                }
+            }
+
+            report.scenarios.push_back(std::move(branch));
+        }
+
+        if (report.executedScenarios != report.scenarioCount) {
+            addError(report, "not all title branch scenarios executed");
+        }
+        if (report.startGameScenarios < 3 || report.loadAutoSaveScenarios < 2
+            || report.makeNewGameScenarios < 1) {
+            addError(report, "save/new-game/load branch coverage is incomplete");
+        }
+        if (report.shutdownPermissionScenarios < 2 || report.shutdownGameScenarios != 1) {
+            addError(report, "exit branch coverage is incomplete");
+        }
+        if (report.optionUiMutations < 2) {
+            addError(report, "option branch UI state mutation coverage is incomplete");
+        }
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string titleBranchesRuntimeReportToJson(const TitleBranchesRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.title_branches_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " scenario_count=" << report.scenarioCount
+        << " executed_scenarios=" << report.executedScenarios
+        << " start_game_scenarios=" << report.startGameScenarios
+        << " load_auto_save_scenarios=" << report.loadAutoSaveScenarios
+        << " make_new_game_scenarios=" << report.makeNewGameScenarios
+        << " shutdown_permission_scenarios=" << report.shutdownPermissionScenarios
+        << " shutdown_game_scenarios=" << report.shutdownGameScenarios
+        << " option_ui_mutations=" << report.optionUiMutations
+        << " unresolved_calls=" << report.unresolvedCalls
+        << " truncated=" << (report.truncated ? "true" : "false") << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"script\": {";
+    out << "\"module\": \"" << core::jsonEscape(report.module)
+        << "\", \"entry_function\": \"" << core::jsonEscape(report.entryFunction) << "\"},\n";
+    out << "  \"scenarios\": [\n";
+    for (size_t i = 0; i < report.scenarios.size(); ++i) {
+        const auto& branch = report.scenarios[i];
+        out << "    {\"scenario\": \"" << core::jsonEscape(branch.scenario)
+            << "\", \"entry_found\": " << (branch.entryFound ? "true" : "false")
+            << ", \"executed\": " << (branch.executed ? "true" : "false")
+            << ", \"menu_selected_index\": " << branch.menuSelectedIndex
+            << ", \"script_functions\": " << branch.scriptFunctions
+            << ", \"script_methods\": " << branch.scriptMethods
+            << ", \"native_obligations\": " << branch.nativeObligations
+            << ", \"unique_native_apis\": " << branch.uniqueNativeApis
+            << ", \"service_state_events\": " << branch.serviceStateEvents
+            << ", \"save_service_queries\": " << branch.saveServiceQueries
+            << ", \"platform_state_queries\": " << branch.platformStateQueries
+            << ", \"audio_service_commands\": " << branch.audioServiceCommands
+            << ", \"scene_service_commands\": " << branch.sceneServiceCommands
+            << ", \"ui_service_commands\": " << branch.uiServiceCommands
+            << ", \"ui_object_mutations\": " << branch.uiObjectMutations
+            << ", \"save_list_entries\": " << branch.saveListEntries
+            << ", \"save_capacity_queries\": " << branch.saveCapacityQueries
+            << ", \"scenario_key_get_queries\": " << branch.scenarioKeyGetQueries
+            << ", \"make_new_game_commands\": " << branch.makeNewGameCommands
+            << ", \"load_auto_save_commands\": " << branch.loadAutoSaveCommands
+            << ", \"start_game_commands\": " << branch.startGameCommands
+            << ", \"queued_stage_loads\": " << branch.queuedStageLoads
+            << ", \"shutdown_permission_queries\": " << branch.shutdownPermissionQueries
+            << ", \"shutdown_game_commands\": " << branch.shutdownGameCommands
+            << ", \"started_mission\": \"" << core::jsonEscape(branch.startedMission)
+            << "\", \"start_new_game\": \"" << core::jsonEscape(branch.startNewGame)
+            << "\", \"last_auto_save_loaded\": \"" << core::jsonEscape(branch.lastAutoSaveLoaded)
+            << "\", \"shutdown_permission\": \"" << core::jsonEscape(branch.shutdownPermission)
+            << "\", \"shutdown_requested\": \"" << core::jsonEscape(branch.shutdownRequested)
+            << "\", \"unresolved_calls\": " << branch.unresolvedCalls
+            << ", \"truncated\": " << (branch.truncated ? "true" : "false") << "}";
+        out << (i + 1 == report.scenarios.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
     out << "}\n";
     return out.str();
 }

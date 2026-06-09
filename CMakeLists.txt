@@ -185,6 +185,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_title_branches_runtime_contract
+        COMMAND yuengine_cli title-branches samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_title_branches_runtime_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true scenario_count=8 executed_scenarios=8 start_game_scenarios=3 load_auto_save_scenarios=2 make_new_game_scenarios=1 shutdown_permission_scenarios=2 shutdown_game_scenarios=1 option_ui_mutations=2 unresolved_calls=0 truncated=false;title-continue.*load_auto_save_commands.: 2.*start_game_commands.: 1.*queued_stage_loads.: 1;title-new-game.*scenario_key_get_queries.: 1.*make_new_game_commands.: 1.*start_game_commands.: 1.*start_new_game.: .true;title-load.*load_auto_save_commands.: 1.*start_game_commands.: 1.*queued_stage_loads.: 1;title-option.*ui_object_mutations.: 2.*start_game_commands.: 0;title-exit-denied.*shutdown_permission.: .false.*shutdown_game_commands.: 0;title-exit-allowed.*shutdown_permission.: .true.*shutdown_game_commands.: 3.*shutdown_requested.: .requested"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )

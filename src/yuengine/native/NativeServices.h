@@ -43,20 +43,27 @@ struct SaveProfileScenarioRuntimeState {
     int saveListGetQueries = 0;
     int saveEntryActiveQueries = 0;
     int saveListEntries = 0;
+    int saveCapacityQueries = 0;
     int scenarioKeyQueries = 0;
     int scenarioKeyCountQueries = 0;
     int scenarioKeyGetQueries = 0;
     int makeNewGameCommands = 0;
+    int loadAutoSaveCommands = 0;
     int startGameCommands = 0;
     std::string currentMissionKey;
     std::string currentMission;
     std::string startedMission;
     std::string difficultyMode;
     std::string startNewGame;
+    std::string lastAutoSaveLoaded;
 };
 
 struct PlatformRuntimeState {
     int resetMenuButtonHoldingTimesCommands = 0;
+    int shutdownPermissionQueries = 0;
+    int shutdownGameCommands = 0;
+    std::string shutdownPermission;
+    std::string shutdownRequested;
     std::map<std::string, std::string> flags;
 };
 

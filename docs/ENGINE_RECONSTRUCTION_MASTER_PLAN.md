@@ -133,11 +133,13 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L13 now executes original `titlemenu.b64.sqasm` setup and render
-paths through `yuengine_cli title-ui`. `renderProc` produces service-owned title UI command
-payloads for background, logo, menu text, drawList rows, text sizing, colors, and graph draws
-with `unresolved_calls=0`. This is still not a playable loop and not a renderer backend; the
-next edges are L14 save/load/continue/options branches and L15 gameplay-frame update loop.
+Current latest checkpoint: L14 now executes the original title branch matrix through
+`yuengine_cli title-branches`: Continue disabled, Continue, New Game, Load empty, Load, Option,
+Exit denied, and Exit allowed. All scenarios execute from original title bytecode with
+`unresolved_calls=0`, and service state records autosave load, MakeNewGame, StartGame,
+CanShutdown, ShutdownGame, and option UI mutation evidence. This is still not a playable loop
+and not a renderer backend; the next edges are L15 gameplay-frame update loop and L16 renderer
+backend submission.
 
 The current route is no longer allowed to stop at menu visuals:
 
