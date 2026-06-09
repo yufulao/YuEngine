@@ -20,6 +20,12 @@ void addError(FirstFrameRuntimeReport& report, const std::string& message)
     report.errors.push_back(message);
 }
 
+void addError(TitleUiRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -91,6 +97,24 @@ int uniqueNativeApiCount(const script::ScriptExecutionReport& report)
         apis.insert(obligation.api);
     }
     return static_cast<int>(apis.size());
+}
+
+int uiCommandContainsCount(const native::UiRender2dRuntimeState& uiState, const std::string& needle)
+{
+    int count = 0;
+    for (const auto& [_, object] : uiState.objects) {
+        for (const auto& command : object.commands) {
+            if (command.find(needle) != std::string::npos) {
+                ++count;
+            }
+        }
+    }
+    return count;
+}
+
+bool uiCommandContains(const native::UiRender2dRuntimeState& uiState, const std::string& needle)
+{
+    return uiCommandContainsCount(uiState, needle) > 0;
 }
 
 } // namespace
@@ -215,6 +239,162 @@ std::string firstFrameRuntimeReportToJson(const FirstFrameRuntimeReport& report)
     out << "\"ready\": " << (report.event.ready ? "true" : "false")
         << ", \"marker\": \"" << core::jsonEscape(report.event.marker)
         << "\", \"event_markers\": " << report.event.eventMarkers << "}\n";
+    out << "}\n";
+    return out.str();
+}
+
+TitleUiRuntimeReport runTitleUiRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    TitleUiRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        report.projectId = manifest.projectId;
+
+        const auto modulePath = script::resolveScriptModule(scriptRoots(manifest), manifest.startup.entryModule);
+        if (modulePath.empty()) {
+            addError(report, "title entry script module not found: " + manifest.startup.entryModule);
+            return report;
+        }
+
+        native::NativeRegistry registry;
+        registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
+        native::NativeServiceCatalog catalog;
+
+        const auto module = script::loadSqasmModule(modulePath);
+        const auto baselineModules = loadStartupBaselineModules(manifest, manifest.startup.entryModule);
+
+        script::ScriptRunOptions options;
+        options.frames = 1;
+        options.renderFrames = 1;
+        options.inputScenario = "passive";
+        options.executeEventSetupScripts = false;
+
+        report.module = module.path.generic_string();
+        report.entryFunction = manifest.startup.entryFunction;
+        const auto execution =
+            script::runEntryScript(module, baselineModules, report.entryFunction, registry, catalog, options);
+        const auto& uiState = catalog.runtimeState().uiRender2d;
+
+        report.titleSetupFound = execution.entryFound;
+        report.titleSetupExecuted = execution.executed;
+        report.scriptStatus = execution.status;
+        report.scriptFunctions = execution.scriptFunctions;
+        report.scriptMethods = execution.scriptMethods;
+        report.nativeObligations = execution.nativeObligations;
+        report.nativeImplementedCalls = execution.nativeImplementedCalls;
+        report.uniqueNativeApis = uniqueNativeApiCount(execution);
+        report.serviceStateEvents = execution.serviceStateEventCount;
+        report.uiObjectCalls = execution.uiObjectCalls;
+        report.uiServiceCommands = execution.uiServiceCommands;
+        report.unresolvedCalls = execution.unresolvedCalls;
+        report.truncated = execution.truncated;
+        report.createdObjects = uiState.createdObjects;
+        report.commandCount = uiState.commandCount;
+        report.drawCommands = uiState.drawCommands;
+        report.graphStringCommands = uiState.graphStringCommands;
+        report.stringSizeQueries = uiState.stringSizeQueries;
+        report.textDrawCommands = uiState.textDrawCommands;
+        report.graphDrawCommands = uiState.graphDrawCommands;
+        report.colorCommands = uiState.colorCommands;
+        report.localizedMenuTextCommands = uiCommandContainsCount(uiState, "localized:menu.");
+        report.drawListItemCommands = uiCommandContainsCount(uiState, "draw_list_item");
+        report.backgroundResourceBound = uiCommandContains(uiState, "menu/title/title_back_sc.dds");
+        report.logoResourceBound = uiCommandContains(uiState, "menu/title/logo_sc.dds");
+        report.lastCommand = uiState.lastCommand;
+        report.titleRenderExecuted = report.commandCount > 0 && report.drawCommands > 0;
+
+        if (!report.titleSetupFound || !report.titleSetupExecuted) {
+            addError(report, "title setup entry did not execute");
+        }
+        if (!report.titleRenderExecuted) {
+            addError(report, "title renderProc did not produce UI commands");
+        }
+        if (report.unresolvedCalls != 0) {
+            addError(report, "title UI flow has unresolved calls");
+        }
+        if (report.truncated) {
+            addError(report, "title UI flow execution truncated");
+        }
+        if (report.createdObjects < 20 || report.commandCount < 50) {
+            addError(report, "title UI object/command payload is incomplete");
+        }
+        if (report.drawCommands < 9 || report.graphDrawCommands < 3 || report.textDrawCommands < 6) {
+            addError(report, "title UI draw command payload is incomplete");
+        }
+        if (report.graphStringCommands < 5 || report.stringSizeQueries < 5 || report.colorCommands < 11) {
+            addError(report, "title UI text/layout/color payload is incomplete");
+        }
+        if (report.localizedMenuTextCommands < 5 || report.drawListItemCommands < 5) {
+            addError(report, "title menu list payload is incomplete");
+        }
+        if (!report.backgroundResourceBound || !report.logoResourceBound) {
+            addError(report, "title background/logo resources are not bound into UI commands");
+        }
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string titleUiRuntimeReportToJson(const TitleUiRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.title_ui_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " title_setup_found=" << (report.titleSetupFound ? "true" : "false")
+        << " title_setup_executed=" << (report.titleSetupExecuted ? "true" : "false")
+        << " title_render_executed=" << (report.titleRenderExecuted ? "true" : "false")
+        << " entry=" << report.entryFunction
+        << " created_objects=" << report.createdObjects
+        << " command_count=" << report.commandCount
+        << " draw_commands=" << report.drawCommands
+        << " graph_string_commands=" << report.graphStringCommands
+        << " string_size_queries=" << report.stringSizeQueries
+        << " text_draw_commands=" << report.textDrawCommands
+        << " graph_draw_commands=" << report.graphDrawCommands
+        << " color_commands=" << report.colorCommands
+        << " localized_menu_text_commands=" << report.localizedMenuTextCommands
+        << " draw_list_item_commands=" << report.drawListItemCommands
+        << " background_resource_bound=" << (report.backgroundResourceBound ? "true" : "false")
+        << " logo_resource_bound=" << (report.logoResourceBound ? "true" : "false")
+        << " unresolved_calls=" << report.unresolvedCalls
+        << " truncated=" << (report.truncated ? "true" : "false") << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"script\": {";
+    out << "\"module\": \"" << core::jsonEscape(report.module)
+        << "\", \"entry_function\": \"" << core::jsonEscape(report.entryFunction)
+        << "\", \"status\": \"" << core::jsonEscape(report.scriptStatus)
+        << "\", \"script_functions\": " << report.scriptFunctions
+        << ", \"script_methods\": " << report.scriptMethods
+        << ", \"native_obligations\": " << report.nativeObligations
+        << ", \"native_implemented_calls\": " << report.nativeImplementedCalls
+        << ", \"unique_native_apis\": " << report.uniqueNativeApis
+        << ", \"service_state_events\": " << report.serviceStateEvents
+        << ", \"ui_object_calls\": " << report.uiObjectCalls
+        << ", \"ui_service_commands\": " << report.uiServiceCommands
+        << ", \"unresolved_calls\": " << report.unresolvedCalls
+        << ", \"truncated\": " << (report.truncated ? "true" : "false") << "},\n";
+    out << "  \"ui_render_2d\": {";
+    out << "\"created_objects\": " << report.createdObjects
+        << ", \"command_count\": " << report.commandCount
+        << ", \"draw_commands\": " << report.drawCommands
+        << ", \"graph_string_commands\": " << report.graphStringCommands
+        << ", \"string_size_queries\": " << report.stringSizeQueries
+        << ", \"text_draw_commands\": " << report.textDrawCommands
+        << ", \"graph_draw_commands\": " << report.graphDrawCommands
+        << ", \"color_commands\": " << report.colorCommands
+        << ", \"localized_menu_text_commands\": " << report.localizedMenuTextCommands
+        << ", \"draw_list_item_commands\": " << report.drawListItemCommands
+        << ", \"background_resource_bound\": " << (report.backgroundResourceBound ? "true" : "false")
+        << ", \"logo_resource_bound\": " << (report.logoResourceBound ? "true" : "false")
+        << ", \"last_command\": \"" << core::jsonEscape(report.lastCommand) << "\"}\n";
     out << "}\n";
     return out.str();
 }

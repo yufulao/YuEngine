@@ -454,6 +454,28 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
         }
 
         ++runtimeState_.uiRender2d.commandCount;
+        if (mutation.action == "graph_string") {
+            ++runtimeState_.uiRender2d.graphStringCommands;
+        } else if (mutation.action == "string_size_query") {
+            ++runtimeState_.uiRender2d.stringSizeQueries;
+        } else if (mutation.action == "draw_string" || mutation.action == "draw_string_align_right"
+            || mutation.action == "draw_string_menu") {
+            ++runtimeState_.uiRender2d.drawCommands;
+            ++runtimeState_.uiRender2d.textDrawCommands;
+        } else if (mutation.action == "draw_frame") {
+            ++runtimeState_.uiRender2d.drawCommands;
+            ++runtimeState_.uiRender2d.frameDrawCommands;
+        } else if (mutation.action == "draw_rect" || mutation.action == "draw_rect_menu") {
+            ++runtimeState_.uiRender2d.drawCommands;
+            ++runtimeState_.uiRender2d.rectDrawCommands;
+        } else if (mutation.action == "draw_graph") {
+            ++runtimeState_.uiRender2d.drawCommands;
+            ++runtimeState_.uiRender2d.graphDrawCommands;
+        } else if (mutation.action == "color") {
+            ++runtimeState_.uiRender2d.colorCommands;
+        }
+        runtimeState_.uiRender2d.lastCommand =
+            mutation.api + ":" + mutation.action + "=" + mutation.value;
         auto& object = ensureUiObject(runtimeState_, mutation.target.empty() ? "<unknown_ui_target>" : mutation.target);
         appendUiCommand(object, mutation.api + ":" + mutation.action + "=" + mutation.value);
         return;
@@ -629,7 +651,17 @@ std::string nativeRuntimeServiceStateToJson(const NativeRuntimeServiceState& sta
         << "\", \"last_dialog_text\": \"" << core::jsonEscape(state.eventQuestFlag.lastDialogText)
         << "\"}, ";
     out << "\"ui_render_2d\": {\"created_objects\": " << state.uiRender2d.createdObjects
-        << ", \"command_count\": " << state.uiRender2d.commandCount << ", \"objects\": [";
+        << ", \"command_count\": " << state.uiRender2d.commandCount
+        << ", \"draw_commands\": " << state.uiRender2d.drawCommands
+        << ", \"graph_string_commands\": " << state.uiRender2d.graphStringCommands
+        << ", \"string_size_queries\": " << state.uiRender2d.stringSizeQueries
+        << ", \"text_draw_commands\": " << state.uiRender2d.textDrawCommands
+        << ", \"frame_draw_commands\": " << state.uiRender2d.frameDrawCommands
+        << ", \"rect_draw_commands\": " << state.uiRender2d.rectDrawCommands
+        << ", \"graph_draw_commands\": " << state.uiRender2d.graphDrawCommands
+        << ", \"color_commands\": " << state.uiRender2d.colorCommands
+        << ", \"last_command\": \"" << core::jsonEscape(state.uiRender2d.lastCommand)
+        << "\", \"objects\": [";
     size_t index = 0;
     for (const auto& [name, object] : state.uiRender2d.objects) {
         out << (index++ == 0 ? "" : ", ") << "{\"name\": \"" << core::jsonEscape(name)

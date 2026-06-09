@@ -87,9 +87,10 @@ It does not implement:
 - real renderer/audio backend submission;
 - save/load/options branches beyond the current new-game path.
 
-The next edge is L13: script-driven title UI command payloads. Continue using original bytecode,
+L13 has since added script-driven title UI command payloads. Continue using original bytecode,
 VFS resources, and service-owned command buffers; do not replace the title menu with a hand-written
-screen or stop at a diagnostic report.
+screen or stop at a diagnostic report. The next active edges are L14 save/load/continue/options
+branch coverage and L15 gameplay-frame update contracts.
 
 ## Verification
 

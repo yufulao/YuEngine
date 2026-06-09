@@ -617,30 +617,43 @@ Additional engine hardening:
 
 Next edge:
 
-- continue immediately into L13 script-driven title UI command payloads;
-- bind title menu background/logo/font/string/menu resources through VFS;
-- turn UI/native draw calls into service-owned command buffers, not a hand-written menu.
+- continue immediately into L14 save/load/continue/options branch coverage;
+- preserve L13 title UI command payloads as the regression gate for any menu branch change;
+- start L15 gameplay-frame work once branch service state can feed actor/camera/input/event.
 
 ### L13: Script-Driven Title UI Command Payload Contract
 
-Status: active after L12.
+Status: completed as title/menu render command payload on 2026-06-09.
 
 Deliver:
 
-- convert title UI object calls into renderable UI command payloads;
-- bind original title background/logo/font/string/menu resources through VFS;
-- cover `GraphString`, `MenuObject`, `DrawString`, `DrawFrameUsual`, `DrawRectUsual`,
-  `GetStringSize`, and related UI APIs with service-owned state.
+- `yuengine_cli title-ui` executes original `script/menu/titlemenu.b64.sqasm` setup/render;
+- `ScriptRunOptions.renderFrames` drives original `renderProc` after setup/main state;
+- `ScrollWindow.drawList` materializes recovered per-row `MenuObject` instances and invokes the
+  original callback, rather than drawing a replacement menu;
+- title background/logo/menu text/text-size/color/graph calls are recorded in
+  UI And 2D Render Service command state;
+- `yuengine_title_ui_command_payload_contract` guards the command payload.
 
 Acceptance:
 
 - no hand-written title menu;
 - title menu layout and selectable state come from original title bytecode and UI service payload;
-- command buffers are regression-tested and do not regress title/new-game script flow.
+- command buffers are regression-tested and do not regress title/new-game script flow;
+- metrics: `created_objects=26`, `command_count=55`, `draw_commands=9`,
+  `graph_string_commands=5`, `string_size_queries=5`, `text_draw_commands=6`,
+  `graph_draw_commands=3`, `color_commands=11`, `draw_list_item_commands=5`,
+  `background_resource_bound=true`, `logo_resource_bound=true`, `unresolved_calls=0`.
+
+Boundary:
+
+- this is not a renderer backend or a playable menu;
+- UI global/native obligations remain behavior specs until backend submission is implemented;
+- next work must use this payload for branch/UI/backend progress, not replace it.
 
 ### L14: Save/Load/Continue/Options Branch Contract
 
-Status: queued after L13 or parallel in save-scenario lane.
+Status: active after L13.
 
 Deliver:
 
@@ -657,7 +670,8 @@ Acceptance:
 
 ### L15: Gameplay Frame Update Loop Contract
 
-Status: queued after L11-L14 have enough service state.
+Status: queued after L14 has enough branch/service state, but renderer/input/event pieces can
+advance in parallel if they consume existing scene-runtime and title-ui payloads.
 
 Deliver:
 
@@ -671,6 +685,25 @@ Acceptance:
 - no blue-screen, mesh-only, or T-pose completion claim;
 - frame state is sourced from project/VFS/script/native services;
 - residual mismatches are named and become the next loop, not hidden.
+
+### L16: Renderer/Backend Submission Contract
+
+Status: queued after L13, can advance in parallel with L14/L15 if it consumes existing contracts.
+
+Deliver:
+
+- consume title UI command payloads and scene-runtime mesh/material/texture handles through a
+  backend-ready renderer command buffer;
+- keep D3D9-compatible concepts where the original evidence implies them, but do not hard-code
+  a blue screen or mesh preview as completion;
+- connect renderer output to project/runtime lifecycle and service-owned state.
+
+Acceptance:
+
+- title background/logo/text draw commands and scene mesh/material commands are both present in
+  one backend-facing frame contract;
+- no renderer path bypasses project.json, VFS, original scripts, or Native Service state;
+- unsupported shader/effect/material semantics remain explicit obligations.
 
 ## Stop Conditions
 

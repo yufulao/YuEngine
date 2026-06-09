@@ -133,9 +133,18 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L12 now executes the original first mission tutorial branch
-`threadEvent0020_00` through `yuengine_cli mission-tutorial`, and executes `updateUnits` as the
-first mission business-state update edge. Tutorial actor/page creation, scheduler push/wait,
-dialog lifecycle, current-player queries, event flag add, marker placement, player-control
-recovery, and transition lifecycle are recorded in service-owned state with `unresolved_calls=0`.
-This is still not a playable loop; the next edge is L13 script-driven title UI command payloads.
+Current latest checkpoint: L13 now executes original `titlemenu.b64.sqasm` setup and render
+paths through `yuengine_cli title-ui`. `renderProc` produces service-owned title UI command
+payloads for background, logo, menu text, drawList rows, text sizing, colors, and graph draws
+with `unresolved_calls=0`. This is still not a playable loop and not a renderer backend; the
+next edges are L14 save/load/continue/options branches and L15 gameplay-frame update loop.
+
+The current route is no longer allowed to stop at menu visuals:
+
+```text
+original title bytecode
+-> UI command payload
+-> save/load/options branch behavior
+-> scene/actor/camera/input/event frame state
+-> renderer/audio/save backend submission
+```

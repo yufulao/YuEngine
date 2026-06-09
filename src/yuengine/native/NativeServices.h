@@ -187,6 +187,15 @@ struct UiRuntimeObjectState {
 struct UiRender2dRuntimeState {
     int createdObjects = 0;
     int commandCount = 0;
+    int drawCommands = 0;
+    int graphStringCommands = 0;
+    int stringSizeQueries = 0;
+    int textDrawCommands = 0;
+    int frameDrawCommands = 0;
+    int rectDrawCommands = 0;
+    int graphDrawCommands = 0;
+    int colorCommands = 0;
+    std::string lastCommand;
     std::map<std::string, UiRuntimeObjectState> objects;
 };
 

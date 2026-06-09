@@ -1366,11 +1366,17 @@ bool isScriptFieldReceiver(const std::string& receiver)
 bool isUiObjectMethod(const std::string& name)
 {
     static const std::set<std::string> methods = {
+        "absPos",
         "bl",
+        "drawRect",
+        "drawString",
+        "getLayerFont",
         "init",
         "renderHorizontal",
         "setParent",
         "setSelectCursor",
+        "toAbsPos",
+        "toFadeInColor",
         "tr",
     };
     return methods.find(name) != methods.end();
@@ -1379,6 +1385,7 @@ bool isUiObjectMethod(const std::string& name)
 bool isRuntimeOwnedScriptMethod(const std::string& name)
 {
     static const std::set<std::string> methods = {
+        "drawList",
         "getDrawEnd",
         "init",
         "move",
@@ -1395,9 +1402,11 @@ bool isRuntimeOwnedScriptMethod(const std::string& name)
 bool isValueHelperCall(const std::string& name)
 {
     static const std::set<std::string> helpers = {
+        "GraphParam",
         "centerPos",
         "float2",
         "float3",
+        "toSize",
         "Vec3",
     };
     return helpers.find(name) != helpers.end();
@@ -1455,6 +1464,52 @@ bool isThreadSchedulerRuntimeMethod(const std::string& name)
 bool isMessageLocalizationRuntimeMethod(const std::string& name)
 {
     return name == "dlg" || name == "get";
+}
+
+bool isUiRenderRuntimeGlobal(const std::string& name)
+{
+    static const std::set<std::string> methods = {
+        "ColorFloat",
+        "DrawFrameUsual",
+        "DrawGraph",
+        "DrawRect4Menu",
+        "DrawRectUsual",
+        "DrawString",
+        "DrawString4Menu",
+        "DrawStringAlignRight",
+        "GetStringSize",
+        "GraphString",
+        "limitFontScale",
+    };
+    return methods.find(name) != methods.end();
+}
+
+bool isTitleMenuRootMethod(const std::string& receiver, const std::string& name)
+{
+    if (receiver == "gMenu") {
+        static const std::set<std::string> methods = {
+            "alphaColor",
+            "centerX",
+            "drawArrowCursor",
+            "drawGraph",
+            "drawRect",
+            "drawString",
+            "drawVersion",
+            "getUiColor",
+            "loadGraphHandle",
+            "mlGet",
+        };
+        return methods.find(name) != methods.end();
+    }
+    if (receiver == "th") {
+        static const std::set<std::string> methods = {
+            "drawMenuButton",
+            "getBlinkSign",
+            "makeLangPath",
+        };
+        return methods.find(name) != methods.end();
+    }
+    return false;
 }
 
 bool isTutorialDemoRuntimeMethod(const std::string& name)
@@ -1692,6 +1747,11 @@ public:
             executeGlobalFunctionSlot("main", 0);
             traceScript("frame main complete " + std::to_string(frame));
         }
+        for (int frame = 0; frame < options_.renderFrames; ++frame) {
+            traceScript("frame render begin " + std::to_string(frame));
+            executeGlobalFunctionSlot("renderProc", 0);
+            traceScript("frame render complete " + std::to_string(frame));
+        }
 
         report.constructedObjects = static_cast<int>(report.constructedObjectDetails.size());
         report.executed = true;
@@ -1712,6 +1772,7 @@ private:
         out << "{";
         out << "\"scenario\": \"" << core::jsonEscape(options_.inputScenario) << "\", ";
         out << "\"menu_selected_index\": " << options_.menuSelectedIndex << ", ";
+        out << "\"render_frames\": " << options_.renderFrames << ", ";
         out << "\"menu_decide\": " << (options_.menuDecide ? "true" : "false") << ", ";
         out << "\"menu_down\": " << (options_.menuDown ? "true" : "false") << ", ";
         out << "\"menu_up\": " << (options_.menuUp ? "true" : "false") << ", ";
@@ -2045,7 +2106,7 @@ private:
         if (hasClass(methodBindings_, keyText)) {
             return classValue(keyText);
         }
-        if (registry_.find(keyText) || isValueHelperCall(keyText)) {
+        if (registry_.find(keyText) || isValueHelperCall(keyText) || isUiRenderRuntimeGlobal(keyText)) {
             return nativeFunctionValue(keyText);
         }
         if (isSquirrelValueMethod(keyText)) {
@@ -2157,6 +2218,28 @@ private:
                 if (field != table->second.fields.end()) {
                     return field->second;
                 }
+            }
+            const std::string rootReceiver = rootObjectReceiverForValue(target);
+            if (rootReceiver == "gMenu") {
+                if (keyText == "bottomLayer") {
+                    return intValue(-10);
+                }
+                if (keyText == "windowSize") {
+                    return vector2Value("gMenu.windowSize(1280,720)");
+                }
+                if (keyText == "safePos") {
+                    return vector2Value("gMenu.safePos(0,0)");
+                }
+                if (keyText == "white" || keyText == "black" || keyText == "grey" || keyText == "orange"
+                    || keyText == "fontLight" || keyText == "fontHelp") {
+                    return expressionValue("gMenu." + keyText);
+                }
+                if (keyText == "fontBaseSize") {
+                    return intValue(22);
+                }
+            }
+            if (rootReceiver == "gText") {
+                return stringValue("gText." + keyText);
             }
             const std::string eventRoot = eventRootNameForTable(target.tableId);
             if (!eventRoot.empty() && keyText == "eventMap") {
@@ -2556,6 +2639,111 @@ private:
             }
         };
 
+        if (callable.receiver == "th" && name == "makeLangPath") {
+            const std::string stem = arguments.empty() ? "unknown" : argumentValueText(arguments.front());
+            const bool languageVariant = arguments.size() > 1
+                && arguments[1].kind == ScriptValueKind::Bool && arguments[1].boolValue;
+            std::string path = stem;
+            if (languageVariant) {
+                path += "_sc";
+            }
+            if (path.rfind("HUD/", 0) != 0 && path.rfind("hud/", 0) != 0
+                && path.find('.') == std::string::npos) {
+                path += ".dds";
+            }
+            recordServiceState("Resource Service", name, "resolve_language_resource", "th",
+                "path=" + path, function, instruction,
+                "title/menu script resolves language-specific texture paths through th.makeLangPath",
+                argsText);
+            return recordTypedReturn(stringValue(path));
+        }
+        if (callable.receiver == "th" && name == "getBlinkSign") {
+            recordServiceState("Script Service", name, "blink_sign_query", "th",
+                argsText.empty() ? "blink=1" : argsText, function, instruction,
+                "title/menu UI queries deterministic blink phase for cursor and new-label animation",
+                argsText);
+            return recordTypedReturn(floatValue(1.0));
+        }
+        if (callable.receiver == "th" && name == "drawMenuButton") {
+            recordServiceState("UI And 2D Render Service", name, "draw_menu_button", "ui.menu_button",
+                argsText.empty() ? "arguments_empty" : argsText, function, instruction,
+                "title/menu helper draws original button glyphs through UI command payloads",
+                argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (callable.receiver == "gMenu" && name == "mlGet") {
+            const std::string textId = arguments.empty() ? "unknown" : argumentValueText(arguments.front());
+            recordServiceState("Script Service", name, "menu_text_lookup", "gMenu",
+                "text=" + textId, function, instruction,
+                "title/menu script resolves gText ids through original gMenu.mlGet helper",
+                argsText);
+            return recordTypedReturn(stringValue("localized:" + textId));
+        }
+        if (callable.receiver == "gMenu" && name == "getUiColor") {
+            recordServiceState("UI And 2D Render Service", name, "ui_color_query", "gMenu",
+                argsText.empty() ? "ui_color" : argsText, function, instruction,
+                "title/menu script resolves palette colors for UI command payloads",
+                argsText);
+            return recordTypedReturn(expressionValue("ui_color(" + positionalArgsText + ")"));
+        }
+        if (callable.receiver == "gMenu" && name == "alphaColor") {
+            recordServiceState("UI And 2D Render Service", name, "alpha_color", "gMenu",
+                argsText.empty() ? "alpha_color" : argsText, function, instruction,
+                "title/menu script applies alpha to a palette color before draw submission",
+                argsText);
+            return recordTypedReturn(expressionValue("alpha_color(" + positionalArgsText + ")"));
+        }
+        if (callable.receiver == "gMenu" && name == "centerX") {
+            recordServiceState("UI And 2D Render Service", name, "layout_center_x", "gMenu",
+                argsText.empty() ? "center_x" : argsText, function, instruction,
+                "title/menu script computes horizontal center positions for UI layout",
+                argsText);
+            return recordTypedReturn(floatValue(640.0));
+        }
+        if (callable.receiver == "gMenu" && name == "loadGraphHandle") {
+            const std::string path = arguments.empty() ? "unknown" : argumentValueText(arguments.front());
+            recordServiceState("Resource Service", name, "load_graph_handle", "gMenu",
+                "path=" + path, function, instruction,
+                "title/menu script loads texture handles for background/logo/menu graphics",
+                argsText);
+            return recordTypedReturn(expressionValue("graph_handle:" + path));
+        }
+        if (callable.receiver == "gMenu" && name == "drawGraph") {
+            recordServiceState("UI And 2D Render Service", name, "draw_graph", "gMenu",
+                argsText.empty() ? "arguments_empty" : argsText, function, instruction,
+                "title/menu script submits original graph handle draw command payloads",
+                argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (callable.receiver == "gMenu" && name == "drawVersion") {
+            recordServiceState("UI And 2D Render Service", name, "draw_string", "gMenu.version",
+                argsText.empty() ? "version" : argsText, function, instruction,
+                "TitleScene.render draws the original version label before menu/background layers",
+                argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (callable.receiver == "gMenu" && name == "drawString") {
+            recordServiceState("UI And 2D Render Service", name, "draw_string_menu", "gMenu.text",
+                argsText.empty() ? "arguments_empty" : argsText, function, instruction,
+                "title/menu script submits text draw command payloads through gMenu.drawString",
+                argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (callable.receiver == "gMenu" && name == "drawRect") {
+            recordServiceState("UI And 2D Render Service", name, "draw_rect_menu", "gMenu.rect",
+                argsText.empty() ? "arguments_empty" : argsText, function, instruction,
+                "title/menu script submits rectangle draw command payloads through gMenu.drawRect",
+                argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (callable.receiver == "gMenu" && name == "drawArrowCursor") {
+            recordServiceState("UI And 2D Render Service", name, "draw_graph", "gMenu.cursor",
+                argsText.empty() ? "arrow_cursor" : argsText, function, instruction,
+                "title/menu script draws the selected menu cursor through the UI command payload",
+                argsText);
+            return recordTypedReturn(nullValue());
+        }
+
         if (name == "append") {
             const int tableId = tableIdFromText(callable.receiver);
             if (tableId >= 0 && !arguments.empty()) {
@@ -2568,7 +2756,17 @@ private:
             return recordTypedReturn(nullValue());
         }
 
-        if (name == "float2" || name == "centerPos") {
+        if (name == "GraphParam") {
+            const std::string label = positionalArgsText.empty()
+                ? "graph_param@" + std::to_string(instruction.pc)
+                : "graph_param(" + positionalArgsText + ")";
+            recordServiceState("UI And 2D Render Service", name, "graph_param", "ui.graph",
+                label, function, instruction,
+                "GraphParam preserves original texture draw parameters for title/menu UI payloads",
+                argsText);
+            return recordTypedReturn(expressionValue(label));
+        }
+        if (name == "float2" || name == "centerPos" || name == "toSize") {
             const std::string label = positionalArgsText.empty()
                 ? name + "@" + std::to_string(instruction.pc)
                 : name + "(" + positionalArgsText + ")";
@@ -2580,14 +2778,31 @@ private:
                 : name + "(" + positionalArgsText + ")";
             return recordTypedReturn(vector3Value(label));
         }
-        if (name == "toPoint" || name == "toAbsPos" || name == "bl" || name == "tr") {
-            if ((name == "bl" || name == "tr") && callable.kind == ScriptValueKind::UiMethod
+        if (name == "toPoint" || name == "toAbsPos" || name == "absPos" || name == "bl" || name == "tr") {
+            if ((name == "bl" || name == "tr" || name == "absPos" || name == "toAbsPos")
+                && callable.kind == ScriptValueKind::UiMethod
                 && isConcreteReceiver(callable.receiver)) {
                 recordServiceState("UI And 2D Render Service", name, "ui_anchor_query", callable.receiver,
                     name + "(" + callable.receiver + ")", function, instruction,
                     "UI helper anchor query returns a vector used by layout code", argsText);
             }
             return recordTypedReturn(vector2Value(name + "(" + callable.receiver + ")"));
+        }
+        if (options_.renderFrames > 0 && callable.kind == ScriptValueKind::UiMethod
+            && name == "toFadeInColor" && isConcreteReceiver(callable.receiver)) {
+            recordServiceState("UI And 2D Render Service", name, "fade_color", callable.receiver,
+                argsText.empty() ? "fade_color" : argsText, function, instruction,
+                "MenuObject.toFadeInColor preserves per-row fade color state for title/menu draw payloads",
+                argsText);
+            return recordTypedReturn(expressionValue("fade_color(" + callable.receiver + ")"));
+        }
+        if (options_.renderFrames > 0 && callable.kind == ScriptValueKind::UiMethod
+            && name == "drawRect" && isConcreteReceiver(callable.receiver)) {
+            recordServiceState("UI And 2D Render Service", name, "draw_rect_menu", callable.receiver,
+                argsText.empty() ? "arguments_empty" : argsText, function, instruction,
+                "MenuObject.drawRect emitted a script-driven rectangle command payload",
+                argsText);
+            return recordTypedReturn(nullValue());
         }
         if (name == "toVec3") {
             return recordTypedReturn(vector3Value("toVec3(" + callable.receiver + ")"));
@@ -2603,6 +2818,68 @@ private:
             return name == "tofloat"
                 ? recordTypedReturn(floatValue(data))
                 : recordTypedReturn(intValue(static_cast<int>(data)));
+        }
+        if (options_.renderFrames > 0 && name == "ColorFloat") {
+            recordServiceState("UI And 2D Render Service", name, "color", "ui.palette",
+                argsText.empty() ? "color=unknown" : argsText, function, instruction,
+                "ColorFloat produces a UI color payload for script-driven render commands", argsText);
+            return recordTypedReturn(expressionValue("color(" + positionalArgsText + ")"));
+        }
+        if (options_.renderFrames > 0 && name == "GraphString") {
+            recordServiceState("UI And 2D Render Service", name, "graph_string", "ui.text",
+                argsText.empty() ? "text=unknown" : argsText, function, instruction,
+                "GraphString produces a text draw payload from original title/menu bytecode", argsText);
+            return recordTypedReturn(expressionValue("graph_string(" + positionalArgsText + ")"));
+        }
+        if (options_.renderFrames > 0 && name == "GetStringSize") {
+            recordServiceState("UI And 2D Render Service", name, "string_size_query", "ui.text",
+                argsText.empty() ? "text=unknown" : argsText, function, instruction,
+                "GetStringSize contributes layout metrics for script-driven UI command buffers", argsText);
+            return recordTypedReturn(vector2Value("string_size(" + positionalArgsText + ")"));
+        }
+        if (options_.renderFrames > 0 && name == "limitFontScale") {
+            const ScriptValue result = arguments.empty() ? floatValue(1.0) : arguments.front();
+            recordServiceState("UI And 2D Render Service", name, "font_scale_limit", "ui.font",
+                argsText.empty() ? "scale=unknown" : argsText, function, instruction,
+                "limitFontScale preserves title/menu font scale decisions for UI command payloads", argsText);
+            return recordTypedReturn(result);
+        }
+        if (options_.renderFrames > 0 && name == "getLayerFont") {
+            const std::string target = callable.receiver.empty() ? "ui.font" : callable.receiver;
+            recordServiceState("UI And 2D Render Service", name, "font_query", target,
+                argsText.empty() ? "layer_font" : argsText, function, instruction,
+                "getLayerFont resolves a font/layer payload for script-driven UI draw commands", argsText);
+            return recordTypedReturn(expressionValue("layer_font(" + target + ")"));
+        }
+        if (options_.renderFrames > 0 && callable.kind == ScriptValueKind::UiMethod && name == "drawString"
+            && isConcreteReceiver(callable.receiver)) {
+            recordServiceState("UI And 2D Render Service", name, "draw_string_menu", callable.receiver,
+                argsText.empty() ? "arguments_empty" : argsText, function, instruction,
+                "MenuObject.drawString emitted a script-driven text command payload", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (options_.renderFrames > 0
+            && (name == "DrawString" || name == "DrawStringAlignRight" || name == "DrawString4Menu"
+                || name == "DrawFrameUsual" || name == "DrawRectUsual" || name == "DrawRect4Menu"
+                || name == "DrawGraph")) {
+            std::string action = "draw_graph";
+            if (name == "DrawString") {
+                action = "draw_string";
+            } else if (name == "DrawStringAlignRight") {
+                action = "draw_string_align_right";
+            } else if (name == "DrawString4Menu") {
+                action = "draw_string_menu";
+            } else if (name == "DrawFrameUsual") {
+                action = "draw_frame";
+            } else if (name == "DrawRectUsual") {
+                action = "draw_rect";
+            } else if (name == "DrawRect4Menu") {
+                action = "draw_rect_menu";
+            }
+            recordServiceState("UI And 2D Render Service", name, action, "ui.draw",
+                argsText.empty() ? "arguments_empty" : argsText, function, instruction,
+                "original title/menu bytecode emitted a UI draw command payload", argsText);
+            return recordTypedReturn(nullValue());
         }
         if (name == "dlg" || name == "get") {
             if (callable.receiver == "ml" || name == "dlg") {
@@ -3560,6 +3837,64 @@ private:
         if (name.empty()) {
             return {};
         }
+        if (callable.kind == ScriptValueKind::Method && name == "drawList" && !callable.receiver.empty()) {
+            const auto objectClass = objectClasses_.find(callable.receiver);
+            const bool isScrollWindow = objectClass != objectClasses_.end()
+                && (objectClass->second == "ScrollWindow" || objectClass->second == "SaveDataScrollWindow");
+            if (!isScrollWindow) {
+                return {};
+            }
+
+            if (report_) {
+                ++report_->uiObjectCalls;
+            }
+            recordServiceState("UI And 2D Render Service", name, "draw_list", callable.receiver,
+                argumentSummary(arguments).empty() ? "callback=unknown" : argumentSummary(arguments),
+                callerFunction, instruction,
+                "ScrollWindow.drawList is a runtime-owned UI helper that invokes recovered drawElemFunc callbacks",
+                argumentSummary(arguments));
+
+            int drawCount = 5;
+            const ScriptValue elemCount = lookupValue(objectValue(callable.receiver), stringValue("_elemCount"));
+            double elemCountNumber = 0.0;
+            if (numericValue(elemCount, elemCountNumber)) {
+                drawCount = std::max(drawCount, static_cast<int>(elemCountNumber) + 1);
+            }
+            const ScriptValue configuredDrawCount =
+                lookupValue(objectValue(callable.receiver), stringValue("_drawCount"));
+            double drawCountNumber = 0.0;
+            if (numericValue(configuredDrawCount, drawCountNumber) && drawCountNumber > 0.0) {
+                drawCount = std::min(drawCount, static_cast<int>(drawCountNumber));
+            }
+            drawCount = std::clamp(drawCount, 1, 8);
+
+            const ScriptValue callback = arguments.empty() ? unknownValue() : arguments.front();
+            if (callback.kind == ScriptValueKind::Function) {
+                for (int index = 0; index < drawCount; ++index) {
+                    const std::string frameObject = "ui.MenuObject@drawList:"
+                        + std::to_string(instruction.pc) + ":" + std::to_string(index);
+                    ensureRuntimeObject(frameObject, "MenuObject", "ui_object");
+                    materializeClassDefaults(frameObject, "MenuObject");
+                    recordServiceState("UI And 2D Render Service", "MenuObject", "create_ui_object",
+                        frameObject, "MenuObject", callerFunction, instruction,
+                        "ScrollWindow.drawList materializes a per-row MenuObject frame for the recovered callback");
+                    recordServiceState("UI And 2D Render Service", name, "draw_list_item",
+                        frameObject,
+                        "index=" + std::to_string(index)
+                            + "; selected=" + (index == options_.menuSelectedIndex ? "true" : "false"),
+                        callerFunction, instruction,
+                        "ScrollWindow.drawList dispatches a recovered title/menu drawElemFunc row callback");
+                    executeScriptCallableForReturn(
+                        callback,
+                        {intValue(index), objectValue(frameObject), boolValue(index == options_.menuSelectedIndex)},
+                        callerFunction,
+                        instruction,
+                        {},
+                        depth + 1);
+                }
+            }
+            return {true, nullValue()};
+        }
         if (callable.kind == ScriptValueKind::Method
             && (name == "selectCursorY" || name == "selectCursorX" || name == "setSelectCursor"
                 || name == "getDrawEnd" || name == "setFadeIn" || name == "resetAnim" || name == "move")) {
@@ -4228,6 +4563,17 @@ private:
             return;
         }
 
+        if (isUiRenderRuntimeGlobal(call.name)) {
+            if (report_) {
+                ++report_->uiObjectCalls;
+            }
+            recordEvent({"ui_render_runtime_call", function.name, function.ordinal, ownerObject, ownerClass,
+                call.name, receiver, "runtime_owned_ui_render_global", "UI And 2D Render Service",
+                call.sourceLine, call.pc,
+                "UI render helper command was modeled during bytecode execution"});
+            return;
+        }
+
         if (isValueHelperCall(call.name)) {
             if (report_) {
                 ++report_->valueHelperCalls;
@@ -4269,7 +4615,7 @@ private:
         const auto objectClass = objectClasses_.find(receiver);
         if (objectClass != objectClasses_.end()) {
             if (!isReturnSynchronizedScriptClass(objectClass->second)
-                && isRuntimeOwnedScriptMethod(call.name)) {
+                && (isRuntimeOwnedScriptMethod(call.name) || isUiObjectMethod(call.name))) {
                 if (report_) {
                     ++report_->uiObjectCalls;
                 }
@@ -4285,6 +4631,16 @@ private:
                 executeMethod(*method, receiver, method->ownerClass, depth, category, arguments);
                 return true;
             }
+        }
+
+        if (receiver.rfind("ui.MenuObject@", 0) == 0 && isUiObjectMethod(call.name)) {
+            if (report_) {
+                ++report_->uiObjectCalls;
+            }
+            recordEvent({"ui_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
+                receiver, "runtime_owned_ui_helper_method", "UI And 2D Render Service", call.sourceLine, call.pc,
+                "runtime-created MenuObject helper call was modeled during bytecode execution"});
+            return true;
         }
 
         if (hasClass(methodBindings_, receiver)) {
@@ -4409,6 +4765,22 @@ private:
             recordEvent({"engine_object_call", function.name, function.ordinal, ownerObject, ownerClass, call.name,
                 receiver, "runtime_owned_mission_method", "Event/Quest/Flag Service", call.sourceLine, call.pc,
                 "mission runtime method service state was modeled during bytecode execution"});
+            return true;
+        }
+
+        if (isTitleMenuRootMethod(receiver, call.name)) {
+            if (report_) {
+                ++report_->uiObjectCalls;
+            }
+            std::string service = "UI And 2D Render Service";
+            if (call.name == "makeLangPath" || call.name == "loadGraphHandle") {
+                service = "Resource Service";
+            } else if (call.name == "mlGet" || call.name == "getBlinkSign") {
+                service = "Script Service";
+            }
+            recordEvent({"ui_render_runtime_call", function.name, function.ordinal, ownerObject, ownerClass,
+                call.name, receiver, "runtime_owned_title_menu_root_method", service, call.sourceLine, call.pc,
+                "title/menu root-object method was modeled by ScriptRuntime service-state payloads"});
             return true;
         }
 

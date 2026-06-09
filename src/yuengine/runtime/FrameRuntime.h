@@ -58,6 +58,41 @@ struct FirstFrameRuntimeReport {
     EventFrameContract event;
 };
 
+struct TitleUiRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool titleSetupFound = false;
+    bool titleSetupExecuted = false;
+    bool titleRenderExecuted = false;
+    std::string module;
+    std::string entryFunction;
+    std::string scriptStatus;
+    int scriptFunctions = 0;
+    int scriptMethods = 0;
+    int nativeObligations = 0;
+    int nativeImplementedCalls = 0;
+    int uniqueNativeApis = 0;
+    int serviceStateEvents = 0;
+    int uiObjectCalls = 0;
+    int uiServiceCommands = 0;
+    int unresolvedCalls = 0;
+    bool truncated = false;
+    int createdObjects = 0;
+    int commandCount = 0;
+    int drawCommands = 0;
+    int graphStringCommands = 0;
+    int stringSizeQueries = 0;
+    int textDrawCommands = 0;
+    int graphDrawCommands = 0;
+    int colorCommands = 0;
+    int localizedMenuTextCommands = 0;
+    int drawListItemCommands = 0;
+    bool backgroundResourceBound = false;
+    bool logoResourceBound = false;
+    std::string lastCommand;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -147,6 +182,12 @@ FirstFrameRuntimeReport runFirstFrameRuntime(
     const std::filesystem::path& repoRoot);
 
 std::string firstFrameRuntimeReportToJson(const FirstFrameRuntimeReport& report);
+
+TitleUiRuntimeReport runTitleUiRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string titleUiRuntimeReportToJson(const TitleUiRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

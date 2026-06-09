@@ -180,6 +180,7 @@ struct ScriptExecutionReport {
 
 struct ScriptRunOptions {
     int frames = 0;
+    int renderFrames = 0;
     std::string inputScenario = "passive";
     int menuSelectedIndex = 0;
     bool menuDecide = false;

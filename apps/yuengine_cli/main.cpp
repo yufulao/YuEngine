@@ -40,11 +40,12 @@ void usage()
               << "  yuengine_cli scene-entry <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli scene-runtime <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli first-frame <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli title-ui <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli script <project.json> <module>\n"
               << "  yuengine_cli script-plan <project.json> [module] [function] [--repo-root <path>]\n"
-              << "  yuengine_cli script-run <project.json> [module] [function] [--frames N] [--input-scenario <name>] [--repo-root <path>]\n"
+              << "  yuengine_cli script-run <project.json> [module] [function] [--frames N] [--render-frames N] [--input-scenario <name>] [--repo-root <path>]\n"
               << "  yuengine_cli native-services <project.json> [--repo-root <path>]\n";
 }
 
@@ -122,6 +123,10 @@ std::vector<std::string> positionalArgs(int argc, char** argv, int begin)
             continue;
         }
         if (std::string(argv[i]) == "--frames" && i + 1 < argc) {
+            ++i;
+            continue;
+        }
+        if (std::string(argv[i]) == "--render-frames" && i + 1 < argc) {
             ++i;
             continue;
         }
@@ -217,6 +222,7 @@ yu::script::ScriptRunOptions scriptRunOptions(int argc, char** argv)
 {
     yu::script::ScriptRunOptions options;
     options.frames = intOption(argc, argv, "--frames", 0);
+    options.renderFrames = intOption(argc, argv, "--render-frames", 0);
     options.inputScenario = stringOption(argc, argv, "--input-scenario", "passive");
 
     if (options.inputScenario == "passive") {
@@ -336,6 +342,11 @@ int main(int argc, char** argv)
         if (command == "first-frame") {
             auto report = yu::runtime::runFirstFrameRuntime(manifest, repoRoot);
             std::cout << yu::runtime::firstFrameRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "title-ui") {
+            auto report = yu::runtime::runTitleUiRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::titleUiRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "mission-event-thread") {

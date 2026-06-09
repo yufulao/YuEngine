@@ -176,6 +176,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_title_ui_command_payload_contract
+        COMMAND yuengine_cli title-ui samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_title_ui_command_payload_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true title_setup_found=true title_setup_executed=true title_render_executed=true entry=setupProc created_objects=26 command_count=55 draw_commands=9 graph_string_commands=5 string_size_queries=5 text_draw_commands=6 graph_draw_commands=3 color_commands=11 localized_menu_text_commands=10 draw_list_item_commands=5 background_resource_bound=true logo_resource_bound=true unresolved_calls=0 truncated=false;native_obligations.: 30.*unique_native_apis.: 8.*service_state_events.: 158.*ui_object_calls.: 72.*ui_service_commands.: 55;last_command.: .menu/title/logo_sc.dds"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )
