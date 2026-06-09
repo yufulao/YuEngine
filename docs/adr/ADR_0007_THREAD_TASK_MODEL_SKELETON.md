@@ -1,8 +1,8 @@
 # ADR-0007: Thread And Task Model Skeleton
 
-Status: Proposed
+Status: Accepted
 Owner: 博丽灵梦 with 八云紫
-Reviewers: 红美铃, 雾雨魔理沙 when implementation exists
+Reviewers: 雾雨魔理沙, 博丽灵梦 performance, 红美铃 gate/PM
 Date: 2026-06-10
 Depends on: ADR-0001, ADR-0002, ADR-0005, ADR-0006, docs/YUENGINE_PERFORMANCE_GATES.md, docs/YUENGINE_PERFORMANCE_COST_STANDARDS.md
 
