@@ -81,9 +81,9 @@ Phase 2 remains blocked from:
 
 | Gate | Module | Layer | Requested decision | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
-| P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | Approved | Null backend only; create target, record clear, submit, present, deterministic capture; no real backend, shader, material, render scene, resource loading, UI, or game adapter |
-| P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | Approved | Test backend only; synthetic S16 stereo sources, generation voice handles, caller-owned mix buffer; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
-| P2-GATE-003 | Package Manifest And Load Plan Boundary | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | Proposed | Synthetic manifest and deterministic load-plan metadata only; no File reads, original package parser, Resource mutation, decoder, async load, upload, tools, or game adapter |
+| P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | Null backend only; create target, record clear, submit, present, deterministic capture; no real backend, shader, material, render scene, resource loading, UI, or game adapter |
+| P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | Test backend only; synthetic S16 stereo sources, generation voice handles, caller-owned mix buffer; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
+| P2-GATE-003 | Package Manifest And Load Plan Boundary | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | In review | Synthetic manifest and deterministic load-plan metadata only; no File reads, original package parser, Resource mutation, decoder, async load, upload, tools, or game adapter |
 
 ## Current Active Gates
 
@@ -91,12 +91,15 @@ Phase 2 remains blocked from:
   lanes are closed, code/semantic review remains pending, and implementation
   must not expand into real graphics, RenderCore, Resource/File upload, reports,
   or Game Adapter scope.
-- P2-GATE-002 is approved for first implementation slice. Implementation must
-  keep a clean or isolated worktree handoff and must not disturb active Phase 1
-  implementation reviews or task #31 RHI review.
-- P2-GATE-003 is proposed for architecture review only. It must not be approved
-  until task #21 `YuFile`, task #33 `YuResource`, and task #14 `YuMemory`
-  vocabulary guards are stable enough or the gate is amended.
+- P2-GATE-002 implementation is in review at `5c340c1`; PM and performance
+  lanes are closed, code/semantic review remains pending, and implementation
+  must not expand into real audio devices, callback threads, codecs, streaming,
+  resource coupling, UI/script/gameplay, reports, tools, or Game Adapter scope.
+- P2-GATE-003 is in architecture review after `be1181d`. Gate/test-coverage,
+  evidence, and ADR context lanes have accepted the amendment, but the gate must
+  not be approved until performance, PM/final sequencing, and task #21 `YuFile`,
+  task #33 `YuResource`, and task #14 `YuMemory` vocabulary guards are stable
+  enough or the gate is amended.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against the active Phase 1 review queue.
 
@@ -113,8 +116,9 @@ Phase 2 remains blocked from:
 
 1. Complete P2-GATE-001 and P2-GATE-002 implementation reviews for the null RHI
    and audio mixer slices.
-2. Review ADR-0013 / P2-GATE-003 as architecture only; do not approve
-   implementation until Resource/File/Memory vocabulary guards are stable.
+2. Close remaining P2-GATE-003 performance and PM/final sequencing lanes, but
+   do not approve implementation until Resource/File/Memory vocabulary guards
+   are stable or the gate is amended.
 3. Close active Phase 1 implementation reviews before creating additional shared
    CMake implementation work, unless a clean isolated worktree is assigned.
 4. Prepare async IO boundary only after Thread/File/Resource/Package review
