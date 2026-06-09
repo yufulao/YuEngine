@@ -86,18 +86,19 @@ ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accept
 | --- | --- | --- | --- | --- | --- |
 | P1-GATE-001 | Platform Host + Engine Kernel Bootstrap | L0-L2 | `APPROVED_FOR_FIRST_SLICE` | Implemented | Headless host, timer, log sink, error boundary, module lifecycle, service registry, tests |
 | P1-GATE-002 | Memory Accounting Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0006 accepted; accounting hooks and leak fixtures only, no full allocator |
-| P1-GATE-003 | Thread/Task Primitive Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0007 accepted; bounded queue and inline executor only, no worker pool |
-| P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0004 accepted; bounded synchronous observer only, no reports/profiler/async queue |
-| P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0008 accepted; path normalization and loose fixture reads only, no package parser |
+| P1-GATE-003 | Thread/Task Primitive Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0007 accepted; bounded queue and inline executor only, no worker pool |
+| P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0004 accepted; bounded synchronous observer only, no reports/profiler/async queue |
+| P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0008 accepted; path normalization and loose fixture reads only, no package parser |
 | P1-GATE-006 | Resource Identity And Lifetime Skeleton | L4 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0009 accepted; synthetic handles/dependencies only, no file/package/load/decode |
-| P1-GATE-007 | Input Replay And Action Snapshot Skeleton | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Proposed | ADR-0010 proposed; synthetic replay and snapshots only, no OS device/UI/game adapter input |
+| P1-GATE-007 | Input Replay And Action Snapshot Skeleton | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Gate review in progress | ADR-0010 accepted; synthetic replay and snapshots only, no OS device/UI/game adapter input |
 
 ## Current Active Gates
 
 - P1-GATE-002 implementation is in review as task #14.
 - P1-GATE-003, P1-GATE-004, and P1-GATE-005 are in implementation review; task handoffs must preserve their dependency guards.
-- P1-GATE-006 is approved, but the implementation task should wait until current shared CMake/index integration for P1-GATE-003/004/005 is stable or a separate clean worktree is assigned.
-- P1-GATE-007 is architecture-only proposed; no implementation task may be created until ADR-0010 is accepted and the gate reaches `APPROVED_FOR_FIRST_SLICE`.
+- P1-GATE-006 is approved, but the implementation task should wait until current implementation review sequencing is stable or a separate clean worktree is assigned.
+- P1-GATE-007 is architecture-only and waiting final PM/gate state; no implementation task may be created until it reaches `APPROVED_FOR_FIRST_SLICE`.
+- Phase 2 architecture queue has started in `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md`; Phase 2 implementation remains gated by explicit approvals and sequencing.
 - No implementation task may be created from a gate until that gate has `APPROVED_FOR_FIRST_SLICE`.
 
 ## Review Routing
@@ -123,8 +124,9 @@ The next implementation slice must not be created if any of these remain true:
 ## Immediate Next Steps
 
 1. Close task #14 code/semantic review for the P1-GATE-002 memory implementation.
-2. Close task #19, task #20, and task #21 implementation reviews; task #21 currently needs fixture EOL repair before PM pass.
-3. Create the P1-GATE-006 Resource implementation task only after the current shared CMake/index conflict is cleared or isolated.
-4. Review ADR-0010 / P1-GATE-007 before any Input implementation task is created.
-5. Preserve the Phase 1 exclusions: no renderer, resources package parser, async IO, gameplay/world, reports, capture/oracle, or original-game adapter behavior.
-6. If a gate is blocked, amend the owning ADR/gate immediately instead of creating implementation work.
+2. Close task #19, task #20, and task #21 implementation reviews.
+3. Close P1-GATE-007 final PM/gate state before any Input implementation task is created.
+4. Create the P1-GATE-006 Resource implementation task only after current implementation review sequencing is stable or isolated.
+5. Review Phase 2 ADR-0011 / P2-GATE-001 before any RHI implementation task is created.
+6. Preserve the exclusions: no renderer demo, resources package parser, async IO, gameplay/world, reports, capture/oracle, or original-game adapter behavior without their owning gates.
+7. If a gate is blocked, amend the owning ADR/gate immediately instead of creating implementation work.
