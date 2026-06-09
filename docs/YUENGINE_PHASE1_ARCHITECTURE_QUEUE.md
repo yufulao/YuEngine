@@ -75,7 +75,7 @@ The first slice explicitly excludes:
 | ADR-0006 | Memory accounting and allocation policy skeleton | 博丽灵梦 with 八云紫 | 红美铃 | Accepted | Memory first slice |
 | ADR-0007 | Thread/task model skeleton | 博丽灵梦 with 八云紫 | 雾雨魔理沙, 博丽灵梦 | Accepted | Thread/Task first slice |
 | ADR-0008 | File/VFS first boundary | 八云紫 | 大妖精, 射命丸文, 博丽灵梦 | Accepted | Future File/VFS gate |
-| ADR-0009 | Resource identity and lifetime boundary | 八云紫 | 红美铃, 大妖精, 博丽灵梦, 射命丸文 | Proposed | Resource handle/dependency first slice |
+| ADR-0009 | Resource identity and lifetime boundary | 八云紫 | 八云蓝, 博丽灵梦, 射命丸文 | Accepted | Resource handle/dependency first slice |
 
 ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accepted as the source tree and module boundary layout. ADR-0003 is accepted as the Kernel lifecycle and dependency model for the first slice.
 

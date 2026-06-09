@@ -1,6 +1,6 @@
 # ADR-0009: Resource Identity And Lifetime Boundary
 
-Status: Proposed
+Status: Accepted
 Owner: 八云紫
 Reviewers: 红美铃, 大妖精, 博丽灵梦, 射命丸文, 雾雨魔理沙 when implementation exists
 Date: 2026-06-10
