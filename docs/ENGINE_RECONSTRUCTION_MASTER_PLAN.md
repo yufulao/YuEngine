@@ -133,16 +133,17 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L23 now defines D3D9-compatible resource allocation records through
-`yuengine_cli resource-allocation`. The runtime consumes L21 typed texture uploads and L22 backend
-sampler/pass/font records before it can mark allocation records ready. It materializes 46 allocation
-records: 39 stage texture/cube allocations, 2 SMAA lookup textures, 4 tracked-open SMAA transient
-surface candidates, and 1 tracked-open font atlas placeholder. Ready resource evidence includes
-31 `D3DFMT_DXT1`, 8 `D3DFMT_DXT5`, one six-face cube texture, one `D3DFMT_A8L8` SMAA area texture,
-and one `D3DFMT_L8` SMAA search texture. HWND/swapchain creation, `Present`, actual GPU resource
-creation, state binding, material shader programs, font atlas implementation, and original-frame
-parity remain tracked open obligations. This is still not a playable loop or device backend; the
-next edge is L24 device resource creation and state-binding execution records.
+Current latest checkpoint: L24 now defines device resource creation, upload, and state-binding
+execution records through `yuengine_cli device-execution`. The runtime consumes L23 resource
+allocation records, L22 backend sampler/pass/font records, and L20 device presentation before it
+can mark device execution records ready. It materializes 46 device-facing creation records, 41
+ready texture upload execution records, 458 upload subresources, and 57 binding records. Ready
+evidence includes `CreateTexture`/`CreateCubeTexture` records, SMAA lookup texture bindings,
+7 sampler-state records, and 5 pass render-state records. HWND/swapchain creation, `Present`,
+actual `IDirect3DDevice9` calls, material shader programs, font atlas implementation, transient
+surface format ownership, and original-frame parity remain tracked open obligations. This is still
+not a playable loop or real device backend; the next edge is L25 swapchain/present/original-frame
+oracle parity records.
 
 The current route is no longer allowed to stop at menu visuals:
 
@@ -160,6 +161,7 @@ original title bytecode
 -> backend render-state/font atlas records
 -> D3D9-compatible resource allocation records
 -> device resource creation/state-binding execution records
+-> swapchain/present/original-frame oracle parity records
 ```
 
 The Project failure rule is now stricter: no new loop may be framed as "minimal." The loop unit

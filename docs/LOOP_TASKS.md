@@ -1082,7 +1082,7 @@ Boundary:
 
 ### L24: D3D9-Compatible Device Resource Creation And Binding Execution
 
-Status: active after L23.
+Status: completed as device execution record checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -1099,6 +1099,49 @@ Acceptance:
 - every execution record must point back to L21/L22/L23 evidence;
 - uncreated resources must stay blocked/tracked-open with named reasons, not disappear as silent
   backend defaults.
+
+Verification:
+
+```text
+ok=true resource_allocation_ok=true backend_state_ok=true device_presentation_ok=true device_execution_runtime_ready=true resource_creation_records_ready=true upload_execution_records_ready=true state_binding_records_ready=true lookup_texture_binding_records_ready=true material_texture_binding_gate_tracked=true transient_surface_binding_gate_tracked=true font_atlas_execution_gate_tracked=true d3d_api_call_submission_gate_tracked=true present_oracle_gate_tracked=true resource_creation_records=46 ready_resource_creation_records=41 tracked_open_resource_creation_records=5 create_texture_records=40 create_cube_texture_records=1 render_target_creation_candidates=3 depth_stencil_creation_candidates=1 font_atlas_creation_placeholders=1 texture_upload_execution_records=41 upload_subresource_records=458 ready_upload_payload_bytes=23949794 binding_records=57 ready_binding_records=14 tracked_open_binding_records=43 material_texture_binding_records=38 material_texture_binding_slots=39 sampler_texture_binding_records=7 lookup_texture_binding_records=2 transient_sampler_binding_candidates=5 sampler_state_binding_records=7 render_state_binding_records=5 resolved_device_execution_contracts=4 tracked_device_execution_obligations=5 open_device_execution_obligations=5
+```
+
+Evidence now locked:
+
+- 46 L23 allocation records map to device-facing creation operations;
+- 41 ready textures expand to 458 upload subresources;
+- `cubeenvmap/doujou_1.dds` maps to `CreateCubeTexture` with 54 upload subresources;
+- stage and lookup 2D textures map to 40 `CreateTexture` records;
+- SMAA transient surfaces split into 3 render-target candidates and 1 depth/stencil candidate;
+- 57 binding records include 38 material texture candidates, 7 SMAA sampler texture bindings,
+  7 sampler-state records, and 5 pass render-state records;
+- material shader ownership, transient surface formats/ownership, font atlas implementation,
+  real D3D API calls, and present/oracle parity remain tracked-open gates.
+
+Boundary:
+
+- L24 does not create a D3D device or call any `IDirect3DDevice9` method;
+- L24 does not upload GPU memory, draw, present, or compare frames;
+- the next non-blocked work is swapchain/present/original-frame oracle parity records, not a
+  blue-window shortcut.
+
+### L25: Swapchain, Present, And Original-Frame Oracle Parity Records
+
+Status: active after L24.
+
+Deliver:
+
+- consume L20 device presentation and L24 device execution records into swapchain/present records;
+- define HWND/window surface, backbuffer, present interval, frame capture, and original-frame
+  oracle parity gates as independent records;
+- keep real platform API submission blocked until present/oracle evidence can fail cleanly.
+
+Acceptance:
+
+- no clear-screen or mesh-only output can satisfy L25;
+- present records must point back to scheduler, renderer submission, device presentation,
+  resource allocation, and device execution evidence;
+- missing original graphics API traces or screenshots must remain explicit obligations.
 
 ## Stop Conditions
 

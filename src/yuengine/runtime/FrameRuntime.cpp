@@ -91,6 +91,12 @@ void addError(BackendResourceAllocationRuntimeReport& report, const std::string&
     report.errors.push_back(message);
 }
 
+void addError(BackendDeviceExecutionRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -1223,6 +1229,98 @@ BackendResourceAllocationRecord makeFontAtlasAllocationPlaceholder()
     return record;
 }
 
+BackendDeviceResourceExecutionRecord makeDeviceResourceExecutionRecord(
+    const BackendResourceAllocationRecord& allocation)
+{
+    BackendDeviceResourceExecutionRecord record;
+    record.name = allocation.name;
+    record.path = allocation.path;
+    record.resourceKind = allocation.resourceKind;
+    record.format = allocation.format;
+    record.status = allocation.status;
+    record.width = allocation.width;
+    record.height = allocation.height;
+    record.mipLevels = allocation.mipLevels;
+    record.cubeFaces = allocation.cubeFaces;
+    record.materialBindingSlots = allocation.materialConsumerCount;
+    record.byteSize = allocation.byteSize;
+    record.payloadBytes = allocation.payloadBytes;
+    record.ready = allocation.ready;
+    record.subresourceCount = allocation.ready ? allocation.mipLevels * allocation.cubeFaces : 0;
+
+    if (allocation.resourceKind == "cube_texture") {
+        record.operation = "CreateCubeTexture";
+    } else if (allocation.resourceKind == "texture_2d" || allocation.resourceKind == "smaa_lookup_texture") {
+        record.operation = "CreateTexture";
+    } else if (allocation.resourceKind == "smaa_transient_surface" && allocation.name == "depthTex2D") {
+        record.operation = "CreateDepthStencilSurfaceCandidate";
+    } else if (allocation.resourceKind == "smaa_transient_surface") {
+        record.operation = "CreateRenderTargetCandidate";
+    } else if (allocation.resourceKind == "font_atlas_texture") {
+        record.operation = "CreateTextureCandidate";
+    } else {
+        record.operation = "CreateResourceCandidate";
+    }
+
+    return record;
+}
+
+BackendDeviceStateBindingRecord makeMaterialTextureBindingRecord(
+    const BackendResourceAllocationRecord& allocation)
+{
+    BackendDeviceStateBindingRecord record;
+    record.name = allocation.name;
+    record.operation = "SetTextureCandidate";
+    record.target = "material_texture_slot";
+    record.source = allocation.path;
+    record.status = "tracked_open";
+    record.bindingSlots = allocation.materialConsumerCount;
+    record.ready = false;
+    return record;
+}
+
+BackendDeviceStateBindingRecord makeSmaaSamplerTextureBindingRecord(
+    const BackendSamplerStateRecord& sampler)
+{
+    BackendDeviceStateBindingRecord record;
+    record.name = sampler.name;
+    record.operation = sampler.texture == "areaTex2D" || sampler.texture == "searchTex2D"
+        ? "SetTexture"
+        : "SetTextureCandidate";
+    record.target = sampler.texture;
+    record.source = "SMAA.fx sampler2D";
+    record.status = record.operation == "SetTexture" ? "contract_ready" : "tracked_open";
+    record.bindingSlots = 1;
+    record.ready = record.status == "contract_ready";
+    return record;
+}
+
+BackendDeviceStateBindingRecord makeSamplerStateBindingRecord(const BackendSamplerStateRecord& sampler)
+{
+    BackendDeviceStateBindingRecord record;
+    record.name = sampler.name;
+    record.operation = "SetSamplerState";
+    record.target = sampler.texture;
+    record.source = "SMAA.fx sampler state";
+    record.status = sampler.ready ? "contract_ready" : "blocked";
+    record.bindingSlots = 1;
+    record.ready = sampler.ready;
+    return record;
+}
+
+BackendDeviceStateBindingRecord makeRenderStateBindingRecord(const BackendPassStateRecord& pass)
+{
+    BackendDeviceStateBindingRecord record;
+    record.name = pass.technique + "." + pass.pass;
+    record.operation = "SetRenderStateBundle";
+    record.target = pass.pass;
+    record.source = "SMAA.fx pass state";
+    record.status = pass.ready ? "contract_ready" : "blocked";
+    record.bindingSlots = 1;
+    record.ready = pass.ready;
+    return record;
+}
+
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
     const GameplayFrameInputs& inputs,
     const std::string& rendererProfile,
@@ -2061,6 +2159,199 @@ BackendResourceAllocationRuntimeReport buildBackendResourceAllocationRuntimeRepo
     if (report.resolvedAllocationContracts != 2 || report.trackedAllocationObligations != 5
         || report.openAllocationObligations != 5) {
         addError(report, "resource allocation obligation accounting is inconsistent");
+    }
+
+    return report;
+}
+
+BackendDeviceExecutionRuntimeReport buildBackendDeviceExecutionRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    BackendDeviceExecutionRuntimeReport report;
+    const auto resourceAllocation = buildBackendResourceAllocationRuntimeReport(inputs, rendererProfile, vfs);
+    const auto backendState = buildBackendStateRuntimeReport(inputs, rendererProfile, vfs);
+    const auto devicePresentation = buildDevicePresentationRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.resourceAllocationOk = resourceAllocation.ok;
+    report.backendStateOk = backendState.ok;
+    report.devicePresentationOk = devicePresentation.ok;
+
+    for (const auto& allocation : resourceAllocation.records) {
+        report.resourceRecords.push_back(makeDeviceResourceExecutionRecord(allocation));
+        if (allocation.materialConsumerCount > 0) {
+            report.bindingRecordsDetail.push_back(makeMaterialTextureBindingRecord(allocation));
+        }
+    }
+
+    for (const auto& sampler : backendState.samplerRecords) {
+        report.bindingRecordsDetail.push_back(makeSmaaSamplerTextureBindingRecord(sampler));
+        report.bindingRecordsDetail.push_back(makeSamplerStateBindingRecord(sampler));
+    }
+    for (const auto& pass : backendState.passRecords) {
+        report.bindingRecordsDetail.push_back(makeRenderStateBindingRecord(pass));
+    }
+
+    for (const auto& record : report.resourceRecords) {
+        ++report.resourceCreationRecords;
+        if (record.ready) {
+            ++report.readyResourceCreationRecords;
+            ++report.textureUploadExecutionRecords;
+            report.uploadSubresourceRecords += record.subresourceCount;
+            report.readyUploadPayloadBytes += record.payloadBytes;
+        } else if (record.status == "tracked_open") {
+            ++report.trackedOpenResourceCreationRecords;
+        }
+
+        if (record.operation == "CreateTexture") {
+            ++report.createTextureRecords;
+        } else if (record.operation == "CreateCubeTexture") {
+            ++report.createCubeTextureRecords;
+        } else if (record.operation == "CreateRenderTargetCandidate") {
+            ++report.renderTargetCreationCandidates;
+        } else if (record.operation == "CreateDepthStencilSurfaceCandidate") {
+            ++report.depthStencilCreationCandidates;
+        } else if (record.operation == "CreateTextureCandidate"
+            && record.resourceKind == "font_atlas_texture") {
+            ++report.fontAtlasCreationPlaceholders;
+        }
+    }
+
+    for (const auto& record : report.bindingRecordsDetail) {
+        ++report.bindingRecords;
+        if (record.ready) {
+            ++report.readyBindingRecords;
+        } else if (record.status == "tracked_open") {
+            ++report.trackedOpenBindingRecords;
+        }
+
+        if (record.target == "material_texture_slot") {
+            ++report.materialTextureBindingRecords;
+            report.materialTextureBindingSlots += record.bindingSlots;
+        } else if (record.operation == "SetTexture" || record.operation == "SetTextureCandidate") {
+            ++report.samplerTextureBindingRecords;
+            if (record.status == "contract_ready") {
+                ++report.lookupTextureBindingRecords;
+            } else if (record.status == "tracked_open") {
+                ++report.transientSamplerBindingCandidates;
+            }
+        } else if (record.operation == "SetSamplerState") {
+            ++report.samplerStateBindingRecords;
+        } else if (record.operation == "SetRenderStateBundle") {
+            ++report.renderStateBindingRecords;
+        }
+    }
+
+    report.resourceCreationRecordsReady = resourceAllocation.resourceAllocationRuntimeReady
+        && report.resourceCreationRecords == 46 && report.readyResourceCreationRecords == 41
+        && report.trackedOpenResourceCreationRecords == 5 && report.createTextureRecords == 40
+        && report.createCubeTextureRecords == 1 && report.renderTargetCreationCandidates == 3
+        && report.depthStencilCreationCandidates == 1 && report.fontAtlasCreationPlaceholders == 1;
+    report.uploadExecutionRecordsReady = report.textureUploadExecutionRecords == 41
+        && report.uploadSubresourceRecords == 458
+        && report.readyUploadPayloadBytes == resourceAllocation.readyAllocationPayloadBytes
+        && report.readyUploadPayloadBytes == 23949794;
+    report.stateBindingRecordsReady = backendState.samplerStateRecordsReady
+        && backendState.passRenderStateRecordsReady && report.samplerStateBindingRecords == 7
+        && report.renderStateBindingRecords == 5;
+    report.lookupTextureBindingRecordsReady =
+        report.samplerTextureBindingRecords == 7 && report.lookupTextureBindingRecords == 2;
+    report.materialTextureBindingGateTracked =
+        report.materialTextureBindingRecords == 38 && report.materialTextureBindingSlots == 39;
+    report.transientSurfaceBindingGateTracked =
+        report.renderTargetCreationCandidates == 3 && report.depthStencilCreationCandidates == 1
+        && report.transientSamplerBindingCandidates == 5;
+    report.fontAtlasExecutionGateTracked =
+        backendState.fontAtlasRecordsReady && report.fontAtlasCreationPlaceholders == 1;
+    report.d3dApiCallSubmissionGateTracked =
+        devicePresentation.deviceProfileReady && resourceAllocation.d3dResourceCreationGateTracked;
+    report.presentOracleGateTracked =
+        devicePresentation.presentContractTracked && resourceAllocation.oracleParityGateTracked;
+    report.deviceExecutionRuntimeReady = report.resourceAllocationOk && report.backendStateOk
+        && report.devicePresentationOk && report.resourceCreationRecordsReady
+        && report.uploadExecutionRecordsReady && report.stateBindingRecordsReady
+        && report.lookupTextureBindingRecordsReady && report.materialTextureBindingGateTracked
+        && report.transientSurfaceBindingGateTracked && report.fontAtlasExecutionGateTracked
+        && report.d3dApiCallSubmissionGateTracked && report.presentOracleGateTracked
+        && report.bindingRecords == 57 && report.readyBindingRecords == 14
+        && report.trackedOpenBindingRecords == 43;
+
+    report.contracts.push_back(makeBackendObligation(
+        "device_resource_creation_records",
+        report.resourceCreationRecordsReady ? "contract_ready" : "blocked",
+        "46 allocation records map to D3D9 CreateTexture/CreateCubeTexture/render-target/depth/font creation records"));
+    report.contracts.push_back(makeBackendObligation(
+        "texture_upload_subresource_records",
+        report.uploadExecutionRecordsReady ? "contract_ready" : "blocked",
+        "41 ready textures expand to 458 upload subresources with payload byte parity"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_lookup_texture_bindings",
+        report.lookupTextureBindingRecordsReady ? "contract_ready" : "blocked",
+        "SMAA area/search samplers bind ready lookup texture records"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampler_and_render_state_value_records",
+        report.stateBindingRecordsReady ? "contract_ready" : "blocked",
+        "7 sampler state records and 5 pass render-state records are device-binding ready"));
+    report.contracts.push_back(makeBackendObligation(
+        "material_texture_shader_binding",
+        report.materialTextureBindingGateTracked ? "tracked_open" : "blocked",
+        "39 material texture slots have texture records, but material shader program ownership is not recovered"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_transient_surface_creation_and_binding",
+        report.transientSurfaceBindingGateTracked ? "tracked_open" : "blocked",
+        "SMAA transient render/depth targets are typed candidates but exact D3D formats and ownership are unknown"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_device_resource",
+        report.fontAtlasExecutionGateTracked ? "tracked_open" : "blocked",
+        "font metric inputs exist, but atlas dimensions, glyph cache, and texture upload are not implemented"));
+    report.contracts.push_back(makeBackendObligation(
+        "d3d_api_call_submission",
+        report.d3dApiCallSubmissionGateTracked ? "tracked_open" : "blocked",
+        "device execution records exist, but YuEngine does not call IDirect3DDevice9 APIs yet"));
+    report.contracts.push_back(makeBackendObligation(
+        "present_and_original_frame_oracle",
+        report.presentOracleGateTracked ? "tracked_open" : "blocked",
+        "resource/state execution records still lack Present execution and original-frame oracle parity"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedDeviceExecutionContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedDeviceExecutionObligations;
+            ++report.openDeviceExecutionObligations;
+        } else {
+            ++report.openDeviceExecutionObligations;
+        }
+    }
+
+    if (!report.resourceAllocationOk) {
+        addError(report, "resource allocation contract is not ready for device execution records");
+    }
+    if (!report.backendStateOk) {
+        addError(report, "backend state contract is not ready for device execution records");
+    }
+    if (!report.devicePresentationOk) {
+        addError(report, "device presentation contract is not ready for device execution records");
+    }
+    if (!report.resourceCreationRecordsReady) {
+        addError(report, "device resource creation records are incomplete");
+    }
+    if (!report.uploadExecutionRecordsReady) {
+        addError(report, "texture upload execution records are incomplete");
+    }
+    if (!report.stateBindingRecordsReady || !report.lookupTextureBindingRecordsReady) {
+        addError(report, "device state/lookup binding records are incomplete");
+    }
+    if (!report.materialTextureBindingGateTracked || !report.transientSurfaceBindingGateTracked
+        || !report.fontAtlasExecutionGateTracked || !report.d3dApiCallSubmissionGateTracked
+        || !report.presentOracleGateTracked) {
+        addError(report, "device execution open gates are not fully tracked");
+    }
+    if (report.resolvedDeviceExecutionContracts != 4 || report.trackedDeviceExecutionObligations != 5
+        || report.openDeviceExecutionObligations != 5) {
+        addError(report, "device execution obligation accounting is inconsistent");
     }
 
     return report;
@@ -3470,6 +3761,149 @@ std::string backendResourceAllocationRuntimeReportToJson(
             << ", \"expected_payload_bytes\": " << record.expectedPayloadBytes
             << ", \"ready\": " << (record.ready ? "true" : "false") << "}";
         out << (i + 1 == report.records.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendDeviceExecutionRuntimeReport runBackendDeviceExecutionRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendDeviceExecutionRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendDeviceExecutionRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendDeviceExecutionRuntimeReportToJson(
+    const BackendDeviceExecutionRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_device_execution_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " resource_allocation_ok=" << (report.resourceAllocationOk ? "true" : "false")
+        << " backend_state_ok=" << (report.backendStateOk ? "true" : "false")
+        << " device_presentation_ok=" << (report.devicePresentationOk ? "true" : "false")
+        << " device_execution_runtime_ready=" << (report.deviceExecutionRuntimeReady ? "true" : "false")
+        << " resource_creation_records_ready=" << (report.resourceCreationRecordsReady ? "true" : "false")
+        << " upload_execution_records_ready=" << (report.uploadExecutionRecordsReady ? "true" : "false")
+        << " state_binding_records_ready=" << (report.stateBindingRecordsReady ? "true" : "false")
+        << " lookup_texture_binding_records_ready=" << (report.lookupTextureBindingRecordsReady ? "true" : "false")
+        << " material_texture_binding_gate_tracked=" << (report.materialTextureBindingGateTracked ? "true" : "false")
+        << " transient_surface_binding_gate_tracked=" << (report.transientSurfaceBindingGateTracked ? "true" : "false")
+        << " font_atlas_execution_gate_tracked=" << (report.fontAtlasExecutionGateTracked ? "true" : "false")
+        << " d3d_api_call_submission_gate_tracked=" << (report.d3dApiCallSubmissionGateTracked ? "true" : "false")
+        << " present_oracle_gate_tracked=" << (report.presentOracleGateTracked ? "true" : "false")
+        << " resource_creation_records=" << report.resourceCreationRecords
+        << " ready_resource_creation_records=" << report.readyResourceCreationRecords
+        << " tracked_open_resource_creation_records=" << report.trackedOpenResourceCreationRecords
+        << " create_texture_records=" << report.createTextureRecords
+        << " create_cube_texture_records=" << report.createCubeTextureRecords
+        << " render_target_creation_candidates=" << report.renderTargetCreationCandidates
+        << " depth_stencil_creation_candidates=" << report.depthStencilCreationCandidates
+        << " font_atlas_creation_placeholders=" << report.fontAtlasCreationPlaceholders
+        << " texture_upload_execution_records=" << report.textureUploadExecutionRecords
+        << " upload_subresource_records=" << report.uploadSubresourceRecords
+        << " ready_upload_payload_bytes=" << report.readyUploadPayloadBytes
+        << " binding_records=" << report.bindingRecords
+        << " ready_binding_records=" << report.readyBindingRecords
+        << " tracked_open_binding_records=" << report.trackedOpenBindingRecords
+        << " material_texture_binding_records=" << report.materialTextureBindingRecords
+        << " material_texture_binding_slots=" << report.materialTextureBindingSlots
+        << " sampler_texture_binding_records=" << report.samplerTextureBindingRecords
+        << " lookup_texture_binding_records=" << report.lookupTextureBindingRecords
+        << " transient_sampler_binding_candidates=" << report.transientSamplerBindingCandidates
+        << " sampler_state_binding_records=" << report.samplerStateBindingRecords
+        << " render_state_binding_records=" << report.renderStateBindingRecords
+        << " resolved_device_execution_contracts=" << report.resolvedDeviceExecutionContracts
+        << " tracked_device_execution_obligations=" << report.trackedDeviceExecutionObligations
+        << " open_device_execution_obligations=" << report.openDeviceExecutionObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"resource_creation_summary\": {";
+    out << "\"records\": " << report.resourceCreationRecords
+        << ", \"ready_records\": " << report.readyResourceCreationRecords
+        << ", \"tracked_open_records\": " << report.trackedOpenResourceCreationRecords
+        << ", \"create_texture_records\": " << report.createTextureRecords
+        << ", \"create_cube_texture_records\": " << report.createCubeTextureRecords
+        << ", \"render_target_candidates\": " << report.renderTargetCreationCandidates
+        << ", \"depth_stencil_candidates\": " << report.depthStencilCreationCandidates
+        << ", \"font_atlas_placeholders\": " << report.fontAtlasCreationPlaceholders << "},\n";
+    out << "  \"upload_execution_summary\": {";
+    out << "\"texture_upload_execution_records\": " << report.textureUploadExecutionRecords
+        << ", \"upload_subresource_records\": " << report.uploadSubresourceRecords
+        << ", \"ready_upload_payload_bytes\": " << report.readyUploadPayloadBytes << "},\n";
+    out << "  \"binding_summary\": {";
+    out << "\"binding_records\": " << report.bindingRecords
+        << ", \"ready_binding_records\": " << report.readyBindingRecords
+        << ", \"tracked_open_binding_records\": " << report.trackedOpenBindingRecords
+        << ", \"material_texture_binding_records\": " << report.materialTextureBindingRecords
+        << ", \"material_texture_binding_slots\": " << report.materialTextureBindingSlots
+        << ", \"sampler_texture_binding_records\": " << report.samplerTextureBindingRecords
+        << ", \"lookup_texture_binding_records\": " << report.lookupTextureBindingRecords
+        << ", \"transient_sampler_binding_candidates\": " << report.transientSamplerBindingCandidates
+        << ", \"sampler_state_binding_records\": " << report.samplerStateBindingRecords
+        << ", \"render_state_binding_records\": " << report.renderStateBindingRecords << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_device_execution_contracts\": " << report.resolvedDeviceExecutionContracts
+        << ", \"tracked_device_execution_obligations\": " << report.trackedDeviceExecutionObligations
+        << ", \"open_device_execution_obligations\": " << report.openDeviceExecutionObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"resource_records\": [\n";
+    for (size_t i = 0; i < report.resourceRecords.size(); ++i) {
+        const auto& record = report.resourceRecords[i];
+        out << "    {\"name\": \"" << core::jsonEscape(record.name)
+            << "\", \"path\": \"" << core::jsonEscape(record.path)
+            << "\", \"operation\": \"" << core::jsonEscape(record.operation)
+            << "\", \"resource_kind\": \"" << core::jsonEscape(record.resourceKind)
+            << "\", \"format\": \"" << core::jsonEscape(record.format)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"width\": " << record.width
+            << ", \"height\": " << record.height
+            << ", \"mip_levels\": " << record.mipLevels
+            << ", \"cube_faces\": " << record.cubeFaces
+            << ", \"subresource_count\": " << record.subresourceCount
+            << ", \"material_binding_slots\": " << record.materialBindingSlots
+            << ", \"byte_size\": " << record.byteSize
+            << ", \"payload_bytes\": " << record.payloadBytes
+            << ", \"ready\": " << (record.ready ? "true" : "false") << "}";
+        out << (i + 1 == report.resourceRecords.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"binding_records_detail\": [\n";
+    for (size_t i = 0; i < report.bindingRecordsDetail.size(); ++i) {
+        const auto& record = report.bindingRecordsDetail[i];
+        out << "    {\"name\": \"" << core::jsonEscape(record.name)
+            << "\", \"operation\": \"" << core::jsonEscape(record.operation)
+            << "\", \"target\": \"" << core::jsonEscape(record.target)
+            << "\", \"source\": \"" << core::jsonEscape(record.source)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"binding_slots\": " << record.bindingSlots
+            << ", \"ready\": " << (record.ready ? "true" : "false") << "}";
+        out << (i + 1 == report.bindingRecordsDetail.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

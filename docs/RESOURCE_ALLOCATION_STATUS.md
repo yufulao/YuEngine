@@ -104,7 +104,7 @@ shape from filenames, or treat SMAA transient surfaces and font atlas state as a
 
 ## Next Edges
 
-- L24: real D3D9-compatible device resource creation and state-binding execution records that
-  consume L23 allocation records.
-- Then: swapchain/present/frame-oracle parity only after device allocation, state binding, and
-  font atlas execution can fail independently.
+- L24 has since created device resource creation and state-binding execution records from L23
+  allocation records.
+- L25: swapchain/present/frame-oracle parity records only after device allocation, state binding,
+  and font atlas execution can fail independently.

@@ -573,6 +573,80 @@ struct BackendResourceAllocationRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendDeviceResourceExecutionRecord {
+    std::string name;
+    std::string path;
+    std::string operation;
+    std::string resourceKind;
+    std::string format;
+    std::string status;
+    int width = 0;
+    int height = 0;
+    int mipLevels = 0;
+    int cubeFaces = 1;
+    int subresourceCount = 0;
+    int materialBindingSlots = 0;
+    int64_t byteSize = 0;
+    int64_t payloadBytes = 0;
+    bool ready = false;
+};
+
+struct BackendDeviceStateBindingRecord {
+    std::string name;
+    std::string operation;
+    std::string target;
+    std::string source;
+    std::string status;
+    int bindingSlots = 0;
+    bool ready = false;
+};
+
+struct BackendDeviceExecutionRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool resourceAllocationOk = false;
+    bool backendStateOk = false;
+    bool devicePresentationOk = false;
+    bool resourceCreationRecordsReady = false;
+    bool uploadExecutionRecordsReady = false;
+    bool stateBindingRecordsReady = false;
+    bool lookupTextureBindingRecordsReady = false;
+    bool materialTextureBindingGateTracked = false;
+    bool transientSurfaceBindingGateTracked = false;
+    bool fontAtlasExecutionGateTracked = false;
+    bool d3dApiCallSubmissionGateTracked = false;
+    bool presentOracleGateTracked = false;
+    bool deviceExecutionRuntimeReady = false;
+    int resourceCreationRecords = 0;
+    int readyResourceCreationRecords = 0;
+    int trackedOpenResourceCreationRecords = 0;
+    int createTextureRecords = 0;
+    int createCubeTextureRecords = 0;
+    int renderTargetCreationCandidates = 0;
+    int depthStencilCreationCandidates = 0;
+    int fontAtlasCreationPlaceholders = 0;
+    int textureUploadExecutionRecords = 0;
+    int uploadSubresourceRecords = 0;
+    int64_t readyUploadPayloadBytes = 0;
+    int bindingRecords = 0;
+    int readyBindingRecords = 0;
+    int trackedOpenBindingRecords = 0;
+    int materialTextureBindingRecords = 0;
+    int materialTextureBindingSlots = 0;
+    int samplerTextureBindingRecords = 0;
+    int lookupTextureBindingRecords = 0;
+    int transientSamplerBindingCandidates = 0;
+    int samplerStateBindingRecords = 0;
+    int renderStateBindingRecords = 0;
+    int resolvedDeviceExecutionContracts = 0;
+    int trackedDeviceExecutionObligations = 0;
+    int openDeviceExecutionObligations = 0;
+    std::vector<BackendDeviceResourceExecutionRecord> resourceRecords;
+    std::vector<BackendDeviceStateBindingRecord> bindingRecordsDetail;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -729,6 +803,13 @@ BackendResourceAllocationRuntimeReport runBackendResourceAllocationRuntime(
 
 std::string backendResourceAllocationRuntimeReportToJson(
     const BackendResourceAllocationRuntimeReport& report);
+
+BackendDeviceExecutionRuntimeReport runBackendDeviceExecutionRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendDeviceExecutionRuntimeReportToJson(
+    const BackendDeviceExecutionRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,
