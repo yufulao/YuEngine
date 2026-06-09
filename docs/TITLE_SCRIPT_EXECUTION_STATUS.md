@@ -55,7 +55,7 @@ stop inside `ModuleTitle.main`. It is still not a full Squirrel VM, title UI, or
   - class default materialization onto constructed script objects;
   - corrected `_OP_NEWSLOT/_OP_NEWSLOTA` semantics: these write slots but do not overwrite
     register `a0`;
-  - typed placeholder returns for `MenuObject`, `GetSaveList`, demo/platform checks, vector helpers,
+  - typed runtime-contract returns for `MenuObject`, `GetSaveList`, demo/platform checks, vector helpers,
     save-list methods, and current side-effect calls.
 - Service state event report sourced from bytecode state and original call trace:
   - deterministic empty save-list/profile contract;
@@ -179,9 +179,10 @@ entry=setupProc found=true executed=true frames=5 baseline_modules=2 constructed
 script_methods=101 script_functions=12 builtin_calls=3 native_obligations=18 unique_native_apis=11
 engine_object_calls=18 ui_object_calls=22 value_helper_calls=6 value_method_calls=8
 bytecode_state_functions=117 bytecode_state_instructions=4515 object_field_writes=203
-typed_call_returns=187 service_state_events=60 save_service_queries=4 platform_state_queries=4
-audio_service_commands=4 scene_service_commands=2 ui_objects_tracked=20 ui_service_commands=0
-decoded_service_arguments=18 unresolved_calls=0 truncated=false status=trace_ready_not_full_vm
+typed_call_returns=190 service_state_events=64 save_service_queries=4 platform_state_queries=4
+audio_service_commands=4 scene_service_commands=3 ui_objects_tracked=20 ui_service_commands=0
+value_state_queries=14 decoded_service_arguments=21 unresolved_calls=0 truncated=false
+status=trace_ready_not_full_vm
 ```
 
 The original script path now reaches:
@@ -200,6 +201,12 @@ ModuleTitle.main
 -> return 200
 -> ModuleTitle fadeOut
 -> gMenu.startGame4Menu
+-> MakeNewGame(sc01)
+-> StartGame(mission:sc01/main/ms010_0, true)
+-> queue_scene_stage_load(
+     mission/sc01/main/ms010_0.b64.sqasm,
+     map/Doujou/doujou.sge,
+     map/Doujou/doujou.rcm)
 ```
 
 Important semantic fixes in this checkpoint:
@@ -224,6 +231,10 @@ Important semantic fixes in this checkpoint:
   supplies `menu_selected_index=1` and `menu_decide=true`; original title bytecode performs the
   branch, state transitions, `PlaySE(2)`, `GetScenarioKeys`, `IsSaveFull(false)`,
   `SetDifficultyMode`, `fadeOut`, and `startGame4Menu`.
+- Scenario selection is sourced from original project data (`resource/ak3.json` `_scenarios`),
+  not from a synthetic placeholder key. The current first new-game path selects `sc01`.
+- `MakeNewGame` and `StartGame` now mutate runtime-owned Save/Profile/Scenario state and queue
+  the first mission script/stage/rail-camera load request instead of remaining script-only events.
 - Runtime-owned UI helper methods such as `selectCursorY`, `selectCursorX`, `setFadeIn`,
   `setSelectCursor`, `move`, and `resetAnim` are intercepted as service/helper contracts instead
   of being expanded into unrelated UI implementation bytecode.
@@ -293,6 +304,9 @@ The save/profile and platform calls in the passive boot frame now come from orig
 initialization contracts, not from linear scanning of unselected title menu branches. Branch-only
 calls such as `PlaySE(2)`, `GetScenarioKeys`, `IsSaveFull`, `SetDifficultyMode`, `fadeOut`, and
 `startGame4Menu` appear when `--input-scenario title-new-game` drives the original bytecode there.
+The current `startGame4Menu` path also records `MakeNewGame(sc01)`, `StartGame`, and a
+Scene/Stage queue for `mission/sc01/main/ms010_0.b64.sqasm`,
+`map/Doujou/doujou.sge`, and `map/Doujou/doujou.rcm`.
 
 ## Verification
 
@@ -312,9 +326,9 @@ Python unittest: 6/6 passed
 
 - Extend deterministic runtime input scenarios beyond `title-new-game`:
   Continue enabled/disabled, Load empty/non-empty, Option, Exit denied/allowed, cursor up/down.
-- Finish `MakeNewGame` and `StartGame` behavior behind `gMenu.startGame4Menu`; the current
-  checkpoint reaches the call but still records it as a Script Service command, not a completed
-  save/profile mutation plus scene/stage load.
+- Promote the current `MakeNewGame` and `StartGame` runtime mutations into fuller service
+  contracts: save slot/profile payload shape, DLC/scenario gate behavior, failure paths, and
+  transition ownership.
 - Convert current classified categories and typed placeholders into concrete service behavior:
   - 17 engine object calls in the two-frame passive trace;
   - 17 runtime-owned UI helper object calls;
@@ -328,8 +342,10 @@ Python unittest: 6/6 passed
   `setSelectCursor`, `bl`, `tr`, and `renderHorizontal` into real UI command data.
 - Expand typed service behavior for `FadeIn`, `PlayBGM`, `PlaySE`, `MenuObject`, `GetSaveList`,
   `GetScenarioKeys`, `IsSaveFull`, `SetDifficultyMode`, `MakeNewGame`, and `StartGame` from
-  reported contracts into runtime-owned services.
-- Save/new-game transition through `MakeNewGame` and `StartGame`, then scene/stage load.
+  current runtime-owned behavior into complete original-compatible contracts.
+- Execute the queued first mission script and scene/stage service layer:
+  `mission/sc01/main/ms010_0.b64.sqasm -> setupProcess -> LoadStage ->
+  LoadEventsScriptViaMission -> CallSetupEvents -> PushPlayerChara -> LoadRailCamera`.
 - UI/render command buffer sourced from original script calls, not handwritten UI.
 
 L7 is not complete until original title script execution can drive menu selection, save/new-game

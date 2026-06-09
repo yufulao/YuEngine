@@ -161,6 +161,30 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
             ++runtimeState_.saveProfileScenario.saveListGetQueries;
         } else if (mutation.action == "save_entry_active") {
             ++runtimeState_.saveProfileScenario.saveEntryActiveQueries;
+        } else if (mutation.action == "query_scenario_keys") {
+            ++runtimeState_.saveProfileScenario.scenarioKeyQueries;
+        } else if (mutation.action == "scenario_key_count") {
+            ++runtimeState_.saveProfileScenario.scenarioKeyCountQueries;
+        } else if (mutation.action == "scenario_key_get") {
+            ++runtimeState_.saveProfileScenario.scenarioKeyGetQueries;
+            runtimeState_.saveProfileScenario.currentMissionKey = valueAfterPrefix(mutation.value, "scenario_key=");
+        } else if (mutation.action == "set_current_mission") {
+            runtimeState_.saveProfileScenario.currentMission = valueAfterPrefix(mutation.value, "mission=");
+        } else if (mutation.action == "set_current_mission_key") {
+            runtimeState_.saveProfileScenario.currentMissionKey = valueAfterPrefix(mutation.value, "mission_key=");
+        } else if (mutation.action == "set_difficulty_mode") {
+            runtimeState_.saveProfileScenario.difficultyMode = valueAfterPrefix(mutation.value, "difficulty=");
+        } else if (mutation.action == "make_new_game") {
+            ++runtimeState_.saveProfileScenario.makeNewGameCommands;
+            runtimeState_.saveProfileScenario.currentMissionKey = valueAfterPrefix(mutation.value, "scenario_key=");
+            runtimeState_.saveProfileScenario.currentMission = valueAfterPrefix(mutation.value, "mission=");
+        } else if (mutation.action == "start_game") {
+            ++runtimeState_.saveProfileScenario.startGameCommands;
+            runtimeState_.saveProfileScenario.startedMission = valueAfterPrefix(mutation.value, "mission=");
+            runtimeState_.saveProfileScenario.startNewGame = valueAfterPrefix(mutation.value, "new_game=");
+        } else if (mutation.action == "clear_menu_mission") {
+            runtimeState_.saveProfileScenario.currentMission.clear();
+            runtimeState_.saveProfileScenario.currentMissionKey.clear();
         }
         return;
     }
@@ -180,6 +204,19 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
         ++runtimeState_.sceneStage.fadeInCommands;
         runtimeState_.sceneStage.fadeInDuration = valueAfterPrefix(mutation.value, "duration=");
         runtimeState_.sceneStage.fadeInBlend = valueAfterPrefix(mutation.value, "blend=");
+        return;
+    }
+
+    if (mutation.service == "Scene And Stage Service" && mutation.action == "fade_out") {
+        ++runtimeState_.sceneStage.fadeOutCommands;
+        return;
+    }
+
+    if (mutation.service == "Scene And Stage Service" && mutation.action == "queue_scene_stage_load") {
+        ++runtimeState_.sceneStage.queuedStageLoads;
+        runtimeState_.sceneStage.currentMissionScript = valueAfterPrefix(mutation.value, "mission_script=");
+        runtimeState_.sceneStage.currentStage = valueAfterPrefix(mutation.value, "stage=");
+        runtimeState_.sceneStage.currentRailCamera = valueAfterPrefix(mutation.value, "rail_camera=");
         return;
     }
 
@@ -243,15 +280,30 @@ std::string nativeRuntimeServiceStateToJson(const NativeRuntimeServiceState& sta
     out << "\"save_list_count_queries\": " << state.saveProfileScenario.saveListCountQueries << ", ";
     out << "\"save_list_get_queries\": " << state.saveProfileScenario.saveListGetQueries << ", ";
     out << "\"save_entry_active_queries\": " << state.saveProfileScenario.saveEntryActiveQueries << ", ";
-    out << "\"save_list_entries\": " << state.saveProfileScenario.saveListEntries << "}, ";
+    out << "\"save_list_entries\": " << state.saveProfileScenario.saveListEntries << ", ";
+    out << "\"scenario_key_queries\": " << state.saveProfileScenario.scenarioKeyQueries << ", ";
+    out << "\"scenario_key_count_queries\": " << state.saveProfileScenario.scenarioKeyCountQueries << ", ";
+    out << "\"scenario_key_get_queries\": " << state.saveProfileScenario.scenarioKeyGetQueries << ", ";
+    out << "\"make_new_game_commands\": " << state.saveProfileScenario.makeNewGameCommands << ", ";
+    out << "\"start_game_commands\": " << state.saveProfileScenario.startGameCommands << ", ";
+    out << "\"current_mission_key\": \"" << core::jsonEscape(state.saveProfileScenario.currentMissionKey) << "\", ";
+    out << "\"current_mission\": \"" << core::jsonEscape(state.saveProfileScenario.currentMission) << "\", ";
+    out << "\"started_mission\": \"" << core::jsonEscape(state.saveProfileScenario.startedMission) << "\", ";
+    out << "\"difficulty_mode\": \"" << core::jsonEscape(state.saveProfileScenario.difficultyMode) << "\", ";
+    out << "\"start_new_game\": \"" << core::jsonEscape(state.saveProfileScenario.startNewGame) << "\"}, ";
     out << "\"platform\": {\"flags\": ";
     writeStringMap(out, state.platform.flags);
     out << "}, ";
     out << "\"audio\": {\"play_bgm_commands\": " << state.audio.playBgmCommands
         << ", \"current_bgm_id\": \"" << core::jsonEscape(state.audio.currentBgmId) << "\"}, ";
     out << "\"scene_stage\": {\"fade_in_commands\": " << state.sceneStage.fadeInCommands
+        << ", \"fade_out_commands\": " << state.sceneStage.fadeOutCommands
+        << ", \"queued_stage_loads\": " << state.sceneStage.queuedStageLoads
         << ", \"fade_in_duration\": \"" << core::jsonEscape(state.sceneStage.fadeInDuration)
-        << "\", \"fade_in_blend\": \"" << core::jsonEscape(state.sceneStage.fadeInBlend) << "\"}, ";
+        << "\", \"fade_in_blend\": \"" << core::jsonEscape(state.sceneStage.fadeInBlend)
+        << "\", \"current_mission_script\": \"" << core::jsonEscape(state.sceneStage.currentMissionScript)
+        << "\", \"current_stage\": \"" << core::jsonEscape(state.sceneStage.currentStage)
+        << "\", \"current_rail_camera\": \"" << core::jsonEscape(state.sceneStage.currentRailCamera) << "\"}, ";
     out << "\"ui_render_2d\": {\"created_objects\": " << state.uiRender2d.createdObjects
         << ", \"command_count\": " << state.uiRender2d.commandCount << ", \"objects\": [";
     size_t index = 0;

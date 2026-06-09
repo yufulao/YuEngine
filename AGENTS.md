@@ -37,7 +37,7 @@ project.json
 
 ## Corrected Execution Policy
 
-用户已明确纠正：不要把“最小验证”“最小入口”“小工具”当成工程阶段完成。
+用户已反复明确纠正：不要把“最小验证”“最小入口”“小工具”当成工程阶段完成。
 
 当前执行方式改为完整引擎主干优先：
 
@@ -61,6 +61,7 @@ C++ runtime spine
 - 文档、计划、readiness、统计、trace、binding report、CLI 输出只算证据输入；必须继续进入 C++ runtime/service/VM 行为。
 - 若当前阶段还没达到用户目标：原脚本驱动主菜单、存档/新游戏、进场景、角色/相机/教程流程，就不能把阶段说成完成。
 - agent 不得用“先做个小 demo 看看”来替代工程拆解。正确拆法是 layer contract -> evidence -> service/API -> runtime implementation -> regression test -> residual unknowns。
+- 严禁“缺什么补什么”的横向试探路线。每个循环必须从当前层 contract 出发，向下补 evidence/API/service，向上接 sample project behavior。
 
 允许在证据不足时启动 runtime 主干建设，但必须遵守：
 
@@ -522,7 +523,7 @@ L7 当前已有 `script-plan` 和 `script-run`：`script-plan` 解析 `setupProc
 
 `script-run --frames 2` 已进入真实 title scene idle：`ModuleTitle.main -> modTitle._scenes[0].main -> TitleSceneBase.main -> TitleScene.state0`。关键底层修复：`_scenes` table assignment 规范化到 `modTitle._scenes[index]`；runtime receiver 从 `_OP_PREPCALL/_OP_CALL` 传给后续分发；owner method 对 concrete object 做虚分发；script method return 会同步回传给 caller bytecode；class method lookup 优先 method binding 而不是 raw closure slot；`root.gMenu=table#1` 通过 root table alias 映射回 receiver `gMenu`。当前 f2 passive trace 指标：99 个 state-scanned functions、4,207 条 state-scanned instructions、191 个 object field writes、199 个 table slot writes、167 个 typed call returns、43 个 service state events、4 save/profile queries、3 platform queries、0 unresolved、0 truncated。`script.ScrollWindow@constructor:50._elemCount=4`，`_sel=0`，`gMenu.isDecide(false)`，因此不会再错误落入 `TitleScene.state0 -> PlaySE(3)`。
 
-`script-run --frames 5 --input-scenario title-new-game` 已能通过 runtime input profile 驱动原始 bytecode：`TitleScene.state0 -> NewGameScene.state0 -> NewGameScene.state1 -> IsSaveFull(false) -> setMissionKey -> SetDifficultyMode -> return 200 -> ModuleTitle.fadeOut -> gMenu.startGame4Menu`。当前 f5 new-game 指标：`script_methods=101`、`script_functions=12`、`native_obligations=18`、`unique_native_apis=11`、`service_state_events=60`、`audio_service_commands=4`、`scene_service_commands=2`、`unresolved_calls=0`、`truncated=false`。当前边界是已经到达 `startGame4Menu`，但还没有把它落成真实 `MakeNewGame`/`StartGame` save/profile mutation 和 scene/stage load。
+`script-run --frames 5 --input-scenario title-new-game` 已能通过 runtime input profile 驱动原始 bytecode：`TitleScene.state0 -> NewGameScene.state0 -> NewGameScene.state1 -> IsSaveFull(false) -> setMissionKey -> SetDifficultyMode -> return 200 -> ModuleTitle.fadeOut -> gMenu.startGame4Menu -> MakeNewGame(sc01) -> StartGame(mission:sc01/main/ms010_0, true)`。当前 f5 new-game 指标：`script_methods=101`、`script_functions=12`、`native_obligations=18`、`unique_native_apis=11`、`service_state_events=64`、`audio_service_commands=4`、`scene_service_commands=3`、`value_state_queries=14`、`decoded_service_arguments=21`、`unresolved_calls=0`、`truncated=false`。`StartGame` 已记录 runtime-owned save/profile/scenario state，并排队 `mission/sc01/main/ms010_0.b64.sqasm`、`map/Doujou/doujou.sge`、`map/Doujou/doujou.rcm`。当前边界转为执行 first mission `setupProcess`，把 stage/event/player/camera/checkpoint 服务状态接入 runtime。
 
 重要语义修复：`_OP_NEWSLOT/_OP_NEWSLOTA` 是 slot write，不得覆盖 register `a0`，否则 root table 会被污染并丢失 `ModuleBase`。root slot 写入会把 `modTitle = ModuleTitle()` 规范化到 canonical `modTitle` 对象，基类/super 方法执行也不会覆盖对象的 concrete class。P4 仍不是完成态，因为 confirmed native、argument/return shape、side effects、oracle/static evidence 和 implementation status 还没有逐行确认；P6 现在已有 C++ service interface baseline、首批 runtime-owned service state、首批 runtime-owned script/object state，但还不是完成态，因为完整 API behavior implementation、typed argument/return contracts、`gMenu` 可配置输入、save/new-game 分支和 UI command payload 尚未落地；R2 也不是完成态，因为当前只是 title boot/title idle bytecode checkpoint，不是完整 Squirrel VM，也没有真实 title UI/gameplay。
 
@@ -548,7 +549,7 @@ X8: Editor And Advanced Pipeline Later
 
 优先任务不是写游戏窗口。
 
-当前下一步见 `docs/LOOP_TASKS.md`，优先 L7/L8 边界。当前 L7 已有 multi-module title boot/title idle bytecode/service/script-object state checkpoint，并且 `title-new-game` 输入场景已到达 `gMenu.startGame4Menu`。下一条边是扩展 Continue/Load/Option/Exit 输入场景，同时把 `startGame4Menu` 接到真实 `MakeNewGame` / `StartGame` save/profile/scenario 服务，再推进 scene/stage load。
+当前下一步见 `docs/LOOP_TASKS.md`，优先 L7/L8 边界。当前 L7 已有 multi-module title boot/title idle/new-game bytecode/service/script-object state checkpoint，并且 `title-new-game` 输入场景已通过 `gMenu.startGame4Menu` 到达 `MakeNewGame` / `StartGame`，排队 first mission script/stage/rail-camera。下一条边是执行 `mission/sc01/main/ms010_0.b64.sqasm` 的 `setupProcess`，实现 `Loader`/`LoadStage`/event script/player/camera/checkpoint native service state，并继续扩展 Continue/Load/Option/Exit 输入场景。
 
 Runtime implementation 已开始，但只能按完整引擎主干推进，不能写临时视觉 demo。所有未确认 native 行为必须进入 obligation/diagnostics。
 

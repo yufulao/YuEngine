@@ -43,6 +43,16 @@ struct SaveProfileScenarioRuntimeState {
     int saveListGetQueries = 0;
     int saveEntryActiveQueries = 0;
     int saveListEntries = 0;
+    int scenarioKeyQueries = 0;
+    int scenarioKeyCountQueries = 0;
+    int scenarioKeyGetQueries = 0;
+    int makeNewGameCommands = 0;
+    int startGameCommands = 0;
+    std::string currentMissionKey;
+    std::string currentMission;
+    std::string startedMission;
+    std::string difficultyMode;
+    std::string startNewGame;
 };
 
 struct PlatformRuntimeState {
@@ -56,8 +66,13 @@ struct AudioRuntimeState {
 
 struct SceneStageRuntimeState {
     int fadeInCommands = 0;
+    int fadeOutCommands = 0;
+    int queuedStageLoads = 0;
     std::string fadeInDuration;
     std::string fadeInBlend;
+    std::string currentMissionScript;
+    std::string currentStage;
+    std::string currentRailCamera;
 };
 
 struct UiRuntimeObjectState {

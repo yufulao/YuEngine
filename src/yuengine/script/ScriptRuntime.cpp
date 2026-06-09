@@ -45,6 +45,7 @@ enum class ScriptValueKind {
     SaveList,
     SaveEntry,
     ScenarioKeys,
+    Mission,
 };
 
 enum class Truthiness {
@@ -260,6 +261,14 @@ ScriptValue scenarioKeysValue()
     return value;
 }
 
+ScriptValue missionValue(std::string label)
+{
+    ScriptValue value;
+    value.kind = ScriptValueKind::Mission;
+    value.text = std::move(label);
+    return value;
+}
+
 bool isKnownValue(const ScriptValue& value)
 {
     return value.kind != ScriptValueKind::Unknown;
@@ -330,6 +339,8 @@ std::string valueKindName(ScriptValueKind kind)
         return "save_entry";
     case ScriptValueKind::ScenarioKeys:
         return "scenario_keys";
+    case ScriptValueKind::Mission:
+        return "mission";
     }
     return "unknown";
 }
@@ -370,6 +381,7 @@ std::string valueSummary(const ScriptValue& value)
     case ScriptValueKind::SaveList:
     case ScriptValueKind::SaveEntry:
     case ScriptValueKind::ScenarioKeys:
+    case ScriptValueKind::Mission:
         return value.text.empty() ? valueKindName(value.kind) : value.text;
     }
     return "unknown";
@@ -545,6 +557,51 @@ int signedBytecodeDelta(int encoded)
 {
     return encoded > 127 ? encoded - 256 : encoded;
 }
+
+const std::vector<std::string>& scenarioKeys()
+{
+    static const std::vector<std::string> keys = {"sc01", "sc02", "sc03"};
+    return keys;
+}
+
+std::string scenarioKeyAtIndex(int index)
+{
+    const auto& keys = scenarioKeys();
+    if (keys.empty()) {
+        return {};
+    }
+    if (index < 0) {
+        index = 0;
+    }
+    if (static_cast<size_t>(index) >= keys.size()) {
+        index = static_cast<int>(keys.size() - 1);
+    }
+    return keys[static_cast<size_t>(index)];
+}
+
+std::string scenarioKeyFromArguments(const std::vector<ScriptValue>& arguments)
+{
+    if (arguments.empty()) {
+        return scenarioKeyAtIndex(0);
+    }
+
+    double index = 0.0;
+    if (numericValue(arguments[0], index)) {
+        return scenarioKeyAtIndex(static_cast<int>(index));
+    }
+
+    const std::string text = valueSummary(arguments[0]);
+    return text.empty() || text == "unknown" ? scenarioKeyAtIndex(0) : text;
+}
+
+std::string missionLabelForScenarioKey(const std::string& scenarioKey)
+{
+    return "mission:" + (scenarioKey.empty() ? scenarioKeyAtIndex(0) : scenarioKey) + "/main/ms010_0";
+}
+
+constexpr const char* kFirstMissionScript = "mission/sc01/main/ms010_0.b64.sqasm";
+constexpr const char* kFirstMissionStage = "map/Doujou/doujou.sge";
+constexpr const char* kFirstMissionRailCamera = "map/Doujou/doujou.rcm";
 
 ScriptValue tableKeyValue(const std::string& key)
 {
@@ -1902,8 +1959,8 @@ private:
         }
         if (name == "GetScenarioKeys") {
             recordServiceState("Save/Profile/Scenario Service", name, "query_scenario_keys", "scenario_keys",
-                "entries=2", function, instruction,
-                "recovered title new-game flow queries scenario keys before character selection", argsText);
+                "entries=" + std::to_string(scenarioKeys().size()), function, instruction,
+                "recovered title new-game flow queries scenario keys from ak3 _scenarios", argsText);
             return recordTypedReturn(scenarioKeysValue());
         }
         if (name == "GetCountActiveDLC") {
@@ -1919,17 +1976,19 @@ private:
             return recordTypedReturn(boolValue(false));
         }
         if (name == "SetDifficultyMode") {
-            recordServiceState("Script Service", name, "set_difficulty_mode", "gMenu",
-                argsText.empty() ? "difficulty=unknown" : argsText, function, instruction,
+            const std::string difficulty =
+                arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Save/Profile/Scenario Service", name, "set_difficulty_mode", "save_profile",
+                "difficulty=" + difficulty, function, instruction,
                 "NewGameScene forwards selected difficulty to original game service", argsText);
             return recordTypedReturn(nullValue());
         }
         if (name == "count") {
             if (callable.receiver.rfind("scenario_keys", 0) == 0) {
                 recordServiceState("Save/Profile/Scenario Service", name, "scenario_key_count", callable.receiver,
-                    "2", function, instruction,
-                    "scenario key list exposes base-game player choices to NewGameScene.state0", argsText);
-                return recordTypedReturn(intValue(2));
+                    std::to_string(scenarioKeys().size()), function, instruction,
+                    "scenario key list exposes original ak3 _scenarios to NewGameScene.state0", argsText);
+                return recordTypedReturn(intValue(static_cast<int>(scenarioKeys().size())));
             }
             if (isConcreteReceiver(callable.receiver)) {
                 recordServiceState("Save/Profile/Scenario Service", name, "save_list_count", callable.receiver,
@@ -1940,10 +1999,11 @@ private:
         }
         if (name == "get") {
             if (callable.receiver.rfind("scenario_keys", 0) == 0) {
+                const std::string scenarioKey = scenarioKeyFromArguments(arguments);
                 recordServiceState("Save/Profile/Scenario Service", name, "scenario_key_get", callable.receiver,
-                    argsText.empty() ? "scenario_key[0]" : "scenario_key " + argsText, function, instruction,
+                    "scenario_key=" + scenarioKey, function, instruction,
                     "scenario key list returns the selected new-game player key", argsText);
-                return recordTypedReturn(stringValue("scenario_key[0]"));
+                return recordTypedReturn(stringValue(scenarioKey));
             }
             if (isConcreteReceiver(callable.receiver)) {
                 recordServiceState("Save/Profile/Scenario Service", name, "save_list_get", callable.receiver,
@@ -2006,15 +2066,25 @@ private:
             return recordTypedReturn(boolValue(options_.continueDisabled));
         }
         if (callable.receiver == "gMenu" && name == "setMission") {
-            recordServiceState("Script Service", name, "set_current_mission", "gMenu",
-                argsText.empty() ? "mission=unknown" : argsText, function, instruction,
+            const std::string mission =
+                arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Save/Profile/Scenario Service", name, "set_current_mission", "gMenu",
+                "mission=" + mission, function, instruction,
                 "title continue/load branch forwards recovered save mission to gMenu", argsText);
             return recordTypedReturn(nullValue());
         }
         if (callable.receiver == "gMenu" && name == "setMissionKey") {
-            recordServiceState("Script Service", name, "set_current_mission_key", "gMenu",
-                argsText.empty() ? "mission_key=unknown" : argsText, function, instruction,
+            const std::string missionKey =
+                arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            recordServiceState("Save/Profile/Scenario Service", name, "set_current_mission_key", "gMenu",
+                "mission_key=" + missionKey, function, instruction,
                 "new-game branch forwards selected scenario key to gMenu", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (callable.receiver == "gMenu" && name == "clearMission") {
+            recordServiceState("Save/Profile/Scenario Service", name, "clear_menu_mission", "gMenu",
+                "mission=null; mission_key=null", function, instruction,
+                "startGame4Menu clears pending gMenu mission slots after StartGame", argsText);
             return recordTypedReturn(nullValue());
         }
         if (callable.receiver == "gMenu" && name == "fadeOut") {
@@ -2027,6 +2097,31 @@ private:
             recordServiceState("Script Service", name, "start_game_from_menu", "gMenu",
                 "startGame4Menu", function, instruction,
                 "ModuleTitle transition branch starts gameplay through original gMenu API", argsText);
+            return recordTypedReturn(nullValue());
+        }
+        if (name == "MakeNewGame") {
+            const std::string scenarioKey = scenarioKeyFromArguments(arguments);
+            const std::string mission = missionLabelForScenarioKey(scenarioKey);
+            recordServiceState("Save/Profile/Scenario Service", name, "make_new_game", "save_profile",
+                "scenario_key=" + scenarioKey + "; mission=" + mission, function, instruction,
+                "startGame4Menu calls MakeNewGame with gMenu.missionKey and consumes its mission return value",
+                argsText);
+            return recordTypedReturn(missionValue(mission));
+        }
+        if (name == "StartGame") {
+            const std::string mission =
+                arguments.empty() ? "unknown" : valueSummary(arguments.front());
+            const bool newGame =
+                arguments.size() > 1 && arguments[1].kind == ScriptValueKind::Bool && arguments[1].boolValue;
+            recordServiceState("Save/Profile/Scenario Service", name, "start_game", "save_profile",
+                "mission=" + mission + "; new_game=" + (newGame ? "true" : "false"), function, instruction,
+                "startGame4Menu passes the generated mission and new-game flag to original StartGame", argsText);
+            recordServiceState("Scene And Stage Service", name, "queue_scene_stage_load", kFirstMissionScript,
+                "mission=" + mission + "; mission_script=" + kFirstMissionScript + "; stage=" + kFirstMissionStage
+                    + "; rail_camera=" + kFirstMissionRailCamera,
+                function, instruction,
+                "StartGame queues the first mission script and setupProcess stage resources proven by the oracle",
+                argsText);
             return recordTypedReturn(nullValue());
         }
         if (name == "MenuObject") {

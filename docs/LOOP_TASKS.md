@@ -294,10 +294,13 @@ Progress:
 - `script-run --frames 5 --input-scenario title-new-game` now reaches:
   `TitleScene.state0 -> NewGameScene.state0 -> NewGameScene.state1 -> IsSaveFull(false) ->
   setMissionKey -> SetDifficultyMode -> return 200 -> ModuleTitle.fadeOut ->
-  gMenu.startGame4Menu`.
+  gMenu.startGame4Menu -> MakeNewGame(sc01) -> StartGame(mission:sc01/main/ms010_0, true)`.
+- `StartGame` now queues the first scene/stage load request from original resource evidence:
+  `mission/sc01/main/ms010_0.b64.sqasm`, `map/Doujou/doujou.sge`, and
+  `map/Doujou/doujou.rcm`.
 - Branch-only service calls now appear only when selected by input/runtime state: `PlaySE(2)`,
   `GetScenarioKeys`, `GetCountActiveDLC`, `IsSaveFull`, `SetDifficultyMode`, `fadeOut`, and
-  `startGame4Menu`.
+  `startGame4Menu`, `MakeNewGame`, and `StartGame`.
 - Current title trace has 0 unresolved calls after runtime gap classification:
   - 15 engine object calls in the two-frame passive trace;
   - 17 runtime-owned UI helper object calls;
@@ -347,6 +350,18 @@ Progress:
   - `scene.fade_in_blend=0`;
   - `ui.created_objects=20`;
   - `ui.command_count=0`.
+- Runtime-owned new-game state now records:
+  - `scenario_key_queries=2`;
+  - `scenario_key_count_queries=1`;
+  - `scenario_key_get_queries=1`;
+  - `make_new_game_commands=1`;
+  - `start_game_commands=1`;
+  - `started_mission=mission:sc01/main/ms010_0`;
+  - `difficulty_mode=1`;
+  - `scene.queued_stage_loads=1`;
+  - `scene.current_mission_script=mission/sc01/main/ms010_0.b64.sqasm`;
+  - `scene.current_stage=map/Doujou/doujou.sge`;
+  - `scene.current_rail_camera=map/Doujou/doujou.rcm`.
 - Runtime script state snapshot now records:
   - `root_field_count=31`;
   - `object_count=26`;
@@ -361,18 +376,21 @@ Progress:
 
 Current next edge:
 
+- execute the queued first mission script from the `StartGame` scene/stage request:
+  `mission/sc01/main/ms010_0.b64.sqasm` entry `setupProcess`;
+- implement first mission native/service behavior for `Loader`, `LoadStage`,
+  `LoadEventsScriptViaMission`, `CallSetupEvents`, `PushPlayerChara`, `PushTaskGameCamera`,
+  `SetCheckPoint`, and `LoadRailCamera`;
 - expand runtime input scenarios for `gMenu` beyond `title-new-game`: Continue enabled/disabled,
   Load empty/non-empty, Option, Exit denied/allowed, cursor up/down;
-- implement `gMenu.startGame4Menu` as real Save/Profile/Scenario behavior:
-  `MakeNewGame` / `StartGame` service mutation, scenario selection, and scene/stage transition
-  diagnostics;
 - extend concrete UI helper objects into decoded UI command payloads;
 - finish argument payload decoding for the current service state events, especially `MenuObject`,
   `_menuWindow`, `_listWindow`, `setSelectCursor`, `bl/tr`, `float2`, and `renderHorizontal`;
-- after `StartGame`, advance to scene/stage load for the first mission candidate.
+- after mission setup service state exists, feed it into renderer/actor/camera runtime contracts
+  instead of a visual preview path.
 
 Boundary: L7 is not complete. The current checkpoint is bytecode-state execution for the title
-boot edge, not a full Squirrel VM, title UI, or gameplay.
+boot/new-game edge, not a full Squirrel VM, title UI, scene runtime, or gameplay.
 
 ### L8: Save/New Game And Scene Entry
 
@@ -385,6 +403,8 @@ Deliver:
 Acceptance:
 
 - StartGame selects a mission candidate through data/service state, not hard-coded scene boot.
+- Mission setupProcess executes through original bytecode and produces stage, player, camera,
+  event-script, and checkpoint service state.
 
 ## Stop Conditions
 
