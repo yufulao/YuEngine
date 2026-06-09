@@ -1,9 +1,10 @@
 # ADR-0004: Logging And Diagnostics Boundary
 
-Status: Proposed
+Status: Accepted
 Owner: 八云紫, 总架构师
 Reviewers: 红美铃, 博丽灵梦, 雾雨魔理沙 when code review starts
 Date: 2026-06-10
+Accepted: 2026-06-10
 Depends on: ADR-0001, ADR-0002, ADR-0003
 
 ## Context
@@ -39,6 +40,7 @@ Allowed in P1-GATE-001:
 - default logging sink;
 - disabled logging sink;
 - bounded in-memory sink for tests;
+- explicit capacity and overflow behavior for bounded in-memory sink;
 - log category or level only if needed to prove disabled logging behavior;
 - explicit guarantee that disabling logging does not change host/kernel results.
 
@@ -172,6 +174,6 @@ Those require later ADRs and gates.
 
 ## Gate Impact
 
-If accepted, this ADR becomes the logging boundary for P1-GATE-001 and the input for future P1-GATE-004 diagnostics channel work.
+ADR-0004 is the logging boundary for P1-GATE-001 and the input for future P1-GATE-004 diagnostics channel work.
 
-If rejected, P1-GATE-001 must keep logging even smaller: a disabled sink and test-only observation only, with no broader diagnostics target behavior.
+Implementation watch item: bounded in-memory test sinks must declare capacity and overflow behavior in code/tests so they cannot silently become unbounded storage or behavior owners.

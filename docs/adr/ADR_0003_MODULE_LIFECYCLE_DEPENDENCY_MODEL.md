@@ -1,9 +1,10 @@
 # ADR-0003: Module Lifecycle And Dependency Declaration Model
 
-Status: Proposed
+Status: Accepted
 Owner: 八云紫, 总架构师
 Reviewers: 红美铃, 博丽灵梦, 雾雨魔理沙 when code review starts
 Date: 2026-06-10
+Accepted: 2026-06-10
 Depends on: ADR-0001, ADR-0002
 
 ## Context
@@ -251,6 +252,6 @@ Costs:
 
 ## Gate Impact
 
-If accepted, this ADR becomes the lifecycle model for P1-GATE-001 and later Kernel slices.
+ADR-0003 is the lifecycle model for P1-GATE-001 and later Kernel slices.
 
-If rejected, P1-GATE-001 may still complete its minimal approved slice, but any broader Kernel work must wait for a replacement lifecycle/dependency model.
+Implementation watch item: cleanup after a `Failed` state must be recorded as explicit cleanup/stop activity, not as a normal successful `Stopped` transition.
