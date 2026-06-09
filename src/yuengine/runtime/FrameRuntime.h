@@ -825,6 +825,80 @@ struct BackendExecutorRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendDeviceAdapterRecord {
+    std::string name;
+    std::string sourceExecutorResult;
+    std::string sourceBridgeRecord;
+    std::string api;
+    std::string adapter;
+    std::string stage;
+    std::string status;
+    std::string obligation;
+    int inputRecords = 0;
+    int callCount = 0;
+    int width = 0;
+    int height = 0;
+    int inheritedExecutedCalls = 0;
+    int inheritedPreservedOpenCalls = 0;
+    int realExecutedCalls = 0;
+    int blockedRealCalls = 0;
+    bool sourceReady = false;
+    bool deviceHandleRequired = false;
+    bool deviceHandleReady = false;
+};
+
+struct BackendDeviceAdapterRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool backendExecutorOk = false;
+    bool deviceAdapterRuntimeReady = false;
+    bool executorResultsConsumedReady = false;
+    bool platformDevicePreconditionsTracked = false;
+    bool downstreamExecutionBlockedUntilDevice = false;
+    bool backbufferExtentCarried = false;
+    bool realWindowSurfaceGateTracked = false;
+    bool realD3DInterfaceGateTracked = false;
+    bool realD3DDeviceGateTracked = false;
+    bool realDeviceHandleReady = false;
+    bool resourceExecutionRequiresDevice = false;
+    bool drawPresentCaptureRequiresDevice = false;
+    int adapterRecordCount = 0;
+    int consumedExecutorResultRecords = 0;
+    int sourceDiagnosticSuccessRecords = 0;
+    int sourceTrackedOpenRecords = 0;
+    int diagnosticContextRecords = 0;
+    int platformDeviceAdapterRecords = 0;
+    int windowSurfaceAdapterRecords = 0;
+    int d3dInterfaceAdapterRecords = 0;
+    int createDeviceAdapterRecords = 0;
+    int downstreamBlockedRecords = 0;
+    int resourceQueueBlockedRecords = 0;
+    int renderQueueBlockedRecords = 0;
+    int platformDevicePreconditionCalls = 0;
+    int downstreamRealCallsBlockedUntilDevice = 0;
+    int blockedRealCallsTotal = 0;
+    int realExecutedCalls = 0;
+    int realResourceCreationCallsBlocked = 0;
+    int realUploadSubresourceCallsBlocked = 0;
+    int realStateBindingCallsBlocked = 0;
+    int realDrawCallsBlocked = 0;
+    int realPresentCallsBlocked = 0;
+    int realCaptureOracleCallsBlocked = 0;
+    int inheritedDiagnosticExecutedCalls = 0;
+    int inheritedPreservedOpenCalls = 0;
+    int linkedPlatformInputRecords = 0;
+    int readyPlatformInputRecords = 0;
+    int trackedOpenPlatformInputRecords = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedDeviceAdapterContracts = 0;
+    int trackedDeviceAdapterObligations = 0;
+    int openDeviceAdapterObligations = 0;
+    std::vector<BackendDeviceAdapterRecord> records;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -1009,6 +1083,13 @@ BackendExecutorRuntimeReport runBackendExecutorRuntime(
 
 std::string backendExecutorRuntimeReportToJson(
     const BackendExecutorRuntimeReport& report);
+
+BackendDeviceAdapterRuntimeReport runBackendDeviceAdapterRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendDeviceAdapterRuntimeReportToJson(
+    const BackendDeviceAdapterRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

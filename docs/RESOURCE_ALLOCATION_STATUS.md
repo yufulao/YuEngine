@@ -110,5 +110,6 @@ shape from filenames, or treat SMAA transient surfaces and font atlas state as a
   execution edge.
 - L26 has since created the platform/backend bridge submission queue.
 - L27 has since created backend executor results and diagnostic D3D9 adapter accounting.
-- L28: real HWND/D3D9 device creation adapter records before allocation records may become real
-  device resources.
+- L28 has since created real HWND/D3D9 device adapter records.
+- L29: concrete YuEngine-owned HWND and D3D9 device creation execution before allocation records may
+  become real device resources.

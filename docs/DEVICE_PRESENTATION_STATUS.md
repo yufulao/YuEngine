@@ -96,5 +96,6 @@ to turn upload/state/font/oracle contracts into typed runtime records before any
   records; L25 has since created swapchain/present/original-frame oracle records.
 - L26 has since created the platform/backend bridge submission queue.
 - L27 has since created backend executor results and diagnostic D3D9 adapter accounting.
-- L28: real HWND/D3D9 device creation adapter records before any present path can be considered
-  concrete.
+- L28 has since created real HWND/D3D9 device adapter records.
+- L29: concrete YuEngine-owned HWND and D3D9 device creation execution before any present path can
+  be considered concrete.

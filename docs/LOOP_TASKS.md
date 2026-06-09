@@ -1215,24 +1215,53 @@ Boundary:
 
 ### L28: Real HWND And D3D9 Device Creation Adapter Records
 
-Status: active after L27.
+Status: completed after L27.
 
 Deliver:
 
-- consume L27 executor results and split the concrete platform gates into typed adapter records;
-- implement or explicitly gate the real HWND/window surface, `Direct3DCreate9`, and `CreateDevice`
+- consumed L27 executor results and split the concrete platform gates into typed adapter records;
+- explicitly gated the real HWND/window surface, `Direct3DCreate9`, and `CreateDevice`
   preconditions through the same runtime path;
-- carry the original 1280x720 backbuffer, renderer profile, and L26/L27 call ordering into the
+- carried the original 1280x720 backbuffer, renderer profile, and L26/L27 call ordering into the
   adapter contract;
-- keep resource creation/upload/draw/present/capture blocked until a concrete device handle exists.
+- kept resource creation/upload/draw/present/capture blocked until a concrete device handle exists.
 
 Acceptance:
 
-- no platform/device record may be invented without a source L27 result and source L26 bridge
-  record;
-- real device creation must fail as a named gate when the environment cannot supply a concrete
-  window/device, rather than silently falling back to diagnostic success;
-- no blue-window, clear-screen, mesh preview, or separate sample app can satisfy L28.
+- `yuengine_cli backend-device-adapter samples/touhou_new_world/project.json --repo-root .`
+  reports `device_adapter_runtime_ready=true`;
+- CTest `yuengine_backend_device_adapter_contract` locks 10 adapter records, 3 platform/device
+  precondition records, 6 downstream blocked records, 688 blocked real calls, 0 real executed
+  calls, and the inherited 1280x720 backbuffer extent;
+- no platform/device record is invented without a source L27 result and source L26 bridge record;
+- no blue-window, clear-screen, mesh preview, or separate sample app satisfies L28.
+
+Boundary:
+
+- L28 does not create HWND, Direct3D interface, or D3D9 device handles;
+- L28 does not execute resource creation/upload/state/draw/present/capture;
+- L28 only closes the device-adapter precondition layer so L29 can create or explicitly fail the
+  real platform device path.
+
+### L29: Concrete HWND And D3D9 Device Creation Execution
+
+Status: active after L28.
+
+Deliver:
+
+- consume the 3 L28 platform/device precondition records;
+- implement a runtime-owned window surface path and Direct3D9 interface/device creation result
+  records;
+- preserve the inherited 1280x720 backbuffer and renderer profile;
+- keep all downstream resource/upload/state/draw/present/capture queues blocked unless a concrete
+  device handle result is ready.
+
+Acceptance:
+
+- a device-handle result must point back to L28, L27, and L26 records;
+- failure to create a real HWND/D3D9 device must be explicit and must not fall back to diagnostic
+  success;
+- no standalone launcher, preview window, or manual render path can satisfy L29.
 
 ## Stop Conditions
 
@@ -1241,3 +1270,21 @@ Do not stop unless:
 - the full target is achieved;
 - a hard blocker requires user action and no non-blocked loop task remains;
 - the user explicitly interrupts or redirects.
+
+## Verification Speed
+
+Full CTest is too slow when run sequentially because backend contract tests repeatedly rebuild the
+same runtime evidence chain. The default verification path is now:
+
+```powershell
+tools\verify_runtime.ps1 -Mode full -Jobs 8
+```
+
+Use targeted edge verification while editing:
+
+```powershell
+tools\verify_runtime.ps1 -Mode edge -Filter <ctest-name> -Jobs 8
+```
+
+Use `-CleanBuild` after C++ header, ABI-like struct, or build-system changes. Do not default to
+bare sequential `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`.

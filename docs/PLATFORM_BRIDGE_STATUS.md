@@ -125,7 +125,8 @@ with a standalone launcher, clear screen, mesh preview, or hand-authored render 
 ## Next Edges
 
 - L27 has since created the backend executor interface and diagnostic D3D9 adapter result layer.
-- L28: real HWND/D3D9 device creation adapter records. It must consume L27 executor results before
-  any resource, draw, present, capture, or oracle work can execute for real.
+- L28 has since created real HWND/D3D9 device adapter records and blocked downstream execution
+  until a concrete device handle exists.
+- L29: concrete YuEngine-owned HWND and D3D9 device creation execution.
 - Later: real resource/upload/state execution, draw execution, frame capture artifact, then
   original-frame parity comparison.

@@ -115,6 +115,12 @@ void addError(BackendExecutorRuntimeReport& report, const std::string& message)
     report.errors.push_back(message);
 }
 
+void addError(BackendDeviceAdapterRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -1425,6 +1431,101 @@ BackendExecutorResultRecord makeExecutorResultRecord(
     result.preservedOpenCalls = resultStatus == "tracked_open" ? source.callCount : 0;
     result.ready = resultStatus == "diagnostic_success";
     return result;
+}
+
+std::string deviceAdapterStageForExecutorResult(const BackendExecutorResultRecord& result)
+{
+    if (result.sourceBridgeRecord == "diagnostic_backend_bridge") {
+        return "diagnostic_context";
+    }
+    if (result.sourceBridgeRecord == "platform_window_surface") {
+        return "window_surface";
+    }
+    if (result.sourceBridgeRecord == "d3d9_interface_creation") {
+        return "d3d9_interface";
+    }
+    if (result.sourceBridgeRecord == "d3d9_device_creation") {
+        return "d3d9_device";
+    }
+    if (result.sourceBridgeRecord == "d3d9_resource_creation_queue"
+        || result.sourceBridgeRecord == "d3d9_texture_upload_queue"
+        || result.sourceBridgeRecord == "d3d9_state_binding_queue") {
+        return "downstream_resource_queue";
+    }
+    return "downstream_render_queue";
+}
+
+std::string deviceAdapterStatusForExecutorResult(const BackendExecutorResultRecord& result)
+{
+    if (result.sourceBridgeRecord == "diagnostic_backend_bridge") {
+        return "contract_ready";
+    }
+    if (result.sourceBridgeRecord == "platform_window_surface"
+        || result.sourceBridgeRecord == "d3d9_interface_creation"
+        || result.sourceBridgeRecord == "d3d9_device_creation") {
+        return "tracked_open";
+    }
+    return "blocked_until_device";
+}
+
+std::string deviceAdapterObligationForExecutorResult(const BackendExecutorResultRecord& result)
+{
+    if (result.sourceBridgeRecord == "diagnostic_backend_bridge") {
+        return "executor diagnostic context is preserved for backend adapter dispatch";
+    }
+    if (result.sourceBridgeRecord == "platform_window_surface") {
+        return "requires a real HWND/window surface owned by the YuEngine runtime";
+    }
+    if (result.sourceBridgeRecord == "d3d9_interface_creation") {
+        return "requires a real Direct3DCreate9 interface result";
+    }
+    if (result.sourceBridgeRecord == "d3d9_device_creation") {
+        return "requires a real IDirect3DDevice9 created with the recovered backbuffer contract";
+    }
+    if (result.sourceBridgeRecord == "d3d9_resource_creation_queue") {
+        return "resource creation is blocked until a concrete IDirect3DDevice9 handle exists";
+    }
+    if (result.sourceBridgeRecord == "d3d9_texture_upload_queue") {
+        return "texture uploads are blocked until concrete D3D texture resources exist";
+    }
+    if (result.sourceBridgeRecord == "d3d9_state_binding_queue") {
+        return "state binding is blocked until a concrete D3D device handle exists";
+    }
+    if (result.sourceBridgeRecord == "d3d9_draw_submission_queue") {
+        return "draw execution is blocked until concrete buffers and device state exist";
+    }
+    if (result.sourceBridgeRecord == "d3d9_present_call") {
+        return "present is blocked until a concrete device and swapchain exist";
+    }
+    return "capture/oracle work is blocked until YuEngine can present a concrete frame";
+}
+
+BackendDeviceAdapterRecord makeDeviceAdapterRecord(
+    const BackendExecutorResultRecord& source,
+    int width,
+    int height)
+{
+    BackendDeviceAdapterRecord record;
+    record.name = source.sourceBridgeRecord + "_adapter";
+    record.sourceExecutorResult = source.name;
+    record.sourceBridgeRecord = source.sourceBridgeRecord;
+    record.api = source.api;
+    record.adapter = "real_hwnd_d3d9_device_adapter";
+    record.stage = deviceAdapterStageForExecutorResult(source);
+    record.status = deviceAdapterStatusForExecutorResult(source);
+    record.obligation = deviceAdapterObligationForExecutorResult(source);
+    record.inputRecords = source.inputRecords;
+    record.callCount = source.callCount;
+    record.width = width;
+    record.height = height;
+    record.inheritedExecutedCalls = source.executedCalls;
+    record.inheritedPreservedOpenCalls = source.preservedOpenCalls;
+    record.realExecutedCalls = 0;
+    record.blockedRealCalls = record.status == "contract_ready" ? 0 : source.callCount;
+    record.sourceReady = source.ready;
+    record.deviceHandleRequired = record.status != "contract_ready";
+    record.deviceHandleReady = false;
+    return record;
 }
 
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
@@ -3103,6 +3204,189 @@ BackendExecutorRuntimeReport buildBackendExecutorRuntimeReport(
     if (report.resolvedExecutorContracts != 4 || report.trackedExecutorObligations != 6
         || report.openExecutorObligations != 6) {
         addError(report, "backend executor obligation accounting is inconsistent");
+    }
+
+    return report;
+}
+
+BackendDeviceAdapterRuntimeReport buildBackendDeviceAdapterRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    BackendDeviceAdapterRuntimeReport report;
+    const auto executor = buildBackendExecutorRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.backendExecutorOk = executor.ok;
+    report.consumedExecutorResultRecords = executor.executionResultRecords;
+    report.linkedPlatformInputRecords = executor.linkedPlatformInputRecords;
+    report.readyPlatformInputRecords = executor.readyPlatformInputRecords;
+    report.trackedOpenPlatformInputRecords = executor.trackedOpenPlatformInputRecords;
+    report.backbufferWidth = executor.backbufferWidth;
+    report.backbufferHeight = executor.backbufferHeight;
+
+    for (const auto& result : executor.results) {
+        report.records.push_back(
+            makeDeviceAdapterRecord(result, executor.backbufferWidth, executor.backbufferHeight));
+    }
+
+    for (const auto& record : report.records) {
+        ++report.adapterRecordCount;
+        report.realExecutedCalls += record.realExecutedCalls;
+        report.blockedRealCallsTotal += record.blockedRealCalls;
+        report.inheritedDiagnosticExecutedCalls += record.inheritedExecutedCalls;
+        report.inheritedPreservedOpenCalls += record.inheritedPreservedOpenCalls;
+
+        if (record.sourceReady) {
+            ++report.sourceDiagnosticSuccessRecords;
+        } else {
+            ++report.sourceTrackedOpenRecords;
+        }
+
+        if (record.stage == "diagnostic_context") {
+            ++report.diagnosticContextRecords;
+        } else if (record.stage == "window_surface") {
+            ++report.platformDeviceAdapterRecords;
+            ++report.windowSurfaceAdapterRecords;
+            report.platformDevicePreconditionCalls += record.callCount;
+        } else if (record.stage == "d3d9_interface") {
+            ++report.platformDeviceAdapterRecords;
+            ++report.d3dInterfaceAdapterRecords;
+            report.platformDevicePreconditionCalls += record.callCount;
+        } else if (record.stage == "d3d9_device") {
+            ++report.platformDeviceAdapterRecords;
+            ++report.createDeviceAdapterRecords;
+            report.platformDevicePreconditionCalls += record.callCount;
+        } else if (record.stage == "downstream_resource_queue") {
+            ++report.downstreamBlockedRecords;
+            ++report.resourceQueueBlockedRecords;
+            report.downstreamRealCallsBlockedUntilDevice += record.callCount;
+        } else {
+            ++report.downstreamBlockedRecords;
+            ++report.renderQueueBlockedRecords;
+            report.downstreamRealCallsBlockedUntilDevice += record.callCount;
+        }
+
+        if (record.sourceBridgeRecord == "d3d9_resource_creation_queue") {
+            report.realResourceCreationCallsBlocked += record.callCount;
+        } else if (record.sourceBridgeRecord == "d3d9_texture_upload_queue") {
+            report.realUploadSubresourceCallsBlocked += record.callCount;
+        } else if (record.sourceBridgeRecord == "d3d9_state_binding_queue") {
+            report.realStateBindingCallsBlocked += record.callCount;
+        } else if (record.sourceBridgeRecord == "d3d9_draw_submission_queue") {
+            report.realDrawCallsBlocked += record.callCount;
+        } else if (record.sourceBridgeRecord == "d3d9_present_call") {
+            report.realPresentCallsBlocked += record.callCount;
+        } else if (record.sourceBridgeRecord == "frame_capture_oracle_queue") {
+            report.realCaptureOracleCallsBlocked += record.callCount;
+        }
+    }
+
+    report.executorResultsConsumedReady = report.backendExecutorOk
+        && report.adapterRecordCount == executor.executionResultRecords
+        && report.consumedExecutorResultRecords == 10 && report.adapterRecordCount == 10;
+    report.realWindowSurfaceGateTracked = report.windowSurfaceAdapterRecords == 1;
+    report.realD3DInterfaceGateTracked = report.d3dInterfaceAdapterRecords == 1;
+    report.realD3DDeviceGateTracked = report.createDeviceAdapterRecords == 1;
+    report.platformDevicePreconditionsTracked = report.platformDeviceAdapterRecords == 3
+        && report.platformDevicePreconditionCalls == 3 && report.realWindowSurfaceGateTracked
+        && report.realD3DInterfaceGateTracked && report.realD3DDeviceGateTracked;
+    report.resourceExecutionRequiresDevice = report.resourceQueueBlockedRecords == 3
+        && report.realResourceCreationCallsBlocked == 46
+        && report.realUploadSubresourceCallsBlocked == 458
+        && report.realStateBindingCallsBlocked == 57;
+    report.drawPresentCaptureRequiresDevice = report.renderQueueBlockedRecords == 3
+        && report.realDrawCallsBlocked == 121 && report.realPresentCallsBlocked == 1
+        && report.realCaptureOracleCallsBlocked == 2;
+    report.downstreamExecutionBlockedUntilDevice = report.downstreamBlockedRecords == 6
+        && report.resourceExecutionRequiresDevice && report.drawPresentCaptureRequiresDevice
+        && report.downstreamRealCallsBlockedUntilDevice == 685
+        && report.blockedRealCallsTotal == 688 && report.realExecutedCalls == 0;
+    report.backbufferExtentCarried =
+        report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+    report.realDeviceHandleReady = false;
+    report.deviceAdapterRuntimeReady = report.executorResultsConsumedReady
+        && report.platformDevicePreconditionsTracked
+        && report.downstreamExecutionBlockedUntilDevice
+        && report.backbufferExtentCarried
+        && report.sourceDiagnosticSuccessRecords == 4
+        && report.sourceTrackedOpenRecords == 6
+        && report.diagnosticContextRecords == 1
+        && report.inheritedDiagnosticExecutedCalls == 562
+        && report.inheritedPreservedOpenCalls == 127
+        && report.linkedPlatformInputRecords == 110
+        && report.readyPlatformInputRecords == 57
+        && report.trackedOpenPlatformInputRecords == 53
+        && !report.realDeviceHandleReady;
+
+    report.contracts.push_back(makeBackendObligation(
+        "device_adapter_consumes_executor_results",
+        report.executorResultsConsumedReady ? "contract_ready" : "blocked",
+        "10 L28 adapter records map one-to-one to 10 L27 executor results"));
+    report.contracts.push_back(makeBackendObligation(
+        "platform_device_preconditions_tracked",
+        report.platformDevicePreconditionsTracked ? "contract_ready" : "blocked",
+        "window surface, Direct3DCreate9, and CreateDevice gates are distinct records"));
+    report.contracts.push_back(makeBackendObligation(
+        "downstream_execution_blocked_until_device",
+        report.downstreamExecutionBlockedUntilDevice ? "contract_ready" : "blocked",
+        "685 downstream resource/draw/present/capture calls cannot execute without a device"));
+    report.contracts.push_back(makeBackendObligation(
+        "backbuffer_extent_carried_to_adapter",
+        report.backbufferExtentCarried ? "contract_ready" : "blocked",
+        "1280x720 backbuffer extent is inherited from L25/L26/L27"));
+    report.contracts.push_back(makeBackendObligation(
+        "real_hwnd_surface_creation",
+        report.realWindowSurfaceGateTracked ? "tracked_open" : "blocked",
+        "no YuEngine-owned HWND has been created yet"));
+    report.contracts.push_back(makeBackendObligation(
+        "real_direct3d9_interface_creation",
+        report.realD3DInterfaceGateTracked ? "tracked_open" : "blocked",
+        "Direct3DCreate9 is not called yet"));
+    report.contracts.push_back(makeBackendObligation(
+        "real_d3d9_device_creation",
+        report.realD3DDeviceGateTracked ? "tracked_open" : "blocked",
+        "IDirect3DDevice9::CreateDevice is not called yet"));
+    report.contracts.push_back(makeBackendObligation(
+        "real_resource_execution_after_device",
+        report.resourceExecutionRequiresDevice ? "tracked_open" : "blocked",
+        "resource creation, upload, and state binding are blocked until device creation"));
+    report.contracts.push_back(makeBackendObligation(
+        "real_draw_present_capture_after_device",
+        report.drawPresentCaptureRequiresDevice ? "tracked_open" : "blocked",
+        "draw, present, and capture are blocked until a concrete frame can be produced"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_after_capture",
+        report.drawPresentCaptureRequiresDevice ? "tracked_open" : "blocked",
+        "original-frame parity remains blocked until YuEngine capture exists"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedDeviceAdapterContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedDeviceAdapterObligations;
+            ++report.openDeviceAdapterObligations;
+        } else {
+            ++report.openDeviceAdapterObligations;
+        }
+    }
+
+    if (!report.backendExecutorOk) {
+        addError(report, "backend executor contract is not ready for device adapter");
+    }
+    if (!report.executorResultsConsumedReady || !report.platformDevicePreconditionsTracked) {
+        addError(report, "device adapter does not consume executor/device preconditions");
+    }
+    if (!report.downstreamExecutionBlockedUntilDevice || report.realExecutedCalls != 0) {
+        addError(report, "downstream backend calls are not blocked behind device creation");
+    }
+    if (!report.backbufferExtentCarried) {
+        addError(report, "device adapter lost the recovered backbuffer extent");
+    }
+    if (report.resolvedDeviceAdapterContracts != 4 || report.trackedDeviceAdapterObligations != 6
+        || report.openDeviceAdapterObligations != 6) {
+        addError(report, "device adapter obligation accounting is inconsistent");
     }
 
     return report;
@@ -5049,6 +5333,176 @@ std::string backendExecutorRuntimeReportToJson(
             << ", \"preserved_open_calls\": " << result.preservedOpenCalls
             << ", \"ready\": " << (result.ready ? "true" : "false") << "}";
         out << (i + 1 == report.results.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendDeviceAdapterRuntimeReport runBackendDeviceAdapterRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendDeviceAdapterRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendDeviceAdapterRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendDeviceAdapterRuntimeReportToJson(
+    const BackendDeviceAdapterRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_device_adapter_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " backend_executor_ok=" << (report.backendExecutorOk ? "true" : "false")
+        << " device_adapter_runtime_ready=" << (report.deviceAdapterRuntimeReady ? "true" : "false")
+        << " executor_results_consumed_ready="
+        << (report.executorResultsConsumedReady ? "true" : "false")
+        << " platform_device_preconditions_tracked="
+        << (report.platformDevicePreconditionsTracked ? "true" : "false")
+        << " downstream_execution_blocked_until_device="
+        << (report.downstreamExecutionBlockedUntilDevice ? "true" : "false")
+        << " backbuffer_extent_carried=" << (report.backbufferExtentCarried ? "true" : "false")
+        << " real_window_surface_gate_tracked="
+        << (report.realWindowSurfaceGateTracked ? "true" : "false")
+        << " real_d3d_interface_gate_tracked="
+        << (report.realD3DInterfaceGateTracked ? "true" : "false")
+        << " real_d3d_device_gate_tracked="
+        << (report.realD3DDeviceGateTracked ? "true" : "false")
+        << " real_device_handle_ready=" << (report.realDeviceHandleReady ? "true" : "false")
+        << " resource_execution_requires_device="
+        << (report.resourceExecutionRequiresDevice ? "true" : "false")
+        << " draw_present_capture_requires_device="
+        << (report.drawPresentCaptureRequiresDevice ? "true" : "false")
+        << " adapter_record_count=" << report.adapterRecordCount
+        << " consumed_executor_result_records=" << report.consumedExecutorResultRecords
+        << " source_diagnostic_success_records=" << report.sourceDiagnosticSuccessRecords
+        << " source_tracked_open_records=" << report.sourceTrackedOpenRecords
+        << " diagnostic_context_records=" << report.diagnosticContextRecords
+        << " platform_device_adapter_records=" << report.platformDeviceAdapterRecords
+        << " window_surface_adapter_records=" << report.windowSurfaceAdapterRecords
+        << " d3d_interface_adapter_records=" << report.d3dInterfaceAdapterRecords
+        << " create_device_adapter_records=" << report.createDeviceAdapterRecords
+        << " downstream_blocked_records=" << report.downstreamBlockedRecords
+        << " resource_queue_blocked_records=" << report.resourceQueueBlockedRecords
+        << " render_queue_blocked_records=" << report.renderQueueBlockedRecords
+        << " platform_device_precondition_calls=" << report.platformDevicePreconditionCalls
+        << " downstream_real_calls_blocked_until_device="
+        << report.downstreamRealCallsBlockedUntilDevice
+        << " blocked_real_calls_total=" << report.blockedRealCallsTotal
+        << " real_executed_calls=" << report.realExecutedCalls
+        << " real_resource_creation_calls_blocked=" << report.realResourceCreationCallsBlocked
+        << " real_upload_subresource_calls_blocked=" << report.realUploadSubresourceCallsBlocked
+        << " real_state_binding_calls_blocked=" << report.realStateBindingCallsBlocked
+        << " real_draw_calls_blocked=" << report.realDrawCallsBlocked
+        << " real_present_calls_blocked=" << report.realPresentCallsBlocked
+        << " real_capture_oracle_calls_blocked=" << report.realCaptureOracleCallsBlocked
+        << " inherited_diagnostic_executed_calls=" << report.inheritedDiagnosticExecutedCalls
+        << " inherited_preserved_open_calls=" << report.inheritedPreservedOpenCalls
+        << " linked_platform_input_records=" << report.linkedPlatformInputRecords
+        << " ready_platform_input_records=" << report.readyPlatformInputRecords
+        << " tracked_open_platform_input_records=" << report.trackedOpenPlatformInputRecords
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_device_adapter_contracts=" << report.resolvedDeviceAdapterContracts
+        << " tracked_device_adapter_obligations=" << report.trackedDeviceAdapterObligations
+        << " open_device_adapter_obligations=" << report.openDeviceAdapterObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"adapter_summary\": {";
+    out << "\"adapter_record_count\": " << report.adapterRecordCount
+        << ", \"consumed_executor_result_records\": " << report.consumedExecutorResultRecords
+        << ", \"source_diagnostic_success_records\": " << report.sourceDiagnosticSuccessRecords
+        << ", \"source_tracked_open_records\": " << report.sourceTrackedOpenRecords
+        << ", \"diagnostic_context_records\": " << report.diagnosticContextRecords
+        << ", \"platform_device_adapter_records\": " << report.platformDeviceAdapterRecords
+        << ", \"downstream_blocked_records\": " << report.downstreamBlockedRecords << "},\n";
+    out << "  \"device_preconditions\": {";
+    out << "\"window_surface_adapter_records\": " << report.windowSurfaceAdapterRecords
+        << ", \"d3d_interface_adapter_records\": " << report.d3dInterfaceAdapterRecords
+        << ", \"create_device_adapter_records\": " << report.createDeviceAdapterRecords
+        << ", \"platform_device_precondition_calls\": " << report.platformDevicePreconditionCalls
+        << ", \"real_device_handle_ready\": "
+        << (report.realDeviceHandleReady ? "true" : "false")
+        << ", \"backbuffer_width\": " << report.backbufferWidth
+        << ", \"backbuffer_height\": " << report.backbufferHeight << "},\n";
+    out << "  \"blocked_execution\": {";
+    out << "\"resource_queue_blocked_records\": " << report.resourceQueueBlockedRecords
+        << ", \"render_queue_blocked_records\": " << report.renderQueueBlockedRecords
+        << ", \"downstream_real_calls_blocked_until_device\": "
+        << report.downstreamRealCallsBlockedUntilDevice
+        << ", \"blocked_real_calls_total\": " << report.blockedRealCallsTotal
+        << ", \"real_executed_calls\": " << report.realExecutedCalls
+        << ", \"real_resource_creation_calls_blocked\": "
+        << report.realResourceCreationCallsBlocked
+        << ", \"real_upload_subresource_calls_blocked\": "
+        << report.realUploadSubresourceCallsBlocked
+        << ", \"real_state_binding_calls_blocked\": " << report.realStateBindingCallsBlocked
+        << ", \"real_draw_calls_blocked\": " << report.realDrawCallsBlocked
+        << ", \"real_present_calls_blocked\": " << report.realPresentCallsBlocked
+        << ", \"real_capture_oracle_calls_blocked\": "
+        << report.realCaptureOracleCallsBlocked << "},\n";
+    out << "  \"executor_link\": {";
+    out << "\"inherited_diagnostic_executed_calls\": " << report.inheritedDiagnosticExecutedCalls
+        << ", \"inherited_preserved_open_calls\": " << report.inheritedPreservedOpenCalls
+        << ", \"linked_platform_input_records\": " << report.linkedPlatformInputRecords
+        << ", \"ready_platform_input_records\": " << report.readyPlatformInputRecords
+        << ", \"tracked_open_platform_input_records\": "
+        << report.trackedOpenPlatformInputRecords << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_device_adapter_contracts\": " << report.resolvedDeviceAdapterContracts
+        << ", \"tracked_device_adapter_obligations\": "
+        << report.trackedDeviceAdapterObligations
+        << ", \"open_device_adapter_obligations\": "
+        << report.openDeviceAdapterObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"records\": [\n";
+    for (size_t i = 0; i < report.records.size(); ++i) {
+        const auto& record = report.records[i];
+        out << "    {\"name\": \"" << core::jsonEscape(record.name)
+            << "\", \"source_executor_result\": \"" << core::jsonEscape(record.sourceExecutorResult)
+            << "\", \"source_bridge_record\": \"" << core::jsonEscape(record.sourceBridgeRecord)
+            << "\", \"api\": \"" << core::jsonEscape(record.api)
+            << "\", \"adapter\": \"" << core::jsonEscape(record.adapter)
+            << "\", \"stage\": \"" << core::jsonEscape(record.stage)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"obligation\": \"" << core::jsonEscape(record.obligation)
+            << "\", \"input_records\": " << record.inputRecords
+            << ", \"call_count\": " << record.callCount
+            << ", \"width\": " << record.width
+            << ", \"height\": " << record.height
+            << ", \"inherited_executed_calls\": " << record.inheritedExecutedCalls
+            << ", \"inherited_preserved_open_calls\": " << record.inheritedPreservedOpenCalls
+            << ", \"real_executed_calls\": " << record.realExecutedCalls
+            << ", \"blocked_real_calls\": " << record.blockedRealCalls
+            << ", \"source_ready\": " << (record.sourceReady ? "true" : "false")
+            << ", \"device_handle_required\": "
+            << (record.deviceHandleRequired ? "true" : "false")
+            << ", \"device_handle_ready\": "
+            << (record.deviceHandleReady ? "true" : "false") << "}";
+        out << (i + 1 == report.records.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

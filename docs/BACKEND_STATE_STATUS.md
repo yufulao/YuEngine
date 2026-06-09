@@ -112,5 +112,6 @@ font state back into one generic renderer obligation.
   device execution records.
 - L26 has since created the platform/backend bridge submission queue.
 - L27 has since created backend executor results and diagnostic D3D9 adapter accounting.
-- L28: real HWND/D3D9 device creation adapter records, still consuming the typed state/allocation
-  gates instead of replacing them with a standalone renderer.
+- L28 has since created real HWND/D3D9 device adapter records.
+- L29: concrete YuEngine-owned HWND and D3D9 device creation execution, still consuming the typed
+  state/allocation gates instead of replacing them with a standalone renderer.

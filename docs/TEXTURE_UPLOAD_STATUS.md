@@ -111,5 +111,6 @@ guess texture dimensions from filenames, or treat unreferenced DDS files as stag
   allocation, and device execution gates became independently typed.
 - L26 has since created the platform/backend bridge submission queue.
 - L27 has since created backend executor results and diagnostic D3D9 adapter accounting.
-- L28: real HWND/D3D9 device creation adapter records before upload records may become real GPU
-  memory writes.
+- L28 has since created real HWND/D3D9 device adapter records.
+- L29: concrete YuEngine-owned HWND and D3D9 device creation execution before upload records may
+  become real GPU memory writes.

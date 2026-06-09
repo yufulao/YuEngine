@@ -121,4 +121,5 @@ a visual window without proving device API submission, swapchain/present, and or
 - L25 has since created swapchain/present/original-frame oracle parity records from L20 and L24.
 - L26 has since created the platform/backend bridge submission queue from L24 and L25.
 - L27 has since created backend executor results and diagnostic D3D9 adapter accounting.
-- L28: real HWND/D3D9 device creation adapter records.
+- L28 has since created real HWND/D3D9 device adapter records.
+- L29: concrete YuEngine-owned HWND and D3D9 device creation execution.

@@ -110,6 +110,7 @@ renderer submission, device presentation, resource allocation, and device execut
 
 - L26 has since created the platform/backend bridge submission queue from L24 and L25 records.
 - L27 has since created backend executor results and diagnostic D3D9 adapter accounting.
-- L28: real HWND/D3D9 device creation adapter records.
+- L28 has since created real HWND/D3D9 device adapter records.
+- L29: concrete YuEngine-owned HWND and D3D9 device creation execution.
 - Later: resource/upload/state execution, draw execution, real present, frame capture, and parity
   comparison through the same scheduler/backend path.

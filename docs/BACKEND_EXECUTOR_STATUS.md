@@ -122,7 +122,8 @@ manual game loop.
 
 ## Next Edges
 
-- L28: real HWND and D3D9 device creation adapter records. It must consume L27 executor results and
-  close the window/interface/device gates before resource calls can be real.
-- L29+: real resource creation/upload/state execution, then draw execution, present, capture
-  artifact, and original-frame oracle parity.
+- L28 has since created real HWND/D3D9 device adapter records and blocked downstream execution
+  until a concrete device handle exists.
+- L29: concrete YuEngine-owned HWND and D3D9 device creation execution.
+- L30+: real resource creation/upload/state execution, then draw execution, present, capture
+  artifact, and original-frame oracle parity after a device handle exists.
