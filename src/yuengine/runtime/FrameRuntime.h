@@ -1015,6 +1015,75 @@ struct BackendResourceCreationRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendUploadBindingExecutionRecord {
+    std::string name;
+    std::string source;
+    std::string operation;
+    std::string target;
+    std::string resourceKind;
+    std::string format;
+    std::string status;
+    std::string detail;
+    int subresourceCount = 0;
+    int uploadedSubresources = 0;
+    int bindingSlots = 0;
+    int apiCalls = 0;
+    int64_t payloadBytes = 0;
+    int64_t uploadedPayloadBytes = 0;
+    bool sourceReady = false;
+    bool resultRecorded = false;
+    bool realCallReady = false;
+};
+
+struct BackendUploadBindingRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool resourceCreationOk = false;
+    bool deviceExecutionOk = false;
+    bool backendStateOk = false;
+    bool uploadBindingRuntimeReady = false;
+    bool persistentDeviceServiceReady = false;
+    bool resourceHandlesReady = false;
+    bool textureUploadExecuted = false;
+    bool lookupTextureUploadExecuted = false;
+    bool lookupTextureBindingExecuted = false;
+    bool samplerStateBindingExecuted = false;
+    bool renderStateBindingExecuted = false;
+    bool trackedOpenBindingsPreserved = false;
+    bool downstreamDrawPresentDeferred = false;
+    bool backbufferExtentCarried = false;
+    int resourceHandlesCreated = 0;
+    int uploadTextureRecords = 0;
+    int stageTextureUploadRecords = 0;
+    int lookupTextureUploadRecords = 0;
+    int cubeTextureUploadRecords = 0;
+    int uploadSubresourceRecords = 0;
+    int uploadedSubresources = 0;
+    int failedUploadRecords = 0;
+    int64_t uploadPayloadBytes = 0;
+    int64_t uploadedPayloadBytes = 0;
+    int bindingRecords = 0;
+    int readyBindingRecords = 0;
+    int trackedOpenBindingRecords = 0;
+    int executedBindingRecords = 0;
+    int failedBindingRecords = 0;
+    int setTextureCalls = 0;
+    int setSamplerStateCalls = 0;
+    int setRenderStateBundles = 0;
+    int setRenderStateCalls = 0;
+    int preservedMaterialTextureBindings = 0;
+    int preservedTransientTextureBindings = 0;
+    int drawPresentCaptureRecordsDeferred = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedUploadBindingContracts = 0;
+    int trackedUploadBindingObligations = 0;
+    int openUploadBindingObligations = 0;
+    std::vector<BackendUploadBindingExecutionRecord> records;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -1220,6 +1289,13 @@ BackendResourceCreationRuntimeReport runBackendResourceCreationRuntime(
 
 std::string backendResourceCreationRuntimeReportToJson(
     const BackendResourceCreationRuntimeReport& report);
+
+BackendUploadBindingRuntimeReport runBackendUploadBindingRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendUploadBindingRuntimeReportToJson(
+    const BackendUploadBindingRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

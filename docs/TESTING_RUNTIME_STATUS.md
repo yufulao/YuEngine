@@ -30,8 +30,11 @@ ctest --test-dir build\cmake-bt143 -C Debug --parallel 8 -R yuengine_backend_dev
 backend-resource-create direct CLI
 1/1 deepest fast contract, 22.8 seconds
 
+backend-upload-bind direct CLI
+1/1 deepest fast contract, 24.8 seconds
+
 tools\verify_runtime.ps1 -SkipPython
-fast contract plus git diff --check, about 22 seconds
+fast contract plus git diff --check, about 25 seconds
 ```
 
 Parallel full CTest is still the full regression command, but it is not the default edit-loop
@@ -48,7 +51,7 @@ tools\verify_runtime.ps1
 Filtered CTest edge verification when a named test must be exercised:
 
 ```powershell
-tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_resource_creation_contract -Jobs 8
+tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_upload_binding_contract -Jobs 8
 ```
 
 Full checkpoint verification before commit:

@@ -76,7 +76,7 @@ try {
             $cliPath = Join-Path (Join-Path $BuildDir $Config) "yuengine_cli.exe"
         }
         Invoke-CheckedCapture "runtime fast contract" $cliPath @(
-            "backend-resource-create",
+            "backend-upload-bind",
             "samples\touhou_new_world\project.json",
             "--repo-root",
             "."

@@ -1316,7 +1316,7 @@ Boundary:
 
 ### L31: Texture Upload And Backend State Binding Execution
 
-Status: active after L30.
+Status: completed after L30.
 
 Deliver:
 
@@ -1335,6 +1335,48 @@ Acceptance:
 - every state binding must point back to the recovered sampler/pass/material records;
 - failed upload or state calls must be explicit and cannot be downgraded to diagnostic success;
 - draw/present/capture remain blocked until upload and state binding are actually complete.
+
+Verified:
+
+- `yuengine_cli backend-upload-bind samples/touhou_new_world/project.json --repo-root .`
+  reports `upload_binding_runtime_ready=true`;
+- CTest `yuengine_backend_upload_binding_contract` locks 41 retained resource handles, 458 uploaded
+  subresources, 23,949,794 uploaded payload bytes, 14 executed ready binding records, 43 preserved
+  tracked-open binding records, and the inherited 1280x720 backbuffer extent;
+- real D3D9 calls executed on this machine: 41 texture upload records through `LockRect`/
+  `UnlockRect`, 2 `SetTexture` lookup binds, 7 `SetSamplerState` bundles, and 5 `SetRenderState`
+  bundles;
+- material shader slot ownership, transient SMAA surface bindings, font atlas binding, draw,
+  present, capture, and oracle parity remain explicit open gates.
+
+Boundary:
+
+- L31 uploads and binds ready backend state but does not issue draw calls;
+- L31 does not bind stage material textures until material shader slot ownership is recovered;
+- L31 does not create transient render targets/depth surfaces or a font atlas;
+- L31 only closes the upload/binding edge so L32 can resolve remaining render-target/material/font
+  gates before draw execution.
+
+### L32: Transient Surfaces, Material Shader Binding, And Font Atlas Resolution
+
+Status: active after L31.
+
+Deliver:
+
+- resolve SMAA transient render target/depth surface formats and create real D3D9 surfaces;
+- connect material texture records to recovered material shader/pass slot ownership without
+  guessing stage shader layout;
+- resolve title/menu font atlas dimensions or keep the atlas as an explicit blocker with stronger
+  evidence;
+- preserve draw/present/capture/oracle as downstream gates until resources, uploads, and bindings
+  are all concrete.
+
+Acceptance:
+
+- transient surface creation must execute against the persistent D3D9 device or fail explicitly;
+- material texture binding must not bind arbitrary slots without recovered shader evidence;
+- font atlas creation must not invent glyph cache dimensions;
+- CTest must lock ready/open accounting and prevent draw execution until these gates are closed.
 
 ## Stop Conditions
 
@@ -1372,6 +1414,7 @@ Current measured speed after caching and scene reuse:
 
 - `yuengine_backend_device_creation_contract`: 1/1 CTest passed in 21.88 seconds.
 - `yuengine_backend_resource_creation_contract`: 1/1 CTest passed in about 22 seconds.
-- `tools\verify_runtime.ps1 -SkipPython`: fast L30 contract plus `git diff --check` in about 22
+- `yuengine_backend_upload_binding_contract`: 1/1 CTest passed in about 25 seconds.
+- `tools\verify_runtime.ps1 -SkipPython`: fast L31 contract plus `git diff --check` in about 25
   seconds.
 - direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.

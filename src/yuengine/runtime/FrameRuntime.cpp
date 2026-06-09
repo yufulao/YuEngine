@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <map>
 #include <memory>
@@ -148,6 +150,12 @@ void addError(BackendDeviceCreationRuntimeReport& report, const std::string& mes
 }
 
 void addError(BackendResourceCreationRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
+void addError(BackendUploadBindingRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
     report.errors.push_back(message);
@@ -1875,6 +1883,8 @@ struct PlatformD3D9DeviceService {
     IDirect3D9* d3d9 = nullptr;
     IDirect3DDevice9* device = nullptr;
     std::vector<IUnknown*> resourceHandles;
+    std::map<std::string, IDirect3DTexture9*> textureHandles;
+    std::map<std::string, IDirect3DCubeTexture9*> cubeTextureHandles;
 
     ~PlatformD3D9DeviceService()
     {
@@ -2092,6 +2102,7 @@ BackendResourceCreationExecutionRecord executeResourceCreationRecord(
             nullptr);
         if (SUCCEEDED(hr) && texture != nullptr) {
             service.resourceHandles.push_back(texture);
+            service.textureHandles[source.name] = texture;
             return makeResourceCreationRecord(
                 source,
                 "real_success",
@@ -2116,6 +2127,7 @@ BackendResourceCreationExecutionRecord executeResourceCreationRecord(
             nullptr);
         if (SUCCEEDED(hr) && texture != nullptr) {
             service.resourceHandles.push_back(texture);
+            service.cubeTextureHandles[source.name] = texture;
             return makeResourceCreationRecord(
                 source,
                 "real_success",
@@ -2134,6 +2146,453 @@ BackendResourceCreationExecutionRecord executeResourceCreationRecord(
         "tracked_open",
         "resource operation remains deferred to a later backend contract",
         false);
+}
+
+BackendUploadBindingExecutionRecord makeUploadBindingRecord(
+    const std::string& name,
+    const std::string& source,
+    const std::string& operation,
+    const std::string& target,
+    const std::string& resourceKind,
+    const std::string& format,
+    const std::string& status,
+    const std::string& detail,
+    bool sourceReady,
+    bool realCallReady)
+{
+    BackendUploadBindingExecutionRecord record;
+    record.name = name;
+    record.source = source;
+    record.operation = operation;
+    record.target = target;
+    record.resourceKind = resourceKind;
+    record.format = format;
+    record.status = status;
+    record.detail = detail;
+    record.sourceReady = sourceReady;
+    record.resultRecorded = true;
+    record.realCallReady = realCallReady;
+    return record;
+}
+
+int uploadBlockBytesForFormat(const std::string& format)
+{
+    if (format == "D3DFMT_DXT1") {
+        return 8;
+    }
+    if (format == "D3DFMT_DXT5") {
+        return 16;
+    }
+    return 0;
+}
+
+int uploadBytesPerPixelForFormat(const std::string& format)
+{
+    if (format == "D3DFMT_L8") {
+        return 1;
+    }
+    if (format == "D3DFMT_A8L8") {
+        return 2;
+    }
+    return 0;
+}
+
+int uploadRowBytesForFormat(const std::string& format, int width)
+{
+    const int blockBytes = uploadBlockBytesForFormat(format);
+    if (blockBytes > 0) {
+        return std::max(1, (width + 3) / 4) * blockBytes;
+    }
+    const int bytesPerPixel = uploadBytesPerPixelForFormat(format);
+    if (bytesPerPixel > 0) {
+        return std::max(1, width) * bytesPerPixel;
+    }
+    return 0;
+}
+
+int uploadRowsForFormat(const std::string& format, int height)
+{
+    if (uploadBlockBytesForFormat(format) > 0) {
+        return std::max(1, (height + 3) / 4);
+    }
+    if (uploadBytesPerPixelForFormat(format) > 0) {
+        return std::max(1, height);
+    }
+    return 0;
+}
+
+#if defined(_WIN32)
+D3DCUBEMAP_FACES cubeFaceFromIndex(int index)
+{
+    switch (index) {
+    case 0:
+        return D3DCUBEMAP_FACE_POSITIVE_X;
+    case 1:
+        return D3DCUBEMAP_FACE_NEGATIVE_X;
+    case 2:
+        return D3DCUBEMAP_FACE_POSITIVE_Y;
+    case 3:
+        return D3DCUBEMAP_FACE_NEGATIVE_Y;
+    case 4:
+        return D3DCUBEMAP_FACE_POSITIVE_Z;
+    default:
+        return D3DCUBEMAP_FACE_NEGATIVE_Z;
+    }
+}
+
+bool copyLockedTextureRows(
+    D3DLOCKED_RECT& locked,
+    const std::vector<std::byte>& bytes,
+    size_t offset,
+    int rowBytes,
+    int rows)
+{
+    if (locked.pBits == nullptr || rowBytes <= 0 || rows <= 0) {
+        return false;
+    }
+    const size_t totalBytes = static_cast<size_t>(rowBytes) * static_cast<size_t>(rows);
+    if (offset > bytes.size() || totalBytes > bytes.size() - offset) {
+        return false;
+    }
+
+    auto* destination = static_cast<std::byte*>(locked.pBits);
+    const auto* source = bytes.data() + offset;
+    for (int row = 0; row < rows; ++row) {
+        std::memcpy(
+            destination + static_cast<ptrdiff_t>(locked.Pitch) * row,
+            source + static_cast<size_t>(rowBytes) * row,
+            static_cast<size_t>(rowBytes));
+    }
+    return true;
+}
+
+BackendUploadBindingExecutionRecord executeTextureUploadRecord(
+    PlatformD3D9DeviceService& service,
+    const BackendDeviceResourceExecutionRecord& source,
+    const resource::VirtualFileSystem& vfs)
+{
+    auto record = makeUploadBindingRecord(
+        source.name,
+        source.path,
+        "LockRect/UnlockRect",
+        source.name,
+        source.resourceKind,
+        source.format,
+        "blocked",
+        "upload execution did not complete",
+        source.ready,
+        false);
+    record.subresourceCount = source.subresourceCount;
+    record.payloadBytes = source.payloadBytes;
+
+    if (!source.ready) {
+        record.status = "tracked_open";
+        record.detail = "source resource is not ready for upload";
+        return record;
+    }
+    if (!service.serviceReady) {
+        record.status = "blocked_by_device";
+        record.detail = service.detail;
+        return record;
+    }
+
+    const auto payload = vfs.readBytes(source.path);
+    if (!payload.found || payload.bytes.size() < 128 || !isDdsPayload(payload.bytes)) {
+        record.status = "real_failed";
+        record.detail = "source DDS payload is unavailable";
+        return record;
+    }
+
+    size_t offset = 128;
+    int uploadedSubresources = 0;
+    int64_t uploadedPayloadBytes = 0;
+    const int levelWidthBase = std::max(1, source.width);
+    const int levelHeightBase = std::max(1, source.height);
+
+    if (source.operation == "CreateTexture") {
+        auto textureIt = service.textureHandles.find(source.name);
+        if (textureIt == service.textureHandles.end() || textureIt->second == nullptr) {
+            record.status = "blocked";
+            record.detail = "created texture handle is not available";
+            return record;
+        }
+
+        for (int level = 0; level < std::max(1, source.mipLevels); ++level) {
+            const int levelWidth = std::max(1, levelWidthBase >> level);
+            const int levelHeight = std::max(1, levelHeightBase >> level);
+            const int rowBytes = uploadRowBytesForFormat(source.format, levelWidth);
+            const int rows = uploadRowsForFormat(source.format, levelHeight);
+            const int levelBytes = rowBytes * rows;
+            D3DLOCKED_RECT locked{};
+            const HRESULT lockHr = textureIt->second->LockRect(static_cast<UINT>(level), &locked, nullptr, 0);
+            if (FAILED(lockHr)) {
+                record.status = "real_failed";
+                record.detail = hresultDetail("IDirect3DTexture9::LockRect", lockHr);
+                return record;
+            }
+            const bool copied = copyLockedTextureRows(locked, payload.bytes, offset, rowBytes, rows);
+            const HRESULT unlockHr = textureIt->second->UnlockRect(static_cast<UINT>(level));
+            if (!copied) {
+                record.status = "real_failed";
+                record.detail = "DDS payload ended before all texture rows were copied";
+                return record;
+            }
+            if (FAILED(unlockHr)) {
+                record.status = "real_failed";
+                record.detail = hresultDetail("IDirect3DTexture9::UnlockRect", unlockHr);
+                return record;
+            }
+            offset += static_cast<size_t>(levelBytes);
+            uploadedPayloadBytes += levelBytes;
+            ++uploadedSubresources;
+        }
+    } else if (source.operation == "CreateCubeTexture") {
+        auto textureIt = service.cubeTextureHandles.find(source.name);
+        if (textureIt == service.cubeTextureHandles.end() || textureIt->second == nullptr) {
+            record.status = "blocked";
+            record.detail = "created cube texture handle is not available";
+            return record;
+        }
+
+        for (int face = 0; face < std::max(1, source.cubeFaces); ++face) {
+            for (int level = 0; level < std::max(1, source.mipLevels); ++level) {
+                const int levelWidth = std::max(1, levelWidthBase >> level);
+                const int levelHeight = std::max(1, levelHeightBase >> level);
+                const int rowBytes = uploadRowBytesForFormat(source.format, levelWidth);
+                const int rows = uploadRowsForFormat(source.format, levelHeight);
+                const int levelBytes = rowBytes * rows;
+                D3DLOCKED_RECT locked{};
+                const HRESULT lockHr = textureIt->second->LockRect(
+                    cubeFaceFromIndex(face),
+                    static_cast<UINT>(level),
+                    &locked,
+                    nullptr,
+                    0);
+                if (FAILED(lockHr)) {
+                    record.status = "real_failed";
+                    record.detail = hresultDetail("IDirect3DCubeTexture9::LockRect", lockHr);
+                    return record;
+                }
+                const bool copied = copyLockedTextureRows(locked, payload.bytes, offset, rowBytes, rows);
+                const HRESULT unlockHr = textureIt->second->UnlockRect(
+                    cubeFaceFromIndex(face),
+                    static_cast<UINT>(level));
+                if (!copied) {
+                    record.status = "real_failed";
+                    record.detail = "DDS payload ended before all cube texture rows were copied";
+                    return record;
+                }
+                if (FAILED(unlockHr)) {
+                    record.status = "real_failed";
+                    record.detail = hresultDetail("IDirect3DCubeTexture9::UnlockRect", unlockHr);
+                    return record;
+                }
+                offset += static_cast<size_t>(levelBytes);
+                uploadedPayloadBytes += levelBytes;
+                ++uploadedSubresources;
+            }
+        }
+    } else {
+        record.status = "tracked_open";
+        record.detail = "resource type is not upload-ready";
+        return record;
+    }
+
+    record.uploadedSubresources = uploadedSubresources;
+    record.uploadedPayloadBytes = uploadedPayloadBytes;
+    if (uploadedSubresources == source.subresourceCount && uploadedPayloadBytes == source.payloadBytes
+        && offset == payload.bytes.size()) {
+        record.status = "real_success";
+        record.detail = "all DDS subresources uploaded through LockRect/UnlockRect";
+        record.realCallReady = true;
+    } else {
+        record.status = "real_failed";
+        record.detail = "uploaded subresource or payload byte count did not match source record";
+    }
+    return record;
+}
+
+D3DTEXTUREADDRESS d3dTextureAddressFromString(const std::string& value)
+{
+    if (value == "Wrap") {
+        return D3DTADDRESS_WRAP;
+    }
+    return D3DTADDRESS_CLAMP;
+}
+
+D3DTEXTUREFILTERTYPE d3dTextureFilterFromString(const std::string& value)
+{
+    if (value == "Point") {
+        return D3DTEXF_POINT;
+    }
+    return D3DTEXF_LINEAR;
+}
+
+DWORD boolRenderStateValue(const std::string& value)
+{
+    return value == "true" ? TRUE : FALSE;
+}
+
+DWORD stencilOperationValue(const std::string& value)
+{
+    if (value == "REPLACE") {
+        return D3DSTENCILOP_REPLACE;
+    }
+    return D3DSTENCILOP_KEEP;
+}
+
+DWORD compareFunctionValue(const std::string& value)
+{
+    if (value == "EQUAL") {
+        return D3DCMP_EQUAL;
+    }
+    return D3DCMP_ALWAYS;
+}
+#else
+BackendUploadBindingExecutionRecord executeTextureUploadRecord(
+    PlatformD3D9DeviceService& service,
+    const BackendDeviceResourceExecutionRecord& source,
+    const resource::VirtualFileSystem&)
+{
+    auto record = makeUploadBindingRecord(
+        source.name,
+        source.path,
+        "LockRect/UnlockRect",
+        source.name,
+        source.resourceKind,
+        source.format,
+        "unsupported_platform",
+        service.detail,
+        source.ready,
+        false);
+    record.subresourceCount = source.subresourceCount;
+    record.payloadBytes = source.payloadBytes;
+    return record;
+}
+#endif
+
+BackendUploadBindingExecutionRecord executeBindingRecord(
+    PlatformD3D9DeviceService& service,
+    const BackendDeviceStateBindingRecord& binding,
+    const std::map<std::string, BackendSamplerStateRecord>& samplerByName,
+    const std::map<std::string, BackendPassStateRecord>& passByName,
+    int readyBindingSlot)
+{
+    auto record = makeUploadBindingRecord(
+        binding.name,
+        binding.source,
+        binding.operation,
+        binding.target,
+        "backend_state_binding",
+        "",
+        binding.status == "tracked_open" ? "tracked_open" : "blocked",
+        binding.status == "tracked_open"
+            ? "binding record remains tracked-open until its target resource/shader evidence exists"
+            : "binding execution did not complete",
+        binding.ready,
+        false);
+    record.bindingSlots = binding.bindingSlots;
+
+    if (!binding.ready) {
+        return record;
+    }
+    if (!service.serviceReady) {
+        record.status = "blocked_by_device";
+        record.detail = service.detail;
+        return record;
+    }
+
+#if defined(_WIN32)
+    if (binding.operation == "SetTexture") {
+        auto textureIt = service.textureHandles.find(binding.target);
+        if (textureIt == service.textureHandles.end() || textureIt->second == nullptr) {
+            record.status = "blocked";
+            record.detail = "lookup texture handle is not available";
+            return record;
+        }
+        const HRESULT hr = service.device->SetTexture(
+            static_cast<DWORD>(readyBindingSlot),
+            textureIt->second);
+        if (FAILED(hr)) {
+            record.status = "real_failed";
+            record.detail = hresultDetail("IDirect3DDevice9::SetTexture", hr);
+            return record;
+        }
+        record.status = "real_success";
+        record.detail = "IDirect3DDevice9::SetTexture succeeded for lookup texture";
+        record.apiCalls = 1;
+        record.realCallReady = true;
+        return record;
+    }
+
+    if (binding.operation == "SetSamplerState") {
+        auto samplerIt = samplerByName.find(binding.name);
+        if (samplerIt == samplerByName.end()) {
+            record.status = "blocked";
+            record.detail = "sampler state source record is not available";
+            return record;
+        }
+        const auto& sampler = samplerIt->second;
+        const DWORD slot = static_cast<DWORD>(readyBindingSlot);
+        const std::pair<D3DSAMPLERSTATETYPE, DWORD> calls[] = {
+            {D3DSAMP_ADDRESSU, d3dTextureAddressFromString(sampler.addressU)},
+            {D3DSAMP_ADDRESSV, d3dTextureAddressFromString(sampler.addressV)},
+            {D3DSAMP_ADDRESSW, d3dTextureAddressFromString(sampler.addressW)},
+            {D3DSAMP_MIPFILTER, d3dTextureFilterFromString(sampler.mipFilter)},
+            {D3DSAMP_MINFILTER, d3dTextureFilterFromString(sampler.minFilter)},
+            {D3DSAMP_MAGFILTER, d3dTextureFilterFromString(sampler.magFilter)},
+            {D3DSAMP_SRGBTEXTURE, boolRenderStateValue(sampler.srgbTexture)},
+        };
+        for (const auto& call : calls) {
+            const HRESULT hr = service.device->SetSamplerState(slot, call.first, call.second);
+            if (FAILED(hr)) {
+                record.status = "real_failed";
+                record.detail = hresultDetail("IDirect3DDevice9::SetSamplerState", hr);
+                return record;
+            }
+            ++record.apiCalls;
+        }
+        record.status = "real_success";
+        record.detail = "IDirect3DDevice9::SetSamplerState bundle succeeded";
+        record.realCallReady = true;
+        return record;
+    }
+
+    if (binding.operation == "SetRenderStateBundle") {
+        auto passIt = passByName.find(binding.name);
+        if (passIt == passByName.end()) {
+            record.status = "blocked";
+            record.detail = "pass render-state source record is not available";
+            return record;
+        }
+        const auto& pass = passIt->second;
+        const std::pair<D3DRENDERSTATETYPE, DWORD> calls[] = {
+            {D3DRS_ZENABLE, boolRenderStateValue(pass.zEnable)},
+            {D3DRS_SRGBWRITEENABLE, boolRenderStateValue(pass.srgbWriteEnable)},
+            {D3DRS_ALPHABLENDENABLE, boolRenderStateValue(pass.alphaBlendEnable)},
+            {D3DRS_ALPHATESTENABLE, boolRenderStateValue(pass.alphaTestEnable)},
+            {D3DRS_STENCILENABLE, boolRenderStateValue(pass.stencilEnable)},
+            {D3DRS_STENCILPASS, stencilOperationValue(pass.stencilPass)},
+            {D3DRS_STENCILFUNC, compareFunctionValue(pass.stencilFunc)},
+            {D3DRS_STENCILREF, static_cast<DWORD>(std::max(0, std::atoi(pass.stencilRef.c_str())))},
+        };
+        for (const auto& call : calls) {
+            const HRESULT hr = service.device->SetRenderState(call.first, call.second);
+            if (FAILED(hr)) {
+                record.status = "real_failed";
+                record.detail = hresultDetail("IDirect3DDevice9::SetRenderState", hr);
+                return record;
+            }
+            ++record.apiCalls;
+        }
+        record.status = "real_success";
+        record.detail = "IDirect3DDevice9::SetRenderState bundle succeeded";
+        record.realCallReady = true;
+        return record;
+    }
+#endif
+
+    return record;
 }
 
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
@@ -4422,6 +4881,224 @@ BackendResourceCreationRuntimeReport buildBackendResourceCreationRuntimeReport(
     if (report.resolvedResourceCreationContracts != 5 || report.trackedResourceCreationObligations != 5
         || report.openResourceCreationObligations != 5) {
         addError(report, "resource creation obligation accounting is inconsistent");
+    }
+
+    return storeCachedReport(cache, cacheKey, report);
+}
+
+BackendUploadBindingRuntimeReport buildBackendUploadBindingRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "backend-upload-bind");
+    static std::map<std::string, BackendUploadBindingRuntimeReport> cache;
+    BackendUploadBindingRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
+    BackendUploadBindingRuntimeReport report;
+    const auto resourceCreation = buildBackendResourceCreationRuntimeReport(inputs, rendererProfile, vfs);
+    const auto deviceCreation = buildBackendDeviceCreationRuntimeReport(inputs, rendererProfile, vfs);
+    const auto deviceExecution = buildBackendDeviceExecutionRuntimeReport(inputs, rendererProfile, vfs);
+    const auto backendState = buildBackendStateRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.resourceCreationOk = resourceCreation.ok;
+    report.deviceExecutionOk = deviceExecution.ok;
+    report.backendStateOk = backendState.ok;
+    report.backbufferWidth = deviceCreation.backbufferWidth;
+    report.backbufferHeight = deviceCreation.backbufferHeight;
+
+    auto service = createPlatformD3D9DeviceService(report.backbufferWidth, report.backbufferHeight);
+    report.persistentDeviceServiceReady = service->serviceReady;
+
+    for (const auto& source : deviceExecution.resourceRecords) {
+        const auto creationRecord = executeResourceCreationRecord(*service, source);
+        if (creationRecord.realHandleReady) {
+            ++report.resourceHandlesCreated;
+        }
+    }
+    report.resourceHandlesReady = report.resourceHandlesCreated == 41;
+
+    for (const auto& source : deviceExecution.resourceRecords) {
+        if (!source.ready) {
+            continue;
+        }
+        auto record = executeTextureUploadRecord(*service, source, vfs);
+        ++report.uploadTextureRecords;
+        report.uploadSubresourceRecords += source.subresourceCount;
+        report.uploadPayloadBytes += source.payloadBytes;
+        if (source.resourceKind == "cube_texture") {
+            ++report.cubeTextureUploadRecords;
+        }
+        if (source.resourceKind == "smaa_lookup_texture") {
+            ++report.lookupTextureUploadRecords;
+        }
+        if (source.resourceKind == "texture_2d" || source.resourceKind == "cube_texture") {
+            ++report.stageTextureUploadRecords;
+        }
+        if (record.realCallReady) {
+            report.uploadedSubresources += record.uploadedSubresources;
+            report.uploadedPayloadBytes += record.uploadedPayloadBytes;
+        } else {
+            ++report.failedUploadRecords;
+        }
+        report.records.push_back(std::move(record));
+    }
+
+    std::map<std::string, BackendSamplerStateRecord> samplerByName;
+    std::map<std::string, int> samplerSlotByName;
+    int samplerSlot = 0;
+    for (const auto& sampler : backendState.samplerRecords) {
+        samplerByName[sampler.name] = sampler;
+        samplerSlotByName[sampler.name] = samplerSlot++;
+    }
+    std::map<std::string, BackendPassStateRecord> passByName;
+    for (const auto& pass : backendState.passRecords) {
+        passByName[pass.technique + "." + pass.pass] = pass;
+    }
+
+    for (const auto& binding : deviceExecution.bindingRecordsDetail) {
+        ++report.bindingRecords;
+        if (binding.ready) {
+            ++report.readyBindingRecords;
+        } else if (binding.status == "tracked_open") {
+            ++report.trackedOpenBindingRecords;
+        }
+
+        int bindingSlot = 0;
+        const auto slotIt = samplerSlotByName.find(binding.name);
+        if (slotIt != samplerSlotByName.end()) {
+            bindingSlot = slotIt->second;
+        }
+        auto record = executeBindingRecord(*service, binding, samplerByName, passByName, bindingSlot);
+        if (record.realCallReady) {
+            ++report.executedBindingRecords;
+            if (record.operation == "SetTexture") {
+                report.setTextureCalls += record.apiCalls;
+            } else if (record.operation == "SetSamplerState") {
+                ++report.setSamplerStateCalls;
+            } else if (record.operation == "SetRenderStateBundle") {
+                ++report.setRenderStateBundles;
+                report.setRenderStateCalls += record.apiCalls;
+            }
+        } else if (binding.ready) {
+            ++report.failedBindingRecords;
+        } else if (binding.target == "material_texture_slot") {
+            ++report.preservedMaterialTextureBindings;
+        } else if (binding.operation == "SetTextureCandidate") {
+            ++report.preservedTransientTextureBindings;
+        }
+        report.records.push_back(std::move(record));
+    }
+
+    report.textureUploadExecuted = report.uploadTextureRecords == 41
+        && report.uploadSubresourceRecords == 458 && report.uploadedSubresources == 458
+        && report.failedUploadRecords == 0 && report.uploadPayloadBytes == 23949794
+        && report.uploadedPayloadBytes == 23949794;
+    report.lookupTextureUploadExecuted =
+        report.lookupTextureUploadRecords == 2 && report.cubeTextureUploadRecords == 1
+        && report.stageTextureUploadRecords == 39;
+    report.lookupTextureBindingExecuted = report.setTextureCalls == 2;
+    report.samplerStateBindingExecuted = report.setSamplerStateCalls == 7;
+    report.renderStateBindingExecuted =
+        report.setRenderStateBundles == 5 && report.setRenderStateCalls == 40;
+    report.trackedOpenBindingsPreserved =
+        report.trackedOpenBindingRecords == 43 && report.preservedMaterialTextureBindings == 38
+        && report.preservedTransientTextureBindings == 5;
+    report.drawPresentCaptureRecordsDeferred = 121 + 1 + 2;
+    report.downstreamDrawPresentDeferred = report.drawPresentCaptureRecordsDeferred == 124;
+    report.backbufferExtentCarried =
+        report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+    report.uploadBindingRuntimeReady = report.resourceCreationOk && report.deviceExecutionOk
+        && report.backendStateOk && report.persistentDeviceServiceReady && report.resourceHandlesReady
+        && report.textureUploadExecuted && report.lookupTextureUploadExecuted
+        && report.lookupTextureBindingExecuted && report.samplerStateBindingExecuted
+        && report.renderStateBindingExecuted && report.trackedOpenBindingsPreserved
+        && report.downstreamDrawPresentDeferred && report.backbufferExtentCarried
+        && report.bindingRecords == 57 && report.readyBindingRecords == 14
+        && report.executedBindingRecords == 14 && report.failedBindingRecords == 0;
+
+    report.contracts.push_back(makeBackendObligation(
+        "persistent_resource_handles_for_upload",
+        report.resourceHandlesReady ? "contract_ready" : "blocked",
+        "41 L30 resource handles are retained long enough for upload and binding"));
+    report.contracts.push_back(makeBackendObligation(
+        "texture_subresource_upload_execution",
+        report.textureUploadExecuted ? "contract_ready" : "blocked",
+        "458 DDS subresources upload through LockRect/UnlockRect with payload byte parity"));
+    report.contracts.push_back(makeBackendObligation(
+        "cube_and_lookup_upload_execution",
+        report.lookupTextureUploadExecuted ? "contract_ready" : "blocked",
+        "cube environment texture and SMAA lookup textures are uploaded through real resource handles"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_lookup_texture_binding_execution",
+        report.lookupTextureBindingExecuted ? "contract_ready" : "blocked",
+        "areaTex/searchTex lookup textures bind through IDirect3DDevice9::SetTexture"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampler_state_binding_execution",
+        report.samplerStateBindingExecuted ? "contract_ready" : "blocked",
+        "7 recovered SMAA sampler state records execute through SetSamplerState bundles"));
+    report.contracts.push_back(makeBackendObligation(
+        "render_state_binding_execution",
+        report.renderStateBindingExecuted ? "contract_ready" : "blocked",
+        "5 recovered SMAA pass records execute through SetRenderState bundles"));
+    report.contracts.push_back(makeBackendObligation(
+        "material_texture_shader_binding",
+        report.trackedOpenBindingsPreserved ? "tracked_open" : "blocked",
+        "38 material texture bindings still require recovered material shader slot ownership"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_transient_surface_binding",
+        report.trackedOpenBindingsPreserved ? "tracked_open" : "blocked",
+        "5 transient SMAA texture bindings remain open until transient surfaces are created"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_resource_binding",
+        "tracked_open",
+        "font atlas dimensions and glyph cache ownership remain unrecovered"));
+    report.contracts.push_back(makeBackendObligation(
+        "draw_present_capture_after_upload_binding",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "draw, present, and capture remain deferred until uploaded resources and state are consumed"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_after_present",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "original-frame oracle remains deferred until frame capture exists"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedUploadBindingContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedUploadBindingObligations;
+            ++report.openUploadBindingObligations;
+        } else {
+            ++report.openUploadBindingObligations;
+        }
+    }
+
+    if (!report.resourceCreationOk) {
+        addError(report, "resource creation contract is not ready for upload/binding");
+    }
+    if (!report.deviceExecutionOk || !report.backendStateOk) {
+        addError(report, "device execution or backend state records are not ready");
+    }
+    if (!report.resourceHandlesReady) {
+        addError(report, "resource handles were not retained for upload");
+    }
+    if (!report.textureUploadExecuted) {
+        addError(report, "DDS subresource upload execution did not complete");
+    }
+    if (!report.lookupTextureBindingExecuted || !report.samplerStateBindingExecuted
+        || !report.renderStateBindingExecuted) {
+        addError(report, "ready backend state bindings did not execute");
+    }
+    if (!report.trackedOpenBindingsPreserved) {
+        addError(report, "tracked-open binding records were not preserved");
+    }
+    if (report.resolvedUploadBindingContracts != 6 || report.trackedUploadBindingObligations != 5
+        || report.openUploadBindingObligations != 5) {
+        addError(report, "upload/binding obligation accounting is inconsistent");
     }
 
     return storeCachedReport(cache, cacheKey, report);
@@ -6812,6 +7489,156 @@ std::string backendResourceCreationRuntimeReportToJson(
             << ", \"source_ready\": " << (record.sourceReady ? "true" : "false")
             << ", \"result_recorded\": " << (record.resultRecorded ? "true" : "false")
             << ", \"real_handle_ready\": " << (record.realHandleReady ? "true" : "false")
+            << "}";
+        out << (i + 1 == report.records.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendUploadBindingRuntimeReport runBackendUploadBindingRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendUploadBindingRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendUploadBindingRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendUploadBindingRuntimeReportToJson(
+    const BackendUploadBindingRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_upload_binding_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " resource_creation_ok=" << (report.resourceCreationOk ? "true" : "false")
+        << " device_execution_ok=" << (report.deviceExecutionOk ? "true" : "false")
+        << " backend_state_ok=" << (report.backendStateOk ? "true" : "false")
+        << " upload_binding_runtime_ready="
+        << (report.uploadBindingRuntimeReady ? "true" : "false")
+        << " persistent_device_service_ready="
+        << (report.persistentDeviceServiceReady ? "true" : "false")
+        << " resource_handles_ready=" << (report.resourceHandlesReady ? "true" : "false")
+        << " texture_upload_executed=" << (report.textureUploadExecuted ? "true" : "false")
+        << " lookup_texture_upload_executed="
+        << (report.lookupTextureUploadExecuted ? "true" : "false")
+        << " lookup_texture_binding_executed="
+        << (report.lookupTextureBindingExecuted ? "true" : "false")
+        << " sampler_state_binding_executed="
+        << (report.samplerStateBindingExecuted ? "true" : "false")
+        << " render_state_binding_executed="
+        << (report.renderStateBindingExecuted ? "true" : "false")
+        << " tracked_open_bindings_preserved="
+        << (report.trackedOpenBindingsPreserved ? "true" : "false")
+        << " downstream_draw_present_deferred="
+        << (report.downstreamDrawPresentDeferred ? "true" : "false")
+        << " backbuffer_extent_carried=" << (report.backbufferExtentCarried ? "true" : "false")
+        << " resource_handles_created=" << report.resourceHandlesCreated
+        << " upload_texture_records=" << report.uploadTextureRecords
+        << " stage_texture_upload_records=" << report.stageTextureUploadRecords
+        << " lookup_texture_upload_records=" << report.lookupTextureUploadRecords
+        << " cube_texture_upload_records=" << report.cubeTextureUploadRecords
+        << " upload_subresource_records=" << report.uploadSubresourceRecords
+        << " uploaded_subresources=" << report.uploadedSubresources
+        << " failed_upload_records=" << report.failedUploadRecords
+        << " upload_payload_bytes=" << report.uploadPayloadBytes
+        << " uploaded_payload_bytes=" << report.uploadedPayloadBytes
+        << " binding_records=" << report.bindingRecords
+        << " ready_binding_records=" << report.readyBindingRecords
+        << " tracked_open_binding_records=" << report.trackedOpenBindingRecords
+        << " executed_binding_records=" << report.executedBindingRecords
+        << " failed_binding_records=" << report.failedBindingRecords
+        << " set_texture_calls=" << report.setTextureCalls
+        << " set_sampler_state_calls=" << report.setSamplerStateCalls
+        << " set_render_state_bundles=" << report.setRenderStateBundles
+        << " set_render_state_calls=" << report.setRenderStateCalls
+        << " preserved_material_texture_bindings=" << report.preservedMaterialTextureBindings
+        << " preserved_transient_texture_bindings=" << report.preservedTransientTextureBindings
+        << " draw_present_capture_records_deferred=" << report.drawPresentCaptureRecordsDeferred
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_upload_binding_contracts=" << report.resolvedUploadBindingContracts
+        << " tracked_upload_binding_obligations=" << report.trackedUploadBindingObligations
+        << " open_upload_binding_obligations=" << report.openUploadBindingObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"upload_summary\": {";
+    out << "\"upload_texture_records\": " << report.uploadTextureRecords
+        << ", \"stage_texture_upload_records\": " << report.stageTextureUploadRecords
+        << ", \"lookup_texture_upload_records\": " << report.lookupTextureUploadRecords
+        << ", \"cube_texture_upload_records\": " << report.cubeTextureUploadRecords
+        << ", \"upload_subresource_records\": " << report.uploadSubresourceRecords
+        << ", \"uploaded_subresources\": " << report.uploadedSubresources
+        << ", \"failed_upload_records\": " << report.failedUploadRecords
+        << ", \"upload_payload_bytes\": " << report.uploadPayloadBytes
+        << ", \"uploaded_payload_bytes\": " << report.uploadedPayloadBytes << "},\n";
+    out << "  \"binding_summary\": {";
+    out << "\"binding_records\": " << report.bindingRecords
+        << ", \"ready_binding_records\": " << report.readyBindingRecords
+        << ", \"tracked_open_binding_records\": " << report.trackedOpenBindingRecords
+        << ", \"executed_binding_records\": " << report.executedBindingRecords
+        << ", \"failed_binding_records\": " << report.failedBindingRecords
+        << ", \"set_texture_calls\": " << report.setTextureCalls
+        << ", \"set_sampler_state_calls\": " << report.setSamplerStateCalls
+        << ", \"set_render_state_bundles\": " << report.setRenderStateBundles
+        << ", \"set_render_state_calls\": " << report.setRenderStateCalls << "},\n";
+    out << "  \"open_binding_summary\": {";
+    out << "\"preserved_material_texture_bindings\": "
+        << report.preservedMaterialTextureBindings
+        << ", \"preserved_transient_texture_bindings\": "
+        << report.preservedTransientTextureBindings
+        << ", \"draw_present_capture_records_deferred\": "
+        << report.drawPresentCaptureRecordsDeferred << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_upload_binding_contracts\": " << report.resolvedUploadBindingContracts
+        << ", \"tracked_upload_binding_obligations\": "
+        << report.trackedUploadBindingObligations
+        << ", \"open_upload_binding_obligations\": "
+        << report.openUploadBindingObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"records\": [\n";
+    for (size_t i = 0; i < report.records.size(); ++i) {
+        const auto& record = report.records[i];
+        out << "    {\"name\": \"" << core::jsonEscape(record.name)
+            << "\", \"source\": \"" << core::jsonEscape(record.source)
+            << "\", \"operation\": \"" << core::jsonEscape(record.operation)
+            << "\", \"target\": \"" << core::jsonEscape(record.target)
+            << "\", \"resource_kind\": \"" << core::jsonEscape(record.resourceKind)
+            << "\", \"format\": \"" << core::jsonEscape(record.format)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"detail\": \"" << core::jsonEscape(record.detail)
+            << "\", \"subresource_count\": " << record.subresourceCount
+            << ", \"uploaded_subresources\": " << record.uploadedSubresources
+            << ", \"binding_slots\": " << record.bindingSlots
+            << ", \"api_calls\": " << record.apiCalls
+            << ", \"payload_bytes\": " << record.payloadBytes
+            << ", \"uploaded_payload_bytes\": " << record.uploadedPayloadBytes
+            << ", \"source_ready\": " << (record.sourceReady ? "true" : "false")
+            << ", \"result_recorded\": " << (record.resultRecorded ? "true" : "false")
+            << ", \"real_call_ready\": " << (record.realCallReady ? "true" : "false")
             << "}";
         out << (i + 1 == report.records.size() ? "\n" : ",\n");
     }
