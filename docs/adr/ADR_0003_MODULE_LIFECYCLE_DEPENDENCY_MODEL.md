@@ -59,6 +59,8 @@ DisplayName
 Layer
 RequiredDependencies
 OptionalDependencies
+RequiredServices
+OptionalServices
 PublishedServices
 LifecycleCallbacks
 ```
@@ -68,6 +70,8 @@ Rules:
 - `ModuleId` is stable and unique.
 - Required dependencies must be present before startup.
 - Optional dependencies must be queried explicitly and cannot silently alter ownership.
+- Required services must be declared before startup and validated before `OnStart`.
+- Optional services must be queried explicitly and cannot silently alter ownership.
 - Published services must be declared before startup.
 - Descriptor creation is setup-path only.
 
@@ -77,13 +81,32 @@ Startup order is topologically sorted from required dependencies.
 
 Shutdown order is deterministic reverse startup order for modules that reached `Started` or beyond.
 
+Required services are validated after required dependency ordering is known and before a module's `OnStart` runs. A module may only require services that are published by itself or by modules that are guaranteed to start before it through required dependencies.
+
 Failure behavior:
 
 - Missing required dependency blocks startup before callbacks run.
+- Missing required service blocks startup before callbacks run.
 - Cycle in required dependencies blocks startup.
-- Failure during module startup triggers teardown of already-started modules in reverse order.
+- Failure during module startup triggers cleanup of the failing module, unpublishes any services it partially published, then tears down already-started modules in reverse order.
+- Failure during module update moves the failing module to `Failed`, unpublishes services owned by the failing module, then stops that module and all modules that directly or indirectly depend on it in reverse dependency order.
 - Failure during shutdown is recorded and returned as explicit result.
 - No failure path may silently continue as success.
+
+## Terminal Cleanup Semantics
+
+Cleanup rules:
+
+- A service is owned by the module that published it.
+- When a module enters `Failed`, all services owned by that module are deregistered before dependent modules can continue.
+- If `OnStart` fails after partially publishing services, the kernel deregisters those services and calls the module's cleanup path.
+- If `OnUpdate` fails, the kernel stops the failing module and any started modules that require it, in reverse dependency order.
+- `OnStop` is called at most once for each module that reached `Started` or published services.
+- Modules that never reached `Started` but partially published services still receive cleanup for those services.
+- Destruction order is reverse construction order after stop/cleanup completes.
+- Shutdown failure is recorded, but the kernel continues attempting to stop remaining started modules.
+
+P1-GATE-001 may implement these semantics with fixed test modules and lifecycle trace output. It does not need dynamic plugin destruction or async teardown.
 
 ## Lifecycle Callbacks
 
@@ -109,8 +132,9 @@ Service registration:
 
 - Services are registered by stable service ID during startup.
 - Service IDs are setup-path names, not hot-path dynamic dispatch.
-- A missing required service is an explicit error.
+- A missing required service declared in `RequiredServices` is an explicit pre-start error.
 - Duplicate service registration is an explicit error unless replacement semantics are later approved by ADR.
+- Services owned by a failed or stopped module are deregistered by the kernel.
 
 Service lookup:
 
@@ -163,9 +187,13 @@ Kernel lifecycle tests must cover:
 - missing required dependency;
 - dependency cycle;
 - startup failure teardown of already-started modules;
+- partial startup failure cleans up services published by the failing module;
+- update failure stops failing module and dependent modules in reverse dependency order;
 - shutdown failure reporting;
+- required service preflight failure;
 - service registration and resolution;
 - missing service returns explicit error;
+- service deregistration after module stop/failure;
 - duplicate service registration returns explicit error;
 - diagnostics-disabled behavior equivalence for lifecycle result.
 
@@ -175,8 +203,12 @@ P1-GATE-001 may implement a minimal subset:
 
 - fixed test module descriptors;
 - required dependency sorting;
+- required service declaration and pre-start validation;
 - `OnStart`, `OnUpdate`, `OnStop`;
 - service registration/resolution;
+- service deregistration on stop/failure;
+- startup failure cleanup for partially published services;
+- update failure stop of failing/dependent modules;
 - explicit failure results;
 - lifecycle trace used by tests.
 
