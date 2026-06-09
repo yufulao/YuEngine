@@ -957,6 +957,64 @@ struct BackendDeviceCreationRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendResourceCreationExecutionRecord {
+    std::string name;
+    std::string sourceResourceRecord;
+    std::string operation;
+    std::string resourceKind;
+    std::string format;
+    std::string status;
+    std::string detail;
+    int width = 0;
+    int height = 0;
+    int mipLevels = 0;
+    int cubeFaces = 1;
+    int subresourceCount = 0;
+    int64_t payloadBytes = 0;
+    bool sourceReady = false;
+    bool resultRecorded = false;
+    bool realHandleReady = false;
+};
+
+struct BackendResourceCreationRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool deviceCreationOk = false;
+    bool deviceExecutionOk = false;
+    bool resourceCreationRuntimeReady = false;
+    bool persistentDeviceServiceReady = false;
+    bool readyResourceCreationExecuted = false;
+    bool trackedOpenResourcesPreserved = false;
+    bool downstreamExecutionDeferred = false;
+    bool backbufferExtentCarried = false;
+    int sourceResourceRecords = 0;
+    int readySourceResourceRecords = 0;
+    int trackedOpenSourceResourceRecords = 0;
+    int resultRecords = 0;
+    int realResourceHandlesCreated = 0;
+    int failedResourceHandles = 0;
+    int preservedTrackedOpenResources = 0;
+    int createTextureResults = 0;
+    int createCubeTextureResults = 0;
+    int smaaLookupTextureResults = 0;
+    int stageTextureResults = 0;
+    int deferredRenderTargetCandidates = 0;
+    int deferredDepthStencilCandidates = 0;
+    int deferredFontAtlasCandidates = 0;
+    int uploadSubresourceRecordsDeferred = 0;
+    int stateBindingRecordsDeferred = 0;
+    int drawPresentCaptureRecordsDeferred = 0;
+    int64_t readyPayloadBytesCreated = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedResourceCreationContracts = 0;
+    int trackedResourceCreationObligations = 0;
+    int openResourceCreationObligations = 0;
+    std::vector<BackendResourceCreationExecutionRecord> records;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -1155,6 +1213,13 @@ BackendDeviceCreationRuntimeReport runBackendDeviceCreationRuntime(
 
 std::string backendDeviceCreationRuntimeReportToJson(
     const BackendDeviceCreationRuntimeReport& report);
+
+BackendResourceCreationRuntimeReport runBackendResourceCreationRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendResourceCreationRuntimeReportToJson(
+    const BackendResourceCreationRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

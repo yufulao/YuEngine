@@ -1276,7 +1276,7 @@ Boundary:
 
 ### L30: Persistent Device Service And Resource Creation Queue Execution
 
-Status: active after L29.
+Status: completed after L29.
 
 Deliver:
 
@@ -1294,6 +1294,47 @@ Acceptance:
 - failed resource creation must be explicit and cannot downgrade to diagnostic success;
 - CTest must lock resource handle counts, ready/open accounting, D3D formats, payload sizes, and
   downstream blocked queues.
+
+Verified:
+
+- `yuengine_cli backend-resource-create samples/touhou_new_world/project.json --repo-root .`
+  reports `resource_creation_runtime_ready=true`;
+- CTest `yuengine_backend_resource_creation_contract` locks 46 source records, 41 ready records,
+  5 tracked-open records, 41 service-retained D3D9 resource handles, 40 texture creations, 1 cube
+  texture creation, 2 SMAA lookup texture creations, 23,949,794 ready payload bytes, and the
+  inherited 1280x720 backbuffer extent;
+- on the current Windows test machine, all 41 ready resource creations report `real_success`;
+- transient surfaces and the font atlas remain explicit tracked-open records.
+
+Boundary:
+
+- L30 creates resources but does not upload DDS payloads;
+- L30 does not bind texture/sampler/render state;
+- L30 does not issue draw, present, capture, or oracle comparison calls;
+- L30 only closes the persistent device and resource creation edge so L31 can upload and bind
+  through real resource handles.
+
+### L31: Texture Upload And Backend State Binding Execution
+
+Status: active after L30.
+
+Deliver:
+
+- keep the L30 backend device service and resource handles alive through upload and state binding;
+- execute ready `LockRect`/`UnlockRect` upload records for DXT stage textures, cube faces/mips,
+  and SMAA lookup textures;
+- execute ready `SetTexture`, `SetSamplerState`, and render-state bundle records from the recovered
+  backend state chain;
+- preserve material shader ownership, transient surface bindings, font atlas bindings,
+  draw/present/capture, and oracle parity as explicit downstream gates.
+
+Acceptance:
+
+- every upload record must point back to its created resource handle and source DDS payload;
+- upload byte counts, mip/face indexing, and ready/open accounting must be locked by CTest;
+- every state binding must point back to the recovered sampler/pass/material records;
+- failed upload or state calls must be explicit and cannot be downgraded to diagnostic success;
+- draw/present/capture remain blocked until upload and state binding are actually complete.
 
 ## Stop Conditions
 
@@ -1330,5 +1371,7 @@ bare sequential `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure
 Current measured speed after caching and scene reuse:
 
 - `yuengine_backend_device_creation_contract`: 1/1 CTest passed in 21.88 seconds.
-- `tools\verify_runtime.ps1 -SkipPython`: fast contract plus `git diff --check` in 22.3 seconds.
+- `yuengine_backend_resource_creation_contract`: 1/1 CTest passed in about 22 seconds.
+- `tools\verify_runtime.ps1 -SkipPython`: fast L30 contract plus `git diff --check` in about 22
+  seconds.
 - direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.

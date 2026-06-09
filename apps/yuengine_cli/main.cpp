@@ -57,6 +57,7 @@ void usage()
               << "  yuengine_cli backend-executor <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-device-adapter <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-device-create <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli backend-resource-create <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli script <project.json> <module>\n"
@@ -443,6 +444,11 @@ int main(int argc, char** argv)
         if (command == "backend-device-create") {
             auto report = yu::runtime::runBackendDeviceCreationRuntime(manifest, repoRoot);
             std::cout << yu::runtime::backendDeviceCreationRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "backend-resource-create") {
+            auto report = yu::runtime::runBackendResourceCreationRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendResourceCreationRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "mission-event-thread") {

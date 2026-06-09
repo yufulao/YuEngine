@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -141,6 +142,12 @@ void addError(BackendDeviceAdapterRuntimeReport& report, const std::string& mess
 }
 
 void addError(BackendDeviceCreationRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
+void addError(BackendResourceCreationRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
     report.errors.push_back(message);
@@ -1852,6 +1859,281 @@ BackendDeviceCreationExecutionRecord makeDeviceCreationRecord(
     record.resultRecorded = true;
     record.realHandleReady = handleReady;
     return record;
+}
+
+struct PlatformD3D9DeviceService {
+    bool platformSupported = false;
+    bool serviceReady = false;
+    std::string status = "unsupported_platform";
+    std::string detail = "D3D9 device service is unavailable on this platform";
+    int width = 0;
+    int height = 0;
+#if defined(_WIN32)
+    HINSTANCE instance = nullptr;
+    HWND hwnd = nullptr;
+    HMODULE d3d9Library = nullptr;
+    IDirect3D9* d3d9 = nullptr;
+    IDirect3DDevice9* device = nullptr;
+    std::vector<IUnknown*> resourceHandles;
+
+    ~PlatformD3D9DeviceService()
+    {
+        for (auto* resource : resourceHandles) {
+            if (resource != nullptr) {
+                resource->Release();
+            }
+        }
+        resourceHandles.clear();
+        if (device != nullptr) {
+            device->Release();
+            device = nullptr;
+        }
+        if (d3d9 != nullptr) {
+            d3d9->Release();
+            d3d9 = nullptr;
+        }
+        if (d3d9Library != nullptr) {
+            FreeLibrary(d3d9Library);
+            d3d9Library = nullptr;
+        }
+        if (hwnd != nullptr) {
+            DestroyWindow(hwnd);
+            hwnd = nullptr;
+        }
+        if (instance != nullptr) {
+            UnregisterClassA("YuEnginePersistentD3D9DeviceWindow", instance);
+            instance = nullptr;
+        }
+    }
+#endif
+};
+
+std::unique_ptr<PlatformD3D9DeviceService> createPlatformD3D9DeviceService(int width, int height)
+{
+    auto service = std::make_unique<PlatformD3D9DeviceService>();
+    service->width = width;
+    service->height = height;
+#if defined(_WIN32)
+    service->platformSupported = true;
+    service->status = "real_failed";
+    service->detail = "D3D9 device service creation did not complete";
+    service->instance = GetModuleHandleA(nullptr);
+
+    WNDCLASSEXA windowClass{};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.lpfnWndProc = yuEngineHiddenDeviceWindowProc;
+    windowClass.hInstance = service->instance;
+    windowClass.lpszClassName = "YuEnginePersistentD3D9DeviceWindow";
+    RegisterClassExA(&windowClass);
+
+    service->hwnd = CreateWindowExA(
+        0,
+        windowClass.lpszClassName,
+        "YuEngine Persistent D3D9 Device",
+        WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        std::max(1, width),
+        std::max(1, height),
+        nullptr,
+        nullptr,
+        service->instance,
+        nullptr);
+    if (service->hwnd == nullptr) {
+        service->detail = win32ErrorDetail("CreateWindowExA", GetLastError());
+        return service;
+    }
+
+    service->d3d9Library = LoadLibraryA("d3d9.dll");
+    if (service->d3d9Library == nullptr) {
+        service->detail = win32ErrorDetail("LoadLibraryA(d3d9.dll)", GetLastError());
+        return service;
+    }
+
+    using Direct3DCreate9Fn = IDirect3D9* (WINAPI*)(UINT);
+    auto create9 = reinterpret_cast<Direct3DCreate9Fn>(
+        GetProcAddress(service->d3d9Library, "Direct3DCreate9"));
+    if (create9 == nullptr) {
+        service->detail = win32ErrorDetail("GetProcAddress(Direct3DCreate9)", GetLastError());
+        return service;
+    }
+
+    service->d3d9 = create9(D3D_SDK_VERSION);
+    if (service->d3d9 == nullptr) {
+        service->detail = "Direct3DCreate9 returned null";
+        return service;
+    }
+
+    D3DPRESENT_PARAMETERS present{};
+    present.Windowed = TRUE;
+    present.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    present.hDeviceWindow = service->hwnd;
+    present.BackBufferWidth = static_cast<UINT>(std::max(1, width));
+    present.BackBufferHeight = static_cast<UINT>(std::max(1, height));
+    present.BackBufferFormat = D3DFMT_X8R8G8B8;
+    present.EnableAutoDepthStencil = TRUE;
+    present.AutoDepthStencilFormat = D3DFMT_D24S8;
+    present.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+
+    HRESULT hr = service->d3d9->CreateDevice(
+        D3DADAPTER_DEFAULT,
+        D3DDEVTYPE_HAL,
+        service->hwnd,
+        D3DCREATE_HARDWARE_VERTEXPROCESSING,
+        &present,
+        &service->device);
+    if (FAILED(hr)) {
+        hr = service->d3d9->CreateDevice(
+            D3DADAPTER_DEFAULT,
+            D3DDEVTYPE_HAL,
+            service->hwnd,
+            D3DCREATE_SOFTWARE_VERTEXPROCESSING,
+            &present,
+            &service->device);
+    }
+    if (FAILED(hr) || service->device == nullptr) {
+        service->detail = hresultDetail("IDirect3D9::CreateDevice", hr);
+        return service;
+    }
+
+    service->serviceReady = true;
+    service->status = "real_success";
+    service->detail = "persistent YuEngine D3D9 device service is ready for resource creation";
+    return service;
+#else
+    return service;
+#endif
+}
+
+BackendResourceCreationExecutionRecord makeResourceCreationRecord(
+    const BackendDeviceResourceExecutionRecord& source,
+    const std::string& status,
+    const std::string& detail,
+    bool handleReady)
+{
+    BackendResourceCreationExecutionRecord record;
+    record.name = source.name;
+    record.sourceResourceRecord = source.name;
+    record.operation = source.operation;
+    record.resourceKind = source.resourceKind;
+    record.format = source.format;
+    record.status = status;
+    record.detail = detail;
+    record.width = source.width;
+    record.height = source.height;
+    record.mipLevels = source.mipLevels;
+    record.cubeFaces = source.cubeFaces;
+    record.subresourceCount = source.subresourceCount;
+    record.payloadBytes = source.payloadBytes;
+    record.sourceReady = source.ready;
+    record.resultRecorded = true;
+    record.realHandleReady = handleReady;
+    return record;
+}
+
+#if defined(_WIN32)
+D3DFORMAT d3dFormatFromResourceRecord(const std::string& format)
+{
+    if (format == "D3DFMT_DXT1") {
+        return D3DFMT_DXT1;
+    }
+    if (format == "D3DFMT_DXT5") {
+        return D3DFMT_DXT5;
+    }
+    if (format == "D3DFMT_L8") {
+        return D3DFMT_L8;
+    }
+    if (format == "D3DFMT_A8L8") {
+        return D3DFMT_A8L8;
+    }
+    return D3DFMT_UNKNOWN;
+}
+#endif
+
+BackendResourceCreationExecutionRecord executeResourceCreationRecord(
+    PlatformD3D9DeviceService& service,
+    const BackendDeviceResourceExecutionRecord& source)
+{
+    if (!source.ready) {
+        return makeResourceCreationRecord(
+            source,
+            source.status == "tracked_open" ? "tracked_open" : "blocked",
+            "source resource record is not ready for real D3D creation",
+            false);
+    }
+    if (!service.serviceReady) {
+        return makeResourceCreationRecord(
+            source,
+            "blocked_by_device",
+            service.detail,
+            false);
+    }
+
+#if defined(_WIN32)
+    const D3DFORMAT format = d3dFormatFromResourceRecord(source.format);
+    if (format == D3DFMT_UNKNOWN) {
+        return makeResourceCreationRecord(
+            source,
+            "blocked",
+            "source resource format is not mapped to a D3D9 format",
+            false);
+    }
+
+    if (source.operation == "CreateTexture") {
+        IDirect3DTexture9* texture = nullptr;
+        const HRESULT hr = service.device->CreateTexture(
+            static_cast<UINT>(source.width),
+            static_cast<UINT>(source.height),
+            static_cast<UINT>(std::max(1, source.mipLevels)),
+            0,
+            format,
+            D3DPOOL_MANAGED,
+            &texture,
+            nullptr);
+        if (SUCCEEDED(hr) && texture != nullptr) {
+            service.resourceHandles.push_back(texture);
+            return makeResourceCreationRecord(
+                source,
+                "real_success",
+                "IDirect3DDevice9::CreateTexture succeeded and resource handle is retained by the service",
+                true);
+        }
+        if (texture != nullptr) {
+            texture->Release();
+        }
+        return makeResourceCreationRecord(source, "real_failed", hresultDetail("CreateTexture", hr), false);
+    }
+
+    if (source.operation == "CreateCubeTexture") {
+        IDirect3DCubeTexture9* texture = nullptr;
+        const HRESULT hr = service.device->CreateCubeTexture(
+            static_cast<UINT>(source.width),
+            static_cast<UINT>(std::max(1, source.mipLevels)),
+            0,
+            format,
+            D3DPOOL_MANAGED,
+            &texture,
+            nullptr);
+        if (SUCCEEDED(hr) && texture != nullptr) {
+            service.resourceHandles.push_back(texture);
+            return makeResourceCreationRecord(
+                source,
+                "real_success",
+                "IDirect3DDevice9::CreateCubeTexture succeeded and resource handle is retained by the service",
+                true);
+        }
+        if (texture != nullptr) {
+            texture->Release();
+        }
+        return makeResourceCreationRecord(source, "real_failed", hresultDetail("CreateCubeTexture", hr), false);
+    }
+#endif
+
+    return makeResourceCreationRecord(
+        source,
+        "tracked_open",
+        "resource operation remains deferred to a later backend contract",
+        false);
 }
 
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
@@ -3971,6 +4253,175 @@ BackendDeviceCreationRuntimeReport buildBackendDeviceCreationRuntimeReport(
     if (report.resolvedDeviceCreationContracts != 5 || report.trackedDeviceCreationObligations != 5
         || report.openDeviceCreationObligations != 5) {
         addError(report, "device creation obligation accounting is inconsistent");
+    }
+
+    return storeCachedReport(cache, cacheKey, report);
+}
+
+BackendResourceCreationRuntimeReport buildBackendResourceCreationRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "backend-resource-create");
+    static std::map<std::string, BackendResourceCreationRuntimeReport> cache;
+    BackendResourceCreationRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
+    BackendResourceCreationRuntimeReport report;
+    const auto deviceCreation = buildBackendDeviceCreationRuntimeReport(inputs, rendererProfile, vfs);
+    const auto deviceExecution = buildBackendDeviceExecutionRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.deviceCreationOk = deviceCreation.ok;
+    report.deviceExecutionOk = deviceExecution.ok;
+    report.backbufferWidth = deviceCreation.backbufferWidth;
+    report.backbufferHeight = deviceCreation.backbufferHeight;
+
+    auto service = createPlatformD3D9DeviceService(report.backbufferWidth, report.backbufferHeight);
+    report.persistentDeviceServiceReady = service->serviceReady;
+
+    for (const auto& source : deviceExecution.resourceRecords) {
+        ++report.sourceResourceRecords;
+        if (source.ready) {
+            ++report.readySourceResourceRecords;
+        } else if (source.status == "tracked_open") {
+            ++report.trackedOpenSourceResourceRecords;
+        }
+
+        auto record = executeResourceCreationRecord(*service, source);
+        if (record.resultRecorded) {
+            ++report.resultRecords;
+        }
+        if (record.realHandleReady) {
+            ++report.realResourceHandlesCreated;
+            report.readyPayloadBytesCreated += record.payloadBytes;
+        } else if (record.status == "real_failed" || record.status == "blocked_by_device") {
+            ++report.failedResourceHandles;
+        } else if (record.status == "tracked_open") {
+            ++report.preservedTrackedOpenResources;
+        }
+
+        if (record.operation == "CreateTexture") {
+            ++report.createTextureResults;
+        } else if (record.operation == "CreateCubeTexture") {
+            ++report.createCubeTextureResults;
+        } else if (record.operation == "CreateRenderTargetCandidate") {
+            ++report.deferredRenderTargetCandidates;
+        } else if (record.operation == "CreateDepthStencilSurfaceCandidate") {
+            ++report.deferredDepthStencilCandidates;
+        } else if (record.operation == "CreateTextureCandidate"
+            && record.resourceKind == "font_atlas_texture") {
+            ++report.deferredFontAtlasCandidates;
+        }
+
+        if (record.realHandleReady && record.resourceKind == "smaa_lookup_texture") {
+            ++report.smaaLookupTextureResults;
+        }
+        if (record.realHandleReady
+            && (record.resourceKind == "texture_2d" || record.resourceKind == "cube_texture")) {
+            ++report.stageTextureResults;
+        }
+
+        report.records.push_back(std::move(record));
+    }
+
+    report.uploadSubresourceRecordsDeferred = deviceExecution.uploadSubresourceRecords;
+    report.stateBindingRecordsDeferred = deviceExecution.bindingRecords;
+    report.drawPresentCaptureRecordsDeferred = 121 + 1 + 2;
+    report.backbufferExtentCarried =
+        report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+    report.readyResourceCreationExecuted = report.readySourceResourceRecords == 41
+        && report.realResourceHandlesCreated == 41 && report.failedResourceHandles == 0
+        && report.createTextureResults == 40 && report.createCubeTextureResults == 1
+        && report.stageTextureResults == 39 && report.smaaLookupTextureResults == 2
+        && report.readyPayloadBytesCreated == 23949794;
+    report.trackedOpenResourcesPreserved = report.trackedOpenSourceResourceRecords == 5
+        && report.preservedTrackedOpenResources == 5 && report.deferredRenderTargetCandidates == 3
+        && report.deferredDepthStencilCandidates == 1 && report.deferredFontAtlasCandidates == 1;
+    report.downstreamExecutionDeferred = report.uploadSubresourceRecordsDeferred == 458
+        && report.stateBindingRecordsDeferred == 57 && report.drawPresentCaptureRecordsDeferred == 124;
+    report.resourceCreationRuntimeReady = report.deviceCreationOk && report.deviceExecutionOk
+        && report.persistentDeviceServiceReady && report.readyResourceCreationExecuted
+        && report.trackedOpenResourcesPreserved && report.downstreamExecutionDeferred
+        && report.backbufferExtentCarried && report.sourceResourceRecords == 46
+        && report.resultRecords == 46;
+
+    report.contracts.push_back(makeBackendObligation(
+        "persistent_device_service_handle",
+        report.persistentDeviceServiceReady ? "contract_ready" : "blocked",
+        "L29 device creation is held long enough for L30 resource creation"));
+    report.contracts.push_back(makeBackendObligation(
+        "ready_texture_resource_creation",
+        report.createTextureResults == 40 && report.realResourceHandlesCreated >= 40 ? "contract_ready" : "blocked",
+        "40 ready 2D texture records call IDirect3DDevice9::CreateTexture"));
+    report.contracts.push_back(makeBackendObligation(
+        "ready_cube_resource_creation",
+        report.createCubeTextureResults == 1 && report.stageTextureResults == 39 ? "contract_ready" : "blocked",
+        "1 cube environment texture calls IDirect3DDevice9::CreateCubeTexture"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_lookup_resource_creation",
+        report.smaaLookupTextureResults == 2 ? "contract_ready" : "blocked",
+        "SMAA area/search lookup textures are created with D3DFMT_A8L8 and D3DFMT_L8"));
+    report.contracts.push_back(makeBackendObligation(
+        "tracked_open_resource_preservation",
+        report.trackedOpenResourcesPreserved ? "contract_ready" : "blocked",
+        "transient surfaces and font atlas remain explicit tracked-open records"));
+    report.contracts.push_back(makeBackendObligation(
+        "texture_upload_after_resource_creation",
+        report.downstreamExecutionDeferred ? "tracked_open" : "blocked",
+        "458 upload subresource records remain deferred until lock/unlock upload execution"));
+    report.contracts.push_back(makeBackendObligation(
+        "state_binding_after_upload",
+        report.downstreamExecutionDeferred ? "tracked_open" : "blocked",
+        "57 state/texture binding records remain deferred until uploads produce usable resources"));
+    report.contracts.push_back(makeBackendObligation(
+        "draw_present_capture_after_resources",
+        report.downstreamExecutionDeferred ? "tracked_open" : "blocked",
+        "draw, present, and capture remain deferred until resources and state are bound"));
+    report.contracts.push_back(makeBackendObligation(
+        "transient_surface_format_definition",
+        report.trackedOpenResourcesPreserved ? "tracked_open" : "blocked",
+        "SMAA transient surface formats remain unknown and are not guessed"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_resource_definition",
+        report.trackedOpenResourcesPreserved ? "tracked_open" : "blocked",
+        "font atlas dimensions and glyph cache ownership remain unrecovered"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedResourceCreationContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedResourceCreationObligations;
+            ++report.openResourceCreationObligations;
+        } else {
+            ++report.openResourceCreationObligations;
+        }
+    }
+
+    if (!report.deviceCreationOk) {
+        addError(report, "device creation contract is not ready for resource creation");
+    }
+    if (!report.deviceExecutionOk) {
+        addError(report, "device execution records are not ready for resource creation");
+    }
+    if (!report.persistentDeviceServiceReady) {
+        addError(report, "persistent D3D9 device service is not ready");
+    }
+    if (!report.readyResourceCreationExecuted) {
+        addError(report, "ready resource records did not all create real D3D handles");
+    }
+    if (!report.trackedOpenResourcesPreserved) {
+        addError(report, "tracked-open resources were not preserved");
+    }
+    if (!report.downstreamExecutionDeferred) {
+        addError(report, "downstream upload/state/draw queues were not preserved");
+    }
+    if (report.resolvedResourceCreationContracts != 5 || report.trackedResourceCreationObligations != 5
+        || report.openResourceCreationObligations != 5) {
+        addError(report, "resource creation obligation accounting is inconsistent");
     }
 
     return storeCachedReport(cache, cacheKey, report);
@@ -6226,6 +6677,139 @@ std::string backendDeviceCreationRuntimeReportToJson(
             << ", \"attempt_count\": " << record.attemptCount
             << ", \"success_count\": " << record.successCount
             << ", \"failure_count\": " << record.failureCount
+            << ", \"result_recorded\": " << (record.resultRecorded ? "true" : "false")
+            << ", \"real_handle_ready\": " << (record.realHandleReady ? "true" : "false")
+            << "}";
+        out << (i + 1 == report.records.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendResourceCreationRuntimeReport runBackendResourceCreationRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendResourceCreationRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendResourceCreationRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendResourceCreationRuntimeReportToJson(
+    const BackendResourceCreationRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_resource_creation_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " device_creation_ok=" << (report.deviceCreationOk ? "true" : "false")
+        << " device_execution_ok=" << (report.deviceExecutionOk ? "true" : "false")
+        << " resource_creation_runtime_ready="
+        << (report.resourceCreationRuntimeReady ? "true" : "false")
+        << " persistent_device_service_ready="
+        << (report.persistentDeviceServiceReady ? "true" : "false")
+        << " ready_resource_creation_executed="
+        << (report.readyResourceCreationExecuted ? "true" : "false")
+        << " tracked_open_resources_preserved="
+        << (report.trackedOpenResourcesPreserved ? "true" : "false")
+        << " downstream_execution_deferred="
+        << (report.downstreamExecutionDeferred ? "true" : "false")
+        << " backbuffer_extent_carried=" << (report.backbufferExtentCarried ? "true" : "false")
+        << " source_resource_records=" << report.sourceResourceRecords
+        << " ready_source_resource_records=" << report.readySourceResourceRecords
+        << " tracked_open_source_resource_records=" << report.trackedOpenSourceResourceRecords
+        << " result_records=" << report.resultRecords
+        << " real_resource_handles_created=" << report.realResourceHandlesCreated
+        << " failed_resource_handles=" << report.failedResourceHandles
+        << " preserved_tracked_open_resources=" << report.preservedTrackedOpenResources
+        << " create_texture_results=" << report.createTextureResults
+        << " create_cube_texture_results=" << report.createCubeTextureResults
+        << " smaa_lookup_texture_results=" << report.smaaLookupTextureResults
+        << " stage_texture_results=" << report.stageTextureResults
+        << " deferred_render_target_candidates=" << report.deferredRenderTargetCandidates
+        << " deferred_depth_stencil_candidates=" << report.deferredDepthStencilCandidates
+        << " deferred_font_atlas_candidates=" << report.deferredFontAtlasCandidates
+        << " upload_subresource_records_deferred=" << report.uploadSubresourceRecordsDeferred
+        << " state_binding_records_deferred=" << report.stateBindingRecordsDeferred
+        << " draw_present_capture_records_deferred=" << report.drawPresentCaptureRecordsDeferred
+        << " ready_payload_bytes_created=" << report.readyPayloadBytesCreated
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_resource_creation_contracts=" << report.resolvedResourceCreationContracts
+        << " tracked_resource_creation_obligations=" << report.trackedResourceCreationObligations
+        << " open_resource_creation_obligations=" << report.openResourceCreationObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"resource_summary\": {";
+    out << "\"source_resource_records\": " << report.sourceResourceRecords
+        << ", \"ready_source_resource_records\": " << report.readySourceResourceRecords
+        << ", \"tracked_open_source_resource_records\": "
+        << report.trackedOpenSourceResourceRecords
+        << ", \"result_records\": " << report.resultRecords
+        << ", \"real_resource_handles_created\": " << report.realResourceHandlesCreated
+        << ", \"failed_resource_handles\": " << report.failedResourceHandles
+        << ", \"preserved_tracked_open_resources\": "
+        << report.preservedTrackedOpenResources << "},\n";
+    out << "  \"operation_summary\": {";
+    out << "\"create_texture_results\": " << report.createTextureResults
+        << ", \"create_cube_texture_results\": " << report.createCubeTextureResults
+        << ", \"smaa_lookup_texture_results\": " << report.smaaLookupTextureResults
+        << ", \"stage_texture_results\": " << report.stageTextureResults
+        << ", \"deferred_render_target_candidates\": " << report.deferredRenderTargetCandidates
+        << ", \"deferred_depth_stencil_candidates\": " << report.deferredDepthStencilCandidates
+        << ", \"deferred_font_atlas_candidates\": " << report.deferredFontAtlasCandidates << "},\n";
+    out << "  \"downstream_state\": {";
+    out << "\"upload_subresource_records_deferred\": " << report.uploadSubresourceRecordsDeferred
+        << ", \"state_binding_records_deferred\": " << report.stateBindingRecordsDeferred
+        << ", \"draw_present_capture_records_deferred\": "
+        << report.drawPresentCaptureRecordsDeferred << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_resource_creation_contracts\": "
+        << report.resolvedResourceCreationContracts
+        << ", \"tracked_resource_creation_obligations\": "
+        << report.trackedResourceCreationObligations
+        << ", \"open_resource_creation_obligations\": "
+        << report.openResourceCreationObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"records\": [\n";
+    for (size_t i = 0; i < report.records.size(); ++i) {
+        const auto& record = report.records[i];
+        out << "    {\"name\": \"" << core::jsonEscape(record.name)
+            << "\", \"source_resource_record\": \"" << core::jsonEscape(record.sourceResourceRecord)
+            << "\", \"operation\": \"" << core::jsonEscape(record.operation)
+            << "\", \"resource_kind\": \"" << core::jsonEscape(record.resourceKind)
+            << "\", \"format\": \"" << core::jsonEscape(record.format)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"detail\": \"" << core::jsonEscape(record.detail)
+            << "\", \"width\": " << record.width
+            << ", \"height\": " << record.height
+            << ", \"mip_levels\": " << record.mipLevels
+            << ", \"cube_faces\": " << record.cubeFaces
+            << ", \"subresource_count\": " << record.subresourceCount
+            << ", \"payload_bytes\": " << record.payloadBytes
+            << ", \"source_ready\": " << (record.sourceReady ? "true" : "false")
             << ", \"result_recorded\": " << (record.resultRecorded ? "true" : "false")
             << ", \"real_handle_ready\": " << (record.realHandleReady ? "true" : "false")
             << "}";

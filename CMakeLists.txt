@@ -333,6 +333,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_backend_resource_creation_contract
+        COMMAND yuengine_cli backend-resource-create samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_backend_resource_creation_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true device_creation_ok=true device_execution_ok=true resource_creation_runtime_ready=true persistent_device_service_ready=true ready_resource_creation_executed=true tracked_open_resources_preserved=true downstream_execution_deferred=true backbuffer_extent_carried=true source_resource_records=46 ready_source_resource_records=41 tracked_open_source_resource_records=5 result_records=46 real_resource_handles_created=41 failed_resource_handles=0 preserved_tracked_open_resources=5 create_texture_results=40 create_cube_texture_results=1 smaa_lookup_texture_results=2 stage_texture_results=39 deferred_render_target_candidates=3 deferred_depth_stencil_candidates=1 deferred_font_atlas_candidates=1 upload_subresource_records_deferred=458 state_binding_records_deferred=57 draw_present_capture_records_deferred=124 ready_payload_bytes_created=23949794 backbuffer_width=1280 backbuffer_height=720 resolved_resource_creation_contracts=5 tracked_resource_creation_obligations=5 open_resource_creation_obligations=5;resource_summary.*source_resource_records.: 46.*ready_source_resource_records.: 41.*tracked_open_source_resource_records.: 5.*real_resource_handles_created.: 41.*failed_resource_handles.: 0;operation_summary.*create_texture_results.: 40.*create_cube_texture_results.: 1.*smaa_lookup_texture_results.: 2.*stage_texture_results.: 39.*deferred_render_target_candidates.: 3.*deferred_depth_stencil_candidates.: 1.*deferred_font_atlas_candidates.: 1;downstream_state.*upload_subresource_records_deferred.: 458.*state_binding_records_deferred.: 57.*draw_present_capture_records_deferred.: 124;cubeenvmap/doujou_1.dds.*CreateCubeTexture.*D3DFMT_DXT1.*real_success.*cube_faces.: 6.*subresource_count.: 54;areaTex2D.*CreateTexture.*smaa_lookup_texture.*D3DFMT_A8L8.*real_success.*payload_bytes.: 179200;searchTex2D.*CreateTexture.*smaa_lookup_texture.*D3DFMT_L8.*real_success.*payload_bytes.: 2178;colorTex2D.*CreateRenderTargetCandidate.*smaa_transient_surface.*tracked_open.*width.: 1280.*height.: 720;font_atlas_placeholder.*CreateTextureCandidate.*font_atlas_texture.*tracked_open;persistent_device_service_handle.*contract_ready;ready_texture_resource_creation.*contract_ready;ready_cube_resource_creation.*contract_ready;smaa_lookup_resource_creation.*contract_ready;tracked_open_resource_preservation.*contract_ready;texture_upload_after_resource_creation.*tracked_open;state_binding_after_upload.*tracked_open;draw_present_capture_after_resources.*tracked_open"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )
