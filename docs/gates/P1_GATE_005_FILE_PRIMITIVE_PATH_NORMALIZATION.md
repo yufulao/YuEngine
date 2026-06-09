@@ -97,6 +97,10 @@ Failure behavior:
 - file snapshot/counters;
 - no JSON report output as runtime API.
 
+`FileReadResult` must either own its byte buffer or expose a view tied to a
+source/result lifetime that cannot dangle. Error details cross the boundary as
+explicit result/status values, not log or report text.
+
 ## Dependencies
 
 Allowed dependencies:
@@ -137,6 +141,20 @@ Required deterministic signals:
 - allocation/accounting status or explicit deferral if `YuMemory` is not integrated;
 - sync read result status.
 
+First-slice bounds:
+
+- mount capacity: 4 mounts maximum;
+- maximum virtual path length: 128 bytes;
+- maximum normalized path length: 128 bytes;
+- maximum fixture read size: 4096 bytes;
+- first-slice case policy: case-sensitive virtual path comparison, lowercase ASCII fixtures, and no OS case-folding;
+- allocation/accounting rule: use `YuMemory` if the P1-GATE-002 implementation has landed; otherwise explicitly defer only the allocation/accounting signal and do not claim zero CRT/STL/general heap coverage.
+
+Pass/fail rule:
+
+- exceeding the path length, mount capacity, or fixture read-size bound is an explicit failure;
+- changing mount capacity, path normalization count, lookup count, read byte count, or allocation/accounting status outside the declared fixture is a gate failure unless this gate is amended.
+
 Blocking conditions:
 
 - repeated path normalization in a declared hot path;
@@ -154,6 +172,7 @@ Fast gate tests required before the slice can be considered complete:
 - `File_PathNormalize_RejectsTraversalOutsideRoot`
 - `File_PathNormalize_RejectsEmptyAndAbsolutePath`
 - `File_MountTable_RejectsDuplicateMount`
+- `File_MountTable_UsesDeterministicPriorityOrder`
 - `File_MountTable_ReportsMissingMountOrFile`
 - `File_LooseFixtureRead_ReturnsExactBytes`
 - `File_ReadSnapshot_RecordsCountsAndBytes`

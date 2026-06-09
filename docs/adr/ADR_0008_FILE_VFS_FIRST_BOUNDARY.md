@@ -74,7 +74,9 @@ Rules:
 - `.` path segments are removed.
 - `..` traversal outside the mounted root is rejected.
 - Empty paths and absolute OS paths are rejected.
-- Case policy is explicit and stable for the fixture.
+- First-slice virtual path comparison is case-sensitive.
+- First-slice fixtures use lowercase ASCII paths.
+- No OS case-folding or locale-sensitive case conversion is performed in P1-GATE-005.
 - Normalization happens on setup/load paths, not in hot per-frame paths.
 - Normalized path values may be compared without reparsing the original string.
 
@@ -102,8 +104,13 @@ First-slice read behavior is synchronous and fixture-sized.
 Allowed:
 
 - read a small deterministic test fixture from a loose mounted source;
-- return bytes or string_view-equivalent test data through an explicit result;
+- return bytes through an explicit result with clear ownership and lifetime;
 - return explicit not-found, invalid-path, path-escape, duplicate-mount, and read-failure errors.
+
+`FileReadResult` must either own its byte buffer or return a view whose lifetime
+is tied to the source/result object and cannot dangle after the result is
+destroyed. Error details are explicit result/status values. Log or report text is
+not the observable error path.
 
 Blocked:
 
