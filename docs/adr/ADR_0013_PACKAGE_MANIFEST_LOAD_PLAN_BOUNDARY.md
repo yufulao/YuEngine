@@ -55,6 +55,8 @@ Rules:
 - duplicate `(package ID, entry key)` registration fails explicitly;
 - duplicate `(ResourceTypeId, ResourceLogicalKey)` within one manifest fails
   explicitly;
+- invalid package IDs, entry IDs, resource types, or logical keys fail
+  explicitly and do not mutate manifest state;
 - entry lookup uses stable IDs and bounded key comparison, not pointer identity;
 - package metadata is setup/load data, not a frame-path string lookup surface.
 
@@ -77,6 +79,8 @@ Rules:
   and does not mutate counters;
 - entry byte offset and size are metadata only and must stay within the gate
   bounds;
+- load-plan record capacity overflow returns explicit capacity status and does
+  not mutate the accepted plan counters;
 - dependency references must point at registered entries in the same manifest;
 - dependency cycles fail explicitly;
 - dependency load plans preserve declaration order after validation;

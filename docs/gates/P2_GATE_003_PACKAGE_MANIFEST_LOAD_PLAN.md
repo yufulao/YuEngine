@@ -97,6 +97,8 @@ Failure behavior:
   status and does not mutate state;
 - duplicate package or entry registration returns explicit duplicate status and
   does not mutate state;
+- duplicate `(ResourceTypeId, ResourceLogicalKey)` association within one
+  manifest returns explicit duplicate status and does not mutate state;
 - manifest, entry, or dependency capacity overflow returns explicit capacity
   status and does not mutate state;
 - expected resource type mismatch returns explicit mismatch status and does not
@@ -104,6 +106,8 @@ Failure behavior:
 - missing dependency and dependency cycle return explicit statuses;
 - byte range overflow or entry-size overflow returns explicit status and does
   not mutate state;
+- load-plan record capacity overflow returns explicit capacity status and does
+  not mutate plan counters or previously accepted plan records;
 - resolving a missing entry returns explicit not-found status;
 - disabled diagnostics/logging does not change Package results.
 
@@ -212,6 +216,8 @@ Fast gate tests required before the slice can be considered complete:
 - `Package_RegisterDuplicateManifest_ReturnsExplicitStatus`
 - `Package_RegisterEntry_ReturnsStableEntryId`
 - `Package_RegisterDuplicateEntry_ReturnsExplicitStatus`
+- `Package_RegisterDuplicateResourceKey_ReturnsExplicitStatus`
+- `Package_RegisterInvalidIdsOrType_ReturnsExplicitStatusWithoutMutation`
 - `Package_ManifestCapacityOverflow_DoesNotMutate`
 - `Package_EntryCapacityOverflow_DoesNotMutate`
 - `Package_RegisterEntryRejectsOversizedKeysWithoutMutation`
@@ -223,6 +229,7 @@ Fast gate tests required before the slice can be considered complete:
 - `Package_DependencyValidationRejectsCycle`
 - `Package_DependencyPlanPreservesDeclarationOrder`
 - `Package_DependencyCapacityOverflow_DoesNotMutate`
+- `Package_LoadPlanCapacityOverflow_DoesNotMutate`
 - `Package_DisabledDiagnosticsDoesNotChangeResults`
 - `Package_NoFileReadOriginalPackageOrGameAdapterDependency`
 - `Package_NoHiddenAllocation_UsesYuMemorySignal`
