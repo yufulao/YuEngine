@@ -25,6 +25,7 @@ This gate owns the first `YuRHI` implementation slice for:
 - null RHI device;
 - device capabilities;
 - RHI format and extent value types;
+- exact `RGBA8_UNORM` byte-channel clear colors;
 - generation-checked texture/color-target handles;
 - bounded command list;
 - clear-color command behavior;
@@ -96,14 +97,15 @@ Failure behavior:
 - present without a successful submit returns explicit lifecycle status;
 - capture before present returns explicit lifecycle status;
 - capture with undersized destination returns explicit capacity status and does
-  not write partial pixels;
+  not write partial pixels, leaves destination bytes unchanged, and reports
+  `capture_bytes_written == 0`;
 - disabled diagnostics/logging does not change any RHI result.
 
 ## Inputs
 
 - null backend device descriptor;
 - fixed RGBA8 color target descriptors;
-- fixed clear colors;
+- fixed clear colors as exact `RGBA8_UNORM` byte channels;
 - bounded command-list capacity;
 - caller-owned capture buffers;
 - optional memory tracker if P1-GATE-002 implementation is accepted.
@@ -167,6 +169,9 @@ First-slice bounds:
 - command-list capacity: 32 commands maximum;
 - supported format: `RGBA8_UNORM` only;
 - command types: begin frame, clear color, end frame;
+- clear color input: exact `uint8`-equivalent RGBA channels only;
+- float clear-color input, conversion, rounding, clamping, NaN, Inf, and
+  negative-zero semantics are outside this slice;
 - frame submit/present/capture must not allocate or grow storage.
 
 Pass/fail rule:
@@ -192,17 +197,20 @@ Blocking conditions:
 Fast gate tests required before the slice can be considered complete:
 
 - `RHI_CreateNullDevice_ReturnsCapabilities`
+- `RHI_CreateDevice_RejectsUnsupportedBackend`
 - `RHI_CreateColorTarget_ReturnsGenerationHandle`
 - `RHI_CreateColorTarget_RejectsInvalidDescriptor`
 - `RHI_TargetCapacityOverflow_DoesNotMutate`
 - `RHI_DestroyTarget_InvalidatesStaleHandle`
 - `RHI_CommandList_RecordsClearWithinCapacity`
 - `RHI_CommandListCapacityOverflow_DoesNotMutate`
+- `RHI_ClearColor_UsesExactRgba8ByteChannels`
+- `RHI_SubmitRejectsIncompleteCommandListWithoutMutation`
 - `RHI_SubmitExecutesClearIntoNullTarget`
 - `RHI_PresentRequiresSuccessfulSubmit`
 - `RHI_CaptureBeforePresent_ReturnsExplicitStatus`
 - `RHI_CaptureReturnsDeterministicRgba8Bytes`
-- `RHI_CaptureRejectsUndersizedBufferWithoutPartialWrite`
+- `RHI_CaptureRejectsUndersizedBufferWithoutWritingBytes`
 - `RHI_FrameSubmitPresentCapture_DoesNotGrowCommandStorage`
 - `RHI_DisabledDiagnosticsDoesNotChangeResults`
 - `RHI_NoPlatformRenderCoreResourceUiOrGameAdapterDependency`

@@ -27,6 +27,7 @@ YuEngine introduces `YuRHI` as the owner of:
 - backend selection vocabulary;
 - generation-checked RHI handles;
 - fixed-size color target descriptors;
+- exact `RGBA8_UNORM` byte-channel clear colors;
 - bounded command recording;
 - frame submission;
 - present counters;
@@ -67,6 +68,7 @@ Rules:
 - handles use slot/index plus generation, not raw pointers;
 - stale-generation handles fail explicitly;
 - color target creation validates format and extent bounds;
+- clear colors are exact `RGBA8_UNORM` byte-channel values;
 - command lists are fixed-capacity per setup/frame fixture;
 - submit executes recorded commands deterministically on the null backend;
 - present updates explicit counters and frame token state;
@@ -81,6 +83,7 @@ always succeeds.
 P2-GATE-001 null backend may support only:
 
 - fixed `RGBA8_UNORM` color targets;
+- exact `RGBA8_UNORM` clear color input with one byte per channel;
 - bounded extents for fast tests;
 - `ClearColor` command;
 - submit of a single command list per frame;
@@ -89,11 +92,14 @@ P2-GATE-001 null backend may support only:
 
 Rules:
 
-- a clear command writes deterministic RGBA8 values to the target model;
+- a clear command writes deterministic RGBA8 byte values to the target model;
+- P2-GATE-001 does not accept float clear-color input or conversion, so
+  rounding, clamping, NaN, Inf, and negative-zero float semantics are outside
+  this slice;
 - present without a submitted target returns explicit status;
 - capture before present returns explicit status;
-- capture with an undersized buffer returns explicit status and does not mutate
-  the destination beyond a declared zero-byte write;
+- capture with an undersized buffer returns explicit status, leaves destination
+  bytes unchanged, and reports `capture_bytes_written == 0`;
 - target destruction increments generation so stale handles fail;
 - no real GPU, OS window, swapchain, shader, or driver object exists in this
   slice.
