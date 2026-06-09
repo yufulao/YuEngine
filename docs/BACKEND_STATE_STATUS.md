@@ -111,5 +111,6 @@ font state back into one generic renderer obligation.
 - L25 has since created swapchain/present/original-frame oracle parity records that consume L24
   device execution records.
 - L26 has since created the platform/backend bridge submission queue.
-- L27: concrete backend executor interface only after resource allocation, state binding,
-  presentation, and oracle gates can fail independently.
+- L27 has since created backend executor results and diagnostic D3D9 adapter accounting.
+- L28: real HWND/D3D9 device creation adapter records, still consuming the typed state/allocation
+  gates instead of replacing them with a standalone renderer.

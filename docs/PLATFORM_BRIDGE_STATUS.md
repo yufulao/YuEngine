@@ -124,6 +124,8 @@ with a standalone launcher, clear screen, mesh preview, or hand-authored render 
 
 ## Next Edges
 
-- L27: concrete backend executor interface and diagnostic D3D9 submission adapter. It must consume
-  the 10 L26 call records and produce per-call execution results.
-- Later: real HWND/D3D9 execution, frame capture artifact, then original-frame parity comparison.
+- L27 has since created the backend executor interface and diagnostic D3D9 adapter result layer.
+- L28: real HWND/D3D9 device creation adapter records. It must consume L27 executor results before
+  any resource, draw, present, capture, or oracle work can execute for real.
+- Later: real resource/upload/state execution, draw execution, frame capture artifact, then
+  original-frame parity comparison.

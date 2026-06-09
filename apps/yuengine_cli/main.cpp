@@ -54,6 +54,7 @@ void usage()
               << "  yuengine_cli device-execution <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli present-oracle <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli platform-bridge <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli backend-executor <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli script <project.json> <module>\n"
@@ -425,6 +426,11 @@ int main(int argc, char** argv)
         if (command == "platform-bridge") {
             auto report = yu::runtime::runBackendPlatformBridgeRuntime(manifest, repoRoot);
             std::cout << yu::runtime::backendPlatformBridgeRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "backend-executor") {
+            auto report = yu::runtime::runBackendExecutorRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendExecutorRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "mission-event-thread") {

@@ -110,4 +110,6 @@ guess texture dimensions from filenames, or treat unreferenced DDS files as stag
 - L25 has since created swapchain/present/original-frame oracle parity records after state,
   allocation, and device execution gates became independently typed.
 - L26 has since created the platform/backend bridge submission queue.
-- L27: concrete backend executor interface and diagnostic D3D9 adapter.
+- L27 has since created backend executor results and diagnostic D3D9 adapter accounting.
+- L28: real HWND/D3D9 device creation adapter records before upload records may become real GPU
+  memory writes.

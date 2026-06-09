@@ -109,5 +109,6 @@ shape from filenames, or treat SMAA transient surfaces and font atlas state as a
 - L25 has since created swapchain/present/frame-oracle parity records that consume the L24 device
   execution edge.
 - L26 has since created the platform/backend bridge submission queue.
-- L27: concrete backend executor interface only after allocation, binding, present, and oracle
-  gates can fail independently.
+- L27 has since created backend executor results and diagnostic D3D9 adapter accounting.
+- L28: real HWND/D3D9 device creation adapter records before allocation records may become real
+  device resources.

@@ -133,14 +133,14 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L26 now defines the platform/backend bridge through
-`yuengine_cli platform-bridge`. The runtime consumes L24 device execution records and L25
-presentation/oracle records before it can mark the bridge ready. It materializes 10 D3D9-style
-call batches, including 46 resource creation calls, 458 upload subresource calls, 57 state-binding
-calls, 121 draw submission calls, 1 present call, and 2 capture/oracle calls. The bridge links
-103 L24 records and 7 L25 records, with 57 ready platform inputs and 53 tracked-open inputs. This
-is still not a playable loop or concrete D3D backend; the next edge is L27 concrete backend
-executor interface and diagnostic D3D9 adapter.
+Current latest checkpoint: L27 now defines the backend executor result layer through
+`yuengine_cli backend-executor`. The runtime consumes the 10 L26 platform bridge call records and
+maps them one-to-one into executor results. Four ready bridge records produce diagnostic D3D9
+adapter success, covering 1 bridge batch, 46 resource creation calls, 458 upload subresource calls,
+and 57 state-binding calls. Six tracked-open records preserve 127 concrete platform/oracle calls:
+1 window surface, 2 D3D interface/device creation gates, 121 draw calls, 1 present call, and 2
+capture/oracle calls. This is still not a playable loop, not a finished engine, and not a concrete
+D3D backend; the next edge is L28 real HWND and D3D9 device creation adapter records.
 
 The current route is no longer allowed to stop at menu visuals:
 
@@ -161,10 +161,13 @@ original title bytecode
 -> swapchain/present/original-frame oracle parity records
 -> real platform D3D API submission/backend bridge
 -> concrete backend executor interface and diagnostic adapter
+-> real HWND/D3D9 device creation adapter
 ```
 
 The Project failure rule is now stricter: no new loop may be framed as "minimal." The loop unit
 is a layer contract with implementation and regression coverage. A checkpoint is allowed only
-when it leaves the next contract edge executable and the agent continues into that edge. L27 must
-consume L26 bridge records; a standalone launcher, clear-screen window, or mesh preview remains a
-regression to the failed `Project` route.
+when it leaves the next contract edge executable and the agent continues into that edge. L27 has
+closed the executor accounting layer, but the engine is still not done: L28 must consume L27
+executor results and close the real HWND/Direct3D device creation path before any resource, draw,
+present, capture, or oracle work may be called concrete. A standalone launcher, clear-screen
+window, or mesh preview remains a regression to the failed `Project` route.

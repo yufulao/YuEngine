@@ -1186,23 +1186,53 @@ Boundary:
 
 ### L27: Concrete Backend Executor Interface And Diagnostic D3D9 Adapter
 
-Status: active after L26.
+Status: completed after L26.
 
 Deliver:
 
-- introduce a backend executor interface that consumes L26 call records and returns per-call
+- introduced a backend executor interface that consumes L26 call records and returns per-call
   execution results;
-- implement a diagnostic D3D9 adapter mode for CTest that preserves API names, ordering, input
+- implemented a diagnostic D3D9 adapter mode for CTest that preserves API names, ordering, input
   counts, and failure obligations without requiring a real HWND;
-- keep the real HWND/D3D9 mode gated until platform window creation, device creation, and frame
+- kept the real HWND/D3D9 mode gated until platform window creation, device creation, and frame
   capture requirements are explicitly satisfied.
 
 Acceptance:
 
-- executor results must map one-to-one to the 10 L26 call records;
-- ready queue records may produce diagnostic success; tracked-open records must remain blocked or
-  tracked-open with specific missing platform/oracle evidence;
-- no standalone renderer, manual mesh path, or clear-screen path can satisfy L27.
+- `yuengine_cli backend-executor samples/touhou_new_world/project.json --repo-root .` reports
+  `executor_runtime_ready=true`;
+- CTest `yuengine_backend_executor_contract` locks 10 executor result records, 4 diagnostic-success
+  records, 6 tracked-open execution records, 562 diagnostic executed calls, 127 preserved open
+  calls, 110 linked platform input records, and 1280x720 backbuffer extent;
+- no standalone renderer, manual mesh path, or clear-screen path satisfies L27.
+
+Boundary:
+
+- L27 does not create an HWND or D3D9 device;
+- L27 does not execute draw, present, frame capture, or oracle comparison;
+- L27 only closes the executor result/accounting layer so L28 can implement the real platform
+  device path without guessing.
+
+### L28: Real HWND And D3D9 Device Creation Adapter Records
+
+Status: active after L27.
+
+Deliver:
+
+- consume L27 executor results and split the concrete platform gates into typed adapter records;
+- implement or explicitly gate the real HWND/window surface, `Direct3DCreate9`, and `CreateDevice`
+  preconditions through the same runtime path;
+- carry the original 1280x720 backbuffer, renderer profile, and L26/L27 call ordering into the
+  adapter contract;
+- keep resource creation/upload/draw/present/capture blocked until a concrete device handle exists.
+
+Acceptance:
+
+- no platform/device record may be invented without a source L27 result and source L26 bridge
+  record;
+- real device creation must fail as a named gate when the environment cannot supply a concrete
+  window/device, rather than silently falling back to diagnostic success;
+- no blue-window, clear-screen, mesh preview, or separate sample app can satisfy L28.
 
 ## Stop Conditions
 

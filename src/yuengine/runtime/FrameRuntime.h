@@ -764,6 +764,67 @@ struct BackendPlatformBridgeRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendExecutorResultRecord {
+    std::string name;
+    std::string sourceBridgeRecord;
+    std::string api;
+    std::string adapter;
+    std::string resultStatus;
+    std::string obligation;
+    int inputRecords = 0;
+    int callCount = 0;
+    int executedCalls = 0;
+    int preservedOpenCalls = 0;
+    bool ready = false;
+};
+
+struct BackendExecutorRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool platformBridgeOk = false;
+    bool executorRuntimeReady = false;
+    bool diagnosticExecutorReady = false;
+    bool oneToOneBridgeMappingReady = false;
+    bool readyCallExecutionResultsReady = false;
+    bool trackedOpenCallResultsReady = false;
+    bool concreteD3DExecutionGateTracked = false;
+    bool hwndDeviceGateTracked = false;
+    bool drawExecutionGateTracked = false;
+    bool presentExecutionGateTracked = false;
+    bool frameCaptureGateTracked = false;
+    bool originalOracleGateTracked = false;
+    int executionResultRecords = 0;
+    int diagnosticSuccessRecords = 0;
+    int trackedOpenExecutionRecords = 0;
+    int blockedExecutionRecords = 0;
+    int consumedBridgeCallRecords = 0;
+    int readyBridgeCallRecords = 0;
+    int trackedOpenBridgeCallRecords = 0;
+    int resultCallCountTotal = 0;
+    int diagnosticExecutedCalls = 0;
+    int preservedOpenCalls = 0;
+    int submittedDiagnosticBatches = 0;
+    int executedResourceCreationCalls = 0;
+    int executedUploadSubresourceCalls = 0;
+    int executedStateBindingCalls = 0;
+    int preservedPlatformSurfaceGates = 0;
+    int preservedDeviceCreationGates = 0;
+    int preservedDrawSubmissionGates = 0;
+    int preservedPresentGates = 0;
+    int preservedCaptureOracleGates = 0;
+    int linkedPlatformInputRecords = 0;
+    int readyPlatformInputRecords = 0;
+    int trackedOpenPlatformInputRecords = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedExecutorContracts = 0;
+    int trackedExecutorObligations = 0;
+    int openExecutorObligations = 0;
+    std::vector<BackendExecutorResultRecord> results;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -941,6 +1002,13 @@ BackendPlatformBridgeRuntimeReport runBackendPlatformBridgeRuntime(
 
 std::string backendPlatformBridgeRuntimeReportToJson(
     const BackendPlatformBridgeRuntimeReport& report);
+
+BackendExecutorRuntimeReport runBackendExecutorRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendExecutorRuntimeReportToJson(
+    const BackendExecutorRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,
