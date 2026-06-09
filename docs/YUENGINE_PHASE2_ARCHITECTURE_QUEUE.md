@@ -81,16 +81,17 @@ Phase 2 remains blocked from:
 | Gate | Module | Layer | Requested decision | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
 | P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | Approved | Null backend only; create target, record clear, submit, present, deterministic capture; no real backend, shader, material, render scene, resource loading, UI, or game adapter |
-| P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | Proposed | Test backend only; synthetic S16 stereo sources, generation voice handles, caller-owned mix buffer; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
+| P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | Approved | Test backend only; synthetic S16 stereo sources, generation voice handles, caller-owned mix buffer; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
 
 ## Current Active Gates
 
-- P2-GATE-001 is approved for first implementation slice; implementation must
+- P2-GATE-001 implementation is in review at `cf776c4`; PM and performance
+  lanes are closed, code/semantic review remains pending, and implementation
+  must not expand into real graphics, RenderCore, Resource/File upload, reports,
+  or Game Adapter scope.
+- P2-GATE-002 is approved for first implementation slice. Implementation must
   keep a clean or isolated worktree handoff and must not disturb active Phase 1
-  implementation reviews.
-- P2-GATE-002 gate review is in progress; performance approval is in place
-  after `9895578`, but public-surface review and PM final gate state are still
-  required before any `YuAudio` implementation task exists.
+  implementation reviews or task #31 RHI review.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against the active Phase 1 review queue.
 
@@ -105,10 +106,9 @@ Phase 2 remains blocked from:
 
 ## Immediate Next Steps
 
-1. Create a scoped P2-GATE-001 implementation task for the null RHI slice with a
-   clean/isolated worktree guard.
-2. Close P2-GATE-002 public-surface and PM/final gate review before creating
-   any `YuAudio` implementation task.
+1. Create a scoped P2-GATE-002 implementation task for the `YuAudio` test
+   backend and deterministic mixer sink.
+2. Complete P2-GATE-001 implementation review for the null RHI slice.
 3. Close active Phase 1 implementation reviews before creating additional shared
    CMake implementation work, unless a clean isolated worktree is assigned.
 4. Prepare package/load boundary only after Resource/File implementation review
