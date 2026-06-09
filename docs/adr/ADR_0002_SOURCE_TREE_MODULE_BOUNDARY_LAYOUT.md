@@ -1,9 +1,10 @@
 # ADR-0002: Source Tree And Module Boundary Layout
 
-Status: Proposed
+Status: Accepted
 Owner: 八云紫, 总架构师
 Reviewers: 红美铃, 雾雨魔理沙 when code review starts, 博丽灵梦 for performance-relevant layout
 Date: 2026-06-10
+Accepted: 2026-06-10
 Depends on: ADR-0001
 
 ## Context
@@ -275,6 +276,6 @@ This ADR does not decide:
 
 ## Gate Impact
 
-If accepted, ADR-0002 removes the source-layout uncertainty from P1-GATE-001.
+ADR-0002 removes the source-layout uncertainty from P1-GATE-001.
 
-P1-GATE-001 may then create only the first-slice paths listed above and must not create placeholder directories for future systems.
+P1-GATE-001 may create only the first-slice paths listed above and must not create placeholder directories for future systems.

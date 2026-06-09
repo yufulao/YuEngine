@@ -68,7 +68,7 @@ The first slice explicitly excludes:
 | ID | Title | Owner | Reviewers | Status | Blocks |
 | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | Initial runtime, build, and test shape | 八云紫 | 红美铃, 博丽灵梦, 雾雨魔理沙 later | Accepted | Any code skeleton |
-| ADR-0002 | Source tree and module boundary layout | 八云紫 | 红美铃, 雾雨魔理沙 later | Proposed | First implementation file layout |
+| ADR-0002 | Source tree and module boundary layout | 八云紫 | 红美铃, 雾雨魔理沙 later | Accepted | First implementation file layout |
 | ADR-0003 | Module lifecycle and dependency declaration model | 八云紫 | 红美铃, 博丽灵梦 | Pending | Engine Kernel first slice |
 | ADR-0004 | Logging, diagnostics channel, and report boundary | 八云紫 | 红美铃, 博丽灵梦 | Pending | Platform/Kernel diagnostics |
 | ADR-0005 | Test taxonomy and fast gate command | 八云紫 | 红美铃, 雾雨魔理沙 later | Pending | Implementation acceptance |
@@ -76,7 +76,7 @@ The first slice explicitly excludes:
 | ADR-0007 | Thread/task model skeleton | 博丽灵梦 with 八云紫 | 红美铃 | Pending | Thread/Task first slice |
 | ADR-0008 | File/VFS first boundary | 八云紫 | 红美铃, 射命丸文, 博丽灵梦 | Pending | Future File/VFS gate |
 
-ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is the current active ADR because P1-GATE-001 must not invent source layout during implementation.
+ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accepted as the source tree and module boundary layout. ADR-0003 is the current active ADR because Kernel lifecycle and dependency behavior must be explicit before broader Kernel work.
 
 ## Module Gate Proposal Queue
 
