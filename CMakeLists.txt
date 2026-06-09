@@ -203,6 +203,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_renderer_backend_submission_contract
+        COMMAND yuengine_cli renderer-submit samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_renderer_backend_submission_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true scene_runtime_ok=true title_ui_ok=true gameplay_frame_ok=true backend_frame_ready=true title_pass_ready=true world_pass_ready=true resource_upload_ready=true camera_submission_ready=true actor_submission_ready=true event_submission_ready=true submission_passes=3 backend_command_count=181 draw_submissions=121;renderer_profile.: .d3d9_compatible.*resource_upload_submissions.: 57.*backend_obligations.: 6;title_2d_submissions.: 55.*title_graph_submissions.: 3.*title_text_submissions.: 11;scene_mesh_submissions.: 111.*material_bindings.: 16.*texture_bindings.: 39.*collision_debug_submissions.: 1;camera_submissions.: 1.*actor_submissions.: 1.*event_marker_submissions.: 1"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )

@@ -726,7 +726,7 @@ Boundary:
 
 ### L16: Renderer/Backend Submission Contract
 
-Status: active after L15.
+Status: completed as backend-facing renderer submission contract checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -752,6 +752,51 @@ First implementation cycle:
   disconnected reports;
 - keep unsupported shader, blend, effect, texture format, font, and device behavior as explicit
   backend obligations.
+
+Verified metric:
+
+```text
+ok=true scene_runtime_ok=true title_ui_ok=true gameplay_frame_ok=true backend_frame_ready=true title_pass_ready=true world_pass_ready=true resource_upload_ready=true camera_submission_ready=true actor_submission_ready=true event_submission_ready=true submission_passes=3 backend_command_count=181 draw_submissions=121
+```
+
+Payload counts:
+
+- backend: `d3d9_compatible`, 3 passes, 181 backend commands, 121 draw submissions;
+- resource uploads: 57 submissions, 6 explicit backend obligations;
+- title pass: 55 2D submissions, 3 graph submissions, 11 text submissions;
+- world pass: 111 scene mesh submissions, 16 material bindings, 39 texture bindings, 1 collision
+  debug submission;
+- scene state: 1 camera submission, 1 actor submission, 1 event marker submission.
+
+Boundary:
+
+- L16 is not a real device backend and not visual parity;
+- it proves title UI and scene/world renderer submissions share one backend-facing frame
+  contract;
+- the next non-blocked work is a service-owned frame scheduler/update graph, not another
+  standalone CLI aggregation.
+
+### L17: Service-Owned Frame Scheduler And Update Graph
+
+Status: active after L16.
+
+Deliver:
+
+- move frame assembly from CLI-report composition toward a runtime-owned frame scheduler;
+- define explicit update nodes for project lifecycle, script tick/render, native service mutation,
+  scene update, actor/task update, camera update, event/tutorial update, audio update, renderer
+  submission, and save/profile service state;
+- make `renderer-submit` consume scheduler output rather than reconstructing state ad hoc;
+- keep every node tied to existing evidence/service contracts and expose unresolved native/API
+  behavior as obligations.
+
+Acceptance:
+
+- no isolated renderer report can pass if scheduler nodes are missing;
+- title UI, title branch, scene-runtime, mission event, tutorial, and renderer submissions flow
+  through one frame graph;
+- frame graph diagnostics identify which service node owns each command and which next backend
+  obligation remains.
 
 ## Stop Conditions
 

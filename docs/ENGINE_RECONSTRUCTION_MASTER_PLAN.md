@@ -133,11 +133,11 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L15 now joins the original title UI payload, title branch matrix,
-scene-runtime resources, first mission event thread, and first mission tutorial/update state
-through `yuengine_cli gameplay-frame`. The joined contract reports renderer/UI/save/actor/
-camera/input/event/audio readiness and `gameplay_command_count=221`. This is still not a
-playable loop and not a renderer backend; the next edge is L16 renderer backend submission.
+Current latest checkpoint: L16 now converts the joined gameplay-frame contract into a backend-
+facing renderer submission through `yuengine_cli renderer-submit`. The contract reports title 2D
+submissions, world mesh/material/texture submissions, resource upload submissions, camera/actor/
+event marker submissions, and six explicit backend obligations. This is still not a playable loop
+or device backend; the next edge is L17 service-owned frame scheduler/update graph.
 
 The current route is no longer allowed to stop at menu visuals:
 
@@ -147,6 +147,7 @@ original title bytecode
 -> save/load/options branch behavior
 -> scene/actor/camera/input/event frame state
 -> renderer/audio/save backend submission
+-> service-owned frame scheduler/update graph
 ```
 
 The Project failure rule is now stricter: no new loop may be framed as "minimal." The loop unit

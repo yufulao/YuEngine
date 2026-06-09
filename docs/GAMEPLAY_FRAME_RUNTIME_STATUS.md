@@ -95,7 +95,7 @@ frame contract before renderer/backend work starts.
 
 ## Next Edges
 
-- L16: build a backend-facing renderer submission contract that consumes title UI commands and
-  scene mesh/material/texture payloads in the same frame.
-- L17: replace aggregate frame readiness with a service-owned frame scheduler/update graph once
-  renderer submission has a concrete command-buffer model to consume.
+- L16 has since built a backend-facing renderer submission contract that consumes title UI
+  commands and scene mesh/material/texture payloads in the same frame.
+- L17: replace aggregate frame readiness with a service-owned frame scheduler/update graph now
+  that renderer submission has a concrete command-buffer consumer.

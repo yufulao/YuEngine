@@ -182,6 +182,42 @@ struct GameplayFrameRuntimeReport {
     int gameplayCommandCount = 0;
 };
 
+struct RendererBackendSubmissionReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool sceneRuntimeOk = false;
+    bool titleUiOk = false;
+    bool gameplayFrameOk = false;
+    std::string rendererProfile;
+    bool backendFrameReady = false;
+    bool titlePassReady = false;
+    bool worldPassReady = false;
+    bool resourceUploadReady = false;
+    bool cameraSubmissionReady = false;
+    bool actorSubmissionReady = false;
+    bool eventSubmissionReady = false;
+    int submissionPasses = 0;
+    int backendCommandCount = 0;
+    int drawSubmissions = 0;
+    int resourceUploadSubmissions = 0;
+    int title2dSubmissions = 0;
+    int titleGraphSubmissions = 0;
+    int titleTextSubmissions = 0;
+    int sceneMeshSubmissions = 0;
+    int materialBindings = 0;
+    int textureBindings = 0;
+    int collisionDebugSubmissions = 0;
+    int cameraSubmissions = 0;
+    int actorSubmissions = 0;
+    int eventMarkerSubmissions = 0;
+    std::string lastUiCommand;
+    std::string stagePath;
+    std::string cameraSource;
+    std::string playerChara;
+    std::vector<std::string> backendObligations;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -289,6 +325,12 @@ GameplayFrameRuntimeReport runGameplayFrameRuntime(
     const std::filesystem::path& repoRoot);
 
 std::string gameplayFrameRuntimeReportToJson(const GameplayFrameRuntimeReport& report);
+
+RendererBackendSubmissionReport runRendererBackendSubmissionRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string rendererBackendSubmissionReportToJson(const RendererBackendSubmissionReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

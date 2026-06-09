@@ -38,6 +38,12 @@ void addError(GameplayFrameRuntimeReport& report, const std::string& message)
     report.errors.push_back(message);
 }
 
+void addError(RendererBackendSubmissionReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -193,6 +199,124 @@ int titleBranchAudioCommandCount(const TitleBranchesRuntimeReport& report)
         commands += scenario.audioServiceCommands;
     }
     return commands;
+}
+
+struct GameplayFrameInputs {
+    SceneRuntimeMaterializationReport sceneRuntime;
+    TitleUiRuntimeReport titleUi;
+    TitleBranchesRuntimeReport titleBranches;
+    MissionEventThreadRuntimeReport missionEvent;
+    MissionTutorialRuntimeReport missionTutorial;
+};
+
+GameplayFrameInputs collectGameplayFrameInputs(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    GameplayFrameInputs inputs;
+    inputs.sceneRuntime = runSceneRuntimeMaterialization(manifestPath, repoRoot);
+    inputs.titleUi = runTitleUiRuntime(manifestPath, repoRoot);
+    inputs.titleBranches = runTitleBranchesRuntime(manifestPath, repoRoot);
+    inputs.missionEvent = runMissionEventThreadRuntime(manifestPath, repoRoot);
+    inputs.missionTutorial = runMissionTutorialRuntime(manifestPath, repoRoot);
+    return inputs;
+}
+
+GameplayFrameRuntimeReport buildGameplayFrameRuntimeReport(const GameplayFrameInputs& inputs)
+{
+    GameplayFrameRuntimeReport report;
+
+    const auto& sceneRuntime = inputs.sceneRuntime;
+    const auto& titleUi = inputs.titleUi;
+    const auto& titleBranches = inputs.titleBranches;
+    const auto& missionEvent = inputs.missionEvent;
+    const auto& missionTutorial = inputs.missionTutorial;
+
+    report.projectId = sceneRuntime.projectId;
+    report.sceneRuntimeOk = sceneRuntime.ok;
+    report.titleUiOk = titleUi.ok;
+    report.titleBranchesOk = titleBranches.ok;
+    report.missionEventThreadOk = missionEvent.ok;
+    report.missionTutorialOk = missionTutorial.ok;
+    report.frameUpdates = 2;
+
+    report.meshDrawCandidates = sceneRuntime.stage.modelMeshCount;
+    report.materialBindings = sceneRuntime.stage.materialCount;
+    report.textureBindings = sceneRuntime.stage.textureDependencyCount;
+    report.titleUiCommands = titleUi.commandCount;
+    report.titleUiDrawCommands = titleUi.drawCommands;
+    report.saveStartGameScenarios = titleBranches.startGameScenarios;
+    report.saveLoadAutoSaveScenarios = titleBranches.loadAutoSaveScenarios;
+    report.saveMakeNewGameScenarios = titleBranches.makeNewGameScenarios;
+    report.actorInstances = sceneRuntime.actor.ready ? 1 : 0;
+    report.playerControlCommands = missionEvent.playerControlCommands + missionTutorial.playerControlCommands;
+    report.cameraCommands = missionEvent.setGameCameraIfNotCommands + (sceneRuntime.camera.ready ? 1 : 0);
+    report.railNodes = sceneRuntime.camera.railNodeCountCandidate;
+    report.eventCommands = missionEvent.eventPageSetupCommands + missionEvent.eventPageDoneCommands
+        + missionTutorial.eventFlagAddCommands + missionTutorial.dialogShowCommands
+        + missionTutorial.dialogSpeakCommands + missionTutorial.dialogWaitCommands
+        + missionTutorial.dialogHideCommands;
+    report.tutorialUpdateCommands = missionTutorial.updateUnitsCommands;
+    report.audioCommands = titleBranchAudioCommandCount(titleBranches);
+
+    report.rendererFrameReady = sceneRuntime.stage.ready && report.meshDrawCandidates > 0
+        && report.materialBindings > 0 && report.textureBindings > 0;
+    report.uiFrameReady = titleUi.ok && report.titleUiCommands >= 50 && report.titleUiDrawCommands >= 9;
+    report.saveFrameReady = titleBranches.ok && report.saveStartGameScenarios >= 3
+        && report.saveLoadAutoSaveScenarios >= 2 && report.saveMakeNewGameScenarios >= 1;
+    report.actorFrameReady = sceneRuntime.actor.ready && missionTutorial.tutorialActorCreates >= 1
+        && missionTutorial.pushActorCommands >= 1;
+    report.cameraFrameReady = sceneRuntime.camera.ready && report.railNodes > 0
+        && missionEvent.setGameCameraIfNotCommands >= 1;
+    report.inputFrameReady = report.playerControlCommands >= 6 && missionTutorial.playerControlEnabled == "true";
+    report.eventFrameReady = sceneRuntime.eventMarker.ready && report.eventCommands >= 8
+        && report.tutorialUpdateCommands >= 1;
+    report.audioFrameReady = report.audioCommands >= 20;
+    report.gameplayCommandCount = report.meshDrawCandidates + report.titleUiCommands
+        + report.saveStartGameScenarios + report.playerControlCommands + report.cameraCommands
+        + report.eventCommands + report.audioCommands;
+
+    if (!report.sceneRuntimeOk) {
+        addError(report, "scene runtime contract is not ready");
+    }
+    if (!report.titleUiOk) {
+        addError(report, "title UI command payload contract is not ready");
+    }
+    if (!report.titleBranchesOk) {
+        addError(report, "title branch matrix contract is not ready");
+    }
+    if (!report.missionEventThreadOk) {
+        addError(report, "mission event thread contract is not ready");
+    }
+    if (!report.missionTutorialOk) {
+        addError(report, "mission tutorial contract is not ready");
+    }
+    if (!report.rendererFrameReady) {
+        addError(report, "renderer frame payload is incomplete");
+    }
+    if (!report.uiFrameReady) {
+        addError(report, "title UI frame payload is incomplete");
+    }
+    if (!report.saveFrameReady) {
+        addError(report, "save/profile branch frame payload is incomplete");
+    }
+    if (!report.actorFrameReady) {
+        addError(report, "actor/task frame payload is incomplete");
+    }
+    if (!report.cameraFrameReady) {
+        addError(report, "camera frame payload is incomplete");
+    }
+    if (!report.inputFrameReady) {
+        addError(report, "input/player-control frame payload is incomplete");
+    }
+    if (!report.eventFrameReady) {
+        addError(report, "event/tutorial frame payload is incomplete");
+    }
+    if (!report.audioFrameReady) {
+        addError(report, "audio frame payload is incomplete");
+    }
+
+    return report;
 }
 
 } // namespace
@@ -713,96 +837,107 @@ GameplayFrameRuntimeReport runGameplayFrameRuntime(
 {
     GameplayFrameRuntimeReport report;
     try {
-        const auto sceneRuntime = runSceneRuntimeMaterialization(manifestPath, repoRoot);
-        const auto titleUi = runTitleUiRuntime(manifestPath, repoRoot);
-        const auto titleBranches = runTitleBranchesRuntime(manifestPath, repoRoot);
-        const auto missionEvent = runMissionEventThreadRuntime(manifestPath, repoRoot);
-        const auto missionTutorial = runMissionTutorialRuntime(manifestPath, repoRoot);
+        report = buildGameplayFrameRuntimeReport(collectGameplayFrameInputs(manifestPath, repoRoot));
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+RendererBackendSubmissionReport runRendererBackendSubmissionRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    RendererBackendSubmissionReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        const auto inputs = collectGameplayFrameInputs(manifestPath, repoRoot);
+
+        const auto& sceneRuntime = inputs.sceneRuntime;
+        const auto& titleUi = inputs.titleUi;
+        const auto gameplayFrame = buildGameplayFrameRuntimeReport(inputs);
 
         report.projectId = sceneRuntime.projectId;
         report.sceneRuntimeOk = sceneRuntime.ok;
         report.titleUiOk = titleUi.ok;
-        report.titleBranchesOk = titleBranches.ok;
-        report.missionEventThreadOk = missionEvent.ok;
-        report.missionTutorialOk = missionTutorial.ok;
-        report.frameUpdates = 2;
-
-        report.meshDrawCandidates = sceneRuntime.stage.modelMeshCount;
+        report.gameplayFrameOk = gameplayFrame.ok;
+        report.rendererProfile = manifest.renderer;
+        report.submissionPasses = 3;
+        report.title2dSubmissions = titleUi.commandCount;
+        report.titleGraphSubmissions = titleUi.graphDrawCommands;
+        report.titleTextSubmissions = titleUi.textDrawCommands + titleUi.graphStringCommands;
+        report.sceneMeshSubmissions = sceneRuntime.stage.modelMeshCount;
         report.materialBindings = sceneRuntime.stage.materialCount;
         report.textureBindings = sceneRuntime.stage.textureDependencyCount;
-        report.titleUiCommands = titleUi.commandCount;
-        report.titleUiDrawCommands = titleUi.drawCommands;
-        report.saveStartGameScenarios = titleBranches.startGameScenarios;
-        report.saveLoadAutoSaveScenarios = titleBranches.loadAutoSaveScenarios;
-        report.saveMakeNewGameScenarios = titleBranches.makeNewGameScenarios;
-        report.actorInstances = sceneRuntime.actor.ready ? 1 : 0;
-        report.playerControlCommands = missionEvent.playerControlCommands + missionTutorial.playerControlCommands;
-        report.cameraCommands = missionEvent.setGameCameraIfNotCommands
-            + (sceneRuntime.camera.ready ? 1 : 0);
-        report.railNodes = sceneRuntime.camera.railNodeCountCandidate;
-        report.eventCommands = missionEvent.eventPageSetupCommands + missionEvent.eventPageDoneCommands
-            + missionTutorial.eventFlagAddCommands + missionTutorial.dialogShowCommands
-            + missionTutorial.dialogSpeakCommands + missionTutorial.dialogWaitCommands
-            + missionTutorial.dialogHideCommands;
-        report.tutorialUpdateCommands = missionTutorial.updateUnitsCommands;
-        report.audioCommands = titleBranchAudioCommandCount(titleBranches);
+        report.collisionDebugSubmissions = sceneRuntime.stage.collisionTriangleCount > 0 ? 1 : 0;
+        report.cameraSubmissions = sceneRuntime.camera.ready ? 1 : 0;
+        report.actorSubmissions = sceneRuntime.actor.ready ? 1 : 0;
+        report.eventMarkerSubmissions = sceneRuntime.eventMarker.ready ? 1 : 0;
+        report.resourceUploadSubmissions = report.materialBindings + report.textureBindings
+            + (titleUi.backgroundResourceBound ? 1 : 0) + (titleUi.logoResourceBound ? 1 : 0);
+        report.drawSubmissions = titleUi.drawCommands + report.sceneMeshSubmissions
+            + report.collisionDebugSubmissions;
+        report.backendCommandCount = report.drawSubmissions + report.resourceUploadSubmissions
+            + report.cameraSubmissions + report.actorSubmissions + report.eventMarkerSubmissions;
+        report.lastUiCommand = titleUi.lastCommand;
+        report.stagePath = sceneRuntime.stage.stagePath;
+        report.cameraSource = sceneRuntime.camera.railCameraPath;
+        report.playerChara = sceneRuntime.actor.playerChara;
+        report.backendObligations = {
+            "shader_effect_semantics",
+            "blend_depth_state_semantics",
+            "texture_upload_format_semantics",
+            "font_atlas_and_glyph_metrics",
+            "device_swapchain_presentation",
+            "original_frame_oracle_parity",
+        };
 
-        report.rendererFrameReady = sceneRuntime.stage.ready && report.meshDrawCandidates > 0
+        report.titlePassReady = titleUi.ok && report.title2dSubmissions >= 55
+            && report.titleGraphSubmissions >= 3 && report.titleTextSubmissions >= 10
+            && titleUi.backgroundResourceBound && titleUi.logoResourceBound;
+        report.worldPassReady = sceneRuntime.stage.ready && report.sceneMeshSubmissions > 0
             && report.materialBindings > 0 && report.textureBindings > 0;
-        report.uiFrameReady = titleUi.ok && report.titleUiCommands >= 50 && report.titleUiDrawCommands >= 9;
-        report.saveFrameReady = titleBranches.ok && report.saveStartGameScenarios >= 3
-            && report.saveLoadAutoSaveScenarios >= 2 && report.saveMakeNewGameScenarios >= 1;
-        report.actorFrameReady = sceneRuntime.actor.ready && missionTutorial.tutorialActorCreates >= 1
-            && missionTutorial.pushActorCommands >= 1;
-        report.cameraFrameReady = sceneRuntime.camera.ready && report.railNodes > 0
-            && missionEvent.setGameCameraIfNotCommands >= 1;
-        report.inputFrameReady = report.playerControlCommands >= 6
-            && missionTutorial.playerControlEnabled == "true";
-        report.eventFrameReady = sceneRuntime.eventMarker.ready && report.eventCommands >= 8
-            && report.tutorialUpdateCommands >= 1;
-        report.audioFrameReady = report.audioCommands >= 20;
-        report.gameplayCommandCount = report.meshDrawCandidates + report.titleUiCommands
-            + report.saveStartGameScenarios + report.playerControlCommands + report.cameraCommands
-            + report.eventCommands + report.audioCommands;
+        report.resourceUploadReady = report.resourceUploadSubmissions >= 57;
+        report.cameraSubmissionReady = sceneRuntime.camera.ready && report.cameraSubmissions == 1;
+        report.actorSubmissionReady = sceneRuntime.actor.ready && report.actorSubmissions == 1;
+        report.eventSubmissionReady = sceneRuntime.eventMarker.ready && report.eventMarkerSubmissions == 1;
+        report.backendFrameReady = report.gameplayFrameOk && !report.rendererProfile.empty()
+            && report.titlePassReady && report.worldPassReady && report.resourceUploadReady
+            && report.cameraSubmissionReady && report.actorSubmissionReady && report.eventSubmissionReady
+            && report.submissionPasses == 3 && report.backendCommandCount >= 181;
 
         if (!report.sceneRuntimeOk) {
-            addError(report, "scene runtime contract is not ready");
+            addError(report, "scene runtime contract is not ready for renderer submission");
         }
         if (!report.titleUiOk) {
-            addError(report, "title UI command payload contract is not ready");
+            addError(report, "title UI command payload is not ready for renderer submission");
         }
-        if (!report.titleBranchesOk) {
-            addError(report, "title branch matrix contract is not ready");
+        if (!report.gameplayFrameOk) {
+            addError(report, "gameplay-frame contract is not ready for renderer submission");
         }
-        if (!report.missionEventThreadOk) {
-            addError(report, "mission event thread contract is not ready");
+        if (report.rendererProfile.empty()) {
+            addError(report, "renderer profile is not configured by the project manifest");
         }
-        if (!report.missionTutorialOk) {
-            addError(report, "mission tutorial contract is not ready");
+        if (!report.titlePassReady) {
+            addError(report, "title 2D pass submission is incomplete");
         }
-        if (!report.rendererFrameReady) {
-            addError(report, "renderer frame payload is incomplete");
+        if (!report.worldPassReady) {
+            addError(report, "world 3D pass submission is incomplete");
         }
-        if (!report.uiFrameReady) {
-            addError(report, "title UI frame payload is incomplete");
+        if (!report.resourceUploadReady) {
+            addError(report, "resource upload submission is incomplete");
         }
-        if (!report.saveFrameReady) {
-            addError(report, "save/profile branch frame payload is incomplete");
+        if (!report.cameraSubmissionReady) {
+            addError(report, "camera submission is incomplete");
         }
-        if (!report.actorFrameReady) {
-            addError(report, "actor/task frame payload is incomplete");
+        if (!report.actorSubmissionReady) {
+            addError(report, "actor submission is incomplete");
         }
-        if (!report.cameraFrameReady) {
-            addError(report, "camera frame payload is incomplete");
+        if (!report.eventSubmissionReady) {
+            addError(report, "event marker submission is incomplete");
         }
-        if (!report.inputFrameReady) {
-            addError(report, "input/player-control frame payload is incomplete");
-        }
-        if (!report.eventFrameReady) {
-            addError(report, "event/tutorial frame payload is incomplete");
-        }
-        if (!report.audioFrameReady) {
-            addError(report, "audio frame payload is incomplete");
+        if (!report.backendFrameReady) {
+            addError(report, "renderer backend frame submission is incomplete");
         }
     } catch (const std::exception& ex) {
         addError(report, ex.what());
@@ -858,6 +993,63 @@ std::string gameplayFrameRuntimeReportToJson(const GameplayFrameRuntimeReport& r
         << ", \"tutorial_update_commands\": " << report.tutorialUpdateCommands << "},\n";
     out << "  \"audio\": {";
     out << "\"audio_commands\": " << report.audioCommands << "}\n";
+    out << "}\n";
+    return out.str();
+}
+
+std::string rendererBackendSubmissionReportToJson(const RendererBackendSubmissionReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.renderer_backend_submission_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " scene_runtime_ok=" << (report.sceneRuntimeOk ? "true" : "false")
+        << " title_ui_ok=" << (report.titleUiOk ? "true" : "false")
+        << " gameplay_frame_ok=" << (report.gameplayFrameOk ? "true" : "false")
+        << " backend_frame_ready=" << (report.backendFrameReady ? "true" : "false")
+        << " title_pass_ready=" << (report.titlePassReady ? "true" : "false")
+        << " world_pass_ready=" << (report.worldPassReady ? "true" : "false")
+        << " resource_upload_ready=" << (report.resourceUploadReady ? "true" : "false")
+        << " camera_submission_ready=" << (report.cameraSubmissionReady ? "true" : "false")
+        << " actor_submission_ready=" << (report.actorSubmissionReady ? "true" : "false")
+        << " event_submission_ready=" << (report.eventSubmissionReady ? "true" : "false")
+        << " submission_passes=" << report.submissionPasses
+        << " backend_command_count=" << report.backendCommandCount
+        << " draw_submissions=" << report.drawSubmissions << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"backend\": {";
+    out << "\"renderer_profile\": \"" << core::jsonEscape(report.rendererProfile)
+        << "\", \"submission_passes\": " << report.submissionPasses
+        << ", \"backend_command_count\": " << report.backendCommandCount
+        << ", \"draw_submissions\": " << report.drawSubmissions
+        << ", \"resource_upload_submissions\": " << report.resourceUploadSubmissions
+        << ", \"backend_obligations\": " << report.backendObligations.size() << "},\n";
+    out << "  \"title_pass\": {";
+    out << "\"ready\": " << (report.titlePassReady ? "true" : "false")
+        << ", \"title_2d_submissions\": " << report.title2dSubmissions
+        << ", \"title_graph_submissions\": " << report.titleGraphSubmissions
+        << ", \"title_text_submissions\": " << report.titleTextSubmissions
+        << ", \"last_ui_command\": \"" << core::jsonEscape(report.lastUiCommand) << "\"},\n";
+    out << "  \"world_pass\": {";
+    out << "\"ready\": " << (report.worldPassReady ? "true" : "false")
+        << ", \"scene_mesh_submissions\": " << report.sceneMeshSubmissions
+        << ", \"material_bindings\": " << report.materialBindings
+        << ", \"texture_bindings\": " << report.textureBindings
+        << ", \"collision_debug_submissions\": " << report.collisionDebugSubmissions
+        << ", \"stage_path\": \"" << core::jsonEscape(report.stagePath) << "\"},\n";
+    out << "  \"scene_state\": {";
+    out << "\"camera_submissions\": " << report.cameraSubmissions
+        << ", \"actor_submissions\": " << report.actorSubmissions
+        << ", \"event_marker_submissions\": " << report.eventMarkerSubmissions
+        << ", \"camera_source\": \"" << core::jsonEscape(report.cameraSource)
+        << "\", \"player_chara\": \"" << core::jsonEscape(report.playerChara) << "\"},\n";
+    out << "  \"backend_obligations\": ";
+    writeStringArray(out, report.backendObligations);
+    out << "\n";
     out << "}\n";
     return out.str();
 }
