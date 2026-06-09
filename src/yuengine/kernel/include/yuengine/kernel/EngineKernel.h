@@ -1,0 +1,37 @@
+#pragma once
+
+#include <cstddef>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "yuengine/kernel/IModule.h"
+#include "yuengine/kernel/KernelResult.h"
+#include "yuengine/kernel/ServiceRegistry.h"
+
+namespace yuengine::kernel
+{
+class EngineKernel final
+{
+public:
+    void RegisterModule(IModule& module);
+
+    KernelResult Start(std::vector<std::string>& lifecycleTrace);
+    KernelResult Update(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace);
+    KernelResult Shutdown(std::vector<std::string>& lifecycleTrace);
+
+    ServiceRegistry& Services();
+    const ServiceRegistry& Services() const;
+
+private:
+    bool IsStarted(std::string_view moduleName) const;
+    bool DependenciesStarted(const IModule& module) const;
+    bool RequiredServicesAvailable(const IModule& module) const;
+    KernelResult ShutdownStarted(std::vector<std::string>& lifecycleTrace);
+    KernelResult ShutdownStartedFrom(std::size_t startIndex, std::vector<std::string>& lifecycleTrace);
+
+    std::vector<IModule*> _modules;
+    std::vector<IModule*> _startedModules;
+    ServiceRegistry _services;
+};
+}
