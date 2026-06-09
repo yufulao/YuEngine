@@ -1,6 +1,6 @@
 # ADR-0010: Input Replay And Action Snapshot Boundary
 
-Status: Proposed
+Status: Accepted
 Owner: 八云紫
 Reviewers: 红美铃, 博丽灵梦, 大妖精, 雾雨魔理沙 when implementation exists
 Date: 2026-06-10
