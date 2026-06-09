@@ -88,13 +88,13 @@ ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accept
 | P1-GATE-003 | Thread/Task Primitive Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0007 accepted; bounded queue and inline executor only, no worker pool |
 | P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0004 accepted; bounded synchronous observer only, no reports/profiler/async queue |
 | P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0008 accepted; path normalization and loose fixture reads only, no package parser |
-| P1-GATE-006 | Resource Identity And Lifetime Skeleton | L4 | `APPROVED_FOR_FIRST_SLICE` | Proposed | Needs ADR-0009; synthetic handles/dependencies only, no file/package/load/decode |
+| P1-GATE-006 | Resource Identity And Lifetime Skeleton | L4 | `APPROVED_FOR_FIRST_SLICE` | Approved | ADR-0009 accepted; synthetic handles/dependencies only, no file/package/load/decode |
 
 ## Current Active Gates
 
 - P1-GATE-002 implementation is in review as task #14.
 - P1-GATE-003, P1-GATE-004, and P1-GATE-005 are approved for first implementation slices; task handoffs must preserve their dependency guards.
-- ADR-0009 and P1-GATE-006 are Resource identity/lifetime proposals only; they do not authorize implementation before review.
+- P1-GATE-006 is approved, but the implementation task should wait until current shared CMake/index integration for P1-GATE-003/004/005 is stable or a separate clean worktree is assigned.
 - No implementation task may be created from a gate until that gate has `APPROVED_FOR_FIRST_SLICE`.
 
 ## Review Routing
@@ -121,6 +121,6 @@ The next implementation slice must not be created if any of these remain true:
 
 1. Close task #14 code/semantic review for the P1-GATE-002 memory implementation.
 2. Create scoped implementation tasks for P1-GATE-003, P1-GATE-004, and P1-GATE-005.
-3. Route ADR-0009 and P1-GATE-006 for Resource identity/lifetime review.
+3. Create the P1-GATE-006 Resource implementation task only after the current shared CMake/index conflict is cleared or isolated.
 4. Preserve the Phase 1 exclusions: no renderer, resources package parser, async IO, gameplay/world, reports, capture/oracle, or original-game adapter behavior.
 5. If a gate is blocked, amend the owning ADR/gate immediately instead of creating implementation work.
