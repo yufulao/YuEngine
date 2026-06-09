@@ -218,6 +218,34 @@ struct RendererBackendSubmissionReport {
     std::vector<std::string> backendObligations;
 };
 
+struct FrameSchedulerNodeReport {
+    std::string node;
+    std::string service;
+    bool ready = false;
+    int commands = 0;
+    std::string source;
+};
+
+struct FrameSchedulerRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool gameplayFrameOk = false;
+    bool rendererSubmissionOk = false;
+    bool updateGraphReady = false;
+    int frameIndex = 0;
+    int nodeCount = 0;
+    int executedNodes = 0;
+    int serviceNodeCount = 0;
+    int schedulerEdges = 0;
+    int gameplayCommands = 0;
+    int rendererBackendCommands = 0;
+    int scheduledWorkItems = 0;
+    int backendObligations = 0;
+    int unresolvedNodes = 0;
+    std::vector<FrameSchedulerNodeReport> nodes;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -331,6 +359,12 @@ RendererBackendSubmissionReport runRendererBackendSubmissionRuntime(
     const std::filesystem::path& repoRoot);
 
 std::string rendererBackendSubmissionReportToJson(const RendererBackendSubmissionReport& report);
+
+FrameSchedulerRuntimeReport runFrameSchedulerRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string frameSchedulerRuntimeReportToJson(const FrameSchedulerRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,

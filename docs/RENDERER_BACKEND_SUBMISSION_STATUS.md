@@ -97,7 +97,7 @@ exist separately while the engine had no unified renderer contract.
 
 ## Next Edges
 
-- L17: create a service-owned frame scheduler/update graph that emits renderer submissions from
-  a runtime frame, rather than assembling reports by CLI command.
+- L17 has since created a service-owned frame scheduler/update graph that consumes gameplay-frame
+  and renderer submission contracts.
 - L18: start replacing backend obligations with concrete upload/shader/font/device contracts one
   subsystem at a time, each with regression gates.

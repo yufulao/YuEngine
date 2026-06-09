@@ -212,6 +212,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_frame_scheduler_update_graph_contract
+        COMMAND yuengine_cli frame-scheduler samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_frame_scheduler_update_graph_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true gameplay_frame_ok=true renderer_submission_ok=true update_graph_ready=true frame_index=0 node_count=10 executed_nodes=10 service_node_count=10 scheduler_edges=12 gameplay_commands=221 renderer_backend_commands=181 scheduled_work_items=469 backend_obligations=6 unresolved_nodes=0;project_lifecycle.*commands.: 1;script_tick_render.*commands.: 55;save_profile_update.*commands.: 6;scene_resource_update.*commands.: 166;actor_task_update.*commands.: 7;camera_update.*commands.: 2;event_tutorial_update.*commands.: 17;audio_update.*commands.: 28;renderer_submission.*commands.: 181;backend_obligation_tracking.*commands.: 6"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )

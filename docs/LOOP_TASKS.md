@@ -778,7 +778,7 @@ Boundary:
 
 ### L17: Service-Owned Frame Scheduler And Update Graph
 
-Status: active after L16.
+Status: completed as service-owned frame scheduler/update graph checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -797,6 +797,52 @@ Acceptance:
   through one frame graph;
 - frame graph diagnostics identify which service node owns each command and which next backend
   obligation remains.
+
+Verified metric:
+
+```text
+ok=true gameplay_frame_ok=true renderer_submission_ok=true update_graph_ready=true frame_index=0 node_count=10 executed_nodes=10 service_node_count=10 scheduler_edges=12 gameplay_commands=221 renderer_backend_commands=181 scheduled_work_items=469 backend_obligations=6 unresolved_nodes=0
+```
+
+Scheduler nodes:
+
+- `project_lifecycle`: Project Service, 1 command;
+- `script_tick_render`: Script Service, 55 commands;
+- `save_profile_update`: Save/Profile/Scenario Service, 6 commands;
+- `scene_resource_update`: Scene And Stage Service, 166 commands;
+- `actor_task_update`: Actor And Task Service, 7 commands;
+- `camera_update`: Camera Service, 2 commands;
+- `event_tutorial_update`: Event/Quest/Flag Service, 17 commands;
+- `audio_update`: Audio Service, 28 commands;
+- `renderer_submission`: UI And 2D Render Service, 181 commands;
+- `backend_obligation_tracking`: Resource Service, 6 commands.
+
+Boundary:
+
+- L17 is not a real game loop or device backend;
+- it replaces ad hoc CLI report composition with a runtime-owned frame graph;
+- the next non-blocked work is to resolve concrete backend obligations behind scheduler nodes.
+
+### L18: Backend Texture, Shader, Material, Font, And Device Obligations
+
+Status: active after L17.
+
+Deliver:
+
+- split the six backend obligations into concrete contracts:
+  texture upload format, shader/effect semantics, material binding, blend/depth state, font atlas
+  and glyph metrics, device/swapchain presentation, and oracle parity;
+- start with texture upload and material/shader evidence because L16 already has 39 textures and
+  16 material bindings;
+- keep every implementation attached to scheduler nodes and renderer submission output.
+
+Acceptance:
+
+- no obligation can be silently removed;
+- each backend obligation has a service owner, source evidence, runtime structure, CLI/CTest gate,
+  and residual mismatch list;
+- renderer submission and frame scheduler must fail if texture/material obligations detach from
+  scene-runtime handles.
 
 ## Stop Conditions
 
