@@ -133,16 +133,15 @@ runtime-owned script/service state -> title scene dispatch -> original menu stat
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
 
-Current latest checkpoint: L21 now defines typed texture upload records through
-`yuengine_cli texture-upload`. The runtime consumes the L17 scheduler, L16 renderer submission,
-L18 backend obligations, L19 material semantics, and L20 device presentation contract before it can
-mark upload records ready. It decodes 39 stage DDS dependencies, 31 DXT1 textures, 8 DXT5 textures,
-one six-face cube environment upload, 39 material slot consumers over 38 unique material texture
-uploads, and 23,768,416 bytes of computed compressed payload. Swapchain OS surface creation,
-`Present`, real GPU texture allocation, sampler/blend/depth binding, font atlas/glyph metrics,
-material shader programs, and original-frame parity remain tracked open obligations. This is still
-not a playable loop or device backend; the next edge is L22 backend render-state and font atlas
-records.
+Current latest checkpoint: L22 now defines backend-facing sampler, pass render-state, and font
+glyph metric records through `yuengine_cli backend-state`. The runtime consumes L21 typed texture
+uploads, L20 device presentation, L19 material semantics, and title UI command payloads before it
+can mark backend state records ready. It decodes 7 SMAA sampler records, 5 SMAA pass render-state
+records, 6 title font queries, 5 string-size queries, and keeps 39 texture uploads / 39 material
+slot consumers attached. Swapchain OS surface creation, `Present`, real GPU texture allocation,
+actual sampler/pass state binding, font atlas texture implementation, material shader programs, and
+original-frame parity remain tracked open obligations. This is still not a playable loop or device
+backend; the next edge is L23 D3D9-compatible resource allocation records.
 
 The current route is no longer allowed to stop at menu visuals:
 
@@ -158,6 +157,7 @@ original title bytecode
 -> device/swapchain/render-state presentation
 -> texture upload/render-state/font/oracle parity gates
 -> backend render-state/font atlas records
+-> D3D9-compatible resource allocation records
 ```
 
 The Project failure rule is now stricter: no new loop may be framed as "minimal." The loop unit

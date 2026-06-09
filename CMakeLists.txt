@@ -257,6 +257,15 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME yuengine_backend_state_contract
+        COMMAND yuengine_cli backend-state samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_backend_state_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true texture_upload_ok=true device_presentation_ok=true material_semantics_ok=true title_ui_ok=true backend_state_runtime_ready=true sampler_state_records_ready=true pass_render_state_records_ready=true font_atlas_records_ready=true material_shader_program_gate_tracked=true gpu_state_binding_gate_tracked=true oracle_parity_gate_tracked=true sampler_state_records=7 sampler_texture_bindings=7 sampler_clamp_address_records=7 sampler_linear_min_filters=6 sampler_point_min_filters=1 sampler_srgb_true_records=1 sampler_srgb_false_records=6 pass_state_records=5 pass_vs30_shaders=5 pass_ps30_shaders=5 z_disabled_passes=5 alpha_blend_disabled_passes=5 alpha_test_disabled_passes=5 srgb_write_enabled_passes=1 srgb_write_disabled_passes=4 stencil_enabled_passes=4 stencil_disabled_passes=1 stencil_replace_passes=3 stencil_keep_passes=1 stencil_equal_passes=1 font_query_records=6 text_draw_commands=6 graph_string_commands=5 string_size_queries=5 localized_menu_text_commands=10 texture_upload_records=39 material_texture_consumers=39 resolved_backend_state_contracts=4 tracked_backend_state_obligations=4 open_backend_state_obligations=4;sampler_summary.*linear_min_filters.: 6.*point_min_filters.: 1.*srgb_true_records.: 1;pass_state_summary.*records.: 5.*stencil_replace_passes.: 3.*stencil_keep_passes.: 1.*stencil_equal_passes.: 1;font_atlas_record.*font_queries.: 6.*font_scale_limits.: 0.*glyph_metric_inputs_ready.: true.*atlas_implementation_tracked.: true;colorTex.*colorTex2D.*mip_filter.: .Point.*srgb_texture.: .true;searchTex.*searchTex2D.*address_w.: .Clamp.*min_filter.: .Point.*mag_filter.: .Point;BlendWeightCalculation.*stencil_pass.: .KEEP.*stencil_func.: .EQUAL;NeighborhoodBlending.*srgb_write_enable.: .true.*stencil_enable.: .false;smaa_sampler_state_records.*contract_ready;smaa_pass_render_state_records.*contract_ready;title_font_glyph_metric_inputs.*contract_ready;backend_state_consumes_texture_uploads.*contract_ready;gpu_state_binding_execution.*tracked_open;font_atlas_texture_implementation.*tracked_open;original_frame_oracle_trace.*tracked_open"
+    )
+
+    add_test(
         NAME yuengine_mission_event_thread_contract
         COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
     )

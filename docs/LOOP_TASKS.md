@@ -995,7 +995,7 @@ Boundary:
 
 ### L22: Backend Render-State And Font Atlas Records
 
-Status: queued after L21.
+Status: completed as backend state/font record checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -1011,6 +1011,48 @@ Acceptance:
 - title text rendering cannot be marked ready without font atlas/glyph metric evidence;
 - backend state records must consume scheduler, renderer submission, device presentation, and L21
   texture upload reports.
+
+Verification:
+
+```text
+ok=true texture_upload_ok=true device_presentation_ok=true material_semantics_ok=true title_ui_ok=true backend_state_runtime_ready=true sampler_state_records_ready=true pass_render_state_records_ready=true font_atlas_records_ready=true material_shader_program_gate_tracked=true gpu_state_binding_gate_tracked=true oracle_parity_gate_tracked=true sampler_state_records=7 sampler_texture_bindings=7 sampler_clamp_address_records=7 sampler_linear_min_filters=6 sampler_point_min_filters=1 sampler_srgb_true_records=1 sampler_srgb_false_records=6 pass_state_records=5 pass_vs30_shaders=5 pass_ps30_shaders=5 z_disabled_passes=5 alpha_blend_disabled_passes=5 alpha_test_disabled_passes=5 srgb_write_enabled_passes=1 srgb_write_disabled_passes=4 stencil_enabled_passes=4 stencil_disabled_passes=1 stencil_replace_passes=3 stencil_keep_passes=1 stencil_equal_passes=1 font_query_records=6 text_draw_commands=6 graph_string_commands=5 string_size_queries=5 localized_menu_text_commands=10 texture_upload_records=39 material_texture_consumers=39 resolved_backend_state_contracts=4 tracked_backend_state_obligations=4 open_backend_state_obligations=4
+```
+
+Evidence now locked:
+
+- `SMAA.fx` contributes 7 sampler state records with texture, address, filter, and SRGB fields;
+- `SMAA.fx` contributes 5 pass state records with `vs_3_0`/`ps_3_0`, alpha, depth, SRGB, and
+  stencil fields;
+- title UI contributes 6 font queries, 6 text draws, 5 graph strings, and 5 string-size queries;
+- backend state records consume 39 texture uploads and 39 material slot consumers from L21;
+- GPU state binding, font atlas texture implementation, material shader program binding, and
+  original-frame oracle trace remain tracked-open gates.
+
+Boundary:
+
+- L22 does not call D3D state APIs;
+- L22 does not allocate font atlas textures;
+- L22 does not compile material shaders;
+- L22 does not render or compare frames.
+
+### L23: D3D9-Compatible Resource Allocation Records
+
+Status: queued after L22.
+
+Deliver:
+
+- define backend resource allocation records for textures, cube maps, transient SMAA render
+  targets, depth/stencil, and font atlas placeholders;
+- keep actual device creation/present blocked until allocation records have typed failure gates;
+- consume L21 texture uploads and L22 sampler/pass/font state records.
+
+Acceptance:
+
+- texture allocation records must preserve DDS format, dimensions, mip count, cube faces, and
+  payload size;
+- transient render targets must map to SMAA pass needs rather than generic fullscreen buffers;
+- font atlas allocation must stay tracked-open unless glyph atlas dimensions and glyph cache
+  evidence exist.
 
 ## Stop Conditions
 

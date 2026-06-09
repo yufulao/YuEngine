@@ -103,7 +103,8 @@ guess texture dimensions from filenames, or treat unreferenced DDS files as stag
 
 ## Next Edges
 
-- L22: backend render-state and font atlas contracts, using L21 upload records and title text
-  commands as inputs.
-- Then: real D3D9-compatible device resource allocation only after render-state/font gates are
-  split into executable backend records.
+- L22 has since created backend-facing sampler, pass render-state, and font glyph metric records.
+- L23: D3D9-compatible resource allocation records that consume L21 texture uploads and L22 backend
+  state records.
+- Then: real D3D9-compatible device resource allocation/execution only after state/font/allocation
+  gates are independently typed.

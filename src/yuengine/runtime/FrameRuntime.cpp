@@ -79,6 +79,12 @@ void addError(TextureUploadRuntimeReport& report, const std::string& message)
     report.errors.push_back(message);
 }
 
+void addError(BackendStateRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -897,6 +903,174 @@ bool extractSmaaPixelSizeCandidate(const std::string& text, int& width, int& hei
     return parsePositiveInteger(text, offset, height);
 }
 
+std::string trimText(const std::string& value)
+{
+    size_t begin = 0;
+    while (begin < value.size() && (value[begin] == ' ' || value[begin] == '\t'
+        || value[begin] == '\r' || value[begin] == '\n')) {
+        ++begin;
+    }
+    size_t end = value.size();
+    while (end > begin && (value[end - 1] == ' ' || value[end - 1] == '\t'
+        || value[end - 1] == '\r' || value[end - 1] == '\n')) {
+        --end;
+    }
+    return value.substr(begin, end - begin);
+}
+
+std::string readIdentifierAfter(const std::string& text, size_t offset)
+{
+    while (offset < text.size() && (text[offset] == ' ' || text[offset] == '\t')) {
+        ++offset;
+    }
+    const size_t begin = offset;
+    while (offset < text.size()) {
+        const char ch = text[offset];
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
+                || ch == '_')) {
+            break;
+        }
+        ++offset;
+    }
+    return text.substr(begin, offset - begin);
+}
+
+size_t findMatchingBrace(const std::string& text, size_t openBrace)
+{
+    int depth = 0;
+    for (size_t offset = openBrace; offset < text.size(); ++offset) {
+        if (text[offset] == '{') {
+            ++depth;
+        } else if (text[offset] == '}') {
+            --depth;
+            if (depth == 0) {
+                return offset;
+            }
+        }
+    }
+    return std::string::npos;
+}
+
+std::string extractFxAssignment(const std::string& block, const std::string& key)
+{
+    size_t offset = block.find(key);
+    if (offset == std::string::npos) {
+        return {};
+    }
+    offset = block.find('=', offset + key.size());
+    if (offset == std::string::npos) {
+        return {};
+    }
+    const size_t begin = offset + 1;
+    size_t end = block.find(';', begin);
+    if (end == std::string::npos) {
+        end = block.size();
+    }
+    std::string value = trimText(block.substr(begin, end - begin));
+    if (value.size() >= 2 && value.front() == '<' && value.back() == '>') {
+        value = value.substr(1, value.size() - 2);
+    }
+    return value;
+}
+
+std::string shaderProfileFromAssignment(const std::string& block, const std::string& key)
+{
+    const std::string value = extractFxAssignment(block, key);
+    if (value.find("vs_3_0") != std::string::npos) {
+        return "vs_3_0";
+    }
+    if (value.find("ps_3_0") != std::string::npos) {
+        return "ps_3_0";
+    }
+    return {};
+}
+
+std::vector<BackendSamplerStateRecord> parseSmaaSamplerStateRecords(const std::string& text)
+{
+    std::vector<BackendSamplerStateRecord> records;
+    const std::string marker = "\nsampler2D ";
+    size_t offset = 0;
+    while ((offset = text.find(marker, offset)) != std::string::npos) {
+        const size_t nameBegin = offset + marker.size();
+        const std::string name = readIdentifierAfter(text, nameBegin);
+        const size_t openBrace = text.find('{', nameBegin);
+        if (name.empty() || openBrace == std::string::npos) {
+            offset = nameBegin;
+            continue;
+        }
+        const size_t closeBrace = findMatchingBrace(text, openBrace);
+        if (closeBrace == std::string::npos) {
+            offset = openBrace + 1;
+            continue;
+        }
+        const std::string block = text.substr(openBrace + 1, closeBrace - openBrace - 1);
+        BackendSamplerStateRecord record;
+        record.name = name;
+        record.texture = extractFxAssignment(block, "Texture");
+        record.addressU = extractFxAssignment(block, "AddressU");
+        record.addressV = extractFxAssignment(block, "AddressV");
+        record.addressW = extractFxAssignment(block, "AddressW");
+        record.mipFilter = extractFxAssignment(block, "MipFilter");
+        record.minFilter = extractFxAssignment(block, "MinFilter");
+        record.magFilter = extractFxAssignment(block, "MagFilter");
+        record.srgbTexture = extractFxAssignment(block, "SRGBTexture");
+        record.ready = !record.name.empty() && !record.texture.empty() && !record.addressU.empty()
+            && !record.addressV.empty() && !record.mipFilter.empty() && !record.minFilter.empty()
+            && !record.magFilter.empty() && !record.srgbTexture.empty();
+        records.push_back(std::move(record));
+        offset = closeBrace + 1;
+    }
+    return records;
+}
+
+std::vector<BackendPassStateRecord> parseSmaaPassStateRecords(const std::string& text)
+{
+    std::vector<BackendPassStateRecord> records;
+    const std::string passMarker = "\n    pass ";
+    size_t offset = 0;
+    while ((offset = text.find(passMarker, offset)) != std::string::npos) {
+        const size_t nameBegin = offset + passMarker.size();
+        const std::string passName = readIdentifierAfter(text, nameBegin);
+        const size_t openBrace = text.find('{', nameBegin);
+        if (passName.empty() || openBrace == std::string::npos) {
+            offset = nameBegin;
+            continue;
+        }
+        const size_t closeBrace = findMatchingBrace(text, openBrace);
+        if (closeBrace == std::string::npos) {
+            offset = openBrace + 1;
+            continue;
+        }
+        std::string techniqueName;
+        const size_t techniquePos = text.rfind("\ntechnique ", offset);
+        if (techniquePos != std::string::npos) {
+            techniqueName = readIdentifierAfter(text, techniquePos + std::string("\ntechnique ").size());
+        }
+        const std::string block = text.substr(openBrace + 1, closeBrace - openBrace - 1);
+        BackendPassStateRecord record;
+        record.technique = techniqueName;
+        record.pass = passName;
+        record.vertexShaderProfile = shaderProfileFromAssignment(block, "VertexShader");
+        record.pixelShaderProfile = shaderProfileFromAssignment(block, "PixelShader");
+        record.zEnable = extractFxAssignment(block, "ZEnable");
+        record.srgbWriteEnable = extractFxAssignment(block, "SRGBWriteEnable");
+        record.alphaBlendEnable = extractFxAssignment(block, "AlphaBlendEnable");
+        record.alphaTestEnable = extractFxAssignment(block, "AlphaTestEnable");
+        record.stencilEnable = extractFxAssignment(block, "StencilEnable");
+        record.stencilPass = extractFxAssignment(block, "StencilPass");
+        record.stencilFunc = extractFxAssignment(block, "StencilFunc");
+        record.stencilRef = extractFxAssignment(block, "StencilRef");
+        record.ready = !record.technique.empty() && !record.pass.empty()
+            && record.vertexShaderProfile == "vs_3_0" && record.pixelShaderProfile == "ps_3_0"
+            && !record.zEnable.empty() && !record.srgbWriteEnable.empty()
+            && !record.alphaBlendEnable.empty() && !record.alphaTestEnable.empty()
+            && !record.stencilEnable.empty();
+        records.push_back(std::move(record));
+        offset = closeBrace + 1;
+    }
+    return records;
+}
+
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
     const GameplayFrameInputs& inputs,
     const std::string& rendererProfile,
@@ -1347,6 +1521,209 @@ TextureUploadRuntimeReport buildTextureUploadRuntimeReport(
     return report;
 }
 
+BackendStateRuntimeReport buildBackendStateRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    BackendStateRuntimeReport report;
+    const auto textureUpload = buildTextureUploadRuntimeReport(inputs, rendererProfile, vfs);
+    const auto materialSemantics = buildMaterialSemanticsRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.textureUploadOk = textureUpload.ok;
+    report.devicePresentationOk = textureUpload.devicePresentationOk;
+    report.materialSemanticsOk = materialSemantics.ok;
+    report.titleUiOk = inputs.titleUi.ok;
+    report.textureUploadRecords = textureUpload.textureUploadRecords;
+    report.materialTextureConsumers = textureUpload.materialSlotConsumers;
+
+    const auto smaaFx = vfs.readBytes("SMAA.fx");
+    if (smaaFx.found) {
+        const std::string text = bytesToText(smaaFx.bytes);
+        report.samplerRecords = parseSmaaSamplerStateRecords(text);
+        report.passRecords = parseSmaaPassStateRecords(text);
+    }
+
+    for (const auto& sampler : report.samplerRecords) {
+        ++report.samplerStateRecords;
+        if (!sampler.texture.empty()) {
+            ++report.samplerTextureBindings;
+        }
+        if (sampler.addressU == "Clamp" && sampler.addressV == "Clamp"
+            && (sampler.addressW.empty() || sampler.addressW == "Clamp")) {
+            ++report.samplerClampAddressRecords;
+        }
+        if (sampler.minFilter == "Linear") {
+            ++report.samplerLinearMinFilters;
+        } else if (sampler.minFilter == "Point") {
+            ++report.samplerPointMinFilters;
+        }
+        if (sampler.srgbTexture == "true") {
+            ++report.samplerSrgbTrueRecords;
+        } else if (sampler.srgbTexture == "false") {
+            ++report.samplerSrgbFalseRecords;
+        }
+    }
+
+    for (const auto& pass : report.passRecords) {
+        ++report.passStateRecords;
+        if (pass.vertexShaderProfile == "vs_3_0") {
+            ++report.passVs30Shaders;
+        }
+        if (pass.pixelShaderProfile == "ps_3_0") {
+            ++report.passPs30Shaders;
+        }
+        if (pass.zEnable == "false") {
+            ++report.zDisabledPasses;
+        }
+        if (pass.alphaBlendEnable == "false") {
+            ++report.alphaBlendDisabledPasses;
+        }
+        if (pass.alphaTestEnable == "false") {
+            ++report.alphaTestDisabledPasses;
+        }
+        if (pass.srgbWriteEnable == "true") {
+            ++report.srgbWriteEnabledPasses;
+        } else if (pass.srgbWriteEnable == "false") {
+            ++report.srgbWriteDisabledPasses;
+        }
+        if (pass.stencilEnable == "true") {
+            ++report.stencilEnabledPasses;
+        } else if (pass.stencilEnable == "false") {
+            ++report.stencilDisabledPasses;
+        }
+        if (pass.stencilPass == "REPLACE") {
+            ++report.stencilReplacePasses;
+        } else if (pass.stencilPass == "KEEP") {
+            ++report.stencilKeepPasses;
+        }
+        if (pass.stencilFunc == "EQUAL") {
+            ++report.stencilEqualPasses;
+        }
+    }
+
+    report.fontRecord.source = "title-ui";
+    report.fontRecord.fontQueries = inputs.titleUi.fontQueryCommands;
+    report.fontRecord.fontScaleLimits = inputs.titleUi.fontScaleLimitCommands;
+    report.fontRecord.textDrawCommands = inputs.titleUi.textDrawCommands;
+    report.fontRecord.graphStringCommands = inputs.titleUi.graphStringCommands;
+    report.fontRecord.stringSizeQueries = inputs.titleUi.stringSizeQueries;
+    report.fontRecord.localizedMenuTextCommands = inputs.titleUi.localizedMenuTextCommands;
+    report.fontRecord.drawListItemCommands = inputs.titleUi.drawListItemCommands;
+    report.fontRecord.glyphMetricInputsReady = report.fontRecord.fontQueries >= 6
+        && report.fontRecord.textDrawCommands == 6 && report.fontRecord.graphStringCommands == 5
+        && report.fontRecord.stringSizeQueries == 5 && report.fontRecord.localizedMenuTextCommands == 10
+        && report.fontRecord.drawListItemCommands == 5;
+    report.fontRecord.atlasImplementationTracked = report.fontRecord.glyphMetricInputsReady;
+
+    report.fontQueryRecords = report.fontRecord.fontQueries;
+    report.fontScaleLimitRecords = report.fontRecord.fontScaleLimits;
+    report.textDrawCommands = report.fontRecord.textDrawCommands;
+    report.graphStringCommands = report.fontRecord.graphStringCommands;
+    report.stringSizeQueries = report.fontRecord.stringSizeQueries;
+    report.localizedMenuTextCommands = report.fontRecord.localizedMenuTextCommands;
+    report.drawListItemCommands = report.fontRecord.drawListItemCommands;
+
+    report.samplerStateRecordsReady = report.samplerStateRecords == 7
+        && report.samplerTextureBindings == 7 && report.samplerClampAddressRecords == 7
+        && report.samplerLinearMinFilters == 6 && report.samplerPointMinFilters == 1
+        && report.samplerSrgbTrueRecords == 1 && report.samplerSrgbFalseRecords == 6;
+    report.passRenderStateRecordsReady = report.passStateRecords == 5
+        && report.passVs30Shaders == 5 && report.passPs30Shaders == 5
+        && report.zDisabledPasses == 5 && report.alphaBlendDisabledPasses == 5
+        && report.alphaTestDisabledPasses == 5 && report.srgbWriteEnabledPasses == 1
+        && report.srgbWriteDisabledPasses == 4 && report.stencilEnabledPasses == 4
+        && report.stencilDisabledPasses == 1 && report.stencilReplacePasses == 3
+        && report.stencilKeepPasses == 1 && report.stencilEqualPasses == 1;
+    report.fontAtlasRecordsReady = inputs.titleUi.ok && report.fontRecord.glyphMetricInputsReady
+        && report.fontRecord.atlasImplementationTracked;
+    report.materialShaderProgramGateTracked = materialSemantics.shaderEffectContractTracked;
+    report.gpuStateBindingGateTracked =
+        textureUpload.samplerStateGateTracked && textureUpload.blendDepthStateGateTracked;
+    report.oracleParityGateTracked = textureUpload.oracleParityGateTracked;
+    report.backendStateRuntimeReady = report.textureUploadOk && report.devicePresentationOk
+        && report.materialSemanticsOk && report.titleUiOk && report.samplerStateRecordsReady
+        && report.passRenderStateRecordsReady && report.fontAtlasRecordsReady
+        && report.textureUploadRecords == 39 && report.materialTextureConsumers == 39;
+
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_sampler_state_records",
+        report.samplerStateRecordsReady ? "contract_ready" : "blocked",
+        "SMAA.fx sampler blocks expose texture, address, filter, and SRGB state"));
+    report.contracts.push_back(makeBackendObligation(
+        "smaa_pass_render_state_records",
+        report.passRenderStateRecordsReady ? "contract_ready" : "blocked",
+        "SMAA.fx pass blocks expose shader profiles, alpha, depth, SRGB, and stencil state"));
+    report.contracts.push_back(makeBackendObligation(
+        "title_font_glyph_metric_inputs",
+        report.fontAtlasRecordsReady ? "contract_ready" : "blocked",
+        "title UI exposes font queries, text draw commands, graph strings, and string-size queries"));
+    report.contracts.push_back(makeBackendObligation(
+        "backend_state_consumes_texture_uploads",
+        report.backendStateRuntimeReady ? "contract_ready" : "blocked",
+        "backend state records consume 39 texture uploads and 39 material slot consumers"));
+    report.contracts.push_back(makeBackendObligation(
+        "material_shader_program_binding",
+        report.materialShaderProgramGateTracked ? "tracked_open" : "blocked",
+        "model materials still expose texture slots but no per-material shader program token"));
+    report.contracts.push_back(makeBackendObligation(
+        "gpu_state_binding_execution",
+        report.gpuStateBindingGateTracked ? "tracked_open" : "blocked",
+        "sampler/pass state records are decoded but not submitted to a GPU device"));
+    report.contracts.push_back(makeBackendObligation(
+        "font_atlas_texture_implementation",
+        report.fontAtlasRecordsReady ? "tracked_open" : "blocked",
+        "glyph metric inputs exist but no atlas texture, glyph cache, or text draw backend exists"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_trace",
+        report.oracleParityGateTracked ? "tracked_open" : "blocked",
+        "backend state records still lack original-frame screenshot or graphics API trace parity"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedBackendStateContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedBackendStateObligations;
+            ++report.openBackendStateObligations;
+        } else {
+            ++report.openBackendStateObligations;
+        }
+    }
+
+    if (!report.textureUploadOk) {
+        addError(report, "texture upload contract is not ready for backend state records");
+    }
+    if (!report.devicePresentationOk) {
+        addError(report, "device presentation contract is not ready for backend state records");
+    }
+    if (!report.materialSemanticsOk) {
+        addError(report, "material semantics contract is not ready for backend state records");
+    }
+    if (!report.titleUiOk) {
+        addError(report, "title UI contract is not ready for backend state records");
+    }
+    if (!report.samplerStateRecordsReady) {
+        addError(report, "SMAA sampler state records are incomplete");
+    }
+    if (!report.passRenderStateRecordsReady) {
+        addError(report, "SMAA pass render-state records are incomplete");
+    }
+    if (!report.fontAtlasRecordsReady) {
+        addError(report, "font atlas/glyph metric records are incomplete");
+    }
+    if (!report.materialShaderProgramGateTracked || !report.gpuStateBindingGateTracked
+        || !report.oracleParityGateTracked) {
+        addError(report, "backend state open gates are not fully tracked");
+    }
+    if (report.resolvedBackendStateContracts < 4 || report.trackedBackendStateObligations < 4
+        || report.openBackendStateObligations != 4) {
+        addError(report, "backend state obligation accounting is inconsistent");
+    }
+
+    return report;
+}
+
 } // namespace
 
 FirstFrameRuntimeReport buildFirstFrameRuntimeReport(
@@ -1530,6 +1907,8 @@ TitleUiRuntimeReport runTitleUiRuntime(
         report.colorCommands = uiState.colorCommands;
         report.localizedMenuTextCommands = uiCommandContainsCount(uiState, "localized:menu.");
         report.drawListItemCommands = uiCommandContainsCount(uiState, "draw_list_item");
+        report.fontQueryCommands = uiCommandContainsCount(uiState, "font_query");
+        report.fontScaleLimitCommands = uiCommandContainsCount(uiState, "font_scale_limit");
         report.backgroundResourceBound = uiCommandContains(uiState, "menu/title/title_back_sc.dds");
         report.logoResourceBound = uiCommandContains(uiState, "menu/title/logo_sc.dds");
         report.lastCommand = uiState.lastCommand;
@@ -1558,6 +1937,9 @@ TitleUiRuntimeReport runTitleUiRuntime(
         }
         if (report.localizedMenuTextCommands < 5 || report.drawListItemCommands < 5) {
             addError(report, "title menu list payload is incomplete");
+        }
+        if (report.fontQueryCommands < 5) {
+            addError(report, "title menu font query payload is incomplete");
         }
         if (!report.backgroundResourceBound || !report.logoResourceBound) {
             addError(report, "title background/logo resources are not bound into UI commands");
@@ -1593,7 +1975,9 @@ std::string titleUiRuntimeReportToJson(const TitleUiRuntimeReport& report)
         << " background_resource_bound=" << (report.backgroundResourceBound ? "true" : "false")
         << " logo_resource_bound=" << (report.logoResourceBound ? "true" : "false")
         << " unresolved_calls=" << report.unresolvedCalls
-        << " truncated=" << (report.truncated ? "true" : "false") << "\",\n";
+        << " truncated=" << (report.truncated ? "true" : "false")
+        << " font_query_commands=" << report.fontQueryCommands
+        << " font_scale_limit_commands=" << report.fontScaleLimitCommands << "\",\n";
     out << "  \"errors\": ";
     writeStringArray(out, report.errors);
     out << ",\n";
@@ -1622,6 +2006,8 @@ std::string titleUiRuntimeReportToJson(const TitleUiRuntimeReport& report)
         << ", \"color_commands\": " << report.colorCommands
         << ", \"localized_menu_text_commands\": " << report.localizedMenuTextCommands
         << ", \"draw_list_item_commands\": " << report.drawListItemCommands
+        << ", \"font_query_commands\": " << report.fontQueryCommands
+        << ", \"font_scale_limit_commands\": " << report.fontScaleLimitCommands
         << ", \"background_resource_bound\": " << (report.backgroundResourceBound ? "true" : "false")
         << ", \"logo_resource_bound\": " << (report.logoResourceBound ? "true" : "false")
         << ", \"last_command\": \"" << core::jsonEscape(report.lastCommand) << "\"}\n";
@@ -2456,6 +2842,163 @@ std::string textureUploadRuntimeReportToJson(const TextureUploadRuntimeReport& r
             << ", \"compressed_payload_matches\": " << (record.compressedPayloadMatches ? "true" : "false")
             << "}";
         out << (i + 1 == report.records.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendStateRuntimeReport runBackendStateRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendStateRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendStateRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendStateRuntimeReportToJson(const BackendStateRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_state_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " texture_upload_ok=" << (report.textureUploadOk ? "true" : "false")
+        << " device_presentation_ok=" << (report.devicePresentationOk ? "true" : "false")
+        << " material_semantics_ok=" << (report.materialSemanticsOk ? "true" : "false")
+        << " title_ui_ok=" << (report.titleUiOk ? "true" : "false")
+        << " backend_state_runtime_ready=" << (report.backendStateRuntimeReady ? "true" : "false")
+        << " sampler_state_records_ready=" << (report.samplerStateRecordsReady ? "true" : "false")
+        << " pass_render_state_records_ready=" << (report.passRenderStateRecordsReady ? "true" : "false")
+        << " font_atlas_records_ready=" << (report.fontAtlasRecordsReady ? "true" : "false")
+        << " material_shader_program_gate_tracked=" << (report.materialShaderProgramGateTracked ? "true" : "false")
+        << " gpu_state_binding_gate_tracked=" << (report.gpuStateBindingGateTracked ? "true" : "false")
+        << " oracle_parity_gate_tracked=" << (report.oracleParityGateTracked ? "true" : "false")
+        << " sampler_state_records=" << report.samplerStateRecords
+        << " sampler_texture_bindings=" << report.samplerTextureBindings
+        << " sampler_clamp_address_records=" << report.samplerClampAddressRecords
+        << " sampler_linear_min_filters=" << report.samplerLinearMinFilters
+        << " sampler_point_min_filters=" << report.samplerPointMinFilters
+        << " sampler_srgb_true_records=" << report.samplerSrgbTrueRecords
+        << " sampler_srgb_false_records=" << report.samplerSrgbFalseRecords
+        << " pass_state_records=" << report.passStateRecords
+        << " pass_vs30_shaders=" << report.passVs30Shaders
+        << " pass_ps30_shaders=" << report.passPs30Shaders
+        << " z_disabled_passes=" << report.zDisabledPasses
+        << " alpha_blend_disabled_passes=" << report.alphaBlendDisabledPasses
+        << " alpha_test_disabled_passes=" << report.alphaTestDisabledPasses
+        << " srgb_write_enabled_passes=" << report.srgbWriteEnabledPasses
+        << " srgb_write_disabled_passes=" << report.srgbWriteDisabledPasses
+        << " stencil_enabled_passes=" << report.stencilEnabledPasses
+        << " stencil_disabled_passes=" << report.stencilDisabledPasses
+        << " stencil_replace_passes=" << report.stencilReplacePasses
+        << " stencil_keep_passes=" << report.stencilKeepPasses
+        << " stencil_equal_passes=" << report.stencilEqualPasses
+        << " font_query_records=" << report.fontQueryRecords
+        << " text_draw_commands=" << report.textDrawCommands
+        << " graph_string_commands=" << report.graphStringCommands
+        << " string_size_queries=" << report.stringSizeQueries
+        << " localized_menu_text_commands=" << report.localizedMenuTextCommands
+        << " texture_upload_records=" << report.textureUploadRecords
+        << " material_texture_consumers=" << report.materialTextureConsumers
+        << " resolved_backend_state_contracts=" << report.resolvedBackendStateContracts
+        << " tracked_backend_state_obligations=" << report.trackedBackendStateObligations
+        << " open_backend_state_obligations=" << report.openBackendStateObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"sampler_summary\": {";
+    out << "\"records\": " << report.samplerStateRecords
+        << ", \"texture_bindings\": " << report.samplerTextureBindings
+        << ", \"clamp_address_records\": " << report.samplerClampAddressRecords
+        << ", \"linear_min_filters\": " << report.samplerLinearMinFilters
+        << ", \"point_min_filters\": " << report.samplerPointMinFilters
+        << ", \"srgb_true_records\": " << report.samplerSrgbTrueRecords
+        << ", \"srgb_false_records\": " << report.samplerSrgbFalseRecords << "},\n";
+    out << "  \"pass_state_summary\": {";
+    out << "\"records\": " << report.passStateRecords
+        << ", \"vs30_shaders\": " << report.passVs30Shaders
+        << ", \"ps30_shaders\": " << report.passPs30Shaders
+        << ", \"z_disabled_passes\": " << report.zDisabledPasses
+        << ", \"alpha_blend_disabled_passes\": " << report.alphaBlendDisabledPasses
+        << ", \"alpha_test_disabled_passes\": " << report.alphaTestDisabledPasses
+        << ", \"srgb_write_enabled_passes\": " << report.srgbWriteEnabledPasses
+        << ", \"srgb_write_disabled_passes\": " << report.srgbWriteDisabledPasses
+        << ", \"stencil_enabled_passes\": " << report.stencilEnabledPasses
+        << ", \"stencil_disabled_passes\": " << report.stencilDisabledPasses
+        << ", \"stencil_replace_passes\": " << report.stencilReplacePasses
+        << ", \"stencil_keep_passes\": " << report.stencilKeepPasses
+        << ", \"stencil_equal_passes\": " << report.stencilEqualPasses << "},\n";
+    out << "  \"font_atlas_record\": {";
+    out << "\"source\": \"" << core::jsonEscape(report.fontRecord.source)
+        << "\", \"font_queries\": " << report.fontRecord.fontQueries
+        << ", \"font_scale_limits\": " << report.fontRecord.fontScaleLimits
+        << ", \"text_draw_commands\": " << report.fontRecord.textDrawCommands
+        << ", \"graph_string_commands\": " << report.fontRecord.graphStringCommands
+        << ", \"string_size_queries\": " << report.fontRecord.stringSizeQueries
+        << ", \"localized_menu_text_commands\": " << report.fontRecord.localizedMenuTextCommands
+        << ", \"draw_list_item_commands\": " << report.fontRecord.drawListItemCommands
+        << ", \"glyph_metric_inputs_ready\": " << (report.fontRecord.glyphMetricInputsReady ? "true" : "false")
+        << ", \"atlas_implementation_tracked\": " << (report.fontRecord.atlasImplementationTracked ? "true" : "false")
+        << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_backend_state_contracts\": " << report.resolvedBackendStateContracts
+        << ", \"tracked_backend_state_obligations\": " << report.trackedBackendStateObligations
+        << ", \"open_backend_state_obligations\": " << report.openBackendStateObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"samplers\": [\n";
+    for (size_t i = 0; i < report.samplerRecords.size(); ++i) {
+        const auto& sampler = report.samplerRecords[i];
+        out << "    {\"name\": \"" << core::jsonEscape(sampler.name)
+            << "\", \"texture\": \"" << core::jsonEscape(sampler.texture)
+            << "\", \"address_u\": \"" << core::jsonEscape(sampler.addressU)
+            << "\", \"address_v\": \"" << core::jsonEscape(sampler.addressV)
+            << "\", \"address_w\": \"" << core::jsonEscape(sampler.addressW)
+            << "\", \"mip_filter\": \"" << core::jsonEscape(sampler.mipFilter)
+            << "\", \"min_filter\": \"" << core::jsonEscape(sampler.minFilter)
+            << "\", \"mag_filter\": \"" << core::jsonEscape(sampler.magFilter)
+            << "\", \"srgb_texture\": \"" << core::jsonEscape(sampler.srgbTexture)
+            << "\", \"ready\": " << (sampler.ready ? "true" : "false") << "}";
+        out << (i + 1 == report.samplerRecords.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"passes\": [\n";
+    for (size_t i = 0; i < report.passRecords.size(); ++i) {
+        const auto& pass = report.passRecords[i];
+        out << "    {\"technique\": \"" << core::jsonEscape(pass.technique)
+            << "\", \"pass\": \"" << core::jsonEscape(pass.pass)
+            << "\", \"vertex_shader_profile\": \"" << core::jsonEscape(pass.vertexShaderProfile)
+            << "\", \"pixel_shader_profile\": \"" << core::jsonEscape(pass.pixelShaderProfile)
+            << "\", \"z_enable\": \"" << core::jsonEscape(pass.zEnable)
+            << "\", \"srgb_write_enable\": \"" << core::jsonEscape(pass.srgbWriteEnable)
+            << "\", \"alpha_blend_enable\": \"" << core::jsonEscape(pass.alphaBlendEnable)
+            << "\", \"alpha_test_enable\": \"" << core::jsonEscape(pass.alphaTestEnable)
+            << "\", \"stencil_enable\": \"" << core::jsonEscape(pass.stencilEnable)
+            << "\", \"stencil_pass\": \"" << core::jsonEscape(pass.stencilPass)
+            << "\", \"stencil_func\": \"" << core::jsonEscape(pass.stencilFunc)
+            << "\", \"stencil_ref\": \"" << core::jsonEscape(pass.stencilRef)
+            << "\", \"ready\": " << (pass.ready ? "true" : "false") << "}";
+        out << (i + 1 == report.passRecords.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

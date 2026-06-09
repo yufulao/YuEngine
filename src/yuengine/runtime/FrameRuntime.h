@@ -88,6 +88,8 @@ struct TitleUiRuntimeReport {
     int colorCommands = 0;
     int localizedMenuTextCommands = 0;
     int drawListItemCommands = 0;
+    int fontQueryCommands = 0;
+    int fontScaleLimitCommands = 0;
     bool backgroundResourceBound = false;
     bool logoResourceBound = false;
     std::string lastCommand;
@@ -421,6 +423,101 @@ struct TextureUploadRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendSamplerStateRecord {
+    std::string name;
+    std::string texture;
+    std::string addressU;
+    std::string addressV;
+    std::string addressW;
+    std::string mipFilter;
+    std::string minFilter;
+    std::string magFilter;
+    std::string srgbTexture;
+    bool ready = false;
+};
+
+struct BackendPassStateRecord {
+    std::string technique;
+    std::string pass;
+    std::string vertexShaderProfile;
+    std::string pixelShaderProfile;
+    std::string zEnable;
+    std::string srgbWriteEnable;
+    std::string alphaBlendEnable;
+    std::string alphaTestEnable;
+    std::string stencilEnable;
+    std::string stencilPass;
+    std::string stencilFunc;
+    std::string stencilRef;
+    bool ready = false;
+};
+
+struct BackendFontAtlasRecord {
+    std::string source;
+    int fontQueries = 0;
+    int fontScaleLimits = 0;
+    int textDrawCommands = 0;
+    int graphStringCommands = 0;
+    int stringSizeQueries = 0;
+    int localizedMenuTextCommands = 0;
+    int drawListItemCommands = 0;
+    bool glyphMetricInputsReady = false;
+    bool atlasImplementationTracked = false;
+};
+
+struct BackendStateRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool textureUploadOk = false;
+    bool devicePresentationOk = false;
+    bool materialSemanticsOk = false;
+    bool titleUiOk = false;
+    bool samplerStateRecordsReady = false;
+    bool passRenderStateRecordsReady = false;
+    bool fontAtlasRecordsReady = false;
+    bool materialShaderProgramGateTracked = false;
+    bool gpuStateBindingGateTracked = false;
+    bool oracleParityGateTracked = false;
+    bool backendStateRuntimeReady = false;
+    int samplerStateRecords = 0;
+    int samplerTextureBindings = 0;
+    int samplerClampAddressRecords = 0;
+    int samplerLinearMinFilters = 0;
+    int samplerPointMinFilters = 0;
+    int samplerSrgbTrueRecords = 0;
+    int samplerSrgbFalseRecords = 0;
+    int passStateRecords = 0;
+    int passVs30Shaders = 0;
+    int passPs30Shaders = 0;
+    int zDisabledPasses = 0;
+    int alphaBlendDisabledPasses = 0;
+    int alphaTestDisabledPasses = 0;
+    int srgbWriteEnabledPasses = 0;
+    int srgbWriteDisabledPasses = 0;
+    int stencilEnabledPasses = 0;
+    int stencilDisabledPasses = 0;
+    int stencilReplacePasses = 0;
+    int stencilKeepPasses = 0;
+    int stencilEqualPasses = 0;
+    int fontQueryRecords = 0;
+    int fontScaleLimitRecords = 0;
+    int textDrawCommands = 0;
+    int graphStringCommands = 0;
+    int stringSizeQueries = 0;
+    int localizedMenuTextCommands = 0;
+    int drawListItemCommands = 0;
+    int textureUploadRecords = 0;
+    int materialTextureConsumers = 0;
+    int resolvedBackendStateContracts = 0;
+    int trackedBackendStateObligations = 0;
+    int openBackendStateObligations = 0;
+    std::vector<BackendSamplerStateRecord> samplerRecords;
+    std::vector<BackendPassStateRecord> passRecords;
+    BackendFontAtlasRecord fontRecord;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -564,6 +661,12 @@ TextureUploadRuntimeReport runTextureUploadRuntime(
     const std::filesystem::path& repoRoot);
 
 std::string textureUploadRuntimeReportToJson(const TextureUploadRuntimeReport& report);
+
+BackendStateRuntimeReport runBackendStateRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendStateRuntimeReportToJson(const BackendStateRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,
