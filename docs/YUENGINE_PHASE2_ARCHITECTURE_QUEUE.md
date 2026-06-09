@@ -75,6 +75,7 @@ Phase 2 remains blocked from:
 | --- | --- | --- | --- | --- | --- |
 | ADR-0011 | RHI device, command, present, and capture boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精 | Accepted | Null RHI first slice |
 | ADR-0012 | Audio test backend and mixer sink boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精 | Accepted | Audio test backend/mixer first slice |
+| ADR-0013 | Package manifest and load plan boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精, 射命丸文 | Proposed | Package/load-plan first slice |
 
 ## Module Gate Proposal Queue
 
@@ -82,6 +83,7 @@ Phase 2 remains blocked from:
 | --- | --- | --- | --- | --- | --- |
 | P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | Approved | Null backend only; create target, record clear, submit, present, deterministic capture; no real backend, shader, material, render scene, resource loading, UI, or game adapter |
 | P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | Approved | Test backend only; synthetic S16 stereo sources, generation voice handles, caller-owned mix buffer; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
+| P2-GATE-003 | Package Manifest And Load Plan Boundary | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | Proposed | Synthetic manifest and deterministic load-plan metadata only; no File reads, original package parser, Resource mutation, decoder, async load, upload, tools, or game adapter |
 
 ## Current Active Gates
 
@@ -92,6 +94,9 @@ Phase 2 remains blocked from:
 - P2-GATE-002 is approved for first implementation slice. Implementation must
   keep a clean or isolated worktree handoff and must not disturb active Phase 1
   implementation reviews or task #31 RHI review.
+- P2-GATE-003 is proposed for architecture review only. It must not be approved
+  until task #21 `YuFile`, task #33 `YuResource`, and task #14 `YuMemory`
+  vocabulary guards are stable enough or the gate is amended.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against the active Phase 1 review queue.
 
@@ -106,10 +111,11 @@ Phase 2 remains blocked from:
 
 ## Immediate Next Steps
 
-1. Create a scoped P2-GATE-002 implementation task for the `YuAudio` test
-   backend and deterministic mixer sink.
-2. Complete P2-GATE-001 implementation review for the null RHI slice.
+1. Complete P2-GATE-001 and P2-GATE-002 implementation reviews for the null RHI
+   and audio mixer slices.
+2. Review ADR-0013 / P2-GATE-003 as architecture only; do not approve
+   implementation until Resource/File/Memory vocabulary guards are stable.
 3. Close active Phase 1 implementation reviews before creating additional shared
    CMake implementation work, unless a clean isolated worktree is assigned.
-4. Prepare package/load boundary only after Resource/File implementation review
+4. Prepare async IO boundary only after Thread/File/Resource/Package review
    state is stable enough to avoid depending on unresolved vocabulary.
