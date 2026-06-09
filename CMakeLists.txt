@@ -17,17 +17,6 @@ function(yuengine_apply_compile_options target_name)
     target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic)
 endfunction()
 
-add_library(YuDiagnostics
-    src/yuengine/diagnostics/src/BoundedInMemoryLogSink.cpp
-    src/yuengine/diagnostics/src/DefaultLogSink.cpp
-    src/yuengine/diagnostics/src/DisabledLogSink.cpp
-)
-yuengine_apply_compile_options(YuDiagnostics)
-target_include_directories(YuDiagnostics
-    PUBLIC
-        src/yuengine/diagnostics/include
-)
-
 add_library(YuMemory
     src/yuengine/memory/src/CountingMemoryTracker.cpp
     src/yuengine/memory/src/DisabledMemoryTracker.cpp
@@ -37,6 +26,20 @@ target_include_directories(YuMemory
     PUBLIC
         src/yuengine/memory/include
 )
+
+add_library(YuDiagnostics
+    src/yuengine/diagnostics/src/BoundedDiagnosticsChannel.cpp
+    src/yuengine/diagnostics/src/BoundedInMemoryLogSink.cpp
+    src/yuengine/diagnostics/src/DefaultLogSink.cpp
+    src/yuengine/diagnostics/src/DisabledDiagnosticsChannel.cpp
+    src/yuengine/diagnostics/src/DisabledLogSink.cpp
+)
+yuengine_apply_compile_options(YuDiagnostics)
+target_include_directories(YuDiagnostics
+    PUBLIC
+        src/yuengine/diagnostics/include
+)
+target_link_libraries(YuDiagnostics PUBLIC YuMemory)
 
 add_library(YuThread
     src/yuengine/thread/src/BoundedTaskQueue.cpp
@@ -97,6 +100,15 @@ add_executable(YuDiagnosticsTests
 yuengine_apply_compile_options(YuDiagnosticsTests)
 target_link_libraries(YuDiagnosticsTests PRIVATE YuPlatform)
 add_test(NAME Logging_DisabledSink_DoesNotChangeBehavior COMMAND YuDiagnosticsTests Logging_DisabledSink_DoesNotChangeBehavior)
+add_test(NAME Diagnostics_DisabledChannel_DoesNotChangeBehavior COMMAND YuDiagnosticsTests Diagnostics_DisabledChannel_DoesNotChangeBehavior)
+add_test(NAME Diagnostics_BoundedChannel_RecordsEventsAndCounters COMMAND YuDiagnosticsTests Diagnostics_BoundedChannel_RecordsEventsAndCounters)
+add_test(NAME Diagnostics_BoundedChannel_DropsWhenFull COMMAND YuDiagnosticsTests Diagnostics_BoundedChannel_DropsWhenFull)
+add_test(NAME Diagnostics_ChannelSnapshot_ReportsAcceptedDroppedAndCounters COMMAND YuDiagnosticsTests Diagnostics_ChannelSnapshot_ReportsAcceptedDroppedAndCounters)
+add_test(NAME Diagnostics_ChannelStopped_DoesNotMutateAfterShutdown COMMAND YuDiagnosticsTests Diagnostics_ChannelStopped_DoesNotMutateAfterShutdown)
+add_test(NAME Diagnostics_ChannelRejectsUnknownIds_WhenValidationEnabled COMMAND YuDiagnosticsTests Diagnostics_ChannelRejectsUnknownIds_WhenValidationEnabled)
+add_test(NAME Diagnostics_CounterOverflow_ReturnsExplicitStatusAndDoesNotMutate COMMAND YuDiagnosticsTests Diagnostics_CounterOverflow_ReturnsExplicitStatusAndDoesNotMutate)
+add_test(NAME Diagnostics_NoReportDependency_ForRuntimeResults COMMAND YuDiagnosticsTests Diagnostics_NoReportDependency_ForRuntimeResults)
+add_test(NAME Diagnostics_NoHiddenAllocation_UsesYuMemorySignal COMMAND YuDiagnosticsTests Diagnostics_NoHiddenAllocation_UsesYuMemorySignal)
 
 add_executable(YuKernelTests
     tests/kernel/KernelTests.cpp
