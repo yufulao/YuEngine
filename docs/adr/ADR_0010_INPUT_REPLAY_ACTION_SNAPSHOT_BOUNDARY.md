@@ -76,10 +76,48 @@ Action state contains only first-slice primitives:
 
 - pressed/released boolean state;
 - changed-this-frame boolean state;
-- optional axis value with a bounded range.
+- optional axis value with a fixed signed integer normalized range.
 
 Text input, composition, pointer capture, multi-touch gestures, controller
 rumble, dead-zone policy, and rebinding UI are future gates.
+
+## Binding Identity And Cardinality
+
+First-slice bindings are setup-time mappings from controls to actions.
+
+Rules:
+
+- the binding identity key is `(InputDeviceId, InputControlId)`;
+- one `(InputDeviceId, InputControlId)` maps to at most one `InputActionId`;
+- recording a second binding for the same `(InputDeviceId, InputControlId)`
+  returns explicit duplicate-binding status and does not mutate binding state;
+- multiple controls may map to the same `InputActionId`;
+- one control may not fan out to multiple actions in P1-GATE-007;
+- same-action multi-control merge is deterministic: accepted events are applied
+  in replay insertion order, and the last valid event for that action in the
+  frame defines the final action value.
+
+Future gates may add action groups, chorded bindings, device-specific priority,
+rebinding, or richer merge policies only after the first-slice snapshot behavior
+is accepted.
+
+## Axis Representation
+
+First-slice axis values are deterministic integer values, not floating-point
+values.
+
+Rules:
+
+- axis events carry a signed integer normalized value in the inclusive range
+  `[-32767, 32767]`;
+- `-32767` represents full negative, `0` represents neutral, and `32767`
+  represents full positive;
+- values outside that range return explicit invalid-value status and are not
+  inserted into replay storage;
+- P1-GATE-007 does not accept float axis input, so NaN, Inf, and negative-zero
+  float semantics are outside this slice;
+- future platform gates may define backend float or hardware-range conversion
+  into this integer range.
 
 ## Replay Boundary
 
@@ -88,11 +126,21 @@ Replay is a deterministic test harness for input frames.
 Rules:
 
 - replay buffers are bounded by fixed frame and event capacities;
-- replay events are inserted during setup only;
+- replay events are inserted during setup only and are stored in insertion order
+  inside each frame;
 - frame application does not grow containers or allocate;
 - replay overflow returns explicit capacity status and does not mutate the
   accepted event sequence;
-- event order inside a frame is deterministic and documented by tests;
+- event order inside a frame is deterministic: events are applied in accepted
+  insertion order, and the last valid event for an action wins the final value
+  for that frame;
+- `changed_this_frame` is true when at least one valid accepted event for that
+  action occurs in the frame, even if the final value equals the previous
+  snapshot value after a press-then-release pair;
+- invalid replay events are rejected before insertion where possible; if an
+  invalid event reaches frame application, that event is skipped, returns an
+  explicit status, increments the rejected-event signal, and does not mutate the
+  snapshot value or accepted-event signal;
 - reset clears frame state without releasing and reallocating replay storage.
 
 Replay fixtures are not an oracle or capture system. They are module-owned

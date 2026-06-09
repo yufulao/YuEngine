@@ -6,7 +6,7 @@ Owner: 八云紫
 Reviewers: 红美铃, 博丽灵梦, 大妖精, 雾雨魔理沙 when implementation exists
 Depends on: ADR-0010
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0007
-Source baseline: Phase 1 through `b6c5720`
+Source baseline: Phase 1 through `9389d50`
 
 ## Layer
 
@@ -75,16 +75,39 @@ First-slice lifecycle:
 
 Failure behavior:
 
-- duplicate binding returns explicit duplicate status;
+- duplicate binding is keyed by `(InputDeviceId, InputControlId)` and returns
+  explicit duplicate status without mutating binding state;
 - unknown device, control, or action returns explicit not-found status;
 - binding capacity overflow returns explicit capacity status and does not mutate
   binding state;
 - event capacity overflow returns explicit capacity status and does not mutate
   accepted replay events;
 - invalid axis values return explicit invalid-value status and do not mutate
-  snapshot state;
+  accepted replay events or snapshot state;
 - applying frames past the replay end returns explicit end-of-replay status;
 - disabled diagnostics/logging does not change any Input result.
+
+Binding and event rules:
+
+- one `(InputDeviceId, InputControlId)` maps to at most one `InputActionId`;
+- one `InputActionId` may have multiple controls bound to it;
+- one control may not fan out to multiple actions in P1-GATE-007;
+- events inside a frame are applied in accepted insertion order;
+- the last valid event for an action in a frame defines final pressed/axis state;
+- `changed_this_frame` is true when any valid event for the action occurs in the
+  frame, including press-then-release pairs whose final value equals the
+  previous snapshot;
+- invalid events are skipped and do not mutate snapshot values or accepted-event
+  count; they increment only the rejected-event/failure signal.
+
+Axis representation:
+
+- axis event values are signed integer normalized values in the inclusive range
+  `[-32767, 32767]`;
+- `-32767` is full negative, `0` is neutral, and `32767` is full positive;
+- values outside that range are invalid and are not inserted into replay storage;
+- P1-GATE-007 does not accept float axis input, so NaN, Inf, and negative-zero
+  float semantics are outside this slice.
 
 ## Inputs
 
@@ -100,7 +123,7 @@ Failure behavior:
 - input snapshots;
 - action pressed/released state;
 - action changed-this-frame state;
-- bounded axis values;
+- bounded integer axis values;
 - input result/status values;
 - snapshot/replay counters;
 - allocation/accounting status using `YuMemory` vocabulary when available;
@@ -152,7 +175,7 @@ First-slice bounds:
 - binding capacity: 64 bindings maximum;
 - replay frame capacity: 16 frames maximum;
 - event capacity per frame: 32 events maximum;
-- axis value range: fixed signed normalized range `[-1.0, 1.0]`;
+- axis value range: fixed signed integer normalized range `[-32767, 32767]`;
 - frame application and snapshot reset must not allocate or grow storage.
 
 Pass/fail rule:
@@ -177,12 +200,17 @@ Blocking conditions:
 Fast gate tests required before the slice can be considered complete:
 
 - `Input_RegisterActionBinding_ReturnsStableActionId`
-- `Input_RegisterDuplicateBinding_ReturnsExplicitStatus`
+- `Input_RegisterControlAlreadyBound_ReturnsDuplicateStatus`
+- `Input_MultipleControlsForOneAction_UsesInsertionOrder`
 - `Input_BindingCapacityOverflow_DoesNotMutate`
 - `Input_ReplayFrame_AppliesButtonPressAndRelease`
-- `Input_ReplayFrame_AppliesAxisValue`
-- `Input_InvalidAxisValue_ReturnsExplicitStatus`
-- `Input_UnknownDeviceOrAction_ReturnsExplicitStatus`
+- `Input_ReplayFrame_EventOrderIsDeterministic`
+- `Input_ReplayFrame_EventOrderLastValidValueWins`
+- `Input_ReplayFrame_PressReleaseSameFrame_SetsChangedFlag`
+- `Input_ReplayFrame_AppliesFixedPointAxisValue`
+- `Input_InvalidAxisValue_ReturnsExplicitStatusWithoutMutation`
+- `Input_InvalidEvent_DoesNotMutateReplayOrSnapshot`
+- `Input_UnknownDeviceControlOrAction_ReturnsExplicitStatus`
 - `Input_EventCapacityOverflow_DoesNotMutateReplay`
 - `Input_FrameSnapshot_IsDeterministicAcrossReplay`
 - `Input_ResetClearsChangedStateWithoutClearingPressedState`
