@@ -74,16 +74,21 @@ Phase 2 remains blocked from:
 | ID | Title | Owner | Reviewers | Status | Blocks |
 | --- | --- | --- | --- | --- | --- |
 | ADR-0011 | RHI device, command, present, and capture boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精 | Accepted | Null RHI first slice |
+| ADR-0012 | Audio test backend and mixer sink boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精 | Proposed | Audio test backend/mixer first slice |
 
 ## Module Gate Proposal Queue
 
 | Gate | Module | Layer | Requested decision | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
-| P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | Gate review in progress | Null backend only; create target, record clear, submit, present, deterministic capture; no real backend, shader, material, render scene, resource loading, UI, or game adapter |
+| P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | Approved | Null backend only; create target, record clear, submit, present, deterministic capture; no real backend, shader, material, render scene, resource loading, UI, or game adapter |
+| P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | Proposed | Test backend only; synthetic S16 stereo sources, generation voice handles, caller-owned mix buffer; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
 
 ## Current Active Gates
 
-- P2-GATE-001 is proposed for review only.
+- P2-GATE-001 is approved for first implementation slice; implementation must
+  keep a clean or isolated worktree handoff and must not disturb active Phase 1
+  implementation reviews.
+- P2-GATE-002 is proposed for review only.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against the active Phase 1 review queue.
 
@@ -98,8 +103,10 @@ Phase 2 remains blocked from:
 
 ## Immediate Next Steps
 
-1. Review ADR-0011 and P2-GATE-001.
-2. Close active Phase 1 implementation reviews before creating additional shared
+1. Create a scoped P2-GATE-001 implementation task for the null RHI slice with a
+   clean/isolated worktree guard.
+2. Review ADR-0012 and P2-GATE-002.
+3. Close active Phase 1 implementation reviews before creating additional shared
    CMake implementation work, unless a clean isolated worktree is assigned.
-3. Prepare audio test backend/mixer boundary only after RHI proposal review is
-   underway or blocked with clear amendments.
+4. Prepare package/load boundary only after Resource/File implementation review
+   state is stable enough to avoid depending on unresolved vocabulary.
