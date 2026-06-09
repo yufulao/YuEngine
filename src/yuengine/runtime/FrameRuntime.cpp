@@ -16,7 +16,26 @@
 #include <stdexcept>
 #include <utility>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <d3d9.h>
+#endif
+
 namespace yu::runtime {
+
+MissionEventThreadRuntimeReport buildMissionEventThreadRuntimeReport(
+    const project::ProjectManifest& manifest,
+    const SceneRuntimeMaterializationReport& sceneRuntime,
+    const std::filesystem::path& repoRoot);
+
+MissionTutorialRuntimeReport buildMissionTutorialRuntimeReport(
+    const project::ProjectManifest& manifest,
+    const SceneRuntimeMaterializationReport& sceneRuntime,
+    const std::filesystem::path& repoRoot);
+
 namespace {
 
 void addError(FirstFrameRuntimeReport& report, const std::string& message)
@@ -121,6 +140,12 @@ void addError(BackendDeviceAdapterRuntimeReport& report, const std::string& mess
     report.errors.push_back(message);
 }
 
+void addError(BackendDeviceCreationRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -158,6 +183,21 @@ void appendUnique(std::vector<std::string>& values, const std::string& value)
     }
 }
 
+std::string pathCacheKey(const std::filesystem::path& path);
+
+script::SqasmModule loadSqasmModuleCached(const std::filesystem::path& modulePath)
+{
+    static std::map<std::string, script::SqasmModule> cache;
+    const auto key = pathCacheKey(modulePath);
+    const auto it = cache.find(key);
+    if (it != cache.end()) {
+        return it->second;
+    }
+    auto module = script::loadSqasmModule(modulePath);
+    cache[key] = module;
+    return module;
+}
+
 std::vector<script::SqasmModule> loadStartupBaselineModules(
     const project::ProjectManifest& manifest,
     const std::string& entryModule)
@@ -180,7 +220,7 @@ std::vector<script::SqasmModule> loadStartupBaselineModules(
         if (modulePath.empty()) {
             throw std::runtime_error("startup baseline script module not found: " + moduleName);
         }
-        modules.push_back(script::loadSqasmModule(modulePath));
+        modules.push_back(loadSqasmModuleCached(modulePath));
     }
     return modules;
 }
@@ -286,21 +326,82 @@ struct GameplayFrameInputs {
     MissionTutorialRuntimeReport missionTutorial;
 };
 
+std::string pathCacheKey(const std::filesystem::path& path)
+{
+    try {
+        return std::filesystem::weakly_canonical(path).generic_string();
+    } catch (const std::exception&) {
+        return path.lexically_normal().generic_string();
+    }
+}
+
+std::string runtimeInputCacheKey(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    return pathCacheKey(manifestPath) + "|" + pathCacheKey(repoRoot);
+}
+
+std::string runtimeReportCacheKey(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const std::string& reportName)
+{
+    return reportName + "|" + inputs.sceneRuntime.projectId + "|" + rendererProfile + "|"
+        + inputs.sceneRuntime.stage.stagePath + "|" + inputs.sceneRuntime.stage.modelPath + "|"
+        + std::to_string(inputs.sceneRuntime.stage.textureDependencyCount) + "|"
+        + std::to_string(inputs.titleUi.commandCount) + "|"
+        + std::to_string(inputs.titleBranches.scenarioCount);
+}
+
+template <typename Report>
+bool loadCachedReport(const std::map<std::string, Report>& cache, const std::string& key, Report& report)
+{
+    const auto it = cache.find(key);
+    if (it == cache.end()) {
+        return false;
+    }
+    report = it->second;
+    return true;
+}
+
+template <typename Report>
+Report storeCachedReport(std::map<std::string, Report>& cache, const std::string& key, const Report& report)
+{
+    cache[key] = report;
+    return report;
+}
+
 GameplayFrameInputs collectGameplayFrameInputs(
     const std::filesystem::path& manifestPath,
     const std::filesystem::path& repoRoot)
 {
+    const auto cacheKey = runtimeInputCacheKey(manifestPath, repoRoot);
+    static std::map<std::string, GameplayFrameInputs> cache;
+    GameplayFrameInputs cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
+    const auto manifest = project::loadProjectManifest(manifestPath);
     GameplayFrameInputs inputs;
     inputs.sceneRuntime = runSceneRuntimeMaterialization(manifestPath, repoRoot);
     inputs.titleUi = runTitleUiRuntime(manifestPath, repoRoot);
     inputs.titleBranches = runTitleBranchesRuntime(manifestPath, repoRoot);
-    inputs.missionEvent = runMissionEventThreadRuntime(manifestPath, repoRoot);
-    inputs.missionTutorial = runMissionTutorialRuntime(manifestPath, repoRoot);
-    return inputs;
+    inputs.missionEvent = buildMissionEventThreadRuntimeReport(manifest, inputs.sceneRuntime, repoRoot);
+    inputs.missionTutorial = buildMissionTutorialRuntimeReport(manifest, inputs.sceneRuntime, repoRoot);
+    return storeCachedReport(cache, cacheKey, inputs);
 }
 
 GameplayFrameRuntimeReport buildGameplayFrameRuntimeReport(const GameplayFrameInputs& inputs)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, "", "gameplay-frame");
+    static std::map<std::string, GameplayFrameRuntimeReport> cache;
+    GameplayFrameRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     GameplayFrameRuntimeReport report;
 
     const auto& sceneRuntime = inputs.sceneRuntime;
@@ -393,13 +494,20 @@ GameplayFrameRuntimeReport buildGameplayFrameRuntimeReport(const GameplayFrameIn
         addError(report, "audio frame payload is incomplete");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 RendererBackendSubmissionReport buildRendererBackendSubmissionReport(
     const GameplayFrameInputs& inputs,
     const std::string& rendererProfile)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "renderer-submit");
+    static std::map<std::string, RendererBackendSubmissionReport> cache;
+    RendererBackendSubmissionReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     RendererBackendSubmissionReport report;
 
     const auto& sceneRuntime = inputs.sceneRuntime;
@@ -488,7 +596,7 @@ RendererBackendSubmissionReport buildRendererBackendSubmissionReport(
         addError(report, "renderer backend frame submission is incomplete");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 FrameSchedulerNodeReport makeFrameSchedulerNode(
@@ -511,6 +619,13 @@ FrameSchedulerRuntimeReport buildFrameSchedulerRuntimeReport(
     const GameplayFrameInputs& inputs,
     const std::string& rendererProfile)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "frame-scheduler");
+    static std::map<std::string, FrameSchedulerRuntimeReport> cache;
+    FrameSchedulerRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     FrameSchedulerRuntimeReport report;
     const auto gameplayFrame = buildGameplayFrameRuntimeReport(inputs);
     const auto rendererSubmission = buildRendererBackendSubmissionReport(inputs, rendererProfile);
@@ -588,7 +703,7 @@ FrameSchedulerRuntimeReport buildFrameSchedulerRuntimeReport(
         addError(report, "frame scheduler contains unresolved service nodes");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 bool isDdsPayload(const std::vector<std::byte>& bytes)
@@ -782,6 +897,13 @@ BackendObligationsRuntimeReport buildBackendObligationsRuntimeReport(
     const std::string& rendererProfile,
     const resource::VirtualFileSystem& vfs)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "backend-obligations");
+    static std::map<std::string, BackendObligationsRuntimeReport> cache;
+    BackendObligationsRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     BackendObligationsRuntimeReport report;
     const auto rendererSubmission = buildRendererBackendSubmissionReport(inputs, rendererProfile);
     const auto frameScheduler = buildFrameSchedulerRuntimeReport(inputs, rendererProfile);
@@ -876,7 +998,7 @@ BackendObligationsRuntimeReport buildBackendObligationsRuntimeReport(
         addError(report, "backend obligation accounting is inconsistent");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 std::string bytesToText(const std::vector<std::byte>& bytes)
@@ -1528,11 +1650,222 @@ BackendDeviceAdapterRecord makeDeviceAdapterRecord(
     return record;
 }
 
+struct PlatformDeviceCreationAttempt {
+    bool platformSupported = false;
+    bool platformAttempted = false;
+    std::string windowStatus = "unsupported_platform";
+    std::string windowDetail = "Win32 window creation is unavailable on this platform";
+    int windowAttempts = 0;
+    bool windowReady = false;
+    std::string d3dInterfaceStatus = "unsupported_platform";
+    std::string d3dInterfaceDetail = "Direct3DCreate9 is unavailable on this platform";
+    int d3dInterfaceAttempts = 0;
+    bool d3dInterfaceReady = false;
+    std::string d3dDeviceStatus = "unsupported_platform";
+    std::string d3dDeviceDetail = "IDirect3D9::CreateDevice is unavailable on this platform";
+    int d3dDeviceAttempts = 0;
+    bool d3dDeviceReady = false;
+};
+
+std::string win32ErrorDetail(const std::string& operation, unsigned long code)
+{
+    return operation + " failed with GetLastError=" + std::to_string(code);
+}
+
+std::string hresultDetail(const std::string& operation, long value)
+{
+    std::ostringstream out;
+    out << operation << " failed with HRESULT=0x" << std::hex
+        << static_cast<unsigned long>(value);
+    return out.str();
+}
+
+#if defined(_WIN32)
+LRESULT CALLBACK yuEngineHiddenDeviceWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
+{
+    return DefWindowProcA(hwnd, message, wparam, lparam);
+}
+#endif
+
+PlatformDeviceCreationAttempt attemptPlatformDeviceCreation(int width, int height)
+{
+    PlatformDeviceCreationAttempt attempt;
+#if defined(_WIN32)
+    attempt.platformSupported = true;
+    attempt.platformAttempted = true;
+
+    HINSTANCE instance = GetModuleHandleA(nullptr);
+    const std::string className = "YuEngineHiddenD3D9DeviceWindow";
+    WNDCLASSEXA windowClass{};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.lpfnWndProc = yuEngineHiddenDeviceWindowProc;
+    windowClass.hInstance = instance;
+    windowClass.lpszClassName = className.c_str();
+
+    const ATOM atom = RegisterClassExA(&windowClass);
+    const DWORD registerError = atom == 0 ? GetLastError() : 0;
+    const bool classReady = atom != 0 || registerError == ERROR_CLASS_ALREADY_EXISTS;
+
+    HWND hwnd = nullptr;
+    if (classReady) {
+        attempt.windowAttempts = 1;
+        hwnd = CreateWindowExA(
+            0,
+            className.c_str(),
+            "YuEngine Hidden D3D9 Device Window",
+            WS_OVERLAPPEDWINDOW,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            width,
+            height,
+            nullptr,
+            nullptr,
+            instance,
+            nullptr);
+        if (hwnd != nullptr) {
+            attempt.windowReady = true;
+            attempt.windowStatus = "real_success";
+            attempt.windowDetail = "hidden Win32 HWND created and released for D3D9 device creation";
+        } else {
+            attempt.windowStatus = "real_failed";
+            attempt.windowDetail = win32ErrorDetail("CreateWindowExA", GetLastError());
+        }
+    } else {
+        attempt.windowStatus = "real_failed";
+        attempt.windowDetail = win32ErrorDetail("RegisterClassExA", registerError);
+    }
+
+    HMODULE d3d9Module = LoadLibraryA("d3d9.dll");
+    IDirect3D9* d3d9 = nullptr;
+    if (d3d9Module == nullptr) {
+        attempt.d3dInterfaceStatus = "real_failed";
+        attempt.d3dInterfaceDetail = win32ErrorDetail("LoadLibraryA(d3d9.dll)", GetLastError());
+    } else {
+        using Direct3DCreate9Fn = IDirect3D9* (WINAPI *)(UINT);
+        auto createD3D9 = reinterpret_cast<Direct3DCreate9Fn>(
+            GetProcAddress(d3d9Module, "Direct3DCreate9"));
+        if (createD3D9 == nullptr) {
+            attempt.d3dInterfaceStatus = "real_failed";
+            attempt.d3dInterfaceDetail =
+                win32ErrorDetail("GetProcAddress(Direct3DCreate9)", GetLastError());
+        } else {
+            attempt.d3dInterfaceAttempts = 1;
+            d3d9 = createD3D9(D3D_SDK_VERSION);
+            if (d3d9 != nullptr) {
+                attempt.d3dInterfaceReady = true;
+                attempt.d3dInterfaceStatus = "real_success";
+                attempt.d3dInterfaceDetail = "Direct3DCreate9 returned an IDirect3D9 interface";
+            } else {
+                attempt.d3dInterfaceStatus = "real_failed";
+                attempt.d3dInterfaceDetail = "Direct3DCreate9 returned null";
+            }
+        }
+    }
+
+    IDirect3DDevice9* device = nullptr;
+    if (attempt.windowReady && attempt.d3dInterfaceReady) {
+        D3DPRESENT_PARAMETERS present{};
+        present.BackBufferWidth = static_cast<UINT>(width);
+        present.BackBufferHeight = static_cast<UINT>(height);
+        present.BackBufferFormat = D3DFMT_UNKNOWN;
+        present.BackBufferCount = 1;
+        present.MultiSampleType = D3DMULTISAMPLE_NONE;
+        present.SwapEffect = D3DSWAPEFFECT_DISCARD;
+        present.hDeviceWindow = hwnd;
+        present.Windowed = TRUE;
+        present.EnableAutoDepthStencil = FALSE;
+        present.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+
+        DWORD createFlags[] = {
+            D3DCREATE_FPU_PRESERVE | D3DCREATE_HARDWARE_VERTEXPROCESSING,
+            D3DCREATE_FPU_PRESERVE | D3DCREATE_SOFTWARE_VERTEXPROCESSING,
+        };
+        HRESULT lastResult = D3DERR_INVALIDCALL;
+        for (DWORD flags : createFlags) {
+            ++attempt.d3dDeviceAttempts;
+            lastResult = d3d9->CreateDevice(
+                D3DADAPTER_DEFAULT,
+                D3DDEVTYPE_HAL,
+                hwnd,
+                flags,
+                &present,
+                &device);
+            if (SUCCEEDED(lastResult) && device != nullptr) {
+                attempt.d3dDeviceReady = true;
+                attempt.d3dDeviceStatus = "real_success";
+                attempt.d3dDeviceDetail =
+                    "IDirect3D9::CreateDevice succeeded for hidden 1280x720 windowed device";
+                break;
+            }
+        }
+        if (!attempt.d3dDeviceReady) {
+            attempt.d3dDeviceStatus = "real_failed";
+            attempt.d3dDeviceDetail = hresultDetail("IDirect3D9::CreateDevice", lastResult);
+        }
+    } else {
+        attempt.d3dDeviceStatus = "blocked_by_dependency";
+        attempt.d3dDeviceDetail = "CreateDevice was not attempted because HWND or IDirect3D9 is absent";
+    }
+
+    if (device != nullptr) {
+        device->Release();
+    }
+    if (d3d9 != nullptr) {
+        d3d9->Release();
+    }
+    if (d3d9Module != nullptr) {
+        FreeLibrary(d3d9Module);
+    }
+    if (hwnd != nullptr) {
+        DestroyWindow(hwnd);
+    }
+    if (atom != 0) {
+        UnregisterClassA(className.c_str(), instance);
+    }
+#endif
+    return attempt;
+}
+
+BackendDeviceCreationExecutionRecord makeDeviceCreationRecord(
+    const BackendDeviceAdapterRecord& source,
+    const std::string& name,
+    const std::string& status,
+    const std::string& evidence,
+    const std::string& detail,
+    int attempts,
+    bool handleReady)
+{
+    BackendDeviceCreationExecutionRecord record;
+    record.name = name;
+    record.sourceAdapterRecord = source.name;
+    record.sourceExecutorResult = source.sourceExecutorResult;
+    record.sourceBridgeRecord = source.sourceBridgeRecord;
+    record.api = source.api;
+    record.status = status;
+    record.evidence = evidence;
+    record.detail = detail;
+    record.width = source.width;
+    record.height = source.height;
+    record.attemptCount = attempts;
+    record.successCount = status == "real_success" ? 1 : 0;
+    record.failureCount = status == "real_failed" ? 1 : 0;
+    record.resultRecorded = true;
+    record.realHandleReady = handleReady;
+    return record;
+}
+
 MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
     const GameplayFrameInputs& inputs,
     const std::string& rendererProfile,
     const resource::VirtualFileSystem& vfs)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "material-semantics");
+    static std::map<std::string, MaterialSemanticsRuntimeReport> cache;
+    MaterialSemanticsRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     MaterialSemanticsRuntimeReport report;
     const auto rendererSubmission = buildRendererBackendSubmissionReport(inputs, rendererProfile);
     const auto backendObligations = buildBackendObligationsRuntimeReport(inputs, rendererProfile, vfs);
@@ -1637,7 +1970,7 @@ MaterialSemanticsRuntimeReport buildMaterialSemanticsRuntimeReport(
         addError(report, "shader/effect semantics are not tracked through material semantics");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 DevicePresentationRuntimeReport buildDevicePresentationRuntimeReport(
@@ -1645,6 +1978,13 @@ DevicePresentationRuntimeReport buildDevicePresentationRuntimeReport(
     const std::string& rendererProfile,
     const resource::VirtualFileSystem& vfs)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "device-presentation");
+    static std::map<std::string, DevicePresentationRuntimeReport> cache;
+    DevicePresentationRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     DevicePresentationRuntimeReport report;
     const auto frameScheduler = buildFrameSchedulerRuntimeReport(inputs, rendererProfile);
     const auto rendererSubmission = buildRendererBackendSubmissionReport(inputs, rendererProfile);
@@ -1770,7 +2110,7 @@ DevicePresentationRuntimeReport buildDevicePresentationRuntimeReport(
         addError(report, "device presentation obligation accounting is inconsistent");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 TextureUploadRuntimeReport buildTextureUploadRuntimeReport(
@@ -1778,6 +2118,13 @@ TextureUploadRuntimeReport buildTextureUploadRuntimeReport(
     const std::string& rendererProfile,
     const resource::VirtualFileSystem& vfs)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "texture-upload");
+    static std::map<std::string, TextureUploadRuntimeReport> cache;
+    TextureUploadRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     TextureUploadRuntimeReport report;
     const auto backendObligations = buildBackendObligationsRuntimeReport(inputs, rendererProfile, vfs);
     const auto materialSemantics = buildMaterialSemanticsRuntimeReport(inputs, rendererProfile, vfs);
@@ -1975,7 +2322,7 @@ TextureUploadRuntimeReport buildTextureUploadRuntimeReport(
         addError(report, "texture upload obligation accounting is inconsistent");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 BackendStateRuntimeReport buildBackendStateRuntimeReport(
@@ -1983,6 +2330,13 @@ BackendStateRuntimeReport buildBackendStateRuntimeReport(
     const std::string& rendererProfile,
     const resource::VirtualFileSystem& vfs)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "backend-state");
+    static std::map<std::string, BackendStateRuntimeReport> cache;
+    BackendStateRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     BackendStateRuntimeReport report;
     const auto textureUpload = buildTextureUploadRuntimeReport(inputs, rendererProfile, vfs);
     const auto materialSemantics = buildMaterialSemanticsRuntimeReport(inputs, rendererProfile, vfs);
@@ -2178,7 +2532,7 @@ BackendStateRuntimeReport buildBackendStateRuntimeReport(
         addError(report, "backend state obligation accounting is inconsistent");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 BackendResourceAllocationRuntimeReport buildBackendResourceAllocationRuntimeReport(
@@ -2186,6 +2540,13 @@ BackendResourceAllocationRuntimeReport buildBackendResourceAllocationRuntimeRepo
     const std::string& rendererProfile,
     const resource::VirtualFileSystem& vfs)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "resource-allocation");
+    static std::map<std::string, BackendResourceAllocationRuntimeReport> cache;
+    BackendResourceAllocationRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     BackendResourceAllocationRuntimeReport report;
     const auto textureUpload = buildTextureUploadRuntimeReport(inputs, rendererProfile, vfs);
     const auto backendState = buildBackendStateRuntimeReport(inputs, rendererProfile, vfs);
@@ -2368,7 +2729,7 @@ BackendResourceAllocationRuntimeReport buildBackendResourceAllocationRuntimeRepo
         addError(report, "resource allocation obligation accounting is inconsistent");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 BackendDeviceExecutionRuntimeReport buildBackendDeviceExecutionRuntimeReport(
@@ -2376,6 +2737,13 @@ BackendDeviceExecutionRuntimeReport buildBackendDeviceExecutionRuntimeReport(
     const std::string& rendererProfile,
     const resource::VirtualFileSystem& vfs)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "device-execution");
+    static std::map<std::string, BackendDeviceExecutionRuntimeReport> cache;
+    BackendDeviceExecutionRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     BackendDeviceExecutionRuntimeReport report;
     const auto resourceAllocation = buildBackendResourceAllocationRuntimeReport(inputs, rendererProfile, vfs);
     const auto backendState = buildBackendStateRuntimeReport(inputs, rendererProfile, vfs);
@@ -2561,7 +2929,7 @@ BackendDeviceExecutionRuntimeReport buildBackendDeviceExecutionRuntimeReport(
         addError(report, "device execution obligation accounting is inconsistent");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 BackendPresentationOracleRuntimeReport buildBackendPresentationOracleRuntimeReport(
@@ -2569,6 +2937,13 @@ BackendPresentationOracleRuntimeReport buildBackendPresentationOracleRuntimeRepo
     const std::string& rendererProfile,
     const resource::VirtualFileSystem& vfs)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "present-oracle");
+    static std::map<std::string, BackendPresentationOracleRuntimeReport> cache;
+    BackendPresentationOracleRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     BackendPresentationOracleRuntimeReport report;
     const auto deviceExecution = buildBackendDeviceExecutionRuntimeReport(inputs, rendererProfile, vfs);
     const auto devicePresentation = buildDevicePresentationRuntimeReport(inputs, rendererProfile, vfs);
@@ -2756,7 +3131,7 @@ BackendPresentationOracleRuntimeReport buildBackendPresentationOracleRuntimeRepo
         addError(report, "presentation/oracle obligation accounting is inconsistent");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 BackendPlatformBridgeRuntimeReport buildBackendPlatformBridgeRuntimeReport(
@@ -2764,6 +3139,13 @@ BackendPlatformBridgeRuntimeReport buildBackendPlatformBridgeRuntimeReport(
     const std::string& rendererProfile,
     const resource::VirtualFileSystem& vfs)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "platform-bridge");
+    static std::map<std::string, BackendPlatformBridgeRuntimeReport> cache;
+    BackendPlatformBridgeRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     BackendPlatformBridgeRuntimeReport report;
     const auto deviceExecution = buildBackendDeviceExecutionRuntimeReport(inputs, rendererProfile, vfs);
     const auto presentationOracle = buildBackendPresentationOracleRuntimeReport(inputs, rendererProfile, vfs);
@@ -3047,7 +3429,7 @@ BackendPlatformBridgeRuntimeReport buildBackendPlatformBridgeRuntimeReport(
         addError(report, "platform bridge obligation accounting is inconsistent");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 BackendExecutorRuntimeReport buildBackendExecutorRuntimeReport(
@@ -3055,6 +3437,13 @@ BackendExecutorRuntimeReport buildBackendExecutorRuntimeReport(
     const std::string& rendererProfile,
     const resource::VirtualFileSystem& vfs)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "backend-executor");
+    static std::map<std::string, BackendExecutorRuntimeReport> cache;
+    BackendExecutorRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     BackendExecutorRuntimeReport report;
     const auto platformBridge = buildBackendPlatformBridgeRuntimeReport(inputs, rendererProfile, vfs);
 
@@ -3206,7 +3595,7 @@ BackendExecutorRuntimeReport buildBackendExecutorRuntimeReport(
         addError(report, "backend executor obligation accounting is inconsistent");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 BackendDeviceAdapterRuntimeReport buildBackendDeviceAdapterRuntimeReport(
@@ -3214,6 +3603,13 @@ BackendDeviceAdapterRuntimeReport buildBackendDeviceAdapterRuntimeReport(
     const std::string& rendererProfile,
     const resource::VirtualFileSystem& vfs)
 {
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "backend-device-adapter");
+    static std::map<std::string, BackendDeviceAdapterRuntimeReport> cache;
+    BackendDeviceAdapterRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
     BackendDeviceAdapterRuntimeReport report;
     const auto executor = buildBackendExecutorRuntimeReport(inputs, rendererProfile, vfs);
 
@@ -3389,7 +3785,195 @@ BackendDeviceAdapterRuntimeReport buildBackendDeviceAdapterRuntimeReport(
         addError(report, "device adapter obligation accounting is inconsistent");
     }
 
-    return report;
+    return storeCachedReport(cache, cacheKey, report);
+}
+
+BackendDeviceCreationRuntimeReport buildBackendDeviceCreationRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs)
+{
+    const auto cacheKey = runtimeReportCacheKey(inputs, rendererProfile, "backend-device-create");
+    static std::map<std::string, BackendDeviceCreationRuntimeReport> cache;
+    BackendDeviceCreationRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
+    BackendDeviceCreationRuntimeReport report;
+    const auto adapter = buildBackendDeviceAdapterRuntimeReport(inputs, rendererProfile, vfs);
+
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.deviceAdapterOk = adapter.ok;
+    report.adapterRecordCount = adapter.adapterRecordCount;
+    report.sourceDownstreamBlockedRecords = adapter.downstreamBlockedRecords;
+    report.downstreamRealCallsDeferred = adapter.downstreamRealCallsBlockedUntilDevice;
+    report.linkedPlatformInputRecords = adapter.linkedPlatformInputRecords;
+    report.readyPlatformInputRecords = adapter.readyPlatformInputRecords;
+    report.trackedOpenPlatformInputRecords = adapter.trackedOpenPlatformInputRecords;
+    report.backbufferWidth = adapter.backbufferWidth;
+    report.backbufferHeight = adapter.backbufferHeight;
+
+    const BackendDeviceAdapterRecord* windowRecord = nullptr;
+    const BackendDeviceAdapterRecord* interfaceRecord = nullptr;
+    const BackendDeviceAdapterRecord* deviceRecord = nullptr;
+    for (const auto& record : adapter.records) {
+        if (record.stage == "window_surface") {
+            windowRecord = &record;
+            ++report.adapterPreconditionRecordsConsumed;
+        } else if (record.stage == "d3d9_interface") {
+            interfaceRecord = &record;
+            ++report.adapterPreconditionRecordsConsumed;
+        } else if (record.stage == "d3d9_device") {
+            deviceRecord = &record;
+            ++report.adapterPreconditionRecordsConsumed;
+        }
+    }
+
+    const auto attempt = attemptPlatformDeviceCreation(adapter.backbufferWidth, adapter.backbufferHeight);
+    report.platformSupported = attempt.platformSupported;
+    report.platformExecutionAttempted = attempt.platformAttempted;
+    report.realWindowSurfaceReady = attempt.windowReady;
+    report.realD3DInterfaceReady = attempt.d3dInterfaceReady;
+    report.realDeviceHandleReady = attempt.d3dDeviceReady;
+    report.windowSurfaceAttempts = attempt.windowAttempts;
+    report.d3dInterfaceAttempts = attempt.d3dInterfaceAttempts;
+    report.d3dDeviceAttempts = attempt.d3dDeviceAttempts;
+
+    if (windowRecord != nullptr) {
+        report.records.push_back(makeDeviceCreationRecord(
+            *windowRecord,
+            "real_hwnd_surface_execution",
+            attempt.windowStatus,
+            "L28 platform_window_surface_adapter",
+            attempt.windowDetail,
+            attempt.windowAttempts,
+            attempt.windowReady));
+    }
+    if (interfaceRecord != nullptr) {
+        report.records.push_back(makeDeviceCreationRecord(
+            *interfaceRecord,
+            "real_direct3d9_interface_execution",
+            attempt.d3dInterfaceStatus,
+            "L28 d3d9_interface_creation_adapter",
+            attempt.d3dInterfaceDetail,
+            attempt.d3dInterfaceAttempts,
+            attempt.d3dInterfaceReady));
+    }
+    if (deviceRecord != nullptr) {
+        report.records.push_back(makeDeviceCreationRecord(
+            *deviceRecord,
+            "real_d3d9_device_execution",
+            attempt.d3dDeviceStatus,
+            "L28 d3d9_device_creation_adapter",
+            attempt.d3dDeviceDetail,
+            attempt.d3dDeviceAttempts,
+            attempt.d3dDeviceReady));
+    }
+
+    for (const auto& record : report.records) {
+        ++report.executionResultRecords;
+        if (record.realHandleReady) {
+            ++report.realSuccessRecords;
+        } else if (record.status == "blocked_by_dependency") {
+            ++report.blockedByDependencyRecords;
+        } else {
+            ++report.realFailedRecords;
+        }
+    }
+
+    report.adapterPreconditionsConsumedReady =
+        report.adapterPreconditionRecordsConsumed == 3 && windowRecord != nullptr
+        && interfaceRecord != nullptr && deviceRecord != nullptr;
+    report.windowSurfaceResultRecorded =
+        windowRecord != nullptr && report.records.size() >= 1 && report.records[0].resultRecorded;
+    report.d3dInterfaceResultRecorded =
+        interfaceRecord != nullptr && report.records.size() >= 2 && report.records[1].resultRecorded;
+    report.d3dDeviceResultRecorded =
+        deviceRecord != nullptr && report.records.size() >= 3 && report.records[2].resultRecorded;
+    report.downstreamQueuesPreserved =
+        adapter.downstreamExecutionBlockedUntilDevice && report.sourceDownstreamBlockedRecords == 6
+        && report.downstreamRealCallsDeferred == 685;
+    report.backbufferExtentCarried =
+        report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+    report.deviceCreationRuntimeReady = report.deviceAdapterOk && report.platformSupported
+        && report.platformExecutionAttempted && report.adapterPreconditionsConsumedReady
+        && report.windowSurfaceResultRecorded && report.d3dInterfaceResultRecorded
+        && report.d3dDeviceResultRecorded && report.downstreamQueuesPreserved
+        && report.backbufferExtentCarried && report.executionResultRecords == 3
+        && report.adapterRecordCount == 10;
+
+    report.contracts.push_back(makeBackendObligation(
+        "device_creation_consumes_adapter_preconditions",
+        report.adapterPreconditionsConsumedReady ? "contract_ready" : "blocked",
+        "L29 consumes the 3 L28 platform/device precondition adapter records"));
+    report.contracts.push_back(makeBackendObligation(
+        "window_surface_execution_result",
+        report.windowSurfaceResultRecorded ? "contract_ready" : "blocked",
+        "hidden Win32 HWND creation result is recorded as success or explicit failure"));
+    report.contracts.push_back(makeBackendObligation(
+        "direct3d9_interface_execution_result",
+        report.d3dInterfaceResultRecorded ? "contract_ready" : "blocked",
+        "Direct3DCreate9 result is recorded as success or explicit failure"));
+    report.contracts.push_back(makeBackendObligation(
+        "d3d9_device_creation_execution_result",
+        report.d3dDeviceResultRecorded ? "contract_ready" : "blocked",
+        "IDirect3D9::CreateDevice result is recorded as success, failure, or dependency block"));
+    report.contracts.push_back(makeBackendObligation(
+        "downstream_queues_preserved_after_device_attempt",
+        report.downstreamQueuesPreserved ? "contract_ready" : "blocked",
+        "685 downstream real calls remain deferred after the device creation attempt"));
+    report.contracts.push_back(makeBackendObligation(
+        "persistent_device_service_handle",
+        "tracked_open",
+        "L29 proves creation attempt results, but does not keep a persistent runtime device service handle"));
+    report.contracts.push_back(makeBackendObligation(
+        "real_resource_execution_after_device",
+        "tracked_open",
+        "resource creation/upload/state execution remains deferred to L30"));
+    report.contracts.push_back(makeBackendObligation(
+        "real_draw_present_capture_after_device",
+        "tracked_open",
+        "draw/present/capture remain deferred until resource execution and frame output exist"));
+    report.contracts.push_back(makeBackendObligation(
+        "frame_capture_oracle_after_present",
+        "tracked_open",
+        "captured YuEngine frame artifact remains absent"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_after_capture",
+        "tracked_open",
+        "original-frame parity remains blocked until YuEngine capture exists"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedDeviceCreationContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedDeviceCreationObligations;
+            ++report.openDeviceCreationObligations;
+        } else {
+            ++report.openDeviceCreationObligations;
+        }
+    }
+
+    if (!report.deviceAdapterOk) {
+        addError(report, "backend device adapter contract is not ready for device creation");
+    }
+    if (!report.platformSupported || !report.platformExecutionAttempted) {
+        addError(report, "platform device creation execution is not available");
+    }
+    if (!report.adapterPreconditionsConsumedReady || !report.windowSurfaceResultRecorded
+        || !report.d3dInterfaceResultRecorded || !report.d3dDeviceResultRecorded) {
+        addError(report, "device creation execution results are incomplete");
+    }
+    if (!report.downstreamQueuesPreserved || !report.backbufferExtentCarried) {
+        addError(report, "device creation execution lost downstream queue or backbuffer state");
+    }
+    if (report.resolvedDeviceCreationContracts != 5 || report.trackedDeviceCreationObligations != 5
+        || report.openDeviceCreationObligations != 5) {
+        addError(report, "device creation obligation accounting is inconsistent");
+    }
+
+    return storeCachedReport(cache, cacheKey, report);
 }
 
 } // namespace
@@ -3537,7 +4121,7 @@ TitleUiRuntimeReport runTitleUiRuntime(
         registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
         native::NativeServiceCatalog catalog;
 
-        const auto module = script::loadSqasmModule(modulePath);
+        const auto module = loadSqasmModuleCached(modulePath);
         const auto baselineModules = loadStartupBaselineModules(manifest, manifest.startup.entryModule);
 
         script::ScriptRunOptions options;
@@ -3701,7 +4285,7 @@ TitleBranchesRuntimeReport runTitleBranchesRuntime(
         native::NativeRegistry registry;
         registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
 
-        const auto module = script::loadSqasmModule(modulePath);
+        const auto module = loadSqasmModuleCached(modulePath);
         const auto baselineModules = loadStartupBaselineModules(manifest, manifest.startup.entryModule);
         report.module = module.path.generic_string();
         report.entryFunction = manifest.startup.entryFunction;
@@ -5509,16 +6093,158 @@ std::string backendDeviceAdapterRuntimeReportToJson(
     return out.str();
 }
 
-MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
+BackendDeviceCreationRuntimeReport runBackendDeviceCreationRuntime(
     const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendDeviceCreationRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendDeviceCreationRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendDeviceCreationRuntimeReportToJson(
+    const BackendDeviceCreationRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_device_creation_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " device_adapter_ok=" << (report.deviceAdapterOk ? "true" : "false")
+        << " device_creation_runtime_ready="
+        << (report.deviceCreationRuntimeReady ? "true" : "false")
+        << " adapter_preconditions_consumed_ready="
+        << (report.adapterPreconditionsConsumedReady ? "true" : "false")
+        << " platform_execution_attempted="
+        << (report.platformExecutionAttempted ? "true" : "false")
+        << " window_surface_result_recorded="
+        << (report.windowSurfaceResultRecorded ? "true" : "false")
+        << " d3d_interface_result_recorded="
+        << (report.d3dInterfaceResultRecorded ? "true" : "false")
+        << " d3d_device_result_recorded="
+        << (report.d3dDeviceResultRecorded ? "true" : "false")
+        << " downstream_queues_preserved="
+        << (report.downstreamQueuesPreserved ? "true" : "false")
+        << " backbuffer_extent_carried=" << (report.backbufferExtentCarried ? "true" : "false")
+        << " platform_supported=" << (report.platformSupported ? "true" : "false")
+        << " real_window_surface_ready=" << (report.realWindowSurfaceReady ? "true" : "false")
+        << " real_d3d_interface_ready=" << (report.realD3DInterfaceReady ? "true" : "false")
+        << " real_device_handle_ready=" << (report.realDeviceHandleReady ? "true" : "false")
+        << " execution_result_records=" << report.executionResultRecords
+        << " adapter_record_count=" << report.adapterRecordCount
+        << " adapter_precondition_records_consumed="
+        << report.adapterPreconditionRecordsConsumed
+        << " source_downstream_blocked_records=" << report.sourceDownstreamBlockedRecords
+        << " downstream_real_calls_deferred=" << report.downstreamRealCallsDeferred
+        << " window_surface_attempts=" << report.windowSurfaceAttempts
+        << " d3d_interface_attempts=" << report.d3dInterfaceAttempts
+        << " d3d_device_attempts=" << report.d3dDeviceAttempts
+        << " real_success_records=" << report.realSuccessRecords
+        << " real_failed_records=" << report.realFailedRecords
+        << " blocked_by_dependency_records=" << report.blockedByDependencyRecords
+        << " linked_platform_input_records=" << report.linkedPlatformInputRecords
+        << " ready_platform_input_records=" << report.readyPlatformInputRecords
+        << " tracked_open_platform_input_records=" << report.trackedOpenPlatformInputRecords
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_device_creation_contracts=" << report.resolvedDeviceCreationContracts
+        << " tracked_device_creation_obligations=" << report.trackedDeviceCreationObligations
+        << " open_device_creation_obligations=" << report.openDeviceCreationObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"execution_summary\": {";
+    out << "\"execution_result_records\": " << report.executionResultRecords
+        << ", \"adapter_precondition_records_consumed\": "
+        << report.adapterPreconditionRecordsConsumed
+        << ", \"platform_execution_attempted\": "
+        << (report.platformExecutionAttempted ? "true" : "false")
+        << ", \"platform_supported\": " << (report.platformSupported ? "true" : "false")
+        << ", \"real_success_records\": " << report.realSuccessRecords
+        << ", \"real_failed_records\": " << report.realFailedRecords
+        << ", \"blocked_by_dependency_records\": "
+        << report.blockedByDependencyRecords << "},\n";
+    out << "  \"handle_summary\": {";
+    out << "\"real_window_surface_ready\": "
+        << (report.realWindowSurfaceReady ? "true" : "false")
+        << ", \"real_d3d_interface_ready\": "
+        << (report.realD3DInterfaceReady ? "true" : "false")
+        << ", \"real_device_handle_ready\": "
+        << (report.realDeviceHandleReady ? "true" : "false")
+        << ", \"window_surface_attempts\": " << report.windowSurfaceAttempts
+        << ", \"d3d_interface_attempts\": " << report.d3dInterfaceAttempts
+        << ", \"d3d_device_attempts\": " << report.d3dDeviceAttempts
+        << ", \"backbuffer_width\": " << report.backbufferWidth
+        << ", \"backbuffer_height\": " << report.backbufferHeight << "},\n";
+    out << "  \"downstream_state\": {";
+    out << "\"source_downstream_blocked_records\": " << report.sourceDownstreamBlockedRecords
+        << ", \"downstream_real_calls_deferred\": " << report.downstreamRealCallsDeferred
+        << ", \"linked_platform_input_records\": " << report.linkedPlatformInputRecords
+        << ", \"ready_platform_input_records\": " << report.readyPlatformInputRecords
+        << ", \"tracked_open_platform_input_records\": "
+        << report.trackedOpenPlatformInputRecords << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_device_creation_contracts\": "
+        << report.resolvedDeviceCreationContracts
+        << ", \"tracked_device_creation_obligations\": "
+        << report.trackedDeviceCreationObligations
+        << ", \"open_device_creation_obligations\": "
+        << report.openDeviceCreationObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"records\": [\n";
+    for (size_t i = 0; i < report.records.size(); ++i) {
+        const auto& record = report.records[i];
+        out << "    {\"name\": \"" << core::jsonEscape(record.name)
+            << "\", \"source_adapter_record\": \"" << core::jsonEscape(record.sourceAdapterRecord)
+            << "\", \"source_executor_result\": \"" << core::jsonEscape(record.sourceExecutorResult)
+            << "\", \"source_bridge_record\": \"" << core::jsonEscape(record.sourceBridgeRecord)
+            << "\", \"api\": \"" << core::jsonEscape(record.api)
+            << "\", \"status\": \"" << core::jsonEscape(record.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(record.evidence)
+            << "\", \"detail\": \"" << core::jsonEscape(record.detail)
+            << "\", \"width\": " << record.width
+            << ", \"height\": " << record.height
+            << ", \"attempt_count\": " << record.attemptCount
+            << ", \"success_count\": " << record.successCount
+            << ", \"failure_count\": " << record.failureCount
+            << ", \"result_recorded\": " << (record.resultRecorded ? "true" : "false")
+            << ", \"real_handle_ready\": " << (record.realHandleReady ? "true" : "false")
+            << "}";
+        out << (i + 1 == report.records.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+MissionEventThreadRuntimeReport buildMissionEventThreadRuntimeReport(
+    const project::ProjectManifest& manifest,
+    const SceneRuntimeMaterializationReport& sceneRuntime,
     const std::filesystem::path& repoRoot)
 {
     MissionEventThreadRuntimeReport report;
     try {
-        const auto manifest = project::loadProjectManifest(manifestPath);
         report.projectId = manifest.projectId;
 
-        const auto sceneRuntime = runSceneRuntimeMaterialization(manifestPath, repoRoot);
         report.sceneRuntimeOk = sceneRuntime.ok;
         if (!sceneRuntime.ok) {
             addError(report, "scene runtime materialization is not ready");
@@ -5540,7 +6266,7 @@ MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
         registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
         native::NativeServiceCatalog catalog;
 
-        const auto module = script::loadSqasmModule(modulePath);
+        const auto module = loadSqasmModuleCached(modulePath);
         const auto baselineModules = loadStartupBaselineModules(manifest, missionModuleName);
 
         script::ScriptRunOptions options;
@@ -5618,6 +6344,21 @@ MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     return report;
 }
 
+MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    MissionEventThreadRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        const auto sceneRuntime = runSceneRuntimeMaterialization(manifestPath, repoRoot);
+        report = buildMissionEventThreadRuntimeReport(manifest, sceneRuntime, repoRoot);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
 std::string missionEventThreadRuntimeReportToJson(const MissionEventThreadRuntimeReport& report)
 {
     std::ostringstream out;
@@ -5687,16 +6428,15 @@ std::string missionEventThreadRuntimeReportToJson(const MissionEventThreadRuntim
     return out.str();
 }
 
-MissionTutorialRuntimeReport runMissionTutorialRuntime(
-    const std::filesystem::path& manifestPath,
+MissionTutorialRuntimeReport buildMissionTutorialRuntimeReport(
+    const project::ProjectManifest& manifest,
+    const SceneRuntimeMaterializationReport& sceneRuntime,
     const std::filesystem::path& repoRoot)
 {
     MissionTutorialRuntimeReport report;
     try {
-        const auto manifest = project::loadProjectManifest(manifestPath);
         report.projectId = manifest.projectId;
 
-        const auto sceneRuntime = runSceneRuntimeMaterialization(manifestPath, repoRoot);
         report.sceneRuntimeOk = sceneRuntime.ok;
         if (!sceneRuntime.ok) {
             addError(report, "scene runtime materialization is not ready");
@@ -5717,7 +6457,7 @@ MissionTutorialRuntimeReport runMissionTutorialRuntime(
         native::NativeRegistry registry;
         registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
 
-        const auto module = script::loadSqasmModule(modulePath);
+        const auto module = loadSqasmModuleCached(modulePath);
         const auto baselineModules = loadStartupBaselineModules(manifest, missionModuleName);
 
         script::ScriptRunOptions options;
@@ -5814,6 +6554,21 @@ MissionTutorialRuntimeReport runMissionTutorialRuntime(
         if (report.enterTransitionCommands < 1 || report.leaveTransitionCommands < 1) {
             addError(report, "tutorial transition lifecycle was not recovered");
         }
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+MissionTutorialRuntimeReport runMissionTutorialRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    MissionTutorialRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        const auto sceneRuntime = runSceneRuntimeMaterialization(manifestPath, repoRoot);
+        report = buildMissionTutorialRuntimeReport(manifest, sceneRuntime, repoRoot);
     } catch (const std::exception& ex) {
         addError(report, ex.what());
     }

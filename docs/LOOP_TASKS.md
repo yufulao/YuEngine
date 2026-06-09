@@ -1245,23 +1245,55 @@ Boundary:
 
 ### L29: Concrete HWND And D3D9 Device Creation Execution
 
-Status: active after L28.
+Status: completed after L28.
 
 Deliver:
 
-- consume the 3 L28 platform/device precondition records;
-- implement a runtime-owned window surface path and Direct3D9 interface/device creation result
-  records;
-- preserve the inherited 1280x720 backbuffer and renderer profile;
-- keep all downstream resource/upload/state/draw/present/capture queues blocked unless a concrete
-  device handle result is ready.
+- consumed the 3 L28 platform/device precondition records;
+- implemented hidden Win32 HWND creation, `Direct3DCreate9`, and
+  `IDirect3D9::CreateDevice` execution result records;
+- preserved the inherited 1280x720 backbuffer and renderer profile;
+- kept all downstream resource/upload/state/draw/present/capture queues preserved for the next
+  device-service layer.
 
 Acceptance:
 
-- a device-handle result must point back to L28, L27, and L26 records;
-- failure to create a real HWND/D3D9 device must be explicit and must not fall back to diagnostic
-  success;
-- no standalone launcher, preview window, or manual render path can satisfy L29.
+- `yuengine_cli backend-device-create samples/touhou_new_world/project.json --repo-root .`
+  reports `device_creation_runtime_ready=true`;
+- CTest `yuengine_backend_device_creation_contract` locks 3 execution records, 3 consumed adapter
+  preconditions, the inherited 1280x720 backbuffer, and 685 deferred downstream real calls;
+- on the current Windows test machine, the hidden HWND, `IDirect3D9`, and `IDirect3DDevice9`
+  creation records all report `real_success`;
+- no standalone launcher, preview window, or manual render path satisfies L29.
+
+Boundary:
+
+- L29 creates and releases a concrete device during the creation attempt; it does not persist a
+  runtime-owned device service handle;
+- L29 does not execute resource creation/upload/state/draw/present/capture;
+- L29 only closes the platform device creation edge so L30 can own the device service and execute
+  resource queues without bypassing recovered backend records.
+
+### L30: Persistent Device Service And Resource Creation Queue Execution
+
+Status: active after L29.
+
+Deliver:
+
+- introduce a runtime-owned backend device service handle that preserves the L29 HWND/D3D9 device
+  creation result beyond the creation attempt;
+- consume L24/L26/L28/L29 resource creation records through the service, not through a standalone
+  sample renderer;
+- execute ready `CreateTexture`, `CreateCubeTexture`, SMAA lookup texture creation, transient
+  render target/depth candidates, and font atlas placeholder handling against the real device;
+- keep upload/state/draw/present/capture blocked until resource handles are real and accounted.
+
+Acceptance:
+
+- every created resource handle must point back to its source allocation/execution record;
+- failed resource creation must be explicit and cannot downgrade to diagnostic success;
+- CTest must lock resource handle counts, ready/open accounting, D3D formats, payload sizes, and
+  downstream blocked queues.
 
 ## Stop Conditions
 
@@ -1273,18 +1305,30 @@ Do not stop unless:
 
 ## Verification Speed
 
-Full CTest is too slow when run sequentially because backend contract tests repeatedly rebuild the
-same runtime evidence chain. The default verification path is now:
+Full CTest is too slow when run sequentially because backend contract tests start separate CLI
+processes and repeatedly rebuild the runtime chain. The default edit-loop verification path is now:
 
 ```powershell
-tools\verify_runtime.ps1 -Mode full -Jobs 8
+tools\verify_runtime.ps1
 ```
 
-Use targeted edge verification while editing:
+Use targeted CTest edge verification when a named test must be exercised:
 
 ```powershell
 tools\verify_runtime.ps1 -Mode edge -Filter <ctest-name> -Jobs 8
 ```
 
+Use full parallel verification before major commits:
+
+```powershell
+tools\verify_runtime.ps1 -Mode full -Jobs 8
+```
+
 Use `-CleanBuild` after C++ header, ABI-like struct, or build-system changes. Do not default to
 bare sequential `ctest --test-dir build\cmake-bt143 -C Debug --output-on-failure`.
+
+Current measured speed after caching and scene reuse:
+
+- `yuengine_backend_device_creation_contract`: 1/1 CTest passed in 21.88 seconds.
+- `tools\verify_runtime.ps1 -SkipPython`: fast contract plus `git diff --check` in 22.3 seconds.
+- direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.

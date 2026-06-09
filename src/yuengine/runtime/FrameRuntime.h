@@ -899,6 +899,64 @@ struct BackendDeviceAdapterRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendDeviceCreationExecutionRecord {
+    std::string name;
+    std::string sourceAdapterRecord;
+    std::string sourceExecutorResult;
+    std::string sourceBridgeRecord;
+    std::string api;
+    std::string status;
+    std::string evidence;
+    std::string detail;
+    int width = 0;
+    int height = 0;
+    int attemptCount = 0;
+    int successCount = 0;
+    int failureCount = 0;
+    bool resultRecorded = false;
+    bool realHandleReady = false;
+};
+
+struct BackendDeviceCreationRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::vector<std::string> errors;
+    bool deviceAdapterOk = false;
+    bool deviceCreationRuntimeReady = false;
+    bool adapterPreconditionsConsumedReady = false;
+    bool platformExecutionAttempted = false;
+    bool windowSurfaceResultRecorded = false;
+    bool d3dInterfaceResultRecorded = false;
+    bool d3dDeviceResultRecorded = false;
+    bool downstreamQueuesPreserved = false;
+    bool backbufferExtentCarried = false;
+    bool platformSupported = false;
+    bool realWindowSurfaceReady = false;
+    bool realD3DInterfaceReady = false;
+    bool realDeviceHandleReady = false;
+    int executionResultRecords = 0;
+    int adapterRecordCount = 0;
+    int adapterPreconditionRecordsConsumed = 0;
+    int sourceDownstreamBlockedRecords = 0;
+    int downstreamRealCallsDeferred = 0;
+    int windowSurfaceAttempts = 0;
+    int d3dInterfaceAttempts = 0;
+    int d3dDeviceAttempts = 0;
+    int realSuccessRecords = 0;
+    int realFailedRecords = 0;
+    int blockedByDependencyRecords = 0;
+    int linkedPlatformInputRecords = 0;
+    int readyPlatformInputRecords = 0;
+    int trackedOpenPlatformInputRecords = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedDeviceCreationContracts = 0;
+    int trackedDeviceCreationObligations = 0;
+    int openDeviceCreationObligations = 0;
+    std::vector<BackendDeviceCreationExecutionRecord> records;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -1090,6 +1148,13 @@ BackendDeviceAdapterRuntimeReport runBackendDeviceAdapterRuntime(
 
 std::string backendDeviceAdapterRuntimeReportToJson(
     const BackendDeviceAdapterRuntimeReport& report);
+
+BackendDeviceCreationRuntimeReport runBackendDeviceCreationRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendDeviceCreationRuntimeReportToJson(
+    const BackendDeviceCreationRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,
