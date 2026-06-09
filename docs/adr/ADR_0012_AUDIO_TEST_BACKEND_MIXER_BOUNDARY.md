@@ -65,7 +65,8 @@ Rules:
 - channel count is fixed at stereo (`2`);
 - samples are interleaved left/right frames;
 - synthetic sample sources are setup-time arrays, not streamed data;
-- mixer output writes into caller-owned interleaved `S16` buffers;
+- mixer output overwrites caller-owned interleaved `S16` buffers for every
+  accepted requested frame/channel;
 - voice handles use slot/index plus generation, not raw pointers;
 - stale-generation handles fail explicitly;
 - disabled diagnostics/logging does not change any Audio result.
@@ -78,14 +79,25 @@ Rules:
 
 - voice gain is unsigned Q15 fixed-point in `[0, 32767]`;
 - `32767` means unity gain and `0` means silence;
-- source sample multiplied by gain uses integer arithmetic with deterministic
-  rounding toward zero;
+- each source sample is converted to signed 32-bit and scaled with
+  `(source_sample * gain) / 32767` using signed 32-bit intermediate arithmetic
+  and integer division toward zero;
+- unity gain is exact identity for all signed 16-bit source samples, including
+  `-32768`;
 - active voice samples are accumulated in signed 32-bit integers per output
   channel;
 - final output is saturated to signed 16-bit range `[-32768, 32767]`;
 - voices are mixed in stable voice-slot order;
+- every accepted mix overwrites each requested output frame/channel; existing
+  destination samples are never accumulated into the mix result;
+- frames/channels with no contributing active voice are written as silence
+  (`0`);
 - if a voice reaches end-of-source during a mix, it becomes stopped and stops
-  contributing further samples;
+  contributing further samples, and any remaining requested output with no
+  other contributing voice is written as silence;
+- if the caller-owned output buffer is undersized for the requested frames, the
+  mix returns explicit capacity status, leaves destination samples unchanged,
+  and reports `frames_written == 0`;
 - no resampling, panning, channel conversion, looping, envelopes, effects, or
   graph processing is introduced.
 

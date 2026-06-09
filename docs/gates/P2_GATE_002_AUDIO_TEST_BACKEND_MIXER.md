@@ -91,6 +91,9 @@ Failure behavior:
 - start with missing source returns explicit not-found status;
 - invalid gain outside `[0, 32767]` returns explicit invalid-value status and
   does not mutate voice state;
+- accepted mix requests overwrite every requested output frame/channel, and
+  frames/channels with no contributing active voice are written as silence
+  (`0`);
 - mix with an undersized output buffer returns explicit capacity status, leaves
   destination samples unchanged, and reports `frames_written == 0`;
 - disabled diagnostics/logging does not change any Audio result.
@@ -163,6 +166,16 @@ First-slice bounds:
 - source frame capacity: 256 stereo frames per source maximum;
 - output mix request: 64 stereo frames maximum;
 - voice gain: unsigned Q15 `[0, 32767]`;
+- Q15 sample scaling formula:
+  `(source_sample * gain) / 32767`, where `source_sample` is converted to signed
+  32-bit first, multiplication uses signed 32-bit intermediate arithmetic, and
+  integer division rounds toward zero;
+- unity gain `32767` must preserve every signed 16-bit source sample exactly,
+  including `-32768`;
+- accepted mix requests overwrite every requested output frame/channel; existing
+  destination contents are not accumulated into the mix result;
+- requested frames/channels with no contributing active voice, including tail
+  after end-of-source, are written as silence (`0`);
 - mix execution must not allocate or grow storage.
 
 Pass/fail rule:
@@ -199,8 +212,12 @@ Fast gate tests required before the slice can be considered complete:
 - `Audio_VoiceCapacityOverflow_DoesNotMutate`
 - `Audio_StopVoice_InvalidatesStaleHandle`
 - `Audio_MixSingleVoice_WritesDeterministicS16StereoSamples`
+- `Audio_MixUnityGain_PreservesS16EdgeSamples`
+- `Audio_MixFractionalGain_RoundsTowardZeroDeterministically`
 - `Audio_MixMultipleVoices_UsesStableOrderAndSaturates`
 - `Audio_MixStopsVoiceAtEndOfSource`
+- `Audio_MixEndedVoice_WritesSilentTail`
+- `Audio_MixOverwritesPrefilledDestination`
 - `Audio_MixRejectsUndersizedBufferWithoutWritingSamples`
 - `Audio_Mix_DoesNotGrowVoiceStorage`
 - `Audio_DisabledDiagnosticsDoesNotChangeResults`
