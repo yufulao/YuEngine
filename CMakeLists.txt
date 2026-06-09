@@ -174,4 +174,13 @@ if(BUILD_TESTING)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         PASS_REGULAR_EXPRESSION "ok=true scene_runtime_ok=true renderer_frame_ready=true actor_frame_ready=true camera_frame_ready=true input_frame_ready=true event_frame_ready=true mesh_draw_candidates=111 texture_bindings=39 collision_triangles=150 actor_instances=1 rail_nodes=3 event_markers=1;renderer_profile.: .d3d9_compatible.*material_bindings.: 16.*stage_dependency_count.: 42;player_chara.: .reimuEx.*spawn_position_expression.: .toVec3\\(marker:sc01/main/ms010_0:eventMap._pos\\);camera_source.: .map/doujou/doujou.rcm.*default_target.: .ev_sc01_main_ms010_0;owner_service.: .Actor And Task Service.*control_scope.: .player_actor_camera_scene;marker.: .marker:sc01/main/ms010_0:eventMap"
     )
+
+    add_test(
+        NAME yuengine_mission_event_thread_contract
+        COMMAND yuengine_cli mission-event-thread samples/touhou_new_world/project.json --repo-root ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(yuengine_mission_event_thread_contract PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        PASS_REGULAR_EXPRESSION "ok=true scene_runtime_ok=true event_thread_found=true event_thread_executed=true entry=threadEvent0000_00 player_control_commands=2 player_control_enabled=true reset_menu_button_holding_times_commands=1 dialog_reset_commands=1 dialog_hide_commands=1 reset_player_action_commands=1 event_unit_queries=1 event_page_setup_commands=1 event_page_done_commands=1 event_volume_creates=0 event_volume_activation_commands=1 last_event_volume_enabled=false set_game_camera_if_not_commands=1 unresolved_calls=0 truncated=false;event_page.*done_commands.: 1.*camera.*set_game_camera_if_not_commands.: 1"
+    )
 endif()

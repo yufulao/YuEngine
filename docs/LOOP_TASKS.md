@@ -37,6 +37,9 @@ Hard current directive:
 - no silent native/API stubs;
 - no stop after docs, readiness, statistics, binding reports, or test-only maintenance;
 - every checkpoint must leave a named next contract edge and then continue to that edge.
+- no stop after a successful `script-run`, `scene-entry`, `scene-runtime`, or `first-frame`
+  command unless it is immediately followed by implementation, regression coverage, docs, commit,
+  and the next non-blocked contract edge.
 
 Autonomous cycle:
 
@@ -540,7 +543,7 @@ frame and not a real backend upload.
 
 ### L11: First Mission Event Thread And Player Control Contract
 
-Status: active.
+Status: completed as first mission event/player-control contract checkpoint on 2026-06-09.
 
 Deliver:
 
@@ -556,17 +559,97 @@ Deliver:
 
 Acceptance:
 
-- no manual tutorial sequence;
-- no fake control state detached from original mission script;
+- no manual tutorial sequence: satisfied for `threadEvent0000_00`;
+- no fake control state detached from original mission script: satisfied through service mutations;
 - first-frame/gameplay-frame state changes only through original bytecode and native service
-  mutations;
-- missing event/page/player-control APIs remain explicit errors or obligations.
+  mutations: satisfied for this edge;
+- `mission-event-thread` reports the first mission event thread contract without dumping unrelated
+  full VM state;
+- the report proves, from original `threadEvent0000_00` bytecode, player-control gating, menu-hold
+  reset, dialog reset/hide, event-page setup/done, event-volume activation, and camera restoration
+  service mutations;
+- L10 `first-frame` still passes after L11 state is modeled.
+
+Verified metric:
+
+```text
+ok=true scene_runtime_ok=true event_thread_found=true event_thread_executed=true entry=threadEvent0000_00 player_control_commands=2 player_control_enabled=true reset_menu_button_holding_times_commands=1 dialog_reset_commands=1 dialog_hide_commands=1 reset_player_action_commands=1 event_unit_queries=1 event_page_setup_commands=1 event_page_done_commands=1 event_volume_creates=0 event_volume_activation_commands=1 last_event_volume_enabled=false set_game_camera_if_not_commands=1 unresolved_calls=0 truncated=false
+```
 
 Next edge:
 
-- inspect `mission/sc01/main/ms010_0.b64.sqasm` event thread functions and call graph;
-- extend `ScriptRuntime` receiver/native behavior for the first event thread entry;
-- add a CLI/test that proves event thread/player-control state reaches runtime service state.
+- continue immediately into L12 tutorial/business-state functions connected to first mission event
+  pages;
+- inspect actor/tutorial/event flag call graph beyond `threadEvent0000_00`;
+- keep new APIs as runtime service contracts with CTest gates, not visual or scripted stand-ins.
+
+### L12: First Mission Tutorial And Business-State Contract
+
+Status: active after L11.
+
+Deliver:
+
+- model or execute the early tutorial/event actor branches connected to first mission event pages;
+- implement the next set of runtime-owned actor/event APIs such as `ActorTutorial`, `PushActor`,
+  `WaitActor`, `UpdateUnits`, `GetPlayerControl`, and current-player/player-name queries;
+- keep tutorial completion, event flags, quest markers, and actor handles in service-owned state.
+
+Acceptance:
+
+- no scripted tutorial replacement outside original bytecode;
+- tutorial actor/page state mutates only through ScriptRuntime/native service contracts;
+- unconfirmed effect/actor APIs remain visible obligations.
+
+### L13: Script-Driven Title UI Command Payload Contract
+
+Status: queued after L12 or parallel if it does not touch L11 files.
+
+Deliver:
+
+- convert title UI object calls into renderable UI command payloads;
+- bind original title background/logo/font/string/menu resources through VFS;
+- cover `GraphString`, `MenuObject`, `DrawString`, `DrawFrameUsual`, `DrawRectUsual`,
+  `GetStringSize`, and related UI APIs with service-owned state.
+
+Acceptance:
+
+- no hand-written title menu;
+- title menu layout and selectable state come from original title bytecode and UI service payload;
+- command buffers are regression-tested and do not regress title/new-game script flow.
+
+### L14: Save/Load/Continue/Options Branch Contract
+
+Status: queued after L13 or parallel in save-scenario lane.
+
+Deliver:
+
+- execute original title bytecode branches for Continue, Load/Overwrite, Options, and Exit where
+  platform policy allows;
+- expand Save/Profile/Scenario Service return schemas beyond the current empty/new-game path;
+- keep Steam/login/entitlement as replaceable Platform Service state, not bypass logic.
+
+Acceptance:
+
+- no fake save menu state;
+- branch transitions and enabled/disabled states are driven by title scripts and service inputs;
+- every unsupported platform/save behavior is an explicit runtime obligation.
+
+### L15: Gameplay Frame Update Loop Contract
+
+Status: queued after L11-L14 have enough service state.
+
+Deliver:
+
+- join input, actor/task, camera, event, renderer, audio, and save services into a repeated
+  gameplay-frame update contract;
+- consume scene-runtime handles and mission event state in one frame report;
+- begin replacing diagnostics-only frame reports with backend-ready command buffers.
+
+Acceptance:
+
+- no blue-screen, mesh-only, or T-pose completion claim;
+- frame state is sourced from project/VFS/script/native services;
+- residual mismatches are named and become the next loop, not hidden.
 
 ## Stop Conditions
 

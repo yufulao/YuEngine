@@ -188,6 +188,7 @@ struct ScriptRunOptions {
     bool saveListEmpty = true;
     bool continueDisabled = true;
     bool canShutdown = false;
+    bool executeEventSetupScripts = false;
 };
 
 ScriptExecutionPlan planEntryExecution(

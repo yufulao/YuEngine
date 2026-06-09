@@ -87,8 +87,9 @@ Python unittest: 6/6 passed
 L10 proves the first-frame renderer/input/event contract can be built from original script-driven
 runtime state and real resource payloads.
 
-It is still not a playable frame. The next edge must execute or model first mission event threads
-and tutorial/control behavior:
+It is still not a playable frame. L11 has since executed the first mission `threadEvent0000_00`
+event thread and modeled the first player-control/event-page/camera mutations. Remaining next
+edges must continue into first mission tutorial/control behavior:
 
 - `threadEvent0000_00` and related first mission event/page functions;
 - `SetPlayerControl`, `SetPlayerPos`, `SetPlayerAngleY`, `LandPlayer`, `GetPlayerPos`;

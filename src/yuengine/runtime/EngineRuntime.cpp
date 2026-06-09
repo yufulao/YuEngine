@@ -505,14 +505,18 @@ SceneEntryRuntimeReport runSceneEntryRuntime(
 {
     SceneEntryRuntimeReport report;
     try {
+        traceBoot("scene-entry load manifest");
         const project::ProjectManifest manifest = project::loadProjectManifest(manifestPath);
 
+        traceBoot("scene-entry mount vfs");
         resource::VirtualFileSystem vfs;
         vfs.mountProject(manifest);
 
+        traceBoot("scene-entry load native registry");
         native::NativeRegistry registry;
         registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
 
+        traceBoot("scene-entry load title script");
         native::NativeServiceCatalog titleCatalog;
         const auto titleModulePath = script::resolveScriptModule(manifestScriptRoots(manifest), manifest.startup.entryModule);
         if (titleModulePath.empty()) {
@@ -527,8 +531,10 @@ SceneEntryRuntimeReport runSceneEntryRuntime(
         titleOptions.inputScenario = "title-new-game";
         titleOptions.menuSelectedIndex = 1;
         titleOptions.menuDecide = true;
+        traceBoot("scene-entry execute title new-game");
         const auto titleExecution =
             script::runEntryScript(titleModule, titleBaselineModules, manifest.startup.entryFunction, registry, titleCatalog, titleOptions);
+        traceBoot("scene-entry copy title state");
         const auto titleState = titleCatalog.runtimeState();
 
         std::string missionModuleName = titleState.sceneStage.currentMissionScript;
@@ -540,6 +546,7 @@ SceneEntryRuntimeReport runSceneEntryRuntime(
             return report;
         }
 
+        traceBoot("scene-entry load mission setup script");
         native::NativeServiceCatalog missionCatalog;
         const auto missionModulePath = script::resolveScriptModule(manifestScriptRoots(manifest), missionModuleName);
         if (missionModulePath.empty()) {
@@ -552,10 +559,13 @@ SceneEntryRuntimeReport runSceneEntryRuntime(
         script::ScriptRunOptions missionOptions;
         missionOptions.frames = 1;
         missionOptions.inputScenario = "passive";
+        traceBoot("scene-entry execute mission setup");
         const auto missionExecution =
             script::runEntryScript(missionModule, missionBaselineModules, "setupProcess", registry, missionCatalog, missionOptions);
+        traceBoot("scene-entry copy mission state");
         const auto missionState = missionCatalog.runtimeState();
 
+        traceBoot("scene-entry build report");
         report = buildSceneEntryRuntimeReport(manifest, titleState, missionState, vfs);
         report.titleNewGameExecuted = titleExecution.entryFound && titleExecution.executed;
         report.missionSetupExecuted = missionExecution.entryFound && missionExecution.executed;
@@ -567,6 +577,7 @@ SceneEntryRuntimeReport runSceneEntryRuntime(
         if (!report.missionSetupExecuted) {
             addError(report, "mission setup script run did not execute");
         }
+        traceBoot("scene-entry complete");
     } catch (const std::exception& ex) {
         addError(report, ex.what());
     }

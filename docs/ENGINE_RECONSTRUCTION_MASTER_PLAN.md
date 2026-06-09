@@ -111,7 +111,30 @@ Current target state remains original-script driven title, save/new-game, scene 
 camera, input, tutorial, and then generic reusable runtime. Anything below that is an in-progress
 checkpoint, not a finished engine.
 
+Do not stop after the current edge if the full target is not reached. The operative completion
+bar is:
+
+```text
+engine runtime source exists
+-> original sample boots through that runtime
+-> original scripts drive title/menu/new-game/load
+-> scene load reaches real stage resources
+-> player/camera/input/tutorial/event state advances through services
+-> renderer/audio/save baselines consume the same state
+```
+
+Every smaller result is a checkpoint only. A checkpoint may be committed, but the next action is
+to advance the next non-blocked runtime edge. This is especially important after `script-run`,
+`scene-entry`, `scene-runtime`, and `first-frame`: those commands are regression gates and evidence
+producers, not substitutes for the game loop.
+
 The current L7 route is: original title bytecode -> cross-module class/method inheritance ->
 runtime-owned script/service state -> title scene dispatch -> original menu state -> save/new-game
 services -> scene/stage load. Each checkpoint must move one of those arrows forward or harden a
 regression gate around an already verified arrow.
+
+Current latest checkpoint: L11 now executes the original first mission `threadEvent0000_00`
+event thread through `yuengine_cli mission-event-thread`, with player control, dialog lifecycle,
+event page setup/done, event volume activation, and camera restoration recorded in service-owned
+state with `unresolved_calls=0`. This is still not a playable loop; the next edge is L12 tutorial
+and mission business-state behavior.

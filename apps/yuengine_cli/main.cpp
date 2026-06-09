@@ -40,6 +40,7 @@ void usage()
               << "  yuengine_cli scene-entry <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli scene-runtime <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli first-frame <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli script <project.json> <module>\n"
               << "  yuengine_cli script-plan <project.json> [module] [function] [--repo-root <path>]\n"
               << "  yuengine_cli script-run <project.json> [module] [function] [--frames N] [--input-scenario <name>] [--repo-root <path>]\n"
@@ -48,8 +49,17 @@ void usage()
 
 bool traceEnabled()
 {
+#if defined(_MSC_VER)
+    char* value = nullptr;
+    size_t size = 0;
+    _dupenv_s(&value, &size, "YUENGINE_TRACE_BOOT");
+    const bool enabled = value != nullptr && value[0] != '\0';
+    std::free(value);
+    return enabled;
+#else
     const char* value = std::getenv("YUENGINE_TRACE_BOOT");
     return value != nullptr && value[0] != '\0';
+#endif
 }
 
 void traceCli(const std::string& phase)
@@ -327,6 +337,11 @@ int main(int argc, char** argv)
             std::cout << yu::runtime::firstFrameRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
+        if (command == "mission-event-thread") {
+            auto report = yu::runtime::runMissionEventThreadRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::missionEventThreadRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
         if (command == "script") {
             if (argc < 4) {
                 usage();
@@ -361,24 +376,33 @@ int main(int argc, char** argv)
             return plan.entryFound ? 0 : 1;
         }
         if (command == "script-run") {
+            traceCli("script-run load manifest");
             const auto loaded = yu::project::loadProjectManifest(manifest);
+            traceCli("script-run parse args");
             const auto args = positionalArgs(argc, argv, 3);
             const std::string moduleName = args.empty() ? loaded.startup.entryModule : args[0];
             const std::string entryFunction = args.size() < 2 ? loaded.startup.entryFunction : args[1];
             const yu::script::ScriptRunOptions options = scriptRunOptions(argc, argv);
+            traceCli("script-run resolve module");
             const auto modulePath = yu::script::resolveScriptModule(scriptRoots(loaded), moduleName);
             if (modulePath.empty()) {
                 std::cerr << "yuengine_cli: script module not found: " << moduleName << "\n";
                 return 1;
             }
+            traceCli("script-run load native surface");
             yu::native::NativeRegistry registry;
             registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
             yu::native::NativeServiceCatalog catalog;
+            traceCli("script-run load module");
             const auto module = yu::script::loadSqasmModule(modulePath);
+            traceCli("script-run load baseline modules");
             const auto baselineModules = loadStartupBaselineModules(loaded, moduleName);
+            traceCli("script-run execute runtime");
             const auto report =
                 yu::script::runEntryScript(module, baselineModules, entryFunction, registry, catalog, options);
+            traceCli("script-run serialize report");
             const auto json = yu::script::scriptExecutionReportToJson(report);
+            traceCli("script-run write report");
             const size_t written = std::fwrite(json.data(), 1, json.size(), stdout);
             std::fflush(stdout);
             if (written != json.size()) {

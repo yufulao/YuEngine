@@ -189,8 +189,12 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
         return;
     }
 
-    if (mutation.service == "Platform Service" && mutation.action == "platform_flag") {
-        runtimeState_.platform.flags[mutation.api] = mutation.value;
+    if (mutation.service == "Platform Service") {
+        if (mutation.action == "reset_menu_button_holding_times") {
+            ++runtimeState_.platform.resetMenuButtonHoldingTimesCommands;
+        } else {
+            runtimeState_.platform.flags[mutation.api] = mutation.value;
+        }
         return;
     }
 
@@ -271,7 +275,27 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
         }
 
         ++runtimeState_.actorTask.actorMethodCommands;
-        if (mutation.action == "set_wait_for_landing") {
+        if (mutation.action == "set_player_control") {
+            ++runtimeState_.actorTask.playerControlCommands;
+            runtimeState_.actorTask.playerControlEnabled = valueAfterPrefix(mutation.value, "enabled=");
+        } else if (mutation.action == "set_player_pos") {
+            ++runtimeState_.actorTask.setPlayerPosCommands;
+            runtimeState_.actorTask.currentPlayerPosition = valueAfterPrefix(mutation.value, "pos=");
+        } else if (mutation.action == "set_player_angle_y") {
+            ++runtimeState_.actorTask.setPlayerAngleYCommands;
+            runtimeState_.actorTask.currentPlayerRotY = valueAfterPrefix(mutation.value, "rot_y=");
+        } else if (mutation.action == "land_player") {
+            ++runtimeState_.actorTask.landPlayerCommands;
+            runtimeState_.actorTask.playerLanded = valueAfterPrefix(mutation.value, "landed=");
+            const std::string pos = valueAfterPrefix(mutation.value, "pos=");
+            if (!pos.empty()) {
+                runtimeState_.actorTask.currentPlayerPosition = pos;
+            }
+        } else if (mutation.action == "get_player_pos") {
+            ++runtimeState_.actorTask.getPlayerPosQueries;
+        } else if (mutation.action == "reset_player_action") {
+            ++runtimeState_.actorTask.resetPlayerActionCommands;
+        } else if (mutation.action == "set_wait_for_landing") {
             runtimeState_.actorTask.waitForLanding = valueAfterPrefix(mutation.value, "enabled=");
         } else if (mutation.action == "fill_heal_progress") {
             runtimeState_.actorTask.healProgressFilled = mutation.value;
@@ -299,6 +323,21 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
         } else if (mutation.action == "set_default_camera_state") {
             ++runtimeState_.camera.defaultCameraStateCommands;
             runtimeState_.camera.defaultCameraStateTarget = mutation.value;
+        } else if (mutation.action == "set_game_camera_if_not") {
+            ++runtimeState_.camera.setGameCameraIfNotCommands;
+            runtimeState_.camera.gameCameraIfNotTarget = mutation.value;
+        }
+        return;
+    }
+
+    if (mutation.service == "Collision And Physics-Lite Service") {
+        if (mutation.action == "event_volume_create") {
+            ++runtimeState_.collisionPhysicsLite.eventVolumeCreates;
+            runtimeState_.collisionPhysicsLite.lastEventVolume = mutation.target;
+        } else if (mutation.action == "event_volume_activate") {
+            ++runtimeState_.collisionPhysicsLite.eventVolumeActivationCommands;
+            runtimeState_.collisionPhysicsLite.lastEventVolume = mutation.target;
+            runtimeState_.collisionPhysicsLite.lastEventVolumeEnabled = valueAfterPrefix(mutation.value, "enabled=");
         }
         return;
     }
@@ -317,6 +356,35 @@ void NativeServiceCatalog::recordStateMutation(const NativeServiceStateMutation&
             runtimeState_.eventQuestFlag.currentCheckpoint = valueAfterPrefix(mutation.value, "checkpoint=");
         } else if (mutation.action == "check_fall") {
             ++runtimeState_.eventQuestFlag.checkFallCommands;
+        } else if (mutation.action == "event_class_create") {
+            ++runtimeState_.eventQuestFlag.eventClassCreates;
+            runtimeState_.eventQuestFlag.currentEventUnit = mutation.target;
+        } else if (mutation.action == "event_unit_query") {
+            ++runtimeState_.eventQuestFlag.eventUnitQueries;
+            runtimeState_.eventQuestFlag.currentEventUnit = mutation.target;
+        } else if (mutation.action == "event_page_create") {
+            ++runtimeState_.eventQuestFlag.eventPageCreates;
+            runtimeState_.eventQuestFlag.currentEventPage = mutation.target;
+        } else if (mutation.action == "event_marker_create") {
+            ++runtimeState_.eventQuestFlag.eventMarkerCreates;
+            runtimeState_.eventQuestFlag.currentMarker = mutation.target;
+        } else if (mutation.action == "event_actor_create") {
+            ++runtimeState_.eventQuestFlag.eventActorCreates;
+            runtimeState_.eventQuestFlag.currentEventActor = mutation.target;
+        } else if (mutation.action == "event_page_setup") {
+            ++runtimeState_.eventQuestFlag.eventPageSetupCommands;
+            runtimeState_.eventQuestFlag.currentEventPage = mutation.target;
+        } else if (mutation.action == "event_page_done") {
+            ++runtimeState_.eventQuestFlag.eventPageDoneCommands;
+            runtimeState_.eventQuestFlag.currentEventPage = mutation.target;
+        } else if (mutation.action == "event_flag_query") {
+            ++runtimeState_.eventQuestFlag.eventFlagQueries;
+        } else if (mutation.action == "event_flag_init") {
+            ++runtimeState_.eventQuestFlag.eventFlagInitCommands;
+        } else if (mutation.action == "dialog_reset") {
+            ++runtimeState_.eventQuestFlag.dialogResetCommands;
+        } else if (mutation.action == "dialog_hide") {
+            ++runtimeState_.eventQuestFlag.dialogHideCommands;
         }
         return;
     }
@@ -392,7 +460,8 @@ std::string nativeRuntimeServiceStateToJson(const NativeRuntimeServiceState& sta
     out << "\"started_mission\": \"" << core::jsonEscape(state.saveProfileScenario.startedMission) << "\", ";
     out << "\"difficulty_mode\": \"" << core::jsonEscape(state.saveProfileScenario.difficultyMode) << "\", ";
     out << "\"start_new_game\": \"" << core::jsonEscape(state.saveProfileScenario.startNewGame) << "\"}, ";
-    out << "\"platform\": {\"flags\": ";
+    out << "\"platform\": {\"reset_menu_button_holding_times_commands\": "
+        << state.platform.resetMenuButtonHoldingTimesCommands << ", \"flags\": ";
     writeStringMap(out, state.platform.flags);
     out << "}, ";
     out << "\"audio\": {\"play_bgm_commands\": " << state.audio.playBgmCommands
@@ -419,9 +488,17 @@ std::string nativeRuntimeServiceStateToJson(const NativeRuntimeServiceState& sta
     out << "\"actor_task\": {\"push_player_chara_commands\": "
         << state.actorTask.pushPlayerCharaCommands
         << ", \"actor_method_commands\": " << state.actorTask.actorMethodCommands
+        << ", \"player_control_commands\": " << state.actorTask.playerControlCommands
+        << ", \"set_player_pos_commands\": " << state.actorTask.setPlayerPosCommands
+        << ", \"set_player_angle_y_commands\": " << state.actorTask.setPlayerAngleYCommands
+        << ", \"land_player_commands\": " << state.actorTask.landPlayerCommands
+        << ", \"get_player_pos_queries\": " << state.actorTask.getPlayerPosQueries
+        << ", \"reset_player_action_commands\": " << state.actorTask.resetPlayerActionCommands
         << ", \"current_player_chara\": \"" << core::jsonEscape(state.actorTask.currentPlayerChara)
         << "\", \"current_player_position\": \"" << core::jsonEscape(state.actorTask.currentPlayerPosition)
         << "\", \"current_player_rot_y\": \"" << core::jsonEscape(state.actorTask.currentPlayerRotY)
+        << "\", \"player_control_enabled\": \"" << core::jsonEscape(state.actorTask.playerControlEnabled)
+        << "\", \"player_landed\": \"" << core::jsonEscape(state.actorTask.playerLanded)
         << "\", \"wait_for_landing\": \"" << core::jsonEscape(state.actorTask.waitForLanding)
         << "\", \"heal_progress_filled\": \"" << core::jsonEscape(state.actorTask.healProgressFilled)
         << "\", \"armed\": \"" << core::jsonEscape(state.actorTask.armed)
@@ -431,21 +508,45 @@ std::string nativeRuntimeServiceStateToJson(const NativeRuntimeServiceState& sta
         << ", \"enable_rail_camera_commands\": " << state.camera.enableRailCameraCommands
         << ", \"enable_auto_adjust_commands\": " << state.camera.enableAutoAdjustCommands
         << ", \"default_camera_state_commands\": " << state.camera.defaultCameraStateCommands
+        << ", \"set_game_camera_if_not_commands\": " << state.camera.setGameCameraIfNotCommands
         << ", \"game_camera_pushed\": \"" << core::jsonEscape(state.camera.gameCameraPushed)
         << "\", \"rail_camera_path\": \"" << core::jsonEscape(state.camera.railCameraPath)
         << "\", \"rail_camera_enabled\": \"" << core::jsonEscape(state.camera.railCameraEnabled)
         << "\", \"auto_camera_adjust_enabled\": \"" << core::jsonEscape(state.camera.autoCameraAdjustEnabled)
         << "\", \"default_camera_state_target\": \""
-        << core::jsonEscape(state.camera.defaultCameraStateTarget) << "\"}, ";
+        << core::jsonEscape(state.camera.defaultCameraStateTarget)
+        << "\", \"game_camera_if_not_target\": \"" << core::jsonEscape(state.camera.gameCameraIfNotTarget)
+        << "\"}, ";
+    out << "\"collision_physics_lite\": {\"event_volume_creates\": "
+        << state.collisionPhysicsLite.eventVolumeCreates
+        << ", \"event_volume_activation_commands\": "
+        << state.collisionPhysicsLite.eventVolumeActivationCommands
+        << ", \"last_event_volume\": \"" << core::jsonEscape(state.collisionPhysicsLite.lastEventVolume)
+        << "\", \"last_event_volume_enabled\": \""
+        << core::jsonEscape(state.collisionPhysicsLite.lastEventVolumeEnabled) << "\"}, ";
     out << "\"event_quest_flag\": {\"clear_current_quest_commands\": "
         << state.eventQuestFlag.clearCurrentQuestCommands
         << ", \"mission_request_queries\": " << state.eventQuestFlag.missionRequestQueries
         << ", \"marker_queries\": " << state.eventQuestFlag.markerQueries
         << ", \"checkpoint_commands\": " << state.eventQuestFlag.checkpointCommands
         << ", \"check_fall_commands\": " << state.eventQuestFlag.checkFallCommands
+        << ", \"event_class_creates\": " << state.eventQuestFlag.eventClassCreates
+        << ", \"event_unit_queries\": " << state.eventQuestFlag.eventUnitQueries
+        << ", \"event_page_creates\": " << state.eventQuestFlag.eventPageCreates
+        << ", \"event_marker_creates\": " << state.eventQuestFlag.eventMarkerCreates
+        << ", \"event_actor_creates\": " << state.eventQuestFlag.eventActorCreates
+        << ", \"event_page_setup_commands\": " << state.eventQuestFlag.eventPageSetupCommands
+        << ", \"event_page_done_commands\": " << state.eventQuestFlag.eventPageDoneCommands
+        << ", \"event_flag_queries\": " << state.eventQuestFlag.eventFlagQueries
+        << ", \"event_flag_init_commands\": " << state.eventQuestFlag.eventFlagInitCommands
+        << ", \"dialog_reset_commands\": " << state.eventQuestFlag.dialogResetCommands
+        << ", \"dialog_hide_commands\": " << state.eventQuestFlag.dialogHideCommands
         << ", \"current_request\": \"" << core::jsonEscape(state.eventQuestFlag.currentRequest)
         << "\", \"current_marker\": \"" << core::jsonEscape(state.eventQuestFlag.currentMarker)
         << "\", \"current_checkpoint\": \"" << core::jsonEscape(state.eventQuestFlag.currentCheckpoint)
+        << "\", \"current_event_unit\": \"" << core::jsonEscape(state.eventQuestFlag.currentEventUnit)
+        << "\", \"current_event_page\": \"" << core::jsonEscape(state.eventQuestFlag.currentEventPage)
+        << "\", \"current_event_actor\": \"" << core::jsonEscape(state.eventQuestFlag.currentEventActor)
         << "\"}, ";
     out << "\"ui_render_2d\": {\"created_objects\": " << state.uiRender2d.createdObjects
         << ", \"command_count\": " << state.uiRender2d.commandCount << ", \"objects\": [";

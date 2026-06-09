@@ -1,14 +1,26 @@
 #include "yuengine/runtime/FrameRuntime.h"
 
 #include "yuengine/core/Json.h"
+#include "yuengine/native/NativeRegistry.h"
 #include "yuengine/project/ProjectManifest.h"
+#include "yuengine/script/ScriptRuntime.h"
+#include "yuengine/script/SqasmModule.h"
 
+#include <algorithm>
+#include <set>
 #include <sstream>
+#include <stdexcept>
 
 namespace yu::runtime {
 namespace {
 
 void addError(FirstFrameRuntimeReport& report, const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
+void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
     report.errors.push_back(message);
@@ -21,6 +33,58 @@ void writeStringArray(std::ostringstream& out, const std::vector<std::string>& v
         out << (i == 0 ? "" : ", ") << "\"" << core::jsonEscape(values[i]) << "\"";
     }
     out << "]";
+}
+
+std::vector<std::filesystem::path> scriptRoots(const project::ProjectManifest& manifest)
+{
+    std::vector<std::filesystem::path> roots;
+    for (const auto& root : manifest.scriptRoots) {
+        roots.push_back(root.path);
+    }
+    return roots;
+}
+
+void appendUnique(std::vector<std::string>& values, const std::string& value)
+{
+    if (std::find(values.begin(), values.end(), value) == values.end()) {
+        values.push_back(value);
+    }
+}
+
+std::vector<script::SqasmModule> loadStartupBaselineModules(
+    const project::ProjectManifest& manifest,
+    const std::string& entryModule)
+{
+    std::vector<std::string> moduleNames;
+    for (const auto& preload : manifest.startup.preloadScripts) {
+        appendUnique(moduleNames, preload);
+    }
+    for (const auto& dependency : manifest.startup.dependencyScripts) {
+        appendUnique(moduleNames, dependency);
+    }
+
+    std::vector<script::SqasmModule> modules;
+    const auto roots = scriptRoots(manifest);
+    for (const auto& moduleName : moduleNames) {
+        if (moduleName == entryModule) {
+            continue;
+        }
+        const auto modulePath = script::resolveScriptModule(roots, moduleName);
+        if (modulePath.empty()) {
+            throw std::runtime_error("startup baseline script module not found: " + moduleName);
+        }
+        modules.push_back(script::loadSqasmModule(modulePath));
+    }
+    return modules;
+}
+
+int uniqueNativeApiCount(const script::ScriptExecutionReport& report)
+{
+    std::set<std::string> apis;
+    for (const auto& obligation : report.obligations) {
+        apis.insert(obligation.api);
+    }
+    return static_cast<int>(apis.size());
 }
 
 } // namespace
@@ -145,6 +209,184 @@ std::string firstFrameRuntimeReportToJson(const FirstFrameRuntimeReport& report)
     out << "\"ready\": " << (report.event.ready ? "true" : "false")
         << ", \"marker\": \"" << core::jsonEscape(report.event.marker)
         << "\", \"event_markers\": " << report.event.eventMarkers << "}\n";
+    out << "}\n";
+    return out.str();
+}
+
+MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    MissionEventThreadRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        report.projectId = manifest.projectId;
+
+        const auto sceneRuntime = runSceneRuntimeMaterialization(manifestPath, repoRoot);
+        report.sceneRuntimeOk = sceneRuntime.ok;
+        if (!sceneRuntime.ok) {
+            addError(report, "scene runtime materialization is not ready");
+        }
+
+        std::string missionModuleName = manifest.oracle.firstMissionCandidate;
+        if (missionModuleName.empty()) {
+            addError(report, "first mission candidate is not available in project oracle hints");
+            return report;
+        }
+
+        const auto modulePath = script::resolveScriptModule(scriptRoots(manifest), missionModuleName);
+        if (modulePath.empty()) {
+            addError(report, "first mission event script module not found: " + missionModuleName);
+            return report;
+        }
+
+        native::NativeRegistry registry;
+        registry.loadMarkdownSurface(repoRoot / "docs" / "native_boundary_spec" / "title_first_mission.md");
+        native::NativeServiceCatalog catalog;
+
+        const auto module = script::loadSqasmModule(modulePath);
+        const auto baselineModules = loadStartupBaselineModules(manifest, missionModuleName);
+
+        script::ScriptRunOptions options;
+        options.frames = 0;
+        options.inputScenario = "passive";
+        options.executeEventSetupScripts = false;
+
+        report.module = module.path.generic_string();
+        report.entryFunction = "threadEvent0000_00";
+        const auto execution =
+            script::runEntryScript(module, baselineModules, report.entryFunction, registry, catalog, options);
+        const auto& state = catalog.runtimeState();
+
+        report.eventThreadFound = execution.entryFound;
+        report.eventThreadExecuted = execution.executed;
+        report.scriptStatus = execution.status;
+        report.scriptFunctions = execution.scriptFunctions;
+        report.scriptMethods = execution.scriptMethods;
+        report.nativeObligations = execution.nativeObligations;
+        report.nativeImplementedCalls = execution.nativeImplementedCalls;
+        report.uniqueNativeApis = uniqueNativeApiCount(execution);
+        report.serviceStateEvents = execution.serviceStateEventCount;
+        report.engineObjectCalls = execution.engineObjectCalls;
+        report.valueMethodCalls = execution.valueMethodCalls;
+        report.unresolvedCalls = execution.unresolvedCalls;
+        report.truncated = execution.truncated;
+        report.playerControlCommands = state.actorTask.playerControlCommands;
+        report.playerControlEnabled = state.actorTask.playerControlEnabled;
+        report.resetMenuButtonHoldingTimesCommands = state.platform.resetMenuButtonHoldingTimesCommands;
+        report.dialogResetCommands = state.eventQuestFlag.dialogResetCommands;
+        report.dialogHideCommands = state.eventQuestFlag.dialogHideCommands;
+        report.resetPlayerActionCommands = state.actorTask.resetPlayerActionCommands;
+        report.eventUnitQueries = state.eventQuestFlag.eventUnitQueries;
+        report.eventPageSetupCommands = state.eventQuestFlag.eventPageSetupCommands;
+        report.eventPageDoneCommands = state.eventQuestFlag.eventPageDoneCommands;
+        report.eventVolumeCreates = state.collisionPhysicsLite.eventVolumeCreates;
+        report.eventVolumeActivationCommands = state.collisionPhysicsLite.eventVolumeActivationCommands;
+        report.lastEventVolumeEnabled = state.collisionPhysicsLite.lastEventVolumeEnabled;
+        report.setGameCameraIfNotCommands = state.camera.setGameCameraIfNotCommands;
+        report.gameCameraIfNotTarget = state.camera.gameCameraIfNotTarget;
+
+        if (!report.eventThreadFound || !report.eventThreadExecuted) {
+            addError(report, "first mission event thread did not execute");
+        }
+        if (report.unresolvedCalls != 0) {
+            addError(report, "first mission event thread has unresolved calls");
+        }
+        if (report.truncated) {
+            addError(report, "first mission event thread execution truncated");
+        }
+        if (report.playerControlCommands < 2 || report.playerControlEnabled != "true") {
+            addError(report, "player-control gate was not recovered from the event thread");
+        }
+        if (report.resetMenuButtonHoldingTimesCommands < 1) {
+            addError(report, "menu button hold reset was not recovered from the event thread");
+        }
+        if (report.dialogResetCommands < 1 || report.dialogHideCommands < 1) {
+            addError(report, "dialog reset/hide lifecycle was not recovered from the event thread");
+        }
+        if (report.resetPlayerActionCommands < 1) {
+            addError(report, "resetPlayerAction was not recovered from the event thread");
+        }
+        if (report.eventUnitQueries < 1 || report.eventPageSetupCommands < 1 || report.eventPageDoneCommands < 1) {
+            addError(report, "event unit/page setup and done state were not recovered from the event thread");
+        }
+        if (report.eventVolumeActivationCommands < 1 || report.lastEventVolumeEnabled != "false") {
+            addError(report, "event volume activation contract was not recovered from the event thread");
+        }
+        if (report.setGameCameraIfNotCommands < 1) {
+            addError(report, "game camera restoration contract was not recovered from the event thread");
+        }
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string missionEventThreadRuntimeReportToJson(const MissionEventThreadRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.mission_event_thread_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " scene_runtime_ok=" << (report.sceneRuntimeOk ? "true" : "false")
+        << " event_thread_found=" << (report.eventThreadFound ? "true" : "false")
+        << " event_thread_executed=" << (report.eventThreadExecuted ? "true" : "false")
+        << " entry=" << report.entryFunction
+        << " player_control_commands=" << report.playerControlCommands
+        << " player_control_enabled=" << report.playerControlEnabled
+        << " reset_menu_button_holding_times_commands=" << report.resetMenuButtonHoldingTimesCommands
+        << " dialog_reset_commands=" << report.dialogResetCommands
+        << " dialog_hide_commands=" << report.dialogHideCommands
+        << " reset_player_action_commands=" << report.resetPlayerActionCommands
+        << " event_unit_queries=" << report.eventUnitQueries
+        << " event_page_setup_commands=" << report.eventPageSetupCommands
+        << " event_page_done_commands=" << report.eventPageDoneCommands
+        << " event_volume_creates=" << report.eventVolumeCreates
+        << " event_volume_activation_commands=" << report.eventVolumeActivationCommands
+        << " last_event_volume_enabled=" << report.lastEventVolumeEnabled
+        << " set_game_camera_if_not_commands=" << report.setGameCameraIfNotCommands
+        << " unresolved_calls=" << report.unresolvedCalls
+        << " truncated=" << (report.truncated ? "true" : "false") << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"script\": {";
+    out << "\"module\": \"" << core::jsonEscape(report.module)
+        << "\", \"entry_function\": \"" << core::jsonEscape(report.entryFunction)
+        << "\", \"status\": \"" << core::jsonEscape(report.scriptStatus)
+        << "\", \"script_functions\": " << report.scriptFunctions
+        << ", \"script_methods\": " << report.scriptMethods
+        << ", \"native_obligations\": " << report.nativeObligations
+        << ", \"native_implemented_calls\": " << report.nativeImplementedCalls
+        << ", \"unique_native_apis\": " << report.uniqueNativeApis
+        << ", \"service_state_events\": " << report.serviceStateEvents
+        << ", \"engine_object_calls\": " << report.engineObjectCalls
+        << ", \"value_method_calls\": " << report.valueMethodCalls
+        << ", \"unresolved_calls\": " << report.unresolvedCalls
+        << ", \"truncated\": " << (report.truncated ? "true" : "false") << "},\n";
+    out << "  \"player_control\": {";
+    out << "\"commands\": " << report.playerControlCommands
+        << ", \"enabled\": \"" << core::jsonEscape(report.playerControlEnabled)
+        << "\", \"reset_player_action_commands\": " << report.resetPlayerActionCommands << "},\n";
+    out << "  \"platform_input\": {";
+    out << "\"reset_menu_button_holding_times_commands\": "
+        << report.resetMenuButtonHoldingTimesCommands << "},\n";
+    out << "  \"dialog\": {";
+    out << "\"reset_commands\": " << report.dialogResetCommands
+        << ", \"hide_commands\": " << report.dialogHideCommands << "},\n";
+    out << "  \"event_page\": {";
+    out << "\"event_unit_queries\": " << report.eventUnitQueries
+        << ", \"setup_commands\": " << report.eventPageSetupCommands
+        << ", \"done_commands\": " << report.eventPageDoneCommands << "},\n";
+    out << "  \"event_volume\": {";
+    out << "\"creates\": " << report.eventVolumeCreates
+        << ", \"activation_commands\": " << report.eventVolumeActivationCommands
+        << ", \"last_enabled\": \"" << core::jsonEscape(report.lastEventVolumeEnabled) << "\"},\n";
+    out << "  \"camera\": {";
+    out << "\"set_game_camera_if_not_commands\": " << report.setGameCameraIfNotCommands
+        << ", \"target\": \"" << core::jsonEscape(report.gameCameraIfNotTarget) << "\"}\n";
     out << "}\n";
     return out.str();
 }

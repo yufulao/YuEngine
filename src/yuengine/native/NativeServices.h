@@ -56,6 +56,7 @@ struct SaveProfileScenarioRuntimeState {
 };
 
 struct PlatformRuntimeState {
+    int resetMenuButtonHoldingTimesCommands = 0;
     std::map<std::string, std::string> flags;
 };
 
@@ -89,9 +90,17 @@ struct SceneStageRuntimeState {
 struct ActorTaskRuntimeState {
     int pushPlayerCharaCommands = 0;
     int actorMethodCommands = 0;
+    int playerControlCommands = 0;
+    int setPlayerPosCommands = 0;
+    int setPlayerAngleYCommands = 0;
+    int landPlayerCommands = 0;
+    int getPlayerPosQueries = 0;
+    int resetPlayerActionCommands = 0;
     std::string currentPlayerChara;
     std::string currentPlayerPosition;
     std::string currentPlayerRotY;
+    std::string playerControlEnabled;
+    std::string playerLanded;
     std::string waitForLanding;
     std::string healProgressFilled;
     std::string armed;
@@ -104,11 +113,20 @@ struct CameraRuntimeState {
     int enableRailCameraCommands = 0;
     int enableAutoAdjustCommands = 0;
     int defaultCameraStateCommands = 0;
+    int setGameCameraIfNotCommands = 0;
     std::string gameCameraPushed;
     std::string railCameraPath;
     std::string railCameraEnabled;
     std::string autoCameraAdjustEnabled;
     std::string defaultCameraStateTarget;
+    std::string gameCameraIfNotTarget;
+};
+
+struct CollisionPhysicsLiteRuntimeState {
+    int eventVolumeCreates = 0;
+    int eventVolumeActivationCommands = 0;
+    std::string lastEventVolume;
+    std::string lastEventVolumeEnabled;
 };
 
 struct EventQuestFlagRuntimeState {
@@ -117,9 +135,23 @@ struct EventQuestFlagRuntimeState {
     int markerQueries = 0;
     int checkpointCommands = 0;
     int checkFallCommands = 0;
+    int eventClassCreates = 0;
+    int eventUnitQueries = 0;
+    int eventPageCreates = 0;
+    int eventMarkerCreates = 0;
+    int eventActorCreates = 0;
+    int eventPageSetupCommands = 0;
+    int eventPageDoneCommands = 0;
+    int eventFlagQueries = 0;
+    int eventFlagInitCommands = 0;
+    int dialogResetCommands = 0;
+    int dialogHideCommands = 0;
     std::string currentRequest;
     std::string currentMarker;
     std::string currentCheckpoint;
+    std::string currentEventUnit;
+    std::string currentEventPage;
+    std::string currentEventActor;
 };
 
 struct UiRuntimeObjectState {
@@ -142,6 +174,7 @@ struct NativeRuntimeServiceState {
     SceneStageRuntimeState sceneStage;
     ActorTaskRuntimeState actorTask;
     CameraRuntimeState camera;
+    CollisionPhysicsLiteRuntimeState collisionPhysicsLite;
     EventQuestFlagRuntimeState eventQuestFlag;
     UiRender2dRuntimeState uiRender2d;
 };
