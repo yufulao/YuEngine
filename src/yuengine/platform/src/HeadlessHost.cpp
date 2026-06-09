@@ -28,7 +28,7 @@ HostRunResult HeadlessHost::Run(IHostRuntime& runtime, const HeadlessHostConfig&
         std::vector<std::uint64_t>(),
         std::vector<std::string>(),
         std::string(),
-        PlatformPerformanceSignal::AllocationBytesStatus};
+        PlatformPerformanceSignal::AllocationAccountingStatus};
     result.TickTimesNanoseconds.reserve(config.TickCount);
     result.LifecycleTrace.reserve((static_cast<std::size_t>(config.TickCount) * 2U) + 4U);
 

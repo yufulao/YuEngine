@@ -28,6 +28,16 @@ target_include_directories(YuDiagnostics
         src/yuengine/diagnostics/include
 )
 
+add_library(YuMemory
+    src/yuengine/memory/src/CountingMemoryTracker.cpp
+    src/yuengine/memory/src/DisabledMemoryTracker.cpp
+)
+yuengine_apply_compile_options(YuMemory)
+target_include_directories(YuMemory
+    PUBLIC
+        src/yuengine/memory/include
+)
+
 add_library(YuPlatform
     src/yuengine/platform/src/FixedFrameClock.cpp
     src/yuengine/platform/src/HeadlessHost.cpp
@@ -38,7 +48,7 @@ target_include_directories(YuPlatform
     PUBLIC
         src/yuengine/platform/include
 )
-target_link_libraries(YuPlatform PUBLIC YuDiagnostics)
+target_link_libraries(YuPlatform PUBLIC YuDiagnostics YuMemory)
 
 add_library(YuKernel
     src/yuengine/kernel/src/EngineKernel.cpp
@@ -68,6 +78,7 @@ yuengine_apply_compile_options(YuPlatformTests)
 target_link_libraries(YuPlatformTests PRIVATE YuPlatform)
 add_test(NAME Host_StartTickShutdown_Deterministic COMMAND YuPlatformTests Host_StartTickShutdown_Deterministic)
 add_test(NAME Host_TimerMonotonic_ForFixedTicks COMMAND YuPlatformTests Host_TimerMonotonic_ForFixedTicks)
+add_test(NAME Platform_AllocationAccountingStatus_UsesMemoryHook COMMAND YuPlatformTests Platform_AllocationAccountingStatus_UsesMemoryHook)
 
 add_executable(YuDiagnosticsTests
     tests/diagnostics/DiagnosticsTests.cpp
@@ -84,3 +95,16 @@ target_link_libraries(YuKernelTests PRIVATE YuKernel)
 add_test(NAME Kernel_ModuleLifecycle_DependencyOrder COMMAND YuKernelTests Kernel_ModuleLifecycle_DependencyOrder)
 add_test(NAME Kernel_ModuleStartupFailure_TearsDownStartedModules COMMAND YuKernelTests Kernel_ModuleStartupFailure_TearsDownStartedModules)
 add_test(NAME Kernel_ServiceRegistry_ResolveAndMissingService COMMAND YuKernelTests Kernel_ServiceRegistry_ResolveAndMissingService)
+
+add_executable(YuMemoryTests
+    tests/memory/MemoryTests.cpp
+)
+yuengine_apply_compile_options(YuMemoryTests)
+target_link_libraries(YuMemoryTests PRIVATE YuMemory)
+add_test(NAME Memory_TrackerCountsAllocationAndFree COMMAND YuMemoryTests Memory_TrackerCountsAllocationAndFree)
+add_test(NAME Memory_TrackerReportsPeakAndRetainedBytes COMMAND YuMemoryTests Memory_TrackerReportsPeakAndRetainedBytes)
+add_test(NAME Memory_TrackerReportsLeakOnUnreleasedBytes COMMAND YuMemoryTests Memory_TrackerReportsLeakOnUnreleasedBytes)
+add_test(NAME Memory_TrackerRejectsUnmatchedFree COMMAND YuMemoryTests Memory_TrackerRejectsUnmatchedFree)
+add_test(NAME Memory_TrackerRecordsBudgetClass COMMAND YuMemoryTests Memory_TrackerRecordsBudgetClass)
+add_test(NAME Memory_DisabledTracker_DoesNotChangeBehavior COMMAND YuMemoryTests Memory_DisabledTracker_DoesNotChangeBehavior)
+add_test(NAME Memory_HotPathBudget_FailsOnTrackedAllocation COMMAND YuMemoryTests Memory_HotPathBudget_FailsOnTrackedAllocation)

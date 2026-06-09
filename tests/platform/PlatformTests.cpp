@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "yuengine/diagnostics/BoundedInMemoryLogSink.h"
+#include "yuengine/memory/MemoryAccountingStatus.h"
 #include "yuengine/platform/FixedFrameClock.h"
 #include "yuengine/platform/HeadlessHost.h"
 #include "yuengine/platform/HostStatus.h"
@@ -16,6 +17,7 @@ using HeadlessHostConfig = yuengine::platform::HeadlessHostConfig;
 using HostError = yuengine::platform::HostError;
 using HostStatus = yuengine::platform::HostStatus;
 using IHostRuntime = yuengine::platform::IHostRuntime;
+using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
 using PlatformPerformanceSignal = yuengine::platform::PlatformPerformanceSignal;
 using BoundedInMemoryLogSink = yuengine::diagnostics::BoundedInMemoryLogSink;
 
@@ -23,6 +25,7 @@ namespace
 {
 constexpr const char* TEST_HOST = "Host_StartTickShutdown_Deterministic";
 constexpr const char* TEST_TIMER = "Host_TimerMonotonic_ForFixedTicks";
+constexpr const char* TEST_MEMORY_STATUS = "Platform_AllocationAccountingStatus_UsesMemoryHook";
 constexpr std::uint64_t FIRST_TICK_NANOSECONDS = 1000U;
 constexpr std::uint64_t STEP_NANOSECONDS = 16U;
 constexpr std::uint32_t DETERMINISTIC_TICK_COUNT = 3U;
@@ -95,9 +98,9 @@ int HostStartTickShutdownDeterministic()
         return Fail("host lifecycle trace did not match expected order");
     }
 
-    if (result.AllocationBytesStatus != PlatformPerformanceSignal::AllocationBytesStatus)
+    if (result.AllocationAccountingStatus != PlatformPerformanceSignal::AllocationAccountingStatus)
     {
-        return Fail("allocation/bytes deferral marker is missing");
+        return Fail("allocation accounting status is missing");
     }
 
     if (logSink.Events().empty())
@@ -142,6 +145,23 @@ int HostTimerMonotonicForFixedTicks()
 
     return 0;
 }
+
+int PlatformAllocationAccountingStatusUsesMemoryHook()
+{
+    BoundedInMemoryLogSink logSink(LOG_CAPACITY);
+    FixedFrameClock frameClock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
+    TraceRuntime runtime;
+    HeadlessHost host(frameClock, logSink);
+
+    const HeadlessHostConfig config{DETERMINISTIC_TICK_COUNT};
+    const auto result = host.Run(runtime, config);
+    if (result.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly)
+    {
+        return Fail("platform did not expose typed explicit-tracking memory status");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv)
@@ -160,6 +180,11 @@ int main(int argc, char** argv)
     if (testName == TEST_TIMER)
     {
         return HostTimerMonotonicForFixedTicks();
+    }
+
+    if (testName == TEST_MEMORY_STATUS)
+    {
+        return PlatformAllocationAccountingStatusUsesMemoryHook();
     }
 
     return Fail("unknown test name");

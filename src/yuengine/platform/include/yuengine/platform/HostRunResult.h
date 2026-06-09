@@ -4,10 +4,13 @@
 #include <string>
 #include <vector>
 
+#include "yuengine/memory/MemoryAccountingStatus.h"
 #include "yuengine/platform/HostStatus.h"
 
 namespace yuengine::platform
 {
+using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
+
 struct HostRunResult
 {
     HostStatus Status;
@@ -15,6 +18,6 @@ struct HostRunResult
     std::vector<std::uint64_t> TickTimesNanoseconds;
     std::vector<std::string> LifecycleTrace;
     std::string ErrorMessage;
-    std::string AllocationBytesStatus;
+    MemoryAccountingStatus AllocationAccountingStatus;
 };
 }

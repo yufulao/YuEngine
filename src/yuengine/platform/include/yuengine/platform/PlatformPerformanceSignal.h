@@ -1,9 +1,13 @@
 #pragma once
 
+#include "yuengine/memory/MemoryAccountingStatus.h"
+
 namespace yuengine::platform
 {
+using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
+
 struct PlatformPerformanceSignal
 {
-    static constexpr const char* AllocationBytesStatus = "DEFERRED_TO_P1_GATE_002";
+    static constexpr MemoryAccountingStatus AllocationAccountingStatus = MemoryAccountingStatus::ExplicitlyTrackedOnly;
 };
 }
