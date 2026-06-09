@@ -1,8 +1,8 @@
 # ADR-0008: File And VFS First Boundary
 
-Status: Proposed
+Status: Accepted
 Owner: 八云紫
-Reviewers: 红美铃, 射命丸文, 博丽灵梦, 雾雨魔理沙 when implementation exists
+Reviewers: 大妖精, 射命丸文, 博丽灵梦, 雾雨魔理沙 when implementation exists
 Date: 2026-06-10
 Depends on: ADR-0001, ADR-0002, ADR-0005, ADR-0006, docs/YUENGINE_MODULE_ENTRY_GATES.md, docs/YUENGINE_PERFORMANCE_GATES.md
 
