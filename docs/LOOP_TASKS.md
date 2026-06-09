@@ -1599,17 +1599,54 @@ Boundary:
 - D3D/D3DX imports are present, but effect/texture creation wrapper control-flow is still open;
 - L36c0 does not issue draw/present/capture/oracle calls.
 
+### L36c1: Binary Function Body Fingerprints Before CFG
+
+Status: completed as exact candidate function-body fingerprint checkpoint on 2026-06-10.
+
+Deliver:
+
+- consume L36c0 adjacent function-table candidates;
+- lock exact `.pdata` function bodies behind packed depth and RSM anchors with stable FNV64
+  fingerprints;
+- probe candidate function bodies for direct depth-format immediate constants;
+- probe executable sections for direct `E8 rel32` calls into those exact function starts.
+
+Acceptance:
+
+- `yuengine_cli backend-material-program-binary-function samples/touhou_new_world/project.json --repo-root .`
+  reports `function_fingerprint_ready=true`, `depth_function_fingerprint_ready=true`,
+  `rsm_depth_function_fingerprint_ready=true`,
+  `function_body_format_immediate_probe_ready=true`,
+  `direct_function_call_xref_probe_ready=true`,
+  `selector_control_flow_still_open=true`, and
+  `sampleable_depth_runtime_selection_still_open=true`;
+- CTest `yuengine_backend_material_program_binary_function_contract` locks 14 exact function
+  fingerprints, 9 packed-depth function fingerprints, 5 RSM function fingerprints, 14 unique
+  function hashes, 3779 total candidate function bytes, 0 direct depth-format immediate hits,
+  0 direct `E8 rel32` xrefs, and ready/open accounting of 7 resolved and 5 tracked-open
+  obligations;
+- draw/present/capture/oracle remain tracked-open.
+
+Boundary:
+
+- L36c1 identifies stable candidate function bodies, not recovered source-level C++;
+- L36c1 finds no direct depth-format immediates inside those bodies, so it cannot choose the
+  current-frame depth path;
+- L36c1 finds no direct call edges into the function starts, so wrapper/indirect dispatch recovery
+  remains required;
+- L36c1 does not issue draw/present/capture/oracle calls.
+
 ### L36c: Selector CFG And Depth Runtime Selection Before Draw
 
-Status: active after L36c0.
+Status: active after L36c1.
 
 Deliver:
 
 - reconstruct the material selector branch/control-flow around the original shader path table;
 - reconstruct sampleable-depth format selection/copy behavior around `INTZ/RAWZ/DF24/DF16` and
   `depthTex2D`;
-- use the L36c0 `.pdata` function-table candidates and D3D/D3DX import-wrapper gap as the next
-  binary control-flow evidence, not as a completion claim;
+- use the L36c0 `.pdata` function-table candidates, L36c1 function-body fingerprints, and
+  D3D/D3DX import-wrapper gap as the next binary control-flow evidence, not as a completion claim;
 - only after those are closed, unlock draw submission as the next edge.
 
 Acceptance:
@@ -1683,6 +1720,10 @@ Current measured speed after caching and scene reuse:
   current deepest L36c0 edge filter, elapsed_ms=53143.
 - `tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck`: current deepest
   L36c0 edge filter, elapsed_ms=48696.
+- `runtime-contract-suite --filter yuengine_backend_material_program_binary_function_contract`:
+  current deepest L36c1 edge filter, elapsed_ms=58799.
+- `tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck`: current deepest
+  L36c1 edge filter, elapsed_ms=73413.
 - `yuengine_backend_device_creation_contract`: 1/1 CTest passed in 21.88 seconds.
 - `yuengine_backend_resource_creation_contract`: 1/1 CTest passed in about 22 seconds.
 - `yuengine_backend_upload_binding_contract`: 1/1 CTest passed in about 25 seconds.
@@ -1713,5 +1754,8 @@ Current measured speed after caching and scene reuse:
 - `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: after L36c0, clean build, Python
   unittest, 44/44 contracts, and `git diff --check` passed in about 112 seconds; runtime suite
   elapsed_ms=84995.
+- `tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild`: after L36c1, clean build, Python
+  unittest, 45/45 contracts, and `git diff --check` passed in about 160 seconds; runtime suite
+  elapsed_ms=133847.
 - direct `backend-device-adapter` CLI: 113.06 seconds before caching, 21.46 seconds after caching.
-- direct `runtime-contract-suite`: 44/44 contracts after L36c0 binary-dispatch checkpoint.
+- direct `runtime-contract-suite`: 45/45 contracts after L36c1 binary-function checkpoint.

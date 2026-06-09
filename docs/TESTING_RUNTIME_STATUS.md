@@ -138,7 +138,7 @@ tools\verify_runtime.ps1 -NoBuild
 smoke validate plus Python unittest and git diff --check, about 0.354 seconds
 
 tools\verify_runtime.ps1 -Mode edge -Jobs 8
-current deepest L36c0 edge; backend-material-program-binary-dispatch runtime-contract-suite filter
+current deepest L36c1 edge; backend-material-program-binary-function runtime-contract-suite filter
 
 tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck
 previous L36 edge, elapsed_ms=42281
@@ -150,10 +150,16 @@ tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck
 L36b edge, elapsed_ms=65678
 
 build\cmake-bt143\yuengine_cli.exe runtime-contract-suite samples\touhou_new_world\project.json --repo-root . --filter yuengine_backend_material_program_binary_dispatch_contract
-current L36c0 edge, elapsed_ms=53143
+L36c0 edge, elapsed_ms=53143
 
 tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck
-current L36c0 edge, elapsed_ms=48696
+L36c0 edge, elapsed_ms=48696
+
+build\cmake-bt143\yuengine_cli.exe runtime-contract-suite samples\touhou_new_world\project.json --repo-root . --filter yuengine_backend_material_program_binary_function_contract
+current L36c1 edge, elapsed_ms=58799
+
+tools\verify_runtime.ps1 -Mode edge -NoBuild -SkipPython -SkipDiffCheck
+current L36c1 edge, elapsed_ms=73413
 
 tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 current L36 clean full, 42/42 contracts, runtime suite elapsed_ms=114358, wall time about 138
@@ -165,6 +171,10 @@ seconds
 
 tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 current L36c0 clean full, 44/44 contracts, runtime suite elapsed_ms=84995, wall time about 112
+seconds
+
+tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
+current L36c1 clean full, 45/45 contracts, runtime suite elapsed_ms=133847, wall time about 160
 seconds
 ```
 
@@ -190,7 +200,7 @@ Current deepest edge example:
 
 ```powershell
 tools\verify_runtime.ps1 -Mode edge -Jobs 8
-tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_material_program_binary_dispatch_contract -Jobs 8
+tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_material_program_binary_function_contract -Jobs 8
 ```
 
 Full checkpoint verification before commit:

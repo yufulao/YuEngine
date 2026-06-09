@@ -97,3 +97,7 @@ L36c remains active. The next work should recover actual control-flow around:
 
 Only after selector CFG and sampleable-depth runtime selection are locked should L37 draw
 submission/present/capture/oracle work start.
+
+L36c1 now consumes this checkpoint through `backend-material-program-binary-function`: 14 exact
+`.pdata` function bodies behind the depth/RSM dispatch-table candidates are fingerprinted. It still
+leaves selector CFG, current-frame depth path, and D3D/D3DX wrapper dispatch open.

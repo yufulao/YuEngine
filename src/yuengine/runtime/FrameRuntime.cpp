@@ -208,6 +208,14 @@ void addError(
     report.errors.push_back(message);
 }
 
+void addError(
+    BackendMaterialProgramBinaryFunctionRuntimeReport& report,
+    const std::string& message)
+{
+    report.ok = false;
+    report.errors.push_back(message);
+}
+
 void addError(MissionEventThreadRuntimeReport& report, const std::string& message)
 {
     report.ok = false;
@@ -1755,6 +1763,104 @@ int countDirectIatCallHits(
             const int64_t target =
                 static_cast<int64_t>(sourceRva) + 6 + static_cast<int64_t>(disp);
             if (target == static_cast<int64_t>(iatRva)) {
+                ++hits;
+            }
+        }
+    }
+    return hits;
+}
+
+uint64_t fnv1a64(
+    const std::vector<std::byte>& bytes,
+    size_t offset,
+    size_t length)
+{
+    uint64_t hash = 1469598103934665603ull;
+    const size_t end = std::min(bytes.size(), offset + length);
+    for (size_t cursor = offset; cursor < end; ++cursor) {
+        hash ^= static_cast<uint64_t>(static_cast<unsigned char>(bytes[cursor]));
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+int countBytePatternInRange(
+    const std::vector<std::byte>& bytes,
+    size_t offset,
+    size_t length,
+    const std::vector<unsigned char>& pattern)
+{
+    if (pattern.empty() || offset >= bytes.size()) {
+        return 0;
+    }
+    const size_t end = std::min(bytes.size(), offset + length);
+    if (end < offset + pattern.size()) {
+        return 0;
+    }
+    int hits = 0;
+    for (size_t cursor = offset; cursor + pattern.size() <= end; ++cursor) {
+        bool matched = true;
+        for (size_t i = 0; i < pattern.size(); ++i) {
+            if (static_cast<unsigned char>(bytes[cursor + i]) != pattern[i]) {
+                matched = false;
+                break;
+            }
+        }
+        if (matched) {
+            ++hits;
+        }
+    }
+    return hits;
+}
+
+std::vector<std::vector<unsigned char>> depthFormatImmediatePatterns()
+{
+    return {
+        littleEndian32(0x5A544E49u), // INTZ
+        littleEndian32(0x5A574152u), // RAWZ
+        littleEndian32(0x34324644u), // DF24
+        littleEndian32(0x36314644u), // DF16
+        littleEndian32(75u),         // D3DFMT_D24S8
+        littleEndian32(114u)};       // D3DFMT_R32F
+}
+
+int countDepthFormatImmediateHitsInRange(
+    const std::vector<std::byte>& bytes,
+    size_t offset,
+    size_t length)
+{
+    int hits = 0;
+    for (const auto& pattern : depthFormatImmediatePatterns()) {
+        hits += countBytePatternInRange(bytes, offset, length, pattern);
+    }
+    return hits;
+}
+
+int countDirectCallRel32XrefsToRva(
+    const std::vector<std::byte>& bytes,
+    const PeImageEvidence& image,
+    uint32_t targetRva)
+{
+    int hits = 0;
+    for (const auto& section : image.sections) {
+        if (!isExecutablePeSection(section)) {
+            continue;
+        }
+        const size_t rawBegin = section.rawPointer;
+        const size_t rawEnd =
+            std::min(bytes.size(), static_cast<size_t>(section.rawPointer) + section.rawSize);
+        for (size_t offset = rawBegin; offset + 5 <= rawEnd; ++offset) {
+            if (static_cast<unsigned char>(bytes[offset]) != 0xE8u) {
+                continue;
+            }
+            uint32_t rawDisp = 0;
+            readU32(bytes, offset + 1, rawDisp);
+            const auto disp = static_cast<int32_t>(rawDisp);
+            const uint32_t sourceRva =
+                section.virtualAddress + static_cast<uint32_t>(offset - rawBegin);
+            const int64_t target =
+                static_cast<int64_t>(sourceRva) + 5 + static_cast<int64_t>(disp);
+            if (target == static_cast<int64_t>(targetRva)) {
                 ++hits;
             }
         }
@@ -8608,6 +8714,217 @@ buildBackendMaterialProgramBinaryDispatchRuntimeReport(
     return storeCachedReport(cache, cacheKey, report);
 }
 
+BackendMaterialProgramBinaryFunctionRuntimeReport
+buildBackendMaterialProgramBinaryFunctionRuntimeReport(
+    const GameplayFrameInputs& inputs,
+    const std::string& rendererProfile,
+    const resource::VirtualFileSystem& vfs,
+    const std::filesystem::path& repoRoot)
+{
+    const auto binaryPath = originalGameBinaryPath(repoRoot);
+    const auto cacheKey =
+        runtimeReportCacheKey(inputs, rendererProfile, "backend-material-program-binary-function")
+        + "|" + pathCacheKey(binaryPath);
+    static std::map<std::string, BackendMaterialProgramBinaryFunctionRuntimeReport> cache;
+    BackendMaterialProgramBinaryFunctionRuntimeReport cached;
+    if (loadCachedReport(cache, cacheKey, cached)) {
+        return cached;
+    }
+
+    BackendMaterialProgramBinaryFunctionRuntimeReport report;
+    const auto binaryDispatch =
+        buildBackendMaterialProgramBinaryDispatchRuntimeReport(inputs, rendererProfile, vfs, repoRoot);
+    report.projectId = inputs.sceneRuntime.projectId;
+    report.originalBinaryPath = binaryPath.string();
+    report.binaryDispatchOk = binaryDispatch.ok;
+    report.originalBinaryFound = binaryDispatch.originalBinaryFound;
+    report.preservedDepthTextureBindings = binaryDispatch.preservedDepthTextureBindings;
+    report.preservedMaterialProgramBindings =
+        binaryDispatch.preservedMaterialProgramBindings;
+    report.drawPresentCaptureRecordsDeferred =
+        binaryDispatch.drawPresentCaptureRecordsDeferred;
+    report.backbufferWidth = binaryDispatch.backbufferWidth;
+    report.backbufferHeight = binaryDispatch.backbufferHeight;
+
+    const auto binaryBytes = readPhysicalBytes(binaryPath);
+    const auto peImage = parsePeImageEvidence(binaryBytes);
+    std::set<std::string> fingerprints;
+
+    for (const auto& sourceRecord : binaryDispatch.functionTableRecords) {
+        if (!sourceRecord.pdataResolved || !sourceRecord.exactFunctionStart
+            || sourceRecord.targetSection != ".text") {
+            continue;
+        }
+
+        const long long functionOffset =
+            peRvaToOffset(peImage, sourceRecord.functionBeginRva);
+        if (functionOffset < 0
+            || sourceRecord.functionEndRva <= sourceRecord.functionBeginRva) {
+            continue;
+        }
+
+        const auto functionBytes =
+            static_cast<int>(sourceRecord.functionEndRva - sourceRecord.functionBeginRva);
+        BackendBinaryFunctionFingerprintRecord record;
+        record.sourceCategory = sourceRecord.category;
+        record.anchorToken = sourceRecord.anchorToken;
+        record.tableOffset = sourceRecord.tableOffset;
+        record.targetRva = sourceRecord.targetRva;
+        record.pdataIndex = sourceRecord.pdataIndex;
+        record.functionBeginRva = sourceRecord.functionBeginRva;
+        record.functionEndRva = sourceRecord.functionEndRva;
+        record.functionBytes = functionBytes;
+        record.fnv1a64Hex = hex64(fnv1a64(
+            binaryBytes,
+            static_cast<size_t>(functionOffset),
+            static_cast<size_t>(functionBytes)));
+        record.depthFormatImmediateHits = countDepthFormatImmediateHitsInRange(
+            binaryBytes,
+            static_cast<size_t>(functionOffset),
+            static_cast<size_t>(functionBytes));
+        record.directCallRel32Xrefs =
+            countDirectCallRel32XrefsToRva(binaryBytes, peImage, record.functionBeginRva);
+
+        ++report.functionFingerprintRecords;
+        report.functionBytesTotal += record.functionBytes;
+        report.functionBodyDepthFormatImmediateHits += record.depthFormatImmediateHits;
+        report.directFunctionCallRel32Xrefs += record.directCallRel32Xrefs;
+        fingerprints.insert(record.fnv1a64Hex);
+
+        if (record.sourceCategory == "postfilter_depth_dispatch_candidate") {
+            ++report.depthFunctionFingerprintRecords;
+            report.depthFunctionBytes += record.functionBytes;
+        } else if (record.sourceCategory == "rsm_depth_dispatch_candidate") {
+            ++report.rsmDepthFunctionFingerprintRecords;
+            report.rsmDepthFunctionBytes += record.functionBytes;
+        }
+
+        report.functionFingerprintRecordsDetail.push_back(std::move(record));
+    }
+
+    report.uniqueFunctionFingerprints = static_cast<int>(fingerprints.size());
+    report.functionFingerprintReady =
+        report.binaryDispatchOk
+        && peImage.valid64
+        && report.functionFingerprintRecords == 14
+        && report.uniqueFunctionFingerprints == 14
+        && report.functionBytesTotal == 3779;
+    report.depthFunctionFingerprintReady =
+        report.functionFingerprintReady
+        && report.depthFunctionFingerprintRecords == 9
+        && report.depthFunctionBytes == 2042;
+    report.rsmDepthFunctionFingerprintReady =
+        report.functionFingerprintReady
+        && report.rsmDepthFunctionFingerprintRecords == 5
+        && report.rsmDepthFunctionBytes == 1737;
+    report.functionBodyFormatImmediateProbeReady =
+        report.functionFingerprintReady
+        && report.functionBodyDepthFormatImmediateHits == 0;
+    report.directFunctionCallXrefProbeReady =
+        report.functionFingerprintReady
+        && report.directFunctionCallRel32Xrefs == 0;
+    report.selectorControlFlowStillOpen =
+        binaryDispatch.exactSelectorControlFlowStillOpen
+        && report.directFunctionCallXrefProbeReady;
+    report.sampleableDepthRuntimeSelectionStillOpen =
+        binaryDispatch.sampleableDepthRuntimeSelectionStillOpen
+        && report.functionBodyFormatImmediateProbeReady;
+    report.d3dDispatchWrapperStillOpen =
+        binaryDispatch.d3dDispatchWrapperStillOpen;
+    report.downstreamDrawPresentDeferred =
+        binaryDispatch.downstreamDrawPresentDeferred
+        && report.drawPresentCaptureRecordsDeferred == 124;
+    report.backbufferExtentCarried =
+        report.backbufferWidth == 1280 && report.backbufferHeight == 720;
+
+    report.contracts.push_back(makeBackendObligation(
+        "inherited_binary_dispatch_runtime",
+        report.binaryDispatchOk ? "contract_ready" : "blocked",
+        "L36c1 consumes L36c0 PE dispatch and xref evidence"));
+    report.contracts.push_back(makeBackendObligation(
+        "exact_pdata_function_body_fingerprints",
+        report.functionFingerprintReady ? "contract_ready" : "blocked",
+        "14 exact .pdata function starts have stable function body byte ranges and FNV64 identities"));
+    report.contracts.push_back(makeBackendObligation(
+        "postfilter_depth_function_fingerprints",
+        report.depthFunctionFingerprintReady ? "contract_ready" : "blocked",
+        "packed INTZ/RAWZ/DF24/DF16 table contributes 9 exact function-body fingerprints"));
+    report.contracts.push_back(makeBackendObligation(
+        "rsm_depth_function_fingerprints",
+        report.rsmDepthFunctionFingerprintReady ? "contract_ready" : "blocked",
+        "cascade intz table contributes 5 exact function-body fingerprints"));
+    report.contracts.push_back(makeBackendObligation(
+        "function_body_depth_format_immediate_probe",
+        report.functionBodyFormatImmediateProbeReady ? "contract_ready" : "blocked",
+        "exact function bodies contain no direct INTZ/RAWZ/DF24/DF16/D24S8/R32F immediate constants"));
+    report.contracts.push_back(makeBackendObligation(
+        "dispatch_function_direct_call_xref_probe",
+        report.directFunctionCallXrefProbeReady ? "contract_ready" : "blocked",
+        "no direct E8 rel32 calls target the exact dispatch-table function starts"));
+    report.contracts.push_back(makeBackendObligation(
+        "stable_function_body_identity",
+        report.functionFingerprintReady ? "contract_ready" : "blocked",
+        "function hashes lock the candidate bodies before wrapper/CFG recovery proceeds"));
+    report.contracts.push_back(makeBackendObligation(
+        "exact_selector_control_flow",
+        report.selectorControlFlowStillOpen ? "tracked_open" : "blocked",
+        "selector CFG is still not recovered; direct-call absence prevents a shortcut claim"));
+    report.contracts.push_back(makeBackendObligation(
+        "sampleable_depth_runtime_selection",
+        report.sampleableDepthRuntimeSelectionStillOpen ? "tracked_open" : "blocked",
+        "depth function bodies are identified, but no concrete selected depth format/copy path is recovered"));
+    report.contracts.push_back(makeBackendObligation(
+        "d3d_effect_texture_dispatch_wrapper",
+        report.d3dDispatchWrapperStillOpen ? "tracked_open" : "blocked",
+        "D3D/D3DX effect/texture wrapper control-flow remains the next binary recovery target"));
+    report.contracts.push_back(makeBackendObligation(
+        "draw_present_capture_after_function_probe",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "draw, present, and capture remain deferred until selector/depth runtime selection is closed"));
+    report.contracts.push_back(makeBackendObligation(
+        "original_frame_oracle_after_capture",
+        report.downstreamDrawPresentDeferred ? "tracked_open" : "blocked",
+        "original-frame oracle remains deferred until YuEngine can execute and capture the frame"));
+
+    for (const auto& contract : report.contracts) {
+        if (contract.status == "contract_ready") {
+            ++report.resolvedBinaryFunctionContracts;
+        } else if (contract.status == "tracked_open") {
+            ++report.trackedBinaryFunctionObligations;
+            ++report.openBinaryFunctionObligations;
+        } else {
+            ++report.openBinaryFunctionObligations;
+        }
+    }
+
+    if (!report.binaryDispatchOk || !report.originalBinaryFound) {
+        addError(report, "upstream binary dispatch report or original binary is missing");
+    }
+    if (!report.functionFingerprintReady || !report.depthFunctionFingerprintReady
+        || !report.rsmDepthFunctionFingerprintReady) {
+        addError(report, "binary function body fingerprint evidence is incomplete");
+    }
+    if (!report.functionBodyFormatImmediateProbeReady
+        || !report.directFunctionCallXrefProbeReady) {
+        addError(report, "function body format/call xref probe is incomplete");
+    }
+    if (!report.selectorControlFlowStillOpen
+        || !report.sampleableDepthRuntimeSelectionStillOpen
+        || !report.d3dDispatchWrapperStillOpen) {
+        addError(report, "selector/depth/wrapper open gates were not preserved");
+    }
+    if (!report.downstreamDrawPresentDeferred || !report.backbufferExtentCarried) {
+        addError(report, "draw/present or backbuffer gate was not preserved");
+    }
+    if (report.resolvedBinaryFunctionContracts != 7
+        || report.trackedBinaryFunctionObligations != 5
+        || report.openBinaryFunctionObligations != 5) {
+        addError(report, "binary function obligation accounting is inconsistent");
+    }
+
+    return storeCachedReport(cache, cacheKey, report);
+}
+
 } // namespace
 
 FirstFrameRuntimeReport buildFirstFrameRuntimeReport(
@@ -12350,6 +12667,142 @@ std::string backendMaterialProgramBinaryDispatchRuntimeReportToJson(
             << "\", \"found\": " << (record.found ? "true" : "false")
             << ", \"direct_iat_call_hits\": " << record.directIatCallHits << "}";
         out << (i + 1 == report.importProbeRecords.size() ? "\n" : ",\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    return out.str();
+}
+
+BackendMaterialProgramBinaryFunctionRuntimeReport runBackendMaterialProgramBinaryFunctionRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot)
+{
+    BackendMaterialProgramBinaryFunctionRuntimeReport report;
+    try {
+        const auto manifest = project::loadProjectManifest(manifestPath);
+        resource::VirtualFileSystem vfs;
+        vfs.mountProject(manifest);
+        report = buildBackendMaterialProgramBinaryFunctionRuntimeReport(
+            collectGameplayFrameInputs(manifestPath, repoRoot),
+            manifest.renderer,
+            vfs,
+            repoRoot);
+    } catch (const std::exception& ex) {
+        addError(report, ex.what());
+    }
+    return report;
+}
+
+std::string backendMaterialProgramBinaryFunctionRuntimeReportToJson(
+    const BackendMaterialProgramBinaryFunctionRuntimeReport& report)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"schema\": \"yuengine.backend_material_program_binary_function_runtime_report.v1\",\n";
+    out << "  \"ok\": " << (report.ok ? "true" : "false") << ",\n";
+    out << "  \"project_id\": \"" << core::jsonEscape(report.projectId) << "\",\n";
+    out << "  \"original_binary_path\": \""
+        << core::jsonEscape(report.originalBinaryPath) << "\",\n";
+    out << "  \"metrics\": \"ok=" << (report.ok ? "true" : "false")
+        << " binary_dispatch_ok=" << (report.binaryDispatchOk ? "true" : "false")
+        << " original_binary_found=" << (report.originalBinaryFound ? "true" : "false")
+        << " function_fingerprint_ready="
+        << (report.functionFingerprintReady ? "true" : "false")
+        << " depth_function_fingerprint_ready="
+        << (report.depthFunctionFingerprintReady ? "true" : "false")
+        << " rsm_depth_function_fingerprint_ready="
+        << (report.rsmDepthFunctionFingerprintReady ? "true" : "false")
+        << " function_body_format_immediate_probe_ready="
+        << (report.functionBodyFormatImmediateProbeReady ? "true" : "false")
+        << " direct_function_call_xref_probe_ready="
+        << (report.directFunctionCallXrefProbeReady ? "true" : "false")
+        << " selector_control_flow_still_open="
+        << (report.selectorControlFlowStillOpen ? "true" : "false")
+        << " sampleable_depth_runtime_selection_still_open="
+        << (report.sampleableDepthRuntimeSelectionStillOpen ? "true" : "false")
+        << " d3d_dispatch_wrapper_still_open="
+        << (report.d3dDispatchWrapperStillOpen ? "true" : "false")
+        << " downstream_draw_present_deferred="
+        << (report.downstreamDrawPresentDeferred ? "true" : "false")
+        << " backbuffer_extent_carried="
+        << (report.backbufferExtentCarried ? "true" : "false")
+        << " function_fingerprint_records=" << report.functionFingerprintRecords
+        << " depth_function_fingerprint_records="
+        << report.depthFunctionFingerprintRecords
+        << " rsm_depth_function_fingerprint_records="
+        << report.rsmDepthFunctionFingerprintRecords
+        << " unique_function_fingerprints=" << report.uniqueFunctionFingerprints
+        << " function_bytes_total=" << report.functionBytesTotal
+        << " depth_function_bytes=" << report.depthFunctionBytes
+        << " rsm_depth_function_bytes=" << report.rsmDepthFunctionBytes
+        << " function_body_depth_format_immediate_hits="
+        << report.functionBodyDepthFormatImmediateHits
+        << " direct_function_call_rel32_xrefs="
+        << report.directFunctionCallRel32Xrefs
+        << " preserved_depth_texture_bindings=" << report.preservedDepthTextureBindings
+        << " preserved_material_program_bindings="
+        << report.preservedMaterialProgramBindings
+        << " draw_present_capture_records_deferred="
+        << report.drawPresentCaptureRecordsDeferred
+        << " backbuffer_width=" << report.backbufferWidth
+        << " backbuffer_height=" << report.backbufferHeight
+        << " resolved_binary_function_contracts="
+        << report.resolvedBinaryFunctionContracts
+        << " tracked_binary_function_obligations="
+        << report.trackedBinaryFunctionObligations
+        << " open_binary_function_obligations="
+        << report.openBinaryFunctionObligations << "\",\n";
+    out << "  \"errors\": ";
+    writeStringArray(out, report.errors);
+    out << ",\n";
+    out << "  \"function_fingerprint_summary\": {";
+    out << "\"function_fingerprint_records\": " << report.functionFingerprintRecords
+        << ", \"unique_function_fingerprints\": " << report.uniqueFunctionFingerprints
+        << ", \"function_bytes_total\": " << report.functionBytesTotal
+        << ", \"depth_function_bytes\": " << report.depthFunctionBytes
+        << ", \"rsm_depth_function_bytes\": " << report.rsmDepthFunctionBytes
+        << "},\n";
+    out << "  \"function_probe_summary\": {";
+    out << "\"function_body_depth_format_immediate_hits\": "
+        << report.functionBodyDepthFormatImmediateHits
+        << ", \"direct_function_call_rel32_xrefs\": "
+        << report.directFunctionCallRel32Xrefs
+        << "},\n";
+    out << "  \"contract_summary\": {";
+    out << "\"resolved_binary_function_contracts\": "
+        << report.resolvedBinaryFunctionContracts
+        << ", \"tracked_binary_function_obligations\": "
+        << report.trackedBinaryFunctionObligations
+        << ", \"open_binary_function_obligations\": "
+        << report.openBinaryFunctionObligations << "},\n";
+    out << "  \"contracts\": [\n";
+    for (size_t i = 0; i < report.contracts.size(); ++i) {
+        const auto& contract = report.contracts[i];
+        out << "    {\"contract\": \"" << core::jsonEscape(contract.obligation)
+            << "\", \"status\": \"" << core::jsonEscape(contract.status)
+            << "\", \"evidence\": \"" << core::jsonEscape(contract.evidence) << "\"}";
+        out << (i + 1 == report.contracts.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
+    out << "  \"function_fingerprint_records_detail\": [\n";
+    for (size_t i = 0; i < report.functionFingerprintRecordsDetail.size(); ++i) {
+        const auto& record = report.functionFingerprintRecordsDetail[i];
+        out << "    {\"source_category\": \"" << core::jsonEscape(record.sourceCategory)
+            << "\", \"anchor_token\": \"" << core::jsonEscape(record.anchorToken)
+            << "\", \"table_offset\": " << record.tableOffset
+            << ", \"target_rva\": \"" << core::jsonEscape(hex64(record.targetRva))
+            << "\", \"pdata_index\": " << record.pdataIndex
+            << ", \"function_begin_rva\": \""
+            << core::jsonEscape(hex64(record.functionBeginRva))
+            << "\", \"function_end_rva\": \""
+            << core::jsonEscape(hex64(record.functionEndRva))
+            << "\", \"function_bytes\": " << record.functionBytes
+            << ", \"fnv1a64\": \"" << core::jsonEscape(record.fnv1a64Hex)
+            << "\", \"depth_format_immediate_hits\": "
+            << record.depthFormatImmediateHits
+            << ", \"direct_call_rel32_xrefs\": "
+            << record.directCallRel32Xrefs << "}";
+        out << (i + 1 == report.functionFingerprintRecordsDetail.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
     out << "}\n";

@@ -635,6 +635,8 @@ L35 增量状态：`backend-font-atlas` 已把 font atlas 从 placeholder 推进
 
 `yuengine_cli backend-material-program-binary-dispatch samples/touhou_new_world/project.json --repo-root .` 已把 L36c0 PE dispatch evidence 接到 L36b：`ok=true`、`pe_image_ready=true`、`pe_section_table_ready=true`、`pe_pdata_ready=true`、`binary_string_direct_xref_probe_ready=true`、`selector_direct_xrefs_absent=true`、`selector_function_table_still_open=true`、`depth_adjacent_function_table_ready=true`、`rsm_depth_function_table_ready=true`、`sampleable_depth_dispatch_table_candidate_ready=true`、`d3d_import_table_ready=true`、`d3d_import_direct_calls_absent=true`、`d3d_dispatch_wrapper_still_open=true`、`exact_selector_control_flow_still_open=true`、`sampleable_depth_runtime_selection_still_open=true`、`pe_sections=8`、`pe_executable_sections=2`、`pdata_function_entries=20225`、`binary_probe_tokens=9`、`binary_probe_tokens_found=9`、`binary_string_direct_xref_hits=0`、`selector_direct_xref_hits=0`、`depth_packed_table_valid_pointers=24`、`depth_packed_table_pdata_resolved_functions=9`、`rsm_depth_table_valid_pointers=6`、`rsm_depth_table_pdata_resolved_functions=5`、`d3d_import_probe_records=5`、`d3d_imports_found=5`、`d3d_direct_iat_call_hits=0`、`resolved_binary_dispatch_contracts=10`、`tracked_binary_dispatch_obligations=5`、`open_binary_dispatch_obligations=5`。L36c0 证明 `.pdata`/邻接函数表/直接 xref 缺口，不证明 selector CFG、当前帧 depth format 选择或 D3D/D3DX wrapper control-flow；draw/present/capture/oracle 仍禁止。
 
+`yuengine_cli backend-material-program-binary-function samples/touhou_new_world/project.json --repo-root .` 已把 L36c1 exact function body evidence 接到 L36c0：`ok=true`、`binary_dispatch_ok=true`、`function_fingerprint_ready=true`、`depth_function_fingerprint_ready=true`、`rsm_depth_function_fingerprint_ready=true`、`function_body_format_immediate_probe_ready=true`、`direct_function_call_xref_probe_ready=true`、`selector_control_flow_still_open=true`、`sampleable_depth_runtime_selection_still_open=true`、`d3d_dispatch_wrapper_still_open=true`、`function_fingerprint_records=14`、`depth_function_fingerprint_records=9`、`rsm_depth_function_fingerprint_records=5`、`unique_function_fingerprints=14`、`function_bytes_total=3779`、`depth_function_bytes=2042`、`rsm_depth_function_bytes=1737`、`function_body_depth_format_immediate_hits=0`、`direct_function_call_rel32_xrefs=0`、`resolved_binary_function_contracts=7`、`tracked_binary_function_obligations=5`、`open_binary_function_obligations=5`。L36c1 只证明 14 个候选函数体身份稳定、函数体内无直接 depth-format immediates、无直接 E8 call edges；selector CFG、当前帧 depth path 和 D3D/D3DX wrapper dispatch 仍未恢复，draw/present/capture/oracle 仍禁止。
+
 ## Milestones
 
 长期 gate：
@@ -657,7 +659,7 @@ X8: Editor And Advanced Pipeline Later
 
 优先任务不是写游戏窗口。
 
-当前下一步见 `docs/LOOP_TASKS.md`。L36c0 已完成 `backend-material-program-binary-dispatch` evidence checkpoint：原 `game.exe` PE64、`.pdata` 20225 函数范围、packed depth/RSM 邻接函数表、D3D/D3DX import presence 和直接 IAT/xref 缺口已接入；draw/present/capture/oracle 仍必须延后。当前下一条边仍是 L36c selector CFG 与 sampleable depth runtime selection before draw execution。
+当前下一步见 `docs/LOOP_TASKS.md`。L36c1 已完成 `backend-material-program-binary-function` evidence checkpoint：14 个 exact `.pdata` candidate function bodies 已用 FNV64 和 byte ranges 锁住，depth-format immediate probe 与 direct E8 call xref probe 均为 0；draw/present/capture/oracle 仍必须延后。当前下一条边仍是 L36c selector CFG 与 sampleable depth runtime selection before draw execution。
 
 不要把 L36b 当成最终阶段。当前立即进入：
 
@@ -672,12 +674,12 @@ Runtime implementation 已开始，但只能按完整引擎主干推进，不能
 
 当前 Ninja/MSVC 构建的 `/showIncludes` dependency prefix 是乱码。改 C++ header 后必须做 clean build 验证，否则可能复用旧对象导致 ABI 崩溃。
 
-CTest 不允许再回到旧逐项串行全量。旧路径实测 34/34 约 1124 秒、并行 8 约 358 秒；`YUENGINE_CTEST_MODE=FAST` 现在只注册秒级 `yuengine_smoke_validate_touhou`，用于裸 `ctest`/编辑循环，实测 CTest 总时间约 0.01 秒、外层约 0.06 秒。当前最深 L36c0 binary dispatch gate 已从默认 CTest 移到显式 `tools\verify_runtime.ps1 -Mode edge`；该 edge suite filter 最新实测 elapsed_ms=53143，edge script elapsed_ms=48696。full regression 走 direct `tools\verify_runtime.ps1 -Mode full`，当前 44/44 合同；L36c0 clean full 实测 runtime suite elapsed_ms=84995，整条约 112 秒。CTest 的 EDGE/FULL/LEGACY 都必须显式打开 `YUENGINE_ENABLE_SLOW_CTESTS=ON`，旧逐项 CTest 还必须同时打开 `YUENGINE_CTEST_MODE=LEGACY` 和 `YUENGINE_ENABLE_LEGACY_CTESTS=ON`，否则 stale EDGE/FULL/LEGACY cache 会被强制压回 FAST smoke。runtime report cache、scene-runtime 复用和 `.sqasm` module cache 已把最深 backend adapter CLI 从 113.06 秒降到 21.46 秒。标准入口：
+CTest 不允许再回到旧逐项串行全量。旧路径实测 34/34 约 1124 秒、并行 8 约 358 秒；`YUENGINE_CTEST_MODE=FAST` 现在只注册秒级 `yuengine_smoke_validate_touhou`，用于裸 `ctest`/编辑循环，实测 CTest 总时间约 0.01 秒、外层约 0.06 秒。当前最深 L36c1 binary function gate 已从默认 CTest 移到显式 `tools\verify_runtime.ps1 -Mode edge`；该 edge suite filter 最新实测 elapsed_ms=73413，direct suite filter 实测 elapsed_ms=58799。full regression 走 direct `tools\verify_runtime.ps1 -Mode full`，当前 45/45 合同，clean full 最新 runtime suite elapsed_ms=133847、墙钟约 160 秒。CTest 的 EDGE/FULL/LEGACY 都必须显式打开 `YUENGINE_ENABLE_SLOW_CTESTS=ON`，旧逐项 CTest 还必须同时打开 `YUENGINE_CTEST_MODE=LEGACY` 和 `YUENGINE_ENABLE_LEGACY_CTESTS=ON`，否则 stale EDGE/FULL/LEGACY cache 会被强制压回 FAST smoke。runtime report cache、scene-runtime 复用和 `.sqasm` module cache 已把最深 backend adapter CLI 从 113.06 秒降到 21.46 秒。标准入口：
 
 ```powershell
 tools\verify_runtime.ps1
 tools\verify_runtime.ps1 -Mode edge -Jobs 8
-tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_material_program_binary_dispatch_contract -Jobs 8
+tools\verify_runtime.ps1 -Mode edge -Filter yuengine_backend_material_program_binary_function_contract -Jobs 8
 tools\verify_runtime.ps1 -Mode full -Jobs 8
 tools\verify_runtime.ps1 -Mode full -Jobs 8 -CleanBuild
 ```

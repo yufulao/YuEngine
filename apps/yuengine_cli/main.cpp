@@ -68,6 +68,7 @@ void usage()
               << "  yuengine_cli backend-material-program <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-material-program-binary <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli backend-material-program-binary-dispatch <project.json> [--repo-root <path>]\n"
+              << "  yuengine_cli backend-material-program-binary-function <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli runtime-contract-suite <project.json> [--repo-root <path>] [--filter <test-name>]\n"
               << "  yuengine_cli mission-event-thread <project.json> [--repo-root <path>]\n"
               << "  yuengine_cli mission-tutorial <project.json> [--repo-root <path>]\n"
@@ -1086,6 +1087,36 @@ int runRuntimeContractSuite(
         requireContract(errors, report.openBinaryDispatchObligations == 5, "binary dispatch open obligation count changed");
     });
 
+    runContractSuiteCheck(suite, "yuengine_backend_material_program_binary_function_contract", filter, [&](auto& errors) {
+        const auto report = yu::runtime::runBackendMaterialProgramBinaryFunctionRuntime(manifestPath, repoRoot);
+        requireContract(errors, report.ok, "binary material program function report is not ok");
+        requireContract(errors, report.binaryDispatchOk, "binary dispatch upstream not ready");
+        requireContract(errors, report.originalBinaryFound, "original game binary was not found");
+        requireContract(errors, report.functionFingerprintReady, "function fingerprint evidence not ready");
+        requireContract(errors, report.depthFunctionFingerprintReady, "depth function fingerprint evidence not ready");
+        requireContract(errors, report.rsmDepthFunctionFingerprintReady, "RSM depth function fingerprint evidence not ready");
+        requireContract(errors, report.functionBodyFormatImmediateProbeReady, "function body depth format probe not ready");
+        requireContract(errors, report.directFunctionCallXrefProbeReady, "direct function call xref probe not ready");
+        requireContract(errors, report.selectorControlFlowStillOpen, "selector CFG gap not tracked");
+        requireContract(errors, report.sampleableDepthRuntimeSelectionStillOpen, "sampleable depth runtime gap not tracked");
+        requireContract(errors, report.d3dDispatchWrapperStillOpen, "D3D/D3DX wrapper gap not tracked");
+        requireContract(errors, report.downstreamDrawPresentDeferred, "downstream draw/present was not deferred");
+        requireContract(errors, report.functionFingerprintRecords == 14, "function fingerprint record count changed");
+        requireContract(errors, report.depthFunctionFingerprintRecords == 9, "depth function fingerprint count changed");
+        requireContract(errors, report.rsmDepthFunctionFingerprintRecords == 5, "RSM function fingerprint count changed");
+        requireContract(errors, report.uniqueFunctionFingerprints == 14, "unique function fingerprint count changed");
+        requireContract(errors, report.functionBytesTotal == 3779, "function byte total changed");
+        requireContract(errors, report.depthFunctionBytes == 2042, "depth function byte total changed");
+        requireContract(errors, report.rsmDepthFunctionBytes == 1737, "RSM function byte total changed");
+        requireContract(errors, report.functionBodyDepthFormatImmediateHits == 0, "function body depth format immediate hits changed");
+        requireContract(errors, report.directFunctionCallRel32Xrefs == 0, "direct function call xrefs changed");
+        requireContract(errors, report.preservedDepthTextureBindings == 1, "preserved depth binding count changed");
+        requireContract(errors, report.preservedMaterialProgramBindings == 38, "preserved material program binding count changed");
+        requireContract(errors, report.resolvedBinaryFunctionContracts == 7, "binary function resolved contract count changed");
+        requireContract(errors, report.trackedBinaryFunctionObligations == 5, "binary function tracked obligation count changed");
+        requireContract(errors, report.openBinaryFunctionObligations == 5, "binary function open obligation count changed");
+    });
+
     runContractSuiteCheck(suite, "yuengine_mission_event_thread_contract", filter, [&](auto& errors) {
         const auto report = yu::runtime::runMissionEventThreadRuntime(manifestPath, repoRoot);
         requireContract(errors, report.ok && report.sceneRuntimeOk, "mission event thread report is not ok");
@@ -1314,6 +1345,12 @@ int main(int argc, char** argv)
             auto report =
                 yu::runtime::runBackendMaterialProgramBinaryDispatchRuntime(manifest, repoRoot);
             std::cout << yu::runtime::backendMaterialProgramBinaryDispatchRuntimeReportToJson(report);
+            return report.ok ? 0 : 1;
+        }
+        if (command == "backend-material-program-binary-function") {
+            auto report =
+                yu::runtime::runBackendMaterialProgramBinaryFunctionRuntime(manifest, repoRoot);
+            std::cout << yu::runtime::backendMaterialProgramBinaryFunctionRuntimeReportToJson(report);
             return report.ok ? 0 : 1;
         }
         if (command == "runtime-contract-suite") {

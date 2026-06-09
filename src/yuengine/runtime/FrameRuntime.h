@@ -1591,6 +1591,58 @@ struct BackendMaterialProgramBinaryDispatchRuntimeReport {
     std::vector<BackendObligationItem> contracts;
 };
 
+struct BackendBinaryFunctionFingerprintRecord {
+    std::string sourceCategory;
+    std::string anchorToken;
+    long long tableOffset = -1;
+    unsigned int targetRva = 0;
+    int pdataIndex = -1;
+    unsigned int functionBeginRva = 0;
+    unsigned int functionEndRva = 0;
+    int functionBytes = 0;
+    std::string fnv1a64Hex;
+    int depthFormatImmediateHits = 0;
+    int directCallRel32Xrefs = 0;
+};
+
+struct BackendMaterialProgramBinaryFunctionRuntimeReport {
+    bool ok = true;
+    std::string projectId;
+    std::string originalBinaryPath;
+    std::vector<std::string> errors;
+    bool binaryDispatchOk = false;
+    bool originalBinaryFound = false;
+    bool functionFingerprintReady = false;
+    bool depthFunctionFingerprintReady = false;
+    bool rsmDepthFunctionFingerprintReady = false;
+    bool functionBodyFormatImmediateProbeReady = false;
+    bool directFunctionCallXrefProbeReady = false;
+    bool selectorControlFlowStillOpen = false;
+    bool sampleableDepthRuntimeSelectionStillOpen = false;
+    bool d3dDispatchWrapperStillOpen = false;
+    bool downstreamDrawPresentDeferred = false;
+    bool backbufferExtentCarried = false;
+    int functionFingerprintRecords = 0;
+    int depthFunctionFingerprintRecords = 0;
+    int rsmDepthFunctionFingerprintRecords = 0;
+    int uniqueFunctionFingerprints = 0;
+    int functionBytesTotal = 0;
+    int depthFunctionBytes = 0;
+    int rsmDepthFunctionBytes = 0;
+    int functionBodyDepthFormatImmediateHits = 0;
+    int directFunctionCallRel32Xrefs = 0;
+    int preservedDepthTextureBindings = 0;
+    int preservedMaterialProgramBindings = 0;
+    int drawPresentCaptureRecordsDeferred = 0;
+    int backbufferWidth = 0;
+    int backbufferHeight = 0;
+    int resolvedBinaryFunctionContracts = 0;
+    int trackedBinaryFunctionObligations = 0;
+    int openBinaryFunctionObligations = 0;
+    std::vector<BackendBinaryFunctionFingerprintRecord> functionFingerprintRecordsDetail;
+    std::vector<BackendObligationItem> contracts;
+};
+
 struct MissionEventThreadRuntimeReport {
     bool ok = true;
     std::string projectId;
@@ -1852,6 +1904,13 @@ BackendMaterialProgramBinaryDispatchRuntimeReport runBackendMaterialProgramBinar
 
 std::string backendMaterialProgramBinaryDispatchRuntimeReportToJson(
     const BackendMaterialProgramBinaryDispatchRuntimeReport& report);
+
+BackendMaterialProgramBinaryFunctionRuntimeReport runBackendMaterialProgramBinaryFunctionRuntime(
+    const std::filesystem::path& manifestPath,
+    const std::filesystem::path& repoRoot);
+
+std::string backendMaterialProgramBinaryFunctionRuntimeReportToJson(
+    const BackendMaterialProgramBinaryFunctionRuntimeReport& report);
 
 MissionEventThreadRuntimeReport runMissionEventThreadRuntime(
     const std::filesystem::path& manifestPath,
