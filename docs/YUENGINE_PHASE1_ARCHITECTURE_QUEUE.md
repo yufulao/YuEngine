@@ -85,7 +85,7 @@ ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accept
 | P1-GATE-001 | Platform Host + Engine Kernel Bootstrap | L0-L2 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Headless host, timer, log sink, error boundary, module lifecycle, service registry, tests |
 | P1-GATE-002 | Memory Accounting Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Needs ADR-0006; accounting hooks and leak fixtures only, no full allocator |
 | P1-GATE-003 | Thread/Task Primitive Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Needs ADR-0007; bounded queue and inline executor only, no worker pool |
-| P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | TBD | Pending | Needs ADR-0004 |
+| P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Needs ADR-0004; bounded synchronous observer only, no reports/profiler/async queue |
 | P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | `APPROVED_FOR_FIRST_SLICE` after review | Proposed | Needs ADR-0008; path normalization and loose fixture reads only, no package parser |
 
 ## Current Proposed Gate
