@@ -75,7 +75,7 @@ AudioStatus TestAudioDevice::RegisterSyntheticSource(std::span<const std::int16_
 {
     if (!_isInitialized)
     {
-        return RecordFailure(AudioStatus::InvalidDescriptor);
+        return AudioStatus::InvalidDescriptor;
     }
 
     if (frameCount == 0U)
@@ -116,6 +116,11 @@ AudioStatus TestAudioDevice::RegisterSyntheticSource(std::span<const std::int16_
 
 AudioStatus TestAudioDevice::StartVoice(AudioSourceId source, std::uint32_t gainQ15, AudioVoiceHandle& outVoice)
 {
+    if (!_isInitialized)
+    {
+        return AudioStatus::InvalidDescriptor;
+    }
+
     if (gainQ15 > MAX_Q15_GAIN)
     {
         return RecordFailure(AudioStatus::InvalidGain);
@@ -149,6 +154,11 @@ AudioStatus TestAudioDevice::StartVoice(AudioSourceId source, std::uint32_t gain
 
 AudioStatus TestAudioDevice::StopVoice(AudioVoiceHandle handle)
 {
+    if (!_isInitialized)
+    {
+        return AudioStatus::InvalidDescriptor;
+    }
+
     if (!IsVoiceHandleValid(handle))
     {
         return RecordFailure(AudioStatus::InvalidHandle);
@@ -160,6 +170,11 @@ AudioStatus TestAudioDevice::StopVoice(AudioVoiceHandle handle)
 
 AudioMixResult TestAudioDevice::Mix(std::span<std::int16_t> outputSamples, std::size_t requestedFrames)
 {
+    if (!_isInitialized)
+    {
+        return AudioMixResult{AudioStatus::InvalidDescriptor, 0U};
+    }
+
     if (requestedFrames > MAX_OUTPUT_FRAMES)
     {
         RecordFailure(AudioStatus::CapacityExceeded);
@@ -178,8 +193,8 @@ AudioMixResult TestAudioDevice::Mix(std::span<std::int16_t> outputSamples, std::
     _snapshot.VoiceStorageCapacityBeforeMix = _voices.size();
     for (std::size_t frame = 0U; frame < requestedFrames; ++frame)
     {
-        std::int32_t leftSample = 0;
-        std::int32_t rightSample = 0;
+        std::int64_t leftSample = 0;
+        std::int64_t rightSample = 0;
 
         for (AudioVoiceSlot& voice : _voices)
         {
@@ -314,14 +329,14 @@ std::int32_t TestAudioDevice::ScaleSample(std::int16_t sample, std::uint32_t gai
     return (sourceSample * gain) / static_cast<std::int32_t>(MAX_Q15_GAIN);
 }
 
-std::int16_t TestAudioDevice::SaturateToS16(std::int32_t sample) const
+std::int16_t TestAudioDevice::SaturateToS16(std::int64_t sample) const
 {
-    if (sample > static_cast<std::int32_t>(S16_MAX))
+    if (sample > static_cast<std::int64_t>(S16_MAX))
     {
         return S16_MAX;
     }
 
-    if (sample < static_cast<std::int32_t>(S16_MIN))
+    if (sample < static_cast<std::int64_t>(S16_MIN))
     {
         return S16_MIN;
     }

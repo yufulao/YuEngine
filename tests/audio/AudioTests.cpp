@@ -10,6 +10,7 @@
 
 using AudioBackendKind = yuengine::audio::AudioBackendKind;
 using AudioDeviceDesc = yuengine::audio::AudioDeviceDesc;
+using AudioDeviceSnapshot = yuengine::audio::AudioDeviceSnapshot;
 using AudioMixResult = yuengine::audio::AudioMixResult;
 using AudioSampleFormat = yuengine::audio::AudioSampleFormat;
 using AudioSourceId = yuengine::audio::AudioSourceId;
@@ -33,10 +34,12 @@ constexpr const char* TEST_SINGLE_VOICE = "Audio_MixSingleVoice_WritesDeterminis
 constexpr const char* TEST_UNITY_GAIN = "Audio_MixUnityGain_PreservesS16EdgeSamples";
 constexpr const char* TEST_FRACTIONAL_GAIN = "Audio_MixFractionalGain_RoundsTowardZeroDeterministically";
 constexpr const char* TEST_MULTIPLE_VOICES = "Audio_MixMultipleVoices_UsesStableOrderAndSaturates";
+constexpr const char* TEST_MAX_VOICE_FULL_SCALE = "Audio_MixMaxVoicesFullScaleSaturatesWithoutOverflow";
 constexpr const char* TEST_STOPS_AT_END = "Audio_MixStopsVoiceAtEndOfSource";
 constexpr const char* TEST_SILENT_TAIL = "Audio_MixEndedVoice_WritesSilentTail";
 constexpr const char* TEST_OVERWRITE = "Audio_MixOverwritesPrefilledDestination";
 constexpr const char* TEST_UNDERSIZED_OUTPUT = "Audio_MixRejectsUndersizedBufferWithoutWritingSamples";
+constexpr const char* TEST_UNINITIALIZED_LIFECYCLE = "Audio_UninitializedDeviceOperationsReturnExplicitStatusWithoutMutation";
 constexpr const char* TEST_NO_GROW = "Audio_Mix_DoesNotGrowVoiceStorage";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Audio_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_FORBIDDEN_DEPENDENCY = "Audio_NoDeviceCodecResourceScriptUiGameAdapterDependency";
@@ -94,6 +97,51 @@ bool SamplesEqual(std::span<const std::int16_t> left, std::span<const std::int16
     }
 
     return true;
+}
+
+bool SnapshotsEqual(const AudioDeviceSnapshot& left, const AudioDeviceSnapshot& right)
+{
+    return left.SourceCapacity == right.SourceCapacity &&
+           left.VoiceCapacity == right.VoiceCapacity &&
+           left.SourceCount == right.SourceCount &&
+           left.ActiveVoiceCount == right.ActiveVoiceCount &&
+           left.VoiceStorageCapacityBeforeMix == right.VoiceStorageCapacityBeforeMix &&
+           left.VoiceStorageCapacityAfterLastMix == right.VoiceStorageCapacityAfterLastMix &&
+           left.RegisteredSourceCount == right.RegisteredSourceCount &&
+           left.StartedVoiceCount == right.StartedVoiceCount &&
+           left.StoppedVoiceCount == right.StoppedVoiceCount &&
+           left.MixedFrameCount == right.MixedFrameCount &&
+           left.OutputSampleWriteCount == right.OutputSampleWriteCount &&
+           left.FailedOperationCount == right.FailedOperationCount &&
+           left.LastFramesWritten == right.LastFramesWritten &&
+           left.AllocationAccountingStatus == right.AllocationAccountingStatus;
+}
+
+bool MixMaxVoicesFullScale(std::int16_t sourceSample, std::int16_t expectedSample)
+{
+    TestAudioDevice device = CreateInitializedDevice();
+    const std::array<std::int16_t, 2U> samples{sourceSample, sourceSample};
+    AudioSourceId source{};
+    if (device.RegisterSyntheticSource(std::span<const std::int16_t>(samples.data(), samples.size()), 1U, source) != AudioStatus::Success)
+    {
+        return false;
+    }
+
+    for (std::size_t index = 0U; index < yuengine::audio::MAX_VOICES; ++index)
+    {
+        AudioVoiceHandle voice{};
+        if (device.StartVoice(source, yuengine::audio::MAX_Q15_GAIN, voice) != AudioStatus::Success)
+        {
+            return false;
+        }
+    }
+
+    std::array<std::int16_t, 2U> output{};
+    const AudioMixResult result = device.Mix(std::span<std::int16_t>(output.data(), output.size()), 1U);
+    return result.Status == AudioStatus::Success &&
+           result.FramesWritten == 1U &&
+           output[0U] == expectedSample &&
+           output[1U] == expectedSample;
 }
 
 int AudioCreateTestDeviceReturnsCapabilities()
@@ -456,6 +504,21 @@ int AudioMixMultipleVoicesUsesStableOrderAndSaturates()
     return 0;
 }
 
+int AudioMixMaxVoicesFullScaleSaturatesWithoutOverflow()
+{
+    if (!MixMaxVoicesFullScale(yuengine::audio::S16_MAX, yuengine::audio::S16_MAX))
+    {
+        return Fail("positive max-voice full-scale mix did not saturate safely");
+    }
+
+    if (!MixMaxVoicesFullScale(yuengine::audio::S16_MIN, yuengine::audio::S16_MIN))
+    {
+        return Fail("negative max-voice full-scale mix did not saturate safely");
+    }
+
+    return 0;
+}
+
 int AudioMixStopsVoiceAtEndOfSource()
 {
     TestAudioDevice device = CreateInitializedDevice();
@@ -546,6 +609,50 @@ int AudioMixRejectsUndersizedBufferWithoutWritingSamples()
         {
             return Fail("undersized mix mutated output");
         }
+    }
+
+    return 0;
+}
+
+int AudioUninitializedDeviceOperationsReturnExplicitStatusWithoutMutation()
+{
+    TestAudioDevice device;
+    const AudioDeviceSnapshot beforeSnapshot = device.Snapshot();
+    AudioVoiceHandle voice{};
+
+    if (device.StartVoice(AudioSourceId{0U, 1U}, yuengine::audio::MAX_Q15_GAIN, voice) != AudioStatus::InvalidDescriptor)
+    {
+        return Fail("uninitialized start voice did not return explicit status");
+    }
+
+    if (device.StopVoice(AudioVoiceHandle{0U, 1U}) != AudioStatus::InvalidDescriptor)
+    {
+        return Fail("uninitialized stop voice did not return explicit status");
+    }
+
+    std::array<std::int16_t, 4U> output{SENTINEL_SAMPLE, SENTINEL_SAMPLE, SENTINEL_SAMPLE, SENTINEL_SAMPLE};
+    const AudioMixResult result = device.Mix(std::span<std::int16_t>(output.data(), output.size()), 2U);
+    if (result.Status != AudioStatus::InvalidDescriptor)
+    {
+        return Fail("uninitialized mix did not return explicit status");
+    }
+
+    if (result.FramesWritten != 0U)
+    {
+        return Fail("uninitialized mix reported written frames");
+    }
+
+    for (const std::int16_t sample : output)
+    {
+        if (sample != SENTINEL_SAMPLE)
+        {
+            return Fail("uninitialized mix wrote output");
+        }
+    }
+
+    if (!SnapshotsEqual(device.Snapshot(), beforeSnapshot))
+    {
+        return Fail("uninitialized operations mutated counters");
     }
 
     return 0;
@@ -709,6 +816,11 @@ int main(int argc, char** argv)
         return AudioMixMultipleVoicesUsesStableOrderAndSaturates();
     }
 
+    if (testName == TEST_MAX_VOICE_FULL_SCALE)
+    {
+        return AudioMixMaxVoicesFullScaleSaturatesWithoutOverflow();
+    }
+
     if (testName == TEST_STOPS_AT_END)
     {
         return AudioMixStopsVoiceAtEndOfSource();
@@ -727,6 +839,11 @@ int main(int argc, char** argv)
     if (testName == TEST_UNDERSIZED_OUTPUT)
     {
         return AudioMixRejectsUndersizedBufferWithoutWritingSamples();
+    }
+
+    if (testName == TEST_UNINITIALIZED_LIFECYCLE)
+    {
+        return AudioUninitializedDeviceOperationsReturnExplicitStatusWithoutMutation();
     }
 
     if (testName == TEST_NO_GROW)

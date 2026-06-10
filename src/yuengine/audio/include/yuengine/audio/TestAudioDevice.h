@@ -37,7 +37,7 @@ private:
     bool IsVoiceHandleValid(AudioVoiceHandle handle) const;
     std::int16_t ReadSourceSample(const AudioVoiceSlot& voice, std::size_t channel) const;
     std::int32_t ScaleSample(std::int16_t sample, std::uint32_t gainQ15) const;
-    std::int16_t SaturateToS16(std::int32_t sample) const;
+    std::int16_t SaturateToS16(std::int64_t sample) const;
     void StopVoiceSlot(AudioVoiceSlot& voice);
 
     std::vector<AudioSourceSlot> _sources;
