@@ -1,6 +1,6 @@
 # ADR-0014: Object Identity And Lifetime Registry Boundary
 
-Status: Proposed
+Status: Accepted
 Owner: 八云紫
 Reviewers: 红美铃, 八云蓝, 博丽灵梦, 大妖精, 射命丸文 if evidence boundary is questioned, 雾雨魔理沙 when implementation exists
 Date: 2026-06-10
