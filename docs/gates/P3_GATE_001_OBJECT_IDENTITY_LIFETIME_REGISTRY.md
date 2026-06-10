@@ -92,7 +92,9 @@ Failure behavior:
 - invalid object type returns explicit status and does not mutate state;
 - registry capacity overflow returns explicit capacity status and does not
   mutate state;
-- invalid, stale-generation, or destroyed handles return explicit statuses;
+- validate, acquire, release, or destroy using invalid, stale-generation, or
+  already-destroyed handles returns explicit status and does not mutate
+  lifecycle or reference counters;
 - repeated acquire increments `uint32_t` reference count;
 - acquire at `UINT32_MAX` returns explicit reference-count-overflow status and
   does not mutate reference count;
@@ -106,6 +108,7 @@ Failure behavior:
 - fixed object type IDs;
 - fixed registry capacity;
 - synthetic object descriptors only;
+- optional setup-only synthetic initial reference count for overflow fixtures;
 - optional memory tracker if P1-GATE-002 implementation vocabulary is accepted.
 
 ## Outputs
@@ -114,6 +117,7 @@ Failure behavior:
 - object status/result values;
 - object registry snapshot;
 - created, alive, referenced, destroyed, and failed-operation counts;
+- last explicit status;
 - allocation/accounting status using `YuMemory` vocabulary or explicit deferral;
 - no log/report text as behavior transport.
 
@@ -164,6 +168,15 @@ First-slice bounds:
 - all registry storage capacity is fixed at setup and may not grow dynamically
   in measured fixtures.
 
+Overflow fixture rule:
+
+- `Object_AcquireRejectsReferenceCountOverflow` may use a setup-only synthetic
+  descriptor field to seed an object's reference count to `UINT32_MAX`;
+- the seed field is not a runtime API and must not be callable after object
+  creation;
+- the overflow test must prove acquire returns explicit overflow status without
+  changing reference count or lifecycle counters.
+
 Pass/fail rule:
 
 - exceeding object, type, or reference-count bounds is an explicit failure;
@@ -191,6 +204,7 @@ Fast gate tests required before the slice can be considered complete:
 - `Object_CreateRejectsInvalidTypeWithoutMutation`
 - `Object_RegistryCapacityOverflow_DoesNotMutate`
 - `Object_ValidateRejectsInvalidOrStaleHandle`
+- `Object_InvalidOrStaleHandleOperations_ReturnExplicitStatusWithoutMutation`
 - `Object_DestroyIncrementsGenerationAndInvalidatesOldHandle`
 - `Object_ReusesFreedSlotWithNewGeneration`
 - `Object_AcquireRelease_TracksReferenceCount`
@@ -198,6 +212,7 @@ Fast gate tests required before the slice can be considered complete:
 - `Object_AcquireRejectsReferenceCountOverflow`
 - `Object_ReleaseAtZero_DoesNotMutate`
 - `Object_DestroyRejectsOutstandingReference`
+- `Object_RegistrySnapshot_ReportsCountsAndLastStatus`
 - `Object_DisabledDiagnosticsDoesNotChangeResults`
 - `Object_NoWorldScriptResourceOrGameAdapterDependency`
 - `Object_NoHiddenAllocation_UsesYuMemorySignal`

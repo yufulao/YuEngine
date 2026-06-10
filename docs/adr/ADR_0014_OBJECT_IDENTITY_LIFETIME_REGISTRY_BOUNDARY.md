@@ -75,7 +75,9 @@ Rules:
 - creating with an invalid object type fails explicitly and does not mutate
   registry state;
 - creating beyond capacity fails explicitly and does not mutate registry state;
-- acquiring an invalid or stale-generation handle fails explicitly;
+- validating, acquiring, releasing, or destroying an invalid, stale-generation,
+  or already-destroyed handle fails explicitly and does not mutate lifecycle or
+  reference counters;
 - repeated acquire of the same valid handle increments a `uint32_t` reference
   count and returns success;
 - acquiring when reference count is already `UINT32_MAX` fails explicitly and
@@ -87,8 +89,34 @@ Rules:
   frees the slot for later reuse;
 - reused slots must return handles with the new generation.
 
+For deterministic overflow testing, the first slice may allow a setup-only
+synthetic descriptor field to seed a test object with an initial reference count,
+including `UINT32_MAX`. That fixture field is not a runtime API and must not be
+usable after object creation.
+
 There is no deferred-destroy queue, garbage collection, ownership graph, weak
 reference table, or cross-thread lifetime policy in this first slice.
+
+## Snapshot Boundary
+
+Object snapshots are deterministic test observations. They are not reports or
+runtime ownership APIs.
+
+First-slice snapshots expose:
+
+- registry capacity;
+- type capacity;
+- alive object count;
+- referenced object count;
+- destroyed object count;
+- failed operation count;
+- last explicit status;
+- allocation/accounting status.
+
+Snapshot fields must change only as a result of explicit object operations.
+Failed operations that are specified as no-mutation failures may update the last
+status and failed operation count, but must not change lifecycle or reference
+counters.
 
 ## Relationship To Resource And World
 
