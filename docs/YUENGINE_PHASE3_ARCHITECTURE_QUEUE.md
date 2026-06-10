@@ -73,12 +73,14 @@ Phase 3 remains blocked from:
 | ID | Title | Owner | Reviewers | Status | Blocks |
 | --- | --- | --- | --- | --- | --- |
 | ADR-0014 | Object identity and lifetime registry boundary | 八云紫 | 红美铃, 八云蓝, 博丽灵梦, 大妖精 | Accepted | Object registry first slice |
+| ADR-0015 | Serialization value stream boundary | 八云紫 | 红美铃, 八云蓝, 博丽灵梦, 大妖精, 射命丸文 if evidence boundary is questioned | Proposed | Serialization value stream first slice |
 
 ## Module Gate Proposal Queue
 
 | Gate | Module | Layer | Requested decision | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
 | P3-GATE-001 | Object Identity And Lifetime Registry | L2-L4 | `APPROVED_FOR_FIRST_SLICE` | In review | Bounded synthetic object registry only; no component model, world/scene, script binding, Resource mutation, reflection, serialization payload, UI/gameplay, tools, reports, or Game Adapter |
+| P3-GATE-002 | Serialization Value Stream | L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Proposed | Bounded caller-provided-buffer value stream only; no File/package/Resource/object construction/reflection/script/scene/save/tool/report/Game Adapter scope |
 
 ## Current Active Gates
 
@@ -86,6 +88,9 @@ Phase 3 remains blocked from:
   accepted and gate/test-coverage is clear, but the gate must not be approved
   for implementation until performance/cost and PM/final sequencing are clear
   and active implementation reviews are stable enough.
+- P3-GATE-002 is proposed for architecture review only. It must not be approved
+  for implementation until ADR-0015 is accepted, performance/cost is clear, and
+  PM confirms sequencing against active review pressure.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.
@@ -102,9 +107,10 @@ Phase 3 remains blocked from:
 
 ## Immediate Next Steps
 
-1. Close P3-GATE-001 performance/cost and PM/final sequencing lanes.
-2. Continue closing active Phase 1 and Phase 2 implementation reviews.
-3. Do not create a `YuObject` implementation task until P3-GATE-001 receives
+1. Review ADR-0015 and P3-GATE-002 as architecture only.
+2. Close P3-GATE-001 performance/cost and PM/final sequencing lanes.
+3. Continue closing active Phase 1 and Phase 2 implementation reviews.
+4. Do not create a `YuObject` implementation task until P3-GATE-001 receives
    explicit `APPROVED_FOR_FIRST_SLICE` and PM sequencing approval.
-4. Prepare serialization boundary only after object identity review state is
-   stable enough to avoid depending on unresolved lifecycle vocabulary.
+5. Do not create a `YuSerialize` implementation task until P3-GATE-002 receives
+   explicit `APPROVED_FOR_FIRST_SLICE` and PM sequencing approval.
