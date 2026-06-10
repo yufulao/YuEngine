@@ -149,10 +149,24 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList& commandList)
         return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
+    if (commandList.Capacity() > _capabilities.CommandListCapacity)
+    {
+        return RecordFailure(RhiStatus::CapacityExceeded);
+    }
+
     const RhiTextureHandle target = commandList.TargetHandle();
     if (!IsTargetHandleValid(target))
     {
         return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    for (std::size_t index = 0U; index < commandList.CommandCount(); ++index)
+    {
+        const RhiCommandRecord& command = commandList.CommandAt(index);
+        if (!IsCommandTargetValidForFrame(command, target))
+        {
+            return RecordFailure(RhiStatus::InvalidHandle);
+        }
     }
 
     _snapshot.CommandStorageCapacityBeforeFrame = commandList.Capacity();
@@ -256,6 +270,26 @@ bool NullRhiDevice::IsTargetHandleValid(RhiTextureHandle handle) const
     }
 
     return slot.Generation == handle.Generation;
+}
+
+bool NullRhiDevice::IsCommandTargetValidForFrame(const RhiCommandRecord& command, RhiTextureHandle frameTarget) const
+{
+    if (command.Type != RhiCommandType::ClearColor)
+    {
+        return true;
+    }
+
+    if (command.Target.Slot != frameTarget.Slot)
+    {
+        return false;
+    }
+
+    if (command.Target.Generation != frameTarget.Generation)
+    {
+        return false;
+    }
+
+    return IsTargetHandleValid(command.Target);
 }
 
 bool NullRhiDevice::IsColorTargetDescValid(const RhiColorTargetDesc& desc) const

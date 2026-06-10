@@ -35,6 +35,7 @@ public:
 private:
     RhiStatus RecordFailure(RhiStatus status);
     bool IsTargetHandleValid(RhiTextureHandle handle) const;
+    bool IsCommandTargetValidForFrame(const RhiCommandRecord& command, RhiTextureHandle frameTarget) const;
     bool IsColorTargetDescValid(const RhiColorTargetDesc& desc) const;
     std::size_t PixelByteCount(const RhiColorTargetDesc& desc) const;
     void ExecuteClear(RhiTextureHandle handle, RhiColor color);

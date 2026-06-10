@@ -30,8 +30,11 @@ constexpr const char* TEST_TARGET_CAPACITY = "RHI_TargetCapacityOverflow_DoesNot
 constexpr const char* TEST_DESTROY_STALE = "RHI_DestroyTarget_InvalidatesStaleHandle";
 constexpr const char* TEST_RECORD_CLEAR = "RHI_CommandList_RecordsClearWithinCapacity";
 constexpr const char* TEST_COMMAND_CAPACITY = "RHI_CommandListCapacityOverflow_DoesNotMutate";
+constexpr const char* TEST_SUBMIT_OVERSIZE_COMMAND_LIST = "RHI_SubmitRejectsOversizedCommandListWithoutMutation";
 constexpr const char* TEST_INVALID_CLEAR_TARGET = "RHI_RecordClear_RejectsInvalidTargetHandle";
 constexpr const char* TEST_INCOMPLETE_SUBMIT = "RHI_SubmitRejectsIncompleteCommandListWithoutMutation";
+constexpr const char* TEST_MISMATCHED_SUBMIT_TARGET = "RHI_SubmitRejectsMismatchedRecordedTargetWithoutMutation";
+constexpr const char* TEST_STALE_SUBMIT_TARGET = "RHI_SubmitRejectsStaleRecordedTargetWithoutMutation";
 constexpr const char* TEST_SUBMIT_EXECUTES_CLEAR = "RHI_SubmitExecutesClearIntoNullTarget";
 constexpr const char* TEST_PRESENT_REQUIRES_SUBMIT = "RHI_PresentRequiresSuccessfulSubmit";
 constexpr const char* TEST_PRESENT_COUNTER = "RHI_ClearSubmitPresent_UpdatesPresentedCounter";
@@ -377,6 +380,65 @@ int RhiCommandListCapacityOverflowDoesNotMutate()
     return 0;
 }
 
+int RhiSubmitRejectsOversizedCommandListWithoutMutation()
+{
+    NullRhiDevice device = CreateInitializedDevice();
+    RhiTextureHandle handle{};
+    if (!CreateTarget(device, handle))
+    {
+        return Fail("target creation failed");
+    }
+
+    const RhiColor initialColor{1U, 2U, 3U, 4U};
+    if (ClearSubmitPresent(device, handle, initialColor) != RhiStatus::Success)
+    {
+        return Fail("initial clear submit present failed");
+    }
+
+    const auto beforeSnapshot = device.Snapshot();
+    RhiCommandList oversizedCommandList(yuengine::rhi::MAX_COMMANDS + 1U);
+    if (oversizedCommandList.BeginFrame(handle) != RhiStatus::Success)
+    {
+        return Fail("oversized begin frame failed before submit");
+    }
+
+    if (device.RecordClear(oversizedCommandList, handle, RhiColor{9U, 8U, 7U, 6U}) != RhiStatus::Success)
+    {
+        return Fail("oversized clear record failed before submit");
+    }
+
+    if (oversizedCommandList.EndFrame() != RhiStatus::Success)
+    {
+        return Fail("oversized end frame failed before submit");
+    }
+
+    const RhiStatus submitStatus = device.Submit(oversizedCommandList);
+    if (submitStatus != RhiStatus::CapacityExceeded)
+    {
+        return Fail("oversized command list submit did not return capacity status");
+    }
+
+    const auto afterSnapshot = device.Snapshot();
+    if (afterSnapshot.SubmitCount != beforeSnapshot.SubmitCount)
+    {
+        return Fail("oversized command list submit mutated submit count");
+    }
+
+    std::vector<std::uint8_t> capture(2U * 2U * yuengine::rhi::RGBA8_BYTES_PER_PIXEL);
+    const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(capture.data(), capture.size()));
+    if (result.Status != RhiStatus::Success)
+    {
+        return Fail("capture failed after rejected oversized submit");
+    }
+
+    if (!BytesMatchColor(capture, initialColor))
+    {
+        return Fail("rejected oversized submit mutated target bytes");
+    }
+
+    return 0;
+}
+
 int RhiRecordClearRejectsInvalidTargetHandle()
 {
     NullRhiDevice device = CreateInitializedDevice();
@@ -402,6 +464,156 @@ int RhiRecordClearRejectsInvalidTargetHandle()
     if (commandList.CommandCount() != countBefore)
     {
         return Fail("invalid target clear mutated command list");
+    }
+
+    return 0;
+}
+
+int RhiSubmitRejectsMismatchedRecordedTargetWithoutMutation()
+{
+    NullRhiDevice device = CreateInitializedDevice();
+    RhiTextureHandle frameTarget{};
+    RhiTextureHandle otherTarget{};
+    if (!CreateTarget(device, frameTarget))
+    {
+        return Fail("frame target creation failed");
+    }
+
+    if (!CreateTarget(device, otherTarget))
+    {
+        return Fail("other target creation failed");
+    }
+
+    const RhiColor otherInitialColor{4U, 3U, 2U, 1U};
+    if (ClearSubmitPresent(device, otherTarget, otherInitialColor) != RhiStatus::Success)
+    {
+        return Fail("initial other target clear submit present failed");
+    }
+
+    const auto beforeSnapshot = device.Snapshot();
+    RhiCommandList commandList(yuengine::rhi::MAX_COMMANDS);
+    if (commandList.BeginFrame(frameTarget) != RhiStatus::Success)
+    {
+        return Fail("begin frame failed");
+    }
+
+    if (device.RecordClear(commandList, otherTarget, RhiColor{9U, 8U, 7U, 6U}) != RhiStatus::Success)
+    {
+        return Fail("mismatched clear record failed before submit");
+    }
+
+    if (commandList.EndFrame() != RhiStatus::Success)
+    {
+        return Fail("end frame failed");
+    }
+
+    const RhiStatus submitStatus = device.Submit(commandList);
+    if (submitStatus != RhiStatus::InvalidHandle)
+    {
+        return Fail("mismatched recorded target did not return explicit status");
+    }
+
+    const auto afterSnapshot = device.Snapshot();
+    if (afterSnapshot.SubmitCount != beforeSnapshot.SubmitCount)
+    {
+        return Fail("mismatched target submit mutated submit count");
+    }
+
+    std::vector<std::uint8_t> capture(2U * 2U * yuengine::rhi::RGBA8_BYTES_PER_PIXEL);
+    const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(capture.data(), capture.size()));
+    if (result.Status != RhiStatus::Success)
+    {
+        return Fail("capture failed after rejected mismatched submit");
+    }
+
+    if (!BytesMatchColor(capture, otherInitialColor))
+    {
+        return Fail("rejected mismatched submit mutated recorded target bytes");
+    }
+
+    return 0;
+}
+
+int RhiSubmitRejectsStaleRecordedTargetWithoutMutation()
+{
+    NullRhiDevice device = CreateInitializedDevice();
+    RhiTextureHandle originalTarget{};
+    if (!CreateTarget(device, originalTarget))
+    {
+        return Fail("original target creation failed");
+    }
+
+    if (device.DestroyTarget(originalTarget) != RhiStatus::Success)
+    {
+        return Fail("destroying original target failed");
+    }
+
+    RhiTextureHandle frameTarget{};
+    if (!CreateTarget(device, frameTarget))
+    {
+        return Fail("replacement frame target creation failed");
+    }
+
+    if (frameTarget.Slot != originalTarget.Slot)
+    {
+        return Fail("replacement target did not reuse slot for stale generation test");
+    }
+
+    if (frameTarget.Generation == originalTarget.Generation)
+    {
+        return Fail("replacement target did not advance generation");
+    }
+
+    const RhiColor frameInitialColor{5U, 6U, 7U, 8U};
+    if (ClearSubmitPresent(device, frameTarget, frameInitialColor) != RhiStatus::Success)
+    {
+        return Fail("initial frame target clear submit present failed");
+    }
+
+    const auto beforeSnapshot = device.Snapshot();
+    RhiCommandList commandList(yuengine::rhi::MAX_COMMANDS);
+    if (commandList.BeginFrame(frameTarget) != RhiStatus::Success)
+    {
+        return Fail("begin frame failed");
+    }
+
+    if (commandList.RecordClear(originalTarget, RhiColor{9U, 8U, 7U, 6U}) != RhiStatus::Success)
+    {
+        return Fail("stale generation clear record failed before submit");
+    }
+
+    if (commandList.EndFrame() != RhiStatus::Success)
+    {
+        return Fail("end frame failed");
+    }
+
+    const RhiStatus submitStatus = device.Submit(commandList);
+    if (submitStatus != RhiStatus::InvalidHandle)
+    {
+        return Fail("stale recorded target did not return explicit status");
+    }
+
+    const auto afterSnapshot = device.Snapshot();
+    if (afterSnapshot.SubmitCount != beforeSnapshot.SubmitCount)
+    {
+        return Fail("stale target submit mutated submit count");
+    }
+
+    if (afterSnapshot.ColorTargetCount != beforeSnapshot.ColorTargetCount)
+    {
+        return Fail("stale target submit mutated target count");
+    }
+
+    std::vector<std::uint8_t> capture(2U * 2U * yuengine::rhi::RGBA8_BYTES_PER_PIXEL);
+    const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(capture.data(), capture.size()));
+    if (result.Status != RhiStatus::Success)
+    {
+        return Fail("capture failed after rejected stale generation submit");
+    }
+
+    if (!BytesMatchColor(capture, frameInitialColor))
+    {
+        return Fail("rejected stale generation submit mutated frame target bytes");
     }
 
     return 0;
@@ -804,9 +1016,24 @@ int main(int argc, char** argv)
         return RhiCommandListCapacityOverflowDoesNotMutate();
     }
 
+    if (testName == TEST_SUBMIT_OVERSIZE_COMMAND_LIST)
+    {
+        return RhiSubmitRejectsOversizedCommandListWithoutMutation();
+    }
+
     if (testName == TEST_INVALID_CLEAR_TARGET)
     {
         return RhiRecordClearRejectsInvalidTargetHandle();
+    }
+
+    if (testName == TEST_MISMATCHED_SUBMIT_TARGET)
+    {
+        return RhiSubmitRejectsMismatchedRecordedTargetWithoutMutation();
+    }
+
+    if (testName == TEST_STALE_SUBMIT_TARGET)
+    {
+        return RhiSubmitRejectsStaleRecordedTargetWithoutMutation();
     }
 
     if (testName == TEST_INCOMPLETE_SUBMIT)
