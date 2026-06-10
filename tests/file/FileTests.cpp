@@ -5,12 +5,16 @@
 
 #include "yuengine/file/FileAccountingStatus.h"
 #include "yuengine/file/FileConstants.h"
+#include "yuengine/file/LooseFileSource.h"
 #include "yuengine/file/MountTable.h"
+#include "yuengine/file/NormalizedPath.h"
 
 using FileAccountingStatus = yuengine::file::FileAccountingStatus;
 using FileStatus = yuengine::file::FileStatus;
+using LooseFileSource = yuengine::file::LooseFileSource;
 using MountId = yuengine::file::MountId;
 using MountTable = yuengine::file::MountTable;
+using NormalizedPath = yuengine::file::NormalizedPath;
 using VirtualPath = yuengine::file::VirtualPath;
 
 namespace
@@ -22,6 +26,7 @@ constexpr const char* TEST_DUPLICATE_MOUNT = "File_MountTable_RejectsDuplicateMo
 constexpr const char* TEST_PRIORITY_ORDER = "File_MountTable_UsesDeterministicPriorityOrder";
 constexpr const char* TEST_MISSING = "File_MountTable_ReportsMissingMountOrFile";
 constexpr const char* TEST_READ = "File_LooseFixtureRead_ReturnsExactBytes";
+constexpr const char* TEST_FORGED_NORMALIZED_PATH = "File_LooseFileSourceRejectsForgedNormalizedPathEscape";
 constexpr const char* TEST_SNAPSHOT = "File_ReadSnapshot_RecordsCountsAndBytes";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "File_DiagnosticsDisabled_DoesNotChangeBehavior";
 constexpr const char* PRIMARY_MOUNT = "primary";
@@ -252,6 +257,25 @@ int FileLooseFixtureReadReturnsExactBytes()
     return 0;
 }
 
+int FileLooseFileSourceRejectsForgedNormalizedPathEscape()
+{
+    LooseFileSource source(FixtureRoot() / "secondary");
+    const auto traversalResult = source.Read(NormalizedPath("../primary/nested/fixture.txt"));
+    if (traversalResult.Status != FileStatus::PathEscape)
+    {
+        return Fail("forged traversal normalized path did not return path escape status");
+    }
+
+    const std::filesystem::path absoluteFixturePath = FixtureRoot() / "primary" / "nested" / "fixture.txt";
+    const auto absoluteResult = source.Read(NormalizedPath(absoluteFixturePath.generic_string()));
+    if (absoluteResult.Status != FileStatus::InvalidPath)
+    {
+        return Fail("forged absolute normalized path did not return invalid path status");
+    }
+
+    return 0;
+}
+
 int FileReadSnapshotRecordsCountsAndBytes()
 {
     MountTable table = CreateMountedTable();
@@ -362,6 +386,11 @@ int main(int argc, char** argv)
     if (testName == TEST_READ)
     {
         return FileLooseFixtureReadReturnsExactBytes();
+    }
+
+    if (testName == TEST_FORGED_NORMALIZED_PATH)
+    {
+        return FileLooseFileSourceRejectsForgedNormalizedPathEscape();
     }
 
     if (testName == TEST_SNAPSHOT)
