@@ -1,12 +1,35 @@
 # P1-GATE-004: Diagnostics Channel Boundary
 
-Status: Proposed
+Status: Approved
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 红美铃, 博丽灵梦, 雾雨魔理沙
 Depends on: ADR-0004
 Related decisions: ADR-0005, ADR-0006, ADR-0007
 Source baseline: Phase 1 through `1725931`
+
+Gate decision: `APPROVED_FOR_FIRST_SLICE` after ADR-0004 acceptance,
+synchronous-observer boundary review, performance/cost review, and
+implementation-review baseline for task #19. Code/semantic review closure
+remains tracked separately in the Phase 1 queue.
+
+## Public Vocabulary Closure
+
+The P1 first-slice public diagnostics vocabulary is frozen for upper-gate
+references unless this gate is amended:
+
+- `DiagnosticsStatus`
+- `DiagnosticsEventId`
+- `DiagnosticsCounterId`
+- `DiagnosticsEvent`
+- `DiagnosticsCounterSnapshot`
+- `DiagnosticsSnapshot`
+- `DiagnosticsChannelConfig`
+
+Allocation/accounting signals use `YuMemory::MemoryAccountingStatus`. This
+closure keeps diagnostics observational only and does not approve async
+diagnostics, report schemas, profiler APIs, capture/oracle output, or runtime
+behavior that depends on diagnostics availability.
 
 ## Layer
 

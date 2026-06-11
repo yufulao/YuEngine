@@ -96,10 +96,14 @@ The first slice must expose explicit statuses equivalent to:
 - `TypeMismatch`
 - `DuplicateField`
 - `MalformedFieldLength`
-- `DiagnosticsUnavailable`
 
 Exact names may differ, but tests must assert equivalent behavior and
 no-mutation requirements.
+
+Diagnostics availability is not part of the serialization write/read result
+vocabulary. Disabled or unavailable diagnostics may be observed only through the
+diagnostics lane itself; it must not change serialization statuses, committed
+buffer bytes, reader cursor state, writer cursor state, or snapshot counters.
 
 ## Required Fast Tests
 
@@ -135,6 +139,7 @@ iteration over unordered containers to determine output bytes.
 
 Diagnostics are observational only. Serialization result behavior is defined by
 return statuses and buffer contents, not logs, reports, traces, or oracle files.
+Writer and reader APIs must not return a diagnostics-unavailable status.
 
 If memory/accounting signals are exposed, they must use explicit
 tracked-path-only wording from accepted `YuMemory` behavior. This gate must not

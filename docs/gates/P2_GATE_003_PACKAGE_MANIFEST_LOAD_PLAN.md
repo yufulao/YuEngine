@@ -1,7 +1,8 @@
 # P2-GATE-003: Package Manifest And Load Plan Boundary
 
-Status: Proposed
+Status: Approved
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 红美铃, 八云蓝, 博丽灵梦, 大妖精, 射命丸文, 雾雨魔理沙 when implementation exists
 Depends on: ADR-0013
@@ -20,15 +21,37 @@ decoding, async loading, upload scheduling, tools, or Game Adapter behavior.
 
 P2-GATE-003 must not be approved for implementation until:
 
-- task #21 `YuFile` code/semantic review closes without changing the public
-  File/VFS vocabulary this gate references;
-- task #33 `YuResource` code/semantic review closes without changing the
-  resource type/logical-key vocabulary this gate references;
-- task #14 `YuMemory` code/semantic review does not remove the accounting
-  vocabulary required by this gate, or this gate is amended first.
+- the P2 first slice remains independent of `YuFile` runtime/API behavior: no
+  `YuFile` target dependency, no File/VFS reads, and no `FileStatus`,
+  `FileReadResult`, or `FileSnapshot` transport in Package results;
+- P1-GATE-006 / task #33 `YuResource` public vocabulary remains accepted and
+  frozen for upper-gate references, or this gate is re-reviewed first;
+- P1-GATE-002 / task #14 `YuMemory` accounting vocabulary remains accepted and
+  frozen for upper-gate references, or this gate is amended for explicit
+  accounting deferral first.
 
 These blockers do not prevent architecture review. They prevent
 `APPROVED_FOR_FIRST_SLICE`.
+
+The 2026-06-11 18:38 +08:00 PM path quarantines the existing `YuPackage`
+implementation and `YuPackageTests` in `main@fe586d2` as review evidence only.
+They are not approval, not implementation authorization, and not precedent for
+additional package code, CMake targets, tests, or scope expansion. The
+remove/disable path is not chosen for this round unless Architect later requires
+it.
+
+Architect update at 2026-06-11 18:56 +08:00: after the PM governance path,
+docs/queue patch, full `windows-fast-gate` build/test re-run, QA dirty-tree
+surface check, and no-File-dependency scan, the existing `YuPackage`
+implementation and `YuPackageTests` at `main@fe586d2` are approved as the
+first-slice review baseline only. This approval does not authorize new package
+code, CMake/test expansion, File/VFS runtime reads, resource mutation, or any
+P3 work.
+
+The former broad `YuFile` vocabulary blocker is narrowed by the P1 closure:
+`YuFile` accounting now uses `YuMemory::MemoryAccountingStatus`, and
+P2-GATE-003 is blocked by File only if the package/load-plan proposal starts
+reading files or transporting File statuses across the Package boundary.
 
 ## Owns
 
@@ -48,7 +71,7 @@ This gate owns the first `YuPackage` implementation slice for:
 
 This gate does not own:
 
-- File/VFS reads;
+- File/VFS reads or File status/result transport;
 - original package parser for `.pak`, `.dat`, `.rpack`, or any original format;
 - loose original resource lookup;
 - Resource registry mutation, acquire/release/retire, or load completion;
@@ -119,7 +142,8 @@ Failure behavior:
 - bounded source-key metadata;
 - declared byte offsets and byte sizes;
 - declared direct entry dependencies;
-- optional memory tracker if P1-GATE-002 implementation vocabulary is accepted.
+- optional memory tracker through P1-GATE-002's accepted vocabulary closure, or
+  explicit accounting deferral.
 
 ## Outputs
 
@@ -138,9 +162,10 @@ Allowed dependencies:
 
 - C++ standard library;
 - CMake/CTest tooling;
-- `YuMemory` for accounting vocabulary/signal tests when accepted;
-- `YuResource` public value vocabulary only after task #33 code/semantic review
-  closes;
+- `YuMemory` for accounting vocabulary/signal tests through P1-GATE-002's
+  accepted vocabulary closure, or explicit accounting deferral;
+- `YuResource` public value vocabulary through P1-GATE-006's accepted vocabulary
+  closure;
 - `YuDiagnostics` only for disabled-behavior observation when available.
 
 Target dependency expectation:
@@ -148,12 +173,13 @@ Target dependency expectation:
 ```text
 YuPackage
   -> YuMemory for accounting vocabulary/signal tests, or explicit deferral
-  -> YuResource public value vocabulary when task #33 is accepted
+  -> YuResource public value vocabulary through P1-GATE-006's accepted closure
   -> optional YuDiagnostics for disabled-behavior observation
 ```
 
 `YuPackage` must not depend on `YuKernel`, `YuPlatform`, `YuThread`, `YuFile`
-runtime reads, RHI, audio, input, script, scene/world, UI, tools, reports, or
+runtime reads, `YuFile` status/result transport, RHI, audio, input, script,
+scene/world, UI, tools, reports, or
 TouhouNewWorld evidence in this first slice.
 
 ## Performance Constraints
@@ -246,7 +272,13 @@ The implementation handoff must record the exact commands used.
 
 ## Allowed First Slice
 
-If approved, the first implementation slice may create:
+After the 2026-06-11 18:56 +08:00 Architect decision, the already-live
+`YuPackage` implementation and `YuPackageTests` at `main@fe586d2` are the
+approved first-slice review baseline. Do not add new package code, CMake
+targets, tests, or scope expansion from this gate without a separate explicit
+Architect approval.
+
+If explicitly approved later, the first implementation slice may create:
 
 ```text
 src/yuengine/package/include/yuengine/package/
@@ -285,8 +317,13 @@ read by P2-GATE-003 fast tests.
 Request `APPROVED_FOR_FIRST_SLICE` only after:
 
 - ADR-0013 is accepted;
-- task #21 and task #33 code/semantic reviews close or this gate is amended to
-  avoid unstable vocabulary;
+- P1-GATE-006 / task #33 `YuResource` public vocabulary remains accepted and
+  frozen for upper-gate references, or this gate is re-reviewed first;
+- the first slice still has no `YuFile` target/API dependency, File reads, or
+  File status/result transport;
+- P1-GATE-002 / task #14 `YuMemory` accounting vocabulary remains accepted and
+  frozen for upper-gate references, or this gate is amended to use explicit
+  deferral;
 - 红美铃 confirms the proposal satisfies module-entry gate requirements and
   sequencing against active review work;
 - 八云蓝 confirms the UE5/Unity package/load responsibility comparison is sound;

@@ -87,10 +87,14 @@ Phase 3 remains blocked from:
 - P3-GATE-001 is in architecture review after `df8e326`. ADR-0014 is
   accepted and gate/test-coverage is clear, but the gate must not be approved
   for implementation until performance/cost and PM/final sequencing are clear
-  and active implementation reviews are stable enough.
+  and the YuMemory accounting vocabulary is either accepted for use or
+  explicitly deferred. Resource/File/Package/Input closure is not a first-slice
+  blocker because those modules remain forbidden dependencies.
 - P3-GATE-002 is proposed for architecture review only. It must not be approved
   for implementation until ADR-0015 is accepted, performance/cost is clear, and
-  PM confirms sequencing against active review pressure.
+  PM confirms sequencing against active review pressure. Diagnostics
+  availability must remain outside the serialization write/read result
+  vocabulary.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.

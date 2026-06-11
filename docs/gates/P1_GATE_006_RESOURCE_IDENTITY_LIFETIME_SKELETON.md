@@ -1,12 +1,36 @@
 # P1-GATE-006: Resource Identity And Lifetime Skeleton
 
-Status: Proposed
+Status: Approved
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 红美铃, 大妖精, 博丽灵梦, 射命丸文, 雾雨魔理沙 when implementation exists
 Depends on: ADR-0009
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0008
 Source baseline: Phase 1 through `7ce457e`
+
+Gate decision: `APPROVED_FOR_FIRST_SLICE` after ADR-0009 acceptance,
+resource-boundary review, performance/cost review, evidence-boundary review,
+and implementation-review baseline for task #33. Code/semantic review closure
+remains tracked separately in the Phase 1 queue.
+
+## Public Vocabulary Closure
+
+The P1 first-slice public Resource vocabulary is frozen for upper-gate
+references unless this gate is amended:
+
+- `ResourceTypeId`
+- `ResourceLogicalKey`
+- `ResourceDescriptor`
+- `ResourceDependencyEdge`
+- `ResourceHandle`
+- `ResourceStatus`
+- `ResourceRegistrationResult`
+- `ResourceRegistryDesc`
+- `ResourceSnapshot`
+
+Allocation/accounting signals use `YuMemory::MemoryAccountingStatus`. This
+closure does not approve File/package reads, Resource mutation by Package, asset
+decoding, async loading, upload scheduling, or game-adapter behavior.
 
 ## Layer
 

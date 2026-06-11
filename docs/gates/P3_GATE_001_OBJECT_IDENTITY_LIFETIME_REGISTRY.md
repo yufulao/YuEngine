@@ -22,12 +22,17 @@ P3-GATE-001 must not be approved for implementation until:
 
 - ADR-0014 is accepted;
 - task #14 `YuMemory` code/semantic review does not remove the accounting
-  vocabulary required by this gate, or this gate is amended first;
+  vocabulary required by this gate, or this gate selects explicit accounting
+  deferral before approval;
 - PM confirms sequencing against active Phase 1 and Phase 2 implementation
   reviews.
 
 These blockers do not prevent architecture review. They prevent
 `APPROVED_FOR_FIRST_SLICE`.
+
+No `YuFile`, `YuPackage`, `YuResource`, or `YuInput` closure is required for the
+first slice. Those modules remain forbidden dependencies for P3-GATE-001 unless
+this gate is amended.
 
 ## Owns
 
@@ -270,7 +275,7 @@ Request `APPROVED_FOR_FIRST_SLICE` only after:
 
 - ADR-0014 is accepted;
 - task #14 code/semantic review closes without removing required `YuMemory`
-  vocabulary, or this gate is amended to avoid unstable vocabulary;
+  vocabulary, or this gate is amended to use explicit accounting deferral;
 - 红美铃 confirms module-entry fit and sequencing against active review work;
 - 八云蓝 confirms the mature-engine object identity responsibility comparison is
   sound;

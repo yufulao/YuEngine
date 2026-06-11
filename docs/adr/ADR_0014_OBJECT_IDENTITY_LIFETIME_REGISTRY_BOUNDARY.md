@@ -147,6 +147,9 @@ vocabulary. This does not claim CRT/STL/general heap coverage.
 
 If the `YuMemory` implementation receives a blocking rewrite that removes the
 needed vocabulary, P3-GATE-001 must be amended before implementation handoff.
+The amendment may choose explicit accounting deferral for the first slice, but
+it must not add a hard dependency on File, Package, Resource, Input, or any
+upper runtime module.
 
 ## Thread Boundary
 

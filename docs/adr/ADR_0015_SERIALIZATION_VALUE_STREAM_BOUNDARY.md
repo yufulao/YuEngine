@@ -97,6 +97,11 @@ Diagnostics may observe status and counts only.
 or oracle files. A disabled diagnostics channel must not change write/read
 results.
 
+Diagnostics availability is not a serialization status. Writer and reader APIs
+must not return diagnostics-unavailable results or change committed buffer
+bytes, cursor state, statuses, snapshots, or counters because diagnostics are
+disabled or unavailable.
+
 ## Evidence Boundary
 
 No original-game evidence is required for this first slice.

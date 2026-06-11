@@ -3,15 +3,15 @@
 #include <string>
 #include <vector>
 
-#include "yuengine/file/FileAccountingStatus.h"
 #include "yuengine/file/FileConstants.h"
 #include "yuengine/file/LooseFileSource.h"
 #include "yuengine/file/MountTable.h"
 #include "yuengine/file/NormalizedPath.h"
+#include "yuengine/memory/MemoryAccountingStatus.h"
 
-using FileAccountingStatus = yuengine::file::FileAccountingStatus;
 using FileStatus = yuengine::file::FileStatus;
 using LooseFileSource = yuengine::file::LooseFileSource;
+using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
 using MountId = yuengine::file::MountId;
 using MountTable = yuengine::file::MountTable;
 using NormalizedPath = yuengine::file::NormalizedPath;
@@ -306,9 +306,9 @@ int FileReadSnapshotRecordsCountsAndBytes()
         return Fail("snapshot did not record max fixture path length");
     }
 
-    if (snapshot.AllocationAccountingStatus != FileAccountingStatus::DeferredUntilYuMemoryReviewCompletes)
+    if (snapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly)
     {
-        return Fail("snapshot did not explicitly defer allocation accounting");
+        return Fail("snapshot did not use YuMemory allocation accounting vocabulary");
     }
 
     if (snapshot.LastReadStatus != FileStatus::Success)

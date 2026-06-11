@@ -1,12 +1,38 @@
 # P1-GATE-005: File Primitive And Path Normalization
 
-Status: Proposed
+Status: Approved
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 红美铃, 射命丸文, 博丽灵梦, 雾雨魔理沙 when implementation exists
 Depends on: ADR-0008
 Related decisions: ADR-0001, ADR-0002, ADR-0005, ADR-0006
 Source baseline: Phase 1 through `2a99a2a`
+
+Gate decision: `APPROVED_FOR_FIRST_SLICE` after ADR-0008 acceptance,
+evidence-boundary review, performance/cost review, public vocabulary review,
+and implementation-review baseline for task #21. Code/semantic review closure
+remains tracked separately in the Phase 1 queue.
+
+## Public Vocabulary Closure
+
+The P1 first-slice public File/VFS vocabulary is frozen for upper-gate
+references unless this gate is amended:
+
+- `FileStatus`
+- `MountId`
+- `VirtualPath`
+- `NormalizedPath`
+- `PathNormalizationResult`
+- `FileReadRequest`
+- `FileReadResult`
+- `FileSnapshot`
+- `MountPoint`
+- `MountTable`
+- `LooseFileSource`
+
+`FileSnapshot::AllocationAccountingStatus` uses
+`YuMemory::MemoryAccountingStatus`. `YuFile` does not own a separate local
+accounting-status enum in the first slice.
 
 ## Layer
 
@@ -87,7 +113,7 @@ Failure behavior:
 - fixed virtual paths;
 - fixed mount IDs;
 - small test fixture files under `tests/fixtures/file`;
-- optional memory tracker if P1-GATE-002 implementation exists.
+- YuMemory accounting vocabulary from the P1-GATE-002 implementation baseline.
 
 ## Outputs
 
@@ -107,14 +133,14 @@ Allowed dependencies:
 
 - C++ standard library;
 - CMake/CTest tooling;
-- `YuMemory` only if P1-GATE-002 implementation has landed and integration is limited to allocation/byte fixture signals;
+- `YuMemory` for allocation/byte fixture signals only;
 - `YuDiagnostics` only in tests if needed to prove diagnostics-disabled behavior.
 
 Target dependency expectation:
 
 ```text
 YuFile
-  -> optional YuMemory after P1-GATE-002 implementation
+  -> YuMemory for accounting vocabulary/signal tests
 ```
 
 `YuFile` must not depend on `YuKernel`, `YuThread`, `YuPlatform` beyond standard-library file IO unless a later platform-file ADR approves it, resource/RHI/audio/input/script/world/UI modules, tools, reports, or original-game evidence.
@@ -138,7 +164,7 @@ Required deterministic signals:
 - lookup count;
 - read byte count for the fixed fixture;
 - maximum fixture path length;
-- allocation/accounting status or explicit deferral if `YuMemory` is not integrated;
+- allocation/accounting status using `YuMemory` vocabulary;
 - sync read result status.
 
 First-slice bounds:
@@ -148,7 +174,7 @@ First-slice bounds:
 - maximum normalized path length: 128 bytes;
 - maximum fixture read size: 4096 bytes;
 - first-slice case policy: case-sensitive virtual path comparison, lowercase ASCII fixtures, and no OS case-folding;
-- allocation/accounting rule: use `YuMemory` if the P1-GATE-002 implementation has landed; otherwise explicitly defer only the allocation/accounting signal and do not claim zero CRT/STL/general heap coverage.
+- allocation/accounting rule: use `YuMemory` vocabulary and do not claim zero CRT/STL/general heap coverage.
 
 Pass/fail rule:
 
@@ -199,7 +225,8 @@ tests/file/
 tests/fixtures/file/
 ```
 
-It may update root `CMakeLists.txt` only to add `YuFile` and `YuFileTests`.
+It may update root `CMakeLists.txt` only to add `YuFile`, `YuFileTests`, and
+the `YuFile -> YuMemory` accounting-vocabulary dependency.
 
 It may not create placeholder directories or targets for resource, script, RHI, audio, input, world, UI, tools, or game adapter work.
 

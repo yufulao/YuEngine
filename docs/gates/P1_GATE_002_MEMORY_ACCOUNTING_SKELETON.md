@@ -1,12 +1,36 @@
 # P1-GATE-002: Memory Accounting Skeleton
 
-Status: Proposed
+Status: Approved
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 博丽灵梦 with 八云紫
 Reviewers: 红美铃, 雾雨魔理沙 when implementation exists
 Depends on: ADR-0006
 Related decisions: ADR-0001, ADR-0002, ADR-0005
 Source baseline: Phase 1 through `1eb7e21`
+
+Gate decision: `APPROVED_FOR_FIRST_SLICE` after ADR-0006 acceptance,
+performance/cost review, public vocabulary review, and implementation-review
+baseline for task #14. Code/semantic review closure remains tracked separately
+in the Phase 1 queue.
+
+## Public Vocabulary Closure
+
+The P1 first-slice public vocabulary is frozen for upper-gate references unless
+this gate is amended:
+
+- `MemoryAccountingStatus`
+- `MemoryAccountingResult`
+- `MemoryBudgetClass`
+- `MemoryOwnerId`
+- `MemoryTag`
+- `MemoryAllocationId`
+- `MemorySnapshot`
+- `IMemoryTracker`
+- `DisabledMemoryTracker`
+- `CountingMemoryTracker`
+
+This closure does not approve production allocators, global heap interception,
+or CRT/STL/general heap coverage.
 
 ## Layer
 

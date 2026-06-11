@@ -75,15 +75,15 @@ Phase 2 remains blocked from:
 | --- | --- | --- | --- | --- | --- |
 | ADR-0011 | RHI device, command, present, and capture boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精 | Accepted | Null RHI first slice |
 | ADR-0012 | Audio test backend and mixer sink boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精 | Accepted | Audio test backend/mixer first slice |
-| ADR-0013 | Package manifest and load plan boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精, 射命丸文 | Proposed | Package/load-plan first slice |
+| ADR-0013 | Package manifest and load plan boundary | 八云紫 | 八云蓝, 博丽灵梦, 大妖精, 射命丸文 | Accepted | Package/load-plan first slice |
 
 ## Module Gate Proposal Queue
 
-| Gate | Module | Layer | Requested decision | Status | Notes |
+| Gate | Module | Layer | Current decision | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
 | P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | Null backend only; create target, record clear, submit, present, deterministic capture; no real backend, shader, material, render scene, resource loading, UI, or game adapter |
 | P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | Test backend only; synthetic S16 stereo sources, generation voice handles, caller-owned mix buffer; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
-| P2-GATE-003 | Package Manifest And Load Plan Boundary | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | In review | Synthetic manifest and deterministic load-plan metadata only; no File reads, original package parser, Resource mutation, decoder, async load, upload, tools, or game adapter |
+| P2-GATE-003 | Package Manifest And Load Plan Boundary | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | Existing `YuPackage` and `YuPackageTests` in `main@fe586d2` are the approved first-slice review baseline only; no new package code/CMake/test expansion, File/VFS runtime reads, resource mutation, or P3 work |
 
 ## Current Active Gates
 
@@ -95,11 +95,14 @@ Phase 2 remains blocked from:
   lanes are closed, code/semantic review remains pending, and implementation
   must not expand into real audio devices, callback threads, codecs, streaming,
   resource coupling, UI/script/gameplay, reports, tools, or Game Adapter scope.
-- P2-GATE-003 is in architecture review after `be1181d`. Gate/test-coverage,
-  evidence, and ADR context lanes have accepted the amendment, but the gate must
-  not be approved until performance, PM/final sequencing, and task #21 `YuFile`,
-  task #33 `YuResource`, and task #14 `YuMemory` vocabulary guards are stable
-  enough or the gate is amended.
+- P2-GATE-003 has `APPROVED_FOR_FIRST_SLICE` after the 2026-06-11 18:56 +08:00
+  Architect decision. The approval is limited to the existing `YuPackage`
+  implementation and `YuPackageTests` in `main@fe586d2` as the first-slice
+  review baseline. The PM governance path, docs/queue patch, full
+  `windows-fast-gate` build/test re-run, QA dirty-tree surface check, and
+  no-File-dependency scan are accepted as closure evidence. This does not
+  authorize new package code, CMake targets, tests, scope expansion, File/VFS
+  runtime reads, resource mutation, or P3 work.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against the active Phase 1 review queue.
 
@@ -116,9 +119,9 @@ Phase 2 remains blocked from:
 
 1. Complete P2-GATE-001 and P2-GATE-002 implementation reviews for the null RHI
    and audio mixer slices.
-2. Close remaining P2-GATE-003 performance and PM/final sequencing lanes, but
-   do not approve implementation until Resource/File/Memory vocabulary guards
-   are stable or the gate is amended.
+2. Route the existing P2-GATE-003 `YuPackage` / `YuPackageTests` first-slice
+   baseline into code/semantic review. Do not add package code, CMake, or test
+   work beyond the approved baseline without a new explicit Architect decision.
 3. Close active Phase 1 implementation reviews before creating additional shared
    CMake implementation work, unless a clean isolated worktree is assigned.
 4. Prepare async IO boundary only after Thread/File/Resource/Package review

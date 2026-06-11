@@ -3,8 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "yuengine/file/FileAccountingStatus.h"
 #include "yuengine/file/FileStatus.h"
+#include "yuengine/memory/MemoryAccountingStatus.h"
 
 namespace yuengine::file
 {
@@ -16,7 +16,7 @@ struct FileSnapshot
     std::uint64_t LookupCount;
     std::uint64_t ReadByteCount;
     std::size_t MaxFixturePathLength;
-    FileAccountingStatus AllocationAccountingStatus;
+    yuengine::memory::MemoryAccountingStatus AllocationAccountingStatus;
     FileStatus LastReadStatus;
 };
 }

@@ -12,6 +12,7 @@ enum class MemoryAccountingStatus
     InvalidAlignment,
     InvalidBudgetClass,
     BudgetExceeded,
+    CapacityExceeded,
     UnmatchedFree,
     OwnerTagMismatch
 };

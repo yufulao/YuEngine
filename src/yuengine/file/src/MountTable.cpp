@@ -140,7 +140,7 @@ MountTable::MountTable()
           0U,
           0U,
           0U,
-          FileAccountingStatus::DeferredUntilYuMemoryReviewCompletes,
+          yuengine::memory::MemoryAccountingStatus::ExplicitlyTrackedOnly,
           FileStatus::Success}
 {
 }

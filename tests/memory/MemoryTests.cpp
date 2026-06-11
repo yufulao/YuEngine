@@ -1,3 +1,4 @@
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -23,6 +24,7 @@ constexpr const char* TEST_UNMATCHED_FREE = "Memory_TrackerRejectsUnmatchedFree"
 constexpr const char* TEST_BUDGET_CLASS = "Memory_TrackerRecordsBudgetClass";
 constexpr const char* TEST_DISABLED = "Memory_DisabledTracker_DoesNotChangeBehavior";
 constexpr const char* TEST_HOT_PATH = "Memory_HotPathBudget_FailsOnTrackedAllocation";
+constexpr const char* TEST_FIXED_CAPACITY = "Memory_TrackerRejectsBeyondFixedCapacityWithoutMutation";
 constexpr const char* OWNER_PLATFORM = "Platform";
 constexpr const char* OWNER_KERNEL = "Kernel";
 constexpr const char* TAG_FIXTURE = "Fixture";
@@ -321,6 +323,74 @@ int MemoryHotPathBudgetFailsOnTrackedAllocation()
 
     return 0;
 }
+
+int MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation()
+{
+    CountingMemoryTracker tracker;
+    const MemoryOwnerId owner{OWNER_PLATFORM};
+    const MemoryTag tag{TAG_FIXTURE};
+    std::array<MemoryAllocationId, yuengine::memory::MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS> allocations{};
+
+    for (std::size_t index = 0U; index < allocations.size(); ++index)
+    {
+        const auto allocation = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Setup, SMALL_BYTES, ALIGNMENT);
+        if (!allocation.Succeeded())
+        {
+            return Fail("fixed-capacity setup allocation failed before capacity");
+        }
+
+        allocations[index] = allocation.AllocationId;
+    }
+
+    const auto beforeOverflow = tracker.Snapshot();
+    const auto overflow = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Setup, SMALL_BYTES, ALIGNMENT);
+    if (overflow.Status != MemoryAccountingStatus::CapacityExceeded)
+    {
+        return Fail("fixed-capacity tracker did not reject allocation overflow");
+    }
+
+    if (overflow.AllocationId.Value != 0U)
+    {
+        return Fail("failed capacity allocation returned an allocation id");
+    }
+
+    const auto afterOverflow = tracker.Snapshot();
+    if (afterOverflow.AllocationCount != beforeOverflow.AllocationCount)
+    {
+        return Fail("capacity overflow changed allocation count");
+    }
+
+    if (afterOverflow.RetainedBytes != beforeOverflow.RetainedBytes)
+    {
+        return Fail("capacity overflow changed retained bytes");
+    }
+
+    if (afterOverflow.LeakCount != beforeOverflow.LeakCount)
+    {
+        return Fail("capacity overflow changed active leak count");
+    }
+
+    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Setup) != allocations.size())
+    {
+        return Fail("capacity overflow changed setup budget count");
+    }
+
+    for (const MemoryAllocationId allocationId : allocations)
+    {
+        if (tracker.RecordFree(allocationId, owner, tag) != MemoryAccountingStatus::Success)
+        {
+            return Fail("fixed-capacity cleanup free failed");
+        }
+    }
+
+    const auto afterCleanup = tracker.Snapshot();
+    if (afterCleanup.HasLeaks())
+    {
+        return Fail("fixed-capacity cleanup left leaks");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv)
@@ -364,6 +434,11 @@ int main(int argc, char** argv)
     if (testName == TEST_HOT_PATH)
     {
         return MemoryHotPathBudgetFailsOnTrackedAllocation();
+    }
+
+    if (testName == TEST_FIXED_CAPACITY)
+    {
+        return MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation();
     }
 
     return Fail("unknown test name");

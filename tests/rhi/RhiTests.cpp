@@ -42,6 +42,7 @@ constexpr const char* TEST_CAPTURE_BEFORE_PRESENT = "RHI_CaptureBeforePresent_Re
 constexpr const char* TEST_CLEAR_COLOR = "RHI_ClearColor_UsesExactRgba8ByteChannels";
 constexpr const char* TEST_CAPTURE_DETERMINISTIC = "RHI_CapturePresentedTarget_WritesDeterministicRgba8Bytes";
 constexpr const char* TEST_UNDERSIZED_CAPTURE = "RHI_CaptureRejectsUndersizedBufferWithoutWritingBytes";
+constexpr const char* TEST_OVERSIZED_CAPTURE_FIXTURE = "RHI_CaptureRejectsTargetLargerThanFixtureCapWithoutWritingBytes";
 constexpr const char* TEST_FRAME_NO_GROW = "RHI_FrameSubmitPresentCapture_DoesNotGrowCommandStorage";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "RHI_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_FORBIDDEN_DEPENDENCY = "RHI_NoResourceFileUploadShaderUiDependency";
@@ -61,6 +62,13 @@ RhiColorTargetDesc SmallTargetDesc()
 RhiColorTargetDesc CaptureFixtureTargetDesc()
 {
     return RhiColorTargetDesc{RhiFormat::Rgba8Unorm, {4U, 4U}};
+}
+
+RhiColorTargetDesc MaxTargetDesc()
+{
+    return RhiColorTargetDesc{
+        RhiFormat::Rgba8Unorm,
+        {yuengine::rhi::MAX_COLOR_TARGET_EXTENT, yuengine::rhi::MAX_COLOR_TARGET_EXTENT}};
 }
 
 NullRhiDevice CreateInitializedDevice()
@@ -867,6 +875,56 @@ int RhiCaptureRejectsUndersizedBufferWithoutWritingBytes()
     return 0;
 }
 
+int RhiCaptureRejectsTargetLargerThanFixtureCapWithoutWritingBytes()
+{
+    NullRhiDevice device = CreateInitializedDevice();
+    RhiTextureHandle handle{};
+    if (device.CreateColorTarget(MaxTargetDesc(), handle) != RhiStatus::Success)
+    {
+        return Fail("max target creation failed");
+    }
+
+    if (ClearSubmitPresent(device, handle, RhiColor{1U, 2U, 3U, 4U}) != RhiStatus::Success)
+    {
+        return Fail("clear submit present failed");
+    }
+
+    const std::size_t fullTargetBytes = static_cast<std::size_t>(yuengine::rhi::MAX_COLOR_TARGET_EXTENT) *
+        static_cast<std::size_t>(yuengine::rhi::MAX_COLOR_TARGET_EXTENT) * yuengine::rhi::RGBA8_BYTES_PER_PIXEL;
+    std::vector<std::uint8_t> destination(fullTargetBytes, SENTINEL_BYTE);
+    const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(destination.data(), destination.size()));
+    if (result.Status != RhiStatus::CapacityExceeded)
+    {
+        return Fail("oversized capture fixture did not return capacity status");
+    }
+
+    if (result.BytesWritten != 0U)
+    {
+        return Fail("oversized capture fixture reported bytes written");
+    }
+
+    for (const std::uint8_t byte : destination)
+    {
+        if (byte != SENTINEL_BYTE)
+        {
+            return Fail("oversized capture fixture mutated destination bytes");
+        }
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.LastCaptureBytesWritten != 0U)
+    {
+        return Fail("oversized capture fixture did not record zero bytes written");
+    }
+
+    if (snapshot.CaptureCount != 0U)
+    {
+        return Fail("oversized capture fixture incremented capture count");
+    }
+
+    return 0;
+}
+
 int RhiFrameSubmitPresentCaptureDoesNotGrowCommandStorage()
 {
     NullRhiDevice device = CreateInitializedDevice();
@@ -1074,6 +1132,11 @@ int main(int argc, char** argv)
     if (testName == TEST_UNDERSIZED_CAPTURE)
     {
         return RhiCaptureRejectsUndersizedBufferWithoutWritingBytes();
+    }
+
+    if (testName == TEST_OVERSIZED_CAPTURE_FIXTURE)
+    {
+        return RhiCaptureRejectsTargetLargerThanFixtureCapWithoutWritingBytes();
     }
 
     if (testName == TEST_FRAME_NO_GROW)

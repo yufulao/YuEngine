@@ -216,6 +216,13 @@ RhiCaptureResult NullRhiDevice::CapturePresentedTarget(std::span<std::uint8_t> d
     }
 
     const RhiTargetSlot& slot = _targets[_presentedHandle.Slot];
+    if (slot.Desc.Extent.Width > MAX_CAPTURE_FIXTURE_EXTENT || slot.Desc.Extent.Height > MAX_CAPTURE_FIXTURE_EXTENT)
+    {
+        RecordFailure(RhiStatus::CapacityExceeded);
+        _snapshot.LastCaptureBytesWritten = 0U;
+        return RhiCaptureResult{RhiStatus::CapacityExceeded, 0U};
+    }
+
     const std::size_t byteCount = slot.Bytes.size();
     if (destination.size() < byteCount)
     {

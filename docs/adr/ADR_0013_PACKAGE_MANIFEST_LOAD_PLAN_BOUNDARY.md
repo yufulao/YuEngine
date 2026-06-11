@@ -1,6 +1,6 @@
 # ADR-0013: Package Manifest And Load Plan Boundary
 
-Status: Proposed
+Status: Accepted
 Owner: 八云紫
 Reviewers: 红美铃, 八云蓝, 博丽灵梦, 大妖精, 射命丸文, 雾雨魔理沙 when implementation exists
 Date: 2026-06-10
@@ -99,21 +99,28 @@ slice keeps the dependency narrow.
 Allowed first-slice relationships:
 
 - use Resource public value vocabulary, such as resource type and logical key;
-- use File/VFS path terminology only as bounded source-key metadata;
+- use File/VFS path terminology only as bounded source-key metadata, not as
+  File status/result transport;
 - create deterministic load plans that later File/Resource gates can consume.
 
 Blocked in this ADR:
 
-- direct `YuFile` reads;
+- direct `YuFile` target/API dependency or reads;
+- File status, read-result, or snapshot transport across the Package boundary;
 - direct package file IO;
 - package parser for `.pak`, `.dat`, `.rpack`, or any original format;
 - Resource registry mutation or acquire/release/retire behavior;
 - File mount resolution on the hot path;
 - loose original resource lookup.
 
-P2-GATE-003 may not be approved until task #21 `YuFile` and task #33
-`YuResource` implementation code/semantic review closures are stable enough for
-their public value vocabulary to be used as dependencies.
+P2-GATE-003 may rely on Resource public value vocabulary because P1-GATE-006
+records that vocabulary as frozen for upper-gate references unless amended. If
+P1-GATE-006 later amends that vocabulary, P2-GATE-003 must be re-reviewed before
+implementation handoff. The first package/load-plan slice does not wait on
+`YuFile` runtime/API closure as long as it keeps the explicit
+no-File-read/no-File-status-transport boundary. If a later amendment introduces
+`YuFile` API dependency or File result transport, the owning File gate must be
+re-reviewed first.
 
 ## Memory And Thread Boundary
 

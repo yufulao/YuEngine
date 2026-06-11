@@ -100,6 +100,11 @@ ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accept
   evidence lanes are closed; code/semantic review remains pending.
 - P1-GATE-007 implementation is in review as task #35. PM, public-surface, and
   performance lanes are closed; code/semantic review remains pending.
+- P1-GATE-002, P1-GATE-004, P1-GATE-005, P1-GATE-006, and P1-GATE-007 gate
+  files are approved for first-slice implementation. Their first-slice public
+  vocabularies are closed for upper-gate references unless the owning gate is
+  amended. Implementation code/semantic review status remains tracked
+  separately in this queue.
 - Phase 2 architecture queue has started in `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md`; Phase 2 implementation remains gated by explicit approvals and sequencing.
 - No implementation task may be created from a gate until that gate has `APPROVED_FOR_FIRST_SLICE`.
 
