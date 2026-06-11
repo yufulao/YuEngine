@@ -83,7 +83,7 @@ Phase 2 remains blocked from:
 | --- | --- | --- | --- | --- | --- |
 | P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | Null backend only; create target, record clear, submit, present, deterministic capture; no real backend, shader, material, render scene, resource loading, UI, or game adapter |
 | P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | Test backend only; synthetic S16 stereo sources, generation voice handles, caller-owned mix buffer; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
-| P2-GATE-003 | Package Manifest And Load Plan Boundary | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | Existing `YuPackage` and `YuPackageTests` in `main@fe586d2` are the approved first-slice review baseline only; no new package code/CMake/test expansion, File/VFS runtime reads, resource mutation, or P3 work |
+| P2-GATE-003 | Package Manifest And Load Plan Boundary | L4-L5 | `FIRST_SLICE_CLOSED_QA_CLEARED` | First slice closed | `354f8e2` closed the approved `YuPackage` / `YuPackageTests` first-slice review baseline; no new package code/CMake/test expansion, File/VFS runtime reads, resource mutation, or P3 work |
 
 ## Current Active Gates
 
@@ -95,14 +95,12 @@ Phase 2 remains blocked from:
   lanes are closed, code/semantic review remains pending, and implementation
   must not expand into real audio devices, callback threads, codecs, streaming,
   resource coupling, UI/script/gameplay, reports, tools, or Game Adapter scope.
-- P2-GATE-003 has `APPROVED_FOR_FIRST_SLICE` after the 2026-06-11 18:56 +08:00
-  Architect decision. The approval is limited to the existing `YuPackage`
-  implementation and `YuPackageTests` in `main@fe586d2` as the first-slice
-  review baseline. The PM governance path, docs/queue patch, full
-  `windows-fast-gate` build/test re-run, QA dirty-tree surface check, and
-  no-File-dependency scan are accepted as closure evidence. This does not
-  authorize new package code, CMake targets, tests, scope expansion, File/VFS
-  runtime reads, resource mutation, or P3 work.
+- P2-GATE-003 is `FIRST_SLICE_CLOSED_QA_CLEARED` after the 2026-06-11
+  Architect decision and `354f8e2` first-slice fix. The closure is limited to
+  the existing `YuPackage` implementation and `YuPackageTests` first-slice
+  baseline. Architect and CodeReviewerQA both verified the `Package_` CTest
+  filter at `23/23`. This does not authorize new package code, CMake targets,
+  tests, scope expansion, File/VFS runtime reads, resource mutation, or P3 work.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against the active Phase 1 review queue.
 
@@ -119,9 +117,9 @@ Phase 2 remains blocked from:
 
 1. Complete P2-GATE-001 and P2-GATE-002 implementation reviews for the null RHI
    and audio mixer slices.
-2. Route the existing P2-GATE-003 `YuPackage` / `YuPackageTests` first-slice
-   baseline into code/semantic review. Do not add package code, CMake, or test
-   work beyond the approved baseline without a new explicit Architect decision.
+2. Keep P2-GATE-003 package expansion held. The first slice is closed and QA
+   cleared, but later package work still requires a new explicit Architect
+   decision.
 3. Close active Phase 1 implementation reviews before creating additional shared
    CMake implementation work, unless a clean isolated worktree is assigned.
 4. Prepare async IO boundary only after Thread/File/Resource/Package review

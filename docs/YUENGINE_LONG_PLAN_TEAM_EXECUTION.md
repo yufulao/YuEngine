@@ -3,7 +3,8 @@
 Status: active execution plan
 Owner: Architect, lead engineer
 Started: 2026-06-11
-Repository baseline: `fe586d2`
+Original repository baseline: `fe586d2`
+Current coordination checkpoint: `962c1cc`
 
 ## 1. Final Goal
 
@@ -17,7 +18,9 @@ dependency rules.
 
 ## 2. Current State
 
-The repository is clean on `main` at `fe586d2`.
+The original execution baseline was clean on `main` at `fe586d2`. The
+current coordination checkpoint is `962c1cc`, with P2-GATE-003 first slice
+closed and QA cleared at `354f8e2`.
 
 Phase 1 has one implemented gate and several implementation reviews still open:
 
@@ -33,7 +36,8 @@ Phase 2 is active but must not expand before review pressure is reduced:
 
 - P2-GATE-001 null RHI is in implementation review.
 - P2-GATE-002 audio test backend and mixer is in implementation review.
-- P2-GATE-003 package manifest/load plan is in architecture review.
+- P2-GATE-003 package manifest/load plan first slice is closed and QA cleared;
+  package expansion remains held without a new Architect decision.
 
 Phase 3 is architecture-first:
 
@@ -87,8 +91,8 @@ Order:
 2. Close P2 null RHI and audio mixer implementation reviews without expanding
    into real backends, render scenes, business audio IDs, resources, UI, reports,
    or game adapter behavior.
-3. Finish P2-GATE-003 architecture review only after Memory/File/Resource
-   vocabulary guards are stable enough or the gate is amended.
+3. Keep P2-GATE-003 first-slice closure as the package baseline. Do not expand
+   package scope unless a new Architect decision approves a later slice.
 4. Finish P3-GATE-001 performance and PM sequencing reviews. Do not implement
    `YuObject` until the gate receives explicit `APPROVED_FOR_FIRST_SLICE`.
 5. Review ADR-0015 and P3-GATE-002 as architecture only. Do not implement
@@ -167,7 +171,8 @@ Day 1:
 
 Day 2:
 
-- Architect decides whether P2-GATE-003 needs amendment before approval.
+- Architect keeps P2-GATE-003 closed for the approved first slice and decides
+  only on any separately proposed package expansion.
 - Architect decides whether P3-GATE-001 can move toward
   `APPROVED_FOR_FIRST_SLICE` or must remain `NEEDS_PERFORMANCE` /
   `NEEDS_ARCHITECTURE`.
@@ -216,8 +221,8 @@ Candidates after review closure:
   sequencing.
 - `YuSerialize` first slice from P3-GATE-002, only after ADR-0015 is accepted
   and the gate is approved.
-- P2 package manifest/load plan first slice, only after Memory/File/Resource
-  vocabulary guards are stable or the gate is amended.
+- P2 package manifest/load plan expansion, only after a new explicit Architect
+  decision; the first slice is already closed and QA cleared.
 
 Each candidate must include exact files allowed, exact tests required, exact
 verification commands, and explicit non-goals before code begins.

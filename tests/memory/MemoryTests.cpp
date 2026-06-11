@@ -25,6 +25,7 @@ constexpr const char* TEST_BUDGET_CLASS = "Memory_TrackerRecordsBudgetClass";
 constexpr const char* TEST_DISABLED = "Memory_DisabledTracker_DoesNotChangeBehavior";
 constexpr const char* TEST_HOT_PATH = "Memory_HotPathBudget_FailsOnTrackedAllocation";
 constexpr const char* TEST_FIXED_CAPACITY = "Memory_TrackerRejectsBeyondFixedCapacityWithoutMutation";
+constexpr const char* TEST_OWNER_TAG_BYTE_CAPS = "Memory_TrackerEnforcesOwnerAndTagByteCapsWithoutMutation";
 constexpr const char* OWNER_PLATFORM = "Platform";
 constexpr const char* OWNER_KERNEL = "Kernel";
 constexpr const char* TAG_FIXTURE = "Fixture";
@@ -391,6 +392,88 @@ int MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation()
 
     return 0;
 }
+
+int MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation()
+{
+    CountingMemoryTracker tracker;
+    const std::string maxOwner(yuengine::memory::MAX_MEMORY_OWNER_ID_BYTES, 'O');
+    const std::string maxTag(yuengine::memory::MAX_MEMORY_TAG_BYTES, 'T');
+    const std::string oversizedOwner(yuengine::memory::MAX_MEMORY_OWNER_ID_BYTES + 1U, 'O');
+    const std::string oversizedTag(yuengine::memory::MAX_MEMORY_TAG_BYTES + 1U, 'T');
+
+    const auto accepted = tracker.RecordAllocation(
+        MemoryOwnerId{maxOwner},
+        MemoryTag{maxTag},
+        MemoryBudgetClass::Setup,
+        SMALL_BYTES,
+        ALIGNMENT);
+    if (!accepted.Succeeded())
+    {
+        return Fail("max byte owner/tag allocation failed");
+    }
+
+    if (tracker.RecordFree(accepted.AllocationId, MemoryOwnerId{maxOwner}, MemoryTag{maxTag}) !=
+        MemoryAccountingStatus::Success)
+    {
+        return Fail("max byte owner/tag cleanup failed");
+    }
+
+    const auto beforeRejects = tracker.Snapshot();
+    const auto ownerReject = tracker.RecordAllocation(
+        MemoryOwnerId{oversizedOwner},
+        MemoryTag{maxTag},
+        MemoryBudgetClass::Setup,
+        SMALL_BYTES,
+        ALIGNMENT);
+    if (ownerReject.Status != MemoryAccountingStatus::InvalidOwner)
+    {
+        return Fail("oversized owner was not rejected");
+    }
+
+    const auto tagReject = tracker.RecordAllocation(
+        MemoryOwnerId{maxOwner},
+        MemoryTag{oversizedTag},
+        MemoryBudgetClass::Setup,
+        SMALL_BYTES,
+        ALIGNMENT);
+    if (tagReject.Status != MemoryAccountingStatus::InvalidTag)
+    {
+        return Fail("oversized tag was not rejected");
+    }
+
+    const auto afterRejects = tracker.Snapshot();
+    if (afterRejects.AllocationCount != beforeRejects.AllocationCount)
+    {
+        return Fail("oversized owner/tag reject changed allocation count");
+    }
+
+    if (afterRejects.FreeCount != beforeRejects.FreeCount)
+    {
+        return Fail("oversized owner/tag reject changed free count");
+    }
+
+    if (afterRejects.RetainedBytes != beforeRejects.RetainedBytes)
+    {
+        return Fail("oversized owner/tag reject changed retained bytes");
+    }
+
+    if (afterRejects.PeakRetainedBytes != beforeRejects.PeakRetainedBytes)
+    {
+        return Fail("oversized owner/tag reject changed peak bytes");
+    }
+
+    if (afterRejects.LeakCount != beforeRejects.LeakCount)
+    {
+        return Fail("oversized owner/tag reject changed leak count");
+    }
+
+    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Setup) != 1U)
+    {
+        return Fail("oversized owner/tag reject changed setup budget count");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv)
@@ -439,6 +522,11 @@ int main(int argc, char** argv)
     if (testName == TEST_FIXED_CAPACITY)
     {
         return MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation();
+    }
+
+    if (testName == TEST_OWNER_TAG_BYTE_CAPS)
+    {
+        return MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation();
     }
 
     return Fail("unknown test name");
