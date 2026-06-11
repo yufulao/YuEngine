@@ -660,7 +660,15 @@ int AudioUninitializedDeviceOperationsReturnExplicitStatusWithoutMutation()
 
 int AudioMixDoesNotGrowVoiceStorage()
 {
-    TestAudioDevice device = CreateInitializedDevice();
+    AudioDeviceDesc desc{};
+    desc.VoiceCapacity = 1U;
+
+    TestAudioDevice device;
+    if (device.Initialize(desc) != AudioStatus::Success)
+    {
+        return Fail("minimal voice capacity device failed to initialize");
+    }
+
     AudioVoiceHandle voice{};
     if (!StartBasicVoice(device, voice))
     {
@@ -675,9 +683,19 @@ int AudioMixDoesNotGrowVoiceStorage()
         return Fail("voice storage capacity changed during mix");
     }
 
-    if (snapshot.VoiceStorageCapacityBeforeMix != yuengine::audio::MAX_VOICES)
+    if (snapshot.VoiceCapacity != desc.VoiceCapacity)
+    {
+        return Fail("logical voice capacity was unexpected");
+    }
+
+    if (snapshot.VoiceStorageCapacityBeforeMix < yuengine::audio::MAX_VOICES)
     {
         return Fail("voice storage capacity was unexpected");
+    }
+
+    if (snapshot.VoiceStorageCapacityBeforeMix == snapshot.VoiceCapacity)
+    {
+        return Fail("voice storage capacity reported logical slot count");
     }
 
     return 0;

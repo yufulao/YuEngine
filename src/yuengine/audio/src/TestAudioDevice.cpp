@@ -53,7 +53,9 @@ AudioStatus TestAudioDevice::Initialize(const AudioDeviceDesc& desc)
     }
 
     _sources.assign(desc.SourceCapacity, AudioSourceSlot{});
-    _voices.assign(desc.VoiceCapacity, AudioVoiceSlot{});
+    _voices.clear();
+    _voices.reserve(MAX_VOICES);
+    _voices.resize(desc.VoiceCapacity);
     _capabilities = AudioCapabilities{
         AudioBackendKind::Test,
         AudioSampleFormat::S16,
@@ -190,7 +192,7 @@ AudioMixResult TestAudioDevice::Mix(std::span<std::int16_t> outputSamples, std::
         return AudioMixResult{AudioStatus::CapacityExceeded, 0U};
     }
 
-    _snapshot.VoiceStorageCapacityBeforeMix = _voices.size();
+    _snapshot.VoiceStorageCapacityBeforeMix = _voices.capacity();
     for (std::size_t frame = 0U; frame < requestedFrames; ++frame)
     {
         std::int64_t leftSample = 0;
@@ -234,7 +236,7 @@ AudioMixResult TestAudioDevice::Mix(std::span<std::int16_t> outputSamples, std::
     _snapshot.MixedFrameCount += requestedFrames;
     _snapshot.OutputSampleWriteCount += requiredSamples;
     _snapshot.LastFramesWritten = requestedFrames;
-    _snapshot.VoiceStorageCapacityAfterLastMix = _voices.size();
+    _snapshot.VoiceStorageCapacityAfterLastMix = _voices.capacity();
     return AudioMixResult{AudioStatus::Success, requestedFrames};
 }
 
