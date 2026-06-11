@@ -1,7 +1,8 @@
 # P3-GATE-001: Object Identity And Lifetime Registry
 
-Status: Proposed
+Status: Approved
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 红美铃, 八云蓝, 博丽灵梦, 大妖精, 射命丸文 if evidence boundary is questioned, 雾雨魔理沙 when implementation exists
 Depends on: ADR-0014
@@ -29,6 +30,12 @@ P3-GATE-001 must not be approved for implementation until:
 
 These blockers do not prevent architecture review. They prevent
 `APPROVED_FOR_FIRST_SLICE`.
+
+Current gate state: task #61 closed the PM/final sequencing lane after ADR-0014
+acceptance, implementability/test coverage acceptance, engine-reference
+acceptance, performance acceptance, and YuMemory vocabulary closure. The first
+slice is approved only for the bounded synthetic object registry described in
+this document.
 
 No `YuFile`, `YuPackage`, `YuResource`, or `YuInput` closure is required for the
 first slice. Those modules remain forbidden dependencies for P3-GATE-001 unless

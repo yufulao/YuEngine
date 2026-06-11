@@ -43,12 +43,12 @@ Phase 2 is active but must not expand before review pressure is reduced:
 Phase 3 is architecture-first:
 
 - ADR-0014 object identity is accepted.
-- P3-GATE-001 object identity/lifetime registry is in review and blocked from
-  implementation until performance and PM sequencing are closed.
-- ADR-0015 serialization value stream is proposed.
-- P3-GATE-002 serialization value stream is proposed and blocked from
-  implementation until ADR, performance, implementability, and PM sequencing are
-  accepted.
+- P3-GATE-001 object identity/lifetime registry is approved for first slice;
+  implementation remains bounded to `YuObject` / `YuObjectTests`.
+- ADR-0015 serialization value stream is proposed with technical review lanes
+  accepted, but it is not formally accepted yet.
+- P3-GATE-002 serialization value stream is in PM hold until ADR-0015 formal
+  acceptance and final sequencing approval.
 
 ## 3. Architecture Principles
 
@@ -94,11 +94,12 @@ Order:
    or game adapter behavior.
 3. Keep P2-GATE-003 first-slice closure as the package baseline. Do not expand
    package scope unless a new Architect decision approves a later slice.
-4. Finish P3-GATE-001 performance and PM sequencing reviews. Do not implement
-   `YuObject` until the gate receives explicit `APPROVED_FOR_FIRST_SLICE`.
-5. Review ADR-0015 and P3-GATE-002 as architecture only. Do not implement
-   `YuSerialize` until ADR-0015, gate, performance, implementability, and PM
-   sequencing are accepted.
+4. Create a scoped `YuObject` first-slice implementation handoff only from
+   P3-GATE-001's approved boundary, and keep it isolated from package/resource,
+   serialization, scene/world, UI, gameplay, reports, and original evidence.
+5. Keep ADR-0015 and P3-GATE-002 in architecture/finalization only. Do not
+   implement `YuSerialize` until ADR-0015, gate, performance, implementability,
+   and PM sequencing are accepted.
 6. Create implementation slices only from approved gates, preferably in clean
    isolated worktrees when shared CMake or target registration would conflict.
 
@@ -214,12 +215,12 @@ Stop and route back to architecture when any of these happen:
 
 ## 8. Next Implementation Candidates
 
-No new implementation candidate is authorized by this document alone.
+P3-GATE-001 is authorized by its gate state, not by this plan alone.
 
 Candidates after review closure:
 
-- `YuObject` first slice from P3-GATE-001, only after explicit approval and PM
-  sequencing.
+- `YuObject` first slice from P3-GATE-001 is approved for handoff, limited to
+  the bounded synthetic object identity/lifetime registry.
 - `YuSerialize` first slice from P3-GATE-002, only after ADR-0015 is accepted
   and the gate is approved.
 - P2 package manifest/load plan expansion, only after a new explicit Architect
