@@ -59,6 +59,7 @@ private:
     PackageStatus FindEntryIndex(PackageId package, PackageEntryId entry, std::size_t& outIndex) const;
     PackageStatus FindEntryByResourceKey(
         PackageId package,
+        yuengine::resource::ResourceTypeId expectedType,
         const yuengine::resource::ResourceLogicalKey& logicalKey,
         std::size_t& outIndex) const;
     bool HasDependencyEdge(PackageId package, PackageEntryId dependent, PackageEntryId dependency) const;

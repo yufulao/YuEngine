@@ -38,10 +38,12 @@ constexpr const char* TEST_ENTRY_CAPACITY = "Package_EntryCapacityOverflow_DoesN
 constexpr const char* TEST_OVERSIZED_KEYS = "Package_RegisterEntryRejectsOversizedKeysWithoutMutation";
 constexpr const char* TEST_OVERSIZED_BYTE_RANGE = "Package_RegisterEntryRejectsOversizedByteRangeWithoutMutation";
 constexpr const char* TEST_RESOLVE = "Package_ResolveEntryByResourceKey_ReturnsDeterministicLoadPlan";
+constexpr const char* TEST_RESOLVE_RESOURCE_KEY_TUPLE = "Package_ResolveEntryByResourceKey_UsesTypeAndLogicalKeyTuple";
 constexpr const char* TEST_UNKNOWN_KEY = "Package_ResolveRejectsUnknownResourceKey";
 constexpr const char* TEST_TYPE_MISMATCH = "Package_ResolveRejectsTypeMismatchWithoutMutation";
 constexpr const char* TEST_MISSING_DEPENDENCY = "Package_DependencyValidationRejectsMissingEntry";
 constexpr const char* TEST_DEPENDENCY_CYCLE = "Package_DependencyValidationRejectsCycle";
+constexpr const char* TEST_DEPENDENCY_CYCLE_HIGH_FANOUT = "Package_DependencyValidationRejectsCycleAfterHighFanout";
 constexpr const char* TEST_DEPENDENCY_ORDER = "Package_DependencyPlanPreservesDeclarationOrder";
 constexpr const char* TEST_DEPENDENCY_CAPACITY = "Package_DependencyCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_LOAD_PLAN_CAPACITY = "Package_LoadPlanCapacityOverflow_DoesNotMutate";
@@ -479,6 +481,43 @@ int PackageResolveEntryByResourceKeyReturnsDeterministicLoadPlan()
     return 0;
 }
 
+int PackageResolveEntryByResourceKeyUsesTypeAndLogicalKeyTuple()
+{
+    PackageRegistry registry;
+    RegisterManifest(registry);
+    RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "shared_asset", "textures/shared_asset.bin", 64U, 32U);
+    RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "shared_asset", "materials/shared_asset.bin", 8U, 16U);
+
+    const PackageLoadPlanResult result =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_MATERIAL, ResourceLogicalKey("shared_asset"));
+    if (!result.Succeeded())
+    {
+        return Fail("resolve by type and logical key tuple failed");
+    }
+
+    if (result.Plan.RecordCount != 1U)
+    {
+        return Fail("same-key different-type resolve returned unexpected record count");
+    }
+
+    if (result.Plan.Records[0U].Entry.Value != ENTRY_MATERIAL.Value)
+    {
+        return Fail("same-key different-type resolve returned the wrong entry");
+    }
+
+    if (result.Plan.Records[0U].Type.Value != TYPE_MATERIAL.Value)
+    {
+        return Fail("same-key different-type resolve returned the wrong type");
+    }
+
+    if (registry.Snapshot().LastLoadPlanRecordCount != 1U)
+    {
+        return Fail("same-key different-type load plan record count was not recorded");
+    }
+
+    return 0;
+}
+
 int PackageResolveRejectsUnknownResourceKey()
 {
     PackageRegistry registry = CreateResolvedRegistry();
@@ -579,6 +618,70 @@ int PackageDependencyValidationRejectsCycle()
     if (registry.Snapshot().DependencyEdgeCount != 2U)
     {
         return Fail("cycle dependency changed dependency edge count");
+    }
+
+    return 0;
+}
+
+int PackageDependencyValidationRejectsCycleAfterHighFanout()
+{
+    constexpr PackageEntryId start{1U};
+    constexpr PackageEntryId target{2U};
+    constexpr PackageEntryId branch{32U};
+
+    PackageRegistry registry;
+    RegisterManifest(registry);
+    for (std::uint32_t index = 1U; index <= yuengine::package::MAX_PACKAGE_ENTRY_COUNT; ++index)
+    {
+        const std::string suffix = std::to_string(index);
+        const std::string logicalKey = "entry_" + suffix;
+        const std::string sourceKey = "package/entry_" + suffix + ".bin";
+        const PackageRegistrationResult result =
+            registry.RegisterEntry(Entry(PACKAGE_A, PackageEntryId{index}, TYPE_TEXTURE, logicalKey.c_str(), sourceKey.c_str()));
+        if (!result.Succeeded())
+        {
+            return Fail("high-fanout cycle fixture failed to register entries");
+        }
+    }
+
+    for (std::uint32_t index = 3U; index <= yuengine::package::MAX_PACKAGE_ENTRY_COUNT; ++index)
+    {
+        if (registry.AddDependency(PACKAGE_A, start, PackageEntryId{index}) != PackageStatus::Success)
+        {
+            return Fail("high-fanout cycle fixture failed to add start edge");
+        }
+    }
+
+    if (registry.AddDependency(PACKAGE_A, branch, PackageEntryId{3U}) != PackageStatus::Success)
+    {
+        return Fail("high-fanout cycle fixture failed to add duplicate pending edge");
+    }
+
+    if (registry.AddDependency(PACKAGE_A, branch, PackageEntryId{4U}) != PackageStatus::Success)
+    {
+        return Fail("high-fanout cycle fixture failed to add second duplicate pending edge");
+    }
+
+    if (registry.AddDependency(PACKAGE_A, branch, PackageEntryId{5U}) != PackageStatus::Success)
+    {
+        return Fail("high-fanout cycle fixture failed to add third duplicate pending edge");
+    }
+
+    if (registry.AddDependency(PACKAGE_A, branch, target) != PackageStatus::Success)
+    {
+        return Fail("high-fanout cycle fixture failed to add target path edge");
+    }
+
+    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageStatus cycleStatus = registry.AddDependency(PACKAGE_A, target, start);
+    if (cycleStatus != PackageStatus::DependencyCycle)
+    {
+        return Fail("high-fanout dependency path did not return explicit cycle status");
+    }
+
+    if (registry.Snapshot().DependencyEdgeCount != beforeSnapshot.DependencyEdgeCount)
+    {
+        return Fail("high-fanout cycle dependency changed dependency edge count");
     }
 
     return 0;
@@ -825,6 +928,11 @@ int main(int argc, char** argv)
         return PackageResolveEntryByResourceKeyReturnsDeterministicLoadPlan();
     }
 
+    if (testName == TEST_RESOLVE_RESOURCE_KEY_TUPLE)
+    {
+        return PackageResolveEntryByResourceKeyUsesTypeAndLogicalKeyTuple();
+    }
+
     if (testName == TEST_UNKNOWN_KEY)
     {
         return PackageResolveRejectsUnknownResourceKey();
@@ -843,6 +951,11 @@ int main(int argc, char** argv)
     if (testName == TEST_DEPENDENCY_CYCLE)
     {
         return PackageDependencyValidationRejectsCycle();
+    }
+
+    if (testName == TEST_DEPENDENCY_CYCLE_HIGH_FANOUT)
+    {
+        return PackageDependencyValidationRejectsCycleAfterHighFanout();
     }
 
     if (testName == TEST_DEPENDENCY_ORDER)

@@ -252,7 +252,7 @@ PackageLoadPlanResult PackageRegistry::ResolveEntryByResourceKey(
     }
 
     std::size_t rootIndex = 0U;
-    const PackageStatus findStatus = FindEntryByResourceKey(package, logicalKey, rootIndex);
+    const PackageStatus findStatus = FindEntryByResourceKey(package, expectedType, logicalKey, rootIndex);
     if (findStatus != PackageStatus::Success)
     {
         return PackageLoadPlanResult::Failure(RecordFailure(findStatus));
@@ -506,6 +506,7 @@ PackageStatus PackageRegistry::FindEntryIndex(PackageId package, PackageEntryId 
 
 PackageStatus PackageRegistry::FindEntryByResourceKey(
     PackageId package,
+    yuengine::resource::ResourceTypeId expectedType,
     const yuengine::resource::ResourceLogicalKey& logicalKey,
     std::size_t& outIndex) const
 {
@@ -514,12 +515,13 @@ PackageStatus PackageRegistry::FindEntryByResourceKey(
         return PackageStatus::NotFound;
     }
 
+    bool foundLogicalKeyWithDifferentType = false;
     std::uint32_t index = 0U;
     for (const EntrySlot& entry : _entries)
     {
         if (index >= _snapshot.EntryCapacity)
         {
-            return PackageStatus::NotFound;
+            return foundLogicalKeyWithDifferentType ? PackageStatus::TypeMismatch : PackageStatus::NotFound;
         }
 
         if (!entry.IsActive)
@@ -536,14 +538,19 @@ PackageStatus PackageRegistry::FindEntryByResourceKey(
 
         if (entry.Descriptor.LogicalKey.Equals(logicalKey))
         {
-            outIndex = index;
-            return PackageStatus::Success;
+            if (entry.Descriptor.Type.Value == expectedType.Value)
+            {
+                outIndex = index;
+                return PackageStatus::Success;
+            }
+
+            foundLogicalKeyWithDifferentType = true;
         }
 
         ++index;
     }
 
-    return PackageStatus::NotFound;
+    return foundLogicalKeyWithDifferentType ? PackageStatus::TypeMismatch : PackageStatus::NotFound;
 }
 
 bool PackageRegistry::HasDependencyEdge(PackageId package, PackageEntryId dependent, PackageEntryId dependency) const
@@ -575,6 +582,20 @@ bool PackageRegistry::HasDependencyPath(PackageId package, PackageEntryId start,
     std::array<PackageEntryId, MAX_PACKAGE_ENTRY_COUNT> visited{};
     std::uint32_t stackCount = 0U;
     std::uint32_t visitedCount = 0U;
+    const auto containsEntry = [](const std::array<PackageEntryId, MAX_PACKAGE_ENTRY_COUNT>& entries,
+                                  std::uint32_t count,
+                                  PackageEntryId entry) {
+        for (std::uint32_t index = 0U; index < count; ++index)
+        {
+            if (entries[index].Value == entry.Value)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
     stack[stackCount] = start;
     ++stackCount;
 
@@ -587,17 +608,7 @@ bool PackageRegistry::HasDependencyPath(PackageId package, PackageEntryId start,
             return true;
         }
 
-        bool alreadyVisited = false;
-        for (std::uint32_t index = 0U; index < visitedCount; ++index)
-        {
-            if (visited[index].Value == current.Value)
-            {
-                alreadyVisited = true;
-                break;
-            }
-        }
-
-        if (alreadyVisited)
+        if (containsEntry(visited, visitedCount, current))
         {
             continue;
         }
@@ -625,7 +636,8 @@ bool PackageRegistry::HasDependencyPath(PackageId package, PackageEntryId start,
                 continue;
             }
 
-            if (stackCount >= MAX_PACKAGE_ENTRY_COUNT)
+            if (containsEntry(visited, visitedCount, edge.Dependency) ||
+                containsEntry(stack, stackCount, edge.Dependency))
             {
                 continue;
             }
