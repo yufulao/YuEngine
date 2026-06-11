@@ -3,8 +3,9 @@
 Status: active execution plan
 Owner: Architect, lead engineer
 Started: 2026-06-11
-Original repository baseline: `fe586d2`
+Historical original repository baseline: `fe586d2`
 Current coordination checkpoint: `962c1cc`
+P2-GATE-003 closed first-slice checkpoint: `354f8e2`
 
 ## 1. Final Goal
 
@@ -18,9 +19,9 @@ dependency rules.
 
 ## 2. Current State
 
-The original execution baseline was clean on `main` at `fe586d2`. The
-current coordination checkpoint is `962c1cc`, with P2-GATE-003 first slice
-closed and QA cleared at `354f8e2`.
+For historical traceability, the original execution baseline was clean on
+`main` at `fe586d2`. The active coordination checkpoint is `962c1cc`, with
+P2-GATE-003 first slice closed and QA cleared at `354f8e2`.
 
 Phase 1 has one implemented gate and several implementation reviews still open:
 

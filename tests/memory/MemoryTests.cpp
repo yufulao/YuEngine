@@ -33,6 +33,8 @@ constexpr std::size_t SMALL_BYTES = 16U;
 constexpr std::size_t MEDIUM_BYTES = 48U;
 constexpr std::size_t LARGE_BYTES = 64U;
 constexpr std::size_t ALIGNMENT = 8U;
+constexpr std::size_t TRACKED_TEXT_CAP_BYTES = 64U;
+constexpr std::size_t TRACKED_TEXT_OVER_CAP_BYTES = TRACKED_TEXT_CAP_BYTES + 1U;
 
 int Fail(const std::string& message)
 {
@@ -396,10 +398,10 @@ int MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation()
 int MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation()
 {
     CountingMemoryTracker tracker;
-    const std::string maxOwner(yuengine::memory::MAX_MEMORY_OWNER_ID_BYTES, 'O');
-    const std::string maxTag(yuengine::memory::MAX_MEMORY_TAG_BYTES, 'T');
-    const std::string oversizedOwner(yuengine::memory::MAX_MEMORY_OWNER_ID_BYTES + 1U, 'O');
-    const std::string oversizedTag(yuengine::memory::MAX_MEMORY_TAG_BYTES + 1U, 'T');
+    const std::string maxOwner(TRACKED_TEXT_CAP_BYTES, 'O');
+    const std::string maxTag(TRACKED_TEXT_CAP_BYTES, 'T');
+    const std::string oversizedOwner(TRACKED_TEXT_OVER_CAP_BYTES, 'O');
+    const std::string oversizedTag(TRACKED_TEXT_OVER_CAP_BYTES, 'T');
 
     const auto accepted = tracker.RecordAllocation(
         MemoryOwnerId{maxOwner},
