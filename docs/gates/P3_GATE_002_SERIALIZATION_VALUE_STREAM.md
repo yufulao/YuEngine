@@ -1,8 +1,8 @@
 # P3-GATE-002: Serialization Value Stream
 
-Status: In Review
+Status: Approved
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `PM_HOLD_PENDING_FINAL_SEQUENCING`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 红美铃, 八云蓝, 博丽灵梦, 大妖精, 射命丸文 if evidence boundary is questioned, 雾雨魔理沙 when implementation exists
 Depends on: ADR-0015
@@ -34,8 +34,8 @@ These blockers do not prevent architecture review. They prevent
 Current gate state: engine-reference, performance, and implementability/test
 coverage review lanes have accepted the `10abe41` proposal, and ADR-0015 is
 accepted. Evidence review is not triggered while original-save/resource/package
-facts remain excluded. This gate is still not approved for implementation until
-PM/final sequencing issues an explicit `APPROVED_FOR_FIRST_SLICE`.
+facts remain excluded. Task #69 closed PM/final sequencing and approves only
+the bounded caller-provided-buffer value-stream first slice described here.
 
 ## Owns
 

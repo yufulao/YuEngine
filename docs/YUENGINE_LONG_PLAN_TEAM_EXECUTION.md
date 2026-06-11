@@ -47,8 +47,8 @@ Phase 3 is architecture-first:
   implementation remains bounded to `YuObject` / `YuObjectTests`.
 - ADR-0015 serialization value stream is accepted after technical review lanes
   cleared.
-- P3-GATE-002 serialization value stream is in PM hold until final sequencing
-  approval.
+- P3-GATE-002 serialization value stream is approved for first slice;
+  implementation remains bounded to `YuSerialize` / `YuSerializeTests`.
 
 ## 3. Architecture Principles
 
@@ -97,9 +97,10 @@ Order:
 4. Create a scoped `YuObject` first-slice implementation handoff only from
    P3-GATE-001's approved boundary, and keep it isolated from package/resource,
    serialization, scene/world, UI, gameplay, reports, and original evidence.
-5. Keep P3-GATE-002 in final PM sequencing only. Do not implement
-   `YuSerialize` until the gate, performance, implementability, and PM
-   sequencing are accepted.
+5. Create a scoped `YuSerialize` first-slice implementation handoff only from
+   P3-GATE-002's approved boundary, and keep it isolated from File/package,
+   Resource, object construction, reflection, script, scene/save, tools,
+   reports, Game Adapter, and original evidence.
 6. Create implementation slices only from approved gates, preferably in clean
    isolated worktrees when shared CMake or target registration would conflict.
 
@@ -221,7 +222,8 @@ Candidates after review closure:
 
 - `YuObject` first slice from P3-GATE-001 is approved for handoff, limited to
   the bounded synthetic object identity/lifetime registry.
-- `YuSerialize` first slice from P3-GATE-002, only after the gate is approved.
+- `YuSerialize` first slice from P3-GATE-002 is approved for handoff, limited to
+  the bounded caller-provided-buffer primitive value stream.
 - P2 package manifest/load plan expansion, only after a new explicit Architect
   decision; the first slice is already closed and QA cleared.
 

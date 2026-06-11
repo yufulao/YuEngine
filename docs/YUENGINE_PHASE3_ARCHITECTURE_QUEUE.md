@@ -80,7 +80,7 @@ Phase 3 remains blocked from:
 | Gate | Module | Layer | Current decision | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
 | P3-GATE-001 | Object Identity And Lifetime Registry | L2-L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Bounded synthetic object registry only; no component model, world/scene, script binding, Resource mutation, reflection, serialization payload, UI/gameplay, tools, reports, or Game Adapter |
-| P3-GATE-002 | Serialization Value Stream | L3-L5 | `PM_HOLD_PENDING_FINAL_SEQUENCING` | ADR accepted; final PM hold | Bounded caller-provided-buffer value stream only; no File/package/Resource/object construction/reflection/script/scene/save/tool/report/Game Adapter scope |
+| P3-GATE-002 | Serialization Value Stream | L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Bounded caller-provided-buffer value stream only; no File/package/Resource/object construction/reflection/script/scene/save/tool/report/Game Adapter scope |
 
 ## Current Active Gates
 
@@ -93,10 +93,12 @@ Phase 3 remains blocked from:
 - P3-GATE-002 has positive technical review lanes at `10abe41`: engine-reference
   ADR context accepted, performance accepted, implementability/test coverage
   accepted, ADR-0015 accepted, and evidence review is not triggered while
-  original-save/resource scope remains excluded. It is not approved for
-  implementation until PM/final sequencing issues the final gate state.
-  Diagnostics availability must remain outside the serialization write/read
-  result vocabulary.
+  original-save/resource scope remains excluded. Task #69 closed PM/final
+  sequencing and approved the first slice. Implementation must stay within
+  `YuSerialize` / `YuSerializeTests`, caller-provided buffers, deterministic
+  primitive record/field encoding, explicit statuses, no-mutation failures, and
+  diagnostics-disabled equivalence. Diagnostics availability must remain outside
+  the serialization write/read result vocabulary.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.
@@ -116,10 +118,11 @@ Phase 3 remains blocked from:
 1. Architect may create a scoped `YuObject` first-slice implementation handoff
    from P3-GATE-001, preserving the approved boundaries and clean-worktree
    sequencing guard.
-2. Route P3-GATE-002 for PM/final sequencing after ADR-0015 acceptance.
-3. Keep P3-GATE-002 in PM hold until final sequencing is issued.
-4. Continue closing active Phase 1 and Phase 2 implementation reviews; current
+2. Architect may create a scoped `YuSerialize` first-slice implementation
+   handoff from P3-GATE-002, preserving the approved boundaries and
+   clean-worktree sequencing guard.
+3. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.
-5. Do not create a `YuSerialize` implementation task until P3-GATE-002 receives
-   explicit `APPROVED_FOR_FIRST_SLICE` and PM sequencing approval.
+4. Do not use P3-GATE-002 to introduce File/package/Resource/object
+   construction/reflection/script/scene/save/tool/report/Game Adapter scope.
