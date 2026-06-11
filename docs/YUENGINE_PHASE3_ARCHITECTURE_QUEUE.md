@@ -73,14 +73,14 @@ Phase 3 remains blocked from:
 | ID | Title | Owner | Reviewers | Status | Blocks |
 | --- | --- | --- | --- | --- | --- |
 | ADR-0014 | Object identity and lifetime registry boundary | 八云紫 | 红美铃, 八云蓝, 博丽灵梦, 大妖精 | Accepted | Object registry first slice |
-| ADR-0015 | Serialization value stream boundary | 八云紫 | 红美铃, 八云蓝, 博丽灵梦, 大妖精, 射命丸文 if evidence boundary is questioned | Proposed; technical lanes accepted | Serialization value stream first slice |
+| ADR-0015 | Serialization value stream boundary | 八云紫 | 红美铃, 八云蓝, 博丽灵梦, 大妖精, 射命丸文 if evidence boundary is questioned | Accepted | Serialization value stream first slice |
 
 ## Module Gate Proposal Queue
 
 | Gate | Module | Layer | Current decision | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
 | P3-GATE-001 | Object Identity And Lifetime Registry | L2-L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Bounded synthetic object registry only; no component model, world/scene, script binding, Resource mutation, reflection, serialization payload, UI/gameplay, tools, reports, or Game Adapter |
-| P3-GATE-002 | Serialization Value Stream | L3-L5 | `PM_HOLD_PENDING_ADR_ACCEPTANCE` | Technical lanes accepted; not approved | Bounded caller-provided-buffer value stream only; no File/package/Resource/object construction/reflection/script/scene/save/tool/report/Game Adapter scope |
+| P3-GATE-002 | Serialization Value Stream | L3-L5 | `PM_HOLD_PENDING_FINAL_SEQUENCING` | ADR accepted; final PM hold | Bounded caller-provided-buffer value stream only; no File/package/Resource/object construction/reflection/script/scene/save/tool/report/Game Adapter scope |
 
 ## Current Active Gates
 
@@ -92,9 +92,9 @@ Phase 3 remains blocked from:
   and use a clean worktree or clean sequencing for CMake target changes.
 - P3-GATE-002 has positive technical review lanes at `10abe41`: engine-reference
   ADR context accepted, performance accepted, implementability/test coverage
-  accepted, and evidence review is not triggered while original-save/resource
-  scope remains excluded. It is not approved for implementation until ADR-0015
-  is formally accepted and PM/final sequencing issues the final gate state.
+  accepted, ADR-0015 accepted, and evidence review is not triggered while
+  original-save/resource scope remains excluded. It is not approved for
+  implementation until PM/final sequencing issues the final gate state.
   Diagnostics availability must remain outside the serialization write/read
   result vocabulary.
 - No Phase 3 implementation task may be created until the owning gate is
@@ -116,10 +116,8 @@ Phase 3 remains blocked from:
 1. Architect may create a scoped `YuObject` first-slice implementation handoff
    from P3-GATE-001, preserving the approved boundaries and clean-worktree
    sequencing guard.
-2. Formally accept or amend ADR-0015 before any `YuSerialize` implementation
-   handoff.
-3. Keep P3-GATE-002 in PM hold until ADR-0015 is accepted and final sequencing
-   is issued.
+2. Route P3-GATE-002 for PM/final sequencing after ADR-0015 acceptance.
+3. Keep P3-GATE-002 in PM hold until final sequencing is issued.
 4. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.

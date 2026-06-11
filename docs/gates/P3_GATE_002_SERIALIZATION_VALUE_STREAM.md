@@ -1,8 +1,8 @@
 # P3-GATE-002: Serialization Value Stream
 
-Status: Proposed
+Status: In Review
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `PM_HOLD_PENDING_ADR_ACCEPTANCE`
+Current decision: `PM_HOLD_PENDING_FINAL_SEQUENCING`
 Owner: 八云紫
 Reviewers: 红美铃, 八云蓝, 博丽灵梦, 大妖精, 射命丸文 if evidence boundary is questioned, 雾雨魔理沙 when implementation exists
 Depends on: ADR-0015
@@ -32,10 +32,10 @@ These blockers do not prevent architecture review. They prevent
 `APPROVED_FOR_FIRST_SLICE`.
 
 Current gate state: engine-reference, performance, and implementability/test
-coverage review lanes have accepted the `10abe41` proposal. Evidence review is
-not triggered while original-save/resource/package facts remain excluded. This
-gate is still not approved for implementation until ADR-0015 is formally
-accepted and PM/final sequencing issues an explicit approval.
+coverage review lanes have accepted the `10abe41` proposal, and ADR-0015 is
+accepted. Evidence review is not triggered while original-save/resource/package
+facts remain excluded. This gate is still not approved for implementation until
+PM/final sequencing issues an explicit `APPROVED_FOR_FIRST_SLICE`.
 
 ## Owns
 

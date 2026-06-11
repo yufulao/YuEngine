@@ -1,6 +1,6 @@
 # ADR-0015: Serialization Value Stream Boundary
 
-Status: Proposed
+Status: Accepted
 Owner: 八云紫
 Reviewers: 红美铃, 八云蓝, 博丽灵梦, 大妖精, 射命丸文 if evidence boundary is questioned, 雾雨魔理沙 when implementation exists
 Date: 2026-06-10
@@ -155,8 +155,7 @@ the primitive stream has been proven.
 
 ## Requested Review
 
-Reviewers should decide whether this ADR is accepted, rejected, or needs
-amendment before P3-GATE-002 can be approved.
-
-If accepted, ADR-0015 becomes the architecture input for P3-GATE-002
-Serialization Value Stream.
+Accepted after engine-reference, performance/cost, and implementability/test
+coverage review lanes cleared. ADR-0015 is now the architecture input for
+P3-GATE-002 Serialization Value Stream. P3-GATE-002 still requires final PM gate
+approval before any `YuSerialize` implementation task exists.
