@@ -21,11 +21,13 @@ namespace
 {
 constexpr const char* TEST_ROUND_TRIP = "Serialize_WriteReadPrimitives_RoundTripsDeterministically";
 constexpr const char* TEST_HEADER = "Serialize_StreamHeader_RejectsInvalidMagicOrVersion";
+constexpr const char* TEST_RESERVED_FLAGS = "Serialize_StreamHeader_RejectsReservedFlags";
 constexpr const char* TEST_WRITER_OVERFLOW = "Serialize_WriterBufferOverflow_ReturnsStatusWithoutOverrun";
 constexpr const char* TEST_RECORD_CAPACITY = "Serialize_RecordCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_FIELD_CAPACITY = "Serialize_FieldCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_FIXED_BYTES_LIMIT = "Serialize_FixedBytesPayloadLimit_ReturnsExplicitStatus";
 constexpr const char* TEST_TRUNCATED = "Serialize_ReaderRejectsTruncatedStream";
+constexpr const char* TEST_INVALID_IDS = "Serialize_ReaderRejectsInvalidRecordOrFieldId";
 constexpr const char* TEST_MALFORMED_LENGTH = "Serialize_ReaderRejectsMalformedFieldLength";
 constexpr const char* TEST_UNKNOWN_TYPE = "Serialize_ReaderRejectsUnknownTypeTag";
 constexpr const char* TEST_TYPE_MISMATCH = "Serialize_ReaderTypeMismatch_ReturnsExplicitStatus";
@@ -314,6 +316,24 @@ int SerializeStreamHeaderRejectsInvalidMagicOrVersion()
     return 0;
 }
 
+int SerializeStreamHeaderRejectsReservedFlags()
+{
+    StreamFixture fixture;
+    if (BuildRoundTripFixture(fixture) != 0)
+    {
+        return 1;
+    }
+
+    WriteUInt32At(fixture.Buffer.data(), yuengine::serialize::STREAM_FLAGS_OFFSET, 1U);
+    SerializeReader reader(fixture.Buffer.data(), fixture.ByteCount);
+    if (reader.OpenStream() != SerializeStatus::InvalidHeader)
+    {
+        return Fail("reserved stream flags did not return explicit header status");
+    }
+
+    return 0;
+}
+
 int SerializeWriterBufferOverflowReturnsStatusWithoutOverrun()
 {
     std::array<std::uint8_t, 8U> tinyBuffer{};
@@ -484,6 +504,44 @@ int SerializeReaderRejectsTruncatedStream()
     if (reader.OpenStream() != SerializeStatus::TruncatedStream)
     {
         return Fail("truncated stream did not return explicit status");
+    }
+
+    return 0;
+}
+
+int SerializeReaderRejectsInvalidRecordOrFieldId()
+{
+    std::array<std::uint8_t, yuengine::serialize::STREAM_HEADER_BYTE_COUNT + yuengine::serialize::RECORD_HEADER_BYTE_COUNT>
+        invalidRecordBuffer{};
+    WriteValidHeader(invalidRecordBuffer.data(), 1U);
+    WriteRecordHeader(
+        invalidRecordBuffer.data(),
+        yuengine::serialize::STREAM_HEADER_BYTE_COUNT,
+        SerializeRecordId{0U},
+        0U);
+    SerializeReader invalidRecordReader(
+        invalidRecordBuffer.data(),
+        static_cast<std::uint32_t>(invalidRecordBuffer.size()));
+    if (invalidRecordReader.OpenStream() != SerializeStatus::InvalidHeader)
+    {
+        return Fail("invalid record id did not return explicit header status");
+    }
+
+    std::array<std::uint8_t, 40U> invalidFieldBuffer{};
+    WriteValidHeader(invalidFieldBuffer.data(), 1U);
+    std::uint32_t offset = yuengine::serialize::STREAM_HEADER_BYTE_COUNT;
+    offset = WriteRecordHeader(invalidFieldBuffer.data(), offset, RECORD_MAIN, 1U);
+    offset = WriteFieldHeader(
+        invalidFieldBuffer.data(),
+        offset,
+        SerializeFieldId{0U},
+        static_cast<std::uint32_t>(SerializeTypeTag::UInt32),
+        yuengine::serialize::UINT32_PAYLOAD_BYTE_COUNT);
+    WriteUInt32At(invalidFieldBuffer.data(), offset, 1U);
+    SerializeReader invalidFieldReader(invalidFieldBuffer.data(), static_cast<std::uint32_t>(invalidFieldBuffer.size()));
+    if (invalidFieldReader.OpenStream() != SerializeStatus::InvalidHeader)
+    {
+        return Fail("invalid field id did not return explicit header status");
     }
 
     return 0;
@@ -826,6 +884,11 @@ int main(int argc, char** argv)
         return SerializeStreamHeaderRejectsInvalidMagicOrVersion();
     }
 
+    if (testName == TEST_RESERVED_FLAGS)
+    {
+        return SerializeStreamHeaderRejectsReservedFlags();
+    }
+
     if (testName == TEST_WRITER_OVERFLOW)
     {
         return SerializeWriterBufferOverflowReturnsStatusWithoutOverrun();
@@ -849,6 +912,11 @@ int main(int argc, char** argv)
     if (testName == TEST_TRUNCATED)
     {
         return SerializeReaderRejectsTruncatedStream();
+    }
+
+    if (testName == TEST_INVALID_IDS)
+    {
+        return SerializeReaderRejectsInvalidRecordOrFieldId();
     }
 
     if (testName == TEST_MALFORMED_LENGTH)

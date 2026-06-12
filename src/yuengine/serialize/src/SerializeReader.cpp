@@ -80,6 +80,11 @@ SerializeStatus SerializeReader::OpenStream()
         return RecordFailure(SerializeStatus::UnsupportedVersion);
     }
 
+    if (ReadUInt32At(STREAM_FLAGS_OFFSET) != STREAM_FLAGS)
+    {
+        return RecordFailure(SerializeStatus::InvalidHeader);
+    }
+
     std::uint32_t committedByteCount = 0U;
     std::uint32_t recordCount = 0U;
     std::uint32_t fieldCount = 0U;
@@ -266,6 +271,12 @@ SerializeStatus SerializeReader::ValidateStream(
             return SerializeStatus::TruncatedStream;
         }
 
+        const SerializeRecordId record{ReadUInt32At(offset)};
+        if (!record.IsValid())
+        {
+            return SerializeStatus::InvalidHeader;
+        }
+
         const std::uint32_t fieldCount = ReadUInt32At(offset + sizeof(std::uint32_t));
         if (fieldCount > MAX_FIELDS_PER_RECORD)
         {
@@ -288,6 +299,11 @@ SerializeStatus SerializeReader::ValidateStream(
             }
 
             const SerializeFieldId field{ReadUInt32At(offset)};
+            if (!field.IsValid())
+            {
+                return SerializeStatus::InvalidHeader;
+            }
+
             const std::uint32_t typeValue = ReadUInt32At(offset + sizeof(std::uint32_t));
             const std::uint32_t payloadByteCount = ReadUInt32At(offset + (sizeof(std::uint32_t) * 2U));
             if (!IsKnownTypeTag(typeValue))
