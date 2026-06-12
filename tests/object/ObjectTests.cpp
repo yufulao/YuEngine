@@ -21,6 +21,7 @@ namespace
 constexpr const char* TEST_CREATE = "Object_CreateSyntheticObject_ReturnsGenerationHandle";
 constexpr const char* TEST_INVALID_TYPE = "Object_CreateRejectsInvalidTypeWithoutMutation";
 constexpr const char* TEST_CAPACITY = "Object_RegistryCapacityOverflow_DoesNotMutate";
+constexpr const char* TEST_TYPE_CAPACITY = "Object_TypeCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_VALIDATE_STALE = "Object_ValidateRejectsInvalidOrStaleHandle";
 constexpr const char* TEST_STALE_OPERATIONS = "Object_InvalidOrStaleHandleOperations_ReturnExplicitStatusWithoutMutation";
 constexpr const char* TEST_DESTROY_GENERATION = "Object_DestroyIncrementsGenerationAndInvalidatesOldHandle";
@@ -206,6 +207,46 @@ int ObjectRegistryCapacityOverflowDoesNotMutate()
     if (afterSnapshot.TypeCount != beforeSnapshot.TypeCount)
     {
         return Fail("capacity overflow changed type count");
+    }
+
+    return 0;
+}
+
+int ObjectTypeCapacityOverflowDoesNotMutate()
+{
+    ObjectRegistry registry(ObjectRegistryDesc{4U, 1U});
+    const ObjectRegistrationResult firstResult = Create(registry, TYPE_ACTOR);
+    if (!firstResult.Succeeded())
+    {
+        return Fail("first object creation failed");
+    }
+
+    const ObjectSnapshot beforeSnapshot = registry.Snapshot();
+    const ObjectRegistrationResult secondResult = Create(registry, TYPE_CAMERA);
+    if (secondResult.Status != ObjectStatus::CapacityExceeded)
+    {
+        return Fail("type capacity overflow did not return explicit status");
+    }
+
+    if (secondResult.Handle.IsValid())
+    {
+        return Fail("type capacity overflow returned a valid handle");
+    }
+
+    const ObjectSnapshot afterSnapshot = registry.Snapshot();
+    if (afterSnapshot.TypeCount != beforeSnapshot.TypeCount)
+    {
+        return Fail("type capacity overflow changed type count");
+    }
+
+    if (afterSnapshot.AliveObjectCount != beforeSnapshot.AliveObjectCount)
+    {
+        return Fail("type capacity overflow changed alive object count");
+    }
+
+    if (afterSnapshot.CreatedObjectCount != beforeSnapshot.CreatedObjectCount)
+    {
+        return Fail("type capacity overflow changed created object count");
     }
 
     return 0;
@@ -715,6 +756,11 @@ int main(int argc, char** argv)
     if (testName == TEST_CAPACITY)
     {
         return ObjectRegistryCapacityOverflowDoesNotMutate();
+    }
+
+    if (testName == TEST_TYPE_CAPACITY)
+    {
+        return ObjectTypeCapacityOverflowDoesNotMutate();
     }
 
     if (testName == TEST_VALIDATE_STALE)
