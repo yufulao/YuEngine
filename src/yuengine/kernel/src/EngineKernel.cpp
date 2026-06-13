@@ -15,6 +15,7 @@ constexpr const char* MISSING_REQUIRED_SERVICE_MESSAGE = "required service was n
 constexpr const char* STARTUP_TEARDOWN_MESSAGE = "module startup failed after deterministic teardown";
 constexpr const char* UPDATE_TEARDOWN_MESSAGE = "module update failed after dependent teardown";
 constexpr const char* SHUTDOWN_FAILURE_MESSAGE = "module shutdown failed";
+constexpr const char* INVALID_LIFECYCLE_MESSAGE = "kernel lifecycle call was out of order";
 }
 
 void EngineKernel::RegisterModule(IModule& module)
@@ -24,6 +25,11 @@ void EngineKernel::RegisterModule(IModule& module)
 
 KernelResult EngineKernel::Start(std::vector<std::string>& lifecycleTrace)
 {
+    if (_running)
+    {
+        return KernelResult::Failure(KernelStatus::InvalidLifecycle, INVALID_LIFECYCLE_MESSAGE);
+    }
+
     lifecycleTrace.push_back(KERNEL_START_TRACE);
 
     std::unordered_map<std::string_view, IModule*> moduleByName;
@@ -107,11 +113,17 @@ KernelResult EngineKernel::Start(std::vector<std::string>& lifecycleTrace)
         }
     }
 
+    _running = true;
     return KernelResult::Success();
 }
 
 KernelResult EngineKernel::Update(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace)
 {
+    if (!_running)
+    {
+        return KernelResult::Failure(KernelStatus::InvalidLifecycle, INVALID_LIFECYCLE_MESSAGE);
+    }
+
     lifecycleTrace.push_back(KERNEL_UPDATE_TRACE);
 
     for (std::size_t moduleIndex = 0U; moduleIndex < _startedModules.size(); ++moduleIndex)
@@ -137,8 +149,15 @@ KernelResult EngineKernel::Update(std::uint32_t frameIndex, std::uint64_t tickTi
 
 KernelResult EngineKernel::Shutdown(std::vector<std::string>& lifecycleTrace)
 {
+    if (!_running)
+    {
+        return KernelResult::Failure(KernelStatus::InvalidLifecycle, INVALID_LIFECYCLE_MESSAGE);
+    }
+
     lifecycleTrace.push_back(KERNEL_SHUTDOWN_TRACE);
-    return ShutdownStarted(lifecycleTrace);
+    const KernelResult shutdownResult = ShutdownStarted(lifecycleTrace);
+    _running = false;
+    return shutdownResult;
 }
 
 ServiceRegistry& EngineKernel::Services()

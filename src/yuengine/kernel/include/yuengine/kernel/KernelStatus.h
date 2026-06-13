@@ -11,6 +11,7 @@ enum class KernelStatus
     DuplicateService,
     StartupFailure,
     UpdateFailure,
-    ShutdownFailure
+    ShutdownFailure,
+    InvalidLifecycle
 };
 }

@@ -38,5 +38,6 @@ private:
     std::vector<IModule*> _modules;
     std::vector<IModule*> _startedModules;
     ServiceRegistry _services;
+    bool _running = false;
 };
 }

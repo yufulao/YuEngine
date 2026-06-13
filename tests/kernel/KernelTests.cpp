@@ -17,6 +17,7 @@ namespace
 constexpr const char* TEST_LIFECYCLE = "Kernel_ModuleLifecycle_DependencyOrder";
 constexpr const char* TEST_STARTUP_FAILURE = "Kernel_ModuleStartupFailure_TearsDownStartedModules";
 constexpr const char* TEST_SERVICE_REGISTRY = "Kernel_ServiceRegistry_ResolveAndMissingService";
+constexpr const char* TEST_INVALID_LIFECYCLE = "Kernel_InvalidLifecycle_RejectsOutOfOrderCalls";
 constexpr const char* MODULE_A = "A";
 constexpr const char* MODULE_B = "B";
 constexpr const char* MODULE_C = "C";
@@ -25,6 +26,22 @@ constexpr const char* MODULE_FAIL = "Fail";
 constexpr const char* SERVICE_A = "ServiceA";
 constexpr const char* SERVICE_B = "ServiceB";
 constexpr const char* MISSING_SERVICE = "MissingService";
+constexpr const char* UPDATE_FAILURE_SHUTDOWN_MESSAGE = "update failure cleanup shutdown failed";
+constexpr const char* UPDATE_BEFORE_START_MESSAGE = "update before start was not rejected";
+constexpr const char* UPDATE_BEFORE_START_STATUS_MESSAGE = "update before start had wrong status";
+constexpr const char* UPDATE_BEFORE_START_TRACE_MESSAGE = "update before start mutated lifecycle trace";
+constexpr const char* SHUTDOWN_BEFORE_START_MESSAGE = "shutdown before start was not rejected";
+constexpr const char* SHUTDOWN_BEFORE_START_STATUS_MESSAGE = "shutdown before start had wrong status";
+constexpr const char* SHUTDOWN_BEFORE_START_TRACE_MESSAGE = "shutdown before start mutated lifecycle trace";
+constexpr const char* DUPLICATE_START_SETUP_MESSAGE = "duplicate start setup failed";
+constexpr const char* DUPLICATE_START_MESSAGE = "duplicate start was not rejected";
+constexpr const char* DUPLICATE_START_STATUS_MESSAGE = "duplicate start had wrong status";
+constexpr const char* DUPLICATE_START_TRACE_MESSAGE = "duplicate start mutated lifecycle trace";
+constexpr const char* DUPLICATE_START_SHUTDOWN_MESSAGE = "duplicate start cleanup shutdown failed";
+constexpr const char* TRACE_KERNEL_START = "kernel.start";
+constexpr const char* TRACE_KERNEL_SHUTDOWN = "kernel.shutdown";
+constexpr const char* TRACE_MODULE_START_A = "module.start.A";
+constexpr const char* TRACE_MODULE_SHUTDOWN_A = "module.shutdown.A";
 constexpr std::uint32_t FRAME_INDEX = 0U;
 constexpr std::uint64_t TICK_TIME_NANOSECONDS = 1000U;
 
@@ -121,6 +138,12 @@ int KernelModuleLifecycleDependencyOrder()
         return Fail("failed module service was not deregistered after update failure");
     }
 
+    const auto updateFailureShutdownResult = updateFailureKernel.Shutdown(updateFailureTrace);
+    if (!updateFailureShutdownResult.Succeeded)
+    {
+        return Fail(UPDATE_FAILURE_SHUTDOWN_MESSAGE);
+    }
+
     const std::vector<std::string> expectedUpdateFailureTrace{
         "kernel.start",
         "module.start.A",
@@ -130,7 +153,9 @@ int KernelModuleLifecycleDependencyOrder()
         "module.update.A",
         "module.update.B",
         "module.shutdown.C",
-        "module.shutdown.B"};
+        "module.shutdown.B",
+        TRACE_KERNEL_SHUTDOWN,
+        TRACE_MODULE_SHUTDOWN_A};
 
     if (updateFailureTrace != expectedUpdateFailureTrace)
     {
@@ -357,6 +382,88 @@ int KernelServiceRegistryResolveAndMissingService()
 
     return 0;
 }
+
+int KernelInvalidLifecycleRejectsOutOfOrderCalls()
+{
+    EngineKernel updateBeforeStartKernel;
+    std::vector<std::string> updateBeforeStartTrace;
+
+    const auto updateBeforeStartResult =
+        updateBeforeStartKernel.Update(FRAME_INDEX, TICK_TIME_NANOSECONDS, updateBeforeStartTrace);
+    if (updateBeforeStartResult.Succeeded)
+    {
+        return Fail(UPDATE_BEFORE_START_MESSAGE);
+    }
+
+    if (updateBeforeStartResult.Status != KernelStatus::InvalidLifecycle)
+    {
+        return Fail(UPDATE_BEFORE_START_STATUS_MESSAGE);
+    }
+
+    if (!updateBeforeStartTrace.empty())
+    {
+        return Fail(UPDATE_BEFORE_START_TRACE_MESSAGE);
+    }
+
+    EngineKernel shutdownBeforeStartKernel;
+    std::vector<std::string> shutdownBeforeStartTrace;
+
+    const auto shutdownBeforeStartResult = shutdownBeforeStartKernel.Shutdown(shutdownBeforeStartTrace);
+    if (shutdownBeforeStartResult.Succeeded)
+    {
+        return Fail(SHUTDOWN_BEFORE_START_MESSAGE);
+    }
+
+    if (shutdownBeforeStartResult.Status != KernelStatus::InvalidLifecycle)
+    {
+        return Fail(SHUTDOWN_BEFORE_START_STATUS_MESSAGE);
+    }
+
+    if (!shutdownBeforeStartTrace.empty())
+    {
+        return Fail(SHUTDOWN_BEFORE_START_TRACE_MESSAGE);
+    }
+
+    EngineKernel duplicateStartKernel;
+    LifecycleTestModule moduleA(MODULE_A, std::vector<std::string_view>(), false);
+    std::vector<std::string> duplicateStartTrace;
+
+    duplicateStartKernel.RegisterModule(moduleA);
+
+    const auto firstStartResult = duplicateStartKernel.Start(duplicateStartTrace);
+    if (!firstStartResult.Succeeded)
+    {
+        return Fail(DUPLICATE_START_SETUP_MESSAGE);
+    }
+
+    const auto duplicateStartResult = duplicateStartKernel.Start(duplicateStartTrace);
+    if (duplicateStartResult.Succeeded)
+    {
+        return Fail(DUPLICATE_START_MESSAGE);
+    }
+
+    if (duplicateStartResult.Status != KernelStatus::InvalidLifecycle)
+    {
+        return Fail(DUPLICATE_START_STATUS_MESSAGE);
+    }
+
+    const std::vector<std::string> expectedDuplicateStartTrace{
+        TRACE_KERNEL_START,
+        TRACE_MODULE_START_A};
+
+    if (duplicateStartTrace != expectedDuplicateStartTrace)
+    {
+        return Fail(DUPLICATE_START_TRACE_MESSAGE);
+    }
+
+    const auto shutdownResult = duplicateStartKernel.Shutdown(duplicateStartTrace);
+    if (!shutdownResult.Succeeded)
+    {
+        return Fail(DUPLICATE_START_SHUTDOWN_MESSAGE);
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv)
@@ -380,6 +487,11 @@ int main(int argc, char** argv)
     if (testName == TEST_SERVICE_REGISTRY)
     {
         return KernelServiceRegistryResolveAndMissingService();
+    }
+
+    if (testName == TEST_INVALID_LIFECYCLE)
+    {
+        return KernelInvalidLifecycleRejectsOutOfOrderCalls();
     }
 
     return Fail("unknown test name");
