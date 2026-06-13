@@ -14,7 +14,7 @@ namespace yuengine::kernel
 class EngineKernel final
 {
 public:
-    void RegisterModule(IModule& module);
+    bool RegisterModule(IModule& module);
 
     KernelResult Start(std::vector<std::string>& lifecycleTrace);
     KernelResult Update(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace);

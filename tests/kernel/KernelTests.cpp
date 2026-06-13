@@ -38,6 +38,7 @@ constexpr const char* DUPLICATE_START_MESSAGE = "duplicate start was not rejecte
 constexpr const char* DUPLICATE_START_STATUS_MESSAGE = "duplicate start had wrong status";
 constexpr const char* DUPLICATE_START_TRACE_MESSAGE = "duplicate start mutated lifecycle trace";
 constexpr const char* DUPLICATE_START_SHUTDOWN_MESSAGE = "duplicate start cleanup shutdown failed";
+constexpr const char* LATE_REGISTRATION_MESSAGE = "module registration succeeded after kernel start";
 constexpr const char* WRONG_SERVICE_TYPE_MESSAGE = "registered service resolved through wrong C++ type";
 constexpr const char* TRACE_KERNEL_START = "kernel.start";
 constexpr const char* TRACE_KERNEL_SHUTDOWN = "kernel.shutdown";
@@ -433,6 +434,7 @@ int KernelInvalidLifecycleRejectsOutOfOrderCalls()
 
     EngineKernel duplicateStartKernel;
     LifecycleTestModule moduleA(MODULE_A, std::vector<std::string_view>(), false);
+    LifecycleTestModule moduleB(MODULE_B, std::vector<std::string_view>(), false);
     std::vector<std::string> duplicateStartTrace;
 
     duplicateStartKernel.RegisterModule(moduleA);
@@ -441,6 +443,12 @@ int KernelInvalidLifecycleRejectsOutOfOrderCalls()
     if (!firstStartResult.Succeeded)
     {
         return Fail(DUPLICATE_START_SETUP_MESSAGE);
+    }
+
+    const bool lateModuleRegistered = duplicateStartKernel.RegisterModule(moduleB);
+    if (lateModuleRegistered)
+    {
+        return Fail(LATE_REGISTRATION_MESSAGE);
     }
 
     const auto duplicateStartResult = duplicateStartKernel.Start(duplicateStartTrace);

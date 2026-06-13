@@ -18,9 +18,15 @@ constexpr const char* SHUTDOWN_FAILURE_MESSAGE = "module shutdown failed";
 constexpr const char* INVALID_LIFECYCLE_MESSAGE = "kernel lifecycle call was out of order";
 }
 
-void EngineKernel::RegisterModule(IModule& module)
+bool EngineKernel::RegisterModule(IModule& module)
 {
+    if (_running)
+    {
+        return false;
+    }
+
     _modules.push_back(&module);
+    return true;
 }
 
 KernelResult EngineKernel::Start(std::vector<std::string>& lifecycleTrace)
