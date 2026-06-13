@@ -39,6 +39,9 @@ constexpr const char* DUPLICATE_START_STATUS_MESSAGE = "duplicate start had wron
 constexpr const char* DUPLICATE_START_TRACE_MESSAGE = "duplicate start mutated lifecycle trace";
 constexpr const char* DUPLICATE_START_SHUTDOWN_MESSAGE = "duplicate start cleanup shutdown failed";
 constexpr const char* LATE_REGISTRATION_MESSAGE = "module registration succeeded after kernel start";
+constexpr const char* SELF_REQUIRED_SERVICE_MESSAGE = "self-published required service did not block startup";
+constexpr const char* SELF_REQUIRED_SERVICE_STATUS_MESSAGE = "self-published required service had wrong status";
+constexpr const char* SELF_REQUIRED_SERVICE_TRACE_MESSAGE = "self-published required service ran module startup";
 constexpr const char* WRONG_SERVICE_TYPE_MESSAGE = "registered service resolved through wrong C++ type";
 constexpr const char* TRACE_KERNEL_START = "kernel.start";
 constexpr const char* TRACE_KERNEL_SHUTDOWN = "kernel.shutdown";
@@ -290,6 +293,35 @@ int KernelModuleStartupFailureTearsDownStartedModules()
     if (missingServiceTrace != expectedMissingServiceTrace)
     {
         return Fail("missing required service ran module startup");
+    }
+
+    EngineKernel selfRequiredServiceKernel;
+    LifecycleTestModule selfRequiredPublisher(
+        MODULE_A,
+        std::vector<std::string_view>(),
+        std::vector<std::string_view>{SERVICE_A},
+        std::vector<std::string_view>{SERVICE_A},
+        false,
+        false);
+    std::vector<std::string> selfRequiredServiceTrace;
+
+    selfRequiredServiceKernel.RegisterModule(selfRequiredPublisher);
+
+    const auto selfRequiredServiceResult = selfRequiredServiceKernel.Start(selfRequiredServiceTrace);
+    if (selfRequiredServiceResult.Succeeded)
+    {
+        return Fail(SELF_REQUIRED_SERVICE_MESSAGE);
+    }
+
+    if (selfRequiredServiceResult.Status != KernelStatus::MissingService)
+    {
+        return Fail(SELF_REQUIRED_SERVICE_STATUS_MESSAGE);
+    }
+
+    const std::vector<std::string> expectedSelfRequiredServiceTrace{"kernel.start"};
+    if (selfRequiredServiceTrace != expectedSelfRequiredServiceTrace)
+    {
+        return Fail(SELF_REQUIRED_SERVICE_TRACE_MESSAGE);
     }
 
     EngineKernel unguaranteedServiceKernel;

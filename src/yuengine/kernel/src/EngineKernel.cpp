@@ -208,15 +208,9 @@ bool EngineKernel::RequiredServicesAvailable(const IModule& module) const
     const std::vector<std::string_view> requiredServices = module.RequiredServices();
     for (const std::string_view requiredService : requiredServices)
     {
-        const bool modulePublishesService = ModulePublishesService(module, requiredService);
-        if (!modulePublishesService && !RequiredDependencyChainPublishesService(module, requiredService))
+        if (!RequiredDependencyChainPublishesService(module, requiredService))
         {
             return false;
-        }
-
-        if (modulePublishesService)
-        {
-            continue;
         }
 
         if (!_services.Contains(requiredService))
