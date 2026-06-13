@@ -34,7 +34,7 @@ void ServiceRegistry::UnregisterOwner(std::string_view ownerModule)
     }
 }
 
-bool ServiceRegistry::RegisterRaw(std::string_view ownerModule, std::string_view serviceId, void* service)
+bool ServiceRegistry::RegisterRaw(std::string_view ownerModule, std::string_view serviceId, void* service, std::type_index serviceType)
 {
     if (service == nullptr)
     {
@@ -47,14 +47,19 @@ bool ServiceRegistry::RegisterRaw(std::string_view ownerModule, std::string_view
         return false;
     }
 
-    _services.emplace(serviceKey, ServiceRecord{service, std::string(ownerModule)});
+    _services.emplace(serviceKey, ServiceRecord{service, serviceType, std::string(ownerModule)});
     return true;
 }
 
-void* ServiceRegistry::ResolveRaw(std::string_view serviceId) const
+void* ServiceRegistry::ResolveRaw(std::string_view serviceId, std::type_index serviceType) const
 {
     const auto iterator = _services.find(std::string(serviceId));
     if (iterator == _services.end())
+    {
+        return nullptr;
+    }
+
+    if (iterator->second.Type != serviceType)
     {
         return nullptr;
     }

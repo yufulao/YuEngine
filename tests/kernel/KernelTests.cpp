@@ -38,6 +38,7 @@ constexpr const char* DUPLICATE_START_MESSAGE = "duplicate start was not rejecte
 constexpr const char* DUPLICATE_START_STATUS_MESSAGE = "duplicate start had wrong status";
 constexpr const char* DUPLICATE_START_TRACE_MESSAGE = "duplicate start mutated lifecycle trace";
 constexpr const char* DUPLICATE_START_SHUTDOWN_MESSAGE = "duplicate start cleanup shutdown failed";
+constexpr const char* WRONG_SERVICE_TYPE_MESSAGE = "registered service resolved through wrong C++ type";
 constexpr const char* TRACE_KERNEL_START = "kernel.start";
 constexpr const char* TRACE_KERNEL_SHUTDOWN = "kernel.shutdown";
 constexpr const char* TRACE_MODULE_START_A = "module.start.A";
@@ -353,6 +354,12 @@ int KernelServiceRegistryResolveAndMissingService()
     if (*resolvedService != service)
     {
         return Fail("registered service resolved to wrong instance");
+    }
+
+    double* wrongTypeService = serviceRegistry.Resolve<double>(SERVICE_A);
+    if (wrongTypeService != nullptr)
+    {
+        return Fail(WRONG_SERVICE_TYPE_MESSAGE);
     }
 
     double* missingService = serviceRegistry.Resolve<double>(MISSING_SERVICE);

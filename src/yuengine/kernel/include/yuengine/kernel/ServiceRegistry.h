@@ -2,6 +2,7 @@
 
 #include <string>
 #include <string_view>
+#include <typeindex>
 #include <unordered_map>
 
 namespace yuengine::kernel
@@ -14,13 +15,13 @@ public:
     template <typename T>
     bool Register(std::string_view ownerModule, std::string_view serviceId, T& service)
     {
-        return RegisterRaw(ownerModule, serviceId, &service);
+        return RegisterRaw(ownerModule, serviceId, &service, std::type_index(typeid(T)));
     }
 
     template <typename T>
     T* Resolve(std::string_view serviceId) const
     {
-        void* service = ResolveRaw(serviceId);
+        void* service = ResolveRaw(serviceId, std::type_index(typeid(T)));
         if (service == nullptr)
         {
             return nullptr;
@@ -37,11 +38,12 @@ private:
     struct ServiceRecord
     {
         void* Instance;
+        std::type_index Type;
         std::string OwnerModule;
     };
 
-    bool RegisterRaw(std::string_view ownerModule, std::string_view serviceId, void* service);
-    void* ResolveRaw(std::string_view serviceId) const;
+    bool RegisterRaw(std::string_view ownerModule, std::string_view serviceId, void* service, std::type_index serviceType);
+    void* ResolveRaw(std::string_view serviceId, std::type_index serviceType) const;
 
     std::unordered_map<std::string, ServiceRecord> _services;
 };
