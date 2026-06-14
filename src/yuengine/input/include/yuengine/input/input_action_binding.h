@@ -5,9 +5,9 @@
 #include "yuengine/input/input_device_id.h"
 
 namespace yuengine::input {
-struct InputActionBinding final {
-    InputDeviceId Device;
-    InputControlId Control;
-    InputActionId Action;
+struct input_action_binding_t final {
+    input_device_id_t Device;
+    input_control_id_t Control;
+    input_action_id_t Action;
 };
 }

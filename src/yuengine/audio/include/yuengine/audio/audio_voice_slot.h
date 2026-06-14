@@ -6,10 +6,10 @@
 #include "yuengine/audio/audio_source_id.h"
 
 namespace yuengine::audio {
-struct AudioVoiceSlot final {
+struct audio_voice_slot_t final {
     bool IsActive = false;
     std::uint32_t Generation = 1U;
-    AudioSourceId Source{};
+    audio_source_id_t Source{};
     std::size_t CursorFrame = 0U;
     std::uint32_t GainQ15 = 0U;
 };
