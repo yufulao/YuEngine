@@ -4,10 +4,8 @@
 
 #include "yuengine/diagnostics/LogLevel.h"
 
-namespace yuengine::diagnostics
-{
-struct LogEvent
-{
+namespace yuengine::diagnostics {
+struct LogEvent {
     LogLevel Level;
     std::string Message;
 };

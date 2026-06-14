@@ -5,10 +5,8 @@
 
 #include "yuengine/rhi/RhiAccountingStatus.h"
 
-namespace yuengine::rhi
-{
-struct RhiDeviceSnapshot final
-{
+namespace yuengine::rhi {
+struct RhiDeviceSnapshot final {
     std::size_t ColorTargetCapacity = 0U;
     std::size_t ColorTargetCount = 0U;
     std::size_t CommandStorageCapacityBeforeFrame = 0U;

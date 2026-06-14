@@ -23,8 +23,7 @@ using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
 using PlatformPerformanceSignal = yuengine::platform::PlatformPerformanceSignal;
 using BoundedInMemoryLogSink = yuengine::diagnostics::BoundedInMemoryLogSink;
 
-namespace
-{
+namespace {
 constexpr const char* TEST_HOST = "Host_StartTickShutdown_Deterministic";
 constexpr const char* TEST_TIMER = "Host_TimerMonotonic_ForFixedTicks";
 constexpr const char* TEST_MEMORY_STATUS = "Platform_AllocationAccountingStatus_UsesMemoryHook";
@@ -37,39 +36,33 @@ constexpr std::uint32_t TIMER_TICK_COUNT = 4U;
 constexpr std::size_t LOG_CAPACITY = 16U;
 using TestFunction = int (*)();
 
-class TraceRuntime final : public IHostRuntime
-{
+class TraceRuntime final : public IHostRuntime {
 public:
-    HostError Start(std::vector<std::string>& lifecycleTrace) override
-    {
+    HostError Start(std::vector<std::string>& lifecycleTrace) override {
         lifecycleTrace.push_back("runtime.start");
         return HostError::Success();
     }
 
-    HostError Tick(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) override
-    {
+    HostError Tick(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) override {
         static_cast<void>(frameIndex);
         static_cast<void>(tickTimeNanoseconds);
         lifecycleTrace.push_back("runtime.tick");
         return HostError::Success();
     }
 
-    HostError Shutdown(std::vector<std::string>& lifecycleTrace) override
-    {
+    HostError Shutdown(std::vector<std::string>& lifecycleTrace) override {
         lifecycleTrace.push_back("runtime.shutdown");
         return HostError::Success();
     }
 };
 
-int Fail(const std::string& message)
-{
+int Fail(const std::string& message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
     std::fputc('\n', stderr);
     return 1;
 }
 
-int HostStartTickShutdownDeterministic()
-{
+int HostStartTickShutdownDeterministic() {
     BoundedInMemoryLogSink logSink(LOG_CAPACITY);
     FixedFrameClock frameClock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
     TraceRuntime runtime;
@@ -77,13 +70,11 @@ int HostStartTickShutdownDeterministic()
 
     const HeadlessHostConfig config{DETERMINISTIC_TICK_COUNT};
     const auto result = host.Run(runtime, config);
-    if (result.Status != HostStatus::Success)
-    {
+    if (result.Status != HostStatus::Success) {
         return Fail("host did not return success");
     }
 
-    if (result.TickCount != DETERMINISTIC_TICK_COUNT)
-    {
+    if (result.TickCount != DETERMINISTIC_TICK_COUNT) {
         return Fail("host tick count was not deterministic");
     }
 
@@ -99,26 +90,22 @@ int HostStartTickShutdownDeterministic()
         "host.shutdown",
         "runtime.shutdown"};
 
-    if (result.LifecycleTrace != expectedTrace)
-    {
+    if (result.LifecycleTrace != expectedTrace) {
         return Fail("host lifecycle trace did not match expected order");
     }
 
-    if (result.AllocationAccountingStatus != PlatformPerformanceSignal::AllocationAccountingStatus)
-    {
+    if (result.AllocationAccountingStatus != PlatformPerformanceSignal::AllocationAccountingStatus) {
         return Fail("allocation accounting status is missing");
     }
 
-    if (logSink.Events().empty())
-    {
+    if (logSink.Events().empty()) {
         return Fail("recording log sink did not receive host events");
     }
 
     return 0;
 }
 
-int HostTimerMonotonicForFixedTicks()
-{
+int HostTimerMonotonicForFixedTicks() {
     BoundedInMemoryLogSink logSink(LOG_CAPACITY);
     FixedFrameClock frameClock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
     TraceRuntime runtime;
@@ -126,34 +113,28 @@ int HostTimerMonotonicForFixedTicks()
 
     const HeadlessHostConfig config{TIMER_TICK_COUNT};
     const auto result = host.Run(runtime, config);
-    if (result.TickTimesNanoseconds.size() != TIMER_TICK_COUNT)
-    {
+    if (result.TickTimesNanoseconds.size() != TIMER_TICK_COUNT) {
         return Fail("timer did not record every tick");
     }
 
-    for (std::size_t index = 1U; index < result.TickTimesNanoseconds.size(); ++index)
-    {
-        if (result.TickTimesNanoseconds[index] <= result.TickTimesNanoseconds[index - 1U])
-        {
+    for (std::size_t index = 1U; index < result.TickTimesNanoseconds.size(); ++index) {
+        if (result.TickTimesNanoseconds[index] <= result.TickTimesNanoseconds[index - 1U]) {
             return Fail("timer ticks were not monotonic");
         }
     }
 
-    if (result.TickTimesNanoseconds[0U] != FIRST_TICK_NANOSECONDS)
-    {
+    if (result.TickTimesNanoseconds[0U] != FIRST_TICK_NANOSECONDS) {
         return Fail("first timer tick was unexpected");
     }
 
-    if (result.TickTimesNanoseconds[3U] != FIRST_TICK_NANOSECONDS + (STEP_NANOSECONDS * 3U))
-    {
+    if (result.TickTimesNanoseconds[3U] != FIRST_TICK_NANOSECONDS + (STEP_NANOSECONDS * 3U)) {
         return Fail("fixed timer step was unexpected");
     }
 
     return 0;
 }
 
-int PlatformAllocationAccountingStatusUsesMemoryHook()
-{
+int PlatformAllocationAccountingStatusUsesMemoryHook() {
     BoundedInMemoryLogSink logSink(LOG_CAPACITY);
     FixedFrameClock frameClock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
     TraceRuntime runtime;
@@ -161,8 +142,7 @@ int PlatformAllocationAccountingStatusUsesMemoryHook()
 
     const HeadlessHostConfig config{DETERMINISTIC_TICK_COUNT};
     const auto result = host.Run(runtime, config);
-    if (result.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly)
-    {
+    if (result.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("platform did not expose typed explicit-tracking memory status");
     }
 
@@ -170,10 +150,8 @@ int PlatformAllocationAccountingStatusUsesMemoryHook()
 }
 }
 
-int main(int argc, char** argv)
-{
-    if (argc != 2)
-    {
+int main(int argc, char** argv) {
+    if (argc != 2) {
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
@@ -184,8 +162,7 @@ int main(int argc, char** argv)
 
     const std::string_view testName(argv[1]);
     const auto testIterator = testRegistry.find(testName);
-    if (testIterator == testRegistry.end())
-    {
+    if (testIterator == testRegistry.end()) {
         return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 

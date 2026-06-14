@@ -6,10 +6,8 @@
 #include "yuengine/audio/AudioBackendKind.h"
 #include "yuengine/audio/AudioSampleFormat.h"
 
-namespace yuengine::audio
-{
-struct AudioCapabilities final
-{
+namespace yuengine::audio {
+struct AudioCapabilities final {
     AudioBackendKind BackendKind = AudioBackendKind::Test;
     AudioSampleFormat Format = AudioSampleFormat::S16;
     std::uint32_t SampleRate = 0U;

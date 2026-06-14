@@ -2,27 +2,22 @@
 
 #include <utility>
 
-namespace yuengine::file
-{
+namespace yuengine::file {
 MountPoint::MountPoint()
     : _id(),
-      _source()
-{
+      _source() {
 }
 
 MountPoint::MountPoint(MountId id, LooseFileSource source)
     : _id(std::move(id)),
-      _source(std::move(source))
-{
+      _source(std::move(source)) {
 }
 
-const MountId& MountPoint::Id() const
-{
+const MountId& MountPoint::Id() const {
     return _id;
 }
 
-const LooseFileSource& MountPoint::Source() const
-{
+const LooseFileSource& MountPoint::Source() const {
     return _source;
 }
 }

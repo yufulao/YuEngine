@@ -18,8 +18,7 @@ using MemoryTag = yuengine::memory::MemoryTag;
 using MemoryAllocationId = yuengine::memory::MemoryAllocationId;
 using yuengine::memory::MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS;
 
-namespace
-{
+namespace {
 constexpr const char* TEST_COUNTS = "Memory_TrackerCountsAllocationAndFree";
 constexpr const char* TEST_PEAK = "Memory_TrackerReportsPeakAndRetainedBytes";
 constexpr const char* TEST_LEAK = "Memory_TrackerReportsLeakOnUnreleasedBytes";
@@ -42,310 +41,260 @@ constexpr std::size_t TRACKED_TEXT_CAP_BYTES = 64U;
 constexpr std::size_t TRACKED_TEXT_OVER_CAP_BYTES = TRACKED_TEXT_CAP_BYTES + 1U;
 using TestFunction = int (*)();
 
-int Fail(const std::string& message)
-{
+int Fail(const std::string& message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
     std::fputc('\n', stderr);
     return 1;
 }
 
-int MemoryTrackerCountsAllocationAndFree()
-{
+int MemoryTrackerCountsAllocationAndFree() {
     CountingMemoryTracker tracker;
     const MemoryOwnerId owner{OWNER_PLATFORM};
     const MemoryTag tag{TAG_FIXTURE};
 
     const auto allocation = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Setup, LARGE_BYTES, ALIGNMENT);
-    if (!allocation.Succeeded())
-    {
+    if (!allocation.Succeeded()) {
         return Fail("tracked setup allocation failed");
     }
 
     const auto afterAllocation = tracker.Snapshot();
-    if (afterAllocation.AllocationCount != 1U)
-    {
+    if (afterAllocation.AllocationCount != 1U) {
         return Fail("allocation count did not increment");
     }
 
-    if (afterAllocation.RetainedBytes != LARGE_BYTES)
-    {
+    if (afterAllocation.RetainedBytes != LARGE_BYTES) {
         return Fail("retained bytes did not match allocation");
     }
 
     const auto freeStatus = tracker.RecordFree(allocation.AllocationId, owner, tag);
-    if (freeStatus != MemoryAccountingStatus::Success)
-    {
+    if (freeStatus != MemoryAccountingStatus::Success) {
         return Fail("tracked free failed");
     }
 
     const auto afterFree = tracker.Snapshot();
-    if (afterFree.FreeCount != 1U)
-    {
+    if (afterFree.FreeCount != 1U) {
         return Fail("free count did not increment");
     }
 
-    if (afterFree.RetainedBytes != 0U)
-    {
+    if (afterFree.RetainedBytes != 0U) {
         return Fail("retained bytes did not return to zero");
     }
 
-    if (afterFree.HasLeaks())
-    {
+    if (afterFree.HasLeaks()) {
         return Fail("freed fixture still reported leaks");
     }
 
     return 0;
 }
 
-int MemoryTrackerReportsPeakAndRetainedBytes()
-{
+int MemoryTrackerReportsPeakAndRetainedBytes() {
     CountingMemoryTracker tracker;
     const MemoryOwnerId owner{OWNER_PLATFORM};
     const MemoryTag tag{TAG_FIXTURE};
 
     const auto firstAllocation = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Setup, SMALL_BYTES, ALIGNMENT);
     const auto secondAllocation = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Load, MEDIUM_BYTES, ALIGNMENT);
-    if (!firstAllocation.Succeeded())
-    {
+    if (!firstAllocation.Succeeded()) {
         return Fail("first allocation failed");
     }
 
-    if (!secondAllocation.Succeeded())
-    {
+    if (!secondAllocation.Succeeded()) {
         return Fail("second allocation failed");
     }
 
     const auto peakSnapshot = tracker.Snapshot();
-    if (peakSnapshot.PeakRetainedBytes != SMALL_BYTES + MEDIUM_BYTES)
-    {
+    if (peakSnapshot.PeakRetainedBytes != SMALL_BYTES + MEDIUM_BYTES) {
         return Fail("peak retained bytes did not record high watermark");
     }
 
     const auto freeStatus = tracker.RecordFree(firstAllocation.AllocationId, owner, tag);
-    if (freeStatus != MemoryAccountingStatus::Success)
-    {
+    if (freeStatus != MemoryAccountingStatus::Success) {
         return Fail("first free failed");
     }
 
     const auto retainedSnapshot = tracker.Snapshot();
-    if (retainedSnapshot.RetainedBytes != MEDIUM_BYTES)
-    {
+    if (retainedSnapshot.RetainedBytes != MEDIUM_BYTES) {
         return Fail("retained bytes after partial free were wrong");
     }
 
-    if (retainedSnapshot.PeakRetainedBytes != SMALL_BYTES + MEDIUM_BYTES)
-    {
+    if (retainedSnapshot.PeakRetainedBytes != SMALL_BYTES + MEDIUM_BYTES) {
         return Fail("peak retained bytes changed after free");
     }
 
     const auto cleanupStatus = tracker.RecordFree(secondAllocation.AllocationId, owner, tag);
-    if (cleanupStatus != MemoryAccountingStatus::Success)
-    {
+    if (cleanupStatus != MemoryAccountingStatus::Success) {
         return Fail("cleanup free failed");
     }
 
     return 0;
 }
 
-int MemoryTrackerReportsLeakOnUnreleasedBytes()
-{
+int MemoryTrackerReportsLeakOnUnreleasedBytes() {
     CountingMemoryTracker tracker;
     const MemoryOwnerId owner{OWNER_PLATFORM};
     const MemoryTag tag{TAG_FIXTURE};
 
     const auto allocation = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Load, MEDIUM_BYTES, ALIGNMENT);
-    if (!allocation.Succeeded())
-    {
+    if (!allocation.Succeeded()) {
         return Fail("leak fixture allocation failed");
     }
 
     const auto snapshot = tracker.Snapshot();
-    if (!snapshot.HasLeaks())
-    {
+    if (!snapshot.HasLeaks()) {
         return Fail("unreleased allocation was not reported as leak");
     }
 
-    if (snapshot.LeakCount != 1U)
-    {
+    if (snapshot.LeakCount != 1U) {
         return Fail("leak count was wrong");
     }
 
-    if (snapshot.RetainedBytes != MEDIUM_BYTES)
-    {
+    if (snapshot.RetainedBytes != MEDIUM_BYTES) {
         return Fail("leak retained bytes were wrong");
     }
 
     return 0;
 }
 
-int MemoryTrackerRejectsUnmatchedFree()
-{
+int MemoryTrackerRejectsUnmatchedFree() {
     CountingMemoryTracker tracker;
     const MemoryOwnerId owner{OWNER_PLATFORM};
     const MemoryOwnerId otherOwner{OWNER_KERNEL};
     const MemoryTag tag{TAG_FIXTURE};
 
     const auto unmatchedStatus = tracker.RecordFree(MemoryAllocationId{999U}, owner, tag);
-    if (unmatchedStatus != MemoryAccountingStatus::UnmatchedFree)
-    {
+    if (unmatchedStatus != MemoryAccountingStatus::UnmatchedFree) {
         return Fail("unmatched free was not rejected");
     }
 
     const auto allocation = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Setup, SMALL_BYTES, ALIGNMENT);
-    if (!allocation.Succeeded())
-    {
+    if (!allocation.Succeeded()) {
         return Fail("owner mismatch fixture allocation failed");
     }
 
     const auto mismatchStatus = tracker.RecordFree(allocation.AllocationId, otherOwner, tag);
-    if (mismatchStatus != MemoryAccountingStatus::OwnerTagMismatch)
-    {
+    if (mismatchStatus != MemoryAccountingStatus::OwnerTagMismatch) {
         return Fail("owner mismatch was not rejected");
     }
 
     const auto snapshot = tracker.Snapshot();
-    if (snapshot.RetainedBytes != SMALL_BYTES)
-    {
+    if (snapshot.RetainedBytes != SMALL_BYTES) {
         return Fail("owner mismatch changed retained bytes");
     }
 
     const auto cleanupStatus = tracker.RecordFree(allocation.AllocationId, owner, tag);
-    if (cleanupStatus != MemoryAccountingStatus::Success)
-    {
+    if (cleanupStatus != MemoryAccountingStatus::Success) {
         return Fail("cleanup after owner mismatch failed");
     }
 
     return 0;
 }
 
-int MemoryTrackerRecordsBudgetClass()
-{
+int MemoryTrackerRecordsBudgetClass() {
     CountingMemoryTracker tracker;
     const MemoryOwnerId owner{OWNER_PLATFORM};
     const MemoryTag tag{TAG_FIXTURE};
 
     const auto setupAllocation = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Setup, SMALL_BYTES, ALIGNMENT);
     const auto loadAllocation = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Load, MEDIUM_BYTES, ALIGNMENT);
-    if (!setupAllocation.Succeeded())
-    {
+    if (!setupAllocation.Succeeded()) {
         return Fail("setup budget allocation failed");
     }
 
-    if (!loadAllocation.Succeeded())
-    {
+    if (!loadAllocation.Succeeded()) {
         return Fail("load budget allocation failed");
     }
 
-    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Setup) != 1U)
-    {
+    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Setup) != 1U) {
         return Fail("setup budget allocation count was wrong");
     }
 
-    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Load) != 1U)
-    {
+    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Load) != 1U) {
         return Fail("load budget allocation count was wrong");
     }
 
-    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Tool) != 0U)
-    {
+    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Tool) != 0U) {
         return Fail("unallocated budget class reported allocations");
     }
 
     const auto setupFree = tracker.RecordFree(setupAllocation.AllocationId, owner, tag);
     const auto loadFree = tracker.RecordFree(loadAllocation.AllocationId, owner, tag);
-    if (setupFree != MemoryAccountingStatus::Success)
-    {
+    if (setupFree != MemoryAccountingStatus::Success) {
         return Fail("setup budget cleanup failed");
     }
 
-    if (loadFree != MemoryAccountingStatus::Success)
-    {
+    if (loadFree != MemoryAccountingStatus::Success) {
         return Fail("load budget cleanup failed");
     }
 
     return 0;
 }
 
-int MemoryDisabledTrackerDoesNotChangeBehavior()
-{
+int MemoryDisabledTrackerDoesNotChangeBehavior() {
     DisabledMemoryTracker tracker;
     const MemoryOwnerId owner{OWNER_PLATFORM};
     const MemoryTag tag{TAG_FIXTURE};
 
     const auto allocation = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Frame, LARGE_BYTES, ALIGNMENT);
-    if (!allocation.Succeeded())
-    {
+    if (!allocation.Succeeded()) {
         return Fail("disabled tracker changed allocation behavior");
     }
 
     const auto freeStatus = tracker.RecordFree(allocation.AllocationId, owner, tag);
-    if (freeStatus != MemoryAccountingStatus::Success)
-    {
+    if (freeStatus != MemoryAccountingStatus::Success) {
         return Fail("disabled tracker changed free behavior");
     }
 
     const auto snapshot = tracker.Snapshot();
-    if (snapshot.AllocationCount != 0U)
-    {
+    if (snapshot.AllocationCount != 0U) {
         return Fail("disabled tracker counted allocations");
     }
 
-    if (snapshot.RetainedBytes != 0U)
-    {
+    if (snapshot.RetainedBytes != 0U) {
         return Fail("disabled tracker retained bytes");
     }
 
-    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Frame) != 0U)
-    {
+    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Frame) != 0U) {
         return Fail("disabled tracker counted hot-path budget allocations");
     }
 
     return 0;
 }
 
-int MemoryHotPathBudgetFailsOnTrackedAllocation()
-{
+int MemoryHotPathBudgetFailsOnTrackedAllocation() {
     CountingMemoryTracker tracker;
     const MemoryOwnerId owner{OWNER_PLATFORM};
     const MemoryTag tag{TAG_FIXTURE};
 
     const auto allocation = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Frame, SMALL_BYTES, ALIGNMENT);
-    if (allocation.Status != MemoryAccountingStatus::BudgetExceeded)
-    {
+    if (allocation.Status != MemoryAccountingStatus::BudgetExceeded) {
         return Fail("hot-path tracked allocation did not fail zero budget");
     }
 
     const auto snapshot = tracker.Snapshot();
-    if (snapshot.AllocationCount != 0U)
-    {
+    if (snapshot.AllocationCount != 0U) {
         return Fail("failed hot-path allocation changed allocation count");
     }
 
-    if (snapshot.RetainedBytes != 0U)
-    {
+    if (snapshot.RetainedBytes != 0U) {
         return Fail("failed hot-path allocation changed retained bytes");
     }
 
-    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Frame) != 0U)
-    {
+    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Frame) != 0U) {
         return Fail("failed hot-path allocation changed budget count");
     }
 
     return 0;
 }
 
-int MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation()
-{
+int MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation() {
     CountingMemoryTracker tracker;
     const MemoryOwnerId owner{OWNER_PLATFORM};
     const MemoryTag tag{TAG_FIXTURE};
     std::array<MemoryAllocationId, MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS> allocations{};
 
-    for (std::size_t index = 0U; index < allocations.size(); ++index)
-    {
+    for (std::size_t index = 0U; index < allocations.size(); ++index) {
         const auto allocation = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Setup, SMALL_BYTES, ALIGNMENT);
-        if (!allocation.Succeeded())
-        {
+        if (!allocation.Succeeded()) {
             return Fail("fixed-capacity setup allocation failed before capacity");
         }
 
@@ -354,56 +303,46 @@ int MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation()
 
     const auto beforeOverflow = tracker.Snapshot();
     const auto overflow = tracker.RecordAllocation(owner, tag, MemoryBudgetClass::Setup, SMALL_BYTES, ALIGNMENT);
-    if (overflow.Status != MemoryAccountingStatus::CapacityExceeded)
-    {
+    if (overflow.Status != MemoryAccountingStatus::CapacityExceeded) {
         return Fail("fixed-capacity tracker did not reject allocation overflow");
     }
 
-    if (overflow.AllocationId.Value != 0U)
-    {
+    if (overflow.AllocationId.Value != 0U) {
         return Fail("failed capacity allocation returned an allocation id");
     }
 
     const auto afterOverflow = tracker.Snapshot();
-    if (afterOverflow.AllocationCount != beforeOverflow.AllocationCount)
-    {
+    if (afterOverflow.AllocationCount != beforeOverflow.AllocationCount) {
         return Fail("capacity overflow changed allocation count");
     }
 
-    if (afterOverflow.RetainedBytes != beforeOverflow.RetainedBytes)
-    {
+    if (afterOverflow.RetainedBytes != beforeOverflow.RetainedBytes) {
         return Fail("capacity overflow changed retained bytes");
     }
 
-    if (afterOverflow.LeakCount != beforeOverflow.LeakCount)
-    {
+    if (afterOverflow.LeakCount != beforeOverflow.LeakCount) {
         return Fail("capacity overflow changed active leak count");
     }
 
-    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Setup) != allocations.size())
-    {
+    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Setup) != allocations.size()) {
         return Fail("capacity overflow changed setup budget count");
     }
 
-    for (const MemoryAllocationId allocationId : allocations)
-    {
-        if (tracker.RecordFree(allocationId, owner, tag) != MemoryAccountingStatus::Success)
-        {
+    for (const MemoryAllocationId allocationId : allocations) {
+        if (tracker.RecordFree(allocationId, owner, tag) != MemoryAccountingStatus::Success) {
             return Fail("fixed-capacity cleanup free failed");
         }
     }
 
     const auto afterCleanup = tracker.Snapshot();
-    if (afterCleanup.HasLeaks())
-    {
+    if (afterCleanup.HasLeaks()) {
         return Fail("fixed-capacity cleanup left leaks");
     }
 
     return 0;
 }
 
-int MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation()
-{
+int MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation() {
     CountingMemoryTracker tracker;
     const std::string maxOwner(TRACKED_TEXT_CAP_BYTES, 'O');
     const std::string maxTag(TRACKED_TEXT_CAP_BYTES, 'T');
@@ -416,14 +355,12 @@ int MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation()
         MemoryBudgetClass::Setup,
         SMALL_BYTES,
         ALIGNMENT);
-    if (!accepted.Succeeded())
-    {
+    if (!accepted.Succeeded()) {
         return Fail("max byte owner/tag allocation failed");
     }
 
     if (tracker.RecordFree(accepted.AllocationId, MemoryOwnerId{maxOwner}, MemoryTag{maxTag}) !=
-        MemoryAccountingStatus::Success)
-    {
+        MemoryAccountingStatus::Success) {
         return Fail("max byte owner/tag cleanup failed");
     }
 
@@ -434,8 +371,7 @@ int MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation()
         MemoryBudgetClass::Setup,
         SMALL_BYTES,
         ALIGNMENT);
-    if (ownerReject.Status != MemoryAccountingStatus::InvalidOwner)
-    {
+    if (ownerReject.Status != MemoryAccountingStatus::InvalidOwner) {
         return Fail("oversized owner was not rejected");
     }
 
@@ -445,39 +381,32 @@ int MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation()
         MemoryBudgetClass::Setup,
         SMALL_BYTES,
         ALIGNMENT);
-    if (tagReject.Status != MemoryAccountingStatus::InvalidTag)
-    {
+    if (tagReject.Status != MemoryAccountingStatus::InvalidTag) {
         return Fail("oversized tag was not rejected");
     }
 
     const auto afterRejects = tracker.Snapshot();
-    if (afterRejects.AllocationCount != beforeRejects.AllocationCount)
-    {
+    if (afterRejects.AllocationCount != beforeRejects.AllocationCount) {
         return Fail("oversized owner/tag reject changed allocation count");
     }
 
-    if (afterRejects.FreeCount != beforeRejects.FreeCount)
-    {
+    if (afterRejects.FreeCount != beforeRejects.FreeCount) {
         return Fail("oversized owner/tag reject changed free count");
     }
 
-    if (afterRejects.RetainedBytes != beforeRejects.RetainedBytes)
-    {
+    if (afterRejects.RetainedBytes != beforeRejects.RetainedBytes) {
         return Fail("oversized owner/tag reject changed retained bytes");
     }
 
-    if (afterRejects.PeakRetainedBytes != beforeRejects.PeakRetainedBytes)
-    {
+    if (afterRejects.PeakRetainedBytes != beforeRejects.PeakRetainedBytes) {
         return Fail("oversized owner/tag reject changed peak bytes");
     }
 
-    if (afterRejects.LeakCount != beforeRejects.LeakCount)
-    {
+    if (afterRejects.LeakCount != beforeRejects.LeakCount) {
         return Fail("oversized owner/tag reject changed leak count");
     }
 
-    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Setup) != 1U)
-    {
+    if (tracker.AllocationCountForBudget(MemoryBudgetClass::Setup) != 1U) {
         return Fail("oversized owner/tag reject changed setup budget count");
     }
 
@@ -485,10 +414,8 @@ int MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation()
 }
 }
 
-int main(int argc, char** argv)
-{
-    if (argc != 2)
-    {
+int main(int argc, char** argv) {
+    if (argc != 2) {
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
@@ -505,8 +432,7 @@ int main(int argc, char** argv)
 
     const std::string_view testName(argv[1]);
     const auto testIterator = testRegistry.find(testName);
-    if (testIterator == testRegistry.end())
-    {
+    if (testIterator == testRegistry.end()) {
         return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 

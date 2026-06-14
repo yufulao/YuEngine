@@ -1,9 +1,7 @@
 #pragma once
 
-namespace yuengine::rhi
-{
-enum class RhiAccountingStatus
-{
+namespace yuengine::rhi {
+enum class RhiAccountingStatus {
     DeferredUntilYuMemoryIntegration,
     UsesYuMemoryVocabulary
 };

@@ -3,10 +3,8 @@
 #include "yuengine/file/FileStatus.h"
 #include "yuengine/file/NormalizedPath.h"
 
-namespace yuengine::file
-{
-struct PathNormalizationResult
-{
+namespace yuengine::file {
+struct PathNormalizationResult {
     FileStatus Status;
     NormalizedPath Path;
 

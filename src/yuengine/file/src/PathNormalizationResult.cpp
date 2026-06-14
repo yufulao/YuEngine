@@ -2,20 +2,16 @@
 
 #include <utility>
 
-namespace yuengine::file
-{
-PathNormalizationResult PathNormalizationResult::Success(NormalizedPath path)
-{
+namespace yuengine::file {
+PathNormalizationResult PathNormalizationResult::Success(NormalizedPath path) {
     return PathNormalizationResult{FileStatus::Success, std::move(path)};
 }
 
-PathNormalizationResult PathNormalizationResult::Failure(FileStatus status)
-{
+PathNormalizationResult PathNormalizationResult::Failure(FileStatus status) {
     return PathNormalizationResult{status, NormalizedPath()};
 }
 
-bool PathNormalizationResult::Succeeded() const
-{
+bool PathNormalizationResult::Succeeded() const {
     return Status == FileStatus::Success;
 }
 }

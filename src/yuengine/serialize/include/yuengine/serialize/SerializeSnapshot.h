@@ -5,12 +5,10 @@
 #include "yuengine/memory/MemoryAccountingStatus.h"
 #include "yuengine/serialize/SerializeStatus.h"
 
-namespace yuengine::serialize
-{
+namespace yuengine::serialize {
 using yuengine::memory::MemoryAccountingStatus;
 
-struct SerializeSnapshot final
-{
+struct SerializeSnapshot final {
     std::uint16_t MajorVersion;
     std::uint16_t MinorVersion;
     std::uint32_t CommittedByteCount;

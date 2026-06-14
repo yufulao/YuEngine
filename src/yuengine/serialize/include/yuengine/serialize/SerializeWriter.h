@@ -10,10 +10,8 @@
 #include "yuengine/serialize/SerializeStatus.h"
 #include "yuengine/serialize/SerializeTypeTag.h"
 
-namespace yuengine::serialize
-{
-class SerializeWriter final
-{
+namespace yuengine::serialize {
+class SerializeWriter final {
 public:
     SerializeWriter(std::uint8_t* buffer, std::uint32_t capacity);
 

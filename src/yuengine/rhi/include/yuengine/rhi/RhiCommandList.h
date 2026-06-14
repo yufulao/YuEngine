@@ -9,10 +9,8 @@
 #include "yuengine/rhi/RhiStatus.h"
 #include "yuengine/rhi/RhiTextureHandle.h"
 
-namespace yuengine::rhi
-{
-class RhiCommandList final
-{
+namespace yuengine::rhi {
+class RhiCommandList final {
 public:
     explicit RhiCommandList(std::size_t capacity);
 

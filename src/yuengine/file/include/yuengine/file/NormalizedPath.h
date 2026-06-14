@@ -3,10 +3,8 @@
 #include <string>
 #include <string_view>
 
-namespace yuengine::file
-{
-class NormalizedPath final
-{
+namespace yuengine::file {
+class NormalizedPath final {
 public:
     NormalizedPath();
     explicit NormalizedPath(std::string value);

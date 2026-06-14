@@ -6,10 +6,8 @@
 #include "yuengine/platform/IFrameClock.h"
 #include "yuengine/platform/IHostRuntime.h"
 
-namespace yuengine::platform
-{
-class HeadlessHost final
-{
+namespace yuengine::platform {
+class HeadlessHost final {
 public:
     HeadlessHost(IFrameClock& frameClock, diagnostics::ILogSink& logSink);
 

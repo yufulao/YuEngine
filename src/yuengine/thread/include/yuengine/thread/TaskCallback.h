@@ -2,7 +2,6 @@
 
 #include "yuengine/thread/TaskStatus.h"
 
-namespace yuengine::thread
-{
+namespace yuengine::thread {
 using TaskCallback = TaskStatus (*)(void* context);
 }

@@ -4,10 +4,8 @@
 #include "yuengine/input/InputControlId.h"
 #include "yuengine/input/InputDeviceId.h"
 
-namespace yuengine::input
-{
-struct InputActionBinding final
-{
+namespace yuengine::input {
+struct InputActionBinding final {
     InputDeviceId Device;
     InputControlId Control;
     InputActionId Action;

@@ -5,10 +5,8 @@
 
 #include "yuengine/rhi/RhiColorTargetDesc.h"
 
-namespace yuengine::rhi
-{
-struct RhiTargetSlot final
-{
+namespace yuengine::rhi {
+struct RhiTargetSlot final {
     bool IsActive = false;
     std::uint32_t Generation = 1U;
     RhiColorTargetDesc Desc{};

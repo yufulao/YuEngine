@@ -8,13 +8,11 @@
 #include "yuengine/resource/ResourceLogicalKey.h"
 #include "yuengine/resource/ResourceTypeId.h"
 
-namespace yuengine::package
-{
+namespace yuengine::package {
 using resource::ResourceLogicalKey;
 using resource::ResourceTypeId;
 
-struct PackageLoadPlanRecord final
-{
+struct PackageLoadPlanRecord final {
     PackageId Package;
     PackageEntryId Entry;
     ResourceTypeId Type;

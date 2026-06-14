@@ -5,10 +5,8 @@
 #include "yuengine/file/FileReadResult.h"
 #include "yuengine/file/NormalizedPath.h"
 
-namespace yuengine::file
-{
-class LooseFileSource final
-{
+namespace yuengine::file {
+class LooseFileSource final {
 public:
     LooseFileSource();
     explicit LooseFileSource(std::filesystem::path rootPath);

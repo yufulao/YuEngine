@@ -14,10 +14,8 @@
 #include "yuengine/input/InputStatus.h"
 #include "yuengine/input/input_replay_frame.h"
 
-namespace yuengine::input
-{
-class InputReplay final
-{
+namespace yuengine::input {
+class InputReplay final {
 public:
     InputReplay();
 

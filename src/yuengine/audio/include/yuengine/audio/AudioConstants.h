@@ -3,8 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace yuengine::audio
-{
+namespace yuengine::audio {
 constexpr std::uint32_t SAMPLE_RATE = 48000U;
 constexpr std::uint16_t CHANNEL_COUNT = 2U;
 constexpr std::size_t MAX_SOURCES = 8U;

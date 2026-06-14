@@ -6,10 +6,8 @@
 #include "yuengine/input/InputAccountingStatus.h"
 #include "yuengine/input/InputStatus.h"
 
-namespace yuengine::input
-{
-struct InputReplaySnapshot final
-{
+namespace yuengine::input {
+struct InputReplaySnapshot final {
     std::size_t DeviceCapacity = 0U;
     std::size_t ActionCapacity = 0U;
     std::size_t BindingCapacity = 0U;

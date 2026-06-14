@@ -5,12 +5,10 @@
 #include "yuengine/memory/MemoryAccountingStatus.h"
 #include "yuengine/package/PackageStatus.h"
 
-namespace yuengine::package
-{
+namespace yuengine::package {
 using memory::MemoryAccountingStatus;
 
-struct PackageSnapshot final
-{
+struct PackageSnapshot final {
     std::uint32_t ManifestCapacity;
     std::uint32_t EntryCapacity;
     std::uint32_t DependencyEdgeCapacity;

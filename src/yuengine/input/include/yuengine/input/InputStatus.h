@@ -1,9 +1,7 @@
 #pragma once
 
-namespace yuengine::input
-{
-enum class InputStatus
-{
+namespace yuengine::input {
+enum class InputStatus {
     Success,
     DuplicateBinding,
     CapacityExceeded,

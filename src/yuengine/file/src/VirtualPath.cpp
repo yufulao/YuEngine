@@ -2,25 +2,20 @@
 
 #include <utility>
 
-namespace yuengine::file
-{
+namespace yuengine::file {
 VirtualPath::VirtualPath()
-    : _value()
-{
+    : _value() {
 }
 
 VirtualPath::VirtualPath(std::string value)
-    : _value(std::move(value))
-{
+    : _value(std::move(value)) {
 }
 
-std::string_view VirtualPath::Value() const
-{
+std::string_view VirtualPath::Value() const {
     return _value;
 }
 
-std::size_t VirtualPath::ByteLength() const
-{
+std::size_t VirtualPath::ByteLength() const {
     return _value.size();
 }
 }

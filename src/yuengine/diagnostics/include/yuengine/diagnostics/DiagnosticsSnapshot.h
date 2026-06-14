@@ -9,10 +9,8 @@
 #include "yuengine/diagnostics/DiagnosticsLimits.h"
 #include "yuengine/memory/MemoryAccountingStatus.h"
 
-namespace yuengine::diagnostics
-{
-struct DiagnosticsSnapshot
-{
+namespace yuengine::diagnostics {
+struct DiagnosticsSnapshot {
     std::array<DiagnosticsEvent, MAX_DIAGNOSTICS_EVENTS> Events;
     std::array<DiagnosticsCounterSnapshot, MAX_DIAGNOSTICS_COUNTERS> Counters;
     std::size_t EventCount;

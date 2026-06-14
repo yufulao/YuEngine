@@ -13,8 +13,7 @@ using HeadlessHostConfig = yuengine::platform::HeadlessHostConfig;
 using HostStatus = yuengine::platform::HostStatus;
 using KernelHostRuntime = yuengine::kernel::KernelHostRuntime;
 
-int main()
-{
+int main() {
     constexpr std::uint64_t FIRST_TICK_NANOSECONDS = 0U;
     constexpr std::uint64_t STEP_NANOSECONDS = 16666666U;
     constexpr std::uint32_t TICK_COUNT = 1U;
@@ -27,8 +26,7 @@ int main()
 
     const HeadlessHostConfig config{TICK_COUNT};
     const auto result = host.Run(runtime, config);
-    if (result.Status == HostStatus::Success)
-    {
+    if (result.Status == HostStatus::Success) {
         return 0;
     }
 

@@ -2,10 +2,8 @@
 
 #include "yuengine/memory/IMemoryTracker.h"
 
-namespace yuengine::memory
-{
-class DisabledMemoryTracker final : public IMemoryTracker
-{
+namespace yuengine::memory {
+class DisabledMemoryTracker final : public IMemoryTracker {
 public:
     MemoryAccountingResult RecordAllocation(
         MemoryOwnerId owner,

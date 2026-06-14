@@ -3,8 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace yuengine::resource
-{
+namespace yuengine::resource {
 constexpr std::uint32_t MAX_RESOURCE_COUNT = 32U;
 constexpr std::uint32_t MAX_RESOURCE_TYPE_COUNT = 8U;
 constexpr std::uint32_t MAX_DEPENDENCY_EDGE_COUNT = 64U;

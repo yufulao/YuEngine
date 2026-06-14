@@ -20,8 +20,7 @@ using TaskStatus = yuengine::thread::TaskStatus;
 using FixedTraceBuffer = yuengine::thread::tests::FixedTraceBuffer;
 using ThreadTestContext = yuengine::thread::tests::ThreadTestContext;
 
-namespace
-{
+namespace {
 constexpr const char* TEST_ENQUEUE_SUCCEEDS = "Thread_QueueEnqueueWithinCapacity_Succeeds";
 constexpr const char* TEST_ENQUEUE_REJECTS = "Thread_QueueEnqueueBeyondCapacity_Rejects";
 constexpr const char* TEST_FIFO = "Thread_DrainExecutesTasks_InDeterministicOrder";
@@ -40,25 +39,20 @@ constexpr int SECOND_VALUE = 20;
 constexpr int THIRD_VALUE = 30;
 using TestFunction = int (*)();
 
-int Fail(const std::string& message)
-{
+int Fail(const std::string& message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
     std::fputc('\n', stderr);
     return 1;
 }
 
 template <std::size_t ExpectedCount>
-bool TraceEquals(const FixedTraceBuffer& trace, const std::array<int, ExpectedCount>& expected)
-{
-    if (trace.Count != expected.size())
-    {
+bool TraceEquals(const FixedTraceBuffer& trace, const std::array<int, ExpectedCount>& expected) {
+    if (trace.Count != expected.size()) {
         return false;
     }
 
-    for (std::size_t index = 0U; index < trace.Count; ++index)
-    {
-        if (trace.Values[index] != expected[index])
-        {
+    for (std::size_t index = 0U; index < trace.Count; ++index) {
+        if (trace.Values[index] != expected[index]) {
             return false;
         }
     }
@@ -66,17 +60,13 @@ bool TraceEquals(const FixedTraceBuffer& trace, const std::array<int, ExpectedCo
     return true;
 }
 
-bool TraceEquals(const FixedTraceBuffer& left, const FixedTraceBuffer& right)
-{
-    if (left.Count != right.Count)
-    {
+bool TraceEquals(const FixedTraceBuffer& left, const FixedTraceBuffer& right) {
+    if (left.Count != right.Count) {
         return false;
     }
 
-    for (std::size_t index = 0U; index < left.Count; ++index)
-    {
-        if (left.Values[index] != right.Values[index])
-        {
+    for (std::size_t index = 0U; index < left.Count; ++index) {
+        if (left.Values[index] != right.Values[index]) {
             return false;
         }
     }
@@ -84,61 +74,51 @@ bool TraceEquals(const FixedTraceBuffer& left, const FixedTraceBuffer& right)
     return true;
 }
 
-TaskStatus RecordTask(void* context)
-{
+TaskStatus RecordTask(void* context) {
     ThreadTestContext* taskContext = static_cast<ThreadTestContext*>(context);
-    if (!taskContext->Trace->Append(taskContext->Value))
-    {
+    if (!taskContext->Trace->Append(taskContext->Value)) {
         return TaskStatus::Failed;
     }
 
-    if (taskContext->ShouldFail)
-    {
+    if (taskContext->ShouldFail) {
         return TaskStatus::Failed;
     }
 
     return TaskStatus::Completed;
 }
 
-int ThreadQueueEnqueueWithinCapacitySucceeds()
-{
+int ThreadQueueEnqueueWithinCapacitySucceeds() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     FixedTraceBuffer trace;
     ThreadTestContext context{&trace, FIRST_VALUE, false};
 
-    if (queue.Snapshot().MaxQueueDepth != 0U)
-    {
+    if (queue.Snapshot().MaxQueueDepth != 0U) {
         return Fail("initial max queue depth was not zero");
     }
 
     const auto result = queue.Submit(&RecordTask, &context);
-    if (result.Status != TaskStatus::Queued)
-    {
+    if (result.Status != TaskStatus::Queued) {
         return Fail("submit within capacity did not queue task");
     }
 
     const auto snapshot = queue.Snapshot();
-    if (snapshot.SubmittedCount != 1U)
-    {
+    if (snapshot.SubmittedCount != 1U) {
         return Fail("submitted count did not increment");
     }
 
-    if (snapshot.PendingCount != 1U)
-    {
+    if (snapshot.PendingCount != 1U) {
         return Fail("pending count did not increment");
     }
 
-    if (snapshot.MaxQueueDepth != 1U)
-    {
+    if (snapshot.MaxQueueDepth != 1U) {
         return Fail("max queue depth did not track submitted task");
     }
 
     return 0;
 }
 
-int ThreadQueueEnqueueBeyondCapacityRejects()
-{
+int ThreadQueueEnqueueBeyondCapacityRejects() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     FixedTraceBuffer trace;
@@ -150,27 +130,23 @@ int ThreadQueueEnqueueBeyondCapacityRejects()
     queue.Submit(&RecordTask, &secondContext);
 
     const auto rejectedResult = queue.Submit(&RecordTask, &thirdContext);
-    if (rejectedResult.Status != TaskStatus::Rejected)
-    {
+    if (rejectedResult.Status != TaskStatus::Rejected) {
         return Fail("submit beyond capacity was not rejected");
     }
 
     const auto snapshot = queue.Snapshot();
-    if (snapshot.RejectedCount != 1U)
-    {
+    if (snapshot.RejectedCount != 1U) {
         return Fail("rejected count did not increment");
     }
 
-    if (snapshot.PendingCount != SMALL_CAPACITY)
-    {
+    if (snapshot.PendingCount != SMALL_CAPACITY) {
         return Fail("overflow changed pending count");
     }
 
     return 0;
 }
 
-int ThreadDrainExecutesTasksInDeterministicOrder()
-{
+int ThreadDrainExecutesTasksInDeterministicOrder() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(LARGE_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
@@ -184,33 +160,28 @@ int ThreadDrainExecutesTasksInDeterministicOrder()
     queue.Submit(&RecordTask, &thirdContext);
 
     const auto drainResult = queue.Drain(executor);
-    if (drainResult.Status != TaskStatus::Completed)
-    {
+    if (drainResult.Status != TaskStatus::Completed) {
         return Fail("drain did not complete");
     }
 
     const std::array<int, 3U> expectedTrace{FIRST_VALUE, SECOND_VALUE, THIRD_VALUE};
-    if (!TraceEquals(trace, expectedTrace))
-    {
+    if (!TraceEquals(trace, expectedTrace)) {
         return Fail("drain order was not FIFO");
     }
 
     const auto snapshot = queue.Snapshot();
-    if (snapshot.ExecutedCount != 3U)
-    {
+    if (snapshot.ExecutedCount != 3U) {
         return Fail("executed count was wrong");
     }
 
-    if (snapshot.PendingCount != 0U)
-    {
+    if (snapshot.PendingCount != 0U) {
         return Fail("drain left pending tasks");
     }
 
     return 0;
 }
 
-int ThreadTaskFailureReturnsFailedResult()
-{
+int ThreadTaskFailureReturnsFailedResult() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
@@ -220,27 +191,23 @@ int ThreadTaskFailureReturnsFailedResult()
     queue.Submit(&RecordTask, &context);
 
     const auto drainResult = queue.Drain(executor);
-    if (drainResult.Status != TaskStatus::Failed)
-    {
+    if (drainResult.Status != TaskStatus::Failed) {
         return Fail("failed task did not return failed drain result");
     }
 
     const auto snapshot = queue.Snapshot();
-    if (snapshot.FailedCount != 1U)
-    {
+    if (snapshot.FailedCount != 1U) {
         return Fail("failed count did not increment");
     }
 
-    if (snapshot.ExecutedCount != 1U)
-    {
+    if (snapshot.ExecutedCount != 1U) {
         return Fail("failed task did not execute exactly once");
     }
 
     return 0;
 }
 
-int ThreadShutdownRejectsNewSubmission()
-{
+int ThreadShutdownRejectsNewSubmission() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
@@ -250,27 +217,23 @@ int ThreadShutdownRejectsNewSubmission()
     queue.Shutdown(ShutdownPolicy::DrainQueued, executor);
 
     const auto submitResult = queue.Submit(&RecordTask, &context);
-    if (submitResult.Status != TaskStatus::Rejected)
-    {
+    if (submitResult.Status != TaskStatus::Rejected) {
         return Fail("submit after shutdown was not rejected");
     }
 
     const auto snapshot = queue.Snapshot();
-    if (!snapshot.IsShutdown)
-    {
+    if (!snapshot.IsShutdown) {
         return Fail("shutdown state was not recorded");
     }
 
-    if (snapshot.RejectedCount != 1U)
-    {
+    if (snapshot.RejectedCount != 1U) {
         return Fail("shutdown rejection count was wrong");
     }
 
     return 0;
 }
 
-int ThreadShutdownDrainPolicyExecutesQueuedTasks()
-{
+int ThreadShutdownDrainPolicyExecutesQueuedTasks() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
@@ -282,28 +245,24 @@ int ThreadShutdownDrainPolicyExecutesQueuedTasks()
     queue.Submit(&RecordTask, &secondContext);
 
     const auto shutdownResult = queue.Shutdown(ShutdownPolicy::DrainQueued, executor);
-    if (shutdownResult.Status != TaskStatus::Completed)
-    {
+    if (shutdownResult.Status != TaskStatus::Completed) {
         return Fail("drain shutdown did not complete");
     }
 
     const std::array<int, 2U> expectedTrace{FIRST_VALUE, SECOND_VALUE};
-    if (!TraceEquals(trace, expectedTrace))
-    {
+    if (!TraceEquals(trace, expectedTrace)) {
         return Fail("drain shutdown did not execute queued tasks");
     }
 
     const auto snapshot = queue.Snapshot();
-    if (snapshot.PendingCount != 0U)
-    {
+    if (snapshot.PendingCount != 0U) {
         return Fail("drain shutdown left pending tasks");
     }
 
     return 0;
 }
 
-int ThreadShutdownCancelPolicyCancelsQueuedTasks()
-{
+int ThreadShutdownCancelPolicyCancelsQueuedTasks() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
@@ -315,32 +274,27 @@ int ThreadShutdownCancelPolicyCancelsQueuedTasks()
     queue.Submit(&RecordTask, &secondContext);
 
     const auto shutdownResult = queue.Shutdown(ShutdownPolicy::CancelQueued, executor);
-    if (shutdownResult.Status != TaskStatus::Canceled)
-    {
+    if (shutdownResult.Status != TaskStatus::Canceled) {
         return Fail("cancel shutdown did not return canceled");
     }
 
-    if (!trace.IsEmpty())
-    {
+    if (!trace.IsEmpty()) {
         return Fail("cancel shutdown executed a queued task");
     }
 
     const auto snapshot = queue.Snapshot();
-    if (snapshot.CanceledCount != 2U)
-    {
+    if (snapshot.CanceledCount != 2U) {
         return Fail("cancel count was wrong");
     }
 
-    if (snapshot.PendingCount != 0U)
-    {
+    if (snapshot.PendingCount != 0U) {
         return Fail("cancel shutdown left pending tasks");
     }
 
     return 0;
 }
 
-int ThreadQueueCapacityDoesNotGrowDuringFixture()
-{
+int ThreadQueueCapacityDoesNotGrowDuringFixture() {
     CountingMemoryTracker memoryTracker;
     BoundedTaskQueue queue(LARGE_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
@@ -354,26 +308,22 @@ int ThreadQueueCapacityDoesNotGrowDuringFixture()
     queue.Drain(executor);
 
     const auto snapshot = queue.Snapshot();
-    if (capacityBefore != LARGE_CAPACITY)
-    {
+    if (capacityBefore != LARGE_CAPACITY) {
         return Fail("queue setup capacity was unexpected");
     }
 
-    if (snapshot.CapacityBeforeFixture != snapshot.CapacityAfterLastDrain)
-    {
+    if (snapshot.CapacityBeforeFixture != snapshot.CapacityAfterLastDrain) {
         return Fail("queue capacity changed during fixture");
     }
 
-    if (snapshot.TaskExecutionAllocationCount != 0U)
-    {
+    if (snapshot.TaskExecutionAllocationCount != 0U) {
         return Fail("task execution recorded tracked job allocations");
     }
 
     return 0;
 }
 
-int ThreadDiagnosticsDisabledDoesNotChangeBehavior()
-{
+int ThreadDiagnosticsDisabledDoesNotChangeBehavior() {
     DisabledMemoryTracker enabledLikeMemoryTracker;
     BoundedTaskQueue enabledLikeQueue(SMALL_CAPACITY, enabledLikeMemoryTracker);
     InlineTaskExecutor enabledLikeExecutor;
@@ -392,20 +342,17 @@ int ThreadDiagnosticsDisabledDoesNotChangeBehavior()
     disabledQueue.Submit(&RecordTask, &disabledContext);
     disabledQueue.Drain(disabledExecutor);
 
-    if (!TraceEquals(enabledLikeTrace, disabledTrace))
-    {
+    if (!TraceEquals(enabledLikeTrace, disabledTrace)) {
         return Fail("diagnostics-disabled fixture changed task behavior");
     }
 
     const auto enabledLikeSnapshot = enabledLikeQueue.Snapshot();
     const auto disabledSnapshot = disabledQueue.Snapshot();
-    if (enabledLikeSnapshot.ExecutedCount != disabledSnapshot.ExecutedCount)
-    {
+    if (enabledLikeSnapshot.ExecutedCount != disabledSnapshot.ExecutedCount) {
         return Fail("diagnostics-disabled fixture changed executed count");
     }
 
-    if (enabledLikeSnapshot.FailedCount != disabledSnapshot.FailedCount)
-    {
+    if (enabledLikeSnapshot.FailedCount != disabledSnapshot.FailedCount) {
         return Fail("diagnostics-disabled fixture changed failed count");
     }
 
@@ -413,10 +360,8 @@ int ThreadDiagnosticsDisabledDoesNotChangeBehavior()
 }
 }
 
-int main(int argc, char** argv)
-{
-    if (argc != 2)
-    {
+int main(int argc, char** argv) {
+    if (argc != 2) {
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
@@ -433,8 +378,7 @@ int main(int argc, char** argv)
 
     const std::string_view testName(argv[1]);
     const auto testIterator = testRegistry.find(testName);
-    if (testIterator == testRegistry.end())
-    {
+    if (testIterator == testRegistry.end()) {
         return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 

@@ -2,8 +2,7 @@
 
 #include <cstdint>
 
-namespace yuengine::serialize
-{
+namespace yuengine::serialize {
 constexpr std::uint32_t MAX_STREAM_BYTE_COUNT = 4096U;
 constexpr std::uint32_t MAX_RECORDS_PER_STREAM = 32U;
 constexpr std::uint32_t MAX_FIELDS_PER_STREAM = 64U;

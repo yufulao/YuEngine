@@ -7,12 +7,10 @@
 #include "yuengine/memory/IMemoryTracker.h"
 #include "yuengine/memory/active_allocation_record.h"
 
-namespace yuengine::memory
-{
+namespace yuengine::memory {
 constexpr std::size_t MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS = 64U;
 
-class CountingMemoryTracker final : public IMemoryTracker
-{
+class CountingMemoryTracker final : public IMemoryTracker {
 public:
     CountingMemoryTracker();
 

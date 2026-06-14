@@ -13,10 +13,8 @@
 #include "yuengine/diagnostics/DiagnosticsSnapshot.h"
 #include "yuengine/diagnostics/DiagnosticsStatus.h"
 
-namespace yuengine::diagnostics
-{
-class BoundedDiagnosticsChannel final
-{
+namespace yuengine::diagnostics {
+class BoundedDiagnosticsChannel final {
 public:
     explicit BoundedDiagnosticsChannel(DiagnosticsChannelConfig config);
 

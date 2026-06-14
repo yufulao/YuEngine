@@ -6,10 +6,8 @@
 
 #include "yuengine/package/PackageConstants.h"
 
-namespace yuengine::package
-{
-class PackageSourceKey final
-{
+namespace yuengine::package {
+class PackageSourceKey final {
 public:
     PackageSourceKey();
     explicit PackageSourceKey(std::string_view value);

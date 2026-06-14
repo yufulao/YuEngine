@@ -5,10 +5,8 @@
 
 #include "yuengine/file/FileStatus.h"
 
-namespace yuengine::file
-{
-struct FileReadResult
-{
+namespace yuengine::file {
+struct FileReadResult {
     FileStatus Status;
     std::vector<std::uint8_t> Bytes;
 

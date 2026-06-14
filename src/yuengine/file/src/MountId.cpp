@@ -2,25 +2,20 @@
 
 #include <utility>
 
-namespace yuengine::file
-{
+namespace yuengine::file {
 MountId::MountId()
-    : _value()
-{
+    : _value() {
 }
 
 MountId::MountId(std::string value)
-    : _value(std::move(value))
-{
+    : _value(std::move(value)) {
 }
 
-std::string_view MountId::Value() const
-{
+std::string_view MountId::Value() const {
     return _value;
 }
 
-bool MountId::IsValid() const
-{
+bool MountId::IsValid() const {
     return !_value.empty();
 }
 }

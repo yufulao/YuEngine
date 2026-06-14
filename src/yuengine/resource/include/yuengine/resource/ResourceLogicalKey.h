@@ -6,10 +6,8 @@
 
 #include "yuengine/resource/ResourceConstants.h"
 
-namespace yuengine::resource
-{
-class ResourceLogicalKey final
-{
+namespace yuengine::resource {
+class ResourceLogicalKey final {
 public:
     ResourceLogicalKey();
     explicit ResourceLogicalKey(std::string_view value);

@@ -2,14 +2,11 @@
 
 #include <cstdint>
 
-namespace yuengine::memory
-{
-struct MemoryAllocationId
-{
+namespace yuengine::memory {
+struct MemoryAllocationId {
     std::uint64_t Value;
 
-    bool IsValid() const
-    {
+    bool IsValid() const {
         return Value != 0U;
     }
 };

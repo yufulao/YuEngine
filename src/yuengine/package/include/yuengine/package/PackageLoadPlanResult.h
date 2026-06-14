@@ -3,10 +3,8 @@
 #include "yuengine/package/PackageLoadPlan.h"
 #include "yuengine/package/PackageStatus.h"
 
-namespace yuengine::package
-{
-struct PackageLoadPlanResult final
-{
+namespace yuengine::package {
+struct PackageLoadPlanResult final {
     PackageStatus Status;
     PackageLoadPlan Plan;
 

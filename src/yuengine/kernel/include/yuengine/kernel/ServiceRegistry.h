@@ -7,25 +7,20 @@
 
 #include "yuengine/kernel/ServiceRecord.h"
 
-namespace yuengine::kernel
-{
-class ServiceRegistry final
-{
+namespace yuengine::kernel {
+class ServiceRegistry final {
 public:
     static constexpr const char* LookupPolicy = "SETUP_PATH_ONLY_CACHE_POINTERS_FOR_HOT_PATHS";
 
     template <typename T>
-    bool Register(std::string_view ownerModule, std::string_view serviceId, T& service)
-    {
+    bool Register(std::string_view ownerModule, std::string_view serviceId, T& service) {
         return RegisterRaw(ownerModule, serviceId, &service, std::type_index(typeid(T)));
     }
 
     template <typename T>
-    T* Resolve(std::string_view serviceId) const
-    {
+    T* Resolve(std::string_view serviceId) const {
         void* service = ResolveRaw(serviceId, std::type_index(typeid(T)));
-        if (service == nullptr)
-        {
+        if (service == nullptr) {
             return nullptr;
         }
 

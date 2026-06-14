@@ -3,10 +3,8 @@
 #include "yuengine/file/LooseFileSource.h"
 #include "yuengine/file/MountId.h"
 
-namespace yuengine::file
-{
-class MountPoint final
-{
+namespace yuengine::file {
+class MountPoint final {
 public:
     MountPoint();
     MountPoint(MountId id, LooseFileSource source);

@@ -11,10 +11,8 @@
 #include "yuengine/memory/MemorySnapshot.h"
 #include "yuengine/memory/MemoryTag.h"
 
-namespace yuengine::memory
-{
-class IMemoryTracker
-{
+namespace yuengine::memory {
+class IMemoryTracker {
 public:
     virtual ~IMemoryTracker() = default;
 

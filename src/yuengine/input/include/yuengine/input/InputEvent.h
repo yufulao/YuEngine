@@ -6,10 +6,8 @@
 #include "yuengine/input/InputDeviceId.h"
 #include "yuengine/input/InputEventType.h"
 
-namespace yuengine::input
-{
-struct InputEvent final
-{
+namespace yuengine::input {
+struct InputEvent final {
     InputDeviceId Device;
     InputControlId Control;
     InputEventType Type = InputEventType::ButtonPressed;

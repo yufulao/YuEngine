@@ -12,10 +12,8 @@
 #include "yuengine/thread/TaskResult.h"
 #include "yuengine/thread/TaskSchedulerSnapshot.h"
 
-namespace yuengine::thread
-{
-class BoundedTaskQueue final
-{
+namespace yuengine::thread {
+class BoundedTaskQueue final {
 public:
     BoundedTaskQueue(std::size_t capacity, memory::IMemoryTracker& memoryTracker);
 

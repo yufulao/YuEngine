@@ -2,10 +2,8 @@
 
 #include <string>
 
-namespace yuengine::platform
-{
-struct HostError
-{
+namespace yuengine::platform {
+struct HostError {
     bool Succeeded;
     std::string Message;
 

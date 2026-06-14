@@ -4,10 +4,8 @@
 
 #include "yuengine/kernel/KernelStatus.h"
 
-namespace yuengine::kernel
-{
-struct KernelResult
-{
+namespace yuengine::kernel {
+struct KernelResult {
     bool Succeeded;
     KernelStatus Status;
     std::string Message;

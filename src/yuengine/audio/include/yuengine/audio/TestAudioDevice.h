@@ -15,10 +15,8 @@
 #include "yuengine/audio/AudioVoiceHandle.h"
 #include "yuengine/audio/AudioVoiceSlot.h"
 
-namespace yuengine::audio
-{
-class TestAudioDevice final
-{
+namespace yuengine::audio {
+class TestAudioDevice final {
 public:
     TestAudioDevice();
 

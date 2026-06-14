@@ -6,10 +6,8 @@
 
 #include "yuengine/platform/HostError.h"
 
-namespace yuengine::platform
-{
-class IHostRuntime
-{
+namespace yuengine::platform {
+class IHostRuntime {
 public:
     virtual ~IHostRuntime() = default;
 

@@ -10,10 +10,8 @@
 #include "yuengine/kernel/KernelResult.h"
 #include "yuengine/kernel/ServiceRegistry.h"
 
-namespace yuengine::kernel
-{
-class EngineKernel final
-{
+namespace yuengine::kernel {
+class EngineKernel final {
 public:
     EngineKernel();
 

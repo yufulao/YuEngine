@@ -15,10 +15,8 @@
 #include "yuengine/rhi/RhiTargetSlot.h"
 #include "yuengine/rhi/RhiTextureHandle.h"
 
-namespace yuengine::rhi
-{
-class NullRhiDevice final
-{
+namespace yuengine::rhi {
+class NullRhiDevice final {
 public:
     NullRhiDevice();
 

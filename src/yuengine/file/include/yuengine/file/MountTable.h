@@ -12,10 +12,8 @@
 #include "yuengine/file/MountPoint.h"
 #include "yuengine/file/PathNormalizationResult.h"
 
-namespace yuengine::file
-{
-class MountTable final
-{
+namespace yuengine::file {
+class MountTable final {
 public:
     MountTable();
 

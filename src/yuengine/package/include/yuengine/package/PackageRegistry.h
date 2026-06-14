@@ -15,10 +15,8 @@
 #include "yuengine/package/entry_slot.h"
 #include "yuengine/package/manifest_slot.h"
 
-namespace yuengine::package
-{
-class PackageRegistry final
-{
+namespace yuengine::package {
+class PackageRegistry final {
 public:
     PackageRegistry();
     explicit PackageRegistry(PackageRegistryDesc desc);

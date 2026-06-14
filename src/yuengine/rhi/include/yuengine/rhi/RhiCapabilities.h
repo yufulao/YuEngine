@@ -6,10 +6,8 @@
 #include "yuengine/rhi/RhiBackendKind.h"
 #include "yuengine/rhi/RhiFormat.h"
 
-namespace yuengine::rhi
-{
-struct RhiCapabilities final
-{
+namespace yuengine::rhi {
+struct RhiCapabilities final {
     RhiBackendKind BackendKind = RhiBackendKind::Null;
     RhiFormat ColorFormat = RhiFormat::Rgba8Unorm;
     std::size_t ColorTargetCapacity = 0U;

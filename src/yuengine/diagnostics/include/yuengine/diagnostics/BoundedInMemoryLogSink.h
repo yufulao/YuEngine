@@ -6,10 +6,8 @@
 #include "yuengine/diagnostics/ILogSink.h"
 #include "yuengine/diagnostics/LogEvent.h"
 
-namespace yuengine::diagnostics
-{
-class BoundedInMemoryLogSink final : public ILogSink
-{
+namespace yuengine::diagnostics {
+class BoundedInMemoryLogSink final : public ILogSink {
 public:
     explicit BoundedInMemoryLogSink(std::size_t capacity);
 

@@ -2,14 +2,11 @@
 
 #include <cstdint>
 
-namespace yuengine::diagnostics
-{
-struct DiagnosticsEventId
-{
+namespace yuengine::diagnostics {
+struct DiagnosticsEventId {
     std::uint32_t Value;
 
-    bool IsValid() const
-    {
+    bool IsValid() const {
         return Value != 0U;
     }
 };

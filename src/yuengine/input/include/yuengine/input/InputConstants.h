@@ -3,8 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace yuengine::input
-{
+namespace yuengine::input {
 constexpr std::size_t MAX_INPUT_DEVICES = 4U;
 constexpr std::size_t MAX_INPUT_ACTIONS = 32U;
 constexpr std::size_t MAX_INPUT_BINDINGS = 64U;

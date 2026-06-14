@@ -4,10 +4,8 @@
 #include <cstdint>
 #include <vector>
 
-namespace yuengine::audio
-{
-struct AudioSourceSlot final
-{
+namespace yuengine::audio {
+struct AudioSourceSlot final {
     bool IsActive = false;
     std::uint32_t Generation = 1U;
     std::size_t FrameCount = 0U;

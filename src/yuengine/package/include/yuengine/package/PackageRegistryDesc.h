@@ -4,10 +4,8 @@
 
 #include "yuengine/package/PackageConstants.h"
 
-namespace yuengine::package
-{
-struct PackageRegistryDesc final
-{
+namespace yuengine::package {
+struct PackageRegistryDesc final {
     std::uint32_t ManifestCapacity = MAX_PACKAGE_MANIFEST_COUNT;
     std::uint32_t EntryCapacity = MAX_PACKAGE_ENTRY_COUNT;
     std::uint32_t DependencyEdgeCapacity = MAX_PACKAGE_DEPENDENCY_EDGE_COUNT;

@@ -2,10 +2,8 @@
 
 #include <cstdint>
 
-namespace yuengine::input
-{
-struct InputActionId final
-{
+namespace yuengine::input {
+struct InputActionId final {
     std::uint32_t Value = 0U;
 };
 }

@@ -6,10 +6,8 @@
 #include "yuengine/resource/ResourceLogicalKey.h"
 #include "yuengine/resource/ResourceTypeId.h"
 
-namespace yuengine::resource
-{
-struct ResourceSlot final
-{
+namespace yuengine::resource {
+struct ResourceSlot final {
     ResourceTypeId Type;
     ResourceLogicalKey LogicalKey;
     std::uint32_t Generation = INVALID_RESOURCE_GENERATION;

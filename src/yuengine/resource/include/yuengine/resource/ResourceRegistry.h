@@ -11,10 +11,8 @@
 #include "yuengine/resource/ResourceSlot.h"
 #include "yuengine/resource/ResourceSnapshot.h"
 
-namespace yuengine::resource
-{
-class ResourceRegistry final
-{
+namespace yuengine::resource {
+class ResourceRegistry final {
 public:
     ResourceRegistry();
     explicit ResourceRegistry(ResourceRegistryDesc desc);

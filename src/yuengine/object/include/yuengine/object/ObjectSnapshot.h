@@ -5,12 +5,10 @@
 #include "yuengine/memory/MemoryAccountingStatus.h"
 #include "yuengine/object/ObjectStatus.h"
 
-namespace yuengine::object
-{
+namespace yuengine::object {
 using memory::MemoryAccountingStatus;
 
-struct ObjectSnapshot final
-{
+struct ObjectSnapshot final {
     std::uint32_t ObjectCapacity;
     std::uint32_t TypeCapacity;
     std::uint32_t TypeCount;

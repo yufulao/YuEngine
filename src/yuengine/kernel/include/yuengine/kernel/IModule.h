@@ -8,10 +8,8 @@
 #include "yuengine/kernel/KernelResult.h"
 #include "yuengine/kernel/ServiceRegistry.h"
 
-namespace yuengine::kernel
-{
-class IModule
-{
+namespace yuengine::kernel {
+class IModule {
 public:
     virtual ~IModule() = default;
 

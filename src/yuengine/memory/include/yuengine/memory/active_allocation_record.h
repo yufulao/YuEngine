@@ -5,13 +5,11 @@
 
 #include "yuengine/memory/MemoryAllocationId.h"
 
-namespace yuengine::memory
-{
+namespace yuengine::memory {
 constexpr std::size_t MAX_MEMORY_OWNER_ID_BYTES = 64U;
 constexpr std::size_t MAX_MEMORY_TAG_BYTES = 64U;
 
-struct ActiveAllocationRecord final
-{
+struct ActiveAllocationRecord final {
     bool IsActive = false;
     MemoryAllocationId AllocationId{};
     std::size_t Bytes = 0U;

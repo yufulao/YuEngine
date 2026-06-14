@@ -3,10 +3,8 @@
 #include <string>
 #include <string_view>
 
-namespace yuengine::file
-{
-class VirtualPath final
-{
+namespace yuengine::file {
+class VirtualPath final {
 public:
     VirtualPath();
     explicit VirtualPath(std::string value);

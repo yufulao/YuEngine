@@ -2,20 +2,16 @@
 
 #include <string>
 
-namespace yuengine::diagnostics
-{
+namespace yuengine::diagnostics {
 BoundedInMemoryLogSink::BoundedInMemoryLogSink(std::size_t capacity)
     : _capacity(capacity),
       _events(),
-      _droppedCount(0U)
-{
+      _droppedCount(0U) {
     _events.reserve(_capacity);
 }
 
-void BoundedInMemoryLogSink::Write(LogLevel level, std::string_view message)
-{
-    if (_events.size() >= _capacity)
-    {
+void BoundedInMemoryLogSink::Write(LogLevel level, std::string_view message) {
+    if (_events.size() >= _capacity) {
         ++_droppedCount;
         return;
     }
@@ -23,23 +19,19 @@ void BoundedInMemoryLogSink::Write(LogLevel level, std::string_view message)
     _events.push_back(LogEvent{level, std::string(message)});
 }
 
-bool BoundedInMemoryLogSink::IsEnabled() const
-{
+bool BoundedInMemoryLogSink::IsEnabled() const {
     return true;
 }
 
-const std::vector<LogEvent>& BoundedInMemoryLogSink::Events() const
-{
+const std::vector<LogEvent>& BoundedInMemoryLogSink::Events() const {
     return _events;
 }
 
-std::size_t BoundedInMemoryLogSink::DroppedCount() const
-{
+std::size_t BoundedInMemoryLogSink::DroppedCount() const {
     return _droppedCount;
 }
 
-void BoundedInMemoryLogSink::Clear()
-{
+void BoundedInMemoryLogSink::Clear() {
     _events.clear();
     _droppedCount = 0U;
 }

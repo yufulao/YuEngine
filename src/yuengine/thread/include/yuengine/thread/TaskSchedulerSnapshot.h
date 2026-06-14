@@ -3,10 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace yuengine::thread
-{
-struct TaskSchedulerSnapshot
-{
+namespace yuengine::thread {
+struct TaskSchedulerSnapshot {
     std::uint64_t SubmittedCount;
     std::uint64_t ExecutedCount;
     std::uint64_t RejectedCount;

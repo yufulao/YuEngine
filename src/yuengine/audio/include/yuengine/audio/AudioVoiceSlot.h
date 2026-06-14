@@ -5,10 +5,8 @@
 
 #include "yuengine/audio/AudioSourceId.h"
 
-namespace yuengine::audio
-{
-struct AudioVoiceSlot final
-{
+namespace yuengine::audio {
+struct AudioVoiceSlot final {
     bool IsActive = false;
     std::uint32_t Generation = 1U;
     AudioSourceId Source{};

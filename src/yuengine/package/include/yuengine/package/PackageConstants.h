@@ -3,8 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace yuengine::package
-{
+namespace yuengine::package {
 constexpr std::uint32_t MAX_PACKAGE_MANIFEST_COUNT = 4U;
 constexpr std::uint32_t MAX_PACKAGE_ENTRY_COUNT = 32U;
 constexpr std::uint32_t MAX_PACKAGE_DEPENDENCY_EDGE_COUNT = 64U;

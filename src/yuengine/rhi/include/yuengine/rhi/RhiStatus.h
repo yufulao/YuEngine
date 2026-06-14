@@ -1,9 +1,7 @@
 #pragma once
 
-namespace yuengine::rhi
-{
-enum class RhiStatus
-{
+namespace yuengine::rhi {
+enum class RhiStatus {
     Success,
     UnsupportedBackend,
     UnsupportedFormat,

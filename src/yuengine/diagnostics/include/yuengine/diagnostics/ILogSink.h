@@ -4,10 +4,8 @@
 
 #include "yuengine/diagnostics/LogLevel.h"
 
-namespace yuengine::diagnostics
-{
-class ILogSink
-{
+namespace yuengine::diagnostics {
+class ILogSink {
 public:
     virtual ~ILogSink() = default;
 

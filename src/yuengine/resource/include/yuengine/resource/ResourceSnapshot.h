@@ -5,10 +5,8 @@
 #include "yuengine/memory/MemoryAccountingStatus.h"
 #include "yuengine/resource/ResourceStatus.h"
 
-namespace yuengine::resource
-{
-struct ResourceSnapshot final
-{
+namespace yuengine::resource {
+struct ResourceSnapshot final {
     std::uint32_t ResourceCapacity;
     std::uint32_t TypeCapacity;
     std::uint32_t DependencyEdgeCapacity;

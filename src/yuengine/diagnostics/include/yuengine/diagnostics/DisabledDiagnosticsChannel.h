@@ -7,10 +7,8 @@
 #include "yuengine/diagnostics/DiagnosticsSnapshot.h"
 #include "yuengine/diagnostics/DiagnosticsStatus.h"
 
-namespace yuengine::diagnostics
-{
-class DisabledDiagnosticsChannel final
-{
+namespace yuengine::diagnostics {
+class DisabledDiagnosticsChannel final {
 public:
     DiagnosticsStatus RegisterEventId(DiagnosticsEventId eventId);
     DiagnosticsStatus RegisterCounterId(DiagnosticsCounterId counterId);

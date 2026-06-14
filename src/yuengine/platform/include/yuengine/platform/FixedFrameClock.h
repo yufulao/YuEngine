@@ -4,10 +4,8 @@
 
 #include "yuengine/platform/IFrameClock.h"
 
-namespace yuengine::platform
-{
-class FixedFrameClock final : public IFrameClock
-{
+namespace yuengine::platform {
+class FixedFrameClock final : public IFrameClock {
 public:
     FixedFrameClock(std::uint64_t firstTickNanoseconds, std::uint64_t stepNanoseconds);
 

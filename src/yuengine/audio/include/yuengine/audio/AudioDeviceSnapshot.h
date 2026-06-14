@@ -5,10 +5,8 @@
 
 #include "yuengine/audio/AudioAccountingStatus.h"
 
-namespace yuengine::audio
-{
-struct AudioDeviceSnapshot final
-{
+namespace yuengine::audio {
+struct AudioDeviceSnapshot final {
     std::size_t SourceCapacity = 0U;
     std::size_t VoiceCapacity = 0U;
     std::size_t SourceCount = 0U;

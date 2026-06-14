@@ -14,10 +14,8 @@
 #include "yuengine/object/ObjectTypeId.h"
 #include "yuengine/object/object_slot.h"
 
-namespace yuengine::object
-{
-class ObjectRegistry final
-{
+namespace yuengine::object {
+class ObjectRegistry final {
 public:
     ObjectRegistry();
     explicit ObjectRegistry(ObjectRegistryDesc desc);

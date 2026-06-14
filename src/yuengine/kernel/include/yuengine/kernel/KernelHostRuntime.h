@@ -3,10 +3,8 @@
 #include "yuengine/kernel/EngineKernel.h"
 #include "yuengine/platform/IHostRuntime.h"
 
-namespace yuengine::kernel
-{
-class KernelHostRuntime final : public platform::IHostRuntime
-{
+namespace yuengine::kernel {
+class KernelHostRuntime final : public platform::IHostRuntime {
 public:
     explicit KernelHostRuntime(EngineKernel& kernel);
 

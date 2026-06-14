@@ -4,10 +4,8 @@
 #include "yuengine/package/PackageId.h"
 #include "yuengine/package/PackageStatus.h"
 
-namespace yuengine::package
-{
-struct PackageRegistrationResult final
-{
+namespace yuengine::package {
+struct PackageRegistrationResult final {
     PackageStatus Status;
     PackageId Package;
     PackageEntryId Entry;

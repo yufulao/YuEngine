@@ -8,10 +8,8 @@
 #include "yuengine/serialize/SerializeStatus.h"
 #include "yuengine/serialize/field_location.h"
 
-namespace yuengine::serialize
-{
-class SerializeReader final
-{
+namespace yuengine::serialize {
+class SerializeReader final {
 public:
     SerializeReader(const std::uint8_t* buffer, std::uint32_t byteCount);
 

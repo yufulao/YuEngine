@@ -2,10 +2,8 @@
 
 #include <cstdint>
 
-namespace yuengine::platform
-{
-class IFrameClock
-{
+namespace yuengine::platform {
+class IFrameClock {
 public:
     virtual ~IFrameClock() = default;
 

@@ -2,14 +2,11 @@
 
 #include <cstdint>
 
-namespace yuengine::serialize
-{
-struct SerializeFieldId final
-{
+namespace yuengine::serialize {
+struct SerializeFieldId final {
     std::uint32_t Value = 0U;
 
-    bool IsValid() const
-    {
+    bool IsValid() const {
         return Value != 0U;
     }
 };

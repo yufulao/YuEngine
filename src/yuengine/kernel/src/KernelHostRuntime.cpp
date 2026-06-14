@@ -1,13 +1,9 @@
 #include "yuengine/kernel/KernelHostRuntime.h"
 
-namespace yuengine::kernel
-{
-namespace
-{
-platform::HostError ToHostError(const KernelResult& result)
-{
-    if (result.Succeeded)
-    {
+namespace yuengine::kernel {
+namespace {
+platform::HostError ToHostError(const KernelResult& result) {
+    if (result.Succeeded) {
         return platform::HostError::Success();
     }
 
@@ -16,22 +12,18 @@ platform::HostError ToHostError(const KernelResult& result)
 }
 
 KernelHostRuntime::KernelHostRuntime(EngineKernel& kernel)
-    : _kernel(kernel)
-{
+    : _kernel(kernel) {
 }
 
-platform::HostError KernelHostRuntime::Start(std::vector<std::string>& lifecycleTrace)
-{
+platform::HostError KernelHostRuntime::Start(std::vector<std::string>& lifecycleTrace) {
     return ToHostError(_kernel.Start(lifecycleTrace));
 }
 
-platform::HostError KernelHostRuntime::Tick(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace)
-{
+platform::HostError KernelHostRuntime::Tick(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) {
     return ToHostError(_kernel.Update(frameIndex, tickTimeNanoseconds, lifecycleTrace));
 }
 
-platform::HostError KernelHostRuntime::Shutdown(std::vector<std::string>& lifecycleTrace)
-{
+platform::HostError KernelHostRuntime::Shutdown(std::vector<std::string>& lifecycleTrace) {
     return ToHostError(_kernel.Shutdown(lifecycleTrace));
 }
 }
