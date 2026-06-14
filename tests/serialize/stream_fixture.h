@@ -7,7 +7,7 @@
 #include "yuengine/serialize/serialize_snapshot.h"
 
 namespace yuengine::serialize::tests {
-struct StreamFixture final {
+struct stream_fixture_t final {
     std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> Buffer;
     std::uint32_t ByteCount = 0U;
     SerializeSnapshot Snapshot{};

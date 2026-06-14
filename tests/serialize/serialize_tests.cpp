@@ -18,7 +18,7 @@ using SerializeSnapshot = yuengine::serialize::SerializeSnapshot;
 using SerializeStatus = yuengine::serialize::SerializeStatus;
 using SerializeTypeTag = yuengine::serialize::SerializeTypeTag;
 using SerializeWriter = yuengine::serialize::SerializeWriter;
-using StreamFixture = yuengine::serialize::tests::StreamFixture;
+using stream_fixture_t = yuengine::serialize::tests::stream_fixture_t;
 using yuengine::serialize::FIELD_HEADER_BYTE_COUNT;
 using yuengine::serialize::MAX_FIELD_PAYLOAD_BYTE_COUNT;
 using yuengine::serialize::MAX_FIELDS_PER_RECORD;
@@ -175,7 +175,7 @@ bool SnapshotsMatch(const SerializeSnapshot& left, const SerializeSnapshot& righ
     return left.LastStatus == right.LastStatus;
 }
 
-int BuildRoundTripFixture(StreamFixture& fixture) {
+int BuildRoundTripFixture(stream_fixture_t &fixture) {
     fixture.Buffer.fill(SENTINEL_BYTE);
     SerializeWriter writer(fixture.Buffer.data(), static_cast<std::uint32_t>(fixture.Buffer.size()));
     if (writer.BeginStream() != SerializeStatus::Success) {
@@ -213,8 +213,8 @@ int BuildRoundTripFixture(StreamFixture& fixture) {
 }
 
 int SerializeWriteReadPrimitivesRoundTripsDeterministically() {
-    StreamFixture firstFixture;
-    StreamFixture secondFixture;
+    stream_fixture_t firstFixture;
+    stream_fixture_t secondFixture;
     if (BuildRoundTripFixture(firstFixture) != 0) {
         return 1;
     }
@@ -296,7 +296,7 @@ int SerializeWriteReadPrimitivesRoundTripsDeterministically() {
 }
 
 int SerializeStreamHeaderRejectsInvalidMagicOrVersion() {
-    StreamFixture fixture;
+    stream_fixture_t fixture;
     if (BuildRoundTripFixture(fixture) != 0) {
         return 1;
     }
@@ -344,7 +344,7 @@ int SerializeStreamHeaderRejectsInvalidMagicOrVersion() {
 }
 
 int SerializeStreamHeaderRejectsReservedFlags() {
-    StreamFixture fixture;
+    stream_fixture_t fixture;
     if (BuildRoundTripFixture(fixture) != 0) {
         return 1;
     }
@@ -588,7 +588,7 @@ int SerializeReaderRejectsUnknownTypeTag() {
 }
 
 int SerializeReaderTypeMismatchReturnsExplicitStatus() {
-    StreamFixture fixture;
+    stream_fixture_t fixture;
     if (BuildRoundTripFixture(fixture) != 0) {
         return 1;
     }
@@ -667,8 +667,8 @@ int SerializeUnknownFieldWithValidLengthCanSkipDeterministically() {
 }
 
 int SerializeDisabledDiagnosticsDoesNotChangeResults() {
-    StreamFixture firstFixture;
-    StreamFixture secondFixture;
+    stream_fixture_t firstFixture;
+    stream_fixture_t secondFixture;
     if (BuildRoundTripFixture(firstFixture) != 0) {
         return 1;
     }
@@ -705,7 +705,7 @@ int SerializeDisabledDiagnosticsDoesNotChangeResults() {
 }
 
 int SerializeNoFilePackageResourceObjectOrGameAdapterDependency() {
-    StreamFixture fixture;
+    stream_fixture_t fixture;
     if (BuildRoundTripFixture(fixture) != 0) {
         return 1;
     }
