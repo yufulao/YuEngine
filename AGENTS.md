@@ -154,15 +154,16 @@ git config --global core.autocrlf true
 ## 9. 命名
 
 - MUST: namespace 使用全小写和 `_` 分隔。
-- MUST: class 使用 PascalCase。
+- MUST: class 和普通 `struct` 类型名使用 PascalCase。
 - MUST: function 使用 lowerCamelCase。
 - MUST: variable 使用全小写和 `_` 分隔。
 - MUST: member variable 使用普通变量规则，并以 `_` 结尾。
 - MUST: global variable 使用 `g_` 前缀。
 - MUST: static variable 使用 `s_` 前缀。
 - MUST: `const` 和 `constexpr` 变量使用全大写和 `_` 分隔。
-- MUST: `typedef` 产生的自定义类型使用全小写、`_` 分隔、`_t` 后缀。
-- MUST: `struct` 产生的自定义类型使用全小写、`_` 分隔、`_t` 后缀。
+- MUST: `typedef` / `using` 产生的自定义类型别名使用全小写、`_` 分隔、`_t` 后缀。
+- MUST_NOT: 普通 class / `struct` 类型名使用 `_t` 后缀。
+- MUST: `struct` 实例变量使用普通变量规则，成员变量使用成员变量规则。
 - MUST: enum 和常量使用全大写和 `_` 分隔。
 - MAY: `extern "C"` 导出接口重名时加 `bd_` 前缀。
 - MUST: `std::shared_ptr` 类型别名保留 `shared` 语义。
@@ -184,7 +185,8 @@ git config --global core.autocrlf true
 - global variable: `g_config`
 - static variable: `s_count`
 - const variable: `MAX_COUNT`
-- custom type: `player_data_t`
+- struct: `PlayerData`
+- type alias: `player_data_t`
 - enum value: `ERROR_TIMEOUT`
 
 ## 10. 日志
