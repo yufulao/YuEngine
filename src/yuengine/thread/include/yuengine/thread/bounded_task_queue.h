@@ -19,7 +19,7 @@ public:
 
     TaskResult Submit(TaskCallback callback, void* context);
     TaskResult Drain(InlineTaskExecutor& executor);
-    TaskResult Shutdown(ShutdownPolicy policy, InlineTaskExecutor& executor);
+    TaskResult Shutdown(SHUTDOWN_POLICY policy, InlineTaskExecutor& executor);
     TaskSchedulerSnapshot Snapshot() const;
     std::size_t Capacity() const;
 

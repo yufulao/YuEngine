@@ -18,7 +18,7 @@ struct ResourceSnapshot final {
     std::uint32_t DependencyEdgeCount;
     std::uint32_t DependencyValidationCount;
     std::uint32_t FailedOperationCount;
-    yuengine::memory::MemoryAccountingStatus AllocationAccountingStatus;
-    ResourceStatus LastStatus;
+    yuengine::memory::MEMORY_ACCOUNTING_STATUS AllocationAccountingStatus;
+    RESOURCE_STATUS LastStatus;
 };
 }

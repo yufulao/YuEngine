@@ -6,7 +6,7 @@
 #include "yuengine/object/object_status.h"
 
 namespace yuengine::object {
-using memory::MemoryAccountingStatus;
+using memory::MEMORY_ACCOUNTING_STATUS;
 
 struct ObjectSnapshot final {
     std::uint32_t ObjectCapacity;
@@ -19,7 +19,7 @@ struct ObjectSnapshot final {
     std::uint64_t ReleasedReferenceCount;
     std::uint32_t AcceptedOperationCount;
     std::uint32_t FailedOperationCount;
-    MemoryAccountingStatus AllocationAccountingStatus;
-    ObjectStatus LastStatus;
+    MEMORY_ACCOUNTING_STATUS AllocationAccountingStatus;
+    OBJECT_STATUS LastStatus;
 };
 }

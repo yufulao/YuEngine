@@ -8,14 +8,14 @@
 #include "yuengine/platform/host_status.h"
 
 namespace yuengine::platform {
-using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
+using yuengine::memory::MEMORY_ACCOUNTING_STATUS;
 
 struct HostRunResult {
-    HostStatus Status;
+    HOST_STATUS Status;
     std::uint32_t TickCount;
     std::vector<std::uint64_t> TickTimesNanoseconds;
     std::vector<std::string> LifecycleTrace;
     std::string ErrorMessage;
-    MemoryAccountingStatus AllocationAccountingStatus;
+    MEMORY_ACCOUNTING_STATUS AllocationAccountingStatus;
 };
 }

@@ -18,29 +18,29 @@ TestAudioDevice::TestAudioDevice()
       _isInitialized(false) {
 }
 
-AudioStatus TestAudioDevice::Initialize(const AudioDeviceDesc& desc) {
-    if (desc.BackendKind != AudioBackendKind::Test) {
-        return AudioStatus::UnsupportedBackend;
+AUDIO_STATUS TestAudioDevice::Initialize(const AudioDeviceDesc& desc) {
+    if (desc.BackendKind != AUDIO_BACKEND_KIND::Test) {
+        return AUDIO_STATUS::UnsupportedBackend;
     }
 
     if (!IsDeviceFormatSupported(desc)) {
-        return AudioStatus::UnsupportedFormat;
+        return AUDIO_STATUS::UnsupportedFormat;
     }
 
     if (desc.SourceCapacity == 0U) {
-        return AudioStatus::InvalidDescriptor;
+        return AUDIO_STATUS::InvalidDescriptor;
     }
 
     if (desc.SourceCapacity > MAX_SOURCES) {
-        return AudioStatus::CapacityExceeded;
+        return AUDIO_STATUS::CapacityExceeded;
     }
 
     if (desc.VoiceCapacity == 0U) {
-        return AudioStatus::InvalidDescriptor;
+        return AUDIO_STATUS::InvalidDescriptor;
     }
 
     if (desc.VoiceCapacity > MAX_VOICES) {
-        return AudioStatus::CapacityExceeded;
+        return AUDIO_STATUS::CapacityExceeded;
     }
 
     ++_generationSeed;
@@ -61,8 +61,8 @@ AudioStatus TestAudioDevice::Initialize(const AudioDeviceDesc& desc) {
     }
 
     _capabilities = AudioCapabilities{
-        AudioBackendKind::Test,
-        AudioSampleFormat::S16,
+        AUDIO_BACKEND_KIND::Test,
+        AUDIO_SAMPLE_FORMAT::S16,
         SAMPLE_RATE,
         CHANNEL_COUNT,
         desc.SourceCapacity,
@@ -74,25 +74,25 @@ AudioStatus TestAudioDevice::Initialize(const AudioDeviceDesc& desc) {
     _snapshot.SourceCapacity = desc.SourceCapacity;
     _snapshot.VoiceCapacity = desc.VoiceCapacity;
     _isInitialized = true;
-    return AudioStatus::Success;
+    return AUDIO_STATUS::Success;
 }
 
-AudioStatus TestAudioDevice::RegisterSyntheticSource(std::span<const std::int16_t> interleavedSamples, std::size_t frameCount, AudioSourceId& outSource) {
+AUDIO_STATUS TestAudioDevice::RegisterSyntheticSource(std::span<const std::int16_t> interleavedSamples, std::size_t frameCount, AudioSourceId& outSource) {
     if (!_isInitialized) {
-        return AudioStatus::InvalidDescriptor;
+        return AUDIO_STATUS::InvalidDescriptor;
     }
 
     if (frameCount == 0U) {
-        return RecordFailure(AudioStatus::InvalidDescriptor);
+        return RecordFailure(AUDIO_STATUS::InvalidDescriptor);
     }
 
     if (frameCount > MAX_SOURCE_FRAMES) {
-        return RecordFailure(AudioStatus::InvalidDescriptor);
+        return RecordFailure(AUDIO_STATUS::InvalidDescriptor);
     }
 
     const std::size_t requiredSamples = frameCount * CHANNEL_COUNT;
     if (interleavedSamples.size() < requiredSamples) {
-        return RecordFailure(AudioStatus::InvalidDescriptor);
+        return RecordFailure(AUDIO_STATUS::InvalidDescriptor);
     }
 
     for (std::size_t index = 0U; index < _sources.size(); ++index) {
@@ -107,23 +107,23 @@ AudioStatus TestAudioDevice::RegisterSyntheticSource(std::span<const std::int16_
         outSource = AudioSourceId{static_cast<std::uint32_t>(index), slot.Generation};
         ++_snapshot.SourceCount;
         ++_snapshot.RegisteredSourceCount;
-        return AudioStatus::Success;
+        return AUDIO_STATUS::Success;
     }
 
-    return RecordFailure(AudioStatus::CapacityExceeded);
+    return RecordFailure(AUDIO_STATUS::CapacityExceeded);
 }
 
-AudioStatus TestAudioDevice::StartVoice(AudioSourceId source, std::uint32_t gainQ15, AudioVoiceHandle& outVoice) {
+AUDIO_STATUS TestAudioDevice::StartVoice(AudioSourceId source, std::uint32_t gainQ15, AudioVoiceHandle& outVoice) {
     if (!_isInitialized) {
-        return AudioStatus::InvalidDescriptor;
+        return AUDIO_STATUS::InvalidDescriptor;
     }
 
     if (gainQ15 > MAX_Q15_GAIN) {
-        return RecordFailure(AudioStatus::InvalidGain);
+        return RecordFailure(AUDIO_STATUS::InvalidGain);
     }
 
     if (!IsSourceValid(source)) {
-        return RecordFailure(AudioStatus::SourceNotFound);
+        return RecordFailure(AUDIO_STATUS::SourceNotFound);
     }
 
     for (std::size_t index = 0U; index < _voices.size(); ++index) {
@@ -139,41 +139,41 @@ AudioStatus TestAudioDevice::StartVoice(AudioSourceId source, std::uint32_t gain
         outVoice = AudioVoiceHandle{static_cast<std::uint32_t>(index), voice.Generation};
         ++_snapshot.ActiveVoiceCount;
         ++_snapshot.StartedVoiceCount;
-        return AudioStatus::Success;
+        return AUDIO_STATUS::Success;
     }
 
-    return RecordFailure(AudioStatus::CapacityExceeded);
+    return RecordFailure(AUDIO_STATUS::CapacityExceeded);
 }
 
-AudioStatus TestAudioDevice::StopVoice(AudioVoiceHandle handle) {
+AUDIO_STATUS TestAudioDevice::StopVoice(AudioVoiceHandle handle) {
     if (!_isInitialized) {
-        return AudioStatus::InvalidDescriptor;
+        return AUDIO_STATUS::InvalidDescriptor;
     }
 
     if (!IsVoiceHandleValid(handle)) {
-        return RecordFailure(AudioStatus::InvalidHandle);
+        return RecordFailure(AUDIO_STATUS::InvalidHandle);
     }
 
     StopVoiceSlot(_voices[handle.Slot]);
-    return AudioStatus::Success;
+    return AUDIO_STATUS::Success;
 }
 
 AudioMixResult TestAudioDevice::Mix(std::span<std::int16_t> outputSamples, std::size_t requestedFrames) {
     if (!_isInitialized) {
-        return AudioMixResult{AudioStatus::InvalidDescriptor, 0U};
+        return AudioMixResult{AUDIO_STATUS::InvalidDescriptor, 0U};
     }
 
     if (requestedFrames > MAX_OUTPUT_FRAMES) {
-        RecordFailure(AudioStatus::CapacityExceeded);
+        RecordFailure(AUDIO_STATUS::CapacityExceeded);
         _snapshot.LastFramesWritten = 0U;
-        return AudioMixResult{AudioStatus::CapacityExceeded, 0U};
+        return AudioMixResult{AUDIO_STATUS::CapacityExceeded, 0U};
     }
 
     const std::size_t requiredSamples = requestedFrames * CHANNEL_COUNT;
     if (outputSamples.size() < requiredSamples) {
-        RecordFailure(AudioStatus::CapacityExceeded);
+        RecordFailure(AUDIO_STATUS::CapacityExceeded);
         _snapshot.LastFramesWritten = 0U;
-        return AudioMixResult{AudioStatus::CapacityExceeded, 0U};
+        return AudioMixResult{AUDIO_STATUS::CapacityExceeded, 0U};
     }
 
     _snapshot.VoiceStorageCapacityBeforeMix = _voices.capacity();
@@ -215,7 +215,7 @@ AudioMixResult TestAudioDevice::Mix(std::span<std::int16_t> outputSamples, std::
     _snapshot.OutputSampleWriteCount += requiredSamples;
     _snapshot.LastFramesWritten = requestedFrames;
     _snapshot.VoiceStorageCapacityAfterLastMix = _voices.capacity();
-    return AudioMixResult{AudioStatus::Success, requestedFrames};
+    return AudioMixResult{AUDIO_STATUS::Success, requestedFrames};
 }
 
 AudioCapabilities TestAudioDevice::Capabilities() const {
@@ -226,13 +226,13 @@ AudioDeviceSnapshot TestAudioDevice::Snapshot() const {
     return _snapshot;
 }
 
-AudioStatus TestAudioDevice::RecordFailure(AudioStatus status) {
+AUDIO_STATUS TestAudioDevice::RecordFailure(AUDIO_STATUS status) {
     ++_snapshot.FailedOperationCount;
     return status;
 }
 
 bool TestAudioDevice::IsDeviceFormatSupported(const AudioDeviceDesc& desc) const {
-    if (desc.Format != AudioSampleFormat::S16) {
+    if (desc.Format != AUDIO_SAMPLE_FORMAT::S16) {
         return false;
     }
 

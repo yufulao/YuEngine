@@ -14,7 +14,7 @@ struct FileSnapshot {
     std::uint64_t LookupCount;
     std::uint64_t ReadByteCount;
     std::size_t MaxFixturePathLength;
-    yuengine::memory::MemoryAccountingStatus AllocationAccountingStatus;
-    FileStatus LastReadStatus;
+    yuengine::memory::MEMORY_ACCOUNTING_STATUS AllocationAccountingStatus;
+    FILE_STATUS LastReadStatus;
 };
 }

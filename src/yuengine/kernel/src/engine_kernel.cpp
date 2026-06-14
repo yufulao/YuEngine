@@ -36,7 +36,7 @@ bool EngineKernel::RegisterModule(IModule& module) {
 
 KernelResult EngineKernel::Start(std::vector<std::string>& lifecycleTrace) {
     if (_running) {
-        return KernelResult::Failure(KernelStatus::InvalidLifecycle, INVALID_LIFECYCLE_MESSAGE);
+        return KernelResult::Failure(KERNEL_STATUS::InvalidLifecycle, INVALID_LIFECYCLE_MESSAGE);
     }
 
     lifecycleTrace.push_back(KERNEL_START_TRACE);
@@ -48,7 +48,7 @@ KernelResult EngineKernel::Start(std::vector<std::string>& lifecycleTrace) {
     for (IModule* module : _modules) {
         const std::string_view moduleName = module->Name();
         if (moduleByName.contains(moduleName)) {
-            return KernelResult::Failure(KernelStatus::DuplicateModule, DUPLICATE_MODULE_MESSAGE);
+            return KernelResult::Failure(KERNEL_STATUS::DuplicateModule, DUPLICATE_MODULE_MESSAGE);
         }
 
         moduleByName.emplace(moduleName, module);
@@ -74,7 +74,7 @@ KernelResult EngineKernel::Start(std::vector<std::string>& lifecycleTrace) {
                     return CompleteStartupAttempt(teardownResult);
                 }
 
-                return CompleteStartupAttempt(KernelResult::Failure(KernelStatus::MissingService, MISSING_REQUIRED_SERVICE_MESSAGE));
+                return CompleteStartupAttempt(KernelResult::Failure(KERNEL_STATUS::MissingService, MISSING_REQUIRED_SERVICE_MESSAGE));
             }
 
             const KernelResult startResult = module->Start(_services, lifecycleTrace);
@@ -84,7 +84,7 @@ KernelResult EngineKernel::Start(std::vector<std::string>& lifecycleTrace) {
 
                 const KernelResult teardownResult = ShutdownStarted(lifecycleTrace);
                 if (!failedModuleCleanupResult.Succeeded) {
-                    return CompleteStartupAttempt(KernelResult::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE));
+                    return CompleteStartupAttempt(KernelResult::Failure(KERNEL_STATUS::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE));
                 }
 
                 if (!teardownResult.Succeeded) {
@@ -104,7 +104,7 @@ KernelResult EngineKernel::Start(std::vector<std::string>& lifecycleTrace) {
                 return CompleteStartupAttempt(teardownResult);
             }
 
-            return CompleteStartupAttempt(KernelResult::Failure(KernelStatus::DependencyFailure, UNRESOLVED_DEPENDENCY_MESSAGE));
+            return CompleteStartupAttempt(KernelResult::Failure(KERNEL_STATUS::DependencyFailure, UNRESOLVED_DEPENDENCY_MESSAGE));
         }
     }
 
@@ -114,7 +114,7 @@ KernelResult EngineKernel::Start(std::vector<std::string>& lifecycleTrace) {
 
 KernelResult EngineKernel::Update(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) {
     if (!_running) {
-        return KernelResult::Failure(KernelStatus::InvalidLifecycle, INVALID_LIFECYCLE_MESSAGE);
+        return KernelResult::Failure(KERNEL_STATUS::InvalidLifecycle, INVALID_LIFECYCLE_MESSAGE);
     }
 
     lifecycleTrace.push_back(KERNEL_UPDATE_TRACE);
@@ -128,7 +128,7 @@ KernelResult EngineKernel::Update(std::uint32_t frameIndex, std::uint64_t tickTi
                 return teardownResult;
             }
 
-            return KernelResult::Failure(KernelStatus::UpdateFailure, UPDATE_TEARDOWN_MESSAGE);
+            return KernelResult::Failure(KERNEL_STATUS::UpdateFailure, UPDATE_TEARDOWN_MESSAGE);
         }
     }
 
@@ -137,7 +137,7 @@ KernelResult EngineKernel::Update(std::uint32_t frameIndex, std::uint64_t tickTi
 
 KernelResult EngineKernel::Shutdown(std::vector<std::string>& lifecycleTrace) {
     if (!_running) {
-        return KernelResult::Failure(KernelStatus::InvalidLifecycle, INVALID_LIFECYCLE_MESSAGE);
+        return KernelResult::Failure(KERNEL_STATUS::InvalidLifecycle, INVALID_LIFECYCLE_MESSAGE);
     }
 
     lifecycleTrace.push_back(KERNEL_SHUTDOWN_TRACE);
@@ -269,7 +269,7 @@ KernelResult EngineKernel::ShutdownStartedFrom(std::size_t startIndex, std::vect
         _startedModules.pop_back();
 
         if (!shutdownResult.Succeeded && finalResult.Succeeded) {
-            finalResult = KernelResult::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
+            finalResult = KernelResult::Failure(KERNEL_STATUS::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
         }
     }
 
@@ -303,7 +303,7 @@ KernelResult EngineKernel::ShutdownFailedAndDependents(std::string_view failedMo
         _services.UnregisterOwner(module->Name());
 
         if (!shutdownResult.Succeeded && finalResult.Succeeded) {
-            finalResult = KernelResult::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
+            finalResult = KernelResult::Failure(KERNEL_STATUS::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
         }
     }
 

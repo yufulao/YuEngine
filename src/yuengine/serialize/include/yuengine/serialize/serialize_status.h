@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::serialize {
-enum class SerializeStatus {
+enum class SERIALIZE_STATUS {
     Success,
     BufferTooSmall,
     RecordCapacityExceeded,

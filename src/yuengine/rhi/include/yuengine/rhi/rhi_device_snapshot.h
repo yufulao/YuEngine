@@ -19,6 +19,6 @@ struct RhiDeviceSnapshot final {
     std::uint64_t CaptureCount = 0U;
     std::uint64_t FailedOperationCount = 0U;
     std::size_t LastCaptureBytesWritten = 0U;
-    RhiAccountingStatus AllocationAccountingStatus = RhiAccountingStatus::DeferredUntilYuMemoryIntegration;
+    RHI_ACCOUNTING_STATUS AllocationAccountingStatus = RHI_ACCOUNTING_STATUS::DeferredUntilYuMemoryIntegration;
 };
 }

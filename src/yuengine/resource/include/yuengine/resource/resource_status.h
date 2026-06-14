@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::resource {
-enum class ResourceStatus {
+enum class RESOURCE_STATUS {
     Success,
     NotFound,
     DuplicateResource,

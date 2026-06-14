@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::rhi {
-enum class RhiFormat {
+enum class RHI_FORMAT {
     Rgba8Unorm,
     Unsupported
 };

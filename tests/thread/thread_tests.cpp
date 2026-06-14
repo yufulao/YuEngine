@@ -15,8 +15,8 @@ using BoundedTaskQueue = yuengine::thread::BoundedTaskQueue;
 using CountingMemoryTracker = yuengine::memory::CountingMemoryTracker;
 using DisabledMemoryTracker = yuengine::memory::DisabledMemoryTracker;
 using InlineTaskExecutor = yuengine::thread::InlineTaskExecutor;
-using ShutdownPolicy = yuengine::thread::ShutdownPolicy;
-using TaskStatus = yuengine::thread::TaskStatus;
+using yuengine::thread::SHUTDOWN_POLICY;
+using yuengine::thread::TASK_STATUS;
 using yuengine::thread::tests::FixedTraceBuffer;
 using yuengine::thread::tests::ThreadTestContext;
 
@@ -74,17 +74,17 @@ bool TraceEquals(const FixedTraceBuffer &left, const FixedTraceBuffer &right) {
     return true;
 }
 
-TaskStatus RecordTask(void* context) {
+TASK_STATUS RecordTask(void* context) {
     ThreadTestContext *taskContext = static_cast<ThreadTestContext *>(context);
     if (!taskContext->Trace->Append(taskContext->Value)) {
-        return TaskStatus::Failed;
+        return TASK_STATUS::Failed;
     }
 
     if (taskContext->ShouldFail) {
-        return TaskStatus::Failed;
+        return TASK_STATUS::Failed;
     }
 
-    return TaskStatus::Completed;
+    return TASK_STATUS::Completed;
 }
 
 int ThreadQueueEnqueueWithinCapacitySucceeds() {
@@ -98,7 +98,7 @@ int ThreadQueueEnqueueWithinCapacitySucceeds() {
     }
 
     const auto result = queue.Submit(&RecordTask, &context);
-    if (result.Status != TaskStatus::Queued) {
+    if (result.Status != TASK_STATUS::Queued) {
         return Fail("submit within capacity did not queue task");
     }
 
@@ -130,7 +130,7 @@ int ThreadQueueEnqueueBeyondCapacityRejects() {
     queue.Submit(&RecordTask, &secondContext);
 
     const auto rejectedResult = queue.Submit(&RecordTask, &thirdContext);
-    if (rejectedResult.Status != TaskStatus::Rejected) {
+    if (rejectedResult.Status != TASK_STATUS::Rejected) {
         return Fail("submit beyond capacity was not rejected");
     }
 
@@ -160,7 +160,7 @@ int ThreadDrainExecutesTasksInDeterministicOrder() {
     queue.Submit(&RecordTask, &thirdContext);
 
     const auto drainResult = queue.Drain(executor);
-    if (drainResult.Status != TaskStatus::Completed) {
+    if (drainResult.Status != TASK_STATUS::Completed) {
         return Fail("drain did not complete");
     }
 
@@ -191,7 +191,7 @@ int ThreadTaskFailureReturnsFailedResult() {
     queue.Submit(&RecordTask, &context);
 
     const auto drainResult = queue.Drain(executor);
-    if (drainResult.Status != TaskStatus::Failed) {
+    if (drainResult.Status != TASK_STATUS::Failed) {
         return Fail("failed task did not return failed drain result");
     }
 
@@ -214,10 +214,10 @@ int ThreadShutdownRejectsNewSubmission() {
     FixedTraceBuffer trace;
     ThreadTestContext context{&trace, FIRST_VALUE, false};
 
-    queue.Shutdown(ShutdownPolicy::DrainQueued, executor);
+    queue.Shutdown(SHUTDOWN_POLICY::DrainQueued, executor);
 
     const auto submitResult = queue.Submit(&RecordTask, &context);
-    if (submitResult.Status != TaskStatus::Rejected) {
+    if (submitResult.Status != TASK_STATUS::Rejected) {
         return Fail("submit after shutdown was not rejected");
     }
 
@@ -244,8 +244,8 @@ int ThreadShutdownDrainPolicyExecutesQueuedTasks() {
     queue.Submit(&RecordTask, &firstContext);
     queue.Submit(&RecordTask, &secondContext);
 
-    const auto shutdownResult = queue.Shutdown(ShutdownPolicy::DrainQueued, executor);
-    if (shutdownResult.Status != TaskStatus::Completed) {
+    const auto shutdownResult = queue.Shutdown(SHUTDOWN_POLICY::DrainQueued, executor);
+    if (shutdownResult.Status != TASK_STATUS::Completed) {
         return Fail("drain shutdown did not complete");
     }
 
@@ -273,8 +273,8 @@ int ThreadShutdownCancelPolicyCancelsQueuedTasks() {
     queue.Submit(&RecordTask, &firstContext);
     queue.Submit(&RecordTask, &secondContext);
 
-    const auto shutdownResult = queue.Shutdown(ShutdownPolicy::CancelQueued, executor);
-    if (shutdownResult.Status != TaskStatus::Canceled) {
+    const auto shutdownResult = queue.Shutdown(SHUTDOWN_POLICY::CancelQueued, executor);
+    if (shutdownResult.Status != TASK_STATUS::Canceled) {
         return Fail("cancel shutdown did not return canceled");
     }
 

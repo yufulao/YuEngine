@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::audio {
-enum class AudioAccountingStatus {
+enum class AUDIO_ACCOUNTING_STATUS {
     DeferredUntilYuMemoryIntegration,
     UsesYuMemoryVocabulary
 };

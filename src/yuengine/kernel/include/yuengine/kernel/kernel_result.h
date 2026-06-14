@@ -7,10 +7,10 @@
 namespace yuengine::kernel {
 struct KernelResult {
     bool Succeeded;
-    KernelStatus Status;
+    KERNEL_STATUS Status;
     std::string Message;
 
     static KernelResult Success();
-    static KernelResult Failure(KernelStatus status, std::string message);
+    static KernelResult Failure(KERNEL_STATUS status, std::string message);
 };
 }

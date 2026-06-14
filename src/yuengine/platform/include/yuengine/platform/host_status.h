@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::platform {
-enum class HostStatus {
+enum class HOST_STATUS {
     Success,
     StartupFailure,
     TickFailure,

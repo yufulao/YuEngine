@@ -6,13 +6,13 @@
 
 namespace yuengine::package {
 struct PackageRegistrationResult final {
-    PackageStatus Status;
+    PACKAGE_STATUS Status;
     PackageId Package;
     PackageEntryId Entry;
 
     static PackageRegistrationResult ManifestSuccess(PackageId package);
     static PackageRegistrationResult EntrySuccess(PackageId package, PackageEntryId entry);
-    static PackageRegistrationResult Failure(PackageStatus status);
+    static PackageRegistrationResult Failure(PACKAGE_STATUS status);
     bool Succeeded() const;
 };
 }

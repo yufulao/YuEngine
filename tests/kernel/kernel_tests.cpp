@@ -11,7 +11,7 @@
 #include "yuengine/kernel/service_registry.h"
 
 using EngineKernel = yuengine::kernel::EngineKernel;
-using KernelStatus = yuengine::kernel::KernelStatus;
+using yuengine::kernel::KERNEL_STATUS;
 using ServiceRegistry = yuengine::kernel::ServiceRegistry;
 
 namespace {
@@ -160,7 +160,7 @@ int KernelModuleLifecycleDependencyOrder() {
         return Fail("kernel update failure was not surfaced");
     }
 
-    if (updateFailureResult.Status != KernelStatus::UpdateFailure) {
+    if (updateFailureResult.Status != KERNEL_STATUS::UpdateFailure) {
         return Fail("kernel update failure had wrong status");
     }
 
@@ -313,7 +313,7 @@ int KernelModuleStartupFailureTearsDownStartedModules() {
         return Fail("kernel startup failure was not surfaced");
     }
 
-    if (startResult.Status != KernelStatus::StartupFailure) {
+    if (startResult.Status != KERNEL_STATUS::StartupFailure) {
         return Fail("kernel startup failure had wrong status");
     }
 
@@ -341,7 +341,7 @@ int KernelModuleStartupFailureTearsDownStartedModules() {
     failureWithoutServiceKernel.RegisterModule(moduleFailWithoutService);
 
     const auto failureWithoutServiceResult = failureWithoutServiceKernel.Start(failureWithoutServiceTrace);
-    if (failureWithoutServiceResult.Status != KernelStatus::StartupFailure) {
+    if (failureWithoutServiceResult.Status != KERNEL_STATUS::StartupFailure) {
         return Fail(STARTUP_WITHOUT_SERVICE_STATUS_MESSAGE);
     }
 
@@ -389,7 +389,7 @@ int KernelModuleStartupFailureTearsDownStartedModules() {
     cleanupFailureKernel.RegisterModule(cleanupFailingModule);
 
     const auto cleanupFailureResult = cleanupFailureKernel.Start(cleanupFailureTrace);
-    if (cleanupFailureResult.Status != KernelStatus::ShutdownFailure) {
+    if (cleanupFailureResult.Status != KERNEL_STATUS::ShutdownFailure) {
         return Fail(STARTUP_CLEANUP_FAILURE_STATUS_MESSAGE);
     }
 
@@ -429,7 +429,7 @@ int KernelModuleStartupFailureTearsDownStartedModules() {
         return Fail("missing required service did not block startup");
     }
 
-    if (missingServiceResult.Status != KernelStatus::MissingService) {
+    if (missingServiceResult.Status != KERNEL_STATUS::MissingService) {
         return Fail("missing required service had wrong status");
     }
 
@@ -455,7 +455,7 @@ int KernelModuleStartupFailureTearsDownStartedModules() {
         return Fail(SELF_REQUIRED_SERVICE_MESSAGE);
     }
 
-    if (selfRequiredServiceResult.Status != KernelStatus::MissingService) {
+    if (selfRequiredServiceResult.Status != KERNEL_STATUS::MissingService) {
         return Fail(SELF_REQUIRED_SERVICE_STATUS_MESSAGE);
     }
 
@@ -489,7 +489,7 @@ int KernelModuleStartupFailureTearsDownStartedModules() {
         return Fail("available service without dependency edge did not block startup");
     }
 
-    if (unguaranteedServiceResult.Status != KernelStatus::MissingService) {
+    if (unguaranteedServiceResult.Status != KERNEL_STATUS::MissingService) {
         return Fail("unguaranteed service provider had wrong status");
     }
 
@@ -561,7 +561,7 @@ int KernelInvalidLifecycleRejectsOutOfOrderCalls() {
         return Fail(UPDATE_BEFORE_START_MESSAGE);
     }
 
-    if (updateBeforeStartResult.Status != KernelStatus::InvalidLifecycle) {
+    if (updateBeforeStartResult.Status != KERNEL_STATUS::InvalidLifecycle) {
         return Fail(UPDATE_BEFORE_START_STATUS_MESSAGE);
     }
 
@@ -577,7 +577,7 @@ int KernelInvalidLifecycleRejectsOutOfOrderCalls() {
         return Fail(SHUTDOWN_BEFORE_START_MESSAGE);
     }
 
-    if (shutdownBeforeStartResult.Status != KernelStatus::InvalidLifecycle) {
+    if (shutdownBeforeStartResult.Status != KERNEL_STATUS::InvalidLifecycle) {
         return Fail(SHUTDOWN_BEFORE_START_STATUS_MESSAGE);
     }
 
@@ -629,7 +629,7 @@ int KernelInvalidLifecycleRejectsOutOfOrderCalls() {
         return Fail(DUPLICATE_START_MESSAGE);
     }
 
-    if (duplicateStartResult.Status != KernelStatus::InvalidLifecycle) {
+    if (duplicateStartResult.Status != KERNEL_STATUS::InvalidLifecycle) {
         return Fail(DUPLICATE_START_STATUS_MESSAGE);
     }
 

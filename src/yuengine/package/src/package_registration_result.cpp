@@ -2,18 +2,18 @@
 
 namespace yuengine::package {
 PackageRegistrationResult PackageRegistrationResult::ManifestSuccess(PackageId package) {
-    return PackageRegistrationResult{PackageStatus::Success, package, PackageEntryId{}};
+    return PackageRegistrationResult{PACKAGE_STATUS::Success, package, PackageEntryId{}};
 }
 
 PackageRegistrationResult PackageRegistrationResult::EntrySuccess(PackageId package, PackageEntryId entry) {
-    return PackageRegistrationResult{PackageStatus::Success, package, entry};
+    return PackageRegistrationResult{PACKAGE_STATUS::Success, package, entry};
 }
 
-PackageRegistrationResult PackageRegistrationResult::Failure(PackageStatus status) {
+PackageRegistrationResult PackageRegistrationResult::Failure(PACKAGE_STATUS status) {
     return PackageRegistrationResult{status, PackageId{}, PackageEntryId{}};
 }
 
 bool PackageRegistrationResult::Succeeded() const {
-    return Status == PackageStatus::Success;
+    return Status == PACKAGE_STATUS::Success;
 }
 }

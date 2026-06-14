@@ -21,17 +21,17 @@ public:
     explicit ObjectRegistry(ObjectRegistryDesc desc);
 
     ObjectRegistrationResult CreateSyntheticObject(const ObjectDescriptor& descriptor);
-    ObjectStatus Validate(ObjectHandle handle);
-    ObjectStatus Acquire(ObjectHandle handle);
-    ObjectStatus Release(ObjectHandle handle);
-    ObjectStatus Destroy(ObjectHandle handle);
+    OBJECT_STATUS Validate(ObjectHandle handle);
+    OBJECT_STATUS Acquire(ObjectHandle handle);
+    OBJECT_STATUS Release(ObjectHandle handle);
+    OBJECT_STATUS Destroy(ObjectHandle handle);
     ObjectSnapshot Snapshot() const;
 
 private:
-    ObjectStatus RecordFailure(ObjectStatus status);
+    OBJECT_STATUS RecordFailure(OBJECT_STATUS status);
     void RecordSuccess();
-    ObjectStatus ResolveHandle(ObjectHandle handle, std::size_t& outIndex) const;
-    ObjectStatus RegisterTypeIfNeeded(ObjectTypeId type);
+    OBJECT_STATUS ResolveHandle(ObjectHandle handle, std::size_t& outIndex) const;
+    OBJECT_STATUS RegisterTypeIfNeeded(ObjectTypeId type);
     bool HasType(ObjectTypeId type) const;
     void AdvanceGeneration(ObjectSlot& slot);
 

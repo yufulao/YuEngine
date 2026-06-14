@@ -3,9 +3,9 @@
 #include "yuengine/memory/memory_accounting_status.h"
 
 namespace yuengine::platform {
-using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
+using yuengine::memory::MEMORY_ACCOUNTING_STATUS;
 
 struct PlatformPerformanceSignal {
-    static constexpr MemoryAccountingStatus AllocationAccountingStatus = MemoryAccountingStatus::ExplicitlyTrackedOnly;
+    static constexpr MEMORY_ACCOUNTING_STATUS AllocationAccountingStatus = MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly;
 };
 }

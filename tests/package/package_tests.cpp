@@ -11,7 +11,7 @@
 #include "yuengine/resource/resource_logical_key.h"
 #include "yuengine/resource/resource_type_id.h"
 
-using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
+using yuengine::memory::MEMORY_ACCOUNTING_STATUS;
 using yuengine::package::PackageEntryDescriptor;
 using yuengine::package::PackageEntryId;
 using yuengine::package::PackageId;
@@ -21,7 +21,7 @@ using PackageRegistry = yuengine::package::PackageRegistry;
 using yuengine::package::PackageRegistryDesc;
 using yuengine::package::PackageSnapshot;
 using PackageSourceKey = yuengine::package::PackageSourceKey;
-using PackageStatus = yuengine::package::PackageStatus;
+using yuengine::package::PACKAGE_STATUS;
 using ResourceLogicalKey = yuengine::resource::ResourceLogicalKey;
 using yuengine::resource::ResourceTypeId;
 using yuengine::package::MAX_DECLARED_ENTRY_SIZE;
@@ -186,7 +186,7 @@ int PackageRegisterSyntheticManifestReturnsStableId() {
         return Fail("manifest count was not recorded");
     }
 
-    if (snapshot.LastStatus != PackageStatus::Success) {
+    if (snapshot.LastStatus != PACKAGE_STATUS::Success) {
         return Fail("manifest success did not record success status");
     }
 
@@ -201,7 +201,7 @@ int PackageRegisterDuplicateManifestReturnsExplicitStatus() {
 
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageRegistrationResult duplicate = RegisterManifest(registry);
-    if (duplicate.Status != PackageStatus::DuplicateManifest) {
+    if (duplicate.Status != PACKAGE_STATUS::DuplicateManifest) {
         return Fail("duplicate manifest did not return explicit status");
     }
 
@@ -243,7 +243,7 @@ int PackageRegisterDuplicateEntryReturnsExplicitStatus() {
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageRegistrationResult duplicate =
         RegisterEntry(registry, ENTRY_TEXTURE, TYPE_MATERIAL, "material_a", "materials/material_a.bin");
-    if (duplicate.Status != PackageStatus::DuplicateEntry) {
+    if (duplicate.Status != PACKAGE_STATUS::DuplicateEntry) {
         return Fail("duplicate entry did not return explicit status");
     }
 
@@ -266,7 +266,7 @@ int PackageRegisterDuplicateResourceKeyReturnsExplicitStatus() {
         TYPE_TEXTURE,
         "texture_a",
         "textures/texture_a_copy.bin");
-    if (duplicate.Status != PackageStatus::DuplicateResourceKey) {
+    if (duplicate.Status != PACKAGE_STATUS::DuplicateResourceKey) {
         return Fail("duplicate resource key did not return explicit status");
     }
 
@@ -282,27 +282,27 @@ int PackageRegisterInvalidIdsOrTypeReturnsExplicitStatusWithoutMutation() {
     RegisterManifest(registry);
 
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
-    if (registry.RegisterSyntheticManifest({PackageId{}}).Status != PackageStatus::InvalidPackageId) {
+    if (registry.RegisterSyntheticManifest({PackageId{}}).Status != PACKAGE_STATUS::InvalidPackageId) {
         return Fail("invalid package id did not return explicit status");
     }
 
     if (registry.RegisterEntry(Entry(PackageId{}, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "a.bin")).Status !=
-        PackageStatus::InvalidPackageId) {
+        PACKAGE_STATUS::InvalidPackageId) {
         return Fail("entry invalid package id did not return explicit status");
     }
 
     if (registry.RegisterEntry(Entry(PACKAGE_A, PackageEntryId{}, TYPE_TEXTURE, "texture_a", "a.bin")).Status !=
-        PackageStatus::InvalidEntryId) {
+        PACKAGE_STATUS::InvalidEntryId) {
         return Fail("invalid entry id did not return explicit status");
     }
 
     if (registry.RegisterEntry(Entry(PACKAGE_A, ENTRY_TEXTURE, ResourceTypeId{}, "texture_a", "a.bin")).Status !=
-        PackageStatus::InvalidResourceType) {
+        PACKAGE_STATUS::InvalidResourceType) {
         return Fail("invalid resource type did not return explicit status");
     }
 
     if (registry.RegisterEntry(Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "Texture_A", "a.bin")).Status !=
-        PackageStatus::InvalidLogicalKey) {
+        PACKAGE_STATUS::InvalidLogicalKey) {
         return Fail("invalid logical key did not return explicit status");
     }
 
@@ -319,7 +319,7 @@ int PackageManifestCapacityOverflowDoesNotMutate() {
 
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageRegistrationResult overflow = RegisterManifest(registry, PACKAGE_B);
-    if (overflow.Status != PackageStatus::ManifestCapacityExceeded) {
+    if (overflow.Status != PACKAGE_STATUS::ManifestCapacityExceeded) {
         return Fail("manifest capacity overflow did not return explicit status");
     }
 
@@ -338,7 +338,7 @@ int PackageEntryCapacityOverflowDoesNotMutate() {
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageRegistrationResult overflow =
         RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin");
-    if (overflow.Status != PackageStatus::EntryCapacityExceeded) {
+    if (overflow.Status != PACKAGE_STATUS::EntryCapacityExceeded) {
         return Fail("entry capacity overflow did not return explicit status");
     }
 
@@ -357,14 +357,14 @@ int PackageRegisterEntryRejectsOversizedKeysWithoutMutation() {
     const std::string longLogicalKey(MAX_LOGICAL_KEY_BYTES + 1U, 'a');
     const PackageRegistrationResult longLogical = registry.RegisterEntry(
         Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, longLogicalKey.c_str(), "textures/texture_a.bin"));
-    if (longLogical.Status != PackageStatus::LogicalKeyTooLong) {
+    if (longLogical.Status != PACKAGE_STATUS::LogicalKeyTooLong) {
         return Fail("oversized logical key did not return explicit status");
     }
 
     const std::string longSourceKey(MAX_PACKAGE_SOURCE_KEY_BYTES + 1U, 'a');
     const PackageRegistrationResult longSource =
         registry.RegisterEntry(Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", longSourceKey.c_str()));
-    if (longSource.Status != PackageStatus::SourceKeyTooLong) {
+    if (longSource.Status != PACKAGE_STATUS::SourceKeyTooLong) {
         return Fail("oversized source key did not return explicit status");
     }
 
@@ -388,7 +388,7 @@ int PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation() {
         "textures/texture_a.bin",
         0U,
         MAX_DECLARED_ENTRY_SIZE + 1U);
-    if (tooLarge.Status != PackageStatus::ByteRangeOutOfBounds) {
+    if (tooLarge.Status != PACKAGE_STATUS::ByteRangeOutOfBounds) {
         return Fail("oversized byte range did not return explicit status");
     }
 
@@ -400,7 +400,7 @@ int PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation() {
         "textures/texture_a.bin",
         std::numeric_limits<std::uint32_t>::max(),
         1U);
-    if (overflow.Status != PackageStatus::ByteRangeOutOfBounds) {
+    if (overflow.Status != PACKAGE_STATUS::ByteRangeOutOfBounds) {
         return Fail("overflow byte range did not return explicit status");
     }
 
@@ -504,16 +504,16 @@ int PackageIndexedLookupsPreserveStatusOrderAndCapacities() {
         return Fail(ERROR_INDEX_MATERIAL_FAILED);
     }
 
-    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO) != PACKAGE_STATUS::Success) {
         return Fail(ERROR_INDEX_AUDIO_EDGE_FAILED);
     }
 
-    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL) != PACKAGE_STATUS::Success) {
         return Fail(ERROR_INDEX_MATERIAL_EDGE_FAILED);
     }
 
     const PackageSnapshot beforeDuplicate = registry.Snapshot();
-    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO) != PACKAGE_STATUS::Success) {
         return Fail(ERROR_INDEX_DUPLICATE_EDGE_FAILED);
     }
 
@@ -524,7 +524,7 @@ int PackageIndexedLookupsPreserveStatusOrderAndCapacities() {
     const PackageSnapshot beforeMismatch = registry.Snapshot();
     const PackageLoadPlanResult mismatch =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey(INDEX_TEXTURE_LOGICAL));
-    if (mismatch.Status != PackageStatus::TypeMismatch) {
+    if (mismatch.Status != PACKAGE_STATUS::TypeMismatch) {
         return Fail(ERROR_INDEX_TYPE_MISMATCH_STATUS);
     }
 
@@ -580,7 +580,7 @@ int PackageResolveRejectsUnknownResourceKey() {
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageLoadPlanResult result =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("missing_texture"));
-    if (result.Status != PackageStatus::NotFound) {
+    if (result.Status != PACKAGE_STATUS::NotFound) {
         return Fail("unknown resource key did not return explicit status");
     }
 
@@ -596,7 +596,7 @@ int PackageResolveRejectsTypeMismatchWithoutMutation() {
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageLoadPlanResult result =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey("texture_a"));
-    if (result.Status != PackageStatus::TypeMismatch) {
+    if (result.Status != PACKAGE_STATUS::TypeMismatch) {
         return Fail("type mismatch did not return explicit status");
     }
 
@@ -616,8 +616,8 @@ int PackageDependencyValidationRejectsMissingEntry() {
     RegisterManifest(registry);
     RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin");
 
-    const PackageStatus status = registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
-    if (status != PackageStatus::DependencyMissing) {
+    const PACKAGE_STATUS status = registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
+    if (status != PACKAGE_STATUS::DependencyMissing) {
         return Fail("missing dependency did not return explicit status");
     }
 
@@ -640,19 +640,19 @@ int PackageDependencyValidationRejectsCycle() {
     RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin");
     RegisterEntry(registry, ENTRY_AUDIO, TYPE_AUDIO, "audio_a", "audio/audio_a.bin");
 
-    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_TEXTURE) != PackageStatus::DependencyCycle) {
+    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_TEXTURE) != PACKAGE_STATUS::DependencyCycle) {
         return Fail("self dependency did not return cycle status");
     }
 
-    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL) != PACKAGE_STATUS::Success) {
         return Fail("first dependency edge failed");
     }
 
-    if (registry.AddDependency(PACKAGE_A, ENTRY_MATERIAL, ENTRY_AUDIO) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, ENTRY_MATERIAL, ENTRY_AUDIO) != PACKAGE_STATUS::Success) {
         return Fail("second dependency edge failed");
     }
 
-    if (registry.AddDependency(PACKAGE_A, ENTRY_AUDIO, ENTRY_TEXTURE) != PackageStatus::DependencyCycle) {
+    if (registry.AddDependency(PACKAGE_A, ENTRY_AUDIO, ENTRY_TEXTURE) != PACKAGE_STATUS::DependencyCycle) {
         return Fail("cycle dependency did not return explicit status");
     }
 
@@ -682,30 +682,30 @@ int PackageDependencyValidationRejectsCycleAfterHighFanout() {
     }
 
     for (std::uint32_t index = 3U; index <= MAX_PACKAGE_ENTRY_COUNT; ++index) {
-        if (registry.AddDependency(PACKAGE_A, start, PackageEntryId{index}) != PackageStatus::Success) {
+        if (registry.AddDependency(PACKAGE_A, start, PackageEntryId{index}) != PACKAGE_STATUS::Success) {
             return Fail("high-fanout cycle fixture failed to add start edge");
         }
     }
 
-    if (registry.AddDependency(PACKAGE_A, branch, PackageEntryId{3U}) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, branch, PackageEntryId{3U}) != PACKAGE_STATUS::Success) {
         return Fail("high-fanout cycle fixture failed to add duplicate pending edge");
     }
 
-    if (registry.AddDependency(PACKAGE_A, branch, PackageEntryId{4U}) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, branch, PackageEntryId{4U}) != PACKAGE_STATUS::Success) {
         return Fail("high-fanout cycle fixture failed to add second duplicate pending edge");
     }
 
-    if (registry.AddDependency(PACKAGE_A, branch, PackageEntryId{5U}) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, branch, PackageEntryId{5U}) != PACKAGE_STATUS::Success) {
         return Fail("high-fanout cycle fixture failed to add third duplicate pending edge");
     }
 
-    if (registry.AddDependency(PACKAGE_A, branch, target) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, branch, target) != PACKAGE_STATUS::Success) {
         return Fail("high-fanout cycle fixture failed to add target path edge");
     }
 
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
-    const PackageStatus cycleStatus = registry.AddDependency(PACKAGE_A, target, start);
-    if (cycleStatus != PackageStatus::DependencyCycle) {
+    const PACKAGE_STATUS cycleStatus = registry.AddDependency(PACKAGE_A, target, start);
+    if (cycleStatus != PACKAGE_STATUS::DependencyCycle) {
         return Fail("high-fanout dependency path did not return explicit cycle status");
     }
 
@@ -751,8 +751,8 @@ int PackageDependencyCapacityOverflowDoesNotMutate() {
     registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
 
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
-    const PackageStatus overflow = registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO);
-    if (overflow != PackageStatus::DependencyCapacityExceeded) {
+    const PACKAGE_STATUS overflow = registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO);
+    if (overflow != PACKAGE_STATUS::DependencyCapacityExceeded) {
         return Fail("dependency capacity overflow did not return explicit status");
     }
 
@@ -773,7 +773,7 @@ int PackageLoadPlanCapacityOverflowDoesNotMutate() {
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageLoadPlanResult result =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
-    if (result.Status != PackageStatus::LoadPlanCapacityExceeded) {
+    if (result.Status != PACKAGE_STATUS::LoadPlanCapacityExceeded) {
         return Fail("load-plan capacity overflow did not return explicit status");
     }
 
@@ -833,7 +833,7 @@ int PackageNoFileReadOriginalPackageOrGameAdapterDependency() {
 int PackageNoHiddenAllocationUsesYuMemorySignal() {
     PackageRegistry registry = CreateResolvedRegistry();
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
-    if (beforeSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (beforeSnapshot.AllocationAccountingStatus != MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly) {
         return Fail("package registry did not expose YuMemory accounting vocabulary");
     }
 
@@ -860,7 +860,7 @@ int PackageNoHiddenAllocationUsesYuMemorySignal() {
         return Fail("load-plan capacity changed during resolve");
     }
 
-    if (afterSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (afterSnapshot.AllocationAccountingStatus != MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly) {
         return Fail("package registry changed allocation accounting vocabulary");
     }
 

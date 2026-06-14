@@ -6,6 +6,6 @@
 namespace yuengine::thread {
 struct TaskResult {
     TaskId Id;
-    TaskStatus Status;
+    TASK_STATUS Status;
 };
 }

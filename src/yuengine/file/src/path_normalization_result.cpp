@@ -4,14 +4,14 @@
 
 namespace yuengine::file {
 PathNormalizationResult PathNormalizationResult::Success(NormalizedPath path) {
-    return PathNormalizationResult{FileStatus::Success, std::move(path)};
+    return PathNormalizationResult{FILE_STATUS::Success, std::move(path)};
 }
 
-PathNormalizationResult PathNormalizationResult::Failure(FileStatus status) {
+PathNormalizationResult PathNormalizationResult::Failure(FILE_STATUS status) {
     return PathNormalizationResult{status, NormalizedPath()};
 }
 
 bool PathNormalizationResult::Succeeded() const {
-    return Status == FileStatus::Success;
+    return Status == FILE_STATUS::Success;
 }
 }

@@ -5,19 +5,19 @@
 
 namespace yuengine::object {
 struct ObjectRegistrationResult final {
-    ObjectStatus Status;
+    OBJECT_STATUS Status;
     ObjectHandle Handle;
 
     static ObjectRegistrationResult Success(ObjectHandle handle) {
-        return ObjectRegistrationResult{ObjectStatus::Success, handle};
+        return ObjectRegistrationResult{OBJECT_STATUS::Success, handle};
     }
 
-    static ObjectRegistrationResult Failure(ObjectStatus status) {
+    static ObjectRegistrationResult Failure(OBJECT_STATUS status) {
         return ObjectRegistrationResult{status, ObjectHandle{}};
     }
 
     bool Succeeded() const {
-        return Status == ObjectStatus::Success;
+        return Status == OBJECT_STATUS::Success;
     }
 };
 }

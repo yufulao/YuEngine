@@ -20,6 +20,6 @@ struct AudioDeviceSnapshot final {
     std::uint64_t OutputSampleWriteCount = 0U;
     std::uint64_t FailedOperationCount = 0U;
     std::size_t LastFramesWritten = 0U;
-    AudioAccountingStatus AllocationAccountingStatus = AudioAccountingStatus::DeferredUntilYuMemoryIntegration;
+    AUDIO_ACCOUNTING_STATUS AllocationAccountingStatus = AUDIO_ACCOUNTING_STATUS::DeferredUntilYuMemoryIntegration;
 };
 }

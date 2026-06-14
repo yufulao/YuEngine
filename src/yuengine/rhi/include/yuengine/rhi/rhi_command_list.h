@@ -14,10 +14,10 @@ class RhiCommandList final {
 public:
     explicit RhiCommandList(std::size_t capacity);
 
-    RhiStatus Reset();
-    RhiStatus BeginFrame(RhiTextureHandle target);
-    RhiStatus RecordClear(RhiTextureHandle target, RhiColor color);
-    RhiStatus EndFrame();
+    RHI_STATUS Reset();
+    RHI_STATUS BeginFrame(RhiTextureHandle target);
+    RHI_STATUS RecordClear(RhiTextureHandle target, RhiColor color);
+    RHI_STATUS EndFrame();
     RhiCommandListSnapshot Snapshot() const;
     const RhiCommandRecord& CommandAt(std::size_t index) const;
     RhiTextureHandle TargetHandle() const;
@@ -26,7 +26,7 @@ public:
     bool IsComplete() const;
 
 private:
-    RhiStatus Append(RhiCommandRecord record);
+    RHI_STATUS Append(RhiCommandRecord record);
 
     std::vector<RhiCommandRecord> _records;
     RhiTextureHandle _targetHandle;

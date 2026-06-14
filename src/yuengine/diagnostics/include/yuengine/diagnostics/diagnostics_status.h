@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::diagnostics {
-enum class DiagnosticsStatus {
+enum class DIAGNOSTICS_STATUS {
     Success,
     Dropped,
     Disabled,

@@ -13,10 +13,10 @@ using yuengine::input::InputActionState;
 using yuengine::input::InputControlId;
 using yuengine::input::InputDeviceId;
 using yuengine::input::InputEvent;
-using InputEventType = yuengine::input::InputEventType;
+using yuengine::input::INPUT_EVENT_TYPE;
 using InputReplay = yuengine::input::InputReplay;
 using yuengine::input::InputReplaySnapshot;
-using InputStatus = yuengine::input::InputStatus;
+using yuengine::input::INPUT_STATUS;
 using yuengine::input::AXIS_MAX_VALUE;
 using yuengine::input::AXIS_MIN_VALUE;
 using yuengine::input::MAX_EVENTS_PER_FRAME;
@@ -65,27 +65,27 @@ int Fail(const std::string& message) {
 }
 
 InputEvent ButtonPress(InputDeviceId device, InputControlId control) {
-    return InputEvent{device, control, InputEventType::ButtonPressed, 0};
+    return InputEvent{device, control, INPUT_EVENT_TYPE::ButtonPressed, 0};
 }
 
 InputEvent ButtonRelease(InputDeviceId device, InputControlId control) {
-    return InputEvent{device, control, InputEventType::ButtonReleased, 0};
+    return InputEvent{device, control, INPUT_EVENT_TYPE::ButtonReleased, 0};
 }
 
 InputEvent Axis(InputDeviceId device, InputControlId control, std::int32_t value) {
-    return InputEvent{device, control, InputEventType::Axis, value};
+    return InputEvent{device, control, INPUT_EVENT_TYPE::Axis, value};
 }
 
 bool RegisterPrimaryBinding(InputReplay& replay) {
-    return replay.RegisterActionBinding(DEVICE_A, CONTROL_A, ACTION_A).Status == InputStatus::Success;
+    return replay.RegisterActionBinding(DEVICE_A, CONTROL_A, ACTION_A).Status == INPUT_STATUS::Success;
 }
 
 bool RegisterSecondaryBinding(InputReplay& replay) {
-    return replay.RegisterActionBinding(DEVICE_B, CONTROL_B, ACTION_A).Status == InputStatus::Success;
+    return replay.RegisterActionBinding(DEVICE_B, CONTROL_B, ACTION_A).Status == INPUT_STATUS::Success;
 }
 
 bool RegisterSecondActionBinding(InputReplay& replay) {
-    return replay.RegisterActionBinding(DEVICE_A, CONTROL_B, ACTION_B).Status == InputStatus::Success;
+    return replay.RegisterActionBinding(DEVICE_A, CONTROL_B, ACTION_B).Status == INPUT_STATUS::Success;
 }
 
 bool StateEquals(const InputActionState& left, const InputActionState& right) {
@@ -119,7 +119,7 @@ bool SnapshotCountersEqual(const InputReplaySnapshot& left, const InputReplaySna
 int InputRegisterActionBindingReturnsStableActionId() {
     InputReplay replay;
     const auto result = replay.RegisterActionBinding(DEVICE_A, CONTROL_A, ACTION_A);
-    if (result.Status != InputStatus::Success) {
+    if (result.Status != INPUT_STATUS::Success) {
         return Fail("binding registration failed");
     }
 
@@ -147,7 +147,7 @@ int InputRegisterControlAlreadyBoundReturnsDuplicateStatus() {
 
     const auto beforeSnapshot = replay.Snapshot();
     const auto duplicate = replay.RegisterActionBinding(DEVICE_A, CONTROL_A, ACTION_B);
-    if (duplicate.Status != InputStatus::DuplicateBinding) {
+    if (duplicate.Status != INPUT_STATUS::DuplicateBinding) {
         return Fail("duplicate control did not return duplicate status");
     }
 
@@ -175,12 +175,12 @@ int InputMultipleControlsForOneActionUsesInsertionOrder() {
 
     replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A));
     replay.RecordReplayEvent(0U, ButtonRelease(DEVICE_B, CONTROL_B));
-    if (replay.ApplyNextFrame().Status != InputStatus::Success) {
+    if (replay.ApplyNextFrame().Status != INPUT_STATUS::Success) {
         return Fail("frame apply failed");
     }
 
     const auto state = replay.QueryAction(ACTION_A);
-    if (state.Status != InputStatus::Success) {
+    if (state.Status != INPUT_STATUS::Success) {
         return Fail("action query failed");
     }
 
@@ -199,14 +199,14 @@ int InputBindingCapacityOverflowDoesNotMutate() {
     InputReplay replay;
     for (std::size_t index = 0U; index < MAX_INPUT_BINDINGS; ++index) {
         const auto result = replay.RegisterActionBinding(DEVICE_A, InputControlId{static_cast<std::uint32_t>(index)}, ACTION_A);
-        if (result.Status != InputStatus::Success) {
+        if (result.Status != INPUT_STATUS::Success) {
             return Fail("binding failed before capacity");
         }
     }
 
     const auto beforeSnapshot = replay.Snapshot();
     const auto overflow = replay.RegisterActionBinding(DEVICE_A, InputControlId{999U}, ACTION_B);
-    if (overflow.Status != InputStatus::CapacityExceeded) {
+    if (overflow.Status != INPUT_STATUS::CapacityExceeded) {
         return Fail("binding overflow did not return capacity status");
     }
 
@@ -235,7 +235,7 @@ int InputReplayFrameAppliesButtonPressAndRelease() {
         return Fail("button release did not clear pressed state");
     }
 
-    if (replay.ApplyNextFrame().Status != InputStatus::EndOfReplay) {
+    if (replay.ApplyNextFrame().Status != INPUT_STATUS::EndOfReplay) {
         return Fail("replay end did not return explicit status");
     }
 
@@ -332,8 +332,8 @@ int InputInvalidAxisValueReturnsExplicitStatusWithoutMutation() {
     }
 
     const auto beforeSnapshot = replay.Snapshot();
-    const InputStatus status = replay.RecordReplayEvent(0U, Axis(DEVICE_A, CONTROL_A, AXIS_MAX_VALUE + 1));
-    if (status != InputStatus::InvalidAxisValue) {
+    const INPUT_STATUS status = replay.RecordReplayEvent(0U, Axis(DEVICE_A, CONTROL_A, AXIS_MAX_VALUE + 1));
+    if (status != INPUT_STATUS::InvalidAxisValue) {
         return Fail("invalid axis did not return invalid value status");
     }
 
@@ -359,8 +359,8 @@ int InputInvalidEventDoesNotMutateReplayOrSnapshot() {
     }
 
     const auto beforeSnapshot = replay.Snapshot();
-    const InputEvent invalidEvent{DEVICE_A, CONTROL_A, static_cast<InputEventType>(99), 0};
-    if (replay.RecordReplayEvent(0U, invalidEvent) != InputStatus::InvalidEvent) {
+    const InputEvent invalidEvent{DEVICE_A, CONTROL_A, static_cast<INPUT_EVENT_TYPE>(99), 0};
+    if (replay.RecordReplayEvent(0U, invalidEvent) != INPUT_STATUS::InvalidEvent) {
         return Fail("invalid event did not return explicit status");
     }
 
@@ -381,7 +381,7 @@ int InputInvalidEventDoesNotMutateReplayOrSnapshot() {
 
 int InputUnknownDeviceControlOrActionReturnsExplicitStatus() {
     InputReplay replay;
-    if (replay.RegisterActionBinding(UNKNOWN_DEVICE, CONTROL_A, ACTION_A).Status != InputStatus::UnknownDeviceControl) {
+    if (replay.RegisterActionBinding(UNKNOWN_DEVICE, CONTROL_A, ACTION_A).Status != INPUT_STATUS::UnknownDeviceControl) {
         return Fail("unknown device did not return explicit status");
     }
 
@@ -389,11 +389,11 @@ int InputUnknownDeviceControlOrActionReturnsExplicitStatus() {
         return Fail("binding failed");
     }
 
-    if (replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, UNKNOWN_CONTROL)) != InputStatus::UnknownDeviceControl) {
+    if (replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, UNKNOWN_CONTROL)) != INPUT_STATUS::UnknownDeviceControl) {
         return Fail("unknown control did not return explicit status");
     }
 
-    if (replay.QueryAction(UNKNOWN_ACTION).Status != InputStatus::UnknownAction) {
+    if (replay.QueryAction(UNKNOWN_ACTION).Status != INPUT_STATUS::UnknownAction) {
         return Fail("unknown action did not return explicit status");
     }
 
@@ -407,13 +407,13 @@ int InputEventCapacityOverflowDoesNotMutateReplay() {
     }
 
     for (std::size_t index = 0U; index < MAX_EVENTS_PER_FRAME; ++index) {
-        if (replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A)) != InputStatus::Success) {
+        if (replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A)) != INPUT_STATUS::Success) {
             return Fail("event insert failed before capacity");
         }
     }
 
     const auto beforeSnapshot = replay.Snapshot();
-    if (replay.RecordReplayEvent(0U, ButtonRelease(DEVICE_A, CONTROL_A)) != InputStatus::CapacityExceeded) {
+    if (replay.RecordReplayEvent(0U, ButtonRelease(DEVICE_A, CONTROL_A)) != INPUT_STATUS::CapacityExceeded) {
         return Fail("event overflow did not return capacity status");
     }
 
@@ -537,7 +537,7 @@ int InputNoPlatformUiOrGameAdapterDependency() {
     }
 
     replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A));
-    if (replay.ApplyNextFrame().Status != InputStatus::Success) {
+    if (replay.ApplyNextFrame().Status != INPUT_STATUS::Success) {
         return Fail("minimal synthetic replay path failed");
     }
 

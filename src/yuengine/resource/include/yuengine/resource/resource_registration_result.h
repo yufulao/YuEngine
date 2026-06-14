@@ -5,19 +5,19 @@
 
 namespace yuengine::resource {
 struct ResourceRegistrationResult final {
-    ResourceStatus Status;
+    RESOURCE_STATUS Status;
     ResourceHandle Handle;
 
     static ResourceRegistrationResult Success(ResourceHandle handle) {
-        return ResourceRegistrationResult{ResourceStatus::Success, handle};
+        return ResourceRegistrationResult{RESOURCE_STATUS::Success, handle};
     }
 
-    static ResourceRegistrationResult Failure(ResourceStatus status) {
+    static ResourceRegistrationResult Failure(RESOURCE_STATUS status) {
         return ResourceRegistrationResult{status, ResourceHandle{}};
     }
 
     bool Succeeded() const {
-        return Status == ResourceStatus::Success;
+        return Status == RESOURCE_STATUS::Success;
     }
 };
 }

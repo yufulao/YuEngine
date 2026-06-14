@@ -17,9 +17,9 @@ using FixedFrameClock = yuengine::platform::FixedFrameClock;
 using HeadlessHost = yuengine::platform::HeadlessHost;
 using yuengine::platform::HeadlessHostConfig;
 using yuengine::platform::HostError;
-using HostStatus = yuengine::platform::HostStatus;
+using yuengine::platform::HOST_STATUS;
 using IHostRuntime = yuengine::platform::IHostRuntime;
-using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
+using yuengine::memory::MEMORY_ACCOUNTING_STATUS;
 using yuengine::platform::PlatformPerformanceSignal;
 using BoundedInMemoryLogSink = yuengine::diagnostics::BoundedInMemoryLogSink;
 
@@ -70,7 +70,7 @@ int HostStartTickShutdownDeterministic() {
 
     const HeadlessHostConfig config{DETERMINISTIC_TICK_COUNT};
     const auto result = host.Run(runtime, config);
-    if (result.Status != HostStatus::Success) {
+    if (result.Status != HOST_STATUS::Success) {
         return Fail("host did not return success");
     }
 
@@ -142,7 +142,7 @@ int PlatformAllocationAccountingStatusUsesMemoryHook() {
 
     const HeadlessHostConfig config{DETERMINISTIC_TICK_COUNT};
     const auto result = host.Run(runtime, config);
-    if (result.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (result.AllocationAccountingStatus != MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly) {
         return Fail("platform did not expose typed explicit-tracking memory status");
     }
 

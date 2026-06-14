@@ -9,6 +9,6 @@ struct TaskRecord {
     TaskId Id;
     TaskCallback Callback;
     void* Context;
-    TaskStatus Status;
+    TASK_STATUS Status;
 };
 }

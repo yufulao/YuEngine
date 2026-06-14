@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::thread {
-enum class TaskStatus {
+enum class TASK_STATUS {
     Created,
     Queued,
     Running,

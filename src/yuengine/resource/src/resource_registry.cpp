@@ -2,7 +2,7 @@
 
 #include <limits>
 
-using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
+using yuengine::memory::MEMORY_ACCOUNTING_STATUS;
 
 namespace yuengine::resource {
 namespace {
@@ -35,29 +35,29 @@ ResourceRegistry::ResourceRegistry(ResourceRegistryDesc desc)
           0U,
           0U,
           0U,
-          MemoryAccountingStatus::ExplicitlyTrackedOnly,
-          ResourceStatus::Success} {
+          MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly,
+          RESOURCE_STATUS::Success} {
 }
 
 ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const ResourceDescriptor& descriptor) {
     if (!descriptor.Type.IsValid()) {
-        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::UnsupportedInThisGate));
+        return ResourceRegistrationResult::Failure(RecordFailure(RESOURCE_STATUS::UnsupportedInThisGate));
     }
 
     if (!descriptor.LogicalKey.IsWithinBounds()) {
-        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::CapacityExceeded));
+        return ResourceRegistrationResult::Failure(RecordFailure(RESOURCE_STATUS::CapacityExceeded));
     }
 
     if (!descriptor.LogicalKey.IsValid()) {
-        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::UnsupportedInThisGate));
+        return ResourceRegistrationResult::Failure(RecordFailure(RESOURCE_STATUS::UnsupportedInThisGate));
     }
 
     if (HasDuplicateActiveResource(descriptor)) {
-        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::DuplicateResource));
+        return ResourceRegistrationResult::Failure(RecordFailure(RESOURCE_STATUS::DuplicateResource));
     }
 
     if (_snapshot.RegisteredResourceCount >= _snapshot.ResourceCapacity) {
-        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::CapacityExceeded));
+        return ResourceRegistrationResult::Failure(RecordFailure(RESOURCE_STATUS::CapacityExceeded));
     }
 
     ResourceSlot* freeSlot = nullptr;
@@ -79,11 +79,11 @@ ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const R
     }
 
     if (freeSlot == nullptr) {
-        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::CapacityExceeded));
+        return ResourceRegistrationResult::Failure(RecordFailure(RESOURCE_STATUS::CapacityExceeded));
     }
 
-    const ResourceStatus typeStatus = RegisterTypeIfNeeded(descriptor.Type);
-    if (typeStatus != ResourceStatus::Success) {
+    const RESOURCE_STATUS typeStatus = RegisterTypeIfNeeded(descriptor.Type);
+    if (typeStatus != RESOURCE_STATUS::Success) {
         return ResourceRegistrationResult::Failure(RecordFailure(typeStatus));
     }
 
@@ -101,27 +101,27 @@ ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const R
     return ResourceRegistrationResult::Success(ResourceHandle{freeSlotIndex, freeSlot->Generation});
 }
 
-ResourceStatus ResourceRegistry::AddDependency(ResourceHandle dependent, ResourceHandle dependency) {
+RESOURCE_STATUS ResourceRegistry::AddDependency(ResourceHandle dependent, ResourceHandle dependency) {
     ++_snapshot.DependencyValidationCount;
 
     std::size_t dependentIndex = 0U;
-    const ResourceStatus dependentStatus = ResolveHandle(dependent, dependentIndex);
-    if (dependentStatus != ResourceStatus::Success) {
+    const RESOURCE_STATUS dependentStatus = ResolveHandle(dependent, dependentIndex);
+    if (dependentStatus != RESOURCE_STATUS::Success) {
         return RecordFailure(dependentStatus);
     }
 
     std::size_t dependencyIndex = 0U;
-    const ResourceStatus dependencyStatus = ResolveHandle(dependency, dependencyIndex);
-    if (dependencyStatus != ResourceStatus::Success) {
-        return RecordFailure(ResourceStatus::DependencyMissing);
+    const RESOURCE_STATUS dependencyStatus = ResolveHandle(dependency, dependencyIndex);
+    if (dependencyStatus != RESOURCE_STATUS::Success) {
+        return RecordFailure(RESOURCE_STATUS::DependencyMissing);
     }
 
     if (dependentIndex == dependencyIndex) {
-        return RecordFailure(ResourceStatus::DependencyCycle);
+        return RecordFailure(RESOURCE_STATUS::DependencyCycle);
     }
 
     if (HasDependencyPath(dependencyIndex, dependentIndex)) {
-        return RecordFailure(ResourceStatus::DependencyCycle);
+        return RecordFailure(RESOURCE_STATUS::DependencyCycle);
     }
 
     for (const ResourceDependencyEdge& edge : _dependencyEdges) {
@@ -135,12 +135,12 @@ ResourceStatus ResourceRegistry::AddDependency(ResourceHandle dependent, Resourc
 
         if (edge.DependencySlot == dependency.Slot) {
             RecordSuccess();
-            return ResourceStatus::Success;
+            return RESOURCE_STATUS::Success;
         }
     }
 
     if (_snapshot.DependencyEdgeCount >= _snapshot.DependencyEdgeCapacity) {
-        return RecordFailure(ResourceStatus::CapacityExceeded);
+        return RecordFailure(RESOURCE_STATUS::CapacityExceeded);
     }
 
     for (ResourceDependencyEdge& edge : _dependencyEdges) {
@@ -153,67 +153,67 @@ ResourceStatus ResourceRegistry::AddDependency(ResourceHandle dependent, Resourc
         edge.IsActive = true;
         ++_snapshot.DependencyEdgeCount;
         RecordSuccess();
-        return ResourceStatus::Success;
+        return RESOURCE_STATUS::Success;
     }
 
-    return RecordFailure(ResourceStatus::CapacityExceeded);
+    return RecordFailure(RESOURCE_STATUS::CapacityExceeded);
 }
 
-ResourceStatus ResourceRegistry::Acquire(ResourceHandle handle, ResourceTypeId expectedType) {
+RESOURCE_STATUS ResourceRegistry::Acquire(ResourceHandle handle, ResourceTypeId expectedType) {
     std::size_t slotIndex = 0U;
-    const ResourceStatus handleStatus = ResolveHandle(handle, slotIndex);
-    if (handleStatus != ResourceStatus::Success) {
+    const RESOURCE_STATUS handleStatus = ResolveHandle(handle, slotIndex);
+    if (handleStatus != RESOURCE_STATUS::Success) {
         return RecordFailure(handleStatus);
     }
 
     ResourceSlot& slot = _slots[slotIndex];
     if (slot.Type.Value != expectedType.Value) {
-        return RecordFailure(ResourceStatus::TypeMismatch);
+        return RecordFailure(RESOURCE_STATUS::TypeMismatch);
     }
 
     if (slot.ReferenceCount == std::numeric_limits<std::uint32_t>::max()) {
-        return RecordFailure(ResourceStatus::ReferenceCountOverflow);
+        return RecordFailure(RESOURCE_STATUS::ReferenceCountOverflow);
     }
 
     ++slot.ReferenceCount;
     ++_snapshot.AcquiredHandleCount;
     RecordSuccess();
-    return ResourceStatus::Success;
+    return RESOURCE_STATUS::Success;
 }
 
-ResourceStatus ResourceRegistry::Release(ResourceHandle handle) {
+RESOURCE_STATUS ResourceRegistry::Release(ResourceHandle handle) {
     std::size_t slotIndex = 0U;
-    const ResourceStatus handleStatus = ResolveHandle(handle, slotIndex);
-    if (handleStatus != ResourceStatus::Success) {
+    const RESOURCE_STATUS handleStatus = ResolveHandle(handle, slotIndex);
+    if (handleStatus != RESOURCE_STATUS::Success) {
         return RecordFailure(handleStatus);
     }
 
     ResourceSlot& slot = _slots[slotIndex];
     if (slot.ReferenceCount == 0U) {
-        return RecordFailure(ResourceStatus::NotAcquired);
+        return RecordFailure(RESOURCE_STATUS::NotAcquired);
     }
 
     --slot.ReferenceCount;
     --_snapshot.AcquiredHandleCount;
     ++_snapshot.ReleasedHandleCount;
     RecordSuccess();
-    return ResourceStatus::Success;
+    return RESOURCE_STATUS::Success;
 }
 
-ResourceStatus ResourceRegistry::Retire(ResourceHandle handle) {
+RESOURCE_STATUS ResourceRegistry::Retire(ResourceHandle handle) {
     std::size_t slotIndex = 0U;
-    const ResourceStatus handleStatus = ResolveHandle(handle, slotIndex);
-    if (handleStatus != ResourceStatus::Success) {
+    const RESOURCE_STATUS handleStatus = ResolveHandle(handle, slotIndex);
+    if (handleStatus != RESOURCE_STATUS::Success) {
         return RecordFailure(handleStatus);
     }
 
     ResourceSlot& slot = _slots[slotIndex];
     if (slot.ReferenceCount != 0U) {
-        return RecordFailure(ResourceStatus::StillReferenced);
+        return RecordFailure(RESOURCE_STATUS::StillReferenced);
     }
 
     if (HasInboundEdge(slotIndex)) {
-        return RecordFailure(ResourceStatus::StillDependedOn);
+        return RecordFailure(RESOURCE_STATUS::StillDependedOn);
     }
 
     ClearOutboundEdges(slotIndex);
@@ -225,57 +225,57 @@ ResourceStatus ResourceRegistry::Retire(ResourceHandle handle) {
     --_snapshot.RegisteredResourceCount;
     ++_snapshot.RetiredResourceCount;
     RecordSuccess();
-    return ResourceStatus::Success;
+    return RESOURCE_STATUS::Success;
 }
 
 ResourceSnapshot ResourceRegistry::Snapshot() const {
     return _snapshot;
 }
 
-ResourceStatus ResourceRegistry::RecordFailure(ResourceStatus status) {
+RESOURCE_STATUS ResourceRegistry::RecordFailure(RESOURCE_STATUS status) {
     ++_snapshot.FailedOperationCount;
     _snapshot.LastStatus = status;
     return status;
 }
 
 void ResourceRegistry::RecordSuccess() {
-    _snapshot.LastStatus = ResourceStatus::Success;
+    _snapshot.LastStatus = RESOURCE_STATUS::Success;
 }
 
-ResourceStatus ResourceRegistry::ResolveHandle(ResourceHandle handle, std::size_t& outIndex) const {
+RESOURCE_STATUS ResourceRegistry::ResolveHandle(ResourceHandle handle, std::size_t& outIndex) const {
     if (!handle.IsValid()) {
-        return ResourceStatus::InvalidHandle;
+        return RESOURCE_STATUS::InvalidHandle;
     }
 
     if (handle.Slot >= _snapshot.ResourceCapacity) {
-        return ResourceStatus::InvalidHandle;
+        return RESOURCE_STATUS::InvalidHandle;
     }
 
     const ResourceSlot& slot = _slots[handle.Slot];
     if (slot.Generation != handle.Generation) {
-        return ResourceStatus::GenerationMismatch;
+        return RESOURCE_STATUS::GenerationMismatch;
     }
 
     if (!slot.IsActive) {
-        return ResourceStatus::InvalidHandle;
+        return RESOURCE_STATUS::InvalidHandle;
     }
 
     outIndex = handle.Slot;
-    return ResourceStatus::Success;
+    return RESOURCE_STATUS::Success;
 }
 
-ResourceStatus ResourceRegistry::RegisterTypeIfNeeded(ResourceTypeId type) {
+RESOURCE_STATUS ResourceRegistry::RegisterTypeIfNeeded(ResourceTypeId type) {
     if (HasType(type)) {
-        return ResourceStatus::Success;
+        return RESOURCE_STATUS::Success;
     }
 
     if (_snapshot.TypeCount >= _snapshot.TypeCapacity) {
-        return ResourceStatus::CapacityExceeded;
+        return RESOURCE_STATUS::CapacityExceeded;
     }
 
     _types[_snapshot.TypeCount] = type;
     ++_snapshot.TypeCount;
-    return ResourceStatus::Success;
+    return RESOURCE_STATUS::Success;
 }
 
 bool ResourceRegistry::HasType(ResourceTypeId type) const {

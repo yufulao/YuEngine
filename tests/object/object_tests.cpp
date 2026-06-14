@@ -8,14 +8,14 @@
 #include "yuengine/memory/memory_accounting_status.h"
 #include "yuengine/object/object_registry.h"
 
-using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
+using yuengine::memory::MEMORY_ACCOUNTING_STATUS;
 using yuengine::object::ObjectDescriptor;
 using yuengine::object::ObjectHandle;
 using yuengine::object::ObjectRegistrationResult;
 using ObjectRegistry = yuengine::object::ObjectRegistry;
 using yuengine::object::ObjectRegistryDesc;
 using yuengine::object::ObjectSnapshot;
-using ObjectStatus = yuengine::object::ObjectStatus;
+using yuengine::object::OBJECT_STATUS;
 using yuengine::object::ObjectTypeId;
 using yuengine::object::INVALID_OBJECT_GENERATION;
 
@@ -131,7 +131,7 @@ int ObjectCreateSyntheticObjectReturnsGenerationHandle() {
         return Fail("object type count was not recorded");
     }
 
-    if (snapshot.LastStatus != ObjectStatus::Success) {
+    if (snapshot.LastStatus != OBJECT_STATUS::Success) {
         return Fail("successful create did not record success status");
     }
 
@@ -142,7 +142,7 @@ int ObjectCreateRejectsInvalidTypeWithoutMutation() {
     ObjectRegistry registry;
     const ObjectSnapshot beforeSnapshot = registry.Snapshot();
     const ObjectRegistrationResult result = registry.CreateSyntheticObject(Descriptor(ObjectTypeId{}));
-    if (result.Status != ObjectStatus::InvalidType) {
+    if (result.Status != OBJECT_STATUS::InvalidType) {
         return Fail("invalid type did not return explicit status");
     }
 
@@ -179,7 +179,7 @@ int ObjectRegistryCapacityOverflowDoesNotMutate() {
 
     const ObjectSnapshot beforeSnapshot = registry.Snapshot();
     const ObjectRegistrationResult secondResult = Create(registry, TYPE_CAMERA);
-    if (secondResult.Status != ObjectStatus::CapacityExceeded) {
+    if (secondResult.Status != OBJECT_STATUS::CapacityExceeded) {
         return Fail("capacity overflow did not return explicit status");
     }
 
@@ -208,7 +208,7 @@ int ObjectTypeCapacityOverflowDoesNotMutate() {
 
     const ObjectSnapshot beforeSnapshot = registry.Snapshot();
     const ObjectRegistrationResult secondResult = Create(registry, TYPE_CAMERA);
-    if (secondResult.Status != ObjectStatus::CapacityExceeded) {
+    if (secondResult.Status != OBJECT_STATUS::CapacityExceeded) {
         return Fail("type capacity overflow did not return explicit status");
     }
 
@@ -247,12 +247,12 @@ int ObjectTypeCapacityOverflowDoesNotMutate() {
 
 int ObjectValidateRejectsInvalidOrStaleHandle() {
     ObjectRegistry registry;
-    if (registry.Validate(ObjectHandle{}) != ObjectStatus::InvalidHandle) {
+    if (registry.Validate(ObjectHandle{}) != OBJECT_STATUS::InvalidHandle) {
         return Fail("invalid handle did not return explicit status");
     }
 
     const ObjectHandle unusedHandle{0U, 1U};
-    if (registry.Validate(unusedHandle) != ObjectStatus::InvalidHandle) {
+    if (registry.Validate(unusedHandle) != OBJECT_STATUS::InvalidHandle) {
         return Fail(UNUSED_VALIDATE_MESSAGE);
     }
 
@@ -261,16 +261,16 @@ int ObjectValidateRejectsInvalidOrStaleHandle() {
         return Fail("create failed");
     }
 
-    if (registry.Destroy(result.Handle) != ObjectStatus::Success) {
+    if (registry.Destroy(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("destroy failed");
     }
 
-    if (registry.Validate(result.Handle) != ObjectStatus::GenerationMismatch) {
+    if (registry.Validate(result.Handle) != OBJECT_STATUS::GenerationMismatch) {
         return Fail("stale handle did not return generation mismatch");
     }
 
     const ObjectHandle destroyedHandle{result.Handle.Slot, result.Handle.Generation + 1U};
-    if (registry.Validate(destroyedHandle) != ObjectStatus::InvalidHandle) {
+    if (registry.Validate(destroyedHandle) != OBJECT_STATUS::InvalidHandle) {
         return Fail(DESTROYED_VALIDATE_MESSAGE);
     }
 
@@ -284,46 +284,46 @@ int ObjectInvalidOrStaleHandleOperationsReturnExplicitStatusWithoutMutation() {
         return Fail("create failed");
     }
 
-    if (registry.Destroy(result.Handle) != ObjectStatus::Success) {
+    if (registry.Destroy(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("destroy failed");
     }
 
     const ObjectSnapshot beforeSnapshot = registry.Snapshot();
     const ObjectHandle unusedHandle{1U, 1U};
-    if (registry.Acquire(unusedHandle) != ObjectStatus::InvalidHandle) {
+    if (registry.Acquire(unusedHandle) != OBJECT_STATUS::InvalidHandle) {
         return Fail(UNUSED_ACQUIRE_MESSAGE);
     }
 
-    if (registry.Release(unusedHandle) != ObjectStatus::InvalidHandle) {
+    if (registry.Release(unusedHandle) != OBJECT_STATUS::InvalidHandle) {
         return Fail(UNUSED_RELEASE_MESSAGE);
     }
 
-    if (registry.Destroy(unusedHandle) != ObjectStatus::InvalidHandle) {
+    if (registry.Destroy(unusedHandle) != OBJECT_STATUS::InvalidHandle) {
         return Fail(UNUSED_DESTROY_MESSAGE);
     }
 
     const ObjectHandle destroyedHandle{result.Handle.Slot, result.Handle.Generation + 1U};
-    if (registry.Acquire(destroyedHandle) != ObjectStatus::InvalidHandle) {
+    if (registry.Acquire(destroyedHandle) != OBJECT_STATUS::InvalidHandle) {
         return Fail(DESTROYED_ACQUIRE_MESSAGE);
     }
 
-    if (registry.Release(destroyedHandle) != ObjectStatus::InvalidHandle) {
+    if (registry.Release(destroyedHandle) != OBJECT_STATUS::InvalidHandle) {
         return Fail(DESTROYED_RELEASE_MESSAGE);
     }
 
-    if (registry.Destroy(destroyedHandle) != ObjectStatus::InvalidHandle) {
+    if (registry.Destroy(destroyedHandle) != OBJECT_STATUS::InvalidHandle) {
         return Fail(DESTROYED_DESTROY_MESSAGE);
     }
 
-    if (registry.Acquire(result.Handle) != ObjectStatus::GenerationMismatch) {
+    if (registry.Acquire(result.Handle) != OBJECT_STATUS::GenerationMismatch) {
         return Fail("stale acquire did not return explicit status");
     }
 
-    if (registry.Release(result.Handle) != ObjectStatus::GenerationMismatch) {
+    if (registry.Release(result.Handle) != OBJECT_STATUS::GenerationMismatch) {
         return Fail("stale release did not return explicit status");
     }
 
-    if (registry.Destroy(result.Handle) != ObjectStatus::GenerationMismatch) {
+    if (registry.Destroy(result.Handle) != OBJECT_STATUS::GenerationMismatch) {
         return Fail("stale destroy did not return explicit status");
     }
 
@@ -350,7 +350,7 @@ int ObjectDestroyIncrementsGenerationAndInvalidatesOldHandle() {
         return Fail("create failed");
     }
 
-    if (registry.Destroy(result.Handle) != ObjectStatus::Success) {
+    if (registry.Destroy(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("destroy failed");
     }
 
@@ -363,7 +363,7 @@ int ObjectDestroyIncrementsGenerationAndInvalidatesOldHandle() {
         return Fail("destroyed object count was not recorded");
     }
 
-    if (registry.Validate(result.Handle) != ObjectStatus::GenerationMismatch) {
+    if (registry.Validate(result.Handle) != OBJECT_STATUS::GenerationMismatch) {
         return Fail("old handle was not invalidated by generation");
     }
 
@@ -377,7 +377,7 @@ int ObjectReusesFreedSlotWithNewGeneration() {
         return Fail("first create failed");
     }
 
-    if (registry.Destroy(firstResult.Handle) != ObjectStatus::Success) {
+    if (registry.Destroy(firstResult.Handle) != OBJECT_STATUS::Success) {
         return Fail("destroy failed");
     }
 
@@ -404,7 +404,7 @@ int ObjectAcquireReleaseTracksReferenceCount() {
         return Fail("create failed");
     }
 
-    if (registry.Acquire(result.Handle) != ObjectStatus::Success) {
+    if (registry.Acquire(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("acquire failed");
     }
 
@@ -412,7 +412,7 @@ int ObjectAcquireReleaseTracksReferenceCount() {
         return Fail("acquire did not increment reference count");
     }
 
-    if (registry.Release(result.Handle) != ObjectStatus::Success) {
+    if (registry.Release(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("release failed");
     }
 
@@ -435,11 +435,11 @@ int ObjectRepeatedAcquireIncrementsReferenceCount() {
         return Fail("create failed");
     }
 
-    if (registry.Acquire(result.Handle) != ObjectStatus::Success) {
+    if (registry.Acquire(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("first acquire failed");
     }
 
-    if (registry.Acquire(result.Handle) != ObjectStatus::Success) {
+    if (registry.Acquire(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("second acquire failed");
     }
 
@@ -459,7 +459,7 @@ int ObjectAcquireRejectsReferenceCountOverflow() {
     }
 
     const ObjectSnapshot beforeSnapshot = registry.Snapshot();
-    if (registry.Acquire(result.Handle) != ObjectStatus::ReferenceCountOverflow) {
+    if (registry.Acquire(result.Handle) != OBJECT_STATUS::ReferenceCountOverflow) {
         return Fail("reference overflow did not return explicit status");
     }
 
@@ -478,7 +478,7 @@ int ObjectReleaseAtZeroDoesNotMutate() {
     }
 
     const ObjectSnapshot beforeSnapshot = registry.Snapshot();
-    if (registry.Release(result.Handle) != ObjectStatus::NotAcquired) {
+    if (registry.Release(result.Handle) != OBJECT_STATUS::NotAcquired) {
         return Fail("release at zero did not return explicit status");
     }
 
@@ -501,11 +501,11 @@ int ObjectDestroyRejectsOutstandingReference() {
         return Fail("create failed");
     }
 
-    if (registry.Acquire(result.Handle) != ObjectStatus::Success) {
+    if (registry.Acquire(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("acquire failed");
     }
 
-    if (registry.Destroy(result.Handle) != ObjectStatus::StillReferenced) {
+    if (registry.Destroy(result.Handle) != OBJECT_STATUS::StillReferenced) {
         return Fail("destroy with outstanding reference did not return explicit status");
     }
 
@@ -524,19 +524,19 @@ int ObjectRegistrySnapshotReportsCountsAndLastStatus() {
         return Fail("fixture creation failed");
     }
 
-    if (registry.Acquire(firstResult.Handle) != ObjectStatus::Success) {
+    if (registry.Acquire(firstResult.Handle) != OBJECT_STATUS::Success) {
         return Fail("acquire failed");
     }
 
-    if (registry.Release(firstResult.Handle) != ObjectStatus::Success) {
+    if (registry.Release(firstResult.Handle) != OBJECT_STATUS::Success) {
         return Fail("release failed");
     }
 
-    if (registry.Destroy(secondResult.Handle) != ObjectStatus::Success) {
+    if (registry.Destroy(secondResult.Handle) != OBJECT_STATUS::Success) {
         return Fail("destroy failed");
     }
 
-    if (registry.CreateSyntheticObject(Descriptor(ObjectTypeId{})).Status != ObjectStatus::InvalidType) {
+    if (registry.CreateSyntheticObject(Descriptor(ObjectTypeId{})).Status != OBJECT_STATUS::InvalidType) {
         return Fail("invalid type did not fail");
     }
 
@@ -569,11 +569,11 @@ int ObjectRegistrySnapshotReportsCountsAndLastStatus() {
         return Fail(SNAPSHOT_ACCEPTED_OPERATION_MESSAGE);
     }
 
-    if (snapshot.LastStatus != ObjectStatus::InvalidType) {
+    if (snapshot.LastStatus != OBJECT_STATUS::InvalidType) {
         return Fail("snapshot did not report last explicit status");
     }
 
-    if (snapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (snapshot.AllocationAccountingStatus != MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly) {
         return Fail("snapshot did not report YuMemory accounting vocabulary");
     }
 
@@ -589,20 +589,20 @@ int ObjectDisabledDiagnosticsDoesNotChangeResults() {
         return Fail("fixture creation failed");
     }
 
-    const ObjectStatus recordingAcquire = recordingRegistry.Acquire(recordingResult.Handle);
-    const ObjectStatus disabledAcquire = disabledRegistry.Acquire(disabledResult.Handle);
+    const OBJECT_STATUS recordingAcquire = recordingRegistry.Acquire(recordingResult.Handle);
+    const OBJECT_STATUS disabledAcquire = disabledRegistry.Acquire(disabledResult.Handle);
     if (recordingAcquire != disabledAcquire) {
         return Fail("disabled diagnostics changed acquire status");
     }
 
-    const ObjectStatus recordingRelease = recordingRegistry.Release(recordingResult.Handle);
-    const ObjectStatus disabledRelease = disabledRegistry.Release(disabledResult.Handle);
+    const OBJECT_STATUS recordingRelease = recordingRegistry.Release(recordingResult.Handle);
+    const OBJECT_STATUS disabledRelease = disabledRegistry.Release(disabledResult.Handle);
     if (recordingRelease != disabledRelease) {
         return Fail("disabled diagnostics changed release status");
     }
 
-    const ObjectStatus recordingInvalid = recordingRegistry.Release(recordingResult.Handle);
-    const ObjectStatus disabledInvalid = disabledRegistry.Release(disabledResult.Handle);
+    const OBJECT_STATUS recordingInvalid = recordingRegistry.Release(recordingResult.Handle);
+    const OBJECT_STATUS disabledInvalid = disabledRegistry.Release(disabledResult.Handle);
     if (recordingInvalid != disabledInvalid) {
         return Fail("disabled diagnostics changed failure status");
     }
@@ -621,15 +621,15 @@ int ObjectNoWorldScriptResourceOrGameAdapterDependency() {
         return Fail("synthetic object creation failed");
     }
 
-    if (registry.Acquire(result.Handle) != ObjectStatus::Success) {
+    if (registry.Acquire(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("synthetic object acquire failed");
     }
 
-    if (registry.Release(result.Handle) != ObjectStatus::Success) {
+    if (registry.Release(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("synthetic object release failed");
     }
 
-    if (registry.Destroy(result.Handle) != ObjectStatus::Success) {
+    if (registry.Destroy(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("synthetic object destroy failed");
     }
 
@@ -643,7 +643,7 @@ int ObjectNoWorldScriptResourceOrGameAdapterDependency() {
 int ObjectNoHiddenAllocationUsesYuMemorySignal() {
     ObjectRegistry registry;
     const ObjectSnapshot initialSnapshot = registry.Snapshot();
-    if (initialSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (initialSnapshot.AllocationAccountingStatus != MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly) {
         return Fail("object registry did not expose YuMemory accounting vocabulary");
     }
 
@@ -652,15 +652,15 @@ int ObjectNoHiddenAllocationUsesYuMemorySignal() {
         return Fail("create failed");
     }
 
-    if (registry.Acquire(result.Handle) != ObjectStatus::Success) {
+    if (registry.Acquire(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("acquire failed");
     }
 
-    if (registry.Release(result.Handle) != ObjectStatus::Success) {
+    if (registry.Release(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("release failed");
     }
 
-    if (registry.Destroy(result.Handle) != ObjectStatus::Success) {
+    if (registry.Destroy(result.Handle) != OBJECT_STATUS::Success) {
         return Fail("destroy failed");
     }
 
@@ -673,7 +673,7 @@ int ObjectNoHiddenAllocationUsesYuMemorySignal() {
         return Fail("type capacity changed during lifecycle fixture");
     }
 
-    if (afterSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (afterSnapshot.AllocationAccountingStatus != MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly) {
         return Fail("object registry changed allocation accounting vocabulary");
     }
 

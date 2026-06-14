@@ -13,12 +13,12 @@ class SerializeReader final {
 public:
     SerializeReader(const std::uint8_t* buffer, std::uint32_t byteCount);
 
-    SerializeStatus OpenStream();
-    SerializeStatus ReadUInt32(SerializeRecordId record, SerializeFieldId field, std::uint32_t& outValue);
-    SerializeStatus ReadInt32(SerializeRecordId record, SerializeFieldId field, std::int32_t& outValue);
-    SerializeStatus ReadUInt64(SerializeRecordId record, SerializeFieldId field, std::uint64_t& outValue);
-    SerializeStatus ReadInt64(SerializeRecordId record, SerializeFieldId field, std::int64_t& outValue);
-    SerializeStatus ReadFixedBytes(
+    SERIALIZE_STATUS OpenStream();
+    SERIALIZE_STATUS ReadUInt32(SerializeRecordId record, SerializeFieldId field, std::uint32_t& outValue);
+    SERIALIZE_STATUS ReadInt32(SerializeRecordId record, SerializeFieldId field, std::int32_t& outValue);
+    SERIALIZE_STATUS ReadUInt64(SerializeRecordId record, SerializeFieldId field, std::uint64_t& outValue);
+    SERIALIZE_STATUS ReadInt64(SerializeRecordId record, SerializeFieldId field, std::int64_t& outValue);
+    SERIALIZE_STATUS ReadFixedBytes(
         SerializeRecordId record,
         SerializeFieldId field,
         std::uint8_t* outBytes,
@@ -27,9 +27,9 @@ public:
     SerializeSnapshot Snapshot() const;
 
 private:
-    SerializeStatus ValidateStream(std::uint32_t& outCommittedByteCount, std::uint32_t& outRecordCount, std::uint32_t& outFieldCount) const;
-    SerializeStatus FindField(SerializeRecordId record, SerializeFieldId field, FieldLocation& outLocation) const;
-    SerializeStatus RecordFailure(SerializeStatus status);
+    SERIALIZE_STATUS ValidateStream(std::uint32_t& outCommittedByteCount, std::uint32_t& outRecordCount, std::uint32_t& outFieldCount) const;
+    SERIALIZE_STATUS FindField(SerializeRecordId record, SerializeFieldId field, FieldLocation& outLocation) const;
+    SERIALIZE_STATUS RecordFailure(SERIALIZE_STATUS status);
     void RecordSuccess();
     bool CanReadBytes(std::uint32_t offset, std::uint32_t byteCount) const;
     bool IsKnownTypeTag(std::uint32_t value) const;

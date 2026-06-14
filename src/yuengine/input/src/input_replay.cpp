@@ -21,19 +21,19 @@ InputReplay::InputReplay()
 
 InputBindingResult InputReplay::RegisterActionBinding(InputDeviceId device, InputControlId control, InputActionId action) {
     if (!IsDeviceValid(device)) {
-        return InputBindingResult{RecordFailure(InputStatus::UnknownDeviceControl), action};
+        return InputBindingResult{RecordFailure(INPUT_STATUS::UnknownDeviceControl), action};
     }
 
     if (!IsActionInRange(action)) {
-        return InputBindingResult{RecordFailure(InputStatus::UnknownAction), action};
+        return InputBindingResult{RecordFailure(INPUT_STATUS::UnknownAction), action};
     }
 
     if (HasBindingForControl(device, control)) {
-        return InputBindingResult{RecordFailure(InputStatus::DuplicateBinding), action};
+        return InputBindingResult{RecordFailure(INPUT_STATUS::DuplicateBinding), action};
     }
 
     if (_bindingCount >= _bindings.size()) {
-        return InputBindingResult{RecordFailure(InputStatus::CapacityExceeded), action};
+        return InputBindingResult{RecordFailure(INPUT_STATUS::CapacityExceeded), action};
     }
 
     _bindings[_bindingCount] = InputActionBinding{device, control, action};
@@ -45,31 +45,31 @@ InputBindingResult InputReplay::RegisterActionBinding(InputDeviceId device, Inpu
         ++_snapshot.ActionCount;
     }
 
-    return InputBindingResult{InputStatus::Success, action};
+    return InputBindingResult{INPUT_STATUS::Success, action};
 }
 
-InputStatus InputReplay::RecordReplayEvent(std::size_t frameIndex, InputEvent event) {
+INPUT_STATUS InputReplay::RecordReplayEvent(std::size_t frameIndex, InputEvent event) {
     if (frameIndex >= _frames.size()) {
-        return RejectReplayEvent(InputStatus::CapacityExceeded);
+        return RejectReplayEvent(INPUT_STATUS::CapacityExceeded);
     }
 
     if (!IsEventTypeKnown(event.Type)) {
-        return RejectReplayEvent(InputStatus::InvalidEvent);
+        return RejectReplayEvent(INPUT_STATUS::InvalidEvent);
     }
 
-    if (event.Type == InputEventType::Axis) {
+    if (event.Type == INPUT_EVENT_TYPE::Axis) {
         if (!IsAxisValueValid(event.AxisValue)) {
-            return RejectReplayEvent(InputStatus::InvalidAxisValue);
+            return RejectReplayEvent(INPUT_STATUS::InvalidAxisValue);
         }
     }
 
     if (FindBinding(event.Device, event.Control) == nullptr) {
-        return RejectReplayEvent(InputStatus::UnknownDeviceControl);
+        return RejectReplayEvent(INPUT_STATUS::UnknownDeviceControl);
     }
 
     InputReplayFrame& frame = _frames[frameIndex];
     if (frame.EventCount >= frame.Events.size()) {
-        return RejectReplayEvent(InputStatus::CapacityExceeded);
+        return RejectReplayEvent(INPUT_STATUS::CapacityExceeded);
     }
 
     frame.Events[frame.EventCount] = event;
@@ -81,50 +81,50 @@ InputStatus InputReplay::RecordReplayEvent(std::size_t frameIndex, InputEvent ev
         _recordedFrameCount = recordedFrameCount;
     }
 
-    return InputStatus::Success;
+    return INPUT_STATUS::Success;
 }
 
 InputApplyResult InputReplay::ApplyNextFrame() {
     if (_nextFrameIndex >= _recordedFrameCount) {
-        _snapshot.LastApplyStatus = InputStatus::EndOfReplay;
-        return InputApplyResult{RecordFailure(InputStatus::EndOfReplay), _nextFrameIndex};
+        _snapshot.LastApplyStatus = INPUT_STATUS::EndOfReplay;
+        return InputApplyResult{RecordFailure(INPUT_STATUS::EndOfReplay), _nextFrameIndex};
     }
 
     ResetFrameState();
     _snapshot.ReplayStorageCapacityBeforeFrame = ReplayStorageCapacity();
 
-    InputStatus frameStatus = InputStatus::Success;
+    INPUT_STATUS frameStatus = INPUT_STATUS::Success;
     const InputReplayFrame& frame = _frames[_nextFrameIndex];
     for (std::size_t eventIndex = 0U; eventIndex < frame.EventCount; ++eventIndex) {
         const InputEvent& event = frame.Events[eventIndex];
         const InputActionBinding* binding = FindBinding(event.Device, event.Control);
         if (binding == nullptr) {
-            RejectReplayEvent(InputStatus::UnknownDeviceControl);
-            frameStatus = InputStatus::UnknownDeviceControl;
+            RejectReplayEvent(INPUT_STATUS::UnknownDeviceControl);
+            frameStatus = INPUT_STATUS::UnknownDeviceControl;
             continue;
         }
 
         InputActionState& action = _actions[binding->Action.Value];
-        if (event.Type == InputEventType::ButtonPressed) {
+        if (event.Type == INPUT_EVENT_TYPE::ButtonPressed) {
             action.IsPressed = true;
             MarkActionChanged(binding->Action);
             continue;
         }
 
-        if (event.Type == InputEventType::ButtonReleased) {
+        if (event.Type == INPUT_EVENT_TYPE::ButtonReleased) {
             action.IsPressed = false;
             MarkActionChanged(binding->Action);
             continue;
         }
 
-        if (event.Type == InputEventType::Axis) {
+        if (event.Type == INPUT_EVENT_TYPE::Axis) {
             action.AxisValue = event.AxisValue;
             MarkActionChanged(binding->Action);
             continue;
         }
 
-        RejectReplayEvent(InputStatus::InvalidEvent);
-        frameStatus = InputStatus::InvalidEvent;
+        RejectReplayEvent(INPUT_STATUS::InvalidEvent);
+        frameStatus = INPUT_STATUS::InvalidEvent;
     }
 
     RecalculateChangedActionCount();
@@ -137,26 +137,26 @@ InputApplyResult InputReplay::ApplyNextFrame() {
     return InputApplyResult{frameStatus, appliedFrameIndex};
 }
 
-InputStatus InputReplay::ResetFrameState() {
+INPUT_STATUS InputReplay::ResetFrameState() {
     for (InputActionState& action : _actions) {
         action.ChangedThisFrame = false;
     }
 
     _snapshot.ChangedActionCount = 0U;
     ++_snapshot.ResetCount;
-    return InputStatus::Success;
+    return INPUT_STATUS::Success;
 }
 
 InputActionQueryResult InputReplay::QueryAction(InputActionId action) const {
     if (!IsActionInRange(action)) {
-        return InputActionQueryResult{InputStatus::UnknownAction, InputActionState{}};
+        return InputActionQueryResult{INPUT_STATUS::UnknownAction, InputActionState{}};
     }
 
     if (!_registeredActions[action.Value]) {
-        return InputActionQueryResult{InputStatus::UnknownAction, InputActionState{}};
+        return InputActionQueryResult{INPUT_STATUS::UnknownAction, InputActionState{}};
     }
 
-    return InputActionQueryResult{InputStatus::Success, _actions[action.Value]};
+    return InputActionQueryResult{INPUT_STATUS::Success, _actions[action.Value]};
 }
 
 InputReplaySnapshot InputReplay::Snapshot() const {
@@ -171,12 +171,12 @@ std::size_t InputReplay::EventCountForFrame(std::size_t frameIndex) const {
     return _frames[frameIndex].EventCount;
 }
 
-InputStatus InputReplay::RecordFailure(InputStatus status) {
+INPUT_STATUS InputReplay::RecordFailure(INPUT_STATUS status) {
     ++_snapshot.FailedOperationCount;
     return status;
 }
 
-InputStatus InputReplay::RejectReplayEvent(InputStatus status) {
+INPUT_STATUS InputReplay::RejectReplayEvent(INPUT_STATUS status) {
     ++_snapshot.RejectedEventCount;
     return RecordFailure(status);
 }
@@ -189,16 +189,16 @@ bool InputReplay::IsActionInRange(InputActionId action) const {
     return action.Value < MAX_INPUT_ACTIONS;
 }
 
-bool InputReplay::IsEventTypeKnown(InputEventType type) const {
-    if (type == InputEventType::ButtonPressed) {
+bool InputReplay::IsEventTypeKnown(INPUT_EVENT_TYPE type) const {
+    if (type == INPUT_EVENT_TYPE::ButtonPressed) {
         return true;
     }
 
-    if (type == InputEventType::ButtonReleased) {
+    if (type == INPUT_EVENT_TYPE::ButtonReleased) {
         return true;
     }
 
-    return type == InputEventType::Axis;
+    return type == INPUT_EVENT_TYPE::Axis;
 }
 
 bool InputReplay::IsAxisValueValid(std::int32_t value) const {

@@ -8,11 +8,11 @@ public:
     MemoryAccountingResult RecordAllocation(
         MemoryOwnerId owner,
         MemoryTag tag,
-        MemoryBudgetClass budgetClass,
+        MEMORY_BUDGET_CLASS budgetClass,
         std::size_t bytes,
         std::size_t alignment) override;
-    MemoryAccountingStatus RecordFree(MemoryAllocationId allocationId, MemoryOwnerId owner, MemoryTag tag) override;
+    MEMORY_ACCOUNTING_STATUS RecordFree(MemoryAllocationId allocationId, MemoryOwnerId owner, MemoryTag tag) override;
     MemorySnapshot Snapshot() const override;
-    std::uint64_t AllocationCountForBudget(MemoryBudgetClass budgetClass) const override;
+    std::uint64_t AllocationCountForBudget(MEMORY_BUDGET_CLASS budgetClass) const override;
 };
 }

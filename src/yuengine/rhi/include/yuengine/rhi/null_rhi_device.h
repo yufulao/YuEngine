@@ -20,18 +20,18 @@ class NullRhiDevice final {
 public:
     NullRhiDevice();
 
-    RhiStatus Initialize(const RhiDeviceDesc& desc);
-    RhiStatus CreateColorTarget(const RhiColorTargetDesc& desc, RhiTextureHandle& outHandle);
-    RhiStatus DestroyTarget(RhiTextureHandle handle);
-    RhiStatus RecordClear(RhiCommandList& commandList, RhiTextureHandle handle, RhiColor color);
-    RhiStatus Submit(const RhiCommandList& commandList);
-    RhiStatus Present();
+    RHI_STATUS Initialize(const RhiDeviceDesc& desc);
+    RHI_STATUS CreateColorTarget(const RhiColorTargetDesc& desc, RhiTextureHandle& outHandle);
+    RHI_STATUS DestroyTarget(RhiTextureHandle handle);
+    RHI_STATUS RecordClear(RhiCommandList& commandList, RhiTextureHandle handle, RhiColor color);
+    RHI_STATUS Submit(const RhiCommandList& commandList);
+    RHI_STATUS Present();
     RhiCaptureResult CapturePresentedTarget(std::span<std::uint8_t> destination);
     RhiCapabilities Capabilities() const;
     RhiDeviceSnapshot Snapshot() const;
 
 private:
-    RhiStatus RecordFailure(RhiStatus status);
+    RHI_STATUS RecordFailure(RHI_STATUS status);
     bool IsTargetHandleValid(RhiTextureHandle handle) const;
     bool IsCommandTargetValidForFrame(const RhiCommandRecord& command, RhiTextureHandle frameTarget) const;
     bool IsColorTargetDescValid(const RhiColorTargetDesc& desc) const;

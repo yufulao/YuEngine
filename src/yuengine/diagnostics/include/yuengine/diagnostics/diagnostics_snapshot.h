@@ -21,6 +21,6 @@ struct DiagnosticsSnapshot {
     std::uint64_t SnapshotQueryCount;
     bool Enabled;
     bool Stopped;
-    memory::MemoryAccountingStatus AllocationAccountingStatus;
+    memory::MEMORY_ACCOUNTING_STATUS AllocationAccountingStatus;
 };
 }

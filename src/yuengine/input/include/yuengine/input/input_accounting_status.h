@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::input {
-enum class InputAccountingStatus {
+enum class INPUT_ACCOUNTING_STATUS {
     DeferredUntilYuMemoryIntegration
 };
 }

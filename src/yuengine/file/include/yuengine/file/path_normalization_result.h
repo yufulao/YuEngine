@@ -5,11 +5,11 @@
 
 namespace yuengine::file {
 struct PathNormalizationResult {
-    FileStatus Status;
+    FILE_STATUS Status;
     NormalizedPath Path;
 
     static PathNormalizationResult Success(NormalizedPath path);
-    static PathNormalizationResult Failure(FileStatus status);
+    static PathNormalizationResult Failure(FILE_STATUS status);
     bool Succeeded() const;
 };
 }

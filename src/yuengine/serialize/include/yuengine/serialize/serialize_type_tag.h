@@ -3,7 +3,7 @@
 #include <cstdint>
 
 namespace yuengine::serialize {
-enum class SerializeTypeTag : std::uint32_t {
+enum class SERIALIZE_TYPE_TAG : std::uint32_t {
     UInt32 = 1U,
     Int32 = 2U,
     UInt64 = 3U,

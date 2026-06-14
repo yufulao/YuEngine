@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::object {
-enum class ObjectStatus {
+enum class OBJECT_STATUS {
     Success,
     InvalidType,
     CapacityExceeded,

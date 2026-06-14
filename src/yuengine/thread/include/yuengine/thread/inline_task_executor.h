@@ -6,6 +6,6 @@
 namespace yuengine::thread {
 class InlineTaskExecutor final {
 public:
-    TaskStatus Execute(TaskCallback callback, void* context);
+    TASK_STATUS Execute(TaskCallback callback, void* context);
 };
 }
