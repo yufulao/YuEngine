@@ -56,7 +56,7 @@ bool ServiceRegistry::RegisterRaw(std::string_view ownerModule, std::string_view
         return false;
     }
 
-    _services.emplace(serviceKey, ServiceRecord{service, serviceType, std::string(ownerModule)});
+    _services.emplace(serviceKey, service_record_t{service, serviceType, std::string(ownerModule)});
     return true;
 }
 

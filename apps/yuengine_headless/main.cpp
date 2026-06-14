@@ -9,7 +9,7 @@ using DisabledLogSink = yuengine::diagnostics::DisabledLogSink;
 using EngineKernel = yuengine::kernel::EngineKernel;
 using FixedFrameClock = yuengine::platform::FixedFrameClock;
 using HeadlessHost = yuengine::platform::HeadlessHost;
-using HeadlessHostConfig = yuengine::platform::HeadlessHostConfig;
+using headless_host_config_t = yuengine::platform::headless_host_config_t;
 using HostStatus = yuengine::platform::HostStatus;
 using KernelHostRuntime = yuengine::kernel::KernelHostRuntime;
 
@@ -24,7 +24,7 @@ int main() {
     KernelHostRuntime runtime(kernel);
     HeadlessHost host(frameClock, logSink);
 
-    const HeadlessHostConfig config{TICK_COUNT};
+    const headless_host_config_t config{TICK_COUNT};
     const auto result = host.Run(runtime, config);
     if (result.Status == HostStatus::Success) {
         return 0;

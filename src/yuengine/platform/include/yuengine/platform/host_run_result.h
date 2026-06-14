@@ -10,7 +10,7 @@
 namespace yuengine::platform {
 using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
 
-struct HostRunResult {
+struct host_run_result_t {
     HostStatus Status;
     std::uint32_t TickCount;
     std::vector<std::uint64_t> TickTimesNanoseconds;

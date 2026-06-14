@@ -17,21 +17,21 @@ HeadlessHost::HeadlessHost(IFrameClock& frameClock, diagnostics::ILogSink& logSi
       _logSink(logSink) {
 }
 
-HostRunResult HeadlessHost::Run(IHostRuntime& runtime, const HeadlessHostConfig& config) {
-    HostRunResult result{
+host_run_result_t HeadlessHost::Run(IHostRuntime& runtime, const headless_host_config_t& config) {
+    host_run_result_t result{
         HostStatus::Success,
         0U,
         std::vector<std::uint64_t>(),
         std::vector<std::string>(),
         std::string(),
-        PlatformPerformanceSignal::AllocationAccountingStatus};
+        platform_performance_signal_t::AllocationAccountingStatus};
     result.TickTimesNanoseconds.reserve(config.TickCount);
     result.LifecycleTrace.reserve((static_cast<std::size_t>(config.TickCount) * 2U) + 4U);
 
     result.LifecycleTrace.push_back(HOST_START_TRACE);
     _logSink.Write(diagnostics::LogLevel::Info, "host start");
 
-    const HostError startError = runtime.Start(result.LifecycleTrace);
+    const host_error_t startError = runtime.Start(result.LifecycleTrace);
     if (!startError.Succeeded) {
         result.Status = HostStatus::StartupFailure;
         result.ErrorMessage = startError.Message;
@@ -44,10 +44,10 @@ HostRunResult HeadlessHost::Run(IHostRuntime& runtime, const HeadlessHostConfig&
         result.LifecycleTrace.push_back(HOST_TICK_TRACE);
         _logSink.Write(diagnostics::LogLevel::Info, "host tick");
 
-        const HostError tickError = runtime.Tick(frameIndex, tickTimeNanoseconds, result.LifecycleTrace);
+        const host_error_t tickError = runtime.Tick(frameIndex, tickTimeNanoseconds, result.LifecycleTrace);
         if (!tickError.Succeeded) {
             result.LifecycleTrace.push_back(HOST_SHUTDOWN_TRACE);
-            const HostError tickShutdownError = runtime.Shutdown(result.LifecycleTrace);
+            const host_error_t tickShutdownError = runtime.Shutdown(result.LifecycleTrace);
             if (!tickShutdownError.Succeeded) {
                 result.Status = HostStatus::ShutdownFailure;
                 result.ErrorMessage = tickShutdownError.Message;
@@ -65,7 +65,7 @@ HostRunResult HeadlessHost::Run(IHostRuntime& runtime, const HeadlessHostConfig&
     result.LifecycleTrace.push_back(HOST_SHUTDOWN_TRACE);
     _logSink.Write(diagnostics::LogLevel::Info, "host shutdown");
 
-    const HostError shutdownError = runtime.Shutdown(result.LifecycleTrace);
+    const host_error_t shutdownError = runtime.Shutdown(result.LifecycleTrace);
     if (!shutdownError.Succeeded) {
         result.Status = HostStatus::ShutdownFailure;
         result.ErrorMessage = shutdownError.Message;

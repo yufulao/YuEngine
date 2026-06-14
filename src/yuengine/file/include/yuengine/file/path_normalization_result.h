@@ -4,12 +4,12 @@
 #include "yuengine/file/normalized_path.h"
 
 namespace yuengine::file {
-struct PathNormalizationResult {
+struct path_normalization_result_t {
     FileStatus Status;
     NormalizedPath Path;
 
-    static PathNormalizationResult Success(NormalizedPath path);
-    static PathNormalizationResult Failure(FileStatus status);
+    static path_normalization_result_t Success(NormalizedPath path);
+    static path_normalization_result_t Failure(FileStatus status);
     bool Succeeded() const;
 };
 }
