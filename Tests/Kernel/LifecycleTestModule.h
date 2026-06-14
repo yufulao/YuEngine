@@ -17,17 +17,17 @@ public:
     LifecycleTestModule(
         std::string name,
         std::vector<std::string_view> dependencies,
-        bool failOnStart,
-        bool failOnShutdown = false,
-        bool verifyRequiredServicesOnShutdown = false)
+        bool fail_on_start,
+        bool fail_on_shutdown = false,
+        bool verify_required_services_on_shutdown = false)
         : name_(std::move(name)),
           dependencies_(std::move(dependencies)),
           required_services_(),
           published_services_(),
-          fail_on_start_(failOnStart),
+          fail_on_start_(fail_on_start),
           fail_on_update_(false),
-          fail_on_shutdown_(failOnShutdown),
-          verify_required_services_on_shutdown_(verifyRequiredServicesOnShutdown),
+          fail_on_shutdown_(fail_on_shutdown),
+          verify_required_services_on_shutdown_(verify_required_services_on_shutdown),
           service_registry_(nullptr),
           published_service_value_(0) {
     }
@@ -35,20 +35,20 @@ public:
     LifecycleTestModule(
         std::string name,
         std::vector<std::string_view> dependencies,
-        std::vector<std::string_view> requiredServices,
-        std::vector<std::string_view> publishedServices,
-        bool failOnStart,
-        bool failOnUpdate,
-        bool failOnShutdown = false,
-        bool verifyRequiredServicesOnShutdown = false)
+        std::vector<std::string_view> required_services,
+        std::vector<std::string_view> published_services,
+        bool fail_on_start,
+        bool fail_on_update,
+        bool fail_on_shutdown = false,
+        bool verify_required_services_on_shutdown = false)
         : name_(std::move(name)),
           dependencies_(std::move(dependencies)),
-          required_services_(std::move(requiredServices)),
-          published_services_(std::move(publishedServices)),
-          fail_on_start_(failOnStart),
-          fail_on_update_(failOnUpdate),
-          fail_on_shutdown_(failOnShutdown),
-          verify_required_services_on_shutdown_(verifyRequiredServicesOnShutdown),
+          required_services_(std::move(required_services)),
+          published_services_(std::move(published_services)),
+          fail_on_start_(fail_on_start),
+          fail_on_update_(fail_on_update),
+          fail_on_shutdown_(fail_on_shutdown),
+          verify_required_services_on_shutdown_(verify_required_services_on_shutdown),
           service_registry_(nullptr),
           published_service_value_(7) {
     }
@@ -69,12 +69,12 @@ public:
         return published_services_;
     }
 
-    KernelResult Start(ServiceRegistry& serviceRegistry, std::vector<std::string>& lifecycleTrace) override {
-        service_registry_ = &serviceRegistry;
-        lifecycleTrace.push_back(std::string("module.start.") + name_);
+    KernelResult Start(ServiceRegistry& service_registry, std::vector<std::string>& lifecycle_trace) override {
+        service_registry_ = &service_registry;
+        lifecycle_trace.push_back(std::string("module.start.") + name_);
 
-        for (const std::string_view publishedService : published_services_) {
-            const bool registered = serviceRegistry.Register<int>(name_, publishedService, published_service_value_);
+        for (const std::string_view published_service : published_services_) {
+            const bool registered = service_registry.Register<int>(name_, published_service, published_service_value_);
             if (!registered) {
                 return KernelResult::Failure(KernelStatus::DuplicateService, DUPLICATE_SERVICE_MESSAGE);
             }
@@ -87,10 +87,10 @@ public:
         return KernelResult::Success();
     }
 
-    KernelResult Update(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) override {
-        static_cast<void>(frameIndex);
-        static_cast<void>(tickTimeNanoseconds);
-        lifecycleTrace.push_back(std::string("module.update.") + name_);
+    KernelResult Update(std::uint32_t frame_index, std::uint64_t tick_time_nanoseconds, std::vector<std::string>& lifecycle_trace) override {
+        static_cast<void>(frame_index);
+        static_cast<void>(tick_time_nanoseconds);
+        lifecycle_trace.push_back(std::string("module.update.") + name_);
 
         if (fail_on_update_) {
             return KernelResult::Failure(KernelStatus::UpdateFailure, UPDATE_FAILURE_MESSAGE);
@@ -99,16 +99,16 @@ public:
         return KernelResult::Success();
     }
 
-    KernelResult Shutdown(std::vector<std::string>& lifecycleTrace) override {
-        lifecycleTrace.push_back(std::string("module.shutdown.") + name_);
+    KernelResult Shutdown(std::vector<std::string>& lifecycle_trace) override {
+        lifecycle_trace.push_back(std::string("module.shutdown.") + name_);
         if (fail_on_shutdown_) {
             return KernelResult::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
         }
 
         if (verify_required_services_on_shutdown_) {
-            const KernelResult serviceVerificationResult = VerifyRequiredServicesOnShutdown();
-            if (!serviceVerificationResult.succeeded) {
-                return serviceVerificationResult;
+            const KernelResult service_verification_result = VerifyRequiredServicesOnShutdown();
+            if (!service_verification_result.succeeded) {
+                return service_verification_result;
             }
         }
 
@@ -122,8 +122,8 @@ private:
             return KernelResult::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
         }
 
-        for (const std::string_view requiredService : required_services_) {
-            if (service_registry_->Resolve<int>(requiredService) == nullptr) {
+        for (const std::string_view required_service : required_services_) {
+            if (service_registry_->Resolve<int>(required_service) == nullptr) {
                 return KernelResult::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
             }
         }

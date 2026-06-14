@@ -71,20 +71,20 @@ using TestFunction = int (*)();
 
 class TraceRuntime final : public IHostRuntime {
 public:
-    HostError Start(std::vector<std::string>& lifecycleTrace) override {
-        lifecycleTrace.push_back("runtime.start");
+    HostError Start(std::vector<std::string>& lifecycle_trace) override {
+        lifecycle_trace.push_back("runtime.start");
         return HostError::Success();
     }
 
-    HostError Tick(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) override {
-        static_cast<void>(frameIndex);
-        static_cast<void>(tickTimeNanoseconds);
-        lifecycleTrace.push_back("runtime.tick");
+    HostError Tick(std::uint32_t frame_index, std::uint64_t tick_time_nanoseconds, std::vector<std::string>& lifecycle_trace) override {
+        static_cast<void>(frame_index);
+        static_cast<void>(tick_time_nanoseconds);
+        lifecycle_trace.push_back("runtime.tick");
         return HostError::Success();
     }
 
-    HostError Shutdown(std::vector<std::string>& lifecycleTrace) override {
-        lifecycleTrace.push_back("runtime.shutdown");
+    HostError Shutdown(std::vector<std::string>& lifecycle_trace) override {
+        lifecycle_trace.push_back("runtime.shutdown");
         return HostError::Success();
     }
 };
@@ -101,8 +101,8 @@ DiagnosticsChannelConfig TestChannelConfig() {
 
 BoundedDiagnosticsChannel CreateRegisteredChannel() {
     BoundedDiagnosticsChannel channel(TestChannelConfig());
-    const auto eventStatus = channel.RegisterEventId(DiagnosticsEventId{EVENT_ID});
-    if (eventStatus != DiagnosticsStatus::Success) {
+    const auto event_status = channel.RegisterEventId(DiagnosticsEventId{EVENT_ID});
+    if (event_status != DiagnosticsStatus::Success) {
         return channel;
     }
 
@@ -113,44 +113,44 @@ BoundedDiagnosticsChannel CreateRegisteredChannel() {
 }
 
 int LoggingDisabledSinkDoesNotChangeBehavior() {
-    BoundedInMemoryLogSink recordingLogSink(LOG_CAPACITY);
-    FixedFrameClock recordingClock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
-    TraceRuntime recordingRuntime;
-    HeadlessHost recordingHost(recordingClock, recordingLogSink);
+    BoundedInMemoryLogSink recording_log_sink(LOG_CAPACITY);
+    FixedFrameClock recording_clock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
+    TraceRuntime recording_runtime;
+    HeadlessHost recording_host(recording_clock, recording_log_sink);
 
     const HeadlessHostConfig config{TICK_COUNT};
-    const auto recordingResult = recordingHost.Run(recordingRuntime, config);
-    if (recordingResult.status != HostStatus::Success) {
+    const auto recording_result = recording_host.Run(recording_runtime, config);
+    if (recording_result.status != HostStatus::Success) {
         return Fail("recording host run failed");
     }
 
-    DisabledLogSink disabledLogSink;
-    FixedFrameClock disabledClock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
-    TraceRuntime disabledRuntime;
-    HeadlessHost disabledHost(disabledClock, disabledLogSink);
+    DisabledLogSink disabled_log_sink;
+    FixedFrameClock disabled_clock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
+    TraceRuntime disabled_runtime;
+    HeadlessHost disabled_host(disabled_clock, disabled_log_sink);
 
-    const auto disabledResult = disabledHost.Run(disabledRuntime, config);
-    if (disabledResult.status != HostStatus::Success) {
+    const auto disabled_result = disabled_host.Run(disabled_runtime, config);
+    if (disabled_result.status != HostStatus::Success) {
         return Fail("disabled host run failed");
     }
 
-    if (recordingResult.lifecycle_trace != disabledResult.lifecycle_trace) {
+    if (recording_result.lifecycle_trace != disabled_result.lifecycle_trace) {
         return Fail("disabled logging changed lifecycle behavior");
     }
 
-    if (recordingResult.tick_times_nanoseconds != disabledResult.tick_times_nanoseconds) {
+    if (recording_result.tick_times_nanoseconds != disabled_result.tick_times_nanoseconds) {
         return Fail("disabled logging changed timer behavior");
     }
 
-    if (recordingLogSink.Events().empty()) {
+    if (recording_log_sink.Events().empty()) {
         return Fail("recording logging did not observe host events");
     }
 
-    if (recordingLogSink.DroppedCount() != 0U) {
+    if (recording_log_sink.DroppedCount() != 0U) {
         return Fail("bounded in-memory sink dropped unexpected events");
     }
 
-    if (disabledLogSink.IsEnabled()) {
+    if (disabled_log_sink.IsEnabled()) {
         return Fail("disabled sink reported enabled");
     }
 
@@ -158,18 +158,18 @@ int LoggingDisabledSinkDoesNotChangeBehavior() {
 }
 
 int DiagnosticsDisabledChannelDoesNotChangeBehavior() {
-    DisabledDiagnosticsChannel disabledChannel;
-    const auto eventStatus = disabledChannel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
-    if (eventStatus != DiagnosticsStatus::Disabled) {
+    DisabledDiagnosticsChannel disabled_channel;
+    const auto event_status = disabled_channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
+    if (event_status != DiagnosticsStatus::Disabled) {
         return Fail("disabled diagnostics channel did not return disabled status");
     }
 
-    const auto counterStatus = disabledChannel.IncrementCounter(DiagnosticsCounterId{COUNTER_ID});
-    if (counterStatus != DiagnosticsStatus::Disabled) {
+    const auto counter_status = disabled_channel.IncrementCounter(DiagnosticsCounterId{COUNTER_ID});
+    if (counter_status != DiagnosticsStatus::Disabled) {
         return Fail("disabled diagnostics counter did not return disabled status");
     }
 
-    const DiagnosticsSnapshot snapshot = disabledChannel.Snapshot();
+    const DiagnosticsSnapshot snapshot = disabled_channel.Snapshot();
     if (snapshot.enabled) {
         return Fail("disabled diagnostics snapshot reported enabled");
     }
@@ -182,8 +182,8 @@ int DiagnosticsDisabledChannelDoesNotChangeBehavior() {
         return Fail("disabled diagnostics channel accepted a counter update");
     }
 
-    HostStatus explicitRuntimeStatus = HostStatus::Success;
-    if (explicitRuntimeStatus != HostStatus::Success) {
+    HostStatus explicit_runtime_status = HostStatus::Success;
+    if (explicit_runtime_status != HostStatus::Success) {
         return Fail("disabled diagnostics changed explicit runtime status");
     }
 
@@ -192,13 +192,13 @@ int DiagnosticsDisabledChannelDoesNotChangeBehavior() {
 
 int DiagnosticsBoundedChannelRecordsEventsAndCounters() {
     BoundedDiagnosticsChannel channel = CreateRegisteredChannel();
-    const auto eventStatus = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
-    if (eventStatus != DiagnosticsStatus::Success) {
+    const auto event_status = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
+    if (event_status != DiagnosticsStatus::Success) {
         return Fail("bounded diagnostics channel rejected valid event");
     }
 
-    const auto counterStatus = channel.AddCounter(DiagnosticsCounterId{COUNTER_ID}, COUNTER_DELTA);
-    if (counterStatus != DiagnosticsStatus::Success) {
+    const auto counter_status = channel.AddCounter(DiagnosticsCounterId{COUNTER_ID}, COUNTER_DELTA);
+    if (counter_status != DiagnosticsStatus::Success) {
         return Fail("bounded diagnostics channel rejected valid counter update");
     }
 
@@ -224,18 +224,18 @@ int DiagnosticsBoundedChannelRecordsEventsAndCounters() {
 
 int DiagnosticsBoundedChannelDropsWhenFull() {
     BoundedDiagnosticsChannel channel = CreateRegisteredChannel();
-    const auto firstStatus = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
-    const auto secondStatus = channel.RecordEvent(DiagnosticsEventId{SECOND_EVENT_ID}, EVENT_PAYLOAD);
-    const auto thirdStatus = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
-    if (firstStatus != DiagnosticsStatus::Success) {
+    const auto first_status = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
+    const auto second_status = channel.RecordEvent(DiagnosticsEventId{SECOND_EVENT_ID}, EVENT_PAYLOAD);
+    const auto third_status = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
+    if (first_status != DiagnosticsStatus::Success) {
         return Fail("first event was not accepted");
     }
 
-    if (secondStatus != DiagnosticsStatus::Success) {
+    if (second_status != DiagnosticsStatus::Success) {
         return Fail("second event was not accepted");
     }
 
-    if (thirdStatus != DiagnosticsStatus::Dropped) {
+    if (third_status != DiagnosticsStatus::Dropped) {
         return Fail("full diagnostics channel did not return dropped status");
     }
 
@@ -287,32 +287,32 @@ int DiagnosticsChannelStoppedDoesNotMutateAfterShutdown() {
     BoundedDiagnosticsChannel channel = CreateRegisteredChannel();
     channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
     channel.IncrementCounter(DiagnosticsCounterId{COUNTER_ID});
-    const auto shutdownStatus = channel.Shutdown();
-    if (shutdownStatus != DiagnosticsStatus::Success) {
+    const auto shutdown_status = channel.Shutdown();
+    if (shutdown_status != DiagnosticsStatus::Success) {
         return Fail("diagnostics channel shutdown failed");
     }
 
-    const DiagnosticsSnapshot beforeRecord = channel.Snapshot();
-    const auto eventStatus = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
-    const auto counterStatus = channel.IncrementCounter(DiagnosticsCounterId{COUNTER_ID});
-    const DiagnosticsSnapshot afterRecord = channel.Snapshot();
-    if (eventStatus != DiagnosticsStatus::Stopped) {
+    const DiagnosticsSnapshot before_record = channel.Snapshot();
+    const auto event_status = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
+    const auto counter_status = channel.IncrementCounter(DiagnosticsCounterId{COUNTER_ID});
+    const DiagnosticsSnapshot after_record = channel.Snapshot();
+    if (event_status != DiagnosticsStatus::Stopped) {
         return Fail("stopped diagnostics channel did not reject event");
     }
 
-    if (counterStatus != DiagnosticsStatus::Stopped) {
+    if (counter_status != DiagnosticsStatus::Stopped) {
         return Fail("stopped diagnostics channel did not reject counter update");
     }
 
-    if (afterRecord.accepted_event_count != beforeRecord.accepted_event_count) {
+    if (after_record.accepted_event_count != before_record.accepted_event_count) {
         return Fail("stopped diagnostics channel mutated accepted event count");
     }
 
-    if (afterRecord.successful_counter_update_count != beforeRecord.successful_counter_update_count) {
+    if (after_record.successful_counter_update_count != before_record.successful_counter_update_count) {
         return Fail("stopped diagnostics channel mutated counter update count");
     }
 
-    if (afterRecord.counters[0U].value != beforeRecord.counters[0U].value) {
+    if (after_record.counters[0U].value != before_record.counters[0U].value) {
         return Fail("stopped diagnostics channel mutated counter value");
     }
 
@@ -321,13 +321,13 @@ int DiagnosticsChannelStoppedDoesNotMutateAfterShutdown() {
 
 int DiagnosticsChannelRejectsUnknownIdsWhenValidationEnabled() {
     BoundedDiagnosticsChannel channel = CreateRegisteredChannel();
-    const auto eventStatus = channel.RecordEvent(DiagnosticsEventId{UNKNOWN_EVENT_ID}, EVENT_PAYLOAD);
-    const auto counterStatus = channel.IncrementCounter(DiagnosticsCounterId{UNKNOWN_COUNTER_ID});
-    if (eventStatus != DiagnosticsStatus::UnknownEventId) {
+    const auto event_status = channel.RecordEvent(DiagnosticsEventId{UNKNOWN_EVENT_ID}, EVENT_PAYLOAD);
+    const auto counter_status = channel.IncrementCounter(DiagnosticsCounterId{UNKNOWN_COUNTER_ID});
+    if (event_status != DiagnosticsStatus::UnknownEventId) {
         return Fail("unknown diagnostics event id was not rejected");
     }
 
-    if (counterStatus != DiagnosticsStatus::UnknownCounterId) {
+    if (counter_status != DiagnosticsStatus::UnknownCounterId) {
         return Fail("unknown diagnostics counter id was not rejected");
     }
 
@@ -345,24 +345,24 @@ int DiagnosticsChannelRejectsUnknownIdsWhenValidationEnabled() {
 
 int DiagnosticsCounterOverflowReturnsExplicitStatusAndDoesNotMutate() {
     BoundedDiagnosticsChannel channel = CreateRegisteredChannel();
-    const std::uint64_t maxValue = std::numeric_limits<std::uint64_t>::max();
-    const auto firstStatus = channel.AddCounter(DiagnosticsCounterId{COUNTER_ID}, maxValue);
-    const DiagnosticsSnapshot beforeOverflow = channel.Snapshot();
-    const auto overflowStatus = channel.AddCounter(DiagnosticsCounterId{COUNTER_ID}, 1U);
-    const DiagnosticsSnapshot afterOverflow = channel.Snapshot();
-    if (firstStatus != DiagnosticsStatus::Success) {
+    const std::uint64_t max_value = std::numeric_limits<std::uint64_t>::max();
+    const auto first_status = channel.AddCounter(DiagnosticsCounterId{COUNTER_ID}, max_value);
+    const DiagnosticsSnapshot before_overflow = channel.Snapshot();
+    const auto overflow_status = channel.AddCounter(DiagnosticsCounterId{COUNTER_ID}, 1U);
+    const DiagnosticsSnapshot after_overflow = channel.Snapshot();
+    if (first_status != DiagnosticsStatus::Success) {
         return Fail("counter max setup update failed");
     }
 
-    if (overflowStatus != DiagnosticsStatus::CounterOverflow) {
+    if (overflow_status != DiagnosticsStatus::CounterOverflow) {
         return Fail("counter overflow did not return explicit status");
     }
 
-    if (afterOverflow.counters[0U].value != beforeOverflow.counters[0U].value) {
+    if (after_overflow.counters[0U].value != before_overflow.counters[0U].value) {
         return Fail("counter overflow mutated counter value");
     }
 
-    if (afterOverflow.successful_counter_update_count != beforeOverflow.successful_counter_update_count) {
+    if (after_overflow.successful_counter_update_count != before_overflow.successful_counter_update_count) {
         return Fail("counter overflow mutated successful update count");
     }
 
@@ -370,20 +370,20 @@ int DiagnosticsCounterOverflowReturnsExplicitStatusAndDoesNotMutate() {
 }
 
 int DiagnosticsNoReportDependencyForRuntimeResults() {
-    DisabledLogSink logSink;
-    FixedFrameClock frameClock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
+    DisabledLogSink log_sink;
+    FixedFrameClock frame_clock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
     TraceRuntime runtime;
-    HeadlessHost host(frameClock, logSink);
+    HeadlessHost host(frame_clock, log_sink);
     BoundedDiagnosticsChannel channel = CreateRegisteredChannel();
 
     const HeadlessHostConfig config{TICK_COUNT};
     const auto result = host.Run(runtime, config);
-    const auto eventStatus = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
+    const auto event_status = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
     if (result.status != HostStatus::Success) {
         return Fail("host result depended on diagnostics output");
     }
 
-    if (eventStatus != DiagnosticsStatus::Success) {
+    if (event_status != DiagnosticsStatus::Success) {
         return Fail("diagnostics event fixture was not accepted");
     }
 
@@ -414,7 +414,7 @@ int main(int argc, char** argv) {
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::unordered_map<std::string_view, TestFunction> testRegistry{
+    const std::unordered_map<std::string_view, TestFunction> test_registry{
         {TEST_DISABLED_LOGGING, LoggingDisabledSinkDoesNotChangeBehavior},
         {TEST_DISABLED_CHANNEL, DiagnosticsDisabledChannelDoesNotChangeBehavior},
         {TEST_RECORDS_EVENTS_COUNTERS, DiagnosticsBoundedChannelRecordsEventsAndCounters},
@@ -426,11 +426,11 @@ int main(int argc, char** argv) {
         {TEST_NO_REPORT_DEPENDENCY, DiagnosticsNoReportDependencyForRuntimeResults},
         {TEST_MEMORY_SIGNAL, DiagnosticsNoHiddenAllocationUsesYuMemorySignal}};
 
-    const std::string_view testName(argv[1]);
-    const auto testIterator = testRegistry.find(testName);
-    if (testIterator == testRegistry.end()) {
+    const std::string_view test_name(argv[1]);
+    const auto test_iterator = test_registry.find(test_name);
+    if (test_iterator == test_registry.end()) {
         return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    return testIterator->second();
+    return test_iterator->second();
 }

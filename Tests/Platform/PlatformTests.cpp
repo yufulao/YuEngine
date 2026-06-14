@@ -38,20 +38,20 @@ using TestFunction = int (*)();
 
 class TraceRuntime final : public IHostRuntime {
 public:
-    HostError Start(std::vector<std::string>& lifecycleTrace) override {
-        lifecycleTrace.push_back("runtime.start");
+    HostError Start(std::vector<std::string>& lifecycle_trace) override {
+        lifecycle_trace.push_back("runtime.start");
         return HostError::Success();
     }
 
-    HostError Tick(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) override {
-        static_cast<void>(frameIndex);
-        static_cast<void>(tickTimeNanoseconds);
-        lifecycleTrace.push_back("runtime.tick");
+    HostError Tick(std::uint32_t frame_index, std::uint64_t tick_time_nanoseconds, std::vector<std::string>& lifecycle_trace) override {
+        static_cast<void>(frame_index);
+        static_cast<void>(tick_time_nanoseconds);
+        lifecycle_trace.push_back("runtime.tick");
         return HostError::Success();
     }
 
-    HostError Shutdown(std::vector<std::string>& lifecycleTrace) override {
-        lifecycleTrace.push_back("runtime.shutdown");
+    HostError Shutdown(std::vector<std::string>& lifecycle_trace) override {
+        lifecycle_trace.push_back("runtime.shutdown");
         return HostError::Success();
     }
 };
@@ -63,10 +63,10 @@ int Fail(const std::string& message) {
 }
 
 int HostStartTickShutdownDeterministic() {
-    BoundedInMemoryLogSink logSink(LOG_CAPACITY);
-    FixedFrameClock frameClock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
+    BoundedInMemoryLogSink log_sink(LOG_CAPACITY);
+    FixedFrameClock frame_clock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
     TraceRuntime runtime;
-    HeadlessHost host(frameClock, logSink);
+    HeadlessHost host(frame_clock, log_sink);
 
     const HeadlessHostConfig config{DETERMINISTIC_TICK_COUNT};
     const auto result = host.Run(runtime, config);
@@ -78,7 +78,7 @@ int HostStartTickShutdownDeterministic() {
         return Fail("host tick count was not deterministic");
     }
 
-    const std::vector<std::string> expectedTrace{
+    const std::vector<std::string> expected_trace{
         "host.start",
         "runtime.start",
         "host.tick",
@@ -90,7 +90,7 @@ int HostStartTickShutdownDeterministic() {
         "host.shutdown",
         "runtime.shutdown"};
 
-    if (result.lifecycle_trace != expectedTrace) {
+    if (result.lifecycle_trace != expected_trace) {
         return Fail("host lifecycle trace did not match expected order");
     }
 
@@ -98,7 +98,7 @@ int HostStartTickShutdownDeterministic() {
         return Fail("allocation accounting status is missing");
     }
 
-    if (logSink.Events().empty()) {
+    if (log_sink.Events().empty()) {
         return Fail("recording log sink did not receive host events");
     }
 
@@ -106,10 +106,10 @@ int HostStartTickShutdownDeterministic() {
 }
 
 int HostTimerMonotonicForFixedTicks() {
-    BoundedInMemoryLogSink logSink(LOG_CAPACITY);
-    FixedFrameClock frameClock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
+    BoundedInMemoryLogSink log_sink(LOG_CAPACITY);
+    FixedFrameClock frame_clock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
     TraceRuntime runtime;
-    HeadlessHost host(frameClock, logSink);
+    HeadlessHost host(frame_clock, log_sink);
 
     const HeadlessHostConfig config{TIMER_TICK_COUNT};
     const auto result = host.Run(runtime, config);
@@ -135,10 +135,10 @@ int HostTimerMonotonicForFixedTicks() {
 }
 
 int PlatformAllocationAccountingStatusUsesMemoryHook() {
-    BoundedInMemoryLogSink logSink(LOG_CAPACITY);
-    FixedFrameClock frameClock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
+    BoundedInMemoryLogSink log_sink(LOG_CAPACITY);
+    FixedFrameClock frame_clock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
     TraceRuntime runtime;
-    HeadlessHost host(frameClock, logSink);
+    HeadlessHost host(frame_clock, log_sink);
 
     const HeadlessHostConfig config{DETERMINISTIC_TICK_COUNT};
     const auto result = host.Run(runtime, config);
@@ -155,16 +155,16 @@ int main(int argc, char** argv) {
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::unordered_map<std::string_view, TestFunction> testRegistry{
+    const std::unordered_map<std::string_view, TestFunction> test_registry{
         {TEST_HOST, HostStartTickShutdownDeterministic},
         {TEST_TIMER, HostTimerMonotonicForFixedTicks},
         {TEST_MEMORY_STATUS, PlatformAllocationAccountingStatusUsesMemoryHook}};
 
-    const std::string_view testName(argv[1]);
-    const auto testIterator = testRegistry.find(testName);
-    if (testIterator == testRegistry.end()) {
+    const std::string_view test_name(argv[1]);
+    const auto test_iterator = test_registry.find(test_name);
+    if (test_iterator == test_registry.end()) {
         return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    return testIterator->second();
+    return test_iterator->second();
 }

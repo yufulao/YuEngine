@@ -105,18 +105,18 @@ PackageEntryDescriptor Entry(
     PackageId package,
     PackageEntryId entry,
     ResourceTypeId type,
-    const char* logicalKey,
-    const char* sourceKey,
-    std::uint32_t byteOffset = 0U,
-    std::uint32_t byteSize = 16U) {
+    const char* logical_key,
+    const char* source_key,
+    std::uint32_t byte_offset = 0U,
+    std::uint32_t byte_size = 16U) {
     return PackageEntryDescriptor{
         package,
         entry,
         type,
-        ResourceLogicalKey(logicalKey),
-        PackageSourceKey(sourceKey),
-        byteOffset,
-        byteSize};
+        ResourceLogicalKey(logical_key),
+        PackageSourceKey(source_key),
+        byte_offset,
+        byte_size};
 }
 
 PackageRegistrationResult RegisterManifest(PackageRegistry& registry, PackageId package = PACKAGE_A) {
@@ -127,11 +127,11 @@ PackageRegistrationResult RegisterEntry(
     PackageRegistry& registry,
     PackageEntryId entry,
     ResourceTypeId type,
-    const char* logicalKey,
-    const char* sourceKey,
-    std::uint32_t byteOffset = 0U,
-    std::uint32_t byteSize = 16U) {
-    return registry.RegisterEntry(Entry(PACKAGE_A, entry, type, logicalKey, sourceKey, byteOffset, byteSize));
+    const char* logical_key,
+    const char* source_key,
+    std::uint32_t byte_offset = 0U,
+    std::uint32_t byte_size = 16U) {
+    return registry.RegisterEntry(Entry(PACKAGE_A, entry, type, logical_key, source_key, byte_offset, byte_size));
 }
 
 bool CoreCountsMatch(const PackageSnapshot& left, const PackageSnapshot& right) {
@@ -199,13 +199,13 @@ int PackageRegisterDuplicateManifestReturnsExplicitStatus() {
         return Fail("first manifest registration failed");
     }
 
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageSnapshot before_snapshot = registry.Snapshot();
     const PackageRegistrationResult duplicate = RegisterManifest(registry);
     if (duplicate.status != PackageStatus::DuplicateManifest) {
         return Fail("duplicate manifest did not return explicit status");
     }
 
-    if (registry.Snapshot().manifest_count != beforeSnapshot.manifest_count) {
+    if (registry.Snapshot().manifest_count != before_snapshot.manifest_count) {
         return Fail("duplicate manifest changed manifest count");
     }
 
@@ -240,14 +240,14 @@ int PackageRegisterDuplicateEntryReturnsExplicitStatus() {
     RegisterManifest(registry);
     RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin");
 
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageSnapshot before_snapshot = registry.Snapshot();
     const PackageRegistrationResult duplicate =
         RegisterEntry(registry, ENTRY_TEXTURE, TYPE_MATERIAL, "material_a", "materials/material_a.bin");
     if (duplicate.status != PackageStatus::DuplicateEntry) {
         return Fail("duplicate entry did not return explicit status");
     }
 
-    if (registry.Snapshot().entry_count != beforeSnapshot.entry_count) {
+    if (registry.Snapshot().entry_count != before_snapshot.entry_count) {
         return Fail("duplicate entry changed entry count");
     }
 
@@ -259,7 +259,7 @@ int PackageRegisterDuplicateResourceKeyReturnsExplicitStatus() {
     RegisterManifest(registry);
     RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin");
 
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageSnapshot before_snapshot = registry.Snapshot();
     const PackageRegistrationResult duplicate = RegisterEntry(
         registry,
         ENTRY_MATERIAL,
@@ -270,7 +270,7 @@ int PackageRegisterDuplicateResourceKeyReturnsExplicitStatus() {
         return Fail("duplicate resource key did not return explicit status");
     }
 
-    if (registry.Snapshot().entry_count != beforeSnapshot.entry_count) {
+    if (registry.Snapshot().entry_count != before_snapshot.entry_count) {
         return Fail("duplicate resource key changed entry count");
     }
 
@@ -281,7 +281,7 @@ int PackageRegisterInvalidIdsOrTypeReturnsExplicitStatusWithoutMutation() {
     PackageRegistry registry;
     RegisterManifest(registry);
 
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageSnapshot before_snapshot = registry.Snapshot();
     if (registry.RegisterSyntheticManifest({PackageId{}}).status != PackageStatus::InvalidPackageId) {
         return Fail("invalid package id did not return explicit status");
     }
@@ -306,7 +306,7 @@ int PackageRegisterInvalidIdsOrTypeReturnsExplicitStatusWithoutMutation() {
         return Fail("invalid logical key did not return explicit status");
     }
 
-    if (!CoreCountsMatch(beforeSnapshot, registry.Snapshot())) {
+    if (!CoreCountsMatch(before_snapshot, registry.Snapshot())) {
         return Fail("invalid descriptor changed core package counters");
     }
 
@@ -317,13 +317,13 @@ int PackageManifestCapacityOverflowDoesNotMutate() {
     PackageRegistry registry(PackageRegistryDesc{1U, 4U, 4U, 4U});
     RegisterManifest(registry, PACKAGE_A);
 
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageSnapshot before_snapshot = registry.Snapshot();
     const PackageRegistrationResult overflow = RegisterManifest(registry, PACKAGE_B);
     if (overflow.status != PackageStatus::ManifestCapacityExceeded) {
         return Fail("manifest capacity overflow did not return explicit status");
     }
 
-    if (registry.Snapshot().manifest_count != beforeSnapshot.manifest_count) {
+    if (registry.Snapshot().manifest_count != before_snapshot.manifest_count) {
         return Fail("manifest capacity overflow changed manifest count");
     }
 
@@ -335,14 +335,14 @@ int PackageEntryCapacityOverflowDoesNotMutate() {
     RegisterManifest(registry);
     RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin");
 
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageSnapshot before_snapshot = registry.Snapshot();
     const PackageRegistrationResult overflow =
         RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin");
     if (overflow.status != PackageStatus::EntryCapacityExceeded) {
         return Fail("entry capacity overflow did not return explicit status");
     }
 
-    if (registry.Snapshot().entry_count != beforeSnapshot.entry_count) {
+    if (registry.Snapshot().entry_count != before_snapshot.entry_count) {
         return Fail("entry capacity overflow changed entry count");
     }
 
@@ -352,23 +352,23 @@ int PackageEntryCapacityOverflowDoesNotMutate() {
 int PackageRegisterEntryRejectsOversizedKeysWithoutMutation() {
     PackageRegistry registry;
     RegisterManifest(registry);
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageSnapshot before_snapshot = registry.Snapshot();
 
-    const std::string longLogicalKey(MAX_LOGICAL_KEY_BYTES + 1U, 'a');
-    const PackageRegistrationResult longLogical = registry.RegisterEntry(
-        Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, longLogicalKey.c_str(), "textures/texture_a.bin"));
-    if (longLogical.status != PackageStatus::LogicalKeyTooLong) {
+    const std::string long_logical_key(MAX_LOGICAL_KEY_BYTES + 1U, 'a');
+    const PackageRegistrationResult long_logical = registry.RegisterEntry(
+        Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, long_logical_key.c_str(), "textures/texture_a.bin"));
+    if (long_logical.status != PackageStatus::LogicalKeyTooLong) {
         return Fail("oversized logical key did not return explicit status");
     }
 
-    const std::string longSourceKey(MAX_PACKAGE_SOURCE_KEY_BYTES + 1U, 'a');
-    const PackageRegistrationResult longSource =
-        registry.RegisterEntry(Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", longSourceKey.c_str()));
-    if (longSource.status != PackageStatus::SourceKeyTooLong) {
+    const std::string long_source_key(MAX_PACKAGE_SOURCE_KEY_BYTES + 1U, 'a');
+    const PackageRegistrationResult long_source =
+        registry.RegisterEntry(Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", long_source_key.c_str()));
+    if (long_source.status != PackageStatus::SourceKeyTooLong) {
         return Fail("oversized source key did not return explicit status");
     }
 
-    if (registry.Snapshot().entry_count != beforeSnapshot.entry_count) {
+    if (registry.Snapshot().entry_count != before_snapshot.entry_count) {
         return Fail("oversized keys changed entry count");
     }
 
@@ -378,9 +378,9 @@ int PackageRegisterEntryRejectsOversizedKeysWithoutMutation() {
 int PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation() {
     PackageRegistry registry;
     RegisterManifest(registry);
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageSnapshot before_snapshot = registry.Snapshot();
 
-    const PackageRegistrationResult tooLarge = RegisterEntry(
+    const PackageRegistrationResult too_large = RegisterEntry(
         registry,
         ENTRY_TEXTURE,
         TYPE_TEXTURE,
@@ -388,7 +388,7 @@ int PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation() {
         "textures/texture_a.bin",
         0U,
         MAX_DECLARED_ENTRY_SIZE + 1U);
-    if (tooLarge.status != PackageStatus::ByteRangeOutOfBounds) {
+    if (too_large.status != PackageStatus::ByteRangeOutOfBounds) {
         return Fail("oversized byte range did not return explicit status");
     }
 
@@ -404,7 +404,7 @@ int PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation() {
         return Fail("overflow byte range did not return explicit status");
     }
 
-    if (registry.Snapshot().entry_count != beforeSnapshot.entry_count) {
+    if (registry.Snapshot().entry_count != before_snapshot.entry_count) {
         return Fail("oversized byte range changed entry count");
     }
 
@@ -498,9 +498,9 @@ int PackageIndexedLookupsPreserveStatusOrderAndCapacities() {
         return Fail(ERROR_INDEX_AUDIO_FAILED);
     }
 
-    const PackageRegistrationResult materialResult =
+    const PackageRegistrationResult material_result =
         RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, INDEX_MATERIAL_LOGICAL, INDEX_MATERIAL_SOURCE);
-    if (!materialResult.Succeeded()) {
+    if (!material_result.Succeeded()) {
         return Fail(ERROR_INDEX_MATERIAL_FAILED);
     }
 
@@ -512,27 +512,27 @@ int PackageIndexedLookupsPreserveStatusOrderAndCapacities() {
         return Fail(ERROR_INDEX_MATERIAL_EDGE_FAILED);
     }
 
-    const PackageSnapshot beforeDuplicate = registry.Snapshot();
+    const PackageSnapshot before_duplicate = registry.Snapshot();
     if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO) != PackageStatus::Success) {
         return Fail(ERROR_INDEX_DUPLICATE_EDGE_FAILED);
     }
 
-    if (registry.Snapshot().dependency_edge_count != beforeDuplicate.dependency_edge_count) {
+    if (registry.Snapshot().dependency_edge_count != before_duplicate.dependency_edge_count) {
         return Fail(ERROR_INDEX_DUPLICATE_EDGE_MUTATED);
     }
 
-    const PackageSnapshot beforeMismatch = registry.Snapshot();
+    const PackageSnapshot before_mismatch = registry.Snapshot();
     const PackageLoadPlanResult mismatch =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey(INDEX_TEXTURE_LOGICAL));
     if (mismatch.status != PackageStatus::TypeMismatch) {
         return Fail(ERROR_INDEX_TYPE_MISMATCH_STATUS);
     }
 
-    if (registry.Snapshot().load_plan_resolve_count != beforeMismatch.load_plan_resolve_count) {
+    if (registry.Snapshot().load_plan_resolve_count != before_mismatch.load_plan_resolve_count) {
         return Fail(ERROR_INDEX_TYPE_MISMATCH_MUTATED);
     }
 
-    const PackageSnapshot beforeResolve = registry.Snapshot();
+    const PackageSnapshot before_resolve = registry.Snapshot();
     const PackageLoadPlanResult result =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey(INDEX_TEXTURE_LOGICAL));
     if (!result.Succeeded()) {
@@ -555,20 +555,20 @@ int PackageIndexedLookupsPreserveStatusOrderAndCapacities() {
         return Fail(ERROR_INDEX_ROOT_RECORD);
     }
 
-    const PackageSnapshot afterResolve = registry.Snapshot();
-    if (afterResolve.manifest_capacity != beforeResolve.manifest_capacity) {
+    const PackageSnapshot after_resolve = registry.Snapshot();
+    if (after_resolve.manifest_capacity != before_resolve.manifest_capacity) {
         return Fail(ERROR_INDEX_MANIFEST_CAPACITY);
     }
 
-    if (afterResolve.entry_capacity != beforeResolve.entry_capacity) {
+    if (after_resolve.entry_capacity != before_resolve.entry_capacity) {
         return Fail(ERROR_INDEX_ENTRY_CAPACITY);
     }
 
-    if (afterResolve.dependency_edge_capacity != beforeResolve.dependency_edge_capacity) {
+    if (after_resolve.dependency_edge_capacity != before_resolve.dependency_edge_capacity) {
         return Fail(ERROR_INDEX_DEPENDENCY_CAPACITY);
     }
 
-    if (afterResolve.load_plan_record_capacity != beforeResolve.load_plan_record_capacity) {
+    if (after_resolve.load_plan_record_capacity != before_resolve.load_plan_record_capacity) {
         return Fail(ERROR_INDEX_LOAD_PLAN_CAPACITY);
     }
 
@@ -577,14 +577,14 @@ int PackageIndexedLookupsPreserveStatusOrderAndCapacities() {
 
 int PackageResolveRejectsUnknownResourceKey() {
     PackageRegistry registry = CreateResolvedRegistry();
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageSnapshot before_snapshot = registry.Snapshot();
     const PackageLoadPlanResult result =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("missing_texture"));
     if (result.status != PackageStatus::NotFound) {
         return Fail("unknown resource key did not return explicit status");
     }
 
-    if (registry.Snapshot().load_plan_resolve_count != beforeSnapshot.load_plan_resolve_count) {
+    if (registry.Snapshot().load_plan_resolve_count != before_snapshot.load_plan_resolve_count) {
         return Fail("unknown resource key changed load-plan resolve count");
     }
 
@@ -593,18 +593,18 @@ int PackageResolveRejectsUnknownResourceKey() {
 
 int PackageResolveRejectsTypeMismatchWithoutMutation() {
     PackageRegistry registry = CreateResolvedRegistry();
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageSnapshot before_snapshot = registry.Snapshot();
     const PackageLoadPlanResult result =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey("texture_a"));
     if (result.status != PackageStatus::TypeMismatch) {
         return Fail("type mismatch did not return explicit status");
     }
 
-    if (registry.Snapshot().load_plan_resolve_count != beforeSnapshot.load_plan_resolve_count) {
+    if (registry.Snapshot().load_plan_resolve_count != before_snapshot.load_plan_resolve_count) {
         return Fail("type mismatch changed load-plan resolve count");
     }
 
-    if (registry.Snapshot().last_load_plan_record_count != beforeSnapshot.last_load_plan_record_count) {
+    if (registry.Snapshot().last_load_plan_record_count != before_snapshot.last_load_plan_record_count) {
         return Fail("type mismatch changed last load-plan record count");
     }
 
@@ -672,10 +672,10 @@ int PackageDependencyValidationRejectsCycleAfterHighFanout() {
     RegisterManifest(registry);
     for (std::uint32_t index = 1U; index <= MAX_PACKAGE_ENTRY_COUNT; ++index) {
         const std::string suffix = std::to_string(index);
-        const std::string logicalKey = "entry_" + suffix;
-        const std::string sourceKey = "package/entry_" + suffix + ".bin";
+        const std::string logical_key = "entry_" + suffix;
+        const std::string source_key = "package/entry_" + suffix + ".bin";
         const PackageRegistrationResult result =
-            registry.RegisterEntry(Entry(PACKAGE_A, PackageEntryId{index}, TYPE_TEXTURE, logicalKey.c_str(), sourceKey.c_str()));
+            registry.RegisterEntry(Entry(PACKAGE_A, PackageEntryId{index}, TYPE_TEXTURE, logical_key.c_str(), source_key.c_str()));
         if (!result.Succeeded()) {
             return Fail("high-fanout cycle fixture failed to register entries");
         }
@@ -703,13 +703,13 @@ int PackageDependencyValidationRejectsCycleAfterHighFanout() {
         return Fail("high-fanout cycle fixture failed to add target path edge");
     }
 
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
-    const PackageStatus cycleStatus = registry.AddDependency(PACKAGE_A, target, start);
-    if (cycleStatus != PackageStatus::DependencyCycle) {
+    const PackageSnapshot before_snapshot = registry.Snapshot();
+    const PackageStatus cycle_status = registry.AddDependency(PACKAGE_A, target, start);
+    if (cycle_status != PackageStatus::DependencyCycle) {
         return Fail("high-fanout dependency path did not return explicit cycle status");
     }
 
-    if (registry.Snapshot().dependency_edge_count != beforeSnapshot.dependency_edge_count) {
+    if (registry.Snapshot().dependency_edge_count != before_snapshot.dependency_edge_count) {
         return Fail("high-fanout cycle dependency changed dependency edge count");
     }
 
@@ -750,13 +750,13 @@ int PackageDependencyCapacityOverflowDoesNotMutate() {
     RegisterEntry(registry, ENTRY_AUDIO, TYPE_AUDIO, "audio_a", "audio/audio_a.bin");
     registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
 
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageSnapshot before_snapshot = registry.Snapshot();
     const PackageStatus overflow = registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO);
     if (overflow != PackageStatus::DependencyCapacityExceeded) {
         return Fail("dependency capacity overflow did not return explicit status");
     }
 
-    if (registry.Snapshot().dependency_edge_count != beforeSnapshot.dependency_edge_count) {
+    if (registry.Snapshot().dependency_edge_count != before_snapshot.dependency_edge_count) {
         return Fail("dependency capacity overflow changed edge count");
     }
 
@@ -770,18 +770,18 @@ int PackageLoadPlanCapacityOverflowDoesNotMutate() {
     RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin");
     registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL);
 
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
+    const PackageSnapshot before_snapshot = registry.Snapshot();
     const PackageLoadPlanResult result =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
     if (result.status != PackageStatus::LoadPlanCapacityExceeded) {
         return Fail("load-plan capacity overflow did not return explicit status");
     }
 
-    if (registry.Snapshot().load_plan_resolve_count != beforeSnapshot.load_plan_resolve_count) {
+    if (registry.Snapshot().load_plan_resolve_count != before_snapshot.load_plan_resolve_count) {
         return Fail("load-plan capacity overflow changed resolve count");
     }
 
-    if (registry.Snapshot().last_load_plan_record_count != beforeSnapshot.last_load_plan_record_count) {
+    if (registry.Snapshot().last_load_plan_record_count != before_snapshot.last_load_plan_record_count) {
         return Fail("load-plan capacity overflow changed plan record count");
     }
 
@@ -789,26 +789,26 @@ int PackageLoadPlanCapacityOverflowDoesNotMutate() {
 }
 
 int PackageDisabledDiagnosticsDoesNotChangeResults() {
-    PackageRegistry recordingRegistry = CreateResolvedRegistry();
-    PackageRegistry disabledRegistry = CreateResolvedRegistry();
+    PackageRegistry recording_registry = CreateResolvedRegistry();
+    PackageRegistry disabled_registry = CreateResolvedRegistry();
 
-    const PackageLoadPlanResult recordingResult =
-        recordingRegistry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
-    const PackageLoadPlanResult disabledResult =
-        disabledRegistry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
-    if (recordingResult.status != disabledResult.status) {
+    const PackageLoadPlanResult recording_result =
+        recording_registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
+    const PackageLoadPlanResult disabled_result =
+        disabled_registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
+    if (recording_result.status != disabled_result.status) {
         return Fail("disabled diagnostics changed resolve status");
     }
 
-    const PackageLoadPlanResult recordingFailure =
-        recordingRegistry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey("texture_a"));
-    const PackageLoadPlanResult disabledFailure =
-        disabledRegistry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey("texture_a"));
-    if (recordingFailure.status != disabledFailure.status) {
+    const PackageLoadPlanResult recording_failure =
+        recording_registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey("texture_a"));
+    const PackageLoadPlanResult disabled_failure =
+        disabled_registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey("texture_a"));
+    if (recording_failure.status != disabled_failure.status) {
         return Fail("disabled diagnostics changed failure status");
     }
 
-    if (!SnapshotsMatch(recordingRegistry.Snapshot(), disabledRegistry.Snapshot())) {
+    if (!SnapshotsMatch(recording_registry.Snapshot(), disabled_registry.Snapshot())) {
         return Fail("disabled diagnostics changed package snapshot");
     }
 
@@ -832,8 +832,8 @@ int PackageNoFileReadOriginalPackageOrGameAdapterDependency() {
 
 int PackageNoHiddenAllocationUsesYuMemorySignal() {
     PackageRegistry registry = CreateResolvedRegistry();
-    const PackageSnapshot beforeSnapshot = registry.Snapshot();
-    if (beforeSnapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    const PackageSnapshot before_snapshot = registry.Snapshot();
+    if (before_snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("package registry did not expose YuMemory accounting vocabulary");
     }
 
@@ -843,24 +843,24 @@ int PackageNoHiddenAllocationUsesYuMemorySignal() {
         return Fail("resolve failed");
     }
 
-    const PackageSnapshot afterSnapshot = registry.Snapshot();
-    if (afterSnapshot.manifest_capacity != beforeSnapshot.manifest_capacity) {
+    const PackageSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.manifest_capacity != before_snapshot.manifest_capacity) {
         return Fail("manifest capacity changed during resolve");
     }
 
-    if (afterSnapshot.entry_capacity != beforeSnapshot.entry_capacity) {
+    if (after_snapshot.entry_capacity != before_snapshot.entry_capacity) {
         return Fail("entry capacity changed during resolve");
     }
 
-    if (afterSnapshot.dependency_edge_capacity != beforeSnapshot.dependency_edge_capacity) {
+    if (after_snapshot.dependency_edge_capacity != before_snapshot.dependency_edge_capacity) {
         return Fail("dependency capacity changed during resolve");
     }
 
-    if (afterSnapshot.load_plan_record_capacity != beforeSnapshot.load_plan_record_capacity) {
+    if (after_snapshot.load_plan_record_capacity != before_snapshot.load_plan_record_capacity) {
         return Fail("load-plan capacity changed during resolve");
     }
 
-    if (afterSnapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (after_snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("package registry changed allocation accounting vocabulary");
     }
 
@@ -873,7 +873,7 @@ int main(int argc, char** argv) {
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::unordered_map<std::string_view, TestFunction> testRegistry{
+    const std::unordered_map<std::string_view, TestFunction> test_registry{
         {TEST_REGISTER_MANIFEST, PackageRegisterSyntheticManifestReturnsStableId},
         {TEST_DUPLICATE_MANIFEST, PackageRegisterDuplicateManifestReturnsExplicitStatus},
         {TEST_REGISTER_ENTRY, PackageRegisterEntryReturnsStableEntryId},
@@ -899,11 +899,11 @@ int main(int argc, char** argv) {
         {TEST_NO_FILE_ORIGINAL, PackageNoFileReadOriginalPackageOrGameAdapterDependency},
         {TEST_NO_HIDDEN_ALLOCATION, PackageNoHiddenAllocationUsesYuMemorySignal}};
 
-    const std::string_view testName(argv[1]);
-    const auto testIterator = testRegistry.find(testName);
-    if (testIterator == testRegistry.end()) {
+    const std::string_view test_name(argv[1]);
+    const auto test_iterator = test_registry.find(test_name);
+    if (test_iterator == test_registry.end()) {
         return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    return testIterator->second();
+    return test_iterator->second();
 }

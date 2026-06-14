@@ -84,31 +84,31 @@ int Fail(const std::string& message) {
 
 int KernelModuleLifecycleDependencyOrder() {
     EngineKernel kernel;
-    LifecycleTestModule moduleA(MODULE_A, std::vector<std::string_view>(), false);
-    LifecycleTestModule moduleB(MODULE_B, std::vector<std::string_view>{MODULE_A}, false);
-    LifecycleTestModule moduleC(MODULE_C, std::vector<std::string_view>{MODULE_B}, false);
-    std::vector<std::string> lifecycleTrace;
+    LifecycleTestModule module_a(MODULE_A, std::vector<std::string_view>(), false);
+    LifecycleTestModule module_b(MODULE_B, std::vector<std::string_view>{MODULE_A}, false);
+    LifecycleTestModule module_c(MODULE_C, std::vector<std::string_view>{MODULE_B}, false);
+    std::vector<std::string> lifecycle_trace;
 
-    kernel.RegisterModule(moduleC);
-    kernel.RegisterModule(moduleB);
-    kernel.RegisterModule(moduleA);
+    kernel.RegisterModule(module_c);
+    kernel.RegisterModule(module_b);
+    kernel.RegisterModule(module_a);
 
-    const auto startResult = kernel.Start(lifecycleTrace);
-    if (!startResult.succeeded) {
+    const auto start_result = kernel.Start(lifecycle_trace);
+    if (!start_result.succeeded) {
         return Fail("kernel startup failed");
     }
 
-    const auto updateResult = kernel.Update(FRAME_INDEX, TICK_TIME_NANOSECONDS, lifecycleTrace);
-    if (!updateResult.succeeded) {
+    const auto update_result = kernel.Update(FRAME_INDEX, TICK_TIME_NANOSECONDS, lifecycle_trace);
+    if (!update_result.succeeded) {
         return Fail("kernel update failed");
     }
 
-    const auto shutdownResult = kernel.Shutdown(lifecycleTrace);
-    if (!shutdownResult.succeeded) {
+    const auto shutdown_result = kernel.Shutdown(lifecycle_trace);
+    if (!shutdown_result.succeeded) {
         return Fail("kernel shutdown failed");
     }
 
-    const std::vector<std::string> expectedTrace{
+    const std::vector<std::string> expected_trace{
         "kernel.start",
         "module.start.A",
         "module.start.B",
@@ -122,20 +122,20 @@ int KernelModuleLifecycleDependencyOrder() {
         "module.shutdown.B",
         "module.shutdown.A"};
 
-    if (lifecycleTrace != expectedTrace) {
+    if (lifecycle_trace != expected_trace) {
         return Fail("kernel lifecycle order did not match dependency order");
     }
 
-    EngineKernel updateFailureKernel;
-    LifecycleTestModule updateModuleA(MODULE_A, std::vector<std::string_view>(), false);
-    LifecycleTestModule updateModuleB(
+    EngineKernel update_failure_kernel;
+    LifecycleTestModule update_module_a(MODULE_A, std::vector<std::string_view>(), false);
+    LifecycleTestModule update_module_b(
         MODULE_B,
         std::vector<std::string_view>{MODULE_A},
         std::vector<std::string_view>(),
         std::vector<std::string_view>{SERVICE_B},
         false,
         true);
-    LifecycleTestModule updateModuleC(
+    LifecycleTestModule update_module_c(
         MODULE_C,
         std::vector<std::string_view>{MODULE_B},
         std::vector<std::string_view>{SERVICE_B},
@@ -144,36 +144,36 @@ int KernelModuleLifecycleDependencyOrder() {
         false,
         false,
         true);
-    std::vector<std::string> updateFailureTrace;
+    std::vector<std::string> update_failure_trace;
 
-    updateFailureKernel.RegisterModule(updateModuleA);
-    updateFailureKernel.RegisterModule(updateModuleB);
-    updateFailureKernel.RegisterModule(updateModuleC);
+    update_failure_kernel.RegisterModule(update_module_a);
+    update_failure_kernel.RegisterModule(update_module_b);
+    update_failure_kernel.RegisterModule(update_module_c);
 
-    const auto updateFailureStart = updateFailureKernel.Start(updateFailureTrace);
-    if (!updateFailureStart.succeeded) {
+    const auto update_failure_start = update_failure_kernel.Start(update_failure_trace);
+    if (!update_failure_start.succeeded) {
         return Fail("update failure setup did not start");
     }
 
-    const auto updateFailureResult = updateFailureKernel.Update(FRAME_INDEX, TICK_TIME_NANOSECONDS, updateFailureTrace);
-    if (updateFailureResult.succeeded) {
+    const auto update_failure_result = update_failure_kernel.Update(FRAME_INDEX, TICK_TIME_NANOSECONDS, update_failure_trace);
+    if (update_failure_result.succeeded) {
         return Fail("kernel update failure was not surfaced");
     }
 
-    if (updateFailureResult.status != KernelStatus::UpdateFailure) {
+    if (update_failure_result.status != KernelStatus::UpdateFailure) {
         return Fail("kernel update failure had wrong status");
     }
 
-    if (updateFailureKernel.Services().Resolve<int>(SERVICE_B) != nullptr) {
+    if (update_failure_kernel.Services().Resolve<int>(SERVICE_B) != nullptr) {
         return Fail("failed module service was not deregistered after update failure");
     }
 
-    const auto updateFailureShutdownResult = updateFailureKernel.Shutdown(updateFailureTrace);
-    if (!updateFailureShutdownResult.succeeded) {
+    const auto update_failure_shutdown_result = update_failure_kernel.Shutdown(update_failure_trace);
+    if (!update_failure_shutdown_result.succeeded) {
         return Fail(UPDATE_FAILURE_SHUTDOWN_MESSAGE);
     }
 
-    const std::vector<std::string> expectedUpdateFailureTrace{
+    const std::vector<std::string> expected_update_failure_trace{
         "kernel.start",
         "module.start.A",
         "module.start.B",
@@ -186,42 +186,42 @@ int KernelModuleLifecycleDependencyOrder() {
         TRACE_KERNEL_SHUTDOWN,
         TRACE_MODULE_SHUTDOWN_A};
 
-    if (updateFailureTrace != expectedUpdateFailureTrace) {
+    if (update_failure_trace != expected_update_failure_trace) {
         return Fail("update failure did not stop failed module and dependents in reverse order");
     }
 
-    EngineKernel independentUpdateFailureKernel;
-    LifecycleTestModule independentModuleA(MODULE_A, std::vector<std::string_view>(), false);
-    LifecycleTestModule independentModuleB(
+    EngineKernel independent_update_failure_kernel;
+    LifecycleTestModule independent_module_a(MODULE_A, std::vector<std::string_view>(), false);
+    LifecycleTestModule independent_module_b(
         MODULE_B,
         std::vector<std::string_view>{MODULE_A},
         std::vector<std::string_view>(),
         std::vector<std::string_view>{SERVICE_B},
         false,
         true);
-    LifecycleTestModule independentModuleC(MODULE_C, std::vector<std::string_view>(), false);
-    std::vector<std::string> independentUpdateFailureTrace;
+    LifecycleTestModule independent_module_c(MODULE_C, std::vector<std::string_view>(), false);
+    std::vector<std::string> independent_update_failure_trace;
 
-    independentUpdateFailureKernel.RegisterModule(independentModuleA);
-    independentUpdateFailureKernel.RegisterModule(independentModuleB);
-    independentUpdateFailureKernel.RegisterModule(independentModuleC);
+    independent_update_failure_kernel.RegisterModule(independent_module_a);
+    independent_update_failure_kernel.RegisterModule(independent_module_b);
+    independent_update_failure_kernel.RegisterModule(independent_module_c);
 
-    const auto independentUpdateFailureStart = independentUpdateFailureKernel.Start(independentUpdateFailureTrace);
-    if (!independentUpdateFailureStart.succeeded) {
+    const auto independent_update_failure_start = independent_update_failure_kernel.Start(independent_update_failure_trace);
+    if (!independent_update_failure_start.succeeded) {
         return Fail("independent update failure setup did not start");
     }
 
-    const auto independentUpdateFailureResult = independentUpdateFailureKernel.Update(FRAME_INDEX, TICK_TIME_NANOSECONDS, independentUpdateFailureTrace);
-    if (independentUpdateFailureResult.succeeded) {
+    const auto independent_update_failure_result = independent_update_failure_kernel.Update(FRAME_INDEX, TICK_TIME_NANOSECONDS, independent_update_failure_trace);
+    if (independent_update_failure_result.succeeded) {
         return Fail("independent update failure was not surfaced");
     }
 
-    const auto independentShutdownResult = independentUpdateFailureKernel.Shutdown(independentUpdateFailureTrace);
-    if (!independentShutdownResult.succeeded) {
+    const auto independent_shutdown_result = independent_update_failure_kernel.Shutdown(independent_update_failure_trace);
+    if (!independent_shutdown_result.succeeded) {
         return Fail("independent update failure cleanup shutdown failed");
     }
 
-    const std::vector<std::string> expectedIndependentUpdateFailureTrace{
+    const std::vector<std::string> expected_independent_update_failure_trace{
         "kernel.start",
         "module.start.A",
         "module.start.B",
@@ -234,7 +234,7 @@ int KernelModuleLifecycleDependencyOrder() {
         "module.shutdown.C",
         "module.shutdown.A"};
 
-    if (independentUpdateFailureTrace != expectedIndependentUpdateFailureTrace) {
+    if (independent_update_failure_trace != expected_independent_update_failure_trace) {
         return Fail("update failure stopped an independent later-started module");
     }
 
@@ -260,23 +260,23 @@ int KernelDependencyChainServiceLookupUsesModuleNameIndex() {
         false,
         false,
         true);
-    std::vector<std::string> lifecycleTrace;
+    std::vector<std::string> lifecycle_trace;
 
     kernel.RegisterModule(consumer);
     kernel.RegisterModule(relay);
     kernel.RegisterModule(provider);
 
-    const auto startResult = kernel.Start(lifecycleTrace);
-    if (!startResult.succeeded) {
+    const auto start_result = kernel.Start(lifecycle_trace);
+    if (!start_result.succeeded) {
         return Fail(DEPENDENCY_CHAIN_LOOKUP_START_MESSAGE);
     }
 
-    const auto shutdownResult = kernel.Shutdown(lifecycleTrace);
-    if (!shutdownResult.succeeded) {
+    const auto shutdown_result = kernel.Shutdown(lifecycle_trace);
+    if (!shutdown_result.succeeded) {
         return Fail(DEPENDENCY_CHAIN_LOOKUP_SHUTDOWN_MESSAGE);
     }
 
-    const std::vector<std::string> expectedTrace{
+    const std::vector<std::string> expected_trace{
         TRACE_KERNEL_START,
         TRACE_MODULE_START_A,
         TRACE_MODULE_START_B,
@@ -286,7 +286,7 @@ int KernelDependencyChainServiceLookupUsesModuleNameIndex() {
         TRACE_MODULE_SHUTDOWN_B,
         TRACE_MODULE_SHUTDOWN_A};
 
-    if (lifecycleTrace != expectedTrace) {
+    if (lifecycle_trace != expected_trace) {
         return Fail(DEPENDENCY_CHAIN_LOOKUP_TRACE_MESSAGE);
     }
 
@@ -295,36 +295,36 @@ int KernelDependencyChainServiceLookupUsesModuleNameIndex() {
 
 int KernelModuleStartupFailureTearsDownStartedModules() {
     EngineKernel kernel;
-    LifecycleTestModule moduleA(MODULE_A, std::vector<std::string_view>(), false);
-    LifecycleTestModule moduleFail(
+    LifecycleTestModule module_a(MODULE_A, std::vector<std::string_view>(), false);
+    LifecycleTestModule module_fail(
         MODULE_FAIL,
         std::vector<std::string_view>{MODULE_A},
         std::vector<std::string_view>(),
         std::vector<std::string_view>{SERVICE_A},
         true,
         false);
-    std::vector<std::string> lifecycleTrace;
+    std::vector<std::string> lifecycle_trace;
 
-    kernel.RegisterModule(moduleA);
-    kernel.RegisterModule(moduleFail);
+    kernel.RegisterModule(module_a);
+    kernel.RegisterModule(module_fail);
 
-    const auto startResult = kernel.Start(lifecycleTrace);
-    if (startResult.succeeded) {
+    const auto start_result = kernel.Start(lifecycle_trace);
+    if (start_result.succeeded) {
         return Fail("kernel startup failure was not surfaced");
     }
 
-    if (startResult.status != KernelStatus::StartupFailure) {
+    if (start_result.status != KernelStatus::StartupFailure) {
         return Fail("kernel startup failure had wrong status");
     }
 
-    const std::vector<std::string> expectedTrace{
+    const std::vector<std::string> expected_trace{
         "kernel.start",
         "module.start.A",
         "module.start.Fail",
         "module.shutdown.Fail",
         "module.shutdown.A"};
 
-    if (lifecycleTrace != expectedTrace) {
+    if (lifecycle_trace != expected_trace) {
         return Fail("startup failure did not tear down started modules deterministically");
     }
 
@@ -332,50 +332,50 @@ int KernelModuleStartupFailureTearsDownStartedModules() {
         return Fail("partial startup failure did not deregister published services");
     }
 
-    EngineKernel failureWithoutServiceKernel;
-    LifecycleTestModule moduleWithoutServiceA(MODULE_A, std::vector<std::string_view>(), false);
-    LifecycleTestModule moduleFailWithoutService(MODULE_FAIL, std::vector<std::string_view>{MODULE_A}, true);
-    std::vector<std::string> failureWithoutServiceTrace;
+    EngineKernel failure_without_service_kernel;
+    LifecycleTestModule module_without_service_a(MODULE_A, std::vector<std::string_view>(), false);
+    LifecycleTestModule module_fail_without_service(MODULE_FAIL, std::vector<std::string_view>{MODULE_A}, true);
+    std::vector<std::string> failure_without_service_trace;
 
-    failureWithoutServiceKernel.RegisterModule(moduleWithoutServiceA);
-    failureWithoutServiceKernel.RegisterModule(moduleFailWithoutService);
+    failure_without_service_kernel.RegisterModule(module_without_service_a);
+    failure_without_service_kernel.RegisterModule(module_fail_without_service);
 
-    const auto failureWithoutServiceResult = failureWithoutServiceKernel.Start(failureWithoutServiceTrace);
-    if (failureWithoutServiceResult.status != KernelStatus::StartupFailure) {
+    const auto failure_without_service_result = failure_without_service_kernel.Start(failure_without_service_trace);
+    if (failure_without_service_result.status != KernelStatus::StartupFailure) {
         return Fail(STARTUP_WITHOUT_SERVICE_STATUS_MESSAGE);
     }
 
-    const std::vector<std::string> expectedFailureWithoutServiceTrace{
+    const std::vector<std::string> expected_failure_without_service_trace{
         TRACE_KERNEL_START,
         TRACE_MODULE_START_A,
         TRACE_MODULE_START_FAIL,
         TRACE_MODULE_SHUTDOWN_FAIL,
         TRACE_MODULE_SHUTDOWN_A};
 
-    if (failureWithoutServiceTrace != expectedFailureWithoutServiceTrace) {
+    if (failure_without_service_trace != expected_failure_without_service_trace) {
         return Fail(STARTUP_WITHOUT_SERVICE_TRACE_MESSAGE);
     }
 
-    int failedStartupService = 10;
-    const bool failedStartupServiceRegistered =
-        failureWithoutServiceKernel.Services().Register<int>(MODULE_B, SERVICE_B, failedStartupService);
-    if (failedStartupServiceRegistered) {
+    int failed_startup_service = 10;
+    const bool failed_startup_service_registered =
+        failure_without_service_kernel.Services().Register<int>(MODULE_B, SERVICE_B, failed_startup_service);
+    if (failed_startup_service_registered) {
         return Fail(FAILED_START_SERVICE_REGISTRATION_MESSAGE);
     }
 
-    if (failureWithoutServiceKernel.Services().Resolve<int>(SERVICE_B) != nullptr) {
+    if (failure_without_service_kernel.Services().Resolve<int>(SERVICE_B) != nullptr) {
         return Fail(FAILED_START_SERVICE_RESOLVE_MESSAGE);
     }
 
-    EngineKernel cleanupFailureKernel;
-    LifecycleTestModule cleanupProvider(
+    EngineKernel cleanup_failure_kernel;
+    LifecycleTestModule cleanup_provider(
         MODULE_A,
         std::vector<std::string_view>(),
         std::vector<std::string_view>(),
         std::vector<std::string_view>{SERVICE_A},
         false,
         false);
-    LifecycleTestModule cleanupFailingModule(
+    LifecycleTestModule cleanup_failing_module(
         MODULE_FAIL,
         std::vector<std::string_view>{MODULE_A},
         std::vector<std::string_view>(),
@@ -383,122 +383,122 @@ int KernelModuleStartupFailureTearsDownStartedModules() {
         true,
         false,
         true);
-    std::vector<std::string> cleanupFailureTrace;
+    std::vector<std::string> cleanup_failure_trace;
 
-    cleanupFailureKernel.RegisterModule(cleanupProvider);
-    cleanupFailureKernel.RegisterModule(cleanupFailingModule);
+    cleanup_failure_kernel.RegisterModule(cleanup_provider);
+    cleanup_failure_kernel.RegisterModule(cleanup_failing_module);
 
-    const auto cleanupFailureResult = cleanupFailureKernel.Start(cleanupFailureTrace);
-    if (cleanupFailureResult.status != KernelStatus::ShutdownFailure) {
+    const auto cleanup_failure_result = cleanup_failure_kernel.Start(cleanup_failure_trace);
+    if (cleanup_failure_result.status != KernelStatus::ShutdownFailure) {
         return Fail(STARTUP_CLEANUP_FAILURE_STATUS_MESSAGE);
     }
 
-    const std::vector<std::string> expectedCleanupFailureTrace{
+    const std::vector<std::string> expected_cleanup_failure_trace{
         TRACE_KERNEL_START,
         TRACE_MODULE_START_A,
         TRACE_MODULE_START_FAIL,
         TRACE_MODULE_SHUTDOWN_FAIL,
         TRACE_MODULE_SHUTDOWN_A};
 
-    if (cleanupFailureTrace != expectedCleanupFailureTrace) {
+    if (cleanup_failure_trace != expected_cleanup_failure_trace) {
         return Fail(STARTUP_CLEANUP_FAILURE_TRACE_MESSAGE);
     }
 
-    if (cleanupFailureKernel.Services().Resolve<int>(SERVICE_A) != nullptr) {
+    if (cleanup_failure_kernel.Services().Resolve<int>(SERVICE_A) != nullptr) {
         return Fail(STARTUP_CLEANUP_FAILURE_PROVIDER_MESSAGE);
     }
 
-    if (cleanupFailureKernel.Services().Resolve<int>(SERVICE_B) != nullptr) {
+    if (cleanup_failure_kernel.Services().Resolve<int>(SERVICE_B) != nullptr) {
         return Fail(STARTUP_CLEANUP_FAILURE_FAILED_MESSAGE);
     }
 
-    EngineKernel missingServiceKernel;
-    LifecycleTestModule moduleRequiresMissing(
+    EngineKernel missing_service_kernel;
+    LifecycleTestModule module_requires_missing(
         MODULE_B,
         std::vector<std::string_view>(),
         std::vector<std::string_view>{MISSING_SERVICE},
         std::vector<std::string_view>(),
         false,
         false);
-    std::vector<std::string> missingServiceTrace;
+    std::vector<std::string> missing_service_trace;
 
-    missingServiceKernel.RegisterModule(moduleRequiresMissing);
+    missing_service_kernel.RegisterModule(module_requires_missing);
 
-    const auto missingServiceResult = missingServiceKernel.Start(missingServiceTrace);
-    if (missingServiceResult.succeeded) {
+    const auto missing_service_result = missing_service_kernel.Start(missing_service_trace);
+    if (missing_service_result.succeeded) {
         return Fail("missing required service did not block startup");
     }
 
-    if (missingServiceResult.status != KernelStatus::MissingService) {
+    if (missing_service_result.status != KernelStatus::MissingService) {
         return Fail("missing required service had wrong status");
     }
 
-    const std::vector<std::string> expectedMissingServiceTrace{"kernel.start"};
-    if (missingServiceTrace != expectedMissingServiceTrace) {
+    const std::vector<std::string> expected_missing_service_trace{"kernel.start"};
+    if (missing_service_trace != expected_missing_service_trace) {
         return Fail("missing required service ran module startup");
     }
 
-    EngineKernel selfRequiredServiceKernel;
-    LifecycleTestModule selfRequiredPublisher(
+    EngineKernel self_required_service_kernel;
+    LifecycleTestModule self_required_publisher(
         MODULE_A,
         std::vector<std::string_view>(),
         std::vector<std::string_view>{SERVICE_A},
         std::vector<std::string_view>{SERVICE_A},
         false,
         false);
-    std::vector<std::string> selfRequiredServiceTrace;
+    std::vector<std::string> self_required_service_trace;
 
-    selfRequiredServiceKernel.RegisterModule(selfRequiredPublisher);
+    self_required_service_kernel.RegisterModule(self_required_publisher);
 
-    const auto selfRequiredServiceResult = selfRequiredServiceKernel.Start(selfRequiredServiceTrace);
-    if (selfRequiredServiceResult.succeeded) {
+    const auto self_required_service_result = self_required_service_kernel.Start(self_required_service_trace);
+    if (self_required_service_result.succeeded) {
         return Fail(SELF_REQUIRED_SERVICE_MESSAGE);
     }
 
-    if (selfRequiredServiceResult.status != KernelStatus::MissingService) {
+    if (self_required_service_result.status != KernelStatus::MissingService) {
         return Fail(SELF_REQUIRED_SERVICE_STATUS_MESSAGE);
     }
 
-    const std::vector<std::string> expectedSelfRequiredServiceTrace{"kernel.start"};
-    if (selfRequiredServiceTrace != expectedSelfRequiredServiceTrace) {
+    const std::vector<std::string> expected_self_required_service_trace{"kernel.start"};
+    if (self_required_service_trace != expected_self_required_service_trace) {
         return Fail(SELF_REQUIRED_SERVICE_TRACE_MESSAGE);
     }
 
-    EngineKernel unguaranteedServiceKernel;
-    LifecycleTestModule providerModule(
+    EngineKernel unguaranteed_service_kernel;
+    LifecycleTestModule provider_module(
         MODULE_A,
         std::vector<std::string_view>(),
         std::vector<std::string_view>(),
         std::vector<std::string_view>{SERVICE_A},
         false,
         false);
-    LifecycleTestModule serviceConsumerWithoutDependency(
+    LifecycleTestModule service_consumer_without_dependency(
         MODULE_D,
         std::vector<std::string_view>(),
         std::vector<std::string_view>{SERVICE_A},
         std::vector<std::string_view>(),
         false,
         false);
-    std::vector<std::string> unguaranteedServiceTrace;
+    std::vector<std::string> unguaranteed_service_trace;
 
-    unguaranteedServiceKernel.RegisterModule(providerModule);
-    unguaranteedServiceKernel.RegisterModule(serviceConsumerWithoutDependency);
+    unguaranteed_service_kernel.RegisterModule(provider_module);
+    unguaranteed_service_kernel.RegisterModule(service_consumer_without_dependency);
 
-    const auto unguaranteedServiceResult = unguaranteedServiceKernel.Start(unguaranteedServiceTrace);
-    if (unguaranteedServiceResult.succeeded) {
+    const auto unguaranteed_service_result = unguaranteed_service_kernel.Start(unguaranteed_service_trace);
+    if (unguaranteed_service_result.succeeded) {
         return Fail("available service without dependency edge did not block startup");
     }
 
-    if (unguaranteedServiceResult.status != KernelStatus::MissingService) {
+    if (unguaranteed_service_result.status != KernelStatus::MissingService) {
         return Fail("unguaranteed service provider had wrong status");
     }
 
-    const std::vector<std::string> expectedUnguaranteedServiceTrace{
+    const std::vector<std::string> expected_unguaranteed_service_trace{
         "kernel.start",
         "module.start.A",
         "module.shutdown.A"};
 
-    if (unguaranteedServiceTrace != expectedUnguaranteedServiceTrace) {
+    if (unguaranteed_service_trace != expected_unguaranteed_service_trace) {
         return Fail("unguaranteed service provider ran consumer startup");
     }
 
@@ -506,45 +506,45 @@ int KernelModuleStartupFailureTearsDownStartedModules() {
 }
 
 int KernelServiceRegistryResolveAndMissingService() {
-    ServiceRegistry serviceRegistry;
+    ServiceRegistry service_registry;
     int service = 7;
-    const bool registered = serviceRegistry.Register<int>(MODULE_A, SERVICE_A, service);
+    const bool registered = service_registry.Register<int>(MODULE_A, SERVICE_A, service);
     if (!registered) {
         return Fail("registered service was rejected");
     }
 
-    int* resolvedService = serviceRegistry.Resolve<int>(SERVICE_A);
-    if (resolvedService == nullptr) {
+    int* resolved_service = service_registry.Resolve<int>(SERVICE_A);
+    if (resolved_service == nullptr) {
         return Fail("registered service did not resolve");
     }
 
-    if (*resolvedService != service) {
+    if (*resolved_service != service) {
         return Fail("registered service resolved to wrong instance");
     }
 
-    double* wrongTypeService = serviceRegistry.Resolve<double>(SERVICE_A);
-    if (wrongTypeService != nullptr) {
+    double* wrong_type_service = service_registry.Resolve<double>(SERVICE_A);
+    if (wrong_type_service != nullptr) {
         return Fail(WRONG_SERVICE_TYPE_MESSAGE);
     }
 
-    double* missingService = serviceRegistry.Resolve<double>(MISSING_SERVICE);
-    if (missingService != nullptr) {
+    double* missing_service = service_registry.Resolve<double>(MISSING_SERVICE);
+    if (missing_service != nullptr) {
         return Fail("missing service did not report missing");
     }
 
-    int duplicateService = 8;
-    const bool duplicateRegistered = serviceRegistry.Register<int>(MODULE_B, SERVICE_A, duplicateService);
-    if (duplicateRegistered) {
+    int duplicate_service = 8;
+    const bool duplicate_registered = service_registry.Register<int>(MODULE_B, SERVICE_A, duplicate_service);
+    if (duplicate_registered) {
         return Fail("duplicate service registration was not rejected");
     }
 
-    serviceRegistry.UnregisterOwner(MODULE_A);
-    if (serviceRegistry.Resolve<int>(SERVICE_A) != nullptr) {
+    service_registry.UnregisterOwner(MODULE_A);
+    if (service_registry.Resolve<int>(SERVICE_A) != nullptr) {
         return Fail("service owner deregistration did not remove service");
     }
 
-    const std::string lookupPolicy(ServiceRegistry::LookupPolicy);
-    if (lookupPolicy != "SETUP_PATH_ONLY_CACHE_POINTERS_FOR_HOT_PATHS") {
+    const std::string lookup_policy(ServiceRegistry::LookupPolicy);
+    if (lookup_policy != "SETUP_PATH_ONLY_CACHE_POINTERS_FOR_HOT_PATHS") {
         return Fail("service lookup policy was not explicit");
     }
 
@@ -552,97 +552,97 @@ int KernelServiceRegistryResolveAndMissingService() {
 }
 
 int KernelInvalidLifecycleRejectsOutOfOrderCalls() {
-    EngineKernel updateBeforeStartKernel;
-    std::vector<std::string> updateBeforeStartTrace;
+    EngineKernel update_before_start_kernel;
+    std::vector<std::string> update_before_start_trace;
 
-    const auto updateBeforeStartResult =
-        updateBeforeStartKernel.Update(FRAME_INDEX, TICK_TIME_NANOSECONDS, updateBeforeStartTrace);
-    if (updateBeforeStartResult.succeeded) {
+    const auto update_before_start_result =
+        update_before_start_kernel.Update(FRAME_INDEX, TICK_TIME_NANOSECONDS, update_before_start_trace);
+    if (update_before_start_result.succeeded) {
         return Fail(UPDATE_BEFORE_START_MESSAGE);
     }
 
-    if (updateBeforeStartResult.status != KernelStatus::InvalidLifecycle) {
+    if (update_before_start_result.status != KernelStatus::InvalidLifecycle) {
         return Fail(UPDATE_BEFORE_START_STATUS_MESSAGE);
     }
 
-    if (!updateBeforeStartTrace.empty()) {
+    if (!update_before_start_trace.empty()) {
         return Fail(UPDATE_BEFORE_START_TRACE_MESSAGE);
     }
 
-    EngineKernel shutdownBeforeStartKernel;
-    std::vector<std::string> shutdownBeforeStartTrace;
+    EngineKernel shutdown_before_start_kernel;
+    std::vector<std::string> shutdown_before_start_trace;
 
-    const auto shutdownBeforeStartResult = shutdownBeforeStartKernel.Shutdown(shutdownBeforeStartTrace);
-    if (shutdownBeforeStartResult.succeeded) {
+    const auto shutdown_before_start_result = shutdown_before_start_kernel.Shutdown(shutdown_before_start_trace);
+    if (shutdown_before_start_result.succeeded) {
         return Fail(SHUTDOWN_BEFORE_START_MESSAGE);
     }
 
-    if (shutdownBeforeStartResult.status != KernelStatus::InvalidLifecycle) {
+    if (shutdown_before_start_result.status != KernelStatus::InvalidLifecycle) {
         return Fail(SHUTDOWN_BEFORE_START_STATUS_MESSAGE);
     }
 
-    if (!shutdownBeforeStartTrace.empty()) {
+    if (!shutdown_before_start_trace.empty()) {
         return Fail(SHUTDOWN_BEFORE_START_TRACE_MESSAGE);
     }
 
-    EngineKernel preStartServiceKernel;
-    int preStartService = 8;
-    const bool preStartServiceRegistered =
-        preStartServiceKernel.Services().Register<int>(MODULE_A, SERVICE_A, preStartService);
-    if (preStartServiceRegistered) {
+    EngineKernel pre_start_service_kernel;
+    int pre_start_service = 8;
+    const bool pre_start_service_registered =
+        pre_start_service_kernel.Services().Register<int>(MODULE_A, SERVICE_A, pre_start_service);
+    if (pre_start_service_registered) {
         return Fail(PRESTART_SERVICE_REGISTRATION_MESSAGE);
     }
 
-    if (preStartServiceKernel.Services().Resolve<int>(SERVICE_A) != nullptr) {
+    if (pre_start_service_kernel.Services().Resolve<int>(SERVICE_A) != nullptr) {
         return Fail(PRESTART_SERVICE_RESOLVE_MESSAGE);
     }
 
-    EngineKernel duplicateStartKernel;
-    LifecycleTestModule moduleA(MODULE_A, std::vector<std::string_view>(), false);
-    LifecycleTestModule moduleB(MODULE_B, std::vector<std::string_view>(), false);
-    std::vector<std::string> duplicateStartTrace;
+    EngineKernel duplicate_start_kernel;
+    LifecycleTestModule module_a(MODULE_A, std::vector<std::string_view>(), false);
+    LifecycleTestModule module_b(MODULE_B, std::vector<std::string_view>(), false);
+    std::vector<std::string> duplicate_start_trace;
 
-    duplicateStartKernel.RegisterModule(moduleA);
+    duplicate_start_kernel.RegisterModule(module_a);
 
-    const auto firstStartResult = duplicateStartKernel.Start(duplicateStartTrace);
-    if (!firstStartResult.succeeded) {
+    const auto first_start_result = duplicate_start_kernel.Start(duplicate_start_trace);
+    if (!first_start_result.succeeded) {
         return Fail(DUPLICATE_START_SETUP_MESSAGE);
     }
 
-    const bool lateModuleRegistered = duplicateStartKernel.RegisterModule(moduleB);
-    if (lateModuleRegistered) {
+    const bool late_module_registered = duplicate_start_kernel.RegisterModule(module_b);
+    if (late_module_registered) {
         return Fail(LATE_REGISTRATION_MESSAGE);
     }
 
-    int runtimeService = 9;
-    const bool runtimeServiceRegistered = duplicateStartKernel.Services().Register<int>(MODULE_B, SERVICE_B, runtimeService);
-    if (runtimeServiceRegistered) {
+    int runtime_service = 9;
+    const bool runtime_service_registered = duplicate_start_kernel.Services().Register<int>(MODULE_B, SERVICE_B, runtime_service);
+    if (runtime_service_registered) {
         return Fail(RUNTIME_SERVICE_REGISTRATION_MESSAGE);
     }
 
-    if (duplicateStartKernel.Services().Resolve<int>(SERVICE_B) != nullptr) {
+    if (duplicate_start_kernel.Services().Resolve<int>(SERVICE_B) != nullptr) {
         return Fail(RUNTIME_SERVICE_RESOLVE_MESSAGE);
     }
 
-    const auto duplicateStartResult = duplicateStartKernel.Start(duplicateStartTrace);
-    if (duplicateStartResult.succeeded) {
+    const auto duplicate_start_result = duplicate_start_kernel.Start(duplicate_start_trace);
+    if (duplicate_start_result.succeeded) {
         return Fail(DUPLICATE_START_MESSAGE);
     }
 
-    if (duplicateStartResult.status != KernelStatus::InvalidLifecycle) {
+    if (duplicate_start_result.status != KernelStatus::InvalidLifecycle) {
         return Fail(DUPLICATE_START_STATUS_MESSAGE);
     }
 
-    const std::vector<std::string> expectedDuplicateStartTrace{
+    const std::vector<std::string> expected_duplicate_start_trace{
         TRACE_KERNEL_START,
         TRACE_MODULE_START_A};
 
-    if (duplicateStartTrace != expectedDuplicateStartTrace) {
+    if (duplicate_start_trace != expected_duplicate_start_trace) {
         return Fail(DUPLICATE_START_TRACE_MESSAGE);
     }
 
-    const auto shutdownResult = duplicateStartKernel.Shutdown(duplicateStartTrace);
-    if (!shutdownResult.succeeded) {
+    const auto shutdown_result = duplicate_start_kernel.Shutdown(duplicate_start_trace);
+    if (!shutdown_result.succeeded) {
         return Fail(DUPLICATE_START_SHUTDOWN_MESSAGE);
     }
 
@@ -655,18 +655,18 @@ int main(int argc, char** argv) {
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::unordered_map<std::string_view, TestFunction> testRegistry{
+    const std::unordered_map<std::string_view, TestFunction> test_registry{
         {TEST_LIFECYCLE, KernelModuleLifecycleDependencyOrder},
         {TEST_STARTUP_FAILURE, KernelModuleStartupFailureTearsDownStartedModules},
         {TEST_DEPENDENCY_CHAIN_SERVICE_LOOKUP, KernelDependencyChainServiceLookupUsesModuleNameIndex},
         {TEST_SERVICE_REGISTRY, KernelServiceRegistryResolveAndMissingService},
         {TEST_INVALID_LIFECYCLE, KernelInvalidLifecycleRejectsOutOfOrderCalls}};
 
-    const std::string_view testName(argv[1]);
-    const auto testIterator = testRegistry.find(testName);
-    if (testIterator == testRegistry.end()) {
+    const std::string_view test_name(argv[1]);
+    const auto test_iterator = test_registry.find(test_name);
+    if (test_iterator == test_registry.end()) {
         return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    return testIterator->second();
+    return test_iterator->second();
 }

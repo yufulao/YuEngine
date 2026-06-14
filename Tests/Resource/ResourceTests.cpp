@@ -71,8 +71,8 @@ ResourceDescriptor Descriptor(ResourceTypeId type, const char* key) {
     return ResourceDescriptor{type, ResourceLogicalKey(key), 0U};
 }
 
-ResourceDescriptor DescriptorWithReferenceCount(ResourceTypeId type, const char* key, std::uint32_t referenceCount) {
-    return ResourceDescriptor{type, ResourceLogicalKey(key), referenceCount};
+ResourceDescriptor DescriptorWithReferenceCount(ResourceTypeId type, const char* key, std::uint32_t reference_count) {
+    return ResourceDescriptor{type, ResourceLogicalKey(key), reference_count};
 }
 
 ResourceRegistrationResult Register(ResourceRegistry& registry, ResourceTypeId type, const char* key) {
@@ -136,23 +136,23 @@ int ResourceRegisterSyntheticDescriptorReturnsGenerationHandle() {
 
 int ResourceRegisterDuplicateReturnsExplicitStatus() {
     ResourceRegistry registry;
-    const ResourceRegistrationResult firstResult = Register(registry, TYPE_TEXTURE, "texture_a");
-    if (!firstResult.Succeeded()) {
+    const ResourceRegistrationResult first_result = Register(registry, TYPE_TEXTURE, "texture_a");
+    if (!first_result.Succeeded()) {
         return Fail("first registration failed");
     }
 
-    const ResourceSnapshot beforeSnapshot = registry.Snapshot();
-    const ResourceRegistrationResult duplicateResult = Register(registry, TYPE_TEXTURE, "texture_a");
-    if (duplicateResult.status != ResourceStatus::DuplicateResource) {
+    const ResourceSnapshot before_snapshot = registry.Snapshot();
+    const ResourceRegistrationResult duplicate_result = Register(registry, TYPE_TEXTURE, "texture_a");
+    if (duplicate_result.status != ResourceStatus::DuplicateResource) {
         return Fail("duplicate resource did not return explicit status");
     }
 
-    const ResourceSnapshot afterSnapshot = registry.Snapshot();
-    if (afterSnapshot.registered_resource_count != beforeSnapshot.registered_resource_count) {
+    const ResourceSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.registered_resource_count != before_snapshot.registered_resource_count) {
         return Fail("duplicate resource changed registered count");
     }
 
-    if (afterSnapshot.type_count != beforeSnapshot.type_count) {
+    if (after_snapshot.type_count != before_snapshot.type_count) {
         return Fail("duplicate resource changed type count");
     }
 
@@ -161,23 +161,23 @@ int ResourceRegisterDuplicateReturnsExplicitStatus() {
 
 int ResourceRegistryRejectsCapacityOverflowWithoutMutation() {
     ResourceRegistry registry(ResourceRegistryDesc{1U, 2U, 2U});
-    const ResourceRegistrationResult firstResult = Register(registry, TYPE_TEXTURE, "texture_a");
-    if (!firstResult.Succeeded()) {
+    const ResourceRegistrationResult first_result = Register(registry, TYPE_TEXTURE, "texture_a");
+    if (!first_result.Succeeded()) {
         return Fail("first registration failed before capacity");
     }
 
-    const ResourceSnapshot beforeSnapshot = registry.Snapshot();
-    const ResourceRegistrationResult overflowResult = Register(registry, TYPE_MATERIAL, "material_a");
-    if (overflowResult.status != ResourceStatus::CapacityExceeded) {
+    const ResourceSnapshot before_snapshot = registry.Snapshot();
+    const ResourceRegistrationResult overflow_result = Register(registry, TYPE_MATERIAL, "material_a");
+    if (overflow_result.status != ResourceStatus::CapacityExceeded) {
         return Fail("resource capacity overflow did not return explicit status");
     }
 
-    const ResourceSnapshot afterSnapshot = registry.Snapshot();
-    if (afterSnapshot.registered_resource_count != beforeSnapshot.registered_resource_count) {
+    const ResourceSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.registered_resource_count != before_snapshot.registered_resource_count) {
         return Fail("resource capacity overflow changed registered count");
     }
 
-    if (afterSnapshot.type_count != beforeSnapshot.type_count) {
+    if (after_snapshot.type_count != before_snapshot.type_count) {
         return Fail("resource capacity overflow changed type count");
     }
 
@@ -186,48 +186,48 @@ int ResourceRegistryRejectsCapacityOverflowWithoutMutation() {
 
 int ResourceTypeCapacityOverflowDoesNotMutate() {
     ResourceRegistry registry(ResourceRegistryDesc{4U, 1U, 2U});
-    const ResourceRegistrationResult firstResult = Register(registry, TYPE_TEXTURE, TYPE_CAPACITY_TEXTURE_KEY);
-    if (!firstResult.Succeeded()) {
+    const ResourceRegistrationResult first_result = Register(registry, TYPE_TEXTURE, TYPE_CAPACITY_TEXTURE_KEY);
+    if (!first_result.Succeeded()) {
         return Fail(TYPE_CAPACITY_FIRST_REGISTRATION_FAILED);
     }
 
-    const ResourceSnapshot beforeSnapshot = registry.Snapshot();
-    const ResourceRegistrationResult overflowResult = Register(registry, TYPE_MATERIAL, TYPE_CAPACITY_MATERIAL_KEY);
-    if (overflowResult.status != ResourceStatus::CapacityExceeded) {
+    const ResourceSnapshot before_snapshot = registry.Snapshot();
+    const ResourceRegistrationResult overflow_result = Register(registry, TYPE_MATERIAL, TYPE_CAPACITY_MATERIAL_KEY);
+    if (overflow_result.status != ResourceStatus::CapacityExceeded) {
         return Fail(TYPE_CAPACITY_STATUS_FAILED);
     }
 
-    if (overflowResult.handle.IsValid()) {
+    if (overflow_result.handle.IsValid()) {
         return Fail(TYPE_CAPACITY_VALID_HANDLE_FAILED);
     }
 
-    const ResourceSnapshot afterSnapshot = registry.Snapshot();
-    if (afterSnapshot.type_count != beforeSnapshot.type_count) {
+    const ResourceSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.type_count != before_snapshot.type_count) {
         return Fail(TYPE_CAPACITY_TYPE_COUNT_FAILED);
     }
 
-    if (afterSnapshot.registered_resource_count != beforeSnapshot.registered_resource_count) {
+    if (after_snapshot.registered_resource_count != before_snapshot.registered_resource_count) {
         return Fail(TYPE_CAPACITY_REGISTERED_COUNT_FAILED);
     }
 
-    if (afterSnapshot.acquired_handle_count != beforeSnapshot.acquired_handle_count) {
+    if (after_snapshot.acquired_handle_count != before_snapshot.acquired_handle_count) {
         return Fail(TYPE_CAPACITY_ACQUIRED_COUNT_FAILED);
     }
 
-    const ResourceRegistrationResult retryResult = Register(registry, TYPE_TEXTURE, TYPE_CAPACITY_RETRY_TEXTURE_KEY);
-    if (!retryResult.Succeeded()) {
+    const ResourceRegistrationResult retry_result = Register(registry, TYPE_TEXTURE, TYPE_CAPACITY_RETRY_TEXTURE_KEY);
+    if (!retry_result.Succeeded()) {
         return Fail(TYPE_CAPACITY_RETRY_REGISTRATION_FAILED);
     }
 
-    if (retryResult.handle.slot != 1U) {
+    if (retry_result.handle.slot != 1U) {
         return Fail(TYPE_CAPACITY_RETRY_SLOT_FAILED);
     }
 
-    if (retryResult.handle.generation != 1U) {
+    if (retry_result.handle.generation != 1U) {
         return Fail(TYPE_CAPACITY_RETRY_GENERATION_FAILED);
     }
 
-    if (registry.Snapshot().type_count != beforeSnapshot.type_count) {
+    if (registry.Snapshot().type_count != before_snapshot.type_count) {
         return Fail(TYPE_CAPACITY_RETRY_TYPE_COUNT_FAILED);
     }
 
@@ -241,13 +241,13 @@ int ResourceHandleRejectsWrongGeneration() {
         return Fail("registration failed");
     }
 
-    const ResourceStatus retireStatus = registry.Retire(result.handle);
-    if (retireStatus != ResourceStatus::Success) {
+    const ResourceStatus retire_status = registry.Retire(result.handle);
+    if (retire_status != ResourceStatus::Success) {
         return Fail("retire failed before stale handle check");
     }
 
-    const ResourceStatus acquireStatus = registry.Acquire(result.handle, TYPE_TEXTURE);
-    if (acquireStatus != ResourceStatus::GenerationMismatch) {
+    const ResourceStatus acquire_status = registry.Acquire(result.handle, TYPE_TEXTURE);
+    if (acquire_status != ResourceStatus::GenerationMismatch) {
         return Fail("stale generation handle did not return explicit status");
     }
 
@@ -265,13 +265,13 @@ int ResourceHandleRejectsTypeMismatch() {
         return Fail("registration failed");
     }
 
-    const ResourceSnapshot beforeSnapshot = registry.Snapshot();
+    const ResourceSnapshot before_snapshot = registry.Snapshot();
     const ResourceStatus status = registry.Acquire(result.handle, TYPE_AUDIO);
     if (status != ResourceStatus::TypeMismatch) {
         return Fail("type mismatch did not return explicit status");
     }
 
-    if (registry.Snapshot().acquired_handle_count != beforeSnapshot.acquired_handle_count) {
+    if (registry.Snapshot().acquired_handle_count != before_snapshot.acquired_handle_count) {
         return Fail("type mismatch changed reference count");
     }
 
@@ -297,12 +297,12 @@ int ResourceAcquireReleaseTracksReferenceCount() {
         return Fail("release failed");
     }
 
-    const ResourceSnapshot afterReleaseSnapshot = registry.Snapshot();
-    if (afterReleaseSnapshot.acquired_handle_count != 0U) {
+    const ResourceSnapshot after_release_snapshot = registry.Snapshot();
+    if (after_release_snapshot.acquired_handle_count != 0U) {
         return Fail("release did not decrement reference count");
     }
 
-    if (afterReleaseSnapshot.released_handle_count != 1U) {
+    if (after_release_snapshot.released_handle_count != 1U) {
         return Fail("release count was not recorded");
     }
 
@@ -347,13 +347,13 @@ int ResourceAcquireRejectsReferenceCountOverflow() {
         return Fail("overflow fixture registration failed");
     }
 
-    const ResourceSnapshot beforeSnapshot = registry.Snapshot();
+    const ResourceSnapshot before_snapshot = registry.Snapshot();
     const ResourceStatus status = registry.Acquire(result.handle, TYPE_TEXTURE);
     if (status != ResourceStatus::ReferenceCountOverflow) {
         return Fail("reference count overflow did not return explicit status");
     }
 
-    if (registry.Snapshot().acquired_handle_count != beforeSnapshot.acquired_handle_count) {
+    if (registry.Snapshot().acquired_handle_count != before_snapshot.acquired_handle_count) {
         return Fail("reference count overflow changed acquired count");
     }
 
@@ -371,8 +371,8 @@ int ResourceRetireRejectsOutstandingAcquire() {
         return Fail("acquire failed before retire");
     }
 
-    const ResourceStatus retireStatus = registry.Retire(result.handle);
-    if (retireStatus != ResourceStatus::StillReferenced) {
+    const ResourceStatus retire_status = registry.Retire(result.handle);
+    if (retire_status != ResourceStatus::StillReferenced) {
         return Fail("retire with outstanding acquire did not return explicit status");
     }
 
@@ -475,8 +475,8 @@ int ResourceDependencyValidationRejectsCycle() {
         return Fail("second dependency edge failed");
     }
 
-    const ResourceStatus cycleStatus = registry.AddDependency(third.handle, first.handle);
-    if (cycleStatus != ResourceStatus::DependencyCycle) {
+    const ResourceStatus cycle_status = registry.AddDependency(third.handle, first.handle);
+    if (cycle_status != ResourceStatus::DependencyCycle) {
         return Fail("dependency cycle did not return explicit status");
     }
 
@@ -510,31 +510,31 @@ int ResourceNoFileOrPackageDependencyForHandleRegistry() {
 }
 
 int ResourceDisabledDiagnosticsDoesNotChangeResults() {
-    ResourceRegistry recordingRegistry;
-    ResourceRegistry diagnosticsDisabledRegistry;
-    const ResourceRegistrationResult recordingResult = Register(recordingRegistry, TYPE_TEXTURE, "texture_a");
-    const ResourceRegistrationResult disabledResult = Register(diagnosticsDisabledRegistry, TYPE_TEXTURE, "texture_a");
-    if (!recordingResult.Succeeded()) {
+    ResourceRegistry recording_registry;
+    ResourceRegistry diagnostics_disabled_registry;
+    const ResourceRegistrationResult recording_result = Register(recording_registry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult disabled_result = Register(diagnostics_disabled_registry, TYPE_TEXTURE, "texture_a");
+    if (!recording_result.Succeeded()) {
         return Fail("recording registry registration failed");
     }
 
-    if (!disabledResult.Succeeded()) {
+    if (!disabled_result.Succeeded()) {
         return Fail("disabled registry registration failed");
     }
 
-    const ResourceStatus recordingAcquire = recordingRegistry.Acquire(recordingResult.handle, TYPE_TEXTURE);
-    const ResourceStatus disabledAcquire = diagnosticsDisabledRegistry.Acquire(disabledResult.handle, TYPE_TEXTURE);
-    if (recordingAcquire != disabledAcquire) {
+    const ResourceStatus recording_acquire = recording_registry.Acquire(recording_result.handle, TYPE_TEXTURE);
+    const ResourceStatus disabled_acquire = diagnostics_disabled_registry.Acquire(disabled_result.handle, TYPE_TEXTURE);
+    if (recording_acquire != disabled_acquire) {
         return Fail("disabled diagnostics changed acquire status");
     }
 
-    const ResourceStatus recordingMismatch = recordingRegistry.Acquire(recordingResult.handle, TYPE_AUDIO);
-    const ResourceStatus disabledMismatch = diagnosticsDisabledRegistry.Acquire(disabledResult.handle, TYPE_AUDIO);
-    if (recordingMismatch != disabledMismatch) {
+    const ResourceStatus recording_mismatch = recording_registry.Acquire(recording_result.handle, TYPE_AUDIO);
+    const ResourceStatus disabled_mismatch = diagnostics_disabled_registry.Acquire(disabled_result.handle, TYPE_AUDIO);
+    if (recording_mismatch != disabled_mismatch) {
         return Fail("disabled diagnostics changed failure status");
     }
 
-    if (!SnapshotsMatch(recordingRegistry.Snapshot(), diagnosticsDisabledRegistry.Snapshot())) {
+    if (!SnapshotsMatch(recording_registry.Snapshot(), diagnostics_disabled_registry.Snapshot())) {
         return Fail("disabled diagnostics changed resource snapshot");
     }
 
@@ -543,8 +543,8 @@ int ResourceDisabledDiagnosticsDoesNotChangeResults() {
 
 int ResourceNoHiddenAllocationUsesYuMemorySignal() {
     ResourceRegistry registry;
-    const ResourceSnapshot initialSnapshot = registry.Snapshot();
-    if (initialSnapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    const ResourceSnapshot initial_snapshot = registry.Snapshot();
+    if (initial_snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("resource registry did not expose YuMemory accounting vocabulary");
     }
 
@@ -561,16 +561,16 @@ int ResourceNoHiddenAllocationUsesYuMemorySignal() {
         return Fail("release failed");
     }
 
-    const ResourceSnapshot afterSnapshot = registry.Snapshot();
-    if (afterSnapshot.resource_capacity != initialSnapshot.resource_capacity) {
+    const ResourceSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.resource_capacity != initial_snapshot.resource_capacity) {
         return Fail("resource capacity changed during handle fixture");
     }
 
-    if (afterSnapshot.dependency_edge_capacity != initialSnapshot.dependency_edge_capacity) {
+    if (after_snapshot.dependency_edge_capacity != initial_snapshot.dependency_edge_capacity) {
         return Fail("dependency edge capacity changed during handle fixture");
     }
 
-    if (afterSnapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (after_snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("resource registry changed allocation accounting vocabulary");
     }
 
@@ -583,7 +583,7 @@ int main(int argc, char** argv) {
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const TestRegistry testRegistry{
+    const TestRegistry test_registry{
         {TEST_REGISTER, ResourceRegisterSyntheticDescriptorReturnsGenerationHandle},
         {TEST_DUPLICATE, ResourceRegisterDuplicateReturnsExplicitStatus},
         {TEST_CAPACITY, ResourceRegistryRejectsCapacityOverflowWithoutMutation},
@@ -601,11 +601,11 @@ int main(int argc, char** argv) {
         {TEST_DISABLED_DIAGNOSTICS, ResourceDisabledDiagnosticsDoesNotChangeResults},
         {TEST_NO_HIDDEN_ALLOCATION, ResourceNoHiddenAllocationUsesYuMemorySignal}};
 
-    const std::string_view testName(argv[1]);
-    const auto testEntry = testRegistry.find(testName);
-    if (testEntry == testRegistry.end()) {
+    const std::string_view test_name(argv[1]);
+    const auto test_entry = test_registry.find(test_name);
+    if (test_entry == test_registry.end()) {
         return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    return testEntry->second();
+    return test_entry->second();
 }

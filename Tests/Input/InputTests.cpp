@@ -145,18 +145,18 @@ int InputRegisterControlAlreadyBoundReturnsDuplicateStatus() {
         return Fail("initial binding failed");
     }
 
-    const auto beforeSnapshot = replay.Snapshot();
+    const auto before_snapshot = replay.Snapshot();
     const auto duplicate = replay.RegisterActionBinding(DEVICE_A, CONTROL_A, ACTION_B);
     if (duplicate.status != InputStatus::DuplicateBinding) {
         return Fail("duplicate control did not return duplicate status");
     }
 
-    const auto afterSnapshot = replay.Snapshot();
-    if (afterSnapshot.binding_count != beforeSnapshot.binding_count) {
+    const auto after_snapshot = replay.Snapshot();
+    if (after_snapshot.binding_count != before_snapshot.binding_count) {
         return Fail("duplicate control mutated binding count");
     }
 
-    if (afterSnapshot.action_count != beforeSnapshot.action_count) {
+    if (after_snapshot.action_count != before_snapshot.action_count) {
         return Fail("duplicate control mutated action count");
     }
 
@@ -204,13 +204,13 @@ int InputBindingCapacityOverflowDoesNotMutate() {
         }
     }
 
-    const auto beforeSnapshot = replay.Snapshot();
+    const auto before_snapshot = replay.Snapshot();
     const auto overflow = replay.RegisterActionBinding(DEVICE_A, InputControlId{999U}, ACTION_B);
     if (overflow.status != InputStatus::CapacityExceeded) {
         return Fail("binding overflow did not return capacity status");
     }
 
-    if (replay.Snapshot().binding_count != beforeSnapshot.binding_count) {
+    if (replay.Snapshot().binding_count != before_snapshot.binding_count) {
         return Fail("binding overflow mutated binding count");
     }
 
@@ -331,7 +331,7 @@ int InputInvalidAxisValueReturnsExplicitStatusWithoutMutation() {
         return Fail("binding failed");
     }
 
-    const auto beforeSnapshot = replay.Snapshot();
+    const auto before_snapshot = replay.Snapshot();
     const InputStatus status = replay.RecordReplayEvent(0U, Axis(DEVICE_A, CONTROL_A, AXIS_MAX_VALUE + 1));
     if (status != InputStatus::InvalidAxisValue) {
         return Fail("invalid axis did not return invalid value status");
@@ -341,7 +341,7 @@ int InputInvalidAxisValueReturnsExplicitStatusWithoutMutation() {
         return Fail("invalid axis mutated replay frame");
     }
 
-    if (replay.Snapshot().accepted_event_count != beforeSnapshot.accepted_event_count) {
+    if (replay.Snapshot().accepted_event_count != before_snapshot.accepted_event_count) {
         return Fail("invalid axis mutated accepted event count");
     }
 
@@ -358,9 +358,9 @@ int InputInvalidEventDoesNotMutateReplayOrSnapshot() {
         return Fail("binding failed");
     }
 
-    const auto beforeSnapshot = replay.Snapshot();
-    const InputEvent invalidEvent{DEVICE_A, CONTROL_A, static_cast<InputEventType>(99), 0};
-    if (replay.RecordReplayEvent(0U, invalidEvent) != InputStatus::InvalidEvent) {
+    const auto before_snapshot = replay.Snapshot();
+    const InputEvent invalid_event{DEVICE_A, CONTROL_A, static_cast<InputEventType>(99), 0};
+    if (replay.RecordReplayEvent(0U, invalid_event) != InputStatus::InvalidEvent) {
         return Fail("invalid event did not return explicit status");
     }
 
@@ -368,7 +368,7 @@ int InputInvalidEventDoesNotMutateReplayOrSnapshot() {
         return Fail("invalid event mutated replay storage");
     }
 
-    if (replay.Snapshot().accepted_event_count != beforeSnapshot.accepted_event_count) {
+    if (replay.Snapshot().accepted_event_count != before_snapshot.accepted_event_count) {
         return Fail("invalid event mutated accepted count");
     }
 
@@ -412,7 +412,7 @@ int InputEventCapacityOverflowDoesNotMutateReplay() {
         }
     }
 
-    const auto beforeSnapshot = replay.Snapshot();
+    const auto before_snapshot = replay.Snapshot();
     if (replay.RecordReplayEvent(0U, ButtonRelease(DEVICE_A, CONTROL_A)) != InputStatus::CapacityExceeded) {
         return Fail("event overflow did not return capacity status");
     }
@@ -421,7 +421,7 @@ int InputEventCapacityOverflowDoesNotMutateReplay() {
         return Fail("event overflow mutated frame event count");
     }
 
-    if (replay.Snapshot().accepted_event_count != beforeSnapshot.accepted_event_count) {
+    if (replay.Snapshot().accepted_event_count != before_snapshot.accepted_event_count) {
         return Fail("event overflow mutated accepted event count");
     }
 
@@ -429,30 +429,30 @@ int InputEventCapacityOverflowDoesNotMutateReplay() {
 }
 
 int InputFrameSnapshotIsDeterministicAcrossReplay() {
-    InputReplay firstReplay;
-    InputReplay secondReplay;
-    if (!RegisterPrimaryBinding(firstReplay)) {
+    InputReplay first_replay;
+    InputReplay second_replay;
+    if (!RegisterPrimaryBinding(first_replay)) {
         return Fail("first binding failed");
     }
 
-    if (!RegisterPrimaryBinding(secondReplay)) {
+    if (!RegisterPrimaryBinding(second_replay)) {
         return Fail("second binding failed");
     }
 
-    firstReplay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A));
-    firstReplay.RecordReplayEvent(1U, Axis(DEVICE_A, CONTROL_A, AXIS_POSITIVE));
-    secondReplay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A));
-    secondReplay.RecordReplayEvent(1U, Axis(DEVICE_A, CONTROL_A, AXIS_POSITIVE));
-    firstReplay.ApplyNextFrame();
-    firstReplay.ApplyNextFrame();
-    secondReplay.ApplyNextFrame();
-    secondReplay.ApplyNextFrame();
+    first_replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A));
+    first_replay.RecordReplayEvent(1U, Axis(DEVICE_A, CONTROL_A, AXIS_POSITIVE));
+    second_replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A));
+    second_replay.RecordReplayEvent(1U, Axis(DEVICE_A, CONTROL_A, AXIS_POSITIVE));
+    first_replay.ApplyNextFrame();
+    first_replay.ApplyNextFrame();
+    second_replay.ApplyNextFrame();
+    second_replay.ApplyNextFrame();
 
-    if (!StateEquals(firstReplay.QueryAction(ACTION_A).state, secondReplay.QueryAction(ACTION_A).state)) {
+    if (!StateEquals(first_replay.QueryAction(ACTION_A).state, second_replay.QueryAction(ACTION_A).state)) {
         return Fail("action state was not deterministic across replay");
     }
 
-    if (!SnapshotCountersEqual(firstReplay.Snapshot(), secondReplay.Snapshot())) {
+    if (!SnapshotCountersEqual(first_replay.Snapshot(), second_replay.Snapshot())) {
         return Fail("snapshot counters were not deterministic across replay");
     }
 
@@ -485,24 +485,24 @@ int InputResetClearsChangedStateWithoutClearingPressedState() {
 }
 
 int InputDisabledDiagnosticsDoesNotChangeResults() {
-    InputReplay enabledLikeReplay;
-    InputReplay disabledLikeReplay;
-    RegisterPrimaryBinding(enabledLikeReplay);
-    RegisterPrimaryBinding(disabledLikeReplay);
-    enabledLikeReplay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A));
-    disabledLikeReplay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A));
+    InputReplay enabled_like_replay;
+    InputReplay disabled_like_replay;
+    RegisterPrimaryBinding(enabled_like_replay);
+    RegisterPrimaryBinding(disabled_like_replay);
+    enabled_like_replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A));
+    disabled_like_replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A));
 
-    const auto enabledResult = enabledLikeReplay.ApplyNextFrame();
-    const auto disabledResult = disabledLikeReplay.ApplyNextFrame();
-    if (enabledResult.status != disabledResult.status) {
+    const auto enabled_result = enabled_like_replay.ApplyNextFrame();
+    const auto disabled_result = disabled_like_replay.ApplyNextFrame();
+    if (enabled_result.status != disabled_result.status) {
         return Fail("disabled diagnostics changed apply status");
     }
 
-    if (!StateEquals(enabledLikeReplay.QueryAction(ACTION_A).state, disabledLikeReplay.QueryAction(ACTION_A).state)) {
+    if (!StateEquals(enabled_like_replay.QueryAction(ACTION_A).state, disabled_like_replay.QueryAction(ACTION_A).state)) {
         return Fail("disabled diagnostics changed action state");
     }
 
-    if (!SnapshotCountersEqual(enabledLikeReplay.Snapshot(), disabledLikeReplay.Snapshot())) {
+    if (!SnapshotCountersEqual(enabled_like_replay.Snapshot(), disabled_like_replay.Snapshot())) {
         return Fail("disabled diagnostics changed counters");
     }
 
@@ -554,7 +554,7 @@ int main(int argc, char** argv) {
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::unordered_map<std::string_view, TestFunction> testRegistry{
+    const std::unordered_map<std::string_view, TestFunction> test_registry{
         {TEST_REGISTER_BINDING, InputRegisterActionBindingReturnsStableActionId},
         {TEST_DUPLICATE_CONTROL, InputRegisterControlAlreadyBoundReturnsDuplicateStatus},
         {TEST_MULTI_CONTROL_ORDER, InputMultipleControlsForOneActionUsesInsertionOrder},
@@ -574,11 +574,11 @@ int main(int argc, char** argv) {
         {TEST_NO_GROW, InputFrameApplyDoesNotGrowReplayStorage},
         {TEST_NO_FORBIDDEN_DEPENDENCY, InputNoPlatformUiOrGameAdapterDependency}};
 
-    const std::string_view testName(argv[1]);
-    const auto testIterator = testRegistry.find(testName);
-    if (testIterator == testRegistry.end()) {
+    const std::string_view test_name(argv[1]);
+    const auto test_iterator = test_registry.find(test_name);
+    if (test_iterator == test_registry.end()) {
         return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    return testIterator->second();
+    return test_iterator->second();
 }
