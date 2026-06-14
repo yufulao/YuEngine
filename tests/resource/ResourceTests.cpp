@@ -6,8 +6,8 @@
 #include <unordered_map>
 
 #include "yuengine/memory/memory_accounting_status.h"
-#include "yuengine/resource/ResourceConstants.h"
-#include "yuengine/resource/ResourceRegistry.h"
+#include "yuengine/resource/resource_constants.h"
+#include "yuengine/resource/resource_registry.h"
 
 using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
 using ResourceDescriptor = yuengine::resource::ResourceDescriptor;

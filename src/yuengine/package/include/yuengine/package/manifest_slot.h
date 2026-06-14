@@ -1,6 +1,6 @@
 #pragma once
 
-#include "yuengine/package/PackageId.h"
+#include "yuengine/package/package_id.h"
 
 namespace yuengine::package {
 struct ManifestSlot final {

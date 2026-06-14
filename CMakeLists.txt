@@ -42,8 +42,8 @@ target_include_directories(YuDiagnostics
 target_link_libraries(YuDiagnostics PUBLIC YuMemory)
 
 add_library(YuThread
-    src/yuengine/thread/src/BoundedTaskQueue.cpp
-    src/yuengine/thread/src/InlineTaskExecutor.cpp
+    src/yuengine/thread/src/bounded_task_queue.cpp
+    src/yuengine/thread/src/inline_task_executor.cpp
 )
 yuengine_apply_compile_options(YuThread)
 target_include_directories(YuThread
@@ -70,8 +70,8 @@ target_include_directories(YuFile
 target_link_libraries(YuFile PUBLIC YuMemory)
 
 add_library(YuRHI
-    src/yuengine/rhi/src/NullRhiDevice.cpp
-    src/yuengine/rhi/src/RhiCommandList.cpp
+    src/yuengine/rhi/src/null_rhi_device.cpp
+    src/yuengine/rhi/src/rhi_command_list.cpp
 )
 yuengine_apply_compile_options(YuRHI)
 target_include_directories(YuRHI
@@ -89,8 +89,8 @@ target_include_directories(YuAudio
 )
 
 add_library(YuResource
-    src/yuengine/resource/src/ResourceLogicalKey.cpp
-    src/yuengine/resource/src/ResourceRegistry.cpp
+    src/yuengine/resource/src/resource_logical_key.cpp
+    src/yuengine/resource/src/resource_registry.cpp
 )
 yuengine_apply_compile_options(YuResource)
 target_include_directories(YuResource
@@ -100,7 +100,7 @@ target_include_directories(YuResource
 target_link_libraries(YuResource PUBLIC YuMemory)
 
 add_library(YuObject
-    src/yuengine/object/src/ObjectRegistry.cpp
+    src/yuengine/object/src/object_registry.cpp
 )
 yuengine_apply_compile_options(YuObject)
 target_include_directories(YuObject
@@ -110,8 +110,8 @@ target_include_directories(YuObject
 target_link_libraries(YuObject PUBLIC YuMemory)
 
 add_library(YuSerialize
-    src/yuengine/serialize/src/SerializeReader.cpp
-    src/yuengine/serialize/src/SerializeWriter.cpp
+    src/yuengine/serialize/src/serialize_reader.cpp
+    src/yuengine/serialize/src/serialize_writer.cpp
 )
 yuengine_apply_compile_options(YuSerialize)
 target_include_directories(YuSerialize
@@ -121,10 +121,10 @@ target_include_directories(YuSerialize
 target_link_libraries(YuSerialize PUBLIC YuMemory)
 
 add_library(YuPackage
-    src/yuengine/package/src/PackageLoadPlanResult.cpp
-    src/yuengine/package/src/PackageRegistrationResult.cpp
-    src/yuengine/package/src/PackageRegistry.cpp
-    src/yuengine/package/src/PackageSourceKey.cpp
+    src/yuengine/package/src/package_load_plan_result.cpp
+    src/yuengine/package/src/package_registration_result.cpp
+    src/yuengine/package/src/package_registry.cpp
+    src/yuengine/package/src/package_source_key.cpp
 )
 yuengine_apply_compile_options(YuPackage)
 target_include_directories(YuPackage
@@ -143,9 +143,9 @@ target_include_directories(YuInput
 )
 
 add_library(YuPlatform
-    src/yuengine/platform/src/FixedFrameClock.cpp
-    src/yuengine/platform/src/HeadlessHost.cpp
-    src/yuengine/platform/src/HostError.cpp
+    src/yuengine/platform/src/fixed_frame_clock.cpp
+    src/yuengine/platform/src/headless_host.cpp
+    src/yuengine/platform/src/host_error.cpp
 )
 yuengine_apply_compile_options(YuPlatform)
 target_include_directories(YuPlatform

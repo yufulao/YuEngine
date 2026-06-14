@@ -3,8 +3,8 @@
 #include <array>
 #include <cstdint>
 
-#include "yuengine/serialize/SerializeConstants.h"
-#include "yuengine/serialize/SerializeSnapshot.h"
+#include "yuengine/serialize/serialize_constants.h"
+#include "yuengine/serialize/serialize_snapshot.h"
 
 namespace yuengine::serialize::tests {
 struct StreamFixture final {

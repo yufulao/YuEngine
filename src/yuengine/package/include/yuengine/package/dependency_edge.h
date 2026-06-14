@@ -1,7 +1,7 @@
 #pragma once
 
-#include "yuengine/package/PackageEntryId.h"
-#include "yuengine/package/PackageId.h"
+#include "yuengine/package/package_entry_id.h"
+#include "yuengine/package/package_id.h"
 
 namespace yuengine::package {
 struct DependencyEdge final {

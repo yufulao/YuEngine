@@ -6,8 +6,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yuengine/rhi/NullRhiDevice.h"
-#include "yuengine/rhi/RhiConstants.h"
+#include "yuengine/rhi/null_rhi_device.h"
+#include "yuengine/rhi/rhi_constants.h"
 
 using NullRhiDevice = yuengine::rhi::NullRhiDevice;
 using RhiBackendKind = yuengine::rhi::RhiBackendKind;

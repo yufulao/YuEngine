@@ -6,9 +6,9 @@
 
 #include "StreamFixture.h"
 #include "yuengine/memory/memory_accounting_status.h"
-#include "yuengine/serialize/SerializeConstants.h"
-#include "yuengine/serialize/SerializeReader.h"
-#include "yuengine/serialize/SerializeWriter.h"
+#include "yuengine/serialize/serialize_constants.h"
+#include "yuengine/serialize/serialize_reader.h"
+#include "yuengine/serialize/serialize_writer.h"
 
 using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
 using SerializeFieldId = yuengine::serialize::SerializeFieldId;

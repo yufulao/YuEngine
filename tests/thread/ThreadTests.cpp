@@ -8,8 +8,8 @@
 #include "ThreadTestContext.h"
 #include "yuengine/memory/counting_memory_tracker.h"
 #include "yuengine/memory/disabled_memory_tracker.h"
-#include "yuengine/thread/BoundedTaskQueue.h"
-#include "yuengine/thread/InlineTaskExecutor.h"
+#include "yuengine/thread/bounded_task_queue.h"
+#include "yuengine/thread/inline_task_executor.h"
 
 using BoundedTaskQueue = yuengine::thread::BoundedTaskQueue;
 using CountingMemoryTracker = yuengine::memory::CountingMemoryTracker;

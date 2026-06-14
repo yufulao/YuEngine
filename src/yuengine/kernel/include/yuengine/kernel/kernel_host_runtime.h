@@ -1,7 +1,7 @@
 #pragma once
 
 #include "yuengine/kernel/engine_kernel.h"
-#include "yuengine/platform/IHostRuntime.h"
+#include "yuengine/platform/i_host_runtime.h"
 
 namespace yuengine::kernel {
 class KernelHostRuntime final : public platform::IHostRuntime {

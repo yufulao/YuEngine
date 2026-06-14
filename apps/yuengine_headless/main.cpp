@@ -1,9 +1,9 @@
 #include "yuengine/diagnostics/disabled_log_sink.h"
 #include "yuengine/kernel/engine_kernel.h"
 #include "yuengine/kernel/kernel_host_runtime.h"
-#include "yuengine/platform/FixedFrameClock.h"
-#include "yuengine/platform/HeadlessHost.h"
-#include "yuengine/platform/HostStatus.h"
+#include "yuengine/platform/fixed_frame_clock.h"
+#include "yuengine/platform/headless_host.h"
+#include "yuengine/platform/host_status.h"
 
 using DisabledLogSink = yuengine::diagnostics::DisabledLogSink;
 using EngineKernel = yuengine::kernel::EngineKernel;

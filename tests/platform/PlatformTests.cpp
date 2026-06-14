@@ -7,11 +7,11 @@
 
 #include "yuengine/diagnostics/bounded_in_memory_log_sink.h"
 #include "yuengine/memory/memory_accounting_status.h"
-#include "yuengine/platform/FixedFrameClock.h"
-#include "yuengine/platform/HeadlessHost.h"
-#include "yuengine/platform/HostStatus.h"
-#include "yuengine/platform/IHostRuntime.h"
-#include "yuengine/platform/PlatformPerformanceSignal.h"
+#include "yuengine/platform/fixed_frame_clock.h"
+#include "yuengine/platform/headless_host.h"
+#include "yuengine/platform/host_status.h"
+#include "yuengine/platform/i_host_runtime.h"
+#include "yuengine/platform/platform_performance_signal.h"
 
 using FixedFrameClock = yuengine::platform::FixedFrameClock;
 using HeadlessHost = yuengine::platform::HeadlessHost;

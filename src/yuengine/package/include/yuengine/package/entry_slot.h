@@ -1,6 +1,6 @@
 #pragma once
 
-#include "yuengine/package/PackageEntryDescriptor.h"
+#include "yuengine/package/package_entry_descriptor.h"
 
 namespace yuengine::package {
 struct EntrySlot final {

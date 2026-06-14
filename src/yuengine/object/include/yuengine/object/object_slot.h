@@ -2,8 +2,8 @@
 
 #include <cstdint>
 
-#include "yuengine/object/ObjectConstants.h"
-#include "yuengine/object/ObjectTypeId.h"
+#include "yuengine/object/object_constants.h"
+#include "yuengine/object/object_type_id.h"
 
 namespace yuengine::object {
 struct ObjectSlot final {

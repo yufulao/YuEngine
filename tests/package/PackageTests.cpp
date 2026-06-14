@@ -6,10 +6,10 @@
 #include <unordered_map>
 
 #include "yuengine/memory/memory_accounting_status.h"
-#include "yuengine/package/PackageConstants.h"
-#include "yuengine/package/PackageRegistry.h"
-#include "yuengine/resource/ResourceLogicalKey.h"
-#include "yuengine/resource/ResourceTypeId.h"
+#include "yuengine/package/package_constants.h"
+#include "yuengine/package/package_registry.h"
+#include "yuengine/resource/resource_logical_key.h"
+#include "yuengine/resource/resource_type_id.h"
 
 using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
 using PackageEntryDescriptor = yuengine::package::PackageEntryDescriptor;

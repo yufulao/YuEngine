@@ -6,7 +6,7 @@
 #include <unordered_map>
 
 #include "yuengine/memory/memory_accounting_status.h"
-#include "yuengine/object/ObjectRegistry.h"
+#include "yuengine/object/object_registry.h"
 
 using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
 using ObjectDescriptor = yuengine::object::ObjectDescriptor;
