@@ -9,7 +9,7 @@
 namespace yuengine::platform {
 class HeadlessHost final {
 public:
-    HeadlessHost(IFrameClock& frameClock, diagnostics::ILogSink& logSink);
+    HeadlessHost(IFrameClock& frame_clock, diagnostics::ILogSink& log_sink);
 
     HostRunResult Run(IHostRuntime& runtime, const HeadlessHostConfig& config);
 

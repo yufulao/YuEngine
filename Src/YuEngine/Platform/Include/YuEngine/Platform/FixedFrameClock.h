@@ -7,7 +7,7 @@
 namespace yuengine::platform {
 class FixedFrameClock final : public IFrameClock {
 public:
-    FixedFrameClock(std::uint64_t firstTickNanoseconds, std::uint64_t stepNanoseconds);
+    FixedFrameClock(std::uint64_t first_tick_nanoseconds, std::uint64_t step_nanoseconds);
 
     std::uint64_t NextTickNanoseconds() override;
 

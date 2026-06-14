@@ -48,8 +48,8 @@ InputBindingResult InputReplay::RegisterActionBinding(InputDeviceId device, Inpu
     return InputBindingResult{InputStatus::Success, action};
 }
 
-InputStatus InputReplay::RecordReplayEvent(std::size_t frameIndex, InputEvent event) {
-    if (frameIndex >= frames_.size()) {
+InputStatus InputReplay::RecordReplayEvent(std::size_t frame_index, InputEvent event) {
+    if (frame_index >= frames_.size()) {
         return RejectReplayEvent(InputStatus::CapacityExceeded);
     }
 
@@ -67,7 +67,7 @@ InputStatus InputReplay::RecordReplayEvent(std::size_t frameIndex, InputEvent ev
         return RejectReplayEvent(InputStatus::UnknownDeviceControl);
     }
 
-    InputReplayFrame& frame = frames_[frameIndex];
+    InputReplayFrame& frame = frames_[frame_index];
     if (frame.event_count >= frame.events.size()) {
         return RejectReplayEvent(InputStatus::CapacityExceeded);
     }
@@ -76,9 +76,9 @@ InputStatus InputReplay::RecordReplayEvent(std::size_t frameIndex, InputEvent ev
     ++frame.event_count;
     ++snapshot_.accepted_event_count;
 
-    const std::size_t recordedFrameCount = frameIndex + 1U;
-    if (recordedFrameCount > recorded_frame_count_) {
-        recorded_frame_count_ = recordedFrameCount;
+    const std::size_t recorded_frame_count = frame_index + 1U;
+    if (recorded_frame_count > recorded_frame_count_) {
+        recorded_frame_count_ = recorded_frame_count;
     }
 
     return InputStatus::Success;
@@ -93,14 +93,14 @@ InputApplyResult InputReplay::ApplyNextFrame() {
     ResetFrameState();
     snapshot_.replay_storage_capacity_before_frame = ReplayStorageCapacity();
 
-    InputStatus frameStatus = InputStatus::Success;
+    InputStatus frame_status = InputStatus::Success;
     const InputReplayFrame& frame = frames_[next_frame_index_];
-    for (std::size_t eventIndex = 0U; eventIndex < frame.event_count; ++eventIndex) {
-        const InputEvent& event = frame.events[eventIndex];
+    for (std::size_t event_index = 0U; event_index < frame.event_count; ++event_index) {
+        const InputEvent& event = frame.events[event_index];
         const InputActionBinding* binding = FindBinding(event.device, event.control);
         if (binding == nullptr) {
             RejectReplayEvent(InputStatus::UnknownDeviceControl);
-            frameStatus = InputStatus::UnknownDeviceControl;
+            frame_status = InputStatus::UnknownDeviceControl;
             continue;
         }
 
@@ -124,17 +124,17 @@ InputApplyResult InputReplay::ApplyNextFrame() {
         }
 
         RejectReplayEvent(InputStatus::InvalidEvent);
-        frameStatus = InputStatus::InvalidEvent;
+        frame_status = InputStatus::InvalidEvent;
     }
 
     RecalculateChangedActionCount();
     ++snapshot_.apply_count;
-    snapshot_.last_apply_status = frameStatus;
+    snapshot_.last_apply_status = frame_status;
     snapshot_.replay_storage_capacity_after_last_frame = ReplayStorageCapacity();
 
-    const std::size_t appliedFrameIndex = next_frame_index_;
+    const std::size_t applied_frame_index = next_frame_index_;
     ++next_frame_index_;
-    return InputApplyResult{frameStatus, appliedFrameIndex};
+    return InputApplyResult{frame_status, applied_frame_index};
 }
 
 InputStatus InputReplay::ResetFrameState() {
@@ -163,12 +163,12 @@ InputReplaySnapshot InputReplay::Snapshot() const {
     return snapshot_;
 }
 
-std::size_t InputReplay::EventCountForFrame(std::size_t frameIndex) const {
-    if (frameIndex >= frames_.size()) {
+std::size_t InputReplay::EventCountForFrame(std::size_t frame_index) const {
+    if (frame_index >= frames_.size()) {
         return 0U;
     }
 
-    return frames_[frameIndex].event_count;
+    return frames_[frame_index].event_count;
 }
 
 InputStatus InputReplay::RecordFailure(InputStatus status) {
@@ -235,7 +235,7 @@ void InputReplay::MarkActionChanged(InputActionId action) {
 }
 
 void InputReplay::RecalculateChangedActionCount() {
-    std::size_t changedCount = 0U;
+    std::size_t changed_count = 0U;
     for (std::size_t index = 0U; index < actions_.size(); ++index) {
         if (!registered_actions_[index]) {
             continue;
@@ -245,10 +245,10 @@ void InputReplay::RecalculateChangedActionCount() {
             continue;
         }
 
-        ++changedCount;
+        ++changed_count;
     }
 
-    snapshot_.changed_action_count = changedCount;
+    snapshot_.changed_action_count = changed_count;
 }
 
 std::size_t InputReplay::ReplayStorageCapacity() const {

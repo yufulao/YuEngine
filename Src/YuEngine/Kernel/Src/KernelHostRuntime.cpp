@@ -15,15 +15,15 @@ KernelHostRuntime::KernelHostRuntime(EngineKernel& kernel)
     : kernel_(kernel) {
 }
 
-platform::HostError KernelHostRuntime::Start(std::vector<std::string>& lifecycleTrace) {
-    return ToHostError(kernel_.Start(lifecycleTrace));
+platform::HostError KernelHostRuntime::Start(std::vector<std::string>& lifecycle_trace) {
+    return ToHostError(kernel_.Start(lifecycle_trace));
 }
 
-platform::HostError KernelHostRuntime::Tick(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) {
-    return ToHostError(kernel_.Update(frameIndex, tickTimeNanoseconds, lifecycleTrace));
+platform::HostError KernelHostRuntime::Tick(std::uint32_t frame_index, std::uint64_t tick_time_nanoseconds, std::vector<std::string>& lifecycle_trace) {
+    return ToHostError(kernel_.Update(frame_index, tick_time_nanoseconds, lifecycle_trace));
 }
 
-platform::HostError KernelHostRuntime::Shutdown(std::vector<std::string>& lifecycleTrace) {
-    return ToHostError(kernel_.Shutdown(lifecycleTrace));
+platform::HostError KernelHostRuntime::Shutdown(std::vector<std::string>& lifecycle_trace) {
+    return ToHostError(kernel_.Shutdown(lifecycle_trace));
 }
 }

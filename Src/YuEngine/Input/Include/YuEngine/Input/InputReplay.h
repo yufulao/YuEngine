@@ -20,12 +20,12 @@ public:
     InputReplay();
 
     InputBindingResult RegisterActionBinding(InputDeviceId device, InputControlId control, InputActionId action);
-    InputStatus RecordReplayEvent(std::size_t frameIndex, InputEvent event);
+    InputStatus RecordReplayEvent(std::size_t frame_index, InputEvent event);
     InputApplyResult ApplyNextFrame();
     InputStatus ResetFrameState();
     InputActionQueryResult QueryAction(InputActionId action) const;
     InputReplaySnapshot Snapshot() const;
-    std::size_t EventCountForFrame(std::size_t frameIndex) const;
+    std::size_t EventCountForFrame(std::size_t frame_index) const;
 
 private:
     InputStatus RecordFailure(InputStatus status);

@@ -14,24 +14,24 @@ enum class MemoryBudgetClass {
 
 inline constexpr std::size_t MemoryBudgetClassCount = 6U;
 
-inline std::size_t MemoryBudgetClassIndex(MemoryBudgetClass budgetClass) {
-    return static_cast<std::size_t>(budgetClass);
+inline std::size_t MemoryBudgetClassIndex(MemoryBudgetClass budget_class) {
+    return static_cast<std::size_t>(budget_class);
 }
 
-inline bool IsValidMemoryBudgetClass(MemoryBudgetClass budgetClass) {
-    return MemoryBudgetClassIndex(budgetClass) < MemoryBudgetClassCount;
+inline bool IsValidMemoryBudgetClass(MemoryBudgetClass budget_class) {
+    return MemoryBudgetClassIndex(budget_class) < MemoryBudgetClassCount;
 }
 
-inline bool IsHotMemoryBudgetClass(MemoryBudgetClass budgetClass) {
-    if (budgetClass == MemoryBudgetClass::Frame) {
+inline bool IsHotMemoryBudgetClass(MemoryBudgetClass budget_class) {
+    if (budget_class == MemoryBudgetClass::Frame) {
         return true;
     }
 
-    if (budgetClass == MemoryBudgetClass::Callback) {
+    if (budget_class == MemoryBudgetClass::Callback) {
         return true;
     }
 
-    if (budgetClass == MemoryBudgetClass::Job) {
+    if (budget_class == MemoryBudgetClass::Job) {
         return true;
     }
 

@@ -21,10 +21,10 @@ public:
     NullRhiDevice();
 
     RhiStatus Initialize(const RhiDeviceDesc& desc);
-    RhiStatus CreateColorTarget(const RhiColorTargetDesc& desc, RhiTextureHandle& outHandle);
+    RhiStatus CreateColorTarget(const RhiColorTargetDesc& desc, RhiTextureHandle& out_handle);
     RhiStatus DestroyTarget(RhiTextureHandle handle);
-    RhiStatus RecordClear(RhiCommandList& commandList, RhiTextureHandle handle, RhiColor color);
-    RhiStatus Submit(const RhiCommandList& commandList);
+    RhiStatus RecordClear(RhiCommandList& command_list, RhiTextureHandle handle, RhiColor color);
+    RhiStatus Submit(const RhiCommandList& command_list);
     RhiStatus Present();
     RhiCaptureResult CapturePresentedTarget(std::span<std::uint8_t> destination);
     RhiCapabilities Capabilities() const;
@@ -33,7 +33,7 @@ public:
 private:
     RhiStatus RecordFailure(RhiStatus status);
     bool IsTargetHandleValid(RhiTextureHandle handle) const;
-    bool IsCommandTargetValidForFrame(const RhiCommandRecord& command, RhiTextureHandle frameTarget) const;
+    bool IsCommandTargetValidForFrame(const RhiCommandRecord& command, RhiTextureHandle frame_target) const;
     bool IsColorTargetDescValid(const RhiColorTargetDesc& desc) const;
     std::size_t PixelByteCount(const RhiColorTargetDesc& desc) const;
     void ExecuteClear(RhiTextureHandle handle, RhiColor color);

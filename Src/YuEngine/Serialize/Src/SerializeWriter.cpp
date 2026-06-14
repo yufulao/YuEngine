@@ -137,8 +137,8 @@ SerializeStatus SerializeWriter::WriteInt64(SerializeFieldId field, std::int64_t
     return CommitField(field, SerializeTypeTag::Int64, payload.data(), INT64_PAYLOAD_BYTE_COUNT);
 }
 
-SerializeStatus SerializeWriter::WriteFixedBytes(SerializeFieldId field, const std::uint8_t* bytes, std::uint32_t byteCount) {
-    return CommitField(field, SerializeTypeTag::FixedBytes, bytes, byteCount);
+SerializeStatus SerializeWriter::WriteFixedBytes(SerializeFieldId field, const std::uint8_t* bytes, std::uint32_t byte_count) {
+    return CommitField(field, SerializeTypeTag::FixedBytes, bytes, byte_count);
 }
 
 SerializeSnapshot SerializeWriter::Snapshot() const {
@@ -149,7 +149,7 @@ SerializeStatus SerializeWriter::CommitField(
     SerializeFieldId field,
     SerializeTypeTag type,
     const std::uint8_t* payload,
-    std::uint32_t byteCount) {
+    std::uint32_t byte_count) {
     if (!has_stream_) {
         return RecordFailure(SerializeStatus::InvalidHeader);
     }
@@ -162,11 +162,11 @@ SerializeStatus SerializeWriter::CommitField(
         return RecordFailure(SerializeStatus::InvalidHeader);
     }
 
-    if (byteCount > MAX_FIELD_PAYLOAD_BYTE_COUNT) {
+    if (byte_count > MAX_FIELD_PAYLOAD_BYTE_COUNT) {
         return RecordFailure(SerializeStatus::FieldPayloadTooLarge);
     }
 
-    if (byteCount > 0U && payload == nullptr) {
+    if (byte_count > 0U && payload == nullptr) {
         return RecordFailure(SerializeStatus::BufferTooSmall);
     }
 
@@ -182,16 +182,16 @@ SerializeStatus SerializeWriter::CommitField(
         return RecordFailure(SerializeStatus::DuplicateField);
     }
 
-    if (!CanCommitBytes(FIELD_HEADER_BYTE_COUNT + byteCount)) {
+    if (!CanCommitBytes(FIELD_HEADER_BYTE_COUNT + byte_count)) {
         return RecordFailure(SerializeStatus::BufferTooSmall);
     }
 
-    const std::uint32_t fieldOffset = snapshot_.committed_byte_count;
-    WriteUInt32At(fieldOffset, field.value);
-    WriteUInt32At(fieldOffset + sizeof(std::uint32_t), static_cast<std::uint32_t>(type));
-    WriteUInt32At(fieldOffset + (sizeof(std::uint32_t) * 2U), byteCount);
-    CopyPayload(fieldOffset + FIELD_HEADER_BYTE_COUNT, payload, byteCount);
-    snapshot_.committed_byte_count += FIELD_HEADER_BYTE_COUNT + byteCount;
+    const std::uint32_t field_offset = snapshot_.committed_byte_count;
+    WriteUInt32At(field_offset, field.value);
+    WriteUInt32At(field_offset + sizeof(std::uint32_t), static_cast<std::uint32_t>(type));
+    WriteUInt32At(field_offset + (sizeof(std::uint32_t) * 2U), byte_count);
+    CopyPayload(field_offset + FIELD_HEADER_BYTE_COUNT, payload, byte_count);
+    snapshot_.committed_byte_count += FIELD_HEADER_BYTE_COUNT + byte_count;
     current_record_fields_[current_record_field_count_] = field;
     ++current_record_field_count_;
     ++snapshot_.field_count;
@@ -211,7 +211,7 @@ void SerializeWriter::RecordSuccess() {
     snapshot_.last_status = SerializeStatus::Success;
 }
 
-bool SerializeWriter::CanCommitBytes(std::uint32_t byteCount) const {
+bool SerializeWriter::CanCommitBytes(std::uint32_t byte_count) const {
     if (buffer_ == nullptr) {
         return false;
     }
@@ -220,17 +220,17 @@ bool SerializeWriter::CanCommitBytes(std::uint32_t byteCount) const {
         return false;
     }
 
-    return byteCount <= (capacity_ - snapshot_.committed_byte_count);
+    return byte_count <= (capacity_ - snapshot_.committed_byte_count);
 }
 
 bool SerializeWriter::HasFieldInCurrentRecord(SerializeFieldId field) const {
     std::uint32_t index = 0U;
-    for (const SerializeFieldId& currentField : current_record_fields_) {
+    for (const SerializeFieldId& current_field : current_record_fields_) {
         if (index >= current_record_field_count_) {
             return false;
         }
 
-        if (currentField.value == field.value) {
+        if (current_field.value == field.value) {
             return true;
         }
 
@@ -249,9 +249,9 @@ void SerializeWriter::WriteUInt32At(std::uint32_t offset, std::uint32_t value) {
     EncodeUInt32(buffer_ + offset, value);
 }
 
-void SerializeWriter::CopyPayload(std::uint32_t offset, const std::uint8_t* payload, std::uint32_t byteCount) {
+void SerializeWriter::CopyPayload(std::uint32_t offset, const std::uint8_t* payload, std::uint32_t byte_count) {
     std::uint32_t index = 0U;
-    while (index < byteCount) {
+    while (index < byte_count) {
         buffer_[offset + index] = payload[index];
         ++index;
     }

@@ -8,8 +8,8 @@ struct MemoryAccountingResult {
     MemoryAccountingStatus status;
     MemoryAllocationId allocation_id;
 
-    static MemoryAccountingResult Success(MemoryAllocationId allocationId) {
-        return MemoryAccountingResult{MemoryAccountingStatus::Success, allocationId};
+    static MemoryAccountingResult Success(MemoryAllocationId allocation_id) {
+        return MemoryAccountingResult{MemoryAccountingStatus::Success, allocation_id};
     }
 
     static MemoryAccountingResult Failure(MemoryAccountingStatus status) {

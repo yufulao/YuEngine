@@ -15,7 +15,7 @@
 namespace yuengine::thread {
 class BoundedTaskQueue final {
 public:
-    BoundedTaskQueue(std::size_t capacity, memory::IMemoryTracker& memoryTracker);
+    BoundedTaskQueue(std::size_t capacity, memory::IMemoryTracker& memory_tracker);
 
     TaskResult Submit(TaskCallback callback, void* context);
     TaskResult Drain(InlineTaskExecutor& executor);

@@ -19,11 +19,11 @@ public:
     virtual MemoryAccountingResult RecordAllocation(
         MemoryOwnerId owner,
         MemoryTag tag,
-        MemoryBudgetClass budgetClass,
+        MemoryBudgetClass budget_class,
         std::size_t bytes,
         std::size_t alignment) = 0;
-    virtual MemoryAccountingStatus RecordFree(MemoryAllocationId allocationId, MemoryOwnerId owner, MemoryTag tag) = 0;
+    virtual MemoryAccountingStatus RecordFree(MemoryAllocationId allocation_id, MemoryOwnerId owner, MemoryTag tag) = 0;
     virtual MemorySnapshot Snapshot() const = 0;
-    virtual std::uint64_t AllocationCountForBudget(MemoryBudgetClass budgetClass) const = 0;
+    virtual std::uint64_t AllocationCountForBudget(MemoryBudgetClass budget_class) const = 0;
 };
 }

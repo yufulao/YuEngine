@@ -30,7 +30,7 @@ public:
 private:
     ObjectStatus RecordFailure(ObjectStatus status);
     void RecordSuccess();
-    ObjectStatus ResolveHandle(ObjectHandle handle, std::size_t& outIndex) const;
+    ObjectStatus ResolveHandle(ObjectHandle handle, std::size_t& out_index) const;
     ObjectStatus RegisterTypeIfNeeded(ObjectTypeId type);
     bool HasType(ObjectTypeId type) const;
     void AdvanceGeneration(ObjectSlot& slot);

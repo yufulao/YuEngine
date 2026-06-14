@@ -26,9 +26,9 @@ RhiStatus RhiCommandList::BeginFrame(RhiTextureHandle target) {
         return RhiStatus::InvalidLifecycle;
     }
 
-    const RhiStatus appendStatus = Append(RhiCommandRecord{RhiCommandType::BeginFrame, target, RhiColor{}});
-    if (appendStatus != RhiStatus::Success) {
-        return appendStatus;
+    const RhiStatus append_status = Append(RhiCommandRecord{RhiCommandType::BeginFrame, target, RhiColor{}});
+    if (append_status != RhiStatus::Success) {
+        return append_status;
     }
 
     target_handle_ = target;
@@ -57,9 +57,9 @@ RhiStatus RhiCommandList::EndFrame() {
         return RhiStatus::InvalidLifecycle;
     }
 
-    const RhiStatus appendStatus = Append(RhiCommandRecord{RhiCommandType::EndFrame, target_handle_, RhiColor{}});
-    if (appendStatus != RhiStatus::Success) {
-        return appendStatus;
+    const RhiStatus append_status = Append(RhiCommandRecord{RhiCommandType::EndFrame, target_handle_, RhiColor{}});
+    if (append_status != RhiStatus::Success) {
+        return append_status;
     }
 
     is_recording_ = false;

@@ -26,8 +26,8 @@ public:
     PackageStatus AddDependency(PackageId package, PackageEntryId dependent, PackageEntryId dependency);
     PackageLoadPlanResult ResolveEntryByResourceKey(
         PackageId package,
-        ResourceTypeId expectedType,
-        const ResourceLogicalKey& logicalKey);
+        ResourceTypeId expected_type,
+        const ResourceLogicalKey& logical_key);
     PackageSnapshot Snapshot() const;
 
 private:
@@ -38,41 +38,41 @@ private:
     bool HasDuplicateEntry(const PackageEntryDescriptor& descriptor) const;
     bool HasDuplicateResourceKey(const PackageEntryDescriptor& descriptor) const;
     PackageStatus ValidateEntryDescriptor(const PackageEntryDescriptor& descriptor) const;
-    PackageStatus FindEntryIndex(PackageId package, PackageEntryId entry, std::size_t& outIndex) const;
+    PackageStatus FindEntryIndex(PackageId package, PackageEntryId entry, std::size_t& out_index) const;
     PackageStatus FindEntryByResourceKey(
         PackageId package,
-        ResourceTypeId expectedType,
-        const ResourceLogicalKey& logicalKey,
-        std::size_t& outIndex) const;
+        ResourceTypeId expected_type,
+        const ResourceLogicalKey& logical_key,
+        std::size_t& out_index) const;
     bool HasDependencyEdge(PackageId package, PackageEntryId dependent, PackageEntryId dependency) const;
     bool HasDependencyPath(PackageId package, PackageEntryId start, PackageEntryId target) const;
     std::uint32_t CountDirectDependencies(PackageId package, PackageEntryId entry) const;
     void AppendRecord(PackageLoadPlan& plan, const PackageEntryDescriptor& descriptor) const;
-    bool TryFindEntryIndex(PackageId package, PackageEntryId entry, std::size_t& outIndex) const;
+    bool TryFindEntryIndex(PackageId package, PackageEntryId entry, std::size_t& out_index) const;
     bool TryFindResourceIndex(
         PackageId package,
-        ResourceTypeId expectedType,
-        const ResourceLogicalKey& logicalKey,
-        std::size_t& outIndex) const;
-    bool HasResourceLogicalKey(PackageId package, const ResourceLogicalKey& logicalKey) const;
+        ResourceTypeId expected_type,
+        const ResourceLogicalKey& logical_key,
+        std::size_t& out_index) const;
+    bool HasResourceLogicalKey(PackageId package, const ResourceLogicalKey& logical_key) const;
     bool TryFindDependencyEdgeIndex(
         PackageId package,
         PackageEntryId dependent,
         PackageEntryId dependency,
-        std::size_t& outIndex) const;
-    void AddEntryIndex(PackageId package, PackageEntryId entry, std::uint32_t entryIndex);
+        std::size_t& out_index) const;
+    void AddEntryIndex(PackageId package, PackageEntryId entry, std::uint32_t entry_index);
     void AddResourceIndex(
         PackageId package,
         ResourceTypeId type,
-        const ResourceLogicalKey& logicalKey,
-        std::uint32_t entryIndex);
-    void AddResourceKeyIndex(PackageId package, const ResourceLogicalKey& logicalKey, std::uint32_t entryIndex);
+        const ResourceLogicalKey& logical_key,
+        std::uint32_t entry_index);
+    void AddResourceKeyIndex(PackageId package, const ResourceLogicalKey& logical_key, std::uint32_t entry_index);
     void AddDependencyIndex(
         PackageId package,
         PackageEntryId dependent,
         PackageEntryId dependency,
-        std::uint32_t edgeIndex);
-    void AppendDependencyEdge(std::uint32_t dependentEntryIndex, std::uint32_t edgeIndex);
+        std::uint32_t edge_index);
+    void AppendDependencyEdge(std::uint32_t dependent_entry_index, std::uint32_t edge_index);
 
     std::array<ManifestSlot, MAX_PACKAGE_MANIFEST_COUNT> manifests_;
     std::array<EntrySlot, MAX_PACKAGE_ENTRY_COUNT> entries_;

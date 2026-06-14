@@ -19,7 +19,7 @@ public:
 
     ResourceRegistrationResult RegisterSyntheticDescriptor(const ResourceDescriptor& descriptor);
     ResourceStatus AddDependency(ResourceHandle dependent, ResourceHandle dependency);
-    ResourceStatus Acquire(ResourceHandle handle, ResourceTypeId expectedType);
+    ResourceStatus Acquire(ResourceHandle handle, ResourceTypeId expected_type);
     ResourceStatus Release(ResourceHandle handle);
     ResourceStatus Retire(ResourceHandle handle);
     ResourceSnapshot Snapshot() const;
@@ -27,13 +27,13 @@ public:
 private:
     ResourceStatus RecordFailure(ResourceStatus status);
     void RecordSuccess();
-    ResourceStatus ResolveHandle(ResourceHandle handle, std::size_t& outIndex) const;
+    ResourceStatus ResolveHandle(ResourceHandle handle, std::size_t& out_index) const;
     ResourceStatus RegisterTypeIfNeeded(ResourceTypeId type);
     bool HasType(ResourceTypeId type) const;
     bool HasDuplicateActiveResource(const ResourceDescriptor& descriptor) const;
-    bool HasInboundEdge(std::size_t slotIndex) const;
-    bool HasDependencyPath(std::size_t startSlot, std::size_t targetSlot) const;
-    void ClearOutboundEdges(std::size_t slotIndex);
+    bool HasInboundEdge(std::size_t slot_index) const;
+    bool HasDependencyPath(std::size_t start_slot, std::size_t target_slot) const;
+    void ClearOutboundEdges(std::size_t slot_index);
     void AdvanceGeneration(ResourceSlot& slot);
 
     std::array<ResourceSlot, MAX_RESOURCE_COUNT> slots_;

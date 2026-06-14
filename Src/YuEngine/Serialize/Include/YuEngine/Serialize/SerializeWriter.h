@@ -21,7 +21,7 @@ public:
     SerializeStatus WriteInt32(SerializeFieldId field, std::int32_t value);
     SerializeStatus WriteUInt64(SerializeFieldId field, std::uint64_t value);
     SerializeStatus WriteInt64(SerializeFieldId field, std::int64_t value);
-    SerializeStatus WriteFixedBytes(SerializeFieldId field, const std::uint8_t* bytes, std::uint32_t byteCount);
+    SerializeStatus WriteFixedBytes(SerializeFieldId field, const std::uint8_t* bytes, std::uint32_t byte_count);
     SerializeSnapshot Snapshot() const;
 
 private:
@@ -29,14 +29,14 @@ private:
         SerializeFieldId field,
         SerializeTypeTag type,
         const std::uint8_t* payload,
-        std::uint32_t byteCount);
+        std::uint32_t byte_count);
     SerializeStatus RecordFailure(SerializeStatus status);
     void RecordSuccess();
-    bool CanCommitBytes(std::uint32_t byteCount) const;
+    bool CanCommitBytes(std::uint32_t byte_count) const;
     bool HasFieldInCurrentRecord(SerializeFieldId field) const;
     void WriteUInt16At(std::uint32_t offset, std::uint16_t value);
     void WriteUInt32At(std::uint32_t offset, std::uint32_t value);
-    void CopyPayload(std::uint32_t offset, const std::uint8_t* payload, std::uint32_t byteCount);
+    void CopyPayload(std::uint32_t offset, const std::uint8_t* payload, std::uint32_t byte_count);
 
     std::uint8_t* buffer_;
     std::uint32_t capacity_;

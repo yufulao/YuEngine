@@ -1,13 +1,13 @@
 #include "YuEngine/Kernel/ServiceRegistry.h"
 
 namespace yuengine::kernel {
-bool ServiceRegistry::Contains(std::string_view serviceId) const {
-    return services_.contains(std::string(serviceId));
+bool ServiceRegistry::Contains(std::string_view service_id) const {
+    return services_.contains(std::string(service_id));
 }
 
-bool ServiceRegistry::OwnerHasServices(std::string_view ownerModule) const {
-    for (const auto& serviceEntry : services_) {
-        if (serviceEntry.second.owner_module == ownerModule) {
+bool ServiceRegistry::OwnerHasServices(std::string_view owner_module) const {
+    for (const auto& service_entry : services_) {
+        if (service_entry.second.owner_module == owner_module) {
             return true;
         }
     }
@@ -15,9 +15,9 @@ bool ServiceRegistry::OwnerHasServices(std::string_view ownerModule) const {
     return false;
 }
 
-void ServiceRegistry::UnregisterOwner(std::string_view ownerModule) {
+void ServiceRegistry::UnregisterOwner(std::string_view owner_module) {
     for (auto iterator = services_.begin(); iterator != services_.end();) {
-        if (iterator->second.owner_module == ownerModule) {
+        if (iterator->second.owner_module == owner_module) {
             iterator = services_.erase(iterator);
             continue;
         }
@@ -34,16 +34,16 @@ void ServiceRegistry::CloseRegistrationWindow() {
     accepting_registrations_ = false;
 }
 
-bool ServiceRegistry::RegisterRaw(std::string_view ownerModule, std::string_view serviceId, void* service, std::type_index serviceType) {
+bool ServiceRegistry::RegisterRaw(std::string_view owner_module, std::string_view service_id, void* service, std::type_index service_type) {
     if (!accepting_registrations_) {
         return false;
     }
 
-    if (ownerModule.empty()) {
+    if (owner_module.empty()) {
         return false;
     }
 
-    if (serviceId.empty()) {
+    if (service_id.empty()) {
         return false;
     }
 
@@ -51,22 +51,22 @@ bool ServiceRegistry::RegisterRaw(std::string_view ownerModule, std::string_view
         return false;
     }
 
-    const std::string serviceKey(serviceId);
-    if (services_.contains(serviceKey)) {
+    const std::string service_key(service_id);
+    if (services_.contains(service_key)) {
         return false;
     }
 
-    services_.emplace(serviceKey, ServiceRecord{service, serviceType, std::string(ownerModule)});
+    services_.emplace(service_key, ServiceRecord{service, service_type, std::string(owner_module)});
     return true;
 }
 
-void* ServiceRegistry::ResolveRaw(std::string_view serviceId, std::type_index serviceType) const {
-    const auto iterator = services_.find(std::string(serviceId));
+void* ServiceRegistry::ResolveRaw(std::string_view service_id, std::type_index service_type) const {
+    const auto iterator = services_.find(std::string(service_id));
     if (iterator == services_.end()) {
         return nullptr;
     }
 
-    if (iterator->second.type != serviceType) {
+    if (iterator->second.type != service_type) {
         return nullptr;
     }
 

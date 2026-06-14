@@ -17,14 +17,14 @@ class MountTable final {
 public:
     MountTable();
 
-    FileStatus RegisterLooseMount(MountId mountId, std::filesystem::path rootPath);
+    FileStatus RegisterLooseMount(MountId mount_id, std::filesystem::path root_path);
     PathNormalizationResult Normalize(VirtualPath path);
     FileReadResult Read(FileReadRequest request);
     FileSnapshot Snapshot() const;
     std::vector<MountId> MountOrder() const;
 
 private:
-    std::optional<std::size_t> FindMountIndex(MountId mountId) const;
+    std::optional<std::size_t> FindMountIndex(MountId mount_id) const;
     void RecordRejectedPath();
     void RecordLastReadStatus(FileStatus status);
 

@@ -79,7 +79,7 @@ FileStatus ValidatePublicNormalizedPath(std::string_view value) {
         return FileStatus::InvalidPath;
     }
 
-    std::size_t segmentStart = 0U;
+    std::size_t segment_start = 0U;
     for (std::size_t index = 0U; index < value.size(); ++index) {
         const char character = value[index];
         if (character == '\\') {
@@ -90,31 +90,31 @@ FileStatus ValidatePublicNormalizedPath(std::string_view value) {
             continue;
         }
 
-        const FileStatus status = ValidateSegment(value, segmentStart, index - segmentStart);
+        const FileStatus status = ValidateSegment(value, segment_start, index - segment_start);
         if (status != FileStatus::Success) {
             return status;
         }
 
-        segmentStart = index + 1U;
+        segment_start = index + 1U;
     }
 
-    return ValidateSegment(value, segmentStart, value.size() - segmentStart);
+    return ValidateSegment(value, segment_start, value.size() - segment_start);
 }
 
-bool IsPathInsideRoot(const std::filesystem::path& rootPath, const std::filesystem::path& candidatePath) {
-    auto rootIterator = rootPath.begin();
-    auto candidateIterator = candidatePath.begin();
-    while (rootIterator != rootPath.end()) {
-        if (candidateIterator == candidatePath.end()) {
+bool IsPathInsideRoot(const std::filesystem::path& root_path, const std::filesystem::path& candidate_path) {
+    auto root_iterator = root_path.begin();
+    auto candidate_iterator = candidate_path.begin();
+    while (root_iterator != root_path.end()) {
+        if (candidate_iterator == candidate_path.end()) {
             return false;
         }
 
-        if (*rootIterator != *candidateIterator) {
+        if (*root_iterator != *candidate_iterator) {
             return false;
         }
 
-        ++rootIterator;
-        ++candidateIterator;
+        ++root_iterator;
+        ++candidate_iterator;
     }
 
     return true;
@@ -125,67 +125,67 @@ LooseFileSource::LooseFileSource()
     : root_path_() {
 }
 
-LooseFileSource::LooseFileSource(std::filesystem::path rootPath)
-    : root_path_(std::move(rootPath)) {
+LooseFileSource::LooseFileSource(std::filesystem::path root_path)
+    : root_path_(std::move(root_path)) {
 }
 
 FileReadResult LooseFileSource::Read(NormalizedPath path) const {
-    const FileStatus pathStatus = ValidatePublicNormalizedPath(path.Value());
-    if (pathStatus != FileStatus::Success) {
-        return FileReadResult::Failure(pathStatus);
+    const FileStatus path_status = ValidatePublicNormalizedPath(path.Value());
+    if (path_status != FileStatus::Success) {
+        return FileReadResult::Failure(path_status);
     }
 
-    std::error_code errorCode;
-    const std::filesystem::path canonicalRoot = std::filesystem::weakly_canonical(root_path_, errorCode);
-    if (errorCode) {
+    std::error_code error_code;
+    const std::filesystem::path canonical_root = std::filesystem::weakly_canonical(root_path_, error_code);
+    if (error_code) {
         return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
-    errorCode.clear();
-    const std::filesystem::path resolvedPath = root_path_ / std::filesystem::path(std::string(path.Value()));
-    const std::filesystem::path canonicalResolvedPath = std::filesystem::weakly_canonical(resolvedPath, errorCode);
-    if (errorCode) {
+    error_code.clear();
+    const std::filesystem::path resolved_path = root_path_ / std::filesystem::path(std::string(path.Value()));
+    const std::filesystem::path canonical_resolved_path = std::filesystem::weakly_canonical(resolved_path, error_code);
+    if (error_code) {
         return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
-    if (!IsPathInsideRoot(canonicalRoot, canonicalResolvedPath)) {
+    if (!IsPathInsideRoot(canonical_root, canonical_resolved_path)) {
         return FileReadResult::Failure(FileStatus::PathEscape);
     }
 
-    errorCode.clear();
-    if (!std::filesystem::exists(canonicalResolvedPath, errorCode)) {
-        if (errorCode) {
+    error_code.clear();
+    if (!std::filesystem::exists(canonical_resolved_path, error_code)) {
+        if (error_code) {
             return FileReadResult::Failure(FileStatus::ReadFailure);
         }
 
         return FileReadResult::Failure(FileStatus::FileNotFound);
     }
 
-    errorCode.clear();
-    if (!std::filesystem::is_regular_file(canonicalResolvedPath, errorCode)) {
-        if (errorCode) {
+    error_code.clear();
+    if (!std::filesystem::is_regular_file(canonical_resolved_path, error_code)) {
+        if (error_code) {
             return FileReadResult::Failure(FileStatus::ReadFailure);
         }
 
         return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
-    errorCode.clear();
-    const auto fileSize = std::filesystem::file_size(canonicalResolvedPath, errorCode);
-    if (errorCode) {
+    error_code.clear();
+    const auto file_size = std::filesystem::file_size(canonical_resolved_path, error_code);
+    if (error_code) {
         return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
-    if (fileSize > MAX_FIXTURE_READ_SIZE) {
+    if (file_size > MAX_FIXTURE_READ_SIZE) {
         return FileReadResult::Failure(FileStatus::ReadTooLarge);
     }
 
-    std::ifstream file(canonicalResolvedPath, std::ios::binary);
+    std::ifstream file(canonical_resolved_path, std::ios::binary);
     if (!file.is_open()) {
         return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
-    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(fileSize));
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(file_size));
     if (!bytes.empty()) {
         file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }

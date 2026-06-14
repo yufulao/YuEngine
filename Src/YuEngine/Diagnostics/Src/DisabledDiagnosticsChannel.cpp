@@ -1,29 +1,29 @@
 #include "YuEngine/Diagnostics/DisabledDiagnosticsChannel.h"
 
 namespace yuengine::diagnostics {
-DiagnosticsStatus DisabledDiagnosticsChannel::RegisterEventId(DiagnosticsEventId eventId) {
-    static_cast<void>(eventId);
+DiagnosticsStatus DisabledDiagnosticsChannel::RegisterEventId(DiagnosticsEventId event_id) {
+    static_cast<void>(event_id);
     return DiagnosticsStatus::Disabled;
 }
 
-DiagnosticsStatus DisabledDiagnosticsChannel::RegisterCounterId(DiagnosticsCounterId counterId) {
-    static_cast<void>(counterId);
+DiagnosticsStatus DisabledDiagnosticsChannel::RegisterCounterId(DiagnosticsCounterId counter_id) {
+    static_cast<void>(counter_id);
     return DiagnosticsStatus::Disabled;
 }
 
-DiagnosticsStatus DisabledDiagnosticsChannel::RecordEvent(DiagnosticsEventId eventId, std::uint64_t payload) {
-    static_cast<void>(eventId);
+DiagnosticsStatus DisabledDiagnosticsChannel::RecordEvent(DiagnosticsEventId event_id, std::uint64_t payload) {
+    static_cast<void>(event_id);
     static_cast<void>(payload);
     return DiagnosticsStatus::Disabled;
 }
 
-DiagnosticsStatus DisabledDiagnosticsChannel::IncrementCounter(DiagnosticsCounterId counterId) {
-    static_cast<void>(counterId);
+DiagnosticsStatus DisabledDiagnosticsChannel::IncrementCounter(DiagnosticsCounterId counter_id) {
+    static_cast<void>(counter_id);
     return DiagnosticsStatus::Disabled;
 }
 
-DiagnosticsStatus DisabledDiagnosticsChannel::AddCounter(DiagnosticsCounterId counterId, std::uint64_t delta) {
-    static_cast<void>(counterId);
+DiagnosticsStatus DisabledDiagnosticsChannel::AddCounter(DiagnosticsCounterId counter_id, std::uint64_t delta) {
+    static_cast<void>(counter_id);
     static_cast<void>(delta);
     return DiagnosticsStatus::Disabled;
 }

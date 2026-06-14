@@ -9,7 +9,7 @@ namespace yuengine::file {
 class LooseFileSource final {
 public:
     LooseFileSource();
-    explicit LooseFileSource(std::filesystem::path rootPath);
+    explicit LooseFileSource(std::filesystem::path root_path);
 
     FileReadResult Read(NormalizedPath path) const;
     const std::filesystem::path& RootPath() const;

@@ -31,12 +31,12 @@ bool CopyFixedText(std::string_view source, std::array<char, Capacity>& destinat
 }
 
 template <std::size_t Capacity>
-bool FixedTextEquals(const std::array<char, Capacity>& stored, std::size_t storedLength, std::string_view candidate) {
-    if (candidate.size() != storedLength) {
+bool FixedTextEquals(const std::array<char, Capacity>& stored, std::size_t stored_length, std::string_view candidate) {
+    if (candidate.size() != stored_length) {
         return false;
     }
 
-    for (std::size_t index = 0U; index < storedLength; ++index) {
+    for (std::size_t index = 0U; index < stored_length; ++index) {
         if (stored[index] != candidate[index]) {
             return false;
         }
@@ -57,7 +57,7 @@ CountingMemoryTracker::CountingMemoryTracker()
 MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
     MemoryOwnerId owner,
     MemoryTag tag,
-    MemoryBudgetClass budgetClass,
+    MemoryBudgetClass budget_class,
     std::size_t bytes,
     std::size_t alignment) {
     if (!owner.IsValid()) {
@@ -76,7 +76,7 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidAlignment);
     }
 
-    if (!IsValidMemoryBudgetClass(budgetClass)) {
+    if (!IsValidMemoryBudgetClass(budget_class)) {
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidBudgetClass);
     }
 
@@ -88,7 +88,7 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidTag);
     }
 
-    if (IsHotMemoryBudgetClass(budgetClass)) {
+    if (IsHotMemoryBudgetClass(budget_class)) {
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::BudgetExceeded);
     }
 
@@ -97,7 +97,7 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::CapacityExceeded);
     }
 
-    const MemoryAllocationId allocationId{next_allocation_id_};
+    const MemoryAllocationId allocation_id{next_allocation_id_};
     ++next_allocation_id_;
 
     if (!CopyFixedText(owner.value, record->owner, record->owner_length)) {
@@ -110,7 +110,7 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
     }
 
     record->is_active = true;
-    record->allocation_id = allocationId;
+    record->allocation_id = allocation_id;
     record->bytes = bytes;
     ++active_allocation_count_;
 
@@ -121,12 +121,12 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
     }
 
     snapshot_.leak_count = active_allocation_count_;
-    ++budget_allocation_counts_[MemoryBudgetClassIndex(budgetClass)];
-    return MemoryAccountingResult::Success(allocationId);
+    ++budget_allocation_counts_[MemoryBudgetClassIndex(budget_class)];
+    return MemoryAccountingResult::Success(allocation_id);
 }
 
-MemoryAccountingStatus CountingMemoryTracker::RecordFree(MemoryAllocationId allocationId, MemoryOwnerId owner, MemoryTag tag) {
-    ActiveAllocationRecord* record = FindActiveAllocation(allocationId);
+MemoryAccountingStatus CountingMemoryTracker::RecordFree(MemoryAllocationId allocation_id, MemoryOwnerId owner, MemoryTag tag) {
+    ActiveAllocationRecord* record = FindActiveAllocation(allocation_id);
     if (record == nullptr) {
         return MemoryAccountingStatus::UnmatchedFree;
     }
@@ -157,17 +157,17 @@ MemorySnapshot CountingMemoryTracker::Snapshot() const {
     return snapshot_;
 }
 
-std::uint64_t CountingMemoryTracker::AllocationCountForBudget(MemoryBudgetClass budgetClass) const {
-    if (!IsValidMemoryBudgetClass(budgetClass)) {
+std::uint64_t CountingMemoryTracker::AllocationCountForBudget(MemoryBudgetClass budget_class) const {
+    if (!IsValidMemoryBudgetClass(budget_class)) {
         return 0U;
     }
 
-    return budget_allocation_counts_[MemoryBudgetClassIndex(budgetClass)];
+    return budget_allocation_counts_[MemoryBudgetClassIndex(budget_class)];
 }
 
-ActiveAllocationRecord* CountingMemoryTracker::FindActiveAllocation(MemoryAllocationId allocationId) {
+ActiveAllocationRecord* CountingMemoryTracker::FindActiveAllocation(MemoryAllocationId allocation_id) {
     for (ActiveAllocationRecord& record : active_allocations_) {
-        if (record.is_active && record.allocation_id.value == allocationId.value) {
+        if (record.is_active && record.allocation_id.value == allocation_id.value) {
             return &record;
         }
     }

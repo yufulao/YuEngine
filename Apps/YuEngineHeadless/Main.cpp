@@ -18,11 +18,11 @@ int main() {
     constexpr std::uint64_t STEP_NANOSECONDS = 16666666U;
     constexpr std::uint32_t TICK_COUNT = 1U;
 
-    DisabledLogSink logSink;
-    FixedFrameClock frameClock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
+    DisabledLogSink log_sink;
+    FixedFrameClock frame_clock(FIRST_TICK_NANOSECONDS, STEP_NANOSECONDS);
     EngineKernel kernel;
     KernelHostRuntime runtime(kernel);
-    HeadlessHost host(frameClock, logSink);
+    HeadlessHost host(frame_clock, log_sink);
 
     const HeadlessHostConfig config{TICK_COUNT};
     const auto result = host.Run(runtime, config);
