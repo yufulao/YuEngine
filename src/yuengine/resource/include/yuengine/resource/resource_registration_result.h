@@ -4,16 +4,16 @@
 #include "yuengine/resource/resource_status.h"
 
 namespace yuengine::resource {
-struct ResourceRegistrationResult final {
+struct resource_registration_result_t final {
     ResourceStatus Status;
-    ResourceHandle Handle;
+    resource_handle_t Handle;
 
-    static ResourceRegistrationResult Success(ResourceHandle handle) {
-        return ResourceRegistrationResult{ResourceStatus::Success, handle};
+    static resource_registration_result_t Success(resource_handle_t handle) {
+        return resource_registration_result_t{ResourceStatus::Success, handle};
     }
 
-    static ResourceRegistrationResult Failure(ResourceStatus status) {
-        return ResourceRegistrationResult{status, ResourceHandle{}};
+    static resource_registration_result_t Failure(ResourceStatus status) {
+        return resource_registration_result_t{status, resource_handle_t{}};
     }
 
     bool Succeeded() const {

@@ -3,7 +3,7 @@
 #include "yuengine/package/package_id.h"
 
 namespace yuengine::package {
-struct PackageManifestDescriptor final {
-    PackageId Id;
+struct package_manifest_descriptor_t final {
+    package_id_t Id;
 };
 }
