@@ -18,157 +18,157 @@ function(yuengine_apply_compile_options target_name)
 endfunction()
 
 add_library(YuMemory
-    src/yuengine/memory/src/counting_memory_tracker.cpp
-    src/yuengine/memory/src/disabled_memory_tracker.cpp
+    Src/YuEngine/Memory/Src/CountingMemoryTracker.cpp
+    Src/YuEngine/Memory/Src/DisabledMemoryTracker.cpp
 )
 yuengine_apply_compile_options(YuMemory)
 target_include_directories(YuMemory
     PUBLIC
-        src/yuengine/memory/include
+        Src/YuEngine/Memory/Include
 )
 
 add_library(YuDiagnostics
-    src/yuengine/diagnostics/src/bounded_diagnostics_channel.cpp
-    src/yuengine/diagnostics/src/bounded_in_memory_log_sink.cpp
-    src/yuengine/diagnostics/src/default_log_sink.cpp
-    src/yuengine/diagnostics/src/disabled_diagnostics_channel.cpp
-    src/yuengine/diagnostics/src/disabled_log_sink.cpp
+    Src/YuEngine/Diagnostics/Src/BoundedDiagnosticsChannel.cpp
+    Src/YuEngine/Diagnostics/Src/BoundedInMemoryLogSink.cpp
+    Src/YuEngine/Diagnostics/Src/DefaultLogSink.cpp
+    Src/YuEngine/Diagnostics/Src/DisabledDiagnosticsChannel.cpp
+    Src/YuEngine/Diagnostics/Src/DisabledLogSink.cpp
 )
 yuengine_apply_compile_options(YuDiagnostics)
 target_include_directories(YuDiagnostics
     PUBLIC
-        src/yuengine/diagnostics/include
+        Src/YuEngine/Diagnostics/Include
 )
 target_link_libraries(YuDiagnostics PUBLIC YuMemory)
 
 add_library(YuThread
-    src/yuengine/thread/src/bounded_task_queue.cpp
-    src/yuengine/thread/src/inline_task_executor.cpp
+    Src/YuEngine/Thread/Src/BoundedTaskQueue.cpp
+    Src/YuEngine/Thread/Src/InlineTaskExecutor.cpp
 )
 yuengine_apply_compile_options(YuThread)
 target_include_directories(YuThread
     PUBLIC
-        src/yuengine/thread/include
+        Src/YuEngine/Thread/Include
 )
 target_link_libraries(YuThread PUBLIC YuMemory)
 
 add_library(YuFile
-    src/yuengine/file/src/file_read_result.cpp
-    src/yuengine/file/src/loose_file_source.cpp
-    src/yuengine/file/src/mount_id.cpp
-    src/yuengine/file/src/mount_point.cpp
-    src/yuengine/file/src/mount_table.cpp
-    src/yuengine/file/src/normalized_path.cpp
-    src/yuengine/file/src/path_normalization_result.cpp
-    src/yuengine/file/src/virtual_path.cpp
+    Src/YuEngine/File/Src/FileReadResult.cpp
+    Src/YuEngine/File/Src/LooseFileSource.cpp
+    Src/YuEngine/File/Src/MountId.cpp
+    Src/YuEngine/File/Src/MountPoint.cpp
+    Src/YuEngine/File/Src/MountTable.cpp
+    Src/YuEngine/File/Src/NormalizedPath.cpp
+    Src/YuEngine/File/Src/PathNormalizationResult.cpp
+    Src/YuEngine/File/Src/VirtualPath.cpp
 )
 yuengine_apply_compile_options(YuFile)
 target_include_directories(YuFile
     PUBLIC
-        src/yuengine/file/include
+        Src/YuEngine/File/Include
 )
 target_link_libraries(YuFile PUBLIC YuMemory)
 
 add_library(YuRHI
-    src/yuengine/rhi/src/null_rhi_device.cpp
-    src/yuengine/rhi/src/rhi_command_list.cpp
+    Src/YuEngine/Rhi/Src/NullRhiDevice.cpp
+    Src/YuEngine/Rhi/Src/RhiCommandList.cpp
 )
 yuengine_apply_compile_options(YuRHI)
 target_include_directories(YuRHI
     PUBLIC
-        src/yuengine/rhi/include
+        Src/YuEngine/Rhi/Include
 )
 
 add_library(YuAudio
-    src/yuengine/audio/src/test_audio_device.cpp
+    Src/YuEngine/Audio/Src/TestAudioDevice.cpp
 )
 yuengine_apply_compile_options(YuAudio)
 target_include_directories(YuAudio
     PUBLIC
-        src/yuengine/audio/include
+        Src/YuEngine/Audio/Include
 )
 
 add_library(YuResource
-    src/yuengine/resource/src/resource_logical_key.cpp
-    src/yuengine/resource/src/resource_registry.cpp
+    Src/YuEngine/Resource/Src/ResourceLogicalKey.cpp
+    Src/YuEngine/Resource/Src/ResourceRegistry.cpp
 )
 yuengine_apply_compile_options(YuResource)
 target_include_directories(YuResource
     PUBLIC
-        src/yuengine/resource/include
+        Src/YuEngine/Resource/Include
 )
 target_link_libraries(YuResource PUBLIC YuMemory)
 
 add_library(YuObject
-    src/yuengine/object/src/object_registry.cpp
+    Src/YuEngine/Object/Src/ObjectRegistry.cpp
 )
 yuengine_apply_compile_options(YuObject)
 target_include_directories(YuObject
     PUBLIC
-        src/yuengine/object/include
+        Src/YuEngine/Object/Include
 )
 target_link_libraries(YuObject PUBLIC YuMemory)
 
 add_library(YuSerialize
-    src/yuengine/serialize/src/serialize_reader.cpp
-    src/yuengine/serialize/src/serialize_writer.cpp
+    Src/YuEngine/Serialize/Src/SerializeReader.cpp
+    Src/YuEngine/Serialize/Src/SerializeWriter.cpp
 )
 yuengine_apply_compile_options(YuSerialize)
 target_include_directories(YuSerialize
     PUBLIC
-        src/yuengine/serialize/include
+        Src/YuEngine/Serialize/Include
 )
 target_link_libraries(YuSerialize PUBLIC YuMemory)
 
 add_library(YuPackage
-    src/yuengine/package/src/package_load_plan_result.cpp
-    src/yuengine/package/src/package_registration_result.cpp
-    src/yuengine/package/src/package_registry.cpp
-    src/yuengine/package/src/package_source_key.cpp
+    Src/YuEngine/Package/Src/PackageLoadPlanResult.cpp
+    Src/YuEngine/Package/Src/PackageRegistrationResult.cpp
+    Src/YuEngine/Package/Src/PackageRegistry.cpp
+    Src/YuEngine/Package/Src/PackageSourceKey.cpp
 )
 yuengine_apply_compile_options(YuPackage)
 target_include_directories(YuPackage
     PUBLIC
-        src/yuengine/package/include
+        Src/YuEngine/Package/Include
 )
 target_link_libraries(YuPackage PUBLIC YuMemory YuResource)
 
 add_library(YuInput
-    src/yuengine/input/src/input_replay.cpp
+    Src/YuEngine/Input/Src/InputReplay.cpp
 )
 yuengine_apply_compile_options(YuInput)
 target_include_directories(YuInput
     PUBLIC
-        src/yuengine/input/include
+        Src/YuEngine/Input/Include
 )
 
 add_library(YuPlatform
-    src/yuengine/platform/src/fixed_frame_clock.cpp
-    src/yuengine/platform/src/headless_host.cpp
-    src/yuengine/platform/src/host_error.cpp
+    Src/YuEngine/Platform/Src/FixedFrameClock.cpp
+    Src/YuEngine/Platform/Src/HeadlessHost.cpp
+    Src/YuEngine/Platform/Src/HostError.cpp
 )
 yuengine_apply_compile_options(YuPlatform)
 target_include_directories(YuPlatform
     PUBLIC
-        src/yuengine/platform/include
+        Src/YuEngine/Platform/Include
 )
 target_link_libraries(YuPlatform PUBLIC YuDiagnostics YuMemory)
 
 add_library(YuKernel
-    src/yuengine/kernel/src/engine_kernel.cpp
-    src/yuengine/kernel/src/kernel_host_runtime.cpp
-    src/yuengine/kernel/src/kernel_result.cpp
-    src/yuengine/kernel/src/service_registry.cpp
+    Src/YuEngine/Kernel/Src/EngineKernel.cpp
+    Src/YuEngine/Kernel/Src/KernelHostRuntime.cpp
+    Src/YuEngine/Kernel/Src/KernelResult.cpp
+    Src/YuEngine/Kernel/Src/ServiceRegistry.cpp
 )
 yuengine_apply_compile_options(YuKernel)
 target_include_directories(YuKernel
     PUBLIC
-        src/yuengine/kernel/include
+        Src/YuEngine/Kernel/Include
 )
 target_link_libraries(YuKernel PUBLIC YuPlatform)
 
 add_executable(YuHeadless
-    apps/yuengine_headless/main.cpp
+    Apps/YuEngineHeadless/Main.cpp
 )
 yuengine_apply_compile_options(YuHeadless)
 target_link_libraries(YuHeadless PRIVATE YuKernel)
@@ -176,7 +176,7 @@ target_link_libraries(YuHeadless PRIVATE YuKernel)
 enable_testing()
 
 add_executable(YuPlatformTests
-    tests/platform/platform_tests.cpp
+    Tests/Platform/PlatformTests.cpp
 )
 yuengine_apply_compile_options(YuPlatformTests)
 target_link_libraries(YuPlatformTests PRIVATE YuPlatform)
@@ -185,7 +185,7 @@ add_test(NAME Host_TimerMonotonic_ForFixedTicks COMMAND YuPlatformTests Host_Tim
 add_test(NAME Platform_AllocationAccountingStatus_UsesMemoryHook COMMAND YuPlatformTests Platform_AllocationAccountingStatus_UsesMemoryHook)
 
 add_executable(YuDiagnosticsTests
-    tests/diagnostics/diagnostics_tests.cpp
+    Tests/Diagnostics/DiagnosticsTests.cpp
 )
 yuengine_apply_compile_options(YuDiagnosticsTests)
 target_link_libraries(YuDiagnosticsTests PRIVATE YuPlatform)
@@ -201,7 +201,7 @@ add_test(NAME Diagnostics_NoReportDependency_ForRuntimeResults COMMAND YuDiagnos
 add_test(NAME Diagnostics_NoHiddenAllocation_UsesYuMemorySignal COMMAND YuDiagnosticsTests Diagnostics_NoHiddenAllocation_UsesYuMemorySignal)
 
 add_executable(YuKernelTests
-    tests/kernel/kernel_tests.cpp
+    Tests/Kernel/KernelTests.cpp
 )
 yuengine_apply_compile_options(YuKernelTests)
 target_link_libraries(YuKernelTests PRIVATE YuKernel)
@@ -212,7 +212,7 @@ add_test(NAME Kernel_ServiceRegistry_ResolveAndMissingService COMMAND YuKernelTe
 add_test(NAME Kernel_InvalidLifecycle_RejectsOutOfOrderCalls COMMAND YuKernelTests Kernel_InvalidLifecycle_RejectsOutOfOrderCalls)
 
 add_executable(YuMemoryTests
-    tests/memory/memory_tests.cpp
+    Tests/Memory/MemoryTests.cpp
 )
 yuengine_apply_compile_options(YuMemoryTests)
 target_link_libraries(YuMemoryTests PRIVATE YuMemory)
@@ -227,8 +227,8 @@ add_test(NAME Memory_TrackerRejectsBeyondFixedCapacityWithoutMutation COMMAND Yu
 add_test(NAME Memory_TrackerEnforcesOwnerAndTagByteCapsWithoutMutation COMMAND YuMemoryTests Memory_TrackerEnforcesOwnerAndTagByteCapsWithoutMutation)
 
 add_executable(YuThreadTests
-    tests/thread/thread_test_context.cpp
-    tests/thread/thread_tests.cpp
+    Tests/Thread/ThreadTestContext.cpp
+    Tests/Thread/ThreadTests.cpp
 )
 yuengine_apply_compile_options(YuThreadTests)
 target_link_libraries(YuThreadTests PRIVATE YuThread)
@@ -243,11 +243,11 @@ add_test(NAME Thread_QueueCapacity_DoesNotGrowDuringFixture COMMAND YuThreadTest
 add_test(NAME Thread_DiagnosticsDisabled_DoesNotChangeBehavior COMMAND YuThreadTests Thread_DiagnosticsDisabled_DoesNotChangeBehavior)
 
 add_executable(YuFileTests
-    tests/file/file_tests.cpp
+    Tests/File/FileTests.cpp
 )
 yuengine_apply_compile_options(YuFileTests)
 target_link_libraries(YuFileTests PRIVATE YuFile)
-target_compile_definitions(YuFileTests PRIVATE YUENGINE_FILE_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/file")
+target_compile_definitions(YuFileTests PRIVATE YUENGINE_FILE_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fixtures/File")
 add_test(NAME File_PathNormalize_RemovesDotAndRepeatedSeparators COMMAND YuFileTests File_PathNormalize_RemovesDotAndRepeatedSeparators)
 add_test(NAME File_PathNormalize_RejectsTraversalOutsideRoot COMMAND YuFileTests File_PathNormalize_RejectsTraversalOutsideRoot)
 add_test(NAME File_PathNormalize_RejectsEmptyAndAbsolutePath COMMAND YuFileTests File_PathNormalize_RejectsEmptyAndAbsolutePath)
@@ -260,7 +260,7 @@ add_test(NAME File_ReadSnapshot_RecordsCountsAndBytes COMMAND YuFileTests File_R
 add_test(NAME File_DiagnosticsDisabled_DoesNotChangeBehavior COMMAND YuFileTests File_DiagnosticsDisabled_DoesNotChangeBehavior)
 
 add_executable(YuRHITests
-    tests/rhi/rhi_tests.cpp
+    Tests/Rhi/RhiTests.cpp
 )
 yuengine_apply_compile_options(YuRHITests)
 target_link_libraries(YuRHITests PRIVATE YuRHI)
@@ -294,7 +294,7 @@ add_test(NAME RHI_DisabledDiagnosticsDoesNotChangeResults COMMAND YuRHITests RHI
 add_test(NAME RHI_NoResourceFileUploadShaderUiDependency COMMAND YuRHITests RHI_NoResourceFileUploadShaderUiDependency)
 
 add_executable(YuAudioTests
-    tests/audio/audio_tests.cpp
+    Tests/Audio/AudioTests.cpp
 )
 yuengine_apply_compile_options(YuAudioTests)
 target_link_libraries(YuAudioTests PRIVATE YuAudio)
@@ -324,7 +324,7 @@ add_test(NAME Audio_DisabledDiagnosticsDoesNotChangeResults COMMAND YuAudioTests
 add_test(NAME Audio_NoDeviceCodecResourceScriptUiGameAdapterDependency COMMAND YuAudioTests Audio_NoDeviceCodecResourceScriptUiGameAdapterDependency)
 
 add_executable(YuResourceTests
-    tests/resource/resource_tests.cpp
+    Tests/Resource/ResourceTests.cpp
 )
 yuengine_apply_compile_options(YuResourceTests)
 target_link_libraries(YuResourceTests PRIVATE YuResource)
@@ -346,7 +346,7 @@ add_test(NAME Resource_DisabledDiagnosticsDoesNotChangeResults COMMAND YuResourc
 add_test(NAME Resource_NoHiddenAllocation_UsesYuMemorySignal COMMAND YuResourceTests Resource_NoHiddenAllocation_UsesYuMemorySignal)
 
 add_executable(YuObjectTests
-    tests/object/object_tests.cpp
+    Tests/Object/ObjectTests.cpp
 )
 yuengine_apply_compile_options(YuObjectTests)
 target_link_libraries(YuObjectTests PRIVATE YuObject)
@@ -369,7 +369,7 @@ add_test(NAME Object_NoWorldScriptResourceOrGameAdapterDependency COMMAND YuObje
 add_test(NAME Object_NoHiddenAllocation_UsesYuMemorySignal COMMAND YuObjectTests Object_NoHiddenAllocation_UsesYuMemorySignal)
 
 add_executable(YuSerializeTests
-    tests/serialize/serialize_tests.cpp
+    Tests/Serialize/SerializeTests.cpp
 )
 yuengine_apply_compile_options(YuSerializeTests)
 target_link_libraries(YuSerializeTests PRIVATE YuSerialize)
@@ -393,7 +393,7 @@ add_test(NAME Serialize_NoHiddenAllocationInReadWritePath COMMAND YuSerializeTes
 add_test(NAME Serialize_SnapshotReportsCountsAndLastStatus COMMAND YuSerializeTests Serialize_SnapshotReportsCountsAndLastStatus)
 
 add_executable(YuPackageTests
-    tests/package/package_tests.cpp
+    Tests/Package/PackageTests.cpp
 )
 yuengine_apply_compile_options(YuPackageTests)
 target_link_libraries(YuPackageTests PRIVATE YuPackage)
@@ -423,7 +423,7 @@ add_test(NAME Package_NoFileReadOriginalPackageOrGameAdapterDependency COMMAND Y
 add_test(NAME Package_NoHiddenAllocation_UsesYuMemorySignal COMMAND YuPackageTests Package_NoHiddenAllocation_UsesYuMemorySignal)
 
 add_executable(YuInputTests
-    tests/input/input_tests.cpp
+    Tests/Input/InputTests.cpp
 )
 yuengine_apply_compile_options(YuInputTests)
 target_link_libraries(YuInputTests PRIVATE YuInput)

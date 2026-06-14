@@ -1,0 +1,14 @@
+#pragma once
+
+#include "YuEngine/Thread/TaskCallback.h"
+#include "YuEngine/Thread/TaskId.h"
+#include "YuEngine/Thread/TaskStatus.h"
+
+namespace yuengine::thread {
+struct TaskRecord {
+    TaskId Id;
+    TaskCallback Callback;
+    void* Context;
+    TaskStatus Status;
+};
+}

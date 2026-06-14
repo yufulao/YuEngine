@@ -1,0 +1,11 @@
+#pragma once
+
+#include "YuEngine/Input/InputActionState.h"
+#include "YuEngine/Input/InputStatus.h"
+
+namespace yuengine::input {
+struct InputActionQueryResult final {
+    InputStatus Status = InputStatus::Success;
+    InputActionState State;
+};
+}
