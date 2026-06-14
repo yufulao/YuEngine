@@ -113,8 +113,6 @@ git config --global core.autocrlf true
 - MUST: 普通头文件使用 `.h`。
 - MUST: 纯模板或仅头文件实现使用 `.hpp`。
 - SHOULD: 单个 lib/dll 对外提供同名 `.hpp` 聚合对外头文件。
-- MAY: `server_common` 通用代码使用 `bd_server` namespace。
-- MAY: `server_common` 通用代码不加 namespace。
 - MUST: `gameapp` 代码加 namespace。
 - MUST: 其他 app 使用各自 namespace。
 - MUST: `#include` 放在 header/source 文件开头。
