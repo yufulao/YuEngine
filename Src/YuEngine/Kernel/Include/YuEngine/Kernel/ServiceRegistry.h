@@ -10,7 +10,7 @@
 namespace yuengine::kernel {
 class ServiceRegistry final {
 public:
-    static constexpr const char* LookupPolicy = "SETUP_PATH_ONLY_CACHE_POINTERS_FOR_HOT_PATHS";
+    static constexpr const char* LOOKUP_POLICY = "SETUP_PATH_ONLY_CACHE_POINTERS_FOR_HOT_PATHS";
 
     template <typename T>
     bool Register(std::string_view owner_module, std::string_view service_id, T& service) {

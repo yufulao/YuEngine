@@ -94,7 +94,7 @@ int HostStartTickShutdownDeterministic() {
         return Fail("host lifecycle trace did not match expected order");
     }
 
-    if (result.allocation_accounting_status != PlatformPerformanceSignal::AllocationAccountingStatus) {
+    if (result.allocation_accounting_status != PlatformPerformanceSignal::ALLOCATION_ACCOUNTING_STATUS) {
         return Fail("allocation accounting status is missing");
     }
 

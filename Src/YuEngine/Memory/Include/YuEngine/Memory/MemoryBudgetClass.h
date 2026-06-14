@@ -12,14 +12,14 @@ enum class MemoryBudgetClass {
     Tool = 5
 };
 
-inline constexpr std::size_t MemoryBudgetClassCount = 6U;
+inline constexpr std::size_t MEMORY_BUDGET_CLASS_COUNT = 6U;
 
 inline std::size_t MemoryBudgetClassIndex(MemoryBudgetClass budget_class) {
     return static_cast<std::size_t>(budget_class);
 }
 
 inline bool IsValidMemoryBudgetClass(MemoryBudgetClass budget_class) {
-    return MemoryBudgetClassIndex(budget_class) < MemoryBudgetClassCount;
+    return MemoryBudgetClassIndex(budget_class) < MEMORY_BUDGET_CLASS_COUNT;
 }
 
 inline bool IsHotMemoryBudgetClass(MemoryBudgetClass budget_class) {

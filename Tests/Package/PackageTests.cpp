@@ -664,9 +664,9 @@ int PackageDependencyValidationRejectsCycle() {
 }
 
 int PackageDependencyValidationRejectsCycleAfterHighFanout() {
-    constexpr PackageEntryId start{1U};
-    constexpr PackageEntryId target{2U};
-    constexpr PackageEntryId branch{32U};
+    constexpr PackageEntryId START{1U};
+    constexpr PackageEntryId TARGET{2U};
+    constexpr PackageEntryId BRANCH{32U};
 
     PackageRegistry registry;
     RegisterManifest(registry);
@@ -682,29 +682,29 @@ int PackageDependencyValidationRejectsCycleAfterHighFanout() {
     }
 
     for (std::uint32_t index = 3U; index <= MAX_PACKAGE_ENTRY_COUNT; ++index) {
-        if (registry.AddDependency(PACKAGE_A, start, PackageEntryId{index}) != PackageStatus::Success) {
+        if (registry.AddDependency(PACKAGE_A, START, PackageEntryId{index}) != PackageStatus::Success) {
             return Fail("high-fanout cycle fixture failed to add start edge");
         }
     }
 
-    if (registry.AddDependency(PACKAGE_A, branch, PackageEntryId{3U}) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, BRANCH, PackageEntryId{3U}) != PackageStatus::Success) {
         return Fail("high-fanout cycle fixture failed to add duplicate pending edge");
     }
 
-    if (registry.AddDependency(PACKAGE_A, branch, PackageEntryId{4U}) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, BRANCH, PackageEntryId{4U}) != PackageStatus::Success) {
         return Fail("high-fanout cycle fixture failed to add second duplicate pending edge");
     }
 
-    if (registry.AddDependency(PACKAGE_A, branch, PackageEntryId{5U}) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, BRANCH, PackageEntryId{5U}) != PackageStatus::Success) {
         return Fail("high-fanout cycle fixture failed to add third duplicate pending edge");
     }
 
-    if (registry.AddDependency(PACKAGE_A, branch, target) != PackageStatus::Success) {
+    if (registry.AddDependency(PACKAGE_A, BRANCH, TARGET) != PackageStatus::Success) {
         return Fail("high-fanout cycle fixture failed to add target path edge");
     }
 
     const PackageSnapshot before_snapshot = registry.Snapshot();
-    const PackageStatus cycle_status = registry.AddDependency(PACKAGE_A, target, start);
+    const PackageStatus cycle_status = registry.AddDependency(PACKAGE_A, TARGET, START);
     if (cycle_status != PackageStatus::DependencyCycle) {
         return Fail("high-fanout dependency path did not return explicit cycle status");
     }

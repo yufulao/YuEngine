@@ -543,7 +543,7 @@ int KernelServiceRegistryResolveAndMissingService() {
         return Fail("service owner deregistration did not remove service");
     }
 
-    const std::string lookup_policy(ServiceRegistry::LookupPolicy);
+    const std::string lookup_policy(ServiceRegistry::LOOKUP_POLICY);
     if (lookup_policy != "SETUP_PATH_ONLY_CACHE_POINTERS_FOR_HOT_PATHS") {
         return Fail("service lookup policy was not explicit");
     }
