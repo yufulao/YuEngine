@@ -11,7 +11,7 @@ public:
     LooseFileSource();
     explicit LooseFileSource(std::filesystem::path rootPath);
 
-    FileReadResult Read(NormalizedPath path) const;
+    file_read_result_t Read(NormalizedPath path) const;
     const std::filesystem::path& RootPath() const;
 
 private:

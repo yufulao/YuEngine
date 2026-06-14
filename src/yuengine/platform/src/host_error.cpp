@@ -3,11 +3,11 @@
 #include <utility>
 
 namespace yuengine::platform {
-HostError HostError::Success() {
-    return HostError{true, std::string()};
+host_error_t host_error_t::Success() {
+    return host_error_t{true, std::string()};
 }
 
-HostError HostError::Failure(std::string message) {
-    return HostError{false, std::move(message)};
+host_error_t host_error_t::Failure(std::string message) {
+    return host_error_t{false, std::move(message)};
 }
 }

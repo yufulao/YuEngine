@@ -11,7 +11,7 @@ class HeadlessHost final {
 public:
     HeadlessHost(IFrameClock& frameClock, diagnostics::ILogSink& logSink);
 
-    HostRunResult Run(IHostRuntime& runtime, const HeadlessHostConfig& config);
+    host_run_result_t Run(IHostRuntime& runtime, const headless_host_config_t& config);
 
 private:
     IFrameClock& _frameClock;
