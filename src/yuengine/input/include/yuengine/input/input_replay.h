@@ -19,32 +19,32 @@ class InputReplay final {
 public:
     InputReplay();
 
-    input_binding_result_t RegisterActionBinding(input_device_id_t device, input_control_id_t control, input_action_id_t action);
-    InputStatus RecordReplayEvent(std::size_t frameIndex, input_event_t event);
-    input_apply_result_t ApplyNextFrame();
+    InputBindingResult RegisterActionBinding(InputDeviceId device, InputControlId control, InputActionId action);
+    InputStatus RecordReplayEvent(std::size_t frameIndex, InputEvent event);
+    InputApplyResult ApplyNextFrame();
     InputStatus ResetFrameState();
-    input_action_query_result_t QueryAction(input_action_id_t action) const;
-    input_replay_snapshot_t Snapshot() const;
+    InputActionQueryResult QueryAction(InputActionId action) const;
+    InputReplaySnapshot Snapshot() const;
     std::size_t EventCountForFrame(std::size_t frameIndex) const;
 
 private:
     InputStatus RecordFailure(InputStatus status);
     InputStatus RejectReplayEvent(InputStatus status);
-    bool IsDeviceValid(input_device_id_t device) const;
-    bool IsActionInRange(input_action_id_t action) const;
+    bool IsDeviceValid(InputDeviceId device) const;
+    bool IsActionInRange(InputActionId action) const;
     bool IsEventTypeKnown(InputEventType type) const;
     bool IsAxisValueValid(std::int32_t value) const;
-    bool HasBindingForControl(input_device_id_t device, input_control_id_t control) const;
-    const input_action_binding_t* FindBinding(input_device_id_t device, input_control_id_t control) const;
-    void MarkActionChanged(input_action_id_t action);
+    bool HasBindingForControl(InputDeviceId device, InputControlId control) const;
+    const InputActionBinding* FindBinding(InputDeviceId device, InputControlId control) const;
+    void MarkActionChanged(InputActionId action);
     void RecalculateChangedActionCount();
     std::size_t ReplayStorageCapacity() const;
 
-    std::array<input_action_binding_t, MAX_INPUT_BINDINGS> _bindings;
-    std::array<input_replay_frame_t, MAX_REPLAY_FRAMES> _frames;
-    std::array<input_action_state_t, MAX_INPUT_ACTIONS> _actions;
+    std::array<InputActionBinding, MAX_INPUT_BINDINGS> _bindings;
+    std::array<InputReplayFrame, MAX_REPLAY_FRAMES> _frames;
+    std::array<InputActionState, MAX_INPUT_ACTIONS> _actions;
     std::array<bool, MAX_INPUT_ACTIONS> _registeredActions;
-    input_replay_snapshot_t _snapshot;
+    InputReplaySnapshot _snapshot;
     std::size_t _bindingCount;
     std::size_t _recordedFrameCount;
     std::size_t _nextFrameIndex;

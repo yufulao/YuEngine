@@ -5,7 +5,7 @@
 #include <vector>
 
 namespace yuengine::audio {
-struct audio_source_slot_t final {
+struct AudioSourceSlot final {
     bool IsActive = false;
     std::uint32_t Generation = 1U;
     std::size_t FrameCount = 0U;

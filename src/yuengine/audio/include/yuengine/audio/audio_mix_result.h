@@ -5,7 +5,7 @@
 #include "yuengine/audio/audio_status.h"
 
 namespace yuengine::audio {
-struct audio_mix_result_t final {
+struct AudioMixResult final {
     AudioStatus Status = AudioStatus::InvalidDescriptor;
     std::size_t FramesWritten = 0U;
 };
