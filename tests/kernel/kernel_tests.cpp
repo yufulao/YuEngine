@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "LifecycleTestModule.h"
+#include "lifecycle_test_module.h"
 #include "yuengine/kernel/engine_kernel.h"
 #include "yuengine/kernel/kernel_status.h"
 #include "yuengine/kernel/service_registry.h"

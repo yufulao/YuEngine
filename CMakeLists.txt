@@ -176,7 +176,7 @@ target_link_libraries(YuHeadless PRIVATE YuKernel)
 enable_testing()
 
 add_executable(YuPlatformTests
-    tests/platform/PlatformTests.cpp
+    tests/platform/platform_tests.cpp
 )
 yuengine_apply_compile_options(YuPlatformTests)
 target_link_libraries(YuPlatformTests PRIVATE YuPlatform)
@@ -185,7 +185,7 @@ add_test(NAME Host_TimerMonotonic_ForFixedTicks COMMAND YuPlatformTests Host_Tim
 add_test(NAME Platform_AllocationAccountingStatus_UsesMemoryHook COMMAND YuPlatformTests Platform_AllocationAccountingStatus_UsesMemoryHook)
 
 add_executable(YuDiagnosticsTests
-    tests/diagnostics/DiagnosticsTests.cpp
+    tests/diagnostics/diagnostics_tests.cpp
 )
 yuengine_apply_compile_options(YuDiagnosticsTests)
 target_link_libraries(YuDiagnosticsTests PRIVATE YuPlatform)
@@ -201,7 +201,7 @@ add_test(NAME Diagnostics_NoReportDependency_ForRuntimeResults COMMAND YuDiagnos
 add_test(NAME Diagnostics_NoHiddenAllocation_UsesYuMemorySignal COMMAND YuDiagnosticsTests Diagnostics_NoHiddenAllocation_UsesYuMemorySignal)
 
 add_executable(YuKernelTests
-    tests/kernel/KernelTests.cpp
+    tests/kernel/kernel_tests.cpp
 )
 yuengine_apply_compile_options(YuKernelTests)
 target_link_libraries(YuKernelTests PRIVATE YuKernel)
@@ -212,7 +212,7 @@ add_test(NAME Kernel_ServiceRegistry_ResolveAndMissingService COMMAND YuKernelTe
 add_test(NAME Kernel_InvalidLifecycle_RejectsOutOfOrderCalls COMMAND YuKernelTests Kernel_InvalidLifecycle_RejectsOutOfOrderCalls)
 
 add_executable(YuMemoryTests
-    tests/memory/MemoryTests.cpp
+    tests/memory/memory_tests.cpp
 )
 yuengine_apply_compile_options(YuMemoryTests)
 target_link_libraries(YuMemoryTests PRIVATE YuMemory)
@@ -227,8 +227,8 @@ add_test(NAME Memory_TrackerRejectsBeyondFixedCapacityWithoutMutation COMMAND Yu
 add_test(NAME Memory_TrackerEnforcesOwnerAndTagByteCapsWithoutMutation COMMAND YuMemoryTests Memory_TrackerEnforcesOwnerAndTagByteCapsWithoutMutation)
 
 add_executable(YuThreadTests
-    tests/thread/ThreadTestContext.cpp
-    tests/thread/ThreadTests.cpp
+    tests/thread/thread_test_context.cpp
+    tests/thread/thread_tests.cpp
 )
 yuengine_apply_compile_options(YuThreadTests)
 target_link_libraries(YuThreadTests PRIVATE YuThread)
@@ -243,7 +243,7 @@ add_test(NAME Thread_QueueCapacity_DoesNotGrowDuringFixture COMMAND YuThreadTest
 add_test(NAME Thread_DiagnosticsDisabled_DoesNotChangeBehavior COMMAND YuThreadTests Thread_DiagnosticsDisabled_DoesNotChangeBehavior)
 
 add_executable(YuFileTests
-    tests/file/FileTests.cpp
+    tests/file/file_tests.cpp
 )
 yuengine_apply_compile_options(YuFileTests)
 target_link_libraries(YuFileTests PRIVATE YuFile)
@@ -260,7 +260,7 @@ add_test(NAME File_ReadSnapshot_RecordsCountsAndBytes COMMAND YuFileTests File_R
 add_test(NAME File_DiagnosticsDisabled_DoesNotChangeBehavior COMMAND YuFileTests File_DiagnosticsDisabled_DoesNotChangeBehavior)
 
 add_executable(YuRHITests
-    tests/rhi/RhiTests.cpp
+    tests/rhi/rhi_tests.cpp
 )
 yuengine_apply_compile_options(YuRHITests)
 target_link_libraries(YuRHITests PRIVATE YuRHI)
@@ -294,7 +294,7 @@ add_test(NAME RHI_DisabledDiagnosticsDoesNotChangeResults COMMAND YuRHITests RHI
 add_test(NAME RHI_NoResourceFileUploadShaderUiDependency COMMAND YuRHITests RHI_NoResourceFileUploadShaderUiDependency)
 
 add_executable(YuAudioTests
-    tests/audio/AudioTests.cpp
+    tests/audio/audio_tests.cpp
 )
 yuengine_apply_compile_options(YuAudioTests)
 target_link_libraries(YuAudioTests PRIVATE YuAudio)
@@ -324,7 +324,7 @@ add_test(NAME Audio_DisabledDiagnosticsDoesNotChangeResults COMMAND YuAudioTests
 add_test(NAME Audio_NoDeviceCodecResourceScriptUiGameAdapterDependency COMMAND YuAudioTests Audio_NoDeviceCodecResourceScriptUiGameAdapterDependency)
 
 add_executable(YuResourceTests
-    tests/resource/ResourceTests.cpp
+    tests/resource/resource_tests.cpp
 )
 yuengine_apply_compile_options(YuResourceTests)
 target_link_libraries(YuResourceTests PRIVATE YuResource)
@@ -346,7 +346,7 @@ add_test(NAME Resource_DisabledDiagnosticsDoesNotChangeResults COMMAND YuResourc
 add_test(NAME Resource_NoHiddenAllocation_UsesYuMemorySignal COMMAND YuResourceTests Resource_NoHiddenAllocation_UsesYuMemorySignal)
 
 add_executable(YuObjectTests
-    tests/object/ObjectTests.cpp
+    tests/object/object_tests.cpp
 )
 yuengine_apply_compile_options(YuObjectTests)
 target_link_libraries(YuObjectTests PRIVATE YuObject)
@@ -369,7 +369,7 @@ add_test(NAME Object_NoWorldScriptResourceOrGameAdapterDependency COMMAND YuObje
 add_test(NAME Object_NoHiddenAllocation_UsesYuMemorySignal COMMAND YuObjectTests Object_NoHiddenAllocation_UsesYuMemorySignal)
 
 add_executable(YuSerializeTests
-    tests/serialize/SerializeTests.cpp
+    tests/serialize/serialize_tests.cpp
 )
 yuengine_apply_compile_options(YuSerializeTests)
 target_link_libraries(YuSerializeTests PRIVATE YuSerialize)
@@ -393,7 +393,7 @@ add_test(NAME Serialize_NoHiddenAllocationInReadWritePath COMMAND YuSerializeTes
 add_test(NAME Serialize_SnapshotReportsCountsAndLastStatus COMMAND YuSerializeTests Serialize_SnapshotReportsCountsAndLastStatus)
 
 add_executable(YuPackageTests
-    tests/package/PackageTests.cpp
+    tests/package/package_tests.cpp
 )
 yuengine_apply_compile_options(YuPackageTests)
 target_link_libraries(YuPackageTests PRIVATE YuPackage)
@@ -423,7 +423,7 @@ add_test(NAME Package_NoFileReadOriginalPackageOrGameAdapterDependency COMMAND Y
 add_test(NAME Package_NoHiddenAllocation_UsesYuMemorySignal COMMAND YuPackageTests Package_NoHiddenAllocation_UsesYuMemorySignal)
 
 add_executable(YuInputTests
-    tests/input/InputTests.cpp
+    tests/input/input_tests.cpp
 )
 yuengine_apply_compile_options(YuInputTests)
 target_link_libraries(YuInputTests PRIVATE YuInput)

@@ -4,7 +4,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "StreamFixture.h"
+#include "stream_fixture.h"
 #include "yuengine/memory/memory_accounting_status.h"
 #include "yuengine/serialize/serialize_constants.h"
 #include "yuengine/serialize/serialize_reader.h"

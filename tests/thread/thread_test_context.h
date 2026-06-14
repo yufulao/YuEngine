@@ -1,6 +1,6 @@
 #pragma once
 
-#include "FixedTraceBuffer.h"
+#include "fixed_trace_buffer.h"
 
 namespace yuengine::thread::tests {
 struct ThreadTestContext {
