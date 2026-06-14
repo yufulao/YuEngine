@@ -44,6 +44,7 @@ constexpr const char* TEST_OVERSIZED_KEYS = "Package_RegisterEntryRejectsOversiz
 constexpr const char* TEST_OVERSIZED_BYTE_RANGE = "Package_RegisterEntryRejectsOversizedByteRangeWithoutMutation";
 constexpr const char* TEST_RESOLVE = "Package_ResolveEntryByResourceKey_ReturnsDeterministicLoadPlan";
 constexpr const char* TEST_RESOLVE_RESOURCE_KEY_TUPLE = "Package_ResolveEntryByResourceKey_UsesTypeAndLogicalKeyTuple";
+constexpr const char* TEST_INDEXED_LOOKUPS = "Package_IndexedLookupsPreserveStatusOrderAndCapacities";
 constexpr const char* TEST_UNKNOWN_KEY = "Package_ResolveRejectsUnknownResourceKey";
 constexpr const char* TEST_TYPE_MISMATCH = "Package_ResolveRejectsTypeMismatchWithoutMutation";
 constexpr const char* TEST_MISSING_DEPENDENCY = "Package_DependencyValidationRejectsMissingEntry";
@@ -57,6 +58,31 @@ constexpr const char* TEST_NO_FILE_ORIGINAL = "Package_NoFileReadOriginalPackage
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Package_NoHiddenAllocation_UsesYuMemorySignal";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
+constexpr const char* INDEX_TEXTURE_LOGICAL = "index_texture";
+constexpr const char* INDEX_AUDIO_LOGICAL = "index_audio";
+constexpr const char* INDEX_MATERIAL_LOGICAL = "index_material";
+constexpr const char* INDEX_TEXTURE_SOURCE = "textures/index_texture.bin";
+constexpr const char* INDEX_AUDIO_SOURCE = "audio/index_audio.bin";
+constexpr const char* INDEX_MATERIAL_SOURCE = "materials/index_material.bin";
+constexpr const char* ERROR_INDEX_MANIFEST_FAILED = "indexed lookup fixture manifest failed";
+constexpr const char* ERROR_INDEX_TEXTURE_FAILED = "indexed lookup fixture texture failed";
+constexpr const char* ERROR_INDEX_AUDIO_FAILED = "indexed lookup fixture audio failed";
+constexpr const char* ERROR_INDEX_MATERIAL_FAILED = "indexed lookup fixture material failed";
+constexpr const char* ERROR_INDEX_AUDIO_EDGE_FAILED = "indexed lookup fixture audio edge failed";
+constexpr const char* ERROR_INDEX_MATERIAL_EDGE_FAILED = "indexed lookup fixture material edge failed";
+constexpr const char* ERROR_INDEX_DUPLICATE_EDGE_FAILED = "indexed duplicate edge did not succeed";
+constexpr const char* ERROR_INDEX_DUPLICATE_EDGE_MUTATED = "indexed duplicate edge changed dependency count";
+constexpr const char* ERROR_INDEX_TYPE_MISMATCH_STATUS = "indexed logical key type mismatch returned wrong status";
+constexpr const char* ERROR_INDEX_TYPE_MISMATCH_MUTATED = "indexed type mismatch changed resolve count";
+constexpr const char* ERROR_INDEX_RESOLVE_FAILED = "indexed resource lookup failed";
+constexpr const char* ERROR_INDEX_RECORD_COUNT = "indexed lookup returned unexpected record count";
+constexpr const char* ERROR_INDEX_FIRST_DEPENDENCY = "indexed lookup first dependency order changed";
+constexpr const char* ERROR_INDEX_SECOND_DEPENDENCY = "indexed lookup second dependency order changed";
+constexpr const char* ERROR_INDEX_ROOT_RECORD = "indexed lookup root record changed";
+constexpr const char* ERROR_INDEX_MANIFEST_CAPACITY = "indexed lookup changed manifest capacity";
+constexpr const char* ERROR_INDEX_ENTRY_CAPACITY = "indexed lookup changed entry capacity";
+constexpr const char* ERROR_INDEX_DEPENDENCY_CAPACITY = "indexed lookup changed dependency capacity";
+constexpr const char* ERROR_INDEX_LOAD_PLAN_CAPACITY = "indexed lookup changed load-plan capacity";
 
 constexpr PackageId PACKAGE_A{1U};
 constexpr PackageId PACKAGE_B{2U};
@@ -526,6 +552,117 @@ int PackageResolveEntryByResourceKeyUsesTypeAndLogicalKeyTuple()
     return 0;
 }
 
+int PackageIndexedLookupsPreserveStatusOrderAndCapacities()
+{
+    PackageRegistry registry;
+    if (!RegisterManifest(registry).Succeeded())
+    {
+        return Fail(ERROR_INDEX_MANIFEST_FAILED);
+    }
+
+    if (!RegisterEntry(registry, ENTRY_TEXTURE, TYPE_TEXTURE, INDEX_TEXTURE_LOGICAL, INDEX_TEXTURE_SOURCE).Succeeded())
+    {
+        return Fail(ERROR_INDEX_TEXTURE_FAILED);
+    }
+
+    if (!RegisterEntry(registry, ENTRY_AUDIO, TYPE_AUDIO, INDEX_AUDIO_LOGICAL, INDEX_AUDIO_SOURCE).Succeeded())
+    {
+        return Fail(ERROR_INDEX_AUDIO_FAILED);
+    }
+
+    const PackageRegistrationResult materialResult =
+        RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, INDEX_MATERIAL_LOGICAL, INDEX_MATERIAL_SOURCE);
+    if (!materialResult.Succeeded())
+    {
+        return Fail(ERROR_INDEX_MATERIAL_FAILED);
+    }
+
+    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO) != PackageStatus::Success)
+    {
+        return Fail(ERROR_INDEX_AUDIO_EDGE_FAILED);
+    }
+
+    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_MATERIAL) != PackageStatus::Success)
+    {
+        return Fail(ERROR_INDEX_MATERIAL_EDGE_FAILED);
+    }
+
+    const PackageSnapshot beforeDuplicate = registry.Snapshot();
+    if (registry.AddDependency(PACKAGE_A, ENTRY_TEXTURE, ENTRY_AUDIO) != PackageStatus::Success)
+    {
+        return Fail(ERROR_INDEX_DUPLICATE_EDGE_FAILED);
+    }
+
+    if (registry.Snapshot().DependencyEdgeCount != beforeDuplicate.DependencyEdgeCount)
+    {
+        return Fail(ERROR_INDEX_DUPLICATE_EDGE_MUTATED);
+    }
+
+    const PackageSnapshot beforeMismatch = registry.Snapshot();
+    const PackageLoadPlanResult mismatch =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey(INDEX_TEXTURE_LOGICAL));
+    if (mismatch.Status != PackageStatus::TypeMismatch)
+    {
+        return Fail(ERROR_INDEX_TYPE_MISMATCH_STATUS);
+    }
+
+    if (registry.Snapshot().LoadPlanResolveCount != beforeMismatch.LoadPlanResolveCount)
+    {
+        return Fail(ERROR_INDEX_TYPE_MISMATCH_MUTATED);
+    }
+
+    const PackageSnapshot beforeResolve = registry.Snapshot();
+    const PackageLoadPlanResult result =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey(INDEX_TEXTURE_LOGICAL));
+    if (!result.Succeeded())
+    {
+        return Fail(ERROR_INDEX_RESOLVE_FAILED);
+    }
+
+    if (result.Plan.RecordCount != 3U)
+    {
+        return Fail(ERROR_INDEX_RECORD_COUNT);
+    }
+
+    if (result.Plan.Records[0U].Entry.Value != ENTRY_AUDIO.Value)
+    {
+        return Fail(ERROR_INDEX_FIRST_DEPENDENCY);
+    }
+
+    if (result.Plan.Records[1U].Entry.Value != ENTRY_MATERIAL.Value)
+    {
+        return Fail(ERROR_INDEX_SECOND_DEPENDENCY);
+    }
+
+    if (result.Plan.Records[2U].Entry.Value != ENTRY_TEXTURE.Value)
+    {
+        return Fail(ERROR_INDEX_ROOT_RECORD);
+    }
+
+    const PackageSnapshot afterResolve = registry.Snapshot();
+    if (afterResolve.ManifestCapacity != beforeResolve.ManifestCapacity)
+    {
+        return Fail(ERROR_INDEX_MANIFEST_CAPACITY);
+    }
+
+    if (afterResolve.EntryCapacity != beforeResolve.EntryCapacity)
+    {
+        return Fail(ERROR_INDEX_ENTRY_CAPACITY);
+    }
+
+    if (afterResolve.DependencyEdgeCapacity != beforeResolve.DependencyEdgeCapacity)
+    {
+        return Fail(ERROR_INDEX_DEPENDENCY_CAPACITY);
+    }
+
+    if (afterResolve.LoadPlanRecordCapacity != beforeResolve.LoadPlanRecordCapacity)
+    {
+        return Fail(ERROR_INDEX_LOAD_PLAN_CAPACITY);
+    }
+
+    return 0;
+}
+
 int PackageResolveRejectsUnknownResourceKey()
 {
     PackageRegistry registry = CreateResolvedRegistry();
@@ -893,6 +1030,7 @@ int main(int argc, char** argv)
         {TEST_OVERSIZED_BYTE_RANGE, PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation},
         {TEST_RESOLVE, PackageResolveEntryByResourceKeyReturnsDeterministicLoadPlan},
         {TEST_RESOLVE_RESOURCE_KEY_TUPLE, PackageResolveEntryByResourceKeyUsesTypeAndLogicalKeyTuple},
+        {TEST_INDEXED_LOOKUPS, PackageIndexedLookupsPreserveStatusOrderAndCapacities},
         {TEST_UNKNOWN_KEY, PackageResolveRejectsUnknownResourceKey},
         {TEST_TYPE_MISMATCH, PackageResolveRejectsTypeMismatchWithoutMutation},
         {TEST_MISSING_DEPENDENCY, PackageDependencyValidationRejectsMissingEntry},
