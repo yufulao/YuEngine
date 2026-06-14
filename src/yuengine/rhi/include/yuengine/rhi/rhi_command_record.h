@@ -6,7 +6,7 @@
 
 namespace yuengine::rhi {
 struct RhiCommandRecord final {
-    RHI_COMMAND_TYPE Type = RHI_COMMAND_TYPE::BeginFrame;
+    RhiCommandType Type = RhiCommandType::BeginFrame;
     RhiTextureHandle Target{};
     RhiColor Color{};
 };

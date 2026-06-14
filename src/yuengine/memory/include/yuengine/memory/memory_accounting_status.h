@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::memory {
-enum class MEMORY_ACCOUNTING_STATUS {
+enum class MemoryAccountingStatus {
     Success,
     ExplicitlyTrackedOnly,
     InvalidOwner,

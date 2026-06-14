@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::rhi {
-enum class RHI_BACKEND_KIND {
+enum class RhiBackendKind {
     Null,
     Unsupported
 };

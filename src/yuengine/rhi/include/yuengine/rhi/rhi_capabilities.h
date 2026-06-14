@@ -8,8 +8,8 @@
 
 namespace yuengine::rhi {
 struct RhiCapabilities final {
-    RHI_BACKEND_KIND BackendKind = RHI_BACKEND_KIND::Null;
-    RHI_FORMAT ColorFormat = RHI_FORMAT::Rgba8Unorm;
+    RhiBackendKind BackendKind = RhiBackendKind::Null;
+    RhiFormat ColorFormat = RhiFormat::Rgba8Unorm;
     std::size_t ColorTargetCapacity = 0U;
     std::size_t CommandListCapacity = 0U;
     std::uint16_t MaxColorTargetExtent = 0U;

@@ -6,7 +6,7 @@
 
 namespace yuengine::input {
 struct input_apply_result_t final {
-    INPUT_STATUS Status = INPUT_STATUS::Success;
+    InputStatus Status = InputStatus::Success;
     std::size_t FrameIndex = 0U;
 };
 }

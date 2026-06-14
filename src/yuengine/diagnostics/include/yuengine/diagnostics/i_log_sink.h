@@ -9,7 +9,7 @@ class ILogSink {
 public:
     virtual ~ILogSink() = default;
 
-    virtual void Write(LOG_LEVEL level, std::string_view message) = 0;
+    virtual void Write(LogLevel level, std::string_view message) = 0;
     virtual bool IsEnabled() const = 0;
 };
 }

@@ -10,7 +10,7 @@ using EngineKernel = yuengine::kernel::EngineKernel;
 using FixedFrameClock = yuengine::platform::FixedFrameClock;
 using HeadlessHost = yuengine::platform::HeadlessHost;
 using yuengine::platform::headless_host_config_t;
-using yuengine::platform::HOST_STATUS;
+using yuengine::platform::HostStatus;
 using KernelHostRuntime = yuengine::kernel::KernelHostRuntime;
 
 int main() {
@@ -26,7 +26,7 @@ int main() {
 
     const headless_host_config_t config{TICK_COUNT};
     const auto result = host.Run(runtime, config);
-    if (result.Status == HOST_STATUS::Success) {
+    if (result.Status == HostStatus::Success) {
         return 0;
     }
 

@@ -6,7 +6,7 @@
 #include "yuengine/package/package_status.h"
 
 namespace yuengine::package {
-using memory::MEMORY_ACCOUNTING_STATUS;
+using memory::MemoryAccountingStatus;
 
 struct package_snapshot_t final {
     std::uint32_t ManifestCapacity;
@@ -20,7 +20,7 @@ struct package_snapshot_t final {
     std::uint32_t LoadPlanResolveCount;
     std::uint32_t LastLoadPlanRecordCount;
     std::uint32_t RejectedOperationCount;
-    MEMORY_ACCOUNTING_STATUS AllocationAccountingStatus;
-    PACKAGE_STATUS LastStatus;
+    MemoryAccountingStatus AllocationAccountingStatus;
+    PackageStatus LastStatus;
 };
 }

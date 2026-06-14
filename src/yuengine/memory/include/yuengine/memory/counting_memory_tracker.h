@@ -17,12 +17,12 @@ public:
     memory_accounting_result_t RecordAllocation(
         memory_owner_id_t owner,
         memory_tag_t tag,
-        MEMORY_BUDGET_CLASS budgetClass,
+        MemoryBudgetClass budgetClass,
         std::size_t bytes,
         std::size_t alignment) override;
-    MEMORY_ACCOUNTING_STATUS RecordFree(memory_allocation_id_t allocationId, memory_owner_id_t owner, memory_tag_t tag) override;
+    MemoryAccountingStatus RecordFree(memory_allocation_id_t allocationId, memory_owner_id_t owner, memory_tag_t tag) override;
     memory_snapshot_t Snapshot() const override;
-    std::uint64_t AllocationCountForBudget(MEMORY_BUDGET_CLASS budgetClass) const override;
+    std::uint64_t AllocationCountForBudget(MemoryBudgetClass budgetClass) const override;
 
 private:
     active_allocation_record_t* FindActiveAllocation(memory_allocation_id_t allocationId);

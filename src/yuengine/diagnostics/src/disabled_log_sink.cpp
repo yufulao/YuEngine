@@ -1,7 +1,7 @@
 #include "yuengine/diagnostics/disabled_log_sink.h"
 
 namespace yuengine::diagnostics {
-void DisabledLogSink::Write(LOG_LEVEL level, std::string_view message) {
+void DisabledLogSink::Write(LogLevel level, std::string_view message) {
     static_cast<void>(level);
     static_cast<void>(message);
 }

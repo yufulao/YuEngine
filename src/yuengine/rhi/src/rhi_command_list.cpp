@@ -9,62 +9,62 @@ RhiCommandList::RhiCommandList(std::size_t capacity)
       _isComplete(false) {
 }
 
-RHI_STATUS RhiCommandList::Reset() {
+RhiStatus RhiCommandList::Reset() {
     _targetHandle = RhiTextureHandle{};
     _commandCount = 0U;
     _isRecording = false;
     _isComplete = false;
-    return RHI_STATUS::Success;
+    return RhiStatus::Success;
 }
 
-RHI_STATUS RhiCommandList::BeginFrame(RhiTextureHandle target) {
+RhiStatus RhiCommandList::BeginFrame(RhiTextureHandle target) {
     if (_isRecording) {
-        return RHI_STATUS::InvalidLifecycle;
+        return RhiStatus::InvalidLifecycle;
     }
 
     if (_isComplete) {
-        return RHI_STATUS::InvalidLifecycle;
+        return RhiStatus::InvalidLifecycle;
     }
 
-    const RHI_STATUS appendStatus = Append(RhiCommandRecord{RHI_COMMAND_TYPE::BeginFrame, target, RhiColor{}});
-    if (appendStatus != RHI_STATUS::Success) {
+    const RhiStatus appendStatus = Append(RhiCommandRecord{RhiCommandType::BeginFrame, target, RhiColor{}});
+    if (appendStatus != RhiStatus::Success) {
         return appendStatus;
     }
 
     _targetHandle = target;
     _isRecording = true;
-    return RHI_STATUS::Success;
+    return RhiStatus::Success;
 }
 
-RHI_STATUS RhiCommandList::RecordClear(RhiTextureHandle target, RhiColor color) {
+RhiStatus RhiCommandList::RecordClear(RhiTextureHandle target, RhiColor color) {
     if (!_isRecording) {
-        return RHI_STATUS::InvalidLifecycle;
+        return RhiStatus::InvalidLifecycle;
     }
 
     if (_isComplete) {
-        return RHI_STATUS::InvalidLifecycle;
+        return RhiStatus::InvalidLifecycle;
     }
 
-    return Append(RhiCommandRecord{RHI_COMMAND_TYPE::ClearColor, target, color});
+    return Append(RhiCommandRecord{RhiCommandType::ClearColor, target, color});
 }
 
-RHI_STATUS RhiCommandList::EndFrame() {
+RhiStatus RhiCommandList::EndFrame() {
     if (!_isRecording) {
-        return RHI_STATUS::InvalidLifecycle;
+        return RhiStatus::InvalidLifecycle;
     }
 
     if (_isComplete) {
-        return RHI_STATUS::InvalidLifecycle;
+        return RhiStatus::InvalidLifecycle;
     }
 
-    const RHI_STATUS appendStatus = Append(RhiCommandRecord{RHI_COMMAND_TYPE::EndFrame, _targetHandle, RhiColor{}});
-    if (appendStatus != RHI_STATUS::Success) {
+    const RhiStatus appendStatus = Append(RhiCommandRecord{RhiCommandType::EndFrame, _targetHandle, RhiColor{}});
+    if (appendStatus != RhiStatus::Success) {
         return appendStatus;
     }
 
     _isRecording = false;
     _isComplete = true;
-    return RHI_STATUS::Success;
+    return RhiStatus::Success;
 }
 
 RhiCommandListSnapshot RhiCommandList::Snapshot() const {
@@ -91,13 +91,13 @@ bool RhiCommandList::IsComplete() const {
     return _isComplete;
 }
 
-RHI_STATUS RhiCommandList::Append(RhiCommandRecord record) {
+RhiStatus RhiCommandList::Append(RhiCommandRecord record) {
     if (_commandCount >= _records.size()) {
-        return RHI_STATUS::CapacityExceeded;
+        return RhiStatus::CapacityExceeded;
     }
 
     _records[_commandCount] = record;
     ++_commandCount;
-    return RHI_STATUS::Success;
+    return RhiStatus::Success;
 }
 }

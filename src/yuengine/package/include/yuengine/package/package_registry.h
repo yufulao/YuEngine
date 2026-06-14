@@ -23,7 +23,7 @@ public:
 
     package_registration_result_t RegisterSyntheticManifest(const package_manifest_descriptor_t& descriptor);
     package_registration_result_t RegisterEntry(const package_entry_descriptor_t& descriptor);
-    PACKAGE_STATUS AddDependency(package_id_t package, package_entry_id_t dependent, package_entry_id_t dependency);
+    PackageStatus AddDependency(package_id_t package, package_entry_id_t dependent, package_entry_id_t dependency);
     package_load_plan_result_t ResolveEntryByResourceKey(
         package_id_t package,
         resource_type_id_t expectedType,
@@ -31,15 +31,15 @@ public:
     package_snapshot_t Snapshot() const;
 
 private:
-    PACKAGE_STATUS RecordFailure(PACKAGE_STATUS status);
+    PackageStatus RecordFailure(PackageStatus status);
     void RecordSuccess();
     bool HasManifest(package_id_t package) const;
     bool HasDuplicateManifest(package_id_t package) const;
     bool HasDuplicateEntry(const package_entry_descriptor_t& descriptor) const;
     bool HasDuplicateResourceKey(const package_entry_descriptor_t& descriptor) const;
-    PACKAGE_STATUS ValidateEntryDescriptor(const package_entry_descriptor_t& descriptor) const;
-    PACKAGE_STATUS FindEntryIndex(package_id_t package, package_entry_id_t entry, std::size_t& outIndex) const;
-    PACKAGE_STATUS FindEntryByResourceKey(
+    PackageStatus ValidateEntryDescriptor(const package_entry_descriptor_t& descriptor) const;
+    PackageStatus FindEntryIndex(package_id_t package, package_entry_id_t entry, std::size_t& outIndex) const;
+    PackageStatus FindEntryByResourceKey(
         package_id_t package,
         resource_type_id_t expectedType,
         const ResourceLogicalKey& logicalKey,

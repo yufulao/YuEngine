@@ -20,19 +20,19 @@ public:
     InputReplay();
 
     input_binding_result_t RegisterActionBinding(input_device_id_t device, input_control_id_t control, input_action_id_t action);
-    INPUT_STATUS RecordReplayEvent(std::size_t frameIndex, input_event_t event);
+    InputStatus RecordReplayEvent(std::size_t frameIndex, input_event_t event);
     input_apply_result_t ApplyNextFrame();
-    INPUT_STATUS ResetFrameState();
+    InputStatus ResetFrameState();
     input_action_query_result_t QueryAction(input_action_id_t action) const;
     input_replay_snapshot_t Snapshot() const;
     std::size_t EventCountForFrame(std::size_t frameIndex) const;
 
 private:
-    INPUT_STATUS RecordFailure(INPUT_STATUS status);
-    INPUT_STATUS RejectReplayEvent(INPUT_STATUS status);
+    InputStatus RecordFailure(InputStatus status);
+    InputStatus RejectReplayEvent(InputStatus status);
     bool IsDeviceValid(input_device_id_t device) const;
     bool IsActionInRange(input_action_id_t action) const;
-    bool IsEventTypeKnown(INPUT_EVENT_TYPE type) const;
+    bool IsEventTypeKnown(InputEventType type) const;
     bool IsAxisValueValid(std::int32_t value) const;
     bool HasBindingForControl(input_device_id_t device, input_control_id_t control) const;
     const input_action_binding_t* FindBinding(input_device_id_t device, input_control_id_t control) const;

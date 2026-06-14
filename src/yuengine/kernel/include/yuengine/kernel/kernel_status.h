@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::kernel {
-enum class KERNEL_STATUS {
+enum class KernelStatus {
     Success,
     DuplicateModule,
     DependencyFailure,

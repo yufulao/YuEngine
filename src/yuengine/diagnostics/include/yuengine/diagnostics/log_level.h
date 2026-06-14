@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::diagnostics {
-enum class LOG_LEVEL {
+enum class LogLevel {
     Info,
     Warning,
     Error

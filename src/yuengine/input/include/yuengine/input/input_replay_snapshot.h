@@ -23,7 +23,7 @@ struct input_replay_snapshot_t final {
     std::uint64_t ApplyCount = 0U;
     std::uint64_t ResetCount = 0U;
     std::uint64_t FailedOperationCount = 0U;
-    INPUT_STATUS LastApplyStatus = INPUT_STATUS::Success;
-    INPUT_ACCOUNTING_STATUS AllocationAccountingStatus = INPUT_ACCOUNTING_STATUS::DeferredUntilYuMemoryIntegration;
+    InputStatus LastApplyStatus = InputStatus::Success;
+    InputAccountingStatus AllocationAccountingStatus = InputAccountingStatus::DeferredUntilYuMemoryIntegration;
 };
 }

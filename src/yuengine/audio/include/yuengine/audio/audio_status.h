@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::audio {
-enum class AUDIO_STATUS {
+enum class AudioStatus {
     Success,
     UnsupportedBackend,
     UnsupportedFormat,

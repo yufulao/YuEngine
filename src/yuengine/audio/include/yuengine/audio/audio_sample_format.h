@@ -1,8 +1,8 @@
 #pragma once
 
 namespace yuengine::audio {
-enum class AUDIO_SAMPLE_FORMAT {
-    S16,
+enum class AudioSampleFormat {
+    Signed16,
     Unsupported
 };
 }

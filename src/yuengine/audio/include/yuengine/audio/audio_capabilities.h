@@ -8,8 +8,8 @@
 
 namespace yuengine::audio {
 struct audio_capabilities_t final {
-    AUDIO_BACKEND_KIND BackendKind = AUDIO_BACKEND_KIND::Test;
-    AUDIO_SAMPLE_FORMAT Format = AUDIO_SAMPLE_FORMAT::S16;
+    AudioBackendKind BackendKind = AudioBackendKind::Test;
+    AudioSampleFormat Format = AudioSampleFormat::Signed16;
     std::uint32_t SampleRate = 0U;
     std::uint16_t ChannelCount = 0U;
     std::size_t SourceCapacity = 0U;

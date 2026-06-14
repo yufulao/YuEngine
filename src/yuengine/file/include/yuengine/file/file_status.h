@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::file {
-enum class FILE_STATUS {
+enum class FileStatus {
     Success,
     InvalidMount,
     InvalidPath,

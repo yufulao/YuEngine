@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::rhi {
-enum class RHI_COMMAND_TYPE {
+enum class RhiCommandType {
     BeginFrame,
     ClearColor,
     EndFrame

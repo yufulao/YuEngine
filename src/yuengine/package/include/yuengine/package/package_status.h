@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::package {
-enum class PACKAGE_STATUS {
+enum class PackageStatus {
     Success,
     InvalidPackageId,
     InvalidEntryId,

@@ -4,7 +4,7 @@ namespace yuengine::memory {
 memory_accounting_result_t DisabledMemoryTracker::RecordAllocation(
     memory_owner_id_t owner,
     memory_tag_t tag,
-    MEMORY_BUDGET_CLASS budgetClass,
+    MemoryBudgetClass budgetClass,
     std::size_t bytes,
     std::size_t alignment) {
     static_cast<void>(owner);
@@ -15,18 +15,18 @@ memory_accounting_result_t DisabledMemoryTracker::RecordAllocation(
     return memory_accounting_result_t::Success(memory_allocation_id_t{0U});
 }
 
-MEMORY_ACCOUNTING_STATUS DisabledMemoryTracker::RecordFree(memory_allocation_id_t allocationId, memory_owner_id_t owner, memory_tag_t tag) {
+MemoryAccountingStatus DisabledMemoryTracker::RecordFree(memory_allocation_id_t allocationId, memory_owner_id_t owner, memory_tag_t tag) {
     static_cast<void>(allocationId);
     static_cast<void>(owner);
     static_cast<void>(tag);
-    return MEMORY_ACCOUNTING_STATUS::Success;
+    return MemoryAccountingStatus::Success;
 }
 
 memory_snapshot_t DisabledMemoryTracker::Snapshot() const {
     return memory_snapshot_t{0U, 0U, 0U, 0U, 0U};
 }
 
-std::uint64_t DisabledMemoryTracker::AllocationCountForBudget(MEMORY_BUDGET_CLASS budgetClass) const {
+std::uint64_t DisabledMemoryTracker::AllocationCountForBudget(MemoryBudgetClass budgetClass) const {
     static_cast<void>(budgetClass);
     return 0U;
 }

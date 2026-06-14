@@ -5,11 +5,11 @@
 
 namespace yuengine::package {
 struct package_load_plan_result_t final {
-    PACKAGE_STATUS Status;
+    PackageStatus Status;
     package_load_plan_t Plan;
 
     static package_load_plan_result_t Success(package_load_plan_t plan);
-    static package_load_plan_result_t Failure(PACKAGE_STATUS status);
+    static package_load_plan_result_t Failure(PackageStatus status);
     bool Succeeded() const;
 };
 }

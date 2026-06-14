@@ -17,7 +17,7 @@ class MountTable final {
 public:
     MountTable();
 
-    FILE_STATUS RegisterLooseMount(MountId mountId, std::filesystem::path rootPath);
+    FileStatus RegisterLooseMount(MountId mountId, std::filesystem::path rootPath);
     path_normalization_result_t Normalize(VirtualPath path);
     file_read_result_t Read(file_read_request_t request);
     file_snapshot_t Snapshot() const;
@@ -26,7 +26,7 @@ public:
 private:
     std::optional<std::size_t> FindMountIndex(MountId mountId) const;
     void RecordRejectedPath();
-    void RecordLastReadStatus(FILE_STATUS status);
+    void RecordLastReadStatus(FileStatus status);
 
     std::array<MountPoint, MAX_MOUNT_COUNT> _mounts;
     std::size_t _mountCount;

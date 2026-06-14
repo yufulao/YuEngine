@@ -3,7 +3,7 @@
 #include <cstddef>
 
 namespace yuengine::memory {
-enum class MEMORY_BUDGET_CLASS {
+enum class MemoryBudgetClass {
     Setup = 0,
     Load = 1,
     Frame = 2,
@@ -14,24 +14,24 @@ enum class MEMORY_BUDGET_CLASS {
 
 inline constexpr std::size_t MemoryBudgetClassCount = 6U;
 
-inline std::size_t MemoryBudgetClassIndex(MEMORY_BUDGET_CLASS budgetClass) {
+inline std::size_t MemoryBudgetClassIndex(MemoryBudgetClass budgetClass) {
     return static_cast<std::size_t>(budgetClass);
 }
 
-inline bool IsValidMemoryBudgetClass(MEMORY_BUDGET_CLASS budgetClass) {
+inline bool IsValidMemoryBudgetClass(MemoryBudgetClass budgetClass) {
     return MemoryBudgetClassIndex(budgetClass) < MemoryBudgetClassCount;
 }
 
-inline bool IsHotMemoryBudgetClass(MEMORY_BUDGET_CLASS budgetClass) {
-    if (budgetClass == MEMORY_BUDGET_CLASS::Frame) {
+inline bool IsHotMemoryBudgetClass(MemoryBudgetClass budgetClass) {
+    if (budgetClass == MemoryBudgetClass::Frame) {
         return true;
     }
 
-    if (budgetClass == MEMORY_BUDGET_CLASS::Callback) {
+    if (budgetClass == MemoryBudgetClass::Callback) {
         return true;
     }
 
-    if (budgetClass == MEMORY_BUDGET_CLASS::Job) {
+    if (budgetClass == MemoryBudgetClass::Job) {
         return true;
     }
 

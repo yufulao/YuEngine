@@ -18,17 +18,17 @@ public:
     explicit ResourceRegistry(resource_registry_desc_t desc);
 
     resource_registration_result_t RegisterSyntheticDescriptor(const resource_descriptor_t& descriptor);
-    RESOURCE_STATUS AddDependency(resource_handle_t dependent, resource_handle_t dependency);
-    RESOURCE_STATUS Acquire(resource_handle_t handle, resource_type_id_t expectedType);
-    RESOURCE_STATUS Release(resource_handle_t handle);
-    RESOURCE_STATUS Retire(resource_handle_t handle);
+    ResourceStatus AddDependency(resource_handle_t dependent, resource_handle_t dependency);
+    ResourceStatus Acquire(resource_handle_t handle, resource_type_id_t expectedType);
+    ResourceStatus Release(resource_handle_t handle);
+    ResourceStatus Retire(resource_handle_t handle);
     resource_snapshot_t Snapshot() const;
 
 private:
-    RESOURCE_STATUS RecordFailure(RESOURCE_STATUS status);
+    ResourceStatus RecordFailure(ResourceStatus status);
     void RecordSuccess();
-    RESOURCE_STATUS ResolveHandle(resource_handle_t handle, std::size_t& outIndex) const;
-    RESOURCE_STATUS RegisterTypeIfNeeded(resource_type_id_t type);
+    ResourceStatus ResolveHandle(resource_handle_t handle, std::size_t& outIndex) const;
+    ResourceStatus RegisterTypeIfNeeded(resource_type_id_t type);
     bool HasType(resource_type_id_t type) const;
     bool HasDuplicateActiveResource(const resource_descriptor_t& descriptor) const;
     bool HasInboundEdge(std::size_t slotIndex) const;

@@ -11,9 +11,9 @@
 #include "yuengine/file/normalized_path.h"
 #include "yuengine/memory/memory_accounting_status.h"
 
-using yuengine::file::FILE_STATUS;
+using yuengine::file::FileStatus;
 using LooseFileSource = yuengine::file::LooseFileSource;
-using yuengine::memory::MEMORY_ACCOUNTING_STATUS;
+using yuengine::memory::MemoryAccountingStatus;
 using MountId = yuengine::file::MountId;
 using MountTable = yuengine::file::MountTable;
 using NormalizedPath = yuengine::file::NormalizedPath;
@@ -56,13 +56,13 @@ int Fail(const std::string& message) {
 
 MountTable CreateMountedTable() {
     MountTable table;
-    const FILE_STATUS primaryStatus = table.RegisterLooseMount(MountId(PRIMARY_MOUNT), FixtureRoot() / "primary");
-    if (primaryStatus != FILE_STATUS::Success) {
+    const FileStatus primaryStatus = table.RegisterLooseMount(MountId(PRIMARY_MOUNT), FixtureRoot() / "primary");
+    if (primaryStatus != FileStatus::Success) {
         return table;
     }
 
-    const FILE_STATUS secondaryStatus = table.RegisterLooseMount(MountId(SECONDARY_MOUNT), FixtureRoot() / "secondary");
-    if (secondaryStatus != FILE_STATUS::Success) {
+    const FileStatus secondaryStatus = table.RegisterLooseMount(MountId(SECONDARY_MOUNT), FixtureRoot() / "secondary");
+    if (secondaryStatus != FileStatus::Success) {
         return table;
     }
 
@@ -95,7 +95,7 @@ int FilePathNormalizeRemovesDotAndRepeatedSeparators() {
 int FilePathNormalizeRejectsTraversalOutsideRoot() {
     MountTable table;
     const auto result = table.Normalize(VirtualPath("../fixture.txt"));
-    if (result.Status != FILE_STATUS::PathEscape) {
+    if (result.Status != FileStatus::PathEscape) {
         return Fail("traversal outside root was not rejected");
     }
 
@@ -110,23 +110,23 @@ int FilePathNormalizeRejectsTraversalOutsideRoot() {
 int FilePathNormalizeRejectsEmptyAndAbsolutePath() {
     MountTable table;
     const auto emptyResult = table.Normalize(VirtualPath(""));
-    if (emptyResult.Status != FILE_STATUS::InvalidPath) {
+    if (emptyResult.Status != FileStatus::InvalidPath) {
         return Fail("empty path was not rejected");
     }
 
     const auto absoluteResult = table.Normalize(VirtualPath("/absolute/path.txt"));
-    if (absoluteResult.Status != FILE_STATUS::InvalidPath) {
+    if (absoluteResult.Status != FileStatus::InvalidPath) {
         return Fail("absolute path was not rejected");
     }
 
     const auto driveResult = table.Normalize(VirtualPath("C:/absolute/path.txt"));
-    if (driveResult.Status != FILE_STATUS::InvalidPath) {
+    if (driveResult.Status != FileStatus::InvalidPath) {
         return Fail("drive absolute path was not rejected");
     }
 
     const std::string longPath(MAX_VIRTUAL_PATH_LENGTH + 1U, 'a');
     const auto longPathResult = table.Normalize(VirtualPath(longPath));
-    if (longPathResult.Status != FILE_STATUS::PathTooLong) {
+    if (longPathResult.Status != FileStatus::PathTooLong) {
         return Fail("overlong path did not return bounds status");
     }
 
@@ -140,13 +140,13 @@ int FilePathNormalizeRejectsEmptyAndAbsolutePath() {
 
 int FileMountTableRejectsDuplicateMount() {
     MountTable table;
-    const FILE_STATUS firstStatus = table.RegisterLooseMount(MountId(PRIMARY_MOUNT), FixtureRoot() / "primary");
-    if (firstStatus != FILE_STATUS::Success) {
+    const FileStatus firstStatus = table.RegisterLooseMount(MountId(PRIMARY_MOUNT), FixtureRoot() / "primary");
+    if (firstStatus != FileStatus::Success) {
         return Fail("first mount registration failed");
     }
 
-    const FILE_STATUS duplicateStatus = table.RegisterLooseMount(MountId(PRIMARY_MOUNT), FixtureRoot() / "secondary");
-    if (duplicateStatus != FILE_STATUS::DuplicateMount) {
+    const FileStatus duplicateStatus = table.RegisterLooseMount(MountId(PRIMARY_MOUNT), FixtureRoot() / "secondary");
+    if (duplicateStatus != FileStatus::DuplicateMount) {
         return Fail("duplicate mount was not rejected");
     }
 
@@ -155,23 +155,23 @@ int FileMountTableRejectsDuplicateMount() {
         return Fail("duplicate mount changed mount count");
     }
 
-    const FILE_STATUS secondStatus = table.RegisterLooseMount(MountId(SECONDARY_MOUNT), FixtureRoot() / "secondary");
-    const FILE_STATUS thirdStatus = table.RegisterLooseMount(MountId(THIRD_MOUNT), FixtureRoot() / "secondary");
-    const FILE_STATUS fourthStatus = table.RegisterLooseMount(MountId(FOURTH_MOUNT), FixtureRoot() / "secondary");
-    if (secondStatus != FILE_STATUS::Success) {
+    const FileStatus secondStatus = table.RegisterLooseMount(MountId(SECONDARY_MOUNT), FixtureRoot() / "secondary");
+    const FileStatus thirdStatus = table.RegisterLooseMount(MountId(THIRD_MOUNT), FixtureRoot() / "secondary");
+    const FileStatus fourthStatus = table.RegisterLooseMount(MountId(FOURTH_MOUNT), FixtureRoot() / "secondary");
+    if (secondStatus != FileStatus::Success) {
         return Fail("second mount registration failed");
     }
 
-    if (thirdStatus != FILE_STATUS::Success) {
+    if (thirdStatus != FileStatus::Success) {
         return Fail("third mount registration failed");
     }
 
-    if (fourthStatus != FILE_STATUS::Success) {
+    if (fourthStatus != FileStatus::Success) {
         return Fail("fourth mount registration failed");
     }
 
-    const FILE_STATUS overflowStatus = table.RegisterLooseMount(MountId(OVERFLOW_MOUNT), FixtureRoot() / "secondary");
-    if (overflowStatus != FILE_STATUS::MountTableFull) {
+    const FileStatus overflowStatus = table.RegisterLooseMount(MountId(OVERFLOW_MOUNT), FixtureRoot() / "secondary");
+    if (overflowStatus != FileStatus::MountTableFull) {
         return Fail("mount table did not enforce capacity");
     }
 
@@ -199,12 +199,12 @@ int FileMountTableUsesDeterministicPriorityOrder() {
 int FileMountTableReportsMissingMountOrFile() {
     MountTable table = CreateMountedTable();
     const auto missingMount = table.Read({MountId(MISSING_MOUNT), VirtualPath(NORMALIZED_PATH)});
-    if (missingMount.Status != FILE_STATUS::MountNotFound) {
+    if (missingMount.Status != FileStatus::MountNotFound) {
         return Fail("missing mount did not return explicit status");
     }
 
     const auto missingFile = table.Read({MountId(PRIMARY_MOUNT), VirtualPath(MISSING_PATH)});
-    if (missingFile.Status != FILE_STATUS::FileNotFound) {
+    if (missingFile.Status != FileStatus::FileNotFound) {
         return Fail("missing file did not return explicit status");
     }
 
@@ -229,13 +229,13 @@ int FileLooseFixtureReadReturnsExactBytes() {
 int FileLooseFileSourceRejectsForgedNormalizedPathEscape() {
     LooseFileSource source(FixtureRoot() / "secondary");
     const auto traversalResult = source.Read(NormalizedPath("../primary/nested/fixture.txt"));
-    if (traversalResult.Status != FILE_STATUS::PathEscape) {
+    if (traversalResult.Status != FileStatus::PathEscape) {
         return Fail("forged traversal normalized path did not return path escape status");
     }
 
     const std::filesystem::path absoluteFixturePath = FixtureRoot() / "primary" / "nested" / "fixture.txt";
     const auto absoluteResult = source.Read(NormalizedPath(absoluteFixturePath.generic_string()));
-    if (absoluteResult.Status != FILE_STATUS::InvalidPath) {
+    if (absoluteResult.Status != FileStatus::InvalidPath) {
         return Fail("forged absolute normalized path did not return invalid path status");
     }
 
@@ -266,11 +266,11 @@ int FileReadSnapshotRecordsCountsAndBytes() {
         return Fail("snapshot did not record max fixture path length");
     }
 
-    if (snapshot.AllocationAccountingStatus != MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly) {
+    if (snapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("snapshot did not use YuMemory allocation accounting vocabulary");
     }
 
-    if (snapshot.LastReadStatus != FILE_STATUS::Success) {
+    if (snapshot.LastReadStatus != FileStatus::Success) {
         return Fail("snapshot did not record sync read status");
     }
 

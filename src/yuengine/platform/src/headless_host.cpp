@@ -19,7 +19,7 @@ HeadlessHost::HeadlessHost(IFrameClock& frameClock, diagnostics::ILogSink& logSi
 
 host_run_result_t HeadlessHost::Run(IHostRuntime& runtime, const headless_host_config_t& config) {
     host_run_result_t result{
-        HOST_STATUS::Success,
+        HostStatus::Success,
         0U,
         std::vector<std::uint64_t>(),
         std::vector<std::string>(),
@@ -29,11 +29,11 @@ host_run_result_t HeadlessHost::Run(IHostRuntime& runtime, const headless_host_c
     result.LifecycleTrace.reserve((static_cast<std::size_t>(config.TickCount) * 2U) + 4U);
 
     result.LifecycleTrace.push_back(HOST_START_TRACE);
-    _logSink.Write(diagnostics::LOG_LEVEL::Info, "host start");
+    _logSink.Write(diagnostics::LogLevel::Info, "host start");
 
     const host_error_t startError = runtime.Start(result.LifecycleTrace);
     if (!startError.Succeeded) {
-        result.Status = HOST_STATUS::StartupFailure;
+        result.Status = HostStatus::StartupFailure;
         result.ErrorMessage = startError.Message;
         return result;
     }
@@ -42,19 +42,19 @@ host_run_result_t HeadlessHost::Run(IHostRuntime& runtime, const headless_host_c
         const std::uint64_t tickTimeNanoseconds = _frameClock.NextTickNanoseconds();
         result.TickTimesNanoseconds.push_back(tickTimeNanoseconds);
         result.LifecycleTrace.push_back(HOST_TICK_TRACE);
-        _logSink.Write(diagnostics::LOG_LEVEL::Info, "host tick");
+        _logSink.Write(diagnostics::LogLevel::Info, "host tick");
 
         const host_error_t tickError = runtime.Tick(frameIndex, tickTimeNanoseconds, result.LifecycleTrace);
         if (!tickError.Succeeded) {
             result.LifecycleTrace.push_back(HOST_SHUTDOWN_TRACE);
             const host_error_t tickShutdownError = runtime.Shutdown(result.LifecycleTrace);
             if (!tickShutdownError.Succeeded) {
-                result.Status = HOST_STATUS::ShutdownFailure;
+                result.Status = HostStatus::ShutdownFailure;
                 result.ErrorMessage = tickShutdownError.Message;
                 return result;
             }
 
-            result.Status = HOST_STATUS::TickFailure;
+            result.Status = HostStatus::TickFailure;
             result.ErrorMessage = tickError.Message;
             return result;
         }
@@ -63,11 +63,11 @@ host_run_result_t HeadlessHost::Run(IHostRuntime& runtime, const headless_host_c
     }
 
     result.LifecycleTrace.push_back(HOST_SHUTDOWN_TRACE);
-    _logSink.Write(diagnostics::LOG_LEVEL::Info, "host shutdown");
+    _logSink.Write(diagnostics::LogLevel::Info, "host shutdown");
 
     const host_error_t shutdownError = runtime.Shutdown(result.LifecycleTrace);
     if (!shutdownError.Succeeded) {
-        result.Status = HOST_STATUS::ShutdownFailure;
+        result.Status = HostStatus::ShutdownFailure;
         result.ErrorMessage = shutdownError.Message;
         return result;
     }

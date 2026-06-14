@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::audio {
-enum class AUDIO_BACKEND_KIND {
+enum class AudioBackendKind {
     Test,
     Unsupported
 };

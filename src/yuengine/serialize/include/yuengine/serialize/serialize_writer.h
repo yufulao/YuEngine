@@ -15,22 +15,22 @@ class SerializeWriter final {
 public:
     SerializeWriter(std::uint8_t* buffer, std::uint32_t capacity);
 
-    SERIALIZE_STATUS BeginStream();
-    SERIALIZE_STATUS BeginRecord(SerializeRecordId record);
-    SERIALIZE_STATUS WriteUInt32(SerializeFieldId field, std::uint32_t value);
-    SERIALIZE_STATUS WriteInt32(SerializeFieldId field, std::int32_t value);
-    SERIALIZE_STATUS WriteUInt64(SerializeFieldId field, std::uint64_t value);
-    SERIALIZE_STATUS WriteInt64(SerializeFieldId field, std::int64_t value);
-    SERIALIZE_STATUS WriteFixedBytes(SerializeFieldId field, const std::uint8_t* bytes, std::uint32_t byteCount);
+    SerializeStatus BeginStream();
+    SerializeStatus BeginRecord(SerializeRecordId record);
+    SerializeStatus WriteUInt32(SerializeFieldId field, std::uint32_t value);
+    SerializeStatus WriteInt32(SerializeFieldId field, std::int32_t value);
+    SerializeStatus WriteUInt64(SerializeFieldId field, std::uint64_t value);
+    SerializeStatus WriteInt64(SerializeFieldId field, std::int64_t value);
+    SerializeStatus WriteFixedBytes(SerializeFieldId field, const std::uint8_t* bytes, std::uint32_t byteCount);
     SerializeSnapshot Snapshot() const;
 
 private:
-    SERIALIZE_STATUS CommitField(
+    SerializeStatus CommitField(
         SerializeFieldId field,
-        SERIALIZE_TYPE_TAG type,
+        SerializeTypeTag type,
         const std::uint8_t* payload,
         std::uint32_t byteCount);
-    SERIALIZE_STATUS RecordFailure(SERIALIZE_STATUS status);
+    SerializeStatus RecordFailure(SerializeStatus status);
     void RecordSuccess();
     bool CanCommitBytes(std::uint32_t byteCount) const;
     bool HasFieldInCurrentRecord(SerializeFieldId field) const;

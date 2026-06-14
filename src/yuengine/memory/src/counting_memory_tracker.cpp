@@ -57,56 +57,56 @@ CountingMemoryTracker::CountingMemoryTracker()
 memory_accounting_result_t CountingMemoryTracker::RecordAllocation(
     memory_owner_id_t owner,
     memory_tag_t tag,
-    MEMORY_BUDGET_CLASS budgetClass,
+    MemoryBudgetClass budgetClass,
     std::size_t bytes,
     std::size_t alignment) {
     if (!owner.IsValid()) {
-        return memory_accounting_result_t::Failure(MEMORY_ACCOUNTING_STATUS::InvalidOwner);
+        return memory_accounting_result_t::Failure(MemoryAccountingStatus::InvalidOwner);
     }
 
     if (!tag.IsValid()) {
-        return memory_accounting_result_t::Failure(MEMORY_ACCOUNTING_STATUS::InvalidTag);
+        return memory_accounting_result_t::Failure(MemoryAccountingStatus::InvalidTag);
     }
 
     if (bytes == 0U) {
-        return memory_accounting_result_t::Failure(MEMORY_ACCOUNTING_STATUS::InvalidSize);
+        return memory_accounting_result_t::Failure(MemoryAccountingStatus::InvalidSize);
     }
 
     if (!IsPowerOfTwo(alignment)) {
-        return memory_accounting_result_t::Failure(MEMORY_ACCOUNTING_STATUS::InvalidAlignment);
+        return memory_accounting_result_t::Failure(MemoryAccountingStatus::InvalidAlignment);
     }
 
     if (!IsValidMemoryBudgetClass(budgetClass)) {
-        return memory_accounting_result_t::Failure(MEMORY_ACCOUNTING_STATUS::InvalidBudgetClass);
+        return memory_accounting_result_t::Failure(MemoryAccountingStatus::InvalidBudgetClass);
     }
 
     if (owner.Value.size() > MAX_MEMORY_OWNER_ID_BYTES) {
-        return memory_accounting_result_t::Failure(MEMORY_ACCOUNTING_STATUS::InvalidOwner);
+        return memory_accounting_result_t::Failure(MemoryAccountingStatus::InvalidOwner);
     }
 
     if (tag.Value.size() > MAX_MEMORY_TAG_BYTES) {
-        return memory_accounting_result_t::Failure(MEMORY_ACCOUNTING_STATUS::InvalidTag);
+        return memory_accounting_result_t::Failure(MemoryAccountingStatus::InvalidTag);
     }
 
     if (IsHotMemoryBudgetClass(budgetClass)) {
-        return memory_accounting_result_t::Failure(MEMORY_ACCOUNTING_STATUS::BudgetExceeded);
+        return memory_accounting_result_t::Failure(MemoryAccountingStatus::BudgetExceeded);
     }
 
     active_allocation_record_t* record = FindFreeAllocationRecord();
     if (record == nullptr) {
-        return memory_accounting_result_t::Failure(MEMORY_ACCOUNTING_STATUS::CapacityExceeded);
+        return memory_accounting_result_t::Failure(MemoryAccountingStatus::CapacityExceeded);
     }
 
     const memory_allocation_id_t allocationId{_nextAllocationId};
     ++_nextAllocationId;
 
     if (!CopyFixedText(owner.Value, record->Owner, record->OwnerLength)) {
-        return memory_accounting_result_t::Failure(MEMORY_ACCOUNTING_STATUS::InvalidOwner);
+        return memory_accounting_result_t::Failure(MemoryAccountingStatus::InvalidOwner);
     }
 
     if (!CopyFixedText(tag.Value, record->Tag, record->TagLength)) {
         ResetAllocationRecord(*record);
-        return memory_accounting_result_t::Failure(MEMORY_ACCOUNTING_STATUS::InvalidTag);
+        return memory_accounting_result_t::Failure(MemoryAccountingStatus::InvalidTag);
     }
 
     record->IsActive = true;
@@ -125,23 +125,23 @@ memory_accounting_result_t CountingMemoryTracker::RecordAllocation(
     return memory_accounting_result_t::Success(allocationId);
 }
 
-MEMORY_ACCOUNTING_STATUS CountingMemoryTracker::RecordFree(memory_allocation_id_t allocationId, memory_owner_id_t owner, memory_tag_t tag) {
+MemoryAccountingStatus CountingMemoryTracker::RecordFree(memory_allocation_id_t allocationId, memory_owner_id_t owner, memory_tag_t tag) {
     active_allocation_record_t* record = FindActiveAllocation(allocationId);
     if (record == nullptr) {
-        return MEMORY_ACCOUNTING_STATUS::UnmatchedFree;
+        return MemoryAccountingStatus::UnmatchedFree;
     }
 
     if (!FixedTextEquals(record->Owner, record->OwnerLength, owner.Value)) {
-        return MEMORY_ACCOUNTING_STATUS::OwnerTagMismatch;
+        return MemoryAccountingStatus::OwnerTagMismatch;
     }
 
     if (!FixedTextEquals(record->Tag, record->TagLength, tag.Value)) {
-        return MEMORY_ACCOUNTING_STATUS::OwnerTagMismatch;
+        return MemoryAccountingStatus::OwnerTagMismatch;
     }
 
     const std::size_t bytes = record->Bytes;
     if (bytes > _snapshot.RetainedBytes) {
-        return MEMORY_ACCOUNTING_STATUS::UnmatchedFree;
+        return MemoryAccountingStatus::UnmatchedFree;
     }
 
     _snapshot.RetainedBytes -= bytes;
@@ -150,14 +150,14 @@ MEMORY_ACCOUNTING_STATUS CountingMemoryTracker::RecordFree(memory_allocation_id_
     ResetAllocationRecord(*record);
     --_activeAllocationCount;
     _snapshot.LeakCount = _activeAllocationCount;
-    return MEMORY_ACCOUNTING_STATUS::Success;
+    return MemoryAccountingStatus::Success;
 }
 
 memory_snapshot_t CountingMemoryTracker::Snapshot() const {
     return _snapshot;
 }
 
-std::uint64_t CountingMemoryTracker::AllocationCountForBudget(MEMORY_BUDGET_CLASS budgetClass) const {
+std::uint64_t CountingMemoryTracker::AllocationCountForBudget(MemoryBudgetClass budgetClass) const {
     if (!IsValidMemoryBudgetClass(budgetClass)) {
         return 0U;
     }

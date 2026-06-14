@@ -7,11 +7,11 @@
 
 namespace yuengine::file {
 struct file_read_result_t {
-    FILE_STATUS Status;
+    FileStatus Status;
     std::vector<std::uint8_t> Bytes;
 
     static file_read_result_t Success(std::vector<std::uint8_t> bytes);
-    static file_read_result_t Failure(FILE_STATUS status);
+    static file_read_result_t Failure(FileStatus status);
     bool Succeeded() const;
 };
 }

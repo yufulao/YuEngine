@@ -1,35 +1,35 @@
 #include "yuengine/diagnostics/disabled_diagnostics_channel.h"
 
 namespace yuengine::diagnostics {
-DIAGNOSTICS_STATUS DisabledDiagnosticsChannel::RegisterEventId(diagnostics_event_id_t eventId) {
+DiagnosticsStatus DisabledDiagnosticsChannel::RegisterEventId(diagnostics_event_id_t eventId) {
     static_cast<void>(eventId);
-    return DIAGNOSTICS_STATUS::Disabled;
+    return DiagnosticsStatus::Disabled;
 }
 
-DIAGNOSTICS_STATUS DisabledDiagnosticsChannel::RegisterCounterId(diagnostics_counter_id_t counterId) {
+DiagnosticsStatus DisabledDiagnosticsChannel::RegisterCounterId(diagnostics_counter_id_t counterId) {
     static_cast<void>(counterId);
-    return DIAGNOSTICS_STATUS::Disabled;
+    return DiagnosticsStatus::Disabled;
 }
 
-DIAGNOSTICS_STATUS DisabledDiagnosticsChannel::RecordEvent(diagnostics_event_id_t eventId, std::uint64_t payload) {
+DiagnosticsStatus DisabledDiagnosticsChannel::RecordEvent(diagnostics_event_id_t eventId, std::uint64_t payload) {
     static_cast<void>(eventId);
     static_cast<void>(payload);
-    return DIAGNOSTICS_STATUS::Disabled;
+    return DiagnosticsStatus::Disabled;
 }
 
-DIAGNOSTICS_STATUS DisabledDiagnosticsChannel::IncrementCounter(diagnostics_counter_id_t counterId) {
+DiagnosticsStatus DisabledDiagnosticsChannel::IncrementCounter(diagnostics_counter_id_t counterId) {
     static_cast<void>(counterId);
-    return DIAGNOSTICS_STATUS::Disabled;
+    return DiagnosticsStatus::Disabled;
 }
 
-DIAGNOSTICS_STATUS DisabledDiagnosticsChannel::AddCounter(diagnostics_counter_id_t counterId, std::uint64_t delta) {
+DiagnosticsStatus DisabledDiagnosticsChannel::AddCounter(diagnostics_counter_id_t counterId, std::uint64_t delta) {
     static_cast<void>(counterId);
     static_cast<void>(delta);
-    return DIAGNOSTICS_STATUS::Disabled;
+    return DiagnosticsStatus::Disabled;
 }
 
-DIAGNOSTICS_STATUS DisabledDiagnosticsChannel::Shutdown() {
-    return DIAGNOSTICS_STATUS::Disabled;
+DiagnosticsStatus DisabledDiagnosticsChannel::Shutdown() {
+    return DiagnosticsStatus::Disabled;
 }
 
 diagnostics_snapshot_t DisabledDiagnosticsChannel::Snapshot() const {
@@ -44,6 +44,6 @@ diagnostics_snapshot_t DisabledDiagnosticsChannel::Snapshot() const {
         0U,
         false,
         false,
-        memory::MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly};
+        memory::MemoryAccountingStatus::ExplicitlyTrackedOnly};
 }
 }

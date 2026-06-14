@@ -9,7 +9,7 @@
 
 using yuengine::kernel::IModule;
 using yuengine::kernel::kernel_result_t;
-using yuengine::kernel::KERNEL_STATUS;
+using yuengine::kernel::KernelStatus;
 using yuengine::kernel::ServiceRegistry;
 
 class LifecycleTestModule final : public IModule {
@@ -76,12 +76,12 @@ public:
         for (const std::string_view publishedService : _publishedServices) {
             const bool registered = serviceRegistry.Register<int>(_name, publishedService, _publishedServiceValue);
             if (!registered) {
-                return kernel_result_t::Failure(KERNEL_STATUS::DuplicateService, DUPLICATE_SERVICE_MESSAGE);
+                return kernel_result_t::Failure(KernelStatus::DuplicateService, DUPLICATE_SERVICE_MESSAGE);
             }
         }
 
         if (_failOnStart) {
-            return kernel_result_t::Failure(KERNEL_STATUS::StartupFailure, STARTUP_FAILURE_MESSAGE);
+            return kernel_result_t::Failure(KernelStatus::StartupFailure, STARTUP_FAILURE_MESSAGE);
         }
 
         return kernel_result_t::Success();
@@ -93,7 +93,7 @@ public:
         lifecycleTrace.push_back(std::string("module.update.") + _name);
 
         if (_failOnUpdate) {
-            return kernel_result_t::Failure(KERNEL_STATUS::UpdateFailure, UPDATE_FAILURE_MESSAGE);
+            return kernel_result_t::Failure(KernelStatus::UpdateFailure, UPDATE_FAILURE_MESSAGE);
         }
 
         return kernel_result_t::Success();
@@ -102,7 +102,7 @@ public:
     kernel_result_t Shutdown(std::vector<std::string>& lifecycleTrace) override {
         lifecycleTrace.push_back(std::string("module.shutdown.") + _name);
         if (_failOnShutdown) {
-            return kernel_result_t::Failure(KERNEL_STATUS::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
+            return kernel_result_t::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
         }
 
         if (_verifyRequiredServicesOnShutdown) {
@@ -119,12 +119,12 @@ private:
     // Verifies teardown can still read dependency-published services.
     kernel_result_t VerifyRequiredServicesOnShutdown() const {
         if (_serviceRegistry == nullptr) {
-            return kernel_result_t::Failure(KERNEL_STATUS::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
+            return kernel_result_t::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
         }
 
         for (const std::string_view requiredService : _requiredServices) {
             if (_serviceRegistry->Resolve<int>(requiredService) == nullptr) {
-                return kernel_result_t::Failure(KERNEL_STATUS::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
+                return kernel_result_t::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
             }
         }
 

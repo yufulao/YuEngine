@@ -4,14 +4,14 @@
 
 namespace yuengine::file {
 file_read_result_t file_read_result_t::Success(std::vector<std::uint8_t> bytes) {
-    return file_read_result_t{FILE_STATUS::Success, std::move(bytes)};
+    return file_read_result_t{FileStatus::Success, std::move(bytes)};
 }
 
-file_read_result_t file_read_result_t::Failure(FILE_STATUS status) {
+file_read_result_t file_read_result_t::Failure(FileStatus status) {
     return file_read_result_t{status, {}};
 }
 
 bool file_read_result_t::Succeeded() const {
-    return Status == FILE_STATUS::Success;
+    return Status == FileStatus::Success;
 }
 }

@@ -11,7 +11,7 @@ class BoundedInMemoryLogSink final : public ILogSink {
 public:
     explicit BoundedInMemoryLogSink(std::size_t capacity);
 
-    void Write(LOG_LEVEL level, std::string_view message) override;
+    void Write(LogLevel level, std::string_view message) override;
     bool IsEnabled() const override;
 
     const std::vector<log_event_t>& Events() const;

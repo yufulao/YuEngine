@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yuengine::thread {
-enum class SHUTDOWN_POLICY {
+enum class ShutdownPolicy {
     DrainQueued,
     CancelQueued
 };

@@ -6,7 +6,7 @@
 #include "yuengine/serialize/serialize_status.h"
 
 namespace yuengine::serialize {
-using yuengine::memory::MEMORY_ACCOUNTING_STATUS;
+using yuengine::memory::MemoryAccountingStatus;
 
 struct SerializeSnapshot final {
     std::uint16_t MajorVersion;
@@ -16,7 +16,7 @@ struct SerializeSnapshot final {
     std::uint32_t FieldCount;
     std::uint32_t AcceptedOperationCount;
     std::uint32_t FailedOperationCount;
-    MEMORY_ACCOUNTING_STATUS AllocationAccountingStatus;
-    SERIALIZE_STATUS LastStatus;
+    MemoryAccountingStatus AllocationAccountingStatus;
+    SerializeStatus LastStatus;
 };
 }

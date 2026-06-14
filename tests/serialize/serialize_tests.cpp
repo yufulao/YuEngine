@@ -10,13 +10,13 @@
 #include "yuengine/serialize/serialize_reader.h"
 #include "yuengine/serialize/serialize_writer.h"
 
-using yuengine::memory::MEMORY_ACCOUNTING_STATUS;
+using yuengine::memory::MemoryAccountingStatus;
 using SerializeFieldId = yuengine::serialize::SerializeFieldId;
 using SerializeReader = yuengine::serialize::SerializeReader;
 using SerializeRecordId = yuengine::serialize::SerializeRecordId;
 using SerializeSnapshot = yuengine::serialize::SerializeSnapshot;
-using yuengine::serialize::SERIALIZE_STATUS;
-using yuengine::serialize::SERIALIZE_TYPE_TAG;
+using yuengine::serialize::SerializeStatus;
+using yuengine::serialize::SerializeTypeTag;
 using SerializeWriter = yuengine::serialize::SerializeWriter;
 using yuengine::serialize::tests::StreamFixture;
 using yuengine::serialize::FIELD_HEADER_BYTE_COUNT;
@@ -178,32 +178,32 @@ bool SnapshotsMatch(const SerializeSnapshot& left, const SerializeSnapshot& righ
 int BuildRoundTripFixture(StreamFixture &fixture) {
     fixture.Buffer.fill(SENTINEL_BYTE);
     SerializeWriter writer(fixture.Buffer.data(), static_cast<std::uint32_t>(fixture.Buffer.size()));
-    if (writer.BeginStream() != SERIALIZE_STATUS::Success) {
+    if (writer.BeginStream() != SerializeStatus::Success) {
         return Fail("begin stream failed");
     }
 
-    if (writer.BeginRecord(RECORD_MAIN) != SERIALIZE_STATUS::Success) {
+    if (writer.BeginRecord(RECORD_MAIN) != SerializeStatus::Success) {
         return Fail("begin record failed");
     }
 
     const std::array<std::uint8_t, 5U> bytes{1U, 3U, 5U, 7U, 9U};
-    if (writer.WriteUInt32(FIELD_U32, 0xAABBCCDDU) != SERIALIZE_STATUS::Success) {
+    if (writer.WriteUInt32(FIELD_U32, 0xAABBCCDDU) != SerializeStatus::Success) {
         return Fail("write uint32 failed");
     }
 
-    if (writer.WriteInt32(FIELD_I32, -25) != SERIALIZE_STATUS::Success) {
+    if (writer.WriteInt32(FIELD_I32, -25) != SerializeStatus::Success) {
         return Fail("write int32 failed");
     }
 
-    if (writer.WriteUInt64(FIELD_U64, 0x1122334455667788ULL) != SERIALIZE_STATUS::Success) {
+    if (writer.WriteUInt64(FIELD_U64, 0x1122334455667788ULL) != SerializeStatus::Success) {
         return Fail("write uint64 failed");
     }
 
-    if (writer.WriteInt64(FIELD_I64, -6000000000LL) != SERIALIZE_STATUS::Success) {
+    if (writer.WriteInt64(FIELD_I64, -6000000000LL) != SerializeStatus::Success) {
         return Fail("write int64 failed");
     }
 
-    if (writer.WriteFixedBytes(FIELD_BYTES, bytes.data(), static_cast<std::uint32_t>(bytes.size())) != SERIALIZE_STATUS::Success) {
+    if (writer.WriteFixedBytes(FIELD_BYTES, bytes.data(), static_cast<std::uint32_t>(bytes.size())) != SerializeStatus::Success) {
         return Fail("write fixed bytes failed");
     }
 
@@ -232,7 +232,7 @@ int SerializeWriteReadPrimitivesRoundTripsDeterministically() {
     }
 
     SerializeReader reader(firstFixture.Buffer.data(), firstFixture.ByteCount);
-    if (reader.OpenStream() != SERIALIZE_STATUS::Success) {
+    if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail("reader did not open stream");
     }
 
@@ -244,7 +244,7 @@ int SerializeWriteReadPrimitivesRoundTripsDeterministically() {
             FIELD_BYTES,
             undersizedBytes.data(),
             static_cast<std::uint32_t>(undersizedBytes.size()),
-            rejectedByteCount) != SERIALIZE_STATUS::BufferTooSmall) {
+            rejectedByteCount) != SerializeStatus::BufferTooSmall) {
         return Fail(UNDERSIZED_FIXED_BYTES_READ_MESSAGE);
     }
 
@@ -262,24 +262,24 @@ int SerializeWriteReadPrimitivesRoundTripsDeterministically() {
     std::int64_t i64Value = 0;
     std::array<std::uint8_t, 5U> bytes{};
     std::uint32_t byteCount = 0U;
-    if (reader.ReadUInt32(RECORD_MAIN, FIELD_U32, u32Value) != SERIALIZE_STATUS::Success) {
+    if (reader.ReadUInt32(RECORD_MAIN, FIELD_U32, u32Value) != SerializeStatus::Success) {
         return Fail("read uint32 failed");
     }
 
-    if (reader.ReadInt32(RECORD_MAIN, FIELD_I32, i32Value) != SERIALIZE_STATUS::Success) {
+    if (reader.ReadInt32(RECORD_MAIN, FIELD_I32, i32Value) != SerializeStatus::Success) {
         return Fail("read int32 failed");
     }
 
-    if (reader.ReadUInt64(RECORD_MAIN, FIELD_U64, u64Value) != SERIALIZE_STATUS::Success) {
+    if (reader.ReadUInt64(RECORD_MAIN, FIELD_U64, u64Value) != SerializeStatus::Success) {
         return Fail("read uint64 failed");
     }
 
-    if (reader.ReadInt64(RECORD_MAIN, FIELD_I64, i64Value) != SERIALIZE_STATUS::Success) {
+    if (reader.ReadInt64(RECORD_MAIN, FIELD_I64, i64Value) != SerializeStatus::Success) {
         return Fail("read int64 failed");
     }
 
     if (reader.ReadFixedBytes(RECORD_MAIN, FIELD_BYTES, bytes.data(), static_cast<std::uint32_t>(bytes.size()), byteCount) !=
-        SERIALIZE_STATUS::Success) {
+        SerializeStatus::Success) {
         return Fail("read fixed bytes failed");
     }
 
@@ -303,7 +303,7 @@ int SerializeStreamHeaderRejectsInvalidMagicOrVersion() {
 
     fixture.Buffer[0U] = 0U;
     SerializeReader invalidMagicReader(fixture.Buffer.data(), fixture.ByteCount);
-    if (invalidMagicReader.OpenStream() != SERIALIZE_STATUS::InvalidHeader) {
+    if (invalidMagicReader.OpenStream() != SerializeStatus::InvalidHeader) {
         return Fail("invalid magic did not return explicit status");
     }
 
@@ -312,17 +312,17 @@ int SerializeStreamHeaderRejectsInvalidMagicOrVersion() {
     }
 
     SerializeReader reopenedReader(fixture.Buffer.data(), fixture.ByteCount);
-    if (reopenedReader.OpenStream() != SERIALIZE_STATUS::Success) {
+    if (reopenedReader.OpenStream() != SerializeStatus::Success) {
         return Fail(REOPEN_VALID_STREAM_MESSAGE);
     }
 
     fixture.Buffer[0U] = 0U;
-    if (reopenedReader.OpenStream() != SERIALIZE_STATUS::InvalidHeader) {
+    if (reopenedReader.OpenStream() != SerializeStatus::InvalidHeader) {
         return Fail(REOPEN_INVALID_MAGIC_MESSAGE);
     }
 
     std::uint32_t staleValue = 99U;
-    if (reopenedReader.ReadUInt32(RECORD_MAIN, FIELD_U32, staleValue) != SERIALIZE_STATUS::InvalidHeader) {
+    if (reopenedReader.ReadUInt32(RECORD_MAIN, FIELD_U32, staleValue) != SerializeStatus::InvalidHeader) {
         return Fail(REOPEN_STALE_STATE_MESSAGE);
     }
 
@@ -336,7 +336,7 @@ int SerializeStreamHeaderRejectsInvalidMagicOrVersion() {
 
     WriteUInt16At(fixture.Buffer.data(), STREAM_MAJOR_VERSION_OFFSET, 99U);
     SerializeReader unsupportedVersionReader(fixture.Buffer.data(), fixture.ByteCount);
-    if (unsupportedVersionReader.OpenStream() != SERIALIZE_STATUS::UnsupportedVersion) {
+    if (unsupportedVersionReader.OpenStream() != SerializeStatus::UnsupportedVersion) {
         return Fail("unsupported major version did not return explicit status");
     }
 
@@ -351,7 +351,7 @@ int SerializeStreamHeaderRejectsReservedFlags() {
 
     WriteUInt32At(fixture.Buffer.data(), STREAM_FLAGS_OFFSET, 1U);
     SerializeReader reader(fixture.Buffer.data(), fixture.ByteCount);
-    if (reader.OpenStream() != SERIALIZE_STATUS::InvalidHeader) {
+    if (reader.OpenStream() != SerializeStatus::InvalidHeader) {
         return Fail("reserved stream flags did not return explicit header status");
     }
 
@@ -362,7 +362,7 @@ int SerializeWriterBufferOverflowReturnsStatusWithoutOverrun() {
     std::array<std::uint8_t, 8U> tinyBuffer{};
     tinyBuffer.fill(SENTINEL_BYTE);
     SerializeWriter tinyWriter(tinyBuffer.data(), static_cast<std::uint32_t>(tinyBuffer.size()));
-    if (tinyWriter.BeginStream() != SERIALIZE_STATUS::BufferTooSmall) {
+    if (tinyWriter.BeginStream() != SerializeStatus::BufferTooSmall) {
         return Fail("undersized stream header did not fail");
     }
 
@@ -373,16 +373,16 @@ int SerializeWriterBufferOverflowReturnsStatusWithoutOverrun() {
     std::array<std::uint8_t, 39U> fieldBuffer{};
     fieldBuffer.fill(SENTINEL_BYTE);
     SerializeWriter fieldWriter(fieldBuffer.data(), static_cast<std::uint32_t>(fieldBuffer.size()));
-    if (fieldWriter.BeginStream() != SERIALIZE_STATUS::Success) {
+    if (fieldWriter.BeginStream() != SerializeStatus::Success) {
         return Fail("begin stream failed");
     }
 
-    if (fieldWriter.BeginRecord(RECORD_MAIN) != SERIALIZE_STATUS::Success) {
+    if (fieldWriter.BeginRecord(RECORD_MAIN) != SerializeStatus::Success) {
         return Fail("begin record failed");
     }
 
     const SerializeSnapshot beforeSnapshot = fieldWriter.Snapshot();
-    if (fieldWriter.WriteUInt32(FIELD_U32, 10U) != SERIALIZE_STATUS::BufferTooSmall) {
+    if (fieldWriter.WriteUInt32(FIELD_U32, 10U) != SerializeStatus::BufferTooSmall) {
         return Fail("undersized field payload did not fail");
     }
 
@@ -400,13 +400,13 @@ int SerializeWriterBufferOverflowReturnsStatusWithoutOverrun() {
 int SerializeRecordCapacityOverflowDoesNotMutate() {
     std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-    if (writer.BeginStream() != SERIALIZE_STATUS::Success) {
+    if (writer.BeginStream() != SerializeStatus::Success) {
         return Fail("begin stream failed");
     }
 
     std::uint32_t recordIndex = 0U;
     while (recordIndex < MAX_RECORDS_PER_STREAM) {
-        if (writer.BeginRecord(SerializeRecordId{recordIndex + 1U}) != SERIALIZE_STATUS::Success) {
+        if (writer.BeginRecord(SerializeRecordId{recordIndex + 1U}) != SerializeStatus::Success) {
             return Fail("record within capacity failed");
         }
 
@@ -414,7 +414,7 @@ int SerializeRecordCapacityOverflowDoesNotMutate() {
     }
 
     const SerializeSnapshot beforeSnapshot = writer.Snapshot();
-    if (writer.BeginRecord(SerializeRecordId{100U}) != SERIALIZE_STATUS::RecordCapacityExceeded) {
+    if (writer.BeginRecord(SerializeRecordId{100U}) != SerializeStatus::RecordCapacityExceeded) {
         return Fail("record capacity overflow did not return explicit status");
     }
 
@@ -433,17 +433,17 @@ int SerializeRecordCapacityOverflowDoesNotMutate() {
 int SerializeFieldCapacityOverflowDoesNotMutate() {
     std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-    if (writer.BeginStream() != SERIALIZE_STATUS::Success) {
+    if (writer.BeginStream() != SerializeStatus::Success) {
         return Fail("begin stream failed");
     }
 
-    if (writer.BeginRecord(RECORD_MAIN) != SERIALIZE_STATUS::Success) {
+    if (writer.BeginRecord(RECORD_MAIN) != SerializeStatus::Success) {
         return Fail("begin record failed");
     }
 
     std::uint32_t fieldIndex = 0U;
     while (fieldIndex < MAX_FIELDS_PER_RECORD) {
-        if (writer.WriteUInt32(SerializeFieldId{fieldIndex + 1U}, fieldIndex) != SERIALIZE_STATUS::Success) {
+        if (writer.WriteUInt32(SerializeFieldId{fieldIndex + 1U}, fieldIndex) != SerializeStatus::Success) {
             return Fail("field within capacity failed");
         }
 
@@ -451,7 +451,7 @@ int SerializeFieldCapacityOverflowDoesNotMutate() {
     }
 
     const SerializeSnapshot beforeSnapshot = writer.Snapshot();
-    if (writer.WriteUInt32(SerializeFieldId{100U}, 100U) != SERIALIZE_STATUS::FieldCapacityExceeded) {
+    if (writer.WriteUInt32(SerializeFieldId{100U}, 100U) != SerializeStatus::FieldCapacityExceeded) {
         return Fail("field capacity overflow did not return explicit status");
     }
 
@@ -471,17 +471,17 @@ int SerializeFixedBytesPayloadLimitReturnsExplicitStatus() {
     std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
     std::array<std::uint8_t, MAX_FIELD_PAYLOAD_BYTE_COUNT + 1U> bytes{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-    if (writer.BeginStream() != SERIALIZE_STATUS::Success) {
+    if (writer.BeginStream() != SerializeStatus::Success) {
         return Fail("begin stream failed");
     }
 
-    if (writer.BeginRecord(RECORD_MAIN) != SERIALIZE_STATUS::Success) {
+    if (writer.BeginRecord(RECORD_MAIN) != SerializeStatus::Success) {
         return Fail("begin record failed");
     }
 
     const SerializeSnapshot beforeSnapshot = writer.Snapshot();
     if (writer.WriteFixedBytes(FIELD_BYTES, bytes.data(), static_cast<std::uint32_t>(bytes.size())) !=
-        SERIALIZE_STATUS::FieldPayloadTooLarge) {
+        SerializeStatus::FieldPayloadTooLarge) {
         return Fail("oversized fixed bytes did not return explicit status");
     }
 
@@ -489,17 +489,17 @@ int SerializeFixedBytesPayloadLimitReturnsExplicitStatus() {
         return Fail("oversized fixed bytes changed committed byte count");
     }
 
-    if (writer.WriteFixedBytes(FIELD_BYTES, nullptr, 0U) != SERIALIZE_STATUS::Success) {
+    if (writer.WriteFixedBytes(FIELD_BYTES, nullptr, 0U) != SerializeStatus::Success) {
         return Fail(ZERO_FIXED_BYTES_WRITE_MESSAGE);
     }
 
     SerializeReader reader(buffer.data(), writer.Snapshot().CommittedByteCount);
-    if (reader.OpenStream() != SERIALIZE_STATUS::Success) {
+    if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail(ZERO_FIXED_BYTES_OPEN_MESSAGE);
     }
 
     std::uint32_t byteCount = 7U;
-    if (reader.ReadFixedBytes(RECORD_MAIN, FIELD_BYTES, nullptr, 0U, byteCount) != SERIALIZE_STATUS::Success) {
+    if (reader.ReadFixedBytes(RECORD_MAIN, FIELD_BYTES, nullptr, 0U, byteCount) != SerializeStatus::Success) {
         return Fail(ZERO_FIXED_BYTES_READ_MESSAGE);
     }
 
@@ -514,7 +514,7 @@ int SerializeReaderRejectsTruncatedStream() {
     std::array<std::uint8_t, STREAM_HEADER_BYTE_COUNT> buffer{};
     WriteValidHeader(buffer.data(), 1U);
     SerializeReader reader(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-    if (reader.OpenStream() != SERIALIZE_STATUS::TruncatedStream) {
+    if (reader.OpenStream() != SerializeStatus::TruncatedStream) {
         return Fail("truncated stream did not return explicit status");
     }
 
@@ -533,7 +533,7 @@ int SerializeReaderRejectsInvalidRecordOrFieldId() {
     SerializeReader invalidRecordReader(
         invalidRecordBuffer.data(),
         static_cast<std::uint32_t>(invalidRecordBuffer.size()));
-    if (invalidRecordReader.OpenStream() != SERIALIZE_STATUS::InvalidHeader) {
+    if (invalidRecordReader.OpenStream() != SerializeStatus::InvalidHeader) {
         return Fail("invalid record id did not return explicit header status");
     }
 
@@ -545,11 +545,11 @@ int SerializeReaderRejectsInvalidRecordOrFieldId() {
         invalidFieldBuffer.data(),
         offset,
         SerializeFieldId{0U},
-        static_cast<std::uint32_t>(SERIALIZE_TYPE_TAG::UInt32),
+        static_cast<std::uint32_t>(SerializeTypeTag::UInt32),
         UINT32_PAYLOAD_BYTE_COUNT);
     WriteUInt32At(invalidFieldBuffer.data(), offset, 1U);
     SerializeReader invalidFieldReader(invalidFieldBuffer.data(), static_cast<std::uint32_t>(invalidFieldBuffer.size()));
-    if (invalidFieldReader.OpenStream() != SERIALIZE_STATUS::InvalidHeader) {
+    if (invalidFieldReader.OpenStream() != SerializeStatus::InvalidHeader) {
         return Fail("invalid field id did not return explicit header status");
     }
 
@@ -561,11 +561,11 @@ int SerializeReaderRejectsMalformedFieldLength() {
     WriteValidHeader(buffer.data(), 1U);
     std::uint32_t offset = STREAM_HEADER_BYTE_COUNT;
     offset = WriteRecordHeader(buffer.data(), offset, RECORD_MAIN, 1U);
-    offset = WriteFieldHeader(buffer.data(), offset, FIELD_U32, static_cast<std::uint32_t>(SERIALIZE_TYPE_TAG::UInt32), 8U);
+    offset = WriteFieldHeader(buffer.data(), offset, FIELD_U32, static_cast<std::uint32_t>(SerializeTypeTag::UInt32), 8U);
     WriteUInt32At(buffer.data(), offset, 1U);
     WriteUInt32At(buffer.data(), offset + sizeof(std::uint32_t), 2U);
     SerializeReader reader(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-    if (reader.OpenStream() != SERIALIZE_STATUS::MalformedFieldLength) {
+    if (reader.OpenStream() != SerializeStatus::MalformedFieldLength) {
         return Fail("malformed field length did not return explicit status");
     }
 
@@ -580,7 +580,7 @@ int SerializeReaderRejectsUnknownTypeTag() {
     offset = WriteFieldHeader(buffer.data(), offset, FIELD_U32, 99U, UINT32_PAYLOAD_BYTE_COUNT);
     WriteUInt32At(buffer.data(), offset, 1U);
     SerializeReader reader(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-    if (reader.OpenStream() != SERIALIZE_STATUS::UnknownTypeTag) {
+    if (reader.OpenStream() != SerializeStatus::UnknownTypeTag) {
         return Fail("unknown type tag did not return explicit status");
     }
 
@@ -594,12 +594,12 @@ int SerializeReaderTypeMismatchReturnsExplicitStatus() {
     }
 
     SerializeReader reader(fixture.Buffer.data(), fixture.ByteCount);
-    if (reader.OpenStream() != SERIALIZE_STATUS::Success) {
+    if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail("reader open failed");
     }
 
     std::int32_t value = -333;
-    if (reader.ReadInt32(RECORD_MAIN, FIELD_U32, value) != SERIALIZE_STATUS::TypeMismatch) {
+    if (reader.ReadInt32(RECORD_MAIN, FIELD_U32, value) != SerializeStatus::TypeMismatch) {
         return Fail("reader type mismatch did not return explicit status");
     }
 
@@ -615,13 +615,13 @@ int SerializeDuplicateFieldReturnsExplicitStatus() {
     WriteValidHeader(buffer.data(), 1U);
     std::uint32_t offset = STREAM_HEADER_BYTE_COUNT;
     offset = WriteRecordHeader(buffer.data(), offset, RECORD_MAIN, 2U);
-    offset = WriteFieldHeader(buffer.data(), offset, FIELD_U32, static_cast<std::uint32_t>(SERIALIZE_TYPE_TAG::UInt32), 4U);
+    offset = WriteFieldHeader(buffer.data(), offset, FIELD_U32, static_cast<std::uint32_t>(SerializeTypeTag::UInt32), 4U);
     WriteUInt32At(buffer.data(), offset, 1U);
     offset += 4U;
-    offset = WriteFieldHeader(buffer.data(), offset, FIELD_U32, static_cast<std::uint32_t>(SERIALIZE_TYPE_TAG::UInt32), 4U);
+    offset = WriteFieldHeader(buffer.data(), offset, FIELD_U32, static_cast<std::uint32_t>(SerializeTypeTag::UInt32), 4U);
     WriteUInt32At(buffer.data(), offset, 2U);
     SerializeReader reader(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-    if (reader.OpenStream() != SERIALIZE_STATUS::DuplicateField) {
+    if (reader.OpenStream() != SerializeStatus::DuplicateField) {
         return Fail("duplicate field did not return explicit status");
     }
 
@@ -631,31 +631,31 @@ int SerializeDuplicateFieldReturnsExplicitStatus() {
 int SerializeUnknownFieldWithValidLengthCanSkipDeterministically() {
     std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-    if (writer.BeginStream() != SERIALIZE_STATUS::Success) {
+    if (writer.BeginStream() != SerializeStatus::Success) {
         return Fail("begin stream failed");
     }
 
-    if (writer.BeginRecord(RECORD_SECONDARY) != SERIALIZE_STATUS::Success) {
+    if (writer.BeginRecord(RECORD_SECONDARY) != SerializeStatus::Success) {
         return Fail("begin record failed");
     }
 
     const std::array<std::uint8_t, 3U> unknownPayload{2U, 4U, 6U};
     if (writer.WriteFixedBytes(FIELD_UNKNOWN, unknownPayload.data(), static_cast<std::uint32_t>(unknownPayload.size())) !=
-        SERIALIZE_STATUS::Success) {
+        SerializeStatus::Success) {
         return Fail("write unknown field failed");
     }
 
-    if (writer.WriteUInt32(FIELD_U32, 55U) != SERIALIZE_STATUS::Success) {
+    if (writer.WriteUInt32(FIELD_U32, 55U) != SerializeStatus::Success) {
         return Fail("write target field failed");
     }
 
     SerializeReader reader(buffer.data(), writer.Snapshot().CommittedByteCount);
-    if (reader.OpenStream() != SERIALIZE_STATUS::Success) {
+    if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail("reader open failed");
     }
 
     std::uint32_t value = 0U;
-    if (reader.ReadUInt32(RECORD_SECONDARY, FIELD_U32, value) != SERIALIZE_STATUS::Success) {
+    if (reader.ReadUInt32(RECORD_SECONDARY, FIELD_U32, value) != SerializeStatus::Success) {
         return Fail("reader did not skip unknown field");
     }
 
@@ -711,12 +711,12 @@ int SerializeNoFilePackageResourceObjectOrGameAdapterDependency() {
     }
 
     SerializeReader reader(fixture.Buffer.data(), fixture.ByteCount);
-    if (reader.OpenStream() != SERIALIZE_STATUS::Success) {
+    if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail("synthetic stream reader open failed");
     }
 
     std::uint32_t value = 0U;
-    if (reader.ReadUInt32(RECORD_MAIN, FIELD_U32, value) != SERIALIZE_STATUS::Success) {
+    if (reader.ReadUInt32(RECORD_MAIN, FIELD_U32, value) != SerializeStatus::Success) {
         return Fail("synthetic stream read failed");
     }
 
@@ -730,34 +730,34 @@ int SerializeNoFilePackageResourceObjectOrGameAdapterDependency() {
 int SerializeNoHiddenAllocationInReadWritePath() {
     std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-    if (writer.Snapshot().AllocationAccountingStatus != MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly) {
+    if (writer.Snapshot().AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("writer did not expose YuMemory accounting vocabulary");
     }
 
-    if (writer.BeginStream() != SERIALIZE_STATUS::Success) {
+    if (writer.BeginStream() != SerializeStatus::Success) {
         return Fail("begin stream failed");
     }
 
-    if (writer.BeginRecord(RECORD_MAIN) != SERIALIZE_STATUS::Success) {
+    if (writer.BeginRecord(RECORD_MAIN) != SerializeStatus::Success) {
         return Fail("begin record failed");
     }
 
-    if (writer.WriteUInt32(FIELD_U32, 3U) != SERIALIZE_STATUS::Success) {
+    if (writer.WriteUInt32(FIELD_U32, 3U) != SerializeStatus::Success) {
         return Fail("write uint32 failed");
     }
 
     const SerializeSnapshot writerSnapshot = writer.Snapshot();
     SerializeReader reader(buffer.data(), writerSnapshot.CommittedByteCount);
-    if (reader.Snapshot().AllocationAccountingStatus != MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly) {
+    if (reader.Snapshot().AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("reader did not expose YuMemory accounting vocabulary");
     }
 
-    if (reader.OpenStream() != SERIALIZE_STATUS::Success) {
+    if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail("reader open failed");
     }
 
     std::uint32_t value = 0U;
-    if (reader.ReadUInt32(RECORD_MAIN, FIELD_U32, value) != SERIALIZE_STATUS::Success) {
+    if (reader.ReadUInt32(RECORD_MAIN, FIELD_U32, value) != SerializeStatus::Success) {
         return Fail("reader read failed");
     }
 
@@ -771,23 +771,23 @@ int SerializeNoHiddenAllocationInReadWritePath() {
 int SerializeSnapshotReportsCountsAndLastStatus() {
     std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-    if (writer.BeginStream() != SERIALIZE_STATUS::Success) {
+    if (writer.BeginStream() != SerializeStatus::Success) {
         return Fail("begin stream failed");
     }
 
-    if (writer.BeginRecord(RECORD_MAIN) != SERIALIZE_STATUS::Success) {
+    if (writer.BeginRecord(RECORD_MAIN) != SerializeStatus::Success) {
         return Fail("begin record failed");
     }
 
-    if (writer.WriteUInt32(FIELD_U32, 1U) != SERIALIZE_STATUS::Success) {
+    if (writer.WriteUInt32(FIELD_U32, 1U) != SerializeStatus::Success) {
         return Fail("write first field failed");
     }
 
-    if (writer.WriteInt32(FIELD_I32, -1) != SERIALIZE_STATUS::Success) {
+    if (writer.WriteInt32(FIELD_I32, -1) != SerializeStatus::Success) {
         return Fail("write second field failed");
     }
 
-    if (writer.WriteUInt32(FIELD_U32, 2U) != SERIALIZE_STATUS::DuplicateField) {
+    if (writer.WriteUInt32(FIELD_U32, 2U) != SerializeStatus::DuplicateField) {
         return Fail("duplicate field did not fail");
     }
 
@@ -800,12 +800,12 @@ int SerializeSnapshotReportsCountsAndLastStatus() {
         return Fail("writer snapshot did not report operation counts");
     }
 
-    if (writerSnapshot.LastStatus != SERIALIZE_STATUS::DuplicateField) {
+    if (writerSnapshot.LastStatus != SerializeStatus::DuplicateField) {
         return Fail("writer snapshot did not report last status");
     }
 
     SerializeReader reader(buffer.data(), writerSnapshot.CommittedByteCount);
-    if (reader.OpenStream() != SERIALIZE_STATUS::Success) {
+    if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail("reader open failed");
     }
 
@@ -818,7 +818,7 @@ int SerializeSnapshotReportsCountsAndLastStatus() {
         return Fail("reader snapshot did not report committed byte count");
     }
 
-    if (readerSnapshot.AllocationAccountingStatus != MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly) {
+    if (readerSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("reader snapshot did not report YuMemory accounting vocabulary");
     }
 

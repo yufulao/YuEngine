@@ -5,19 +5,19 @@
 
 namespace yuengine::memory {
 struct memory_accounting_result_t {
-    MEMORY_ACCOUNTING_STATUS Status;
+    MemoryAccountingStatus Status;
     memory_allocation_id_t AllocationId;
 
     static memory_accounting_result_t Success(memory_allocation_id_t allocationId) {
-        return memory_accounting_result_t{MEMORY_ACCOUNTING_STATUS::Success, allocationId};
+        return memory_accounting_result_t{MemoryAccountingStatus::Success, allocationId};
     }
 
-    static memory_accounting_result_t Failure(MEMORY_ACCOUNTING_STATUS status) {
+    static memory_accounting_result_t Failure(MemoryAccountingStatus status) {
         return memory_accounting_result_t{status, memory_allocation_id_t{0U}};
     }
 
     bool Succeeded() const {
-        return Status == MEMORY_ACCOUNTING_STATUS::Success;
+        return Status == MemoryAccountingStatus::Success;
     }
 };
 }

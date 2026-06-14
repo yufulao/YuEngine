@@ -20,16 +20,16 @@ class TestAudioDevice final {
 public:
     TestAudioDevice();
 
-    AUDIO_STATUS Initialize(const audio_device_desc_t& desc);
-    AUDIO_STATUS RegisterSyntheticSource(std::span<const std::int16_t> interleavedSamples, std::size_t frameCount, audio_source_id_t& outSource);
-    AUDIO_STATUS StartVoice(audio_source_id_t source, std::uint32_t gainQ15, audio_voice_handle_t& outVoice);
-    AUDIO_STATUS StopVoice(audio_voice_handle_t handle);
+    AudioStatus Initialize(const audio_device_desc_t& desc);
+    AudioStatus RegisterSyntheticSource(std::span<const std::int16_t> interleavedSamples, std::size_t frameCount, audio_source_id_t& outSource);
+    AudioStatus StartVoice(audio_source_id_t source, std::uint32_t gainQ15, audio_voice_handle_t& outVoice);
+    AudioStatus StopVoice(audio_voice_handle_t handle);
     audio_mix_result_t Mix(std::span<std::int16_t> outputSamples, std::size_t requestedFrames);
     audio_capabilities_t Capabilities() const;
     audio_device_snapshot_t Snapshot() const;
 
 private:
-    AUDIO_STATUS RecordFailure(AUDIO_STATUS status);
+    AudioStatus RecordFailure(AudioStatus status);
     bool IsDeviceFormatSupported(const audio_device_desc_t& desc) const;
     bool IsSourceValid(audio_source_id_t source) const;
     bool IsVoiceHandleValid(audio_voice_handle_t handle) const;

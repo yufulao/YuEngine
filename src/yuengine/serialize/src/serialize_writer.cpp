@@ -2,7 +2,7 @@
 
 #include "yuengine/memory/memory_accounting_status.h"
 
-using yuengine::memory::MEMORY_ACCOUNTING_STATUS;
+using yuengine::memory::MemoryAccountingStatus;
 
 namespace yuengine::serialize {
 namespace {
@@ -49,15 +49,15 @@ SerializeWriter::SerializeWriter(std::uint8_t* buffer, std::uint32_t capacity)
           0U,
           0U,
           0U,
-          MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly,
-          SERIALIZE_STATUS::Success},
+          MemoryAccountingStatus::ExplicitlyTrackedOnly,
+          SerializeStatus::Success},
       _hasStream(false),
       _hasActiveRecord(false) {
 }
 
-SERIALIZE_STATUS SerializeWriter::BeginStream() {
+SerializeStatus SerializeWriter::BeginStream() {
     if (!CanCommitBytes(STREAM_HEADER_BYTE_COUNT)) {
-        return RecordFailure(SERIALIZE_STATUS::BufferTooSmall);
+        return RecordFailure(SerializeStatus::BufferTooSmall);
     }
 
     _snapshot = SerializeSnapshot{
@@ -68,8 +68,8 @@ SERIALIZE_STATUS SerializeWriter::BeginStream() {
         0U,
         0U,
         0U,
-        MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly,
-        SERIALIZE_STATUS::Success};
+        MemoryAccountingStatus::ExplicitlyTrackedOnly,
+        SerializeStatus::Success};
     _activeRecordOffset = 0U;
     _currentRecordFieldCount = 0U;
     _hasStream = true;
@@ -81,24 +81,24 @@ SERIALIZE_STATUS SerializeWriter::BeginStream() {
     WriteUInt32At(STREAM_FLAGS_OFFSET, STREAM_FLAGS);
     WriteUInt32At(STREAM_RECORD_COUNT_OFFSET, 0U);
     RecordSuccess();
-    return SERIALIZE_STATUS::Success;
+    return SerializeStatus::Success;
 }
 
-SERIALIZE_STATUS SerializeWriter::BeginRecord(SerializeRecordId record) {
+SerializeStatus SerializeWriter::BeginRecord(SerializeRecordId record) {
     if (!_hasStream) {
-        return RecordFailure(SERIALIZE_STATUS::InvalidHeader);
+        return RecordFailure(SerializeStatus::InvalidHeader);
     }
 
     if (!record.IsValid()) {
-        return RecordFailure(SERIALIZE_STATUS::InvalidHeader);
+        return RecordFailure(SerializeStatus::InvalidHeader);
     }
 
     if (_snapshot.RecordCount >= MAX_RECORDS_PER_STREAM) {
-        return RecordFailure(SERIALIZE_STATUS::RecordCapacityExceeded);
+        return RecordFailure(SerializeStatus::RecordCapacityExceeded);
     }
 
     if (!CanCommitBytes(RECORD_HEADER_BYTE_COUNT)) {
-        return RecordFailure(SERIALIZE_STATUS::BufferTooSmall);
+        return RecordFailure(SerializeStatus::BufferTooSmall);
     }
 
     _activeRecordOffset = _snapshot.CommittedByteCount;
@@ -110,80 +110,80 @@ SERIALIZE_STATUS SerializeWriter::BeginRecord(SerializeRecordId record) {
     _currentRecordFieldCount = 0U;
     _hasActiveRecord = true;
     RecordSuccess();
-    return SERIALIZE_STATUS::Success;
+    return SerializeStatus::Success;
 }
 
-SERIALIZE_STATUS SerializeWriter::WriteUInt32(SerializeFieldId field, std::uint32_t value) {
+SerializeStatus SerializeWriter::WriteUInt32(SerializeFieldId field, std::uint32_t value) {
     std::array<std::uint8_t, UINT32_PAYLOAD_BYTE_COUNT> payload{};
     EncodeUInt32(payload.data(), value);
-    return CommitField(field, SERIALIZE_TYPE_TAG::UInt32, payload.data(), UINT32_PAYLOAD_BYTE_COUNT);
+    return CommitField(field, SerializeTypeTag::UInt32, payload.data(), UINT32_PAYLOAD_BYTE_COUNT);
 }
 
-SERIALIZE_STATUS SerializeWriter::WriteInt32(SerializeFieldId field, std::int32_t value) {
+SerializeStatus SerializeWriter::WriteInt32(SerializeFieldId field, std::int32_t value) {
     std::array<std::uint8_t, INT32_PAYLOAD_BYTE_COUNT> payload{};
     EncodeUInt32(payload.data(), static_cast<std::uint32_t>(value));
-    return CommitField(field, SERIALIZE_TYPE_TAG::Int32, payload.data(), INT32_PAYLOAD_BYTE_COUNT);
+    return CommitField(field, SerializeTypeTag::Int32, payload.data(), INT32_PAYLOAD_BYTE_COUNT);
 }
 
-SERIALIZE_STATUS SerializeWriter::WriteUInt64(SerializeFieldId field, std::uint64_t value) {
+SerializeStatus SerializeWriter::WriteUInt64(SerializeFieldId field, std::uint64_t value) {
     std::array<std::uint8_t, UINT64_PAYLOAD_BYTE_COUNT> payload{};
     EncodeUInt64(payload.data(), value);
-    return CommitField(field, SERIALIZE_TYPE_TAG::UInt64, payload.data(), UINT64_PAYLOAD_BYTE_COUNT);
+    return CommitField(field, SerializeTypeTag::UInt64, payload.data(), UINT64_PAYLOAD_BYTE_COUNT);
 }
 
-SERIALIZE_STATUS SerializeWriter::WriteInt64(SerializeFieldId field, std::int64_t value) {
+SerializeStatus SerializeWriter::WriteInt64(SerializeFieldId field, std::int64_t value) {
     std::array<std::uint8_t, INT64_PAYLOAD_BYTE_COUNT> payload{};
     EncodeUInt64(payload.data(), static_cast<std::uint64_t>(value));
-    return CommitField(field, SERIALIZE_TYPE_TAG::Int64, payload.data(), INT64_PAYLOAD_BYTE_COUNT);
+    return CommitField(field, SerializeTypeTag::Int64, payload.data(), INT64_PAYLOAD_BYTE_COUNT);
 }
 
-SERIALIZE_STATUS SerializeWriter::WriteFixedBytes(SerializeFieldId field, const std::uint8_t* bytes, std::uint32_t byteCount) {
-    return CommitField(field, SERIALIZE_TYPE_TAG::FixedBytes, bytes, byteCount);
+SerializeStatus SerializeWriter::WriteFixedBytes(SerializeFieldId field, const std::uint8_t* bytes, std::uint32_t byteCount) {
+    return CommitField(field, SerializeTypeTag::FixedBytes, bytes, byteCount);
 }
 
 SerializeSnapshot SerializeWriter::Snapshot() const {
     return _snapshot;
 }
 
-SERIALIZE_STATUS SerializeWriter::CommitField(
+SerializeStatus SerializeWriter::CommitField(
     SerializeFieldId field,
-    SERIALIZE_TYPE_TAG type,
+    SerializeTypeTag type,
     const std::uint8_t* payload,
     std::uint32_t byteCount) {
     if (!_hasStream) {
-        return RecordFailure(SERIALIZE_STATUS::InvalidHeader);
+        return RecordFailure(SerializeStatus::InvalidHeader);
     }
 
     if (!_hasActiveRecord) {
-        return RecordFailure(SERIALIZE_STATUS::InvalidHeader);
+        return RecordFailure(SerializeStatus::InvalidHeader);
     }
 
     if (!field.IsValid()) {
-        return RecordFailure(SERIALIZE_STATUS::InvalidHeader);
+        return RecordFailure(SerializeStatus::InvalidHeader);
     }
 
     if (byteCount > MAX_FIELD_PAYLOAD_BYTE_COUNT) {
-        return RecordFailure(SERIALIZE_STATUS::FieldPayloadTooLarge);
+        return RecordFailure(SerializeStatus::FieldPayloadTooLarge);
     }
 
     if (byteCount > 0U && payload == nullptr) {
-        return RecordFailure(SERIALIZE_STATUS::BufferTooSmall);
+        return RecordFailure(SerializeStatus::BufferTooSmall);
     }
 
     if (_snapshot.FieldCount >= MAX_FIELDS_PER_STREAM) {
-        return RecordFailure(SERIALIZE_STATUS::FieldCapacityExceeded);
+        return RecordFailure(SerializeStatus::FieldCapacityExceeded);
     }
 
     if (_currentRecordFieldCount >= MAX_FIELDS_PER_RECORD) {
-        return RecordFailure(SERIALIZE_STATUS::FieldCapacityExceeded);
+        return RecordFailure(SerializeStatus::FieldCapacityExceeded);
     }
 
     if (HasFieldInCurrentRecord(field)) {
-        return RecordFailure(SERIALIZE_STATUS::DuplicateField);
+        return RecordFailure(SerializeStatus::DuplicateField);
     }
 
     if (!CanCommitBytes(FIELD_HEADER_BYTE_COUNT + byteCount)) {
-        return RecordFailure(SERIALIZE_STATUS::BufferTooSmall);
+        return RecordFailure(SerializeStatus::BufferTooSmall);
     }
 
     const std::uint32_t fieldOffset = _snapshot.CommittedByteCount;
@@ -197,10 +197,10 @@ SERIALIZE_STATUS SerializeWriter::CommitField(
     ++_snapshot.FieldCount;
     WriteUInt32At(_activeRecordOffset + sizeof(std::uint32_t), _currentRecordFieldCount);
     RecordSuccess();
-    return SERIALIZE_STATUS::Success;
+    return SerializeStatus::Success;
 }
 
-SERIALIZE_STATUS SerializeWriter::RecordFailure(SERIALIZE_STATUS status) {
+SerializeStatus SerializeWriter::RecordFailure(SerializeStatus status) {
     ++_snapshot.FailedOperationCount;
     _snapshot.LastStatus = status;
     return status;
@@ -208,7 +208,7 @@ SERIALIZE_STATUS SerializeWriter::RecordFailure(SERIALIZE_STATUS status) {
 
 void SerializeWriter::RecordSuccess() {
     ++_snapshot.AcceptedOperationCount;
-    _snapshot.LastStatus = SERIALIZE_STATUS::Success;
+    _snapshot.LastStatus = SerializeStatus::Success;
 }
 
 bool SerializeWriter::CanCommitBytes(std::uint32_t byteCount) const {

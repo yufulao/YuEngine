@@ -9,7 +9,7 @@
 #include "yuengine/resource/resource_constants.h"
 #include "yuengine/resource/resource_registry.h"
 
-using yuengine::memory::MEMORY_ACCOUNTING_STATUS;
+using yuengine::memory::MemoryAccountingStatus;
 using yuengine::resource::resource_descriptor_t;
 using yuengine::resource::resource_handle_t;
 using ResourceLogicalKey = yuengine::resource::ResourceLogicalKey;
@@ -17,7 +17,7 @@ using ResourceRegistry = yuengine::resource::ResourceRegistry;
 using yuengine::resource::resource_registry_desc_t;
 using yuengine::resource::resource_registration_result_t;
 using yuengine::resource::resource_snapshot_t;
-using yuengine::resource::RESOURCE_STATUS;
+using yuengine::resource::ResourceStatus;
 using yuengine::resource::resource_type_id_t;
 using yuengine::resource::INVALID_RESOURCE_GENERATION;
 
@@ -127,7 +127,7 @@ int ResourceRegisterSyntheticDescriptorReturnsGenerationHandle() {
         return Fail("resource type count was not recorded");
     }
 
-    if (snapshot.LastStatus != RESOURCE_STATUS::Success) {
+    if (snapshot.LastStatus != ResourceStatus::Success) {
         return Fail("successful registration did not record success status");
     }
 
@@ -143,7 +143,7 @@ int ResourceRegisterDuplicateReturnsExplicitStatus() {
 
     const resource_snapshot_t beforeSnapshot = registry.Snapshot();
     const resource_registration_result_t duplicateResult = Register(registry, TYPE_TEXTURE, "texture_a");
-    if (duplicateResult.Status != RESOURCE_STATUS::DuplicateResource) {
+    if (duplicateResult.Status != ResourceStatus::DuplicateResource) {
         return Fail("duplicate resource did not return explicit status");
     }
 
@@ -168,7 +168,7 @@ int ResourceRegistryRejectsCapacityOverflowWithoutMutation() {
 
     const resource_snapshot_t beforeSnapshot = registry.Snapshot();
     const resource_registration_result_t overflowResult = Register(registry, TYPE_MATERIAL, "material_a");
-    if (overflowResult.Status != RESOURCE_STATUS::CapacityExceeded) {
+    if (overflowResult.Status != ResourceStatus::CapacityExceeded) {
         return Fail("resource capacity overflow did not return explicit status");
     }
 
@@ -193,7 +193,7 @@ int ResourceTypeCapacityOverflowDoesNotMutate() {
 
     const resource_snapshot_t beforeSnapshot = registry.Snapshot();
     const resource_registration_result_t overflowResult = Register(registry, TYPE_MATERIAL, TYPE_CAPACITY_MATERIAL_KEY);
-    if (overflowResult.Status != RESOURCE_STATUS::CapacityExceeded) {
+    if (overflowResult.Status != ResourceStatus::CapacityExceeded) {
         return Fail(TYPE_CAPACITY_STATUS_FAILED);
     }
 
@@ -241,13 +241,13 @@ int ResourceHandleRejectsWrongGeneration() {
         return Fail("registration failed");
     }
 
-    const RESOURCE_STATUS retireStatus = registry.Retire(result.Handle);
-    if (retireStatus != RESOURCE_STATUS::Success) {
+    const ResourceStatus retireStatus = registry.Retire(result.Handle);
+    if (retireStatus != ResourceStatus::Success) {
         return Fail("retire failed before stale handle check");
     }
 
-    const RESOURCE_STATUS acquireStatus = registry.Acquire(result.Handle, TYPE_TEXTURE);
-    if (acquireStatus != RESOURCE_STATUS::GenerationMismatch) {
+    const ResourceStatus acquireStatus = registry.Acquire(result.Handle, TYPE_TEXTURE);
+    if (acquireStatus != ResourceStatus::GenerationMismatch) {
         return Fail("stale generation handle did not return explicit status");
     }
 
@@ -266,8 +266,8 @@ int ResourceHandleRejectsTypeMismatch() {
     }
 
     const resource_snapshot_t beforeSnapshot = registry.Snapshot();
-    const RESOURCE_STATUS status = registry.Acquire(result.Handle, TYPE_AUDIO);
-    if (status != RESOURCE_STATUS::TypeMismatch) {
+    const ResourceStatus status = registry.Acquire(result.Handle, TYPE_AUDIO);
+    if (status != ResourceStatus::TypeMismatch) {
         return Fail("type mismatch did not return explicit status");
     }
 
@@ -285,7 +285,7 @@ int ResourceAcquireReleaseTracksReferenceCount() {
         return Fail("registration failed");
     }
 
-    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != RESOURCE_STATUS::Success) {
+    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != ResourceStatus::Success) {
         return Fail("acquire failed");
     }
 
@@ -293,7 +293,7 @@ int ResourceAcquireReleaseTracksReferenceCount() {
         return Fail("acquire did not increment reference count");
     }
 
-    if (registry.Release(result.Handle) != RESOURCE_STATUS::Success) {
+    if (registry.Release(result.Handle) != ResourceStatus::Success) {
         return Fail("release failed");
     }
 
@@ -306,7 +306,7 @@ int ResourceAcquireReleaseTracksReferenceCount() {
         return Fail("release count was not recorded");
     }
 
-    if (registry.Release(result.Handle) != RESOURCE_STATUS::NotAcquired) {
+    if (registry.Release(result.Handle) != ResourceStatus::NotAcquired) {
         return Fail("release at zero did not return not-acquired status");
     }
 
@@ -324,11 +324,11 @@ int ResourceRepeatedAcquireIncrementsReferenceCount() {
         return Fail("registration failed");
     }
 
-    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != RESOURCE_STATUS::Success) {
+    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != ResourceStatus::Success) {
         return Fail("first acquire failed");
     }
 
-    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != RESOURCE_STATUS::Success) {
+    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != ResourceStatus::Success) {
         return Fail("second acquire failed");
     }
 
@@ -348,8 +348,8 @@ int ResourceAcquireRejectsReferenceCountOverflow() {
     }
 
     const resource_snapshot_t beforeSnapshot = registry.Snapshot();
-    const RESOURCE_STATUS status = registry.Acquire(result.Handle, TYPE_TEXTURE);
-    if (status != RESOURCE_STATUS::ReferenceCountOverflow) {
+    const ResourceStatus status = registry.Acquire(result.Handle, TYPE_TEXTURE);
+    if (status != ResourceStatus::ReferenceCountOverflow) {
         return Fail("reference count overflow did not return explicit status");
     }
 
@@ -367,12 +367,12 @@ int ResourceRetireRejectsOutstandingAcquire() {
         return Fail("registration failed");
     }
 
-    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != RESOURCE_STATUS::Success) {
+    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != ResourceStatus::Success) {
         return Fail("acquire failed before retire");
     }
 
-    const RESOURCE_STATUS retireStatus = registry.Retire(result.Handle);
-    if (retireStatus != RESOURCE_STATUS::StillReferenced) {
+    const ResourceStatus retireStatus = registry.Retire(result.Handle);
+    if (retireStatus != ResourceStatus::StillReferenced) {
         return Fail("retire with outstanding acquire did not return explicit status");
     }
 
@@ -395,11 +395,11 @@ int ResourceRetireRejectsLiveDependentEdge() {
         return Fail("dependent registration failed");
     }
 
-    if (registry.AddDependency(dependent.Handle, dependency.Handle) != RESOURCE_STATUS::Success) {
+    if (registry.AddDependency(dependent.Handle, dependency.Handle) != ResourceStatus::Success) {
         return Fail("dependency edge registration failed");
     }
 
-    if (registry.Retire(dependency.Handle) != RESOURCE_STATUS::StillDependedOn) {
+    if (registry.Retire(dependency.Handle) != ResourceStatus::StillDependedOn) {
         return Fail("retire with live dependent edge did not return explicit status");
     }
 
@@ -407,7 +407,7 @@ int ResourceRetireRejectsLiveDependentEdge() {
         return Fail("rejected dependency retire changed edge count");
     }
 
-    if (registry.Retire(dependent.Handle) != RESOURCE_STATUS::Success) {
+    if (registry.Retire(dependent.Handle) != ResourceStatus::Success) {
         return Fail("dependent retire failed");
     }
 
@@ -415,7 +415,7 @@ int ResourceRetireRejectsLiveDependentEdge() {
         return Fail("successful retire did not clear outbound dependency edge");
     }
 
-    if (registry.Retire(dependency.Handle) != RESOURCE_STATUS::Success) {
+    if (registry.Retire(dependency.Handle) != ResourceStatus::Success) {
         return Fail("dependency retire failed after outbound edge cleared");
     }
 
@@ -429,8 +429,8 @@ int ResourceDependencyValidationRejectsMissingDependency() {
         return Fail("dependent registration failed");
     }
 
-    const RESOURCE_STATUS status = registry.AddDependency(dependent.Handle, resource_handle_t{31U, 1U});
-    if (status != RESOURCE_STATUS::DependencyMissing) {
+    const ResourceStatus status = registry.AddDependency(dependent.Handle, resource_handle_t{31U, 1U});
+    if (status != ResourceStatus::DependencyMissing) {
         return Fail("missing dependency did not return explicit status");
     }
 
@@ -463,20 +463,20 @@ int ResourceDependencyValidationRejectsCycle() {
         return Fail("third registration failed");
     }
 
-    if (registry.AddDependency(first.Handle, first.Handle) != RESOURCE_STATUS::DependencyCycle) {
+    if (registry.AddDependency(first.Handle, first.Handle) != ResourceStatus::DependencyCycle) {
         return Fail("self dependency did not return cycle status");
     }
 
-    if (registry.AddDependency(first.Handle, second.Handle) != RESOURCE_STATUS::Success) {
+    if (registry.AddDependency(first.Handle, second.Handle) != ResourceStatus::Success) {
         return Fail("first dependency edge failed");
     }
 
-    if (registry.AddDependency(second.Handle, third.Handle) != RESOURCE_STATUS::Success) {
+    if (registry.AddDependency(second.Handle, third.Handle) != ResourceStatus::Success) {
         return Fail("second dependency edge failed");
     }
 
-    const RESOURCE_STATUS cycleStatus = registry.AddDependency(third.Handle, first.Handle);
-    if (cycleStatus != RESOURCE_STATUS::DependencyCycle) {
+    const ResourceStatus cycleStatus = registry.AddDependency(third.Handle, first.Handle);
+    if (cycleStatus != ResourceStatus::DependencyCycle) {
         return Fail("dependency cycle did not return explicit status");
     }
 
@@ -494,11 +494,11 @@ int ResourceNoFileOrPackageDependencyForHandleRegistry() {
         return Fail("synthetic resource registration failed");
     }
 
-    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != RESOURCE_STATUS::Success) {
+    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != ResourceStatus::Success) {
         return Fail("synthetic handle acquire failed");
     }
 
-    if (registry.Release(result.Handle) != RESOURCE_STATUS::Success) {
+    if (registry.Release(result.Handle) != ResourceStatus::Success) {
         return Fail("synthetic handle release failed");
     }
 
@@ -522,14 +522,14 @@ int ResourceDisabledDiagnosticsDoesNotChangeResults() {
         return Fail("disabled registry registration failed");
     }
 
-    const RESOURCE_STATUS recordingAcquire = recordingRegistry.Acquire(recordingResult.Handle, TYPE_TEXTURE);
-    const RESOURCE_STATUS disabledAcquire = diagnosticsDisabledRegistry.Acquire(disabledResult.Handle, TYPE_TEXTURE);
+    const ResourceStatus recordingAcquire = recordingRegistry.Acquire(recordingResult.Handle, TYPE_TEXTURE);
+    const ResourceStatus disabledAcquire = diagnosticsDisabledRegistry.Acquire(disabledResult.Handle, TYPE_TEXTURE);
     if (recordingAcquire != disabledAcquire) {
         return Fail("disabled diagnostics changed acquire status");
     }
 
-    const RESOURCE_STATUS recordingMismatch = recordingRegistry.Acquire(recordingResult.Handle, TYPE_AUDIO);
-    const RESOURCE_STATUS disabledMismatch = diagnosticsDisabledRegistry.Acquire(disabledResult.Handle, TYPE_AUDIO);
+    const ResourceStatus recordingMismatch = recordingRegistry.Acquire(recordingResult.Handle, TYPE_AUDIO);
+    const ResourceStatus disabledMismatch = diagnosticsDisabledRegistry.Acquire(disabledResult.Handle, TYPE_AUDIO);
     if (recordingMismatch != disabledMismatch) {
         return Fail("disabled diagnostics changed failure status");
     }
@@ -544,7 +544,7 @@ int ResourceDisabledDiagnosticsDoesNotChangeResults() {
 int ResourceNoHiddenAllocationUsesYuMemorySignal() {
     ResourceRegistry registry;
     const resource_snapshot_t initialSnapshot = registry.Snapshot();
-    if (initialSnapshot.AllocationAccountingStatus != MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly) {
+    if (initialSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("resource registry did not expose YuMemory accounting vocabulary");
     }
 
@@ -553,11 +553,11 @@ int ResourceNoHiddenAllocationUsesYuMemorySignal() {
         return Fail("registration failed");
     }
 
-    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != RESOURCE_STATUS::Success) {
+    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != ResourceStatus::Success) {
         return Fail("acquire failed");
     }
 
-    if (registry.Release(result.Handle) != RESOURCE_STATUS::Success) {
+    if (registry.Release(result.Handle) != ResourceStatus::Success) {
         return Fail("release failed");
     }
 
@@ -570,7 +570,7 @@ int ResourceNoHiddenAllocationUsesYuMemorySignal() {
         return Fail("dependency edge capacity changed during handle fixture");
     }
 
-    if (afterSnapshot.AllocationAccountingStatus != MEMORY_ACCOUNTING_STATUS::ExplicitlyTrackedOnly) {
+    if (afterSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("resource registry changed allocation accounting vocabulary");
     }
 

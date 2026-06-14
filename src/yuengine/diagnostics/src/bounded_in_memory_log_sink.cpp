@@ -10,7 +10,7 @@ BoundedInMemoryLogSink::BoundedInMemoryLogSink(std::size_t capacity)
     _events.reserve(_capacity);
 }
 
-void BoundedInMemoryLogSink::Write(LOG_LEVEL level, std::string_view message) {
+void BoundedInMemoryLogSink::Write(LogLevel level, std::string_view message) {
     if (_events.size() >= _capacity) {
         ++_droppedCount;
         return;

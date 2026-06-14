@@ -26,8 +26,8 @@ void writeMessage(std::FILE *stream, std::string_view message) {
 }
 }
 
-void DefaultLogSink::Write(LOG_LEVEL level, std::string_view message) {
-    if (level == LOG_LEVEL::Error) {
+void DefaultLogSink::Write(LogLevel level, std::string_view message) {
+    if (level == LogLevel::Error) {
         writeMessage(stderr, message);
         return;
     }
