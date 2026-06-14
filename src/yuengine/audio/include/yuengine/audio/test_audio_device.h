@@ -20,28 +20,28 @@ class TestAudioDevice final {
 public:
     TestAudioDevice();
 
-    AudioStatus Initialize(const AudioDeviceDesc& desc);
-    AudioStatus RegisterSyntheticSource(std::span<const std::int16_t> interleavedSamples, std::size_t frameCount, AudioSourceId& outSource);
-    AudioStatus StartVoice(AudioSourceId source, std::uint32_t gainQ15, AudioVoiceHandle& outVoice);
-    AudioStatus StopVoice(AudioVoiceHandle handle);
-    AudioMixResult Mix(std::span<std::int16_t> outputSamples, std::size_t requestedFrames);
-    AudioCapabilities Capabilities() const;
-    AudioDeviceSnapshot Snapshot() const;
+    AudioStatus Initialize(const audio_device_desc_t& desc);
+    AudioStatus RegisterSyntheticSource(std::span<const std::int16_t> interleavedSamples, std::size_t frameCount, audio_source_id_t& outSource);
+    AudioStatus StartVoice(audio_source_id_t source, std::uint32_t gainQ15, audio_voice_handle_t& outVoice);
+    AudioStatus StopVoice(audio_voice_handle_t handle);
+    audio_mix_result_t Mix(std::span<std::int16_t> outputSamples, std::size_t requestedFrames);
+    audio_capabilities_t Capabilities() const;
+    audio_device_snapshot_t Snapshot() const;
 
 private:
     AudioStatus RecordFailure(AudioStatus status);
-    bool IsDeviceFormatSupported(const AudioDeviceDesc& desc) const;
-    bool IsSourceValid(AudioSourceId source) const;
-    bool IsVoiceHandleValid(AudioVoiceHandle handle) const;
-    std::int16_t ReadSourceSample(const AudioVoiceSlot& voice, std::size_t channel) const;
+    bool IsDeviceFormatSupported(const audio_device_desc_t& desc) const;
+    bool IsSourceValid(audio_source_id_t source) const;
+    bool IsVoiceHandleValid(audio_voice_handle_t handle) const;
+    std::int16_t ReadSourceSample(const audio_voice_slot_t& voice, std::size_t channel) const;
     std::int32_t ScaleSample(std::int16_t sample, std::uint32_t gainQ15) const;
     std::int16_t SaturateToS16(std::int64_t sample) const;
-    void StopVoiceSlot(AudioVoiceSlot& voice);
+    void StopVoiceSlot(audio_voice_slot_t& voice);
 
-    std::vector<AudioSourceSlot> _sources;
-    std::vector<AudioVoiceSlot> _voices;
-    AudioCapabilities _capabilities;
-    AudioDeviceSnapshot _snapshot;
+    std::vector<audio_source_slot_t> _sources;
+    std::vector<audio_voice_slot_t> _voices;
+    audio_capabilities_t _capabilities;
+    audio_device_snapshot_t _snapshot;
     std::uint32_t _generationSeed;
     bool _isInitialized;
 };

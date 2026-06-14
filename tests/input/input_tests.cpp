@@ -8,14 +8,14 @@
 #include "yuengine/input/input_constants.h"
 #include "yuengine/input/input_replay.h"
 
-using InputActionId = yuengine::input::InputActionId;
-using InputActionState = yuengine::input::InputActionState;
-using InputControlId = yuengine::input::InputControlId;
-using InputDeviceId = yuengine::input::InputDeviceId;
-using InputEvent = yuengine::input::InputEvent;
+using input_action_id_t = yuengine::input::input_action_id_t;
+using input_action_state_t = yuengine::input::input_action_state_t;
+using input_control_id_t = yuengine::input::input_control_id_t;
+using input_device_id_t = yuengine::input::input_device_id_t;
+using input_event_t = yuengine::input::input_event_t;
 using InputEventType = yuengine::input::InputEventType;
 using InputReplay = yuengine::input::InputReplay;
-using InputReplaySnapshot = yuengine::input::InputReplaySnapshot;
+using input_replay_snapshot_t = yuengine::input::input_replay_snapshot_t;
 using InputStatus = yuengine::input::InputStatus;
 using yuengine::input::AXIS_MAX_VALUE;
 using yuengine::input::AXIS_MIN_VALUE;
@@ -45,15 +45,15 @@ constexpr const char* TEST_NO_FORBIDDEN_DEPENDENCY = "Input_NoPlatformUiOrGameAd
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
-constexpr InputDeviceId DEVICE_A{0U};
-constexpr InputDeviceId DEVICE_B{1U};
-constexpr InputDeviceId UNKNOWN_DEVICE{99U};
-constexpr InputControlId CONTROL_A{10U};
-constexpr InputControlId CONTROL_B{11U};
-constexpr InputControlId UNKNOWN_CONTROL{99U};
-constexpr InputActionId ACTION_A{0U};
-constexpr InputActionId ACTION_B{1U};
-constexpr InputActionId UNKNOWN_ACTION{99U};
+constexpr input_device_id_t DEVICE_A{0U};
+constexpr input_device_id_t DEVICE_B{1U};
+constexpr input_device_id_t UNKNOWN_DEVICE{99U};
+constexpr input_control_id_t CONTROL_A{10U};
+constexpr input_control_id_t CONTROL_B{11U};
+constexpr input_control_id_t UNKNOWN_CONTROL{99U};
+constexpr input_action_id_t ACTION_A{0U};
+constexpr input_action_id_t ACTION_B{1U};
+constexpr input_action_id_t UNKNOWN_ACTION{99U};
 constexpr std::int32_t AXIS_POSITIVE = 12345;
 constexpr std::int32_t AXIS_NEGATIVE = -12345;
 using TestFunction = int (*)();
@@ -64,16 +64,16 @@ int Fail(const std::string& message) {
     return 1;
 }
 
-InputEvent ButtonPress(InputDeviceId device, InputControlId control) {
-    return InputEvent{device, control, InputEventType::ButtonPressed, 0};
+input_event_t ButtonPress(input_device_id_t device, input_control_id_t control) {
+    return input_event_t{device, control, InputEventType::ButtonPressed, 0};
 }
 
-InputEvent ButtonRelease(InputDeviceId device, InputControlId control) {
-    return InputEvent{device, control, InputEventType::ButtonReleased, 0};
+input_event_t ButtonRelease(input_device_id_t device, input_control_id_t control) {
+    return input_event_t{device, control, InputEventType::ButtonReleased, 0};
 }
 
-InputEvent Axis(InputDeviceId device, InputControlId control, std::int32_t value) {
-    return InputEvent{device, control, InputEventType::Axis, value};
+input_event_t Axis(input_device_id_t device, input_control_id_t control, std::int32_t value) {
+    return input_event_t{device, control, InputEventType::Axis, value};
 }
 
 bool RegisterPrimaryBinding(InputReplay& replay) {
@@ -88,7 +88,7 @@ bool RegisterSecondActionBinding(InputReplay& replay) {
     return replay.RegisterActionBinding(DEVICE_A, CONTROL_B, ACTION_B).Status == InputStatus::Success;
 }
 
-bool StateEquals(const InputActionState& left, const InputActionState& right) {
+bool StateEquals(const input_action_state_t& left, const input_action_state_t& right) {
     if (left.IsPressed != right.IsPressed) {
         return false;
     }
@@ -100,7 +100,7 @@ bool StateEquals(const InputActionState& left, const InputActionState& right) {
     return left.AxisValue == right.AxisValue;
 }
 
-bool SnapshotCountersEqual(const InputReplaySnapshot& left, const InputReplaySnapshot& right) {
+bool SnapshotCountersEqual(const input_replay_snapshot_t& left, const input_replay_snapshot_t& right) {
     if (left.AcceptedEventCount != right.AcceptedEventCount) {
         return false;
     }
@@ -198,14 +198,14 @@ int InputMultipleControlsForOneActionUsesInsertionOrder() {
 int InputBindingCapacityOverflowDoesNotMutate() {
     InputReplay replay;
     for (std::size_t index = 0U; index < MAX_INPUT_BINDINGS; ++index) {
-        const auto result = replay.RegisterActionBinding(DEVICE_A, InputControlId{static_cast<std::uint32_t>(index)}, ACTION_A);
+        const auto result = replay.RegisterActionBinding(DEVICE_A, input_control_id_t{static_cast<std::uint32_t>(index)}, ACTION_A);
         if (result.Status != InputStatus::Success) {
             return Fail("binding failed before capacity");
         }
     }
 
     const auto beforeSnapshot = replay.Snapshot();
-    const auto overflow = replay.RegisterActionBinding(DEVICE_A, InputControlId{999U}, ACTION_B);
+    const auto overflow = replay.RegisterActionBinding(DEVICE_A, input_control_id_t{999U}, ACTION_B);
     if (overflow.Status != InputStatus::CapacityExceeded) {
         return Fail("binding overflow did not return capacity status");
     }
@@ -359,7 +359,7 @@ int InputInvalidEventDoesNotMutateReplayOrSnapshot() {
     }
 
     const auto beforeSnapshot = replay.Snapshot();
-    const InputEvent invalidEvent{DEVICE_A, CONTROL_A, static_cast<InputEventType>(99), 0};
+    const input_event_t invalidEvent{DEVICE_A, CONTROL_A, static_cast<InputEventType>(99), 0};
     if (replay.RecordReplayEvent(0U, invalidEvent) != InputStatus::InvalidEvent) {
         return Fail("invalid event did not return explicit status");
     }

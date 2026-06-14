@@ -4,8 +4,8 @@
 #include "yuengine/input/input_status.h"
 
 namespace yuengine::input {
-struct InputActionQueryResult final {
+struct input_action_query_result_t final {
     InputStatus Status = InputStatus::Success;
-    InputActionState State;
+    input_action_state_t State;
 };
 }

@@ -4,8 +4,8 @@
 #include "yuengine/input/input_status.h"
 
 namespace yuengine::input {
-struct InputBindingResult final {
+struct input_binding_result_t final {
     InputStatus Status = InputStatus::Success;
-    InputActionId Action;
+    input_action_id_t Action;
 };
 }
