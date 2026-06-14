@@ -6,8 +6,8 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "yuengine/memory/CountingMemoryTracker.h"
-#include "yuengine/memory/DisabledMemoryTracker.h"
+#include "yuengine/memory/counting_memory_tracker.h"
+#include "yuengine/memory/disabled_memory_tracker.h"
 
 using CountingMemoryTracker = yuengine::memory::CountingMemoryTracker;
 using DisabledMemoryTracker = yuengine::memory::DisabledMemoryTracker;

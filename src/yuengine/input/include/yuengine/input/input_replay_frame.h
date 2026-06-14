@@ -3,8 +3,8 @@
 #include <array>
 #include <cstddef>
 
-#include "yuengine/input/InputConstants.h"
-#include "yuengine/input/InputEvent.h"
+#include "yuengine/input/input_constants.h"
+#include "yuengine/input/input_event.h"
 
 namespace yuengine::input {
 struct InputReplayFrame final {

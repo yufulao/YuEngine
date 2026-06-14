@@ -2,7 +2,7 @@
 
 #include <array>
 
-#include "yuengine/memory/MemoryAccountingStatus.h"
+#include "yuengine/memory/memory_accounting_status.h"
 #include "yuengine/serialize/SerializeConstants.h"
 
 using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;

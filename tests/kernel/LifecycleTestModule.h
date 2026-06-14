@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-#include "yuengine/kernel/IModule.h"
+#include "yuengine/kernel/i_module.h"
 
 using yuengine::kernel::IModule;
 using yuengine::kernel::KernelResult;

@@ -18,8 +18,8 @@ function(yuengine_apply_compile_options target_name)
 endfunction()
 
 add_library(YuMemory
-    src/yuengine/memory/src/CountingMemoryTracker.cpp
-    src/yuengine/memory/src/DisabledMemoryTracker.cpp
+    src/yuengine/memory/src/counting_memory_tracker.cpp
+    src/yuengine/memory/src/disabled_memory_tracker.cpp
 )
 yuengine_apply_compile_options(YuMemory)
 target_include_directories(YuMemory
@@ -28,11 +28,11 @@ target_include_directories(YuMemory
 )
 
 add_library(YuDiagnostics
-    src/yuengine/diagnostics/src/BoundedDiagnosticsChannel.cpp
-    src/yuengine/diagnostics/src/BoundedInMemoryLogSink.cpp
-    src/yuengine/diagnostics/src/DefaultLogSink.cpp
-    src/yuengine/diagnostics/src/DisabledDiagnosticsChannel.cpp
-    src/yuengine/diagnostics/src/DisabledLogSink.cpp
+    src/yuengine/diagnostics/src/bounded_diagnostics_channel.cpp
+    src/yuengine/diagnostics/src/bounded_in_memory_log_sink.cpp
+    src/yuengine/diagnostics/src/default_log_sink.cpp
+    src/yuengine/diagnostics/src/disabled_diagnostics_channel.cpp
+    src/yuengine/diagnostics/src/disabled_log_sink.cpp
 )
 yuengine_apply_compile_options(YuDiagnostics)
 target_include_directories(YuDiagnostics
@@ -53,14 +53,14 @@ target_include_directories(YuThread
 target_link_libraries(YuThread PUBLIC YuMemory)
 
 add_library(YuFile
-    src/yuengine/file/src/FileReadResult.cpp
-    src/yuengine/file/src/LooseFileSource.cpp
-    src/yuengine/file/src/MountId.cpp
-    src/yuengine/file/src/MountPoint.cpp
-    src/yuengine/file/src/MountTable.cpp
-    src/yuengine/file/src/NormalizedPath.cpp
-    src/yuengine/file/src/PathNormalizationResult.cpp
-    src/yuengine/file/src/VirtualPath.cpp
+    src/yuengine/file/src/file_read_result.cpp
+    src/yuengine/file/src/loose_file_source.cpp
+    src/yuengine/file/src/mount_id.cpp
+    src/yuengine/file/src/mount_point.cpp
+    src/yuengine/file/src/mount_table.cpp
+    src/yuengine/file/src/normalized_path.cpp
+    src/yuengine/file/src/path_normalization_result.cpp
+    src/yuengine/file/src/virtual_path.cpp
 )
 yuengine_apply_compile_options(YuFile)
 target_include_directories(YuFile
@@ -80,7 +80,7 @@ target_include_directories(YuRHI
 )
 
 add_library(YuAudio
-    src/yuengine/audio/src/TestAudioDevice.cpp
+    src/yuengine/audio/src/test_audio_device.cpp
 )
 yuengine_apply_compile_options(YuAudio)
 target_include_directories(YuAudio
@@ -134,7 +134,7 @@ target_include_directories(YuPackage
 target_link_libraries(YuPackage PUBLIC YuMemory YuResource)
 
 add_library(YuInput
-    src/yuengine/input/src/InputReplay.cpp
+    src/yuengine/input/src/input_replay.cpp
 )
 yuengine_apply_compile_options(YuInput)
 target_include_directories(YuInput
@@ -155,10 +155,10 @@ target_include_directories(YuPlatform
 target_link_libraries(YuPlatform PUBLIC YuDiagnostics YuMemory)
 
 add_library(YuKernel
-    src/yuengine/kernel/src/EngineKernel.cpp
-    src/yuengine/kernel/src/KernelHostRuntime.cpp
-    src/yuengine/kernel/src/KernelResult.cpp
-    src/yuengine/kernel/src/ServiceRegistry.cpp
+    src/yuengine/kernel/src/engine_kernel.cpp
+    src/yuengine/kernel/src/kernel_host_runtime.cpp
+    src/yuengine/kernel/src/kernel_result.cpp
+    src/yuengine/kernel/src/service_registry.cpp
 )
 yuengine_apply_compile_options(YuKernel)
 target_include_directories(YuKernel

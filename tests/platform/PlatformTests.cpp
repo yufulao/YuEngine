@@ -5,8 +5,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yuengine/diagnostics/BoundedInMemoryLogSink.h"
-#include "yuengine/memory/MemoryAccountingStatus.h"
+#include "yuengine/diagnostics/bounded_in_memory_log_sink.h"
+#include "yuengine/memory/memory_accounting_status.h"
 #include "yuengine/platform/FixedFrameClock.h"
 #include "yuengine/platform/HeadlessHost.h"
 #include "yuengine/platform/HostStatus.h"

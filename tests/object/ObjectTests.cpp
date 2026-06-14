@@ -5,7 +5,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "yuengine/memory/MemoryAccountingStatus.h"
+#include "yuengine/memory/memory_accounting_status.h"
 #include "yuengine/object/ObjectRegistry.h"
 
 using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;

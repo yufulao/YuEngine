@@ -1,6 +1,6 @@
 #include "yuengine/serialize/SerializeWriter.h"
 
-#include "yuengine/memory/MemoryAccountingStatus.h"
+#include "yuengine/memory/memory_accounting_status.h"
 
 using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
 

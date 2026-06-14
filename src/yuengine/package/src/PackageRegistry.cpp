@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <limits>
 
-#include "yuengine/memory/MemoryAccountingStatus.h"
+#include "yuengine/memory/memory_accounting_status.h"
 
 namespace yuengine::package {
 namespace {

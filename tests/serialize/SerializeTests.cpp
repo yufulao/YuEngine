@@ -5,7 +5,7 @@
 #include <unordered_map>
 
 #include "StreamFixture.h"
-#include "yuengine/memory/MemoryAccountingStatus.h"
+#include "yuengine/memory/memory_accounting_status.h"
 #include "yuengine/serialize/SerializeConstants.h"
 #include "yuengine/serialize/SerializeReader.h"
 #include "yuengine/serialize/SerializeWriter.h"

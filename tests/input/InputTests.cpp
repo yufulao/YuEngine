@@ -5,8 +5,8 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "yuengine/input/InputConstants.h"
-#include "yuengine/input/InputReplay.h"
+#include "yuengine/input/input_constants.h"
+#include "yuengine/input/input_replay.h"
 
 using InputActionId = yuengine::input::InputActionId;
 using InputActionState = yuengine::input::InputActionState;

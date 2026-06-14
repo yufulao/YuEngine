@@ -3,7 +3,7 @@
 #include <array>
 #include <cstddef>
 
-#include "yuengine/memory/MemoryAllocationId.h"
+#include "yuengine/memory/memory_allocation_id.h"
 
 namespace yuengine::memory {
 constexpr std::size_t MAX_MEMORY_OWNER_ID_BYTES = 64U;

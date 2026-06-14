@@ -6,8 +6,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yuengine/audio/AudioConstants.h"
-#include "yuengine/audio/TestAudioDevice.h"
+#include "yuengine/audio/audio_constants.h"
+#include "yuengine/audio/test_audio_device.h"
 
 using AudioBackendKind = yuengine::audio::AudioBackendKind;
 using AudioDeviceDesc = yuengine::audio::AudioDeviceDesc;

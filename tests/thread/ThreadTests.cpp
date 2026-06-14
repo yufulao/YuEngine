@@ -6,8 +6,8 @@
 #include <unordered_map>
 
 #include "ThreadTestContext.h"
-#include "yuengine/memory/CountingMemoryTracker.h"
-#include "yuengine/memory/DisabledMemoryTracker.h"
+#include "yuengine/memory/counting_memory_tracker.h"
+#include "yuengine/memory/disabled_memory_tracker.h"
 #include "yuengine/thread/BoundedTaskQueue.h"
 #include "yuengine/thread/InlineTaskExecutor.h"
 

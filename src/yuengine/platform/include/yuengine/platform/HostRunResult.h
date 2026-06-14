@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "yuengine/memory/MemoryAccountingStatus.h"
+#include "yuengine/memory/memory_accounting_status.h"
 #include "yuengine/platform/HostStatus.h"
 
 namespace yuengine::platform {

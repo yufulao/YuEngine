@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "yuengine/memory/MemoryAccountingStatus.h"
+#include "yuengine/memory/memory_accounting_status.h"
 #include "yuengine/package/PackageStatus.h"
 
 namespace yuengine::package {

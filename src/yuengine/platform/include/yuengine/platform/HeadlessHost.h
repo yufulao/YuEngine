@@ -1,6 +1,6 @@
 #pragma once
 
-#include "yuengine/diagnostics/ILogSink.h"
+#include "yuengine/diagnostics/i_log_sink.h"
 #include "yuengine/platform/HeadlessHostConfig.h"
 #include "yuengine/platform/HostRunResult.h"
 #include "yuengine/platform/IFrameClock.h"

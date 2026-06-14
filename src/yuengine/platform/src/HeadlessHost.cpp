@@ -1,6 +1,6 @@
 #include "yuengine/platform/HeadlessHost.h"
 
-#include "yuengine/diagnostics/LogLevel.h"
+#include "yuengine/diagnostics/log_level.h"
 #include "yuengine/platform/PlatformPerformanceSignal.h"
 
 #include <cstddef>

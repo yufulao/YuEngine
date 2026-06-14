@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "yuengine/memory/IMemoryTracker.h"
+#include "yuengine/memory/i_memory_tracker.h"
 #include "yuengine/thread/InlineTaskExecutor.h"
 #include "yuengine/thread/ShutdownPolicy.h"
 #include "yuengine/thread/TaskCallback.h"

@@ -5,11 +5,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yuengine/file/FileConstants.h"
-#include "yuengine/file/LooseFileSource.h"
-#include "yuengine/file/MountTable.h"
-#include "yuengine/file/NormalizedPath.h"
-#include "yuengine/memory/MemoryAccountingStatus.h"
+#include "yuengine/file/file_constants.h"
+#include "yuengine/file/loose_file_source.h"
+#include "yuengine/file/mount_table.h"
+#include "yuengine/file/normalized_path.h"
+#include "yuengine/memory/memory_accounting_status.h"
 
 using FileStatus = yuengine::file::FileStatus;
 using LooseFileSource = yuengine::file::LooseFileSource;

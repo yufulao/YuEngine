@@ -6,9 +6,9 @@
 #include <vector>
 
 #include "LifecycleTestModule.h"
-#include "yuengine/kernel/EngineKernel.h"
-#include "yuengine/kernel/KernelStatus.h"
-#include "yuengine/kernel/ServiceRegistry.h"
+#include "yuengine/kernel/engine_kernel.h"
+#include "yuengine/kernel/kernel_status.h"
+#include "yuengine/kernel/service_registry.h"
 
 using EngineKernel = yuengine::kernel::EngineKernel;
 using KernelStatus = yuengine::kernel::KernelStatus;

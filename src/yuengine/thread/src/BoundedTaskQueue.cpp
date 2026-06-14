@@ -1,6 +1,6 @@
 #include "yuengine/thread/BoundedTaskQueue.h"
 
-#include "yuengine/memory/MemoryBudgetClass.h"
+#include "yuengine/memory/memory_budget_class.h"
 
 namespace yuengine::thread {
 namespace {
