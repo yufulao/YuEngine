@@ -181,14 +181,14 @@ PackageRegistrationResult PackageRegistry::RegisterSyntheticManifest(const Packa
             return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
         }
 
-        if (manifest.IsActive)
+        if (manifest.is_active)
         {
             ++index;
             continue;
         }
 
-        manifest.Id = descriptor.Id;
-        manifest.IsActive = true;
+        manifest.id = descriptor.Id;
+        manifest.is_active = true;
         ++_snapshot.ManifestCount;
         RecordSuccess();
         return PackageRegistrationResult::ManifestSuccess(descriptor.Id);
@@ -233,14 +233,14 @@ PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescr
             return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
         }
 
-        if (entry.IsActive)
+        if (entry.is_active)
         {
             ++index;
             continue;
         }
 
-        entry.Descriptor = descriptor;
-        entry.IsActive = true;
+        entry.descriptor = descriptor;
+        entry.is_active = true;
         AddEntryIndex(descriptor.Package, descriptor.Entry, index);
         AddResourceIndex(descriptor.Package, descriptor.Type, descriptor.LogicalKey, index);
         AddResourceKeyIndex(descriptor.Package, descriptor.LogicalKey, index);
@@ -309,16 +309,16 @@ PackageStatus PackageRegistry::AddDependency(PackageId package, PackageEntryId d
             return RecordFailure(PackageStatus::DependencyCapacityExceeded);
         }
 
-        if (edge.IsActive)
+        if (edge.is_active)
         {
             ++index;
             continue;
         }
 
-        edge.Package = package;
-        edge.Dependent = dependent;
-        edge.Dependency = dependency;
-        edge.IsActive = true;
+        edge.package = package;
+        edge.dependent = dependent;
+        edge.dependency = dependency;
+        edge.is_active = true;
         AddDependencyIndex(package, dependent, dependency, index);
         AppendDependencyEdge(static_cast<std::uint32_t>(dependentIndex), index);
         ++_snapshot.DependencyEdgeCount;
@@ -361,7 +361,7 @@ PackageLoadPlanResult PackageRegistry::ResolveEntryByResourceKey(
         return PackageLoadPlanResult::Failure(RecordFailure(findStatus));
     }
 
-    const PackageEntryDescriptor& rootDescriptor = _entries[rootIndex].Descriptor;
+    const PackageEntryDescriptor& rootDescriptor = _entries[rootIndex].descriptor;
     if (rootDescriptor.Type.Value != expectedType.Value)
     {
         return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::TypeMismatch));
@@ -382,12 +382,12 @@ PackageLoadPlanResult PackageRegistry::ResolveEntryByResourceKey(
         const std::uint32_t nextEdgeIndex = _nextDependencyEdge[edgeIndex];
 
         std::size_t dependencyIndex = 0U;
-        if (FindEntryIndex(package, edge.Dependency, dependencyIndex) != PackageStatus::Success)
+        if (FindEntryIndex(package, edge.dependency, dependencyIndex) != PackageStatus::Success)
         {
             return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::DependencyMissing));
         }
 
-        AppendRecord(plan, _entries[dependencyIndex].Descriptor);
+        AppendRecord(plan, _entries[dependencyIndex].descriptor);
         edgeIndex = nextEdgeIndex;
     }
 
@@ -430,13 +430,13 @@ bool PackageRegistry::HasDuplicateManifest(PackageId package) const
             return false;
         }
 
-        if (!manifest.IsActive)
+        if (!manifest.is_active)
         {
             ++index;
             continue;
         }
 
-        if (manifest.Id.Value == package.Value)
+        if (manifest.id.Value == package.Value)
         {
             return true;
         }
@@ -609,11 +609,11 @@ bool PackageRegistry::HasDependencyPath(PackageId package, PackageEntryId start,
             const DependencyEdge& edge = _dependencyEdges[edgeIndex];
             const std::uint32_t nextEdgeIndex = _nextDependencyEdge[edgeIndex];
 
-            if (!containsEntry(visited, visitedCount, edge.Dependency) &&
-                !containsEntry(stack, stackCount, edge.Dependency) &&
+            if (!containsEntry(visited, visitedCount, edge.dependency) &&
+                !containsEntry(stack, stackCount, edge.dependency) &&
                 stackCount < MAX_PACKAGE_ENTRY_COUNT)
             {
-                stack[stackCount] = edge.Dependency;
+                stack[stackCount] = edge.dependency;
                 ++stackCount;
             }
 

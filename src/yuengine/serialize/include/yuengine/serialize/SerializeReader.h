@@ -6,7 +6,7 @@
 #include "yuengine/serialize/SerializeRecordId.h"
 #include "yuengine/serialize/SerializeSnapshot.h"
 #include "yuengine/serialize/SerializeStatus.h"
-#include "yuengine/serialize/SerializeTypeTag.h"
+#include "yuengine/serialize/field_location.h"
 
 namespace yuengine::serialize
 {
@@ -29,14 +29,6 @@ public:
     SerializeSnapshot Snapshot() const;
 
 private:
-    struct FieldLocation final
-    {
-        SerializeTypeTag Type = SerializeTypeTag::UInt32;
-        std::uint32_t PayloadOffset = 0U;
-        std::uint32_t PayloadByteCount = 0U;
-        bool Found = false;
-    };
-
     SerializeStatus ValidateStream(std::uint32_t& outCommittedByteCount, std::uint32_t& outRecordCount, std::uint32_t& outFieldCount) const;
     SerializeStatus FindField(SerializeRecordId record, SerializeFieldId field, FieldLocation& outLocation) const;
     SerializeStatus RecordFailure(SerializeStatus status);

@@ -199,7 +199,7 @@ std::uint64_t CountingMemoryTracker::AllocationCountForBudget(MemoryBudgetClass 
     return _budgetAllocationCounts[MemoryBudgetClassIndex(budgetClass)];
 }
 
-CountingMemoryTracker::ActiveAllocationRecord* CountingMemoryTracker::FindActiveAllocation(MemoryAllocationId allocationId)
+ActiveAllocationRecord* CountingMemoryTracker::FindActiveAllocation(MemoryAllocationId allocationId)
 {
     for (ActiveAllocationRecord& record : _activeAllocations)
     {
@@ -212,7 +212,7 @@ CountingMemoryTracker::ActiveAllocationRecord* CountingMemoryTracker::FindActive
     return nullptr;
 }
 
-CountingMemoryTracker::ActiveAllocationRecord* CountingMemoryTracker::FindFreeAllocationRecord()
+ActiveAllocationRecord* CountingMemoryTracker::FindFreeAllocationRecord()
 {
     for (ActiveAllocationRecord& record : _activeAllocations)
     {

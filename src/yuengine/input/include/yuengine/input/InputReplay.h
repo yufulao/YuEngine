@@ -12,6 +12,7 @@
 #include "yuengine/input/InputEvent.h"
 #include "yuengine/input/InputReplaySnapshot.h"
 #include "yuengine/input/InputStatus.h"
+#include "yuengine/input/input_replay_frame.h"
 
 namespace yuengine::input
 {
@@ -29,12 +30,6 @@ public:
     std::size_t EventCountForFrame(std::size_t frameIndex) const;
 
 private:
-    struct InputReplayFrame final
-    {
-        std::array<InputEvent, MAX_EVENTS_PER_FRAME> Events{};
-        std::size_t EventCount = 0U;
-    };
-
     InputStatus RecordFailure(InputStatus status);
     InputStatus RejectReplayEvent(InputStatus status);
     bool IsDeviceValid(InputDeviceId device) const;

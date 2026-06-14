@@ -11,6 +11,9 @@
 #include "yuengine/package/PackageRegistrationResult.h"
 #include "yuengine/package/PackageRegistryDesc.h"
 #include "yuengine/package/PackageSnapshot.h"
+#include "yuengine/package/dependency_edge.h"
+#include "yuengine/package/entry_slot.h"
+#include "yuengine/package/manifest_slot.h"
 
 namespace yuengine::package
 {
@@ -30,26 +33,6 @@ public:
     PackageSnapshot Snapshot() const;
 
 private:
-    struct ManifestSlot final
-    {
-        PackageId Id;
-        bool IsActive = false;
-    };
-
-    struct EntrySlot final
-    {
-        PackageEntryDescriptor Descriptor;
-        bool IsActive = false;
-    };
-
-    struct DependencyEdge final
-    {
-        PackageId Package;
-        PackageEntryId Dependent;
-        PackageEntryId Dependency;
-        bool IsActive = false;
-    };
-
     PackageStatus RecordFailure(PackageStatus status);
     void RecordSuccess();
     bool HasManifest(PackageId package) const;

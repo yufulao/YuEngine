@@ -12,6 +12,7 @@
 #include "yuengine/object/ObjectSnapshot.h"
 #include "yuengine/object/ObjectStatus.h"
 #include "yuengine/object/ObjectTypeId.h"
+#include "yuengine/object/object_slot.h"
 
 namespace yuengine::object
 {
@@ -29,14 +30,6 @@ public:
     ObjectSnapshot Snapshot() const;
 
 private:
-    struct ObjectSlot final
-    {
-        ObjectTypeId Type;
-        std::uint32_t Generation = INVALID_OBJECT_GENERATION;
-        std::uint32_t ReferenceCount = 0U;
-        bool IsActive = false;
-    };
-
     ObjectStatus RecordFailure(ObjectStatus status);
     void RecordSuccess();
     ObjectStatus ResolveHandle(ObjectHandle handle, std::size_t& outIndex) const;

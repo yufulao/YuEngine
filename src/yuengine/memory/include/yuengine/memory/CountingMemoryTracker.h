@@ -5,12 +5,11 @@
 #include <cstdint>
 
 #include "yuengine/memory/IMemoryTracker.h"
+#include "yuengine/memory/active_allocation_record.h"
 
 namespace yuengine::memory
 {
 constexpr std::size_t MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS = 64U;
-constexpr std::size_t MAX_MEMORY_OWNER_ID_BYTES = 64U;
-constexpr std::size_t MAX_MEMORY_TAG_BYTES = 64U;
 
 class CountingMemoryTracker final : public IMemoryTracker
 {
@@ -28,17 +27,6 @@ public:
     std::uint64_t AllocationCountForBudget(MemoryBudgetClass budgetClass) const override;
 
 private:
-    struct ActiveAllocationRecord final
-    {
-        bool IsActive = false;
-        MemoryAllocationId AllocationId{};
-        std::size_t Bytes = 0U;
-        std::array<char, MAX_MEMORY_OWNER_ID_BYTES> Owner{};
-        std::size_t OwnerLength = 0U;
-        std::array<char, MAX_MEMORY_TAG_BYTES> Tag{};
-        std::size_t TagLength = 0U;
-    };
-
     ActiveAllocationRecord* FindActiveAllocation(MemoryAllocationId allocationId);
     ActiveAllocationRecord* FindFreeAllocationRecord();
     static void ResetAllocationRecord(ActiveAllocationRecord& record);
