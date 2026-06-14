@@ -1,228 +1,239 @@
-# C++ 代码规范（AI 规则版）
-
-## 0. 读取规则
-
-- 本文件用于约束 AI 生成、修改、审查 C/C++ 代码。
-- `MUST` 表示必须遵守。
-- `MUST_NOT` 表示禁止。
-- `SHOULD` 表示默认遵守，除非有明确上下文理由。
-- `MAY` 表示允许。
-- 规则冲突时，优先遵守更具体、更严格的规则。
-- 生成代码时优先匹配现有工程风格；现有风格缺失时使用本文规则。
-
 ## 1. 基础环境
 
-- MUST: 文件编码使用 `UTF-8 (No BOM)`。
-- SHOULD: VS 编译选项增加 `/source-charset:utf-8`。
-- SHOULD: Windows 开发环境设置 Git 换行转换。
+- 文件统一保存为 `UTF-8 (No BOM)`。
+- VS2019 需要安装 `Force UTF-8 (No BOM)` 扩展。
+- VS 编译选项增加 `/source-charset:utf-8`。
+- Windows 下确认 Git 开启换行转换：`git config --global core.autocrlf true`。
 
-```bash
-git config --global core.autocrlf true
-```
+## 2. 基础格式
 
-## 2. 代码格式
+- 缩进使用 4 个空格。
+- 禁止使用 Tab 作为缩进。
+- 左花括号 `{` 跟随前序语句时，必须和前序语句在同一行。
+- 左花括号 `{` 没有前序语句时，允许独占一行。
+- 右花括号 `}` 独占一行。
+- 禁止写`else` ，实用return进行Fail Early。
+- `switch (cond) {` 的 `{` 与 `switch` 同行。
+- `case` 标签后没有局部变量定义时，不额外加局部代码块。
+- `case` 分支中需要定义局部变量时，在 `case` 标签下一行开启局部代码块；该分支的 `{` 和 `}` 独占行。
+- `default:` 分支也需要显式处理，空逻辑也写清楚 `break` 或返回。
+- 双目运算符前后都加空格。
+- 单目运算符不额外加空格。
+- 函数参数默认值中的 `=` 可以不加空格，例如 `argument=ArgumentType()`。
+- `if`、`while`、`for` 后面的 `(` 前加空格。
+- 所有 `{` 前都用空格和前序代码分隔。
+- 指针变量写作 `Type *ptr`。
+- 引用变量写作 `Type &ref`。
+- 指针符号 `*` 和引用符号 `&` 靠近类型，不靠近变量名。
+- 指针或引用作为函数返回值时，`*`、`&` 可以和返回类型放在一起；强制换行时，`*`、`&` 仍然跟随返回类型。
+- 不能通过构造函数完成初始化的变量，定义时必须赋初值。
+- 变量定义一行只定义一个变量。
+- 除注释外，代码中禁止中文字符。
+- log 字符串禁止中文字符，只使用 ANSI 字符。
+- `namespace` 内部不整体缩进，避免修改 namespace 造成全文件 diff。
 
-- MUST: 缩进使用 4 个空格。
-- MUST_NOT: 使用 Tab 缩进。
-- MUST: `{` 与前序语句同行。
-- MAY: 没有前序语句时，`{` 可独占一行。
-- MUST: 双目运算符两侧加空格。
-- MUST: 单目运算符不额外加空格。
-- MUST: `if`、`while`、`for` 后的 `(` 前加空格。
-- MUST: `{` 前与前序代码用空格分隔。
-- MUST: 指针和引用写作 `Type *ptr`、`Type &ref`。
-- MUST: `*` 和 `&` 靠近变量类型，不靠近变量名。
-- MUST: 变量定义时初始化。
-- MUST: 一行只定义一个变量。
-- MUST_NOT: 除注释外，在代码中写中文字符。
-- MUST_NOT: 在 log 文本中写中文字符。
-- MUST: `namespace` 内部不整体额外缩进。
-- SHOULD: 旧代码在 VS 中用 `Ctrl + K`、`Ctrl + F` 格式化。
+## 3. 可读性和表达
 
-## 3. 可读性
+- 代码必须简洁、容易理解、容易 review。
+- 代码应当能按字面意思顺利朗读。
+- 禁止无必要的晦涩逻辑。
+- 只有极限性能优化、最新技术应用、硬件相关编码这三类场景允许写复杂实现。
+- 一个语句只表达一个明确行为。
+- 函数调用参数中禁止直接写复杂表达式。
+- 宏调用参数中禁止直接写复杂表达式。
+- 复杂表达式先计算到命名变量，再作为参数传入。
+- 赋值、运算、状态修改不要塞进函数参数列表。
+- lambda 作为参数时只用于简单转发或简单回调。
+- lambda 内部不要超过 2 个逻辑行为。
+- 优先把 `get`、修改、`set`、保存等动作拆成独立语句。
+- 函数名必须覆盖函数实际行为；函数实现不能超出名字字面含义。
+- getter 使用 `getX`。
+- setter 使用 `setX`。
+- 事件回调使用 `onXEvent` 或现有工程同类命名。
 
-- MUST: 代码优先简洁、可朗读、可 review。
-- MUST_NOT: 编写无必要的晦涩逻辑。
-- MAY: 在极限性能、硬件相关、明确技术验证场景中使用复杂实现。
-- MUST_NOT: 在函数调用参数中直接写复杂表达式。
-- MUST_NOT: 在宏调用参数中直接写复杂表达式。
-- SHOULD: 先计算复杂表达式并命名，再传参。
-- MAY: 使用 lambda 作为简单参数。
-- SHOULD: lambda 内部逻辑不超过 2 个行为。
-- SHOULD_NOT: 使用宏。
-- SHOULD: 优先使用 `const`、`constexpr`、`inline`、函数、模板替代宏。
-- MUST: 必须写宏时，用 `do { ... } while (false)` 包裹语句块。
-- MUST: 宏参数使用 `()` 保护。
+## 4. 宏
 
-## 4. 函数接口
+- 尽量不使用宏。
+- 可以用 `const`、`constexpr`、`inline`、普通函数、模板替代宏时，使用替代方案。
+- 必须写语句宏时，用 `do { ... } while (false)` 包裹宏体。
+- 宏参数在宏体内每次使用都加括号。
+- 宏内部临时变量必须命名清晰，避免和调用点变量冲突。
+- 宏定义跨多行时，每行续行符对齐并保持可读。
 
-- MUST: 不修改基础类型参数时，使用值传递。
-- MUST: 不修改非基础类型参数时，使用 `const T &`。
-- MUST: 参数需要被函数修改时，使用指针。
-- MUST: 参数需要 move 时，使用右值引用。
-- MUST: 函数绝对成功时，返回 `void`。
-- MUST: 函数可能失败时，返回 `bool`。
-- MUST: 需要表达失败原因时，返回明确错误枚举，或传入错误码指针。
-- MUST_NOT: 默认使用 `int` 作为错误码。
-- MAY: 确实需要整型错误码时，显式定义 `xxx_error_code_t`。
-- SHOULD: 函数逻辑保持单进单出。
-- SHOULD: 函数逻辑线性展开。
-- MUST: 成功/失败返回值命名为 `result`。
-- MUST: 临时 `bool` 返回值命名为 `ret_code`。
-- MUST: 头部声明的临时变量初始化。
-- MUST: 资源声明时初始化。
-- MUST: 资源在统一出口释放。
-- MUST: `public` 接口检查参数。
-- MUST: 所有指针使用前判空。
+## 5. 函数接口
 
-## 5. 错误、异常、断言
+- 基础类型参数不需要被修改时，使用值传递。
+- 非基础类型参数不需要被修改时，使用 `const T &`。
+- 参数需要被函数修改时，使用指针。
+- 参数需要转移所有权或被 move 时，使用右值引用。
+- 函数绝对成功时返回 `void`。
+- 函数可能失败时返回 `bool`。
+- 函数有多种失败原因时，返回明确的错误枚举。
+- 需要把失败原因写回调用方时，传入错误码指针。
+- 禁止默认用 `int` 作为错误码。
+- 无法定义错误枚举时，显式定义 `xxx_error_code_t`，不要裸用 `int`。
 
-- SHOULD: 错误处理倾向 `Fail Early, Fail Fast`。
-- SHOULD: 尽快暴露错误第一现场。
-- MUST_NOT: 使用异常实现普通业务流程。
-- MAY: 为兼容第三方库或历史代码使用异常。
-- MUST_NOT: 频繁抛异常。
-- MUST: `assert` 只检查“代码写错才会发生”的条件。
-- MUST_NOT: `assert` 参与业务逻辑。
-- MUST_NOT: release 版依赖断言。
-- SHOULD: 自测优先使用 debug 版。
+## 6. 标准函数流程
 
-## 6. 初始化和生命周期
+- 函数逻辑尽量单进单出。
+- 函数逻辑尽量线性展开。
+- 表示最终成功或失败的返回变量命名为 `result`。
+- 无特殊语义的临时 `bool` 返回值命名为 `ret_code`。
+- 在函数头部声明的临时变量必须初始化。
+- 需要释放的资源在声明时初始化为空值，并在统一出口释放。
+- 第一个失败跳转宏之前，先定义好需要跨出口使用的变量。
+- `public` 接口进入后先检查所有外部输入参数。
+- 所有指针使用前必须判空。
+- 指针判空失败时走失败出口。
+- 失败跳转宏用于跳到失败出口。
+- 成功跳转宏用于跳到成功出口。
+- 成功出口统一设置 `result = true`。
+- 失败出口中处理失败后的资源释放和相关逻辑。
+- 公共释放逻辑放在最终返回前。
+- 临时迭代器不要提前定义在函数头；在使用位置附近定义，避免重复初始化和扩大作用域。
 
-- SHOULD: 类和结构体的非静态成员变量就地初始化。
-- SHOULD: 优先使用初始化列表。
-- MUST: 不就地初始化时说明收益。
-- MUST_NOT: 使用类的静态存储周期变量。
-- MAY: 使用 `constexpr` 静态变量。
-- MUST: 静态生存周期对象使用 POD 类型。
-- MUST: 非临时对象有明确且唯一的拥有者。
-- MUST: 拥有者负责对象构造和析构。
-- MUST: 动态分配对象的函数保证单一出口。
-- MUST: 生命周期超出创建者作用域的对象使用引用计数或 `std::shared_ptr`。
-- SHOULD: 运行期严格控制动态分配。
-- SHOULD: 可启动时预分配的内存应启动时预分配并复用。
-- MUST: lib 使用动态内存时，提供显式初始化接口和清理接口。
+## 7. 错误、异常、断言
 
-## 7. 文件、工程、头文件
+- 错误处理倾向`Fail Early, Fail Fast`、尽快暴露第一现场。
+- 默认不使用异常。
+- 只有兼容第三方库、兼容历史代码、或调用方明确要求异常语义时，才使用异常。
+- 禁止用异常实现普通业务分支。
+- 禁止频繁抛异常；频繁抛异常会影响性能。
+- `assert` 只检查“代码写错才会发生”的条件。
+- 禁止把 `assert` 作为业务流程的一部分。
+- release 版逻辑不能依赖断言。
+- 自测优先使用 debug 版。
 
-- MUST: 目录名全小写。
-- MUST: 文件名全小写。
-- MUST: 文件名单词使用 `_` 分隔。
-- MUST: C++ 源文件使用 `.cpp`。
-- MUST: C 源文件使用 `.c`。
-- MUST: 普通头文件使用 `.h`。
-- MUST: 纯模板或仅头文件实现使用 `.hpp`。
-- SHOULD: 单个 lib/dll 对外提供同名 `.hpp` 聚合对外头文件。
-- MUST: `gameapp` 代码加 namespace。
-- MUST: 其他 app 使用各自 namespace。
-- MUST: `#include` 放在 header/source 文件开头。
-- MUST: `#include` 例外位置需要说明原因。
-- MUST: 引擎头文件使用 `#include "..."`。
-- SHOULD_NOT: 头文件中 `#include` 其他头文件。
-- SHOULD: 优先使用 `#pragma once`。
-- MUST: 纯 C 代码使用 include guard。
-- MUST: 不使用 `#pragma once` 时使用 include guard。
-- MUST: include guard 宏全大写。
-- MUST: include guard 宏单词使用 `_` 分隔。
+## 8. 初始化、静态对象、生命周期
 
-```cpp
-#ifndef _HEADER_FILE_NAME_H_
-#define _HEADER_FILE_NAME_H_
+- 类的非静态成员变量原则上在声明处就地初始化。
+- 结构体的非静态成员变量原则上在声明处就地初始化。
+- 数组成员需要零初始化时使用 `{}`。
+- 初始化列表优先级高于就地初始化。
+- 不就地初始化成员变量时，必须写注释说明收益。
+- 禁止使用需要动态初始化或动态析构的类静态存储周期变量。
+- `constexpr` 静态变量允许使用。
+- 静态生存周期对象包括全局变量、静态变量、静态类成员变量、函数静态变量。
+- 静态生存周期对象必须是 POD 类型。
+- POD 静态生存周期对象包括基础数值类型、POD 指针、POD 数组、POD 结构体。
+- 非临时对象必须有明确且唯一的拥有者。
+- 对象拥有者负责构造和析构。
+- 对象生命周期必须显式管理。
+- 动态分配对象的函数必须单一出口，避免漏释放。
+- 临时对象生命周期超出创建者作用域时，使用引用计数或 `std::shared_ptr` 管理。
+- 运行期严格控制动态分配。
+- 能在启动时预分配并复用的内存，在启动时预分配。
+- lib 内部使用动态内存时，必须提供显式初始化接口和清理接口。
 
-// ...
+## 9. 文件、目录、工程结构
 
-#endif
-```
-
-目录结构：
-
+- 工程中的目录名使用全小写字母。
+- 工程中的文件名使用全小写字母。
+- 目录名和文件名的单词之间使用 `_` 分隔。
+- C++ 源文件扩展名使用 `.cpp`。
+- C 源文件扩展名使用 `.c`。
+- 普通头文件扩展名使用 `.h`。
+- 纯模板头文件或没有 `.cpp` 实现的工具类头文件使用 `.hpp`。
+- 纯模板 `.hpp` 放在 `include` 目录，供所有工程引用。
+- 单个 lib 或 dll 对外提供一个同名 `.hpp` 头文件。
+- lib/dll 的同名 `.hpp` 负责 include 所有对外暴露的头文件，引用方只 include 这个聚合头文件。
 - `src/yuengine/<module>/include/yuengine/<module>/`: 模块对外头文件。
 - `src/yuengine/<module>/src/`: 模块 `.cpp` 实现文件。
 - `tests/<module>/`: 模块测试文件。
-- `docs/`: 设计参考文档，不自动成为运行规则。
-- `.codex/`: 本地运行目录，禁止提交。
 
-## 8. 继承
+## 10. namespace 和 include
 
-- MUST_NOT: 实现类多继承。
-- MUST_NOT: 引入不必要的菱形继承。
-- MAY: 确实需要共享一份基类数据时使用 `virtual` 继承。
-- MAY: 同时继承接口类和实现类。
-- MUST: 接口类不包含数据成员。
-- MUST: 接口类命名以 `I` 开头。
+- `xxx_common` 通用代码也可以不加 namespace。
+- `gameapp` 代码需要加 namespace。
+- 其他 app 使用各自 namespace。
+- `#include` 必须放在 header 和 source 文件开头。
+- `#include` 不在文件开头时，必须写明原因。
+- 引擎头文件使用 `#include "..."`。
+- 为保持依赖清晰，头文件中尽量不要 include 其他头文件。
+- 优先使用 `#pragma once` 防止头文件重复 include。
+- 使用 `#pragma once` 前确认目标编译器支持。
+- 纯 C 代码使用 `#ifndef` include guard。
+- 不使用 `#pragma once` 时，必须使用 `#ifndef` include guard。
+- include guard 宏名使用 `_头文件名_H_` 形式。
+- include guard 宏名全大写。
+- include guard 宏名单词之间使用 `_` 分隔。
 
-## 9. 命名
+## 11. 继承
 
-- MUST: namespace 使用全小写和 `_` 分隔。
-- MUST: class 和普通 `struct` 类型名使用 PascalCase。
-- MUST: function 使用 lowerCamelCase。
-- MUST: variable 使用全小写和 `_` 分隔。
-- MUST: member variable 使用普通变量规则，并以 `_` 结尾。
-- MUST: global variable 使用 `g_` 前缀。
-- MUST: static variable 使用 `s_` 前缀。
-- MUST: `const` 和 `constexpr` 变量使用全大写和 `_` 分隔。
-- MUST: `typedef` / `using` 产生的自定义类型别名使用全小写、`_` 分隔、`_t` 后缀。
-- MUST_NOT: 普通 class / `struct` 类型名使用 `_t` 后缀。
-- MUST: `struct` 实例变量使用普通变量规则，成员变量使用成员变量规则。
-- MUST: enum 和常量使用全大写和 `_` 分隔。
-- MAY: `extern "C"` 导出接口重名时加 `bd_` 前缀。
-- MUST: `std::shared_ptr` 类型别名保留 `shared` 语义。
-- MUST: `std::unique_ptr` 类型别名保留 `unique` 语义。
-- MUST_NOT: 命名使用拼音。
-- MUST_NOT: 命名使用超出 CET-6 范围的生僻英文词。
-- SHOULD: 变量使用准确名词。
-- SHOULD: 函数使用动宾结构。
-- MUST: 函数行为符合函数名含义。
-- MAY: Review 人员提出命名异议并要求重命名。
+- 禁止实现类多继承。
+- 多继承可能导致同名函数歧义，即使某个父类中的同名函数是私有函数，也可能参与重载解析并导致编译错误。
+- 禁止不必要的菱形继承。
+- 多继承菱形默认可能保存多份基类数据。
+- 确实需要菱形继承并且只保存一份基类数据时，使用 `virtual` 继承。
+- 可以同时继承接口类和实现类。
+- 接口类是不包含数据成员的虚基类。
+- 接口类命名以 `I` 开头。
+- 接口类析构函数使用虚析构。
+- 接口类方法使用纯虚函数表达接口。
 
-命名示例：
+## 12. 命名规则
 
-- namespace: `code_format`
-- class: `YuIniFile`
-- function: `modifyLife`
-- variable: `current_life`
-- member variable: `current_life_`
-- global variable: `g_config`
-- static variable: `s_count`
-- const variable: `MAX_COUNT`
-- struct: `PlayerData`
-- type alias: `player_data_t`
-- enum value: `ERROR_TIMEOUT`
+- namespace 名使用全小写英文单词。
+- namespace 名的单词之间使用 `_` 分隔。
+- `extern "C"` 纯 C 导出接口无法使用 namespace。
+- `extern "C"` 导出接口存在重名风险时，加 `bd_` 前缀。
+- 类名使用 PascalCase。
+- 类名中单词之间不使用分隔符。
+- 类名与第三方库重名时，加项目前缀。
+- 普通函数名使用 lowerCamelCase。
+- 普通函数名首个单词首字母小写，后续单词首字母大写。
+- 普通函数名中单词之间不使用分隔符。
+- 函数类型名和函数指针类型名使用 PascalCase，例如 `FunctionType`。
+- 普通局部变量名使用全小写英文单词。
+- 普通局部变量名的单词之间使用 `_` 分隔。
+- 类的私有成员变量名使用全小写英文单词和 `_` 分隔，并以 `_` 结尾。
+- 结构体成员变量名按普通变量规则命名，不加成员变量后缀 `_`。
+- 结构体成员变量视为公开数据字段，命名方式等同 public 数据字段。
+- 不推荐全局变量。
+- 业务必须使用全局变量时，只允许全局指针或基础数值类型。
+- 全局变量名以 `g_` 开头，后续按普通变量规则命名。
+- 静态变量名以 `s_` 开头，后续按普通变量规则命名。
+- `const` 变量名使用全大写英文单词。
+- `constexpr` 变量名使用全大写英文单词。
+- 常量名单词之间使用 `_` 分隔。
+- 结构体类型名使用全小写英文单词和 `_` 分隔，并以 `_t` 结尾。
+- typedef 产生的普通类型别名使用全小写英文单词和 `_` 分隔，并以 `_t` 结尾。
+- 新增 C++ 类型别名优先使用 `using`；维护旧代码的 `typedef` 时仍按类型别名命名规则。
+- `std::shared_ptr` 的类型别名保留 `shared` 语义。
+- `std::unique_ptr` 的类型别名保留 `unique` 语义。
+- 不推荐给 `std::shared_ptr` 或 `std::unique_ptr` 做泛泛的 typedef。
+- 如需让含义更清晰，只对具体指针类型做别名。
+- enum 名和值使用全大写英文单词。
+- enum 名和值的单词之间使用 `_` 分隔。
+- 命名禁止使用拼音。
+- 命名禁止使用超出 CET-6 范围的生僻英文词。
+- 变量名优先使用词汇表中已有的特定名词。
+- 函数名使用动宾结构表达具体行为。
+- 函数行为必须完全落在函数名表达的范围内。
 
-## 10. 日志
+## 13. 日志
 
-- MUST: log 按文件级模块区分。
-- MUST: log 支持按模块过滤和动态开关。
-- MAY: 保留 `BD_TRACE_LOG`。
-- MUST: 发布版本过滤 `BD_TRACE_LOG`。
-- MUST: 头文件中重定向 log 模块时，文件末尾取消重定向。
-- MUST: 日志参数类型和格式严格匹配。
+- log 按文件级模块区分。
+- 每条 log 带模块名。
+- log 需要支持按模块过滤。
+- log 需要支持动态开关指定模块。
+- `BD_LOG_INFO` 是普通日志，默认开启。
+- `BD_TRACE_LOG` 是调试日志，默认关闭。
+- 发布版本编译时过滤 `BD_TRACE_LOG`。
+- 调试日志可以保留在代码中，不需要因为发布版本而删除。
+- 文件开头通过 `LOG_MODULE_NAME` 指定日志模块名。
+- 指定 `LOG_MODULE_NAME` 后 include `xxx/xx.h` 开始重定向模块名。
+- 文件末尾通过 `#undef LOG_MODULE_NAME` 取消日志模块名。
+- 在头文件中做 log 模块重定向时，头文件末尾必须 include `xxx/xx.h` 恢复状态。
+- 日志格式字符串与参数类型必须匹配。
+- 日志格式字符串与参数数量必须匹配。
+- `size_t` 使用 `%zu`。
+- `int64_t` 使用 `"%" PRId64`。
+- `uint64_t` 使用 `"%" PRIu64`。
+- `uint32_t` 使用 `%u`。
+- `int32_t` 使用 `%d`。
 
-日志格式：
-
-- `size_t`: `%zu`
-- `int64_t`: `"%" PRId64`
-- `uint64_t`: `"%" PRIu64`
-- `uint32_t`: `%u`
-- `int32_t`: `%d`
-
-日志脚本接口：
-
-```lua
-bd.debug.openLogObject(name)
-bd.debug.closeLogObject(name)
-bd.debug.openTraceLogObject(name)
-bd.debug.closeTraceLogObject(name)
-bd.debug.setLogObjectLevel(name, level)
-```
-
-## 11. 提交和注释
-
-- MUST: 提交信息格式为 `[#单号][修改类型]修改描述`。
-- MUST: 修改类型使用规定枚举。
-- MAY: `[CICD]` 提交不加单号。
-
-提交类型：
+## 15. 提交规范
 
 - `[Added]`: 新增功能。
 - `[Fixed]`: 修复 bug。
@@ -232,93 +243,109 @@ bd.debug.setLogObjectLevel(name, level)
 - `[other]`: 编译修复、版本号等非业务改动。
 - `[CICD]`: 流水线改动。
 
-注释规则：
+## 16. 注释规范
 
-- SHOULD: 代码不清晰时优先重构。
-- MUST: 确有歧义时写准确注释。
-- MUST: 无用代码及时删除。
-- MUST_NOT: 无用代码以注释形式入库。
-- MUST: 独立模块文件头注释包含模块名。
-- MUST: 独立模块文件头注释包含文件路径。
-- MUST: 引用 paper 时注明来源。
-- MUST: 引用第三方代码时注明来源。
-- MUST: 对外导出接口维护 doxygen 注释。
-- MUST: 脚本导出接口说明类名、接口名、用途、返回值、参数。
+- 代码应先追求简洁明了。
+- 代码可能造成阅读障碍时，优先整理和重构代码。
+- 代码仍可能造成理解歧义时，必须添加准确注释。
+- 当前版本无用代码及时删除。
+- 禁止把当前版本无用代码以注释形式入库。
+- 后续可能启用的代码由开发人员保存在本地，不入库。
+- 独立模块源文件头部需要文件级注释。
+- 文件级注释必须包含模块名。
+- 文件级注释必须包含文件路径。
+- 文件级注释必须包含文件作者。
+- 模块引用 paper 时，文件级注释必须写 paper 引用路径。
+- 模块复制或使用第三方库代码时，文件级注释必须写第三方库引用路径。
+- 模块有特殊使用注意事项时，文件级注释最后写明注意事项。
+- 对外导出接口必须维护 doxygen 注释。
+- doxygen 注释至少说明接口用途、参数、返回值。
+- doxygen 详细说明使用 `@comment` 或现有工程等价字段。
+- 脚本导出接口必须有完整说明。
+- 脚本导出接口注释包含客户端/服务端标识。
+- 脚本导出接口注释包含类名。
+- 脚本导出接口注释包含接口描述。
+- 脚本导出接口注释包含返回值说明。
+- 脚本导出接口注释包含参数标记。
+- 脚本导出接口注释包含每个参数的说明。
+- 脚本导出接口注释使用结束标记标出注释结束位置。
 
-## 12. 技术约束
+## 17. 技术约束和技术池
 
-- MUST: 遵循 KISS 原则：`Keep it simple & stupid`。
-- MUST_NOT: 炫技。
-- MUST_NOT: 使用不必要的复杂设计。
-- SHOULD_NOT: 使用多重继承。
-- SHOULD_NOT: 使用模板深度嵌套。
-- MUST_NOT: 固定项目中擅自引入新技术。
-- MUST: 新技术先进入技术池，再进入主干。
-- MUST_NOT: 使用 `using namespace std;`。
-- MUST_NOT: 使用 `iostream`。
-- MUST_NOT: STL 容器拷贝传参。
-- SHOULD: 已知容器大小时先 `reserve`。
-- MUST: iterator 自增使用 `++iterator`。
-- MUST_NOT: lambda 使用 `[&]` 全捕获。
-- MUST_NOT: lambda 使用 `[=]` 全捕获。
-- MUST: 使用 `nullptr` 代替 `NULL`。
-- MUST: 覆盖父类方法时加 `override`。
-- SHOULD: 使用 lambda 代替 `std::bind`。
-- SHOULD: 优先使用 `auto`。
-- SHOULD: 优先使用 `using`。
-- SHOULD: 优先使用 `emplace_back`。
-- SHOULD: 优先使用移动语义。
-- SHOULD: 出现 `new` 时考虑 `unique_ptr`。
-- SHOULD: 优先使用 `make_shared`。
-- SHOULD: 优先使用 `make_unique`。
-- SHOULD: 不需要转成 `int` 的枚举使用 `enum class`。
-- SHOULD: 能用 `constexpr` 时使用 `constexpr`。
+- 代码设计遵循 KISS：`Keep it simple & stupid`。
+- 禁止炫技。
+- 禁止引入不必要的复杂设计。
+- 避免多重继承。
+- 避免模板深度嵌套。
 
-新技术引入条件：
+## 18. 标准库和 C++11/14/17
 
-- MAY: 现有技术池无法解决问题时引入新技术。
-- MAY: 新技术能提升 10% 以上开发效率时引入新技术。
-- MUST: 引入新技术前准备书面说明。
-- MUST: 引入新技术前完成风险分析。
-- MUST: 引入新技术前准备培训方案。
-- MUST: 新技术提交引擎负责人组织评审。
+- 禁止使用 `using namespace std;`。
+- 禁止在普通代码中使用 `iostream`。
+- 只有写 log 等固定场景允许使用流式操作。
+- 打 log 的流式输入使用引擎实现的 `StreamString`。
+- STL 容器禁止拷贝传参。
+- 已知容器大小且容器支持 `reserve` 时，先 `reserve`。
+- iterator 自增使用 `++iterator`。
+- lambda 禁止使用 `[&]` 全捕获。
+- lambda 禁止使用 `[=]` 全捕获。
+- 使用 `nullptr` 代替 `NULL`。
+- 覆盖父类方法必须加 `override`。
+- 优先使用 lambda，不使用 `std::bind`。
+- 优先使用 `auto`，尤其是类型转换或复杂类型场景。
+- 迭代器类型优先使用 `auto`。
+- 新增类型别名优先使用 `using`，不要新增 `typedef`。
+- 代码出现 `new` 时，先判断是否应改用 `unique_ptr`。
+- 优先使用 `make_shared`，不要先 `new` 再构造 `shared_ptr`。
+- 优先使用 `make_unique`，不要先 `new` 再构造 `unique_ptr`。
+- 容器插入元素时优先使用 `emplace_back`。
+- 后续代码不再使用某个复杂变量时，优先使用移动语义。
+- 构建复杂结构后放入容器时，优先考虑移动语义。
+- enum 不需要转换为 int 时，使用 `enum class`。
+- 能使用 `constexpr` 时，使用 `constexpr`。
 
-## 13. warning 和历史问题
+## 19. 内存管理
 
-- MUST: warning 按 error 处理。
-- MUST: 使用 strict warning check。
-- MUST: 正常但编译器误报的 warning 局部手动屏蔽。
-- MUST_NOT: 为规避单个 warning 修改全局编译设置。
-- MUST: 第三方库头文件集中引用。
-- MUST: 第三方库 warning 在引用处屏蔽。
-- MUST: VS warning 以最新 VS 版本为修复基准。
+- 非临时对象必须有明确且唯一的归属。
+- 对象拥有者负责构造和析构。
+- 对象生命周期必须明确。
+- 对象生命周期必须显式管理。
+- 存在动态分配对象的函数必须保证单一出口。
+- 动态分配对象的函数必须避免遗忘释放对象。
+- 临时对象生命周期超出分配者作用域时，使用引用计数管理。
+- 临时对象生命周期超出分配者作用域时，也可以使用 `std::shared_ptr` 管理。
+- 尽量在启动时预分配内存。
+- 运行期基于内存复用。
+- 运行期严格控制动态分配内存。
+- lib 如果有动态内存，必须显式提供初始化接口。
+- lib 如果有动态内存，必须显式提供清理接口。
 
-常见问题：
+## 20. warning 和历史问题
 
-- MUST_NOT: 成员声明顺序与构造初始化顺序不一致。
-- MUST_NOT: 关系运算两侧类型不一致。
-- MUST_NOT: `&&` 和 `||` 混用时省略括号。
-- MUST_NOT: 日志格式与参数类型不匹配。
-- MUST_NOT: 日志格式与参数数量不匹配。
-- MUST_NOT: 定义未使用变量。
-- MUST_NOT: 对无符号数判断 `>= 0`。
+- 使用 strict warning check。
+- warning 按 error 处理。
+- 明确正常但编译器报警的代码，局部手动屏蔽 warning。
+- 禁止为了消除某个具体实现的 warning 修改全局编译文件设置。
+- 第三方库头文件集中引用。
+- 第三方库 warning 在集中引用处手动屏蔽。
+- 引擎代码统一使用 `bdsnprintf` 替代 `snprintf`，解决跨平台 `snprintf` 实现不一致。
+- 类成员变量声明顺序必须和构造函数初始化顺序一致。
+- 关系运算符两侧变量类型必须一致。
+- 避免 `int` 和 `size_t` 直接比较。
+- `&&` 和 `||` 混用时必须用括号明确分组。
+- 打印日志时，格式参数类型必须匹配实参类型。
+- 打印日志时，格式参数数量必须匹配实参数量。
+- 禁止定义未使用变量。
+- 禁止对无符号数判断 `>= 0`，该条件恒成立。
 
-逻辑表达式示例：
+## 21. lambda 优先于 std::bind
 
-```cpp
-if ((step_size_x > 0 && now_point.x >= end_point.x) ||
-    (step_size_x < 0 && now_point.x <= end_point.x)) {
-    // ...
-}
-```
-
-## 14. lambda 优先于 std::bind
-
-- SHOULD: 使用 lambda 代替 `std::bind`。
-- REASON: lambda 每次调用时重新求值。
-- REASON: `std::bind` 在创建绑定对象时求值。
-- REASON: lambda 处理重载函数更自然。
-- REASON: `std::bind` 处理重载函数通常需要 `static_cast` 指定签名。
-- REASON: lambda 更容易 inline 优化。
-- REASON: lambda 捕获引用更直接。
-- REASON: `std::bind` 引用传递需要 `std::ref`。
+- 优先使用 lambda，不使用 `std::bind`。
+- lambda 中的表达式在每次调用 lambda 时求值。
+- `std::bind` 的绑定参数在创建绑定对象时求值。
+- 涉及当前时间、运行时状态、动态数据时，`std::bind` 容易提前求值并复用旧值。
+- lambda 处理重载函数更自然。
+- `std::bind` 绑定重载函数时通常需要 `static_cast` 指定函数签名。
+- lambda 函数体更容易被 inline 优化。
+- lambda 捕获引用更直接。
+- `std::bind` 引用传递需要搭配 `std::ref`。
