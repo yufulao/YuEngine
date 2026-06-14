@@ -143,19 +143,19 @@ RhiStatus ClearSubmitPresent(NullRhiDevice& device, RhiTextureHandle target, Rhi
 
 bool BytesMatchColor(const std::vector<std::uint8_t>& bytes, RhiColor color) {
     for (std::size_t index = 0U; index < bytes.size(); index += RGBA8_BYTES_PER_PIXEL) {
-        if (bytes[index] != color.R) {
+        if (bytes[index] != color.r) {
             return false;
         }
 
-        if (bytes[index + 1U] != color.G) {
+        if (bytes[index + 1U] != color.g) {
             return false;
         }
 
-        if (bytes[index + 2U] != color.B) {
+        if (bytes[index + 2U] != color.b) {
             return false;
         }
 
-        if (bytes[index + 3U] != color.A) {
+        if (bytes[index + 3U] != color.a) {
             return false;
         }
     }
@@ -171,19 +171,19 @@ int RhiCreateNullDeviceReturnsCapabilities() {
     }
 
     const auto capabilities = device.Capabilities();
-    if (capabilities.BackendKind != RhiBackendKind::Null) {
+    if (capabilities.backend_kind != RhiBackendKind::Null) {
         return Fail("capabilities did not report null backend");
     }
 
-    if (capabilities.ColorTargetCapacity != MAX_COLOR_TARGETS) {
+    if (capabilities.color_target_capacity != MAX_COLOR_TARGETS) {
         return Fail("capabilities reported wrong target capacity");
     }
 
-    if (capabilities.CommandListCapacity != MAX_COMMANDS) {
+    if (capabilities.command_list_capacity != MAX_COMMANDS) {
         return Fail("capabilities reported wrong command capacity");
     }
 
-    if (!capabilities.SupportsCapture) {
+    if (!capabilities.supports_capture) {
         return Fail("capabilities did not report capture support");
     }
 
@@ -193,14 +193,14 @@ int RhiCreateNullDeviceReturnsCapabilities() {
 int RhiCreateDeviceRejectsUnsupportedBackend() {
     NullRhiDevice device;
     RhiDeviceDesc desc{};
-    desc.BackendKind = RhiBackendKind::Unsupported;
+    desc.backend_kind = RhiBackendKind::Unsupported;
 
     const RhiStatus status = device.Initialize(desc);
     if (status != RhiStatus::UnsupportedBackend) {
         return Fail("unsupported backend did not return explicit status");
     }
 
-    if (device.Snapshot().ColorTargetCapacity != 0U) {
+    if (device.Snapshot().color_target_capacity != 0U) {
         return Fail("unsupported backend mutated device capacity");
     }
 
@@ -214,15 +214,15 @@ int RhiCreateTargetReturnsGenerationHandle() {
         return Fail("target creation failed");
     }
 
-    if (handle.Generation == 0U) {
+    if (handle.generation == 0U) {
         return Fail("target handle generation was invalid");
     }
 
-    if (handle.Slot != 0U) {
+    if (handle.slot != 0U) {
         return Fail("first target used unexpected slot");
     }
 
-    if (device.Snapshot().CreatedTargetCount != 1U) {
+    if (device.Snapshot().created_target_count != 1U) {
         return Fail("created target count was not recorded");
     }
 
@@ -234,24 +234,24 @@ int RhiCreateColorTargetRejectsInvalidDescriptor() {
     RhiTextureHandle handle{};
 
     RhiColorTargetDesc unsupportedFormatDesc = SmallTargetDesc();
-    unsupportedFormatDesc.Format = RhiFormat::Unsupported;
+    unsupportedFormatDesc.format = RhiFormat::Unsupported;
     if (device.CreateColorTarget(unsupportedFormatDesc, handle) != RhiStatus::UnsupportedFormat) {
         return Fail("unsupported target format was not rejected");
     }
 
     RhiColorTargetDesc zeroExtentDesc = SmallTargetDesc();
-    zeroExtentDesc.Extent.Width = 0U;
+    zeroExtentDesc.extent.width = 0U;
     if (device.CreateColorTarget(zeroExtentDesc, handle) != RhiStatus::InvalidDescriptor) {
         return Fail("zero extent target was not rejected");
     }
 
     RhiColorTargetDesc overExtentDesc = SmallTargetDesc();
-    overExtentDesc.Extent.Width = MAX_COLOR_TARGET_EXTENT + 1U;
+    overExtentDesc.extent.width = MAX_COLOR_TARGET_EXTENT + 1U;
     if (device.CreateColorTarget(overExtentDesc, handle) != RhiStatus::InvalidDescriptor) {
         return Fail("overlarge extent target was not rejected");
     }
 
-    if (device.Snapshot().ColorTargetCount != 0U) {
+    if (device.Snapshot().color_target_count != 0U) {
         return Fail("invalid descriptors mutated target count");
     }
 
@@ -276,11 +276,11 @@ int RhiTargetCapacityOverflowDoesNotMutate() {
     }
 
     const auto afterSnapshot = device.Snapshot();
-    if (afterSnapshot.ColorTargetCount != beforeSnapshot.ColorTargetCount) {
+    if (afterSnapshot.color_target_count != beforeSnapshot.color_target_count) {
         return Fail("target overflow changed target count");
     }
 
-    if (afterSnapshot.CreatedTargetCount != beforeSnapshot.CreatedTargetCount) {
+    if (afterSnapshot.created_target_count != beforeSnapshot.created_target_count) {
         return Fail("target overflow changed created count");
     }
 
@@ -305,7 +305,7 @@ int RhiDestroyTargetInvalidatesStaleHandle() {
         return Fail("stale handle did not return explicit status");
     }
 
-    if (device.Snapshot().DestroyedTargetCount != 1U) {
+    if (device.Snapshot().destroyed_target_count != 1U) {
         return Fail("destroyed target count was not recorded");
     }
 
@@ -333,7 +333,7 @@ int RhiReinitializeInvalidatesPriorTargetHandle() {
         return Fail(REINIT_STALE_TARGET_ACCEPTED_MESSAGE);
     }
 
-    if (device.Snapshot().ColorTargetCount != beforeSnapshot.ColorTargetCount) {
+    if (device.Snapshot().color_target_count != beforeSnapshot.color_target_count) {
         return Fail(REINIT_STALE_TARGET_COUNT_MESSAGE);
     }
 
@@ -346,7 +346,7 @@ int RhiReinitializeInvalidatesPriorTargetHandle() {
         return Fail(REINIT_STALE_CLEAR_MESSAGE);
     }
 
-    if (device.Snapshot().RecordedCommandCount != beforeSnapshot.RecordedCommandCount) {
+    if (device.Snapshot().recorded_command_count != beforeSnapshot.recorded_command_count) {
         return Fail(REINIT_STALE_CLEAR_COUNT_MESSAGE);
     }
 
@@ -445,13 +445,13 @@ int RhiSubmitRejectsOversizedCommandListWithoutMutation() {
     }
 
     const auto afterSnapshot = device.Snapshot();
-    if (afterSnapshot.SubmitCount != beforeSnapshot.SubmitCount) {
+    if (afterSnapshot.submit_count != beforeSnapshot.submit_count) {
         return Fail("oversized command list submit mutated submit count");
     }
 
     std::vector<std::uint8_t> capture(2U * 2U * RGBA8_BYTES_PER_PIXEL);
     const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(capture.data(), capture.size()));
-    if (result.Status != RhiStatus::Success) {
+    if (result.status != RhiStatus::Success) {
         return Fail("capture failed after rejected oversized submit");
     }
 
@@ -524,13 +524,13 @@ int RhiSubmitRejectsMismatchedRecordedTargetWithoutMutation() {
     }
 
     const auto afterSnapshot = device.Snapshot();
-    if (afterSnapshot.SubmitCount != beforeSnapshot.SubmitCount) {
+    if (afterSnapshot.submit_count != beforeSnapshot.submit_count) {
         return Fail("mismatched target submit mutated submit count");
     }
 
     std::vector<std::uint8_t> capture(2U * 2U * RGBA8_BYTES_PER_PIXEL);
     const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(capture.data(), capture.size()));
-    if (result.Status != RhiStatus::Success) {
+    if (result.status != RhiStatus::Success) {
         return Fail("capture failed after rejected mismatched submit");
     }
 
@@ -557,11 +557,11 @@ int RhiSubmitRejectsStaleRecordedTargetWithoutMutation() {
         return Fail("replacement frame target creation failed");
     }
 
-    if (frameTarget.Slot != originalTarget.Slot) {
+    if (frameTarget.slot != originalTarget.slot) {
         return Fail("replacement target did not reuse slot for stale generation test");
     }
 
-    if (frameTarget.Generation == originalTarget.Generation) {
+    if (frameTarget.generation == originalTarget.generation) {
         return Fail("replacement target did not advance generation");
     }
 
@@ -590,17 +590,17 @@ int RhiSubmitRejectsStaleRecordedTargetWithoutMutation() {
     }
 
     const auto afterSnapshot = device.Snapshot();
-    if (afterSnapshot.SubmitCount != beforeSnapshot.SubmitCount) {
+    if (afterSnapshot.submit_count != beforeSnapshot.submit_count) {
         return Fail("stale target submit mutated submit count");
     }
 
-    if (afterSnapshot.ColorTargetCount != beforeSnapshot.ColorTargetCount) {
+    if (afterSnapshot.color_target_count != beforeSnapshot.color_target_count) {
         return Fail("stale target submit mutated target count");
     }
 
     std::vector<std::uint8_t> capture(2U * 2U * RGBA8_BYTES_PER_PIXEL);
     const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(capture.data(), capture.size()));
-    if (result.Status != RhiStatus::Success) {
+    if (result.status != RhiStatus::Success) {
         return Fail("capture failed after rejected stale generation submit");
     }
 
@@ -629,7 +629,7 @@ int RhiSubmitRejectsIncompleteCommandListWithoutMutation() {
     }
 
     const auto afterSnapshot = device.Snapshot();
-    if (afterSnapshot.SubmitCount != beforeSnapshot.SubmitCount) {
+    if (afterSnapshot.submit_count != beforeSnapshot.submit_count) {
         return Fail("incomplete submit changed submit count");
     }
 
@@ -654,7 +654,7 @@ int RhiSubmitExecutesClearIntoNullTarget() {
 
     std::vector<std::uint8_t> capture(2U * 2U * RGBA8_BYTES_PER_PIXEL);
     const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(capture.data(), capture.size()));
-    if (result.Status != RhiStatus::Success) {
+    if (result.status != RhiStatus::Success) {
         return Fail("capture failed after clear submit present");
     }
 
@@ -671,7 +671,7 @@ int RhiPresentRequiresSuccessfulSubmit() {
         return Fail("present without submit did not return lifecycle status");
     }
 
-    if (device.Snapshot().PresentCount != 0U) {
+    if (device.Snapshot().present_count != 0U) {
         return Fail("present without submit changed present count");
     }
 
@@ -713,11 +713,11 @@ int RhiPresentRejectsDestroyedSubmittedTargetWithoutMutation() {
     }
 
     const auto afterPresentSnapshot = device.Snapshot();
-    if (afterPresentSnapshot.PresentCount != beforeSnapshot.PresentCount) {
+    if (afterPresentSnapshot.present_count != beforeSnapshot.present_count) {
         return Fail(PRESENT_COUNT_MUTATED_MESSAGE);
     }
 
-    if (afterPresentSnapshot.DestroyedTargetCount != afterDestroySnapshot.DestroyedTargetCount) {
+    if (afterPresentSnapshot.destroyed_target_count != afterDestroySnapshot.destroyed_target_count) {
         return Fail(PRESENT_DESTROY_COUNT_MUTATED_MESSAGE);
     }
 
@@ -737,11 +737,11 @@ int RhiClearSubmitPresentUpdatesPresentedCounter() {
     }
 
     const auto snapshot = device.Snapshot();
-    if (snapshot.SubmitCount != 1U) {
+    if (snapshot.submit_count != 1U) {
         return Fail("submit count was not updated");
     }
 
-    if (snapshot.PresentCount != 1U) {
+    if (snapshot.present_count != 1U) {
         return Fail("present count was not updated");
     }
 
@@ -757,11 +757,11 @@ int RhiCaptureBeforePresentReturnsExplicitStatus() {
 
     std::vector<std::uint8_t> capture(2U * 2U * RGBA8_BYTES_PER_PIXEL);
     const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(capture.data(), capture.size()));
-    if (result.Status != RhiStatus::InvalidLifecycle) {
+    if (result.status != RhiStatus::InvalidLifecycle) {
         return Fail("capture before present did not return lifecycle status");
     }
 
-    if (result.BytesWritten != 0U) {
+    if (result.bytes_written != 0U) {
         return Fail("capture before present wrote bytes");
     }
 
@@ -782,7 +782,7 @@ int RhiClearColorUsesExactRgba8ByteChannels() {
 
     std::vector<std::uint8_t> capture(2U * 2U * RGBA8_BYTES_PER_PIXEL);
     const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(capture.data(), capture.size()));
-    if (result.Status != RhiStatus::Success) {
+    if (result.status != RhiStatus::Success) {
         return Fail("capture failed");
     }
 
@@ -810,11 +810,11 @@ int RhiCapturePresentedTargetWritesDeterministicRgba8Bytes() {
     std::vector<std::uint8_t> secondCapture(4U * 4U * RGBA8_BYTES_PER_PIXEL);
     const RhiCaptureResult firstResult = device.CapturePresentedTarget(std::span<std::uint8_t>(firstCapture.data(), firstCapture.size()));
     const RhiCaptureResult secondResult = device.CapturePresentedTarget(std::span<std::uint8_t>(secondCapture.data(), secondCapture.size()));
-    if (firstResult.Status != RhiStatus::Success) {
+    if (firstResult.status != RhiStatus::Success) {
         return Fail("first capture failed");
     }
 
-    if (secondResult.Status != RhiStatus::Success) {
+    if (secondResult.status != RhiStatus::Success) {
         return Fail("second capture failed");
     }
 
@@ -841,7 +841,7 @@ int RhiCaptureRejectsDestroyedPresentedTargetWithoutMutation() {
     }
 
     std::vector<std::uint8_t> acceptedCapture(2U * 2U * RGBA8_BYTES_PER_PIXEL);
-    if (device.CapturePresentedTarget(std::span<std::uint8_t>(acceptedCapture.data(), acceptedCapture.size())).Status != RhiStatus::Success) {
+    if (device.CapturePresentedTarget(std::span<std::uint8_t>(acceptedCapture.data(), acceptedCapture.size())).status != RhiStatus::Success) {
         return Fail(CAPTURE_DESTROYED_BASELINE_MESSAGE);
     }
 
@@ -853,11 +853,11 @@ int RhiCaptureRejectsDestroyedPresentedTargetWithoutMutation() {
     const auto afterDestroySnapshot = device.Snapshot();
     std::vector<std::uint8_t> rejectedCapture(2U * 2U * RGBA8_BYTES_PER_PIXEL, SENTINEL_BYTE);
     const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(rejectedCapture.data(), rejectedCapture.size()));
-    if (result.Status != RhiStatus::InvalidHandle) {
+    if (result.status != RhiStatus::InvalidHandle) {
         return Fail(CAPTURE_DESTROYED_ACCEPTED_MESSAGE);
     }
 
-    if (result.BytesWritten != 0U) {
+    if (result.bytes_written != 0U) {
         return Fail(CAPTURE_DESTROYED_BYTES_MESSAGE);
     }
 
@@ -868,15 +868,15 @@ int RhiCaptureRejectsDestroyedPresentedTargetWithoutMutation() {
     }
 
     const auto afterCaptureSnapshot = device.Snapshot();
-    if (afterCaptureSnapshot.CaptureCount != beforeDestroySnapshot.CaptureCount) {
+    if (afterCaptureSnapshot.capture_count != beforeDestroySnapshot.capture_count) {
         return Fail(CAPTURE_DESTROYED_COUNT_MESSAGE);
     }
 
-    if (afterCaptureSnapshot.LastCaptureBytesWritten != beforeDestroySnapshot.LastCaptureBytesWritten) {
+    if (afterCaptureSnapshot.last_capture_bytes_written != beforeDestroySnapshot.last_capture_bytes_written) {
         return Fail(CAPTURE_DESTROYED_LAST_BYTES_MESSAGE);
     }
 
-    if (afterCaptureSnapshot.DestroyedTargetCount != afterDestroySnapshot.DestroyedTargetCount) {
+    if (afterCaptureSnapshot.destroyed_target_count != afterDestroySnapshot.destroyed_target_count) {
         return Fail(CAPTURE_DESTROYED_DESTROY_COUNT_MESSAGE);
     }
 
@@ -896,11 +896,11 @@ int RhiCaptureRejectsUndersizedBufferWithoutWritingBytes() {
 
     std::vector<std::uint8_t> destination((2U * 2U * RGBA8_BYTES_PER_PIXEL) - 1U, SENTINEL_BYTE);
     const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(destination.data(), destination.size()));
-    if (result.Status != RhiStatus::CapacityExceeded) {
+    if (result.status != RhiStatus::CapacityExceeded) {
         return Fail("undersized capture did not return capacity status");
     }
 
-    if (result.BytesWritten != 0U) {
+    if (result.bytes_written != 0U) {
         return Fail("undersized capture reported nonzero bytes written");
     }
 
@@ -910,7 +910,7 @@ int RhiCaptureRejectsUndersizedBufferWithoutWritingBytes() {
         }
     }
 
-    if (device.Snapshot().LastCaptureBytesWritten != 0U) {
+    if (device.Snapshot().last_capture_bytes_written != 0U) {
         return Fail("undersized capture did not record zero bytes written");
     }
 
@@ -932,11 +932,11 @@ int RhiCaptureRejectsTargetLargerThanFixtureCapWithoutWritingBytes() {
         static_cast<std::size_t>(MAX_COLOR_TARGET_EXTENT) * RGBA8_BYTES_PER_PIXEL;
     std::vector<std::uint8_t> destination(fullTargetBytes, SENTINEL_BYTE);
     const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(destination.data(), destination.size()));
-    if (result.Status != RhiStatus::CapacityExceeded) {
+    if (result.status != RhiStatus::CapacityExceeded) {
         return Fail("oversized capture fixture did not return capacity status");
     }
 
-    if (result.BytesWritten != 0U) {
+    if (result.bytes_written != 0U) {
         return Fail("oversized capture fixture reported bytes written");
     }
 
@@ -947,11 +947,11 @@ int RhiCaptureRejectsTargetLargerThanFixtureCapWithoutWritingBytes() {
     }
 
     const auto snapshot = device.Snapshot();
-    if (snapshot.LastCaptureBytesWritten != 0U) {
+    if (snapshot.last_capture_bytes_written != 0U) {
         return Fail("oversized capture fixture did not record zero bytes written");
     }
 
-    if (snapshot.CaptureCount != 0U) {
+    if (snapshot.capture_count != 0U) {
         return Fail("oversized capture fixture incremented capture count");
     }
 
@@ -981,11 +981,11 @@ int RhiFrameSubmitPresentCaptureDoesNotGrowCommandStorage() {
         return Fail("command list capacity changed during frame fixture");
     }
 
-    if (snapshot.CommandStorageCapacityBeforeFrame != snapshot.CommandStorageCapacityAfterLastFrame) {
+    if (snapshot.command_storage_capacity_before_frame != snapshot.command_storage_capacity_after_last_frame) {
         return Fail("device snapshot recorded command storage growth");
     }
 
-    if (snapshot.CommandStorageCapacityBeforeFrame != capacityBefore) {
+    if (snapshot.command_storage_capacity_before_frame != capacityBefore) {
         return Fail("device snapshot recorded wrong command storage capacity");
     }
 
@@ -1015,7 +1015,7 @@ int RhiDisabledDiagnosticsDoesNotChangeResults() {
         return Fail("disabled diagnostics fixture changed capture bytes");
     }
 
-    if (enabledLikeDevice.Snapshot().PresentCount != disabledLikeDevice.Snapshot().PresentCount) {
+    if (enabledLikeDevice.Snapshot().present_count != disabledLikeDevice.Snapshot().present_count) {
         return Fail("disabled diagnostics fixture changed present count");
     }
 
@@ -1033,7 +1033,7 @@ int RhiNoResourceFileUploadShaderUiDependency() {
         return Fail("minimal rhi frame path failed");
     }
 
-    if (device.Capabilities().BackendKind != RhiBackendKind::Null) {
+    if (device.Capabilities().backend_kind != RhiBackendKind::Null) {
         return Fail("rhi fixture left null backend scope");
     }
 

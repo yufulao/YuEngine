@@ -5,8 +5,8 @@
 
 namespace yuengine::kernel {
 struct ServiceRecord {
-    void* Instance;
-    std::type_index Type;
-    std::string OwnerModule;
+    void* instance;
+    std::type_index type;
+    std::string owner_module;
 };
 }

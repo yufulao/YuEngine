@@ -26,7 +26,7 @@ int main() {
 
     const HeadlessHostConfig config{TICK_COUNT};
     const auto result = host.Run(runtime, config);
-    if (result.Status == HostStatus::Success) {
+    if (result.status == HostStatus::Success) {
         return 0;
     }
 

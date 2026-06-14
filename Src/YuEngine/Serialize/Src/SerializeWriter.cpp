@@ -93,7 +93,7 @@ SerializeStatus SerializeWriter::BeginRecord(SerializeRecordId record) {
         return RecordFailure(SerializeStatus::InvalidHeader);
     }
 
-    if (_snapshot.RecordCount >= MAX_RECORDS_PER_STREAM) {
+    if (_snapshot.record_count >= MAX_RECORDS_PER_STREAM) {
         return RecordFailure(SerializeStatus::RecordCapacityExceeded);
     }
 
@@ -101,12 +101,12 @@ SerializeStatus SerializeWriter::BeginRecord(SerializeRecordId record) {
         return RecordFailure(SerializeStatus::BufferTooSmall);
     }
 
-    _activeRecordOffset = _snapshot.CommittedByteCount;
-    WriteUInt32At(_activeRecordOffset, record.Value);
+    _activeRecordOffset = _snapshot.committed_byte_count;
+    WriteUInt32At(_activeRecordOffset, record.value);
     WriteUInt32At(_activeRecordOffset + sizeof(std::uint32_t), 0U);
-    _snapshot.CommittedByteCount += RECORD_HEADER_BYTE_COUNT;
-    ++_snapshot.RecordCount;
-    WriteUInt32At(STREAM_RECORD_COUNT_OFFSET, _snapshot.RecordCount);
+    _snapshot.committed_byte_count += RECORD_HEADER_BYTE_COUNT;
+    ++_snapshot.record_count;
+    WriteUInt32At(STREAM_RECORD_COUNT_OFFSET, _snapshot.record_count);
     _currentRecordFieldCount = 0U;
     _hasActiveRecord = true;
     RecordSuccess();
@@ -170,7 +170,7 @@ SerializeStatus SerializeWriter::CommitField(
         return RecordFailure(SerializeStatus::BufferTooSmall);
     }
 
-    if (_snapshot.FieldCount >= MAX_FIELDS_PER_STREAM) {
+    if (_snapshot.field_count >= MAX_FIELDS_PER_STREAM) {
         return RecordFailure(SerializeStatus::FieldCapacityExceeded);
     }
 
@@ -186,29 +186,29 @@ SerializeStatus SerializeWriter::CommitField(
         return RecordFailure(SerializeStatus::BufferTooSmall);
     }
 
-    const std::uint32_t fieldOffset = _snapshot.CommittedByteCount;
-    WriteUInt32At(fieldOffset, field.Value);
+    const std::uint32_t fieldOffset = _snapshot.committed_byte_count;
+    WriteUInt32At(fieldOffset, field.value);
     WriteUInt32At(fieldOffset + sizeof(std::uint32_t), static_cast<std::uint32_t>(type));
     WriteUInt32At(fieldOffset + (sizeof(std::uint32_t) * 2U), byteCount);
     CopyPayload(fieldOffset + FIELD_HEADER_BYTE_COUNT, payload, byteCount);
-    _snapshot.CommittedByteCount += FIELD_HEADER_BYTE_COUNT + byteCount;
+    _snapshot.committed_byte_count += FIELD_HEADER_BYTE_COUNT + byteCount;
     _currentRecordFields[_currentRecordFieldCount] = field;
     ++_currentRecordFieldCount;
-    ++_snapshot.FieldCount;
+    ++_snapshot.field_count;
     WriteUInt32At(_activeRecordOffset + sizeof(std::uint32_t), _currentRecordFieldCount);
     RecordSuccess();
     return SerializeStatus::Success;
 }
 
 SerializeStatus SerializeWriter::RecordFailure(SerializeStatus status) {
-    ++_snapshot.FailedOperationCount;
-    _snapshot.LastStatus = status;
+    ++_snapshot.failed_operation_count;
+    _snapshot.last_status = status;
     return status;
 }
 
 void SerializeWriter::RecordSuccess() {
-    ++_snapshot.AcceptedOperationCount;
-    _snapshot.LastStatus = SerializeStatus::Success;
+    ++_snapshot.accepted_operation_count;
+    _snapshot.last_status = SerializeStatus::Success;
 }
 
 bool SerializeWriter::CanCommitBytes(std::uint32_t byteCount) const {
@@ -216,11 +216,11 @@ bool SerializeWriter::CanCommitBytes(std::uint32_t byteCount) const {
         return false;
     }
 
-    if (_snapshot.CommittedByteCount > _capacity) {
+    if (_snapshot.committed_byte_count > _capacity) {
         return false;
     }
 
-    return byteCount <= (_capacity - _snapshot.CommittedByteCount);
+    return byteCount <= (_capacity - _snapshot.committed_byte_count);
 }
 
 bool SerializeWriter::HasFieldInCurrentRecord(SerializeFieldId field) const {
@@ -230,7 +230,7 @@ bool SerializeWriter::HasFieldInCurrentRecord(SerializeFieldId field) const {
             return false;
         }
 
-        if (currentField.Value == field.Value) {
+        if (currentField.value == field.value) {
             return true;
         }
 

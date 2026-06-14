@@ -4,10 +4,10 @@
 
 namespace yuengine::diagnostics {
 struct DiagnosticsChannelConfig {
-    std::size_t EventCapacity;
-    std::size_t CounterCapacity;
-    std::size_t AcceptedEventIdCapacity;
-    std::size_t AcceptedCounterIdCapacity;
-    bool ValidateIds;
+    std::size_t event_capacity;
+    std::size_t counter_capacity;
+    std::size_t accepted_event_id_capacity;
+    std::size_t accepted_counter_id_capacity;
+    bool validate_ids;
 };
 }

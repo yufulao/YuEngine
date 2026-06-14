@@ -4,7 +4,7 @@
 
 namespace yuengine::audio {
 struct AudioSourceId final {
-    std::uint32_t Slot = 0U;
-    std::uint32_t Generation = 0U;
+    std::uint32_t slot = 0U;
+    std::uint32_t generation = 0U;
 };
 }

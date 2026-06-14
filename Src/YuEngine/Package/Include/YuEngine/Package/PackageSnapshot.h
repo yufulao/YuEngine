@@ -9,18 +9,18 @@ namespace yuengine::package {
 using memory::MemoryAccountingStatus;
 
 struct PackageSnapshot final {
-    std::uint32_t ManifestCapacity;
-    std::uint32_t EntryCapacity;
-    std::uint32_t DependencyEdgeCapacity;
-    std::uint32_t LoadPlanRecordCapacity;
-    std::uint32_t ManifestCount;
-    std::uint32_t EntryCount;
-    std::uint32_t DependencyEdgeCount;
-    std::uint32_t DependencyValidationCount;
-    std::uint32_t LoadPlanResolveCount;
-    std::uint32_t LastLoadPlanRecordCount;
-    std::uint32_t RejectedOperationCount;
-    MemoryAccountingStatus AllocationAccountingStatus;
-    PackageStatus LastStatus;
+    std::uint32_t manifest_capacity;
+    std::uint32_t entry_capacity;
+    std::uint32_t dependency_edge_capacity;
+    std::uint32_t load_plan_record_capacity;
+    std::uint32_t manifest_count;
+    std::uint32_t entry_count;
+    std::uint32_t dependency_edge_count;
+    std::uint32_t dependency_validation_count;
+    std::uint32_t load_plan_resolve_count;
+    std::uint32_t last_load_plan_record_count;
+    std::uint32_t rejected_operation_count;
+    MemoryAccountingStatus allocation_accounting_status;
+    PackageStatus last_status;
 };
 }

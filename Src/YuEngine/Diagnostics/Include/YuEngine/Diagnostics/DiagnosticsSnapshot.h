@@ -11,16 +11,16 @@
 
 namespace yuengine::diagnostics {
 struct DiagnosticsSnapshot {
-    std::array<DiagnosticsEvent, MAX_DIAGNOSTICS_EVENTS> Events;
-    std::array<DiagnosticsCounterSnapshot, MAX_DIAGNOSTICS_COUNTERS> Counters;
-    std::size_t EventCount;
-    std::size_t CounterCount;
-    std::uint64_t AcceptedEventCount;
-    std::uint64_t DroppedEventCount;
-    std::uint64_t SuccessfulCounterUpdateCount;
-    std::uint64_t SnapshotQueryCount;
-    bool Enabled;
-    bool Stopped;
-    memory::MemoryAccountingStatus AllocationAccountingStatus;
+    std::array<DiagnosticsEvent, MAX_DIAGNOSTICS_EVENTS> events;
+    std::array<DiagnosticsCounterSnapshot, MAX_DIAGNOSTICS_COUNTERS> counters;
+    std::size_t event_count;
+    std::size_t counter_count;
+    std::uint64_t accepted_event_count;
+    std::uint64_t dropped_event_count;
+    std::uint64_t successful_counter_update_count;
+    std::uint64_t snapshot_query_count;
+    bool enabled;
+    bool stopped;
+    memory::MemoryAccountingStatus allocation_accounting_status;
 };
 }

@@ -5,8 +5,8 @@
 
 namespace yuengine::object {
 struct ObjectRegistrationResult final {
-    ObjectStatus Status;
-    ObjectHandle Handle;
+    ObjectStatus status;
+    ObjectHandle handle;
 
     static ObjectRegistrationResult Success(ObjectHandle handle) {
         return ObjectRegistrationResult{ObjectStatus::Success, handle};
@@ -17,7 +17,7 @@ struct ObjectRegistrationResult final {
     }
 
     bool Succeeded() const {
-        return Status == ObjectStatus::Success;
+        return status == ObjectStatus::Success;
     }
 };
 }

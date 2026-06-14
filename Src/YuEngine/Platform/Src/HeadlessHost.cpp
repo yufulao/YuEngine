@@ -25,50 +25,50 @@ HostRunResult HeadlessHost::Run(IHostRuntime& runtime, const HeadlessHostConfig&
         std::vector<std::string>(),
         std::string(),
         PlatformPerformanceSignal::AllocationAccountingStatus};
-    result.TickTimesNanoseconds.reserve(config.TickCount);
-    result.LifecycleTrace.reserve((static_cast<std::size_t>(config.TickCount) * 2U) + 4U);
+    result.tick_times_nanoseconds.reserve(config.tick_count);
+    result.lifecycle_trace.reserve((static_cast<std::size_t>(config.tick_count) * 2U) + 4U);
 
-    result.LifecycleTrace.push_back(HOST_START_TRACE);
+    result.lifecycle_trace.push_back(HOST_START_TRACE);
     _logSink.Write(diagnostics::LogLevel::Info, "host start");
 
-    const HostError startError = runtime.Start(result.LifecycleTrace);
-    if (!startError.Succeeded) {
-        result.Status = HostStatus::StartupFailure;
-        result.ErrorMessage = startError.Message;
+    const HostError startError = runtime.Start(result.lifecycle_trace);
+    if (!startError.succeeded) {
+        result.status = HostStatus::StartupFailure;
+        result.error_message = startError.message;
         return result;
     }
 
-    for (std::uint32_t frameIndex = 0U; frameIndex < config.TickCount; ++frameIndex) {
+    for (std::uint32_t frameIndex = 0U; frameIndex < config.tick_count; ++frameIndex) {
         const std::uint64_t tickTimeNanoseconds = _frameClock.NextTickNanoseconds();
-        result.TickTimesNanoseconds.push_back(tickTimeNanoseconds);
-        result.LifecycleTrace.push_back(HOST_TICK_TRACE);
+        result.tick_times_nanoseconds.push_back(tickTimeNanoseconds);
+        result.lifecycle_trace.push_back(HOST_TICK_TRACE);
         _logSink.Write(diagnostics::LogLevel::Info, "host tick");
 
-        const HostError tickError = runtime.Tick(frameIndex, tickTimeNanoseconds, result.LifecycleTrace);
-        if (!tickError.Succeeded) {
-            result.LifecycleTrace.push_back(HOST_SHUTDOWN_TRACE);
-            const HostError tickShutdownError = runtime.Shutdown(result.LifecycleTrace);
-            if (!tickShutdownError.Succeeded) {
-                result.Status = HostStatus::ShutdownFailure;
-                result.ErrorMessage = tickShutdownError.Message;
+        const HostError tickError = runtime.Tick(frameIndex, tickTimeNanoseconds, result.lifecycle_trace);
+        if (!tickError.succeeded) {
+            result.lifecycle_trace.push_back(HOST_SHUTDOWN_TRACE);
+            const HostError tickShutdownError = runtime.Shutdown(result.lifecycle_trace);
+            if (!tickShutdownError.succeeded) {
+                result.status = HostStatus::ShutdownFailure;
+                result.error_message = tickShutdownError.message;
                 return result;
             }
 
-            result.Status = HostStatus::TickFailure;
-            result.ErrorMessage = tickError.Message;
+            result.status = HostStatus::TickFailure;
+            result.error_message = tickError.message;
             return result;
         }
 
-        ++result.TickCount;
+        ++result.tick_count;
     }
 
-    result.LifecycleTrace.push_back(HOST_SHUTDOWN_TRACE);
+    result.lifecycle_trace.push_back(HOST_SHUTDOWN_TRACE);
     _logSink.Write(diagnostics::LogLevel::Info, "host shutdown");
 
-    const HostError shutdownError = runtime.Shutdown(result.LifecycleTrace);
-    if (!shutdownError.Succeeded) {
-        result.Status = HostStatus::ShutdownFailure;
-        result.ErrorMessage = shutdownError.Message;
+    const HostError shutdownError = runtime.Shutdown(result.lifecycle_trace);
+    if (!shutdownError.succeeded) {
+        result.status = HostStatus::ShutdownFailure;
+        result.error_message = shutdownError.message;
         return result;
     }
 

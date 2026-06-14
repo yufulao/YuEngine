@@ -8,7 +8,7 @@
 
 namespace yuengine::input {
 struct InputReplayFrame final {
-    std::array<InputEvent, MAX_EVENTS_PER_FRAME> Events{};
-    std::size_t EventCount = 0U;
+    std::array<InputEvent, MAX_EVENTS_PER_FRAME> events{};
+    std::size_t event_count = 0U;
 };
 }

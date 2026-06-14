@@ -7,18 +7,18 @@
 
 namespace yuengine::resource {
 struct ResourceSnapshot final {
-    std::uint32_t ResourceCapacity;
-    std::uint32_t TypeCapacity;
-    std::uint32_t DependencyEdgeCapacity;
-    std::uint32_t RegisteredResourceCount;
-    std::uint32_t TypeCount;
-    std::uint64_t AcquiredHandleCount;
-    std::uint64_t ReleasedHandleCount;
-    std::uint32_t RetiredResourceCount;
-    std::uint32_t DependencyEdgeCount;
-    std::uint32_t DependencyValidationCount;
-    std::uint32_t FailedOperationCount;
-    yuengine::memory::MemoryAccountingStatus AllocationAccountingStatus;
-    ResourceStatus LastStatus;
+    std::uint32_t resource_capacity;
+    std::uint32_t type_capacity;
+    std::uint32_t dependency_edge_capacity;
+    std::uint32_t registered_resource_count;
+    std::uint32_t type_count;
+    std::uint64_t acquired_handle_count;
+    std::uint64_t released_handle_count;
+    std::uint32_t retired_resource_count;
+    std::uint32_t dependency_edge_count;
+    std::uint32_t dependency_validation_count;
+    std::uint32_t failed_operation_count;
+    yuengine::memory::MemoryAccountingStatus allocation_accounting_status;
+    ResourceStatus last_status;
 };
 }

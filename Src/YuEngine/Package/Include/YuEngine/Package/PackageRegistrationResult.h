@@ -6,9 +6,9 @@
 
 namespace yuengine::package {
 struct PackageRegistrationResult final {
-    PackageStatus Status;
-    PackageId Package;
-    PackageEntryId Entry;
+    PackageStatus status;
+    PackageId package;
+    PackageEntryId entry;
 
     static PackageRegistrationResult ManifestSuccess(PackageId package);
     static PackageRegistrationResult EntrySuccess(PackageId package, PackageEntryId entry);

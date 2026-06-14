@@ -7,8 +7,8 @@
 
 namespace yuengine::resource {
 struct ResourceDescriptor final {
-    ResourceTypeId Type;
-    ResourceLogicalKey LogicalKey;
-    std::uint32_t InitialReferenceCount = 0U;
+    ResourceTypeId type;
+    ResourceLogicalKey logical_key;
+    std::uint32_t initial_reference_count = 0U;
 };
 }

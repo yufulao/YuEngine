@@ -8,22 +8,22 @@
 
 namespace yuengine::input {
 struct InputReplaySnapshot final {
-    std::size_t DeviceCapacity = 0U;
-    std::size_t ActionCapacity = 0U;
-    std::size_t BindingCapacity = 0U;
-    std::size_t ReplayFrameCapacity = 0U;
-    std::size_t EventCapacityPerFrame = 0U;
-    std::size_t ReplayStorageCapacityBeforeFrame = 0U;
-    std::size_t ReplayStorageCapacityAfterLastFrame = 0U;
-    std::size_t ActionCount = 0U;
-    std::size_t BindingCount = 0U;
-    std::size_t ChangedActionCount = 0U;
-    std::uint64_t AcceptedEventCount = 0U;
-    std::uint64_t RejectedEventCount = 0U;
-    std::uint64_t ApplyCount = 0U;
-    std::uint64_t ResetCount = 0U;
-    std::uint64_t FailedOperationCount = 0U;
-    InputStatus LastApplyStatus = InputStatus::Success;
-    InputAccountingStatus AllocationAccountingStatus = InputAccountingStatus::DeferredUntilYuMemoryIntegration;
+    std::size_t device_capacity = 0U;
+    std::size_t action_capacity = 0U;
+    std::size_t binding_capacity = 0U;
+    std::size_t replay_frame_capacity = 0U;
+    std::size_t event_capacity_per_frame = 0U;
+    std::size_t replay_storage_capacity_before_frame = 0U;
+    std::size_t replay_storage_capacity_after_last_frame = 0U;
+    std::size_t action_count = 0U;
+    std::size_t binding_count = 0U;
+    std::size_t changed_action_count = 0U;
+    std::uint64_t accepted_event_count = 0U;
+    std::uint64_t rejected_event_count = 0U;
+    std::uint64_t apply_count = 0U;
+    std::uint64_t reset_count = 0U;
+    std::uint64_t failed_operation_count = 0U;
+    InputStatus last_apply_status = InputStatus::Success;
+    InputAccountingStatus allocation_accounting_status = InputAccountingStatus::DeferredUntilYuMemoryIntegration;
 };
 }

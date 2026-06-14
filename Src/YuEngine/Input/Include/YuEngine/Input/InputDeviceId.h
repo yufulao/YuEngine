@@ -4,6 +4,6 @@
 
 namespace yuengine::input {
 struct InputDeviceId final {
-    std::uint32_t Value = 0U;
+    std::uint32_t value = 0U;
 };
 }

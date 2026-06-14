@@ -9,14 +9,14 @@ namespace yuengine::serialize {
 using yuengine::memory::MemoryAccountingStatus;
 
 struct SerializeSnapshot final {
-    std::uint16_t MajorVersion;
-    std::uint16_t MinorVersion;
-    std::uint32_t CommittedByteCount;
-    std::uint32_t RecordCount;
-    std::uint32_t FieldCount;
-    std::uint32_t AcceptedOperationCount;
-    std::uint32_t FailedOperationCount;
-    MemoryAccountingStatus AllocationAccountingStatus;
-    SerializeStatus LastStatus;
+    std::uint16_t major_version;
+    std::uint16_t minor_version;
+    std::uint32_t committed_byte_count;
+    std::uint32_t record_count;
+    std::uint32_t field_count;
+    std::uint32_t accepted_operation_count;
+    std::uint32_t failed_operation_count;
+    MemoryAccountingStatus allocation_accounting_status;
+    SerializeStatus last_status;
 };
 }

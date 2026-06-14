@@ -82,11 +82,11 @@ SerializeStatus SerializeReader::OpenStream() {
         return RecordFailure(validationStatus);
     }
 
-    _snapshot.MajorVersion = majorVersion;
-    _snapshot.MinorVersion = ReadUInt16At(STREAM_MINOR_VERSION_OFFSET);
-    _snapshot.CommittedByteCount = committedByteCount;
-    _snapshot.RecordCount = recordCount;
-    _snapshot.FieldCount = fieldCount;
+    _snapshot.major_version = majorVersion;
+    _snapshot.minor_version = ReadUInt16At(STREAM_MINOR_VERSION_OFFSET);
+    _snapshot.committed_byte_count = committedByteCount;
+    _snapshot.record_count = recordCount;
+    _snapshot.field_count = fieldCount;
     _isOpen = true;
     RecordSuccess();
     return SerializeStatus::Success;
@@ -99,15 +99,15 @@ SerializeStatus SerializeReader::ReadUInt32(SerializeRecordId record, SerializeF
         return RecordFailure(findStatus);
     }
 
-    if (location.Type != SerializeTypeTag::UInt32) {
+    if (location.type != SerializeTypeTag::UInt32) {
         return RecordFailure(SerializeStatus::TypeMismatch);
     }
 
-    if (location.PayloadByteCount != UINT32_PAYLOAD_BYTE_COUNT) {
+    if (location.payload_byte_count != UINT32_PAYLOAD_BYTE_COUNT) {
         return RecordFailure(SerializeStatus::MalformedFieldLength);
     }
 
-    outValue = ReadUInt32At(location.PayloadOffset);
+    outValue = ReadUInt32At(location.payload_offset);
     RecordSuccess();
     return SerializeStatus::Success;
 }
@@ -120,15 +120,15 @@ SerializeStatus SerializeReader::ReadInt32(SerializeRecordId record, SerializeFi
         return RecordFailure(findStatus);
     }
 
-    if (location.Type != SerializeTypeTag::Int32) {
+    if (location.type != SerializeTypeTag::Int32) {
         return RecordFailure(SerializeStatus::TypeMismatch);
     }
 
-    if (location.PayloadByteCount != INT32_PAYLOAD_BYTE_COUNT) {
+    if (location.payload_byte_count != INT32_PAYLOAD_BYTE_COUNT) {
         return RecordFailure(SerializeStatus::MalformedFieldLength);
     }
 
-    rawValue = ReadUInt32At(location.PayloadOffset);
+    rawValue = ReadUInt32At(location.payload_offset);
     outValue = static_cast<std::int32_t>(rawValue);
     RecordSuccess();
     return SerializeStatus::Success;
@@ -141,15 +141,15 @@ SerializeStatus SerializeReader::ReadUInt64(SerializeRecordId record, SerializeF
         return RecordFailure(findStatus);
     }
 
-    if (location.Type != SerializeTypeTag::UInt64) {
+    if (location.type != SerializeTypeTag::UInt64) {
         return RecordFailure(SerializeStatus::TypeMismatch);
     }
 
-    if (location.PayloadByteCount != UINT64_PAYLOAD_BYTE_COUNT) {
+    if (location.payload_byte_count != UINT64_PAYLOAD_BYTE_COUNT) {
         return RecordFailure(SerializeStatus::MalformedFieldLength);
     }
 
-    outValue = ReadUInt64At(location.PayloadOffset);
+    outValue = ReadUInt64At(location.payload_offset);
     RecordSuccess();
     return SerializeStatus::Success;
 }
@@ -162,15 +162,15 @@ SerializeStatus SerializeReader::ReadInt64(SerializeRecordId record, SerializeFi
         return RecordFailure(findStatus);
     }
 
-    if (location.Type != SerializeTypeTag::Int64) {
+    if (location.type != SerializeTypeTag::Int64) {
         return RecordFailure(SerializeStatus::TypeMismatch);
     }
 
-    if (location.PayloadByteCount != INT64_PAYLOAD_BYTE_COUNT) {
+    if (location.payload_byte_count != INT64_PAYLOAD_BYTE_COUNT) {
         return RecordFailure(SerializeStatus::MalformedFieldLength);
     }
 
-    rawValue = ReadUInt64At(location.PayloadOffset);
+    rawValue = ReadUInt64At(location.payload_offset);
     outValue = static_cast<std::int64_t>(rawValue);
     RecordSuccess();
     return SerializeStatus::Success;
@@ -188,25 +188,25 @@ SerializeStatus SerializeReader::ReadFixedBytes(
         return RecordFailure(findStatus);
     }
 
-    if (location.Type != SerializeTypeTag::FixedBytes) {
+    if (location.type != SerializeTypeTag::FixedBytes) {
         return RecordFailure(SerializeStatus::TypeMismatch);
     }
 
-    if (location.PayloadByteCount > outCapacity) {
+    if (location.payload_byte_count > outCapacity) {
         return RecordFailure(SerializeStatus::BufferTooSmall);
     }
 
-    if (location.PayloadByteCount > 0U && outBytes == nullptr) {
+    if (location.payload_byte_count > 0U && outBytes == nullptr) {
         return RecordFailure(SerializeStatus::BufferTooSmall);
     }
 
     std::uint32_t index = 0U;
-    while (index < location.PayloadByteCount) {
-        outBytes[index] = _buffer[location.PayloadOffset + index];
+    while (index < location.payload_byte_count) {
+        outBytes[index] = _buffer[location.payload_offset + index];
         ++index;
     }
 
-    outByteCount = location.PayloadByteCount;
+    outByteCount = location.payload_byte_count;
     RecordSuccess();
     return SerializeStatus::Success;
 }
@@ -309,7 +309,7 @@ SerializeStatus SerializeReader::FindField(SerializeRecordId record, SerializeFi
 
     std::uint32_t offset = STREAM_HEADER_BYTE_COUNT;
     std::uint32_t recordIndex = 0U;
-    while (recordIndex < _snapshot.RecordCount) {
+    while (recordIndex < _snapshot.record_count) {
         const SerializeRecordId currentRecord{ReadUInt32At(offset)};
         const std::uint32_t fieldCount = ReadUInt32At(offset + sizeof(std::uint32_t));
         offset += RECORD_HEADER_BYTE_COUNT;
@@ -319,11 +319,11 @@ SerializeStatus SerializeReader::FindField(SerializeRecordId record, SerializeFi
             const SerializeTypeTag type = static_cast<SerializeTypeTag>(ReadUInt32At(offset + sizeof(std::uint32_t)));
             const std::uint32_t payloadByteCount = ReadUInt32At(offset + (sizeof(std::uint32_t) * 2U));
             const std::uint32_t payloadOffset = offset + FIELD_HEADER_BYTE_COUNT;
-            if (currentRecord.Value == record.Value && currentField.Value == field.Value) {
-                outLocation.Type = type;
-                outLocation.PayloadOffset = payloadOffset;
-                outLocation.PayloadByteCount = payloadByteCount;
-                outLocation.Found = true;
+            if (currentRecord.value == record.value && currentField.value == field.value) {
+                outLocation.type = type;
+                outLocation.payload_offset = payloadOffset;
+                outLocation.payload_byte_count = payloadByteCount;
+                outLocation.found = true;
                 return SerializeStatus::Success;
             }
 
@@ -334,7 +334,7 @@ SerializeStatus SerializeReader::FindField(SerializeRecordId record, SerializeFi
         ++recordIndex;
     }
 
-    if (!outLocation.Found) {
+    if (!outLocation.found) {
         return SerializeStatus::FieldNotFound;
     }
 
@@ -342,14 +342,14 @@ SerializeStatus SerializeReader::FindField(SerializeRecordId record, SerializeFi
 }
 
 SerializeStatus SerializeReader::RecordFailure(SerializeStatus status) {
-    ++_snapshot.FailedOperationCount;
-    _snapshot.LastStatus = status;
+    ++_snapshot.failed_operation_count;
+    _snapshot.last_status = status;
     return status;
 }
 
 void SerializeReader::RecordSuccess() {
-    ++_snapshot.AcceptedOperationCount;
-    _snapshot.LastStatus = SerializeStatus::Success;
+    ++_snapshot.accepted_operation_count;
+    _snapshot.last_status = SerializeStatus::Success;
 }
 
 bool SerializeReader::CanReadBytes(std::uint32_t offset, std::uint32_t byteCount) const {
@@ -375,7 +375,7 @@ bool SerializeReader::IsKnownTypeTag(std::uint32_t value) const {
 bool SerializeReader::IsDuplicateField(SerializeFieldId field, const SerializeFieldId* fields, std::uint32_t fieldCount) const {
     std::uint32_t index = 0U;
     while (index < fieldCount) {
-        if (fields[index].Value == field.Value) {
+        if (fields[index].value == field.value) {
             return true;
         }
 

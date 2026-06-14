@@ -4,10 +4,10 @@
 
 namespace yuengine::memory {
 struct MemoryTag {
-    std::string_view Value;
+    std::string_view value;
 
     bool IsValid() const {
-        return !Value.empty();
+        return !value.empty();
     }
 };
 }

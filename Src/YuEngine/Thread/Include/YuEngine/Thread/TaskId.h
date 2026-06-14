@@ -4,6 +4,6 @@
 
 namespace yuengine::thread {
 struct TaskId {
-    std::uint64_t Value;
+    std::uint64_t value;
 };
 }

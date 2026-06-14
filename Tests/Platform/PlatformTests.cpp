@@ -70,11 +70,11 @@ int HostStartTickShutdownDeterministic() {
 
     const HeadlessHostConfig config{DETERMINISTIC_TICK_COUNT};
     const auto result = host.Run(runtime, config);
-    if (result.Status != HostStatus::Success) {
+    if (result.status != HostStatus::Success) {
         return Fail("host did not return success");
     }
 
-    if (result.TickCount != DETERMINISTIC_TICK_COUNT) {
+    if (result.tick_count != DETERMINISTIC_TICK_COUNT) {
         return Fail("host tick count was not deterministic");
     }
 
@@ -90,11 +90,11 @@ int HostStartTickShutdownDeterministic() {
         "host.shutdown",
         "runtime.shutdown"};
 
-    if (result.LifecycleTrace != expectedTrace) {
+    if (result.lifecycle_trace != expectedTrace) {
         return Fail("host lifecycle trace did not match expected order");
     }
 
-    if (result.AllocationAccountingStatus != PlatformPerformanceSignal::AllocationAccountingStatus) {
+    if (result.allocation_accounting_status != PlatformPerformanceSignal::AllocationAccountingStatus) {
         return Fail("allocation accounting status is missing");
     }
 
@@ -113,21 +113,21 @@ int HostTimerMonotonicForFixedTicks() {
 
     const HeadlessHostConfig config{TIMER_TICK_COUNT};
     const auto result = host.Run(runtime, config);
-    if (result.TickTimesNanoseconds.size() != TIMER_TICK_COUNT) {
+    if (result.tick_times_nanoseconds.size() != TIMER_TICK_COUNT) {
         return Fail("timer did not record every tick");
     }
 
-    for (std::size_t index = 1U; index < result.TickTimesNanoseconds.size(); ++index) {
-        if (result.TickTimesNanoseconds[index] <= result.TickTimesNanoseconds[index - 1U]) {
+    for (std::size_t index = 1U; index < result.tick_times_nanoseconds.size(); ++index) {
+        if (result.tick_times_nanoseconds[index] <= result.tick_times_nanoseconds[index - 1U]) {
             return Fail("timer ticks were not monotonic");
         }
     }
 
-    if (result.TickTimesNanoseconds[0U] != FIRST_TICK_NANOSECONDS) {
+    if (result.tick_times_nanoseconds[0U] != FIRST_TICK_NANOSECONDS) {
         return Fail("first timer tick was unexpected");
     }
 
-    if (result.TickTimesNanoseconds[3U] != FIRST_TICK_NANOSECONDS + (STEP_NANOSECONDS * 3U)) {
+    if (result.tick_times_nanoseconds[3U] != FIRST_TICK_NANOSECONDS + (STEP_NANOSECONDS * 3U)) {
         return Fail("fixed timer step was unexpected");
     }
 
@@ -142,7 +142,7 @@ int PlatformAllocationAccountingStatusUsesMemoryHook() {
 
     const HeadlessHostConfig config{DETERMINISTIC_TICK_COUNT};
     const auto result = host.Run(runtime, config);
-    if (result.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (result.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("platform did not expose typed explicit-tracking memory status");
     }
 

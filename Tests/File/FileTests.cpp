@@ -76,16 +76,16 @@ int FilePathNormalizeRemovesDotAndRepeatedSeparators() {
         return Fail("normal path did not normalize successfully");
     }
 
-    if (result.Path.Value() != NORMALIZED_PATH) {
+    if (result.path.Value() != NORMALIZED_PATH) {
         return Fail("normalized path removed the wrong segments");
     }
 
     const auto snapshot = table.Snapshot();
-    if (snapshot.PathNormalizationCount != 1U) {
+    if (snapshot.path_normalization_count != 1U) {
         return Fail("normalization count was not recorded");
     }
 
-    if (snapshot.RejectedPathCount != 0U) {
+    if (snapshot.rejected_path_count != 0U) {
         return Fail("valid path was counted as rejected");
     }
 
@@ -95,12 +95,12 @@ int FilePathNormalizeRemovesDotAndRepeatedSeparators() {
 int FilePathNormalizeRejectsTraversalOutsideRoot() {
     MountTable table;
     const auto result = table.Normalize(VirtualPath("../FixtureFile.txt"));
-    if (result.Status != FileStatus::PathEscape) {
+    if (result.status != FileStatus::PathEscape) {
         return Fail("traversal outside root was not rejected");
     }
 
     const auto snapshot = table.Snapshot();
-    if (snapshot.RejectedPathCount != 1U) {
+    if (snapshot.rejected_path_count != 1U) {
         return Fail("path escape rejection was not counted");
     }
 
@@ -110,28 +110,28 @@ int FilePathNormalizeRejectsTraversalOutsideRoot() {
 int FilePathNormalizeRejectsEmptyAndAbsolutePath() {
     MountTable table;
     const auto emptyResult = table.Normalize(VirtualPath(""));
-    if (emptyResult.Status != FileStatus::InvalidPath) {
+    if (emptyResult.status != FileStatus::InvalidPath) {
         return Fail("empty path was not rejected");
     }
 
     const auto absoluteResult = table.Normalize(VirtualPath("/absolute/path.txt"));
-    if (absoluteResult.Status != FileStatus::InvalidPath) {
+    if (absoluteResult.status != FileStatus::InvalidPath) {
         return Fail("absolute path was not rejected");
     }
 
     const auto driveResult = table.Normalize(VirtualPath("C:/absolute/path.txt"));
-    if (driveResult.Status != FileStatus::InvalidPath) {
+    if (driveResult.status != FileStatus::InvalidPath) {
         return Fail("drive absolute path was not rejected");
     }
 
     const std::string longPath(MAX_VIRTUAL_PATH_LENGTH + 1U, 'a');
     const auto longPathResult = table.Normalize(VirtualPath(longPath));
-    if (longPathResult.Status != FileStatus::PathTooLong) {
+    if (longPathResult.status != FileStatus::PathTooLong) {
         return Fail("overlong path did not return bounds status");
     }
 
     const auto snapshot = table.Snapshot();
-    if (snapshot.RejectedPathCount != 4U) {
+    if (snapshot.rejected_path_count != 4U) {
         return Fail("invalid path rejection count was wrong");
     }
 
@@ -151,7 +151,7 @@ int FileMountTableRejectsDuplicateMount() {
     }
 
     const auto snapshot = table.Snapshot();
-    if (snapshot.MountCount != 1U) {
+    if (snapshot.mount_count != 1U) {
         return Fail("duplicate mount changed mount count");
     }
 
@@ -199,12 +199,12 @@ int FileMountTableUsesDeterministicPriorityOrder() {
 int FileMountTableReportsMissingMountOrFile() {
     MountTable table = CreateMountedTable();
     const auto missingMount = table.Read({MountId(MISSING_MOUNT), VirtualPath(NORMALIZED_PATH)});
-    if (missingMount.Status != FileStatus::MountNotFound) {
+    if (missingMount.status != FileStatus::MountNotFound) {
         return Fail("missing mount did not return explicit status");
     }
 
     const auto missingFile = table.Read({MountId(PRIMARY_MOUNT), VirtualPath(MISSING_PATH)});
-    if (missingFile.Status != FileStatus::FileNotFound) {
+    if (missingFile.status != FileStatus::FileNotFound) {
         return Fail("missing file did not return explicit status");
     }
 
@@ -218,7 +218,7 @@ int FileLooseFixtureReadReturnsExactBytes() {
         return Fail("fixture read failed");
     }
 
-    const std::string text(result.Bytes.begin(), result.Bytes.end());
+    const std::string text(result.bytes.begin(), result.bytes.end());
     if (text != FIXTURE_TEXT) {
         return Fail("fixture bytes did not match expected content");
     }
@@ -229,13 +229,13 @@ int FileLooseFixtureReadReturnsExactBytes() {
 int FileLooseFileSourceRejectsForgedNormalizedPathEscape() {
     LooseFileSource source(FixtureRoot() / "Secondary");
     const auto traversalResult = source.Read(NormalizedPath("../Primary/Nested/FixtureFile.txt"));
-    if (traversalResult.Status != FileStatus::PathEscape) {
+    if (traversalResult.status != FileStatus::PathEscape) {
         return Fail("forged traversal normalized path did not return path escape status");
     }
 
     const std::filesystem::path absoluteFixturePath = FixtureRoot() / "Primary" / "Nested" / "FixtureFile.txt";
     const auto absoluteResult = source.Read(NormalizedPath(absoluteFixturePath.generic_string()));
-    if (absoluteResult.Status != FileStatus::InvalidPath) {
+    if (absoluteResult.status != FileStatus::InvalidPath) {
         return Fail("forged absolute normalized path did not return invalid path status");
     }
 
@@ -250,27 +250,27 @@ int FileReadSnapshotRecordsCountsAndBytes() {
     }
 
     const auto snapshot = table.Snapshot();
-    if (snapshot.PathNormalizationCount != 1U) {
+    if (snapshot.path_normalization_count != 1U) {
         return Fail("snapshot did not record normalization count");
     }
 
-    if (snapshot.LookupCount != 1U) {
+    if (snapshot.lookup_count != 1U) {
         return Fail("snapshot did not record lookup count");
     }
 
-    if (snapshot.ReadByteCount != result.Bytes.size()) {
+    if (snapshot.read_byte_count != result.bytes.size()) {
         return Fail("snapshot did not record read byte count");
     }
 
-    if (snapshot.MaxFixturePathLength != std::string(NORMALIZED_PATH).size()) {
+    if (snapshot.max_fixture_path_length != std::string(NORMALIZED_PATH).size()) {
         return Fail("snapshot did not record max fixture path length");
     }
 
-    if (snapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("snapshot did not use YuMemory allocation accounting vocabulary");
     }
 
-    if (snapshot.LastReadStatus != FileStatus::Success) {
+    if (snapshot.last_read_status != FileStatus::Success) {
         return Fail("snapshot did not record sync read status");
     }
 
@@ -283,15 +283,15 @@ int FileDiagnosticsDisabledDoesNotChangeBehavior() {
 
     const auto recordingResult = recordingTable.Read({MountId(PRIMARY_MOUNT), VirtualPath(NORMALIZED_PATH)});
     const auto disabledResult = diagnosticsDisabledTable.Read({MountId(PRIMARY_MOUNT), VirtualPath(NORMALIZED_PATH)});
-    if (recordingResult.Status != disabledResult.Status) {
+    if (recordingResult.status != disabledResult.status) {
         return Fail("disabled diagnostics changed read status");
     }
 
-    if (recordingResult.Bytes != disabledResult.Bytes) {
+    if (recordingResult.bytes != disabledResult.bytes) {
         return Fail("disabled diagnostics changed read bytes");
     }
 
-    if (recordingTable.Snapshot().ReadByteCount != diagnosticsDisabledTable.Snapshot().ReadByteCount) {
+    if (recordingTable.Snapshot().read_byte_count != diagnosticsDisabledTable.Snapshot().read_byte_count) {
         return Fail("disabled diagnostics changed read byte count");
     }
 

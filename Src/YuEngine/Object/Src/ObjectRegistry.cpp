@@ -23,8 +23,8 @@ ObjectRegistry::ObjectRegistry(ObjectRegistryDesc desc)
     : _slots{},
       _types{},
       _snapshot{
-          ClampCapacity(desc.ObjectCapacity, MAX_OBJECT_COUNT),
-          ClampCapacity(desc.TypeCapacity, MAX_OBJECT_TYPE_COUNT),
+          ClampCapacity(desc.object_capacity, MAX_OBJECT_COUNT),
+          ClampCapacity(desc.type_capacity, MAX_OBJECT_TYPE_COUNT),
           0U,
           0U,
           0U,
@@ -38,11 +38,11 @@ ObjectRegistry::ObjectRegistry(ObjectRegistryDesc desc)
 }
 
 ObjectRegistrationResult ObjectRegistry::CreateSyntheticObject(const ObjectDescriptor& descriptor) {
-    if (!descriptor.Type.IsValid()) {
+    if (!descriptor.type.IsValid()) {
         return ObjectRegistrationResult::Failure(RecordFailure(ObjectStatus::InvalidType));
     }
 
-    if (_snapshot.AliveObjectCount >= _snapshot.ObjectCapacity) {
+    if (_snapshot.alive_object_count >= _snapshot.object_capacity) {
         return ObjectRegistrationResult::Failure(RecordFailure(ObjectStatus::CapacityExceeded));
     }
 
@@ -50,11 +50,11 @@ ObjectRegistrationResult ObjectRegistry::CreateSyntheticObject(const ObjectDescr
     std::uint32_t freeSlotIndex = 0U;
     std::uint32_t slotIndex = 0U;
     for (ObjectSlot& slot : _slots) {
-        if (slotIndex >= _snapshot.ObjectCapacity) {
+        if (slotIndex >= _snapshot.object_capacity) {
             break;
         }
 
-        if (slot.IsActive) {
+        if (slot.is_active) {
             ++slotIndex;
             continue;
         }
@@ -68,23 +68,23 @@ ObjectRegistrationResult ObjectRegistry::CreateSyntheticObject(const ObjectDescr
         return ObjectRegistrationResult::Failure(RecordFailure(ObjectStatus::CapacityExceeded));
     }
 
-    const ObjectStatus typeStatus = RegisterTypeIfNeeded(descriptor.Type);
+    const ObjectStatus typeStatus = RegisterTypeIfNeeded(descriptor.type);
     if (typeStatus != ObjectStatus::Success) {
         return ObjectRegistrationResult::Failure(RecordFailure(typeStatus));
     }
 
-    if (freeSlot->Generation == INVALID_OBJECT_GENERATION) {
-        freeSlot->Generation = 1U;
+    if (freeSlot->generation == INVALID_OBJECT_GENERATION) {
+        freeSlot->generation = 1U;
     }
 
-    freeSlot->Type = descriptor.Type;
-    freeSlot->ReferenceCount = descriptor.InitialReferenceCount;
-    freeSlot->IsActive = true;
-    ++_snapshot.AliveObjectCount;
-    ++_snapshot.CreatedObjectCount;
-    _snapshot.ReferencedObjectCount += descriptor.InitialReferenceCount;
+    freeSlot->type = descriptor.type;
+    freeSlot->reference_count = descriptor.initial_reference_count;
+    freeSlot->is_active = true;
+    ++_snapshot.alive_object_count;
+    ++_snapshot.created_object_count;
+    _snapshot.referenced_object_count += descriptor.initial_reference_count;
     RecordSuccess();
-    return ObjectRegistrationResult::Success(ObjectHandle{freeSlotIndex, freeSlot->Generation});
+    return ObjectRegistrationResult::Success(ObjectHandle{freeSlotIndex, freeSlot->generation});
 }
 
 ObjectStatus ObjectRegistry::Validate(ObjectHandle handle) {
@@ -106,12 +106,12 @@ ObjectStatus ObjectRegistry::Acquire(ObjectHandle handle) {
     }
 
     ObjectSlot& slot = _slots[slotIndex];
-    if (slot.ReferenceCount == std::numeric_limits<std::uint32_t>::max()) {
+    if (slot.reference_count == std::numeric_limits<std::uint32_t>::max()) {
         return RecordFailure(ObjectStatus::ReferenceCountOverflow);
     }
 
-    ++slot.ReferenceCount;
-    ++_snapshot.ReferencedObjectCount;
+    ++slot.reference_count;
+    ++_snapshot.referenced_object_count;
     RecordSuccess();
     return ObjectStatus::Success;
 }
@@ -124,13 +124,13 @@ ObjectStatus ObjectRegistry::Release(ObjectHandle handle) {
     }
 
     ObjectSlot& slot = _slots[slotIndex];
-    if (slot.ReferenceCount == 0U) {
+    if (slot.reference_count == 0U) {
         return RecordFailure(ObjectStatus::NotAcquired);
     }
 
-    --slot.ReferenceCount;
-    --_snapshot.ReferencedObjectCount;
-    ++_snapshot.ReleasedReferenceCount;
+    --slot.reference_count;
+    --_snapshot.referenced_object_count;
+    ++_snapshot.released_reference_count;
     RecordSuccess();
     return ObjectStatus::Success;
 }
@@ -143,16 +143,16 @@ ObjectStatus ObjectRegistry::Destroy(ObjectHandle handle) {
     }
 
     ObjectSlot& slot = _slots[slotIndex];
-    if (slot.ReferenceCount != 0U) {
+    if (slot.reference_count != 0U) {
         return RecordFailure(ObjectStatus::StillReferenced);
     }
 
-    slot.IsActive = false;
-    slot.Type = ObjectTypeId{};
-    slot.ReferenceCount = 0U;
+    slot.is_active = false;
+    slot.type = ObjectTypeId{};
+    slot.reference_count = 0U;
     AdvanceGeneration(slot);
-    --_snapshot.AliveObjectCount;
-    ++_snapshot.DestroyedObjectCount;
+    --_snapshot.alive_object_count;
+    ++_snapshot.destroyed_object_count;
     RecordSuccess();
     return ObjectStatus::Success;
 }
@@ -162,14 +162,14 @@ ObjectSnapshot ObjectRegistry::Snapshot() const {
 }
 
 ObjectStatus ObjectRegistry::RecordFailure(ObjectStatus status) {
-    ++_snapshot.FailedOperationCount;
-    _snapshot.LastStatus = status;
+    ++_snapshot.failed_operation_count;
+    _snapshot.last_status = status;
     return status;
 }
 
 void ObjectRegistry::RecordSuccess() {
-    ++_snapshot.AcceptedOperationCount;
-    _snapshot.LastStatus = ObjectStatus::Success;
+    ++_snapshot.accepted_operation_count;
+    _snapshot.last_status = ObjectStatus::Success;
 }
 
 ObjectStatus ObjectRegistry::ResolveHandle(ObjectHandle handle, std::size_t& outIndex) const {
@@ -177,24 +177,24 @@ ObjectStatus ObjectRegistry::ResolveHandle(ObjectHandle handle, std::size_t& out
         return ObjectStatus::InvalidHandle;
     }
 
-    if (handle.Slot >= _snapshot.ObjectCapacity) {
+    if (handle.slot >= _snapshot.object_capacity) {
         return ObjectStatus::InvalidHandle;
     }
 
-    const ObjectSlot& slot = _slots[handle.Slot];
-    if (slot.Generation == INVALID_OBJECT_GENERATION) {
+    const ObjectSlot& slot = _slots[handle.slot];
+    if (slot.generation == INVALID_OBJECT_GENERATION) {
         return ObjectStatus::InvalidHandle;
     }
 
-    if (slot.Generation != handle.Generation) {
+    if (slot.generation != handle.generation) {
         return ObjectStatus::GenerationMismatch;
     }
 
-    if (!slot.IsActive) {
+    if (!slot.is_active) {
         return ObjectStatus::InvalidHandle;
     }
 
-    outIndex = handle.Slot;
+    outIndex = handle.slot;
     return ObjectStatus::Success;
 }
 
@@ -203,23 +203,23 @@ ObjectStatus ObjectRegistry::RegisterTypeIfNeeded(ObjectTypeId type) {
         return ObjectStatus::Success;
     }
 
-    if (_snapshot.TypeCount >= _snapshot.TypeCapacity) {
+    if (_snapshot.type_count >= _snapshot.type_capacity) {
         return ObjectStatus::CapacityExceeded;
     }
 
-    _types[_snapshot.TypeCount] = type;
-    ++_snapshot.TypeCount;
+    _types[_snapshot.type_count] = type;
+    ++_snapshot.type_count;
     return ObjectStatus::Success;
 }
 
 bool ObjectRegistry::HasType(ObjectTypeId type) const {
     std::uint32_t index = 0U;
     for (const ObjectTypeId& registeredType : _types) {
-        if (index >= _snapshot.TypeCount) {
+        if (index >= _snapshot.type_count) {
             return false;
         }
 
-        if (registeredType.Value == type.Value) {
+        if (registeredType.value == type.value) {
             return true;
         }
 
@@ -230,11 +230,11 @@ bool ObjectRegistry::HasType(ObjectTypeId type) const {
 }
 
 void ObjectRegistry::AdvanceGeneration(ObjectSlot& slot) {
-    if (slot.Generation == std::numeric_limits<std::uint32_t>::max()) {
-        slot.Generation = 1U;
+    if (slot.generation == std::numeric_limits<std::uint32_t>::max()) {
+        slot.generation = 1U;
         return;
     }
 
-    ++slot.Generation;
+    ++slot.generation;
 }
 }

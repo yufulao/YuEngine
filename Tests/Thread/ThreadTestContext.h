@@ -4,8 +4,8 @@
 
 namespace yuengine::thread::Tests {
 struct ThreadTestContext {
-    FixedTraceBuffer *Trace;
-    int Value;
-    bool ShouldFail;
+    FixedTraceBuffer *trace;
+    int value;
+    bool should_fail;
 };
 }

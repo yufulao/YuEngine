@@ -7,9 +7,9 @@
 
 namespace yuengine::object {
 struct ObjectSlot final {
-    ObjectTypeId Type;
-    std::uint32_t Generation = INVALID_OBJECT_GENERATION;
-    std::uint32_t ReferenceCount = 0U;
-    bool IsActive = false;
+    ObjectTypeId type;
+    std::uint32_t generation = INVALID_OBJECT_GENERATION;
+    std::uint32_t reference_count = 0U;
+    bool is_active = false;
 };
 }

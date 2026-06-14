@@ -5,18 +5,18 @@
 
 namespace yuengine::memory {
 struct MemorySnapshot {
-    std::uint64_t AllocationCount;
-    std::uint64_t FreeCount;
-    std::size_t RetainedBytes;
-    std::size_t PeakRetainedBytes;
-    std::size_t LeakCount;
+    std::uint64_t allocation_count;
+    std::uint64_t free_count;
+    std::size_t retained_bytes;
+    std::size_t peak_retained_bytes;
+    std::size_t leak_count;
 
     bool HasLeaks() const {
-        if (RetainedBytes != 0U) {
+        if (retained_bytes != 0U) {
             return true;
         }
 
-        return LeakCount != 0U;
+        return leak_count != 0U;
     }
 };
 }

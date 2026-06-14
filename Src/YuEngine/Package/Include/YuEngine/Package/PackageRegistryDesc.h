@@ -6,9 +6,9 @@
 
 namespace yuengine::package {
 struct PackageRegistryDesc final {
-    std::uint32_t ManifestCapacity = MAX_PACKAGE_MANIFEST_COUNT;
-    std::uint32_t EntryCapacity = MAX_PACKAGE_ENTRY_COUNT;
-    std::uint32_t DependencyEdgeCapacity = MAX_PACKAGE_DEPENDENCY_EDGE_COUNT;
-    std::uint32_t LoadPlanRecordCapacity = MAX_LOAD_PLAN_RECORD_COUNT;
+    std::uint32_t manifest_capacity = MAX_PACKAGE_MANIFEST_COUNT;
+    std::uint32_t entry_capacity = MAX_PACKAGE_ENTRY_COUNT;
+    std::uint32_t dependency_edge_capacity = MAX_PACKAGE_DEPENDENCY_EDGE_COUNT;
+    std::uint32_t load_plan_record_capacity = MAX_LOAD_PLAN_RECORD_COUNT;
 };
 }

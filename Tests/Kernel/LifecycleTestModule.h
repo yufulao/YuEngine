@@ -107,7 +107,7 @@ public:
 
         if (_verifyRequiredServicesOnShutdown) {
             const KernelResult serviceVerificationResult = VerifyRequiredServicesOnShutdown();
-            if (!serviceVerificationResult.Succeeded) {
+            if (!serviceVerificationResult.succeeded) {
                 return serviceVerificationResult;
             }
         }

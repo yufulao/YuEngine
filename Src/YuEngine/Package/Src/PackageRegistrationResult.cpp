@@ -14,6 +14,6 @@ PackageRegistrationResult PackageRegistrationResult::Failure(PackageStatus statu
 }
 
 bool PackageRegistrationResult::Succeeded() const {
-    return Status == PackageStatus::Success;
+    return status == PackageStatus::Success;
 }
 }

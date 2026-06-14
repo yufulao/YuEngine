@@ -6,7 +6,7 @@
 
 namespace yuengine::diagnostics {
 struct LogEvent {
-    LogLevel Level;
-    std::string Message;
+    LogLevel level;
+    std::string message;
 };
 }

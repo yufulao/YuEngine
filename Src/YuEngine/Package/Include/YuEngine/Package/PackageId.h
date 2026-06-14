@@ -4,10 +4,10 @@
 
 namespace yuengine::package {
 struct PackageId final {
-    std::uint32_t Value = 0U;
+    std::uint32_t value = 0U;
 
     bool IsValid() const {
-        return Value != 0U;
+        return value != 0U;
     }
 };
 }

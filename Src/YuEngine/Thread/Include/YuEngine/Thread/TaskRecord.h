@@ -6,9 +6,9 @@
 
 namespace yuengine::thread {
 struct TaskRecord {
-    TaskId Id;
-    TaskCallback Callback;
-    void* Context;
-    TaskStatus Status;
+    TaskId id;
+    TaskCallback callback;
+    void* context;
+    TaskStatus status;
 };
 }

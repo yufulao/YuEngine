@@ -6,7 +6,7 @@
 
 namespace yuengine::rhi {
 struct RhiCaptureResult final {
-    RhiStatus Status = RhiStatus::InvalidLifecycle;
-    std::size_t BytesWritten = 0U;
+    RhiStatus status = RhiStatus::InvalidLifecycle;
+    std::size_t bytes_written = 0U;
 };
 }

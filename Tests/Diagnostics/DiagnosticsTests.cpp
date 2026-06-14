@@ -120,7 +120,7 @@ int LoggingDisabledSinkDoesNotChangeBehavior() {
 
     const HeadlessHostConfig config{TICK_COUNT};
     const auto recordingResult = recordingHost.Run(recordingRuntime, config);
-    if (recordingResult.Status != HostStatus::Success) {
+    if (recordingResult.status != HostStatus::Success) {
         return Fail("recording host run failed");
     }
 
@@ -130,15 +130,15 @@ int LoggingDisabledSinkDoesNotChangeBehavior() {
     HeadlessHost disabledHost(disabledClock, disabledLogSink);
 
     const auto disabledResult = disabledHost.Run(disabledRuntime, config);
-    if (disabledResult.Status != HostStatus::Success) {
+    if (disabledResult.status != HostStatus::Success) {
         return Fail("disabled host run failed");
     }
 
-    if (recordingResult.LifecycleTrace != disabledResult.LifecycleTrace) {
+    if (recordingResult.lifecycle_trace != disabledResult.lifecycle_trace) {
         return Fail("disabled logging changed lifecycle behavior");
     }
 
-    if (recordingResult.TickTimesNanoseconds != disabledResult.TickTimesNanoseconds) {
+    if (recordingResult.tick_times_nanoseconds != disabledResult.tick_times_nanoseconds) {
         return Fail("disabled logging changed timer behavior");
     }
 
@@ -170,15 +170,15 @@ int DiagnosticsDisabledChannelDoesNotChangeBehavior() {
     }
 
     const DiagnosticsSnapshot snapshot = disabledChannel.Snapshot();
-    if (snapshot.Enabled) {
+    if (snapshot.enabled) {
         return Fail("disabled diagnostics snapshot reported enabled");
     }
 
-    if (snapshot.AcceptedEventCount != 0U) {
+    if (snapshot.accepted_event_count != 0U) {
         return Fail("disabled diagnostics channel accepted an event");
     }
 
-    if (snapshot.SuccessfulCounterUpdateCount != 0U) {
+    if (snapshot.successful_counter_update_count != 0U) {
         return Fail("disabled diagnostics channel accepted a counter update");
     }
 
@@ -203,19 +203,19 @@ int DiagnosticsBoundedChannelRecordsEventsAndCounters() {
     }
 
     const DiagnosticsSnapshot snapshot = channel.Snapshot();
-    if (snapshot.EventCount != 1U) {
+    if (snapshot.event_count != 1U) {
         return Fail("bounded diagnostics channel event count was wrong");
     }
 
-    if (snapshot.Events[0U].Payload != EVENT_PAYLOAD) {
+    if (snapshot.events[0U].payload != EVENT_PAYLOAD) {
         return Fail("bounded diagnostics channel event payload was wrong");
     }
 
-    if (snapshot.Counters[0U].Value != COUNTER_DELTA) {
+    if (snapshot.counters[0U].value != COUNTER_DELTA) {
         return Fail("bounded diagnostics channel counter value was wrong");
     }
 
-    if (snapshot.SuccessfulCounterUpdateCount != 1U) {
+    if (snapshot.successful_counter_update_count != 1U) {
         return Fail("bounded diagnostics channel counter update count was wrong");
     }
 
@@ -240,11 +240,11 @@ int DiagnosticsBoundedChannelDropsWhenFull() {
     }
 
     const DiagnosticsSnapshot snapshot = channel.Snapshot();
-    if (snapshot.EventCount != EVENT_CAPACITY) {
+    if (snapshot.event_count != EVENT_CAPACITY) {
         return Fail("full diagnostics channel changed event storage size");
     }
 
-    if (snapshot.DroppedEventCount != 1U) {
+    if (snapshot.dropped_event_count != 1U) {
         return Fail("full diagnostics channel did not count dropped event");
     }
 
@@ -260,23 +260,23 @@ int DiagnosticsChannelSnapshotReportsAcceptedDroppedAndCounters() {
     channel.AddCounter(DiagnosticsCounterId{COUNTER_ID}, COUNTER_DELTA);
 
     const DiagnosticsSnapshot snapshot = channel.Snapshot();
-    if (snapshot.AcceptedEventCount != 2U) {
+    if (snapshot.accepted_event_count != 2U) {
         return Fail("snapshot accepted event count was wrong");
     }
 
-    if (snapshot.DroppedEventCount != 1U) {
+    if (snapshot.dropped_event_count != 1U) {
         return Fail("snapshot dropped event count was wrong");
     }
 
-    if (snapshot.Counters[0U].Value != COUNTER_DELTA + 1U) {
+    if (snapshot.counters[0U].value != COUNTER_DELTA + 1U) {
         return Fail("snapshot counter value was wrong");
     }
 
-    if (snapshot.SuccessfulCounterUpdateCount != 2U) {
+    if (snapshot.successful_counter_update_count != 2U) {
         return Fail("snapshot counter update count was wrong");
     }
 
-    if (snapshot.SnapshotQueryCount != 1U) {
+    if (snapshot.snapshot_query_count != 1U) {
         return Fail("snapshot query count was wrong");
     }
 
@@ -304,15 +304,15 @@ int DiagnosticsChannelStoppedDoesNotMutateAfterShutdown() {
         return Fail("stopped diagnostics channel did not reject counter update");
     }
 
-    if (afterRecord.AcceptedEventCount != beforeRecord.AcceptedEventCount) {
+    if (afterRecord.accepted_event_count != beforeRecord.accepted_event_count) {
         return Fail("stopped diagnostics channel mutated accepted event count");
     }
 
-    if (afterRecord.SuccessfulCounterUpdateCount != beforeRecord.SuccessfulCounterUpdateCount) {
+    if (afterRecord.successful_counter_update_count != beforeRecord.successful_counter_update_count) {
         return Fail("stopped diagnostics channel mutated counter update count");
     }
 
-    if (afterRecord.Counters[0U].Value != beforeRecord.Counters[0U].Value) {
+    if (afterRecord.counters[0U].value != beforeRecord.counters[0U].value) {
         return Fail("stopped diagnostics channel mutated counter value");
     }
 
@@ -332,11 +332,11 @@ int DiagnosticsChannelRejectsUnknownIdsWhenValidationEnabled() {
     }
 
     const DiagnosticsSnapshot snapshot = channel.Snapshot();
-    if (snapshot.AcceptedEventCount != 0U) {
+    if (snapshot.accepted_event_count != 0U) {
         return Fail("unknown diagnostics event mutated accepted count");
     }
 
-    if (snapshot.SuccessfulCounterUpdateCount != 0U) {
+    if (snapshot.successful_counter_update_count != 0U) {
         return Fail("unknown diagnostics counter mutated update count");
     }
 
@@ -358,11 +358,11 @@ int DiagnosticsCounterOverflowReturnsExplicitStatusAndDoesNotMutate() {
         return Fail("counter overflow did not return explicit status");
     }
 
-    if (afterOverflow.Counters[0U].Value != beforeOverflow.Counters[0U].Value) {
+    if (afterOverflow.counters[0U].value != beforeOverflow.counters[0U].value) {
         return Fail("counter overflow mutated counter value");
     }
 
-    if (afterOverflow.SuccessfulCounterUpdateCount != beforeOverflow.SuccessfulCounterUpdateCount) {
+    if (afterOverflow.successful_counter_update_count != beforeOverflow.successful_counter_update_count) {
         return Fail("counter overflow mutated successful update count");
     }
 
@@ -379,7 +379,7 @@ int DiagnosticsNoReportDependencyForRuntimeResults() {
     const HeadlessHostConfig config{TICK_COUNT};
     const auto result = host.Run(runtime, config);
     const auto eventStatus = channel.RecordEvent(DiagnosticsEventId{EVENT_ID}, EVENT_PAYLOAD);
-    if (result.Status != HostStatus::Success) {
+    if (result.status != HostStatus::Success) {
         return Fail("host result depended on diagnostics output");
     }
 
@@ -387,7 +387,7 @@ int DiagnosticsNoReportDependencyForRuntimeResults() {
         return Fail("diagnostics event fixture was not accepted");
     }
 
-    if (result.LifecycleTrace.empty()) {
+    if (result.lifecycle_trace.empty()) {
         return Fail("runtime result was not explicit without reports");
     }
 
@@ -397,11 +397,11 @@ int DiagnosticsNoReportDependencyForRuntimeResults() {
 int DiagnosticsNoHiddenAllocationUsesYuMemorySignal() {
     BoundedDiagnosticsChannel channel = CreateRegisteredChannel();
     const DiagnosticsSnapshot snapshot = channel.Snapshot();
-    if (snapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("diagnostics channel did not expose YuMemory explicit-tracking status");
     }
 
-    if (snapshot.Enabled != true) {
+    if (snapshot.enabled != true) {
         return Fail("diagnostics channel snapshot did not report enabled state");
     }
 

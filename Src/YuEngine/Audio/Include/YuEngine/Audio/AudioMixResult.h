@@ -6,7 +6,7 @@
 
 namespace yuengine::audio {
 struct AudioMixResult final {
-    AudioStatus Status = AudioStatus::InvalidDescriptor;
-    std::size_t FramesWritten = 0U;
+    AudioStatus status = AudioStatus::InvalidDescriptor;
+    std::size_t frames_written = 0U;
 };
 }

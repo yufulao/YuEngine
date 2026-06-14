@@ -80,11 +80,11 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidBudgetClass);
     }
 
-    if (owner.Value.size() > MAX_MEMORY_OWNER_ID_BYTES) {
+    if (owner.value.size() > MAX_MEMORY_OWNER_ID_BYTES) {
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidOwner);
     }
 
-    if (tag.Value.size() > MAX_MEMORY_TAG_BYTES) {
+    if (tag.value.size() > MAX_MEMORY_TAG_BYTES) {
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidTag);
     }
 
@@ -100,27 +100,27 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
     const MemoryAllocationId allocationId{_nextAllocationId};
     ++_nextAllocationId;
 
-    if (!CopyFixedText(owner.Value, record->Owner, record->OwnerLength)) {
+    if (!CopyFixedText(owner.value, record->owner, record->owner_length)) {
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidOwner);
     }
 
-    if (!CopyFixedText(tag.Value, record->Tag, record->TagLength)) {
+    if (!CopyFixedText(tag.value, record->tag, record->tag_length)) {
         ResetAllocationRecord(*record);
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidTag);
     }
 
-    record->IsActive = true;
-    record->AllocationId = allocationId;
-    record->Bytes = bytes;
+    record->is_active = true;
+    record->allocation_id = allocationId;
+    record->bytes = bytes;
     ++_activeAllocationCount;
 
-    ++_snapshot.AllocationCount;
-    _snapshot.RetainedBytes += bytes;
-    if (_snapshot.RetainedBytes > _snapshot.PeakRetainedBytes) {
-        _snapshot.PeakRetainedBytes = _snapshot.RetainedBytes;
+    ++_snapshot.allocation_count;
+    _snapshot.retained_bytes += bytes;
+    if (_snapshot.retained_bytes > _snapshot.peak_retained_bytes) {
+        _snapshot.peak_retained_bytes = _snapshot.retained_bytes;
     }
 
-    _snapshot.LeakCount = _activeAllocationCount;
+    _snapshot.leak_count = _activeAllocationCount;
     ++_budgetAllocationCounts[MemoryBudgetClassIndex(budgetClass)];
     return MemoryAccountingResult::Success(allocationId);
 }
@@ -131,25 +131,25 @@ MemoryAccountingStatus CountingMemoryTracker::RecordFree(MemoryAllocationId allo
         return MemoryAccountingStatus::UnmatchedFree;
     }
 
-    if (!FixedTextEquals(record->Owner, record->OwnerLength, owner.Value)) {
+    if (!FixedTextEquals(record->owner, record->owner_length, owner.value)) {
         return MemoryAccountingStatus::OwnerTagMismatch;
     }
 
-    if (!FixedTextEquals(record->Tag, record->TagLength, tag.Value)) {
+    if (!FixedTextEquals(record->tag, record->tag_length, tag.value)) {
         return MemoryAccountingStatus::OwnerTagMismatch;
     }
 
-    const std::size_t bytes = record->Bytes;
-    if (bytes > _snapshot.RetainedBytes) {
+    const std::size_t bytes = record->bytes;
+    if (bytes > _snapshot.retained_bytes) {
         return MemoryAccountingStatus::UnmatchedFree;
     }
 
-    _snapshot.RetainedBytes -= bytes;
-    ++_snapshot.FreeCount;
+    _snapshot.retained_bytes -= bytes;
+    ++_snapshot.free_count;
 
     ResetAllocationRecord(*record);
     --_activeAllocationCount;
-    _snapshot.LeakCount = _activeAllocationCount;
+    _snapshot.leak_count = _activeAllocationCount;
     return MemoryAccountingStatus::Success;
 }
 
@@ -167,7 +167,7 @@ std::uint64_t CountingMemoryTracker::AllocationCountForBudget(MemoryBudgetClass 
 
 ActiveAllocationRecord* CountingMemoryTracker::FindActiveAllocation(MemoryAllocationId allocationId) {
     for (ActiveAllocationRecord& record : _activeAllocations) {
-        if (record.IsActive && record.AllocationId.Value == allocationId.Value) {
+        if (record.is_active && record.allocation_id.value == allocationId.value) {
             return &record;
         }
     }
@@ -177,7 +177,7 @@ ActiveAllocationRecord* CountingMemoryTracker::FindActiveAllocation(MemoryAlloca
 
 ActiveAllocationRecord* CountingMemoryTracker::FindFreeAllocationRecord() {
     for (ActiveAllocationRecord& record : _activeAllocations) {
-        if (!record.IsActive) {
+        if (!record.is_active) {
             return &record;
         }
     }

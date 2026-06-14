@@ -6,8 +6,8 @@
 
 namespace yuengine::diagnostics {
 struct DiagnosticsCounterSnapshot {
-    DiagnosticsCounterId Id;
-    std::uint64_t Value;
-    std::uint64_t SuccessfulUpdateCount;
+    DiagnosticsCounterId id;
+    std::uint64_t value;
+    std::uint64_t successful_update_count;
 };
 }

@@ -6,7 +6,7 @@
 
 namespace yuengine::object {
 struct ObjectDescriptor final {
-    ObjectTypeId Type;
-    std::uint32_t InitialReferenceCount = 0U;
+    ObjectTypeId type;
+    std::uint32_t initial_reference_count = 0U;
 };
 }

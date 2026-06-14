@@ -7,7 +7,7 @@ bool ServiceRegistry::Contains(std::string_view serviceId) const {
 
 bool ServiceRegistry::OwnerHasServices(std::string_view ownerModule) const {
     for (const auto& serviceEntry : _services) {
-        if (serviceEntry.second.OwnerModule == ownerModule) {
+        if (serviceEntry.second.owner_module == ownerModule) {
             return true;
         }
     }
@@ -17,7 +17,7 @@ bool ServiceRegistry::OwnerHasServices(std::string_view ownerModule) const {
 
 void ServiceRegistry::UnregisterOwner(std::string_view ownerModule) {
     for (auto iterator = _services.begin(); iterator != _services.end();) {
-        if (iterator->second.OwnerModule == ownerModule) {
+        if (iterator->second.owner_module == ownerModule) {
             iterator = _services.erase(iterator);
             continue;
         }
@@ -66,10 +66,10 @@ void* ServiceRegistry::ResolveRaw(std::string_view serviceId, std::type_index se
         return nullptr;
     }
 
-    if (iterator->second.Type != serviceType) {
+    if (iterator->second.type != serviceType) {
         return nullptr;
     }
 
-    return iterator->second.Instance;
+    return iterator->second.instance;
 }
 }

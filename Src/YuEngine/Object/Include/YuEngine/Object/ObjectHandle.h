@@ -6,15 +6,15 @@
 
 namespace yuengine::object {
 struct ObjectHandle final {
-    std::uint32_t Slot = INVALID_OBJECT_SLOT;
-    std::uint32_t Generation = INVALID_OBJECT_GENERATION;
+    std::uint32_t slot = INVALID_OBJECT_SLOT;
+    std::uint32_t generation = INVALID_OBJECT_GENERATION;
 
     bool IsValid() const {
-        if (Slot == INVALID_OBJECT_SLOT) {
+        if (slot == INVALID_OBJECT_SLOT) {
             return false;
         }
 
-        return Generation != INVALID_OBJECT_GENERATION;
+        return generation != INVALID_OBJECT_GENERATION;
     }
 };
 }

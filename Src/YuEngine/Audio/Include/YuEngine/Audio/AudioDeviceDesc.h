@@ -9,11 +9,11 @@
 
 namespace yuengine::audio {
 struct AudioDeviceDesc final {
-    AudioBackendKind BackendKind = AudioBackendKind::Test;
-    AudioSampleFormat Format = AudioSampleFormat::Signed16;
-    std::uint32_t SampleRate = SAMPLE_RATE;
-    std::uint16_t ChannelCount = CHANNEL_COUNT;
-    std::size_t SourceCapacity = MAX_SOURCES;
-    std::size_t VoiceCapacity = MAX_VOICES;
+    AudioBackendKind backend_kind = AudioBackendKind::Test;
+    AudioSampleFormat format = AudioSampleFormat::Signed16;
+    std::uint32_t sample_rate = SAMPLE_RATE;
+    std::uint16_t channel_count = CHANNEL_COUNT;
+    std::size_t source_capacity = MAX_SOURCES;
+    std::size_t voice_capacity = MAX_VOICES;
 };
 }

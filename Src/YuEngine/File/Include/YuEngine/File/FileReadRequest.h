@@ -5,7 +5,7 @@
 
 namespace yuengine::file {
 struct FileReadRequest {
-    MountId Mount;
-    VirtualPath Path;
+    MountId mount;
+    VirtualPath path;
 };
 }

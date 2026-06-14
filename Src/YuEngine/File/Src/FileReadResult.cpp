@@ -12,6 +12,6 @@ FileReadResult FileReadResult::Failure(FileStatus status) {
 }
 
 bool FileReadResult::Succeeded() const {
-    return Status == FileStatus::Success;
+    return status == FileStatus::Success;
 }
 }

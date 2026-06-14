@@ -4,10 +4,10 @@
 
 namespace yuengine::object {
 struct ObjectTypeId final {
-    std::uint32_t Value = 0U;
+    std::uint32_t value = 0U;
 
     bool IsValid() const {
-        return Value != 0U;
+        return value != 0U;
     }
 };
 }

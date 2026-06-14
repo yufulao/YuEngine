@@ -8,12 +8,12 @@
 
 namespace yuengine::rhi {
 struct RhiCapabilities final {
-    RhiBackendKind BackendKind = RhiBackendKind::Null;
-    RhiFormat ColorFormat = RhiFormat::Rgba8Unorm;
-    std::size_t ColorTargetCapacity = 0U;
-    std::size_t CommandListCapacity = 0U;
-    std::uint16_t MaxColorTargetExtent = 0U;
-    std::uint16_t MaxCaptureFixtureExtent = 0U;
-    bool SupportsCapture = false;
+    RhiBackendKind backend_kind = RhiBackendKind::Null;
+    RhiFormat color_format = RhiFormat::Rgba8Unorm;
+    std::size_t color_target_capacity = 0U;
+    std::size_t command_list_capacity = 0U;
+    std::uint16_t max_color_target_extent = 0U;
+    std::uint16_t max_capture_fixture_extent = 0U;
+    bool supports_capture = false;
 };
 }

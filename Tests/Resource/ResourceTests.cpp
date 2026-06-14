@@ -80,27 +80,27 @@ ResourceRegistrationResult Register(ResourceRegistry& registry, ResourceTypeId t
 }
 
 bool SnapshotsMatch(const ResourceSnapshot& left, const ResourceSnapshot& right) {
-    if (left.RegisteredResourceCount != right.RegisteredResourceCount) {
+    if (left.registered_resource_count != right.registered_resource_count) {
         return false;
     }
 
-    if (left.AcquiredHandleCount != right.AcquiredHandleCount) {
+    if (left.acquired_handle_count != right.acquired_handle_count) {
         return false;
     }
 
-    if (left.ReleasedHandleCount != right.ReleasedHandleCount) {
+    if (left.released_handle_count != right.released_handle_count) {
         return false;
     }
 
-    if (left.DependencyEdgeCount != right.DependencyEdgeCount) {
+    if (left.dependency_edge_count != right.dependency_edge_count) {
         return false;
     }
 
-    if (left.FailedOperationCount != right.FailedOperationCount) {
+    if (left.failed_operation_count != right.failed_operation_count) {
         return false;
     }
 
-    return left.AllocationAccountingStatus == right.AllocationAccountingStatus;
+    return left.allocation_accounting_status == right.allocation_accounting_status;
 }
 
 int ResourceRegisterSyntheticDescriptorReturnsGenerationHandle() {
@@ -110,24 +110,24 @@ int ResourceRegisterSyntheticDescriptorReturnsGenerationHandle() {
         return Fail("synthetic descriptor did not register");
     }
 
-    if (result.Handle.Slot != 0U) {
+    if (result.handle.slot != 0U) {
         return Fail("first resource used unexpected slot");
     }
 
-    if (result.Handle.Generation == INVALID_GENERATION) {
+    if (result.handle.generation == INVALID_GENERATION) {
         return Fail("resource handle generation was invalid");
     }
 
     const ResourceSnapshot snapshot = registry.Snapshot();
-    if (snapshot.RegisteredResourceCount != 1U) {
+    if (snapshot.registered_resource_count != 1U) {
         return Fail("registered resource count was not recorded");
     }
 
-    if (snapshot.TypeCount != 1U) {
+    if (snapshot.type_count != 1U) {
         return Fail("resource type count was not recorded");
     }
 
-    if (snapshot.LastStatus != ResourceStatus::Success) {
+    if (snapshot.last_status != ResourceStatus::Success) {
         return Fail("successful registration did not record success status");
     }
 
@@ -143,16 +143,16 @@ int ResourceRegisterDuplicateReturnsExplicitStatus() {
 
     const ResourceSnapshot beforeSnapshot = registry.Snapshot();
     const ResourceRegistrationResult duplicateResult = Register(registry, TYPE_TEXTURE, "texture_a");
-    if (duplicateResult.Status != ResourceStatus::DuplicateResource) {
+    if (duplicateResult.status != ResourceStatus::DuplicateResource) {
         return Fail("duplicate resource did not return explicit status");
     }
 
     const ResourceSnapshot afterSnapshot = registry.Snapshot();
-    if (afterSnapshot.RegisteredResourceCount != beforeSnapshot.RegisteredResourceCount) {
+    if (afterSnapshot.registered_resource_count != beforeSnapshot.registered_resource_count) {
         return Fail("duplicate resource changed registered count");
     }
 
-    if (afterSnapshot.TypeCount != beforeSnapshot.TypeCount) {
+    if (afterSnapshot.type_count != beforeSnapshot.type_count) {
         return Fail("duplicate resource changed type count");
     }
 
@@ -168,16 +168,16 @@ int ResourceRegistryRejectsCapacityOverflowWithoutMutation() {
 
     const ResourceSnapshot beforeSnapshot = registry.Snapshot();
     const ResourceRegistrationResult overflowResult = Register(registry, TYPE_MATERIAL, "material_a");
-    if (overflowResult.Status != ResourceStatus::CapacityExceeded) {
+    if (overflowResult.status != ResourceStatus::CapacityExceeded) {
         return Fail("resource capacity overflow did not return explicit status");
     }
 
     const ResourceSnapshot afterSnapshot = registry.Snapshot();
-    if (afterSnapshot.RegisteredResourceCount != beforeSnapshot.RegisteredResourceCount) {
+    if (afterSnapshot.registered_resource_count != beforeSnapshot.registered_resource_count) {
         return Fail("resource capacity overflow changed registered count");
     }
 
-    if (afterSnapshot.TypeCount != beforeSnapshot.TypeCount) {
+    if (afterSnapshot.type_count != beforeSnapshot.type_count) {
         return Fail("resource capacity overflow changed type count");
     }
 
@@ -193,24 +193,24 @@ int ResourceTypeCapacityOverflowDoesNotMutate() {
 
     const ResourceSnapshot beforeSnapshot = registry.Snapshot();
     const ResourceRegistrationResult overflowResult = Register(registry, TYPE_MATERIAL, TYPE_CAPACITY_MATERIAL_KEY);
-    if (overflowResult.Status != ResourceStatus::CapacityExceeded) {
+    if (overflowResult.status != ResourceStatus::CapacityExceeded) {
         return Fail(TYPE_CAPACITY_STATUS_FAILED);
     }
 
-    if (overflowResult.Handle.IsValid()) {
+    if (overflowResult.handle.IsValid()) {
         return Fail(TYPE_CAPACITY_VALID_HANDLE_FAILED);
     }
 
     const ResourceSnapshot afterSnapshot = registry.Snapshot();
-    if (afterSnapshot.TypeCount != beforeSnapshot.TypeCount) {
+    if (afterSnapshot.type_count != beforeSnapshot.type_count) {
         return Fail(TYPE_CAPACITY_TYPE_COUNT_FAILED);
     }
 
-    if (afterSnapshot.RegisteredResourceCount != beforeSnapshot.RegisteredResourceCount) {
+    if (afterSnapshot.registered_resource_count != beforeSnapshot.registered_resource_count) {
         return Fail(TYPE_CAPACITY_REGISTERED_COUNT_FAILED);
     }
 
-    if (afterSnapshot.AcquiredHandleCount != beforeSnapshot.AcquiredHandleCount) {
+    if (afterSnapshot.acquired_handle_count != beforeSnapshot.acquired_handle_count) {
         return Fail(TYPE_CAPACITY_ACQUIRED_COUNT_FAILED);
     }
 
@@ -219,15 +219,15 @@ int ResourceTypeCapacityOverflowDoesNotMutate() {
         return Fail(TYPE_CAPACITY_RETRY_REGISTRATION_FAILED);
     }
 
-    if (retryResult.Handle.Slot != 1U) {
+    if (retryResult.handle.slot != 1U) {
         return Fail(TYPE_CAPACITY_RETRY_SLOT_FAILED);
     }
 
-    if (retryResult.Handle.Generation != 1U) {
+    if (retryResult.handle.generation != 1U) {
         return Fail(TYPE_CAPACITY_RETRY_GENERATION_FAILED);
     }
 
-    if (registry.Snapshot().TypeCount != beforeSnapshot.TypeCount) {
+    if (registry.Snapshot().type_count != beforeSnapshot.type_count) {
         return Fail(TYPE_CAPACITY_RETRY_TYPE_COUNT_FAILED);
     }
 
@@ -241,17 +241,17 @@ int ResourceHandleRejectsWrongGeneration() {
         return Fail("registration failed");
     }
 
-    const ResourceStatus retireStatus = registry.Retire(result.Handle);
+    const ResourceStatus retireStatus = registry.Retire(result.handle);
     if (retireStatus != ResourceStatus::Success) {
         return Fail("retire failed before stale handle check");
     }
 
-    const ResourceStatus acquireStatus = registry.Acquire(result.Handle, TYPE_TEXTURE);
+    const ResourceStatus acquireStatus = registry.Acquire(result.handle, TYPE_TEXTURE);
     if (acquireStatus != ResourceStatus::GenerationMismatch) {
         return Fail("stale generation handle did not return explicit status");
     }
 
-    if (registry.Snapshot().AcquiredHandleCount != 0U) {
+    if (registry.Snapshot().acquired_handle_count != 0U) {
         return Fail("stale handle acquire changed reference count");
     }
 
@@ -266,12 +266,12 @@ int ResourceHandleRejectsTypeMismatch() {
     }
 
     const ResourceSnapshot beforeSnapshot = registry.Snapshot();
-    const ResourceStatus status = registry.Acquire(result.Handle, TYPE_AUDIO);
+    const ResourceStatus status = registry.Acquire(result.handle, TYPE_AUDIO);
     if (status != ResourceStatus::TypeMismatch) {
         return Fail("type mismatch did not return explicit status");
     }
 
-    if (registry.Snapshot().AcquiredHandleCount != beforeSnapshot.AcquiredHandleCount) {
+    if (registry.Snapshot().acquired_handle_count != beforeSnapshot.acquired_handle_count) {
         return Fail("type mismatch changed reference count");
     }
 
@@ -285,32 +285,32 @@ int ResourceAcquireReleaseTracksReferenceCount() {
         return Fail("registration failed");
     }
 
-    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != ResourceStatus::Success) {
+    if (registry.Acquire(result.handle, TYPE_TEXTURE) != ResourceStatus::Success) {
         return Fail("acquire failed");
     }
 
-    if (registry.Snapshot().AcquiredHandleCount != 1U) {
+    if (registry.Snapshot().acquired_handle_count != 1U) {
         return Fail("acquire did not increment reference count");
     }
 
-    if (registry.Release(result.Handle) != ResourceStatus::Success) {
+    if (registry.Release(result.handle) != ResourceStatus::Success) {
         return Fail("release failed");
     }
 
     const ResourceSnapshot afterReleaseSnapshot = registry.Snapshot();
-    if (afterReleaseSnapshot.AcquiredHandleCount != 0U) {
+    if (afterReleaseSnapshot.acquired_handle_count != 0U) {
         return Fail("release did not decrement reference count");
     }
 
-    if (afterReleaseSnapshot.ReleasedHandleCount != 1U) {
+    if (afterReleaseSnapshot.released_handle_count != 1U) {
         return Fail("release count was not recorded");
     }
 
-    if (registry.Release(result.Handle) != ResourceStatus::NotAcquired) {
+    if (registry.Release(result.handle) != ResourceStatus::NotAcquired) {
         return Fail("release at zero did not return not-acquired status");
     }
 
-    if (registry.Snapshot().AcquiredHandleCount != 0U) {
+    if (registry.Snapshot().acquired_handle_count != 0U) {
         return Fail("release at zero mutated reference count");
     }
 
@@ -324,15 +324,15 @@ int ResourceRepeatedAcquireIncrementsReferenceCount() {
         return Fail("registration failed");
     }
 
-    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != ResourceStatus::Success) {
+    if (registry.Acquire(result.handle, TYPE_TEXTURE) != ResourceStatus::Success) {
         return Fail("first acquire failed");
     }
 
-    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != ResourceStatus::Success) {
+    if (registry.Acquire(result.handle, TYPE_TEXTURE) != ResourceStatus::Success) {
         return Fail("second acquire failed");
     }
 
-    if (registry.Snapshot().AcquiredHandleCount != 2U) {
+    if (registry.Snapshot().acquired_handle_count != 2U) {
         return Fail("repeated acquire did not increment reference count");
     }
 
@@ -348,12 +348,12 @@ int ResourceAcquireRejectsReferenceCountOverflow() {
     }
 
     const ResourceSnapshot beforeSnapshot = registry.Snapshot();
-    const ResourceStatus status = registry.Acquire(result.Handle, TYPE_TEXTURE);
+    const ResourceStatus status = registry.Acquire(result.handle, TYPE_TEXTURE);
     if (status != ResourceStatus::ReferenceCountOverflow) {
         return Fail("reference count overflow did not return explicit status");
     }
 
-    if (registry.Snapshot().AcquiredHandleCount != beforeSnapshot.AcquiredHandleCount) {
+    if (registry.Snapshot().acquired_handle_count != beforeSnapshot.acquired_handle_count) {
         return Fail("reference count overflow changed acquired count");
     }
 
@@ -367,16 +367,16 @@ int ResourceRetireRejectsOutstandingAcquire() {
         return Fail("registration failed");
     }
 
-    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != ResourceStatus::Success) {
+    if (registry.Acquire(result.handle, TYPE_TEXTURE) != ResourceStatus::Success) {
         return Fail("acquire failed before retire");
     }
 
-    const ResourceStatus retireStatus = registry.Retire(result.Handle);
+    const ResourceStatus retireStatus = registry.Retire(result.handle);
     if (retireStatus != ResourceStatus::StillReferenced) {
         return Fail("retire with outstanding acquire did not return explicit status");
     }
 
-    if (registry.Snapshot().RegisteredResourceCount != 1U) {
+    if (registry.Snapshot().registered_resource_count != 1U) {
         return Fail("rejected retire changed registered count");
     }
 
@@ -395,27 +395,27 @@ int ResourceRetireRejectsLiveDependentEdge() {
         return Fail("dependent registration failed");
     }
 
-    if (registry.AddDependency(dependent.Handle, dependency.Handle) != ResourceStatus::Success) {
+    if (registry.AddDependency(dependent.handle, dependency.handle) != ResourceStatus::Success) {
         return Fail("dependency edge registration failed");
     }
 
-    if (registry.Retire(dependency.Handle) != ResourceStatus::StillDependedOn) {
+    if (registry.Retire(dependency.handle) != ResourceStatus::StillDependedOn) {
         return Fail("retire with live dependent edge did not return explicit status");
     }
 
-    if (registry.Snapshot().DependencyEdgeCount != 1U) {
+    if (registry.Snapshot().dependency_edge_count != 1U) {
         return Fail("rejected dependency retire changed edge count");
     }
 
-    if (registry.Retire(dependent.Handle) != ResourceStatus::Success) {
+    if (registry.Retire(dependent.handle) != ResourceStatus::Success) {
         return Fail("dependent retire failed");
     }
 
-    if (registry.Snapshot().DependencyEdgeCount != 0U) {
+    if (registry.Snapshot().dependency_edge_count != 0U) {
         return Fail("successful retire did not clear outbound dependency edge");
     }
 
-    if (registry.Retire(dependency.Handle) != ResourceStatus::Success) {
+    if (registry.Retire(dependency.handle) != ResourceStatus::Success) {
         return Fail("dependency retire failed after outbound edge cleared");
     }
 
@@ -429,17 +429,17 @@ int ResourceDependencyValidationRejectsMissingDependency() {
         return Fail("dependent registration failed");
     }
 
-    const ResourceStatus status = registry.AddDependency(dependent.Handle, ResourceHandle{31U, 1U});
+    const ResourceStatus status = registry.AddDependency(dependent.handle, ResourceHandle{31U, 1U});
     if (status != ResourceStatus::DependencyMissing) {
         return Fail("missing dependency did not return explicit status");
     }
 
     const ResourceSnapshot snapshot = registry.Snapshot();
-    if (snapshot.DependencyEdgeCount != 0U) {
+    if (snapshot.dependency_edge_count != 0U) {
         return Fail("missing dependency changed edge count");
     }
 
-    if (snapshot.DependencyValidationCount != 1U) {
+    if (snapshot.dependency_validation_count != 1U) {
         return Fail("missing dependency validation was not counted");
     }
 
@@ -463,24 +463,24 @@ int ResourceDependencyValidationRejectsCycle() {
         return Fail("third registration failed");
     }
 
-    if (registry.AddDependency(first.Handle, first.Handle) != ResourceStatus::DependencyCycle) {
+    if (registry.AddDependency(first.handle, first.handle) != ResourceStatus::DependencyCycle) {
         return Fail("self dependency did not return cycle status");
     }
 
-    if (registry.AddDependency(first.Handle, second.Handle) != ResourceStatus::Success) {
+    if (registry.AddDependency(first.handle, second.handle) != ResourceStatus::Success) {
         return Fail("first dependency edge failed");
     }
 
-    if (registry.AddDependency(second.Handle, third.Handle) != ResourceStatus::Success) {
+    if (registry.AddDependency(second.handle, third.handle) != ResourceStatus::Success) {
         return Fail("second dependency edge failed");
     }
 
-    const ResourceStatus cycleStatus = registry.AddDependency(third.Handle, first.Handle);
+    const ResourceStatus cycleStatus = registry.AddDependency(third.handle, first.handle);
     if (cycleStatus != ResourceStatus::DependencyCycle) {
         return Fail("dependency cycle did not return explicit status");
     }
 
-    if (registry.Snapshot().DependencyEdgeCount != 2U) {
+    if (registry.Snapshot().dependency_edge_count != 2U) {
         return Fail("dependency cycle changed edge count");
     }
 
@@ -494,15 +494,15 @@ int ResourceNoFileOrPackageDependencyForHandleRegistry() {
         return Fail("synthetic resource registration failed");
     }
 
-    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != ResourceStatus::Success) {
+    if (registry.Acquire(result.handle, TYPE_TEXTURE) != ResourceStatus::Success) {
         return Fail("synthetic handle acquire failed");
     }
 
-    if (registry.Release(result.Handle) != ResourceStatus::Success) {
+    if (registry.Release(result.handle) != ResourceStatus::Success) {
         return Fail("synthetic handle release failed");
     }
 
-    if (registry.Snapshot().RegisteredResourceCount != 1U) {
+    if (registry.Snapshot().registered_resource_count != 1U) {
         return Fail("synthetic handle registry left resource scope");
     }
 
@@ -522,14 +522,14 @@ int ResourceDisabledDiagnosticsDoesNotChangeResults() {
         return Fail("disabled registry registration failed");
     }
 
-    const ResourceStatus recordingAcquire = recordingRegistry.Acquire(recordingResult.Handle, TYPE_TEXTURE);
-    const ResourceStatus disabledAcquire = diagnosticsDisabledRegistry.Acquire(disabledResult.Handle, TYPE_TEXTURE);
+    const ResourceStatus recordingAcquire = recordingRegistry.Acquire(recordingResult.handle, TYPE_TEXTURE);
+    const ResourceStatus disabledAcquire = diagnosticsDisabledRegistry.Acquire(disabledResult.handle, TYPE_TEXTURE);
     if (recordingAcquire != disabledAcquire) {
         return Fail("disabled diagnostics changed acquire status");
     }
 
-    const ResourceStatus recordingMismatch = recordingRegistry.Acquire(recordingResult.Handle, TYPE_AUDIO);
-    const ResourceStatus disabledMismatch = diagnosticsDisabledRegistry.Acquire(disabledResult.Handle, TYPE_AUDIO);
+    const ResourceStatus recordingMismatch = recordingRegistry.Acquire(recordingResult.handle, TYPE_AUDIO);
+    const ResourceStatus disabledMismatch = diagnosticsDisabledRegistry.Acquire(disabledResult.handle, TYPE_AUDIO);
     if (recordingMismatch != disabledMismatch) {
         return Fail("disabled diagnostics changed failure status");
     }
@@ -544,7 +544,7 @@ int ResourceDisabledDiagnosticsDoesNotChangeResults() {
 int ResourceNoHiddenAllocationUsesYuMemorySignal() {
     ResourceRegistry registry;
     const ResourceSnapshot initialSnapshot = registry.Snapshot();
-    if (initialSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (initialSnapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("resource registry did not expose YuMemory accounting vocabulary");
     }
 
@@ -553,24 +553,24 @@ int ResourceNoHiddenAllocationUsesYuMemorySignal() {
         return Fail("registration failed");
     }
 
-    if (registry.Acquire(result.Handle, TYPE_TEXTURE) != ResourceStatus::Success) {
+    if (registry.Acquire(result.handle, TYPE_TEXTURE) != ResourceStatus::Success) {
         return Fail("acquire failed");
     }
 
-    if (registry.Release(result.Handle) != ResourceStatus::Success) {
+    if (registry.Release(result.handle) != ResourceStatus::Success) {
         return Fail("release failed");
     }
 
     const ResourceSnapshot afterSnapshot = registry.Snapshot();
-    if (afterSnapshot.ResourceCapacity != initialSnapshot.ResourceCapacity) {
+    if (afterSnapshot.resource_capacity != initialSnapshot.resource_capacity) {
         return Fail("resource capacity changed during handle fixture");
     }
 
-    if (afterSnapshot.DependencyEdgeCapacity != initialSnapshot.DependencyEdgeCapacity) {
+    if (afterSnapshot.dependency_edge_capacity != initialSnapshot.dependency_edge_capacity) {
         return Fail("dependency edge capacity changed during handle fixture");
     }
 
-    if (afterSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (afterSnapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("resource registry changed allocation accounting vocabulary");
     }
 

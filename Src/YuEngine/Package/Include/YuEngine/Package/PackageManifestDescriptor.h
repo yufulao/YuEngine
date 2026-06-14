@@ -4,6 +4,6 @@
 
 namespace yuengine::package {
 struct PackageManifestDescriptor final {
-    PackageId Id;
+    PackageId id;
 };
 }

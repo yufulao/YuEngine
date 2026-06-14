@@ -5,7 +5,7 @@
 
 namespace yuengine::input {
 struct InputBindingResult final {
-    InputStatus Status = InputStatus::Success;
-    InputActionId Action;
+    InputStatus status = InputStatus::Success;
+    InputActionId action;
 };
 }

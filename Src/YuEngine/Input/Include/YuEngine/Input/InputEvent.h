@@ -8,9 +8,9 @@
 
 namespace yuengine::input {
 struct InputEvent final {
-    InputDeviceId Device;
-    InputControlId Control;
-    InputEventType Type = InputEventType::ButtonPressed;
-    std::int32_t AxisValue = 0;
+    InputDeviceId device;
+    InputControlId control;
+    InputEventType type = InputEventType::ButtonPressed;
+    std::int32_t axis_value = 0;
 };
 }

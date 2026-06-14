@@ -13,12 +13,12 @@ using resource::ResourceLogicalKey;
 using resource::ResourceTypeId;
 
 struct PackageEntryDescriptor final {
-    PackageId Package;
-    PackageEntryId Entry;
-    ResourceTypeId Type;
-    ResourceLogicalKey LogicalKey;
-    PackageSourceKey SourceKey;
-    std::uint32_t ByteOffset = 0U;
-    std::uint32_t ByteSize = 0U;
+    PackageId package;
+    PackageEntryId entry;
+    ResourceTypeId type;
+    ResourceLogicalKey logical_key;
+    PackageSourceKey source_key;
+    std::uint32_t byte_offset = 0U;
+    std::uint32_t byte_size = 0U;
 };
 }

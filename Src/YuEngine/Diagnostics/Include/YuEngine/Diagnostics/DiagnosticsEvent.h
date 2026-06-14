@@ -6,7 +6,7 @@
 
 namespace yuengine::diagnostics {
 struct DiagnosticsEvent {
-    DiagnosticsEventId Id;
-    std::uint64_t Payload;
+    DiagnosticsEventId id;
+    std::uint64_t payload;
 };
 }

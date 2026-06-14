@@ -7,8 +7,8 @@
 
 namespace yuengine::file {
 struct FileReadResult {
-    FileStatus Status;
-    std::vector<std::uint8_t> Bytes;
+    FileStatus status;
+    std::vector<std::uint8_t> bytes;
 
     static FileReadResult Success(std::vector<std::uint8_t> bytes);
     static FileReadResult Failure(FileStatus status);

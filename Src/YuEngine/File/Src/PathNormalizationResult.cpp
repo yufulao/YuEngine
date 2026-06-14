@@ -12,6 +12,6 @@ PathNormalizationResult PathNormalizationResult::Failure(FileStatus status) {
 }
 
 bool PathNormalizationResult::Succeeded() const {
-    return Status == FileStatus::Success;
+    return status == FileStatus::Success;
 }
 }

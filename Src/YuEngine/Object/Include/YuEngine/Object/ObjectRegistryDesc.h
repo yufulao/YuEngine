@@ -6,7 +6,7 @@
 
 namespace yuengine::object {
 struct ObjectRegistryDesc final {
-    std::uint32_t ObjectCapacity = MAX_OBJECT_COUNT;
-    std::uint32_t TypeCapacity = MAX_OBJECT_TYPE_COUNT;
+    std::uint32_t object_capacity = MAX_OBJECT_COUNT;
+    std::uint32_t type_capacity = MAX_OBJECT_TYPE_COUNT;
 };
 }

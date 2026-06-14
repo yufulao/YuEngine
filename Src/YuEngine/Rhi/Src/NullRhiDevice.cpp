@@ -22,23 +22,23 @@ NullRhiDevice::NullRhiDevice()
 }
 
 RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc& desc) {
-    if (desc.BackendKind != RhiBackendKind::Null) {
+    if (desc.backend_kind != RhiBackendKind::Null) {
         return RhiStatus::UnsupportedBackend;
     }
 
-    if (desc.ColorTargetCapacity == 0U) {
+    if (desc.color_target_capacity == 0U) {
         return RhiStatus::InvalidDescriptor;
     }
 
-    if (desc.ColorTargetCapacity > MAX_COLOR_TARGETS) {
+    if (desc.color_target_capacity > MAX_COLOR_TARGETS) {
         return RhiStatus::CapacityExceeded;
     }
 
-    if (desc.CommandListCapacity == 0U) {
+    if (desc.command_list_capacity == 0U) {
         return RhiStatus::InvalidDescriptor;
     }
 
-    if (desc.CommandListCapacity > MAX_COMMANDS) {
+    if (desc.command_list_capacity > MAX_COMMANDS) {
         return RhiStatus::CapacityExceeded;
     }
 
@@ -47,21 +47,21 @@ RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc& desc) {
         ++_generationSeed;
     }
 
-    _targets.assign(desc.ColorTargetCapacity, RhiTargetSlot{});
+    _targets.assign(desc.color_target_capacity, RhiTargetSlot{});
     for (RhiTargetSlot& target : _targets) {
-        target.Generation = _generationSeed;
+        target.generation = _generationSeed;
     }
 
     _capabilities = RhiCapabilities{
         RhiBackendKind::Null,
         RhiFormat::Rgba8Unorm,
-        desc.ColorTargetCapacity,
-        desc.CommandListCapacity,
+        desc.color_target_capacity,
+        desc.command_list_capacity,
         MAX_COLOR_TARGET_EXTENT,
         MAX_CAPTURE_FIXTURE_EXTENT,
         true};
     _snapshot = RhiDeviceSnapshot{};
-    _snapshot.ColorTargetCapacity = desc.ColorTargetCapacity;
+    _snapshot.color_target_capacity = desc.color_target_capacity;
     _isInitialized = true;
     _hasSubmittedFrame = false;
     _hasPresentedFrame = false;
@@ -73,7 +73,7 @@ RhiStatus NullRhiDevice::CreateColorTarget(const RhiColorTargetDesc& desc, RhiTe
         return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
-    if (desc.Format != RhiFormat::Rgba8Unorm) {
+    if (desc.format != RhiFormat::Rgba8Unorm) {
         return RecordFailure(RhiStatus::UnsupportedFormat);
     }
 
@@ -83,20 +83,20 @@ RhiStatus NullRhiDevice::CreateColorTarget(const RhiColorTargetDesc& desc, RhiTe
 
     for (std::size_t index = 0U; index < _targets.size(); ++index) {
         RhiTargetSlot& slot = _targets[index];
-        if (slot.IsActive) {
+        if (slot.is_active) {
             continue;
         }
 
-        if (slot.Generation == INVALID_GENERATION) {
-            slot.Generation = 1U;
+        if (slot.generation == INVALID_GENERATION) {
+            slot.generation = 1U;
         }
 
-        slot.IsActive = true;
-        slot.Desc = desc;
-        slot.Bytes.assign(PixelByteCount(desc), 0U);
-        outHandle = RhiTextureHandle{static_cast<std::uint32_t>(index), slot.Generation};
-        ++_snapshot.ColorTargetCount;
-        ++_snapshot.CreatedTargetCount;
+        slot.is_active = true;
+        slot.desc = desc;
+        slot.bytes.assign(PixelByteCount(desc), 0U);
+        outHandle = RhiTextureHandle{static_cast<std::uint32_t>(index), slot.generation};
+        ++_snapshot.color_target_count;
+        ++_snapshot.created_target_count;
         return RhiStatus::Success;
     }
 
@@ -108,12 +108,12 @@ RhiStatus NullRhiDevice::DestroyTarget(RhiTextureHandle handle) {
         return RecordFailure(RhiStatus::InvalidHandle);
     }
 
-    RhiTargetSlot& slot = _targets[handle.Slot];
-    slot.IsActive = false;
-    slot.Bytes.clear();
-    ++slot.Generation;
-    --_snapshot.ColorTargetCount;
-    ++_snapshot.DestroyedTargetCount;
+    RhiTargetSlot& slot = _targets[handle.slot];
+    slot.is_active = false;
+    slot.bytes.clear();
+    ++slot.generation;
+    --_snapshot.color_target_count;
+    ++_snapshot.destroyed_target_count;
     return RhiStatus::Success;
 }
 
@@ -127,7 +127,7 @@ RhiStatus NullRhiDevice::RecordClear(RhiCommandList& commandList, RhiTextureHand
         return RecordFailure(status);
     }
 
-    ++_snapshot.RecordedCommandCount;
+    ++_snapshot.recorded_command_count;
     return RhiStatus::Success;
 }
 
@@ -136,7 +136,7 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList& commandList) {
         return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
-    if (commandList.Capacity() > _capabilities.CommandListCapacity) {
+    if (commandList.Capacity() > _capabilities.command_list_capacity) {
         return RecordFailure(RhiStatus::CapacityExceeded);
     }
 
@@ -152,11 +152,11 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList& commandList) {
         }
     }
 
-    _snapshot.CommandStorageCapacityBeforeFrame = commandList.Capacity();
+    _snapshot.command_storage_capacity_before_frame = commandList.Capacity();
     for (std::size_t index = 0U; index < commandList.CommandCount(); ++index) {
         const RhiCommandRecord& command = commandList.CommandAt(index);
-        if (command.Type == RhiCommandType::ClearColor) {
-            ExecuteClear(command.Target, command.Color);
+        if (command.type == RhiCommandType::ClearColor) {
+            ExecuteClear(command.target, command.color);
             continue;
         }
     }
@@ -164,8 +164,8 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList& commandList) {
     _submittedHandle = target;
     _hasSubmittedFrame = true;
     _hasPresentedFrame = false;
-    ++_snapshot.SubmitCount;
-    _snapshot.CommandStorageCapacityAfterLastFrame = commandList.Capacity();
+    ++_snapshot.submit_count;
+    _snapshot.command_storage_capacity_after_last_frame = commandList.Capacity();
     return RhiStatus::Success;
 }
 
@@ -180,7 +180,7 @@ RhiStatus NullRhiDevice::Present() {
 
     _presentedHandle = _submittedHandle;
     _hasPresentedFrame = true;
-    ++_snapshot.PresentCount;
+    ++_snapshot.present_count;
     return RhiStatus::Success;
 }
 
@@ -195,23 +195,23 @@ RhiCaptureResult NullRhiDevice::CapturePresentedTarget(std::span<std::uint8_t> d
         return RhiCaptureResult{RhiStatus::InvalidHandle, 0U};
     }
 
-    const RhiTargetSlot& slot = _targets[_presentedHandle.Slot];
-    if (slot.Desc.Extent.Width > MAX_CAPTURE_FIXTURE_EXTENT || slot.Desc.Extent.Height > MAX_CAPTURE_FIXTURE_EXTENT) {
+    const RhiTargetSlot& slot = _targets[_presentedHandle.slot];
+    if (slot.desc.extent.width > MAX_CAPTURE_FIXTURE_EXTENT || slot.desc.extent.height > MAX_CAPTURE_FIXTURE_EXTENT) {
         RecordFailure(RhiStatus::CapacityExceeded);
-        _snapshot.LastCaptureBytesWritten = 0U;
+        _snapshot.last_capture_bytes_written = 0U;
         return RhiCaptureResult{RhiStatus::CapacityExceeded, 0U};
     }
 
-    const std::size_t byteCount = slot.Bytes.size();
+    const std::size_t byteCount = slot.bytes.size();
     if (destination.size() < byteCount) {
         RecordFailure(RhiStatus::CapacityExceeded);
-        _snapshot.LastCaptureBytesWritten = 0U;
+        _snapshot.last_capture_bytes_written = 0U;
         return RhiCaptureResult{RhiStatus::CapacityExceeded, 0U};
     }
 
-    std::copy(slot.Bytes.begin(), slot.Bytes.end(), destination.begin());
-    ++_snapshot.CaptureCount;
-    _snapshot.LastCaptureBytesWritten = byteCount;
+    std::copy(slot.bytes.begin(), slot.bytes.end(), destination.begin());
+    ++_snapshot.capture_count;
+    _snapshot.last_capture_bytes_written = byteCount;
     return RhiCaptureResult{RhiStatus::Success, byteCount};
 }
 
@@ -224,7 +224,7 @@ RhiDeviceSnapshot NullRhiDevice::Snapshot() const {
 }
 
 RhiStatus NullRhiDevice::RecordFailure(RhiStatus status) {
-    ++_snapshot.FailedOperationCount;
+    ++_snapshot.failed_operation_count;
     return status;
 }
 
@@ -233,52 +233,52 @@ bool NullRhiDevice::IsTargetHandleValid(RhiTextureHandle handle) const {
         return false;
     }
 
-    if (handle.Generation == INVALID_GENERATION) {
+    if (handle.generation == INVALID_GENERATION) {
         return false;
     }
 
-    if (handle.Slot >= _targets.size()) {
+    if (handle.slot >= _targets.size()) {
         return false;
     }
 
-    const RhiTargetSlot& slot = _targets[handle.Slot];
-    if (!slot.IsActive) {
+    const RhiTargetSlot& slot = _targets[handle.slot];
+    if (!slot.is_active) {
         return false;
     }
 
-    return slot.Generation == handle.Generation;
+    return slot.generation == handle.generation;
 }
 
 bool NullRhiDevice::IsCommandTargetValidForFrame(const RhiCommandRecord& command, RhiTextureHandle frameTarget) const {
-    if (command.Type != RhiCommandType::ClearColor) {
+    if (command.type != RhiCommandType::ClearColor) {
         return true;
     }
 
-    if (command.Target.Slot != frameTarget.Slot) {
+    if (command.target.slot != frameTarget.slot) {
         return false;
     }
 
-    if (command.Target.Generation != frameTarget.Generation) {
+    if (command.target.generation != frameTarget.generation) {
         return false;
     }
 
-    return IsTargetHandleValid(command.Target);
+    return IsTargetHandleValid(command.target);
 }
 
 bool NullRhiDevice::IsColorTargetDescValid(const RhiColorTargetDesc& desc) const {
-    if (desc.Extent.Width == 0U) {
+    if (desc.extent.width == 0U) {
         return false;
     }
 
-    if (desc.Extent.Height == 0U) {
+    if (desc.extent.height == 0U) {
         return false;
     }
 
-    if (desc.Extent.Width > MAX_COLOR_TARGET_EXTENT) {
+    if (desc.extent.width > MAX_COLOR_TARGET_EXTENT) {
         return false;
     }
 
-    if (desc.Extent.Height > MAX_COLOR_TARGET_EXTENT) {
+    if (desc.extent.height > MAX_COLOR_TARGET_EXTENT) {
         return false;
     }
 
@@ -286,7 +286,7 @@ bool NullRhiDevice::IsColorTargetDescValid(const RhiColorTargetDesc& desc) const
 }
 
 std::size_t NullRhiDevice::PixelByteCount(const RhiColorTargetDesc& desc) const {
-    return static_cast<std::size_t>(desc.Extent.Width) * static_cast<std::size_t>(desc.Extent.Height) * RGBA8_BYTES_PER_PIXEL;
+    return static_cast<std::size_t>(desc.extent.width) * static_cast<std::size_t>(desc.extent.height) * RGBA8_BYTES_PER_PIXEL;
 }
 
 void NullRhiDevice::ExecuteClear(RhiTextureHandle handle, RhiColor color) {
@@ -294,12 +294,12 @@ void NullRhiDevice::ExecuteClear(RhiTextureHandle handle, RhiColor color) {
         return;
     }
 
-    RhiTargetSlot& slot = _targets[handle.Slot];
-    for (std::size_t index = 0U; index < slot.Bytes.size(); index += RGBA8_BYTES_PER_PIXEL) {
-        slot.Bytes[index] = color.R;
-        slot.Bytes[index + 1U] = color.G;
-        slot.Bytes[index + 2U] = color.B;
-        slot.Bytes[index + 3U] = color.A;
+    RhiTargetSlot& slot = _targets[handle.slot];
+    for (std::size_t index = 0U; index < slot.bytes.size(); index += RGBA8_BYTES_PER_PIXEL) {
+        slot.bytes[index] = color.r;
+        slot.bytes[index + 1U] = color.g;
+        slot.bytes[index + 2U] = color.b;
+        slot.bytes[index + 3U] = color.a;
     }
 }
 }

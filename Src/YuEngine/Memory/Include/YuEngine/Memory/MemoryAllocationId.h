@@ -4,10 +4,10 @@
 
 namespace yuengine::memory {
 struct MemoryAllocationId {
-    std::uint64_t Value;
+    std::uint64_t value;
 
     bool IsValid() const {
-        return Value != 0U;
+        return value != 0U;
     }
 };
 }

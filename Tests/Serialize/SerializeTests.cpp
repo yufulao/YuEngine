@@ -109,7 +109,7 @@ void WriteValidHeader(std::uint8_t* buffer, std::uint32_t recordCount) {
 }
 
 std::uint32_t WriteRecordHeader(std::uint8_t* buffer, std::uint32_t offset, SerializeRecordId record, std::uint32_t fieldCount) {
-    WriteUInt32At(buffer, offset, record.Value);
+    WriteUInt32At(buffer, offset, record.value);
     WriteUInt32At(buffer, offset + sizeof(std::uint32_t), fieldCount);
     return offset + RECORD_HEADER_BYTE_COUNT;
 }
@@ -120,7 +120,7 @@ std::uint32_t WriteFieldHeader(
     SerializeFieldId field,
     std::uint32_t type,
     std::uint32_t byteCount) {
-    WriteUInt32At(buffer, offset, field.Value);
+    WriteUInt32At(buffer, offset, field.value);
     WriteUInt32At(buffer, offset + sizeof(std::uint32_t), type);
     WriteUInt32At(buffer, offset + (sizeof(std::uint32_t) * 2U), byteCount);
     return offset + FIELD_HEADER_BYTE_COUNT;
@@ -140,44 +140,44 @@ bool BytesMatch(const std::uint8_t* left, const std::uint8_t* right, std::uint32
 }
 
 bool SnapshotsMatch(const SerializeSnapshot& left, const SerializeSnapshot& right) {
-    if (left.MajorVersion != right.MajorVersion) {
+    if (left.major_version != right.major_version) {
         return false;
     }
 
-    if (left.MinorVersion != right.MinorVersion) {
+    if (left.minor_version != right.minor_version) {
         return false;
     }
 
-    if (left.CommittedByteCount != right.CommittedByteCount) {
+    if (left.committed_byte_count != right.committed_byte_count) {
         return false;
     }
 
-    if (left.RecordCount != right.RecordCount) {
+    if (left.record_count != right.record_count) {
         return false;
     }
 
-    if (left.FieldCount != right.FieldCount) {
+    if (left.field_count != right.field_count) {
         return false;
     }
 
-    if (left.AcceptedOperationCount != right.AcceptedOperationCount) {
+    if (left.accepted_operation_count != right.accepted_operation_count) {
         return false;
     }
 
-    if (left.FailedOperationCount != right.FailedOperationCount) {
+    if (left.failed_operation_count != right.failed_operation_count) {
         return false;
     }
 
-    if (left.AllocationAccountingStatus != right.AllocationAccountingStatus) {
+    if (left.allocation_accounting_status != right.allocation_accounting_status) {
         return false;
     }
 
-    return left.LastStatus == right.LastStatus;
+    return left.last_status == right.last_status;
 }
 
 int BuildRoundTripFixture(StreamFixture &fixture) {
-    fixture.Buffer.fill(SENTINEL_BYTE);
-    SerializeWriter writer(fixture.Buffer.data(), static_cast<std::uint32_t>(fixture.Buffer.size()));
+    fixture.buffer.fill(SENTINEL_BYTE);
+    SerializeWriter writer(fixture.buffer.data(), static_cast<std::uint32_t>(fixture.buffer.size()));
     if (writer.BeginStream() != SerializeStatus::Success) {
         return Fail("begin stream failed");
     }
@@ -207,8 +207,8 @@ int BuildRoundTripFixture(StreamFixture &fixture) {
         return Fail("write fixed bytes failed");
     }
 
-    fixture.Snapshot = writer.Snapshot();
-    fixture.ByteCount = fixture.Snapshot.CommittedByteCount;
+    fixture.snapshot = writer.Snapshot();
+    fixture.byte_count = fixture.snapshot.committed_byte_count;
     return 0;
 }
 
@@ -223,15 +223,15 @@ int SerializeWriteReadPrimitivesRoundTripsDeterministically() {
         return 1;
     }
 
-    if (firstFixture.ByteCount != secondFixture.ByteCount) {
+    if (firstFixture.byte_count != secondFixture.byte_count) {
         return Fail("deterministic stream byte counts did not match");
     }
 
-    if (!BytesMatch(firstFixture.Buffer.data(), secondFixture.Buffer.data(), firstFixture.ByteCount)) {
+    if (!BytesMatch(firstFixture.buffer.data(), secondFixture.buffer.data(), firstFixture.byte_count)) {
         return Fail("deterministic stream bytes did not match");
     }
 
-    SerializeReader reader(firstFixture.Buffer.data(), firstFixture.ByteCount);
+    SerializeReader reader(firstFixture.buffer.data(), firstFixture.byte_count);
     if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail("reader did not open stream");
     }
@@ -301,8 +301,8 @@ int SerializeStreamHeaderRejectsInvalidMagicOrVersion() {
         return 1;
     }
 
-    fixture.Buffer[0U] = 0U;
-    SerializeReader invalidMagicReader(fixture.Buffer.data(), fixture.ByteCount);
+    fixture.buffer[0U] = 0U;
+    SerializeReader invalidMagicReader(fixture.buffer.data(), fixture.byte_count);
     if (invalidMagicReader.OpenStream() != SerializeStatus::InvalidHeader) {
         return Fail("invalid magic did not return explicit status");
     }
@@ -311,12 +311,12 @@ int SerializeStreamHeaderRejectsInvalidMagicOrVersion() {
         return 1;
     }
 
-    SerializeReader reopenedReader(fixture.Buffer.data(), fixture.ByteCount);
+    SerializeReader reopenedReader(fixture.buffer.data(), fixture.byte_count);
     if (reopenedReader.OpenStream() != SerializeStatus::Success) {
         return Fail(REOPEN_VALID_STREAM_MESSAGE);
     }
 
-    fixture.Buffer[0U] = 0U;
+    fixture.buffer[0U] = 0U;
     if (reopenedReader.OpenStream() != SerializeStatus::InvalidHeader) {
         return Fail(REOPEN_INVALID_MAGIC_MESSAGE);
     }
@@ -334,8 +334,8 @@ int SerializeStreamHeaderRejectsInvalidMagicOrVersion() {
         return 1;
     }
 
-    WriteUInt16At(fixture.Buffer.data(), STREAM_MAJOR_VERSION_OFFSET, 99U);
-    SerializeReader unsupportedVersionReader(fixture.Buffer.data(), fixture.ByteCount);
+    WriteUInt16At(fixture.buffer.data(), STREAM_MAJOR_VERSION_OFFSET, 99U);
+    SerializeReader unsupportedVersionReader(fixture.buffer.data(), fixture.byte_count);
     if (unsupportedVersionReader.OpenStream() != SerializeStatus::UnsupportedVersion) {
         return Fail("unsupported major version did not return explicit status");
     }
@@ -349,8 +349,8 @@ int SerializeStreamHeaderRejectsReservedFlags() {
         return 1;
     }
 
-    WriteUInt32At(fixture.Buffer.data(), STREAM_FLAGS_OFFSET, 1U);
-    SerializeReader reader(fixture.Buffer.data(), fixture.ByteCount);
+    WriteUInt32At(fixture.buffer.data(), STREAM_FLAGS_OFFSET, 1U);
+    SerializeReader reader(fixture.buffer.data(), fixture.byte_count);
     if (reader.OpenStream() != SerializeStatus::InvalidHeader) {
         return Fail("reserved stream flags did not return explicit header status");
     }
@@ -386,11 +386,11 @@ int SerializeWriterBufferOverflowReturnsStatusWithoutOverrun() {
         return Fail("undersized field payload did not fail");
     }
 
-    if (fieldWriter.Snapshot().CommittedByteCount != beforeSnapshot.CommittedByteCount) {
+    if (fieldWriter.Snapshot().committed_byte_count != beforeSnapshot.committed_byte_count) {
         return Fail("undersized field write changed committed bytes");
     }
 
-    if (fieldBuffer[beforeSnapshot.CommittedByteCount] != SENTINEL_BYTE) {
+    if (fieldBuffer[beforeSnapshot.committed_byte_count] != SENTINEL_BYTE) {
         return Fail("undersized field write modified uncommitted bytes");
     }
 
@@ -419,11 +419,11 @@ int SerializeRecordCapacityOverflowDoesNotMutate() {
     }
 
     const SerializeSnapshot afterSnapshot = writer.Snapshot();
-    if (afterSnapshot.RecordCount != beforeSnapshot.RecordCount) {
+    if (afterSnapshot.record_count != beforeSnapshot.record_count) {
         return Fail("record overflow changed record count");
     }
 
-    if (afterSnapshot.CommittedByteCount != beforeSnapshot.CommittedByteCount) {
+    if (afterSnapshot.committed_byte_count != beforeSnapshot.committed_byte_count) {
         return Fail("record overflow changed committed byte count");
     }
 
@@ -456,11 +456,11 @@ int SerializeFieldCapacityOverflowDoesNotMutate() {
     }
 
     const SerializeSnapshot afterSnapshot = writer.Snapshot();
-    if (afterSnapshot.FieldCount != beforeSnapshot.FieldCount) {
+    if (afterSnapshot.field_count != beforeSnapshot.field_count) {
         return Fail("field overflow changed field count");
     }
 
-    if (afterSnapshot.CommittedByteCount != beforeSnapshot.CommittedByteCount) {
+    if (afterSnapshot.committed_byte_count != beforeSnapshot.committed_byte_count) {
         return Fail("field overflow changed committed byte count");
     }
 
@@ -485,7 +485,7 @@ int SerializeFixedBytesPayloadLimitReturnsExplicitStatus() {
         return Fail("oversized fixed bytes did not return explicit status");
     }
 
-    if (writer.Snapshot().CommittedByteCount != beforeSnapshot.CommittedByteCount) {
+    if (writer.Snapshot().committed_byte_count != beforeSnapshot.committed_byte_count) {
         return Fail("oversized fixed bytes changed committed byte count");
     }
 
@@ -493,7 +493,7 @@ int SerializeFixedBytesPayloadLimitReturnsExplicitStatus() {
         return Fail(ZERO_FIXED_BYTES_WRITE_MESSAGE);
     }
 
-    SerializeReader reader(buffer.data(), writer.Snapshot().CommittedByteCount);
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
     if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail(ZERO_FIXED_BYTES_OPEN_MESSAGE);
     }
@@ -593,7 +593,7 @@ int SerializeReaderTypeMismatchReturnsExplicitStatus() {
         return 1;
     }
 
-    SerializeReader reader(fixture.Buffer.data(), fixture.ByteCount);
+    SerializeReader reader(fixture.buffer.data(), fixture.byte_count);
     if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail("reader open failed");
     }
@@ -649,7 +649,7 @@ int SerializeUnknownFieldWithValidLengthCanSkipDeterministically() {
         return Fail("write target field failed");
     }
 
-    SerializeReader reader(buffer.data(), writer.Snapshot().CommittedByteCount);
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
     if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail("reader open failed");
     }
@@ -677,12 +677,12 @@ int SerializeDisabledDiagnosticsDoesNotChangeResults() {
         return 1;
     }
 
-    if (!SnapshotsMatch(firstFixture.Snapshot, secondFixture.Snapshot)) {
+    if (!SnapshotsMatch(firstFixture.snapshot, secondFixture.snapshot)) {
         return Fail("diagnostics-equivalent writer snapshots diverged");
     }
 
-    SerializeReader firstReader(firstFixture.Buffer.data(), firstFixture.ByteCount);
-    SerializeReader secondReader(secondFixture.Buffer.data(), secondFixture.ByteCount);
+    SerializeReader firstReader(firstFixture.buffer.data(), firstFixture.byte_count);
+    SerializeReader secondReader(secondFixture.buffer.data(), secondFixture.byte_count);
     if (firstReader.OpenStream() != secondReader.OpenStream()) {
         return Fail("diagnostics-equivalent reader open statuses diverged");
     }
@@ -710,7 +710,7 @@ int SerializeNoFilePackageResourceObjectOrGameAdapterDependency() {
         return 1;
     }
 
-    SerializeReader reader(fixture.Buffer.data(), fixture.ByteCount);
+    SerializeReader reader(fixture.buffer.data(), fixture.byte_count);
     if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail("synthetic stream reader open failed");
     }
@@ -730,7 +730,7 @@ int SerializeNoFilePackageResourceObjectOrGameAdapterDependency() {
 int SerializeNoHiddenAllocationInReadWritePath() {
     std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-    if (writer.Snapshot().AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (writer.Snapshot().allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("writer did not expose YuMemory accounting vocabulary");
     }
 
@@ -747,8 +747,8 @@ int SerializeNoHiddenAllocationInReadWritePath() {
     }
 
     const SerializeSnapshot writerSnapshot = writer.Snapshot();
-    SerializeReader reader(buffer.data(), writerSnapshot.CommittedByteCount);
-    if (reader.Snapshot().AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    SerializeReader reader(buffer.data(), writerSnapshot.committed_byte_count);
+    if (reader.Snapshot().allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("reader did not expose YuMemory accounting vocabulary");
     }
 
@@ -761,7 +761,7 @@ int SerializeNoHiddenAllocationInReadWritePath() {
         return Fail("reader read failed");
     }
 
-    if (writer.Snapshot().CommittedByteCount != writerSnapshot.CommittedByteCount) {
+    if (writer.Snapshot().committed_byte_count != writerSnapshot.committed_byte_count) {
         return Fail("read path changed writer committed bytes");
     }
 
@@ -792,33 +792,33 @@ int SerializeSnapshotReportsCountsAndLastStatus() {
     }
 
     const SerializeSnapshot writerSnapshot = writer.Snapshot();
-    if (writerSnapshot.RecordCount != 1U || writerSnapshot.FieldCount != 2U) {
+    if (writerSnapshot.record_count != 1U || writerSnapshot.field_count != 2U) {
         return Fail("writer snapshot did not report record and field counts");
     }
 
-    if (writerSnapshot.AcceptedOperationCount != 4U || writerSnapshot.FailedOperationCount != 1U) {
+    if (writerSnapshot.accepted_operation_count != 4U || writerSnapshot.failed_operation_count != 1U) {
         return Fail("writer snapshot did not report operation counts");
     }
 
-    if (writerSnapshot.LastStatus != SerializeStatus::DuplicateField) {
+    if (writerSnapshot.last_status != SerializeStatus::DuplicateField) {
         return Fail("writer snapshot did not report last status");
     }
 
-    SerializeReader reader(buffer.data(), writerSnapshot.CommittedByteCount);
+    SerializeReader reader(buffer.data(), writerSnapshot.committed_byte_count);
     if (reader.OpenStream() != SerializeStatus::Success) {
         return Fail("reader open failed");
     }
 
     const SerializeSnapshot readerSnapshot = reader.Snapshot();
-    if (readerSnapshot.RecordCount != 1U || readerSnapshot.FieldCount != 2U) {
+    if (readerSnapshot.record_count != 1U || readerSnapshot.field_count != 2U) {
         return Fail("reader snapshot did not report record and field counts");
     }
 
-    if (readerSnapshot.CommittedByteCount != writerSnapshot.CommittedByteCount) {
+    if (readerSnapshot.committed_byte_count != writerSnapshot.committed_byte_count) {
         return Fail("reader snapshot did not report committed byte count");
     }
 
-    if (readerSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (readerSnapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("reader snapshot did not report YuMemory accounting vocabulary");
     }
 

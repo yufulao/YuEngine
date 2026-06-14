@@ -11,11 +11,11 @@ namespace yuengine::platform {
 using yuengine::memory::MemoryAccountingStatus;
 
 struct HostRunResult {
-    HostStatus Status;
-    std::uint32_t TickCount;
-    std::vector<std::uint64_t> TickTimesNanoseconds;
-    std::vector<std::string> LifecycleTrace;
-    std::string ErrorMessage;
-    MemoryAccountingStatus AllocationAccountingStatus;
+    HostStatus status;
+    std::uint32_t tick_count;
+    std::vector<std::uint64_t> tick_times_nanoseconds;
+    std::vector<std::string> lifecycle_trace;
+    std::string error_message;
+    MemoryAccountingStatus allocation_accounting_status;
 };
 }

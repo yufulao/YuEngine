@@ -5,8 +5,8 @@
 
 namespace yuengine::resource {
 struct ResourceRegistrationResult final {
-    ResourceStatus Status;
-    ResourceHandle Handle;
+    ResourceStatus status;
+    ResourceHandle handle;
 
     static ResourceRegistrationResult Success(ResourceHandle handle) {
         return ResourceRegistrationResult{ResourceStatus::Success, handle};
@@ -17,7 +17,7 @@ struct ResourceRegistrationResult final {
     }
 
     bool Succeeded() const {
-        return Status == ResourceStatus::Success;
+        return status == ResourceStatus::Success;
     }
 };
 }

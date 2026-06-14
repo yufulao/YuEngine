@@ -5,7 +5,7 @@
 
 namespace yuengine::thread {
 struct TaskResult {
-    TaskId Id;
-    TaskStatus Status;
+    TaskId id;
+    TaskStatus status;
 };
 }

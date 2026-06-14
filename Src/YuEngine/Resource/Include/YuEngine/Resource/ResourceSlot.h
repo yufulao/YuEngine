@@ -8,10 +8,10 @@
 
 namespace yuengine::resource {
 struct ResourceSlot final {
-    ResourceTypeId Type;
-    ResourceLogicalKey LogicalKey;
-    std::uint32_t Generation = INVALID_RESOURCE_GENERATION;
-    std::uint32_t ReferenceCount = 0U;
-    bool IsActive = false;
+    ResourceTypeId type;
+    ResourceLogicalKey logical_key;
+    std::uint32_t generation = INVALID_RESOURCE_GENERATION;
+    std::uint32_t reference_count = 0U;
+    bool is_active = false;
 };
 }

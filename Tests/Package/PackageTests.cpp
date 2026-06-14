@@ -135,27 +135,27 @@ PackageRegistrationResult RegisterEntry(
 }
 
 bool CoreCountsMatch(const PackageSnapshot& left, const PackageSnapshot& right) {
-    if (left.ManifestCount != right.ManifestCount) {
+    if (left.manifest_count != right.manifest_count) {
         return false;
     }
 
-    if (left.EntryCount != right.EntryCount) {
+    if (left.entry_count != right.entry_count) {
         return false;
     }
 
-    if (left.DependencyEdgeCount != right.DependencyEdgeCount) {
+    if (left.dependency_edge_count != right.dependency_edge_count) {
         return false;
     }
 
-    if (left.DependencyValidationCount != right.DependencyValidationCount) {
+    if (left.dependency_validation_count != right.dependency_validation_count) {
         return false;
     }
 
-    if (left.LoadPlanResolveCount != right.LoadPlanResolveCount) {
+    if (left.load_plan_resolve_count != right.load_plan_resolve_count) {
         return false;
     }
 
-    return left.LastLoadPlanRecordCount == right.LastLoadPlanRecordCount;
+    return left.last_load_plan_record_count == right.last_load_plan_record_count;
 }
 
 bool SnapshotsMatch(const PackageSnapshot& left, const PackageSnapshot& right) {
@@ -163,11 +163,11 @@ bool SnapshotsMatch(const PackageSnapshot& left, const PackageSnapshot& right) {
         return false;
     }
 
-    if (left.RejectedOperationCount != right.RejectedOperationCount) {
+    if (left.rejected_operation_count != right.rejected_operation_count) {
         return false;
     }
 
-    return left.AllocationAccountingStatus == right.AllocationAccountingStatus;
+    return left.allocation_accounting_status == right.allocation_accounting_status;
 }
 
 int PackageRegisterSyntheticManifestReturnsStableId() {
@@ -177,16 +177,16 @@ int PackageRegisterSyntheticManifestReturnsStableId() {
         return Fail("synthetic manifest did not register");
     }
 
-    if (result.Package.Value != PACKAGE_A.Value) {
+    if (result.package.value != PACKAGE_A.value) {
         return Fail("manifest result did not return stable package id");
     }
 
     const PackageSnapshot snapshot = registry.Snapshot();
-    if (snapshot.ManifestCount != 1U) {
+    if (snapshot.manifest_count != 1U) {
         return Fail("manifest count was not recorded");
     }
 
-    if (snapshot.LastStatus != PackageStatus::Success) {
+    if (snapshot.last_status != PackageStatus::Success) {
         return Fail("manifest success did not record success status");
     }
 
@@ -201,11 +201,11 @@ int PackageRegisterDuplicateManifestReturnsExplicitStatus() {
 
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageRegistrationResult duplicate = RegisterManifest(registry);
-    if (duplicate.Status != PackageStatus::DuplicateManifest) {
+    if (duplicate.status != PackageStatus::DuplicateManifest) {
         return Fail("duplicate manifest did not return explicit status");
     }
 
-    if (registry.Snapshot().ManifestCount != beforeSnapshot.ManifestCount) {
+    if (registry.Snapshot().manifest_count != beforeSnapshot.manifest_count) {
         return Fail("duplicate manifest changed manifest count");
     }
 
@@ -224,11 +224,11 @@ int PackageRegisterEntryReturnsStableEntryId() {
         return Fail("entry did not register");
     }
 
-    if (result.Entry.Value != ENTRY_TEXTURE.Value) {
+    if (result.entry.value != ENTRY_TEXTURE.value) {
         return Fail("entry result did not return stable entry id");
     }
 
-    if (registry.Snapshot().EntryCount != 1U) {
+    if (registry.Snapshot().entry_count != 1U) {
         return Fail("entry count was not recorded");
     }
 
@@ -243,11 +243,11 @@ int PackageRegisterDuplicateEntryReturnsExplicitStatus() {
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageRegistrationResult duplicate =
         RegisterEntry(registry, ENTRY_TEXTURE, TYPE_MATERIAL, "material_a", "materials/material_a.bin");
-    if (duplicate.Status != PackageStatus::DuplicateEntry) {
+    if (duplicate.status != PackageStatus::DuplicateEntry) {
         return Fail("duplicate entry did not return explicit status");
     }
 
-    if (registry.Snapshot().EntryCount != beforeSnapshot.EntryCount) {
+    if (registry.Snapshot().entry_count != beforeSnapshot.entry_count) {
         return Fail("duplicate entry changed entry count");
     }
 
@@ -266,11 +266,11 @@ int PackageRegisterDuplicateResourceKeyReturnsExplicitStatus() {
         TYPE_TEXTURE,
         "texture_a",
         "textures/texture_a_copy.bin");
-    if (duplicate.Status != PackageStatus::DuplicateResourceKey) {
+    if (duplicate.status != PackageStatus::DuplicateResourceKey) {
         return Fail("duplicate resource key did not return explicit status");
     }
 
-    if (registry.Snapshot().EntryCount != beforeSnapshot.EntryCount) {
+    if (registry.Snapshot().entry_count != beforeSnapshot.entry_count) {
         return Fail("duplicate resource key changed entry count");
     }
 
@@ -282,26 +282,26 @@ int PackageRegisterInvalidIdsOrTypeReturnsExplicitStatusWithoutMutation() {
     RegisterManifest(registry);
 
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
-    if (registry.RegisterSyntheticManifest({PackageId{}}).Status != PackageStatus::InvalidPackageId) {
+    if (registry.RegisterSyntheticManifest({PackageId{}}).status != PackageStatus::InvalidPackageId) {
         return Fail("invalid package id did not return explicit status");
     }
 
-    if (registry.RegisterEntry(Entry(PackageId{}, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "a.bin")).Status !=
+    if (registry.RegisterEntry(Entry(PackageId{}, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "a.bin")).status !=
         PackageStatus::InvalidPackageId) {
         return Fail("entry invalid package id did not return explicit status");
     }
 
-    if (registry.RegisterEntry(Entry(PACKAGE_A, PackageEntryId{}, TYPE_TEXTURE, "texture_a", "a.bin")).Status !=
+    if (registry.RegisterEntry(Entry(PACKAGE_A, PackageEntryId{}, TYPE_TEXTURE, "texture_a", "a.bin")).status !=
         PackageStatus::InvalidEntryId) {
         return Fail("invalid entry id did not return explicit status");
     }
 
-    if (registry.RegisterEntry(Entry(PACKAGE_A, ENTRY_TEXTURE, ResourceTypeId{}, "texture_a", "a.bin")).Status !=
+    if (registry.RegisterEntry(Entry(PACKAGE_A, ENTRY_TEXTURE, ResourceTypeId{}, "texture_a", "a.bin")).status !=
         PackageStatus::InvalidResourceType) {
         return Fail("invalid resource type did not return explicit status");
     }
 
-    if (registry.RegisterEntry(Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "Texture_A", "a.bin")).Status !=
+    if (registry.RegisterEntry(Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "Texture_A", "a.bin")).status !=
         PackageStatus::InvalidLogicalKey) {
         return Fail("invalid logical key did not return explicit status");
     }
@@ -319,11 +319,11 @@ int PackageManifestCapacityOverflowDoesNotMutate() {
 
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageRegistrationResult overflow = RegisterManifest(registry, PACKAGE_B);
-    if (overflow.Status != PackageStatus::ManifestCapacityExceeded) {
+    if (overflow.status != PackageStatus::ManifestCapacityExceeded) {
         return Fail("manifest capacity overflow did not return explicit status");
     }
 
-    if (registry.Snapshot().ManifestCount != beforeSnapshot.ManifestCount) {
+    if (registry.Snapshot().manifest_count != beforeSnapshot.manifest_count) {
         return Fail("manifest capacity overflow changed manifest count");
     }
 
@@ -338,11 +338,11 @@ int PackageEntryCapacityOverflowDoesNotMutate() {
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageRegistrationResult overflow =
         RegisterEntry(registry, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin");
-    if (overflow.Status != PackageStatus::EntryCapacityExceeded) {
+    if (overflow.status != PackageStatus::EntryCapacityExceeded) {
         return Fail("entry capacity overflow did not return explicit status");
     }
 
-    if (registry.Snapshot().EntryCount != beforeSnapshot.EntryCount) {
+    if (registry.Snapshot().entry_count != beforeSnapshot.entry_count) {
         return Fail("entry capacity overflow changed entry count");
     }
 
@@ -357,18 +357,18 @@ int PackageRegisterEntryRejectsOversizedKeysWithoutMutation() {
     const std::string longLogicalKey(MAX_LOGICAL_KEY_BYTES + 1U, 'a');
     const PackageRegistrationResult longLogical = registry.RegisterEntry(
         Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, longLogicalKey.c_str(), "textures/texture_a.bin"));
-    if (longLogical.Status != PackageStatus::LogicalKeyTooLong) {
+    if (longLogical.status != PackageStatus::LogicalKeyTooLong) {
         return Fail("oversized logical key did not return explicit status");
     }
 
     const std::string longSourceKey(MAX_PACKAGE_SOURCE_KEY_BYTES + 1U, 'a');
     const PackageRegistrationResult longSource =
         registry.RegisterEntry(Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", longSourceKey.c_str()));
-    if (longSource.Status != PackageStatus::SourceKeyTooLong) {
+    if (longSource.status != PackageStatus::SourceKeyTooLong) {
         return Fail("oversized source key did not return explicit status");
     }
 
-    if (registry.Snapshot().EntryCount != beforeSnapshot.EntryCount) {
+    if (registry.Snapshot().entry_count != beforeSnapshot.entry_count) {
         return Fail("oversized keys changed entry count");
     }
 
@@ -388,7 +388,7 @@ int PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation() {
         "textures/texture_a.bin",
         0U,
         MAX_DECLARED_ENTRY_SIZE + 1U);
-    if (tooLarge.Status != PackageStatus::ByteRangeOutOfBounds) {
+    if (tooLarge.status != PackageStatus::ByteRangeOutOfBounds) {
         return Fail("oversized byte range did not return explicit status");
     }
 
@@ -400,11 +400,11 @@ int PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation() {
         "textures/texture_a.bin",
         std::numeric_limits<std::uint32_t>::max(),
         1U);
-    if (overflow.Status != PackageStatus::ByteRangeOutOfBounds) {
+    if (overflow.status != PackageStatus::ByteRangeOutOfBounds) {
         return Fail("overflow byte range did not return explicit status");
     }
 
-    if (registry.Snapshot().EntryCount != beforeSnapshot.EntryCount) {
+    if (registry.Snapshot().entry_count != beforeSnapshot.entry_count) {
         return Fail("oversized byte range changed entry count");
     }
 
@@ -430,23 +430,23 @@ int PackageResolveEntryByResourceKeyReturnsDeterministicLoadPlan() {
         return Fail("resolve by resource key failed");
     }
 
-    if (result.Plan.RecordCount != 3U) {
+    if (result.plan.record_count != 3U) {
         return Fail("load plan did not include dependencies plus root");
     }
 
-    if (result.Plan.Records[0U].Entry.Value != ENTRY_MATERIAL.Value) {
+    if (result.plan.records[0U].entry.value != ENTRY_MATERIAL.value) {
         return Fail("first dependency record was not declaration-order material");
     }
 
-    if (result.Plan.Records[1U].Entry.Value != ENTRY_AUDIO.Value) {
+    if (result.plan.records[1U].entry.value != ENTRY_AUDIO.value) {
         return Fail("second dependency record was not declaration-order audio");
     }
 
-    if (result.Plan.Records[2U].Entry.Value != ENTRY_TEXTURE.Value) {
+    if (result.plan.records[2U].entry.value != ENTRY_TEXTURE.value) {
         return Fail("root record was not last");
     }
 
-    if (registry.Snapshot().LastLoadPlanRecordCount != 3U) {
+    if (registry.Snapshot().last_load_plan_record_count != 3U) {
         return Fail("load plan record count was not recorded");
     }
 
@@ -465,19 +465,19 @@ int PackageResolveEntryByResourceKeyUsesTypeAndLogicalKeyTuple() {
         return Fail("resolve by type and logical key tuple failed");
     }
 
-    if (result.Plan.RecordCount != 1U) {
+    if (result.plan.record_count != 1U) {
         return Fail("same-key different-type resolve returned unexpected record count");
     }
 
-    if (result.Plan.Records[0U].Entry.Value != ENTRY_MATERIAL.Value) {
+    if (result.plan.records[0U].entry.value != ENTRY_MATERIAL.value) {
         return Fail("same-key different-type resolve returned the wrong entry");
     }
 
-    if (result.Plan.Records[0U].Type.Value != TYPE_MATERIAL.Value) {
+    if (result.plan.records[0U].type.value != TYPE_MATERIAL.value) {
         return Fail("same-key different-type resolve returned the wrong type");
     }
 
-    if (registry.Snapshot().LastLoadPlanRecordCount != 1U) {
+    if (registry.Snapshot().last_load_plan_record_count != 1U) {
         return Fail("same-key different-type load plan record count was not recorded");
     }
 
@@ -517,18 +517,18 @@ int PackageIndexedLookupsPreserveStatusOrderAndCapacities() {
         return Fail(ERROR_INDEX_DUPLICATE_EDGE_FAILED);
     }
 
-    if (registry.Snapshot().DependencyEdgeCount != beforeDuplicate.DependencyEdgeCount) {
+    if (registry.Snapshot().dependency_edge_count != beforeDuplicate.dependency_edge_count) {
         return Fail(ERROR_INDEX_DUPLICATE_EDGE_MUTATED);
     }
 
     const PackageSnapshot beforeMismatch = registry.Snapshot();
     const PackageLoadPlanResult mismatch =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey(INDEX_TEXTURE_LOGICAL));
-    if (mismatch.Status != PackageStatus::TypeMismatch) {
+    if (mismatch.status != PackageStatus::TypeMismatch) {
         return Fail(ERROR_INDEX_TYPE_MISMATCH_STATUS);
     }
 
-    if (registry.Snapshot().LoadPlanResolveCount != beforeMismatch.LoadPlanResolveCount) {
+    if (registry.Snapshot().load_plan_resolve_count != beforeMismatch.load_plan_resolve_count) {
         return Fail(ERROR_INDEX_TYPE_MISMATCH_MUTATED);
     }
 
@@ -539,36 +539,36 @@ int PackageIndexedLookupsPreserveStatusOrderAndCapacities() {
         return Fail(ERROR_INDEX_RESOLVE_FAILED);
     }
 
-    if (result.Plan.RecordCount != 3U) {
+    if (result.plan.record_count != 3U) {
         return Fail(ERROR_INDEX_RECORD_COUNT);
     }
 
-    if (result.Plan.Records[0U].Entry.Value != ENTRY_AUDIO.Value) {
+    if (result.plan.records[0U].entry.value != ENTRY_AUDIO.value) {
         return Fail(ERROR_INDEX_FIRST_DEPENDENCY);
     }
 
-    if (result.Plan.Records[1U].Entry.Value != ENTRY_MATERIAL.Value) {
+    if (result.plan.records[1U].entry.value != ENTRY_MATERIAL.value) {
         return Fail(ERROR_INDEX_SECOND_DEPENDENCY);
     }
 
-    if (result.Plan.Records[2U].Entry.Value != ENTRY_TEXTURE.Value) {
+    if (result.plan.records[2U].entry.value != ENTRY_TEXTURE.value) {
         return Fail(ERROR_INDEX_ROOT_RECORD);
     }
 
     const PackageSnapshot afterResolve = registry.Snapshot();
-    if (afterResolve.ManifestCapacity != beforeResolve.ManifestCapacity) {
+    if (afterResolve.manifest_capacity != beforeResolve.manifest_capacity) {
         return Fail(ERROR_INDEX_MANIFEST_CAPACITY);
     }
 
-    if (afterResolve.EntryCapacity != beforeResolve.EntryCapacity) {
+    if (afterResolve.entry_capacity != beforeResolve.entry_capacity) {
         return Fail(ERROR_INDEX_ENTRY_CAPACITY);
     }
 
-    if (afterResolve.DependencyEdgeCapacity != beforeResolve.DependencyEdgeCapacity) {
+    if (afterResolve.dependency_edge_capacity != beforeResolve.dependency_edge_capacity) {
         return Fail(ERROR_INDEX_DEPENDENCY_CAPACITY);
     }
 
-    if (afterResolve.LoadPlanRecordCapacity != beforeResolve.LoadPlanRecordCapacity) {
+    if (afterResolve.load_plan_record_capacity != beforeResolve.load_plan_record_capacity) {
         return Fail(ERROR_INDEX_LOAD_PLAN_CAPACITY);
     }
 
@@ -580,11 +580,11 @@ int PackageResolveRejectsUnknownResourceKey() {
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageLoadPlanResult result =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("missing_texture"));
-    if (result.Status != PackageStatus::NotFound) {
+    if (result.status != PackageStatus::NotFound) {
         return Fail("unknown resource key did not return explicit status");
     }
 
-    if (registry.Snapshot().LoadPlanResolveCount != beforeSnapshot.LoadPlanResolveCount) {
+    if (registry.Snapshot().load_plan_resolve_count != beforeSnapshot.load_plan_resolve_count) {
         return Fail("unknown resource key changed load-plan resolve count");
     }
 
@@ -596,15 +596,15 @@ int PackageResolveRejectsTypeMismatchWithoutMutation() {
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageLoadPlanResult result =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey("texture_a"));
-    if (result.Status != PackageStatus::TypeMismatch) {
+    if (result.status != PackageStatus::TypeMismatch) {
         return Fail("type mismatch did not return explicit status");
     }
 
-    if (registry.Snapshot().LoadPlanResolveCount != beforeSnapshot.LoadPlanResolveCount) {
+    if (registry.Snapshot().load_plan_resolve_count != beforeSnapshot.load_plan_resolve_count) {
         return Fail("type mismatch changed load-plan resolve count");
     }
 
-    if (registry.Snapshot().LastLoadPlanRecordCount != beforeSnapshot.LastLoadPlanRecordCount) {
+    if (registry.Snapshot().last_load_plan_record_count != beforeSnapshot.last_load_plan_record_count) {
         return Fail("type mismatch changed last load-plan record count");
     }
 
@@ -622,11 +622,11 @@ int PackageDependencyValidationRejectsMissingEntry() {
     }
 
     const PackageSnapshot snapshot = registry.Snapshot();
-    if (snapshot.DependencyEdgeCount != 0U) {
+    if (snapshot.dependency_edge_count != 0U) {
         return Fail("missing dependency changed dependency edge count");
     }
 
-    if (snapshot.DependencyValidationCount != 1U) {
+    if (snapshot.dependency_validation_count != 1U) {
         return Fail("missing dependency validation was not counted");
     }
 
@@ -656,7 +656,7 @@ int PackageDependencyValidationRejectsCycle() {
         return Fail("cycle dependency did not return explicit status");
     }
 
-    if (registry.Snapshot().DependencyEdgeCount != 2U) {
+    if (registry.Snapshot().dependency_edge_count != 2U) {
         return Fail("cycle dependency changed dependency edge count");
     }
 
@@ -709,7 +709,7 @@ int PackageDependencyValidationRejectsCycleAfterHighFanout() {
         return Fail("high-fanout dependency path did not return explicit cycle status");
     }
 
-    if (registry.Snapshot().DependencyEdgeCount != beforeSnapshot.DependencyEdgeCount) {
+    if (registry.Snapshot().dependency_edge_count != beforeSnapshot.dependency_edge_count) {
         return Fail("high-fanout cycle dependency changed dependency edge count");
     }
 
@@ -731,11 +731,11 @@ int PackageDependencyPlanPreservesDeclarationOrder() {
         return Fail("resolve failed");
     }
 
-    if (result.Plan.Records[0U].Entry.Value != ENTRY_AUDIO.Value) {
+    if (result.plan.records[0U].entry.value != ENTRY_AUDIO.value) {
         return Fail("first dependency did not preserve declaration order");
     }
 
-    if (result.Plan.Records[1U].Entry.Value != ENTRY_MATERIAL.Value) {
+    if (result.plan.records[1U].entry.value != ENTRY_MATERIAL.value) {
         return Fail("second dependency did not preserve declaration order");
     }
 
@@ -756,7 +756,7 @@ int PackageDependencyCapacityOverflowDoesNotMutate() {
         return Fail("dependency capacity overflow did not return explicit status");
     }
 
-    if (registry.Snapshot().DependencyEdgeCount != beforeSnapshot.DependencyEdgeCount) {
+    if (registry.Snapshot().dependency_edge_count != beforeSnapshot.dependency_edge_count) {
         return Fail("dependency capacity overflow changed edge count");
     }
 
@@ -773,15 +773,15 @@ int PackageLoadPlanCapacityOverflowDoesNotMutate() {
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
     const PackageLoadPlanResult result =
         registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
-    if (result.Status != PackageStatus::LoadPlanCapacityExceeded) {
+    if (result.status != PackageStatus::LoadPlanCapacityExceeded) {
         return Fail("load-plan capacity overflow did not return explicit status");
     }
 
-    if (registry.Snapshot().LoadPlanResolveCount != beforeSnapshot.LoadPlanResolveCount) {
+    if (registry.Snapshot().load_plan_resolve_count != beforeSnapshot.load_plan_resolve_count) {
         return Fail("load-plan capacity overflow changed resolve count");
     }
 
-    if (registry.Snapshot().LastLoadPlanRecordCount != beforeSnapshot.LastLoadPlanRecordCount) {
+    if (registry.Snapshot().last_load_plan_record_count != beforeSnapshot.last_load_plan_record_count) {
         return Fail("load-plan capacity overflow changed plan record count");
     }
 
@@ -796,7 +796,7 @@ int PackageDisabledDiagnosticsDoesNotChangeResults() {
         recordingRegistry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
     const PackageLoadPlanResult disabledResult =
         disabledRegistry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
-    if (recordingResult.Status != disabledResult.Status) {
+    if (recordingResult.status != disabledResult.status) {
         return Fail("disabled diagnostics changed resolve status");
     }
 
@@ -804,7 +804,7 @@ int PackageDisabledDiagnosticsDoesNotChangeResults() {
         recordingRegistry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey("texture_a"));
     const PackageLoadPlanResult disabledFailure =
         disabledRegistry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_AUDIO, ResourceLogicalKey("texture_a"));
-    if (recordingFailure.Status != disabledFailure.Status) {
+    if (recordingFailure.status != disabledFailure.status) {
         return Fail("disabled diagnostics changed failure status");
     }
 
@@ -823,7 +823,7 @@ int PackageNoFileReadOriginalPackageOrGameAdapterDependency() {
         return Fail("synthetic resolve failed");
     }
 
-    if (result.Plan.Records[2U].SourceKey.Value() != std::string_view("textures/texture_a.bin")) {
+    if (result.plan.records[2U].source_key.Value() != std::string_view("textures/texture_a.bin")) {
         return Fail("synthetic source-key metadata was not preserved");
     }
 
@@ -833,7 +833,7 @@ int PackageNoFileReadOriginalPackageOrGameAdapterDependency() {
 int PackageNoHiddenAllocationUsesYuMemorySignal() {
     PackageRegistry registry = CreateResolvedRegistry();
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
-    if (beforeSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (beforeSnapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("package registry did not expose YuMemory accounting vocabulary");
     }
 
@@ -844,23 +844,23 @@ int PackageNoHiddenAllocationUsesYuMemorySignal() {
     }
 
     const PackageSnapshot afterSnapshot = registry.Snapshot();
-    if (afterSnapshot.ManifestCapacity != beforeSnapshot.ManifestCapacity) {
+    if (afterSnapshot.manifest_capacity != beforeSnapshot.manifest_capacity) {
         return Fail("manifest capacity changed during resolve");
     }
 
-    if (afterSnapshot.EntryCapacity != beforeSnapshot.EntryCapacity) {
+    if (afterSnapshot.entry_capacity != beforeSnapshot.entry_capacity) {
         return Fail("entry capacity changed during resolve");
     }
 
-    if (afterSnapshot.DependencyEdgeCapacity != beforeSnapshot.DependencyEdgeCapacity) {
+    if (afterSnapshot.dependency_edge_capacity != beforeSnapshot.dependency_edge_capacity) {
         return Fail("dependency capacity changed during resolve");
     }
 
-    if (afterSnapshot.LoadPlanRecordCapacity != beforeSnapshot.LoadPlanRecordCapacity) {
+    if (afterSnapshot.load_plan_record_capacity != beforeSnapshot.load_plan_record_capacity) {
         return Fail("load-plan capacity changed during resolve");
     }
 
-    if (afterSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+    if (afterSnapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("package registry changed allocation accounting vocabulary");
     }
 

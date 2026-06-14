@@ -12,6 +12,6 @@ PackageLoadPlanResult PackageLoadPlanResult::Failure(PackageStatus status) {
 }
 
 bool PackageLoadPlanResult::Succeeded() const {
-    return Status == PackageStatus::Success;
+    return status == PackageStatus::Success;
 }
 }

@@ -5,8 +5,8 @@
 
 namespace yuengine::package {
 struct PackageLoadPlanResult final {
-    PackageStatus Status;
-    PackageLoadPlan Plan;
+    PackageStatus status;
+    PackageLoadPlan plan;
 
     static PackageLoadPlanResult Success(PackageLoadPlan plan);
     static PackageLoadPlanResult Failure(PackageStatus status);

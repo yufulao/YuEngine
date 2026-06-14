@@ -7,23 +7,23 @@ namespace yuengine::thread::Tests {
 constexpr std::size_t THREAD_TEST_TRACE_CAPACITY = 8U;
 
 struct FixedTraceBuffer {
-    std::array<int, THREAD_TEST_TRACE_CAPACITY> Values{};
-    std::size_t Count = 0U;
+    std::array<int, THREAD_TEST_TRACE_CAPACITY> values{};
+    std::size_t count = 0U;
 
     // Appends a value when trace storage still has capacity.
     bool Append(int value) {
-        if (Count >= Values.size()) {
+        if (count >= values.size()) {
             return false;
         }
 
-        Values[Count] = value;
-        ++Count;
+        values[count] = value;
+        ++count;
         return true;
     }
 
     // Reports whether no trace values were recorded.
     bool IsEmpty() const {
-        return Count == 0U;
+        return count == 0U;
     }
 };
 }

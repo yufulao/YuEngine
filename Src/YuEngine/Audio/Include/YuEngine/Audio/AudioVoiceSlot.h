@@ -7,10 +7,10 @@
 
 namespace yuengine::audio {
 struct AudioVoiceSlot final {
-    bool IsActive = false;
-    std::uint32_t Generation = 1U;
-    AudioSourceId Source{};
-    std::size_t CursorFrame = 0U;
-    std::uint32_t GainQ15 = 0U;
+    bool is_active = false;
+    std::uint32_t generation = 1U;
+    AudioSourceId source{};
+    std::size_t cursor_frame = 0U;
+    std::uint32_t gain_q15 = 0U;
 };
 }

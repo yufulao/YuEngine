@@ -7,19 +7,19 @@
 
 namespace yuengine::audio {
 struct AudioDeviceSnapshot final {
-    std::size_t SourceCapacity = 0U;
-    std::size_t VoiceCapacity = 0U;
-    std::size_t SourceCount = 0U;
-    std::size_t ActiveVoiceCount = 0U;
-    std::size_t VoiceStorageCapacityBeforeMix = 0U;
-    std::size_t VoiceStorageCapacityAfterLastMix = 0U;
-    std::uint64_t RegisteredSourceCount = 0U;
-    std::uint64_t StartedVoiceCount = 0U;
-    std::uint64_t StoppedVoiceCount = 0U;
-    std::uint64_t MixedFrameCount = 0U;
-    std::uint64_t OutputSampleWriteCount = 0U;
-    std::uint64_t FailedOperationCount = 0U;
-    std::size_t LastFramesWritten = 0U;
-    AudioAccountingStatus AllocationAccountingStatus = AudioAccountingStatus::DeferredUntilYuMemoryIntegration;
+    std::size_t source_capacity = 0U;
+    std::size_t voice_capacity = 0U;
+    std::size_t source_count = 0U;
+    std::size_t active_voice_count = 0U;
+    std::size_t voice_storage_capacity_before_mix = 0U;
+    std::size_t voice_storage_capacity_after_last_mix = 0U;
+    std::uint64_t registered_source_count = 0U;
+    std::uint64_t started_voice_count = 0U;
+    std::uint64_t stopped_voice_count = 0U;
+    std::uint64_t mixed_frame_count = 0U;
+    std::uint64_t output_sample_write_count = 0U;
+    std::uint64_t failed_operation_count = 0U;
+    std::size_t last_frames_written = 0U;
+    AudioAccountingStatus allocation_accounting_status = AudioAccountingStatus::DeferredUntilYuMemoryIntegration;
 };
 }

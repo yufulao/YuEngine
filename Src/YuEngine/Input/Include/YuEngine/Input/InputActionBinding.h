@@ -6,8 +6,8 @@
 
 namespace yuengine::input {
 struct InputActionBinding final {
-    InputDeviceId Device;
-    InputControlId Control;
-    InputActionId Action;
+    InputDeviceId device;
+    InputControlId control;
+    InputActionId action;
 };
 }

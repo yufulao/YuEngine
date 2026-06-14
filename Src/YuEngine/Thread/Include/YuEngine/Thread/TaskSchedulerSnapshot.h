@@ -5,17 +5,17 @@
 
 namespace yuengine::thread {
 struct TaskSchedulerSnapshot {
-    std::uint64_t SubmittedCount;
-    std::uint64_t ExecutedCount;
-    std::uint64_t RejectedCount;
-    std::uint64_t FailedCount;
-    std::uint64_t CanceledCount;
-    std::uint64_t DrainCount;
-    std::uint64_t TaskExecutionAllocationCount;
-    std::size_t MaxQueueDepth;
-    std::size_t CapacityBeforeFixture;
-    std::size_t CapacityAfterLastDrain;
-    std::size_t PendingCount;
-    bool IsShutdown;
+    std::uint64_t submitted_count;
+    std::uint64_t executed_count;
+    std::uint64_t rejected_count;
+    std::uint64_t failed_count;
+    std::uint64_t canceled_count;
+    std::uint64_t drain_count;
+    std::uint64_t task_execution_allocation_count;
+    std::size_t max_queue_depth;
+    std::size_t capacity_before_fixture;
+    std::size_t capacity_after_last_drain;
+    std::size_t pending_count;
+    bool is_shutdown;
 };
 }

@@ -4,9 +4,9 @@
 
 namespace yuengine::rhi {
 struct RhiColor final {
-    std::uint8_t R = 0U;
-    std::uint8_t G = 0U;
-    std::uint8_t B = 0U;
-    std::uint8_t A = 0U;
+    std::uint8_t r = 0U;
+    std::uint8_t g = 0U;
+    std::uint8_t b = 0U;
+    std::uint8_t a = 0U;
 };
 }

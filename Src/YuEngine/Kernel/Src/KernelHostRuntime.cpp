@@ -3,11 +3,11 @@
 namespace yuengine::kernel {
 namespace {
 platform::HostError ToHostError(const KernelResult& result) {
-    if (result.Succeeded) {
+    if (result.succeeded) {
         return platform::HostError::Success();
     }
 
-    return platform::HostError::Failure(result.Message);
+    return platform::HostError::Failure(result.message);
 }
 }
 

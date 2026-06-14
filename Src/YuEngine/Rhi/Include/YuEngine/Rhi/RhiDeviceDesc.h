@@ -7,8 +7,8 @@
 
 namespace yuengine::rhi {
 struct RhiDeviceDesc final {
-    RhiBackendKind BackendKind = RhiBackendKind::Null;
-    std::size_t ColorTargetCapacity = MAX_COLOR_TARGETS;
-    std::size_t CommandListCapacity = MAX_COMMANDS;
+    RhiBackendKind backend_kind = RhiBackendKind::Null;
+    std::size_t color_target_capacity = MAX_COLOR_TARGETS;
+    std::size_t command_list_capacity = MAX_COMMANDS;
 };
 }

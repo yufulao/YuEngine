@@ -33,7 +33,7 @@ DiagnosticsStatus BoundedDiagnosticsChannel::RegisterEventId(DiagnosticsEventId 
         return _configurationStatus;
     }
 
-    if (_snapshot.Stopped) {
+    if (_snapshot.stopped) {
         return DiagnosticsStatus::Stopped;
     }
 
@@ -45,7 +45,7 @@ DiagnosticsStatus BoundedDiagnosticsChannel::RegisterEventId(DiagnosticsEventId 
         return DiagnosticsStatus::Success;
     }
 
-    if (_acceptedEventIdCount >= _config.AcceptedEventIdCapacity) {
+    if (_acceptedEventIdCount >= _config.accepted_event_id_capacity) {
         return DiagnosticsStatus::CapacityExceeded;
     }
 
@@ -59,7 +59,7 @@ DiagnosticsStatus BoundedDiagnosticsChannel::RegisterCounterId(DiagnosticsCounte
         return _configurationStatus;
     }
 
-    if (_snapshot.Stopped) {
+    if (_snapshot.stopped) {
         return DiagnosticsStatus::Stopped;
     }
 
@@ -71,18 +71,18 @@ DiagnosticsStatus BoundedDiagnosticsChannel::RegisterCounterId(DiagnosticsCounte
         return DiagnosticsStatus::Success;
     }
 
-    if (_acceptedCounterIdCount >= _config.AcceptedCounterIdCapacity) {
+    if (_acceptedCounterIdCount >= _config.accepted_counter_id_capacity) {
         return DiagnosticsStatus::CapacityExceeded;
     }
 
-    if (_snapshot.CounterCount >= _config.CounterCapacity) {
+    if (_snapshot.counter_count >= _config.counter_capacity) {
         return DiagnosticsStatus::CapacityExceeded;
     }
 
     _acceptedCounterIds[_acceptedCounterIdCount] = counterId;
     ++_acceptedCounterIdCount;
-    _snapshot.Counters[_snapshot.CounterCount] = DiagnosticsCounterSnapshot{counterId, 0U, 0U};
-    ++_snapshot.CounterCount;
+    _snapshot.counters[_snapshot.counter_count] = DiagnosticsCounterSnapshot{counterId, 0U, 0U};
+    ++_snapshot.counter_count;
     return DiagnosticsStatus::Success;
 }
 
@@ -91,22 +91,22 @@ DiagnosticsStatus BoundedDiagnosticsChannel::RecordEvent(DiagnosticsEventId even
         return _configurationStatus;
     }
 
-    if (_snapshot.Stopped) {
+    if (_snapshot.stopped) {
         return DiagnosticsStatus::Stopped;
     }
 
-    if (_config.ValidateIds && !HasAcceptedEventId(eventId)) {
+    if (_config.validate_ids && !HasAcceptedEventId(eventId)) {
         return DiagnosticsStatus::UnknownEventId;
     }
 
-    if (_snapshot.EventCount >= _config.EventCapacity) {
-        ++_snapshot.DroppedEventCount;
+    if (_snapshot.event_count >= _config.event_capacity) {
+        ++_snapshot.dropped_event_count;
         return DiagnosticsStatus::Dropped;
     }
 
-    _snapshot.Events[_snapshot.EventCount] = DiagnosticsEvent{eventId, payload};
-    ++_snapshot.EventCount;
-    ++_snapshot.AcceptedEventCount;
+    _snapshot.events[_snapshot.event_count] = DiagnosticsEvent{eventId, payload};
+    ++_snapshot.event_count;
+    ++_snapshot.accepted_event_count;
     return DiagnosticsStatus::Success;
 }
 
@@ -119,7 +119,7 @@ DiagnosticsStatus BoundedDiagnosticsChannel::AddCounter(DiagnosticsCounterId cou
         return _configurationStatus;
     }
 
-    if (_snapshot.Stopped) {
+    if (_snapshot.stopped) {
         return DiagnosticsStatus::Stopped;
     }
 
@@ -128,15 +128,15 @@ DiagnosticsStatus BoundedDiagnosticsChannel::AddCounter(DiagnosticsCounterId cou
         return DiagnosticsStatus::UnknownCounterId;
     }
 
-    DiagnosticsCounterSnapshot& counter = _snapshot.Counters[counterIndex];
+    DiagnosticsCounterSnapshot& counter = _snapshot.counters[counterIndex];
     const std::uint64_t maxValue = std::numeric_limits<std::uint64_t>::max();
-    if (counter.Value > maxValue - delta) {
+    if (counter.value > maxValue - delta) {
         return DiagnosticsStatus::CounterOverflow;
     }
 
-    counter.Value += delta;
-    ++counter.SuccessfulUpdateCount;
-    ++_snapshot.SuccessfulCounterUpdateCount;
+    counter.value += delta;
+    ++counter.successful_update_count;
+    ++_snapshot.successful_counter_update_count;
     return DiagnosticsStatus::Success;
 }
 
@@ -145,49 +145,49 @@ DiagnosticsStatus BoundedDiagnosticsChannel::Shutdown() {
         return _configurationStatus;
     }
 
-    _snapshot.Stopped = true;
+    _snapshot.stopped = true;
     return DiagnosticsStatus::Success;
 }
 
 DiagnosticsSnapshot BoundedDiagnosticsChannel::Snapshot() {
-    if (_snapshot.Stopped) {
+    if (_snapshot.stopped) {
         return _snapshot;
     }
 
-    ++_snapshot.SnapshotQueryCount;
+    ++_snapshot.snapshot_query_count;
     return _snapshot;
 }
 
 DiagnosticsStatus BoundedDiagnosticsChannel::ValidateConfig(DiagnosticsChannelConfig config) const {
-    if (config.EventCapacity == 0U) {
+    if (config.event_capacity == 0U) {
         return DiagnosticsStatus::InvalidCapacity;
     }
 
-    if (config.CounterCapacity == 0U) {
+    if (config.counter_capacity == 0U) {
         return DiagnosticsStatus::InvalidCapacity;
     }
 
-    if (config.AcceptedEventIdCapacity == 0U) {
+    if (config.accepted_event_id_capacity == 0U) {
         return DiagnosticsStatus::InvalidCapacity;
     }
 
-    if (config.AcceptedCounterIdCapacity == 0U) {
+    if (config.accepted_counter_id_capacity == 0U) {
         return DiagnosticsStatus::InvalidCapacity;
     }
 
-    if (config.EventCapacity > MAX_DIAGNOSTICS_EVENTS) {
+    if (config.event_capacity > MAX_DIAGNOSTICS_EVENTS) {
         return DiagnosticsStatus::InvalidCapacity;
     }
 
-    if (config.CounterCapacity > MAX_DIAGNOSTICS_COUNTERS) {
+    if (config.counter_capacity > MAX_DIAGNOSTICS_COUNTERS) {
         return DiagnosticsStatus::InvalidCapacity;
     }
 
-    if (config.AcceptedEventIdCapacity > MAX_DIAGNOSTICS_EVENT_IDS) {
+    if (config.accepted_event_id_capacity > MAX_DIAGNOSTICS_EVENT_IDS) {
         return DiagnosticsStatus::InvalidCapacity;
     }
 
-    if (config.AcceptedCounterIdCapacity > MAX_DIAGNOSTICS_COUNTER_IDS) {
+    if (config.accepted_counter_id_capacity > MAX_DIAGNOSTICS_COUNTER_IDS) {
         return DiagnosticsStatus::InvalidCapacity;
     }
 
@@ -196,7 +196,7 @@ DiagnosticsStatus BoundedDiagnosticsChannel::ValidateConfig(DiagnosticsChannelCo
 
 bool BoundedDiagnosticsChannel::HasAcceptedEventId(DiagnosticsEventId eventId) const {
     for (std::size_t index = 0U; index < _acceptedEventIdCount; ++index) {
-        if (_acceptedEventIds[index].Value == eventId.Value) {
+        if (_acceptedEventIds[index].value == eventId.value) {
             return true;
         }
     }
@@ -209,8 +209,8 @@ bool BoundedDiagnosticsChannel::HasAcceptedCounterId(DiagnosticsCounterId counte
 }
 
 std::size_t BoundedDiagnosticsChannel::CounterIndex(DiagnosticsCounterId counterId) const {
-    for (std::size_t index = 0U; index < _snapshot.CounterCount; ++index) {
-        if (_snapshot.Counters[index].Id.Value == counterId.Value) {
+    for (std::size_t index = 0U; index < _snapshot.counter_count; ++index) {
+        if (_snapshot.counters[index].id.value == counterId.value) {
             return index;
         }
     }

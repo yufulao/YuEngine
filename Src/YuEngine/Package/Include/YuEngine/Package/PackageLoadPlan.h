@@ -8,7 +8,7 @@
 
 namespace yuengine::package {
 struct PackageLoadPlan final {
-    std::array<PackageLoadPlanRecord, MAX_LOAD_PLAN_RECORD_COUNT> Records;
-    std::uint32_t RecordCount = 0U;
+    std::array<PackageLoadPlanRecord, MAX_LOAD_PLAN_RECORD_COUNT> records;
+    std::uint32_t record_count = 0U;
 };
 }

@@ -6,9 +6,9 @@
 
 namespace yuengine::serialize {
 struct FieldLocation final {
-    SerializeTypeTag Type = SerializeTypeTag::UInt32;
-    std::uint32_t PayloadOffset = 0U;
-    std::uint32_t PayloadByteCount = 0U;
-    bool Found = false;
+    SerializeTypeTag type = SerializeTypeTag::UInt32;
+    std::uint32_t payload_offset = 0U;
+    std::uint32_t payload_byte_count = 0U;
+    bool found = false;
 };
 }

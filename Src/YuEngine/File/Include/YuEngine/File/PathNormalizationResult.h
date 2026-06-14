@@ -5,8 +5,8 @@
 
 namespace yuengine::file {
 struct PathNormalizationResult {
-    FileStatus Status;
-    NormalizedPath Path;
+    FileStatus status;
+    NormalizedPath path;
 
     static PathNormalizationResult Success(NormalizedPath path);
     static PathNormalizationResult Failure(FileStatus status);

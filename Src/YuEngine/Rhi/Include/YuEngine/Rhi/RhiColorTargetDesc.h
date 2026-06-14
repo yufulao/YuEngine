@@ -5,7 +5,7 @@
 
 namespace yuengine::rhi {
 struct RhiColorTargetDesc final {
-    RhiFormat Format = RhiFormat::Rgba8Unorm;
-    RhiExtent2D Extent{};
+    RhiFormat format = RhiFormat::Rgba8Unorm;
+    RhiExtent2D extent{};
 };
 }
