@@ -875,7 +875,7 @@ int main(int argc, char** argv)
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+    const std::unordered_map<std::string_view, TestFunction> testRegistry{
         {TEST_CREATE_DEVICE, AudioCreateTestDeviceReturnsCapabilities},
         {TEST_UNSUPPORTED_BACKEND, AudioCreateDeviceRejectsUnsupportedBackend},
         {TEST_UNSUPPORTED_FORMAT, AudioCreateDeviceRejectsUnsupportedFormat},

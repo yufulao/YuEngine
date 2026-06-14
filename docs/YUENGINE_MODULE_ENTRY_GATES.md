@@ -1,8 +1,8 @@
 # YuEngine Module Entry Gates
 
-Status: Phase 0 gate rule set  
-Owner: 红美铃, implementation gate review  
-Source baseline: `attachments/YUENGINE_ARCHITECTURE_RESTART_PLAN.md`  
+Status: Phase 0 gate rule set
+Owner: 红美铃, implementation gate review
+Source baseline: `attachments/YUENGINE_ARCHITECTURE_RESTART_PLAN.md`
 Applies to: all YuEngine architecture, gate, and implementation tasks after the 2026-06-10 restart
 
 ## 1. Gate Purpose

@@ -420,7 +420,7 @@ int main(int argc, char** argv)
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+    const std::unordered_map<std::string_view, TestFunction> testRegistry{
         {TEST_ENQUEUE_SUCCEEDS, ThreadQueueEnqueueWithinCapacitySucceeds},
         {TEST_ENQUEUE_REJECTS, ThreadQueueEnqueueBeyondCapacityRejects},
         {TEST_FIFO, ThreadDrainExecutesTasksInDeterministicOrder},

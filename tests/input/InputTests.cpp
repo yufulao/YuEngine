@@ -659,7 +659,7 @@ int main(int argc, char** argv)
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+    const std::unordered_map<std::string_view, TestFunction> testRegistry{
         {TEST_REGISTER_BINDING, InputRegisterActionBindingReturnsStableActionId},
         {TEST_DUPLICATE_CONTROL, InputRegisterControlAlreadyBoundReturnsDuplicateStatus},
         {TEST_MULTI_CONTROL_ORDER, InputMultipleControlsForOneActionUsesInsertionOrder},

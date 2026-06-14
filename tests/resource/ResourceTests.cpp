@@ -698,7 +698,7 @@ int main(int argc, char** argv)
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    static const TestRegistry testRegistry{
+    const TestRegistry testRegistry{
         {TEST_REGISTER, ResourceRegisterSyntheticDescriptorReturnsGenerationHandle},
         {TEST_DUPLICATE, ResourceRegisterDuplicateReturnsExplicitStatus},
         {TEST_CAPACITY, ResourceRegistryRejectsCapacityOverflowWithoutMutation},

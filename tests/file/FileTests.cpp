@@ -359,7 +359,7 @@ int main(int argc, char** argv)
         return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+    const std::unordered_map<std::string_view, TestFunction> testRegistry{
         {TEST_NORMALIZE, FilePathNormalizeRemovesDotAndRepeatedSeparators},
         {TEST_TRAVERSAL, FilePathNormalizeRejectsTraversalOutsideRoot},
         {TEST_EMPTY_ABSOLUTE, FilePathNormalizeRejectsEmptyAndAbsolutePath},
