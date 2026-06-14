@@ -18,6 +18,7 @@ namespace
 {
 constexpr const char* TEST_LIFECYCLE = "Kernel_ModuleLifecycle_DependencyOrder";
 constexpr const char* TEST_STARTUP_FAILURE = "Kernel_ModuleStartupFailure_TearsDownStartedModules";
+constexpr const char* TEST_DEPENDENCY_CHAIN_SERVICE_LOOKUP = "Kernel_DependencyChainServiceLookup_UsesModuleNameIndex";
 constexpr const char* TEST_SERVICE_REGISTRY = "Kernel_ServiceRegistry_ResolveAndMissingService";
 constexpr const char* TEST_INVALID_LIFECYCLE = "Kernel_InvalidLifecycle_RejectsOutOfOrderCalls";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -58,12 +59,19 @@ constexpr const char* STARTUP_CLEANUP_FAILURE_FAILED_MESSAGE = "startup cleanup 
 constexpr const char* SELF_REQUIRED_SERVICE_MESSAGE = "self-published required service did not block startup";
 constexpr const char* SELF_REQUIRED_SERVICE_STATUS_MESSAGE = "self-published required service had wrong status";
 constexpr const char* SELF_REQUIRED_SERVICE_TRACE_MESSAGE = "self-published required service ran module startup";
+constexpr const char* DEPENDENCY_CHAIN_LOOKUP_START_MESSAGE = "indexed dependency-chain service lookup failed";
+constexpr const char* DEPENDENCY_CHAIN_LOOKUP_SHUTDOWN_MESSAGE = "indexed dependency-chain shutdown failed";
+constexpr const char* DEPENDENCY_CHAIN_LOOKUP_TRACE_MESSAGE = "indexed dependency-chain lifecycle was not deterministic";
 constexpr const char* WRONG_SERVICE_TYPE_MESSAGE = "registered service resolved through wrong C++ type";
 constexpr const char* TRACE_KERNEL_START = "kernel.start";
 constexpr const char* TRACE_KERNEL_SHUTDOWN = "kernel.shutdown";
 constexpr const char* TRACE_MODULE_START_A = "module.start.A";
+constexpr const char* TRACE_MODULE_START_B = "module.start.B";
+constexpr const char* TRACE_MODULE_START_C = "module.start.C";
 constexpr const char* TRACE_MODULE_START_FAIL = "module.start.Fail";
 constexpr const char* TRACE_MODULE_SHUTDOWN_A = "module.shutdown.A";
+constexpr const char* TRACE_MODULE_SHUTDOWN_B = "module.shutdown.B";
+constexpr const char* TRACE_MODULE_SHUTDOWN_C = "module.shutdown.C";
 constexpr const char* TRACE_MODULE_SHUTDOWN_FAIL = "module.shutdown.Fail";
 constexpr std::uint32_t FRAME_INDEX = 0U;
 constexpr std::uint64_t TICK_TIME_NANOSECONDS = 1000U;
@@ -244,6 +252,62 @@ int KernelModuleLifecycleDependencyOrder()
     if (independentUpdateFailureTrace != expectedIndependentUpdateFailureTrace)
     {
         return Fail("update failure stopped an independent later-started module");
+    }
+
+    return 0;
+}
+
+int KernelDependencyChainServiceLookupUsesModuleNameIndex()
+{
+    EngineKernel kernel;
+    LifecycleTestModule provider(
+        MODULE_A,
+        std::vector<std::string_view>(),
+        std::vector<std::string_view>(),
+        std::vector<std::string_view>{SERVICE_A},
+        false,
+        false);
+    LifecycleTestModule relay(MODULE_B, std::vector<std::string_view>{MODULE_A}, false);
+    LifecycleTestModule consumer(
+        MODULE_C,
+        std::vector<std::string_view>{MODULE_B},
+        std::vector<std::string_view>{SERVICE_A},
+        std::vector<std::string_view>(),
+        false,
+        false,
+        false,
+        true);
+    std::vector<std::string> lifecycleTrace;
+
+    kernel.RegisterModule(consumer);
+    kernel.RegisterModule(relay);
+    kernel.RegisterModule(provider);
+
+    const auto startResult = kernel.Start(lifecycleTrace);
+    if (!startResult.Succeeded)
+    {
+        return Fail(DEPENDENCY_CHAIN_LOOKUP_START_MESSAGE);
+    }
+
+    const auto shutdownResult = kernel.Shutdown(lifecycleTrace);
+    if (!shutdownResult.Succeeded)
+    {
+        return Fail(DEPENDENCY_CHAIN_LOOKUP_SHUTDOWN_MESSAGE);
+    }
+
+    const std::vector<std::string> expectedTrace{
+        TRACE_KERNEL_START,
+        TRACE_MODULE_START_A,
+        TRACE_MODULE_START_B,
+        TRACE_MODULE_START_C,
+        TRACE_KERNEL_SHUTDOWN,
+        TRACE_MODULE_SHUTDOWN_C,
+        TRACE_MODULE_SHUTDOWN_B,
+        TRACE_MODULE_SHUTDOWN_A};
+
+    if (lifecycleTrace != expectedTrace)
+    {
+        return Fail(DEPENDENCY_CHAIN_LOOKUP_TRACE_MESSAGE);
     }
 
     return 0;
@@ -664,6 +728,7 @@ int main(int argc, char** argv)
     static const std::unordered_map<std::string_view, TestFunction> testRegistry{
         {TEST_LIFECYCLE, KernelModuleLifecycleDependencyOrder},
         {TEST_STARTUP_FAILURE, KernelModuleStartupFailureTearsDownStartedModules},
+        {TEST_DEPENDENCY_CHAIN_SERVICE_LOOKUP, KernelDependencyChainServiceLookupUsesModuleNameIndex},
         {TEST_SERVICE_REGISTRY, KernelServiceRegistryResolveAndMissingService},
         {TEST_INVALID_LIFECYCLE, KernelInvalidLifecycleRejectsOutOfOrderCalls}};
 

@@ -4,6 +4,7 @@
 #include <string_view>
 #include <unordered_map>
 
+#include "StreamFixture.h"
 #include "yuengine/memory/MemoryAccountingStatus.h"
 #include "yuengine/serialize/SerializeConstants.h"
 #include "yuengine/serialize/SerializeReader.h"
@@ -17,6 +18,7 @@ using SerializeSnapshot = yuengine::serialize::SerializeSnapshot;
 using SerializeStatus = yuengine::serialize::SerializeStatus;
 using SerializeTypeTag = yuengine::serialize::SerializeTypeTag;
 using SerializeWriter = yuengine::serialize::SerializeWriter;
+using StreamFixture = yuengine::serialize::tests::StreamFixture;
 using yuengine::serialize::FIELD_HEADER_BYTE_COUNT;
 using yuengine::serialize::MAX_FIELD_PAYLOAD_BYTE_COUNT;
 using yuengine::serialize::MAX_FIELDS_PER_RECORD;
@@ -80,13 +82,6 @@ constexpr SerializeFieldId FIELD_BYTES{15U};
 constexpr SerializeFieldId FIELD_UNKNOWN{16U};
 constexpr std::uint8_t SENTINEL_BYTE = 0xCDU;
 using TestFunction = int (*)();
-
-struct StreamFixture final
-{
-    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> Buffer;
-    std::uint32_t ByteCount = 0U;
-    SerializeSnapshot Snapshot{};
-};
 
 int Fail(std::string_view message)
 {

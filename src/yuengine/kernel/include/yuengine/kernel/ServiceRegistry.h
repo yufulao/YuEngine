@@ -5,6 +5,8 @@
 #include <typeindex>
 #include <unordered_map>
 
+#include "yuengine/kernel/ServiceRecord.h"
+
 namespace yuengine::kernel
 {
 class ServiceRegistry final
@@ -36,13 +38,6 @@ public:
 
 private:
     friend class EngineKernel;
-
-    struct ServiceRecord
-    {
-        void* Instance;
-        std::type_index Type;
-        std::string OwnerModule;
-    };
 
     bool RegisterRaw(std::string_view ownerModule, std::string_view serviceId, void* service, std::type_index serviceType);
     void* ResolveRaw(std::string_view serviceId, std::type_index serviceType) const;

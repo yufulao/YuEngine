@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "yuengine/kernel/IModule.h"
@@ -42,5 +43,6 @@ private:
     std::vector<IModule*> _startedModules;
     ServiceRegistry _services;
     bool _running = false;
+    std::unordered_map<std::string, IModule*> _moduleByName;
 };
 }

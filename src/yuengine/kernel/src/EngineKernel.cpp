@@ -30,6 +30,12 @@ bool EngineKernel::RegisterModule(IModule& module)
         return false;
     }
 
+    const std::string moduleName(module.Name());
+    if (!_moduleByName.contains(moduleName))
+    {
+        _moduleByName.emplace(moduleName, &module);
+    }
+
     _modules.push_back(&module);
     return true;
 }
@@ -290,15 +296,13 @@ bool EngineKernel::DependencyChainContains(const IModule& module, std::string_vi
 
 const IModule* EngineKernel::FindModule(std::string_view moduleName) const
 {
-    for (const IModule* module : _modules)
+    const auto moduleIterator = _moduleByName.find(std::string(moduleName));
+    if (moduleIterator == _moduleByName.end())
     {
-        if (module->Name() == moduleName)
-        {
-            return module;
-        }
+        return nullptr;
     }
 
-    return nullptr;
+    return moduleIterator->second;
 }
 
 KernelResult EngineKernel::CompleteStartupAttempt(KernelResult result)
