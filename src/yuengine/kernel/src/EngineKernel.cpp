@@ -18,6 +18,11 @@ constexpr const char* SHUTDOWN_FAILURE_MESSAGE = "module shutdown failed";
 constexpr const char* INVALID_LIFECYCLE_MESSAGE = "kernel lifecycle call was out of order";
 }
 
+EngineKernel::EngineKernel()
+{
+    _services.CloseRegistrationWindow();
+}
+
 bool EngineKernel::RegisterModule(IModule& module)
 {
     if (_running)
@@ -53,6 +58,8 @@ KernelResult EngineKernel::Start(std::vector<std::string>& lifecycleTrace)
         moduleByName.emplace(moduleName, module);
     }
 
+    _services.OpenRegistrationWindow();
+
     while (_startedModules.size() < _modules.size())
     {
         bool progressed = false;
@@ -74,33 +81,30 @@ KernelResult EngineKernel::Start(std::vector<std::string>& lifecycleTrace)
                 const KernelResult teardownResult = ShutdownStarted(lifecycleTrace);
                 if (!teardownResult.Succeeded)
                 {
-                    return teardownResult;
+                    return CompleteStartupAttempt(teardownResult);
                 }
 
-                return KernelResult::Failure(KernelStatus::MissingService, MISSING_REQUIRED_SERVICE_MESSAGE);
+                return CompleteStartupAttempt(KernelResult::Failure(KernelStatus::MissingService, MISSING_REQUIRED_SERVICE_MESSAGE));
             }
 
             const KernelResult startResult = module->Start(_services, lifecycleTrace);
             if (!startResult.Succeeded)
             {
-                const bool publishedServices = _services.OwnerHasServices(module->Name());
+                const KernelResult failedModuleCleanupResult = module->Shutdown(lifecycleTrace);
                 _services.UnregisterOwner(module->Name());
-                if (publishedServices)
-                {
-                    const KernelResult failedModuleCleanupResult = module->Shutdown(lifecycleTrace);
-                    if (!failedModuleCleanupResult.Succeeded)
-                    {
-                        return KernelResult::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
-                    }
-                }
 
                 const KernelResult teardownResult = ShutdownStarted(lifecycleTrace);
-                if (!teardownResult.Succeeded)
+                if (!failedModuleCleanupResult.Succeeded)
                 {
-                    return teardownResult;
+                    return CompleteStartupAttempt(KernelResult::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE));
                 }
 
-                return KernelResult::Failure(startResult.Status, STARTUP_TEARDOWN_MESSAGE);
+                if (!teardownResult.Succeeded)
+                {
+                    return CompleteStartupAttempt(teardownResult);
+                }
+
+                return CompleteStartupAttempt(KernelResult::Failure(startResult.Status, STARTUP_TEARDOWN_MESSAGE));
             }
 
             _startedModules.push_back(module);
@@ -112,15 +116,15 @@ KernelResult EngineKernel::Start(std::vector<std::string>& lifecycleTrace)
             const KernelResult teardownResult = ShutdownStarted(lifecycleTrace);
             if (!teardownResult.Succeeded)
             {
-                return teardownResult;
+                return CompleteStartupAttempt(teardownResult);
             }
 
-            return KernelResult::Failure(KernelStatus::DependencyFailure, UNRESOLVED_DEPENDENCY_MESSAGE);
+            return CompleteStartupAttempt(KernelResult::Failure(KernelStatus::DependencyFailure, UNRESOLVED_DEPENDENCY_MESSAGE));
         }
     }
 
     _running = true;
-    return KernelResult::Success();
+    return CompleteStartupAttempt(KernelResult::Success());
 }
 
 KernelResult EngineKernel::Update(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace)
@@ -138,8 +142,6 @@ KernelResult EngineKernel::Update(std::uint32_t frameIndex, std::uint64_t tickTi
         const KernelResult updateResult = module->Update(frameIndex, tickTimeNanoseconds, lifecycleTrace);
         if (!updateResult.Succeeded)
         {
-            _services.UnregisterOwner(module->Name());
-
             const KernelResult teardownResult = ShutdownFailedAndDependents(module->Name(), lifecycleTrace);
             if (!teardownResult.Succeeded)
             {
@@ -297,6 +299,12 @@ const IModule* EngineKernel::FindModule(std::string_view moduleName) const
     }
 
     return nullptr;
+}
+
+KernelResult EngineKernel::CompleteStartupAttempt(KernelResult result)
+{
+    _services.CloseRegistrationWindow();
+    return result;
 }
 
 KernelResult EngineKernel::ShutdownStarted(std::vector<std::string>& lifecycleTrace)

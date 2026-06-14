@@ -5,10 +5,23 @@
 #include "yuengine/memory/MemoryAccountingStatus.h"
 #include "yuengine/serialize/SerializeConstants.h"
 
+using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
+
 namespace yuengine::serialize
 {
 namespace
 {
+constexpr std::uint32_t TYPE_TAG_TABLE_SIZE = 6U;
+constexpr std::uint32_t TYPE_TAG_RESERVED_INDEX = 0U;
+constexpr std::array<std::uint32_t, TYPE_TAG_TABLE_SIZE> TYPE_TAG_PAYLOAD_BYTE_COUNTS{
+    0U,
+    UINT32_PAYLOAD_BYTE_COUNT,
+    INT32_PAYLOAD_BYTE_COUNT,
+    UINT64_PAYLOAD_BYTE_COUNT,
+    INT64_PAYLOAD_BYTE_COUNT,
+    0U};
+static_assert(static_cast<std::uint32_t>(SerializeTypeTag::FixedBytes) + 1U == TYPE_TAG_TABLE_SIZE);
+
 std::uint32_t ClampByteCount(std::uint32_t byteCount)
 {
     if (byteCount > MAX_STREAM_BYTE_COUNT)
@@ -21,27 +34,13 @@ std::uint32_t ClampByteCount(std::uint32_t byteCount)
 
 std::uint32_t ExpectedPayloadByteCount(SerializeTypeTag type)
 {
-    if (type == SerializeTypeTag::UInt32)
+    const std::uint32_t typeValue = static_cast<std::uint32_t>(type);
+    if (typeValue >= TYPE_TAG_TABLE_SIZE)
     {
-        return UINT32_PAYLOAD_BYTE_COUNT;
+        return 0U;
     }
 
-    if (type == SerializeTypeTag::Int32)
-    {
-        return INT32_PAYLOAD_BYTE_COUNT;
-    }
-
-    if (type == SerializeTypeTag::UInt64)
-    {
-        return UINT64_PAYLOAD_BYTE_COUNT;
-    }
-
-    if (type == SerializeTypeTag::Int64)
-    {
-        return INT64_PAYLOAD_BYTE_COUNT;
-    }
-
-    return 0U;
+    return TYPE_TAG_PAYLOAD_BYTE_COUNTS[typeValue];
 }
 }
 
@@ -56,7 +55,7 @@ SerializeReader::SerializeReader(const std::uint8_t* buffer, std::uint32_t byteC
           0U,
           0U,
           0U,
-          yuengine::memory::MemoryAccountingStatus::ExplicitlyTrackedOnly,
+          MemoryAccountingStatus::ExplicitlyTrackedOnly,
           SerializeStatus::Success},
       _isOpen(false)
 {
@@ -64,6 +63,8 @@ SerializeReader::SerializeReader(const std::uint8_t* buffer, std::uint32_t byteC
 
 SerializeStatus SerializeReader::OpenStream()
 {
+    _isOpen = false;
+
     if (!CanReadBytes(0U, STREAM_HEADER_BYTE_COUNT))
     {
         return RecordFailure(SerializeStatus::TruncatedStream);
@@ -380,6 +381,7 @@ SerializeStatus SerializeReader::FindField(SerializeRecordId record, SerializeFi
                 outLocation.PayloadOffset = payloadOffset;
                 outLocation.PayloadByteCount = payloadByteCount;
                 outLocation.Found = true;
+                return SerializeStatus::Success;
             }
 
             offset = payloadOffset + payloadByteCount;
@@ -427,27 +429,12 @@ bool SerializeReader::CanReadBytes(std::uint32_t offset, std::uint32_t byteCount
 
 bool SerializeReader::IsKnownTypeTag(std::uint32_t value) const
 {
-    if (value == static_cast<std::uint32_t>(SerializeTypeTag::UInt32))
+    if (value == TYPE_TAG_RESERVED_INDEX)
     {
-        return true;
+        return false;
     }
 
-    if (value == static_cast<std::uint32_t>(SerializeTypeTag::Int32))
-    {
-        return true;
-    }
-
-    if (value == static_cast<std::uint32_t>(SerializeTypeTag::UInt64))
-    {
-        return true;
-    }
-
-    if (value == static_cast<std::uint32_t>(SerializeTypeTag::Int64))
-    {
-        return true;
-    }
-
-    return value == static_cast<std::uint32_t>(SerializeTypeTag::FixedBytes);
+    return value < TYPE_TAG_TABLE_SIZE;
 }
 
 bool SerializeReader::IsDuplicateField(SerializeFieldId field, const SerializeFieldId* fields, std::uint32_t fieldCount) const

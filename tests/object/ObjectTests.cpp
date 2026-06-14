@@ -2,6 +2,8 @@
 #include <iostream>
 #include <limits>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 
 #include "yuengine/memory/MemoryAccountingStatus.h"
 #include "yuengine/object/ObjectRegistry.h"
@@ -15,6 +17,7 @@ using ObjectRegistryDesc = yuengine::object::ObjectRegistryDesc;
 using ObjectSnapshot = yuengine::object::ObjectSnapshot;
 using ObjectStatus = yuengine::object::ObjectStatus;
 using ObjectTypeId = yuengine::object::ObjectTypeId;
+using yuengine::object::INVALID_OBJECT_GENERATION;
 
 namespace
 {
@@ -35,9 +38,25 @@ constexpr const char* TEST_SNAPSHOT = "Object_RegistrySnapshot_ReportsCountsAndL
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Object_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_FORBIDDEN_DEPENDENCY = "Object_NoWorldScriptResourceOrGameAdapterDependency";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Object_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
+constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
+constexpr const char* TYPE_CAPACITY_RETRY_CREATE_MESSAGE = "type capacity failure consumed free slot";
+constexpr const char* TYPE_CAPACITY_RETRY_SLOT_MESSAGE = "retry after type capacity failure used wrong slot";
+constexpr const char* TYPE_CAPACITY_RETRY_GENERATION_MESSAGE = "type capacity failure advanced free slot generation";
+constexpr const char* UNUSED_VALIDATE_MESSAGE = "unused slot handle did not return invalid handle";
+constexpr const char* DESTROYED_VALIDATE_MESSAGE = "already-destroyed handle did not return invalid handle";
+constexpr const char* UNUSED_ACQUIRE_MESSAGE = "unused slot acquire did not return explicit status";
+constexpr const char* UNUSED_RELEASE_MESSAGE = "unused slot release did not return explicit status";
+constexpr const char* UNUSED_DESTROY_MESSAGE = "unused slot destroy did not return explicit status";
+constexpr const char* DESTROYED_ACQUIRE_MESSAGE = "already-destroyed acquire did not return explicit status";
+constexpr const char* DESTROYED_RELEASE_MESSAGE = "already-destroyed release did not return explicit status";
+constexpr const char* DESTROYED_DESTROY_MESSAGE = "already-destroyed destroy did not return explicit status";
+constexpr const char* SNAPSHOT_ACCEPTED_OPERATION_MESSAGE = "snapshot did not report accepted operation count";
 constexpr ObjectTypeId TYPE_ACTOR{1U};
 constexpr ObjectTypeId TYPE_CAMERA{2U};
 constexpr ObjectTypeId TYPE_EFFECT{3U};
+constexpr std::uint32_t INVALID_GENERATION = INVALID_OBJECT_GENERATION;
+using TestFunction = int (*)();
 
 int Fail(const std::string& message)
 {
@@ -109,7 +128,7 @@ int ObjectCreateSyntheticObjectReturnsGenerationHandle()
         return Fail("first object used unexpected slot");
     }
 
-    if (result.Handle.Generation == yuengine::object::INVALID_OBJECT_GENERATION)
+    if (result.Handle.Generation == INVALID_GENERATION)
     {
         return Fail("object handle generation was invalid");
     }
@@ -187,7 +206,7 @@ int ObjectRegistryCapacityOverflowDoesNotMutate()
     }
 
     const ObjectSnapshot beforeSnapshot = registry.Snapshot();
-    const ObjectRegistrationResult secondResult = Create(registry, TYPE_ACTOR);
+    const ObjectRegistrationResult secondResult = Create(registry, TYPE_CAMERA);
     if (secondResult.Status != ObjectStatus::CapacityExceeded)
     {
         return Fail("capacity overflow did not return explicit status");
@@ -249,6 +268,22 @@ int ObjectTypeCapacityOverflowDoesNotMutate()
         return Fail("type capacity overflow changed created object count");
     }
 
+    const ObjectRegistrationResult retryResult = Create(registry, TYPE_ACTOR);
+    if (!retryResult.Succeeded())
+    {
+        return Fail(TYPE_CAPACITY_RETRY_CREATE_MESSAGE);
+    }
+
+    if (retryResult.Handle.Slot != 1U)
+    {
+        return Fail(TYPE_CAPACITY_RETRY_SLOT_MESSAGE);
+    }
+
+    if (retryResult.Handle.Generation != 1U)
+    {
+        return Fail(TYPE_CAPACITY_RETRY_GENERATION_MESSAGE);
+    }
+
     return 0;
 }
 
@@ -258,6 +293,12 @@ int ObjectValidateRejectsInvalidOrStaleHandle()
     if (registry.Validate(ObjectHandle{}) != ObjectStatus::InvalidHandle)
     {
         return Fail("invalid handle did not return explicit status");
+    }
+
+    const ObjectHandle unusedHandle{0U, 1U};
+    if (registry.Validate(unusedHandle) != ObjectStatus::InvalidHandle)
+    {
+        return Fail(UNUSED_VALIDATE_MESSAGE);
     }
 
     const ObjectRegistrationResult result = Create(registry, TYPE_ACTOR);
@@ -274,6 +315,12 @@ int ObjectValidateRejectsInvalidOrStaleHandle()
     if (registry.Validate(result.Handle) != ObjectStatus::GenerationMismatch)
     {
         return Fail("stale handle did not return generation mismatch");
+    }
+
+    const ObjectHandle destroyedHandle{result.Handle.Slot, result.Handle.Generation + 1U};
+    if (registry.Validate(destroyedHandle) != ObjectStatus::InvalidHandle)
+    {
+        return Fail(DESTROYED_VALIDATE_MESSAGE);
     }
 
     return 0;
@@ -294,6 +341,38 @@ int ObjectInvalidOrStaleHandleOperationsReturnExplicitStatusWithoutMutation()
     }
 
     const ObjectSnapshot beforeSnapshot = registry.Snapshot();
+    const ObjectHandle unusedHandle{1U, 1U};
+    if (registry.Acquire(unusedHandle) != ObjectStatus::InvalidHandle)
+    {
+        return Fail(UNUSED_ACQUIRE_MESSAGE);
+    }
+
+    if (registry.Release(unusedHandle) != ObjectStatus::InvalidHandle)
+    {
+        return Fail(UNUSED_RELEASE_MESSAGE);
+    }
+
+    if (registry.Destroy(unusedHandle) != ObjectStatus::InvalidHandle)
+    {
+        return Fail(UNUSED_DESTROY_MESSAGE);
+    }
+
+    const ObjectHandle destroyedHandle{result.Handle.Slot, result.Handle.Generation + 1U};
+    if (registry.Acquire(destroyedHandle) != ObjectStatus::InvalidHandle)
+    {
+        return Fail(DESTROYED_ACQUIRE_MESSAGE);
+    }
+
+    if (registry.Release(destroyedHandle) != ObjectStatus::InvalidHandle)
+    {
+        return Fail(DESTROYED_RELEASE_MESSAGE);
+    }
+
+    if (registry.Destroy(destroyedHandle) != ObjectStatus::InvalidHandle)
+    {
+        return Fail(DESTROYED_DESTROY_MESSAGE);
+    }
+
     if (registry.Acquire(result.Handle) != ObjectStatus::GenerationMismatch)
     {
         return Fail("stale acquire did not return explicit status");
@@ -600,6 +679,11 @@ int ObjectRegistrySnapshotReportsCountsAndLastStatus()
         return Fail("snapshot did not report failed operation count");
     }
 
+    if (snapshot.AcceptedOperationCount != 5U)
+    {
+        return Fail(SNAPSHOT_ACCEPTED_OPERATION_MESSAGE);
+    }
+
     if (snapshot.LastStatus != ObjectStatus::InvalidType)
     {
         return Fail("snapshot did not report last explicit status");
@@ -739,94 +823,34 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        return Fail("expected one test name");
+        return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::string testName(argv[1]);
-    if (testName == TEST_CREATE)
+    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+        {TEST_CREATE, ObjectCreateSyntheticObjectReturnsGenerationHandle},
+        {TEST_INVALID_TYPE, ObjectCreateRejectsInvalidTypeWithoutMutation},
+        {TEST_CAPACITY, ObjectRegistryCapacityOverflowDoesNotMutate},
+        {TEST_TYPE_CAPACITY, ObjectTypeCapacityOverflowDoesNotMutate},
+        {TEST_VALIDATE_STALE, ObjectValidateRejectsInvalidOrStaleHandle},
+        {TEST_STALE_OPERATIONS, ObjectInvalidOrStaleHandleOperationsReturnExplicitStatusWithoutMutation},
+        {TEST_DESTROY_GENERATION, ObjectDestroyIncrementsGenerationAndInvalidatesOldHandle},
+        {TEST_REUSE_SLOT, ObjectReusesFreedSlotWithNewGeneration},
+        {TEST_ACQUIRE_RELEASE, ObjectAcquireReleaseTracksReferenceCount},
+        {TEST_REPEATED_ACQUIRE, ObjectRepeatedAcquireIncrementsReferenceCount},
+        {TEST_REFERENCE_OVERFLOW, ObjectAcquireRejectsReferenceCountOverflow},
+        {TEST_RELEASE_ZERO, ObjectReleaseAtZeroDoesNotMutate},
+        {TEST_DESTROY_REFERENCED, ObjectDestroyRejectsOutstandingReference},
+        {TEST_SNAPSHOT, ObjectRegistrySnapshotReportsCountsAndLastStatus},
+        {TEST_DISABLED_DIAGNOSTICS, ObjectDisabledDiagnosticsDoesNotChangeResults},
+        {TEST_NO_FORBIDDEN_DEPENDENCY, ObjectNoWorldScriptResourceOrGameAdapterDependency},
+        {TEST_NO_HIDDEN_ALLOCATION, ObjectNoHiddenAllocationUsesYuMemorySignal}};
+
+    const std::string_view testName(argv[1]);
+    const auto testIterator = testRegistry.find(testName);
+    if (testIterator == testRegistry.end())
     {
-        return ObjectCreateSyntheticObjectReturnsGenerationHandle();
+        return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    if (testName == TEST_INVALID_TYPE)
-    {
-        return ObjectCreateRejectsInvalidTypeWithoutMutation();
-    }
-
-    if (testName == TEST_CAPACITY)
-    {
-        return ObjectRegistryCapacityOverflowDoesNotMutate();
-    }
-
-    if (testName == TEST_TYPE_CAPACITY)
-    {
-        return ObjectTypeCapacityOverflowDoesNotMutate();
-    }
-
-    if (testName == TEST_VALIDATE_STALE)
-    {
-        return ObjectValidateRejectsInvalidOrStaleHandle();
-    }
-
-    if (testName == TEST_STALE_OPERATIONS)
-    {
-        return ObjectInvalidOrStaleHandleOperationsReturnExplicitStatusWithoutMutation();
-    }
-
-    if (testName == TEST_DESTROY_GENERATION)
-    {
-        return ObjectDestroyIncrementsGenerationAndInvalidatesOldHandle();
-    }
-
-    if (testName == TEST_REUSE_SLOT)
-    {
-        return ObjectReusesFreedSlotWithNewGeneration();
-    }
-
-    if (testName == TEST_ACQUIRE_RELEASE)
-    {
-        return ObjectAcquireReleaseTracksReferenceCount();
-    }
-
-    if (testName == TEST_REPEATED_ACQUIRE)
-    {
-        return ObjectRepeatedAcquireIncrementsReferenceCount();
-    }
-
-    if (testName == TEST_REFERENCE_OVERFLOW)
-    {
-        return ObjectAcquireRejectsReferenceCountOverflow();
-    }
-
-    if (testName == TEST_RELEASE_ZERO)
-    {
-        return ObjectReleaseAtZeroDoesNotMutate();
-    }
-
-    if (testName == TEST_DESTROY_REFERENCED)
-    {
-        return ObjectDestroyRejectsOutstandingReference();
-    }
-
-    if (testName == TEST_SNAPSHOT)
-    {
-        return ObjectRegistrySnapshotReportsCountsAndLastStatus();
-    }
-
-    if (testName == TEST_DISABLED_DIAGNOSTICS)
-    {
-        return ObjectDisabledDiagnosticsDoesNotChangeResults();
-    }
-
-    if (testName == TEST_NO_FORBIDDEN_DEPENDENCY)
-    {
-        return ObjectNoWorldScriptResourceOrGameAdapterDependency();
-    }
-
-    if (testName == TEST_NO_HIDDEN_ALLOCATION)
-    {
-        return ObjectNoHiddenAllocationUsesYuMemorySignal();
-    }
-
-    return Fail("unknown test name");
+    return testIterator->second();
 }

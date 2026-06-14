@@ -10,12 +10,15 @@
 
 namespace yuengine::package
 {
+using resource::ResourceLogicalKey;
+using resource::ResourceTypeId;
+
 struct PackageEntryDescriptor final
 {
     PackageId Package;
     PackageEntryId Entry;
-    yuengine::resource::ResourceTypeId Type;
-    yuengine::resource::ResourceLogicalKey LogicalKey;
+    ResourceTypeId Type;
+    ResourceLogicalKey LogicalKey;
     PackageSourceKey SourceKey;
     std::uint32_t ByteOffset = 0U;
     std::uint32_t ByteSize = 0U;

@@ -35,6 +35,8 @@ public:
     void UnregisterOwner(std::string_view ownerModule);
 
 private:
+    friend class EngineKernel;
+
     struct ServiceRecord
     {
         void* Instance;
@@ -44,7 +46,10 @@ private:
 
     bool RegisterRaw(std::string_view ownerModule, std::string_view serviceId, void* service, std::type_index serviceType);
     void* ResolveRaw(std::string_view serviceId, std::type_index serviceType) const;
+    void OpenRegistrationWindow();
+    void CloseRegistrationWindow();
 
     std::unordered_map<std::string, ServiceRecord> _services;
+    bool _acceptingRegistrations = true;
 };
 }

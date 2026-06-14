@@ -2,6 +2,8 @@
 
 #include <limits>
 
+using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
+
 namespace yuengine::resource
 {
 namespace
@@ -38,7 +40,7 @@ ResourceRegistry::ResourceRegistry(ResourceRegistryDesc desc)
           0U,
           0U,
           0U,
-          yuengine::memory::MemoryAccountingStatus::ExplicitlyTrackedOnly,
+          MemoryAccountingStatus::ExplicitlyTrackedOnly,
           ResourceStatus::Success}
 {
 }
@@ -70,18 +72,14 @@ ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const R
         return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::CapacityExceeded));
     }
 
-    const ResourceStatus typeStatus = RegisterTypeIfNeeded(descriptor.Type);
-    if (typeStatus != ResourceStatus::Success)
-    {
-        return ResourceRegistrationResult::Failure(RecordFailure(typeStatus));
-    }
-
+    ResourceSlot* freeSlot = nullptr;
+    std::uint32_t freeSlotIndex = 0U;
     std::uint32_t slotIndex = 0U;
     for (ResourceSlot& slot : _slots)
     {
         if (slotIndex >= _snapshot.ResourceCapacity)
         {
-            return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::CapacityExceeded));
+            break;
         }
 
         if (slot.IsActive)
@@ -90,22 +88,35 @@ ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const R
             continue;
         }
 
-        if (slot.Generation == INVALID_RESOURCE_GENERATION)
-        {
-            slot.Generation = 1U;
-        }
-
-        slot.Type = descriptor.Type;
-        slot.LogicalKey = descriptor.LogicalKey;
-        slot.ReferenceCount = descriptor.InitialReferenceCount;
-        slot.IsActive = true;
-        ++_snapshot.RegisteredResourceCount;
-        _snapshot.AcquiredHandleCount += descriptor.InitialReferenceCount;
-        RecordSuccess();
-        return ResourceRegistrationResult::Success(ResourceHandle{slotIndex, slot.Generation});
+        freeSlot = &slot;
+        freeSlotIndex = slotIndex;
+        break;
     }
 
-    return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::CapacityExceeded));
+    if (freeSlot == nullptr)
+    {
+        return ResourceRegistrationResult::Failure(RecordFailure(ResourceStatus::CapacityExceeded));
+    }
+
+    const ResourceStatus typeStatus = RegisterTypeIfNeeded(descriptor.Type);
+    if (typeStatus != ResourceStatus::Success)
+    {
+        return ResourceRegistrationResult::Failure(RecordFailure(typeStatus));
+    }
+
+    if (freeSlot->Generation == INVALID_RESOURCE_GENERATION)
+    {
+        freeSlot->Generation = 1U;
+    }
+
+    freeSlot->Type = descriptor.Type;
+    freeSlot->LogicalKey = descriptor.LogicalKey;
+    freeSlot->ReferenceCount = descriptor.InitialReferenceCount;
+    freeSlot->IsActive = true;
+    ++_snapshot.RegisteredResourceCount;
+    _snapshot.AcquiredHandleCount += descriptor.InitialReferenceCount;
+    RecordSuccess();
+    return ResourceRegistrationResult::Success(ResourceHandle{freeSlotIndex, freeSlot->Generation});
 }
 
 ResourceStatus ResourceRegistry::AddDependency(ResourceHandle dependent, ResourceHandle dependency)

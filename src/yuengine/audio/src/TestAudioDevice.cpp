@@ -16,6 +16,7 @@ TestAudioDevice::TestAudioDevice()
       _voices(),
       _capabilities{},
       _snapshot{},
+      _generationSeed(INVALID_GENERATION),
       _isInitialized(false)
 {
 }
@@ -52,10 +53,26 @@ AudioStatus TestAudioDevice::Initialize(const AudioDeviceDesc& desc)
         return AudioStatus::CapacityExceeded;
     }
 
+    ++_generationSeed;
+    if (_generationSeed == INVALID_GENERATION)
+    {
+        ++_generationSeed;
+    }
+
     _sources.assign(desc.SourceCapacity, AudioSourceSlot{});
     _voices.clear();
     _voices.reserve(MAX_VOICES);
     _voices.resize(desc.VoiceCapacity);
+    for (AudioSourceSlot& source : _sources)
+    {
+        source.Generation = _generationSeed;
+    }
+
+    for (AudioVoiceSlot& voice : _voices)
+    {
+        voice.Generation = _generationSeed;
+    }
+
     _capabilities = AudioCapabilities{
         AudioBackendKind::Test,
         AudioSampleFormat::S16,

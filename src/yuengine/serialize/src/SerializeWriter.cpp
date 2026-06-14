@@ -2,6 +2,8 @@
 
 #include "yuengine/memory/MemoryAccountingStatus.h"
 
+using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
+
 namespace yuengine::serialize
 {
 namespace
@@ -53,7 +55,7 @@ SerializeWriter::SerializeWriter(std::uint8_t* buffer, std::uint32_t capacity)
           0U,
           0U,
           0U,
-          yuengine::memory::MemoryAccountingStatus::ExplicitlyTrackedOnly,
+          MemoryAccountingStatus::ExplicitlyTrackedOnly,
           SerializeStatus::Success},
       _hasStream(false),
       _hasActiveRecord(false)
@@ -75,7 +77,7 @@ SerializeStatus SerializeWriter::BeginStream()
         0U,
         0U,
         0U,
-        yuengine::memory::MemoryAccountingStatus::ExplicitlyTrackedOnly,
+        MemoryAccountingStatus::ExplicitlyTrackedOnly,
         SerializeStatus::Success};
     _activeRecordOffset = 0U;
     _currentRecordFieldCount = 0U;

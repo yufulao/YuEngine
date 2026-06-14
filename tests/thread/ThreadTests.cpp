@@ -1,7 +1,9 @@
+#include <array>
 #include <cstddef>
 #include <iostream>
 #include <string>
-#include <array>
+#include <string_view>
+#include <unordered_map>
 
 #include "ThreadTestContext.h"
 #include "yuengine/memory/CountingMemoryTracker.h"
@@ -29,11 +31,14 @@ constexpr const char* TEST_SHUTDOWN_DRAIN = "Thread_ShutdownDrainPolicy_Executes
 constexpr const char* TEST_SHUTDOWN_CANCEL = "Thread_ShutdownCancelPolicy_CancelsQueuedTasks";
 constexpr const char* TEST_CAPACITY = "Thread_QueueCapacity_DoesNotGrowDuringFixture";
 constexpr const char* TEST_DIAGNOSTICS_DISABLED = "Thread_DiagnosticsDisabled_DoesNotChangeBehavior";
+constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
+constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::size_t SMALL_CAPACITY = 2U;
 constexpr std::size_t LARGE_CAPACITY = 4U;
 constexpr int FIRST_VALUE = 10;
 constexpr int SECOND_VALUE = 20;
 constexpr int THIRD_VALUE = 30;
+using TestFunction = int (*)();
 
 int Fail(const std::string& message)
 {
@@ -411,54 +416,26 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        return Fail("expected one test name");
+        return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::string testName(argv[1]);
-    if (testName == TEST_ENQUEUE_SUCCEEDS)
+    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+        {TEST_ENQUEUE_SUCCEEDS, ThreadQueueEnqueueWithinCapacitySucceeds},
+        {TEST_ENQUEUE_REJECTS, ThreadQueueEnqueueBeyondCapacityRejects},
+        {TEST_FIFO, ThreadDrainExecutesTasksInDeterministicOrder},
+        {TEST_FAILURE, ThreadTaskFailureReturnsFailedResult},
+        {TEST_SHUTDOWN_REJECTS, ThreadShutdownRejectsNewSubmission},
+        {TEST_SHUTDOWN_DRAIN, ThreadShutdownDrainPolicyExecutesQueuedTasks},
+        {TEST_SHUTDOWN_CANCEL, ThreadShutdownCancelPolicyCancelsQueuedTasks},
+        {TEST_CAPACITY, ThreadQueueCapacityDoesNotGrowDuringFixture},
+        {TEST_DIAGNOSTICS_DISABLED, ThreadDiagnosticsDisabledDoesNotChangeBehavior}};
+
+    const std::string_view testName(argv[1]);
+    const auto testIterator = testRegistry.find(testName);
+    if (testIterator == testRegistry.end())
     {
-        return ThreadQueueEnqueueWithinCapacitySucceeds();
+        return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    if (testName == TEST_ENQUEUE_REJECTS)
-    {
-        return ThreadQueueEnqueueBeyondCapacityRejects();
-    }
-
-    if (testName == TEST_FIFO)
-    {
-        return ThreadDrainExecutesTasksInDeterministicOrder();
-    }
-
-    if (testName == TEST_FAILURE)
-    {
-        return ThreadTaskFailureReturnsFailedResult();
-    }
-
-    if (testName == TEST_SHUTDOWN_REJECTS)
-    {
-        return ThreadShutdownRejectsNewSubmission();
-    }
-
-    if (testName == TEST_SHUTDOWN_DRAIN)
-    {
-        return ThreadShutdownDrainPolicyExecutesQueuedTasks();
-    }
-
-    if (testName == TEST_SHUTDOWN_CANCEL)
-    {
-        return ThreadShutdownCancelPolicyCancelsQueuedTasks();
-    }
-
-    if (testName == TEST_CAPACITY)
-    {
-        return ThreadQueueCapacityDoesNotGrowDuringFixture();
-    }
-
-    if (testName == TEST_DIAGNOSTICS_DISABLED)
-    {
-        return ThreadDiagnosticsDisabledDoesNotChangeBehavior();
-    }
-
-    return Fail("unknown test name");
+    return testIterator->second();
 }

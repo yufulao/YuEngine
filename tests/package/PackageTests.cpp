@@ -3,6 +3,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 #include "yuengine/memory/MemoryAccountingStatus.h"
 #include "yuengine/package/PackageConstants.h"
@@ -23,6 +24,10 @@ using PackageSourceKey = yuengine::package::PackageSourceKey;
 using PackageStatus = yuengine::package::PackageStatus;
 using ResourceLogicalKey = yuengine::resource::ResourceLogicalKey;
 using ResourceTypeId = yuengine::resource::ResourceTypeId;
+using yuengine::package::MAX_DECLARED_ENTRY_SIZE;
+using yuengine::package::MAX_PACKAGE_ENTRY_COUNT;
+using yuengine::package::MAX_PACKAGE_SOURCE_KEY_BYTES;
+using yuengine::resource::MAX_LOGICAL_KEY_BYTES;
 
 namespace
 {
@@ -50,6 +55,8 @@ constexpr const char* TEST_LOAD_PLAN_CAPACITY = "Package_LoadPlanCapacityOverflo
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Package_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_FILE_ORIGINAL = "Package_NoFileReadOriginalPackageOrGameAdapterDependency";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Package_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
+constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
 constexpr PackageId PACKAGE_A{1U};
 constexpr PackageId PACKAGE_B{2U};
@@ -61,6 +68,7 @@ constexpr ResourceTypeId TYPE_TEXTURE{1U};
 constexpr ResourceTypeId TYPE_MATERIAL{2U};
 constexpr ResourceTypeId TYPE_AUDIO{3U};
 constexpr ResourceTypeId TYPE_EFFECT{4U};
+using TestFunction = int (*)();
 
 int Fail(const std::string& message)
 {
@@ -367,7 +375,7 @@ int PackageRegisterEntryRejectsOversizedKeysWithoutMutation()
     RegisterManifest(registry);
     const PackageSnapshot beforeSnapshot = registry.Snapshot();
 
-    const std::string longLogicalKey(yuengine::resource::MAX_LOGICAL_KEY_BYTES + 1U, 'a');
+    const std::string longLogicalKey(MAX_LOGICAL_KEY_BYTES + 1U, 'a');
     const PackageRegistrationResult longLogical = registry.RegisterEntry(
         Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, longLogicalKey.c_str(), "textures/texture_a.bin"));
     if (longLogical.Status != PackageStatus::LogicalKeyTooLong)
@@ -375,7 +383,7 @@ int PackageRegisterEntryRejectsOversizedKeysWithoutMutation()
         return Fail("oversized logical key did not return explicit status");
     }
 
-    const std::string longSourceKey(yuengine::package::MAX_PACKAGE_SOURCE_KEY_BYTES + 1U, 'a');
+    const std::string longSourceKey(MAX_PACKAGE_SOURCE_KEY_BYTES + 1U, 'a');
     const PackageRegistrationResult longSource =
         registry.RegisterEntry(Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", longSourceKey.c_str()));
     if (longSource.Status != PackageStatus::SourceKeyTooLong)
@@ -404,7 +412,7 @@ int PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation()
         "texture_a",
         "textures/texture_a.bin",
         0U,
-        yuengine::package::MAX_DECLARED_ENTRY_SIZE + 1U);
+        MAX_DECLARED_ENTRY_SIZE + 1U);
     if (tooLarge.Status != PackageStatus::ByteRangeOutOfBounds)
     {
         return Fail("oversized byte range did not return explicit status");
@@ -631,7 +639,7 @@ int PackageDependencyValidationRejectsCycleAfterHighFanout()
 
     PackageRegistry registry;
     RegisterManifest(registry);
-    for (std::uint32_t index = 1U; index <= yuengine::package::MAX_PACKAGE_ENTRY_COUNT; ++index)
+    for (std::uint32_t index = 1U; index <= MAX_PACKAGE_ENTRY_COUNT; ++index)
     {
         const std::string suffix = std::to_string(index);
         const std::string logicalKey = "entry_" + suffix;
@@ -644,7 +652,7 @@ int PackageDependencyValidationRejectsCycleAfterHighFanout()
         }
     }
 
-    for (std::uint32_t index = 3U; index <= yuengine::package::MAX_PACKAGE_ENTRY_COUNT; ++index)
+    for (std::uint32_t index = 3U; index <= MAX_PACKAGE_ENTRY_COUNT; ++index)
     {
         if (registry.AddDependency(PACKAGE_A, start, PackageEntryId{index}) != PackageStatus::Success)
         {
@@ -869,124 +877,40 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        return Fail("expected one test name");
+        return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::string testName(argv[1]);
-    if (testName == TEST_REGISTER_MANIFEST)
+    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+        {TEST_REGISTER_MANIFEST, PackageRegisterSyntheticManifestReturnsStableId},
+        {TEST_DUPLICATE_MANIFEST, PackageRegisterDuplicateManifestReturnsExplicitStatus},
+        {TEST_REGISTER_ENTRY, PackageRegisterEntryReturnsStableEntryId},
+        {TEST_DUPLICATE_ENTRY, PackageRegisterDuplicateEntryReturnsExplicitStatus},
+        {TEST_DUPLICATE_RESOURCE_KEY, PackageRegisterDuplicateResourceKeyReturnsExplicitStatus},
+        {TEST_INVALID_IDS_TYPE_KEY, PackageRegisterInvalidIdsOrTypeReturnsExplicitStatusWithoutMutation},
+        {TEST_MANIFEST_CAPACITY, PackageManifestCapacityOverflowDoesNotMutate},
+        {TEST_ENTRY_CAPACITY, PackageEntryCapacityOverflowDoesNotMutate},
+        {TEST_OVERSIZED_KEYS, PackageRegisterEntryRejectsOversizedKeysWithoutMutation},
+        {TEST_OVERSIZED_BYTE_RANGE, PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation},
+        {TEST_RESOLVE, PackageResolveEntryByResourceKeyReturnsDeterministicLoadPlan},
+        {TEST_RESOLVE_RESOURCE_KEY_TUPLE, PackageResolveEntryByResourceKeyUsesTypeAndLogicalKeyTuple},
+        {TEST_UNKNOWN_KEY, PackageResolveRejectsUnknownResourceKey},
+        {TEST_TYPE_MISMATCH, PackageResolveRejectsTypeMismatchWithoutMutation},
+        {TEST_MISSING_DEPENDENCY, PackageDependencyValidationRejectsMissingEntry},
+        {TEST_DEPENDENCY_CYCLE, PackageDependencyValidationRejectsCycle},
+        {TEST_DEPENDENCY_CYCLE_HIGH_FANOUT, PackageDependencyValidationRejectsCycleAfterHighFanout},
+        {TEST_DEPENDENCY_ORDER, PackageDependencyPlanPreservesDeclarationOrder},
+        {TEST_DEPENDENCY_CAPACITY, PackageDependencyCapacityOverflowDoesNotMutate},
+        {TEST_LOAD_PLAN_CAPACITY, PackageLoadPlanCapacityOverflowDoesNotMutate},
+        {TEST_DISABLED_DIAGNOSTICS, PackageDisabledDiagnosticsDoesNotChangeResults},
+        {TEST_NO_FILE_ORIGINAL, PackageNoFileReadOriginalPackageOrGameAdapterDependency},
+        {TEST_NO_HIDDEN_ALLOCATION, PackageNoHiddenAllocationUsesYuMemorySignal}};
+
+    const std::string_view testName(argv[1]);
+    const auto testIterator = testRegistry.find(testName);
+    if (testIterator == testRegistry.end())
     {
-        return PackageRegisterSyntheticManifestReturnsStableId();
+        return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    if (testName == TEST_DUPLICATE_MANIFEST)
-    {
-        return PackageRegisterDuplicateManifestReturnsExplicitStatus();
-    }
-
-    if (testName == TEST_REGISTER_ENTRY)
-    {
-        return PackageRegisterEntryReturnsStableEntryId();
-    }
-
-    if (testName == TEST_DUPLICATE_ENTRY)
-    {
-        return PackageRegisterDuplicateEntryReturnsExplicitStatus();
-    }
-
-    if (testName == TEST_DUPLICATE_RESOURCE_KEY)
-    {
-        return PackageRegisterDuplicateResourceKeyReturnsExplicitStatus();
-    }
-
-    if (testName == TEST_INVALID_IDS_TYPE_KEY)
-    {
-        return PackageRegisterInvalidIdsOrTypeReturnsExplicitStatusWithoutMutation();
-    }
-
-    if (testName == TEST_MANIFEST_CAPACITY)
-    {
-        return PackageManifestCapacityOverflowDoesNotMutate();
-    }
-
-    if (testName == TEST_ENTRY_CAPACITY)
-    {
-        return PackageEntryCapacityOverflowDoesNotMutate();
-    }
-
-    if (testName == TEST_OVERSIZED_KEYS)
-    {
-        return PackageRegisterEntryRejectsOversizedKeysWithoutMutation();
-    }
-
-    if (testName == TEST_OVERSIZED_BYTE_RANGE)
-    {
-        return PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation();
-    }
-
-    if (testName == TEST_RESOLVE)
-    {
-        return PackageResolveEntryByResourceKeyReturnsDeterministicLoadPlan();
-    }
-
-    if (testName == TEST_RESOLVE_RESOURCE_KEY_TUPLE)
-    {
-        return PackageResolveEntryByResourceKeyUsesTypeAndLogicalKeyTuple();
-    }
-
-    if (testName == TEST_UNKNOWN_KEY)
-    {
-        return PackageResolveRejectsUnknownResourceKey();
-    }
-
-    if (testName == TEST_TYPE_MISMATCH)
-    {
-        return PackageResolveRejectsTypeMismatchWithoutMutation();
-    }
-
-    if (testName == TEST_MISSING_DEPENDENCY)
-    {
-        return PackageDependencyValidationRejectsMissingEntry();
-    }
-
-    if (testName == TEST_DEPENDENCY_CYCLE)
-    {
-        return PackageDependencyValidationRejectsCycle();
-    }
-
-    if (testName == TEST_DEPENDENCY_CYCLE_HIGH_FANOUT)
-    {
-        return PackageDependencyValidationRejectsCycleAfterHighFanout();
-    }
-
-    if (testName == TEST_DEPENDENCY_ORDER)
-    {
-        return PackageDependencyPlanPreservesDeclarationOrder();
-    }
-
-    if (testName == TEST_DEPENDENCY_CAPACITY)
-    {
-        return PackageDependencyCapacityOverflowDoesNotMutate();
-    }
-
-    if (testName == TEST_LOAD_PLAN_CAPACITY)
-    {
-        return PackageLoadPlanCapacityOverflowDoesNotMutate();
-    }
-
-    if (testName == TEST_DISABLED_DIAGNOSTICS)
-    {
-        return PackageDisabledDiagnosticsDoesNotChangeResults();
-    }
-
-    if (testName == TEST_NO_FILE_ORIGINAL)
-    {
-        return PackageNoFileReadOriginalPackageOrGameAdapterDependency();
-    }
-
-    if (testName == TEST_NO_HIDDEN_ALLOCATION)
-    {
-        return PackageNoHiddenAllocationUsesYuMemorySignal();
-    }
-
-    return Fail("unknown test name");
+    return testIterator->second();
 }

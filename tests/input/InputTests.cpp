@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 
 #include "yuengine/input/InputConstants.h"
 #include "yuengine/input/InputReplay.h"
@@ -15,6 +17,11 @@ using InputEventType = yuengine::input::InputEventType;
 using InputReplay = yuengine::input::InputReplay;
 using InputReplaySnapshot = yuengine::input::InputReplaySnapshot;
 using InputStatus = yuengine::input::InputStatus;
+using yuengine::input::AXIS_MAX_VALUE;
+using yuengine::input::AXIS_MIN_VALUE;
+using yuengine::input::MAX_EVENTS_PER_FRAME;
+using yuengine::input::MAX_INPUT_BINDINGS;
+using yuengine::input::MAX_REPLAY_FRAMES;
 
 namespace
 {
@@ -36,6 +43,8 @@ constexpr const char* TEST_RESET = "Input_ResetClearsChangedStateWithoutClearing
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Input_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_GROW = "Input_FrameApply_DoesNotGrowReplayStorage";
 constexpr const char* TEST_NO_FORBIDDEN_DEPENDENCY = "Input_NoPlatformUiOrGameAdapterDependency";
+constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
+constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
 constexpr InputDeviceId DEVICE_A{0U};
 constexpr InputDeviceId DEVICE_B{1U};
@@ -48,6 +57,7 @@ constexpr InputActionId ACTION_B{1U};
 constexpr InputActionId UNKNOWN_ACTION{99U};
 constexpr std::int32_t AXIS_POSITIVE = 12345;
 constexpr std::int32_t AXIS_NEGATIVE = -12345;
+using TestFunction = int (*)();
 
 int Fail(const std::string& message)
 {
@@ -219,7 +229,7 @@ int InputMultipleControlsForOneActionUsesInsertionOrder()
 int InputBindingCapacityOverflowDoesNotMutate()
 {
     InputReplay replay;
-    for (std::size_t index = 0U; index < yuengine::input::MAX_INPUT_BINDINGS; ++index)
+    for (std::size_t index = 0U; index < MAX_INPUT_BINDINGS; ++index)
     {
         const auto result = replay.RegisterActionBinding(DEVICE_A, InputControlId{static_cast<std::uint32_t>(index)}, ACTION_A);
         if (result.Status != InputStatus::Success)
@@ -354,16 +364,16 @@ int InputReplayFrameAppliesFixedPointAxisValue()
         return Fail("binding failed");
     }
 
-    replay.RecordReplayEvent(0U, Axis(DEVICE_A, CONTROL_A, yuengine::input::AXIS_MIN_VALUE));
+    replay.RecordReplayEvent(0U, Axis(DEVICE_A, CONTROL_A, AXIS_MIN_VALUE));
     replay.ApplyNextFrame();
-    if (replay.QueryAction(ACTION_A).State.AxisValue != yuengine::input::AXIS_MIN_VALUE)
+    if (replay.QueryAction(ACTION_A).State.AxisValue != AXIS_MIN_VALUE)
     {
         return Fail("minimum axis value did not apply");
     }
 
-    replay.RecordReplayEvent(1U, Axis(DEVICE_A, CONTROL_A, yuengine::input::AXIS_MAX_VALUE));
+    replay.RecordReplayEvent(1U, Axis(DEVICE_A, CONTROL_A, AXIS_MAX_VALUE));
     replay.ApplyNextFrame();
-    if (replay.QueryAction(ACTION_A).State.AxisValue != yuengine::input::AXIS_MAX_VALUE)
+    if (replay.QueryAction(ACTION_A).State.AxisValue != AXIS_MAX_VALUE)
     {
         return Fail("maximum axis value did not apply");
     }
@@ -380,7 +390,7 @@ int InputInvalidAxisValueReturnsExplicitStatusWithoutMutation()
     }
 
     const auto beforeSnapshot = replay.Snapshot();
-    const InputStatus status = replay.RecordReplayEvent(0U, Axis(DEVICE_A, CONTROL_A, yuengine::input::AXIS_MAX_VALUE + 1));
+    const InputStatus status = replay.RecordReplayEvent(0U, Axis(DEVICE_A, CONTROL_A, AXIS_MAX_VALUE + 1));
     if (status != InputStatus::InvalidAxisValue)
     {
         return Fail("invalid axis did not return invalid value status");
@@ -471,7 +481,7 @@ int InputEventCapacityOverflowDoesNotMutateReplay()
         return Fail("binding failed");
     }
 
-    for (std::size_t index = 0U; index < yuengine::input::MAX_EVENTS_PER_FRAME; ++index)
+    for (std::size_t index = 0U; index < MAX_EVENTS_PER_FRAME; ++index)
     {
         if (replay.RecordReplayEvent(0U, ButtonPress(DEVICE_A, CONTROL_A)) != InputStatus::Success)
         {
@@ -485,7 +495,7 @@ int InputEventCapacityOverflowDoesNotMutateReplay()
         return Fail("event overflow did not return capacity status");
     }
 
-    if (replay.EventCountForFrame(0U) != yuengine::input::MAX_EVENTS_PER_FRAME)
+    if (replay.EventCountForFrame(0U) != MAX_EVENTS_PER_FRAME)
     {
         return Fail("event overflow mutated frame event count");
     }
@@ -610,7 +620,7 @@ int InputFrameApplyDoesNotGrowReplayStorage()
         return Fail("replay storage capacity changed during frame apply");
     }
 
-    if (snapshot.ReplayStorageCapacityBeforeFrame != yuengine::input::MAX_REPLAY_FRAMES * yuengine::input::MAX_EVENTS_PER_FRAME)
+    if (snapshot.ReplayStorageCapacityBeforeFrame != MAX_REPLAY_FRAMES * MAX_EVENTS_PER_FRAME)
     {
         return Fail("replay storage capacity was unexpected");
     }
@@ -645,99 +655,35 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        return Fail("expected one test name");
+        return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::string testName(argv[1]);
-    if (testName == TEST_REGISTER_BINDING)
+    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+        {TEST_REGISTER_BINDING, InputRegisterActionBindingReturnsStableActionId},
+        {TEST_DUPLICATE_CONTROL, InputRegisterControlAlreadyBoundReturnsDuplicateStatus},
+        {TEST_MULTI_CONTROL_ORDER, InputMultipleControlsForOneActionUsesInsertionOrder},
+        {TEST_BINDING_CAPACITY, InputBindingCapacityOverflowDoesNotMutate},
+        {TEST_PRESS_RELEASE, InputReplayFrameAppliesButtonPressAndRelease},
+        {TEST_EVENT_ORDER, InputReplayFrameEventOrderIsDeterministic},
+        {TEST_LAST_VALID_WINS, InputReplayFrameEventOrderLastValidValueWins},
+        {TEST_PRESS_RELEASE_CHANGED, InputReplayFramePressReleaseSameFrameSetsChangedFlag},
+        {TEST_AXIS, InputReplayFrameAppliesFixedPointAxisValue},
+        {TEST_INVALID_AXIS, InputInvalidAxisValueReturnsExplicitStatusWithoutMutation},
+        {TEST_INVALID_EVENT, InputInvalidEventDoesNotMutateReplayOrSnapshot},
+        {TEST_UNKNOWN_IDS, InputUnknownDeviceControlOrActionReturnsExplicitStatus},
+        {TEST_EVENT_CAPACITY, InputEventCapacityOverflowDoesNotMutateReplay},
+        {TEST_SNAPSHOT_DETERMINISM, InputFrameSnapshotIsDeterministicAcrossReplay},
+        {TEST_RESET, InputResetClearsChangedStateWithoutClearingPressedState},
+        {TEST_DISABLED_DIAGNOSTICS, InputDisabledDiagnosticsDoesNotChangeResults},
+        {TEST_NO_GROW, InputFrameApplyDoesNotGrowReplayStorage},
+        {TEST_NO_FORBIDDEN_DEPENDENCY, InputNoPlatformUiOrGameAdapterDependency}};
+
+    const std::string_view testName(argv[1]);
+    const auto testIterator = testRegistry.find(testName);
+    if (testIterator == testRegistry.end())
     {
-        return InputRegisterActionBindingReturnsStableActionId();
+        return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    if (testName == TEST_DUPLICATE_CONTROL)
-    {
-        return InputRegisterControlAlreadyBoundReturnsDuplicateStatus();
-    }
-
-    if (testName == TEST_MULTI_CONTROL_ORDER)
-    {
-        return InputMultipleControlsForOneActionUsesInsertionOrder();
-    }
-
-    if (testName == TEST_BINDING_CAPACITY)
-    {
-        return InputBindingCapacityOverflowDoesNotMutate();
-    }
-
-    if (testName == TEST_PRESS_RELEASE)
-    {
-        return InputReplayFrameAppliesButtonPressAndRelease();
-    }
-
-    if (testName == TEST_EVENT_ORDER)
-    {
-        return InputReplayFrameEventOrderIsDeterministic();
-    }
-
-    if (testName == TEST_LAST_VALID_WINS)
-    {
-        return InputReplayFrameEventOrderLastValidValueWins();
-    }
-
-    if (testName == TEST_PRESS_RELEASE_CHANGED)
-    {
-        return InputReplayFramePressReleaseSameFrameSetsChangedFlag();
-    }
-
-    if (testName == TEST_AXIS)
-    {
-        return InputReplayFrameAppliesFixedPointAxisValue();
-    }
-
-    if (testName == TEST_INVALID_AXIS)
-    {
-        return InputInvalidAxisValueReturnsExplicitStatusWithoutMutation();
-    }
-
-    if (testName == TEST_INVALID_EVENT)
-    {
-        return InputInvalidEventDoesNotMutateReplayOrSnapshot();
-    }
-
-    if (testName == TEST_UNKNOWN_IDS)
-    {
-        return InputUnknownDeviceControlOrActionReturnsExplicitStatus();
-    }
-
-    if (testName == TEST_EVENT_CAPACITY)
-    {
-        return InputEventCapacityOverflowDoesNotMutateReplay();
-    }
-
-    if (testName == TEST_SNAPSHOT_DETERMINISM)
-    {
-        return InputFrameSnapshotIsDeterministicAcrossReplay();
-    }
-
-    if (testName == TEST_RESET)
-    {
-        return InputResetClearsChangedStateWithoutClearingPressedState();
-    }
-
-    if (testName == TEST_DISABLED_DIAGNOSTICS)
-    {
-        return InputDisabledDiagnosticsDoesNotChangeResults();
-    }
-
-    if (testName == TEST_NO_GROW)
-    {
-        return InputFrameApplyDoesNotGrowReplayStorage();
-    }
-
-    if (testName == TEST_NO_FORBIDDEN_DEPENDENCY)
-    {
-        return InputNoPlatformUiOrGameAdapterDependency();
-    }
-
-    return Fail("unknown test name");
+    return testIterator->second();
 }

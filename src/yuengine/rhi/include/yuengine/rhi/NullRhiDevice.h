@@ -45,6 +45,7 @@ private:
     RhiDeviceSnapshot _snapshot;
     RhiTextureHandle _submittedHandle;
     RhiTextureHandle _presentedHandle;
+    std::uint32_t _generationSeed;
     bool _isInitialized;
     bool _hasSubmittedFrame;
     bool _hasPresentedFrame;

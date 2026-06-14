@@ -44,6 +44,7 @@ private:
     std::vector<AudioVoiceSlot> _voices;
     AudioCapabilities _capabilities;
     AudioDeviceSnapshot _snapshot;
+    std::uint32_t _generationSeed;
     bool _isInitialized;
 };
 }

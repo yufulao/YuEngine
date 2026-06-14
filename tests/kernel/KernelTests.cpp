@@ -1,6 +1,8 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "LifecycleTestModule.h"
@@ -18,6 +20,8 @@ constexpr const char* TEST_LIFECYCLE = "Kernel_ModuleLifecycle_DependencyOrder";
 constexpr const char* TEST_STARTUP_FAILURE = "Kernel_ModuleStartupFailure_TearsDownStartedModules";
 constexpr const char* TEST_SERVICE_REGISTRY = "Kernel_ServiceRegistry_ResolveAndMissingService";
 constexpr const char* TEST_INVALID_LIFECYCLE = "Kernel_InvalidLifecycle_RejectsOutOfOrderCalls";
+constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
+constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* MODULE_A = "A";
 constexpr const char* MODULE_B = "B";
 constexpr const char* MODULE_C = "C";
@@ -39,6 +43,18 @@ constexpr const char* DUPLICATE_START_STATUS_MESSAGE = "duplicate start had wron
 constexpr const char* DUPLICATE_START_TRACE_MESSAGE = "duplicate start mutated lifecycle trace";
 constexpr const char* DUPLICATE_START_SHUTDOWN_MESSAGE = "duplicate start cleanup shutdown failed";
 constexpr const char* LATE_REGISTRATION_MESSAGE = "module registration succeeded after kernel start";
+constexpr const char* PRESTART_SERVICE_REGISTRATION_MESSAGE = "service registration succeeded before kernel start";
+constexpr const char* PRESTART_SERVICE_RESOLVE_MESSAGE = "prestart-registered service resolved after rejection";
+constexpr const char* RUNTIME_SERVICE_REGISTRATION_MESSAGE = "service registration succeeded after kernel start";
+constexpr const char* RUNTIME_SERVICE_RESOLVE_MESSAGE = "runtime-registered service resolved after rejection";
+constexpr const char* STARTUP_WITHOUT_SERVICE_STATUS_MESSAGE = "startup failure without services had wrong status";
+constexpr const char* STARTUP_WITHOUT_SERVICE_TRACE_MESSAGE = "startup failure without services did not roll back failed module";
+constexpr const char* FAILED_START_SERVICE_REGISTRATION_MESSAGE = "service registration succeeded after failed kernel start";
+constexpr const char* FAILED_START_SERVICE_RESOLVE_MESSAGE = "failed-start service resolved after rejection";
+constexpr const char* STARTUP_CLEANUP_FAILURE_STATUS_MESSAGE = "startup cleanup failure had wrong status";
+constexpr const char* STARTUP_CLEANUP_FAILURE_TRACE_MESSAGE = "startup cleanup failure did not continue started-module rollback";
+constexpr const char* STARTUP_CLEANUP_FAILURE_PROVIDER_MESSAGE = "startup cleanup failure left provider service registered";
+constexpr const char* STARTUP_CLEANUP_FAILURE_FAILED_MESSAGE = "startup cleanup failure left failed service registered";
 constexpr const char* SELF_REQUIRED_SERVICE_MESSAGE = "self-published required service did not block startup";
 constexpr const char* SELF_REQUIRED_SERVICE_STATUS_MESSAGE = "self-published required service had wrong status";
 constexpr const char* SELF_REQUIRED_SERVICE_TRACE_MESSAGE = "self-published required service ran module startup";
@@ -46,9 +62,12 @@ constexpr const char* WRONG_SERVICE_TYPE_MESSAGE = "registered service resolved 
 constexpr const char* TRACE_KERNEL_START = "kernel.start";
 constexpr const char* TRACE_KERNEL_SHUTDOWN = "kernel.shutdown";
 constexpr const char* TRACE_MODULE_START_A = "module.start.A";
+constexpr const char* TRACE_MODULE_START_FAIL = "module.start.Fail";
 constexpr const char* TRACE_MODULE_SHUTDOWN_A = "module.shutdown.A";
+constexpr const char* TRACE_MODULE_SHUTDOWN_FAIL = "module.shutdown.Fail";
 constexpr std::uint32_t FRAME_INDEX = 0U;
 constexpr std::uint64_t TICK_TIME_NANOSECONDS = 1000U;
+using TestFunction = int (*)();
 
 int Fail(const std::string& message)
 {
@@ -114,7 +133,15 @@ int KernelModuleLifecycleDependencyOrder()
         std::vector<std::string_view>{SERVICE_B},
         false,
         true);
-    LifecycleTestModule updateModuleC(MODULE_C, std::vector<std::string_view>{MODULE_B}, false);
+    LifecycleTestModule updateModuleC(
+        MODULE_C,
+        std::vector<std::string_view>{MODULE_B},
+        std::vector<std::string_view>{SERVICE_B},
+        std::vector<std::string_view>(),
+        false,
+        false,
+        false,
+        true);
     std::vector<std::string> updateFailureTrace;
 
     updateFailureKernel.RegisterModule(updateModuleA);
@@ -264,6 +291,94 @@ int KernelModuleStartupFailureTearsDownStartedModules()
     if (kernel.Services().Resolve<int>(SERVICE_A) != nullptr)
     {
         return Fail("partial startup failure did not deregister published services");
+    }
+
+    EngineKernel failureWithoutServiceKernel;
+    LifecycleTestModule moduleWithoutServiceA(MODULE_A, std::vector<std::string_view>(), false);
+    LifecycleTestModule moduleFailWithoutService(MODULE_FAIL, std::vector<std::string_view>{MODULE_A}, true);
+    std::vector<std::string> failureWithoutServiceTrace;
+
+    failureWithoutServiceKernel.RegisterModule(moduleWithoutServiceA);
+    failureWithoutServiceKernel.RegisterModule(moduleFailWithoutService);
+
+    const auto failureWithoutServiceResult = failureWithoutServiceKernel.Start(failureWithoutServiceTrace);
+    if (failureWithoutServiceResult.Status != KernelStatus::StartupFailure)
+    {
+        return Fail(STARTUP_WITHOUT_SERVICE_STATUS_MESSAGE);
+    }
+
+    const std::vector<std::string> expectedFailureWithoutServiceTrace{
+        TRACE_KERNEL_START,
+        TRACE_MODULE_START_A,
+        TRACE_MODULE_START_FAIL,
+        TRACE_MODULE_SHUTDOWN_FAIL,
+        TRACE_MODULE_SHUTDOWN_A};
+
+    if (failureWithoutServiceTrace != expectedFailureWithoutServiceTrace)
+    {
+        return Fail(STARTUP_WITHOUT_SERVICE_TRACE_MESSAGE);
+    }
+
+    int failedStartupService = 10;
+    const bool failedStartupServiceRegistered =
+        failureWithoutServiceKernel.Services().Register<int>(MODULE_B, SERVICE_B, failedStartupService);
+    if (failedStartupServiceRegistered)
+    {
+        return Fail(FAILED_START_SERVICE_REGISTRATION_MESSAGE);
+    }
+
+    if (failureWithoutServiceKernel.Services().Resolve<int>(SERVICE_B) != nullptr)
+    {
+        return Fail(FAILED_START_SERVICE_RESOLVE_MESSAGE);
+    }
+
+    EngineKernel cleanupFailureKernel;
+    LifecycleTestModule cleanupProvider(
+        MODULE_A,
+        std::vector<std::string_view>(),
+        std::vector<std::string_view>(),
+        std::vector<std::string_view>{SERVICE_A},
+        false,
+        false);
+    LifecycleTestModule cleanupFailingModule(
+        MODULE_FAIL,
+        std::vector<std::string_view>{MODULE_A},
+        std::vector<std::string_view>(),
+        std::vector<std::string_view>{SERVICE_B},
+        true,
+        false,
+        true);
+    std::vector<std::string> cleanupFailureTrace;
+
+    cleanupFailureKernel.RegisterModule(cleanupProvider);
+    cleanupFailureKernel.RegisterModule(cleanupFailingModule);
+
+    const auto cleanupFailureResult = cleanupFailureKernel.Start(cleanupFailureTrace);
+    if (cleanupFailureResult.Status != KernelStatus::ShutdownFailure)
+    {
+        return Fail(STARTUP_CLEANUP_FAILURE_STATUS_MESSAGE);
+    }
+
+    const std::vector<std::string> expectedCleanupFailureTrace{
+        TRACE_KERNEL_START,
+        TRACE_MODULE_START_A,
+        TRACE_MODULE_START_FAIL,
+        TRACE_MODULE_SHUTDOWN_FAIL,
+        TRACE_MODULE_SHUTDOWN_A};
+
+    if (cleanupFailureTrace != expectedCleanupFailureTrace)
+    {
+        return Fail(STARTUP_CLEANUP_FAILURE_TRACE_MESSAGE);
+    }
+
+    if (cleanupFailureKernel.Services().Resolve<int>(SERVICE_A) != nullptr)
+    {
+        return Fail(STARTUP_CLEANUP_FAILURE_PROVIDER_MESSAGE);
+    }
+
+    if (cleanupFailureKernel.Services().Resolve<int>(SERVICE_B) != nullptr)
+    {
+        return Fail(STARTUP_CLEANUP_FAILURE_FAILED_MESSAGE);
     }
 
     EngineKernel missingServiceKernel;
@@ -464,6 +579,20 @@ int KernelInvalidLifecycleRejectsOutOfOrderCalls()
         return Fail(SHUTDOWN_BEFORE_START_TRACE_MESSAGE);
     }
 
+    EngineKernel preStartServiceKernel;
+    int preStartService = 8;
+    const bool preStartServiceRegistered =
+        preStartServiceKernel.Services().Register<int>(MODULE_A, SERVICE_A, preStartService);
+    if (preStartServiceRegistered)
+    {
+        return Fail(PRESTART_SERVICE_REGISTRATION_MESSAGE);
+    }
+
+    if (preStartServiceKernel.Services().Resolve<int>(SERVICE_A) != nullptr)
+    {
+        return Fail(PRESTART_SERVICE_RESOLVE_MESSAGE);
+    }
+
     EngineKernel duplicateStartKernel;
     LifecycleTestModule moduleA(MODULE_A, std::vector<std::string_view>(), false);
     LifecycleTestModule moduleB(MODULE_B, std::vector<std::string_view>(), false);
@@ -481,6 +610,18 @@ int KernelInvalidLifecycleRejectsOutOfOrderCalls()
     if (lateModuleRegistered)
     {
         return Fail(LATE_REGISTRATION_MESSAGE);
+    }
+
+    int runtimeService = 9;
+    const bool runtimeServiceRegistered = duplicateStartKernel.Services().Register<int>(MODULE_B, SERVICE_B, runtimeService);
+    if (runtimeServiceRegistered)
+    {
+        return Fail(RUNTIME_SERVICE_REGISTRATION_MESSAGE);
+    }
+
+    if (duplicateStartKernel.Services().Resolve<int>(SERVICE_B) != nullptr)
+    {
+        return Fail(RUNTIME_SERVICE_RESOLVE_MESSAGE);
     }
 
     const auto duplicateStartResult = duplicateStartKernel.Start(duplicateStartTrace);
@@ -517,29 +658,21 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        return Fail("expected one test name");
+        return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::string testName(argv[1]);
-    if (testName == TEST_LIFECYCLE)
+    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+        {TEST_LIFECYCLE, KernelModuleLifecycleDependencyOrder},
+        {TEST_STARTUP_FAILURE, KernelModuleStartupFailureTearsDownStartedModules},
+        {TEST_SERVICE_REGISTRY, KernelServiceRegistryResolveAndMissingService},
+        {TEST_INVALID_LIFECYCLE, KernelInvalidLifecycleRejectsOutOfOrderCalls}};
+
+    const std::string_view testName(argv[1]);
+    const auto testIterator = testRegistry.find(testName);
+    if (testIterator == testRegistry.end())
     {
-        return KernelModuleLifecycleDependencyOrder();
+        return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    if (testName == TEST_STARTUP_FAILURE)
-    {
-        return KernelModuleStartupFailureTearsDownStartedModules();
-    }
-
-    if (testName == TEST_SERVICE_REGISTRY)
-    {
-        return KernelServiceRegistryResolveAndMissingService();
-    }
-
-    if (testName == TEST_INVALID_LIFECYCLE)
-    {
-        return KernelInvalidLifecycleRejectsOutOfOrderCalls();
-    }
-
-    return Fail("unknown test name");
+    return testIterator->second();
 }

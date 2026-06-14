@@ -1,6 +1,8 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "yuengine/file/FileConstants.h"
@@ -16,6 +18,7 @@ using MountId = yuengine::file::MountId;
 using MountTable = yuengine::file::MountTable;
 using NormalizedPath = yuengine::file::NormalizedPath;
 using VirtualPath = yuengine::file::VirtualPath;
+using yuengine::file::MAX_VIRTUAL_PATH_LENGTH;
 
 namespace
 {
@@ -29,6 +32,8 @@ constexpr const char* TEST_READ = "File_LooseFixtureRead_ReturnsExactBytes";
 constexpr const char* TEST_FORGED_NORMALIZED_PATH = "File_LooseFileSourceRejectsForgedNormalizedPathEscape";
 constexpr const char* TEST_SNAPSHOT = "File_ReadSnapshot_RecordsCountsAndBytes";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "File_DiagnosticsDisabled_DoesNotChangeBehavior";
+constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
+constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* PRIMARY_MOUNT = "primary";
 constexpr const char* SECONDARY_MOUNT = "secondary";
 constexpr const char* THIRD_MOUNT = "third";
@@ -38,6 +43,7 @@ constexpr const char* MISSING_MOUNT = "missing";
 constexpr const char* NORMALIZED_PATH = "nested/fixture.txt";
 constexpr const char* FIXTURE_TEXT = "yuengine file fixture\n";
 constexpr const char* MISSING_PATH = "missing.txt";
+using TestFunction = int (*)();
 
 std::filesystem::path FixtureRoot()
 {
@@ -135,7 +141,7 @@ int FilePathNormalizeRejectsEmptyAndAbsolutePath()
         return Fail("drive absolute path was not rejected");
     }
 
-    const std::string longPath(yuengine::file::MAX_VIRTUAL_PATH_LENGTH + 1U, 'a');
+    const std::string longPath(MAX_VIRTUAL_PATH_LENGTH + 1U, 'a');
     const auto longPathResult = table.Normalize(VirtualPath(longPath));
     if (longPathResult.Status != FileStatus::PathTooLong)
     {
@@ -349,59 +355,27 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        return Fail("expected one test name");
+        return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::string testName(argv[1]);
-    if (testName == TEST_NORMALIZE)
+    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+        {TEST_NORMALIZE, FilePathNormalizeRemovesDotAndRepeatedSeparators},
+        {TEST_TRAVERSAL, FilePathNormalizeRejectsTraversalOutsideRoot},
+        {TEST_EMPTY_ABSOLUTE, FilePathNormalizeRejectsEmptyAndAbsolutePath},
+        {TEST_DUPLICATE_MOUNT, FileMountTableRejectsDuplicateMount},
+        {TEST_PRIORITY_ORDER, FileMountTableUsesDeterministicPriorityOrder},
+        {TEST_MISSING, FileMountTableReportsMissingMountOrFile},
+        {TEST_READ, FileLooseFixtureReadReturnsExactBytes},
+        {TEST_FORGED_NORMALIZED_PATH, FileLooseFileSourceRejectsForgedNormalizedPathEscape},
+        {TEST_SNAPSHOT, FileReadSnapshotRecordsCountsAndBytes},
+        {TEST_DISABLED_DIAGNOSTICS, FileDiagnosticsDisabledDoesNotChangeBehavior}};
+
+    const std::string_view testName(argv[1]);
+    const auto testIterator = testRegistry.find(testName);
+    if (testIterator == testRegistry.end())
     {
-        return FilePathNormalizeRemovesDotAndRepeatedSeparators();
+        return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    if (testName == TEST_TRAVERSAL)
-    {
-        return FilePathNormalizeRejectsTraversalOutsideRoot();
-    }
-
-    if (testName == TEST_EMPTY_ABSOLUTE)
-    {
-        return FilePathNormalizeRejectsEmptyAndAbsolutePath();
-    }
-
-    if (testName == TEST_DUPLICATE_MOUNT)
-    {
-        return FileMountTableRejectsDuplicateMount();
-    }
-
-    if (testName == TEST_PRIORITY_ORDER)
-    {
-        return FileMountTableUsesDeterministicPriorityOrder();
-    }
-
-    if (testName == TEST_MISSING)
-    {
-        return FileMountTableReportsMissingMountOrFile();
-    }
-
-    if (testName == TEST_READ)
-    {
-        return FileLooseFixtureReadReturnsExactBytes();
-    }
-
-    if (testName == TEST_FORGED_NORMALIZED_PATH)
-    {
-        return FileLooseFileSourceRejectsForgedNormalizedPathEscape();
-    }
-
-    if (testName == TEST_SNAPSHOT)
-    {
-        return FileReadSnapshotRecordsCountsAndBytes();
-    }
-
-    if (testName == TEST_DISABLED_DIAGNOSTICS)
-    {
-        return FileDiagnosticsDisabledDoesNotChangeBehavior();
-    }
-
-    return Fail("unknown test name");
+    return testIterator->second();
 }

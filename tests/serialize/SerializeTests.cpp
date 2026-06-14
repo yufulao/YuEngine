@@ -1,7 +1,8 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
-#include <string>
+#include <string_view>
+#include <unordered_map>
 
 #include "yuengine/memory/MemoryAccountingStatus.h"
 #include "yuengine/serialize/SerializeConstants.h"
@@ -16,6 +17,23 @@ using SerializeSnapshot = yuengine::serialize::SerializeSnapshot;
 using SerializeStatus = yuengine::serialize::SerializeStatus;
 using SerializeTypeTag = yuengine::serialize::SerializeTypeTag;
 using SerializeWriter = yuengine::serialize::SerializeWriter;
+using yuengine::serialize::FIELD_HEADER_BYTE_COUNT;
+using yuengine::serialize::MAX_FIELD_PAYLOAD_BYTE_COUNT;
+using yuengine::serialize::MAX_FIELDS_PER_RECORD;
+using yuengine::serialize::MAX_RECORDS_PER_STREAM;
+using yuengine::serialize::MAX_STREAM_BYTE_COUNT;
+using yuengine::serialize::RECORD_HEADER_BYTE_COUNT;
+using yuengine::serialize::STREAM_FLAGS;
+using yuengine::serialize::STREAM_FLAGS_OFFSET;
+using yuengine::serialize::STREAM_HEADER_BYTE_COUNT;
+using yuengine::serialize::STREAM_MAGIC;
+using yuengine::serialize::STREAM_MAGIC_OFFSET;
+using yuengine::serialize::STREAM_MAJOR_VERSION;
+using yuengine::serialize::STREAM_MAJOR_VERSION_OFFSET;
+using yuengine::serialize::STREAM_MINOR_VERSION;
+using yuengine::serialize::STREAM_MINOR_VERSION_OFFSET;
+using yuengine::serialize::STREAM_RECORD_COUNT_OFFSET;
+using yuengine::serialize::UINT32_PAYLOAD_BYTE_COUNT;
 
 namespace
 {
@@ -37,6 +55,20 @@ constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Serialize_DisabledDiagnostics
 constexpr const char* TEST_NO_FORBIDDEN_DEPENDENCY = "Serialize_NoFilePackageResourceObjectOrGameAdapterDependency";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Serialize_NoHiddenAllocationInReadWritePath";
 constexpr const char* TEST_SNAPSHOT = "Serialize_SnapshotReportsCountsAndLastStatus";
+constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
+constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
+constexpr const char* UNDERSIZED_FIXED_BYTES_READ_MESSAGE = "undersized fixed bytes read did not fail";
+constexpr const char* UNDERSIZED_FIXED_BYTES_COUNT_MESSAGE = "undersized fixed bytes read changed output byte count";
+constexpr const char* UNDERSIZED_FIXED_BYTES_WRITE_MESSAGE = "undersized fixed bytes read wrote into caller buffer";
+constexpr const char* REOPEN_VALID_STREAM_MESSAGE = "reader did not open valid stream before failed reopen";
+constexpr const char* REOPEN_INVALID_MAGIC_MESSAGE = "invalid magic reopen did not return explicit status";
+constexpr const char* REOPEN_STALE_STATE_MESSAGE = "failed reopen left reader usable with stale stream state";
+constexpr const char* REOPEN_OUTPUT_MUTATION_MESSAGE = "read after failed reopen changed output value";
+constexpr const char* ZERO_FIXED_BYTES_WRITE_MESSAGE = "zero-length fixed bytes write failed";
+constexpr const char* ZERO_FIXED_BYTES_OPEN_MESSAGE = "zero-length fixed bytes stream did not open";
+constexpr const char* ZERO_FIXED_BYTES_READ_MESSAGE = "zero-length fixed bytes read failed";
+constexpr const char* ZERO_FIXED_BYTES_COUNT_MESSAGE = "zero-length fixed bytes read returned nonzero byte count";
+constexpr const char* TYPE_MISMATCH_OUTPUT_MESSAGE = "reader type mismatch changed output value";
 
 constexpr SerializeRecordId RECORD_MAIN{7U};
 constexpr SerializeRecordId RECORD_SECONDARY{8U};
@@ -47,15 +79,16 @@ constexpr SerializeFieldId FIELD_I64{14U};
 constexpr SerializeFieldId FIELD_BYTES{15U};
 constexpr SerializeFieldId FIELD_UNKNOWN{16U};
 constexpr std::uint8_t SENTINEL_BYTE = 0xCDU;
+using TestFunction = int (*)();
 
 struct StreamFixture final
 {
-    std::array<std::uint8_t, yuengine::serialize::MAX_STREAM_BYTE_COUNT> Buffer;
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> Buffer;
     std::uint32_t ByteCount = 0U;
     SerializeSnapshot Snapshot{};
 };
 
-int Fail(const std::string& message)
+int Fail(std::string_view message)
 {
     std::cerr << message << '\n';
     return 1;
@@ -77,18 +110,18 @@ void WriteUInt32At(std::uint8_t* buffer, std::uint32_t offset, std::uint32_t val
 
 void WriteValidHeader(std::uint8_t* buffer, std::uint32_t recordCount)
 {
-    WriteUInt32At(buffer, yuengine::serialize::STREAM_MAGIC_OFFSET, yuengine::serialize::STREAM_MAGIC);
-    WriteUInt16At(buffer, yuengine::serialize::STREAM_MAJOR_VERSION_OFFSET, yuengine::serialize::STREAM_MAJOR_VERSION);
-    WriteUInt16At(buffer, yuengine::serialize::STREAM_MINOR_VERSION_OFFSET, yuengine::serialize::STREAM_MINOR_VERSION);
-    WriteUInt32At(buffer, yuengine::serialize::STREAM_FLAGS_OFFSET, yuengine::serialize::STREAM_FLAGS);
-    WriteUInt32At(buffer, yuengine::serialize::STREAM_RECORD_COUNT_OFFSET, recordCount);
+    WriteUInt32At(buffer, STREAM_MAGIC_OFFSET, STREAM_MAGIC);
+    WriteUInt16At(buffer, STREAM_MAJOR_VERSION_OFFSET, STREAM_MAJOR_VERSION);
+    WriteUInt16At(buffer, STREAM_MINOR_VERSION_OFFSET, STREAM_MINOR_VERSION);
+    WriteUInt32At(buffer, STREAM_FLAGS_OFFSET, STREAM_FLAGS);
+    WriteUInt32At(buffer, STREAM_RECORD_COUNT_OFFSET, recordCount);
 }
 
 std::uint32_t WriteRecordHeader(std::uint8_t* buffer, std::uint32_t offset, SerializeRecordId record, std::uint32_t fieldCount)
 {
     WriteUInt32At(buffer, offset, record.Value);
     WriteUInt32At(buffer, offset + sizeof(std::uint32_t), fieldCount);
-    return offset + yuengine::serialize::RECORD_HEADER_BYTE_COUNT;
+    return offset + RECORD_HEADER_BYTE_COUNT;
 }
 
 std::uint32_t WriteFieldHeader(
@@ -101,7 +134,7 @@ std::uint32_t WriteFieldHeader(
     WriteUInt32At(buffer, offset, field.Value);
     WriteUInt32At(buffer, offset + sizeof(std::uint32_t), type);
     WriteUInt32At(buffer, offset + (sizeof(std::uint32_t) * 2U), byteCount);
-    return offset + yuengine::serialize::FIELD_HEADER_BYTE_COUNT;
+    return offset + FIELD_HEADER_BYTE_COUNT;
 }
 
 bool BytesMatch(const std::uint8_t* left, const std::uint8_t* right, std::uint32_t byteCount)
@@ -240,6 +273,29 @@ int SerializeWriteReadPrimitivesRoundTripsDeterministically()
         return Fail("reader did not open stream");
     }
 
+    std::array<std::uint8_t, 4U> undersizedBytes{};
+    undersizedBytes.fill(SENTINEL_BYTE);
+    std::uint32_t rejectedByteCount = 77U;
+    if (reader.ReadFixedBytes(
+            RECORD_MAIN,
+            FIELD_BYTES,
+            undersizedBytes.data(),
+            static_cast<std::uint32_t>(undersizedBytes.size()),
+            rejectedByteCount) != SerializeStatus::BufferTooSmall)
+    {
+        return Fail(UNDERSIZED_FIXED_BYTES_READ_MESSAGE);
+    }
+
+    if (rejectedByteCount != 77U)
+    {
+        return Fail(UNDERSIZED_FIXED_BYTES_COUNT_MESSAGE);
+    }
+
+    if (undersizedBytes[0U] != SENTINEL_BYTE || undersizedBytes[3U] != SENTINEL_BYTE)
+    {
+        return Fail(UNDERSIZED_FIXED_BYTES_WRITE_MESSAGE);
+    }
+
     std::uint32_t u32Value = 0U;
     std::int32_t i32Value = 0;
     std::uint64_t u64Value = 0U;
@@ -306,7 +362,35 @@ int SerializeStreamHeaderRejectsInvalidMagicOrVersion()
         return 1;
     }
 
-    WriteUInt16At(fixture.Buffer.data(), yuengine::serialize::STREAM_MAJOR_VERSION_OFFSET, 99U);
+    SerializeReader reopenedReader(fixture.Buffer.data(), fixture.ByteCount);
+    if (reopenedReader.OpenStream() != SerializeStatus::Success)
+    {
+        return Fail(REOPEN_VALID_STREAM_MESSAGE);
+    }
+
+    fixture.Buffer[0U] = 0U;
+    if (reopenedReader.OpenStream() != SerializeStatus::InvalidHeader)
+    {
+        return Fail(REOPEN_INVALID_MAGIC_MESSAGE);
+    }
+
+    std::uint32_t staleValue = 99U;
+    if (reopenedReader.ReadUInt32(RECORD_MAIN, FIELD_U32, staleValue) != SerializeStatus::InvalidHeader)
+    {
+        return Fail(REOPEN_STALE_STATE_MESSAGE);
+    }
+
+    if (staleValue != 99U)
+    {
+        return Fail(REOPEN_OUTPUT_MUTATION_MESSAGE);
+    }
+
+    if (BuildRoundTripFixture(fixture) != 0)
+    {
+        return 1;
+    }
+
+    WriteUInt16At(fixture.Buffer.data(), STREAM_MAJOR_VERSION_OFFSET, 99U);
     SerializeReader unsupportedVersionReader(fixture.Buffer.data(), fixture.ByteCount);
     if (unsupportedVersionReader.OpenStream() != SerializeStatus::UnsupportedVersion)
     {
@@ -324,7 +408,7 @@ int SerializeStreamHeaderRejectsReservedFlags()
         return 1;
     }
 
-    WriteUInt32At(fixture.Buffer.data(), yuengine::serialize::STREAM_FLAGS_OFFSET, 1U);
+    WriteUInt32At(fixture.Buffer.data(), STREAM_FLAGS_OFFSET, 1U);
     SerializeReader reader(fixture.Buffer.data(), fixture.ByteCount);
     if (reader.OpenStream() != SerializeStatus::InvalidHeader)
     {
@@ -383,7 +467,7 @@ int SerializeWriterBufferOverflowReturnsStatusWithoutOverrun()
 
 int SerializeRecordCapacityOverflowDoesNotMutate()
 {
-    std::array<std::uint8_t, yuengine::serialize::MAX_STREAM_BYTE_COUNT> buffer{};
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
     if (writer.BeginStream() != SerializeStatus::Success)
     {
@@ -391,7 +475,7 @@ int SerializeRecordCapacityOverflowDoesNotMutate()
     }
 
     std::uint32_t recordIndex = 0U;
-    while (recordIndex < yuengine::serialize::MAX_RECORDS_PER_STREAM)
+    while (recordIndex < MAX_RECORDS_PER_STREAM)
     {
         if (writer.BeginRecord(SerializeRecordId{recordIndex + 1U}) != SerializeStatus::Success)
         {
@@ -423,7 +507,7 @@ int SerializeRecordCapacityOverflowDoesNotMutate()
 
 int SerializeFieldCapacityOverflowDoesNotMutate()
 {
-    std::array<std::uint8_t, yuengine::serialize::MAX_STREAM_BYTE_COUNT> buffer{};
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
     if (writer.BeginStream() != SerializeStatus::Success)
     {
@@ -436,7 +520,7 @@ int SerializeFieldCapacityOverflowDoesNotMutate()
     }
 
     std::uint32_t fieldIndex = 0U;
-    while (fieldIndex < yuengine::serialize::MAX_FIELDS_PER_RECORD)
+    while (fieldIndex < MAX_FIELDS_PER_RECORD)
     {
         if (writer.WriteUInt32(SerializeFieldId{fieldIndex + 1U}, fieldIndex) != SerializeStatus::Success)
         {
@@ -468,8 +552,8 @@ int SerializeFieldCapacityOverflowDoesNotMutate()
 
 int SerializeFixedBytesPayloadLimitReturnsExplicitStatus()
 {
-    std::array<std::uint8_t, yuengine::serialize::MAX_STREAM_BYTE_COUNT> buffer{};
-    std::array<std::uint8_t, yuengine::serialize::MAX_FIELD_PAYLOAD_BYTE_COUNT + 1U> bytes{};
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
+    std::array<std::uint8_t, MAX_FIELD_PAYLOAD_BYTE_COUNT + 1U> bytes{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
     if (writer.BeginStream() != SerializeStatus::Success)
     {
@@ -493,12 +577,34 @@ int SerializeFixedBytesPayloadLimitReturnsExplicitStatus()
         return Fail("oversized fixed bytes changed committed byte count");
     }
 
+    if (writer.WriteFixedBytes(FIELD_BYTES, nullptr, 0U) != SerializeStatus::Success)
+    {
+        return Fail(ZERO_FIXED_BYTES_WRITE_MESSAGE);
+    }
+
+    SerializeReader reader(buffer.data(), writer.Snapshot().CommittedByteCount);
+    if (reader.OpenStream() != SerializeStatus::Success)
+    {
+        return Fail(ZERO_FIXED_BYTES_OPEN_MESSAGE);
+    }
+
+    std::uint32_t byteCount = 7U;
+    if (reader.ReadFixedBytes(RECORD_MAIN, FIELD_BYTES, nullptr, 0U, byteCount) != SerializeStatus::Success)
+    {
+        return Fail(ZERO_FIXED_BYTES_READ_MESSAGE);
+    }
+
+    if (byteCount != 0U)
+    {
+        return Fail(ZERO_FIXED_BYTES_COUNT_MESSAGE);
+    }
+
     return 0;
 }
 
 int SerializeReaderRejectsTruncatedStream()
 {
-    std::array<std::uint8_t, yuengine::serialize::STREAM_HEADER_BYTE_COUNT> buffer{};
+    std::array<std::uint8_t, STREAM_HEADER_BYTE_COUNT> buffer{};
     WriteValidHeader(buffer.data(), 1U);
     SerializeReader reader(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
     if (reader.OpenStream() != SerializeStatus::TruncatedStream)
@@ -511,12 +617,12 @@ int SerializeReaderRejectsTruncatedStream()
 
 int SerializeReaderRejectsInvalidRecordOrFieldId()
 {
-    std::array<std::uint8_t, yuengine::serialize::STREAM_HEADER_BYTE_COUNT + yuengine::serialize::RECORD_HEADER_BYTE_COUNT>
+    std::array<std::uint8_t, STREAM_HEADER_BYTE_COUNT + RECORD_HEADER_BYTE_COUNT>
         invalidRecordBuffer{};
     WriteValidHeader(invalidRecordBuffer.data(), 1U);
     WriteRecordHeader(
         invalidRecordBuffer.data(),
-        yuengine::serialize::STREAM_HEADER_BYTE_COUNT,
+        STREAM_HEADER_BYTE_COUNT,
         SerializeRecordId{0U},
         0U);
     SerializeReader invalidRecordReader(
@@ -529,14 +635,14 @@ int SerializeReaderRejectsInvalidRecordOrFieldId()
 
     std::array<std::uint8_t, 40U> invalidFieldBuffer{};
     WriteValidHeader(invalidFieldBuffer.data(), 1U);
-    std::uint32_t offset = yuengine::serialize::STREAM_HEADER_BYTE_COUNT;
+    std::uint32_t offset = STREAM_HEADER_BYTE_COUNT;
     offset = WriteRecordHeader(invalidFieldBuffer.data(), offset, RECORD_MAIN, 1U);
     offset = WriteFieldHeader(
         invalidFieldBuffer.data(),
         offset,
         SerializeFieldId{0U},
         static_cast<std::uint32_t>(SerializeTypeTag::UInt32),
-        yuengine::serialize::UINT32_PAYLOAD_BYTE_COUNT);
+        UINT32_PAYLOAD_BYTE_COUNT);
     WriteUInt32At(invalidFieldBuffer.data(), offset, 1U);
     SerializeReader invalidFieldReader(invalidFieldBuffer.data(), static_cast<std::uint32_t>(invalidFieldBuffer.size()));
     if (invalidFieldReader.OpenStream() != SerializeStatus::InvalidHeader)
@@ -551,7 +657,7 @@ int SerializeReaderRejectsMalformedFieldLength()
 {
     std::array<std::uint8_t, 44U> buffer{};
     WriteValidHeader(buffer.data(), 1U);
-    std::uint32_t offset = yuengine::serialize::STREAM_HEADER_BYTE_COUNT;
+    std::uint32_t offset = STREAM_HEADER_BYTE_COUNT;
     offset = WriteRecordHeader(buffer.data(), offset, RECORD_MAIN, 1U);
     offset = WriteFieldHeader(buffer.data(), offset, FIELD_U32, static_cast<std::uint32_t>(SerializeTypeTag::UInt32), 8U);
     WriteUInt32At(buffer.data(), offset, 1U);
@@ -569,9 +675,9 @@ int SerializeReaderRejectsUnknownTypeTag()
 {
     std::array<std::uint8_t, 40U> buffer{};
     WriteValidHeader(buffer.data(), 1U);
-    std::uint32_t offset = yuengine::serialize::STREAM_HEADER_BYTE_COUNT;
+    std::uint32_t offset = STREAM_HEADER_BYTE_COUNT;
     offset = WriteRecordHeader(buffer.data(), offset, RECORD_MAIN, 1U);
-    offset = WriteFieldHeader(buffer.data(), offset, FIELD_U32, 99U, yuengine::serialize::UINT32_PAYLOAD_BYTE_COUNT);
+    offset = WriteFieldHeader(buffer.data(), offset, FIELD_U32, 99U, UINT32_PAYLOAD_BYTE_COUNT);
     WriteUInt32At(buffer.data(), offset, 1U);
     SerializeReader reader(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
     if (reader.OpenStream() != SerializeStatus::UnknownTypeTag)
@@ -596,10 +702,15 @@ int SerializeReaderTypeMismatchReturnsExplicitStatus()
         return Fail("reader open failed");
     }
 
-    std::int32_t value = 0;
+    std::int32_t value = -333;
     if (reader.ReadInt32(RECORD_MAIN, FIELD_U32, value) != SerializeStatus::TypeMismatch)
     {
         return Fail("reader type mismatch did not return explicit status");
+    }
+
+    if (value != -333)
+    {
+        return Fail(TYPE_MISMATCH_OUTPUT_MESSAGE);
     }
 
     return 0;
@@ -609,7 +720,7 @@ int SerializeDuplicateFieldReturnsExplicitStatus()
 {
     std::array<std::uint8_t, 56U> buffer{};
     WriteValidHeader(buffer.data(), 1U);
-    std::uint32_t offset = yuengine::serialize::STREAM_HEADER_BYTE_COUNT;
+    std::uint32_t offset = STREAM_HEADER_BYTE_COUNT;
     offset = WriteRecordHeader(buffer.data(), offset, RECORD_MAIN, 2U);
     offset = WriteFieldHeader(buffer.data(), offset, FIELD_U32, static_cast<std::uint32_t>(SerializeTypeTag::UInt32), 4U);
     WriteUInt32At(buffer.data(), offset, 1U);
@@ -627,7 +738,7 @@ int SerializeDuplicateFieldReturnsExplicitStatus()
 
 int SerializeUnknownFieldWithValidLengthCanSkipDeterministically()
 {
-    std::array<std::uint8_t, yuengine::serialize::MAX_STREAM_BYTE_COUNT> buffer{};
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
     if (writer.BeginStream() != SerializeStatus::Success)
     {
@@ -747,7 +858,7 @@ int SerializeNoFilePackageResourceObjectOrGameAdapterDependency()
 
 int SerializeNoHiddenAllocationInReadWritePath()
 {
-    std::array<std::uint8_t, yuengine::serialize::MAX_STREAM_BYTE_COUNT> buffer{};
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
     if (writer.Snapshot().AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly)
     {
@@ -797,7 +908,7 @@ int SerializeNoHiddenAllocationInReadWritePath()
 
 int SerializeSnapshotReportsCountsAndLastStatus()
 {
-    std::array<std::uint8_t, yuengine::serialize::MAX_STREAM_BYTE_COUNT> buffer{};
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
     SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
     if (writer.BeginStream() != SerializeStatus::Success)
     {
@@ -870,99 +981,35 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        return Fail("expected one test name");
+        return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::string testName(argv[1]);
-    if (testName == TEST_ROUND_TRIP)
+    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+        {TEST_ROUND_TRIP, SerializeWriteReadPrimitivesRoundTripsDeterministically},
+        {TEST_HEADER, SerializeStreamHeaderRejectsInvalidMagicOrVersion},
+        {TEST_RESERVED_FLAGS, SerializeStreamHeaderRejectsReservedFlags},
+        {TEST_WRITER_OVERFLOW, SerializeWriterBufferOverflowReturnsStatusWithoutOverrun},
+        {TEST_RECORD_CAPACITY, SerializeRecordCapacityOverflowDoesNotMutate},
+        {TEST_FIELD_CAPACITY, SerializeFieldCapacityOverflowDoesNotMutate},
+        {TEST_FIXED_BYTES_LIMIT, SerializeFixedBytesPayloadLimitReturnsExplicitStatus},
+        {TEST_TRUNCATED, SerializeReaderRejectsTruncatedStream},
+        {TEST_INVALID_IDS, SerializeReaderRejectsInvalidRecordOrFieldId},
+        {TEST_MALFORMED_LENGTH, SerializeReaderRejectsMalformedFieldLength},
+        {TEST_UNKNOWN_TYPE, SerializeReaderRejectsUnknownTypeTag},
+        {TEST_TYPE_MISMATCH, SerializeReaderTypeMismatchReturnsExplicitStatus},
+        {TEST_DUPLICATE_FIELD, SerializeDuplicateFieldReturnsExplicitStatus},
+        {TEST_UNKNOWN_FIELD_SKIP, SerializeUnknownFieldWithValidLengthCanSkipDeterministically},
+        {TEST_DISABLED_DIAGNOSTICS, SerializeDisabledDiagnosticsDoesNotChangeResults},
+        {TEST_NO_FORBIDDEN_DEPENDENCY, SerializeNoFilePackageResourceObjectOrGameAdapterDependency},
+        {TEST_NO_HIDDEN_ALLOCATION, SerializeNoHiddenAllocationInReadWritePath},
+        {TEST_SNAPSHOT, SerializeSnapshotReportsCountsAndLastStatus}};
+
+    const std::string_view testName(argv[1]);
+    const auto testIterator = testRegistry.find(testName);
+    if (testIterator == testRegistry.end())
     {
-        return SerializeWriteReadPrimitivesRoundTripsDeterministically();
+        return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    if (testName == TEST_HEADER)
-    {
-        return SerializeStreamHeaderRejectsInvalidMagicOrVersion();
-    }
-
-    if (testName == TEST_RESERVED_FLAGS)
-    {
-        return SerializeStreamHeaderRejectsReservedFlags();
-    }
-
-    if (testName == TEST_WRITER_OVERFLOW)
-    {
-        return SerializeWriterBufferOverflowReturnsStatusWithoutOverrun();
-    }
-
-    if (testName == TEST_RECORD_CAPACITY)
-    {
-        return SerializeRecordCapacityOverflowDoesNotMutate();
-    }
-
-    if (testName == TEST_FIELD_CAPACITY)
-    {
-        return SerializeFieldCapacityOverflowDoesNotMutate();
-    }
-
-    if (testName == TEST_FIXED_BYTES_LIMIT)
-    {
-        return SerializeFixedBytesPayloadLimitReturnsExplicitStatus();
-    }
-
-    if (testName == TEST_TRUNCATED)
-    {
-        return SerializeReaderRejectsTruncatedStream();
-    }
-
-    if (testName == TEST_INVALID_IDS)
-    {
-        return SerializeReaderRejectsInvalidRecordOrFieldId();
-    }
-
-    if (testName == TEST_MALFORMED_LENGTH)
-    {
-        return SerializeReaderRejectsMalformedFieldLength();
-    }
-
-    if (testName == TEST_UNKNOWN_TYPE)
-    {
-        return SerializeReaderRejectsUnknownTypeTag();
-    }
-
-    if (testName == TEST_TYPE_MISMATCH)
-    {
-        return SerializeReaderTypeMismatchReturnsExplicitStatus();
-    }
-
-    if (testName == TEST_DUPLICATE_FIELD)
-    {
-        return SerializeDuplicateFieldReturnsExplicitStatus();
-    }
-
-    if (testName == TEST_UNKNOWN_FIELD_SKIP)
-    {
-        return SerializeUnknownFieldWithValidLengthCanSkipDeterministically();
-    }
-
-    if (testName == TEST_DISABLED_DIAGNOSTICS)
-    {
-        return SerializeDisabledDiagnosticsDoesNotChangeResults();
-    }
-
-    if (testName == TEST_NO_FORBIDDEN_DEPENDENCY)
-    {
-        return SerializeNoFilePackageResourceObjectOrGameAdapterDependency();
-    }
-
-    if (testName == TEST_NO_HIDDEN_ALLOCATION)
-    {
-        return SerializeNoHiddenAllocationInReadWritePath();
-    }
-
-    if (testName == TEST_SNAPSHOT)
-    {
-        return SerializeSnapshotReportsCountsAndLastStatus();
-    }
-
-    return Fail("unknown test name");
+    return testIterator->second();
 }

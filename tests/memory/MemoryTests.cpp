@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 
 #include "yuengine/memory/CountingMemoryTracker.h"
 #include "yuengine/memory/DisabledMemoryTracker.h"
@@ -14,6 +16,7 @@ using MemoryBudgetClass = yuengine::memory::MemoryBudgetClass;
 using MemoryOwnerId = yuengine::memory::MemoryOwnerId;
 using MemoryTag = yuengine::memory::MemoryTag;
 using MemoryAllocationId = yuengine::memory::MemoryAllocationId;
+using yuengine::memory::MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS;
 
 namespace
 {
@@ -26,6 +29,8 @@ constexpr const char* TEST_DISABLED = "Memory_DisabledTracker_DoesNotChangeBehav
 constexpr const char* TEST_HOT_PATH = "Memory_HotPathBudget_FailsOnTrackedAllocation";
 constexpr const char* TEST_FIXED_CAPACITY = "Memory_TrackerRejectsBeyondFixedCapacityWithoutMutation";
 constexpr const char* TEST_OWNER_TAG_BYTE_CAPS = "Memory_TrackerEnforcesOwnerAndTagByteCapsWithoutMutation";
+constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
+constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* OWNER_PLATFORM = "Platform";
 constexpr const char* OWNER_KERNEL = "Kernel";
 constexpr const char* TAG_FIXTURE = "Fixture";
@@ -35,6 +40,7 @@ constexpr std::size_t LARGE_BYTES = 64U;
 constexpr std::size_t ALIGNMENT = 8U;
 constexpr std::size_t TRACKED_TEXT_CAP_BYTES = 64U;
 constexpr std::size_t TRACKED_TEXT_OVER_CAP_BYTES = TRACKED_TEXT_CAP_BYTES + 1U;
+using TestFunction = int (*)();
 
 int Fail(const std::string& message)
 {
@@ -332,7 +338,7 @@ int MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation()
     CountingMemoryTracker tracker;
     const MemoryOwnerId owner{OWNER_PLATFORM};
     const MemoryTag tag{TAG_FIXTURE};
-    std::array<MemoryAllocationId, yuengine::memory::MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS> allocations{};
+    std::array<MemoryAllocationId, MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS> allocations{};
 
     for (std::size_t index = 0U; index < allocations.size(); ++index)
     {
@@ -482,54 +488,26 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        return Fail("expected one test name");
+        return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::string testName(argv[1]);
-    if (testName == TEST_COUNTS)
+    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+        {TEST_COUNTS, MemoryTrackerCountsAllocationAndFree},
+        {TEST_PEAK, MemoryTrackerReportsPeakAndRetainedBytes},
+        {TEST_LEAK, MemoryTrackerReportsLeakOnUnreleasedBytes},
+        {TEST_UNMATCHED_FREE, MemoryTrackerRejectsUnmatchedFree},
+        {TEST_BUDGET_CLASS, MemoryTrackerRecordsBudgetClass},
+        {TEST_DISABLED, MemoryDisabledTrackerDoesNotChangeBehavior},
+        {TEST_HOT_PATH, MemoryHotPathBudgetFailsOnTrackedAllocation},
+        {TEST_FIXED_CAPACITY, MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation},
+        {TEST_OWNER_TAG_BYTE_CAPS, MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation}};
+
+    const std::string_view testName(argv[1]);
+    const auto testIterator = testRegistry.find(testName);
+    if (testIterator == testRegistry.end())
     {
-        return MemoryTrackerCountsAllocationAndFree();
+        return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    if (testName == TEST_PEAK)
-    {
-        return MemoryTrackerReportsPeakAndRetainedBytes();
-    }
-
-    if (testName == TEST_LEAK)
-    {
-        return MemoryTrackerReportsLeakOnUnreleasedBytes();
-    }
-
-    if (testName == TEST_UNMATCHED_FREE)
-    {
-        return MemoryTrackerRejectsUnmatchedFree();
-    }
-
-    if (testName == TEST_BUDGET_CLASS)
-    {
-        return MemoryTrackerRecordsBudgetClass();
-    }
-
-    if (testName == TEST_DISABLED)
-    {
-        return MemoryDisabledTrackerDoesNotChangeBehavior();
-    }
-
-    if (testName == TEST_HOT_PATH)
-    {
-        return MemoryHotPathBudgetFailsOnTrackedAllocation();
-    }
-
-    if (testName == TEST_FIXED_CAPACITY)
-    {
-        return MemoryTrackerRejectsBeyondFixedCapacityWithoutMutation();
-    }
-
-    if (testName == TEST_OWNER_TAG_BYTE_CAPS)
-    {
-        return MemoryTrackerEnforcesOwnerAndTagByteCapsWithoutMutation();
-    }
-
-    return Fail("unknown test name");
+    return testIterator->second();
 }

@@ -3,6 +3,8 @@
 #include <iostream>
 #include <limits>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "yuengine/diagnostics/BoundedDiagnosticsChannel.h"
@@ -49,6 +51,8 @@ constexpr const char* TEST_UNKNOWN_IDS = "Diagnostics_ChannelRejectsUnknownIds_W
 constexpr const char* TEST_COUNTER_OVERFLOW = "Diagnostics_CounterOverflow_ReturnsExplicitStatusAndDoesNotMutate";
 constexpr const char* TEST_NO_REPORT_DEPENDENCY = "Diagnostics_NoReportDependency_ForRuntimeResults";
 constexpr const char* TEST_MEMORY_SIGNAL = "Diagnostics_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
+constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint64_t FIRST_TICK_NANOSECONDS = 2000U;
 constexpr std::uint64_t STEP_NANOSECONDS = 32U;
 constexpr std::uint32_t TICK_COUNT = 2U;
@@ -64,6 +68,7 @@ constexpr std::uint32_t SECOND_COUNTER_ID = 2U;
 constexpr std::uint32_t UNKNOWN_COUNTER_ID = 99U;
 constexpr std::uint64_t EVENT_PAYLOAD = 42U;
 constexpr std::uint64_t COUNTER_DELTA = 5U;
+using TestFunction = int (*)();
 
 class TraceRuntime final : public IHostRuntime
 {
@@ -474,59 +479,27 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        return Fail("expected one test name");
+        return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::string testName(argv[1]);
-    if (testName == TEST_DISABLED_LOGGING)
+    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+        {TEST_DISABLED_LOGGING, LoggingDisabledSinkDoesNotChangeBehavior},
+        {TEST_DISABLED_CHANNEL, DiagnosticsDisabledChannelDoesNotChangeBehavior},
+        {TEST_RECORDS_EVENTS_COUNTERS, DiagnosticsBoundedChannelRecordsEventsAndCounters},
+        {TEST_DROPS_WHEN_FULL, DiagnosticsBoundedChannelDropsWhenFull},
+        {TEST_SNAPSHOT, DiagnosticsChannelSnapshotReportsAcceptedDroppedAndCounters},
+        {TEST_STOPPED, DiagnosticsChannelStoppedDoesNotMutateAfterShutdown},
+        {TEST_UNKNOWN_IDS, DiagnosticsChannelRejectsUnknownIdsWhenValidationEnabled},
+        {TEST_COUNTER_OVERFLOW, DiagnosticsCounterOverflowReturnsExplicitStatusAndDoesNotMutate},
+        {TEST_NO_REPORT_DEPENDENCY, DiagnosticsNoReportDependencyForRuntimeResults},
+        {TEST_MEMORY_SIGNAL, DiagnosticsNoHiddenAllocationUsesYuMemorySignal}};
+
+    const std::string_view testName(argv[1]);
+    const auto testIterator = testRegistry.find(testName);
+    if (testIterator == testRegistry.end())
     {
-        return LoggingDisabledSinkDoesNotChangeBehavior();
+        return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    if (testName == TEST_DISABLED_CHANNEL)
-    {
-        return DiagnosticsDisabledChannelDoesNotChangeBehavior();
-    }
-
-    if (testName == TEST_RECORDS_EVENTS_COUNTERS)
-    {
-        return DiagnosticsBoundedChannelRecordsEventsAndCounters();
-    }
-
-    if (testName == TEST_DROPS_WHEN_FULL)
-    {
-        return DiagnosticsBoundedChannelDropsWhenFull();
-    }
-
-    if (testName == TEST_SNAPSHOT)
-    {
-        return DiagnosticsChannelSnapshotReportsAcceptedDroppedAndCounters();
-    }
-
-    if (testName == TEST_STOPPED)
-    {
-        return DiagnosticsChannelStoppedDoesNotMutateAfterShutdown();
-    }
-
-    if (testName == TEST_UNKNOWN_IDS)
-    {
-        return DiagnosticsChannelRejectsUnknownIdsWhenValidationEnabled();
-    }
-
-    if (testName == TEST_COUNTER_OVERFLOW)
-    {
-        return DiagnosticsCounterOverflowReturnsExplicitStatusAndDoesNotMutate();
-    }
-
-    if (testName == TEST_NO_REPORT_DEPENDENCY)
-    {
-        return DiagnosticsNoReportDependencyForRuntimeResults();
-    }
-
-    if (testName == TEST_MEMORY_SIGNAL)
-    {
-        return DiagnosticsNoHiddenAllocationUsesYuMemorySignal();
-    }
-
-    return Fail("unknown test name");
+    return testIterator->second();
 }

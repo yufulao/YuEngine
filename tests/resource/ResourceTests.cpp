@@ -2,6 +2,8 @@
 #include <iostream>
 #include <limits>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 
 #include "yuengine/memory/MemoryAccountingStatus.h"
 #include "yuengine/resource/ResourceConstants.h"
@@ -17,12 +19,14 @@ using ResourceRegistrationResult = yuengine::resource::ResourceRegistrationResul
 using ResourceSnapshot = yuengine::resource::ResourceSnapshot;
 using ResourceStatus = yuengine::resource::ResourceStatus;
 using ResourceTypeId = yuengine::resource::ResourceTypeId;
+using yuengine::resource::INVALID_RESOURCE_GENERATION;
 
 namespace
 {
 constexpr const char* TEST_REGISTER = "Resource_RegisterSyntheticDescriptor_ReturnsGenerationHandle";
 constexpr const char* TEST_DUPLICATE = "Resource_RegisterDuplicate_ReturnsExplicitStatus";
 constexpr const char* TEST_CAPACITY = "Resource_RegistryRejectsCapacityOverflowWithoutMutation";
+constexpr const char* TEST_TYPE_CAPACITY = "Resource_TypeCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_WRONG_GENERATION = "Resource_HandleRejectsWrongGeneration";
 constexpr const char* TEST_TYPE_MISMATCH = "Resource_HandleRejectsTypeMismatch";
 constexpr const char* TEST_ACQUIRE_RELEASE = "Resource_AcquireRelease_TracksReferenceCount";
@@ -35,10 +39,28 @@ constexpr const char* TEST_DEPENDENCY_CYCLE = "Resource_DependencyValidationReje
 constexpr const char* TEST_NO_FILE_PACKAGE = "Resource_NoFileOrPackageDependency_ForHandleRegistry";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Resource_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Resource_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
+constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr ResourceTypeId TYPE_TEXTURE{1U};
 constexpr ResourceTypeId TYPE_MATERIAL{2U};
 constexpr ResourceTypeId TYPE_AUDIO{3U};
 constexpr ResourceTypeId TYPE_EFFECT{4U};
+constexpr std::uint32_t INVALID_GENERATION = INVALID_RESOURCE_GENERATION;
+constexpr const char* TYPE_CAPACITY_TEXTURE_KEY = "texture_a";
+constexpr const char* TYPE_CAPACITY_MATERIAL_KEY = "material_a";
+constexpr const char* TYPE_CAPACITY_RETRY_TEXTURE_KEY = "texture_b";
+constexpr const char* TYPE_CAPACITY_FIRST_REGISTRATION_FAILED = "first registration failed before type capacity";
+constexpr const char* TYPE_CAPACITY_STATUS_FAILED = "type capacity overflow did not return explicit status";
+constexpr const char* TYPE_CAPACITY_VALID_HANDLE_FAILED = "type capacity overflow returned a valid handle";
+constexpr const char* TYPE_CAPACITY_TYPE_COUNT_FAILED = "type capacity overflow changed type count";
+constexpr const char* TYPE_CAPACITY_REGISTERED_COUNT_FAILED = "type capacity overflow changed registered count";
+constexpr const char* TYPE_CAPACITY_ACQUIRED_COUNT_FAILED = "type capacity overflow changed acquired count";
+constexpr const char* TYPE_CAPACITY_RETRY_REGISTRATION_FAILED = "retry after type capacity failure did not register existing type";
+constexpr const char* TYPE_CAPACITY_RETRY_SLOT_FAILED = "retry after type capacity failure used wrong slot";
+constexpr const char* TYPE_CAPACITY_RETRY_GENERATION_FAILED = "type capacity failure advanced retry slot generation";
+constexpr const char* TYPE_CAPACITY_RETRY_TYPE_COUNT_FAILED = "retry with existing type changed type count";
+using TestFunction = int (*)();
+using TestRegistry = std::unordered_map<std::string_view, TestFunction>;
 
 int Fail(const std::string& message)
 {
@@ -105,7 +127,7 @@ int ResourceRegisterSyntheticDescriptorReturnsGenerationHandle()
         return Fail("first resource used unexpected slot");
     }
 
-    if (result.Handle.Generation == yuengine::resource::INVALID_RESOURCE_GENERATION)
+    if (result.Handle.Generation == INVALID_GENERATION)
     {
         return Fail("resource handle generation was invalid");
     }
@@ -184,6 +206,67 @@ int ResourceRegistryRejectsCapacityOverflowWithoutMutation()
     if (afterSnapshot.TypeCount != beforeSnapshot.TypeCount)
     {
         return Fail("resource capacity overflow changed type count");
+    }
+
+    return 0;
+}
+
+int ResourceTypeCapacityOverflowDoesNotMutate()
+{
+    ResourceRegistry registry(ResourceRegistryDesc{4U, 1U, 2U});
+    const ResourceRegistrationResult firstResult = Register(registry, TYPE_TEXTURE, TYPE_CAPACITY_TEXTURE_KEY);
+    if (!firstResult.Succeeded())
+    {
+        return Fail(TYPE_CAPACITY_FIRST_REGISTRATION_FAILED);
+    }
+
+    const ResourceSnapshot beforeSnapshot = registry.Snapshot();
+    const ResourceRegistrationResult overflowResult = Register(registry, TYPE_MATERIAL, TYPE_CAPACITY_MATERIAL_KEY);
+    if (overflowResult.Status != ResourceStatus::CapacityExceeded)
+    {
+        return Fail(TYPE_CAPACITY_STATUS_FAILED);
+    }
+
+    if (overflowResult.Handle.IsValid())
+    {
+        return Fail(TYPE_CAPACITY_VALID_HANDLE_FAILED);
+    }
+
+    const ResourceSnapshot afterSnapshot = registry.Snapshot();
+    if (afterSnapshot.TypeCount != beforeSnapshot.TypeCount)
+    {
+        return Fail(TYPE_CAPACITY_TYPE_COUNT_FAILED);
+    }
+
+    if (afterSnapshot.RegisteredResourceCount != beforeSnapshot.RegisteredResourceCount)
+    {
+        return Fail(TYPE_CAPACITY_REGISTERED_COUNT_FAILED);
+    }
+
+    if (afterSnapshot.AcquiredHandleCount != beforeSnapshot.AcquiredHandleCount)
+    {
+        return Fail(TYPE_CAPACITY_ACQUIRED_COUNT_FAILED);
+    }
+
+    const ResourceRegistrationResult retryResult = Register(registry, TYPE_TEXTURE, TYPE_CAPACITY_RETRY_TEXTURE_KEY);
+    if (!retryResult.Succeeded())
+    {
+        return Fail(TYPE_CAPACITY_RETRY_REGISTRATION_FAILED);
+    }
+
+    if (retryResult.Handle.Slot != 1U)
+    {
+        return Fail(TYPE_CAPACITY_RETRY_SLOT_FAILED);
+    }
+
+    if (retryResult.Handle.Generation != 1U)
+    {
+        return Fail(TYPE_CAPACITY_RETRY_GENERATION_FAILED);
+    }
+
+    if (registry.Snapshot().TypeCount != beforeSnapshot.TypeCount)
+    {
+        return Fail(TYPE_CAPACITY_RETRY_TYPE_COUNT_FAILED);
     }
 
     return 0;
@@ -611,84 +694,33 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        return Fail("expected one test name");
+        return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::string testName(argv[1]);
-    if (testName == TEST_REGISTER)
+    static const TestRegistry testRegistry{
+        {TEST_REGISTER, ResourceRegisterSyntheticDescriptorReturnsGenerationHandle},
+        {TEST_DUPLICATE, ResourceRegisterDuplicateReturnsExplicitStatus},
+        {TEST_CAPACITY, ResourceRegistryRejectsCapacityOverflowWithoutMutation},
+        {TEST_TYPE_CAPACITY, ResourceTypeCapacityOverflowDoesNotMutate},
+        {TEST_WRONG_GENERATION, ResourceHandleRejectsWrongGeneration},
+        {TEST_TYPE_MISMATCH, ResourceHandleRejectsTypeMismatch},
+        {TEST_ACQUIRE_RELEASE, ResourceAcquireReleaseTracksReferenceCount},
+        {TEST_REPEATED_ACQUIRE, ResourceRepeatedAcquireIncrementsReferenceCount},
+        {TEST_REFERENCE_OVERFLOW, ResourceAcquireRejectsReferenceCountOverflow},
+        {TEST_RETIRE_REFERENCED, ResourceRetireRejectsOutstandingAcquire},
+        {TEST_RETIRE_DEPENDED_ON, ResourceRetireRejectsLiveDependentEdge},
+        {TEST_MISSING_DEPENDENCY, ResourceDependencyValidationRejectsMissingDependency},
+        {TEST_DEPENDENCY_CYCLE, ResourceDependencyValidationRejectsCycle},
+        {TEST_NO_FILE_PACKAGE, ResourceNoFileOrPackageDependencyForHandleRegistry},
+        {TEST_DISABLED_DIAGNOSTICS, ResourceDisabledDiagnosticsDoesNotChangeResults},
+        {TEST_NO_HIDDEN_ALLOCATION, ResourceNoHiddenAllocationUsesYuMemorySignal}};
+
+    const std::string_view testName(argv[1]);
+    const auto testEntry = testRegistry.find(testName);
+    if (testEntry == testRegistry.end())
     {
-        return ResourceRegisterSyntheticDescriptorReturnsGenerationHandle();
+        return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    if (testName == TEST_DUPLICATE)
-    {
-        return ResourceRegisterDuplicateReturnsExplicitStatus();
-    }
-
-    if (testName == TEST_CAPACITY)
-    {
-        return ResourceRegistryRejectsCapacityOverflowWithoutMutation();
-    }
-
-    if (testName == TEST_WRONG_GENERATION)
-    {
-        return ResourceHandleRejectsWrongGeneration();
-    }
-
-    if (testName == TEST_TYPE_MISMATCH)
-    {
-        return ResourceHandleRejectsTypeMismatch();
-    }
-
-    if (testName == TEST_ACQUIRE_RELEASE)
-    {
-        return ResourceAcquireReleaseTracksReferenceCount();
-    }
-
-    if (testName == TEST_REPEATED_ACQUIRE)
-    {
-        return ResourceRepeatedAcquireIncrementsReferenceCount();
-    }
-
-    if (testName == TEST_REFERENCE_OVERFLOW)
-    {
-        return ResourceAcquireRejectsReferenceCountOverflow();
-    }
-
-    if (testName == TEST_RETIRE_REFERENCED)
-    {
-        return ResourceRetireRejectsOutstandingAcquire();
-    }
-
-    if (testName == TEST_RETIRE_DEPENDED_ON)
-    {
-        return ResourceRetireRejectsLiveDependentEdge();
-    }
-
-    if (testName == TEST_MISSING_DEPENDENCY)
-    {
-        return ResourceDependencyValidationRejectsMissingDependency();
-    }
-
-    if (testName == TEST_DEPENDENCY_CYCLE)
-    {
-        return ResourceDependencyValidationRejectsCycle();
-    }
-
-    if (testName == TEST_NO_FILE_PACKAGE)
-    {
-        return ResourceNoFileOrPackageDependencyForHandleRegistry();
-    }
-
-    if (testName == TEST_DISABLED_DIAGNOSTICS)
-    {
-        return ResourceDisabledDiagnosticsDoesNotChangeResults();
-    }
-
-    if (testName == TEST_NO_HIDDEN_ALLOCATION)
-    {
-        return ResourceNoHiddenAllocationUsesYuMemorySignal();
-    }
-
-    return Fail("unknown test name");
+    return testEntry->second();
 }

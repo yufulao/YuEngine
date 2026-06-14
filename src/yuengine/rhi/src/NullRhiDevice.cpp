@@ -17,6 +17,7 @@ NullRhiDevice::NullRhiDevice()
       _snapshot{},
       _submittedHandle{},
       _presentedHandle{},
+      _generationSeed(INVALID_GENERATION),
       _isInitialized(false),
       _hasSubmittedFrame(false),
       _hasPresentedFrame(false)
@@ -50,7 +51,18 @@ RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc& desc)
         return RhiStatus::CapacityExceeded;
     }
 
+    ++_generationSeed;
+    if (_generationSeed == INVALID_GENERATION)
+    {
+        ++_generationSeed;
+    }
+
     _targets.assign(desc.ColorTargetCapacity, RhiTargetSlot{});
+    for (RhiTargetSlot& target : _targets)
+    {
+        target.Generation = _generationSeed;
+    }
+
     _capabilities = RhiCapabilities{
         RhiBackendKind::Null,
         RhiFormat::Rgba8Unorm,
@@ -193,6 +205,11 @@ RhiStatus NullRhiDevice::Present()
     if (!_hasSubmittedFrame)
     {
         return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    if (!IsTargetHandleValid(_submittedHandle))
+    {
+        return RecordFailure(RhiStatus::InvalidHandle);
     }
 
     _presentedHandle = _submittedHandle;

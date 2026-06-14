@@ -10,6 +10,8 @@ namespace yuengine::package
 {
 namespace
 {
+using memory::MemoryAccountingStatus;
+
 std::uint32_t ClampCapacity(std::uint32_t requestedCapacity, std::uint32_t maximumCapacity)
 {
     if (requestedCapacity > maximumCapacity)
@@ -53,7 +55,7 @@ PackageRegistry::PackageRegistry(PackageRegistryDesc desc)
           0U,
           0U,
           0U,
-          yuengine::memory::MemoryAccountingStatus::ExplicitlyTrackedOnly,
+          MemoryAccountingStatus::ExplicitlyTrackedOnly,
           PackageStatus::Success}
 {
 }
@@ -228,8 +230,8 @@ PackageStatus PackageRegistry::AddDependency(PackageId package, PackageEntryId d
 
 PackageLoadPlanResult PackageRegistry::ResolveEntryByResourceKey(
     PackageId package,
-    yuengine::resource::ResourceTypeId expectedType,
-    const yuengine::resource::ResourceLogicalKey& logicalKey)
+    ResourceTypeId expectedType,
+    const ResourceLogicalKey& logicalKey)
 {
     if (!package.IsValid())
     {
@@ -506,8 +508,8 @@ PackageStatus PackageRegistry::FindEntryIndex(PackageId package, PackageEntryId 
 
 PackageStatus PackageRegistry::FindEntryByResourceKey(
     PackageId package,
-    yuengine::resource::ResourceTypeId expectedType,
-    const yuengine::resource::ResourceLogicalKey& logicalKey,
+    ResourceTypeId expectedType,
+    const ResourceLogicalKey& logicalKey,
     std::size_t& outIndex) const
 {
     if (!HasManifest(package))

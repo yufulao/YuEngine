@@ -34,8 +34,33 @@ void ServiceRegistry::UnregisterOwner(std::string_view ownerModule)
     }
 }
 
+void ServiceRegistry::OpenRegistrationWindow()
+{
+    _acceptingRegistrations = true;
+}
+
+void ServiceRegistry::CloseRegistrationWindow()
+{
+    _acceptingRegistrations = false;
+}
+
 bool ServiceRegistry::RegisterRaw(std::string_view ownerModule, std::string_view serviceId, void* service, std::type_index serviceType)
 {
+    if (!_acceptingRegistrations)
+    {
+        return false;
+    }
+
+    if (ownerModule.empty())
+    {
+        return false;
+    }
+
+    if (serviceId.empty())
+    {
+        return false;
+    }
+
     if (service == nullptr)
     {
         return false;

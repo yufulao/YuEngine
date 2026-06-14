@@ -1,6 +1,8 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "yuengine/diagnostics/BoundedInMemoryLogSink.h"
@@ -26,11 +28,14 @@ namespace
 constexpr const char* TEST_HOST = "Host_StartTickShutdown_Deterministic";
 constexpr const char* TEST_TIMER = "Host_TimerMonotonic_ForFixedTicks";
 constexpr const char* TEST_MEMORY_STATUS = "Platform_AllocationAccountingStatus_UsesMemoryHook";
+constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
+constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint64_t FIRST_TICK_NANOSECONDS = 1000U;
 constexpr std::uint64_t STEP_NANOSECONDS = 16U;
 constexpr std::uint32_t DETERMINISTIC_TICK_COUNT = 3U;
 constexpr std::uint32_t TIMER_TICK_COUNT = 4U;
 constexpr std::size_t LOG_CAPACITY = 16U;
+using TestFunction = int (*)();
 
 class TraceRuntime final : public IHostRuntime
 {
@@ -168,24 +173,20 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        return Fail("expected one test name");
+        return Fail(ERROR_EXPECTED_ONE_TEST_NAME);
     }
 
-    const std::string testName(argv[1]);
-    if (testName == TEST_HOST)
+    static const std::unordered_map<std::string_view, TestFunction> testRegistry{
+        {TEST_HOST, HostStartTickShutdownDeterministic},
+        {TEST_TIMER, HostTimerMonotonicForFixedTicks},
+        {TEST_MEMORY_STATUS, PlatformAllocationAccountingStatusUsesMemoryHook}};
+
+    const std::string_view testName(argv[1]);
+    const auto testIterator = testRegistry.find(testName);
+    if (testIterator == testRegistry.end())
     {
-        return HostStartTickShutdownDeterministic();
+        return Fail(ERROR_UNKNOWN_TEST_NAME);
     }
 
-    if (testName == TEST_TIMER)
-    {
-        return HostTimerMonotonicForFixedTicks();
-    }
-
-    if (testName == TEST_MEMORY_STATUS)
-    {
-        return PlatformAllocationAccountingStatusUsesMemoryHook();
-    }
-
-    return Fail("unknown test name");
+    return testIterator->second();
 }
