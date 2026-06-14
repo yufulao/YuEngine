@@ -4,7 +4,7 @@
 #include <cstdint>
 
 namespace yuengine::memory {
-struct memory_snapshot_t {
+struct MemorySnapshot {
     std::uint64_t AllocationCount;
     std::uint64_t FreeCount;
     std::size_t RetainedBytes;

@@ -5,8 +5,8 @@
 #include "yuengine/thread/task_status.h"
 
 namespace yuengine::thread {
-struct task_record_t {
-    task_id_t Id;
+struct TaskRecord {
+    TaskId Id;
     TaskCallback Callback;
     void* Context;
     TaskStatus Status;

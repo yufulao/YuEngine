@@ -3,7 +3,7 @@
 #include <cstdint>
 
 namespace yuengine::memory {
-struct memory_allocation_id_t {
+struct MemoryAllocationId {
     std::uint64_t Value;
 
     bool IsValid() const {

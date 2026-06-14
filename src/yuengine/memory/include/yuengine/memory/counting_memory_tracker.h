@@ -14,24 +14,24 @@ class CountingMemoryTracker final : public IMemoryTracker {
 public:
     CountingMemoryTracker();
 
-    memory_accounting_result_t RecordAllocation(
-        memory_owner_id_t owner,
-        memory_tag_t tag,
+    MemoryAccountingResult RecordAllocation(
+        MemoryOwnerId owner,
+        MemoryTag tag,
         MemoryBudgetClass budgetClass,
         std::size_t bytes,
         std::size_t alignment) override;
-    MemoryAccountingStatus RecordFree(memory_allocation_id_t allocationId, memory_owner_id_t owner, memory_tag_t tag) override;
-    memory_snapshot_t Snapshot() const override;
+    MemoryAccountingStatus RecordFree(MemoryAllocationId allocationId, MemoryOwnerId owner, MemoryTag tag) override;
+    MemorySnapshot Snapshot() const override;
     std::uint64_t AllocationCountForBudget(MemoryBudgetClass budgetClass) const override;
 
 private:
-    active_allocation_record_t* FindActiveAllocation(memory_allocation_id_t allocationId);
-    active_allocation_record_t* FindFreeAllocationRecord();
-    static void ResetAllocationRecord(active_allocation_record_t& record);
+    ActiveAllocationRecord* FindActiveAllocation(MemoryAllocationId allocationId);
+    ActiveAllocationRecord* FindFreeAllocationRecord();
+    static void ResetAllocationRecord(ActiveAllocationRecord& record);
 
-    std::array<active_allocation_record_t, MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS> _activeAllocations;
+    std::array<ActiveAllocationRecord, MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS> _activeAllocations;
     std::array<std::uint64_t, MemoryBudgetClassCount> _budgetAllocationCounts;
-    memory_snapshot_t _snapshot;
+    MemorySnapshot _snapshot;
     std::uint64_t _nextAllocationId;
     std::size_t _activeAllocationCount;
 };
