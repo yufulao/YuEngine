@@ -1,6 +1,6 @@
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
+#include <cstdio>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -96,7 +96,8 @@ public:
 
 int Fail(const std::string& message)
 {
-    std::cerr << message << '\n';
+    std::fwrite(message.data(), sizeof(char), message.size(), stderr);
+    std::fputc('\n', stderr);
     return 1;
 }
 
