@@ -33,8 +33,8 @@ using DisabledDiagnosticsChannel = yuengine::diagnostics::DisabledDiagnosticsCha
 using DisabledLogSink = yuengine::diagnostics::DisabledLogSink;
 using FixedFrameClock = yuengine::platform::FixedFrameClock;
 using HeadlessHost = yuengine::platform::HeadlessHost;
-using headless_host_config_t = yuengine::platform::headless_host_config_t;
-using host_error_t = yuengine::platform::host_error_t;
+using yuengine::platform::HeadlessHostConfig;
+using yuengine::platform::HostError;
 using HostStatus = yuengine::platform::HostStatus;
 using IHostRuntime = yuengine::platform::IHostRuntime;
 using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
@@ -71,21 +71,21 @@ using TestFunction = int (*)();
 
 class TraceRuntime final : public IHostRuntime {
 public:
-    host_error_t Start(std::vector<std::string>& lifecycleTrace) override {
+    HostError Start(std::vector<std::string>& lifecycleTrace) override {
         lifecycleTrace.push_back("runtime.start");
-        return host_error_t::Success();
+        return HostError::Success();
     }
 
-    host_error_t Tick(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) override {
+    HostError Tick(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) override {
         static_cast<void>(frameIndex);
         static_cast<void>(tickTimeNanoseconds);
         lifecycleTrace.push_back("runtime.tick");
-        return host_error_t::Success();
+        return HostError::Success();
     }
 
-    host_error_t Shutdown(std::vector<std::string>& lifecycleTrace) override {
+    HostError Shutdown(std::vector<std::string>& lifecycleTrace) override {
         lifecycleTrace.push_back("runtime.shutdown");
-        return host_error_t::Success();
+        return HostError::Success();
     }
 };
 
@@ -118,7 +118,7 @@ int LoggingDisabledSinkDoesNotChangeBehavior() {
     TraceRuntime recordingRuntime;
     HeadlessHost recordingHost(recordingClock, recordingLogSink);
 
-    const headless_host_config_t config{TICK_COUNT};
+    const HeadlessHostConfig config{TICK_COUNT};
     const auto recordingResult = recordingHost.Run(recordingRuntime, config);
     if (recordingResult.Status != HostStatus::Success) {
         return Fail("recording host run failed");
@@ -376,7 +376,7 @@ int DiagnosticsNoReportDependencyForRuntimeResults() {
     HeadlessHost host(frameClock, logSink);
     BoundedDiagnosticsChannel channel = CreateRegisteredChannel();
 
-    const headless_host_config_t config{TICK_COUNT};
+    const HeadlessHostConfig config{TICK_COUNT};
     const auto result = host.Run(runtime, config);
     const auto eventStatus = channel.RecordEvent(diagnostics_event_id_t{EVENT_ID}, EVENT_PAYLOAD);
     if (result.Status != HostStatus::Success) {

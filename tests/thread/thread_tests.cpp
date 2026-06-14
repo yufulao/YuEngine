@@ -17,8 +17,8 @@ using DisabledMemoryTracker = yuengine::memory::DisabledMemoryTracker;
 using InlineTaskExecutor = yuengine::thread::InlineTaskExecutor;
 using ShutdownPolicy = yuengine::thread::ShutdownPolicy;
 using TaskStatus = yuengine::thread::TaskStatus;
-using fixed_trace_buffer_t = yuengine::thread::tests::fixed_trace_buffer_t;
-using thread_test_context_t = yuengine::thread::tests::thread_test_context_t;
+using yuengine::thread::tests::FixedTraceBuffer;
+using yuengine::thread::tests::ThreadTestContext;
 
 namespace {
 constexpr const char* TEST_ENQUEUE_SUCCEEDS = "Thread_QueueEnqueueWithinCapacity_Succeeds";
@@ -46,7 +46,7 @@ int Fail(const std::string& message) {
 }
 
 template <std::size_t ExpectedCount>
-bool TraceEquals(const fixed_trace_buffer_t &trace, const std::array<int, ExpectedCount> &expected) {
+bool TraceEquals(const FixedTraceBuffer &trace, const std::array<int, ExpectedCount> &expected) {
     if (trace.Count != expected.size()) {
         return false;
     }
@@ -60,7 +60,7 @@ bool TraceEquals(const fixed_trace_buffer_t &trace, const std::array<int, Expect
     return true;
 }
 
-bool TraceEquals(const fixed_trace_buffer_t &left, const fixed_trace_buffer_t &right) {
+bool TraceEquals(const FixedTraceBuffer &left, const FixedTraceBuffer &right) {
     if (left.Count != right.Count) {
         return false;
     }
@@ -75,7 +75,7 @@ bool TraceEquals(const fixed_trace_buffer_t &left, const fixed_trace_buffer_t &r
 }
 
 TaskStatus RecordTask(void* context) {
-    thread_test_context_t *taskContext = static_cast<thread_test_context_t *>(context);
+    ThreadTestContext *taskContext = static_cast<ThreadTestContext *>(context);
     if (!taskContext->Trace->Append(taskContext->Value)) {
         return TaskStatus::Failed;
     }
@@ -90,8 +90,8 @@ TaskStatus RecordTask(void* context) {
 int ThreadQueueEnqueueWithinCapacitySucceeds() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
-    fixed_trace_buffer_t trace;
-    thread_test_context_t context{&trace, FIRST_VALUE, false};
+    FixedTraceBuffer trace;
+    ThreadTestContext context{&trace, FIRST_VALUE, false};
 
     if (queue.Snapshot().MaxQueueDepth != 0U) {
         return Fail("initial max queue depth was not zero");
@@ -121,10 +121,10 @@ int ThreadQueueEnqueueWithinCapacitySucceeds() {
 int ThreadQueueEnqueueBeyondCapacityRejects() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
-    fixed_trace_buffer_t trace;
-    thread_test_context_t firstContext{&trace, FIRST_VALUE, false};
-    thread_test_context_t secondContext{&trace, SECOND_VALUE, false};
-    thread_test_context_t thirdContext{&trace, THIRD_VALUE, false};
+    FixedTraceBuffer trace;
+    ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
+    ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
+    ThreadTestContext thirdContext{&trace, THIRD_VALUE, false};
 
     queue.Submit(&RecordTask, &firstContext);
     queue.Submit(&RecordTask, &secondContext);
@@ -150,10 +150,10 @@ int ThreadDrainExecutesTasksInDeterministicOrder() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(LARGE_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
-    fixed_trace_buffer_t trace;
-    thread_test_context_t firstContext{&trace, FIRST_VALUE, false};
-    thread_test_context_t secondContext{&trace, SECOND_VALUE, false};
-    thread_test_context_t thirdContext{&trace, THIRD_VALUE, false};
+    FixedTraceBuffer trace;
+    ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
+    ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
+    ThreadTestContext thirdContext{&trace, THIRD_VALUE, false};
 
     queue.Submit(&RecordTask, &firstContext);
     queue.Submit(&RecordTask, &secondContext);
@@ -185,8 +185,8 @@ int ThreadTaskFailureReturnsFailedResult() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
-    fixed_trace_buffer_t trace;
-    thread_test_context_t context{&trace, FIRST_VALUE, true};
+    FixedTraceBuffer trace;
+    ThreadTestContext context{&trace, FIRST_VALUE, true};
 
     queue.Submit(&RecordTask, &context);
 
@@ -211,8 +211,8 @@ int ThreadShutdownRejectsNewSubmission() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
-    fixed_trace_buffer_t trace;
-    thread_test_context_t context{&trace, FIRST_VALUE, false};
+    FixedTraceBuffer trace;
+    ThreadTestContext context{&trace, FIRST_VALUE, false};
 
     queue.Shutdown(ShutdownPolicy::DrainQueued, executor);
 
@@ -237,9 +237,9 @@ int ThreadShutdownDrainPolicyExecutesQueuedTasks() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
-    fixed_trace_buffer_t trace;
-    thread_test_context_t firstContext{&trace, FIRST_VALUE, false};
-    thread_test_context_t secondContext{&trace, SECOND_VALUE, false};
+    FixedTraceBuffer trace;
+    ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
+    ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
 
     queue.Submit(&RecordTask, &firstContext);
     queue.Submit(&RecordTask, &secondContext);
@@ -266,9 +266,9 @@ int ThreadShutdownCancelPolicyCancelsQueuedTasks() {
     DisabledMemoryTracker memoryTracker;
     BoundedTaskQueue queue(SMALL_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
-    fixed_trace_buffer_t trace;
-    thread_test_context_t firstContext{&trace, FIRST_VALUE, false};
-    thread_test_context_t secondContext{&trace, SECOND_VALUE, false};
+    FixedTraceBuffer trace;
+    ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
+    ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
 
     queue.Submit(&RecordTask, &firstContext);
     queue.Submit(&RecordTask, &secondContext);
@@ -298,9 +298,9 @@ int ThreadQueueCapacityDoesNotGrowDuringFixture() {
     CountingMemoryTracker memoryTracker;
     BoundedTaskQueue queue(LARGE_CAPACITY, memoryTracker);
     InlineTaskExecutor executor;
-    fixed_trace_buffer_t trace;
-    thread_test_context_t firstContext{&trace, FIRST_VALUE, false};
-    thread_test_context_t secondContext{&trace, SECOND_VALUE, false};
+    FixedTraceBuffer trace;
+    ThreadTestContext firstContext{&trace, FIRST_VALUE, false};
+    ThreadTestContext secondContext{&trace, SECOND_VALUE, false};
 
     const std::size_t capacityBefore = queue.Capacity();
     queue.Submit(&RecordTask, &firstContext);
@@ -327,8 +327,8 @@ int ThreadDiagnosticsDisabledDoesNotChangeBehavior() {
     DisabledMemoryTracker enabledLikeMemoryTracker;
     BoundedTaskQueue enabledLikeQueue(SMALL_CAPACITY, enabledLikeMemoryTracker);
     InlineTaskExecutor enabledLikeExecutor;
-    fixed_trace_buffer_t enabledLikeTrace;
-    thread_test_context_t enabledLikeContext{&enabledLikeTrace, FIRST_VALUE, false};
+    FixedTraceBuffer enabledLikeTrace;
+    ThreadTestContext enabledLikeContext{&enabledLikeTrace, FIRST_VALUE, false};
 
     enabledLikeQueue.Submit(&RecordTask, &enabledLikeContext);
     enabledLikeQueue.Drain(enabledLikeExecutor);
@@ -336,8 +336,8 @@ int ThreadDiagnosticsDisabledDoesNotChangeBehavior() {
     DisabledMemoryTracker disabledMemoryTracker;
     BoundedTaskQueue disabledQueue(SMALL_CAPACITY, disabledMemoryTracker);
     InlineTaskExecutor disabledExecutor;
-    fixed_trace_buffer_t disabledTrace;
-    thread_test_context_t disabledContext{&disabledTrace, FIRST_VALUE, false};
+    FixedTraceBuffer disabledTrace;
+    ThreadTestContext disabledContext{&disabledTrace, FIRST_VALUE, false};
 
     disabledQueue.Submit(&RecordTask, &disabledContext);
     disabledQueue.Drain(disabledExecutor);

@@ -15,12 +15,12 @@
 
 using FixedFrameClock = yuengine::platform::FixedFrameClock;
 using HeadlessHost = yuengine::platform::HeadlessHost;
-using headless_host_config_t = yuengine::platform::headless_host_config_t;
-using host_error_t = yuengine::platform::host_error_t;
+using yuengine::platform::HeadlessHostConfig;
+using yuengine::platform::HostError;
 using HostStatus = yuengine::platform::HostStatus;
 using IHostRuntime = yuengine::platform::IHostRuntime;
 using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
-using platform_performance_signal_t = yuengine::platform::platform_performance_signal_t;
+using yuengine::platform::PlatformPerformanceSignal;
 using BoundedInMemoryLogSink = yuengine::diagnostics::BoundedInMemoryLogSink;
 
 namespace {
@@ -38,21 +38,21 @@ using TestFunction = int (*)();
 
 class TraceRuntime final : public IHostRuntime {
 public:
-    host_error_t Start(std::vector<std::string>& lifecycleTrace) override {
+    HostError Start(std::vector<std::string>& lifecycleTrace) override {
         lifecycleTrace.push_back("runtime.start");
-        return host_error_t::Success();
+        return HostError::Success();
     }
 
-    host_error_t Tick(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) override {
+    HostError Tick(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) override {
         static_cast<void>(frameIndex);
         static_cast<void>(tickTimeNanoseconds);
         lifecycleTrace.push_back("runtime.tick");
-        return host_error_t::Success();
+        return HostError::Success();
     }
 
-    host_error_t Shutdown(std::vector<std::string>& lifecycleTrace) override {
+    HostError Shutdown(std::vector<std::string>& lifecycleTrace) override {
         lifecycleTrace.push_back("runtime.shutdown");
-        return host_error_t::Success();
+        return HostError::Success();
     }
 };
 
@@ -68,7 +68,7 @@ int HostStartTickShutdownDeterministic() {
     TraceRuntime runtime;
     HeadlessHost host(frameClock, logSink);
 
-    const headless_host_config_t config{DETERMINISTIC_TICK_COUNT};
+    const HeadlessHostConfig config{DETERMINISTIC_TICK_COUNT};
     const auto result = host.Run(runtime, config);
     if (result.Status != HostStatus::Success) {
         return Fail("host did not return success");
@@ -94,7 +94,7 @@ int HostStartTickShutdownDeterministic() {
         return Fail("host lifecycle trace did not match expected order");
     }
 
-    if (result.AllocationAccountingStatus != platform_performance_signal_t::AllocationAccountingStatus) {
+    if (result.AllocationAccountingStatus != PlatformPerformanceSignal::AllocationAccountingStatus) {
         return Fail("allocation accounting status is missing");
     }
 
@@ -111,7 +111,7 @@ int HostTimerMonotonicForFixedTicks() {
     TraceRuntime runtime;
     HeadlessHost host(frameClock, logSink);
 
-    const headless_host_config_t config{TIMER_TICK_COUNT};
+    const HeadlessHostConfig config{TIMER_TICK_COUNT};
     const auto result = host.Run(runtime, config);
     if (result.TickTimesNanoseconds.size() != TIMER_TICK_COUNT) {
         return Fail("timer did not record every tick");
@@ -140,7 +140,7 @@ int PlatformAllocationAccountingStatusUsesMemoryHook() {
     TraceRuntime runtime;
     HeadlessHost host(frameClock, logSink);
 
-    const headless_host_config_t config{DETERMINISTIC_TICK_COUNT};
+    const HeadlessHostConfig config{DETERMINISTIC_TICK_COUNT};
     const auto result = host.Run(runtime, config);
     if (result.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("platform did not expose typed explicit-tracking memory status");

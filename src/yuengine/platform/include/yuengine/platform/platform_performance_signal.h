@@ -5,7 +5,7 @@
 namespace yuengine::platform {
 using MemoryAccountingStatus = yuengine::memory::MemoryAccountingStatus;
 
-struct platform_performance_signal_t {
+struct PlatformPerformanceSignal {
     static constexpr MemoryAccountingStatus AllocationAccountingStatus = MemoryAccountingStatus::ExplicitlyTrackedOnly;
 };
 }

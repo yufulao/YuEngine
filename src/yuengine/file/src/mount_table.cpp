@@ -47,30 +47,30 @@ bool IsAbsolutePath(std::string_view value) {
     return value[1U] == ':';
 }
 
-path_normalization_result_t NormalizePathValue(std::string_view value) {
+PathNormalizationResult NormalizePathValue(std::string_view value) {
     if (value.empty()) {
-        return path_normalization_result_t::Failure(FileStatus::InvalidPath);
+        return PathNormalizationResult::Failure(FileStatus::InvalidPath);
     }
 
     if (value.size() > MAX_VIRTUAL_PATH_LENGTH) {
-        return path_normalization_result_t::Failure(FileStatus::PathTooLong);
+        return PathNormalizationResult::Failure(FileStatus::PathTooLong);
     }
 
     if (IsAbsolutePath(value)) {
-        return path_normalization_result_t::Failure(FileStatus::InvalidPath);
+        return PathNormalizationResult::Failure(FileStatus::InvalidPath);
     }
 
     std::vector<std::string> segments;
     std::string segment;
     for (const char character : value) {
         if (character == '\\') {
-            return path_normalization_result_t::Failure(FileStatus::InvalidPath);
+            return PathNormalizationResult::Failure(FileStatus::InvalidPath);
         }
 
         if (character == '/') {
             const FileStatus status = PushPathSegment(segments, segment);
             if (status != FileStatus::Success) {
-                return path_normalization_result_t::Failure(status);
+                return PathNormalizationResult::Failure(status);
             }
 
             segment.clear();
@@ -82,7 +82,7 @@ path_normalization_result_t NormalizePathValue(std::string_view value) {
 
     const FileStatus finalStatus = PushPathSegment(segments, segment);
     if (finalStatus != FileStatus::Success) {
-        return path_normalization_result_t::Failure(finalStatus);
+        return PathNormalizationResult::Failure(finalStatus);
     }
 
     std::string normalizedValue;
@@ -93,15 +93,15 @@ path_normalization_result_t NormalizePathValue(std::string_view value) {
 
         normalizedValue.append(normalizedSegment);
         if (normalizedValue.size() > MAX_NORMALIZED_PATH_LENGTH) {
-            return path_normalization_result_t::Failure(FileStatus::PathTooLong);
+            return PathNormalizationResult::Failure(FileStatus::PathTooLong);
         }
     }
 
     if (normalizedValue.empty()) {
-        return path_normalization_result_t::Failure(FileStatus::InvalidPath);
+        return PathNormalizationResult::Failure(FileStatus::InvalidPath);
     }
 
-    return path_normalization_result_t::Success(NormalizedPath(std::move(normalizedValue)));
+    return PathNormalizationResult::Success(NormalizedPath(std::move(normalizedValue)));
 }
 }
 
@@ -138,9 +138,9 @@ FileStatus MountTable::RegisterLooseMount(MountId mountId, std::filesystem::path
     return FileStatus::Success;
 }
 
-path_normalization_result_t MountTable::Normalize(VirtualPath path) {
+PathNormalizationResult MountTable::Normalize(VirtualPath path) {
     ++_snapshot.PathNormalizationCount;
-    path_normalization_result_t result = NormalizePathValue(path.Value());
+    PathNormalizationResult result = NormalizePathValue(path.Value());
     if (!result.Succeeded()) {
         RecordRejectedPath();
     }
@@ -148,11 +148,11 @@ path_normalization_result_t MountTable::Normalize(VirtualPath path) {
     return result;
 }
 
-file_read_result_t MountTable::Read(file_read_request_t request) {
-    path_normalization_result_t normalizedPath = Normalize(std::move(request.Path));
+FileReadResult MountTable::Read(FileReadRequest request) {
+    PathNormalizationResult normalizedPath = Normalize(std::move(request.Path));
     if (!normalizedPath.Succeeded()) {
         RecordLastReadStatus(normalizedPath.Status);
-        return file_read_result_t::Failure(normalizedPath.Status);
+        return FileReadResult::Failure(normalizedPath.Status);
     }
 
     ++_snapshot.LookupCount;
@@ -163,10 +163,10 @@ file_read_result_t MountTable::Read(file_read_request_t request) {
     const std::optional<std::size_t> mountIndex = FindMountIndex(request.Mount);
     if (!mountIndex.has_value()) {
         RecordLastReadStatus(FileStatus::MountNotFound);
-        return file_read_result_t::Failure(FileStatus::MountNotFound);
+        return FileReadResult::Failure(FileStatus::MountNotFound);
     }
 
-    file_read_result_t result = _mounts[*mountIndex].Source().Read(normalizedPath.Path);
+    FileReadResult result = _mounts[*mountIndex].Source().Read(normalizedPath.Path);
     if (result.Succeeded()) {
         _snapshot.ReadByteCount += result.Bytes.size();
     }
@@ -175,7 +175,7 @@ file_read_result_t MountTable::Read(file_read_request_t request) {
     return result;
 }
 
-file_snapshot_t MountTable::Snapshot() const {
+FileSnapshot MountTable::Snapshot() const {
     return _snapshot;
 }
 
