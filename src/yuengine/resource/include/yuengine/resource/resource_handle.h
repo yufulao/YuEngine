@@ -5,7 +5,7 @@
 #include "yuengine/resource/resource_constants.h"
 
 namespace yuengine::resource {
-struct resource_handle_t final {
+struct ResourceHandle final {
     std::uint32_t Slot = INVALID_RESOURCE_SLOT;
     std::uint32_t Generation = INVALID_RESOURCE_GENERATION;
 

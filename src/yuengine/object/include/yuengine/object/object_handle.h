@@ -5,7 +5,7 @@
 #include "yuengine/object/object_constants.h"
 
 namespace yuengine::object {
-struct object_handle_t final {
+struct ObjectHandle final {
     std::uint32_t Slot = INVALID_OBJECT_SLOT;
     std::uint32_t Generation = INVALID_OBJECT_GENERATION;
 
