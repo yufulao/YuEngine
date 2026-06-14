@@ -3,7 +3,7 @@
 #include <cstdint>
 
 namespace yuengine::package {
-struct PackageEntryId final {
+struct package_entry_id_t final {
     std::uint32_t Value = 0U;
 
     bool IsValid() const {

@@ -6,7 +6,7 @@
 #include "yuengine/resource/resource_status.h"
 
 namespace yuengine::resource {
-struct ResourceSnapshot final {
+struct resource_snapshot_t final {
     std::uint32_t ResourceCapacity;
     std::uint32_t TypeCapacity;
     std::uint32_t DependencyEdgeCapacity;

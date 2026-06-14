@@ -4,12 +4,12 @@
 #include "yuengine/package/package_status.h"
 
 namespace yuengine::package {
-struct PackageLoadPlanResult final {
+struct package_load_plan_result_t final {
     PACKAGE_STATUS Status;
-    PackageLoadPlan Plan;
+    package_load_plan_t Plan;
 
-    static PackageLoadPlanResult Success(PackageLoadPlan plan);
-    static PackageLoadPlanResult Failure(PACKAGE_STATUS status);
+    static package_load_plan_result_t Success(package_load_plan_t plan);
+    static package_load_plan_result_t Failure(PACKAGE_STATUS status);
     bool Succeeded() const;
 };
 }

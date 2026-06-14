@@ -4,16 +4,16 @@
 #include "yuengine/object/object_status.h"
 
 namespace yuengine::object {
-struct ObjectRegistrationResult final {
+struct object_registration_result_t final {
     OBJECT_STATUS Status;
-    ObjectHandle Handle;
+    object_handle_t Handle;
 
-    static ObjectRegistrationResult Success(ObjectHandle handle) {
-        return ObjectRegistrationResult{OBJECT_STATUS::Success, handle};
+    static object_registration_result_t Success(object_handle_t handle) {
+        return object_registration_result_t{OBJECT_STATUS::Success, handle};
     }
 
-    static ObjectRegistrationResult Failure(OBJECT_STATUS status) {
-        return ObjectRegistrationResult{status, ObjectHandle{}};
+    static object_registration_result_t Failure(OBJECT_STATUS status) {
+        return object_registration_result_t{status, object_handle_t{}};
     }
 
     bool Succeeded() const {

@@ -3,7 +3,7 @@
 #include <cstdint>
 
 namespace yuengine::object {
-struct ObjectTypeId final {
+struct object_type_id_t final {
     std::uint32_t Value = 0U;
 
     bool IsValid() const {
