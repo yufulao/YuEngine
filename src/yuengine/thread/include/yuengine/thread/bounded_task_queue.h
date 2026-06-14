@@ -17,20 +17,20 @@ class BoundedTaskQueue final {
 public:
     BoundedTaskQueue(std::size_t capacity, memory::IMemoryTracker& memoryTracker);
 
-    TaskResult Submit(TaskCallback callback, void* context);
-    TaskResult Drain(InlineTaskExecutor& executor);
-    TaskResult Shutdown(SHUTDOWN_POLICY policy, InlineTaskExecutor& executor);
-    TaskSchedulerSnapshot Snapshot() const;
+    task_result_t Submit(TaskCallback callback, void* context);
+    task_result_t Drain(InlineTaskExecutor& executor);
+    task_result_t Shutdown(SHUTDOWN_POLICY policy, InlineTaskExecutor& executor);
+    task_scheduler_snapshot_t Snapshot() const;
     std::size_t Capacity() const;
 
 private:
     void CancelQueuedTasks();
-    TaskResult RejectResult() const;
-    TaskResult CompleteResult() const;
+    task_result_t RejectResult() const;
+    task_result_t CompleteResult() const;
 
-    std::vector<TaskRecord> _records;
+    std::vector<task_record_t> _records;
     memory::IMemoryTracker& _memoryTracker;
-    TaskSchedulerSnapshot _snapshot;
+    task_scheduler_snapshot_t _snapshot;
     std::size_t _headIndex;
     std::size_t _tailIndex;
     std::uint64_t _nextTaskId;

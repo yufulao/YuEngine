@@ -16,14 +16,14 @@ class IMemoryTracker {
 public:
     virtual ~IMemoryTracker() = default;
 
-    virtual MemoryAccountingResult RecordAllocation(
-        MemoryOwnerId owner,
-        MemoryTag tag,
+    virtual memory_accounting_result_t RecordAllocation(
+        memory_owner_id_t owner,
+        memory_tag_t tag,
         MEMORY_BUDGET_CLASS budgetClass,
         std::size_t bytes,
         std::size_t alignment) = 0;
-    virtual MEMORY_ACCOUNTING_STATUS RecordFree(MemoryAllocationId allocationId, MemoryOwnerId owner, MemoryTag tag) = 0;
-    virtual MemorySnapshot Snapshot() const = 0;
+    virtual MEMORY_ACCOUNTING_STATUS RecordFree(memory_allocation_id_t allocationId, memory_owner_id_t owner, memory_tag_t tag) = 0;
+    virtual memory_snapshot_t Snapshot() const = 0;
     virtual std::uint64_t AllocationCountForBudget(MEMORY_BUDGET_CLASS budgetClass) const = 0;
 };
 }

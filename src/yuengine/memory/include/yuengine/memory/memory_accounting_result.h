@@ -4,16 +4,16 @@
 #include "yuengine/memory/memory_allocation_id.h"
 
 namespace yuengine::memory {
-struct MemoryAccountingResult {
+struct memory_accounting_result_t {
     MEMORY_ACCOUNTING_STATUS Status;
-    MemoryAllocationId AllocationId;
+    memory_allocation_id_t AllocationId;
 
-    static MemoryAccountingResult Success(MemoryAllocationId allocationId) {
-        return MemoryAccountingResult{MEMORY_ACCOUNTING_STATUS::Success, allocationId};
+    static memory_accounting_result_t Success(memory_allocation_id_t allocationId) {
+        return memory_accounting_result_t{MEMORY_ACCOUNTING_STATUS::Success, allocationId};
     }
 
-    static MemoryAccountingResult Failure(MEMORY_ACCOUNTING_STATUS status) {
-        return MemoryAccountingResult{status, MemoryAllocationId{0U}};
+    static memory_accounting_result_t Failure(MEMORY_ACCOUNTING_STATUS status) {
+        return memory_accounting_result_t{status, memory_allocation_id_t{0U}};
     }
 
     bool Succeeded() const {

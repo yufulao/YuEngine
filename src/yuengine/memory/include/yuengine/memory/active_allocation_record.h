@@ -9,9 +9,9 @@ namespace yuengine::memory {
 constexpr std::size_t MAX_MEMORY_OWNER_ID_BYTES = 64U;
 constexpr std::size_t MAX_MEMORY_TAG_BYTES = 64U;
 
-struct ActiveAllocationRecord final {
+struct active_allocation_record_t final {
     bool IsActive = false;
-    MemoryAllocationId AllocationId{};
+    memory_allocation_id_t AllocationId{};
     std::size_t Bytes = 0U;
     std::array<char, MAX_MEMORY_OWNER_ID_BYTES> Owner{};
     std::size_t OwnerLength = 0U;

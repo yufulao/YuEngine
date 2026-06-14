@@ -16,14 +16,14 @@ void BoundedInMemoryLogSink::Write(LOG_LEVEL level, std::string_view message) {
         return;
     }
 
-    _events.push_back(LogEvent{level, std::string(message)});
+    _events.push_back(log_event_t{level, std::string(message)});
 }
 
 bool BoundedInMemoryLogSink::IsEnabled() const {
     return true;
 }
 
-const std::vector<LogEvent>& BoundedInMemoryLogSink::Events() const {
+const std::vector<log_event_t>& BoundedInMemoryLogSink::Events() const {
     return _events;
 }
 

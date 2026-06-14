@@ -16,7 +16,7 @@ BoundedTaskQueue::BoundedTaskQueue(std::size_t capacity, memory::IMemoryTracker&
       _nextTaskId(1U) {
 }
 
-TaskResult BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
+task_result_t BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
     if (_snapshot.IsShutdown) {
         ++_snapshot.RejectedCount;
         return RejectResult();
@@ -27,10 +27,10 @@ TaskResult BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
         return RejectResult();
     }
 
-    const TaskId taskId{_nextTaskId};
+    const task_id_t taskId{_nextTaskId};
     ++_nextTaskId;
 
-    _records[_tailIndex] = TaskRecord{taskId, callback, context, TASK_STATUS::Queued};
+    _records[_tailIndex] = task_record_t{taskId, callback, context, TASK_STATUS::Queued};
     _tailIndex = (_tailIndex + 1U) % _records.size();
     ++_snapshot.PendingCount;
     ++_snapshot.SubmittedCount;
@@ -39,17 +39,17 @@ TaskResult BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
         _snapshot.MaxQueueDepth = _snapshot.PendingCount;
     }
 
-    return TaskResult{taskId, TASK_STATUS::Queued};
+    return task_result_t{taskId, TASK_STATUS::Queued};
 }
 
-TaskResult BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
+task_result_t BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
     ++_snapshot.DrainCount;
 
-    TaskResult result = CompleteResult();
+    task_result_t result = CompleteResult();
     const std::uint64_t allocationCountBefore = _memoryTracker.AllocationCountForBudget(memory::MEMORY_BUDGET_CLASS::Job);
 
     while (_snapshot.PendingCount > 0U) {
-        TaskRecord& record = _records[_headIndex];
+        task_record_t& record = _records[_headIndex];
         record.Status = TASK_STATUS::Running;
 
         const TASK_STATUS executionStatus = executor.Execute(record.Callback, record.Context);
@@ -58,7 +58,7 @@ TaskResult BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
 
         if (executionStatus == TASK_STATUS::Failed) {
             ++_snapshot.FailedCount;
-            result = TaskResult{record.Id, TASK_STATUS::Failed};
+            result = task_result_t{record.Id, TASK_STATUS::Failed};
         }
 
         _headIndex = (_headIndex + 1U) % _records.size();
@@ -71,18 +71,18 @@ TaskResult BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
     return result;
 }
 
-TaskResult BoundedTaskQueue::Shutdown(SHUTDOWN_POLICY policy, InlineTaskExecutor& executor) {
+task_result_t BoundedTaskQueue::Shutdown(SHUTDOWN_POLICY policy, InlineTaskExecutor& executor) {
     _snapshot.IsShutdown = true;
 
     if (policy == SHUTDOWN_POLICY::CancelQueued) {
         CancelQueuedTasks();
-        return TaskResult{TaskId{INVALID_TASK_ID}, TASK_STATUS::Canceled};
+        return task_result_t{task_id_t{INVALID_TASK_ID}, TASK_STATUS::Canceled};
     }
 
     return Drain(executor);
 }
 
-TaskSchedulerSnapshot BoundedTaskQueue::Snapshot() const {
+task_scheduler_snapshot_t BoundedTaskQueue::Snapshot() const {
     return _snapshot;
 }
 
@@ -92,7 +92,7 @@ std::size_t BoundedTaskQueue::Capacity() const {
 
 void BoundedTaskQueue::CancelQueuedTasks() {
     while (_snapshot.PendingCount > 0U) {
-        TaskRecord& record = _records[_headIndex];
+        task_record_t& record = _records[_headIndex];
         record.Status = TASK_STATUS::Canceled;
         ++_snapshot.CanceledCount;
         _headIndex = (_headIndex + 1U) % _records.size();
@@ -102,11 +102,11 @@ void BoundedTaskQueue::CancelQueuedTasks() {
     _snapshot.CapacityAfterLastDrain = _records.capacity();
 }
 
-TaskResult BoundedTaskQueue::RejectResult() const {
-    return TaskResult{TaskId{INVALID_TASK_ID}, TASK_STATUS::Rejected};
+task_result_t BoundedTaskQueue::RejectResult() const {
+    return task_result_t{task_id_t{INVALID_TASK_ID}, TASK_STATUS::Rejected};
 }
 
-TaskResult BoundedTaskQueue::CompleteResult() const {
-    return TaskResult{TaskId{INVALID_TASK_ID}, TASK_STATUS::Completed};
+task_result_t BoundedTaskQueue::CompleteResult() const {
+    return task_result_t{task_id_t{INVALID_TASK_ID}, TASK_STATUS::Completed};
 }
 }

@@ -3,7 +3,7 @@
 #include <cstddef>
 
 namespace yuengine::diagnostics {
-struct DiagnosticsChannelConfig {
+struct diagnostics_channel_config_t {
     std::size_t EventCapacity;
     std::size_t CounterCapacity;
     std::size_t AcceptedEventIdCapacity;

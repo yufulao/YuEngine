@@ -3,7 +3,7 @@
 #include <cstdint>
 
 namespace yuengine::diagnostics {
-struct DiagnosticsEventId {
+struct diagnostics_event_id_t {
     std::uint32_t Value;
 
     bool IsValid() const {
