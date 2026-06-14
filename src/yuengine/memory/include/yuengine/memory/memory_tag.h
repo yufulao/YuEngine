@@ -3,7 +3,7 @@
 #include <string_view>
 
 namespace yuengine::memory {
-struct MemoryTag {
+struct memory_tag_t {
     std::string_view Value;
 
     bool IsValid() const {

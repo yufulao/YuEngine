@@ -10,12 +10,12 @@
 namespace yuengine::diagnostics {
 class DisabledDiagnosticsChannel final {
 public:
-    DiagnosticsStatus RegisterEventId(DiagnosticsEventId eventId);
-    DiagnosticsStatus RegisterCounterId(DiagnosticsCounterId counterId);
-    DiagnosticsStatus RecordEvent(DiagnosticsEventId eventId, std::uint64_t payload);
-    DiagnosticsStatus IncrementCounter(DiagnosticsCounterId counterId);
-    DiagnosticsStatus AddCounter(DiagnosticsCounterId counterId, std::uint64_t delta);
+    DiagnosticsStatus RegisterEventId(diagnostics_event_id_t eventId);
+    DiagnosticsStatus RegisterCounterId(diagnostics_counter_id_t counterId);
+    DiagnosticsStatus RecordEvent(diagnostics_event_id_t eventId, std::uint64_t payload);
+    DiagnosticsStatus IncrementCounter(diagnostics_counter_id_t counterId);
+    DiagnosticsStatus AddCounter(diagnostics_counter_id_t counterId, std::uint64_t delta);
     DiagnosticsStatus Shutdown();
-    DiagnosticsSnapshot Snapshot() const;
+    diagnostics_snapshot_t Snapshot() const;
 };
 }

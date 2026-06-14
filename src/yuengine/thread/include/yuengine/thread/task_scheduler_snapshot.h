@@ -4,7 +4,7 @@
 #include <cstdint>
 
 namespace yuengine::thread {
-struct TaskSchedulerSnapshot {
+struct task_scheduler_snapshot_t {
     std::uint64_t SubmittedCount;
     std::uint64_t ExecutedCount;
     std::uint64_t RejectedCount;

@@ -16,27 +16,27 @@
 namespace yuengine::diagnostics {
 class BoundedDiagnosticsChannel final {
 public:
-    explicit BoundedDiagnosticsChannel(DiagnosticsChannelConfig config);
+    explicit BoundedDiagnosticsChannel(diagnostics_channel_config_t config);
 
-    DiagnosticsStatus RegisterEventId(DiagnosticsEventId eventId);
-    DiagnosticsStatus RegisterCounterId(DiagnosticsCounterId counterId);
-    DiagnosticsStatus RecordEvent(DiagnosticsEventId eventId, std::uint64_t payload);
-    DiagnosticsStatus IncrementCounter(DiagnosticsCounterId counterId);
-    DiagnosticsStatus AddCounter(DiagnosticsCounterId counterId, std::uint64_t delta);
+    DiagnosticsStatus RegisterEventId(diagnostics_event_id_t eventId);
+    DiagnosticsStatus RegisterCounterId(diagnostics_counter_id_t counterId);
+    DiagnosticsStatus RecordEvent(diagnostics_event_id_t eventId, std::uint64_t payload);
+    DiagnosticsStatus IncrementCounter(diagnostics_counter_id_t counterId);
+    DiagnosticsStatus AddCounter(diagnostics_counter_id_t counterId, std::uint64_t delta);
     DiagnosticsStatus Shutdown();
-    DiagnosticsSnapshot Snapshot();
+    diagnostics_snapshot_t Snapshot();
 
 private:
-    DiagnosticsStatus ValidateConfig(DiagnosticsChannelConfig config) const;
-    bool HasAcceptedEventId(DiagnosticsEventId eventId) const;
-    bool HasAcceptedCounterId(DiagnosticsCounterId counterId) const;
-    std::size_t CounterIndex(DiagnosticsCounterId counterId) const;
+    DiagnosticsStatus ValidateConfig(diagnostics_channel_config_t config) const;
+    bool HasAcceptedEventId(diagnostics_event_id_t eventId) const;
+    bool HasAcceptedCounterId(diagnostics_counter_id_t counterId) const;
+    std::size_t CounterIndex(diagnostics_counter_id_t counterId) const;
 
-    DiagnosticsChannelConfig _config;
+    diagnostics_channel_config_t _config;
     DiagnosticsStatus _configurationStatus;
-    DiagnosticsSnapshot _snapshot;
-    std::array<DiagnosticsEventId, MAX_DIAGNOSTICS_EVENT_IDS> _acceptedEventIds;
-    std::array<DiagnosticsCounterId, MAX_DIAGNOSTICS_COUNTER_IDS> _acceptedCounterIds;
+    diagnostics_snapshot_t _snapshot;
+    std::array<diagnostics_event_id_t, MAX_DIAGNOSTICS_EVENT_IDS> _acceptedEventIds;
+    std::array<diagnostics_counter_id_t, MAX_DIAGNOSTICS_COUNTER_IDS> _acceptedCounterIds;
     std::size_t _acceptedEventIdCount;
     std::size_t _acceptedCounterIdCount;
 };

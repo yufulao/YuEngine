@@ -16,7 +16,7 @@ BoundedTaskQueue::BoundedTaskQueue(std::size_t capacity, memory::IMemoryTracker&
       _nextTaskId(1U) {
 }
 
-TaskResult BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
+task_result_t BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
     if (_snapshot.IsShutdown) {
         ++_snapshot.RejectedCount;
         return RejectResult();
@@ -27,10 +27,10 @@ TaskResult BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
         return RejectResult();
     }
 
-    const TaskId taskId{_nextTaskId};
+    const task_id_t taskId{_nextTaskId};
     ++_nextTaskId;
 
-    _records[_tailIndex] = TaskRecord{taskId, callback, context, TaskStatus::Queued};
+    _records[_tailIndex] = task_record_t{taskId, callback, context, TaskStatus::Queued};
     _tailIndex = (_tailIndex + 1U) % _records.size();
     ++_snapshot.PendingCount;
     ++_snapshot.SubmittedCount;
@@ -39,17 +39,17 @@ TaskResult BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
         _snapshot.MaxQueueDepth = _snapshot.PendingCount;
     }
 
-    return TaskResult{taskId, TaskStatus::Queued};
+    return task_result_t{taskId, TaskStatus::Queued};
 }
 
-TaskResult BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
+task_result_t BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
     ++_snapshot.DrainCount;
 
-    TaskResult result = CompleteResult();
+    task_result_t result = CompleteResult();
     const std::uint64_t allocationCountBefore = _memoryTracker.AllocationCountForBudget(memory::MemoryBudgetClass::Job);
 
     while (_snapshot.PendingCount > 0U) {
-        TaskRecord& record = _records[_headIndex];
+        task_record_t& record = _records[_headIndex];
         record.Status = TaskStatus::Running;
 
         const TaskStatus executionStatus = executor.Execute(record.Callback, record.Context);
@@ -58,7 +58,7 @@ TaskResult BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
 
         if (executionStatus == TaskStatus::Failed) {
             ++_snapshot.FailedCount;
-            result = TaskResult{record.Id, TaskStatus::Failed};
+            result = task_result_t{record.Id, TaskStatus::Failed};
         }
 
         _headIndex = (_headIndex + 1U) % _records.size();
@@ -71,18 +71,18 @@ TaskResult BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
     return result;
 }
 
-TaskResult BoundedTaskQueue::Shutdown(ShutdownPolicy policy, InlineTaskExecutor& executor) {
+task_result_t BoundedTaskQueue::Shutdown(ShutdownPolicy policy, InlineTaskExecutor& executor) {
     _snapshot.IsShutdown = true;
 
     if (policy == ShutdownPolicy::CancelQueued) {
         CancelQueuedTasks();
-        return TaskResult{TaskId{INVALID_TASK_ID}, TaskStatus::Canceled};
+        return task_result_t{task_id_t{INVALID_TASK_ID}, TaskStatus::Canceled};
     }
 
     return Drain(executor);
 }
 
-TaskSchedulerSnapshot BoundedTaskQueue::Snapshot() const {
+task_scheduler_snapshot_t BoundedTaskQueue::Snapshot() const {
     return _snapshot;
 }
 
@@ -92,7 +92,7 @@ std::size_t BoundedTaskQueue::Capacity() const {
 
 void BoundedTaskQueue::CancelQueuedTasks() {
     while (_snapshot.PendingCount > 0U) {
-        TaskRecord& record = _records[_headIndex];
+        task_record_t& record = _records[_headIndex];
         record.Status = TaskStatus::Canceled;
         ++_snapshot.CanceledCount;
         _headIndex = (_headIndex + 1U) % _records.size();
@@ -102,11 +102,11 @@ void BoundedTaskQueue::CancelQueuedTasks() {
     _snapshot.CapacityAfterLastDrain = _records.capacity();
 }
 
-TaskResult BoundedTaskQueue::RejectResult() const {
-    return TaskResult{TaskId{INVALID_TASK_ID}, TaskStatus::Rejected};
+task_result_t BoundedTaskQueue::RejectResult() const {
+    return task_result_t{task_id_t{INVALID_TASK_ID}, TaskStatus::Rejected};
 }
 
-TaskResult BoundedTaskQueue::CompleteResult() const {
-    return TaskResult{TaskId{INVALID_TASK_ID}, TaskStatus::Completed};
+task_result_t BoundedTaskQueue::CompleteResult() const {
+    return task_result_t{task_id_t{INVALID_TASK_ID}, TaskStatus::Completed};
 }
 }
