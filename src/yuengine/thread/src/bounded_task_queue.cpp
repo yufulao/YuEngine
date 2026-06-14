@@ -16,7 +16,7 @@ BoundedTaskQueue::BoundedTaskQueue(std::size_t capacity, memory::IMemoryTracker&
       _nextTaskId(1U) {
 }
 
-task_result_t BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
+TaskResult BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
     if (_snapshot.IsShutdown) {
         ++_snapshot.RejectedCount;
         return RejectResult();
@@ -27,10 +27,10 @@ task_result_t BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
         return RejectResult();
     }
 
-    const task_id_t taskId{_nextTaskId};
+    const TaskId taskId{_nextTaskId};
     ++_nextTaskId;
 
-    _records[_tailIndex] = task_record_t{taskId, callback, context, TaskStatus::Queued};
+    _records[_tailIndex] = TaskRecord{taskId, callback, context, TaskStatus::Queued};
     _tailIndex = (_tailIndex + 1U) % _records.size();
     ++_snapshot.PendingCount;
     ++_snapshot.SubmittedCount;
@@ -39,17 +39,17 @@ task_result_t BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
         _snapshot.MaxQueueDepth = _snapshot.PendingCount;
     }
 
-    return task_result_t{taskId, TaskStatus::Queued};
+    return TaskResult{taskId, TaskStatus::Queued};
 }
 
-task_result_t BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
+TaskResult BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
     ++_snapshot.DrainCount;
 
-    task_result_t result = CompleteResult();
+    TaskResult result = CompleteResult();
     const std::uint64_t allocationCountBefore = _memoryTracker.AllocationCountForBudget(memory::MemoryBudgetClass::Job);
 
     while (_snapshot.PendingCount > 0U) {
-        task_record_t& record = _records[_headIndex];
+        TaskRecord& record = _records[_headIndex];
         record.Status = TaskStatus::Running;
 
         const TaskStatus executionStatus = executor.Execute(record.Callback, record.Context);
@@ -58,7 +58,7 @@ task_result_t BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
 
         if (executionStatus == TaskStatus::Failed) {
             ++_snapshot.FailedCount;
-            result = task_result_t{record.Id, TaskStatus::Failed};
+            result = TaskResult{record.Id, TaskStatus::Failed};
         }
 
         _headIndex = (_headIndex + 1U) % _records.size();
@@ -71,18 +71,18 @@ task_result_t BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
     return result;
 }
 
-task_result_t BoundedTaskQueue::Shutdown(ShutdownPolicy policy, InlineTaskExecutor& executor) {
+TaskResult BoundedTaskQueue::Shutdown(ShutdownPolicy policy, InlineTaskExecutor& executor) {
     _snapshot.IsShutdown = true;
 
     if (policy == ShutdownPolicy::CancelQueued) {
         CancelQueuedTasks();
-        return task_result_t{task_id_t{INVALID_TASK_ID}, TaskStatus::Canceled};
+        return TaskResult{TaskId{INVALID_TASK_ID}, TaskStatus::Canceled};
     }
 
     return Drain(executor);
 }
 
-task_scheduler_snapshot_t BoundedTaskQueue::Snapshot() const {
+TaskSchedulerSnapshot BoundedTaskQueue::Snapshot() const {
     return _snapshot;
 }
 
@@ -92,7 +92,7 @@ std::size_t BoundedTaskQueue::Capacity() const {
 
 void BoundedTaskQueue::CancelQueuedTasks() {
     while (_snapshot.PendingCount > 0U) {
-        task_record_t& record = _records[_headIndex];
+        TaskRecord& record = _records[_headIndex];
         record.Status = TaskStatus::Canceled;
         ++_snapshot.CanceledCount;
         _headIndex = (_headIndex + 1U) % _records.size();
@@ -102,11 +102,11 @@ void BoundedTaskQueue::CancelQueuedTasks() {
     _snapshot.CapacityAfterLastDrain = _records.capacity();
 }
 
-task_result_t BoundedTaskQueue::RejectResult() const {
-    return task_result_t{task_id_t{INVALID_TASK_ID}, TaskStatus::Rejected};
+TaskResult BoundedTaskQueue::RejectResult() const {
+    return TaskResult{TaskId{INVALID_TASK_ID}, TaskStatus::Rejected};
 }
 
-task_result_t BoundedTaskQueue::CompleteResult() const {
-    return task_result_t{task_id_t{INVALID_TASK_ID}, TaskStatus::Completed};
+TaskResult BoundedTaskQueue::CompleteResult() const {
+    return TaskResult{TaskId{INVALID_TASK_ID}, TaskStatus::Completed};
 }
 }

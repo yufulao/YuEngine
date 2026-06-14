@@ -7,7 +7,7 @@
 #include "yuengine/memory/memory_accounting_status.h"
 
 namespace yuengine::file {
-struct file_snapshot_t {
+struct FileSnapshot {
     std::uint64_t PathNormalizationCount;
     std::uint64_t RejectedPathCount;
     std::uint64_t MountCount;

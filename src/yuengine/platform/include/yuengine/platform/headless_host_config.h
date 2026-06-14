@@ -3,7 +3,7 @@
 #include <cstdint>
 
 namespace yuengine::platform {
-struct headless_host_config_t {
+struct HeadlessHostConfig {
     std::uint32_t TickCount;
 };
 }

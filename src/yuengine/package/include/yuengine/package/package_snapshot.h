@@ -8,7 +8,7 @@
 namespace yuengine::package {
 using memory::MemoryAccountingStatus;
 
-struct package_snapshot_t final {
+struct PackageSnapshot final {
     std::uint32_t ManifestCapacity;
     std::uint32_t EntryCapacity;
     std::uint32_t DependencyEdgeCapacity;

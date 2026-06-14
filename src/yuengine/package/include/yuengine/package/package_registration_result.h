@@ -5,14 +5,14 @@
 #include "yuengine/package/package_status.h"
 
 namespace yuengine::package {
-struct package_registration_result_t final {
+struct PackageRegistrationResult final {
     PackageStatus Status;
-    package_id_t Package;
-    package_entry_id_t Entry;
+    PackageId Package;
+    PackageEntryId Entry;
 
-    static package_registration_result_t ManifestSuccess(package_id_t package);
-    static package_registration_result_t EntrySuccess(package_id_t package, package_entry_id_t entry);
-    static package_registration_result_t Failure(PackageStatus status);
+    static PackageRegistrationResult ManifestSuccess(PackageId package);
+    static PackageRegistrationResult EntrySuccess(PackageId package, PackageEntryId entry);
+    static PackageRegistrationResult Failure(PackageStatus status);
     bool Succeeded() const;
 };
 }

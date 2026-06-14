@@ -8,7 +8,7 @@
 #include "yuengine/kernel/i_module.h"
 
 using yuengine::kernel::IModule;
-using yuengine::kernel::kernel_result_t;
+using yuengine::kernel::KernelResult;
 using yuengine::kernel::KernelStatus;
 using yuengine::kernel::ServiceRegistry;
 
@@ -69,66 +69,66 @@ public:
         return _publishedServices;
     }
 
-    kernel_result_t Start(ServiceRegistry& serviceRegistry, std::vector<std::string>& lifecycleTrace) override {
+    KernelResult Start(ServiceRegistry& serviceRegistry, std::vector<std::string>& lifecycleTrace) override {
         _serviceRegistry = &serviceRegistry;
         lifecycleTrace.push_back(std::string("module.start.") + _name);
 
         for (const std::string_view publishedService : _publishedServices) {
             const bool registered = serviceRegistry.Register<int>(_name, publishedService, _publishedServiceValue);
             if (!registered) {
-                return kernel_result_t::Failure(KernelStatus::DuplicateService, DUPLICATE_SERVICE_MESSAGE);
+                return KernelResult::Failure(KernelStatus::DuplicateService, DUPLICATE_SERVICE_MESSAGE);
             }
         }
 
         if (_failOnStart) {
-            return kernel_result_t::Failure(KernelStatus::StartupFailure, STARTUP_FAILURE_MESSAGE);
+            return KernelResult::Failure(KernelStatus::StartupFailure, STARTUP_FAILURE_MESSAGE);
         }
 
-        return kernel_result_t::Success();
+        return KernelResult::Success();
     }
 
-    kernel_result_t Update(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) override {
+    KernelResult Update(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace) override {
         static_cast<void>(frameIndex);
         static_cast<void>(tickTimeNanoseconds);
         lifecycleTrace.push_back(std::string("module.update.") + _name);
 
         if (_failOnUpdate) {
-            return kernel_result_t::Failure(KernelStatus::UpdateFailure, UPDATE_FAILURE_MESSAGE);
+            return KernelResult::Failure(KernelStatus::UpdateFailure, UPDATE_FAILURE_MESSAGE);
         }
 
-        return kernel_result_t::Success();
+        return KernelResult::Success();
     }
 
-    kernel_result_t Shutdown(std::vector<std::string>& lifecycleTrace) override {
+    KernelResult Shutdown(std::vector<std::string>& lifecycleTrace) override {
         lifecycleTrace.push_back(std::string("module.shutdown.") + _name);
         if (_failOnShutdown) {
-            return kernel_result_t::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
+            return KernelResult::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
         }
 
         if (_verifyRequiredServicesOnShutdown) {
-            const kernel_result_t serviceVerificationResult = VerifyRequiredServicesOnShutdown();
+            const KernelResult serviceVerificationResult = VerifyRequiredServicesOnShutdown();
             if (!serviceVerificationResult.Succeeded) {
                 return serviceVerificationResult;
             }
         }
 
-        return kernel_result_t::Success();
+        return KernelResult::Success();
     }
 
 private:
     // Verifies teardown can still read dependency-published services.
-    kernel_result_t VerifyRequiredServicesOnShutdown() const {
+    KernelResult VerifyRequiredServicesOnShutdown() const {
         if (_serviceRegistry == nullptr) {
-            return kernel_result_t::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
+            return KernelResult::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
         }
 
         for (const std::string_view requiredService : _requiredServices) {
             if (_serviceRegistry->Resolve<int>(requiredService) == nullptr) {
-                return kernel_result_t::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
+                return KernelResult::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);
             }
         }
 
-        return kernel_result_t::Success();
+        return KernelResult::Success();
     }
 
     std::string _name;

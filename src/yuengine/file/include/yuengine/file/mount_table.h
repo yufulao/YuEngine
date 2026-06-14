@@ -18,9 +18,9 @@ public:
     MountTable();
 
     FileStatus RegisterLooseMount(MountId mountId, std::filesystem::path rootPath);
-    path_normalization_result_t Normalize(VirtualPath path);
-    file_read_result_t Read(file_read_request_t request);
-    file_snapshot_t Snapshot() const;
+    PathNormalizationResult Normalize(VirtualPath path);
+    FileReadResult Read(FileReadRequest request);
+    FileSnapshot Snapshot() const;
     std::vector<MountId> MountOrder() const;
 
 private:
@@ -30,6 +30,6 @@ private:
 
     std::array<MountPoint, MAX_MOUNT_COUNT> _mounts;
     std::size_t _mountCount;
-    file_snapshot_t _snapshot;
+    FileSnapshot _snapshot;
 };
 }

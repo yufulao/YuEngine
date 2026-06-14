@@ -10,15 +10,15 @@
 #include "yuengine/resource/resource_registry.h"
 
 using yuengine::memory::MemoryAccountingStatus;
-using yuengine::resource::resource_descriptor_t;
-using yuengine::resource::resource_handle_t;
+using yuengine::resource::ResourceDescriptor;
+using yuengine::resource::ResourceHandle;
 using ResourceLogicalKey = yuengine::resource::ResourceLogicalKey;
 using ResourceRegistry = yuengine::resource::ResourceRegistry;
-using yuengine::resource::resource_registry_desc_t;
-using yuengine::resource::resource_registration_result_t;
-using yuengine::resource::resource_snapshot_t;
+using yuengine::resource::ResourceRegistryDesc;
+using yuengine::resource::ResourceRegistrationResult;
+using yuengine::resource::ResourceSnapshot;
 using yuengine::resource::ResourceStatus;
-using yuengine::resource::resource_type_id_t;
+using yuengine::resource::ResourceTypeId;
 using yuengine::resource::INVALID_RESOURCE_GENERATION;
 
 namespace {
@@ -40,10 +40,10 @@ constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Resource_DisabledDiagnosticsD
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Resource_NoHiddenAllocation_UsesYuMemorySignal";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
-constexpr resource_type_id_t TYPE_TEXTURE{1U};
-constexpr resource_type_id_t TYPE_MATERIAL{2U};
-constexpr resource_type_id_t TYPE_AUDIO{3U};
-constexpr resource_type_id_t TYPE_EFFECT{4U};
+constexpr ResourceTypeId TYPE_TEXTURE{1U};
+constexpr ResourceTypeId TYPE_MATERIAL{2U};
+constexpr ResourceTypeId TYPE_AUDIO{3U};
+constexpr ResourceTypeId TYPE_EFFECT{4U};
 constexpr std::uint32_t INVALID_GENERATION = INVALID_RESOURCE_GENERATION;
 constexpr const char* TYPE_CAPACITY_TEXTURE_KEY = "texture_a";
 constexpr const char* TYPE_CAPACITY_MATERIAL_KEY = "material_a";
@@ -67,19 +67,19 @@ int Fail(const std::string& message) {
     return 1;
 }
 
-resource_descriptor_t Descriptor(resource_type_id_t type, const char* key) {
-    return resource_descriptor_t{type, ResourceLogicalKey(key), 0U};
+ResourceDescriptor Descriptor(ResourceTypeId type, const char* key) {
+    return ResourceDescriptor{type, ResourceLogicalKey(key), 0U};
 }
 
-resource_descriptor_t DescriptorWithReferenceCount(resource_type_id_t type, const char* key, std::uint32_t referenceCount) {
-    return resource_descriptor_t{type, ResourceLogicalKey(key), referenceCount};
+ResourceDescriptor DescriptorWithReferenceCount(ResourceTypeId type, const char* key, std::uint32_t referenceCount) {
+    return ResourceDescriptor{type, ResourceLogicalKey(key), referenceCount};
 }
 
-resource_registration_result_t Register(ResourceRegistry& registry, resource_type_id_t type, const char* key) {
+ResourceRegistrationResult Register(ResourceRegistry& registry, ResourceTypeId type, const char* key) {
     return registry.RegisterSyntheticDescriptor(Descriptor(type, key));
 }
 
-bool SnapshotsMatch(const resource_snapshot_t& left, const resource_snapshot_t& right) {
+bool SnapshotsMatch(const ResourceSnapshot& left, const ResourceSnapshot& right) {
     if (left.RegisteredResourceCount != right.RegisteredResourceCount) {
         return false;
     }
@@ -105,7 +105,7 @@ bool SnapshotsMatch(const resource_snapshot_t& left, const resource_snapshot_t& 
 
 int ResourceRegisterSyntheticDescriptorReturnsGenerationHandle() {
     ResourceRegistry registry;
-    const resource_registration_result_t result = Register(registry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_a");
     if (!result.Succeeded()) {
         return Fail("synthetic descriptor did not register");
     }
@@ -118,7 +118,7 @@ int ResourceRegisterSyntheticDescriptorReturnsGenerationHandle() {
         return Fail("resource handle generation was invalid");
     }
 
-    const resource_snapshot_t snapshot = registry.Snapshot();
+    const ResourceSnapshot snapshot = registry.Snapshot();
     if (snapshot.RegisteredResourceCount != 1U) {
         return Fail("registered resource count was not recorded");
     }
@@ -136,18 +136,18 @@ int ResourceRegisterSyntheticDescriptorReturnsGenerationHandle() {
 
 int ResourceRegisterDuplicateReturnsExplicitStatus() {
     ResourceRegistry registry;
-    const resource_registration_result_t firstResult = Register(registry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult firstResult = Register(registry, TYPE_TEXTURE, "texture_a");
     if (!firstResult.Succeeded()) {
         return Fail("first registration failed");
     }
 
-    const resource_snapshot_t beforeSnapshot = registry.Snapshot();
-    const resource_registration_result_t duplicateResult = Register(registry, TYPE_TEXTURE, "texture_a");
+    const ResourceSnapshot beforeSnapshot = registry.Snapshot();
+    const ResourceRegistrationResult duplicateResult = Register(registry, TYPE_TEXTURE, "texture_a");
     if (duplicateResult.Status != ResourceStatus::DuplicateResource) {
         return Fail("duplicate resource did not return explicit status");
     }
 
-    const resource_snapshot_t afterSnapshot = registry.Snapshot();
+    const ResourceSnapshot afterSnapshot = registry.Snapshot();
     if (afterSnapshot.RegisteredResourceCount != beforeSnapshot.RegisteredResourceCount) {
         return Fail("duplicate resource changed registered count");
     }
@@ -160,19 +160,19 @@ int ResourceRegisterDuplicateReturnsExplicitStatus() {
 }
 
 int ResourceRegistryRejectsCapacityOverflowWithoutMutation() {
-    ResourceRegistry registry(resource_registry_desc_t{1U, 2U, 2U});
-    const resource_registration_result_t firstResult = Register(registry, TYPE_TEXTURE, "texture_a");
+    ResourceRegistry registry(ResourceRegistryDesc{1U, 2U, 2U});
+    const ResourceRegistrationResult firstResult = Register(registry, TYPE_TEXTURE, "texture_a");
     if (!firstResult.Succeeded()) {
         return Fail("first registration failed before capacity");
     }
 
-    const resource_snapshot_t beforeSnapshot = registry.Snapshot();
-    const resource_registration_result_t overflowResult = Register(registry, TYPE_MATERIAL, "material_a");
+    const ResourceSnapshot beforeSnapshot = registry.Snapshot();
+    const ResourceRegistrationResult overflowResult = Register(registry, TYPE_MATERIAL, "material_a");
     if (overflowResult.Status != ResourceStatus::CapacityExceeded) {
         return Fail("resource capacity overflow did not return explicit status");
     }
 
-    const resource_snapshot_t afterSnapshot = registry.Snapshot();
+    const ResourceSnapshot afterSnapshot = registry.Snapshot();
     if (afterSnapshot.RegisteredResourceCount != beforeSnapshot.RegisteredResourceCount) {
         return Fail("resource capacity overflow changed registered count");
     }
@@ -185,14 +185,14 @@ int ResourceRegistryRejectsCapacityOverflowWithoutMutation() {
 }
 
 int ResourceTypeCapacityOverflowDoesNotMutate() {
-    ResourceRegistry registry(resource_registry_desc_t{4U, 1U, 2U});
-    const resource_registration_result_t firstResult = Register(registry, TYPE_TEXTURE, TYPE_CAPACITY_TEXTURE_KEY);
+    ResourceRegistry registry(ResourceRegistryDesc{4U, 1U, 2U});
+    const ResourceRegistrationResult firstResult = Register(registry, TYPE_TEXTURE, TYPE_CAPACITY_TEXTURE_KEY);
     if (!firstResult.Succeeded()) {
         return Fail(TYPE_CAPACITY_FIRST_REGISTRATION_FAILED);
     }
 
-    const resource_snapshot_t beforeSnapshot = registry.Snapshot();
-    const resource_registration_result_t overflowResult = Register(registry, TYPE_MATERIAL, TYPE_CAPACITY_MATERIAL_KEY);
+    const ResourceSnapshot beforeSnapshot = registry.Snapshot();
+    const ResourceRegistrationResult overflowResult = Register(registry, TYPE_MATERIAL, TYPE_CAPACITY_MATERIAL_KEY);
     if (overflowResult.Status != ResourceStatus::CapacityExceeded) {
         return Fail(TYPE_CAPACITY_STATUS_FAILED);
     }
@@ -201,7 +201,7 @@ int ResourceTypeCapacityOverflowDoesNotMutate() {
         return Fail(TYPE_CAPACITY_VALID_HANDLE_FAILED);
     }
 
-    const resource_snapshot_t afterSnapshot = registry.Snapshot();
+    const ResourceSnapshot afterSnapshot = registry.Snapshot();
     if (afterSnapshot.TypeCount != beforeSnapshot.TypeCount) {
         return Fail(TYPE_CAPACITY_TYPE_COUNT_FAILED);
     }
@@ -214,7 +214,7 @@ int ResourceTypeCapacityOverflowDoesNotMutate() {
         return Fail(TYPE_CAPACITY_ACQUIRED_COUNT_FAILED);
     }
 
-    const resource_registration_result_t retryResult = Register(registry, TYPE_TEXTURE, TYPE_CAPACITY_RETRY_TEXTURE_KEY);
+    const ResourceRegistrationResult retryResult = Register(registry, TYPE_TEXTURE, TYPE_CAPACITY_RETRY_TEXTURE_KEY);
     if (!retryResult.Succeeded()) {
         return Fail(TYPE_CAPACITY_RETRY_REGISTRATION_FAILED);
     }
@@ -236,7 +236,7 @@ int ResourceTypeCapacityOverflowDoesNotMutate() {
 
 int ResourceHandleRejectsWrongGeneration() {
     ResourceRegistry registry;
-    const resource_registration_result_t result = Register(registry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_a");
     if (!result.Succeeded()) {
         return Fail("registration failed");
     }
@@ -260,12 +260,12 @@ int ResourceHandleRejectsWrongGeneration() {
 
 int ResourceHandleRejectsTypeMismatch() {
     ResourceRegistry registry;
-    const resource_registration_result_t result = Register(registry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_a");
     if (!result.Succeeded()) {
         return Fail("registration failed");
     }
 
-    const resource_snapshot_t beforeSnapshot = registry.Snapshot();
+    const ResourceSnapshot beforeSnapshot = registry.Snapshot();
     const ResourceStatus status = registry.Acquire(result.Handle, TYPE_AUDIO);
     if (status != ResourceStatus::TypeMismatch) {
         return Fail("type mismatch did not return explicit status");
@@ -280,7 +280,7 @@ int ResourceHandleRejectsTypeMismatch() {
 
 int ResourceAcquireReleaseTracksReferenceCount() {
     ResourceRegistry registry;
-    const resource_registration_result_t result = Register(registry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_a");
     if (!result.Succeeded()) {
         return Fail("registration failed");
     }
@@ -297,7 +297,7 @@ int ResourceAcquireReleaseTracksReferenceCount() {
         return Fail("release failed");
     }
 
-    const resource_snapshot_t afterReleaseSnapshot = registry.Snapshot();
+    const ResourceSnapshot afterReleaseSnapshot = registry.Snapshot();
     if (afterReleaseSnapshot.AcquiredHandleCount != 0U) {
         return Fail("release did not decrement reference count");
     }
@@ -319,7 +319,7 @@ int ResourceAcquireReleaseTracksReferenceCount() {
 
 int ResourceRepeatedAcquireIncrementsReferenceCount() {
     ResourceRegistry registry;
-    const resource_registration_result_t result = Register(registry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_a");
     if (!result.Succeeded()) {
         return Fail("registration failed");
     }
@@ -341,13 +341,13 @@ int ResourceRepeatedAcquireIncrementsReferenceCount() {
 
 int ResourceAcquireRejectsReferenceCountOverflow() {
     ResourceRegistry registry;
-    const resource_registration_result_t result = registry.RegisterSyntheticDescriptor(
+    const ResourceRegistrationResult result = registry.RegisterSyntheticDescriptor(
         DescriptorWithReferenceCount(TYPE_TEXTURE, "texture_a", std::numeric_limits<std::uint32_t>::max()));
     if (!result.Succeeded()) {
         return Fail("overflow fixture registration failed");
     }
 
-    const resource_snapshot_t beforeSnapshot = registry.Snapshot();
+    const ResourceSnapshot beforeSnapshot = registry.Snapshot();
     const ResourceStatus status = registry.Acquire(result.Handle, TYPE_TEXTURE);
     if (status != ResourceStatus::ReferenceCountOverflow) {
         return Fail("reference count overflow did not return explicit status");
@@ -362,7 +362,7 @@ int ResourceAcquireRejectsReferenceCountOverflow() {
 
 int ResourceRetireRejectsOutstandingAcquire() {
     ResourceRegistry registry;
-    const resource_registration_result_t result = Register(registry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_a");
     if (!result.Succeeded()) {
         return Fail("registration failed");
     }
@@ -385,8 +385,8 @@ int ResourceRetireRejectsOutstandingAcquire() {
 
 int ResourceRetireRejectsLiveDependentEdge() {
     ResourceRegistry registry;
-    const resource_registration_result_t dependency = Register(registry, TYPE_TEXTURE, "texture_a");
-    const resource_registration_result_t dependent = Register(registry, TYPE_MATERIAL, "material_a");
+    const ResourceRegistrationResult dependency = Register(registry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult dependent = Register(registry, TYPE_MATERIAL, "material_a");
     if (!dependency.Succeeded()) {
         return Fail("dependency registration failed");
     }
@@ -424,17 +424,17 @@ int ResourceRetireRejectsLiveDependentEdge() {
 
 int ResourceDependencyValidationRejectsMissingDependency() {
     ResourceRegistry registry;
-    const resource_registration_result_t dependent = Register(registry, TYPE_MATERIAL, "material_a");
+    const ResourceRegistrationResult dependent = Register(registry, TYPE_MATERIAL, "material_a");
     if (!dependent.Succeeded()) {
         return Fail("dependent registration failed");
     }
 
-    const ResourceStatus status = registry.AddDependency(dependent.Handle, resource_handle_t{31U, 1U});
+    const ResourceStatus status = registry.AddDependency(dependent.Handle, ResourceHandle{31U, 1U});
     if (status != ResourceStatus::DependencyMissing) {
         return Fail("missing dependency did not return explicit status");
     }
 
-    const resource_snapshot_t snapshot = registry.Snapshot();
+    const ResourceSnapshot snapshot = registry.Snapshot();
     if (snapshot.DependencyEdgeCount != 0U) {
         return Fail("missing dependency changed edge count");
     }
@@ -448,9 +448,9 @@ int ResourceDependencyValidationRejectsMissingDependency() {
 
 int ResourceDependencyValidationRejectsCycle() {
     ResourceRegistry registry;
-    const resource_registration_result_t first = Register(registry, TYPE_TEXTURE, "texture_a");
-    const resource_registration_result_t second = Register(registry, TYPE_MATERIAL, "material_a");
-    const resource_registration_result_t third = Register(registry, TYPE_EFFECT, "effect_a");
+    const ResourceRegistrationResult first = Register(registry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult second = Register(registry, TYPE_MATERIAL, "material_a");
+    const ResourceRegistrationResult third = Register(registry, TYPE_EFFECT, "effect_a");
     if (!first.Succeeded()) {
         return Fail("first registration failed");
     }
@@ -489,7 +489,7 @@ int ResourceDependencyValidationRejectsCycle() {
 
 int ResourceNoFileOrPackageDependencyForHandleRegistry() {
     ResourceRegistry registry;
-    const resource_registration_result_t result = Register(registry, TYPE_TEXTURE, "synthetic_texture");
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "synthetic_texture");
     if (!result.Succeeded()) {
         return Fail("synthetic resource registration failed");
     }
@@ -512,8 +512,8 @@ int ResourceNoFileOrPackageDependencyForHandleRegistry() {
 int ResourceDisabledDiagnosticsDoesNotChangeResults() {
     ResourceRegistry recordingRegistry;
     ResourceRegistry diagnosticsDisabledRegistry;
-    const resource_registration_result_t recordingResult = Register(recordingRegistry, TYPE_TEXTURE, "texture_a");
-    const resource_registration_result_t disabledResult = Register(diagnosticsDisabledRegistry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult recordingResult = Register(recordingRegistry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult disabledResult = Register(diagnosticsDisabledRegistry, TYPE_TEXTURE, "texture_a");
     if (!recordingResult.Succeeded()) {
         return Fail("recording registry registration failed");
     }
@@ -543,12 +543,12 @@ int ResourceDisabledDiagnosticsDoesNotChangeResults() {
 
 int ResourceNoHiddenAllocationUsesYuMemorySignal() {
     ResourceRegistry registry;
-    const resource_snapshot_t initialSnapshot = registry.Snapshot();
+    const ResourceSnapshot initialSnapshot = registry.Snapshot();
     if (initialSnapshot.AllocationAccountingStatus != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
         return Fail("resource registry did not expose YuMemory accounting vocabulary");
     }
 
-    const resource_registration_result_t result = Register(registry, TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_a");
     if (!result.Succeeded()) {
         return Fail("registration failed");
     }
@@ -561,7 +561,7 @@ int ResourceNoHiddenAllocationUsesYuMemorySignal() {
         return Fail("release failed");
     }
 
-    const resource_snapshot_t afterSnapshot = registry.Snapshot();
+    const ResourceSnapshot afterSnapshot = registry.Snapshot();
     if (afterSnapshot.ResourceCapacity != initialSnapshot.ResourceCapacity) {
         return Fail("resource capacity changed during handle fixture");
     }

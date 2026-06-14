@@ -10,9 +10,9 @@
 #include "yuengine/memory/memory_accounting_status.h"
 
 namespace yuengine::diagnostics {
-struct diagnostics_snapshot_t {
-    std::array<diagnostics_event_t, MAX_DIAGNOSTICS_EVENTS> Events;
-    std::array<diagnostics_counter_snapshot_t, MAX_DIAGNOSTICS_COUNTERS> Counters;
+struct DiagnosticsSnapshot {
+    std::array<DiagnosticsEvent, MAX_DIAGNOSTICS_EVENTS> Events;
+    std::array<DiagnosticsCounterSnapshot, MAX_DIAGNOSTICS_COUNTERS> Counters;
     std::size_t EventCount;
     std::size_t CounterCount;
     std::uint64_t AcceptedEventCount;

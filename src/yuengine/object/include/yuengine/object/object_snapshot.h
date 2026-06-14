@@ -8,7 +8,7 @@
 namespace yuengine::object {
 using memory::MemoryAccountingStatus;
 
-struct object_snapshot_t final {
+struct ObjectSnapshot final {
     std::uint32_t ObjectCapacity;
     std::uint32_t TypeCapacity;
     std::uint32_t TypeCount;

@@ -3,15 +3,15 @@
 #include <utility>
 
 namespace yuengine::file {
-file_read_result_t file_read_result_t::Success(std::vector<std::uint8_t> bytes) {
-    return file_read_result_t{FileStatus::Success, std::move(bytes)};
+FileReadResult FileReadResult::Success(std::vector<std::uint8_t> bytes) {
+    return FileReadResult{FileStatus::Success, std::move(bytes)};
 }
 
-file_read_result_t file_read_result_t::Failure(FileStatus status) {
-    return file_read_result_t{status, {}};
+FileReadResult FileReadResult::Failure(FileStatus status) {
+    return FileReadResult{status, {}};
 }
 
-bool file_read_result_t::Succeeded() const {
+bool FileReadResult::Succeeded() const {
     return Status == FileStatus::Success;
 }
 }

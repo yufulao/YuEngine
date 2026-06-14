@@ -39,7 +39,7 @@ private:
     void OpenRegistrationWindow();
     void CloseRegistrationWindow();
 
-    std::unordered_map<std::string, service_record_t> _services;
+    std::unordered_map<std::string, ServiceRecord> _services;
     bool _acceptingRegistrations = true;
 };
 }

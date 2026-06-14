@@ -6,8 +6,8 @@
 #include "yuengine/resource/resource_type_id.h"
 
 namespace yuengine::resource {
-struct resource_descriptor_t final {
-    resource_type_id_t Type;
+struct ResourceDescriptor final {
+    ResourceTypeId Type;
     ResourceLogicalKey LogicalKey;
     std::uint32_t InitialReferenceCount = 0U;
 };

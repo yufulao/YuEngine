@@ -18,25 +18,25 @@ namespace yuengine::object {
 class ObjectRegistry final {
 public:
     ObjectRegistry();
-    explicit ObjectRegistry(object_registry_desc_t desc);
+    explicit ObjectRegistry(ObjectRegistryDesc desc);
 
-    object_registration_result_t CreateSyntheticObject(const object_descriptor_t& descriptor);
-    ObjectStatus Validate(object_handle_t handle);
-    ObjectStatus Acquire(object_handle_t handle);
-    ObjectStatus Release(object_handle_t handle);
-    ObjectStatus Destroy(object_handle_t handle);
-    object_snapshot_t Snapshot() const;
+    ObjectRegistrationResult CreateSyntheticObject(const ObjectDescriptor& descriptor);
+    ObjectStatus Validate(ObjectHandle handle);
+    ObjectStatus Acquire(ObjectHandle handle);
+    ObjectStatus Release(ObjectHandle handle);
+    ObjectStatus Destroy(ObjectHandle handle);
+    ObjectSnapshot Snapshot() const;
 
 private:
     ObjectStatus RecordFailure(ObjectStatus status);
     void RecordSuccess();
-    ObjectStatus ResolveHandle(object_handle_t handle, std::size_t& outIndex) const;
-    ObjectStatus RegisterTypeIfNeeded(object_type_id_t type);
-    bool HasType(object_type_id_t type) const;
-    void AdvanceGeneration(object_slot_t& slot);
+    ObjectStatus ResolveHandle(ObjectHandle handle, std::size_t& outIndex) const;
+    ObjectStatus RegisterTypeIfNeeded(ObjectTypeId type);
+    bool HasType(ObjectTypeId type) const;
+    void AdvanceGeneration(ObjectSlot& slot);
 
-    std::array<object_slot_t, MAX_OBJECT_COUNT> _slots;
-    std::array<object_type_id_t, MAX_OBJECT_TYPE_COUNT> _types;
-    object_snapshot_t _snapshot;
+    std::array<ObjectSlot, MAX_OBJECT_COUNT> _slots;
+    std::array<ObjectTypeId, MAX_OBJECT_TYPE_COUNT> _types;
+    ObjectSnapshot _snapshot;
 };
 }

@@ -17,9 +17,9 @@ public:
 
     bool RegisterModule(IModule& module);
 
-    kernel_result_t Start(std::vector<std::string>& lifecycleTrace);
-    kernel_result_t Update(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace);
-    kernel_result_t Shutdown(std::vector<std::string>& lifecycleTrace);
+    KernelResult Start(std::vector<std::string>& lifecycleTrace);
+    KernelResult Update(std::uint32_t frameIndex, std::uint64_t tickTimeNanoseconds, std::vector<std::string>& lifecycleTrace);
+    KernelResult Shutdown(std::vector<std::string>& lifecycleTrace);
 
     ServiceRegistry& Services();
     const ServiceRegistry& Services() const;
@@ -32,10 +32,10 @@ private:
     bool RequiredDependencyChainPublishesService(const IModule& module, std::string_view serviceId) const;
     bool DependencyChainContains(const IModule& module, std::string_view dependencyName) const;
     const IModule* FindModule(std::string_view moduleName) const;
-    kernel_result_t CompleteStartupAttempt(kernel_result_t result);
-    kernel_result_t ShutdownStarted(std::vector<std::string>& lifecycleTrace);
-    kernel_result_t ShutdownStartedFrom(std::size_t startIndex, std::vector<std::string>& lifecycleTrace);
-    kernel_result_t ShutdownFailedAndDependents(std::string_view failedModuleName, std::vector<std::string>& lifecycleTrace);
+    KernelResult CompleteStartupAttempt(KernelResult result);
+    KernelResult ShutdownStarted(std::vector<std::string>& lifecycleTrace);
+    KernelResult ShutdownStartedFrom(std::size_t startIndex, std::vector<std::string>& lifecycleTrace);
+    KernelResult ShutdownFailedAndDependents(std::string_view failedModuleName, std::vector<std::string>& lifecycleTrace);
 
     std::vector<IModule*> _modules;
     std::vector<IModule*> _startedModules;

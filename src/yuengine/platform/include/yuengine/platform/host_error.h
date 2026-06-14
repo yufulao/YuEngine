@@ -3,11 +3,11 @@
 #include <string>
 
 namespace yuengine::platform {
-struct host_error_t {
+struct HostError {
     bool Succeeded;
     std::string Message;
 
-    static host_error_t Success();
-    static host_error_t Failure(std::string message);
+    static HostError Success();
+    static HostError Failure(std::string message);
 };
 }

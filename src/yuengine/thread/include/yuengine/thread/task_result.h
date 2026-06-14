@@ -4,8 +4,8 @@
 #include "yuengine/thread/task_status.h"
 
 namespace yuengine::thread {
-struct task_result_t {
-    task_id_t Id;
+struct TaskResult {
+    TaskId Id;
     TaskStatus Status;
 };
 }

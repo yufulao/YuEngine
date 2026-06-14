@@ -45,26 +45,26 @@ std::uint32_t HashLogicalKey(const ResourceLogicalKey& logicalKey) {
     return hash;
 }
 
-std::uint32_t HashPackageEntry(package_id_t package, package_entry_id_t entry) {
+std::uint32_t HashPackageEntry(PackageId package, PackageEntryId entry) {
     std::uint32_t hash = HASH_OFFSET;
     hash = MixHash(hash, package.Value);
     return MixHash(hash, entry.Value);
 }
 
-std::uint32_t HashResourceTuple(package_id_t package, resource_type_id_t type, const ResourceLogicalKey& logicalKey) {
+std::uint32_t HashResourceTuple(PackageId package, ResourceTypeId type, const ResourceLogicalKey& logicalKey) {
     std::uint32_t hash = HASH_OFFSET;
     hash = MixHash(hash, package.Value);
     hash = MixHash(hash, type.Value);
     return MixHash(hash, HashLogicalKey(logicalKey));
 }
 
-std::uint32_t HashResourceKey(package_id_t package, const ResourceLogicalKey& logicalKey) {
+std::uint32_t HashResourceKey(PackageId package, const ResourceLogicalKey& logicalKey) {
     std::uint32_t hash = HASH_OFFSET;
     hash = MixHash(hash, package.Value);
     return MixHash(hash, HashLogicalKey(logicalKey));
 }
 
-std::uint32_t HashDependencyEdge(package_id_t package, package_entry_id_t dependent, package_entry_id_t dependency) {
+std::uint32_t HashDependencyEdge(PackageId package, PackageEntryId dependent, PackageEntryId dependency) {
     std::uint32_t hash = HASH_OFFSET;
     hash = MixHash(hash, package.Value);
     hash = MixHash(hash, dependent.Value);
@@ -90,10 +90,10 @@ std::uint32_t NextProbeIndex(std::uint32_t index, std::uint32_t capacity) {
 }
 
 PackageRegistry::PackageRegistry()
-    : PackageRegistry(package_registry_desc_t{}) {
+    : PackageRegistry(PackageRegistryDesc{}) {
 }
 
-PackageRegistry::PackageRegistry(package_registry_desc_t desc)
+PackageRegistry::PackageRegistry(PackageRegistryDesc desc)
     : _manifests{},
       _entries{},
       _dependencyEdges{},
@@ -137,23 +137,23 @@ PackageRegistry::PackageRegistry(package_registry_desc_t desc)
     _nextDependencyEdge.fill(INVALID_INDEX);
 }
 
-package_registration_result_t PackageRegistry::RegisterSyntheticManifest(const package_manifest_descriptor_t& descriptor) {
+PackageRegistrationResult PackageRegistry::RegisterSyntheticManifest(const PackageManifestDescriptor& descriptor) {
     if (!descriptor.Id.IsValid()) {
-        return package_registration_result_t::Failure(RecordFailure(PackageStatus::InvalidPackageId));
+        return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::InvalidPackageId));
     }
 
     if (HasDuplicateManifest(descriptor.Id)) {
-        return package_registration_result_t::Failure(RecordFailure(PackageStatus::DuplicateManifest));
+        return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::DuplicateManifest));
     }
 
     if (_snapshot.ManifestCount >= _snapshot.ManifestCapacity) {
-        return package_registration_result_t::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
+        return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
     }
 
     std::uint32_t index = 0U;
-    for (manifest_slot_t& manifest : _manifests) {
+    for (ManifestSlot& manifest : _manifests) {
         if (index >= _snapshot.ManifestCapacity) {
-            return package_registration_result_t::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
+            return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
         }
 
         if (manifest.is_active) {
@@ -165,38 +165,38 @@ package_registration_result_t PackageRegistry::RegisterSyntheticManifest(const p
         manifest.is_active = true;
         ++_snapshot.ManifestCount;
         RecordSuccess();
-        return package_registration_result_t::ManifestSuccess(descriptor.Id);
+        return PackageRegistrationResult::ManifestSuccess(descriptor.Id);
     }
 
-    return package_registration_result_t::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
+    return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
 }
 
-package_registration_result_t PackageRegistry::RegisterEntry(const package_entry_descriptor_t& descriptor) {
+PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescriptor& descriptor) {
     const PackageStatus validationStatus = ValidateEntryDescriptor(descriptor);
     if (validationStatus != PackageStatus::Success) {
-        return package_registration_result_t::Failure(RecordFailure(validationStatus));
+        return PackageRegistrationResult::Failure(RecordFailure(validationStatus));
     }
 
     if (!HasManifest(descriptor.Package)) {
-        return package_registration_result_t::Failure(RecordFailure(PackageStatus::NotFound));
+        return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::NotFound));
     }
 
     if (HasDuplicateEntry(descriptor)) {
-        return package_registration_result_t::Failure(RecordFailure(PackageStatus::DuplicateEntry));
+        return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::DuplicateEntry));
     }
 
     if (HasDuplicateResourceKey(descriptor)) {
-        return package_registration_result_t::Failure(RecordFailure(PackageStatus::DuplicateResourceKey));
+        return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::DuplicateResourceKey));
     }
 
     if (_snapshot.EntryCount >= _snapshot.EntryCapacity) {
-        return package_registration_result_t::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
+        return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
     }
 
     std::uint32_t index = 0U;
-    for (entry_slot_t& entry : _entries) {
+    for (EntrySlot& entry : _entries) {
         if (index >= _snapshot.EntryCapacity) {
-            return package_registration_result_t::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
+            return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
         }
 
         if (entry.is_active) {
@@ -211,13 +211,13 @@ package_registration_result_t PackageRegistry::RegisterEntry(const package_entry
         AddResourceKeyIndex(descriptor.Package, descriptor.LogicalKey, index);
         ++_snapshot.EntryCount;
         RecordSuccess();
-        return package_registration_result_t::EntrySuccess(descriptor.Package, descriptor.Entry);
+        return PackageRegistrationResult::EntrySuccess(descriptor.Package, descriptor.Entry);
     }
 
-    return package_registration_result_t::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
+    return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
 }
 
-PackageStatus PackageRegistry::AddDependency(package_id_t package, package_entry_id_t dependent, package_entry_id_t dependency) {
+PackageStatus PackageRegistry::AddDependency(PackageId package, PackageEntryId dependent, PackageEntryId dependency) {
     ++_snapshot.DependencyValidationCount;
 
     if (!package.IsValid()) {
@@ -258,7 +258,7 @@ PackageStatus PackageRegistry::AddDependency(package_id_t package, package_entry
     }
 
     std::uint32_t index = 0U;
-    for (dependency_edge_t& edge : _dependencyEdges) {
+    for (DependencyEdge& edge : _dependencyEdges) {
         if (index >= _snapshot.DependencyEdgeCapacity) {
             return RecordFailure(PackageStatus::DependencyCapacityExceeded);
         }
@@ -282,52 +282,52 @@ PackageStatus PackageRegistry::AddDependency(package_id_t package, package_entry
     return RecordFailure(PackageStatus::DependencyCapacityExceeded);
 }
 
-package_load_plan_result_t PackageRegistry::ResolveEntryByResourceKey(
-    package_id_t package,
-    resource_type_id_t expectedType,
+PackageLoadPlanResult PackageRegistry::ResolveEntryByResourceKey(
+    PackageId package,
+    ResourceTypeId expectedType,
     const ResourceLogicalKey& logicalKey) {
     if (!package.IsValid()) {
-        return package_load_plan_result_t::Failure(RecordFailure(PackageStatus::InvalidPackageId));
+        return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::InvalidPackageId));
     }
 
     if (!expectedType.IsValid()) {
-        return package_load_plan_result_t::Failure(RecordFailure(PackageStatus::InvalidResourceType));
+        return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::InvalidResourceType));
     }
 
     if (!logicalKey.IsWithinBounds()) {
-        return package_load_plan_result_t::Failure(RecordFailure(PackageStatus::LogicalKeyTooLong));
+        return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::LogicalKeyTooLong));
     }
 
     if (!logicalKey.IsValid()) {
-        return package_load_plan_result_t::Failure(RecordFailure(PackageStatus::InvalidLogicalKey));
+        return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::InvalidLogicalKey));
     }
 
     std::size_t rootIndex = 0U;
     const PackageStatus findStatus = FindEntryByResourceKey(package, expectedType, logicalKey, rootIndex);
     if (findStatus != PackageStatus::Success) {
-        return package_load_plan_result_t::Failure(RecordFailure(findStatus));
+        return PackageLoadPlanResult::Failure(RecordFailure(findStatus));
     }
 
-    const package_entry_descriptor_t& rootDescriptor = _entries[rootIndex].descriptor;
+    const PackageEntryDescriptor& rootDescriptor = _entries[rootIndex].descriptor;
     if (rootDescriptor.Type.Value != expectedType.Value) {
-        return package_load_plan_result_t::Failure(RecordFailure(PackageStatus::TypeMismatch));
+        return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::TypeMismatch));
     }
 
     const std::uint32_t directDependencyCount = CountDirectDependencies(package, rootDescriptor.Entry);
     const std::uint32_t requiredRecordCount = directDependencyCount + 1U;
     if (requiredRecordCount > _snapshot.LoadPlanRecordCapacity) {
-        return package_load_plan_result_t::Failure(RecordFailure(PackageStatus::LoadPlanCapacityExceeded));
+        return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::LoadPlanCapacityExceeded));
     }
 
-    package_load_plan_t plan{};
+    PackageLoadPlan plan{};
     std::uint32_t edgeIndex = _firstDependencyEdgeForEntry[rootIndex];
     while (edgeIndex != INVALID_INDEX) {
-        const dependency_edge_t& edge = _dependencyEdges[edgeIndex];
+        const DependencyEdge& edge = _dependencyEdges[edgeIndex];
         const std::uint32_t nextEdgeIndex = _nextDependencyEdge[edgeIndex];
 
         std::size_t dependencyIndex = 0U;
         if (FindEntryIndex(package, edge.dependency, dependencyIndex) != PackageStatus::Success) {
-            return package_load_plan_result_t::Failure(RecordFailure(PackageStatus::DependencyMissing));
+            return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::DependencyMissing));
         }
 
         AppendRecord(plan, _entries[dependencyIndex].descriptor);
@@ -338,10 +338,10 @@ package_load_plan_result_t PackageRegistry::ResolveEntryByResourceKey(
     ++_snapshot.LoadPlanResolveCount;
     _snapshot.LastLoadPlanRecordCount = plan.RecordCount;
     RecordSuccess();
-    return package_load_plan_result_t::Success(plan);
+    return PackageLoadPlanResult::Success(plan);
 }
 
-package_snapshot_t PackageRegistry::Snapshot() const {
+PackageSnapshot PackageRegistry::Snapshot() const {
     return _snapshot;
 }
 
@@ -355,13 +355,13 @@ void PackageRegistry::RecordSuccess() {
     _snapshot.LastStatus = PackageStatus::Success;
 }
 
-bool PackageRegistry::HasManifest(package_id_t package) const {
+bool PackageRegistry::HasManifest(PackageId package) const {
     return HasDuplicateManifest(package);
 }
 
-bool PackageRegistry::HasDuplicateManifest(package_id_t package) const {
+bool PackageRegistry::HasDuplicateManifest(PackageId package) const {
     std::uint32_t index = 0U;
-    for (const manifest_slot_t& manifest : _manifests) {
+    for (const ManifestSlot& manifest : _manifests) {
         if (index >= _snapshot.ManifestCapacity) {
             return false;
         }
@@ -381,17 +381,17 @@ bool PackageRegistry::HasDuplicateManifest(package_id_t package) const {
     return false;
 }
 
-bool PackageRegistry::HasDuplicateEntry(const package_entry_descriptor_t& descriptor) const {
+bool PackageRegistry::HasDuplicateEntry(const PackageEntryDescriptor& descriptor) const {
     std::size_t index = 0U;
     return TryFindEntryIndex(descriptor.Package, descriptor.Entry, index);
 }
 
-bool PackageRegistry::HasDuplicateResourceKey(const package_entry_descriptor_t& descriptor) const {
+bool PackageRegistry::HasDuplicateResourceKey(const PackageEntryDescriptor& descriptor) const {
     std::size_t index = 0U;
     return TryFindResourceIndex(descriptor.Package, descriptor.Type, descriptor.LogicalKey, index);
 }
 
-PackageStatus PackageRegistry::ValidateEntryDescriptor(const package_entry_descriptor_t& descriptor) const {
+PackageStatus PackageRegistry::ValidateEntryDescriptor(const PackageEntryDescriptor& descriptor) const {
     if (!descriptor.Package.IsValid()) {
         return PackageStatus::InvalidPackageId;
     }
@@ -427,7 +427,7 @@ PackageStatus PackageRegistry::ValidateEntryDescriptor(const package_entry_descr
     return PackageStatus::Success;
 }
 
-PackageStatus PackageRegistry::FindEntryIndex(package_id_t package, package_entry_id_t entry, std::size_t& outIndex) const {
+PackageStatus PackageRegistry::FindEntryIndex(PackageId package, PackageEntryId entry, std::size_t& outIndex) const {
     if (!package.IsValid()) {
         return PackageStatus::InvalidPackageId;
     }
@@ -444,8 +444,8 @@ PackageStatus PackageRegistry::FindEntryIndex(package_id_t package, package_entr
 }
 
 PackageStatus PackageRegistry::FindEntryByResourceKey(
-    package_id_t package,
-    resource_type_id_t expectedType,
+    PackageId package,
+    ResourceTypeId expectedType,
     const ResourceLogicalKey& logicalKey,
     std::size_t& outIndex) const {
     if (!HasManifest(package)) {
@@ -463,19 +463,19 @@ PackageStatus PackageRegistry::FindEntryByResourceKey(
     return PackageStatus::NotFound;
 }
 
-bool PackageRegistry::HasDependencyEdge(package_id_t package, package_entry_id_t dependent, package_entry_id_t dependency) const {
+bool PackageRegistry::HasDependencyEdge(PackageId package, PackageEntryId dependent, PackageEntryId dependency) const {
     std::size_t index = 0U;
     return TryFindDependencyEdgeIndex(package, dependent, dependency, index);
 }
 
-bool PackageRegistry::HasDependencyPath(package_id_t package, package_entry_id_t start, package_entry_id_t target) const {
-    std::array<package_entry_id_t, MAX_PACKAGE_ENTRY_COUNT> stack{};
-    std::array<package_entry_id_t, MAX_PACKAGE_ENTRY_COUNT> visited{};
+bool PackageRegistry::HasDependencyPath(PackageId package, PackageEntryId start, PackageEntryId target) const {
+    std::array<PackageEntryId, MAX_PACKAGE_ENTRY_COUNT> stack{};
+    std::array<PackageEntryId, MAX_PACKAGE_ENTRY_COUNT> visited{};
     std::uint32_t stackCount = 0U;
     std::uint32_t visitedCount = 0U;
-    const auto containsEntry = [](const std::array<package_entry_id_t, MAX_PACKAGE_ENTRY_COUNT>& entries,
+    const auto containsEntry = [](const std::array<PackageEntryId, MAX_PACKAGE_ENTRY_COUNT>& entries,
                                   std::uint32_t count,
-                                  package_entry_id_t entry) {
+                                  PackageEntryId entry) {
         for (std::uint32_t index = 0U; index < count; ++index) {
             if (entries[index].Value == entry.Value) {
                 return true;
@@ -490,7 +490,7 @@ bool PackageRegistry::HasDependencyPath(package_id_t package, package_entry_id_t
 
     while (stackCount > 0U) {
         --stackCount;
-        const package_entry_id_t current = stack[stackCount];
+        const PackageEntryId current = stack[stackCount];
         if (current.Value == target.Value) {
             return true;
         }
@@ -511,7 +511,7 @@ bool PackageRegistry::HasDependencyPath(package_id_t package, package_entry_id_t
 
         std::uint32_t edgeIndex = _firstDependencyEdgeForEntry[currentIndex];
         while (edgeIndex != INVALID_INDEX) {
-            const dependency_edge_t& edge = _dependencyEdges[edgeIndex];
+            const DependencyEdge& edge = _dependencyEdges[edgeIndex];
             const std::uint32_t nextEdgeIndex = _nextDependencyEdge[edgeIndex];
 
             if (!containsEntry(visited, visitedCount, edge.dependency) &&
@@ -528,7 +528,7 @@ bool PackageRegistry::HasDependencyPath(package_id_t package, package_entry_id_t
     return false;
 }
 
-std::uint32_t PackageRegistry::CountDirectDependencies(package_id_t package, package_entry_id_t entry) const {
+std::uint32_t PackageRegistry::CountDirectDependencies(PackageId package, PackageEntryId entry) const {
     std::size_t entryIndex = 0U;
     if (FindEntryIndex(package, entry, entryIndex) != PackageStatus::Success) {
         return 0U;
@@ -544,8 +544,8 @@ std::uint32_t PackageRegistry::CountDirectDependencies(package_id_t package, pac
     return count;
 }
 
-void PackageRegistry::AppendRecord(package_load_plan_t& plan, const package_entry_descriptor_t& descriptor) const {
-    plan.Records[plan.RecordCount] = package_load_plan_record_t{
+void PackageRegistry::AppendRecord(PackageLoadPlan& plan, const PackageEntryDescriptor& descriptor) const {
+    plan.Records[plan.RecordCount] = PackageLoadPlanRecord{
         descriptor.Package,
         descriptor.Entry,
         descriptor.Type,
@@ -556,7 +556,7 @@ void PackageRegistry::AppendRecord(package_load_plan_t& plan, const package_entr
     ++plan.RecordCount;
 }
 
-bool PackageRegistry::TryFindEntryIndex(package_id_t package, package_entry_id_t entry, std::size_t& outIndex) const {
+bool PackageRegistry::TryFindEntryIndex(PackageId package, PackageEntryId entry, std::size_t& outIndex) const {
     std::uint32_t probeCount = 0U;
     std::uint32_t probeIndex = FirstProbeIndex(HashPackageEntry(package, entry), _snapshot.EntryCapacity);
     while (probeCount < _snapshot.EntryCapacity) {
@@ -578,8 +578,8 @@ bool PackageRegistry::TryFindEntryIndex(package_id_t package, package_entry_id_t
 }
 
 bool PackageRegistry::TryFindResourceIndex(
-    package_id_t package,
-    resource_type_id_t expectedType,
+    PackageId package,
+    ResourceTypeId expectedType,
     const ResourceLogicalKey& logicalKey,
     std::size_t& outIndex) const {
     std::uint32_t probeCount = 0U;
@@ -604,7 +604,7 @@ bool PackageRegistry::TryFindResourceIndex(
     return false;
 }
 
-bool PackageRegistry::HasResourceLogicalKey(package_id_t package, const ResourceLogicalKey& logicalKey) const {
+bool PackageRegistry::HasResourceLogicalKey(PackageId package, const ResourceLogicalKey& logicalKey) const {
     std::uint32_t probeCount = 0U;
     std::uint32_t probeIndex = FirstProbeIndex(HashResourceKey(package, logicalKey), _snapshot.EntryCapacity);
     while (probeCount < _snapshot.EntryCapacity) {
@@ -625,9 +625,9 @@ bool PackageRegistry::HasResourceLogicalKey(package_id_t package, const Resource
 }
 
 bool PackageRegistry::TryFindDependencyEdgeIndex(
-    package_id_t package,
-    package_entry_id_t dependent,
-    package_entry_id_t dependency,
+    PackageId package,
+    PackageEntryId dependent,
+    PackageEntryId dependency,
     std::size_t& outIndex) const {
     std::uint32_t probeCount = 0U;
     std::uint32_t probeIndex =
@@ -651,7 +651,7 @@ bool PackageRegistry::TryFindDependencyEdgeIndex(
     return false;
 }
 
-void PackageRegistry::AddEntryIndex(package_id_t package, package_entry_id_t entry, std::uint32_t entryIndex) {
+void PackageRegistry::AddEntryIndex(PackageId package, PackageEntryId entry, std::uint32_t entryIndex) {
     std::uint32_t probeCount = 0U;
     std::uint32_t probeIndex = FirstProbeIndex(HashPackageEntry(package, entry), _snapshot.EntryCapacity);
     while (probeCount < _snapshot.EntryCapacity) {
@@ -675,8 +675,8 @@ void PackageRegistry::AddEntryIndex(package_id_t package, package_entry_id_t ent
 }
 
 void PackageRegistry::AddResourceIndex(
-    package_id_t package,
-    resource_type_id_t type,
+    PackageId package,
+    ResourceTypeId type,
     const ResourceLogicalKey& logicalKey,
     std::uint32_t entryIndex) {
     std::uint32_t probeCount = 0U;
@@ -705,7 +705,7 @@ void PackageRegistry::AddResourceIndex(
 }
 
 void PackageRegistry::AddResourceKeyIndex(
-    package_id_t package,
+    PackageId package,
     const ResourceLogicalKey& logicalKey,
     std::uint32_t entryIndex) {
     std::uint32_t probeCount = 0U;
@@ -731,9 +731,9 @@ void PackageRegistry::AddResourceKeyIndex(
 }
 
 void PackageRegistry::AddDependencyIndex(
-    package_id_t package,
-    package_entry_id_t dependent,
-    package_entry_id_t dependency,
+    PackageId package,
+    PackageEntryId dependent,
+    PackageEntryId dependency,
     std::uint32_t edgeIndex) {
     std::uint32_t probeCount = 0U;
     std::uint32_t probeIndex =

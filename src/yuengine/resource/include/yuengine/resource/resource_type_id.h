@@ -3,7 +3,7 @@
 #include <cstdint>
 
 namespace yuengine::resource {
-struct resource_type_id_t final {
+struct ResourceTypeId final {
     std::uint32_t Value = 0U;
 
     bool IsValid() const {

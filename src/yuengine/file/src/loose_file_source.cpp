@@ -129,60 +129,60 @@ LooseFileSource::LooseFileSource(std::filesystem::path rootPath)
     : _rootPath(std::move(rootPath)) {
 }
 
-file_read_result_t LooseFileSource::Read(NormalizedPath path) const {
+FileReadResult LooseFileSource::Read(NormalizedPath path) const {
     const FileStatus pathStatus = ValidatePublicNormalizedPath(path.Value());
     if (pathStatus != FileStatus::Success) {
-        return file_read_result_t::Failure(pathStatus);
+        return FileReadResult::Failure(pathStatus);
     }
 
     std::error_code errorCode;
     const std::filesystem::path canonicalRoot = std::filesystem::weakly_canonical(_rootPath, errorCode);
     if (errorCode) {
-        return file_read_result_t::Failure(FileStatus::ReadFailure);
+        return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
     errorCode.clear();
     const std::filesystem::path resolvedPath = _rootPath / std::filesystem::path(std::string(path.Value()));
     const std::filesystem::path canonicalResolvedPath = std::filesystem::weakly_canonical(resolvedPath, errorCode);
     if (errorCode) {
-        return file_read_result_t::Failure(FileStatus::ReadFailure);
+        return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
     if (!IsPathInsideRoot(canonicalRoot, canonicalResolvedPath)) {
-        return file_read_result_t::Failure(FileStatus::PathEscape);
+        return FileReadResult::Failure(FileStatus::PathEscape);
     }
 
     errorCode.clear();
     if (!std::filesystem::exists(canonicalResolvedPath, errorCode)) {
         if (errorCode) {
-            return file_read_result_t::Failure(FileStatus::ReadFailure);
+            return FileReadResult::Failure(FileStatus::ReadFailure);
         }
 
-        return file_read_result_t::Failure(FileStatus::FileNotFound);
+        return FileReadResult::Failure(FileStatus::FileNotFound);
     }
 
     errorCode.clear();
     if (!std::filesystem::is_regular_file(canonicalResolvedPath, errorCode)) {
         if (errorCode) {
-            return file_read_result_t::Failure(FileStatus::ReadFailure);
+            return FileReadResult::Failure(FileStatus::ReadFailure);
         }
 
-        return file_read_result_t::Failure(FileStatus::ReadFailure);
+        return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
     errorCode.clear();
     const auto fileSize = std::filesystem::file_size(canonicalResolvedPath, errorCode);
     if (errorCode) {
-        return file_read_result_t::Failure(FileStatus::ReadFailure);
+        return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
     if (fileSize > MAX_FIXTURE_READ_SIZE) {
-        return file_read_result_t::Failure(FileStatus::ReadTooLarge);
+        return FileReadResult::Failure(FileStatus::ReadTooLarge);
     }
 
     std::ifstream file(canonicalResolvedPath, std::ios::binary);
     if (!file.is_open()) {
-        return file_read_result_t::Failure(FileStatus::ReadFailure);
+        return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
     std::vector<std::uint8_t> bytes(static_cast<std::size_t>(fileSize));
@@ -191,10 +191,10 @@ file_read_result_t LooseFileSource::Read(NormalizedPath path) const {
     }
 
     if (!file.good()) {
-        return file_read_result_t::Failure(FileStatus::ReadFailure);
+        return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
-    return file_read_result_t::Success(std::move(bytes));
+    return FileReadResult::Success(std::move(bytes));
 }
 
 const std::filesystem::path& LooseFileSource::RootPath() const {

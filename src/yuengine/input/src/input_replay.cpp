@@ -19,24 +19,24 @@ InputReplay::InputReplay()
     _snapshot.ReplayStorageCapacityAfterLastFrame = ReplayStorageCapacity();
 }
 
-input_binding_result_t InputReplay::RegisterActionBinding(input_device_id_t device, input_control_id_t control, input_action_id_t action) {
+InputBindingResult InputReplay::RegisterActionBinding(InputDeviceId device, InputControlId control, InputActionId action) {
     if (!IsDeviceValid(device)) {
-        return input_binding_result_t{RecordFailure(InputStatus::UnknownDeviceControl), action};
+        return InputBindingResult{RecordFailure(InputStatus::UnknownDeviceControl), action};
     }
 
     if (!IsActionInRange(action)) {
-        return input_binding_result_t{RecordFailure(InputStatus::UnknownAction), action};
+        return InputBindingResult{RecordFailure(InputStatus::UnknownAction), action};
     }
 
     if (HasBindingForControl(device, control)) {
-        return input_binding_result_t{RecordFailure(InputStatus::DuplicateBinding), action};
+        return InputBindingResult{RecordFailure(InputStatus::DuplicateBinding), action};
     }
 
     if (_bindingCount >= _bindings.size()) {
-        return input_binding_result_t{RecordFailure(InputStatus::CapacityExceeded), action};
+        return InputBindingResult{RecordFailure(InputStatus::CapacityExceeded), action};
     }
 
-    _bindings[_bindingCount] = input_action_binding_t{device, control, action};
+    _bindings[_bindingCount] = InputActionBinding{device, control, action};
     ++_bindingCount;
     _snapshot.BindingCount = _bindingCount;
 
@@ -45,10 +45,10 @@ input_binding_result_t InputReplay::RegisterActionBinding(input_device_id_t devi
         ++_snapshot.ActionCount;
     }
 
-    return input_binding_result_t{InputStatus::Success, action};
+    return InputBindingResult{InputStatus::Success, action};
 }
 
-InputStatus InputReplay::RecordReplayEvent(std::size_t frameIndex, input_event_t event) {
+InputStatus InputReplay::RecordReplayEvent(std::size_t frameIndex, InputEvent event) {
     if (frameIndex >= _frames.size()) {
         return RejectReplayEvent(InputStatus::CapacityExceeded);
     }
@@ -67,7 +67,7 @@ InputStatus InputReplay::RecordReplayEvent(std::size_t frameIndex, input_event_t
         return RejectReplayEvent(InputStatus::UnknownDeviceControl);
     }
 
-    input_replay_frame_t& frame = _frames[frameIndex];
+    InputReplayFrame& frame = _frames[frameIndex];
     if (frame.EventCount >= frame.Events.size()) {
         return RejectReplayEvent(InputStatus::CapacityExceeded);
     }
@@ -84,27 +84,27 @@ InputStatus InputReplay::RecordReplayEvent(std::size_t frameIndex, input_event_t
     return InputStatus::Success;
 }
 
-input_apply_result_t InputReplay::ApplyNextFrame() {
+InputApplyResult InputReplay::ApplyNextFrame() {
     if (_nextFrameIndex >= _recordedFrameCount) {
         _snapshot.LastApplyStatus = InputStatus::EndOfReplay;
-        return input_apply_result_t{RecordFailure(InputStatus::EndOfReplay), _nextFrameIndex};
+        return InputApplyResult{RecordFailure(InputStatus::EndOfReplay), _nextFrameIndex};
     }
 
     ResetFrameState();
     _snapshot.ReplayStorageCapacityBeforeFrame = ReplayStorageCapacity();
 
     InputStatus frameStatus = InputStatus::Success;
-    const input_replay_frame_t& frame = _frames[_nextFrameIndex];
+    const InputReplayFrame& frame = _frames[_nextFrameIndex];
     for (std::size_t eventIndex = 0U; eventIndex < frame.EventCount; ++eventIndex) {
-        const input_event_t& event = frame.Events[eventIndex];
-        const input_action_binding_t* binding = FindBinding(event.Device, event.Control);
+        const InputEvent& event = frame.Events[eventIndex];
+        const InputActionBinding* binding = FindBinding(event.Device, event.Control);
         if (binding == nullptr) {
             RejectReplayEvent(InputStatus::UnknownDeviceControl);
             frameStatus = InputStatus::UnknownDeviceControl;
             continue;
         }
 
-        input_action_state_t& action = _actions[binding->Action.Value];
+        InputActionState& action = _actions[binding->Action.Value];
         if (event.Type == InputEventType::ButtonPressed) {
             action.IsPressed = true;
             MarkActionChanged(binding->Action);
@@ -134,11 +134,11 @@ input_apply_result_t InputReplay::ApplyNextFrame() {
 
     const std::size_t appliedFrameIndex = _nextFrameIndex;
     ++_nextFrameIndex;
-    return input_apply_result_t{frameStatus, appliedFrameIndex};
+    return InputApplyResult{frameStatus, appliedFrameIndex};
 }
 
 InputStatus InputReplay::ResetFrameState() {
-    for (input_action_state_t& action : _actions) {
+    for (InputActionState& action : _actions) {
         action.ChangedThisFrame = false;
     }
 
@@ -147,19 +147,19 @@ InputStatus InputReplay::ResetFrameState() {
     return InputStatus::Success;
 }
 
-input_action_query_result_t InputReplay::QueryAction(input_action_id_t action) const {
+InputActionQueryResult InputReplay::QueryAction(InputActionId action) const {
     if (!IsActionInRange(action)) {
-        return input_action_query_result_t{InputStatus::UnknownAction, input_action_state_t{}};
+        return InputActionQueryResult{InputStatus::UnknownAction, InputActionState{}};
     }
 
     if (!_registeredActions[action.Value]) {
-        return input_action_query_result_t{InputStatus::UnknownAction, input_action_state_t{}};
+        return InputActionQueryResult{InputStatus::UnknownAction, InputActionState{}};
     }
 
-    return input_action_query_result_t{InputStatus::Success, _actions[action.Value]};
+    return InputActionQueryResult{InputStatus::Success, _actions[action.Value]};
 }
 
-input_replay_snapshot_t InputReplay::Snapshot() const {
+InputReplaySnapshot InputReplay::Snapshot() const {
     return _snapshot;
 }
 
@@ -181,11 +181,11 @@ InputStatus InputReplay::RejectReplayEvent(InputStatus status) {
     return RecordFailure(status);
 }
 
-bool InputReplay::IsDeviceValid(input_device_id_t device) const {
+bool InputReplay::IsDeviceValid(InputDeviceId device) const {
     return device.Value < MAX_INPUT_DEVICES;
 }
 
-bool InputReplay::IsActionInRange(input_action_id_t action) const {
+bool InputReplay::IsActionInRange(InputActionId action) const {
     return action.Value < MAX_INPUT_ACTIONS;
 }
 
@@ -209,13 +209,13 @@ bool InputReplay::IsAxisValueValid(std::int32_t value) const {
     return value <= AXIS_MAX_VALUE;
 }
 
-bool InputReplay::HasBindingForControl(input_device_id_t device, input_control_id_t control) const {
+bool InputReplay::HasBindingForControl(InputDeviceId device, InputControlId control) const {
     return FindBinding(device, control) != nullptr;
 }
 
-const input_action_binding_t* InputReplay::FindBinding(input_device_id_t device, input_control_id_t control) const {
+const InputActionBinding* InputReplay::FindBinding(InputDeviceId device, InputControlId control) const {
     for (std::size_t index = 0U; index < _bindingCount; ++index) {
-        const input_action_binding_t& binding = _bindings[index];
+        const InputActionBinding& binding = _bindings[index];
         if (binding.Device.Value != device.Value) {
             continue;
         }
@@ -230,7 +230,7 @@ const input_action_binding_t* InputReplay::FindBinding(input_device_id_t device,
     return nullptr;
 }
 
-void InputReplay::MarkActionChanged(input_action_id_t action) {
+void InputReplay::MarkActionChanged(InputActionId action) {
     _actions[action.Value].ChangedThisFrame = true;
 }
 

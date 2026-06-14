@@ -14,13 +14,13 @@ public:
     void Write(LogLevel level, std::string_view message) override;
     bool IsEnabled() const override;
 
-    const std::vector<log_event_t>& Events() const;
+    const std::vector<LogEvent>& Events() const;
     std::size_t DroppedCount() const;
     void Clear();
 
 private:
     std::size_t _capacity;
-    std::vector<log_event_t> _events;
+    std::vector<LogEvent> _events;
     std::size_t _droppedCount;
 };
 }

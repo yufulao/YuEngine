@@ -3,7 +3,7 @@
 #include <cstdint>
 
 namespace yuengine::thread {
-struct task_id_t {
+struct TaskId {
     std::uint64_t Value;
 };
 }

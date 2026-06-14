@@ -5,12 +5,12 @@
 #include "yuengine/kernel/kernel_status.h"
 
 namespace yuengine::kernel {
-struct kernel_result_t {
+struct KernelResult {
     bool Succeeded;
     KernelStatus Status;
     std::string Message;
 
-    static kernel_result_t Success();
-    static kernel_result_t Failure(KernelStatus status, std::string message);
+    static KernelResult Success();
+    static KernelResult Failure(KernelStatus status, std::string message);
 };
 }

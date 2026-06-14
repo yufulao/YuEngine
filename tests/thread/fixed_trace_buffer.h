@@ -6,7 +6,7 @@
 namespace yuengine::thread::tests {
 constexpr std::size_t THREAD_TEST_TRACE_CAPACITY = 8U;
 
-struct fixed_trace_buffer_t {
+struct FixedTraceBuffer {
     std::array<int, THREAD_TEST_TRACE_CAPACITY> Values{};
     std::size_t Count = 0U;
 
