@@ -19,9 +19,9 @@ public:
     bool Equals(const PackageSourceKey& other) const;
 
 private:
-    std::array<char, MAX_PACKAGE_SOURCE_KEY_BYTES> _bytes;
-    std::size_t _length;
-    bool _isValid;
-    bool _isWithinBounds;
+    std::array<char, MAX_PACKAGE_SOURCE_KEY_BYTES> bytes_;
+    std::size_t length_;
+    bool is_valid_;
+    bool is_within_bounds_;
 };
 }

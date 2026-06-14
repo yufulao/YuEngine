@@ -24,22 +24,22 @@ bool IsLowercaseAsciiFixtureCharacter(char character) {
 }
 
 ResourceLogicalKey::ResourceLogicalKey()
-    : _bytes{},
-      _length(0U),
-      _isValid(false),
-      _isWithinBounds(true) {
+    : bytes_{},
+      length_(0U),
+      is_valid_(false),
+      is_within_bounds_(true) {
 }
 
 ResourceLogicalKey::ResourceLogicalKey(std::string_view value)
-    : _bytes{},
-      _length(0U),
-      _isValid(false),
-      _isWithinBounds(value.size() <= MAX_LOGICAL_KEY_BYTES) {
+    : bytes_{},
+      length_(0U),
+      is_valid_(false),
+      is_within_bounds_(value.size() <= MAX_LOGICAL_KEY_BYTES) {
     if (value.empty()) {
         return;
     }
 
-    if (!_isWithinBounds) {
+    if (!is_within_bounds_) {
         return;
     }
 
@@ -48,36 +48,36 @@ ResourceLogicalKey::ResourceLogicalKey(std::string_view value)
             return;
         }
 
-        _bytes[_length] = character;
-        ++_length;
+        bytes_[length_] = character;
+        ++length_;
     }
 
-    _isValid = true;
+    is_valid_ = true;
 }
 
 std::string_view ResourceLogicalKey::Value() const {
-    return std::string_view(_bytes.data(), _length);
+    return std::string_view(bytes_.data(), length_);
 }
 
 std::size_t ResourceLogicalKey::ByteLength() const {
-    return _length;
+    return length_;
 }
 
 bool ResourceLogicalKey::IsValid() const {
-    return _isValid;
+    return is_valid_;
 }
 
 bool ResourceLogicalKey::IsWithinBounds() const {
-    return _isWithinBounds;
+    return is_within_bounds_;
 }
 
 bool ResourceLogicalKey::Equals(const ResourceLogicalKey& other) const {
-    if (_length != other._length) {
+    if (length_ != other.length_) {
         return false;
     }
 
-    for (std::size_t index = 0U; index < _length; ++index) {
-        if (_bytes[index] != other._bytes[index]) {
+    for (std::size_t index = 0U; index < length_; ++index) {
+        if (bytes_[index] != other.bytes_[index]) {
             return false;
         }
     }

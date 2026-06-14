@@ -28,11 +28,11 @@ private:
     TaskResult RejectResult() const;
     TaskResult CompleteResult() const;
 
-    std::vector<TaskRecord> _records;
-    memory::IMemoryTracker& _memoryTracker;
-    TaskSchedulerSnapshot _snapshot;
-    std::size_t _headIndex;
-    std::size_t _tailIndex;
-    std::uint64_t _nextTaskId;
+    std::vector<TaskRecord> records_;
+    memory::IMemoryTracker& memory_tracker_;
+    TaskSchedulerSnapshot snapshot_;
+    std::size_t head_index_;
+    std::size_t tail_index_;
+    std::uint64_t next_task_id_;
 };
 }

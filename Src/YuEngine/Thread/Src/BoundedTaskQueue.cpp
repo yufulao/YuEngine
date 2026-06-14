@@ -8,71 +8,71 @@ constexpr std::uint64_t INVALID_TASK_ID = 0U;
 }
 
 BoundedTaskQueue::BoundedTaskQueue(std::size_t capacity, memory::IMemoryTracker& memoryTracker)
-    : _records(capacity),
-      _memoryTracker(memoryTracker),
-      _snapshot{0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, capacity, capacity, 0U, false},
-      _headIndex(0U),
-      _tailIndex(0U),
-      _nextTaskId(1U) {
+    : records_(capacity),
+      memory_tracker_(memoryTracker),
+      snapshot_{0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, capacity, capacity, 0U, false},
+      head_index_(0U),
+      tail_index_(0U),
+      next_task_id_(1U) {
 }
 
 TaskResult BoundedTaskQueue::Submit(TaskCallback callback, void* context) {
-    if (_snapshot.is_shutdown) {
-        ++_snapshot.rejected_count;
+    if (snapshot_.is_shutdown) {
+        ++snapshot_.rejected_count;
         return RejectResult();
     }
 
-    if (_snapshot.pending_count >= _records.size()) {
-        ++_snapshot.rejected_count;
+    if (snapshot_.pending_count >= records_.size()) {
+        ++snapshot_.rejected_count;
         return RejectResult();
     }
 
-    const TaskId taskId{_nextTaskId};
-    ++_nextTaskId;
+    const TaskId taskId{next_task_id_};
+    ++next_task_id_;
 
-    _records[_tailIndex] = TaskRecord{taskId, callback, context, TaskStatus::Queued};
-    _tailIndex = (_tailIndex + 1U) % _records.size();
-    ++_snapshot.pending_count;
-    ++_snapshot.submitted_count;
+    records_[tail_index_] = TaskRecord{taskId, callback, context, TaskStatus::Queued};
+    tail_index_ = (tail_index_ + 1U) % records_.size();
+    ++snapshot_.pending_count;
+    ++snapshot_.submitted_count;
 
-    if (_snapshot.pending_count > _snapshot.max_queue_depth) {
-        _snapshot.max_queue_depth = _snapshot.pending_count;
+    if (snapshot_.pending_count > snapshot_.max_queue_depth) {
+        snapshot_.max_queue_depth = snapshot_.pending_count;
     }
 
     return TaskResult{taskId, TaskStatus::Queued};
 }
 
 TaskResult BoundedTaskQueue::Drain(InlineTaskExecutor& executor) {
-    ++_snapshot.drain_count;
+    ++snapshot_.drain_count;
 
     TaskResult result = CompleteResult();
-    const std::uint64_t allocationCountBefore = _memoryTracker.AllocationCountForBudget(memory::MemoryBudgetClass::Job);
+    const std::uint64_t allocationCountBefore = memory_tracker_.AllocationCountForBudget(memory::MemoryBudgetClass::Job);
 
-    while (_snapshot.pending_count > 0U) {
-        TaskRecord& record = _records[_headIndex];
+    while (snapshot_.pending_count > 0U) {
+        TaskRecord& record = records_[head_index_];
         record.status = TaskStatus::Running;
 
         const TaskStatus executionStatus = executor.Execute(record.callback, record.context);
         record.status = executionStatus;
-        ++_snapshot.executed_count;
+        ++snapshot_.executed_count;
 
         if (executionStatus == TaskStatus::Failed) {
-            ++_snapshot.failed_count;
+            ++snapshot_.failed_count;
             result = TaskResult{record.id, TaskStatus::Failed};
         }
 
-        _headIndex = (_headIndex + 1U) % _records.size();
-        --_snapshot.pending_count;
+        head_index_ = (head_index_ + 1U) % records_.size();
+        --snapshot_.pending_count;
     }
 
-    const std::uint64_t allocationCountAfter = _memoryTracker.AllocationCountForBudget(memory::MemoryBudgetClass::Job);
-    _snapshot.task_execution_allocation_count += allocationCountAfter - allocationCountBefore;
-    _snapshot.capacity_after_last_drain = _records.capacity();
+    const std::uint64_t allocationCountAfter = memory_tracker_.AllocationCountForBudget(memory::MemoryBudgetClass::Job);
+    snapshot_.task_execution_allocation_count += allocationCountAfter - allocationCountBefore;
+    snapshot_.capacity_after_last_drain = records_.capacity();
     return result;
 }
 
 TaskResult BoundedTaskQueue::Shutdown(ShutdownPolicy policy, InlineTaskExecutor& executor) {
-    _snapshot.is_shutdown = true;
+    snapshot_.is_shutdown = true;
 
     if (policy == ShutdownPolicy::CancelQueued) {
         CancelQueuedTasks();
@@ -83,23 +83,23 @@ TaskResult BoundedTaskQueue::Shutdown(ShutdownPolicy policy, InlineTaskExecutor&
 }
 
 TaskSchedulerSnapshot BoundedTaskQueue::Snapshot() const {
-    return _snapshot;
+    return snapshot_;
 }
 
 std::size_t BoundedTaskQueue::Capacity() const {
-    return _records.size();
+    return records_.size();
 }
 
 void BoundedTaskQueue::CancelQueuedTasks() {
-    while (_snapshot.pending_count > 0U) {
-        TaskRecord& record = _records[_headIndex];
+    while (snapshot_.pending_count > 0U) {
+        TaskRecord& record = records_[head_index_];
         record.status = TaskStatus::Canceled;
-        ++_snapshot.canceled_count;
-        _headIndex = (_headIndex + 1U) % _records.size();
-        --_snapshot.pending_count;
+        ++snapshot_.canceled_count;
+        head_index_ = (head_index_ + 1U) % records_.size();
+        --snapshot_.pending_count;
     }
 
-    _snapshot.capacity_after_last_drain = _records.capacity();
+    snapshot_.capacity_after_last_drain = records_.capacity();
 }
 
 TaskResult BoundedTaskQueue::RejectResult() const {

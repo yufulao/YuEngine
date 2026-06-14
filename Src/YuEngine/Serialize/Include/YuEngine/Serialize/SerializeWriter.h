@@ -38,13 +38,13 @@ private:
     void WriteUInt32At(std::uint32_t offset, std::uint32_t value);
     void CopyPayload(std::uint32_t offset, const std::uint8_t* payload, std::uint32_t byteCount);
 
-    std::uint8_t* _buffer;
-    std::uint32_t _capacity;
-    std::uint32_t _activeRecordOffset;
-    std::uint32_t _currentRecordFieldCount;
-    std::array<SerializeFieldId, MAX_FIELDS_PER_RECORD> _currentRecordFields;
-    SerializeSnapshot _snapshot;
-    bool _hasStream;
-    bool _hasActiveRecord;
+    std::uint8_t* buffer_;
+    std::uint32_t capacity_;
+    std::uint32_t active_record_offset_;
+    std::uint32_t current_record_field_count_;
+    std::array<SerializeFieldId, MAX_FIELDS_PER_RECORD> current_record_fields_;
+    SerializeSnapshot snapshot_;
+    bool has_stream_;
+    bool has_active_record_;
 };
 }

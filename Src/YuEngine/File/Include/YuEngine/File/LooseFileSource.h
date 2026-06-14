@@ -15,6 +15,6 @@ public:
     const std::filesystem::path& RootPath() const;
 
 private:
-    std::filesystem::path _rootPath;
+    std::filesystem::path root_path_;
 };
 }

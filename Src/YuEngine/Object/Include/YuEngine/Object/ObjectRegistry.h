@@ -35,8 +35,8 @@ private:
     bool HasType(ObjectTypeId type) const;
     void AdvanceGeneration(ObjectSlot& slot);
 
-    std::array<ObjectSlot, MAX_OBJECT_COUNT> _slots;
-    std::array<ObjectTypeId, MAX_OBJECT_TYPE_COUNT> _types;
-    ObjectSnapshot _snapshot;
+    std::array<ObjectSlot, MAX_OBJECT_COUNT> slots_;
+    std::array<ObjectTypeId, MAX_OBJECT_TYPE_COUNT> types_;
+    ObjectSnapshot snapshot_;
 };
 }

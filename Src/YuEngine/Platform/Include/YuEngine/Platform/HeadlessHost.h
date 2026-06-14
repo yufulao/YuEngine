@@ -14,7 +14,7 @@ public:
     HostRunResult Run(IHostRuntime& runtime, const HeadlessHostConfig& config);
 
 private:
-    IFrameClock& _frameClock;
-    diagnostics::ILogSink& _logSink;
+    IFrameClock& frame_clock_;
+    diagnostics::ILogSink& log_sink_;
 };
 }

@@ -29,10 +29,10 @@ private:
     ActiveAllocationRecord* FindFreeAllocationRecord();
     static void ResetAllocationRecord(ActiveAllocationRecord& record);
 
-    std::array<ActiveAllocationRecord, MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS> _activeAllocations;
-    std::array<std::uint64_t, MemoryBudgetClassCount> _budgetAllocationCounts;
-    MemorySnapshot _snapshot;
-    std::uint64_t _nextAllocationId;
-    std::size_t _activeAllocationCount;
+    std::array<ActiveAllocationRecord, MAX_COUNTING_MEMORY_TRACKER_ACTIVE_ALLOCATIONS> active_allocations_;
+    std::array<std::uint64_t, MemoryBudgetClassCount> budget_allocation_counts_;
+    MemorySnapshot snapshot_;
+    std::uint64_t next_allocation_id_;
+    std::size_t active_allocation_count_;
 };
 }

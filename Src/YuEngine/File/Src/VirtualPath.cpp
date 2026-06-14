@@ -4,18 +4,18 @@
 
 namespace yuengine::file {
 VirtualPath::VirtualPath()
-    : _value() {
+    : value_() {
 }
 
 VirtualPath::VirtualPath(std::string value)
-    : _value(std::move(value)) {
+    : value_(std::move(value)) {
 }
 
 std::string_view VirtualPath::Value() const {
-    return _value;
+    return value_;
 }
 
 std::size_t VirtualPath::ByteLength() const {
-    return _value.size();
+    return value_.size();
 }
 }

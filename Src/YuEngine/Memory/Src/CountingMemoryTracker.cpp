@@ -47,11 +47,11 @@ bool FixedTextEquals(const std::array<char, Capacity>& stored, std::size_t store
 }
 
 CountingMemoryTracker::CountingMemoryTracker()
-    : _activeAllocations(),
-      _budgetAllocationCounts{},
-      _snapshot{0U, 0U, 0U, 0U, 0U},
-      _nextAllocationId(1U),
-      _activeAllocationCount(0U) {
+    : active_allocations_(),
+      budget_allocation_counts_{},
+      snapshot_{0U, 0U, 0U, 0U, 0U},
+      next_allocation_id_(1U),
+      active_allocation_count_(0U) {
 }
 
 MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
@@ -97,8 +97,8 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::CapacityExceeded);
     }
 
-    const MemoryAllocationId allocationId{_nextAllocationId};
-    ++_nextAllocationId;
+    const MemoryAllocationId allocationId{next_allocation_id_};
+    ++next_allocation_id_;
 
     if (!CopyFixedText(owner.value, record->owner, record->owner_length)) {
         return MemoryAccountingResult::Failure(MemoryAccountingStatus::InvalidOwner);
@@ -112,16 +112,16 @@ MemoryAccountingResult CountingMemoryTracker::RecordAllocation(
     record->is_active = true;
     record->allocation_id = allocationId;
     record->bytes = bytes;
-    ++_activeAllocationCount;
+    ++active_allocation_count_;
 
-    ++_snapshot.allocation_count;
-    _snapshot.retained_bytes += bytes;
-    if (_snapshot.retained_bytes > _snapshot.peak_retained_bytes) {
-        _snapshot.peak_retained_bytes = _snapshot.retained_bytes;
+    ++snapshot_.allocation_count;
+    snapshot_.retained_bytes += bytes;
+    if (snapshot_.retained_bytes > snapshot_.peak_retained_bytes) {
+        snapshot_.peak_retained_bytes = snapshot_.retained_bytes;
     }
 
-    _snapshot.leak_count = _activeAllocationCount;
-    ++_budgetAllocationCounts[MemoryBudgetClassIndex(budgetClass)];
+    snapshot_.leak_count = active_allocation_count_;
+    ++budget_allocation_counts_[MemoryBudgetClassIndex(budgetClass)];
     return MemoryAccountingResult::Success(allocationId);
 }
 
@@ -140,21 +140,21 @@ MemoryAccountingStatus CountingMemoryTracker::RecordFree(MemoryAllocationId allo
     }
 
     const std::size_t bytes = record->bytes;
-    if (bytes > _snapshot.retained_bytes) {
+    if (bytes > snapshot_.retained_bytes) {
         return MemoryAccountingStatus::UnmatchedFree;
     }
 
-    _snapshot.retained_bytes -= bytes;
-    ++_snapshot.free_count;
+    snapshot_.retained_bytes -= bytes;
+    ++snapshot_.free_count;
 
     ResetAllocationRecord(*record);
-    --_activeAllocationCount;
-    _snapshot.leak_count = _activeAllocationCount;
+    --active_allocation_count_;
+    snapshot_.leak_count = active_allocation_count_;
     return MemoryAccountingStatus::Success;
 }
 
 MemorySnapshot CountingMemoryTracker::Snapshot() const {
-    return _snapshot;
+    return snapshot_;
 }
 
 std::uint64_t CountingMemoryTracker::AllocationCountForBudget(MemoryBudgetClass budgetClass) const {
@@ -162,11 +162,11 @@ std::uint64_t CountingMemoryTracker::AllocationCountForBudget(MemoryBudgetClass 
         return 0U;
     }
 
-    return _budgetAllocationCounts[MemoryBudgetClassIndex(budgetClass)];
+    return budget_allocation_counts_[MemoryBudgetClassIndex(budgetClass)];
 }
 
 ActiveAllocationRecord* CountingMemoryTracker::FindActiveAllocation(MemoryAllocationId allocationId) {
-    for (ActiveAllocationRecord& record : _activeAllocations) {
+    for (ActiveAllocationRecord& record : active_allocations_) {
         if (record.is_active && record.allocation_id.value == allocationId.value) {
             return &record;
         }
@@ -176,7 +176,7 @@ ActiveAllocationRecord* CountingMemoryTracker::FindActiveAllocation(MemoryAlloca
 }
 
 ActiveAllocationRecord* CountingMemoryTracker::FindFreeAllocationRecord() {
-    for (ActiveAllocationRecord& record : _activeAllocations) {
+    for (ActiveAllocationRecord& record : active_allocations_) {
         if (!record.is_active) {
             return &record;
         }

@@ -94,31 +94,31 @@ PackageRegistry::PackageRegistry()
 }
 
 PackageRegistry::PackageRegistry(PackageRegistryDesc desc)
-    : _manifests{},
-      _entries{},
-      _dependencyEdges{},
-      _entryIndexPackages{},
-      _entryIndexEntries{},
-      _entryIndexValues{},
-      _entryIndexActive{},
-      _resourceIndexPackages{},
-      _resourceIndexTypes{},
-      _resourceIndexKeys{},
-      _resourceIndexValues{},
-      _resourceIndexActive{},
-      _resourceKeyIndexPackages{},
-      _resourceKeyIndexKeys{},
-      _resourceKeyIndexValues{},
-      _resourceKeyIndexActive{},
-      _dependencyIndexPackages{},
-      _dependencyIndexDependents{},
-      _dependencyIndexDependencies{},
-      _dependencyIndexValues{},
-      _dependencyIndexActive{},
-      _firstDependencyEdgeForEntry{},
-      _lastDependencyEdgeForEntry{},
-      _nextDependencyEdge{},
-      _snapshot{
+    : manifests_{},
+      entries_{},
+      dependency_edges_{},
+      entry_index_packages_{},
+      entry_index_entries_{},
+      entry_index_values_{},
+      entry_index_active_{},
+      resource_index_packages_{},
+      resource_index_types_{},
+      resource_index_keys_{},
+      resource_index_values_{},
+      resource_index_active_{},
+      resource_key_index_packages_{},
+      resource_key_index_keys_{},
+      resource_key_index_values_{},
+      resource_key_index_active_{},
+      dependency_index_packages_{},
+      dependency_index_dependents_{},
+      dependency_index_dependencies_{},
+      dependency_index_values_{},
+      dependency_index_active_{},
+      first_dependency_edge_for_entry_{},
+      last_dependency_edge_for_entry_{},
+      next_dependency_edge_{},
+      snapshot_{
           ClampCapacity(desc.manifest_capacity, MAX_PACKAGE_MANIFEST_COUNT),
           ClampCapacity(desc.entry_capacity, MAX_PACKAGE_ENTRY_COUNT),
           ClampCapacity(desc.dependency_edge_capacity, MAX_PACKAGE_DEPENDENCY_EDGE_COUNT),
@@ -132,9 +132,9 @@ PackageRegistry::PackageRegistry(PackageRegistryDesc desc)
           0U,
           MemoryAccountingStatus::ExplicitlyTrackedOnly,
           PackageStatus::Success} {
-    _firstDependencyEdgeForEntry.fill(INVALID_INDEX);
-    _lastDependencyEdgeForEntry.fill(INVALID_INDEX);
-    _nextDependencyEdge.fill(INVALID_INDEX);
+    first_dependency_edge_for_entry_.fill(INVALID_INDEX);
+    last_dependency_edge_for_entry_.fill(INVALID_INDEX);
+    next_dependency_edge_.fill(INVALID_INDEX);
 }
 
 PackageRegistrationResult PackageRegistry::RegisterSyntheticManifest(const PackageManifestDescriptor& descriptor) {
@@ -146,13 +146,13 @@ PackageRegistrationResult PackageRegistry::RegisterSyntheticManifest(const Packa
         return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::DuplicateManifest));
     }
 
-    if (_snapshot.manifest_count >= _snapshot.manifest_capacity) {
+    if (snapshot_.manifest_count >= snapshot_.manifest_capacity) {
         return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
     }
 
     std::uint32_t index = 0U;
-    for (ManifestSlot& manifest : _manifests) {
-        if (index >= _snapshot.manifest_capacity) {
+    for (ManifestSlot& manifest : manifests_) {
+        if (index >= snapshot_.manifest_capacity) {
             return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::ManifestCapacityExceeded));
         }
 
@@ -163,7 +163,7 @@ PackageRegistrationResult PackageRegistry::RegisterSyntheticManifest(const Packa
 
         manifest.id = descriptor.id;
         manifest.is_active = true;
-        ++_snapshot.manifest_count;
+        ++snapshot_.manifest_count;
         RecordSuccess();
         return PackageRegistrationResult::ManifestSuccess(descriptor.id);
     }
@@ -189,13 +189,13 @@ PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescr
         return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::DuplicateResourceKey));
     }
 
-    if (_snapshot.entry_count >= _snapshot.entry_capacity) {
+    if (snapshot_.entry_count >= snapshot_.entry_capacity) {
         return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
     }
 
     std::uint32_t index = 0U;
-    for (EntrySlot& entry : _entries) {
-        if (index >= _snapshot.entry_capacity) {
+    for (EntrySlot& entry : entries_) {
+        if (index >= snapshot_.entry_capacity) {
             return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
         }
 
@@ -209,7 +209,7 @@ PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescr
         AddEntryIndex(descriptor.package, descriptor.entry, index);
         AddResourceIndex(descriptor.package, descriptor.type, descriptor.logical_key, index);
         AddResourceKeyIndex(descriptor.package, descriptor.logical_key, index);
-        ++_snapshot.entry_count;
+        ++snapshot_.entry_count;
         RecordSuccess();
         return PackageRegistrationResult::EntrySuccess(descriptor.package, descriptor.entry);
     }
@@ -218,7 +218,7 @@ PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescr
 }
 
 PackageStatus PackageRegistry::AddDependency(PackageId package, PackageEntryId dependent, PackageEntryId dependency) {
-    ++_snapshot.dependency_validation_count;
+    ++snapshot_.dependency_validation_count;
 
     if (!package.IsValid()) {
         return RecordFailure(PackageStatus::InvalidPackageId);
@@ -253,13 +253,13 @@ PackageStatus PackageRegistry::AddDependency(PackageId package, PackageEntryId d
         return PackageStatus::Success;
     }
 
-    if (_snapshot.dependency_edge_count >= _snapshot.dependency_edge_capacity) {
+    if (snapshot_.dependency_edge_count >= snapshot_.dependency_edge_capacity) {
         return RecordFailure(PackageStatus::DependencyCapacityExceeded);
     }
 
     std::uint32_t index = 0U;
-    for (DependencyEdge& edge : _dependencyEdges) {
-        if (index >= _snapshot.dependency_edge_capacity) {
+    for (DependencyEdge& edge : dependency_edges_) {
+        if (index >= snapshot_.dependency_edge_capacity) {
             return RecordFailure(PackageStatus::DependencyCapacityExceeded);
         }
 
@@ -274,7 +274,7 @@ PackageStatus PackageRegistry::AddDependency(PackageId package, PackageEntryId d
         edge.is_active = true;
         AddDependencyIndex(package, dependent, dependency, index);
         AppendDependencyEdge(static_cast<std::uint32_t>(dependentIndex), index);
-        ++_snapshot.dependency_edge_count;
+        ++snapshot_.dependency_edge_count;
         RecordSuccess();
         return PackageStatus::Success;
     }
@@ -308,51 +308,51 @@ PackageLoadPlanResult PackageRegistry::ResolveEntryByResourceKey(
         return PackageLoadPlanResult::Failure(RecordFailure(findStatus));
     }
 
-    const PackageEntryDescriptor& rootDescriptor = _entries[rootIndex].descriptor;
+    const PackageEntryDescriptor& rootDescriptor = entries_[rootIndex].descriptor;
     if (rootDescriptor.type.value != expectedType.value) {
         return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::TypeMismatch));
     }
 
     const std::uint32_t directDependencyCount = CountDirectDependencies(package, rootDescriptor.entry);
     const std::uint32_t requiredRecordCount = directDependencyCount + 1U;
-    if (requiredRecordCount > _snapshot.load_plan_record_capacity) {
+    if (requiredRecordCount > snapshot_.load_plan_record_capacity) {
         return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::LoadPlanCapacityExceeded));
     }
 
     PackageLoadPlan plan{};
-    std::uint32_t edgeIndex = _firstDependencyEdgeForEntry[rootIndex];
+    std::uint32_t edgeIndex = first_dependency_edge_for_entry_[rootIndex];
     while (edgeIndex != INVALID_INDEX) {
-        const DependencyEdge& edge = _dependencyEdges[edgeIndex];
-        const std::uint32_t nextEdgeIndex = _nextDependencyEdge[edgeIndex];
+        const DependencyEdge& edge = dependency_edges_[edgeIndex];
+        const std::uint32_t nextEdgeIndex = next_dependency_edge_[edgeIndex];
 
         std::size_t dependencyIndex = 0U;
         if (FindEntryIndex(package, edge.dependency, dependencyIndex) != PackageStatus::Success) {
             return PackageLoadPlanResult::Failure(RecordFailure(PackageStatus::DependencyMissing));
         }
 
-        AppendRecord(plan, _entries[dependencyIndex].descriptor);
+        AppendRecord(plan, entries_[dependencyIndex].descriptor);
         edgeIndex = nextEdgeIndex;
     }
 
     AppendRecord(plan, rootDescriptor);
-    ++_snapshot.load_plan_resolve_count;
-    _snapshot.last_load_plan_record_count = plan.record_count;
+    ++snapshot_.load_plan_resolve_count;
+    snapshot_.last_load_plan_record_count = plan.record_count;
     RecordSuccess();
     return PackageLoadPlanResult::Success(plan);
 }
 
 PackageSnapshot PackageRegistry::Snapshot() const {
-    return _snapshot;
+    return snapshot_;
 }
 
 PackageStatus PackageRegistry::RecordFailure(PackageStatus status) {
-    ++_snapshot.rejected_operation_count;
-    _snapshot.last_status = status;
+    ++snapshot_.rejected_operation_count;
+    snapshot_.last_status = status;
     return status;
 }
 
 void PackageRegistry::RecordSuccess() {
-    _snapshot.last_status = PackageStatus::Success;
+    snapshot_.last_status = PackageStatus::Success;
 }
 
 bool PackageRegistry::HasManifest(PackageId package) const {
@@ -361,8 +361,8 @@ bool PackageRegistry::HasManifest(PackageId package) const {
 
 bool PackageRegistry::HasDuplicateManifest(PackageId package) const {
     std::uint32_t index = 0U;
-    for (const ManifestSlot& manifest : _manifests) {
-        if (index >= _snapshot.manifest_capacity) {
+    for (const ManifestSlot& manifest : manifests_) {
+        if (index >= snapshot_.manifest_capacity) {
             return false;
         }
 
@@ -509,10 +509,10 @@ bool PackageRegistry::HasDependencyPath(PackageId package, PackageEntryId start,
             continue;
         }
 
-        std::uint32_t edgeIndex = _firstDependencyEdgeForEntry[currentIndex];
+        std::uint32_t edgeIndex = first_dependency_edge_for_entry_[currentIndex];
         while (edgeIndex != INVALID_INDEX) {
-            const DependencyEdge& edge = _dependencyEdges[edgeIndex];
-            const std::uint32_t nextEdgeIndex = _nextDependencyEdge[edgeIndex];
+            const DependencyEdge& edge = dependency_edges_[edgeIndex];
+            const std::uint32_t nextEdgeIndex = next_dependency_edge_[edgeIndex];
 
             if (!containsEntry(visited, visitedCount, edge.dependency) &&
                 !containsEntry(stack, stackCount, edge.dependency) &&
@@ -535,10 +535,10 @@ std::uint32_t PackageRegistry::CountDirectDependencies(PackageId package, Packag
     }
 
     std::uint32_t count = 0U;
-    std::uint32_t edgeIndex = _firstDependencyEdgeForEntry[entryIndex];
+    std::uint32_t edgeIndex = first_dependency_edge_for_entry_[entryIndex];
     while (edgeIndex != INVALID_INDEX) {
         ++count;
-        edgeIndex = _nextDependencyEdge[edgeIndex];
+        edgeIndex = next_dependency_edge_[edgeIndex];
     }
 
     return count;
@@ -558,19 +558,19 @@ void PackageRegistry::AppendRecord(PackageLoadPlan& plan, const PackageEntryDesc
 
 bool PackageRegistry::TryFindEntryIndex(PackageId package, PackageEntryId entry, std::size_t& outIndex) const {
     std::uint32_t probeCount = 0U;
-    std::uint32_t probeIndex = FirstProbeIndex(HashPackageEntry(package, entry), _snapshot.entry_capacity);
-    while (probeCount < _snapshot.entry_capacity) {
-        if (!_entryIndexActive[probeIndex]) {
+    std::uint32_t probeIndex = FirstProbeIndex(HashPackageEntry(package, entry), snapshot_.entry_capacity);
+    while (probeCount < snapshot_.entry_capacity) {
+        if (!entry_index_active_[probeIndex]) {
             return false;
         }
 
-        if (_entryIndexPackages[probeIndex].value == package.value &&
-            _entryIndexEntries[probeIndex].value == entry.value) {
-            outIndex = _entryIndexValues[probeIndex];
+        if (entry_index_packages_[probeIndex].value == package.value &&
+            entry_index_entries_[probeIndex].value == entry.value) {
+            outIndex = entry_index_values_[probeIndex];
             return true;
         }
 
-        probeIndex = NextProbeIndex(probeIndex, _snapshot.entry_capacity);
+        probeIndex = NextProbeIndex(probeIndex, snapshot_.entry_capacity);
         ++probeCount;
     }
 
@@ -584,20 +584,20 @@ bool PackageRegistry::TryFindResourceIndex(
     std::size_t& outIndex) const {
     std::uint32_t probeCount = 0U;
     std::uint32_t probeIndex =
-        FirstProbeIndex(HashResourceTuple(package, expectedType, logicalKey), _snapshot.entry_capacity);
-    while (probeCount < _snapshot.entry_capacity) {
-        if (!_resourceIndexActive[probeIndex]) {
+        FirstProbeIndex(HashResourceTuple(package, expectedType, logicalKey), snapshot_.entry_capacity);
+    while (probeCount < snapshot_.entry_capacity) {
+        if (!resource_index_active_[probeIndex]) {
             return false;
         }
 
-        if (_resourceIndexPackages[probeIndex].value == package.value &&
-            _resourceIndexTypes[probeIndex].value == expectedType.value &&
-            _resourceIndexKeys[probeIndex].Equals(logicalKey)) {
-            outIndex = _resourceIndexValues[probeIndex];
+        if (resource_index_packages_[probeIndex].value == package.value &&
+            resource_index_types_[probeIndex].value == expectedType.value &&
+            resource_index_keys_[probeIndex].Equals(logicalKey)) {
+            outIndex = resource_index_values_[probeIndex];
             return true;
         }
 
-        probeIndex = NextProbeIndex(probeIndex, _snapshot.entry_capacity);
+        probeIndex = NextProbeIndex(probeIndex, snapshot_.entry_capacity);
         ++probeCount;
     }
 
@@ -606,18 +606,18 @@ bool PackageRegistry::TryFindResourceIndex(
 
 bool PackageRegistry::HasResourceLogicalKey(PackageId package, const ResourceLogicalKey& logicalKey) const {
     std::uint32_t probeCount = 0U;
-    std::uint32_t probeIndex = FirstProbeIndex(HashResourceKey(package, logicalKey), _snapshot.entry_capacity);
-    while (probeCount < _snapshot.entry_capacity) {
-        if (!_resourceKeyIndexActive[probeIndex]) {
+    std::uint32_t probeIndex = FirstProbeIndex(HashResourceKey(package, logicalKey), snapshot_.entry_capacity);
+    while (probeCount < snapshot_.entry_capacity) {
+        if (!resource_key_index_active_[probeIndex]) {
             return false;
         }
 
-        if (_resourceKeyIndexPackages[probeIndex].value == package.value &&
-            _resourceKeyIndexKeys[probeIndex].Equals(logicalKey)) {
+        if (resource_key_index_packages_[probeIndex].value == package.value &&
+            resource_key_index_keys_[probeIndex].Equals(logicalKey)) {
             return true;
         }
 
-        probeIndex = NextProbeIndex(probeIndex, _snapshot.entry_capacity);
+        probeIndex = NextProbeIndex(probeIndex, snapshot_.entry_capacity);
         ++probeCount;
     }
 
@@ -631,20 +631,20 @@ bool PackageRegistry::TryFindDependencyEdgeIndex(
     std::size_t& outIndex) const {
     std::uint32_t probeCount = 0U;
     std::uint32_t probeIndex =
-        FirstProbeIndex(HashDependencyEdge(package, dependent, dependency), _snapshot.dependency_edge_capacity);
-    while (probeCount < _snapshot.dependency_edge_capacity) {
-        if (!_dependencyIndexActive[probeIndex]) {
+        FirstProbeIndex(HashDependencyEdge(package, dependent, dependency), snapshot_.dependency_edge_capacity);
+    while (probeCount < snapshot_.dependency_edge_capacity) {
+        if (!dependency_index_active_[probeIndex]) {
             return false;
         }
 
-        if (_dependencyIndexPackages[probeIndex].value == package.value &&
-            _dependencyIndexDependents[probeIndex].value == dependent.value &&
-            _dependencyIndexDependencies[probeIndex].value == dependency.value) {
-            outIndex = _dependencyIndexValues[probeIndex];
+        if (dependency_index_packages_[probeIndex].value == package.value &&
+            dependency_index_dependents_[probeIndex].value == dependent.value &&
+            dependency_index_dependencies_[probeIndex].value == dependency.value) {
+            outIndex = dependency_index_values_[probeIndex];
             return true;
         }
 
-        probeIndex = NextProbeIndex(probeIndex, _snapshot.dependency_edge_capacity);
+        probeIndex = NextProbeIndex(probeIndex, snapshot_.dependency_edge_capacity);
         ++probeCount;
     }
 
@@ -653,23 +653,23 @@ bool PackageRegistry::TryFindDependencyEdgeIndex(
 
 void PackageRegistry::AddEntryIndex(PackageId package, PackageEntryId entry, std::uint32_t entryIndex) {
     std::uint32_t probeCount = 0U;
-    std::uint32_t probeIndex = FirstProbeIndex(HashPackageEntry(package, entry), _snapshot.entry_capacity);
-    while (probeCount < _snapshot.entry_capacity) {
-        if (!_entryIndexActive[probeIndex]) {
-            _entryIndexPackages[probeIndex] = package;
-            _entryIndexEntries[probeIndex] = entry;
-            _entryIndexValues[probeIndex] = entryIndex;
-            _entryIndexActive[probeIndex] = true;
+    std::uint32_t probeIndex = FirstProbeIndex(HashPackageEntry(package, entry), snapshot_.entry_capacity);
+    while (probeCount < snapshot_.entry_capacity) {
+        if (!entry_index_active_[probeIndex]) {
+            entry_index_packages_[probeIndex] = package;
+            entry_index_entries_[probeIndex] = entry;
+            entry_index_values_[probeIndex] = entryIndex;
+            entry_index_active_[probeIndex] = true;
             return;
         }
 
-        if (_entryIndexPackages[probeIndex].value == package.value &&
-            _entryIndexEntries[probeIndex].value == entry.value) {
-            _entryIndexValues[probeIndex] = entryIndex;
+        if (entry_index_packages_[probeIndex].value == package.value &&
+            entry_index_entries_[probeIndex].value == entry.value) {
+            entry_index_values_[probeIndex] = entryIndex;
             return;
         }
 
-        probeIndex = NextProbeIndex(probeIndex, _snapshot.entry_capacity);
+        probeIndex = NextProbeIndex(probeIndex, snapshot_.entry_capacity);
         ++probeCount;
     }
 }
@@ -681,25 +681,25 @@ void PackageRegistry::AddResourceIndex(
     std::uint32_t entryIndex) {
     std::uint32_t probeCount = 0U;
     std::uint32_t probeIndex =
-        FirstProbeIndex(HashResourceTuple(package, type, logicalKey), _snapshot.entry_capacity);
-    while (probeCount < _snapshot.entry_capacity) {
-        if (!_resourceIndexActive[probeIndex]) {
-            _resourceIndexPackages[probeIndex] = package;
-            _resourceIndexTypes[probeIndex] = type;
-            _resourceIndexKeys[probeIndex] = logicalKey;
-            _resourceIndexValues[probeIndex] = entryIndex;
-            _resourceIndexActive[probeIndex] = true;
+        FirstProbeIndex(HashResourceTuple(package, type, logicalKey), snapshot_.entry_capacity);
+    while (probeCount < snapshot_.entry_capacity) {
+        if (!resource_index_active_[probeIndex]) {
+            resource_index_packages_[probeIndex] = package;
+            resource_index_types_[probeIndex] = type;
+            resource_index_keys_[probeIndex] = logicalKey;
+            resource_index_values_[probeIndex] = entryIndex;
+            resource_index_active_[probeIndex] = true;
             return;
         }
 
-        if (_resourceIndexPackages[probeIndex].value == package.value &&
-            _resourceIndexTypes[probeIndex].value == type.value &&
-            _resourceIndexKeys[probeIndex].Equals(logicalKey)) {
-            _resourceIndexValues[probeIndex] = entryIndex;
+        if (resource_index_packages_[probeIndex].value == package.value &&
+            resource_index_types_[probeIndex].value == type.value &&
+            resource_index_keys_[probeIndex].Equals(logicalKey)) {
+            resource_index_values_[probeIndex] = entryIndex;
             return;
         }
 
-        probeIndex = NextProbeIndex(probeIndex, _snapshot.entry_capacity);
+        probeIndex = NextProbeIndex(probeIndex, snapshot_.entry_capacity);
         ++probeCount;
     }
 }
@@ -709,23 +709,23 @@ void PackageRegistry::AddResourceKeyIndex(
     const ResourceLogicalKey& logicalKey,
     std::uint32_t entryIndex) {
     std::uint32_t probeCount = 0U;
-    std::uint32_t probeIndex = FirstProbeIndex(HashResourceKey(package, logicalKey), _snapshot.entry_capacity);
-    while (probeCount < _snapshot.entry_capacity) {
-        if (!_resourceKeyIndexActive[probeIndex]) {
-            _resourceKeyIndexPackages[probeIndex] = package;
-            _resourceKeyIndexKeys[probeIndex] = logicalKey;
-            _resourceKeyIndexValues[probeIndex] = entryIndex;
-            _resourceKeyIndexActive[probeIndex] = true;
+    std::uint32_t probeIndex = FirstProbeIndex(HashResourceKey(package, logicalKey), snapshot_.entry_capacity);
+    while (probeCount < snapshot_.entry_capacity) {
+        if (!resource_key_index_active_[probeIndex]) {
+            resource_key_index_packages_[probeIndex] = package;
+            resource_key_index_keys_[probeIndex] = logicalKey;
+            resource_key_index_values_[probeIndex] = entryIndex;
+            resource_key_index_active_[probeIndex] = true;
             return;
         }
 
-        if (_resourceKeyIndexPackages[probeIndex].value == package.value &&
-            _resourceKeyIndexKeys[probeIndex].Equals(logicalKey)) {
-            _resourceKeyIndexValues[probeIndex] = entryIndex;
+        if (resource_key_index_packages_[probeIndex].value == package.value &&
+            resource_key_index_keys_[probeIndex].Equals(logicalKey)) {
+            resource_key_index_values_[probeIndex] = entryIndex;
             return;
         }
 
-        probeIndex = NextProbeIndex(probeIndex, _snapshot.entry_capacity);
+        probeIndex = NextProbeIndex(probeIndex, snapshot_.entry_capacity);
         ++probeCount;
     }
 }
@@ -737,46 +737,46 @@ void PackageRegistry::AddDependencyIndex(
     std::uint32_t edgeIndex) {
     std::uint32_t probeCount = 0U;
     std::uint32_t probeIndex =
-        FirstProbeIndex(HashDependencyEdge(package, dependent, dependency), _snapshot.dependency_edge_capacity);
-    while (probeCount < _snapshot.dependency_edge_capacity) {
-        if (!_dependencyIndexActive[probeIndex]) {
-            _dependencyIndexPackages[probeIndex] = package;
-            _dependencyIndexDependents[probeIndex] = dependent;
-            _dependencyIndexDependencies[probeIndex] = dependency;
-            _dependencyIndexValues[probeIndex] = edgeIndex;
-            _dependencyIndexActive[probeIndex] = true;
+        FirstProbeIndex(HashDependencyEdge(package, dependent, dependency), snapshot_.dependency_edge_capacity);
+    while (probeCount < snapshot_.dependency_edge_capacity) {
+        if (!dependency_index_active_[probeIndex]) {
+            dependency_index_packages_[probeIndex] = package;
+            dependency_index_dependents_[probeIndex] = dependent;
+            dependency_index_dependencies_[probeIndex] = dependency;
+            dependency_index_values_[probeIndex] = edgeIndex;
+            dependency_index_active_[probeIndex] = true;
             return;
         }
 
-        if (_dependencyIndexPackages[probeIndex].value == package.value &&
-            _dependencyIndexDependents[probeIndex].value == dependent.value &&
-            _dependencyIndexDependencies[probeIndex].value == dependency.value) {
-            _dependencyIndexValues[probeIndex] = edgeIndex;
+        if (dependency_index_packages_[probeIndex].value == package.value &&
+            dependency_index_dependents_[probeIndex].value == dependent.value &&
+            dependency_index_dependencies_[probeIndex].value == dependency.value) {
+            dependency_index_values_[probeIndex] = edgeIndex;
             return;
         }
 
-        probeIndex = NextProbeIndex(probeIndex, _snapshot.dependency_edge_capacity);
+        probeIndex = NextProbeIndex(probeIndex, snapshot_.dependency_edge_capacity);
         ++probeCount;
     }
 }
 
 void PackageRegistry::AppendDependencyEdge(std::uint32_t dependentEntryIndex, std::uint32_t edgeIndex) {
-    if (dependentEntryIndex >= _snapshot.entry_capacity) {
+    if (dependentEntryIndex >= snapshot_.entry_capacity) {
         return;
     }
 
-    if (edgeIndex >= _snapshot.dependency_edge_capacity) {
+    if (edgeIndex >= snapshot_.dependency_edge_capacity) {
         return;
     }
 
-    if (_firstDependencyEdgeForEntry[dependentEntryIndex] == INVALID_INDEX) {
-        _firstDependencyEdgeForEntry[dependentEntryIndex] = edgeIndex;
-        _lastDependencyEdgeForEntry[dependentEntryIndex] = edgeIndex;
+    if (first_dependency_edge_for_entry_[dependentEntryIndex] == INVALID_INDEX) {
+        first_dependency_edge_for_entry_[dependentEntryIndex] = edgeIndex;
+        last_dependency_edge_for_entry_[dependentEntryIndex] = edgeIndex;
         return;
     }
 
-    const std::uint32_t lastEdgeIndex = _lastDependencyEdgeForEntry[dependentEntryIndex];
-    _nextDependencyEdge[lastEdgeIndex] = edgeIndex;
-    _lastDependencyEdgeForEntry[dependentEntryIndex] = edgeIndex;
+    const std::uint32_t lastEdgeIndex = last_dependency_edge_for_entry_[dependentEntryIndex];
+    next_dependency_edge_[lastEdgeIndex] = edgeIndex;
+    last_dependency_edge_for_entry_[dependentEntryIndex] = edgeIndex;
 }
 }

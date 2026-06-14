@@ -4,18 +4,18 @@
 
 namespace yuengine::file {
 MountId::MountId()
-    : _value() {
+    : value_() {
 }
 
 MountId::MountId(std::string value)
-    : _value(std::move(value)) {
+    : value_(std::move(value)) {
 }
 
 std::string_view MountId::Value() const {
-    return _value;
+    return value_;
 }
 
 bool MountId::IsValid() const {
-    return !_value.empty();
+    return !value_.empty();
 }
 }

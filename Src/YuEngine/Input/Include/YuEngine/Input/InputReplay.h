@@ -40,13 +40,13 @@ private:
     void RecalculateChangedActionCount();
     std::size_t ReplayStorageCapacity() const;
 
-    std::array<InputActionBinding, MAX_INPUT_BINDINGS> _bindings;
-    std::array<InputReplayFrame, MAX_REPLAY_FRAMES> _frames;
-    std::array<InputActionState, MAX_INPUT_ACTIONS> _actions;
-    std::array<bool, MAX_INPUT_ACTIONS> _registeredActions;
-    InputReplaySnapshot _snapshot;
-    std::size_t _bindingCount;
-    std::size_t _recordedFrameCount;
-    std::size_t _nextFrameIndex;
+    std::array<InputActionBinding, MAX_INPUT_BINDINGS> bindings_;
+    std::array<InputReplayFrame, MAX_REPLAY_FRAMES> frames_;
+    std::array<InputActionState, MAX_INPUT_ACTIONS> actions_;
+    std::array<bool, MAX_INPUT_ACTIONS> registered_actions_;
+    InputReplaySnapshot snapshot_;
+    std::size_t binding_count_;
+    std::size_t recorded_frame_count_;
+    std::size_t next_frame_index_;
 };
 }

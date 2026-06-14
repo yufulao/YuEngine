@@ -122,11 +122,11 @@ bool IsPathInsideRoot(const std::filesystem::path& rootPath, const std::filesyst
 }
 
 LooseFileSource::LooseFileSource()
-    : _rootPath() {
+    : root_path_() {
 }
 
 LooseFileSource::LooseFileSource(std::filesystem::path rootPath)
-    : _rootPath(std::move(rootPath)) {
+    : root_path_(std::move(rootPath)) {
 }
 
 FileReadResult LooseFileSource::Read(NormalizedPath path) const {
@@ -136,13 +136,13 @@ FileReadResult LooseFileSource::Read(NormalizedPath path) const {
     }
 
     std::error_code errorCode;
-    const std::filesystem::path canonicalRoot = std::filesystem::weakly_canonical(_rootPath, errorCode);
+    const std::filesystem::path canonicalRoot = std::filesystem::weakly_canonical(root_path_, errorCode);
     if (errorCode) {
         return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
     errorCode.clear();
-    const std::filesystem::path resolvedPath = _rootPath / std::filesystem::path(std::string(path.Value()));
+    const std::filesystem::path resolvedPath = root_path_ / std::filesystem::path(std::string(path.Value()));
     const std::filesystem::path canonicalResolvedPath = std::filesystem::weakly_canonical(resolvedPath, errorCode);
     if (errorCode) {
         return FileReadResult::Failure(FileStatus::ReadFailure);
@@ -198,6 +198,6 @@ FileReadResult LooseFileSource::Read(NormalizedPath path) const {
 }
 
 const std::filesystem::path& LooseFileSource::RootPath() const {
-    return _rootPath;
+    return root_path_;
 }
 }

@@ -13,6 +13,6 @@ public:
     bool IsValid() const;
 
 private:
-    std::string _value;
+    std::string value_;
 };
 }

@@ -13,6 +13,6 @@ public:
     std::size_t ByteLength() const;
 
 private:
-    std::string _value;
+    std::string value_;
 };
 }

@@ -38,14 +38,14 @@ private:
     std::size_t PixelByteCount(const RhiColorTargetDesc& desc) const;
     void ExecuteClear(RhiTextureHandle handle, RhiColor color);
 
-    std::vector<RhiTargetSlot> _targets;
-    RhiCapabilities _capabilities;
-    RhiDeviceSnapshot _snapshot;
-    RhiTextureHandle _submittedHandle;
-    RhiTextureHandle _presentedHandle;
-    std::uint32_t _generationSeed;
-    bool _isInitialized;
-    bool _hasSubmittedFrame;
-    bool _hasPresentedFrame;
+    std::vector<RhiTargetSlot> targets_;
+    RhiCapabilities capabilities_;
+    RhiDeviceSnapshot snapshot_;
+    RhiTextureHandle submitted_handle_;
+    RhiTextureHandle presented_handle_;
+    std::uint32_t generation_seed_;
+    bool is_initialized_;
+    bool has_submitted_frame_;
+    bool has_presented_frame_;
 };
 }

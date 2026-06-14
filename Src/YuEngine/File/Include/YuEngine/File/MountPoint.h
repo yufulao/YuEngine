@@ -13,7 +13,7 @@ public:
     const LooseFileSource& Source() const;
 
 private:
-    MountId _id;
-    LooseFileSource _source;
+    MountId id_;
+    LooseFileSource source_;
 };
 }

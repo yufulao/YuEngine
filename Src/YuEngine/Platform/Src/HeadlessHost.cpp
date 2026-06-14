@@ -13,8 +13,8 @@ constexpr const char* HOST_SHUTDOWN_TRACE = "host.shutdown";
 }
 
 HeadlessHost::HeadlessHost(IFrameClock& frameClock, diagnostics::ILogSink& logSink)
-    : _frameClock(frameClock),
-      _logSink(logSink) {
+    : frame_clock_(frameClock),
+      log_sink_(logSink) {
 }
 
 HostRunResult HeadlessHost::Run(IHostRuntime& runtime, const HeadlessHostConfig& config) {
@@ -29,7 +29,7 @@ HostRunResult HeadlessHost::Run(IHostRuntime& runtime, const HeadlessHostConfig&
     result.lifecycle_trace.reserve((static_cast<std::size_t>(config.tick_count) * 2U) + 4U);
 
     result.lifecycle_trace.push_back(HOST_START_TRACE);
-    _logSink.Write(diagnostics::LogLevel::Info, "host start");
+    log_sink_.Write(diagnostics::LogLevel::Info, "host start");
 
     const HostError startError = runtime.Start(result.lifecycle_trace);
     if (!startError.succeeded) {
@@ -39,10 +39,10 @@ HostRunResult HeadlessHost::Run(IHostRuntime& runtime, const HeadlessHostConfig&
     }
 
     for (std::uint32_t frameIndex = 0U; frameIndex < config.tick_count; ++frameIndex) {
-        const std::uint64_t tickTimeNanoseconds = _frameClock.NextTickNanoseconds();
+        const std::uint64_t tickTimeNanoseconds = frame_clock_.NextTickNanoseconds();
         result.tick_times_nanoseconds.push_back(tickTimeNanoseconds);
         result.lifecycle_trace.push_back(HOST_TICK_TRACE);
-        _logSink.Write(diagnostics::LogLevel::Info, "host tick");
+        log_sink_.Write(diagnostics::LogLevel::Info, "host tick");
 
         const HostError tickError = runtime.Tick(frameIndex, tickTimeNanoseconds, result.lifecycle_trace);
         if (!tickError.succeeded) {
@@ -63,7 +63,7 @@ HostRunResult HeadlessHost::Run(IHostRuntime& runtime, const HeadlessHostConfig&
     }
 
     result.lifecycle_trace.push_back(HOST_SHUTDOWN_TRACE);
-    _logSink.Write(diagnostics::LogLevel::Info, "host shutdown");
+    log_sink_.Write(diagnostics::LogLevel::Info, "host shutdown");
 
     const HostError shutdownError = runtime.Shutdown(result.lifecycle_trace);
     if (!shutdownError.succeeded) {

@@ -106,9 +106,9 @@ PathNormalizationResult NormalizePathValue(std::string_view value) {
 }
 
 MountTable::MountTable()
-    : _mounts(),
-      _mountCount(0U),
-      _snapshot{
+    : mounts_(),
+      mount_count_(0U),
+      snapshot_{
           0U,
           0U,
           0U,
@@ -128,18 +128,18 @@ FileStatus MountTable::RegisterLooseMount(MountId mountId, std::filesystem::path
         return FileStatus::DuplicateMount;
     }
 
-    if (_mountCount >= MAX_MOUNT_COUNT) {
+    if (mount_count_ >= MAX_MOUNT_COUNT) {
         return FileStatus::MountTableFull;
     }
 
-    _mounts[_mountCount] = MountPoint(std::move(mountId), LooseFileSource(std::move(rootPath)));
-    ++_mountCount;
-    _snapshot.mount_count = _mountCount;
+    mounts_[mount_count_] = MountPoint(std::move(mountId), LooseFileSource(std::move(rootPath)));
+    ++mount_count_;
+    snapshot_.mount_count = mount_count_;
     return FileStatus::Success;
 }
 
 PathNormalizationResult MountTable::Normalize(VirtualPath path) {
-    ++_snapshot.path_normalization_count;
+    ++snapshot_.path_normalization_count;
     PathNormalizationResult result = NormalizePathValue(path.Value());
     if (!result.Succeeded()) {
         RecordRejectedPath();
@@ -155,9 +155,9 @@ FileReadResult MountTable::Read(FileReadRequest request) {
         return FileReadResult::Failure(normalizedPath.status);
     }
 
-    ++_snapshot.lookup_count;
-    if (normalizedPath.path.ByteLength() > _snapshot.max_fixture_path_length) {
-        _snapshot.max_fixture_path_length = normalizedPath.path.ByteLength();
+    ++snapshot_.lookup_count;
+    if (normalizedPath.path.ByteLength() > snapshot_.max_fixture_path_length) {
+        snapshot_.max_fixture_path_length = normalizedPath.path.ByteLength();
     }
 
     const std::optional<std::size_t> mountIndex = FindMountIndex(request.mount);
@@ -166,9 +166,9 @@ FileReadResult MountTable::Read(FileReadRequest request) {
         return FileReadResult::Failure(FileStatus::MountNotFound);
     }
 
-    FileReadResult result = _mounts[*mountIndex].Source().Read(normalizedPath.path);
+    FileReadResult result = mounts_[*mountIndex].Source().Read(normalizedPath.path);
     if (result.Succeeded()) {
-        _snapshot.read_byte_count += result.bytes.size();
+        snapshot_.read_byte_count += result.bytes.size();
     }
 
     RecordLastReadStatus(result.status);
@@ -176,15 +176,15 @@ FileReadResult MountTable::Read(FileReadRequest request) {
 }
 
 FileSnapshot MountTable::Snapshot() const {
-    return _snapshot;
+    return snapshot_;
 }
 
 std::vector<MountId> MountTable::MountOrder() const {
     std::vector<MountId> order;
-    order.reserve(_mountCount);
+    order.reserve(mount_count_);
     std::size_t inspectedCount = 0U;
-    for (const MountPoint& mount : _mounts) {
-        if (inspectedCount >= _mountCount) {
+    for (const MountPoint& mount : mounts_) {
+        if (inspectedCount >= mount_count_) {
             return order;
         }
 
@@ -197,8 +197,8 @@ std::vector<MountId> MountTable::MountOrder() const {
 
 std::optional<std::size_t> MountTable::FindMountIndex(MountId mountId) const {
     std::size_t index = 0U;
-    for (const MountPoint& mount : _mounts) {
-        if (index >= _mountCount) {
+    for (const MountPoint& mount : mounts_) {
+        if (index >= mount_count_) {
             return std::nullopt;
         }
 
@@ -213,10 +213,10 @@ std::optional<std::size_t> MountTable::FindMountIndex(MountId mountId) const {
 }
 
 void MountTable::RecordRejectedPath() {
-    ++_snapshot.rejected_path_count;
+    ++snapshot_.rejected_path_count;
 }
 
 void MountTable::RecordLastReadStatus(FileStatus status) {
-    _snapshot.last_read_status = status;
+    snapshot_.last_read_status = status;
 }
 }

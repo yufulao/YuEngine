@@ -4,22 +4,22 @@
 
 namespace yuengine::file {
 NormalizedPath::NormalizedPath()
-    : _value() {
+    : value_() {
 }
 
 NormalizedPath::NormalizedPath(std::string value)
-    : _value(std::move(value)) {
+    : value_(std::move(value)) {
 }
 
 std::string_view NormalizedPath::Value() const {
-    return _value;
+    return value_;
 }
 
 std::size_t NormalizedPath::ByteLength() const {
-    return _value.size();
+    return value_.size();
 }
 
 bool NormalizedPath::IsValid() const {
-    return !_value.empty();
+    return !value_.empty();
 }
 }

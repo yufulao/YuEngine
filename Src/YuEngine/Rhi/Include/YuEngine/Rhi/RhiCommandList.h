@@ -28,10 +28,10 @@ public:
 private:
     RhiStatus Append(RhiCommandRecord record);
 
-    std::vector<RhiCommandRecord> _records;
-    RhiTextureHandle _targetHandle;
-    std::size_t _commandCount;
-    bool _isRecording;
-    bool _isComplete;
+    std::vector<RhiCommandRecord> records_;
+    RhiTextureHandle target_handle_;
+    std::size_t command_count_;
+    bool is_recording_;
+    bool is_complete_;
 };
 }

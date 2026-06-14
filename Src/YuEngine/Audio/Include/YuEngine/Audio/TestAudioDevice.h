@@ -38,11 +38,11 @@ private:
     std::int16_t SaturateToS16(std::int64_t sample) const;
     void StopVoiceSlot(AudioVoiceSlot& voice);
 
-    std::vector<AudioSourceSlot> _sources;
-    std::vector<AudioVoiceSlot> _voices;
-    AudioCapabilities _capabilities;
-    AudioDeviceSnapshot _snapshot;
-    std::uint32_t _generationSeed;
-    bool _isInitialized;
+    std::vector<AudioSourceSlot> sources_;
+    std::vector<AudioVoiceSlot> voices_;
+    AudioCapabilities capabilities_;
+    AudioDeviceSnapshot snapshot_;
+    std::uint32_t generation_seed_;
+    bool is_initialized_;
 };
 }

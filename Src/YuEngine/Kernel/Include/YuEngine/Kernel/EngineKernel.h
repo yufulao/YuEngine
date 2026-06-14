@@ -37,10 +37,10 @@ private:
     KernelResult ShutdownStartedFrom(std::size_t startIndex, std::vector<std::string>& lifecycleTrace);
     KernelResult ShutdownFailedAndDependents(std::string_view failedModuleName, std::vector<std::string>& lifecycleTrace);
 
-    std::vector<IModule*> _modules;
-    std::vector<IModule*> _startedModules;
-    ServiceRegistry _services;
-    bool _running = false;
-    std::unordered_map<std::string, IModule*> _moduleByName;
+    std::vector<IModule*> modules_;
+    std::vector<IModule*> started_modules_;
+    ServiceRegistry services_;
+    bool running_ = false;
+    std::unordered_map<std::string, IModule*> module_by_name_;
 };
 }

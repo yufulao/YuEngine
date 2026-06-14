@@ -28,8 +28,8 @@ private:
     void RecordRejectedPath();
     void RecordLastReadStatus(FileStatus status);
 
-    std::array<MountPoint, MAX_MOUNT_COUNT> _mounts;
-    std::size_t _mountCount;
-    FileSnapshot _snapshot;
+    std::array<MountPoint, MAX_MOUNT_COUNT> mounts_;
+    std::size_t mount_count_;
+    FileSnapshot snapshot_;
 };
 }

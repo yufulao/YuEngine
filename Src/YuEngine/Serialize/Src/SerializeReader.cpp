@@ -39,9 +39,9 @@ std::uint32_t ExpectedPayloadByteCount(SerializeTypeTag type) {
 }
 
 SerializeReader::SerializeReader(const std::uint8_t* buffer, std::uint32_t byteCount)
-    : _buffer(buffer),
-      _byteCount(ClampByteCount(byteCount)),
-      _snapshot{
+    : buffer_(buffer),
+      byte_count_(ClampByteCount(byteCount)),
+      snapshot_{
           0U,
           0U,
           0U,
@@ -51,11 +51,11 @@ SerializeReader::SerializeReader(const std::uint8_t* buffer, std::uint32_t byteC
           0U,
           MemoryAccountingStatus::ExplicitlyTrackedOnly,
           SerializeStatus::Success},
-      _isOpen(false) {
+      is_open_(false) {
 }
 
 SerializeStatus SerializeReader::OpenStream() {
-    _isOpen = false;
+    is_open_ = false;
 
     if (!CanReadBytes(0U, STREAM_HEADER_BYTE_COUNT)) {
         return RecordFailure(SerializeStatus::TruncatedStream);
@@ -82,12 +82,12 @@ SerializeStatus SerializeReader::OpenStream() {
         return RecordFailure(validationStatus);
     }
 
-    _snapshot.major_version = majorVersion;
-    _snapshot.minor_version = ReadUInt16At(STREAM_MINOR_VERSION_OFFSET);
-    _snapshot.committed_byte_count = committedByteCount;
-    _snapshot.record_count = recordCount;
-    _snapshot.field_count = fieldCount;
-    _isOpen = true;
+    snapshot_.major_version = majorVersion;
+    snapshot_.minor_version = ReadUInt16At(STREAM_MINOR_VERSION_OFFSET);
+    snapshot_.committed_byte_count = committedByteCount;
+    snapshot_.record_count = recordCount;
+    snapshot_.field_count = fieldCount;
+    is_open_ = true;
     RecordSuccess();
     return SerializeStatus::Success;
 }
@@ -202,7 +202,7 @@ SerializeStatus SerializeReader::ReadFixedBytes(
 
     std::uint32_t index = 0U;
     while (index < location.payload_byte_count) {
-        outBytes[index] = _buffer[location.payload_offset + index];
+        outBytes[index] = buffer_[location.payload_offset + index];
         ++index;
     }
 
@@ -212,7 +212,7 @@ SerializeStatus SerializeReader::ReadFixedBytes(
 }
 
 SerializeSnapshot SerializeReader::Snapshot() const {
-    return _snapshot;
+    return snapshot_;
 }
 
 SerializeStatus SerializeReader::ValidateStream(
@@ -299,7 +299,7 @@ SerializeStatus SerializeReader::ValidateStream(
 }
 
 SerializeStatus SerializeReader::FindField(SerializeRecordId record, SerializeFieldId field, FieldLocation& outLocation) const {
-    if (!_isOpen) {
+    if (!is_open_) {
         return SerializeStatus::InvalidHeader;
     }
 
@@ -309,7 +309,7 @@ SerializeStatus SerializeReader::FindField(SerializeRecordId record, SerializeFi
 
     std::uint32_t offset = STREAM_HEADER_BYTE_COUNT;
     std::uint32_t recordIndex = 0U;
-    while (recordIndex < _snapshot.record_count) {
+    while (recordIndex < snapshot_.record_count) {
         const SerializeRecordId currentRecord{ReadUInt32At(offset)};
         const std::uint32_t fieldCount = ReadUInt32At(offset + sizeof(std::uint32_t));
         offset += RECORD_HEADER_BYTE_COUNT;
@@ -342,26 +342,26 @@ SerializeStatus SerializeReader::FindField(SerializeRecordId record, SerializeFi
 }
 
 SerializeStatus SerializeReader::RecordFailure(SerializeStatus status) {
-    ++_snapshot.failed_operation_count;
-    _snapshot.last_status = status;
+    ++snapshot_.failed_operation_count;
+    snapshot_.last_status = status;
     return status;
 }
 
 void SerializeReader::RecordSuccess() {
-    ++_snapshot.accepted_operation_count;
-    _snapshot.last_status = SerializeStatus::Success;
+    ++snapshot_.accepted_operation_count;
+    snapshot_.last_status = SerializeStatus::Success;
 }
 
 bool SerializeReader::CanReadBytes(std::uint32_t offset, std::uint32_t byteCount) const {
-    if (_buffer == nullptr) {
+    if (buffer_ == nullptr) {
         return false;
     }
 
-    if (offset > _byteCount) {
+    if (offset > byte_count_) {
         return false;
     }
 
-    return byteCount <= (_byteCount - offset);
+    return byteCount <= (byte_count_ - offset);
 }
 
 bool SerializeReader::IsKnownTypeTag(std::uint32_t value) const {
@@ -386,28 +386,28 @@ bool SerializeReader::IsDuplicateField(SerializeFieldId field, const SerializeFi
 }
 
 std::uint16_t SerializeReader::ReadUInt16At(std::uint32_t offset) const {
-    const std::uint16_t byte0 = static_cast<std::uint16_t>(_buffer[offset]);
-    const std::uint16_t byte1 = static_cast<std::uint16_t>(_buffer[offset + 1U]);
+    const std::uint16_t byte0 = static_cast<std::uint16_t>(buffer_[offset]);
+    const std::uint16_t byte1 = static_cast<std::uint16_t>(buffer_[offset + 1U]);
     return static_cast<std::uint16_t>(byte0 | static_cast<std::uint16_t>(byte1 << 8U));
 }
 
 std::uint32_t SerializeReader::ReadUInt32At(std::uint32_t offset) const {
-    const std::uint32_t byte0 = static_cast<std::uint32_t>(_buffer[offset]);
-    const std::uint32_t byte1 = static_cast<std::uint32_t>(_buffer[offset + 1U]);
-    const std::uint32_t byte2 = static_cast<std::uint32_t>(_buffer[offset + 2U]);
-    const std::uint32_t byte3 = static_cast<std::uint32_t>(_buffer[offset + 3U]);
+    const std::uint32_t byte0 = static_cast<std::uint32_t>(buffer_[offset]);
+    const std::uint32_t byte1 = static_cast<std::uint32_t>(buffer_[offset + 1U]);
+    const std::uint32_t byte2 = static_cast<std::uint32_t>(buffer_[offset + 2U]);
+    const std::uint32_t byte3 = static_cast<std::uint32_t>(buffer_[offset + 3U]);
     return byte0 | (byte1 << 8U) | (byte2 << 16U) | (byte3 << 24U);
 }
 
 std::uint64_t SerializeReader::ReadUInt64At(std::uint32_t offset) const {
-    const std::uint64_t byte0 = static_cast<std::uint64_t>(_buffer[offset]);
-    const std::uint64_t byte1 = static_cast<std::uint64_t>(_buffer[offset + 1U]);
-    const std::uint64_t byte2 = static_cast<std::uint64_t>(_buffer[offset + 2U]);
-    const std::uint64_t byte3 = static_cast<std::uint64_t>(_buffer[offset + 3U]);
-    const std::uint64_t byte4 = static_cast<std::uint64_t>(_buffer[offset + 4U]);
-    const std::uint64_t byte5 = static_cast<std::uint64_t>(_buffer[offset + 5U]);
-    const std::uint64_t byte6 = static_cast<std::uint64_t>(_buffer[offset + 6U]);
-    const std::uint64_t byte7 = static_cast<std::uint64_t>(_buffer[offset + 7U]);
+    const std::uint64_t byte0 = static_cast<std::uint64_t>(buffer_[offset]);
+    const std::uint64_t byte1 = static_cast<std::uint64_t>(buffer_[offset + 1U]);
+    const std::uint64_t byte2 = static_cast<std::uint64_t>(buffer_[offset + 2U]);
+    const std::uint64_t byte3 = static_cast<std::uint64_t>(buffer_[offset + 3U]);
+    const std::uint64_t byte4 = static_cast<std::uint64_t>(buffer_[offset + 4U]);
+    const std::uint64_t byte5 = static_cast<std::uint64_t>(buffer_[offset + 5U]);
+    const std::uint64_t byte6 = static_cast<std::uint64_t>(buffer_[offset + 6U]);
+    const std::uint64_t byte7 = static_cast<std::uint64_t>(buffer_[offset + 7U]);
     return byte0 | (byte1 << 8U) | (byte2 << 16U) | (byte3 << 24U) | (byte4 << 32U) | (byte5 << 40U) |
            (byte6 << 48U) | (byte7 << 56U);
 }

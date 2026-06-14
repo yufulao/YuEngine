@@ -19,8 +19,8 @@ public:
     void Clear();
 
 private:
-    std::size_t _capacity;
-    std::vector<LogEvent> _events;
-    std::size_t _droppedCount;
+    std::size_t capacity_;
+    std::vector<LogEvent> events_;
+    std::size_t dropped_count_;
 };
 }

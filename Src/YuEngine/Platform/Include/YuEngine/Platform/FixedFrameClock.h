@@ -12,7 +12,7 @@ public:
     std::uint64_t NextTickNanoseconds() override;
 
 private:
-    std::uint64_t _nextTickNanoseconds;
-    std::uint64_t _stepNanoseconds;
+    std::uint64_t next_tick_nanoseconds_;
+    std::uint64_t step_nanoseconds_;
 };
 }

@@ -2,11 +2,11 @@
 
 namespace yuengine::kernel {
 bool ServiceRegistry::Contains(std::string_view serviceId) const {
-    return _services.contains(std::string(serviceId));
+    return services_.contains(std::string(serviceId));
 }
 
 bool ServiceRegistry::OwnerHasServices(std::string_view ownerModule) const {
-    for (const auto& serviceEntry : _services) {
+    for (const auto& serviceEntry : services_) {
         if (serviceEntry.second.owner_module == ownerModule) {
             return true;
         }
@@ -16,9 +16,9 @@ bool ServiceRegistry::OwnerHasServices(std::string_view ownerModule) const {
 }
 
 void ServiceRegistry::UnregisterOwner(std::string_view ownerModule) {
-    for (auto iterator = _services.begin(); iterator != _services.end();) {
+    for (auto iterator = services_.begin(); iterator != services_.end();) {
         if (iterator->second.owner_module == ownerModule) {
-            iterator = _services.erase(iterator);
+            iterator = services_.erase(iterator);
             continue;
         }
 
@@ -27,15 +27,15 @@ void ServiceRegistry::UnregisterOwner(std::string_view ownerModule) {
 }
 
 void ServiceRegistry::OpenRegistrationWindow() {
-    _acceptingRegistrations = true;
+    accepting_registrations_ = true;
 }
 
 void ServiceRegistry::CloseRegistrationWindow() {
-    _acceptingRegistrations = false;
+    accepting_registrations_ = false;
 }
 
 bool ServiceRegistry::RegisterRaw(std::string_view ownerModule, std::string_view serviceId, void* service, std::type_index serviceType) {
-    if (!_acceptingRegistrations) {
+    if (!accepting_registrations_) {
         return false;
     }
 
@@ -52,17 +52,17 @@ bool ServiceRegistry::RegisterRaw(std::string_view ownerModule, std::string_view
     }
 
     const std::string serviceKey(serviceId);
-    if (_services.contains(serviceKey)) {
+    if (services_.contains(serviceKey)) {
         return false;
     }
 
-    _services.emplace(serviceKey, ServiceRecord{service, serviceType, std::string(ownerModule)});
+    services_.emplace(serviceKey, ServiceRecord{service, serviceType, std::string(ownerModule)});
     return true;
 }
 
 void* ServiceRegistry::ResolveRaw(std::string_view serviceId, std::type_index serviceType) const {
-    const auto iterator = _services.find(std::string(serviceId));
-    if (iterator == _services.end()) {
+    const auto iterator = services_.find(std::string(serviceId));
+    if (iterator == services_.end()) {
         return nullptr;
     }
 

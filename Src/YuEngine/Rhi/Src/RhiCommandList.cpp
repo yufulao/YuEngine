@@ -2,27 +2,27 @@
 
 namespace yuengine::rhi {
 RhiCommandList::RhiCommandList(std::size_t capacity)
-    : _records(capacity),
-      _targetHandle{},
-      _commandCount(0U),
-      _isRecording(false),
-      _isComplete(false) {
+    : records_(capacity),
+      target_handle_{},
+      command_count_(0U),
+      is_recording_(false),
+      is_complete_(false) {
 }
 
 RhiStatus RhiCommandList::Reset() {
-    _targetHandle = RhiTextureHandle{};
-    _commandCount = 0U;
-    _isRecording = false;
-    _isComplete = false;
+    target_handle_ = RhiTextureHandle{};
+    command_count_ = 0U;
+    is_recording_ = false;
+    is_complete_ = false;
     return RhiStatus::Success;
 }
 
 RhiStatus RhiCommandList::BeginFrame(RhiTextureHandle target) {
-    if (_isRecording) {
+    if (is_recording_) {
         return RhiStatus::InvalidLifecycle;
     }
 
-    if (_isComplete) {
+    if (is_complete_) {
         return RhiStatus::InvalidLifecycle;
     }
 
@@ -31,17 +31,17 @@ RhiStatus RhiCommandList::BeginFrame(RhiTextureHandle target) {
         return appendStatus;
     }
 
-    _targetHandle = target;
-    _isRecording = true;
+    target_handle_ = target;
+    is_recording_ = true;
     return RhiStatus::Success;
 }
 
 RhiStatus RhiCommandList::RecordClear(RhiTextureHandle target, RhiColor color) {
-    if (!_isRecording) {
+    if (!is_recording_) {
         return RhiStatus::InvalidLifecycle;
     }
 
-    if (_isComplete) {
+    if (is_complete_) {
         return RhiStatus::InvalidLifecycle;
     }
 
@@ -49,55 +49,55 @@ RhiStatus RhiCommandList::RecordClear(RhiTextureHandle target, RhiColor color) {
 }
 
 RhiStatus RhiCommandList::EndFrame() {
-    if (!_isRecording) {
+    if (!is_recording_) {
         return RhiStatus::InvalidLifecycle;
     }
 
-    if (_isComplete) {
+    if (is_complete_) {
         return RhiStatus::InvalidLifecycle;
     }
 
-    const RhiStatus appendStatus = Append(RhiCommandRecord{RhiCommandType::EndFrame, _targetHandle, RhiColor{}});
+    const RhiStatus appendStatus = Append(RhiCommandRecord{RhiCommandType::EndFrame, target_handle_, RhiColor{}});
     if (appendStatus != RhiStatus::Success) {
         return appendStatus;
     }
 
-    _isRecording = false;
-    _isComplete = true;
+    is_recording_ = false;
+    is_complete_ = true;
     return RhiStatus::Success;
 }
 
 RhiCommandListSnapshot RhiCommandList::Snapshot() const {
-    return RhiCommandListSnapshot{_records.size(), _commandCount, _isRecording, _isComplete};
+    return RhiCommandListSnapshot{records_.size(), command_count_, is_recording_, is_complete_};
 }
 
 const RhiCommandRecord& RhiCommandList::CommandAt(std::size_t index) const {
-    return _records[index];
+    return records_[index];
 }
 
 RhiTextureHandle RhiCommandList::TargetHandle() const {
-    return _targetHandle;
+    return target_handle_;
 }
 
 std::size_t RhiCommandList::Capacity() const {
-    return _records.size();
+    return records_.size();
 }
 
 std::size_t RhiCommandList::CommandCount() const {
-    return _commandCount;
+    return command_count_;
 }
 
 bool RhiCommandList::IsComplete() const {
-    return _isComplete;
+    return is_complete_;
 }
 
 RhiStatus RhiCommandList::Append(RhiCommandRecord record) {
-    if (_commandCount >= _records.size()) {
+    if (command_count_ >= records_.size()) {
         return RhiStatus::CapacityExceeded;
     }
 
-    _records[_commandCount] = record;
-    ++_commandCount;
+    records_[command_count_] = record;
+    ++command_count_;
     return RhiStatus::Success;
 }
 }

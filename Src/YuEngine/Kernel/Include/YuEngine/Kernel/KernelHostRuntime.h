@@ -13,6 +13,6 @@ public:
     platform::HostError Shutdown(std::vector<std::string>& lifecycleTrace) override;
 
 private:
-    EngineKernel& _kernel;
+    EngineKernel& kernel_;
 };
 }

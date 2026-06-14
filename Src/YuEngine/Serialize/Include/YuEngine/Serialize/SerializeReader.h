@@ -38,9 +38,9 @@ private:
     std::uint32_t ReadUInt32At(std::uint32_t offset) const;
     std::uint64_t ReadUInt64At(std::uint32_t offset) const;
 
-    const std::uint8_t* _buffer;
-    std::uint32_t _byteCount;
-    SerializeSnapshot _snapshot;
-    bool _isOpen;
+    const std::uint8_t* buffer_;
+    std::uint32_t byte_count_;
+    SerializeSnapshot snapshot_;
+    bool is_open_;
 };
 }

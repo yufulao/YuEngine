@@ -36,9 +36,9 @@ private:
     void ClearOutboundEdges(std::size_t slotIndex);
     void AdvanceGeneration(ResourceSlot& slot);
 
-    std::array<ResourceSlot, MAX_RESOURCE_COUNT> _slots;
-    std::array<ResourceDependencyEdge, MAX_DEPENDENCY_EDGE_COUNT> _dependencyEdges;
-    std::array<ResourceTypeId, MAX_RESOURCE_TYPE_COUNT> _types;
-    ResourceSnapshot _snapshot;
+    std::array<ResourceSlot, MAX_RESOURCE_COUNT> slots_;
+    std::array<ResourceDependencyEdge, MAX_DEPENDENCY_EDGE_COUNT> dependency_edges_;
+    std::array<ResourceTypeId, MAX_RESOURCE_TYPE_COUNT> types_;
+    ResourceSnapshot snapshot_;
 };
 }

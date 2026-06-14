@@ -32,12 +32,12 @@ private:
     bool HasAcceptedCounterId(DiagnosticsCounterId counterId) const;
     std::size_t CounterIndex(DiagnosticsCounterId counterId) const;
 
-    DiagnosticsChannelConfig _config;
-    DiagnosticsStatus _configurationStatus;
-    DiagnosticsSnapshot _snapshot;
-    std::array<DiagnosticsEventId, MAX_DIAGNOSTICS_EVENT_IDS> _acceptedEventIds;
-    std::array<DiagnosticsCounterId, MAX_DIAGNOSTICS_COUNTER_IDS> _acceptedCounterIds;
-    std::size_t _acceptedEventIdCount;
-    std::size_t _acceptedCounterIdCount;
+    DiagnosticsChannelConfig config_;
+    DiagnosticsStatus configuration_status_;
+    DiagnosticsSnapshot snapshot_;
+    std::array<DiagnosticsEventId, MAX_DIAGNOSTICS_EVENT_IDS> accepted_event_ids_;
+    std::array<DiagnosticsCounterId, MAX_DIAGNOSTICS_COUNTER_IDS> accepted_counter_ids_;
+    std::size_t accepted_event_id_count_;
+    std::size_t accepted_counter_id_count_;
 };
 }
