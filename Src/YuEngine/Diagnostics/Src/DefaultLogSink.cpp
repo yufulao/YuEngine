@@ -5,7 +5,7 @@
 
 namespace yuengine::diagnostics {
 namespace {
-void writeMessage(std::FILE *stream, std::string_view message) {
+void WriteMessage(std::FILE *stream, std::string_view message) {
     if (stream == nullptr) {
         return;
     }
@@ -28,11 +28,11 @@ void writeMessage(std::FILE *stream, std::string_view message) {
 
 void DefaultLogSink::Write(LogLevel level, std::string_view message) {
     if (level == LogLevel::Error) {
-        writeMessage(stderr, message);
+        WriteMessage(stderr, message);
         return;
     }
 
-    writeMessage(stderr, message);
+    WriteMessage(stderr, message);
 }
 
 bool DefaultLogSink::IsEnabled() const {
