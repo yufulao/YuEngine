@@ -83,6 +83,7 @@ Phase 3 remains blocked from:
 | P3-GATE-002 | Serialization Value Stream | L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Bounded caller-provided-buffer value stream only; no File/package/Resource/object construction/reflection/script/scene/save/tool/report/Game Adapter scope |
 | P3-GATE-003 | Script Native Bridge | L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Bounded native call registry only; no VM, bytecode, reflection, world/scene, Resource/Package/File/Object/Serialize dependency, UI/gameplay/tools/reports/Game Adapter |
 | P3-GATE-004 | World Lifecycle Fixture | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_004_WORLD_LIFECYCLE_FIXTURE.md`; bounded world lifecycle/update fixture only, no Script callback, actor/component/transform, Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
+| P3-GATE-005 | World Kernel Module Bridge | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_005_WORLD_KERNEL_MODULE_BRIDGE.md`; narrow World-to-Kernel module adapter only, no Script callback, actor/component/transform, Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
 
 ## Current Active Gates
 
@@ -116,6 +117,13 @@ Phase 3 remains blocked from:
   Script callbacks, actor/component/transform hierarchy, Resource/Package/File,
   render/audio/physics/UI/tools/reports, Game Adapter behavior, or copied UE or
   Unity API shape.
+- P3-GATE-005 is approved from `3b6ee1c` for a narrow World-to-Kernel module
+  bridge. It may add only `WorldKernelModule` adapter files under `YuWorld`,
+  `Tests/World` coverage, and CMake/CTest registration. `WorldInstance` core
+  files must remain Kernel-free; only adapter files may include `YuEngine/Kernel`
+  headers. It must not introduce Script callbacks, actor/component/transform
+  hierarchy, Resource/Package/File, render/audio/physics/UI/tools/reports, Game
+  Adapter behavior, or copied UE or Unity API shape.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.
@@ -147,5 +155,8 @@ Phase 3 remains blocked from:
 5. Architect may create a scoped `YuWorld` lifecycle fixture implementation
    handoff from P3-GATE-004, preserving fixed-capacity storage, deterministic
    phase ordering, and no-hot-path-allocation test requirements.
-6. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
+6. Architect may create a scoped `WorldKernelModule` bridge implementation
+   handoff from P3-GATE-005, preserving World core independence from Kernel and
+   blocking Script callback, actor/component, and resource/package/file scope.
+7. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
    construction/reflection/script/scene/save/tool/report/Game Adapter scope.
