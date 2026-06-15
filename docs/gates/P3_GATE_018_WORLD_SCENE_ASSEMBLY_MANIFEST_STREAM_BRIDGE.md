@@ -1,15 +1,17 @@
 # P3-GATE-018: World Scene Assembly Manifest Stream Bridge
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `PROPOSED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P3-GATE-002, P3-GATE-013, P3-GATE-015, P3-GATE-017
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0015
 Source baseline: `8df2fbb`
 Proposal commit: `6dc4b85`
+Review fix commit: `3c28ce4`
 Candidate evidence: ENG-071A, ENG-071B, and ENG-071C PASS for a manifest/stream-only next gate.
+Review closure: ENG-073A PASS, ENG-073B PASS, ENG-075 PASS after ENG-074 fix.
 
 ## Layer
 
