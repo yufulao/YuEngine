@@ -164,8 +164,8 @@ Expected first-slice inputs:
 - current component attachment destination bridge;
 - current component-resource binding destination bridge;
 - const world instance for world object membership validation;
-- const object registry for projected object acquire validation;
-- const resource registry for projected resource acquire validation;
+- required const object registry for projected object acquire validation;
+- required const resource registry for projected resource acquire validation;
 - caller-owned output proof buffer and capacity;
 - caller-owned output active-call slice buffer and capacity;
 - descriptor-provided family capacities, proof capacity, and slice capacity.
@@ -209,6 +209,8 @@ Fast gate tests required before the slice can be considered complete:
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsNullAttachmentDestinationWithoutMutation`
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsNullBindingDestinationWithoutMutation`
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsNullWorldWithoutMutation`
+- `WorldSceneApplyTimeRestoreProofBridge_RejectsNullObjectRegistryWithoutMutation`
+- `WorldSceneApplyTimeRestoreProofBridge_RejectsNullResourceRegistryWithoutMutation`
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsNullProofOutputWithoutMutation`
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsNullSliceOutputWithoutMutation`
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsProofOutputCapacityTooSmallWithoutMutation`
