@@ -97,6 +97,7 @@ Phase 3 remains blocked from:
 | P3-GATE-016 | World Component Resource Binding Restore Bridge | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_016_WORLD_COMPONENT_RESOURCE_BINDING_RESTORE_BRIDGE.md`; explicit apply adapter from caller-owned component-resource binding snapshot records into active bindings, validation before mutation, resource acquire only through existing binding bridge, no stream parsing, no resource loading/package/file/render/audio/script/UI/tools/reports or Game Adapter dependency |
 | P3-GATE-017 | World Scene Assembly Snapshot Restore Coordinator | L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_017_WORLD_SCENE_ASSEMBLY_SNAPSHOT_RESTORE_COORDINATOR.md`; sidecar-only coordinator over caller-owned component attachment and component-resource binding records, full assembly preflight before attachment or binding mutation, no manifest stream, no object/transform active restore, no scene loading/save policy/object construction/resource loading/render/audio/UI/tools/reports or Game Adapter dependency |
 | P3-GATE-018 | World Scene Assembly Manifest Stream Bridge | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_018_WORLD_SCENE_ASSEMBLY_MANIFEST_STREAM_BRIDGE.md`; manifest/stream-only envelope over caller-owned component attachment and component-resource binding snapshot records, no active restore, no object/transform restore, no scene loading/save policy/object construction/resource loading/File/Package/render/audio/UI/tools/reports or Game Adapter dependency |
+| P3-GATE-019 | World Scene Object Transform Restore Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | Proposed for review | Gate doc: `docs/gates/P3_GATE_019_WORLD_SCENE_OBJECT_TRANSFORM_RESTORE_BRIDGE.md`; candidate active restore over caller-owned object identity and transform records only, no object construction, no scene loading/save policy, no component payload/lifecycle, no File/Package/Resource loading or Game Adapter dependency |
 
 ## Current Active Gates
 
@@ -259,6 +260,12 @@ Phase 3 remains blocked from:
   package/file work, resource loading, or Game Adapter scope.
 - P3-GATE-018 first slice landed at `0d57948` with QA PASS and fast gate
   `505/505`.
+- P3-GATE-019 is proposed from `85fabf7` for a narrow active restore bridge
+  over caller-owned object identity and transform records. It is not approved
+  for implementation until boundary/performance, implementability, and test
+  admission reviews close. It must not introduce object construction,
+  transform hierarchy, scene loading/save policy, component payload/lifecycle,
+  resource loading, File/Package work, or Game Adapter scope.
 
 ## Implementation Baseline
 
@@ -307,8 +314,11 @@ same first slices.
    restore, scene loading, save policy, object construction, resource loading,
    component payload/lifecycle, render/audio/physics/UI/tools/reports, or Game
    Adapter behavior. Those require a separate reviewed and approved gate.
-3. Continue closing active Phase 1 and Phase 2 implementation reviews; current
+3. Review P3-GATE-019 before any implementation task is created. The key open
+   point is whether object handle acquire preflight can be proven with a
+   minimal const `ObjectRegistry` helper and without mutating `YuObject`.
+4. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.
-4. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
+5. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
    construction/reflection/script/scene/save/tool/report/Game Adapter scope.
