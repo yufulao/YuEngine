@@ -86,6 +86,7 @@ Phase 3 remains blocked from:
 | P3-GATE-005 | World Kernel Module Bridge | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_005_WORLD_KERNEL_MODULE_BRIDGE.md`; narrow World-to-Kernel module adapter only, no Script callback, actor/component/transform, Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
 | P3-GATE-006 | World Object Identity Bridge | L5 over L2-L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_006_WORLD_OBJECT_IDENTITY_BRIDGE.md`; narrow WorldObjectId-to-ObjectHandle adapter only, `WorldInstance` core remains Object-free, no Script callback, actor/component/transform, Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
 | P3-GATE-007 | World Transform Data Fixture | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_007_WORLD_TRANSFORM_DATA_FIXTURE.md`; data-only WorldTransformBridge fixture, bounded POD transform records keyed by WorldObjectId, no Script callback, actor/component/scene graph/transform hierarchy, Object/Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
+| P3-GATE-008 | World Script Dispatch Bridge | L5 over L4 | `PENDING_REVIEW` | Proposed | Gate doc: `docs/gates/P3_GATE_008_WORLD_SCRIPT_DISPATCH_BRIDGE.md`; narrow WorldPhaseTrace-to-ScriptCallId dispatch adapter only, `WorldInstance` core remains Script-free, no VM/bytecode/reflection, actor/component/gameplay, Resource/Package/File, Serialize payload, Object ownership, render/audio/physics/UI/tools/reports/Game Adapter |
 
 ## Current Active Gates
 
@@ -143,9 +144,37 @@ Phase 3 remains blocked from:
   transform hierarchy, Object ownership, Resource/Package/File, serialization
   payloads, render/audio/physics/UI/tools/reports, Game Adapter behavior, or
   copied UE or Unity API shape.
+- P3-GATE-008 is proposed from `a2eb08b` for a narrow World-to-Script dispatch
+  bridge. It may add only `WorldScriptDispatchBridge` adapter files under
+  `YuWorld`, `Tests/World` coverage, and CMake/CTest registration after review
+  updates the decision to `APPROVED_FOR_FIRST_SLICE`. The first slice would map
+  existing `WorldPhaseTrace` records to non-zero `ScriptCallId` values using
+  caller-provided slots, with registry lookup failure reported during dispatch.
+  `WorldInstance` core files must remain
+  Script-free, and `ScriptNativeRegistry` core files must remain World-free. It
+  must not introduce VM/bytecode/reflection, actor/component/gameplay,
+  Resource/Package/File, Serialize payload, Object ownership, render/audio/
+  physics/UI/tools/reports, Game Adapter behavior, or copied UE or Unity API
+  shape.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.
+
+## Implementation Baseline
+
+Current `HEAD` contains first-slice modules for `YuObject`, `YuSerialize`,
+`YuScript`, and `YuWorld`.
+
+Recently landed Phase 3 world/script slices:
+
+- `4d080f1 [#ENG-039][Added]Add script bridge first slice`
+- `3b6ee1c [#ENG-040][Added]Add world lifecycle first slice`
+- `86517f8 [#ENG-041][Added]Add world kernel module bridge`
+- `a8ee4d0 [#ENG-043][Added]Add world object identity bridge`
+- `a2eb08b [#ENG-045][Added]Add world transform bridge`
+
+Future Phase 3 work must extend from this baseline instead of recreating the
+same first slices.
 
 ## Review Routing
 
@@ -159,32 +188,15 @@ Phase 3 remains blocked from:
 
 ## Immediate Next Steps
 
-1. Architect may create a scoped `YuObject` first-slice implementation handoff
-   from P3-GATE-001, preserving the approved boundaries and clean-worktree
-   sequencing guard.
-2. Architect may create a scoped `YuSerialize` first-slice implementation
-   handoff from P3-GATE-002, preserving the approved boundaries and
-   clean-worktree sequencing guard.
+1. Review P3-GATE-008 for a narrow World Script Dispatch Bridge, preserving
+   World core independence from Script, Script core independence from World,
+   fixed-capacity dispatch storage, caller-provided value slots, and no
+   actor/component/gameplay/resource/package/file/object-ownership scope.
+2. If P3-GATE-008 reaches `APPROVED_FOR_FIRST_SLICE`, create a scoped
+   implementation handoff for `WorldScriptDispatchBridge` only after the review
+   evidence is recorded.
 3. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.
-4. Architect may create a scoped `YuScript` native bridge implementation handoff
-   from P3-GATE-003, preserving fixed-capacity storage, stable call IDs, and
-   no-hot-path-allocation test requirements.
-5. Architect may create a scoped `YuWorld` lifecycle fixture implementation
-   handoff from P3-GATE-004, preserving fixed-capacity storage, deterministic
-   phase ordering, and no-hot-path-allocation test requirements.
-6. Architect may create a scoped `WorldKernelModule` bridge implementation
-   handoff from P3-GATE-005, preserving World core independence from Kernel and
-   blocking Script callback, actor/component, and resource/package/file scope.
-7. Architect may create a scoped `WorldObjectIdentityBridge` implementation
-   handoff from P3-GATE-006, preserving `WorldInstance` core independence from
-   Object and blocking Script callback, actor/component, and resource/package/
-   file scope.
-8. Architect may create a scoped `WorldTransformBridge` implementation handoff
-   from P3-GATE-007 after ENG-043 lands on a clean baseline, preserving
-   data-only POD transform state, fixed capacity, no hot-path allocation, and
-   blocking Script callback, Actor/Component, scene graph, Object ownership, and
-   resource/package/file scope.
-9. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
+4. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
    construction/reflection/script/scene/save/tool/report/Game Adapter scope.
