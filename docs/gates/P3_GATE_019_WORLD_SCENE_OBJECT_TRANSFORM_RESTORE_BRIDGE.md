@@ -90,6 +90,7 @@ This gate owns a future first slice for:
   input set before mutation;
 - rejecting duplicate world object ids in identity records and duplicate world
   object ids in transform records before mutation;
+- rejecting duplicate object handles in identity records before mutation;
 - rejecting non-empty identity or transform destinations unless review approves
   rollback semantics;
 - applying object identity bindings before transform registrations only after
@@ -105,9 +106,17 @@ This gate owns a future first slice for:
 
 The current `ObjectRegistry::Validate` mutates registry accounting state. If
 the first slice needs object acquire preflight, it may propose one minimal const
-helper on `ObjectRegistry`, such as `ValidateAcquire(ObjectHandle) const`, that
-checks handle validity and reference-count overflow without mutating. That
-helper must not include or depend on `YuWorld`.
+helper on `ObjectRegistry`, such as:
+
+```text
+ValidateAcquire(ObjectHandle handle, std::uint32_t projected_acquire_count) const
+```
+
+The helper checks handle validity and reference-count overflow without
+mutating. Duplicate object handles in the same restore input set must be
+rejected before this helper is used for active restore, so projected acquire
+counts remain explicit and bounded. That helper must not include or depend on
+`YuWorld`.
 
 If review concludes that object acquire preflight cannot be proven without
 mutating `ObjectRegistry`, the gate must remain `NEEDS_CHANGES` and no
@@ -180,9 +189,9 @@ First-slice restore lifecycle:
 6. Caller calls the restore bridge with explicit pointers, counts, and
    descriptor values.
 7. The bridge validates destinations, record counts, every world object id,
-   every object handle, every transform state, duplicate identity records,
-   duplicate transform records, and transform-to-identity references before
-   active mutation.
+   every object handle, every transform state, duplicate identity world object
+   ids, duplicate identity object handles, duplicate transform records, and
+   transform-to-identity references before active mutation.
 8. The bridge validates projected object handle acquire operations through a
    const preflight helper before active mutation.
 9. The bridge binds object identities in deterministic input order.
@@ -195,8 +204,9 @@ Failure behavior:
   count pointers return explicit status and do not mutate;
 - invalid counts, invalid world object ids, missing world objects, invalid
   object handles, stale object handles, object acquire overflow risk, duplicate
-  identities, duplicate transforms, or transform records without matching
-  identity records return explicit status and do not mutate;
+  identity world object ids, duplicate identity object handles, duplicate
+  transforms, or transform records without matching identity records return
+  explicit status and do not mutate;
 - destination capacity overflow returns explicit status and does not mutate;
 - unsupported non-empty destinations return explicit status and do not mutate;
 - if a later review accepts rollback support, rollback failure must return a
@@ -302,12 +312,13 @@ Fast gate tests required before the slice can be considered complete:
 - `WorldSceneObjectTransformRestoreBridge_RejectsMissingWorldObjectWithoutMutation`
 - `WorldSceneObjectTransformRestoreBridge_RejectsMissingIdentityForTransformWithoutMutation`
 - `WorldSceneObjectTransformRestoreBridge_RejectsDuplicateIdentityWithoutMutation`
+- `WorldSceneObjectTransformRestoreBridge_RejectsDuplicateObjectHandleWithoutMutation`
 - `WorldSceneObjectTransformRestoreBridge_RejectsDuplicateTransformWithoutMutation`
 - `WorldSceneObjectTransformRestoreBridge_RejectsIdentityCapacityOverflowWithoutMutation`
 - `WorldSceneObjectTransformRestoreBridge_RejectsTransformCapacityOverflowWithoutMutation`
 - `WorldSceneObjectTransformRestoreBridge_RejectsNonEmptyDestinationsWithoutMutation`
 - `WorldSceneObjectTransformRestoreBridge_ValidatesObjectHandlesBeforeMutation`
-- `WorldSceneObjectTransformRestoreBridge_ObjectAcquirePreflightFailureDoesNotRestoreTransforms`
+- `WorldSceneObjectTransformRestoreBridge_ObjectAcquirePreflightFailureDoesNotRestoreIdentitiesOrTransforms`
 - `WorldSceneObjectTransformRestoreBridge_RestorePathDoesNotGrowStorage`
 - `WorldSceneObjectTransformRestoreBridge_NoHiddenAllocation_UsesYuMemorySignal`
 - `WorldSceneObjectTransformRestoreBridge_SnapshotReportsCountsAndLastStatus`
