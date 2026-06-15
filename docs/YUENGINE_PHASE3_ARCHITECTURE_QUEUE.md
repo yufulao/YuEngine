@@ -85,6 +85,7 @@ Phase 3 remains blocked from:
 | P3-GATE-004 | World Lifecycle Fixture | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_004_WORLD_LIFECYCLE_FIXTURE.md`; bounded world lifecycle/update fixture only, no Script callback, actor/component/transform, Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
 | P3-GATE-005 | World Kernel Module Bridge | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_005_WORLD_KERNEL_MODULE_BRIDGE.md`; narrow World-to-Kernel module adapter only, no Script callback, actor/component/transform, Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
 | P3-GATE-006 | World Object Identity Bridge | L5 over L2-L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_006_WORLD_OBJECT_IDENTITY_BRIDGE.md`; narrow WorldObjectId-to-ObjectHandle adapter only, `WorldInstance` core remains Object-free, no Script callback, actor/component/transform, Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
+| P3-GATE-007 | World Transform Data Fixture | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_007_WORLD_TRANSFORM_DATA_FIXTURE.md`; data-only WorldTransformBridge fixture, bounded POD transform records keyed by WorldObjectId, no Script callback, actor/component/scene graph/transform hierarchy, Object/Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
 
 ## Current Active Gates
 
@@ -134,6 +135,14 @@ Phase 3 remains blocked from:
   actor/component/transform hierarchy, Resource/Package/File, render/audio/
   physics/UI/tools/reports, Game Adapter behavior, or copied UE or Unity API
   shape.
+- P3-GATE-007 is approved from `a8ee4d0` for a data-only World transform
+  fixture. It may add only `WorldTransformBridge` fixture files under `YuWorld`,
+  `Tests/World` coverage, and CMake/CTest registration. The first slice stores
+  bounded POD transform records keyed by existing `WorldObjectId` values. It
+  must not introduce Script callbacks, actor/component model, scene graph,
+  transform hierarchy, Object ownership, Resource/Package/File, serialization
+  payloads, render/audio/physics/UI/tools/reports, Game Adapter behavior, or
+  copied UE or Unity API shape.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.
@@ -172,5 +181,10 @@ Phase 3 remains blocked from:
    handoff from P3-GATE-006, preserving `WorldInstance` core independence from
    Object and blocking Script callback, actor/component, and resource/package/
    file scope.
-8. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
+8. Architect may create a scoped `WorldTransformBridge` implementation handoff
+   from P3-GATE-007 after ENG-043 lands on a clean baseline, preserving
+   data-only POD transform state, fixed capacity, no hot-path allocation, and
+   blocking Script callback, Actor/Component, scene graph, Object ownership, and
+   resource/package/file scope.
+9. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
    construction/reflection/script/scene/save/tool/report/Game Adapter scope.
