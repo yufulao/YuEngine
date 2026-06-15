@@ -44,6 +44,12 @@
 #include "YuEngine/Resource/ResourceSnapshot.h"
 #include "YuEngine/Resource/ResourceStatus.h"
 #include "YuEngine/Resource/ResourceTypeId.h"
+#include "YuEngine/World/WorldComponentAttachment.h"
+#include "YuEngine/World/WorldComponentAttachmentBridge.h"
+#include "YuEngine/World/WorldComponentAttachmentBridgeDesc.h"
+#include "YuEngine/World/WorldComponentAttachmentResult.h"
+#include "YuEngine/World/WorldComponentAttachmentSnapshot.h"
+#include "YuEngine/World/WorldComponentAttachmentStatus.h"
 #include "YuEngine/World/WorldConstants.h"
 #include "YuEngine/World/WorldDesc.h"
 #include "YuEngine/World/WorldInstance.h"
@@ -144,6 +150,13 @@ using yuengine::world::WORLD_SERIALIZE_FIELD_PHASE_TRACE_COUNT;
 using yuengine::world::WORLD_SERIALIZE_FIELD_REGISTERED_OBJECT_COUNT;
 using yuengine::world::WORLD_SERIALIZE_FIELD_SKIPPED_OBJECT_COUNT;
 using yuengine::world::WORLD_SERIALIZE_WORLD_SNAPSHOT_RECORD_ID;
+using yuengine::world::WorldComponentAttachmentBridge;
+using yuengine::world::WorldComponentAttachmentBridgeDesc;
+using yuengine::world::WorldComponentAttachmentResult;
+using yuengine::world::WorldComponentAttachmentSnapshot;
+using yuengine::world::WorldComponentAttachmentStatus;
+using yuengine::world::WorldComponentSlotId;
+using yuengine::world::WorldComponentTypeId;
 using yuengine::world::WorldDesc;
 using yuengine::world::WorldInstance;
 using yuengine::world::WorldKernelModule;
@@ -288,6 +301,26 @@ constexpr const char *TEST_RESOURCE_SNAPSHOT = "WorldResourceBindingBridge_Snaps
 constexpr const char *TEST_RESOURCE_NO_FILE_PACKAGE = "WorldResourceBindingBridge_NoFilePackageLoadDecodeUploadOrGameAdapterDependency";
 constexpr const char *TEST_RESOURCE_WORLD_CORE_FREE = "WorldResourceBindingBridge_WorldInstanceCoreRemainsResourceFree";
 constexpr const char *TEST_RESOURCE_CORE_FREE = "WorldResourceBindingBridge_ResourceCoreRemainsWorldFree";
+constexpr const char *TEST_COMPONENT_ADD_VALID = "WorldComponentAttachmentBridge_AddValidAttachment_StoresRecord";
+constexpr const char *TEST_COMPONENT_ADD_INVALID_WORLD = "WorldComponentAttachmentBridge_AddRejectsInvalidWorldIdWithoutMutation";
+constexpr const char *TEST_COMPONENT_ADD_INVALID_TYPE = "WorldComponentAttachmentBridge_AddRejectsInvalidComponentTypeWithoutMutation";
+constexpr const char *TEST_COMPONENT_ADD_INVALID_SLOT = "WorldComponentAttachmentBridge_AddRejectsInvalidComponentSlotWithoutMutation";
+constexpr const char *TEST_COMPONENT_ADD_DUPLICATE = "WorldComponentAttachmentBridge_AddRejectsDuplicateTypeForWorldObject";
+constexpr const char *TEST_COMPONENT_ADD_CAPACITY = "WorldComponentAttachmentBridge_AddRejectsCapacityOverflowWithoutMutation";
+constexpr const char *TEST_COMPONENT_QUERY_STORED = "WorldComponentAttachmentBridge_QueryReturnsStoredAttachment";
+constexpr const char *TEST_COMPONENT_QUERY_MISSING = "WorldComponentAttachmentBridge_QueryRejectsMissingAttachmentWithoutMutation";
+constexpr const char *TEST_COMPONENT_QUERY_READ_ONLY = "WorldComponentAttachmentBridge_QueryIsReadOnlyAndBounded";
+constexpr const char *TEST_COMPONENT_REMOVE_CLEARS = "WorldComponentAttachmentBridge_RemoveClearsAttachment";
+constexpr const char *TEST_COMPONENT_REMOVE_MISSING = "WorldComponentAttachmentBridge_RemoveRejectsMissingAttachmentWithoutMutation";
+constexpr const char *TEST_COMPONENT_CLEAR_ALL = "WorldComponentAttachmentBridge_ClearRemovesAllAttachmentsInSlotOrder";
+constexpr const char *TEST_COMPONENT_UPDATE_PATH = "WorldComponentAttachmentBridge_UpdatePathDoesNotGrowStorage";
+constexpr const char *TEST_COMPONENT_SNAPSHOT = "WorldComponentAttachmentBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_COMPONENT_NO_WORLD_QUERY = "WorldComponentAttachmentBridge_DoesNotQueryOrMutateWorldInstance";
+constexpr const char *TEST_COMPONENT_NO_BEHAVIOR = "WorldComponentAttachmentBridge_NoActorComponentBehaviorOrLifecycle";
+constexpr const char *TEST_COMPONENT_NO_OBJECT_RESOURCE = "WorldComponentAttachmentBridge_NoObjectResourceScriptSerializeOrGameAdapterDependency";
+constexpr const char *TEST_COMPONENT_NO_FILE_PACKAGE = "WorldComponentAttachmentBridge_NoFilePackageThreadPlatformDiagnosticsDependency";
+constexpr const char *TEST_COMPONENT_NO_RENDER_PHYSICS = "WorldComponentAttachmentBridge_NoRenderPhysicsAudioInputUiToolOrReportDependency";
+constexpr const char *TEST_COMPONENT_WORLD_CORE_FREE = "WorldComponentAttachmentBridge_WorldInstanceCoreRemainsAttachmentFree";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *TRACE_KERNEL_START = "kernel.start";
@@ -305,6 +338,12 @@ constexpr ObjectTypeId OBJECT_TYPE_EFFECT{3U};
 constexpr ResourceTypeId RESOURCE_TYPE_TEXTURE{1U};
 constexpr ResourceTypeId RESOURCE_TYPE_MATERIAL{2U};
 constexpr ResourceTypeId RESOURCE_TYPE_AUDIO{3U};
+constexpr WorldComponentTypeId COMPONENT_TYPE_PRIMARY{1U};
+constexpr WorldComponentTypeId COMPONENT_TYPE_SECONDARY{2U};
+constexpr WorldComponentTypeId COMPONENT_TYPE_TERTIARY{3U};
+constexpr WorldComponentSlotId COMPONENT_SLOT_PRIMARY{11U};
+constexpr WorldComponentSlotId COMPONENT_SLOT_SECONDARY{12U};
+constexpr WorldComponentSlotId COMPONENT_SLOT_TERTIARY{13U};
 constexpr ScriptCallId SCRIPT_CALL_BEGIN{11U};
 constexpr ScriptCallId SCRIPT_CALL_FIXED{12U};
 constexpr ScriptCallId SCRIPT_CALL_FRAME{13U};
@@ -4615,6 +4654,544 @@ int WorldResourceBindingBridgeResourceCoreRemainsWorldFree() {
 
     return 0;
 }
+
+int WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord() {
+    WorldComponentAttachmentBridge bridge;
+    const WorldComponentAttachmentResult result = bridge.Add(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    if (!result.Succeeded()) {
+        return Fail("component attachment valid add failed");
+    }
+
+    if (result.world_object_id.value != OBJECT_PLAYER.value) {
+        return Fail("component attachment valid add returned wrong world id");
+    }
+
+    if (result.component_type_id.value != COMPONENT_TYPE_PRIMARY.value) {
+        return Fail("component attachment valid add returned wrong type");
+    }
+
+    if (result.component_slot_id.value != COMPONENT_SLOT_PRIMARY.value) {
+        return Fail("component attachment valid add returned wrong slot");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.active_attachment_count != 1U) {
+        return Fail("component attachment valid add did not record active count");
+    }
+
+    if (snapshot.added_attachment_count != 1U) {
+        return Fail("component attachment valid add did not record added count");
+    }
+
+    if (snapshot.last_status != WorldComponentAttachmentStatus::Success) {
+        return Fail("component attachment valid add did not record success");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeAddRejectsInvalidWorldIdWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    const WorldComponentAttachmentSnapshot before_snapshot = bridge.Snapshot();
+    const WorldComponentAttachmentResult result = bridge.Add(
+        WorldObjectId{},
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    if (result.status != WorldComponentAttachmentStatus::InvalidWorldObjectId) {
+        return Fail("component attachment invalid world returned wrong status");
+    }
+
+    const WorldComponentAttachmentSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.active_attachment_count != before_snapshot.active_attachment_count) {
+        return Fail("component attachment invalid world mutated active count");
+    }
+
+    if (after_snapshot.added_attachment_count != before_snapshot.added_attachment_count) {
+        return Fail("component attachment invalid world mutated added count");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeAddRejectsInvalidComponentTypeWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    const WorldComponentAttachmentSnapshot before_snapshot = bridge.Snapshot();
+    const WorldComponentAttachmentResult result = bridge.Add(
+        OBJECT_PLAYER,
+        WorldComponentTypeId{},
+        COMPONENT_SLOT_PRIMARY);
+    if (result.status != WorldComponentAttachmentStatus::InvalidComponentTypeId) {
+        return Fail("component attachment invalid type returned wrong status");
+    }
+
+    const WorldComponentAttachmentSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.active_attachment_count != before_snapshot.active_attachment_count) {
+        return Fail("component attachment invalid type mutated active count");
+    }
+
+    if (after_snapshot.added_attachment_count != before_snapshot.added_attachment_count) {
+        return Fail("component attachment invalid type mutated added count");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeAddRejectsInvalidComponentSlotWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    const WorldComponentAttachmentSnapshot before_snapshot = bridge.Snapshot();
+    const WorldComponentAttachmentResult result = bridge.Add(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        WorldComponentSlotId{});
+    if (result.status != WorldComponentAttachmentStatus::InvalidComponentSlotId) {
+        return Fail("component attachment invalid slot returned wrong status");
+    }
+
+    const WorldComponentAttachmentSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.active_attachment_count != before_snapshot.active_attachment_count) {
+        return Fail("component attachment invalid slot mutated active count");
+    }
+
+    if (after_snapshot.added_attachment_count != before_snapshot.added_attachment_count) {
+        return Fail("component attachment invalid slot mutated added count");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeAddRejectsDuplicateTypeForWorldObject() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment duplicate first add failed");
+    }
+
+    const WorldComponentAttachmentResult duplicate_result = bridge.Add(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_SECONDARY);
+    if (duplicate_result.status != WorldComponentAttachmentStatus::DuplicateAttachment) {
+        return Fail("component attachment duplicate returned wrong status");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.active_attachment_count != 1U) {
+        return Fail("component attachment duplicate mutated active count");
+    }
+
+    if (snapshot.duplicate_rejection_count != 1U) {
+        return Fail("component attachment duplicate did not count rejection");
+    }
+
+    const WorldComponentAttachmentResult query_result = bridge.Query(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY);
+    if (query_result.component_slot_id.value != COMPONENT_SLOT_PRIMARY.value) {
+        return Fail("component attachment duplicate replaced stored slot");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeAddRejectsCapacityOverflowWithoutMutation() {
+    WorldComponentAttachmentBridgeDesc desc{};
+    desc.attachment_capacity = 1U;
+    WorldComponentAttachmentBridge bridge(desc);
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment capacity first add failed");
+    }
+
+    const WorldComponentAttachmentResult overflow_result = bridge.Add(
+        OBJECT_CAMERA,
+        COMPONENT_TYPE_SECONDARY,
+        COMPONENT_SLOT_SECONDARY);
+    if (overflow_result.status != WorldComponentAttachmentStatus::CapacityExceeded) {
+        return Fail("component attachment capacity returned wrong status");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.active_attachment_count != 1U) {
+        return Fail("component attachment capacity mutated active count");
+    }
+
+    if (snapshot.added_attachment_count != 1U) {
+        return Fail("component attachment capacity mutated added count");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeQueryReturnsStoredAttachment() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment query fixture add failed");
+    }
+
+    const WorldComponentAttachmentResult query_result = bridge.Query(OBJECT_PLAYER, COMPONENT_TYPE_SECONDARY);
+    if (!query_result.Succeeded()) {
+        return Fail("component attachment query failed");
+    }
+
+    if (query_result.component_slot_id.value != COMPONENT_SLOT_SECONDARY.value) {
+        return Fail("component attachment query returned wrong slot");
+    }
+
+    if (query_result.component_type_id.value != COMPONENT_TYPE_SECONDARY.value) {
+        return Fail("component attachment query returned wrong type");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeQueryRejectsMissingAttachmentWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    const WorldComponentAttachmentSnapshot before_snapshot = bridge.Snapshot();
+    const WorldComponentAttachmentResult query_result = bridge.Query(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY);
+    if (query_result.status != WorldComponentAttachmentStatus::AttachmentNotFound) {
+        return Fail("component attachment missing query returned wrong status");
+    }
+
+    const WorldComponentAttachmentSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.active_attachment_count != before_snapshot.active_attachment_count) {
+        return Fail("component attachment missing query mutated active count");
+    }
+
+    if (after_snapshot.added_attachment_count != before_snapshot.added_attachment_count) {
+        return Fail("component attachment missing query mutated added count");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeQueryIsReadOnlyAndBounded() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment readonly fixture add failed");
+    }
+
+    const WorldComponentAttachmentSnapshot before_snapshot = bridge.Snapshot();
+    std::uint32_t query_index = 0U;
+    while (query_index < 3U) {
+        if (!bridge.Query(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY).Succeeded()) {
+            return Fail("component attachment readonly query failed");
+        }
+
+        ++query_index;
+    }
+
+    const WorldComponentAttachmentSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.attachment_capacity != before_snapshot.attachment_capacity) {
+        return Fail("component attachment readonly mutated capacity");
+    }
+
+    if (after_snapshot.active_attachment_count != before_snapshot.active_attachment_count) {
+        return Fail("component attachment readonly mutated active count");
+    }
+
+    if (after_snapshot.added_attachment_count != before_snapshot.added_attachment_count) {
+        return Fail("component attachment readonly mutated added count");
+    }
+
+    if (after_snapshot.removed_attachment_count != before_snapshot.removed_attachment_count) {
+        return Fail("component attachment readonly mutated removed count");
+    }
+
+    if (after_snapshot.query_count != before_snapshot.query_count + 3U) {
+        return Fail("component attachment readonly query count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeRemoveClearsAttachment() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment remove fixture add failed");
+    }
+
+    const WorldComponentAttachmentStatus remove_status = bridge.Remove(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY);
+    if (remove_status != WorldComponentAttachmentStatus::Success) {
+        return Fail("component attachment remove returned wrong status");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.active_attachment_count != 0U) {
+        return Fail("component attachment remove did not clear active count");
+    }
+
+    if (snapshot.removed_attachment_count != 1U) {
+        return Fail("component attachment remove did not count removal");
+    }
+
+    const WorldComponentAttachmentResult query_result = bridge.Query(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY);
+    if (query_result.status != WorldComponentAttachmentStatus::AttachmentNotFound) {
+        return Fail("component attachment remove left queryable record");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeRemoveRejectsMissingAttachmentWithoutMutation() {
+    WorldComponentAttachmentBridge bridge;
+    const WorldComponentAttachmentSnapshot before_snapshot = bridge.Snapshot();
+    const WorldComponentAttachmentStatus remove_status = bridge.Remove(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY);
+    if (remove_status != WorldComponentAttachmentStatus::AttachmentNotFound) {
+        return Fail("component attachment missing remove returned wrong status");
+    }
+
+    const WorldComponentAttachmentSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.active_attachment_count != before_snapshot.active_attachment_count) {
+        return Fail("component attachment missing remove mutated active count");
+    }
+
+    if (after_snapshot.removed_attachment_count != before_snapshot.removed_attachment_count) {
+        return Fail("component attachment missing remove mutated removed count");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeClearRemovesAllAttachmentsInSlotOrder() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_TERTIARY).Succeeded()) {
+        return Fail("component attachment clear first add failed");
+    }
+
+    if (!bridge.Add(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment clear second add failed");
+    }
+
+    if (!bridge.Add(OBJECT_EFFECT, COMPONENT_TYPE_TERTIARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment clear third add failed");
+    }
+
+    const WorldComponentAttachmentStatus clear_status = bridge.Clear();
+    if (clear_status != WorldComponentAttachmentStatus::Success) {
+        return Fail("component attachment clear returned wrong status");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.active_attachment_count != 0U) {
+        return Fail("component attachment clear did not clear active count");
+    }
+
+    if (snapshot.cleared_attachment_count != 3U) {
+        return Fail("component attachment clear did not count cleared attachments");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeUpdatePathDoesNotGrowStorage() {
+    WorldComponentAttachmentBridgeDesc desc{};
+    desc.attachment_capacity = 2U;
+    WorldComponentAttachmentBridge bridge(desc);
+    const WorldComponentAttachmentSnapshot before_snapshot = bridge.Snapshot();
+    std::uint32_t iteration = 0U;
+    while (iteration < 2U) {
+        WorldComponentTypeId component_type_id = COMPONENT_TYPE_PRIMARY;
+        WorldComponentSlotId component_slot_id = COMPONENT_SLOT_PRIMARY;
+        if (iteration == 1U) {
+            component_type_id = COMPONENT_TYPE_SECONDARY;
+            component_slot_id = COMPONENT_SLOT_SECONDARY;
+        }
+
+        if (!bridge.Add(OBJECT_PLAYER, component_type_id, component_slot_id).Succeeded()) {
+            return Fail("component attachment update path add failed");
+        }
+
+        if (!bridge.Query(OBJECT_PLAYER, component_type_id).Succeeded()) {
+            return Fail("component attachment update path query failed");
+        }
+
+        if (bridge.Remove(OBJECT_PLAYER, component_type_id) != WorldComponentAttachmentStatus::Success) {
+            return Fail("component attachment update path remove failed");
+        }
+
+        ++iteration;
+    }
+
+    const WorldComponentAttachmentSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.attachment_capacity != before_snapshot.attachment_capacity) {
+        return Fail("component attachment update path changed capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("component attachment update path changed allocation accounting");
+    }
+
+    if (after_snapshot.active_attachment_count != 0U) {
+        return Fail("component attachment update path left active attachment");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeSnapshotReportsCountsAndLastStatus() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment snapshot add failed");
+    }
+
+    const WorldComponentAttachmentResult duplicate_result = bridge.Add(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_SECONDARY);
+    if (duplicate_result.status != WorldComponentAttachmentStatus::DuplicateAttachment) {
+        return Fail("component attachment snapshot duplicate status wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.active_attachment_count != 1U) {
+        return Fail("component attachment snapshot active count wrong");
+    }
+
+    if (snapshot.added_attachment_count != 1U) {
+        return Fail("component attachment snapshot added count wrong");
+    }
+
+    if (snapshot.duplicate_rejection_count != 1U) {
+        return Fail("component attachment snapshot duplicate count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component attachment snapshot failure count wrong");
+    }
+
+    if (snapshot.last_status != WorldComponentAttachmentStatus::DuplicateAttachment) {
+        return Fail("component attachment snapshot last status wrong");
+    }
+
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("component attachment snapshot allocation accounting wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeDoesNotQueryOrMutateWorldInstance() {
+    WorldInstance world = MakeWorld(4U, 4U);
+    const WorldSnapshot before_world = world.Snapshot();
+    WorldComponentAttachmentBridge bridge;
+    const WorldComponentAttachmentResult result = bridge.Add(
+        OBJECT_EFFECT,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    if (!result.Succeeded()) {
+        return Fail("component attachment no-world-query add failed");
+    }
+
+    const WorldSnapshot after_world = world.Snapshot();
+    if (!WorldSnapshotsMatch(before_world, after_world)) {
+        return Fail("component attachment no-world-query mutated world");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeNoActorComponentBehaviorOrLifecycle() {
+    WorldComponentAttachmentBridge bridge;
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component attachment behavior first add failed");
+    }
+
+    if (!bridge.Add(OBJECT_PLAYER, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component attachment behavior second add failed");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.active_attachment_count != 2U) {
+        return Fail("component attachment behavior did not remain a sidecar table");
+    }
+
+    if (snapshot.attachment_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("component attachment behavior changed default capacity");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeNoObjectResourceScriptSerializeOrGameAdapterDependency() {
+    WorldComponentAttachmentBridge bridge;
+    const WorldComponentAttachmentResult result = bridge.Add(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    if (!result.Succeeded()) {
+        return Fail("component attachment module boundary add failed");
+    }
+
+    const WorldComponentAttachmentResult query_result = bridge.Query(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY);
+    if (!query_result.Succeeded()) {
+        return Fail("component attachment module boundary query failed");
+    }
+
+    if (bridge.Remove(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY) != WorldComponentAttachmentStatus::Success) {
+        return Fail("component attachment module boundary remove failed");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeNoFilePackageThreadPlatformDiagnosticsDependency() {
+    WorldComponentAttachmentBridge bridge;
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.attachment_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("component attachment file boundary changed default capacity");
+    }
+
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("component attachment file boundary changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency() {
+    WorldComponentAttachmentBridge bridge;
+    const WorldComponentAttachmentResult result = bridge.Add(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_TERTIARY,
+        COMPONENT_SLOT_TERTIARY);
+    if (!result.Succeeded()) {
+        return Fail("component attachment render boundary add failed");
+    }
+
+    const WorldComponentAttachmentSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.active_attachment_count != 1U) {
+        return Fail("component attachment render boundary changed active count");
+    }
+
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("component attachment render boundary changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentBridgeWorldInstanceCoreRemainsAttachmentFree() {
+    WorldInstance world = MakeWorld(4U, 4U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("component attachment world core-free registration failed");
+    }
+
+    const WorldSnapshot before_world = world.Snapshot();
+    WorldComponentAttachmentBridge bridge;
+    const WorldComponentAttachmentResult result = bridge.Add(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    if (!result.Succeeded()) {
+        return Fail("component attachment world core-free add failed");
+    }
+
+    const WorldSnapshot after_world = world.Snapshot();
+    if (!WorldSnapshotsMatch(before_world, after_world)) {
+        return Fail("component attachment world core-free mutated world");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -4727,7 +5304,27 @@ int main(int argc, char **argv) {
         {TEST_RESOURCE_SNAPSHOT, WorldResourceBindingBridgeSnapshotReportsCountsAndLastStatus},
         {TEST_RESOURCE_NO_FILE_PACKAGE, WorldResourceBindingBridgeNoFilePackageLoadDecodeUploadOrGameAdapterDependency},
         {TEST_RESOURCE_WORLD_CORE_FREE, WorldResourceBindingBridgeWorldInstanceCoreRemainsResourceFree},
-        {TEST_RESOURCE_CORE_FREE, WorldResourceBindingBridgeResourceCoreRemainsWorldFree}};
+        {TEST_RESOURCE_CORE_FREE, WorldResourceBindingBridgeResourceCoreRemainsWorldFree},
+        {TEST_COMPONENT_ADD_VALID, WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord},
+        {TEST_COMPONENT_ADD_INVALID_WORLD, WorldComponentAttachmentBridgeAddRejectsInvalidWorldIdWithoutMutation},
+        {TEST_COMPONENT_ADD_INVALID_TYPE, WorldComponentAttachmentBridgeAddRejectsInvalidComponentTypeWithoutMutation},
+        {TEST_COMPONENT_ADD_INVALID_SLOT, WorldComponentAttachmentBridgeAddRejectsInvalidComponentSlotWithoutMutation},
+        {TEST_COMPONENT_ADD_DUPLICATE, WorldComponentAttachmentBridgeAddRejectsDuplicateTypeForWorldObject},
+        {TEST_COMPONENT_ADD_CAPACITY, WorldComponentAttachmentBridgeAddRejectsCapacityOverflowWithoutMutation},
+        {TEST_COMPONENT_QUERY_STORED, WorldComponentAttachmentBridgeQueryReturnsStoredAttachment},
+        {TEST_COMPONENT_QUERY_MISSING, WorldComponentAttachmentBridgeQueryRejectsMissingAttachmentWithoutMutation},
+        {TEST_COMPONENT_QUERY_READ_ONLY, WorldComponentAttachmentBridgeQueryIsReadOnlyAndBounded},
+        {TEST_COMPONENT_REMOVE_CLEARS, WorldComponentAttachmentBridgeRemoveClearsAttachment},
+        {TEST_COMPONENT_REMOVE_MISSING, WorldComponentAttachmentBridgeRemoveRejectsMissingAttachmentWithoutMutation},
+        {TEST_COMPONENT_CLEAR_ALL, WorldComponentAttachmentBridgeClearRemovesAllAttachmentsInSlotOrder},
+        {TEST_COMPONENT_UPDATE_PATH, WorldComponentAttachmentBridgeUpdatePathDoesNotGrowStorage},
+        {TEST_COMPONENT_SNAPSHOT, WorldComponentAttachmentBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_COMPONENT_NO_WORLD_QUERY, WorldComponentAttachmentBridgeDoesNotQueryOrMutateWorldInstance},
+        {TEST_COMPONENT_NO_BEHAVIOR, WorldComponentAttachmentBridgeNoActorComponentBehaviorOrLifecycle},
+        {TEST_COMPONENT_NO_OBJECT_RESOURCE, WorldComponentAttachmentBridgeNoObjectResourceScriptSerializeOrGameAdapterDependency},
+        {TEST_COMPONENT_NO_FILE_PACKAGE, WorldComponentAttachmentBridgeNoFilePackageThreadPlatformDiagnosticsDependency},
+        {TEST_COMPONENT_NO_RENDER_PHYSICS, WorldComponentAttachmentBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency},
+        {TEST_COMPONENT_WORLD_CORE_FREE, WorldComponentAttachmentBridgeWorldInstanceCoreRemainsAttachmentFree}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
