@@ -1,6 +1,6 @@
 # P3-GATE-021: World Scene Decoded Restore Plan Bridge
 
-Status: Approved for first slice
+Status: First-slice covered
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
@@ -10,6 +10,8 @@ Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0014, ADR-0015
 Source baseline: `d80746d`
 Approval evidence: ENG-091A PASS, ENG-091B2 PASS on amended `60b2a78`,
 and ENG-091C2 PASS on amended `60b2a78`.
+Implementation evidence: ENG-092A PASS, ENG-092B PASS, and ENG-092QA PASS;
+first slice landed at `10e825e` with fast gate `608/608`.
 
 ## Layer
 
