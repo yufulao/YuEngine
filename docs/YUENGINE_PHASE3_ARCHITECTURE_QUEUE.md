@@ -100,7 +100,7 @@ Phase 3 remains blocked from:
 | P3-GATE-019 | World Scene Object Transform Restore Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_019_WORLD_SCENE_OBJECT_TRANSFORM_RESTORE_BRIDGE.md`; active restore over caller-owned object identity and transform records only, no object construction, no scene loading/save policy, no component payload/lifecycle, no File/Package/Resource loading or Game Adapter dependency |
 | P3-GATE-020 | World Scene Object Transform Manifest Stream Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_020_WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_STREAM_BRIDGE.md`; stream-only envelope over caller-owned P3-GATE-019 object identity and transform restore records, deterministic fixed-byte transform payloads only, no active restore, object construction, scene loading/save policy, component payload/lifecycle, YuSerialize float/core format changes, File/Package/Resource loading, or Game Adapter dependency |
 | P3-GATE-021 | World Scene Decoded Restore Plan Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_021_WORLD_SCENE_DECODED_RESTORE_PLAN_BRIDGE.md`; no-mutation plan/preflight over caller-owned decoded object identity, transform, component attachment, and component-resource binding records, required const `WorldInstance` membership preflight, required POD plan/status/counters output, no active restore, registry mutation, stream decode/apply fusion, rollback, File/Package/Resource loading, scene loader/save policy, or Game Adapter dependency |
-| P3-GATE-022 | World Scene Apply-Time Restore Proof Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_022_WORLD_SCENE_APPLY_TIME_RESTORE_PROOF_BRIDGE.md`; no-mutation apply-time proof over current decoded records, current destinations, current world, current registries, and caller-owned P3-GATE-021 plan scratch, emits deterministic active-call slices only, no active restore, cached plan authorization, cleanup/rollback, registry mutation, stream decode/apply fusion, File/Package/Resource loading, scene loader/save policy, or Game Adapter dependency |
+| P3-GATE-022 | World Scene Apply-Time Restore Proof Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_022_WORLD_SCENE_APPLY_TIME_RESTORE_PROOF_BRIDGE.md`; no-mutation apply-time proof over current decoded records, current destinations, current world, current registries, and caller-owned P3-GATE-021 plan scratch, emits deterministic active-call slices only, no active restore, cached plan authorization, cleanup/rollback, registry mutation, stream decode/apply fusion, File/Package/Resource loading, scene loader/save policy, or Game Adapter dependency |
 
 ## Current Active Gates
 
@@ -305,6 +305,8 @@ Phase 3 remains blocked from:
   not authorize active restore, old/cached plan authorization, cleanup/rollback,
   stream decode/apply fusion, resource loading, File/Package work, scene
   loading/save policy, or Game Adapter scope.
+- P3-GATE-022 first slice landed at `54b48a7` with QA PASS and fast gate
+  `646/646`.
 
 ## Implementation Baseline
 
@@ -348,29 +350,33 @@ same first slices.
 
 ## Immediate Next Steps
 
-1. Treat P3-GATE-017, P3-GATE-018, P3-GATE-019, and P3-GATE-020 as landed
+1. Treat P3-GATE-017, P3-GATE-018, P3-GATE-019, P3-GATE-020, P3-GATE-021,
+   and P3-GATE-022 as landed
    scene baselines. Future scene work must extend from caller-owned component
    attachment records, caller-owned component-resource binding records, manifest
    stream transport, caller-owned object identity/transform restore records,
-   and object-transform manifest stream transport without hidden allocation or
-   storage growth.
-2. Do not use P3-GATE-017, P3-GATE-018, P3-GATE-019, or P3-GATE-020 to
+   object-transform manifest stream transport, decoded restore plan/preflight,
+   and apply-time restore proof slices without hidden allocation or storage
+   growth.
+2. Do not use P3-GATE-017, P3-GATE-018, P3-GATE-019, P3-GATE-020,
+   P3-GATE-021, or P3-GATE-022 to
    introduce scene loading, save policy, object construction, resource loading,
-   component payload/lifecycle, transform hierarchy, render/audio/physics/UI/
-   tools/reports, or Game Adapter behavior. Those require a separate reviewed
-   and approved gate.
+   active restore coordination, component payload/lifecycle, transform
+   hierarchy, render/audio/physics/UI/tools/reports, or Game Adapter behavior.
+   Those require a separate reviewed and approved gate.
 3. Future object/transform scene work must stay within the landed P3-GATE-019
    boundary unless a new gate expands it: caller-owned identity/transform
    records, duplicate object handle rejection before mutation, empty
    destinations, and minimal const `ObjectRegistry` acquire preflight without
    mutating `YuObject`.
-4. P3-GATE-020 is now a landed manifest-stream baseline only. A decoded active
-   restore coordinator remains a later gate after separate cross-domain
+4. P3-GATE-020 is a landed manifest-stream baseline only. P3-GATE-021 and
+   P3-GATE-022 are landed no-mutation plan/proof baselines only. A decoded
+   active restore coordinator remains a later gate after separate cross-domain
    preflight and transaction proof.
-5. Implement P3-GATE-022 first slice before active scene restore implementation.
-   It authorizes only no-mutation apply-time proof generation and deterministic
-   active-call slices; decoded active scene restore coordination remains a later
-   gate after this proof contract is landed.
+5. Use the landed P3-GATE-022 proof contract before active scene restore
+   implementation. It authorizes only no-mutation apply-time proof generation
+   and deterministic active-call slices; decoded active scene restore
+   coordination still requires a separate reviewed and approved gate.
 6. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.

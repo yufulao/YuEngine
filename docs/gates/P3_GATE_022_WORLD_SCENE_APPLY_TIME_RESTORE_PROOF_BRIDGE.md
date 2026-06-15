@@ -1,6 +1,6 @@
 # P3-GATE-022: World Scene Apply-Time Restore Proof Bridge
 
-Status: Approved for first slice
+Status: First-slice covered
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
@@ -15,6 +15,9 @@ narrower apply-time proof before decoded active restore.
 Approval evidence: ENG-094A2 boundary/performance PASS, ENG-094B2
 implementability PASS, and ENG-094C3 test admission PASS on amended
 `fb82695`.
+Implementation evidence: ENG-095A PASS, ENG-095B PASS, ENG-095QA PASS,
+and ENG-095QA2 PASS; first slice landed at `54b48a7` with fast gate
+`646/646`.
 
 ## Layer
 
