@@ -89,7 +89,7 @@ Phase 3 remains blocked from:
 | P3-GATE-008 | World Script Dispatch Bridge | L5 over L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_008_WORLD_SCRIPT_DISPATCH_BRIDGE.md`; narrow WorldPhaseTrace-to-ScriptCallId dispatch adapter only, `WorldInstance` core remains Script-free, no VM/bytecode/reflection, actor/component/gameplay, Resource/Package/File, Serialize payload, Object ownership, render/audio/physics/UI/tools/reports/Game Adapter |
 | P3-GATE-009 | World Serialize Snapshot Bridge | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_009_WORLD_SERIALIZE_SNAPSHOT_BRIDGE.md`; narrow World snapshot/phase-trace to YuSerialize value-stream adapter only, `WorldInstance` core remains Serialize-free, no File/Package/Resource/save policy, Object construction, reflection, Script, actor/component/gameplay, render/audio/physics/UI/tools/reports/Game Adapter |
 | P3-GATE-010 | World Resource Binding Bridge | L5 over L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_010_WORLD_RESOURCE_BINDING_BRIDGE.md`; narrow WorldObjectId-to-ResourceHandle binding adapter only, caller-supplied WorldObjectId value contract, fixed-capacity storage, explicit Resource acquire/release failure tests, `WorldInstance` core remains Resource-free, Resource core remains World-free, no File/Package/load/decode/upload/render/audio/script/actor/component/gameplay/tools/reports/Game Adapter |
-| P3-GATE-011 | World Component Attachment Bridge | L5 | `NEEDS_REVIEW` | Proposed for review | Gate doc: `docs/gates/P3_GATE_011_WORLD_COMPONENT_ATTACHMENT_BRIDGE.md`; narrow WorldObjectId-to-component-type/slot attachment sidecar only, fixed-capacity storage, no `WorldInstance` membership query, no actor/component behavior lifecycle, no Object/Resource/Script/Serialize/render/physics/audio/UI/tools/reports/Game Adapter dependency |
+| P3-GATE-011 | World Component Attachment Bridge | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_011_WORLD_COMPONENT_ATTACHMENT_BRIDGE.md`; narrow WorldObjectId-to-component-type/slot attachment sidecar only, fixed-capacity storage, no `WorldInstance` membership query, no actor/component behavior lifecycle, no Object/Resource/Script/Serialize/render/physics/audio/UI/tools/reports/Game Adapter dependency |
 
 ## Current Active Gates
 
@@ -179,17 +179,15 @@ Phase 3 remains blocked from:
   `YuResource` core World-free, and it must not introduce File/Package/load/
   decode/upload/render/audio/script/actor/component/gameplay/tools/reports or
   Game Adapter behavior.
-- P3-GATE-011 is proposed from `fa59550` for a narrow World component
-  attachment bridge. It is not approved for implementation yet. Review must
-  confirm whether the first slice may add only `WorldComponentAttachmentBridge`
-  sidecar files under `YuWorld`, `Tests/World` coverage, and CMake/CTest
-  registration. The proposal keeps the first slice to fixed-capacity
-  `(WorldObjectId, WorldComponentTypeId) -> WorldComponentSlotId` bookkeeping,
-  with no `WorldInstance` membership query and no actor/component behavior
-  lifecycle. It must not introduce Object/Resource/Script/Serialize/render/
-  physics/audio/UI/tools/reports or Game Adapter dependency creep, copied UE or
-  Unity API shape, reflection, scene graph, gameplay behavior, or component
-  payload storage.
+- P3-GATE-011 is approved from `92928d1` for a narrow World component
+  attachment bridge. It may add only `WorldComponentAttachmentBridge` sidecar
+  files under `YuWorld`, `Tests/World` coverage, and CMake/CTest registration.
+  The first slice keeps fixed-capacity `(WorldObjectId, WorldComponentTypeId)
+  -> WorldComponentSlotId` bookkeeping, with no `WorldInstance` membership
+  query and no actor/component behavior lifecycle. It must not introduce
+  Object/Resource/Script/Serialize/render/physics/audio/UI/tools/reports or
+  Game Adapter dependency creep, copied UE or Unity API shape, reflection,
+  scene graph, gameplay behavior, or component payload storage.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.
@@ -225,12 +223,14 @@ same first slices.
 
 ## Immediate Next Steps
 
-1. Review P3-GATE-011 before any implementation handoff. The review must verify
-   that `WorldComponentAttachmentBridge` is only a fixed-capacity attachment
-   sidecar and not a UE/Unity-style Actor/GameObject/Component API clone.
-2. Keep implementation blocked until P3-GATE-011 moves from `NEEDS_REVIEW` to
-   `APPROVED_FOR_FIRST_SLICE`; no `Src`, `Tests`, or CMake change may be
-   created from the proposal alone.
+1. Implement P3-GATE-011 as a first slice only after creating an isolated
+   implementation task. The implementation may add only
+   `WorldComponentAttachmentBridge` files under `YuWorld`, `Tests/World`
+   coverage, and CMake/CTest registration.
+2. Keep the implementation to fixed-capacity attachment sidecar behavior; do
+   not copy UE/Unity Actor/GameObject/Component API shape and do not add
+   actor/component lifecycle, payload storage, scene graph, render, physics,
+   audio, UI, tools, reports, or Game Adapter scope.
 3. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.

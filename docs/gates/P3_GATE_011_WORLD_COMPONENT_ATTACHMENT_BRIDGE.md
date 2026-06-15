@@ -1,8 +1,8 @@
 # P3-GATE-011: World Component Attachment Bridge
 
-Status: Proposed for review
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NEEDS_REVIEW`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P3-GATE-004, P3-GATE-006, P3-GATE-007
@@ -250,8 +250,8 @@ ctest --preset windows-fast-gate --output-on-failure
 
 ## Allowed First Slice
 
-If this gate is updated to `APPROVED_FOR_FIRST_SLICE`, the first implementation
-slice may create:
+With this gate approved for first slice, the first implementation slice may
+create:
 
 ```text
 Src/YuEngine/World/Include/YuEngine/World/WorldComponentAttachment*.h
