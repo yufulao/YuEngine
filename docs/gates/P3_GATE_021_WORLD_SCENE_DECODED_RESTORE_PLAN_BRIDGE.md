@@ -1,21 +1,22 @@
 # P3-GATE-021: World Scene Decoded Restore Plan Bridge
 
-Status: Proposed for review
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `PROPOSED_FOR_REVIEW`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P3-GATE-017, P3-GATE-019, P3-GATE-020
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0014, ADR-0015
 Source baseline: `d80746d`
-Candidate evidence: ENG-089A, ENG-089B, and ENG-089C next-gate audit.
+Approval evidence: ENG-091A PASS, ENG-091B2 PASS on amended `60b2a78`,
+and ENG-091C2 PASS on amended `60b2a78`.
 
 ## Layer
 
 L5 decoded scene restore preflight and plan bridge over landed world sidecar
 restore record families.
 
-This gate proposes a no-mutation plan/preflight bridge for the decoded scene
+This gate approves a no-mutation plan/preflight bridge for the decoded scene
 restore path. The first slice may validate caller-owned decoded object identity,
 transform, component attachment, and component-resource binding records as one
 cross-family transaction candidate. It may output a POD plan, explicit status,
@@ -56,7 +57,7 @@ The boundary lesson from the landed P3 scene gates is:
 
 ## Owns
 
-This gate owns a future first slice for:
+This gate owns the first slice for:
 
 - a `WorldSceneDecodedRestorePlanBridge`, `WorldSceneRestorePlanBridge`, or
   equivalent no-mutation plan bridge;
