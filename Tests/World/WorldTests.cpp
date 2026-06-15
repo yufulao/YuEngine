@@ -114,6 +114,12 @@
 #include "YuEngine/World/WorldSerializeSnapshotStatus.h"
 #include "YuEngine/World/WorldSceneAssemblyBridge.h"
 #include "YuEngine/World/WorldSceneAssemblyBridgeDesc.h"
+#include "YuEngine/World/WorldSceneAssemblyManifestStreamBridge.h"
+#include "YuEngine/World/WorldSceneAssemblyManifestStreamConstants.h"
+#include "YuEngine/World/WorldSceneAssemblyManifestStreamDesc.h"
+#include "YuEngine/World/WorldSceneAssemblyManifestStreamResult.h"
+#include "YuEngine/World/WorldSceneAssemblyManifestStreamSnapshot.h"
+#include "YuEngine/World/WorldSceneAssemblyManifestStreamStatus.h"
 #include "YuEngine/World/WorldSceneAssemblyResult.h"
 #include "YuEngine/World/WorldSceneAssemblySnapshot.h"
 #include "YuEngine/World/WorldSceneAssemblyStatus.h"
@@ -273,6 +279,27 @@ using yuengine::world::WorldSerializeSnapshotResult;
 using yuengine::world::WorldSerializeSnapshotStatus;
 using yuengine::world::WorldSceneAssemblyBridge;
 using yuengine::world::WorldSceneAssemblyBridgeDesc;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_CHUNK_PAYLOAD_BYTE_COUNT;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_CHUNK_RECORD_CAPACITY;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_CHUNK_RECORD_ID_BASE;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_RECORD_BYTE_COUNT;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_CHUNK_PAYLOAD_BYTE_COUNT;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_CHUNK_RECORD_CAPACITY;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_CHUNK_RECORD_ID_BASE;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_RECORD_BYTE_COUNT;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_CHUNK_FIELD_RECORD_BYTES;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_FIELD_ATTACHMENT_CHUNK_COUNT;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_FIELD_ATTACHMENT_RECORD_COUNT;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_FIELD_BINDING_CHUNK_COUNT;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_FIELD_BINDING_RECORD_COUNT;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_FIELD_SCHEMA_VERSION;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_METADATA_RECORD_ID;
+using yuengine::world::WORLD_SCENE_ASSEMBLY_MANIFEST_STREAM_SCHEMA_VERSION;
+using yuengine::world::WorldSceneAssemblyManifestStreamBridge;
+using yuengine::world::WorldSceneAssemblyManifestStreamDesc;
+using yuengine::world::WorldSceneAssemblyManifestStreamResult;
+using yuengine::world::WorldSceneAssemblyManifestStreamSnapshot;
+using yuengine::world::WorldSceneAssemblyManifestStreamStatus;
 using yuengine::world::WorldSceneAssemblyResult;
 using yuengine::world::WorldSceneAssemblySnapshot;
 using yuengine::world::WorldSceneAssemblyStatus;
@@ -604,6 +631,62 @@ constexpr const char *TEST_SCENE_ASSEMBLY_WORLD_CORE_FREE =
     "WorldSceneAssemblyBridge_WorldInstanceCoreRemainsAssemblyFree";
 constexpr const char *TEST_SCENE_ASSEMBLY_RESOURCE_CORE_FREE =
     "WorldSceneAssemblyBridge_ResourceCoreRemainsWorldFree";
+constexpr const char *TEST_SCENE_MANIFEST_ROUND_TRIP =
+    "WorldSceneAssemblyManifestStreamBridge_WriteReadRoundTripsAssemblyRecordsInInputOrder";
+constexpr const char *TEST_SCENE_MANIFEST_EMPTY =
+    "WorldSceneAssemblyManifestStreamBridge_WriteEmptyManifestProducesZeroRecords";
+constexpr const char *TEST_SCENE_MANIFEST_NULL_WRITER =
+    "WorldSceneAssemblyManifestStreamBridge_WriteRejectsNullWriterWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_NULL_ATTACHMENT_INPUT =
+    "WorldSceneAssemblyManifestStreamBridge_WriteRejectsNullAttachmentInputWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_NULL_BINDING_INPUT =
+    "WorldSceneAssemblyManifestStreamBridge_WriteRejectsNullBindingInputWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_WRITER_CAPACITY =
+    "WorldSceneAssemblyManifestStreamBridge_WriteRejectsWriterCapacityBeforePartialWrite";
+constexpr const char *TEST_SCENE_MANIFEST_INVALID_ATTACHMENT =
+    "WorldSceneAssemblyManifestStreamBridge_WriteRejectsInvalidAttachmentRecordWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_INVALID_BINDING =
+    "WorldSceneAssemblyManifestStreamBridge_WriteRejectsInvalidBindingRecordWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_MISSING_ATTACHMENT =
+    "WorldSceneAssemblyManifestStreamBridge_WriteRejectsMissingAttachmentForBindingWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_DUPLICATE_ATTACHMENT =
+    "WorldSceneAssemblyManifestStreamBridge_WriteRejectsDuplicateAttachmentWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_DUPLICATE_BINDING =
+    "WorldSceneAssemblyManifestStreamBridge_WriteRejectsDuplicateBindingWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_READ_OUTPUT =
+    "WorldSceneAssemblyManifestStreamBridge_ReadWritesCallerOwnedOutputs";
+constexpr const char *TEST_SCENE_MANIFEST_NULL_READER =
+    "WorldSceneAssemblyManifestStreamBridge_ReadRejectsNullReaderWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_NULL_ATTACHMENT_OUTPUT =
+    "WorldSceneAssemblyManifestStreamBridge_ReadRejectsNullAttachmentOutputWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_NULL_BINDING_OUTPUT =
+    "WorldSceneAssemblyManifestStreamBridge_ReadRejectsNullBindingOutputWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_OUTPUT_CAPACITY =
+    "WorldSceneAssemblyManifestStreamBridge_ReadRejectsOutputCapacityTooSmallWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_UNKNOWN_VERSION =
+    "WorldSceneAssemblyManifestStreamBridge_ReadRejectsUnknownVersionWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_MALFORMED_COUNT =
+    "WorldSceneAssemblyManifestStreamBridge_ReadRejectsMalformedRecordCountWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_INVALID_RECORDS =
+    "WorldSceneAssemblyManifestStreamBridge_ReadRejectsInvalidRecordsWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_DUPLICATE_RECORDS =
+    "WorldSceneAssemblyManifestStreamBridge_ReadRejectsDuplicateRecordsWithoutMutation";
+constexpr const char *TEST_SCENE_MANIFEST_NO_ACTIVE_RESTORE =
+    "WorldSceneAssemblyManifestStreamBridge_ReadDoesNotRestoreActiveSidecars";
+constexpr const char *TEST_SCENE_MANIFEST_PATH =
+    "WorldSceneAssemblyManifestStreamBridge_WriteReadPathDoesNotGrowStorage";
+constexpr const char *TEST_SCENE_MANIFEST_NO_HIDDEN_ALLOCATION =
+    "WorldSceneAssemblyManifestStreamBridge_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char *TEST_SCENE_MANIFEST_COUNTERS =
+    "WorldSceneAssemblyManifestStreamBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_SCENE_MANIFEST_NO_OBJECT_TRANSFORM =
+    "WorldSceneAssemblyManifestStreamBridge_NoObjectTransformSceneLoadOrGameAdapterDependency";
+constexpr const char *TEST_SCENE_MANIFEST_NO_FILE_PACKAGE =
+    "WorldSceneAssemblyManifestStreamBridge_NoFilePackageResourceLoadDecodeUploadDependency";
+constexpr const char *TEST_SCENE_MANIFEST_WORLD_CORE_FREE =
+    "WorldSceneAssemblyManifestStreamBridge_WorldInstanceCoreRemainsManifestFree";
+constexpr const char *TEST_SCENE_MANIFEST_SERIALIZE_CORE_FREE =
+    "WorldSceneAssemblyManifestStreamBridge_SerializeCoreRemainsWorldFree";
 constexpr const char *TEST_COMPONENT_ADD_VALID = "WorldComponentAttachmentBridge_AddValidAttachment_StoresRecord";
 constexpr const char *TEST_COMPONENT_ADD_INVALID_WORLD = "WorldComponentAttachmentBridge_AddRejectsInvalidWorldIdWithoutMutation";
 constexpr const char *TEST_COMPONENT_ADD_INVALID_TYPE = "WorldComponentAttachmentBridge_AddRejectsInvalidComponentTypeWithoutMutation";
@@ -2142,6 +2225,378 @@ int ExpectSceneAssemblyFailureWithoutMutation(
         if (!ResourceSnapshotsMatch(before_registry, after_registry)) {
             return Fail("scene assembly failure mutated registry");
         }
+    }
+
+    return 0;
+}
+
+ResourceHandle MakeManifestResourceHandle(std::uint32_t slot, std::uint32_t generation) {
+    ResourceHandle handle{};
+    handle.slot = slot;
+    handle.generation = generation;
+    return handle;
+}
+
+WorldComponentAttachmentSnapshotRecord SentinelManifestAttachmentRecord() {
+    return MakeSceneAttachmentRecord(OBJECT_EFFECT, COMPONENT_TYPE_TERTIARY, COMPONENT_SLOT_TERTIARY);
+}
+
+WorldComponentResourceBindingSnapshotRecord SentinelManifestBindingRecord() {
+    const ResourceHandle handle = MakeManifestResourceHandle(777U, 888U);
+    return MakeSceneBindingRecord(
+        OBJECT_EFFECT,
+        COMPONENT_TYPE_TERTIARY,
+        COMPONENT_SLOT_TERTIARY,
+        handle,
+        RESOURCE_TYPE_AUDIO);
+}
+
+bool ManifestAttachmentRecordsMatch(
+    const WorldComponentAttachmentSnapshotRecord &left,
+    const WorldComponentAttachmentSnapshotRecord &right) {
+    if (left.world_object_id.value != right.world_object_id.value) {
+        return false;
+    }
+
+    if (left.component_type_id.value != right.component_type_id.value) {
+        return false;
+    }
+
+    return left.component_slot_id.value == right.component_slot_id.value;
+}
+
+bool ManifestBindingRecordsMatch(
+    const WorldComponentResourceBindingSnapshotRecord &left,
+    const WorldComponentResourceBindingSnapshotRecord &right) {
+    if (left.world_object_id.value != right.world_object_id.value) {
+        return false;
+    }
+
+    if (left.component_type_id.value != right.component_type_id.value) {
+        return false;
+    }
+
+    if (left.component_slot_id.value != right.component_slot_id.value) {
+        return false;
+    }
+
+    if (left.resource_handle.slot != right.resource_handle.slot) {
+        return false;
+    }
+
+    if (left.resource_handle.generation != right.resource_handle.generation) {
+        return false;
+    }
+
+    return left.expected_resource_type.value == right.expected_resource_type.value;
+}
+
+std::uint32_t CalculateManifestAttachmentChunkCount(std::uint32_t record_count) {
+    return (record_count + WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_CHUNK_RECORD_CAPACITY - 1U) /
+        WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_CHUNK_RECORD_CAPACITY;
+}
+
+std::uint32_t CalculateManifestBindingChunkCount(std::uint32_t record_count) {
+    return (record_count + WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_CHUNK_RECORD_CAPACITY - 1U) /
+        WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_CHUNK_RECORD_CAPACITY;
+}
+
+std::uint32_t GetManifestAttachmentChunkRecordCount(
+    std::uint32_t record_count,
+    std::uint32_t chunk_index) {
+    const std::uint32_t first_record_index =
+        chunk_index * WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_CHUNK_RECORD_CAPACITY;
+    if (record_count <= first_record_index) {
+        return 0U;
+    }
+
+    const std::uint32_t remaining_record_count = record_count - first_record_index;
+    if (remaining_record_count > WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_CHUNK_RECORD_CAPACITY) {
+        return WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_CHUNK_RECORD_CAPACITY;
+    }
+
+    return remaining_record_count;
+}
+
+std::uint32_t GetManifestBindingChunkRecordCount(
+    std::uint32_t record_count,
+    std::uint32_t chunk_index) {
+    const std::uint32_t first_record_index =
+        chunk_index * WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_CHUNK_RECORD_CAPACITY;
+    if (record_count <= first_record_index) {
+        return 0U;
+    }
+
+    const std::uint32_t remaining_record_count = record_count - first_record_index;
+    if (remaining_record_count > WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_CHUNK_RECORD_CAPACITY) {
+        return WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_CHUNK_RECORD_CAPACITY;
+    }
+
+    return remaining_record_count;
+}
+
+int WriteManifestMetadata(
+    SerializeWriter &writer,
+    std::uint32_t schema_version,
+    std::uint32_t attachment_record_count,
+    std::uint32_t binding_record_count,
+    std::uint32_t attachment_chunk_count,
+    std::uint32_t binding_chunk_count) {
+    if (writer.BeginRecord(WORLD_SCENE_ASSEMBLY_MANIFEST_METADATA_RECORD_ID) != SerializeStatus::Success) {
+        return Fail("scene manifest metadata begin failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_SCENE_ASSEMBLY_MANIFEST_FIELD_SCHEMA_VERSION,
+            schema_version) != SerializeStatus::Success) {
+        return Fail("scene manifest schema write failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_SCENE_ASSEMBLY_MANIFEST_FIELD_ATTACHMENT_RECORD_COUNT,
+            attachment_record_count) != SerializeStatus::Success) {
+        return Fail("scene manifest attachment count write failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_SCENE_ASSEMBLY_MANIFEST_FIELD_BINDING_RECORD_COUNT,
+            binding_record_count) != SerializeStatus::Success) {
+        return Fail("scene manifest binding count write failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_SCENE_ASSEMBLY_MANIFEST_FIELD_ATTACHMENT_CHUNK_COUNT,
+            attachment_chunk_count) != SerializeStatus::Success) {
+        return Fail("scene manifest attachment chunk write failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_SCENE_ASSEMBLY_MANIFEST_FIELD_BINDING_CHUNK_COUNT,
+            binding_chunk_count) != SerializeStatus::Success) {
+        return Fail("scene manifest binding chunk write failed");
+    }
+
+    return 0;
+}
+
+int WriteManifestAttachmentChunks(
+    SerializeWriter &writer,
+    const WorldComponentAttachmentSnapshotRecord *records,
+    std::uint32_t record_count) {
+    const std::uint32_t chunk_count = CalculateManifestAttachmentChunkCount(record_count);
+    std::uint32_t chunk_index = 0U;
+    while (chunk_index < chunk_count) {
+        const std::uint32_t first_record_index =
+            chunk_index * WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_CHUNK_RECORD_CAPACITY;
+        const std::uint32_t chunk_record_count = GetManifestAttachmentChunkRecordCount(
+            record_count,
+            chunk_index);
+        std::array<std::uint8_t, WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_CHUNK_PAYLOAD_BYTE_COUNT> payload{};
+        std::uint32_t record_index = 0U;
+        while (record_index < chunk_record_count) {
+            const std::uint32_t payload_offset =
+                record_index * WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_RECORD_BYTE_COUNT;
+            EncodeComponentAttachmentSnapshotRecord(
+                payload.data() + payload_offset,
+                records[first_record_index + record_index]);
+            ++record_index;
+        }
+
+        const yuengine::serialize::SerializeRecordId record_id{
+            WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_CHUNK_RECORD_ID_BASE + chunk_index};
+        if (writer.BeginRecord(record_id) != SerializeStatus::Success) {
+            return Fail("scene manifest attachment chunk begin failed");
+        }
+
+        const std::uint32_t payload_byte_count =
+            chunk_record_count * WORLD_SCENE_ASSEMBLY_MANIFEST_ATTACHMENT_RECORD_BYTE_COUNT;
+        if (writer.WriteFixedBytes(
+                WORLD_SCENE_ASSEMBLY_MANIFEST_CHUNK_FIELD_RECORD_BYTES,
+                payload.data(),
+                payload_byte_count) != SerializeStatus::Success) {
+            return Fail("scene manifest attachment chunk write failed");
+        }
+
+        ++chunk_index;
+    }
+
+    return 0;
+}
+
+int WriteManifestBindingChunks(
+    SerializeWriter &writer,
+    const WorldComponentResourceBindingSnapshotRecord *records,
+    std::uint32_t record_count) {
+    const std::uint32_t chunk_count = CalculateManifestBindingChunkCount(record_count);
+    std::uint32_t chunk_index = 0U;
+    while (chunk_index < chunk_count) {
+        const std::uint32_t first_record_index =
+            chunk_index * WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_CHUNK_RECORD_CAPACITY;
+        const std::uint32_t chunk_record_count = GetManifestBindingChunkRecordCount(
+            record_count,
+            chunk_index);
+        std::array<std::uint8_t, WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_CHUNK_PAYLOAD_BYTE_COUNT> payload{};
+        std::uint32_t record_index = 0U;
+        while (record_index < chunk_record_count) {
+            const std::uint32_t payload_offset =
+                record_index * WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_RECORD_BYTE_COUNT;
+            EncodeComponentResourceBindingSnapshotRecord(
+                payload.data() + payload_offset,
+                records[first_record_index + record_index]);
+            ++record_index;
+        }
+
+        const yuengine::serialize::SerializeRecordId record_id{
+            WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_CHUNK_RECORD_ID_BASE + chunk_index};
+        if (writer.BeginRecord(record_id) != SerializeStatus::Success) {
+            return Fail("scene manifest binding chunk begin failed");
+        }
+
+        const std::uint32_t payload_byte_count =
+            chunk_record_count * WORLD_SCENE_ASSEMBLY_MANIFEST_BINDING_RECORD_BYTE_COUNT;
+        if (writer.WriteFixedBytes(
+                WORLD_SCENE_ASSEMBLY_MANIFEST_CHUNK_FIELD_RECORD_BYTES,
+                payload.data(),
+                payload_byte_count) != SerializeStatus::Success) {
+            return Fail("scene manifest binding chunk write failed");
+        }
+
+        ++chunk_index;
+    }
+
+    return 0;
+}
+
+int WriteManifestFixtureStream(
+    SerializeWriter &writer,
+    const WorldComponentAttachmentSnapshotRecord *attachments,
+    std::uint32_t attachment_count,
+    const WorldComponentResourceBindingSnapshotRecord *bindings,
+    std::uint32_t binding_count) {
+    const std::uint32_t attachment_chunk_count = CalculateManifestAttachmentChunkCount(attachment_count);
+    const std::uint32_t binding_chunk_count = CalculateManifestBindingChunkCount(binding_count);
+    if (WriteManifestMetadata(
+            writer,
+            WORLD_SCENE_ASSEMBLY_MANIFEST_STREAM_SCHEMA_VERSION,
+            attachment_count,
+            binding_count,
+            attachment_chunk_count,
+            binding_chunk_count) != 0) {
+        return 1;
+    }
+
+    if (WriteManifestAttachmentChunks(writer, attachments, attachment_count) != 0) {
+        return 1;
+    }
+
+    return WriteManifestBindingChunks(writer, bindings, binding_count);
+}
+
+int WriteManifestToBuffer(
+    WorldSceneAssemblyManifestStreamBridge &bridge,
+    const WorldComponentAttachmentSnapshotRecord *attachments,
+    std::uint32_t attachment_count,
+    const WorldComponentResourceBindingSnapshotRecord *bindings,
+    std::uint32_t binding_count,
+    SerializeBuffer &buffer,
+    std::uint32_t &committed_byte_count) {
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    const WorldSceneAssemblyManifestStreamResult result = bridge.WriteManifest(
+        &writer,
+        attachments,
+        attachment_count,
+        bindings,
+        binding_count);
+    if (!result.Succeeded()) {
+        return Fail("scene manifest fixture write failed");
+    }
+
+    committed_byte_count = result.state.committed_byte_count;
+    return 0;
+}
+
+int ExpectManifestWriteFailureWithoutWriterMutation(
+    WorldSceneAssemblyManifestStreamBridge &bridge,
+    SerializeWriter *writer,
+    const WorldComponentAttachmentSnapshotRecord *attachments,
+    std::uint32_t attachment_count,
+    const WorldComponentResourceBindingSnapshotRecord *bindings,
+    std::uint32_t binding_count,
+    WorldSceneAssemblyManifestStreamStatus expected_status,
+    const char *error_message) {
+    const bool has_writer = writer != nullptr;
+    SerializeSnapshot before_writer{};
+    if (has_writer) {
+        before_writer = writer->Snapshot();
+    }
+
+    const WorldSceneAssemblyManifestStreamResult result = bridge.WriteManifest(
+        writer,
+        attachments,
+        attachment_count,
+        bindings,
+        binding_count);
+    if (result.status != expected_status) {
+        return Fail(error_message);
+    }
+
+    if (has_writer) {
+        const SerializeSnapshot after_writer = writer->Snapshot();
+        if (!SerializeSnapshotsMatch(before_writer, after_writer)) {
+            return Fail("scene manifest rejected write mutated writer");
+        }
+    }
+
+    return 0;
+}
+
+int ReadManifestFromBuffer(
+    WorldSceneAssemblyManifestStreamBridge &bridge,
+    const SerializeBuffer &buffer,
+    std::uint32_t committed_byte_count,
+    WorldComponentAttachmentSnapshotRecord *output_attachments,
+    std::uint32_t output_attachment_capacity,
+    std::uint32_t *out_attachment_count,
+    WorldComponentResourceBindingSnapshotRecord *output_bindings,
+    std::uint32_t output_binding_capacity,
+    std::uint32_t *out_binding_count) {
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    const WorldSceneAssemblyManifestStreamResult result = bridge.ReadManifest(
+        &reader,
+        output_attachments,
+        output_attachment_capacity,
+        out_attachment_count,
+        output_bindings,
+        output_binding_capacity,
+        out_binding_count);
+    if (!result.Succeeded()) {
+        return Fail("scene manifest fixture read failed");
+    }
+
+    return 0;
+}
+
+int ExpectManifestReadFailureWithoutOutputMutation(
+    SerializeReader *reader,
+    WorldComponentAttachmentSnapshotRecord *output_attachments,
+    std::uint32_t output_attachment_capacity,
+    std::uint32_t *out_attachment_count,
+    WorldComponentResourceBindingSnapshotRecord *output_bindings,
+    std::uint32_t output_binding_capacity,
+    std::uint32_t *out_binding_count,
+    WorldSceneAssemblyManifestStreamStatus expected_status,
+    const char *error_message) {
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    const WorldSceneAssemblyManifestStreamResult result = bridge.ReadManifest(
+        reader,
+        output_attachments,
+        output_attachment_capacity,
+        out_attachment_count,
+        output_bindings,
+        output_binding_capacity,
+        out_binding_count);
+    if (result.status != expected_status) {
+        return Fail(error_message);
     }
 
     return 0;
@@ -10232,6 +10687,1319 @@ int WorldSceneAssemblyBridgeResourceCoreRemainsWorldFree() {
     return 0;
 }
 
+int WorldSceneAssemblyManifestStreamBridgeWriteReadRoundTripsAssemblyRecordsInInputOrder() {
+    const ResourceHandle first_handle = MakeManifestResourceHandle(1U, 1U);
+    const ResourceHandle second_handle = MakeManifestResourceHandle(2U, 1U);
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY),
+        MakeSceneAttachmentRecord(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 2U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            first_handle,
+            RESOURCE_TYPE_TEXTURE),
+        MakeSceneBindingRecord(
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            second_handle,
+            RESOURCE_TYPE_AUDIO)};
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteManifestToBuffer(
+            bridge,
+            input_attachments.data(),
+            static_cast<std::uint32_t>(input_attachments.size()),
+            input_bindings.data(),
+            static_cast<std::uint32_t>(input_bindings.size()),
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshotRecord sentinel_attachment = SentinelManifestAttachmentRecord();
+    const WorldComponentResourceBindingSnapshotRecord sentinel_binding = SentinelManifestBindingRecord();
+    std::array<WorldComponentAttachmentSnapshotRecord, 3U> output_attachments{
+        sentinel_attachment,
+        sentinel_attachment,
+        sentinel_attachment};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 3U> output_bindings{
+        sentinel_binding,
+        sentinel_binding,
+        sentinel_binding};
+    std::uint32_t attachment_count = 0U;
+    std::uint32_t binding_count = 0U;
+    if (ReadManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count) != 0) {
+        return 1;
+    }
+
+    if (attachment_count != input_attachments.size()) {
+        return Fail("scene manifest round trip attachment count wrong");
+    }
+
+    if (binding_count != input_bindings.size()) {
+        return Fail("scene manifest round trip binding count wrong");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[0], input_attachments[0])) {
+        return Fail("scene manifest round trip first attachment wrong");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[1], input_attachments[1])) {
+        return Fail("scene manifest round trip second attachment wrong");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[2], sentinel_attachment)) {
+        return Fail("scene manifest round trip overran attachment output");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[0], input_bindings[0])) {
+        return Fail("scene manifest round trip first binding wrong");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[1], input_bindings[1])) {
+        return Fail("scene manifest round trip second binding wrong");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[2], sentinel_binding)) {
+        return Fail("scene manifest round trip overran binding output");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeWriteEmptyManifestProducesZeroRecords() {
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteManifestToBuffer(
+            bridge,
+            input_attachments.data(),
+            0U,
+            input_bindings.data(),
+            0U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldSceneAssemblyManifestStreamSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.written_attachment_count != 0U) {
+        return Fail("scene manifest empty write attachment count wrong");
+    }
+
+    if (snapshot.written_binding_count != 0U) {
+        return Fail("scene manifest empty write binding count wrong");
+    }
+
+    const WorldComponentAttachmentSnapshotRecord sentinel_attachment = SentinelManifestAttachmentRecord();
+    const WorldComponentResourceBindingSnapshotRecord sentinel_binding = SentinelManifestBindingRecord();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{sentinel_attachment};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{sentinel_binding};
+    std::uint32_t attachment_count = 999U;
+    std::uint32_t binding_count = 999U;
+    if (ReadManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count) != 0) {
+        return 1;
+    }
+
+    if (attachment_count != 0U) {
+        return Fail("scene manifest empty read attachment count wrong");
+    }
+
+    if (binding_count != 0U) {
+        return Fail("scene manifest empty read binding count wrong");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[0], sentinel_attachment)) {
+        return Fail("scene manifest empty read mutated attachment output");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("scene manifest empty read mutated binding output");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeWriteRejectsNullWriterWithoutMutation() {
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    const WorldSceneAssemblyManifestStreamResult result = bridge.WriteManifest(
+        nullptr,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U);
+    if (result.status != WorldSceneAssemblyManifestStreamStatus::InvalidWriter) {
+        return Fail("scene manifest null writer status wrong");
+    }
+
+    if (bridge.Snapshot().failed_operation_count != 1U) {
+        return Fail("scene manifest null writer failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeWriteRejectsNullAttachmentInputWithoutMutation() {
+    const ResourceHandle handle = MakeManifestResourceHandle(1U, 1U);
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            handle,
+            RESOURCE_TYPE_TEXTURE)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    return ExpectManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        nullptr,
+        1U,
+        input_bindings.data(),
+        1U,
+        WorldSceneAssemblyManifestStreamStatus::InvalidAttachmentInput,
+        "scene manifest null attachment input status wrong");
+}
+
+int WorldSceneAssemblyManifestStreamBridgeWriteRejectsNullBindingInputWithoutMutation() {
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    return ExpectManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_attachments.data(),
+        1U,
+        nullptr,
+        1U,
+        WorldSceneAssemblyManifestStreamStatus::InvalidBindingInput,
+        "scene manifest null binding input status wrong");
+}
+
+int WorldSceneAssemblyManifestStreamBridgeWriteRejectsWriterCapacityBeforePartialWrite() {
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    std::array<std::uint8_t, STREAM_HEADER_BYTE_COUNT + 1U> buffer{};
+    buffer[STREAM_HEADER_BYTE_COUNT] = 0xABU;
+    SerializeWriter writer(buffer.data(), STREAM_HEADER_BYTE_COUNT);
+    const SerializeSnapshot before_writer = writer.Snapshot();
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    const WorldSceneAssemblyManifestStreamResult result = bridge.WriteManifest(
+        &writer,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U);
+    if (result.status != WorldSceneAssemblyManifestStreamStatus::SerializeFailure) {
+        return Fail("scene manifest writer capacity status wrong");
+    }
+
+    if (result.serialize_status != SerializeStatus::BufferTooSmall) {
+        return Fail("scene manifest writer capacity serialize status wrong");
+    }
+
+    if (!SerializeSnapshotsMatch(before_writer, writer.Snapshot())) {
+        return Fail("scene manifest writer capacity mutated writer");
+    }
+
+    if (buffer[STREAM_HEADER_BYTE_COUNT] != 0xABU) {
+        return Fail("scene manifest writer capacity overran buffer");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeWriteRejectsInvalidAttachmentRecordWithoutMutation() {
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(WorldObjectId{}, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    return ExpectManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U,
+        WorldSceneAssemblyManifestStreamStatus::InvalidWorldObjectId,
+        "scene manifest invalid attachment status wrong");
+}
+
+int WorldSceneAssemblyManifestStreamBridgeWriteRejectsInvalidBindingRecordWithoutMutation() {
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            ResourceHandle{},
+            RESOURCE_TYPE_TEXTURE)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    return ExpectManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        1U,
+        WorldSceneAssemblyManifestStreamStatus::InvalidResourceHandle,
+        "scene manifest invalid binding status wrong");
+}
+
+int WorldSceneAssemblyManifestStreamBridgeWriteRejectsMissingAttachmentForBindingWithoutMutation() {
+    const ResourceHandle handle = MakeManifestResourceHandle(1U, 1U);
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            handle,
+            RESOURCE_TYPE_AUDIO)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    return ExpectManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        1U,
+        WorldSceneAssemblyManifestStreamStatus::MissingAttachment,
+        "scene manifest missing attachment status wrong");
+}
+
+int WorldSceneAssemblyManifestStreamBridgeWriteRejectsDuplicateAttachmentWithoutMutation() {
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY),
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    return ExpectManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_attachments.data(),
+        static_cast<std::uint32_t>(input_attachments.size()),
+        input_bindings.data(),
+        0U,
+        WorldSceneAssemblyManifestStreamStatus::DuplicateAttachment,
+        "scene manifest duplicate attachment status wrong");
+}
+
+int WorldSceneAssemblyManifestStreamBridgeWriteRejectsDuplicateBindingWithoutMutation() {
+    const ResourceHandle first_handle = MakeManifestResourceHandle(1U, 1U);
+    const ResourceHandle second_handle = MakeManifestResourceHandle(2U, 1U);
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 2U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            first_handle,
+            RESOURCE_TYPE_TEXTURE),
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            second_handle,
+            RESOURCE_TYPE_TEXTURE)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    return ExpectManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        static_cast<std::uint32_t>(input_bindings.size()),
+        WorldSceneAssemblyManifestStreamStatus::DuplicateBinding,
+        "scene manifest duplicate binding status wrong");
+}
+
+int WorldSceneAssemblyManifestStreamBridgeReadWritesCallerOwnedOutputs() {
+    const ResourceHandle handle = MakeManifestResourceHandle(1U, 1U);
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            handle,
+            RESOURCE_TYPE_TEXTURE)};
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteManifestToBuffer(
+            bridge,
+            input_attachments.data(),
+            1U,
+            input_bindings.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshotRecord sentinel_attachment = SentinelManifestAttachmentRecord();
+    const WorldComponentResourceBindingSnapshotRecord sentinel_binding = SentinelManifestBindingRecord();
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> output_attachments{
+        sentinel_attachment,
+        sentinel_attachment};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 2U> output_bindings{
+        sentinel_binding,
+        sentinel_binding};
+    std::uint32_t attachment_count = 77U;
+    std::uint32_t binding_count = 88U;
+    if (ReadManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count) != 0) {
+        return 1;
+    }
+
+    if (attachment_count != 1U) {
+        return Fail("scene manifest read output attachment count wrong");
+    }
+
+    if (binding_count != 1U) {
+        return Fail("scene manifest read output binding count wrong");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[0], input_attachments[0])) {
+        return Fail("scene manifest read output attachment wrong");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[1], sentinel_attachment)) {
+        return Fail("scene manifest read output overran attachment");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[0], input_bindings[0])) {
+        return Fail("scene manifest read output binding wrong");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[1], sentinel_binding)) {
+        return Fail("scene manifest read output overran binding");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeReadRejectsNullReaderWithoutMutation() {
+    const WorldComponentAttachmentSnapshotRecord sentinel_attachment = SentinelManifestAttachmentRecord();
+    const WorldComponentResourceBindingSnapshotRecord sentinel_binding = SentinelManifestBindingRecord();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{sentinel_attachment};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{sentinel_binding};
+    std::uint32_t attachment_count = 77U;
+    std::uint32_t binding_count = 88U;
+    if (ExpectManifestReadFailureWithoutOutputMutation(
+            nullptr,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count,
+            WorldSceneAssemblyManifestStreamStatus::InvalidReader,
+            "scene manifest null reader status wrong") != 0) {
+        return 1;
+    }
+
+    if (attachment_count != 77U) {
+        return Fail("scene manifest null reader mutated attachment count");
+    }
+
+    if (binding_count != 88U) {
+        return Fail("scene manifest null reader mutated binding count");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[0], sentinel_attachment)) {
+        return Fail("scene manifest null reader mutated attachment output");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("scene manifest null reader mutated binding output");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeReadRejectsNullAttachmentOutputWithoutMutation() {
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteManifestToBuffer(
+            bridge,
+            input_attachments.data(),
+            1U,
+            input_bindings.data(),
+            0U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldComponentResourceBindingSnapshotRecord sentinel_binding = SentinelManifestBindingRecord();
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{sentinel_binding};
+    std::uint32_t attachment_count = 77U;
+    std::uint32_t binding_count = 88U;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    if (ExpectManifestReadFailureWithoutOutputMutation(
+            &reader,
+            nullptr,
+            1U,
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count,
+            WorldSceneAssemblyManifestStreamStatus::InvalidAttachmentOutput,
+            "scene manifest null attachment output status wrong") != 0) {
+        return 1;
+    }
+
+    if (attachment_count != 77U) {
+        return Fail("scene manifest null attachment output mutated attachment count");
+    }
+
+    if (binding_count != 88U) {
+        return Fail("scene manifest null attachment output mutated binding count");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("scene manifest null attachment output mutated binding output");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeReadRejectsNullBindingOutputWithoutMutation() {
+    const ResourceHandle handle = MakeManifestResourceHandle(1U, 1U);
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            handle,
+            RESOURCE_TYPE_TEXTURE)};
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteManifestToBuffer(
+            bridge,
+            input_attachments.data(),
+            1U,
+            input_bindings.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshotRecord sentinel_attachment = SentinelManifestAttachmentRecord();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{sentinel_attachment};
+    std::uint32_t attachment_count = 77U;
+    std::uint32_t binding_count = 88U;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    if (ExpectManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            nullptr,
+            1U,
+            &binding_count,
+            WorldSceneAssemblyManifestStreamStatus::InvalidBindingOutput,
+            "scene manifest null binding output status wrong") != 0) {
+        return 1;
+    }
+
+    if (attachment_count != 77U) {
+        return Fail("scene manifest null binding output mutated attachment count");
+    }
+
+    if (binding_count != 88U) {
+        return Fail("scene manifest null binding output mutated binding count");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[0], sentinel_attachment)) {
+        return Fail("scene manifest null binding output mutated attachment output");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeReadRejectsOutputCapacityTooSmallWithoutMutation() {
+    const ResourceHandle handle = MakeManifestResourceHandle(1U, 1U);
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY),
+        MakeSceneAttachmentRecord(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            handle,
+            RESOURCE_TYPE_TEXTURE)};
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteManifestToBuffer(
+            bridge,
+            input_attachments.data(),
+            static_cast<std::uint32_t>(input_attachments.size()),
+            input_bindings.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshotRecord sentinel_attachment = SentinelManifestAttachmentRecord();
+    const WorldComponentResourceBindingSnapshotRecord sentinel_binding = SentinelManifestBindingRecord();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{sentinel_attachment};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{sentinel_binding};
+    std::uint32_t attachment_count = 77U;
+    std::uint32_t binding_count = 88U;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    if (ExpectManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count,
+            WorldSceneAssemblyManifestStreamStatus::OutputCapacityExceeded,
+            "scene manifest small output status wrong") != 0) {
+        return 1;
+    }
+
+    if (attachment_count != 77U) {
+        return Fail("scene manifest small output mutated attachment count");
+    }
+
+    if (binding_count != 88U) {
+        return Fail("scene manifest small output mutated binding count");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[0], sentinel_attachment)) {
+        return Fail("scene manifest small output mutated attachment output");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("scene manifest small output mutated binding output");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeReadRejectsUnknownVersionWithoutMutation() {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteManifestMetadata(writer, 999U, 0U, 0U, 0U, 0U) != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshotRecord sentinel_attachment = SentinelManifestAttachmentRecord();
+    const WorldComponentResourceBindingSnapshotRecord sentinel_binding = SentinelManifestBindingRecord();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{sentinel_attachment};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{sentinel_binding};
+    std::uint32_t attachment_count = 77U;
+    std::uint32_t binding_count = 88U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (ExpectManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count,
+            WorldSceneAssemblyManifestStreamStatus::UnsupportedVersion,
+            "scene manifest unknown version status wrong") != 0) {
+        return 1;
+    }
+
+    if (attachment_count != 77U || binding_count != 88U) {
+        return Fail("scene manifest unknown version mutated counts");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[0], sentinel_attachment)) {
+        return Fail("scene manifest unknown version mutated attachment output");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("scene manifest unknown version mutated binding output");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeReadRejectsMalformedRecordCountWithoutMutation() {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteManifestMetadata(
+            writer,
+            WORLD_SCENE_ASSEMBLY_MANIFEST_STREAM_SCHEMA_VERSION,
+            1U,
+            0U,
+            0U,
+            0U) != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshotRecord sentinel_attachment = SentinelManifestAttachmentRecord();
+    const WorldComponentResourceBindingSnapshotRecord sentinel_binding = SentinelManifestBindingRecord();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{sentinel_attachment};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{sentinel_binding};
+    std::uint32_t attachment_count = 77U;
+    std::uint32_t binding_count = 88U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (ExpectManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count,
+            WorldSceneAssemblyManifestStreamStatus::MalformedRecordCount,
+            "scene manifest malformed count status wrong") != 0) {
+        return 1;
+    }
+
+    if (attachment_count != 77U || binding_count != 88U) {
+        return Fail("scene manifest malformed count mutated counts");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[0], sentinel_attachment)) {
+        return Fail("scene manifest malformed count mutated attachment output");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("scene manifest malformed count mutated binding output");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeReadRejectsInvalidRecordsWithoutMutation() {
+    const ResourceHandle handle = MakeManifestResourceHandle(1U, 1U);
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(WorldObjectId{}, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            handle,
+            RESOURCE_TYPE_TEXTURE)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteManifestFixtureStream(
+            writer,
+            input_attachments.data(),
+            1U,
+            input_bindings.data(),
+            0U) != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshotRecord sentinel_attachment = SentinelManifestAttachmentRecord();
+    const WorldComponentResourceBindingSnapshotRecord sentinel_binding = SentinelManifestBindingRecord();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{sentinel_attachment};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{sentinel_binding};
+    std::uint32_t attachment_count = 77U;
+    std::uint32_t binding_count = 88U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (ExpectManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count,
+            WorldSceneAssemblyManifestStreamStatus::InvalidWorldObjectId,
+            "scene manifest invalid record status wrong") != 0) {
+        return 1;
+    }
+
+    if (attachment_count != 77U || binding_count != 88U) {
+        return Fail("scene manifest invalid record mutated counts");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[0], sentinel_attachment)) {
+        return Fail("scene manifest invalid record mutated attachment output");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("scene manifest invalid record mutated binding output");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeReadRejectsDuplicateRecordsWithoutMutation() {
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY),
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteManifestFixtureStream(
+            writer,
+            input_attachments.data(),
+            static_cast<std::uint32_t>(input_attachments.size()),
+            input_bindings.data(),
+            0U) != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshotRecord sentinel_attachment = SentinelManifestAttachmentRecord();
+    const WorldComponentResourceBindingSnapshotRecord sentinel_binding = SentinelManifestBindingRecord();
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> output_attachments{
+        sentinel_attachment,
+        sentinel_attachment};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{sentinel_binding};
+    std::uint32_t attachment_count = 77U;
+    std::uint32_t binding_count = 88U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (ExpectManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count,
+            WorldSceneAssemblyManifestStreamStatus::DuplicateAttachment,
+            "scene manifest duplicate record status wrong") != 0) {
+        return 1;
+    }
+
+    if (attachment_count != 77U || binding_count != 88U) {
+        return Fail("scene manifest duplicate record mutated counts");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[0], sentinel_attachment)) {
+        return Fail("scene manifest duplicate record mutated first attachment output");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[1], sentinel_attachment)) {
+        return Fail("scene manifest duplicate record mutated second attachment output");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("scene manifest duplicate record mutated binding output");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeReadDoesNotRestoreActiveSidecars() {
+    const ResourceHandle manifest_handle = MakeManifestResourceHandle(11U, 1U);
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            manifest_handle,
+            RESOURCE_TYPE_AUDIO)};
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteManifestToBuffer(
+            bridge,
+            input_attachments.data(),
+            1U,
+            input_bindings.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentAttachmentBridge active_attachments;
+    WorldComponentResourceBindingBridge active_bindings;
+    ResourceHandle active_handle{};
+    if (AddComponentResourceBindingFixture(
+            active_attachments,
+            registry,
+            active_bindings,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_manifest_active_sidecar",
+            &active_handle) != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshot before_attachment = active_attachments.Snapshot();
+    const WorldComponentResourceBindingSnapshot before_binding = active_bindings.Snapshot();
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{};
+    std::uint32_t attachment_count = 0U;
+    std::uint32_t binding_count = 0U;
+    if (ReadManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count) != 0) {
+        return 1;
+    }
+
+    if (!ComponentAttachmentSnapshotsMatch(before_attachment, active_attachments.Snapshot())) {
+        return Fail("scene manifest read mutated active attachments");
+    }
+
+    if (!ComponentResourceBindingSnapshotsMatch(before_binding, active_bindings.Snapshot())) {
+        return Fail("scene manifest read mutated active bindings");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("scene manifest read mutated resource registry");
+    }
+
+    if (output_bindings[0].resource_handle.slot != manifest_handle.slot) {
+        return Fail("scene manifest read output binding wrong");
+    }
+
+    if (active_handle.slot == manifest_handle.slot) {
+        return Fail("scene manifest fixture handles unexpectedly overlapped");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeWriteReadPathDoesNotGrowStorage() {
+    const ResourceHandle handle = MakeManifestResourceHandle(1U, 1U);
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            handle,
+            RESOURCE_TYPE_TEXTURE)};
+    WorldSceneAssemblyManifestStreamDesc desc{};
+    desc.attachment_capacity = 2U;
+    desc.binding_capacity = 2U;
+    WorldSceneAssemblyManifestStreamBridge bridge(desc);
+    const WorldSceneAssemblyManifestStreamSnapshot before_snapshot = bridge.Snapshot();
+    std::uint32_t iteration = 0U;
+    while (iteration < 3U) {
+        SerializeBuffer buffer{};
+        std::uint32_t committed_byte_count = 0U;
+        if (WriteManifestToBuffer(
+                bridge,
+                input_attachments.data(),
+                1U,
+                input_bindings.data(),
+                1U,
+                buffer,
+                committed_byte_count) != 0) {
+            return 1;
+        }
+
+        std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{};
+        std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{};
+        std::uint32_t attachment_count = 0U;
+        std::uint32_t binding_count = 0U;
+        if (ReadManifestFromBuffer(
+                bridge,
+                buffer,
+                committed_byte_count,
+                output_attachments.data(),
+                static_cast<std::uint32_t>(output_attachments.size()),
+                &attachment_count,
+                output_bindings.data(),
+                static_cast<std::uint32_t>(output_bindings.size()),
+                &binding_count) != 0) {
+            return 1;
+        }
+
+        ++iteration;
+    }
+
+    const WorldSceneAssemblyManifestStreamSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.attachment_capacity != before_snapshot.attachment_capacity) {
+        return Fail("scene manifest path changed attachment capacity");
+    }
+
+    if (after_snapshot.binding_capacity != before_snapshot.binding_capacity) {
+        return Fail("scene manifest path changed binding capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != before_snapshot.allocation_accounting_status) {
+        return Fail("scene manifest path changed allocation accounting");
+    }
+
+    if (after_snapshot.write_count != 3U) {
+        return Fail("scene manifest path write count wrong");
+    }
+
+    if (after_snapshot.read_count != 3U) {
+        return Fail("scene manifest path read count wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeNoHiddenAllocationUsesYuMemorySignal() {
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    const WorldSceneAssemblyManifestStreamSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("scene manifest allocation accounting status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeSnapshotReportsCountsAndLastStatus() {
+    const ResourceHandle handle = MakeManifestResourceHandle(1U, 1U);
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            handle,
+            RESOURCE_TYPE_TEXTURE)};
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteManifestToBuffer(
+            bridge,
+            input_attachments.data(),
+            1U,
+            input_bindings.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{};
+    std::uint32_t attachment_count = 0U;
+    std::uint32_t binding_count = 0U;
+    if (ReadManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count) != 0) {
+        return 1;
+    }
+
+    SerializeBuffer failure_buffer{};
+    SerializeWriter writer(failure_buffer.data(), static_cast<std::uint32_t>(failure_buffer.size()));
+    const WorldSceneAssemblyManifestStreamResult failure_result = bridge.WriteManifest(
+        &writer,
+        nullptr,
+        1U,
+        input_bindings.data(),
+        1U);
+    if (failure_result.status != WorldSceneAssemblyManifestStreamStatus::InvalidAttachmentInput) {
+        return Fail("scene manifest counters failure status wrong");
+    }
+
+    const WorldSceneAssemblyManifestStreamSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.write_count != 1U) {
+        return Fail("scene manifest counters write count wrong");
+    }
+
+    if (snapshot.read_count != 1U) {
+        return Fail("scene manifest counters read count wrong");
+    }
+
+    if (snapshot.written_attachment_count != 1U) {
+        return Fail("scene manifest counters written attachment count wrong");
+    }
+
+    if (snapshot.written_binding_count != 1U) {
+        return Fail("scene manifest counters written binding count wrong");
+    }
+
+    if (snapshot.read_attachment_count != 1U) {
+        return Fail("scene manifest counters read attachment count wrong");
+    }
+
+    if (snapshot.read_binding_count != 1U) {
+        return Fail("scene manifest counters read binding count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("scene manifest counters failed count wrong");
+    }
+
+    if (snapshot.last_status != WorldSceneAssemblyManifestStreamStatus::InvalidAttachmentInput) {
+        return Fail("scene manifest counters last status wrong");
+    }
+
+    if (snapshot.last_serialize_status != SerializeStatus::Success) {
+        return Fail("scene manifest counters serialize status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeNoObjectTransformSceneLoadOrGameAdapterDependency() {
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    const WorldSceneAssemblyManifestStreamSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.attachment_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("scene manifest object dependency test changed attachment capacity");
+    }
+
+    if (snapshot.binding_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("scene manifest object dependency test changed binding capacity");
+    }
+
+    if (snapshot.last_status != WorldSceneAssemblyManifestStreamStatus::Success) {
+        return Fail("scene manifest object dependency test changed status");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeNoFilePackageResourceLoadDecodeUploadDependency() {
+    const ResourceHandle handle = MakeManifestResourceHandle(123U, 7U);
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_EFFECT, COMPONENT_TYPE_TERTIARY, COMPONENT_SLOT_TERTIARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_EFFECT,
+            COMPONENT_TYPE_TERTIARY,
+            COMPONENT_SLOT_TERTIARY,
+            handle,
+            RESOURCE_TYPE_AUDIO)};
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteManifestToBuffer(
+            bridge,
+            input_attachments.data(),
+            1U,
+            input_bindings.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{};
+    std::uint32_t attachment_count = 0U;
+    std::uint32_t binding_count = 0U;
+    if (ReadManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count) != 0) {
+        return 1;
+    }
+
+    if (output_bindings[0].resource_handle.slot != handle.slot) {
+        return Fail("scene manifest file package dependency resource handle wrong");
+    }
+
+    if (attachment_count != 1U || binding_count != 1U) {
+        return Fail("scene manifest file package dependency count wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeWorldInstanceCoreRemainsManifestFree() {
+    WorldInstance world = MakeWorld(4U, 4U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("scene manifest world core-free registration failed");
+    }
+
+    const WorldSnapshot before_world = world.Snapshot();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteManifestToBuffer(
+            bridge,
+            input_attachments.data(),
+            1U,
+            input_bindings.data(),
+            0U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{};
+    std::uint32_t attachment_count = 0U;
+    std::uint32_t binding_count = 0U;
+    if (ReadManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_attachments.data(),
+            static_cast<std::uint32_t>(output_attachments.size()),
+            &attachment_count,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count) != 0) {
+        return 1;
+    }
+
+    if (!WorldSnapshotsMatch(before_world, world.Snapshot())) {
+        return Fail("scene manifest mutated world core");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyManifestStreamBridgeSerializeCoreRemainsWorldFree() {
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldSceneAssemblyManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    const WorldSceneAssemblyManifestStreamResult write_result = bridge.WriteManifest(
+        &writer,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U);
+    if (!write_result.Succeeded()) {
+        return Fail("scene manifest serialize core-free write failed");
+    }
+
+    const SerializeSnapshot writer_snapshot = writer.Snapshot();
+    if (writer_snapshot.last_status != SerializeStatus::Success) {
+        return Fail("scene manifest serialize core-free writer status wrong");
+    }
+
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{};
+    std::uint32_t attachment_count = 0U;
+    std::uint32_t binding_count = 0U;
+    SerializeReader reader(buffer.data(), write_result.state.committed_byte_count);
+    const WorldSceneAssemblyManifestStreamResult read_result = bridge.ReadManifest(
+        &reader,
+        output_attachments.data(),
+        static_cast<std::uint32_t>(output_attachments.size()),
+        &attachment_count,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (!read_result.Succeeded()) {
+        return Fail("scene manifest serialize core-free read failed");
+    }
+
+    const SerializeSnapshot reader_snapshot = reader.Snapshot();
+    if (reader_snapshot.last_status != SerializeStatus::Success) {
+        return Fail("scene manifest serialize core-free reader status wrong");
+    }
+
+    if (attachment_count != 1U || binding_count != 0U) {
+        return Fail("scene manifest serialize core-free counts wrong");
+    }
+
+    return 0;
+}
+
 int WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord() {
     WorldComponentAttachmentBridge bridge;
     const WorldComponentAttachmentResult result = bridge.Add(
@@ -12640,6 +14408,62 @@ int main(int argc, char **argv) {
             WorldSceneAssemblyBridgeWorldInstanceCoreRemainsAssemblyFree},
         {TEST_SCENE_ASSEMBLY_RESOURCE_CORE_FREE,
             WorldSceneAssemblyBridgeResourceCoreRemainsWorldFree},
+        {TEST_SCENE_MANIFEST_ROUND_TRIP,
+            WorldSceneAssemblyManifestStreamBridgeWriteReadRoundTripsAssemblyRecordsInInputOrder},
+        {TEST_SCENE_MANIFEST_EMPTY,
+            WorldSceneAssemblyManifestStreamBridgeWriteEmptyManifestProducesZeroRecords},
+        {TEST_SCENE_MANIFEST_NULL_WRITER,
+            WorldSceneAssemblyManifestStreamBridgeWriteRejectsNullWriterWithoutMutation},
+        {TEST_SCENE_MANIFEST_NULL_ATTACHMENT_INPUT,
+            WorldSceneAssemblyManifestStreamBridgeWriteRejectsNullAttachmentInputWithoutMutation},
+        {TEST_SCENE_MANIFEST_NULL_BINDING_INPUT,
+            WorldSceneAssemblyManifestStreamBridgeWriteRejectsNullBindingInputWithoutMutation},
+        {TEST_SCENE_MANIFEST_WRITER_CAPACITY,
+            WorldSceneAssemblyManifestStreamBridgeWriteRejectsWriterCapacityBeforePartialWrite},
+        {TEST_SCENE_MANIFEST_INVALID_ATTACHMENT,
+            WorldSceneAssemblyManifestStreamBridgeWriteRejectsInvalidAttachmentRecordWithoutMutation},
+        {TEST_SCENE_MANIFEST_INVALID_BINDING,
+            WorldSceneAssemblyManifestStreamBridgeWriteRejectsInvalidBindingRecordWithoutMutation},
+        {TEST_SCENE_MANIFEST_MISSING_ATTACHMENT,
+            WorldSceneAssemblyManifestStreamBridgeWriteRejectsMissingAttachmentForBindingWithoutMutation},
+        {TEST_SCENE_MANIFEST_DUPLICATE_ATTACHMENT,
+            WorldSceneAssemblyManifestStreamBridgeWriteRejectsDuplicateAttachmentWithoutMutation},
+        {TEST_SCENE_MANIFEST_DUPLICATE_BINDING,
+            WorldSceneAssemblyManifestStreamBridgeWriteRejectsDuplicateBindingWithoutMutation},
+        {TEST_SCENE_MANIFEST_READ_OUTPUT,
+            WorldSceneAssemblyManifestStreamBridgeReadWritesCallerOwnedOutputs},
+        {TEST_SCENE_MANIFEST_NULL_READER,
+            WorldSceneAssemblyManifestStreamBridgeReadRejectsNullReaderWithoutMutation},
+        {TEST_SCENE_MANIFEST_NULL_ATTACHMENT_OUTPUT,
+            WorldSceneAssemblyManifestStreamBridgeReadRejectsNullAttachmentOutputWithoutMutation},
+        {TEST_SCENE_MANIFEST_NULL_BINDING_OUTPUT,
+            WorldSceneAssemblyManifestStreamBridgeReadRejectsNullBindingOutputWithoutMutation},
+        {TEST_SCENE_MANIFEST_OUTPUT_CAPACITY,
+            WorldSceneAssemblyManifestStreamBridgeReadRejectsOutputCapacityTooSmallWithoutMutation},
+        {TEST_SCENE_MANIFEST_UNKNOWN_VERSION,
+            WorldSceneAssemblyManifestStreamBridgeReadRejectsUnknownVersionWithoutMutation},
+        {TEST_SCENE_MANIFEST_MALFORMED_COUNT,
+            WorldSceneAssemblyManifestStreamBridgeReadRejectsMalformedRecordCountWithoutMutation},
+        {TEST_SCENE_MANIFEST_INVALID_RECORDS,
+            WorldSceneAssemblyManifestStreamBridgeReadRejectsInvalidRecordsWithoutMutation},
+        {TEST_SCENE_MANIFEST_DUPLICATE_RECORDS,
+            WorldSceneAssemblyManifestStreamBridgeReadRejectsDuplicateRecordsWithoutMutation},
+        {TEST_SCENE_MANIFEST_NO_ACTIVE_RESTORE,
+            WorldSceneAssemblyManifestStreamBridgeReadDoesNotRestoreActiveSidecars},
+        {TEST_SCENE_MANIFEST_PATH,
+            WorldSceneAssemblyManifestStreamBridgeWriteReadPathDoesNotGrowStorage},
+        {TEST_SCENE_MANIFEST_NO_HIDDEN_ALLOCATION,
+            WorldSceneAssemblyManifestStreamBridgeNoHiddenAllocationUsesYuMemorySignal},
+        {TEST_SCENE_MANIFEST_COUNTERS,
+            WorldSceneAssemblyManifestStreamBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_SCENE_MANIFEST_NO_OBJECT_TRANSFORM,
+            WorldSceneAssemblyManifestStreamBridgeNoObjectTransformSceneLoadOrGameAdapterDependency},
+        {TEST_SCENE_MANIFEST_NO_FILE_PACKAGE,
+            WorldSceneAssemblyManifestStreamBridgeNoFilePackageResourceLoadDecodeUploadDependency},
+        {TEST_SCENE_MANIFEST_WORLD_CORE_FREE,
+            WorldSceneAssemblyManifestStreamBridgeWorldInstanceCoreRemainsManifestFree},
+        {TEST_SCENE_MANIFEST_SERIALIZE_CORE_FREE,
+            WorldSceneAssemblyManifestStreamBridgeSerializeCoreRemainsWorldFree},
         {TEST_COMPONENT_ADD_VALID, WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord},
         {TEST_COMPONENT_ADD_INVALID_WORLD, WorldComponentAttachmentBridgeAddRejectsInvalidWorldIdWithoutMutation},
         {TEST_COMPONENT_ADD_INVALID_TYPE, WorldComponentAttachmentBridgeAddRejectsInvalidComponentTypeWithoutMutation},
