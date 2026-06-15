@@ -37,6 +37,16 @@ target_include_directories(YuScript
 )
 target_link_libraries(YuScript PUBLIC YuMemory)
 
+add_library(YuWorld
+    Src/YuEngine/World/Src/WorldInstance.cpp
+)
+yuengine_apply_compile_options(YuWorld)
+target_include_directories(YuWorld
+    PUBLIC
+        Src/YuEngine/World/Include
+)
+target_link_libraries(YuWorld PUBLIC YuMemory)
+
 add_library(YuDiagnostics
     Src/YuEngine/Diagnostics/Src/BoundedDiagnosticsChannel.cpp
     Src/YuEngine/Diagnostics/Src/BoundedInMemoryLogSink.cpp
@@ -256,6 +266,25 @@ add_test(NAME Script_CallPath_DoesNotGrowRegistryStorage COMMAND YuScriptTests S
 add_test(NAME Script_NoWorldResourcePackageOrGameAdapterDependency COMMAND YuScriptTests Script_NoWorldResourcePackageOrGameAdapterDependency)
 add_test(NAME Script_NoHiddenAllocation_UsesYuMemorySignal COMMAND YuScriptTests Script_NoHiddenAllocation_UsesYuMemorySignal)
 add_test(NAME Script_SnapshotReportsCountsAndLastStatus COMMAND YuScriptTests Script_SnapshotReportsCountsAndLastStatus)
+
+add_executable(YuWorldTests
+    Tests/World/WorldTests.cpp
+)
+yuengine_apply_compile_options(YuWorldTests)
+target_link_libraries(YuWorldTests PRIVATE YuWorld)
+add_test(NAME World_CreateWithFixedCapacity_ReportsSnapshot COMMAND YuWorldTests World_CreateWithFixedCapacity_ReportsSnapshot)
+add_test(NAME World_StartStop_RunsDeterministicLifecycle COMMAND YuWorldTests World_StartStop_RunsDeterministicLifecycle)
+add_test(NAME World_UpdateRunsPhasesInFixedOrder COMMAND YuWorldTests World_UpdateRunsPhasesInFixedOrder)
+add_test(NAME World_UpdateBeforeStart_ReturnsExplicitStatus COMMAND YuWorldTests World_UpdateBeforeStart_ReturnsExplicitStatus)
+add_test(NAME World_UpdateAfterStop_ReturnsExplicitStatus COMMAND YuWorldTests World_UpdateAfterStop_ReturnsExplicitStatus)
+add_test(NAME World_RegisterDuplicateObject_DoesNotMutate COMMAND YuWorldTests World_RegisterDuplicateObject_DoesNotMutate)
+add_test(NAME World_RegisterOverflow_DoesNotMutate COMMAND YuWorldTests World_RegisterOverflow_DoesNotMutate)
+add_test(NAME World_DisabledObject_IsSkipped COMMAND YuWorldTests World_DisabledObject_IsSkipped)
+add_test(NAME World_UpdatePath_DoesNotGrowStorage COMMAND YuWorldTests World_UpdatePath_DoesNotGrowStorage)
+add_test(NAME World_StopClearsActiveEntries COMMAND YuWorldTests World_StopClearsActiveEntries)
+add_test(NAME World_NoScriptResourcePackageFileOrGameAdapterDependency COMMAND YuWorldTests World_NoScriptResourcePackageFileOrGameAdapterDependency)
+add_test(NAME World_NoActorComponentOrTransformHierarchy COMMAND YuWorldTests World_NoActorComponentOrTransformHierarchy)
+add_test(NAME World_SnapshotReportsCountsAndLastStatus COMMAND YuWorldTests World_SnapshotReportsCountsAndLastStatus)
 
 add_executable(YuThreadTests
     Tests/Thread/ThreadTestContext.cpp
