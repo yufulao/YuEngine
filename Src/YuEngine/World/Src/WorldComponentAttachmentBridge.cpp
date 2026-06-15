@@ -163,6 +163,24 @@ WorldComponentAttachmentSnapshot WorldComponentAttachmentBridge::Snapshot() cons
     return snapshot_;
 }
 
+WorldComponentAttachmentStatus WorldComponentAttachmentBridge::ValidateRestoreDestination(
+    std::uint32_t required_attachment_count) const {
+    const WorldComponentAttachmentStatus capacity_status = ValidateBridgeCapacity();
+    if (capacity_status != WorldComponentAttachmentStatus::Success) {
+        return capacity_status;
+    }
+
+    if (snapshot_.active_attachment_count > 0U) {
+        return WorldComponentAttachmentStatus::DuplicateAttachment;
+    }
+
+    if (required_attachment_count > snapshot_.attachment_capacity) {
+        return WorldComponentAttachmentStatus::CapacityExceeded;
+    }
+
+    return WorldComponentAttachmentStatus::Success;
+}
+
 std::uint32_t WorldComponentAttachmentBridge::ExportAttachments(
     WorldComponentAttachment *output_attachments,
     std::uint32_t output_capacity) const {

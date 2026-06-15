@@ -63,6 +63,13 @@ public:
      */
     WorldComponentAttachmentSnapshot Snapshot() const;
     /**
+     * @comment Validates destination state for explicit restore preflight.
+     * @param required_attachment_count Required attachment capacity.
+     * @return Explicit operation status.
+     */
+    WorldComponentAttachmentStatus ValidateRestoreDestination(
+        std::uint32_t required_attachment_count) const;
+    /**
      * @comment Copies active attachment records in deterministic slot order.
      * @param output_attachments Caller-owned output attachment buffer.
      * @param output_capacity Output attachment buffer capacity.

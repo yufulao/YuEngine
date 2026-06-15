@@ -112,6 +112,11 @@
 #include "YuEngine/World/WorldSerializeSnapshotResult.h"
 #include "YuEngine/World/WorldSerializeSnapshotState.h"
 #include "YuEngine/World/WorldSerializeSnapshotStatus.h"
+#include "YuEngine/World/WorldSceneAssemblyBridge.h"
+#include "YuEngine/World/WorldSceneAssemblyBridgeDesc.h"
+#include "YuEngine/World/WorldSceneAssemblyResult.h"
+#include "YuEngine/World/WorldSceneAssemblySnapshot.h"
+#include "YuEngine/World/WorldSceneAssemblyStatus.h"
 #include "YuEngine/World/WorldSnapshot.h"
 #include "YuEngine/World/WorldStatus.h"
 #include "YuEngine/World/WorldTransformBridge.h"
@@ -266,6 +271,11 @@ using yuengine::world::WorldSerializeSnapshotBridgeDesc;
 using yuengine::world::WorldSerializeSnapshotBridgeSnapshot;
 using yuengine::world::WorldSerializeSnapshotResult;
 using yuengine::world::WorldSerializeSnapshotStatus;
+using yuengine::world::WorldSceneAssemblyBridge;
+using yuengine::world::WorldSceneAssemblyBridgeDesc;
+using yuengine::world::WorldSceneAssemblyResult;
+using yuengine::world::WorldSceneAssemblySnapshot;
+using yuengine::world::WorldSceneAssemblyStatus;
 using yuengine::world::WorldSnapshot;
 using yuengine::world::WorldStatus;
 using yuengine::world::WorldTransformBridge;
@@ -540,6 +550,60 @@ constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_WORLD_CORE_FREE =
     "WorldComponentResourceBindingRestoreBridge_WorldInstanceCoreRemainsRestoreFree";
 constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_RESOURCE_CORE_FREE =
     "WorldComponentResourceBindingRestoreBridge_ResourceCoreRemainsWorldFree";
+constexpr const char *TEST_SCENE_ASSEMBLY_ORDER =
+    "WorldSceneAssemblyBridge_RestoresAttachmentAndBindingRecordsInInputOrder";
+constexpr const char *TEST_SCENE_ASSEMBLY_EMPTY =
+    "WorldSceneAssemblyBridge_RestoresEmptyAssemblyWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_NULL_ATTACHMENT_DESTINATION =
+    "WorldSceneAssemblyBridge_RejectsNullAttachmentDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_NULL_BINDING_DESTINATION =
+    "WorldSceneAssemblyBridge_RejectsNullBindingDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_NULL_REGISTRY =
+    "WorldSceneAssemblyBridge_RejectsNullRegistryWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_NULL_ATTACHMENT_INPUT =
+    "WorldSceneAssemblyBridge_RejectsNullAttachmentInputWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_NULL_BINDING_INPUT =
+    "WorldSceneAssemblyBridge_RejectsNullBindingInputWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_INVALID_ATTACHMENT =
+    "WorldSceneAssemblyBridge_RejectsInvalidAttachmentRecordWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_INVALID_BINDING =
+    "WorldSceneAssemblyBridge_RejectsInvalidBindingRecordWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_MISSING_ATTACHMENT =
+    "WorldSceneAssemblyBridge_RejectsMissingAttachmentForBindingWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_DUPLICATE_ATTACHMENT =
+    "WorldSceneAssemblyBridge_RejectsDuplicateAttachmentInputWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_DUPLICATE_BINDING =
+    "WorldSceneAssemblyBridge_RejectsDuplicateBindingInputWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_ATTACHMENT_CAPACITY =
+    "WorldSceneAssemblyBridge_RejectsAttachmentCapacityOverflowWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_BINDING_CAPACITY =
+    "WorldSceneAssemblyBridge_RejectsBindingCapacityOverflowWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_NON_EMPTY_DESTINATIONS =
+    "WorldSceneAssemblyBridge_RejectsNonEmptyDestinationsWithoutMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_RESOURCE_PREFLIGHT =
+    "WorldSceneAssemblyBridge_ValidatesResourceHandlesBeforeMutation";
+constexpr const char *TEST_SCENE_ASSEMBLY_BINDING_PREFLIGHT =
+    "WorldSceneAssemblyBridge_BindingPreflightFailureDoesNotRestoreAttachments";
+constexpr const char *TEST_SCENE_ASSEMBLY_RESOURCE_ACQUIRE_FAILURE =
+    "WorldSceneAssemblyBridge_ResourceAcquireFailureDoesNotPartiallyAssemble";
+constexpr const char *TEST_SCENE_ASSEMBLY_RESTORE_PATH =
+    "WorldSceneAssemblyBridge_RestorePathDoesNotGrowStorage";
+constexpr const char *TEST_SCENE_ASSEMBLY_NO_HIDDEN_ALLOCATION =
+    "WorldSceneAssemblyBridge_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char *TEST_SCENE_ASSEMBLY_COUNTERS =
+    "WorldSceneAssemblyBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_SCENE_ASSEMBLY_NO_PAYLOAD =
+    "WorldSceneAssemblyBridge_NoActorComponentPayloadOrLifecycle";
+constexpr const char *TEST_SCENE_ASSEMBLY_NO_OBJECT_SCRIPT =
+    "WorldSceneAssemblyBridge_NoObjectScriptSerializeThreadPlatformDiagnosticsDependency";
+constexpr const char *TEST_SCENE_ASSEMBLY_NO_FILE_PACKAGE =
+    "WorldSceneAssemblyBridge_NoFilePackageLoadDecodeUploadOrGameAdapterDependency";
+constexpr const char *TEST_SCENE_ASSEMBLY_NO_RENDER_PHYSICS =
+    "WorldSceneAssemblyBridge_NoRenderPhysicsAudioInputUiToolOrReportDependency";
+constexpr const char *TEST_SCENE_ASSEMBLY_WORLD_CORE_FREE =
+    "WorldSceneAssemblyBridge_WorldInstanceCoreRemainsAssemblyFree";
+constexpr const char *TEST_SCENE_ASSEMBLY_RESOURCE_CORE_FREE =
+    "WorldSceneAssemblyBridge_ResourceCoreRemainsWorldFree";
 constexpr const char *TEST_COMPONENT_ADD_VALID = "WorldComponentAttachmentBridge_AddValidAttachment_StoresRecord";
 constexpr const char *TEST_COMPONENT_ADD_INVALID_WORLD = "WorldComponentAttachmentBridge_AddRejectsInvalidWorldIdWithoutMutation";
 constexpr const char *TEST_COMPONENT_ADD_INVALID_TYPE = "WorldComponentAttachmentBridge_AddRejectsInvalidComponentTypeWithoutMutation";
@@ -1906,6 +1970,177 @@ int ExpectComponentResourceRestoreFailureWithoutMutation(
         const ResourceSnapshot after_registry = resource_registry->Snapshot();
         if (!ResourceSnapshotsMatch(before_registry, after_registry)) {
             return Fail("component resource restore failure mutated registry");
+        }
+    }
+
+    return 0;
+}
+
+WorldComponentAttachmentSnapshotRecord MakeSceneAttachmentRecord(
+    WorldObjectId world_object_id,
+    WorldComponentTypeId component_type_id,
+    WorldComponentSlotId component_slot_id) {
+    WorldComponentAttachmentSnapshotRecord record{};
+    record.world_object_id = world_object_id;
+    record.component_type_id = component_type_id;
+    record.component_slot_id = component_slot_id;
+    return record;
+}
+
+WorldComponentResourceBindingSnapshotRecord MakeSceneBindingRecord(
+    WorldObjectId world_object_id,
+    WorldComponentTypeId component_type_id,
+    WorldComponentSlotId component_slot_id,
+    ResourceHandle resource_handle,
+    ResourceTypeId resource_type) {
+    WorldComponentResourceBindingSnapshotRecord record{};
+    record.world_object_id = world_object_id;
+    record.component_type_id = component_type_id;
+    record.component_slot_id = component_slot_id;
+    record.resource_handle = resource_handle;
+    record.expected_resource_type = resource_type;
+    return record;
+}
+
+int RegisterSceneBindingInput(
+    ResourceRegistry &registry,
+    WorldObjectId world_object_id,
+    WorldComponentTypeId component_type_id,
+    WorldComponentSlotId component_slot_id,
+    ResourceTypeId resource_type,
+    const char *resource_key,
+    WorldComponentResourceBindingSnapshotRecord *out_binding) {
+    if (out_binding == nullptr) {
+        return Fail("scene assembly output binding was null");
+    }
+
+    const ResourceRegistrationResult resource = RegisterResource(registry, resource_type, resource_key);
+    if (!resource.Succeeded()) {
+        return Fail("scene assembly resource registration failed");
+    }
+
+    *out_binding = MakeSceneBindingRecord(
+        world_object_id,
+        component_type_id,
+        component_slot_id,
+        resource.handle,
+        resource_type);
+    return 0;
+}
+
+bool SceneAttachmentMatches(
+    const WorldComponentAttachment &attachment,
+    const WorldComponentAttachmentSnapshotRecord &record) {
+    if (!attachment.is_attached) {
+        return false;
+    }
+
+    if (attachment.world_object_id.value != record.world_object_id.value) {
+        return false;
+    }
+
+    if (attachment.component_type_id.value != record.component_type_id.value) {
+        return false;
+    }
+
+    return attachment.component_slot_id.value == record.component_slot_id.value;
+}
+
+bool SceneBindingMatches(
+    const WorldComponentResourceBinding &binding,
+    const WorldComponentResourceBindingSnapshotRecord &record) {
+    if (!binding.is_bound) {
+        return false;
+    }
+
+    if (!binding.is_acquired) {
+        return false;
+    }
+
+    if (binding.world_object_id.value != record.world_object_id.value) {
+        return false;
+    }
+
+    if (binding.component_type_id.value != record.component_type_id.value) {
+        return false;
+    }
+
+    if (binding.component_slot_id.value != record.component_slot_id.value) {
+        return false;
+    }
+
+    if (binding.resource_handle.slot != record.resource_handle.slot) {
+        return false;
+    }
+
+    if (binding.resource_handle.generation != record.resource_handle.generation) {
+        return false;
+    }
+
+    return binding.expected_resource_type.value == record.expected_resource_type.value;
+}
+
+int ExpectSceneAssemblyFailureWithoutMutation(
+    WorldSceneAssemblyBridge &assembly_bridge,
+    WorldComponentAttachmentBridge *attachment_destination,
+    WorldComponentResourceBindingBridge *binding_destination,
+    ResourceRegistry *resource_registry,
+    const WorldComponentAttachmentSnapshotRecord *input_attachments,
+    std::uint32_t input_attachment_count,
+    const WorldComponentResourceBindingSnapshotRecord *input_bindings,
+    std::uint32_t input_binding_count,
+    WorldSceneAssemblyStatus expected_status,
+    const char *error_message) {
+    const bool has_attachment_destination = attachment_destination != nullptr;
+    WorldComponentAttachmentSnapshot before_attachment_destination{};
+    if (has_attachment_destination) {
+        before_attachment_destination = attachment_destination->Snapshot();
+    }
+
+    const bool has_binding_destination = binding_destination != nullptr;
+    WorldComponentResourceBindingSnapshot before_binding_destination{};
+    if (has_binding_destination) {
+        before_binding_destination = binding_destination->Snapshot();
+    }
+
+    const bool has_registry = resource_registry != nullptr;
+    ResourceSnapshot before_registry{};
+    if (has_registry) {
+        before_registry = resource_registry->Snapshot();
+    }
+
+    const WorldSceneAssemblyResult result = assembly_bridge.Restore(
+        attachment_destination,
+        binding_destination,
+        resource_registry,
+        input_attachments,
+        input_attachment_count,
+        input_bindings,
+        input_binding_count);
+    if (result.status != expected_status) {
+        return Fail(error_message);
+    }
+
+    if (has_attachment_destination) {
+        const WorldComponentAttachmentSnapshot after_attachment_destination =
+            attachment_destination->Snapshot();
+        if (!ComponentAttachmentSnapshotsMatch(before_attachment_destination, after_attachment_destination)) {
+            return Fail("scene assembly failure mutated attachment destination");
+        }
+    }
+
+    if (has_binding_destination) {
+        const WorldComponentResourceBindingSnapshot after_binding_destination =
+            binding_destination->Snapshot();
+        if (!ComponentResourceBindingSnapshotsMatch(before_binding_destination, after_binding_destination)) {
+            return Fail("scene assembly failure mutated binding destination");
+        }
+    }
+
+    if (has_registry) {
+        const ResourceSnapshot after_registry = resource_registry->Snapshot();
+        if (!ResourceSnapshotsMatch(before_registry, after_registry)) {
+            return Fail("scene assembly failure mutated registry");
         }
     }
 
@@ -9066,6 +9301,937 @@ int WorldComponentResourceBindingRestoreBridgeResourceCoreRemainsWorldFree() {
     return 0;
 }
 
+int WorldSceneAssemblyBridgeRestoresAttachmentAndBindingRecordsInInputOrder() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY),
+        MakeSceneAttachmentRecord(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 2U> input_bindings{};
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_scene_order_a",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_AUDIO,
+            "audio_scene_order_a",
+            &input_bindings[1]) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    const std::uint32_t attachment_count = static_cast<std::uint32_t>(input_attachments.size());
+    const std::uint32_t binding_count = static_cast<std::uint32_t>(input_bindings.size());
+    const WorldSceneAssemblyResult result = assembly_bridge.Restore(
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        attachment_count,
+        input_bindings.data(),
+        binding_count);
+    if (!result.Succeeded()) {
+        return Fail("scene assembly order restore failed");
+    }
+
+    std::array<WorldComponentAttachment, 2U> restored_attachments{};
+    const std::uint32_t restored_attachment_count = attachment_destination.ExportAttachments(
+        restored_attachments.data(),
+        static_cast<std::uint32_t>(restored_attachments.size()));
+    if (restored_attachment_count != attachment_count) {
+        return Fail("scene assembly order attachment count wrong");
+    }
+
+    if (!SceneAttachmentMatches(restored_attachments[0], input_attachments[0])) {
+        return Fail("scene assembly order first attachment wrong");
+    }
+
+    if (!SceneAttachmentMatches(restored_attachments[1], input_attachments[1])) {
+        return Fail("scene assembly order second attachment wrong");
+    }
+
+    std::array<WorldComponentResourceBinding, 2U> restored_bindings{};
+    const std::uint32_t restored_binding_count = binding_destination.ExportBindings(
+        restored_bindings.data(),
+        static_cast<std::uint32_t>(restored_bindings.size()));
+    if (restored_binding_count != binding_count) {
+        return Fail("scene assembly order binding count wrong");
+    }
+
+    if (!SceneBindingMatches(restored_bindings[0], input_bindings[0])) {
+        return Fail("scene assembly order first binding wrong");
+    }
+
+    if (!SceneBindingMatches(restored_bindings[1], input_bindings[1])) {
+        return Fail("scene assembly order second binding wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyBridgeRestoresEmptyAssemblyWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    const WorldComponentAttachmentSnapshot before_attachment = attachment_destination.Snapshot();
+    const WorldComponentResourceBindingSnapshot before_binding = binding_destination.Snapshot();
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    WorldSceneAssemblyBridge assembly_bridge;
+    const WorldSceneAssemblyResult result = assembly_bridge.Restore(
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        0U,
+        input_bindings.data(),
+        0U);
+    if (!result.Succeeded()) {
+        return Fail("scene assembly empty restore failed");
+    }
+
+    if (!ComponentAttachmentSnapshotsMatch(before_attachment, attachment_destination.Snapshot())) {
+        return Fail("scene assembly empty mutated attachment destination");
+    }
+
+    if (!ComponentResourceBindingSnapshotsMatch(before_binding, binding_destination.Snapshot())) {
+        return Fail("scene assembly empty mutated binding destination");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("scene assembly empty mutated registry");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyBridgeRejectsNullAttachmentDestinationWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        nullptr,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U,
+        WorldSceneAssemblyStatus::InvalidAttachmentDestination,
+        "scene assembly null attachment destination status wrong");
+}
+
+int WorldSceneAssemblyBridgeRejectsNullBindingDestinationWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        nullptr,
+        &registry,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U,
+        WorldSceneAssemblyStatus::InvalidBindingDestination,
+        "scene assembly null binding destination status wrong");
+}
+
+int WorldSceneAssemblyBridgeRejectsNullRegistryWithoutMutation() {
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        nullptr,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U,
+        WorldSceneAssemblyStatus::InvalidResourceRegistry,
+        "scene assembly null registry status wrong");
+}
+
+int WorldSceneAssemblyBridgeRejectsNullAttachmentInputWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        nullptr,
+        1U,
+        input_bindings.data(),
+        0U,
+        WorldSceneAssemblyStatus::InvalidAttachmentInput,
+        "scene assembly null attachment input status wrong");
+}
+
+int WorldSceneAssemblyBridgeRejectsNullBindingInputWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        1U,
+        nullptr,
+        1U,
+        WorldSceneAssemblyStatus::InvalidBindingInput,
+        "scene assembly null binding input status wrong");
+}
+
+int WorldSceneAssemblyBridgeRejectsInvalidAttachmentRecordWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(WorldObjectId{}, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U,
+        WorldSceneAssemblyStatus::InvalidWorldObjectId,
+        "scene assembly invalid attachment status wrong");
+}
+
+int WorldSceneAssemblyBridgeRejectsInvalidBindingRecordWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(
+        registry,
+        RESOURCE_TYPE_TEXTURE,
+        "texture_scene_invalid_binding");
+    if (!resource.Succeeded()) {
+        return Fail("scene assembly invalid binding registration failed");
+    }
+
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            WorldComponentTypeId{},
+            COMPONENT_SLOT_PRIMARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE)};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        1U,
+        WorldSceneAssemblyStatus::InvalidComponentTypeId,
+        "scene assembly invalid binding status wrong");
+}
+
+int WorldSceneAssemblyBridgeRejectsMissingAttachmentForBindingWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_AUDIO,
+            "audio_scene_missing_attachment",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        1U,
+        WorldSceneAssemblyStatus::MissingAttachment,
+        "scene assembly missing attachment status wrong");
+}
+
+int WorldSceneAssemblyBridgeRejectsDuplicateAttachmentInputWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY),
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        static_cast<std::uint32_t>(input_attachments.size()),
+        input_bindings.data(),
+        0U,
+        WorldSceneAssemblyStatus::DuplicateAttachmentInput,
+        "scene assembly duplicate attachment status wrong");
+}
+
+int WorldSceneAssemblyBridgeRejectsDuplicateBindingInputWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 2U> input_bindings{};
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_scene_duplicate_binding_a",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_scene_duplicate_binding_b",
+            &input_bindings[1]) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        static_cast<std::uint32_t>(input_bindings.size()),
+        WorldSceneAssemblyStatus::DuplicateBindingInput,
+        "scene assembly duplicate binding status wrong");
+}
+
+int WorldSceneAssemblyBridgeRejectsAttachmentCapacityOverflowWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY),
+        MakeSceneAttachmentRecord(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldSceneAssemblyBridgeDesc desc{};
+    desc.attachment_capacity = 1U;
+    WorldSceneAssemblyBridge assembly_bridge(desc);
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        static_cast<std::uint32_t>(input_attachments.size()),
+        input_bindings.data(),
+        0U,
+        WorldSceneAssemblyStatus::AttachmentCapacityExceeded,
+        "scene assembly attachment capacity status wrong");
+}
+
+int WorldSceneAssemblyBridgeRejectsBindingCapacityOverflowWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY),
+        MakeSceneAttachmentRecord(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 2U> input_bindings{};
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_scene_binding_capacity",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_AUDIO,
+            "audio_scene_binding_capacity",
+            &input_bindings[1]) != 0) {
+        return 1;
+    }
+
+    WorldSceneAssemblyBridgeDesc desc{};
+    desc.binding_capacity = 1U;
+    WorldSceneAssemblyBridge assembly_bridge(desc);
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        static_cast<std::uint32_t>(input_attachments.size()),
+        input_bindings.data(),
+        static_cast<std::uint32_t>(input_bindings.size()),
+        WorldSceneAssemblyStatus::BindingCapacityExceeded,
+        "scene assembly binding capacity status wrong");
+}
+
+int WorldSceneAssemblyBridgeRejectsNonEmptyDestinationsWithoutMutation() {
+    {
+        ResourceRegistry registry = MakeResourceRegistry();
+        std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{};
+        std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+        WorldComponentAttachmentBridge attachment_destination;
+        if (AddComponentAttachment(
+                attachment_destination,
+                OBJECT_PLAYER,
+                COMPONENT_TYPE_PRIMARY,
+                COMPONENT_SLOT_PRIMARY,
+                "scene assembly non-empty attachment add failed") != 0) {
+            return 1;
+        }
+
+        WorldComponentResourceBindingBridge binding_destination;
+        WorldSceneAssemblyBridge assembly_bridge;
+        if (ExpectSceneAssemblyFailureWithoutMutation(
+                assembly_bridge,
+                &attachment_destination,
+                &binding_destination,
+                &registry,
+                input_attachments.data(),
+                0U,
+                input_bindings.data(),
+                0U,
+                WorldSceneAssemblyStatus::DestinationNotEmpty,
+                "scene assembly non-empty attachment destination status wrong") != 0) {
+            return 1;
+        }
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentAttachmentBridge attachment_source;
+    WorldComponentResourceBindingSnapshotRecord existing_binding{};
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_scene_non_empty_binding",
+            &existing_binding) != 0) {
+        return 1;
+    }
+
+    if (AddComponentAttachment(
+            attachment_source,
+            existing_binding.world_object_id,
+            existing_binding.component_type_id,
+            existing_binding.component_slot_id,
+            "scene assembly non-empty binding attachment add failed") != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingBridge binding_destination;
+    if (!BindComponentResource(
+            binding_destination,
+            &attachment_source,
+            &registry,
+            existing_binding.world_object_id,
+            existing_binding.component_type_id,
+            existing_binding.component_slot_id,
+            existing_binding.resource_handle,
+            existing_binding.expected_resource_type).Succeeded()) {
+        return Fail("scene assembly non-empty binding fixture bind failed");
+    }
+
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        0U,
+        input_bindings.data(),
+        0U,
+        WorldSceneAssemblyStatus::DestinationNotEmpty,
+        "scene assembly non-empty binding destination status wrong");
+}
+
+int WorldSceneAssemblyBridgeValidatesResourceHandlesBeforeMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            ResourceHandle{},
+            RESOURCE_TYPE_TEXTURE)};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        1U,
+        WorldSceneAssemblyStatus::InvalidResourceHandle,
+        "scene assembly invalid resource handle status wrong");
+}
+
+int WorldSceneAssemblyBridgeBindingPreflightFailureDoesNotRestoreAttachments() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_AUDIO,
+            "audio_scene_binding_preflight",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        1U,
+        WorldSceneAssemblyStatus::MissingAttachment,
+        "scene assembly binding preflight status wrong");
+}
+
+int WorldSceneAssemblyBridgeResourceAcquireFailureDoesNotPartiallyAssemble() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    const std::uint32_t max_reference_count = std::numeric_limits<std::uint32_t>::max();
+    const std::uint32_t initial_reference_count = max_reference_count - 1U;
+    const ResourceRegistrationResult resource = RegisterResource(
+        registry,
+        RESOURCE_TYPE_TEXTURE,
+        "texture_scene_acquire_overflow",
+        initial_reference_count);
+    if (!resource.Succeeded()) {
+        return Fail("scene assembly acquire overflow registration failed");
+    }
+
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY),
+        MakeSceneAttachmentRecord(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 2U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE),
+        MakeSceneBindingRecord(
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE)};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    return ExpectSceneAssemblyFailureWithoutMutation(
+        assembly_bridge,
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        static_cast<std::uint32_t>(input_attachments.size()),
+        input_bindings.data(),
+        static_cast<std::uint32_t>(input_bindings.size()),
+        WorldSceneAssemblyStatus::ResourceAcquireWouldOverflow,
+        "scene assembly acquire overflow status wrong");
+}
+
+int WorldSceneAssemblyBridgeRestorePathDoesNotGrowStorage() {
+    WorldSceneAssemblyBridgeDesc desc{};
+    desc.attachment_capacity = 2U;
+    desc.binding_capacity = 2U;
+    WorldSceneAssemblyBridge assembly_bridge(desc);
+    const WorldSceneAssemblySnapshot before_snapshot = assembly_bridge.Snapshot();
+    std::uint32_t iteration = 0U;
+    while (iteration < 3U) {
+        ResourceRegistry registry = MakeResourceRegistry();
+        std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+            MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+        std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+        if (RegisterSceneBindingInput(
+                registry,
+                OBJECT_PLAYER,
+                COMPONENT_TYPE_PRIMARY,
+                COMPONENT_SLOT_PRIMARY,
+                RESOURCE_TYPE_TEXTURE,
+                "texture_scene_path",
+                &input_bindings[0]) != 0) {
+            return 1;
+        }
+
+        WorldComponentAttachmentBridge attachment_destination;
+        WorldComponentResourceBindingBridge binding_destination;
+        const WorldSceneAssemblyResult result = assembly_bridge.Restore(
+            &attachment_destination,
+            &binding_destination,
+            &registry,
+            input_attachments.data(),
+            1U,
+            input_bindings.data(),
+            1U);
+        if (!result.Succeeded()) {
+            return Fail("scene assembly path restore failed");
+        }
+
+        ++iteration;
+    }
+
+    const WorldSceneAssemblySnapshot after_snapshot = assembly_bridge.Snapshot();
+    if (after_snapshot.attachment_capacity != before_snapshot.attachment_capacity) {
+        return Fail("scene assembly path changed attachment capacity");
+    }
+
+    if (after_snapshot.binding_capacity != before_snapshot.binding_capacity) {
+        return Fail("scene assembly path changed binding capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != before_snapshot.allocation_accounting_status) {
+        return Fail("scene assembly path changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyBridgeNoHiddenAllocationUsesYuMemorySignal() {
+    WorldSceneAssemblyBridge assembly_bridge;
+    const WorldSceneAssemblySnapshot snapshot = assembly_bridge.Snapshot();
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("scene assembly allocation accounting status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyBridgeSnapshotReportsCountsAndLastStatus() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY),
+        MakeSceneAttachmentRecord(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_scene_counter",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    const WorldSceneAssemblyResult success_result = assembly_bridge.Restore(
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        static_cast<std::uint32_t>(input_attachments.size()),
+        input_bindings.data(),
+        1U);
+    if (!success_result.Succeeded()) {
+        return Fail("scene assembly counters success failed");
+    }
+
+    const WorldSceneAssemblyResult failure_result = assembly_bridge.Restore(
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        nullptr,
+        1U,
+        input_bindings.data(),
+        0U);
+    if (failure_result.status != WorldSceneAssemblyStatus::InvalidAttachmentInput) {
+        return Fail("scene assembly counters failure status wrong");
+    }
+
+    const WorldSceneAssemblySnapshot snapshot = assembly_bridge.Snapshot();
+    if (snapshot.assembly_attempt_count != 2U) {
+        return Fail("scene assembly counters attempt count wrong");
+    }
+
+    if (snapshot.restored_attachment_count != input_attachments.size()) {
+        return Fail("scene assembly counters restored attachment count wrong");
+    }
+
+    if (snapshot.restored_binding_count != 1U) {
+        return Fail("scene assembly counters restored binding count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("scene assembly counters failed count wrong");
+    }
+
+    if (snapshot.last_status != WorldSceneAssemblyStatus::InvalidAttachmentInput) {
+        return Fail("scene assembly counters last status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyBridgeNoActorComponentPayloadOrLifecycle() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_EFFECT, COMPONENT_TYPE_TERTIARY, COMPONENT_SLOT_TERTIARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    if (RegisterSceneBindingInput(
+            registry,
+            OBJECT_EFFECT,
+            COMPONENT_TYPE_TERTIARY,
+            COMPONENT_SLOT_TERTIARY,
+            RESOURCE_TYPE_AUDIO,
+            "audio_scene_payload",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    const WorldSceneAssemblyResult result = assembly_bridge.Restore(
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        1U);
+    if (!result.Succeeded()) {
+        return Fail("scene assembly payload restore failed");
+    }
+
+    const WorldComponentAttachmentResult attachment_result = attachment_destination.Query(
+        OBJECT_EFFECT,
+        COMPONENT_TYPE_TERTIARY);
+    if (!attachment_result.Succeeded()) {
+        return Fail("scene assembly payload attachment query failed");
+    }
+
+    if (attachment_result.component_slot_id.value != COMPONENT_SLOT_TERTIARY.value) {
+        return Fail("scene assembly payload attachment slot wrong");
+    }
+
+    const WorldComponentResourceBindingResult binding_result = binding_destination.Query(
+        OBJECT_EFFECT,
+        COMPONENT_TYPE_TERTIARY,
+        COMPONENT_SLOT_TERTIARY);
+    if (!binding_result.Succeeded()) {
+        return Fail("scene assembly payload binding query failed");
+    }
+
+    if (binding_result.resource_handle.slot != input_bindings[0].resource_handle.slot) {
+        return Fail("scene assembly payload binding resource wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyBridgeNoObjectScriptSerializeThreadPlatformDiagnosticsDependency() {
+    WorldSceneAssemblyBridge assembly_bridge;
+    const WorldSceneAssemblySnapshot snapshot = assembly_bridge.Snapshot();
+    if (snapshot.attachment_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("scene assembly object dependency test changed attachment capacity");
+    }
+
+    if (snapshot.last_status != WorldSceneAssemblyStatus::Success) {
+        return Fail("scene assembly object dependency test changed last status");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyBridgeNoFilePackageLoadDecodeUploadOrGameAdapterDependency() {
+    WorldSceneAssemblyBridge assembly_bridge;
+    const WorldSceneAssemblySnapshot snapshot = assembly_bridge.Snapshot();
+    if (snapshot.binding_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("scene assembly file dependency test changed binding capacity");
+    }
+
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("scene assembly file dependency test changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency() {
+    WorldSceneAssemblyBridge assembly_bridge;
+    const WorldSceneAssemblySnapshot snapshot = assembly_bridge.Snapshot();
+    if (snapshot.attachment_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("scene assembly render dependency test changed attachment capacity");
+    }
+
+    if (snapshot.last_binding_status != WorldComponentResourceBindingStatus::Success) {
+        return Fail("scene assembly render dependency test changed binding status");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyBridgeWorldInstanceCoreRemainsAssemblyFree() {
+    WorldInstance world = MakeWorld(4U, 4U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("scene assembly world core-free registration failed");
+    }
+
+    const WorldSnapshot before_world = world.Snapshot();
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    const WorldSceneAssemblyResult result = assembly_bridge.Restore(
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U);
+    if (!result.Succeeded()) {
+        return Fail("scene assembly world core-free restore failed");
+    }
+
+    const WorldSnapshot after_world = world.Snapshot();
+    if (!WorldSnapshotsMatch(before_world, after_world)) {
+        return Fail("scene assembly mutated world core");
+    }
+
+    return 0;
+}
+
+int WorldSceneAssemblyBridgeResourceCoreRemainsWorldFree() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(
+        registry,
+        RESOURCE_TYPE_TEXTURE,
+        "texture_scene_resource_core");
+    if (!resource.Succeeded()) {
+        return Fail("scene assembly resource core-free registration failed");
+    }
+
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    WorldSceneAssemblyBridge assembly_bridge;
+    const WorldSceneAssemblyResult result = assembly_bridge.Restore(
+        &attachment_destination,
+        &binding_destination,
+        &registry,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U);
+    if (!result.Succeeded()) {
+        return Fail("scene assembly resource core-free restore failed");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("scene assembly mutated resource core without bindings");
+    }
+
+    return 0;
+}
+
 int WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord() {
     WorldComponentAttachmentBridge bridge;
     const WorldComponentAttachmentResult result = bridge.Add(
@@ -11420,6 +12586,60 @@ int main(int argc, char **argv) {
             WorldComponentResourceBindingRestoreBridgeWorldInstanceCoreRemainsRestoreFree},
         {TEST_COMPONENT_RESOURCE_RESTORE_RESOURCE_CORE_FREE,
             WorldComponentResourceBindingRestoreBridgeResourceCoreRemainsWorldFree},
+        {TEST_SCENE_ASSEMBLY_ORDER,
+            WorldSceneAssemblyBridgeRestoresAttachmentAndBindingRecordsInInputOrder},
+        {TEST_SCENE_ASSEMBLY_EMPTY,
+            WorldSceneAssemblyBridgeRestoresEmptyAssemblyWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_NULL_ATTACHMENT_DESTINATION,
+            WorldSceneAssemblyBridgeRejectsNullAttachmentDestinationWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_NULL_BINDING_DESTINATION,
+            WorldSceneAssemblyBridgeRejectsNullBindingDestinationWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_NULL_REGISTRY,
+            WorldSceneAssemblyBridgeRejectsNullRegistryWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_NULL_ATTACHMENT_INPUT,
+            WorldSceneAssemblyBridgeRejectsNullAttachmentInputWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_NULL_BINDING_INPUT,
+            WorldSceneAssemblyBridgeRejectsNullBindingInputWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_INVALID_ATTACHMENT,
+            WorldSceneAssemblyBridgeRejectsInvalidAttachmentRecordWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_INVALID_BINDING,
+            WorldSceneAssemblyBridgeRejectsInvalidBindingRecordWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_MISSING_ATTACHMENT,
+            WorldSceneAssemblyBridgeRejectsMissingAttachmentForBindingWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_DUPLICATE_ATTACHMENT,
+            WorldSceneAssemblyBridgeRejectsDuplicateAttachmentInputWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_DUPLICATE_BINDING,
+            WorldSceneAssemblyBridgeRejectsDuplicateBindingInputWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_ATTACHMENT_CAPACITY,
+            WorldSceneAssemblyBridgeRejectsAttachmentCapacityOverflowWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_BINDING_CAPACITY,
+            WorldSceneAssemblyBridgeRejectsBindingCapacityOverflowWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_NON_EMPTY_DESTINATIONS,
+            WorldSceneAssemblyBridgeRejectsNonEmptyDestinationsWithoutMutation},
+        {TEST_SCENE_ASSEMBLY_RESOURCE_PREFLIGHT,
+            WorldSceneAssemblyBridgeValidatesResourceHandlesBeforeMutation},
+        {TEST_SCENE_ASSEMBLY_BINDING_PREFLIGHT,
+            WorldSceneAssemblyBridgeBindingPreflightFailureDoesNotRestoreAttachments},
+        {TEST_SCENE_ASSEMBLY_RESOURCE_ACQUIRE_FAILURE,
+            WorldSceneAssemblyBridgeResourceAcquireFailureDoesNotPartiallyAssemble},
+        {TEST_SCENE_ASSEMBLY_RESTORE_PATH,
+            WorldSceneAssemblyBridgeRestorePathDoesNotGrowStorage},
+        {TEST_SCENE_ASSEMBLY_NO_HIDDEN_ALLOCATION,
+            WorldSceneAssemblyBridgeNoHiddenAllocationUsesYuMemorySignal},
+        {TEST_SCENE_ASSEMBLY_COUNTERS,
+            WorldSceneAssemblyBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_SCENE_ASSEMBLY_NO_PAYLOAD,
+            WorldSceneAssemblyBridgeNoActorComponentPayloadOrLifecycle},
+        {TEST_SCENE_ASSEMBLY_NO_OBJECT_SCRIPT,
+            WorldSceneAssemblyBridgeNoObjectScriptSerializeThreadPlatformDiagnosticsDependency},
+        {TEST_SCENE_ASSEMBLY_NO_FILE_PACKAGE,
+            WorldSceneAssemblyBridgeNoFilePackageLoadDecodeUploadOrGameAdapterDependency},
+        {TEST_SCENE_ASSEMBLY_NO_RENDER_PHYSICS,
+            WorldSceneAssemblyBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency},
+        {TEST_SCENE_ASSEMBLY_WORLD_CORE_FREE,
+            WorldSceneAssemblyBridgeWorldInstanceCoreRemainsAssemblyFree},
+        {TEST_SCENE_ASSEMBLY_RESOURCE_CORE_FREE,
+            WorldSceneAssemblyBridgeResourceCoreRemainsWorldFree},
         {TEST_COMPONENT_ADD_VALID, WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord},
         {TEST_COMPONENT_ADD_INVALID_WORLD, WorldComponentAttachmentBridgeAddRejectsInvalidWorldIdWithoutMutation},
         {TEST_COMPONENT_ADD_INVALID_TYPE, WorldComponentAttachmentBridgeAddRejectsInvalidComponentTypeWithoutMutation},
