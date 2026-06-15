@@ -27,6 +27,16 @@ target_include_directories(YuMemory
         Src/YuEngine/Memory/Include
 )
 
+add_library(YuScript
+    Src/YuEngine/Script/Src/ScriptNativeRegistry.cpp
+)
+yuengine_apply_compile_options(YuScript)
+target_include_directories(YuScript
+    PUBLIC
+        Src/YuEngine/Script/Include
+)
+target_link_libraries(YuScript PUBLIC YuMemory)
+
 add_library(YuDiagnostics
     Src/YuEngine/Diagnostics/Src/BoundedDiagnosticsChannel.cpp
     Src/YuEngine/Diagnostics/Src/BoundedInMemoryLogSink.cpp
@@ -226,6 +236,26 @@ add_test(NAME Memory_DisabledTracker_DoesNotChangeBehavior COMMAND YuMemoryTests
 add_test(NAME Memory_HotPathBudget_FailsOnTrackedAllocation COMMAND YuMemoryTests Memory_HotPathBudget_FailsOnTrackedAllocation)
 add_test(NAME Memory_TrackerRejectsBeyondFixedCapacityWithoutMutation COMMAND YuMemoryTests Memory_TrackerRejectsBeyondFixedCapacityWithoutMutation)
 add_test(NAME Memory_TrackerEnforcesOwnerAndTagByteCapsWithoutMutation COMMAND YuMemoryTests Memory_TrackerEnforcesOwnerAndTagByteCapsWithoutMutation)
+
+add_executable(YuScriptTests
+    Tests/Script/ScriptTests.cpp
+)
+yuengine_apply_compile_options(YuScriptTests)
+target_link_libraries(YuScriptTests PRIVATE YuScript)
+add_test(NAME Script_RegisterNativeCall_ReturnsStableId COMMAND YuScriptTests Script_RegisterNativeCall_ReturnsStableId)
+add_test(NAME Script_RegisterDuplicateCall_ReturnsExplicitStatus COMMAND YuScriptTests Script_RegisterDuplicateCall_ReturnsExplicitStatus)
+add_test(NAME Script_RegisterRejectsNullFunction COMMAND YuScriptTests Script_RegisterRejectsNullFunction)
+add_test(NAME Script_RegistryCapacityOverflow_DoesNotMutate COMMAND YuScriptTests Script_RegistryCapacityOverflow_DoesNotMutate)
+add_test(NAME Script_InvokeNativeCall_WritesResultDeterministically COMMAND YuScriptTests Script_InvokeNativeCall_WritesResultDeterministically)
+add_test(NAME Script_InvokeRejectsUnknownCallId COMMAND YuScriptTests Script_InvokeRejectsUnknownCallId)
+add_test(NAME Script_InvokeRejectsArgumentCountMismatch COMMAND YuScriptTests Script_InvokeRejectsArgumentCountMismatch)
+add_test(NAME Script_InvokeRejectsArgumentTypeMismatch COMMAND YuScriptTests Script_InvokeRejectsArgumentTypeMismatch)
+add_test(NAME Script_InvokeRejectsResultCountMismatch COMMAND YuScriptTests Script_InvokeRejectsResultCountMismatch)
+add_test(NAME Script_NativeFailure_ReturnsExplicitStatus COMMAND YuScriptTests Script_NativeFailure_ReturnsExplicitStatus)
+add_test(NAME Script_CallPath_DoesNotGrowRegistryStorage COMMAND YuScriptTests Script_CallPath_DoesNotGrowRegistryStorage)
+add_test(NAME Script_NoWorldResourcePackageOrGameAdapterDependency COMMAND YuScriptTests Script_NoWorldResourcePackageOrGameAdapterDependency)
+add_test(NAME Script_NoHiddenAllocation_UsesYuMemorySignal COMMAND YuScriptTests Script_NoHiddenAllocation_UsesYuMemorySignal)
+add_test(NAME Script_SnapshotReportsCountsAndLastStatus COMMAND YuScriptTests Script_SnapshotReportsCountsAndLastStatus)
 
 add_executable(YuThreadTests
     Tests/Thread/ThreadTestContext.cpp
