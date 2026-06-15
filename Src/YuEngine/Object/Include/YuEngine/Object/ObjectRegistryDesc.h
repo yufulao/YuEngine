@@ -1,3 +1,6 @@
+// Module: YuEngine Object
+// File: Src/YuEngine/Object/Include/YuEngine/Object/ObjectRegistryDesc.h
+
 #pragma once
 
 #include <cstdint>

@@ -1,3 +1,6 @@
+// Module: YuEngine Diagnostics
+// File: Src/YuEngine/Diagnostics/Include/YuEngine/Diagnostics/DiagnosticsLimits.h
+
 #pragma once
 
 #include <cstddef>

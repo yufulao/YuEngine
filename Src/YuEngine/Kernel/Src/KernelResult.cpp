@@ -1,3 +1,6 @@
+// Module: YuEngine Kernel
+// File: Src/YuEngine/Kernel/Src/KernelResult.cpp
+
 #include "YuEngine/Kernel/KernelResult.h"
 
 #include <utility>

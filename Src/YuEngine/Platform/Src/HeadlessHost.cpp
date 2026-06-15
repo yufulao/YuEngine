@@ -1,3 +1,6 @@
+// Module: YuEngine Platform
+// File: Src/YuEngine/Platform/Src/HeadlessHost.cpp
+
 #include "YuEngine/Platform/HeadlessHost.h"
 
 #include "YuEngine/Diagnostics/LogLevel.h"
@@ -7,6 +10,7 @@
 
 namespace yuengine::platform {
 namespace {
+constexpr const char* HOST_LOG_MODULE = "Platform";
 constexpr const char* HOST_START_TRACE = "host.start";
 constexpr const char* HOST_TICK_TRACE = "host.tick";
 constexpr const char* HOST_SHUTDOWN_TRACE = "host.shutdown";
@@ -29,7 +33,7 @@ HostRunResult HeadlessHost::Run(IHostRuntime& runtime, const HeadlessHostConfig&
     result.lifecycle_trace.reserve((static_cast<std::size_t>(config.tick_count) * 2U) + 4U);
 
     result.lifecycle_trace.push_back(HOST_START_TRACE);
-    log_sink_.Write(diagnostics::LogLevel::Info, "host start");
+    log_sink_.Write(HOST_LOG_MODULE, diagnostics::LogLevel::Info, "host start");
 
     const HostError start_error = runtime.Start(result.lifecycle_trace);
     if (!start_error.succeeded) {
@@ -42,7 +46,7 @@ HostRunResult HeadlessHost::Run(IHostRuntime& runtime, const HeadlessHostConfig&
         const std::uint64_t tick_time_nanoseconds = frame_clock_.NextTickNanoseconds();
         result.tick_times_nanoseconds.push_back(tick_time_nanoseconds);
         result.lifecycle_trace.push_back(HOST_TICK_TRACE);
-        log_sink_.Write(diagnostics::LogLevel::Info, "host tick");
+        log_sink_.Write(HOST_LOG_MODULE, diagnostics::LogLevel::Info, "host tick");
 
         const HostError tick_error = runtime.Tick(frame_index, tick_time_nanoseconds, result.lifecycle_trace);
         if (!tick_error.succeeded) {
@@ -63,7 +67,7 @@ HostRunResult HeadlessHost::Run(IHostRuntime& runtime, const HeadlessHostConfig&
     }
 
     result.lifecycle_trace.push_back(HOST_SHUTDOWN_TRACE);
-    log_sink_.Write(diagnostics::LogLevel::Info, "host shutdown");
+    log_sink_.Write(HOST_LOG_MODULE, diagnostics::LogLevel::Info, "host shutdown");
 
     const HostError shutdown_error = runtime.Shutdown(result.lifecycle_trace);
     if (!shutdown_error.succeeded) {

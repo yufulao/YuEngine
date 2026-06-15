@@ -1,3 +1,6 @@
+// Module: YuEngine Object
+// File: Src/YuEngine/Object/Src/ObjectRegistry.cpp
+
 #include "YuEngine/Object/ObjectRegistry.h"
 
 #include <limits>

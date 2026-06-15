@@ -1,3 +1,6 @@
+// Module: YuEngine Package
+// File: Src/YuEngine/Package/Include/YuEngine/Package/PackageLoadPlan.h
+
 #pragma once
 
 #include <array>

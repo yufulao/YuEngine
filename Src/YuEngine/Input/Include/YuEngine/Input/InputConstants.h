@@ -1,3 +1,6 @@
+// Module: YuEngine Input
+// File: Src/YuEngine/Input/Include/YuEngine/Input/InputConstants.h
+
 #pragma once
 
 #include <cstddef>

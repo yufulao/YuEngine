@@ -1,3 +1,6 @@
+// Module: YuEngine File
+// File: Src/YuEngine/File/Src/VirtualPath.cpp
+
 #include "YuEngine/File/VirtualPath.h"
 
 #include <utility>

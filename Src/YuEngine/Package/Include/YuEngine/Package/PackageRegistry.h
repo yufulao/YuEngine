@@ -1,3 +1,6 @@
+// Module: YuEngine Package
+// File: Src/YuEngine/Package/Include/YuEngine/Package/PackageRegistry.h
+
 #pragma once
 
 #include <array>
@@ -18,16 +21,51 @@
 namespace yuengine::package {
 class PackageRegistry final {
 public:
+    /**
+     * @comment Constructs a PackageRegistry instance.
+     */
     PackageRegistry();
+    /**
+     * @comment Constructs a PackageRegistry instance.
+     * @param desc Input descriptor.
+     */
     explicit PackageRegistry(PackageRegistryDesc desc);
 
+    /**
+     * @comment Registers synthetic manifest.
+     * @param descriptor Input descriptor.
+     * @return Explicit operation result.
+     */
     PackageRegistrationResult RegisterSyntheticManifest(const PackageManifestDescriptor& descriptor);
+    /**
+     * @comment Registers entry.
+     * @param descriptor Input descriptor.
+     * @return Explicit operation result.
+     */
     PackageRegistrationResult RegisterEntry(const PackageEntryDescriptor& descriptor);
+    /**
+     * @comment Adds dependency.
+     * @param package Input package.
+     * @param dependent Input dependent.
+     * @param dependency Input dependency.
+     * @return Explicit operation status.
+     */
     PackageStatus AddDependency(PackageId package, PackageEntryId dependent, PackageEntryId dependency);
+    /**
+     * @comment Resolves entry by resource key.
+     * @param package Input package.
+     * @param expected_type Input expected type.
+     * @param logical_key Input logical key.
+     * @return Explicit operation result.
+     */
     PackageLoadPlanResult ResolveEntryByResourceKey(
         PackageId package,
         ResourceTypeId expected_type,
         const ResourceLogicalKey& logical_key);
+    /**
+     * @comment Returns a snapshot of the current state.
+     * @return Snapshot value.
+     */
     PackageSnapshot Snapshot() const;
 
 private:

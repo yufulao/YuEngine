@@ -1,3 +1,6 @@
+// Module: YuEngine Thread
+// File: Src/YuEngine/Thread/Include/YuEngine/Thread/TaskSchedulerSnapshot.h
+
 #pragma once
 
 #include <cstddef>

@@ -1,3 +1,6 @@
+// Module: YuEngine Memory
+// File: Src/YuEngine/Memory/Include/YuEngine/Memory/MemoryAccountingStatus.h
+
 #pragma once
 
 namespace yuengine::memory {

@@ -1,3 +1,6 @@
+// Module: YuEngine Kernel
+// File: Src/YuEngine/Kernel/Src/EngineKernel.cpp
+
 #include "YuEngine/Kernel/EngineKernel.h"
 
 #include <unordered_map>

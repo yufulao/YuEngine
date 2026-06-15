@@ -1,3 +1,6 @@
+// Module: YuEngine Platform
+// File: Src/YuEngine/Platform/Include/YuEngine/Platform/PlatformPerformanceSignal.h
+
 #pragma once
 
 #include "YuEngine/Memory/MemoryAccountingStatus.h"

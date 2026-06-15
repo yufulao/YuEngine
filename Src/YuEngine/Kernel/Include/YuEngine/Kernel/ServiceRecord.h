@@ -1,3 +1,6 @@
+// Module: YuEngine Kernel
+// File: Src/YuEngine/Kernel/Include/YuEngine/Kernel/ServiceRecord.h
+
 #pragma once
 
 #include <string>

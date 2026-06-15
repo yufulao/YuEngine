@@ -1,3 +1,6 @@
+// Module: YuEngine Audio
+// File: Src/YuEngine/Audio/Include/YuEngine/Audio/AudioDeviceSnapshot.h
+
 #pragma once
 
 #include <cstddef>

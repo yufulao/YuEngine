@@ -1,3 +1,6 @@
+// Module: YuEngine Diagnostics
+// File: Src/YuEngine/Diagnostics/Src/DisabledDiagnosticsChannel.cpp
+
 #include "YuEngine/Diagnostics/DisabledDiagnosticsChannel.h"
 
 namespace yuengine::diagnostics {

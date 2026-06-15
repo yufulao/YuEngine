@@ -1,3 +1,6 @@
+// Module: YuEngine Platform
+// File: Src/YuEngine/Platform/Src/HostError.cpp
+
 #include "YuEngine/Platform/HostError.h"
 
 #include <utility>

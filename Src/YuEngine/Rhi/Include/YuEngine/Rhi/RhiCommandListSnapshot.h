@@ -1,3 +1,6 @@
+// Module: YuEngine Rhi
+// File: Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiCommandListSnapshot.h
+
 #pragma once
 
 #include <cstddef>

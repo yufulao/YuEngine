@@ -1,3 +1,6 @@
+// Module: YuEngine Resource
+// File: Src/YuEngine/Resource/Src/ResourceRegistry.cpp
+
 #include "YuEngine/Resource/ResourceRegistry.h"
 
 #include <limits>

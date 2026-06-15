@@ -1,3 +1,6 @@
+// Module: YuEngine Rhi
+// File: Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiColorTargetDesc.h
+
 #pragma once
 
 #include "YuEngine/Rhi/RhiExtent2D.h"

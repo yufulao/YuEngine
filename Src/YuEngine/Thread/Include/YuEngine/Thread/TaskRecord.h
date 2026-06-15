@@ -1,3 +1,6 @@
+// Module: YuEngine Thread
+// File: Src/YuEngine/Thread/Include/YuEngine/Thread/TaskRecord.h
+
 #pragma once
 
 #include "YuEngine/Thread/TaskCallback.h"

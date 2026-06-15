@@ -1,3 +1,6 @@
+// Module: YuEngine Kernel
+// File: Src/YuEngine/Kernel/Src/ServiceRegistry.cpp
+
 #include "YuEngine/Kernel/ServiceRegistry.h"
 
 namespace yuengine::kernel {

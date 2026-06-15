@@ -1,3 +1,6 @@
+// Module: YuEngine Serialize
+// File: Src/YuEngine/Serialize/Include/YuEngine/Serialize/SerializeWriter.h
+
 #pragma once
 
 #include <array>
@@ -13,15 +16,64 @@
 namespace yuengine::serialize {
 class SerializeWriter final {
 public:
+    /**
+     * @comment Constructs a SerializeWriter instance.
+     * @param buffer Input buffer.
+     * @param capacity Input capacity.
+     */
     SerializeWriter(std::uint8_t* buffer, std::uint32_t capacity);
 
+    /**
+     * @comment Begins a serialized stream.
+     * @return Explicit operation status.
+     */
     SerializeStatus BeginStream();
+    /**
+     * @comment Begins a serialized record.
+     * @param record Input record.
+     * @return Explicit operation status.
+     */
     SerializeStatus BeginRecord(SerializeRecordId record);
+    /**
+     * @comment Writes uint32.
+     * @param field Input field.
+     * @param value Input value.
+     * @return Explicit operation status.
+     */
     SerializeStatus WriteUInt32(SerializeFieldId field, std::uint32_t value);
+    /**
+     * @comment Writes int32.
+     * @param field Input field.
+     * @param value Input value.
+     * @return Explicit operation status.
+     */
     SerializeStatus WriteInt32(SerializeFieldId field, std::int32_t value);
+    /**
+     * @comment Writes uint64.
+     * @param field Input field.
+     * @param value Input value.
+     * @return Explicit operation status.
+     */
     SerializeStatus WriteUInt64(SerializeFieldId field, std::uint64_t value);
+    /**
+     * @comment Writes int64.
+     * @param field Input field.
+     * @param value Input value.
+     * @return Explicit operation status.
+     */
     SerializeStatus WriteInt64(SerializeFieldId field, std::int64_t value);
+    /**
+     * @comment Writes fixed bytes.
+     * @param field Input field.
+     * @param bytes Input byte count or byte payload.
+     * @param byte_count Input byte count.
+     * @return Explicit operation status.
+     */
     SerializeStatus WriteFixedBytes(SerializeFieldId field, const std::uint8_t* bytes, std::uint32_t byte_count);
+    /**
+     * @comment Returns a snapshot of the current state.
+     * @return Snapshot value.
+     */
     SerializeSnapshot Snapshot() const;
 
 private:

@@ -1,3 +1,6 @@
+// Module: YuEngine File
+// File: Src/YuEngine/File/Include/YuEngine/File/FileStatus.h
+
 #pragma once
 
 namespace yuengine::file {

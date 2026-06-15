@@ -1,3 +1,6 @@
+// Module: YuEngine Thread
+// File: Src/YuEngine/Thread/Src/BoundedTaskQueue.cpp
+
 #include "YuEngine/Thread/BoundedTaskQueue.h"
 
 #include "YuEngine/Memory/MemoryBudgetClass.h"

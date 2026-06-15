@@ -1,3 +1,6 @@
+// Module: YuEngine File
+// File: Src/YuEngine/File/Src/PathNormalizationResult.cpp
+
 #include "YuEngine/File/PathNormalizationResult.h"
 
 #include <utility>

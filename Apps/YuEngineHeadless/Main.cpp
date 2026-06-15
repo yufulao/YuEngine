@@ -1,3 +1,6 @@
+// Module: Apps YuEngineHeadless
+// File: Apps/YuEngineHeadless/Main.cpp
+
 #include "YuEngine/Diagnostics/DisabledLogSink.h"
 #include "YuEngine/Kernel/EngineKernel.h"
 #include "YuEngine/Kernel/KernelHostRuntime.h"

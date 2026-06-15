@@ -1,3 +1,6 @@
+// Module: YuEngine Resource
+// File: Src/YuEngine/Resource/Src/ResourceLogicalKey.cpp
+
 #include "YuEngine/Resource/ResourceLogicalKey.h"
 
 namespace yuengine::resource {

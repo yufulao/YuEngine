@@ -1,3 +1,6 @@
+// Module: YuEngine File
+// File: Src/YuEngine/File/Src/FileReadResult.cpp
+
 #include "YuEngine/File/FileReadResult.h"
 
 #include <utility>

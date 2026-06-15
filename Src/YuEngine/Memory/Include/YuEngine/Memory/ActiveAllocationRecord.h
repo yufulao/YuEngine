@@ -1,3 +1,6 @@
+// Module: YuEngine Memory
+// File: Src/YuEngine/Memory/Include/YuEngine/Memory/ActiveAllocationRecord.h
+
 #pragma once
 
 #include <array>

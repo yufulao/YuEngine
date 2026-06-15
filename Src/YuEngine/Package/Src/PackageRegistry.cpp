@@ -1,3 +1,6 @@
+// Module: YuEngine Package
+// File: Src/YuEngine/Package/Src/PackageRegistry.cpp
+
 #include "YuEngine/Package/PackageRegistry.h"
 
 #include <array>

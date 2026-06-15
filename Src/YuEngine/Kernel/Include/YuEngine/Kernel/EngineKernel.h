@@ -1,3 +1,6 @@
+// Module: YuEngine Kernel
+// File: Src/YuEngine/Kernel/Include/YuEngine/Kernel/EngineKernel.h
+
 #pragma once
 
 #include <cstddef>
@@ -13,15 +16,48 @@
 namespace yuengine::kernel {
 class EngineKernel final {
 public:
+    /**
+     * @comment Constructs a EngineKernel instance.
+     */
     EngineKernel();
 
+    /**
+     * @comment Registers module.
+     * @param module Module updated by the function.
+     * @return True when the condition is satisfied; false otherwise.
+     */
     bool RegisterModule(IModule& module);
 
+    /**
+     * @comment Starts the component.
+     * @param lifecycle_trace Lifecycle trace updated by the function.
+     * @return Explicit operation result.
+     */
     KernelResult Start(std::vector<std::string>& lifecycle_trace);
+    /**
+     * @comment Updates the component for one frame.
+     * @param frame_index Input frame index.
+     * @param tick_time_nanoseconds Input tick time nanoseconds.
+     * @param lifecycle_trace Lifecycle trace updated by the function.
+     * @return Explicit operation result.
+     */
     KernelResult Update(std::uint32_t frame_index, std::uint64_t tick_time_nanoseconds, std::vector<std::string>& lifecycle_trace);
+    /**
+     * @comment Shuts down the component.
+     * @param lifecycle_trace Lifecycle trace updated by the function.
+     * @return Explicit operation result.
+     */
     KernelResult Shutdown(std::vector<std::string>& lifecycle_trace);
 
+    /**
+     * @comment Returns the service registry.
+     * @return Reference to the requested object.
+     */
     ServiceRegistry& Services();
+    /**
+     * @comment Returns the service registry.
+     * @return Reference to the requested object.
+     */
     const ServiceRegistry& Services() const;
 
 private:

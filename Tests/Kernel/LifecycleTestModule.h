@@ -1,3 +1,6 @@
+// Module: Tests Kernel
+// File: Tests/Kernel/LifecycleTestModule.h
+
 #pragma once
 
 #include <string>

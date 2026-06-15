@@ -1,3 +1,6 @@
+// Module: YuEngine Audio
+// File: Src/YuEngine/Audio/Include/YuEngine/Audio/AudioMixResult.h
+
 #pragma once
 
 #include <cstddef>

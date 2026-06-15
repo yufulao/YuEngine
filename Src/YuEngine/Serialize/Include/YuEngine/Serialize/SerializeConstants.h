@@ -1,3 +1,6 @@
+// Module: YuEngine Serialize
+// File: Src/YuEngine/Serialize/Include/YuEngine/Serialize/SerializeConstants.h
+
 #pragma once
 
 #include <cstdint>

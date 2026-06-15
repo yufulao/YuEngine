@@ -1,3 +1,6 @@
+// Module: YuEngine Serialize
+// File: Src/YuEngine/Serialize/Include/YuEngine/Serialize/SerializeStatus.h
+
 #pragma once
 
 namespace yuengine::serialize {

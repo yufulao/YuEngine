@@ -1,3 +1,6 @@
+// Module: YuEngine Input
+// File: Src/YuEngine/Input/Include/YuEngine/Input/InputReplay.h
+
 #pragma once
 
 #include <array>
@@ -17,14 +20,52 @@
 namespace yuengine::input {
 class InputReplay final {
 public:
+    /**
+     * @comment Constructs a InputReplay instance.
+     */
     InputReplay();
 
+    /**
+     * @comment Registers action binding.
+     * @param device Input device.
+     * @param control Input control.
+     * @param action Input action.
+     * @return Explicit operation result.
+     */
     InputBindingResult RegisterActionBinding(InputDeviceId device, InputControlId control, InputActionId action);
+    /**
+     * @comment Records replay event.
+     * @param frame_index Input frame index.
+     * @param event Input event.
+     * @return Explicit operation status.
+     */
     InputStatus RecordReplayEvent(std::size_t frame_index, InputEvent event);
+    /**
+     * @comment Applies next frame.
+     * @return Explicit operation result.
+     */
     InputApplyResult ApplyNextFrame();
+    /**
+     * @comment Resets frame state.
+     * @return Explicit operation status.
+     */
     InputStatus ResetFrameState();
+    /**
+     * @comment Queries action.
+     * @param action Input action.
+     * @return Explicit operation result.
+     */
     InputActionQueryResult QueryAction(InputActionId action) const;
+    /**
+     * @comment Returns a snapshot of the current state.
+     * @return Snapshot value.
+     */
     InputReplaySnapshot Snapshot() const;
+    /**
+     * @comment Returns the event count for a frame.
+     * @param frame_index Input frame index.
+     * @return Event count for frame value.
+     */
     std::size_t EventCountForFrame(std::size_t frame_index) const;
 
 private:

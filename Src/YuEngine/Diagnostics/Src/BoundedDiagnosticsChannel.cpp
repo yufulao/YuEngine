@@ -1,3 +1,6 @@
+// Module: YuEngine Diagnostics
+// File: Src/YuEngine/Diagnostics/Src/BoundedDiagnosticsChannel.cpp
+
 #include "YuEngine/Diagnostics/BoundedDiagnosticsChannel.h"
 
 #include <limits>

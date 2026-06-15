@@ -1,3 +1,6 @@
+// Module: YuEngine Serialize
+// File: Src/YuEngine/Serialize/Src/SerializeWriter.cpp
+
 #include "YuEngine/Serialize/SerializeWriter.h"
 
 #include "YuEngine/Memory/MemoryAccountingStatus.h"

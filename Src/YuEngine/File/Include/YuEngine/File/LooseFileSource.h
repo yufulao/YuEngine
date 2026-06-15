@@ -1,3 +1,6 @@
+// Module: YuEngine File
+// File: Src/YuEngine/File/Include/YuEngine/File/LooseFileSource.h
+
 #pragma once
 
 #include <filesystem>
@@ -8,10 +11,26 @@
 namespace yuengine::file {
 class LooseFileSource final {
 public:
+    /**
+     * @comment Constructs a LooseFileSource instance.
+     */
     LooseFileSource();
+    /**
+     * @comment Constructs a LooseFileSource instance.
+     * @param root_path Input root path.
+     */
     explicit LooseFileSource(std::filesystem::path root_path);
 
+    /**
+     * @comment Reads the operation.
+     * @param path Input path.
+     * @return Explicit operation result.
+     */
     FileReadResult Read(NormalizedPath path) const;
+    /**
+     * @comment Returns the root filesystem path.
+     * @return Reference to the requested object.
+     */
     const std::filesystem::path& RootPath() const;
 
 private:

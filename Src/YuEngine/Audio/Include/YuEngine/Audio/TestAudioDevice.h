@@ -1,3 +1,6 @@
+// Module: YuEngine Audio
+// File: Src/YuEngine/Audio/Include/YuEngine/Audio/TestAudioDevice.h
+
 #pragma once
 
 #include <cstddef>
@@ -18,14 +21,55 @@
 namespace yuengine::audio {
 class TestAudioDevice final {
 public:
+    /**
+     * @comment Constructs a TestAudioDevice instance.
+     */
     TestAudioDevice();
 
+    /**
+     * @comment Initializes the instance.
+     * @param desc Input descriptor.
+     * @return Explicit operation status.
+     */
     AudioStatus Initialize(const AudioDeviceDesc& desc);
+    /**
+     * @comment Registers synthetic source.
+     * @param interleaved_samples Input interleaved samples.
+     * @param frame_count Input frame count.
+     * @param out_source Output source written on success.
+     * @return Explicit operation status.
+     */
     AudioStatus RegisterSyntheticSource(std::span<const std::int16_t> interleaved_samples, std::size_t frame_count, AudioSourceId& out_source);
+    /**
+     * @comment Starts voice.
+     * @param source Input source.
+     * @param gain_q15 Input gain q15.
+     * @param out_voice Output voice written on success.
+     * @return Explicit operation status.
+     */
     AudioStatus StartVoice(AudioSourceId source, std::uint32_t gain_q15, AudioVoiceHandle& out_voice);
+    /**
+     * @comment Stops voice.
+     * @param handle Input handle.
+     * @return Explicit operation status.
+     */
     AudioStatus StopVoice(AudioVoiceHandle handle);
+    /**
+     * @comment Mixes requested samples into the output buffer.
+     * @param output_samples Output sample buffer updated by the function.
+     * @param requested_frames Input requested frames.
+     * @return Explicit operation result.
+     */
     AudioMixResult Mix(std::span<std::int16_t> output_samples, std::size_t requested_frames);
+    /**
+     * @comment Returns the supported capabilities.
+     * @return Capability data.
+     */
     AudioCapabilities Capabilities() const;
+    /**
+     * @comment Returns a snapshot of the current state.
+     * @return Snapshot value.
+     */
     AudioDeviceSnapshot Snapshot() const;
 
 private:

@@ -1,3 +1,6 @@
+// Module: YuEngine Serialize
+// File: Src/YuEngine/Serialize/Src/SerializeReader.cpp
+
 #include "YuEngine/Serialize/SerializeReader.h"
 
 #include <array>

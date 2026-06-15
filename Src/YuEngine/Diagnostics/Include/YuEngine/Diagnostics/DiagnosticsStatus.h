@@ -1,3 +1,6 @@
+// Module: YuEngine Diagnostics
+// File: Src/YuEngine/Diagnostics/Include/YuEngine/Diagnostics/DiagnosticsStatus.h
+
 #pragma once
 
 namespace yuengine::diagnostics {

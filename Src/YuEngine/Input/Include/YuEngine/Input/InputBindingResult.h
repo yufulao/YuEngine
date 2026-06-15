@@ -1,3 +1,6 @@
+// Module: YuEngine Input
+// File: Src/YuEngine/Input/Include/YuEngine/Input/InputBindingResult.h
+
 #pragma once
 
 #include "YuEngine/Input/InputActionId.h"

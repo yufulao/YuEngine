@@ -1,3 +1,6 @@
+// Module: YuEngine Rhi
+// File: Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiExtent2D.h
+
 #pragma once
 
 #include <cstdint>

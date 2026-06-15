@@ -1,3 +1,6 @@
+// Module: YuEngine File
+// File: Src/YuEngine/File/Include/YuEngine/File/FileConstants.h
+
 #pragma once
 
 #include <cstddef>

@@ -1,3 +1,6 @@
+// Module: YuEngine Object
+// File: Src/YuEngine/Object/Include/YuEngine/Object/ObjectStatus.h
+
 #pragma once
 
 namespace yuengine::object {

@@ -1,3 +1,6 @@
+// Module: YuEngine Package
+// File: Src/YuEngine/Package/Include/YuEngine/Package/PackageLoadPlanRecord.h
+
 #pragma once
 
 #include <cstdint>

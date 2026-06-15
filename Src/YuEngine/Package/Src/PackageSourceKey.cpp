@@ -1,3 +1,6 @@
+// Module: YuEngine Package
+// File: Src/YuEngine/Package/Src/PackageSourceKey.cpp
+
 #include "YuEngine/Package/PackageSourceKey.h"
 
 namespace yuengine::package {

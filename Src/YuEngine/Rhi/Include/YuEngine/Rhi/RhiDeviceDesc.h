@@ -1,3 +1,6 @@
+// Module: YuEngine Rhi
+// File: Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiDeviceDesc.h
+
 #pragma once
 
 #include <cstddef>

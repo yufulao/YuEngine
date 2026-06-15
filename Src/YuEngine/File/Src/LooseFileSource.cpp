@@ -1,3 +1,6 @@
+// Module: YuEngine File
+// File: Src/YuEngine/File/Src/LooseFileSource.cpp
+
 #include "YuEngine/File/LooseFileSource.h"
 
 #include <fstream>

@@ -1,3 +1,6 @@
+// Module: Tests Thread
+// File: Tests/Thread/FixedTraceBuffer.h
+
 #pragma once
 
 #include <array>

@@ -1,3 +1,6 @@
+// Module: YuEngine Serialize
+// File: Src/YuEngine/Serialize/Include/YuEngine/Serialize/SerializeSnapshot.h
+
 #pragma once
 
 #include <cstdint>

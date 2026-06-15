@@ -1,3 +1,6 @@
+// Module: YuEngine Kernel
+// File: Src/YuEngine/Kernel/Src/KernelHostRuntime.cpp
+
 #include "YuEngine/Kernel/KernelHostRuntime.h"
 
 namespace yuengine::kernel {

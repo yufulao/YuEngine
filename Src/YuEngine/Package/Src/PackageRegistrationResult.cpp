@@ -1,3 +1,6 @@
+// Module: YuEngine Package
+// File: Src/YuEngine/Package/Src/PackageRegistrationResult.cpp
+
 #include "YuEngine/Package/PackageRegistrationResult.h"
 
 namespace yuengine::package {

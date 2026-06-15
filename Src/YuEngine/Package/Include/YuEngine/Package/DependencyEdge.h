@@ -1,3 +1,6 @@
+// Module: YuEngine Package
+// File: Src/YuEngine/Package/Include/YuEngine/Package/DependencyEdge.h
+
 #pragma once
 
 #include "YuEngine/Package/PackageEntryId.h"

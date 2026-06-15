@@ -1,3 +1,6 @@
+// Module: YuEngine Object
+// File: Src/YuEngine/Object/Include/YuEngine/Object/ObjectSnapshot.h
+
 #pragma once
 
 #include <cstdint>

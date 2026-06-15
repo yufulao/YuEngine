@@ -1,3 +1,6 @@
+// Module: YuEngine Diagnostics
+// File: Src/YuEngine/Diagnostics/Include/YuEngine/Diagnostics/LogEvent.h
+
 #pragma once
 
 #include <string>
@@ -6,6 +9,7 @@
 
 namespace yuengine::diagnostics {
 struct LogEvent {
+    std::string module_name;
     LogLevel level;
     std::string message;
 };

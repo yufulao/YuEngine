@@ -1,3 +1,6 @@
+// Module: YuEngine Platform
+// File: Src/YuEngine/Platform/Src/FixedFrameClock.cpp
+
 #include "YuEngine/Platform/FixedFrameClock.h"
 
 namespace yuengine::platform {

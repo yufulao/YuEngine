@@ -1,3 +1,6 @@
+// Module: Tests Platform
+// File: Tests/Platform/PlatformTests.cpp
+
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -27,6 +30,7 @@ namespace {
 constexpr const char* TEST_HOST = "Host_StartTickShutdown_Deterministic";
 constexpr const char* TEST_TIMER = "Host_TimerMonotonic_ForFixedTicks";
 constexpr const char* TEST_MEMORY_STATUS = "Platform_AllocationAccountingStatus_UsesMemoryHook";
+constexpr const char* LOG_MODULE_PLATFORM = "Platform";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint64_t FIRST_TICK_NANOSECONDS = 1000U;
@@ -100,6 +104,10 @@ int HostStartTickShutdownDeterministic() {
 
     if (log_sink.Events().empty()) {
         return Fail("recording log sink did not receive host events");
+    }
+
+    if (log_sink.Events()[0U].module_name != LOG_MODULE_PLATFORM) {
+        return Fail("host log module was not recorded");
     }
 
     return 0;

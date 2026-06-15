@@ -1,3 +1,6 @@
+// Module: YuEngine Resource
+// File: Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceRegistry.h
+
 #pragma once
 
 #include <array>
@@ -14,14 +17,52 @@
 namespace yuengine::resource {
 class ResourceRegistry final {
 public:
+    /**
+     * @comment Constructs a ResourceRegistry instance.
+     */
     ResourceRegistry();
+    /**
+     * @comment Constructs a ResourceRegistry instance.
+     * @param desc Input descriptor.
+     */
     explicit ResourceRegistry(ResourceRegistryDesc desc);
 
+    /**
+     * @comment Registers synthetic descriptor.
+     * @param descriptor Input descriptor.
+     * @return Explicit operation result.
+     */
     ResourceRegistrationResult RegisterSyntheticDescriptor(const ResourceDescriptor& descriptor);
+    /**
+     * @comment Adds dependency.
+     * @param dependent Input dependent.
+     * @param dependency Input dependency.
+     * @return Explicit operation status.
+     */
     ResourceStatus AddDependency(ResourceHandle dependent, ResourceHandle dependency);
+    /**
+     * @comment Acquires the operation.
+     * @param handle Input handle.
+     * @param expected_type Input expected type.
+     * @return Explicit operation status.
+     */
     ResourceStatus Acquire(ResourceHandle handle, ResourceTypeId expected_type);
+    /**
+     * @comment Releases the operation.
+     * @param handle Input handle.
+     * @return Explicit operation status.
+     */
     ResourceStatus Release(ResourceHandle handle);
+    /**
+     * @comment Retires the operation.
+     * @param handle Input handle.
+     * @return Explicit operation status.
+     */
     ResourceStatus Retire(ResourceHandle handle);
+    /**
+     * @comment Returns a snapshot of the current state.
+     * @return Snapshot value.
+     */
     ResourceSnapshot Snapshot() const;
 
 private:

@@ -1,3 +1,6 @@
+// Module: YuEngine Resource
+// File: Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceDependencyEdge.h
+
 #pragma once
 
 #include <cstdint>

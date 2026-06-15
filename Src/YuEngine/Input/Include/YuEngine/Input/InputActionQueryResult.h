@@ -1,3 +1,6 @@
+// Module: YuEngine Input
+// File: Src/YuEngine/Input/Include/YuEngine/Input/InputActionQueryResult.h
+
 #pragma once
 
 #include "YuEngine/Input/InputActionState.h"

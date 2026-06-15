@@ -1,3 +1,6 @@
+// Module: YuEngine Rhi
+// File: Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiCapabilities.h
+
 #pragma once
 
 #include <cstddef>

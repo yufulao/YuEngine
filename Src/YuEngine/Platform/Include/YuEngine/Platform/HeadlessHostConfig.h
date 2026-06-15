@@ -1,3 +1,6 @@
+// Module: YuEngine Platform
+// File: Src/YuEngine/Platform/Include/YuEngine/Platform/HeadlessHostConfig.h
+
 #pragma once
 
 #include <cstdint>

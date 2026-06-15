@@ -1,3 +1,6 @@
+// Module: YuEngine Audio
+// File: Src/YuEngine/Audio/Include/YuEngine/Audio/AudioConstants.h
+
 #pragma once
 
 #include <cstddef>
