@@ -91,6 +91,7 @@ Phase 3 remains blocked from:
 | P3-GATE-010 | World Resource Binding Bridge | L5 over L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_010_WORLD_RESOURCE_BINDING_BRIDGE.md`; narrow WorldObjectId-to-ResourceHandle binding adapter only, caller-supplied WorldObjectId value contract, fixed-capacity storage, explicit Resource acquire/release failure tests, `WorldInstance` core remains Resource-free, Resource core remains World-free, no File/Package/load/decode/upload/render/audio/script/actor/component/gameplay/tools/reports/Game Adapter |
 | P3-GATE-011 | World Component Attachment Bridge | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_011_WORLD_COMPONENT_ATTACHMENT_BRIDGE.md`; narrow WorldObjectId-to-component-type/slot attachment sidecar only, fixed-capacity storage, no `WorldInstance` membership query, no actor/component behavior lifecycle, no Object/Resource/Script/Serialize/render/physics/audio/UI/tools/reports/Game Adapter dependency |
 | P3-GATE-012 | World Component Query Bridge | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_012_WORLD_COMPONENT_QUERY_BRIDGE.md`; narrow read-only query bridge over component attachment records only, caller-owned outputs, fixed-capacity scans, no `WorldInstance` membership query, no actor/component behavior lifecycle, no Object/Resource/Script/Serialize/render/physics/audio/UI/tools/reports/Game Adapter dependency |
+| P3-GATE-013 | World Component Attachment Snapshot Bridge | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_013_WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_BRIDGE.md`; narrow deterministic YuSerialize snapshot adapter over component attachment records only, caller-owned streams, validation before restore mutation, no component payload/lifecycle, no `WorldInstance` mutation, no Object/Resource/Script/File/Package/render/physics/audio/UI/tools/reports/Game Adapter dependency |
 
 ## Current Active Gates
 
@@ -196,6 +197,12 @@ Phase 3 remains blocked from:
   exposure, no actor/component behavior lifecycle, and no
   Object/Resource/Script/Serialize/render/physics/audio/UI/tools/reports or Game
   Adapter dependency creep.
+- P3-GATE-013 is approved from `90ddb0b` plus ENG-058A/B/C review closure for a
+  deterministic `YuSerialize` snapshot adapter over component attachment
+  records, with validation before destination restore mutation, caller-owned
+  streams, no component payload/lifecycle, no `WorldInstance` mutation, and no
+  Object/Resource/Script/File/Package/render/physics/audio/UI/tools/reports or
+  Game Adapter dependency creep.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.
@@ -216,6 +223,7 @@ Recently landed Phase 3 world/script slices:
 - `8b5dfdf [#ENG-049][Added]Add world serialize snapshot bridge`
 - `fa59550 [#ENG-052][Added]Add world resource binding bridge`
 - `9bf52e8 [#ENG-055][Added]Add world component attachment bridge`
+- `90ddb0b [#ENG-057][Added]Add world component query bridge`
 
 Future Phase 3 work must extend from this baseline instead of recreating the
 same first slices.
@@ -232,16 +240,15 @@ same first slices.
 
 ## Immediate Next Steps
 
-1. Implement P3-GATE-012 as a first slice only after creating an isolated
-   implementation task. The implementation may add only `WorldComponentQuery*`
-   files under `YuWorld`, minimal const attachment export updates under
-   existing `WorldComponentAttachment*` files, `Tests/World` coverage, and
+1. Implement P3-GATE-013 as a first slice only after creating an isolated
+   implementation task. The implementation may add only
+   `WorldComponentAttachmentSnapshot*` files under `YuWorld`, minimal
+   attachment bridge adapter updates if needed, `Tests/World` coverage, and
    CMake/CTest registration.
-2. Keep the first implementation to fixed-capacity, read-only caller-owned
-   output queries over component attachment records; do not copy UE/Unity
-   Actor/GameObject/Component API shape and do not add actor/component
-   lifecycle, payload storage, scene graph, render, physics, audio, UI, tools,
-   reports, or Game Adapter scope.
+2. Keep component attachment snapshotting separate from component payloads,
+   actor/component lifecycle, save slot policy, Object/Resource/Script/File/
+   Package dependencies, render, physics, audio, UI, tools, reports, and Game
+   Adapter behavior.
 3. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.
