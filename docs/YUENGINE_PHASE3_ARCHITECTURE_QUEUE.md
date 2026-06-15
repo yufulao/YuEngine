@@ -88,7 +88,7 @@ Phase 3 remains blocked from:
 | P3-GATE-007 | World Transform Data Fixture | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_007_WORLD_TRANSFORM_DATA_FIXTURE.md`; data-only WorldTransformBridge fixture, bounded POD transform records keyed by WorldObjectId, no Script callback, actor/component/scene graph/transform hierarchy, Object/Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
 | P3-GATE-008 | World Script Dispatch Bridge | L5 over L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_008_WORLD_SCRIPT_DISPATCH_BRIDGE.md`; narrow WorldPhaseTrace-to-ScriptCallId dispatch adapter only, `WorldInstance` core remains Script-free, no VM/bytecode/reflection, actor/component/gameplay, Resource/Package/File, Serialize payload, Object ownership, render/audio/physics/UI/tools/reports/Game Adapter |
 | P3-GATE-009 | World Serialize Snapshot Bridge | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_009_WORLD_SERIALIZE_SNAPSHOT_BRIDGE.md`; narrow World snapshot/phase-trace to YuSerialize value-stream adapter only, `WorldInstance` core remains Serialize-free, no File/Package/Resource/save policy, Object construction, reflection, Script, actor/component/gameplay, render/audio/physics/UI/tools/reports/Game Adapter |
-| P3-GATE-010 | World Resource Binding Bridge | L5 over L4 | `NEEDS_ARCHITECTURE` | Proposal drafted for review | Gate doc: `docs/gates/P3_GATE_010_WORLD_RESOURCE_BINDING_BRIDGE.md`; narrow WorldObjectId-to-ResourceHandle binding adapter only, `WorldInstance` core remains Resource-free, Resource core remains World-free, no File/Package/load/decode/upload/render/audio/script/actor/component/gameplay/tools/reports/Game Adapter |
+| P3-GATE-010 | World Resource Binding Bridge | L5 over L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_010_WORLD_RESOURCE_BINDING_BRIDGE.md`; narrow WorldObjectId-to-ResourceHandle binding adapter only, caller-supplied WorldObjectId value contract, fixed-capacity storage, explicit Resource acquire/release failure tests, `WorldInstance` core remains Resource-free, Resource core remains World-free, no File/Package/load/decode/upload/render/audio/script/actor/component/gameplay/tools/reports/Game Adapter |
 
 ## Current Active Gates
 
@@ -167,12 +167,14 @@ Phase 3 remains blocked from:
   File/Package/Resource/save policy, Object construction, reflection, Script,
   actor/component/gameplay, render/audio/physics/UI/tools/reports, Game Adapter
   behavior, or copied UE or Unity API shape.
-- P3-GATE-010 is proposed from `8b5dfdf` for a narrow World-to-Resource binding
-  bridge. The proposal is not approved for implementation yet. Review must
-  confirm the first slice stays limited to fixed-capacity bindings between
-  existing `WorldObjectId` values and already-registered `ResourceHandle`
-  values, with explicit acquire/release behavior through a caller-owned
-  `ResourceRegistry`. It must keep `WorldInstance` core Resource-free and
+- P3-GATE-010 is approved from `98e2a12` for a narrow World-to-Resource binding
+  bridge. It may add only `WorldResourceBindingBridge` adapter files under
+  `YuWorld`, `Tests/World` coverage, and CMake/CTest registration. The first
+  slice binds caller-supplied non-zero `WorldObjectId` values to
+  already-registered `ResourceHandle` values through a caller-owned
+  `ResourceRegistry`, uses fixed-capacity storage, validates stale handles and
+  null registries without mutation, and preserves local bindings on release or
+  clear failure. It must keep `WorldInstance` core Resource-free and
   `YuResource` core World-free, and it must not introduce File/Package/load/
   decode/upload/render/audio/script/actor/component/gameplay/tools/reports or
   Game Adapter behavior.
@@ -210,14 +212,14 @@ same first slices.
 
 ## Immediate Next Steps
 
-1. Review `P3-GATE-010 World Resource Binding Bridge` before any implementation
-   handoff. The review must check mature-engine responsibility separation,
-   fixed-capacity binding storage, Resource acquire/release atomicity,
-   no-mutation failure behavior, and World/Resource dependency isolation.
-2. If P3-GATE-010 is approved, create a scoped implementation handoff only for
+1. Create a scoped P3-GATE-010 implementation handoff only for
    `WorldResourceBindingBridge` adapter files, `Tests/World`, and CMake/CTest
    registration. The implementation must not modify `WorldInstance` core
    ownership or `YuResource` core ownership.
+2. The P3-GATE-010 implementation must include the required null registry,
+   stale handle, release failure, clear failure, no-WorldInstance-query,
+   fixed-capacity, dependency-isolation, and no-mutation tests from the gate
+   doc before commit.
 3. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.

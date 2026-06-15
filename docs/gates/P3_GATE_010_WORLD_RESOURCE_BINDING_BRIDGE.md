@@ -1,8 +1,8 @@
 # P3-GATE-010: World Resource Binding Bridge
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NEEDS_ARCHITECTURE`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P1-GATE-006, P3-GATE-004
@@ -13,11 +13,12 @@ Source baseline: `8b5dfdf`
 
 L5 world runtime adapter over the L4 Resource identity boundary.
 
-This gate proposes a narrow adapter that binds existing `WorldObjectId` values
-to existing `ResourceHandle` values through a caller-owned `ResourceRegistry`.
-It is not a file lookup system, package resolver, asset loader, decoder, upload
-scheduler, render scene, audio scene, gameplay component model, or Game Adapter
-feature.
+This gate proposes a narrow adapter that binds caller-supplied non-zero
+`WorldObjectId` values to existing `ResourceHandle` values through a
+caller-owned `ResourceRegistry`. The adapter validates the `WorldObjectId` value
+contract only; it does not query `WorldInstance` membership. It is not a file
+lookup system, package resolver, asset loader, decoder, upload scheduler, render
+scene, audio scene, gameplay component model, or Game Adapter feature.
 
 ## Reference Boundary
 
@@ -35,8 +36,8 @@ Responsibility conclusion:
   responsibilities separate and must not copy UE public API shape, async load
   vocabulary, actor/component lifecycle, soft-object path behavior, or source
   code.
-- YuEngine first slice should only prove deterministic binding between world
-  object IDs and already-registered resource handles.
+- YuEngine first slice should only prove deterministic binding between
+  caller-supplied world object IDs and already-registered resource handles.
 - Loading, decoding, dependency scheduling, streaming, package lookup, and upload
   remain future gates.
 
@@ -54,9 +55,10 @@ This gate owns a future first slice for:
 
 - a `WorldResourceBindingBridge` adapter;
 - explicit world-resource binding statuses;
-- bounded binding slots keyed by `WorldObjectId`;
+- bounded binding slots keyed by caller-supplied `WorldObjectId` values;
 - each binding storing one `ResourceHandle` and expected `ResourceTypeId`;
-- binding a world object ID to an already-registered resource handle;
+- binding a non-zero world object ID value to an already-registered resource
+  handle without querying `WorldInstance`;
 - acquiring the resource handle during successful bind;
 - releasing the resource handle during successful remove or clear;
 - rejecting duplicate world object IDs without mutation;
@@ -115,8 +117,10 @@ First-slice lifecycle:
 1. Caller owns and initializes a bounded `ResourceRegistry`.
 2. Caller registers synthetic resource descriptors in that registry.
 3. Caller creates a `WorldResourceBindingBridge` with fixed binding capacity.
-4. Caller binds a non-zero `WorldObjectId` to a valid `ResourceHandle` with an
-   expected `ResourceTypeId`.
+4. Caller binds a caller-supplied non-zero `WorldObjectId` value to a valid
+   `ResourceHandle` with an expected `ResourceTypeId`.
+   `WorldResourceBindingBridge` validates the ID value contract only and does
+   not verify that the ID is present in a `WorldInstance`.
 5. The bridge acquires the resource handle from the caller-owned registry only
    after all local validation succeeds.
 6. The bridge stores the binding only after the resource acquire succeeds.
@@ -125,16 +129,16 @@ First-slice lifecycle:
    clears the binding only when release succeeds.
 9. Caller may clear all bindings; the bridge releases each acquired handle in
    deterministic slot order.
-10. The bridge never constructs, starts, stops, updates, mutates, or owns a
-    `WorldInstance`.
+10. The bridge never constructs, starts, stops, updates, queries, mutates, or
+    owns a `WorldInstance`.
 
 Failure behavior:
 
-- null resource registry pointers return explicit status and do not mutate bridge
-  binding slots;
+- null resource registry pointers in bind, remove, or clear return explicit
+  status and do not mutate bridge binding slots;
 - invalid world object IDs return explicit status and do not acquire resources;
-- invalid resource handles, stale handles, and wrong resource types return
-  explicit status and do not mutate binding slots;
+- invalid resource handles, stale generation handles, and wrong resource types
+  return explicit status and do not mutate binding slots;
 - duplicate world object IDs return explicit status and do not acquire a second
   resource reference;
 - binding capacity overflow returns explicit status and does not acquire a
@@ -144,6 +148,11 @@ Failure behavior:
 - release failure returns explicit status and does not clear the local binding;
 - clear failure records explicit status and stops before silently dropping
   unreleased bindings;
+- clear releases bindings in deterministic slot order; slots successfully
+  released before the first failure may be cleared and counted, while the failed
+  slot and every unprocessed slot remain bound;
+- after a successful `ResourceRegistry::Release`, the bridge must not perform
+  another fallible operation before clearing that local POD binding;
 - failed bridge operations do not mutate `WorldInstance` or `YuResource` type
   definitions.
 
@@ -212,17 +221,25 @@ Blocking conditions:
 Fast gate tests required before the slice can be considered complete:
 
 - `WorldResourceBindingBridge_BindValidResource_AcquiresHandle`
+- `WorldResourceBindingBridge_BindRejectsNullRegistryWithoutMutation`
 - `WorldResourceBindingBridge_BindRejectsInvalidWorldIdWithoutMutation`
 - `WorldResourceBindingBridge_BindRejectsInvalidResourceHandleWithoutMutation`
+- `WorldResourceBindingBridge_BindRejectsStaleResourceHandleWithoutMutation`
 - `WorldResourceBindingBridge_BindRejectsTypeMismatchWithoutMutation`
 - `WorldResourceBindingBridge_BindRejectsDuplicateWorldObjectId`
 - `WorldResourceBindingBridge_BindRejectsCapacityOverflowWithoutMutation`
 - `WorldResourceBindingBridge_RemoveReleasesHandle`
+- `WorldResourceBindingBridge_RemoveRejectsNullRegistryWithoutMutation`
 - `WorldResourceBindingBridge_RemoveRejectsMissingWorldObjectWithoutMutation`
+- `WorldResourceBindingBridge_RemoveReleaseFailureKeepsBinding`
 - `WorldResourceBindingBridge_ClearReleasesAllHandles`
+- `WorldResourceBindingBridge_ClearRejectsNullRegistryWithoutMutation`
+- `WorldResourceBindingBridge_ClearReleaseFailurePreservesUnreleasedBindings`
 - `WorldResourceBindingBridge_BoundResourceCannotRetireUntilReleased`
 - `WorldResourceBindingBridge_QueryReturnsStoredBinding`
+- `WorldResourceBindingBridge_QueryIsReadOnlyAndBounded`
 - `WorldResourceBindingBridge_UpdatePathDoesNotGrowWorldStorage`
+- `WorldResourceBindingBridge_DoesNotQueryOrMutateWorldInstance`
 - `WorldResourceBindingBridge_SnapshotReportsCountsAndLastStatus`
 - `WorldResourceBindingBridge_NoFilePackageLoadDecodeUploadOrGameAdapterDependency`
 - `WorldResourceBindingBridge_WorldInstanceCoreRemainsResourceFree`
