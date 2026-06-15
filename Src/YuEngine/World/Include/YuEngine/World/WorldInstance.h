@@ -75,6 +75,12 @@ public:
      * @return Phase trace record count.
      */
     std::uint32_t GetPhaseTraceCount() const;
+    /**
+     * @comment Checks whether a fixture world object exists.
+     * @param id Input world object id.
+     * @return True when the world object exists; false otherwise.
+     */
+    bool ContainsObject(WorldObjectId id) const;
 
 private:
     WorldStatus RecordFailure(WorldStatus status);

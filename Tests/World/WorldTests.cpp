@@ -13,6 +13,14 @@
 #include "YuEngine/Kernel/KernelHostRuntime.h"
 #include "YuEngine/Kernel/KernelStatus.h"
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
+#include "YuEngine/Object/ObjectDescriptor.h"
+#include "YuEngine/Object/ObjectHandle.h"
+#include "YuEngine/Object/ObjectRegistrationResult.h"
+#include "YuEngine/Object/ObjectRegistry.h"
+#include "YuEngine/Object/ObjectRegistryDesc.h"
+#include "YuEngine/Object/ObjectSnapshot.h"
+#include "YuEngine/Object/ObjectStatus.h"
+#include "YuEngine/Object/ObjectTypeId.h"
 #include "YuEngine/Platform/FixedFrameClock.h"
 #include "YuEngine/Platform/HeadlessHost.h"
 #include "YuEngine/Platform/HeadlessHostConfig.h"
@@ -25,6 +33,10 @@
 #include "YuEngine/World/WorldLifecycleState.h"
 #include "YuEngine/World/WorldObjectDesc.h"
 #include "YuEngine/World/WorldPhaseTrace.h"
+#include "YuEngine/World/WorldObjectIdentityBridge.h"
+#include "YuEngine/World/WorldObjectIdentityResult.h"
+#include "YuEngine/World/WorldObjectIdentitySnapshot.h"
+#include "YuEngine/World/WorldObjectIdentityStatus.h"
 #include "YuEngine/World/WorldRegistrationResult.h"
 #include "YuEngine/World/WorldSnapshot.h"
 #include "YuEngine/World/WorldStatus.h"
@@ -35,6 +47,14 @@ using yuengine::kernel::EngineKernel;
 using yuengine::kernel::KernelHostRuntime;
 using yuengine::kernel::KernelStatus;
 using yuengine::memory::MemoryAccountingStatus;
+using yuengine::object::ObjectDescriptor;
+using yuengine::object::ObjectHandle;
+using yuengine::object::ObjectRegistrationResult;
+using yuengine::object::ObjectRegistry;
+using yuengine::object::ObjectRegistryDesc;
+using yuengine::object::ObjectSnapshot;
+using yuengine::object::ObjectStatus;
+using yuengine::object::ObjectTypeId;
 using yuengine::platform::FixedFrameClock;
 using yuengine::platform::HeadlessHost;
 using yuengine::platform::HeadlessHostConfig;
@@ -51,6 +71,10 @@ using yuengine::world::WorldKernelModuleDesc;
 using yuengine::world::WorldLifecycleState;
 using yuengine::world::WorldObjectDesc;
 using yuengine::world::WorldObjectId;
+using yuengine::world::WorldObjectIdentityBridge;
+using yuengine::world::WorldObjectIdentityResult;
+using yuengine::world::WorldObjectIdentitySnapshot;
+using yuengine::world::WorldObjectIdentityStatus;
 using yuengine::world::WorldPhaseTrace;
 using yuengine::world::WorldRegistrationResult;
 using yuengine::world::WorldSnapshot;
@@ -81,6 +105,19 @@ constexpr const char *TEST_MODULE_UPDATE_PATH = "WorldKernelModule_UpdatePathDoe
 constexpr const char *TEST_MODULE_NO_SCRIPT_RESOURCE = "WorldKernelModule_NoScriptResourcePackageFileOrGameAdapterDependency";
 constexpr const char *TEST_MODULE_NO_ACTOR_COMPONENT = "WorldKernelModule_NoActorComponentOrTransformHierarchy";
 constexpr const char *TEST_MODULE_CORE_KERNEL_FREE = "WorldKernelModule_CoreWorldInstanceRemainsKernelFree";
+constexpr const char *TEST_IDENTITY_BIND_VALID = "WorldObjectIdentityBridge_BindValidObject_AcquiresHandle";
+constexpr const char *TEST_IDENTITY_INVALID_WORLD_ID = "WorldObjectIdentityBridge_BindRejectsInvalidWorldIdWithoutMutation";
+constexpr const char *TEST_IDENTITY_MISSING_WORLD_OBJECT = "WorldObjectIdentityBridge_BindRejectsMissingWorldObjectWithoutMutation";
+constexpr const char *TEST_IDENTITY_INVALID_OBJECT_HANDLE = "WorldObjectIdentityBridge_BindRejectsInvalidObjectHandleWithoutMutation";
+constexpr const char *TEST_IDENTITY_DUPLICATE_WORLD_ID = "WorldObjectIdentityBridge_BindRejectsDuplicateWorldObjectId";
+constexpr const char *TEST_IDENTITY_DUPLICATE_OBJECT_HANDLE = "WorldObjectIdentityBridge_BindRejectsDuplicateObjectHandle";
+constexpr const char *TEST_IDENTITY_REMOVE_RELEASES = "WorldObjectIdentityBridge_RemoveReleasesHandle";
+constexpr const char *TEST_IDENTITY_CLEAR_RELEASES = "WorldObjectIdentityBridge_ClearReleasesAllHandles";
+constexpr const char *TEST_IDENTITY_STALE_GENERATION = "WorldObjectIdentityBridge_StaleGenerationInvalidatesBinding";
+constexpr const char *TEST_IDENTITY_UPDATE_PATH = "WorldObjectIdentityBridge_UpdatePathDoesNotGrowWorldStorage";
+constexpr const char *TEST_IDENTITY_NO_SCRIPT_RESOURCE = "WorldObjectIdentityBridge_NoScriptResourcePackageFileOrGameAdapterDependency";
+constexpr const char *TEST_IDENTITY_NO_ACTOR_COMPONENT = "WorldObjectIdentityBridge_NoActorComponentOrTransformHierarchy";
+constexpr const char *TEST_IDENTITY_CORE_OBJECT_FREE = "WorldObjectIdentityBridge_WorldInstanceCoreRemainsObjectFree";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *TRACE_KERNEL_START = "kernel.start";
@@ -92,6 +129,9 @@ constexpr const char *TRACE_WORLD_MODULE_SHUTDOWN = "world.module.shutdown";
 constexpr WorldObjectId OBJECT_PLAYER{1U};
 constexpr WorldObjectId OBJECT_CAMERA{2U};
 constexpr WorldObjectId OBJECT_EFFECT{3U};
+constexpr ObjectTypeId OBJECT_TYPE_PLAYER{1U};
+constexpr ObjectTypeId OBJECT_TYPE_CAMERA{2U};
+constexpr ObjectTypeId OBJECT_TYPE_EFFECT{3U};
 using TestFunction = int (*)();
 
 class TestLogSink final : public yuengine::diagnostics::ILogSink {
@@ -143,6 +183,22 @@ WorldInstance MakeWorld(std::uint32_t object_capacity=MAX_WORLD_OBJECT_COUNT,
 WorldRegistrationResult Register(WorldInstance &world, WorldObjectId id, bool is_enabled=true) {
     const WorldObjectDesc desc = Object(id, is_enabled);
     return world.RegisterObject(desc);
+}
+
+ObjectRegistry MakeRegistry(std::uint32_t object_capacity=8U, std::uint32_t type_capacity=8U) {
+    ObjectRegistryDesc desc{};
+    desc.object_capacity = object_capacity;
+    desc.type_capacity = type_capacity;
+    return ObjectRegistry(desc);
+}
+
+ObjectRegistrationResult CreateObject(ObjectRegistry &registry,
+    ObjectTypeId type=OBJECT_TYPE_PLAYER,
+    std::uint32_t initial_reference_count=0U) {
+    ObjectDescriptor descriptor{};
+    descriptor.type = type;
+    descriptor.initial_reference_count = initial_reference_count;
+    return registry.CreateSyntheticObject(descriptor);
 }
 
 WorldKernelModuleDesc MakeModuleDesc(std::uint64_t fixed_step_duration=16U) {
@@ -959,6 +1015,442 @@ int WorldKernelModuleCoreWorldInstanceRemainsKernelFree() {
 
     return 0;
 }
+
+int WorldObjectIdentityBridgeBindValidObjectAcquiresHandle() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("identity valid world object registration failed");
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry);
+    if (!object_result.Succeeded()) {
+        return Fail("identity valid object creation failed");
+    }
+
+    WorldObjectIdentityBridge bridge(world, registry);
+    const WorldObjectIdentityResult bind_result = bridge.Bind(OBJECT_PLAYER, object_result.handle);
+    if (!bind_result.Succeeded()) {
+        return Fail("identity valid bind failed");
+    }
+
+    const WorldObjectIdentitySnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.binding_count != 1U) {
+        return Fail("identity valid bind did not record binding count");
+    }
+
+    if (bridge_snapshot.acquired_handle_count != 1U) {
+        return Fail("identity valid bind did not record acquired handle count");
+    }
+
+    const ObjectSnapshot object_snapshot = registry.Snapshot();
+    if (object_snapshot.referenced_object_count != 1U) {
+        return Fail("identity valid bind did not acquire object handle");
+    }
+
+    return 0;
+}
+
+int WorldObjectIdentityBridgeBindRejectsInvalidWorldIdWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    const ObjectRegistrationResult object_result = CreateObject(registry);
+    if (!object_result.Succeeded()) {
+        return Fail("identity invalid world id object creation failed");
+    }
+
+    WorldObjectIdentityBridge bridge(world, registry);
+    const WorldObjectIdentitySnapshot before_bridge = bridge.Snapshot();
+    const ObjectSnapshot before_object = registry.Snapshot();
+    const WorldObjectIdentityResult bind_result = bridge.Bind(WorldObjectId{}, object_result.handle);
+    if (bind_result.status != WorldObjectIdentityStatus::InvalidWorldObjectId) {
+        return Fail("identity invalid world id returned wrong status");
+    }
+
+    const WorldObjectIdentitySnapshot after_bridge = bridge.Snapshot();
+    if (after_bridge.binding_count != before_bridge.binding_count) {
+        return Fail("identity invalid world id mutated binding count");
+    }
+
+    const ObjectSnapshot after_object = registry.Snapshot();
+    if (after_object.referenced_object_count != before_object.referenced_object_count) {
+        return Fail("identity invalid world id acquired object handle");
+    }
+
+    return 0;
+}
+
+int WorldObjectIdentityBridgeBindRejectsMissingWorldObjectWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    const ObjectRegistrationResult object_result = CreateObject(registry);
+    if (!object_result.Succeeded()) {
+        return Fail("identity missing world object creation failed");
+    }
+
+    WorldObjectIdentityBridge bridge(world, registry);
+    const ObjectSnapshot before_object = registry.Snapshot();
+    const WorldObjectIdentityResult bind_result = bridge.Bind(OBJECT_PLAYER, object_result.handle);
+    if (bind_result.status != WorldObjectIdentityStatus::MissingWorldObject) {
+        return Fail("identity missing world object returned wrong status");
+    }
+
+    if (bridge.Snapshot().binding_count != 0U) {
+        return Fail("identity missing world object mutated bridge binding count");
+    }
+
+    if (registry.Snapshot().referenced_object_count != before_object.referenced_object_count) {
+        return Fail("identity missing world object acquired handle");
+    }
+
+    return 0;
+}
+
+int WorldObjectIdentityBridgeBindRejectsInvalidObjectHandleWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("identity invalid handle world registration failed");
+    }
+
+    WorldObjectIdentityBridge bridge(world, registry);
+    const WorldObjectIdentityResult bind_result = bridge.Bind(OBJECT_PLAYER, ObjectHandle{});
+    if (bind_result.status != WorldObjectIdentityStatus::InvalidObjectHandle) {
+        return Fail("identity invalid handle returned wrong status");
+    }
+
+    if (bridge.Snapshot().binding_count != 0U) {
+        return Fail("identity invalid handle mutated binding count");
+    }
+
+    if (registry.Snapshot().referenced_object_count != 0U) {
+        return Fail("identity invalid handle acquired reference");
+    }
+
+    return 0;
+}
+
+int WorldObjectIdentityBridgeBindRejectsDuplicateWorldObjectId() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("identity duplicate world object registration failed");
+    }
+
+    const ObjectRegistrationResult first_object = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    const ObjectRegistrationResult second_object = CreateObject(registry, OBJECT_TYPE_CAMERA);
+    if (!first_object.Succeeded() || !second_object.Succeeded()) {
+        return Fail("identity duplicate world object creation failed");
+    }
+
+    WorldObjectIdentityBridge bridge(world, registry);
+    if (!bridge.Bind(OBJECT_PLAYER, first_object.handle).Succeeded()) {
+        return Fail("identity duplicate world first bind failed");
+    }
+
+    const ObjectSnapshot before_object = registry.Snapshot();
+    const WorldObjectIdentityResult bind_result = bridge.Bind(OBJECT_PLAYER, second_object.handle);
+    if (bind_result.status != WorldObjectIdentityStatus::DuplicateWorldObjectId) {
+        return Fail("identity duplicate world id returned wrong status");
+    }
+
+    if (bridge.Snapshot().binding_count != 1U) {
+        return Fail("identity duplicate world id mutated binding count");
+    }
+
+    if (registry.Snapshot().referenced_object_count != before_object.referenced_object_count) {
+        return Fail("identity duplicate world id acquired second handle");
+    }
+
+    return 0;
+}
+
+int WorldObjectIdentityBridgeBindRejectsDuplicateObjectHandle() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("identity duplicate handle player registration failed");
+    }
+
+    if (!Register(world, OBJECT_CAMERA).Succeeded()) {
+        return Fail("identity duplicate handle camera registration failed");
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry);
+    if (!object_result.Succeeded()) {
+        return Fail("identity duplicate handle object creation failed");
+    }
+
+    WorldObjectIdentityBridge bridge(world, registry);
+    if (!bridge.Bind(OBJECT_PLAYER, object_result.handle).Succeeded()) {
+        return Fail("identity duplicate handle first bind failed");
+    }
+
+    const ObjectSnapshot before_object = registry.Snapshot();
+    const WorldObjectIdentityResult bind_result = bridge.Bind(OBJECT_CAMERA, object_result.handle);
+    if (bind_result.status != WorldObjectIdentityStatus::DuplicateObjectHandle) {
+        return Fail("identity duplicate handle returned wrong status");
+    }
+
+    if (bridge.Snapshot().binding_count != 1U) {
+        return Fail("identity duplicate handle mutated binding count");
+    }
+
+    if (registry.Snapshot().referenced_object_count != before_object.referenced_object_count) {
+        return Fail("identity duplicate handle acquired reference twice");
+    }
+
+    return 0;
+}
+
+int WorldObjectIdentityBridgeRemoveReleasesHandle() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("identity remove world registration failed");
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry);
+    if (!object_result.Succeeded()) {
+        return Fail("identity remove object creation failed");
+    }
+
+    WorldObjectIdentityBridge bridge(world, registry);
+    if (!bridge.Bind(OBJECT_PLAYER, object_result.handle).Succeeded()) {
+        return Fail("identity remove bind failed");
+    }
+
+    const WorldObjectIdentityStatus remove_status = bridge.Remove(OBJECT_PLAYER);
+    if (remove_status != WorldObjectIdentityStatus::Success) {
+        return Fail("identity remove failed");
+    }
+
+    const WorldObjectIdentitySnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.binding_count != 0U) {
+        return Fail("identity remove did not clear binding count");
+    }
+
+    if (bridge_snapshot.released_handle_count != 1U) {
+        return Fail("identity remove did not record release count");
+    }
+
+    if (registry.Snapshot().referenced_object_count != 0U) {
+        return Fail("identity remove did not release object handle");
+    }
+
+    return 0;
+}
+
+int WorldObjectIdentityBridgeClearReleasesAllHandles() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("identity clear player registration failed");
+    }
+
+    if (!Register(world, OBJECT_CAMERA).Succeeded()) {
+        return Fail("identity clear camera registration failed");
+    }
+
+    const ObjectRegistrationResult first_object = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    const ObjectRegistrationResult second_object = CreateObject(registry, OBJECT_TYPE_CAMERA);
+    if (!first_object.Succeeded() || !second_object.Succeeded()) {
+        return Fail("identity clear object creation failed");
+    }
+
+    WorldObjectIdentityBridge bridge(world, registry);
+    if (!bridge.Bind(OBJECT_PLAYER, first_object.handle).Succeeded()) {
+        return Fail("identity clear first bind failed");
+    }
+
+    if (!bridge.Bind(OBJECT_CAMERA, second_object.handle).Succeeded()) {
+        return Fail("identity clear second bind failed");
+    }
+
+    const WorldObjectIdentityStatus clear_status = bridge.Clear();
+    if (clear_status != WorldObjectIdentityStatus::Success) {
+        return Fail("identity clear failed");
+    }
+
+    const WorldObjectIdentitySnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.binding_count != 0U) {
+        return Fail("identity clear did not clear binding count");
+    }
+
+    if (bridge_snapshot.released_handle_count != 2U) {
+        return Fail("identity clear did not release all handles");
+    }
+
+    if (registry.Snapshot().referenced_object_count != 0U) {
+        return Fail("identity clear did not release object references");
+    }
+
+    return 0;
+}
+
+int WorldObjectIdentityBridgeStaleGenerationInvalidatesBinding() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("identity stale world registration failed");
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry);
+    if (!object_result.Succeeded()) {
+        return Fail("identity stale object creation failed");
+    }
+
+    WorldObjectIdentityBridge bridge(world, registry);
+    if (!bridge.Bind(OBJECT_PLAYER, object_result.handle).Succeeded()) {
+        return Fail("identity stale bind failed");
+    }
+
+    if (registry.Release(object_result.handle) != ObjectStatus::Success) {
+        return Fail("identity stale external release failed");
+    }
+
+    if (registry.Destroy(object_result.handle) != ObjectStatus::Success) {
+        return Fail("identity stale external destroy failed");
+    }
+
+    const WorldObjectIdentityStatus validate_status = bridge.Validate(OBJECT_PLAYER);
+    if (validate_status != WorldObjectIdentityStatus::StaleObjectHandle) {
+        return Fail("identity stale generation did not invalidate binding");
+    }
+
+    if (bridge.Snapshot().binding_count != 1U) {
+        return Fail("identity stale validation mutated binding count");
+    }
+
+    return 0;
+}
+
+int WorldObjectIdentityBridgeUpdatePathDoesNotGrowWorldStorage() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("identity update path world registration failed");
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry);
+    if (!object_result.Succeeded()) {
+        return Fail("identity update path object creation failed");
+    }
+
+    WorldObjectIdentityBridge bridge(world, registry);
+    if (!bridge.Bind(OBJECT_PLAYER, object_result.handle).Succeeded()) {
+        return Fail("identity update path bind failed");
+    }
+
+    if (RequireSuccessfulStart(world) != 0) {
+        return 1;
+    }
+
+    const WorldSnapshot before_snapshot = world.Snapshot();
+    for (std::uint64_t frame_index = 1U; frame_index <= 3U; ++frame_index) {
+        const WorldStatus update_status = world.Update(frame_index, 16U, 17U);
+        if (update_status != WorldStatus::Success) {
+            return Fail("identity update path world update failed");
+        }
+    }
+
+    const WorldSnapshot after_snapshot = world.Snapshot();
+    if (after_snapshot.object_capacity != before_snapshot.object_capacity) {
+        return Fail("identity update path mutated world object capacity");
+    }
+
+    if (after_snapshot.phase_trace_capacity != before_snapshot.phase_trace_capacity) {
+        return Fail("identity update path mutated world phase trace capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != before_snapshot.allocation_accounting_status) {
+        return Fail("identity update path mutated world allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldObjectIdentityBridgeNoScriptResourcePackageFileOrGameAdapterDependency() {
+    WorldInstance world = MakeWorld(2U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    WorldObjectIdentityBridge bridge(world, registry);
+
+    const WorldObjectIdentitySnapshot snapshot = bridge.Snapshot();
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("identity bridge did not keep YuMemory accounting vocabulary");
+    }
+
+    if (snapshot.last_status != WorldObjectIdentityStatus::Success) {
+        return Fail("identity bridge initial status was not explicit success");
+    }
+
+    return 0;
+}
+
+int WorldObjectIdentityBridgeNoActorComponentOrTransformHierarchy() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("identity hierarchy player registration failed");
+    }
+
+    if (!Register(world, OBJECT_CAMERA).Succeeded()) {
+        return Fail("identity hierarchy camera registration failed");
+    }
+
+    const ObjectRegistrationResult first_object = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    const ObjectRegistrationResult second_object = CreateObject(registry, OBJECT_TYPE_CAMERA);
+    if (!first_object.Succeeded() || !second_object.Succeeded()) {
+        return Fail("identity hierarchy object creation failed");
+    }
+
+    WorldObjectIdentityBridge bridge(world, registry);
+    if (!bridge.Bind(OBJECT_PLAYER, first_object.handle).Succeeded()) {
+        return Fail("identity hierarchy first bind failed");
+    }
+
+    if (!bridge.Bind(OBJECT_CAMERA, second_object.handle).Succeeded()) {
+        return Fail("identity hierarchy second bind failed");
+    }
+
+    if (bridge.Remove(OBJECT_PLAYER) != WorldObjectIdentityStatus::Success) {
+        return Fail("identity hierarchy remove failed");
+    }
+
+    if (bridge.Snapshot().binding_count != 1U) {
+        return Fail("identity hierarchy bridge did not remain a flat binding table");
+    }
+
+    return 0;
+}
+
+int WorldObjectIdentityBridgeWorldInstanceCoreRemainsObjectFree() {
+    WorldInstance world = MakeWorld(2U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    WorldObjectIdentityBridge bridge(world, registry);
+
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("identity core object-free world registration failed");
+    }
+
+    if (!world.ContainsObject(OBJECT_PLAYER)) {
+        return Fail("identity core object-free world query failed");
+    }
+
+    if (bridge.Snapshot().binding_count != 0U) {
+        return Fail("identity bridge construction mutated world core state");
+    }
+
+    if (RequireSuccessfulStart(world) != 0) {
+        return 1;
+    }
+
+    if (world.Stop() != WorldStatus::Success) {
+        return Fail("identity core object-free standalone world stop failed");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -989,7 +1481,20 @@ int main(int argc, char **argv) {
         {TEST_MODULE_UPDATE_PATH, WorldKernelModuleUpdatePathDoesNotGrowWorldStorage},
         {TEST_MODULE_NO_SCRIPT_RESOURCE, WorldKernelModuleNoScriptResourcePackageFileOrGameAdapterDependency},
         {TEST_MODULE_NO_ACTOR_COMPONENT, WorldKernelModuleNoActorComponentOrTransformHierarchy},
-        {TEST_MODULE_CORE_KERNEL_FREE, WorldKernelModuleCoreWorldInstanceRemainsKernelFree}};
+        {TEST_MODULE_CORE_KERNEL_FREE, WorldKernelModuleCoreWorldInstanceRemainsKernelFree},
+        {TEST_IDENTITY_BIND_VALID, WorldObjectIdentityBridgeBindValidObjectAcquiresHandle},
+        {TEST_IDENTITY_INVALID_WORLD_ID, WorldObjectIdentityBridgeBindRejectsInvalidWorldIdWithoutMutation},
+        {TEST_IDENTITY_MISSING_WORLD_OBJECT, WorldObjectIdentityBridgeBindRejectsMissingWorldObjectWithoutMutation},
+        {TEST_IDENTITY_INVALID_OBJECT_HANDLE, WorldObjectIdentityBridgeBindRejectsInvalidObjectHandleWithoutMutation},
+        {TEST_IDENTITY_DUPLICATE_WORLD_ID, WorldObjectIdentityBridgeBindRejectsDuplicateWorldObjectId},
+        {TEST_IDENTITY_DUPLICATE_OBJECT_HANDLE, WorldObjectIdentityBridgeBindRejectsDuplicateObjectHandle},
+        {TEST_IDENTITY_REMOVE_RELEASES, WorldObjectIdentityBridgeRemoveReleasesHandle},
+        {TEST_IDENTITY_CLEAR_RELEASES, WorldObjectIdentityBridgeClearReleasesAllHandles},
+        {TEST_IDENTITY_STALE_GENERATION, WorldObjectIdentityBridgeStaleGenerationInvalidatesBinding},
+        {TEST_IDENTITY_UPDATE_PATH, WorldObjectIdentityBridgeUpdatePathDoesNotGrowWorldStorage},
+        {TEST_IDENTITY_NO_SCRIPT_RESOURCE, WorldObjectIdentityBridgeNoScriptResourcePackageFileOrGameAdapterDependency},
+        {TEST_IDENTITY_NO_ACTOR_COMPONENT, WorldObjectIdentityBridgeNoActorComponentOrTransformHierarchy},
+        {TEST_IDENTITY_CORE_OBJECT_FREE, WorldObjectIdentityBridgeWorldInstanceCoreRemainsObjectFree}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

@@ -187,6 +187,14 @@ std::uint32_t WorldInstance::GetPhaseTraceCount() const {
     return snapshot_.phase_trace_count;
 }
 
+bool WorldInstance::ContainsObject(WorldObjectId id) const {
+    if (!id.IsValid()) {
+        return false;
+    }
+
+    return FindSlot(id) != nullptr;
+}
+
 WorldStatus WorldInstance::RecordFailure(WorldStatus status) {
     snapshot_.last_status = status;
     return status;
