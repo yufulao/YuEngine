@@ -33,6 +33,7 @@
 #include "YuEngine/Script/ScriptValueType.h"
 #include "YuEngine/Serialize/SerializeConstants.h"
 #include "YuEngine/Serialize/SerializeReader.h"
+#include "YuEngine/Serialize/SerializeSnapshot.h"
 #include "YuEngine/Serialize/SerializeStatus.h"
 #include "YuEngine/Serialize/SerializeWriter.h"
 #include "YuEngine/Resource/ResourceDescriptor.h"
@@ -49,6 +50,13 @@
 #include "YuEngine/World/WorldComponentAttachmentBridgeDesc.h"
 #include "YuEngine/World/WorldComponentAttachmentResult.h"
 #include "YuEngine/World/WorldComponentAttachmentSnapshot.h"
+#include "YuEngine/World/WorldComponentAttachmentSnapshotBridge.h"
+#include "YuEngine/World/WorldComponentAttachmentSnapshotBridgeDesc.h"
+#include "YuEngine/World/WorldComponentAttachmentSnapshotBridgeSnapshot.h"
+#include "YuEngine/World/WorldComponentAttachmentSnapshotConstants.h"
+#include "YuEngine/World/WorldComponentAttachmentSnapshotRecord.h"
+#include "YuEngine/World/WorldComponentAttachmentSnapshotResult.h"
+#include "YuEngine/World/WorldComponentAttachmentSnapshotStatus.h"
 #include "YuEngine/World/WorldComponentAttachmentStatus.h"
 #include "YuEngine/World/WorldComponentQueryBridge.h"
 #include "YuEngine/World/WorldComponentQueryDesc.h"
@@ -121,6 +129,7 @@ using yuengine::script::ScriptValue;
 using yuengine::script::ScriptValueType;
 using yuengine::serialize::MAX_STREAM_BYTE_COUNT;
 using yuengine::serialize::SerializeReader;
+using yuengine::serialize::SerializeSnapshot;
 using yuengine::serialize::SerializeStatus;
 using yuengine::serialize::SerializeWriter;
 using yuengine::serialize::STREAM_HEADER_BYTE_COUNT;
@@ -155,11 +164,27 @@ using yuengine::world::WORLD_SERIALIZE_FIELD_PHASE_TRACE_COUNT;
 using yuengine::world::WORLD_SERIALIZE_FIELD_REGISTERED_OBJECT_COUNT;
 using yuengine::world::WORLD_SERIALIZE_FIELD_SKIPPED_OBJECT_COUNT;
 using yuengine::world::WORLD_SERIALIZE_WORLD_SNAPSHOT_RECORD_ID;
+using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_FIELD_RECORD_BYTES;
+using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_PAYLOAD_BYTE_COUNT;
+using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_RECORD_CAPACITY;
+using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_RECORD_ID_BASE;
+using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_FIELD_CHUNK_COUNT;
+using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_FIELD_RECORD_COUNT;
+using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_FIELD_SCHEMA_VERSION;
+using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_METADATA_RECORD_ID;
+using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_RECORD_BYTE_COUNT;
+using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_SCHEMA_VERSION;
 using yuengine::world::WorldComponentAttachmentBridge;
 using yuengine::world::WorldComponentAttachmentBridgeDesc;
 using yuengine::world::WorldComponentAttachment;
 using yuengine::world::WorldComponentAttachmentResult;
 using yuengine::world::WorldComponentAttachmentSnapshot;
+using yuengine::world::WorldComponentAttachmentSnapshotBridge;
+using yuengine::world::WorldComponentAttachmentSnapshotBridgeDesc;
+using yuengine::world::WorldComponentAttachmentSnapshotBridgeSnapshot;
+using yuengine::world::WorldComponentAttachmentSnapshotRecord;
+using yuengine::world::WorldComponentAttachmentSnapshotResult;
+using yuengine::world::WorldComponentAttachmentSnapshotStatus;
 using yuengine::world::WorldComponentAttachmentStatus;
 using yuengine::world::WorldComponentSlotId;
 using yuengine::world::WorldComponentTypeId;
@@ -350,6 +375,48 @@ constexpr const char *TEST_QUERY_NO_OBJECT_RESOURCE = "WorldComponentQueryBridge
 constexpr const char *TEST_QUERY_NO_FILE_PACKAGE = "WorldComponentQueryBridge_NoFilePackageThreadPlatformDiagnosticsDependency";
 constexpr const char *TEST_QUERY_NO_RENDER_PHYSICS = "WorldComponentQueryBridge_NoRenderPhysicsAudioInputUiToolOrReportDependency";
 constexpr const char *TEST_QUERY_WORLD_CORE_FREE = "WorldComponentQueryBridge_WorldInstanceCoreRemainsQueryFree";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_ROUND_TRIP =
+    "WorldComponentAttachmentSnapshotBridge_WriteReadRoundTripsAttachmentsInSlotOrder";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_EMPTY_WRITE =
+    "WorldComponentAttachmentSnapshotBridge_WriteEmptyBridgeProducesZeroRecords";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_NULL_SOURCE =
+    "WorldComponentAttachmentSnapshotBridge_WriteRejectsNullSourceWithoutMutation";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_NULL_WRITER =
+    "WorldComponentAttachmentSnapshotBridge_WriteRejectsNullWriterWithoutMutation";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_WRITER_OVERFLOW =
+    "WorldComponentAttachmentSnapshotBridge_WriteRejectsWriterOverflowWithoutOverrun";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_READ_RESTORES =
+    "WorldComponentAttachmentSnapshotBridge_ReadRestoresAttachmentRecords";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_READ_ZERO_CLEARS =
+    "WorldComponentAttachmentSnapshotBridge_ReadZeroRecordStreamClearsDestination";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_NULL_READER =
+    "WorldComponentAttachmentSnapshotBridge_ReadRejectsNullReaderWithoutMutation";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_NULL_DESTINATION =
+    "WorldComponentAttachmentSnapshotBridge_ReadRejectsNullDestinationWithoutMutation";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_UNKNOWN_VERSION =
+    "WorldComponentAttachmentSnapshotBridge_ReadRejectsUnknownVersionWithoutMutation";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_MALFORMED_COUNT =
+    "WorldComponentAttachmentSnapshotBridge_ReadRejectsMalformedRecordCountWithoutMutation";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_INVALID_WORLD =
+    "WorldComponentAttachmentSnapshotBridge_ReadRejectsInvalidWorldIdWithoutMutation";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_INVALID_TYPE =
+    "WorldComponentAttachmentSnapshotBridge_ReadRejectsInvalidComponentTypeWithoutMutation";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_INVALID_SLOT =
+    "WorldComponentAttachmentSnapshotBridge_ReadRejectsInvalidComponentSlotWithoutMutation";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_DUPLICATE =
+    "WorldComponentAttachmentSnapshotBridge_ReadRejectsDuplicateAttachmentWithoutMutation";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_PATH =
+    "WorldComponentAttachmentSnapshotBridge_WriteReadPathDoesNotGrowStorage";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_COUNTERS =
+    "WorldComponentAttachmentSnapshotBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_NO_PAYLOAD =
+    "WorldComponentAttachmentSnapshotBridge_NoActorComponentPayloadOrLifecycle";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_NO_OBJECT_RESOURCE =
+    "WorldComponentAttachmentSnapshotBridge_NoObjectResourceScriptFilePackageOrGameAdapterDependency";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_NO_RENDER_PHYSICS =
+    "WorldComponentAttachmentSnapshotBridge_NoRenderPhysicsAudioInputUiToolOrReportDependency";
+constexpr const char *TEST_COMPONENT_SNAPSHOT_WORLD_CORE_FREE =
+    "WorldComponentAttachmentSnapshotBridge_WorldInstanceCoreRemainsSnapshotFree";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *TRACE_KERNEL_START = "kernel.start";
@@ -903,6 +970,84 @@ bool ComponentAttachmentSnapshotsMatch(
     return left.last_status == right.last_status;
 }
 
+bool ComponentAttachmentSnapshotBridgeSnapshotsMatch(
+    const WorldComponentAttachmentSnapshotBridgeSnapshot &left,
+    const WorldComponentAttachmentSnapshotBridgeSnapshot &right) {
+    if (left.attachment_capacity != right.attachment_capacity) {
+        return false;
+    }
+
+    if (left.write_count != right.write_count) {
+        return false;
+    }
+
+    if (left.read_count != right.read_count) {
+        return false;
+    }
+
+    if (left.written_record_count != right.written_record_count) {
+        return false;
+    }
+
+    if (left.read_record_count != right.read_record_count) {
+        return false;
+    }
+
+    if (left.rejected_record_count != right.rejected_record_count) {
+        return false;
+    }
+
+    if (left.failed_operation_count != right.failed_operation_count) {
+        return false;
+    }
+
+    if (left.allocation_accounting_status != right.allocation_accounting_status) {
+        return false;
+    }
+
+    if (left.last_serialize_status != right.last_serialize_status) {
+        return false;
+    }
+
+    return left.last_status == right.last_status;
+}
+
+bool SerializeSnapshotsMatch(const SerializeSnapshot &left, const SerializeSnapshot &right) {
+    if (left.major_version != right.major_version) {
+        return false;
+    }
+
+    if (left.minor_version != right.minor_version) {
+        return false;
+    }
+
+    if (left.committed_byte_count != right.committed_byte_count) {
+        return false;
+    }
+
+    if (left.record_count != right.record_count) {
+        return false;
+    }
+
+    if (left.field_count != right.field_count) {
+        return false;
+    }
+
+    if (left.accepted_operation_count != right.accepted_operation_count) {
+        return false;
+    }
+
+    if (left.failed_operation_count != right.failed_operation_count) {
+        return false;
+    }
+
+    if (left.allocation_accounting_status != right.allocation_accounting_status) {
+        return false;
+    }
+
+    return left.last_status == right.last_status;
+}
+
 bool PhaseTracesMatch(const WorldPhaseTrace &left, const WorldPhaseTrace &right) {
     if (left.phase != right.phase) {
         return false;
@@ -975,6 +1120,172 @@ int OpenSerializeStream(SerializeReader &reader) {
         return Fail("serialize open stream failed");
     }
 
+    return 0;
+}
+
+void EncodeComponentAttachmentSnapshotUInt32(std::uint8_t *bytes, std::uint32_t value) {
+    bytes[0U] = static_cast<std::uint8_t>(value & 0xFFU);
+    bytes[1U] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
+    bytes[2U] = static_cast<std::uint8_t>((value >> 16U) & 0xFFU);
+    bytes[3U] = static_cast<std::uint8_t>((value >> 24U) & 0xFFU);
+}
+
+void EncodeComponentAttachmentSnapshotRecord(
+    std::uint8_t *bytes,
+    const WorldComponentAttachmentSnapshotRecord &record) {
+    EncodeComponentAttachmentSnapshotUInt32(bytes, record.world_object_id.value);
+    EncodeComponentAttachmentSnapshotUInt32(bytes + 4U, record.component_type_id.value);
+    EncodeComponentAttachmentSnapshotUInt32(bytes + 8U, record.component_slot_id.value);
+}
+
+std::uint32_t CalculateComponentAttachmentSnapshotChunkCount(std::uint32_t record_count) {
+    return (record_count + WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_RECORD_CAPACITY - 1U) /
+        WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_RECORD_CAPACITY;
+}
+
+std::uint32_t GetComponentAttachmentSnapshotChunkRecordCount(
+    std::uint32_t record_count,
+    std::uint32_t chunk_index) {
+    const std::uint32_t first_record_index =
+        chunk_index * WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_RECORD_CAPACITY;
+    if (record_count <= first_record_index) {
+        return 0U;
+    }
+
+    const std::uint32_t remaining_record_count = record_count - first_record_index;
+    if (remaining_record_count > WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_RECORD_CAPACITY) {
+        return WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_RECORD_CAPACITY;
+    }
+
+    return remaining_record_count;
+}
+
+int AddComponentAttachment(
+    WorldComponentAttachmentBridge &bridge,
+    WorldObjectId world_object_id,
+    WorldComponentTypeId component_type_id,
+    WorldComponentSlotId component_slot_id,
+    const char *error_message) {
+    const WorldComponentAttachmentResult result = bridge.Add(
+        world_object_id,
+        component_type_id,
+        component_slot_id);
+    if (!result.Succeeded()) {
+        return Fail(error_message);
+    }
+
+    return 0;
+}
+
+int WriteComponentAttachmentSnapshotMetadata(
+    SerializeWriter &writer,
+    std::uint32_t schema_version,
+    std::uint32_t record_count,
+    std::uint32_t chunk_count) {
+    if (writer.BeginRecord(WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_METADATA_RECORD_ID) != SerializeStatus::Success) {
+        return Fail("component attachment snapshot metadata begin failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_FIELD_SCHEMA_VERSION,
+            schema_version) != SerializeStatus::Success) {
+        return Fail("component attachment snapshot schema write failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_FIELD_RECORD_COUNT,
+            record_count) != SerializeStatus::Success) {
+        return Fail("component attachment snapshot record count write failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_FIELD_CHUNK_COUNT,
+            chunk_count) != SerializeStatus::Success) {
+        return Fail("component attachment snapshot chunk count write failed");
+    }
+
+    return 0;
+}
+
+int WriteComponentAttachmentSnapshotRecordChunks(
+    SerializeWriter &writer,
+    const WorldComponentAttachmentSnapshotRecord *records,
+    std::uint32_t record_count) {
+    const std::uint32_t chunk_count = CalculateComponentAttachmentSnapshotChunkCount(record_count);
+    std::uint32_t chunk_index = 0U;
+    while (chunk_index < chunk_count) {
+        const std::uint32_t first_record_index =
+            chunk_index * WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_RECORD_CAPACITY;
+        const std::uint32_t chunk_record_count = GetComponentAttachmentSnapshotChunkRecordCount(
+            record_count,
+            chunk_index);
+        std::array<std::uint8_t, WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_PAYLOAD_BYTE_COUNT> payload{};
+        std::uint32_t record_index = 0U;
+        while (record_index < chunk_record_count) {
+            const std::uint32_t payload_offset =
+                record_index * WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_RECORD_BYTE_COUNT;
+            EncodeComponentAttachmentSnapshotRecord(
+                payload.data() + payload_offset,
+                records[first_record_index + record_index]);
+            ++record_index;
+        }
+
+        const std::uint32_t record_id_value =
+            WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_RECORD_ID_BASE + chunk_index;
+        const yuengine::serialize::SerializeRecordId record_id{record_id_value};
+        if (writer.BeginRecord(record_id) != SerializeStatus::Success) {
+            return Fail("component attachment snapshot chunk begin failed");
+        }
+
+        const std::uint32_t payload_byte_count =
+            chunk_record_count * WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_RECORD_BYTE_COUNT;
+        if (writer.WriteFixedBytes(
+                WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_CHUNK_FIELD_RECORD_BYTES,
+                payload.data(),
+                payload_byte_count) != SerializeStatus::Success) {
+            return Fail("component attachment snapshot chunk write failed");
+        }
+
+        ++chunk_index;
+    }
+
+    return 0;
+}
+
+int WriteComponentAttachmentSnapshotFixtureStream(
+    SerializeWriter &writer,
+    const WorldComponentAttachmentSnapshotRecord *records,
+    std::uint32_t record_count) {
+    const std::uint32_t chunk_count = CalculateComponentAttachmentSnapshotChunkCount(record_count);
+    if (WriteComponentAttachmentSnapshotMetadata(
+            writer,
+            WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_SCHEMA_VERSION,
+            record_count,
+            chunk_count) != 0) {
+        return 1;
+    }
+
+    return WriteComponentAttachmentSnapshotRecordChunks(writer, records, record_count);
+}
+
+int WriteComponentAttachmentSnapshotToBuffer(
+    WorldComponentAttachmentSnapshotBridge &bridge,
+    WorldComponentAttachmentBridge &source_bridge,
+    SerializeBuffer &buffer,
+    std::uint32_t &committed_byte_count) {
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshotResult write_result = bridge.WriteSnapshot(
+        &writer,
+        &source_bridge);
+    if (!write_result.Succeeded()) {
+        return Fail("component attachment snapshot fixture write failed");
+    }
+
+    committed_byte_count = write_result.state.committed_byte_count;
     return 0;
 }
 
@@ -5871,6 +6182,944 @@ int WorldComponentQueryBridgeWorldInstanceCoreRemainsQueryFree() {
 
     return 0;
 }
+
+int WorldComponentAttachmentSnapshotBridgeWriteReadRoundTripsAttachmentsInSlotOrder() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component attachment snapshot round trip first add failed") != 0) {
+        return 1;
+    }
+
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component attachment snapshot round trip second add failed") != 0) {
+        return 1;
+    }
+
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_TERTIARY,
+            COMPONENT_SLOT_TERTIARY,
+            "component attachment snapshot round trip third add failed") != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentSnapshotBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteComponentAttachmentSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    const WorldComponentAttachmentSnapshotResult read_result = bridge.ReadSnapshot(
+        &reader,
+        &destination_bridge);
+    if (!read_result.Succeeded()) {
+        return Fail("component attachment snapshot round trip read failed");
+    }
+
+    std::array<WorldComponentAttachment, 3U> attachments{};
+    const std::uint32_t attachment_count = destination_bridge.ExportAttachments(
+        attachments.data(),
+        static_cast<std::uint32_t>(attachments.size()));
+    if (attachment_count != 3U) {
+        return Fail("component attachment snapshot round trip count wrong");
+    }
+
+    if (attachments[0].world_object_id.value != OBJECT_PLAYER.value) {
+        return Fail("component attachment snapshot round trip first object wrong");
+    }
+
+    if (attachments[0].component_type_id.value != COMPONENT_TYPE_PRIMARY.value) {
+        return Fail("component attachment snapshot round trip first type wrong");
+    }
+
+    if (attachments[1].world_object_id.value != OBJECT_CAMERA.value) {
+        return Fail("component attachment snapshot round trip second object wrong");
+    }
+
+    if (attachments[1].component_slot_id.value != COMPONENT_SLOT_SECONDARY.value) {
+        return Fail("component attachment snapshot round trip second slot wrong");
+    }
+
+    if (attachments[2].component_type_id.value != COMPONENT_TYPE_TERTIARY.value) {
+        return Fail("component attachment snapshot round trip third type wrong");
+    }
+
+    if (read_result.state.attachment_record_count != 3U) {
+        return Fail("component attachment snapshot round trip read state count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeWriteEmptyBridgeProducesZeroRecords() {
+    WorldComponentAttachmentBridge source_bridge;
+    WorldComponentAttachmentSnapshotBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteComponentAttachmentSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshotBridgeSnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.written_record_count != 0U) {
+        return Fail("component attachment snapshot empty write record count wrong");
+    }
+
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    if (OpenSerializeStream(reader) != 0) {
+        return 1;
+    }
+
+    std::uint32_t record_count = 999U;
+    const SerializeStatus status = reader.ReadUInt32(
+        WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_METADATA_RECORD_ID,
+        WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_FIELD_RECORD_COUNT,
+        record_count);
+    if (status != SerializeStatus::Success) {
+        return Fail("component attachment snapshot empty metadata read failed");
+    }
+
+    if (record_count != 0U) {
+        return Fail("component attachment snapshot empty write metadata count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeWriteRejectsNullSourceWithoutMutation() {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const SerializeSnapshot before_writer = writer.Snapshot();
+    WorldComponentAttachmentSnapshotBridge bridge;
+    const WorldComponentAttachmentSnapshotResult result = bridge.WriteSnapshot(&writer, nullptr);
+    if (result.status != WorldComponentAttachmentSnapshotStatus::InvalidSourceBridge) {
+        return Fail("component attachment snapshot null source status wrong");
+    }
+
+    const SerializeSnapshot after_writer = writer.Snapshot();
+    if (!SerializeSnapshotsMatch(before_writer, after_writer)) {
+        return Fail("component attachment snapshot null source mutated writer");
+    }
+
+    if (bridge.Snapshot().failed_operation_count != 1U) {
+        return Fail("component attachment snapshot null source failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeWriteRejectsNullWriterWithoutMutation() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component attachment snapshot null writer add failed") != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshot before_source = source_bridge.Snapshot();
+    WorldComponentAttachmentSnapshotBridge bridge;
+    const WorldComponentAttachmentSnapshotResult result = bridge.WriteSnapshot(nullptr, &source_bridge);
+    if (result.status != WorldComponentAttachmentSnapshotStatus::InvalidWriter) {
+        return Fail("component attachment snapshot null writer status wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot after_source = source_bridge.Snapshot();
+    if (!ComponentAttachmentSnapshotsMatch(before_source, after_source)) {
+        return Fail("component attachment snapshot null writer mutated source");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeWriteRejectsWriterOverflowWithoutOverrun() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component attachment snapshot writer overflow add failed") != 0) {
+        return 1;
+    }
+
+    std::array<std::uint8_t, STREAM_HEADER_BYTE_COUNT + 1U> buffer{};
+    buffer[STREAM_HEADER_BYTE_COUNT] = 0xABU;
+    SerializeWriter writer(buffer.data(), STREAM_HEADER_BYTE_COUNT);
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentSnapshotBridge bridge;
+    const WorldComponentAttachmentSnapshotResult result = bridge.WriteSnapshot(&writer, &source_bridge);
+    if (result.status != WorldComponentAttachmentSnapshotStatus::SerializeFailure) {
+        return Fail("component attachment snapshot writer overflow status wrong");
+    }
+
+    if (result.serialize_status != SerializeStatus::BufferTooSmall) {
+        return Fail("component attachment snapshot writer overflow serialize status wrong");
+    }
+
+    if (buffer[STREAM_HEADER_BYTE_COUNT] != 0xABU) {
+        return Fail("component attachment snapshot writer overflow overran buffer");
+    }
+
+    if (bridge.Snapshot().failed_operation_count != 1U) {
+        return Fail("component attachment snapshot writer overflow failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeReadRestoresAttachmentRecords() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component attachment snapshot read restore source add failed") != 0) {
+        return 1;
+    }
+
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    WorldComponentAttachmentSnapshotBridge bridge;
+    if (WriteComponentAttachmentSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    const WorldComponentAttachmentSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        &destination_bridge);
+    if (!result.Succeeded()) {
+        return Fail("component attachment snapshot read restore failed");
+    }
+
+    const WorldComponentAttachmentResult query_result = destination_bridge.Query(
+        OBJECT_CAMERA,
+        COMPONENT_TYPE_SECONDARY);
+    if (!query_result.Succeeded()) {
+        return Fail("component attachment snapshot read restore query failed");
+    }
+
+    if (query_result.component_slot_id.value != COMPONENT_SLOT_SECONDARY.value) {
+        return Fail("component attachment snapshot read restore slot wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeReadZeroRecordStreamClearsDestination() {
+    WorldComponentAttachmentBridge source_bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    WorldComponentAttachmentSnapshotBridge bridge;
+    if (WriteComponentAttachmentSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    if (AddComponentAttachment(
+            destination_bridge,
+            OBJECT_EFFECT,
+            COMPONENT_TYPE_TERTIARY,
+            COMPONENT_SLOT_TERTIARY,
+            "component attachment snapshot zero read destination add failed") != 0) {
+        return 1;
+    }
+
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    const WorldComponentAttachmentSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        &destination_bridge);
+    if (!result.Succeeded()) {
+        return Fail("component attachment snapshot zero read failed");
+    }
+
+    const WorldComponentAttachmentSnapshot destination_snapshot = destination_bridge.Snapshot();
+    if (destination_snapshot.active_attachment_count != 0U) {
+        return Fail("component attachment snapshot zero read did not clear destination");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeReadRejectsNullReaderWithoutMutation() {
+    WorldComponentAttachmentBridge destination_bridge;
+    if (AddComponentAttachment(
+            destination_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component attachment snapshot null reader destination add failed") != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshot before_destination = destination_bridge.Snapshot();
+    WorldComponentAttachmentSnapshotBridge bridge;
+    const WorldComponentAttachmentSnapshotResult result = bridge.ReadSnapshot(nullptr, &destination_bridge);
+    if (result.status != WorldComponentAttachmentSnapshotStatus::InvalidReader) {
+        return Fail("component attachment snapshot null reader status wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot after_destination = destination_bridge.Snapshot();
+    if (!ComponentAttachmentSnapshotsMatch(before_destination, after_destination)) {
+        return Fail("component attachment snapshot null reader mutated destination");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeReadRejectsNullDestinationWithoutMutation() {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentAttachmentSnapshotMetadata(
+            writer,
+            WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_SCHEMA_VERSION,
+            0U,
+            0U) != 0) {
+        return 1;
+    }
+
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentAttachmentSnapshotBridge bridge;
+    const WorldComponentAttachmentSnapshotResult result = bridge.ReadSnapshot(&reader, nullptr);
+    if (result.status != WorldComponentAttachmentSnapshotStatus::InvalidDestinationBridge) {
+        return Fail("component attachment snapshot null destination status wrong");
+    }
+
+    if (bridge.Snapshot().failed_operation_count != 1U) {
+        return Fail("component attachment snapshot null destination failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeReadRejectsUnknownVersionWithoutMutation() {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentAttachmentSnapshotMetadata(writer, 999U, 0U, 0U) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    if (AddComponentAttachment(
+            destination_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component attachment snapshot unknown version destination add failed") != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshot before_destination = destination_bridge.Snapshot();
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentAttachmentSnapshotBridge bridge;
+    const WorldComponentAttachmentSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        &destination_bridge);
+    if (result.status != WorldComponentAttachmentSnapshotStatus::UnsupportedVersion) {
+        return Fail("component attachment snapshot unknown version status wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot after_destination = destination_bridge.Snapshot();
+    if (!ComponentAttachmentSnapshotsMatch(before_destination, after_destination)) {
+        return Fail("component attachment snapshot unknown version mutated destination");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeReadRejectsMalformedRecordCountWithoutMutation() {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentAttachmentSnapshotMetadata(
+            writer,
+            WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_SCHEMA_VERSION,
+            1U,
+            0U) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    if (AddComponentAttachment(
+            destination_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component attachment snapshot malformed destination add failed") != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshot before_destination = destination_bridge.Snapshot();
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentAttachmentSnapshotBridge bridge;
+    const WorldComponentAttachmentSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        &destination_bridge);
+    if (result.status != WorldComponentAttachmentSnapshotStatus::MalformedRecordCount) {
+        return Fail("component attachment snapshot malformed count status wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot after_destination = destination_bridge.Snapshot();
+    if (!ComponentAttachmentSnapshotsMatch(before_destination, after_destination)) {
+        return Fail("component attachment snapshot malformed count mutated destination");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeReadRejectsInvalidWorldIdWithoutMutation() {
+    WorldComponentAttachmentSnapshotRecord record{};
+    record.world_object_id = WorldObjectId{};
+    record.component_type_id = COMPONENT_TYPE_PRIMARY;
+    record.component_slot_id = COMPONENT_SLOT_PRIMARY;
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> records{record};
+
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentAttachmentSnapshotFixtureStream(writer, records.data(), 1U) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    if (AddComponentAttachment(
+            destination_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component attachment snapshot invalid world destination add failed") != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshot before_destination = destination_bridge.Snapshot();
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentAttachmentSnapshotBridge bridge;
+    const WorldComponentAttachmentSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        &destination_bridge);
+    if (result.status != WorldComponentAttachmentSnapshotStatus::InvalidWorldObjectId) {
+        return Fail("component attachment snapshot invalid world status wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot after_destination = destination_bridge.Snapshot();
+    if (!ComponentAttachmentSnapshotsMatch(before_destination, after_destination)) {
+        return Fail("component attachment snapshot invalid world mutated destination");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeReadRejectsInvalidComponentTypeWithoutMutation() {
+    WorldComponentAttachmentSnapshotRecord record{};
+    record.world_object_id = OBJECT_PLAYER;
+    record.component_type_id = WorldComponentTypeId{};
+    record.component_slot_id = COMPONENT_SLOT_PRIMARY;
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> records{record};
+
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentAttachmentSnapshotFixtureStream(writer, records.data(), 1U) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    if (AddComponentAttachment(
+            destination_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component attachment snapshot invalid type destination add failed") != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshot before_destination = destination_bridge.Snapshot();
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentAttachmentSnapshotBridge bridge;
+    const WorldComponentAttachmentSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        &destination_bridge);
+    if (result.status != WorldComponentAttachmentSnapshotStatus::InvalidComponentTypeId) {
+        return Fail("component attachment snapshot invalid type status wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot after_destination = destination_bridge.Snapshot();
+    if (!ComponentAttachmentSnapshotsMatch(before_destination, after_destination)) {
+        return Fail("component attachment snapshot invalid type mutated destination");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeReadRejectsInvalidComponentSlotWithoutMutation() {
+    WorldComponentAttachmentSnapshotRecord record{};
+    record.world_object_id = OBJECT_PLAYER;
+    record.component_type_id = COMPONENT_TYPE_PRIMARY;
+    record.component_slot_id = WorldComponentSlotId{};
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> records{record};
+
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentAttachmentSnapshotFixtureStream(writer, records.data(), 1U) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    if (AddComponentAttachment(
+            destination_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component attachment snapshot invalid slot destination add failed") != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshot before_destination = destination_bridge.Snapshot();
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentAttachmentSnapshotBridge bridge;
+    const WorldComponentAttachmentSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        &destination_bridge);
+    if (result.status != WorldComponentAttachmentSnapshotStatus::InvalidComponentSlotId) {
+        return Fail("component attachment snapshot invalid slot status wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot after_destination = destination_bridge.Snapshot();
+    if (!ComponentAttachmentSnapshotsMatch(before_destination, after_destination)) {
+        return Fail("component attachment snapshot invalid slot mutated destination");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeReadRejectsDuplicateAttachmentWithoutMutation() {
+    WorldComponentAttachmentSnapshotRecord first_record{};
+    first_record.world_object_id = OBJECT_PLAYER;
+    first_record.component_type_id = COMPONENT_TYPE_PRIMARY;
+    first_record.component_slot_id = COMPONENT_SLOT_PRIMARY;
+
+    WorldComponentAttachmentSnapshotRecord second_record{};
+    second_record.world_object_id = OBJECT_PLAYER;
+    second_record.component_type_id = COMPONENT_TYPE_PRIMARY;
+    second_record.component_slot_id = COMPONENT_SLOT_SECONDARY;
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> records{first_record, second_record};
+
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentAttachmentSnapshotFixtureStream(writer, records.data(), 2U) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    if (AddComponentAttachment(
+            destination_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component attachment snapshot duplicate destination add failed") != 0) {
+        return 1;
+    }
+
+    const WorldComponentAttachmentSnapshot before_destination = destination_bridge.Snapshot();
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentAttachmentSnapshotBridge bridge;
+    const WorldComponentAttachmentSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        &destination_bridge);
+    if (result.status != WorldComponentAttachmentSnapshotStatus::DuplicateAttachment) {
+        return Fail("component attachment snapshot duplicate status wrong");
+    }
+
+    const WorldComponentAttachmentSnapshot after_destination = destination_bridge.Snapshot();
+    if (!ComponentAttachmentSnapshotsMatch(before_destination, after_destination)) {
+        return Fail("component attachment snapshot duplicate mutated destination");
+    }
+
+    const WorldComponentAttachmentSnapshotBridgeSnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.rejected_record_count != 1U) {
+        return Fail("component attachment snapshot duplicate rejection count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeWriteReadPathDoesNotGrowStorage() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component attachment snapshot path first add failed") != 0) {
+        return 1;
+    }
+
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_EFFECT,
+            COMPONENT_TYPE_TERTIARY,
+            COMPONENT_SLOT_TERTIARY,
+            "component attachment snapshot path second add failed") != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentSnapshotBridgeDesc desc{};
+    desc.attachment_capacity = 2U;
+    WorldComponentAttachmentSnapshotBridge bridge(desc);
+    WorldComponentAttachmentBridge destination_bridge;
+    const WorldComponentAttachmentSnapshotBridgeSnapshot before_snapshot = bridge.Snapshot();
+    std::uint32_t iteration = 0U;
+    while (iteration < 3U) {
+        SerializeBuffer buffer{};
+        std::uint32_t committed_byte_count = 0U;
+        if (WriteComponentAttachmentSnapshotToBuffer(
+                bridge,
+                source_bridge,
+                buffer,
+                committed_byte_count) != 0) {
+            return 1;
+        }
+
+        SerializeReader reader(buffer.data(), committed_byte_count);
+        const WorldComponentAttachmentSnapshotResult read_result = bridge.ReadSnapshot(
+            &reader,
+            &destination_bridge);
+        if (!read_result.Succeeded()) {
+            return Fail("component attachment snapshot path read failed");
+        }
+
+        ++iteration;
+    }
+
+    const WorldComponentAttachmentSnapshotBridgeSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.attachment_capacity != before_snapshot.attachment_capacity) {
+        return Fail("component attachment snapshot path changed capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != before_snapshot.allocation_accounting_status) {
+        return Fail("component attachment snapshot path changed allocation accounting");
+    }
+
+    if (after_snapshot.write_count != 3U) {
+        return Fail("component attachment snapshot path write count wrong");
+    }
+
+    if (after_snapshot.read_count != 3U) {
+        return Fail("component attachment snapshot path read count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeSnapshotReportsCountsAndLastStatus() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component attachment snapshot counters first add failed") != 0) {
+        return 1;
+    }
+
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component attachment snapshot counters second add failed") != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentSnapshotBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteComponentAttachmentSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    const WorldComponentAttachmentSnapshotResult read_result = bridge.ReadSnapshot(
+        &reader,
+        &destination_bridge);
+    if (!read_result.Succeeded()) {
+        return Fail("component attachment snapshot counters read failed");
+    }
+
+    const WorldComponentAttachmentSnapshotResult failure_result = bridge.ReadSnapshot(
+        nullptr,
+        &destination_bridge);
+    if (failure_result.status != WorldComponentAttachmentSnapshotStatus::InvalidReader) {
+        return Fail("component attachment snapshot counters failure status wrong");
+    }
+
+    const WorldComponentAttachmentSnapshotBridgeSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.write_count != 1U) {
+        return Fail("component attachment snapshot counters write count wrong");
+    }
+
+    if (snapshot.read_count != 1U) {
+        return Fail("component attachment snapshot counters read count wrong");
+    }
+
+    if (snapshot.written_record_count != 2U) {
+        return Fail("component attachment snapshot counters written count wrong");
+    }
+
+    if (snapshot.read_record_count != 2U) {
+        return Fail("component attachment snapshot counters read record count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component attachment snapshot counters failure count wrong");
+    }
+
+    if (snapshot.last_status != WorldComponentAttachmentSnapshotStatus::InvalidReader) {
+        return Fail("component attachment snapshot counters last status wrong");
+    }
+
+    if (snapshot.last_serialize_status != SerializeStatus::Success) {
+        return Fail("component attachment snapshot counters serialize status wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeNoActorComponentPayloadOrLifecycle() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_EFFECT,
+            COMPONENT_TYPE_TERTIARY,
+            COMPONENT_SLOT_TERTIARY,
+            "component attachment snapshot payload boundary add failed") != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentSnapshotBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteComponentAttachmentSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    const WorldComponentAttachmentSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        &destination_bridge);
+    if (!result.Succeeded()) {
+        return Fail("component attachment snapshot payload boundary read failed");
+    }
+
+    const WorldComponentAttachmentResult query_result = destination_bridge.Query(
+        OBJECT_EFFECT,
+        COMPONENT_TYPE_TERTIARY);
+    if (!query_result.Succeeded()) {
+        return Fail("component attachment snapshot payload boundary query failed");
+    }
+
+    if (query_result.component_slot_id.value != COMPONENT_SLOT_TERTIARY.value) {
+        return Fail("component attachment snapshot payload boundary slot wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeNoObjectResourceScriptFilePackageOrGameAdapterDependency() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component attachment snapshot module boundary add failed") != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentSnapshotBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteComponentAttachmentSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    const WorldComponentAttachmentSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        &destination_bridge);
+    if (!result.Succeeded()) {
+        return Fail("component attachment snapshot module boundary read failed");
+    }
+
+    const WorldComponentAttachmentSnapshotBridgeSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("component attachment snapshot module boundary allocation accounting wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency() {
+    WorldComponentAttachmentBridge source_bridge;
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component attachment snapshot render boundary add failed") != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentSnapshotBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteComponentAttachmentSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    if (!bridge.ReadSnapshot(&reader, &destination_bridge).Succeeded()) {
+        return Fail("component attachment snapshot render boundary read failed");
+    }
+
+    const WorldComponentAttachmentSnapshotBridgeSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.write_count != 1U) {
+        return Fail("component attachment snapshot render boundary write count wrong");
+    }
+
+    if (snapshot.read_count != 1U) {
+        return Fail("component attachment snapshot render boundary read count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentAttachmentSnapshotBridgeWorldInstanceCoreRemainsSnapshotFree() {
+    WorldInstance world = MakeWorld(4U, 4U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("component attachment snapshot world core-free registration failed");
+    }
+
+    WorldComponentAttachmentBridge source_bridge;
+    if (AddComponentAttachment(
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component attachment snapshot world core-free add failed") != 0) {
+        return 1;
+    }
+
+    const WorldSnapshot before_world = world.Snapshot();
+    WorldComponentAttachmentSnapshotBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteComponentAttachmentSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge destination_bridge;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    if (!bridge.ReadSnapshot(&reader, &destination_bridge).Succeeded()) {
+        return Fail("component attachment snapshot world core-free read failed");
+    }
+
+    const WorldSnapshot after_world = world.Snapshot();
+    if (!WorldSnapshotsMatch(before_world, after_world)) {
+        return Fail("component attachment snapshot bridge mutated world");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -6020,7 +7269,49 @@ int main(int argc, char **argv) {
         {TEST_QUERY_NO_OBJECT_RESOURCE, WorldComponentQueryBridgeNoObjectResourceScriptSerializeOrGameAdapterDependency},
         {TEST_QUERY_NO_FILE_PACKAGE, WorldComponentQueryBridgeNoFilePackageThreadPlatformDiagnosticsDependency},
         {TEST_QUERY_NO_RENDER_PHYSICS, WorldComponentQueryBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency},
-        {TEST_QUERY_WORLD_CORE_FREE, WorldComponentQueryBridgeWorldInstanceCoreRemainsQueryFree}};
+        {TEST_QUERY_WORLD_CORE_FREE, WorldComponentQueryBridgeWorldInstanceCoreRemainsQueryFree},
+        {TEST_COMPONENT_SNAPSHOT_ROUND_TRIP,
+            WorldComponentAttachmentSnapshotBridgeWriteReadRoundTripsAttachmentsInSlotOrder},
+        {TEST_COMPONENT_SNAPSHOT_EMPTY_WRITE,
+            WorldComponentAttachmentSnapshotBridgeWriteEmptyBridgeProducesZeroRecords},
+        {TEST_COMPONENT_SNAPSHOT_NULL_SOURCE,
+            WorldComponentAttachmentSnapshotBridgeWriteRejectsNullSourceWithoutMutation},
+        {TEST_COMPONENT_SNAPSHOT_NULL_WRITER,
+            WorldComponentAttachmentSnapshotBridgeWriteRejectsNullWriterWithoutMutation},
+        {TEST_COMPONENT_SNAPSHOT_WRITER_OVERFLOW,
+            WorldComponentAttachmentSnapshotBridgeWriteRejectsWriterOverflowWithoutOverrun},
+        {TEST_COMPONENT_SNAPSHOT_READ_RESTORES,
+            WorldComponentAttachmentSnapshotBridgeReadRestoresAttachmentRecords},
+        {TEST_COMPONENT_SNAPSHOT_READ_ZERO_CLEARS,
+            WorldComponentAttachmentSnapshotBridgeReadZeroRecordStreamClearsDestination},
+        {TEST_COMPONENT_SNAPSHOT_NULL_READER,
+            WorldComponentAttachmentSnapshotBridgeReadRejectsNullReaderWithoutMutation},
+        {TEST_COMPONENT_SNAPSHOT_NULL_DESTINATION,
+            WorldComponentAttachmentSnapshotBridgeReadRejectsNullDestinationWithoutMutation},
+        {TEST_COMPONENT_SNAPSHOT_UNKNOWN_VERSION,
+            WorldComponentAttachmentSnapshotBridgeReadRejectsUnknownVersionWithoutMutation},
+        {TEST_COMPONENT_SNAPSHOT_MALFORMED_COUNT,
+            WorldComponentAttachmentSnapshotBridgeReadRejectsMalformedRecordCountWithoutMutation},
+        {TEST_COMPONENT_SNAPSHOT_INVALID_WORLD,
+            WorldComponentAttachmentSnapshotBridgeReadRejectsInvalidWorldIdWithoutMutation},
+        {TEST_COMPONENT_SNAPSHOT_INVALID_TYPE,
+            WorldComponentAttachmentSnapshotBridgeReadRejectsInvalidComponentTypeWithoutMutation},
+        {TEST_COMPONENT_SNAPSHOT_INVALID_SLOT,
+            WorldComponentAttachmentSnapshotBridgeReadRejectsInvalidComponentSlotWithoutMutation},
+        {TEST_COMPONENT_SNAPSHOT_DUPLICATE,
+            WorldComponentAttachmentSnapshotBridgeReadRejectsDuplicateAttachmentWithoutMutation},
+        {TEST_COMPONENT_SNAPSHOT_PATH,
+            WorldComponentAttachmentSnapshotBridgeWriteReadPathDoesNotGrowStorage},
+        {TEST_COMPONENT_SNAPSHOT_COUNTERS,
+            WorldComponentAttachmentSnapshotBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_COMPONENT_SNAPSHOT_NO_PAYLOAD,
+            WorldComponentAttachmentSnapshotBridgeNoActorComponentPayloadOrLifecycle},
+        {TEST_COMPONENT_SNAPSHOT_NO_OBJECT_RESOURCE,
+            WorldComponentAttachmentSnapshotBridgeNoObjectResourceScriptFilePackageOrGameAdapterDependency},
+        {TEST_COMPONENT_SNAPSHOT_NO_RENDER_PHYSICS,
+            WorldComponentAttachmentSnapshotBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency},
+        {TEST_COMPONENT_SNAPSHOT_WORLD_CORE_FREE,
+            WorldComponentAttachmentSnapshotBridgeWorldInstanceCoreRemainsSnapshotFree}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
