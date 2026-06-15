@@ -1,14 +1,15 @@
 # P3-GATE-020: World Scene Object Transform Manifest Stream Bridge
 
-Status: Proposed for review
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `PROPOSED_FOR_REVIEW`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P3-GATE-002, P3-GATE-019
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0014, ADR-0015
 Source baseline: `baf964e`
 Candidate evidence: ENG-084A, ENG-084B, ENG-084C, and ENG-084D next-gate audit.
+Approval evidence: ENG-086A PASS, ENG-086B PASS on amended `7ef4ef8`, and ENG-086C PASS.
 
 ## Layer
 
