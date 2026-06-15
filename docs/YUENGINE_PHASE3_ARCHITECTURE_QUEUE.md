@@ -99,6 +99,7 @@ Phase 3 remains blocked from:
 | P3-GATE-018 | World Scene Assembly Manifest Stream Bridge | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_018_WORLD_SCENE_ASSEMBLY_MANIFEST_STREAM_BRIDGE.md`; manifest/stream-only envelope over caller-owned component attachment and component-resource binding snapshot records, no active restore, no object/transform restore, no scene loading/save policy/object construction/resource loading/File/Package/render/audio/UI/tools/reports or Game Adapter dependency |
 | P3-GATE-019 | World Scene Object Transform Restore Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_019_WORLD_SCENE_OBJECT_TRANSFORM_RESTORE_BRIDGE.md`; active restore over caller-owned object identity and transform records only, no object construction, no scene loading/save policy, no component payload/lifecycle, no File/Package/Resource loading or Game Adapter dependency |
 | P3-GATE-020 | World Scene Object Transform Manifest Stream Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_020_WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_STREAM_BRIDGE.md`; stream-only envelope over caller-owned P3-GATE-019 object identity and transform restore records, deterministic fixed-byte transform payloads only, no active restore, object construction, scene loading/save policy, component payload/lifecycle, YuSerialize float/core format changes, File/Package/Resource loading, or Game Adapter dependency |
+| P3-GATE-021 | World Scene Decoded Restore Plan Bridge | L5 over L2-L5 | `PROPOSED_FOR_REVIEW` | Proposed for review | Gate doc: `docs/gates/P3_GATE_021_WORLD_SCENE_DECODED_RESTORE_PLAN_BRIDGE.md`; no-mutation plan/preflight over caller-owned decoded object identity, transform, component attachment, and component-resource binding records, POD plan/status/counters only, no active restore, registry mutation, stream decode/apply fusion, rollback, File/Package/Resource loading, scene loader/save policy, or Game Adapter dependency |
 
 ## Current Active Gates
 
@@ -281,6 +282,14 @@ Phase 3 remains blocked from:
   File/Package work, component payload/lifecycle, or Game Adapter scope.
 - P3-GATE-020 first slice landed at `089c9de` with QA PASS and fast gate
   `566/566`.
+- P3-GATE-021 is proposed after ENG-089A boundary/performance CONCERN,
+  ENG-089B implementability PASS with hard scope condition, and ENG-089C test
+  admission PASS with scope warning. The candidate scope is decoded restore
+  plan/preflight only over caller-owned object identity, transform, component
+  attachment, and component-resource binding records. It outputs only POD
+  plan/status/counters and does not authorize active restore, registry
+  mutation, stream decode/apply fusion, rollback, scene loading/save policy,
+  resource loading, File/Package work, or Game Adapter scope.
 
 ## Implementation Baseline
 
@@ -342,8 +351,12 @@ same first slices.
 4. P3-GATE-020 is now a landed manifest-stream baseline only. A decoded active
    restore coordinator remains a later gate after separate cross-domain
    preflight and transaction proof.
-5. Continue closing active Phase 1 and Phase 2 implementation reviews; current
+5. Review P3-GATE-021 before implementation. If accepted, it authorizes only
+   decoded scene restore plan/preflight generation and no active mutation.
+   Active scene restore coordination remains a later gate after the plan
+   contract is proven.
+6. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.
-6. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
+7. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
    construction/reflection/script/scene/save/tool/report/Game Adapter scope.
