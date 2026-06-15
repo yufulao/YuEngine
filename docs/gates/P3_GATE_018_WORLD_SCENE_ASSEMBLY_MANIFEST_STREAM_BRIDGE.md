@@ -8,6 +8,7 @@ Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P3-GATE-002, P3-GATE-013, P3-GATE-015, P3-GATE-017
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0015
 Source baseline: `8df2fbb`
+Proposal commit: `6dc4b85`
 Candidate evidence: ENG-071A, ENG-071B, and ENG-071C PASS for a manifest/stream-only next gate.
 
 ## Layer
@@ -98,6 +99,12 @@ The first slice may define manifest-specific record IDs and field IDs only for
 this adapter. It must not redefine the lower-level YuSerialize value stream
 format or change the P3-GATE-013/P3-GATE-015 snapshot record layouts.
 
+The implementation must keep YuSerialize record and field limits explicit. It
+may encode bounded attachment and binding record arrays as fixed-byte chunks
+when needed, following the existing snapshot bridge pattern. It must not require
+one YuSerialize record or one YuSerialize field per sidecar record if that would
+exceed the current value stream caps.
+
 ## Does Not Own
 
 This gate does not own:
@@ -170,7 +177,9 @@ First-slice write lifecycle:
    tuples before writing.
 6. The bridge validates that each binding tuple has a matching attachment tuple.
 7. The bridge calculates the manifest write byte budget and verifies writer
-   capacity before `BeginStream` or the first manifest record write.
+   capacity before `BeginStream` or the first manifest record write. The budget
+   must be derived from manifest-local constants or equivalent compile-time
+   checks for byte count, record count, and field count.
 8. The bridge writes a versioned manifest envelope, count records, attachment
    records, and binding records in deterministic input order.
 9. The bridge returns explicit result and counters.
@@ -246,6 +255,8 @@ First-slice bounds:
 - write/read validation scans are bounded by configured attachment and binding
   record caps;
 - write/read calls do not allocate;
+- record, field, and byte budgets are manifest-local constants or equivalent
+  compile-time checked values;
 - write/read calls do not load, decode, upload, stream, resolve packages, query
   resource paths, construct objects, or dispatch component behavior;
 - no dynamic maps, string keys, global mutable caches, reflection lookup,
@@ -307,6 +318,7 @@ Fast gate tests required before the slice can be considered complete:
 - `WorldSceneAssemblyManifestStreamBridge_ReadRejectsDuplicateRecordsWithoutMutation`
 - `WorldSceneAssemblyManifestStreamBridge_ReadDoesNotRestoreActiveSidecars`
 - `WorldSceneAssemblyManifestStreamBridge_WriteReadPathDoesNotGrowStorage`
+- `WorldSceneAssemblyManifestStreamBridge_NoHiddenAllocation_UsesYuMemorySignal`
 - `WorldSceneAssemblyManifestStreamBridge_SnapshotReportsCountsAndLastStatus`
 - `WorldSceneAssemblyManifestStreamBridge_NoObjectTransformSceneLoadOrGameAdapterDependency`
 - `WorldSceneAssemblyManifestStreamBridge_NoFilePackageResourceLoadDecodeUploadDependency`
