@@ -25,6 +25,12 @@
 #include "YuEngine/Platform/HeadlessHost.h"
 #include "YuEngine/Platform/HeadlessHostConfig.h"
 #include "YuEngine/Platform/HostStatus.h"
+#include "YuEngine/Script/ScriptCallId.h"
+#include "YuEngine/Script/ScriptNativeBinding.h"
+#include "YuEngine/Script/ScriptNativeRegistry.h"
+#include "YuEngine/Script/ScriptStatus.h"
+#include "YuEngine/Script/ScriptValue.h"
+#include "YuEngine/Script/ScriptValueType.h"
 #include "YuEngine/World/WorldConstants.h"
 #include "YuEngine/World/WorldDesc.h"
 #include "YuEngine/World/WorldInstance.h"
@@ -38,6 +44,12 @@
 #include "YuEngine/World/WorldObjectIdentitySnapshot.h"
 #include "YuEngine/World/WorldObjectIdentityStatus.h"
 #include "YuEngine/World/WorldRegistrationResult.h"
+#include "YuEngine/World/WorldScriptDispatchBridge.h"
+#include "YuEngine/World/WorldScriptDispatchBridgeDesc.h"
+#include "YuEngine/World/WorldScriptDispatchConstants.h"
+#include "YuEngine/World/WorldScriptDispatchResult.h"
+#include "YuEngine/World/WorldScriptDispatchSnapshot.h"
+#include "YuEngine/World/WorldScriptDispatchStatus.h"
 #include "YuEngine/World/WorldSnapshot.h"
 #include "YuEngine/World/WorldStatus.h"
 #include "YuEngine/World/WorldTransformBridge.h"
@@ -65,8 +77,15 @@ using yuengine::platform::FixedFrameClock;
 using yuengine::platform::HeadlessHost;
 using yuengine::platform::HeadlessHostConfig;
 using yuengine::platform::HostStatus;
+using yuengine::script::ScriptCallId;
+using yuengine::script::ScriptNativeBinding;
+using yuengine::script::ScriptNativeRegistry;
+using yuengine::script::ScriptStatus;
+using yuengine::script::ScriptValue;
+using yuengine::script::ScriptValueType;
 using yuengine::world::MAX_WORLD_OBJECT_COUNT;
 using yuengine::world::MAX_WORLD_PHASE_TRACE_COUNT;
+using yuengine::world::MAX_WORLD_SCRIPT_DISPATCH_BINDING_COUNT;
 using yuengine::world::WORLD_UPDATE_PHASE_COUNT;
 using yuengine::world::WORLD_INSTANCE_SERVICE_ID;
 using yuengine::world::WORLD_KERNEL_MODULE_NAME;
@@ -83,6 +102,11 @@ using yuengine::world::WorldObjectIdentitySnapshot;
 using yuengine::world::WorldObjectIdentityStatus;
 using yuengine::world::WorldPhaseTrace;
 using yuengine::world::WorldRegistrationResult;
+using yuengine::world::WorldScriptDispatchBridge;
+using yuengine::world::WorldScriptDispatchBridgeDesc;
+using yuengine::world::WorldScriptDispatchResult;
+using yuengine::world::WorldScriptDispatchSnapshot;
+using yuengine::world::WorldScriptDispatchStatus;
 using yuengine::world::WorldSnapshot;
 using yuengine::world::WorldStatus;
 using yuengine::world::WorldTransformBridge;
@@ -144,6 +168,21 @@ constexpr const char *TEST_TRANSFORM_UPDATE_PATH = "WorldTransformBridge_UpdateP
 constexpr const char *TEST_TRANSFORM_NO_SCRIPT_RESOURCE = "WorldTransformBridge_NoScriptResourcePackageFileObjectOrGameAdapterDependency";
 constexpr const char *TEST_TRANSFORM_NO_ACTOR_COMPONENT = "WorldTransformBridge_NoActorComponentSceneGraphOrHierarchy";
 constexpr const char *TEST_TRANSFORM_CORE_FREE = "WorldTransformBridge_WorldInstanceCoreRemainsTransformStorageFree";
+constexpr const char *TEST_SCRIPT_DISPATCH_BIND_VALID = "WorldScriptDispatchBridge_BindPhaseCall_ReturnsStableBinding";
+constexpr const char *TEST_SCRIPT_DISPATCH_INVALID_CALL = "WorldScriptDispatchBridge_BindRejectsInvalidCallIdWithoutMutation";
+constexpr const char *TEST_SCRIPT_DISPATCH_DUPLICATE_PHASE = "WorldScriptDispatchBridge_BindRejectsDuplicatePhaseWithoutMutation";
+constexpr const char *TEST_SCRIPT_DISPATCH_CAPACITY = "WorldScriptDispatchBridge_BindRejectsCapacityOverflowWithoutMutation";
+constexpr const char *TEST_SCRIPT_DISPATCH_ORDER = "WorldScriptDispatchBridge_DispatchTraceInvokesPhasesInTraceOrder";
+constexpr const char *TEST_SCRIPT_DISPATCH_SKIP = "WorldScriptDispatchBridge_DispatchSkipsUnboundPhase";
+constexpr const char *TEST_SCRIPT_DISPATCH_TRACE_BUFFER = "WorldScriptDispatchBridge_DispatchRejectsInvalidTraceBuffer";
+constexpr const char *TEST_SCRIPT_DISPATCH_SLOT_BUFFERS = "WorldScriptDispatchBridge_DispatchRejectsInvalidSlotBuffers";
+constexpr const char *TEST_SCRIPT_DISPATCH_SCRIPT_FAILURE = "WorldScriptDispatchBridge_DispatchPropagatesScriptFailure";
+constexpr const char *TEST_SCRIPT_DISPATCH_PATH = "WorldScriptDispatchBridge_DispatchPathDoesNotGrowStorage";
+constexpr const char *TEST_SCRIPT_DISPATCH_SNAPSHOT = "WorldScriptDispatchBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_SCRIPT_DISPATCH_NO_ACTOR_COMPONENT = "WorldScriptDispatchBridge_NoActorComponentSceneGraphOrGameAdapterDependency";
+constexpr const char *TEST_SCRIPT_DISPATCH_NO_RESOURCE_OBJECT = "WorldScriptDispatchBridge_NoResourcePackageFileSerializeOrObjectOwnershipDependency";
+constexpr const char *TEST_SCRIPT_DISPATCH_WORLD_CORE_FREE = "WorldScriptDispatchBridge_WorldInstanceCoreRemainsScriptFree";
+constexpr const char *TEST_SCRIPT_DISPATCH_SCRIPT_CORE_FREE = "WorldScriptDispatchBridge_ScriptRegistryCoreRemainsWorldFree";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *TRACE_KERNEL_START = "kernel.start";
@@ -158,6 +197,12 @@ constexpr WorldObjectId OBJECT_EFFECT{3U};
 constexpr ObjectTypeId OBJECT_TYPE_PLAYER{1U};
 constexpr ObjectTypeId OBJECT_TYPE_CAMERA{2U};
 constexpr ObjectTypeId OBJECT_TYPE_EFFECT{3U};
+constexpr ScriptCallId SCRIPT_CALL_BEGIN{11U};
+constexpr ScriptCallId SCRIPT_CALL_FIXED{12U};
+constexpr ScriptCallId SCRIPT_CALL_FRAME{13U};
+constexpr ScriptCallId SCRIPT_CALL_END{14U};
+constexpr ScriptCallId SCRIPT_CALL_FAILING{15U};
+constexpr ScriptCallId SCRIPT_CALL_UNKNOWN{99U};
 using TestFunction = int (*)();
 
 class TestLogSink final : public yuengine::diagnostics::ILogSink {
@@ -280,6 +325,117 @@ bool TransformMatches(const WorldTransformState &left, const WorldTransformState
     }
 
     return left.scale_z == right.scale_z;
+}
+
+ScriptStatus AppendDispatchCode(const ScriptValue *arguments,
+    std::uint32_t argument_count,
+    ScriptValue *results,
+    std::uint32_t result_count,
+    std::uint64_t code) {
+    static_cast<void>(arguments);
+    if (argument_count != 0U) {
+        return ScriptStatus::ArgumentCountMismatch;
+    }
+
+    if (result_count != 1U) {
+        return ScriptStatus::ResultCountMismatch;
+    }
+
+    if (results == nullptr) {
+        return ScriptStatus::InvalidResultBuffer;
+    }
+
+    const std::uint64_t current_value = results[0].AsUInt64();
+    const std::uint64_t next_value = (current_value * 10U) + code;
+    results[0] = ScriptValue::UInt64(next_value);
+    return ScriptStatus::Success;
+}
+
+ScriptStatus BeginDispatchNative(const ScriptValue *arguments,
+    std::uint32_t argument_count,
+    ScriptValue *results,
+    std::uint32_t result_count) {
+    return AppendDispatchCode(arguments, argument_count, results, result_count, 1U);
+}
+
+ScriptStatus FixedDispatchNative(const ScriptValue *arguments,
+    std::uint32_t argument_count,
+    ScriptValue *results,
+    std::uint32_t result_count) {
+    return AppendDispatchCode(arguments, argument_count, results, result_count, 2U);
+}
+
+ScriptStatus FrameDispatchNative(const ScriptValue *arguments,
+    std::uint32_t argument_count,
+    ScriptValue *results,
+    std::uint32_t result_count) {
+    return AppendDispatchCode(arguments, argument_count, results, result_count, 3U);
+}
+
+ScriptStatus EndDispatchNative(const ScriptValue *arguments,
+    std::uint32_t argument_count,
+    ScriptValue *results,
+    std::uint32_t result_count) {
+    return AppendDispatchCode(arguments, argument_count, results, result_count, 4U);
+}
+
+ScriptStatus FailingDispatchNative(const ScriptValue *arguments,
+    std::uint32_t argument_count,
+    ScriptValue *results,
+    std::uint32_t result_count) {
+    static_cast<void>(arguments);
+    if (argument_count != 0U) {
+        return ScriptStatus::ArgumentCountMismatch;
+    }
+
+    if (result_count != 1U) {
+        return ScriptStatus::ResultCountMismatch;
+    }
+
+    if (results == nullptr) {
+        return ScriptStatus::InvalidResultBuffer;
+    }
+
+    results[0] = ScriptValue::UInt64(42U);
+    return ScriptStatus::NativeCallFailed;
+}
+
+ScriptNativeBinding MakeDispatchBinding(ScriptCallId call_id,
+    yuengine::script::ScriptNativeFunction function) {
+    ScriptNativeBinding binding{};
+    binding.call_id = call_id;
+    binding.function = function;
+    binding.argument_count = 0U;
+    binding.result_count = 1U;
+    binding.result_types[0] = ScriptValueType::UInt64;
+    return binding;
+}
+
+int RegisterDispatchBinding(ScriptNativeRegistry &registry,
+    ScriptCallId call_id,
+    yuengine::script::ScriptNativeFunction function) {
+    const ScriptNativeBinding binding = MakeDispatchBinding(call_id, function);
+    const auto registration = registry.RegisterNativeCall(binding);
+    if (!registration.Succeeded()) {
+        return Fail("dispatch native registration failed");
+    }
+
+    return 0;
+}
+
+std::array<ScriptValue, 1> MakeDispatchResults(std::uint64_t value=0U) {
+    std::array<ScriptValue, 1> results{};
+    results[0] = ScriptValue::UInt64(value);
+    return results;
+}
+
+WorldPhaseTrace Trace(WorldUpdatePhase phase) {
+    WorldPhaseTrace trace{};
+    trace.phase = phase;
+    trace.frame_index = 1U;
+    trace.active_object_count = 1U;
+    trace.skipped_object_count = 0U;
+    return trace;
 }
 
 WorldKernelModuleDesc MakeModuleDesc(std::uint64_t fixed_step_duration=16U) {
@@ -1937,6 +2093,585 @@ int WorldTransformBridgeWorldInstanceCoreRemainsTransformStorageFree() {
 
     return 0;
 }
+
+int WorldScriptDispatchBridgeBindPhaseCallReturnsStableBinding() {
+    WorldScriptDispatchBridge bridge;
+    const WorldScriptDispatchResult result = bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_BEGIN);
+    if (!result.Succeeded()) {
+        return Fail("script dispatch bind failed");
+    }
+
+    if (result.phase != WorldUpdatePhase::BeginFrame) {
+        return Fail("script dispatch bind returned wrong phase");
+    }
+
+    if (result.call_id.value != SCRIPT_CALL_BEGIN.value) {
+        return Fail("script dispatch bind returned wrong call id");
+    }
+
+    const WorldScriptDispatchSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.binding_capacity != WORLD_UPDATE_PHASE_COUNT) {
+        return Fail("script dispatch default capacity was not phase count");
+    }
+
+    if (snapshot.binding_count != 1U) {
+        return Fail("script dispatch bind did not record binding count");
+    }
+
+    if (snapshot.last_status != WorldScriptDispatchStatus::Success) {
+        return Fail("script dispatch bind did not record success");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeBindRejectsInvalidCallIdWithoutMutation() {
+    WorldScriptDispatchBridge bridge;
+    const WorldScriptDispatchSnapshot before_snapshot = bridge.Snapshot();
+    const WorldScriptDispatchResult result = bridge.Bind(WorldUpdatePhase::BeginFrame, ScriptCallId{});
+    if (result.status != WorldScriptDispatchStatus::InvalidCallId) {
+        return Fail("script dispatch invalid call id returned wrong status");
+    }
+
+    const WorldScriptDispatchSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.binding_count != before_snapshot.binding_count) {
+        return Fail("script dispatch invalid call id mutated binding count");
+    }
+
+    if (after_snapshot.failed_dispatch_count != before_snapshot.failed_dispatch_count) {
+        return Fail("script dispatch invalid call id mutated dispatch failure count");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeBindRejectsDuplicatePhaseWithoutMutation() {
+    WorldScriptDispatchBridge bridge;
+    if (!bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_BEGIN).Succeeded()) {
+        return Fail("script dispatch duplicate first bind failed");
+    }
+
+    const WorldScriptDispatchSnapshot before_snapshot = bridge.Snapshot();
+    const WorldScriptDispatchResult duplicate_result = bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_FIXED);
+    if (duplicate_result.status != WorldScriptDispatchStatus::DuplicatePhase) {
+        return Fail("script dispatch duplicate phase returned wrong status");
+    }
+
+    const WorldScriptDispatchSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.binding_count != before_snapshot.binding_count) {
+        return Fail("script dispatch duplicate phase mutated binding count");
+    }
+
+    if (after_snapshot.binding_capacity != before_snapshot.binding_capacity) {
+        return Fail("script dispatch duplicate phase mutated binding capacity");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeBindRejectsCapacityOverflowWithoutMutation() {
+    WorldScriptDispatchBridgeDesc desc{};
+    desc.binding_capacity = 1U;
+    WorldScriptDispatchBridge bridge(desc);
+    if (!bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_BEGIN).Succeeded()) {
+        return Fail("script dispatch capacity first bind failed");
+    }
+
+    const WorldScriptDispatchSnapshot before_snapshot = bridge.Snapshot();
+    const WorldScriptDispatchResult overflow_result = bridge.Bind(WorldUpdatePhase::FixedStep, SCRIPT_CALL_FIXED);
+    if (overflow_result.status != WorldScriptDispatchStatus::CapacityExceeded) {
+        return Fail("script dispatch capacity overflow returned wrong status");
+    }
+
+    const WorldScriptDispatchSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.binding_count != before_snapshot.binding_count) {
+        return Fail("script dispatch capacity overflow mutated binding count");
+    }
+
+    if (after_snapshot.binding_capacity != 1U) {
+        return Fail("script dispatch capacity overflow mutated capacity");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeDispatchTraceInvokesPhasesInTraceOrder() {
+    ScriptNativeRegistry registry;
+    if (RegisterDispatchBinding(registry, SCRIPT_CALL_BEGIN, BeginDispatchNative) != 0) {
+        return 1;
+    }
+
+    if (RegisterDispatchBinding(registry, SCRIPT_CALL_FIXED, FixedDispatchNative) != 0) {
+        return 1;
+    }
+
+    if (RegisterDispatchBinding(registry, SCRIPT_CALL_FRAME, FrameDispatchNative) != 0) {
+        return 1;
+    }
+
+    WorldScriptDispatchBridge bridge;
+    if (!bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_BEGIN).Succeeded()) {
+        return Fail("script dispatch order begin bind failed");
+    }
+
+    if (!bridge.Bind(WorldUpdatePhase::FixedStep, SCRIPT_CALL_FIXED).Succeeded()) {
+        return Fail("script dispatch order fixed bind failed");
+    }
+
+    if (!bridge.Bind(WorldUpdatePhase::FrameStep, SCRIPT_CALL_FRAME).Succeeded()) {
+        return Fail("script dispatch order frame bind failed");
+    }
+
+    std::array<WorldPhaseTrace, 3U> traces{
+        Trace(WorldUpdatePhase::FrameStep),
+        Trace(WorldUpdatePhase::BeginFrame),
+        Trace(WorldUpdatePhase::FixedStep)};
+    std::array<ScriptValue, 1U> results = MakeDispatchResults();
+    const WorldScriptDispatchStatus status = bridge.DispatchTrace(
+        registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (status != WorldScriptDispatchStatus::Success) {
+        return Fail("script dispatch order dispatch failed");
+    }
+
+    if (results[0].AsUInt64() != 312U) {
+        return Fail("script dispatch order did not follow trace order");
+    }
+
+    if (bridge.Snapshot().dispatched_call_count != 3U) {
+        return Fail("script dispatch order did not record dispatch count");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeDispatchSkipsUnboundPhase() {
+    ScriptNativeRegistry registry;
+    if (RegisterDispatchBinding(registry, SCRIPT_CALL_BEGIN, BeginDispatchNative) != 0) {
+        return 1;
+    }
+
+    WorldScriptDispatchBridge bridge;
+    if (!bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_BEGIN).Succeeded()) {
+        return Fail("script dispatch skip bind failed");
+    }
+
+    std::array<WorldPhaseTrace, 2U> traces{
+        Trace(WorldUpdatePhase::BeginFrame),
+        Trace(WorldUpdatePhase::EndFrame)};
+    std::array<ScriptValue, 1U> results = MakeDispatchResults();
+    const WorldScriptDispatchStatus status = bridge.DispatchTrace(
+        registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (status != WorldScriptDispatchStatus::Success) {
+        return Fail("script dispatch skip dispatch failed");
+    }
+
+    const WorldScriptDispatchSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.dispatched_call_count != 1U) {
+        return Fail("script dispatch skip recorded wrong dispatch count");
+    }
+
+    if (snapshot.skipped_phase_count != 1U) {
+        return Fail("script dispatch skip did not count unbound phase");
+    }
+
+    if (results[0].AsUInt64() != 1U) {
+        return Fail("script dispatch skip invoked wrong phase");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeDispatchRejectsInvalidTraceBuffer() {
+    ScriptNativeRegistry registry;
+    WorldScriptDispatchBridge bridge;
+    const WorldScriptDispatchStatus null_status = bridge.DispatchTrace(
+        registry,
+        nullptr,
+        1U,
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+    if (null_status != WorldScriptDispatchStatus::InvalidTraceBuffer) {
+        return Fail("script dispatch null trace returned wrong status");
+    }
+
+    std::array<WorldPhaseTrace, 1U> traces{Trace(static_cast<WorldUpdatePhase>(99))};
+    const WorldScriptDispatchStatus phase_status = bridge.DispatchTrace(
+        registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+    if (phase_status != WorldScriptDispatchStatus::InvalidPhase) {
+        return Fail("script dispatch invalid phase returned wrong status");
+    }
+
+    if (bridge.Snapshot().failed_dispatch_count != 2U) {
+        return Fail("script dispatch invalid trace did not record failures");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeDispatchRejectsInvalidSlotBuffers() {
+    ScriptNativeRegistry registry;
+    WorldScriptDispatchBridge bridge;
+    if (!bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_BEGIN).Succeeded()) {
+        return Fail("script dispatch slot bind failed");
+    }
+
+    std::array<WorldPhaseTrace, 1U> traces{Trace(WorldUpdatePhase::BeginFrame)};
+    std::array<ScriptValue, 1U> results = MakeDispatchResults();
+    const WorldScriptDispatchStatus argument_status = bridge.DispatchTrace(
+        registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        1U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (argument_status != WorldScriptDispatchStatus::InvalidArgumentBuffer) {
+        return Fail("script dispatch invalid argument buffer returned wrong status");
+    }
+
+    const WorldScriptDispatchStatus result_status = bridge.DispatchTrace(
+        registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        0U,
+        nullptr,
+        1U);
+    if (result_status != WorldScriptDispatchStatus::InvalidResultBuffer) {
+        return Fail("script dispatch invalid result buffer returned wrong status");
+    }
+
+    if (bridge.Snapshot().dispatched_call_count != 0U) {
+        return Fail("script dispatch invalid slot buffers dispatched calls");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeDispatchPropagatesScriptFailure() {
+    ScriptNativeRegistry empty_registry;
+    WorldScriptDispatchBridge unknown_bridge;
+    if (!unknown_bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_UNKNOWN).Succeeded()) {
+        return Fail("script dispatch unknown bind failed");
+    }
+
+    std::array<WorldPhaseTrace, 1U> traces{Trace(WorldUpdatePhase::BeginFrame)};
+    std::array<ScriptValue, 1U> results = MakeDispatchResults();
+    const WorldScriptDispatchStatus unknown_status = unknown_bridge.DispatchTrace(
+        empty_registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (unknown_status != WorldScriptDispatchStatus::ScriptCallFailed) {
+        return Fail("script dispatch unknown call did not map to bridge failure");
+    }
+
+    if (unknown_bridge.Snapshot().last_script_status != ScriptStatus::InvalidCallId) {
+        return Fail("script dispatch unknown call did not preserve script status");
+    }
+
+    ScriptNativeRegistry failing_registry;
+    if (RegisterDispatchBinding(failing_registry, SCRIPT_CALL_FAILING, FailingDispatchNative) != 0) {
+        return 1;
+    }
+
+    WorldScriptDispatchBridge failing_bridge;
+    if (!failing_bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_FAILING).Succeeded()) {
+        return Fail("script dispatch failing bind failed");
+    }
+
+    results = MakeDispatchResults();
+    const WorldScriptDispatchStatus failing_status = failing_bridge.DispatchTrace(
+        failing_registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (failing_status != WorldScriptDispatchStatus::ScriptCallFailed) {
+        return Fail("script dispatch native failure did not map to bridge failure");
+    }
+
+    if (failing_bridge.Snapshot().last_script_status != ScriptStatus::NativeCallFailed) {
+        return Fail("script dispatch native failure did not preserve script status");
+    }
+
+    if (results[0].AsUInt64() != 42U) {
+        return Fail("script dispatch native failure did not preserve caller result slot");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeDispatchPathDoesNotGrowStorage() {
+    ScriptNativeRegistry registry;
+    if (RegisterDispatchBinding(registry, SCRIPT_CALL_BEGIN, BeginDispatchNative) != 0) {
+        return 1;
+    }
+
+    WorldScriptDispatchBridge bridge;
+    if (!bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_BEGIN).Succeeded()) {
+        return Fail("script dispatch path bind failed");
+    }
+
+    const WorldScriptDispatchSnapshot before_snapshot = bridge.Snapshot();
+    std::array<WorldPhaseTrace, 1U> traces{Trace(WorldUpdatePhase::BeginFrame)};
+    std::array<ScriptValue, 1U> results = MakeDispatchResults();
+    std::uint32_t dispatch_index = 0U;
+    while (dispatch_index < 3U) {
+        const WorldScriptDispatchStatus status = bridge.DispatchTrace(
+            registry,
+            traces.data(),
+            static_cast<std::uint32_t>(traces.size()),
+            nullptr,
+            0U,
+            results.data(),
+            static_cast<std::uint32_t>(results.size()));
+        if (status != WorldScriptDispatchStatus::Success) {
+            return Fail("script dispatch path dispatch failed");
+        }
+
+        ++dispatch_index;
+    }
+
+    const WorldScriptDispatchSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.binding_capacity != before_snapshot.binding_capacity) {
+        return Fail("script dispatch path mutated binding capacity");
+    }
+
+    if (after_snapshot.binding_count != before_snapshot.binding_count) {
+        return Fail("script dispatch path mutated binding count");
+    }
+
+    if (after_snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("script dispatch path changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeSnapshotReportsCountsAndLastStatus() {
+    ScriptNativeRegistry registry;
+    if (RegisterDispatchBinding(registry, SCRIPT_CALL_BEGIN, BeginDispatchNative) != 0) {
+        return 1;
+    }
+
+    if (RegisterDispatchBinding(registry, SCRIPT_CALL_FIXED, FixedDispatchNative) != 0) {
+        return 1;
+    }
+
+    WorldScriptDispatchBridge bridge;
+    if (!bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_BEGIN).Succeeded()) {
+        return Fail("script dispatch snapshot begin bind failed");
+    }
+
+    if (!bridge.Bind(WorldUpdatePhase::FixedStep, SCRIPT_CALL_FIXED).Succeeded()) {
+        return Fail("script dispatch snapshot fixed bind failed");
+    }
+
+    std::array<WorldPhaseTrace, 3U> traces{
+        Trace(WorldUpdatePhase::BeginFrame),
+        Trace(WorldUpdatePhase::EndFrame),
+        Trace(WorldUpdatePhase::FixedStep)};
+    std::array<ScriptValue, 1U> results = MakeDispatchResults();
+    if (bridge.DispatchTrace(
+            registry,
+            traces.data(),
+            static_cast<std::uint32_t>(traces.size()),
+            nullptr,
+            0U,
+            results.data(),
+            static_cast<std::uint32_t>(results.size())) != WorldScriptDispatchStatus::Success) {
+        return Fail("script dispatch snapshot success dispatch failed");
+    }
+
+    const WorldScriptDispatchStatus failure_status = bridge.DispatchTrace(
+        registry,
+        nullptr,
+        1U,
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+    if (failure_status != WorldScriptDispatchStatus::InvalidTraceBuffer) {
+        return Fail("script dispatch snapshot failure dispatch returned wrong status");
+    }
+
+    const WorldScriptDispatchSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.binding_count != 2U) {
+        return Fail("script dispatch snapshot did not report binding count");
+    }
+
+    if (snapshot.dispatched_call_count != 2U) {
+        return Fail("script dispatch snapshot did not report dispatch count");
+    }
+
+    if (snapshot.skipped_phase_count != 1U) {
+        return Fail("script dispatch snapshot did not report skipped count");
+    }
+
+    if (snapshot.failed_dispatch_count != 1U) {
+        return Fail("script dispatch snapshot did not report failure count");
+    }
+
+    if (snapshot.last_status != WorldScriptDispatchStatus::InvalidTraceBuffer) {
+        return Fail("script dispatch snapshot did not report last status");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeNoActorComponentSceneGraphOrGameAdapterDependency() {
+    WorldScriptDispatchBridge bridge;
+    if (!bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_BEGIN).Succeeded()) {
+        return Fail("script dispatch no actor bind failed");
+    }
+
+    if (!bridge.Bind(WorldUpdatePhase::EndFrame, SCRIPT_CALL_END).Succeeded()) {
+        return Fail("script dispatch no actor second bind failed");
+    }
+
+    const WorldScriptDispatchSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.binding_count != 2U) {
+        return Fail("script dispatch no actor bridge did not remain phase table");
+    }
+
+    if (snapshot.binding_capacity != WORLD_UPDATE_PHASE_COUNT) {
+        return Fail("script dispatch no actor default capacity changed");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeNoResourcePackageFileSerializeOrObjectOwnershipDependency() {
+    ScriptNativeRegistry registry;
+    if (RegisterDispatchBinding(registry, SCRIPT_CALL_END, EndDispatchNative) != 0) {
+        return 1;
+    }
+
+    WorldScriptDispatchBridge bridge;
+    if (!bridge.Bind(WorldUpdatePhase::EndFrame, SCRIPT_CALL_END).Succeeded()) {
+        return Fail("script dispatch no forbidden dependency bind failed");
+    }
+
+    std::array<WorldPhaseTrace, 1U> traces{Trace(WorldUpdatePhase::EndFrame)};
+    std::array<ScriptValue, 1U> results = MakeDispatchResults();
+    const WorldScriptDispatchStatus status = bridge.DispatchTrace(
+        registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (status != WorldScriptDispatchStatus::Success) {
+        return Fail("script dispatch no forbidden dependency dispatch failed");
+    }
+
+    if (results[0].AsUInt64() != 4U) {
+        return Fail("script dispatch no forbidden dependency result changed");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeWorldInstanceCoreRemainsScriptFree() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("script dispatch world core-free registration failed");
+    }
+
+    const WorldSnapshot before_snapshot = world.Snapshot();
+    WorldScriptDispatchBridge bridge;
+    if (!bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_BEGIN).Succeeded()) {
+        return Fail("script dispatch world core-free bind failed");
+    }
+
+    const WorldSnapshot after_snapshot = world.Snapshot();
+    if (!SnapshotRuntimeCountsMatch(before_snapshot, after_snapshot)) {
+        return Fail("script dispatch bridge mutated world runtime counts");
+    }
+
+    if (RequireSuccessfulStart(world) != 0) {
+        return 1;
+    }
+
+    if (RequireSuccessfulUpdate(world) != 0) {
+        return 1;
+    }
+
+    if (world.Stop() != WorldStatus::Success) {
+        return Fail("script dispatch world core-free stop failed");
+    }
+
+    return 0;
+}
+
+int WorldScriptDispatchBridgeScriptRegistryCoreRemainsWorldFree() {
+    ScriptNativeRegistry registry;
+    if (RegisterDispatchBinding(registry, SCRIPT_CALL_BEGIN, BeginDispatchNative) != 0) {
+        return 1;
+    }
+
+    const auto before_snapshot = registry.Snapshot();
+    WorldScriptDispatchBridge bridge;
+    if (!bridge.Bind(WorldUpdatePhase::BeginFrame, SCRIPT_CALL_BEGIN).Succeeded()) {
+        return Fail("script dispatch script core-free bind failed");
+    }
+
+    std::array<WorldPhaseTrace, 1U> traces{Trace(WorldUpdatePhase::BeginFrame)};
+    std::array<ScriptValue, 1U> results = MakeDispatchResults();
+    const WorldScriptDispatchStatus status = bridge.DispatchTrace(
+        registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (status != WorldScriptDispatchStatus::Success) {
+        return Fail("script dispatch script core-free dispatch failed");
+    }
+
+    const auto after_snapshot = registry.Snapshot();
+    if (after_snapshot.binding_capacity != before_snapshot.binding_capacity) {
+        return Fail("script dispatch script core-free mutated registry capacity");
+    }
+
+    if (after_snapshot.binding_count != before_snapshot.binding_count) {
+        return Fail("script dispatch script core-free mutated registry binding count");
+    }
+
+    if (after_snapshot.successful_call_count != 1U) {
+        return Fail("script dispatch script core-free did not invoke registry");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -1994,7 +2729,22 @@ int main(int argc, char **argv) {
         {TEST_TRANSFORM_UPDATE_PATH, WorldTransformBridgeUpdatePathDoesNotGrowWorldStorage},
         {TEST_TRANSFORM_NO_SCRIPT_RESOURCE, WorldTransformBridgeNoScriptResourcePackageFileObjectOrGameAdapterDependency},
         {TEST_TRANSFORM_NO_ACTOR_COMPONENT, WorldTransformBridgeNoActorComponentSceneGraphOrHierarchy},
-        {TEST_TRANSFORM_CORE_FREE, WorldTransformBridgeWorldInstanceCoreRemainsTransformStorageFree}};
+        {TEST_TRANSFORM_CORE_FREE, WorldTransformBridgeWorldInstanceCoreRemainsTransformStorageFree},
+        {TEST_SCRIPT_DISPATCH_BIND_VALID, WorldScriptDispatchBridgeBindPhaseCallReturnsStableBinding},
+        {TEST_SCRIPT_DISPATCH_INVALID_CALL, WorldScriptDispatchBridgeBindRejectsInvalidCallIdWithoutMutation},
+        {TEST_SCRIPT_DISPATCH_DUPLICATE_PHASE, WorldScriptDispatchBridgeBindRejectsDuplicatePhaseWithoutMutation},
+        {TEST_SCRIPT_DISPATCH_CAPACITY, WorldScriptDispatchBridgeBindRejectsCapacityOverflowWithoutMutation},
+        {TEST_SCRIPT_DISPATCH_ORDER, WorldScriptDispatchBridgeDispatchTraceInvokesPhasesInTraceOrder},
+        {TEST_SCRIPT_DISPATCH_SKIP, WorldScriptDispatchBridgeDispatchSkipsUnboundPhase},
+        {TEST_SCRIPT_DISPATCH_TRACE_BUFFER, WorldScriptDispatchBridgeDispatchRejectsInvalidTraceBuffer},
+        {TEST_SCRIPT_DISPATCH_SLOT_BUFFERS, WorldScriptDispatchBridgeDispatchRejectsInvalidSlotBuffers},
+        {TEST_SCRIPT_DISPATCH_SCRIPT_FAILURE, WorldScriptDispatchBridgeDispatchPropagatesScriptFailure},
+        {TEST_SCRIPT_DISPATCH_PATH, WorldScriptDispatchBridgeDispatchPathDoesNotGrowStorage},
+        {TEST_SCRIPT_DISPATCH_SNAPSHOT, WorldScriptDispatchBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_SCRIPT_DISPATCH_NO_ACTOR_COMPONENT, WorldScriptDispatchBridgeNoActorComponentSceneGraphOrGameAdapterDependency},
+        {TEST_SCRIPT_DISPATCH_NO_RESOURCE_OBJECT, WorldScriptDispatchBridgeNoResourcePackageFileSerializeOrObjectOwnershipDependency},
+        {TEST_SCRIPT_DISPATCH_WORLD_CORE_FREE, WorldScriptDispatchBridgeWorldInstanceCoreRemainsScriptFree},
+        {TEST_SCRIPT_DISPATCH_SCRIPT_CORE_FREE, WorldScriptDispatchBridgeScriptRegistryCoreRemainsWorldFree}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
