@@ -87,6 +87,7 @@ Phase 3 remains blocked from:
 | P3-GATE-006 | World Object Identity Bridge | L5 over L2-L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_006_WORLD_OBJECT_IDENTITY_BRIDGE.md`; narrow WorldObjectId-to-ObjectHandle adapter only, `WorldInstance` core remains Object-free, no Script callback, actor/component/transform, Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
 | P3-GATE-007 | World Transform Data Fixture | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_007_WORLD_TRANSFORM_DATA_FIXTURE.md`; data-only WorldTransformBridge fixture, bounded POD transform records keyed by WorldObjectId, no Script callback, actor/component/scene graph/transform hierarchy, Object/Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
 | P3-GATE-008 | World Script Dispatch Bridge | L5 over L4 | `PENDING_REVIEW` | Proposed | Gate doc: `docs/gates/P3_GATE_008_WORLD_SCRIPT_DISPATCH_BRIDGE.md`; narrow WorldPhaseTrace-to-ScriptCallId dispatch adapter only, `WorldInstance` core remains Script-free, no VM/bytecode/reflection, actor/component/gameplay, Resource/Package/File, Serialize payload, Object ownership, render/audio/physics/UI/tools/reports/Game Adapter |
+| P3-GATE-009 | World Serialize Snapshot Bridge | L5 over L3-L5 | `PENDING_REVIEW` | Proposed | Gate doc: `docs/gates/P3_GATE_009_WORLD_SERIALIZE_SNAPSHOT_BRIDGE.md`; narrow World snapshot/phase-trace to YuSerialize value-stream adapter only, `WorldInstance` core remains Serialize-free, no File/Package/Resource/save policy, Object construction, reflection, Script, actor/component/gameplay, render/audio/physics/UI/tools/reports/Game Adapter |
 
 ## Current Active Gates
 
@@ -156,6 +157,17 @@ Phase 3 remains blocked from:
   Resource/Package/File, Serialize payload, Object ownership, render/audio/
   physics/UI/tools/reports, Game Adapter behavior, or copied UE or Unity API
   shape.
+- P3-GATE-009 is proposed from `8cfa2dc` for a narrow World-to-Serialize
+  snapshot bridge. It may add only `WorldSerializeSnapshotBridge` adapter files
+  under `YuWorld`, `Tests/World` coverage, and CMake/CTest registration after
+  review updates the decision to `APPROVED_FOR_FIRST_SLICE`. The first slice
+  would write and read `WorldSnapshot`, existing `WorldPhaseTrace` records, and
+  optional `WorldTransformSnapshot` counters through `YuSerialize` caller-owned
+  buffers. `WorldInstance` core files must remain Serialize-free, and
+  `YuSerialize` core files must remain World-free. It must not introduce
+  File/Package/Resource/save policy, Object construction, reflection, Script,
+  actor/component/gameplay, render/audio/physics/UI/tools/reports, Game Adapter
+  behavior, or copied UE or Unity API shape.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.
@@ -195,8 +207,15 @@ same first slices.
 2. If P3-GATE-008 reaches `APPROVED_FOR_FIRST_SLICE`, create a scoped
    implementation handoff for `WorldScriptDispatchBridge` only after the review
    evidence is recorded.
-3. Continue closing active Phase 1 and Phase 2 implementation reviews; current
+3. Review P3-GATE-009 for a narrow World Serialize Snapshot Bridge, preserving
+   World core independence from Serialize, Serialize core independence from
+   World, caller-provided stream buffers, deterministic primitive records, and
+   no file/package/resource/save/object-construction scope.
+4. If P3-GATE-009 reaches `APPROVED_FOR_FIRST_SLICE`, create a scoped
+   implementation handoff for `WorldSerializeSnapshotBridge` only after the
+   review evidence is recorded.
+5. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.
-4. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
+6. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
    construction/reflection/script/scene/save/tool/report/Game Adapter scope.
