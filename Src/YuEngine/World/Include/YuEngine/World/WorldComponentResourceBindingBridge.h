@@ -88,6 +88,13 @@ public:
      */
     WorldComponentResourceBindingSnapshot Snapshot() const;
     /**
+     * @comment Validates destination state for explicit restore preflight.
+     * @param required_binding_count Required binding capacity.
+     * @return Explicit operation status.
+     */
+    WorldComponentResourceBindingStatus ValidateRestoreDestination(
+        std::uint32_t required_binding_count) const;
+    /**
      * @comment Copies active component resource binding records in deterministic slot order.
      * @param output_bindings Caller-owned output binding buffer.
      * @param output_capacity Output binding buffer capacity.

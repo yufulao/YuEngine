@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -67,6 +68,10 @@
 #include "YuEngine/World/WorldComponentResourceBindingBridge.h"
 #include "YuEngine/World/WorldComponentResourceBindingBridgeDesc.h"
 #include "YuEngine/World/WorldComponentResourceBindingResult.h"
+#include "YuEngine/World/WorldComponentResourceBindingRestoreBridge.h"
+#include "YuEngine/World/WorldComponentResourceBindingRestoreResult.h"
+#include "YuEngine/World/WorldComponentResourceBindingRestoreSnapshot.h"
+#include "YuEngine/World/WorldComponentResourceBindingRestoreStatus.h"
 #include "YuEngine/World/WorldComponentResourceBindingSnapshot.h"
 #include "YuEngine/World/WorldComponentResourceBindingSnapshotBridge.h"
 #include "YuEngine/World/WorldComponentResourceBindingSnapshotBridgeDesc.h"
@@ -221,6 +226,10 @@ using yuengine::world::WorldComponentResourceBinding;
 using yuengine::world::WorldComponentResourceBindingBridge;
 using yuengine::world::WorldComponentResourceBindingBridgeDesc;
 using yuengine::world::WorldComponentResourceBindingResult;
+using yuengine::world::WorldComponentResourceBindingRestoreBridge;
+using yuengine::world::WorldComponentResourceBindingRestoreResult;
+using yuengine::world::WorldComponentResourceBindingRestoreSnapshot;
+using yuengine::world::WorldComponentResourceBindingRestoreStatus;
 using yuengine::world::WorldComponentResourceBindingSnapshot;
 using yuengine::world::WorldComponentResourceBindingSnapshotBridge;
 using yuengine::world::WorldComponentResourceBindingSnapshotBridgeDesc;
@@ -483,6 +492,54 @@ constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_WORLD_CORE_FREE =
     "WorldComponentResourceBindingSnapshotBridge_WorldInstanceCoreRemainsSnapshotFree";
 constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_RESOURCE_CORE_FREE =
     "WorldComponentResourceBindingSnapshotBridge_ResourceCoreRemainsWorldFree";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_ORDER =
+    "WorldComponentResourceBindingRestoreBridge_RestoresRecordsInInputOrder";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_EMPTY =
+    "WorldComponentResourceBindingRestoreBridge_RestoresEmptyInputWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_NULL_DESTINATION =
+    "WorldComponentResourceBindingRestoreBridge_RejectsNullDestinationWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_NULL_ATTACHMENT =
+    "WorldComponentResourceBindingRestoreBridge_RejectsNullAttachmentSourceWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_NULL_REGISTRY =
+    "WorldComponentResourceBindingRestoreBridge_RejectsNullRegistryWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_NULL_INPUT =
+    "WorldComponentResourceBindingRestoreBridge_RejectsNullInputWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_INVALID_WORLD =
+    "WorldComponentResourceBindingRestoreBridge_RejectsInvalidWorldIdWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_INVALID_TYPE =
+    "WorldComponentResourceBindingRestoreBridge_RejectsInvalidComponentTypeWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_INVALID_SLOT =
+    "WorldComponentResourceBindingRestoreBridge_RejectsInvalidComponentSlotWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_MISSING_ATTACHMENT =
+    "WorldComponentResourceBindingRestoreBridge_RejectsMissingAttachmentWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_INVALID_HANDLE =
+    "WorldComponentResourceBindingRestoreBridge_RejectsInvalidResourceHandleWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_STALE_HANDLE =
+    "WorldComponentResourceBindingRestoreBridge_RejectsStaleResourceHandleWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_TYPE_MISMATCH =
+    "WorldComponentResourceBindingRestoreBridge_RejectsResourceTypeMismatchWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_DUPLICATE =
+    "WorldComponentResourceBindingRestoreBridge_RejectsDuplicateInputWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_DESTINATION_CAPACITY =
+    "WorldComponentResourceBindingRestoreBridge_RejectsDestinationCapacityOverflowWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_NON_EMPTY_DESTINATION =
+    "WorldComponentResourceBindingRestoreBridge_RejectsNonEmptyDestinationWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_PREFLIGHT_ACQUIRE =
+    "WorldComponentResourceBindingRestoreBridge_AcquiresOnlyAfterPreflight";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_ACQUIRE_FAILURE =
+    "WorldComponentResourceBindingRestoreBridge_ResourceAcquireFailureDoesNotPartiallyRestore";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_COUNTERS =
+    "WorldComponentResourceBindingRestoreBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_NO_PAYLOAD =
+    "WorldComponentResourceBindingRestoreBridge_NoActorComponentPayloadOrLifecycle";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_NO_FILE_PACKAGE =
+    "WorldComponentResourceBindingRestoreBridge_NoFilePackageLoadDecodeUploadOrGameAdapterDependency";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_NO_RENDER_PHYSICS =
+    "WorldComponentResourceBindingRestoreBridge_NoRenderPhysicsAudioInputUiToolOrReportDependency";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_WORLD_CORE_FREE =
+    "WorldComponentResourceBindingRestoreBridge_WorldInstanceCoreRemainsRestoreFree";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESTORE_RESOURCE_CORE_FREE =
+    "WorldComponentResourceBindingRestoreBridge_ResourceCoreRemainsWorldFree";
 constexpr const char *TEST_COMPONENT_ADD_VALID = "WorldComponentAttachmentBridge_AddValidAttachment_StoresRecord";
 constexpr const char *TEST_COMPONENT_ADD_INVALID_WORLD = "WorldComponentAttachmentBridge_AddRejectsInvalidWorldIdWithoutMutation";
 constexpr const char *TEST_COMPONENT_ADD_INVALID_TYPE = "WorldComponentAttachmentBridge_AddRejectsInvalidComponentTypeWithoutMutation";
@@ -1715,6 +1772,141 @@ int ReadRejectedComponentResourceBindingSnapshotRecords(
 
     if (!ComponentResourceBindingsMatch(output_bindings[1], sentinel_binding)) {
         return Fail("component resource binding snapshot rejected read mutated second output");
+    }
+
+    return 0;
+}
+
+WorldComponentResourceBinding MakeComponentResourceBinding(
+    WorldObjectId world_object_id,
+    WorldComponentTypeId component_type_id,
+    WorldComponentSlotId component_slot_id,
+    ResourceHandle resource_handle,
+    ResourceTypeId expected_resource_type) {
+    WorldComponentResourceBinding binding{};
+    binding.world_object_id = world_object_id;
+    binding.component_type_id = component_type_id;
+    binding.component_slot_id = component_slot_id;
+    binding.resource_handle = resource_handle;
+    binding.expected_resource_type = expected_resource_type;
+    binding.is_bound = true;
+    binding.is_acquired = false;
+    return binding;
+}
+
+bool ComponentResourceRestoredBindingMatchesInput(
+    const WorldComponentResourceBinding &restored_binding,
+    const WorldComponentResourceBinding &input_binding) {
+    if (restored_binding.world_object_id.value != input_binding.world_object_id.value) {
+        return false;
+    }
+
+    if (restored_binding.component_type_id.value != input_binding.component_type_id.value) {
+        return false;
+    }
+
+    if (restored_binding.component_slot_id.value != input_binding.component_slot_id.value) {
+        return false;
+    }
+
+    if (restored_binding.resource_handle.slot != input_binding.resource_handle.slot) {
+        return false;
+    }
+
+    if (restored_binding.resource_handle.generation != input_binding.resource_handle.generation) {
+        return false;
+    }
+
+    if (restored_binding.expected_resource_type.value != input_binding.expected_resource_type.value) {
+        return false;
+    }
+
+    if (!restored_binding.is_bound) {
+        return false;
+    }
+
+    return restored_binding.is_acquired;
+}
+
+int AddComponentResourceRestoreInput(
+    WorldComponentAttachmentBridge &attachment_bridge,
+    ResourceRegistry &registry,
+    WorldObjectId world_object_id,
+    WorldComponentTypeId component_type_id,
+    WorldComponentSlotId component_slot_id,
+    ResourceTypeId resource_type,
+    const char *resource_key,
+    WorldComponentResourceBinding *out_binding) {
+    if (out_binding == nullptr) {
+        return Fail("component resource restore output binding was null");
+    }
+
+    if (AddComponentAttachment(
+            attachment_bridge,
+            world_object_id,
+            component_type_id,
+            component_slot_id,
+            "component resource restore attachment add failed") != 0) {
+        return 1;
+    }
+
+    const ResourceRegistrationResult resource = RegisterResource(registry, resource_type, resource_key);
+    if (!resource.Succeeded()) {
+        return Fail("component resource restore registration failed");
+    }
+
+    *out_binding = MakeComponentResourceBinding(
+        world_object_id,
+        component_type_id,
+        component_slot_id,
+        resource.handle,
+        resource_type);
+    return 0;
+}
+
+int ExpectComponentResourceRestoreFailureWithoutMutation(
+    WorldComponentResourceBindingRestoreBridge &restore_bridge,
+    WorldComponentResourceBindingBridge *destination_bridge,
+    const WorldComponentAttachmentBridge *attachment_bridge,
+    ResourceRegistry *resource_registry,
+    const WorldComponentResourceBinding *input_bindings,
+    std::uint32_t input_binding_count,
+    WorldComponentResourceBindingRestoreStatus expected_status,
+    const char *error_message) {
+    const bool has_destination = destination_bridge != nullptr;
+    WorldComponentResourceBindingSnapshot before_destination{};
+    if (has_destination) {
+        before_destination = destination_bridge->Snapshot();
+    }
+
+    const bool has_registry = resource_registry != nullptr;
+    ResourceSnapshot before_registry{};
+    if (has_registry) {
+        before_registry = resource_registry->Snapshot();
+    }
+
+    const WorldComponentResourceBindingRestoreResult result = restore_bridge.Restore(
+        destination_bridge,
+        attachment_bridge,
+        resource_registry,
+        input_bindings,
+        input_binding_count);
+    if (result.status != expected_status) {
+        return Fail(error_message);
+    }
+
+    if (has_destination) {
+        const WorldComponentResourceBindingSnapshot after_destination = destination_bridge->Snapshot();
+        if (!ComponentResourceBindingSnapshotsMatch(before_destination, after_destination)) {
+            return Fail("component resource restore failure mutated destination");
+        }
+    }
+
+    if (has_registry) {
+        const ResourceSnapshot after_registry = resource_registry->Snapshot();
+        if (!ResourceSnapshotsMatch(before_registry, after_registry)) {
+            return Fail("component resource restore failure mutated registry");
+        }
     }
 
     return 0;
@@ -7978,6 +8170,902 @@ int WorldComponentResourceBindingSnapshotBridgeResourceCoreRemainsWorldFree() {
     return 0;
 }
 
+int WorldComponentResourceBindingRestoreBridgeRestoresRecordsInInputOrder() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentResourceBinding, 2U> input_bindings{};
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_MATERIAL,
+            "material_restore_order_a",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_restore_order_a",
+            &input_bindings[1]) != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    const std::uint32_t input_count = static_cast<std::uint32_t>(input_bindings.size());
+    const WorldComponentResourceBindingRestoreResult result = restore_bridge.Restore(
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        input_bindings.data(),
+        input_count);
+    if (!result.Succeeded()) {
+        return Fail("component resource restore order restore failed");
+    }
+
+    if (result.state.restored_binding_count != input_count) {
+        return Fail("component resource restore order restored wrong count");
+    }
+
+    std::array<WorldComponentResourceBinding, 2U> restored_bindings{};
+    const std::uint32_t restored_count = destination_bridge.ExportBindings(
+        restored_bindings.data(),
+        input_count);
+    if (restored_count != input_count) {
+        return Fail("component resource restore order exported wrong count");
+    }
+
+    if (!ComponentResourceRestoredBindingMatchesInput(restored_bindings[0], input_bindings[0])) {
+        return Fail("component resource restore order changed first record");
+    }
+
+    if (!ComponentResourceRestoredBindingMatchesInput(restored_bindings[1], input_bindings[1])) {
+        return Fail("component resource restore order changed second record");
+    }
+
+    if (registry.Snapshot().acquired_handle_count != input_count) {
+        return Fail("component resource restore order acquired wrong resource count");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingRestoreBridgeRestoresEmptyInputWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    std::array<WorldComponentResourceBinding, 1U> input_bindings{};
+    const WorldComponentResourceBindingSnapshot before_destination = destination_bridge.Snapshot();
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const WorldComponentResourceBindingRestoreResult result = restore_bridge.Restore(
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        input_bindings.data(),
+        0U);
+    if (!result.Succeeded()) {
+        return Fail("component resource restore empty returned failure");
+    }
+
+    if (result.state.input_binding_count != 0U) {
+        return Fail("component resource restore empty recorded input count");
+    }
+
+    if (result.state.restored_binding_count != 0U) {
+        return Fail("component resource restore empty restored binding");
+    }
+
+    if (!ComponentResourceBindingSnapshotsMatch(before_destination, destination_bridge.Snapshot())) {
+        return Fail("component resource restore empty mutated destination");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource restore empty mutated registry");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsNullDestinationWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBinding input_binding{};
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_restore_null_destination",
+            &input_binding) != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        nullptr,
+        &attachment_bridge,
+        &registry,
+        &input_binding,
+        1U,
+        WorldComponentResourceBindingRestoreStatus::InvalidDestinationBridge,
+        "component resource restore null destination returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsNullAttachmentSourceWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_restore_null_attachment");
+    if (!resource.Succeeded()) {
+        return Fail("component resource restore null attachment registration failed");
+    }
+
+    WorldComponentResourceBinding input_binding = MakeComponentResourceBinding(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        nullptr,
+        &registry,
+        &input_binding,
+        1U,
+        WorldComponentResourceBindingRestoreStatus::InvalidAttachmentSource,
+        "component resource restore null attachment returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsNullRegistryWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource restore null registry attachment add failed") != 0) {
+        return 1;
+    }
+
+    const ResourceHandle resource_handle{1U, 1U};
+    WorldComponentResourceBinding input_binding = MakeComponentResourceBinding(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource_handle,
+        RESOURCE_TYPE_TEXTURE);
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        nullptr,
+        &input_binding,
+        1U,
+        WorldComponentResourceBindingRestoreStatus::InvalidResourceRegistry,
+        "component resource restore null registry returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsNullInputWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        nullptr,
+        1U,
+        WorldComponentResourceBindingRestoreStatus::InvalidInput,
+        "component resource restore null input returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsInvalidWorldIdWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_restore_invalid_world");
+    if (!resource.Succeeded()) {
+        return Fail("component resource restore invalid world registration failed");
+    }
+
+    WorldComponentResourceBinding input_binding = MakeComponentResourceBinding(
+        WorldObjectId{},
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        &input_binding,
+        1U,
+        WorldComponentResourceBindingRestoreStatus::InvalidWorldObjectId,
+        "component resource restore invalid world returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsInvalidComponentTypeWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_restore_invalid_type");
+    if (!resource.Succeeded()) {
+        return Fail("component resource restore invalid type registration failed");
+    }
+
+    WorldComponentResourceBinding input_binding = MakeComponentResourceBinding(
+        OBJECT_PLAYER,
+        WorldComponentTypeId{},
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        &input_binding,
+        1U,
+        WorldComponentResourceBindingRestoreStatus::InvalidComponentTypeId,
+        "component resource restore invalid type returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsInvalidComponentSlotWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_restore_invalid_slot");
+    if (!resource.Succeeded()) {
+        return Fail("component resource restore invalid slot registration failed");
+    }
+
+    WorldComponentResourceBinding input_binding = MakeComponentResourceBinding(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        WorldComponentSlotId{},
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        &input_binding,
+        1U,
+        WorldComponentResourceBindingRestoreStatus::InvalidComponentSlotId,
+        "component resource restore invalid slot returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsMissingAttachmentWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_restore_missing_attachment");
+    if (!resource.Succeeded()) {
+        return Fail("component resource restore missing attachment registration failed");
+    }
+
+    WorldComponentResourceBinding input_binding = MakeComponentResourceBinding(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        &input_binding,
+        1U,
+        WorldComponentResourceBindingRestoreStatus::MissingAttachment,
+        "component resource restore missing attachment returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsInvalidResourceHandleWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource restore invalid handle attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBinding input_binding = MakeComponentResourceBinding(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        ResourceHandle{},
+        RESOURCE_TYPE_TEXTURE);
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        &input_binding,
+        1U,
+        WorldComponentResourceBindingRestoreStatus::InvalidResourceHandle,
+        "component resource restore invalid handle returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsStaleResourceHandleWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource restore stale attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_restore_stale");
+    if (!resource.Succeeded()) {
+        return Fail("component resource restore stale registration failed");
+    }
+
+    if (registry.Retire(resource.handle) != ResourceStatus::Success) {
+        return Fail("component resource restore stale retire failed");
+    }
+
+    WorldComponentResourceBinding input_binding = MakeComponentResourceBinding(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        &input_binding,
+        1U,
+        WorldComponentResourceBindingRestoreStatus::StaleResourceHandle,
+        "component resource restore stale handle returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsResourceTypeMismatchWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource restore mismatch attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_restore_mismatch");
+    if (!resource.Succeeded()) {
+        return Fail("component resource restore mismatch registration failed");
+    }
+
+    WorldComponentResourceBinding input_binding = MakeComponentResourceBinding(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_MATERIAL);
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        &input_binding,
+        1U,
+        WorldComponentResourceBindingRestoreStatus::ResourceTypeMismatch,
+        "component resource restore type mismatch returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsDuplicateInputWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentResourceBinding, 2U> input_bindings{};
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_restore_duplicate_a",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    const ResourceRegistrationResult second_resource = RegisterResource(
+        registry,
+        RESOURCE_TYPE_TEXTURE,
+        "texture_restore_duplicate_b");
+    if (!second_resource.Succeeded()) {
+        return Fail("component resource restore duplicate second registration failed");
+    }
+
+    input_bindings[1] = MakeComponentResourceBinding(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        second_resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    const std::uint32_t input_count = static_cast<std::uint32_t>(input_bindings.size());
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        input_bindings.data(),
+        input_count,
+        WorldComponentResourceBindingRestoreStatus::DuplicateInputBinding,
+        "component resource restore duplicate returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsDestinationCapacityOverflowWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentResourceBinding, 2U> input_bindings{};
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_restore_capacity_a",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_AUDIO,
+            "audio_restore_capacity_a",
+            &input_bindings[1]) != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingBridgeDesc destination_desc{};
+    destination_desc.binding_capacity = 1U;
+    WorldComponentResourceBindingBridge destination_bridge(destination_desc);
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    const std::uint32_t input_count = static_cast<std::uint32_t>(input_bindings.size());
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        input_bindings.data(),
+        input_count,
+        WorldComponentResourceBindingRestoreStatus::DestinationCapacityExceeded,
+        "component resource restore destination capacity returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeRejectsNonEmptyDestinationWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBinding existing_input{};
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_restore_non_empty_existing",
+            &existing_input) != 0) {
+        return 1;
+    }
+
+    if (!BindComponentResource(
+            destination_bridge,
+            &attachment_bridge,
+            &registry,
+            existing_input.world_object_id,
+            existing_input.component_type_id,
+            existing_input.component_slot_id,
+            existing_input.resource_handle,
+            existing_input.expected_resource_type).Succeeded()) {
+        return Fail("component resource restore non-empty fixture bind failed");
+    }
+
+    WorldComponentResourceBinding input_binding{};
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_AUDIO,
+            "audio_restore_non_empty_new",
+            &input_binding) != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        &input_binding,
+        1U,
+        WorldComponentResourceBindingRestoreStatus::DestinationNotEmpty,
+        "component resource restore non-empty destination returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeAcquiresOnlyAfterPreflight() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentResourceBinding, 2U> input_bindings{};
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_restore_preflight_a",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    const ResourceRegistrationResult second_resource = RegisterResource(
+        registry,
+        RESOURCE_TYPE_MATERIAL,
+        "material_restore_preflight_a");
+    if (!second_resource.Succeeded()) {
+        return Fail("component resource restore preflight second registration failed");
+    }
+
+    input_bindings[1] = MakeComponentResourceBinding(
+        OBJECT_CAMERA,
+        COMPONENT_TYPE_SECONDARY,
+        COMPONENT_SLOT_SECONDARY,
+        second_resource.handle,
+        RESOURCE_TYPE_MATERIAL);
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    const std::uint32_t input_count = static_cast<std::uint32_t>(input_bindings.size());
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        input_bindings.data(),
+        input_count,
+        WorldComponentResourceBindingRestoreStatus::MissingAttachment,
+        "component resource restore preflight returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeResourceAcquireFailureDoesNotPartiallyRestore() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource restore acquire first attachment add failed") != 0) {
+        return 1;
+    }
+
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component resource restore acquire second attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const std::uint32_t max_reference_count = std::numeric_limits<std::uint32_t>::max();
+    const std::uint32_t initial_reference_count = max_reference_count - 1U;
+    const ResourceRegistrationResult resource = RegisterResource(
+        registry,
+        RESOURCE_TYPE_TEXTURE,
+        "texture_restore_acquire_overflow",
+        initial_reference_count);
+    if (!resource.Succeeded()) {
+        return Fail("component resource restore acquire overflow registration failed");
+    }
+
+    std::array<WorldComponentResourceBinding, 2U> input_bindings{
+        MakeComponentResourceBinding(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE),
+        MakeComponentResourceBinding(
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE)};
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    const std::uint32_t input_count = static_cast<std::uint32_t>(input_bindings.size());
+    return ExpectComponentResourceRestoreFailureWithoutMutation(
+        restore_bridge,
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        input_bindings.data(),
+        input_count,
+        WorldComponentResourceBindingRestoreStatus::ResourceAcquireWouldOverflow,
+        "component resource restore acquire failure returned wrong status");
+}
+
+int WorldComponentResourceBindingRestoreBridgeSnapshotReportsCountsAndLastStatus() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    std::array<WorldComponentResourceBinding, 2U> input_bindings{};
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_restore_counter_a",
+            &input_bindings[0]) != 0) {
+        return 1;
+    }
+
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_AUDIO,
+            "audio_restore_counter_a",
+            &input_bindings[1]) != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    const std::uint32_t input_count = static_cast<std::uint32_t>(input_bindings.size());
+    if (!restore_bridge.Restore(
+            &destination_bridge,
+            &attachment_bridge,
+            &registry,
+            input_bindings.data(),
+            input_count).Succeeded()) {
+        return Fail("component resource restore counters success failed");
+    }
+
+    const WorldComponentResourceBindingRestoreResult failure_result = restore_bridge.Restore(
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        nullptr,
+        1U);
+    if (failure_result.status != WorldComponentResourceBindingRestoreStatus::InvalidInput) {
+        return Fail("component resource restore counters failure status wrong");
+    }
+
+    const WorldComponentResourceBindingRestoreSnapshot snapshot = restore_bridge.Snapshot();
+    if (snapshot.restore_attempt_count != 2U) {
+        return Fail("component resource restore counters attempt count wrong");
+    }
+
+    if (snapshot.restored_binding_count != input_count) {
+        return Fail("component resource restore counters restored count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component resource restore counters failure count wrong");
+    }
+
+    if (snapshot.last_status != WorldComponentResourceBindingRestoreStatus::InvalidInput) {
+        return Fail("component resource restore counters last status wrong");
+    }
+
+    if (snapshot.last_binding_status != WorldComponentResourceBindingStatus::Success) {
+        return Fail("component resource restore counters binding status wrong");
+    }
+
+    if (snapshot.last_resource_status != ResourceStatus::Success) {
+        return Fail("component resource restore counters resource status wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingRestoreBridgeNoActorComponentPayloadOrLifecycle() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBinding input_binding{};
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_EFFECT,
+            COMPONENT_TYPE_TERTIARY,
+            COMPONENT_SLOT_TERTIARY,
+            RESOURCE_TYPE_AUDIO,
+            "audio_restore_payload_a",
+            &input_binding) != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    const WorldComponentResourceBindingRestoreResult result = restore_bridge.Restore(
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        &input_binding,
+        1U);
+    if (!result.Succeeded()) {
+        return Fail("component resource restore payload boundary restore failed");
+    }
+
+    const WorldComponentResourceBindingResult query_result = destination_bridge.Query(
+        OBJECT_EFFECT,
+        COMPONENT_TYPE_TERTIARY,
+        COMPONENT_SLOT_TERTIARY);
+    if (!query_result.Succeeded()) {
+        return Fail("component resource restore payload boundary query failed");
+    }
+
+    if (query_result.resource_handle.slot != input_binding.resource_handle.slot) {
+        return Fail("component resource restore payload boundary resource wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingRestoreBridgeNoFilePackageLoadDecodeUploadOrGameAdapterDependency() {
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    const WorldComponentResourceBindingRestoreSnapshot snapshot = restore_bridge.Snapshot();
+    if (snapshot.binding_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("component resource restore dependency test changed default capacity");
+    }
+
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("component resource restore dependency test changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingRestoreBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency() {
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    const WorldComponentResourceBindingRestoreSnapshot snapshot = restore_bridge.Snapshot();
+    if (snapshot.binding_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("component resource restore render dependency test changed default capacity");
+    }
+
+    if (snapshot.last_status != WorldComponentResourceBindingRestoreStatus::Success) {
+        return Fail("component resource restore render dependency test changed last status");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingRestoreBridgeWorldInstanceCoreRemainsRestoreFree() {
+    WorldInstance world = MakeWorld(4U, 4U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("component resource restore world core-free registration failed");
+    }
+
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBinding input_binding{};
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_restore_world_core_a",
+            &input_binding) != 0) {
+        return 1;
+    }
+
+    const WorldSnapshot before_world = world.Snapshot();
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    const WorldComponentResourceBindingRestoreResult result = restore_bridge.Restore(
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        &input_binding,
+        1U);
+    if (!result.Succeeded()) {
+        return Fail("component resource restore world core-free restore failed");
+    }
+
+    const WorldSnapshot after_world = world.Snapshot();
+    if (!WorldSnapshotsMatch(before_world, after_world)) {
+        return Fail("component resource restore bridge mutated world");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingRestoreBridgeResourceCoreRemainsWorldFree() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBinding input_binding{};
+    if (AddComponentResourceRestoreInput(
+            attachment_bridge,
+            registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_restore_resource_core_a",
+            &input_binding) != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingBridge destination_bridge;
+    WorldComponentResourceBindingRestoreBridge restore_bridge;
+    const WorldComponentResourceBindingRestoreResult result = restore_bridge.Restore(
+        &destination_bridge,
+        &attachment_bridge,
+        &registry,
+        &input_binding,
+        1U);
+    if (!result.Succeeded()) {
+        return Fail("component resource restore resource core-free restore failed");
+    }
+
+    if (destination_bridge.Clear(&registry) != WorldComponentResourceBindingStatus::Success) {
+        return Fail("component resource restore resource core-free clear failed");
+    }
+
+    if (registry.Retire(input_binding.resource_handle) != ResourceStatus::Success) {
+        return Fail("component resource restore resource core-free retire failed");
+    }
+
+    return 0;
+}
+
 int WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord() {
     WorldComponentAttachmentBridge bridge;
     const WorldComponentAttachmentResult result = bridge.Add(
@@ -10284,6 +11372,54 @@ int main(int argc, char **argv) {
             WorldComponentResourceBindingSnapshotBridgeWorldInstanceCoreRemainsSnapshotFree},
         {TEST_COMPONENT_RESOURCE_SNAPSHOT_RESOURCE_CORE_FREE,
             WorldComponentResourceBindingSnapshotBridgeResourceCoreRemainsWorldFree},
+        {TEST_COMPONENT_RESOURCE_RESTORE_ORDER,
+            WorldComponentResourceBindingRestoreBridgeRestoresRecordsInInputOrder},
+        {TEST_COMPONENT_RESOURCE_RESTORE_EMPTY,
+            WorldComponentResourceBindingRestoreBridgeRestoresEmptyInputWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_NULL_DESTINATION,
+            WorldComponentResourceBindingRestoreBridgeRejectsNullDestinationWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_NULL_ATTACHMENT,
+            WorldComponentResourceBindingRestoreBridgeRejectsNullAttachmentSourceWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_NULL_REGISTRY,
+            WorldComponentResourceBindingRestoreBridgeRejectsNullRegistryWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_NULL_INPUT,
+            WorldComponentResourceBindingRestoreBridgeRejectsNullInputWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_INVALID_WORLD,
+            WorldComponentResourceBindingRestoreBridgeRejectsInvalidWorldIdWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_INVALID_TYPE,
+            WorldComponentResourceBindingRestoreBridgeRejectsInvalidComponentTypeWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_INVALID_SLOT,
+            WorldComponentResourceBindingRestoreBridgeRejectsInvalidComponentSlotWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_MISSING_ATTACHMENT,
+            WorldComponentResourceBindingRestoreBridgeRejectsMissingAttachmentWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_INVALID_HANDLE,
+            WorldComponentResourceBindingRestoreBridgeRejectsInvalidResourceHandleWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_STALE_HANDLE,
+            WorldComponentResourceBindingRestoreBridgeRejectsStaleResourceHandleWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_TYPE_MISMATCH,
+            WorldComponentResourceBindingRestoreBridgeRejectsResourceTypeMismatchWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_DUPLICATE,
+            WorldComponentResourceBindingRestoreBridgeRejectsDuplicateInputWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_DESTINATION_CAPACITY,
+            WorldComponentResourceBindingRestoreBridgeRejectsDestinationCapacityOverflowWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_NON_EMPTY_DESTINATION,
+            WorldComponentResourceBindingRestoreBridgeRejectsNonEmptyDestinationWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_RESTORE_PREFLIGHT_ACQUIRE,
+            WorldComponentResourceBindingRestoreBridgeAcquiresOnlyAfterPreflight},
+        {TEST_COMPONENT_RESOURCE_RESTORE_ACQUIRE_FAILURE,
+            WorldComponentResourceBindingRestoreBridgeResourceAcquireFailureDoesNotPartiallyRestore},
+        {TEST_COMPONENT_RESOURCE_RESTORE_COUNTERS,
+            WorldComponentResourceBindingRestoreBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_COMPONENT_RESOURCE_RESTORE_NO_PAYLOAD,
+            WorldComponentResourceBindingRestoreBridgeNoActorComponentPayloadOrLifecycle},
+        {TEST_COMPONENT_RESOURCE_RESTORE_NO_FILE_PACKAGE,
+            WorldComponentResourceBindingRestoreBridgeNoFilePackageLoadDecodeUploadOrGameAdapterDependency},
+        {TEST_COMPONENT_RESOURCE_RESTORE_NO_RENDER_PHYSICS,
+            WorldComponentResourceBindingRestoreBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency},
+        {TEST_COMPONENT_RESOURCE_RESTORE_WORLD_CORE_FREE,
+            WorldComponentResourceBindingRestoreBridgeWorldInstanceCoreRemainsRestoreFree},
+        {TEST_COMPONENT_RESOURCE_RESTORE_RESOURCE_CORE_FREE,
+            WorldComponentResourceBindingRestoreBridgeResourceCoreRemainsWorldFree},
         {TEST_COMPONENT_ADD_VALID, WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord},
         {TEST_COMPONENT_ADD_INVALID_WORLD, WorldComponentAttachmentBridgeAddRejectsInvalidWorldIdWithoutMutation},
         {TEST_COMPONENT_ADD_INVALID_TYPE, WorldComponentAttachmentBridgeAddRejectsInvalidComponentTypeWithoutMutation},

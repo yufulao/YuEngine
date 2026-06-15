@@ -184,6 +184,34 @@ ResourceStatus ResourceRegistry::Acquire(ResourceHandle handle, ResourceTypeId e
     return ResourceStatus::Success;
 }
 
+ResourceStatus ResourceRegistry::ValidateAcquire(
+    ResourceHandle handle,
+    ResourceTypeId expected_type,
+    std::uint32_t projected_acquire_count) const {
+    std::size_t slot_index = 0U;
+    const ResourceStatus handle_status = ResolveHandle(handle, slot_index);
+    if (handle_status != ResourceStatus::Success) {
+        return handle_status;
+    }
+
+    const ResourceSlot &slot = slots_[slot_index];
+    if (slot.type.value != expected_type.value) {
+        return ResourceStatus::TypeMismatch;
+    }
+
+    if (projected_acquire_count == 0U) {
+        return ResourceStatus::Success;
+    }
+
+    const std::uint32_t max_reference_count = std::numeric_limits<std::uint32_t>::max();
+    const std::uint32_t remaining_reference_count = max_reference_count - slot.reference_count;
+    if (projected_acquire_count > remaining_reference_count) {
+        return ResourceStatus::ReferenceCountOverflow;
+    }
+
+    return ResourceStatus::Success;
+}
+
 ResourceStatus ResourceRegistry::Release(ResourceHandle handle) {
     std::size_t slot_index = 0U;
     const ResourceStatus handle_status = ResolveHandle(handle, slot_index);

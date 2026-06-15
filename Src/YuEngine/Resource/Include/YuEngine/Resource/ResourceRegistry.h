@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <cstddef>
 
 #include "YuEngine/Resource/ResourceConstants.h"
@@ -47,6 +48,17 @@ public:
      * @return Explicit operation status.
      */
     ResourceStatus Acquire(ResourceHandle handle, ResourceTypeId expected_type);
+    /**
+     * @comment Validates that a projected acquire can succeed without mutating registry state.
+     * @param handle Input handle.
+     * @param expected_type Input expected type.
+     * @param projected_acquire_count Input acquire count budget.
+     * @return Explicit operation status.
+     */
+    ResourceStatus ValidateAcquire(
+        ResourceHandle handle,
+        ResourceTypeId expected_type,
+        std::uint32_t projected_acquire_count) const;
     /**
      * @comment Releases the operation.
      * @param handle Input handle.

@@ -34,6 +34,10 @@ constexpr const char* TEST_TYPE_MISMATCH = "Resource_HandleRejectsTypeMismatch";
 constexpr const char* TEST_ACQUIRE_RELEASE = "Resource_AcquireRelease_TracksReferenceCount";
 constexpr const char* TEST_REPEATED_ACQUIRE = "Resource_RepeatedAcquire_IncrementsReferenceCount";
 constexpr const char* TEST_REFERENCE_OVERFLOW = "Resource_AcquireRejectsReferenceCountOverflow";
+constexpr const char *TEST_VALIDATE_ACQUIRE =
+    "Resource_ValidateAcquireChecksHandleTypeAndOverflowWithoutMutation";
+constexpr const char *TEST_VALIDATE_ACQUIRE_WORLD_FREE =
+    "Resource_ValidateAcquireDoesNotRequireWorld";
 constexpr const char* TEST_RETIRE_REFERENCED = "Resource_RetireRejectsOutstandingAcquire";
 constexpr const char* TEST_RETIRE_DEPENDED_ON = "Resource_RetireRejectsLiveDependentEdge";
 constexpr const char* TEST_MISSING_DEPENDENCY = "Resource_DependencyValidationRejectsMissingDependency";
@@ -363,6 +367,77 @@ int ResourceAcquireRejectsReferenceCountOverflow() {
     return 0;
 }
 
+int ResourceValidateAcquireChecksHandleTypeAndOverflowWithoutMutation() {
+    ResourceRegistry registry;
+    const std::uint32_t max_reference_count = std::numeric_limits<std::uint32_t>::max();
+    const std::uint32_t initial_reference_count = max_reference_count - 1U;
+    const ResourceRegistrationResult result = registry.RegisterSyntheticDescriptor(
+        DescriptorWithReferenceCount(TYPE_TEXTURE, "texture_a", initial_reference_count));
+    if (!result.Succeeded()) {
+        return Fail("validate acquire fixture registration failed");
+    }
+
+    const ResourceSnapshot before_success_snapshot = registry.Snapshot();
+    const ResourceStatus success_status = registry.ValidateAcquire(result.handle, TYPE_TEXTURE, 1U);
+    if (success_status != ResourceStatus::Success) {
+        return Fail("validate acquire rejected valid projected acquire");
+    }
+
+    if (!SnapshotsMatch(before_success_snapshot, registry.Snapshot())) {
+        return Fail("validate acquire success mutated registry");
+    }
+
+    const ResourceSnapshot before_type_snapshot = registry.Snapshot();
+    const ResourceStatus type_status = registry.ValidateAcquire(result.handle, TYPE_AUDIO, 1U);
+    if (type_status != ResourceStatus::TypeMismatch) {
+        return Fail("validate acquire type mismatch returned wrong status");
+    }
+
+    if (!SnapshotsMatch(before_type_snapshot, registry.Snapshot())) {
+        return Fail("validate acquire type mismatch mutated registry");
+    }
+
+    const ResourceSnapshot before_overflow_snapshot = registry.Snapshot();
+    const ResourceStatus overflow_status = registry.ValidateAcquire(result.handle, TYPE_TEXTURE, 2U);
+    if (overflow_status != ResourceStatus::ReferenceCountOverflow) {
+        return Fail("validate acquire overflow returned wrong status");
+    }
+
+    if (!SnapshotsMatch(before_overflow_snapshot, registry.Snapshot())) {
+        return Fail("validate acquire overflow mutated registry");
+    }
+
+    return 0;
+}
+
+int ResourceValidateAcquireDoesNotRequireWorld() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_world_free");
+    if (!result.Succeeded()) {
+        return Fail("validate acquire world-free registration failed");
+    }
+
+    const ResourceSnapshot before_validate_snapshot = registry.Snapshot();
+    const ResourceStatus validate_status = registry.ValidateAcquire(result.handle, TYPE_TEXTURE, 1U);
+    if (validate_status != ResourceStatus::Success) {
+        return Fail("validate acquire world-free validation failed");
+    }
+
+    if (!SnapshotsMatch(before_validate_snapshot, registry.Snapshot())) {
+        return Fail("validate acquire world-free mutated registry");
+    }
+
+    if (registry.Acquire(result.handle, TYPE_TEXTURE) != ResourceStatus::Success) {
+        return Fail("validate acquire world-free acquire failed");
+    }
+
+    if (registry.Release(result.handle) != ResourceStatus::Success) {
+        return Fail("validate acquire world-free release failed");
+    }
+
+    return 0;
+}
+
 int ResourceRetireRejectsOutstandingAcquire() {
     ResourceRegistry registry;
     const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_a");
@@ -596,6 +671,8 @@ int main(int argc, char** argv) {
         {TEST_ACQUIRE_RELEASE, ResourceAcquireReleaseTracksReferenceCount},
         {TEST_REPEATED_ACQUIRE, ResourceRepeatedAcquireIncrementsReferenceCount},
         {TEST_REFERENCE_OVERFLOW, ResourceAcquireRejectsReferenceCountOverflow},
+        {TEST_VALIDATE_ACQUIRE, ResourceValidateAcquireChecksHandleTypeAndOverflowWithoutMutation},
+        {TEST_VALIDATE_ACQUIRE_WORLD_FREE, ResourceValidateAcquireDoesNotRequireWorld},
         {TEST_RETIRE_REFERENCED, ResourceRetireRejectsOutstandingAcquire},
         {TEST_RETIRE_DEPENDED_ON, ResourceRetireRejectsLiveDependentEdge},
         {TEST_MISSING_DEPENDENCY, ResourceDependencyValidationRejectsMissingDependency},

@@ -244,6 +244,24 @@ WorldComponentResourceBindingSnapshot WorldComponentResourceBindingBridge::Snaps
     return snapshot_;
 }
 
+WorldComponentResourceBindingStatus WorldComponentResourceBindingBridge::ValidateRestoreDestination(
+    std::uint32_t required_binding_count) const {
+    const WorldComponentResourceBindingStatus capacity_status = ValidateBridgeCapacity();
+    if (capacity_status != WorldComponentResourceBindingStatus::Success) {
+        return capacity_status;
+    }
+
+    if (snapshot_.active_binding_count > 0U) {
+        return WorldComponentResourceBindingStatus::DuplicateComponentBinding;
+    }
+
+    if (required_binding_count > snapshot_.binding_capacity) {
+        return WorldComponentResourceBindingStatus::CapacityExceeded;
+    }
+
+    return WorldComponentResourceBindingStatus::Success;
+}
+
 std::uint32_t WorldComponentResourceBindingBridge::ExportBindings(
     WorldComponentResourceBinding *output_bindings,
     std::uint32_t output_capacity) const {
