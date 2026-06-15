@@ -67,6 +67,9 @@ This gate owns a future first slice for:
   as one decoded scene candidate;
 - validating all input pointers, input counts, output plan pointers, output plan
   capacity, destination pointers when supplied, and descriptor capacities;
+- checking a required const `WorldInstance` pointer and world-object membership
+  for every decoded `WorldObjectId` through public membership queries before any
+  plan output mutation;
 - checking duplicate object identity world object ids, duplicate object handles,
   duplicate transform world object ids, duplicate attachment tuples, and
   duplicate component-resource binding tuples;
@@ -120,6 +123,7 @@ Allowed dependencies:
 - P3-GATE-019 object identity and transform restore record vocabulary;
 - P3-GATE-020 decoded object-transform manifest record vocabulary as a source
   of caller-owned records, without stream parsing in this gate;
+- const `WorldInstance` membership queries only;
 - const `ObjectRegistry` validation helpers only;
 - const `ResourceRegistry` validation helpers only;
 - existing world bridge public snapshots and restore-destination validation
@@ -141,14 +145,15 @@ Forbidden dependencies:
 The first slice lifecycle is:
 
 1. Caller owns all decoded input record buffers.
-2. Caller owns the output plan buffer or output plan value.
-3. Caller may provide active destination bridges only for const capacity and
+2. Caller provides a const world instance for membership checks.
+3. Caller owns the required output plan buffer or output plan value.
+4. Caller may provide active destination bridges only for const capacity and
    empty-destination precondition checks.
-4. Caller may provide const registries only for projected acquire validation.
-5. The bridge validates all records, references, duplicates, capacities,
+5. Caller may provide const registries only for projected acquire validation.
+6. The bridge validates all records, references, duplicates, capacities,
    projected acquires, and destination preconditions.
-6. A successful operation writes only the caller-owned POD plan and counters.
-7. Active restore remains a later explicit gate.
+7. A successful operation writes only the caller-owned POD plan and counters.
+8. Active restore remains a later explicit gate.
 
 Failures must leave caller-owned plan outputs unchanged unless the operation has
 already returned success.
@@ -161,7 +166,8 @@ Expected first-slice inputs:
 - caller-owned transform restore record buffer and count;
 - caller-owned component attachment record buffer and count;
 - caller-owned component-resource binding record buffer and count;
-- optional caller-owned output plan buffer and capacity;
+- caller-owned output plan buffer and capacity;
+- const world instance for world object membership validation;
 - descriptor-provided family capacities and plan capacity;
 - const object registry for projected object acquire validation;
 - const resource registry for projected resource acquire validation;
@@ -202,12 +208,14 @@ Fast gate tests required before the slice can be considered complete:
 - `WorldSceneDecodedRestorePlanBridge_RejectsNullAttachmentInputWithoutMutation`
 - `WorldSceneDecodedRestorePlanBridge_RejectsNullBindingInputWithoutMutation`
 - `WorldSceneDecodedRestorePlanBridge_RejectsNullPlanOutputWithoutMutation`
+- `WorldSceneDecodedRestorePlanBridge_RejectsNullWorldWithoutMutation`
 - `WorldSceneDecodedRestorePlanBridge_RejectsPlanOutputCapacityTooSmallWithoutMutation`
 - `WorldSceneDecodedRestorePlanBridge_RejectsIdentityCountExceededWithoutMutation`
 - `WorldSceneDecodedRestorePlanBridge_RejectsTransformCountExceededWithoutMutation`
 - `WorldSceneDecodedRestorePlanBridge_RejectsAttachmentCountExceededWithoutMutation`
 - `WorldSceneDecodedRestorePlanBridge_RejectsBindingCountExceededWithoutMutation`
 - `WorldSceneDecodedRestorePlanBridge_RejectsInvalidIdentityRecordWithoutMutation`
+- `WorldSceneDecodedRestorePlanBridge_RejectsMissingWorldObjectWithoutMutation`
 - `WorldSceneDecodedRestorePlanBridge_RejectsInvalidTransformRecordWithoutMutation`
 - `WorldSceneDecodedRestorePlanBridge_RejectsInvalidAttachmentRecordWithoutMutation`
 - `WorldSceneDecodedRestorePlanBridge_RejectsInvalidBindingRecordWithoutMutation`
