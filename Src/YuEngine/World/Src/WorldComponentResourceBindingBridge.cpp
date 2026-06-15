@@ -244,6 +244,26 @@ WorldComponentResourceBindingSnapshot WorldComponentResourceBindingBridge::Snaps
     return snapshot_;
 }
 
+std::uint32_t WorldComponentResourceBindingBridge::ExportBindings(
+    WorldComponentResourceBinding *output_bindings,
+    std::uint32_t output_capacity) const {
+    std::uint32_t exported_binding_count = 0U;
+    for (std::uint32_t index = 0U; index < snapshot_.binding_capacity; ++index) {
+        const WorldComponentResourceBinding &binding = bindings_[index];
+        if (!binding.is_bound) {
+            continue;
+        }
+
+        if ((output_bindings != nullptr) && (exported_binding_count < output_capacity)) {
+            output_bindings[exported_binding_count] = binding;
+        }
+
+        ++exported_binding_count;
+    }
+
+    return exported_binding_count;
+}
+
 WorldComponentResourceBindingResult WorldComponentResourceBindingBridge::RecordFailureResult(
     WorldComponentResourceBindingStatus status) {
     ++snapshot_.failed_operation_count;

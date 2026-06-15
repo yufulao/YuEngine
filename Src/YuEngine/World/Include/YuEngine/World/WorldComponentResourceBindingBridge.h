@@ -87,6 +87,15 @@ public:
      * @return Snapshot value.
      */
     WorldComponentResourceBindingSnapshot Snapshot() const;
+    /**
+     * @comment Copies active component resource binding records in deterministic slot order.
+     * @param output_bindings Caller-owned output binding buffer.
+     * @param output_capacity Output binding buffer capacity.
+     * @return Total active binding count.
+     */
+    std::uint32_t ExportBindings(
+        WorldComponentResourceBinding *output_bindings,
+        std::uint32_t output_capacity) const;
 
 private:
     WorldComponentResourceBindingResult RecordFailureResult(WorldComponentResourceBindingStatus status);

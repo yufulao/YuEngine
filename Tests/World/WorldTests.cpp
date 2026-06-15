@@ -68,6 +68,13 @@
 #include "YuEngine/World/WorldComponentResourceBindingBridgeDesc.h"
 #include "YuEngine/World/WorldComponentResourceBindingResult.h"
 #include "YuEngine/World/WorldComponentResourceBindingSnapshot.h"
+#include "YuEngine/World/WorldComponentResourceBindingSnapshotBridge.h"
+#include "YuEngine/World/WorldComponentResourceBindingSnapshotBridgeDesc.h"
+#include "YuEngine/World/WorldComponentResourceBindingSnapshotBridgeSnapshot.h"
+#include "YuEngine/World/WorldComponentResourceBindingSnapshotConstants.h"
+#include "YuEngine/World/WorldComponentResourceBindingSnapshotRecord.h"
+#include "YuEngine/World/WorldComponentResourceBindingSnapshotResult.h"
+#include "YuEngine/World/WorldComponentResourceBindingSnapshotStatus.h"
 #include "YuEngine/World/WorldComponentResourceBindingStatus.h"
 #include "YuEngine/World/WorldConstants.h"
 #include "YuEngine/World/WorldDesc.h"
@@ -180,6 +187,16 @@ using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_FIELD_SCHEMA_VERSION;
 using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_METADATA_RECORD_ID;
 using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_RECORD_BYTE_COUNT;
 using yuengine::world::WORLD_COMPONENT_ATTACHMENT_SNAPSHOT_SCHEMA_VERSION;
+using yuengine::world::WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_FIELD_RECORD_BYTES;
+using yuengine::world::WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_PAYLOAD_BYTE_COUNT;
+using yuengine::world::WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_RECORD_CAPACITY;
+using yuengine::world::WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_RECORD_ID_BASE;
+using yuengine::world::WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_FIELD_CHUNK_COUNT;
+using yuengine::world::WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_FIELD_RECORD_COUNT;
+using yuengine::world::WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_FIELD_SCHEMA_VERSION;
+using yuengine::world::WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_METADATA_RECORD_ID;
+using yuengine::world::WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_RECORD_BYTE_COUNT;
+using yuengine::world::WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_SCHEMA_VERSION;
 using yuengine::world::WorldComponentAttachmentBridge;
 using yuengine::world::WorldComponentAttachmentBridgeDesc;
 using yuengine::world::WorldComponentAttachment;
@@ -205,6 +222,12 @@ using yuengine::world::WorldComponentResourceBindingBridge;
 using yuengine::world::WorldComponentResourceBindingBridgeDesc;
 using yuengine::world::WorldComponentResourceBindingResult;
 using yuengine::world::WorldComponentResourceBindingSnapshot;
+using yuengine::world::WorldComponentResourceBindingSnapshotBridge;
+using yuengine::world::WorldComponentResourceBindingSnapshotBridgeDesc;
+using yuengine::world::WorldComponentResourceBindingSnapshotBridgeSnapshot;
+using yuengine::world::WorldComponentResourceBindingSnapshotRecord;
+using yuengine::world::WorldComponentResourceBindingSnapshotResult;
+using yuengine::world::WorldComponentResourceBindingSnapshotStatus;
 using yuengine::world::WorldComponentResourceBindingStatus;
 using yuengine::world::WorldDesc;
 using yuengine::world::WorldInstance;
@@ -410,6 +433,56 @@ constexpr const char *TEST_COMPONENT_RESOURCE_WORLD_CORE_FREE =
     "WorldComponentResourceBindingBridge_WorldInstanceCoreRemainsComponentResourceFree";
 constexpr const char *TEST_COMPONENT_RESOURCE_RESOURCE_CORE_FREE =
     "WorldComponentResourceBindingBridge_ResourceCoreRemainsWorldFree";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_ROUND_TRIP =
+    "WorldComponentResourceBindingSnapshotBridge_WriteReadRoundTripsBindingsInSlotOrder";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_EMPTY_WRITE =
+    "WorldComponentResourceBindingSnapshotBridge_WriteEmptyBridgeProducesZeroRecords";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_NULL_SOURCE =
+    "WorldComponentResourceBindingSnapshotBridge_WriteRejectsNullSourceWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_NULL_WRITER =
+    "WorldComponentResourceBindingSnapshotBridge_WriteRejectsNullWriterWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_WRITER_OVERFLOW =
+    "WorldComponentResourceBindingSnapshotBridge_WriteRejectsWriterOverflowWithoutOverrun";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_READ_OUTPUT =
+    "WorldComponentResourceBindingSnapshotBridge_ReadWritesCallerOwnedRecords";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_NULL_READER =
+    "WorldComponentResourceBindingSnapshotBridge_ReadRejectsNullReaderWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_NULL_OUTPUT =
+    "WorldComponentResourceBindingSnapshotBridge_ReadRejectsNullOutputWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_SMALL_OUTPUT =
+    "WorldComponentResourceBindingSnapshotBridge_ReadRejectsOutputCapacityTooSmallWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_UNKNOWN_VERSION =
+    "WorldComponentResourceBindingSnapshotBridge_ReadRejectsUnknownVersionWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_MALFORMED_COUNT =
+    "WorldComponentResourceBindingSnapshotBridge_ReadRejectsMalformedRecordCountWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_INVALID_WORLD =
+    "WorldComponentResourceBindingSnapshotBridge_ReadRejectsInvalidWorldIdWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_INVALID_TYPE =
+    "WorldComponentResourceBindingSnapshotBridge_ReadRejectsInvalidComponentTypeWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_INVALID_SLOT =
+    "WorldComponentResourceBindingSnapshotBridge_ReadRejectsInvalidComponentSlotWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_INVALID_HANDLE =
+    "WorldComponentResourceBindingSnapshotBridge_ReadRejectsInvalidResourceHandleWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_INVALID_RESOURCE_TYPE =
+    "WorldComponentResourceBindingSnapshotBridge_ReadRejectsInvalidResourceTypeWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_DUPLICATE =
+    "WorldComponentResourceBindingSnapshotBridge_ReadRejectsDuplicateBindingWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_NO_ACQUIRE =
+    "WorldComponentResourceBindingSnapshotBridge_ReadDoesNotAcquireOrReleaseResources";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_PATH =
+    "WorldComponentResourceBindingSnapshotBridge_WriteReadPathDoesNotGrowStorage";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_COUNTERS =
+    "WorldComponentResourceBindingSnapshotBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_NO_PAYLOAD =
+    "WorldComponentResourceBindingSnapshotBridge_NoActorComponentPayloadOrLifecycle";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_NO_FILE_PACKAGE =
+    "WorldComponentResourceBindingSnapshotBridge_NoFilePackageLoadDecodeUploadOrGameAdapterDependency";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_NO_RENDER_PHYSICS =
+    "WorldComponentResourceBindingSnapshotBridge_NoRenderPhysicsAudioInputUiToolOrReportDependency";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_WORLD_CORE_FREE =
+    "WorldComponentResourceBindingSnapshotBridge_WorldInstanceCoreRemainsSnapshotFree";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT_RESOURCE_CORE_FREE =
+    "WorldComponentResourceBindingSnapshotBridge_ResourceCoreRemainsWorldFree";
 constexpr const char *TEST_COMPONENT_ADD_VALID = "WorldComponentAttachmentBridge_AddValidAttachment_StoresRecord";
 constexpr const char *TEST_COMPONENT_ADD_INVALID_WORLD = "WorldComponentAttachmentBridge_AddRejectsInvalidWorldIdWithoutMutation";
 constexpr const char *TEST_COMPONENT_ADD_INVALID_TYPE = "WorldComponentAttachmentBridge_AddRejectsInvalidComponentTypeWithoutMutation";
@@ -1266,6 +1339,385 @@ WorldComponentResourceBindingResult BindComponentResource(
         component_slot_id,
         resource_handle,
         expected_resource_type);
+}
+
+bool ComponentResourceBindingSnapshotsMatch(
+    const WorldComponentResourceBindingSnapshot &left,
+    const WorldComponentResourceBindingSnapshot &right) {
+    if (left.binding_capacity != right.binding_capacity) {
+        return false;
+    }
+
+    if (left.active_binding_count != right.active_binding_count) {
+        return false;
+    }
+
+    if (left.acquired_binding_count != right.acquired_binding_count) {
+        return false;
+    }
+
+    if (left.released_binding_count != right.released_binding_count) {
+        return false;
+    }
+
+    if (left.cleared_binding_count != right.cleared_binding_count) {
+        return false;
+    }
+
+    if (left.query_count != right.query_count) {
+        return false;
+    }
+
+    if (left.failed_operation_count != right.failed_operation_count) {
+        return false;
+    }
+
+    if (left.allocation_accounting_status != right.allocation_accounting_status) {
+        return false;
+    }
+
+    if (left.last_resource_status != right.last_resource_status) {
+        return false;
+    }
+
+    return left.last_status == right.last_status;
+}
+
+bool ComponentResourceBindingsMatch(
+    const WorldComponentResourceBinding &left,
+    const WorldComponentResourceBinding &right) {
+    if (left.world_object_id.value != right.world_object_id.value) {
+        return false;
+    }
+
+    if (left.component_type_id.value != right.component_type_id.value) {
+        return false;
+    }
+
+    if (left.component_slot_id.value != right.component_slot_id.value) {
+        return false;
+    }
+
+    if (left.resource_handle.slot != right.resource_handle.slot) {
+        return false;
+    }
+
+    if (left.resource_handle.generation != right.resource_handle.generation) {
+        return false;
+    }
+
+    if (left.expected_resource_type.value != right.expected_resource_type.value) {
+        return false;
+    }
+
+    if (left.is_bound != right.is_bound) {
+        return false;
+    }
+
+    return left.is_acquired == right.is_acquired;
+}
+
+bool ComponentResourceBindingMatchesSnapshotRecord(
+    const WorldComponentResourceBinding &binding,
+    const WorldComponentResourceBindingSnapshotRecord &record) {
+    if (binding.world_object_id.value != record.world_object_id.value) {
+        return false;
+    }
+
+    if (binding.component_type_id.value != record.component_type_id.value) {
+        return false;
+    }
+
+    if (binding.component_slot_id.value != record.component_slot_id.value) {
+        return false;
+    }
+
+    if (binding.resource_handle.slot != record.resource_handle.slot) {
+        return false;
+    }
+
+    if (binding.resource_handle.generation != record.resource_handle.generation) {
+        return false;
+    }
+
+    if (binding.expected_resource_type.value != record.expected_resource_type.value) {
+        return false;
+    }
+
+    if (!binding.is_bound) {
+        return false;
+    }
+
+    return !binding.is_acquired;
+}
+
+WorldComponentResourceBinding SentinelComponentResourceBinding() {
+    WorldComponentResourceBinding binding{};
+    binding.world_object_id = OBJECT_EFFECT;
+    binding.component_type_id = COMPONENT_TYPE_TERTIARY;
+    binding.component_slot_id = COMPONENT_SLOT_TERTIARY;
+    binding.resource_handle.slot = 777U;
+    binding.resource_handle.generation = 888U;
+    binding.expected_resource_type = RESOURCE_TYPE_AUDIO;
+    binding.is_bound = true;
+    binding.is_acquired = true;
+    return binding;
+}
+
+WorldComponentResourceBindingSnapshotRecord MakeComponentResourceBindingSnapshotRecord(
+    WorldObjectId world_object_id,
+    WorldComponentTypeId component_type_id,
+    WorldComponentSlotId component_slot_id,
+    ResourceHandle resource_handle,
+    ResourceTypeId expected_resource_type) {
+    WorldComponentResourceBindingSnapshotRecord record{};
+    record.world_object_id = world_object_id;
+    record.component_type_id = component_type_id;
+    record.component_slot_id = component_slot_id;
+    record.resource_handle = resource_handle;
+    record.expected_resource_type = expected_resource_type;
+    return record;
+}
+
+void EncodeComponentResourceBindingSnapshotUInt32(std::uint8_t *bytes, std::uint32_t value) {
+    bytes[0U] = static_cast<std::uint8_t>(value & 0xFFU);
+    bytes[1U] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
+    bytes[2U] = static_cast<std::uint8_t>((value >> 16U) & 0xFFU);
+    bytes[3U] = static_cast<std::uint8_t>((value >> 24U) & 0xFFU);
+}
+
+void EncodeComponentResourceBindingSnapshotRecord(
+    std::uint8_t *bytes,
+    const WorldComponentResourceBindingSnapshotRecord &record) {
+    EncodeComponentResourceBindingSnapshotUInt32(bytes, record.world_object_id.value);
+    EncodeComponentResourceBindingSnapshotUInt32(bytes + 4U, record.component_type_id.value);
+    EncodeComponentResourceBindingSnapshotUInt32(bytes + 8U, record.component_slot_id.value);
+    EncodeComponentResourceBindingSnapshotUInt32(bytes + 12U, record.resource_handle.slot);
+    EncodeComponentResourceBindingSnapshotUInt32(bytes + 16U, record.resource_handle.generation);
+    EncodeComponentResourceBindingSnapshotUInt32(bytes + 20U, record.expected_resource_type.value);
+}
+
+std::uint32_t CalculateComponentResourceBindingSnapshotChunkCount(std::uint32_t record_count) {
+    return (record_count + WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_RECORD_CAPACITY - 1U) /
+        WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_RECORD_CAPACITY;
+}
+
+std::uint32_t GetComponentResourceBindingSnapshotChunkRecordCount(
+    std::uint32_t record_count,
+    std::uint32_t chunk_index) {
+    const std::uint32_t first_record_index =
+        chunk_index * WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_RECORD_CAPACITY;
+    if (record_count <= first_record_index) {
+        return 0U;
+    }
+
+    const std::uint32_t remaining_record_count = record_count - first_record_index;
+    if (remaining_record_count > WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_RECORD_CAPACITY) {
+        return WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_RECORD_CAPACITY;
+    }
+
+    return remaining_record_count;
+}
+
+int AddComponentResourceBindingFixture(
+    WorldComponentAttachmentBridge &attachment_bridge,
+    ResourceRegistry &registry,
+    WorldComponentResourceBindingBridge &binding_bridge,
+    WorldObjectId world_object_id,
+    WorldComponentTypeId component_type_id,
+    WorldComponentSlotId component_slot_id,
+    ResourceTypeId resource_type,
+    const char *resource_key,
+    ResourceHandle *out_resource_handle) {
+    if (AddComponentAttachment(
+            attachment_bridge,
+            world_object_id,
+            component_type_id,
+            component_slot_id,
+            "component resource binding snapshot attachment add failed") != 0) {
+        return 1;
+    }
+
+    const ResourceRegistrationResult resource = RegisterResource(registry, resource_type, resource_key);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding snapshot registration failed");
+    }
+
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        binding_bridge,
+        &attachment_bridge,
+        &registry,
+        world_object_id,
+        component_type_id,
+        component_slot_id,
+        resource.handle,
+        resource_type);
+    if (!result.Succeeded()) {
+        return Fail("component resource binding snapshot bind failed");
+    }
+
+    if (out_resource_handle != nullptr) {
+        *out_resource_handle = resource.handle;
+    }
+
+    return 0;
+}
+
+int WriteComponentResourceBindingSnapshotMetadata(
+    SerializeWriter &writer,
+    std::uint32_t schema_version,
+    std::uint32_t record_count,
+    std::uint32_t chunk_count) {
+    if (writer.BeginRecord(WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_METADATA_RECORD_ID) !=
+        SerializeStatus::Success) {
+        return Fail("component resource binding snapshot metadata begin failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_FIELD_SCHEMA_VERSION,
+            schema_version) != SerializeStatus::Success) {
+        return Fail("component resource binding snapshot schema write failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_FIELD_RECORD_COUNT,
+            record_count) != SerializeStatus::Success) {
+        return Fail("component resource binding snapshot record count write failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_FIELD_CHUNK_COUNT,
+            chunk_count) != SerializeStatus::Success) {
+        return Fail("component resource binding snapshot chunk count write failed");
+    }
+
+    return 0;
+}
+
+int WriteComponentResourceBindingSnapshotRecordChunks(
+    SerializeWriter &writer,
+    const WorldComponentResourceBindingSnapshotRecord *records,
+    std::uint32_t record_count) {
+    const std::uint32_t chunk_count = CalculateComponentResourceBindingSnapshotChunkCount(record_count);
+    std::uint32_t chunk_index = 0U;
+    while (chunk_index < chunk_count) {
+        const std::uint32_t first_record_index =
+            chunk_index * WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_RECORD_CAPACITY;
+        const std::uint32_t chunk_record_count = GetComponentResourceBindingSnapshotChunkRecordCount(
+            record_count,
+            chunk_index);
+        std::array<std::uint8_t, WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_PAYLOAD_BYTE_COUNT> payload{};
+        std::uint32_t record_index = 0U;
+        while (record_index < chunk_record_count) {
+            const std::uint32_t payload_offset =
+                record_index * WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_RECORD_BYTE_COUNT;
+            EncodeComponentResourceBindingSnapshotRecord(
+                payload.data() + payload_offset,
+                records[first_record_index + record_index]);
+            ++record_index;
+        }
+
+        const std::uint32_t record_id_value =
+            WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_RECORD_ID_BASE + chunk_index;
+        const yuengine::serialize::SerializeRecordId record_id{record_id_value};
+        if (writer.BeginRecord(record_id) != SerializeStatus::Success) {
+            return Fail("component resource binding snapshot chunk begin failed");
+        }
+
+        const std::uint32_t payload_byte_count =
+            chunk_record_count * WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_RECORD_BYTE_COUNT;
+        if (writer.WriteFixedBytes(
+                WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_CHUNK_FIELD_RECORD_BYTES,
+                payload.data(),
+                payload_byte_count) != SerializeStatus::Success) {
+            return Fail("component resource binding snapshot chunk write failed");
+        }
+
+        ++chunk_index;
+    }
+
+    return 0;
+}
+
+int WriteComponentResourceBindingSnapshotFixtureStream(
+    SerializeWriter &writer,
+    const WorldComponentResourceBindingSnapshotRecord *records,
+    std::uint32_t record_count) {
+    const std::uint32_t chunk_count = CalculateComponentResourceBindingSnapshotChunkCount(record_count);
+    if (WriteComponentResourceBindingSnapshotMetadata(
+            writer,
+            WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_SCHEMA_VERSION,
+            record_count,
+            chunk_count) != 0) {
+        return 1;
+    }
+
+    return WriteComponentResourceBindingSnapshotRecordChunks(writer, records, record_count);
+}
+
+int WriteComponentResourceBindingSnapshotToBuffer(
+    WorldComponentResourceBindingSnapshotBridge &snapshot_bridge,
+    WorldComponentResourceBindingBridge &source_bridge,
+    SerializeBuffer &buffer,
+    std::uint32_t &committed_byte_count) {
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const WorldComponentResourceBindingSnapshotResult write_result = snapshot_bridge.WriteSnapshot(
+        &writer,
+        &source_bridge);
+    if (!write_result.Succeeded()) {
+        return Fail("component resource binding snapshot fixture write failed");
+    }
+
+    committed_byte_count = write_result.state.committed_byte_count;
+    return 0;
+}
+
+int ReadRejectedComponentResourceBindingSnapshotRecords(
+    const WorldComponentResourceBindingSnapshotRecord *records,
+    std::uint32_t record_count,
+    WorldComponentResourceBindingSnapshotStatus expected_status,
+    const char *error_message) {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentResourceBindingSnapshotFixtureStream(writer, records, record_count) != 0) {
+        return 1;
+    }
+
+    const WorldComponentResourceBinding sentinel_binding = SentinelComponentResourceBinding();
+    std::array<WorldComponentResourceBinding, 2U> output_bindings{sentinel_binding, sentinel_binding};
+    std::uint32_t binding_count = 77U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (result.status != expected_status) {
+        return Fail(error_message);
+    }
+
+    if (binding_count != 77U) {
+        return Fail("component resource binding snapshot rejected read mutated count");
+    }
+
+    if (!ComponentResourceBindingsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("component resource binding snapshot rejected read mutated first output");
+    }
+
+    if (!ComponentResourceBindingsMatch(output_bindings[1], sentinel_binding)) {
+        return Fail("component resource binding snapshot rejected read mutated second output");
+    }
+
+    return 0;
 }
 
 int WriteComponentAttachmentSnapshotMetadata(
@@ -6499,6 +6951,1033 @@ int WorldComponentResourceBindingBridgeResourceCoreRemainsWorldFree() {
     return 0;
 }
 
+int WorldComponentResourceBindingSnapshotBridgeWriteReadRoundTripsBindingsInSlotOrder() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge source_bridge;
+    ResourceHandle first_handle{};
+    ResourceHandle second_handle{};
+    ResourceHandle third_handle{};
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_snapshot_a",
+            &first_handle) != 0) {
+        return 1;
+    }
+
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            source_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_MATERIAL,
+            "material_snapshot_a",
+            &second_handle) != 0) {
+        return 1;
+    }
+
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_TERTIARY,
+            COMPONENT_SLOT_TERTIARY,
+            RESOURCE_TYPE_AUDIO,
+            "audio_snapshot_a",
+            &third_handle) != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingSnapshotBridge snapshot_bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteComponentResourceBindingSnapshotToBuffer(
+            snapshot_bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    std::array<WorldComponentResourceBinding, 3U> output_bindings{};
+    std::uint32_t binding_count = 0U;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    const WorldComponentResourceBindingSnapshotResult read_result = snapshot_bridge.ReadSnapshot(
+        &reader,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (!read_result.Succeeded()) {
+        return Fail("component resource binding snapshot round trip read failed");
+    }
+
+    if (binding_count != 3U) {
+        return Fail("component resource binding snapshot round trip count wrong");
+    }
+
+    if (output_bindings[0].world_object_id.value != OBJECT_PLAYER.value) {
+        return Fail("component resource binding snapshot round trip first object wrong");
+    }
+
+    if (output_bindings[0].resource_handle.slot != first_handle.slot) {
+        return Fail("component resource binding snapshot round trip first resource wrong");
+    }
+
+    if (output_bindings[1].world_object_id.value != OBJECT_CAMERA.value) {
+        return Fail("component resource binding snapshot round trip second object wrong");
+    }
+
+    if (output_bindings[1].resource_handle.slot != second_handle.slot) {
+        return Fail("component resource binding snapshot round trip second resource wrong");
+    }
+
+    if (output_bindings[2].component_type_id.value != COMPONENT_TYPE_TERTIARY.value) {
+        return Fail("component resource binding snapshot round trip third type wrong");
+    }
+
+    if (output_bindings[2].resource_handle.slot != third_handle.slot) {
+        return Fail("component resource binding snapshot round trip third resource wrong");
+    }
+
+    if (output_bindings[0].is_acquired || output_bindings[1].is_acquired || output_bindings[2].is_acquired) {
+        return Fail("component resource binding snapshot round trip acquired output");
+    }
+
+    if (read_result.state.binding_record_count != 3U) {
+        return Fail("component resource binding snapshot round trip state count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeWriteEmptyBridgeProducesZeroRecords() {
+    WorldComponentResourceBindingBridge source_bridge;
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteComponentResourceBindingSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldComponentResourceBindingSnapshotBridgeSnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.written_record_count != 0U) {
+        return Fail("component resource binding snapshot empty write record count wrong");
+    }
+
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    if (OpenSerializeStream(reader) != 0) {
+        return 1;
+    }
+
+    std::uint32_t record_count = 999U;
+    const SerializeStatus status = reader.ReadUInt32(
+        WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_METADATA_RECORD_ID,
+        WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_FIELD_RECORD_COUNT,
+        record_count);
+    if (status != SerializeStatus::Success) {
+        return Fail("component resource binding snapshot empty metadata read failed");
+    }
+
+    if (record_count != 0U) {
+        return Fail("component resource binding snapshot empty write metadata count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeWriteRejectsNullSourceWithoutMutation() {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const SerializeSnapshot before_writer = writer.Snapshot();
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotResult result = bridge.WriteSnapshot(&writer, nullptr);
+    if (result.status != WorldComponentResourceBindingSnapshotStatus::InvalidSourceBridge) {
+        return Fail("component resource binding snapshot null source status wrong");
+    }
+
+    const SerializeSnapshot after_writer = writer.Snapshot();
+    if (!SerializeSnapshotsMatch(before_writer, after_writer)) {
+        return Fail("component resource binding snapshot null source mutated writer");
+    }
+
+    if (bridge.Snapshot().failed_operation_count != 1U) {
+        return Fail("component resource binding snapshot null source failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeWriteRejectsNullWriterWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge source_bridge;
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_snapshot_null_writer",
+            nullptr) != 0) {
+        return 1;
+    }
+
+    const WorldComponentResourceBindingSnapshot before_source = source_bridge.Snapshot();
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotResult result = bridge.WriteSnapshot(nullptr, &source_bridge);
+    if (result.status != WorldComponentResourceBindingSnapshotStatus::InvalidWriter) {
+        return Fail("component resource binding snapshot null writer status wrong");
+    }
+
+    const WorldComponentResourceBindingSnapshot after_source = source_bridge.Snapshot();
+    if (!ComponentResourceBindingSnapshotsMatch(before_source, after_source)) {
+        return Fail("component resource binding snapshot null writer mutated source");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeWriteRejectsWriterOverflowWithoutOverrun() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge source_bridge;
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_snapshot_overflow",
+            nullptr) != 0) {
+        return 1;
+    }
+
+    std::array<std::uint8_t, STREAM_HEADER_BYTE_COUNT + 1U> buffer{};
+    buffer[STREAM_HEADER_BYTE_COUNT] = 0xABU;
+    SerializeWriter writer(buffer.data(), STREAM_HEADER_BYTE_COUNT);
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotResult result = bridge.WriteSnapshot(&writer, &source_bridge);
+    if (result.status != WorldComponentResourceBindingSnapshotStatus::SerializeFailure) {
+        return Fail("component resource binding snapshot writer overflow status wrong");
+    }
+
+    if (result.serialize_status != SerializeStatus::BufferTooSmall) {
+        return Fail("component resource binding snapshot writer overflow serialize status wrong");
+    }
+
+    if (buffer[STREAM_HEADER_BYTE_COUNT] != 0xABU) {
+        return Fail("component resource binding snapshot writer overflow overran buffer");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadWritesCallerOwnedRecords() {
+    ResourceHandle handle{};
+    handle.slot = 1U;
+    handle.generation = 1U;
+    const WorldComponentResourceBindingSnapshotRecord record = MakeComponentResourceBindingSnapshotRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        handle,
+        RESOURCE_TYPE_TEXTURE);
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> records{record};
+
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentResourceBindingSnapshotFixtureStream(writer, records.data(), 1U) != 0) {
+        return 1;
+    }
+
+    const WorldComponentResourceBinding sentinel_binding = SentinelComponentResourceBinding();
+    std::array<WorldComponentResourceBinding, 2U> output_bindings{sentinel_binding, sentinel_binding};
+    std::uint32_t binding_count = 77U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (!result.Succeeded()) {
+        return Fail("component resource binding snapshot read output failed");
+    }
+
+    if (binding_count != 1U) {
+        return Fail("component resource binding snapshot read output count wrong");
+    }
+
+    if (!ComponentResourceBindingMatchesSnapshotRecord(output_bindings[0], record)) {
+        return Fail("component resource binding snapshot read output record wrong");
+    }
+
+    if (!ComponentResourceBindingsMatch(output_bindings[1], sentinel_binding)) {
+        return Fail("component resource binding snapshot read output overran output");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadRejectsNullReaderWithoutMutation() {
+    const WorldComponentResourceBinding sentinel_binding = SentinelComponentResourceBinding();
+    std::array<WorldComponentResourceBinding, 1U> output_bindings{sentinel_binding};
+    std::uint32_t binding_count = 77U;
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotResult result = bridge.ReadSnapshot(
+        nullptr,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (result.status != WorldComponentResourceBindingSnapshotStatus::InvalidReader) {
+        return Fail("component resource binding snapshot null reader status wrong");
+    }
+
+    if (binding_count != 77U) {
+        return Fail("component resource binding snapshot null reader mutated count");
+    }
+
+    if (!ComponentResourceBindingsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("component resource binding snapshot null reader mutated output");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadRejectsNullOutputWithoutMutation() {
+    ResourceHandle handle{};
+    handle.slot = 1U;
+    handle.generation = 1U;
+    const WorldComponentResourceBindingSnapshotRecord record = MakeComponentResourceBindingSnapshotRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        handle,
+        RESOURCE_TYPE_TEXTURE);
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> records{record};
+
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentResourceBindingSnapshotFixtureStream(writer, records.data(), 1U) != 0) {
+        return 1;
+    }
+
+    std::uint32_t binding_count = 77U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        nullptr,
+        1U,
+        &binding_count);
+    if (result.status != WorldComponentResourceBindingSnapshotStatus::InvalidOutput) {
+        return Fail("component resource binding snapshot null output status wrong");
+    }
+
+    if (binding_count != 77U) {
+        return Fail("component resource binding snapshot null output mutated count");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadRejectsOutputCapacityTooSmallWithoutMutation() {
+    ResourceHandle first_handle{};
+    first_handle.slot = 1U;
+    first_handle.generation = 1U;
+    ResourceHandle second_handle{};
+    second_handle.slot = 2U;
+    second_handle.generation = 1U;
+    const WorldComponentResourceBindingSnapshotRecord first_record = MakeComponentResourceBindingSnapshotRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        first_handle,
+        RESOURCE_TYPE_TEXTURE);
+    const WorldComponentResourceBindingSnapshotRecord second_record = MakeComponentResourceBindingSnapshotRecord(
+        OBJECT_CAMERA,
+        COMPONENT_TYPE_SECONDARY,
+        COMPONENT_SLOT_SECONDARY,
+        second_handle,
+        RESOURCE_TYPE_MATERIAL);
+    std::array<WorldComponentResourceBindingSnapshotRecord, 2U> records{first_record, second_record};
+
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentResourceBindingSnapshotFixtureStream(writer, records.data(), 2U) != 0) {
+        return 1;
+    }
+
+    const WorldComponentResourceBinding sentinel_binding = SentinelComponentResourceBinding();
+    std::array<WorldComponentResourceBinding, 1U> output_bindings{sentinel_binding};
+    std::uint32_t binding_count = 77U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (result.status != WorldComponentResourceBindingSnapshotStatus::OutputCapacityExceeded) {
+        return Fail("component resource binding snapshot small output status wrong");
+    }
+
+    if (binding_count != 77U) {
+        return Fail("component resource binding snapshot small output mutated count");
+    }
+
+    if (!ComponentResourceBindingsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("component resource binding snapshot small output mutated output");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadRejectsUnknownVersionWithoutMutation() {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentResourceBindingSnapshotMetadata(writer, 999U, 0U, 0U) != 0) {
+        return 1;
+    }
+
+    const WorldComponentResourceBinding sentinel_binding = SentinelComponentResourceBinding();
+    std::array<WorldComponentResourceBinding, 1U> output_bindings{sentinel_binding};
+    std::uint32_t binding_count = 77U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (result.status != WorldComponentResourceBindingSnapshotStatus::UnsupportedVersion) {
+        return Fail("component resource binding snapshot unknown version status wrong");
+    }
+
+    if (binding_count != 77U) {
+        return Fail("component resource binding snapshot unknown version mutated count");
+    }
+
+    if (!ComponentResourceBindingsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("component resource binding snapshot unknown version mutated output");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadRejectsMalformedRecordCountWithoutMutation() {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentResourceBindingSnapshotMetadata(
+            writer,
+            WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_SCHEMA_VERSION,
+            1U,
+            0U) != 0) {
+        return 1;
+    }
+
+    const WorldComponentResourceBinding sentinel_binding = SentinelComponentResourceBinding();
+    std::array<WorldComponentResourceBinding, 1U> output_bindings{sentinel_binding};
+    std::uint32_t binding_count = 77U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (result.status != WorldComponentResourceBindingSnapshotStatus::MalformedRecordCount) {
+        return Fail("component resource binding snapshot malformed count status wrong");
+    }
+
+    if (binding_count != 77U) {
+        return Fail("component resource binding snapshot malformed count mutated count");
+    }
+
+    if (!ComponentResourceBindingsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("component resource binding snapshot malformed count mutated output");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadRejectsInvalidWorldIdWithoutMutation() {
+    ResourceHandle handle{};
+    handle.slot = 1U;
+    handle.generation = 1U;
+    const WorldComponentResourceBindingSnapshotRecord record = MakeComponentResourceBindingSnapshotRecord(
+        WorldObjectId{},
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        handle,
+        RESOURCE_TYPE_TEXTURE);
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> records{record};
+    return ReadRejectedComponentResourceBindingSnapshotRecords(
+        records.data(),
+        1U,
+        WorldComponentResourceBindingSnapshotStatus::InvalidWorldObjectId,
+        "component resource binding snapshot invalid world status wrong");
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadRejectsInvalidComponentTypeWithoutMutation() {
+    ResourceHandle handle{};
+    handle.slot = 1U;
+    handle.generation = 1U;
+    const WorldComponentResourceBindingSnapshotRecord record = MakeComponentResourceBindingSnapshotRecord(
+        OBJECT_PLAYER,
+        WorldComponentTypeId{},
+        COMPONENT_SLOT_PRIMARY,
+        handle,
+        RESOURCE_TYPE_TEXTURE);
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> records{record};
+    return ReadRejectedComponentResourceBindingSnapshotRecords(
+        records.data(),
+        1U,
+        WorldComponentResourceBindingSnapshotStatus::InvalidComponentTypeId,
+        "component resource binding snapshot invalid type status wrong");
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadRejectsInvalidComponentSlotWithoutMutation() {
+    ResourceHandle handle{};
+    handle.slot = 1U;
+    handle.generation = 1U;
+    const WorldComponentResourceBindingSnapshotRecord record = MakeComponentResourceBindingSnapshotRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        WorldComponentSlotId{},
+        handle,
+        RESOURCE_TYPE_TEXTURE);
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> records{record};
+    return ReadRejectedComponentResourceBindingSnapshotRecords(
+        records.data(),
+        1U,
+        WorldComponentResourceBindingSnapshotStatus::InvalidComponentSlotId,
+        "component resource binding snapshot invalid slot status wrong");
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadRejectsInvalidResourceHandleWithoutMutation() {
+    const WorldComponentResourceBindingSnapshotRecord record = MakeComponentResourceBindingSnapshotRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        ResourceHandle{},
+        RESOURCE_TYPE_TEXTURE);
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> records{record};
+    return ReadRejectedComponentResourceBindingSnapshotRecords(
+        records.data(),
+        1U,
+        WorldComponentResourceBindingSnapshotStatus::InvalidResourceHandle,
+        "component resource binding snapshot invalid handle status wrong");
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadRejectsInvalidResourceTypeWithoutMutation() {
+    ResourceHandle handle{};
+    handle.slot = 1U;
+    handle.generation = 1U;
+    const WorldComponentResourceBindingSnapshotRecord record = MakeComponentResourceBindingSnapshotRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        handle,
+        ResourceTypeId{});
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> records{record};
+    return ReadRejectedComponentResourceBindingSnapshotRecords(
+        records.data(),
+        1U,
+        WorldComponentResourceBindingSnapshotStatus::InvalidResourceTypeId,
+        "component resource binding snapshot invalid resource type status wrong");
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadRejectsDuplicateBindingWithoutMutation() {
+    ResourceHandle first_handle{};
+    first_handle.slot = 1U;
+    first_handle.generation = 1U;
+    ResourceHandle second_handle{};
+    second_handle.slot = 2U;
+    second_handle.generation = 1U;
+    const WorldComponentResourceBindingSnapshotRecord first_record = MakeComponentResourceBindingSnapshotRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        first_handle,
+        RESOURCE_TYPE_TEXTURE);
+    const WorldComponentResourceBindingSnapshotRecord second_record = MakeComponentResourceBindingSnapshotRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        second_handle,
+        RESOURCE_TYPE_MATERIAL);
+    std::array<WorldComponentResourceBindingSnapshotRecord, 2U> records{first_record, second_record};
+    return ReadRejectedComponentResourceBindingSnapshotRecords(
+        records.data(),
+        2U,
+        WorldComponentResourceBindingSnapshotStatus::DuplicateBinding,
+        "component resource binding snapshot duplicate status wrong");
+}
+
+int WorldComponentResourceBindingSnapshotBridgeReadDoesNotAcquireOrReleaseResources() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding snapshot no acquire registration failed");
+    }
+
+    const WorldComponentResourceBindingSnapshotRecord record = MakeComponentResourceBindingSnapshotRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> records{record};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentResourceBindingSnapshotFixtureStream(writer, records.data(), 1U) != 0) {
+        return 1;
+    }
+
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    std::array<WorldComponentResourceBinding, 1U> output_bindings{};
+    std::uint32_t binding_count = 0U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (!result.Succeeded()) {
+        return Fail("component resource binding snapshot no acquire read failed");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource binding snapshot read mutated registry");
+    }
+
+    if (output_bindings[0].is_acquired) {
+        return Fail("component resource binding snapshot read marked output acquired");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeWriteReadPathDoesNotGrowStorage() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge source_bridge;
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_snapshot_path_a",
+            nullptr) != 0) {
+        return 1;
+    }
+
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            source_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_MATERIAL,
+            "material_snapshot_path_a",
+            nullptr) != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingSnapshotBridgeDesc desc{};
+    desc.binding_capacity = 2U;
+    WorldComponentResourceBindingSnapshotBridge bridge(desc);
+    const WorldComponentResourceBindingSnapshotBridgeSnapshot before_snapshot = bridge.Snapshot();
+    std::uint32_t iteration = 0U;
+    while (iteration < 3U) {
+        SerializeBuffer buffer{};
+        std::uint32_t committed_byte_count = 0U;
+        if (WriteComponentResourceBindingSnapshotToBuffer(
+                bridge,
+                source_bridge,
+                buffer,
+                committed_byte_count) != 0) {
+            return 1;
+        }
+
+        std::array<WorldComponentResourceBinding, 2U> output_bindings{};
+        std::uint32_t binding_count = 0U;
+        SerializeReader reader(buffer.data(), committed_byte_count);
+        const WorldComponentResourceBindingSnapshotResult read_result = bridge.ReadSnapshot(
+            &reader,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count);
+        if (!read_result.Succeeded()) {
+            return Fail("component resource binding snapshot path read failed");
+        }
+
+        ++iteration;
+    }
+
+    const WorldComponentResourceBindingSnapshotBridgeSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.binding_capacity != before_snapshot.binding_capacity) {
+        return Fail("component resource binding snapshot path changed capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != before_snapshot.allocation_accounting_status) {
+        return Fail("component resource binding snapshot path changed allocation accounting");
+    }
+
+    if (after_snapshot.write_count != 3U) {
+        return Fail("component resource binding snapshot path write count wrong");
+    }
+
+    if (after_snapshot.read_count != 3U) {
+        return Fail("component resource binding snapshot path read count wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeSnapshotReportsCountsAndLastStatus() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge source_bridge;
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_snapshot_count_a",
+            nullptr) != 0) {
+        return 1;
+    }
+
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            source_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            RESOURCE_TYPE_MATERIAL,
+            "material_snapshot_count_a",
+            nullptr) != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteComponentResourceBindingSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    std::array<WorldComponentResourceBinding, 2U> output_bindings{};
+    std::uint32_t binding_count = 0U;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    const WorldComponentResourceBindingSnapshotResult read_result = bridge.ReadSnapshot(
+        &reader,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (!read_result.Succeeded()) {
+        return Fail("component resource binding snapshot counters read failed");
+    }
+
+    const WorldComponentResourceBindingSnapshotResult failure_result = bridge.ReadSnapshot(
+        nullptr,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (failure_result.status != WorldComponentResourceBindingSnapshotStatus::InvalidReader) {
+        return Fail("component resource binding snapshot counters failure status wrong");
+    }
+
+    const WorldComponentResourceBindingSnapshotBridgeSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.write_count != 1U) {
+        return Fail("component resource binding snapshot counters write count wrong");
+    }
+
+    if (snapshot.read_count != 1U) {
+        return Fail("component resource binding snapshot counters read count wrong");
+    }
+
+    if (snapshot.written_record_count != 2U) {
+        return Fail("component resource binding snapshot counters written count wrong");
+    }
+
+    if (snapshot.read_record_count != 2U) {
+        return Fail("component resource binding snapshot counters read record count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component resource binding snapshot counters failure count wrong");
+    }
+
+    if (snapshot.last_status != WorldComponentResourceBindingSnapshotStatus::InvalidReader) {
+        return Fail("component resource binding snapshot counters last status wrong");
+    }
+
+    if (snapshot.last_serialize_status != SerializeStatus::Success) {
+        return Fail("component resource binding snapshot counters serialize status wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeNoActorComponentPayloadOrLifecycle() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge source_bridge;
+    ResourceHandle handle{};
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            source_bridge,
+            OBJECT_EFFECT,
+            COMPONENT_TYPE_TERTIARY,
+            COMPONENT_SLOT_TERTIARY,
+            RESOURCE_TYPE_AUDIO,
+            "audio_snapshot_payload_a",
+            &handle) != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteComponentResourceBindingSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    std::array<WorldComponentResourceBinding, 1U> output_bindings{};
+    std::uint32_t binding_count = 0U;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    const WorldComponentResourceBindingSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (!result.Succeeded()) {
+        return Fail("component resource binding snapshot payload boundary read failed");
+    }
+
+    if (output_bindings[0].component_slot_id.value != COMPONENT_SLOT_TERTIARY.value) {
+        return Fail("component resource binding snapshot payload boundary slot wrong");
+    }
+
+    if (output_bindings[0].resource_handle.slot != handle.slot) {
+        return Fail("component resource binding snapshot payload boundary resource wrong");
+    }
+
+    if (output_bindings[0].is_acquired) {
+        return Fail("component resource binding snapshot payload boundary acquired output");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeNoFilePackageLoadDecodeUploadOrGameAdapterDependency() {
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotBridgeSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.binding_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("component resource binding snapshot dependency test changed default capacity");
+    }
+
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("component resource binding snapshot dependency test changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency() {
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotBridgeSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.binding_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("component resource binding snapshot render dependency test changed default capacity");
+    }
+
+    if (snapshot.last_status != WorldComponentResourceBindingSnapshotStatus::Success) {
+        return Fail("component resource binding snapshot render dependency test changed last status");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeWorldInstanceCoreRemainsSnapshotFree() {
+    WorldInstance world = MakeWorld(4U, 4U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("component resource binding snapshot world core-free registration failed");
+    }
+
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge source_bridge;
+    if (AddComponentResourceBindingFixture(
+            attachment_bridge,
+            registry,
+            source_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            RESOURCE_TYPE_TEXTURE,
+            "texture_snapshot_world_core_a",
+            nullptr) != 0) {
+        return 1;
+    }
+
+    const WorldSnapshot before_world = world.Snapshot();
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteComponentResourceBindingSnapshotToBuffer(
+            bridge,
+            source_bridge,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    std::array<WorldComponentResourceBinding, 1U> output_bindings{};
+    std::uint32_t binding_count = 0U;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    if (!bridge.ReadSnapshot(
+            &reader,
+            output_bindings.data(),
+            static_cast<std::uint32_t>(output_bindings.size()),
+            &binding_count).Succeeded()) {
+        return Fail("component resource binding snapshot world core-free read failed");
+    }
+
+    const WorldSnapshot after_world = world.Snapshot();
+    if (!WorldSnapshotsMatch(before_world, after_world)) {
+        return Fail("component resource binding snapshot bridge mutated world");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingSnapshotBridgeResourceCoreRemainsWorldFree() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding snapshot resource core-free registration failed");
+    }
+
+    const WorldComponentResourceBindingSnapshotRecord record = MakeComponentResourceBindingSnapshotRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> records{record};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteComponentResourceBindingSnapshotFixtureStream(writer, records.data(), 1U) != 0) {
+        return 1;
+    }
+
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    std::array<WorldComponentResourceBinding, 1U> output_bindings{};
+    std::uint32_t binding_count = 0U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldComponentResourceBindingSnapshotBridge bridge;
+    const WorldComponentResourceBindingSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (!result.Succeeded()) {
+        return Fail("component resource binding snapshot resource core-free read failed");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource binding snapshot resource core-free mutated registry");
+    }
+
+    if (registry.Acquire(resource.handle, RESOURCE_TYPE_TEXTURE) != ResourceStatus::Success) {
+        return Fail("component resource binding snapshot resource core-free acquire failed");
+    }
+
+    if (registry.Release(resource.handle) != ResourceStatus::Success) {
+        return Fail("component resource binding snapshot resource core-free release failed");
+    }
+
+    if (registry.Retire(resource.handle) != ResourceStatus::Success) {
+        return Fail("component resource binding snapshot resource core-free retire failed");
+    }
+
+    return 0;
+}
+
 int WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord() {
     WorldComponentAttachmentBridge bridge;
     const WorldComponentAttachmentResult result = bridge.Add(
@@ -8755,6 +10234,56 @@ int main(int argc, char **argv) {
             WorldComponentResourceBindingBridgeWorldInstanceCoreRemainsComponentResourceFree},
         {TEST_COMPONENT_RESOURCE_RESOURCE_CORE_FREE,
             WorldComponentResourceBindingBridgeResourceCoreRemainsWorldFree},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_ROUND_TRIP,
+            WorldComponentResourceBindingSnapshotBridgeWriteReadRoundTripsBindingsInSlotOrder},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_EMPTY_WRITE,
+            WorldComponentResourceBindingSnapshotBridgeWriteEmptyBridgeProducesZeroRecords},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_NULL_SOURCE,
+            WorldComponentResourceBindingSnapshotBridgeWriteRejectsNullSourceWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_NULL_WRITER,
+            WorldComponentResourceBindingSnapshotBridgeWriteRejectsNullWriterWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_WRITER_OVERFLOW,
+            WorldComponentResourceBindingSnapshotBridgeWriteRejectsWriterOverflowWithoutOverrun},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_READ_OUTPUT,
+            WorldComponentResourceBindingSnapshotBridgeReadWritesCallerOwnedRecords},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_NULL_READER,
+            WorldComponentResourceBindingSnapshotBridgeReadRejectsNullReaderWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_NULL_OUTPUT,
+            WorldComponentResourceBindingSnapshotBridgeReadRejectsNullOutputWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_SMALL_OUTPUT,
+            WorldComponentResourceBindingSnapshotBridgeReadRejectsOutputCapacityTooSmallWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_UNKNOWN_VERSION,
+            WorldComponentResourceBindingSnapshotBridgeReadRejectsUnknownVersionWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_MALFORMED_COUNT,
+            WorldComponentResourceBindingSnapshotBridgeReadRejectsMalformedRecordCountWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_INVALID_WORLD,
+            WorldComponentResourceBindingSnapshotBridgeReadRejectsInvalidWorldIdWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_INVALID_TYPE,
+            WorldComponentResourceBindingSnapshotBridgeReadRejectsInvalidComponentTypeWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_INVALID_SLOT,
+            WorldComponentResourceBindingSnapshotBridgeReadRejectsInvalidComponentSlotWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_INVALID_HANDLE,
+            WorldComponentResourceBindingSnapshotBridgeReadRejectsInvalidResourceHandleWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_INVALID_RESOURCE_TYPE,
+            WorldComponentResourceBindingSnapshotBridgeReadRejectsInvalidResourceTypeWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_DUPLICATE,
+            WorldComponentResourceBindingSnapshotBridgeReadRejectsDuplicateBindingWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_NO_ACQUIRE,
+            WorldComponentResourceBindingSnapshotBridgeReadDoesNotAcquireOrReleaseResources},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_PATH,
+            WorldComponentResourceBindingSnapshotBridgeWriteReadPathDoesNotGrowStorage},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_COUNTERS,
+            WorldComponentResourceBindingSnapshotBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_NO_PAYLOAD,
+            WorldComponentResourceBindingSnapshotBridgeNoActorComponentPayloadOrLifecycle},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_NO_FILE_PACKAGE,
+            WorldComponentResourceBindingSnapshotBridgeNoFilePackageLoadDecodeUploadOrGameAdapterDependency},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_NO_RENDER_PHYSICS,
+            WorldComponentResourceBindingSnapshotBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_WORLD_CORE_FREE,
+            WorldComponentResourceBindingSnapshotBridgeWorldInstanceCoreRemainsSnapshotFree},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT_RESOURCE_CORE_FREE,
+            WorldComponentResourceBindingSnapshotBridgeResourceCoreRemainsWorldFree},
         {TEST_COMPONENT_ADD_VALID, WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord},
         {TEST_COMPONENT_ADD_INVALID_WORLD, WorldComponentAttachmentBridgeAddRejectsInvalidWorldIdWithoutMutation},
         {TEST_COMPONENT_ADD_INVALID_TYPE, WorldComponentAttachmentBridgeAddRejectsInvalidComponentTypeWithoutMutation},
