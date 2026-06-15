@@ -63,6 +63,12 @@
 #include "YuEngine/World/WorldComponentQueryResult.h"
 #include "YuEngine/World/WorldComponentQuerySnapshot.h"
 #include "YuEngine/World/WorldComponentQueryStatus.h"
+#include "YuEngine/World/WorldComponentResourceBinding.h"
+#include "YuEngine/World/WorldComponentResourceBindingBridge.h"
+#include "YuEngine/World/WorldComponentResourceBindingBridgeDesc.h"
+#include "YuEngine/World/WorldComponentResourceBindingResult.h"
+#include "YuEngine/World/WorldComponentResourceBindingSnapshot.h"
+#include "YuEngine/World/WorldComponentResourceBindingStatus.h"
 #include "YuEngine/World/WorldConstants.h"
 #include "YuEngine/World/WorldDesc.h"
 #include "YuEngine/World/WorldInstance.h"
@@ -194,6 +200,12 @@ using yuengine::world::WorldComponentQueryResult;
 using yuengine::world::WorldComponentQuerySnapshot;
 using yuengine::world::WorldComponentQueryStatus;
 using yuengine::world::WorldComponentQueryTypeDesc;
+using yuengine::world::WorldComponentResourceBinding;
+using yuengine::world::WorldComponentResourceBindingBridge;
+using yuengine::world::WorldComponentResourceBindingBridgeDesc;
+using yuengine::world::WorldComponentResourceBindingResult;
+using yuengine::world::WorldComponentResourceBindingSnapshot;
+using yuengine::world::WorldComponentResourceBindingStatus;
 using yuengine::world::WorldDesc;
 using yuengine::world::WorldInstance;
 using yuengine::world::WorldKernelModule;
@@ -338,6 +350,66 @@ constexpr const char *TEST_RESOURCE_SNAPSHOT = "WorldResourceBindingBridge_Snaps
 constexpr const char *TEST_RESOURCE_NO_FILE_PACKAGE = "WorldResourceBindingBridge_NoFilePackageLoadDecodeUploadOrGameAdapterDependency";
 constexpr const char *TEST_RESOURCE_WORLD_CORE_FREE = "WorldResourceBindingBridge_WorldInstanceCoreRemainsResourceFree";
 constexpr const char *TEST_RESOURCE_CORE_FREE = "WorldResourceBindingBridge_ResourceCoreRemainsWorldFree";
+constexpr const char *TEST_COMPONENT_RESOURCE_BIND_VALID =
+    "WorldComponentResourceBindingBridge_BindValidAttachmentResource_AcquiresHandle";
+constexpr const char *TEST_COMPONENT_RESOURCE_BIND_NULL_ATTACHMENT =
+    "WorldComponentResourceBindingBridge_BindRejectsNullAttachmentSourceWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_BIND_NULL_REGISTRY =
+    "WorldComponentResourceBindingBridge_BindRejectsNullRegistryWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_BIND_INVALID_WORLD =
+    "WorldComponentResourceBindingBridge_BindRejectsInvalidWorldIdWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_BIND_INVALID_TYPE =
+    "WorldComponentResourceBindingBridge_BindRejectsInvalidComponentTypeWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_BIND_INVALID_SLOT =
+    "WorldComponentResourceBindingBridge_BindRejectsInvalidComponentSlotWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_BIND_MISSING_ATTACHMENT =
+    "WorldComponentResourceBindingBridge_BindRejectsMissingAttachmentWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_BIND_INVALID_HANDLE =
+    "WorldComponentResourceBindingBridge_BindRejectsInvalidResourceHandleWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_BIND_STALE_HANDLE =
+    "WorldComponentResourceBindingBridge_BindRejectsStaleResourceHandleWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_BIND_TYPE_MISMATCH =
+    "WorldComponentResourceBindingBridge_BindRejectsTypeMismatchWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_BIND_DUPLICATE =
+    "WorldComponentResourceBindingBridge_BindRejectsDuplicateComponentBinding";
+constexpr const char *TEST_COMPONENT_RESOURCE_BIND_CAPACITY =
+    "WorldComponentResourceBindingBridge_BindRejectsCapacityOverflowWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_REMOVE_RELEASES =
+    "WorldComponentResourceBindingBridge_RemoveReleasesHandle";
+constexpr const char *TEST_COMPONENT_RESOURCE_REMOVE_NULL_REGISTRY =
+    "WorldComponentResourceBindingBridge_RemoveRejectsNullRegistryWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_REMOVE_MISSING =
+    "WorldComponentResourceBindingBridge_RemoveRejectsMissingBindingWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_REMOVE_RELEASE_FAILURE =
+    "WorldComponentResourceBindingBridge_RemoveReleaseFailureKeepsBinding";
+constexpr const char *TEST_COMPONENT_RESOURCE_CLEAR_RELEASES =
+    "WorldComponentResourceBindingBridge_ClearReleasesAllHandles";
+constexpr const char *TEST_COMPONENT_RESOURCE_CLEAR_NULL_REGISTRY =
+    "WorldComponentResourceBindingBridge_ClearRejectsNullRegistryWithoutMutation";
+constexpr const char *TEST_COMPONENT_RESOURCE_CLEAR_RELEASE_FAILURE =
+    "WorldComponentResourceBindingBridge_ClearReleaseFailurePreservesUnreleasedBindings";
+constexpr const char *TEST_COMPONENT_RESOURCE_RETIRE_HELD =
+    "WorldComponentResourceBindingBridge_BoundResourceCannotRetireUntilReleased";
+constexpr const char *TEST_COMPONENT_RESOURCE_QUERY =
+    "WorldComponentResourceBindingBridge_QueryReturnsStoredBinding";
+constexpr const char *TEST_COMPONENT_RESOURCE_QUERY_READ_ONLY =
+    "WorldComponentResourceBindingBridge_QueryIsReadOnlyAndBounded";
+constexpr const char *TEST_COMPONENT_RESOURCE_UPDATE_PATH =
+    "WorldComponentResourceBindingBridge_UpdatePathDoesNotGrowStorage";
+constexpr const char *TEST_COMPONENT_RESOURCE_SNAPSHOT =
+    "WorldComponentResourceBindingBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_COMPONENT_RESOURCE_NO_WORLD_QUERY =
+    "WorldComponentResourceBindingBridge_DoesNotQueryOrMutateWorldInstance";
+constexpr const char *TEST_COMPONENT_RESOURCE_NO_PAYLOAD =
+    "WorldComponentResourceBindingBridge_NoActorComponentPayloadOrLifecycle";
+constexpr const char *TEST_COMPONENT_RESOURCE_NO_FILE_PACKAGE =
+    "WorldComponentResourceBindingBridge_NoFilePackageLoadDecodeUploadOrGameAdapterDependency";
+constexpr const char *TEST_COMPONENT_RESOURCE_NO_RENDER_PHYSICS =
+    "WorldComponentResourceBindingBridge_NoRenderPhysicsAudioInputUiToolOrReportDependency";
+constexpr const char *TEST_COMPONENT_RESOURCE_WORLD_CORE_FREE =
+    "WorldComponentResourceBindingBridge_WorldInstanceCoreRemainsComponentResourceFree";
+constexpr const char *TEST_COMPONENT_RESOURCE_RESOURCE_CORE_FREE =
+    "WorldComponentResourceBindingBridge_ResourceCoreRemainsWorldFree";
 constexpr const char *TEST_COMPONENT_ADD_VALID = "WorldComponentAttachmentBridge_AddValidAttachment_StoresRecord";
 constexpr const char *TEST_COMPONENT_ADD_INVALID_WORLD = "WorldComponentAttachmentBridge_AddRejectsInvalidWorldIdWithoutMutation";
 constexpr const char *TEST_COMPONENT_ADD_INVALID_TYPE = "WorldComponentAttachmentBridge_AddRejectsInvalidComponentTypeWithoutMutation";
@@ -1175,6 +1247,25 @@ int AddComponentAttachment(
     }
 
     return 0;
+}
+
+WorldComponentResourceBindingResult BindComponentResource(
+    WorldComponentResourceBindingBridge &bridge,
+    const WorldComponentAttachmentBridge *attachment_bridge,
+    ResourceRegistry *registry,
+    WorldObjectId world_object_id,
+    WorldComponentTypeId component_type_id,
+    WorldComponentSlotId component_slot_id,
+    ResourceHandle resource_handle,
+    ResourceTypeId expected_resource_type) {
+    return bridge.Bind(
+        attachment_bridge,
+        registry,
+        world_object_id,
+        component_type_id,
+        component_slot_id,
+        resource_handle,
+        expected_resource_type);
 }
 
 int WriteComponentAttachmentSnapshotMetadata(
@@ -5037,6 +5128,1377 @@ int WorldResourceBindingBridgeResourceCoreRemainsWorldFree() {
     return 0;
 }
 
+int WorldComponentResourceBindingBridgeBindValidAttachmentResourceAcquiresHandle() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding valid attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding valid resource registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        &registry,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (!result.Succeeded()) {
+        return Fail("component resource binding valid bind failed");
+    }
+
+    if (result.world_object_id.value != OBJECT_PLAYER.value) {
+        return Fail("component resource binding valid returned wrong world id");
+    }
+
+    if (result.component_type_id.value != COMPONENT_TYPE_PRIMARY.value) {
+        return Fail("component resource binding valid returned wrong component type");
+    }
+
+    if (result.component_slot_id.value != COMPONENT_SLOT_PRIMARY.value) {
+        return Fail("component resource binding valid returned wrong component slot");
+    }
+
+    if (result.resource_handle.slot != resource.handle.slot) {
+        return Fail("component resource binding valid returned wrong resource slot");
+    }
+
+    const WorldComponentResourceBindingSnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.active_binding_count != 1U) {
+        return Fail("component resource binding valid did not record active binding");
+    }
+
+    if (bridge_snapshot.acquired_binding_count != 1U) {
+        return Fail("component resource binding valid did not record acquired binding");
+    }
+
+    if (registry.Snapshot().acquired_handle_count != 1U) {
+        return Fail("component resource binding valid did not acquire resource handle");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeBindRejectsNullAttachmentSourceWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding null attachment fixture registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        bridge,
+        nullptr,
+        &registry,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (result.status != WorldComponentResourceBindingStatus::InvalidAttachmentSource) {
+        return Fail("component resource binding null attachment returned wrong status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 0U) {
+        return Fail("component resource binding null attachment mutated binding count");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource binding null attachment mutated registry");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeBindRejectsNullRegistryWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding null registry attachment add failed") != 0) {
+        return 1;
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        nullptr,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        ResourceHandle{},
+        RESOURCE_TYPE_TEXTURE);
+    if (result.status != WorldComponentResourceBindingStatus::InvalidResourceRegistry) {
+        return Fail("component resource binding null registry returned wrong status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 0U) {
+        return Fail("component resource binding null registry mutated binding count");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeBindRejectsInvalidWorldIdWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding invalid world fixture registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        &registry,
+        WorldObjectId{},
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (result.status != WorldComponentResourceBindingStatus::InvalidWorldObjectId) {
+        return Fail("component resource binding invalid world returned wrong status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 0U) {
+        return Fail("component resource binding invalid world mutated binding count");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource binding invalid world mutated registry");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeBindRejectsInvalidComponentTypeWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding invalid type fixture registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        &registry,
+        OBJECT_PLAYER,
+        WorldComponentTypeId{},
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (result.status != WorldComponentResourceBindingStatus::InvalidComponentTypeId) {
+        return Fail("component resource binding invalid type returned wrong status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 0U) {
+        return Fail("component resource binding invalid type mutated binding count");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource binding invalid type mutated registry");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeBindRejectsInvalidComponentSlotWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding invalid slot fixture registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        &registry,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        WorldComponentSlotId{},
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (result.status != WorldComponentResourceBindingStatus::InvalidComponentSlotId) {
+        return Fail("component resource binding invalid slot returned wrong status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 0U) {
+        return Fail("component resource binding invalid slot mutated binding count");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource binding invalid slot mutated registry");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeBindRejectsMissingAttachmentWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding missing attachment registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        &registry,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (result.status != WorldComponentResourceBindingStatus::AttachmentNotFound) {
+        return Fail("component resource binding missing attachment returned wrong status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 0U) {
+        return Fail("component resource binding missing attachment mutated binding count");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource binding missing attachment mutated registry");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeBindRejectsInvalidResourceHandleWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding invalid handle attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge bridge;
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        &registry,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        ResourceHandle{},
+        RESOURCE_TYPE_TEXTURE);
+    if (result.status != WorldComponentResourceBindingStatus::InvalidResourceHandle) {
+        return Fail("component resource binding invalid handle returned wrong status");
+    }
+
+    if (result.resource_status != ResourceStatus::InvalidHandle) {
+        return Fail("component resource binding invalid handle returned wrong resource status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 0U) {
+        return Fail("component resource binding invalid handle mutated binding count");
+    }
+
+    if (registry.Snapshot().acquired_handle_count != before_registry.acquired_handle_count) {
+        return Fail("component resource binding invalid handle acquired resource");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeBindRejectsStaleResourceHandleWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding stale attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding stale registration failed");
+    }
+
+    if (registry.Retire(resource.handle) != ResourceStatus::Success) {
+        return Fail("component resource binding stale retire failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        &registry,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (result.status != WorldComponentResourceBindingStatus::StaleResourceHandle) {
+        return Fail("component resource binding stale returned wrong status");
+    }
+
+    if (result.resource_status != ResourceStatus::GenerationMismatch) {
+        return Fail("component resource binding stale returned wrong resource status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 0U) {
+        return Fail("component resource binding stale mutated binding count");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeBindRejectsTypeMismatchWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding type mismatch attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_a");
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding type mismatch registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        &registry,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_MATERIAL);
+    if (result.status != WorldComponentResourceBindingStatus::ResourceTypeMismatch) {
+        return Fail("component resource binding type mismatch returned wrong status");
+    }
+
+    if (result.resource_status != ResourceStatus::TypeMismatch) {
+        return Fail("component resource binding type mismatch returned wrong resource status");
+    }
+
+    if (registry.Snapshot().acquired_handle_count != 0U) {
+        return Fail("component resource binding type mismatch acquired resource");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeBindRejectsDuplicateComponentBinding() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding duplicate attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult first_resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult second_resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_b");
+    if (!first_resource.Succeeded() || !second_resource.Succeeded()) {
+        return Fail("component resource binding duplicate registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            first_resource.handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("component resource binding duplicate first bind failed");
+    }
+
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const WorldComponentResourceBindingResult duplicate_result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        &registry,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        second_resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (duplicate_result.status != WorldComponentResourceBindingStatus::DuplicateComponentBinding) {
+        return Fail("component resource binding duplicate returned wrong status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 1U) {
+        return Fail("component resource binding duplicate mutated binding count");
+    }
+
+    if (registry.Snapshot().acquired_handle_count != before_registry.acquired_handle_count) {
+        return Fail("component resource binding duplicate acquired resource");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeBindRejectsCapacityOverflowWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding capacity first attachment add failed") != 0) {
+        return 1;
+    }
+
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component resource binding capacity second attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult first_resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult second_resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_b");
+    if (!first_resource.Succeeded() || !second_resource.Succeeded()) {
+        return Fail("component resource binding capacity registration failed");
+    }
+
+    WorldComponentResourceBindingBridgeDesc desc{};
+    desc.binding_capacity = 1U;
+    WorldComponentResourceBindingBridge bridge(desc);
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            first_resource.handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("component resource binding capacity first bind failed");
+    }
+
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const WorldComponentResourceBindingResult overflow_result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        &registry,
+        OBJECT_CAMERA,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_SECONDARY,
+        second_resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (overflow_result.status != WorldComponentResourceBindingStatus::CapacityExceeded) {
+        return Fail("component resource binding capacity returned wrong status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 1U) {
+        return Fail("component resource binding capacity mutated binding count");
+    }
+
+    if (registry.Snapshot().acquired_handle_count != before_registry.acquired_handle_count) {
+        return Fail("component resource binding capacity acquired resource");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeRemoveReleasesHandle() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding remove attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding remove registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("component resource binding remove bind failed");
+    }
+
+    const WorldComponentResourceBindingStatus remove_status = bridge.Remove(
+        &registry,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    if (remove_status != WorldComponentResourceBindingStatus::Success) {
+        return Fail("component resource binding remove returned wrong status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 0U) {
+        return Fail("component resource binding remove did not clear binding");
+    }
+
+    if (registry.Snapshot().acquired_handle_count != 0U) {
+        return Fail("component resource binding remove did not release resource");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeRemoveRejectsNullRegistryWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding remove null attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding remove null registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("component resource binding remove null bind failed");
+    }
+
+    const WorldComponentResourceBindingStatus remove_status = bridge.Remove(
+        nullptr,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    if (remove_status != WorldComponentResourceBindingStatus::InvalidResourceRegistry) {
+        return Fail("component resource binding remove null returned wrong status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 1U) {
+        return Fail("component resource binding remove null cleared binding");
+    }
+
+    if (registry.Snapshot().acquired_handle_count != 1U) {
+        return Fail("component resource binding remove null released resource");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeRemoveRejectsMissingBindingWithoutMutation() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridge bridge;
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const WorldComponentResourceBindingStatus remove_status = bridge.Remove(
+        &registry,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    if (remove_status != WorldComponentResourceBindingStatus::BindingNotFound) {
+        return Fail("component resource binding remove missing returned wrong status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 0U) {
+        return Fail("component resource binding remove missing mutated binding count");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource binding remove missing mutated registry");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeRemoveReleaseFailureKeepsBinding() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding remove failure attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding remove failure registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("component resource binding remove failure bind failed");
+    }
+
+    if (registry.Release(resource.handle) != ResourceStatus::Success) {
+        return Fail("component resource binding remove failure external release failed");
+    }
+
+    const WorldComponentResourceBindingStatus remove_status = bridge.Remove(
+        &registry,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    if (remove_status != WorldComponentResourceBindingStatus::ResourceReleaseFailed) {
+        return Fail("component resource binding remove failure returned wrong status");
+    }
+
+    const WorldComponentResourceBindingSnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.active_binding_count != 1U) {
+        return Fail("component resource binding remove failure cleared binding");
+    }
+
+    if (bridge_snapshot.last_resource_status != ResourceStatus::NotAcquired) {
+        return Fail("component resource binding remove failure recorded wrong resource status");
+    }
+
+    if (!bridge.Query(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("component resource binding remove failure lost query binding");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeClearReleasesAllHandles() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding clear first attachment add failed") != 0) {
+        return 1;
+    }
+
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component resource binding clear second attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult first_resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult second_resource = RegisterResource(registry, RESOURCE_TYPE_AUDIO, "audio_a");
+    if (!first_resource.Succeeded() || !second_resource.Succeeded()) {
+        return Fail("component resource binding clear registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            first_resource.handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("component resource binding clear first bind failed");
+    }
+
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            second_resource.handle,
+            RESOURCE_TYPE_AUDIO).Succeeded()) {
+        return Fail("component resource binding clear second bind failed");
+    }
+
+    const WorldComponentResourceBindingStatus clear_status = bridge.Clear(&registry);
+    if (clear_status != WorldComponentResourceBindingStatus::Success) {
+        return Fail("component resource binding clear returned wrong status");
+    }
+
+    const WorldComponentResourceBindingSnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.active_binding_count != 0U) {
+        return Fail("component resource binding clear did not clear bindings");
+    }
+
+    if (bridge_snapshot.cleared_binding_count != 2U) {
+        return Fail("component resource binding clear counted wrong cleared bindings");
+    }
+
+    if (registry.Snapshot().acquired_handle_count != 0U) {
+        return Fail("component resource binding clear did not release resources");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeClearRejectsNullRegistryWithoutMutation() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding clear null attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding clear null registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("component resource binding clear null bind failed");
+    }
+
+    const WorldComponentResourceBindingStatus clear_status = bridge.Clear(nullptr);
+    if (clear_status != WorldComponentResourceBindingStatus::InvalidResourceRegistry) {
+        return Fail("component resource binding clear null returned wrong status");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 1U) {
+        return Fail("component resource binding clear null cleared binding");
+    }
+
+    if (registry.Snapshot().acquired_handle_count != 1U) {
+        return Fail("component resource binding clear null released resource");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeClearReleaseFailurePreservesUnreleasedBindings() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding clear failure first attachment add failed") != 0) {
+        return 1;
+    }
+
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            "component resource binding clear failure second attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult first_resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, "texture_a");
+    const ResourceRegistrationResult second_resource = RegisterResource(registry, RESOURCE_TYPE_AUDIO, "audio_a");
+    if (!first_resource.Succeeded() || !second_resource.Succeeded()) {
+        return Fail("component resource binding clear failure registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            first_resource.handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("component resource binding clear failure first bind failed");
+    }
+
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            second_resource.handle,
+            RESOURCE_TYPE_AUDIO).Succeeded()) {
+        return Fail("component resource binding clear failure second bind failed");
+    }
+
+    if (registry.Release(second_resource.handle) != ResourceStatus::Success) {
+        return Fail("component resource binding clear failure external release failed");
+    }
+
+    const WorldComponentResourceBindingStatus clear_status = bridge.Clear(&registry);
+    if (clear_status != WorldComponentResourceBindingStatus::ResourceReleaseFailed) {
+        return Fail("component resource binding clear failure returned wrong status");
+    }
+
+    const WorldComponentResourceBindingSnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.active_binding_count != 1U) {
+        return Fail("component resource binding clear failure did not preserve remaining binding");
+    }
+
+    if (bridge_snapshot.cleared_binding_count != 1U) {
+        return Fail("component resource binding clear failure counted wrong cleared bindings");
+    }
+
+    if (!bridge.Query(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY).Succeeded()) {
+        return Fail("component resource binding clear failure lost unreleased binding");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeBoundResourceCannotRetireUntilReleased() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding retire attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding retire registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("component resource binding retire bind failed");
+    }
+
+    if (registry.Retire(resource.handle) != ResourceStatus::StillReferenced) {
+        return Fail("component resource binding retire while bound returned wrong status");
+    }
+
+    if (bridge.Remove(
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY) != WorldComponentResourceBindingStatus::Success) {
+        return Fail("component resource binding retire remove failed");
+    }
+
+    if (registry.Retire(resource.handle) != ResourceStatus::Success) {
+        return Fail("component resource binding retire after remove failed");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeQueryReturnsStoredBinding() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding query attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry, RESOURCE_TYPE_MATERIAL, "material_a");
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding query registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            resource.handle,
+            RESOURCE_TYPE_MATERIAL).Succeeded()) {
+        return Fail("component resource binding query bind failed");
+    }
+
+    const WorldComponentResourceBindingResult query_result = bridge.Query(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    if (!query_result.Succeeded()) {
+        return Fail("component resource binding query failed");
+    }
+
+    if (query_result.resource_handle.slot != resource.handle.slot) {
+        return Fail("component resource binding query returned wrong resource slot");
+    }
+
+    if (query_result.expected_resource_type.value != RESOURCE_TYPE_MATERIAL.value) {
+        return Fail("component resource binding query returned wrong resource type");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeQueryIsReadOnlyAndBounded() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding query readonly attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding query readonly registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("component resource binding query readonly bind failed");
+    }
+
+    const WorldComponentResourceBindingSnapshot before_bridge = bridge.Snapshot();
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    std::uint32_t query_index = 0U;
+    while (query_index < 3U) {
+        if (!bridge.Query(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+            return Fail("component resource binding query readonly query failed");
+        }
+
+        ++query_index;
+    }
+
+    const WorldComponentResourceBindingSnapshot after_bridge = bridge.Snapshot();
+    if (after_bridge.active_binding_count != before_bridge.active_binding_count) {
+        return Fail("component resource binding query readonly mutated active count");
+    }
+
+    if (after_bridge.acquired_binding_count != before_bridge.acquired_binding_count) {
+        return Fail("component resource binding query readonly mutated acquired count");
+    }
+
+    if (after_bridge.released_binding_count != before_bridge.released_binding_count) {
+        return Fail("component resource binding query readonly mutated release count");
+    }
+
+    if (after_bridge.failed_operation_count != before_bridge.failed_operation_count) {
+        return Fail("component resource binding query readonly mutated failure count");
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("component resource binding query readonly mutated registry");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeUpdatePathDoesNotGrowStorage() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding update path attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    WorldComponentResourceBindingBridgeDesc desc{};
+    desc.binding_capacity = 2U;
+    WorldComponentResourceBindingBridge bridge(desc);
+    const WorldComponentResourceBindingSnapshot before_bridge = bridge.Snapshot();
+    std::uint32_t iteration = 0U;
+    while (iteration < 2U) {
+        const char *key = iteration == 0U ? "texture_a" : "texture_b";
+        const ResourceRegistrationResult resource = RegisterResource(registry, RESOURCE_TYPE_TEXTURE, key);
+        if (!resource.Succeeded()) {
+            return Fail("component resource binding update path registration failed");
+        }
+
+        if (!BindComponentResource(
+                bridge,
+                &attachment_bridge,
+                &registry,
+                OBJECT_PLAYER,
+                COMPONENT_TYPE_PRIMARY,
+                COMPONENT_SLOT_PRIMARY,
+                resource.handle,
+                RESOURCE_TYPE_TEXTURE).Succeeded()) {
+            return Fail("component resource binding update path bind failed");
+        }
+
+        if (!bridge.Query(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY).Succeeded()) {
+            return Fail("component resource binding update path query failed");
+        }
+
+        if (bridge.Remove(
+                &registry,
+                OBJECT_PLAYER,
+                COMPONENT_TYPE_PRIMARY,
+                COMPONENT_SLOT_PRIMARY) != WorldComponentResourceBindingStatus::Success) {
+            return Fail("component resource binding update path remove failed");
+        }
+
+        ++iteration;
+    }
+
+    const WorldComponentResourceBindingSnapshot after_bridge = bridge.Snapshot();
+    if (after_bridge.binding_capacity != before_bridge.binding_capacity) {
+        return Fail("component resource binding update path changed capacity");
+    }
+
+    if (after_bridge.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("component resource binding update path changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeSnapshotReportsCountsAndLastStatus() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding snapshot attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding snapshot registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("component resource binding snapshot bind failed");
+    }
+
+    const WorldComponentResourceBindingStatus failure_status = bridge.Remove(
+        nullptr,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    if (failure_status != WorldComponentResourceBindingStatus::InvalidResourceRegistry) {
+        return Fail("component resource binding snapshot failure status failed");
+    }
+
+    const WorldComponentResourceBindingSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.active_binding_count != 1U) {
+        return Fail("component resource binding snapshot active count wrong");
+    }
+
+    if (snapshot.acquired_binding_count != 1U) {
+        return Fail("component resource binding snapshot acquired count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("component resource binding snapshot failure count wrong");
+    }
+
+    if (snapshot.last_status != WorldComponentResourceBindingStatus::InvalidResourceRegistry) {
+        return Fail("component resource binding snapshot last status wrong");
+    }
+
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("component resource binding snapshot allocation accounting wrong");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeDoesNotQueryOrMutateWorldInstance() {
+    WorldInstance world = MakeWorld(4U, 4U);
+    const WorldSnapshot before_world = world.Snapshot();
+
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding no-world-query attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding no-world-query registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        &registry,
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (!result.Succeeded()) {
+        return Fail("component resource binding no-world-query bind failed");
+    }
+
+    const WorldSnapshot after_world = world.Snapshot();
+    if (!WorldSnapshotsMatch(before_world, after_world)) {
+        return Fail("component resource binding no-world-query mutated world");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeNoActorComponentPayloadOrLifecycle() {
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding no-payload attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding no-payload registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    if (!BindComponentResource(
+            bridge,
+            &attachment_bridge,
+            &registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            resource.handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("component resource binding no-payload bind failed");
+    }
+
+    const WorldComponentResourceBindingResult query_result = bridge.Query(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    if (!query_result.Succeeded()) {
+        return Fail("component resource binding no-payload query failed");
+    }
+
+    if (query_result.expected_resource_type.value != RESOURCE_TYPE_TEXTURE.value) {
+        return Fail("component resource binding no-payload changed resource type");
+    }
+
+    if (bridge.Snapshot().active_binding_count != 1U) {
+        return Fail("component resource binding no-payload changed active count");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeNoFilePackageLoadDecodeUploadOrGameAdapterDependency() {
+    WorldComponentResourceBindingBridge bridge;
+    const WorldComponentResourceBindingSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.binding_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("component resource binding dependency test changed default capacity");
+    }
+
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("component resource binding dependency test changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency() {
+    WorldComponentResourceBindingBridge bridge;
+    const WorldComponentResourceBindingSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.binding_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("component resource binding render dependency test changed default capacity");
+    }
+
+    if (snapshot.last_status != WorldComponentResourceBindingStatus::Success) {
+        return Fail("component resource binding render dependency test changed last status");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeWorldInstanceCoreRemainsComponentResourceFree() {
+    WorldInstance world = MakeWorld(4U, 4U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("component resource binding world core-free registration failed");
+    }
+
+    const WorldSnapshot before_world = world.Snapshot();
+    WorldComponentAttachmentBridge attachment_bridge;
+    if (AddComponentAttachment(
+            attachment_bridge,
+            OBJECT_EFFECT,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            "component resource binding world core-free attachment add failed") != 0) {
+        return 1;
+    }
+
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding world core-free resource registration failed");
+    }
+
+    WorldComponentResourceBindingBridge bridge;
+    const WorldComponentResourceBindingResult result = BindComponentResource(
+        bridge,
+        &attachment_bridge,
+        &registry,
+        OBJECT_EFFECT,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    if (!result.Succeeded()) {
+        return Fail("component resource binding world core-free bind failed");
+    }
+
+    const WorldSnapshot after_world = world.Snapshot();
+    if (!WorldSnapshotsMatch(before_world, after_world)) {
+        return Fail("component resource binding world core-free mutated world");
+    }
+
+    return 0;
+}
+
+int WorldComponentResourceBindingBridgeResourceCoreRemainsWorldFree() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceRegistrationResult resource = RegisterResource(registry);
+    if (!resource.Succeeded()) {
+        return Fail("component resource binding resource core-free registration failed");
+    }
+
+    if (registry.Acquire(resource.handle, RESOURCE_TYPE_TEXTURE) != ResourceStatus::Success) {
+        return Fail("component resource binding resource core-free acquire failed");
+    }
+
+    if (registry.Release(resource.handle) != ResourceStatus::Success) {
+        return Fail("component resource binding resource core-free release failed");
+    }
+
+    if (registry.Retire(resource.handle) != ResourceStatus::Success) {
+        return Fail("component resource binding resource core-free retire failed");
+    }
+
+    return 0;
+}
+
 int WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord() {
     WorldComponentAttachmentBridge bridge;
     const WorldComponentAttachmentResult result = bridge.Add(
@@ -7233,6 +8695,66 @@ int main(int argc, char **argv) {
         {TEST_RESOURCE_NO_FILE_PACKAGE, WorldResourceBindingBridgeNoFilePackageLoadDecodeUploadOrGameAdapterDependency},
         {TEST_RESOURCE_WORLD_CORE_FREE, WorldResourceBindingBridgeWorldInstanceCoreRemainsResourceFree},
         {TEST_RESOURCE_CORE_FREE, WorldResourceBindingBridgeResourceCoreRemainsWorldFree},
+        {TEST_COMPONENT_RESOURCE_BIND_VALID,
+            WorldComponentResourceBindingBridgeBindValidAttachmentResourceAcquiresHandle},
+        {TEST_COMPONENT_RESOURCE_BIND_NULL_ATTACHMENT,
+            WorldComponentResourceBindingBridgeBindRejectsNullAttachmentSourceWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_BIND_NULL_REGISTRY,
+            WorldComponentResourceBindingBridgeBindRejectsNullRegistryWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_BIND_INVALID_WORLD,
+            WorldComponentResourceBindingBridgeBindRejectsInvalidWorldIdWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_BIND_INVALID_TYPE,
+            WorldComponentResourceBindingBridgeBindRejectsInvalidComponentTypeWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_BIND_INVALID_SLOT,
+            WorldComponentResourceBindingBridgeBindRejectsInvalidComponentSlotWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_BIND_MISSING_ATTACHMENT,
+            WorldComponentResourceBindingBridgeBindRejectsMissingAttachmentWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_BIND_INVALID_HANDLE,
+            WorldComponentResourceBindingBridgeBindRejectsInvalidResourceHandleWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_BIND_STALE_HANDLE,
+            WorldComponentResourceBindingBridgeBindRejectsStaleResourceHandleWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_BIND_TYPE_MISMATCH,
+            WorldComponentResourceBindingBridgeBindRejectsTypeMismatchWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_BIND_DUPLICATE,
+            WorldComponentResourceBindingBridgeBindRejectsDuplicateComponentBinding},
+        {TEST_COMPONENT_RESOURCE_BIND_CAPACITY,
+            WorldComponentResourceBindingBridgeBindRejectsCapacityOverflowWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_REMOVE_RELEASES,
+            WorldComponentResourceBindingBridgeRemoveReleasesHandle},
+        {TEST_COMPONENT_RESOURCE_REMOVE_NULL_REGISTRY,
+            WorldComponentResourceBindingBridgeRemoveRejectsNullRegistryWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_REMOVE_MISSING,
+            WorldComponentResourceBindingBridgeRemoveRejectsMissingBindingWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_REMOVE_RELEASE_FAILURE,
+            WorldComponentResourceBindingBridgeRemoveReleaseFailureKeepsBinding},
+        {TEST_COMPONENT_RESOURCE_CLEAR_RELEASES,
+            WorldComponentResourceBindingBridgeClearReleasesAllHandles},
+        {TEST_COMPONENT_RESOURCE_CLEAR_NULL_REGISTRY,
+            WorldComponentResourceBindingBridgeClearRejectsNullRegistryWithoutMutation},
+        {TEST_COMPONENT_RESOURCE_CLEAR_RELEASE_FAILURE,
+            WorldComponentResourceBindingBridgeClearReleaseFailurePreservesUnreleasedBindings},
+        {TEST_COMPONENT_RESOURCE_RETIRE_HELD,
+            WorldComponentResourceBindingBridgeBoundResourceCannotRetireUntilReleased},
+        {TEST_COMPONENT_RESOURCE_QUERY,
+            WorldComponentResourceBindingBridgeQueryReturnsStoredBinding},
+        {TEST_COMPONENT_RESOURCE_QUERY_READ_ONLY,
+            WorldComponentResourceBindingBridgeQueryIsReadOnlyAndBounded},
+        {TEST_COMPONENT_RESOURCE_UPDATE_PATH,
+            WorldComponentResourceBindingBridgeUpdatePathDoesNotGrowStorage},
+        {TEST_COMPONENT_RESOURCE_SNAPSHOT,
+            WorldComponentResourceBindingBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_COMPONENT_RESOURCE_NO_WORLD_QUERY,
+            WorldComponentResourceBindingBridgeDoesNotQueryOrMutateWorldInstance},
+        {TEST_COMPONENT_RESOURCE_NO_PAYLOAD,
+            WorldComponentResourceBindingBridgeNoActorComponentPayloadOrLifecycle},
+        {TEST_COMPONENT_RESOURCE_NO_FILE_PACKAGE,
+            WorldComponentResourceBindingBridgeNoFilePackageLoadDecodeUploadOrGameAdapterDependency},
+        {TEST_COMPONENT_RESOURCE_NO_RENDER_PHYSICS,
+            WorldComponentResourceBindingBridgeNoRenderPhysicsAudioInputUiToolOrReportDependency},
+        {TEST_COMPONENT_RESOURCE_WORLD_CORE_FREE,
+            WorldComponentResourceBindingBridgeWorldInstanceCoreRemainsComponentResourceFree},
+        {TEST_COMPONENT_RESOURCE_RESOURCE_CORE_FREE,
+            WorldComponentResourceBindingBridgeResourceCoreRemainsWorldFree},
         {TEST_COMPONENT_ADD_VALID, WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord},
         {TEST_COMPONENT_ADD_INVALID_WORLD, WorldComponentAttachmentBridgeAddRejectsInvalidWorldIdWithoutMutation},
         {TEST_COMPONENT_ADD_INVALID_TYPE, WorldComponentAttachmentBridgeAddRejectsInvalidComponentTypeWithoutMutation},
