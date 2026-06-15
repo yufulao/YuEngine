@@ -96,7 +96,7 @@ Phase 3 remains blocked from:
 | P3-GATE-015 | World Component Resource Binding Snapshot Bridge | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_015_WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_BRIDGE.md`; deterministic YuSerialize snapshot adapter over component-resource binding records only, caller-owned streams and output records, no automatic active restore, no resource acquire/release on read, no component payload/lifecycle, no `WorldInstance` mutation, no Object/File/Package/render/physics/audio/script/UI/tools/reports or Game Adapter dependency |
 | P3-GATE-016 | World Component Resource Binding Restore Bridge | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_016_WORLD_COMPONENT_RESOURCE_BINDING_RESTORE_BRIDGE.md`; explicit apply adapter from caller-owned component-resource binding snapshot records into active bindings, validation before mutation, resource acquire only through existing binding bridge, no stream parsing, no resource loading/package/file/render/audio/script/UI/tools/reports or Game Adapter dependency |
 | P3-GATE-017 | World Scene Assembly Snapshot Restore Coordinator | L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_017_WORLD_SCENE_ASSEMBLY_SNAPSHOT_RESTORE_COORDINATOR.md`; sidecar-only coordinator over caller-owned component attachment and component-resource binding records, full assembly preflight before attachment or binding mutation, no manifest stream, no object/transform active restore, no scene loading/save policy/object construction/resource loading/render/audio/UI/tools/reports or Game Adapter dependency |
-| P3-GATE-018 | World Scene Assembly Manifest Stream Bridge | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for manifest/stream-only first slice | Gate doc: `docs/gates/P3_GATE_018_WORLD_SCENE_ASSEMBLY_MANIFEST_STREAM_BRIDGE.md`; manifest/stream-only envelope over caller-owned component attachment and component-resource binding snapshot records, no active restore, no object/transform restore, no scene loading/save policy/object construction/resource loading/File/Package/render/audio/UI/tools/reports or Game Adapter dependency |
+| P3-GATE-018 | World Scene Assembly Manifest Stream Bridge | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_018_WORLD_SCENE_ASSEMBLY_MANIFEST_STREAM_BRIDGE.md`; manifest/stream-only envelope over caller-owned component attachment and component-resource binding snapshot records, no active restore, no object/transform restore, no scene loading/save policy/object construction/resource loading/File/Package/render/audio/UI/tools/reports or Game Adapter dependency |
 
 ## Current Active Gates
 
@@ -257,6 +257,8 @@ Phase 3 remains blocked from:
   and caller-owned component-resource binding snapshot records. It does not
   authorize active restore, object/transform restore, scene load/save policy,
   package/file work, resource loading, or Game Adapter scope.
+- P3-GATE-018 first slice landed at `0d57948` with QA PASS and fast gate
+  `505/505`.
 
 ## Implementation Baseline
 
@@ -280,6 +282,7 @@ Recently landed Phase 3 world/script slices:
 - `4994518 [#ENG-063][Added]Add world component resource binding snapshot bridge`
 - `5c31c7c [Added] Add world component resource binding restore bridge`
 - `5dc9830 [Added] Add world scene assembly bridge`
+- `0d57948 [Added] Add world scene assembly manifest stream bridge`
 
 Future Phase 3 work must extend from this baseline instead of recreating the
 same first slices.
@@ -296,17 +299,14 @@ same first slices.
 
 ## Immediate Next Steps
 
-1. Treat P3-GATE-017 as the landed sidecar-only assembly baseline. Future scene
-   work must extend from caller-owned component attachment records,
-   caller-owned component-resource binding records, full preflight, and no
-   hidden allocation or storage growth.
-2. Start P3-GATE-018 implementation only from the approved manifest/stream-only
-   first slice: caller-owned sidecar records, fixed-byte chunk encoding when
-   needed, manifest-local byte/record/field budgets, no hidden allocation, and
-   no active restore during read/write. Do not use P3-GATE-017 or P3-GATE-018 to
-   introduce active object/transform restore, scene loading, save policy, object
-   construction, resource loading, component payload/lifecycle,
-   render/audio/physics/UI/tools/reports, or Game Adapter behavior.
+1. Treat P3-GATE-017 and P3-GATE-018 as landed scene-assembly baselines.
+   Future scene work must extend from caller-owned component attachment records,
+   caller-owned component-resource binding records, sidecar-only preflight, and
+   manifest stream transport without hidden allocation or storage growth.
+2. Do not use P3-GATE-017 or P3-GATE-018 to introduce active object/transform
+   restore, scene loading, save policy, object construction, resource loading,
+   component payload/lifecycle, render/audio/physics/UI/tools/reports, or Game
+   Adapter behavior. Those require a separate reviewed and approved gate.
 3. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.
