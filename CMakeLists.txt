@@ -39,6 +39,7 @@ target_link_libraries(YuScript PUBLIC YuMemory)
 
 add_library(YuWorld
     Src/YuEngine/World/Src/WorldInstance.cpp
+    Src/YuEngine/World/Src/WorldKernelModule.cpp
 )
 yuengine_apply_compile_options(YuWorld)
 target_include_directories(YuWorld
@@ -186,6 +187,7 @@ target_include_directories(YuKernel
         Src/YuEngine/Kernel/Include
 )
 target_link_libraries(YuKernel PUBLIC YuPlatform)
+target_link_libraries(YuWorld PUBLIC YuKernel)
 
 add_executable(YuHeadless
     Apps/YuEngineHeadless/Main.cpp
@@ -271,7 +273,7 @@ add_executable(YuWorldTests
     Tests/World/WorldTests.cpp
 )
 yuengine_apply_compile_options(YuWorldTests)
-target_link_libraries(YuWorldTests PRIVATE YuWorld)
+target_link_libraries(YuWorldTests PRIVATE YuWorld YuPlatform)
 add_test(NAME World_CreateWithFixedCapacity_ReportsSnapshot COMMAND YuWorldTests World_CreateWithFixedCapacity_ReportsSnapshot)
 add_test(NAME World_StartStop_RunsDeterministicLifecycle COMMAND YuWorldTests World_StartStop_RunsDeterministicLifecycle)
 add_test(NAME World_UpdateRunsPhasesInFixedOrder COMMAND YuWorldTests World_UpdateRunsPhasesInFixedOrder)
@@ -285,6 +287,16 @@ add_test(NAME World_StopClearsActiveEntries COMMAND YuWorldTests World_StopClear
 add_test(NAME World_NoScriptResourcePackageFileOrGameAdapterDependency COMMAND YuWorldTests World_NoScriptResourcePackageFileOrGameAdapterDependency)
 add_test(NAME World_NoActorComponentOrTransformHierarchy COMMAND YuWorldTests World_NoActorComponentOrTransformHierarchy)
 add_test(NAME World_SnapshotReportsCountsAndLastStatus COMMAND YuWorldTests World_SnapshotReportsCountsAndLastStatus)
+add_test(NAME WorldKernelModule_StartPublishesWorldService COMMAND YuWorldTests WorldKernelModule_StartPublishesWorldService)
+add_test(NAME WorldKernelModule_UpdateTicksWorldInKernelOrder COMMAND YuWorldTests WorldKernelModule_UpdateTicksWorldInKernelOrder)
+add_test(NAME WorldKernelModule_ShutdownStopsWorld COMMAND YuWorldTests WorldKernelModule_ShutdownStopsWorld)
+add_test(NAME WorldKernelModule_StartFailurePropagatesExplicitStatus COMMAND YuWorldTests WorldKernelModule_StartFailurePropagatesExplicitStatus)
+add_test(NAME WorldKernelModule_UpdateFailureTriggersKernelTeardown COMMAND YuWorldTests WorldKernelModule_UpdateFailureTriggersKernelTeardown)
+add_test(NAME WorldKernelModule_HeadlessHostDrivesWorldDeterministically COMMAND YuWorldTests WorldKernelModule_HeadlessHostDrivesWorldDeterministically)
+add_test(NAME WorldKernelModule_UpdatePathDoesNotGrowWorldStorage COMMAND YuWorldTests WorldKernelModule_UpdatePathDoesNotGrowWorldStorage)
+add_test(NAME WorldKernelModule_NoScriptResourcePackageFileOrGameAdapterDependency COMMAND YuWorldTests WorldKernelModule_NoScriptResourcePackageFileOrGameAdapterDependency)
+add_test(NAME WorldKernelModule_NoActorComponentOrTransformHierarchy COMMAND YuWorldTests WorldKernelModule_NoActorComponentOrTransformHierarchy)
+add_test(NAME WorldKernelModule_CoreWorldInstanceRemainsKernelFree COMMAND YuWorldTests WorldKernelModule_CoreWorldInstanceRemainsKernelFree)
 
 add_executable(YuThreadTests
     Tests/Thread/ThreadTestContext.cpp

@@ -7,11 +7,21 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
+#include "YuEngine/Kernel/EngineKernel.h"
+#include "YuEngine/Kernel/KernelHostRuntime.h"
+#include "YuEngine/Kernel/KernelStatus.h"
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
+#include "YuEngine/Platform/FixedFrameClock.h"
+#include "YuEngine/Platform/HeadlessHost.h"
+#include "YuEngine/Platform/HeadlessHostConfig.h"
+#include "YuEngine/Platform/HostStatus.h"
 #include "YuEngine/World/WorldConstants.h"
 #include "YuEngine/World/WorldDesc.h"
 #include "YuEngine/World/WorldInstance.h"
+#include "YuEngine/World/WorldKernelModule.h"
+#include "YuEngine/World/WorldKernelModuleDesc.h"
 #include "YuEngine/World/WorldLifecycleState.h"
 #include "YuEngine/World/WorldObjectDesc.h"
 #include "YuEngine/World/WorldPhaseTrace.h"
@@ -19,13 +29,25 @@
 #include "YuEngine/World/WorldSnapshot.h"
 #include "YuEngine/World/WorldStatus.h"
 #include "YuEngine/World/WorldUpdatePhase.h"
+#include "YuEngine/World/WorldServiceIds.h"
 
+using yuengine::kernel::EngineKernel;
+using yuengine::kernel::KernelHostRuntime;
+using yuengine::kernel::KernelStatus;
 using yuengine::memory::MemoryAccountingStatus;
+using yuengine::platform::FixedFrameClock;
+using yuengine::platform::HeadlessHost;
+using yuengine::platform::HeadlessHostConfig;
+using yuengine::platform::HostStatus;
 using yuengine::world::MAX_WORLD_OBJECT_COUNT;
 using yuengine::world::MAX_WORLD_PHASE_TRACE_COUNT;
 using yuengine::world::WORLD_UPDATE_PHASE_COUNT;
+using yuengine::world::WORLD_INSTANCE_SERVICE_ID;
+using yuengine::world::WORLD_KERNEL_MODULE_NAME;
 using yuengine::world::WorldDesc;
 using yuengine::world::WorldInstance;
+using yuengine::world::WorldKernelModule;
+using yuengine::world::WorldKernelModuleDesc;
 using yuengine::world::WorldLifecycleState;
 using yuengine::world::WorldObjectDesc;
 using yuengine::world::WorldObjectId;
@@ -49,12 +71,56 @@ constexpr const char *TEST_STOP_CLEARS = "World_StopClearsActiveEntries";
 constexpr const char *TEST_NO_SCRIPT_RESOURCE = "World_NoScriptResourcePackageFileOrGameAdapterDependency";
 constexpr const char *TEST_NO_ACTOR_COMPONENT = "World_NoActorComponentOrTransformHierarchy";
 constexpr const char *TEST_SNAPSHOT = "World_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_MODULE_START_SERVICE = "WorldKernelModule_StartPublishesWorldService";
+constexpr const char *TEST_MODULE_UPDATE_ORDER = "WorldKernelModule_UpdateTicksWorldInKernelOrder";
+constexpr const char *TEST_MODULE_SHUTDOWN = "WorldKernelModule_ShutdownStopsWorld";
+constexpr const char *TEST_MODULE_START_FAILURE = "WorldKernelModule_StartFailurePropagatesExplicitStatus";
+constexpr const char *TEST_MODULE_UPDATE_FAILURE = "WorldKernelModule_UpdateFailureTriggersKernelTeardown";
+constexpr const char *TEST_MODULE_HEADLESS_HOST = "WorldKernelModule_HeadlessHostDrivesWorldDeterministically";
+constexpr const char *TEST_MODULE_UPDATE_PATH = "WorldKernelModule_UpdatePathDoesNotGrowWorldStorage";
+constexpr const char *TEST_MODULE_NO_SCRIPT_RESOURCE = "WorldKernelModule_NoScriptResourcePackageFileOrGameAdapterDependency";
+constexpr const char *TEST_MODULE_NO_ACTOR_COMPONENT = "WorldKernelModule_NoActorComponentOrTransformHierarchy";
+constexpr const char *TEST_MODULE_CORE_KERNEL_FREE = "WorldKernelModule_CoreWorldInstanceRemainsKernelFree";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
+constexpr const char *TRACE_KERNEL_START = "kernel.start";
+constexpr const char *TRACE_KERNEL_UPDATE = "kernel.update";
+constexpr const char *TRACE_KERNEL_SHUTDOWN = "kernel.shutdown";
+constexpr const char *TRACE_WORLD_MODULE_START = "world.module.start";
+constexpr const char *TRACE_WORLD_MODULE_UPDATE = "world.module.update";
+constexpr const char *TRACE_WORLD_MODULE_SHUTDOWN = "world.module.shutdown";
 constexpr WorldObjectId OBJECT_PLAYER{1U};
 constexpr WorldObjectId OBJECT_CAMERA{2U};
 constexpr WorldObjectId OBJECT_EFFECT{3U};
 using TestFunction = int (*)();
+
+class TestLogSink final : public yuengine::diagnostics::ILogSink {
+public:
+    void Write(std::string_view module_name, yuengine::diagnostics::LogLevel level, std::string_view message) override {
+        static_cast<void>(module_name);
+        static_cast<void>(level);
+        static_cast<void>(message);
+    }
+
+    void SetEnabled(bool enabled) override {
+        static_cast<void>(enabled);
+    }
+
+    bool IsEnabled() const override {
+        return false;
+    }
+
+    bool SetModuleEnabled(std::string_view module_name, bool enabled) override {
+        static_cast<void>(module_name);
+        static_cast<void>(enabled);
+        return false;
+    }
+
+    bool IsModuleEnabled(std::string_view module_name) const override {
+        static_cast<void>(module_name);
+        return false;
+    }
+};
 
 int Fail(const std::string &message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -77,6 +143,52 @@ WorldInstance MakeWorld(std::uint32_t object_capacity=MAX_WORLD_OBJECT_COUNT,
 WorldRegistrationResult Register(WorldInstance &world, WorldObjectId id, bool is_enabled=true) {
     const WorldObjectDesc desc = Object(id, is_enabled);
     return world.RegisterObject(desc);
+}
+
+WorldKernelModuleDesc MakeModuleDesc(std::uint64_t fixed_step_duration=16U) {
+    WorldKernelModuleDesc desc{};
+    desc.fixed_step_duration = fixed_step_duration;
+    return desc;
+}
+
+bool TraceContains(const std::vector<std::string> &lifecycle_trace, std::string_view trace_entry) {
+    for (const std::string &entry : lifecycle_trace) {
+        if (entry == trace_entry) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+int RequireKernelStart(EngineKernel &kernel, std::vector<std::string> &lifecycle_trace) {
+    const auto start_result = kernel.Start(lifecycle_trace);
+    if (!start_result.succeeded) {
+        return Fail("kernel did not start");
+    }
+
+    return 0;
+}
+
+int RequireKernelUpdate(EngineKernel &kernel,
+    std::uint32_t frame_index,
+    std::uint64_t tick_time_nanoseconds,
+    std::vector<std::string> &lifecycle_trace) {
+    const auto update_result = kernel.Update(frame_index, tick_time_nanoseconds, lifecycle_trace);
+    if (!update_result.succeeded) {
+        return Fail("kernel did not update");
+    }
+
+    return 0;
+}
+
+int RequireKernelShutdown(EngineKernel &kernel, std::vector<std::string> &lifecycle_trace) {
+    const auto shutdown_result = kernel.Shutdown(lifecycle_trace);
+    if (!shutdown_result.succeeded) {
+        return Fail("kernel did not shut down");
+    }
+
+    return 0;
 }
 
 int RequireSuccessfulStart(WorldInstance &world) {
@@ -489,6 +601,364 @@ int WorldSnapshotReportsCountsAndLastStatus() {
 
     return 0;
 }
+
+int WorldKernelModuleStartPublishesWorldService() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    WorldKernelModule module(world);
+    EngineKernel kernel;
+    std::vector<std::string> lifecycle_trace;
+
+    if (!kernel.RegisterModule(module)) {
+        return Fail("world module registration failed");
+    }
+
+    if (RequireKernelStart(kernel, lifecycle_trace) != 0) {
+        return 1;
+    }
+
+    WorldInstance *service = kernel.Services().Resolve<WorldInstance>(WORLD_INSTANCE_SERVICE_ID);
+    if (service != &world) {
+        return Fail("world service did not resolve to the fixture instance");
+    }
+
+    if (world.Snapshot().lifecycle_state != WorldLifecycleState::Running) {
+        return Fail("world service start did not run world lifecycle");
+    }
+
+    return RequireKernelShutdown(kernel, lifecycle_trace);
+}
+
+int WorldKernelModuleUpdateTicksWorldInKernelOrder() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    WorldKernelModule module(world);
+    EngineKernel kernel;
+    std::vector<std::string> lifecycle_trace;
+
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("kernel order fixture registration failed");
+    }
+
+    if (!kernel.RegisterModule(module)) {
+        return Fail("kernel order module registration failed");
+    }
+
+    if (RequireKernelStart(kernel, lifecycle_trace) != 0) {
+        return 1;
+    }
+
+    if (RequireKernelUpdate(kernel, 7U, 33U, lifecycle_trace) != 0) {
+        return 1;
+    }
+
+    const std::vector<std::string> expected_trace{
+        TRACE_KERNEL_START,
+        TRACE_WORLD_MODULE_START,
+        TRACE_KERNEL_UPDATE,
+        TRACE_WORLD_MODULE_UPDATE};
+    if (lifecycle_trace != expected_trace) {
+        return Fail("world module lifecycle order did not match kernel order");
+    }
+
+    const WorldSnapshot snapshot = world.Snapshot();
+    if (snapshot.frame_count != 1U) {
+        return Fail("world module update did not advance frame count");
+    }
+
+    if (snapshot.last_frame_index != 7U) {
+        return Fail("world module update did not use kernel frame index");
+    }
+
+    if (snapshot.last_fixed_step_duration != 16U) {
+        return Fail("world module update did not use adapter fixed step");
+    }
+
+    if (snapshot.last_frame_delta_duration != 33U) {
+        return Fail("world module update did not use kernel tick duration");
+    }
+
+    return RequireKernelShutdown(kernel, lifecycle_trace);
+}
+
+int WorldKernelModuleShutdownStopsWorld() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    WorldKernelModule module(world);
+    EngineKernel kernel;
+    std::vector<std::string> lifecycle_trace;
+
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("shutdown fixture registration failed");
+    }
+
+    if (!kernel.RegisterModule(module)) {
+        return Fail("shutdown module registration failed");
+    }
+
+    if (RequireKernelStart(kernel, lifecycle_trace) != 0) {
+        return 1;
+    }
+
+    if (RequireKernelShutdown(kernel, lifecycle_trace) != 0) {
+        return 1;
+    }
+
+    if (world.Snapshot().lifecycle_state != WorldLifecycleState::Stopped) {
+        return Fail("world module shutdown did not stop the world");
+    }
+
+    if (kernel.Services().Resolve<WorldInstance>(WORLD_INSTANCE_SERVICE_ID) != nullptr) {
+        return Fail("world service was not removed after shutdown");
+    }
+
+    return 0;
+}
+
+int WorldKernelModuleStartFailurePropagatesExplicitStatus() {
+    WorldInstance world = MakeWorld(0U, 8U);
+    WorldKernelModule module(world);
+    EngineKernel kernel;
+    std::vector<std::string> lifecycle_trace;
+
+    if (!kernel.RegisterModule(module)) {
+        return Fail("start failure module registration failed");
+    }
+
+    const auto start_result = kernel.Start(lifecycle_trace);
+    if (start_result.succeeded) {
+        return Fail("invalid world startup was not rejected");
+    }
+
+    if (start_result.status != KernelStatus::StartupFailure) {
+        return Fail("invalid world startup had wrong kernel status");
+    }
+
+    if (kernel.Services().Resolve<WorldInstance>(WORLD_INSTANCE_SERVICE_ID) != nullptr) {
+        return Fail("failed startup left world service registered");
+    }
+
+    if (!TraceContains(lifecycle_trace, TRACE_WORLD_MODULE_SHUTDOWN)) {
+        return Fail("failed startup did not run module cleanup");
+    }
+
+    return 0;
+}
+
+int WorldKernelModuleUpdateFailureTriggersKernelTeardown() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    WorldKernelModuleDesc desc = MakeModuleDesc(0U);
+    WorldKernelModule module(world, desc);
+    EngineKernel kernel;
+    std::vector<std::string> lifecycle_trace;
+
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("update failure fixture registration failed");
+    }
+
+    if (!kernel.RegisterModule(module)) {
+        return Fail("update failure module registration failed");
+    }
+
+    if (RequireKernelStart(kernel, lifecycle_trace) != 0) {
+        return 1;
+    }
+
+    const auto update_result = kernel.Update(1U, 17U, lifecycle_trace);
+    if (update_result.succeeded) {
+        return Fail("invalid world update was not rejected");
+    }
+
+    if (update_result.status != KernelStatus::UpdateFailure) {
+        return Fail("invalid world update had wrong kernel status");
+    }
+
+    if (world.Snapshot().lifecycle_state != WorldLifecycleState::Stopped) {
+        return Fail("kernel update failure did not stop the world");
+    }
+
+    if (kernel.Services().Resolve<WorldInstance>(WORLD_INSTANCE_SERVICE_ID) != nullptr) {
+        return Fail("kernel update failure did not remove world service");
+    }
+
+    return RequireKernelShutdown(kernel, lifecycle_trace);
+}
+
+int WorldKernelModuleHeadlessHostDrivesWorldDeterministically() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    WorldKernelModule module(world);
+    EngineKernel kernel;
+    KernelHostRuntime runtime(kernel);
+    FixedFrameClock frame_clock(17U, 0U);
+    TestLogSink log_sink;
+    HeadlessHost host(frame_clock, log_sink);
+    HeadlessHostConfig config{2U};
+
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("headless fixture registration failed");
+    }
+
+    if (!kernel.RegisterModule(module)) {
+        return Fail("headless module registration failed");
+    }
+
+    const auto run_result = host.Run(runtime, config);
+    if (run_result.status != HostStatus::Success) {
+        return Fail("headless host did not drive world successfully");
+    }
+
+    if (run_result.tick_count != 2U) {
+        return Fail("headless host tick count was not deterministic");
+    }
+
+    if (!TraceContains(run_result.lifecycle_trace, TRACE_WORLD_MODULE_UPDATE)) {
+        return Fail("headless host trace did not include world update");
+    }
+
+    const WorldSnapshot snapshot = world.Snapshot();
+    if (snapshot.lifecycle_state != WorldLifecycleState::Stopped) {
+        return Fail("headless host did not stop world");
+    }
+
+    if (snapshot.frame_count != 2U) {
+        return Fail("headless host did not tick world twice");
+    }
+
+    if (snapshot.last_frame_index != 1U) {
+        return Fail("headless host did not pass deterministic frame index");
+    }
+
+    if (snapshot.last_frame_delta_duration != 17U) {
+        return Fail("headless host did not pass deterministic tick duration");
+    }
+
+    return 0;
+}
+
+int WorldKernelModuleUpdatePathDoesNotGrowWorldStorage() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    WorldKernelModule module(world);
+    EngineKernel kernel;
+    std::vector<std::string> lifecycle_trace;
+
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("module update path registration failed");
+    }
+
+    if (!kernel.RegisterModule(module)) {
+        return Fail("module update path module registration failed");
+    }
+
+    if (RequireKernelStart(kernel, lifecycle_trace) != 0) {
+        return 1;
+    }
+
+    const WorldSnapshot before_snapshot = world.Snapshot();
+    for (std::uint32_t frame_index = 0U; frame_index < 3U; ++frame_index) {
+        if (RequireKernelUpdate(kernel, frame_index, 17U, lifecycle_trace) != 0) {
+            return 1;
+        }
+    }
+
+    const WorldSnapshot after_snapshot = world.Snapshot();
+    if (after_snapshot.object_capacity != before_snapshot.object_capacity) {
+        return Fail("kernel update path mutated object capacity");
+    }
+
+    if (after_snapshot.phase_trace_capacity != before_snapshot.phase_trace_capacity) {
+        return Fail("kernel update path mutated phase trace capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != before_snapshot.allocation_accounting_status) {
+        return Fail("kernel update path mutated allocation accounting signal");
+    }
+
+    return RequireKernelShutdown(kernel, lifecycle_trace);
+}
+
+int WorldKernelModuleNoScriptResourcePackageFileOrGameAdapterDependency() {
+    WorldInstance world = MakeWorld(2U, 8U);
+    WorldKernelModule module(world);
+
+    if (!module.Dependencies().empty()) {
+        return Fail("world module declared unexpected module dependency");
+    }
+
+    if (!module.RequiredServices().empty()) {
+        return Fail("world module declared unexpected required service");
+    }
+
+    const std::vector<std::string_view> published_services = module.PublishedServices();
+    if (published_services.size() != 1U) {
+        return Fail("world module did not declare exactly one world service");
+    }
+
+    if (published_services[0] != WORLD_INSTANCE_SERVICE_ID) {
+        return Fail("world module published unexpected service id");
+    }
+
+    return 0;
+}
+
+int WorldKernelModuleNoActorComponentOrTransformHierarchy() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    WorldKernelModule module(world);
+    EngineKernel kernel;
+    std::vector<std::string> lifecycle_trace;
+
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("module hierarchy player registration failed");
+    }
+
+    if (!Register(world, OBJECT_CAMERA).Succeeded()) {
+        return Fail("module hierarchy camera registration failed");
+    }
+
+    if (!kernel.RegisterModule(module)) {
+        return Fail("module hierarchy module registration failed");
+    }
+
+    if (RequireKernelStart(kernel, lifecycle_trace) != 0) {
+        return 1;
+    }
+
+    if (RequireKernelUpdate(kernel, 0U, 17U, lifecycle_trace) != 0) {
+        return 1;
+    }
+
+    const WorldSnapshot snapshot = world.Snapshot();
+    if (snapshot.registered_object_count != 2U) {
+        return Fail("world module changed flat object registration count");
+    }
+
+    if (snapshot.active_object_count != 2U) {
+        return Fail("world module changed flat active object count");
+    }
+
+    return RequireKernelShutdown(kernel, lifecycle_trace);
+}
+
+int WorldKernelModuleCoreWorldInstanceRemainsKernelFree() {
+    WorldInstance world = MakeWorld(2U, 8U);
+    WorldKernelModule module(world);
+
+    if (module.Name() != WORLD_KERNEL_MODULE_NAME) {
+        return Fail("world module name was not stable");
+    }
+
+    if (world.Snapshot().lifecycle_state != WorldLifecycleState::Created) {
+        return Fail("world core construction did not stay standalone");
+    }
+
+    const WorldStatus start_status = world.Start();
+    if (start_status != WorldStatus::Success) {
+        return Fail("world core standalone start failed");
+    }
+
+    const WorldStatus stop_status = world.Stop();
+    if (stop_status != WorldStatus::Success) {
+        return Fail("world core standalone stop failed");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -509,7 +979,17 @@ int main(int argc, char **argv) {
         {TEST_STOP_CLEARS, WorldStopClearsActiveEntries},
         {TEST_NO_SCRIPT_RESOURCE, WorldNoScriptResourcePackageFileOrGameAdapterDependency},
         {TEST_NO_ACTOR_COMPONENT, WorldNoActorComponentOrTransformHierarchy},
-        {TEST_SNAPSHOT, WorldSnapshotReportsCountsAndLastStatus}};
+        {TEST_SNAPSHOT, WorldSnapshotReportsCountsAndLastStatus},
+        {TEST_MODULE_START_SERVICE, WorldKernelModuleStartPublishesWorldService},
+        {TEST_MODULE_UPDATE_ORDER, WorldKernelModuleUpdateTicksWorldInKernelOrder},
+        {TEST_MODULE_SHUTDOWN, WorldKernelModuleShutdownStopsWorld},
+        {TEST_MODULE_START_FAILURE, WorldKernelModuleStartFailurePropagatesExplicitStatus},
+        {TEST_MODULE_UPDATE_FAILURE, WorldKernelModuleUpdateFailureTriggersKernelTeardown},
+        {TEST_MODULE_HEADLESS_HOST, WorldKernelModuleHeadlessHostDrivesWorldDeterministically},
+        {TEST_MODULE_UPDATE_PATH, WorldKernelModuleUpdatePathDoesNotGrowWorldStorage},
+        {TEST_MODULE_NO_SCRIPT_RESOURCE, WorldKernelModuleNoScriptResourcePackageFileOrGameAdapterDependency},
+        {TEST_MODULE_NO_ACTOR_COMPONENT, WorldKernelModuleNoActorComponentOrTransformHierarchy},
+        {TEST_MODULE_CORE_KERNEL_FREE, WorldKernelModuleCoreWorldInstanceRemainsKernelFree}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
