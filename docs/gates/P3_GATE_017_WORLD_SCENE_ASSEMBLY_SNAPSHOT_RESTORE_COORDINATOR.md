@@ -21,9 +21,12 @@ store, resource loader, render scene, audio scene, UI framework, tool adapter,
 report generator, or Game Adapter feature.
 
 The useful first slice is an explicit boundary that validates caller-owned
-assembly inputs before any active mutation. It may coordinate world snapshot
-metadata, component attachment records, and component-resource binding records,
-then restore them through existing bridges only after full preflight succeeds.
+assembly inputs before any active mutation. This first slice coordinates only
+caller-owned component attachment records and caller-owned component-resource
+binding records, then restores them through existing bridges only after full
+preflight succeeds. `WorldSnapshot`, world transform snapshot values, object
+identity restore, transform restore, and manifest streams are not first-slice
+active restore inputs.
 
 ## Reference Boundary
 
@@ -81,19 +84,32 @@ This gate owns a future first slice for:
   binding count, rejected record count, rollback count, failed operation count,
   last assembly status, last attachment status, last binding status, last
   resource status, and allocation/accounting status;
+- explicit status vocabulary for invalid destination, invalid input, invalid
+  world object ID, invalid component type ID, invalid component slot ID, invalid
+  resource handle, stale resource handle, invalid resource type ID, resource type
+  mismatch, projected resource acquire overflow, missing attachment for binding,
+  duplicate attachment input, duplicate binding input, attachment capacity
+  exceeded, binding capacity exceeded, destination not empty, attachment apply
+  failure, binding restore failure, resource acquire failure, and rollback
+  failure if rollback is approved;
 - tests proving no partial active assembly on validation failure, no hidden
   allocation, no `WorldInstance` ownership creep, no component payload or
   lifecycle creep, no resource loading, and no forbidden module dependencies.
 
 If the first slice cannot preflight component attachment destination state
 without mutation using the current `WorldComponentAttachmentBridge` surface, it
-may propose one minimal const validation helper on that bridge. That helper must
-not include or depend on Object, Resource, Script, Serialize, File, Package,
-render, audio, physics, UI, tools, reports, or Game Adapter modules.
+may propose one minimal const validation helper on that bridge, such as
+`ValidateRestoreDestination(required_attachment_count)`. That helper must not
+include or depend on Object, Resource, Script, Serialize, File, Package, render,
+audio, physics, UI, tools, reports, or Game Adapter modules.
 
 If the first slice cannot prove component-resource binding preflight through
 the current `WorldComponentResourceBindingBridge` and `ResourceRegistry`
 surfaces, it must stop at `NEEDS_ARCHITECTURE` instead of restoring partially.
+The current proposal expects assembly-local preflight using existing public
+binding destination validation and `ResourceRegistry::ValidateAcquire`. A new
+public preflight API on `WorldComponentResourceBindingRestoreBridge` is not
+authorized unless the gate is amended again.
 
 ## Does Not Own
 
@@ -112,6 +128,8 @@ This gate does not own:
   animation, physics, render scene, audio scene, UI, scene streaming, tools,
   reports, profiling UI, or Game Adapter behavior;
 - object construction, object destruction, or `YuObject` handle ownership;
+- `WorldInstance` object reconstruction, object identity binding restore, or
+  world transform record restore;
 - modifying `WorldInstance` core ownership to contain component attachment,
   component-resource binding, resource, serialize, or scene assembly storage;
 - copied UE or Unity public API shape, source code, macro style, reflection
@@ -124,27 +142,25 @@ Allowed dependencies for the first slice:
 
 - C++ standard library;
 - `YuMemory` only for accepted allocation/accounting vocabulary;
-- `YuWorld` public `WorldSnapshot`, `WorldObjectId`, world transform snapshot
-  values, component attachment, component attachment snapshot, component query,
-  component-resource binding, component-resource binding snapshot, component
-  resource binding restore, status, result, and value vocabulary;
+- `YuWorld` public `WorldObjectId`, component attachment, component attachment
+  snapshot records, component query, component-resource binding,
+  component-resource binding snapshot records, component-resource binding
+  restore, status, result, and value vocabulary;
 - `YuResource` public `ResourceRegistry`, `ResourceHandle`, `ResourceTypeId`,
-  `ResourceStatus`, and const projected-acquire validation;
-- `YuSerialize` only if the approved first slice includes a caller-owned
-  versioned manifest stream. Serialization must not own active restore.
+  `ResourceStatus`, and const projected-acquire validation.
 
 Forbidden dependencies:
 
-- `YuObject`, `YuScript`, `YuFile`, `YuPackage`, `YuThread`, `YuPlatform`,
-  `YuDiagnostics`, `YuRHI`, `YuAudio`, `YuInput`, UI, tools, reports, or game
-  adapter modules;
+- `YuObject`, `YuScript`, `YuSerialize`, `YuFile`, `YuPackage`, `YuThread`,
+  `YuPlatform`, `YuDiagnostics`, `YuRHI`, `YuAudio`, `YuInput`, UI, tools,
+  reports, or game adapter modules;
 - File IO, package lookup, resource path strings, original-game resource names,
   original-game component names, or original-game data as API shape;
 - loading, decoding, uploading, streaming, cache eviction, object construction,
   component factory lookup, scene streaming, or save policy during assembly.
 
 The first implementation may add only scene assembly coordinator files under
-`YuWorld`, minimal const validation/export support on existing world sidecar
+`YuWorld`, minimal const validation support on existing world sidecar
 bridges if review approves the need, `Tests/World` coverage, and CMake/CTest
 registration. It must not modify `WorldInstance` core ownership, `YuObject`,
 `YuScript`, `YuResource` core ownership beyond already approved const
@@ -177,8 +193,9 @@ First-slice assembly lifecycle:
 
 Failure behavior:
 
-- null destination bridges, resource registry, input pointers, or count pointers
-  return explicit status and do not mutate;
+- null destination bridges, resource registry, or input record pointers return
+  explicit status and do not mutate;
+- invalid input record counts return explicit status and do not mutate;
 - invalid world object IDs, component type IDs, component slot IDs, resource
   handles, or resource type IDs return explicit status and do not mutate;
 - duplicate attachment or binding records return explicit status and do not
@@ -202,7 +219,7 @@ Failure behavior:
 - caller-owned `ResourceRegistry`;
 - caller-owned component attachment records;
 - caller-owned component-resource binding records;
-- explicit attachment and binding record counts;
+- explicit attachment and binding record counts passed by value;
 - explicit scene assembly descriptor.
 
 ## Outputs
@@ -291,9 +308,13 @@ Fast gate tests required before the slice can be considered complete:
 - `WorldSceneAssemblyBridge_RejectsBindingCapacityOverflowWithoutMutation`
 - `WorldSceneAssemblyBridge_RejectsNonEmptyDestinationsWithoutMutation`
 - `WorldSceneAssemblyBridge_ValidatesResourceHandlesBeforeMutation`
+- `WorldSceneAssemblyBridge_BindingPreflightFailureDoesNotRestoreAttachments`
 - `WorldSceneAssemblyBridge_ResourceAcquireFailureDoesNotPartiallyAssemble`
+- `WorldSceneAssemblyBridge_RestorePathDoesNotGrowStorage`
+- `WorldSceneAssemblyBridge_NoHiddenAllocation_UsesYuMemorySignal`
 - `WorldSceneAssemblyBridge_SnapshotReportsCountsAndLastStatus`
 - `WorldSceneAssemblyBridge_NoActorComponentPayloadOrLifecycle`
+- `WorldSceneAssemblyBridge_NoObjectScriptSerializeThreadPlatformDiagnosticsDependency`
 - `WorldSceneAssemblyBridge_NoFilePackageLoadDecodeUploadOrGameAdapterDependency`
 - `WorldSceneAssemblyBridge_NoRenderPhysicsAudioInputUiToolOrReportDependency`
 - `WorldSceneAssemblyBridge_WorldInstanceCoreRemainsAssemblyFree`
@@ -305,6 +326,7 @@ Expected command family:
 cmake --preset windows-fast-gate
 cmake --build --preset windows-fast-gate
 ctest --preset windows-fast-gate --output-on-failure
+ctest --preset windows-fast-gate -N -R "WorldSceneAssemblyBridge"
 ```
 
 ## Allowed First Slice
