@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -120,6 +121,12 @@
 #include "YuEngine/World/WorldSceneAssemblyManifestStreamResult.h"
 #include "YuEngine/World/WorldSceneAssemblyManifestStreamSnapshot.h"
 #include "YuEngine/World/WorldSceneAssemblyManifestStreamStatus.h"
+#include "YuEngine/World/WorldSceneObjectTransformManifestStreamBridge.h"
+#include "YuEngine/World/WorldSceneObjectTransformManifestStreamConstants.h"
+#include "YuEngine/World/WorldSceneObjectTransformManifestStreamDesc.h"
+#include "YuEngine/World/WorldSceneObjectTransformManifestStreamResult.h"
+#include "YuEngine/World/WorldSceneObjectTransformManifestStreamSnapshot.h"
+#include "YuEngine/World/WorldSceneObjectTransformManifestStreamStatus.h"
 #include "YuEngine/World/WorldSceneObjectTransformRestoreBridge.h"
 #include "YuEngine/World/WorldSceneObjectTransformRestoreBridgeDesc.h"
 #include "YuEngine/World/WorldSceneObjectTransformRestoreIdentityRecord.h"
@@ -307,6 +314,29 @@ using yuengine::world::WorldSceneAssemblyManifestStreamDesc;
 using yuengine::world::WorldSceneAssemblyManifestStreamResult;
 using yuengine::world::WorldSceneAssemblyManifestStreamSnapshot;
 using yuengine::world::WorldSceneAssemblyManifestStreamStatus;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_CHUNK_FIELD_RECORD_BYTES;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIELD_IDENTITY_CHUNK_COUNT;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIELD_IDENTITY_RECORD_COUNT;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIELD_SCHEMA_VERSION;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIELD_TRANSFORM_CHUNK_COUNT;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIELD_TRANSFORM_RECORD_COUNT;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIXED_BYTES_FIELD_HEADER_BYTE_COUNT;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_CHUNK_PAYLOAD_BYTE_COUNT;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_CHUNK_RECORD_CAPACITY;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_CHUNK_RECORD_ID_BASE;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_RECORD_BYTE_COUNT;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_METADATA_RECORD_BYTE_COUNT;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_METADATA_RECORD_ID;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_STREAM_SCHEMA_VERSION;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_CHUNK_PAYLOAD_BYTE_COUNT;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_CHUNK_RECORD_CAPACITY;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_CHUNK_RECORD_ID_BASE;
+using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_RECORD_BYTE_COUNT;
+using yuengine::world::WorldSceneObjectTransformManifestStreamBridge;
+using yuengine::world::WorldSceneObjectTransformManifestStreamDesc;
+using yuengine::world::WorldSceneObjectTransformManifestStreamResult;
+using yuengine::world::WorldSceneObjectTransformManifestStreamSnapshot;
+using yuengine::world::WorldSceneObjectTransformManifestStreamStatus;
 using yuengine::world::WorldSceneObjectTransformRestoreBridge;
 using yuengine::world::WorldSceneObjectTransformRestoreBridgeDesc;
 using yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord;
@@ -701,6 +731,68 @@ constexpr const char *TEST_SCENE_MANIFEST_WORLD_CORE_FREE =
     "WorldSceneAssemblyManifestStreamBridge_WorldInstanceCoreRemainsManifestFree";
 constexpr const char *TEST_SCENE_MANIFEST_SERIALIZE_CORE_FREE =
     "WorldSceneAssemblyManifestStreamBridge_SerializeCoreRemainsWorldFree";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_ROUND_TRIP =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteReadRoundTripsObjectTransformRecordsInInputOrder";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_EMPTY =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteEmptyManifestProducesZeroRecords";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NULL_WRITER =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteRejectsNullWriterWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NULL_IDENTITY_INPUT =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteRejectsNullIdentityInputWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NULL_TRANSFORM_INPUT =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteRejectsNullTransformInputWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_WRITER_CAPACITY =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteRejectsWriterCapacityBeforePartialWrite";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_INVALID_IDENTITY =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteRejectsInvalidIdentityRecordWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_INVALID_TRANSFORM =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteRejectsInvalidTransformRecordWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_MISSING_IDENTITY =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteRejectsMissingIdentityForTransformWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_DUPLICATE_IDENTITY =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteRejectsDuplicateIdentityWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_DUPLICATE_HANDLE =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteRejectsDuplicateObjectHandleWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_DUPLICATE_TRANSFORM =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteRejectsDuplicateTransformWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_READ_OUTPUT =
+    "WorldSceneObjectTransformManifestStreamBridge_ReadWritesCallerOwnedOutputs";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NULL_READER =
+    "WorldSceneObjectTransformManifestStreamBridge_ReadRejectsNullReaderWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NULL_IDENTITY_OUTPUT =
+    "WorldSceneObjectTransformManifestStreamBridge_ReadRejectsNullIdentityOutputWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NULL_TRANSFORM_OUTPUT =
+    "WorldSceneObjectTransformManifestStreamBridge_ReadRejectsNullTransformOutputWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_OUTPUT_CAPACITY =
+    "WorldSceneObjectTransformManifestStreamBridge_ReadRejectsOutputCapacityTooSmallWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_UNKNOWN_VERSION =
+    "WorldSceneObjectTransformManifestStreamBridge_ReadRejectsUnknownVersionWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_MALFORMED_COUNT =
+    "WorldSceneObjectTransformManifestStreamBridge_ReadRejectsMalformedRecordCountWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_INVALID_RECORDS =
+    "WorldSceneObjectTransformManifestStreamBridge_ReadRejectsInvalidRecordsWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_DUPLICATE_RECORDS =
+    "WorldSceneObjectTransformManifestStreamBridge_ReadRejectsDuplicateRecordsWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_WITHOUT_IDENTITY =
+    "WorldSceneObjectTransformManifestStreamBridge_ReadRejectsTransformWithoutIdentityWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NO_ACTIVE_RESTORE =
+    "WorldSceneObjectTransformManifestStreamBridge_ReadDoesNotRestoreActiveIdentityOrTransformSidecars";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_FIXED_BYTE_TRANSFORM =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteReadUsesDeterministicFixedByteTransformEncoding";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_PATH =
+    "WorldSceneObjectTransformManifestStreamBridge_WriteReadPathDoesNotGrowStorage";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NO_HIDDEN_ALLOCATION =
+    "WorldSceneObjectTransformManifestStreamBridge_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_COUNTERS =
+    "WorldSceneObjectTransformManifestStreamBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NO_CONSTRUCTION =
+    "WorldSceneObjectTransformManifestStreamBridge_NoObjectConstructionOrDestruction";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NO_HIERARCHY =
+    "WorldSceneObjectTransformManifestStreamBridge_NoTransformHierarchySceneLoadOrGameAdapterDependency";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NO_FILE_PACKAGE =
+    "WorldSceneObjectTransformManifestStreamBridge_NoFilePackageResourceLoadDecodeUploadDependency";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_CORE_FREE =
+    "WorldSceneObjectTransformManifestStreamBridge_WorldObjectSerializeCoresRemainManifestFree";
 constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_ORDER =
     "WorldSceneObjectTransformRestoreBridge_RestoresIdentityAndTransformRecordsInInputOrder";
 constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_IDENTITY_ONLY =
@@ -2896,6 +2988,416 @@ int ExpectManifestReadFailureWithoutOutputMutation(
     }
 
     return 0;
+}
+
+ObjectHandle MakeObjectTransformManifestHandle(std::uint32_t slot, std::uint32_t generation) {
+    ObjectHandle handle{};
+    handle.slot = slot;
+    handle.generation = generation;
+    return handle;
+}
+
+WorldSceneObjectTransformRestoreIdentityRecord SentinelObjectTransformManifestIdentityRecord() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(777U, 888U);
+    return MakeSceneObjectTransformIdentityRecord(OBJECT_EFFECT, handle);
+}
+
+WorldSceneObjectTransformRestoreTransformRecord SentinelObjectTransformManifestTransformRecord() {
+    const WorldTransformState transform_state = Transform(970.0F);
+    return MakeSceneObjectTransformTransformRecord(OBJECT_EFFECT, transform_state);
+}
+
+bool ObjectTransformManifestIdentityRecordsMatch(
+    const WorldSceneObjectTransformRestoreIdentityRecord &left,
+    const WorldSceneObjectTransformRestoreIdentityRecord &right) {
+    if (left.world_object_id.value != right.world_object_id.value) {
+        return false;
+    }
+
+    if (left.object_handle.slot != right.object_handle.slot) {
+        return false;
+    }
+
+    return left.object_handle.generation == right.object_handle.generation;
+}
+
+bool ObjectTransformManifestTransformRecordsMatch(
+    const WorldSceneObjectTransformRestoreTransformRecord &left,
+    const WorldSceneObjectTransformRestoreTransformRecord &right) {
+    if (left.world_object_id.value != right.world_object_id.value) {
+        return false;
+    }
+
+    return TransformMatches(left.transform_state, right.transform_state);
+}
+
+std::uint32_t CalculateObjectTransformManifestIdentityChunkCount(std::uint32_t record_count) {
+    return (record_count + WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_CHUNK_RECORD_CAPACITY - 1U) /
+        WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_CHUNK_RECORD_CAPACITY;
+}
+
+std::uint32_t CalculateObjectTransformManifestTransformChunkCount(std::uint32_t record_count) {
+    return (record_count + WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_CHUNK_RECORD_CAPACITY - 1U) /
+        WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_CHUNK_RECORD_CAPACITY;
+}
+
+std::uint32_t GetObjectTransformManifestIdentityChunkRecordCount(
+    std::uint32_t record_count,
+    std::uint32_t chunk_index) {
+    const std::uint32_t first_record_index =
+        chunk_index * WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_CHUNK_RECORD_CAPACITY;
+    if (record_count <= first_record_index) {
+        return 0U;
+    }
+
+    const std::uint32_t remaining_record_count = record_count - first_record_index;
+    if (remaining_record_count > WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_CHUNK_RECORD_CAPACITY) {
+        return WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_CHUNK_RECORD_CAPACITY;
+    }
+
+    return remaining_record_count;
+}
+
+std::uint32_t GetObjectTransformManifestTransformChunkRecordCount(
+    std::uint32_t record_count,
+    std::uint32_t chunk_index) {
+    const std::uint32_t first_record_index =
+        chunk_index * WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_CHUNK_RECORD_CAPACITY;
+    if (record_count <= first_record_index) {
+        return 0U;
+    }
+
+    const std::uint32_t remaining_record_count = record_count - first_record_index;
+    if (remaining_record_count > WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_CHUNK_RECORD_CAPACITY) {
+        return WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_CHUNK_RECORD_CAPACITY;
+    }
+
+    return remaining_record_count;
+}
+
+void EncodeObjectTransformManifestUInt32(std::uint8_t *bytes, std::uint32_t value) {
+    bytes[0U] = static_cast<std::uint8_t>(value & 0xFFU);
+    bytes[1U] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
+    bytes[2U] = static_cast<std::uint8_t>((value >> 16U) & 0xFFU);
+    bytes[3U] = static_cast<std::uint8_t>((value >> 24U) & 0xFFU);
+}
+
+void EncodeObjectTransformManifestFloat(std::uint8_t *bytes, float value) {
+    static_assert(sizeof(float) == sizeof(std::uint32_t));
+    std::uint32_t bits = 0U;
+    std::memcpy(&bits, &value, sizeof(bits));
+    EncodeObjectTransformManifestUInt32(bytes, bits);
+}
+
+void EncodeObjectTransformManifestIdentityRecord(
+    std::uint8_t *bytes,
+    const WorldSceneObjectTransformRestoreIdentityRecord &record) {
+    EncodeObjectTransformManifestUInt32(bytes, record.world_object_id.value);
+    EncodeObjectTransformManifestUInt32(bytes + 4U, record.object_handle.slot);
+    EncodeObjectTransformManifestUInt32(bytes + 8U, record.object_handle.generation);
+}
+
+void EncodeObjectTransformManifestTransformRecord(
+    std::uint8_t *bytes,
+    const WorldSceneObjectTransformRestoreTransformRecord &record) {
+    EncodeObjectTransformManifestUInt32(bytes, record.world_object_id.value);
+    EncodeObjectTransformManifestFloat(bytes + 4U, record.transform_state.translation_x);
+    EncodeObjectTransformManifestFloat(bytes + 8U, record.transform_state.translation_y);
+    EncodeObjectTransformManifestFloat(bytes + 12U, record.transform_state.translation_z);
+    EncodeObjectTransformManifestFloat(bytes + 16U, record.transform_state.rotation_x);
+    EncodeObjectTransformManifestFloat(bytes + 20U, record.transform_state.rotation_y);
+    EncodeObjectTransformManifestFloat(bytes + 24U, record.transform_state.rotation_z);
+    EncodeObjectTransformManifestFloat(bytes + 28U, record.transform_state.rotation_w);
+    EncodeObjectTransformManifestFloat(bytes + 32U, record.transform_state.scale_x);
+    EncodeObjectTransformManifestFloat(bytes + 36U, record.transform_state.scale_y);
+    EncodeObjectTransformManifestFloat(bytes + 40U, record.transform_state.scale_z);
+}
+
+int WriteObjectTransformManifestMetadata(
+    SerializeWriter &writer,
+    std::uint32_t schema_version,
+    std::uint32_t identity_record_count,
+    std::uint32_t transform_record_count,
+    std::uint32_t identity_chunk_count,
+    std::uint32_t transform_chunk_count) {
+    if (writer.BeginRecord(WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_METADATA_RECORD_ID) != SerializeStatus::Success) {
+        return Fail("object transform manifest metadata begin failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIELD_SCHEMA_VERSION,
+            schema_version) != SerializeStatus::Success) {
+        return Fail("object transform manifest schema write failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIELD_IDENTITY_RECORD_COUNT,
+            identity_record_count) != SerializeStatus::Success) {
+        return Fail("object transform manifest identity count write failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIELD_TRANSFORM_RECORD_COUNT,
+            transform_record_count) != SerializeStatus::Success) {
+        return Fail("object transform manifest transform count write failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIELD_IDENTITY_CHUNK_COUNT,
+            identity_chunk_count) != SerializeStatus::Success) {
+        return Fail("object transform manifest identity chunk write failed");
+    }
+
+    if (writer.WriteUInt32(
+            WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIELD_TRANSFORM_CHUNK_COUNT,
+            transform_chunk_count) != SerializeStatus::Success) {
+        return Fail("object transform manifest transform chunk write failed");
+    }
+
+    return 0;
+}
+
+int WriteObjectTransformManifestIdentityChunks(
+    SerializeWriter &writer,
+    const WorldSceneObjectTransformRestoreIdentityRecord *records,
+    std::uint32_t record_count) {
+    const std::uint32_t chunk_count = CalculateObjectTransformManifestIdentityChunkCount(record_count);
+    std::uint32_t chunk_index = 0U;
+    while (chunk_index < chunk_count) {
+        const std::uint32_t first_record_index =
+            chunk_index * WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_CHUNK_RECORD_CAPACITY;
+        const std::uint32_t chunk_record_count =
+            GetObjectTransformManifestIdentityChunkRecordCount(record_count, chunk_index);
+        std::array<std::uint8_t, WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_CHUNK_PAYLOAD_BYTE_COUNT>
+            payload{};
+        std::uint32_t record_index = 0U;
+        while (record_index < chunk_record_count) {
+            const std::uint32_t payload_offset =
+                record_index * WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_RECORD_BYTE_COUNT;
+            EncodeObjectTransformManifestIdentityRecord(
+                payload.data() + payload_offset,
+                records[first_record_index + record_index]);
+            ++record_index;
+        }
+
+        const yuengine::serialize::SerializeRecordId record_id{
+            WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_CHUNK_RECORD_ID_BASE + chunk_index};
+        if (writer.BeginRecord(record_id) != SerializeStatus::Success) {
+            return Fail("object transform manifest identity chunk begin failed");
+        }
+
+        const std::uint32_t payload_byte_count =
+            chunk_record_count * WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_RECORD_BYTE_COUNT;
+        if (writer.WriteFixedBytes(
+                WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_CHUNK_FIELD_RECORD_BYTES,
+                payload.data(),
+                payload_byte_count) != SerializeStatus::Success) {
+            return Fail("object transform manifest identity chunk write failed");
+        }
+
+        ++chunk_index;
+    }
+
+    return 0;
+}
+
+int WriteObjectTransformManifestTransformChunks(
+    SerializeWriter &writer,
+    const WorldSceneObjectTransformRestoreTransformRecord *records,
+    std::uint32_t record_count) {
+    const std::uint32_t chunk_count = CalculateObjectTransformManifestTransformChunkCount(record_count);
+    std::uint32_t chunk_index = 0U;
+    while (chunk_index < chunk_count) {
+        const std::uint32_t first_record_index =
+            chunk_index * WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_CHUNK_RECORD_CAPACITY;
+        const std::uint32_t chunk_record_count =
+            GetObjectTransformManifestTransformChunkRecordCount(record_count, chunk_index);
+        std::array<std::uint8_t, WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_CHUNK_PAYLOAD_BYTE_COUNT>
+            payload{};
+        std::uint32_t record_index = 0U;
+        while (record_index < chunk_record_count) {
+            const std::uint32_t payload_offset =
+                record_index * WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_RECORD_BYTE_COUNT;
+            EncodeObjectTransformManifestTransformRecord(
+                payload.data() + payload_offset,
+                records[first_record_index + record_index]);
+            ++record_index;
+        }
+
+        const yuengine::serialize::SerializeRecordId record_id{
+            WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_CHUNK_RECORD_ID_BASE + chunk_index};
+        if (writer.BeginRecord(record_id) != SerializeStatus::Success) {
+            return Fail("object transform manifest transform chunk begin failed");
+        }
+
+        const std::uint32_t payload_byte_count =
+            chunk_record_count * WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_RECORD_BYTE_COUNT;
+        if (writer.WriteFixedBytes(
+                WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_CHUNK_FIELD_RECORD_BYTES,
+                payload.data(),
+                payload_byte_count) != SerializeStatus::Success) {
+            return Fail("object transform manifest transform chunk write failed");
+        }
+
+        ++chunk_index;
+    }
+
+    return 0;
+}
+
+int WriteObjectTransformManifestFixtureStream(
+    SerializeWriter &writer,
+    const WorldSceneObjectTransformRestoreIdentityRecord *identities,
+    std::uint32_t identity_count,
+    const WorldSceneObjectTransformRestoreTransformRecord *transforms,
+    std::uint32_t transform_count) {
+    const std::uint32_t identity_chunk_count =
+        CalculateObjectTransformManifestIdentityChunkCount(identity_count);
+    const std::uint32_t transform_chunk_count =
+        CalculateObjectTransformManifestTransformChunkCount(transform_count);
+    if (WriteObjectTransformManifestMetadata(
+            writer,
+            WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_STREAM_SCHEMA_VERSION,
+            identity_count,
+            transform_count,
+            identity_chunk_count,
+            transform_chunk_count) != 0) {
+        return 1;
+    }
+
+    if (WriteObjectTransformManifestIdentityChunks(writer, identities, identity_count) != 0) {
+        return 1;
+    }
+
+    return WriteObjectTransformManifestTransformChunks(writer, transforms, transform_count);
+}
+
+int WriteObjectTransformManifestToBuffer(
+    WorldSceneObjectTransformManifestStreamBridge &bridge,
+    const WorldSceneObjectTransformRestoreIdentityRecord *identities,
+    std::uint32_t identity_count,
+    const WorldSceneObjectTransformRestoreTransformRecord *transforms,
+    std::uint32_t transform_count,
+    SerializeBuffer &buffer,
+    std::uint32_t &committed_byte_count) {
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    const WorldSceneObjectTransformManifestStreamResult result = bridge.WriteManifest(
+        &writer,
+        identities,
+        identity_count,
+        transforms,
+        transform_count);
+    if (!result.Succeeded()) {
+        return Fail("object transform manifest fixture write failed");
+    }
+
+    committed_byte_count = result.state.committed_byte_count;
+    return 0;
+}
+
+int ReadObjectTransformManifestFromBuffer(
+    WorldSceneObjectTransformManifestStreamBridge &bridge,
+    const SerializeBuffer &buffer,
+    std::uint32_t committed_byte_count,
+    WorldSceneObjectTransformRestoreIdentityRecord *output_identities,
+    std::uint32_t output_identity_capacity,
+    std::uint32_t *out_identity_count,
+    WorldSceneObjectTransformRestoreTransformRecord *output_transforms,
+    std::uint32_t output_transform_capacity,
+    std::uint32_t *out_transform_count) {
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    const WorldSceneObjectTransformManifestStreamResult result = bridge.ReadManifest(
+        &reader,
+        output_identities,
+        output_identity_capacity,
+        out_identity_count,
+        output_transforms,
+        output_transform_capacity,
+        out_transform_count);
+    if (!result.Succeeded()) {
+        return Fail("object transform manifest fixture read failed");
+    }
+
+    return 0;
+}
+
+int ExpectObjectTransformManifestWriteFailureWithoutWriterMutation(
+    WorldSceneObjectTransformManifestStreamBridge &bridge,
+    SerializeWriter *writer,
+    const WorldSceneObjectTransformRestoreIdentityRecord *identities,
+    std::uint32_t identity_count,
+    const WorldSceneObjectTransformRestoreTransformRecord *transforms,
+    std::uint32_t transform_count,
+    WorldSceneObjectTransformManifestStreamStatus expected_status,
+    const char *error_message) {
+    const bool has_writer = writer != nullptr;
+    SerializeSnapshot before_writer{};
+    if (has_writer) {
+        before_writer = writer->Snapshot();
+    }
+
+    const WorldSceneObjectTransformManifestStreamResult result = bridge.WriteManifest(
+        writer,
+        identities,
+        identity_count,
+        transforms,
+        transform_count);
+    if (result.status != expected_status) {
+        return Fail(error_message);
+    }
+
+    if (has_writer) {
+        const SerializeSnapshot after_writer = writer->Snapshot();
+        if (!SerializeSnapshotsMatch(before_writer, after_writer)) {
+            return Fail("object transform manifest rejected write mutated writer");
+        }
+    }
+
+    return 0;
+}
+
+int ExpectObjectTransformManifestReadFailureWithoutOutputMutation(
+    SerializeReader *reader,
+    WorldSceneObjectTransformRestoreIdentityRecord *output_identities,
+    std::uint32_t output_identity_capacity,
+    std::uint32_t *out_identity_count,
+    WorldSceneObjectTransformRestoreTransformRecord *output_transforms,
+    std::uint32_t output_transform_capacity,
+    std::uint32_t *out_transform_count,
+    WorldSceneObjectTransformManifestStreamStatus expected_status,
+    const char *error_message) {
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    const WorldSceneObjectTransformManifestStreamResult result = bridge.ReadManifest(
+        reader,
+        output_identities,
+        output_identity_capacity,
+        out_identity_count,
+        output_transforms,
+        output_transform_capacity,
+        out_transform_count);
+    if (result.status != expected_status) {
+        return Fail(error_message);
+    }
+
+    return 0;
+}
+
+std::uint32_t ObjectTransformManifestSingleRecordCommittedByteCount() {
+    return STREAM_HEADER_BYTE_COUNT +
+        WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_METADATA_RECORD_BYTE_COUNT +
+        yuengine::serialize::RECORD_HEADER_BYTE_COUNT +
+        WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIXED_BYTES_FIELD_HEADER_BYTE_COUNT +
+        WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_IDENTITY_RECORD_BYTE_COUNT +
+        yuengine::serialize::RECORD_HEADER_BYTE_COUNT +
+        WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIXED_BYTES_FIELD_HEADER_BYTE_COUNT +
+        WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_RECORD_BYTE_COUNT;
+}
+
+bool SerializeBuffersMatch(
+    const SerializeBuffer &left,
+    const SerializeBuffer &right,
+    std::uint32_t byte_count) {
+    return std::memcmp(left.data(), right.data(), byte_count) == 0;
 }
 
 int WriteComponentAttachmentSnapshotMetadata(
@@ -12296,6 +12798,1495 @@ int WorldSceneAssemblyManifestStreamBridgeSerializeCoreRemainsWorldFree() {
     return 0;
 }
 
+int WorldSceneObjectTransformManifestStreamBridgeWriteReadRoundTripsObjectTransformRecordsInInputOrder() {
+    const ObjectHandle first_handle = MakeObjectTransformManifestHandle(1U, 1U);
+    const ObjectHandle second_handle = MakeObjectTransformManifestHandle(2U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, first_handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, second_handle)};
+    const WorldTransformState player_transform = Transform(910.0F);
+    const WorldTransformState camera_transform = Transform(920.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, player_transform),
+        MakeSceneObjectTransformTransformRecord(OBJECT_CAMERA, camera_transform)};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            static_cast<std::uint32_t>(input_identities.size()),
+            input_transforms.data(),
+            static_cast<std::uint32_t>(input_transforms.size()),
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 3U> output_identities{
+        sentinel_identity,
+        sentinel_identity,
+        sentinel_identity};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 3U> output_transforms{
+        sentinel_transform,
+        sentinel_transform,
+        sentinel_transform};
+    std::uint32_t identity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    if (ReadObjectTransformManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count) != 0) {
+        return 1;
+    }
+
+    if (identity_count != input_identities.size()) {
+        return Fail("object transform manifest round trip identity count wrong");
+    }
+
+    if (transform_count != input_transforms.size()) {
+        return Fail("object transform manifest round trip transform count wrong");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], input_identities[0])) {
+        return Fail("object transform manifest round trip first identity wrong");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[1], input_identities[1])) {
+        return Fail("object transform manifest round trip second identity wrong");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[2], sentinel_identity)) {
+        return Fail("object transform manifest round trip overran identity output");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], input_transforms[0])) {
+        return Fail("object transform manifest round trip first transform wrong");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[1], input_transforms[1])) {
+        return Fail("object transform manifest round trip second transform wrong");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[2], sentinel_transform)) {
+        return Fail("object transform manifest round trip overran transform output");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteEmptyManifestProducesZeroRecords() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            0U,
+            input_transforms.data(),
+            0U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldSceneObjectTransformManifestStreamSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.written_identity_count != 0U) {
+        return Fail("object transform manifest empty write identity count wrong");
+    }
+
+    if (snapshot.written_transform_count != 0U) {
+        return Fail("object transform manifest empty write transform count wrong");
+    }
+
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{sentinel_identity};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{sentinel_transform};
+    std::uint32_t identity_count = 999U;
+    std::uint32_t transform_count = 999U;
+    if (ReadObjectTransformManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count) != 0) {
+        return 1;
+    }
+
+    if (identity_count != 0U) {
+        return Fail("object transform manifest empty read identity count wrong");
+    }
+
+    if (transform_count != 0U) {
+        return Fail("object transform manifest empty read transform count wrong");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], sentinel_identity)) {
+        return Fail("object transform manifest empty read mutated identity output");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], sentinel_transform)) {
+        return Fail("object transform manifest empty read mutated transform output");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteRejectsNullWriterWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    const WorldSceneObjectTransformManifestStreamResult result = bridge.WriteManifest(
+        nullptr,
+        input_identities.data(),
+        1U,
+        input_transforms.data(),
+        0U);
+    if (result.status != WorldSceneObjectTransformManifestStreamStatus::InvalidWriter) {
+        return Fail("object transform manifest null writer status wrong");
+    }
+
+    if (bridge.Snapshot().failed_operation_count != 1U) {
+        return Fail("object transform manifest null writer failure count wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteRejectsNullIdentityInputWithoutMutation() {
+    const WorldTransformState transform_state = Transform(930.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    return ExpectObjectTransformManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        nullptr,
+        1U,
+        input_transforms.data(),
+        1U,
+        WorldSceneObjectTransformManifestStreamStatus::InvalidIdentityInput,
+        "object transform manifest null identity input status wrong");
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteRejectsNullTransformInputWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    return ExpectObjectTransformManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_identities.data(),
+        1U,
+        nullptr,
+        1U,
+        WorldSceneObjectTransformManifestStreamStatus::InvalidTransformInput,
+        "object transform manifest null transform input status wrong");
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteRejectsWriterCapacityBeforePartialWrite() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{};
+    std::array<std::uint8_t, STREAM_HEADER_BYTE_COUNT + 1U> buffer{};
+    buffer[STREAM_HEADER_BYTE_COUNT] = 0xABU;
+    SerializeWriter writer(buffer.data(), STREAM_HEADER_BYTE_COUNT);
+    const SerializeSnapshot before_writer = writer.Snapshot();
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    const WorldSceneObjectTransformManifestStreamResult result = bridge.WriteManifest(
+        &writer,
+        input_identities.data(),
+        1U,
+        input_transforms.data(),
+        0U);
+    if (result.status != WorldSceneObjectTransformManifestStreamStatus::SerializeFailure) {
+        return Fail("object transform manifest writer capacity status wrong");
+    }
+
+    if (result.serialize_status != SerializeStatus::BufferTooSmall) {
+        return Fail("object transform manifest writer capacity serialize status wrong");
+    }
+
+    if (!SerializeSnapshotsMatch(before_writer, writer.Snapshot())) {
+        return Fail("object transform manifest writer capacity mutated writer");
+    }
+
+    if (buffer[STREAM_HEADER_BYTE_COUNT] != 0xABU) {
+        return Fail("object transform manifest writer capacity overran buffer");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteRejectsInvalidIdentityRecordWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(WorldObjectId{}, handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    return ExpectObjectTransformManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_identities.data(),
+        1U,
+        input_transforms.data(),
+        0U,
+        WorldSceneObjectTransformManifestStreamStatus::InvalidWorldObjectId,
+        "object transform manifest invalid identity status wrong");
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteRejectsInvalidTransformRecordWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    const WorldTransformState transform_state = Transform(940.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(WorldObjectId{}, transform_state)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    return ExpectObjectTransformManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_identities.data(),
+        1U,
+        input_transforms.data(),
+        1U,
+        WorldSceneObjectTransformManifestStreamStatus::InvalidWorldObjectId,
+        "object transform manifest invalid transform status wrong");
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteRejectsMissingIdentityForTransformWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    const WorldTransformState transform_state = Transform(950.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_CAMERA, transform_state)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    return ExpectObjectTransformManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_identities.data(),
+        1U,
+        input_transforms.data(),
+        1U,
+        WorldSceneObjectTransformManifestStreamStatus::MissingIdentityForTransform,
+        "object transform manifest missing identity status wrong");
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteRejectsDuplicateIdentityWithoutMutation() {
+    const ObjectHandle first_handle = MakeObjectTransformManifestHandle(1U, 1U);
+    const ObjectHandle second_handle = MakeObjectTransformManifestHandle(2U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, first_handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, second_handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    return ExpectObjectTransformManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_identities.data(),
+        static_cast<std::uint32_t>(input_identities.size()),
+        input_transforms.data(),
+        0U,
+        WorldSceneObjectTransformManifestStreamStatus::DuplicateIdentityWorldObjectId,
+        "object transform manifest duplicate identity status wrong");
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteRejectsDuplicateObjectHandleWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(3U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    return ExpectObjectTransformManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_identities.data(),
+        static_cast<std::uint32_t>(input_identities.size()),
+        input_transforms.data(),
+        0U,
+        WorldSceneObjectTransformManifestStreamStatus::DuplicateIdentityObjectHandle,
+        "object transform manifest duplicate handle status wrong");
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteRejectsDuplicateTransformWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    const WorldTransformState first_transform = Transform(960.0F);
+    const WorldTransformState second_transform = Transform(970.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, first_transform),
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, second_transform)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    return ExpectObjectTransformManifestWriteFailureWithoutWriterMutation(
+        bridge,
+        &writer,
+        input_identities.data(),
+        1U,
+        input_transforms.data(),
+        static_cast<std::uint32_t>(input_transforms.size()),
+        WorldSceneObjectTransformManifestStreamStatus::DuplicateTransformWorldObjectId,
+        "object transform manifest duplicate transform status wrong");
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeReadWritesCallerOwnedOutputs() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(4U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    const WorldTransformState transform_state = Transform(980.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> output_identities{
+        sentinel_identity,
+        sentinel_identity};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> output_transforms{
+        sentinel_transform,
+        sentinel_transform};
+    std::uint32_t identity_count = 77U;
+    std::uint32_t transform_count = 88U;
+    if (ReadObjectTransformManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count) != 0) {
+        return 1;
+    }
+
+    if (identity_count != 1U) {
+        return Fail("object transform manifest read output identity count wrong");
+    }
+
+    if (transform_count != 1U) {
+        return Fail("object transform manifest read output transform count wrong");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], input_identities[0])) {
+        return Fail("object transform manifest read output identity wrong");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[1], sentinel_identity)) {
+        return Fail("object transform manifest read output overran identity");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], input_transforms[0])) {
+        return Fail("object transform manifest read output transform wrong");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[1], sentinel_transform)) {
+        return Fail("object transform manifest read output overran transform");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeReadRejectsNullReaderWithoutMutation() {
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{sentinel_identity};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{sentinel_transform};
+    std::uint32_t identity_count = 77U;
+    std::uint32_t transform_count = 88U;
+    if (ExpectObjectTransformManifestReadFailureWithoutOutputMutation(
+            nullptr,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count,
+            WorldSceneObjectTransformManifestStreamStatus::InvalidReader,
+            "object transform manifest null reader status wrong") != 0) {
+        return 1;
+    }
+
+    if (identity_count != 77U) {
+        return Fail("object transform manifest null reader mutated identity count");
+    }
+
+    if (transform_count != 88U) {
+        return Fail("object transform manifest null reader mutated transform count");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], sentinel_identity)) {
+        return Fail("object transform manifest null reader mutated identity output");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], sentinel_transform)) {
+        return Fail("object transform manifest null reader mutated transform output");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeReadRejectsNullIdentityOutputWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            0U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{sentinel_transform};
+    std::uint32_t identity_count = 77U;
+    std::uint32_t transform_count = 88U;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    if (ExpectObjectTransformManifestReadFailureWithoutOutputMutation(
+            &reader,
+            nullptr,
+            1U,
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count,
+            WorldSceneObjectTransformManifestStreamStatus::InvalidIdentityOutput,
+            "object transform manifest null identity output status wrong") != 0) {
+        return 1;
+    }
+
+    if (identity_count != 77U) {
+        return Fail("object transform manifest null identity output mutated identity count");
+    }
+
+    if (transform_count != 88U) {
+        return Fail("object transform manifest null identity output mutated transform count");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], sentinel_transform)) {
+        return Fail("object transform manifest null identity output mutated transform output");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeReadRejectsNullTransformOutputWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    const WorldTransformState transform_state = Transform(990.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{sentinel_identity};
+    std::uint32_t identity_count = 77U;
+    std::uint32_t transform_count = 88U;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    if (ExpectObjectTransformManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            nullptr,
+            1U,
+            &transform_count,
+            WorldSceneObjectTransformManifestStreamStatus::InvalidTransformOutput,
+            "object transform manifest null transform output status wrong") != 0) {
+        return 1;
+    }
+
+    if (identity_count != 77U) {
+        return Fail("object transform manifest null transform output mutated identity count");
+    }
+
+    if (transform_count != 88U) {
+        return Fail("object transform manifest null transform output mutated transform count");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], sentinel_identity)) {
+        return Fail("object transform manifest null transform output mutated identity output");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeReadRejectsOutputCapacityTooSmallWithoutMutation() {
+    const ObjectHandle first_handle = MakeObjectTransformManifestHandle(1U, 1U);
+    const ObjectHandle second_handle = MakeObjectTransformManifestHandle(2U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, first_handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, second_handle)};
+    const WorldTransformState transform_state = Transform(1000.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            static_cast<std::uint32_t>(input_identities.size()),
+            input_transforms.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{sentinel_identity};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{sentinel_transform};
+    std::uint32_t identity_count = 77U;
+    std::uint32_t transform_count = 88U;
+    SerializeReader reader(buffer.data(), committed_byte_count);
+    if (ExpectObjectTransformManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count,
+            WorldSceneObjectTransformManifestStreamStatus::OutputCapacityExceeded,
+            "object transform manifest small output status wrong") != 0) {
+        return 1;
+    }
+
+    if (identity_count != 77U || transform_count != 88U) {
+        return Fail("object transform manifest small output mutated counts");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], sentinel_identity)) {
+        return Fail("object transform manifest small output mutated identity");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], sentinel_transform)) {
+        return Fail("object transform manifest small output mutated transform");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeReadRejectsUnknownVersionWithoutMutation() {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteObjectTransformManifestMetadata(writer, 999U, 0U, 0U, 0U, 0U) != 0) {
+        return 1;
+    }
+
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{sentinel_identity};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{sentinel_transform};
+    std::uint32_t identity_count = 77U;
+    std::uint32_t transform_count = 88U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (ExpectObjectTransformManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count,
+            WorldSceneObjectTransformManifestStreamStatus::UnsupportedVersion,
+            "object transform manifest unknown version status wrong") != 0) {
+        return 1;
+    }
+
+    if (identity_count != 77U || transform_count != 88U) {
+        return Fail("object transform manifest unknown version mutated counts");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], sentinel_identity)) {
+        return Fail("object transform manifest unknown version mutated identity");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], sentinel_transform)) {
+        return Fail("object transform manifest unknown version mutated transform");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeReadRejectsMalformedRecordCountWithoutMutation() {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteObjectTransformManifestMetadata(
+            writer,
+            WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_STREAM_SCHEMA_VERSION,
+            1U,
+            0U,
+            0U,
+            0U) != 0) {
+        return 1;
+    }
+
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{sentinel_identity};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{sentinel_transform};
+    std::uint32_t identity_count = 77U;
+    std::uint32_t transform_count = 88U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (ExpectObjectTransformManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count,
+            WorldSceneObjectTransformManifestStreamStatus::MalformedRecordCount,
+            "object transform manifest malformed count status wrong") != 0) {
+        return 1;
+    }
+
+    if (identity_count != 77U || transform_count != 88U) {
+        return Fail("object transform manifest malformed count mutated counts");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeReadRejectsInvalidRecordsWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(WorldObjectId{}, handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteObjectTransformManifestFixtureStream(
+            writer,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            0U) != 0) {
+        return 1;
+    }
+
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{sentinel_identity};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{sentinel_transform};
+    std::uint32_t identity_count = 77U;
+    std::uint32_t transform_count = 88U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (ExpectObjectTransformManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count,
+            WorldSceneObjectTransformManifestStreamStatus::InvalidWorldObjectId,
+            "object transform manifest invalid record status wrong") != 0) {
+        return 1;
+    }
+
+    if (identity_count != 77U || transform_count != 88U) {
+        return Fail("object transform manifest invalid record mutated counts");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], sentinel_identity)) {
+        return Fail("object transform manifest invalid record mutated identity");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], sentinel_transform)) {
+        return Fail("object transform manifest invalid record mutated transform");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeReadRejectsDuplicateRecordsWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(5U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteObjectTransformManifestFixtureStream(
+            writer,
+            input_identities.data(),
+            static_cast<std::uint32_t>(input_identities.size()),
+            input_transforms.data(),
+            0U) != 0) {
+        return 1;
+    }
+
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> output_identities{
+        sentinel_identity,
+        sentinel_identity};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{sentinel_transform};
+    std::uint32_t identity_count = 77U;
+    std::uint32_t transform_count = 88U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (ExpectObjectTransformManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count,
+            WorldSceneObjectTransformManifestStreamStatus::DuplicateIdentityObjectHandle,
+            "object transform manifest duplicate record status wrong") != 0) {
+        return 1;
+    }
+
+    if (identity_count != 77U || transform_count != 88U) {
+        return Fail("object transform manifest duplicate record mutated counts");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], sentinel_identity)) {
+        return Fail("object transform manifest duplicate record mutated first identity");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[1], sentinel_identity)) {
+        return Fail("object transform manifest duplicate record mutated second identity");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], sentinel_transform)) {
+        return Fail("object transform manifest duplicate record mutated transform");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeReadRejectsTransformWithoutIdentityWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    const WorldTransformState transform_state = Transform(1010.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_CAMERA, transform_state)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteObjectTransformManifestFixtureStream(
+            writer,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            1U) != 0) {
+        return 1;
+    }
+
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{sentinel_identity};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{sentinel_transform};
+    std::uint32_t identity_count = 77U;
+    std::uint32_t transform_count = 88U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (ExpectObjectTransformManifestReadFailureWithoutOutputMutation(
+            &reader,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count,
+            WorldSceneObjectTransformManifestStreamStatus::MissingIdentityForTransform,
+            "object transform manifest transform without identity status wrong") != 0) {
+        return 1;
+    }
+
+    if (identity_count != 77U || transform_count != 88U) {
+        return Fail("object transform manifest transform without identity mutated counts");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], sentinel_identity)) {
+        return Fail("object transform manifest transform without identity mutated identity");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], sentinel_transform)) {
+        return Fail("object transform manifest transform without identity mutated transform");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeReadDoesNotRestoreActiveIdentityOrTransformSidecars() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> active_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle)};
+    const WorldTransformState active_transform_state = Transform(1020.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> active_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, active_transform_state)};
+    WorldObjectIdentityBridge active_identity(world, registry);
+    WorldTransformBridge active_transform(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    const WorldSceneObjectTransformRestoreResult restore_result = restore_bridge.Restore(
+        &world,
+        &registry,
+        &active_identity,
+        &active_transform,
+        active_identities.data(),
+        1U,
+        active_transforms.data(),
+        1U);
+    if (!restore_result.Succeeded()) {
+        return Fail("object transform manifest active sidecar fixture restore failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, objects[1].handle)};
+    const WorldTransformState manifest_transform_state = Transform(1030.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_CAMERA, manifest_transform_state)};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    const ObjectSnapshot before_registry = registry.Snapshot();
+    const WorldObjectIdentitySnapshot before_identity = active_identity.Snapshot();
+    const WorldTransformSnapshot before_transform = active_transform.Snapshot();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{};
+    std::uint32_t identity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    if (ReadObjectTransformManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count) != 0) {
+        return 1;
+    }
+
+    if (!ObjectSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("object transform manifest read mutated object registry");
+    }
+
+    if (!ObjectIdentitySnapshotsMatch(before_identity, active_identity.Snapshot())) {
+        return Fail("object transform manifest read mutated active identities");
+    }
+
+    if (!TransformSnapshotsMatch(before_transform, active_transform.Snapshot())) {
+        return Fail("object transform manifest read mutated active transforms");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], input_identities[0])) {
+        return Fail("object transform manifest active sidecar output identity wrong");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], input_transforms[0])) {
+        return Fail("object transform manifest active sidecar output transform wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteReadUsesDeterministicFixedByteTransformEncoding() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    const WorldTransformState transform_state = Transform(1040.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer first_buffer{};
+    SerializeBuffer second_buffer{};
+    std::uint32_t first_committed_byte_count = 0U;
+    std::uint32_t second_committed_byte_count = 0U;
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            1U,
+            first_buffer,
+            first_committed_byte_count) != 0) {
+        return 1;
+    }
+
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            1U,
+            second_buffer,
+            second_committed_byte_count) != 0) {
+        return 1;
+    }
+
+    if (first_committed_byte_count != second_committed_byte_count) {
+        return Fail("object transform manifest deterministic byte count changed");
+    }
+
+    if (first_committed_byte_count != ObjectTransformManifestSingleRecordCommittedByteCount()) {
+        return Fail("object transform manifest deterministic byte budget wrong");
+    }
+
+    if (!SerializeBuffersMatch(first_buffer, second_buffer, first_committed_byte_count)) {
+        return Fail("object transform manifest deterministic bytes changed");
+    }
+
+    SerializeReader reader(first_buffer.data(), first_committed_byte_count);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{};
+    std::uint32_t identity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    const WorldSceneObjectTransformManifestStreamResult result = bridge.ReadManifest(
+        &reader,
+        output_identities.data(),
+        static_cast<std::uint32_t>(output_identities.size()),
+        &identity_count,
+        output_transforms.data(),
+        static_cast<std::uint32_t>(output_transforms.size()),
+        &transform_count);
+    if (!result.Succeeded()) {
+        return Fail("object transform manifest deterministic read failed");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], input_transforms[0])) {
+        return Fail("object transform manifest deterministic transform round trip wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWriteReadPathDoesNotGrowStorage() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    const WorldTransformState transform_state = Transform(1050.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    WorldSceneObjectTransformManifestStreamDesc desc{};
+    desc.identity_capacity = 2U;
+    desc.transform_capacity = 2U;
+    WorldSceneObjectTransformManifestStreamBridge bridge(desc);
+    const WorldSceneObjectTransformManifestStreamSnapshot before_snapshot = bridge.Snapshot();
+    std::uint32_t iteration = 0U;
+    while (iteration < 3U) {
+        SerializeBuffer buffer{};
+        std::uint32_t committed_byte_count = 0U;
+        if (WriteObjectTransformManifestToBuffer(
+                bridge,
+                input_identities.data(),
+                1U,
+                input_transforms.data(),
+                1U,
+                buffer,
+                committed_byte_count) != 0) {
+            return 1;
+        }
+
+        std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{};
+        std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{};
+        std::uint32_t identity_count = 0U;
+        std::uint32_t transform_count = 0U;
+        if (ReadObjectTransformManifestFromBuffer(
+                bridge,
+                buffer,
+                committed_byte_count,
+                output_identities.data(),
+                static_cast<std::uint32_t>(output_identities.size()),
+                &identity_count,
+                output_transforms.data(),
+                static_cast<std::uint32_t>(output_transforms.size()),
+                &transform_count) != 0) {
+            return 1;
+        }
+
+        ++iteration;
+    }
+
+    const WorldSceneObjectTransformManifestStreamSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.identity_capacity != before_snapshot.identity_capacity) {
+        return Fail("object transform manifest path changed identity capacity");
+    }
+
+    if (after_snapshot.transform_capacity != before_snapshot.transform_capacity) {
+        return Fail("object transform manifest path changed transform capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != before_snapshot.allocation_accounting_status) {
+        return Fail("object transform manifest path changed allocation accounting");
+    }
+
+    if (after_snapshot.write_count != 3U) {
+        return Fail("object transform manifest path write count wrong");
+    }
+
+    if (after_snapshot.read_count != 3U) {
+        return Fail("object transform manifest path read count wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeNoHiddenAllocationUsesYuMemorySignal() {
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    const WorldSceneObjectTransformManifestStreamSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("object transform manifest allocation accounting status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeSnapshotReportsCountsAndLastStatus() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    const WorldTransformState transform_state = Transform(1060.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{};
+    std::uint32_t identity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    if (ReadObjectTransformManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count) != 0) {
+        return 1;
+    }
+
+    SerializeBuffer failure_buffer{};
+    SerializeWriter writer(failure_buffer.data(), static_cast<std::uint32_t>(failure_buffer.size()));
+    const WorldSceneObjectTransformManifestStreamResult failure_result = bridge.WriteManifest(
+        &writer,
+        nullptr,
+        1U,
+        input_transforms.data(),
+        1U);
+    if (failure_result.status != WorldSceneObjectTransformManifestStreamStatus::InvalidIdentityInput) {
+        return Fail("object transform manifest counters failure status wrong");
+    }
+
+    const WorldSceneObjectTransformManifestStreamSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.write_count != 1U) {
+        return Fail("object transform manifest counters write count wrong");
+    }
+
+    if (snapshot.read_count != 1U) {
+        return Fail("object transform manifest counters read count wrong");
+    }
+
+    if (snapshot.written_identity_count != 1U) {
+        return Fail("object transform manifest counters written identity count wrong");
+    }
+
+    if (snapshot.written_transform_count != 1U) {
+        return Fail("object transform manifest counters written transform count wrong");
+    }
+
+    if (snapshot.read_identity_count != 1U) {
+        return Fail("object transform manifest counters read identity count wrong");
+    }
+
+    if (snapshot.read_transform_count != 1U) {
+        return Fail("object transform manifest counters read transform count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("object transform manifest counters failed count wrong");
+    }
+
+    if (snapshot.last_status != WorldSceneObjectTransformManifestStreamStatus::InvalidIdentityInput) {
+        return Fail("object transform manifest counters last status wrong");
+    }
+
+    if (snapshot.last_serialize_status != SerializeStatus::Success) {
+        return Fail("object transform manifest counters serialize status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeNoObjectConstructionOrDestruction() {
+    ObjectRegistry registry = MakeRegistry();
+    const ObjectRegistrationResult object_result = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    if (!object_result.Succeeded()) {
+        return Fail("object transform manifest construction object creation failed");
+    }
+
+    const ObjectSnapshot before_registry = registry.Snapshot();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, object_result.handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            0U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{};
+    std::uint32_t identity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    if (ReadObjectTransformManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count) != 0) {
+        return 1;
+    }
+
+    if (!ObjectSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("object transform manifest mutated object registry");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeNoTransformHierarchySceneLoadOrGameAdapterDependency() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    WorldTransformBridge active_transform(world);
+    const WorldSnapshot before_world = world.Snapshot();
+    const WorldTransformSnapshot before_transform = active_transform.Snapshot();
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    const WorldTransformState transform_state = Transform(1070.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{};
+    std::uint32_t identity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    if (ReadObjectTransformManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count) != 0) {
+        return 1;
+    }
+
+    if (!WorldSnapshotsMatch(before_world, world.Snapshot())) {
+        return Fail("object transform manifest mutated world hierarchy");
+    }
+
+    if (!TransformSnapshotsMatch(before_transform, active_transform.Snapshot())) {
+        return Fail("object transform manifest mutated active transform bridge");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeNoFilePackageResourceLoadDecodeUploadDependency() {
+    ResourceRegistry registry = MakeResourceRegistry();
+    const ResourceSnapshot before_registry = registry.Snapshot();
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    const WorldTransformState transform_state = Transform(1080.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    std::uint32_t committed_byte_count = 0U;
+    if (WriteObjectTransformManifestToBuffer(
+            bridge,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            1U,
+            buffer,
+            committed_byte_count) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{};
+    std::uint32_t identity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    if (ReadObjectTransformManifestFromBuffer(
+            bridge,
+            buffer,
+            committed_byte_count,
+            output_identities.data(),
+            static_cast<std::uint32_t>(output_identities.size()),
+            &identity_count,
+            output_transforms.data(),
+            static_cast<std::uint32_t>(output_transforms.size()),
+            &transform_count) != 0) {
+        return 1;
+    }
+
+    if (!ResourceSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("object transform manifest mutated resource registry");
+    }
+
+    if (identity_count != 1U || transform_count != 1U) {
+        return Fail("object transform manifest file package dependency counts wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformManifestStreamBridgeWorldObjectSerializeCoresRemainManifestFree() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("object transform manifest core-free world registration failed");
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    if (!object_result.Succeeded()) {
+        return Fail("object transform manifest core-free object creation failed");
+    }
+
+    const WorldSnapshot before_world = world.Snapshot();
+    const ObjectSnapshot before_registry = registry.Snapshot();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, object_result.handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{};
+    WorldSceneObjectTransformManifestStreamBridge bridge;
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    const WorldSceneObjectTransformManifestStreamResult write_result = bridge.WriteManifest(
+        &writer,
+        input_identities.data(),
+        1U,
+        input_transforms.data(),
+        0U);
+    if (!write_result.Succeeded()) {
+        return Fail("object transform manifest core-free write failed");
+    }
+
+    const SerializeSnapshot writer_snapshot = writer.Snapshot();
+    if (writer_snapshot.last_status != SerializeStatus::Success) {
+        return Fail("object transform manifest core-free writer status wrong");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{};
+    std::uint32_t identity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    SerializeReader reader(buffer.data(), write_result.state.committed_byte_count);
+    const WorldSceneObjectTransformManifestStreamResult read_result = bridge.ReadManifest(
+        &reader,
+        output_identities.data(),
+        static_cast<std::uint32_t>(output_identities.size()),
+        &identity_count,
+        output_transforms.data(),
+        static_cast<std::uint32_t>(output_transforms.size()),
+        &transform_count);
+    if (!read_result.Succeeded()) {
+        return Fail("object transform manifest core-free read failed");
+    }
+
+    const SerializeSnapshot reader_snapshot = reader.Snapshot();
+    if (reader_snapshot.last_status != SerializeStatus::Success) {
+        return Fail("object transform manifest core-free reader status wrong");
+    }
+
+    if (!WorldSnapshotsMatch(before_world, world.Snapshot())) {
+        return Fail("object transform manifest mutated world core");
+    }
+
+    if (!ObjectSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("object transform manifest mutated object core");
+    }
+
+    if (identity_count != 1U || transform_count != 0U) {
+        return Fail("object transform manifest core-free counts wrong");
+    }
+
+    return 0;
+}
+
 int WorldSceneObjectTransformRestoreBridgeRestoresIdentityAndTransformRecordsInInputOrder() {
     WorldInstance world = MakeWorld(4U, 8U);
     ObjectRegistry registry = MakeRegistry();
@@ -15883,6 +17874,68 @@ int main(int argc, char **argv) {
             WorldSceneAssemblyManifestStreamBridgeWorldInstanceCoreRemainsManifestFree},
         {TEST_SCENE_MANIFEST_SERIALIZE_CORE_FREE,
             WorldSceneAssemblyManifestStreamBridgeSerializeCoreRemainsWorldFree},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_ROUND_TRIP,
+            WorldSceneObjectTransformManifestStreamBridgeWriteReadRoundTripsObjectTransformRecordsInInputOrder},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_EMPTY,
+            WorldSceneObjectTransformManifestStreamBridgeWriteEmptyManifestProducesZeroRecords},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NULL_WRITER,
+            WorldSceneObjectTransformManifestStreamBridgeWriteRejectsNullWriterWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NULL_IDENTITY_INPUT,
+            WorldSceneObjectTransformManifestStreamBridgeWriteRejectsNullIdentityInputWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NULL_TRANSFORM_INPUT,
+            WorldSceneObjectTransformManifestStreamBridgeWriteRejectsNullTransformInputWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_WRITER_CAPACITY,
+            WorldSceneObjectTransformManifestStreamBridgeWriteRejectsWriterCapacityBeforePartialWrite},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_INVALID_IDENTITY,
+            WorldSceneObjectTransformManifestStreamBridgeWriteRejectsInvalidIdentityRecordWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_INVALID_TRANSFORM,
+            WorldSceneObjectTransformManifestStreamBridgeWriteRejectsInvalidTransformRecordWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_MISSING_IDENTITY,
+            WorldSceneObjectTransformManifestStreamBridgeWriteRejectsMissingIdentityForTransformWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_DUPLICATE_IDENTITY,
+            WorldSceneObjectTransformManifestStreamBridgeWriteRejectsDuplicateIdentityWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_DUPLICATE_HANDLE,
+            WorldSceneObjectTransformManifestStreamBridgeWriteRejectsDuplicateObjectHandleWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_DUPLICATE_TRANSFORM,
+            WorldSceneObjectTransformManifestStreamBridgeWriteRejectsDuplicateTransformWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_READ_OUTPUT,
+            WorldSceneObjectTransformManifestStreamBridgeReadWritesCallerOwnedOutputs},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NULL_READER,
+            WorldSceneObjectTransformManifestStreamBridgeReadRejectsNullReaderWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NULL_IDENTITY_OUTPUT,
+            WorldSceneObjectTransformManifestStreamBridgeReadRejectsNullIdentityOutputWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NULL_TRANSFORM_OUTPUT,
+            WorldSceneObjectTransformManifestStreamBridgeReadRejectsNullTransformOutputWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_OUTPUT_CAPACITY,
+            WorldSceneObjectTransformManifestStreamBridgeReadRejectsOutputCapacityTooSmallWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_UNKNOWN_VERSION,
+            WorldSceneObjectTransformManifestStreamBridgeReadRejectsUnknownVersionWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_MALFORMED_COUNT,
+            WorldSceneObjectTransformManifestStreamBridgeReadRejectsMalformedRecordCountWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_INVALID_RECORDS,
+            WorldSceneObjectTransformManifestStreamBridgeReadRejectsInvalidRecordsWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_DUPLICATE_RECORDS,
+            WorldSceneObjectTransformManifestStreamBridgeReadRejectsDuplicateRecordsWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_TRANSFORM_WITHOUT_IDENTITY,
+            WorldSceneObjectTransformManifestStreamBridgeReadRejectsTransformWithoutIdentityWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NO_ACTIVE_RESTORE,
+            WorldSceneObjectTransformManifestStreamBridgeReadDoesNotRestoreActiveIdentityOrTransformSidecars},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_FIXED_BYTE_TRANSFORM,
+            WorldSceneObjectTransformManifestStreamBridgeWriteReadUsesDeterministicFixedByteTransformEncoding},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_PATH,
+            WorldSceneObjectTransformManifestStreamBridgeWriteReadPathDoesNotGrowStorage},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NO_HIDDEN_ALLOCATION,
+            WorldSceneObjectTransformManifestStreamBridgeNoHiddenAllocationUsesYuMemorySignal},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_COUNTERS,
+            WorldSceneObjectTransformManifestStreamBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NO_CONSTRUCTION,
+            WorldSceneObjectTransformManifestStreamBridgeNoObjectConstructionOrDestruction},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NO_HIERARCHY,
+            WorldSceneObjectTransformManifestStreamBridgeNoTransformHierarchySceneLoadOrGameAdapterDependency},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NO_FILE_PACKAGE,
+            WorldSceneObjectTransformManifestStreamBridgeNoFilePackageResourceLoadDecodeUploadDependency},
+        {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_CORE_FREE,
+            WorldSceneObjectTransformManifestStreamBridgeWorldObjectSerializeCoresRemainManifestFree},
         {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_ORDER,
             WorldSceneObjectTransformRestoreBridgeRestoresIdentityAndTransformRecordsInInputOrder},
         {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_IDENTITY_ONLY,
