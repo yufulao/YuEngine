@@ -1,13 +1,15 @@
 # P3-GATE-009: World Serialize Snapshot Bridge
 
-Status: Proposed
+Status: Approved
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `PENDING_REVIEW`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P3-GATE-002, P3-GATE-004, P3-GATE-007
 Related decisions: ADR-0002, ADR-0003, ADR-0005, ADR-0006, ADR-0015
 Source baseline: `8cfa2dc`
+Review baseline: `d08b239`
+Approval baseline: `d08b239`
 
 ## Layer
 
@@ -310,10 +312,9 @@ UE5 and Unity are used only for responsibility separation. Their public API
 shape, archive/save systems, reflection systems, generated code, and source
 implementation must not be copied.
 
-## Gate Decision Requested
+## Gate Decision
 
 `APPROVED_FOR_FIRST_SLICE`.
 
-The first implementation task may begin only after reviewers confirm the
-dependency boundary, file scope, test names, and verification commands from this
-gate.
+The first implementation task may begin with the dependency boundary, file
+scope, test names, and verification commands from this gate.
