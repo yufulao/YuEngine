@@ -163,6 +163,26 @@ WorldComponentAttachmentSnapshot WorldComponentAttachmentBridge::Snapshot() cons
     return snapshot_;
 }
 
+std::uint32_t WorldComponentAttachmentBridge::ExportAttachments(
+    WorldComponentAttachment *output_attachments,
+    std::uint32_t output_capacity) const {
+    std::uint32_t exported_attachment_count = 0U;
+    for (std::uint32_t index = 0U; index < snapshot_.attachment_capacity; ++index) {
+        const WorldComponentAttachment &attachment = attachments_[index];
+        if (!attachment.is_attached) {
+            continue;
+        }
+
+        if ((output_attachments != nullptr) && (exported_attachment_count < output_capacity)) {
+            output_attachments[exported_attachment_count] = attachment;
+        }
+
+        ++exported_attachment_count;
+    }
+
+    return exported_attachment_count;
+}
+
 WorldComponentAttachmentResult WorldComponentAttachmentBridge::RecordFailureResult(
     WorldComponentAttachmentStatus status) {
     ++snapshot_.failed_operation_count;

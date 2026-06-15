@@ -62,6 +62,15 @@ public:
      * @return Snapshot value.
      */
     WorldComponentAttachmentSnapshot Snapshot() const;
+    /**
+     * @comment Copies active attachment records in deterministic slot order.
+     * @param output_attachments Caller-owned output attachment buffer.
+     * @param output_capacity Output attachment buffer capacity.
+     * @return Total active attachment count.
+     */
+    std::uint32_t ExportAttachments(
+        WorldComponentAttachment *output_attachments,
+        std::uint32_t output_capacity) const;
 
 private:
     WorldComponentAttachmentResult RecordFailureResult(WorldComponentAttachmentStatus status);
