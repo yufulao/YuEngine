@@ -1,14 +1,17 @@
 # P3-GATE-019: World Scene Object Transform Restore Bridge
 
-Status: Proposed for review
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NEEDS_REVIEW`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P3-GATE-001, P3-GATE-004, P3-GATE-006, P3-GATE-007, P3-GATE-017, P3-GATE-018
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0014
 Source baseline: `85fabf7`
+Proposal commit: `5e69016`
+Review fix commits: `39fa058`, `f5f6493`
 Candidate evidence: P3-GATE-017 landed sidecar assembly baseline and P3-GATE-018 landed manifest stream baseline.
+Review closure: ENG-081A PASS, ENG-081B PASS, and ENG-081C PASS after ENG-080A/B/C review findings and fixes.
 
 ## Layer
 
