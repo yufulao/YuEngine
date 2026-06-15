@@ -122,6 +122,14 @@
 #include "YuEngine/World/WorldSceneAssemblyManifestStreamResult.h"
 #include "YuEngine/World/WorldSceneAssemblyManifestStreamSnapshot.h"
 #include "YuEngine/World/WorldSceneAssemblyManifestStreamStatus.h"
+#include "YuEngine/World/WorldSceneApplyTimeRestoreProofBridge.h"
+#include "YuEngine/World/WorldSceneApplyTimeRestoreProofBridgeDesc.h"
+#include "YuEngine/World/WorldSceneApplyTimeRestoreProofConstants.h"
+#include "YuEngine/World/WorldSceneApplyTimeRestoreProofRecord.h"
+#include "YuEngine/World/WorldSceneApplyTimeRestoreProofResult.h"
+#include "YuEngine/World/WorldSceneApplyTimeRestoreProofSnapshot.h"
+#include "YuEngine/World/WorldSceneApplyTimeRestoreProofStatus.h"
+#include "YuEngine/World/WorldSceneApplyTimeRestoreProofSliceRecord.h"
 #include "YuEngine/World/WorldSceneDecodedRestorePlan.h"
 #include "YuEngine/World/WorldSceneDecodedRestorePlanBridge.h"
 #include "YuEngine/World/WorldSceneDecodedRestorePlanBridgeDesc.h"
@@ -290,6 +298,8 @@ using yuengine::world::WorldResourceBindingBridgeDesc;
 using yuengine::world::WorldResourceBindingResult;
 using yuengine::world::WorldResourceBindingSnapshot;
 using yuengine::world::WorldResourceBindingStatus;
+using yuengine::world::MAX_WORLD_SCENE_APPLY_TIME_RESTORE_PROOF_RECORD_COUNT;
+using yuengine::world::MAX_WORLD_SCENE_APPLY_TIME_RESTORE_SLICE_RECORD_COUNT;
 using yuengine::world::WorldScriptDispatchBridge;
 using yuengine::world::WorldScriptDispatchBridgeDesc;
 using yuengine::world::WorldScriptDispatchResult;
@@ -323,6 +333,14 @@ using yuengine::world::WorldSceneAssemblyManifestStreamDesc;
 using yuengine::world::WorldSceneAssemblyManifestStreamResult;
 using yuengine::world::WorldSceneAssemblyManifestStreamSnapshot;
 using yuengine::world::WorldSceneAssemblyManifestStreamStatus;
+using yuengine::world::WorldSceneApplyTimeRestoreProofBridge;
+using yuengine::world::WorldSceneApplyTimeRestoreProofBridgeDesc;
+using yuengine::world::WorldSceneApplyTimeRestoreProofFamily;
+using yuengine::world::WorldSceneApplyTimeRestoreProofRecord;
+using yuengine::world::WorldSceneApplyTimeRestoreProofResult;
+using yuengine::world::WorldSceneApplyTimeRestoreProofSnapshot;
+using yuengine::world::WorldSceneApplyTimeRestoreProofStatus;
+using yuengine::world::WorldSceneApplyTimeRestoreProofSliceRecord;
 using yuengine::world::WorldSceneDecodedRestorePlan;
 using yuengine::world::WorldSceneDecodedRestorePlanBridge;
 using yuengine::world::WorldSceneDecodedRestorePlanBridgeDesc;
@@ -893,6 +911,82 @@ constexpr const char *TEST_SCENE_DECODED_PLAN_NO_CONSTRUCTION =
     "WorldSceneDecodedRestorePlanBridge_NoObjectConstructionTransformHierarchyOrComponentLifecycle";
 constexpr const char *TEST_SCENE_DECODED_PLAN_ACTIVE_RESTORE_FREE =
     "WorldSceneDecodedRestorePlanBridge_WorldActiveRestoreBridgesRemainPlanFree";
+constexpr const char *TEST_SCENE_APPLY_PROOF_ORDER =
+    "WorldSceneApplyTimeRestoreProofBridge_ProvesAllFamiliesInDeterministicApplyOrder";
+constexpr const char *TEST_SCENE_APPLY_PROOF_EMPTY =
+    "WorldSceneApplyTimeRestoreProofBridge_ProvesEmptyDecodedScene";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_IDENTITY_INPUT =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullIdentityInputWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_TRANSFORM_INPUT =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullTransformInputWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_ATTACHMENT_INPUT =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullAttachmentInputWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_BINDING_INPUT =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullBindingInputWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_IDENTITY_DESTINATION =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullIdentityDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_TRANSFORM_DESTINATION =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullTransformDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_ATTACHMENT_DESTINATION =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullAttachmentDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_BINDING_DESTINATION =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullBindingDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_WORLD =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullWorldWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_OBJECT_REGISTRY =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullObjectRegistryWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_RESOURCE_REGISTRY =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullResourceRegistryWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_PLAN_SCRATCH =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullPlanScratchWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_PROOF_OUTPUT =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullProofOutputWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NULL_SLICE_OUTPUT =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNullSliceOutputWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_PLAN_SCRATCH_CAPACITY =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsPlanScratchCapacityTooSmallWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_PROOF_OUTPUT_CAPACITY =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsProofOutputCapacityTooSmallWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_SLICE_OUTPUT_CAPACITY =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsSliceOutputCapacityTooSmallWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_PLAN_FAILURE =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsPlanFailureWithoutProofMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_MISSING_WORLD_OBJECT =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsMissingWorldObjectWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_OBJECT_PREFLIGHT =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsObjectAcquirePreflightFailureWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_RESOURCE_PREFLIGHT =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsResourceAcquirePreflightFailureWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NON_EMPTY_IDENTITY =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNonEmptyIdentityDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NON_EMPTY_TRANSFORM =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNonEmptyTransformDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NON_EMPTY_ATTACHMENT =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNonEmptyAttachmentDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NON_EMPTY_BINDING =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsNonEmptyBindingDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_DESTINATION_CAPACITY =
+    "WorldSceneApplyTimeRestoreProofBridge_RejectsDestinationCapacityOverflowWithoutMutation";
+constexpr const char *TEST_SCENE_APPLY_PROOF_REPLAN_CURRENT =
+    "WorldSceneApplyTimeRestoreProofBridge_ReplansCurrentInputsWithoutAcceptingCachedPlan";
+constexpr const char *TEST_SCENE_APPLY_PROOF_SLICES_ONLY =
+    "WorldSceneApplyTimeRestoreProofBridge_EmitsIdentityTransformAttachmentBindingSlicesOnly";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NO_ACTIVE_RESTORE =
+    "WorldSceneApplyTimeRestoreProofBridge_DoesNotCallActiveRestoreBridges";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NO_DESTINATION_MUTATION =
+    "WorldSceneApplyTimeRestoreProofBridge_DoesNotMutateDestinations";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NO_REGISTRY_MUTATION =
+    "WorldSceneApplyTimeRestoreProofBridge_DoesNotMutateObjectOrResourceRegistries";
+constexpr const char *TEST_SCENE_APPLY_PROOF_PATH =
+    "WorldSceneApplyTimeRestoreProofBridge_ProofPathDoesNotGrowStorage";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NO_HIDDEN_ALLOCATION =
+    "WorldSceneApplyTimeRestoreProofBridge_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char *TEST_SCENE_APPLY_PROOF_COUNTERS =
+    "WorldSceneApplyTimeRestoreProofBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NO_STREAM_FILE =
+    "WorldSceneApplyTimeRestoreProofBridge_NoStreamDecodeFilePackageResourceLoadOrGameAdapterDependency";
+constexpr const char *TEST_SCENE_APPLY_PROOF_NO_CLEANUP =
+    "WorldSceneApplyTimeRestoreProofBridge_NoCleanupRollbackOrCompensationPath";
 constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_ORDER =
     "WorldSceneObjectTransformRestoreBridge_RestoresIdentityAndTransformRecordsInInputOrder";
 constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_IDENTITY_ONLY =
@@ -1066,6 +1160,11 @@ using SerializeBuffer = std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT>;
 constexpr std::uint32_t DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY = 8U;
 using DecodedRestorePlanOutput =
     std::array<WorldSceneDecodedRestorePlan, DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY>;
+constexpr std::uint32_t APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY = 8U;
+using ApplyTimeRestoreProofOutput =
+    std::array<WorldSceneApplyTimeRestoreProofRecord, APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY>;
+using ApplyTimeRestoreSliceOutput =
+    std::array<WorldSceneApplyTimeRestoreProofSliceRecord, APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY>;
 
 class TestLogSink final : public yuengine::diagnostics::ILogSink {
 public:
@@ -17060,6 +17159,1464 @@ int WorldSceneDecodedRestorePlanBridgeWorldActiveRestoreBridgesRemainPlanFree() 
     return 0;
 }
 
+struct ApplyTimeRestoreProofFixture final {
+    DecodedRestorePlanFixture decoded;
+    WorldObjectIdentityBridge identity_destination;
+    WorldTransformBridge transform_destination;
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+
+    ApplyTimeRestoreProofFixture()
+        : decoded(),
+          identity_destination(decoded.world, decoded.object_registry),
+          transform_destination(decoded.world),
+          attachment_destination(),
+          binding_destination() {
+    }
+};
+
+struct ApplyTimeRestoreProofCall final {
+    const WorldInstance *world = nullptr;
+    const ObjectRegistry *object_registry = nullptr;
+    const ResourceRegistry *resource_registry = nullptr;
+    const WorldObjectIdentityBridge *identity_destination = nullptr;
+    const WorldTransformBridge *transform_destination = nullptr;
+    const WorldComponentAttachmentBridge *attachment_destination = nullptr;
+    const WorldComponentResourceBindingBridge *binding_destination = nullptr;
+    const WorldSceneObjectTransformRestoreIdentityRecord *input_identities = nullptr;
+    std::uint32_t input_identity_count = 0U;
+    const WorldSceneObjectTransformRestoreTransformRecord *input_transforms = nullptr;
+    std::uint32_t input_transform_count = 0U;
+    const WorldComponentAttachmentSnapshotRecord *input_attachments = nullptr;
+    std::uint32_t input_attachment_count = 0U;
+    const WorldComponentResourceBindingSnapshotRecord *input_bindings = nullptr;
+    std::uint32_t input_binding_count = 0U;
+    WorldSceneDecodedRestorePlan *plan_scratch = nullptr;
+    std::uint32_t plan_scratch_capacity = 0U;
+    WorldSceneApplyTimeRestoreProofRecord *output_proofs = nullptr;
+    std::uint32_t output_proof_capacity = 0U;
+    WorldSceneApplyTimeRestoreProofSliceRecord *output_slices = nullptr;
+    std::uint32_t output_slice_capacity = 0U;
+};
+
+bool ObjectHandlesMatchForTest(
+    const ObjectHandle &left,
+    const ObjectHandle &right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+bool ResourceHandlesMatchForTest(
+    const ResourceHandle &left,
+    const ResourceHandle &right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+void FillApplyTimeRestoreProofSentinel(
+    WorldSceneApplyTimeRestoreProofRecord *proofs,
+    std::uint32_t proof_count) {
+    if (proofs == nullptr) {
+        return;
+    }
+
+    std::uint32_t index = 0U;
+    while (index < proof_count) {
+        std::memset(&proofs[index], 0x6B, sizeof(WorldSceneApplyTimeRestoreProofRecord));
+        ++index;
+    }
+}
+
+void FillApplyTimeRestoreSliceSentinel(
+    WorldSceneApplyTimeRestoreProofSliceRecord *slices,
+    std::uint32_t slice_count) {
+    if (slices == nullptr) {
+        return;
+    }
+
+    std::uint32_t index = 0U;
+    while (index < slice_count) {
+        std::memset(&slices[index], 0x7C, sizeof(WorldSceneApplyTimeRestoreProofSliceRecord));
+        ++index;
+    }
+}
+
+int PrepareApplyTimeRestoreProofFixture(ApplyTimeRestoreProofFixture *fixture) {
+    if (fixture == nullptr) {
+        return Fail("apply-time restore proof fixture was null");
+    }
+
+    return PrepareDecodedRestorePlanFixture(&fixture->decoded);
+}
+
+ApplyTimeRestoreProofCall MakeApplyTimeRestoreProofCall(
+    ApplyTimeRestoreProofFixture &fixture,
+    WorldSceneDecodedRestorePlan *plan_scratch,
+    std::uint32_t plan_scratch_capacity,
+    WorldSceneApplyTimeRestoreProofRecord *output_proofs,
+    std::uint32_t output_proof_capacity,
+    WorldSceneApplyTimeRestoreProofSliceRecord *output_slices,
+    std::uint32_t output_slice_capacity) {
+    ApplyTimeRestoreProofCall call{};
+    call.world = &fixture.decoded.world;
+    call.object_registry = &fixture.decoded.object_registry;
+    call.resource_registry = &fixture.decoded.resource_registry;
+    call.identity_destination = &fixture.identity_destination;
+    call.transform_destination = &fixture.transform_destination;
+    call.attachment_destination = &fixture.attachment_destination;
+    call.binding_destination = &fixture.binding_destination;
+    call.input_identities = fixture.decoded.identities.data();
+    call.input_identity_count = 2U;
+    call.input_transforms = fixture.decoded.transforms.data();
+    call.input_transform_count = 2U;
+    call.input_attachments = fixture.decoded.attachments.data();
+    call.input_attachment_count = 2U;
+    call.input_bindings = fixture.decoded.bindings.data();
+    call.input_binding_count = 2U;
+    call.plan_scratch = plan_scratch;
+    call.plan_scratch_capacity = plan_scratch_capacity;
+    call.output_proofs = output_proofs;
+    call.output_proof_capacity = output_proof_capacity;
+    call.output_slices = output_slices;
+    call.output_slice_capacity = output_slice_capacity;
+    return call;
+}
+
+WorldSceneApplyTimeRestoreProofResult BuildApplyTimeRestoreProof(
+    WorldSceneApplyTimeRestoreProofBridge &bridge,
+    const ApplyTimeRestoreProofCall &call) {
+    return bridge.Prove(
+        call.world,
+        call.object_registry,
+        call.resource_registry,
+        call.identity_destination,
+        call.transform_destination,
+        call.attachment_destination,
+        call.binding_destination,
+        call.input_identities,
+        call.input_identity_count,
+        call.input_transforms,
+        call.input_transform_count,
+        call.input_attachments,
+        call.input_attachment_count,
+        call.input_bindings,
+        call.input_binding_count,
+        call.plan_scratch,
+        call.plan_scratch_capacity,
+        call.output_proofs,
+        call.output_proof_capacity,
+        call.output_slices,
+        call.output_slice_capacity);
+}
+
+WorldSceneApplyTimeRestoreProofFamily MapApplyTimeRestoreProofFamilyForTest(
+    yuengine::world::WorldSceneDecodedRestorePlanRecordFamily family) {
+    switch (family) {
+    case yuengine::world::WorldSceneDecodedRestorePlanRecordFamily::Identity:
+        return WorldSceneApplyTimeRestoreProofFamily::Identity;
+    case yuengine::world::WorldSceneDecodedRestorePlanRecordFamily::Transform:
+        return WorldSceneApplyTimeRestoreProofFamily::Transform;
+    case yuengine::world::WorldSceneDecodedRestorePlanRecordFamily::Attachment:
+        return WorldSceneApplyTimeRestoreProofFamily::Attachment;
+    case yuengine::world::WorldSceneDecodedRestorePlanRecordFamily::Binding:
+        return WorldSceneApplyTimeRestoreProofFamily::Binding;
+    case yuengine::world::WorldSceneDecodedRestorePlanRecordFamily::None:
+    default:
+        break;
+    }
+
+    return WorldSceneApplyTimeRestoreProofFamily::None;
+}
+
+int CheckApplyTimeRestoreProofRecord(
+    const WorldSceneDecodedRestorePlan &plan,
+    const WorldSceneApplyTimeRestoreProofRecord &proof,
+    const WorldSceneApplyTimeRestoreProofSliceRecord &slice,
+    std::uint32_t plan_index) {
+    const WorldSceneApplyTimeRestoreProofFamily expected_family =
+        MapApplyTimeRestoreProofFamilyForTest(plan.family);
+    if (expected_family == WorldSceneApplyTimeRestoreProofFamily::None) {
+        return Fail("apply-time restore proof plan family was none");
+    }
+
+    if (proof.family != expected_family) {
+        return Fail("apply-time restore proof family wrong");
+    }
+
+    if (slice.family != expected_family) {
+        return Fail("apply-time restore proof slice family wrong");
+    }
+
+    if (proof.plan_index != plan_index) {
+        return Fail("apply-time restore proof plan index wrong");
+    }
+
+    if (slice.plan_index != plan_index) {
+        return Fail("apply-time restore proof slice plan index wrong");
+    }
+
+    if (proof.input_index != plan.input_index) {
+        return Fail("apply-time restore proof input index wrong");
+    }
+
+    if (slice.input_index != plan.input_index) {
+        return Fail("apply-time restore proof slice input index wrong");
+    }
+
+    if (proof.world_object_id.value != plan.world_object_id.value) {
+        return Fail("apply-time restore proof world id wrong");
+    }
+
+    if (slice.world_object_id.value != plan.world_object_id.value) {
+        return Fail("apply-time restore proof slice world id wrong");
+    }
+
+    if (!ObjectHandlesMatchForTest(proof.object_handle, plan.object_handle)) {
+        return Fail("apply-time restore proof object handle wrong");
+    }
+
+    if (!ObjectHandlesMatchForTest(slice.object_handle, plan.object_handle)) {
+        return Fail("apply-time restore proof slice object handle wrong");
+    }
+
+    if (proof.component_type_id.value != plan.component_type_id.value) {
+        return Fail("apply-time restore proof component type wrong");
+    }
+
+    if (slice.component_type_id.value != plan.component_type_id.value) {
+        return Fail("apply-time restore proof slice component type wrong");
+    }
+
+    if (proof.component_slot_id.value != plan.component_slot_id.value) {
+        return Fail("apply-time restore proof component slot wrong");
+    }
+
+    if (slice.component_slot_id.value != plan.component_slot_id.value) {
+        return Fail("apply-time restore proof slice component slot wrong");
+    }
+
+    if (!ResourceHandlesMatchForTest(proof.resource_handle, plan.resource_handle)) {
+        return Fail("apply-time restore proof resource handle wrong");
+    }
+
+    if (!ResourceHandlesMatchForTest(slice.resource_handle, plan.resource_handle)) {
+        return Fail("apply-time restore proof slice resource handle wrong");
+    }
+
+    if (proof.expected_resource_type.value != plan.expected_resource_type.value) {
+        return Fail("apply-time restore proof resource type wrong");
+    }
+
+    if (slice.expected_resource_type.value != plan.expected_resource_type.value) {
+        return Fail("apply-time restore proof slice resource type wrong");
+    }
+
+    if (proof.projected_object_acquire_count != plan.projected_object_acquire_count) {
+        return Fail("apply-time restore proof object acquire count wrong");
+    }
+
+    if (proof.projected_resource_acquire_count != plan.projected_resource_acquire_count) {
+        return Fail("apply-time restore proof resource acquire count wrong");
+    }
+
+    if (proof.plan_status != WorldSceneDecodedRestorePlanStatus::Success) {
+        return Fail("apply-time restore proof plan status wrong");
+    }
+
+    if (proof.status != WorldSceneApplyTimeRestoreProofStatus::Success) {
+        return Fail("apply-time restore proof record status wrong");
+    }
+
+    return 0;
+}
+
+int CheckApplyTimeRestoreProofOutput(
+    const WorldSceneApplyTimeRestoreProofResult &result,
+    const WorldSceneDecodedRestorePlan *plans,
+    const WorldSceneApplyTimeRestoreProofRecord *proofs,
+    const WorldSceneApplyTimeRestoreProofSliceRecord *slices,
+    std::uint32_t identity_count,
+    std::uint32_t transform_count,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count,
+    std::uint32_t projected_object_acquire_count,
+    std::uint32_t projected_resource_acquire_count) {
+    if (!result.Succeeded()) {
+        return Fail("apply-time restore proof success status wrong");
+    }
+
+    if (plans == nullptr) {
+        return Fail("apply-time restore proof plan scratch was null");
+    }
+
+    if (proofs == nullptr) {
+        return Fail("apply-time restore proof output was null");
+    }
+
+    if (slices == nullptr) {
+        return Fail("apply-time restore proof slice output was null");
+    }
+
+    const std::uint32_t record_count =
+        identity_count + transform_count + attachment_count + binding_count;
+    if (result.state.plan_record_count != record_count) {
+        return Fail("apply-time restore proof plan count wrong");
+    }
+
+    if (result.state.proof_record_count != record_count) {
+        return Fail("apply-time restore proof record count wrong");
+    }
+
+    if (result.state.slice_record_count != record_count) {
+        return Fail("apply-time restore proof slice count wrong");
+    }
+
+    if (result.state.proven_identity_count != identity_count) {
+        return Fail("apply-time restore proof identity count wrong");
+    }
+
+    if (result.state.proven_transform_count != transform_count) {
+        return Fail("apply-time restore proof transform count wrong");
+    }
+
+    if (result.state.proven_attachment_count != attachment_count) {
+        return Fail("apply-time restore proof attachment count wrong");
+    }
+
+    if (result.state.proven_binding_count != binding_count) {
+        return Fail("apply-time restore proof binding count wrong");
+    }
+
+    if (result.state.emitted_slice_count != record_count) {
+        return Fail("apply-time restore proof emitted slice count wrong");
+    }
+
+    if (result.state.projected_object_acquire_count != projected_object_acquire_count) {
+        return Fail("apply-time restore proof object acquire count wrong");
+    }
+
+    if (result.state.projected_resource_acquire_count != projected_resource_acquire_count) {
+        return Fail("apply-time restore proof resource acquire count wrong");
+    }
+
+    std::uint32_t index = 0U;
+    while (index < record_count) {
+        if (plans[index].status != WorldSceneDecodedRestorePlanStatus::Success) {
+            return Fail("apply-time restore proof plan scratch status wrong");
+        }
+
+        if (CheckApplyTimeRestoreProofRecord(plans[index], proofs[index], slices[index], index) != 0) {
+            return 1;
+        }
+
+        ++index;
+    }
+
+    return 0;
+}
+
+int ExpectApplyTimeRestoreProofSuccessWithoutMutation(
+    WorldSceneApplyTimeRestoreProofBridge &bridge,
+    const ApplyTimeRestoreProofCall &call,
+    std::uint32_t identity_count,
+    std::uint32_t transform_count,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count,
+    std::uint32_t projected_object_acquire_count,
+    std::uint32_t projected_resource_acquire_count) {
+    const bool has_world = call.world != nullptr;
+    WorldSnapshot before_world{};
+    if (has_world) {
+        before_world = call.world->Snapshot();
+    }
+
+    const bool has_object_registry = call.object_registry != nullptr;
+    ObjectSnapshot before_object_registry{};
+    if (has_object_registry) {
+        before_object_registry = call.object_registry->Snapshot();
+    }
+
+    const bool has_resource_registry = call.resource_registry != nullptr;
+    ResourceSnapshot before_resource_registry{};
+    if (has_resource_registry) {
+        before_resource_registry = call.resource_registry->Snapshot();
+    }
+
+    const bool has_identity_destination = call.identity_destination != nullptr;
+    WorldObjectIdentitySnapshot before_identity_destination{};
+    if (has_identity_destination) {
+        before_identity_destination = call.identity_destination->Snapshot();
+    }
+
+    const bool has_transform_destination = call.transform_destination != nullptr;
+    WorldTransformSnapshot before_transform_destination{};
+    if (has_transform_destination) {
+        before_transform_destination = call.transform_destination->Snapshot();
+    }
+
+    const bool has_attachment_destination = call.attachment_destination != nullptr;
+    WorldComponentAttachmentSnapshot before_attachment_destination{};
+    if (has_attachment_destination) {
+        before_attachment_destination = call.attachment_destination->Snapshot();
+    }
+
+    const bool has_binding_destination = call.binding_destination != nullptr;
+    WorldComponentResourceBindingSnapshot before_binding_destination{};
+    if (has_binding_destination) {
+        before_binding_destination = call.binding_destination->Snapshot();
+    }
+
+    const WorldSceneApplyTimeRestoreProofResult result = BuildApplyTimeRestoreProof(bridge, call);
+    if (CheckApplyTimeRestoreProofOutput(
+            result,
+            call.plan_scratch,
+            call.output_proofs,
+            call.output_slices,
+            identity_count,
+            transform_count,
+            attachment_count,
+            binding_count,
+            projected_object_acquire_count,
+            projected_resource_acquire_count) != 0) {
+        return 1;
+    }
+
+    if (has_world) {
+        const WorldSnapshot after_world = call.world->Snapshot();
+        if (!WorldSnapshotsMatch(before_world, after_world)) {
+            return Fail("apply-time restore proof success mutated world");
+        }
+    }
+
+    if (has_object_registry) {
+        const ObjectSnapshot after_object_registry = call.object_registry->Snapshot();
+        if (!ObjectSnapshotsMatch(before_object_registry, after_object_registry)) {
+            return Fail("apply-time restore proof success mutated object registry");
+        }
+    }
+
+    if (has_resource_registry) {
+        const ResourceSnapshot after_resource_registry = call.resource_registry->Snapshot();
+        if (!ResourceSnapshotsMatch(before_resource_registry, after_resource_registry)) {
+            return Fail("apply-time restore proof success mutated resource registry");
+        }
+    }
+
+    if (has_identity_destination) {
+        const WorldObjectIdentitySnapshot after_identity_destination =
+            call.identity_destination->Snapshot();
+        if (!ObjectIdentitySnapshotsMatch(before_identity_destination, after_identity_destination)) {
+            return Fail("apply-time restore proof success mutated identity destination");
+        }
+    }
+
+    if (has_transform_destination) {
+        const WorldTransformSnapshot after_transform_destination =
+            call.transform_destination->Snapshot();
+        if (!TransformSnapshotsMatch(before_transform_destination, after_transform_destination)) {
+            return Fail("apply-time restore proof success mutated transform destination");
+        }
+    }
+
+    if (has_attachment_destination) {
+        const WorldComponentAttachmentSnapshot after_attachment_destination =
+            call.attachment_destination->Snapshot();
+        if (!ComponentAttachmentSnapshotsMatch(before_attachment_destination, after_attachment_destination)) {
+            return Fail("apply-time restore proof success mutated attachment destination");
+        }
+    }
+
+    if (has_binding_destination) {
+        const WorldComponentResourceBindingSnapshot after_binding_destination =
+            call.binding_destination->Snapshot();
+        if (!ComponentResourceBindingSnapshotsMatch(before_binding_destination, after_binding_destination)) {
+            return Fail("apply-time restore proof success mutated binding destination");
+        }
+    }
+
+    return 0;
+}
+
+int ExpectApplyTimeRestoreProofFailureWithoutMutation(
+    WorldSceneApplyTimeRestoreProofBridge &bridge,
+    const ApplyTimeRestoreProofCall &call,
+    WorldSceneApplyTimeRestoreProofStatus expected_status,
+    WorldSceneDecodedRestorePlanStatus expected_plan_status,
+    const char *error_message) {
+    const bool has_world = call.world != nullptr;
+    WorldSnapshot before_world{};
+    if (has_world) {
+        before_world = call.world->Snapshot();
+    }
+
+    const bool has_object_registry = call.object_registry != nullptr;
+    ObjectSnapshot before_object_registry{};
+    if (has_object_registry) {
+        before_object_registry = call.object_registry->Snapshot();
+    }
+
+    const bool has_resource_registry = call.resource_registry != nullptr;
+    ResourceSnapshot before_resource_registry{};
+    if (has_resource_registry) {
+        before_resource_registry = call.resource_registry->Snapshot();
+    }
+
+    const bool has_identity_destination = call.identity_destination != nullptr;
+    WorldObjectIdentitySnapshot before_identity_destination{};
+    if (has_identity_destination) {
+        before_identity_destination = call.identity_destination->Snapshot();
+    }
+
+    const bool has_transform_destination = call.transform_destination != nullptr;
+    WorldTransformSnapshot before_transform_destination{};
+    if (has_transform_destination) {
+        before_transform_destination = call.transform_destination->Snapshot();
+    }
+
+    const bool has_attachment_destination = call.attachment_destination != nullptr;
+    WorldComponentAttachmentSnapshot before_attachment_destination{};
+    if (has_attachment_destination) {
+        before_attachment_destination = call.attachment_destination->Snapshot();
+    }
+
+    const bool has_binding_destination = call.binding_destination != nullptr;
+    WorldComponentResourceBindingSnapshot before_binding_destination{};
+    if (has_binding_destination) {
+        before_binding_destination = call.binding_destination->Snapshot();
+    }
+
+    const bool has_proof_output = call.output_proofs != nullptr;
+    std::array<std::uint8_t,
+        sizeof(WorldSceneApplyTimeRestoreProofRecord) *
+            APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY> before_proof{};
+    if (has_proof_output) {
+        std::memcpy(before_proof.data(), call.output_proofs, before_proof.size());
+    }
+
+    const bool has_slice_output = call.output_slices != nullptr;
+    std::array<std::uint8_t,
+        sizeof(WorldSceneApplyTimeRestoreProofSliceRecord) *
+            APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY> before_slice{};
+    if (has_slice_output) {
+        std::memcpy(before_slice.data(), call.output_slices, before_slice.size());
+    }
+
+    const WorldSceneApplyTimeRestoreProofResult result = BuildApplyTimeRestoreProof(bridge, call);
+    if (result.status != expected_status) {
+        return Fail(error_message);
+    }
+
+    if (result.plan_status != expected_plan_status) {
+        return Fail("apply-time restore proof failure plan status wrong");
+    }
+
+    if (has_proof_output) {
+        if (std::memcmp(before_proof.data(), call.output_proofs, before_proof.size()) != 0) {
+            return Fail("apply-time restore proof failure mutated proof output");
+        }
+    }
+
+    if (has_slice_output) {
+        if (std::memcmp(before_slice.data(), call.output_slices, before_slice.size()) != 0) {
+            return Fail("apply-time restore proof failure mutated slice output");
+        }
+    }
+
+    if (has_world) {
+        const WorldSnapshot after_world = call.world->Snapshot();
+        if (!WorldSnapshotsMatch(before_world, after_world)) {
+            return Fail("apply-time restore proof failure mutated world");
+        }
+    }
+
+    if (has_object_registry) {
+        const ObjectSnapshot after_object_registry = call.object_registry->Snapshot();
+        if (!ObjectSnapshotsMatch(before_object_registry, after_object_registry)) {
+            return Fail("apply-time restore proof failure mutated object registry");
+        }
+    }
+
+    if (has_resource_registry) {
+        const ResourceSnapshot after_resource_registry = call.resource_registry->Snapshot();
+        if (!ResourceSnapshotsMatch(before_resource_registry, after_resource_registry)) {
+            return Fail("apply-time restore proof failure mutated resource registry");
+        }
+    }
+
+    if (has_identity_destination) {
+        const WorldObjectIdentitySnapshot after_identity_destination =
+            call.identity_destination->Snapshot();
+        if (!ObjectIdentitySnapshotsMatch(before_identity_destination, after_identity_destination)) {
+            return Fail("apply-time restore proof failure mutated identity destination");
+        }
+    }
+
+    if (has_transform_destination) {
+        const WorldTransformSnapshot after_transform_destination =
+            call.transform_destination->Snapshot();
+        if (!TransformSnapshotsMatch(before_transform_destination, after_transform_destination)) {
+            return Fail("apply-time restore proof failure mutated transform destination");
+        }
+    }
+
+    if (has_attachment_destination) {
+        const WorldComponentAttachmentSnapshot after_attachment_destination =
+            call.attachment_destination->Snapshot();
+        if (!ComponentAttachmentSnapshotsMatch(before_attachment_destination, after_attachment_destination)) {
+            return Fail("apply-time restore proof failure mutated attachment destination");
+        }
+    }
+
+    if (has_binding_destination) {
+        const WorldComponentResourceBindingSnapshot after_binding_destination =
+            call.binding_destination->Snapshot();
+        if (!ComponentResourceBindingSnapshotsMatch(before_binding_destination, after_binding_destination)) {
+            return Fail("apply-time restore proof failure mutated binding destination");
+        }
+    }
+
+    return 0;
+}
+
+enum class ApplyTimeRestoreProofFailureCase {
+    NullIdentityInput,
+    NullTransformInput,
+    NullAttachmentInput,
+    NullBindingInput,
+    NullIdentityDestination,
+    NullTransformDestination,
+    NullAttachmentDestination,
+    NullBindingDestination,
+    NullWorld,
+    NullObjectRegistry,
+    NullResourceRegistry,
+    NullPlanScratch,
+    NullProofOutput,
+    NullSliceOutput,
+    PlanScratchCapacity,
+    ProofOutputCapacity,
+    SliceOutputCapacity,
+    PlanFailure,
+    MissingWorldObject,
+    ObjectAcquirePreflight,
+    ResourceAcquirePreflight,
+    NonEmptyIdentityDestination,
+    NonEmptyTransformDestination,
+    NonEmptyAttachmentDestination,
+    NonEmptyBindingDestination,
+    DestinationCapacity
+};
+
+int RunApplyTimeRestoreProofSuccessCase(
+    std::uint32_t identity_count,
+    std::uint32_t transform_count,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count,
+    std::uint32_t projected_object_acquire_count,
+    std::uint32_t projected_resource_acquire_count) {
+    ApplyTimeRestoreProofFixture fixture;
+    if (PrepareApplyTimeRestoreProofFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput plan_scratch{};
+    ApplyTimeRestoreProofOutput proof_output{};
+    ApplyTimeRestoreSliceOutput slice_output{};
+    FillDecodedRestorePlanSentinel(plan_scratch.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreProofSentinel(proof_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreSliceSentinel(slice_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    ApplyTimeRestoreProofCall call = MakeApplyTimeRestoreProofCall(
+        fixture,
+        plan_scratch.data(),
+        DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY,
+        proof_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY,
+        slice_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    call.input_identity_count = identity_count;
+    call.input_transform_count = transform_count;
+    call.input_attachment_count = attachment_count;
+    call.input_binding_count = binding_count;
+    WorldSceneApplyTimeRestoreProofBridge bridge;
+    return ExpectApplyTimeRestoreProofSuccessWithoutMutation(
+        bridge,
+        call,
+        identity_count,
+        transform_count,
+        attachment_count,
+        binding_count,
+        projected_object_acquire_count,
+        projected_resource_acquire_count);
+}
+
+int RunApplyTimeRestoreProofFailureCase(
+    ApplyTimeRestoreProofFailureCase failure_case,
+    WorldSceneApplyTimeRestoreProofStatus expected_status,
+    WorldSceneDecodedRestorePlanStatus expected_plan_status,
+    const char *error_message) {
+    ApplyTimeRestoreProofFixture fixture;
+    if (PrepareApplyTimeRestoreProofFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    ObjectRegistry overflow_object_registry = MakeRegistry();
+    const std::uint32_t max_reference_count = std::numeric_limits<std::uint32_t>::max();
+    const ObjectRegistrationResult overflow_object = CreateObject(
+        overflow_object_registry,
+        OBJECT_TYPE_PLAYER,
+        max_reference_count);
+    if (!overflow_object.Succeeded()) {
+        return Fail("apply-time restore proof overflow object creation failed");
+    }
+
+    ResourceRegistry overflow_resource_registry = MakeResourceRegistry();
+    const std::uint32_t initial_reference_count = max_reference_count - 1U;
+    const ResourceRegistrationResult overflow_resource = RegisterResource(
+        overflow_resource_registry,
+        RESOURCE_TYPE_TEXTURE,
+        "apply_time_proof_overflow_resource",
+        initial_reference_count);
+    if (!overflow_resource.Succeeded()) {
+        return Fail("apply-time restore proof overflow resource registration failed");
+    }
+
+    WorldObjectIdentityBridgeDesc small_identity_desc{};
+    small_identity_desc.bridge_capacity = 1U;
+    WorldObjectIdentityBridge small_identity_destination(
+        fixture.decoded.world,
+        fixture.decoded.object_registry,
+        small_identity_desc);
+    WorldObjectIdentityBridge non_empty_identity_destination(
+        fixture.decoded.world,
+        fixture.decoded.object_registry);
+    if (!non_empty_identity_destination.Bind(
+            OBJECT_PLAYER,
+            fixture.decoded.objects[0].handle).Succeeded()) {
+        return Fail("apply-time restore proof non-empty identity setup failed");
+    }
+
+    WorldTransformBridge non_empty_transform_destination(fixture.decoded.world);
+    if (!non_empty_transform_destination.Register(OBJECT_PLAYER, Transform(950.0F)).Succeeded()) {
+        return Fail("apply-time restore proof non-empty transform setup failed");
+    }
+
+    WorldComponentAttachmentBridge non_empty_attachment_destination;
+    if (!non_empty_attachment_destination.Add(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("apply-time restore proof non-empty attachment setup failed");
+    }
+
+    WorldComponentAttachmentBridge binding_attachment_source;
+    if (!binding_attachment_source.Add(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("apply-time restore proof binding attachment setup failed");
+    }
+
+    WorldComponentResourceBindingBridge non_empty_binding_destination;
+    if (!non_empty_binding_destination.Bind(
+            &binding_attachment_source,
+            &fixture.decoded.resource_registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            fixture.decoded.resources[0].handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("apply-time restore proof non-empty binding setup failed");
+    }
+
+    DecodedRestorePlanOutput plan_scratch{};
+    ApplyTimeRestoreProofOutput proof_output{};
+    ApplyTimeRestoreSliceOutput slice_output{};
+    FillDecodedRestorePlanSentinel(plan_scratch.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreProofSentinel(proof_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreSliceSentinel(slice_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    ApplyTimeRestoreProofCall call = MakeApplyTimeRestoreProofCall(
+        fixture,
+        plan_scratch.data(),
+        DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY,
+        proof_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY,
+        slice_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+
+    switch (failure_case) {
+    case ApplyTimeRestoreProofFailureCase::NullIdentityInput:
+        call.input_identities = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullTransformInput:
+        call.input_transforms = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullAttachmentInput:
+        call.input_attachments = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullBindingInput:
+        call.input_bindings = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullIdentityDestination:
+        call.identity_destination = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullTransformDestination:
+        call.transform_destination = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullAttachmentDestination:
+        call.attachment_destination = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullBindingDestination:
+        call.binding_destination = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullWorld:
+        call.world = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullObjectRegistry:
+        call.object_registry = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullResourceRegistry:
+        call.resource_registry = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullPlanScratch:
+        call.plan_scratch = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullProofOutput:
+        call.output_proofs = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NullSliceOutput:
+        call.output_slices = nullptr;
+        break;
+    case ApplyTimeRestoreProofFailureCase::PlanScratchCapacity:
+        call.plan_scratch_capacity = 0U;
+        break;
+    case ApplyTimeRestoreProofFailureCase::ProofOutputCapacity:
+        call.output_proof_capacity = 0U;
+        break;
+    case ApplyTimeRestoreProofFailureCase::SliceOutputCapacity:
+        call.output_slice_capacity = 0U;
+        break;
+    case ApplyTimeRestoreProofFailureCase::PlanFailure:
+        fixture.decoded.identities[1].world_object_id =
+            fixture.decoded.identities[0].world_object_id;
+        break;
+    case ApplyTimeRestoreProofFailureCase::MissingWorldObject:
+        fixture.decoded.identities[0].world_object_id = WorldObjectId{77U};
+        break;
+    case ApplyTimeRestoreProofFailureCase::ObjectAcquirePreflight:
+        fixture.decoded.identities[0] = MakeSceneObjectTransformIdentityRecord(
+            OBJECT_PLAYER,
+            overflow_object.handle);
+        call.object_registry = &overflow_object_registry;
+        call.input_identity_count = 1U;
+        call.input_transform_count = 1U;
+        call.input_attachment_count = 0U;
+        call.input_binding_count = 0U;
+        break;
+    case ApplyTimeRestoreProofFailureCase::ResourceAcquirePreflight:
+        fixture.decoded.bindings[0] = MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            overflow_resource.handle,
+            RESOURCE_TYPE_TEXTURE);
+        fixture.decoded.bindings[1] = MakeSceneBindingRecord(
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            overflow_resource.handle,
+            RESOURCE_TYPE_TEXTURE);
+        call.resource_registry = &overflow_resource_registry;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NonEmptyIdentityDestination:
+        call.identity_destination = &non_empty_identity_destination;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NonEmptyTransformDestination:
+        call.transform_destination = &non_empty_transform_destination;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NonEmptyAttachmentDestination:
+        call.attachment_destination = &non_empty_attachment_destination;
+        break;
+    case ApplyTimeRestoreProofFailureCase::NonEmptyBindingDestination:
+        call.binding_destination = &non_empty_binding_destination;
+        break;
+    case ApplyTimeRestoreProofFailureCase::DestinationCapacity:
+        call.identity_destination = &small_identity_destination;
+        break;
+    default:
+        return Fail("apply-time restore proof unknown failure case");
+    }
+
+    WorldSceneApplyTimeRestoreProofBridge bridge;
+    return ExpectApplyTimeRestoreProofFailureWithoutMutation(
+        bridge,
+        call,
+        expected_status,
+        expected_plan_status,
+        error_message);
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeProvesAllFamiliesInDeterministicApplyOrder() {
+    return RunApplyTimeRestoreProofSuccessCase(2U, 2U, 2U, 2U, 2U, 2U);
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeProvesEmptyDecodedScene() {
+    return RunApplyTimeRestoreProofSuccessCase(0U, 0U, 0U, 0U, 0U, 0U);
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullIdentityInputWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullIdentityInput,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidIdentityInput,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null identity input status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullTransformInputWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullTransformInput,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidTransformInput,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null transform input status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullAttachmentInputWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullAttachmentInput,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidAttachmentInput,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null attachment input status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullBindingInputWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullBindingInput,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidBindingInput,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null binding input status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullIdentityDestinationWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullIdentityDestination,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidIdentityDestination,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null identity destination status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullTransformDestinationWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullTransformDestination,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidTransformDestination,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null transform destination status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullAttachmentDestinationWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullAttachmentDestination,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidAttachmentDestination,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null attachment destination status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullBindingDestinationWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullBindingDestination,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidBindingDestination,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null binding destination status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullWorldWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullWorld,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidWorld,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null world status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullObjectRegistryWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullObjectRegistry,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidObjectRegistry,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null object registry status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullResourceRegistryWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullResourceRegistry,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidResourceRegistry,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null resource registry status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullPlanScratchWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullPlanScratch,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidPlanScratch,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null plan scratch status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullProofOutputWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullProofOutput,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidProofOutput,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null proof output status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNullSliceOutputWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullSliceOutput,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidSliceOutput,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof null slice output status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsPlanScratchCapacityTooSmallWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::PlanScratchCapacity,
+        WorldSceneApplyTimeRestoreProofStatus::PlanScratchCapacityExceeded,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof plan scratch capacity status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsProofOutputCapacityTooSmallWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::ProofOutputCapacity,
+        WorldSceneApplyTimeRestoreProofStatus::ProofOutputCapacityExceeded,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof output capacity status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsSliceOutputCapacityTooSmallWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::SliceOutputCapacity,
+        WorldSceneApplyTimeRestoreProofStatus::SliceOutputCapacityExceeded,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof slice capacity status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsPlanFailureWithoutProofMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::PlanFailure,
+        WorldSceneApplyTimeRestoreProofStatus::PlanFailed,
+        WorldSceneDecodedRestorePlanStatus::DuplicateIdentityWorldObjectId,
+        "apply-time restore proof plan failure status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsMissingWorldObjectWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::MissingWorldObject,
+        WorldSceneApplyTimeRestoreProofStatus::PlanFailed,
+        WorldSceneDecodedRestorePlanStatus::MissingWorldObject,
+        "apply-time restore proof missing world object status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsObjectAcquirePreflightFailureWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::ObjectAcquirePreflight,
+        WorldSceneApplyTimeRestoreProofStatus::ObjectAcquireFailed,
+        WorldSceneDecodedRestorePlanStatus::ObjectAcquireWouldOverflow,
+        "apply-time restore proof object acquire status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsResourceAcquirePreflightFailureWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::ResourceAcquirePreflight,
+        WorldSceneApplyTimeRestoreProofStatus::ResourceAcquireFailed,
+        WorldSceneDecodedRestorePlanStatus::ResourceAcquireWouldOverflow,
+        "apply-time restore proof resource acquire status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNonEmptyIdentityDestinationWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NonEmptyIdentityDestination,
+        WorldSceneApplyTimeRestoreProofStatus::DestinationNotEmpty,
+        WorldSceneDecodedRestorePlanStatus::DestinationNotEmpty,
+        "apply-time restore proof non-empty identity status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNonEmptyTransformDestinationWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NonEmptyTransformDestination,
+        WorldSceneApplyTimeRestoreProofStatus::DestinationNotEmpty,
+        WorldSceneDecodedRestorePlanStatus::DestinationNotEmpty,
+        "apply-time restore proof non-empty transform status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNonEmptyAttachmentDestinationWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NonEmptyAttachmentDestination,
+        WorldSceneApplyTimeRestoreProofStatus::DestinationNotEmpty,
+        WorldSceneDecodedRestorePlanStatus::DestinationNotEmpty,
+        "apply-time restore proof non-empty attachment status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsNonEmptyBindingDestinationWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NonEmptyBindingDestination,
+        WorldSceneApplyTimeRestoreProofStatus::DestinationNotEmpty,
+        WorldSceneDecodedRestorePlanStatus::DestinationNotEmpty,
+        "apply-time restore proof non-empty binding status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeRejectsDestinationCapacityOverflowWithoutMutation() {
+    return RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::DestinationCapacity,
+        WorldSceneApplyTimeRestoreProofStatus::IdentityCapacityExceeded,
+        WorldSceneDecodedRestorePlanStatus::IdentityCapacityExceeded,
+        "apply-time restore proof destination capacity status wrong");
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeReplansCurrentInputsWithoutAcceptingCachedPlan() {
+    ApplyTimeRestoreProofFixture fixture;
+    if (PrepareApplyTimeRestoreProofFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput plan_scratch{};
+    ApplyTimeRestoreProofOutput proof_output{};
+    ApplyTimeRestoreSliceOutput slice_output{};
+    FillDecodedRestorePlanSentinel(plan_scratch.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreProofSentinel(proof_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreSliceSentinel(slice_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    ApplyTimeRestoreProofCall call = MakeApplyTimeRestoreProofCall(
+        fixture,
+        plan_scratch.data(),
+        DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY,
+        proof_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY,
+        slice_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    call.input_identity_count = 1U;
+    call.input_transform_count = 1U;
+    call.input_attachment_count = 1U;
+    call.input_binding_count = 1U;
+    WorldSceneApplyTimeRestoreProofBridge bridge;
+    const WorldSceneApplyTimeRestoreProofResult first_result = BuildApplyTimeRestoreProof(
+        bridge,
+        call);
+    if (!first_result.Succeeded()) {
+        return Fail("apply-time restore proof first replan failed");
+    }
+
+    if (proof_output[0].world_object_id.value != OBJECT_PLAYER.value) {
+        return Fail("apply-time restore proof first replan object wrong");
+    }
+
+    fixture.decoded.identities[0] = MakeSceneObjectTransformIdentityRecord(
+        OBJECT_CAMERA,
+        fixture.decoded.objects[1].handle);
+    fixture.decoded.transforms[0] = MakeSceneObjectTransformTransformRecord(
+        OBJECT_CAMERA,
+        Transform(960.0F));
+    fixture.decoded.attachments[0] = MakeSceneAttachmentRecord(
+        OBJECT_CAMERA,
+        COMPONENT_TYPE_SECONDARY,
+        COMPONENT_SLOT_SECONDARY);
+    fixture.decoded.bindings[0] = MakeSceneBindingRecord(
+        OBJECT_CAMERA,
+        COMPONENT_TYPE_SECONDARY,
+        COMPONENT_SLOT_SECONDARY,
+        fixture.decoded.resources[1].handle,
+        RESOURCE_TYPE_AUDIO);
+    FillDecodedRestorePlanSentinel(plan_scratch.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreProofSentinel(proof_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreSliceSentinel(slice_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    const WorldSceneApplyTimeRestoreProofResult second_result = BuildApplyTimeRestoreProof(
+        bridge,
+        call);
+    if (!second_result.Succeeded()) {
+        return Fail("apply-time restore proof second replan failed");
+    }
+
+    if (proof_output[0].world_object_id.value != OBJECT_CAMERA.value) {
+        return Fail("apply-time restore proof accepted cached plan");
+    }
+
+    return CheckApplyTimeRestoreProofOutput(
+        second_result,
+        plan_scratch.data(),
+        proof_output.data(),
+        slice_output.data(),
+        1U,
+        1U,
+        1U,
+        1U,
+        1U,
+        1U);
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeEmitsIdentityTransformAttachmentBindingSlicesOnly() {
+    return RunApplyTimeRestoreProofSuccessCase(2U, 2U, 2U, 2U, 2U, 2U);
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeDoesNotCallActiveRestoreBridges() {
+    WorldSceneObjectTransformRestoreBridge object_transform_restore_bridge;
+    WorldSceneAssemblyBridge assembly_bridge;
+    const WorldSceneObjectTransformRestoreSnapshot before_object_transform =
+        object_transform_restore_bridge.Snapshot();
+    const WorldSceneAssemblySnapshot before_assembly = assembly_bridge.Snapshot();
+    const int ret_code = RunApplyTimeRestoreProofSuccessCase(2U, 2U, 2U, 2U, 2U, 2U);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const WorldSceneObjectTransformRestoreSnapshot after_object_transform =
+        object_transform_restore_bridge.Snapshot();
+    if (after_object_transform.restore_attempt_count != before_object_transform.restore_attempt_count) {
+        return Fail("apply-time restore proof touched object transform restore bridge");
+    }
+
+    const WorldSceneAssemblySnapshot after_assembly = assembly_bridge.Snapshot();
+    if (after_assembly.assembly_attempt_count != before_assembly.assembly_attempt_count) {
+        return Fail("apply-time restore proof touched scene assembly bridge");
+    }
+
+    return 0;
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeDoesNotMutateDestinations() {
+    return RunApplyTimeRestoreProofSuccessCase(2U, 2U, 2U, 2U, 2U, 2U);
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeDoesNotMutateObjectOrResourceRegistries() {
+    return RunApplyTimeRestoreProofSuccessCase(2U, 2U, 2U, 2U, 2U, 2U);
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeProofPathDoesNotGrowStorage() {
+    WorldSceneApplyTimeRestoreProofBridgeDesc desc{};
+    desc.identity_capacity = 2U;
+    desc.transform_capacity = 2U;
+    desc.attachment_capacity = 2U;
+    desc.binding_capacity = 2U;
+    desc.plan_scratch_capacity = DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY;
+    desc.proof_capacity = APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY;
+    desc.slice_capacity = APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY;
+    WorldSceneApplyTimeRestoreProofBridge bridge(desc);
+    const WorldSceneApplyTimeRestoreProofSnapshot before_snapshot = bridge.Snapshot();
+    std::uint32_t iteration = 0U;
+    while (iteration < 3U) {
+        ApplyTimeRestoreProofFixture fixture;
+        if (PrepareApplyTimeRestoreProofFixture(&fixture) != 0) {
+            return 1;
+        }
+
+        DecodedRestorePlanOutput plan_scratch{};
+        ApplyTimeRestoreProofOutput proof_output{};
+        ApplyTimeRestoreSliceOutput slice_output{};
+        FillDecodedRestorePlanSentinel(plan_scratch.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+        FillApplyTimeRestoreProofSentinel(proof_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+        FillApplyTimeRestoreSliceSentinel(slice_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+        ApplyTimeRestoreProofCall call = MakeApplyTimeRestoreProofCall(
+            fixture,
+            plan_scratch.data(),
+            DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY,
+            proof_output.data(),
+            APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY,
+            slice_output.data(),
+            APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+        const WorldSceneApplyTimeRestoreProofResult result = BuildApplyTimeRestoreProof(bridge, call);
+        if (!result.Succeeded()) {
+            return Fail("apply-time restore proof path build failed");
+        }
+
+        ++iteration;
+    }
+
+    const WorldSceneApplyTimeRestoreProofSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.identity_capacity != before_snapshot.identity_capacity) {
+        return Fail("apply-time restore proof path changed identity capacity");
+    }
+
+    if (after_snapshot.transform_capacity != before_snapshot.transform_capacity) {
+        return Fail("apply-time restore proof path changed transform capacity");
+    }
+
+    if (after_snapshot.attachment_capacity != before_snapshot.attachment_capacity) {
+        return Fail("apply-time restore proof path changed attachment capacity");
+    }
+
+    if (after_snapshot.binding_capacity != before_snapshot.binding_capacity) {
+        return Fail("apply-time restore proof path changed binding capacity");
+    }
+
+    if (after_snapshot.plan_scratch_capacity != before_snapshot.plan_scratch_capacity) {
+        return Fail("apply-time restore proof path changed plan scratch capacity");
+    }
+
+    if (after_snapshot.proof_capacity != before_snapshot.proof_capacity) {
+        return Fail("apply-time restore proof path changed proof capacity");
+    }
+
+    if (after_snapshot.slice_capacity != before_snapshot.slice_capacity) {
+        return Fail("apply-time restore proof path changed slice capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != before_snapshot.allocation_accounting_status) {
+        return Fail("apply-time restore proof path changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeNoHiddenAllocationUsesYuMemorySignal() {
+    WorldSceneApplyTimeRestoreProofBridge bridge;
+    const WorldSceneApplyTimeRestoreProofSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("apply-time restore proof allocation accounting status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeSnapshotReportsCountsAndLastStatus() {
+    ApplyTimeRestoreProofFixture fixture;
+    if (PrepareApplyTimeRestoreProofFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput plan_scratch{};
+    ApplyTimeRestoreProofOutput proof_output{};
+    ApplyTimeRestoreSliceOutput slice_output{};
+    FillDecodedRestorePlanSentinel(plan_scratch.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreProofSentinel(proof_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreSliceSentinel(slice_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    ApplyTimeRestoreProofCall success_call = MakeApplyTimeRestoreProofCall(
+        fixture,
+        plan_scratch.data(),
+        DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY,
+        proof_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY,
+        slice_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    WorldSceneApplyTimeRestoreProofBridge bridge;
+    const WorldSceneApplyTimeRestoreProofResult success_result = BuildApplyTimeRestoreProof(
+        bridge,
+        success_call);
+    if (!success_result.Succeeded()) {
+        return Fail("apply-time restore proof counters success failed");
+    }
+
+    FillDecodedRestorePlanSentinel(plan_scratch.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreProofSentinel(proof_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreSliceSentinel(slice_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    ApplyTimeRestoreProofCall failure_call = MakeApplyTimeRestoreProofCall(
+        fixture,
+        plan_scratch.data(),
+        DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY,
+        proof_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY,
+        slice_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    failure_call.world = nullptr;
+    const WorldSceneApplyTimeRestoreProofResult failure_result = BuildApplyTimeRestoreProof(
+        bridge,
+        failure_call);
+    if (failure_result.status != WorldSceneApplyTimeRestoreProofStatus::InvalidWorld) {
+        return Fail("apply-time restore proof counters failure status wrong");
+    }
+
+    const WorldSceneApplyTimeRestoreProofSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.proof_attempt_count != 2U) {
+        return Fail("apply-time restore proof counters attempt count wrong");
+    }
+
+    if (snapshot.proven_identity_count != 2U) {
+        return Fail("apply-time restore proof counters identity count wrong");
+    }
+
+    if (snapshot.proven_transform_count != 2U) {
+        return Fail("apply-time restore proof counters transform count wrong");
+    }
+
+    if (snapshot.proven_attachment_count != 2U) {
+        return Fail("apply-time restore proof counters attachment count wrong");
+    }
+
+    if (snapshot.proven_binding_count != 2U) {
+        return Fail("apply-time restore proof counters binding count wrong");
+    }
+
+    if (snapshot.emitted_slice_count != 8U) {
+        return Fail("apply-time restore proof counters slice count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("apply-time restore proof counters failed count wrong");
+    }
+
+    if (snapshot.last_status != WorldSceneApplyTimeRestoreProofStatus::InvalidWorld) {
+        return Fail("apply-time restore proof counters last status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeNoStreamDecodeFilePackageResourceLoadOrGameAdapterDependency() {
+    WorldSceneApplyTimeRestoreProofBridge bridge;
+    const WorldSceneApplyTimeRestoreProofSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.identity_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("apply-time restore proof dependency identity capacity wrong");
+    }
+
+    if (snapshot.plan_scratch_capacity != MAX_WORLD_SCENE_DECODED_RESTORE_PLAN_RECORD_COUNT) {
+        return Fail("apply-time restore proof dependency plan scratch capacity wrong");
+    }
+
+    if (snapshot.proof_capacity != MAX_WORLD_SCENE_APPLY_TIME_RESTORE_PROOF_RECORD_COUNT) {
+        return Fail("apply-time restore proof dependency proof capacity wrong");
+    }
+
+    if (snapshot.slice_capacity != MAX_WORLD_SCENE_APPLY_TIME_RESTORE_SLICE_RECORD_COUNT) {
+        return Fail("apply-time restore proof dependency slice capacity wrong");
+    }
+
+    if (snapshot.last_status != WorldSceneApplyTimeRestoreProofStatus::Success) {
+        return Fail("apply-time restore proof dependency last status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneApplyTimeRestoreProofBridgeNoCleanupRollbackOrCompensationPath() {
+    WorldSceneObjectTransformRestoreBridge object_transform_restore_bridge;
+    WorldSceneAssemblyBridge assembly_bridge;
+    const WorldSceneObjectTransformRestoreSnapshot before_object_transform =
+        object_transform_restore_bridge.Snapshot();
+    const WorldSceneAssemblySnapshot before_assembly = assembly_bridge.Snapshot();
+    const int ret_code = RunApplyTimeRestoreProofFailureCase(
+        ApplyTimeRestoreProofFailureCase::NullWorld,
+        WorldSceneApplyTimeRestoreProofStatus::InvalidWorld,
+        WorldSceneDecodedRestorePlanStatus::Success,
+        "apply-time restore proof cleanup guard failure status wrong");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const WorldSceneObjectTransformRestoreSnapshot after_object_transform =
+        object_transform_restore_bridge.Snapshot();
+    if (after_object_transform.restore_attempt_count != before_object_transform.restore_attempt_count) {
+        return Fail("apply-time restore proof cleanup path touched object transform restore");
+    }
+
+    const WorldSceneAssemblySnapshot after_assembly = assembly_bridge.Snapshot();
+    if (after_assembly.assembly_attempt_count != before_assembly.assembly_attempt_count) {
+        return Fail("apply-time restore proof cleanup path touched assembly restore");
+    }
+
+    return 0;
+}
+
 int WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord() {
     WorldComponentAttachmentBridge bridge;
     const WorldComponentAttachmentResult result = bridge.Add(
@@ -19670,6 +21227,82 @@ int main(int argc, char **argv) {
             WorldSceneDecodedRestorePlanBridgeNoObjectConstructionTransformHierarchyOrComponentLifecycle},
         {TEST_SCENE_DECODED_PLAN_ACTIVE_RESTORE_FREE,
             WorldSceneDecodedRestorePlanBridgeWorldActiveRestoreBridgesRemainPlanFree},
+        {TEST_SCENE_APPLY_PROOF_ORDER,
+            WorldSceneApplyTimeRestoreProofBridgeProvesAllFamiliesInDeterministicApplyOrder},
+        {TEST_SCENE_APPLY_PROOF_EMPTY,
+            WorldSceneApplyTimeRestoreProofBridgeProvesEmptyDecodedScene},
+        {TEST_SCENE_APPLY_PROOF_NULL_IDENTITY_INPUT,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullIdentityInputWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_TRANSFORM_INPUT,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullTransformInputWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_ATTACHMENT_INPUT,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullAttachmentInputWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_BINDING_INPUT,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullBindingInputWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_IDENTITY_DESTINATION,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullIdentityDestinationWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_TRANSFORM_DESTINATION,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullTransformDestinationWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_ATTACHMENT_DESTINATION,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullAttachmentDestinationWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_BINDING_DESTINATION,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullBindingDestinationWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_WORLD,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullWorldWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_OBJECT_REGISTRY,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullObjectRegistryWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_RESOURCE_REGISTRY,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullResourceRegistryWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_PLAN_SCRATCH,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullPlanScratchWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_PROOF_OUTPUT,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullProofOutputWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NULL_SLICE_OUTPUT,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNullSliceOutputWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_PLAN_SCRATCH_CAPACITY,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsPlanScratchCapacityTooSmallWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_PROOF_OUTPUT_CAPACITY,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsProofOutputCapacityTooSmallWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_SLICE_OUTPUT_CAPACITY,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsSliceOutputCapacityTooSmallWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_PLAN_FAILURE,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsPlanFailureWithoutProofMutation},
+        {TEST_SCENE_APPLY_PROOF_MISSING_WORLD_OBJECT,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsMissingWorldObjectWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_OBJECT_PREFLIGHT,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsObjectAcquirePreflightFailureWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_RESOURCE_PREFLIGHT,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsResourceAcquirePreflightFailureWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NON_EMPTY_IDENTITY,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNonEmptyIdentityDestinationWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NON_EMPTY_TRANSFORM,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNonEmptyTransformDestinationWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NON_EMPTY_ATTACHMENT,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNonEmptyAttachmentDestinationWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_NON_EMPTY_BINDING,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsNonEmptyBindingDestinationWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_DESTINATION_CAPACITY,
+            WorldSceneApplyTimeRestoreProofBridgeRejectsDestinationCapacityOverflowWithoutMutation},
+        {TEST_SCENE_APPLY_PROOF_REPLAN_CURRENT,
+            WorldSceneApplyTimeRestoreProofBridgeReplansCurrentInputsWithoutAcceptingCachedPlan},
+        {TEST_SCENE_APPLY_PROOF_SLICES_ONLY,
+            WorldSceneApplyTimeRestoreProofBridgeEmitsIdentityTransformAttachmentBindingSlicesOnly},
+        {TEST_SCENE_APPLY_PROOF_NO_ACTIVE_RESTORE,
+            WorldSceneApplyTimeRestoreProofBridgeDoesNotCallActiveRestoreBridges},
+        {TEST_SCENE_APPLY_PROOF_NO_DESTINATION_MUTATION,
+            WorldSceneApplyTimeRestoreProofBridgeDoesNotMutateDestinations},
+        {TEST_SCENE_APPLY_PROOF_NO_REGISTRY_MUTATION,
+            WorldSceneApplyTimeRestoreProofBridgeDoesNotMutateObjectOrResourceRegistries},
+        {TEST_SCENE_APPLY_PROOF_PATH,
+            WorldSceneApplyTimeRestoreProofBridgeProofPathDoesNotGrowStorage},
+        {TEST_SCENE_APPLY_PROOF_NO_HIDDEN_ALLOCATION,
+            WorldSceneApplyTimeRestoreProofBridgeNoHiddenAllocationUsesYuMemorySignal},
+        {TEST_SCENE_APPLY_PROOF_COUNTERS,
+            WorldSceneApplyTimeRestoreProofBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_SCENE_APPLY_PROOF_NO_STREAM_FILE,
+            WorldSceneApplyTimeRestoreProofBridgeNoStreamDecodeFilePackageResourceLoadOrGameAdapterDependency},
+        {TEST_SCENE_APPLY_PROOF_NO_CLEANUP,
+            WorldSceneApplyTimeRestoreProofBridgeNoCleanupRollbackOrCompensationPath},
         {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_ORDER,
             WorldSceneObjectTransformRestoreBridgeRestoresIdentityAndTransformRecordsInInputOrder},
         {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_IDENTITY_ONLY,
