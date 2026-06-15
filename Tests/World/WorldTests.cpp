@@ -40,6 +40,12 @@
 #include "YuEngine/World/WorldRegistrationResult.h"
 #include "YuEngine/World/WorldSnapshot.h"
 #include "YuEngine/World/WorldStatus.h"
+#include "YuEngine/World/WorldTransformBridge.h"
+#include "YuEngine/World/WorldTransformBridgeDesc.h"
+#include "YuEngine/World/WorldTransformResult.h"
+#include "YuEngine/World/WorldTransformSnapshot.h"
+#include "YuEngine/World/WorldTransformState.h"
+#include "YuEngine/World/WorldTransformStatus.h"
 #include "YuEngine/World/WorldUpdatePhase.h"
 #include "YuEngine/World/WorldServiceIds.h"
 
@@ -79,6 +85,12 @@ using yuengine::world::WorldPhaseTrace;
 using yuengine::world::WorldRegistrationResult;
 using yuengine::world::WorldSnapshot;
 using yuengine::world::WorldStatus;
+using yuengine::world::WorldTransformBridge;
+using yuengine::world::WorldTransformBridgeDesc;
+using yuengine::world::WorldTransformResult;
+using yuengine::world::WorldTransformSnapshot;
+using yuengine::world::WorldTransformState;
+using yuengine::world::WorldTransformStatus;
 using yuengine::world::WorldUpdatePhase;
 
 namespace {
@@ -118,6 +130,20 @@ constexpr const char *TEST_IDENTITY_UPDATE_PATH = "WorldObjectIdentityBridge_Upd
 constexpr const char *TEST_IDENTITY_NO_SCRIPT_RESOURCE = "WorldObjectIdentityBridge_NoScriptResourcePackageFileOrGameAdapterDependency";
 constexpr const char *TEST_IDENTITY_NO_ACTOR_COMPONENT = "WorldObjectIdentityBridge_NoActorComponentOrTransformHierarchy";
 constexpr const char *TEST_IDENTITY_CORE_OBJECT_FREE = "WorldObjectIdentityBridge_WorldInstanceCoreRemainsObjectFree";
+constexpr const char *TEST_TRANSFORM_REGISTER_VALID = "WorldTransformBridge_RegisterValidObject_StoresTransform";
+constexpr const char *TEST_TRANSFORM_INVALID_WORLD_ID = "WorldTransformBridge_RegisterRejectsInvalidWorldIdWithoutMutation";
+constexpr const char *TEST_TRANSFORM_MISSING_WORLD_OBJECT = "WorldTransformBridge_RegisterRejectsMissingWorldObjectWithoutMutation";
+constexpr const char *TEST_TRANSFORM_DUPLICATE_WORLD_ID = "WorldTransformBridge_RegisterRejectsDuplicateWorldObjectId";
+constexpr const char *TEST_TRANSFORM_CAPACITY_OVERFLOW = "WorldTransformBridge_RegisterRejectsCapacityOverflowWithoutMutation";
+constexpr const char *TEST_TRANSFORM_SET_EXISTING = "WorldTransformBridge_SetUpdatesExistingRecord";
+constexpr const char *TEST_TRANSFORM_SET_MISSING = "WorldTransformBridge_SetRejectsMissingRecordWithoutMutation";
+constexpr const char *TEST_TRANSFORM_QUERY = "WorldTransformBridge_QueryReturnsStoredTransform";
+constexpr const char *TEST_TRANSFORM_REMOVE = "WorldTransformBridge_RemoveClearsRecord";
+constexpr const char *TEST_TRANSFORM_CLEAR = "WorldTransformBridge_ClearRemovesAllRecords";
+constexpr const char *TEST_TRANSFORM_UPDATE_PATH = "WorldTransformBridge_UpdatePathDoesNotGrowWorldStorage";
+constexpr const char *TEST_TRANSFORM_NO_SCRIPT_RESOURCE = "WorldTransformBridge_NoScriptResourcePackageFileObjectOrGameAdapterDependency";
+constexpr const char *TEST_TRANSFORM_NO_ACTOR_COMPONENT = "WorldTransformBridge_NoActorComponentSceneGraphOrHierarchy";
+constexpr const char *TEST_TRANSFORM_CORE_FREE = "WorldTransformBridge_WorldInstanceCoreRemainsTransformStorageFree";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *TRACE_KERNEL_START = "kernel.start";
@@ -199,6 +225,61 @@ ObjectRegistrationResult CreateObject(ObjectRegistry &registry,
     descriptor.type = type;
     descriptor.initial_reference_count = initial_reference_count;
     return registry.CreateSyntheticObject(descriptor);
+}
+
+WorldTransformState Transform(float base_value) {
+    WorldTransformState transform_state{};
+    transform_state.translation_x = base_value;
+    transform_state.translation_y = base_value + 1.0F;
+    transform_state.translation_z = base_value + 2.0F;
+    transform_state.rotation_x = base_value + 3.0F;
+    transform_state.rotation_y = base_value + 4.0F;
+    transform_state.rotation_z = base_value + 5.0F;
+    transform_state.rotation_w = base_value + 6.0F;
+    transform_state.scale_x = base_value + 7.0F;
+    transform_state.scale_y = base_value + 8.0F;
+    transform_state.scale_z = base_value + 9.0F;
+    return transform_state;
+}
+
+bool TransformMatches(const WorldTransformState &left, const WorldTransformState &right) {
+    if (left.translation_x != right.translation_x) {
+        return false;
+    }
+
+    if (left.translation_y != right.translation_y) {
+        return false;
+    }
+
+    if (left.translation_z != right.translation_z) {
+        return false;
+    }
+
+    if (left.rotation_x != right.rotation_x) {
+        return false;
+    }
+
+    if (left.rotation_y != right.rotation_y) {
+        return false;
+    }
+
+    if (left.rotation_z != right.rotation_z) {
+        return false;
+    }
+
+    if (left.rotation_w != right.rotation_w) {
+        return false;
+    }
+
+    if (left.scale_x != right.scale_x) {
+        return false;
+    }
+
+    if (left.scale_y != right.scale_y) {
+        return false;
+    }
+
+    return left.scale_z == right.scale_z;
 }
 
 WorldKernelModuleDesc MakeModuleDesc(std::uint64_t fixed_step_duration=16U) {
@@ -1451,6 +1532,411 @@ int WorldObjectIdentityBridgeWorldInstanceCoreRemainsObjectFree() {
 
     return 0;
 }
+
+int WorldTransformBridgeRegisterValidObjectStoresTransform() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("transform valid world object registration failed");
+    }
+
+    WorldTransformBridge bridge(world);
+    const WorldTransformState transform_state = Transform(10.0F);
+    const WorldTransformResult register_result = bridge.Register(OBJECT_PLAYER, transform_state);
+    if (!register_result.Succeeded()) {
+        return Fail("transform valid registration failed");
+    }
+
+    if (!TransformMatches(register_result.transform_state, transform_state)) {
+        return Fail("transform valid registration returned wrong state");
+    }
+
+    const WorldTransformSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.record_count != 1U) {
+        return Fail("transform valid registration did not record count");
+    }
+
+    if (snapshot.last_status != WorldTransformStatus::Success) {
+        return Fail("transform valid registration did not record success");
+    }
+
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("transform valid registration changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeRegisterRejectsInvalidWorldIdWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    WorldTransformBridge bridge(world);
+    const WorldTransformSnapshot before_snapshot = bridge.Snapshot();
+    const WorldTransformState transform_state = Transform(20.0F);
+    const WorldTransformResult register_result = bridge.Register(WorldObjectId{}, transform_state);
+    if (register_result.status != WorldTransformStatus::InvalidWorldObjectId) {
+        return Fail("transform invalid world id returned wrong status");
+    }
+
+    const WorldTransformSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.record_count != before_snapshot.record_count) {
+        return Fail("transform invalid world id mutated record count");
+    }
+
+    if (after_snapshot.updated_record_count != before_snapshot.updated_record_count) {
+        return Fail("transform invalid world id mutated update count");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeRegisterRejectsMissingWorldObjectWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    WorldTransformBridge bridge(world);
+    const WorldTransformState transform_state = Transform(30.0F);
+    const WorldTransformResult register_result = bridge.Register(OBJECT_PLAYER, transform_state);
+    if (register_result.status != WorldTransformStatus::MissingWorldObject) {
+        return Fail("transform missing world object returned wrong status");
+    }
+
+    if (bridge.Snapshot().record_count != 0U) {
+        return Fail("transform missing world object mutated record count");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeRegisterRejectsDuplicateWorldObjectId() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("transform duplicate world object registration failed");
+    }
+
+    WorldTransformBridge bridge(world);
+    const WorldTransformState first_state = Transform(40.0F);
+    if (!bridge.Register(OBJECT_PLAYER, first_state).Succeeded()) {
+        return Fail("transform duplicate first registration failed");
+    }
+
+    const WorldTransformState second_state = Transform(50.0F);
+    const WorldTransformResult duplicate_result = bridge.Register(OBJECT_PLAYER, second_state);
+    if (duplicate_result.status != WorldTransformStatus::DuplicateWorldObjectId) {
+        return Fail("transform duplicate world id returned wrong status");
+    }
+
+    if (bridge.Snapshot().record_count != 1U) {
+        return Fail("transform duplicate world id mutated record count");
+    }
+
+    const WorldTransformResult query_result = bridge.Query(OBJECT_PLAYER);
+    if (!TransformMatches(query_result.transform_state, first_state)) {
+        return Fail("transform duplicate world id replaced existing state");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeRegisterRejectsCapacityOverflowWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("transform overflow player registration failed");
+    }
+
+    if (!Register(world, OBJECT_CAMERA).Succeeded()) {
+        return Fail("transform overflow camera registration failed");
+    }
+
+    WorldTransformBridgeDesc desc{};
+    desc.bridge_capacity = 1U;
+    WorldTransformBridge bridge(world, desc);
+    const WorldTransformState first_state = Transform(60.0F);
+    if (!bridge.Register(OBJECT_PLAYER, first_state).Succeeded()) {
+        return Fail("transform overflow first registration failed");
+    }
+
+    const WorldTransformState second_state = Transform(70.0F);
+    const WorldTransformResult overflow_result = bridge.Register(OBJECT_CAMERA, second_state);
+    if (overflow_result.status != WorldTransformStatus::CapacityExceeded) {
+        return Fail("transform overflow returned wrong status");
+    }
+
+    if (bridge.Snapshot().record_count != 1U) {
+        return Fail("transform overflow mutated record count");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeSetUpdatesExistingRecord() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("transform set world registration failed");
+    }
+
+    WorldTransformBridge bridge(world);
+    const WorldTransformState initial_state = Transform(80.0F);
+    if (!bridge.Register(OBJECT_PLAYER, initial_state).Succeeded()) {
+        return Fail("transform set initial registration failed");
+    }
+
+    const WorldTransformState updated_state = Transform(90.0F);
+    const WorldTransformStatus set_status = bridge.Set(OBJECT_PLAYER, updated_state);
+    if (set_status != WorldTransformStatus::Success) {
+        return Fail("transform set existing record failed");
+    }
+
+    const WorldTransformResult query_result = bridge.Query(OBJECT_PLAYER);
+    if (!TransformMatches(query_result.transform_state, updated_state)) {
+        return Fail("transform set did not update state");
+    }
+
+    if (bridge.Snapshot().updated_record_count != 1U) {
+        return Fail("transform set did not record update count");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeSetRejectsMissingRecordWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("transform set missing world registration failed");
+    }
+
+    WorldTransformBridge bridge(world);
+    const WorldTransformSnapshot before_snapshot = bridge.Snapshot();
+    const WorldTransformState transform_state = Transform(100.0F);
+    const WorldTransformStatus set_status = bridge.Set(OBJECT_PLAYER, transform_state);
+    if (set_status != WorldTransformStatus::TransformNotFound) {
+        return Fail("transform set missing returned wrong status");
+    }
+
+    const WorldTransformSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.record_count != before_snapshot.record_count) {
+        return Fail("transform set missing mutated record count");
+    }
+
+    if (after_snapshot.updated_record_count != before_snapshot.updated_record_count) {
+        return Fail("transform set missing mutated update count");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeQueryReturnsStoredTransform() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("transform query world registration failed");
+    }
+
+    WorldTransformBridge bridge(world);
+    const WorldTransformState transform_state = Transform(110.0F);
+    if (!bridge.Register(OBJECT_PLAYER, transform_state).Succeeded()) {
+        return Fail("transform query registration failed");
+    }
+
+    const WorldTransformResult query_result = bridge.Query(OBJECT_PLAYER);
+    if (!query_result.Succeeded()) {
+        return Fail("transform query failed");
+    }
+
+    if (!TransformMatches(query_result.transform_state, transform_state)) {
+        return Fail("transform query returned wrong state");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeRemoveClearsRecord() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("transform remove world registration failed");
+    }
+
+    WorldTransformBridge bridge(world);
+    const WorldTransformState transform_state = Transform(120.0F);
+    if (!bridge.Register(OBJECT_PLAYER, transform_state).Succeeded()) {
+        return Fail("transform remove registration failed");
+    }
+
+    const WorldTransformStatus remove_status = bridge.Remove(OBJECT_PLAYER);
+    if (remove_status != WorldTransformStatus::Success) {
+        return Fail("transform remove failed");
+    }
+
+    const WorldTransformSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.record_count != 0U) {
+        return Fail("transform remove did not clear record count");
+    }
+
+    if (snapshot.removed_record_count != 1U) {
+        return Fail("transform remove did not record removal count");
+    }
+
+    const WorldTransformResult query_result = bridge.Query(OBJECT_PLAYER);
+    if (query_result.status != WorldTransformStatus::TransformNotFound) {
+        return Fail("transform remove did not clear query record");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeClearRemovesAllRecords() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("transform clear player registration failed");
+    }
+
+    if (!Register(world, OBJECT_CAMERA).Succeeded()) {
+        return Fail("transform clear camera registration failed");
+    }
+
+    WorldTransformBridge bridge(world);
+    const WorldTransformState first_state = Transform(130.0F);
+    const WorldTransformState second_state = Transform(140.0F);
+    if (!bridge.Register(OBJECT_PLAYER, first_state).Succeeded()) {
+        return Fail("transform clear first registration failed");
+    }
+
+    if (!bridge.Register(OBJECT_CAMERA, second_state).Succeeded()) {
+        return Fail("transform clear second registration failed");
+    }
+
+    const WorldTransformStatus clear_status = bridge.Clear();
+    if (clear_status != WorldTransformStatus::Success) {
+        return Fail("transform clear failed");
+    }
+
+    const WorldTransformSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.record_count != 0U) {
+        return Fail("transform clear did not clear record count");
+    }
+
+    if (snapshot.removed_record_count != 2U) {
+        return Fail("transform clear did not record all removals");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeUpdatePathDoesNotGrowWorldStorage() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("transform update path world registration failed");
+    }
+
+    WorldTransformBridge bridge(world);
+    const WorldTransformState transform_state = Transform(150.0F);
+    if (!bridge.Register(OBJECT_PLAYER, transform_state).Succeeded()) {
+        return Fail("transform update path registration failed");
+    }
+
+    if (RequireSuccessfulStart(world) != 0) {
+        return 1;
+    }
+
+    const WorldSnapshot before_snapshot = world.Snapshot();
+    for (std::uint64_t frame_index = 1U; frame_index <= 3U; ++frame_index) {
+        const WorldStatus update_status = world.Update(frame_index, 16U, 17U);
+        if (update_status != WorldStatus::Success) {
+            return Fail("transform update path world update failed");
+        }
+    }
+
+    const WorldSnapshot after_snapshot = world.Snapshot();
+    if (after_snapshot.object_capacity != before_snapshot.object_capacity) {
+        return Fail("transform update path mutated world object capacity");
+    }
+
+    if (after_snapshot.phase_trace_capacity != before_snapshot.phase_trace_capacity) {
+        return Fail("transform update path mutated world phase trace capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != before_snapshot.allocation_accounting_status) {
+        return Fail("transform update path mutated world allocation accounting");
+    }
+
+    if (bridge.Snapshot().record_count != 1U) {
+        return Fail("transform update path mutated transform record count");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeNoScriptResourcePackageFileObjectOrGameAdapterDependency() {
+    WorldInstance world = MakeWorld(2U, 8U);
+    WorldTransformBridge bridge(world);
+
+    const WorldTransformSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("transform bridge did not keep YuMemory accounting vocabulary");
+    }
+
+    if (snapshot.last_status != WorldTransformStatus::Success) {
+        return Fail("transform bridge initial status was not explicit success");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeNoActorComponentSceneGraphOrHierarchy() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("transform hierarchy player registration failed");
+    }
+
+    if (!Register(world, OBJECT_CAMERA).Succeeded()) {
+        return Fail("transform hierarchy camera registration failed");
+    }
+
+    WorldTransformBridge bridge(world);
+    const WorldTransformState first_state = Transform(160.0F);
+    const WorldTransformState second_state = Transform(170.0F);
+    if (!bridge.Register(OBJECT_PLAYER, first_state).Succeeded()) {
+        return Fail("transform hierarchy first registration failed");
+    }
+
+    if (!bridge.Register(OBJECT_CAMERA, second_state).Succeeded()) {
+        return Fail("transform hierarchy second registration failed");
+    }
+
+    if (bridge.Remove(OBJECT_PLAYER) != WorldTransformStatus::Success) {
+        return Fail("transform hierarchy remove failed");
+    }
+
+    if (bridge.Snapshot().record_count != 1U) {
+        return Fail("transform hierarchy bridge did not remain a flat record table");
+    }
+
+    return 0;
+}
+
+int WorldTransformBridgeWorldInstanceCoreRemainsTransformStorageFree() {
+    WorldInstance world = MakeWorld(2U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("transform core-free world registration failed");
+    }
+
+    const WorldSnapshot before_snapshot = world.Snapshot();
+    WorldTransformBridge bridge(world);
+    const WorldTransformState transform_state = Transform(180.0F);
+    if (!bridge.Register(OBJECT_PLAYER, transform_state).Succeeded()) {
+        return Fail("transform core-free registration failed");
+    }
+
+    const WorldSnapshot after_snapshot = world.Snapshot();
+    if (!SnapshotRuntimeCountsMatch(before_snapshot, after_snapshot)) {
+        return Fail("transform core-free bridge mutated world runtime counts");
+    }
+
+    if (RequireSuccessfulStart(world) != 0) {
+        return 1;
+    }
+
+    if (world.Stop() != WorldStatus::Success) {
+        return Fail("transform core-free standalone world stop failed");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -1494,7 +1980,21 @@ int main(int argc, char **argv) {
         {TEST_IDENTITY_UPDATE_PATH, WorldObjectIdentityBridgeUpdatePathDoesNotGrowWorldStorage},
         {TEST_IDENTITY_NO_SCRIPT_RESOURCE, WorldObjectIdentityBridgeNoScriptResourcePackageFileOrGameAdapterDependency},
         {TEST_IDENTITY_NO_ACTOR_COMPONENT, WorldObjectIdentityBridgeNoActorComponentOrTransformHierarchy},
-        {TEST_IDENTITY_CORE_OBJECT_FREE, WorldObjectIdentityBridgeWorldInstanceCoreRemainsObjectFree}};
+        {TEST_IDENTITY_CORE_OBJECT_FREE, WorldObjectIdentityBridgeWorldInstanceCoreRemainsObjectFree},
+        {TEST_TRANSFORM_REGISTER_VALID, WorldTransformBridgeRegisterValidObjectStoresTransform},
+        {TEST_TRANSFORM_INVALID_WORLD_ID, WorldTransformBridgeRegisterRejectsInvalidWorldIdWithoutMutation},
+        {TEST_TRANSFORM_MISSING_WORLD_OBJECT, WorldTransformBridgeRegisterRejectsMissingWorldObjectWithoutMutation},
+        {TEST_TRANSFORM_DUPLICATE_WORLD_ID, WorldTransformBridgeRegisterRejectsDuplicateWorldObjectId},
+        {TEST_TRANSFORM_CAPACITY_OVERFLOW, WorldTransformBridgeRegisterRejectsCapacityOverflowWithoutMutation},
+        {TEST_TRANSFORM_SET_EXISTING, WorldTransformBridgeSetUpdatesExistingRecord},
+        {TEST_TRANSFORM_SET_MISSING, WorldTransformBridgeSetRejectsMissingRecordWithoutMutation},
+        {TEST_TRANSFORM_QUERY, WorldTransformBridgeQueryReturnsStoredTransform},
+        {TEST_TRANSFORM_REMOVE, WorldTransformBridgeRemoveClearsRecord},
+        {TEST_TRANSFORM_CLEAR, WorldTransformBridgeClearRemovesAllRecords},
+        {TEST_TRANSFORM_UPDATE_PATH, WorldTransformBridgeUpdatePathDoesNotGrowWorldStorage},
+        {TEST_TRANSFORM_NO_SCRIPT_RESOURCE, WorldTransformBridgeNoScriptResourcePackageFileObjectOrGameAdapterDependency},
+        {TEST_TRANSFORM_NO_ACTOR_COMPONENT, WorldTransformBridgeNoActorComponentSceneGraphOrHierarchy},
+        {TEST_TRANSFORM_CORE_FREE, WorldTransformBridgeWorldInstanceCoreRemainsTransformStorageFree}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
