@@ -1,8 +1,8 @@
 # P3-GATE-016: World Component Resource Binding Restore Bridge
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `PENDING_REVIEW`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P1-GATE-006, P3-GATE-011, P3-GATE-012, P3-GATE-014, P3-GATE-015
