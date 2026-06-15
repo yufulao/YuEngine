@@ -101,6 +101,27 @@ ObjectStatus ObjectRegistry::Validate(ObjectHandle handle) {
     return ObjectStatus::Success;
 }
 
+ObjectStatus ObjectRegistry::ValidateAcquire(ObjectHandle handle, std::uint32_t projected_acquire_count) const {
+    std::size_t slot_index = 0U;
+    const ObjectStatus handle_status = ResolveHandle(handle, slot_index);
+    if (handle_status != ObjectStatus::Success) {
+        return handle_status;
+    }
+
+    if (projected_acquire_count == 0U) {
+        return ObjectStatus::Success;
+    }
+
+    const ObjectSlot &slot = slots_[slot_index];
+    const std::uint32_t max_reference_count = std::numeric_limits<std::uint32_t>::max();
+    const std::uint32_t remaining_reference_count = max_reference_count - slot.reference_count;
+    if (projected_acquire_count > remaining_reference_count) {
+        return ObjectStatus::ReferenceCountOverflow;
+    }
+
+    return ObjectStatus::Success;
+}
+
 ObjectStatus ObjectRegistry::Acquire(ObjectHandle handle) {
     std::size_t slot_index = 0U;
     const ObjectStatus handle_status = ResolveHandle(handle, slot_index);

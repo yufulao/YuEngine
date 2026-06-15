@@ -120,6 +120,13 @@
 #include "YuEngine/World/WorldSceneAssemblyManifestStreamResult.h"
 #include "YuEngine/World/WorldSceneAssemblyManifestStreamSnapshot.h"
 #include "YuEngine/World/WorldSceneAssemblyManifestStreamStatus.h"
+#include "YuEngine/World/WorldSceneObjectTransformRestoreBridge.h"
+#include "YuEngine/World/WorldSceneObjectTransformRestoreBridgeDesc.h"
+#include "YuEngine/World/WorldSceneObjectTransformRestoreIdentityRecord.h"
+#include "YuEngine/World/WorldSceneObjectTransformRestoreResult.h"
+#include "YuEngine/World/WorldSceneObjectTransformRestoreSnapshot.h"
+#include "YuEngine/World/WorldSceneObjectTransformRestoreStatus.h"
+#include "YuEngine/World/WorldSceneObjectTransformRestoreTransformRecord.h"
 #include "YuEngine/World/WorldSceneAssemblyResult.h"
 #include "YuEngine/World/WorldSceneAssemblySnapshot.h"
 #include "YuEngine/World/WorldSceneAssemblyStatus.h"
@@ -300,6 +307,13 @@ using yuengine::world::WorldSceneAssemblyManifestStreamDesc;
 using yuengine::world::WorldSceneAssemblyManifestStreamResult;
 using yuengine::world::WorldSceneAssemblyManifestStreamSnapshot;
 using yuengine::world::WorldSceneAssemblyManifestStreamStatus;
+using yuengine::world::WorldSceneObjectTransformRestoreBridge;
+using yuengine::world::WorldSceneObjectTransformRestoreBridgeDesc;
+using yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord;
+using yuengine::world::WorldSceneObjectTransformRestoreResult;
+using yuengine::world::WorldSceneObjectTransformRestoreSnapshot;
+using yuengine::world::WorldSceneObjectTransformRestoreStatus;
+using yuengine::world::WorldSceneObjectTransformRestoreTransformRecord;
 using yuengine::world::WorldSceneAssemblyResult;
 using yuengine::world::WorldSceneAssemblySnapshot;
 using yuengine::world::WorldSceneAssemblyStatus;
@@ -687,6 +701,66 @@ constexpr const char *TEST_SCENE_MANIFEST_WORLD_CORE_FREE =
     "WorldSceneAssemblyManifestStreamBridge_WorldInstanceCoreRemainsManifestFree";
 constexpr const char *TEST_SCENE_MANIFEST_SERIALIZE_CORE_FREE =
     "WorldSceneAssemblyManifestStreamBridge_SerializeCoreRemainsWorldFree";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_ORDER =
+    "WorldSceneObjectTransformRestoreBridge_RestoresIdentityAndTransformRecordsInInputOrder";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_IDENTITY_ONLY =
+    "WorldSceneObjectTransformRestoreBridge_RestoresIdentityOnlyRecords";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_EMPTY =
+    "WorldSceneObjectTransformRestoreBridge_RestoresEmptyInputsWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NULL_WORLD =
+    "WorldSceneObjectTransformRestoreBridge_RejectsNullWorldWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NULL_REGISTRY =
+    "WorldSceneObjectTransformRestoreBridge_RejectsNullObjectRegistryWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NULL_IDENTITY_DESTINATION =
+    "WorldSceneObjectTransformRestoreBridge_RejectsNullIdentityDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NULL_TRANSFORM_DESTINATION =
+    "WorldSceneObjectTransformRestoreBridge_RejectsNullTransformDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NULL_IDENTITY_INPUT =
+    "WorldSceneObjectTransformRestoreBridge_RejectsNullIdentityInputWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NULL_TRANSFORM_INPUT =
+    "WorldSceneObjectTransformRestoreBridge_RejectsNullTransformInputWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_INVALID_IDENTITY =
+    "WorldSceneObjectTransformRestoreBridge_RejectsInvalidIdentityRecordWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_INVALID_TRANSFORM =
+    "WorldSceneObjectTransformRestoreBridge_RejectsInvalidTransformRecordWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_MISSING_WORLD =
+    "WorldSceneObjectTransformRestoreBridge_RejectsMissingWorldObjectWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_MISSING_IDENTITY =
+    "WorldSceneObjectTransformRestoreBridge_RejectsMissingIdentityForTransformWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_DUPLICATE_IDENTITY =
+    "WorldSceneObjectTransformRestoreBridge_RejectsDuplicateIdentityWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_DUPLICATE_HANDLE =
+    "WorldSceneObjectTransformRestoreBridge_RejectsDuplicateObjectHandleWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_DUPLICATE_TRANSFORM =
+    "WorldSceneObjectTransformRestoreBridge_RejectsDuplicateTransformWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_IDENTITY_CAPACITY =
+    "WorldSceneObjectTransformRestoreBridge_RejectsIdentityCapacityOverflowWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_TRANSFORM_CAPACITY =
+    "WorldSceneObjectTransformRestoreBridge_RejectsTransformCapacityOverflowWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NON_EMPTY =
+    "WorldSceneObjectTransformRestoreBridge_RejectsNonEmptyDestinationsWithoutMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_PREFLIGHT =
+    "WorldSceneObjectTransformRestoreBridge_ValidatesObjectHandlesBeforeMutation";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_ACQUIRE_PREFLIGHT =
+    "WorldSceneObjectTransformRestoreBridge_ObjectAcquirePreflightFailureDoesNotRestoreIdentitiesOrTransforms";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_PATH =
+    "WorldSceneObjectTransformRestoreBridge_RestorePathDoesNotGrowStorage";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NO_HIDDEN_ALLOCATION =
+    "WorldSceneObjectTransformRestoreBridge_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_COUNTERS =
+    "WorldSceneObjectTransformRestoreBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NO_CONSTRUCTION =
+    "WorldSceneObjectTransformRestoreBridge_NoObjectConstructionOrDestruction";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NO_HIERARCHY =
+    "WorldSceneObjectTransformRestoreBridge_NoTransformHierarchyOrSceneGraph";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NO_PAYLOAD =
+    "WorldSceneObjectTransformRestoreBridge_NoComponentPayloadLifecycleOrScriptDependency";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NO_FILE_PACKAGE =
+    "WorldSceneObjectTransformRestoreBridge_NoSerializeFilePackageResourceLoadOrGameAdapterDependency";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_WORLD_CORE_FREE =
+    "WorldSceneObjectTransformRestoreBridge_WorldInstanceCoreRemainsObjectTransformRestoreFree";
+constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_OBJECT_CORE_FREE =
+    "WorldSceneObjectTransformRestoreBridge_ObjectCoreRemainsWorldFree";
 constexpr const char *TEST_COMPONENT_ADD_VALID = "WorldComponentAttachmentBridge_AddValidAttachment_StoresRecord";
 constexpr const char *TEST_COMPONENT_ADD_INVALID_WORLD = "WorldComponentAttachmentBridge_AddRejectsInvalidWorldIdWithoutMutation";
 constexpr const char *TEST_COMPONENT_ADD_INVALID_TYPE = "WorldComponentAttachmentBridge_AddRejectsInvalidComponentTypeWithoutMutation";
@@ -910,6 +984,54 @@ bool ResourceSnapshotsMatch(const ResourceSnapshot &left, const ResourceSnapshot
     }
 
     if (left.dependency_edge_count != right.dependency_edge_count) {
+        return false;
+    }
+
+    if (left.failed_operation_count != right.failed_operation_count) {
+        return false;
+    }
+
+    if (left.allocation_accounting_status != right.allocation_accounting_status) {
+        return false;
+    }
+
+    return left.last_status == right.last_status;
+}
+
+bool ObjectSnapshotsMatch(const ObjectSnapshot &left, const ObjectSnapshot &right) {
+    if (left.object_capacity != right.object_capacity) {
+        return false;
+    }
+
+    if (left.type_capacity != right.type_capacity) {
+        return false;
+    }
+
+    if (left.type_count != right.type_count) {
+        return false;
+    }
+
+    if (left.alive_object_count != right.alive_object_count) {
+        return false;
+    }
+
+    if (left.destroyed_object_count != right.destroyed_object_count) {
+        return false;
+    }
+
+    if (left.created_object_count != right.created_object_count) {
+        return false;
+    }
+
+    if (left.referenced_object_count != right.referenced_object_count) {
+        return false;
+    }
+
+    if (left.released_reference_count != right.released_reference_count) {
+        return false;
+    }
+
+    if (left.accepted_operation_count != right.accepted_operation_count) {
         return false;
     }
 
@@ -1435,6 +1557,40 @@ bool TransformSnapshotsMatch(const WorldTransformSnapshot &left, const WorldTran
     }
 
     if (left.allocation_accounting_status != right.allocation_accounting_status) {
+        return false;
+    }
+
+    return left.last_status == right.last_status;
+}
+
+bool ObjectIdentitySnapshotsMatch(
+    const WorldObjectIdentitySnapshot &left,
+    const WorldObjectIdentitySnapshot &right) {
+    if (left.bridge_capacity != right.bridge_capacity) {
+        return false;
+    }
+
+    if (left.binding_count != right.binding_count) {
+        return false;
+    }
+
+    if (left.acquired_handle_count != right.acquired_handle_count) {
+        return false;
+    }
+
+    if (left.released_handle_count != right.released_handle_count) {
+        return false;
+    }
+
+    if (left.failed_operation_count != right.failed_operation_count) {
+        return false;
+    }
+
+    if (left.allocation_accounting_status != right.allocation_accounting_status) {
+        return false;
+    }
+
+    if (left.last_object_status != right.last_object_status) {
         return false;
     }
 
@@ -2224,6 +2380,146 @@ int ExpectSceneAssemblyFailureWithoutMutation(
         const ResourceSnapshot after_registry = resource_registry->Snapshot();
         if (!ResourceSnapshotsMatch(before_registry, after_registry)) {
             return Fail("scene assembly failure mutated registry");
+        }
+    }
+
+    return 0;
+}
+
+WorldSceneObjectTransformRestoreIdentityRecord MakeSceneObjectTransformIdentityRecord(
+    WorldObjectId world_object_id,
+    ObjectHandle object_handle) {
+    WorldSceneObjectTransformRestoreIdentityRecord record{};
+    record.world_object_id = world_object_id;
+    record.object_handle = object_handle;
+    return record;
+}
+
+WorldSceneObjectTransformRestoreTransformRecord MakeSceneObjectTransformTransformRecord(
+    WorldObjectId world_object_id,
+    const WorldTransformState &transform_state) {
+    WorldSceneObjectTransformRestoreTransformRecord record{};
+    record.world_object_id = world_object_id;
+    record.transform_state = transform_state;
+    return record;
+}
+
+int RegisterSceneObjectTransformWorldObjects(WorldInstance &world) {
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("scene object transform world player registration failed");
+    }
+
+    if (!Register(world, OBJECT_CAMERA).Succeeded()) {
+        return Fail("scene object transform world camera registration failed");
+    }
+
+    if (!Register(world, OBJECT_EFFECT).Succeeded()) {
+        return Fail("scene object transform world effect registration failed");
+    }
+
+    return 0;
+}
+
+int CreateSceneObjectTransformObjects(
+    ObjectRegistry &registry,
+    std::array<ObjectRegistrationResult, 3U> *out_objects) {
+    if (out_objects == nullptr) {
+        return Fail("scene object transform object output was null");
+    }
+
+    (*out_objects)[0] = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    (*out_objects)[1] = CreateObject(registry, OBJECT_TYPE_CAMERA);
+    (*out_objects)[2] = CreateObject(registry, OBJECT_TYPE_EFFECT);
+    if (!(*out_objects)[0].Succeeded()) {
+        return Fail("scene object transform player object creation failed");
+    }
+
+    if (!(*out_objects)[1].Succeeded()) {
+        return Fail("scene object transform camera object creation failed");
+    }
+
+    if (!(*out_objects)[2].Succeeded()) {
+        return Fail("scene object transform effect object creation failed");
+    }
+
+    return 0;
+}
+
+int ExpectObjectTransformRestoreFailureWithoutMutation(
+    WorldSceneObjectTransformRestoreBridge &restore_bridge,
+    WorldInstance *world,
+    ObjectRegistry *object_registry,
+    WorldObjectIdentityBridge *identity_destination,
+    WorldTransformBridge *transform_destination,
+    const WorldSceneObjectTransformRestoreIdentityRecord *input_identities,
+    std::uint32_t input_identity_count,
+    const WorldSceneObjectTransformRestoreTransformRecord *input_transforms,
+    std::uint32_t input_transform_count,
+    WorldSceneObjectTransformRestoreStatus expected_status,
+    const char *error_message) {
+    const bool has_world = world != nullptr;
+    WorldSnapshot before_world{};
+    if (has_world) {
+        before_world = world->Snapshot();
+    }
+
+    const bool has_object_registry = object_registry != nullptr;
+    ObjectSnapshot before_object_registry{};
+    if (has_object_registry) {
+        before_object_registry = object_registry->Snapshot();
+    }
+
+    const bool has_identity_destination = identity_destination != nullptr;
+    WorldObjectIdentitySnapshot before_identity_destination{};
+    if (has_identity_destination) {
+        before_identity_destination = identity_destination->Snapshot();
+    }
+
+    const bool has_transform_destination = transform_destination != nullptr;
+    WorldTransformSnapshot before_transform_destination{};
+    if (has_transform_destination) {
+        before_transform_destination = transform_destination->Snapshot();
+    }
+
+    const WorldSceneObjectTransformRestoreResult result = restore_bridge.Restore(
+        world,
+        object_registry,
+        identity_destination,
+        transform_destination,
+        input_identities,
+        input_identity_count,
+        input_transforms,
+        input_transform_count);
+    if (result.status != expected_status) {
+        return Fail(error_message);
+    }
+
+    if (has_world) {
+        const WorldSnapshot after_world = world->Snapshot();
+        if (!WorldSnapshotsMatch(before_world, after_world)) {
+            return Fail("scene object transform failure mutated world");
+        }
+    }
+
+    if (has_object_registry) {
+        const ObjectSnapshot after_object_registry = object_registry->Snapshot();
+        if (!ObjectSnapshotsMatch(before_object_registry, after_object_registry)) {
+            return Fail("scene object transform failure mutated object registry");
+        }
+    }
+
+    if (has_identity_destination) {
+        const WorldObjectIdentitySnapshot after_identity_destination =
+            identity_destination->Snapshot();
+        if (!ObjectIdentitySnapshotsMatch(before_identity_destination, after_identity_destination)) {
+            return Fail("scene object transform failure mutated identity destination");
+        }
+    }
+
+    if (has_transform_destination) {
+        const WorldTransformSnapshot after_transform_destination = transform_destination->Snapshot();
+        if (!TransformSnapshotsMatch(before_transform_destination, after_transform_destination)) {
+            return Fail("scene object transform failure mutated transform destination");
         }
     }
 
@@ -12000,6 +12296,1129 @@ int WorldSceneAssemblyManifestStreamBridgeSerializeCoreRemainsWorldFree() {
     return 0;
 }
 
+int WorldSceneObjectTransformRestoreBridgeRestoresIdentityAndTransformRecordsInInputOrder() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, objects[1].handle)};
+    const WorldTransformState player_transform = Transform(710.0F);
+    const WorldTransformState camera_transform = Transform(720.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, player_transform),
+        MakeSceneObjectTransformTransformRecord(OBJECT_CAMERA, camera_transform)};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    const WorldSceneObjectTransformRestoreResult result = restore_bridge.Restore(
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        static_cast<std::uint32_t>(identities.size()),
+        transforms.data(),
+        static_cast<std::uint32_t>(transforms.size()));
+    if (!result.Succeeded()) {
+        return Fail("scene object transform restore order failed");
+    }
+
+    const WorldObjectIdentitySnapshot identity_snapshot = identity_destination.Snapshot();
+    if (identity_snapshot.binding_count != 2U) {
+        return Fail("scene object transform restore identity count wrong");
+    }
+
+    const WorldTransformSnapshot transform_snapshot = transform_destination.Snapshot();
+    if (transform_snapshot.record_count != 2U) {
+        return Fail("scene object transform restore transform count wrong");
+    }
+
+    const WorldTransformResult player_query = transform_destination.Query(OBJECT_PLAYER);
+    if (!TransformMatches(player_query.transform_state, player_transform)) {
+        return Fail("scene object transform restore player transform wrong");
+    }
+
+    const WorldTransformResult camera_query = transform_destination.Query(OBJECT_CAMERA);
+    if (!TransformMatches(camera_query.transform_state, camera_transform)) {
+        return Fail("scene object transform restore camera transform wrong");
+    }
+
+    if (registry.Snapshot().referenced_object_count != 2U) {
+        return Fail("scene object transform restore did not acquire objects");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformRestoreBridgeRestoresIdentityOnlyRecords() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    const WorldSceneObjectTransformRestoreResult result = restore_bridge.Restore(
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        0U);
+    if (!result.Succeeded()) {
+        return Fail("scene object transform identity-only restore failed");
+    }
+
+    if (identity_destination.Snapshot().binding_count != 1U) {
+        return Fail("scene object transform identity-only count wrong");
+    }
+
+    if (transform_destination.Snapshot().record_count != 0U) {
+        return Fail("scene object transform identity-only wrote transform");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformRestoreBridgeRestoresEmptyInputsWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    const ObjectSnapshot before_registry = registry.Snapshot();
+    const WorldObjectIdentitySnapshot before_identity = identity_destination.Snapshot();
+    const WorldTransformSnapshot before_transform = transform_destination.Snapshot();
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    const WorldSceneObjectTransformRestoreResult result = restore_bridge.Restore(
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        0U,
+        transforms.data(),
+        0U);
+    if (!result.Succeeded()) {
+        return Fail("scene object transform empty restore failed");
+    }
+
+    if (!ObjectSnapshotsMatch(before_registry, registry.Snapshot())) {
+        return Fail("scene object transform empty restore mutated registry");
+    }
+
+    if (!ObjectIdentitySnapshotsMatch(before_identity, identity_destination.Snapshot())) {
+        return Fail("scene object transform empty restore mutated identity destination");
+    }
+
+    if (!TransformSnapshotsMatch(before_transform, transform_destination.Snapshot())) {
+        return Fail("scene object transform empty restore mutated transform destination");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsNullWorldWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        nullptr,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        0U,
+        WorldSceneObjectTransformRestoreStatus::InvalidWorld,
+        "scene object transform null world status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsNullObjectRegistryWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        nullptr,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        0U,
+        WorldSceneObjectTransformRestoreStatus::InvalidObjectRegistry,
+        "scene object transform null registry status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsNullIdentityDestinationWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        nullptr,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        0U,
+        WorldSceneObjectTransformRestoreStatus::InvalidIdentityDestination,
+        "scene object transform null identity destination status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsNullTransformDestinationWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        nullptr,
+        identities.data(),
+        1U,
+        transforms.data(),
+        0U,
+        WorldSceneObjectTransformRestoreStatus::InvalidTransformDestination,
+        "scene object transform null transform destination status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsNullIdentityInputWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        nullptr,
+        1U,
+        transforms.data(),
+        0U,
+        WorldSceneObjectTransformRestoreStatus::InvalidIdentityInput,
+        "scene object transform null identity input status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsNullTransformInputWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle)};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        nullptr,
+        1U,
+        WorldSceneObjectTransformRestoreStatus::InvalidTransformInput,
+        "scene object transform null transform input status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsInvalidIdentityRecordWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    if (!object_result.Succeeded()) {
+        return Fail("scene object transform invalid identity object creation failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(WorldObjectId{}, object_result.handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        0U,
+        WorldSceneObjectTransformRestoreStatus::InvalidWorldObjectId,
+        "scene object transform invalid identity status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsInvalidTransformRecordWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    if (!object_result.Succeeded()) {
+        return Fail("scene object transform invalid transform object creation failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, object_result.handle)};
+    const WorldTransformState transform_state = Transform(730.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        MakeSceneObjectTransformTransformRecord(WorldObjectId{}, transform_state)};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U,
+        WorldSceneObjectTransformRestoreStatus::InvalidWorldObjectId,
+        "scene object transform invalid transform status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsMissingWorldObjectWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("scene object transform missing world fixture registration failed");
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry, OBJECT_TYPE_EFFECT);
+    if (!object_result.Succeeded()) {
+        return Fail("scene object transform missing world object creation failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_EFFECT, object_result.handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        0U,
+        WorldSceneObjectTransformRestoreStatus::MissingWorldObject,
+        "scene object transform missing world object status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsMissingIdentityForTransformWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    if (!object_result.Succeeded()) {
+        return Fail("scene object transform missing identity object creation failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, object_result.handle)};
+    const WorldTransformState transform_state = Transform(740.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_CAMERA, transform_state)};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U,
+        WorldSceneObjectTransformRestoreStatus::MissingIdentityForTransform,
+        "scene object transform missing identity status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsDuplicateIdentityWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[1].handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        static_cast<std::uint32_t>(identities.size()),
+        transforms.data(),
+        0U,
+        WorldSceneObjectTransformRestoreStatus::DuplicateIdentityWorldObjectId,
+        "scene object transform duplicate identity status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsDuplicateObjectHandleWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    if (!object_result.Succeeded()) {
+        return Fail("scene object transform duplicate handle object creation failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, object_result.handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, object_result.handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        static_cast<std::uint32_t>(identities.size()),
+        transforms.data(),
+        0U,
+        WorldSceneObjectTransformRestoreStatus::DuplicateIdentityObjectHandle,
+        "scene object transform duplicate object handle status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsDuplicateTransformWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    if (!object_result.Succeeded()) {
+        return Fail("scene object transform duplicate transform object creation failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, object_result.handle)};
+    const WorldTransformState first_transform = Transform(750.0F);
+    const WorldTransformState second_transform = Transform(760.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, first_transform),
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, second_transform)};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        static_cast<std::uint32_t>(transforms.size()),
+        WorldSceneObjectTransformRestoreStatus::DuplicateTransformWorldObjectId,
+        "scene object transform duplicate transform status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsIdentityCapacityOverflowWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, objects[1].handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridgeDesc desc{};
+    desc.identity_capacity = 1U;
+    WorldSceneObjectTransformRestoreBridge restore_bridge(desc);
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        static_cast<std::uint32_t>(identities.size()),
+        transforms.data(),
+        0U,
+        WorldSceneObjectTransformRestoreStatus::IdentityCapacityExceeded,
+        "scene object transform identity capacity status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsTransformCapacityOverflowWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, objects[1].handle)};
+    const WorldTransformState player_transform = Transform(770.0F);
+    const WorldTransformState camera_transform = Transform(780.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, player_transform),
+        MakeSceneObjectTransformTransformRecord(OBJECT_CAMERA, camera_transform)};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridgeDesc desc{};
+    desc.transform_capacity = 1U;
+    WorldSceneObjectTransformRestoreBridge restore_bridge(desc);
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        static_cast<std::uint32_t>(identities.size()),
+        transforms.data(),
+        static_cast<std::uint32_t>(transforms.size()),
+        WorldSceneObjectTransformRestoreStatus::TransformCapacityExceeded,
+        "scene object transform transform capacity status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRejectsNonEmptyDestinationsWithoutMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    if (!identity_destination.Bind(OBJECT_PLAYER, objects[0].handle).Succeeded()) {
+        return Fail("scene object transform non-empty identity seed failed");
+    }
+
+    WorldTransformBridge transform_destination(world);
+    const WorldTransformState existing_transform = Transform(790.0F);
+    if (!transform_destination.Register(OBJECT_PLAYER, existing_transform).Succeeded()) {
+        return Fail("scene object transform non-empty transform seed failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, objects[1].handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        0U,
+        WorldSceneObjectTransformRestoreStatus::DestinationNotEmpty,
+        "scene object transform non-empty destination status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeValidatesObjectHandlesBeforeMutation() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, ObjectHandle{})};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        0U,
+        WorldSceneObjectTransformRestoreStatus::InvalidObjectHandle,
+        "scene object transform invalid object handle status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeObjectAcquirePreflightFailureDoesNotRestoreIdentitiesOrTransforms() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    const std::uint32_t max_reference_count = std::numeric_limits<std::uint32_t>::max();
+    const ObjectRegistrationResult object_result = CreateObject(
+        registry,
+        OBJECT_TYPE_PLAYER,
+        max_reference_count);
+    if (!object_result.Succeeded()) {
+        return Fail("scene object transform acquire overflow object creation failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, object_result.handle)};
+    const WorldTransformState transform_state = Transform(800.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    return ExpectObjectTransformRestoreFailureWithoutMutation(
+        restore_bridge,
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U,
+        WorldSceneObjectTransformRestoreStatus::ObjectAcquireWouldOverflow,
+        "scene object transform acquire preflight status wrong");
+}
+
+int WorldSceneObjectTransformRestoreBridgeRestorePathDoesNotGrowStorage() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    WorldSceneObjectTransformRestoreBridgeDesc desc{};
+    desc.identity_capacity = 2U;
+    desc.transform_capacity = 2U;
+    WorldSceneObjectTransformRestoreBridge restore_bridge(desc);
+    const WorldSceneObjectTransformRestoreSnapshot before_snapshot = restore_bridge.Snapshot();
+    std::uint32_t iteration = 0U;
+    while (iteration < 3U) {
+        std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+            MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle)};
+        const WorldTransformState transform_state = Transform(810.0F + static_cast<float>(iteration));
+        std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+            MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+        WorldObjectIdentityBridge identity_destination(world, registry);
+        WorldTransformBridge transform_destination(world);
+        const WorldSceneObjectTransformRestoreResult result = restore_bridge.Restore(
+            &world,
+            &registry,
+            &identity_destination,
+            &transform_destination,
+            identities.data(),
+            1U,
+            transforms.data(),
+            1U);
+        if (!result.Succeeded()) {
+            return Fail("scene object transform path restore failed");
+        }
+
+        ++iteration;
+    }
+
+    const WorldSceneObjectTransformRestoreSnapshot after_snapshot = restore_bridge.Snapshot();
+    if (after_snapshot.identity_capacity != before_snapshot.identity_capacity) {
+        return Fail("scene object transform path changed identity capacity");
+    }
+
+    if (after_snapshot.transform_capacity != before_snapshot.transform_capacity) {
+        return Fail("scene object transform path changed transform capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != before_snapshot.allocation_accounting_status) {
+        return Fail("scene object transform path changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformRestoreBridgeNoHiddenAllocationUsesYuMemorySignal() {
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    const WorldSceneObjectTransformRestoreSnapshot snapshot = restore_bridge.Snapshot();
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("scene object transform allocation accounting status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformRestoreBridgeSnapshotReportsCountsAndLastStatus() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    if (!object_result.Succeeded()) {
+        return Fail("scene object transform counters object creation failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, object_result.handle)};
+    const WorldTransformState transform_state = Transform(820.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    const WorldSceneObjectTransformRestoreResult success_result = restore_bridge.Restore(
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U);
+    if (!success_result.Succeeded()) {
+        return Fail("scene object transform counters success failed");
+    }
+
+    const WorldSceneObjectTransformRestoreResult failure_result = restore_bridge.Restore(
+        nullptr,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U);
+    if (failure_result.status != WorldSceneObjectTransformRestoreStatus::InvalidWorld) {
+        return Fail("scene object transform counters failure status wrong");
+    }
+
+    const WorldSceneObjectTransformRestoreSnapshot snapshot = restore_bridge.Snapshot();
+    if (snapshot.restore_attempt_count != 2U) {
+        return Fail("scene object transform counters attempt count wrong");
+    }
+
+    if (snapshot.restored_identity_count != 1U) {
+        return Fail("scene object transform counters restored identity count wrong");
+    }
+
+    if (snapshot.restored_transform_count != 1U) {
+        return Fail("scene object transform counters restored transform count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("scene object transform counters failed count wrong");
+    }
+
+    if (snapshot.last_status != WorldSceneObjectTransformRestoreStatus::InvalidWorld) {
+        return Fail("scene object transform counters last status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformRestoreBridgeNoObjectConstructionOrDestruction() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    const ObjectSnapshot before_registry = registry.Snapshot();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, objects[1].handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    const WorldSceneObjectTransformRestoreResult result = restore_bridge.Restore(
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        static_cast<std::uint32_t>(identities.size()),
+        transforms.data(),
+        0U);
+    if (!result.Succeeded()) {
+        return Fail("scene object transform construction restore failed");
+    }
+
+    const ObjectSnapshot after_registry = registry.Snapshot();
+    if (after_registry.alive_object_count != before_registry.alive_object_count) {
+        return Fail("scene object transform changed alive object count");
+    }
+
+    if (after_registry.created_object_count != before_registry.created_object_count) {
+        return Fail("scene object transform created objects");
+    }
+
+    if (after_registry.destroyed_object_count != before_registry.destroyed_object_count) {
+        return Fail("scene object transform destroyed objects");
+    }
+
+    if (after_registry.referenced_object_count != before_registry.referenced_object_count + 2U) {
+        return Fail("scene object transform did not only acquire identities");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformRestoreBridgeNoTransformHierarchyOrSceneGraph() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    if (CreateSceneObjectTransformObjects(registry, &objects) != 0) {
+        return 1;
+    }
+
+    const WorldSnapshot before_world = world.Snapshot();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, objects[0].handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, objects[1].handle)};
+    const WorldTransformState player_transform = Transform(830.0F);
+    const WorldTransformState camera_transform = Transform(840.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, player_transform),
+        MakeSceneObjectTransformTransformRecord(OBJECT_CAMERA, camera_transform)};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    const WorldSceneObjectTransformRestoreResult result = restore_bridge.Restore(
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        static_cast<std::uint32_t>(identities.size()),
+        transforms.data(),
+        static_cast<std::uint32_t>(transforms.size()));
+    if (!result.Succeeded()) {
+        return Fail("scene object transform hierarchy restore failed");
+    }
+
+    const WorldSnapshot after_world = world.Snapshot();
+    if (!WorldSnapshotsMatch(before_world, after_world)) {
+        return Fail("scene object transform mutated world graph");
+    }
+
+    if (transform_destination.Snapshot().record_count != 2U) {
+        return Fail("scene object transform hierarchy record count wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformRestoreBridgeNoComponentPayloadLifecycleOrScriptDependency() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    if (!object_result.Succeeded()) {
+        return Fail("scene object transform payload object creation failed");
+    }
+
+    WorldComponentAttachmentBridge component_bridge;
+    const WorldComponentAttachmentSnapshot before_component = component_bridge.Snapshot();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, object_result.handle)};
+    const WorldTransformState transform_state = Transform(850.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    const WorldSceneObjectTransformRestoreResult result = restore_bridge.Restore(
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U);
+    if (!result.Succeeded()) {
+        return Fail("scene object transform payload restore failed");
+    }
+
+    const WorldComponentAttachmentSnapshot after_component = component_bridge.Snapshot();
+    if (!ComponentAttachmentSnapshotsMatch(before_component, after_component)) {
+        return Fail("scene object transform mutated component payload bridge");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformRestoreBridgeNoSerializeFilePackageResourceLoadOrGameAdapterDependency() {
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    const WorldSceneObjectTransformRestoreSnapshot snapshot = restore_bridge.Snapshot();
+    if (snapshot.identity_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("scene object transform file dependency identity capacity wrong");
+    }
+
+    if (snapshot.transform_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("scene object transform file dependency transform capacity wrong");
+    }
+
+    if (snapshot.last_status != WorldSceneObjectTransformRestoreStatus::Success) {
+        return Fail("scene object transform file dependency last status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformRestoreBridgeWorldInstanceCoreRemainsObjectTransformRestoreFree() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    ObjectRegistry registry = MakeRegistry();
+    if (RegisterSceneObjectTransformWorldObjects(world) != 0) {
+        return 1;
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    if (!object_result.Succeeded()) {
+        return Fail("scene object transform world core object creation failed");
+    }
+
+    const WorldSnapshot before_world = world.Snapshot();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, object_result.handle)};
+    const WorldTransformState transform_state = Transform(860.0F);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, transform_state)};
+    WorldObjectIdentityBridge identity_destination(world, registry);
+    WorldTransformBridge transform_destination(world);
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    const WorldSceneObjectTransformRestoreResult result = restore_bridge.Restore(
+        &world,
+        &registry,
+        &identity_destination,
+        &transform_destination,
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U);
+    if (!result.Succeeded()) {
+        return Fail("scene object transform world core restore failed");
+    }
+
+    const WorldSnapshot after_world = world.Snapshot();
+    if (!WorldSnapshotsMatch(before_world, after_world)) {
+        return Fail("scene object transform mutated world core");
+    }
+
+    if (RequireSuccessfulStart(world) != 0) {
+        return 1;
+    }
+
+    if (world.Stop() != WorldStatus::Success) {
+        return Fail("scene object transform world core standalone stop failed");
+    }
+
+    return 0;
+}
+
+int WorldSceneObjectTransformRestoreBridgeObjectCoreRemainsWorldFree() {
+    ObjectRegistry registry = MakeRegistry();
+    WorldSceneObjectTransformRestoreBridge restore_bridge;
+    if (restore_bridge.Snapshot().last_status != WorldSceneObjectTransformRestoreStatus::Success) {
+        return Fail("scene object transform object core bridge construction failed");
+    }
+
+    const ObjectRegistrationResult object_result = CreateObject(registry, OBJECT_TYPE_PLAYER);
+    if (!object_result.Succeeded()) {
+        return Fail("scene object transform object core creation failed");
+    }
+
+    if (registry.Acquire(object_result.handle) != ObjectStatus::Success) {
+        return Fail("scene object transform object core acquire failed");
+    }
+
+    if (registry.Release(object_result.handle) != ObjectStatus::Success) {
+        return Fail("scene object transform object core release failed");
+    }
+
+    const ObjectSnapshot snapshot = registry.Snapshot();
+    if (snapshot.alive_object_count != 1U) {
+        return Fail("scene object transform object core alive count wrong");
+    }
+
+    return 0;
+}
+
 int WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord() {
     WorldComponentAttachmentBridge bridge;
     const WorldComponentAttachmentResult result = bridge.Add(
@@ -14464,6 +15883,66 @@ int main(int argc, char **argv) {
             WorldSceneAssemblyManifestStreamBridgeWorldInstanceCoreRemainsManifestFree},
         {TEST_SCENE_MANIFEST_SERIALIZE_CORE_FREE,
             WorldSceneAssemblyManifestStreamBridgeSerializeCoreRemainsWorldFree},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_ORDER,
+            WorldSceneObjectTransformRestoreBridgeRestoresIdentityAndTransformRecordsInInputOrder},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_IDENTITY_ONLY,
+            WorldSceneObjectTransformRestoreBridgeRestoresIdentityOnlyRecords},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_EMPTY,
+            WorldSceneObjectTransformRestoreBridgeRestoresEmptyInputsWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NULL_WORLD,
+            WorldSceneObjectTransformRestoreBridgeRejectsNullWorldWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NULL_REGISTRY,
+            WorldSceneObjectTransformRestoreBridgeRejectsNullObjectRegistryWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NULL_IDENTITY_DESTINATION,
+            WorldSceneObjectTransformRestoreBridgeRejectsNullIdentityDestinationWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NULL_TRANSFORM_DESTINATION,
+            WorldSceneObjectTransformRestoreBridgeRejectsNullTransformDestinationWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NULL_IDENTITY_INPUT,
+            WorldSceneObjectTransformRestoreBridgeRejectsNullIdentityInputWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NULL_TRANSFORM_INPUT,
+            WorldSceneObjectTransformRestoreBridgeRejectsNullTransformInputWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_INVALID_IDENTITY,
+            WorldSceneObjectTransformRestoreBridgeRejectsInvalidIdentityRecordWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_INVALID_TRANSFORM,
+            WorldSceneObjectTransformRestoreBridgeRejectsInvalidTransformRecordWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_MISSING_WORLD,
+            WorldSceneObjectTransformRestoreBridgeRejectsMissingWorldObjectWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_MISSING_IDENTITY,
+            WorldSceneObjectTransformRestoreBridgeRejectsMissingIdentityForTransformWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_DUPLICATE_IDENTITY,
+            WorldSceneObjectTransformRestoreBridgeRejectsDuplicateIdentityWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_DUPLICATE_HANDLE,
+            WorldSceneObjectTransformRestoreBridgeRejectsDuplicateObjectHandleWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_DUPLICATE_TRANSFORM,
+            WorldSceneObjectTransformRestoreBridgeRejectsDuplicateTransformWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_IDENTITY_CAPACITY,
+            WorldSceneObjectTransformRestoreBridgeRejectsIdentityCapacityOverflowWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_TRANSFORM_CAPACITY,
+            WorldSceneObjectTransformRestoreBridgeRejectsTransformCapacityOverflowWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NON_EMPTY,
+            WorldSceneObjectTransformRestoreBridgeRejectsNonEmptyDestinationsWithoutMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_PREFLIGHT,
+            WorldSceneObjectTransformRestoreBridgeValidatesObjectHandlesBeforeMutation},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_ACQUIRE_PREFLIGHT,
+            WorldSceneObjectTransformRestoreBridgeObjectAcquirePreflightFailureDoesNotRestoreIdentitiesOrTransforms},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_PATH,
+            WorldSceneObjectTransformRestoreBridgeRestorePathDoesNotGrowStorage},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NO_HIDDEN_ALLOCATION,
+            WorldSceneObjectTransformRestoreBridgeNoHiddenAllocationUsesYuMemorySignal},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_COUNTERS,
+            WorldSceneObjectTransformRestoreBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NO_CONSTRUCTION,
+            WorldSceneObjectTransformRestoreBridgeNoObjectConstructionOrDestruction},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NO_HIERARCHY,
+            WorldSceneObjectTransformRestoreBridgeNoTransformHierarchyOrSceneGraph},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NO_PAYLOAD,
+            WorldSceneObjectTransformRestoreBridgeNoComponentPayloadLifecycleOrScriptDependency},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_NO_FILE_PACKAGE,
+            WorldSceneObjectTransformRestoreBridgeNoSerializeFilePackageResourceLoadOrGameAdapterDependency},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_WORLD_CORE_FREE,
+            WorldSceneObjectTransformRestoreBridgeWorldInstanceCoreRemainsObjectTransformRestoreFree},
+        {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_OBJECT_CORE_FREE,
+            WorldSceneObjectTransformRestoreBridgeObjectCoreRemainsWorldFree},
         {TEST_COMPONENT_ADD_VALID, WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord},
         {TEST_COMPONENT_ADD_INVALID_WORLD, WorldComponentAttachmentBridgeAddRejectsInvalidWorldIdWithoutMutation},
         {TEST_COMPONENT_ADD_INVALID_TYPE, WorldComponentAttachmentBridgeAddRejectsInvalidComponentTypeWithoutMutation},

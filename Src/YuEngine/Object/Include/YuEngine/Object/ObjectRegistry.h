@@ -43,6 +43,13 @@ public:
      */
     ObjectStatus Validate(ObjectHandle handle);
     /**
+     * @comment Validates that a projected acquire can succeed without mutating registry state.
+     * @param handle Input handle.
+     * @param projected_acquire_count Input acquire count budget.
+     * @return Explicit operation status.
+     */
+    ObjectStatus ValidateAcquire(ObjectHandle handle, std::uint32_t projected_acquire_count) const;
+    /**
      * @comment Acquires the operation.
      * @param handle Input handle.
      * @return Explicit operation status.
