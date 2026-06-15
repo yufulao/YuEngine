@@ -85,26 +85,26 @@ ADR-0001 is accepted as the initial runtime/build/test shape. ADR-0002 is accept
 | Gate | Module | Layer | Requested decision | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
 | P1-GATE-001 | Platform Host + Engine Kernel Bootstrap | L0-L2 | `APPROVED_FOR_FIRST_SLICE` | Implemented | Headless host, timer, log sink, error boundary, module lifecycle, service registry, tests |
-| P1-GATE-002 | Memory Accounting Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0006 accepted; accounting hooks and leak fixtures only, no full allocator |
-| P1-GATE-003 | Thread/Task Primitive Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0007 accepted; bounded queue and inline executor only, no worker pool |
-| P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0004 accepted; bounded synchronous observer only, no reports/profiler/async queue |
-| P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0008 accepted; path normalization and loose fixture reads only, no package parser |
-| P1-GATE-006 | Resource Identity And Lifetime Skeleton | L4 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0009 accepted; synthetic handles/dependencies only, no file/package/load/decode |
-| P1-GATE-007 | Input Replay And Action Snapshot Skeleton | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | ADR-0010 accepted; synthetic replay and snapshots only, no OS device/UI/game adapter input |
+| P1-GATE-002 | Memory Accounting Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | ADR-0006 accepted; current fast gate has `Memory_` coverage; no full allocator or ownership policy expansion |
+| P1-GATE-003 | Thread/Task Primitive Skeleton | L1-L2 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | ADR-0007 accepted; current fast gate has `Thread_` coverage; bounded queue and inline executor only, no worker pool |
+| P1-GATE-004 | Diagnostics Channel Boundary | L2/L7 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | ADR-0004 accepted; current fast gate has `Diagnostics_` coverage; bounded synchronous observer only, no reports/profiler/async queue |
+| P1-GATE-005 | File Primitive And Path Normalization | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | ADR-0008 accepted; current fast gate has `File_` coverage; path normalization and loose fixture reads only, no package parser |
+| P1-GATE-006 | Resource Identity And Lifetime Skeleton | L4 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | ADR-0009 accepted; current fast gate has `Resource_` coverage; synthetic handles/dependencies only, no file/package/load/decode |
+| P1-GATE-007 | Input Replay And Action Snapshot Skeleton | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | ADR-0010 accepted; current fast gate has `Input_` coverage; synthetic replay and snapshots only, no OS device/UI/game adapter input |
 
 ## Current Active Gates
 
-- P1-GATE-002 implementation is in review as task #14.
-- P1-GATE-003, P1-GATE-004, and P1-GATE-005 are in implementation review; task handoffs must preserve their dependency guards.
-- P1-GATE-006 implementation is in review as task #33. PM, performance, and
-  evidence lanes are closed; code/semantic review remains pending.
-- P1-GATE-007 implementation is in review as task #35. PM, public-surface, and
-  performance lanes are closed; code/semantic review remains pending.
-- P1-GATE-002, P1-GATE-004, P1-GATE-005, P1-GATE-006, and P1-GATE-007 gate
-  files are approved for first-slice implementation. Their first-slice public
-  vocabularies are closed for upper-gate references unless the owning gate is
-  amended. Implementation code/semantic review status remains tracked
-  separately in this queue.
+- P1-GATE-002 through P1-GATE-007 first-slice baselines are present in the
+  current fast gate. `ctest --preset windows-fast-gate -N` at ENG-068A showed
+  `Memory_` 9, `Thread_` 9, `Diagnostics_` 9, `File_` 10, `Resource_` 18, and
+  `Input_` 18 registered tests.
+- These first-slice public vocabularies are closed for upper-gate references
+  unless the owning gate is amended. This queue-sync does not approve full
+  allocator policy, worker pools, reports/profiling, package parsing, resource
+  loading, OS input, UI/gameplay/script/scene/world, capture/oracle, tools, or
+  Game Adapter behavior.
+- Future P1 expansion work requires an explicit next-slice gate or an amended
+  owning gate. Do not create implementation tasks from stale review wording.
 - Phase 2 architecture queue has started in `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md`; Phase 2 implementation remains gated by explicit approvals and sequencing.
 - No implementation task may be created from a gate until that gate has `APPROVED_FOR_FIRST_SLICE`.
 
@@ -130,14 +130,15 @@ The next implementation slice must not be created if any of these remain true:
 
 ## Immediate Next Steps
 
-1. Close task #14 code/semantic review for the P1-GATE-002 memory implementation.
-2. Close task #19, task #20, and task #21 implementation reviews.
-3. Close task #33 Resource implementation review without coupling it to File,
-   package loading, async load, script/scene/UI/gameplay, reports, or tools.
-4. Close task #35 Input implementation review without expanding into OS input,
-   UI/gameplay/script/scene/world, reports, capture/oracle, tools, or Game
-   Adapter behavior.
-5. Complete P2-GATE-001 and P2-GATE-002 implementation reviews before expanding
-   Phase 2 beyond the approved first slices.
-6. Preserve the exclusions: no renderer demo, resources package parser, async IO, gameplay/world, reports, capture/oracle, or original-game adapter behavior without their owning gates.
-7. If a gate is blocked, amend the owning ADR/gate immediately instead of creating implementation work.
+1. Use the current P1 fast-gate baselines as stable lower-layer vocabulary for
+   approved upper gates, but do not expand any P1 module without an explicit
+   next-slice gate or amended owning gate.
+2. Keep Thread/File/Resource/Package and async IO boundaries separate; no File
+   or package loading may be introduced through Resource first-slice vocabulary.
+3. Keep Input first-slice scope replay-only; no OS input, UI/gameplay/script/
+   scene/world, reports, capture/oracle, tools, or Game Adapter behavior.
+4. Preserve the exclusions: no renderer demo, resource package parser, async IO,
+   gameplay/world, reports, capture/oracle, or original-game adapter behavior
+   without their owning gates.
+5. If a gate is blocked, amend the owning ADR/gate immediately instead of
+   creating implementation work.

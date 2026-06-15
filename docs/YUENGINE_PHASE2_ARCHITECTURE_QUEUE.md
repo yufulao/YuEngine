@@ -81,20 +81,21 @@ Phase 2 remains blocked from:
 
 | Gate | Module | Layer | Current decision | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
-| P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | Null backend only; create target, record clear, submit, present, deterministic capture; no real backend, shader, material, render scene, resource loading, UI, or game adapter |
-| P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | Implementation in review | Test backend only; synthetic S16 stereo sources, generation voice handles, caller-owned mix buffer; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
+| P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Null backend only; current fast gate has `RHI_` coverage; no real backend, shader, material, RenderCore, resource loading, UI, or game adapter |
+| P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Test backend only; current fast gate has `Audio_` coverage; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
 | P2-GATE-003 | Package Manifest And Load Plan Boundary | L4-L5 | `FIRST_SLICE_CLOSED_QA_CLEARED` | First slice closed | `354f8e2` closed the approved `YuPackage` / `YuPackageTests` first-slice review baseline; no new package code/CMake/test expansion, File/VFS runtime reads, resource mutation, or P3 work |
 
 ## Current Active Gates
 
-- P2-GATE-001 implementation is in review at `cf776c4`; PM and performance
-  lanes are closed, code/semantic review remains pending, and implementation
-  must not expand into real graphics, RenderCore, Resource/File upload, reports,
-  or Game Adapter scope.
-- P2-GATE-002 implementation is in review at `5c340c1`; PM and performance
-  lanes are closed, code/semantic review remains pending, and implementation
-  must not expand into real audio devices, callback threads, codecs, streaming,
-  resource coupling, UI/script/gameplay, reports, tools, or Game Adapter scope.
+- P2-GATE-001 first-slice baseline is present in the current fast gate.
+  `ctest --preset windows-fast-gate -N` at ENG-068A showed `RHI_` 28 registered
+  tests. This does not authorize real graphics, RenderCore, Resource/File
+  upload, reports, or Game Adapter scope.
+- P2-GATE-002 first-slice baseline is present in the current fast gate.
+  `ctest --preset windows-fast-gate -N` at ENG-068A showed `Audio_` 24
+  registered tests. This does not authorize real audio devices, callback
+  threads, codecs, streaming, resource coupling, UI/script/gameplay, reports,
+  tools, or Game Adapter scope.
 - P2-GATE-003 is `FIRST_SLICE_CLOSED_QA_CLEARED` after the 2026-06-11
   Architect decision and `354f8e2` first-slice fix. The closure is limited to
   the existing `YuPackage` implementation and `YuPackageTests` first-slice
@@ -115,12 +116,14 @@ Phase 2 remains blocked from:
 
 ## Immediate Next Steps
 
-1. Complete P2-GATE-001 and P2-GATE-002 implementation reviews for the null RHI
-   and audio mixer slices.
+1. Use the current null RHI and audio test-backend fast-gate baselines as stable
+   lower-layer vocabulary for approved upper gates, but do not expand either
+   module without an explicit next-slice gate or amended owning gate.
 2. Keep P2-GATE-003 package expansion held. The first slice is closed and QA
    cleared, but later package work still requires a new explicit Architect
    decision.
-3. Close active Phase 1 implementation reviews before creating additional shared
-   CMake implementation work, unless a clean isolated worktree is assigned.
+3. Prepare RenderCore, real graphics backend, real audio backend, and async IO
+   only through new explicit gates. Do not infer those scopes from the first
+   null/test backend slices.
 4. Prepare async IO boundary only after Thread/File/Resource/Package review
    state is stable enough to avoid depending on unresolved vocabulary.
