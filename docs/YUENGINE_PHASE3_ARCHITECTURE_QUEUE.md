@@ -100,7 +100,7 @@ Phase 3 remains blocked from:
 | P3-GATE-019 | World Scene Object Transform Restore Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_019_WORLD_SCENE_OBJECT_TRANSFORM_RESTORE_BRIDGE.md`; active restore over caller-owned object identity and transform records only, no object construction, no scene loading/save policy, no component payload/lifecycle, no File/Package/Resource loading or Game Adapter dependency |
 | P3-GATE-020 | World Scene Object Transform Manifest Stream Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_020_WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_STREAM_BRIDGE.md`; stream-only envelope over caller-owned P3-GATE-019 object identity and transform restore records, deterministic fixed-byte transform payloads only, no active restore, object construction, scene loading/save policy, component payload/lifecycle, YuSerialize float/core format changes, File/Package/Resource loading, or Game Adapter dependency |
 | P3-GATE-021 | World Scene Decoded Restore Plan Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_021_WORLD_SCENE_DECODED_RESTORE_PLAN_BRIDGE.md`; no-mutation plan/preflight over caller-owned decoded object identity, transform, component attachment, and component-resource binding records, required const `WorldInstance` membership preflight, required POD plan/status/counters output, no active restore, registry mutation, stream decode/apply fusion, rollback, File/Package/Resource loading, scene loader/save policy, or Game Adapter dependency |
-| P3-GATE-022 | World Scene Apply-Time Restore Proof Bridge | L5 over L2-L5 | `PROPOSED_FOR_REVIEW` | Proposed for review | Gate doc: `docs/gates/P3_GATE_022_WORLD_SCENE_APPLY_TIME_RESTORE_PROOF_BRIDGE.md`; no-mutation apply-time proof over current decoded records, current destinations, current world, and current registries, emits deterministic active-call slices only, no active restore, cached plan authorization, cleanup/rollback, registry mutation, stream decode/apply fusion, File/Package/Resource loading, scene loader/save policy, or Game Adapter dependency |
+| P3-GATE-022 | World Scene Apply-Time Restore Proof Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_022_WORLD_SCENE_APPLY_TIME_RESTORE_PROOF_BRIDGE.md`; no-mutation apply-time proof over current decoded records, current destinations, current world, current registries, and caller-owned P3-GATE-021 plan scratch, emits deterministic active-call slices only, no active restore, cached plan authorization, cleanup/rollback, registry mutation, stream decode/apply fusion, File/Package/Resource loading, scene loader/save policy, or Game Adapter dependency |
 
 ## Current Active Gates
 
@@ -294,16 +294,17 @@ Phase 3 remains blocked from:
   resource loading, File/Package work, or Game Adapter scope.
 - P3-GATE-021 first slice landed at `10e825e` with QA PASS and fast gate
   `608/608`.
-- P3-GATE-022 is proposed after ENG-093A boundary/performance PASS with hard
-  conditions, ENG-093B implementability PASS with hard scope conditions, and
-  ENG-093C test admission CONCERN for direct active coordinator proof quality.
-  The candidate scope is no-mutation apply-time proof only: same-call
-  P3-GATE-021 plan/preflight over current inputs, current destination
-  preflight, current registry/world validation, and deterministic active-call
-  slices for a later active coordinator gate. It does not authorize active
-  restore, old/cached plan authorization, cleanup/rollback, stream decode/apply
-  fusion, resource loading, File/Package work, scene loading/save policy, or
-  Game Adapter scope.
+- P3-GATE-022 is approved for first slice after ENG-093A boundary/performance
+  PASS with hard conditions, ENG-093B implementability PASS with hard scope
+  conditions, ENG-093C test admission CONCERN for direct active coordinator
+  proof quality, and ENG-094A2/ENG-094B2/ENG-094C3 PASS on amended `fb82695`.
+  The approved scope is no-mutation apply-time proof only: same-call
+  P3-GATE-021 plan/preflight over current inputs and caller-owned plan scratch,
+  current destination preflight, current registry/world validation, and
+  deterministic active-call slices for a later active coordinator gate. It does
+  not authorize active restore, old/cached plan authorization, cleanup/rollback,
+  stream decode/apply fusion, resource loading, File/Package work, scene
+  loading/save policy, or Game Adapter scope.
 
 ## Implementation Baseline
 
@@ -366,10 +367,10 @@ same first slices.
 4. P3-GATE-020 is now a landed manifest-stream baseline only. A decoded active
    restore coordinator remains a later gate after separate cross-domain
    preflight and transaction proof.
-5. Review P3-GATE-022 before active scene restore implementation. If accepted,
-   it authorizes only no-mutation apply-time proof generation and deterministic
+5. Implement P3-GATE-022 first slice before active scene restore implementation.
+   It authorizes only no-mutation apply-time proof generation and deterministic
    active-call slices; decoded active scene restore coordination remains a later
-   gate after this proof contract is reviewed and landed.
+   gate after this proof contract is landed.
 6. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.

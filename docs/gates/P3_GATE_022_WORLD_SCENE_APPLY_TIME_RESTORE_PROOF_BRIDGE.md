@@ -1,16 +1,20 @@
 # P3-GATE-022: World Scene Apply-Time Restore Proof Bridge
 
-Status: Proposed for review
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `PROPOSED_FOR_REVIEW`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P3-GATE-017, P3-GATE-019, P3-GATE-021
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0014, ADR-0015
 Source baseline: `d00baa6`
+Approved proposal: `fb82695`
 Candidate evidence: ENG-093A PASS with hard boundary/performance conditions,
 ENG-093B PASS with hard scope conditions, and ENG-093C CONCERN recommending a
 narrower apply-time proof before decoded active restore.
+Approval evidence: ENG-094A2 boundary/performance PASS, ENG-094B2
+implementability PASS, and ENG-094C3 test admission PASS on amended
+`fb82695`.
 
 ## Layer
 
