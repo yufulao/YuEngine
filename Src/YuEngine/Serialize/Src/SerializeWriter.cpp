@@ -144,6 +144,22 @@ SerializeStatus SerializeWriter::WriteFixedBytes(SerializeFieldId field, const s
     return CommitField(field, SerializeTypeTag::FixedBytes, bytes, byte_count);
 }
 
+std::uint32_t SerializeWriter::GetByteCapacity() const {
+    return capacity_;
+}
+
+std::uint32_t SerializeWriter::GetRemainingByteCapacity() const {
+    if (snapshot_.committed_byte_count > capacity_) {
+        return 0U;
+    }
+
+    return capacity_ - snapshot_.committed_byte_count;
+}
+
+bool SerializeWriter::CanCommitByteCount(std::uint32_t byte_count) const {
+    return CanCommitBytes(byte_count);
+}
+
 SerializeSnapshot SerializeWriter::Snapshot() const {
     return snapshot_;
 }

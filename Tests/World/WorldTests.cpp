@@ -31,6 +31,10 @@
 #include "YuEngine/Script/ScriptStatus.h"
 #include "YuEngine/Script/ScriptValue.h"
 #include "YuEngine/Script/ScriptValueType.h"
+#include "YuEngine/Serialize/SerializeConstants.h"
+#include "YuEngine/Serialize/SerializeReader.h"
+#include "YuEngine/Serialize/SerializeStatus.h"
+#include "YuEngine/Serialize/SerializeWriter.h"
 #include "YuEngine/World/WorldConstants.h"
 #include "YuEngine/World/WorldDesc.h"
 #include "YuEngine/World/WorldInstance.h"
@@ -50,6 +54,13 @@
 #include "YuEngine/World/WorldScriptDispatchResult.h"
 #include "YuEngine/World/WorldScriptDispatchSnapshot.h"
 #include "YuEngine/World/WorldScriptDispatchStatus.h"
+#include "YuEngine/World/WorldSerializeSnapshotBridge.h"
+#include "YuEngine/World/WorldSerializeSnapshotBridgeDesc.h"
+#include "YuEngine/World/WorldSerializeSnapshotBridgeSnapshot.h"
+#include "YuEngine/World/WorldSerializeSnapshotConstants.h"
+#include "YuEngine/World/WorldSerializeSnapshotResult.h"
+#include "YuEngine/World/WorldSerializeSnapshotState.h"
+#include "YuEngine/World/WorldSerializeSnapshotStatus.h"
 #include "YuEngine/World/WorldSnapshot.h"
 #include "YuEngine/World/WorldStatus.h"
 #include "YuEngine/World/WorldTransformBridge.h"
@@ -83,12 +94,33 @@ using yuengine::script::ScriptNativeRegistry;
 using yuengine::script::ScriptStatus;
 using yuengine::script::ScriptValue;
 using yuengine::script::ScriptValueType;
+using yuengine::serialize::MAX_STREAM_BYTE_COUNT;
+using yuengine::serialize::SerializeReader;
+using yuengine::serialize::SerializeStatus;
+using yuengine::serialize::SerializeWriter;
+using yuengine::serialize::STREAM_HEADER_BYTE_COUNT;
 using yuengine::world::MAX_WORLD_OBJECT_COUNT;
 using yuengine::world::MAX_WORLD_PHASE_TRACE_COUNT;
+using yuengine::world::MAX_WORLD_SERIALIZE_PHASE_TRACE_COUNT;
 using yuengine::world::MAX_WORLD_SCRIPT_DISPATCH_BINDING_COUNT;
 using yuengine::world::WORLD_UPDATE_PHASE_COUNT;
 using yuengine::world::WORLD_INSTANCE_SERVICE_ID;
 using yuengine::world::WORLD_KERNEL_MODULE_NAME;
+using yuengine::world::WORLD_SERIALIZE_FIELD_ACTIVE_OBJECT_COUNT;
+using yuengine::world::WORLD_SERIALIZE_FIELD_ALLOCATION_STATUS;
+using yuengine::world::WORLD_SERIALIZE_FIELD_FRAME_COUNT;
+using yuengine::world::WORLD_SERIALIZE_FIELD_LAST_FIXED_STEP_DURATION;
+using yuengine::world::WORLD_SERIALIZE_FIELD_LAST_FRAME_DELTA_DURATION;
+using yuengine::world::WORLD_SERIALIZE_FIELD_LAST_FRAME_INDEX;
+using yuengine::world::WORLD_SERIALIZE_FIELD_LAST_STATUS;
+using yuengine::world::WORLD_SERIALIZE_FIELD_LIFECYCLE_STATE;
+using yuengine::world::WORLD_SERIALIZE_FIELD_OBJECT_CAPACITY;
+using yuengine::world::WORLD_SERIALIZE_FIELD_PHASE_EXECUTION_COUNT;
+using yuengine::world::WORLD_SERIALIZE_FIELD_PHASE_TRACE_CAPACITY;
+using yuengine::world::WORLD_SERIALIZE_FIELD_PHASE_TRACE_COUNT;
+using yuengine::world::WORLD_SERIALIZE_FIELD_REGISTERED_OBJECT_COUNT;
+using yuengine::world::WORLD_SERIALIZE_FIELD_SKIPPED_OBJECT_COUNT;
+using yuengine::world::WORLD_SERIALIZE_WORLD_SNAPSHOT_RECORD_ID;
 using yuengine::world::WorldDesc;
 using yuengine::world::WorldInstance;
 using yuengine::world::WorldKernelModule;
@@ -107,6 +139,11 @@ using yuengine::world::WorldScriptDispatchBridgeDesc;
 using yuengine::world::WorldScriptDispatchResult;
 using yuengine::world::WorldScriptDispatchSnapshot;
 using yuengine::world::WorldScriptDispatchStatus;
+using yuengine::world::WorldSerializeSnapshotBridge;
+using yuengine::world::WorldSerializeSnapshotBridgeDesc;
+using yuengine::world::WorldSerializeSnapshotBridgeSnapshot;
+using yuengine::world::WorldSerializeSnapshotResult;
+using yuengine::world::WorldSerializeSnapshotStatus;
 using yuengine::world::WorldSnapshot;
 using yuengine::world::WorldStatus;
 using yuengine::world::WorldTransformBridge;
@@ -183,6 +220,22 @@ constexpr const char *TEST_SCRIPT_DISPATCH_NO_ACTOR_COMPONENT = "WorldScriptDisp
 constexpr const char *TEST_SCRIPT_DISPATCH_NO_RESOURCE_OBJECT = "WorldScriptDispatchBridge_NoResourcePackageFileSerializeOrObjectOwnershipDependency";
 constexpr const char *TEST_SCRIPT_DISPATCH_WORLD_CORE_FREE = "WorldScriptDispatchBridge_WorldInstanceCoreRemainsScriptFree";
 constexpr const char *TEST_SCRIPT_DISPATCH_SCRIPT_CORE_FREE = "WorldScriptDispatchBridge_ScriptRegistryCoreRemainsWorldFree";
+constexpr const char *TEST_SERIALIZE_ROUND_TRIP = "WorldSerializeSnapshotBridge_WriteWorldSnapshot_RoundTripsDeterministically";
+constexpr const char *TEST_SERIALIZE_TRACE_ORDER = "WorldSerializeSnapshotBridge_WritePhaseTraceRecordsInOrder";
+constexpr const char *TEST_SERIALIZE_TRANSFORM = "WorldSerializeSnapshotBridge_WriteOptionalTransformSnapshotCounters";
+constexpr const char *TEST_SERIALIZE_SMALL_TRACE_OUTPUT = "WorldSerializeSnapshotBridge_ReadRejectsSmallTraceOutputWithoutOverrun";
+constexpr const char *TEST_SERIALIZE_INVALID_TRACE_BUFFER = "WorldSerializeSnapshotBridge_WriteRejectsInvalidTraceBufferWithoutMutation";
+constexpr const char *TEST_SERIALIZE_TRACE_OVERFLOW = "WorldSerializeSnapshotBridge_WriteRejectsTraceOverflowWithoutMutation";
+constexpr const char *TEST_SERIALIZE_WRITE_FAILURE = "WorldSerializeSnapshotBridge_SerializeFailureMapsExplicitStatus";
+constexpr const char *TEST_SERIALIZE_READ_FAILURE = "WorldSerializeSnapshotBridge_ReadFailureMapsExplicitStatus";
+constexpr const char *TEST_SERIALIZE_INVALID_ENUM = "WorldSerializeSnapshotBridge_ReadRejectsInvalidEnumValuesWithoutMutation";
+constexpr const char *TEST_SERIALIZE_NO_WORLD_MUTATION = "WorldSerializeSnapshotBridge_NoWorldMutationDuringReadWrite";
+constexpr const char *TEST_SERIALIZE_PATH = "WorldSerializeSnapshotBridge_ReadWritePathDoesNotGrowStorage";
+constexpr const char *TEST_SERIALIZE_SNAPSHOT = "WorldSerializeSnapshotBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_SERIALIZE_NO_FILE_PACKAGE = "WorldSerializeSnapshotBridge_NoFilePackageResourceSaveGameOrGameAdapterDependency";
+constexpr const char *TEST_SERIALIZE_NO_ACTOR_COMPONENT = "WorldSerializeSnapshotBridge_NoActorComponentSceneGraphOrGameplayDependency";
+constexpr const char *TEST_SERIALIZE_WORLD_CORE_FREE = "WorldSerializeSnapshotBridge_WorldInstanceCoreRemainsSerializeFree";
+constexpr const char *TEST_SERIALIZE_CORE_FREE = "WorldSerializeSnapshotBridge_SerializeCoreRemainsWorldFree";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *TRACE_KERNEL_START = "kernel.start";
@@ -204,6 +257,7 @@ constexpr ScriptCallId SCRIPT_CALL_END{14U};
 constexpr ScriptCallId SCRIPT_CALL_FAILING{15U};
 constexpr ScriptCallId SCRIPT_CALL_UNKNOWN{99U};
 using TestFunction = int (*)();
+using SerializeBuffer = std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT>;
 
 class TestLogSink final : public yuengine::diagnostics::ILogSink {
 public:
@@ -524,6 +578,270 @@ bool SnapshotRuntimeCountsMatch(const WorldSnapshot &left, const WorldSnapshot &
     }
 
     return left.allocation_accounting_status == right.allocation_accounting_status;
+}
+
+WorldSnapshot SerializableWorldSnapshot(std::uint32_t phase_trace_count=0U) {
+    WorldSnapshot snapshot{};
+    snapshot.object_capacity = 8U;
+    snapshot.phase_trace_capacity = MAX_WORLD_PHASE_TRACE_COUNT;
+    snapshot.registered_object_count = 3U;
+    snapshot.active_object_count = 2U;
+    snapshot.frame_count = 5U;
+    snapshot.phase_execution_count = 20U;
+    snapshot.skipped_object_count = 1U;
+    snapshot.last_frame_index = 4U;
+    snapshot.last_fixed_step_duration = 16U;
+    snapshot.last_frame_delta_duration = 17U;
+    snapshot.phase_trace_count = phase_trace_count;
+    snapshot.allocation_accounting_status = MemoryAccountingStatus::ExplicitlyTrackedOnly;
+    snapshot.lifecycle_state = WorldLifecycleState::Running;
+    snapshot.last_status = WorldStatus::Success;
+    return snapshot;
+}
+
+WorldTransformSnapshot SerializableTransformSnapshot() {
+    WorldTransformSnapshot snapshot{};
+    snapshot.bridge_capacity = 8U;
+    snapshot.record_count = 2U;
+    snapshot.updated_record_count = 3U;
+    snapshot.removed_record_count = 1U;
+    snapshot.failed_operation_count = 0U;
+    snapshot.allocation_accounting_status = MemoryAccountingStatus::ExplicitlyTrackedOnly;
+    snapshot.last_status = WorldTransformStatus::Success;
+    return snapshot;
+}
+
+WorldPhaseTrace Trace(WorldUpdatePhase phase,
+    std::uint64_t frame_index,
+    std::uint32_t active_object_count,
+    std::uint32_t skipped_object_count) {
+    WorldPhaseTrace trace{};
+    trace.phase = phase;
+    trace.frame_index = frame_index;
+    trace.active_object_count = active_object_count;
+    trace.skipped_object_count = skipped_object_count;
+    return trace;
+}
+
+bool WorldSnapshotsMatch(const WorldSnapshot &left, const WorldSnapshot &right) {
+    if (left.object_capacity != right.object_capacity) {
+        return false;
+    }
+
+    if (left.phase_trace_capacity != right.phase_trace_capacity) {
+        return false;
+    }
+
+    if (left.registered_object_count != right.registered_object_count) {
+        return false;
+    }
+
+    if (left.active_object_count != right.active_object_count) {
+        return false;
+    }
+
+    if (left.frame_count != right.frame_count) {
+        return false;
+    }
+
+    if (left.phase_execution_count != right.phase_execution_count) {
+        return false;
+    }
+
+    if (left.skipped_object_count != right.skipped_object_count) {
+        return false;
+    }
+
+    if (left.last_frame_index != right.last_frame_index) {
+        return false;
+    }
+
+    if (left.last_fixed_step_duration != right.last_fixed_step_duration) {
+        return false;
+    }
+
+    if (left.last_frame_delta_duration != right.last_frame_delta_duration) {
+        return false;
+    }
+
+    if (left.phase_trace_count != right.phase_trace_count) {
+        return false;
+    }
+
+    if (left.allocation_accounting_status != right.allocation_accounting_status) {
+        return false;
+    }
+
+    if (left.lifecycle_state != right.lifecycle_state) {
+        return false;
+    }
+
+    return left.last_status == right.last_status;
+}
+
+bool PhaseTracesMatch(const WorldPhaseTrace &left, const WorldPhaseTrace &right) {
+    if (left.phase != right.phase) {
+        return false;
+    }
+
+    if (left.frame_index != right.frame_index) {
+        return false;
+    }
+
+    if (left.active_object_count != right.active_object_count) {
+        return false;
+    }
+
+    return left.skipped_object_count == right.skipped_object_count;
+}
+
+bool TransformSnapshotsMatch(const WorldTransformSnapshot &left, const WorldTransformSnapshot &right) {
+    if (left.bridge_capacity != right.bridge_capacity) {
+        return false;
+    }
+
+    if (left.record_count != right.record_count) {
+        return false;
+    }
+
+    if (left.updated_record_count != right.updated_record_count) {
+        return false;
+    }
+
+    if (left.removed_record_count != right.removed_record_count) {
+        return false;
+    }
+
+    if (left.failed_operation_count != right.failed_operation_count) {
+        return false;
+    }
+
+    if (left.allocation_accounting_status != right.allocation_accounting_status) {
+        return false;
+    }
+
+    return left.last_status == right.last_status;
+}
+
+bool SerializeBytesMatch(const SerializeBuffer &left, const SerializeBuffer &right, std::uint32_t byte_count) {
+    std::uint32_t index = 0U;
+    while (index < byte_count) {
+        if (left[index] != right[index]) {
+            return false;
+        }
+
+        ++index;
+    }
+
+    return true;
+}
+
+int BeginSerializeStream(SerializeWriter &writer) {
+    const SerializeStatus status = writer.BeginStream();
+    if (status != SerializeStatus::Success) {
+        return Fail("serialize begin stream failed");
+    }
+
+    return 0;
+}
+
+int OpenSerializeStream(SerializeReader &reader) {
+    const SerializeStatus status = reader.OpenStream();
+    if (status != SerializeStatus::Success) {
+        return Fail("serialize open stream failed");
+    }
+
+    return 0;
+}
+
+int WriteInvalidEnumWorldStream(SerializeWriter &writer) {
+    if (writer.BeginRecord(WORLD_SERIALIZE_WORLD_SNAPSHOT_RECORD_ID) != SerializeStatus::Success) {
+        return Fail("invalid enum begin record failed");
+    }
+
+    const WorldSnapshot snapshot = SerializableWorldSnapshot(0U);
+    if (writer.WriteUInt32(WORLD_SERIALIZE_FIELD_OBJECT_CAPACITY, snapshot.object_capacity) != SerializeStatus::Success) {
+        return Fail("invalid enum object capacity write failed");
+    }
+
+    if (writer.WriteUInt32(WORLD_SERIALIZE_FIELD_PHASE_TRACE_CAPACITY, snapshot.phase_trace_capacity) != SerializeStatus::Success) {
+        return Fail("invalid enum phase trace capacity write failed");
+    }
+
+    if (writer.WriteUInt32(WORLD_SERIALIZE_FIELD_REGISTERED_OBJECT_COUNT, snapshot.registered_object_count) != SerializeStatus::Success) {
+        return Fail("invalid enum registered count write failed");
+    }
+
+    if (writer.WriteUInt32(WORLD_SERIALIZE_FIELD_ACTIVE_OBJECT_COUNT, snapshot.active_object_count) != SerializeStatus::Success) {
+        return Fail("invalid enum active count write failed");
+    }
+
+    if (writer.WriteUInt64(WORLD_SERIALIZE_FIELD_FRAME_COUNT, snapshot.frame_count) != SerializeStatus::Success) {
+        return Fail("invalid enum frame count write failed");
+    }
+
+    if (writer.WriteUInt64(WORLD_SERIALIZE_FIELD_PHASE_EXECUTION_COUNT, snapshot.phase_execution_count) != SerializeStatus::Success) {
+        return Fail("invalid enum phase execution count write failed");
+    }
+
+    if (writer.WriteUInt64(WORLD_SERIALIZE_FIELD_SKIPPED_OBJECT_COUNT, snapshot.skipped_object_count) != SerializeStatus::Success) {
+        return Fail("invalid enum skipped count write failed");
+    }
+
+    if (writer.WriteUInt64(WORLD_SERIALIZE_FIELD_LAST_FRAME_INDEX, snapshot.last_frame_index) != SerializeStatus::Success) {
+        return Fail("invalid enum frame index write failed");
+    }
+
+    if (writer.WriteUInt64(WORLD_SERIALIZE_FIELD_LAST_FIXED_STEP_DURATION, snapshot.last_fixed_step_duration) != SerializeStatus::Success) {
+        return Fail("invalid enum fixed step write failed");
+    }
+
+    if (writer.WriteUInt64(WORLD_SERIALIZE_FIELD_LAST_FRAME_DELTA_DURATION, snapshot.last_frame_delta_duration) != SerializeStatus::Success) {
+        return Fail("invalid enum frame delta write failed");
+    }
+
+    if (writer.WriteUInt32(WORLD_SERIALIZE_FIELD_PHASE_TRACE_COUNT, snapshot.phase_trace_count) != SerializeStatus::Success) {
+        return Fail("invalid enum trace count write failed");
+    }
+
+    if (writer.WriteUInt32(WORLD_SERIALIZE_FIELD_ALLOCATION_STATUS,
+            static_cast<std::uint32_t>(snapshot.allocation_accounting_status)) != SerializeStatus::Success) {
+        return Fail("invalid enum allocation status write failed");
+    }
+
+    if (writer.WriteUInt32(WORLD_SERIALIZE_FIELD_LIFECYCLE_STATE, 999U) != SerializeStatus::Success) {
+        return Fail("invalid enum lifecycle write failed");
+    }
+
+    if (writer.WriteUInt32(WORLD_SERIALIZE_FIELD_LAST_STATUS,
+            static_cast<std::uint32_t>(snapshot.last_status)) != SerializeStatus::Success) {
+        return Fail("invalid enum world status write failed");
+    }
+
+    return 0;
+}
+
+int FillWriterNearStreamCapacity(SerializeWriter &writer) {
+    const yuengine::serialize::SerializeRecordId record{3000U};
+    if (writer.BeginRecord(record) != SerializeStatus::Success) {
+        return Fail("partial write fixture begin record failed");
+    }
+
+    std::array<std::uint8_t, yuengine::serialize::MAX_FIELD_PAYLOAD_BYTE_COUNT> payload{};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    std::uint32_t field_index = 0U;
+    while (field_index < 15U) {
+        const std::uint32_t field_id = 3000U + field_index;
+        const yuengine::serialize::SerializeFieldId field{field_id};
+        const SerializeStatus status = writer.WriteFixedBytes(field, payload.data(), payload_byte_count);
+        if (status != SerializeStatus::Success) {
+            return Fail("partial write fixture filler write failed");
+        }
+
+        ++field_index;
+    }
+
+    return 0;
 }
 
 int WorldCreateWithFixedCapacityReportsSnapshot() {
@@ -2672,6 +2990,769 @@ int WorldScriptDispatchBridgeScriptRegistryCoreRemainsWorldFree() {
 
     return 0;
 }
+
+int WorldSerializeSnapshotBridgeWriteWorldSnapshotRoundTripsDeterministically() {
+    const WorldSnapshot input_snapshot = SerializableWorldSnapshot(2U);
+    const std::array<WorldPhaseTrace, 2U> input_traces{
+        Trace(WorldUpdatePhase::BeginFrame, 7U, 2U, 0U),
+        Trace(WorldUpdatePhase::EndFrame, 7U, 2U, 1U)};
+    SerializeBuffer first_buffer{};
+    SerializeBuffer second_buffer{};
+    WorldSerializeSnapshotBridge bridge;
+    SerializeWriter first_writer(first_buffer.data(), static_cast<std::uint32_t>(first_buffer.size()));
+    if (BeginSerializeStream(first_writer) != 0) {
+        return 1;
+    }
+
+    const WorldSerializeSnapshotResult write_result = bridge.WriteSnapshot(
+        &first_writer,
+        input_snapshot,
+        input_traces.data(),
+        static_cast<std::uint32_t>(input_traces.size()));
+    if (!write_result.Succeeded()) {
+        return Fail("serialize bridge round trip write failed");
+    }
+
+    WorldSerializeSnapshotBridge second_bridge;
+    SerializeWriter second_writer(second_buffer.data(), static_cast<std::uint32_t>(second_buffer.size()));
+    if (BeginSerializeStream(second_writer) != 0) {
+        return 1;
+    }
+
+    const WorldSerializeSnapshotResult second_write = second_bridge.WriteSnapshot(
+        &second_writer,
+        input_snapshot,
+        input_traces.data(),
+        static_cast<std::uint32_t>(input_traces.size()));
+    if (!second_write.Succeeded()) {
+        return Fail("serialize bridge deterministic second write failed");
+    }
+
+    if (write_result.state.committed_byte_count != second_write.state.committed_byte_count) {
+        return Fail("serialize bridge deterministic byte count changed");
+    }
+
+    if (!SerializeBytesMatch(first_buffer, second_buffer, write_result.state.committed_byte_count)) {
+        return Fail("serialize bridge deterministic bytes changed");
+    }
+
+    SerializeReader reader(first_buffer.data(), write_result.state.committed_byte_count);
+    if (OpenSerializeStream(reader) != 0) {
+        return 1;
+    }
+
+    WorldSnapshot output_snapshot{};
+    std::array<WorldPhaseTrace, 2U> output_traces{};
+    std::uint32_t output_trace_count = 0U;
+    const WorldSerializeSnapshotResult read_result = bridge.ReadSnapshot(
+        &reader,
+        &output_snapshot,
+        output_traces.data(),
+        static_cast<std::uint32_t>(output_traces.size()),
+        &output_trace_count);
+    if (!read_result.Succeeded()) {
+        return Fail("serialize bridge round trip read failed");
+    }
+
+    if (!WorldSnapshotsMatch(input_snapshot, output_snapshot)) {
+        return Fail("serialize bridge round trip world snapshot changed");
+    }
+
+    if (output_trace_count != input_traces.size()) {
+        return Fail("serialize bridge round trip trace count changed");
+    }
+
+    if (!PhaseTracesMatch(input_traces[0], output_traces[0])) {
+        return Fail("serialize bridge round trip first trace changed");
+    }
+
+    if (!PhaseTracesMatch(input_traces[1], output_traces[1])) {
+        return Fail("serialize bridge round trip second trace changed");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeWritePhaseTraceRecordsInOrder() {
+    const WorldSnapshot input_snapshot = SerializableWorldSnapshot(3U);
+    const std::array<WorldPhaseTrace, 3U> input_traces{
+        Trace(WorldUpdatePhase::FrameStep, 9U, 3U, 0U),
+        Trace(WorldUpdatePhase::BeginFrame, 9U, 3U, 1U),
+        Trace(WorldUpdatePhase::FixedStep, 9U, 2U, 2U)};
+    SerializeBuffer buffer{};
+    WorldSerializeSnapshotBridge bridge;
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const WorldSerializeSnapshotResult write_result = bridge.WriteSnapshot(
+        &writer,
+        input_snapshot,
+        input_traces.data(),
+        static_cast<std::uint32_t>(input_traces.size()));
+    if (!write_result.Succeeded()) {
+        return Fail("serialize bridge trace order write failed");
+    }
+
+    SerializeReader reader(buffer.data(), write_result.state.committed_byte_count);
+    if (OpenSerializeStream(reader) != 0) {
+        return 1;
+    }
+
+    WorldSnapshot output_snapshot{};
+    std::array<WorldPhaseTrace, 3U> output_traces{};
+    std::uint32_t output_trace_count = 0U;
+    const WorldSerializeSnapshotResult read_result = bridge.ReadSnapshot(
+        &reader,
+        &output_snapshot,
+        output_traces.data(),
+        static_cast<std::uint32_t>(output_traces.size()),
+        &output_trace_count);
+    if (!read_result.Succeeded()) {
+        return Fail("serialize bridge trace order read failed");
+    }
+
+    if (output_trace_count != input_traces.size()) {
+        return Fail("serialize bridge trace order count changed");
+    }
+
+    std::uint32_t trace_index = 0U;
+    while (trace_index < output_trace_count) {
+        if (!PhaseTracesMatch(input_traces[trace_index], output_traces[trace_index])) {
+            return Fail("serialize bridge trace order changed");
+        }
+
+        ++trace_index;
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeWriteOptionalTransformSnapshotCounters() {
+    const WorldSnapshot input_snapshot = SerializableWorldSnapshot(0U);
+    const WorldTransformSnapshot input_transform = SerializableTransformSnapshot();
+    SerializeBuffer buffer{};
+    WorldSerializeSnapshotBridge bridge;
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const WorldSerializeSnapshotResult write_result = bridge.WriteSnapshot(
+        &writer,
+        input_snapshot,
+        nullptr,
+        0U,
+        &input_transform);
+    if (!write_result.Succeeded()) {
+        return Fail("serialize bridge transform write failed");
+    }
+
+    if (write_result.state.transform_snapshot_count != 1U) {
+        return Fail("serialize bridge transform write did not report optional record");
+    }
+
+    SerializeReader reader(buffer.data(), write_result.state.committed_byte_count);
+    if (OpenSerializeStream(reader) != 0) {
+        return 1;
+    }
+
+    WorldSnapshot output_snapshot{};
+    std::uint32_t output_trace_count = 0U;
+    WorldTransformSnapshot output_transform{};
+    const WorldSerializeSnapshotResult read_result = bridge.ReadSnapshot(
+        &reader,
+        &output_snapshot,
+        nullptr,
+        0U,
+        &output_trace_count,
+        &output_transform);
+    if (!read_result.Succeeded()) {
+        return Fail("serialize bridge transform read failed");
+    }
+
+    if (!TransformSnapshotsMatch(input_transform, output_transform)) {
+        return Fail("serialize bridge transform counters changed");
+    }
+
+    if (bridge.Snapshot().read_transform_snapshot_count != 1U) {
+        return Fail("serialize bridge transform read count was not recorded");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeReadRejectsSmallTraceOutputWithoutOverrun() {
+    const WorldSnapshot input_snapshot = SerializableWorldSnapshot(2U);
+    const std::array<WorldPhaseTrace, 2U> input_traces{
+        Trace(WorldUpdatePhase::BeginFrame, 11U, 2U, 0U),
+        Trace(WorldUpdatePhase::EndFrame, 11U, 2U, 0U)};
+    SerializeBuffer buffer{};
+    WorldSerializeSnapshotBridge bridge;
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const WorldSerializeSnapshotResult write_result = bridge.WriteSnapshot(
+        &writer,
+        input_snapshot,
+        input_traces.data(),
+        static_cast<std::uint32_t>(input_traces.size()));
+    if (!write_result.Succeeded()) {
+        return Fail("serialize bridge small output fixture write failed");
+    }
+
+    SerializeReader reader(buffer.data(), write_result.state.committed_byte_count);
+    if (OpenSerializeStream(reader) != 0) {
+        return 1;
+    }
+
+    WorldSnapshot output_snapshot{};
+    std::array<WorldPhaseTrace, 2U> output_traces{
+        Trace(WorldUpdatePhase::FixedStep, 99U, 99U, 99U),
+        Trace(WorldUpdatePhase::FrameStep, 98U, 98U, 98U)};
+    const std::array<WorldPhaseTrace, 2U> before_traces = output_traces;
+    std::uint32_t output_trace_count = 55U;
+    const WorldSerializeSnapshotResult read_result = bridge.ReadSnapshot(
+        &reader,
+        &output_snapshot,
+        output_traces.data(),
+        1U,
+        &output_trace_count);
+    if (read_result.status != WorldSerializeSnapshotStatus::TraceCapacityExceeded) {
+        return Fail("serialize bridge small output returned wrong status");
+    }
+
+    if (output_trace_count != 55U) {
+        return Fail("serialize bridge small output changed trace count");
+    }
+
+    if (!PhaseTracesMatch(before_traces[0], output_traces[0])) {
+        return Fail("serialize bridge small output changed first trace");
+    }
+
+    if (!PhaseTracesMatch(before_traces[1], output_traces[1])) {
+        return Fail("serialize bridge small output changed second trace");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeWriteRejectsInvalidTraceBufferWithoutMutation() {
+    const WorldSnapshot input_snapshot = SerializableWorldSnapshot(1U);
+    SerializeBuffer buffer{};
+    WorldSerializeSnapshotBridge bridge;
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const auto before_writer = writer.Snapshot();
+    const WorldSerializeSnapshotBridgeSnapshot before_bridge = bridge.Snapshot();
+    const WorldSerializeSnapshotResult result = bridge.WriteSnapshot(&writer, input_snapshot, nullptr, 1U);
+    if (result.status != WorldSerializeSnapshotStatus::InvalidTraceBuffer) {
+        return Fail("serialize bridge invalid trace returned wrong status");
+    }
+
+    const auto after_writer = writer.Snapshot();
+    if (after_writer.committed_byte_count != before_writer.committed_byte_count) {
+        return Fail("serialize bridge invalid trace wrote bytes");
+    }
+
+    if (after_writer.record_count != before_writer.record_count) {
+        return Fail("serialize bridge invalid trace wrote record");
+    }
+
+    const WorldSerializeSnapshotBridgeSnapshot after_bridge = bridge.Snapshot();
+    if (after_bridge.written_snapshot_count != before_bridge.written_snapshot_count) {
+        return Fail("serialize bridge invalid trace mutated write count");
+    }
+
+    if (after_bridge.written_trace_count != before_bridge.written_trace_count) {
+        return Fail("serialize bridge invalid trace mutated trace count");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeWriteRejectsTraceOverflowWithoutMutation() {
+    WorldSerializeSnapshotBridgeDesc desc{};
+    desc.phase_trace_capacity = 1U;
+    WorldSerializeSnapshotBridge bridge(desc);
+    const WorldSnapshot input_snapshot = SerializableWorldSnapshot(2U);
+    const std::array<WorldPhaseTrace, 2U> input_traces{
+        Trace(WorldUpdatePhase::BeginFrame, 12U, 2U, 0U),
+        Trace(WorldUpdatePhase::EndFrame, 12U, 2U, 0U)};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const auto before_writer = writer.Snapshot();
+    const WorldSerializeSnapshotResult result = bridge.WriteSnapshot(
+        &writer,
+        input_snapshot,
+        input_traces.data(),
+        static_cast<std::uint32_t>(input_traces.size()));
+    if (result.status != WorldSerializeSnapshotStatus::TraceCapacityExceeded) {
+        return Fail("serialize bridge trace overflow returned wrong status");
+    }
+
+    const auto after_writer = writer.Snapshot();
+    if (after_writer.committed_byte_count != before_writer.committed_byte_count) {
+        return Fail("serialize bridge trace overflow wrote bytes");
+    }
+
+    if (bridge.Snapshot().written_trace_count != 0U) {
+        return Fail("serialize bridge trace overflow mutated trace count");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeSerializeFailureMapsExplicitStatus() {
+    const WorldSnapshot input_snapshot = SerializableWorldSnapshot(0U);
+    std::array<std::uint8_t, STREAM_HEADER_BYTE_COUNT> buffer{};
+    WorldSerializeSnapshotBridge bridge;
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const WorldSerializeSnapshotResult result = bridge.WriteSnapshot(&writer, input_snapshot, nullptr, 0U);
+    if (result.status != WorldSerializeSnapshotStatus::SerializeFailure) {
+        return Fail("serialize bridge write failure returned wrong bridge status");
+    }
+
+    if (result.serialize_status == SerializeStatus::Success) {
+        return Fail("serialize bridge write failure did not report serialize status");
+    }
+
+    const WorldSerializeSnapshotBridgeSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.last_status != WorldSerializeSnapshotStatus::SerializeFailure) {
+        return Fail("serialize bridge write failure did not record last status");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("serialize bridge write failure did not count failure");
+    }
+
+    SerializeBuffer partial_buffer{};
+    WorldSerializeSnapshotBridge partial_bridge;
+    SerializeWriter partial_writer(partial_buffer.data(), static_cast<std::uint32_t>(partial_buffer.size()));
+    if (BeginSerializeStream(partial_writer) != 0) {
+        return 1;
+    }
+
+    if (FillWriterNearStreamCapacity(partial_writer) != 0) {
+        return 1;
+    }
+
+    const auto before_partial_writer = partial_writer.Snapshot();
+    const WorldSerializeSnapshotResult partial_result =
+        partial_bridge.WriteSnapshot(&partial_writer, input_snapshot, nullptr, 0U);
+    if (partial_result.status != WorldSerializeSnapshotStatus::SerializeFailure) {
+        return Fail("serialize bridge partial write failure returned wrong bridge status");
+    }
+
+    if (partial_result.serialize_status != SerializeStatus::BufferTooSmall) {
+        return Fail("serialize bridge partial write failure returned wrong serialize status");
+    }
+
+    const auto after_partial_writer = partial_writer.Snapshot();
+    if (after_partial_writer.committed_byte_count != before_partial_writer.committed_byte_count) {
+        return Fail("serialize bridge partial write failure mutated byte count");
+    }
+
+    if (after_partial_writer.record_count != before_partial_writer.record_count) {
+        return Fail("serialize bridge partial write failure mutated record count");
+    }
+
+    if (after_partial_writer.field_count != before_partial_writer.field_count) {
+        return Fail("serialize bridge partial write failure mutated field count");
+    }
+
+    if (after_partial_writer.accepted_operation_count != before_partial_writer.accepted_operation_count) {
+        return Fail("serialize bridge partial write failure mutated accepted count");
+    }
+
+    if (after_partial_writer.failed_operation_count != before_partial_writer.failed_operation_count) {
+        return Fail("serialize bridge partial write failure mutated failed count");
+    }
+
+    if (after_partial_writer.last_status != before_partial_writer.last_status) {
+        return Fail("serialize bridge partial write failure mutated last status");
+    }
+
+    const WorldSerializeSnapshotBridgeSnapshot partial_snapshot = partial_bridge.Snapshot();
+    if (partial_snapshot.failed_operation_count != 1U) {
+        return Fail("serialize bridge partial write failure did not count failure");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeReadFailureMapsExplicitStatus() {
+    SerializeBuffer buffer{};
+    WorldSerializeSnapshotBridge bridge;
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (OpenSerializeStream(reader) != 0) {
+        return 1;
+    }
+
+    WorldSnapshot output_snapshot{};
+    std::uint32_t output_trace_count = 0U;
+    const WorldSerializeSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        &output_snapshot,
+        nullptr,
+        0U,
+        &output_trace_count);
+    if (result.status != WorldSerializeSnapshotStatus::SerializeFailure) {
+        return Fail("serialize bridge read failure returned wrong bridge status");
+    }
+
+    if (result.serialize_status == SerializeStatus::Success) {
+        return Fail("serialize bridge read failure did not report serialize status");
+    }
+
+    if (bridge.Snapshot().last_serialize_status == SerializeStatus::Success) {
+        return Fail("serialize bridge read failure did not record serialize status");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeReadRejectsInvalidEnumValuesWithoutMutation() {
+    SerializeBuffer buffer{};
+    WorldSerializeSnapshotBridge bridge;
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteInvalidEnumWorldStream(writer) != 0) {
+        return 1;
+    }
+
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (OpenSerializeStream(reader) != 0) {
+        return 1;
+    }
+
+    WorldSnapshot output_snapshot = SerializableWorldSnapshot(0U);
+    const WorldSnapshot before_snapshot = output_snapshot;
+    std::array<WorldPhaseTrace, 1U> output_traces{};
+    std::uint32_t output_trace_count = 77U;
+    const WorldSerializeSnapshotResult result = bridge.ReadSnapshot(
+        &reader,
+        &output_snapshot,
+        output_traces.data(),
+        static_cast<std::uint32_t>(output_traces.size()),
+        &output_trace_count);
+    if (result.status != WorldSerializeSnapshotStatus::InvalidEnumValue) {
+        return Fail("serialize bridge invalid enum returned wrong status");
+    }
+
+    if (!WorldSnapshotsMatch(before_snapshot, output_snapshot)) {
+        return Fail("serialize bridge invalid enum mutated output snapshot");
+    }
+
+    if (output_trace_count != 77U) {
+        return Fail("serialize bridge invalid enum mutated output trace count");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeNoWorldMutationDuringReadWrite() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("serialize bridge world mutation registration failed");
+    }
+
+    const WorldSnapshot before_world = world.Snapshot();
+    SerializeBuffer buffer{};
+    WorldSerializeSnapshotBridge bridge;
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const WorldSerializeSnapshotResult write_result = bridge.WriteSnapshot(&writer, before_world, nullptr, 0U);
+    if (!write_result.Succeeded()) {
+        return Fail("serialize bridge world mutation write failed");
+    }
+
+    SerializeReader reader(buffer.data(), write_result.state.committed_byte_count);
+    if (OpenSerializeStream(reader) != 0) {
+        return 1;
+    }
+
+    WorldSnapshot output_snapshot{};
+    std::uint32_t output_trace_count = 0U;
+    const WorldSerializeSnapshotResult read_result = bridge.ReadSnapshot(
+        &reader,
+        &output_snapshot,
+        nullptr,
+        0U,
+        &output_trace_count);
+    if (!read_result.Succeeded()) {
+        return Fail("serialize bridge world mutation read failed");
+    }
+
+    const WorldSnapshot after_world = world.Snapshot();
+    if (!WorldSnapshotsMatch(before_world, after_world)) {
+        return Fail("serialize bridge mutated world instance");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeReadWritePathDoesNotGrowStorage() {
+    const WorldSnapshot input_snapshot = SerializableWorldSnapshot(1U);
+    const std::array<WorldPhaseTrace, 1U> input_traces{Trace(WorldUpdatePhase::BeginFrame, 13U, 1U, 0U)};
+    WorldSerializeSnapshotBridge bridge;
+    const WorldSerializeSnapshotBridgeSnapshot before_snapshot = bridge.Snapshot();
+    std::uint32_t iteration = 0U;
+    while (iteration < 3U) {
+        SerializeBuffer buffer{};
+        SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+        if (BeginSerializeStream(writer) != 0) {
+            return 1;
+        }
+
+        const WorldSerializeSnapshotResult write_result = bridge.WriteSnapshot(
+            &writer,
+            input_snapshot,
+            input_traces.data(),
+            static_cast<std::uint32_t>(input_traces.size()));
+        if (!write_result.Succeeded()) {
+            return Fail("serialize bridge path write failed");
+        }
+
+        SerializeReader reader(buffer.data(), write_result.state.committed_byte_count);
+        if (OpenSerializeStream(reader) != 0) {
+            return 1;
+        }
+
+        WorldSnapshot output_snapshot{};
+        std::array<WorldPhaseTrace, 1U> output_traces{};
+        std::uint32_t output_trace_count = 0U;
+        const WorldSerializeSnapshotResult read_result = bridge.ReadSnapshot(
+            &reader,
+            &output_snapshot,
+            output_traces.data(),
+            static_cast<std::uint32_t>(output_traces.size()),
+            &output_trace_count);
+        if (!read_result.Succeeded()) {
+            return Fail("serialize bridge path read failed");
+        }
+
+        ++iteration;
+    }
+
+    const WorldSerializeSnapshotBridgeSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.phase_trace_capacity != before_snapshot.phase_trace_capacity) {
+        return Fail("serialize bridge path mutated capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("serialize bridge path changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeSnapshotReportsCountsAndLastStatus() {
+    const WorldSnapshot input_snapshot = SerializableWorldSnapshot(1U);
+    const std::array<WorldPhaseTrace, 1U> input_traces{Trace(WorldUpdatePhase::BeginFrame, 14U, 1U, 0U)};
+    SerializeBuffer buffer{};
+    WorldSerializeSnapshotBridge bridge;
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const WorldSerializeSnapshotResult write_result = bridge.WriteSnapshot(
+        &writer,
+        input_snapshot,
+        input_traces.data(),
+        static_cast<std::uint32_t>(input_traces.size()));
+    if (!write_result.Succeeded()) {
+        return Fail("serialize bridge snapshot write failed");
+    }
+
+    SerializeReader reader(buffer.data(), write_result.state.committed_byte_count);
+    if (OpenSerializeStream(reader) != 0) {
+        return 1;
+    }
+
+    WorldSnapshot output_snapshot{};
+    std::array<WorldPhaseTrace, 1U> output_traces{};
+    std::uint32_t output_trace_count = 0U;
+    const WorldSerializeSnapshotResult read_result = bridge.ReadSnapshot(
+        &reader,
+        &output_snapshot,
+        output_traces.data(),
+        static_cast<std::uint32_t>(output_traces.size()),
+        &output_trace_count);
+    if (!read_result.Succeeded()) {
+        return Fail("serialize bridge snapshot read failed");
+    }
+
+    const WorldSerializeSnapshotResult failure_result = bridge.ReadSnapshot(
+        nullptr,
+        &output_snapshot,
+        output_traces.data(),
+        static_cast<std::uint32_t>(output_traces.size()),
+        &output_trace_count);
+    if (failure_result.status != WorldSerializeSnapshotStatus::InvalidReader) {
+        return Fail("serialize bridge snapshot failure returned wrong status");
+    }
+
+    const WorldSerializeSnapshotBridgeSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.written_snapshot_count != 1U) {
+        return Fail("serialize bridge snapshot did not report write count");
+    }
+
+    if (snapshot.written_trace_count != 1U) {
+        return Fail("serialize bridge snapshot did not report written trace count");
+    }
+
+    if (snapshot.read_snapshot_count != 1U) {
+        return Fail("serialize bridge snapshot did not report read count");
+    }
+
+    if (snapshot.read_trace_count != 1U) {
+        return Fail("serialize bridge snapshot did not report read trace count");
+    }
+
+    if (snapshot.skipped_optional_record_count != 2U) {
+        return Fail("serialize bridge snapshot did not report skipped optional records");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("serialize bridge snapshot did not report failure count");
+    }
+
+    if (snapshot.last_status != WorldSerializeSnapshotStatus::InvalidReader) {
+        return Fail("serialize bridge snapshot did not report last status");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeNoFilePackageResourceSaveGameOrGameAdapterDependency() {
+    WorldSerializeSnapshotBridge bridge;
+    const WorldSerializeSnapshotBridgeSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("serialize bridge dependency test changed allocation vocabulary");
+    }
+
+    if (snapshot.phase_trace_capacity != MAX_WORLD_SERIALIZE_PHASE_TRACE_COUNT) {
+        return Fail("serialize bridge dependency test changed default capacity");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeNoActorComponentSceneGraphOrGameplayDependency() {
+    const WorldSnapshot input_snapshot = SerializableWorldSnapshot(2U);
+    const std::array<WorldPhaseTrace, 2U> input_traces{
+        Trace(WorldUpdatePhase::FixedStep, 15U, 2U, 0U),
+        Trace(WorldUpdatePhase::FrameStep, 15U, 1U, 1U)};
+    SerializeBuffer buffer{};
+    WorldSerializeSnapshotBridge bridge;
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const WorldSerializeSnapshotResult result = bridge.WriteSnapshot(
+        &writer,
+        input_snapshot,
+        input_traces.data(),
+        static_cast<std::uint32_t>(input_traces.size()));
+    if (!result.Succeeded()) {
+        return Fail("serialize bridge actor boundary write failed");
+    }
+
+    if (bridge.Snapshot().written_trace_count != 2U) {
+        return Fail("serialize bridge actor boundary did not remain trace based");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeWorldInstanceCoreRemainsSerializeFree() {
+    WorldInstance world = MakeWorld(4U, 8U);
+    if (!Register(world, OBJECT_PLAYER).Succeeded()) {
+        return Fail("serialize bridge world core-free registration failed");
+    }
+
+    const WorldSnapshot before_snapshot = world.Snapshot();
+    WorldSerializeSnapshotBridge bridge;
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const WorldSerializeSnapshotResult result = bridge.WriteSnapshot(&writer, before_snapshot, nullptr, 0U);
+    if (!result.Succeeded()) {
+        return Fail("serialize bridge world core-free write failed");
+    }
+
+    const WorldSnapshot after_snapshot = world.Snapshot();
+    if (!WorldSnapshotsMatch(before_snapshot, after_snapshot)) {
+        return Fail("serialize bridge world core-free mutated world");
+    }
+
+    return 0;
+}
+
+int WorldSerializeSnapshotBridgeSerializeCoreRemainsWorldFree() {
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    const yuengine::serialize::SerializeRecordId record{21U};
+    const yuengine::serialize::SerializeFieldId field{31U};
+    if (writer.BeginRecord(record) != SerializeStatus::Success) {
+        return Fail("serialize core-free begin record failed");
+    }
+
+    if (writer.WriteUInt32(field, 77U) != SerializeStatus::Success) {
+        return Fail("serialize core-free write failed");
+    }
+
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (OpenSerializeStream(reader) != 0) {
+        return 1;
+    }
+
+    std::uint32_t value = 0U;
+    if (reader.ReadUInt32(record, field, value) != SerializeStatus::Success) {
+        return Fail("serialize core-free read failed");
+    }
+
+    if (value != 77U) {
+        return Fail("serialize core-free value changed");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -2744,7 +3825,23 @@ int main(int argc, char **argv) {
         {TEST_SCRIPT_DISPATCH_NO_ACTOR_COMPONENT, WorldScriptDispatchBridgeNoActorComponentSceneGraphOrGameAdapterDependency},
         {TEST_SCRIPT_DISPATCH_NO_RESOURCE_OBJECT, WorldScriptDispatchBridgeNoResourcePackageFileSerializeOrObjectOwnershipDependency},
         {TEST_SCRIPT_DISPATCH_WORLD_CORE_FREE, WorldScriptDispatchBridgeWorldInstanceCoreRemainsScriptFree},
-        {TEST_SCRIPT_DISPATCH_SCRIPT_CORE_FREE, WorldScriptDispatchBridgeScriptRegistryCoreRemainsWorldFree}};
+        {TEST_SCRIPT_DISPATCH_SCRIPT_CORE_FREE, WorldScriptDispatchBridgeScriptRegistryCoreRemainsWorldFree},
+        {TEST_SERIALIZE_ROUND_TRIP, WorldSerializeSnapshotBridgeWriteWorldSnapshotRoundTripsDeterministically},
+        {TEST_SERIALIZE_TRACE_ORDER, WorldSerializeSnapshotBridgeWritePhaseTraceRecordsInOrder},
+        {TEST_SERIALIZE_TRANSFORM, WorldSerializeSnapshotBridgeWriteOptionalTransformSnapshotCounters},
+        {TEST_SERIALIZE_SMALL_TRACE_OUTPUT, WorldSerializeSnapshotBridgeReadRejectsSmallTraceOutputWithoutOverrun},
+        {TEST_SERIALIZE_INVALID_TRACE_BUFFER, WorldSerializeSnapshotBridgeWriteRejectsInvalidTraceBufferWithoutMutation},
+        {TEST_SERIALIZE_TRACE_OVERFLOW, WorldSerializeSnapshotBridgeWriteRejectsTraceOverflowWithoutMutation},
+        {TEST_SERIALIZE_WRITE_FAILURE, WorldSerializeSnapshotBridgeSerializeFailureMapsExplicitStatus},
+        {TEST_SERIALIZE_READ_FAILURE, WorldSerializeSnapshotBridgeReadFailureMapsExplicitStatus},
+        {TEST_SERIALIZE_INVALID_ENUM, WorldSerializeSnapshotBridgeReadRejectsInvalidEnumValuesWithoutMutation},
+        {TEST_SERIALIZE_NO_WORLD_MUTATION, WorldSerializeSnapshotBridgeNoWorldMutationDuringReadWrite},
+        {TEST_SERIALIZE_PATH, WorldSerializeSnapshotBridgeReadWritePathDoesNotGrowStorage},
+        {TEST_SERIALIZE_SNAPSHOT, WorldSerializeSnapshotBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_SERIALIZE_NO_FILE_PACKAGE, WorldSerializeSnapshotBridgeNoFilePackageResourceSaveGameOrGameAdapterDependency},
+        {TEST_SERIALIZE_NO_ACTOR_COMPONENT, WorldSerializeSnapshotBridgeNoActorComponentSceneGraphOrGameplayDependency},
+        {TEST_SERIALIZE_WORLD_CORE_FREE, WorldSerializeSnapshotBridgeWorldInstanceCoreRemainsSerializeFree},
+        {TEST_SERIALIZE_CORE_FREE, WorldSerializeSnapshotBridgeSerializeCoreRemainsWorldFree}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

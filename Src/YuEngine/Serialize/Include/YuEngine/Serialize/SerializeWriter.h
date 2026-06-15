@@ -71,6 +71,22 @@ public:
      */
     SerializeStatus WriteFixedBytes(SerializeFieldId field, const std::uint8_t* bytes, std::uint32_t byte_count);
     /**
+     * @comment Returns the clamped byte capacity of the writer.
+     * @return Byte capacity.
+     */
+    std::uint32_t GetByteCapacity() const;
+    /**
+     * @comment Returns the remaining writable byte capacity.
+     * @return Remaining writable byte capacity.
+     */
+    std::uint32_t GetRemainingByteCapacity() const;
+    /**
+     * @comment Checks whether the writer can commit the requested byte count.
+     * @param byte_count Input byte count.
+     * @return True when the writer can commit the bytes; false otherwise.
+     */
+    bool CanCommitByteCount(std::uint32_t byte_count) const;
+    /**
      * @comment Returns a snapshot of the current state.
      * @return Snapshot value.
      */
