@@ -95,6 +95,7 @@ Phase 3 remains blocked from:
 | P3-GATE-014 | World Component Resource Binding Bridge | L5 over L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_014_WORLD_COMPONENT_RESOURCE_BINDING_BRIDGE.md`; narrow fixed-capacity binding from existing component attachment tuples to already-registered ResourceHandle values, caller-owned attachment/resource state, acquire/release atomicity, no resource loading, component payload/lifecycle, `WorldInstance` mutation, File/Package/render/audio/script/UI/tools/reports or Game Adapter dependency |
 | P3-GATE-015 | World Component Resource Binding Snapshot Bridge | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_015_WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_BRIDGE.md`; deterministic YuSerialize snapshot adapter over component-resource binding records only, caller-owned streams and output records, no automatic active restore, no resource acquire/release on read, no component payload/lifecycle, no `WorldInstance` mutation, no Object/File/Package/render/physics/audio/script/UI/tools/reports or Game Adapter dependency |
 | P3-GATE-016 | World Component Resource Binding Restore Bridge | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_016_WORLD_COMPONENT_RESOURCE_BINDING_RESTORE_BRIDGE.md`; explicit apply adapter from caller-owned component-resource binding snapshot records into active bindings, validation before mutation, resource acquire only through existing binding bridge, no stream parsing, no resource loading/package/file/render/audio/script/UI/tools/reports or Game Adapter dependency |
+| P3-GATE-017 | World Scene Assembly Snapshot Restore Coordinator | L5 | `NEEDS_ARCHITECTURE` | Proposed for review | Gate doc: `docs/gates/P3_GATE_017_WORLD_SCENE_ASSEMBLY_SNAPSHOT_RESTORE_COORDINATOR.md`; coordinator over caller-owned world sidecar records only, full assembly preflight before attachment or binding mutation, no scene loading/save policy/object construction/resource loading/render/audio/UI/tools/reports or Game Adapter dependency |
 
 ## Current Active Gates
 
@@ -231,6 +232,14 @@ Phase 3 remains blocked from:
   `ResourceRegistry` validation helper if the current registry surface cannot
   prove validation-before-mutation without acquire/release side effects. That
   helper must not add a `YuWorld` dependency to `YuResource`.
+- P3-GATE-016 first slice landed at `5c31c7c` with QA PASS and fast gate
+  `450/450`.
+- P3-GATE-017 is proposed from `5c31c7c` for a narrow world scene-assembly
+  snapshot/restore coordinator. The proposal is review-only until the assigned
+  boundary, implementability, and test lanes prove full assembly preflight
+  before active mutation. It must not authorize scene loading, save policy,
+  object construction, resource loading, component payload/lifecycle,
+  render/audio/physics/UI/tools/reports, or Game Adapter behavior.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.
@@ -255,6 +264,7 @@ Recently landed Phase 3 world/script slices:
 - `7dc34d7 [#ENG-059][Added]Add world component attachment snapshot bridge`
 - `994e079 [#ENG-061][Added]Add world component resource binding bridge`
 - `4994518 [#ENG-063][Added]Add world component resource binding snapshot bridge`
+- `5c31c7c [Added] Add world component resource binding restore bridge`
 
 Future Phase 3 work must extend from this baseline instead of recreating the
 same first slices.
@@ -271,15 +281,13 @@ same first slices.
 
 ## Immediate Next Steps
 
-1. Implement P3-GATE-016 only as the approved first slice. The implementation
-   must validate caller-owned decoded records before active mutation and keep
-   serialized parsing, package/file lookup, render/audio consumption, component
-   payload/lifecycle, tools, reports, and Game Adapter behavior out of scope.
-2. Treat the minimal const `ResourceRegistry` validation helper as required if
-   existing registry APIs cannot preflight repeated resource handles and
-   projected acquire budget without mutation. The helper must remain World-free
-   and must not acquire, release, load, decode, upload, or resolve resource
-   paths.
+1. Review P3-GATE-017 in parallel lanes before any implementation task is
+   created. The required decision point is whether scene assembly can prove full
+   preflight before component attachment or component-resource binding mutation.
+2. Keep P3-GATE-017 limited to caller-owned sidecar records and existing bridge
+   coordination. Do not use it to introduce scene loading, save policy, object
+   construction, resource loading, component payload/lifecycle, render/audio/
+   physics/UI/tools/reports, or Game Adapter behavior.
 3. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.
