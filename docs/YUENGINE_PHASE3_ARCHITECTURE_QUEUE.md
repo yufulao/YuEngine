@@ -81,6 +81,8 @@ Phase 3 remains blocked from:
 | --- | --- | --- | --- | --- | --- |
 | P3-GATE-001 | Object Identity And Lifetime Registry | L2-L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Bounded synthetic object registry only; no component model, world/scene, script binding, Resource mutation, reflection, serialization payload, UI/gameplay, tools, reports, or Game Adapter |
 | P3-GATE-002 | Serialization Value Stream | L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Bounded caller-provided-buffer value stream only; no File/package/Resource/object construction/reflection/script/scene/save/tool/report/Game Adapter scope |
+| P3-GATE-003 | Script Native Bridge | L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Bounded native call registry only; no VM, bytecode, reflection, world/scene, Resource/Package/File/Object/Serialize dependency, UI/gameplay/tools/reports/Game Adapter |
+| P3-GATE-004 | World Lifecycle Fixture | L5 | `NEEDS_ARCHITECTURE` | Gate prep active | Must wait for Script first slice stability before implementation; prepare lifecycle/update-phase boundary only |
 
 ## Current Active Gates
 
@@ -99,6 +101,16 @@ Phase 3 remains blocked from:
   primitive record/field encoding, explicit statuses, no-mutation failures, and
   diagnostics-disabled equivalence. Diagnostics availability must remain outside
   the serialization write/read result vocabulary.
+- P3-GATE-003 is approved from `32d4045` for a narrow `YuScript` native bridge
+  first slice. It may add only `YuScript`, `YuScriptTests`, and CMake/CTest
+  registration. It must use stable call IDs and caller-provided value slots, and
+  it must not introduce a VM, bytecode, reflection, world/scene ownership,
+  original-game services, reports, or dependencies on Resource/Package/File,
+  Object, Serialize, Kernel, Platform, Diagnostics, RHI, Audio, Input, UI,
+  Tools, or Game Adapter modules.
+- P3-GATE-004 is not approved for implementation. Its current work is boundary
+  preparation only: world lifecycle, update phases, ownership, fixed capacities,
+  and tests must be proposed after the Script first slice is stable.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.
@@ -124,5 +136,10 @@ Phase 3 remains blocked from:
 3. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.
-4. Do not use P3-GATE-002 to introduce File/package/Resource/object
+4. Architect may create a scoped `YuScript` native bridge implementation handoff
+   from P3-GATE-003, preserving fixed-capacity storage, stable call IDs, and
+   no-hot-path-allocation test requirements.
+5. Prepare, but do not implement, `YuWorld` lifecycle/update-phase first slice
+   until P3-GATE-004 is explicit and Script first slice is stable.
+6. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
    construction/reflection/script/scene/save/tool/report/Game Adapter scope.
