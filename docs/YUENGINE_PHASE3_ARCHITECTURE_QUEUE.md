@@ -84,6 +84,7 @@ Phase 3 remains blocked from:
 | P3-GATE-003 | Script Native Bridge | L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Bounded native call registry only; no VM, bytecode, reflection, world/scene, Resource/Package/File/Object/Serialize dependency, UI/gameplay/tools/reports/Game Adapter |
 | P3-GATE-004 | World Lifecycle Fixture | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_004_WORLD_LIFECYCLE_FIXTURE.md`; bounded world lifecycle/update fixture only, no Script callback, actor/component/transform, Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
 | P3-GATE-005 | World Kernel Module Bridge | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_005_WORLD_KERNEL_MODULE_BRIDGE.md`; narrow World-to-Kernel module adapter only, no Script callback, actor/component/transform, Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
+| P3-GATE-006 | World Object Identity Bridge | L5 over L2-L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_006_WORLD_OBJECT_IDENTITY_BRIDGE.md`; narrow WorldObjectId-to-ObjectHandle adapter only, `WorldInstance` core remains Object-free, no Script callback, actor/component/transform, Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
 
 ## Current Active Gates
 
@@ -124,6 +125,15 @@ Phase 3 remains blocked from:
   headers. It must not introduce Script callbacks, actor/component/transform
   hierarchy, Resource/Package/File, render/audio/physics/UI/tools/reports, Game
   Adapter behavior, or copied UE or Unity API shape.
+- P3-GATE-006 is approved from `86517f8` for a narrow World object identity
+  bridge. It may add only `WorldObjectIdentityBridge` adapter files under
+  `YuWorld`, `Tests/World` coverage, and CMake/CTest registration. The first
+  slice maps bounded `WorldObjectId` values to generation-checked `YuObject`
+  `ObjectHandle` values through an adapter; `WorldInstance` core files must
+  remain Object-free. It must not introduce Script callbacks,
+  actor/component/transform hierarchy, Resource/Package/File, render/audio/
+  physics/UI/tools/reports, Game Adapter behavior, or copied UE or Unity API
+  shape.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.
@@ -158,5 +168,9 @@ Phase 3 remains blocked from:
 6. Architect may create a scoped `WorldKernelModule` bridge implementation
    handoff from P3-GATE-005, preserving World core independence from Kernel and
    blocking Script callback, actor/component, and resource/package/file scope.
-7. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
+7. Architect may create a scoped `WorldObjectIdentityBridge` implementation
+   handoff from P3-GATE-006, preserving `WorldInstance` core independence from
+   Object and blocking Script callback, actor/component, and resource/package/
+   file scope.
+8. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
    construction/reflection/script/scene/save/tool/report/Game Adapter scope.
