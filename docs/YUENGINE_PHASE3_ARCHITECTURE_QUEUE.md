@@ -98,7 +98,7 @@ Phase 3 remains blocked from:
 | P3-GATE-017 | World Scene Assembly Snapshot Restore Coordinator | L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_017_WORLD_SCENE_ASSEMBLY_SNAPSHOT_RESTORE_COORDINATOR.md`; sidecar-only coordinator over caller-owned component attachment and component-resource binding records, full assembly preflight before attachment or binding mutation, no manifest stream, no object/transform active restore, no scene loading/save policy/object construction/resource loading/render/audio/UI/tools/reports or Game Adapter dependency |
 | P3-GATE-018 | World Scene Assembly Manifest Stream Bridge | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_018_WORLD_SCENE_ASSEMBLY_MANIFEST_STREAM_BRIDGE.md`; manifest/stream-only envelope over caller-owned component attachment and component-resource binding snapshot records, no active restore, no object/transform restore, no scene loading/save policy/object construction/resource loading/File/Package/render/audio/UI/tools/reports or Game Adapter dependency |
 | P3-GATE-019 | World Scene Object Transform Restore Bridge | L5 over L2-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P3_GATE_019_WORLD_SCENE_OBJECT_TRANSFORM_RESTORE_BRIDGE.md`; active restore over caller-owned object identity and transform records only, no object construction, no scene loading/save policy, no component payload/lifecycle, no File/Package/Resource loading or Game Adapter dependency |
-| P3-GATE-020 | World Scene Object Transform Manifest Stream Bridge | L5 over L2-L5 | `PROPOSED_FOR_REVIEW` | Proposed for review | Gate doc: `docs/gates/P3_GATE_020_WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_STREAM_BRIDGE.md`; stream-only envelope over caller-owned P3-GATE-019 object identity and transform restore records, no active restore, object construction, scene loading/save policy, component payload/lifecycle, File/Package/Resource loading, or Game Adapter dependency |
+| P3-GATE-020 | World Scene Object Transform Manifest Stream Bridge | L5 over L2-L5 | `PROPOSED_FOR_REVIEW` | Proposed for review | Gate doc: `docs/gates/P3_GATE_020_WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_STREAM_BRIDGE.md`; stream-only envelope over caller-owned P3-GATE-019 object identity and transform restore records, deterministic fixed-byte transform payloads only, no active restore, object construction, scene loading/save policy, component payload/lifecycle, YuSerialize float/core format changes, File/Package/Resource loading, or Game Adapter dependency |
 
 ## Current Active Gates
 
@@ -276,8 +276,8 @@ Phase 3 remains blocked from:
   and transform restore records, analogous to the P3-GATE-018 manifest stream
   boundary. It is not a full active scene restore coordinator and does not
   authorize active restore, scene loading/save policy, object construction,
-  resource loading, File/Package work, component payload/lifecycle, or Game
-  Adapter scope.
+  YuSerialize float/core format changes, resource loading, File/Package work,
+  component payload/lifecycle, or Game Adapter scope.
 
 ## Implementation Baseline
 
@@ -336,9 +336,10 @@ same first slices.
    mutating `YuObject`.
 4. Review P3-GATE-020 before implementation. If accepted, it authorizes only
    manifest stream transport over caller-owned P3-GATE-019 object identity and
-   transform restore records. A decoded active restore coordinator remains a
-   later gate after stream coverage or separate cross-domain preflight and
-   transaction proof.
+   transform restore records, with deterministic fixed-byte transform payloads
+   and no YuSerialize float/core format changes. A decoded active restore
+   coordinator remains a later gate after stream coverage or separate
+   cross-domain preflight and transaction proof.
 5. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.

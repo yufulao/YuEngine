@@ -81,6 +81,8 @@ This gate owns a future first slice for:
   caller-owned identity and transform output buffers;
 - deterministic manifest version, identity record count, transform record
   count, and record ordering contracts;
+- deterministic fixed-byte transform payload encoding for `WorldTransformState`
+  values through existing YuSerialize fixed-bytes fields;
 - validation of writer pointers, reader pointers, input pointers, output
   pointers, output capacities, record counts, world object ids, object handles,
   transform records, duplicate identity world object ids, duplicate object
@@ -116,7 +118,9 @@ This gate does not own:
   Game Adapter behavior;
 - a unified four-record-family scene manifest for object/transform plus
   component attachment/resource binding records;
-- a full active scene restore coordinator.
+- a full active scene restore coordinator;
+- YuSerialize primitive type extensions, float field types, or core stream
+  format changes.
 
 ## Dependencies
 
@@ -134,6 +138,7 @@ Forbidden dependencies:
   Game Adapter modules;
 - Script, reflection, gameplay, editor, or import pipeline code;
 - dynamic containers used to hide stream decode staging;
+- YuSerialize field vocabulary changes, including float field types;
 - ownership changes in `WorldInstance`, `ObjectRegistry`, or active sidecar
   bridges;
 - runtime file paths, package names, asset names, string keys, or scene names.
@@ -186,6 +191,9 @@ Expected first-slice outputs:
 - Input scans must be bounded by explicit identity and transform record counts.
 - Writer byte budget must be computed and validated before the first write.
 - Reader output capacity must be validated before any output mutation.
+- Transform values must be encoded as deterministic bytes from explicit
+  `WorldTransformState` fields. The implementation must not write raw structure
+  padding, depend on compiler object layout, or add YuSerialize float fields.
 - If value-stream field or record caps would be exceeded, the first slice must
   use deterministic fixed-size chunks or require caller-owned scratch/output
   spans. It must not silently allocate heap storage.
@@ -219,6 +227,7 @@ Fast gate tests required before the slice can be considered complete:
 - `WorldSceneObjectTransformManifestStreamBridge_ReadRejectsDuplicateRecordsWithoutMutation`
 - `WorldSceneObjectTransformManifestStreamBridge_ReadRejectsTransformWithoutIdentityWithoutMutation`
 - `WorldSceneObjectTransformManifestStreamBridge_ReadDoesNotRestoreActiveIdentityOrTransformSidecars`
+- `WorldSceneObjectTransformManifestStreamBridge_WriteReadUsesDeterministicFixedByteTransformEncoding`
 - `WorldSceneObjectTransformManifestStreamBridge_WriteReadPathDoesNotGrowStorage`
 - `WorldSceneObjectTransformManifestStreamBridge_NoHiddenAllocation_UsesYuMemorySignal`
 - `WorldSceneObjectTransformManifestStreamBridge_SnapshotReportsCountsAndLastStatus`
