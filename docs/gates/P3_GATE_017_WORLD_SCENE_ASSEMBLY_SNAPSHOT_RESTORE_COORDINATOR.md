@@ -1,13 +1,14 @@
 # P3-GATE-017: World Scene Assembly Snapshot Restore Coordinator
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NEEDS_ARCHITECTURE`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P3-GATE-004, P3-GATE-006, P3-GATE-007, P3-GATE-009, P3-GATE-011, P3-GATE-013, P3-GATE-014, P3-GATE-015, P3-GATE-016
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0009, ADR-0014, ADR-0015
 Source baseline: `5c31c7c`
+Review closure: ENG-067F, ENG-067G, and ENG-067H PASS; ENG-067I readiness complete at `dc8bb9d`
 
 ## Layer
 

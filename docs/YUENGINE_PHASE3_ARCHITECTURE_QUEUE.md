@@ -95,7 +95,7 @@ Phase 3 remains blocked from:
 | P3-GATE-014 | World Component Resource Binding Bridge | L5 over L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_014_WORLD_COMPONENT_RESOURCE_BINDING_BRIDGE.md`; narrow fixed-capacity binding from existing component attachment tuples to already-registered ResourceHandle values, caller-owned attachment/resource state, acquire/release atomicity, no resource loading, component payload/lifecycle, `WorldInstance` mutation, File/Package/render/audio/script/UI/tools/reports or Game Adapter dependency |
 | P3-GATE-015 | World Component Resource Binding Snapshot Bridge | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_015_WORLD_COMPONENT_RESOURCE_BINDING_SNAPSHOT_BRIDGE.md`; deterministic YuSerialize snapshot adapter over component-resource binding records only, caller-owned streams and output records, no automatic active restore, no resource acquire/release on read, no component payload/lifecycle, no `WorldInstance` mutation, no Object/File/Package/render/physics/audio/script/UI/tools/reports or Game Adapter dependency |
 | P3-GATE-016 | World Component Resource Binding Restore Bridge | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_016_WORLD_COMPONENT_RESOURCE_BINDING_RESTORE_BRIDGE.md`; explicit apply adapter from caller-owned component-resource binding snapshot records into active bindings, validation before mutation, resource acquire only through existing binding bridge, no stream parsing, no resource loading/package/file/render/audio/script/UI/tools/reports or Game Adapter dependency |
-| P3-GATE-017 | World Scene Assembly Snapshot Restore Coordinator | L5 | `NEEDS_ARCHITECTURE` | Proposed for review amendment | Gate doc: `docs/gates/P3_GATE_017_WORLD_SCENE_ASSEMBLY_SNAPSHOT_RESTORE_COORDINATOR.md`; sidecar-only coordinator over caller-owned component attachment and component-resource binding records, full assembly preflight before attachment or binding mutation, no manifest stream, no object/transform active restore, no scene loading/save policy/object construction/resource loading/render/audio/UI/tools/reports or Game Adapter dependency |
+| P3-GATE-017 | World Scene Assembly Snapshot Restore Coordinator | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for sidecar-only first slice | Gate doc: `docs/gates/P3_GATE_017_WORLD_SCENE_ASSEMBLY_SNAPSHOT_RESTORE_COORDINATOR.md`; sidecar-only coordinator over caller-owned component attachment and component-resource binding records, full assembly preflight before attachment or binding mutation, no manifest stream, no object/transform active restore, no scene loading/save policy/object construction/resource loading/render/audio/UI/tools/reports or Game Adapter dependency |
 
 ## Current Active Gates
 
@@ -234,19 +234,19 @@ Phase 3 remains blocked from:
   helper must not add a `YuWorld` dependency to `YuResource`.
 - P3-GATE-016 first slice landed at `5c31c7c` with QA PASS and fast gate
   `450/450`.
-- P3-GATE-017 is proposed from `5c31c7c` for a narrow world scene-assembly
-  snapshot/restore coordinator. ENG-067B/C/D review returned
-  `NEEDS_ARCHITECTURE_AMENDMENT` / `NEEDS_TEST_AMENDMENT`, so the gate remains
-  review-only. The amended scope is sidecar-only: caller-owned component
+- P3-GATE-017 is approved for a narrow world scene-assembly snapshot/restore
+  coordinator first slice after ENG-067F/G/H amended review PASS and ENG-067I
+  readiness closure. The approved scope is sidecar-only: caller-owned component
   attachment records plus caller-owned component-resource binding records, with
   full assembly preflight before any active mutation. It does not authorize
   manifest streams, object identity restore, transform active restore, scene
   loading, save policy, object construction, resource loading, component
   payload/lifecycle, render/audio/physics/UI/tools/reports, or Game Adapter
   behavior.
-- No Phase 3 implementation task may be created until the owning gate is
-  approved and PM confirms sequencing against active Phase 1 and Phase 2 review
-  queues.
+- P3-GATE-017 implementation tasks may be created only within the approved
+  first-slice file list and dependency boundary. Any scene loader, manifest
+  stream, object/transform active restore, or resource/package expansion needs a
+  separate amended gate.
 
 ## Implementation Baseline
 
@@ -285,9 +285,10 @@ same first slices.
 
 ## Immediate Next Steps
 
-1. Re-review amended P3-GATE-017 before any implementation task is created. The
-   required decision point is whether sidecar-only assembly can prove full
-   preflight before component attachment or component-resource binding mutation.
+1. Start P3-GATE-017 implementation only from the approved sidecar-only first
+   slice: fixed-size assembly state, caller-owned record buffers, full preflight
+   before attachment or component-resource binding mutation, and no hidden
+   allocation or storage growth.
 2. Keep P3-GATE-017 limited to caller-owned component attachment records,
    caller-owned component-resource binding records, and existing bridge
    coordination. Do not use it to introduce manifest streams, object/transform
