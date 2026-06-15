@@ -82,7 +82,7 @@ Phase 3 remains blocked from:
 | P3-GATE-001 | Object Identity And Lifetime Registry | L2-L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Bounded synthetic object registry only; no component model, world/scene, script binding, Resource mutation, reflection, serialization payload, UI/gameplay, tools, reports, or Game Adapter |
 | P3-GATE-002 | Serialization Value Stream | L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Bounded caller-provided-buffer value stream only; no File/package/Resource/object construction/reflection/script/scene/save/tool/report/Game Adapter scope |
 | P3-GATE-003 | Script Native Bridge | L4 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Bounded native call registry only; no VM, bytecode, reflection, world/scene, Resource/Package/File/Object/Serialize dependency, UI/gameplay/tools/reports/Game Adapter |
-| P3-GATE-004 | World Lifecycle Fixture | L5 | `NEEDS_SCRIPT_STABILITY` | Gate prepared, blocked by Script stability | Gate doc: `docs/gates/P3_GATE_004_WORLD_LIFECYCLE_FIXTURE.md`; must wait for Script first slice stability before implementation |
+| P3-GATE-004 | World Lifecycle Fixture | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P3_GATE_004_WORLD_LIFECYCLE_FIXTURE.md`; bounded world lifecycle/update fixture only, no Script callback, actor/component/transform, Resource/Package/File, render/audio/physics/UI/tools/reports/Game Adapter |
 
 ## Current Active Gates
 
@@ -108,12 +108,14 @@ Phase 3 remains blocked from:
   original-game services, reports, or dependencies on Resource/Package/File,
   Object, Serialize, Kernel, Platform, Diagnostics, RHI, Audio, Input, UI,
   Tools, or Game Adapter modules.
-- P3-GATE-004 is prepared in
-  `docs/gates/P3_GATE_004_WORLD_LIFECYCLE_FIXTURE.md`, but it is not approved
-  for implementation. Its proposed first slice is bounded to world lifecycle,
-  update phases, ownership, fixed capacities, and tests. Implementation must
-  wait until the Script first slice is stable and this gate is explicitly updated
-  to `APPROVED_FOR_FIRST_SLICE`.
+- P3-GATE-004 is approved from `4d080f1` for a bounded `YuWorld` lifecycle
+  fixture first slice. It may add only `YuWorld`, `YuWorldTests`, and CMake/CTest
+  registration. It must prove deterministic lifecycle state transitions, fixed
+  update phase order, bounded fixture object registration, no-mutation failures,
+  and no hidden allocation in measured update paths. It must not introduce
+  Script callbacks, actor/component/transform hierarchy, Resource/Package/File,
+  render/audio/physics/UI/tools/reports, Game Adapter behavior, or copied UE or
+  Unity API shape.
 - No Phase 3 implementation task may be created until the owning gate is
   approved and PM confirms sequencing against active Phase 1 and Phase 2 review
   queues.
@@ -142,8 +144,8 @@ Phase 3 remains blocked from:
 4. Architect may create a scoped `YuScript` native bridge implementation handoff
    from P3-GATE-003, preserving fixed-capacity storage, stable call IDs, and
    no-hot-path-allocation test requirements.
-5. Keep `YuWorld` implementation blocked until Script first slice stability is
-   confirmed and P3-GATE-004 is explicitly updated from
-   `NEEDS_SCRIPT_STABILITY` to `APPROVED_FOR_FIRST_SLICE`.
+5. Architect may create a scoped `YuWorld` lifecycle fixture implementation
+   handoff from P3-GATE-004, preserving fixed-capacity storage, deterministic
+   phase ordering, and no-hot-path-allocation test requirements.
 6. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
    construction/reflection/script/scene/save/tool/report/Game Adapter scope.

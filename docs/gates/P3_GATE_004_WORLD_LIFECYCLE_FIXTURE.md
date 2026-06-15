@@ -1,23 +1,23 @@
 # P3-GATE-004: World Lifecycle Fixture
 
-Status: Prepared
-Requested decision: `NEEDS_SCRIPT_STABILITY`
-Current decision: `NEEDS_SCRIPT_STABILITY`
+Status: Approved
+Requested decision: `APPROVED_FOR_FIRST_SLICE`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙 when implementation exists
 Depends on: P3-GATE-001, P3-GATE-002, P3-GATE-003
 Related decisions: ADR-0002, ADR-0003, ADR-0005, ADR-0006, ADR-0014, ADR-0015
-Source baseline: `5ef0037`
+Source baseline: `4d080f1`
 
 ## Layer
 
 L5 runtime world systems.
 
-This gate prepares a bounded `YuWorld` lifecycle fixture. It does not approve
-implementation yet because the Script first slice is still in flight. The gate
-defines the minimum world ownership, lifecycle, update phases, performance
-signals, and tests needed before a later implementation handoff can be safely
-created.
+This gate approves a bounded `YuWorld` lifecycle fixture for the first
+implementation slice. The Script first slice is stable after ENG-039, but this
+World slice still owns only world lifecycle, update phases, bounded fixture
+entries, performance signals, and tests. Script callbacks and scene/gameplay
+behavior remain separate future gates.
 
 ## Reference Boundary
 
@@ -83,7 +83,7 @@ This gate does not own:
 
 ## Dependencies
 
-Allowed dependencies for a later first slice:
+Allowed dependencies for the first slice:
 
 - C++ standard library;
 - `YuMemory` only for accepted allocation/accounting vocabulary;
@@ -92,7 +92,8 @@ Allowed dependencies for a later first slice:
 
 Forbidden dependencies:
 
-- `YuScript` until ENG-039A is complete, reviewed, and the gate is updated;
+- `YuScript` in this first slice. Future Script-to-World integration must use a
+  separate adapter gate;
 - `YuSerialize`, `YuResource`, `YuPackage`, `YuFile`, `YuThread`, `YuPlatform`,
   `YuDiagnostics`, `YuRHI`, `YuAudio`, `YuInput`, UI, tools, reports, or game
   adapter modules;
@@ -284,18 +285,21 @@ WorldLifecycleTests.cpp
 WorldPerformanceTests.cpp
 ```
 
+## Approval Evidence
+
+This gate is approved for implementation after:
+
+1. ENG-039A completed the `YuScript` first slice.
+2. ENG-039-QA confirmed Script dependencies, hot paths, and tests.
+3. ENG-039 committed and pushed the stable Script bridge at `4d080f1`.
+4. The worktree sequencing check starts from a clean `main...origin/main` state.
+
 ## Implementation Guard
 
-This gate is prepared but not approved for implementation.
+The first implementation slice may now begin, but it must stay within the
+allowed first-slice paths and tests listed above.
 
-Implementation remains blocked until:
-
-1. ENG-039A completes the `YuScript` first slice.
-2. QA confirms Script dependencies, hot paths, and tests.
-3. Architecture updates this gate from `NEEDS_SCRIPT_STABILITY` to
-   `APPROVED_FOR_FIRST_SLICE`.
-4. A clean worktree sequencing check confirms no overlap with active Script
-   implementation files.
-
-No `YuWorld` source target, CMake target, or test target should be added before
-those conditions are satisfied.
+No Script callback policy, actor/component model, transform hierarchy, gameplay,
+resource/package/file loading, render/audio/physics integration, UI, tools,
+reports, Game Adapter behavior, or copied UE/Unity API shape may be added in this
+slice.
