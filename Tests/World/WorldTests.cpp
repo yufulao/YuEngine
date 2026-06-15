@@ -91,6 +91,7 @@
 #include "YuEngine/World/WorldObjectDesc.h"
 #include "YuEngine/World/WorldPhaseTrace.h"
 #include "YuEngine/World/WorldObjectIdentityBridge.h"
+#include "YuEngine/World/WorldObjectIdentityBridgeDesc.h"
 #include "YuEngine/World/WorldObjectIdentityResult.h"
 #include "YuEngine/World/WorldObjectIdentitySnapshot.h"
 #include "YuEngine/World/WorldObjectIdentityStatus.h"
@@ -121,6 +122,13 @@
 #include "YuEngine/World/WorldSceneAssemblyManifestStreamResult.h"
 #include "YuEngine/World/WorldSceneAssemblyManifestStreamSnapshot.h"
 #include "YuEngine/World/WorldSceneAssemblyManifestStreamStatus.h"
+#include "YuEngine/World/WorldSceneDecodedRestorePlan.h"
+#include "YuEngine/World/WorldSceneDecodedRestorePlanBridge.h"
+#include "YuEngine/World/WorldSceneDecodedRestorePlanBridgeDesc.h"
+#include "YuEngine/World/WorldSceneDecodedRestorePlanConstants.h"
+#include "YuEngine/World/WorldSceneDecodedRestorePlanResult.h"
+#include "YuEngine/World/WorldSceneDecodedRestorePlanSnapshot.h"
+#include "YuEngine/World/WorldSceneDecodedRestorePlanStatus.h"
 #include "YuEngine/World/WorldSceneObjectTransformManifestStreamBridge.h"
 #include "YuEngine/World/WorldSceneObjectTransformManifestStreamConstants.h"
 #include "YuEngine/World/WorldSceneObjectTransformManifestStreamDesc.h"
@@ -271,6 +279,7 @@ using yuengine::world::WorldLifecycleState;
 using yuengine::world::WorldObjectDesc;
 using yuengine::world::WorldObjectId;
 using yuengine::world::WorldObjectIdentityBridge;
+using yuengine::world::WorldObjectIdentityBridgeDesc;
 using yuengine::world::WorldObjectIdentityResult;
 using yuengine::world::WorldObjectIdentitySnapshot;
 using yuengine::world::WorldObjectIdentityStatus;
@@ -314,6 +323,13 @@ using yuengine::world::WorldSceneAssemblyManifestStreamDesc;
 using yuengine::world::WorldSceneAssemblyManifestStreamResult;
 using yuengine::world::WorldSceneAssemblyManifestStreamSnapshot;
 using yuengine::world::WorldSceneAssemblyManifestStreamStatus;
+using yuengine::world::WorldSceneDecodedRestorePlan;
+using yuengine::world::WorldSceneDecodedRestorePlanBridge;
+using yuengine::world::WorldSceneDecodedRestorePlanBridgeDesc;
+using yuengine::world::WorldSceneDecodedRestorePlanResult;
+using yuengine::world::WorldSceneDecodedRestorePlanSnapshot;
+using yuengine::world::WorldSceneDecodedRestorePlanStatus;
+using yuengine::world::MAX_WORLD_SCENE_DECODED_RESTORE_PLAN_RECORD_COUNT;
 using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_CHUNK_FIELD_RECORD_BYTES;
 using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIELD_IDENTITY_CHUNK_COUNT;
 using yuengine::world::WORLD_SCENE_OBJECT_TRANSFORM_MANIFEST_FIELD_IDENTITY_RECORD_COUNT;
@@ -793,6 +809,90 @@ constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NO_FILE_PACKAGE =
     "WorldSceneObjectTransformManifestStreamBridge_NoFilePackageResourceLoadDecodeUploadDependency";
 constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_CORE_FREE =
     "WorldSceneObjectTransformManifestStreamBridge_WorldObjectSerializeCoresRemainManifestFree";
+constexpr const char *TEST_SCENE_DECODED_PLAN_ORDER =
+    "WorldSceneDecodedRestorePlanBridge_PlansAllDecodedRecordFamiliesInDeterministicOrder";
+constexpr const char *TEST_SCENE_DECODED_PLAN_EMPTY =
+    "WorldSceneDecodedRestorePlanBridge_PlansEmptyDecodedScene";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NULL_IDENTITY_INPUT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsNullIdentityInputWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NULL_TRANSFORM_INPUT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsNullTransformInputWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NULL_ATTACHMENT_INPUT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsNullAttachmentInputWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NULL_BINDING_INPUT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsNullBindingInputWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NULL_PLAN_OUTPUT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsNullPlanOutputWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NULL_WORLD =
+    "WorldSceneDecodedRestorePlanBridge_RejectsNullWorldWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_OUTPUT_CAPACITY =
+    "WorldSceneDecodedRestorePlanBridge_RejectsPlanOutputCapacityTooSmallWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_IDENTITY_COUNT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsIdentityCountExceededWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_TRANSFORM_COUNT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsTransformCountExceededWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_ATTACHMENT_COUNT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsAttachmentCountExceededWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_BINDING_COUNT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsBindingCountExceededWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_INVALID_IDENTITY =
+    "WorldSceneDecodedRestorePlanBridge_RejectsInvalidIdentityRecordWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_MISSING_WORLD_OBJECT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsMissingWorldObjectWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_INVALID_TRANSFORM =
+    "WorldSceneDecodedRestorePlanBridge_RejectsInvalidTransformRecordWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_INVALID_ATTACHMENT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsInvalidAttachmentRecordWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_INVALID_BINDING =
+    "WorldSceneDecodedRestorePlanBridge_RejectsInvalidBindingRecordWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_DUPLICATE_IDENTITY =
+    "WorldSceneDecodedRestorePlanBridge_RejectsDuplicateIdentityWorldObjectIdWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_DUPLICATE_HANDLE =
+    "WorldSceneDecodedRestorePlanBridge_RejectsDuplicateObjectHandleWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_DUPLICATE_TRANSFORM =
+    "WorldSceneDecodedRestorePlanBridge_RejectsDuplicateTransformWorldObjectIdWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_DUPLICATE_ATTACHMENT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsDuplicateAttachmentTupleWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_DUPLICATE_BINDING =
+    "WorldSceneDecodedRestorePlanBridge_RejectsDuplicateBindingTupleWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_TRANSFORM_WITHOUT_IDENTITY =
+    "WorldSceneDecodedRestorePlanBridge_RejectsTransformWithoutIdentityWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_ATTACHMENT_WITHOUT_IDENTITY =
+    "WorldSceneDecodedRestorePlanBridge_RejectsAttachmentWithoutIdentityWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_BINDING_WITHOUT_ATTACHMENT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsBindingWithoutAttachmentWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_BINDING_WITHOUT_IDENTITY =
+    "WorldSceneDecodedRestorePlanBridge_RejectsBindingWithoutIdentityWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_OBJECT_PREFLIGHT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsObjectAcquirePreflightFailureWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_RESOURCE_PREFLIGHT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsResourceAcquirePreflightFailureWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NON_EMPTY_IDENTITY =
+    "WorldSceneDecodedRestorePlanBridge_RejectsNonEmptyIdentityDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NON_EMPTY_TRANSFORM =
+    "WorldSceneDecodedRestorePlanBridge_RejectsNonEmptyTransformDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NON_EMPTY_ATTACHMENT =
+    "WorldSceneDecodedRestorePlanBridge_RejectsNonEmptyAttachmentDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NON_EMPTY_BINDING =
+    "WorldSceneDecodedRestorePlanBridge_RejectsNonEmptyBindingDestinationWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_DESTINATION_CAPACITY =
+    "WorldSceneDecodedRestorePlanBridge_RejectsDestinationCapacityOverflowWithoutMutation";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NO_ACTIVE_RESTORE =
+    "WorldSceneDecodedRestorePlanBridge_DoesNotCallActiveRestoreBridges";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NO_REGISTRY_MUTATION =
+    "WorldSceneDecodedRestorePlanBridge_DoesNotMutateObjectOrResourceRegistries";
+constexpr const char *TEST_SCENE_DECODED_PLAN_PATH =
+    "WorldSceneDecodedRestorePlanBridge_PlanPathDoesNotGrowStorage";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NO_HIDDEN_ALLOCATION =
+    "WorldSceneDecodedRestorePlanBridge_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char *TEST_SCENE_DECODED_PLAN_COUNTERS =
+    "WorldSceneDecodedRestorePlanBridge_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NO_STREAM_FILE =
+    "WorldSceneDecodedRestorePlanBridge_NoStreamDecodeFilePackageResourceLoadOrGameAdapterDependency";
+constexpr const char *TEST_SCENE_DECODED_PLAN_NO_CONSTRUCTION =
+    "WorldSceneDecodedRestorePlanBridge_NoObjectConstructionTransformHierarchyOrComponentLifecycle";
+constexpr const char *TEST_SCENE_DECODED_PLAN_ACTIVE_RESTORE_FREE =
+    "WorldSceneDecodedRestorePlanBridge_WorldActiveRestoreBridgesRemainPlanFree";
 constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_ORDER =
     "WorldSceneObjectTransformRestoreBridge_RestoresIdentityAndTransformRecordsInInputOrder";
 constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_IDENTITY_ONLY =
@@ -963,6 +1063,9 @@ constexpr ScriptCallId SCRIPT_CALL_FAILING{15U};
 constexpr ScriptCallId SCRIPT_CALL_UNKNOWN{99U};
 using TestFunction = int (*)();
 using SerializeBuffer = std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT>;
+constexpr std::uint32_t DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY = 8U;
+using DecodedRestorePlanOutput =
+    std::array<WorldSceneDecodedRestorePlan, DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY>;
 
 class TestLogSink final : public yuengine::diagnostics::ILogSink {
 public:
@@ -15410,6 +15513,1553 @@ int WorldSceneObjectTransformRestoreBridgeObjectCoreRemainsWorldFree() {
     return 0;
 }
 
+struct DecodedRestorePlanFixture final {
+    WorldInstance world;
+    ObjectRegistry object_registry;
+    ResourceRegistry resource_registry;
+    std::array<ObjectRegistrationResult, 3U> objects{};
+    std::array<ResourceRegistrationResult, 3U> resources{};
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 3U> identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 3U> transforms{};
+    std::array<WorldComponentAttachmentSnapshotRecord, 3U> attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 3U> bindings{};
+
+    DecodedRestorePlanFixture()
+        : world(MakeWorld(8U, 8U)),
+          object_registry(MakeRegistry(8U, 8U)),
+          resource_registry(MakeResourceRegistry(8U, 8U)) {
+    }
+};
+
+struct DecodedRestorePlanCall final {
+    const WorldInstance *world = nullptr;
+    const ObjectRegistry *object_registry = nullptr;
+    const ResourceRegistry *resource_registry = nullptr;
+    const WorldObjectIdentityBridge *identity_destination = nullptr;
+    const WorldTransformBridge *transform_destination = nullptr;
+    const WorldComponentAttachmentBridge *attachment_destination = nullptr;
+    const WorldComponentResourceBindingBridge *binding_destination = nullptr;
+    const WorldSceneObjectTransformRestoreIdentityRecord *input_identities = nullptr;
+    std::uint32_t input_identity_count = 0U;
+    const WorldSceneObjectTransformRestoreTransformRecord *input_transforms = nullptr;
+    std::uint32_t input_transform_count = 0U;
+    const WorldComponentAttachmentSnapshotRecord *input_attachments = nullptr;
+    std::uint32_t input_attachment_count = 0U;
+    const WorldComponentResourceBindingSnapshotRecord *input_bindings = nullptr;
+    std::uint32_t input_binding_count = 0U;
+    WorldSceneDecodedRestorePlan *output_plans = nullptr;
+    std::uint32_t output_plan_capacity = 0U;
+};
+
+void FillDecodedRestorePlanSentinel(
+    WorldSceneDecodedRestorePlan *plans,
+    std::uint32_t plan_count) {
+    if (plans == nullptr) {
+        return;
+    }
+
+    std::uint32_t index = 0U;
+    while (index < plan_count) {
+        std::memset(&plans[index], 0x5A, sizeof(WorldSceneDecodedRestorePlan));
+        ++index;
+    }
+}
+
+int PrepareDecodedRestorePlanFixture(DecodedRestorePlanFixture *fixture) {
+    if (fixture == nullptr) {
+        return Fail("decoded restore plan fixture was null");
+    }
+
+    if (RegisterSceneObjectTransformWorldObjects(fixture->world) != 0) {
+        return 1;
+    }
+
+    if (CreateSceneObjectTransformObjects(fixture->object_registry, &fixture->objects) != 0) {
+        return 1;
+    }
+
+    fixture->resources[0] = RegisterResource(
+        fixture->resource_registry,
+        RESOURCE_TYPE_TEXTURE,
+        "decoded_plan_texture");
+    fixture->resources[1] = RegisterResource(
+        fixture->resource_registry,
+        RESOURCE_TYPE_AUDIO,
+        "decoded_plan_audio");
+    fixture->resources[2] = RegisterResource(
+        fixture->resource_registry,
+        RESOURCE_TYPE_MATERIAL,
+        "decoded_plan_material");
+    if (!fixture->resources[0].Succeeded()) {
+        return Fail("decoded restore plan texture registration failed");
+    }
+
+    if (!fixture->resources[1].Succeeded()) {
+        return Fail("decoded restore plan audio registration failed");
+    }
+
+    if (!fixture->resources[2].Succeeded()) {
+        return Fail("decoded restore plan material registration failed");
+    }
+
+    fixture->identities[0] = MakeSceneObjectTransformIdentityRecord(
+        OBJECT_PLAYER,
+        fixture->objects[0].handle);
+    fixture->identities[1] = MakeSceneObjectTransformIdentityRecord(
+        OBJECT_CAMERA,
+        fixture->objects[1].handle);
+    fixture->identities[2] = MakeSceneObjectTransformIdentityRecord(
+        OBJECT_EFFECT,
+        fixture->objects[2].handle);
+    fixture->transforms[0] = MakeSceneObjectTransformTransformRecord(
+        OBJECT_PLAYER,
+        Transform(910.0F));
+    fixture->transforms[1] = MakeSceneObjectTransformTransformRecord(
+        OBJECT_CAMERA,
+        Transform(920.0F));
+    fixture->transforms[2] = MakeSceneObjectTransformTransformRecord(
+        OBJECT_EFFECT,
+        Transform(930.0F));
+    fixture->attachments[0] = MakeSceneAttachmentRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY);
+    fixture->attachments[1] = MakeSceneAttachmentRecord(
+        OBJECT_CAMERA,
+        COMPONENT_TYPE_SECONDARY,
+        COMPONENT_SLOT_SECONDARY);
+    fixture->attachments[2] = MakeSceneAttachmentRecord(
+        OBJECT_EFFECT,
+        COMPONENT_TYPE_TERTIARY,
+        COMPONENT_SLOT_TERTIARY);
+    fixture->bindings[0] = MakeSceneBindingRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        fixture->resources[0].handle,
+        RESOURCE_TYPE_TEXTURE);
+    fixture->bindings[1] = MakeSceneBindingRecord(
+        OBJECT_CAMERA,
+        COMPONENT_TYPE_SECONDARY,
+        COMPONENT_SLOT_SECONDARY,
+        fixture->resources[1].handle,
+        RESOURCE_TYPE_AUDIO);
+    fixture->bindings[2] = MakeSceneBindingRecord(
+        OBJECT_EFFECT,
+        COMPONENT_TYPE_TERTIARY,
+        COMPONENT_SLOT_TERTIARY,
+        fixture->resources[2].handle,
+        RESOURCE_TYPE_MATERIAL);
+
+    return 0;
+}
+
+DecodedRestorePlanCall MakeDecodedRestorePlanCall(
+    DecodedRestorePlanFixture &fixture,
+    WorldSceneDecodedRestorePlan *output_plans,
+    std::uint32_t output_plan_capacity) {
+    DecodedRestorePlanCall call{};
+    call.world = &fixture.world;
+    call.object_registry = &fixture.object_registry;
+    call.resource_registry = &fixture.resource_registry;
+    call.input_identities = fixture.identities.data();
+    call.input_identity_count = 2U;
+    call.input_transforms = fixture.transforms.data();
+    call.input_transform_count = 2U;
+    call.input_attachments = fixture.attachments.data();
+    call.input_attachment_count = 2U;
+    call.input_bindings = fixture.bindings.data();
+    call.input_binding_count = 2U;
+    call.output_plans = output_plans;
+    call.output_plan_capacity = output_plan_capacity;
+    return call;
+}
+
+WorldSceneDecodedRestorePlanResult BuildDecodedRestorePlan(
+    WorldSceneDecodedRestorePlanBridge &bridge,
+    const DecodedRestorePlanCall &call) {
+    return bridge.Plan(
+        call.world,
+        call.object_registry,
+        call.resource_registry,
+        call.identity_destination,
+        call.transform_destination,
+        call.attachment_destination,
+        call.binding_destination,
+        call.input_identities,
+        call.input_identity_count,
+        call.input_transforms,
+        call.input_transform_count,
+        call.input_attachments,
+        call.input_attachment_count,
+        call.input_bindings,
+        call.input_binding_count,
+        call.output_plans,
+        call.output_plan_capacity);
+}
+
+int CheckDecodedRestorePlanOutput(
+    const WorldSceneDecodedRestorePlanResult &result,
+    const WorldSceneDecodedRestorePlan *plans,
+    std::uint32_t identity_count,
+    std::uint32_t transform_count,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count,
+    std::uint32_t projected_object_acquire_count,
+    std::uint32_t projected_resource_acquire_count) {
+    if (!result.Succeeded()) {
+        return Fail("decoded restore plan success status wrong");
+    }
+
+    if (plans == nullptr) {
+        return Fail("decoded restore plan output plan was null");
+    }
+
+    if (result.state.planned_identity_count != identity_count) {
+        return Fail("decoded restore plan result identity count wrong");
+    }
+
+    if (result.state.planned_transform_count != transform_count) {
+        return Fail("decoded restore plan result transform count wrong");
+    }
+
+    if (result.state.planned_attachment_count != attachment_count) {
+        return Fail("decoded restore plan result attachment count wrong");
+    }
+
+    if (result.state.planned_binding_count != binding_count) {
+        return Fail("decoded restore plan result binding count wrong");
+    }
+
+    if (result.state.projected_object_acquire_count != projected_object_acquire_count) {
+        return Fail("decoded restore plan result object acquire count wrong");
+    }
+
+    if (result.state.projected_resource_acquire_count != projected_resource_acquire_count) {
+        return Fail("decoded restore plan result resource acquire count wrong");
+    }
+
+    const std::uint32_t output_plan_count =
+        identity_count + transform_count + attachment_count + binding_count;
+    if (result.state.output_plan_count != output_plan_count) {
+        return Fail("decoded restore plan result output count wrong");
+    }
+
+    std::uint32_t output_index = 0U;
+    while (output_index < output_plan_count) {
+        const WorldSceneDecodedRestorePlan &plan = plans[output_index];
+        if (plan.status != WorldSceneDecodedRestorePlanStatus::Success) {
+            return Fail("decoded restore plan record status wrong");
+        }
+
+        if (plan.input_index >= output_plan_count) {
+            return Fail("decoded restore plan record input index wrong");
+        }
+
+        ++output_index;
+    }
+
+    std::uint32_t identity_index = 0U;
+    while (identity_index < identity_count) {
+        const WorldSceneDecodedRestorePlan &plan = plans[identity_index];
+        if (plan.family != yuengine::world::WorldSceneDecodedRestorePlanRecordFamily::Identity) {
+            return Fail("decoded restore plan identity family order wrong");
+        }
+
+        if (plan.input_index != identity_index) {
+            return Fail("decoded restore plan identity input index wrong");
+        }
+
+        if (plan.projected_object_acquire_count != 1U) {
+            return Fail("decoded restore plan identity projected acquire count wrong");
+        }
+
+        ++identity_index;
+    }
+
+    const std::uint32_t transform_offset = identity_count;
+    std::uint32_t transform_index = 0U;
+    while (transform_index < transform_count) {
+        const WorldSceneDecodedRestorePlan &plan = plans[transform_offset + transform_index];
+        if (plan.family != yuengine::world::WorldSceneDecodedRestorePlanRecordFamily::Transform) {
+            return Fail("decoded restore plan transform family order wrong");
+        }
+
+        if (plan.input_index != transform_index) {
+            return Fail("decoded restore plan transform input index wrong");
+        }
+
+        ++transform_index;
+    }
+
+    const std::uint32_t attachment_offset = transform_offset + transform_count;
+    std::uint32_t attachment_index = 0U;
+    while (attachment_index < attachment_count) {
+        const WorldSceneDecodedRestorePlan &plan = plans[attachment_offset + attachment_index];
+        if (plan.family != yuengine::world::WorldSceneDecodedRestorePlanRecordFamily::Attachment) {
+            return Fail("decoded restore plan attachment family order wrong");
+        }
+
+        if (plan.input_index != attachment_index) {
+            return Fail("decoded restore plan attachment input index wrong");
+        }
+
+        ++attachment_index;
+    }
+
+    const std::uint32_t binding_offset = attachment_offset + attachment_count;
+    std::uint32_t binding_index = 0U;
+    while (binding_index < binding_count) {
+        const WorldSceneDecodedRestorePlan &plan = plans[binding_offset + binding_index];
+        if (plan.family != yuengine::world::WorldSceneDecodedRestorePlanRecordFamily::Binding) {
+            return Fail("decoded restore plan binding family order wrong");
+        }
+
+        if (plan.input_index != binding_index) {
+            return Fail("decoded restore plan binding input index wrong");
+        }
+
+        if (plan.projected_resource_acquire_count != 1U) {
+            return Fail("decoded restore plan binding projected acquire count wrong");
+        }
+
+        ++binding_index;
+    }
+
+    return 0;
+}
+
+int ExpectDecodedRestorePlanSuccessWithoutMutation(
+    WorldSceneDecodedRestorePlanBridge &bridge,
+    const DecodedRestorePlanCall &call,
+    std::uint32_t identity_count,
+    std::uint32_t transform_count,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count,
+    std::uint32_t projected_object_acquire_count,
+    std::uint32_t projected_resource_acquire_count) {
+    const bool has_world = call.world != nullptr;
+    WorldSnapshot before_world{};
+    if (has_world) {
+        before_world = call.world->Snapshot();
+    }
+
+    const bool has_object_registry = call.object_registry != nullptr;
+    ObjectSnapshot before_object_registry{};
+    if (has_object_registry) {
+        before_object_registry = call.object_registry->Snapshot();
+    }
+
+    const bool has_resource_registry = call.resource_registry != nullptr;
+    ResourceSnapshot before_resource_registry{};
+    if (has_resource_registry) {
+        before_resource_registry = call.resource_registry->Snapshot();
+    }
+
+    const bool has_identity_destination = call.identity_destination != nullptr;
+    WorldObjectIdentitySnapshot before_identity_destination{};
+    if (has_identity_destination) {
+        before_identity_destination = call.identity_destination->Snapshot();
+    }
+
+    const bool has_transform_destination = call.transform_destination != nullptr;
+    WorldTransformSnapshot before_transform_destination{};
+    if (has_transform_destination) {
+        before_transform_destination = call.transform_destination->Snapshot();
+    }
+
+    const bool has_attachment_destination = call.attachment_destination != nullptr;
+    WorldComponentAttachmentSnapshot before_attachment_destination{};
+    if (has_attachment_destination) {
+        before_attachment_destination = call.attachment_destination->Snapshot();
+    }
+
+    const bool has_binding_destination = call.binding_destination != nullptr;
+    WorldComponentResourceBindingSnapshot before_binding_destination{};
+    if (has_binding_destination) {
+        before_binding_destination = call.binding_destination->Snapshot();
+    }
+
+    const WorldSceneDecodedRestorePlanResult result = BuildDecodedRestorePlan(bridge, call);
+    if (call.output_plans == nullptr) {
+        return Fail("decoded restore plan success output was null");
+    }
+
+    if (CheckDecodedRestorePlanOutput(
+            result,
+            call.output_plans,
+            identity_count,
+            transform_count,
+            attachment_count,
+            binding_count,
+            projected_object_acquire_count,
+            projected_resource_acquire_count) != 0) {
+        return 1;
+    }
+
+    if (has_world) {
+        const WorldSnapshot after_world = call.world->Snapshot();
+        if (!WorldSnapshotsMatch(before_world, after_world)) {
+            return Fail("decoded restore plan success mutated world");
+        }
+    }
+
+    if (has_object_registry) {
+        const ObjectSnapshot after_object_registry = call.object_registry->Snapshot();
+        if (!ObjectSnapshotsMatch(before_object_registry, after_object_registry)) {
+            return Fail("decoded restore plan success mutated object registry");
+        }
+    }
+
+    if (has_resource_registry) {
+        const ResourceSnapshot after_resource_registry = call.resource_registry->Snapshot();
+        if (!ResourceSnapshotsMatch(before_resource_registry, after_resource_registry)) {
+            return Fail("decoded restore plan success mutated resource registry");
+        }
+    }
+
+    if (has_identity_destination) {
+        const WorldObjectIdentitySnapshot after_identity_destination =
+            call.identity_destination->Snapshot();
+        if (!ObjectIdentitySnapshotsMatch(before_identity_destination, after_identity_destination)) {
+            return Fail("decoded restore plan success mutated identity destination");
+        }
+    }
+
+    if (has_transform_destination) {
+        const WorldTransformSnapshot after_transform_destination =
+            call.transform_destination->Snapshot();
+        if (!TransformSnapshotsMatch(before_transform_destination, after_transform_destination)) {
+            return Fail("decoded restore plan success mutated transform destination");
+        }
+    }
+
+    if (has_attachment_destination) {
+        const WorldComponentAttachmentSnapshot after_attachment_destination =
+            call.attachment_destination->Snapshot();
+        if (!ComponentAttachmentSnapshotsMatch(before_attachment_destination, after_attachment_destination)) {
+            return Fail("decoded restore plan success mutated attachment destination");
+        }
+    }
+
+    if (has_binding_destination) {
+        const WorldComponentResourceBindingSnapshot after_binding_destination =
+            call.binding_destination->Snapshot();
+        if (!ComponentResourceBindingSnapshotsMatch(before_binding_destination, after_binding_destination)) {
+            return Fail("decoded restore plan success mutated binding destination");
+        }
+    }
+
+    return 0;
+}
+
+int ExpectDecodedRestorePlanFailureWithoutMutation(
+    WorldSceneDecodedRestorePlanBridge &bridge,
+    const DecodedRestorePlanCall &call,
+    WorldSceneDecodedRestorePlanStatus expected_status,
+    const char *error_message) {
+    const bool has_world = call.world != nullptr;
+    WorldSnapshot before_world{};
+    if (has_world) {
+        before_world = call.world->Snapshot();
+    }
+
+    const bool has_object_registry = call.object_registry != nullptr;
+    ObjectSnapshot before_object_registry{};
+    if (has_object_registry) {
+        before_object_registry = call.object_registry->Snapshot();
+    }
+
+    const bool has_resource_registry = call.resource_registry != nullptr;
+    ResourceSnapshot before_resource_registry{};
+    if (has_resource_registry) {
+        before_resource_registry = call.resource_registry->Snapshot();
+    }
+
+    const bool has_identity_destination = call.identity_destination != nullptr;
+    WorldObjectIdentitySnapshot before_identity_destination{};
+    if (has_identity_destination) {
+        before_identity_destination = call.identity_destination->Snapshot();
+    }
+
+    const bool has_transform_destination = call.transform_destination != nullptr;
+    WorldTransformSnapshot before_transform_destination{};
+    if (has_transform_destination) {
+        before_transform_destination = call.transform_destination->Snapshot();
+    }
+
+    const bool has_attachment_destination = call.attachment_destination != nullptr;
+    WorldComponentAttachmentSnapshot before_attachment_destination{};
+    if (has_attachment_destination) {
+        before_attachment_destination = call.attachment_destination->Snapshot();
+    }
+
+    const bool has_binding_destination = call.binding_destination != nullptr;
+    WorldComponentResourceBindingSnapshot before_binding_destination{};
+    if (has_binding_destination) {
+        before_binding_destination = call.binding_destination->Snapshot();
+    }
+
+    const bool has_plan_output = call.output_plans != nullptr;
+    std::array<std::uint8_t,
+        sizeof(WorldSceneDecodedRestorePlan) * DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY> before_plan{};
+    if (has_plan_output) {
+        std::memcpy(before_plan.data(), call.output_plans, before_plan.size());
+    }
+
+    const WorldSceneDecodedRestorePlanResult result = BuildDecodedRestorePlan(bridge, call);
+    if (result.status != expected_status) {
+        return Fail(error_message);
+    }
+
+    if (has_plan_output) {
+        if (std::memcmp(before_plan.data(), call.output_plans, before_plan.size()) != 0) {
+            return Fail("decoded restore plan failure mutated output plan");
+        }
+    }
+
+    if (has_world) {
+        const WorldSnapshot after_world = call.world->Snapshot();
+        if (!WorldSnapshotsMatch(before_world, after_world)) {
+            return Fail("decoded restore plan failure mutated world");
+        }
+    }
+
+    if (has_object_registry) {
+        const ObjectSnapshot after_object_registry = call.object_registry->Snapshot();
+        if (!ObjectSnapshotsMatch(before_object_registry, after_object_registry)) {
+            return Fail("decoded restore plan failure mutated object registry");
+        }
+    }
+
+    if (has_resource_registry) {
+        const ResourceSnapshot after_resource_registry = call.resource_registry->Snapshot();
+        if (!ResourceSnapshotsMatch(before_resource_registry, after_resource_registry)) {
+            return Fail("decoded restore plan failure mutated resource registry");
+        }
+    }
+
+    if (has_identity_destination) {
+        const WorldObjectIdentitySnapshot after_identity_destination =
+            call.identity_destination->Snapshot();
+        if (!ObjectIdentitySnapshotsMatch(before_identity_destination, after_identity_destination)) {
+            return Fail("decoded restore plan failure mutated identity destination");
+        }
+    }
+
+    if (has_transform_destination) {
+        const WorldTransformSnapshot after_transform_destination =
+            call.transform_destination->Snapshot();
+        if (!TransformSnapshotsMatch(before_transform_destination, after_transform_destination)) {
+            return Fail("decoded restore plan failure mutated transform destination");
+        }
+    }
+
+    if (has_attachment_destination) {
+        const WorldComponentAttachmentSnapshot after_attachment_destination =
+            call.attachment_destination->Snapshot();
+        if (!ComponentAttachmentSnapshotsMatch(before_attachment_destination, after_attachment_destination)) {
+            return Fail("decoded restore plan failure mutated attachment destination");
+        }
+    }
+
+    if (has_binding_destination) {
+        const WorldComponentResourceBindingSnapshot after_binding_destination =
+            call.binding_destination->Snapshot();
+        if (!ComponentResourceBindingSnapshotsMatch(before_binding_destination, after_binding_destination)) {
+            return Fail("decoded restore plan failure mutated binding destination");
+        }
+    }
+
+    return 0;
+}
+
+int WorldSceneDecodedRestorePlanBridgePlansAllDecodedRecordFamiliesInDeterministicOrder() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanSuccessWithoutMutation(
+        bridge,
+        call,
+        2U,
+        2U,
+        2U,
+        2U,
+        2U,
+        2U);
+}
+
+int WorldSceneDecodedRestorePlanBridgePlansEmptyDecodedScene() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.input_identity_count = 0U;
+    call.input_transform_count = 0U;
+    call.input_attachment_count = 0U;
+    call.input_binding_count = 0U;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanSuccessWithoutMutation(
+        bridge,
+        call,
+        0U,
+        0U,
+        0U,
+        0U,
+        0U,
+        0U);
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsNullIdentityInputWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.input_identities = nullptr;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::InvalidIdentityInput,
+        "decoded restore plan null identity input status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsNullTransformInputWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.input_transforms = nullptr;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::InvalidTransformInput,
+        "decoded restore plan null transform input status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsNullAttachmentInputWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.input_attachments = nullptr;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::InvalidAttachmentInput,
+        "decoded restore plan null attachment input status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsNullBindingInputWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.input_bindings = nullptr;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::InvalidBindingInput,
+        "decoded restore plan null binding input status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsNullPlanOutputWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, nullptr, 1U);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::InvalidPlanOutput,
+        "decoded restore plan null output status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsNullWorldWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.world = nullptr;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::InvalidWorld,
+        "decoded restore plan null world status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsPlanOutputCapacityTooSmallWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), 0U);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::PlanOutputCapacityExceeded,
+        "decoded restore plan output capacity status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsIdentityCountExceededWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridgeDesc desc{};
+    desc.identity_capacity = 1U;
+    WorldSceneDecodedRestorePlanBridge bridge(desc);
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::IdentityCapacityExceeded,
+        "decoded restore plan identity capacity status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsTransformCountExceededWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridgeDesc desc{};
+    desc.transform_capacity = 1U;
+    WorldSceneDecodedRestorePlanBridge bridge(desc);
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::TransformCapacityExceeded,
+        "decoded restore plan transform capacity status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsAttachmentCountExceededWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridgeDesc desc{};
+    desc.attachment_capacity = 1U;
+    WorldSceneDecodedRestorePlanBridge bridge(desc);
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::AttachmentCapacityExceeded,
+        "decoded restore plan attachment capacity status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsBindingCountExceededWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridgeDesc desc{};
+    desc.binding_capacity = 1U;
+    WorldSceneDecodedRestorePlanBridge bridge(desc);
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::BindingCapacityExceeded,
+        "decoded restore plan binding capacity status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsInvalidIdentityRecordWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.identities[0].world_object_id = WorldObjectId{};
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::InvalidWorldObjectId,
+        "decoded restore plan invalid identity status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsMissingWorldObjectWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.identities[0].world_object_id = WorldObjectId{77U};
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::MissingWorldObject,
+        "decoded restore plan missing world object status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsInvalidTransformRecordWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.transforms[0].world_object_id = WorldObjectId{};
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::InvalidWorldObjectId,
+        "decoded restore plan invalid transform status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsInvalidAttachmentRecordWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.attachments[0].component_type_id = WorldComponentTypeId{};
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::InvalidComponentTypeId,
+        "decoded restore plan invalid attachment status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsInvalidBindingRecordWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.bindings[0].resource_handle = ResourceHandle{};
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::InvalidResourceHandle,
+        "decoded restore plan invalid binding status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsDuplicateIdentityWorldObjectIdWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.identities[1].world_object_id = fixture.identities[0].world_object_id;
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::DuplicateIdentityWorldObjectId,
+        "decoded restore plan duplicate identity status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsDuplicateObjectHandleWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.identities[1].object_handle = fixture.identities[0].object_handle;
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::DuplicateIdentityObjectHandle,
+        "decoded restore plan duplicate object handle status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsDuplicateTransformWorldObjectIdWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.transforms[1].world_object_id = fixture.transforms[0].world_object_id;
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::DuplicateTransformWorldObjectId,
+        "decoded restore plan duplicate transform status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsDuplicateAttachmentTupleWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.attachments[1] = fixture.attachments[0];
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::DuplicateAttachmentTuple,
+        "decoded restore plan duplicate attachment status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsDuplicateBindingTupleWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.bindings[1].world_object_id = fixture.bindings[0].world_object_id;
+    fixture.bindings[1].component_type_id = fixture.bindings[0].component_type_id;
+    fixture.bindings[1].component_slot_id = fixture.bindings[0].component_slot_id;
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::DuplicateBindingTuple,
+        "decoded restore plan duplicate binding status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsTransformWithoutIdentityWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.transforms[0].world_object_id = OBJECT_EFFECT;
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.input_transform_count = 1U;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::MissingIdentityForTransform,
+        "decoded restore plan transform identity status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsAttachmentWithoutIdentityWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.attachments[0] = fixture.attachments[2];
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.input_attachment_count = 1U;
+    call.input_binding_count = 0U;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::MissingIdentityForAttachment,
+        "decoded restore plan attachment identity status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsBindingWithoutAttachmentWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.bindings[0] = MakeSceneBindingRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_TERTIARY,
+        COMPONENT_SLOT_TERTIARY,
+        fixture.resources[0].handle,
+        RESOURCE_TYPE_TEXTURE);
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.input_binding_count = 1U;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::MissingAttachmentForBinding,
+        "decoded restore plan binding attachment status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsBindingWithoutIdentityWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    fixture.bindings[0] = fixture.bindings[2];
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.input_attachment_count = 0U;
+    call.input_binding_count = 1U;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::MissingIdentityForBinding,
+        "decoded restore plan binding identity status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsObjectAcquirePreflightFailureWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    ObjectRegistry overflow_registry = MakeRegistry();
+    const std::uint32_t max_reference_count = std::numeric_limits<std::uint32_t>::max();
+    const ObjectRegistrationResult object_result = CreateObject(
+        overflow_registry,
+        OBJECT_TYPE_PLAYER,
+        max_reference_count);
+    if (!object_result.Succeeded()) {
+        return Fail("decoded restore plan acquire overflow object creation failed");
+    }
+
+    fixture.identities[0] = MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, object_result.handle);
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.object_registry = &overflow_registry;
+    call.input_identity_count = 1U;
+    call.input_transform_count = 1U;
+    call.input_attachment_count = 0U;
+    call.input_binding_count = 0U;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::ObjectAcquireWouldOverflow,
+        "decoded restore plan object acquire status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsResourceAcquirePreflightFailureWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    ResourceRegistry overflow_registry = MakeResourceRegistry();
+    const std::uint32_t max_reference_count = std::numeric_limits<std::uint32_t>::max();
+    const std::uint32_t initial_reference_count = max_reference_count - 1U;
+    const ResourceRegistrationResult resource = RegisterResource(
+        overflow_registry,
+        RESOURCE_TYPE_TEXTURE,
+        "decoded_plan_acquire_overflow",
+        initial_reference_count);
+    if (!resource.Succeeded()) {
+        return Fail("decoded restore plan acquire overflow resource registration failed");
+    }
+
+    fixture.bindings[0] = MakeSceneBindingRecord(
+        OBJECT_PLAYER,
+        COMPONENT_TYPE_PRIMARY,
+        COMPONENT_SLOT_PRIMARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    fixture.bindings[1] = MakeSceneBindingRecord(
+        OBJECT_CAMERA,
+        COMPONENT_TYPE_SECONDARY,
+        COMPONENT_SLOT_SECONDARY,
+        resource.handle,
+        RESOURCE_TYPE_TEXTURE);
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.resource_registry = &overflow_registry;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::ResourceAcquireWouldOverflow,
+        "decoded restore plan resource acquire status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsNonEmptyIdentityDestinationWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    WorldObjectIdentityBridge identity_destination(fixture.world, fixture.object_registry);
+    if (!identity_destination.Bind(OBJECT_PLAYER, fixture.objects[0].handle).Succeeded()) {
+        return Fail("decoded restore plan identity destination setup failed");
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.identity_destination = &identity_destination;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::DestinationNotEmpty,
+        "decoded restore plan non-empty identity destination status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsNonEmptyTransformDestinationWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    WorldTransformBridge transform_destination(fixture.world);
+    if (!transform_destination.Register(OBJECT_PLAYER, Transform(940.0F)).Succeeded()) {
+        return Fail("decoded restore plan transform destination setup failed");
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.transform_destination = &transform_destination;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::DestinationNotEmpty,
+        "decoded restore plan non-empty transform destination status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsNonEmptyAttachmentDestinationWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge attachment_destination;
+    if (!attachment_destination.Add(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("decoded restore plan attachment destination setup failed");
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.attachment_destination = &attachment_destination;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::DestinationNotEmpty,
+        "decoded restore plan non-empty attachment destination status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsNonEmptyBindingDestinationWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    WorldComponentAttachmentBridge attachment_source;
+    if (!attachment_source.Add(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY).Succeeded()) {
+        return Fail("decoded restore plan binding attachment setup failed");
+    }
+
+    WorldComponentResourceBindingBridge binding_destination;
+    if (!binding_destination.Bind(
+            &attachment_source,
+            &fixture.resource_registry,
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            fixture.resources[0].handle,
+            RESOURCE_TYPE_TEXTURE).Succeeded()) {
+        return Fail("decoded restore plan binding destination setup failed");
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.binding_destination = &binding_destination;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::DestinationNotEmpty,
+        "decoded restore plan non-empty binding destination status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeRejectsDestinationCapacityOverflowWithoutMutation() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    WorldObjectIdentityBridgeDesc identity_desc{};
+    identity_desc.bridge_capacity = 1U;
+    WorldObjectIdentityBridge identity_destination(
+        fixture.world,
+        fixture.object_registry,
+        identity_desc);
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.identity_destination = &identity_destination;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanFailureWithoutMutation(
+        bridge,
+        call,
+        WorldSceneDecodedRestorePlanStatus::IdentityCapacityExceeded,
+        "decoded restore plan destination capacity status wrong");
+}
+
+int WorldSceneDecodedRestorePlanBridgeDoesNotCallActiveRestoreBridges() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    WorldObjectIdentityBridge identity_destination(fixture.world, fixture.object_registry);
+    WorldTransformBridge transform_destination(fixture.world);
+    WorldComponentAttachmentBridge attachment_destination;
+    WorldComponentResourceBindingBridge binding_destination;
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    call.identity_destination = &identity_destination;
+    call.transform_destination = &transform_destination;
+    call.attachment_destination = &attachment_destination;
+    call.binding_destination = &binding_destination;
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanSuccessWithoutMutation(
+        bridge,
+        call,
+        2U,
+        2U,
+        2U,
+        2U,
+        2U,
+        2U);
+}
+
+int WorldSceneDecodedRestorePlanBridgeDoesNotMutateObjectOrResourceRegistries() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    return ExpectDecodedRestorePlanSuccessWithoutMutation(
+        bridge,
+        call,
+        2U,
+        2U,
+        2U,
+        2U,
+        2U,
+        2U);
+}
+
+int WorldSceneDecodedRestorePlanBridgePlanPathDoesNotGrowStorage() {
+    WorldSceneDecodedRestorePlanBridgeDesc desc{};
+    desc.identity_capacity = 2U;
+    desc.transform_capacity = 2U;
+    desc.attachment_capacity = 2U;
+    desc.binding_capacity = 2U;
+    desc.plan_capacity = DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY;
+    WorldSceneDecodedRestorePlanBridge bridge(desc);
+    const WorldSceneDecodedRestorePlanSnapshot before_snapshot = bridge.Snapshot();
+    std::uint32_t iteration = 0U;
+    while (iteration < 3U) {
+        DecodedRestorePlanFixture fixture;
+        if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+            return 1;
+        }
+
+        DecodedRestorePlanOutput output_plan{};
+        FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+        DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+        const WorldSceneDecodedRestorePlanResult result = BuildDecodedRestorePlan(bridge, call);
+        if (!result.Succeeded()) {
+            return Fail("decoded restore plan path build failed");
+        }
+
+        ++iteration;
+    }
+
+    const WorldSceneDecodedRestorePlanSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.identity_capacity != before_snapshot.identity_capacity) {
+        return Fail("decoded restore plan path changed identity capacity");
+    }
+
+    if (after_snapshot.transform_capacity != before_snapshot.transform_capacity) {
+        return Fail("decoded restore plan path changed transform capacity");
+    }
+
+    if (after_snapshot.attachment_capacity != before_snapshot.attachment_capacity) {
+        return Fail("decoded restore plan path changed attachment capacity");
+    }
+
+    if (after_snapshot.binding_capacity != before_snapshot.binding_capacity) {
+        return Fail("decoded restore plan path changed binding capacity");
+    }
+
+    if (after_snapshot.plan_capacity != before_snapshot.plan_capacity) {
+        return Fail("decoded restore plan path changed plan capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != before_snapshot.allocation_accounting_status) {
+        return Fail("decoded restore plan path changed allocation accounting");
+    }
+
+    return 0;
+}
+
+int WorldSceneDecodedRestorePlanBridgeNoHiddenAllocationUsesYuMemorySignal() {
+    WorldSceneDecodedRestorePlanBridge bridge;
+    const WorldSceneDecodedRestorePlanSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("decoded restore plan allocation accounting status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneDecodedRestorePlanBridgeSnapshotReportsCountsAndLastStatus() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall success_call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    const WorldSceneDecodedRestorePlanResult success_result = BuildDecodedRestorePlan(
+        bridge,
+        success_call);
+    if (!success_result.Succeeded()) {
+        return Fail("decoded restore plan counters success failed");
+    }
+
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall failure_call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    failure_call.world = nullptr;
+    const WorldSceneDecodedRestorePlanResult failure_result = BuildDecodedRestorePlan(
+        bridge,
+        failure_call);
+    if (failure_result.status != WorldSceneDecodedRestorePlanStatus::InvalidWorld) {
+        return Fail("decoded restore plan counters failure status wrong");
+    }
+
+    const WorldSceneDecodedRestorePlanSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.plan_attempt_count != 2U) {
+        return Fail("decoded restore plan counters attempt count wrong");
+    }
+
+    if (snapshot.planned_identity_count != 2U) {
+        return Fail("decoded restore plan counters identity count wrong");
+    }
+
+    if (snapshot.planned_transform_count != 2U) {
+        return Fail("decoded restore plan counters transform count wrong");
+    }
+
+    if (snapshot.planned_attachment_count != 2U) {
+        return Fail("decoded restore plan counters attachment count wrong");
+    }
+
+    if (snapshot.planned_binding_count != 2U) {
+        return Fail("decoded restore plan counters binding count wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("decoded restore plan counters failed count wrong");
+    }
+
+    if (snapshot.last_status != WorldSceneDecodedRestorePlanStatus::InvalidWorld) {
+        return Fail("decoded restore plan counters last status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneDecodedRestorePlanBridgeNoStreamDecodeFilePackageResourceLoadOrGameAdapterDependency() {
+    WorldSceneDecodedRestorePlanBridge bridge;
+    const WorldSceneDecodedRestorePlanSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.identity_capacity != MAX_WORLD_OBJECT_COUNT) {
+        return Fail("decoded restore plan dependency identity capacity wrong");
+    }
+
+    if (snapshot.plan_capacity != MAX_WORLD_SCENE_DECODED_RESTORE_PLAN_RECORD_COUNT) {
+        return Fail("decoded restore plan dependency plan capacity wrong");
+    }
+
+    if (snapshot.last_status != WorldSceneDecodedRestorePlanStatus::Success) {
+        return Fail("decoded restore plan dependency last status wrong");
+    }
+
+    return 0;
+}
+
+int WorldSceneDecodedRestorePlanBridgeNoObjectConstructionTransformHierarchyOrComponentLifecycle() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    const WorldSnapshot before_world = fixture.world.Snapshot();
+    const ObjectSnapshot before_object_registry = fixture.object_registry.Snapshot();
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    const WorldSceneDecodedRestorePlanResult result = BuildDecodedRestorePlan(bridge, call);
+    if (!result.Succeeded()) {
+        return Fail("decoded restore plan no construction build failed");
+    }
+
+    const WorldSnapshot after_world = fixture.world.Snapshot();
+    if (!WorldSnapshotsMatch(before_world, after_world)) {
+        return Fail("decoded restore plan mutated world graph");
+    }
+
+    const ObjectSnapshot after_object_registry = fixture.object_registry.Snapshot();
+    if (after_object_registry.alive_object_count != before_object_registry.alive_object_count) {
+        return Fail("decoded restore plan changed alive object count");
+    }
+
+    if (after_object_registry.created_object_count != before_object_registry.created_object_count) {
+        return Fail("decoded restore plan created objects");
+    }
+
+    if (after_object_registry.destroyed_object_count != before_object_registry.destroyed_object_count) {
+        return Fail("decoded restore plan destroyed objects");
+    }
+
+    if (after_object_registry.referenced_object_count != before_object_registry.referenced_object_count) {
+        return Fail("decoded restore plan acquired objects");
+    }
+
+    return 0;
+}
+
+int WorldSceneDecodedRestorePlanBridgeWorldActiveRestoreBridgesRemainPlanFree() {
+    DecodedRestorePlanFixture fixture;
+    if (PrepareDecodedRestorePlanFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    WorldSceneObjectTransformRestoreBridge object_transform_restore_bridge;
+    WorldSceneAssemblyBridge assembly_bridge;
+    const WorldSceneObjectTransformRestoreSnapshot before_object_transform =
+        object_transform_restore_bridge.Snapshot();
+    const WorldSceneAssemblySnapshot before_assembly = assembly_bridge.Snapshot();
+    DecodedRestorePlanOutput output_plan{};
+    FillDecodedRestorePlanSentinel(output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    DecodedRestorePlanCall call = MakeDecodedRestorePlanCall(fixture, output_plan.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    WorldSceneDecodedRestorePlanBridge bridge;
+    const WorldSceneDecodedRestorePlanResult result = BuildDecodedRestorePlan(bridge, call);
+    if (!result.Succeeded()) {
+        return Fail("decoded restore plan active bridge guard build failed");
+    }
+
+    const WorldSceneObjectTransformRestoreSnapshot after_object_transform =
+        object_transform_restore_bridge.Snapshot();
+    if (after_object_transform.restore_attempt_count != before_object_transform.restore_attempt_count) {
+        return Fail("decoded restore plan touched object transform restore bridge");
+    }
+
+    const WorldSceneAssemblySnapshot after_assembly = assembly_bridge.Snapshot();
+    if (after_assembly.assembly_attempt_count != before_assembly.assembly_attempt_count) {
+        return Fail("decoded restore plan touched scene assembly bridge");
+    }
+
+    return 0;
+}
+
 int WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord() {
     WorldComponentAttachmentBridge bridge;
     const WorldComponentAttachmentResult result = bridge.Add(
@@ -17936,6 +19586,90 @@ int main(int argc, char **argv) {
             WorldSceneObjectTransformManifestStreamBridgeNoFilePackageResourceLoadDecodeUploadDependency},
         {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_CORE_FREE,
             WorldSceneObjectTransformManifestStreamBridgeWorldObjectSerializeCoresRemainManifestFree},
+        {TEST_SCENE_DECODED_PLAN_ORDER,
+            WorldSceneDecodedRestorePlanBridgePlansAllDecodedRecordFamiliesInDeterministicOrder},
+        {TEST_SCENE_DECODED_PLAN_EMPTY,
+            WorldSceneDecodedRestorePlanBridgePlansEmptyDecodedScene},
+        {TEST_SCENE_DECODED_PLAN_NULL_IDENTITY_INPUT,
+            WorldSceneDecodedRestorePlanBridgeRejectsNullIdentityInputWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_NULL_TRANSFORM_INPUT,
+            WorldSceneDecodedRestorePlanBridgeRejectsNullTransformInputWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_NULL_ATTACHMENT_INPUT,
+            WorldSceneDecodedRestorePlanBridgeRejectsNullAttachmentInputWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_NULL_BINDING_INPUT,
+            WorldSceneDecodedRestorePlanBridgeRejectsNullBindingInputWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_NULL_PLAN_OUTPUT,
+            WorldSceneDecodedRestorePlanBridgeRejectsNullPlanOutputWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_NULL_WORLD,
+            WorldSceneDecodedRestorePlanBridgeRejectsNullWorldWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_OUTPUT_CAPACITY,
+            WorldSceneDecodedRestorePlanBridgeRejectsPlanOutputCapacityTooSmallWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_IDENTITY_COUNT,
+            WorldSceneDecodedRestorePlanBridgeRejectsIdentityCountExceededWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_TRANSFORM_COUNT,
+            WorldSceneDecodedRestorePlanBridgeRejectsTransformCountExceededWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_ATTACHMENT_COUNT,
+            WorldSceneDecodedRestorePlanBridgeRejectsAttachmentCountExceededWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_BINDING_COUNT,
+            WorldSceneDecodedRestorePlanBridgeRejectsBindingCountExceededWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_INVALID_IDENTITY,
+            WorldSceneDecodedRestorePlanBridgeRejectsInvalidIdentityRecordWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_MISSING_WORLD_OBJECT,
+            WorldSceneDecodedRestorePlanBridgeRejectsMissingWorldObjectWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_INVALID_TRANSFORM,
+            WorldSceneDecodedRestorePlanBridgeRejectsInvalidTransformRecordWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_INVALID_ATTACHMENT,
+            WorldSceneDecodedRestorePlanBridgeRejectsInvalidAttachmentRecordWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_INVALID_BINDING,
+            WorldSceneDecodedRestorePlanBridgeRejectsInvalidBindingRecordWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_DUPLICATE_IDENTITY,
+            WorldSceneDecodedRestorePlanBridgeRejectsDuplicateIdentityWorldObjectIdWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_DUPLICATE_HANDLE,
+            WorldSceneDecodedRestorePlanBridgeRejectsDuplicateObjectHandleWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_DUPLICATE_TRANSFORM,
+            WorldSceneDecodedRestorePlanBridgeRejectsDuplicateTransformWorldObjectIdWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_DUPLICATE_ATTACHMENT,
+            WorldSceneDecodedRestorePlanBridgeRejectsDuplicateAttachmentTupleWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_DUPLICATE_BINDING,
+            WorldSceneDecodedRestorePlanBridgeRejectsDuplicateBindingTupleWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_TRANSFORM_WITHOUT_IDENTITY,
+            WorldSceneDecodedRestorePlanBridgeRejectsTransformWithoutIdentityWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_ATTACHMENT_WITHOUT_IDENTITY,
+            WorldSceneDecodedRestorePlanBridgeRejectsAttachmentWithoutIdentityWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_BINDING_WITHOUT_ATTACHMENT,
+            WorldSceneDecodedRestorePlanBridgeRejectsBindingWithoutAttachmentWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_BINDING_WITHOUT_IDENTITY,
+            WorldSceneDecodedRestorePlanBridgeRejectsBindingWithoutIdentityWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_OBJECT_PREFLIGHT,
+            WorldSceneDecodedRestorePlanBridgeRejectsObjectAcquirePreflightFailureWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_RESOURCE_PREFLIGHT,
+            WorldSceneDecodedRestorePlanBridgeRejectsResourceAcquirePreflightFailureWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_NON_EMPTY_IDENTITY,
+            WorldSceneDecodedRestorePlanBridgeRejectsNonEmptyIdentityDestinationWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_NON_EMPTY_TRANSFORM,
+            WorldSceneDecodedRestorePlanBridgeRejectsNonEmptyTransformDestinationWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_NON_EMPTY_ATTACHMENT,
+            WorldSceneDecodedRestorePlanBridgeRejectsNonEmptyAttachmentDestinationWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_NON_EMPTY_BINDING,
+            WorldSceneDecodedRestorePlanBridgeRejectsNonEmptyBindingDestinationWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_DESTINATION_CAPACITY,
+            WorldSceneDecodedRestorePlanBridgeRejectsDestinationCapacityOverflowWithoutMutation},
+        {TEST_SCENE_DECODED_PLAN_NO_ACTIVE_RESTORE,
+            WorldSceneDecodedRestorePlanBridgeDoesNotCallActiveRestoreBridges},
+        {TEST_SCENE_DECODED_PLAN_NO_REGISTRY_MUTATION,
+            WorldSceneDecodedRestorePlanBridgeDoesNotMutateObjectOrResourceRegistries},
+        {TEST_SCENE_DECODED_PLAN_PATH,
+            WorldSceneDecodedRestorePlanBridgePlanPathDoesNotGrowStorage},
+        {TEST_SCENE_DECODED_PLAN_NO_HIDDEN_ALLOCATION,
+            WorldSceneDecodedRestorePlanBridgeNoHiddenAllocationUsesYuMemorySignal},
+        {TEST_SCENE_DECODED_PLAN_COUNTERS,
+            WorldSceneDecodedRestorePlanBridgeSnapshotReportsCountsAndLastStatus},
+        {TEST_SCENE_DECODED_PLAN_NO_STREAM_FILE,
+            WorldSceneDecodedRestorePlanBridgeNoStreamDecodeFilePackageResourceLoadOrGameAdapterDependency},
+        {TEST_SCENE_DECODED_PLAN_NO_CONSTRUCTION,
+            WorldSceneDecodedRestorePlanBridgeNoObjectConstructionTransformHierarchyOrComponentLifecycle},
+        {TEST_SCENE_DECODED_PLAN_ACTIVE_RESTORE_FREE,
+            WorldSceneDecodedRestorePlanBridgeWorldActiveRestoreBridgesRemainPlanFree},
         {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_ORDER,
             WorldSceneObjectTransformRestoreBridgeRestoresIdentityAndTransformRecordsInInputOrder},
         {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_IDENTITY_ONLY,
