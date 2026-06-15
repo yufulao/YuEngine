@@ -66,6 +66,8 @@ This gate owns a future first slice for:
   proof records, active-call slice records, and proof-local constants;
 - running or validating the landed P3-GATE-021 plan/preflight inside the same
   proof call over current caller-owned decoded records;
+- requiring a caller-owned P3-GATE-021 plan scratch buffer and capacity for the
+  same-call plan/preflight path;
 - requiring current identity, transform, component attachment, and
   component-resource binding destinations for public snapshot and
   empty-destination preflight;
@@ -140,13 +142,15 @@ The first slice lifecycle is:
    and empty-destination preflight.
 3. Caller provides current const world, object registry, and resource registry.
 4. Caller provides the required proof output buffer and capacity.
-5. The bridge runs or validates P3-GATE-021 plan/preflight in the same call.
-6. The bridge checks destination emptiness, destination capacity, registry
-   projected acquire preflight, plan/input consistency, and proof output
-   capacity before any proof output mutation.
-7. A successful operation writes only caller-owned POD proof records, active-call
+5. Caller provides the required P3-GATE-021 plan scratch buffer and capacity.
+6. The bridge runs or validates P3-GATE-021 plan/preflight in the same call
+   using only caller-owned plan scratch.
+7. The bridge checks destination emptiness, destination capacity, registry
+   projected acquire preflight, plan/input consistency, plan scratch capacity,
+   and proof output capacity before any proof output mutation.
+8. A successful operation writes only caller-owned POD proof records, active-call
    slices, and counters.
-8. Active restore remains a later explicit gate.
+9. Active restore remains a later explicit gate.
 
 Failures must leave caller-owned proof outputs unchanged unless the operation has
 already returned success.
@@ -166,6 +170,7 @@ Expected first-slice inputs:
 - const world instance for world object membership validation;
 - required const object registry for projected object acquire validation;
 - required const resource registry for projected resource acquire validation;
+- caller-owned P3-GATE-021 plan scratch buffer and capacity;
 - caller-owned output proof buffer and capacity;
 - caller-owned output active-call slice buffer and capacity;
 - descriptor-provided family capacities, proof capacity, and slice capacity.
@@ -187,6 +192,8 @@ Expected first-slice outputs:
   storage.
 - Duplicate, reference, and consistency validation must use bounded scans over
   explicit input counts or caller-owned fixed scratch.
+- P3-GATE-021 plan scratch must be caller-owned and capacity-checked before
+  proof or slice output mutation.
 - Proof output capacity and slice output capacity must be validated before any
   output mutation.
 - The same-call P3-GATE-021 plan/preflight cost is accepted; hidden staging or
@@ -211,8 +218,10 @@ Fast gate tests required before the slice can be considered complete:
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsNullWorldWithoutMutation`
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsNullObjectRegistryWithoutMutation`
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsNullResourceRegistryWithoutMutation`
+- `WorldSceneApplyTimeRestoreProofBridge_RejectsNullPlanScratchWithoutMutation`
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsNullProofOutputWithoutMutation`
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsNullSliceOutputWithoutMutation`
+- `WorldSceneApplyTimeRestoreProofBridge_RejectsPlanScratchCapacityTooSmallWithoutMutation`
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsProofOutputCapacityTooSmallWithoutMutation`
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsSliceOutputCapacityTooSmallWithoutMutation`
 - `WorldSceneApplyTimeRestoreProofBridge_RejectsPlanFailureWithoutProofMutation`
