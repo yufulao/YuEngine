@@ -162,7 +162,7 @@ Required test-tier direction:
 | P2-GATE-009 | D3D11 Visible Triangle Fixture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_009_D3D11_VISIBLE_TRIANGLE_FIXTURE.md`; landed at `f55f6dd`; first visible geometry proof through RHI capture bytes after P2-GATE-008; default fast gate is `685/685` PASS; `windows-hardware-smoke` discovers and runs 3 tests including `RHI_D3D11Hardware_VisibleTriangleCaptureBytes`; no static mesh asset pipeline, RenderCore, Resource upload, World, UI, report, screenshot, manual visual proof, or Game Adapter |
 | P2-GATE-010 | Thread Worker And Async IO Substrate | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_010_THREAD_WORKER_AND_ASYNC_IO_SUBSTRATE.md`; landed at `5a26a53`; worker lifecycle and async file-completion substrate; default fast gate is `696/696` PASS; no Resource semantics, package streaming policy, upload queue, render submission, static mesh, RenderCore, real audio callback, OS input, or gameplay |
 | P2-GATE-011 | Real Audio Backend Callback | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_011_REAL_AUDIO_BACKEND_CALLBACK.md`; landed at `1d7d2ca`; private Windows XAudio2 callback backend proof through existing mixer/test-sink contract; default fast gate remains deterministic; no codec, BGM/SE business IDs, Resource loading, UI, script, or gameplay |
-| P2-GATE-012 | Platform Input Device Bridge | L1-L3 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_012_PLATFORM_INPUT_DEVICE_BRIDGE.md`; OS keyboard/mouse/platform input bridge into existing Input value boundary; no UI navigation, title menu behavior, script, scene, gameplay mapping, or Game Adapter |
+| P2-GATE-012 | Platform Input Device Bridge | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_012_PLATFORM_INPUT_DEVICE_BRIDGE.md`; approved after ENG-115A/B/C PASS; private Windows input bridge into existing Input value boundary; no UI navigation, title menu behavior, script, scene, gameplay mapping, manual proof, or Game Adapter |
 
 ## Current Active Gates
 
@@ -288,11 +288,15 @@ Required test-tier direction:
   not authorize codec, streaming, Resource-backed audio, BGM/SE services, audio
   scene, UI, Script, World, reports, screenshots, manual listening proof,
   audible output proof, or Game Adapter behavior.
-- P2-GATE-012 is proposed for review after P2-GATE-011. It is limited to the
-  first platform input device bridge proof through private Windows input
-  translation and existing `YuInput` replay/action value contracts. It does not
-  authorize UI navigation, title/menu behavior, gameplay mapping, Script, World,
-  reports, manual key/mouse proof, visual proof, or Game Adapter behavior.
+- P2-GATE-012 is approved for first slice after ENG-115A boundary/quality PASS,
+  ENG-115B implementability PASS, and ENG-115C test-policy PASS. The approved
+  scope is limited to private Windows input bridge proof through existing
+  `YuInput` replay/action value contracts, value-based public bridge contracts,
+  bounded event storage, focus-aware counters, and optional isolated
+  hardware-smoke proof. It does not authorize UI navigation, title/menu
+  behavior, gameplay mapping, Script, World, reports, manual key/mouse proof,
+  visual proof, platform handle leakage, or Game Adapter behavior. Default
+  `windows-fast-gate` must stay deterministic and no-real-device.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -335,8 +339,8 @@ Required test-tier direction:
    backend proof only. It proves private XAudio2 callback ownership and
    unavailable-device evidence, not codec, streaming, audio scene, Resource,
    UI, World, or Game Adapter behavior.
-9. Review P2-GATE-012 before any platform input implementation task exists. The
-   review must decide whether a private Windows input bridge can prove
-   focus-aware OS input translation and bounded event counters without UI,
-   Script, World, Game Adapter, reports, manual key/mouse proof, or platform
-   handle leakage.
+9. Implement P2-GATE-012 only through the approved private Windows input bridge
+   first slice. The implementation must prove focus-aware OS input translation,
+   bounded event counters, and value-only public contracts without UI, Script,
+   World, Game Adapter, reports, manual key/mouse proof, visual proof, sleeps,
+   logs, screenshots, or platform handle leakage.

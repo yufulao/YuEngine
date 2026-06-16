@@ -1,13 +1,14 @@
 # P2-GATE-012: Platform Input Device Bridge
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P1-GATE-007, P2-GATE-004, P2-GATE-005, ENG-096
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0010
 Source baseline: `1d7d2ca`
+Proposal commit: `82c5063`
 
 ## Layer
 
@@ -56,6 +57,43 @@ Current discovery on the proposal baseline:
 - `ctest --preset windows-fast-gate -N -L Input`: `18`;
 - `ctest --preset windows-fast-gate -N -L HardwareSmoke`: `0`;
 - `ctest --preset windows-fast-gate -N -L Fast`: `704`.
+
+## Approval Evidence
+
+Approved after:
+
+- ENG-115A boundary and quality review PASS with no
+  `NEEDS_ARCHITECTURE` blocker;
+- ENG-115B implementability review PASS with no
+  `NEEDS_IMPLEMENTABILITY` blocker;
+- ENG-115C test and preset review PASS with no `NEEDS_TEST_POLICY` blocker.
+
+Review evidence:
+
+- proposal commit `82c5063b196a9feab287ae3a8a34d83a56525226` changes only
+  `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and this gate doc;
+- `git diff --check 82c5063^ 82c5063` passed;
+- proposal review worktrees stayed clean and reviewers made no source, doc,
+  commit, or push changes;
+- baseline discovery is default `704`, `Input` `18`, `Fast` `704`,
+  `PerformanceSmoke` `47`, and `EvidenceOracle` `114`;
+- default `HardwareSmoke`, `Win32`, `RawInput`, `XInput`, and `DirectInput`
+  discovery remains `0`;
+- `windows-hardware-smoke` currently discovers `4`, with `Input` hardware smoke
+  at `0`.
+
+Approval conditions:
+
+- implementation must keep public `YuInput` headers value-based and free of
+  Windows, Win32, handle, RawInput, XInput, DirectInput, HID, Platform, UI,
+  World, Script, Game Adapter, report, screenshot, and manual-proof types;
+- implementation must keep default `windows-fast-gate` deterministic and
+  no-real-device;
+- any input hardware-smoke proof must be isolated in `windows-hardware-smoke`
+  with explicit backend labels and counters/statuses proof;
+- wheel input must be modeled as an explicit bridge-level value event or private
+  Win32 translation path, not manual input, logs, screenshots, UI, or game
+  dispatch.
 
 ## Owns
 
