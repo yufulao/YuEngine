@@ -85,8 +85,9 @@ Current lower-engine reality:
 - RHI has a D3D11 visible-triangle capture-byte proof through P2-GATE-009, but
   still has no static mesh, Resource upload, RenderCore, material system, scene
   traversal, report, visual proof, UI, World, or Game Adapter behavior.
-- Audio is a test backend only: no WASAPI/XAudio2 device, callback thread,
-  latency handoff, codec, streaming, or real sink.
+- Audio has a private Windows XAudio2 callback first slice through
+  P2-GATE-011, but no codec, streaming, Resource-backed audio asset pipeline,
+  audio scene, BGM/SE service, UI, World, or Game Adapter behavior.
 - Input is replay/action-binding only: no OS device bridge or focus-aware event
   pump.
 - Thread/File have a worker lifecycle and async file-completion substrate through
@@ -160,8 +161,8 @@ Required test-tier direction:
 | P2-GATE-008 | D3D11 Resource And Pipeline Primitives | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_008_D3D11_RESOURCE_AND_PIPELINE_PRIMITIVES.md`; landed at `2f7c8e1`; RHI-only buffer/texture/sampler/shader/input-layout/pipeline/fence primitive contracts after P2-GATE-007; default fast gate is `681/681` PASS; `windows-hardware-smoke` discovers and runs 2 D3D11 tests including primitive resource/pipeline snapshot; no visible triangle, draw proof, RenderCore, material system, Resource loading, mesh asset pipeline, scene traversal, report, visual proof, shader compiler, or Game Adapter |
 | P2-GATE-009 | D3D11 Visible Triangle Fixture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_009_D3D11_VISIBLE_TRIANGLE_FIXTURE.md`; landed at `f55f6dd`; first visible geometry proof through RHI capture bytes after P2-GATE-008; default fast gate is `685/685` PASS; `windows-hardware-smoke` discovers and runs 3 tests including `RHI_D3D11Hardware_VisibleTriangleCaptureBytes`; no static mesh asset pipeline, RenderCore, Resource upload, World, UI, report, screenshot, manual visual proof, or Game Adapter |
 | P2-GATE-010 | Thread Worker And Async IO Substrate | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_010_THREAD_WORKER_AND_ASYNC_IO_SUBSTRATE.md`; landed at `5a26a53`; worker lifecycle and async file-completion substrate; default fast gate is `696/696` PASS; no Resource semantics, package streaming policy, upload queue, render submission, static mesh, RenderCore, real audio callback, OS input, or gameplay |
-| P2-GATE-011 | Real Audio Backend Callback | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_011_REAL_AUDIO_BACKEND_CALLBACK.md`; approved after ENG-113A/B/C PASS; first slice is private Windows XAudio2 callback backend proof through existing mixer/test-sink contract; no codec, BGM/SE business IDs, Resource loading, UI, script, or gameplay |
-| P2-GATE-012 | Platform Input Device Bridge | L1-L3 | `NOT_APPROVED` | Parallel proposal candidate | OS device events and focus-aware snapshots into Input boundary; no UI navigation, title menu behavior, script, scene, or Game Adapter |
+| P2-GATE-011 | Real Audio Backend Callback | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_011_REAL_AUDIO_BACKEND_CALLBACK.md`; landed at `1d7d2ca`; private Windows XAudio2 callback backend proof through existing mixer/test-sink contract; default fast gate remains deterministic; no codec, BGM/SE business IDs, Resource loading, UI, script, or gameplay |
+| P2-GATE-012 | Platform Input Device Bridge | L1-L3 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_012_PLATFORM_INPUT_DEVICE_BRIDGE.md`; OS keyboard/mouse/platform input bridge into existing Input value boundary; no UI navigation, title menu behavior, script, scene, gameplay mapping, or Game Adapter |
 
 ## Current Active Gates
 
@@ -275,18 +276,23 @@ Required test-tier direction:
   authorize Resource semantics, Package streaming, RHI upload queues, static
   mesh, RenderCore, real audio callback, OS input bridge, UI, World, reports,
   or Game Adapter behavior.
-- P2-GATE-011 is approved for first slice after ENG-113A boundary/quality PASS,
-  ENG-113B implementability PASS, and ENG-113C test-policy PASS. The approved
-  implementation is limited to private Windows XAudio2 callback backend proof
-  through existing `YuAudio` mixer/test-sink contracts, value-based public audio
-  contracts, bounded callback counters/statuses, and optional
-  `windows-hardware-smoke` real-device evidence. It does not authorize WASAPI in
-  this slice, codec, streaming, Resource loading, BGM/SE IDs, UI, Script, World,
-  gameplay, reports, sleeps, logs, screenshots, manual listening proof, audible
-  output proof, or Game Adapter behavior. Default `windows-fast-gate` must stay
-  deterministic and no-real-device.
-- P2-GATE-012 is not approved. It remains in the ENG-096 lower-engine proposal
-  queue and must go through normal gate review before implementation.
+- P2-GATE-011 first slice landed at `1d7d2ca` after ENG-114A implementation
+  PASS, ENG-114B2 verification PASS, and ENG-114QA2 boundary/quality PASS. The
+  Audio L1-L3 surface now has private Windows XAudio2 callback backend proof,
+  value-based public callback contracts, fixed S16 stereo 48000 Hz buffer
+  shape, preallocated slots, fixed completion storage, callback
+  counters/statuses/snapshots, and isolated hardware-smoke unavailable-device
+  evidence. The default fast gate is `704/704` PASS; default `HardwareSmoke`,
+  `Win32`, and `XAudio2` discovery remains 0; `windows-hardware-smoke`
+  discovers 4 tests including one `Audio` / `XAudio2` callback test. This does
+  not authorize codec, streaming, Resource-backed audio, BGM/SE services, audio
+  scene, UI, Script, World, reports, screenshots, manual listening proof,
+  audible output proof, or Game Adapter behavior.
+- P2-GATE-012 is proposed for review after P2-GATE-011. It is limited to the
+  first platform input device bridge proof through private Windows input
+  translation and existing `YuInput` replay/action value contracts. It does not
+  authorize UI navigation, title/menu behavior, gameplay mapping, Script, World,
+  reports, manual key/mouse proof, visual proof, or Game Adapter behavior.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -325,9 +331,12 @@ Required test-tier direction:
    substrate as the lower-engine async baseline. It proves bounded worker and
    async completion behavior through counters/statuses, not sleeps, logs,
    reports, screenshots, manual inspection, or real hardware.
-8. Implement P2-GATE-011 only through the approved private Windows XAudio2
-   callback backend first slice. The implementation must prove callback
-   lifecycle and bounded buffer completion with counters/statuses and bounded
-   waits/signals, keep default `windows-fast-gate` deterministic, and avoid
-   codec, Resource, UI, Script, World, reports, manual listening proof, audible
-   output proof, or Game Adapter scope.
+8. Treat the landed P2-GATE-011 real audio callback first slice as hardware
+   backend proof only. It proves private XAudio2 callback ownership and
+   unavailable-device evidence, not codec, streaming, audio scene, Resource,
+   UI, World, or Game Adapter behavior.
+9. Review P2-GATE-012 before any platform input implementation task exists. The
+   review must decide whether a private Windows input bridge can prove
+   focus-aware OS input translation and bounded event counters without UI,
+   Script, World, Game Adapter, reports, manual key/mouse proof, or platform
+   handle leakage.
