@@ -60,6 +60,22 @@
       "execution": {
         "noTestsAction": "error"
       }
+    },
+    {
+      "name": "windows-hardware-smoke",
+      "configurePreset": "windows-fast-gate",
+      "configuration": "Debug",
+      "filter": {
+        "include": {
+          "label": "HardwareSmoke"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "ignore"
+      }
     }
   ]
 }
