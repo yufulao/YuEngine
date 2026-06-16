@@ -283,18 +283,18 @@ The implementation handoff must record:
 If approved, the first implementation slice may modify or create:
 
 ```text
-Src/YuEngine/RHI/Include/YuEngine/Rhi/IRhiDevice.h
-Src/YuEngine/RHI/Include/YuEngine/Rhi/RhiNativeSurfaceDesc.h
-Src/YuEngine/RHI/Include/YuEngine/Rhi/RhiDeviceFactory.h
-Src/YuEngine/RHI/Include/YuEngine/Rhi/RhiDeviceCreateResult.h
-Src/YuEngine/RHI/Include/YuEngine/Rhi/RhiBackendKind.h
-Src/YuEngine/RHI/Include/YuEngine/Rhi/RhiCapabilities.h
-Src/YuEngine/RHI/Include/YuEngine/Rhi/RhiDeviceDesc.h
-Src/YuEngine/RHI/Include/YuEngine/Rhi/RhiDeviceSnapshot.h
-Src/YuEngine/RHI/Include/YuEngine/Rhi/RhiStatus.h
-Src/YuEngine/RHI/Include/YuEngine/Rhi/NullRhiDevice.h
-Src/YuEngine/RHI/Src/NullRhiDevice.cpp
-Tests/RHI/RhiTests.cpp
+Src/YuEngine/Rhi/Include/YuEngine/Rhi/IRhiDevice.h
+Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiNativeSurfaceDesc.h
+Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiDeviceFactory.h
+Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiDeviceCreateResult.h
+Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiBackendKind.h
+Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiCapabilities.h
+Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiDeviceDesc.h
+Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiDeviceSnapshot.h
+Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiStatus.h
+Src/YuEngine/Rhi/Include/YuEngine/Rhi/NullRhiDevice.h
+Src/YuEngine/Rhi/Src/NullRhiDevice.cpp
+Tests/Rhi/RhiTests.cpp
 CMakeLists.txt
 docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md
 docs/gates/P2_GATE_006_RHI_BACKEND_NEUTRAL_DEVICE_BOUNDARY.md
