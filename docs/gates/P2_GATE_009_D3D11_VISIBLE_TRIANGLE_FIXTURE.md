@@ -148,6 +148,8 @@ Suggested additions:
 
 - `RhiPrimitiveTopology`, limited to triangle list if a topology value is
   required;
+- a minimal extension to the existing `RhiInputLayoutDesc` contract so a caller
+  can describe vertex input slots and attributes with backend-neutral values;
 - `RhiVertexBufferView` or equivalent value contract with a buffer handle,
   offset, stride, and byte range;
 - `RhiDrawDesc` or bounded draw fields containing vertex count and first vertex;
@@ -309,6 +311,7 @@ Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiCommandRecord.h
 Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiCommandType.h
 Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiDeviceSnapshot.h
 Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiDrawDesc.h
+Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiInputLayoutDesc.h
 Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiPrimitiveTopology.h
 Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiStatus.h
 Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiVertexBufferView.h
