@@ -158,7 +158,7 @@ Required test-tier direction:
 | P2-GATE-007 | D3D11 Device Swapchain Clear Present Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_007_D3D11_DEVICE_SWAPCHAIN_CLEAR_PRESENT_CAPTURE.md`; landed at `18d73a3`; first real D3D11 device/context/swapchain clear/present/capture through RHI boundary; default fast gate is 669/669 PASS; `HardwareSmoke` is isolated from default fast gate; `windows-hardware-smoke` discovers and runs 1 D3D11 capture-byte test; no mesh, shader pipeline expansion, RenderCore, Resource, report, visual proof, or Game Adapter |
 | P2-GATE-008 | D3D11 Resource And Pipeline Primitives | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_008_D3D11_RESOURCE_AND_PIPELINE_PRIMITIVES.md`; landed at `2f7c8e1`; RHI-only buffer/texture/sampler/shader/input-layout/pipeline/fence primitive contracts after P2-GATE-007; default fast gate is `681/681` PASS; `windows-hardware-smoke` discovers and runs 2 D3D11 tests including primitive resource/pipeline snapshot; no visible triangle, draw proof, RenderCore, material system, Resource loading, mesh asset pipeline, scene traversal, report, visual proof, shader compiler, or Game Adapter |
 | P2-GATE-009 | D3D11 Visible Triangle Fixture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_009_D3D11_VISIBLE_TRIANGLE_FIXTURE.md`; landed at `f55f6dd`; first visible geometry proof through RHI capture bytes after P2-GATE-008; default fast gate is `685/685` PASS; `windows-hardware-smoke` discovers and runs 3 tests including `RHI_D3D11Hardware_VisibleTriangleCaptureBytes`; no static mesh asset pipeline, RenderCore, Resource upload, World, UI, report, screenshot, manual visual proof, or Game Adapter |
-| P2-GATE-010 | Thread Worker And Async IO Substrate | L1-L3 | `NOT_APPROVED` | Proposed | Gate doc: `docs/gates/P2_GATE_010_THREAD_WORKER_AND_ASYNC_IO_SUBSTRATE.md`; first worker lifecycle and async file-completion substrate after P2-GATE-009; no Resource semantics, package streaming policy, upload queue, render submission, static mesh, RenderCore, or gameplay |
+| P2-GATE-010 | Thread Worker And Async IO Substrate | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_010_THREAD_WORKER_AND_ASYNC_IO_SUBSTRATE.md`; approved after ENG-111A/B/C PASS; first worker lifecycle and async file-completion substrate after P2-GATE-009; no Resource semantics, package streaming policy, upload queue, render submission, static mesh, RenderCore, or gameplay |
 | P2-GATE-011 | Real Audio Backend Callback | L1-L3 | `NOT_APPROVED` | Parallel proposal candidate | WASAPI/XAudio2 callback backend into existing mixer/test-sink contract; no codec, BGM/SE business IDs, Resource loading, UI, script, or gameplay |
 | P2-GATE-012 | Platform Input Device Bridge | L1-L3 | `NOT_APPROVED` | Parallel proposal candidate | OS device events and focus-aware snapshots into Input boundary; no UI navigation, title menu behavior, script, scene, or Game Adapter |
 
@@ -253,13 +253,15 @@ Required test-tier direction:
   static mesh, mesh asset pipeline, material system, RenderCore, Resource
   upload, Package/File streaming, shader compiler, report, screenshot, manual
   visual proof, UI, World, or Game Adapter behavior.
-- P2-GATE-010 is proposed after ENG-110 closure as the next lower-engine
-  substrate gate: worker lifecycle and async file-completion proof over the
-  existing Thread and File modules. It is not approved and must go through
-  normal gate review before implementation. The proposed scope explicitly
-  excludes Resource semantics, Package streaming, upload queues, render
-  submission, static mesh, RenderCore, audio callback, OS input, UI, World,
-  reports, and Game Adapter behavior.
+- P2-GATE-010 is approved for first slice after ENG-111A boundary/quality PASS,
+  ENG-111B implementability PASS, and ENG-111C test-policy PASS. The approved
+  scope is limited to worker lifecycle and async file-completion proof over the
+  existing Thread and File modules. File may use Thread only through private
+  implementation linkage for the async adapter; File public headers must remain
+  value-based and OS-handle-free. The approved scope explicitly excludes
+  Resource semantics, Package streaming, upload queues, render submission,
+  static mesh, RenderCore, audio callback, OS input, UI, World, reports, and
+  Game Adapter behavior.
 - P2-GATE-011 through P2-GATE-012 are not approved. They are the ENG-096
   lower-engine proposal queue and must go through normal gate review before
   implementation.
@@ -297,7 +299,9 @@ Required test-tier direction:
 6. Keep Phase 3/World expansion paused except for critical fixes. The landed
    P3 gates are contract baselines, not permission to keep moving upward while
    lower hardware remains null/test-only.
-7. Review P2-GATE-010 before any worker/job or async IO implementation starts.
-   Keep Resource/Package streaming semantics, upload queues, static mesh,
-   RenderCore, and Game Adapter behavior out until the substrate is proven and a
-   later gate explicitly approves the next layer.
+7. Implement P2-GATE-010 as the worker lifecycle and async file-completion
+   substrate before any Resource/Package streaming, upload queue, static mesh,
+   RenderCore, or Game Adapter behavior starts. The implementation must keep
+   public File headers value-based and OS-handle-free, and it must prove worker
+   and async completion behavior through bounded counters/statuses rather than
+   sleeps, logs, reports, screenshots, manual inspection, or real hardware.

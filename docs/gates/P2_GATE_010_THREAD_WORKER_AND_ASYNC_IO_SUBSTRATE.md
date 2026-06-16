@@ -1,13 +1,16 @@
 # P2-GATE-010: Thread Worker And Async IO Substrate
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P1-GATE-003, P2-GATE-004, ENG-096, ENG-110, ADR-0007
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0007, ADR-0011
 Source baseline: `f55f6dd`
+Proposal commit: `2e7e6d6`
+Approval evidence: ENG-111A boundary/quality PASS, ENG-111B implementability
+PASS, and ENG-111C test-policy PASS.
 
 ## Layer
 
@@ -324,3 +327,47 @@ Request `APPROVED_FOR_FIRST_SLICE` only after:
 
 If those conditions are not met, return `NEEDS_ARCHITECTURE`,
 `NEEDS_IMPLEMENTABILITY`, or `NEEDS_TEST_POLICY` with exact missing fields.
+
+## Approval Decision
+
+P2-GATE-010 is approved for first slice after ENG-111 review closure.
+
+Hard implementation conditions:
+
+- The first slice remains lower-engine Thread/File async substrate work only.
+- Public Thread/File headers may expose only value-based worker, async read,
+  status, descriptor, snapshot, request, result, and caller-owned storage
+  contracts.
+- Public Thread/File headers must not expose platform thread handles, Windows
+  SDK, IOCP, overlapped IO, OS file handles, Resource, Package, RHI, RenderCore,
+  UI, World, report, screenshot, visual proof, or Game Adapter types.
+- `std::thread`, `std::mutex`, `std::condition_variable`, and any wait primitive
+  must remain private to `YuThread` implementation files. They must not appear
+  in File public headers.
+- File may use Thread only through private implementation linkage for the async
+  adapter. File public headers must remain value-based and OS-handle-free.
+- The worker must be explicitly owned by caller-created objects. Hidden global
+  workers, static non-POD runtime objects, and implicit background services are
+  not approved.
+- Work and completion storage must be bounded. Unbounded queues, dynamic growth
+  in the measured fixture, and timing-sleep proof are blockers.
+- Async file completion may wrap existing `MountTable` / `LooseFileSource`
+  synchronous reads, but it must use caller-owned request/result slots and
+  explicit completion statuses.
+- Resource loading, Package streaming, RHI upload queues, texture import, image
+  decode, mesh upload, static mesh, material system, RenderCore, render
+  submission, real audio callback, OS input bridge, UI, World, reports, and Game
+  Adapter behavior are not approved.
+- `CMakePresets.json` is not expected to change. CMake changes must preserve the
+  default deterministic `windows-fast-gate` behavior and keep
+  `windows-hardware-smoke` unaffected.
+- Proof must use bounded snapshots, counters, statuses, caller-owned storage,
+  drain/cancel behavior, and dependency scans. Proof must not rely on sleeps,
+  logs, reports, screenshots, manual inspection, or real hardware.
+- The implementation handoff must record before/after deterministic discovery,
+  label counts for Thread, File, AsyncIO, Fast, PerformanceSmoke,
+  EvidenceOracle, and HardwareSmoke, public-header dependency scans, production
+  dependency scans, and regression evidence for existing Thread queue and File
+  mount/read tests.
+- Allowed implementation paths must use exact repository casing:
+  `Src/YuEngine/Thread/...`, `Src/YuEngine/File/...`, and `Tests/...`.
