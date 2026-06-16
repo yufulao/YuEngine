@@ -1,13 +1,16 @@
 # P2-GATE-007: D3D11 Device Swapchain Clear Present Capture
 
-Status: Review requested
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `REVIEW_REQUESTED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-004, P2-GATE-005, P2-GATE-006, ADR-0011, ENG-096
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0011
 Source baseline: `280d38c`
+Proposal commit: `e231951`
+Approval evidence: ENG-104A boundary/reference PASS, ENG-104B implementability
+PASS, and ENG-104C test-policy PASS.
 
 ## Layer
 
@@ -347,3 +350,35 @@ Request `APPROVED_FOR_FIRST_SLICE` only after:
 
 If those conditions are not met, return `NEEDS_ARCHITECTURE`,
 `NEEDS_IMPLEMENTABILITY`, or `NEEDS_TEST_POLICY` with exact missing fields.
+
+## Approval Decision
+
+P2-GATE-007 is approved for first slice after ENG-104 review closure.
+
+Hard implementation conditions:
+
+- The first slice remains L3 RHI D3D11 backend clear/present/capture only.
+- D3D11, DXGI, and COM usage must stay in Windows-only private RHI source or
+  private internal headers. Public RHI headers must not expose Windows SDK,
+  D3D11, DXGI, COM, or Platform types.
+- Production `YuRHI` must not include or link `YuPlatform`. Platform native
+  surface conversion belongs to the caller, test fixture, or later adapter.
+- `CMakePresets.json` may change only to isolate `HardwareSmoke` from the
+  default `windows-fast-gate` and keep `windows-hardware-smoke` as the explicit
+  hardware lane.
+- Default `windows-fast-gate` must remain deterministic and must not run real
+  D3D11 hardware tests.
+- `windows-hardware-smoke` must discover the D3D11 smoke tests, and first-slice
+  acceptance requires at least one suitable Windows graphics run where those
+  tests actually execute and validate expected capture bytes.
+- Zero or skipped hardware smoke is not backend proof.
+- Backend proof must be capture-byte assertions into caller-owned storage, not
+  screenshot, report, dashboard, visual demo, or manual inspection.
+- Factory ownership must remain caller-owned or explicit-cleanup based. The
+  public factory path must not return heap-owned polymorphic D3D11 device output.
+- Swapchain backbuffer access may extend the backend-neutral RHI surface, but it
+  must stay small and must not introduce shader, buffer, texture, pipeline,
+  RenderCore, Resource, Package, report, screenshot, visual proof, UI, World, or
+  Game Adapter scope.
+- Allowed implementation paths must use exact repository casing:
+  `Src/YuEngine/Rhi/...` and `Tests/Rhi/...`.
