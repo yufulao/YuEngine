@@ -1,13 +1,16 @@
 // Module: Tests File
 // File: Tests/File/FileTests.cpp
 
+#include <array>
 #include <filesystem>
 #include <cstdio>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
+#include "YuEngine/File/AsyncFileReadQueue.h"
 #include "YuEngine/File/FileConstants.h"
 #include "YuEngine/File/LooseFileSource.h"
 #include "YuEngine/File/MountTable.h"
@@ -15,6 +18,10 @@
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
 
 using yuengine::file::FileStatus;
+using AsyncFileReadQueue = yuengine::file::AsyncFileReadQueue;
+using AsyncFileReadRequest = yuengine::file::AsyncFileReadRequest;
+using AsyncFileReadResult = yuengine::file::AsyncFileReadResult;
+using yuengine::file::AsyncFileReadStatus;
 using LooseFileSource = yuengine::file::LooseFileSource;
 using yuengine::memory::MemoryAccountingStatus;
 using MountId = yuengine::file::MountId;
@@ -34,6 +41,12 @@ constexpr const char* TEST_READ = "File_LooseFixtureRead_ReturnsExactBytes";
 constexpr const char* TEST_FORGED_NORMALIZED_PATH = "File_LooseFileSourceRejectsForgedNormalizedPathEscape";
 constexpr const char* TEST_SNAPSHOT = "File_ReadSnapshot_RecordsCountsAndBytes";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "File_DiagnosticsDisabled_DoesNotChangeBehavior";
+constexpr const char* TEST_ASYNC_READ = "File_AsyncReadQueue_ReadsFixtureIntoCallerStorage";
+constexpr const char* TEST_ASYNC_CAPACITY = "File_AsyncReadQueue_RejectsCapacityOverflow";
+constexpr const char* TEST_ASYNC_FAILURE = "File_AsyncReadQueue_ReportsReadFailureCompletion";
+constexpr const char* TEST_ASYNC_SMALL_OUTPUT = "File_AsyncReadQueue_RejectsSmallOutputWithoutOverrun";
+constexpr const char* TEST_ASYNC_SHUTDOWN = "File_AsyncReadQueue_ShutdownRejectsSubmission";
+constexpr const char* TEST_ASYNC_SNAPSHOT = "File_AsyncReadQueue_SnapshotReportsBoundedCounters";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* PRIMARY_MOUNT = "Primary";
@@ -45,6 +58,7 @@ constexpr const char* MISSING_MOUNT = "missing";
 constexpr const char* NORMALIZED_PATH = "Nested/FixtureFile.txt";
 constexpr const char* FIXTURE_TEXT = "yuengine file fixture\n";
 constexpr const char* MISSING_PATH = "missing.txt";
+constexpr std::size_t ASYNC_OUTPUT_CAPACITY = 64U;
 using TestFunction = int (*)();
 
 std::filesystem::path FixtureRoot() {
@@ -70,6 +84,21 @@ MountTable CreateMountedTable() {
     }
 
     return table;
+}
+
+AsyncFileReadRequest CreateAsyncRequest(
+    MountTable &table,
+    std::uint64_t request_index,
+    const char *path,
+    std::uint8_t *output_bytes,
+    std::size_t output_capacity) {
+    AsyncFileReadRequest request;
+    request.mount_table = &table;
+    request.read_request = {MountId(PRIMARY_MOUNT), VirtualPath(path)};
+    request.request_index = request_index;
+    request.output_bytes = output_bytes;
+    request.output_capacity = output_capacity;
+    return request;
 }
 
 int FilePathNormalizeRemovesDotAndRepeatedSeparators() {
@@ -300,6 +329,264 @@ int FileDiagnosticsDisabledDoesNotChangeBehavior() {
 
     return 0;
 }
+
+int FileAsyncReadQueueReadsFixtureIntoCallerStorage() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue queue;
+    const AsyncFileReadStatus init_status = queue.Initialize(2U, 2U);
+    if (init_status != AsyncFileReadStatus::Success) {
+        return Fail("async queue initialize failed");
+    }
+
+    const AsyncFileReadStatus start_status = queue.Start();
+    if (start_status != AsyncFileReadStatus::Success) {
+        return Fail("async queue start failed");
+    }
+
+    std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> output_bytes{};
+    AsyncFileReadRequest request = CreateAsyncRequest(
+        table,
+        1U,
+        NORMALIZED_PATH,
+        output_bytes.data(),
+        output_bytes.size());
+
+    const AsyncFileReadStatus submit_status = queue.Submit(request);
+    if (submit_status != AsyncFileReadStatus::Queued) {
+        return Fail("async queue did not accept read request");
+    }
+
+    const AsyncFileReadStatus shutdown_status = queue.Shutdown(false);
+    if (shutdown_status != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("async queue shutdown failed");
+    }
+
+    std::array<AsyncFileReadResult, 1U> results{};
+    std::size_t written_count = 0U;
+    const AsyncFileReadStatus drain_status = queue.DrainCompletions(
+        results.data(),
+        results.size(),
+        &written_count);
+    if (drain_status != AsyncFileReadStatus::Success) {
+        return Fail("async completion drain failed");
+    }
+
+    if (written_count != 1U) {
+        return Fail("async completion count was wrong");
+    }
+
+    if (results[0U].status != AsyncFileReadStatus::Success) {
+        return Fail("async read did not return success");
+    }
+
+    const std::string text(output_bytes.begin(), output_bytes.begin() + results[0U].byte_count);
+    if (text != FIXTURE_TEXT) {
+        return Fail("async read bytes did not match fixture");
+    }
+
+    return 0;
+}
+
+int FileAsyncReadQueueRejectsCapacityOverflow() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue queue;
+    queue.Initialize(1U, 1U);
+    queue.Start();
+
+    std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> first_output{};
+    std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> second_output{};
+    AsyncFileReadRequest first_request = CreateAsyncRequest(
+        table,
+        1U,
+        NORMALIZED_PATH,
+        first_output.data(),
+        first_output.size());
+    AsyncFileReadRequest second_request = CreateAsyncRequest(
+        table,
+        2U,
+        NORMALIZED_PATH,
+        second_output.data(),
+        second_output.size());
+
+    const AsyncFileReadStatus first_status = queue.Submit(first_request);
+    if (first_status != AsyncFileReadStatus::Queued) {
+        return Fail("first async submit failed");
+    }
+
+    const AsyncFileReadStatus second_status = queue.Submit(second_request);
+    if (second_status != AsyncFileReadStatus::QueueFull) {
+        return Fail("async queue capacity overflow was not rejected");
+    }
+
+    queue.Shutdown(false);
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.rejected_count != 1U) {
+        return Fail("async queue rejection count was wrong");
+    }
+
+    if (snapshot.submitted_count != 1U) {
+        return Fail("async queue overflow changed submitted count");
+    }
+
+    return 0;
+}
+
+int FileAsyncReadQueueReportsReadFailureCompletion() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue queue;
+    queue.Initialize(2U, 2U);
+    queue.Start();
+
+    std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> output_bytes{};
+    AsyncFileReadRequest request = CreateAsyncRequest(
+        table,
+        7U,
+        MISSING_PATH,
+        output_bytes.data(),
+        output_bytes.size());
+    queue.Submit(request);
+    queue.Shutdown(false);
+
+    std::array<AsyncFileReadResult, 1U> results{};
+    std::size_t written_count = 0U;
+    queue.DrainCompletions(results.data(), results.size(), &written_count);
+    if (written_count != 1U) {
+        return Fail("read failure completion count was wrong");
+    }
+
+    if (results[0U].status != AsyncFileReadStatus::ReadFailure) {
+        return Fail("missing file did not return async read failure");
+    }
+
+    if (results[0U].file_status != FileStatus::FileNotFound) {
+        return Fail("missing file status was not preserved");
+    }
+
+    if (results[0U].request_index != 7U) {
+        return Fail("async failure request index was not preserved");
+    }
+
+    return 0;
+}
+
+int FileAsyncReadQueueRejectsSmallOutputWithoutOverrun() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue queue;
+    queue.Initialize(2U, 2U);
+    queue.Start();
+
+    std::array<std::uint8_t, 4U> output_bytes{};
+    output_bytes[0U] = 11U;
+    output_bytes[1U] = 22U;
+    output_bytes[2U] = 33U;
+    output_bytes[3U] = 44U;
+
+    AsyncFileReadRequest request = CreateAsyncRequest(
+        table,
+        9U,
+        NORMALIZED_PATH,
+        output_bytes.data(),
+        output_bytes.size());
+    queue.Submit(request);
+    queue.Shutdown(false);
+
+    std::array<AsyncFileReadResult, 1U> results{};
+    std::size_t written_count = 0U;
+    queue.DrainCompletions(results.data(), results.size(), &written_count);
+    if (written_count != 1U) {
+        return Fail("small output completion count was wrong");
+    }
+
+    if (results[0U].status != AsyncFileReadStatus::OutputTooSmall) {
+        return Fail("small output did not return output-too-small");
+    }
+
+    if (output_bytes[0U] != 11U) {
+        return Fail("small output buffer was overwritten");
+    }
+
+    if (output_bytes[3U] != 44U) {
+        return Fail("small output buffer tail was overwritten");
+    }
+
+    return 0;
+}
+
+int FileAsyncReadQueueShutdownRejectsSubmission() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue queue;
+    queue.Initialize(2U, 2U);
+    queue.Start();
+
+    const AsyncFileReadStatus shutdown_status = queue.Shutdown(true);
+    if (shutdown_status != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("async shutdown failed");
+    }
+
+    std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> output_bytes{};
+    AsyncFileReadRequest request = CreateAsyncRequest(
+        table,
+        3U,
+        NORMALIZED_PATH,
+        output_bytes.data(),
+        output_bytes.size());
+
+    const AsyncFileReadStatus submit_status = queue.Submit(request);
+    if (submit_status != AsyncFileReadStatus::ShutdownRequested) {
+        return Fail("async submit after shutdown was not rejected");
+    }
+
+    return 0;
+}
+
+int FileAsyncReadQueueSnapshotReportsBoundedCounters() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue queue;
+    queue.Initialize(2U, 2U);
+    queue.Start();
+
+    std::array<std::uint8_t, ASYNC_OUTPUT_CAPACITY> output_bytes{};
+    AsyncFileReadRequest request = CreateAsyncRequest(
+        table,
+        4U,
+        NORMALIZED_PATH,
+        output_bytes.data(),
+        output_bytes.size());
+    queue.Submit(request);
+    queue.Shutdown(false);
+
+    std::array<AsyncFileReadResult, 1U> results{};
+    std::size_t written_count = 0U;
+    queue.DrainCompletions(results.data(), results.size(), &written_count);
+
+    const auto snapshot = queue.Snapshot();
+    if (snapshot.work_capacity != 2U) {
+        return Fail("async snapshot work capacity was wrong");
+    }
+
+    if (snapshot.completion_capacity != 2U) {
+        return Fail("async snapshot completion capacity was wrong");
+    }
+
+    if (snapshot.completed_count != 1U) {
+        return Fail("async snapshot completed count was wrong");
+    }
+
+    if (snapshot.read_byte_count != std::string(FIXTURE_TEXT).size()) {
+        return Fail("async snapshot read byte count was wrong");
+    }
+
+    if (snapshot.max_queue_depth > snapshot.work_capacity) {
+        return Fail("async snapshot max queue depth exceeded capacity");
+    }
+
+    if (snapshot.max_completion_depth > snapshot.completion_capacity) {
+        return Fail("async snapshot max completion depth exceeded capacity");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -317,7 +604,13 @@ int main(int argc, char** argv) {
         {TEST_READ, FileLooseFixtureReadReturnsExactBytes},
         {TEST_FORGED_NORMALIZED_PATH, FileLooseFileSourceRejectsForgedNormalizedPathEscape},
         {TEST_SNAPSHOT, FileReadSnapshotRecordsCountsAndBytes},
-        {TEST_DISABLED_DIAGNOSTICS, FileDiagnosticsDisabledDoesNotChangeBehavior}};
+        {TEST_DISABLED_DIAGNOSTICS, FileDiagnosticsDisabledDoesNotChangeBehavior},
+        {TEST_ASYNC_READ, FileAsyncReadQueueReadsFixtureIntoCallerStorage},
+        {TEST_ASYNC_CAPACITY, FileAsyncReadQueueRejectsCapacityOverflow},
+        {TEST_ASYNC_FAILURE, FileAsyncReadQueueReportsReadFailureCompletion},
+        {TEST_ASYNC_SMALL_OUTPUT, FileAsyncReadQueueRejectsSmallOutputWithoutOverrun},
+        {TEST_ASYNC_SHUTDOWN, FileAsyncReadQueueShutdownRejectsSubmission},
+        {TEST_ASYNC_SNAPSHOT, FileAsyncReadQueueSnapshotReportsBoundedCounters}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

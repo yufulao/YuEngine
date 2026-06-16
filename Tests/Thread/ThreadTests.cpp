@@ -2,8 +2,10 @@
 // File: Tests/Thread/ThreadTests.cpp
 
 #include <array>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdio>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -13,11 +15,16 @@
 #include "YuEngine/Memory/DisabledMemoryTracker.h"
 #include "YuEngine/Thread/BoundedTaskQueue.h"
 #include "YuEngine/Thread/InlineTaskExecutor.h"
+#include "YuEngine/Thread/ThreadWorker.h"
 
 using BoundedTaskQueue = yuengine::thread::BoundedTaskQueue;
 using CountingMemoryTracker = yuengine::memory::CountingMemoryTracker;
 using DisabledMemoryTracker = yuengine::memory::DisabledMemoryTracker;
 using InlineTaskExecutor = yuengine::thread::InlineTaskExecutor;
+using ThreadWorker = yuengine::thread::ThreadWorker;
+using ThreadWorkerCompletion = yuengine::thread::ThreadWorkerCompletion;
+using ThreadWorkerDesc = yuengine::thread::ThreadWorkerDesc;
+using yuengine::thread::ThreadWorkerStatus;
 using yuengine::thread::ShutdownPolicy;
 using yuengine::thread::TaskStatus;
 using yuengine::thread::Tests::FixedTraceBuffer;
@@ -33,6 +40,11 @@ constexpr const char* TEST_SHUTDOWN_DRAIN = "Thread_ShutdownDrainPolicy_Executes
 constexpr const char* TEST_SHUTDOWN_CANCEL = "Thread_ShutdownCancelPolicy_CancelsQueuedTasks";
 constexpr const char* TEST_CAPACITY = "Thread_QueueCapacity_DoesNotGrowDuringFixture";
 constexpr const char* TEST_DIAGNOSTICS_DISABLED = "Thread_DiagnosticsDisabled_DoesNotChangeBehavior";
+constexpr const char* TEST_WORKER_BEFORE_START = "Thread_WorkerSubmitBeforeStart_ReturnsExplicitStatus";
+constexpr const char* TEST_WORKER_DRAIN = "Thread_WorkerDrainShutdown_WritesCompletionRecords";
+constexpr const char* TEST_WORKER_CANCEL = "Thread_WorkerCancelShutdown_CancelsQueuedWork";
+constexpr const char* TEST_WORKER_COMPLETION_CAPACITY = "Thread_WorkerCompletionCapacity_RejectsWithoutMutation";
+constexpr const char* TEST_WORKER_COMPLETION_DRAIN = "Thread_WorkerCompletionDrain_UsesCallerStorageLimit";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::size_t SMALL_CAPACITY = 2U;
@@ -41,6 +53,15 @@ constexpr int FIRST_VALUE = 10;
 constexpr int SECOND_VALUE = 20;
 constexpr int THIRD_VALUE = 30;
 using TestFunction = int (*)();
+
+struct BlockingThreadContext {
+    FixedTraceBuffer *trace = nullptr;
+    int value = 0;
+    bool entered = false;
+    bool release = false;
+    std::mutex mutex;
+    std::condition_variable condition;
+};
 
 int Fail(const std::string& message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -88,6 +109,48 @@ TaskStatus RecordTask(void* context) {
     }
 
     return TaskStatus::Completed;
+}
+
+TaskStatus BlockingRecordTask(void* context) {
+    BlockingThreadContext *task_context = static_cast<BlockingThreadContext *>(context);
+    if (task_context == nullptr) {
+        return TaskStatus::Failed;
+    }
+
+    {
+        std::unique_lock<std::mutex> lock(task_context->mutex);
+        task_context->entered = true;
+        task_context->condition.notify_all();
+        task_context->condition.wait(lock, [task_context]() {
+            return task_context->release;
+        });
+    }
+
+    if (task_context->trace == nullptr) {
+        return TaskStatus::Failed;
+    }
+
+    if (!task_context->trace->Append(task_context->value)) {
+        return TaskStatus::Failed;
+    }
+
+    return TaskStatus::Completed;
+}
+
+void WaitForBlockingTask(BlockingThreadContext &context) {
+    std::unique_lock<std::mutex> lock(context.mutex);
+    context.condition.wait(lock, [&context]() {
+        return context.entered;
+    });
+}
+
+void ReleaseBlockingTask(BlockingThreadContext &context) {
+    {
+        std::lock_guard<std::mutex> lock(context.mutex);
+        context.release = true;
+    }
+
+    context.condition.notify_all();
 }
 
 int ThreadQueueEnqueueWithinCapacitySucceeds() {
@@ -361,6 +424,297 @@ int ThreadDiagnosticsDisabledDoesNotChangeBehavior() {
 
     return 0;
 }
+
+int ThreadWorkerSubmitBeforeStartReturnsExplicitStatus() {
+    ThreadWorker worker;
+    ThreadWorkerDesc desc;
+    desc.work_capacity = SMALL_CAPACITY;
+    desc.completion_capacity = SMALL_CAPACITY;
+
+    const ThreadWorkerStatus init_status = worker.Initialize(desc);
+    if (init_status != ThreadWorkerStatus::Success) {
+        return Fail("worker initialize failed");
+    }
+
+    FixedTraceBuffer trace;
+    ThreadTestContext context{&trace, FIRST_VALUE, false};
+    const ThreadWorkerStatus submit_status = worker.Submit(&RecordTask, &context);
+    if (submit_status != ThreadWorkerStatus::NotStarted) {
+        return Fail("submit before start did not return not-started");
+    }
+
+    const auto snapshot = worker.Snapshot();
+    if (snapshot.rejected_count != 1U) {
+        return Fail("submit before start did not count rejection");
+    }
+
+    return 0;
+}
+
+int ThreadWorkerDrainShutdownWritesCompletionRecords() {
+    ThreadWorker worker;
+    ThreadWorkerDesc desc;
+    desc.work_capacity = LARGE_CAPACITY;
+    desc.completion_capacity = LARGE_CAPACITY;
+
+    const ThreadWorkerStatus init_status = worker.Initialize(desc);
+    if (init_status != ThreadWorkerStatus::Success) {
+        return Fail("worker initialize failed");
+    }
+
+    const ThreadWorkerStatus start_status = worker.Start();
+    if (start_status != ThreadWorkerStatus::Success) {
+        return Fail("worker start failed");
+    }
+
+    FixedTraceBuffer trace;
+    ThreadTestContext first_context{&trace, FIRST_VALUE, false};
+    ThreadTestContext second_context{&trace, SECOND_VALUE, false};
+    worker.Submit(&RecordTask, &first_context);
+    worker.Submit(&RecordTask, &second_context);
+
+    const ThreadWorkerStatus shutdown_status = worker.Shutdown(ShutdownPolicy::DrainQueued);
+    if (shutdown_status != ThreadWorkerStatus::ShutdownComplete) {
+        return Fail("drain shutdown did not complete");
+    }
+
+    std::array<ThreadWorkerCompletion, 2U> completions{};
+    std::size_t written_count = 0U;
+    const ThreadWorkerStatus drain_status = worker.DrainCompletions(
+        completions.data(),
+        completions.size(),
+        &written_count);
+    if (drain_status != ThreadWorkerStatus::Success) {
+        return Fail("completion drain failed");
+    }
+
+    if (written_count != completions.size()) {
+        return Fail("completion count was wrong");
+    }
+
+    std::size_t completed_count = 0U;
+    for (const ThreadWorkerCompletion &completion : completions) {
+        if (completion.status == TaskStatus::Completed) {
+            ++completed_count;
+        }
+    }
+
+    if (completed_count != completions.size()) {
+        return Fail("completion records did not return completed tasks");
+    }
+
+    const std::array<int, 2U> expected_trace{FIRST_VALUE, SECOND_VALUE};
+    if (!TraceEquals(trace, expected_trace)) {
+        return Fail("worker drain did not execute queued tasks");
+    }
+
+    const auto snapshot = worker.Snapshot();
+    if (snapshot.completed_count != completions.size()) {
+        return Fail("worker snapshot completed count was wrong");
+    }
+
+    if (snapshot.pending_count != 0U) {
+        return Fail("worker drain left pending tasks");
+    }
+
+    return 0;
+}
+
+int ThreadWorkerCancelShutdownCancelsQueuedWork() {
+    ThreadWorker worker;
+    ThreadWorkerDesc desc;
+    desc.work_capacity = LARGE_CAPACITY;
+    desc.completion_capacity = LARGE_CAPACITY;
+
+    const ThreadWorkerStatus init_status = worker.Initialize(desc);
+    if (init_status != ThreadWorkerStatus::Success) {
+        return Fail("worker initialize failed");
+    }
+
+    const ThreadWorkerStatus start_status = worker.Start();
+    if (start_status != ThreadWorkerStatus::Success) {
+        return Fail("worker start failed");
+    }
+
+    FixedTraceBuffer trace;
+    BlockingThreadContext blocking_context;
+    blocking_context.trace = &trace;
+    blocking_context.value = FIRST_VALUE;
+    ThreadTestContext queued_context{&trace, SECOND_VALUE, false};
+
+    worker.Submit(&BlockingRecordTask, &blocking_context);
+    worker.Submit(&RecordTask, &queued_context);
+    WaitForBlockingTask(blocking_context);
+
+    const ThreadWorkerStatus stop_status = worker.RequestStop(ShutdownPolicy::CancelQueued);
+    if (stop_status != ThreadWorkerStatus::Success) {
+        return Fail("cancel stop request failed");
+    }
+
+    ReleaseBlockingTask(blocking_context);
+
+    const ThreadWorkerStatus join_status = worker.Join();
+    if (join_status != ThreadWorkerStatus::ShutdownComplete) {
+        return Fail("cancel shutdown join failed");
+    }
+
+    std::array<ThreadWorkerCompletion, 2U> completions{};
+    std::size_t written_count = 0U;
+    worker.DrainCompletions(completions.data(), completions.size(), &written_count);
+    if (written_count != completions.size()) {
+        return Fail("cancel completion count was wrong");
+    }
+
+    std::size_t canceled_count = 0U;
+    std::size_t completed_count = 0U;
+    for (const ThreadWorkerCompletion &completion : completions) {
+        if (completion.status == TaskStatus::Canceled) {
+            ++canceled_count;
+        }
+
+        if (completion.status == TaskStatus::Completed) {
+            ++completed_count;
+        }
+    }
+
+    if (canceled_count != 1U) {
+        return Fail("cancel shutdown did not cancel queued work");
+    }
+
+    if (completed_count != 1U) {
+        return Fail("cancel shutdown did not complete running work");
+    }
+
+    const std::array<int, 1U> expected_trace{FIRST_VALUE};
+    if (!TraceEquals(trace, expected_trace)) {
+        return Fail("cancel shutdown executed canceled work");
+    }
+
+    return 0;
+}
+
+int ThreadWorkerCompletionCapacityRejectsWithoutMutation() {
+    ThreadWorker worker;
+    ThreadWorkerDesc desc;
+    desc.work_capacity = LARGE_CAPACITY;
+    desc.completion_capacity = 1U;
+
+    const ThreadWorkerStatus init_status = worker.Initialize(desc);
+    if (init_status != ThreadWorkerStatus::Success) {
+        return Fail("worker initialize failed");
+    }
+
+    const ThreadWorkerStatus start_status = worker.Start();
+    if (start_status != ThreadWorkerStatus::Success) {
+        return Fail("worker start failed");
+    }
+
+    FixedTraceBuffer trace;
+    BlockingThreadContext blocking_context;
+    blocking_context.trace = &trace;
+    blocking_context.value = FIRST_VALUE;
+    ThreadTestContext rejected_context{&trace, SECOND_VALUE, false};
+
+    const ThreadWorkerStatus first_submit = worker.Submit(&BlockingRecordTask, &blocking_context);
+    if (first_submit != ThreadWorkerStatus::Success) {
+        return Fail("first submit failed");
+    }
+
+    WaitForBlockingTask(blocking_context);
+
+    const ThreadWorkerStatus second_submit = worker.Submit(&RecordTask, &rejected_context);
+    if (second_submit != ThreadWorkerStatus::CompletionQueueFull) {
+        return Fail("completion capacity did not reject second submit");
+    }
+
+    ReleaseBlockingTask(blocking_context);
+    worker.Shutdown(ShutdownPolicy::DrainQueued);
+
+    std::array<ThreadWorkerCompletion, 1U> completions{};
+    std::size_t written_count = 0U;
+    worker.DrainCompletions(completions.data(), completions.size(), &written_count);
+    if (written_count != 1U) {
+        return Fail("completion capacity test wrote wrong count");
+    }
+
+    const auto snapshot = worker.Snapshot();
+    if (snapshot.rejected_count != 1U) {
+        return Fail("completion capacity rejection was not counted");
+    }
+
+    if (snapshot.completed_count != 1U) {
+        return Fail("completion capacity changed accepted work count");
+    }
+
+    return 0;
+}
+
+int ThreadWorkerCompletionDrainUsesCallerStorageLimit() {
+    ThreadWorker worker;
+    ThreadWorkerDesc desc;
+    desc.work_capacity = LARGE_CAPACITY;
+    desc.completion_capacity = LARGE_CAPACITY;
+
+    const ThreadWorkerStatus init_status = worker.Initialize(desc);
+    if (init_status != ThreadWorkerStatus::Success) {
+        return Fail("worker initialize failed");
+    }
+
+    const ThreadWorkerStatus start_status = worker.Start();
+    if (start_status != ThreadWorkerStatus::Success) {
+        return Fail("worker start failed");
+    }
+
+    FixedTraceBuffer trace;
+    ThreadTestContext first_context{&trace, FIRST_VALUE, false};
+    ThreadTestContext second_context{&trace, SECOND_VALUE, false};
+    worker.Submit(&RecordTask, &first_context);
+    worker.Submit(&RecordTask, &second_context);
+    worker.Shutdown(ShutdownPolicy::DrainQueued);
+
+    std::array<ThreadWorkerCompletion, 1U> first_drain{};
+    std::size_t first_written_count = 0U;
+    const ThreadWorkerStatus first_drain_status = worker.DrainCompletions(
+        first_drain.data(),
+        first_drain.size(),
+        &first_written_count);
+    if (first_drain_status != ThreadWorkerStatus::CompletionQueueFull) {
+        return Fail("small completion output did not keep remaining records");
+    }
+
+    if (first_written_count != 1U) {
+        return Fail("small completion output wrote wrong count");
+    }
+
+    std::array<ThreadWorkerCompletion, 1U> second_drain{};
+    std::size_t second_written_count = 0U;
+    const ThreadWorkerStatus second_drain_status = worker.DrainCompletions(
+        second_drain.data(),
+        second_drain.size(),
+        &second_written_count);
+    if (second_drain_status != ThreadWorkerStatus::Success) {
+        return Fail("second completion drain failed");
+    }
+
+    if (second_written_count != 1U) {
+        return Fail("second completion drain wrote wrong count");
+    }
+
+    const auto snapshot = worker.Snapshot();
+    if (snapshot.drained_completion_count != 2U) {
+        return Fail("drained completion count was wrong");
+    }
+
+    if (snapshot.work_capacity != snapshot.work_capacity_after_shutdown) {
+        return Fail("work capacity changed during worker fixture");
+    }
+
+    if (snapshot.completion_capacity != snapshot.completion_capacity_after_shutdown) {
+        return Fail("completion capacity changed during worker fixture");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -377,7 +731,12 @@ int main(int argc, char** argv) {
         {TEST_SHUTDOWN_DRAIN, ThreadShutdownDrainPolicyExecutesQueuedTasks},
         {TEST_SHUTDOWN_CANCEL, ThreadShutdownCancelPolicyCancelsQueuedTasks},
         {TEST_CAPACITY, ThreadQueueCapacityDoesNotGrowDuringFixture},
-        {TEST_DIAGNOSTICS_DISABLED, ThreadDiagnosticsDisabledDoesNotChangeBehavior}};
+        {TEST_DIAGNOSTICS_DISABLED, ThreadDiagnosticsDisabledDoesNotChangeBehavior},
+        {TEST_WORKER_BEFORE_START, ThreadWorkerSubmitBeforeStartReturnsExplicitStatus},
+        {TEST_WORKER_DRAIN, ThreadWorkerDrainShutdownWritesCompletionRecords},
+        {TEST_WORKER_CANCEL, ThreadWorkerCancelShutdownCancelsQueuedWork},
+        {TEST_WORKER_COMPLETION_CAPACITY, ThreadWorkerCompletionCapacityRejectsWithoutMutation},
+        {TEST_WORKER_COMPLETION_DRAIN, ThreadWorkerCompletionDrainUsesCallerStorageLimit}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

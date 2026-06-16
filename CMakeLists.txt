@@ -85,6 +85,7 @@ target_link_libraries(YuDiagnostics PUBLIC YuMemory)
 add_library(YuThread
     Src/YuEngine/Thread/Src/BoundedTaskQueue.cpp
     Src/YuEngine/Thread/Src/InlineTaskExecutor.cpp
+    Src/YuEngine/Thread/Src/ThreadWorker.cpp
 )
 yuengine_apply_compile_options(YuThread)
 target_include_directories(YuThread
@@ -94,6 +95,7 @@ target_include_directories(YuThread
 target_link_libraries(YuThread PUBLIC YuMemory)
 
 add_library(YuFile
+    Src/YuEngine/File/Src/AsyncFileReadQueue.cpp
     Src/YuEngine/File/Src/FileReadResult.cpp
     Src/YuEngine/File/Src/LooseFileSource.cpp
     Src/YuEngine/File/Src/MountId.cpp
@@ -109,6 +111,7 @@ target_include_directories(YuFile
         Src/YuEngine/File/Include
 )
 target_link_libraries(YuFile PUBLIC YuMemory)
+target_link_libraries(YuFile PRIVATE YuThread)
 
 add_library(YuRHI
     Src/YuEngine/Rhi/Src/D3D11RhiDeviceWindows.cpp
@@ -779,6 +782,11 @@ yuengine_add_labeled_test(Thread_ShutdownDrainPolicy_ExecutesQueuedTasks YuThrea
 yuengine_add_labeled_test(Thread_ShutdownCancelPolicy_CancelsQueuedTasks YuThreadTests Fast ModuleFixture Thread)
 yuengine_add_labeled_test(Thread_QueueCapacity_DoesNotGrowDuringFixture YuThreadTests Fast ModuleFixture Thread PerformanceSmoke)
 yuengine_add_labeled_test(Thread_DiagnosticsDisabled_DoesNotChangeBehavior YuThreadTests Fast ModuleFixture Thread EvidenceOracle)
+yuengine_add_labeled_test(Thread_WorkerSubmitBeforeStart_ReturnsExplicitStatus YuThreadTests Fast ModuleFixture Thread EvidenceOracle)
+yuengine_add_labeled_test(Thread_WorkerDrainShutdown_WritesCompletionRecords YuThreadTests Fast ModuleFixture Thread AsyncIO EvidenceOracle)
+yuengine_add_labeled_test(Thread_WorkerCancelShutdown_CancelsQueuedWork YuThreadTests Fast ModuleFixture Thread AsyncIO EvidenceOracle)
+yuengine_add_labeled_test(Thread_WorkerCompletionCapacity_RejectsWithoutMutation YuThreadTests Fast ModuleFixture Thread AsyncIO PerformanceSmoke)
+yuengine_add_labeled_test(Thread_WorkerCompletionDrain_UsesCallerStorageLimit YuThreadTests Fast ModuleFixture Thread AsyncIO PerformanceSmoke EvidenceOracle)
 
 add_executable(YuFileTests
     Tests/File/FileTests.cpp
@@ -796,6 +804,12 @@ yuengine_add_labeled_test(File_LooseFixtureRead_ReturnsExactBytes YuFileTests Fa
 yuengine_add_labeled_test(File_LooseFileSourceRejectsForgedNormalizedPathEscape YuFileTests Fast ModuleFixture File)
 yuengine_add_labeled_test(File_ReadSnapshot_RecordsCountsAndBytes YuFileTests Fast ModuleFixture File)
 yuengine_add_labeled_test(File_DiagnosticsDisabled_DoesNotChangeBehavior YuFileTests Fast ModuleFixture File EvidenceOracle)
+yuengine_add_labeled_test(File_AsyncReadQueue_ReadsFixtureIntoCallerStorage YuFileTests Fast ModuleFixture File AsyncIO EvidenceOracle)
+yuengine_add_labeled_test(File_AsyncReadQueue_RejectsCapacityOverflow YuFileTests Fast ModuleFixture File AsyncIO PerformanceSmoke)
+yuengine_add_labeled_test(File_AsyncReadQueue_ReportsReadFailureCompletion YuFileTests Fast ModuleFixture File AsyncIO EvidenceOracle)
+yuengine_add_labeled_test(File_AsyncReadQueue_RejectsSmallOutputWithoutOverrun YuFileTests Fast ModuleFixture File AsyncIO EvidenceOracle)
+yuengine_add_labeled_test(File_AsyncReadQueue_ShutdownRejectsSubmission YuFileTests Fast ModuleFixture File AsyncIO)
+yuengine_add_labeled_test(File_AsyncReadQueue_SnapshotReportsBoundedCounters YuFileTests Fast ModuleFixture File AsyncIO PerformanceSmoke EvidenceOracle)
 
 add_executable(YuRHITests
     Tests/Rhi/RhiTests.cpp
