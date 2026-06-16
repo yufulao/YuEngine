@@ -1,6 +1,6 @@
 # P2-GATE-005: Platform Window Native Surface And Event Pump
 
-Status: Approved for first slice
+Status: First-slice covered
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
@@ -370,3 +370,35 @@ Hard implementation conditions:
   after, `Platform` / `Fast` / `PerformanceSmoke` / `EvidenceOracle` discovery
   counts, whether `HardwareSmoke` remains 0, and proof that public Platform
   headers do not include Windows SDK or upper-layer headers.
+
+## First-Slice Result
+
+The first slice landed at `e3e2ad7`.
+
+Result:
+
+- Added Platform window public API headers for status, descriptor, native
+  surface, event type, event record, poll result, snapshot, and
+  `WindowsPlatformWindow`.
+- Added `WindowsPlatformWindow.cpp` with the Win32 implementation details kept
+  out of public headers.
+- Updated `CMakeLists.txt` to compile the Windows source and private-link
+  `user32` on Windows.
+- Added 10 deterministic Platform contract tests.
+- `CMakePresets.json` was not changed.
+- No `HardwareSmoke` tests were registered.
+
+Evidence:
+
+- `cmake --preset windows-fast-gate`: PASS.
+- `cmake --build --preset windows-fast-gate`: PASS.
+- `ctest --preset windows-fast-gate -N`: 656 tests, up from 646.
+- Full `windows-fast-gate` passed at `656/656`.
+- Label discovery: `Fast` 656, `ModuleFixture` 656, `Platform` 13,
+  `PerformanceSmoke` 39, `EvidenceOracle` 80, and `HardwareSmoke` 0.
+- `windows-hardware-smoke` remains 0 tests and exits successfully.
+- Public Platform headers do not include `Windows.h` or expose `HWND`,
+  `HINSTANCE`, `WPARAM`, `LPARAM`, or `LRESULT`.
+- Win32 SDK symbols are confined to `WindowsPlatformWindow.cpp`.
+- No RHI, D3D11, DXGI, RenderCore, YuInput semantic mapping, UI, World,
+  Resource, Package, report, visual proof, or Game Adapter dependency was added.
