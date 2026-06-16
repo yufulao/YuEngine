@@ -5,11 +5,67 @@
 
 #include <algorithm>
 
+#include "YuEngine/Rhi/RhiDeviceFactory.h"
 #include "YuEngine/Rhi/RhiConstants.h"
 
 namespace yuengine::rhi {
 namespace {
 constexpr std::uint32_t INVALID_GENERATION = 0U;
+}
+
+RhiDeviceCreateResult RhiDeviceFactory::CreateDevice(const RhiDeviceDesc &desc, NullRhiDevice *null_device) {
+    const RhiStatus desc_status = ValidateDeviceDesc(desc);
+    if (desc_status != RhiStatus::Success) {
+        return RhiDeviceCreateResult{desc_status, nullptr, RhiCapabilities{}};
+    }
+
+    if (null_device == nullptr) {
+        return RhiDeviceCreateResult{RhiStatus::InvalidDescriptor, nullptr, RhiCapabilities{}};
+    }
+
+    const RhiStatus initialize_status = null_device->Initialize(desc);
+    if (initialize_status != RhiStatus::Success) {
+        return RhiDeviceCreateResult{initialize_status, nullptr, RhiCapabilities{}};
+    }
+
+    return RhiDeviceCreateResult{RhiStatus::Success, null_device, null_device->Capabilities()};
+}
+
+RhiStatus RhiDeviceFactory::ValidateNativeSurfaceDesc(const RhiNativeSurfaceDesc &surface_desc) {
+    if (!surface_desc.valid) {
+        return RhiStatus::InvalidDescriptor;
+    }
+
+    if (surface_desc.window_value == 0U) {
+        return RhiStatus::InvalidDescriptor;
+    }
+
+    return RhiStatus::Success;
+}
+
+RhiStatus RhiDeviceFactory::ValidateDeviceDesc(const RhiDeviceDesc &desc) {
+    if (desc.backend_kind == RhiBackendKind::D3D11) {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    if (desc.backend_kind == RhiBackendKind::Unsupported) {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    if (desc.backend_kind != RhiBackendKind::Null) {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    if (desc.requires_native_surface) {
+        const RhiStatus surface_status = ValidateNativeSurfaceDesc(desc.native_surface);
+        if (surface_status != RhiStatus::Success) {
+            return surface_status;
+        }
+
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    return RhiStatus::Success;
 }
 
 NullRhiDevice::NullRhiDevice()
@@ -24,8 +80,12 @@ NullRhiDevice::NullRhiDevice()
       has_presented_frame_(false) {
 }
 
-RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc& desc) {
+RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc &desc) {
     if (desc.backend_kind != RhiBackendKind::Null) {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    if (desc.requires_native_surface) {
         return RhiStatus::UnsupportedBackend;
     }
 
@@ -62,7 +122,10 @@ RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc& desc) {
         desc.command_list_capacity,
         MAX_COLOR_TARGET_EXTENT,
         MAX_CAPTURE_FIXTURE_EXTENT,
-        true};
+        true,
+        false,
+        false,
+        false};
     snapshot_ = RhiDeviceSnapshot{};
     snapshot_.color_target_capacity = desc.color_target_capacity;
     is_initialized_ = true;
@@ -71,7 +134,7 @@ RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc& desc) {
     return RhiStatus::Success;
 }
 
-RhiStatus NullRhiDevice::CreateColorTarget(const RhiColorTargetDesc& desc, RhiTextureHandle& out_handle) {
+RhiStatus NullRhiDevice::CreateColorTarget(const RhiColorTargetDesc &desc, RhiTextureHandle &out_handle) {
     if (!is_initialized_) {
         return RecordFailure(RhiStatus::InvalidLifecycle);
     }
@@ -120,7 +183,7 @@ RhiStatus NullRhiDevice::DestroyTarget(RhiTextureHandle handle) {
     return RhiStatus::Success;
 }
 
-RhiStatus NullRhiDevice::RecordClear(RhiCommandList& command_list, RhiTextureHandle handle, RhiColor color) {
+RhiStatus NullRhiDevice::RecordClear(RhiCommandList &command_list, RhiTextureHandle handle, RhiColor color) {
     if (!IsTargetHandleValid(handle)) {
         return RecordFailure(RhiStatus::InvalidHandle);
     }
@@ -134,7 +197,7 @@ RhiStatus NullRhiDevice::RecordClear(RhiCommandList& command_list, RhiTextureHan
     return RhiStatus::Success;
 }
 
-RhiStatus NullRhiDevice::Submit(const RhiCommandList& command_list) {
+RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
     if (!command_list.IsComplete()) {
         return RecordFailure(RhiStatus::InvalidLifecycle);
     }
@@ -252,7 +315,7 @@ bool NullRhiDevice::IsTargetHandleValid(RhiTextureHandle handle) const {
     return slot.generation == handle.generation;
 }
 
-bool NullRhiDevice::IsCommandTargetValidForFrame(const RhiCommandRecord& command, RhiTextureHandle frame_target) const {
+bool NullRhiDevice::IsCommandTargetValidForFrame(const RhiCommandRecord &command, RhiTextureHandle frame_target) const {
     if (command.type != RhiCommandType::ClearColor) {
         return true;
     }
@@ -268,7 +331,7 @@ bool NullRhiDevice::IsCommandTargetValidForFrame(const RhiCommandRecord& command
     return IsTargetHandleValid(command.target);
 }
 
-bool NullRhiDevice::IsColorTargetDescValid(const RhiColorTargetDesc& desc) const {
+bool NullRhiDevice::IsColorTargetDescValid(const RhiColorTargetDesc &desc) const {
     if (desc.extent.width == 0U) {
         return false;
     }
@@ -288,7 +351,7 @@ bool NullRhiDevice::IsColorTargetDescValid(const RhiColorTargetDesc& desc) const
     return true;
 }
 
-std::size_t NullRhiDevice::PixelByteCount(const RhiColorTargetDesc& desc) const {
+std::size_t NullRhiDevice::PixelByteCount(const RhiColorTargetDesc &desc) const {
     return static_cast<std::size_t>(desc.extent.width) * static_cast<std::size_t>(desc.extent.height) * RGBA8_BYTES_PER_PIXEL;
 }
 

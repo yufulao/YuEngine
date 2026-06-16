@@ -8,6 +8,7 @@
 #include <span>
 #include <vector>
 
+#include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/RhiCapabilities.h"
 #include "YuEngine/Rhi/RhiCaptureResult.h"
 #include "YuEngine/Rhi/RhiColorTargetDesc.h"
@@ -19,7 +20,7 @@
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 
 namespace yuengine::rhi {
-class NullRhiDevice final {
+class NullRhiDevice final : public IRhiDevice {
 public:
     /**
      * @comment Constructs a NullRhiDevice instance.
@@ -31,20 +32,20 @@ public:
      * @param desc Input descriptor.
      * @return Explicit operation status.
      */
-    RhiStatus Initialize(const RhiDeviceDesc& desc);
+    RhiStatus Initialize(const RhiDeviceDesc &desc) override;
     /**
      * @comment Creates color target.
      * @param desc Input descriptor.
      * @param out_handle Output handle written on success.
      * @return Explicit operation status.
      */
-    RhiStatus CreateColorTarget(const RhiColorTargetDesc& desc, RhiTextureHandle& out_handle);
+    RhiStatus CreateColorTarget(const RhiColorTargetDesc &desc, RhiTextureHandle &out_handle) override;
     /**
      * @comment Destroys target.
      * @param handle Input handle.
      * @return Explicit operation status.
      */
-    RhiStatus DestroyTarget(RhiTextureHandle handle);
+    RhiStatus DestroyTarget(RhiTextureHandle handle) override;
     /**
      * @comment Records clear.
      * @param command_list Command list updated by the function.
@@ -52,41 +53,41 @@ public:
      * @param color Input color.
      * @return Explicit operation status.
      */
-    RhiStatus RecordClear(RhiCommandList& command_list, RhiTextureHandle handle, RhiColor color);
+    RhiStatus RecordClear(RhiCommandList &command_list, RhiTextureHandle handle, RhiColor color) override;
     /**
      * @comment Submits requested work.
      * @param command_list Input command list.
      * @return Explicit operation status.
      */
-    RhiStatus Submit(const RhiCommandList& command_list);
+    RhiStatus Submit(const RhiCommandList &command_list) override;
     /**
      * @comment Presents the submitted target.
      * @return Explicit operation status.
      */
-    RhiStatus Present();
+    RhiStatus Present() override;
     /**
      * @comment Captures the presented target.
      * @param destination Input destination.
      * @return Explicit operation result.
      */
-    RhiCaptureResult CapturePresentedTarget(std::span<std::uint8_t> destination);
+    RhiCaptureResult CapturePresentedTarget(std::span<std::uint8_t> destination) override;
     /**
      * @comment Returns the supported capabilities.
      * @return Capability data.
      */
-    RhiCapabilities Capabilities() const;
+    RhiCapabilities Capabilities() const override;
     /**
      * @comment Returns a snapshot of the current state.
      * @return Snapshot value.
      */
-    RhiDeviceSnapshot Snapshot() const;
+    RhiDeviceSnapshot Snapshot() const override;
 
 private:
     RhiStatus RecordFailure(RhiStatus status);
     bool IsTargetHandleValid(RhiTextureHandle handle) const;
-    bool IsCommandTargetValidForFrame(const RhiCommandRecord& command, RhiTextureHandle frame_target) const;
-    bool IsColorTargetDescValid(const RhiColorTargetDesc& desc) const;
-    std::size_t PixelByteCount(const RhiColorTargetDesc& desc) const;
+    bool IsCommandTargetValidForFrame(const RhiCommandRecord &command, RhiTextureHandle frame_target) const;
+    bool IsColorTargetDescValid(const RhiColorTargetDesc &desc) const;
+    std::size_t PixelByteCount(const RhiColorTargetDesc &desc) const;
     void ExecuteClear(RhiTextureHandle handle, RhiColor color);
 
     std::vector<RhiTargetSlot> targets_;

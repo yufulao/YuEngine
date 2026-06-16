@@ -6,6 +6,7 @@
 namespace yuengine::rhi {
 enum class RhiBackendKind {
     Null,
+    D3D11,
     Unsupported
 };
 }

@@ -18,5 +18,8 @@ struct RhiCapabilities final {
     std::uint16_t max_color_target_extent = 0U;
     std::uint16_t max_capture_fixture_extent = 0U;
     bool supports_capture = false;
+    bool supports_native_surface = false;
+    bool supports_swapchain = false;
+    bool supports_hardware_device = false;
 };
 }
