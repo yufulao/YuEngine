@@ -1,13 +1,18 @@
 # P2-GATE-006: RHI Backend-Neutral Device Boundary
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `REVIEW_REQUESTED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-001, P2-GATE-004, P2-GATE-005, ADR-0011, ENG-096
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0011
 Source baseline: `ac0ed13`
+Proposal commit: `5b7df27`
+Path-casing amendment: `a51a058`
+Approval evidence: ENG-102A boundary/reference PASS, ENG-102C test-policy PASS,
+ENG-102B implementability NEEDS_IMPLEMENTABILITY with one path-casing blocker,
+and ENG-102B2 path-casing recheck PASS.
 
 ## Layer
 
@@ -335,3 +340,38 @@ Request `APPROVED_FOR_FIRST_SLICE` only after:
 
 If those conditions are not met, return `NEEDS_ARCHITECTURE`,
 `NEEDS_IMPLEMENTABILITY`, or `NEEDS_TEST_POLICY` with exact missing fields.
+
+## Approval Decision
+
+P2-GATE-006 is approved for first slice after ENG-102 review closure.
+
+Hard implementation conditions:
+
+- The first slice remains L3 `YuRHI` only.
+- `IRhiDevice`, factory, and native-surface descriptor work must stay
+  backend-neutral and must keep existing Null RHI behavior source-compatible
+  unless a narrow signature change is explicitly justified by tests.
+- RHI public headers must not include `YuPlatform`, `Windows.h`, D3D11, DXGI,
+  COM, WGL, SDL, GLFW, Vulkan, OpenGL, Metal, RenderCore, Resource, Package,
+  report, screenshot, or Game Adapter headers.
+- `RhiNativeSurfaceDesc` must remain an RHI-owned opaque value. It may be
+  populated from Platform native surface values by future callers, but `YuRHI`
+  must not depend on `YuPlatform`.
+- `RhiBackendKind::D3D11`, if added, is unsupported vocabulary only in this
+  slice. It must not create a real D3D11 device, DXGI factory, swapchain,
+  adapter query, present path, or hardware smoke.
+- The public factory path must not require heap-owned polymorphic output.
+  Caller-owned storage or explicit status/result output is preferred.
+- Frame submit, present, capture, capability query, and Null RHI command paths
+  must not gain hidden allocation or storage growth.
+- New tests must be deterministic RHI contract tests labeled `Fast`,
+  `ModuleFixture`, and `RHI`; use `PerformanceSmoke` only for no-growth or
+  allocation/capacity checks and `EvidenceOracle` only for boundary/proof tests.
+- `HardwareSmoke` must remain 0 and `CMakePresets.json` must not change unless a
+  separate isolation amendment is approved.
+- Allowed implementation paths must use exact repository casing:
+  `Src/YuEngine/Rhi/...` and `Tests/Rhi/RhiTests.cpp`.
+- Required handoff evidence must include configure/build, full discovery, full
+  `windows-fast-gate`, RHI/Fast/PerformanceSmoke/EvidenceOracle/HardwareSmoke
+  label discovery, `windows-hardware-smoke` zero-test behavior, `git diff
+  --check`, and public-header dependency scans.
