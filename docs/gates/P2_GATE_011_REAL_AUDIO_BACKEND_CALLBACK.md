@@ -1,13 +1,16 @@
 # P2-GATE-011: Real Audio Backend Callback
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-002, P2-GATE-004, P2-GATE-010, ADR-0012
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0012
 Source baseline: `5a26a53`
+Proposal commit: `56b9aff`
+Approval evidence: ENG-113A boundary/quality PASS, ENG-113B implementability
+PASS, and ENG-113C test-policy PASS.
 
 ## Layer
 
@@ -351,3 +354,49 @@ Request `APPROVED_FOR_FIRST_SLICE` only after:
 
 If those conditions are not met, return `NEEDS_ARCHITECTURE`,
 `NEEDS_IMPLEMENTABILITY`, or `NEEDS_TEST_POLICY` with exact missing fields.
+
+## Approval Decision
+
+P2-GATE-011 is approved for first slice after ENG-113 review closure.
+
+Hard implementation conditions:
+
+- The first slice is private Windows XAudio2 callback backend proof only. WASAPI
+  is not approved for this implementation slice unless a later architecture
+  amendment narrows and re-reviews that path.
+- Public `YuAudio` headers may expose only value-based backend kind, status,
+  descriptor, snapshot, explicit owner, buffer, and callback counter contracts.
+- Public `YuAudio` headers must not expose Windows SDK, COM, XAudio2, WASAPI,
+  endpoint handles, callback objects, worker handles, File, Resource, Package,
+  RHI, RenderCore, UI, World, report, screenshot, visual proof, or Game Adapter
+  types.
+- Platform callback types, COM interfaces, and OS handles must stay private to
+  Windows implementation files.
+- Existing `TestAudioDevice` and mixer deterministic behavior must remain
+  unaffected.
+- Default `windows-fast-gate` must remain deterministic and no-real-device.
+  `HardwareSmoke`, `Audio`, `Win32`, and `XAudio2` real-device proof must stay
+  isolated to `windows-hardware-smoke`.
+- Hardware unavailable behavior must be explicit evidence. A silent skip or
+  unavailable endpoint must not be counted as callback completion proof.
+- Proof must use callback counters, statuses, bounded snapshots, bounded
+  waits/signals, preallocated fixed S16 stereo `48000 Hz` buffer slots, and
+  bounded completion counters.
+- Proof must not rely on sleeps, logs, reports, screenshots, manual listening,
+  audible output, or visual inspection.
+- Codec, decode, audio file loading, streaming, Resource integration, Package
+  integration, File asset integration, BGM/SE IDs, UI, Script, World, gameplay,
+  reports, and Game Adapter behavior are not approved.
+- Hidden global audio devices are not approved. The implementation must use an
+  explicit owner object with initialize, start, submit, stop, drain, shutdown,
+  and snapshot behavior.
+- The callback path must not allocate, grow storage, perform file IO, perform
+  resource/package lookup, decode codecs, or dispatch UI/script/gameplay work.
+- `CMakePresets.json` is not expected to change. CMake may add private WIN32
+  XAudio2 linkage and optional hardware-smoke target plumbing while preserving
+  the default deterministic gate.
+- The implementation handoff must record configure/build, full fast-gate,
+  discovery counts for Audio, Fast, PerformanceSmoke, EvidenceOracle, and
+  HardwareSmoke, hardware-smoke discovery/execution or explicit unavailable
+  evidence, public-header dependency scans, production dependency scans, callback
+  proof shape, and regression evidence for existing `Audio_` tests.
