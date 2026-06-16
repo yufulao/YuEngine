@@ -6,6 +6,7 @@
 namespace yuengine::audio {
 enum class AudioBackendKind {
     Test,
+    Callback,
     Unsupported
 };
 }

@@ -6,13 +6,21 @@
 #include <cstdio>
 #include <span>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
+#include "YuEngine/Audio/AudioCallbackDevice.h"
+#include "YuEngine/Audio/AudioCallbackDeviceDesc.h"
+#include "YuEngine/Audio/AudioCallbackSnapshot.h"
 #include "YuEngine/Audio/AudioConstants.h"
 #include "YuEngine/Audio/TestAudioDevice.h"
 
 using yuengine::audio::AudioBackendKind;
+using yuengine::audio::AudioCallbackCompletion;
+using yuengine::audio::AudioCallbackDevice;
+using yuengine::audio::AudioCallbackDeviceDesc;
+using yuengine::audio::AudioCallbackSnapshot;
 using yuengine::audio::AudioDeviceDesc;
 using yuengine::audio::AudioDeviceSnapshot;
 using yuengine::audio::AudioMixResult;
@@ -54,6 +62,14 @@ constexpr const char* TEST_UNINITIALIZED_LIFECYCLE = "Audio_UninitializedDeviceO
 constexpr const char* TEST_NO_GROW = "Audio_Mix_DoesNotGrowVoiceStorage";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Audio_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_FORBIDDEN_DEPENDENCY = "Audio_NoDeviceCodecResourceScriptUiGameAdapterDependency";
+constexpr const char* TEST_CALLBACK_DESC = "Audio_CallbackDesc_DefaultValuesAreBounded";
+constexpr const char* TEST_CALLBACK_SNAPSHOT = "Audio_CallbackSnapshot_DefaultValuesAreExplicit";
+constexpr const char* TEST_CALLBACK_COMPLETION = "Audio_CallbackCompletion_DefaultValuesAreExplicit";
+constexpr const char* TEST_CALLBACK_PUBLIC_CONTRACT = "Audio_CallbackPublicContract_UsesExplicitOwnerAndValues";
+constexpr const char* TEST_CALLBACK_UNSUPPORTED_BACKEND = "Audio_CallbackDevice_RejectsUnsupportedBackendBeforeHardware";
+constexpr const char* TEST_CALLBACK_UNSUPPORTED_FORMAT = "Audio_CallbackDevice_RejectsUnsupportedFormatBeforeHardware";
+constexpr const char* TEST_CALLBACK_INVALID_BUFFER_SHAPE = "Audio_CallbackDevice_RejectsInvalidBufferShapeBeforeHardware";
+constexpr const char* TEST_CALLBACK_UNINITIALIZED_OPERATIONS = "Audio_CallbackDevice_UninitializedOperationsReturnExplicitStatus";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* REINIT_SOURCE_REGISTRATION_MESSAGE = "source registration failed";
@@ -133,6 +149,37 @@ bool SnapshotsEqual(const AudioDeviceSnapshot& left, const AudioDeviceSnapshot& 
            left.failed_operation_count == right.failed_operation_count &&
            left.last_frames_written == right.last_frames_written &&
            left.allocation_accounting_status == right.allocation_accounting_status;
+}
+
+bool CallbackSnapshotsEqual(const AudioCallbackSnapshot &left, const AudioCallbackSnapshot &right) {
+    return left.buffer_capacity == right.buffer_capacity &&
+           left.frames_per_buffer == right.frames_per_buffer &&
+           left.sample_rate == right.sample_rate &&
+           left.channel_count == right.channel_count &&
+           left.setup_allocation_count == right.setup_allocation_count &&
+           left.submitted_buffer_count == right.submitted_buffer_count &&
+           left.completed_callback_count == right.completed_callback_count &&
+           left.failed_submission_count == right.failed_submission_count &&
+           left.failed_callback_count == right.failed_callback_count &&
+           left.underrun_count == right.underrun_count &&
+           left.shutdown_callback_count == right.shutdown_callback_count &&
+           left.queued_buffer_count == right.queued_buffer_count &&
+           left.max_queued_buffer_count == right.max_queued_buffer_count &&
+           left.drained_completion_count == right.drained_completion_count &&
+           left.last_status == right.last_status &&
+           left.initialized == right.initialized &&
+           left.started == right.started &&
+           left.shutdown == right.shutdown;
+}
+
+bool ExpectCallbackInitializeStatusWithoutMutation(const AudioCallbackDeviceDesc &desc, AudioStatus expected_status) {
+    AudioCallbackDevice device;
+    const AudioStatus status = device.Initialize(desc);
+    if (status != expected_status) {
+        return false;
+    }
+
+    return CallbackSnapshotsEqual(device.Snapshot(), AudioCallbackSnapshot{});
 }
 
 bool MixMaxVoicesFullScale(std::int16_t source_sample, std::int16_t expected_sample) {
@@ -740,6 +787,228 @@ int AudioNoDeviceCodecResourceScriptUiGameAdapterDependency() {
 
     return 0;
 }
+
+int AudioCallbackDescDefaultValuesAreBounded() {
+    const AudioCallbackDeviceDesc desc{};
+    if (desc.backend_kind != AudioBackendKind::Callback) {
+        return Fail("callback descriptor did not select explicit backend");
+    }
+
+    if (desc.format != AudioSampleFormat::Signed16) {
+        return Fail("callback descriptor did not select S16");
+    }
+
+    if (desc.sample_rate != SAMPLE_RATE) {
+        return Fail("callback descriptor did not select fixed sample rate");
+    }
+
+    if (desc.channel_count != CHANNEL_COUNT) {
+        return Fail("callback descriptor did not select stereo");
+    }
+
+    if (desc.buffer_count < AudioCallbackDeviceDesc::MIN_BUFFER_COUNT) {
+        return Fail("callback descriptor buffer count was below minimum");
+    }
+
+    if (desc.buffer_count > AudioCallbackDeviceDesc::MAX_BUFFER_COUNT) {
+        return Fail("callback descriptor buffer count exceeded maximum");
+    }
+
+    if (desc.frames_per_buffer < AudioCallbackDeviceDesc::MIN_FRAMES_PER_BUFFER) {
+        return Fail("callback descriptor frame count was below minimum");
+    }
+
+    if (desc.frames_per_buffer > AudioCallbackDeviceDesc::MAX_FRAMES_PER_BUFFER) {
+        return Fail("callback descriptor frame count exceeded maximum");
+    }
+
+    return 0;
+}
+
+int AudioCallbackSnapshotDefaultValuesAreExplicit() {
+    const AudioCallbackSnapshot snapshot{};
+    if (snapshot.last_status != AudioStatus::NotInitialized) {
+        return Fail("callback snapshot default status was not explicit");
+    }
+
+    if (snapshot.initialized) {
+        return Fail("callback snapshot default initialized flag was true");
+    }
+
+    if (snapshot.started) {
+        return Fail("callback snapshot default started flag was true");
+    }
+
+    if (snapshot.shutdown) {
+        return Fail("callback snapshot default shutdown flag was true");
+    }
+
+    if (!CallbackSnapshotsEqual(snapshot, AudioCallbackSnapshot{})) {
+        return Fail("callback snapshot default counters were unexpected");
+    }
+
+    return 0;
+}
+
+int AudioCallbackCompletionDefaultValuesAreExplicit() {
+    const AudioCallbackCompletion completion{};
+    if (completion.status != AudioStatus::Success) {
+        return Fail("callback completion default status was unexpected");
+    }
+
+    if (completion.sequence != 0U) {
+        return Fail("callback completion default sequence was unexpected");
+    }
+
+    if (completion.buffer_slot != 0U) {
+        return Fail("callback completion default slot was unexpected");
+    }
+
+    if (completion.frame_count != 0U) {
+        return Fail("callback completion default frame count was unexpected");
+    }
+
+    return 0;
+}
+
+int AudioCallbackPublicContractUsesExplicitOwnerAndValues() {
+    if (!std::is_standard_layout_v<AudioCallbackDeviceDesc>) {
+        return Fail("callback descriptor was not a plain value contract");
+    }
+
+    if (!std::is_trivially_copyable_v<AudioCallbackDeviceDesc>) {
+        return Fail("callback descriptor was not trivially copyable");
+    }
+
+    if (!std::is_standard_layout_v<AudioCallbackSnapshot>) {
+        return Fail("callback snapshot was not a plain value contract");
+    }
+
+    if (!std::is_trivially_copyable_v<AudioCallbackSnapshot>) {
+        return Fail("callback snapshot was not trivially copyable");
+    }
+
+    if (std::is_copy_constructible_v<AudioCallbackDevice>) {
+        return Fail("callback device owner was copy constructible");
+    }
+
+    if (std::is_copy_assignable_v<AudioCallbackDevice>) {
+        return Fail("callback device owner was copy assignable");
+    }
+
+    if (std::is_move_constructible_v<AudioCallbackDevice>) {
+        return Fail("callback device owner was move constructible");
+    }
+
+    return 0;
+}
+
+int AudioCallbackDeviceRejectsUnsupportedBackendBeforeHardware() {
+    AudioCallbackDeviceDesc desc{};
+    desc.backend_kind = AudioBackendKind::Test;
+    if (!ExpectCallbackInitializeStatusWithoutMutation(desc, AudioStatus::UnsupportedBackend)) {
+        return Fail("callback device did not reject unsupported backend before hardware");
+    }
+
+    desc.backend_kind = AudioBackendKind::Unsupported;
+    if (!ExpectCallbackInitializeStatusWithoutMutation(desc, AudioStatus::UnsupportedBackend)) {
+        return Fail("callback device did not reject unsupported backend value before hardware");
+    }
+
+    return 0;
+}
+
+int AudioCallbackDeviceRejectsUnsupportedFormatBeforeHardware() {
+    AudioCallbackDeviceDesc format_desc{};
+    format_desc.format = AudioSampleFormat::Unsupported;
+    if (!ExpectCallbackInitializeStatusWithoutMutation(format_desc, AudioStatus::UnsupportedFormat)) {
+        return Fail("callback device did not reject unsupported format before hardware");
+    }
+
+    AudioCallbackDeviceDesc sample_rate_desc{};
+    sample_rate_desc.sample_rate = 44100U;
+    if (!ExpectCallbackInitializeStatusWithoutMutation(sample_rate_desc, AudioStatus::UnsupportedFormat)) {
+        return Fail("callback device did not reject unsupported sample rate before hardware");
+    }
+
+    AudioCallbackDeviceDesc channel_desc{};
+    channel_desc.channel_count = 1U;
+    if (!ExpectCallbackInitializeStatusWithoutMutation(channel_desc, AudioStatus::UnsupportedFormat)) {
+        return Fail("callback device did not reject unsupported channel count before hardware");
+    }
+
+    return 0;
+}
+
+int AudioCallbackDeviceRejectsInvalidBufferShapeBeforeHardware() {
+    AudioCallbackDeviceDesc small_buffer_desc{};
+    small_buffer_desc.buffer_count = AudioCallbackDeviceDesc::MIN_BUFFER_COUNT - 1U;
+    if (!ExpectCallbackInitializeStatusWithoutMutation(small_buffer_desc, AudioStatus::InvalidDescriptor)) {
+        return Fail("callback device did not reject small buffer count before hardware");
+    }
+
+    AudioCallbackDeviceDesc large_buffer_desc{};
+    large_buffer_desc.buffer_count = AudioCallbackDeviceDesc::MAX_BUFFER_COUNT + 1U;
+    if (!ExpectCallbackInitializeStatusWithoutMutation(large_buffer_desc, AudioStatus::CapacityExceeded)) {
+        return Fail("callback device did not reject large buffer count before hardware");
+    }
+
+    AudioCallbackDeviceDesc small_frame_desc{};
+    small_frame_desc.frames_per_buffer = AudioCallbackDeviceDesc::MIN_FRAMES_PER_BUFFER - 1U;
+    if (!ExpectCallbackInitializeStatusWithoutMutation(small_frame_desc, AudioStatus::InvalidDescriptor)) {
+        return Fail("callback device did not reject small frame count before hardware");
+    }
+
+    AudioCallbackDeviceDesc large_frame_desc{};
+    large_frame_desc.frames_per_buffer = AudioCallbackDeviceDesc::MAX_FRAMES_PER_BUFFER + 1U;
+    if (!ExpectCallbackInitializeStatusWithoutMutation(large_frame_desc, AudioStatus::CapacityExceeded)) {
+        return Fail("callback device did not reject large frame count before hardware");
+    }
+
+    return 0;
+}
+
+int AudioCallbackDeviceUninitializedOperationsReturnExplicitStatus() {
+    AudioCallbackDevice device;
+    const AudioCallbackSnapshot before_snapshot = device.Snapshot();
+    std::array<std::int16_t, 2U> samples{};
+    std::array<AudioCallbackCompletion, 1U> completions{};
+    std::size_t completion_count = 99U;
+
+    if (device.Start() != AudioStatus::NotInitialized) {
+        return Fail("callback start did not return uninitialized status");
+    }
+
+    if (device.SubmitS16Buffer(std::span<const std::int16_t>(samples.data(), samples.size()), 1U) != AudioStatus::NotInitialized) {
+        return Fail("callback submit did not return uninitialized status");
+    }
+
+    if (device.WaitForCompletedCallbacks(1U, 1U) != AudioStatus::NotInitialized) {
+        return Fail("callback wait did not return uninitialized status");
+    }
+
+    if (device.DrainCompletions(completions.data(), completions.size(), completion_count) != AudioStatus::NotInitialized) {
+        return Fail("callback drain did not return uninitialized status");
+    }
+
+    if (completion_count != 0U) {
+        return Fail("callback drain did not reset output count");
+    }
+
+    if (device.Stop() != AudioStatus::NotInitialized) {
+        return Fail("callback stop did not return uninitialized status");
+    }
+
+    if (device.Shutdown() != AudioStatus::NotInitialized) {
+        return Fail("callback shutdown did not return uninitialized status");
+    }
+
+    if (!CallbackSnapshotsEqual(device.Snapshot(), before_snapshot)) {
+        return Fail("callback uninitialized operations mutated snapshot");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -771,7 +1040,15 @@ int main(int argc, char** argv) {
         {TEST_UNINITIALIZED_LIFECYCLE, AudioUninitializedDeviceOperationsReturnExplicitStatusWithoutMutation},
         {TEST_NO_GROW, AudioMixDoesNotGrowVoiceStorage},
         {TEST_DISABLED_DIAGNOSTICS, AudioDisabledDiagnosticsDoesNotChangeResults},
-        {TEST_NO_FORBIDDEN_DEPENDENCY, AudioNoDeviceCodecResourceScriptUiGameAdapterDependency}};
+        {TEST_NO_FORBIDDEN_DEPENDENCY, AudioNoDeviceCodecResourceScriptUiGameAdapterDependency},
+        {TEST_CALLBACK_DESC, AudioCallbackDescDefaultValuesAreBounded},
+        {TEST_CALLBACK_SNAPSHOT, AudioCallbackSnapshotDefaultValuesAreExplicit},
+        {TEST_CALLBACK_COMPLETION, AudioCallbackCompletionDefaultValuesAreExplicit},
+        {TEST_CALLBACK_PUBLIC_CONTRACT, AudioCallbackPublicContractUsesExplicitOwnerAndValues},
+        {TEST_CALLBACK_UNSUPPORTED_BACKEND, AudioCallbackDeviceRejectsUnsupportedBackendBeforeHardware},
+        {TEST_CALLBACK_UNSUPPORTED_FORMAT, AudioCallbackDeviceRejectsUnsupportedFormatBeforeHardware},
+        {TEST_CALLBACK_INVALID_BUFFER_SHAPE, AudioCallbackDeviceRejectsInvalidBufferShapeBeforeHardware},
+        {TEST_CALLBACK_UNINITIALIZED_OPERATIONS, AudioCallbackDeviceUninitializedOperationsReturnExplicitStatus}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

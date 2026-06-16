@@ -128,6 +128,7 @@ if(WIN32)
 endif()
 
 add_library(YuAudio
+    Src/YuEngine/Audio/Src/AudioCallbackDeviceWindows.cpp
     Src/YuEngine/Audio/Src/TestAudioDevice.cpp
 )
 yuengine_apply_compile_options(YuAudio)
@@ -135,6 +136,9 @@ target_include_directories(YuAudio
     PUBLIC
         Src/YuEngine/Audio/Include
 )
+if(WIN32)
+    target_link_libraries(YuAudio PRIVATE xaudio2)
+endif()
 
 add_library(YuResource
     Src/YuEngine/Resource/Src/ResourceLogicalKey.cpp
@@ -915,6 +919,22 @@ yuengine_add_labeled_test(Audio_UninitializedDeviceOperationsReturnExplicitStatu
 yuengine_add_labeled_test(Audio_Mix_DoesNotGrowVoiceStorage YuAudioTests Fast ModuleFixture Audio PerformanceSmoke)
 yuengine_add_labeled_test(Audio_DisabledDiagnosticsDoesNotChangeResults YuAudioTests Fast ModuleFixture Audio)
 yuengine_add_labeled_test(Audio_NoDeviceCodecResourceScriptUiGameAdapterDependency YuAudioTests Fast ModuleFixture Audio EvidenceOracle)
+yuengine_add_labeled_test(Audio_CallbackDesc_DefaultValuesAreBounded YuAudioTests Fast ModuleFixture Audio EvidenceOracle)
+yuengine_add_labeled_test(Audio_CallbackSnapshot_DefaultValuesAreExplicit YuAudioTests Fast ModuleFixture Audio EvidenceOracle)
+yuengine_add_labeled_test(Audio_CallbackCompletion_DefaultValuesAreExplicit YuAudioTests Fast ModuleFixture Audio)
+yuengine_add_labeled_test(Audio_CallbackPublicContract_UsesExplicitOwnerAndValues YuAudioTests Fast ModuleFixture Audio)
+yuengine_add_labeled_test(Audio_CallbackDevice_RejectsUnsupportedBackendBeforeHardware YuAudioTests Fast ModuleFixture Audio)
+yuengine_add_labeled_test(Audio_CallbackDevice_RejectsUnsupportedFormatBeforeHardware YuAudioTests Fast ModuleFixture Audio)
+yuengine_add_labeled_test(Audio_CallbackDevice_RejectsInvalidBufferShapeBeforeHardware YuAudioTests Fast ModuleFixture Audio)
+yuengine_add_labeled_test(Audio_CallbackDevice_UninitializedOperationsReturnExplicitStatus YuAudioTests Fast ModuleFixture Audio)
+
+add_executable(YuAudioHardwareSmokeTests
+    Tests/Audio/AudioHardwareSmokeTests.cpp
+)
+yuengine_apply_compile_options(YuAudioHardwareSmokeTests)
+target_link_libraries(YuAudioHardwareSmokeTests PRIVATE YuAudio)
+yuengine_add_labeled_test(Audio_HardwareCallback_CompletesSubmittedBuffer YuAudioHardwareSmokeTests HardwareSmoke Audio Win32 XAudio2)
+set_tests_properties(Audio_HardwareCallback_CompletesSubmittedBuffer PROPERTIES SKIP_RETURN_CODE 77)
 
 add_executable(YuResourceTests
     Tests/Resource/ResourceTests.cpp

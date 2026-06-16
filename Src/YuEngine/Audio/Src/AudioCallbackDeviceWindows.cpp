@@ -1,0 +1,552 @@
+// Module: YuEngine Audio
+// File: Src/YuEngine/Audio/Src/AudioCallbackDeviceWindows.cpp
+
+#include "YuEngine/Audio/AudioCallbackDevice.h"
+
+#include <algorithm>
+#include <chrono>
+#include <condition_variable>
+#include <cstring>
+#include <mutex>
+#include <new>
+#include <utility>
+#include <vector>
+
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#include <xaudio2.h>
+#endif
+
+namespace yuengine::audio {
+namespace {
+constexpr std::uint16_t BITS_PER_SAMPLE = 16U;
+constexpr std::uint16_t BYTES_PER_SAMPLE = BITS_PER_SAMPLE / 8U;
+constexpr std::uint64_t NO_COMPLETED_CALLBACKS = 0U;
+
+AudioStatus ValidateCallbackDesc(const AudioCallbackDeviceDesc &desc) {
+    if (desc.backend_kind != AudioBackendKind::Callback) {
+        return AudioStatus::UnsupportedBackend;
+    }
+
+    if (desc.format != AudioSampleFormat::Signed16) {
+        return AudioStatus::UnsupportedFormat;
+    }
+
+    if (desc.sample_rate != SAMPLE_RATE) {
+        return AudioStatus::UnsupportedFormat;
+    }
+
+    if (desc.channel_count != CHANNEL_COUNT) {
+        return AudioStatus::UnsupportedFormat;
+    }
+
+    if (desc.buffer_count < AudioCallbackDeviceDesc::MIN_BUFFER_COUNT) {
+        return AudioStatus::InvalidDescriptor;
+    }
+
+    if (desc.buffer_count > AudioCallbackDeviceDesc::MAX_BUFFER_COUNT) {
+        return AudioStatus::CapacityExceeded;
+    }
+
+    if (desc.frames_per_buffer < AudioCallbackDeviceDesc::MIN_FRAMES_PER_BUFFER) {
+        return AudioStatus::InvalidDescriptor;
+    }
+
+    if (desc.frames_per_buffer > AudioCallbackDeviceDesc::MAX_FRAMES_PER_BUFFER) {
+        return AudioStatus::CapacityExceeded;
+    }
+
+    return AudioStatus::Success;
+}
+
+std::size_t RequiredSampleCount(const AudioCallbackDeviceDesc &desc) {
+    return desc.frames_per_buffer * static_cast<std::size_t>(desc.channel_count);
+}
+}
+
+struct AudioCallbackBufferSlot final {
+    std::vector<std::int16_t> samples{};
+    std::uint64_t sequence = 0U;
+    bool queued = false;
+};
+
+struct AudioCallbackDeviceState final {
+#if defined(_WIN32)
+    struct VoiceCallback final : public IXAudio2VoiceCallback {
+        AudioCallbackDeviceState *owner = nullptr;
+
+        void STDMETHODCALLTYPE OnVoiceProcessingPassStart(UINT32 bytes_required) override {
+            (void)bytes_required;
+        }
+
+        void STDMETHODCALLTYPE OnVoiceProcessingPassEnd() override {
+        }
+
+        void STDMETHODCALLTYPE OnStreamEnd() override {
+            if (owner == nullptr) {
+                return;
+            }
+
+            owner->OnStreamEnd();
+        }
+
+        void STDMETHODCALLTYPE OnBufferStart(void *buffer_context) override {
+            (void)buffer_context;
+        }
+
+        void STDMETHODCALLTYPE OnBufferEnd(void *buffer_context) override {
+            if (owner == nullptr) {
+                return;
+            }
+
+            owner->OnBufferEnd(buffer_context);
+        }
+
+        void STDMETHODCALLTYPE OnLoopEnd(void *buffer_context) override {
+            (void)buffer_context;
+        }
+
+        void STDMETHODCALLTYPE OnVoiceError(void *buffer_context, HRESULT error) override {
+            (void)buffer_context;
+            (void)error;
+
+            if (owner == nullptr) {
+                return;
+            }
+
+            owner->OnVoiceError();
+        }
+    };
+#endif
+
+    AudioCallbackDeviceState() {
+#if defined(_WIN32)
+        callback.owner = this;
+#endif
+    }
+
+    AudioCallbackDeviceDesc desc{};
+    AudioCallbackSnapshot snapshot{};
+    std::vector<AudioCallbackBufferSlot> buffers{};
+    std::vector<AudioCallbackCompletion> completions{};
+    std::size_t completion_count = 0U;
+    mutable std::mutex mutex{};
+    std::condition_variable completion_signal{};
+    std::uint64_t next_sequence = 1U;
+#if defined(_WIN32)
+    IXAudio2 *engine = nullptr;
+    IXAudio2MasteringVoice *mastering_voice = nullptr;
+    IXAudio2SourceVoice *source_voice = nullptr;
+    VoiceCallback callback{};
+#endif
+
+    AudioStatus SetLastStatus(AudioStatus status) {
+        snapshot.last_status = status;
+        return status;
+    }
+
+    void ReleaseNativeObjects() {
+#if defined(_WIN32)
+        if (source_voice != nullptr) {
+            source_voice->Stop(0U);
+            source_voice->FlushSourceBuffers();
+            source_voice->DestroyVoice();
+            source_voice = nullptr;
+        }
+
+        if (mastering_voice != nullptr) {
+            mastering_voice->DestroyVoice();
+            mastering_voice = nullptr;
+        }
+
+        if (engine != nullptr) {
+            engine->StopEngine();
+            engine->Release();
+            engine = nullptr;
+        }
+#endif
+    }
+
+    void OnStreamEnd() {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            ++snapshot.shutdown_callback_count;
+        }
+
+        completion_signal.notify_all();
+    }
+
+    void OnBufferEnd(void *buffer_context) {
+        AudioCallbackBufferSlot *slot = static_cast<AudioCallbackBufferSlot *>(buffer_context);
+        if (slot == nullptr) {
+            OnVoiceError();
+            return;
+        }
+
+        bool completed = true;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            slot->queued = false;
+            if (snapshot.queued_buffer_count > 0U) {
+                --snapshot.queued_buffer_count;
+            }
+
+            if (completion_count >= completions.size()) {
+                ++snapshot.failed_callback_count;
+                snapshot.last_status = AudioStatus::CallbackFailed;
+                completed = false;
+            }
+
+            if (!completed) {
+                completion_signal.notify_all();
+                return;
+            }
+
+            AudioCallbackCompletion &completion = completions[completion_count];
+            completion.status = AudioStatus::Success;
+            completion.sequence = slot->sequence;
+            completion.buffer_slot = static_cast<std::size_t>(slot - buffers.data());
+            completion.frame_count = desc.frames_per_buffer;
+            ++completion_count;
+            ++snapshot.completed_callback_count;
+            snapshot.last_status = AudioStatus::Success;
+        }
+
+        completion_signal.notify_all();
+    }
+
+    void OnVoiceError() {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            ++snapshot.failed_callback_count;
+            snapshot.last_status = AudioStatus::CallbackFailed;
+        }
+
+        completion_signal.notify_all();
+    }
+};
+
+AudioCallbackDevice::AudioCallbackDevice()
+    : state_(nullptr) {
+}
+
+AudioCallbackDevice::~AudioCallbackDevice() {
+    Shutdown();
+    delete state_;
+    state_ = nullptr;
+}
+
+AudioStatus AudioCallbackDevice::Initialize(const AudioCallbackDeviceDesc &desc) {
+    const AudioStatus desc_status = ValidateCallbackDesc(desc);
+    if (desc_status != AudioStatus::Success) {
+        return desc_status;
+    }
+
+    if (state_ != nullptr) {
+        if (state_->snapshot.initialized && !state_->snapshot.shutdown) {
+            return state_->SetLastStatus(AudioStatus::AlreadyInitialized);
+        }
+
+        delete state_;
+        state_ = nullptr;
+    }
+
+    state_ = new (std::nothrow) AudioCallbackDeviceState();
+    if (state_ == nullptr) {
+        return AudioStatus::AllocationFailure;
+    }
+
+    state_->desc = desc;
+    state_->buffers.reserve(desc.buffer_count);
+    state_->completions.assign(desc.buffer_count, AudioCallbackCompletion{});
+    const std::size_t sample_count = RequiredSampleCount(desc);
+    for (std::size_t index = 0U; index < desc.buffer_count; ++index) {
+        AudioCallbackBufferSlot slot{};
+        slot.samples.assign(sample_count, 0);
+        state_->buffers.emplace_back(std::move(slot));
+    }
+
+    state_->snapshot = AudioCallbackSnapshot{};
+    state_->snapshot.buffer_capacity = desc.buffer_count;
+    state_->snapshot.frames_per_buffer = desc.frames_per_buffer;
+    state_->snapshot.sample_rate = desc.sample_rate;
+    state_->snapshot.channel_count = desc.channel_count;
+    state_->snapshot.setup_allocation_count = desc.buffer_count + 2U;
+
+#if defined(_WIN32)
+    HRESULT native_result = XAudio2Create(&state_->engine, 0U, XAUDIO2_DEFAULT_PROCESSOR);
+    if (FAILED(native_result)) {
+        state_->ReleaseNativeObjects();
+        state_->SetLastStatus(AudioStatus::DeviceUnavailable);
+        return AudioStatus::DeviceUnavailable;
+    }
+
+    native_result = state_->engine->CreateMasteringVoice(&state_->mastering_voice, desc.channel_count, desc.sample_rate);
+    if (FAILED(native_result)) {
+        state_->ReleaseNativeObjects();
+        state_->SetLastStatus(AudioStatus::DeviceUnavailable);
+        return AudioStatus::DeviceUnavailable;
+    }
+
+    WAVEFORMATEX wave_format{};
+    wave_format.wFormatTag = WAVE_FORMAT_PCM;
+    wave_format.nChannels = desc.channel_count;
+    wave_format.nSamplesPerSec = desc.sample_rate;
+    wave_format.wBitsPerSample = BITS_PER_SAMPLE;
+    wave_format.nBlockAlign = static_cast<WORD>(desc.channel_count * BYTES_PER_SAMPLE);
+    wave_format.nAvgBytesPerSec = desc.sample_rate * wave_format.nBlockAlign;
+    native_result = state_->engine->CreateSourceVoice(&state_->source_voice, &wave_format, 0U, XAUDIO2_DEFAULT_FREQ_RATIO, &state_->callback);
+    if (FAILED(native_result)) {
+        state_->ReleaseNativeObjects();
+        state_->SetLastStatus(AudioStatus::DeviceUnavailable);
+        return AudioStatus::DeviceUnavailable;
+    }
+
+    state_->snapshot.initialized = true;
+    return state_->SetLastStatus(AudioStatus::Success);
+#endif
+
+#if !defined(_WIN32)
+    state_->SetLastStatus(AudioStatus::UnsupportedBackend);
+    return AudioStatus::UnsupportedBackend;
+#endif
+}
+
+AudioStatus AudioCallbackDevice::Start() {
+    if (state_ == nullptr) {
+        return AudioStatus::NotInitialized;
+    }
+
+    if (!state_->snapshot.initialized) {
+        return state_->SetLastStatus(AudioStatus::NotInitialized);
+    }
+
+    if (state_->snapshot.shutdown) {
+        return state_->SetLastStatus(AudioStatus::ShutdownComplete);
+    }
+
+    if (state_->snapshot.started) {
+        return state_->SetLastStatus(AudioStatus::AlreadyStarted);
+    }
+
+#if defined(_WIN32)
+    HRESULT native_result = state_->source_voice->Start(0U);
+    if (FAILED(native_result)) {
+        return state_->SetLastStatus(AudioStatus::DeviceStartFailed);
+    }
+
+    native_result = state_->engine->StartEngine();
+    if (FAILED(native_result)) {
+        state_->source_voice->Stop(0U);
+        return state_->SetLastStatus(AudioStatus::DeviceStartFailed);
+    }
+#endif
+
+    state_->snapshot.started = true;
+    return state_->SetLastStatus(AudioStatus::Success);
+}
+
+AudioStatus AudioCallbackDevice::SubmitS16Buffer(std::span<const std::int16_t> interleaved_samples, std::size_t frame_count) {
+    if (state_ == nullptr) {
+        return AudioStatus::NotInitialized;
+    }
+
+    if (!state_->snapshot.initialized) {
+        return state_->SetLastStatus(AudioStatus::NotInitialized);
+    }
+
+    if (!state_->snapshot.started) {
+        return state_->SetLastStatus(AudioStatus::NotStarted);
+    }
+
+    if (state_->snapshot.shutdown) {
+        return state_->SetLastStatus(AudioStatus::ShutdownComplete);
+    }
+
+    if (frame_count != state_->desc.frames_per_buffer) {
+        return state_->SetLastStatus(AudioStatus::InvalidDescriptor);
+    }
+
+    const std::size_t required_samples = RequiredSampleCount(state_->desc);
+    if (interleaved_samples.size() < required_samples) {
+        return state_->SetLastStatus(AudioStatus::InvalidDescriptor);
+    }
+
+    AudioCallbackBufferSlot *selected_slot = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        for (AudioCallbackBufferSlot &slot : state_->buffers) {
+            if (slot.queued) {
+                continue;
+            }
+
+            selected_slot = &slot;
+            break;
+        }
+
+        if (selected_slot == nullptr) {
+            ++state_->snapshot.failed_submission_count;
+            return state_->SetLastStatus(AudioStatus::CapacityExceeded);
+        }
+
+        std::copy(interleaved_samples.begin(), interleaved_samples.begin() + required_samples, selected_slot->samples.begin());
+        selected_slot->queued = true;
+        selected_slot->sequence = state_->next_sequence;
+        ++state_->next_sequence;
+        ++state_->snapshot.submitted_buffer_count;
+        ++state_->snapshot.queued_buffer_count;
+        state_->snapshot.max_queued_buffer_count = std::max(state_->snapshot.max_queued_buffer_count, state_->snapshot.queued_buffer_count);
+    }
+
+#if defined(_WIN32)
+    XAUDIO2_BUFFER native_buffer{};
+    native_buffer.AudioBytes = static_cast<UINT32>(required_samples * sizeof(std::int16_t));
+    native_buffer.pAudioData = reinterpret_cast<const BYTE *>(selected_slot->samples.data());
+    native_buffer.Flags = XAUDIO2_END_OF_STREAM;
+    native_buffer.pContext = selected_slot;
+    const HRESULT native_result = state_->source_voice->SubmitSourceBuffer(&native_buffer);
+    if (FAILED(native_result)) {
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        selected_slot->queued = false;
+        if (state_->snapshot.queued_buffer_count > 0U) {
+            --state_->snapshot.queued_buffer_count;
+        }
+
+        if (state_->snapshot.submitted_buffer_count > 0U) {
+            --state_->snapshot.submitted_buffer_count;
+        }
+
+        ++state_->snapshot.failed_submission_count;
+        return state_->SetLastStatus(AudioStatus::BufferSubmitFailed);
+    }
+#endif
+
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    return state_->SetLastStatus(AudioStatus::Success);
+}
+
+AudioStatus AudioCallbackDevice::WaitForCompletedCallbacks(std::uint64_t target_completed_count, std::uint32_t timeout_milliseconds) {
+    if (state_ == nullptr) {
+        return AudioStatus::NotInitialized;
+    }
+
+    if (!state_->snapshot.initialized) {
+        return state_->SetLastStatus(AudioStatus::NotInitialized);
+    }
+
+    if (target_completed_count == NO_COMPLETED_CALLBACKS) {
+        return state_->SetLastStatus(AudioStatus::Success);
+    }
+
+    std::unique_lock<std::mutex> lock(state_->mutex);
+    const auto timeout = std::chrono::milliseconds(timeout_milliseconds);
+    const bool completed = state_->completion_signal.wait_for(lock, timeout, [this, target_completed_count]() {
+        return state_->snapshot.completed_callback_count >= target_completed_count ||
+               state_->snapshot.failed_callback_count > 0U;
+    });
+
+    if (!completed) {
+        return state_->SetLastStatus(AudioStatus::CallbackTimeout);
+    }
+
+    if (state_->snapshot.failed_callback_count > 0U) {
+        return state_->SetLastStatus(AudioStatus::CallbackFailed);
+    }
+
+    return state_->SetLastStatus(AudioStatus::Success);
+}
+
+AudioStatus AudioCallbackDevice::DrainCompletions(AudioCallbackCompletion *completions, std::size_t completion_capacity, std::size_t &out_completion_count) {
+    out_completion_count = 0U;
+    if (state_ == nullptr) {
+        return AudioStatus::NotInitialized;
+    }
+
+    if (completion_capacity > 0U && completions == nullptr) {
+        return state_->SetLastStatus(AudioStatus::InvalidDescriptor);
+    }
+
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    const std::size_t write_count = std::min(completion_capacity, state_->completion_count);
+    for (std::size_t index = 0U; index < write_count; ++index) {
+        completions[index] = state_->completions[index];
+    }
+
+    out_completion_count = write_count;
+    state_->snapshot.drained_completion_count += write_count;
+    const std::size_t remaining_count = state_->completion_count - write_count;
+    for (std::size_t index = 0U; index < remaining_count; ++index) {
+        state_->completions[index] = state_->completions[index + write_count];
+    }
+
+    for (std::size_t index = remaining_count; index < state_->completion_count; ++index) {
+        state_->completions[index] = AudioCallbackCompletion{};
+    }
+
+    state_->completion_count = remaining_count;
+    if (state_->completion_count == 0U) {
+        return state_->SetLastStatus(AudioStatus::Success);
+    }
+
+    return state_->SetLastStatus(AudioStatus::CapacityExceeded);
+}
+
+AudioStatus AudioCallbackDevice::Stop() {
+    if (state_ == nullptr) {
+        return AudioStatus::NotInitialized;
+    }
+
+    if (!state_->snapshot.initialized) {
+        return state_->SetLastStatus(AudioStatus::NotInitialized);
+    }
+
+    if (!state_->snapshot.started) {
+        return state_->SetLastStatus(AudioStatus::Success);
+    }
+
+#if defined(_WIN32)
+    state_->source_voice->Stop(0U);
+    state_->engine->StopEngine();
+#endif
+
+    state_->snapshot.started = false;
+    return state_->SetLastStatus(AudioStatus::Success);
+}
+
+AudioStatus AudioCallbackDevice::Shutdown() {
+    if (state_ == nullptr) {
+        return AudioStatus::NotInitialized;
+    }
+
+    if (state_->snapshot.shutdown) {
+        return state_->SetLastStatus(AudioStatus::ShutdownComplete);
+    }
+
+    state_->ReleaseNativeObjects();
+
+    {
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        for (AudioCallbackBufferSlot &slot : state_->buffers) {
+            slot.queued = false;
+        }
+
+        state_->snapshot.queued_buffer_count = 0U;
+        state_->snapshot.started = false;
+        state_->snapshot.shutdown = true;
+    }
+
+    state_->completion_signal.notify_all();
+    return state_->SetLastStatus(AudioStatus::ShutdownComplete);
+}
+
+AudioCallbackSnapshot AudioCallbackDevice::Snapshot() const {
+    if (state_ == nullptr) {
+        return AudioCallbackSnapshot{};
+    }
+
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    return state_->snapshot;
+}
+}

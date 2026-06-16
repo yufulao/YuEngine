@@ -12,6 +12,17 @@ enum class AudioStatus {
     CapacityExceeded,
     SourceNotFound,
     InvalidHandle,
-    InvalidGain
+    InvalidGain,
+    AllocationFailure,
+    DeviceUnavailable,
+    DeviceStartFailed,
+    BufferSubmitFailed,
+    CallbackFailed,
+    CallbackTimeout,
+    AlreadyInitialized,
+    AlreadyStarted,
+    NotInitialized,
+    NotStarted,
+    ShutdownComplete
 };
 }
