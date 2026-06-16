@@ -1,13 +1,15 @@
 # P2-GATE-008: D3D11 Resource And Pipeline Primitives
 
-Status: Review requested
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `REVIEW_REQUESTED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-004, P2-GATE-006, P2-GATE-007, ADR-0011, ENG-096
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0011
 Source baseline: `fee76d6`
+Approval evidence: ENG-106A boundary/reference PASS, ENG-106B implementability
+PASS, and ENG-106C test-policy PASS.
 
 ## Layer
 
@@ -373,3 +375,46 @@ Request `APPROVED_FOR_FIRST_SLICE` only after:
 
 If those conditions are not met, return `NEEDS_ARCHITECTURE`,
 `NEEDS_IMPLEMENTABILITY`, or `NEEDS_TEST_POLICY` with exact missing fields.
+
+## Approval Decision
+
+P2-GATE-008 is approved for first slice after ENG-106 review closure.
+
+Hard implementation conditions:
+
+- The first slice remains L3 RHI resource and pipeline primitive contracts only.
+- Public RHI headers may expose backend-neutral handles, value descriptors,
+  snapshots, status values, and caller-owned byte-span contracts only.
+- Public RHI headers must not expose Windows SDK, D3D11, DXGI, COM, Platform,
+  RenderCore, Resource, Package, File, UI, World, report, screenshot, visual
+  proof, or Game Adapter types.
+- D3D11, DXGI, COM, and Windows usage must stay in Windows-only private RHI
+  implementation files or private internal headers.
+- Production `YuRHI` must not include or link `YuPlatform`; `YuPlatform` may be
+  used only by hardware-smoke fixtures.
+- Shader modules accept caller-provided bytecode only. Shader source language,
+  compiler invocation, shader build tools, generated shader assets, reflection,
+  and shader caches are not approved.
+- Visible triangle, draw proof, mesh, static mesh fixture, material system,
+  scene traversal, RenderCore, Resource, Package/File streaming, report,
+  screenshot, visual proof, UI, World, and Game Adapter behavior are not
+  approved.
+- P2-GATE-009 remains the separate visible-triangle gate and is still not
+  approved.
+- `CMakePresets.json` is not expected to change. Any amendment must be limited
+  to preserving `HardwareSmoke` isolation and must not weaken the default fast
+  gate.
+- Default `windows-fast-gate` must remain deterministic and must not run real
+  D3D11 hardware tests.
+- `windows-hardware-smoke` must remain the explicit hardware lane. First-slice
+  evidence must include at least one suitable Windows graphics run where the
+  primitive smoke actually creates or updates D3D11 primitive objects and
+  validates expected status or snapshot evidence.
+- Skipped or zero hardware smoke is not primitive backend proof.
+- Backend proof must be status/snapshot/update assertions, not screenshot,
+  report, dashboard, visual demo, or manual inspection.
+- Factory ownership must remain caller-owned or explicit-cleanup based. The
+  public factory path must not return heap-owned polymorphic D3D11 device
+  output.
+- Allowed implementation paths must use exact repository casing:
+  `Src/YuEngine/Rhi/...` and `Tests/Rhi/...`.

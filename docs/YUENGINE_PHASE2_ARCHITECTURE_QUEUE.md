@@ -156,7 +156,7 @@ Required test-tier direction:
 | P2-GATE-005 | Platform Window Native Surface And Event Pump | L0-L1 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_005_PLATFORM_WINDOW_NATIVE_SURFACE_EVENT_PUMP.md`; landed at `e3e2ad7`; Platform window lifecycle, opaque native surface value, bounded event pump, resize/focus/close/raw platform events; fast gate is 656/656 PASS; `HardwareSmoke` remains 0; no RHI, UI, Resource, Game Adapter, or render policy |
 | P2-GATE-006 | RHI Backend-Neutral Device Boundary | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_006_RHI_BACKEND_NEUTRAL_DEVICE_BOUNDARY.md`; landed at `fd3be16`; backend-neutral device/interface/factory/native-surface descriptor contracts only; fast gate is 664/664 PASS; `HardwareSmoke` remains 0; no real D3D11, DXGI, swapchain, RenderCore, Resource, report, visual proof, or Game Adapter |
 | P2-GATE-007 | D3D11 Device Swapchain Clear Present Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_007_D3D11_DEVICE_SWAPCHAIN_CLEAR_PRESENT_CAPTURE.md`; landed at `18d73a3`; first real D3D11 device/context/swapchain clear/present/capture through RHI boundary; default fast gate is 669/669 PASS; `HardwareSmoke` is isolated from default fast gate; `windows-hardware-smoke` discovers and runs 1 D3D11 capture-byte test; no mesh, shader pipeline expansion, RenderCore, Resource, report, visual proof, or Game Adapter |
-| P2-GATE-008 | D3D11 Resource And Pipeline Primitives | L3 | `REVIEW_REQUESTED` | Proposal posted | Gate doc: `docs/gates/P2_GATE_008_D3D11_RESOURCE_AND_PIPELINE_PRIMITIVES.md`; proposes RHI-only buffer/texture/sampler/shader/input-layout/pipeline/fence primitive contracts after P2-GATE-007; no visible triangle, draw proof, RenderCore, material system, Resource loading, mesh asset pipeline, scene traversal, report, visual proof, or Game Adapter |
+| P2-GATE-008 | D3D11 Resource And Pipeline Primitives | L3 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_008_D3D11_RESOURCE_AND_PIPELINE_PRIMITIVES.md`; approved after ENG-106A/B/C PASS; RHI-only buffer/texture/sampler/shader/input-layout/pipeline/fence primitive contracts after P2-GATE-007; no visible triangle, draw proof, RenderCore, material system, Resource loading, mesh asset pipeline, scene traversal, report, visual proof, shader compiler, or Game Adapter |
 | P2-GATE-009 | D3D11 Visible Triangle Fixture | L3 | `NOT_APPROVED` | Proposed after P2-GATE-008 | First visible geometry proof through RHI capture; no static mesh asset pipeline, RenderCore, World, UI, or Game Adapter |
 | P2-GATE-010 | Thread Worker And Async IO Substrate | L1-L3 | `NOT_APPROVED` | Parallel proposal candidate | Worker ownership, bounded queues, drain/cancel, async file completion; no Resource semantics, package streaming policy, upload queue, or gameplay |
 | P2-GATE-011 | Real Audio Backend Callback | L1-L3 | `NOT_APPROVED` | Parallel proposal candidate | WASAPI/XAudio2 callback backend into existing mixer/test-sink contract; no codec, BGM/SE business IDs, Resource loading, UI, script, or gameplay |
@@ -227,14 +227,16 @@ Required test-tier direction:
   `YuPlatform`. This does not authorize mesh, shader pipeline expansion,
   RenderCore, Resource, report, visual proof, UI, World, or Game Adapter
   behavior.
-- P2-GATE-008 is `REVIEW_REQUESTED` after ENG-106 posted the D3D11 Resource And
-  Pipeline Primitives proposal. The proposal is limited to L3 RHI-owned
-  primitive resource and pipeline contracts after the landed D3D11
-  clear/present/capture slice. It does not authorize implementation until review
-  closure, and it does not authorize visible triangle, draw proof, RenderCore,
-  material system, Resource loading, mesh asset pipeline, scene traversal,
-  report, visual proof, or Game Adapter behavior.
-- P2-GATE-008 through P2-GATE-012 are not approved. They are the ENG-096
+- P2-GATE-008 is approved for first slice after ENG-106A boundary/reference
+  PASS, ENG-106B implementability PASS, and ENG-106C test-policy PASS. The
+  approved scope is L3 RHI-owned primitive resource and pipeline contracts after
+  the landed D3D11 clear/present/capture slice: backend-neutral handles, value
+  descriptors, create/update/destroy/query contracts, caller-owned byte spans,
+  private D3D11 native objects, and isolated primitive hardware-smoke proof.
+  Shader compiler, visible triangle, draw proof, RenderCore, material system,
+  Resource loading, mesh asset pipeline, scene traversal, report, visual proof,
+  UI, World, and Game Adapter behavior remain out of scope.
+- P2-GATE-009 through P2-GATE-012 are not approved. They are the ENG-096
   hardware-first proposal queue and must go through normal gate review before
   implementation.
 - No Phase 2 implementation task may be created until the owning gate is
@@ -263,9 +265,10 @@ Required test-tier direction:
    clear/present/capture first slice before any P2-GATE-008 resource or pipeline
    primitive task is created. Do not create a D3D11 mesh or RenderCore task
    before a separate gate approves that scope.
-5. Review P2-GATE-008 before creating any resource/pipeline implementation
-   task. Keep visible triangle, mesh, RenderCore, Resource, and Game Adapter out
-   until separately approved.
+5. Implement P2-GATE-008 as the D3D11 resource/pipeline primitive first slice
+   before any P2-GATE-009 visible-triangle task is created. Keep visible
+   triangle, mesh, RenderCore, Resource, shader compiler, report, visual proof,
+   UI, World, and Game Adapter out until separately approved.
 6. Keep Phase 3/World expansion paused except for critical fixes. The landed
    P3 gates are contract baselines, not permission to keep moving upward while
    lower hardware remains null/test-only.
