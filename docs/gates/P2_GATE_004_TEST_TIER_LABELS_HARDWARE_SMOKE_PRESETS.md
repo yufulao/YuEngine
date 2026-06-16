@@ -1,12 +1,17 @@
 # P2-GATE-004: Test Tier Labels And Hardware Smoke Presets
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: ADR-0005, ENG-096
 Related decisions: ADR-0002, ADR-0006
 Source baseline: `0bbcd26`
+Approved proposal: `dae9c9a`
+Approval evidence: ENG-097A boundary/reference PASS with hard implementation
+conditions, ENG-097B CMake implementability PASS, and ENG-097C test admission
+PASS.
 
 ## Layer
 
@@ -201,3 +206,26 @@ Request `APPROVED_FOR_FIRST_SLICE` only after:
 
 If those conditions are not met, return `NEEDS_ARCHITECTURE`,
 `NEEDS_TEST_POLICY`, or `NEEDS_IMPLEMENTABILITY` with exact missing fields.
+
+## Approval Decision
+
+P2-GATE-004 is approved for first slice after ENG-097 review closure.
+
+Hard implementation conditions:
+
+- Labels must keep tier, module, and backend meanings orthogonal.
+- `windows-fast-gate` must remain the default deterministic required gate and
+  must not be filtered away from the existing 646-test baseline.
+- `HardwareSmoke` must not enter the default fast gate.
+- Unsupported hardware or zero hardware-smoke tests cannot be counted as proof
+  that a backend works.
+- `EvidenceOracle` remains L7 verification only and must not become runtime
+  behavior proof.
+- The first slice must not modify runtime source or delete deterministic tests.
+- If an empty hardware-smoke preset is added, zero-test discovery must be
+  intentionally allowed and must not inherit the fast gate `noTestsAction =
+  error` behavior. Otherwise the implementation should keep a documented preset
+  slot instead of adding the empty preset.
+- CMake labels should be attached through a helper or grouped convention so
+  registration and labels do not drift. Module labels should follow the owning
+  test target where prefix-only naming would be ambiguous.
