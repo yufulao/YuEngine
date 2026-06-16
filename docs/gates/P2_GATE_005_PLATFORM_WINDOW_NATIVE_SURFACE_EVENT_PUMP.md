@@ -1,8 +1,8 @@
 # P2-GATE-005: Platform Window Native Surface And Event Pump
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-004, ENG-096
@@ -11,6 +11,10 @@ Source baseline: `8836774`
 Pre-audit evidence: ENG-099A boundary/reference PASS with hard proposal
 constraints, ENG-099B implementability PASS, and ENG-099C test-strategy PASS
 with hard conditions.
+Approved proposal: `e196087`
+Approval evidence: ENG-100A boundary/reference PASS with hard implementation
+conditions, ENG-100B implementability/file-layout PASS, and ENG-100C
+test-policy/gate-cost PASS.
 
 ## Layer
 
@@ -329,3 +333,40 @@ Request `APPROVED_FOR_FIRST_SLICE` only after:
 
 If those conditions are not met, return `NEEDS_ARCHITECTURE`,
 `NEEDS_IMPLEMENTABILITY`, or `NEEDS_TEST_POLICY` with exact missing fields.
+
+## Approval Decision
+
+P2-GATE-005 is approved for first slice after ENG-100 review closure.
+
+Hard implementation conditions:
+
+- Public Platform headers must not include `Windows.h`.
+- Public Platform headers must not expose `HWND`, `HINSTANCE`, `WPARAM`,
+  `LPARAM`, `LRESULT`, or upper-layer module headers.
+- `PlatformNativeSurface` must remain an opaque Platform-owned value for later
+  RHI consumption. It is not a RHI device, factory, swapchain, or present
+  contract.
+- `PollEvents` must write to caller-owned buffers and must not return
+  `std::vector` or heap-owned output on the pump path.
+- Event staging must be bounded. Overflow or loss must be visible through status
+  and snapshot/drop counters.
+- `HeadlessHost` behavior must remain stable and additive.
+- The first slice may not add `YuRHI`, D3D11, DXGI, RenderCore, YuInput
+  semantic mapping, UI, World, Resource, Package, report, visual proof, or Game
+  Adapter dependencies.
+- Raw keyboard/mouse capture remains typed Platform event data only.
+- Windows implementation details must stay in Windows-only `.cpp` files or
+  private internals. The first Windows dependency is limited to `user32` unless
+  a later approval expands it.
+- The first slice keeps `HardwareSmoke` at 0 and should not change
+  `CMakePresets.json` unless a separate hardware-smoke isolation amendment is
+  approved.
+- New deterministic tests must be labeled `Fast`, `ModuleFixture`, and
+  `Platform`; use `PerformanceSmoke` only for allocation/storage-cost tests and
+  `EvidenceOracle` only for boundary/proof tests.
+- Visual window presence, screenshots, logs, reports, skipped hardware smoke, or
+  zero hardware smoke are not accepted as backend proof.
+- Implementation handoff must record total deterministic discovery before and
+  after, `Platform` / `Fast` / `PerformanceSmoke` / `EvidenceOracle` discovery
+  counts, whether `HardwareSmoke` remains 0, and proof that public Platform
+  headers do not include Windows SDK or upper-layer headers.
