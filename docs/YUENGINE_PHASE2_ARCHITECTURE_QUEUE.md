@@ -152,7 +152,7 @@ Required test-tier direction:
 | P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Test backend only; current fast gate has `Audio_` coverage; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
 | P2-GATE-003 | Package Manifest And Load Plan Boundary | L4-L5 | `FIRST_SLICE_CLOSED_QA_CLEARED` | First slice closed | `354f8e2` closed the approved `YuPackage` / `YuPackageTests` first-slice review baseline; no new package code/CMake/test expansion, File/VFS runtime reads, resource mutation, or P3 work |
 | P2-GATE-004 | Test Tier Labels And Hardware Smoke Presets | L7 over L0-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_004_TEST_TIER_LABELS_HARDWARE_SMOKE_PRESETS.md`; landed at `0c45d37`; CTest labels and optional hardware-smoke preset before real backend gates; no runtime behavior, no new backend, no test deletion |
-| P2-GATE-005 | Platform Window Native Surface And Event Pump | L0-L1 | `NOT_APPROVED` | Next proposal target | Win32 window lifecycle, native surface handle, message pump, resize/focus/close, raw event capture; no RHI, UI, Resource, Game Adapter, or render policy |
+| P2-GATE-005 | Platform Window Native Surface And Event Pump | L0-L1 | `NOT_APPROVED` | Proposal drafted | Gate doc: `docs/gates/P2_GATE_005_PLATFORM_WINDOW_NATIVE_SURFACE_EVENT_PUMP.md`; Platform window lifecycle, opaque native surface value, bounded event pump, resize/focus/close/raw platform events; first slice keeps hardware-smoke at 0 unless isolation is separately approved; no RHI, UI, Resource, Game Adapter, or render policy |
 | P2-GATE-006 | RHI Backend-Neutral Device Boundary | L3 | `NOT_APPROVED` | Proposed after P2-GATE-005 | Extract backend-neutral device/factory/surface contracts while keeping current Null backend tests passing; no D3D11 device yet, no RenderCore, no mesh |
 | P2-GATE-007 | D3D11 Device Swapchain Clear Present Capture | L3 | `NOT_APPROVED` | Proposed after P2-GATE-006 | D3D11 device/context/swapchain/backbuffer clear/present/capture smoke through RHI boundary; no shader, buffer, mesh, material, Resource, or scene |
 | P2-GATE-008 | D3D11 Resource And Pipeline Primitives | L3 | `NOT_APPROVED` | Proposed after P2-GATE-007 | Vertex/index/constant buffers, shader module boundary, input layout, pipeline state, texture/sampler, upload/update/fence; no RenderCore, material system, or scene traversal |
@@ -192,7 +192,17 @@ Required test-tier direction:
   tests, `RHI` / `Audio` / `Platform` / `World` labels discover 28 / 24 / 3 /
   438 tests, and `windows-hardware-smoke` currently discovers 0 `HardwareSmoke`
   tests with zero-test discovery allowed. This is not backend proof.
-- P2-GATE-005 through P2-GATE-012 are not approved. They are the ENG-096
+- P2-GATE-005 is proposed after ENG-099A boundary/reference PASS, ENG-099B
+  implementability PASS, and ENG-099C test-strategy PASS with hard conditions.
+  The proposal is limited to Platform L0-L1: window descriptor/lifecycle,
+  opaque native surface value, bounded event pump, resize/focus/close/raw
+  platform events, and deterministic contract tests. It does not authorize RHI,
+  D3D11, DXGI, RenderCore, YuInput semantic mapping, UI, Resource, World,
+  reports, visual proof, or Game Adapter behavior. Because current
+  `windows-fast-gate` is unfiltered, the first slice keeps real `HardwareSmoke`
+  tests out of the default registry unless a separate isolation amendment is
+  approved.
+- P2-GATE-006 through P2-GATE-012 are not approved. They are the ENG-096
   hardware-first proposal queue and must go through normal gate review before
   implementation.
 - No Phase 2 implementation task may be created until the owning gate is
@@ -212,9 +222,11 @@ Required test-tier direction:
 
 1. Use the landed P2-GATE-004 labels and `windows-hardware-smoke` preset to keep
    future hardware work focused without weakening default deterministic evidence.
-2. Prepare P2-GATE-005 Platform window/native surface/event pump as the first
-   real hardware-facing runtime gate. It must not depend on RHI, RenderCore,
-   Resource, UI, World, reports, or Game Adapter behavior.
+2. Review P2-GATE-005 Platform window/native surface/event pump as the first
+   real hardware-facing runtime gate proposal. It must not depend on RHI,
+   RenderCore, Resource, UI, World, reports, or Game Adapter behavior, and its
+   first slice must not leak real `HardwareSmoke` tests into the default fast
+   gate.
 3. Prepare P2-GATE-006 and P2-GATE-007 as separate gates. Do not create a D3D11
    mesh or RenderCore task before backend-neutral RHI and D3D11 clear/present/
    capture are reviewed and approved.
