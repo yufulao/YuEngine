@@ -82,15 +82,16 @@ Current lower-engine reality:
 - Platform has the P2-GATE-005 first-slice window, native surface, and event
   pump boundary; it still has no GPU adapter discovery, swapchain, or RHI
   ownership.
-- RHI is a null backend only: no backend-neutral device interface, no D3D/DXGI
-  device, no swapchain, no GPU buffers, no shaders, no pipeline state, no depth,
-  no upload/fence path, and no draw path.
+- RHI has a D3D11 visible-triangle capture-byte proof through P2-GATE-009, but
+  still has no static mesh, Resource upload, RenderCore, material system, scene
+  traversal, report, visual proof, UI, World, or Game Adapter behavior.
 - Audio is a test backend only: no WASAPI/XAudio2 device, callback thread,
   latency handoff, codec, streaming, or real sink.
 - Input is replay/action-binding only: no OS device bridge or focus-aware event
   pump.
-- Thread/File/Package/Resource are deterministic first slices: no worker pool,
-  async IO, streaming, upload queue, cache ownership, or asset decode pipeline.
+- Thread/File have a worker lifecycle and async file-completion substrate through
+  P2-GATE-010, but no Resource/Package streaming, upload queue, cache ownership,
+  or asset decode pipeline.
 
 The immediate ordering is:
 
@@ -101,11 +102,11 @@ test tier labels and optional hardware-smoke presets
 -> D3D11 device/context/swapchain clear/present/capture
 -> D3D11 resource and pipeline primitives
 -> visible triangle fixture
--> static mesh fixture
 -> worker/job and async IO substrate
--> package/resource streaming and upload queue
--> real audio backend
+-> real audio backend callback
 -> OS input bridge
+-> static mesh fixture
+-> package/resource streaming and upload queue
 -> RenderCore fixture pass
 ```
 
@@ -158,8 +159,8 @@ Required test-tier direction:
 | P2-GATE-007 | D3D11 Device Swapchain Clear Present Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_007_D3D11_DEVICE_SWAPCHAIN_CLEAR_PRESENT_CAPTURE.md`; landed at `18d73a3`; first real D3D11 device/context/swapchain clear/present/capture through RHI boundary; default fast gate is 669/669 PASS; `HardwareSmoke` is isolated from default fast gate; `windows-hardware-smoke` discovers and runs 1 D3D11 capture-byte test; no mesh, shader pipeline expansion, RenderCore, Resource, report, visual proof, or Game Adapter |
 | P2-GATE-008 | D3D11 Resource And Pipeline Primitives | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_008_D3D11_RESOURCE_AND_PIPELINE_PRIMITIVES.md`; landed at `2f7c8e1`; RHI-only buffer/texture/sampler/shader/input-layout/pipeline/fence primitive contracts after P2-GATE-007; default fast gate is `681/681` PASS; `windows-hardware-smoke` discovers and runs 2 D3D11 tests including primitive resource/pipeline snapshot; no visible triangle, draw proof, RenderCore, material system, Resource loading, mesh asset pipeline, scene traversal, report, visual proof, shader compiler, or Game Adapter |
 | P2-GATE-009 | D3D11 Visible Triangle Fixture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_009_D3D11_VISIBLE_TRIANGLE_FIXTURE.md`; landed at `f55f6dd`; first visible geometry proof through RHI capture bytes after P2-GATE-008; default fast gate is `685/685` PASS; `windows-hardware-smoke` discovers and runs 3 tests including `RHI_D3D11Hardware_VisibleTriangleCaptureBytes`; no static mesh asset pipeline, RenderCore, Resource upload, World, UI, report, screenshot, manual visual proof, or Game Adapter |
-| P2-GATE-010 | Thread Worker And Async IO Substrate | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_010_THREAD_WORKER_AND_ASYNC_IO_SUBSTRATE.md`; approved after ENG-111A/B/C PASS; first worker lifecycle and async file-completion substrate after P2-GATE-009; no Resource semantics, package streaming policy, upload queue, render submission, static mesh, RenderCore, or gameplay |
-| P2-GATE-011 | Real Audio Backend Callback | L1-L3 | `NOT_APPROVED` | Parallel proposal candidate | WASAPI/XAudio2 callback backend into existing mixer/test-sink contract; no codec, BGM/SE business IDs, Resource loading, UI, script, or gameplay |
+| P2-GATE-010 | Thread Worker And Async IO Substrate | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_010_THREAD_WORKER_AND_ASYNC_IO_SUBSTRATE.md`; landed at `5a26a53`; worker lifecycle and async file-completion substrate; default fast gate is `696/696` PASS; no Resource semantics, package streaming policy, upload queue, render submission, static mesh, RenderCore, real audio callback, OS input, or gameplay |
+| P2-GATE-011 | Real Audio Backend Callback | L1-L3 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_011_REAL_AUDIO_BACKEND_CALLBACK.md`; WASAPI/XAudio2 callback backend into existing mixer/test-sink contract; no codec, BGM/SE business IDs, Resource loading, UI, script, or gameplay |
 | P2-GATE-012 | Platform Input Device Bridge | L1-L3 | `NOT_APPROVED` | Parallel proposal candidate | OS device events and focus-aware snapshots into Input boundary; no UI navigation, title menu behavior, script, scene, or Game Adapter |
 
 ## Current Active Gates
@@ -262,6 +263,23 @@ Required test-tier direction:
   Resource semantics, Package streaming, upload queues, render submission,
   static mesh, RenderCore, audio callback, OS input, UI, World, reports, and
   Game Adapter behavior.
+- P2-GATE-010 first slice landed at `5a26a53` after ENG-112A implementation
+  PASS, ENG-112B verification PASS, and ENG-112QA boundary/quality PASS. The
+  Thread/File lower-engine surface now has explicit worker lifecycle,
+  fixed-capacity work/completion queues, async file read completion over
+  caller-owned request/result slots, and deterministic counters/status proof.
+  The default fast gate is `696/696` PASS; `Thread` discovers 14 tests, `File`
+  discovers 16, `AsyncIO` discovers 10, `PerformanceSmoke` discovers 47,
+  `EvidenceOracle` discovers 112, and default `HardwareSmoke` remains 0.
+  `windows-hardware-smoke` remains `3/3` PASS and unaffected. This does not
+  authorize Resource semantics, Package streaming, RHI upload queues, static
+  mesh, RenderCore, real audio callback, OS input bridge, UI, World, reports,
+  or Game Adapter behavior.
+- P2-GATE-011 is proposed for review after P2-GATE-010. It is limited to the
+  first real audio backend callback proof through private Windows audio backend
+  implementation and existing `YuAudio` mixer/test-sink contracts. It does not
+  authorize codec, streaming, Resource loading, BGM/SE IDs, UI, Script, World,
+  gameplay, reports, manual listening proof, or Game Adapter behavior.
 - P2-GATE-011 through P2-GATE-012 are not approved. They are the ENG-096
   lower-engine proposal queue and must go through normal gate review before
   implementation.
@@ -299,9 +317,11 @@ Required test-tier direction:
 6. Keep Phase 3/World expansion paused except for critical fixes. The landed
    P3 gates are contract baselines, not permission to keep moving upward while
    lower hardware remains null/test-only.
-7. Implement P2-GATE-010 as the worker lifecycle and async file-completion
-   substrate before any Resource/Package streaming, upload queue, static mesh,
-   RenderCore, or Game Adapter behavior starts. The implementation must keep
-   public File headers value-based and OS-handle-free, and it must prove worker
-   and async completion behavior through bounded counters/statuses rather than
-   sleeps, logs, reports, screenshots, manual inspection, or real hardware.
+7. Treat the landed P2-GATE-010 worker lifecycle and async file-completion
+   substrate as the lower-engine async baseline. It proves bounded worker and
+   async completion behavior through counters/statuses, not sleeps, logs,
+   reports, screenshots, manual inspection, or real hardware.
+8. Review P2-GATE-011 before any real audio implementation task exists. The
+   review must decide whether a private Windows audio callback backend can prove
+   callback lifecycle and bounded buffer completion without codec, Resource,
+   UI, Script, World, reports, manual listening proof, or Game Adapter scope.
