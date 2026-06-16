@@ -1,14 +1,17 @@
 # P2-GATE-009: D3D11 Visible Triangle Fixture
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-004, P2-GATE-005, P2-GATE-006, P2-GATE-007, P2-GATE-008,
 ADR-0011, ENG-096, ENG-107
 Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0011
 Source baseline: `2f7c8e1`
+Proposal commits: `7e5ef07`, `83c79a8`
+Approval evidence: ENG-109A boundary/reference PASS, ENG-109C test-policy PASS,
+and ENG-109B2 implementability PASS after the input-layout amendment.
 
 ## Layer
 
@@ -363,3 +366,51 @@ Request `APPROVED_FOR_FIRST_SLICE` only after:
 
 If those conditions are not met, return `NEEDS_ARCHITECTURE`,
 `NEEDS_IMPLEMENTABILITY`, or `NEEDS_TEST_POLICY` with exact missing fields.
+
+## Approval Decision
+
+P2-GATE-009 is approved for first slice after ENG-109 review closure.
+
+Hard implementation conditions:
+
+- The first slice remains L3 RHI visible-triangle fixture work only.
+- Public RHI headers may expose backend-neutral draw command, pipeline bind,
+  vertex-buffer bind, vertex input layout, primitive topology, draw descriptor,
+  snapshot, status, and caller-owned byte-span contracts only.
+- Public RHI headers must not expose Windows SDK, D3D11, DXGI, COM, Platform,
+  RenderCore, Resource, Package, File, UI, World, report, screenshot, visual
+  proof, or Game Adapter types.
+- D3D11, DXGI, COM, and Windows usage must stay in Windows-only private RHI
+  implementation files or private internal headers.
+- Production `YuRHI` must not include or link `YuPlatform`; `YuPlatform` may be
+  used only by hardware-smoke fixtures.
+- Shader modules accept caller-provided bytecode only. Shader source language,
+  compiler invocation, shader build tools, generated shader assets, reflection,
+  hot reload, and shader caches are not approved.
+- `RhiInputLayoutDesc` may be extended only as a minimal backend-neutral vertex
+  input layout contract for the triangle fixture.
+- Viewport and scissor handling must stay as minimal RHI backend state required
+  for the fixture. It must not become RenderCore pass policy.
+- Static mesh, mesh asset pipeline, material system, scene traversal,
+  RenderCore, Resource upload, Package/File streaming, report, screenshot,
+  manual visual proof, UI, World, and Game Adapter behavior are not approved.
+- `CMakePresets.json` is not expected to change. Any amendment must be limited
+  to preserving `HardwareSmoke` isolation and must not weaken the default fast
+  gate.
+- Default `windows-fast-gate` must remain deterministic and must not run real
+  D3D11 hardware tests.
+- `windows-hardware-smoke` must remain the explicit hardware lane. First-slice
+  evidence must include at least one suitable Windows graphics run where the
+  visible-triangle smoke actually draws and validates capture-byte evidence.
+- Skipped or zero hardware smoke is not visible-geometry backend proof.
+- Backend proof must be capture-byte assertions, not screenshot, report,
+  dashboard, visual demo, or manual inspection.
+- Factory ownership must remain caller-owned or explicit-cleanup based. The
+  public factory path must not return heap-owned polymorphic D3D11 device
+  output.
+- The implementation handoff must record before/after deterministic discovery,
+  label counts, hardware-smoke discovery/execution, capture-byte proof shape,
+  public-header dependency scan, and regression evidence for Null RHI,
+  D3D11 clear/present/capture, and primitive resource/pipeline tests.
+- Allowed implementation paths must use exact repository casing:
+  `Src/YuEngine/Rhi/...` and `Tests/Rhi/...`.
