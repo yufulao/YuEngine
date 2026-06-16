@@ -188,6 +188,7 @@ add_library(YuPlatform
     Src/YuEngine/Platform/Src/FixedFrameClock.cpp
     Src/YuEngine/Platform/Src/HeadlessHost.cpp
     Src/YuEngine/Platform/Src/HostError.cpp
+    Src/YuEngine/Platform/Src/WindowsPlatformWindow.cpp
 )
 yuengine_apply_compile_options(YuPlatform)
 target_include_directories(YuPlatform
@@ -195,6 +196,9 @@ target_include_directories(YuPlatform
         Src/YuEngine/Platform/Include
 )
 target_link_libraries(YuPlatform PUBLIC YuDiagnostics YuMemory)
+if(WIN32)
+    target_link_libraries(YuPlatform PRIVATE user32)
+endif()
 
 add_library(YuKernel
     Src/YuEngine/Kernel/Src/EngineKernel.cpp
@@ -238,6 +242,16 @@ target_link_libraries(YuPlatformTests PRIVATE YuPlatform)
 yuengine_add_labeled_test(Host_StartTickShutdown_Deterministic YuPlatformTests Fast ModuleFixture Platform EvidenceOracle)
 yuengine_add_labeled_test(Host_TimerMonotonic_ForFixedTicks YuPlatformTests Fast ModuleFixture Platform)
 yuengine_add_labeled_test(Platform_AllocationAccountingStatus_UsesMemoryHook YuPlatformTests Fast ModuleFixture Platform)
+yuengine_add_labeled_test(PlatformWindow_DescDefaultValuesAreBounded YuPlatformTests Fast ModuleFixture Platform EvidenceOracle)
+yuengine_add_labeled_test(PlatformWindow_InvalidDescriptorRejected YuPlatformTests Fast ModuleFixture Platform EvidenceOracle)
+yuengine_add_labeled_test(PlatformWindow_SurfaceDefaultInvalid YuPlatformTests Fast ModuleFixture Platform EvidenceOracle)
+yuengine_add_labeled_test(PlatformWindow_InitialSnapshotIsEmpty YuPlatformTests Fast ModuleFixture Platform)
+yuengine_add_labeled_test(PlatformWindow_DestroyIsIdempotent YuPlatformTests Fast ModuleFixture Platform)
+yuengine_add_labeled_test(PlatformWindow_PollEventsRejectsNullOutputBuffer YuPlatformTests Fast ModuleFixture Platform EvidenceOracle)
+yuengine_add_labeled_test(PlatformWindow_PollEventsBeforeCreateReturnsNotCreated YuPlatformTests Fast ModuleFixture Platform)
+yuengine_add_labeled_test(PlatformWindow_OperationsBeforeCreateReturnNotCreated YuPlatformTests Fast ModuleFixture Platform)
+yuengine_add_labeled_test(PlatformWindow_QueueCapacityLimitIsBounded YuPlatformTests Fast ModuleFixture Platform PerformanceSmoke)
+yuengine_add_labeled_test(PlatformWindow_PublicTypesArePlainValues YuPlatformTests Fast ModuleFixture Platform PerformanceSmoke EvidenceOracle)
 
 add_executable(YuDiagnosticsTests
     Tests/Diagnostics/DiagnosticsTests.cpp
