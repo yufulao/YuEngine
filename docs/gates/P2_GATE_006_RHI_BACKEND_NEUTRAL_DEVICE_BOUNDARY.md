@@ -1,6 +1,6 @@
 # P2-GATE-006: RHI Backend-Neutral Device Boundary
 
-Status: Approved for first slice
+Status: First-slice covered
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
@@ -10,6 +10,7 @@ Related decisions: ADR-0002, ADR-0005, ADR-0006, ADR-0011
 Source baseline: `ac0ed13`
 Proposal commit: `5b7df27`
 Path-casing amendment: `a51a058`
+First-slice implementation: `fd3be16`
 Approval evidence: ENG-102A boundary/reference PASS, ENG-102C test-policy PASS,
 ENG-102B implementability NEEDS_IMPLEMENTABILITY with one path-casing blocker,
 and ENG-102B2 path-casing recheck PASS.
@@ -375,3 +376,40 @@ Hard implementation conditions:
   `windows-fast-gate`, RHI/Fast/PerformanceSmoke/EvidenceOracle/HardwareSmoke
   label discovery, `windows-hardware-smoke` zero-test behavior, `git diff
   --check`, and public-header dependency scans.
+
+## First-Slice Result
+
+The first slice landed at `fd3be16`.
+
+Result:
+
+- Added RHI public contracts for `IRhiDevice`, `RhiNativeSurfaceDesc`,
+  `RhiDeviceFactory`, and `RhiDeviceCreateResult`.
+- Updated `NullRhiDevice` to implement `IRhiDevice` directly while preserving
+  direct null-backend usage.
+- Added `D3D11` to `RhiBackendKind` as unsupported vocabulary only.
+- Added RHI-owned native-surface descriptor and surface-required fields to
+  `RhiDeviceDesc`.
+- Added native-surface, swapchain, and hardware-device capability bits to
+  `RhiCapabilities`.
+- Implemented factory creation through caller-owned `NullRhiDevice` storage,
+  without heap-owned public factory output.
+- Added 8 deterministic RHI contract tests and CMake registrations.
+- `CMakePresets.json` was not changed.
+- No `HardwareSmoke` tests were registered.
+
+Evidence:
+
+- `cmake --preset windows-fast-gate`: PASS.
+- `cmake --build --preset windows-fast-gate`: PASS.
+- `ctest --preset windows-fast-gate -N`: 664 tests, up from 656.
+- Full `windows-fast-gate` passed at `664/664`.
+- Label discovery: `Fast` 664, `ModuleFixture` 664, `RHI` 36,
+  `PerformanceSmoke` 40, `EvidenceOracle` 87, and `HardwareSmoke` 0.
+- `windows-hardware-smoke` remains 0 tests and exits successfully.
+- RHI public headers do not include Platform, Windows SDK, D3D11, DXGI,
+  RenderCore, Resource, Package, report, screenshot, or Game Adapter headers.
+- `D3D11` remains unsupported vocabulary and test handling only; no real D3D11
+  device, DXGI object, swapchain, shader, buffer, texture, or pipeline was
+  added.
+- Factory output is a non-owning `IRhiDevice *` into caller-owned storage.
