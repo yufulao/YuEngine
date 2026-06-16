@@ -155,7 +155,7 @@ Required test-tier direction:
 | P2-GATE-004 | Test Tier Labels And Hardware Smoke Presets | L7 over L0-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_004_TEST_TIER_LABELS_HARDWARE_SMOKE_PRESETS.md`; landed at `0c45d37`; CTest labels and optional hardware-smoke preset before real backend gates; no runtime behavior, no new backend, no test deletion |
 | P2-GATE-005 | Platform Window Native Surface And Event Pump | L0-L1 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_005_PLATFORM_WINDOW_NATIVE_SURFACE_EVENT_PUMP.md`; landed at `e3e2ad7`; Platform window lifecycle, opaque native surface value, bounded event pump, resize/focus/close/raw platform events; fast gate is 656/656 PASS; `HardwareSmoke` remains 0; no RHI, UI, Resource, Game Adapter, or render policy |
 | P2-GATE-006 | RHI Backend-Neutral Device Boundary | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_006_RHI_BACKEND_NEUTRAL_DEVICE_BOUNDARY.md`; landed at `fd3be16`; backend-neutral device/interface/factory/native-surface descriptor contracts only; fast gate is 664/664 PASS; `HardwareSmoke` remains 0; no real D3D11, DXGI, swapchain, RenderCore, Resource, report, visual proof, or Game Adapter |
-| P2-GATE-007 | D3D11 Device Swapchain Clear Present Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_007_D3D11_DEVICE_SWAPCHAIN_CLEAR_PRESENT_CAPTURE.md`; approved after ENG-104A/B/C PASS; first real D3D11 device/context/swapchain clear/present/capture through RHI boundary; must isolate `HardwareSmoke` from default fast gate; no mesh, shader pipeline expansion, RenderCore, Resource, report, visual proof, or Game Adapter |
+| P2-GATE-007 | D3D11 Device Swapchain Clear Present Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_007_D3D11_DEVICE_SWAPCHAIN_CLEAR_PRESENT_CAPTURE.md`; landed at `18d73a3`; first real D3D11 device/context/swapchain clear/present/capture through RHI boundary; default fast gate is 669/669 PASS; `HardwareSmoke` is isolated from default fast gate; `windows-hardware-smoke` discovers and runs 1 D3D11 capture-byte test; no mesh, shader pipeline expansion, RenderCore, Resource, report, visual proof, or Game Adapter |
 | P2-GATE-008 | D3D11 Resource And Pipeline Primitives | L3 | `NOT_APPROVED` | Proposed after P2-GATE-007 | Vertex/index/constant buffers, shader module boundary, input layout, pipeline state, texture/sampler, upload/update/fence; no RenderCore, material system, or scene traversal |
 | P2-GATE-009 | D3D11 Visible Triangle Fixture | L3 | `NOT_APPROVED` | Proposed after P2-GATE-008 | First visible geometry proof through RHI capture; no static mesh asset pipeline, RenderCore, World, UI, or Game Adapter |
 | P2-GATE-010 | Thread Worker And Async IO Substrate | L1-L3 | `NOT_APPROVED` | Parallel proposal candidate | Worker ownership, bounded queues, drain/cancel, async file completion; no Resource semantics, package streaming policy, upload queue, or gameplay |
@@ -213,14 +213,20 @@ Required test-tier direction:
   `HardwareSmoke` remains 0. `CMakePresets.json` was not changed. This does not
   authorize real D3D11, DXGI, swapchain, RenderCore, mesh, Resource, report,
   visual proof, or Game Adapter behavior.
-- P2-GATE-007 is approved for first slice after ENG-104A boundary/reference
-  PASS, ENG-104B implementability PASS, and ENG-104C test-policy PASS. The
-  approved scope is the first real D3D11 device/context/swapchain
-  clear/present/capture path through the landed RHI boundary. It must isolate
-  `HardwareSmoke` from the default fast gate, keep public RHI headers free of
-  Windows/D3D11/DXGI/COM/Platform types, keep production `YuRHI` independent
-  from `YuPlatform`, and must not authorize mesh, shader pipeline expansion,
-  RenderCore, Resource, report, visual proof, or Game Adapter behavior.
+- P2-GATE-007 first slice landed at `18d73a3` after ENG-105A implementation
+  PASS, ENG-105B verification PASS, and ENG-105QA boundary/quality PASS. The
+  RHI L3 surface now has the first real D3D11 device/context/swapchain
+  clear/present/capture path, caller-owned factory storage, explicit device
+  destruction, swapchain target query, and capture-byte hardware smoke proof.
+  The default fast gate is `669/669` PASS; `Fast` discovers 669 tests, `RHI`
+  discovers 41, `PerformanceSmoke` discovers 40, `EvidenceOracle` discovers 91,
+  and default `HardwareSmoke`, `D3D11`, and `Win32` discovery remains 0.
+  `windows-hardware-smoke` discovers 1 test and ENG-105B accepted a real D3D11
+  capture-byte execution. Public RHI headers remain free of Windows SDK, D3D11,
+  DXGI, COM, and Platform types; production `YuRHI` does not depend on
+  `YuPlatform`. This does not authorize mesh, shader pipeline expansion,
+  RenderCore, Resource, report, visual proof, UI, World, or Game Adapter
+  behavior.
 - P2-GATE-008 through P2-GATE-012 are not approved. They are the ENG-096
   hardware-first proposal queue and must go through normal gate review before
   implementation.
@@ -246,10 +252,10 @@ Required test-tier direction:
    swapchain, present, capture, or render proof.
 3. Use the landed P2-GATE-006 backend-neutral RHI device boundary before any
    D3D11 device or DXGI swapchain implementation task is created.
-4. Implement P2-GATE-007 as the D3D11 device/context/swapchain
+4. Use the landed P2-GATE-007 D3D11 device/context/swapchain
    clear/present/capture first slice before any P2-GATE-008 resource or pipeline
    primitive task is created. Do not create a D3D11 mesh or RenderCore task
-   before D3D11 clear/present/capture is landed and reviewed.
+   before a separate gate approves that scope.
 5. Keep Phase 3/World expansion paused except for critical fixes. The landed
    P3 gates are contract baselines, not permission to keep moving upward while
    lower hardware remains null/test-only.

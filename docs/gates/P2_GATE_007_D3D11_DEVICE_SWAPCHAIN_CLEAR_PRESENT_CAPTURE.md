@@ -382,3 +382,46 @@ Hard implementation conditions:
   Game Adapter scope.
 - Allowed implementation paths must use exact repository casing:
   `Src/YuEngine/Rhi/...` and `Tests/Rhi/...`.
+
+## First-Slice Result
+
+The first slice landed at `18d73a3`.
+
+Result:
+
+- Added backend-neutral swapchain descriptor and snapshot public values.
+- Extended `IRhiDevice` with swapchain color-target query, clear/present, and
+  capture-byte contract surface.
+- Extended `RhiDeviceFactory` with caller-owned storage creation and explicit
+  device destruction for D3D11.
+- Added private Windows-only D3D11 device implementation under
+  `Src/YuEngine/Rhi/Src/`, with D3D11, DXGI, and COM confined to private RHI
+  implementation files.
+- Added private `d3d11` and `dxgi` linkage to `YuRHI`.
+- Added deterministic RHI contract tests and one isolated D3D11 hardware-smoke
+  capture-byte test.
+- Updated `CMakePresets.json` only to exclude `HardwareSmoke` from the default
+  `windows-fast-gate` preset.
+
+Evidence:
+
+- `cmake --preset windows-fast-gate`: PASS.
+- `cmake --build --preset windows-fast-gate`: PASS.
+- `ctest --preset windows-fast-gate -N`: 669 tests, up from 664.
+- Full `windows-fast-gate` passed at `669/669`.
+- Default fast-gate label discovery: `Fast` 669, `RHI` 41,
+  `PerformanceSmoke` 40, `EvidenceOracle` 91, `HardwareSmoke` 0, `D3D11` 0,
+  and `Win32` 0.
+- `windows-hardware-smoke` discovers 1 test and ENG-105B accepted a real D3D11
+  run where `RHI_D3D11Hardware_ClearPresentCaptureBytes` executed and validated
+  expected capture bytes.
+- Public RHI headers do not include or expose Platform, Windows SDK, D3D11,
+  DXGI, COM, RenderCore, Resource, Package, report, screenshot, visual proof,
+  UI, World, or Game Adapter types.
+- Production `YuRHI` does not depend on `YuPlatform`; `YuPlatform` is used only
+  by the hardware-smoke fixture.
+- Factory output remains caller-owned or explicit-cleanup based, without a
+  heap-owned public polymorphic D3D11 device result.
+- The first slice does not add mesh, shader pipeline, buffer, texture, upload,
+  fence, RenderCore, Resource, report, screenshot, visual proof, UI, World, or
+  Game Adapter scope.
