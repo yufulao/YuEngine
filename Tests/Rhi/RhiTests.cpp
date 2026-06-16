@@ -2,6 +2,7 @@
 // File: Tests/Rhi/RhiTests.cpp
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <span>
@@ -14,6 +15,7 @@
 #include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
 #include "YuEngine/Rhi/RhiNativeSurfaceDesc.h"
+#include "YuEngine/Rhi/RhiSwapchainDesc.h"
 
 using IRhiDevice = yuengine::rhi::IRhiDevice;
 using NullRhiDevice = yuengine::rhi::NullRhiDevice;
@@ -29,6 +31,7 @@ using RhiDeviceSnapshot = yuengine::rhi::RhiDeviceSnapshot;
 using yuengine::rhi::RhiFormat;
 using RhiNativeSurfaceDesc = yuengine::rhi::RhiNativeSurfaceDesc;
 using yuengine::rhi::RhiStatus;
+using RhiSwapchainDesc = yuengine::rhi::RhiSwapchainDesc;
 using RhiTextureHandle = yuengine::rhi::RhiTextureHandle;
 using yuengine::rhi::MAX_COMMANDS;
 using yuengine::rhi::MAX_COLOR_TARGET_EXTENT;
@@ -72,6 +75,11 @@ constexpr const char* TEST_FACTORY_D3D11_UNSUPPORTED = "RHI_Factory_D3D11Backend
 constexpr const char* TEST_FACTORY_SURFACE_REQUIRED = "RHI_Factory_SurfaceRequiredForNullBackendRejectedWithoutMutation";
 constexpr const char* TEST_FACTORY_INVALID_SURFACE = "RHI_Factory_InvalidNativeSurfaceRejectedBeforeMutation";
 constexpr const char* TEST_NATIVE_SURFACE_DEFAULT = "RHI_NativeSurfaceDesc_DefaultIsInvalidPlainValue";
+constexpr const char* TEST_FACTORY_RAW_STORAGE_NULL = "RHI_Factory_RawStorageCreatesNullDevice";
+constexpr const char* TEST_FACTORY_RAW_STORAGE_TOO_SMALL = "RHI_Factory_RawStorageRejectsSmallBuffer";
+constexpr const char* TEST_FACTORY_D3D11_INVALID_SURFACE = "RHI_Factory_D3D11InvalidSurfaceFailsBeforeHardware";
+constexpr const char* TEST_SWAPCHAIN_DESC_DEFAULT = "RHI_SwapchainDesc_DefaultIsBoundedPlainValue";
+constexpr const char* TEST_NULL_SWAPCHAIN_QUERY = "RHI_NullBackend_SwapchainQueryReturnsUnsupported";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* REINIT_TARGET_CREATION_MESSAGE = "target creation failed";
@@ -257,6 +265,34 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
     }
 
     if (left.last_capture_bytes_written != right.last_capture_bytes_written) {
+        return false;
+    }
+
+    if (left.swapchain.extent.width != right.swapchain.extent.width) {
+        return false;
+    }
+
+    if (left.swapchain.extent.height != right.swapchain.extent.height) {
+        return false;
+    }
+
+    if (left.swapchain.color_format != right.swapchain.color_format) {
+        return false;
+    }
+
+    if (left.swapchain.color_target.slot != right.swapchain.color_target.slot) {
+        return false;
+    }
+
+    if (left.swapchain.color_target.generation != right.swapchain.color_target.generation) {
+        return false;
+    }
+
+    if (left.swapchain.valid != right.swapchain.valid) {
+        return false;
+    }
+
+    if (left.swapchain.presented != right.swapchain.presented) {
         return false;
     }
 
@@ -533,6 +569,132 @@ int RhiNativeSurfaceDescDefaultIsInvalidPlainValue() {
     const RhiStatus status = RhiDeviceFactory::ValidateNativeSurfaceDesc(desc);
     if (status != RhiStatus::Success) {
         return Fail("valid opaque native surface descriptor was rejected");
+    }
+
+    return 0;
+}
+
+int RhiFactoryRawStorageCreatesNullDevice() {
+    const std::size_t required_size = RhiDeviceFactory::RequiredDeviceStorageSize(RhiBackendKind::Null);
+    if (required_size == 0U) {
+        return Fail("null backend reported empty storage");
+    }
+
+    std::vector<std::byte> storage(required_size);
+    std::span<std::byte> storage_span(storage.data(), storage.size());
+    RhiDeviceDesc desc{};
+    const RhiDeviceCreateResult result = RhiDeviceFactory::CreateDevice(desc, storage_span);
+    if (result.status != RhiStatus::Success) {
+        return Fail("raw storage factory did not create null device");
+    }
+
+    if (result.device == nullptr) {
+        return Fail("raw storage factory returned null device");
+    }
+
+    const auto device_address = reinterpret_cast<std::uintptr_t>(result.device);
+    const auto storage_begin = reinterpret_cast<std::uintptr_t>(storage.data());
+    const auto storage_end = storage_begin + storage.size();
+    if (device_address < storage_begin || device_address >= storage_end) {
+        return Fail("raw storage factory returned a device outside caller storage");
+    }
+
+    if (result.capabilities.backend_kind != RhiBackendKind::Null) {
+        return Fail("raw storage factory returned wrong backend capabilities");
+    }
+
+    RhiTextureHandle handle{};
+    if (result.device->CreateColorTarget(SmallTargetDesc(), handle) != RhiStatus::Success) {
+        return Fail("raw storage null device target creation failed");
+    }
+
+    if (RhiDeviceFactory::DestroyDevice(result.device) != RhiStatus::Success) {
+        return Fail("raw storage null device destroy failed");
+    }
+
+    return 0;
+}
+
+int RhiFactoryRawStorageRejectsSmallBuffer() {
+    const std::size_t required_size = RhiDeviceFactory::RequiredDeviceStorageSize(RhiBackendKind::Null);
+    if (required_size == 0U) {
+        return Fail("null backend reported empty storage");
+    }
+
+    std::vector<std::byte> storage(required_size - 1U);
+    RhiDeviceDesc desc{};
+    const RhiDeviceCreateResult result = RhiDeviceFactory::CreateDevice(desc, std::span<std::byte>(storage.data(), storage.size()));
+    if (result.status != RhiStatus::InvalidDescriptor) {
+        return Fail("small raw storage did not return invalid descriptor");
+    }
+
+    if (result.device != nullptr) {
+        return Fail("small raw storage returned a device");
+    }
+
+    return 0;
+}
+
+int RhiFactoryD3D11InvalidSurfaceFailsBeforeHardware() {
+    const std::size_t required_size = RhiDeviceFactory::RequiredDeviceStorageSize(RhiBackendKind::D3D11);
+    if (required_size == 0U) {
+        return Fail("d3d11 backend reported empty storage on windows gate");
+    }
+
+    std::vector<std::byte> storage(required_size);
+    RhiDeviceDesc desc{};
+    desc.backend_kind = RhiBackendKind::D3D11;
+    desc.requires_native_surface = true;
+    desc.requires_swapchain = true;
+    desc.swapchain.extent = {2U, 2U};
+
+    const RhiDeviceCreateResult result = RhiDeviceFactory::CreateDevice(desc, std::span<std::byte>(storage.data(), storage.size()));
+    if (result.status != RhiStatus::InvalidDescriptor) {
+        return Fail("d3d11 invalid surface did not fail before hardware creation");
+    }
+
+    if (result.device != nullptr) {
+        return Fail("d3d11 invalid surface returned a live device");
+    }
+
+    return 0;
+}
+
+int RhiSwapchainDescDefaultIsBoundedPlainValue() {
+    RhiSwapchainDesc desc{};
+    if (desc.color_format != RhiFormat::Rgba8Unorm) {
+        return Fail("default swapchain format was unexpected");
+    }
+
+    if (desc.extent.width != 0U) {
+        return Fail("default swapchain width was nonzero");
+    }
+
+    if (desc.extent.height != 0U) {
+        return Fail("default swapchain height was nonzero");
+    }
+
+    if (desc.vsync_enabled) {
+        return Fail("default swapchain vsync was enabled");
+    }
+
+    return 0;
+}
+
+int RhiNullBackendSwapchainQueryReturnsUnsupported() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RhiTextureHandle handle{7U, 9U};
+    const RhiStatus status = device.GetSwapchainColorTarget(handle);
+    if (status != RhiStatus::UnsupportedBackend) {
+        return Fail("null swapchain query did not return unsupported");
+    }
+
+    if (handle.slot != 0U) {
+        return Fail("null swapchain query did not clear handle slot");
+    }
+
+    if (handle.generation != 0U) {
+        return Fail("null swapchain query did not clear handle generation");
     }
 
     return 0;
@@ -1388,6 +1550,11 @@ int main(int argc, char** argv) {
         {TEST_FACTORY_SURFACE_REQUIRED, RhiFactorySurfaceRequiredForNullBackendRejectedWithoutMutation},
         {TEST_FACTORY_INVALID_SURFACE, RhiFactoryInvalidNativeSurfaceRejectedBeforeMutation},
         {TEST_NATIVE_SURFACE_DEFAULT, RhiNativeSurfaceDescDefaultIsInvalidPlainValue},
+        {TEST_FACTORY_RAW_STORAGE_NULL, RhiFactoryRawStorageCreatesNullDevice},
+        {TEST_FACTORY_RAW_STORAGE_TOO_SMALL, RhiFactoryRawStorageRejectsSmallBuffer},
+        {TEST_FACTORY_D3D11_INVALID_SURFACE, RhiFactoryD3D11InvalidSurfaceFailsBeforeHardware},
+        {TEST_SWAPCHAIN_DESC_DEFAULT, RhiSwapchainDescDefaultIsBoundedPlainValue},
+        {TEST_NULL_SWAPCHAIN_QUERY, RhiNullBackendSwapchainQueryReturnsUnsupported},
         {TEST_CREATE_TARGET, RhiCreateTargetReturnsGenerationHandle},
         {TEST_CREATE_COLOR_TARGET, RhiCreateTargetReturnsGenerationHandle},
         {TEST_INVALID_DESCRIPTOR, RhiCreateColorTargetRejectsInvalidDescriptor},

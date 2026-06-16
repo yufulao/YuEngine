@@ -11,6 +11,8 @@ enum class RhiStatus {
     InvalidDescriptor,
     CapacityExceeded,
     InvalidHandle,
-    InvalidLifecycle
+    InvalidLifecycle,
+    MissingHardware,
+    DeviceLost
 };
 }

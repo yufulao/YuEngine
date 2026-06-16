@@ -37,6 +37,12 @@ public:
      */
     virtual RhiStatus CreateColorTarget(const RhiColorTargetDesc &desc, RhiTextureHandle &out_handle) = 0;
     /**
+     * @comment Returns the swapchain color target handle.
+     * @param out_handle Output handle written on success.
+     * @return Explicit operation status.
+     */
+    virtual RhiStatus GetSwapchainColorTarget(RhiTextureHandle &out_handle) const = 0;
+    /**
      * @comment Destroys a target.
      * @param handle Input handle.
      * @return Explicit operation status.

@@ -41,6 +41,12 @@ public:
      */
     RhiStatus CreateColorTarget(const RhiColorTargetDesc &desc, RhiTextureHandle &out_handle) override;
     /**
+     * @comment Returns the swapchain color target handle.
+     * @param out_handle Output handle written on success.
+     * @return Explicit operation status.
+     */
+    RhiStatus GetSwapchainColorTarget(RhiTextureHandle &out_handle) const override;
+    /**
      * @comment Destroys target.
      * @param handle Input handle.
      * @return Explicit operation status.

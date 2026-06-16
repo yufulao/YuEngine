@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "YuEngine/Rhi/RhiAccountingStatus.h"
+#include "YuEngine/Rhi/RhiSwapchainSnapshot.h"
 
 namespace yuengine::rhi {
 struct RhiDeviceSnapshot final {
@@ -22,6 +23,7 @@ struct RhiDeviceSnapshot final {
     std::uint64_t capture_count = 0U;
     std::uint64_t failed_operation_count = 0U;
     std::size_t last_capture_bytes_written = 0U;
+    RhiSwapchainSnapshot swapchain{};
     RhiAccountingStatus allocation_accounting_status = RhiAccountingStatus::DeferredUntilYuMemoryIntegration;
 };
 }

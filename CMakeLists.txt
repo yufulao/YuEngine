@@ -111,6 +111,7 @@ target_include_directories(YuFile
 target_link_libraries(YuFile PUBLIC YuMemory)
 
 add_library(YuRHI
+    Src/YuEngine/Rhi/Src/D3D11RhiDeviceWindows.cpp
     Src/YuEngine/Rhi/Src/NullRhiDevice.cpp
     Src/YuEngine/Rhi/Src/RhiCommandList.cpp
 )
@@ -119,6 +120,9 @@ target_include_directories(YuRHI
     PUBLIC
         Src/YuEngine/Rhi/Include
 )
+if(WIN32)
+    target_link_libraries(YuRHI PRIVATE d3d11 dxgi)
+endif()
 
 add_library(YuAudio
     Src/YuEngine/Audio/Src/TestAudioDevice.cpp
@@ -808,6 +812,11 @@ yuengine_add_labeled_test(RHI_Factory_D3D11BackendUnsupportedWithoutMutation YuR
 yuengine_add_labeled_test(RHI_Factory_SurfaceRequiredForNullBackendRejectedWithoutMutation YuRHITests Fast ModuleFixture RHI EvidenceOracle)
 yuengine_add_labeled_test(RHI_Factory_InvalidNativeSurfaceRejectedBeforeMutation YuRHITests Fast ModuleFixture RHI EvidenceOracle)
 yuengine_add_labeled_test(RHI_NativeSurfaceDesc_DefaultIsInvalidPlainValue YuRHITests Fast ModuleFixture RHI EvidenceOracle)
+yuengine_add_labeled_test(RHI_Factory_RawStorageCreatesNullDevice YuRHITests Fast ModuleFixture RHI EvidenceOracle)
+yuengine_add_labeled_test(RHI_Factory_RawStorageRejectsSmallBuffer YuRHITests Fast ModuleFixture RHI EvidenceOracle)
+yuengine_add_labeled_test(RHI_Factory_D3D11InvalidSurfaceFailsBeforeHardware YuRHITests Fast ModuleFixture RHI EvidenceOracle)
+yuengine_add_labeled_test(RHI_SwapchainDesc_DefaultIsBoundedPlainValue YuRHITests Fast ModuleFixture RHI EvidenceOracle)
+yuengine_add_labeled_test(RHI_NullBackend_SwapchainQueryReturnsUnsupported YuRHITests Fast ModuleFixture RHI)
 yuengine_add_labeled_test(RHI_CreateTarget_ReturnsGenerationHandle YuRHITests Fast ModuleFixture RHI)
 yuengine_add_labeled_test(RHI_CreateColorTarget_ReturnsGenerationHandle YuRHITests Fast ModuleFixture RHI)
 yuengine_add_labeled_test(RHI_CreateColorTarget_RejectsInvalidDescriptor YuRHITests Fast ModuleFixture RHI)
@@ -834,6 +843,14 @@ yuengine_add_labeled_test(RHI_CaptureRejectsTargetLargerThanFixtureCapWithoutWri
 yuengine_add_labeled_test(RHI_FrameSubmitPresentCapture_DoesNotGrowCommandStorage YuRHITests Fast ModuleFixture RHI PerformanceSmoke EvidenceOracle)
 yuengine_add_labeled_test(RHI_DisabledDiagnosticsDoesNotChangeResults YuRHITests Fast ModuleFixture RHI)
 yuengine_add_labeled_test(RHI_NoResourceFileUploadShaderUiDependency YuRHITests Fast ModuleFixture RHI EvidenceOracle)
+
+add_executable(YuRhiD3D11HardwareSmokeTests
+    Tests/Rhi/RhiD3D11HardwareSmokeTests.cpp
+)
+yuengine_apply_compile_options(YuRhiD3D11HardwareSmokeTests)
+target_link_libraries(YuRhiD3D11HardwareSmokeTests PRIVATE YuRHI YuPlatform)
+yuengine_add_labeled_test(RHI_D3D11Hardware_ClearPresentCaptureBytes YuRhiD3D11HardwareSmokeTests HardwareSmoke D3D11 RHI Win32)
+set_tests_properties(RHI_D3D11Hardware_ClearPresentCaptureBytes PROPERTIES SKIP_RETURN_CODE 77)
 
 add_executable(YuAudioTests
     Tests/Audio/AudioTests.cpp

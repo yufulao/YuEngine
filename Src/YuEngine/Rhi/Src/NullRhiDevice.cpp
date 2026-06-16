@@ -65,6 +65,10 @@ RhiStatus RhiDeviceFactory::ValidateDeviceDesc(const RhiDeviceDesc &desc) {
         return RhiStatus::UnsupportedBackend;
     }
 
+    if (desc.requires_swapchain) {
+        return RhiStatus::UnsupportedBackend;
+    }
+
     return RhiStatus::Success;
 }
 
@@ -86,6 +90,10 @@ RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc &desc) {
     }
 
     if (desc.requires_native_surface) {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    if (desc.requires_swapchain) {
         return RhiStatus::UnsupportedBackend;
     }
 
@@ -167,6 +175,11 @@ RhiStatus NullRhiDevice::CreateColorTarget(const RhiColorTargetDesc &desc, RhiTe
     }
 
     return RecordFailure(RhiStatus::CapacityExceeded);
+}
+
+RhiStatus NullRhiDevice::GetSwapchainColorTarget(RhiTextureHandle &out_handle) const {
+    out_handle = RhiTextureHandle{};
+    return RhiStatus::UnsupportedBackend;
 }
 
 RhiStatus NullRhiDevice::DestroyTarget(RhiTextureHandle handle) {

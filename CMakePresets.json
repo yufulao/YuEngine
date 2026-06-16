@@ -57,6 +57,11 @@
       "output": {
         "outputOnFailure": true
       },
+      "filter": {
+        "exclude": {
+          "label": "HardwareSmoke"
+        }
+      },
       "execution": {
         "noTestsAction": "error"
       }
