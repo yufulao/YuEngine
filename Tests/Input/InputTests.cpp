@@ -6,17 +6,32 @@
 #include <cstdio>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 
+#include "YuEngine/Input/InputBackendKind.h"
+#include "YuEngine/Input/InputBridge.h"
+#include "YuEngine/Input/InputBridgeDesc.h"
+#include "YuEngine/Input/InputBridgeEvent.h"
+#include "YuEngine/Input/InputBridgeSnapshot.h"
 #include "YuEngine/Input/InputConstants.h"
+#include "YuEngine/Input/InputDeviceKind.h"
 #include "YuEngine/Input/InputReplay.h"
 
 using yuengine::input::InputActionId;
 using yuengine::input::InputActionState;
+using yuengine::input::InputBackendKind;
+using yuengine::input::InputBridge;
+using yuengine::input::InputBridgeDesc;
+using yuengine::input::InputBridgeEvent;
+using yuengine::input::InputBridgeEventType;
+using yuengine::input::InputBridgeSnapshot;
 using yuengine::input::InputControlId;
 using yuengine::input::InputDeviceId;
+using yuengine::input::InputDeviceKind;
 using yuengine::input::InputEvent;
 using yuengine::input::InputEventType;
+using yuengine::input::InputFocusPolicy;
 using InputReplay = yuengine::input::InputReplay;
 using yuengine::input::InputReplaySnapshot;
 using yuengine::input::InputStatus;
@@ -45,6 +60,15 @@ constexpr const char* TEST_RESET = "Input_ResetClearsChangedStateWithoutClearing
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Input_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_GROW = "Input_FrameApply_DoesNotGrowReplayStorage";
 constexpr const char* TEST_NO_FORBIDDEN_DEPENDENCY = "Input_NoPlatformUiOrGameAdapterDependency";
+constexpr const char* TEST_BRIDGE_DESC = "Input_BridgeDesc_DefaultValuesAreBounded";
+constexpr const char* TEST_BRIDGE_CONTRACT = "Input_BridgePublicContract_UsesValueTypes";
+constexpr const char* TEST_BRIDGE_UNSUPPORTED = "Input_BridgeInitialize_RejectsUnsupportedBackend";
+constexpr const char* TEST_BRIDGE_DRAIN = "Input_BridgeSubmitAndDrain_RecordsKeyboardMouseWheel";
+constexpr const char* TEST_BRIDGE_FOCUS = "Input_BridgeFocusLost_RejectsInputAndTracksCounters";
+constexpr const char* TEST_BRIDGE_CAPACITY = "Input_BridgeCapacityOverflow_DoesNotGrow";
+constexpr const char* TEST_BRIDGE_SMALL_DRAIN = "Input_BridgeDrain_RejectsSmallOutputWithoutMutation";
+constexpr const char* TEST_BRIDGE_GAMEPAD = "Input_BridgeGamepadUnavailable_IsExplicit";
+constexpr const char* TEST_BRIDGE_NO_DISPATCH = "Input_BridgeNoUiGameOrReportDispatch";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
@@ -77,6 +101,48 @@ InputEvent ButtonRelease(InputDeviceId device, InputControlId control) {
 
 InputEvent Axis(InputDeviceId device, InputControlId control, std::int32_t value) {
     return InputEvent{device, control, InputEventType::Axis, value};
+}
+
+InputBridgeEvent BridgeKey(InputBridgeEventType type, std::uint32_t raw_code) {
+    InputBridgeEvent event{};
+    event.device_kind = InputDeviceKind::Keyboard;
+    event.device = DEVICE_A;
+    event.control = InputControlId{raw_code};
+    event.type = type;
+    event.raw_code = raw_code;
+    return event;
+}
+
+InputBridgeEvent BridgeMouseMove(std::int32_t x, std::int32_t y) {
+    InputBridgeEvent event{};
+    event.device_kind = InputDeviceKind::Mouse;
+    event.device = DEVICE_B;
+    event.control = InputControlId{1U};
+    event.type = InputBridgeEventType::MouseMoved;
+    event.pointer_x = x;
+    event.pointer_y = y;
+    return event;
+}
+
+InputBridgeEvent BridgeMouseWheel(std::int32_t delta) {
+    InputBridgeEvent event{};
+    event.device_kind = InputDeviceKind::Mouse;
+    event.device = DEVICE_B;
+    event.control = InputControlId{2U};
+    event.type = InputBridgeEventType::MouseWheel;
+    event.wheel_delta = delta;
+    event.axis_value = delta;
+    return event;
+}
+
+InputBridgeEvent BridgeGamepadUnavailableEvent() {
+    InputBridgeEvent event{};
+    event.device_kind = InputDeviceKind::Gamepad;
+    event.device = DEVICE_A;
+    event.control = CONTROL_A;
+    event.type = InputBridgeEventType::KeyPressed;
+    event.raw_code = 1U;
+    return event;
 }
 
 bool RegisterPrimaryBinding(InputReplay& replay) {
@@ -550,6 +616,306 @@ int InputNoPlatformUiOrGameAdapterDependency() {
 
     return 0;
 }
+
+int InputBridgeDescDefaultValuesAreBounded() {
+    const InputBridgeDesc desc{};
+    if (desc.backend != InputBackendKind::NativeMessage) {
+        return Fail("bridge default backend is not native message");
+    }
+
+    if (desc.event_capacity < InputBridgeDesc::MIN_EVENT_CAPACITY) {
+        return Fail("bridge default capacity is below minimum");
+    }
+
+    if (desc.event_capacity > InputBridgeDesc::MAX_EVENT_CAPACITY) {
+        return Fail("bridge default capacity exceeds maximum");
+    }
+
+    if (desc.focus_policy != InputFocusPolicy::RejectWhenUnfocused) {
+        return Fail("bridge default focus policy changed");
+    }
+
+    return 0;
+}
+
+int InputBridgePublicContractUsesValueTypes() {
+    if (!std::is_standard_layout_v<InputBridgeDesc>) {
+        return Fail("bridge desc is not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<InputBridgeDesc>) {
+        return Fail("bridge desc is not trivially copyable");
+    }
+
+    if (!std::is_standard_layout_v<InputBridgeEvent>) {
+        return Fail("bridge event is not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<InputBridgeEvent>) {
+        return Fail("bridge event is not trivially copyable");
+    }
+
+    if (!std::is_standard_layout_v<InputBridgeSnapshot>) {
+        return Fail("bridge snapshot is not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<InputBridgeSnapshot>) {
+        return Fail("bridge snapshot is not trivially copyable");
+    }
+
+    if (std::is_copy_constructible_v<InputBridge>) {
+        return Fail("bridge owner is copy constructible");
+    }
+
+    if (std::is_copy_assignable_v<InputBridge>) {
+        return Fail("bridge owner is copy assignable");
+    }
+
+    return 0;
+}
+
+int InputBridgeInitializeRejectsUnsupportedBackend() {
+    InputBridgeDesc desc{};
+    desc.backend = InputBackendKind::Replay;
+
+    InputBridge bridge;
+    if (bridge.Initialize(desc) != InputStatus::UnsupportedBackend) {
+        return Fail("bridge did not reject replay backend");
+    }
+
+    const auto snapshot = bridge.Snapshot();
+    if (snapshot.unsupported_backend_count != 1U) {
+        return Fail("unsupported backend counter did not update");
+    }
+
+    if (snapshot.initialized) {
+        return Fail("unsupported backend initialized bridge");
+    }
+
+    return 0;
+}
+
+int InputBridgeSubmitAndDrainRecordsKeyboardMouseWheel() {
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    desc.event_capacity = 3U;
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    if (bridge.SubmitEvent(BridgeKey(InputBridgeEventType::KeyPressed, 65U)) != InputStatus::Success) {
+        return Fail("key bridge event failed");
+    }
+
+    if (bridge.SubmitEvent(BridgeMouseMove(10, -20)) != InputStatus::Success) {
+        return Fail("mouse move bridge event failed");
+    }
+
+    if (bridge.SubmitEvent(BridgeMouseWheel(120)) != InputStatus::Success) {
+        return Fail("wheel bridge event failed");
+    }
+
+    std::array<InputBridgeEvent, 3U> events{};
+    std::size_t event_count = 0U;
+    if (bridge.DrainEvents(events.data(), events.size(), event_count) != InputStatus::Success) {
+        return Fail("bridge drain failed");
+    }
+
+    if (event_count != events.size()) {
+        return Fail("bridge drain count mismatch");
+    }
+
+    if (events[0].type != InputBridgeEventType::KeyPressed) {
+        return Fail("bridge key event type mismatch");
+    }
+
+    if (events[1].type != InputBridgeEventType::MouseMoved) {
+        return Fail("bridge mouse move event type mismatch");
+    }
+
+    if (events[2].wheel_delta != 120) {
+        return Fail("bridge wheel delta mismatch");
+    }
+
+    const auto snapshot = bridge.Snapshot();
+    if (snapshot.accepted_event_count != 3U) {
+        return Fail("bridge accepted count mismatch");
+    }
+
+    if (snapshot.drained_event_count != 3U) {
+        return Fail("bridge drained count mismatch");
+    }
+
+    if (snapshot.queued_event_count != 0U) {
+        return Fail("bridge queue was not drained");
+    }
+
+    return 0;
+}
+
+int InputBridgeFocusLostRejectsInputAndTracksCounters() {
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    if (bridge.SetFocus(false) != InputStatus::Success) {
+        return Fail("bridge focus lost update failed");
+    }
+
+    if (bridge.SubmitEvent(BridgeKey(InputBridgeEventType::KeyPressed, 65U)) != InputStatus::FocusLost) {
+        return Fail("bridge did not reject input while unfocused");
+    }
+
+    if (bridge.SetFocus(true) != InputStatus::Success) {
+        return Fail("bridge focus gained update failed");
+    }
+
+    if (bridge.SubmitEvent(BridgeKey(InputBridgeEventType::KeyPressed, 65U)) != InputStatus::Success) {
+        return Fail("bridge did not accept input after focus gained");
+    }
+
+    const auto snapshot = bridge.Snapshot();
+    if (snapshot.focus_lost_count != 1U) {
+        return Fail("bridge focus lost counter mismatch");
+    }
+
+    if (snapshot.focus_gained_count != 1U) {
+        return Fail("bridge focus gained counter mismatch");
+    }
+
+    if (snapshot.rejected_event_count != 1U) {
+        return Fail("bridge rejected count mismatch after focus lost");
+    }
+
+    return 0;
+}
+
+int InputBridgeCapacityOverflowDoesNotGrow() {
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    desc.event_capacity = 1U;
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    if (bridge.SubmitEvent(BridgeKey(InputBridgeEventType::KeyPressed, 65U)) != InputStatus::Success) {
+        return Fail("bridge first event failed");
+    }
+
+    if (bridge.SubmitEvent(BridgeKey(InputBridgeEventType::KeyReleased, 65U)) != InputStatus::CapacityExceeded) {
+        return Fail("bridge overflow did not return capacity status");
+    }
+
+    const auto snapshot = bridge.Snapshot();
+    if (snapshot.event_capacity != 1U) {
+        return Fail("bridge capacity changed");
+    }
+
+    if (snapshot.max_queued_event_count != 1U) {
+        return Fail("bridge max queued count changed");
+    }
+
+    if (snapshot.overflow_count != 1U) {
+        return Fail("bridge overflow counter mismatch");
+    }
+
+    if (snapshot.accepted_event_count != 1U) {
+        return Fail("bridge accepted count changed after overflow");
+    }
+
+    return 0;
+}
+
+int InputBridgeDrainRejectsSmallOutputWithoutMutation() {
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    desc.event_capacity = 2U;
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    bridge.SubmitEvent(BridgeKey(InputBridgeEventType::KeyPressed, 65U));
+    bridge.SubmitEvent(BridgeKey(InputBridgeEventType::KeyReleased, 65U));
+
+    std::array<InputBridgeEvent, 1U> small_events{};
+    std::size_t small_count = 0U;
+    if (bridge.DrainEvents(small_events.data(), small_events.size(), small_count) != InputStatus::OutputBufferFull) {
+        return Fail("bridge did not reject undersized drain buffer");
+    }
+
+    if (small_count != 0U) {
+        return Fail("undersized drain wrote event count");
+    }
+
+    if (bridge.Snapshot().queued_event_count != 2U) {
+        return Fail("undersized drain mutated queue");
+    }
+
+    std::array<InputBridgeEvent, 2U> events{};
+    std::size_t event_count = 0U;
+    if (bridge.DrainEvents(events.data(), events.size(), event_count) != InputStatus::Success) {
+        return Fail("bridge full drain failed after undersized drain");
+    }
+
+    if (event_count != 2U) {
+        return Fail("bridge full drain count mismatch");
+    }
+
+    return 0;
+}
+
+int InputBridgeGamepadUnavailableIsExplicit() {
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    if (bridge.SubmitEvent(BridgeGamepadUnavailableEvent()) != InputStatus::SourceUnavailable) {
+        return Fail("gamepad unavailable did not return explicit status");
+    }
+
+    const auto snapshot = bridge.Snapshot();
+    if (snapshot.unavailable_count != 1U) {
+        return Fail("gamepad unavailable counter mismatch");
+    }
+
+    if (snapshot.accepted_event_count != 0U) {
+        return Fail("gamepad unavailable mutated accepted count");
+    }
+
+    return 0;
+}
+
+int InputBridgeNoUiGameOrReportDispatch() {
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    if (bridge.SubmitEvent(BridgeMouseWheel(120)) != InputStatus::Success) {
+        return Fail("minimal bridge path failed");
+    }
+
+    std::array<InputBridgeEvent, 1U> events{};
+    std::size_t event_count = 0U;
+    if (bridge.DrainEvents(events.data(), events.size(), event_count) != InputStatus::Success) {
+        return Fail("minimal bridge drain failed");
+    }
+
+    if (event_count != 1U) {
+        return Fail("minimal bridge drain count mismatch");
+    }
+
+    if (events[0].type != InputBridgeEventType::MouseWheel) {
+        return Fail("minimal bridge event type mismatch");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -575,7 +941,16 @@ int main(int argc, char** argv) {
         {TEST_RESET, InputResetClearsChangedStateWithoutClearingPressedState},
         {TEST_DISABLED_DIAGNOSTICS, InputDisabledDiagnosticsDoesNotChangeResults},
         {TEST_NO_GROW, InputFrameApplyDoesNotGrowReplayStorage},
-        {TEST_NO_FORBIDDEN_DEPENDENCY, InputNoPlatformUiOrGameAdapterDependency}};
+        {TEST_NO_FORBIDDEN_DEPENDENCY, InputNoPlatformUiOrGameAdapterDependency},
+        {TEST_BRIDGE_DESC, InputBridgeDescDefaultValuesAreBounded},
+        {TEST_BRIDGE_CONTRACT, InputBridgePublicContractUsesValueTypes},
+        {TEST_BRIDGE_UNSUPPORTED, InputBridgeInitializeRejectsUnsupportedBackend},
+        {TEST_BRIDGE_DRAIN, InputBridgeSubmitAndDrainRecordsKeyboardMouseWheel},
+        {TEST_BRIDGE_FOCUS, InputBridgeFocusLostRejectsInputAndTracksCounters},
+        {TEST_BRIDGE_CAPACITY, InputBridgeCapacityOverflowDoesNotGrow},
+        {TEST_BRIDGE_SMALL_DRAIN, InputBridgeDrainRejectsSmallOutputWithoutMutation},
+        {TEST_BRIDGE_GAMEPAD, InputBridgeGamepadUnavailableIsExplicit},
+        {TEST_BRIDGE_NO_DISPATCH, InputBridgeNoUiGameOrReportDispatch}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

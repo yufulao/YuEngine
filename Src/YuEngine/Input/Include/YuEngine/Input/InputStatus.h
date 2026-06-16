@@ -12,6 +12,14 @@ enum class InputStatus {
     UnknownAction,
     InvalidAxisValue,
     InvalidEvent,
-    EndOfReplay
+    EndOfReplay,
+    NotInitialized,
+    AlreadyInitialized,
+    InvalidDescriptor,
+    UnsupportedBackend,
+    SourceUnavailable,
+    FocusLost,
+    NullPointer,
+    OutputBufferFull
 };
 }
