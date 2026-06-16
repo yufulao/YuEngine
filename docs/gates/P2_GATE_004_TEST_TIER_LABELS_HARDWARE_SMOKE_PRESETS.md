@@ -1,6 +1,6 @@
 # P2-GATE-004: Test Tier Labels And Hardware Smoke Presets
 
-Status: Approved for first slice
+Status: First-slice covered
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
@@ -12,6 +12,8 @@ Approved proposal: `dae9c9a`
 Approval evidence: ENG-097A boundary/reference PASS with hard implementation
 conditions, ENG-097B CMake implementability PASS, and ENG-097C test admission
 PASS.
+Implementation evidence: ENG-098A PASS, ENG-098B PASS, and ENG-098QA PASS;
+first slice landed at `0c45d37` with fast gate `646/646`.
 
 ## Layer
 
@@ -229,3 +231,23 @@ Hard implementation conditions:
 - CMake labels should be attached through a helper or grouped convention so
   registration and labels do not drift. Module labels should follow the owning
   test target where prefix-only naming would be ambiguous.
+
+## First-Slice Result
+
+The first slice landed at `0c45d37`.
+
+Result:
+
+- `CMakeLists.txt` now registers all existing tests through
+  `yuengine_add_labeled_test(...)`.
+- `CMakePresets.json` now includes `windows-hardware-smoke`, filtered to
+  `HardwareSmoke`, with zero-test discovery allowed.
+- The default `windows-fast-gate` preset remains unfiltered and keeps
+  `noTestsAction = error`.
+- Existing deterministic discovery remains 646 tests.
+- `Fast` and `ModuleFixture` each discover 646 tests.
+- Module labels discover the expected current counts, including `RHI` 28,
+  `Audio` 24, `Platform` 3, and `World` 438.
+- Quality labels are available: `PerformanceSmoke` 37 and `EvidenceOracle` 75.
+- `HardwareSmoke` currently discovers 0 tests and is not backend proof.
+- Full `windows-fast-gate` passed at `646/646`.

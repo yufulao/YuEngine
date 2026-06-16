@@ -151,7 +151,7 @@ Required test-tier direction:
 | P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Null backend only; current fast gate has `RHI_` coverage; no real backend, shader, material, RenderCore, resource loading, UI, or game adapter |
 | P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Test backend only; current fast gate has `Audio_` coverage; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
 | P2-GATE-003 | Package Manifest And Load Plan Boundary | L4-L5 | `FIRST_SLICE_CLOSED_QA_CLEARED` | First slice closed | `354f8e2` closed the approved `YuPackage` / `YuPackageTests` first-slice review baseline; no new package code/CMake/test expansion, File/VFS runtime reads, resource mutation, or P3 work |
-| P2-GATE-004 | Test Tier Labels And Hardware Smoke Presets | L7 over L0-L3 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_004_TEST_TIER_LABELS_HARDWARE_SMOKE_PRESETS.md`; CTest labels and optional hardware-smoke preset/documented slot before real backend gates; no runtime behavior, no new backend, no test deletion |
+| P2-GATE-004 | Test Tier Labels And Hardware Smoke Presets | L7 over L0-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_004_TEST_TIER_LABELS_HARDWARE_SMOKE_PRESETS.md`; landed at `0c45d37`; CTest labels and optional hardware-smoke preset before real backend gates; no runtime behavior, no new backend, no test deletion |
 | P2-GATE-005 | Platform Window Native Surface And Event Pump | L0-L1 | `NOT_APPROVED` | Next proposal target | Win32 window lifecycle, native surface handle, message pump, resize/focus/close, raw event capture; no RHI, UI, Resource, Game Adapter, or render policy |
 | P2-GATE-006 | RHI Backend-Neutral Device Boundary | L3 | `NOT_APPROVED` | Proposed after P2-GATE-005 | Extract backend-neutral device/factory/surface contracts while keeping current Null backend tests passing; no D3D11 device yet, no RenderCore, no mesh |
 | P2-GATE-007 | D3D11 Device Swapchain Clear Present Capture | L3 | `NOT_APPROVED` | Proposed after P2-GATE-006 | D3D11 device/context/swapchain/backbuffer clear/present/capture smoke through RHI boundary; no shader, buffer, mesh, material, Resource, or scene |
@@ -185,6 +185,13 @@ Required test-tier direction:
   hardware-smoke preset or documented preset slot. It does not authorize runtime
   source changes, real backend behavior, deleting deterministic tests, or
   treating unsupported/zero hardware smoke as backend proof.
+- P2-GATE-004 first slice landed at `0c45d37` after ENG-098A implementation
+  PASS, ENG-098B verification PASS, and ENG-098QA boundary/quality PASS. The
+  default `windows-fast-gate` remains unfiltered at 646 deterministic tests, full
+  gate passed at `646/646`, `Fast` and `ModuleFixture` labels each discover 646
+  tests, `RHI` / `Audio` / `Platform` / `World` labels discover 28 / 24 / 3 /
+  438 tests, and `windows-hardware-smoke` currently discovers 0 `HardwareSmoke`
+  tests with zero-test discovery allowed. This is not backend proof.
 - P2-GATE-005 through P2-GATE-012 are not approved. They are the ENG-096
   hardware-first proposal queue and must go through normal gate review before
   implementation.
@@ -203,9 +210,8 @@ Required test-tier direction:
 
 ## Immediate Next Steps
 
-1. Open P2-GATE-004 first so hardware work can use labels and optional smoke
-   presets without forcing every small lower-layer change through all hardware
-   evidence.
+1. Use the landed P2-GATE-004 labels and `windows-hardware-smoke` preset to keep
+   future hardware work focused without weakening default deterministic evidence.
 2. Prepare P2-GATE-005 Platform window/native surface/event pump as the first
    real hardware-facing runtime gate. It must not depend on RHI, RenderCore,
    Resource, UI, World, reports, or Game Adapter behavior.
