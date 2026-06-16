@@ -12,4 +12,12 @@ constexpr std::uint16_t MAX_COLOR_TARGET_EXTENT = 16U;
 constexpr std::uint16_t MAX_CAPTURE_FIXTURE_EXTENT = 4U;
 constexpr std::size_t MAX_COMMANDS = 32U;
 constexpr std::size_t RGBA8_BYTES_PER_PIXEL = 4U;
+constexpr std::size_t MAX_RHI_BUFFERS = 8U;
+constexpr std::size_t MAX_RHI_TEXTURES = 8U;
+constexpr std::size_t MAX_RHI_SAMPLERS = 8U;
+constexpr std::size_t MAX_RHI_SHADER_MODULES = 8U;
+constexpr std::size_t MAX_RHI_PIPELINES = 4U;
+constexpr std::size_t MAX_RHI_BUFFER_BYTES = 256U;
+constexpr std::size_t MAX_RHI_SHADER_BYTECODE_BYTES = 8192U;
+constexpr std::size_t RHI_CONSTANT_BUFFER_ALIGNMENT = 16U;
 }

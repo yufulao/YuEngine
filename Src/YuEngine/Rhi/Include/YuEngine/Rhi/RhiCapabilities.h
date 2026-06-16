@@ -21,5 +21,13 @@ struct RhiCapabilities final {
     bool supports_native_surface = false;
     bool supports_swapchain = false;
     bool supports_hardware_device = false;
+    bool supports_resource_primitives = false;
+    std::size_t buffer_capacity = 0U;
+    std::size_t texture_capacity = 0U;
+    std::size_t sampler_capacity = 0U;
+    std::size_t shader_module_capacity = 0U;
+    std::size_t pipeline_capacity = 0U;
+    std::size_t max_buffer_bytes = 0U;
+    std::size_t max_shader_bytecode_bytes = 0U;
 };
 }

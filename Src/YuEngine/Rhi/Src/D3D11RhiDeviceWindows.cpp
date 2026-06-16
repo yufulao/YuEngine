@@ -19,6 +19,7 @@ namespace yuengine::rhi {
 namespace {
 constexpr std::uint32_t SWAPCHAIN_TARGET_SLOT = 0U;
 constexpr std::uint32_t SWAPCHAIN_TARGET_GENERATION = 1U;
+constexpr std::uint32_t INVALID_GENERATION = 0U;
 constexpr std::size_t NO_STORAGE_REQUIRED = 0U;
 
 bool IsStorageAligned(std::span<std::byte> device_storage, std::size_t alignment) {
@@ -55,6 +56,13 @@ D3D11RhiDevice::D3D11RhiDevice()
       snapshot_{},
       swapchain_desc_{},
       swapchain_target_{SWAPCHAIN_TARGET_SLOT, SWAPCHAIN_TARGET_GENERATION},
+      buffers_{},
+      textures_{},
+      samplers_{},
+      shader_modules_{},
+      pipelines_{},
+      primitive_generation_seed_(INVALID_GENERATION),
+      fence_generation_(INVALID_GENERATION),
       initialized_(false),
       submitted_(false),
       presented_(false) {
@@ -91,6 +99,7 @@ RhiStatus D3D11RhiDevice::Initialize(const RhiDeviceDesc &desc) {
         return RecordFailure(capture_status);
     }
 
+    InitializePrimitiveSlots();
     capabilities_ = RhiCapabilities{
         RhiBackendKind::D3D11,
         desc.swapchain.color_format,
@@ -101,7 +110,15 @@ RhiStatus D3D11RhiDevice::Initialize(const RhiDeviceDesc &desc) {
         true,
         true,
         true,
-        true};
+        true,
+        true,
+        MAX_RHI_BUFFERS,
+        MAX_RHI_TEXTURES,
+        MAX_RHI_SAMPLERS,
+        MAX_RHI_SHADER_MODULES,
+        MAX_RHI_PIPELINES,
+        MAX_RHI_BUFFER_BYTES,
+        MAX_RHI_SHADER_BYTECODE_BYTES};
     snapshot_ = RhiDeviceSnapshot{};
     snapshot_.color_target_capacity = 1U;
     snapshot_.color_target_count = 1U;
@@ -110,6 +127,11 @@ RhiStatus D3D11RhiDevice::Initialize(const RhiDeviceDesc &desc) {
     snapshot_.swapchain.color_format = desc.swapchain.color_format;
     snapshot_.swapchain.color_target = swapchain_target_;
     snapshot_.swapchain.valid = true;
+    snapshot_.resources.buffer_capacity = MAX_RHI_BUFFERS;
+    snapshot_.resources.texture_capacity = MAX_RHI_TEXTURES;
+    snapshot_.resources.sampler_capacity = MAX_RHI_SAMPLERS;
+    snapshot_.resources.shader_module_capacity = MAX_RHI_SHADER_MODULES;
+    snapshot_.resources.pipeline_capacity = MAX_RHI_PIPELINES;
     initialized_ = true;
     submitted_ = false;
     presented_ = false;
@@ -255,6 +277,392 @@ RhiCaptureResult D3D11RhiDevice::CapturePresentedTarget(std::span<std::uint8_t> 
     return RhiCaptureResult{RhiStatus::Success, byte_count};
 }
 
+RhiStatus D3D11RhiDevice::CreateBuffer(
+    const RhiBufferDesc &desc,
+    std::span<const std::uint8_t> initial_bytes,
+    RhiBufferHandle &out_handle) {
+    out_handle = RhiBufferHandle{};
+    if (!initialized_) {
+        return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    if (!IsBufferDescValid(desc, initial_bytes)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    for (std::size_t index = 0U; index < buffers_.size(); ++index) {
+        D3D11BufferSlot &slot = buffers_[index];
+        if (slot.is_active) {
+            continue;
+        }
+
+        D3D11_BUFFER_DESC native_desc{};
+        native_desc.ByteWidth = static_cast<UINT>(desc.size_bytes);
+        native_desc.Usage = D3D11_USAGE_DEFAULT;
+        native_desc.BindFlags = NativeBindFlagsForBuffer(desc.usage);
+        native_desc.CPUAccessFlags = 0U;
+        native_desc.MiscFlags = 0U;
+        native_desc.StructureByteStride = 0U;
+
+        D3D11_SUBRESOURCE_DATA native_initial_data{};
+        D3D11_SUBRESOURCE_DATA *initial_data = nullptr;
+        if (!initial_bytes.empty()) {
+            native_initial_data.pSysMem = initial_bytes.data();
+            initial_data = &native_initial_data;
+        }
+
+        ID3D11Buffer *native_buffer = nullptr;
+        const HRESULT create_result = device_->CreateBuffer(&native_desc, initial_data, &native_buffer);
+        if (FAILED(create_result)) {
+            return RecordFailure(TranslateNativeFailure(create_result));
+        }
+
+        if (slot.generation == INVALID_GENERATION) {
+            slot.generation = 1U;
+        }
+
+        slot.buffer = native_buffer;
+        slot.desc = desc;
+        slot.is_active = true;
+        out_handle = RhiBufferHandle{static_cast<std::uint32_t>(index), slot.generation};
+        ++snapshot_.resources.buffer_count;
+        ++snapshot_.resources.created_primitive_count;
+        return RhiStatus::Success;
+    }
+
+    return RecordFailure(RhiStatus::CapacityExceeded);
+}
+
+RhiStatus D3D11RhiDevice::UpdateBuffer(
+    RhiBufferHandle handle,
+    std::span<const std::uint8_t> bytes,
+    RhiFenceHandle &out_fence) {
+    out_fence = RhiFenceHandle{};
+    if (!IsBufferHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    if (bytes.empty()) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    D3D11BufferSlot &slot = buffers_[handle.slot];
+    if (bytes.size() > slot.desc.size_bytes) {
+        return RecordFailure(RhiStatus::CapacityExceeded);
+    }
+
+    context_->UpdateSubresource(slot.buffer, 0U, nullptr, bytes.data(), 0U, 0U);
+    out_fence = SignalFence(bytes.size());
+    ++snapshot_.resources.updated_primitive_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus D3D11RhiDevice::DestroyBuffer(RhiBufferHandle handle) {
+    if (!IsBufferHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    D3D11BufferSlot &slot = buffers_[handle.slot];
+    slot.buffer->Release();
+    slot.buffer = nullptr;
+    slot.desc = RhiBufferDesc{};
+    slot.is_active = false;
+    ++slot.generation;
+    --snapshot_.resources.buffer_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus D3D11RhiDevice::CreateTexture(
+    const RhiTextureDesc &desc,
+    std::span<const std::uint8_t> initial_bytes,
+    RhiTextureHandle &out_handle) {
+    out_handle = RhiTextureHandle{};
+    if (!initialized_) {
+        return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    if (!IsTextureDescValid(desc, initial_bytes)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    for (std::size_t index = 0U; index < textures_.size(); ++index) {
+        D3D11TextureSlot &slot = textures_[index];
+        if (slot.is_active) {
+            continue;
+        }
+
+        D3D11_TEXTURE2D_DESC native_desc{};
+        native_desc.Width = desc.extent.width;
+        native_desc.Height = desc.extent.height;
+        native_desc.MipLevels = 1U;
+        native_desc.ArraySize = 1U;
+        native_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        native_desc.SampleDesc.Count = 1U;
+        native_desc.SampleDesc.Quality = 0U;
+        native_desc.Usage = D3D11_USAGE_DEFAULT;
+        native_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        native_desc.CPUAccessFlags = 0U;
+        native_desc.MiscFlags = 0U;
+
+        D3D11_SUBRESOURCE_DATA native_initial_data{};
+        D3D11_SUBRESOURCE_DATA *initial_data = nullptr;
+        if (!initial_bytes.empty()) {
+            native_initial_data.pSysMem = initial_bytes.data();
+            native_initial_data.SysMemPitch = static_cast<UINT>(desc.extent.width) * RGBA8_BYTES_PER_PIXEL;
+            initial_data = &native_initial_data;
+        }
+
+        ID3D11Texture2D *native_texture = nullptr;
+        const HRESULT create_result = device_->CreateTexture2D(&native_desc, initial_data, &native_texture);
+        if (FAILED(create_result)) {
+            return RecordFailure(TranslateNativeFailure(create_result));
+        }
+
+        if (slot.generation == INVALID_GENERATION) {
+            slot.generation = 1U;
+        }
+
+        slot.texture = native_texture;
+        slot.desc = desc;
+        slot.is_active = true;
+        out_handle = RhiTextureHandle{static_cast<std::uint32_t>(index), slot.generation};
+        ++snapshot_.resources.texture_count;
+        ++snapshot_.resources.created_primitive_count;
+        return RhiStatus::Success;
+    }
+
+    return RecordFailure(RhiStatus::CapacityExceeded);
+}
+
+RhiStatus D3D11RhiDevice::UpdateTexture(
+    RhiTextureHandle handle,
+    std::span<const std::uint8_t> bytes,
+    RhiFenceHandle &out_fence) {
+    out_fence = RhiFenceHandle{};
+    if (!IsTextureHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    D3D11TextureSlot &slot = textures_[handle.slot];
+    if (bytes.size() != TextureByteCount(slot.desc)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    const UINT row_bytes = static_cast<UINT>(slot.desc.extent.width) * RGBA8_BYTES_PER_PIXEL;
+    context_->UpdateSubresource(slot.texture, 0U, nullptr, bytes.data(), row_bytes, 0U);
+    out_fence = SignalFence(bytes.size());
+    ++snapshot_.resources.updated_primitive_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus D3D11RhiDevice::DestroyTexture(RhiTextureHandle handle) {
+    if (!IsTextureHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    D3D11TextureSlot &slot = textures_[handle.slot];
+    slot.texture->Release();
+    slot.texture = nullptr;
+    slot.desc = RhiTextureDesc{};
+    slot.is_active = false;
+    ++slot.generation;
+    --snapshot_.resources.texture_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus D3D11RhiDevice::CreateSampler(const RhiSamplerDesc &desc, RhiSamplerHandle &out_handle) {
+    out_handle = RhiSamplerHandle{};
+    if (!initialized_) {
+        return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    for (std::size_t index = 0U; index < samplers_.size(); ++index) {
+        D3D11SamplerSlot &slot = samplers_[index];
+        if (slot.is_active) {
+            continue;
+        }
+
+        D3D11_SAMPLER_DESC native_desc{};
+        native_desc.Filter = desc.linear_filter ? D3D11_FILTER_MIN_MAG_MIP_LINEAR : D3D11_FILTER_MIN_MAG_MIP_POINT;
+        native_desc.AddressU = desc.clamp_to_edge ? D3D11_TEXTURE_ADDRESS_CLAMP : D3D11_TEXTURE_ADDRESS_WRAP;
+        native_desc.AddressV = native_desc.AddressU;
+        native_desc.AddressW = native_desc.AddressU;
+        native_desc.MipLODBias = 0.0F;
+        native_desc.MaxAnisotropy = 1U;
+        native_desc.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
+        native_desc.MinLOD = 0.0F;
+        native_desc.MaxLOD = D3D11_FLOAT32_MAX;
+
+        ID3D11SamplerState *native_sampler = nullptr;
+        const HRESULT create_result = device_->CreateSamplerState(&native_desc, &native_sampler);
+        if (FAILED(create_result)) {
+            return RecordFailure(TranslateNativeFailure(create_result));
+        }
+
+        if (slot.generation == INVALID_GENERATION) {
+            slot.generation = 1U;
+        }
+
+        slot.sampler = native_sampler;
+        slot.desc = desc;
+        slot.is_active = true;
+        out_handle = RhiSamplerHandle{static_cast<std::uint32_t>(index), slot.generation};
+        ++snapshot_.resources.sampler_count;
+        ++snapshot_.resources.created_primitive_count;
+        return RhiStatus::Success;
+    }
+
+    return RecordFailure(RhiStatus::CapacityExceeded);
+}
+
+RhiStatus D3D11RhiDevice::DestroySampler(RhiSamplerHandle handle) {
+    if (!IsSamplerHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    D3D11SamplerSlot &slot = samplers_[handle.slot];
+    slot.sampler->Release();
+    slot.sampler = nullptr;
+    slot.desc = RhiSamplerDesc{};
+    slot.is_active = false;
+    ++slot.generation;
+    --snapshot_.resources.sampler_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus D3D11RhiDevice::CreateShaderModule(const RhiShaderModuleDesc &desc, RhiShaderModuleHandle &out_handle) {
+    out_handle = RhiShaderModuleHandle{};
+    if (!initialized_) {
+        return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    if (!IsShaderModuleDescValid(desc)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    for (std::size_t index = 0U; index < shader_modules_.size(); ++index) {
+        D3D11ShaderModuleSlot &slot = shader_modules_[index];
+        if (slot.is_active) {
+            continue;
+        }
+
+        ID3D11VertexShader *native_vertex_shader = nullptr;
+        ID3D11PixelShader *native_pixel_shader = nullptr;
+        if (desc.stage == RhiShaderStage::Vertex) {
+            const HRESULT create_result = device_->CreateVertexShader(
+                desc.bytecode.data(),
+                desc.bytecode.size(),
+                nullptr,
+                &native_vertex_shader);
+            if (FAILED(create_result)) {
+                return RecordFailure(TranslateNativeFailure(create_result));
+            }
+        }
+
+        if (desc.stage == RhiShaderStage::Pixel) {
+            const HRESULT create_result = device_->CreatePixelShader(
+                desc.bytecode.data(),
+                desc.bytecode.size(),
+                nullptr,
+                &native_pixel_shader);
+            if (FAILED(create_result)) {
+                return RecordFailure(TranslateNativeFailure(create_result));
+            }
+        }
+
+        if (slot.generation == INVALID_GENERATION) {
+            slot.generation = 1U;
+        }
+
+        slot.vertex_shader = native_vertex_shader;
+        slot.pixel_shader = native_pixel_shader;
+        slot.stage = desc.stage;
+        slot.bytecode_size = desc.bytecode.size();
+        std::copy(desc.bytecode.begin(), desc.bytecode.end(), slot.bytecode.begin());
+        slot.is_active = true;
+        out_handle = RhiShaderModuleHandle{static_cast<std::uint32_t>(index), slot.generation};
+        ++snapshot_.resources.shader_module_count;
+        ++snapshot_.resources.created_primitive_count;
+        return RhiStatus::Success;
+    }
+
+    return RecordFailure(RhiStatus::CapacityExceeded);
+}
+
+RhiStatus D3D11RhiDevice::DestroyShaderModule(RhiShaderModuleHandle handle) {
+    if (!IsShaderModuleHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    D3D11ShaderModuleSlot &slot = shader_modules_[handle.slot];
+    if (slot.vertex_shader != nullptr) {
+        slot.vertex_shader->Release();
+        slot.vertex_shader = nullptr;
+    }
+
+    if (slot.pixel_shader != nullptr) {
+        slot.pixel_shader->Release();
+        slot.pixel_shader = nullptr;
+    }
+
+    slot.stage = RhiShaderStage::Unsupported;
+    slot.bytecode.fill(0U);
+    slot.bytecode_size = 0U;
+    slot.is_active = false;
+    ++slot.generation;
+    --snapshot_.resources.shader_module_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus D3D11RhiDevice::CreatePipeline(const RhiPipelineDesc &desc, RhiPipelineHandle &out_handle) {
+    out_handle = RhiPipelineHandle{};
+    if (!initialized_) {
+        return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    if (!IsPipelineDescValid(desc)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    for (std::size_t index = 0U; index < pipelines_.size(); ++index) {
+        D3D11PipelineSlot &slot = pipelines_[index];
+        if (slot.is_active) {
+            continue;
+        }
+
+        if (slot.generation == INVALID_GENERATION) {
+            slot.generation = 1U;
+        }
+
+        slot.desc = desc;
+        slot.is_active = true;
+        out_handle = RhiPipelineHandle{static_cast<std::uint32_t>(index), slot.generation};
+        ++snapshot_.resources.pipeline_count;
+        ++snapshot_.resources.created_primitive_count;
+        return RhiStatus::Success;
+    }
+
+    return RecordFailure(RhiStatus::CapacityExceeded);
+}
+
+RhiStatus D3D11RhiDevice::DestroyPipeline(RhiPipelineHandle handle) {
+    if (!IsPipelineHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    D3D11PipelineSlot &slot = pipelines_[handle.slot];
+    slot.desc = RhiPipelineDesc{};
+    slot.is_active = false;
+    ++slot.generation;
+    --snapshot_.resources.pipeline_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+    return RhiStatus::Success;
+}
+
 RhiCapabilities D3D11RhiDevice::Capabilities() const {
     return capabilities_;
 }
@@ -264,6 +672,8 @@ RhiDeviceSnapshot D3D11RhiDevice::Snapshot() const {
 }
 
 void D3D11RhiDevice::ReleaseResources() {
+    ReleasePrimitiveResources();
+
     if (capture_texture_ != nullptr) {
         capture_texture_->Release();
         capture_texture_ = nullptr;
@@ -300,6 +710,80 @@ void D3D11RhiDevice::ReleaseResources() {
     initialized_ = false;
     submitted_ = false;
     presented_ = false;
+}
+
+void D3D11RhiDevice::ReleasePrimitiveResources() {
+    for (D3D11PipelineSlot &pipeline : pipelines_) {
+        pipeline = D3D11PipelineSlot{};
+    }
+
+    for (D3D11ShaderModuleSlot &shader_module : shader_modules_) {
+        if (shader_module.vertex_shader != nullptr) {
+            shader_module.vertex_shader->Release();
+            shader_module.vertex_shader = nullptr;
+        }
+
+        if (shader_module.pixel_shader != nullptr) {
+            shader_module.pixel_shader->Release();
+            shader_module.pixel_shader = nullptr;
+        }
+
+        shader_module = D3D11ShaderModuleSlot{};
+    }
+
+    for (D3D11SamplerSlot &sampler : samplers_) {
+        if (sampler.sampler != nullptr) {
+            sampler.sampler->Release();
+            sampler.sampler = nullptr;
+        }
+
+        sampler = D3D11SamplerSlot{};
+    }
+
+    for (D3D11TextureSlot &texture : textures_) {
+        if (texture.texture != nullptr) {
+            texture.texture->Release();
+            texture.texture = nullptr;
+        }
+
+        texture = D3D11TextureSlot{};
+    }
+
+    for (D3D11BufferSlot &buffer : buffers_) {
+        if (buffer.buffer != nullptr) {
+            buffer.buffer->Release();
+            buffer.buffer = nullptr;
+        }
+
+        buffer = D3D11BufferSlot{};
+    }
+}
+
+void D3D11RhiDevice::InitializePrimitiveSlots() {
+    ++primitive_generation_seed_;
+    if (primitive_generation_seed_ == INVALID_GENERATION) {
+        ++primitive_generation_seed_;
+    }
+
+    for (D3D11BufferSlot &buffer : buffers_) {
+        buffer.generation = primitive_generation_seed_;
+    }
+
+    for (D3D11TextureSlot &texture : textures_) {
+        texture.generation = primitive_generation_seed_;
+    }
+
+    for (D3D11SamplerSlot &sampler : samplers_) {
+        sampler.generation = primitive_generation_seed_;
+    }
+
+    for (D3D11ShaderModuleSlot &shader_module : shader_modules_) {
+        shader_module.generation = primitive_generation_seed_;
+    }
+
+    for (D3D11PipelineSlot &pipeline : pipelines_) {
+        pipeline.generation = primitive_generation_seed_;
+    }
 }
 
 RhiStatus D3D11RhiDevice::RecordFailure(RhiStatus status) {
@@ -456,6 +940,111 @@ bool D3D11RhiDevice::IsSwapchainTarget(RhiTextureHandle handle) const {
     return handle.generation == swapchain_target_.generation;
 }
 
+bool D3D11RhiDevice::IsBufferHandleValid(RhiBufferHandle handle) const {
+    if (!initialized_) {
+        return false;
+    }
+
+    if (handle.generation == INVALID_GENERATION) {
+        return false;
+    }
+
+    if (handle.slot >= buffers_.size()) {
+        return false;
+    }
+
+    const D3D11BufferSlot &slot = buffers_[handle.slot];
+    if (!slot.is_active) {
+        return false;
+    }
+
+    return slot.generation == handle.generation;
+}
+
+bool D3D11RhiDevice::IsTextureHandleValid(RhiTextureHandle handle) const {
+    if (!initialized_) {
+        return false;
+    }
+
+    if (handle.generation == INVALID_GENERATION) {
+        return false;
+    }
+
+    if (handle.slot >= textures_.size()) {
+        return false;
+    }
+
+    const D3D11TextureSlot &slot = textures_[handle.slot];
+    if (!slot.is_active) {
+        return false;
+    }
+
+    return slot.generation == handle.generation;
+}
+
+bool D3D11RhiDevice::IsSamplerHandleValid(RhiSamplerHandle handle) const {
+    if (!initialized_) {
+        return false;
+    }
+
+    if (handle.generation == INVALID_GENERATION) {
+        return false;
+    }
+
+    if (handle.slot >= samplers_.size()) {
+        return false;
+    }
+
+    const D3D11SamplerSlot &slot = samplers_[handle.slot];
+    if (!slot.is_active) {
+        return false;
+    }
+
+    return slot.generation == handle.generation;
+}
+
+bool D3D11RhiDevice::IsShaderModuleHandleValid(RhiShaderModuleHandle handle) const {
+    if (!initialized_) {
+        return false;
+    }
+
+    if (handle.generation == INVALID_GENERATION) {
+        return false;
+    }
+
+    if (handle.slot >= shader_modules_.size()) {
+        return false;
+    }
+
+    const D3D11ShaderModuleSlot &slot = shader_modules_[handle.slot];
+    if (!slot.is_active) {
+        return false;
+    }
+
+    return slot.generation == handle.generation;
+}
+
+bool D3D11RhiDevice::IsPipelineHandleValid(RhiPipelineHandle handle) const {
+    if (!initialized_) {
+        return false;
+    }
+
+    if (handle.generation == INVALID_GENERATION) {
+        return false;
+    }
+
+    if (handle.slot >= pipelines_.size()) {
+        return false;
+    }
+
+    const D3D11PipelineSlot &slot = pipelines_[handle.slot];
+    if (!slot.is_active) {
+        return false;
+    }
+
+    return slot.generation == handle.generation;
+}
+
 bool D3D11RhiDevice::IsSwapchainDescValid(const RhiSwapchainDesc &desc) const {
     if (desc.color_format != RhiFormat::Rgba8Unorm) {
         return false;
@@ -480,9 +1069,135 @@ bool D3D11RhiDevice::IsSwapchainDescValid(const RhiSwapchainDesc &desc) const {
     return true;
 }
 
+bool D3D11RhiDevice::IsBufferDescValid(const RhiBufferDesc &desc, std::span<const std::uint8_t> initial_bytes) const {
+    if (desc.usage == RhiBufferUsage::Unsupported) {
+        return false;
+    }
+
+    if (desc.size_bytes == 0U) {
+        return false;
+    }
+
+    if (desc.size_bytes > MAX_RHI_BUFFER_BYTES) {
+        return false;
+    }
+
+    if (initial_bytes.size() > desc.size_bytes) {
+        return false;
+    }
+
+    if (desc.usage == RhiBufferUsage::Constant && (desc.size_bytes % RHI_CONSTANT_BUFFER_ALIGNMENT) != 0U) {
+        return false;
+    }
+
+    return true;
+}
+
+bool D3D11RhiDevice::IsTextureDescValid(const RhiTextureDesc &desc, std::span<const std::uint8_t> initial_bytes) const {
+    if (desc.format != RhiFormat::Rgba8Unorm) {
+        return false;
+    }
+
+    if (desc.extent.width == 0U) {
+        return false;
+    }
+
+    if (desc.extent.height == 0U) {
+        return false;
+    }
+
+    if (desc.extent.width > MAX_COLOR_TARGET_EXTENT) {
+        return false;
+    }
+
+    if (desc.extent.height > MAX_COLOR_TARGET_EXTENT) {
+        return false;
+    }
+
+    if (!initial_bytes.empty() && initial_bytes.size() != TextureByteCount(desc)) {
+        return false;
+    }
+
+    return true;
+}
+
+bool D3D11RhiDevice::IsShaderModuleDescValid(const RhiShaderModuleDesc &desc) const {
+    if (desc.stage == RhiShaderStage::Unsupported) {
+        return false;
+    }
+
+    if (desc.bytecode.empty()) {
+        return false;
+    }
+
+    if (desc.bytecode.size() > MAX_RHI_SHADER_BYTECODE_BYTES) {
+        return false;
+    }
+
+    return true;
+}
+
+bool D3D11RhiDevice::IsPipelineDescValid(const RhiPipelineDesc &desc) const {
+    if (desc.input_layout.element_count != 0U) {
+        return false;
+    }
+
+    if (!IsShaderModuleHandleValid(desc.vertex_shader)) {
+        return false;
+    }
+
+    if (!IsShaderModuleHandleValid(desc.pixel_shader)) {
+        return false;
+    }
+
+    const D3D11ShaderModuleSlot &vertex_shader = shader_modules_[desc.vertex_shader.slot];
+    if (vertex_shader.stage != RhiShaderStage::Vertex) {
+        return false;
+    }
+
+    const D3D11ShaderModuleSlot &pixel_shader = shader_modules_[desc.pixel_shader.slot];
+    if (pixel_shader.stage != RhiShaderStage::Pixel) {
+        return false;
+    }
+
+    return true;
+}
+
 std::size_t D3D11RhiDevice::CaptureByteCount() const {
     return static_cast<std::size_t>(swapchain_desc_.extent.width) *
         static_cast<std::size_t>(swapchain_desc_.extent.height) * RGBA8_BYTES_PER_PIXEL;
+}
+
+std::size_t D3D11RhiDevice::TextureByteCount(const RhiTextureDesc &desc) const {
+    return static_cast<std::size_t>(desc.extent.width) *
+        static_cast<std::size_t>(desc.extent.height) * RGBA8_BYTES_PER_PIXEL;
+}
+
+UINT D3D11RhiDevice::NativeBindFlagsForBuffer(RhiBufferUsage usage) const {
+    if (usage == RhiBufferUsage::Vertex) {
+        return D3D11_BIND_VERTEX_BUFFER;
+    }
+
+    if (usage == RhiBufferUsage::Index) {
+        return D3D11_BIND_INDEX_BUFFER;
+    }
+
+    if (usage == RhiBufferUsage::Constant) {
+        return D3D11_BIND_CONSTANT_BUFFER;
+    }
+
+    return 0U;
+}
+
+RhiFenceHandle D3D11RhiDevice::SignalFence(std::size_t byte_count) {
+    ++fence_generation_;
+    if (fence_generation_ == INVALID_GENERATION) {
+        ++fence_generation_;
+    }
+
+    ++snapshot_.resources.signaled_fence_count;
+    snapshot_.resources.last_update_bytes = byte_count;
+    return RhiFenceHandle{0U, fence_generation_};
 }
 #endif
 

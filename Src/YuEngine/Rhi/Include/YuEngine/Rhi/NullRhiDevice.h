@@ -77,6 +77,30 @@ public:
      * @return Explicit operation result.
      */
     RhiCaptureResult CapturePresentedTarget(std::span<std::uint8_t> destination) override;
+    RhiStatus CreateBuffer(
+        const RhiBufferDesc &desc,
+        std::span<const std::uint8_t> initial_bytes,
+        RhiBufferHandle &out_handle) override;
+    RhiStatus UpdateBuffer(
+        RhiBufferHandle handle,
+        std::span<const std::uint8_t> bytes,
+        RhiFenceHandle &out_fence) override;
+    RhiStatus DestroyBuffer(RhiBufferHandle handle) override;
+    RhiStatus CreateTexture(
+        const RhiTextureDesc &desc,
+        std::span<const std::uint8_t> initial_bytes,
+        RhiTextureHandle &out_handle) override;
+    RhiStatus UpdateTexture(
+        RhiTextureHandle handle,
+        std::span<const std::uint8_t> bytes,
+        RhiFenceHandle &out_fence) override;
+    RhiStatus DestroyTexture(RhiTextureHandle handle) override;
+    RhiStatus CreateSampler(const RhiSamplerDesc &desc, RhiSamplerHandle &out_handle) override;
+    RhiStatus DestroySampler(RhiSamplerHandle handle) override;
+    RhiStatus CreateShaderModule(const RhiShaderModuleDesc &desc, RhiShaderModuleHandle &out_handle) override;
+    RhiStatus DestroyShaderModule(RhiShaderModuleHandle handle) override;
+    RhiStatus CreatePipeline(const RhiPipelineDesc &desc, RhiPipelineHandle &out_handle) override;
+    RhiStatus DestroyPipeline(RhiPipelineHandle handle) override;
     /**
      * @comment Returns the supported capabilities.
      * @return Capability data.
@@ -89,19 +113,69 @@ public:
     RhiDeviceSnapshot Snapshot() const override;
 
 private:
+    struct NullBufferSlot final {
+        RhiBufferDesc desc{};
+        std::vector<std::uint8_t> bytes{};
+        std::uint32_t generation = 0U;
+        bool is_active = false;
+    };
+
+    struct NullTextureSlot final {
+        RhiTextureDesc desc{};
+        std::vector<std::uint8_t> bytes{};
+        std::uint32_t generation = 0U;
+        bool is_active = false;
+    };
+
+    struct NullSamplerSlot final {
+        RhiSamplerDesc desc{};
+        std::uint32_t generation = 0U;
+        bool is_active = false;
+    };
+
+    struct NullShaderModuleSlot final {
+        RhiShaderModuleDesc desc{};
+        std::vector<std::uint8_t> bytes{};
+        std::uint32_t generation = 0U;
+        bool is_active = false;
+    };
+
+    struct NullPipelineSlot final {
+        RhiPipelineDesc desc{};
+        std::uint32_t generation = 0U;
+        bool is_active = false;
+    };
+
     RhiStatus RecordFailure(RhiStatus status);
     bool IsTargetHandleValid(RhiTextureHandle handle) const;
+    bool IsBufferHandleValid(RhiBufferHandle handle) const;
+    bool IsTextureHandleValid(RhiTextureHandle handle) const;
+    bool IsSamplerHandleValid(RhiSamplerHandle handle) const;
+    bool IsShaderModuleHandleValid(RhiShaderModuleHandle handle) const;
+    bool IsPipelineHandleValid(RhiPipelineHandle handle) const;
     bool IsCommandTargetValidForFrame(const RhiCommandRecord &command, RhiTextureHandle frame_target) const;
     bool IsColorTargetDescValid(const RhiColorTargetDesc &desc) const;
+    bool IsBufferDescValid(const RhiBufferDesc &desc, std::span<const std::uint8_t> initial_bytes) const;
+    bool IsTextureDescValid(const RhiTextureDesc &desc, std::span<const std::uint8_t> initial_bytes) const;
+    bool IsShaderModuleDescValid(const RhiShaderModuleDesc &desc) const;
+    bool IsPipelineDescValid(const RhiPipelineDesc &desc) const;
     std::size_t PixelByteCount(const RhiColorTargetDesc &desc) const;
+    std::size_t TextureByteCount(const RhiTextureDesc &desc) const;
+    RhiFenceHandle SignalFence(std::size_t byte_count);
     void ExecuteClear(RhiTextureHandle handle, RhiColor color);
 
     std::vector<RhiTargetSlot> targets_;
+    std::vector<NullBufferSlot> buffers_;
+    std::vector<NullTextureSlot> textures_;
+    std::vector<NullSamplerSlot> samplers_;
+    std::vector<NullShaderModuleSlot> shader_modules_;
+    std::vector<NullPipelineSlot> pipelines_;
     RhiCapabilities capabilities_;
     RhiDeviceSnapshot snapshot_;
     RhiTextureHandle submitted_handle_;
     RhiTextureHandle presented_handle_;
     std::uint32_t generation_seed_;
+    std::uint32_t fence_generation_;
     bool is_initialized_;
     bool has_submitted_frame_;
     bool has_presented_frame_;

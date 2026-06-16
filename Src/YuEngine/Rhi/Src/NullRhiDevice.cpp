@@ -74,11 +74,17 @@ RhiStatus RhiDeviceFactory::ValidateDeviceDesc(const RhiDeviceDesc &desc) {
 
 NullRhiDevice::NullRhiDevice()
     : targets_(),
+      buffers_(),
+      textures_(),
+      samplers_(),
+      shader_modules_(),
+      pipelines_(),
       capabilities_{},
       snapshot_{},
       submitted_handle_{},
       presented_handle_{},
       generation_seed_(INVALID_GENERATION),
+      fence_generation_(INVALID_GENERATION),
       is_initialized_(false),
       has_submitted_frame_(false),
       has_presented_frame_(false) {
@@ -119,8 +125,33 @@ RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc &desc) {
     }
 
     targets_.assign(desc.color_target_capacity, RhiTargetSlot{});
-    for (RhiTargetSlot& target : targets_) {
+    for (RhiTargetSlot &target : targets_) {
         target.generation = generation_seed_;
+    }
+
+    buffers_.assign(MAX_RHI_BUFFERS, NullBufferSlot{});
+    for (NullBufferSlot &buffer : buffers_) {
+        buffer.generation = generation_seed_;
+    }
+
+    textures_.assign(MAX_RHI_TEXTURES, NullTextureSlot{});
+    for (NullTextureSlot &texture : textures_) {
+        texture.generation = generation_seed_;
+    }
+
+    samplers_.assign(MAX_RHI_SAMPLERS, NullSamplerSlot{});
+    for (NullSamplerSlot &sampler : samplers_) {
+        sampler.generation = generation_seed_;
+    }
+
+    shader_modules_.assign(MAX_RHI_SHADER_MODULES, NullShaderModuleSlot{});
+    for (NullShaderModuleSlot &shader_module : shader_modules_) {
+        shader_module.generation = generation_seed_;
+    }
+
+    pipelines_.assign(MAX_RHI_PIPELINES, NullPipelineSlot{});
+    for (NullPipelineSlot &pipeline : pipelines_) {
+        pipeline.generation = generation_seed_;
     }
 
     capabilities_ = RhiCapabilities{
@@ -133,9 +164,22 @@ RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc &desc) {
         true,
         false,
         false,
-        false};
+        false,
+        true,
+        MAX_RHI_BUFFERS,
+        MAX_RHI_TEXTURES,
+        MAX_RHI_SAMPLERS,
+        MAX_RHI_SHADER_MODULES,
+        MAX_RHI_PIPELINES,
+        MAX_RHI_BUFFER_BYTES,
+        MAX_RHI_SHADER_BYTECODE_BYTES};
     snapshot_ = RhiDeviceSnapshot{};
     snapshot_.color_target_capacity = desc.color_target_capacity;
+    snapshot_.resources.buffer_capacity = MAX_RHI_BUFFERS;
+    snapshot_.resources.texture_capacity = MAX_RHI_TEXTURES;
+    snapshot_.resources.sampler_capacity = MAX_RHI_SAMPLERS;
+    snapshot_.resources.shader_module_capacity = MAX_RHI_SHADER_MODULES;
+    snapshot_.resources.pipeline_capacity = MAX_RHI_PIPELINES;
     is_initialized_ = true;
     has_submitted_frame_ = false;
     has_presented_frame_ = false;
@@ -294,6 +338,286 @@ RhiCaptureResult NullRhiDevice::CapturePresentedTarget(std::span<std::uint8_t> d
     return RhiCaptureResult{RhiStatus::Success, byte_count};
 }
 
+RhiStatus NullRhiDevice::CreateBuffer(
+    const RhiBufferDesc &desc,
+    std::span<const std::uint8_t> initial_bytes,
+    RhiBufferHandle &out_handle) {
+    out_handle = RhiBufferHandle{};
+    if (!is_initialized_) {
+        return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    if (!IsBufferDescValid(desc, initial_bytes)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    for (std::size_t index = 0U; index < buffers_.size(); ++index) {
+        NullBufferSlot &slot = buffers_[index];
+        if (slot.is_active) {
+            continue;
+        }
+
+        if (slot.generation == INVALID_GENERATION) {
+            slot.generation = 1U;
+        }
+
+        slot.is_active = true;
+        slot.desc = desc;
+        slot.bytes.assign(desc.size_bytes, 0U);
+        std::copy(initial_bytes.begin(), initial_bytes.end(), slot.bytes.begin());
+        out_handle = RhiBufferHandle{static_cast<std::uint32_t>(index), slot.generation};
+        ++snapshot_.resources.buffer_count;
+        ++snapshot_.resources.created_primitive_count;
+        return RhiStatus::Success;
+    }
+
+    return RecordFailure(RhiStatus::CapacityExceeded);
+}
+
+RhiStatus NullRhiDevice::UpdateBuffer(
+    RhiBufferHandle handle,
+    std::span<const std::uint8_t> bytes,
+    RhiFenceHandle &out_fence) {
+    out_fence = RhiFenceHandle{};
+    if (!IsBufferHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    if (bytes.empty()) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    NullBufferSlot &slot = buffers_[handle.slot];
+    if (bytes.size() > slot.bytes.size()) {
+        return RecordFailure(RhiStatus::CapacityExceeded);
+    }
+
+    std::copy(bytes.begin(), bytes.end(), slot.bytes.begin());
+    out_fence = SignalFence(bytes.size());
+    ++snapshot_.resources.updated_primitive_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus NullRhiDevice::DestroyBuffer(RhiBufferHandle handle) {
+    if (!IsBufferHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    NullBufferSlot &slot = buffers_[handle.slot];
+    slot.is_active = false;
+    slot.desc = RhiBufferDesc{};
+    slot.bytes.clear();
+    ++slot.generation;
+    --snapshot_.resources.buffer_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus NullRhiDevice::CreateTexture(
+    const RhiTextureDesc &desc,
+    std::span<const std::uint8_t> initial_bytes,
+    RhiTextureHandle &out_handle) {
+    out_handle = RhiTextureHandle{};
+    if (!is_initialized_) {
+        return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    if (!IsTextureDescValid(desc, initial_bytes)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    for (std::size_t index = 0U; index < textures_.size(); ++index) {
+        NullTextureSlot &slot = textures_[index];
+        if (slot.is_active) {
+            continue;
+        }
+
+        if (slot.generation == INVALID_GENERATION) {
+            slot.generation = 1U;
+        }
+
+        slot.is_active = true;
+        slot.desc = desc;
+        slot.bytes.assign(TextureByteCount(desc), 0U);
+        std::copy(initial_bytes.begin(), initial_bytes.end(), slot.bytes.begin());
+        out_handle = RhiTextureHandle{static_cast<std::uint32_t>(index), slot.generation};
+        ++snapshot_.resources.texture_count;
+        ++snapshot_.resources.created_primitive_count;
+        return RhiStatus::Success;
+    }
+
+    return RecordFailure(RhiStatus::CapacityExceeded);
+}
+
+RhiStatus NullRhiDevice::UpdateTexture(
+    RhiTextureHandle handle,
+    std::span<const std::uint8_t> bytes,
+    RhiFenceHandle &out_fence) {
+    out_fence = RhiFenceHandle{};
+    if (!IsTextureHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    NullTextureSlot &slot = textures_[handle.slot];
+    if (bytes.size() != slot.bytes.size()) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    std::copy(bytes.begin(), bytes.end(), slot.bytes.begin());
+    out_fence = SignalFence(bytes.size());
+    ++snapshot_.resources.updated_primitive_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus NullRhiDevice::DestroyTexture(RhiTextureHandle handle) {
+    if (!IsTextureHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    NullTextureSlot &slot = textures_[handle.slot];
+    slot.is_active = false;
+    slot.desc = RhiTextureDesc{};
+    slot.bytes.clear();
+    ++slot.generation;
+    --snapshot_.resources.texture_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus NullRhiDevice::CreateSampler(const RhiSamplerDesc &desc, RhiSamplerHandle &out_handle) {
+    out_handle = RhiSamplerHandle{};
+    if (!is_initialized_) {
+        return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    for (std::size_t index = 0U; index < samplers_.size(); ++index) {
+        NullSamplerSlot &slot = samplers_[index];
+        if (slot.is_active) {
+            continue;
+        }
+
+        if (slot.generation == INVALID_GENERATION) {
+            slot.generation = 1U;
+        }
+
+        slot.is_active = true;
+        slot.desc = desc;
+        out_handle = RhiSamplerHandle{static_cast<std::uint32_t>(index), slot.generation};
+        ++snapshot_.resources.sampler_count;
+        ++snapshot_.resources.created_primitive_count;
+        return RhiStatus::Success;
+    }
+
+    return RecordFailure(RhiStatus::CapacityExceeded);
+}
+
+RhiStatus NullRhiDevice::DestroySampler(RhiSamplerHandle handle) {
+    if (!IsSamplerHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    NullSamplerSlot &slot = samplers_[handle.slot];
+    slot.is_active = false;
+    slot.desc = RhiSamplerDesc{};
+    ++slot.generation;
+    --snapshot_.resources.sampler_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus NullRhiDevice::CreateShaderModule(const RhiShaderModuleDesc &desc, RhiShaderModuleHandle &out_handle) {
+    out_handle = RhiShaderModuleHandle{};
+    if (!is_initialized_) {
+        return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    if (!IsShaderModuleDescValid(desc)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    for (std::size_t index = 0U; index < shader_modules_.size(); ++index) {
+        NullShaderModuleSlot &slot = shader_modules_[index];
+        if (slot.is_active) {
+            continue;
+        }
+
+        if (slot.generation == INVALID_GENERATION) {
+            slot.generation = 1U;
+        }
+
+        slot.is_active = true;
+        slot.desc = desc;
+        slot.bytes.assign(desc.bytecode.begin(), desc.bytecode.end());
+        slot.desc.bytecode = std::span<const std::uint8_t>(slot.bytes.data(), slot.bytes.size());
+        out_handle = RhiShaderModuleHandle{static_cast<std::uint32_t>(index), slot.generation};
+        ++snapshot_.resources.shader_module_count;
+        ++snapshot_.resources.created_primitive_count;
+        return RhiStatus::Success;
+    }
+
+    return RecordFailure(RhiStatus::CapacityExceeded);
+}
+
+RhiStatus NullRhiDevice::DestroyShaderModule(RhiShaderModuleHandle handle) {
+    if (!IsShaderModuleHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    NullShaderModuleSlot &slot = shader_modules_[handle.slot];
+    slot.is_active = false;
+    slot.desc = RhiShaderModuleDesc{};
+    slot.bytes.clear();
+    ++slot.generation;
+    --snapshot_.resources.shader_module_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus NullRhiDevice::CreatePipeline(const RhiPipelineDesc &desc, RhiPipelineHandle &out_handle) {
+    out_handle = RhiPipelineHandle{};
+    if (!is_initialized_) {
+        return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    if (!IsPipelineDescValid(desc)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    for (std::size_t index = 0U; index < pipelines_.size(); ++index) {
+        NullPipelineSlot &slot = pipelines_[index];
+        if (slot.is_active) {
+            continue;
+        }
+
+        if (slot.generation == INVALID_GENERATION) {
+            slot.generation = 1U;
+        }
+
+        slot.is_active = true;
+        slot.desc = desc;
+        out_handle = RhiPipelineHandle{static_cast<std::uint32_t>(index), slot.generation};
+        ++snapshot_.resources.pipeline_count;
+        ++snapshot_.resources.created_primitive_count;
+        return RhiStatus::Success;
+    }
+
+    return RecordFailure(RhiStatus::CapacityExceeded);
+}
+
+RhiStatus NullRhiDevice::DestroyPipeline(RhiPipelineHandle handle) {
+    if (!IsPipelineHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    NullPipelineSlot &slot = pipelines_[handle.slot];
+    slot.is_active = false;
+    slot.desc = RhiPipelineDesc{};
+    ++slot.generation;
+    --snapshot_.resources.pipeline_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+    return RhiStatus::Success;
+}
+
 RhiCapabilities NullRhiDevice::Capabilities() const {
     return capabilities_;
 }
@@ -321,6 +645,111 @@ bool NullRhiDevice::IsTargetHandleValid(RhiTextureHandle handle) const {
     }
 
     const RhiTargetSlot& slot = targets_[handle.slot];
+    if (!slot.is_active) {
+        return false;
+    }
+
+    return slot.generation == handle.generation;
+}
+
+bool NullRhiDevice::IsBufferHandleValid(RhiBufferHandle handle) const {
+    if (!is_initialized_) {
+        return false;
+    }
+
+    if (handle.generation == INVALID_GENERATION) {
+        return false;
+    }
+
+    if (handle.slot >= buffers_.size()) {
+        return false;
+    }
+
+    const NullBufferSlot &slot = buffers_[handle.slot];
+    if (!slot.is_active) {
+        return false;
+    }
+
+    return slot.generation == handle.generation;
+}
+
+bool NullRhiDevice::IsTextureHandleValid(RhiTextureHandle handle) const {
+    if (!is_initialized_) {
+        return false;
+    }
+
+    if (handle.generation == INVALID_GENERATION) {
+        return false;
+    }
+
+    if (handle.slot >= textures_.size()) {
+        return false;
+    }
+
+    const NullTextureSlot &slot = textures_[handle.slot];
+    if (!slot.is_active) {
+        return false;
+    }
+
+    return slot.generation == handle.generation;
+}
+
+bool NullRhiDevice::IsSamplerHandleValid(RhiSamplerHandle handle) const {
+    if (!is_initialized_) {
+        return false;
+    }
+
+    if (handle.generation == INVALID_GENERATION) {
+        return false;
+    }
+
+    if (handle.slot >= samplers_.size()) {
+        return false;
+    }
+
+    const NullSamplerSlot &slot = samplers_[handle.slot];
+    if (!slot.is_active) {
+        return false;
+    }
+
+    return slot.generation == handle.generation;
+}
+
+bool NullRhiDevice::IsShaderModuleHandleValid(RhiShaderModuleHandle handle) const {
+    if (!is_initialized_) {
+        return false;
+    }
+
+    if (handle.generation == INVALID_GENERATION) {
+        return false;
+    }
+
+    if (handle.slot >= shader_modules_.size()) {
+        return false;
+    }
+
+    const NullShaderModuleSlot &slot = shader_modules_[handle.slot];
+    if (!slot.is_active) {
+        return false;
+    }
+
+    return slot.generation == handle.generation;
+}
+
+bool NullRhiDevice::IsPipelineHandleValid(RhiPipelineHandle handle) const {
+    if (!is_initialized_) {
+        return false;
+    }
+
+    if (handle.generation == INVALID_GENERATION) {
+        return false;
+    }
+
+    if (handle.slot >= pipelines_.size()) {
+        return false;
+    }
+
+    const NullPipelineSlot &slot = pipelines_[handle.slot];
     if (!slot.is_active) {
         return false;
     }
@@ -364,8 +793,117 @@ bool NullRhiDevice::IsColorTargetDescValid(const RhiColorTargetDesc &desc) const
     return true;
 }
 
+bool NullRhiDevice::IsBufferDescValid(const RhiBufferDesc &desc, std::span<const std::uint8_t> initial_bytes) const {
+    if (desc.usage == RhiBufferUsage::Unsupported) {
+        return false;
+    }
+
+    if (desc.size_bytes == 0U) {
+        return false;
+    }
+
+    if (desc.size_bytes > MAX_RHI_BUFFER_BYTES) {
+        return false;
+    }
+
+    if (initial_bytes.size() > desc.size_bytes) {
+        return false;
+    }
+
+    if (desc.usage == RhiBufferUsage::Constant && (desc.size_bytes % RHI_CONSTANT_BUFFER_ALIGNMENT) != 0U) {
+        return false;
+    }
+
+    return true;
+}
+
+bool NullRhiDevice::IsTextureDescValid(const RhiTextureDesc &desc, std::span<const std::uint8_t> initial_bytes) const {
+    if (desc.format != RhiFormat::Rgba8Unorm) {
+        return false;
+    }
+
+    if (desc.extent.width == 0U) {
+        return false;
+    }
+
+    if (desc.extent.height == 0U) {
+        return false;
+    }
+
+    if (desc.extent.width > MAX_COLOR_TARGET_EXTENT) {
+        return false;
+    }
+
+    if (desc.extent.height > MAX_COLOR_TARGET_EXTENT) {
+        return false;
+    }
+
+    if (!initial_bytes.empty() && initial_bytes.size() != TextureByteCount(desc)) {
+        return false;
+    }
+
+    return true;
+}
+
+bool NullRhiDevice::IsShaderModuleDescValid(const RhiShaderModuleDesc &desc) const {
+    if (desc.stage == RhiShaderStage::Unsupported) {
+        return false;
+    }
+
+    if (desc.bytecode.empty()) {
+        return false;
+    }
+
+    if (desc.bytecode.size() > MAX_RHI_SHADER_BYTECODE_BYTES) {
+        return false;
+    }
+
+    return true;
+}
+
+bool NullRhiDevice::IsPipelineDescValid(const RhiPipelineDesc &desc) const {
+    if (desc.input_layout.element_count != 0U) {
+        return false;
+    }
+
+    if (!IsShaderModuleHandleValid(desc.vertex_shader)) {
+        return false;
+    }
+
+    if (!IsShaderModuleHandleValid(desc.pixel_shader)) {
+        return false;
+    }
+
+    const NullShaderModuleSlot &vertex_shader = shader_modules_[desc.vertex_shader.slot];
+    if (vertex_shader.desc.stage != RhiShaderStage::Vertex) {
+        return false;
+    }
+
+    const NullShaderModuleSlot &pixel_shader = shader_modules_[desc.pixel_shader.slot];
+    if (pixel_shader.desc.stage != RhiShaderStage::Pixel) {
+        return false;
+    }
+
+    return true;
+}
+
 std::size_t NullRhiDevice::PixelByteCount(const RhiColorTargetDesc &desc) const {
     return static_cast<std::size_t>(desc.extent.width) * static_cast<std::size_t>(desc.extent.height) * RGBA8_BYTES_PER_PIXEL;
+}
+
+std::size_t NullRhiDevice::TextureByteCount(const RhiTextureDesc &desc) const {
+    return static_cast<std::size_t>(desc.extent.width) * static_cast<std::size_t>(desc.extent.height) * RGBA8_BYTES_PER_PIXEL;
+}
+
+RhiFenceHandle NullRhiDevice::SignalFence(std::size_t byte_count) {
+    ++fence_generation_;
+    if (fence_generation_ == INVALID_GENERATION) {
+        ++fence_generation_;
+    }
+
+    ++snapshot_.resources.signaled_fence_count;
+    snapshot_.resources.last_update_bytes = byte_count;
+    return RhiFenceHandle{0U, fence_generation_};
 }
 
 void NullRhiDevice::ExecuteClear(RhiTextureHandle handle, RhiColor color) {

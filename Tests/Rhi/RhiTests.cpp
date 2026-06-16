@@ -12,14 +12,29 @@
 
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/NullRhiDevice.h"
+#include "YuEngine/Rhi/RhiBufferDesc.h"
+#include "YuEngine/Rhi/RhiBufferHandle.h"
+#include "YuEngine/Rhi/RhiBufferUsage.h"
 #include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
+#include "YuEngine/Rhi/RhiFenceHandle.h"
 #include "YuEngine/Rhi/RhiNativeSurfaceDesc.h"
+#include "YuEngine/Rhi/RhiPipelineDesc.h"
+#include "YuEngine/Rhi/RhiPipelineHandle.h"
+#include "YuEngine/Rhi/RhiSamplerDesc.h"
+#include "YuEngine/Rhi/RhiSamplerHandle.h"
+#include "YuEngine/Rhi/RhiShaderModuleDesc.h"
+#include "YuEngine/Rhi/RhiShaderModuleHandle.h"
+#include "YuEngine/Rhi/RhiShaderStage.h"
 #include "YuEngine/Rhi/RhiSwapchainDesc.h"
+#include "YuEngine/Rhi/RhiTextureDesc.h"
 
 using IRhiDevice = yuengine::rhi::IRhiDevice;
 using NullRhiDevice = yuengine::rhi::NullRhiDevice;
 using yuengine::rhi::RhiBackendKind;
+using RhiBufferDesc = yuengine::rhi::RhiBufferDesc;
+using RhiBufferHandle = yuengine::rhi::RhiBufferHandle;
+using yuengine::rhi::RhiBufferUsage;
 using RhiCaptureResult = yuengine::rhi::RhiCaptureResult;
 using RhiColor = yuengine::rhi::RhiColor;
 using RhiColorTargetDesc = yuengine::rhi::RhiColorTargetDesc;
@@ -28,14 +43,30 @@ using RhiDeviceCreateResult = yuengine::rhi::RhiDeviceCreateResult;
 using RhiDeviceDesc = yuengine::rhi::RhiDeviceDesc;
 using RhiDeviceFactory = yuengine::rhi::RhiDeviceFactory;
 using RhiDeviceSnapshot = yuengine::rhi::RhiDeviceSnapshot;
+using RhiFenceHandle = yuengine::rhi::RhiFenceHandle;
 using yuengine::rhi::RhiFormat;
 using RhiNativeSurfaceDesc = yuengine::rhi::RhiNativeSurfaceDesc;
+using RhiPipelineDesc = yuengine::rhi::RhiPipelineDesc;
+using RhiPipelineHandle = yuengine::rhi::RhiPipelineHandle;
+using RhiSamplerDesc = yuengine::rhi::RhiSamplerDesc;
+using RhiSamplerHandle = yuengine::rhi::RhiSamplerHandle;
+using RhiShaderModuleDesc = yuengine::rhi::RhiShaderModuleDesc;
+using RhiShaderModuleHandle = yuengine::rhi::RhiShaderModuleHandle;
+using yuengine::rhi::RhiShaderStage;
 using yuengine::rhi::RhiStatus;
 using RhiSwapchainDesc = yuengine::rhi::RhiSwapchainDesc;
+using RhiTextureDesc = yuengine::rhi::RhiTextureDesc;
 using RhiTextureHandle = yuengine::rhi::RhiTextureHandle;
 using yuengine::rhi::MAX_COMMANDS;
 using yuengine::rhi::MAX_COLOR_TARGET_EXTENT;
 using yuengine::rhi::MAX_COLOR_TARGETS;
+using yuengine::rhi::MAX_RHI_BUFFERS;
+using yuengine::rhi::MAX_RHI_BUFFER_BYTES;
+using yuengine::rhi::MAX_RHI_PIPELINES;
+using yuengine::rhi::MAX_RHI_SAMPLERS;
+using yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES;
+using yuengine::rhi::MAX_RHI_SHADER_MODULES;
+using yuengine::rhi::MAX_RHI_TEXTURES;
 using yuengine::rhi::RGBA8_BYTES_PER_PIXEL;
 
 namespace {
@@ -80,6 +111,18 @@ constexpr const char* TEST_FACTORY_RAW_STORAGE_TOO_SMALL = "RHI_Factory_RawStora
 constexpr const char* TEST_FACTORY_D3D11_INVALID_SURFACE = "RHI_Factory_D3D11InvalidSurfaceFailsBeforeHardware";
 constexpr const char* TEST_SWAPCHAIN_DESC_DEFAULT = "RHI_SwapchainDesc_DefaultIsBoundedPlainValue";
 constexpr const char* TEST_NULL_SWAPCHAIN_QUERY = "RHI_NullBackend_SwapchainQueryReturnsUnsupported";
+constexpr const char* TEST_PRIMITIVE_CAPABILITIES = "RHI_PrimitiveCapabilities_ReportBoundedCapacities";
+constexpr const char* TEST_CREATE_BUFFER = "RHI_CreateBuffer_ReturnsGenerationHandleAndSnapshot";
+constexpr const char* TEST_UPDATE_BUFFER = "RHI_UpdateBuffer_SignalsFenceAndRecordsBytes";
+constexpr const char* TEST_BUFFER_CAPACITY = "RHI_BufferCapacityOverflow_DoesNotMutate";
+constexpr const char* TEST_TEXTURE_PRIMITIVE = "RHI_TextureCreateUpdateDestroy_TracksSnapshot";
+constexpr const char* TEST_SAMPLER_PRIMITIVE = "RHI_SamplerCreateDestroy_TracksSnapshot";
+constexpr const char* TEST_SHADER_EMPTY_BYTECODE = "RHI_ShaderModuleRejectsEmptyBytecode";
+constexpr const char* TEST_PIPELINE_INVALID_SHADERS = "RHI_PipelineRequiresValidShaderModules";
+constexpr const char* TEST_PIPELINE_LIFECYCLE = "RHI_PipelineCreateDestroy_UsesShaderModuleHandles";
+constexpr const char* TEST_PRIMITIVE_STALE_HANDLE = "RHI_PrimitiveDestroyInvalidatesStaleHandles";
+constexpr const char* TEST_INTERFACE_PRIMITIVE = "RHI_Interface_PrimitiveLifecycle_MatchesNullDevice";
+constexpr const char* TEST_PRIMITIVE_SNAPSHOT_COMPARISON = "RHI_PrimitiveSnapshot_IsIncludedInDeviceSnapshotComparison";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* REINIT_TARGET_CREATION_MESSAGE = "target creation failed";
@@ -133,6 +176,18 @@ RhiColorTargetDesc MaxTargetDesc() {
         {MAX_COLOR_TARGET_EXTENT, MAX_COLOR_TARGET_EXTENT}};
 }
 
+RhiBufferDesc SmallVertexBufferDesc() {
+    return RhiBufferDesc{RhiBufferUsage::Vertex, 4U};
+}
+
+RhiTextureDesc SmallPrimitiveTextureDesc() {
+    return RhiTextureDesc{RhiFormat::Rgba8Unorm, {2U, 2U}};
+}
+
+std::array<std::uint8_t, 4U> SmallShaderBytes() {
+    return std::array<std::uint8_t, 4U>{1U, 2U, 3U, 4U};
+}
+
 NullRhiDevice CreateInitializedDevice() {
     NullRhiDevice device;
     device.Initialize(RhiDeviceDesc{});
@@ -145,6 +200,16 @@ bool CreateTarget(NullRhiDevice& device, RhiTextureHandle& out_handle) {
 
 bool CreateTargetThroughInterface(IRhiDevice &device, RhiTextureHandle &out_handle) {
     return device.CreateColorTarget(SmallTargetDesc(), out_handle) == RhiStatus::Success;
+}
+
+bool CreateShaderModule(
+    IRhiDevice &device,
+    RhiShaderStage stage,
+    RhiShaderModuleHandle &out_handle) {
+    const std::array<std::uint8_t, 4U> bytes = SmallShaderBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const RhiShaderModuleDesc desc{stage, byte_span};
+    return device.CreateShaderModule(desc, out_handle) == RhiStatus::Success;
 }
 
 RhiStatus ClearSubmitPresent(NullRhiDevice& device, RhiTextureHandle target, RhiColor color) {
@@ -293,6 +358,66 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
     }
 
     if (left.swapchain.presented != right.swapchain.presented) {
+        return false;
+    }
+
+    if (left.resources.buffer_capacity != right.resources.buffer_capacity) {
+        return false;
+    }
+
+    if (left.resources.buffer_count != right.resources.buffer_count) {
+        return false;
+    }
+
+    if (left.resources.texture_capacity != right.resources.texture_capacity) {
+        return false;
+    }
+
+    if (left.resources.texture_count != right.resources.texture_count) {
+        return false;
+    }
+
+    if (left.resources.sampler_capacity != right.resources.sampler_capacity) {
+        return false;
+    }
+
+    if (left.resources.sampler_count != right.resources.sampler_count) {
+        return false;
+    }
+
+    if (left.resources.shader_module_capacity != right.resources.shader_module_capacity) {
+        return false;
+    }
+
+    if (left.resources.shader_module_count != right.resources.shader_module_count) {
+        return false;
+    }
+
+    if (left.resources.pipeline_capacity != right.resources.pipeline_capacity) {
+        return false;
+    }
+
+    if (left.resources.pipeline_count != right.resources.pipeline_count) {
+        return false;
+    }
+
+    if (left.resources.created_primitive_count != right.resources.created_primitive_count) {
+        return false;
+    }
+
+    if (left.resources.destroyed_primitive_count != right.resources.destroyed_primitive_count) {
+        return false;
+    }
+
+    if (left.resources.updated_primitive_count != right.resources.updated_primitive_count) {
+        return false;
+    }
+
+    if (left.resources.signaled_fence_count != right.resources.signaled_fence_count) {
+        return false;
+    }
+
+    if (left.resources.last_update_bytes != right.resources.last_update_bytes) {
         return false;
     }
 
@@ -1532,6 +1657,408 @@ int RhiNoResourceFileUploadShaderUiDependency() {
 
     return 0;
 }
+
+int RhiPrimitiveCapabilitiesReportBoundedCapacities() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const auto capabilities = device.Capabilities();
+    if (!capabilities.supports_resource_primitives) {
+        return Fail("primitive capability flag was not set");
+    }
+
+    if (capabilities.buffer_capacity != MAX_RHI_BUFFERS) {
+        return Fail("buffer capacity did not match constant");
+    }
+
+    if (capabilities.texture_capacity != MAX_RHI_TEXTURES) {
+        return Fail("texture capacity did not match constant");
+    }
+
+    if (capabilities.sampler_capacity != MAX_RHI_SAMPLERS) {
+        return Fail("sampler capacity did not match constant");
+    }
+
+    if (capabilities.shader_module_capacity != MAX_RHI_SHADER_MODULES) {
+        return Fail("shader module capacity did not match constant");
+    }
+
+    if (capabilities.pipeline_capacity != MAX_RHI_PIPELINES) {
+        return Fail("pipeline capacity did not match constant");
+    }
+
+    if (capabilities.max_buffer_bytes != MAX_RHI_BUFFER_BYTES) {
+        return Fail("buffer byte cap did not match constant");
+    }
+
+    if (capabilities.max_shader_bytecode_bytes != MAX_RHI_SHADER_BYTECODE_BYTES) {
+        return Fail("shader bytecode cap did not match constant");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.buffer_capacity != MAX_RHI_BUFFERS) {
+        return Fail("snapshot buffer capacity did not match constant");
+    }
+
+    if (snapshot.resources.pipeline_capacity != MAX_RHI_PIPELINES) {
+        return Fail("snapshot pipeline capacity did not match constant");
+    }
+
+    return 0;
+}
+
+int RhiCreateBufferReturnsGenerationHandleAndSnapshot() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const std::array<std::uint8_t, 4U> bytes{1U, 2U, 3U, 4U};
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    RhiBufferHandle handle{};
+    const RhiStatus status = device.CreateBuffer(SmallVertexBufferDesc(), byte_span, handle);
+    if (status != RhiStatus::Success) {
+        return Fail("buffer creation failed");
+    }
+
+    if (handle.generation == 0U) {
+        return Fail("buffer handle generation was zero");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.buffer_count != 1U) {
+        return Fail("buffer count was not tracked");
+    }
+
+    if (snapshot.resources.created_primitive_count != 1U) {
+        return Fail("created primitive count was not tracked");
+    }
+
+    return 0;
+}
+
+int RhiUpdateBufferSignalsFenceAndRecordsBytes() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle handle{};
+    if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, handle) != RhiStatus::Success) {
+        return Fail("buffer creation failed");
+    }
+
+    const std::array<std::uint8_t, 2U> update_bytes{7U, 8U};
+    const std::span<const std::uint8_t> update_span(update_bytes.data(), update_bytes.size());
+    RhiFenceHandle fence{};
+    const RhiStatus status = device.UpdateBuffer(handle, update_span, fence);
+    if (status != RhiStatus::Success) {
+        return Fail("buffer update failed");
+    }
+
+    if (fence.generation == 0U) {
+        return Fail("buffer update did not signal a fence");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.updated_primitive_count != 1U) {
+        return Fail("buffer update count was not tracked");
+    }
+
+    if (snapshot.resources.signaled_fence_count != 1U) {
+        return Fail("fence count was not tracked");
+    }
+
+    if (snapshot.resources.last_update_bytes != update_bytes.size()) {
+        return Fail("last update byte count was not tracked");
+    }
+
+    return 0;
+}
+
+int RhiBufferCapacityOverflowDoesNotMutate() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    std::vector<RhiBufferHandle> handles;
+    handles.reserve(MAX_RHI_BUFFERS);
+    for (std::size_t index = 0U; index < MAX_RHI_BUFFERS; ++index) {
+        RhiBufferHandle handle{};
+        if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, handle) != RhiStatus::Success) {
+            return Fail("buffer creation within capacity failed");
+        }
+
+        handles.emplace_back(handle);
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    RhiBufferHandle overflow_handle{};
+    const RhiStatus status = device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, overflow_handle);
+    if (status != RhiStatus::CapacityExceeded) {
+        return Fail("buffer capacity overflow did not return capacity status");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.resources.buffer_count != before_snapshot.resources.buffer_count) {
+        return Fail("buffer capacity overflow changed active count");
+    }
+
+    if (after_snapshot.resources.created_primitive_count != before_snapshot.resources.created_primitive_count) {
+        return Fail("buffer capacity overflow changed created count");
+    }
+
+    if (overflow_handle.generation != 0U) {
+        return Fail("buffer capacity overflow wrote an output handle");
+    }
+
+    return 0;
+}
+
+int RhiTextureCreateUpdateDestroyTracksSnapshot() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const std::array<std::uint8_t, 16U> initial_bytes{
+        1U, 2U, 3U, 4U,
+        5U, 6U, 7U, 8U,
+        9U, 10U, 11U, 12U,
+        13U, 14U, 15U, 16U};
+    const std::span<const std::uint8_t> initial_span(initial_bytes.data(), initial_bytes.size());
+    RhiTextureHandle handle{};
+    if (device.CreateTexture(SmallPrimitiveTextureDesc(), initial_span, handle) != RhiStatus::Success) {
+        return Fail("texture primitive creation failed");
+    }
+
+    const std::array<std::uint8_t, 16U> update_bytes{
+        16U, 15U, 14U, 13U,
+        12U, 11U, 10U, 9U,
+        8U, 7U, 6U, 5U,
+        4U, 3U, 2U, 1U};
+    const std::span<const std::uint8_t> update_span(update_bytes.data(), update_bytes.size());
+    RhiFenceHandle fence{};
+    if (device.UpdateTexture(handle, update_span, fence) != RhiStatus::Success) {
+        return Fail("texture primitive update failed");
+    }
+
+    if (device.DestroyTexture(handle) != RhiStatus::Success) {
+        return Fail("texture primitive destroy failed");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.texture_count != 0U) {
+        return Fail("texture primitive count did not return to zero");
+    }
+
+    if (snapshot.resources.created_primitive_count != 1U) {
+        return Fail("texture primitive created count was wrong");
+    }
+
+    if (snapshot.resources.updated_primitive_count != 1U) {
+        return Fail("texture primitive updated count was wrong");
+    }
+
+    if (snapshot.resources.destroyed_primitive_count != 1U) {
+        return Fail("texture primitive destroyed count was wrong");
+    }
+
+    if (snapshot.resources.last_update_bytes != update_bytes.size()) {
+        return Fail("texture primitive last update bytes were wrong");
+    }
+
+    return 0;
+}
+
+int RhiSamplerCreateDestroyTracksSnapshot() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RhiSamplerDesc desc{};
+    desc.linear_filter = true;
+    RhiSamplerHandle handle{};
+    if (device.CreateSampler(desc, handle) != RhiStatus::Success) {
+        return Fail("sampler primitive creation failed");
+    }
+
+    if (device.DestroySampler(handle) != RhiStatus::Success) {
+        return Fail("sampler primitive destroy failed");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.sampler_count != 0U) {
+        return Fail("sampler primitive count did not return to zero");
+    }
+
+    if (snapshot.resources.created_primitive_count != 1U) {
+        return Fail("sampler primitive created count was wrong");
+    }
+
+    if (snapshot.resources.destroyed_primitive_count != 1U) {
+        return Fail("sampler primitive destroyed count was wrong");
+    }
+
+    return 0;
+}
+
+int RhiShaderModuleRejectsEmptyBytecode() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    const RhiShaderModuleDesc desc{RhiShaderStage::Vertex, empty_bytes};
+    RhiShaderModuleHandle handle{};
+    const RhiStatus status = device.CreateShaderModule(desc, handle);
+    if (status != RhiStatus::InvalidDescriptor) {
+        return Fail("empty shader bytecode did not return invalid descriptor");
+    }
+
+    if (device.Snapshot().resources.shader_module_count != 0U) {
+        return Fail("empty shader bytecode changed shader module count");
+    }
+
+    return 0;
+}
+
+int RhiPipelineRequiresValidShaderModules() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RhiPipelineDesc desc{};
+    RhiPipelineHandle handle{};
+    const RhiStatus status = device.CreatePipeline(desc, handle);
+    if (status != RhiStatus::InvalidDescriptor) {
+        return Fail("pipeline accepted missing shader module handles");
+    }
+
+    if (device.Snapshot().resources.pipeline_count != 0U) {
+        return Fail("invalid pipeline changed pipeline count");
+    }
+
+    return 0;
+}
+
+int RhiPipelineCreateDestroyUsesShaderModuleHandles() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiShaderModuleHandle vertex_shader{};
+    if (!CreateShaderModule(device_interface, RhiShaderStage::Vertex, vertex_shader)) {
+        return Fail("vertex shader module creation failed");
+    }
+
+    RhiShaderModuleHandle pixel_shader{};
+    if (!CreateShaderModule(device_interface, RhiShaderStage::Pixel, pixel_shader)) {
+        return Fail("pixel shader module creation failed");
+    }
+
+    RhiPipelineDesc desc{};
+    desc.vertex_shader = vertex_shader;
+    desc.pixel_shader = pixel_shader;
+    RhiPipelineHandle pipeline{};
+    if (device.CreatePipeline(desc, pipeline) != RhiStatus::Success) {
+        return Fail("pipeline primitive creation failed");
+    }
+
+    if (device.DestroyPipeline(pipeline) != RhiStatus::Success) {
+        return Fail("pipeline primitive destroy failed");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.pipeline_count != 0U) {
+        return Fail("pipeline primitive count did not return to zero");
+    }
+
+    if (snapshot.resources.shader_module_count != 2U) {
+        return Fail("pipeline creation unexpectedly changed shader module count");
+    }
+
+    if (snapshot.resources.created_primitive_count != 3U) {
+        return Fail("pipeline path created count was wrong");
+    }
+
+    if (snapshot.resources.destroyed_primitive_count != 1U) {
+        return Fail("pipeline path destroyed count was wrong");
+    }
+
+    return 0;
+}
+
+int RhiPrimitiveDestroyInvalidatesStaleHandles() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle handle{};
+    if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, handle) != RhiStatus::Success) {
+        return Fail("buffer creation failed");
+    }
+
+    if (device.DestroyBuffer(handle) != RhiStatus::Success) {
+        return Fail("buffer destroy failed");
+    }
+
+    const auto before_update_snapshot = device.Snapshot();
+    const std::array<std::uint8_t, 1U> update_bytes{1U};
+    const std::span<const std::uint8_t> update_span(update_bytes.data(), update_bytes.size());
+    RhiFenceHandle fence{};
+    const RhiStatus status = device.UpdateBuffer(handle, update_span, fence);
+    if (status != RhiStatus::InvalidHandle) {
+        return Fail("stale buffer handle was accepted for update");
+    }
+
+    const auto after_update_snapshot = device.Snapshot();
+    if (after_update_snapshot.resources.updated_primitive_count != before_update_snapshot.resources.updated_primitive_count) {
+        return Fail("stale buffer update changed update count");
+    }
+
+    if (fence.generation != 0U) {
+        return Fail("stale buffer update signaled a fence");
+    }
+
+    return 0;
+}
+
+int RhiInterfacePrimitiveLifecycleMatchesNullDevice() {
+    NullRhiDevice device_storage = CreateInitializedDevice();
+    IRhiDevice &device = device_storage;
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle handle{};
+    if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, handle) != RhiStatus::Success) {
+        return Fail("interface buffer creation failed");
+    }
+
+    const std::array<std::uint8_t, 4U> update_bytes{9U, 8U, 7U, 6U};
+    const std::span<const std::uint8_t> update_span(update_bytes.data(), update_bytes.size());
+    RhiFenceHandle fence{};
+    if (device.UpdateBuffer(handle, update_span, fence) != RhiStatus::Success) {
+        return Fail("interface buffer update failed");
+    }
+
+    if (device.DestroyBuffer(handle) != RhiStatus::Success) {
+        return Fail("interface buffer destroy failed");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.buffer_count != 0U) {
+        return Fail("interface buffer count did not return to zero");
+    }
+
+    if (snapshot.resources.signaled_fence_count != 1U) {
+        return Fail("interface primitive path did not signal one fence");
+    }
+
+    return 0;
+}
+
+int RhiPrimitiveSnapshotIsIncludedInDeviceSnapshotComparison() {
+    NullRhiDevice first_device = CreateInitializedDevice();
+    NullRhiDevice second_device = CreateInitializedDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle first_handle{};
+    RhiBufferHandle second_handle{};
+    if (first_device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, first_handle) != RhiStatus::Success) {
+        return Fail("first buffer creation failed");
+    }
+
+    if (second_device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, second_handle) != RhiStatus::Success) {
+        return Fail("second buffer creation failed");
+    }
+
+    if (!DeviceSnapshotsEqual(first_device.Snapshot(), second_device.Snapshot())) {
+        return Fail("matching primitive snapshots were not equal");
+    }
+
+    const std::array<std::uint8_t, 1U> update_bytes{5U};
+    const std::span<const std::uint8_t> update_span(update_bytes.data(), update_bytes.size());
+    RhiFenceHandle fence{};
+    if (first_device.UpdateBuffer(first_handle, update_span, fence) != RhiStatus::Success) {
+        return Fail("first buffer update failed");
+    }
+
+    if (DeviceSnapshotsEqual(first_device.Snapshot(), second_device.Snapshot())) {
+        return Fail("different primitive snapshots were reported equal");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -1580,6 +2107,18 @@ int main(int argc, char** argv) {
         {TEST_OVERSIZED_CAPTURE_FIXTURE, RhiCaptureRejectsTargetLargerThanFixtureCapWithoutWritingBytes},
         {TEST_FRAME_NO_GROW, RhiFrameSubmitPresentCaptureDoesNotGrowCommandStorage},
         {TEST_DISABLED_DIAGNOSTICS, RhiDisabledDiagnosticsDoesNotChangeResults},
+        {TEST_PRIMITIVE_CAPABILITIES, RhiPrimitiveCapabilitiesReportBoundedCapacities},
+        {TEST_CREATE_BUFFER, RhiCreateBufferReturnsGenerationHandleAndSnapshot},
+        {TEST_UPDATE_BUFFER, RhiUpdateBufferSignalsFenceAndRecordsBytes},
+        {TEST_BUFFER_CAPACITY, RhiBufferCapacityOverflowDoesNotMutate},
+        {TEST_TEXTURE_PRIMITIVE, RhiTextureCreateUpdateDestroyTracksSnapshot},
+        {TEST_SAMPLER_PRIMITIVE, RhiSamplerCreateDestroyTracksSnapshot},
+        {TEST_SHADER_EMPTY_BYTECODE, RhiShaderModuleRejectsEmptyBytecode},
+        {TEST_PIPELINE_INVALID_SHADERS, RhiPipelineRequiresValidShaderModules},
+        {TEST_PIPELINE_LIFECYCLE, RhiPipelineCreateDestroyUsesShaderModuleHandles},
+        {TEST_PRIMITIVE_STALE_HANDLE, RhiPrimitiveDestroyInvalidatesStaleHandles},
+        {TEST_INTERFACE_PRIMITIVE, RhiInterfacePrimitiveLifecycleMatchesNullDevice},
+        {TEST_PRIMITIVE_SNAPSHOT_COMPARISON, RhiPrimitiveSnapshotIsIncludedInDeviceSnapshotComparison},
         {TEST_NO_FORBIDDEN_DEPENDENCY, RhiNoResourceFileUploadShaderUiDependency}};
 
     const std::string_view test_name(argv[1]);
