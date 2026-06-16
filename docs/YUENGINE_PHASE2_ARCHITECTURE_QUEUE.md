@@ -69,6 +69,73 @@ Phase 2 remains blocked from:
 - original package parser as the first resource/file behavior;
 - report/capture/oracle ownership inside runtime behavior.
 
+## ENG-096 Hardware-First Resequence
+
+ENG-096 reorders active YuEngine work back toward the hardware and lower-engine
+layer before more World, Game Adapter, UI business, or scene policy expansion.
+The previous upper-layer slices are useful contract baselines, but they must not
+drive Platform, RHI, Audio, Input, Thread, File, Resource, Package, or diagnostics
+runtime shape.
+
+Current lower-engine reality:
+
+- Platform is headless-only: no OS window, native surface, event pump, raw input,
+  or GPU adapter discovery.
+- RHI is a null backend only: no backend-neutral device interface, no D3D/DXGI
+  device, no swapchain, no GPU buffers, no shaders, no pipeline state, no depth,
+  no upload/fence path, and no draw path.
+- Audio is a test backend only: no WASAPI/XAudio2 device, callback thread,
+  latency handoff, codec, streaming, or real sink.
+- Input is replay/action-binding only: no OS device bridge or focus-aware event
+  pump.
+- Thread/File/Package/Resource are deterministic first slices: no worker pool,
+  async IO, streaming, upload queue, cache ownership, or asset decode pipeline.
+
+The immediate ordering is:
+
+```text
+test tier labels and optional hardware-smoke presets
+-> Platform window/native surface/event pump
+-> RHI backend-neutral device boundary
+-> D3D11 device/context/swapchain clear/present/capture
+-> D3D11 resource and pipeline primitives
+-> visible triangle fixture
+-> static mesh fixture
+-> worker/job and async IO substrate
+-> package/resource streaming and upload queue
+-> real audio backend
+-> OS input bridge
+-> RenderCore fixture pass
+```
+
+Hard sequencing constraints:
+
+- Do not open additional World/Game Adapter gates until the hardware/lower-engine
+  backlog above has a stable implementation path or an explicit architecture
+  exception.
+- Do not combine Platform, RHI, RenderCore, mesh, Resource, Package, or Game
+  Adapter concerns in one gate.
+- Do not use visual demo success, screenshots, log output, or report existence as
+  proof for hardware backend progress. A promoted backend gate must prove public
+  interface behavior, capture/present evidence, and bounded cost.
+- UE and Unity remain responsibility references only. Do not copy proprietary
+  source, API shape, names, or file layout into YuEngine.
+- Test cost is reduced by tiering and labels, not by deleting deterministic
+  boundary and performance evidence.
+
+Required test-tier direction:
+
+- Keep `windows-fast-gate` deterministic and no-real-device by default.
+- Add CTest labels before or with the first real hardware gate: `Fast`,
+  `ModuleFixture`, `PerformanceSmoke`, `HardwareSmoke`, `EvidenceOracle`, plus
+  module labels such as `Platform`, `RHI`, `D3D11`, `Audio`, and `AsyncIO`.
+- Add optional local/CI presets for real devices, such as
+  `windows-hardware-smoke`, while keeping unsupported real-device environments
+  from blocking unrelated fast gates.
+- Require full `windows-fast-gate` at final handoff, QA, dependency/CMake
+  changes, and before landing. During implementation, targeted build/test is
+  allowed for focus and speed.
+
 ## ADR Queue
 
 | ID | Title | Owner | Reviewers | Status | Blocks |
@@ -84,6 +151,15 @@ Phase 2 remains blocked from:
 | P2-GATE-001 | Null RHI Device, Command, Present, And Capture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Null backend only; current fast gate has `RHI_` coverage; no real backend, shader, material, RenderCore, resource loading, UI, or game adapter |
 | P2-GATE-002 | Audio Test Backend And Mixer Sink | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Test backend only; current fast gate has `Audio_` coverage; no real device, callback thread, codec, streaming, resource, UI, script, gameplay, or game adapter |
 | P2-GATE-003 | Package Manifest And Load Plan Boundary | L4-L5 | `FIRST_SLICE_CLOSED_QA_CLEARED` | First slice closed | `354f8e2` closed the approved `YuPackage` / `YuPackageTests` first-slice review baseline; no new package code/CMake/test expansion, File/VFS runtime reads, resource mutation, or P3 work |
+| P2-GATE-004 | Test Tier Labels And Hardware Smoke Presets | L7 over L0-L3 | `NOT_APPROVED` | Next proposal target | Add CTest labels and optional hardware-smoke presets before real backend gates; no runtime behavior, no new backend, no test deletion |
+| P2-GATE-005 | Platform Window Native Surface And Event Pump | L0-L1 | `NOT_APPROVED` | Next proposal target | Win32 window lifecycle, native surface handle, message pump, resize/focus/close, raw event capture; no RHI, UI, Resource, Game Adapter, or render policy |
+| P2-GATE-006 | RHI Backend-Neutral Device Boundary | L3 | `NOT_APPROVED` | Proposed after P2-GATE-005 | Extract backend-neutral device/factory/surface contracts while keeping current Null backend tests passing; no D3D11 device yet, no RenderCore, no mesh |
+| P2-GATE-007 | D3D11 Device Swapchain Clear Present Capture | L3 | `NOT_APPROVED` | Proposed after P2-GATE-006 | D3D11 device/context/swapchain/backbuffer clear/present/capture smoke through RHI boundary; no shader, buffer, mesh, material, Resource, or scene |
+| P2-GATE-008 | D3D11 Resource And Pipeline Primitives | L3 | `NOT_APPROVED` | Proposed after P2-GATE-007 | Vertex/index/constant buffers, shader module boundary, input layout, pipeline state, texture/sampler, upload/update/fence; no RenderCore, material system, or scene traversal |
+| P2-GATE-009 | D3D11 Visible Triangle Fixture | L3 | `NOT_APPROVED` | Proposed after P2-GATE-008 | First visible geometry proof through RHI capture; no static mesh asset pipeline, RenderCore, World, UI, or Game Adapter |
+| P2-GATE-010 | Thread Worker And Async IO Substrate | L1-L3 | `NOT_APPROVED` | Parallel proposal candidate | Worker ownership, bounded queues, drain/cancel, async file completion; no Resource semantics, package streaming policy, upload queue, or gameplay |
+| P2-GATE-011 | Real Audio Backend Callback | L1-L3 | `NOT_APPROVED` | Parallel proposal candidate | WASAPI/XAudio2 callback backend into existing mixer/test-sink contract; no codec, BGM/SE business IDs, Resource loading, UI, script, or gameplay |
+| P2-GATE-012 | Platform Input Device Bridge | L1-L3 | `NOT_APPROVED` | Parallel proposal candidate | OS device events and focus-aware snapshots into Input boundary; no UI navigation, title menu behavior, script, scene, or Game Adapter |
 
 ## Current Active Gates
 
@@ -102,8 +178,12 @@ Phase 2 remains blocked from:
   baseline. Architect and CodeReviewerQA both verified the `Package_` CTest
   filter at `23/23`. This does not authorize new package code, CMake targets,
   tests, scope expansion, File/VFS runtime reads, resource mutation, or P3 work.
+- P2-GATE-004 through P2-GATE-012 are not approved. They are the ENG-096
+  hardware-first proposal queue and must go through normal gate review before
+  implementation.
 - No Phase 2 implementation task may be created until the owning gate is
-  approved and PM confirms sequencing against the active Phase 1 review queue.
+  approved and sequencing confirms it will not pull in World/Game Adapter,
+  RenderCore, scene policy, UI business, reports, or evidence tooling.
 
 ## Review Routing
 
@@ -116,14 +196,17 @@ Phase 2 remains blocked from:
 
 ## Immediate Next Steps
 
-1. Use the current null RHI and audio test-backend fast-gate baselines as stable
-   lower-layer vocabulary for approved upper gates, but do not expand either
-   module without an explicit next-slice gate or amended owning gate.
-2. Keep P2-GATE-003 package expansion held. The first slice is closed and QA
-   cleared, but later package work still requires a new explicit Architect
-   decision.
-3. Prepare RenderCore, real graphics backend, real audio backend, and async IO
-   only through new explicit gates. Do not infer those scopes from the first
-   null/test backend slices.
-4. Prepare async IO boundary only after Thread/File/Resource/Package review
-   state is stable enough to avoid depending on unresolved vocabulary.
+1. Open P2-GATE-004 first so hardware work can use labels and optional smoke
+   presets without forcing every small lower-layer change through all hardware
+   evidence.
+2. Prepare P2-GATE-005 Platform window/native surface/event pump as the first
+   real hardware-facing runtime gate. It must not depend on RHI, RenderCore,
+   Resource, UI, World, reports, or Game Adapter behavior.
+3. Prepare P2-GATE-006 and P2-GATE-007 as separate gates. Do not create a D3D11
+   mesh or RenderCore task before backend-neutral RHI and D3D11 clear/present/
+   capture are reviewed and approved.
+4. Keep Phase 3/World expansion paused except for critical fixes. The landed
+   P3 gates are contract baselines, not permission to keep moving upward while
+   lower hardware remains null/test-only.
+5. Prepare worker/job and async IO proposals in parallel with RHI planning, but
+   keep Resource/Package streaming semantics out until the substrate is proven.

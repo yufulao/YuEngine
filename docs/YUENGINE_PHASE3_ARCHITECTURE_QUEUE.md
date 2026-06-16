@@ -350,7 +350,13 @@ same first slices.
 
 ## Immediate Next Steps
 
-1. Treat P3-GATE-017, P3-GATE-018, P3-GATE-019, P3-GATE-020, P3-GATE-021,
+1. After ENG-096, pause new Phase 3/World expansion except for critical fixes
+   until the Phase 2 hardware-first queue has advanced through test tier labels,
+   Platform window/native surface, backend-neutral RHI, and the first real RHI
+   clear/present/capture gate. The landed Phase 3 work is a contract baseline,
+   not permission to keep moving upward while lower hardware remains null/test
+   only.
+2. Treat P3-GATE-017, P3-GATE-018, P3-GATE-019, P3-GATE-020, P3-GATE-021,
    and P3-GATE-022 as landed
    scene baselines. Future scene work must extend from caller-owned component
    attachment records, caller-owned component-resource binding records, manifest
@@ -358,27 +364,27 @@ same first slices.
    object-transform manifest stream transport, decoded restore plan/preflight,
    and apply-time restore proof slices without hidden allocation or storage
    growth.
-2. Do not use P3-GATE-017, P3-GATE-018, P3-GATE-019, P3-GATE-020,
+3. Do not use P3-GATE-017, P3-GATE-018, P3-GATE-019, P3-GATE-020,
    P3-GATE-021, or P3-GATE-022 to
    introduce scene loading, save policy, object construction, resource loading,
    active restore coordination, component payload/lifecycle, transform
    hierarchy, render/audio/physics/UI/tools/reports, or Game Adapter behavior.
    Those require a separate reviewed and approved gate.
-3. Future object/transform scene work must stay within the landed P3-GATE-019
+4. Future object/transform scene work must stay within the landed P3-GATE-019
    boundary unless a new gate expands it: caller-owned identity/transform
    records, duplicate object handle rejection before mutation, empty
    destinations, and minimal const `ObjectRegistry` acquire preflight without
    mutating `YuObject`.
-4. P3-GATE-020 is a landed manifest-stream baseline only. P3-GATE-021 and
+5. P3-GATE-020 is a landed manifest-stream baseline only. P3-GATE-021 and
    P3-GATE-022 are landed no-mutation plan/proof baselines only. A decoded
    active restore coordinator remains a later gate after separate cross-domain
    preflight and transaction proof.
-5. Use the landed P3-GATE-022 proof contract before active scene restore
+6. Use the landed P3-GATE-022 proof contract before active scene restore
    implementation. It authorizes only no-mutation apply-time proof generation
    and deterministic active-call slices; decoded active scene restore
    coordination still requires a separate reviewed and approved gate.
-6. Continue closing active Phase 1 and Phase 2 implementation reviews; current
+7. Continue closing active Phase 1 and Phase 2 implementation reviews; current
    package review closure does not authorize package expansion or P3 dependency
    creep.
-7. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
+8. Do not use P3-GATE-002 or P3-GATE-003 to introduce File/package/Resource/object
    construction/reflection/script/scene/save/tool/report/Game Adapter scope.
