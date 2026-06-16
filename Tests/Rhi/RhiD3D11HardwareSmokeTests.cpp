@@ -1,6 +1,7 @@
 // Module: Tests Rhi
 // File: Tests/Rhi/RhiD3D11HardwareSmokeTests.cpp
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -23,10 +24,13 @@
 #include "YuEngine/Rhi/RhiDeviceCreateResult.h"
 #include "YuEngine/Rhi/RhiDeviceDesc.h"
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
+#include "YuEngine/Rhi/RhiDrawDesc.h"
 #include "YuEngine/Rhi/RhiFenceHandle.h"
+#include "YuEngine/Rhi/RhiInputLayoutDesc.h"
 #include "YuEngine/Rhi/RhiNativeSurfaceDesc.h"
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
+#include "YuEngine/Rhi/RhiPrimitiveTopology.h"
 #include "YuEngine/Rhi/RhiSamplerDesc.h"
 #include "YuEngine/Rhi/RhiSamplerHandle.h"
 #include "YuEngine/Rhi/RhiShaderModuleDesc.h"
@@ -35,6 +39,7 @@
 #include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
+#include "YuEngine/Rhi/RhiVertexBufferView.h"
 
 using PlatformNativeSurface = yuengine::platform::PlatformNativeSurface;
 using PlatformWindowDesc = yuengine::platform::PlatformWindowDesc;
@@ -53,11 +58,16 @@ using yuengine::rhi::RhiCommandList;
 using yuengine::rhi::RhiDeviceCreateResult;
 using yuengine::rhi::RhiDeviceDesc;
 using yuengine::rhi::RhiDeviceFactory;
+using yuengine::rhi::RhiDrawDesc;
 using yuengine::rhi::RhiFenceHandle;
 using yuengine::rhi::RhiFormat;
+using yuengine::rhi::RhiInputElementFormat;
+using yuengine::rhi::RhiInputElementSemantic;
+using yuengine::rhi::RhiInputLayoutDesc;
 using yuengine::rhi::RhiNativeSurfaceDesc;
 using yuengine::rhi::RhiPipelineDesc;
 using yuengine::rhi::RhiPipelineHandle;
+using yuengine::rhi::RhiPrimitiveTopology;
 using yuengine::rhi::RhiSamplerDesc;
 using yuengine::rhi::RhiSamplerHandle;
 using yuengine::rhi::RhiShaderModuleDesc;
@@ -66,12 +76,20 @@ using yuengine::rhi::RhiShaderStage;
 using yuengine::rhi::RhiStatus;
 using yuengine::rhi::RhiTextureDesc;
 using yuengine::rhi::RhiTextureHandle;
+using yuengine::rhi::RhiVertexBufferView;
 
 namespace {
 constexpr const char *TEST_D3D11_CLEAR_PRESENT_CAPTURE = "RHI_D3D11Hardware_ClearPresentCaptureBytes";
 constexpr const char *TEST_D3D11_PRIMITIVE_RESOURCE_PIPELINE = "RHI_D3D11Hardware_PrimitiveResourcePipelineSnapshot";
+constexpr const char *TEST_D3D11_VISIBLE_TRIANGLE = "RHI_D3D11Hardware_VisibleTriangleCaptureBytes";
 constexpr std::uint32_t SMOKE_EXTENT = 4U;
 constexpr int SKIP_RETURN_CODE = 77;
+constexpr std::uint32_t TRIANGLE_VERTEX_COUNT = 3U;
+constexpr std::size_t TRIANGLE_VERTEX_STRIDE_BYTES = sizeof(float) * 6U;
+struct TriangleVertex final {
+    float position[2];
+    float color[4];
+};
 constexpr std::uint8_t VERTEX_SHADER_BYTES[] = {
     0x44U, 0x58U, 0x42U, 0x43U, 0x07U, 0x36U, 0x40U, 0xB0U,
     0xF6U, 0x7FU, 0xF2U, 0x2AU, 0xA8U, 0xDEU, 0xDBU, 0x0BU,
@@ -125,6 +143,154 @@ constexpr std::uint8_t PIXEL_SHADER_BYTES[] = {
     0x00U, 0x00U, 0x80U, 0x3FU, 0x00U, 0x00U, 0x00U, 0x00U,
     0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x80U, 0x3FU,
     0x3EU, 0x00U, 0x00U, 0x01U};
+constexpr std::uint8_t TRIANGLE_VERTEX_SHADER_BYTES[] = {
+    0x44U, 0x58U, 0x42U, 0x43U, 0x61U, 0x54U, 0x15U, 0x34U,
+    0x22U, 0xF6U, 0x73U, 0x92U, 0x9FU, 0x1FU, 0xCEU, 0xBBU,
+    0xC2U, 0x9AU, 0x71U, 0x91U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x74U, 0x02U, 0x00U, 0x00U, 0x05U, 0x00U, 0x00U, 0x00U,
+    0x34U, 0x00U, 0x00U, 0x00U, 0xA0U, 0x00U, 0x00U, 0x00U,
+    0xF0U, 0x00U, 0x00U, 0x00U, 0x44U, 0x01U, 0x00U, 0x00U,
+    0xD8U, 0x01U, 0x00U, 0x00U, 0x52U, 0x44U, 0x45U, 0x46U,
+    0x64U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x3CU, 0x00U, 0x00U, 0x00U, 0x00U, 0x05U, 0xFEU, 0xFFU,
+    0x00U, 0x01U, 0x00U, 0x00U, 0x3CU, 0x00U, 0x00U, 0x00U,
+    0x52U, 0x44U, 0x31U, 0x31U, 0x3CU, 0x00U, 0x00U, 0x00U,
+    0x18U, 0x00U, 0x00U, 0x00U, 0x20U, 0x00U, 0x00U, 0x00U,
+    0x28U, 0x00U, 0x00U, 0x00U, 0x24U, 0x00U, 0x00U, 0x00U,
+    0x0CU, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x4DU, 0x69U, 0x63U, 0x72U, 0x6FU, 0x73U, 0x6FU, 0x66U,
+    0x74U, 0x20U, 0x28U, 0x52U, 0x29U, 0x20U, 0x48U, 0x4CU,
+    0x53U, 0x4CU, 0x20U, 0x53U, 0x68U, 0x61U, 0x64U, 0x65U,
+    0x72U, 0x20U, 0x43U, 0x6FU, 0x6DU, 0x70U, 0x69U, 0x6CU,
+    0x65U, 0x72U, 0x20U, 0x31U, 0x30U, 0x2EU, 0x31U, 0x00U,
+    0x49U, 0x53U, 0x47U, 0x4EU, 0x48U, 0x00U, 0x00U, 0x00U,
+    0x02U, 0x00U, 0x00U, 0x00U, 0x08U, 0x00U, 0x00U, 0x00U,
+    0x38U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x03U, 0x03U, 0x00U, 0x00U,
+    0x41U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x0FU, 0x0FU, 0x00U, 0x00U,
+    0x50U, 0x4FU, 0x53U, 0x49U, 0x54U, 0x49U, 0x4FU, 0x4EU,
+    0x00U, 0x43U, 0x4FU, 0x4CU, 0x4FU, 0x52U, 0x00U, 0xABU,
+    0x4FU, 0x53U, 0x47U, 0x4EU, 0x4CU, 0x00U, 0x00U, 0x00U,
+    0x02U, 0x00U, 0x00U, 0x00U, 0x08U, 0x00U, 0x00U, 0x00U,
+    0x38U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x0FU, 0x00U, 0x00U, 0x00U,
+    0x44U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x0FU, 0x00U, 0x00U, 0x00U,
+    0x53U, 0x56U, 0x5FU, 0x50U, 0x6FU, 0x73U, 0x69U, 0x74U,
+    0x69U, 0x6FU, 0x6EU, 0x00U, 0x43U, 0x4FU, 0x4CU, 0x4FU,
+    0x52U, 0x00U, 0xABU, 0xABU, 0x53U, 0x48U, 0x45U, 0x58U,
+    0x8CU, 0x00U, 0x00U, 0x00U, 0x50U, 0x00U, 0x01U, 0x00U,
+    0x23U, 0x00U, 0x00U, 0x00U, 0x6AU, 0x08U, 0x00U, 0x01U,
+    0x5FU, 0x00U, 0x00U, 0x03U, 0x32U, 0x10U, 0x10U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x5FU, 0x00U, 0x00U, 0x03U,
+    0xF2U, 0x10U, 0x10U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x67U, 0x00U, 0x00U, 0x04U, 0xF2U, 0x20U, 0x10U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x65U, 0x00U, 0x00U, 0x03U, 0xF2U, 0x20U, 0x10U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x36U, 0x00U, 0x00U, 0x05U,
+    0x32U, 0x20U, 0x10U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x46U, 0x10U, 0x10U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x36U, 0x00U, 0x00U, 0x08U, 0xC2U, 0x20U, 0x10U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x02U, 0x40U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x80U, 0x3FU,
+    0x36U, 0x00U, 0x00U, 0x05U, 0xF2U, 0x20U, 0x10U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x46U, 0x1EU, 0x10U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x3EU, 0x00U, 0x00U, 0x01U,
+    0x53U, 0x54U, 0x41U, 0x54U, 0x94U, 0x00U, 0x00U, 0x00U,
+    0x04U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x04U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U
+};
+constexpr std::uint8_t TRIANGLE_PIXEL_SHADER_BYTES[] = {
+    0x44U, 0x58U, 0x42U, 0x43U, 0x1CU, 0xA4U, 0xEEU, 0x2AU,
+    0x1EU, 0xD3U, 0xBBU, 0x57U, 0xC2U, 0x0AU, 0x8EU, 0x49U,
+    0xAEU, 0x76U, 0xE9U, 0x5DU, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x08U, 0x02U, 0x00U, 0x00U, 0x05U, 0x00U, 0x00U, 0x00U,
+    0x34U, 0x00U, 0x00U, 0x00U, 0xA0U, 0x00U, 0x00U, 0x00U,
+    0xF4U, 0x00U, 0x00U, 0x00U, 0x28U, 0x01U, 0x00U, 0x00U,
+    0x6CU, 0x01U, 0x00U, 0x00U, 0x52U, 0x44U, 0x45U, 0x46U,
+    0x64U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x3CU, 0x00U, 0x00U, 0x00U, 0x00U, 0x05U, 0xFFU, 0xFFU,
+    0x00U, 0x01U, 0x00U, 0x00U, 0x3CU, 0x00U, 0x00U, 0x00U,
+    0x52U, 0x44U, 0x31U, 0x31U, 0x3CU, 0x00U, 0x00U, 0x00U,
+    0x18U, 0x00U, 0x00U, 0x00U, 0x20U, 0x00U, 0x00U, 0x00U,
+    0x28U, 0x00U, 0x00U, 0x00U, 0x24U, 0x00U, 0x00U, 0x00U,
+    0x0CU, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x4DU, 0x69U, 0x63U, 0x72U, 0x6FU, 0x73U, 0x6FU, 0x66U,
+    0x74U, 0x20U, 0x28U, 0x52U, 0x29U, 0x20U, 0x48U, 0x4CU,
+    0x53U, 0x4CU, 0x20U, 0x53U, 0x68U, 0x61U, 0x64U, 0x65U,
+    0x72U, 0x20U, 0x43U, 0x6FU, 0x6DU, 0x70U, 0x69U, 0x6CU,
+    0x65U, 0x72U, 0x20U, 0x31U, 0x30U, 0x2EU, 0x31U, 0x00U,
+    0x49U, 0x53U, 0x47U, 0x4EU, 0x4CU, 0x00U, 0x00U, 0x00U,
+    0x02U, 0x00U, 0x00U, 0x00U, 0x08U, 0x00U, 0x00U, 0x00U,
+    0x38U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x0FU, 0x00U, 0x00U, 0x00U,
+    0x44U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x0FU, 0x0FU, 0x00U, 0x00U,
+    0x53U, 0x56U, 0x5FU, 0x50U, 0x6FU, 0x73U, 0x69U, 0x74U,
+    0x69U, 0x6FU, 0x6EU, 0x00U, 0x43U, 0x4FU, 0x4CU, 0x4FU,
+    0x52U, 0x00U, 0xABU, 0xABU, 0x4FU, 0x53U, 0x47U, 0x4EU,
+    0x2CU, 0x00U, 0x00U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x08U, 0x00U, 0x00U, 0x00U, 0x20U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x03U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x0FU, 0x00U, 0x00U, 0x00U, 0x53U, 0x56U, 0x5FU, 0x54U,
+    0x61U, 0x72U, 0x67U, 0x65U, 0x74U, 0x00U, 0xABU, 0xABU,
+    0x53U, 0x48U, 0x45U, 0x58U, 0x3CU, 0x00U, 0x00U, 0x00U,
+    0x50U, 0x00U, 0x00U, 0x00U, 0x0FU, 0x00U, 0x00U, 0x00U,
+    0x6AU, 0x08U, 0x00U, 0x01U, 0x62U, 0x10U, 0x00U, 0x03U,
+    0xF2U, 0x10U, 0x10U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x65U, 0x00U, 0x00U, 0x03U, 0xF2U, 0x20U, 0x10U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x36U, 0x00U, 0x00U, 0x05U,
+    0xF2U, 0x20U, 0x10U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x46U, 0x1EU, 0x10U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x3EU, 0x00U, 0x00U, 0x01U, 0x53U, 0x54U, 0x41U, 0x54U,
+    0x94U, 0x00U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x02U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U
+};
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -162,6 +328,89 @@ bool BytesMatchColor(const std::vector<std::uint8_t> &bytes, RhiColor color) {
     }
 
     return true;
+}
+
+bool IsRedTrianglePixel(const std::vector<std::uint8_t> &bytes, std::size_t index) {
+    if (bytes[index] < 200U) {
+        return false;
+    }
+
+    if (bytes[index + 1U] > 40U) {
+        return false;
+    }
+
+    if (bytes[index + 2U] > 40U) {
+        return false;
+    }
+
+    return bytes[index + 3U] == 255U;
+}
+
+bool IsBlackBackgroundPixel(const std::vector<std::uint8_t> &bytes, std::size_t index) {
+    if (bytes[index] > 40U) {
+        return false;
+    }
+
+    if (bytes[index + 1U] > 40U) {
+        return false;
+    }
+
+    if (bytes[index + 2U] > 40U) {
+        return false;
+    }
+
+    return bytes[index + 3U] == 255U;
+}
+
+bool CaptureContainsVisibleTriangle(const std::vector<std::uint8_t> &bytes) {
+    std::size_t red_count = 0U;
+    std::size_t black_count = 0U;
+    for (std::size_t index = 0U; index < bytes.size(); index += RGBA8_BYTES_PER_PIXEL) {
+        if (IsRedTrianglePixel(bytes, index)) {
+            ++red_count;
+            continue;
+        }
+
+        if (IsBlackBackgroundPixel(bytes, index)) {
+            ++black_count;
+        }
+    }
+
+    if (red_count == 0U) {
+        return false;
+    }
+
+    return black_count > 0U;
+}
+
+RhiInputLayoutDesc TriangleInputLayoutDesc() {
+    RhiInputLayoutDesc desc{};
+    desc.elements[0U].semantic = RhiInputElementSemantic::Position;
+    desc.elements[0U].format = RhiInputElementFormat::Float32x2;
+    desc.elements[0U].offset_bytes = 0U;
+    desc.elements[1U].semantic = RhiInputElementSemantic::Color;
+    desc.elements[1U].format = RhiInputElementFormat::Float32x4;
+    desc.elements[1U].offset_bytes = sizeof(float) * 2U;
+    desc.element_count = 2U;
+    desc.stride_bytes = TRIANGLE_VERTEX_STRIDE_BYTES;
+    return desc;
+}
+
+RhiDrawDesc TriangleDrawDesc() {
+    RhiDrawDesc desc{};
+    desc.topology = RhiPrimitiveTopology::TriangleList;
+    desc.vertex_count = TRIANGLE_VERTEX_COUNT;
+    desc.first_vertex = 0U;
+    return desc;
+}
+
+RhiVertexBufferView TriangleVertexBufferViewFor(RhiBufferHandle buffer) {
+    RhiVertexBufferView view{};
+    view.buffer = buffer;
+    view.offset_bytes = 0U;
+    view.stride_bytes = TRIANGLE_VERTEX_STRIDE_BYTES;
+    view.size_bytes = sizeof(TriangleVertex) * TRIANGLE_VERTEX_COUNT;
+    return view;
 }
 
 RhiStatus ClearPresentCapture(IRhiDevice &device, RhiTextureHandle target, RhiColor color, std::vector<std::uint8_t> &capture) {
@@ -508,6 +757,222 @@ int RunD3D11PrimitiveResourcePipeline() {
 
     return 0;
 }
+
+int RunD3D11VisibleTriangleCapture() {
+    WindowsPlatformWindow window;
+    PlatformWindowDesc window_desc{};
+    window_desc.title = "YuEngine D3D11 Visible Triangle Smoke";
+    window_desc.client_width = SMOKE_EXTENT;
+    window_desc.client_height = SMOKE_EXTENT;
+    window_desc.visible = false;
+
+    const PlatformWindowStatus window_status = window.Create(window_desc);
+    if (window_status != PlatformWindowStatus::Success) {
+        return Skip("d3d11 visible triangle smoke skipped because a native window could not be created");
+    }
+
+    const std::size_t storage_size = RhiDeviceFactory::RequiredDeviceStorageSize(RhiBackendKind::D3D11);
+    if (storage_size == 0U) {
+        return Skip("d3d11 visible triangle smoke skipped because the backend is not compiled");
+    }
+
+    std::vector<std::byte> storage(storage_size);
+    RhiDeviceDesc device_desc{};
+    device_desc.backend_kind = RhiBackendKind::D3D11;
+    device_desc.native_surface = ConvertSurface(window.GetNativeSurface());
+    device_desc.requires_native_surface = true;
+    device_desc.requires_swapchain = true;
+    device_desc.swapchain.extent = {SMOKE_EXTENT, SMOKE_EXTENT};
+    device_desc.command_list_capacity = MAX_COMMANDS;
+
+    const RhiDeviceCreateResult create_result = RhiDeviceFactory::CreateDevice(
+        device_desc,
+        std::span<std::byte>(storage.data(), storage.size()));
+    if (create_result.status == RhiStatus::MissingHardware) {
+        return Skip("d3d11 visible triangle smoke skipped because a hardware D3D11 device is unavailable");
+    }
+
+    if (create_result.status != RhiStatus::Success) {
+        return Fail("d3d11 visible triangle device creation failed");
+    }
+
+    if (create_result.device == nullptr) {
+        return Fail("d3d11 visible triangle device creation returned null device");
+    }
+
+    IRhiDevice &device = *create_result.device;
+    RhiTextureHandle target{};
+    RhiStatus status = device.GetSwapchainColorTarget(target);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle swapchain target query failed");
+    }
+
+    std::array<TriangleVertex, 3U> vertices{};
+    vertices[0U].position[0U] = -1.0F;
+    vertices[0U].position[1U] = -1.0F;
+    vertices[0U].color[0U] = 1.0F;
+    vertices[0U].color[3U] = 1.0F;
+    vertices[1U].position[0U] = -1.0F;
+    vertices[1U].position[1U] = 1.0F;
+    vertices[1U].color[0U] = 1.0F;
+    vertices[1U].color[3U] = 1.0F;
+    vertices[2U].position[0U] = 1.0F;
+    vertices[2U].position[1U] = -1.0F;
+    vertices[2U].color[0U] = 1.0F;
+    vertices[2U].color[3U] = 1.0F;
+
+    const auto vertex_byte_pointer = reinterpret_cast<const std::uint8_t *>(vertices.data());
+    const std::size_t vertex_byte_count = sizeof(TriangleVertex) * vertices.size();
+    const std::span<const std::uint8_t> vertex_span(vertex_byte_pointer, vertex_byte_count);
+    RhiBufferDesc buffer_desc{};
+    buffer_desc.usage = RhiBufferUsage::Vertex;
+    buffer_desc.size_bytes = vertex_byte_count;
+    RhiBufferHandle vertex_buffer{};
+    status = device.CreateBuffer(buffer_desc, vertex_span, vertex_buffer);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle vertex buffer creation failed");
+    }
+
+    const std::span<const std::uint8_t> vertex_bytecode(
+        TRIANGLE_VERTEX_SHADER_BYTES,
+        sizeof(TRIANGLE_VERTEX_SHADER_BYTES));
+    const RhiShaderModuleDesc vertex_desc{RhiShaderStage::Vertex, vertex_bytecode};
+    RhiShaderModuleHandle vertex_shader{};
+    status = device.CreateShaderModule(vertex_desc, vertex_shader);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle vertex shader creation failed");
+    }
+
+    const std::span<const std::uint8_t> pixel_bytecode(
+        TRIANGLE_PIXEL_SHADER_BYTES,
+        sizeof(TRIANGLE_PIXEL_SHADER_BYTES));
+    const RhiShaderModuleDesc pixel_desc{RhiShaderStage::Pixel, pixel_bytecode};
+    RhiShaderModuleHandle pixel_shader{};
+    status = device.CreateShaderModule(pixel_desc, pixel_shader);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle pixel shader creation failed");
+    }
+
+    RhiPipelineDesc pipeline_desc{};
+    pipeline_desc.vertex_shader = vertex_shader;
+    pipeline_desc.pixel_shader = pixel_shader;
+    pipeline_desc.input_layout = TriangleInputLayoutDesc();
+    RhiPipelineHandle pipeline{};
+    status = device.CreatePipeline(pipeline_desc, pipeline);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle pipeline creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    status = command_list.BeginFrame(target);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle begin frame failed");
+    }
+
+    status = device.RecordClear(command_list, target, RhiColor{0U, 0U, 0U, 255U});
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle clear recording failed");
+    }
+
+    status = device.RecordBindPipeline(command_list, pipeline);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle pipeline bind recording failed");
+    }
+
+    status = device.RecordBindVertexBuffer(command_list, TriangleVertexBufferViewFor(vertex_buffer));
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle vertex buffer bind recording failed");
+    }
+
+    status = device.RecordDraw(command_list, TriangleDrawDesc());
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle draw recording failed");
+    }
+
+    status = command_list.EndFrame();
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle end frame failed");
+    }
+
+    status = device.Submit(command_list);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle submit failed");
+    }
+
+    status = device.Present();
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle present failed");
+    }
+
+    std::vector<std::uint8_t> capture(SMOKE_EXTENT * SMOKE_EXTENT * RGBA8_BYTES_PER_PIXEL);
+    const RhiCaptureResult capture_result = device.CapturePresentedTarget(
+        std::span<std::uint8_t>(capture.data(), capture.size()));
+    if (capture_result.status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle capture failed");
+    }
+
+    if (capture_result.bytes_written != capture.size()) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle capture byte count was wrong");
+    }
+
+    if (!CaptureContainsVisibleTriangle(capture)) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle capture did not contain triangle and background pixels");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.submitted_draw_count != 1U) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle submitted draw count was not tracked");
+    }
+
+    if (snapshot.last_draw_vertex_count != TRIANGLE_VERTEX_COUNT) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle last draw vertex count was not tracked");
+    }
+
+    if (device.DestroyPipeline(pipeline) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle pipeline destroy failed");
+    }
+
+    if (device.DestroyShaderModule(pixel_shader) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle pixel shader destroy failed");
+    }
+
+    if (device.DestroyShaderModule(vertex_shader) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle vertex shader destroy failed");
+    }
+
+    if (device.DestroyBuffer(vertex_buffer) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 visible triangle vertex buffer destroy failed");
+    }
+
+    const RhiStatus destroy_status = RhiDeviceFactory::DestroyDevice(create_result.device);
+    if (destroy_status != RhiStatus::Success) {
+        return Fail("d3d11 visible triangle device destroy failed");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -522,6 +987,10 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_D3D11_PRIMITIVE_RESOURCE_PIPELINE) {
         return RunD3D11PrimitiveResourcePipeline();
+    }
+
+    if (test_name == TEST_D3D11_VISIBLE_TRIANGLE) {
+        return RunD3D11VisibleTriangleCapture();
     }
 
     return Fail("unknown test name");

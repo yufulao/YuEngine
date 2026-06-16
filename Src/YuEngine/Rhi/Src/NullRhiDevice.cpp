@@ -11,6 +11,22 @@
 namespace yuengine::rhi {
 namespace {
 constexpr std::uint32_t INVALID_GENERATION = 0U;
+
+std::size_t InputElementFormatByteCount(RhiInputElementFormat format) {
+    if (format == RhiInputElementFormat::Float32x2) {
+        return sizeof(float) * 2U;
+    }
+
+    if (format == RhiInputElementFormat::Float32x3) {
+        return sizeof(float) * 3U;
+    }
+
+    if (format == RhiInputElementFormat::Float32x4) {
+        return sizeof(float) * 4U;
+    }
+
+    return 0U;
+}
 }
 
 RhiDeviceCreateResult RhiDeviceFactory::CreateDevice(const RhiDeviceDesc &desc, NullRhiDevice *null_device) {
@@ -254,6 +270,48 @@ RhiStatus NullRhiDevice::RecordClear(RhiCommandList &command_list, RhiTextureHan
     return RhiStatus::Success;
 }
 
+RhiStatus NullRhiDevice::RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) {
+    if (!IsPipelineHandleValid(handle)) {
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    const RhiStatus status = command_list.RecordBindPipeline(handle);
+    if (status != RhiStatus::Success) {
+        return RecordFailure(status);
+    }
+
+    ++snapshot_.recorded_command_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus NullRhiDevice::RecordBindVertexBuffer(RhiCommandList &command_list, const RhiVertexBufferView &view) {
+    if (!IsVertexBufferViewValid(view)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    const RhiStatus status = command_list.RecordBindVertexBuffer(view);
+    if (status != RhiStatus::Success) {
+        return RecordFailure(status);
+    }
+
+    ++snapshot_.recorded_command_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus NullRhiDevice::RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) {
+    if (!IsDrawDescValid(desc)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    const RhiStatus status = command_list.RecordDraw(desc);
+    if (status != RhiStatus::Success) {
+        return RecordFailure(status);
+    }
+
+    ++snapshot_.recorded_command_count;
+    return RhiStatus::Success;
+}
+
 RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
     if (!command_list.IsComplete()) {
         return RecordFailure(RhiStatus::InvalidLifecycle);
@@ -268,16 +326,69 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
         return RecordFailure(RhiStatus::InvalidHandle);
     }
 
+    bool has_pipeline = false;
+    bool has_vertex_buffer = false;
+    RhiPipelineHandle bound_pipeline{};
+    RhiVertexBufferView bound_vertex_buffer{};
+    std::uint64_t submitted_draw_count = 0U;
+    std::uint32_t last_draw_vertex_count = 0U;
     for (std::size_t index = 0U; index < command_list.CommandCount(); ++index) {
-        const RhiCommandRecord& command = command_list.CommandAt(index);
+        const RhiCommandRecord &command = command_list.CommandAt(index);
         if (!IsCommandTargetValidForFrame(command, target)) {
             return RecordFailure(RhiStatus::InvalidHandle);
+        }
+
+        if (command.type == RhiCommandType::BindPipeline) {
+            if (!IsPipelineHandleValid(command.pipeline)) {
+                return RecordFailure(RhiStatus::InvalidHandle);
+            }
+
+            bound_pipeline = command.pipeline;
+            has_pipeline = true;
+            continue;
+        }
+
+        if (command.type == RhiCommandType::BindVertexBuffer) {
+            if (!IsVertexBufferViewValid(command.vertex_buffer)) {
+                return RecordFailure(RhiStatus::InvalidDescriptor);
+            }
+
+            bound_vertex_buffer = command.vertex_buffer;
+            has_vertex_buffer = true;
+            continue;
+        }
+
+        if (command.type == RhiCommandType::Draw) {
+            if (!has_pipeline) {
+                return RecordFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (!has_vertex_buffer) {
+                return RecordFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (!IsDrawDescValid(command.draw)) {
+                return RecordFailure(RhiStatus::InvalidDescriptor);
+            }
+
+            if (!IsDrawRangeValid(bound_vertex_buffer, command.draw)) {
+                return RecordFailure(RhiStatus::InvalidDescriptor);
+            }
+
+            const NullPipelineSlot &pipeline = pipelines_[bound_pipeline.slot];
+            if (!IsInputLayoutDescValid(pipeline.desc.input_layout)) {
+                return RecordFailure(RhiStatus::InvalidDescriptor);
+            }
+
+            ++submitted_draw_count;
+            last_draw_vertex_count = command.draw.vertex_count;
+            continue;
         }
     }
 
     snapshot_.command_storage_capacity_before_frame = command_list.Capacity();
     for (std::size_t index = 0U; index < command_list.CommandCount(); ++index) {
-        const RhiCommandRecord& command = command_list.CommandAt(index);
+        const RhiCommandRecord &command = command_list.CommandAt(index);
         if (command.type == RhiCommandType::ClearColor) {
             ExecuteClear(command.target, command.color);
             continue;
@@ -288,6 +399,8 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
     has_submitted_frame_ = true;
     has_presented_frame_ = false;
     ++snapshot_.submit_count;
+    snapshot_.submitted_draw_count += submitted_draw_count;
+    snapshot_.last_draw_vertex_count = last_draw_vertex_count;
     snapshot_.command_storage_capacity_after_last_frame = command_list.Capacity();
     return RhiStatus::Success;
 }
@@ -773,6 +886,104 @@ bool NullRhiDevice::IsCommandTargetValidForFrame(const RhiCommandRecord &command
     return IsTargetHandleValid(command.target);
 }
 
+bool NullRhiDevice::IsVertexBufferViewValid(const RhiVertexBufferView &view) const {
+    if (!IsBufferHandleValid(view.buffer)) {
+        return false;
+    }
+
+    const NullBufferSlot &slot = buffers_[view.buffer.slot];
+    if (slot.desc.usage != RhiBufferUsage::Vertex) {
+        return false;
+    }
+
+    if (view.stride_bytes == 0U) {
+        return false;
+    }
+
+    if (view.size_bytes == 0U) {
+        return false;
+    }
+
+    if (view.offset_bytes > slot.desc.size_bytes) {
+        return false;
+    }
+
+    const std::size_t remaining_bytes = slot.desc.size_bytes - view.offset_bytes;
+    if (view.size_bytes > remaining_bytes) {
+        return false;
+    }
+
+    return true;
+}
+
+bool NullRhiDevice::IsDrawDescValid(const RhiDrawDesc &desc) const {
+    if (desc.topology != RhiPrimitiveTopology::TriangleList) {
+        return false;
+    }
+
+    if (desc.vertex_count == 0U) {
+        return false;
+    }
+
+    return true;
+}
+
+bool NullRhiDevice::IsInputLayoutDescValid(const RhiInputLayoutDesc &desc) const {
+    if (desc.element_count == 0U) {
+        return false;
+    }
+
+    if (desc.element_count > MAX_RHI_INPUT_ELEMENTS) {
+        return false;
+    }
+
+    if (desc.stride_bytes == 0U) {
+        return false;
+    }
+
+    bool has_position = false;
+    for (std::size_t index = 0U; index < desc.element_count; ++index) {
+        const RhiInputElementDesc &element = desc.elements[index];
+        if (element.semantic == RhiInputElementSemantic::Unsupported) {
+            return false;
+        }
+
+        if (element.semantic == RhiInputElementSemantic::Position) {
+            has_position = true;
+        }
+
+        const std::size_t element_bytes = InputElementFormatByteCount(element.format);
+        if (element_bytes == 0U) {
+            return false;
+        }
+
+        if (element.offset_bytes >= desc.stride_bytes) {
+            return false;
+        }
+
+        const std::size_t remaining_bytes = desc.stride_bytes - element.offset_bytes;
+        if (element_bytes > remaining_bytes) {
+            return false;
+        }
+    }
+
+    return has_position;
+}
+
+bool NullRhiDevice::IsDrawRangeValid(const RhiVertexBufferView &view, const RhiDrawDesc &desc) const {
+    if (view.stride_bytes == 0U) {
+        return false;
+    }
+
+    const std::size_t available_vertices = view.size_bytes / view.stride_bytes;
+    if (desc.first_vertex > available_vertices) {
+        return false;
+    }
+
+    const std::size_t remaining_vertices = available_vertices - desc.first_vertex;
+    return desc.vertex_count <= remaining_vertices;
+}
+
 bool NullRhiDevice::IsColorTargetDescValid(const RhiColorTargetDesc &desc) const {
     if (desc.extent.width == 0U) {
         return false;
@@ -862,7 +1073,7 @@ bool NullRhiDevice::IsShaderModuleDescValid(const RhiShaderModuleDesc &desc) con
 }
 
 bool NullRhiDevice::IsPipelineDescValid(const RhiPipelineDesc &desc) const {
-    if (desc.input_layout.element_count != 0U) {
+    if (desc.input_layout.element_count != 0U && !IsInputLayoutDescValid(desc.input_layout)) {
         return false;
     }
 

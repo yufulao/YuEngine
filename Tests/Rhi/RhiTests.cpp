@@ -17,10 +17,13 @@
 #include "YuEngine/Rhi/RhiBufferUsage.h"
 #include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
+#include "YuEngine/Rhi/RhiDrawDesc.h"
 #include "YuEngine/Rhi/RhiFenceHandle.h"
+#include "YuEngine/Rhi/RhiInputLayoutDesc.h"
 #include "YuEngine/Rhi/RhiNativeSurfaceDesc.h"
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
+#include "YuEngine/Rhi/RhiPrimitiveTopology.h"
 #include "YuEngine/Rhi/RhiSamplerDesc.h"
 #include "YuEngine/Rhi/RhiSamplerHandle.h"
 #include "YuEngine/Rhi/RhiShaderModuleDesc.h"
@@ -28,6 +31,7 @@
 #include "YuEngine/Rhi/RhiShaderStage.h"
 #include "YuEngine/Rhi/RhiSwapchainDesc.h"
 #include "YuEngine/Rhi/RhiTextureDesc.h"
+#include "YuEngine/Rhi/RhiVertexBufferView.h"
 
 using IRhiDevice = yuengine::rhi::IRhiDevice;
 using NullRhiDevice = yuengine::rhi::NullRhiDevice;
@@ -43,11 +47,16 @@ using RhiDeviceCreateResult = yuengine::rhi::RhiDeviceCreateResult;
 using RhiDeviceDesc = yuengine::rhi::RhiDeviceDesc;
 using RhiDeviceFactory = yuengine::rhi::RhiDeviceFactory;
 using RhiDeviceSnapshot = yuengine::rhi::RhiDeviceSnapshot;
+using RhiDrawDesc = yuengine::rhi::RhiDrawDesc;
 using RhiFenceHandle = yuengine::rhi::RhiFenceHandle;
 using yuengine::rhi::RhiFormat;
+using yuengine::rhi::RhiInputElementFormat;
+using yuengine::rhi::RhiInputElementSemantic;
+using RhiInputLayoutDesc = yuengine::rhi::RhiInputLayoutDesc;
 using RhiNativeSurfaceDesc = yuengine::rhi::RhiNativeSurfaceDesc;
 using RhiPipelineDesc = yuengine::rhi::RhiPipelineDesc;
 using RhiPipelineHandle = yuengine::rhi::RhiPipelineHandle;
+using yuengine::rhi::RhiPrimitiveTopology;
 using RhiSamplerDesc = yuengine::rhi::RhiSamplerDesc;
 using RhiSamplerHandle = yuengine::rhi::RhiSamplerHandle;
 using RhiShaderModuleDesc = yuengine::rhi::RhiShaderModuleDesc;
@@ -57,6 +66,7 @@ using yuengine::rhi::RhiStatus;
 using RhiSwapchainDesc = yuengine::rhi::RhiSwapchainDesc;
 using RhiTextureDesc = yuengine::rhi::RhiTextureDesc;
 using RhiTextureHandle = yuengine::rhi::RhiTextureHandle;
+using RhiVertexBufferView = yuengine::rhi::RhiVertexBufferView;
 using yuengine::rhi::MAX_COMMANDS;
 using yuengine::rhi::MAX_COLOR_TARGET_EXTENT;
 using yuengine::rhi::MAX_COLOR_TARGETS;
@@ -123,6 +133,10 @@ constexpr const char* TEST_PIPELINE_LIFECYCLE = "RHI_PipelineCreateDestroy_UsesS
 constexpr const char* TEST_PRIMITIVE_STALE_HANDLE = "RHI_PrimitiveDestroyInvalidatesStaleHandles";
 constexpr const char* TEST_INTERFACE_PRIMITIVE = "RHI_Interface_PrimitiveLifecycle_MatchesNullDevice";
 constexpr const char* TEST_PRIMITIVE_SNAPSHOT_COMPARISON = "RHI_PrimitiveSnapshot_IsIncludedInDeviceSnapshotComparison";
+constexpr const char* TEST_RECORD_VISIBLE_TRIANGLE = "RHI_CommandList_RecordsVisibleTriangleCommandsWithinCapacity";
+constexpr const char* TEST_DRAW_REQUIRES_PIPELINE = "RHI_SubmitDrawRejectsMissingPipelineWithoutMutation";
+constexpr const char* TEST_DRAW_RANGE_OVERFLOW = "RHI_SubmitDrawRejectsVertexBufferRangeOverflow";
+constexpr const char* TEST_DRAW_SNAPSHOT = "RHI_SubmitDraw_UpdatesNullSnapshot";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* REINIT_TARGET_CREATION_MESSAGE = "target creation failed";
@@ -154,6 +168,9 @@ constexpr const char* CAPTURE_DESTROYED_COUNT_MESSAGE = "destroyed target captur
 constexpr const char* CAPTURE_DESTROYED_LAST_BYTES_MESSAGE = "destroyed target capture changed last capture byte count";
 constexpr const char* CAPTURE_DESTROYED_DESTROY_COUNT_MESSAGE = "destroyed target capture changed destroy count";
 constexpr std::uint8_t SENTINEL_BYTE = 0xAAU;
+constexpr std::uint32_t TRIANGLE_VERTEX_COUNT = 3U;
+constexpr std::size_t TRIANGLE_VERTEX_STRIDE_BYTES = sizeof(float) * 6U;
+constexpr std::size_t TRIANGLE_VERTEX_BUFFER_BYTES = TRIANGLE_VERTEX_STRIDE_BYTES * TRIANGLE_VERTEX_COUNT;
 using TestFunction = int (*)();
 
 int Fail(std::string_view message) {
@@ -180,8 +197,48 @@ RhiBufferDesc SmallVertexBufferDesc() {
     return RhiBufferDesc{RhiBufferUsage::Vertex, 4U};
 }
 
+RhiBufferDesc TriangleVertexBufferDesc() {
+    return RhiBufferDesc{RhiBufferUsage::Vertex, TRIANGLE_VERTEX_BUFFER_BYTES};
+}
+
 RhiTextureDesc SmallPrimitiveTextureDesc() {
     return RhiTextureDesc{RhiFormat::Rgba8Unorm, {2U, 2U}};
+}
+
+RhiInputLayoutDesc TriangleInputLayoutDesc() {
+    RhiInputLayoutDesc desc{};
+    desc.elements[0U].semantic = RhiInputElementSemantic::Position;
+    desc.elements[0U].format = RhiInputElementFormat::Float32x2;
+    desc.elements[0U].offset_bytes = 0U;
+    desc.elements[1U].semantic = RhiInputElementSemantic::Color;
+    desc.elements[1U].format = RhiInputElementFormat::Float32x4;
+    desc.elements[1U].offset_bytes = sizeof(float) * 2U;
+    desc.element_count = 2U;
+    desc.stride_bytes = TRIANGLE_VERTEX_STRIDE_BYTES;
+    return desc;
+}
+
+RhiDrawDesc TriangleDrawDesc() {
+    RhiDrawDesc desc{};
+    desc.topology = RhiPrimitiveTopology::TriangleList;
+    desc.vertex_count = TRIANGLE_VERTEX_COUNT;
+    desc.first_vertex = 0U;
+    return desc;
+}
+
+RhiVertexBufferView TriangleVertexBufferViewFor(RhiBufferHandle handle) {
+    RhiVertexBufferView view{};
+    view.buffer = handle;
+    view.offset_bytes = 0U;
+    view.stride_bytes = TRIANGLE_VERTEX_STRIDE_BYTES;
+    view.size_bytes = TRIANGLE_VERTEX_BUFFER_BYTES;
+    return view;
+}
+
+RhiVertexBufferView OverflowTriangleVertexBufferViewFor(RhiBufferHandle handle) {
+    RhiVertexBufferView view = TriangleVertexBufferViewFor(handle);
+    view.size_bytes = TRIANGLE_VERTEX_STRIDE_BYTES * 2U;
+    return view;
 }
 
 std::array<std::uint8_t, 4U> SmallShaderBytes() {
@@ -210,6 +267,59 @@ bool CreateShaderModule(
     const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
     const RhiShaderModuleDesc desc{stage, byte_span};
     return device.CreateShaderModule(desc, out_handle) == RhiStatus::Success;
+}
+
+bool CreateTrianglePipeline(IRhiDevice &device, RhiPipelineHandle &out_handle) {
+    RhiShaderModuleHandle vertex_shader{};
+    if (!CreateShaderModule(device, RhiShaderStage::Vertex, vertex_shader)) {
+        return false;
+    }
+
+    RhiShaderModuleHandle pixel_shader{};
+    if (!CreateShaderModule(device, RhiShaderStage::Pixel, pixel_shader)) {
+        return false;
+    }
+
+    RhiPipelineDesc desc{};
+    desc.vertex_shader = vertex_shader;
+    desc.pixel_shader = pixel_shader;
+    desc.input_layout = TriangleInputLayoutDesc();
+    return device.CreatePipeline(desc, out_handle) == RhiStatus::Success;
+}
+
+bool CreateTriangleBuffer(IRhiDevice &device, RhiBufferHandle &out_handle) {
+    const std::span<const std::uint8_t> empty_bytes{};
+    return device.CreateBuffer(TriangleVertexBufferDesc(), empty_bytes, out_handle) == RhiStatus::Success;
+}
+
+RhiStatus RecordTriangleDrawFrame(
+    IRhiDevice &device,
+    RhiCommandList &command_list,
+    RhiTextureHandle target,
+    RhiPipelineHandle pipeline,
+    const RhiVertexBufferView &vertex_buffer,
+    const RhiDrawDesc &draw) {
+    RhiStatus status = command_list.BeginFrame(target);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordBindPipeline(command_list, pipeline);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordBindVertexBuffer(command_list, vertex_buffer);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordDraw(command_list, draw);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    return command_list.EndFrame();
 }
 
 RhiStatus ClearSubmitPresent(NullRhiDevice& device, RhiTextureHandle target, RhiColor color) {
@@ -314,6 +424,14 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
     }
 
     if (left.submit_count != right.submit_count) {
+        return false;
+    }
+
+    if (left.submitted_draw_count != right.submitted_draw_count) {
+        return false;
+    }
+
+    if (left.last_draw_vertex_count != right.last_draw_vertex_count) {
         return false;
     }
 
@@ -2059,6 +2177,208 @@ int RhiPrimitiveSnapshotIsIncludedInDeviceSnapshotComparison() {
 
     return 0;
 }
+
+int RhiCommandListRecordsVisibleTriangleCommandsWithinCapacity() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    const std::size_t capacity_before = command_list.Capacity();
+    const RhiStatus status = RecordTriangleDrawFrame(
+        device_interface,
+        command_list,
+        target,
+        pipeline,
+        TriangleVertexBufferViewFor(vertex_buffer),
+        TriangleDrawDesc());
+    if (status != RhiStatus::Success) {
+        return Fail("triangle draw command recording failed");
+    }
+
+    const auto snapshot = command_list.Snapshot();
+    if (snapshot.command_count != 5U) {
+        return Fail("triangle draw command count was unexpected");
+    }
+
+    if (snapshot.draw_command_count != 1U) {
+        return Fail("triangle draw command was not tracked");
+    }
+
+    if (command_list.Capacity() != capacity_before) {
+        return Fail("triangle draw command recording grew storage");
+    }
+
+    return 0;
+}
+
+int RhiSubmitDrawRejectsMissingPipelineWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    RhiStatus status = command_list.BeginFrame(target);
+    if (status != RhiStatus::Success) {
+        return Fail("begin frame failed");
+    }
+
+    status = device_interface.RecordBindVertexBuffer(command_list, TriangleVertexBufferViewFor(vertex_buffer));
+    if (status != RhiStatus::Success) {
+        return Fail("vertex buffer bind recording failed");
+    }
+
+    status = device_interface.RecordDraw(command_list, TriangleDrawDesc());
+    if (status != RhiStatus::Success) {
+        return Fail("draw recording failed");
+    }
+
+    status = command_list.EndFrame();
+    if (status != RhiStatus::Success) {
+        return Fail("end frame failed");
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    status = device_interface.Submit(command_list);
+    if (status != RhiStatus::InvalidLifecycle) {
+        return Fail("draw without pipeline did not return invalid lifecycle");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.submitted_draw_count != before_snapshot.submitted_draw_count) {
+        return Fail("rejected draw changed submitted draw count");
+    }
+
+    if (after_snapshot.submit_count != before_snapshot.submit_count) {
+        return Fail("rejected draw changed submit count");
+    }
+
+    return 0;
+}
+
+int RhiSubmitDrawRejectsVertexBufferRangeOverflow() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    const RhiStatus record_status = RecordTriangleDrawFrame(
+        device_interface,
+        command_list,
+        target,
+        pipeline,
+        OverflowTriangleVertexBufferViewFor(vertex_buffer),
+        TriangleDrawDesc());
+    if (record_status != RhiStatus::Success) {
+        return Fail("overflow draw command recording failed");
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    const RhiStatus submit_status = device_interface.Submit(command_list);
+    if (submit_status != RhiStatus::InvalidDescriptor) {
+        return Fail("overflow draw range did not return invalid descriptor");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.submitted_draw_count != before_snapshot.submitted_draw_count) {
+        return Fail("overflow draw changed submitted draw count");
+    }
+
+    if (after_snapshot.submit_count != before_snapshot.submit_count) {
+        return Fail("overflow draw changed submit count");
+    }
+
+    return 0;
+}
+
+int RhiSubmitDrawUpdatesNullSnapshot() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    const RhiStatus record_status = RecordTriangleDrawFrame(
+        device_interface,
+        command_list,
+        target,
+        pipeline,
+        TriangleVertexBufferViewFor(vertex_buffer),
+        TriangleDrawDesc());
+    if (record_status != RhiStatus::Success) {
+        return Fail("triangle draw command recording failed");
+    }
+
+    const RhiStatus submit_status = device_interface.Submit(command_list);
+    if (submit_status != RhiStatus::Success) {
+        return Fail("triangle draw submit failed");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.submitted_draw_count != 1U) {
+        return Fail("submitted draw count was not tracked");
+    }
+
+    if (snapshot.last_draw_vertex_count != TRIANGLE_VERTEX_COUNT) {
+        return Fail("last draw vertex count was not tracked");
+    }
+
+    if (snapshot.command_storage_capacity_before_frame != MAX_COMMANDS) {
+        return Fail("draw submit recorded wrong command capacity");
+    }
+
+    if (snapshot.command_storage_capacity_after_last_frame != MAX_COMMANDS) {
+        return Fail("draw submit changed command capacity");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -2119,6 +2439,10 @@ int main(int argc, char** argv) {
         {TEST_PRIMITIVE_STALE_HANDLE, RhiPrimitiveDestroyInvalidatesStaleHandles},
         {TEST_INTERFACE_PRIMITIVE, RhiInterfacePrimitiveLifecycleMatchesNullDevice},
         {TEST_PRIMITIVE_SNAPSHOT_COMPARISON, RhiPrimitiveSnapshotIsIncludedInDeviceSnapshotComparison},
+        {TEST_RECORD_VISIBLE_TRIANGLE, RhiCommandListRecordsVisibleTriangleCommandsWithinCapacity},
+        {TEST_DRAW_REQUIRES_PIPELINE, RhiSubmitDrawRejectsMissingPipelineWithoutMutation},
+        {TEST_DRAW_RANGE_OVERFLOW, RhiSubmitDrawRejectsVertexBufferRangeOverflow},
+        {TEST_DRAW_SNAPSHOT, RhiSubmitDrawUpdatesNullSnapshot},
         {TEST_NO_FORBIDDEN_DEPENDENCY, RhiNoResourceFileUploadShaderUiDependency}};
 
     const std::string_view test_name(argv[1]);

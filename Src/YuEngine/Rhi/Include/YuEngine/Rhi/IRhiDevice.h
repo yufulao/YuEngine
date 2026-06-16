@@ -14,6 +14,7 @@
 #include "YuEngine/Rhi/RhiCommandList.h"
 #include "YuEngine/Rhi/RhiDeviceDesc.h"
 #include "YuEngine/Rhi/RhiDeviceSnapshot.h"
+#include "YuEngine/Rhi/RhiDrawDesc.h"
 #include "YuEngine/Rhi/RhiFenceHandle.h"
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
@@ -24,6 +25,7 @@
 #include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
+#include "YuEngine/Rhi/RhiVertexBufferView.h"
 
 namespace yuengine::rhi {
 class IRhiDevice {
@@ -66,6 +68,27 @@ public:
      * @return Explicit operation status.
      */
     virtual RhiStatus RecordClear(RhiCommandList &command_list, RhiTextureHandle handle, RhiColor color) = 0;
+    /**
+     * @comment Records pipeline binding.
+     * @param command_list Command list updated by the function.
+     * @param handle Input handle.
+     * @return Explicit operation status.
+     */
+    virtual RhiStatus RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) = 0;
+    /**
+     * @comment Records vertex buffer binding.
+     * @param command_list Command list updated by the function.
+     * @param view Input view.
+     * @return Explicit operation status.
+     */
+    virtual RhiStatus RecordBindVertexBuffer(RhiCommandList &command_list, const RhiVertexBufferView &view) = 0;
+    /**
+     * @comment Records draw.
+     * @param command_list Command list updated by the function.
+     * @param desc Input descriptor.
+     * @return Explicit operation status.
+     */
+    virtual RhiStatus RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) = 0;
     /**
      * @comment Submits recorded work.
      * @param command_list Input command list.

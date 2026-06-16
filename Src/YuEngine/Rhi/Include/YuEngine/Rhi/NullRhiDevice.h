@@ -60,6 +60,9 @@ public:
      * @return Explicit operation status.
      */
     RhiStatus RecordClear(RhiCommandList &command_list, RhiTextureHandle handle, RhiColor color) override;
+    RhiStatus RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) override;
+    RhiStatus RecordBindVertexBuffer(RhiCommandList &command_list, const RhiVertexBufferView &view) override;
+    RhiStatus RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) override;
     /**
      * @comment Submits requested work.
      * @param command_list Input command list.
@@ -154,6 +157,10 @@ private:
     bool IsShaderModuleHandleValid(RhiShaderModuleHandle handle) const;
     bool IsPipelineHandleValid(RhiPipelineHandle handle) const;
     bool IsCommandTargetValidForFrame(const RhiCommandRecord &command, RhiTextureHandle frame_target) const;
+    bool IsVertexBufferViewValid(const RhiVertexBufferView &view) const;
+    bool IsDrawDescValid(const RhiDrawDesc &desc) const;
+    bool IsInputLayoutDescValid(const RhiInputLayoutDesc &desc) const;
+    bool IsDrawRangeValid(const RhiVertexBufferView &view, const RhiDrawDesc &desc) const;
     bool IsColorTargetDescValid(const RhiColorTargetDesc &desc) const;
     bool IsBufferDescValid(const RhiBufferDesc &desc, std::span<const std::uint8_t> initial_bytes) const;
     bool IsTextureDescValid(const RhiTextureDesc &desc, std::span<const std::uint8_t> initial_bytes) const;

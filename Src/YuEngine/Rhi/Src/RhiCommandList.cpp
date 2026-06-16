@@ -8,6 +8,7 @@ RhiCommandList::RhiCommandList(std::size_t capacity)
     : records_(capacity),
       target_handle_{},
       command_count_(0U),
+      draw_command_count_(0U),
       is_recording_(false),
       is_complete_(false) {
 }
@@ -15,6 +16,7 @@ RhiCommandList::RhiCommandList(std::size_t capacity)
 RhiStatus RhiCommandList::Reset() {
     target_handle_ = RhiTextureHandle{};
     command_count_ = 0U;
+    draw_command_count_ = 0U;
     is_recording_ = false;
     is_complete_ = false;
     return RhiStatus::Success;
@@ -51,6 +53,60 @@ RhiStatus RhiCommandList::RecordClear(RhiTextureHandle target, RhiColor color) {
     return Append(RhiCommandRecord{RhiCommandType::ClearColor, target, color});
 }
 
+RhiStatus RhiCommandList::RecordBindPipeline(RhiPipelineHandle pipeline) {
+    if (!is_recording_) {
+        return RhiStatus::InvalidLifecycle;
+    }
+
+    if (is_complete_) {
+        return RhiStatus::InvalidLifecycle;
+    }
+
+    RhiCommandRecord record{};
+    record.type = RhiCommandType::BindPipeline;
+    record.target = target_handle_;
+    record.pipeline = pipeline;
+    return Append(record);
+}
+
+RhiStatus RhiCommandList::RecordBindVertexBuffer(const RhiVertexBufferView &vertex_buffer) {
+    if (!is_recording_) {
+        return RhiStatus::InvalidLifecycle;
+    }
+
+    if (is_complete_) {
+        return RhiStatus::InvalidLifecycle;
+    }
+
+    RhiCommandRecord record{};
+    record.type = RhiCommandType::BindVertexBuffer;
+    record.target = target_handle_;
+    record.vertex_buffer = vertex_buffer;
+    return Append(record);
+}
+
+RhiStatus RhiCommandList::RecordDraw(const RhiDrawDesc &desc) {
+    if (!is_recording_) {
+        return RhiStatus::InvalidLifecycle;
+    }
+
+    if (is_complete_) {
+        return RhiStatus::InvalidLifecycle;
+    }
+
+    RhiCommandRecord record{};
+    record.type = RhiCommandType::Draw;
+    record.target = target_handle_;
+    record.draw = desc;
+    const RhiStatus status = Append(record);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    ++draw_command_count_;
+    return RhiStatus::Success;
+}
+
 RhiStatus RhiCommandList::EndFrame() {
     if (!is_recording_) {
         return RhiStatus::InvalidLifecycle;
@@ -71,7 +127,7 @@ RhiStatus RhiCommandList::EndFrame() {
 }
 
 RhiCommandListSnapshot RhiCommandList::Snapshot() const {
-    return RhiCommandListSnapshot{records_.size(), command_count_, is_recording_, is_complete_};
+    return RhiCommandListSnapshot{records_.size(), command_count_, draw_command_count_, is_recording_, is_complete_};
 }
 
 const RhiCommandRecord& RhiCommandList::CommandAt(std::size_t index) const {

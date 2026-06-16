@@ -50,6 +50,9 @@ public:
     RhiStatus GetSwapchainColorTarget(RhiTextureHandle &out_handle) const override;
     RhiStatus DestroyTarget(RhiTextureHandle handle) override;
     RhiStatus RecordClear(RhiCommandList &command_list, RhiTextureHandle handle, RhiColor color) override;
+    RhiStatus RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) override;
+    RhiStatus RecordBindVertexBuffer(RhiCommandList &command_list, const RhiVertexBufferView &view) override;
+    RhiStatus RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) override;
     RhiStatus Submit(const RhiCommandList &command_list) override;
     RhiStatus Present() override;
     RhiCaptureResult CapturePresentedTarget(std::span<std::uint8_t> destination) override;
@@ -113,6 +116,7 @@ private:
     };
 
     struct D3D11PipelineSlot final {
+        ID3D11InputLayout *input_layout = nullptr;
         RhiPipelineDesc desc{};
         std::uint32_t generation = 0U;
         bool is_active = false;
@@ -134,11 +138,15 @@ private:
     bool IsSamplerHandleValid(RhiSamplerHandle handle) const;
     bool IsShaderModuleHandleValid(RhiShaderModuleHandle handle) const;
     bool IsPipelineHandleValid(RhiPipelineHandle handle) const;
+    bool IsVertexBufferViewValid(const RhiVertexBufferView &view) const;
+    bool IsDrawDescValid(const RhiDrawDesc &desc) const;
     bool IsSwapchainDescValid(const RhiSwapchainDesc &desc) const;
     bool IsBufferDescValid(const RhiBufferDesc &desc, std::span<const std::uint8_t> initial_bytes) const;
     bool IsTextureDescValid(const RhiTextureDesc &desc, std::span<const std::uint8_t> initial_bytes) const;
     bool IsShaderModuleDescValid(const RhiShaderModuleDesc &desc) const;
     bool IsPipelineDescValid(const RhiPipelineDesc &desc) const;
+    bool IsInputLayoutDescValid(const RhiInputLayoutDesc &desc) const;
+    bool IsDrawRangeValid(const RhiVertexBufferView &view, const RhiDrawDesc &desc) const;
     std::size_t CaptureByteCount() const;
     std::size_t TextureByteCount(const RhiTextureDesc &desc) const;
     UINT NativeBindFlagsForBuffer(RhiBufferUsage usage) const;

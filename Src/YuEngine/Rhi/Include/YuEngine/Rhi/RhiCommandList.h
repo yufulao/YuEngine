@@ -9,8 +9,11 @@
 #include "YuEngine/Rhi/RhiColor.h"
 #include "YuEngine/Rhi/RhiCommandListSnapshot.h"
 #include "YuEngine/Rhi/RhiCommandRecord.h"
+#include "YuEngine/Rhi/RhiDrawDesc.h"
+#include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
+#include "YuEngine/Rhi/RhiVertexBufferView.h"
 
 namespace yuengine::rhi {
 class RhiCommandList final {
@@ -39,6 +42,24 @@ public:
      * @return Explicit operation status.
      */
     RhiStatus RecordClear(RhiTextureHandle target, RhiColor color);
+    /**
+     * @comment Records pipeline binding.
+     * @param pipeline Input pipeline.
+     * @return Explicit operation status.
+     */
+    RhiStatus RecordBindPipeline(RhiPipelineHandle pipeline);
+    /**
+     * @comment Records vertex buffer binding.
+     * @param vertex_buffer Input vertex buffer view.
+     * @return Explicit operation status.
+     */
+    RhiStatus RecordBindVertexBuffer(const RhiVertexBufferView &vertex_buffer);
+    /**
+     * @comment Records draw.
+     * @param desc Input descriptor.
+     * @return Explicit operation status.
+     */
+    RhiStatus RecordDraw(const RhiDrawDesc &desc);
     /**
      * @comment Ends command recording for a frame.
      * @return Explicit operation status.
@@ -82,6 +103,7 @@ private:
     std::vector<RhiCommandRecord> records_;
     RhiTextureHandle target_handle_;
     std::size_t command_count_;
+    std::size_t draw_command_count_;
     bool is_recording_;
     bool is_complete_;
 };

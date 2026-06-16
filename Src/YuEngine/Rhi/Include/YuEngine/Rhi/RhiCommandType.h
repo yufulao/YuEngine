@@ -7,6 +7,9 @@ namespace yuengine::rhi {
 enum class RhiCommandType {
     BeginFrame,
     ClearColor,
+    BindPipeline,
+    BindVertexBuffer,
+    Draw,
     EndFrame
 };
 }
