@@ -1,13 +1,15 @@
 # P2-GATE-028: Audio PCM Sample Packet
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: Combined lower-engine review
 Depends on: P2-GATE-002, P2-GATE-011, P2-GATE-004, ADR-0012
 Related decisions: ADR-0012
 Source baseline: `a5feded`
+Proposal commit: `b9389ee`
+Approval evidence: ENG-147A, ENG-147B, and ENG-147C proposal review PASS.
 
 ## Layer
 
@@ -56,6 +58,34 @@ Current discovery on the proposal baseline:
 - `ctest --preset windows-fast-gate -N -L HardwareSmoke`: `0`;
 - `ctest --preset windows-hardware-smoke -N`: `7`;
 - `ctest --preset windows-hardware-smoke -N -L Audio`: `1`.
+
+## Approval Evidence
+
+Approved after ENG-147A, ENG-147B, and ENG-147C proposal reviews PASS.
+
+Review evidence:
+
+- proposal commit `b9389eecef47ccb95ace032919c9ddc25e6fda07` changes only
+  `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and this gate doc;
+- `git diff --check b9389ee^..b9389ee` passed;
+- review work was read-only and made no source, doc, commit, push, approval, or
+  implementation changes;
+- review confirmed no boundary, quality, implementability, test, or preset
+  blocker;
+- boundary review confirmed the proposal stays in Audio-owned PCM sample packet
+  value contracts, bounded metadata, query/release snapshots, and deterministic
+  counters;
+- implementability review confirmed existing Audio fixed S16, stereo, 48000 Hz,
+  slot/generation, snapshot/counter, and reject-before-mutation patterns are
+  sufficient for the first slice;
+- test-policy review confirmed deterministic default `windows-fast-gate`
+  evidence, focused `Audio_PcmSamplePacket` or equivalent tests,
+  CMakePresets no-drift, hardware-smoke isolation, and proof-shape scans are
+  required;
+- proposal discovery counts matched the reviewed baseline: default fast gate
+  `873`, `Audio` `32`, `Fast` `873`, `PerformanceSmoke` `97`,
+  `EvidenceOracle` `277`, default `HardwareSmoke` `0`, and
+  `windows-hardware-smoke` `7` with `Audio` `1`.
 
 ## Owns
 
