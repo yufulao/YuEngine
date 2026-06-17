@@ -1,12 +1,14 @@
 # P2-GATE-022: Resource Residency Budget Policy
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-021, P1-GATE-006
 Related decisions: ADR-0013
 Source baseline: `c650d49`
+Proposal commit: `07e94ac`
 
 ## Layer
 
