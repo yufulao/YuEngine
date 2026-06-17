@@ -27,6 +27,8 @@ ResourceRegistry::ResourceRegistry(ResourceRegistryDesc desc)
       dependency_edges_{},
       load_commit_records_{},
       residency_records_{},
+      cache_payload_records_{},
+      cache_payload_bytes_{},
       types_{},
       snapshot_{
           ClampCapacity(desc.resource_capacity, MAX_RESOURCE_COUNT),
@@ -51,7 +53,8 @@ ResourceRegistry::ResourceRegistry(ResourceRegistryDesc desc)
           ResourceStatus::Success,
           ResourceLoadState::Unloaded,
           ResourceLoadCommitStatus::Success},
-      residency_snapshot_{} {
+      residency_snapshot_{},
+      cache_payload_snapshot_{} {
 }
 
 ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const ResourceDescriptor& descriptor) {
@@ -451,6 +454,7 @@ ResourceResidencyStatus ResourceRegistry::EvictResident(const ResourceResidencyR
             ResourceResidencyStatus::StillReferenced);
     }
 
+    ClearCachePayloadForSlot(slot_index);
     RemoveResidentCounters(slot);
     slot.residency_state = ResourceResidencyState::Evicted;
     ++residency_snapshot_.evicted_resource_count;
@@ -533,6 +537,212 @@ ResourceResidencySnapshot ResourceRegistry::ResidencySnapshot() const {
     return residency_snapshot_;
 }
 
+ResourceCachePayloadStatus ResourceRegistry::SetCachePayloadBudget(ResourceCachePayloadBudgetDesc desc) {
+    const ResourceCachePayloadRequest request{};
+    if (desc.byte_capacity == 0U) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::ConfigureBudget,
+            request,
+            ResourceCachePayloadStatus::InvalidArgument);
+    }
+
+    if (desc.byte_capacity < cache_payload_snapshot_.cached_byte_count) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::ConfigureBudget,
+            request,
+            ResourceCachePayloadStatus::BudgetExceeded);
+    }
+
+    cache_payload_snapshot_.budget_byte_capacity = desc.byte_capacity;
+    RecordCachePayloadSuccess(
+        ResourceCachePayloadOperation::ConfigureBudget,
+        request,
+        INVALID_RESOURCE_SLOT,
+        0U);
+    return ResourceCachePayloadStatus::Success;
+}
+
+ResourceCachePayloadStatus ResourceRegistry::StoreCachePayload(const ResourceCachePayloadRequest &request) {
+    std::size_t slot_index = 0U;
+    const ResourceCachePayloadStatus validation_status = ValidateCachePayloadRequest(request, &slot_index);
+    if (validation_status != ResourceCachePayloadStatus::Success) {
+        return RecordCachePayloadRejected(ResourceCachePayloadOperation::Store, request, validation_status);
+    }
+
+    if (request.payload_bytes == nullptr) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Store,
+            request,
+            ResourceCachePayloadStatus::InvalidArgument);
+    }
+
+    if (request.payload_byte_count == 0U) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Store,
+            request,
+            ResourceCachePayloadStatus::EmptyPayload);
+    }
+
+    if (request.payload_byte_count > MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Store,
+            request,
+            ResourceCachePayloadStatus::CapacityExceeded);
+    }
+
+    if (HasCachePayloadId(request.payload_id)) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Store,
+            request,
+            ResourceCachePayloadStatus::DuplicatePayloadId);
+    }
+
+    if (cache_payload_snapshot_.cached_payload_count >= MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Store,
+            request,
+            ResourceCachePayloadStatus::CapacityExceeded);
+    }
+
+    const std::uint32_t remaining_byte_capacity =
+        cache_payload_snapshot_.budget_byte_capacity - cache_payload_snapshot_.cached_byte_count;
+    if (request.payload_byte_count > remaining_byte_capacity) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Store,
+            request,
+            ResourceCachePayloadStatus::BudgetExceeded);
+    }
+
+    std::size_t record_index = 0U;
+    if (!FindFreeCachePayloadRecord(&record_index)) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Store,
+            request,
+            ResourceCachePayloadStatus::CapacityExceeded);
+    }
+
+    std::uint32_t byte_index = 0U;
+    while (byte_index < request.payload_byte_count) {
+        cache_payload_bytes_[record_index][byte_index] = request.payload_bytes[byte_index];
+        ++byte_index;
+    }
+
+    ResourceCachePayloadRecord &record = cache_payload_records_[record_index];
+    record.operation = ResourceCachePayloadOperation::Store;
+    record.resource = request.resource;
+    record.expected_type = request.expected_type;
+    record.payload_id = request.payload_id;
+    record.payload_byte_count = request.payload_byte_count;
+    record.cache_slot_index = static_cast<std::uint32_t>(record_index);
+    record.status = ResourceCachePayloadStatus::Success;
+    record.is_active = true;
+    ++cache_payload_snapshot_.cached_payload_count;
+    ++cache_payload_snapshot_.cache_payload_record_count;
+    cache_payload_snapshot_.cached_byte_count += request.payload_byte_count;
+    RecordCachePayloadSuccess(
+        ResourceCachePayloadOperation::Store,
+        request,
+        record.cache_slot_index,
+        request.payload_byte_count);
+    return ResourceCachePayloadStatus::Success;
+}
+
+ResourceCachePayloadStatus ResourceRegistry::ReadCachePayload(
+    const ResourceCachePayloadRequest &request,
+    std::uint8_t *output_bytes,
+    std::uint32_t output_byte_capacity,
+    std::uint32_t *output_byte_count) {
+    if (output_byte_count == nullptr) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Read,
+            request,
+            ResourceCachePayloadStatus::InvalidArgument);
+    }
+
+    *output_byte_count = 0U;
+    if (output_bytes == nullptr) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Read,
+            request,
+            ResourceCachePayloadStatus::InvalidArgument);
+    }
+
+    std::size_t slot_index = 0U;
+    const ResourceCachePayloadStatus validation_status = ValidateCachePayloadRequest(request, &slot_index);
+    if (validation_status != ResourceCachePayloadStatus::Success) {
+        return RecordCachePayloadRejected(ResourceCachePayloadOperation::Read, request, validation_status);
+    }
+
+    std::size_t record_index = 0U;
+    if (!FindCachePayloadRecord(request.resource, request.payload_id, &record_index)) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Read,
+            request,
+            ResourceCachePayloadStatus::MissingPayload);
+    }
+
+    const ResourceCachePayloadRecord &record = cache_payload_records_[record_index];
+    if (output_byte_capacity < record.payload_byte_count) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Read,
+            request,
+            ResourceCachePayloadStatus::OutputBufferTooSmall);
+    }
+
+    std::uint32_t byte_index = 0U;
+    while (byte_index < record.payload_byte_count) {
+        output_bytes[byte_index] = cache_payload_bytes_[record_index][byte_index];
+        ++byte_index;
+    }
+
+    *output_byte_count = record.payload_byte_count;
+    RecordCachePayloadSuccess(
+        ResourceCachePayloadOperation::Read,
+        request,
+        record.cache_slot_index,
+        record.payload_byte_count);
+    return ResourceCachePayloadStatus::Success;
+}
+
+ResourceCachePayloadStatus ResourceRegistry::ReleaseCachePayload(const ResourceCachePayloadRequest &request) {
+    std::size_t slot_index = 0U;
+    const ResourceCachePayloadStatus validation_status = ValidateCachePayloadRequest(request, &slot_index);
+    if (validation_status != ResourceCachePayloadStatus::Success) {
+        return RecordCachePayloadRejected(ResourceCachePayloadOperation::Release, request, validation_status);
+    }
+
+    std::size_t record_index = 0U;
+    if (!FindCachePayloadRecord(request.resource, request.payload_id, &record_index)) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Release,
+            request,
+            ResourceCachePayloadStatus::MissingPayload);
+    }
+
+    const ResourceSlot &slot = slots_[slot_index];
+    if (slot.residency_state == ResourceResidencyState::Pinned) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Release,
+            request,
+            ResourceCachePayloadStatus::Pinned);
+    }
+
+    const ResourceCachePayloadRecord &record = cache_payload_records_[record_index];
+    const std::uint32_t cache_slot_index = record.cache_slot_index;
+    const std::uint32_t payload_byte_count = record.payload_byte_count;
+    ClearCachePayloadRecord(record_index);
+    RecordCachePayloadSuccess(
+        ResourceCachePayloadOperation::Release,
+        request,
+        cache_slot_index,
+        payload_byte_count);
+    return ResourceCachePayloadStatus::Success;
+}
+
+ResourceCachePayloadSnapshot ResourceRegistry::CachePayloadSnapshot() const {
+    return cache_payload_snapshot_;
+}
+
 ResourceStatus ResourceRegistry::Release(ResourceHandle handle) {
     std::size_t slot_index = 0U;
     const ResourceStatus handle_status = ResolveHandle(handle, slot_index);
@@ -570,6 +780,7 @@ ResourceStatus ResourceRegistry::Retire(ResourceHandle handle) {
     }
 
     ClearOutboundEdges(slot_index);
+    ClearCachePayloadForSlot(slot_index);
     ClearResidencySlot(slot);
     slot.is_active = false;
     slot.logical_key = ResourceLogicalKey{};
@@ -681,6 +892,64 @@ void ResourceRegistry::RecordResidencySuccess(
     StoreResidencyRecord(operation, request, ResourceResidencyStatus::Success, state);
 }
 
+ResourceCachePayloadStatus ResourceRegistry::RecordCachePayloadRejected(
+    ResourceCachePayloadOperation operation,
+    const ResourceCachePayloadRequest &request,
+    ResourceCachePayloadStatus status) {
+    ++cache_payload_snapshot_.rejected_payload_request_count;
+    if (status == ResourceCachePayloadStatus::DuplicatePayloadId) {
+        ++cache_payload_snapshot_.duplicate_payload_rejected_count;
+    }
+
+    if (status == ResourceCachePayloadStatus::CapacityExceeded) {
+        ++cache_payload_snapshot_.capacity_rejected_payload_count;
+    }
+
+    if (status == ResourceCachePayloadStatus::BudgetExceeded) {
+        ++cache_payload_snapshot_.budget_rejected_payload_count;
+    }
+
+    ++snapshot_.failed_operation_count;
+    cache_payload_snapshot_.last_operation = operation;
+    cache_payload_snapshot_.last_status = status;
+    cache_payload_snapshot_.last_resource = request.resource;
+    cache_payload_snapshot_.last_payload_id = request.payload_id;
+    cache_payload_snapshot_.last_cache_slot_index = INVALID_RESOURCE_SLOT;
+    cache_payload_snapshot_.last_payload_byte_count = request.payload_byte_count;
+    snapshot_.last_status = MapCachePayloadStatus(status);
+    return status;
+}
+
+void ResourceRegistry::RecordCachePayloadSuccess(
+    ResourceCachePayloadOperation operation,
+    const ResourceCachePayloadRequest &request,
+    std::uint32_t cache_slot_index,
+    std::uint32_t payload_byte_count) {
+    switch (operation) {
+        case ResourceCachePayloadOperation::Store:
+            ++cache_payload_snapshot_.stored_payload_count;
+            break;
+        case ResourceCachePayloadOperation::Read:
+            ++cache_payload_snapshot_.read_payload_count;
+            break;
+        case ResourceCachePayloadOperation::Release:
+            ++cache_payload_snapshot_.released_payload_count;
+            break;
+        case ResourceCachePayloadOperation::ConfigureBudget:
+        case ResourceCachePayloadOperation::None:
+        default:
+            break;
+    }
+
+    cache_payload_snapshot_.last_operation = operation;
+    cache_payload_snapshot_.last_status = ResourceCachePayloadStatus::Success;
+    cache_payload_snapshot_.last_resource = request.resource;
+    cache_payload_snapshot_.last_payload_id = request.payload_id;
+    cache_payload_snapshot_.last_cache_slot_index = cache_slot_index;
+    cache_payload_snapshot_.last_payload_byte_count = payload_byte_count;
+    snapshot_.last_status = ResourceStatus::Success;
+}
+
 ResourceLoadCommitStatus ResourceRegistry::ValidateLoadCommitRequest(
     const ResourceLoadCommitRequest &request,
     std::size_t *out_slot_index) const {
@@ -763,6 +1032,47 @@ ResourceResidencyStatus ResourceRegistry::ValidateResidencyRequest(
     return ResourceResidencyStatus::Success;
 }
 
+ResourceCachePayloadStatus ResourceRegistry::ValidateCachePayloadRequest(
+    const ResourceCachePayloadRequest &request,
+    std::size_t *out_slot_index) const {
+    if (out_slot_index == nullptr) {
+        return ResourceCachePayloadStatus::InvalidArgument;
+    }
+
+    *out_slot_index = 0U;
+    if (!request.expected_type.IsValid()) {
+        return ResourceCachePayloadStatus::InvalidArgument;
+    }
+
+    if (request.payload_id == 0U) {
+        return ResourceCachePayloadStatus::InvalidArgument;
+    }
+
+    const ResourceStatus handle_status = ResolveHandle(request.resource, *out_slot_index);
+    if (handle_status != ResourceStatus::Success) {
+        return MapHandleCachePayloadStatus(handle_status);
+    }
+
+    const ResourceSlot &slot = slots_[*out_slot_index];
+    if (slot.type.value != request.expected_type.value) {
+        return ResourceCachePayloadStatus::TypeMismatch;
+    }
+
+    if (slot.load_state == ResourceLoadState::Failed) {
+        return ResourceCachePayloadStatus::FailedLoad;
+    }
+
+    if (slot.load_state != ResourceLoadState::Uploaded) {
+        return ResourceCachePayloadStatus::NotUploaded;
+    }
+
+    if (!IsResidentState(slot.residency_state)) {
+        return ResourceCachePayloadStatus::NotResident;
+    }
+
+    return ResourceCachePayloadStatus::Success;
+}
+
 ResourceLoadCommitStatus ResourceRegistry::MapHandleStatus(ResourceStatus status) const {
     if (status == ResourceStatus::InvalidHandle) {
         return ResourceLoadCommitStatus::InvalidHandle;
@@ -841,6 +1151,54 @@ ResourceStatus ResourceRegistry::MapResidencyStatus(ResourceResidencyStatus stat
         case ResourceResidencyStatus::NotPinned:
         case ResourceResidencyStatus::Pinned:
         case ResourceResidencyStatus::NoCandidate:
+        default:
+            break;
+    }
+
+    return ResourceStatus::UnsupportedInThisGate;
+}
+
+ResourceCachePayloadStatus ResourceRegistry::MapHandleCachePayloadStatus(ResourceStatus status) const {
+    if (status == ResourceStatus::InvalidHandle) {
+        return ResourceCachePayloadStatus::InvalidHandle;
+    }
+
+    if (status == ResourceStatus::GenerationMismatch) {
+        return ResourceCachePayloadStatus::GenerationMismatch;
+    }
+
+    if (status == ResourceStatus::TypeMismatch) {
+        return ResourceCachePayloadStatus::TypeMismatch;
+    }
+
+    return ResourceCachePayloadStatus::InvalidHandle;
+}
+
+ResourceStatus ResourceRegistry::MapCachePayloadStatus(ResourceCachePayloadStatus status) const {
+    switch (status) {
+        case ResourceCachePayloadStatus::Success:
+            return ResourceStatus::Success;
+        case ResourceCachePayloadStatus::InvalidHandle:
+            return ResourceStatus::InvalidHandle;
+        case ResourceCachePayloadStatus::GenerationMismatch:
+            return ResourceStatus::GenerationMismatch;
+        case ResourceCachePayloadStatus::TypeMismatch:
+            return ResourceStatus::TypeMismatch;
+        case ResourceCachePayloadStatus::DuplicatePayloadId:
+            return ResourceStatus::DuplicateResource;
+        case ResourceCachePayloadStatus::MissingPayload:
+            return ResourceStatus::NotFound;
+        case ResourceCachePayloadStatus::CapacityExceeded:
+        case ResourceCachePayloadStatus::BudgetExceeded:
+        case ResourceCachePayloadStatus::OutputBufferTooSmall:
+            return ResourceStatus::CapacityExceeded;
+        case ResourceCachePayloadStatus::Pinned:
+            return ResourceStatus::StillReferenced;
+        case ResourceCachePayloadStatus::InvalidArgument:
+        case ResourceCachePayloadStatus::NotUploaded:
+        case ResourceCachePayloadStatus::FailedLoad:
+        case ResourceCachePayloadStatus::NotResident:
+        case ResourceCachePayloadStatus::EmptyPayload:
         default:
             break;
     }
@@ -937,6 +1295,78 @@ bool ResourceRegistry::HasLoadCommitId(std::uint64_t commit_id) const {
         if (record.request.commit_id == commit_id) {
             return true;
         }
+    }
+
+    return false;
+}
+
+bool ResourceRegistry::HasCachePayloadId(std::uint64_t payload_id) const {
+    for (const ResourceCachePayloadRecord &record : cache_payload_records_) {
+        if (!record.is_active) {
+            continue;
+        }
+
+        if (record.payload_id == payload_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool ResourceRegistry::FindCachePayloadRecord(
+    ResourceHandle resource,
+    std::uint64_t payload_id,
+    std::size_t *out_record_index) const {
+    if (out_record_index == nullptr) {
+        return false;
+    }
+
+    *out_record_index = 0U;
+    std::size_t record_index = 0U;
+    for (const ResourceCachePayloadRecord &record : cache_payload_records_) {
+        if (!record.is_active) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.payload_id != payload_id) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.resource.slot != resource.slot) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.resource.generation != resource.generation) {
+            ++record_index;
+            continue;
+        }
+
+        *out_record_index = record_index;
+        return true;
+    }
+
+    return false;
+}
+
+bool ResourceRegistry::FindFreeCachePayloadRecord(std::size_t *out_record_index) const {
+    if (out_record_index == nullptr) {
+        return false;
+    }
+
+    *out_record_index = 0U;
+    std::size_t record_index = 0U;
+    for (const ResourceCachePayloadRecord &record : cache_payload_records_) {
+        if (record.is_active) {
+            ++record_index;
+            continue;
+        }
+
+        *out_record_index = record_index;
+        return true;
     }
 
     return false;
@@ -1069,6 +1499,48 @@ void ResourceRegistry::ClearResidencySlot(ResourceSlot &slot) {
     }
 
     slot.residency_state = ResourceResidencyState::Unloaded;
+}
+
+void ResourceRegistry::ClearCachePayloadRecord(std::size_t record_index) {
+    if (record_index >= MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT) {
+        return;
+    }
+
+    ResourceCachePayloadRecord &record = cache_payload_records_[record_index];
+    if (!record.is_active) {
+        return;
+    }
+
+    const std::uint32_t payload_byte_count = record.payload_byte_count;
+    std::uint32_t byte_index = 0U;
+    while (byte_index < MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD) {
+        cache_payload_bytes_[record_index][byte_index] = 0U;
+        ++byte_index;
+    }
+
+    record = ResourceCachePayloadRecord{};
+    --cache_payload_snapshot_.cached_payload_count;
+    --cache_payload_snapshot_.cache_payload_record_count;
+    cache_payload_snapshot_.cached_byte_count -= payload_byte_count;
+}
+
+void ResourceRegistry::ClearCachePayloadForSlot(std::size_t slot_index) {
+    std::size_t record_index = 0U;
+    while (record_index < MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT) {
+        const ResourceCachePayloadRecord &record = cache_payload_records_[record_index];
+        if (!record.is_active) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.resource.slot != slot_index) {
+            ++record_index;
+            continue;
+        }
+
+        ClearCachePayloadRecord(record_index);
+        ++record_index;
+    }
 }
 
 bool ResourceRegistry::HasInboundEdge(std::size_t slot_index) const {

@@ -7,6 +7,12 @@
 #include <cstdint>
 #include <cstddef>
 
+#include "YuEngine/Resource/ResourceCachePayloadBudgetDesc.h"
+#include "YuEngine/Resource/ResourceCachePayloadOperation.h"
+#include "YuEngine/Resource/ResourceCachePayloadRecord.h"
+#include "YuEngine/Resource/ResourceCachePayloadRequest.h"
+#include "YuEngine/Resource/ResourceCachePayloadSnapshot.h"
+#include "YuEngine/Resource/ResourceCachePayloadStatus.h"
 #include "YuEngine/Resource/ResourceConstants.h"
 #include "YuEngine/Resource/ResourceDependencyEdge.h"
 #include "YuEngine/Resource/ResourceDescriptor.h"
@@ -140,6 +146,42 @@ public:
      */
     ResourceResidencySnapshot ResidencySnapshot() const;
     /**
+     * @comment Configures the Resource-owned cache payload budget.
+     * @param desc Input budget descriptor.
+     * @return Explicit cache payload operation status.
+     */
+    ResourceCachePayloadStatus SetCachePayloadBudget(ResourceCachePayloadBudgetDesc desc);
+    /**
+     * @comment Stores caller-provided opaque bytes in Resource-owned cache payload storage.
+     * @param request Input cache payload request.
+     * @return Explicit cache payload operation status.
+     */
+    ResourceCachePayloadStatus StoreCachePayload(const ResourceCachePayloadRequest &request);
+    /**
+     * @comment Reads Resource-owned opaque cache payload bytes into caller-owned output storage.
+     * @param request Input cache payload request.
+     * @param output_bytes Output byte storage.
+     * @param output_byte_capacity Output byte capacity.
+     * @param output_byte_count Output byte count.
+     * @return Explicit cache payload operation status.
+     */
+    ResourceCachePayloadStatus ReadCachePayload(
+        const ResourceCachePayloadRequest &request,
+        std::uint8_t *output_bytes,
+        std::uint32_t output_byte_capacity,
+        std::uint32_t *output_byte_count);
+    /**
+     * @comment Releases Resource-owned cache payload bytes without changing load or residency state.
+     * @param request Input cache payload request.
+     * @return Explicit cache payload operation status.
+     */
+    ResourceCachePayloadStatus ReleaseCachePayload(const ResourceCachePayloadRequest &request);
+    /**
+     * @comment Returns a snapshot of Resource-owned cache payload counters.
+     * @return Cache payload snapshot value.
+     */
+    ResourceCachePayloadSnapshot CachePayloadSnapshot() const;
+    /**
      * @comment Releases the operation.
      * @param handle Input handle.
      * @return Explicit operation status.
@@ -170,21 +212,41 @@ private:
         ResourceResidencyOperation operation,
         const ResourceResidencyRequest &request,
         ResourceResidencyState state);
+    ResourceCachePayloadStatus RecordCachePayloadRejected(
+        ResourceCachePayloadOperation operation,
+        const ResourceCachePayloadRequest &request,
+        ResourceCachePayloadStatus status);
+    void RecordCachePayloadSuccess(
+        ResourceCachePayloadOperation operation,
+        const ResourceCachePayloadRequest &request,
+        std::uint32_t cache_slot_index,
+        std::uint32_t payload_byte_count);
     ResourceLoadCommitStatus ValidateLoadCommitRequest(
         const ResourceLoadCommitRequest &request,
         std::size_t *out_slot_index) const;
     ResourceResidencyStatus ValidateResidencyRequest(
         const ResourceResidencyRequest &request,
         std::size_t *out_slot_index) const;
+    ResourceCachePayloadStatus ValidateCachePayloadRequest(
+        const ResourceCachePayloadRequest &request,
+        std::size_t *out_slot_index) const;
     ResourceLoadCommitStatus MapHandleStatus(ResourceStatus status) const;
     ResourceStatus MapLoadCommitStatus(ResourceLoadCommitStatus status) const;
     ResourceResidencyStatus MapHandleResidencyStatus(ResourceStatus status) const;
     ResourceStatus MapResidencyStatus(ResourceResidencyStatus status) const;
+    ResourceCachePayloadStatus MapHandleCachePayloadStatus(ResourceStatus status) const;
+    ResourceStatus MapCachePayloadStatus(ResourceCachePayloadStatus status) const;
     ResourceStatus ResolveHandle(ResourceHandle handle, std::size_t& out_index) const;
     ResourceStatus RegisterTypeIfNeeded(ResourceTypeId type);
     bool HasType(ResourceTypeId type) const;
     bool HasDuplicateActiveResource(const ResourceDescriptor& descriptor) const;
     bool HasLoadCommitId(std::uint64_t commit_id) const;
+    bool HasCachePayloadId(std::uint64_t payload_id) const;
+    bool FindCachePayloadRecord(
+        ResourceHandle resource,
+        std::uint64_t payload_id,
+        std::size_t *out_record_index) const;
+    bool FindFreeCachePayloadRecord(std::size_t *out_record_index) const;
     bool StoreLoadCommitRecord(const ResourceLoadCommitRequest &request);
     bool StoreResidencyRecord(
         ResourceResidencyOperation operation,
@@ -196,6 +258,8 @@ private:
     void RemoveResidentCounters(const ResourceSlot &slot);
     void RefreshEvictableState(ResourceSlot &slot);
     void ClearResidencySlot(ResourceSlot &slot);
+    void ClearCachePayloadRecord(std::size_t record_index);
+    void ClearCachePayloadForSlot(std::size_t slot_index);
     bool HasInboundEdge(std::size_t slot_index) const;
     bool HasDependencyPath(std::size_t start_slot, std::size_t target_slot) const;
     void ClearOutboundEdges(std::size_t slot_index);
@@ -205,8 +269,13 @@ private:
     std::array<ResourceDependencyEdge, MAX_DEPENDENCY_EDGE_COUNT> dependency_edges_;
     std::array<ResourceLoadCommitRecord, MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT> load_commit_records_;
     std::array<ResourceResidencyRecord, MAX_RESOURCE_RESIDENCY_RECORD_COUNT> residency_records_;
+    std::array<ResourceCachePayloadRecord, MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT> cache_payload_records_;
+    std::array<
+        std::array<std::uint8_t, MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD>,
+        MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT> cache_payload_bytes_;
     std::array<ResourceTypeId, MAX_RESOURCE_TYPE_COUNT> types_;
     ResourceSnapshot snapshot_;
     ResourceResidencySnapshot residency_snapshot_;
+    ResourceCachePayloadSnapshot cache_payload_snapshot_;
 };
 }

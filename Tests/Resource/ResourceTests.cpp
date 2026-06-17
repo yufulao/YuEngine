@@ -1,6 +1,7 @@
 // Module: Tests Resource
 // File: Tests/Resource/ResourceTests.cpp
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <limits>
@@ -9,6 +10,11 @@
 #include <unordered_map>
 
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
+#include "YuEngine/Resource/ResourceCachePayloadBudgetDesc.h"
+#include "YuEngine/Resource/ResourceCachePayloadOperation.h"
+#include "YuEngine/Resource/ResourceCachePayloadRequest.h"
+#include "YuEngine/Resource/ResourceCachePayloadSnapshot.h"
+#include "YuEngine/Resource/ResourceCachePayloadStatus.h"
 #include "YuEngine/Resource/ResourceConstants.h"
 #include "YuEngine/Resource/ResourceLoadCommitRequest.h"
 #include "YuEngine/Resource/ResourceLoadCommitStatus.h"
@@ -21,6 +27,11 @@
 #include "YuEngine/Resource/ResourceResidencyStatus.h"
 
 using yuengine::memory::MemoryAccountingStatus;
+using yuengine::resource::ResourceCachePayloadBudgetDesc;
+using yuengine::resource::ResourceCachePayloadOperation;
+using yuengine::resource::ResourceCachePayloadRequest;
+using yuengine::resource::ResourceCachePayloadSnapshot;
+using yuengine::resource::ResourceCachePayloadStatus;
 using yuengine::resource::ResourceDescriptor;
 using yuengine::resource::ResourceHandle;
 using yuengine::resource::ResourceLoadCommitRequest;
@@ -39,6 +50,7 @@ using yuengine::resource::ResourceSnapshot;
 using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
 using yuengine::resource::INVALID_RESOURCE_GENERATION;
+using yuengine::resource::MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD;
 
 namespace {
 constexpr const char* TEST_REGISTER = "Resource_RegisterSyntheticDescriptor_ReturnsGenerationHandle";
@@ -87,6 +99,29 @@ constexpr const char *TEST_RESIDENCY_NO_CANDIDATE = "Resource_Residency_ReportsN
 constexpr const char *TEST_RESIDENCY_FAILED_VALIDATION =
     "Resource_Residency_FailedValidationDoesNotMutateResourceState";
 constexpr const char *TEST_RESIDENCY_EVICT = "Resource_Residency_EvictsResourceOwnedStateOnly";
+constexpr const char *TEST_CACHE_PAYLOAD_STORE_READ =
+    "Resource_CachePayload_StoresAndReadsResidentBytes";
+constexpr const char *TEST_CACHE_PAYLOAD_RELEASE = "Resource_CachePayload_ReleaseClearsPayloadOnly";
+constexpr const char *TEST_CACHE_PAYLOAD_NOT_RESIDENT =
+    "Resource_CachePayload_RejectsNotResidentWithoutMutation";
+constexpr const char *TEST_CACHE_PAYLOAD_FAILED_LOAD =
+    "Resource_CachePayload_RejectsFailedLoadWithoutMutation";
+constexpr const char *TEST_CACHE_PAYLOAD_STALE_HANDLE =
+    "Resource_CachePayload_RejectsStaleHandleWithoutMutation";
+constexpr const char *TEST_CACHE_PAYLOAD_TYPE_MISMATCH =
+    "Resource_CachePayload_RejectsTypeMismatchWithoutMutation";
+constexpr const char *TEST_CACHE_PAYLOAD_DUPLICATE =
+    "Resource_CachePayload_RejectsDuplicatePayloadId";
+constexpr const char *TEST_CACHE_PAYLOAD_CAPACITY =
+    "Resource_CachePayload_RejectsCapacityOverflow";
+constexpr const char *TEST_CACHE_PAYLOAD_BUDGET =
+    "Resource_CachePayload_RejectsBudgetOverflow";
+constexpr const char *TEST_CACHE_PAYLOAD_OUTPUT_SMALL =
+    "Resource_CachePayload_ReadRejectsOutputBufferTooSmall";
+constexpr const char *TEST_CACHE_PAYLOAD_FAILED_VALIDATION =
+    "Resource_CachePayload_FailedValidationDoesNotMutateResourceState";
+constexpr const char *TEST_CACHE_PAYLOAD_PINNED_RELEASE =
+    "Resource_CachePayload_ReleaseRejectsPinnedWithoutMutation";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr ResourceTypeId TYPE_TEXTURE{1U};
@@ -115,6 +150,9 @@ constexpr std::uint64_t UPLOAD_TWO = 3002U;
 constexpr std::uint64_t UPLOAD_THREE = 3003U;
 constexpr std::uint64_t STAGING_ONE = 4001U;
 constexpr std::uint32_t UPLOAD_BYTE_COUNT = 64U;
+constexpr std::uint64_t PAYLOAD_ONE = 5001U;
+constexpr std::uint64_t PAYLOAD_TWO = 5002U;
+constexpr std::uint64_t PAYLOAD_THREE = 5003U;
 using TestFunction = int (*)();
 using TestRegistry = std::unordered_map<std::string_view, TestFunction>;
 
@@ -191,6 +229,21 @@ bool ResidencyStateMatches(
     return residency_state == expected_state;
 }
 
+ResourceCachePayloadRequest CachePayloadRequest(
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint64_t payload_id,
+    const std::uint8_t *payload_bytes,
+    std::uint32_t payload_byte_count) {
+    ResourceCachePayloadRequest request;
+    request.resource = resource;
+    request.expected_type = expected_type;
+    request.payload_id = payload_id;
+    request.payload_bytes = payload_bytes;
+    request.payload_byte_count = payload_byte_count;
+    return request;
+}
+
 bool CommitLoad(
     ResourceRegistry &registry,
     ResourceHandle resource,
@@ -205,6 +258,52 @@ bool CommitLoad(
         commit_id,
         upload_id);
     return registry.CommitUploadCompletion(request) == ResourceLoadCommitStatus::Success;
+}
+
+bool ConfigureResidencyBudget(ResourceRegistry &registry, std::uint32_t byte_capacity) {
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = byte_capacity;
+    return registry.SetResidencyBudget(budget) == ResourceResidencyStatus::Success;
+}
+
+bool ConfigureCachePayloadBudget(ResourceRegistry &registry, std::uint32_t byte_capacity) {
+    ResourceCachePayloadBudgetDesc budget;
+    budget.byte_capacity = byte_capacity;
+    return registry.SetCachePayloadBudget(budget) == ResourceCachePayloadStatus::Success;
+}
+
+bool AdmitUploadedResident(
+    ResourceRegistry &registry,
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint64_t commit_id,
+    std::uint64_t upload_id) {
+    if (!ConfigureResidencyBudget(registry, 256U)) {
+        return false;
+    }
+
+    if (!CommitLoad(registry, resource, expected_type, ResourceLoadState::Uploaded, commit_id, upload_id)) {
+        return false;
+    }
+
+    const ResourceResidencyRequest request = ResidencyRequest(resource, expected_type);
+    return registry.AdmitResident(request) == ResourceResidencyStatus::Success;
+}
+
+bool BytesMatch(
+    const std::uint8_t *left,
+    const std::uint8_t *right,
+    std::uint32_t byte_count) {
+    std::uint32_t byte_index = 0U;
+    while (byte_index < byte_count) {
+        if (left[byte_index] != right[byte_index]) {
+            return false;
+        }
+
+        ++byte_index;
+    }
+
+    return true;
 }
 
 bool SnapshotsMatch(const ResourceSnapshot& left, const ResourceSnapshot& right) {
@@ -1586,6 +1685,613 @@ int ResourceResidencyEvictsResourceOwnedStateOnly() {
 
     return 0;
 }
+
+int ResourceCachePayloadStoresAndReadsResidentBytes() {
+    ResourceRegistry registry;
+    if (!ConfigureCachePayloadBudget(registry, 128U)) {
+        return Fail("cache payload budget configuration failed");
+    }
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_store");
+    if (!result.Succeeded()) {
+        return Fail("cache payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("cache payload fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{11U, 22U, 33U, 44U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const ResourceCachePayloadRequest store_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count);
+    if (registry.StoreCachePayload(store_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("cache payload store failed");
+    }
+
+    const ResourceCachePayloadSnapshot store_snapshot = registry.CachePayloadSnapshot();
+    if (store_snapshot.cached_byte_count != payload_byte_count) {
+        return Fail("cache payload store did not track cached bytes");
+    }
+
+    if (store_snapshot.cached_payload_count != 1U) {
+        return Fail("cache payload store did not track active payload count");
+    }
+
+    std::array<std::uint8_t, 4U> output{};
+    const std::uint32_t output_byte_capacity = static_cast<std::uint32_t>(output.size());
+    std::uint32_t output_byte_count = 0U;
+    const ResourceCachePayloadRequest read_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        nullptr,
+        0U);
+    const ResourceCachePayloadStatus read_status = registry.ReadCachePayload(
+        read_request,
+        output.data(),
+        output_byte_capacity,
+        &output_byte_count);
+    if (read_status != ResourceCachePayloadStatus::Success) {
+        return Fail("cache payload read failed");
+    }
+
+    if (output_byte_count != payload_byte_count) {
+        return Fail("cache payload read returned wrong byte count");
+    }
+
+    if (!BytesMatch(payload.data(), output.data(), payload_byte_count)) {
+        return Fail("cache payload read did not return stored bytes");
+    }
+
+    if (registry.CachePayloadSnapshot().read_payload_count != 1U) {
+        return Fail("cache payload read was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadReleaseClearsPayloadOnly() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_release");
+    if (!result.Succeeded()) {
+        return Fail("cache payload release fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("cache payload release fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{1U, 2U, 3U, 4U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const ResourceCachePayloadRequest request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count);
+    if (registry.StoreCachePayload(request) != ResourceCachePayloadStatus::Success) {
+        return Fail("cache payload release fixture store failed");
+    }
+
+    const ResourceCachePayloadRequest release_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        nullptr,
+        0U);
+    if (registry.ReleaseCachePayload(release_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("cache payload release failed");
+    }
+
+    const ResourceCachePayloadSnapshot cache_snapshot = registry.CachePayloadSnapshot();
+    if (cache_snapshot.cached_payload_count != 0U) {
+        return Fail("cache payload release left active payload");
+    }
+
+    if (cache_snapshot.cached_byte_count != 0U) {
+        return Fail("cache payload release left cached bytes");
+    }
+
+    if (cache_snapshot.released_payload_count != 1U) {
+        return Fail("cache payload release was not counted");
+    }
+
+    if (!LoadStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Uploaded)) {
+        return Fail("cache payload release changed load state");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Evictable)) {
+        return Fail("cache payload release changed residency state");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadRejectsNotResidentWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_not_resident");
+    if (!result.Succeeded()) {
+        return Fail("not resident cache payload fixture registration failed");
+    }
+
+    if (!CommitLoad(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Uploaded, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("not resident cache payload fixture load commit failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{5U, 6U, 7U, 8U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const ResourceCachePayloadRequest request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count);
+    const ResourceCachePayloadStatus status = registry.StoreCachePayload(request);
+    if (status != ResourceCachePayloadStatus::NotResident) {
+        return Fail("not resident cache payload request returned wrong status");
+    }
+
+    if (registry.CachePayloadSnapshot().cached_payload_count != 0U) {
+        return Fail("not resident cache payload request stored payload");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Uploaded)) {
+        return Fail("not resident cache payload request changed residency state");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadRejectsFailedLoadWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_failed_load");
+    if (!result.Succeeded()) {
+        return Fail("failed load cache payload fixture registration failed");
+    }
+
+    if (!CommitLoad(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Failed, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("failed load cache payload fixture load commit failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{9U, 10U, 11U, 12U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const ResourceCachePayloadRequest request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count);
+    const ResourceCachePayloadStatus status = registry.StoreCachePayload(request);
+    if (status != ResourceCachePayloadStatus::FailedLoad) {
+        return Fail("failed load cache payload request returned wrong status");
+    }
+
+    if (registry.CachePayloadSnapshot().cached_payload_count != 0U) {
+        return Fail("failed load cache payload request stored payload");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Failed)) {
+        return Fail("failed load cache payload request changed residency state");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadRejectsStaleHandleWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_stale");
+    if (!result.Succeeded()) {
+        return Fail("stale cache payload fixture registration failed");
+    }
+
+    if (registry.Retire(result.handle) != ResourceStatus::Success) {
+        return Fail("stale cache payload fixture retire failed");
+    }
+
+    const ResourceSnapshot before_snapshot = registry.Snapshot();
+    const std::array<std::uint8_t, 4U> payload{{13U, 14U, 15U, 16U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const ResourceCachePayloadRequest request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count);
+    const ResourceCachePayloadStatus status = registry.StoreCachePayload(request);
+    if (status != ResourceCachePayloadStatus::GenerationMismatch) {
+        return Fail("stale cache payload request returned wrong status");
+    }
+
+    const ResourceSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.registered_resource_count != before_snapshot.registered_resource_count) {
+        return Fail("stale cache payload request changed registered count");
+    }
+
+    if (registry.CachePayloadSnapshot().cached_payload_count != 0U) {
+        return Fail("stale cache payload request stored payload");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadRejectsTypeMismatchWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_type");
+    if (!result.Succeeded()) {
+        return Fail("type mismatch cache payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("type mismatch cache payload fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{17U, 18U, 19U, 20U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const ResourceCachePayloadRequest request = CachePayloadRequest(
+        result.handle,
+        TYPE_AUDIO,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count);
+    const ResourceCachePayloadStatus status = registry.StoreCachePayload(request);
+    if (status != ResourceCachePayloadStatus::TypeMismatch) {
+        return Fail("type mismatch cache payload request returned wrong status");
+    }
+
+    if (registry.CachePayloadSnapshot().cached_payload_count != 0U) {
+        return Fail("type mismatch cache payload request stored payload");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Evictable)) {
+        return Fail("type mismatch cache payload request changed residency state");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadRejectsDuplicatePayloadId() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult first = Register(registry, TYPE_TEXTURE, "texture_cache_duplicate_a");
+    const ResourceRegistrationResult second = Register(registry, TYPE_TEXTURE, "texture_cache_duplicate_b");
+    if (!first.Succeeded()) {
+        return Fail("first duplicate cache payload fixture registration failed");
+    }
+
+    if (!second.Succeeded()) {
+        return Fail("second duplicate cache payload fixture registration failed");
+    }
+
+    if (!ConfigureResidencyBudget(registry, 256U)) {
+        return Fail("duplicate cache payload residency budget failed");
+    }
+
+    if (!CommitLoad(registry, first.handle, TYPE_TEXTURE, ResourceLoadState::Uploaded, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("first duplicate cache payload load commit failed");
+    }
+
+    if (!CommitLoad(registry, second.handle, TYPE_TEXTURE, ResourceLoadState::Uploaded, COMMIT_TWO, UPLOAD_TWO)) {
+        return Fail("second duplicate cache payload load commit failed");
+    }
+
+    const ResourceResidencyRequest first_residency = ResidencyRequest(first.handle, TYPE_TEXTURE);
+    const ResourceResidencyRequest second_residency = ResidencyRequest(second.handle, TYPE_TEXTURE);
+    registry.AdmitResident(first_residency);
+    registry.AdmitResident(second_residency);
+
+    const std::array<std::uint8_t, 4U> first_payload{{21U, 22U, 23U, 24U}};
+    const std::array<std::uint8_t, 4U> second_payload{{25U, 26U, 27U, 28U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(first_payload.size());
+    const ResourceCachePayloadRequest first_request = CachePayloadRequest(
+        first.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        first_payload.data(),
+        payload_byte_count);
+    if (registry.StoreCachePayload(first_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("first duplicate cache payload store failed");
+    }
+
+    const ResourceCachePayloadRequest second_request = CachePayloadRequest(
+        second.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        second_payload.data(),
+        payload_byte_count);
+    const ResourceCachePayloadStatus status = registry.StoreCachePayload(second_request);
+    if (status != ResourceCachePayloadStatus::DuplicatePayloadId) {
+        return Fail("duplicate cache payload id returned wrong status");
+    }
+
+    const ResourceCachePayloadSnapshot snapshot = registry.CachePayloadSnapshot();
+    if (snapshot.cached_payload_count != 1U) {
+        return Fail("duplicate cache payload id changed active payload count");
+    }
+
+    if (snapshot.duplicate_payload_rejected_count != 1U) {
+        return Fail("duplicate cache payload id was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadRejectsCapacityOverflow() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_capacity");
+    if (!result.Succeeded()) {
+        return Fail("capacity cache payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("capacity cache payload fixture residency failed");
+    }
+
+    std::array<std::uint8_t, MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD + 1U> payload{};
+    payload[0U] = 1U;
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const ResourceCachePayloadRequest request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count);
+    const ResourceCachePayloadStatus status = registry.StoreCachePayload(request);
+    if (status != ResourceCachePayloadStatus::CapacityExceeded) {
+        return Fail("capacity cache payload request returned wrong status");
+    }
+
+    const ResourceCachePayloadSnapshot snapshot = registry.CachePayloadSnapshot();
+    if (snapshot.capacity_rejected_payload_count != 1U) {
+        return Fail("capacity cache payload rejection was not counted");
+    }
+
+    if (snapshot.cached_payload_count != 0U) {
+        return Fail("capacity cache payload request stored payload");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadRejectsBudgetOverflow() {
+    ResourceRegistry registry;
+    if (!ConfigureCachePayloadBudget(registry, 3U)) {
+        return Fail("budget cache payload budget configuration failed");
+    }
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_budget");
+    if (!result.Succeeded()) {
+        return Fail("budget cache payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("budget cache payload fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{29U, 30U, 31U, 32U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const ResourceCachePayloadRequest request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count);
+    const ResourceCachePayloadStatus status = registry.StoreCachePayload(request);
+    if (status != ResourceCachePayloadStatus::BudgetExceeded) {
+        return Fail("budget cache payload request returned wrong status");
+    }
+
+    const ResourceCachePayloadSnapshot snapshot = registry.CachePayloadSnapshot();
+    if (snapshot.budget_rejected_payload_count != 1U) {
+        return Fail("budget cache payload rejection was not counted");
+    }
+
+    if (snapshot.cached_byte_count != 0U) {
+        return Fail("budget cache payload request stored bytes");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadReadRejectsOutputBufferTooSmall() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_output");
+    if (!result.Succeeded()) {
+        return Fail("output cache payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("output cache payload fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{33U, 34U, 35U, 36U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const ResourceCachePayloadRequest store_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count);
+    if (registry.StoreCachePayload(store_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("output cache payload fixture store failed");
+    }
+
+    std::array<std::uint8_t, 2U> output{};
+    const std::uint32_t output_byte_capacity = static_cast<std::uint32_t>(output.size());
+    std::uint32_t output_byte_count = 99U;
+    const ResourceCachePayloadRequest read_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        nullptr,
+        0U);
+    const ResourceCachePayloadStatus status = registry.ReadCachePayload(
+        read_request,
+        output.data(),
+        output_byte_capacity,
+        &output_byte_count);
+    if (status != ResourceCachePayloadStatus::OutputBufferTooSmall) {
+        return Fail("small output cache payload read returned wrong status");
+    }
+
+    if (output_byte_count != 0U) {
+        return Fail("small output cache payload read wrote byte count");
+    }
+
+    const ResourceCachePayloadSnapshot snapshot = registry.CachePayloadSnapshot();
+    if (snapshot.cached_payload_count != 1U) {
+        return Fail("small output cache payload read changed active payload count");
+    }
+
+    if (snapshot.read_payload_count != 0U) {
+        return Fail("small output cache payload read was counted as success");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadFailedValidationDoesNotMutateResourceState() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_validation");
+    if (!result.Succeeded()) {
+        return Fail("validation cache payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("validation cache payload fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{37U, 38U, 39U, 40U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const ResourceCachePayloadRequest store_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count);
+    if (registry.StoreCachePayload(store_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("validation cache payload fixture store failed");
+    }
+
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const ResourceResidencySnapshot before_residency_snapshot = registry.ResidencySnapshot();
+    const ResourceCachePayloadSnapshot before_cache_snapshot = registry.CachePayloadSnapshot();
+    const ResourceCachePayloadRequest invalid_request = CachePayloadRequest(
+        ResourceHandle{},
+        TYPE_TEXTURE,
+        PAYLOAD_TWO,
+        payload.data(),
+        payload_byte_count);
+    const ResourceCachePayloadStatus status = registry.StoreCachePayload(invalid_request);
+    if (status != ResourceCachePayloadStatus::InvalidHandle) {
+        return Fail("invalid cache payload request returned wrong status");
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count) {
+        return Fail("invalid cache payload request changed registered count");
+    }
+
+    if (after_resource_snapshot.load_commit_count != before_resource_snapshot.load_commit_count) {
+        return Fail("invalid cache payload request changed load commit count");
+    }
+
+    const ResourceResidencySnapshot after_residency_snapshot = registry.ResidencySnapshot();
+    if (after_residency_snapshot.resident_resource_count != before_residency_snapshot.resident_resource_count) {
+        return Fail("invalid cache payload request changed resident count");
+    }
+
+    if (after_residency_snapshot.resident_byte_count != before_residency_snapshot.resident_byte_count) {
+        return Fail("invalid cache payload request changed resident bytes");
+    }
+
+    const ResourceCachePayloadSnapshot after_cache_snapshot = registry.CachePayloadSnapshot();
+    if (after_cache_snapshot.cached_payload_count != before_cache_snapshot.cached_payload_count) {
+        return Fail("invalid cache payload request changed active payload count");
+    }
+
+    if (after_cache_snapshot.cached_byte_count != before_cache_snapshot.cached_byte_count) {
+        return Fail("invalid cache payload request changed cached bytes");
+    }
+
+    std::array<std::uint8_t, 4U> output{};
+    const std::uint32_t output_byte_capacity = static_cast<std::uint32_t>(output.size());
+    std::uint32_t output_byte_count = 0U;
+    const ResourceCachePayloadRequest read_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        nullptr,
+        0U);
+    const ResourceCachePayloadStatus read_status = registry.ReadCachePayload(
+        read_request,
+        output.data(),
+        output_byte_capacity,
+        &output_byte_count);
+    if (read_status != ResourceCachePayloadStatus::Success) {
+        return Fail("valid cache payload was not readable after invalid request");
+    }
+
+    if (!BytesMatch(payload.data(), output.data(), payload_byte_count)) {
+        return Fail("invalid cache payload request changed stored bytes");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadReleaseRejectsPinnedWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_pinned");
+    if (!result.Succeeded()) {
+        return Fail("pinned cache payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("pinned cache payload fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{41U, 42U, 43U, 44U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const ResourceCachePayloadRequest store_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count);
+    if (registry.StoreCachePayload(store_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("pinned cache payload fixture store failed");
+    }
+
+    const ResourceResidencyRequest residency_request = ResidencyRequest(result.handle, TYPE_TEXTURE);
+    if (registry.PinResident(residency_request) != ResourceResidencyStatus::Success) {
+        return Fail("pinned cache payload fixture pin failed");
+    }
+
+    const ResourceCachePayloadRequest release_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        nullptr,
+        0U);
+    const ResourceCachePayloadStatus status = registry.ReleaseCachePayload(release_request);
+    if (status != ResourceCachePayloadStatus::Pinned) {
+        return Fail("pinned cache payload release returned wrong status");
+    }
+
+    const ResourceCachePayloadSnapshot snapshot = registry.CachePayloadSnapshot();
+    if (snapshot.cached_payload_count != 1U) {
+        return Fail("pinned cache payload release changed active payload count");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Pinned)) {
+        return Fail("pinned cache payload release changed residency state");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -1629,7 +2335,19 @@ int main(int argc, char** argv) {
         {TEST_RESIDENCY_CANDIDATE, ResourceResidencySelectsEvictionCandidateInSlotOrder},
         {TEST_RESIDENCY_NO_CANDIDATE, ResourceResidencyReportsNoEvictionCandidate},
         {TEST_RESIDENCY_FAILED_VALIDATION, ResourceResidencyFailedValidationDoesNotMutateResourceState},
-        {TEST_RESIDENCY_EVICT, ResourceResidencyEvictsResourceOwnedStateOnly}};
+        {TEST_RESIDENCY_EVICT, ResourceResidencyEvictsResourceOwnedStateOnly},
+        {TEST_CACHE_PAYLOAD_STORE_READ, ResourceCachePayloadStoresAndReadsResidentBytes},
+        {TEST_CACHE_PAYLOAD_RELEASE, ResourceCachePayloadReleaseClearsPayloadOnly},
+        {TEST_CACHE_PAYLOAD_NOT_RESIDENT, ResourceCachePayloadRejectsNotResidentWithoutMutation},
+        {TEST_CACHE_PAYLOAD_FAILED_LOAD, ResourceCachePayloadRejectsFailedLoadWithoutMutation},
+        {TEST_CACHE_PAYLOAD_STALE_HANDLE, ResourceCachePayloadRejectsStaleHandleWithoutMutation},
+        {TEST_CACHE_PAYLOAD_TYPE_MISMATCH, ResourceCachePayloadRejectsTypeMismatchWithoutMutation},
+        {TEST_CACHE_PAYLOAD_DUPLICATE, ResourceCachePayloadRejectsDuplicatePayloadId},
+        {TEST_CACHE_PAYLOAD_CAPACITY, ResourceCachePayloadRejectsCapacityOverflow},
+        {TEST_CACHE_PAYLOAD_BUDGET, ResourceCachePayloadRejectsBudgetOverflow},
+        {TEST_CACHE_PAYLOAD_OUTPUT_SMALL, ResourceCachePayloadReadRejectsOutputBufferTooSmall},
+        {TEST_CACHE_PAYLOAD_FAILED_VALIDATION, ResourceCachePayloadFailedValidationDoesNotMutateResourceState},
+        {TEST_CACHE_PAYLOAD_PINNED_RELEASE, ResourceCachePayloadReleaseRejectsPinnedWithoutMutation}};
 
     const std::string_view test_name(argv[1]);
     const auto test_entry = test_registry.find(test_name);
