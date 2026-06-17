@@ -194,7 +194,7 @@ Required test-tier direction:
 | P2-GATE-022 | Resource Residency Budget Policy | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_022_RESOURCE_RESIDENCY_BUDGET_POLICY.md`; landed at `d2f2059`; Resource-owned residency state, budget counters, pin/unpin, and eviction-candidate policy over landed upload commit state only; default fast gate is `820/820` PASS; no cache payload storage, package parser, asset decode/import, RHI resource destruction, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-023 | Resource Cache Payload Ownership | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_023_RESOURCE_CACHE_PAYLOAD_OWNERSHIP.md`; landed at `aca6170`; Resource-owned opaque cache payload byte storage, cache-slot records, readback, release, and deterministic counters over landed load commit and residency state only; default fast gate is `832/832` PASS; no package parser, asset decode/import, RHI resource destruction, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-024 | Resource Asset Decode Plan | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_024_RESOURCE_ASSET_DECODE_PLAN.md`; approved after ENG-139A/B/C PASS; Resource-owned decode-plan records over landed cache payload bytes only; no File IO expansion, package parser, real image/audio/mesh decode, RHI upload, render graph, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
-| P2-GATE-025 | RenderCore Render Graph Skeleton | L5 | `PROPOSED` | Proposed | Gate doc: `docs/gates/P2_GATE_025_RENDERCORE_RENDER_GRAPH_SKELETON.md`; proposed RenderCore-owned render graph declaration and dependency validation skeleton over landed fixture pass, material binding, submission batch, frame packet, and public RHI values only; no render scheduler, frame graph execution, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-025 | RenderCore Render Graph Skeleton | L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_025_RENDERCORE_RENDER_GRAPH_SKELETON.md`; approved after ENG-140R combined review PASS; RenderCore-owned render graph declaration and dependency validation skeleton over landed fixture pass, material binding, submission batch, frame packet, and public RHI values only; no render scheduler, frame graph execution, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
 
@@ -462,6 +462,16 @@ Required test-tier direction:
   scene/UI/World/Script/Game Adapter behavior, native/backend leakage, reports,
   screenshots, logs, sleeps, manual proof, hardware-only proof, or original-game
   evidence.
+- P2-GATE-025 is approved as a RenderCore render graph skeleton first slice
+  after ENG-140R combined lower-engine review PASS on proposal commit
+  `39b16a7`. The approved first slice is limited to RenderCore-owned graph
+  declaration and dependency validation values over landed fixture pass,
+  material binding, submission batch, frame packet, and public RHI value
+  contracts. It does not authorize render scheduling, frame graph execution,
+  command-list parallelism, transient resource aliasing, Resource, Streaming,
+  Package, File, material graph, scene, UI, World, Script, Game Adapter,
+  native/backend leakage, reports, screenshots, logs, sleeps, manual proof,
+  hardware-only proof, or original-game evidence.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -596,9 +606,8 @@ Acceleration note:
     decode-plan value contracts over already cached bytes; it does not authorize
     File IO expansion, package parsing, real codec/decode output, RHI upload,
     render graph, scene streaming, World, UI, Script, or Game Adapter behavior.
-22. Review P2-GATE-025 with one combined lower-engine review before any
-    RenderCore render graph skeleton implementation task is created. The
-    proposed first slice is limited to RenderCore-owned graph declaration and
+22. Implement P2-GATE-025 as an approved RenderCore render graph skeleton first
+    slice. The approved first slice is limited to RenderCore-owned graph declaration and
     dependency validation values over landed fixture paths; it does not
     authorize render scheduling, frame graph execution, command-list
     parallelism, Resource/Streaming/Package/File ownership, material graph,
