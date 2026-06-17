@@ -1,13 +1,14 @@
 # P2-GATE-013: Static Mesh Fixture
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-008, P2-GATE-009, P2-GATE-012, ENG-096
 Related decisions: ADR-0011
 Source baseline: `58088bd`
+Proposal commit: `1af7a53`
 
 ## Layer
 
@@ -51,6 +52,46 @@ Current discovery on the proposal baseline:
 - `ctest --preset windows-fast-gate -N -L EvidenceOracle`: `118`;
 - `ctest --preset windows-fast-gate -N -L HardwareSmoke`: `0`;
 - `ctest --preset windows-hardware-smoke -N`: `5`.
+
+## Approval Evidence
+
+Approved after:
+
+- ENG-117A boundary and quality review PASS with no
+  `NEEDS_ARCHITECTURE` blocker;
+- ENG-117B implementability review PASS with no
+  `NEEDS_IMPLEMENTABILITY` blocker;
+- ENG-117C test and preset review PASS with no `NEEDS_TEST_POLICY` blocker.
+
+Review evidence:
+
+- proposal commit `1af7a53cb4907f21ad50f59308ff7320962568df` changes only
+  `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and this gate doc;
+- `git diff --check 1af7a53^ 1af7a53` passed;
+- proposal review worktrees stayed clean and reviewers made no source, doc,
+  commit, or push changes;
+- baseline discovery is default `713`, `RHI` `57`, `Fast` `713`,
+  `PerformanceSmoke` `48`, and `EvidenceOracle` `118`;
+- default `HardwareSmoke`, `D3D11`, `Win32`, `StaticMesh`, and `IndexedDraw`
+  discovery remains `0`;
+- `windows-hardware-smoke` currently discovers `5`, with `RHI` `3`,
+  `D3D11` `3`, `Win32` `5`, and no static-mesh or indexed-draw hardware test
+  admitted yet.
+
+Approval conditions:
+
+- implementation must keep public `YuRHI` headers free of Windows, D3D11, DXGI,
+  COM, Platform, RenderCore, Resource, Package, World, UI, report, screenshot,
+  visual-proof, and Game Adapter types;
+- implementation must keep default `windows-fast-gate` deterministic and
+  no-real-device;
+- indexed static-geometry proof must stay inside `YuRHI`, private D3D11,
+  `Tests/Rhi`, and root CMake labels;
+- optional hardware-smoke proof must be isolated in `windows-hardware-smoke`
+  with `HardwareSmoke`, `RHI`, `D3D11`, and `Win32` labels;
+- proof must use capture bytes plus bounded counters/statuses, not reports,
+  screenshots, logs, sleeps, manual visual inspection, source tooling, or
+  silent skip.
 
 ## Owns
 
