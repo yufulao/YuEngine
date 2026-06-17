@@ -196,6 +196,7 @@ Required test-tier direction:
 | P2-GATE-024 | Resource Asset Decode Plan | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_024_RESOURCE_ASSET_DECODE_PLAN.md`; landed at `a6fbabf`; Resource-owned decode-plan records over landed cache payload bytes only; no File IO expansion, package parser, real image/audio/mesh decode, RHI upload, render graph, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-025 | RenderCore Render Graph Skeleton | L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_025_RENDERCORE_RENDER_GRAPH_SKELETON.md`; landed at `43dc361`; RenderCore-owned render graph declaration and dependency validation skeleton over landed fixture pass, material binding, submission batch, frame packet, and public RHI values only; default fast gate is `858/858` PASS; no render scheduler, frame graph execution, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-026 | Resource Decode Result Import-Ready Record | L4-L5 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_026_RESOURCE_DECODE_RESULT_IMPORT_READY_RECORD.md`; proposal for Resource-owned import-ready decoded-result metadata over landed decode-plan records only; no real codec, decoded byte storage, RHI upload, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-027 | RHI Primitive Retirement Ledger | L3 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_027_RHI_PRIMITIVE_RETIREMENT_LEDGER.md`; proposal for RHI-owned primitive retirement request, ledger, drain, and deterministic handle invalidation evidence over landed RHI primitive handles only; no Resource/Streaming/File/Package/RenderCore/material/scene/UI/World/Script/Game Adapter dependency, backend-native public leak, new renderer scheduling, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
 
@@ -489,6 +490,19 @@ Required test-tier direction:
   scene/UI/World/Script/Game Adapter behavior, native/backend leakage, reports,
   screenshots, logs, sleeps, manual proof, hardware-only proof, or
   original-game evidence.
+- P2-GATE-027 is proposed as an RHI primitive retirement ledger first slice
+  over landed RHI buffer, texture, sampler, shader, pipeline, and fence value
+  contracts. It may record bounded retirement requests, reject duplicate or
+  invalid retirements, drain ready retirement entries, invalidate public handles
+  deterministically, and expose counters without introducing renderer
+  scheduling or Resource ownership. The proposal baseline is `74189da`;
+  discovery is `windows-fast-gate` `858/858`, `RHI` `141`, `Fast` `858`,
+  `PerformanceSmoke` `91`, `EvidenceOracle` `262`, default `HardwareSmoke`
+  `0`, and `windows-hardware-smoke` `7` with `RHI` `5`. It does not authorize
+  Resource, Streaming, File, Package, RenderCore, material, scene, UI, World,
+  Script, Game Adapter, backend-native public headers, new shader compilation,
+  reports, screenshots, logs, sleeps, manual proof, hardware-only proof, or
+  original-game evidence.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -636,3 +650,10 @@ Acceleration note:
     upload, RenderCore scheduling, material graph, scene/UI/World/Script/Game
     Adapter behavior, native/backend leakage, reports, screenshots, logs,
     sleeps, manual proof, hardware-only proof, or original-game evidence.
+24. Review P2-GATE-027 as a proposed RHI primitive retirement ledger boundary.
+    It must stay in RHI-owned retirement request, ledger, drain, handle
+    invalidation, and counter proof over landed primitive handles and must not
+    authorize Resource/Streaming/File/Package ownership, RenderCore scheduling,
+    material graph, scene/UI/World/Script/Game Adapter behavior, backend-native
+    public leaks, new shader compiler/source tooling, reports, screenshots,
+    logs, sleeps, manual proof, hardware-only proof, or original-game evidence.
