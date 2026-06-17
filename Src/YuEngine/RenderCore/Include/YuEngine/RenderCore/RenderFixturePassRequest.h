@@ -34,5 +34,7 @@ struct RenderFixturePassRequest final {
     std::span<std::uint8_t> capture_output{};
     std::size_t capture_byte_budget = 0U;
     std::uint32_t pass_id = 0U;
+    std::uint32_t material_id = 0U;
+    std::size_t material_constant_byte_count = 0U;
 };
 }

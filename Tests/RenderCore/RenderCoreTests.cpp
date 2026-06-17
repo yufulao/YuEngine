@@ -10,6 +10,7 @@
 #include <string_view>
 #include <vector>
 
+#include "YuEngine/RenderCore/MaterialBindingFixture.h"
 #include "YuEngine/RenderCore/RenderFixturePass.h"
 #include "YuEngine/RenderCore/RenderFixturePassConstants.h"
 #include "YuEngine/RenderCore/RenderFixturePassDesc.h"
@@ -43,6 +44,11 @@
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
 
 using RenderFixturePass = yuengine::rendercore::RenderFixturePass;
+using MaterialBindingFixture = yuengine::rendercore::MaterialBindingFixture;
+using MaterialBindingFixtureDesc = yuengine::rendercore::MaterialBindingFixtureDesc;
+using MaterialBindingFixtureRequest = yuengine::rendercore::MaterialBindingFixtureRequest;
+using yuengine::rendercore::MaterialBindingFixtureStatus;
+using yuengine::rendercore::MAX_MATERIAL_BINDING_FIXTURE_CONSTANT_BYTES;
 using RenderFixturePassDesc = yuengine::rendercore::RenderFixturePassDesc;
 using RenderFixturePassRequest = yuengine::rendercore::RenderFixturePassRequest;
 using yuengine::rendercore::RenderFixturePassStatus;
@@ -93,6 +99,15 @@ constexpr const char *TEST_COMMAND_CAPACITY = "RenderCore_FixturePass_RejectsCom
 constexpr const char *TEST_RECORD_CAPACITY = "RenderCore_FixturePass_RejectsPassRecordCapacityWithoutRhiMutation";
 constexpr const char *TEST_RHI_FAILURE = "RenderCore_FixturePass_TracksRhiFailureWithoutWritingCapture";
 constexpr const char *TEST_SNAPSHOT = "RenderCore_FixturePass_SnapshotTracksBoundedCounters";
+constexpr const char *TEST_MATERIAL_BIND = "Material_BindingFixture_BindsValuesToRenderFixtureRequest";
+constexpr const char *TEST_MATERIAL_INVALID_PIPELINE = "Material_BindingFixture_RejectsInvalidPipelineWithoutMutation";
+constexpr const char *TEST_MATERIAL_INVALID_TEXTURE = "Material_BindingFixture_RejectsInvalidTextureBindingWithoutMutation";
+constexpr const char *TEST_MATERIAL_INVALID_SAMPLER = "Material_BindingFixture_RejectsInvalidSamplerBindingWithoutMutation";
+constexpr const char *TEST_MATERIAL_OVERSIZED_CONSTANTS = "Material_BindingFixture_RejectsOversizedConstantsWithoutMutation";
+constexpr const char *TEST_MATERIAL_DUPLICATE = "Material_BindingFixture_RejectsDuplicateMaterialIdWithoutMutation";
+constexpr const char *TEST_MATERIAL_CAPACITY = "Material_BindingFixture_RejectsCapacityOverflowWithoutMutation";
+constexpr const char *TEST_MATERIAL_PASS_FAILURE = "Material_BindingFixture_PropagatesRenderFixturePassFailure";
+constexpr const char *TEST_MATERIAL_SNAPSHOT = "Material_BindingFixture_SnapshotTracksBoundedCounters";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint8_t SENTINEL_BYTE = 0xA5U;
@@ -102,6 +117,9 @@ constexpr std::size_t TRIANGLE_VERTEX_STRIDE_BYTES = sizeof(float) * 6U;
 constexpr std::size_t TRIANGLE_VERTEX_BUFFER_BYTES = TRIANGLE_VERTEX_STRIDE_BYTES * TRIANGLE_VERTEX_COUNT;
 constexpr std::size_t TRIANGLE_INDEX_BUFFER_BYTES = sizeof(std::uint16_t) * TRIANGLE_INDEX_COUNT;
 constexpr std::size_t CAPTURE_BYTES = 16U;
+constexpr std::uint32_t MATERIAL_ID = 41U;
+constexpr std::uint32_t NEXT_MATERIAL_ID = 43U;
+constexpr std::uint32_t MATERIAL_PASS_ID = 311U;
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -177,6 +195,10 @@ RhiSamplerBinding SamplerBindingFor(RhiSamplerHandle sampler) {
     binding.sampler = sampler;
     binding.slot = 0U;
     return binding;
+}
+
+std::array<std::uint8_t, 4U> MaterialConstantBytes() {
+    return std::array<std::uint8_t, 4U>{3U, 5U, 7U, 11U};
 }
 
 std::array<std::uint8_t, 4U> SmallShaderBytes() {
@@ -322,6 +344,110 @@ bool WorkCountersMatch(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot &r
     }
 
     return left.failed_operation_count == right.failed_operation_count;
+}
+
+bool PipelineHandleMatches(RhiPipelineHandle left, RhiPipelineHandle right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+bool TextureHandleMatches(RhiTextureHandle left, RhiTextureHandle right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+bool SamplerHandleMatches(RhiSamplerHandle left, RhiSamplerHandle right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+bool SampledTextureBindingMatches(RhiSampledTextureBinding left, RhiSampledTextureBinding right) {
+    if (!TextureHandleMatches(left.texture, right.texture)) {
+        return false;
+    }
+
+    return left.slot == right.slot;
+}
+
+bool SamplerBindingMatches(RhiSamplerBinding left, RhiSamplerBinding right) {
+    if (!SamplerHandleMatches(left.sampler, right.sampler)) {
+        return false;
+    }
+
+    return left.slot == right.slot;
+}
+
+bool MaterialPassFieldsMatch(const RenderFixturePassRequest &left, const RenderFixturePassRequest &right) {
+    if (!PipelineHandleMatches(left.pipeline, right.pipeline)) {
+        return false;
+    }
+
+    if (!SampledTextureBindingMatches(left.sampled_texture, right.sampled_texture)) {
+        return false;
+    }
+
+    if (!SamplerBindingMatches(left.sampler, right.sampler)) {
+        return false;
+    }
+
+    if (left.material_id != right.material_id) {
+        return false;
+    }
+
+    if (left.material_constant_byte_count != right.material_constant_byte_count) {
+        return false;
+    }
+
+    return left.pass_id == right.pass_id;
+}
+
+MaterialBindingFixtureRequest MaterialRequestFrom(
+    const RenderFixturePassRequest &pass_request,
+    std::span<const std::uint8_t> constants) {
+    MaterialBindingFixtureRequest request{};
+    request.material_id = MATERIAL_ID;
+    request.pipeline = pass_request.pipeline;
+    request.sampled_texture = pass_request.sampled_texture;
+    request.sampler = pass_request.sampler;
+    request.constant_bytes = constants;
+    request.pass_id = MATERIAL_PASS_ID;
+    return request;
+}
+
+int ExpectMaterialValidationFailure(
+    MaterialBindingFixtureStatus expected_status,
+    const MaterialBindingFixtureRequest &material_request,
+    RenderFixturePassRequest &pass_request) {
+    MaterialBindingFixture fixture;
+    const RenderFixturePassRequest before = pass_request;
+    const auto result = fixture.Bind(material_request, &pass_request);
+    if (result.status != expected_status) {
+        return Fail("material binding fixture returned unexpected validation status");
+    }
+
+    if (!MaterialPassFieldsMatch(before, pass_request)) {
+        return Fail("material binding validation failure mutated pass request");
+    }
+
+    const auto snapshot = fixture.Snapshot();
+    if (snapshot.binding_record_count != 0U) {
+        return Fail("material binding validation failure recorded binding");
+    }
+
+    if (snapshot.failed_validation_count != 1U) {
+        return Fail("material binding validation counter was not updated");
+    }
+
+    return 0;
 }
 
 int ExpectValidationFailure(RenderFixturePassStatus expected_status, RenderFixturePassRequest request, NullRhiDevice &device, std::vector<std::uint8_t> &capture) {
@@ -646,6 +772,274 @@ int RenderCoreFixturePassSnapshotTracksBoundedCounters() {
     return 0;
 }
 
+int MaterialBindingFixtureBindsValuesToRenderFixtureRequest() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RenderFixturePassRequest pass_request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, pass_request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    const std::array<std::uint8_t, 4U> constants = MaterialConstantBytes();
+    const std::span<const std::uint8_t> constant_span(constants.data(), constants.size());
+    MaterialBindingFixtureRequest material_request = MaterialRequestFrom(pass_request, constant_span);
+    MaterialBindingFixture fixture;
+    const auto result = fixture.Bind(material_request, &pass_request);
+    if (result.status != MaterialBindingFixtureStatus::Success) {
+        return Fail("material binding fixture did not bind values");
+    }
+
+    if (!PipelineHandleMatches(pass_request.pipeline, material_request.pipeline)) {
+        return Fail("material binding fixture did not set pipeline");
+    }
+
+    if (!SampledTextureBindingMatches(pass_request.sampled_texture, material_request.sampled_texture)) {
+        return Fail("material binding fixture did not set sampled texture");
+    }
+
+    if (!SamplerBindingMatches(pass_request.sampler, material_request.sampler)) {
+        return Fail("material binding fixture did not set sampler");
+    }
+
+    if (pass_request.material_id != MATERIAL_ID || pass_request.material_constant_byte_count != constants.size()) {
+        return Fail("material binding fixture did not set material metadata");
+    }
+
+    RenderFixturePass pass;
+    const auto pass_result = pass.Execute(pass_request);
+    if (pass_result.status != RenderFixturePassStatus::Success) {
+        return Fail("material bound fixture pass did not execute");
+    }
+
+    const auto snapshot = fixture.Snapshot();
+    if (snapshot.accepted_binding_count != 1U || snapshot.binding_record_count != 1U) {
+        return Fail("material binding fixture did not track accepted binding");
+    }
+
+    return 0;
+}
+
+int MaterialBindingFixtureRejectsInvalidPipelineWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RenderFixturePassRequest pass_request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, pass_request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    const std::array<std::uint8_t, 4U> constants = MaterialConstantBytes();
+    const std::span<const std::uint8_t> constant_span(constants.data(), constants.size());
+    MaterialBindingFixtureRequest material_request = MaterialRequestFrom(pass_request, constant_span);
+    material_request.pipeline = RhiPipelineHandle{};
+    return ExpectMaterialValidationFailure(MaterialBindingFixtureStatus::InvalidPipeline, material_request, pass_request);
+}
+
+int MaterialBindingFixtureRejectsInvalidTextureBindingWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RenderFixturePassRequest pass_request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, pass_request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    const std::array<std::uint8_t, 4U> constants = MaterialConstantBytes();
+    const std::span<const std::uint8_t> constant_span(constants.data(), constants.size());
+    MaterialBindingFixtureRequest material_request = MaterialRequestFrom(pass_request, constant_span);
+    material_request.sampled_texture = RhiSampledTextureBinding{};
+    return ExpectMaterialValidationFailure(
+        MaterialBindingFixtureStatus::InvalidTextureBinding,
+        material_request,
+        pass_request);
+}
+
+int MaterialBindingFixtureRejectsInvalidSamplerBindingWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RenderFixturePassRequest pass_request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, pass_request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    const std::array<std::uint8_t, 4U> constants = MaterialConstantBytes();
+    const std::span<const std::uint8_t> constant_span(constants.data(), constants.size());
+    MaterialBindingFixtureRequest material_request = MaterialRequestFrom(pass_request, constant_span);
+    material_request.sampler = RhiSamplerBinding{};
+    return ExpectMaterialValidationFailure(
+        MaterialBindingFixtureStatus::InvalidSamplerBinding,
+        material_request,
+        pass_request);
+}
+
+int MaterialBindingFixtureRejectsOversizedConstantsWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RenderFixturePassRequest pass_request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, pass_request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    std::array<std::uint8_t, MAX_MATERIAL_BINDING_FIXTURE_CONSTANT_BYTES + 1U> constants{};
+    const std::span<const std::uint8_t> constant_span(constants.data(), constants.size());
+    MaterialBindingFixtureRequest material_request = MaterialRequestFrom(pass_request, constant_span);
+    return ExpectMaterialValidationFailure(
+        MaterialBindingFixtureStatus::OversizedConstants,
+        material_request,
+        pass_request);
+}
+
+int MaterialBindingFixtureRejectsDuplicateMaterialIdWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RenderFixturePassRequest first_pass_request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, first_pass_request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    const std::array<std::uint8_t, 4U> constants = MaterialConstantBytes();
+    const std::span<const std::uint8_t> constant_span(constants.data(), constants.size());
+    MaterialBindingFixtureRequest first_request = MaterialRequestFrom(first_pass_request, constant_span);
+    MaterialBindingFixture fixture;
+    if (fixture.Bind(first_request, &first_pass_request).status != MaterialBindingFixtureStatus::Success) {
+        return Fail("first material binding fixture bind failed");
+    }
+
+    RenderFixturePassRequest second_pass_request{};
+    if (!FillValidFixture(device, second_pass_request, capture)) {
+        return Fail("second fixture setup failed");
+    }
+
+    MaterialBindingFixtureRequest second_request = MaterialRequestFrom(second_pass_request, constant_span);
+    second_request.pass_id = MATERIAL_PASS_ID + 1U;
+    const RenderFixturePassRequest before = second_pass_request;
+    const auto result = fixture.Bind(second_request, &second_pass_request);
+    if (result.status != MaterialBindingFixtureStatus::DuplicateMaterialId) {
+        return Fail("material binding fixture accepted duplicate material id");
+    }
+
+    if (!MaterialPassFieldsMatch(before, second_pass_request)) {
+        return Fail("duplicate material id mutated pass request");
+    }
+
+    const auto snapshot = fixture.Snapshot();
+    if (snapshot.binding_record_count != 1U || snapshot.duplicate_material_id_count != 1U) {
+        return Fail("duplicate material id counters were not updated");
+    }
+
+    return 0;
+}
+
+int MaterialBindingFixtureRejectsCapacityOverflowWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RenderFixturePassRequest first_pass_request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, first_pass_request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    const std::array<std::uint8_t, 4U> constants = MaterialConstantBytes();
+    const std::span<const std::uint8_t> constant_span(constants.data(), constants.size());
+    MaterialBindingFixtureRequest first_request = MaterialRequestFrom(first_pass_request, constant_span);
+    MaterialBindingFixtureDesc desc{};
+    desc.binding_record_capacity = 1U;
+    MaterialBindingFixture fixture(desc);
+    if (fixture.Bind(first_request, &first_pass_request).status != MaterialBindingFixtureStatus::Success) {
+        return Fail("first capacity material binding fixture bind failed");
+    }
+
+    RenderFixturePassRequest second_pass_request{};
+    if (!FillValidFixture(device, second_pass_request, capture)) {
+        return Fail("second fixture setup failed");
+    }
+
+    MaterialBindingFixtureRequest second_request = MaterialRequestFrom(second_pass_request, constant_span);
+    second_request.material_id = NEXT_MATERIAL_ID;
+    const RenderFixturePassRequest before = second_pass_request;
+    const auto result = fixture.Bind(second_request, &second_pass_request);
+    if (result.status != MaterialBindingFixtureStatus::BindingCapacityExceeded) {
+        return Fail("material binding fixture accepted capacity overflow");
+    }
+
+    if (!MaterialPassFieldsMatch(before, second_pass_request)) {
+        return Fail("capacity overflow mutated pass request");
+    }
+
+    const auto snapshot = fixture.Snapshot();
+    if (snapshot.binding_record_count != 1U || snapshot.binding_capacity_rejected_count != 1U) {
+        return Fail("capacity overflow counters were not updated");
+    }
+
+    return 0;
+}
+
+int MaterialBindingFixturePropagatesRenderFixturePassFailure() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RenderFixturePassRequest pass_request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, pass_request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    pass_request.target = RhiTextureHandle{};
+    const std::array<std::uint8_t, 4U> constants = MaterialConstantBytes();
+    const std::span<const std::uint8_t> constant_span(constants.data(), constants.size());
+    MaterialBindingFixtureRequest material_request = MaterialRequestFrom(pass_request, constant_span);
+    MaterialBindingFixture fixture;
+    RenderFixturePass pass;
+    const auto result = fixture.BindAndExecute(material_request, &pass, &pass_request);
+    if (result.status != MaterialBindingFixtureStatus::RenderFixturePassFailed) {
+        return Fail("material binding fixture did not propagate fixture pass failure");
+    }
+
+    if (result.pass_status != RenderFixturePassStatus::InvalidTarget) {
+        return Fail("material binding fixture reported unexpected pass failure status");
+    }
+
+    const auto snapshot = fixture.Snapshot();
+    if (snapshot.render_pass_failure_count != 1U || snapshot.executed_pass_count != 1U) {
+        return Fail("material binding fixture did not track pass failure counters");
+    }
+
+    return 0;
+}
+
+int MaterialBindingFixtureSnapshotTracksBoundedCounters() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RenderFixturePassRequest pass_request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, pass_request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    const std::array<std::uint8_t, 4U> constants = MaterialConstantBytes();
+    const std::span<const std::uint8_t> constant_span(constants.data(), constants.size());
+    MaterialBindingFixtureRequest material_request = MaterialRequestFrom(pass_request, constant_span);
+    MaterialBindingFixture fixture;
+    RenderFixturePass pass;
+    const auto result = fixture.BindAndExecute(material_request, &pass, &pass_request);
+    if (result.status != MaterialBindingFixtureStatus::Success) {
+        return Fail("material binding fixture did not execute fixture pass");
+    }
+
+    if (result.pass_status != RenderFixturePassStatus::Success || result.rhi_status != RhiStatus::Success) {
+        return Fail("material binding fixture did not propagate pass success");
+    }
+
+    const auto snapshot = fixture.Snapshot();
+    if (snapshot.accepted_binding_count != 1U || snapshot.binding_record_count != 1U) {
+        return Fail("material binding fixture snapshot missed binding counters");
+    }
+
+    if (snapshot.executed_pass_count != 1U || snapshot.completed_pass_count != 1U) {
+        return Fail("material binding fixture snapshot missed pass counters");
+    }
+
+    if (snapshot.last_material_id != MATERIAL_ID || snapshot.last_pass_id != MATERIAL_PASS_ID) {
+        return Fail("material binding fixture snapshot missed last ids");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view name) {
     if (name == TEST_EXECUTES_PASS) {
         return RenderCoreFixturePassExecutesSampledIndexedPass();
@@ -701,6 +1095,42 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_SNAPSHOT) {
         return RenderCoreFixturePassSnapshotTracksBoundedCounters();
+    }
+
+    if (name == TEST_MATERIAL_BIND) {
+        return MaterialBindingFixtureBindsValuesToRenderFixtureRequest();
+    }
+
+    if (name == TEST_MATERIAL_INVALID_PIPELINE) {
+        return MaterialBindingFixtureRejectsInvalidPipelineWithoutMutation();
+    }
+
+    if (name == TEST_MATERIAL_INVALID_TEXTURE) {
+        return MaterialBindingFixtureRejectsInvalidTextureBindingWithoutMutation();
+    }
+
+    if (name == TEST_MATERIAL_INVALID_SAMPLER) {
+        return MaterialBindingFixtureRejectsInvalidSamplerBindingWithoutMutation();
+    }
+
+    if (name == TEST_MATERIAL_OVERSIZED_CONSTANTS) {
+        return MaterialBindingFixtureRejectsOversizedConstantsWithoutMutation();
+    }
+
+    if (name == TEST_MATERIAL_DUPLICATE) {
+        return MaterialBindingFixtureRejectsDuplicateMaterialIdWithoutMutation();
+    }
+
+    if (name == TEST_MATERIAL_CAPACITY) {
+        return MaterialBindingFixtureRejectsCapacityOverflowWithoutMutation();
+    }
+
+    if (name == TEST_MATERIAL_PASS_FAILURE) {
+        return MaterialBindingFixturePropagatesRenderFixturePassFailure();
+    }
+
+    if (name == TEST_MATERIAL_SNAPSHOT) {
+        return MaterialBindingFixtureSnapshotTracksBoundedCounters();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);
