@@ -199,6 +199,7 @@ Required test-tier direction:
 | P2-GATE-027 | RHI Primitive Retirement Ledger | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_027_RHI_PRIMITIVE_RETIREMENT_LEDGER.md`; landed at `3776664`; RHI-owned primitive retirement request, ledger, drain, and deterministic handle invalidation evidence over landed RHI primitive handles only; default fast gate is `880/880` PASS; no Resource/Streaming/File/Package/RenderCore/material/scene/UI/World/Script/Game Adapter dependency, backend-native public leak, new renderer scheduling, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-028 | Audio PCM Sample Packet | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_028_AUDIO_PCM_SAMPLE_PACKET.md`; landed at `534d3ef`; Audio-owned PCM sample packet value contracts, bounded packet-slot metadata, query/release snapshots, and deterministic counters only; default fast gate is `893/893` PASS; no Resource/File/Package/codec/streaming dependency, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
 | P2-GATE-029 | Audio Resource PCM Packet Import Bridge | L4-L5 over L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_029_AUDIO_RESOURCE_PCM_PACKET_IMPORT_BRIDGE.md`; landed at `0a22dac`; bridge-owned mapping from Resource decode-result metadata into Audio PCM packet request descriptors only; default fast gate is `901/901` PASS; no Resource ownership inside Audio core, no Audio packet lifecycle inside Resource core, no decoded byte storage, real codec, streaming audio, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
+| P2-GATE-030 | RenderCore Render Graph Execution Plan | L5 over L3-L5 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_030_RENDERCORE_RENDER_GRAPH_EXECUTION_PLAN.md`; proposed after P2-GATE-029 landing; RenderCore-owned execution-plan metadata over landed render graph skeleton prepared batches and frame packet fixture only; no renderer scheduler, frame graph system, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
 
@@ -530,6 +531,16 @@ Required test-tier direction:
   scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs,
   sleeps, audible proof, manual proof, hardware-only proof, or original-game
   evidence.
+- P2-GATE-030 is proposed as the next RenderCore render graph execution-plan
+  first slice after P2-GATE-029. It may validate a successful landed
+  `RenderGraphSkeleton::Prepare` result, record bounded execution-plan
+  metadata, execute exactly one prepared skeleton batch through the landed
+  `RenderFramePacketFixture` path, expose query/release snapshots, and prove
+  deterministic counters. It must not authorize renderer scheduling, frame
+  graph systems, command-list parallelism, transient resource aliasing,
+  Resource/Streaming/Package/File ownership, material graph, scene/UI/World/
+  Script/Game Adapter behavior, native/backend leakage, reports, screenshots,
+  logs, sleeps, manual proof, hardware-only proof, or original-game evidence.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -700,3 +711,10 @@ Acceleration note:
     UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps,
     audible proof, manual proof, hardware-only proof, or original-game
     evidence.
+27. Review proposed P2-GATE-030 only as a RenderCore execution-plan metadata
+    boundary over landed graph skeleton prepared batches and frame packet
+    fixture execution. It must not become a scheduler, frame graph system,
+    command-list parallelism gate, transient resource policy, Resource/
+    Streaming/Package/File ownership path, material graph, scene/UI/World/
+    Script/Game Adapter behavior, native/backend leak, report, screenshot, log,
+    sleep, manual proof, hardware-only proof, or original-game evidence path.
