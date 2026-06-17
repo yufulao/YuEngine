@@ -21,6 +21,12 @@
 #include "YuEngine/Resource/ResourceDecodePlanRequest.h"
 #include "YuEngine/Resource/ResourceDecodePlanSnapshot.h"
 #include "YuEngine/Resource/ResourceDecodePlanStatus.h"
+#include "YuEngine/Resource/ResourceDecodeResultBudgetDesc.h"
+#include "YuEngine/Resource/ResourceDecodeResultOperation.h"
+#include "YuEngine/Resource/ResourceDecodeResultRecord.h"
+#include "YuEngine/Resource/ResourceDecodeResultRequest.h"
+#include "YuEngine/Resource/ResourceDecodeResultSnapshot.h"
+#include "YuEngine/Resource/ResourceDecodeResultStatus.h"
 #include "YuEngine/Resource/ResourceDependencyEdge.h"
 #include "YuEngine/Resource/ResourceDescriptor.h"
 #include "YuEngine/Resource/ResourceLoadCommitRecord.h"
@@ -221,6 +227,38 @@ public:
      */
     ResourceDecodePlanSnapshot DecodePlanSnapshot() const;
     /**
+     * @comment Configures the Resource-owned decode result budget.
+     * @param desc Input budget descriptor.
+     * @return Explicit decode result operation status.
+     */
+    ResourceDecodeResultStatus SetDecodeResultBudget(ResourceDecodeResultBudgetDesc desc);
+    /**
+     * @comment Commits a Resource-owned import-ready decode result over an existing decode plan.
+     * @param request Input decode result request.
+     * @return Explicit decode result operation status.
+     */
+    ResourceDecodeResultStatus CommitDecodeResult(const ResourceDecodeResultRequest &request);
+    /**
+     * @comment Queries a Resource-owned decode result record.
+     * @param request Input decode result request.
+     * @param output_record Output decode result record.
+     * @return Explicit decode result operation status.
+     */
+    ResourceDecodeResultStatus QueryDecodeResult(
+        const ResourceDecodeResultRequest &request,
+        ResourceDecodeResultRecord *output_record);
+    /**
+     * @comment Releases a Resource-owned decode result record without changing payload or residency state.
+     * @param request Input decode result request.
+     * @return Explicit decode result operation status.
+     */
+    ResourceDecodeResultStatus ReleaseDecodeResult(const ResourceDecodeResultRequest &request);
+    /**
+     * @comment Returns a snapshot of Resource-owned decode result counters.
+     * @return Decode result snapshot value.
+     */
+    ResourceDecodeResultSnapshot DecodeResultSnapshot() const;
+    /**
      * @comment Releases the operation.
      * @param handle Input handle.
      * @return Explicit operation status.
@@ -269,6 +307,14 @@ private:
         const ResourceDecodePlanRequest &request,
         std::uint32_t cache_slot_index,
         std::uint32_t header_version);
+    ResourceDecodeResultStatus RecordDecodeResultRejected(
+        ResourceDecodeResultOperation operation,
+        const ResourceDecodeResultRequest &request,
+        ResourceDecodeResultStatus status);
+    void RecordDecodeResultSuccess(
+        ResourceDecodeResultOperation operation,
+        const ResourceDecodeResultRequest &request,
+        std::uint32_t decode_plan_slot_index);
     ResourceLoadCommitStatus ValidateLoadCommitRequest(
         const ResourceLoadCommitRequest &request,
         std::size_t *out_slot_index) const;
@@ -285,6 +331,12 @@ private:
         const ResourceDecodePlanRequest &request,
         const ResourceCachePayloadRecord &cache_payload_record,
         std::uint32_t *out_header_version) const;
+    ResourceDecodeResultStatus ValidateDecodeResultRequest(
+        const ResourceDecodeResultRequest &request,
+        std::size_t *out_slot_index) const;
+    ResourceDecodeResultStatus ValidateDecodeResultPlan(
+        const ResourceDecodeResultRequest &request,
+        const ResourceDecodePlanRecord &decode_plan_record) const;
     ResourceLoadCommitStatus MapHandleStatus(ResourceStatus status) const;
     ResourceStatus MapLoadCommitStatus(ResourceLoadCommitStatus status) const;
     ResourceResidencyStatus MapHandleResidencyStatus(ResourceStatus status) const;
@@ -293,6 +345,8 @@ private:
     ResourceStatus MapCachePayloadStatus(ResourceCachePayloadStatus status) const;
     ResourceDecodePlanStatus MapHandleDecodePlanStatus(ResourceStatus status) const;
     ResourceStatus MapDecodePlanStatus(ResourceDecodePlanStatus status) const;
+    ResourceDecodeResultStatus MapHandleDecodeResultStatus(ResourceStatus status) const;
+    ResourceStatus MapDecodeResultStatus(ResourceDecodeResultStatus status) const;
     ResourceStatus ResolveHandle(ResourceHandle handle, std::size_t& out_index) const;
     ResourceStatus RegisterTypeIfNeeded(ResourceTypeId type);
     bool HasType(ResourceTypeId type) const;
@@ -300,6 +354,7 @@ private:
     bool HasLoadCommitId(std::uint64_t commit_id) const;
     bool HasCachePayloadId(std::uint64_t payload_id) const;
     bool HasDecodePlanId(std::uint64_t decode_plan_id) const;
+    bool HasDecodeResultId(std::uint64_t decode_result_id) const;
     bool FindCachePayloadRecord(
         ResourceHandle resource,
         std::uint64_t payload_id,
@@ -311,6 +366,13 @@ private:
         std::uint64_t decode_plan_id,
         std::size_t *out_record_index) const;
     bool FindFreeDecodePlanRecord(std::size_t *out_record_index) const;
+    bool FindDecodeResultRecord(
+        ResourceHandle resource,
+        std::uint64_t payload_id,
+        std::uint64_t decode_plan_id,
+        std::uint64_t decode_result_id,
+        std::size_t *out_record_index) const;
+    bool FindFreeDecodeResultRecord(std::size_t *out_record_index) const;
     bool StoreLoadCommitRecord(const ResourceLoadCommitRequest &request);
     bool StoreResidencyRecord(
         ResourceResidencyOperation operation,
@@ -324,6 +386,12 @@ private:
     void ClearResidencySlot(ResourceSlot &slot);
     void ClearDecodePlanRecord(std::size_t record_index);
     void ClearDecodePlansForCachePayload(ResourceHandle resource, std::uint64_t payload_id);
+    void ClearDecodeResultRecord(std::size_t record_index);
+    void ClearDecodeResultsForDecodePlan(
+        ResourceHandle resource,
+        std::uint64_t payload_id,
+        std::uint64_t decode_plan_id);
+    void ClearDecodeResultsForCachePayload(ResourceHandle resource, std::uint64_t payload_id);
     void ClearCachePayloadRecord(std::size_t record_index);
     void ClearCachePayloadForSlot(std::size_t slot_index);
     bool HasInboundEdge(std::size_t slot_index) const;
@@ -337,6 +405,7 @@ private:
     std::array<ResourceResidencyRecord, MAX_RESOURCE_RESIDENCY_RECORD_COUNT> residency_records_;
     std::array<ResourceCachePayloadRecord, MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT> cache_payload_records_;
     std::array<ResourceDecodePlanRecord, MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT> decode_plan_records_;
+    std::array<ResourceDecodeResultRecord, MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT> decode_result_records_;
     std::array<
         std::array<std::uint8_t, MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD>,
         MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT> cache_payload_bytes_;
@@ -345,5 +414,6 @@ private:
     ResourceResidencySnapshot residency_snapshot_;
     ResourceCachePayloadSnapshot cache_payload_snapshot_;
     ResourceDecodePlanSnapshot decode_plan_snapshot_;
+    ResourceDecodeResultSnapshot decode_result_snapshot_;
 };
 }

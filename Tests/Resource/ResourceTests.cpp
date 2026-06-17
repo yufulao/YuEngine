@@ -23,6 +23,12 @@
 #include "YuEngine/Resource/ResourceDecodePlanRequest.h"
 #include "YuEngine/Resource/ResourceDecodePlanSnapshot.h"
 #include "YuEngine/Resource/ResourceDecodePlanStatus.h"
+#include "YuEngine/Resource/ResourceDecodeResultBudgetDesc.h"
+#include "YuEngine/Resource/ResourceDecodeResultClass.h"
+#include "YuEngine/Resource/ResourceDecodeResultRecord.h"
+#include "YuEngine/Resource/ResourceDecodeResultRequest.h"
+#include "YuEngine/Resource/ResourceDecodeResultSnapshot.h"
+#include "YuEngine/Resource/ResourceDecodeResultStatus.h"
 #include "YuEngine/Resource/ResourceLoadCommitRequest.h"
 #include "YuEngine/Resource/ResourceLoadCommitStatus.h"
 #include "YuEngine/Resource/ResourceLoadState.h"
@@ -47,6 +53,12 @@ using yuengine::resource::ResourceDecodePlanRecord;
 using yuengine::resource::ResourceDecodePlanRequest;
 using yuengine::resource::ResourceDecodePlanSnapshot;
 using yuengine::resource::ResourceDecodePlanStatus;
+using yuengine::resource::ResourceDecodeResultBudgetDesc;
+using yuengine::resource::ResourceDecodeResultClass;
+using yuengine::resource::ResourceDecodeResultRecord;
+using yuengine::resource::ResourceDecodeResultRequest;
+using yuengine::resource::ResourceDecodeResultSnapshot;
+using yuengine::resource::ResourceDecodeResultStatus;
 using yuengine::resource::ResourceHandle;
 using yuengine::resource::ResourceLoadCommitRequest;
 using yuengine::resource::ResourceLoadCommitStatus;
@@ -65,6 +77,7 @@ using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
 using yuengine::resource::INVALID_RESOURCE_GENERATION;
 using yuengine::resource::MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT;
+using yuengine::resource::MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT;
 using yuengine::resource::MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD;
 using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT;
 using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_MAGIC_0;
@@ -167,6 +180,36 @@ constexpr const char *TEST_DECODE_PLAN_BUDGET =
     "Resource_DecodePlan_RejectsBudgetOverflow";
 constexpr const char *TEST_DECODE_PLAN_FAILED_VALIDATION =
     "Resource_DecodePlan_FailedValidationDoesNotMutateResourceState";
+constexpr const char *TEST_DECODE_RESULT_COMMIT_QUERY_RELEASE =
+    "Resource_DecodeResult_CommitsQueriesAndReleasesMetadata";
+constexpr const char *TEST_DECODE_RESULT_MISSING_PLAN =
+    "Resource_DecodeResult_RejectsMissingDecodePlan";
+constexpr const char *TEST_DECODE_RESULT_STALE_HANDLE =
+    "Resource_DecodeResult_RejectsStaleHandleWithoutMutation";
+constexpr const char *TEST_DECODE_RESULT_TYPE_MISMATCH =
+    "Resource_DecodeResult_RejectsTypeMismatchWithoutMutation";
+constexpr const char *TEST_DECODE_RESULT_NOT_RESIDENT =
+    "Resource_DecodeResult_RejectsNotResidentWithoutMutation";
+constexpr const char *TEST_DECODE_RESULT_FAILED_LOAD =
+    "Resource_DecodeResult_RejectsFailedLoadWithoutMutation";
+constexpr const char *TEST_DECODE_RESULT_DUPLICATE =
+    "Resource_DecodeResult_RejectsDuplicateResultId";
+constexpr const char *TEST_DECODE_RESULT_CAPACITY =
+    "Resource_DecodeResult_RejectsCapacityOverflow";
+constexpr const char *TEST_DECODE_RESULT_BUDGET =
+    "Resource_DecodeResult_RejectsBudgetOverflow";
+constexpr const char *TEST_DECODE_RESULT_ASSET_CLASS =
+    "Resource_DecodeResult_RejectsAssetClassMismatch";
+constexpr const char *TEST_DECODE_RESULT_RESULT_CLASS =
+    "Resource_DecodeResult_RejectsResultClassMismatch";
+constexpr const char *TEST_DECODE_RESULT_DECODED_BYTES =
+    "Resource_DecodeResult_RejectsDecodedByteCountMismatch";
+constexpr const char *TEST_DECODE_RESULT_PLAN_RELEASE =
+    "Resource_DecodeResult_ReleasingPlanClearsDependentRecords";
+constexpr const char *TEST_DECODE_RESULT_PAYLOAD_RELEASE =
+    "Resource_DecodeResult_ReleasingPayloadClearsDependentRecords";
+constexpr const char *TEST_DECODE_RESULT_FAILED_VALIDATION =
+    "Resource_DecodeResult_FailedValidationDoesNotMutateResourceState";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr ResourceTypeId TYPE_TEXTURE{1U};
@@ -200,6 +243,9 @@ constexpr std::uint64_t PAYLOAD_TWO = 5002U;
 constexpr std::uint64_t PAYLOAD_THREE = 5003U;
 constexpr std::uint64_t DECODE_PLAN_ONE = 6001U;
 constexpr std::uint64_t DECODE_PLAN_TWO = 6002U;
+constexpr std::uint64_t DECODE_PLAN_THREE = 6003U;
+constexpr std::uint64_t DECODE_RESULT_ONE = 7001U;
+constexpr std::uint64_t DECODE_RESULT_TWO = 7002U;
 constexpr std::uint32_t DECODE_PLAN_DECODED_BYTE_COUNT = 128U;
 constexpr std::uint32_t DECODE_PLAN_PAYLOAD_BYTE_COUNT = RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT + 4U;
 using TestFunction = int (*)();
@@ -338,6 +384,27 @@ ResourceDecodePlanRequest DecodePlanRequest(
     return request;
 }
 
+ResourceDecodeResultRequest DecodeResultRequest(
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint64_t payload_id,
+    std::uint64_t decode_plan_id,
+    std::uint64_t decode_result_id,
+    ResourceDecodePlanAssetClass asset_class,
+    ResourceDecodeResultClass result_class,
+    std::uint32_t decoded_byte_count) {
+    ResourceDecodeResultRequest request;
+    request.resource = resource;
+    request.expected_type = expected_type;
+    request.payload_id = payload_id;
+    request.decode_plan_id = decode_plan_id;
+    request.decode_result_id = decode_result_id;
+    request.asset_class = asset_class;
+    request.result_class = result_class;
+    request.decoded_byte_count = decoded_byte_count;
+    return request;
+}
+
 bool StoreDecodePlanPayload(
     ResourceRegistry &registry,
     ResourceHandle resource,
@@ -351,6 +418,32 @@ bool StoreDecodePlanPayload(
         payload.data(),
         static_cast<std::uint32_t>(payload.size()));
     return registry.StoreCachePayload(request) == ResourceCachePayloadStatus::Success;
+}
+
+bool CreateDecodePlanMetadata(
+    ResourceRegistry &registry,
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint64_t payload_id,
+    std::uint64_t decode_plan_id,
+    ResourceDecodePlanAssetClass asset_class,
+    std::uint32_t decoded_byte_count) {
+    const std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> payload = DecodePlanPayload(
+        asset_class,
+        RESOURCE_DECODE_PLAN_HEADER_VERSION,
+        decoded_byte_count);
+    if (!StoreDecodePlanPayload(registry, resource, expected_type, payload_id, payload)) {
+        return false;
+    }
+
+    const ResourceDecodePlanRequest request = DecodePlanRequest(
+        resource,
+        expected_type,
+        payload_id,
+        decode_plan_id,
+        asset_class,
+        decoded_byte_count);
+    return registry.CreateDecodePlan(request) == ResourceDecodePlanStatus::Success;
 }
 
 bool CommitLoad(
@@ -379,6 +472,12 @@ bool ConfigureCachePayloadBudget(ResourceRegistry &registry, std::uint32_t byte_
     ResourceCachePayloadBudgetDesc budget;
     budget.byte_capacity = byte_capacity;
     return registry.SetCachePayloadBudget(budget) == ResourceCachePayloadStatus::Success;
+}
+
+bool ConfigureDecodeResultBudget(ResourceRegistry &registry, std::uint32_t byte_capacity) {
+    ResourceDecodeResultBudgetDesc budget;
+    budget.decoded_byte_capacity = byte_capacity;
+    return registry.SetDecodeResultBudget(budget) == ResourceDecodeResultStatus::Success;
 }
 
 bool AdmitUploadedResident(
@@ -2983,6 +3082,806 @@ int ResourceDecodePlanFailedValidationDoesNotMutateResourceState() {
 
     return 0;
 }
+
+int ResourceDecodeResultCommitsQueriesAndReleasesMetadata() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_success");
+    if (!result.Succeeded()) {
+        return Fail("decode result success fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("decode result success fixture residency failed");
+    }
+
+    if (!CreateDecodePlanMetadata(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT)) {
+        return Fail("decode result success fixture plan create failed");
+    }
+
+    const ResourceDecodeResultRequest request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (registry.CommitDecodeResult(request) != ResourceDecodeResultStatus::Success) {
+        return Fail("decode result commit failed");
+    }
+
+    ResourceDecodeResultRecord record;
+    if (registry.QueryDecodeResult(request, &record) != ResourceDecodeResultStatus::Success) {
+        return Fail("decode result query failed");
+    }
+
+    if (record.decode_result_id != DECODE_RESULT_ONE) {
+        return Fail("decode result query returned wrong id");
+    }
+
+    if (record.decode_plan_id != DECODE_PLAN_ONE) {
+        return Fail("decode result query returned wrong plan id");
+    }
+
+    if (record.result_class != ResourceDecodeResultClass::Texture) {
+        return Fail("decode result query returned wrong result class");
+    }
+
+    if (record.decoded_byte_count != DECODE_PLAN_DECODED_BYTE_COUNT) {
+        return Fail("decode result query returned wrong decoded byte count");
+    }
+
+    ResourceDecodeResultSnapshot snapshot = registry.DecodeResultSnapshot();
+    if (snapshot.active_result_count != 1U) {
+        return Fail("decode result commit did not track active count");
+    }
+
+    if (snapshot.committed_decoded_byte_count != DECODE_PLAN_DECODED_BYTE_COUNT) {
+        return Fail("decode result commit did not track decoded bytes");
+    }
+
+    if (snapshot.committed_result_count != 1U) {
+        return Fail("decode result commit was not counted");
+    }
+
+    if (snapshot.queried_result_count != 1U) {
+        return Fail("decode result query was not counted");
+    }
+
+    if (registry.ReleaseDecodeResult(request) != ResourceDecodeResultStatus::Success) {
+        return Fail("decode result release failed");
+    }
+
+    snapshot = registry.DecodeResultSnapshot();
+    if (snapshot.active_result_count != 0U) {
+        return Fail("decode result release left active result");
+    }
+
+    if (snapshot.committed_decoded_byte_count != 0U) {
+        return Fail("decode result release left decoded bytes");
+    }
+
+    if (snapshot.released_result_count != 1U) {
+        return Fail("decode result release was not counted");
+    }
+
+    if (registry.DecodePlanSnapshot().active_plan_count != 1U) {
+        return Fail("decode result release changed decode plan count");
+    }
+
+    if (registry.CachePayloadSnapshot().cached_payload_count != 1U) {
+        return Fail("decode result release changed cache payload count");
+    }
+
+    const ResourceDecodeResultStatus query_status = registry.QueryDecodeResult(request, &record);
+    if (query_status != ResourceDecodeResultStatus::MissingDecodeResult) {
+        return Fail("released decode result query returned wrong status");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultRejectsMissingDecodePlan() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_missing_plan");
+    if (!result.Succeeded()) {
+        return Fail("missing plan decode result fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("missing plan decode result fixture residency failed");
+    }
+
+    const ResourceDecodeResultRequest request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodeResultStatus status = registry.CommitDecodeResult(request);
+    if (status != ResourceDecodeResultStatus::MissingDecodePlan) {
+        return Fail("missing plan decode result request returned wrong status");
+    }
+
+    if (registry.DecodeResultSnapshot().active_result_count != 0U) {
+        return Fail("missing plan decode result request created a result");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultRejectsStaleHandleWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_stale");
+    if (!result.Succeeded()) {
+        return Fail("stale decode result fixture registration failed");
+    }
+
+    if (registry.Retire(result.handle) != ResourceStatus::Success) {
+        return Fail("stale decode result fixture retire failed");
+    }
+
+    const ResourceSnapshot before_snapshot = registry.Snapshot();
+    const ResourceDecodeResultRequest request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodeResultStatus status = registry.CommitDecodeResult(request);
+    if (status != ResourceDecodeResultStatus::GenerationMismatch) {
+        return Fail("stale decode result request returned wrong status");
+    }
+
+    if (registry.Snapshot().registered_resource_count != before_snapshot.registered_resource_count) {
+        return Fail("stale decode result request changed registered count");
+    }
+
+    if (registry.DecodeResultSnapshot().active_result_count != 0U) {
+        return Fail("stale decode result request created a result");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultRejectsTypeMismatchWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_type");
+    if (!result.Succeeded()) {
+        return Fail("type mismatch decode result fixture registration failed");
+    }
+
+    const ResourceDecodeResultRequest request = DecodeResultRequest(
+        result.handle,
+        TYPE_AUDIO,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodeResultStatus status = registry.CommitDecodeResult(request);
+    if (status != ResourceDecodeResultStatus::TypeMismatch) {
+        return Fail("type mismatch decode result request returned wrong status");
+    }
+
+    if (registry.DecodeResultSnapshot().active_result_count != 0U) {
+        return Fail("type mismatch decode result request created a result");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultRejectsNotResidentWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_not_resident");
+    if (!result.Succeeded()) {
+        return Fail("not resident decode result fixture registration failed");
+    }
+
+    if (!CommitLoad(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Uploaded, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("not resident decode result fixture load commit failed");
+    }
+
+    const ResourceDecodeResultRequest request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodeResultStatus status = registry.CommitDecodeResult(request);
+    if (status != ResourceDecodeResultStatus::NotResident) {
+        return Fail("not resident decode result request returned wrong status");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Uploaded)) {
+        return Fail("not resident decode result request changed residency state");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultRejectsFailedLoadWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_failed");
+    if (!result.Succeeded()) {
+        return Fail("failed load decode result fixture registration failed");
+    }
+
+    if (!CommitLoad(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Failed, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("failed load decode result fixture load commit failed");
+    }
+
+    const ResourceDecodeResultRequest request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodeResultStatus status = registry.CommitDecodeResult(request);
+    if (status != ResourceDecodeResultStatus::FailedLoad) {
+        return Fail("failed load decode result request returned wrong status");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Failed)) {
+        return Fail("failed load decode result request changed residency state");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultRejectsDuplicateResultId() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_duplicate");
+    if (!result.Succeeded()) {
+        return Fail("duplicate decode result fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("duplicate decode result fixture residency failed");
+    }
+
+    if (!CreateDecodePlanMetadata(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT)) {
+        return Fail("duplicate decode result fixture plan create failed");
+    }
+
+    const ResourceDecodeResultRequest request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (registry.CommitDecodeResult(request) != ResourceDecodeResultStatus::Success) {
+        return Fail("first duplicate decode result commit failed");
+    }
+
+    const ResourceDecodeResultStatus status = registry.CommitDecodeResult(request);
+    if (status != ResourceDecodeResultStatus::DuplicateDecodeResultId) {
+        return Fail("duplicate decode result id returned wrong status");
+    }
+
+    const ResourceDecodeResultSnapshot snapshot = registry.DecodeResultSnapshot();
+    if (snapshot.active_result_count != 1U) {
+        return Fail("duplicate decode result id changed active count");
+    }
+
+    if (snapshot.duplicate_result_rejected_count != 1U) {
+        return Fail("duplicate decode result id was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultRejectsCapacityOverflow() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_capacity");
+    if (!result.Succeeded()) {
+        return Fail("capacity decode result fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("capacity decode result fixture residency failed");
+    }
+
+    if (!CreateDecodePlanMetadata(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        1U)) {
+        return Fail("capacity decode result fixture plan create failed");
+    }
+
+    std::uint32_t result_index = 0U;
+    while (result_index < MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT) {
+        const ResourceDecodeResultRequest request = DecodeResultRequest(
+            result.handle,
+            TYPE_TEXTURE,
+            PAYLOAD_ONE,
+            DECODE_PLAN_ONE,
+            DECODE_RESULT_ONE + result_index,
+            ResourceDecodePlanAssetClass::Texture,
+            ResourceDecodeResultClass::Texture,
+            1U);
+        if (registry.CommitDecodeResult(request) != ResourceDecodeResultStatus::Success) {
+            return Fail("capacity decode result setup commit failed");
+        }
+
+        ++result_index;
+    }
+
+    const ResourceDecodeResultRequest overflow_request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE + MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        1U);
+    const ResourceDecodeResultStatus status = registry.CommitDecodeResult(overflow_request);
+    if (status != ResourceDecodeResultStatus::CapacityExceeded) {
+        return Fail("capacity decode result request returned wrong status");
+    }
+
+    const ResourceDecodeResultSnapshot snapshot = registry.DecodeResultSnapshot();
+    if (snapshot.active_result_count != MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT) {
+        return Fail("capacity decode result request changed active result count");
+    }
+
+    if (snapshot.capacity_rejected_result_count != 1U) {
+        return Fail("capacity decode result rejection was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultRejectsBudgetOverflow() {
+    ResourceRegistry registry;
+    if (!ConfigureDecodeResultBudget(registry, 1U)) {
+        return Fail("budget decode result budget configuration failed");
+    }
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_budget");
+    if (!result.Succeeded()) {
+        return Fail("budget decode result fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("budget decode result fixture residency failed");
+    }
+
+    if (!CreateDecodePlanMetadata(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT)) {
+        return Fail("budget decode result fixture plan create failed");
+    }
+
+    const ResourceDecodeResultRequest request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodeResultStatus status = registry.CommitDecodeResult(request);
+    if (status != ResourceDecodeResultStatus::BudgetExceeded) {
+        return Fail("budget decode result request returned wrong status");
+    }
+
+    const ResourceDecodeResultSnapshot snapshot = registry.DecodeResultSnapshot();
+    if (snapshot.active_result_count != 0U) {
+        return Fail("budget decode result request created a result");
+    }
+
+    if (snapshot.budget_rejected_result_count != 1U) {
+        return Fail("budget decode result rejection was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultRejectsAssetClassMismatch() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_asset_class");
+    if (!result.Succeeded()) {
+        return Fail("asset class decode result fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("asset class decode result fixture residency failed");
+    }
+
+    if (!CreateDecodePlanMetadata(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT)) {
+        return Fail("asset class decode result fixture plan create failed");
+    }
+
+    const ResourceDecodeResultRequest request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Audio,
+        ResourceDecodeResultClass::Audio,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodeResultStatus status = registry.CommitDecodeResult(request);
+    if (status != ResourceDecodeResultStatus::AssetClassMismatch) {
+        return Fail("asset class decode result request returned wrong status");
+    }
+
+    if (registry.DecodeResultSnapshot().active_result_count != 0U) {
+        return Fail("asset class decode result request created a result");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultRejectsResultClassMismatch() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_result_class");
+    if (!result.Succeeded()) {
+        return Fail("result class decode result fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("result class decode result fixture residency failed");
+    }
+
+    if (!CreateDecodePlanMetadata(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT)) {
+        return Fail("result class decode result fixture plan create failed");
+    }
+
+    const ResourceDecodeResultRequest request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Audio,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodeResultStatus status = registry.CommitDecodeResult(request);
+    if (status != ResourceDecodeResultStatus::ResultClassMismatch) {
+        return Fail("result class decode result request returned wrong status");
+    }
+
+    if (registry.DecodeResultSnapshot().active_result_count != 0U) {
+        return Fail("result class decode result request created a result");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultRejectsDecodedByteCountMismatch() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_decoded_bytes");
+    if (!result.Succeeded()) {
+        return Fail("decoded byte decode result fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("decoded byte decode result fixture residency failed");
+    }
+
+    if (!CreateDecodePlanMetadata(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT)) {
+        return Fail("decoded byte decode result fixture plan create failed");
+    }
+
+    const ResourceDecodeResultRequest request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT + 1U);
+    const ResourceDecodeResultStatus status = registry.CommitDecodeResult(request);
+    if (status != ResourceDecodeResultStatus::DecodedByteCountMismatch) {
+        return Fail("decoded byte decode result request returned wrong status");
+    }
+
+    if (registry.DecodeResultSnapshot().active_result_count != 0U) {
+        return Fail("decoded byte decode result request created a result");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultReleasingPlanClearsDependentRecords() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_plan_release");
+    if (!result.Succeeded()) {
+        return Fail("plan release decode result fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("plan release decode result fixture residency failed");
+    }
+
+    if (!CreateDecodePlanMetadata(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT)) {
+        return Fail("plan release decode result fixture plan create failed");
+    }
+
+    const ResourceDecodeResultRequest result_request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (registry.CommitDecodeResult(result_request) != ResourceDecodeResultStatus::Success) {
+        return Fail("plan release decode result commit failed");
+    }
+
+    const ResourceDecodePlanRequest plan_request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (registry.ReleaseDecodePlan(plan_request) != ResourceDecodePlanStatus::Success) {
+        return Fail("plan release decode result plan release failed");
+    }
+
+    const ResourceDecodeResultSnapshot snapshot = registry.DecodeResultSnapshot();
+    if (snapshot.active_result_count != 0U) {
+        return Fail("plan release left active decode result");
+    }
+
+    if (snapshot.committed_decoded_byte_count != 0U) {
+        return Fail("plan release left decode result bytes");
+    }
+
+    ResourceDecodeResultRecord record;
+    const ResourceDecodeResultStatus query_status = registry.QueryDecodeResult(result_request, &record);
+    if (query_status != ResourceDecodeResultStatus::MissingDecodeResult) {
+        return Fail("plan release decode result query returned wrong status");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultReleasingPayloadClearsDependentRecords() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_payload_release");
+    if (!result.Succeeded()) {
+        return Fail("payload release decode result fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("payload release decode result fixture residency failed");
+    }
+
+    if (!CreateDecodePlanMetadata(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT)) {
+        return Fail("payload release decode result fixture plan create failed");
+    }
+
+    const ResourceDecodeResultRequest result_request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (registry.CommitDecodeResult(result_request) != ResourceDecodeResultStatus::Success) {
+        return Fail("payload release decode result commit failed");
+    }
+
+    const ResourceCachePayloadRequest release_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        nullptr,
+        0U);
+    if (registry.ReleaseCachePayload(release_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("payload release decode result payload release failed");
+    }
+
+    if (registry.DecodePlanSnapshot().active_plan_count != 0U) {
+        return Fail("payload release left active decode plan");
+    }
+
+    const ResourceDecodeResultSnapshot snapshot = registry.DecodeResultSnapshot();
+    if (snapshot.active_result_count != 0U) {
+        return Fail("payload release left active decode result");
+    }
+
+    if (snapshot.committed_decoded_byte_count != 0U) {
+        return Fail("payload release left decode result bytes");
+    }
+
+    ResourceDecodeResultRecord record;
+    const ResourceDecodeResultStatus query_status = registry.QueryDecodeResult(result_request, &record);
+    if (query_status != ResourceDecodeResultStatus::MissingDecodeResult) {
+        return Fail("payload release decode result query returned wrong status");
+    }
+
+    return 0;
+}
+
+int ResourceDecodeResultFailedValidationDoesNotMutateResourceState() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_result_validation");
+    if (!result.Succeeded()) {
+        return Fail("validation decode result fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("validation decode result fixture residency failed");
+    }
+
+    if (!CreateDecodePlanMetadata(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT)) {
+        return Fail("validation decode result fixture plan create failed");
+    }
+
+    const ResourceDecodeResultRequest valid_request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (registry.CommitDecodeResult(valid_request) != ResourceDecodeResultStatus::Success) {
+        return Fail("validation decode result commit failed");
+    }
+
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const ResourceResidencySnapshot before_residency_snapshot = registry.ResidencySnapshot();
+    const ResourceCachePayloadSnapshot before_cache_snapshot = registry.CachePayloadSnapshot();
+    const ResourceDecodePlanSnapshot before_plan_snapshot = registry.DecodePlanSnapshot();
+    const ResourceDecodeResultSnapshot before_result_snapshot = registry.DecodeResultSnapshot();
+    const ResourceDecodeResultRequest invalid_request = DecodeResultRequest(
+        ResourceHandle{},
+        TYPE_TEXTURE,
+        PAYLOAD_TWO,
+        DECODE_PLAN_TWO,
+        DECODE_RESULT_TWO,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodeResultStatus status = registry.CommitDecodeResult(invalid_request);
+    if (status != ResourceDecodeResultStatus::InvalidHandle) {
+        return Fail("invalid decode result request returned wrong status");
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count) {
+        return Fail("invalid decode result request changed registered count");
+    }
+
+    if (after_resource_snapshot.load_commit_count != before_resource_snapshot.load_commit_count) {
+        return Fail("invalid decode result request changed load commit count");
+    }
+
+    const ResourceResidencySnapshot after_residency_snapshot = registry.ResidencySnapshot();
+    if (after_residency_snapshot.resident_resource_count != before_residency_snapshot.resident_resource_count) {
+        return Fail("invalid decode result request changed resident count");
+    }
+
+    if (after_residency_snapshot.resident_byte_count != before_residency_snapshot.resident_byte_count) {
+        return Fail("invalid decode result request changed resident bytes");
+    }
+
+    const ResourceCachePayloadSnapshot after_cache_snapshot = registry.CachePayloadSnapshot();
+    if (after_cache_snapshot.cached_payload_count != before_cache_snapshot.cached_payload_count) {
+        return Fail("invalid decode result request changed cache payload count");
+    }
+
+    const ResourceDecodePlanSnapshot after_plan_snapshot = registry.DecodePlanSnapshot();
+    if (after_plan_snapshot.active_plan_count != before_plan_snapshot.active_plan_count) {
+        return Fail("invalid decode result request changed decode plan count");
+    }
+
+    const ResourceDecodeResultSnapshot after_result_snapshot = registry.DecodeResultSnapshot();
+    if (after_result_snapshot.active_result_count != before_result_snapshot.active_result_count) {
+        return Fail("invalid decode result request changed active result count");
+    }
+
+    if (after_result_snapshot.committed_decoded_byte_count != before_result_snapshot.committed_decoded_byte_count) {
+        return Fail("invalid decode result request changed decoded bytes");
+    }
+
+    ResourceDecodeResultRecord record;
+    if (registry.QueryDecodeResult(valid_request, &record) != ResourceDecodeResultStatus::Success) {
+        return Fail("valid decode result was not queryable after invalid request");
+    }
+
+    if (record.decode_result_id != DECODE_RESULT_ONE) {
+        return Fail("invalid decode result request changed existing result");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -3050,7 +3949,22 @@ int main(int argc, char** argv) {
         {TEST_DECODE_PLAN_DUPLICATE, ResourceDecodePlanRejectsDuplicatePlanId},
         {TEST_DECODE_PLAN_CAPACITY, ResourceDecodePlanRejectsCapacityOverflow},
         {TEST_DECODE_PLAN_BUDGET, ResourceDecodePlanRejectsBudgetOverflow},
-        {TEST_DECODE_PLAN_FAILED_VALIDATION, ResourceDecodePlanFailedValidationDoesNotMutateResourceState}};
+        {TEST_DECODE_PLAN_FAILED_VALIDATION, ResourceDecodePlanFailedValidationDoesNotMutateResourceState},
+        {TEST_DECODE_RESULT_COMMIT_QUERY_RELEASE, ResourceDecodeResultCommitsQueriesAndReleasesMetadata},
+        {TEST_DECODE_RESULT_MISSING_PLAN, ResourceDecodeResultRejectsMissingDecodePlan},
+        {TEST_DECODE_RESULT_STALE_HANDLE, ResourceDecodeResultRejectsStaleHandleWithoutMutation},
+        {TEST_DECODE_RESULT_TYPE_MISMATCH, ResourceDecodeResultRejectsTypeMismatchWithoutMutation},
+        {TEST_DECODE_RESULT_NOT_RESIDENT, ResourceDecodeResultRejectsNotResidentWithoutMutation},
+        {TEST_DECODE_RESULT_FAILED_LOAD, ResourceDecodeResultRejectsFailedLoadWithoutMutation},
+        {TEST_DECODE_RESULT_DUPLICATE, ResourceDecodeResultRejectsDuplicateResultId},
+        {TEST_DECODE_RESULT_CAPACITY, ResourceDecodeResultRejectsCapacityOverflow},
+        {TEST_DECODE_RESULT_BUDGET, ResourceDecodeResultRejectsBudgetOverflow},
+        {TEST_DECODE_RESULT_ASSET_CLASS, ResourceDecodeResultRejectsAssetClassMismatch},
+        {TEST_DECODE_RESULT_RESULT_CLASS, ResourceDecodeResultRejectsResultClassMismatch},
+        {TEST_DECODE_RESULT_DECODED_BYTES, ResourceDecodeResultRejectsDecodedByteCountMismatch},
+        {TEST_DECODE_RESULT_PLAN_RELEASE, ResourceDecodeResultReleasingPlanClearsDependentRecords},
+        {TEST_DECODE_RESULT_PAYLOAD_RELEASE, ResourceDecodeResultReleasingPayloadClearsDependentRecords},
+        {TEST_DECODE_RESULT_FAILED_VALIDATION, ResourceDecodeResultFailedValidationDoesNotMutateResourceState}};
 
     const std::string_view test_name(argv[1]);
     const auto test_entry = test_registry.find(test_name);
