@@ -197,7 +197,7 @@ Required test-tier direction:
 | P2-GATE-025 | RenderCore Render Graph Skeleton | L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_025_RENDERCORE_RENDER_GRAPH_SKELETON.md`; landed at `43dc361`; RenderCore-owned render graph declaration and dependency validation skeleton over landed fixture pass, material binding, submission batch, frame packet, and public RHI values only; default fast gate is `858/858` PASS; no render scheduler, frame graph execution, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-026 | Resource Decode Result Import-Ready Record | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_026_RESOURCE_DECODE_RESULT_IMPORT_READY_RECORD.md`; landed at `5d28e38`; Resource-owned import-ready decoded-result metadata over landed decode-plan records only; default fast gate is `873/873` PASS; no real codec, decoded byte storage, RHI upload, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-027 | RHI Primitive Retirement Ledger | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_027_RHI_PRIMITIVE_RETIREMENT_LEDGER.md`; landed at `3776664`; RHI-owned primitive retirement request, ledger, drain, and deterministic handle invalidation evidence over landed RHI primitive handles only; default fast gate is `880/880` PASS; no Resource/Streaming/File/Package/RenderCore/material/scene/UI/World/Script/Game Adapter dependency, backend-native public leak, new renderer scheduling, reports, screenshots, logs, sleeps, or manual proof |
-| P2-GATE-028 | Audio PCM Sample Packet | L3 | `APPROVED_FOR_FIRST_SLICE` | Proposal approved | Gate doc: `docs/gates/P2_GATE_028_AUDIO_PCM_SAMPLE_PACKET.md`; approved after ENG-147A/B/C review PASS; Audio-owned PCM sample packet value contracts, bounded packet-slot metadata, query/release snapshots, and deterministic counters only; no Resource/File/Package/codec/streaming dependency, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
+| P2-GATE-028 | Audio PCM Sample Packet | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_028_AUDIO_PCM_SAMPLE_PACKET.md`; landed at `534d3ef`; Audio-owned PCM sample packet value contracts, bounded packet-slot metadata, query/release snapshots, and deterministic counters only; default fast gate is `893/893` PASS; no Resource/File/Package/codec/streaming dependency, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
 
 ## Current Active Gates
 
@@ -503,18 +503,17 @@ Required test-tier direction:
   Script, Game Adapter, backend-native public headers, new shader compilation,
   reports, screenshots, logs, sleeps, manual proof, hardware-only proof, or
   original-game evidence.
-- P2-GATE-028 is approved as an Audio PCM sample packet first slice after
-  ENG-147A/B/C review PASS. It may validate caller-provided fixed S16 stereo
-  packet descriptors, record bounded packet-slot metadata, expose query/release
-  snapshots, and prove deterministic counters without introducing Resource,
-  File, Package, codec, streaming, audio scene, UI, World, Script, or Game
-  Adapter ownership. The proposal baseline is `a5feded`; discovery is
-  `windows-fast-gate` `873/873`, `Audio` `32`, `Fast` `873`,
-  `PerformanceSmoke` `97`, `EvidenceOracle` `277`, default `HardwareSmoke`
-  `0`, and `windows-hardware-smoke` `7` with `Audio` `1`. It does not
-  authorize real decode output, Resource-backed audio assets, BGM/SE business
-  IDs, reports, screenshots, logs, sleeps, audible proof, manual proof,
-  hardware-only proof, or original-game evidence.
+- P2-GATE-028 landed the Audio PCM sample packet first slice at `534d3ef`.
+  It validates caller-provided fixed S16 stereo packet descriptors, records
+  bounded packet-slot metadata, exposes query/release snapshots, and proves
+  deterministic counters without introducing Resource, File, Package, codec,
+  streaming, audio scene, UI, World, Script, or Game Adapter ownership. The
+  landed fast gate is `893/893` PASS with `Audio` at `45`, `Fast` at `893`,
+  `PerformanceSmoke` at `104`, `EvidenceOracle` at `297`, default
+  `HardwareSmoke` at `0`, and `windows-hardware-smoke` at `7` with `Audio` at
+  `1`. It does not authorize real decode output, Resource-backed audio assets,
+  BGM/SE business IDs, reports, screenshots, logs, sleeps, audible proof,
+  manual proof, hardware-only proof, or original-game evidence.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -669,9 +668,9 @@ Acceleration note:
     graph, scene/UI/World/Script/Game Adapter behavior, backend-native public
     leaks, new shader compiler/source tooling, reports, screenshots, logs,
     sleeps, manual proof, hardware-only proof, or original-game evidence.
-25. Treat approved P2-GATE-028 as an Audio PCM sample packet boundary. It must
-    stay in Audio-owned value contracts, bounded packet-slot metadata,
-    query/release snapshots, and deterministic counters and must not authorize
+25. Treat the landed P2-GATE-028 Audio PCM sample packet first slice as
+    Audio-owned value contracts, bounded packet-slot metadata, query/release
+    snapshots, and deterministic counters. It must not authorize
     Resource/File/Package ownership, codec decode, streaming audio, BGM/SE
     business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports,
     screenshots, logs, sleeps, audible proof, manual proof, hardware-only proof,

@@ -1,6 +1,6 @@
 # P2-GATE-028: Audio PCM Sample Packet
 
-Status: Approved for first slice
+Status: First-slice covered
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
@@ -9,6 +9,7 @@ Depends on: P2-GATE-002, P2-GATE-011, P2-GATE-004, ADR-0012
 Related decisions: ADR-0012
 Source baseline: `a5feded`
 Proposal commit: `b9389ee`
+Landed commit: `534d3ef`
 Approval evidence: ENG-147A, ENG-147B, and ENG-147C proposal review PASS.
 
 ## Layer
