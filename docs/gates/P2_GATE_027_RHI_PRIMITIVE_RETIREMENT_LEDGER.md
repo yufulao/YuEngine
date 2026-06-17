@@ -1,6 +1,6 @@
 # P2-GATE-027: RHI Primitive Retirement Ledger
 
-Status: Approved for first slice
+Status: First-slice covered
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
@@ -9,6 +9,7 @@ Depends on: P2-GATE-008, P2-GATE-006, P2-GATE-004, ADR-0011
 Related decisions: ADR-0011
 Source baseline: `74189da`
 Proposal commit: `1c68beb`
+Landed commit: `3776664`
 Approval evidence: ENG-144R combined proposal review PASS.
 
 ## Layer

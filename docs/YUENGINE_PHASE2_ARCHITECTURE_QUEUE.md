@@ -196,7 +196,7 @@ Required test-tier direction:
 | P2-GATE-024 | Resource Asset Decode Plan | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_024_RESOURCE_ASSET_DECODE_PLAN.md`; landed at `a6fbabf`; Resource-owned decode-plan records over landed cache payload bytes only; no File IO expansion, package parser, real image/audio/mesh decode, RHI upload, render graph, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-025 | RenderCore Render Graph Skeleton | L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_025_RENDERCORE_RENDER_GRAPH_SKELETON.md`; landed at `43dc361`; RenderCore-owned render graph declaration and dependency validation skeleton over landed fixture pass, material binding, submission batch, frame packet, and public RHI values only; default fast gate is `858/858` PASS; no render scheduler, frame graph execution, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-026 | Resource Decode Result Import-Ready Record | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_026_RESOURCE_DECODE_RESULT_IMPORT_READY_RECORD.md`; landed at `5d28e38`; Resource-owned import-ready decoded-result metadata over landed decode-plan records only; default fast gate is `873/873` PASS; no real codec, decoded byte storage, RHI upload, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
-| P2-GATE-027 | RHI Primitive Retirement Ledger | L3 | `APPROVED_FOR_FIRST_SLICE` | Proposal approved | Gate doc: `docs/gates/P2_GATE_027_RHI_PRIMITIVE_RETIREMENT_LEDGER.md`; approved after ENG-144R combined review PASS; RHI-owned primitive retirement request, ledger, drain, and deterministic handle invalidation evidence over landed RHI primitive handles only; no Resource/Streaming/File/Package/RenderCore/material/scene/UI/World/Script/Game Adapter dependency, backend-native public leak, new renderer scheduling, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-027 | RHI Primitive Retirement Ledger | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_027_RHI_PRIMITIVE_RETIREMENT_LEDGER.md`; landed at `3776664`; RHI-owned primitive retirement request, ledger, drain, and deterministic handle invalidation evidence over landed RHI primitive handles only; default fast gate is `880/880` PASS; no Resource/Streaming/File/Package/RenderCore/material/scene/UI/World/Script/Game Adapter dependency, backend-native public leak, new renderer scheduling, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-028 | Audio PCM Sample Packet | L3 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_028_AUDIO_PCM_SAMPLE_PACKET.md`; proposal for Audio-owned PCM sample packet value contracts, bounded packet-slot metadata, query/release snapshots, and deterministic counters only; no Resource/File/Package/codec/streaming dependency, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
 
 ## Current Active Gates
@@ -490,16 +490,15 @@ Required test-tier direction:
   scheduling, material graph, scene/UI/World/Script/Game Adapter behavior,
   native/backend leakage, reports, screenshots, logs, sleeps, manual proof,
   hardware-only proof, or original-game evidence.
-- P2-GATE-027 is approved as an RHI primitive retirement ledger first slice
-  over landed RHI buffer, texture, sampler, shader, pipeline, and fence value
-  contracts. It may record bounded retirement requests, reject duplicate or
-  invalid retirements, drain ready retirement entries, invalidate public handles
-  deterministically, and expose counters after ENG-144R combined review PASS
-  without introducing renderer
-  scheduling or Resource ownership. The proposal baseline is `74189da`;
-  discovery is `windows-fast-gate` `858/858`, `RHI` `141`, `Fast` `858`,
-  `PerformanceSmoke` `91`, `EvidenceOracle` `262`, default `HardwareSmoke`
-  `0`, and `windows-hardware-smoke` `7` with `RHI` `5`. It does not authorize
+- P2-GATE-027 landed the RHI primitive retirement ledger first slice at
+  `3776664` over landed RHI buffer, texture, sampler, shader, pipeline, and
+  fence value contracts. It records bounded retirement requests, rejects
+  duplicate or invalid retirements, drains ready retirement entries, invalidates
+  public handles deterministically, and exposes counters without introducing
+  renderer scheduling or Resource ownership. The landed fast gate is `880/880`
+  PASS with `RHI` at `148`, `Fast` at `880`, `PerformanceSmoke` at `101`,
+  `EvidenceOracle` at `284`, default `HardwareSmoke` at `0`, and
+  `windows-hardware-smoke` at `7` with `RHI` at `5`. It does not authorize
   Resource, Streaming, File, Package, RenderCore, material, scene, UI, World,
   Script, Game Adapter, backend-native public headers, new shader compilation,
   reports, screenshots, logs, sleeps, manual proof, hardware-only proof, or
@@ -663,13 +662,13 @@ Acceleration note:
     RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter
     behavior, native/backend leakage, reports, screenshots, logs, sleeps,
     manual proof, hardware-only proof, or original-game evidence.
-24. Treat approved P2-GATE-027 as an RHI primitive retirement ledger boundary.
-    It must stay in RHI-owned retirement request, ledger, drain, handle
-    invalidation, and counter proof over landed primitive handles and must not
-    authorize Resource/Streaming/File/Package ownership, RenderCore scheduling,
-    material graph, scene/UI/World/Script/Game Adapter behavior, backend-native
-    public leaks, new shader compiler/source tooling, reports, screenshots,
-    logs, sleeps, manual proof, hardware-only proof, or original-game evidence.
+24. Treat the landed P2-GATE-027 RHI primitive retirement ledger first slice as
+    RHI-owned retirement request, ledger, drain, handle invalidation, and
+    counter proof over landed primitive handles. It must not authorize
+    Resource/Streaming/File/Package ownership, RenderCore scheduling, material
+    graph, scene/UI/World/Script/Game Adapter behavior, backend-native public
+    leaks, new shader compiler/source tooling, reports, screenshots, logs,
+    sleeps, manual proof, hardware-only proof, or original-game evidence.
 25. Review P2-GATE-028 as a proposed Audio PCM sample packet boundary. It must
     stay in Audio-owned value contracts, bounded packet-slot metadata,
     query/release snapshots, and deterministic counters and must not authorize
