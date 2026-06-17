@@ -1,13 +1,14 @@
 # P2-GATE-015: Package Resource Staging Queue
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-003, P2-GATE-010, P2-GATE-014, P1-GATE-006
 Related decisions: ADR-0013
 Source baseline: `49a14ae`
+Proposal commit: `9f2e5cd`
 
 ## Layer
 
@@ -56,6 +57,50 @@ Current discovery on the proposal baseline:
 - `ctest --preset windows-hardware-smoke -N`: `7`;
 - `ctest --preset windows-hardware-smoke -N -L Streaming`: `0`;
 - `ctest --preset windows-hardware-smoke -N -L Upload`: `0`.
+
+## Approval Evidence
+
+Approved after:
+
+- ENG-121A boundary and quality review PASS with no `NEEDS_ARCHITECTURE`
+  blocker;
+- ENG-121B implementability review PASS with no `NEEDS_IMPLEMENTABILITY`
+  blocker;
+- ENG-121C test and preset review PASS with no `NEEDS_TEST_POLICY` blocker.
+
+Review evidence:
+
+- proposal commit `9f2e5cd39d3e0a15f4f8a830540fed78f594a2b9` changes only
+  `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and this gate doc;
+- `git diff --check 9f2e5cd^ 9f2e5cd` passed;
+- review worktrees stayed clean and reviewers made no source, doc, commit, or
+  push changes;
+- baseline discovery is default `726`, `Resource` `18`, `Package` `24`, `File`
+  `16`, `AsyncIO` `10`, `Fast` `726`, `PerformanceSmoke` `50`,
+  `EvidenceOracle` `131`, `HardwareSmoke` `0`, `Streaming` `0`, and `Upload`
+  `0`;
+- `windows-hardware-smoke` discovers `7`; package/resource/file/async/staging
+  and upload labels remain `0` for this proposal baseline.
+
+Approval conditions:
+
+- implementation must remain a narrow staging bridge over existing `YuPackage`
+  load-plan values, `YuResource` handle/type validation values, and `YuFile`
+  async request/completion values;
+- `PackageSourceKey` to `FileReadRequest` mapping must stay caller-provided or
+  staging-bridge descriptor-owned, not become a package parser;
+- implementation must not mutate Package or Resource core ownership, add File
+  dependencies to Resource core, or add Resource mutation to Package core;
+- staging completions must remain value/status records and must not mutate
+  Resource load completion state;
+- default `windows-fast-gate` must remain deterministic and no-real-device;
+- no hardware-smoke admission is expected for this gate;
+- proof must use deterministic value/counter/status assertions and fixture File
+  reads only through deterministic `Tests/Fixtures/File` style data;
+- proof must reject screenshots, reports, generated image artifacts, logs,
+  sleeps, manual visual inspection, original-game packages/output, silent skip,
+  RHI upload, RenderCore draw, material bind, scene streaming, or Game Adapter
+  behavior.
 
 ## Owns
 

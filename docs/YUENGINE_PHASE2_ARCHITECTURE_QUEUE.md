@@ -169,7 +169,7 @@ Required test-tier direction:
 | P2-GATE-012 | Platform Input Device Bridge | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_012_PLATFORM_INPUT_DEVICE_BRIDGE.md`; landed at `58088bd`; private Windows input bridge into existing Input value boundary; default fast gate is `713/713` PASS; no UI navigation, title menu behavior, script, scene, gameplay mapping, manual proof, or Game Adapter |
 | P2-GATE-013 | Static Mesh Fixture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_013_STATIC_MESH_FIXTURE.md`; landed at `1ee9fa4`; indexed static-geometry fixture through RHI/D3D11 value contracts; default fast gate is `718/718` PASS; `windows-hardware-smoke` discovers and runs indexed static mesh capture; no Resource loading, RenderCore, material system, scene traversal, reports, screenshots, manual visual proof, or Game Adapter |
 | P2-GATE-014 | Texture Sampling Fixture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_014_TEXTURE_SAMPLING_FIXTURE.md`; landed at `49a14ae`; texture/sampler binding and sampling proof through RHI/D3D11 value contracts; default fast gate is `726/726` PASS; `windows-hardware-smoke` discovers and runs texture-sampling capture; no Resource loading, image decode, RenderCore, material system, scene traversal, reports, screenshots, shader compiler, manual visual proof, or Game Adapter |
-| P2-GATE-015 | Package Resource Staging Queue | L4-L5 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_015_PACKAGE_RESOURCE_STAGING_QUEUE.md`; proposed bounded staging bridge over existing Package load-plan, Resource handle/type, and File async values; no package parser, decode, Resource load completion, RHI upload, RenderCore, material, scene/UI/World/Script/Game Adapter, reports, screenshots, or manual proof |
+| P2-GATE-015 | Package Resource Staging Queue | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_015_PACKAGE_RESOURCE_STAGING_QUEUE.md`; approved after ENG-121A/B/C PASS; bounded staging bridge over existing Package load-plan, Resource handle/type, and File async values; no package parser, decode, Resource load completion, RHI upload, RenderCore, material, scene/UI/World/Script/Game Adapter, reports, screenshots, or manual proof |
 
 ## Current Active Gates
 
@@ -321,7 +321,8 @@ Required test-tier direction:
   streaming, File IO, RenderCore pass scheduling, material system, scene
   traversal, reports, screenshots, shader compiler/source tooling, manual
   visual proof, UI, World, or Game Adapter behavior.
-- P2-GATE-015 is proposed for boundary review after P2-GATE-014. It is limited
+- P2-GATE-015 is approved for first slice after ENG-121A boundary/quality PASS,
+  ENG-121B implementability PASS, and ENG-121C test-policy PASS. It is limited
   to a bounded package/resource staging queue over existing `YuPackage`
   load-plan values, `YuResource` handle/type validation values, and `YuFile`
   async request/completion values. It does not authorize package parsing,
@@ -388,9 +389,10 @@ Required test-tier direction:
     RenderCore, material system, scene traversal, shader compiler/source
     tooling, reports, screenshots, manual visual proof, or backend type leakage
     in public headers.
-12. Review P2-GATE-015 before any package/resource staging implementation task
-    exists. The proposed first slice must stay within a bounded staging bridge
+12. Implement P2-GATE-015 only through the approved package/resource staging
+    first slice. The implementation must stay within a bounded staging bridge
     over Package load-plan, Resource handle/type, and File async values; it must
     not add package parsers, Resource load completion mutation, decode, RHI
     upload execution, RenderCore, material, scene/UI/World/Script/Game Adapter,
-    reports, screenshots, logs, sleeps, or manual proof.
+    reports, screenshots, logs, sleeps, manual proof, original-game package
+    evidence, or public native/backend leakage.
