@@ -1,6 +1,6 @@
 # P2-GATE-026: Resource Decode Result Import-Ready Record
 
-Status: Approved for first slice
+Status: First-slice covered
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
@@ -9,6 +9,7 @@ Depends on: P2-GATE-024, P2-GATE-023, P2-GATE-022, P2-GATE-021, P1-GATE-006
 Related decisions: ADR-0013
 Source baseline: `7a620af`
 Proposal commit: `74189da`
+Landed commit: `5d28e38`
 Approval evidence: ENG-143CR combined proposal review PASS.
 
 ## Layer
