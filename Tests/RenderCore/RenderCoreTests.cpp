@@ -16,6 +16,11 @@
 #include "YuEngine/RenderCore/RenderFixturePassDesc.h"
 #include "YuEngine/RenderCore/RenderFixturePassRequest.h"
 #include "YuEngine/RenderCore/RenderFixturePassStatus.h"
+#include "YuEngine/RenderCore/RenderFramePacketFixture.h"
+#include "YuEngine/RenderCore/RenderFramePacketFixtureDesc.h"
+#include "YuEngine/RenderCore/RenderFramePacketFixtureRequest.h"
+#include "YuEngine/RenderCore/RenderFramePacketFixtureResult.h"
+#include "YuEngine/RenderCore/RenderFramePacketFixtureStatus.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixture.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureDesc.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureRequest.h"
@@ -59,6 +64,11 @@ using RenderFixturePassRequest = yuengine::rendercore::RenderFixturePassRequest;
 using RenderFixturePassResult = yuengine::rendercore::RenderFixturePassResult;
 using yuengine::rendercore::RenderFixturePassStatus;
 using yuengine::rendercore::RENDER_FIXTURE_PASS_COMMAND_COUNT;
+using RenderFramePacketFixture = yuengine::rendercore::RenderFramePacketFixture;
+using RenderFramePacketFixtureDesc = yuengine::rendercore::RenderFramePacketFixtureDesc;
+using RenderFramePacketFixtureRequest = yuengine::rendercore::RenderFramePacketFixtureRequest;
+using RenderFramePacketFixtureResult = yuengine::rendercore::RenderFramePacketFixtureResult;
+using yuengine::rendercore::RenderFramePacketFixtureStatus;
 using RenderSubmissionBatchFixture = yuengine::rendercore::RenderSubmissionBatchFixture;
 using RenderSubmissionBatchFixtureDesc = yuengine::rendercore::RenderSubmissionBatchFixtureDesc;
 using RenderSubmissionBatchFixtureRequest = yuengine::rendercore::RenderSubmissionBatchFixtureRequest;
@@ -127,6 +137,15 @@ constexpr const char *TEST_BATCH_DUPLICATE_PASS_ID = "RenderCore_SubmissionBatch
 constexpr const char *TEST_BATCH_CAPACITY = "RenderCore_SubmissionBatch_RejectsBatchCapacityWithoutMutation";
 constexpr const char *TEST_BATCH_PASS_FAILURE = "RenderCore_SubmissionBatch_PropagatesRenderFixturePassFailure";
 constexpr const char *TEST_BATCH_SNAPSHOT = "RenderCore_SubmissionBatch_SnapshotTracksBoundedCounters";
+constexpr const char *TEST_FRAME_PACKET_EXECUTES_BATCH = "RenderCore_FramePacket_ExecutesPreparedSubmissionBatch";
+constexpr const char *TEST_FRAME_PACKET_ZERO_FRAME = "RenderCore_FramePacket_RejectsZeroFrameIdWithoutMutation";
+constexpr const char *TEST_FRAME_PACKET_NULL_EXECUTOR = "RenderCore_FramePacket_RejectsNullExecutorWithoutMutation";
+constexpr const char *TEST_FRAME_PACKET_NULL_BATCH_REQUEST = "RenderCore_FramePacket_RejectsNullBatchRequestWithoutMutation";
+constexpr const char *TEST_FRAME_PACKET_INVALID_BATCH_REQUEST = "RenderCore_FramePacket_RejectsInvalidBatchRequestWithoutMutation";
+constexpr const char *TEST_FRAME_PACKET_DUPLICATE_FRAME = "RenderCore_FramePacket_RejectsDuplicateFrameIdWithoutMutation";
+constexpr const char *TEST_FRAME_PACKET_CAPACITY = "RenderCore_FramePacket_RejectsPacketCapacityWithoutMutation";
+constexpr const char *TEST_FRAME_PACKET_BATCH_FAILURE = "RenderCore_FramePacket_PropagatesSubmissionBatchFailure";
+constexpr const char *TEST_FRAME_PACKET_SNAPSHOT = "RenderCore_FramePacket_SnapshotTracksBoundedCounters";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint8_t SENTINEL_BYTE = 0xA5U;
@@ -139,6 +158,8 @@ constexpr std::size_t CAPTURE_BYTES = 16U;
 constexpr std::uint32_t MATERIAL_ID = 41U;
 constexpr std::uint32_t NEXT_MATERIAL_ID = 43U;
 constexpr std::uint32_t MATERIAL_PASS_ID = 311U;
+constexpr std::uint32_t FRAME_ID = 7001U;
+constexpr std::uint32_t NEXT_FRAME_ID = 7003U;
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -504,6 +525,37 @@ RenderSubmissionBatchFixtureRequest NullPassBatchRequestFrom(
     request.pass = nullptr;
     request.pass_requests = pass_requests;
     request.pass_results = pass_results;
+    return request;
+}
+
+RenderFramePacketFixtureRequest FramePacketRequestFrom(
+    std::uint32_t frame_id,
+    RenderSubmissionBatchFixture &submission_batch,
+    const RenderSubmissionBatchFixtureRequest &batch_request) {
+    RenderFramePacketFixtureRequest request{};
+    request.frame_id = frame_id;
+    request.submission_batch = &submission_batch;
+    request.batch_request = &batch_request;
+    return request;
+}
+
+RenderFramePacketFixtureRequest NullFramePacketExecutorRequestFrom(
+    std::uint32_t frame_id,
+    const RenderSubmissionBatchFixtureRequest &batch_request) {
+    RenderFramePacketFixtureRequest request{};
+    request.frame_id = frame_id;
+    request.submission_batch = nullptr;
+    request.batch_request = &batch_request;
+    return request;
+}
+
+RenderFramePacketFixtureRequest NullBatchRequestFramePacketRequestFrom(
+    std::uint32_t frame_id,
+    RenderSubmissionBatchFixture &submission_batch) {
+    RenderFramePacketFixtureRequest request{};
+    request.frame_id = frame_id;
+    request.submission_batch = &submission_batch;
+    request.batch_request = nullptr;
     return request;
 }
 
@@ -1555,6 +1607,563 @@ int RenderCoreSubmissionBatchSnapshotTracksBoundedCounters() {
     return 0;
 }
 
+int RenderCoreFramePacketExecutesPreparedSubmissionBatch() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 2U> requests{};
+    std::vector<std::uint8_t> first_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    std::vector<std::uint8_t> second_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[0U],
+        first_capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("first frame packet setup failed");
+    }
+
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[1U],
+        second_capture,
+        NEXT_MATERIAL_ID,
+        MATERIAL_PASS_ID + 1U)) {
+        return Fail("second frame packet setup failed");
+    }
+
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    RenderFramePacketFixture frame_packet;
+    std::array<RenderFixturePassResult, 2U> results{};
+    const std::span<const RenderFixturePassRequest> request_span(requests.data(), requests.size());
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = BatchRequestFrom(pass, request_span, result_span);
+    const RenderFramePacketFixtureRequest frame_request = FramePacketRequestFrom(FRAME_ID, batch, batch_request);
+    const auto result = frame_packet.Execute(frame_request);
+    if (result.status != RenderFramePacketFixtureStatus::Success) {
+        return Fail("frame packet fixture did not succeed");
+    }
+
+    if (result.batch_status != RenderSubmissionBatchFixtureStatus::Success) {
+        return Fail("frame packet fixture did not report batch success");
+    }
+
+    if (result.frame_id != FRAME_ID || result.completed_entry_count != 2U || result.failed_entry_count != 0U) {
+        return Fail("frame packet fixture returned unexpected result counters");
+    }
+
+    if (result.pass_id != MATERIAL_PASS_ID + 1U || result.material_id != NEXT_MATERIAL_ID) {
+        return Fail("frame packet fixture missed last pass or material id");
+    }
+
+    if (results[0U].status != RenderFixturePassStatus::Success || results[1U].status != RenderFixturePassStatus::Success) {
+        return Fail("frame packet fixture did not write successful pass results");
+    }
+
+    const auto snapshot = frame_packet.Snapshot();
+    if (snapshot.accepted_packet_count != 1U || snapshot.completed_packet_count != 1U) {
+        return Fail("frame packet fixture did not track completed packet");
+    }
+
+    if (snapshot.completed_entry_count != 2U || snapshot.frame_packet_record_count != 1U) {
+        return Fail("frame packet fixture did not track completed entries");
+    }
+
+    const RhiDeviceSnapshot rhi_snapshot = device.Snapshot();
+    if (rhi_snapshot.submit_count != 2U || rhi_snapshot.present_count != 2U || rhi_snapshot.capture_count != 2U) {
+        return Fail("frame packet fixture did not execute batch work");
+    }
+
+    return 0;
+}
+
+int RenderCoreFramePacketRejectsZeroFrameIdWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 1U> requests{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[0U],
+        capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("zero frame packet setup failed");
+    }
+
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    RenderFramePacketFixture frame_packet;
+    const RenderFixturePassResult sentinel = SentinelPassResult();
+    std::array<RenderFixturePassResult, 2U> results{};
+    results.fill(sentinel);
+    const RhiDeviceSnapshot before = device.Snapshot();
+    const std::span<const RenderFixturePassRequest> request_span(requests.data(), requests.size());
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = BatchRequestFrom(pass, request_span, result_span);
+    const RenderFramePacketFixtureRequest frame_request = FramePacketRequestFrom(0U, batch, batch_request);
+    const auto result = frame_packet.Execute(frame_request);
+    if (result.status != RenderFramePacketFixtureStatus::InvalidFrameId) {
+        return Fail("frame packet fixture accepted zero frame id");
+    }
+
+    if (!PassResultsUnchanged(results, sentinel)) {
+        return Fail("zero frame id mutated result storage");
+    }
+
+    const RhiDeviceSnapshot after = device.Snapshot();
+    if (!WorkCountersMatch(before, after)) {
+        return Fail("zero frame id mutated RHI work counters");
+    }
+
+    const auto batch_snapshot = batch.Snapshot();
+    if (batch_snapshot.submission_record_count != 0U || batch_snapshot.failed_validation_count != 0U) {
+        return Fail("zero frame id mutated submission batch state");
+    }
+
+    const auto pass_snapshot = pass.Snapshot();
+    if (pass_snapshot.executed_pass_count != 0U || pass_snapshot.failed_validation_count != 0U) {
+        return Fail("zero frame id mutated fixture pass state");
+    }
+
+    const auto frame_snapshot = frame_packet.Snapshot();
+    if (frame_snapshot.failed_validation_count != 1U || frame_snapshot.frame_packet_record_count != 0U) {
+        return Fail("zero frame id counters were not updated");
+    }
+
+    return 0;
+}
+
+int RenderCoreFramePacketRejectsNullExecutorWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 1U> requests{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[0U],
+        capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("null executor frame packet setup failed");
+    }
+
+    RenderFixturePass pass;
+    RenderFramePacketFixture frame_packet;
+    const RenderFixturePassResult sentinel = SentinelPassResult();
+    std::array<RenderFixturePassResult, 2U> results{};
+    results.fill(sentinel);
+    const RhiDeviceSnapshot before = device.Snapshot();
+    const std::span<const RenderFixturePassRequest> request_span(requests.data(), requests.size());
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = BatchRequestFrom(pass, request_span, result_span);
+    const RenderFramePacketFixtureRequest frame_request = NullFramePacketExecutorRequestFrom(FRAME_ID, batch_request);
+    const auto result = frame_packet.Execute(frame_request);
+    if (result.status != RenderFramePacketFixtureStatus::InvalidArgument) {
+        return Fail("frame packet fixture accepted null executor");
+    }
+
+    if (!PassResultsUnchanged(results, sentinel)) {
+        return Fail("null frame packet executor mutated result storage");
+    }
+
+    const RhiDeviceSnapshot after = device.Snapshot();
+    if (!WorkCountersMatch(before, after)) {
+        return Fail("null frame packet executor mutated RHI work counters");
+    }
+
+    const auto frame_snapshot = frame_packet.Snapshot();
+    if (frame_snapshot.failed_validation_count != 1U || frame_snapshot.frame_packet_record_count != 0U) {
+        return Fail("null frame packet executor counters were not updated");
+    }
+
+    return 0;
+}
+
+int RenderCoreFramePacketRejectsNullBatchRequestWithoutMutation() {
+    RenderSubmissionBatchFixture batch;
+    RenderFramePacketFixture frame_packet;
+    const auto before = batch.Snapshot();
+    const RenderFramePacketFixtureRequest frame_request = NullBatchRequestFramePacketRequestFrom(FRAME_ID, batch);
+    const auto result = frame_packet.Execute(frame_request);
+    if (result.status != RenderFramePacketFixtureStatus::InvalidBatchRequest) {
+        return Fail("frame packet fixture accepted null batch request");
+    }
+
+    if (result.batch_status != RenderSubmissionBatchFixtureStatus::InvalidArgument) {
+        return Fail("frame packet fixture did not report null batch request status");
+    }
+
+    const auto after = batch.Snapshot();
+    if (after.submission_record_count != before.submission_record_count) {
+        return Fail("null batch request mutated submission batch records");
+    }
+
+    const auto frame_snapshot = frame_packet.Snapshot();
+    if (frame_snapshot.failed_validation_count != 1U || frame_snapshot.frame_packet_record_count != 0U) {
+        return Fail("null batch request counters were not updated");
+    }
+
+    return 0;
+}
+
+int RenderCoreFramePacketRejectsInvalidBatchRequestWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 1U> requests{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[0U],
+        capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("invalid batch frame packet setup failed");
+    }
+
+    requests[0U].target = RhiTextureHandle{};
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    RenderFramePacketFixture frame_packet;
+    const RenderFixturePassResult sentinel = SentinelPassResult();
+    std::array<RenderFixturePassResult, 2U> results{};
+    results.fill(sentinel);
+    const RhiDeviceSnapshot before = device.Snapshot();
+    const std::span<const RenderFixturePassRequest> request_span(requests.data(), requests.size());
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = BatchRequestFrom(pass, request_span, result_span);
+    const RenderFramePacketFixtureRequest frame_request = FramePacketRequestFrom(FRAME_ID, batch, batch_request);
+    const auto result = frame_packet.Execute(frame_request);
+    if (result.status != RenderFramePacketFixtureStatus::InvalidBatchRequest) {
+        return Fail("frame packet fixture accepted invalid batch request");
+    }
+
+    if (result.batch_status != RenderSubmissionBatchFixtureStatus::InvalidPassRequest) {
+        return Fail("frame packet fixture did not report invalid batch status");
+    }
+
+    if (result.pass_status != RenderFixturePassStatus::InvalidTarget) {
+        return Fail("frame packet fixture did not propagate invalid pass status");
+    }
+
+    if (!PassResultsUnchanged(results, sentinel)) {
+        return Fail("invalid frame packet batch mutated result storage");
+    }
+
+    const RhiDeviceSnapshot after = device.Snapshot();
+    if (!WorkCountersMatch(before, after)) {
+        return Fail("invalid frame packet batch mutated RHI work counters");
+    }
+
+    const auto batch_snapshot = batch.Snapshot();
+    if (batch_snapshot.submission_record_count != 0U || batch_snapshot.failed_validation_count != 0U) {
+        return Fail("invalid frame packet batch mutated submission batch state");
+    }
+
+    const auto pass_snapshot = pass.Snapshot();
+    if (pass_snapshot.executed_pass_count != 0U || pass_snapshot.failed_validation_count != 0U) {
+        return Fail("invalid frame packet batch mutated fixture pass state");
+    }
+
+    return 0;
+}
+
+int RenderCoreFramePacketRejectsDuplicateFrameIdWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 1U> first_requests{};
+    std::array<RenderFixturePassRequest, 1U> second_requests{};
+    std::vector<std::uint8_t> first_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    std::vector<std::uint8_t> second_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        first_requests[0U],
+        first_capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("first duplicate frame packet setup failed");
+    }
+
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        second_requests[0U],
+        second_capture,
+        NEXT_MATERIAL_ID,
+        MATERIAL_PASS_ID + 1U)) {
+        return Fail("second duplicate frame packet setup failed");
+    }
+
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    RenderFramePacketFixture frame_packet;
+    std::array<RenderFixturePassResult, 2U> first_results{};
+    const std::span<const RenderFixturePassRequest> first_request_span(first_requests.data(), first_requests.size());
+    const std::span<RenderFixturePassResult> first_result_span(first_results.data(), first_results.size());
+    const RenderSubmissionBatchFixtureRequest first_batch_request = BatchRequestFrom(pass, first_request_span, first_result_span);
+    const RenderFramePacketFixtureRequest first_frame_request = FramePacketRequestFrom(FRAME_ID, batch, first_batch_request);
+    if (frame_packet.Execute(first_frame_request).status != RenderFramePacketFixtureStatus::Success) {
+        return Fail("duplicate frame packet setup execution failed");
+    }
+
+    const RenderFixturePassResult sentinel = SentinelPassResult();
+    std::array<RenderFixturePassResult, 2U> second_results{};
+    second_results.fill(sentinel);
+    const RhiDeviceSnapshot before = device.Snapshot();
+    const auto batch_before = batch.Snapshot();
+    const std::span<const RenderFixturePassRequest> second_request_span(second_requests.data(), second_requests.size());
+    const std::span<RenderFixturePassResult> second_result_span(second_results.data(), second_results.size());
+    const RenderSubmissionBatchFixtureRequest second_batch_request = BatchRequestFrom(pass, second_request_span, second_result_span);
+    const RenderFramePacketFixtureRequest second_frame_request = FramePacketRequestFrom(FRAME_ID, batch, second_batch_request);
+    const auto result = frame_packet.Execute(second_frame_request);
+    if (result.status != RenderFramePacketFixtureStatus::DuplicateFrameId) {
+        return Fail("frame packet fixture accepted duplicate frame id");
+    }
+
+    if (!PassResultsUnchanged(second_results, sentinel)) {
+        return Fail("duplicate frame id mutated result storage");
+    }
+
+    const RhiDeviceSnapshot after = device.Snapshot();
+    if (!WorkCountersMatch(before, after)) {
+        return Fail("duplicate frame id mutated RHI work counters");
+    }
+
+    const auto batch_after = batch.Snapshot();
+    if (batch_after.submission_record_count != batch_before.submission_record_count) {
+        return Fail("duplicate frame id mutated submission batch records");
+    }
+
+    const auto frame_snapshot = frame_packet.Snapshot();
+    if (frame_snapshot.duplicate_frame_id_count != 1U || frame_snapshot.frame_packet_record_count != 1U) {
+        return Fail("duplicate frame id counters were not updated");
+    }
+
+    return 0;
+}
+
+int RenderCoreFramePacketRejectsPacketCapacityWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 1U> first_requests{};
+    std::array<RenderFixturePassRequest, 1U> second_requests{};
+    std::vector<std::uint8_t> first_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    std::vector<std::uint8_t> second_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        first_requests[0U],
+        first_capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("first capacity frame packet setup failed");
+    }
+
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        second_requests[0U],
+        second_capture,
+        NEXT_MATERIAL_ID,
+        MATERIAL_PASS_ID + 1U)) {
+        return Fail("second capacity frame packet setup failed");
+    }
+
+    RenderFramePacketFixtureDesc desc{};
+    desc.frame_packet_record_capacity = 1U;
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    RenderFramePacketFixture frame_packet(desc);
+    std::array<RenderFixturePassResult, 2U> first_results{};
+    const std::span<const RenderFixturePassRequest> first_request_span(first_requests.data(), first_requests.size());
+    const std::span<RenderFixturePassResult> first_result_span(first_results.data(), first_results.size());
+    const RenderSubmissionBatchFixtureRequest first_batch_request = BatchRequestFrom(pass, first_request_span, first_result_span);
+    const RenderFramePacketFixtureRequest first_frame_request = FramePacketRequestFrom(FRAME_ID, batch, first_batch_request);
+    if (frame_packet.Execute(first_frame_request).status != RenderFramePacketFixtureStatus::Success) {
+        return Fail("capacity frame packet setup execution failed");
+    }
+
+    const RenderFixturePassResult sentinel = SentinelPassResult();
+    std::array<RenderFixturePassResult, 2U> second_results{};
+    second_results.fill(sentinel);
+    const RhiDeviceSnapshot before = device.Snapshot();
+    const auto batch_before = batch.Snapshot();
+    const std::span<const RenderFixturePassRequest> second_request_span(second_requests.data(), second_requests.size());
+    const std::span<RenderFixturePassResult> second_result_span(second_results.data(), second_results.size());
+    const RenderSubmissionBatchFixtureRequest second_batch_request = BatchRequestFrom(pass, second_request_span, second_result_span);
+    const RenderFramePacketFixtureRequest second_frame_request = FramePacketRequestFrom(NEXT_FRAME_ID, batch, second_batch_request);
+    const auto result = frame_packet.Execute(second_frame_request);
+    if (result.status != RenderFramePacketFixtureStatus::PacketCapacityExceeded) {
+        return Fail("frame packet fixture accepted packet capacity overflow");
+    }
+
+    if (!PassResultsUnchanged(second_results, sentinel)) {
+        return Fail("frame packet capacity overflow mutated result storage");
+    }
+
+    const RhiDeviceSnapshot after = device.Snapshot();
+    if (!WorkCountersMatch(before, after)) {
+        return Fail("frame packet capacity overflow mutated RHI work counters");
+    }
+
+    const auto batch_after = batch.Snapshot();
+    if (batch_after.submission_record_count != batch_before.submission_record_count) {
+        return Fail("frame packet capacity overflow mutated submission batch records");
+    }
+
+    const auto frame_snapshot = frame_packet.Snapshot();
+    if (frame_snapshot.packet_capacity_rejected_count != 1U || frame_snapshot.frame_packet_record_count != 1U) {
+        return Fail("frame packet capacity counters were not updated");
+    }
+
+    return 0;
+}
+
+int RenderCoreFramePacketPropagatesSubmissionBatchFailure() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 1U> requests{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[0U],
+        capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("frame packet batch failure setup failed");
+    }
+
+    requests[0U].target = RhiTextureHandle{999U, 1U};
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    RenderFramePacketFixture frame_packet;
+    std::array<RenderFixturePassResult, 2U> results{};
+    const std::span<const RenderFixturePassRequest> request_span(requests.data(), requests.size());
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = BatchRequestFrom(pass, request_span, result_span);
+    const RenderFramePacketFixtureRequest frame_request = FramePacketRequestFrom(FRAME_ID, batch, batch_request);
+    const auto result = frame_packet.Execute(frame_request);
+    if (result.status != RenderFramePacketFixtureStatus::SubmissionBatchFailed) {
+        return Fail("frame packet fixture did not propagate batch failure");
+    }
+
+    if (result.batch_status != RenderSubmissionBatchFixtureStatus::RenderFixturePassFailed) {
+        return Fail("frame packet fixture reported unexpected batch failure status");
+    }
+
+    if (result.pass_status != RenderFixturePassStatus::RhiFailure || result.rhi_status != RhiStatus::InvalidHandle) {
+        return Fail("frame packet fixture reported unexpected pass failure status");
+    }
+
+    if (results[0U].status != RenderFixturePassStatus::RhiFailure) {
+        return Fail("frame packet fixture did not write failing pass result");
+    }
+
+    if (!CaptureUnchanged(capture)) {
+        return Fail("frame packet batch failure wrote capture output");
+    }
+
+    const auto frame_snapshot = frame_packet.Snapshot();
+    if (frame_snapshot.submission_batch_failure_count != 1U || frame_snapshot.frame_packet_record_count != 1U) {
+        return Fail("frame packet batch failure counters were not updated");
+    }
+
+    const auto batch_snapshot = batch.Snapshot();
+    if (batch_snapshot.render_pass_failure_count != 1U || batch_snapshot.submission_record_count != 1U) {
+        return Fail("submission batch failure counters were not updated");
+    }
+
+    return 0;
+}
+
+int RenderCoreFramePacketSnapshotTracksBoundedCounters() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 1U> first_requests{};
+    std::array<RenderFixturePassRequest, 1U> second_requests{};
+    std::vector<std::uint8_t> first_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    std::vector<std::uint8_t> second_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        first_requests[0U],
+        first_capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("first snapshot frame packet setup failed");
+    }
+
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        second_requests[0U],
+        second_capture,
+        NEXT_MATERIAL_ID,
+        MATERIAL_PASS_ID + 1U)) {
+        return Fail("second snapshot frame packet setup failed");
+    }
+
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    RenderFramePacketFixture frame_packet;
+    const auto before = frame_packet.Snapshot();
+    if (before.frame_packet_record_capacity == 0U) {
+        return Fail("frame packet fixture did not track initial capacity");
+    }
+
+    std::array<RenderFixturePassResult, 2U> first_results{};
+    const std::span<const RenderFixturePassRequest> first_request_span(first_requests.data(), first_requests.size());
+    const std::span<RenderFixturePassResult> first_result_span(first_results.data(), first_results.size());
+    const RenderSubmissionBatchFixtureRequest first_batch_request = BatchRequestFrom(pass, first_request_span, first_result_span);
+    const RenderFramePacketFixtureRequest first_frame_request = FramePacketRequestFrom(FRAME_ID, batch, first_batch_request);
+    if (frame_packet.Execute(first_frame_request).status != RenderFramePacketFixtureStatus::Success) {
+        return Fail("first snapshot frame packet execution failed");
+    }
+
+    std::array<RenderFixturePassResult, 2U> second_results{};
+    const std::span<const RenderFixturePassRequest> second_request_span(second_requests.data(), second_requests.size());
+    const std::span<RenderFixturePassResult> second_result_span(second_results.data(), second_results.size());
+    const RenderSubmissionBatchFixtureRequest second_batch_request = BatchRequestFrom(pass, second_request_span, second_result_span);
+    const RenderFramePacketFixtureRequest second_frame_request = FramePacketRequestFrom(NEXT_FRAME_ID, batch, second_batch_request);
+    if (frame_packet.Execute(second_frame_request).status != RenderFramePacketFixtureStatus::Success) {
+        return Fail("second snapshot frame packet execution failed");
+    }
+
+    const auto after = frame_packet.Snapshot();
+    if (after.accepted_packet_count != 2U || after.completed_packet_count != 2U) {
+        return Fail("frame packet snapshot missed completed packets");
+    }
+
+    if (after.completed_entry_count != 2U || after.frame_packet_record_count != 2U) {
+        return Fail("frame packet snapshot missed completed entries");
+    }
+
+    if (after.last_frame_id != NEXT_FRAME_ID || after.last_pass_id != MATERIAL_PASS_ID + 1U) {
+        return Fail("frame packet snapshot missed last frame or pass id");
+    }
+
+    if (after.last_material_id != NEXT_MATERIAL_ID) {
+        return Fail("frame packet snapshot missed last material id");
+    }
+
+    if (after.last_status != RenderFramePacketFixtureStatus::Success) {
+        return Fail("frame packet snapshot missed last frame status");
+    }
+
+    if (after.last_batch_status != RenderSubmissionBatchFixtureStatus::Success) {
+        return Fail("frame packet snapshot missed last batch status");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view name) {
     if (name == TEST_EXECUTES_PASS) {
         return RenderCoreFixturePassExecutesSampledIndexedPass();
@@ -1678,6 +2287,42 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_BATCH_SNAPSHOT) {
         return RenderCoreSubmissionBatchSnapshotTracksBoundedCounters();
+    }
+
+    if (name == TEST_FRAME_PACKET_EXECUTES_BATCH) {
+        return RenderCoreFramePacketExecutesPreparedSubmissionBatch();
+    }
+
+    if (name == TEST_FRAME_PACKET_ZERO_FRAME) {
+        return RenderCoreFramePacketRejectsZeroFrameIdWithoutMutation();
+    }
+
+    if (name == TEST_FRAME_PACKET_NULL_EXECUTOR) {
+        return RenderCoreFramePacketRejectsNullExecutorWithoutMutation();
+    }
+
+    if (name == TEST_FRAME_PACKET_NULL_BATCH_REQUEST) {
+        return RenderCoreFramePacketRejectsNullBatchRequestWithoutMutation();
+    }
+
+    if (name == TEST_FRAME_PACKET_INVALID_BATCH_REQUEST) {
+        return RenderCoreFramePacketRejectsInvalidBatchRequestWithoutMutation();
+    }
+
+    if (name == TEST_FRAME_PACKET_DUPLICATE_FRAME) {
+        return RenderCoreFramePacketRejectsDuplicateFrameIdWithoutMutation();
+    }
+
+    if (name == TEST_FRAME_PACKET_CAPACITY) {
+        return RenderCoreFramePacketRejectsPacketCapacityWithoutMutation();
+    }
+
+    if (name == TEST_FRAME_PACKET_BATCH_FAILURE) {
+        return RenderCoreFramePacketPropagatesSubmissionBatchFailure();
+    }
+
+    if (name == TEST_FRAME_PACKET_SNAPSHOT) {
+        return RenderCoreFramePacketSnapshotTracksBoundedCounters();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);
