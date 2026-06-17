@@ -1,6 +1,6 @@
 # P2-GATE-023: Resource Cache Payload Ownership
 
-Status: Approved for first slice
+Status: First-slice covered
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
@@ -9,6 +9,7 @@ Depends on: P2-GATE-022, P2-GATE-021, P1-GATE-006
 Related decisions: ADR-0013
 Source baseline: `2323112`
 Proposal commit: `f97a4a9`
+Landed commit: `aca6170`
 
 ## Layer
 
@@ -36,11 +37,12 @@ ResourceUploadCompletion values
 P2-GATE-015 landed a package/resource staging queue at `6e29663`. P2-GATE-016
 landed a Resource upload queue at `55af599`. P2-GATE-021 landed a Resource
 upload completion commit bridge at `475c371`. P2-GATE-022 landed a Resource
-residency budget policy at `d2f2059`. `YuResource` can now track terminal upload
-load state, residency state, budget counters, pin/unpin, and deterministic
-eviction candidates, but it still has no Resource-owned cache payload storage,
-no payload record lifecycle, no decode/import pipeline, no render graph, no
-scene streaming, and no Game Adapter behavior.
+residency budget policy at `d2f2059`. P2-GATE-023 landed Resource cache payload
+ownership at `aca6170`. `YuResource` can now track terminal upload load state,
+residency state, budget counters, pin/unpin, deterministic eviction candidates,
+and Resource-owned opaque cache payload records, but it still has no
+decode/import pipeline, no render graph, no scene streaming, and no Game Adapter
+behavior.
 
 Current discovery on the proposal baseline:
 
