@@ -1,14 +1,14 @@
 # P2-GATE-019: RenderCore Submission Batch Fixture
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-008, P2-GATE-014, P2-GATE-017, P2-GATE-018
 Related decisions: ADR-0011
 Source baseline: `a78f671`
-Proposal commit: pending
+Proposal commit: `3c1fc89`
 
 ## Layer
 
