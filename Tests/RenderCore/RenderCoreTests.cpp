@@ -16,6 +16,11 @@
 #include "YuEngine/RenderCore/RenderFixturePassDesc.h"
 #include "YuEngine/RenderCore/RenderFixturePassRequest.h"
 #include "YuEngine/RenderCore/RenderFixturePassStatus.h"
+#include "YuEngine/RenderCore/RenderSubmissionBatchFixture.h"
+#include "YuEngine/RenderCore/RenderSubmissionBatchFixtureDesc.h"
+#include "YuEngine/RenderCore/RenderSubmissionBatchFixtureRequest.h"
+#include "YuEngine/RenderCore/RenderSubmissionBatchFixtureResult.h"
+#include "YuEngine/RenderCore/RenderSubmissionBatchFixtureStatus.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/NullRhiDevice.h"
 #include "YuEngine/Rhi/RhiBufferDesc.h"
@@ -51,8 +56,14 @@ using yuengine::rendercore::MaterialBindingFixtureStatus;
 using yuengine::rendercore::MAX_MATERIAL_BINDING_FIXTURE_CONSTANT_BYTES;
 using RenderFixturePassDesc = yuengine::rendercore::RenderFixturePassDesc;
 using RenderFixturePassRequest = yuengine::rendercore::RenderFixturePassRequest;
+using RenderFixturePassResult = yuengine::rendercore::RenderFixturePassResult;
 using yuengine::rendercore::RenderFixturePassStatus;
 using yuengine::rendercore::RENDER_FIXTURE_PASS_COMMAND_COUNT;
+using RenderSubmissionBatchFixture = yuengine::rendercore::RenderSubmissionBatchFixture;
+using RenderSubmissionBatchFixtureDesc = yuengine::rendercore::RenderSubmissionBatchFixtureDesc;
+using RenderSubmissionBatchFixtureRequest = yuengine::rendercore::RenderSubmissionBatchFixtureRequest;
+using RenderSubmissionBatchFixtureResult = yuengine::rendercore::RenderSubmissionBatchFixtureResult;
+using yuengine::rendercore::RenderSubmissionBatchFixtureStatus;
 using IRhiDevice = yuengine::rhi::IRhiDevice;
 using NullRhiDevice = yuengine::rhi::NullRhiDevice;
 using RhiBufferDesc = yuengine::rhi::RhiBufferDesc;
@@ -108,6 +119,14 @@ constexpr const char *TEST_MATERIAL_DUPLICATE = "Material_BindingFixture_Rejects
 constexpr const char *TEST_MATERIAL_CAPACITY = "Material_BindingFixture_RejectsCapacityOverflowWithoutMutation";
 constexpr const char *TEST_MATERIAL_PASS_FAILURE = "Material_BindingFixture_PropagatesRenderFixturePassFailure";
 constexpr const char *TEST_MATERIAL_SNAPSHOT = "Material_BindingFixture_SnapshotTracksBoundedCounters";
+constexpr const char *TEST_BATCH_EXECUTES_MATERIAL = "RenderCore_SubmissionBatch_ExecutesMaterialPreparedRequests";
+constexpr const char *TEST_BATCH_EMPTY = "RenderCore_SubmissionBatch_RejectsEmptyBatchWithoutMutation";
+constexpr const char *TEST_BATCH_NULL_PASS = "RenderCore_SubmissionBatch_RejectsNullPassWithoutMutation";
+constexpr const char *TEST_BATCH_INVALID_PASS_REQUEST = "RenderCore_SubmissionBatch_RejectsInvalidPassRequestWithoutMutation";
+constexpr const char *TEST_BATCH_DUPLICATE_PASS_ID = "RenderCore_SubmissionBatch_RejectsDuplicatePassIdWithoutMutation";
+constexpr const char *TEST_BATCH_CAPACITY = "RenderCore_SubmissionBatch_RejectsBatchCapacityWithoutMutation";
+constexpr const char *TEST_BATCH_PASS_FAILURE = "RenderCore_SubmissionBatch_PropagatesRenderFixturePassFailure";
+constexpr const char *TEST_BATCH_SNAPSHOT = "RenderCore_SubmissionBatch_SnapshotTracksBoundedCounters";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint8_t SENTINEL_BYTE = 0xA5U;
@@ -421,6 +440,99 @@ MaterialBindingFixtureRequest MaterialRequestFrom(
     request.constant_bytes = constants;
     request.pass_id = MATERIAL_PASS_ID;
     return request;
+}
+
+RenderFixturePassResult SentinelPassResult() {
+    RenderFixturePassResult result{};
+    result.status = RenderFixturePassStatus::RhiFailure;
+    result.rhi_status = RhiStatus::InvalidHandle;
+    result.recorded_command_count = 97U;
+    result.capture_bytes_written = 53U;
+    result.pass_id = 65535U;
+    return result;
+}
+
+bool RenderFixturePassResultMatches(
+    const RenderFixturePassResult &left,
+    const RenderFixturePassResult &right) {
+    if (left.status != right.status) {
+        return false;
+    }
+
+    if (left.rhi_status != right.rhi_status) {
+        return false;
+    }
+
+    if (left.recorded_command_count != right.recorded_command_count) {
+        return false;
+    }
+
+    if (left.capture_bytes_written != right.capture_bytes_written) {
+        return false;
+    }
+
+    return left.pass_id == right.pass_id;
+}
+
+bool PassResultsUnchanged(
+    const std::array<RenderFixturePassResult, 2U> &results,
+    const RenderFixturePassResult &sentinel) {
+    for (const RenderFixturePassResult &result : results) {
+        if (!RenderFixturePassResultMatches(result, sentinel)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+RenderSubmissionBatchFixtureRequest BatchRequestFrom(
+    RenderFixturePass &pass,
+    std::span<const RenderFixturePassRequest> pass_requests,
+    std::span<RenderFixturePassResult> pass_results) {
+    RenderSubmissionBatchFixtureRequest request{};
+    request.pass = &pass;
+    request.pass_requests = pass_requests;
+    request.pass_results = pass_results;
+    return request;
+}
+
+RenderSubmissionBatchFixtureRequest NullPassBatchRequestFrom(
+    std::span<const RenderFixturePassRequest> pass_requests,
+    std::span<RenderFixturePassResult> pass_results) {
+    RenderSubmissionBatchFixtureRequest request{};
+    request.pass = nullptr;
+    request.pass_requests = pass_requests;
+    request.pass_results = pass_results;
+    return request;
+}
+
+bool BindMaterialForBatch(
+    MaterialBindingFixture &fixture,
+    RenderFixturePassRequest &pass_request,
+    std::uint32_t material_id,
+    std::uint32_t pass_id) {
+    const std::array<std::uint8_t, 4U> constants = MaterialConstantBytes();
+    const std::span<const std::uint8_t> constant_span(constants.data(), constants.size());
+    MaterialBindingFixtureRequest material_request = MaterialRequestFrom(pass_request, constant_span);
+    material_request.material_id = material_id;
+    material_request.pass_id = pass_id;
+    const auto result = fixture.Bind(material_request, &pass_request);
+    return result.status == MaterialBindingFixtureStatus::Success;
+}
+
+bool FillMaterialPreparedBatchRequest(
+    NullRhiDevice &device,
+    MaterialBindingFixture &fixture,
+    RenderFixturePassRequest &pass_request,
+    std::vector<std::uint8_t> &capture,
+    std::uint32_t material_id,
+    std::uint32_t pass_id) {
+    if (!FillValidFixture(device, pass_request, capture)) {
+        return false;
+    }
+
+    return BindMaterialForBatch(fixture, pass_request, material_id, pass_id);
 }
 
 int ExpectMaterialValidationFailure(
@@ -1040,6 +1152,409 @@ int MaterialBindingFixtureSnapshotTracksBoundedCounters() {
     return 0;
 }
 
+int RenderCoreSubmissionBatchExecutesMaterialPreparedRequests() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 2U> requests{};
+    std::vector<std::uint8_t> first_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    std::vector<std::uint8_t> second_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[0U],
+        first_capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("first submission batch fixture setup failed");
+    }
+
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[1U],
+        second_capture,
+        NEXT_MATERIAL_ID,
+        MATERIAL_PASS_ID + 1U)) {
+        return Fail("second submission batch fixture setup failed");
+    }
+
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    std::array<RenderFixturePassResult, 2U> results{};
+    const std::span<const RenderFixturePassRequest> request_span(requests.data(), requests.size());
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = BatchRequestFrom(pass, request_span, result_span);
+    const auto result = batch.Execute(batch_request);
+    if (result.status != RenderSubmissionBatchFixtureStatus::Success) {
+        return Fail("submission batch fixture did not succeed");
+    }
+
+    if (result.completed_entry_count != 2U) {
+        return Fail("submission batch fixture did not complete both entries");
+    }
+
+    if (results[0U].status != RenderFixturePassStatus::Success) {
+        return Fail("first submission batch pass did not succeed");
+    }
+
+    if (results[1U].status != RenderFixturePassStatus::Success) {
+        return Fail("second submission batch pass did not succeed");
+    }
+
+    if (results[0U].pass_id != MATERIAL_PASS_ID || results[1U].pass_id != MATERIAL_PASS_ID + 1U) {
+        return Fail("submission batch fixture wrote unexpected pass ids");
+    }
+
+    const auto snapshot = batch.Snapshot();
+    if (snapshot.accepted_entry_count != 2U || snapshot.completed_entry_count != 2U) {
+        return Fail("submission batch fixture did not track completed entries");
+    }
+
+    const RhiDeviceSnapshot rhi_snapshot = device.Snapshot();
+    if (rhi_snapshot.submit_count != 2U || rhi_snapshot.present_count != 2U || rhi_snapshot.capture_count != 2U) {
+        return Fail("submission batch fixture did not submit present and capture twice");
+    }
+
+    return 0;
+}
+
+int RenderCoreSubmissionBatchRejectsEmptyBatchWithoutMutation() {
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    const RenderFixturePassResult sentinel = SentinelPassResult();
+    std::array<RenderFixturePassResult, 2U> results{};
+    results.fill(sentinel);
+    const std::span<const RenderFixturePassRequest> request_span{};
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = BatchRequestFrom(pass, request_span, result_span);
+    const auto result = batch.Execute(batch_request);
+    if (result.status != RenderSubmissionBatchFixtureStatus::EmptyBatch) {
+        return Fail("submission batch fixture accepted empty batch");
+    }
+
+    if (!PassResultsUnchanged(results, sentinel)) {
+        return Fail("empty submission batch mutated result storage");
+    }
+
+    const auto pass_snapshot = pass.Snapshot();
+    if (pass_snapshot.executed_pass_count != 0U || pass_snapshot.failed_validation_count != 0U) {
+        return Fail("empty submission batch mutated fixture pass");
+    }
+
+    const auto batch_snapshot = batch.Snapshot();
+    if (batch_snapshot.failed_validation_count != 1U || batch_snapshot.submission_record_count != 0U) {
+        return Fail("empty submission batch counters were not updated");
+    }
+
+    return 0;
+}
+
+int RenderCoreSubmissionBatchRejectsNullPassWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    std::array<RenderFixturePassRequest, 1U> requests{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, requests[0U], capture)) {
+        return Fail("submission batch fixture setup failed");
+    }
+
+    RenderSubmissionBatchFixture batch;
+    const RenderFixturePassResult sentinel = SentinelPassResult();
+    std::array<RenderFixturePassResult, 2U> results{};
+    results.fill(sentinel);
+    const RhiDeviceSnapshot before = device.Snapshot();
+    const std::span<const RenderFixturePassRequest> request_span(requests.data(), requests.size());
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = NullPassBatchRequestFrom(request_span, result_span);
+    const auto result = batch.Execute(batch_request);
+    if (result.status != RenderSubmissionBatchFixtureStatus::InvalidArgument) {
+        return Fail("submission batch fixture accepted null pass");
+    }
+
+    if (!PassResultsUnchanged(results, sentinel)) {
+        return Fail("null pass submission batch mutated result storage");
+    }
+
+    const RhiDeviceSnapshot after = device.Snapshot();
+    if (!WorkCountersMatch(before, after)) {
+        return Fail("null pass submission batch mutated RHI work counters");
+    }
+
+    return 0;
+}
+
+int RenderCoreSubmissionBatchRejectsInvalidPassRequestWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    std::array<RenderFixturePassRequest, 1U> requests{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, requests[0U], capture)) {
+        return Fail("submission batch fixture setup failed");
+    }
+
+    requests[0U].target = RhiTextureHandle{};
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    const RenderFixturePassResult sentinel = SentinelPassResult();
+    std::array<RenderFixturePassResult, 2U> results{};
+    results.fill(sentinel);
+    const RhiDeviceSnapshot before = device.Snapshot();
+    const std::span<const RenderFixturePassRequest> request_span(requests.data(), requests.size());
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = BatchRequestFrom(pass, request_span, result_span);
+    const auto result = batch.Execute(batch_request);
+    if (result.status != RenderSubmissionBatchFixtureStatus::InvalidPassRequest) {
+        return Fail("submission batch fixture accepted invalid pass request");
+    }
+
+    if (result.pass_status != RenderFixturePassStatus::InvalidTarget) {
+        return Fail("submission batch fixture did not propagate invalid pass request status");
+    }
+
+    if (!PassResultsUnchanged(results, sentinel)) {
+        return Fail("invalid pass request mutated result storage");
+    }
+
+    const RhiDeviceSnapshot after = device.Snapshot();
+    if (!WorkCountersMatch(before, after)) {
+        return Fail("invalid pass request mutated RHI work counters");
+    }
+
+    const auto pass_snapshot = pass.Snapshot();
+    if (pass_snapshot.executed_pass_count != 0U || pass_snapshot.failed_validation_count != 0U) {
+        return Fail("invalid pass request mutated fixture pass");
+    }
+
+    return 0;
+}
+
+int RenderCoreSubmissionBatchRejectsDuplicatePassIdWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 2U> requests{};
+    std::vector<std::uint8_t> first_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    std::vector<std::uint8_t> second_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[0U],
+        first_capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("first duplicate submission batch setup failed");
+    }
+
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[1U],
+        second_capture,
+        NEXT_MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("second duplicate submission batch setup failed");
+    }
+
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    const RenderFixturePassResult sentinel = SentinelPassResult();
+    std::array<RenderFixturePassResult, 2U> results{};
+    results.fill(sentinel);
+    const RhiDeviceSnapshot before = device.Snapshot();
+    const std::span<const RenderFixturePassRequest> request_span(requests.data(), requests.size());
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = BatchRequestFrom(pass, request_span, result_span);
+    const auto result = batch.Execute(batch_request);
+    if (result.status != RenderSubmissionBatchFixtureStatus::DuplicatePassId) {
+        return Fail("submission batch fixture accepted duplicate pass id");
+    }
+
+    if (!PassResultsUnchanged(results, sentinel)) {
+        return Fail("duplicate pass id mutated result storage");
+    }
+
+    const RhiDeviceSnapshot after = device.Snapshot();
+    if (!WorkCountersMatch(before, after)) {
+        return Fail("duplicate pass id mutated RHI work counters");
+    }
+
+    const auto snapshot = batch.Snapshot();
+    if (snapshot.duplicate_pass_id_count != 1U || snapshot.submission_record_count != 0U) {
+        return Fail("duplicate pass id counters were not updated");
+    }
+
+    return 0;
+}
+
+int RenderCoreSubmissionBatchRejectsBatchCapacityWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 2U> requests{};
+    std::vector<std::uint8_t> first_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    std::vector<std::uint8_t> second_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[0U],
+        first_capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("first capacity submission batch setup failed");
+    }
+
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[1U],
+        second_capture,
+        NEXT_MATERIAL_ID,
+        MATERIAL_PASS_ID + 1U)) {
+        return Fail("second capacity submission batch setup failed");
+    }
+
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixtureDesc desc{};
+    desc.submission_record_capacity = 1U;
+    RenderSubmissionBatchFixture batch(desc);
+    const RenderFixturePassResult sentinel = SentinelPassResult();
+    std::array<RenderFixturePassResult, 2U> results{};
+    results.fill(sentinel);
+    const RhiDeviceSnapshot before = device.Snapshot();
+    const std::span<const RenderFixturePassRequest> request_span(requests.data(), requests.size());
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = BatchRequestFrom(pass, request_span, result_span);
+    const auto result = batch.Execute(batch_request);
+    if (result.status != RenderSubmissionBatchFixtureStatus::BatchCapacityExceeded) {
+        return Fail("submission batch fixture accepted capacity overflow");
+    }
+
+    if (!PassResultsUnchanged(results, sentinel)) {
+        return Fail("submission batch capacity overflow mutated result storage");
+    }
+
+    const RhiDeviceSnapshot after = device.Snapshot();
+    if (!WorkCountersMatch(before, after)) {
+        return Fail("submission batch capacity overflow mutated RHI work counters");
+    }
+
+    const auto snapshot = batch.Snapshot();
+    if (snapshot.batch_capacity_rejected_count != 1U || snapshot.submission_record_count != 0U) {
+        return Fail("submission batch capacity counters were not updated");
+    }
+
+    return 0;
+}
+
+int RenderCoreSubmissionBatchPropagatesRenderFixturePassFailure() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 1U> requests{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[0U],
+        capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("submission batch pass failure setup failed");
+    }
+
+    requests[0U].target = RhiTextureHandle{999U, 1U};
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    std::array<RenderFixturePassResult, 1U> results{};
+    const std::span<const RenderFixturePassRequest> request_span(requests.data(), requests.size());
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = BatchRequestFrom(pass, request_span, result_span);
+    const auto result = batch.Execute(batch_request);
+    if (result.status != RenderSubmissionBatchFixtureStatus::RenderFixturePassFailed) {
+        return Fail("submission batch fixture did not propagate pass failure");
+    }
+
+    if (result.pass_status != RenderFixturePassStatus::RhiFailure || result.rhi_status != RhiStatus::InvalidHandle) {
+        return Fail("submission batch fixture reported unexpected pass failure");
+    }
+
+    if (results[0U].status != RenderFixturePassStatus::RhiFailure) {
+        return Fail("submission batch fixture did not write failing pass result");
+    }
+
+    if (!CaptureUnchanged(capture)) {
+        return Fail("submission batch pass failure wrote capture output");
+    }
+
+    const auto snapshot = batch.Snapshot();
+    if (snapshot.render_pass_failure_count != 1U || snapshot.submission_record_count != 1U) {
+        return Fail("submission batch pass failure counters were not updated");
+    }
+
+    return 0;
+}
+
+int RenderCoreSubmissionBatchSnapshotTracksBoundedCounters() {
+    NullRhiDevice device = CreateInitializedDevice();
+    MaterialBindingFixture material_fixture;
+    std::array<RenderFixturePassRequest, 2U> requests{};
+    std::vector<std::uint8_t> first_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    std::vector<std::uint8_t> second_capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[0U],
+        first_capture,
+        MATERIAL_ID,
+        MATERIAL_PASS_ID)) {
+        return Fail("first snapshot submission batch setup failed");
+    }
+
+    if (!FillMaterialPreparedBatchRequest(
+        device,
+        material_fixture,
+        requests[1U],
+        second_capture,
+        NEXT_MATERIAL_ID,
+        MATERIAL_PASS_ID + 1U)) {
+        return Fail("second snapshot submission batch setup failed");
+    }
+
+    RenderFixturePass pass;
+    RenderSubmissionBatchFixture batch;
+    const auto before = batch.Snapshot();
+    if (before.submission_record_capacity == 0U) {
+        return Fail("submission batch fixture did not track initial capacity");
+    }
+
+    std::array<RenderFixturePassResult, 2U> results{};
+    const std::span<const RenderFixturePassRequest> request_span(requests.data(), requests.size());
+    const std::span<RenderFixturePassResult> result_span(results.data(), results.size());
+    const RenderSubmissionBatchFixtureRequest batch_request = BatchRequestFrom(pass, request_span, result_span);
+    const auto result = batch.Execute(batch_request);
+    if (result.status != RenderSubmissionBatchFixtureStatus::Success) {
+        return Fail("submission batch fixture snapshot setup did not succeed");
+    }
+
+    const auto after = batch.Snapshot();
+    if (after.accepted_entry_count != 2U || after.executed_entry_count != 2U) {
+        return Fail("submission batch fixture snapshot missed accepted entries");
+    }
+
+    if (after.last_entry_index != 1U || after.last_pass_id != MATERIAL_PASS_ID + 1U) {
+        return Fail("submission batch fixture snapshot missed last entry");
+    }
+
+    if (after.last_material_id != NEXT_MATERIAL_ID) {
+        return Fail("submission batch fixture snapshot missed last material id");
+    }
+
+    if (after.last_pass_status != RenderFixturePassStatus::Success || after.last_rhi_status != RhiStatus::Success) {
+        return Fail("submission batch fixture snapshot missed last pass status");
+    }
+
+    if (after.last_recorded_command_count != RENDER_FIXTURE_PASS_COMMAND_COUNT) {
+        return Fail("submission batch fixture snapshot missed command count");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view name) {
     if (name == TEST_EXECUTES_PASS) {
         return RenderCoreFixturePassExecutesSampledIndexedPass();
@@ -1131,6 +1646,38 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_MATERIAL_SNAPSHOT) {
         return MaterialBindingFixtureSnapshotTracksBoundedCounters();
+    }
+
+    if (name == TEST_BATCH_EXECUTES_MATERIAL) {
+        return RenderCoreSubmissionBatchExecutesMaterialPreparedRequests();
+    }
+
+    if (name == TEST_BATCH_EMPTY) {
+        return RenderCoreSubmissionBatchRejectsEmptyBatchWithoutMutation();
+    }
+
+    if (name == TEST_BATCH_NULL_PASS) {
+        return RenderCoreSubmissionBatchRejectsNullPassWithoutMutation();
+    }
+
+    if (name == TEST_BATCH_INVALID_PASS_REQUEST) {
+        return RenderCoreSubmissionBatchRejectsInvalidPassRequestWithoutMutation();
+    }
+
+    if (name == TEST_BATCH_DUPLICATE_PASS_ID) {
+        return RenderCoreSubmissionBatchRejectsDuplicatePassIdWithoutMutation();
+    }
+
+    if (name == TEST_BATCH_CAPACITY) {
+        return RenderCoreSubmissionBatchRejectsBatchCapacityWithoutMutation();
+    }
+
+    if (name == TEST_BATCH_PASS_FAILURE) {
+        return RenderCoreSubmissionBatchPropagatesRenderFixturePassFailure();
+    }
+
+    if (name == TEST_BATCH_SNAPSHOT) {
+        return RenderCoreSubmissionBatchSnapshotTracksBoundedCounters();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);
