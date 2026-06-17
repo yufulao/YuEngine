@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -15,7 +16,17 @@
 #include "YuEngine/Package/PackageRegistry.h"
 #include "YuEngine/Resource/ResourceDescriptor.h"
 #include "YuEngine/Resource/ResourceRegistry.h"
+#include "YuEngine/Rhi/NullRhiDevice.h"
+#include "YuEngine/Rhi/RhiBufferDesc.h"
+#include "YuEngine/Rhi/RhiBufferHandle.h"
+#include "YuEngine/Rhi/RhiBufferUsage.h"
+#include "YuEngine/Rhi/RhiDeviceDesc.h"
+#include "YuEngine/Rhi/RhiFenceHandle.h"
+#include "YuEngine/Rhi/RhiStatus.h"
+#include "YuEngine/Rhi/RhiTextureDesc.h"
+#include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Streaming/PackageResourceStagingQueue.h"
+#include "YuEngine/Streaming/ResourceUploadQueue.h"
 
 using yuengine::file::AsyncFileReadQueue;
 using yuengine::file::AsyncFileReadRequest;
@@ -41,12 +52,28 @@ using yuengine::resource::ResourceRegistrationResult;
 using yuengine::resource::ResourceRegistry;
 using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
+using yuengine::rhi::NullRhiDevice;
+using yuengine::rhi::RhiBufferDesc;
+using yuengine::rhi::RhiBufferHandle;
+using yuengine::rhi::RhiBufferUsage;
+using yuengine::rhi::RhiDeviceDesc;
+using yuengine::rhi::RhiFenceHandle;
+using yuengine::rhi::RhiStatus;
+using yuengine::rhi::RhiTextureDesc;
+using yuengine::rhi::RhiTextureHandle;
 using yuengine::streaming::PackageResourceStagingCompletion;
 using yuengine::streaming::PackageResourceStagingQueue;
 using yuengine::streaming::PackageResourceStagingQueueDesc;
 using yuengine::streaming::PackageResourceStagingRequest;
 using yuengine::streaming::PackageResourceStagingSnapshot;
 using yuengine::streaming::PackageResourceStagingStatus;
+using yuengine::streaming::ResourceUploadCompletion;
+using yuengine::streaming::ResourceUploadKind;
+using yuengine::streaming::ResourceUploadQueue;
+using yuengine::streaming::ResourceUploadQueueDesc;
+using yuengine::streaming::ResourceUploadRequest;
+using yuengine::streaming::ResourceUploadSnapshot;
+using yuengine::streaming::ResourceUploadStatus;
 
 namespace {
 constexpr const char *TEST_SUBMIT_COMPLETE =
@@ -69,6 +96,40 @@ constexpr const char *TEST_SNAPSHOT =
     "Streaming_PackageResourceStaging_SnapshotReportsBoundedCounters";
 constexpr const char *TEST_NO_UPPER_DEPENDENCY =
     "Streaming_PackageResourceStaging_NoUpperRuntimeDependency";
+constexpr const char *TEST_UPLOAD_CREATE_BUFFER =
+    "Streaming_ResourceUpload_CreateBufferFromStagingCompletion";
+constexpr const char *TEST_UPLOAD_UPDATE_BUFFER =
+    "Streaming_ResourceUpload_UpdateBufferSignalsFence";
+constexpr const char *TEST_UPLOAD_CREATE_TEXTURE =
+    "Streaming_ResourceUpload_CreateTextureFromStagingCompletion";
+constexpr const char *TEST_UPLOAD_UPDATE_TEXTURE =
+    "Streaming_ResourceUpload_UpdateTextureSignalsFence";
+constexpr const char *TEST_UPLOAD_INVALID_HANDLE =
+    "Streaming_ResourceUpload_RejectsInvalidResourceHandleWithoutMutation";
+constexpr const char *TEST_UPLOAD_TYPE_MISMATCH =
+    "Streaming_ResourceUpload_RejectsResourceTypeMismatchWithoutMutation";
+constexpr const char *TEST_UPLOAD_FAILED_STAGING =
+    "Streaming_ResourceUpload_RejectsFailedStagingCompletion";
+constexpr const char *TEST_UPLOAD_EMPTY_BYTES =
+    "Streaming_ResourceUpload_RejectsEmptyUploadBytes";
+constexpr const char *TEST_UPLOAD_BYTE_RANGE =
+    "Streaming_ResourceUpload_RejectsByteRangeOverflow";
+constexpr const char *TEST_UPLOAD_NULL_DEVICE =
+    "Streaming_ResourceUpload_RejectsNullRhiDevice";
+constexpr const char *TEST_UPLOAD_NULL_OUTPUT =
+    "Streaming_ResourceUpload_RejectsNullOutputStorage";
+constexpr const char *TEST_UPLOAD_UNSUPPORTED_KIND =
+    "Streaming_ResourceUpload_RejectsUnsupportedUploadKind";
+constexpr const char *TEST_UPLOAD_QUEUE_OVERFLOW =
+    "Streaming_ResourceUpload_RejectsQueueOverflowWithoutMutation";
+constexpr const char *TEST_UPLOAD_COMPLETION_OVERFLOW =
+    "Streaming_ResourceUpload_ReportsCompletionOverflowWithoutProcessingPending";
+constexpr const char *TEST_UPLOAD_DUPLICATE_ID =
+    "Streaming_ResourceUpload_RejectsDuplicateUploadId";
+constexpr const char *TEST_UPLOAD_SNAPSHOT =
+    "Streaming_ResourceUpload_SnapshotReportsBoundedCounters";
+constexpr const char *TEST_UPLOAD_RHI_FAILURE =
+    "Streaming_ResourceUpload_ReportsRhiFailureWithoutWritingOutput";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *PRIMARY_MOUNT = "Primary";
@@ -82,6 +143,8 @@ constexpr ResourceTypeId TYPE_TEXTURE{1U};
 constexpr ResourceTypeId TYPE_AUDIO{2U};
 constexpr std::uint64_t REQUEST_ONE = 1U;
 constexpr std::uint64_t REQUEST_TWO = 2U;
+constexpr std::uint64_t UPLOAD_ONE = 101U;
+constexpr std::uint64_t UPLOAD_TWO = 102U;
 constexpr std::uint32_t OUTPUT_CAPACITY = 64U;
 using TestFunction = int (*)();
 
@@ -244,6 +307,95 @@ bool DrainOneStagingCompletion(PackageResourceStagingQueue &queue, PackageResour
         static_cast<std::uint32_t>(completions.size()),
         &written_count);
     if (drain_status != PackageResourceStagingStatus::Success) {
+        return false;
+    }
+
+    if (written_count != 1U) {
+        return false;
+    }
+
+    *completion = completions[0U];
+    return true;
+}
+
+NullRhiDevice CreateInitializedUploadDevice() {
+    NullRhiDevice device;
+    device.Initialize(RhiDeviceDesc{});
+    return device;
+}
+
+RhiBufferDesc UploadBufferDesc(std::size_t size_bytes) {
+    RhiBufferDesc desc;
+    desc.usage = RhiBufferUsage::Vertex;
+    desc.size_bytes = size_bytes;
+    return desc;
+}
+
+RhiTextureDesc UploadTextureDesc() {
+    RhiTextureDesc desc;
+    desc.extent.width = 2U;
+    desc.extent.height = 2U;
+    return desc;
+}
+
+std::array<std::uint8_t, 4U> BufferUploadBytes() {
+    return std::array<std::uint8_t, 4U>{1U, 2U, 3U, 4U};
+}
+
+std::array<std::uint8_t, 16U> TextureUploadBytes() {
+    return std::array<std::uint8_t, 16U>{
+        1U, 2U, 3U, 4U,
+        5U, 6U, 7U, 8U,
+        9U, 10U, 11U, 12U,
+        13U, 14U, 15U, 16U};
+}
+
+PackageResourceStagingCompletion BuildSuccessfulStagingCompletion(
+    ResourceHandle resource,
+    ResourceTypeId type,
+    std::uint64_t request_id,
+    std::uint32_t byte_count) {
+    PackageResourceStagingCompletion completion;
+    completion.status = PackageResourceStagingStatus::Success;
+    completion.resource = resource;
+    completion.expected_type = type;
+    completion.request_id = request_id;
+    completion.file_byte_count = byte_count;
+    completion.staged_byte_offset = 0U;
+    completion.staged_byte_count = byte_count;
+    return completion;
+}
+
+ResourceUploadRequest BuildBaseUploadRequest(
+    const ResourceRegistry &resource_registry,
+    NullRhiDevice *device,
+    const PackageResourceStagingCompletion &completion,
+    std::span<const std::uint8_t> bytes,
+    std::uint64_t upload_id) {
+    ResourceUploadRequest request;
+    request.resource_registry = &resource_registry;
+    request.rhi_device = device;
+    request.staging_completion = completion;
+    request.resource = completion.resource;
+    request.expected_type = completion.expected_type;
+    request.staged_bytes = bytes;
+    request.upload_byte_count = static_cast<std::uint32_t>(bytes.size());
+    request.upload_id = upload_id;
+    return request;
+}
+
+bool DrainOneUploadCompletion(ResourceUploadQueue &queue, ResourceUploadCompletion *completion) {
+    if (completion == nullptr) {
+        return false;
+    }
+
+    std::array<ResourceUploadCompletion, 1U> completions{};
+    std::uint32_t written_count = 0U;
+    const ResourceUploadStatus drain_status = queue.DrainCompletions(
+        completions.data(),
+        static_cast<std::uint32_t>(completions.size()),
+        &written_count);
+    if (drain_status != ResourceUploadStatus::Success) {
         return false;
     }
 
@@ -695,6 +847,698 @@ int StreamingPackageResourceStagingNoUpperRuntimeDependency() {
 
     return 0;
 }
+
+int StreamingResourceUploadCreateBufferFromStagingCompletion() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiBufferHandle output_handle{};
+    request.upload_kind = ResourceUploadKind::CreateBuffer;
+    request.buffer_desc = UploadBufferDesc(bytes.size());
+    request.output_buffer_handle = &output_handle;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{2U, 2U});
+    if (queue.Submit(request) != ResourceUploadStatus::Queued) {
+        return Fail("buffer upload request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadStatus::Success) {
+        return Fail("buffer upload did not succeed");
+    }
+
+    ResourceUploadCompletion completion;
+    if (!DrainOneUploadCompletion(queue, &completion)) {
+        return Fail("buffer upload completion drain failed");
+    }
+
+    if (output_handle.generation == 0U) {
+        return Fail("buffer upload did not write output handle");
+    }
+
+    if (completion.buffer_handle.generation != output_handle.generation) {
+        return Fail("buffer completion handle did not match output");
+    }
+
+    const ResourceUploadSnapshot snapshot = queue.Snapshot();
+    if (snapshot.completed_count != 1U) {
+        return Fail("buffer upload completion count was wrong");
+    }
+
+    if (snapshot.pending_count != 0U) {
+        return Fail("buffer upload left pending record");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadUpdateBufferSignalsFence() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle input_handle{};
+    if (device.CreateBuffer(UploadBufferDesc(4U), empty_bytes, input_handle) != RhiStatus::Success) {
+        return Fail("buffer primitive creation failed");
+    }
+
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiFenceHandle output_fence{};
+    request.upload_kind = ResourceUploadKind::UpdateBuffer;
+    request.input_buffer_handle = input_handle;
+    request.output_fence = &output_fence;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{2U, 2U});
+    if (queue.Submit(request) != ResourceUploadStatus::Queued) {
+        return Fail("buffer update request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadStatus::Success) {
+        return Fail("buffer update did not succeed");
+    }
+
+    if (output_fence.generation == 0U) {
+        return Fail("buffer update did not write fence");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.updated_primitive_count != 1U) {
+        return Fail("buffer update count was not tracked");
+    }
+
+    if (snapshot.resources.last_update_bytes != bytes.size()) {
+        return Fail("buffer update byte count was not tracked");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadCreateTextureFromStagingCompletion() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 16U> bytes = TextureUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 16U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiTextureHandle output_handle{};
+    request.upload_kind = ResourceUploadKind::CreateTexture;
+    request.texture_desc = UploadTextureDesc();
+    request.output_texture_handle = &output_handle;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{2U, 2U});
+    if (queue.Submit(request) != ResourceUploadStatus::Queued) {
+        return Fail("texture upload request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadStatus::Success) {
+        return Fail("texture upload did not succeed");
+    }
+
+    if (output_handle.generation == 0U) {
+        return Fail("texture upload did not write output handle");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.texture_count != 1U) {
+        return Fail("texture upload count was not tracked");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadUpdateTextureSignalsFence() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiTextureHandle input_handle{};
+    if (device.CreateTexture(UploadTextureDesc(), empty_bytes, input_handle) != RhiStatus::Success) {
+        return Fail("texture primitive creation failed");
+    }
+
+    const std::array<std::uint8_t, 16U> bytes = TextureUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 16U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiFenceHandle output_fence{};
+    request.upload_kind = ResourceUploadKind::UpdateTexture;
+    request.input_texture_handle = input_handle;
+    request.output_fence = &output_fence;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{2U, 2U});
+    if (queue.Submit(request) != ResourceUploadStatus::Queued) {
+        return Fail("texture update request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadStatus::Success) {
+        return Fail("texture update did not succeed");
+    }
+
+    if (output_fence.generation == 0U) {
+        return Fail("texture update did not write fence");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.updated_primitive_count != 1U) {
+        return Fail("texture update count was not tracked");
+    }
+
+    if (snapshot.resources.last_update_bytes != bytes.size()) {
+        return Fail("texture update byte count was not tracked");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadRejectsInvalidResourceHandleWithoutMutation() {
+    ResourceRegistry resource_registry;
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(ResourceHandle{}, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiBufferHandle output_handle{};
+    request.upload_kind = ResourceUploadKind::CreateBuffer;
+    request.buffer_desc = UploadBufferDesc(bytes.size());
+    request.output_buffer_handle = &output_handle;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{1U, 1U});
+    const ResourceUploadStatus status = queue.Submit(request);
+    if (status != ResourceUploadStatus::ResourceValidationFailed) {
+        return Fail("invalid resource handle did not return validation failure");
+    }
+
+    const ResourceUploadSnapshot snapshot = queue.Snapshot();
+    if (snapshot.pending_count != 0U) {
+        return Fail("invalid resource handle changed pending count");
+    }
+
+    if (snapshot.last_resource_status != ResourceStatus::InvalidHandle) {
+        return Fail("invalid resource status was not preserved");
+    }
+
+    if (output_handle.generation != 0U) {
+        return Fail("invalid resource handle wrote output handle");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadRejectsResourceTypeMismatchWithoutMutation() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry, TYPE_TEXTURE);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_AUDIO, REQUEST_ONE, 4U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiBufferHandle output_handle{};
+    request.upload_kind = ResourceUploadKind::CreateBuffer;
+    request.buffer_desc = UploadBufferDesc(bytes.size());
+    request.output_buffer_handle = &output_handle;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{1U, 1U});
+    const ResourceUploadStatus status = queue.Submit(request);
+    if (status != ResourceUploadStatus::TypeMismatch) {
+        return Fail("resource type mismatch did not return explicit status");
+    }
+
+    const ResourceUploadSnapshot snapshot = queue.Snapshot();
+    if (snapshot.last_resource_status != ResourceStatus::TypeMismatch) {
+        return Fail("type mismatch resource status was not preserved");
+    }
+
+    if (output_handle.generation != 0U) {
+        return Fail("type mismatch wrote output handle");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadRejectsFailedStagingCompletion() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    staging_completion.status = PackageResourceStagingStatus::FileReadFailed;
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiBufferHandle output_handle{};
+    request.upload_kind = ResourceUploadKind::CreateBuffer;
+    request.buffer_desc = UploadBufferDesc(bytes.size());
+    request.output_buffer_handle = &output_handle;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{1U, 1U});
+    const ResourceUploadStatus status = queue.Submit(request);
+    if (status != ResourceUploadStatus::InvalidStagingCompletion) {
+        return Fail("failed staging completion did not return explicit status");
+    }
+
+    if (queue.Snapshot().pending_count != 0U) {
+        return Fail("failed staging completion changed pending count");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadRejectsEmptyUploadBytes() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiBufferHandle output_handle{};
+    request.upload_kind = ResourceUploadKind::CreateBuffer;
+    request.buffer_desc = UploadBufferDesc(bytes.size());
+    request.output_buffer_handle = &output_handle;
+    request.upload_byte_count = 0U;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{1U, 1U});
+    if (queue.Submit(request) != ResourceUploadStatus::EmptyUploadBytes) {
+        return Fail("empty upload bytes did not return explicit status");
+    }
+
+    if (output_handle.generation != 0U) {
+        return Fail("empty upload bytes wrote output handle");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadRejectsByteRangeOverflow() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiBufferHandle output_handle{};
+    request.upload_kind = ResourceUploadKind::CreateBuffer;
+    request.buffer_desc = UploadBufferDesc(bytes.size());
+    request.output_buffer_handle = &output_handle;
+    request.upload_byte_offset = 3U;
+    request.upload_byte_count = 2U;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{1U, 1U});
+    if (queue.Submit(request) != ResourceUploadStatus::ByteRangeOutOfBounds) {
+        return Fail("upload byte range overflow did not return explicit status");
+    }
+
+    if (queue.Snapshot().pending_count != 0U) {
+        return Fail("byte range overflow changed pending count");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadRejectsNullRhiDevice() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, nullptr, staging_completion, byte_span, UPLOAD_ONE);
+    RhiBufferHandle output_handle{};
+    request.upload_kind = ResourceUploadKind::CreateBuffer;
+    request.buffer_desc = UploadBufferDesc(bytes.size());
+    request.output_buffer_handle = &output_handle;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{1U, 1U});
+    if (queue.Submit(request) != ResourceUploadStatus::InvalidArgument) {
+        return Fail("null RHI device did not return invalid argument");
+    }
+
+    if (output_handle.generation != 0U) {
+        return Fail("null RHI device wrote output handle");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadRejectsNullOutputStorage() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    request.upload_kind = ResourceUploadKind::CreateBuffer;
+    request.buffer_desc = UploadBufferDesc(bytes.size());
+    request.output_buffer_handle = nullptr;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{1U, 1U});
+    if (queue.Submit(request) != ResourceUploadStatus::InvalidArgument) {
+        return Fail("null output storage did not return invalid argument");
+    }
+
+    if (queue.Snapshot().pending_count != 0U) {
+        return Fail("null output storage changed pending count");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadRejectsUnsupportedUploadKind() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    const ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{1U, 1U});
+    if (queue.Submit(request) != ResourceUploadStatus::UnsupportedUploadKind) {
+        return Fail("unsupported upload kind did not return explicit status");
+    }
+
+    if (queue.Snapshot().pending_count != 0U) {
+        return Fail("unsupported upload kind changed pending count");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadRejectsQueueOverflowWithoutMutation() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion first_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    const PackageResourceStagingCompletion second_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_TWO, 4U);
+    ResourceUploadRequest first_request =
+        BuildBaseUploadRequest(resource_registry, &device, first_completion, byte_span, UPLOAD_ONE);
+    ResourceUploadRequest second_request =
+        BuildBaseUploadRequest(resource_registry, &device, second_completion, byte_span, UPLOAD_TWO);
+    RhiBufferHandle first_handle{};
+    RhiBufferHandle second_handle{};
+    first_request.upload_kind = ResourceUploadKind::CreateBuffer;
+    first_request.buffer_desc = UploadBufferDesc(bytes.size());
+    first_request.output_buffer_handle = &first_handle;
+    second_request.upload_kind = ResourceUploadKind::CreateBuffer;
+    second_request.buffer_desc = UploadBufferDesc(bytes.size());
+    second_request.output_buffer_handle = &second_handle;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{1U, 1U});
+    if (queue.Submit(first_request) != ResourceUploadStatus::Queued) {
+        return Fail("first upload request was not queued");
+    }
+
+    if (queue.Submit(second_request) != ResourceUploadStatus::QueueFull) {
+        return Fail("upload queue overflow did not return explicit status");
+    }
+
+    const ResourceUploadSnapshot snapshot = queue.Snapshot();
+    if (snapshot.pending_count != 1U) {
+        return Fail("upload queue overflow changed pending count");
+    }
+
+    if (second_handle.generation != 0U) {
+        return Fail("upload queue overflow wrote output handle");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadReportsCompletionOverflowWithoutProcessingPending() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion first_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    const PackageResourceStagingCompletion second_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_TWO, 4U);
+    ResourceUploadRequest first_request =
+        BuildBaseUploadRequest(resource_registry, &device, first_completion, byte_span, UPLOAD_ONE);
+    ResourceUploadRequest second_request =
+        BuildBaseUploadRequest(resource_registry, &device, second_completion, byte_span, UPLOAD_TWO);
+    RhiBufferHandle first_handle{};
+    RhiBufferHandle second_handle{};
+    first_request.upload_kind = ResourceUploadKind::CreateBuffer;
+    first_request.buffer_desc = UploadBufferDesc(bytes.size());
+    first_request.output_buffer_handle = &first_handle;
+    second_request.upload_kind = ResourceUploadKind::CreateBuffer;
+    second_request.buffer_desc = UploadBufferDesc(bytes.size());
+    second_request.output_buffer_handle = &second_handle;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{2U, 1U});
+    queue.Submit(first_request);
+    queue.Submit(second_request);
+    if (queue.ProcessNext() != ResourceUploadStatus::Success) {
+        return Fail("first upload did not succeed");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadStatus::CompletionQueueFull) {
+        return Fail("upload completion overflow did not return explicit status");
+    }
+
+    const ResourceUploadSnapshot snapshot = queue.Snapshot();
+    if (snapshot.pending_count != 1U) {
+        return Fail("upload completion overflow dropped pending record");
+    }
+
+    if (second_handle.generation != 0U) {
+        return Fail("upload completion overflow processed pending record");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadRejectsDuplicateUploadId() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion first_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    const PackageResourceStagingCompletion second_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_TWO, 4U);
+    ResourceUploadRequest first_request =
+        BuildBaseUploadRequest(resource_registry, &device, first_completion, byte_span, UPLOAD_ONE);
+    ResourceUploadRequest second_request =
+        BuildBaseUploadRequest(resource_registry, &device, second_completion, byte_span, UPLOAD_ONE);
+    RhiBufferHandle first_handle{};
+    RhiBufferHandle second_handle{};
+    first_request.upload_kind = ResourceUploadKind::CreateBuffer;
+    first_request.buffer_desc = UploadBufferDesc(bytes.size());
+    first_request.output_buffer_handle = &first_handle;
+    second_request.upload_kind = ResourceUploadKind::CreateBuffer;
+    second_request.buffer_desc = UploadBufferDesc(bytes.size());
+    second_request.output_buffer_handle = &second_handle;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{2U, 2U});
+    if (queue.Submit(first_request) != ResourceUploadStatus::Queued) {
+        return Fail("first upload request did not queue");
+    }
+
+    if (queue.Submit(second_request) != ResourceUploadStatus::DuplicateUploadId) {
+        return Fail("duplicate upload id did not return explicit status");
+    }
+
+    const ResourceUploadSnapshot snapshot = queue.Snapshot();
+    if (snapshot.duplicate_upload_count != 1U) {
+        return Fail("duplicate upload count was not tracked");
+    }
+
+    if (second_handle.generation != 0U) {
+        return Fail("duplicate upload id wrote output handle");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadSnapshotReportsBoundedCounters() {
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{2U, 2U});
+    const ResourceUploadSnapshot initial_snapshot = queue.Snapshot();
+    if (initial_snapshot.request_capacity != 2U) {
+        return Fail("upload snapshot request capacity changed");
+    }
+
+    if (initial_snapshot.completion_capacity != 2U) {
+        return Fail("upload snapshot completion capacity changed");
+    }
+
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiBufferHandle output_handle{};
+    request.upload_kind = ResourceUploadKind::CreateBuffer;
+    request.buffer_desc = UploadBufferDesc(bytes.size());
+    request.output_buffer_handle = &output_handle;
+    queue.Submit(request);
+    queue.ProcessNext();
+
+    const ResourceUploadSnapshot final_snapshot = queue.Snapshot();
+    if (final_snapshot.max_pending_count != 1U) {
+        return Fail("upload snapshot max pending count changed");
+    }
+
+    if (final_snapshot.max_completion_count != 1U) {
+        return Fail("upload snapshot max completion count changed");
+    }
+
+    if (final_snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("upload snapshot allocation vocabulary changed");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadReportsRhiFailureWithoutWritingOutput() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    const std::array<std::uint8_t, 4U> bytes = BufferUploadBytes();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    const PackageResourceStagingCompletion staging_completion =
+        BuildSuccessfulStagingCompletion(resource_result.handle, TYPE_TEXTURE, REQUEST_ONE, 4U);
+    ResourceUploadRequest request =
+        BuildBaseUploadRequest(resource_registry, &device, staging_completion, byte_span, UPLOAD_ONE);
+    RhiBufferHandle output_handle{};
+    request.upload_kind = ResourceUploadKind::CreateBuffer;
+    request.buffer_desc = RhiBufferDesc{};
+    request.output_buffer_handle = &output_handle;
+
+    ResourceUploadQueue queue(ResourceUploadQueueDesc{1U, 1U});
+    if (queue.Submit(request) != ResourceUploadStatus::Queued) {
+        return Fail("RHI failure fixture was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadStatus::RhiUploadFailed) {
+        return Fail("RHI failure did not return explicit status");
+    }
+
+    ResourceUploadCompletion completion;
+    if (!DrainOneUploadCompletion(queue, &completion)) {
+        return Fail("RHI failure completion drain failed");
+    }
+
+    if (completion.rhi_status != RhiStatus::InvalidDescriptor) {
+        return Fail("RHI failure status was not preserved");
+    }
+
+    if (output_handle.generation != 0U) {
+        return Fail("RHI failure wrote output handle");
+    }
+
+    const ResourceUploadSnapshot snapshot = queue.Snapshot();
+    if (snapshot.rhi_upload_failed_count != 1U) {
+        return Fail("RHI failure count was not tracked");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -712,7 +1556,24 @@ int main(int argc, char **argv) {
         {TEST_COMPLETION_OVERFLOW, StreamingPackageResourceStagingReportsCompletionOverflowWithoutDroppingPending},
         {TEST_DUPLICATE_REQUEST, StreamingPackageResourceStagingRejectsDuplicateRequestId},
         {TEST_SNAPSHOT, StreamingPackageResourceStagingSnapshotReportsBoundedCounters},
-        {TEST_NO_UPPER_DEPENDENCY, StreamingPackageResourceStagingNoUpperRuntimeDependency}};
+        {TEST_NO_UPPER_DEPENDENCY, StreamingPackageResourceStagingNoUpperRuntimeDependency},
+        {TEST_UPLOAD_CREATE_BUFFER, StreamingResourceUploadCreateBufferFromStagingCompletion},
+        {TEST_UPLOAD_UPDATE_BUFFER, StreamingResourceUploadUpdateBufferSignalsFence},
+        {TEST_UPLOAD_CREATE_TEXTURE, StreamingResourceUploadCreateTextureFromStagingCompletion},
+        {TEST_UPLOAD_UPDATE_TEXTURE, StreamingResourceUploadUpdateTextureSignalsFence},
+        {TEST_UPLOAD_INVALID_HANDLE, StreamingResourceUploadRejectsInvalidResourceHandleWithoutMutation},
+        {TEST_UPLOAD_TYPE_MISMATCH, StreamingResourceUploadRejectsResourceTypeMismatchWithoutMutation},
+        {TEST_UPLOAD_FAILED_STAGING, StreamingResourceUploadRejectsFailedStagingCompletion},
+        {TEST_UPLOAD_EMPTY_BYTES, StreamingResourceUploadRejectsEmptyUploadBytes},
+        {TEST_UPLOAD_BYTE_RANGE, StreamingResourceUploadRejectsByteRangeOverflow},
+        {TEST_UPLOAD_NULL_DEVICE, StreamingResourceUploadRejectsNullRhiDevice},
+        {TEST_UPLOAD_NULL_OUTPUT, StreamingResourceUploadRejectsNullOutputStorage},
+        {TEST_UPLOAD_UNSUPPORTED_KIND, StreamingResourceUploadRejectsUnsupportedUploadKind},
+        {TEST_UPLOAD_QUEUE_OVERFLOW, StreamingResourceUploadRejectsQueueOverflowWithoutMutation},
+        {TEST_UPLOAD_COMPLETION_OVERFLOW, StreamingResourceUploadReportsCompletionOverflowWithoutProcessingPending},
+        {TEST_UPLOAD_DUPLICATE_ID, StreamingResourceUploadRejectsDuplicateUploadId},
+        {TEST_UPLOAD_SNAPSHOT, StreamingResourceUploadSnapshotReportsBoundedCounters},
+        {TEST_UPLOAD_RHI_FAILURE, StreamingResourceUploadReportsRhiFailureWithoutWritingOutput}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
