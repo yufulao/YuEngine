@@ -298,6 +298,20 @@ RhiStatus NullRhiDevice::RecordBindVertexBuffer(RhiCommandList &command_list, co
     return RhiStatus::Success;
 }
 
+RhiStatus NullRhiDevice::RecordBindIndexBuffer(RhiCommandList &command_list, const RhiIndexBufferView &view) {
+    if (!IsIndexBufferViewValid(view)) {
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    const RhiStatus status = command_list.RecordBindIndexBuffer(view);
+    if (status != RhiStatus::Success) {
+        return RecordFailure(status);
+    }
+
+    ++snapshot_.recorded_command_count;
+    return RhiStatus::Success;
+}
+
 RhiStatus NullRhiDevice::RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) {
     if (!IsDrawDescValid(desc)) {
         return RecordFailure(RhiStatus::InvalidDescriptor);
@@ -306,6 +320,20 @@ RhiStatus NullRhiDevice::RecordDraw(RhiCommandList &command_list, const RhiDrawD
     const RhiStatus status = command_list.RecordDraw(desc);
     if (status != RhiStatus::Success) {
         return RecordFailure(status);
+    }
+
+    ++snapshot_.recorded_command_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus NullRhiDevice::RecordDrawIndexed(RhiCommandList &command_list, const RhiDrawIndexedDesc &desc) {
+    if (!IsDrawIndexedDescValid(desc)) {
+        return RecordIndexedDrawFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    const RhiStatus status = command_list.RecordDrawIndexed(desc);
+    if (status != RhiStatus::Success) {
+        return RecordIndexedDrawFailure(status);
     }
 
     ++snapshot_.recorded_command_count;
@@ -328,10 +356,14 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
 
     bool has_pipeline = false;
     bool has_vertex_buffer = false;
+    bool has_index_buffer = false;
     RhiPipelineHandle bound_pipeline{};
     RhiVertexBufferView bound_vertex_buffer{};
+    RhiIndexBufferView bound_index_buffer{};
     std::uint64_t submitted_draw_count = 0U;
+    std::uint64_t submitted_indexed_draw_count = 0U;
     std::uint32_t last_draw_vertex_count = 0U;
+    std::uint32_t last_indexed_draw_index_count = 0U;
     for (std::size_t index = 0U; index < command_list.CommandCount(); ++index) {
         const RhiCommandRecord &command = command_list.CommandAt(index);
         if (!IsCommandTargetValidForFrame(command, target)) {
@@ -355,6 +387,16 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
 
             bound_vertex_buffer = command.vertex_buffer;
             has_vertex_buffer = true;
+            continue;
+        }
+
+        if (command.type == RhiCommandType::BindIndexBuffer) {
+            if (!IsIndexBufferViewValid(command.index_buffer)) {
+                return RecordFailure(RhiStatus::InvalidDescriptor);
+            }
+
+            bound_index_buffer = command.index_buffer;
+            has_index_buffer = true;
             continue;
         }
 
@@ -384,6 +426,37 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
             last_draw_vertex_count = command.draw.vertex_count;
             continue;
         }
+
+        if (command.type == RhiCommandType::DrawIndexed) {
+            if (!has_pipeline) {
+                return RecordIndexedDrawFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (!has_vertex_buffer) {
+                return RecordIndexedDrawFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (!has_index_buffer) {
+                return RecordIndexedDrawFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (!IsDrawIndexedDescValid(command.draw_indexed)) {
+                return RecordIndexedDrawFailure(RhiStatus::InvalidDescriptor);
+            }
+
+            if (!IsIndexedDrawRangeValid(bound_index_buffer, command.draw_indexed)) {
+                return RecordIndexedDrawFailure(RhiStatus::InvalidDescriptor);
+            }
+
+            const NullPipelineSlot &pipeline = pipelines_[bound_pipeline.slot];
+            if (!IsInputLayoutDescValid(pipeline.desc.input_layout)) {
+                return RecordIndexedDrawFailure(RhiStatus::InvalidDescriptor);
+            }
+
+            ++submitted_indexed_draw_count;
+            last_indexed_draw_index_count = command.draw_indexed.index_count;
+            continue;
+        }
     }
 
     snapshot_.command_storage_capacity_before_frame = command_list.Capacity();
@@ -400,7 +473,14 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
     has_presented_frame_ = false;
     ++snapshot_.submit_count;
     snapshot_.submitted_draw_count += submitted_draw_count;
+    snapshot_.submitted_indexed_draw_count += submitted_indexed_draw_count;
     snapshot_.last_draw_vertex_count = last_draw_vertex_count;
+    snapshot_.last_indexed_draw_index_count = last_indexed_draw_index_count;
+    if (submitted_indexed_draw_count > 0U) {
+        snapshot_.last_bound_index_buffer_offset_bytes = bound_index_buffer.offset_bytes;
+        snapshot_.last_bound_index_buffer_size_bytes = bound_index_buffer.size_bytes;
+    }
+
     snapshot_.command_storage_capacity_after_last_frame = command_list.Capacity();
     return RhiStatus::Success;
 }
@@ -744,6 +824,11 @@ RhiStatus NullRhiDevice::RecordFailure(RhiStatus status) {
     return status;
 }
 
+RhiStatus NullRhiDevice::RecordIndexedDrawFailure(RhiStatus status) {
+    ++snapshot_.rejected_indexed_draw_count;
+    return RecordFailure(status);
+}
+
 bool NullRhiDevice::IsTargetHandleValid(RhiTextureHandle handle) const {
     if (!is_initialized_) {
         return false;
@@ -916,12 +1001,59 @@ bool NullRhiDevice::IsVertexBufferViewValid(const RhiVertexBufferView &view) con
     return true;
 }
 
+bool NullRhiDevice::IsIndexBufferViewValid(const RhiIndexBufferView &view) const {
+    if (!IsBufferHandleValid(view.buffer)) {
+        return false;
+    }
+
+    const NullBufferSlot &slot = buffers_[view.buffer.slot];
+    if (slot.desc.usage != RhiBufferUsage::Index) {
+        return false;
+    }
+
+    const std::size_t index_bytes = IndexFormatByteCount(view.format);
+    if (index_bytes == 0U) {
+        return false;
+    }
+
+    if (view.size_bytes == 0U) {
+        return false;
+    }
+
+    if ((view.size_bytes % index_bytes) != 0U) {
+        return false;
+    }
+
+    if (view.offset_bytes > slot.desc.size_bytes) {
+        return false;
+    }
+
+    const std::size_t remaining_bytes = slot.desc.size_bytes - view.offset_bytes;
+    if (view.size_bytes > remaining_bytes) {
+        return false;
+    }
+
+    return true;
+}
+
 bool NullRhiDevice::IsDrawDescValid(const RhiDrawDesc &desc) const {
     if (desc.topology != RhiPrimitiveTopology::TriangleList) {
         return false;
     }
 
     if (desc.vertex_count == 0U) {
+        return false;
+    }
+
+    return true;
+}
+
+bool NullRhiDevice::IsDrawIndexedDescValid(const RhiDrawIndexedDesc &desc) const {
+    if (desc.topology != RhiPrimitiveTopology::TriangleList) {
+        return false;
+    }
+
+    if (desc.index_count == 0U) {
         return false;
     }
 
@@ -982,6 +1114,22 @@ bool NullRhiDevice::IsDrawRangeValid(const RhiVertexBufferView &view, const RhiD
 
     const std::size_t remaining_vertices = available_vertices - desc.first_vertex;
     return desc.vertex_count <= remaining_vertices;
+}
+
+bool NullRhiDevice::IsIndexedDrawRangeValid(const RhiIndexBufferView &view, const RhiDrawIndexedDesc &desc) const {
+    const std::size_t index_bytes = IndexFormatByteCount(view.format);
+    if (index_bytes == 0U) {
+        return false;
+    }
+
+    const std::size_t available_indices = view.size_bytes / index_bytes;
+    const std::size_t first_index = static_cast<std::size_t>(desc.first_index);
+    if (first_index > available_indices) {
+        return false;
+    }
+
+    const std::size_t remaining_indices = available_indices - first_index;
+    return static_cast<std::size_t>(desc.index_count) <= remaining_indices;
 }
 
 bool NullRhiDevice::IsColorTargetDescValid(const RhiColorTargetDesc &desc) const {
@@ -1104,6 +1252,18 @@ std::size_t NullRhiDevice::PixelByteCount(const RhiColorTargetDesc &desc) const 
 
 std::size_t NullRhiDevice::TextureByteCount(const RhiTextureDesc &desc) const {
     return static_cast<std::size_t>(desc.extent.width) * static_cast<std::size_t>(desc.extent.height) * RGBA8_BYTES_PER_PIXEL;
+}
+
+std::size_t NullRhiDevice::IndexFormatByteCount(RhiIndexFormat format) const {
+    if (format == RhiIndexFormat::Uint16) {
+        return sizeof(std::uint16_t);
+    }
+
+    if (format == RhiIndexFormat::Uint32) {
+        return sizeof(std::uint32_t);
+    }
+
+    return 0U;
 }
 
 RhiFenceHandle NullRhiDevice::SignalFence(std::size_t byte_count) {

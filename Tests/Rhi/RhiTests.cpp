@@ -18,7 +18,10 @@
 #include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
+#include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
 #include "YuEngine/Rhi/RhiFenceHandle.h"
+#include "YuEngine/Rhi/RhiIndexBufferView.h"
+#include "YuEngine/Rhi/RhiIndexFormat.h"
 #include "YuEngine/Rhi/RhiInputLayoutDesc.h"
 #include "YuEngine/Rhi/RhiNativeSurfaceDesc.h"
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
@@ -48,8 +51,11 @@ using RhiDeviceDesc = yuengine::rhi::RhiDeviceDesc;
 using RhiDeviceFactory = yuengine::rhi::RhiDeviceFactory;
 using RhiDeviceSnapshot = yuengine::rhi::RhiDeviceSnapshot;
 using RhiDrawDesc = yuengine::rhi::RhiDrawDesc;
+using RhiDrawIndexedDesc = yuengine::rhi::RhiDrawIndexedDesc;
 using RhiFenceHandle = yuengine::rhi::RhiFenceHandle;
 using yuengine::rhi::RhiFormat;
+using RhiIndexBufferView = yuengine::rhi::RhiIndexBufferView;
+using yuengine::rhi::RhiIndexFormat;
 using yuengine::rhi::RhiInputElementFormat;
 using yuengine::rhi::RhiInputElementSemantic;
 using RhiInputLayoutDesc = yuengine::rhi::RhiInputLayoutDesc;
@@ -137,6 +143,11 @@ constexpr const char* TEST_RECORD_VISIBLE_TRIANGLE = "RHI_CommandList_RecordsVis
 constexpr const char* TEST_DRAW_REQUIRES_PIPELINE = "RHI_SubmitDrawRejectsMissingPipelineWithoutMutation";
 constexpr const char* TEST_DRAW_RANGE_OVERFLOW = "RHI_SubmitDrawRejectsVertexBufferRangeOverflow";
 constexpr const char* TEST_DRAW_SNAPSHOT = "RHI_SubmitDraw_UpdatesNullSnapshot";
+constexpr const char* TEST_INDEX_FORMAT_DEFAULTS = "RHI_IndexFormat_DefaultDescriptorsAreUnsupported";
+constexpr const char* TEST_RECORD_INDEXED_STATIC_MESH = "RHI_CommandList_RecordsIndexedStaticMeshWithinCapacity";
+constexpr const char* TEST_INDEXED_DRAW_REQUIRES_INDEX_BUFFER = "RHI_SubmitIndexedDrawRejectsMissingIndexBufferWithoutMutation";
+constexpr const char* TEST_INDEXED_DRAW_RANGE_OVERFLOW = "RHI_SubmitIndexedDrawRejectsIndexRangeOverflow";
+constexpr const char* TEST_INDEXED_DRAW_SNAPSHOT = "RHI_SubmitIndexedDraw_UpdatesNullSnapshot";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* REINIT_TARGET_CREATION_MESSAGE = "target creation failed";
@@ -169,8 +180,10 @@ constexpr const char* CAPTURE_DESTROYED_LAST_BYTES_MESSAGE = "destroyed target c
 constexpr const char* CAPTURE_DESTROYED_DESTROY_COUNT_MESSAGE = "destroyed target capture changed destroy count";
 constexpr std::uint8_t SENTINEL_BYTE = 0xAAU;
 constexpr std::uint32_t TRIANGLE_VERTEX_COUNT = 3U;
+constexpr std::uint32_t TRIANGLE_INDEX_COUNT = 3U;
 constexpr std::size_t TRIANGLE_VERTEX_STRIDE_BYTES = sizeof(float) * 6U;
 constexpr std::size_t TRIANGLE_VERTEX_BUFFER_BYTES = TRIANGLE_VERTEX_STRIDE_BYTES * TRIANGLE_VERTEX_COUNT;
+constexpr std::size_t TRIANGLE_INDEX_BUFFER_BYTES = sizeof(std::uint16_t) * TRIANGLE_INDEX_COUNT;
 using TestFunction = int (*)();
 
 int Fail(std::string_view message) {
@@ -201,6 +214,10 @@ RhiBufferDesc TriangleVertexBufferDesc() {
     return RhiBufferDesc{RhiBufferUsage::Vertex, TRIANGLE_VERTEX_BUFFER_BYTES};
 }
 
+RhiBufferDesc TriangleIndexBufferDesc() {
+    return RhiBufferDesc{RhiBufferUsage::Index, TRIANGLE_INDEX_BUFFER_BYTES};
+}
+
 RhiTextureDesc SmallPrimitiveTextureDesc() {
     return RhiTextureDesc{RhiFormat::Rgba8Unorm, {2U, 2U}};
 }
@@ -226,6 +243,15 @@ RhiDrawDesc TriangleDrawDesc() {
     return desc;
 }
 
+RhiDrawIndexedDesc TriangleDrawIndexedDesc() {
+    RhiDrawIndexedDesc desc{};
+    desc.topology = RhiPrimitiveTopology::TriangleList;
+    desc.index_count = TRIANGLE_INDEX_COUNT;
+    desc.first_index = 0U;
+    desc.vertex_offset = 0;
+    return desc;
+}
+
 RhiVertexBufferView TriangleVertexBufferViewFor(RhiBufferHandle handle) {
     RhiVertexBufferView view{};
     view.buffer = handle;
@@ -235,9 +261,24 @@ RhiVertexBufferView TriangleVertexBufferViewFor(RhiBufferHandle handle) {
     return view;
 }
 
+RhiIndexBufferView TriangleIndexBufferViewFor(RhiBufferHandle handle) {
+    RhiIndexBufferView view{};
+    view.buffer = handle;
+    view.offset_bytes = 0U;
+    view.size_bytes = TRIANGLE_INDEX_BUFFER_BYTES;
+    view.format = RhiIndexFormat::Uint16;
+    return view;
+}
+
 RhiVertexBufferView OverflowTriangleVertexBufferViewFor(RhiBufferHandle handle) {
     RhiVertexBufferView view = TriangleVertexBufferViewFor(handle);
     view.size_bytes = TRIANGLE_VERTEX_STRIDE_BYTES * 2U;
+    return view;
+}
+
+RhiIndexBufferView OverflowTriangleIndexBufferViewFor(RhiBufferHandle handle) {
+    RhiIndexBufferView view = TriangleIndexBufferViewFor(handle);
+    view.size_bytes = sizeof(std::uint16_t) * 2U;
     return view;
 }
 
@@ -292,6 +333,13 @@ bool CreateTriangleBuffer(IRhiDevice &device, RhiBufferHandle &out_handle) {
     return device.CreateBuffer(TriangleVertexBufferDesc(), empty_bytes, out_handle) == RhiStatus::Success;
 }
 
+bool CreateTriangleIndexBuffer(IRhiDevice &device, RhiBufferHandle &out_handle) {
+    const std::array<std::uint16_t, TRIANGLE_INDEX_COUNT> indices{0U, 1U, 2U};
+    const auto *index_byte_pointer = reinterpret_cast<const std::uint8_t *>(indices.data());
+    const std::span<const std::uint8_t> index_bytes(index_byte_pointer, TRIANGLE_INDEX_BUFFER_BYTES);
+    return device.CreateBuffer(TriangleIndexBufferDesc(), index_bytes, out_handle) == RhiStatus::Success;
+}
+
 RhiStatus RecordTriangleDrawFrame(
     IRhiDevice &device,
     RhiCommandList &command_list,
@@ -315,6 +363,42 @@ RhiStatus RecordTriangleDrawFrame(
     }
 
     status = device.RecordDraw(command_list, draw);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    return command_list.EndFrame();
+}
+
+RhiStatus RecordIndexedTriangleDrawFrame(
+    IRhiDevice &device,
+    RhiCommandList &command_list,
+    RhiTextureHandle target,
+    RhiPipelineHandle pipeline,
+    const RhiVertexBufferView &vertex_buffer,
+    const RhiIndexBufferView &index_buffer,
+    const RhiDrawIndexedDesc &draw) {
+    RhiStatus status = command_list.BeginFrame(target);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordBindPipeline(command_list, pipeline);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordBindVertexBuffer(command_list, vertex_buffer);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordBindIndexBuffer(command_list, index_buffer);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordDrawIndexed(command_list, draw);
     if (status != RhiStatus::Success) {
         return status;
     }
@@ -2379,6 +2463,282 @@ int RhiSubmitDrawUpdatesNullSnapshot() {
 
     return 0;
 }
+
+int RhiIndexFormatDefaultDescriptorsAreUnsupported() {
+    const RhiIndexBufferView index_buffer{};
+    if (index_buffer.format != RhiIndexFormat::Unsupported) {
+        return Fail("default index buffer view did not use unsupported format");
+    }
+
+    const RhiDrawIndexedDesc draw{};
+    if (draw.topology != RhiPrimitiveTopology::Unsupported) {
+        return Fail("default indexed draw topology was not unsupported");
+    }
+
+    if (draw.index_count != 0U) {
+        return Fail("default indexed draw count was not zero");
+    }
+
+    return 0;
+}
+
+int RhiCommandListRecordsIndexedStaticMeshWithinCapacity() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiBufferHandle index_buffer{};
+    if (!CreateTriangleIndexBuffer(device_interface, index_buffer)) {
+        return Fail("triangle index buffer creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    const std::size_t capacity_before = command_list.Capacity();
+    const RhiStatus status = RecordIndexedTriangleDrawFrame(
+        device_interface,
+        command_list,
+        target,
+        pipeline,
+        TriangleVertexBufferViewFor(vertex_buffer),
+        TriangleIndexBufferViewFor(index_buffer),
+        TriangleDrawIndexedDesc());
+    if (status != RhiStatus::Success) {
+        return Fail("indexed static mesh command recording failed");
+    }
+
+    const auto snapshot = command_list.Snapshot();
+    if (snapshot.command_count != 6U) {
+        return Fail("indexed static mesh command count was unexpected");
+    }
+
+    if (snapshot.draw_command_count != 0U) {
+        return Fail("indexed static mesh changed non-indexed draw count");
+    }
+
+    if (snapshot.indexed_draw_command_count != 1U) {
+        return Fail("indexed static mesh draw was not tracked");
+    }
+
+    if (command_list.Capacity() != capacity_before) {
+        return Fail("indexed static mesh command recording grew storage");
+    }
+
+    return 0;
+}
+
+int RhiSubmitIndexedDrawRejectsMissingIndexBufferWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    RhiStatus status = command_list.BeginFrame(target);
+    if (status != RhiStatus::Success) {
+        return Fail("begin frame failed");
+    }
+
+    status = device_interface.RecordBindPipeline(command_list, pipeline);
+    if (status != RhiStatus::Success) {
+        return Fail("pipeline bind recording failed");
+    }
+
+    status = device_interface.RecordBindVertexBuffer(command_list, TriangleVertexBufferViewFor(vertex_buffer));
+    if (status != RhiStatus::Success) {
+        return Fail("vertex buffer bind recording failed");
+    }
+
+    status = device_interface.RecordDrawIndexed(command_list, TriangleDrawIndexedDesc());
+    if (status != RhiStatus::Success) {
+        return Fail("indexed draw recording failed");
+    }
+
+    status = command_list.EndFrame();
+    if (status != RhiStatus::Success) {
+        return Fail("end frame failed");
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    status = device_interface.Submit(command_list);
+    if (status != RhiStatus::InvalidLifecycle) {
+        return Fail("indexed draw without index buffer did not return invalid lifecycle");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.submitted_indexed_draw_count != before_snapshot.submitted_indexed_draw_count) {
+        return Fail("rejected indexed draw changed submitted indexed draw count");
+    }
+
+    if (after_snapshot.rejected_indexed_draw_count != before_snapshot.rejected_indexed_draw_count + 1U) {
+        return Fail("rejected indexed draw count was not tracked");
+    }
+
+    if (after_snapshot.submit_count != before_snapshot.submit_count) {
+        return Fail("rejected indexed draw changed submit count");
+    }
+
+    return 0;
+}
+
+int RhiSubmitIndexedDrawRejectsIndexRangeOverflow() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiBufferHandle index_buffer{};
+    if (!CreateTriangleIndexBuffer(device_interface, index_buffer)) {
+        return Fail("triangle index buffer creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    const RhiStatus record_status = RecordIndexedTriangleDrawFrame(
+        device_interface,
+        command_list,
+        target,
+        pipeline,
+        TriangleVertexBufferViewFor(vertex_buffer),
+        OverflowTriangleIndexBufferViewFor(index_buffer),
+        TriangleDrawIndexedDesc());
+    if (record_status != RhiStatus::Success) {
+        return Fail("overflow indexed draw command recording failed");
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    const RhiStatus submit_status = device_interface.Submit(command_list);
+    if (submit_status != RhiStatus::InvalidDescriptor) {
+        return Fail("overflow indexed draw range did not return invalid descriptor");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.submitted_indexed_draw_count != before_snapshot.submitted_indexed_draw_count) {
+        return Fail("overflow indexed draw changed submitted indexed draw count");
+    }
+
+    if (after_snapshot.rejected_indexed_draw_count != before_snapshot.rejected_indexed_draw_count + 1U) {
+        return Fail("overflow indexed draw rejection was not tracked");
+    }
+
+    if (after_snapshot.submit_count != before_snapshot.submit_count) {
+        return Fail("overflow indexed draw changed submit count");
+    }
+
+    return 0;
+}
+
+int RhiSubmitIndexedDrawUpdatesNullSnapshot() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiBufferHandle index_buffer{};
+    if (!CreateTriangleIndexBuffer(device_interface, index_buffer)) {
+        return Fail("triangle index buffer creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    const RhiStatus record_status = RecordIndexedTriangleDrawFrame(
+        device_interface,
+        command_list,
+        target,
+        pipeline,
+        TriangleVertexBufferViewFor(vertex_buffer),
+        TriangleIndexBufferViewFor(index_buffer),
+        TriangleDrawIndexedDesc());
+    if (record_status != RhiStatus::Success) {
+        return Fail("indexed static mesh command recording failed");
+    }
+
+    const RhiStatus submit_status = device_interface.Submit(command_list);
+    if (submit_status != RhiStatus::Success) {
+        return Fail("indexed static mesh submit failed");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.submitted_draw_count != 0U) {
+        return Fail("indexed static mesh changed non-indexed submitted draw count");
+    }
+
+    if (snapshot.submitted_indexed_draw_count != 1U) {
+        return Fail("submitted indexed draw count was not tracked");
+    }
+
+    if (snapshot.rejected_indexed_draw_count != 0U) {
+        return Fail("successful indexed draw changed rejected indexed draw count");
+    }
+
+    if (snapshot.last_indexed_draw_index_count != TRIANGLE_INDEX_COUNT) {
+        return Fail("last indexed draw index count was not tracked");
+    }
+
+    if (snapshot.last_bound_index_buffer_offset_bytes != 0U) {
+        return Fail("last bound index buffer offset was not tracked");
+    }
+
+    if (snapshot.last_bound_index_buffer_size_bytes != TRIANGLE_INDEX_BUFFER_BYTES) {
+        return Fail("last bound index buffer size was not tracked");
+    }
+
+    if (snapshot.command_storage_capacity_before_frame != MAX_COMMANDS) {
+        return Fail("indexed draw submit recorded wrong command capacity");
+    }
+
+    if (snapshot.command_storage_capacity_after_last_frame != MAX_COMMANDS) {
+        return Fail("indexed draw submit changed command capacity");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -2443,6 +2803,11 @@ int main(int argc, char** argv) {
         {TEST_DRAW_REQUIRES_PIPELINE, RhiSubmitDrawRejectsMissingPipelineWithoutMutation},
         {TEST_DRAW_RANGE_OVERFLOW, RhiSubmitDrawRejectsVertexBufferRangeOverflow},
         {TEST_DRAW_SNAPSHOT, RhiSubmitDrawUpdatesNullSnapshot},
+        {TEST_INDEX_FORMAT_DEFAULTS, RhiIndexFormatDefaultDescriptorsAreUnsupported},
+        {TEST_RECORD_INDEXED_STATIC_MESH, RhiCommandListRecordsIndexedStaticMeshWithinCapacity},
+        {TEST_INDEXED_DRAW_REQUIRES_INDEX_BUFFER, RhiSubmitIndexedDrawRejectsMissingIndexBufferWithoutMutation},
+        {TEST_INDEXED_DRAW_RANGE_OVERFLOW, RhiSubmitIndexedDrawRejectsIndexRangeOverflow},
+        {TEST_INDEXED_DRAW_SNAPSHOT, RhiSubmitIndexedDrawUpdatesNullSnapshot},
         {TEST_NO_FORBIDDEN_DEPENDENCY, RhiNoResourceFileUploadShaderUiDependency}};
 
     const std::string_view test_name(argv[1]);

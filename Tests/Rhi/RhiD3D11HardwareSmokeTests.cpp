@@ -25,7 +25,10 @@
 #include "YuEngine/Rhi/RhiDeviceDesc.h"
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
+#include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
 #include "YuEngine/Rhi/RhiFenceHandle.h"
+#include "YuEngine/Rhi/RhiIndexBufferView.h"
+#include "YuEngine/Rhi/RhiIndexFormat.h"
 #include "YuEngine/Rhi/RhiInputLayoutDesc.h"
 #include "YuEngine/Rhi/RhiNativeSurfaceDesc.h"
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
@@ -59,8 +62,11 @@ using yuengine::rhi::RhiDeviceCreateResult;
 using yuengine::rhi::RhiDeviceDesc;
 using yuengine::rhi::RhiDeviceFactory;
 using yuengine::rhi::RhiDrawDesc;
+using yuengine::rhi::RhiDrawIndexedDesc;
 using yuengine::rhi::RhiFenceHandle;
 using yuengine::rhi::RhiFormat;
+using yuengine::rhi::RhiIndexBufferView;
+using yuengine::rhi::RhiIndexFormat;
 using yuengine::rhi::RhiInputElementFormat;
 using yuengine::rhi::RhiInputElementSemantic;
 using yuengine::rhi::RhiInputLayoutDesc;
@@ -82,10 +88,13 @@ namespace {
 constexpr const char *TEST_D3D11_CLEAR_PRESENT_CAPTURE = "RHI_D3D11Hardware_ClearPresentCaptureBytes";
 constexpr const char *TEST_D3D11_PRIMITIVE_RESOURCE_PIPELINE = "RHI_D3D11Hardware_PrimitiveResourcePipelineSnapshot";
 constexpr const char *TEST_D3D11_VISIBLE_TRIANGLE = "RHI_D3D11Hardware_VisibleTriangleCaptureBytes";
+constexpr const char *TEST_D3D11_INDEXED_STATIC_MESH = "RHI_D3D11Hardware_IndexedStaticMeshCaptureBytes";
 constexpr std::uint32_t SMOKE_EXTENT = 4U;
 constexpr int SKIP_RETURN_CODE = 77;
 constexpr std::uint32_t TRIANGLE_VERTEX_COUNT = 3U;
+constexpr std::uint32_t TRIANGLE_INDEX_COUNT = 3U;
 constexpr std::size_t TRIANGLE_VERTEX_STRIDE_BYTES = sizeof(float) * 6U;
+constexpr std::size_t TRIANGLE_INDEX_BUFFER_BYTES = sizeof(std::uint16_t) * TRIANGLE_INDEX_COUNT;
 struct TriangleVertex final {
     float position[2];
     float color[4];
@@ -404,12 +413,30 @@ RhiDrawDesc TriangleDrawDesc() {
     return desc;
 }
 
+RhiDrawIndexedDesc TriangleDrawIndexedDesc() {
+    RhiDrawIndexedDesc desc{};
+    desc.topology = RhiPrimitiveTopology::TriangleList;
+    desc.index_count = TRIANGLE_INDEX_COUNT;
+    desc.first_index = 0U;
+    desc.vertex_offset = 0;
+    return desc;
+}
+
 RhiVertexBufferView TriangleVertexBufferViewFor(RhiBufferHandle buffer) {
     RhiVertexBufferView view{};
     view.buffer = buffer;
     view.offset_bytes = 0U;
     view.stride_bytes = TRIANGLE_VERTEX_STRIDE_BYTES;
     view.size_bytes = sizeof(TriangleVertex) * TRIANGLE_VERTEX_COUNT;
+    return view;
+}
+
+RhiIndexBufferView TriangleIndexBufferViewFor(RhiBufferHandle buffer) {
+    RhiIndexBufferView view{};
+    view.buffer = buffer;
+    view.offset_bytes = 0U;
+    view.size_bytes = TRIANGLE_INDEX_BUFFER_BYTES;
+    view.format = RhiIndexFormat::Uint16;
     return view;
 }
 
@@ -973,6 +1000,256 @@ int RunD3D11VisibleTriangleCapture() {
 
     return 0;
 }
+
+int RunD3D11IndexedStaticMeshCapture() {
+    WindowsPlatformWindow window;
+    PlatformWindowDesc window_desc{};
+    window_desc.title = "YuEngine D3D11 Indexed Static Mesh Smoke";
+    window_desc.client_width = SMOKE_EXTENT;
+    window_desc.client_height = SMOKE_EXTENT;
+    window_desc.visible = false;
+
+    const PlatformWindowStatus window_status = window.Create(window_desc);
+    if (window_status != PlatformWindowStatus::Success) {
+        return Skip("d3d11 indexed static mesh smoke skipped because a native window could not be created");
+    }
+
+    const std::size_t storage_size = RhiDeviceFactory::RequiredDeviceStorageSize(RhiBackendKind::D3D11);
+    if (storage_size == 0U) {
+        return Skip("d3d11 indexed static mesh smoke skipped because the backend is not compiled");
+    }
+
+    std::vector<std::byte> storage(storage_size);
+    RhiDeviceDesc device_desc{};
+    device_desc.backend_kind = RhiBackendKind::D3D11;
+    device_desc.native_surface = ConvertSurface(window.GetNativeSurface());
+    device_desc.requires_native_surface = true;
+    device_desc.requires_swapchain = true;
+    device_desc.swapchain.extent = {SMOKE_EXTENT, SMOKE_EXTENT};
+    device_desc.command_list_capacity = MAX_COMMANDS;
+
+    const RhiDeviceCreateResult create_result = RhiDeviceFactory::CreateDevice(
+        device_desc,
+        std::span<std::byte>(storage.data(), storage.size()));
+    if (create_result.status == RhiStatus::MissingHardware) {
+        return Skip("d3d11 indexed static mesh smoke skipped because a hardware D3D11 device is unavailable");
+    }
+
+    if (create_result.status != RhiStatus::Success) {
+        return Fail("d3d11 indexed static mesh device creation failed");
+    }
+
+    if (create_result.device == nullptr) {
+        return Fail("d3d11 indexed static mesh device creation returned null device");
+    }
+
+    IRhiDevice &device = *create_result.device;
+    RhiTextureHandle target{};
+    RhiStatus status = device.GetSwapchainColorTarget(target);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh swapchain target query failed");
+    }
+
+    std::array<TriangleVertex, 3U> vertices{};
+    vertices[0U].position[0U] = -1.0F;
+    vertices[0U].position[1U] = -1.0F;
+    vertices[0U].color[0U] = 1.0F;
+    vertices[0U].color[3U] = 1.0F;
+    vertices[1U].position[0U] = -1.0F;
+    vertices[1U].position[1U] = 1.0F;
+    vertices[1U].color[0U] = 1.0F;
+    vertices[1U].color[3U] = 1.0F;
+    vertices[2U].position[0U] = 1.0F;
+    vertices[2U].position[1U] = -1.0F;
+    vertices[2U].color[0U] = 1.0F;
+    vertices[2U].color[3U] = 1.0F;
+
+    const auto *vertex_byte_pointer = reinterpret_cast<const std::uint8_t *>(vertices.data());
+    const std::size_t vertex_byte_count = sizeof(TriangleVertex) * vertices.size();
+    const std::span<const std::uint8_t> vertex_span(vertex_byte_pointer, vertex_byte_count);
+    RhiBufferDesc vertex_buffer_desc{};
+    vertex_buffer_desc.usage = RhiBufferUsage::Vertex;
+    vertex_buffer_desc.size_bytes = vertex_byte_count;
+    RhiBufferHandle vertex_buffer{};
+    status = device.CreateBuffer(vertex_buffer_desc, vertex_span, vertex_buffer);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh vertex buffer creation failed");
+    }
+
+    const std::array<std::uint16_t, TRIANGLE_INDEX_COUNT> indices{0U, 1U, 2U};
+    const auto *index_byte_pointer = reinterpret_cast<const std::uint8_t *>(indices.data());
+    const std::span<const std::uint8_t> index_span(index_byte_pointer, TRIANGLE_INDEX_BUFFER_BYTES);
+    RhiBufferDesc index_buffer_desc{};
+    index_buffer_desc.usage = RhiBufferUsage::Index;
+    index_buffer_desc.size_bytes = TRIANGLE_INDEX_BUFFER_BYTES;
+    RhiBufferHandle index_buffer{};
+    status = device.CreateBuffer(index_buffer_desc, index_span, index_buffer);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh index buffer creation failed");
+    }
+
+    const std::span<const std::uint8_t> vertex_bytecode(
+        TRIANGLE_VERTEX_SHADER_BYTES,
+        sizeof(TRIANGLE_VERTEX_SHADER_BYTES));
+    const RhiShaderModuleDesc vertex_desc{RhiShaderStage::Vertex, vertex_bytecode};
+    RhiShaderModuleHandle vertex_shader{};
+    status = device.CreateShaderModule(vertex_desc, vertex_shader);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh vertex shader creation failed");
+    }
+
+    const std::span<const std::uint8_t> pixel_bytecode(
+        TRIANGLE_PIXEL_SHADER_BYTES,
+        sizeof(TRIANGLE_PIXEL_SHADER_BYTES));
+    const RhiShaderModuleDesc pixel_desc{RhiShaderStage::Pixel, pixel_bytecode};
+    RhiShaderModuleHandle pixel_shader{};
+    status = device.CreateShaderModule(pixel_desc, pixel_shader);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh pixel shader creation failed");
+    }
+
+    RhiPipelineDesc pipeline_desc{};
+    pipeline_desc.vertex_shader = vertex_shader;
+    pipeline_desc.pixel_shader = pixel_shader;
+    pipeline_desc.input_layout = TriangleInputLayoutDesc();
+    RhiPipelineHandle pipeline{};
+    status = device.CreatePipeline(pipeline_desc, pipeline);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh pipeline creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    status = command_list.BeginFrame(target);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh begin frame failed");
+    }
+
+    status = device.RecordClear(command_list, target, RhiColor{0U, 0U, 0U, 255U});
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh clear recording failed");
+    }
+
+    status = device.RecordBindPipeline(command_list, pipeline);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh pipeline bind recording failed");
+    }
+
+    status = device.RecordBindVertexBuffer(command_list, TriangleVertexBufferViewFor(vertex_buffer));
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh vertex buffer bind recording failed");
+    }
+
+    status = device.RecordBindIndexBuffer(command_list, TriangleIndexBufferViewFor(index_buffer));
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh index buffer bind recording failed");
+    }
+
+    status = device.RecordDrawIndexed(command_list, TriangleDrawIndexedDesc());
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh draw recording failed");
+    }
+
+    status = command_list.EndFrame();
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh end frame failed");
+    }
+
+    status = device.Submit(command_list);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh submit failed");
+    }
+
+    status = device.Present();
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh present failed");
+    }
+
+    std::vector<std::uint8_t> capture(SMOKE_EXTENT * SMOKE_EXTENT * RGBA8_BYTES_PER_PIXEL);
+    const RhiCaptureResult capture_result = device.CapturePresentedTarget(
+        std::span<std::uint8_t>(capture.data(), capture.size()));
+    if (capture_result.status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh capture failed");
+    }
+
+    if (capture_result.bytes_written != capture.size()) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh capture byte count was wrong");
+    }
+
+    if (!CaptureContainsVisibleTriangle(capture)) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh capture did not contain triangle and background pixels");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.submitted_draw_count != 0U) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh changed non-indexed draw count");
+    }
+
+    if (snapshot.submitted_indexed_draw_count != 1U) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh submitted indexed draw count was not tracked");
+    }
+
+    if (snapshot.last_indexed_draw_index_count != TRIANGLE_INDEX_COUNT) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh last indexed draw index count was not tracked");
+    }
+
+    if (snapshot.last_bound_index_buffer_size_bytes != TRIANGLE_INDEX_BUFFER_BYTES) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh last index buffer size was not tracked");
+    }
+
+    if (device.DestroyPipeline(pipeline) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh pipeline destroy failed");
+    }
+
+    if (device.DestroyShaderModule(pixel_shader) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh pixel shader destroy failed");
+    }
+
+    if (device.DestroyShaderModule(vertex_shader) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh vertex shader destroy failed");
+    }
+
+    if (device.DestroyBuffer(index_buffer) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh index buffer destroy failed");
+    }
+
+    if (device.DestroyBuffer(vertex_buffer) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 indexed static mesh vertex buffer destroy failed");
+    }
+
+    const RhiStatus destroy_status = RhiDeviceFactory::DestroyDevice(create_result.device);
+    if (destroy_status != RhiStatus::Success) {
+        return Fail("d3d11 indexed static mesh device destroy failed");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -991,6 +1268,10 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_D3D11_VISIBLE_TRIANGLE) {
         return RunD3D11VisibleTriangleCapture();
+    }
+
+    if (test_name == TEST_D3D11_INDEXED_STATIC_MESH) {
+        return RunD3D11IndexedStaticMeshCapture();
     }
 
     return Fail("unknown test name");

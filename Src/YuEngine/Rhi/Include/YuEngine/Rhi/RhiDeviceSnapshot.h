@@ -20,11 +20,16 @@ struct RhiDeviceSnapshot final {
     std::uint64_t destroyed_target_count = 0U;
     std::uint64_t recorded_command_count = 0U;
     std::uint64_t submitted_draw_count = 0U;
+    std::uint64_t submitted_indexed_draw_count = 0U;
+    std::uint64_t rejected_indexed_draw_count = 0U;
     std::uint64_t submit_count = 0U;
     std::uint64_t present_count = 0U;
     std::uint64_t capture_count = 0U;
     std::uint64_t failed_operation_count = 0U;
     std::uint32_t last_draw_vertex_count = 0U;
+    std::uint32_t last_indexed_draw_index_count = 0U;
+    std::size_t last_bound_index_buffer_offset_bytes = 0U;
+    std::size_t last_bound_index_buffer_size_bytes = 0U;
     std::size_t last_capture_bytes_written = 0U;
     RhiSwapchainSnapshot swapchain{};
     RhiResourceSnapshot resources{};

@@ -10,6 +10,8 @@
 #include "YuEngine/Rhi/RhiCommandListSnapshot.h"
 #include "YuEngine/Rhi/RhiCommandRecord.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
+#include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
+#include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
@@ -55,11 +57,23 @@ public:
      */
     RhiStatus RecordBindVertexBuffer(const RhiVertexBufferView &vertex_buffer);
     /**
+     * @comment Records index buffer binding.
+     * @param index_buffer Input index buffer view.
+     * @return Explicit operation status.
+     */
+    RhiStatus RecordBindIndexBuffer(const RhiIndexBufferView &index_buffer);
+    /**
      * @comment Records draw.
      * @param desc Input descriptor.
      * @return Explicit operation status.
      */
     RhiStatus RecordDraw(const RhiDrawDesc &desc);
+    /**
+     * @comment Records indexed draw.
+     * @param desc Input descriptor.
+     * @return Explicit operation status.
+     */
+    RhiStatus RecordDrawIndexed(const RhiDrawIndexedDesc &desc);
     /**
      * @comment Ends command recording for a frame.
      * @return Explicit operation status.
@@ -104,6 +118,7 @@ private:
     RhiTextureHandle target_handle_;
     std::size_t command_count_;
     std::size_t draw_command_count_;
+    std::size_t indexed_draw_command_count_;
     bool is_recording_;
     bool is_complete_;
 };

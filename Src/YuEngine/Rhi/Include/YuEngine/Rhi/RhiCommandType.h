@@ -9,7 +9,9 @@ enum class RhiCommandType {
     ClearColor,
     BindPipeline,
     BindVertexBuffer,
+    BindIndexBuffer,
     Draw,
+    DrawIndexed,
     EndFrame
 };
 }

@@ -6,6 +6,8 @@
 #include "YuEngine/Rhi/RhiColor.h"
 #include "YuEngine/Rhi/RhiCommandType.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
+#include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
+#include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
@@ -17,6 +19,8 @@ struct RhiCommandRecord final {
     RhiColor color{};
     RhiPipelineHandle pipeline{};
     RhiVertexBufferView vertex_buffer{};
+    RhiIndexBufferView index_buffer{};
     RhiDrawDesc draw{};
+    RhiDrawIndexedDesc draw_indexed{};
 };
 }

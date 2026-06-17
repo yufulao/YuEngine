@@ -15,7 +15,9 @@
 #include "YuEngine/Rhi/RhiDeviceDesc.h"
 #include "YuEngine/Rhi/RhiDeviceSnapshot.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
+#include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
 #include "YuEngine/Rhi/RhiFenceHandle.h"
+#include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiSamplerDesc.h"
@@ -83,12 +85,26 @@ public:
      */
     virtual RhiStatus RecordBindVertexBuffer(RhiCommandList &command_list, const RhiVertexBufferView &view) = 0;
     /**
+     * @comment Records index buffer binding.
+     * @param command_list Command list updated by the function.
+     * @param view Input view.
+     * @return Explicit operation status.
+     */
+    virtual RhiStatus RecordBindIndexBuffer(RhiCommandList &command_list, const RhiIndexBufferView &view) = 0;
+    /**
      * @comment Records draw.
      * @param command_list Command list updated by the function.
      * @param desc Input descriptor.
      * @return Explicit operation status.
      */
     virtual RhiStatus RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) = 0;
+    /**
+     * @comment Records indexed draw.
+     * @param command_list Command list updated by the function.
+     * @param desc Input descriptor.
+     * @return Explicit operation status.
+     */
+    virtual RhiStatus RecordDrawIndexed(RhiCommandList &command_list, const RhiDrawIndexedDesc &desc) = 0;
     /**
      * @comment Submits recorded work.
      * @param command_list Input command list.

@@ -9,6 +9,7 @@ RhiCommandList::RhiCommandList(std::size_t capacity)
       target_handle_{},
       command_count_(0U),
       draw_command_count_(0U),
+      indexed_draw_command_count_(0U),
       is_recording_(false),
       is_complete_(false) {
 }
@@ -17,6 +18,7 @@ RhiStatus RhiCommandList::Reset() {
     target_handle_ = RhiTextureHandle{};
     command_count_ = 0U;
     draw_command_count_ = 0U;
+    indexed_draw_command_count_ = 0U;
     is_recording_ = false;
     is_complete_ = false;
     return RhiStatus::Success;
@@ -85,6 +87,22 @@ RhiStatus RhiCommandList::RecordBindVertexBuffer(const RhiVertexBufferView &vert
     return Append(record);
 }
 
+RhiStatus RhiCommandList::RecordBindIndexBuffer(const RhiIndexBufferView &index_buffer) {
+    if (!is_recording_) {
+        return RhiStatus::InvalidLifecycle;
+    }
+
+    if (is_complete_) {
+        return RhiStatus::InvalidLifecycle;
+    }
+
+    RhiCommandRecord record{};
+    record.type = RhiCommandType::BindIndexBuffer;
+    record.target = target_handle_;
+    record.index_buffer = index_buffer;
+    return Append(record);
+}
+
 RhiStatus RhiCommandList::RecordDraw(const RhiDrawDesc &desc) {
     if (!is_recording_) {
         return RhiStatus::InvalidLifecycle;
@@ -104,6 +122,28 @@ RhiStatus RhiCommandList::RecordDraw(const RhiDrawDesc &desc) {
     }
 
     ++draw_command_count_;
+    return RhiStatus::Success;
+}
+
+RhiStatus RhiCommandList::RecordDrawIndexed(const RhiDrawIndexedDesc &desc) {
+    if (!is_recording_) {
+        return RhiStatus::InvalidLifecycle;
+    }
+
+    if (is_complete_) {
+        return RhiStatus::InvalidLifecycle;
+    }
+
+    RhiCommandRecord record{};
+    record.type = RhiCommandType::DrawIndexed;
+    record.target = target_handle_;
+    record.draw_indexed = desc;
+    const RhiStatus status = Append(record);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    ++indexed_draw_command_count_;
     return RhiStatus::Success;
 }
 
@@ -127,7 +167,13 @@ RhiStatus RhiCommandList::EndFrame() {
 }
 
 RhiCommandListSnapshot RhiCommandList::Snapshot() const {
-    return RhiCommandListSnapshot{records_.size(), command_count_, draw_command_count_, is_recording_, is_complete_};
+    return RhiCommandListSnapshot{
+        records_.size(),
+        command_count_,
+        draw_command_count_,
+        indexed_draw_command_count_,
+        is_recording_,
+        is_complete_};
 }
 
 const RhiCommandRecord& RhiCommandList::CommandAt(std::size_t index) const {

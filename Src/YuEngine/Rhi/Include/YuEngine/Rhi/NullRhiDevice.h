@@ -62,7 +62,9 @@ public:
     RhiStatus RecordClear(RhiCommandList &command_list, RhiTextureHandle handle, RhiColor color) override;
     RhiStatus RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) override;
     RhiStatus RecordBindVertexBuffer(RhiCommandList &command_list, const RhiVertexBufferView &view) override;
+    RhiStatus RecordBindIndexBuffer(RhiCommandList &command_list, const RhiIndexBufferView &view) override;
     RhiStatus RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) override;
+    RhiStatus RecordDrawIndexed(RhiCommandList &command_list, const RhiDrawIndexedDesc &desc) override;
     /**
      * @comment Submits requested work.
      * @param command_list Input command list.
@@ -150,6 +152,7 @@ private:
     };
 
     RhiStatus RecordFailure(RhiStatus status);
+    RhiStatus RecordIndexedDrawFailure(RhiStatus status);
     bool IsTargetHandleValid(RhiTextureHandle handle) const;
     bool IsBufferHandleValid(RhiBufferHandle handle) const;
     bool IsTextureHandleValid(RhiTextureHandle handle) const;
@@ -158,9 +161,12 @@ private:
     bool IsPipelineHandleValid(RhiPipelineHandle handle) const;
     bool IsCommandTargetValidForFrame(const RhiCommandRecord &command, RhiTextureHandle frame_target) const;
     bool IsVertexBufferViewValid(const RhiVertexBufferView &view) const;
+    bool IsIndexBufferViewValid(const RhiIndexBufferView &view) const;
     bool IsDrawDescValid(const RhiDrawDesc &desc) const;
+    bool IsDrawIndexedDescValid(const RhiDrawIndexedDesc &desc) const;
     bool IsInputLayoutDescValid(const RhiInputLayoutDesc &desc) const;
     bool IsDrawRangeValid(const RhiVertexBufferView &view, const RhiDrawDesc &desc) const;
+    bool IsIndexedDrawRangeValid(const RhiIndexBufferView &view, const RhiDrawIndexedDesc &desc) const;
     bool IsColorTargetDescValid(const RhiColorTargetDesc &desc) const;
     bool IsBufferDescValid(const RhiBufferDesc &desc, std::span<const std::uint8_t> initial_bytes) const;
     bool IsTextureDescValid(const RhiTextureDesc &desc, std::span<const std::uint8_t> initial_bytes) const;
@@ -168,6 +174,7 @@ private:
     bool IsPipelineDescValid(const RhiPipelineDesc &desc) const;
     std::size_t PixelByteCount(const RhiColorTargetDesc &desc) const;
     std::size_t TextureByteCount(const RhiTextureDesc &desc) const;
+    std::size_t IndexFormatByteCount(RhiIndexFormat format) const;
     RhiFenceHandle SignalFence(std::size_t byte_count);
     void ExecuteClear(RhiTextureHandle handle, RhiColor color);
 
