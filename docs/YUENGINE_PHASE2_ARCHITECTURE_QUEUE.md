@@ -202,6 +202,7 @@ Required test-tier direction:
 | P2-GATE-030 | RenderCore Render Graph Execution Plan | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_030_RENDERCORE_RENDER_GRAPH_EXECUTION_PLAN.md`; landed at `55f618f`; RenderCore-owned execution-plan metadata over landed render graph skeleton prepared batches and frame packet fixture only; default fast gate is `914/914` PASS; no renderer scheduler, frame graph system, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-031 | Resource Decoded Payload Ownership | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice approved | Gate doc: `docs/gates/P2_GATE_031_RESOURCE_DECODED_PAYLOAD_OWNERSHIP.md`; approved after ENG-153CR PASS at proposal commit `97afdb0`; Resource-owned decoded byte payload storage over landed cache payload, decode-plan, and decode-result metadata only; no real codec, File/Package/Streaming expansion, RHI upload, Audio lifecycle, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, audible proof, or manual proof |
 | P2-GATE-032 | Audio PCM Stream Queue | L3 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_032_AUDIO_PCM_STREAM_QUEUE.md`; proposed after P2-GATE-031 approval; Audio-owned fixed-capacity PCM stream queue over landed Audio PCM sample packet metadata only; no Resource/File/Package/Streaming ownership, AudioResource bridge execution, codec decode, decoded byte storage, callback submission, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
+| P2-GATE-033 | RHI Swapchain Resize Public Contract | L3 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_033_RHI_SWAPCHAIN_RESIZE_PUBLIC_CONTRACT.md`; proposed after HW-PAR-155P/H PASS; RHI-owned backend-neutral resize request/result, swapchain snapshot resize counters, capability flag, Null RHI unsupported behavior, D3D11 private backbuffer recreation, and color-target generation invalidation evidence only; requires optional D3D11 hardware-smoke proof while default fast gate stays hardware-free; no Platform event ownership, RenderCore scheduling, Resource/Streaming/File/Package ownership, Audio lifecycle, scene/UI/World/Script/Game Adapter behavior, public native/backend leaks, reports, screenshots, logs, sleeps, manual proof, hardware-only proof, or original-game evidence |
 
 ## Current Active Gates
 
@@ -764,3 +765,12 @@ Acceleration note:
     audio, BGM/SE business behavior, audio scene, UI/World/Script/Game Adapter
     behavior, native/backend leak, report, screenshot, log, sleep, audible
     proof, manual proof, hardware-only proof, or original-game evidence path.
+30. Treat proposed P2-GATE-033 only as an RHI swapchain resize public contract
+    over landed D3D11 swapchain clear/present/capture behavior. It may define a
+    backend-neutral resize request/result, swapchain snapshot counters,
+    capability flag, Null RHI unsupported behavior, and D3D11 backbuffer
+    generation evidence; it must not become Platform window event ownership,
+    RenderCore resize scheduling, Resource upload, Audio lifecycle, scene/UI/
+    World/Script/Game Adapter behavior, public native/backend leak, report,
+    screenshot, log, sleep, manual proof, hardware-only proof, or original-game
+    evidence path.
