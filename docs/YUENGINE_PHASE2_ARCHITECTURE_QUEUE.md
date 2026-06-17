@@ -127,6 +127,7 @@ test tier labels and optional hardware-smoke presets
 -> Resource residency budget policy
 -> Resource cache payload ownership
 -> Resource asset decode/import boundary
+-> RenderCore render graph skeleton
 ```
 
 Hard sequencing constraints:
@@ -193,6 +194,7 @@ Required test-tier direction:
 | P2-GATE-022 | Resource Residency Budget Policy | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_022_RESOURCE_RESIDENCY_BUDGET_POLICY.md`; landed at `d2f2059`; Resource-owned residency state, budget counters, pin/unpin, and eviction-candidate policy over landed upload commit state only; default fast gate is `820/820` PASS; no cache payload storage, package parser, asset decode/import, RHI resource destruction, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-023 | Resource Cache Payload Ownership | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_023_RESOURCE_CACHE_PAYLOAD_OWNERSHIP.md`; landed at `aca6170`; Resource-owned opaque cache payload byte storage, cache-slot records, readback, release, and deterministic counters over landed load commit and residency state only; default fast gate is `832/832` PASS; no package parser, asset decode/import, RHI resource destruction, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-024 | Resource Asset Decode Plan | L4-L5 | `PROPOSED` | Proposed | Gate doc: `docs/gates/P2_GATE_024_RESOURCE_ASSET_DECODE_PLAN.md`; proposed Resource-owned decode-plan records over landed cache payload bytes only; no File IO expansion, package parser, real image/audio/mesh decode, RHI upload, render graph, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-025 | RenderCore Render Graph Skeleton | L5 | `PROPOSED` | Proposed | Gate doc: `docs/gates/P2_GATE_025_RENDERCORE_RENDER_GRAPH_SKELETON.md`; proposed RenderCore-owned render graph declaration and dependency validation skeleton over landed fixture pass, material binding, submission batch, frame packet, and public RHI values only; no render scheduler, frame graph execution, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
 
@@ -471,6 +473,15 @@ Required test-tier direction:
 4. PM/gate review issues final gate state.
 5. Code review starts only after implementation exists.
 
+Acceleration note:
+
+- Low-risk and medium-risk proposal reviews may use one combined lower-engine
+  review task instead of default A/B/C lanes.
+- Split review lanes are reserved for gates with high native/backend leakage
+  risk, cross-module ownership drift, or test-policy uncertainty.
+- Independent lower-engine proposal tracks may run in parallel when they do not
+  authorize implementation before their own approval commits.
+
 ## Immediate Next Steps
 
 1. Use the landed P2-GATE-004 labels and `windows-hardware-smoke` preset to keep
@@ -583,3 +594,12 @@ Required test-tier direction:
     decode-plan value contracts over already cached bytes; it does not authorize
     File IO expansion, package parsing, real codec/decode output, RHI upload,
     render graph, scene streaming, World, UI, Script, or Game Adapter behavior.
+22. Review P2-GATE-025 with one combined lower-engine review before any
+    RenderCore render graph skeleton implementation task is created. The
+    proposed first slice is limited to RenderCore-owned graph declaration and
+    dependency validation values over landed fixture paths; it does not
+    authorize render scheduling, frame graph execution, command-list
+    parallelism, Resource/Streaming/Package/File ownership, material graph,
+    scene/UI/World/Script/Game Adapter behavior, native/backend leakage,
+    reports, screenshots, logs, sleeps, manual proof, hardware-only proof, or
+    original-game evidence.
