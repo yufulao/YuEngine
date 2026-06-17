@@ -1,14 +1,14 @@
 # P2-GATE-016: Resource Upload Queue
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-008, P2-GATE-014, P2-GATE-015, P1-GATE-006
 Related decisions: ADR-0011, ADR-0013
 Source baseline: `6e29663`
-Proposal commit: pending
+Proposal commit: `141b36d`
 
 ## Layer
 
@@ -58,6 +58,48 @@ Current discovery on the proposal baseline:
 - `ctest --preset windows-hardware-smoke -N`: `7`;
 - `ctest --preset windows-hardware-smoke -N -L Streaming`: `0`;
 - `ctest --preset windows-hardware-smoke -N -L Upload`: `0`.
+
+## Approval Evidence
+
+Approved after:
+
+- ENG-123A boundary and quality review PASS with no `NEEDS_ARCHITECTURE`
+  blocker;
+- ENG-123B implementability review PASS with no `NEEDS_IMPLEMENTABILITY`
+  blocker;
+- ENG-123C test and preset review PASS with no `NEEDS_TEST_POLICY` blocker.
+
+Review evidence:
+
+- proposal commit `141b36d9b53bda182ad87aeefbb267853e9e3903` changes only
+  `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and this gate doc;
+- review worktrees stayed clean and reviewers made no source, doc, commit, or
+  push changes;
+- `git diff --check 141b36d^ 141b36d` passed;
+- baseline discovery is default `736`, `Resource` `28`, `Package` `34`,
+  `File` `26`, `AsyncIO` `20`, `Streaming` `10`, `Upload` `10`, `RHI` `70`,
+  `Fast` `736`, `PerformanceSmoke` `53`, `EvidenceOracle` `140`, and
+  `HardwareSmoke` `0`;
+- `windows-hardware-smoke` discovers `7`, with `Streaming` and `Upload`
+  remaining `0`.
+
+Approval conditions:
+
+- implementation must remain a narrow Resource upload bridge over P2-GATE-015
+  staging completions, existing Resource validation, and public `YuRHI`
+  buffer/texture creation or update value APIs;
+- upload completions must remain value/status records and must not mutate
+  Resource load completion state;
+- `YuResource` and `YuPackage` core must not gain RHI, File, Streaming,
+  RenderCore, material, scene, UI, World, Script, Game Adapter, parser, or
+  decode ownership;
+- default `windows-fast-gate` must remain deterministic and no-real-device;
+- no hardware-smoke admission is expected for this gate;
+- proof must use deterministic value/counter/status assertions through public
+  RHI Null backend upload behavior;
+- proof must reject screenshots, reports, generated artifacts, logs, sleeps,
+  manual visual proof, original-game packages/output, silent skip, RenderCore
+  draw, material bind, scene streaming, or Game Adapter behavior.
 
 ## Owns
 

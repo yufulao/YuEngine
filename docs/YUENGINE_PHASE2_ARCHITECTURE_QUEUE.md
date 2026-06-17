@@ -171,7 +171,7 @@ Required test-tier direction:
 | P2-GATE-013 | Static Mesh Fixture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_013_STATIC_MESH_FIXTURE.md`; landed at `1ee9fa4`; indexed static-geometry fixture through RHI/D3D11 value contracts; default fast gate is `718/718` PASS; `windows-hardware-smoke` discovers and runs indexed static mesh capture; no Resource loading, RenderCore, material system, scene traversal, reports, screenshots, manual visual proof, or Game Adapter |
 | P2-GATE-014 | Texture Sampling Fixture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_014_TEXTURE_SAMPLING_FIXTURE.md`; landed at `49a14ae`; texture/sampler binding and sampling proof through RHI/D3D11 value contracts; default fast gate is `726/726` PASS; `windows-hardware-smoke` discovers and runs texture-sampling capture; no Resource loading, image decode, RenderCore, material system, scene traversal, reports, screenshots, shader compiler, manual visual proof, or Game Adapter |
 | P2-GATE-015 | Package Resource Staging Queue | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_015_PACKAGE_RESOURCE_STAGING_QUEUE.md`; landed at `6e29663`; bounded staging bridge over existing Package load-plan, Resource handle/type, and File async values; default fast gate is `736/736` PASS; no package parser, decode, Resource load completion, RHI upload, RenderCore, material, scene/UI/World/Script/Game Adapter, reports, screenshots, or manual proof |
-| P2-GATE-016 | Resource Upload Queue | L4-L5 over L3 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_016_RESOURCE_UPLOAD_QUEUE.md`; proposed bounded upload bridge from package/resource staging completions and Resource validation into public `YuRHI` buffer/texture update value APIs; no Resource load-state mutation, decode, RenderCore, material, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-016 | Resource Upload Queue | L4-L5 over L3 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_016_RESOURCE_UPLOAD_QUEUE.md`; approved after ENG-123A/B/C PASS; bounded upload bridge from package/resource staging completions and Resource validation into public `YuRHI` buffer/texture update value APIs; no Resource load-state mutation, decode, RenderCore, material, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
 
@@ -337,16 +337,15 @@ Required test-tier direction:
   completion mutation, RHI upload execution, RenderCore pass scheduling,
   material system, scene traversal, reports, screenshots, manual visual proof,
   UI, World, Script, or Game Adapter behavior.
-- P2-GATE-016 is proposed for Resource upload queue review. The proposal is
-  limited to a bounded bridge from P2-GATE-015 staging completion values and
-  existing `YuResource` validation values into public `YuRHI` buffer/texture
-  creation or update value APIs. It must not mutate Resource load completion
-  state, parse packages, decode assets, expose native/backend types in public
+- P2-GATE-016 is approved for first slice after ENG-123A boundary/quality PASS,
+  ENG-123B implementability PASS, and ENG-123C test-policy PASS. It is limited
+  to a bounded bridge from P2-GATE-015 staging completion values and existing
+  `YuResource` validation values into public `YuRHI` buffer/texture creation or
+  update value APIs. It must not mutate Resource load completion state, parse
+  packages, decode assets, expose native/backend types in public
   Package/Resource/Streaming contracts, schedule RenderCore passes, bind
   materials, traverse scenes, use reports/screenshots/logs/sleeps/manual proof,
-  or involve UI, World, Script, or Game Adapter behavior. It is
-  `NOT_APPROVED`; no implementation task may exist before review PASS and an
-  explicit approval commit.
+  or involve UI, World, Script, or Game Adapter behavior.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -413,10 +412,9 @@ Required test-tier direction:
     RenderCore, material, scene/UI/World/Script/Game Adapter, reports,
     screenshots, logs, sleeps, manual proof, original-game package evidence, or
     public native/backend leakage.
-13. Review P2-GATE-016 before any Resource upload implementation task is
-    created. The proposed first slice may only bridge staging completion values
-    and Resource validation into existing public `YuRHI` buffer/texture upload
-    value APIs; it must not add decode, Resource load-state ownership,
-    RenderCore, material, scene/UI/World/Script/Game Adapter, reports,
-    screenshots, logs, sleeps, manual proof, hardware-only proof, or native/
-    backend leakage.
+13. Implement P2-GATE-016 only through the approved Resource upload queue first
+    slice. The implementation may only bridge staging completion values and
+    Resource validation into existing public `YuRHI` buffer/texture upload value
+    APIs; it must not add decode, Resource load-state ownership, RenderCore,
+    material, scene/UI/World/Script/Game Adapter, reports, screenshots, logs,
+    sleeps, manual proof, hardware-only proof, or native/backend leakage.
