@@ -1,13 +1,15 @@
 # P2-GATE-027: RHI Primitive Retirement Ledger
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: Combined lower-engine review
 Depends on: P2-GATE-008, P2-GATE-006, P2-GATE-004, ADR-0011
 Related decisions: ADR-0011
 Source baseline: `74189da`
+Proposal commit: `1c68beb`
+Approval evidence: ENG-144R combined proposal review PASS.
 
 ## Layer
 
@@ -53,6 +55,35 @@ Current discovery on the proposal baseline:
 - `ctest --preset windows-fast-gate -N -L HardwareSmoke`: `0`;
 - `ctest --preset windows-hardware-smoke -N`: `7`;
 - `ctest --preset windows-hardware-smoke -N -L RHI`: `5`.
+
+## Approval Evidence
+
+Approved after ENG-144R combined proposal review PASS.
+
+Review evidence:
+
+- proposal commit `1c68beb4b095feb7a21208da884786dde32542c6` changes only
+  `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and this gate doc;
+- `git diff --check 1c68beb4b095feb7a21208da884786dde32542c6^
+  1c68beb4b095feb7a21208da884786dde32542c6` passed;
+- review work was read-only and made no source, doc, commit, push, approval, or
+  implementation changes;
+- review confirmed no `NEEDS_ARCHITECTURE`, `NEEDS_IMPLEMENTABILITY`, or
+  `NEEDS_TEST_POLICY` blocker;
+- boundary review confirmed the proposal stays in RHI-owned primitive
+  retirement request, ledger, drain, handle invalidation, and counter proof over
+  landed primitive handles;
+- implementability review confirmed existing public `YuRHI` handles,
+  `Destroy*` APIs, generation-based invalidation behavior, snapshots, Null RHI,
+  and D3D11 RHI surfaces are sufficient for the first slice;
+- test-policy review confirmed deterministic default `windows-fast-gate`
+  evidence, focused `RHI_PrimitiveRetirement` tests, label discovery,
+  public-header/native leak scans, production dependency scans, CMakePresets
+  no-drift checks, hardware-smoke isolation, and proof-shape scans are required;
+- proposal discovery counts matched the reviewed baseline: default fast gate
+  `858`, `RHI` `141`, `Fast` `858`, `PerformanceSmoke` `91`,
+  `EvidenceOracle` `262`, default `HardwareSmoke` `0`, and
+  `windows-hardware-smoke` `7` with `RHI` `5`.
 
 ## Owns
 
