@@ -1,13 +1,15 @@
 # P2-GATE-026: Resource Decode Result Import-Ready Record
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: Combined lower-engine review
 Depends on: P2-GATE-024, P2-GATE-023, P2-GATE-022, P2-GATE-021, P1-GATE-006
 Related decisions: ADR-0013
 Source baseline: `7a620af`
+Proposal commit: `74189da`
+Approval evidence: ENG-143CR combined proposal review PASS.
 
 ## Layer
 
@@ -61,6 +63,32 @@ Current discovery on the proposal baseline:
 - `ctest --preset windows-hardware-smoke -N -L RHI`: `5`;
 - `ctest --preset windows-hardware-smoke -N -L RenderCore`: `0`;
 - `ctest --preset windows-hardware-smoke -N -L Material`: `0`.
+
+## Approval Evidence
+
+Approved after ENG-143CR combined proposal review PASS.
+
+Review evidence:
+
+- proposal commit `74189dabe898917a536120265e9b7add0858b634` changes only
+  `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and this gate doc;
+- `git diff --check 74189da^..74189da` passed;
+- review worktree stayed clean at writeback and the reviewer made no source,
+  doc, commit, push, approval, or implementation changes;
+- review confirmed no `NEEDS_ARCHITECTURE`, `NEEDS_IMPLEMENTABILITY`, or
+  `NEEDS_TEST_POLICY` blocker;
+- boundary review confirmed the proposal stays in Resource-owned import-ready
+  decode-result metadata over landed decode-plan records;
+- implementability review confirmed landed Resource decode-plan fields and
+  ResourceRegistry lifecycle hooks are sufficient for the first slice;
+- test-policy review confirmed deterministic default `windows-fast-gate`
+  evidence, focused Resource decode-result tests, label discovery,
+  CMakePresets no-drift, dependency scans, and proof-shape scans are required;
+- proposal discovery counts matched the reviewed baseline: default fast gate
+  `858`, `Resource` `96`, `Streaming` `36`, `Upload` `43`, `RHI` `141`,
+  `RenderCore` `54`, `Material` `40`, `Fast` `858`, `PerformanceSmoke` `91`,
+  `EvidenceOracle` `262`, default `HardwareSmoke` `0`, and
+  `windows-hardware-smoke` `7`.
 
 ## Owns
 

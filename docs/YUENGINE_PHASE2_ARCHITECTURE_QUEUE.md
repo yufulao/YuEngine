@@ -195,7 +195,7 @@ Required test-tier direction:
 | P2-GATE-023 | Resource Cache Payload Ownership | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_023_RESOURCE_CACHE_PAYLOAD_OWNERSHIP.md`; landed at `aca6170`; Resource-owned opaque cache payload byte storage, cache-slot records, readback, release, and deterministic counters over landed load commit and residency state only; default fast gate is `832/832` PASS; no package parser, asset decode/import, RHI resource destruction, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-024 | Resource Asset Decode Plan | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_024_RESOURCE_ASSET_DECODE_PLAN.md`; landed at `a6fbabf`; Resource-owned decode-plan records over landed cache payload bytes only; no File IO expansion, package parser, real image/audio/mesh decode, RHI upload, render graph, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-025 | RenderCore Render Graph Skeleton | L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_025_RENDERCORE_RENDER_GRAPH_SKELETON.md`; landed at `43dc361`; RenderCore-owned render graph declaration and dependency validation skeleton over landed fixture pass, material binding, submission batch, frame packet, and public RHI values only; default fast gate is `858/858` PASS; no render scheduler, frame graph execution, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
-| P2-GATE-026 | Resource Decode Result Import-Ready Record | L4-L5 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_026_RESOURCE_DECODE_RESULT_IMPORT_READY_RECORD.md`; proposal for Resource-owned import-ready decoded-result metadata over landed decode-plan records only; no real codec, decoded byte storage, RHI upload, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-026 | Resource Decode Result Import-Ready Record | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | Proposal approved | Gate doc: `docs/gates/P2_GATE_026_RESOURCE_DECODE_RESULT_IMPORT_READY_RECORD.md`; approved after ENG-143CR combined review PASS; Resource-owned import-ready decoded-result metadata over landed decode-plan records only; no real codec, decoded byte storage, RHI upload, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-027 | RHI Primitive Retirement Ledger | L3 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_027_RHI_PRIMITIVE_RETIREMENT_LEDGER.md`; proposal for RHI-owned primitive retirement request, ledger, drain, and deterministic handle invalidation evidence over landed RHI primitive handles only; no Resource/Streaming/File/Package/RenderCore/material/scene/UI/World/Script/Game Adapter dependency, backend-native public leak, new renderer scheduling, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
@@ -476,8 +476,8 @@ Required test-tier direction:
   graph, scene, UI, World, Script, Game Adapter, native/backend leakage,
   reports, screenshots, logs, sleeps, manual proof, hardware-only proof, or
   original-game evidence.
-- P2-GATE-026 is proposed as a Resource decode result import-ready record first
-  slice over landed Resource decode-plan records. It may validate
+- P2-GATE-026 is approved as a Resource decode result import-ready record first
+  slice after ENG-143CR combined review PASS. It may validate
   caller-provided import-ready result metadata, record Resource-owned
   decode-result entries, and expose deterministic counters without storing
   decoded bytes. The proposal baseline is `7a620af`; discovery is
@@ -644,7 +644,7 @@ Acceleration note:
     ownership, material graph, scene/UI/World/Script/Game Adapter behavior,
     native/backend leakage, reports, screenshots, logs, sleeps, manual proof,
     hardware-only proof, or original-game evidence.
-23. Review P2-GATE-026 as a proposed Resource decode-result import-ready record
+23. Treat approved P2-GATE-026 as a Resource decode-result import-ready record
     boundary. It must stay in Resource-owned metadata over landed decode-plan
     records and must not authorize real codec output, decoded byte storage, RHI
     upload, RenderCore scheduling, material graph, scene/UI/World/Script/Game
