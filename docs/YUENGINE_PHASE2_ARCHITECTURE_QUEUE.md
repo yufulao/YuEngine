@@ -86,8 +86,10 @@ Current lower-engine reality:
   capture-byte proof through P2-GATE-009, P2-GATE-013, and P2-GATE-014. The
   lower-engine path now has Resource upload queue and RenderCore fixture pass
   proof plus material binding fixture proof through P2-GATE-016,
-  P2-GATE-017, and P2-GATE-018. The engine still has no material graph, scene
-  traversal, report, visual proof, UI, World, or Game Adapter behavior.
+  P2-GATE-017, and P2-GATE-018. The next proposed lower-engine graphics step is
+  a bounded RenderCore submission batch fixture; the engine still has no render
+  graph, material graph, scene traversal, report, visual proof, UI, World, or
+  Game Adapter behavior.
 - Audio has a private Windows XAudio2 callback first slice through
   P2-GATE-011, but no codec, streaming, Resource-backed audio asset pipeline,
   audio scene, BGM/SE service, UI, World, or Game Adapter behavior.
@@ -118,6 +120,7 @@ test tier labels and optional hardware-smoke presets
 -> resource upload queue
 -> RenderCore fixture pass
 -> material binding fixture
+-> RenderCore submission batch fixture proposal
 ```
 
 Hard sequencing constraints:
@@ -178,6 +181,7 @@ Required test-tier direction:
 | P2-GATE-016 | Resource Upload Queue | L4-L5 over L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_016_RESOURCE_UPLOAD_QUEUE.md`; landed at `55af599`; bounded upload bridge from package/resource staging completions and Resource validation into public `YuRHI` buffer/texture update value APIs; default fast gate is `753/753` PASS; no Resource load-state mutation, decode, RenderCore, material, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-017 | RenderCore Fixture Pass | L5 over L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_017_RENDERCORE_FIXTURE_PASS.md`; landed at `13ccdb3`; bounded RenderCore fixture pass over public `YuRHI` command and resource-handle values only; no Resource/Streaming ownership, material system, scene/UI/World/Script/Game Adapter, shader compiler/source tooling, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-018 | Material Binding Fixture | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_018_MATERIAL_BINDING_FIXTURE.md`; landed at `b5620a3`; bounded material binding fixture over public `YuRHI` and landed `YuRenderCore` fixture values only; no material graph, shader compiler/source tooling, Resource/Streaming ownership, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-019 | RenderCore Submission Batch Fixture | L5 over L3-L5 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_019_RENDERCORE_SUBMISSION_BATCH_FIXTURE.md`; proposed bounded submission batch fixture over landed `YuRenderCore` fixture pass, material binding fixture, and public `YuRHI` values only; no render graph, frame graph, pass sorting, command-list parallelism, Resource/Streaming ownership, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
 
@@ -371,6 +375,17 @@ Required test-tier direction:
   scene/UI/World/Script/Game Adapter behavior, native/backend leakage, reports,
   screenshots, logs, sleeps, manual proof, hardware-only proof, or original-game
   evidence.
+- P2-GATE-019 is proposed after P2-GATE-018 to prove a bounded RenderCore
+  submission batch fixture over caller-owned, prepared `RenderFixturePassRequest`
+  values. The proposal baseline is `a78f671` with `windows-fast-gate` discovery
+  at `776`, `RenderCore` at `23`, `Material` at `9`, `RHI` at `110`,
+  `PerformanceSmoke` at `61`, `EvidenceOracle` at `180`, default
+  `HardwareSmoke` at `0`, and `windows-hardware-smoke` at `7`. It must not
+  create implementation work until review approval. It does not authorize render
+  graph, frame graph, pass sorting, command-list parallelism, Resource/Streaming
+  ownership, material graph, shader compiler/source tooling, scene/UI/World/
+  Script/Game Adapter behavior, native/backend leakage, reports, screenshots,
+  logs, sleeps, manual proof, hardware-only proof, or original-game evidence.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -455,3 +470,10 @@ Required test-tier direction:
     behavior, shader compiler/source tooling, Resource/Streaming ownership,
     scene/UI/World/Script/Game Adapter, reports, screenshots, logs, sleeps,
     manual proof, hardware-only proof, or native/backend leakage.
+16. Review P2-GATE-019 as the next lower-engine graphics proposal only. It may
+    define a bounded RenderCore submission batch fixture over prepared
+    RenderCore pass requests and material binding values, but it must not start
+    implementation or pull in render graph, scene traversal, Resource/Streaming
+    ownership, UI, World, Script, Game Adapter, reports, screenshots, logs,
+    sleeps, manual proof, hardware-only proof, or native/backend leakage until
+    the gate is explicitly approved.
