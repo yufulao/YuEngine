@@ -193,7 +193,7 @@ Required test-tier direction:
 | P2-GATE-021 | Resource Upload Completion Commit | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_021_RESOURCE_UPLOAD_COMPLETION_COMMIT.md`; landed at `475c371`; bounded Resource/Streaming upload completion commit bridge over landed `ResourceUploadCompletion` and ResourceRegistry values only; default fast gate is `809/809` PASS; no cache ownership, package parser, asset decode/import, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-022 | Resource Residency Budget Policy | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_022_RESOURCE_RESIDENCY_BUDGET_POLICY.md`; landed at `d2f2059`; Resource-owned residency state, budget counters, pin/unpin, and eviction-candidate policy over landed upload commit state only; default fast gate is `820/820` PASS; no cache payload storage, package parser, asset decode/import, RHI resource destruction, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-023 | Resource Cache Payload Ownership | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_023_RESOURCE_CACHE_PAYLOAD_OWNERSHIP.md`; landed at `aca6170`; Resource-owned opaque cache payload byte storage, cache-slot records, readback, release, and deterministic counters over landed load commit and residency state only; default fast gate is `832/832` PASS; no package parser, asset decode/import, RHI resource destruction, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
-| P2-GATE-024 | Resource Asset Decode Plan | L4-L5 | `PROPOSED` | Proposed | Gate doc: `docs/gates/P2_GATE_024_RESOURCE_ASSET_DECODE_PLAN.md`; proposed Resource-owned decode-plan records over landed cache payload bytes only; no File IO expansion, package parser, real image/audio/mesh decode, RHI upload, render graph, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-024 | Resource Asset Decode Plan | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_024_RESOURCE_ASSET_DECODE_PLAN.md`; approved after ENG-139A/B/C PASS; Resource-owned decode-plan records over landed cache payload bytes only; no File IO expansion, package parser, real image/audio/mesh decode, RHI upload, render graph, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-025 | RenderCore Render Graph Skeleton | L5 | `PROPOSED` | Proposed | Gate doc: `docs/gates/P2_GATE_025_RENDERCORE_RENDER_GRAPH_SKELETON.md`; proposed RenderCore-owned render graph declaration and dependency validation skeleton over landed fixture pass, material binding, submission batch, frame packet, and public RHI values only; no render scheduler, frame graph execution, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
@@ -447,10 +447,12 @@ Required test-tier direction:
   scheduling, scene/UI/World/Script/Game Adapter behavior, native/backend
   leakage, reports, screenshots, logs, sleeps, manual proof, hardware-only
   proof, or original-game evidence.
-- P2-GATE-024 is proposed as a Resource asset decode-plan first slice over
+- P2-GATE-024 is approved as a Resource asset decode-plan first slice over
   landed Resource cache payload bytes. It may validate a fixed Resource-owned
   test header, record decode-plan metadata, and expose deterministic counters
-  through ResourceRegistry value contracts only. The proposal baseline is
+  through ResourceRegistry value contracts only. Approval followed ENG-139A
+  boundary/quality PASS, ENG-139B implementability PASS, and ENG-139C
+  test-policy PASS on proposal commit `b8f74f0`. The proposal baseline is
   `2112056`; discovery is `windows-fast-gate` `832/832`, `Resource` `84`,
   `Streaming` `36`, `Upload` `43`, `RHI` `127`, `RenderCore` `40`, `Material`
   `26`, `PerformanceSmoke` `83`, `EvidenceOracle` `236`, default
@@ -589,8 +591,8 @@ Acceleration note:
     RenderCore scheduling, scene/UI/World/Script/Game Adapter behavior,
     native/backend leakage, reports, screenshots, logs, sleeps, manual proof,
     hardware-only proof, or original-game evidence.
-21. Review P2-GATE-024 before any Resource asset decode-plan implementation
-    task is created. The proposed first slice is limited to Resource-owned
+21. Implement P2-GATE-024 as the next approved Resource asset decode-plan first
+    slice. The approved first slice is limited to Resource-owned
     decode-plan value contracts over already cached bytes; it does not authorize
     File IO expansion, package parsing, real codec/decode output, RHI upload,
     render graph, scene streaming, World, UI, Script, or Game Adapter behavior.
