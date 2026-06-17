@@ -16,6 +16,13 @@
 #include "YuEngine/Resource/ResourceCachePayloadSnapshot.h"
 #include "YuEngine/Resource/ResourceCachePayloadStatus.h"
 #include "YuEngine/Resource/ResourceConstants.h"
+#include "YuEngine/Resource/ResourceDecodePlanAssetClass.h"
+#include "YuEngine/Resource/ResourceDecodePlanBudgetDesc.h"
+#include "YuEngine/Resource/ResourceDecodePlanOperation.h"
+#include "YuEngine/Resource/ResourceDecodePlanRecord.h"
+#include "YuEngine/Resource/ResourceDecodePlanRequest.h"
+#include "YuEngine/Resource/ResourceDecodePlanSnapshot.h"
+#include "YuEngine/Resource/ResourceDecodePlanStatus.h"
 #include "YuEngine/Resource/ResourceLoadCommitRequest.h"
 #include "YuEngine/Resource/ResourceLoadCommitStatus.h"
 #include "YuEngine/Resource/ResourceLoadState.h"
@@ -33,6 +40,13 @@ using yuengine::resource::ResourceCachePayloadRequest;
 using yuengine::resource::ResourceCachePayloadSnapshot;
 using yuengine::resource::ResourceCachePayloadStatus;
 using yuengine::resource::ResourceDescriptor;
+using yuengine::resource::ResourceDecodePlanAssetClass;
+using yuengine::resource::ResourceDecodePlanBudgetDesc;
+using yuengine::resource::ResourceDecodePlanOperation;
+using yuengine::resource::ResourceDecodePlanRecord;
+using yuengine::resource::ResourceDecodePlanRequest;
+using yuengine::resource::ResourceDecodePlanSnapshot;
+using yuengine::resource::ResourceDecodePlanStatus;
 using yuengine::resource::ResourceHandle;
 using yuengine::resource::ResourceLoadCommitRequest;
 using yuengine::resource::ResourceLoadCommitStatus;
@@ -50,7 +64,14 @@ using yuengine::resource::ResourceSnapshot;
 using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
 using yuengine::resource::INVALID_RESOURCE_GENERATION;
+using yuengine::resource::MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT;
 using yuengine::resource::MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD;
+using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT;
+using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_MAGIC_0;
+using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_MAGIC_1;
+using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_MAGIC_2;
+using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_MAGIC_3;
+using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_VERSION;
 
 namespace {
 constexpr const char* TEST_REGISTER = "Resource_RegisterSyntheticDescriptor_ReturnsGenerationHandle";
@@ -122,6 +143,30 @@ constexpr const char *TEST_CACHE_PAYLOAD_FAILED_VALIDATION =
     "Resource_CachePayload_FailedValidationDoesNotMutateResourceState";
 constexpr const char *TEST_CACHE_PAYLOAD_PINNED_RELEASE =
     "Resource_CachePayload_ReleaseRejectsPinnedWithoutMutation";
+constexpr const char *TEST_DECODE_PLAN_CREATE_QUERY_RELEASE =
+    "Resource_DecodePlan_CreatesQueriesAndReleasesMetadata";
+constexpr const char *TEST_DECODE_PLAN_MISSING_PAYLOAD =
+    "Resource_DecodePlan_RejectsMissingCachePayload";
+constexpr const char *TEST_DECODE_PLAN_INVALID_HEADER =
+    "Resource_DecodePlan_RejectsInvalidHeader";
+constexpr const char *TEST_DECODE_PLAN_UNSUPPORTED_VERSION =
+    "Resource_DecodePlan_RejectsUnsupportedHeaderVersion";
+constexpr const char *TEST_DECODE_PLAN_STALE_HANDLE =
+    "Resource_DecodePlan_RejectsStaleHandleWithoutMutation";
+constexpr const char *TEST_DECODE_PLAN_TYPE_MISMATCH =
+    "Resource_DecodePlan_RejectsTypeMismatchWithoutMutation";
+constexpr const char *TEST_DECODE_PLAN_NOT_RESIDENT =
+    "Resource_DecodePlan_RejectsNotResidentWithoutMutation";
+constexpr const char *TEST_DECODE_PLAN_FAILED_LOAD =
+    "Resource_DecodePlan_RejectsFailedLoadWithoutMutation";
+constexpr const char *TEST_DECODE_PLAN_DUPLICATE =
+    "Resource_DecodePlan_RejectsDuplicatePlanId";
+constexpr const char *TEST_DECODE_PLAN_CAPACITY =
+    "Resource_DecodePlan_RejectsCapacityOverflow";
+constexpr const char *TEST_DECODE_PLAN_BUDGET =
+    "Resource_DecodePlan_RejectsBudgetOverflow";
+constexpr const char *TEST_DECODE_PLAN_FAILED_VALIDATION =
+    "Resource_DecodePlan_FailedValidationDoesNotMutateResourceState";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr ResourceTypeId TYPE_TEXTURE{1U};
@@ -153,6 +198,10 @@ constexpr std::uint32_t UPLOAD_BYTE_COUNT = 64U;
 constexpr std::uint64_t PAYLOAD_ONE = 5001U;
 constexpr std::uint64_t PAYLOAD_TWO = 5002U;
 constexpr std::uint64_t PAYLOAD_THREE = 5003U;
+constexpr std::uint64_t DECODE_PLAN_ONE = 6001U;
+constexpr std::uint64_t DECODE_PLAN_TWO = 6002U;
+constexpr std::uint32_t DECODE_PLAN_DECODED_BYTE_COUNT = 128U;
+constexpr std::uint32_t DECODE_PLAN_PAYLOAD_BYTE_COUNT = RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT + 4U;
 using TestFunction = int (*)();
 using TestRegistry = std::unordered_map<std::string_view, TestFunction>;
 
@@ -242,6 +291,66 @@ ResourceCachePayloadRequest CachePayloadRequest(
     request.payload_bytes = payload_bytes;
     request.payload_byte_count = payload_byte_count;
     return request;
+}
+
+void WriteU32LittleEndian(
+    std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> &bytes,
+    std::uint32_t offset,
+    std::uint32_t value) {
+    bytes[offset] = static_cast<std::uint8_t>(value & 0xFFU);
+    bytes[offset + 1U] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
+    bytes[offset + 2U] = static_cast<std::uint8_t>((value >> 16U) & 0xFFU);
+    bytes[offset + 3U] = static_cast<std::uint8_t>((value >> 24U) & 0xFFU);
+}
+
+std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> DecodePlanPayload(
+    ResourceDecodePlanAssetClass asset_class,
+    std::uint32_t header_version,
+    std::uint32_t expected_decoded_byte_count) {
+    std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> bytes{};
+    bytes[0U] = RESOURCE_DECODE_PLAN_HEADER_MAGIC_0;
+    bytes[1U] = RESOURCE_DECODE_PLAN_HEADER_MAGIC_1;
+    bytes[2U] = RESOURCE_DECODE_PLAN_HEADER_MAGIC_2;
+    bytes[3U] = RESOURCE_DECODE_PLAN_HEADER_MAGIC_3;
+    WriteU32LittleEndian(bytes, 4U, header_version);
+    WriteU32LittleEndian(bytes, 8U, static_cast<std::uint32_t>(asset_class));
+    WriteU32LittleEndian(bytes, 12U, DECODE_PLAN_PAYLOAD_BYTE_COUNT);
+    WriteU32LittleEndian(bytes, 16U, expected_decoded_byte_count);
+    bytes[RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT] = 0x7AU;
+    return bytes;
+}
+
+ResourceDecodePlanRequest DecodePlanRequest(
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint64_t payload_id,
+    std::uint64_t decode_plan_id,
+    ResourceDecodePlanAssetClass asset_class,
+    std::uint32_t expected_decoded_byte_count) {
+    ResourceDecodePlanRequest request;
+    request.resource = resource;
+    request.expected_type = expected_type;
+    request.payload_id = payload_id;
+    request.decode_plan_id = decode_plan_id;
+    request.asset_class = asset_class;
+    request.source_byte_count = DECODE_PLAN_PAYLOAD_BYTE_COUNT;
+    request.expected_decoded_byte_count = expected_decoded_byte_count;
+    return request;
+}
+
+bool StoreDecodePlanPayload(
+    ResourceRegistry &registry,
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint64_t payload_id,
+    const std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> &payload) {
+    const ResourceCachePayloadRequest request = CachePayloadRequest(
+        resource,
+        expected_type,
+        payload_id,
+        payload.data(),
+        static_cast<std::uint32_t>(payload.size()));
+    return registry.StoreCachePayload(request) == ResourceCachePayloadStatus::Success;
 }
 
 bool CommitLoad(
@@ -2292,6 +2401,588 @@ int ResourceCachePayloadReleaseRejectsPinnedWithoutMutation() {
 
     return 0;
 }
+
+int ResourceDecodePlanCreatesQueriesAndReleasesMetadata() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_plan_success");
+    if (!result.Succeeded()) {
+        return Fail("decode plan success fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("decode plan success fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> payload = DecodePlanPayload(
+        ResourceDecodePlanAssetClass::Texture,
+        RESOURCE_DECODE_PLAN_HEADER_VERSION,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (!StoreDecodePlanPayload(registry, result.handle, TYPE_TEXTURE, PAYLOAD_ONE, payload)) {
+        return Fail("decode plan success fixture cache payload store failed");
+    }
+
+    const ResourceDecodePlanRequest request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (registry.CreateDecodePlan(request) != ResourceDecodePlanStatus::Success) {
+        return Fail("decode plan create failed");
+    }
+
+    ResourceDecodePlanRecord record;
+    if (registry.QueryDecodePlan(request, &record) != ResourceDecodePlanStatus::Success) {
+        return Fail("decode plan query failed");
+    }
+
+    if (record.decode_plan_id != DECODE_PLAN_ONE) {
+        return Fail("decode plan query returned wrong id");
+    }
+
+    if (record.payload_id != PAYLOAD_ONE) {
+        return Fail("decode plan query returned wrong payload id");
+    }
+
+    if (record.asset_class != ResourceDecodePlanAssetClass::Texture) {
+        return Fail("decode plan query returned wrong asset class");
+    }
+
+    if (record.source_byte_count != DECODE_PLAN_PAYLOAD_BYTE_COUNT) {
+        return Fail("decode plan query returned wrong source byte count");
+    }
+
+    if (record.expected_decoded_byte_count != DECODE_PLAN_DECODED_BYTE_COUNT) {
+        return Fail("decode plan query returned wrong decoded byte count");
+    }
+
+    ResourceDecodePlanSnapshot snapshot = registry.DecodePlanSnapshot();
+    if (snapshot.active_plan_count != 1U) {
+        return Fail("decode plan create did not record active plan count");
+    }
+
+    if (snapshot.planned_decoded_byte_count != DECODE_PLAN_DECODED_BYTE_COUNT) {
+        return Fail("decode plan create did not record decoded byte budget");
+    }
+
+    if (snapshot.created_plan_count != 1U) {
+        return Fail("decode plan create was not counted");
+    }
+
+    if (snapshot.queried_plan_count != 1U) {
+        return Fail("decode plan query was not counted");
+    }
+
+    if (registry.ReleaseDecodePlan(request) != ResourceDecodePlanStatus::Success) {
+        return Fail("decode plan release failed");
+    }
+
+    snapshot = registry.DecodePlanSnapshot();
+    if (snapshot.active_plan_count != 0U) {
+        return Fail("decode plan release did not clear active plan count");
+    }
+
+    if (snapshot.planned_decoded_byte_count != 0U) {
+        return Fail("decode plan release did not clear decoded byte budget");
+    }
+
+    if (snapshot.released_plan_count != 1U) {
+        return Fail("decode plan release was not counted");
+    }
+
+    if (registry.CachePayloadSnapshot().cached_payload_count != 1U) {
+        return Fail("decode plan release changed cache payload count");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Evictable)) {
+        return Fail("decode plan release changed residency state");
+    }
+
+    const ResourceDecodePlanStatus query_status = registry.QueryDecodePlan(request, &record);
+    if (query_status != ResourceDecodePlanStatus::MissingPlan) {
+        return Fail("released decode plan query returned wrong status");
+    }
+
+    return 0;
+}
+
+int ResourceDecodePlanRejectsMissingCachePayload() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_plan_missing");
+    if (!result.Succeeded()) {
+        return Fail("missing payload decode plan fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("missing payload decode plan fixture residency failed");
+    }
+
+    const ResourceDecodePlanRequest request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodePlanStatus status = registry.CreateDecodePlan(request);
+    if (status != ResourceDecodePlanStatus::MissingCachePayload) {
+        return Fail("missing payload decode plan request returned wrong status");
+    }
+
+    if (registry.DecodePlanSnapshot().active_plan_count != 0U) {
+        return Fail("missing payload decode plan request created a plan");
+    }
+
+    return 0;
+}
+
+int ResourceDecodePlanRejectsInvalidHeader() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_plan_header");
+    if (!result.Succeeded()) {
+        return Fail("invalid header decode plan fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("invalid header decode plan fixture residency failed");
+    }
+
+    std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> payload = DecodePlanPayload(
+        ResourceDecodePlanAssetClass::Texture,
+        RESOURCE_DECODE_PLAN_HEADER_VERSION,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    payload[0U] = 0U;
+    if (!StoreDecodePlanPayload(registry, result.handle, TYPE_TEXTURE, PAYLOAD_ONE, payload)) {
+        return Fail("invalid header decode plan cache payload store failed");
+    }
+
+    const ResourceDecodePlanRequest request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodePlanStatus status = registry.CreateDecodePlan(request);
+    if (status != ResourceDecodePlanStatus::InvalidHeader) {
+        return Fail("invalid header decode plan request returned wrong status");
+    }
+
+    if (registry.DecodePlanSnapshot().invalid_header_rejected_count != 1U) {
+        return Fail("invalid header decode plan rejection was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodePlanRejectsUnsupportedHeaderVersion() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_plan_version");
+    if (!result.Succeeded()) {
+        return Fail("unsupported version decode plan fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("unsupported version decode plan fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> payload = DecodePlanPayload(
+        ResourceDecodePlanAssetClass::Texture,
+        RESOURCE_DECODE_PLAN_HEADER_VERSION + 1U,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (!StoreDecodePlanPayload(registry, result.handle, TYPE_TEXTURE, PAYLOAD_ONE, payload)) {
+        return Fail("unsupported version decode plan cache payload store failed");
+    }
+
+    const ResourceDecodePlanRequest request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodePlanStatus status = registry.CreateDecodePlan(request);
+    if (status != ResourceDecodePlanStatus::UnsupportedHeaderVersion) {
+        return Fail("unsupported version decode plan request returned wrong status");
+    }
+
+    if (registry.DecodePlanSnapshot().invalid_header_rejected_count != 1U) {
+        return Fail("unsupported version decode plan rejection was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodePlanRejectsStaleHandleWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_plan_stale");
+    if (!result.Succeeded()) {
+        return Fail("stale decode plan fixture registration failed");
+    }
+
+    if (registry.Retire(result.handle) != ResourceStatus::Success) {
+        return Fail("stale decode plan fixture retire failed");
+    }
+
+    const ResourceSnapshot before_snapshot = registry.Snapshot();
+    const ResourceDecodePlanRequest request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodePlanStatus status = registry.CreateDecodePlan(request);
+    if (status != ResourceDecodePlanStatus::GenerationMismatch) {
+        return Fail("stale decode plan request returned wrong status");
+    }
+
+    if (registry.Snapshot().registered_resource_count != before_snapshot.registered_resource_count) {
+        return Fail("stale decode plan request changed registered count");
+    }
+
+    if (registry.DecodePlanSnapshot().active_plan_count != 0U) {
+        return Fail("stale decode plan request created a plan");
+    }
+
+    return 0;
+}
+
+int ResourceDecodePlanRejectsTypeMismatchWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_plan_type");
+    if (!result.Succeeded()) {
+        return Fail("type mismatch decode plan fixture registration failed");
+    }
+
+    const ResourceDecodePlanRequest request = DecodePlanRequest(
+        result.handle,
+        TYPE_AUDIO,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodePlanStatus status = registry.CreateDecodePlan(request);
+    if (status != ResourceDecodePlanStatus::TypeMismatch) {
+        return Fail("type mismatch decode plan request returned wrong status");
+    }
+
+    if (registry.DecodePlanSnapshot().active_plan_count != 0U) {
+        return Fail("type mismatch decode plan request created a plan");
+    }
+
+    return 0;
+}
+
+int ResourceDecodePlanRejectsNotResidentWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_plan_not_resident");
+    if (!result.Succeeded()) {
+        return Fail("not resident decode plan fixture registration failed");
+    }
+
+    if (!CommitLoad(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Uploaded, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("not resident decode plan fixture load commit failed");
+    }
+
+    const ResourceDecodePlanRequest request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodePlanStatus status = registry.CreateDecodePlan(request);
+    if (status != ResourceDecodePlanStatus::NotResident) {
+        return Fail("not resident decode plan request returned wrong status");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Uploaded)) {
+        return Fail("not resident decode plan request changed residency state");
+    }
+
+    return 0;
+}
+
+int ResourceDecodePlanRejectsFailedLoadWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_plan_failed");
+    if (!result.Succeeded()) {
+        return Fail("failed load decode plan fixture registration failed");
+    }
+
+    if (!CommitLoad(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Failed, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("failed load decode plan fixture load commit failed");
+    }
+
+    const ResourceDecodePlanRequest request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodePlanStatus status = registry.CreateDecodePlan(request);
+    if (status != ResourceDecodePlanStatus::FailedLoad) {
+        return Fail("failed load decode plan request returned wrong status");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Failed)) {
+        return Fail("failed load decode plan request changed residency state");
+    }
+
+    return 0;
+}
+
+int ResourceDecodePlanRejectsDuplicatePlanId() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_plan_duplicate");
+    if (!result.Succeeded()) {
+        return Fail("duplicate decode plan fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("duplicate decode plan fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> payload = DecodePlanPayload(
+        ResourceDecodePlanAssetClass::Texture,
+        RESOURCE_DECODE_PLAN_HEADER_VERSION,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (!StoreDecodePlanPayload(registry, result.handle, TYPE_TEXTURE, PAYLOAD_ONE, payload)) {
+        return Fail("duplicate decode plan cache payload store failed");
+    }
+
+    const ResourceDecodePlanRequest request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (registry.CreateDecodePlan(request) != ResourceDecodePlanStatus::Success) {
+        return Fail("first duplicate decode plan create failed");
+    }
+
+    const ResourceDecodePlanStatus status = registry.CreateDecodePlan(request);
+    if (status != ResourceDecodePlanStatus::DuplicatePlanId) {
+        return Fail("duplicate decode plan id returned wrong status");
+    }
+
+    const ResourceDecodePlanSnapshot snapshot = registry.DecodePlanSnapshot();
+    if (snapshot.active_plan_count != 1U) {
+        return Fail("duplicate decode plan id changed active count");
+    }
+
+    if (snapshot.duplicate_plan_rejected_count != 1U) {
+        return Fail("duplicate decode plan id was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodePlanRejectsCapacityOverflow() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_plan_capacity");
+    if (!result.Succeeded()) {
+        return Fail("capacity decode plan fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("capacity decode plan fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> payload = DecodePlanPayload(
+        ResourceDecodePlanAssetClass::Texture,
+        RESOURCE_DECODE_PLAN_HEADER_VERSION,
+        1U);
+    if (!StoreDecodePlanPayload(registry, result.handle, TYPE_TEXTURE, PAYLOAD_ONE, payload)) {
+        return Fail("capacity decode plan cache payload store failed");
+    }
+
+    std::uint32_t plan_index = 0U;
+    while (plan_index < MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT) {
+        const ResourceDecodePlanRequest request = DecodePlanRequest(
+            result.handle,
+            TYPE_TEXTURE,
+            PAYLOAD_ONE,
+            DECODE_PLAN_ONE + plan_index,
+            ResourceDecodePlanAssetClass::Texture,
+            1U);
+        if (registry.CreateDecodePlan(request) != ResourceDecodePlanStatus::Success) {
+            return Fail("capacity decode plan setup create failed");
+        }
+
+        ++plan_index;
+    }
+
+    const ResourceDecodePlanRequest overflow_request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE + MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT,
+        ResourceDecodePlanAssetClass::Texture,
+        1U);
+    const ResourceDecodePlanStatus status = registry.CreateDecodePlan(overflow_request);
+    if (status != ResourceDecodePlanStatus::CapacityExceeded) {
+        return Fail("capacity decode plan request returned wrong status");
+    }
+
+    const ResourceDecodePlanSnapshot snapshot = registry.DecodePlanSnapshot();
+    if (snapshot.active_plan_count != MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT) {
+        return Fail("capacity decode plan request changed active plan count");
+    }
+
+    if (snapshot.capacity_rejected_plan_count != 1U) {
+        return Fail("capacity decode plan rejection was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodePlanRejectsBudgetOverflow() {
+    ResourceRegistry registry;
+    ResourceDecodePlanBudgetDesc budget;
+    budget.decoded_byte_capacity = 1U;
+    if (registry.SetDecodePlanBudget(budget) != ResourceDecodePlanStatus::Success) {
+        return Fail("budget decode plan budget configuration failed");
+    }
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_plan_budget");
+    if (!result.Succeeded()) {
+        return Fail("budget decode plan fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("budget decode plan fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> payload = DecodePlanPayload(
+        ResourceDecodePlanAssetClass::Texture,
+        RESOURCE_DECODE_PLAN_HEADER_VERSION,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (!StoreDecodePlanPayload(registry, result.handle, TYPE_TEXTURE, PAYLOAD_ONE, payload)) {
+        return Fail("budget decode plan cache payload store failed");
+    }
+
+    const ResourceDecodePlanRequest request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodePlanStatus status = registry.CreateDecodePlan(request);
+    if (status != ResourceDecodePlanStatus::BudgetExceeded) {
+        return Fail("budget decode plan request returned wrong status");
+    }
+
+    const ResourceDecodePlanSnapshot snapshot = registry.DecodePlanSnapshot();
+    if (snapshot.active_plan_count != 0U) {
+        return Fail("budget decode plan request created a plan");
+    }
+
+    if (snapshot.budget_rejected_plan_count != 1U) {
+        return Fail("budget decode plan rejection was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodePlanFailedValidationDoesNotMutateResourceState() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decode_plan_validation");
+    if (!result.Succeeded()) {
+        return Fail("validation decode plan fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("validation decode plan fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> payload = DecodePlanPayload(
+        ResourceDecodePlanAssetClass::Texture,
+        RESOURCE_DECODE_PLAN_HEADER_VERSION,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (!StoreDecodePlanPayload(registry, result.handle, TYPE_TEXTURE, PAYLOAD_ONE, payload)) {
+        return Fail("validation decode plan cache payload store failed");
+    }
+
+    const ResourceDecodePlanRequest valid_request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    if (registry.CreateDecodePlan(valid_request) != ResourceDecodePlanStatus::Success) {
+        return Fail("validation decode plan create failed");
+    }
+
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const ResourceResidencySnapshot before_residency_snapshot = registry.ResidencySnapshot();
+    const ResourceCachePayloadSnapshot before_cache_snapshot = registry.CachePayloadSnapshot();
+    const ResourceDecodePlanSnapshot before_decode_snapshot = registry.DecodePlanSnapshot();
+    const ResourceDecodePlanRequest invalid_request = DecodePlanRequest(
+        ResourceHandle{},
+        TYPE_TEXTURE,
+        PAYLOAD_TWO,
+        DECODE_PLAN_TWO,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODE_PLAN_DECODED_BYTE_COUNT);
+    const ResourceDecodePlanStatus status = registry.CreateDecodePlan(invalid_request);
+    if (status != ResourceDecodePlanStatus::InvalidHandle) {
+        return Fail("invalid decode plan request returned wrong status");
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count) {
+        return Fail("invalid decode plan request changed registered count");
+    }
+
+    if (after_resource_snapshot.load_commit_count != before_resource_snapshot.load_commit_count) {
+        return Fail("invalid decode plan request changed load commit count");
+    }
+
+    const ResourceResidencySnapshot after_residency_snapshot = registry.ResidencySnapshot();
+    if (after_residency_snapshot.resident_resource_count != before_residency_snapshot.resident_resource_count) {
+        return Fail("invalid decode plan request changed resident count");
+    }
+
+    if (after_residency_snapshot.resident_byte_count != before_residency_snapshot.resident_byte_count) {
+        return Fail("invalid decode plan request changed resident bytes");
+    }
+
+    const ResourceCachePayloadSnapshot after_cache_snapshot = registry.CachePayloadSnapshot();
+    if (after_cache_snapshot.cached_payload_count != before_cache_snapshot.cached_payload_count) {
+        return Fail("invalid decode plan request changed cache payload count");
+    }
+
+    if (after_cache_snapshot.cached_byte_count != before_cache_snapshot.cached_byte_count) {
+        return Fail("invalid decode plan request changed cache payload bytes");
+    }
+
+    const ResourceDecodePlanSnapshot after_decode_snapshot = registry.DecodePlanSnapshot();
+    if (after_decode_snapshot.active_plan_count != before_decode_snapshot.active_plan_count) {
+        return Fail("invalid decode plan request changed active plan count");
+    }
+
+    if (after_decode_snapshot.planned_decoded_byte_count != before_decode_snapshot.planned_decoded_byte_count) {
+        return Fail("invalid decode plan request changed planned decoded bytes");
+    }
+
+    ResourceDecodePlanRecord record;
+    if (registry.QueryDecodePlan(valid_request, &record) != ResourceDecodePlanStatus::Success) {
+        return Fail("valid decode plan was not queryable after invalid request");
+    }
+
+    if (record.decode_plan_id != DECODE_PLAN_ONE) {
+        return Fail("invalid decode plan request changed existing plan");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -2347,7 +3038,19 @@ int main(int argc, char** argv) {
         {TEST_CACHE_PAYLOAD_BUDGET, ResourceCachePayloadRejectsBudgetOverflow},
         {TEST_CACHE_PAYLOAD_OUTPUT_SMALL, ResourceCachePayloadReadRejectsOutputBufferTooSmall},
         {TEST_CACHE_PAYLOAD_FAILED_VALIDATION, ResourceCachePayloadFailedValidationDoesNotMutateResourceState},
-        {TEST_CACHE_PAYLOAD_PINNED_RELEASE, ResourceCachePayloadReleaseRejectsPinnedWithoutMutation}};
+        {TEST_CACHE_PAYLOAD_PINNED_RELEASE, ResourceCachePayloadReleaseRejectsPinnedWithoutMutation},
+        {TEST_DECODE_PLAN_CREATE_QUERY_RELEASE, ResourceDecodePlanCreatesQueriesAndReleasesMetadata},
+        {TEST_DECODE_PLAN_MISSING_PAYLOAD, ResourceDecodePlanRejectsMissingCachePayload},
+        {TEST_DECODE_PLAN_INVALID_HEADER, ResourceDecodePlanRejectsInvalidHeader},
+        {TEST_DECODE_PLAN_UNSUPPORTED_VERSION, ResourceDecodePlanRejectsUnsupportedHeaderVersion},
+        {TEST_DECODE_PLAN_STALE_HANDLE, ResourceDecodePlanRejectsStaleHandleWithoutMutation},
+        {TEST_DECODE_PLAN_TYPE_MISMATCH, ResourceDecodePlanRejectsTypeMismatchWithoutMutation},
+        {TEST_DECODE_PLAN_NOT_RESIDENT, ResourceDecodePlanRejectsNotResidentWithoutMutation},
+        {TEST_DECODE_PLAN_FAILED_LOAD, ResourceDecodePlanRejectsFailedLoadWithoutMutation},
+        {TEST_DECODE_PLAN_DUPLICATE, ResourceDecodePlanRejectsDuplicatePlanId},
+        {TEST_DECODE_PLAN_CAPACITY, ResourceDecodePlanRejectsCapacityOverflow},
+        {TEST_DECODE_PLAN_BUDGET, ResourceDecodePlanRejectsBudgetOverflow},
+        {TEST_DECODE_PLAN_FAILED_VALIDATION, ResourceDecodePlanFailedValidationDoesNotMutateResourceState}};
 
     const std::string_view test_name(argv[1]);
     const auto test_entry = test_registry.find(test_name);
