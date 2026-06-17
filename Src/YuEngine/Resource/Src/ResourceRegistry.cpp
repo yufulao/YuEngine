@@ -25,6 +25,7 @@ ResourceRegistry::ResourceRegistry()
 ResourceRegistry::ResourceRegistry(ResourceRegistryDesc desc)
     : slots_{},
       dependency_edges_{},
+      load_commit_records_{},
       types_{},
       snapshot_{
           ClampCapacity(desc.resource_capacity, MAX_RESOURCE_COUNT),
@@ -38,8 +39,17 @@ ResourceRegistry::ResourceRegistry(ResourceRegistryDesc desc)
           0U,
           0U,
           0U,
+          0U,
+          0U,
+          0U,
+          0U,
+          0U,
+          0U,
+          0U,
           MemoryAccountingStatus::ExplicitlyTrackedOnly,
-          ResourceStatus::Success} {
+          ResourceStatus::Success,
+          ResourceLoadState::Unloaded,
+          ResourceLoadCommitStatus::Success} {
 }
 
 ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const ResourceDescriptor& descriptor) {
@@ -212,6 +222,48 @@ ResourceStatus ResourceRegistry::ValidateAcquire(
     return ResourceStatus::Success;
 }
 
+ResourceLoadCommitStatus ResourceRegistry::CommitUploadCompletion(const ResourceLoadCommitRequest &request) {
+    std::size_t slot_index = 0U;
+    const ResourceLoadCommitStatus validation_status = ValidateLoadCommitRequest(request, &slot_index);
+    if (validation_status != ResourceLoadCommitStatus::Success) {
+        return RecordLoadCommitRejected(validation_status);
+    }
+
+    ResourceSlot &slot = slots_[slot_index];
+    slot.load_state = request.load_state;
+    slot.last_load_commit_id = request.commit_id;
+    slot.last_upload_id = request.upload_id;
+    slot.last_staging_request_id = request.staging_request_id;
+    slot.loaded_byte_count = request.upload_byte_count;
+
+    StoreLoadCommitRecord(request);
+    RecordLoadCommitSuccess(request.load_state);
+    return ResourceLoadCommitStatus::Success;
+}
+
+ResourceLoadCommitStatus ResourceRegistry::GetLoadState(
+    ResourceHandle handle,
+    ResourceTypeId expected_type,
+    ResourceLoadState *output_state) const {
+    if (output_state == nullptr) {
+        return ResourceLoadCommitStatus::InvalidArgument;
+    }
+
+    std::size_t slot_index = 0U;
+    const ResourceStatus handle_status = ResolveHandle(handle, slot_index);
+    if (handle_status != ResourceStatus::Success) {
+        return MapHandleStatus(handle_status);
+    }
+
+    const ResourceSlot &slot = slots_[slot_index];
+    if (slot.type.value != expected_type.value) {
+        return ResourceLoadCommitStatus::TypeMismatch;
+    }
+
+    *output_state = slot.load_state;
+    return ResourceLoadCommitStatus::Success;
+}
+
 ResourceStatus ResourceRegistry::Release(ResourceHandle handle) {
     std::size_t slot_index = 0U;
     const ResourceStatus handle_status = ResolveHandle(handle, slot_index);
@@ -251,7 +303,12 @@ ResourceStatus ResourceRegistry::Retire(ResourceHandle handle) {
     slot.is_active = false;
     slot.logical_key = ResourceLogicalKey{};
     slot.type = ResourceTypeId{};
+    slot.load_state = ResourceLoadState::Unloaded;
     slot.reference_count = 0U;
+    slot.last_load_commit_id = 0U;
+    slot.last_upload_id = 0U;
+    slot.last_staging_request_id = 0U;
+    slot.loaded_byte_count = 0U;
     AdvanceGeneration(slot);
     --snapshot_.registered_resource_count;
     ++snapshot_.retired_resource_count;
@@ -271,6 +328,128 @@ ResourceStatus ResourceRegistry::RecordFailure(ResourceStatus status) {
 
 void ResourceRegistry::RecordSuccess() {
     snapshot_.last_status = ResourceStatus::Success;
+}
+
+ResourceLoadCommitStatus ResourceRegistry::RecordLoadCommitRejected(ResourceLoadCommitStatus status) {
+    ++snapshot_.rejected_load_commit_count;
+    ++snapshot_.failed_operation_count;
+    if (status == ResourceLoadCommitStatus::DuplicateCommitId) {
+        ++snapshot_.duplicate_load_commit_count;
+    }
+
+    if (status == ResourceLoadCommitStatus::InvalidTransition) {
+        ++snapshot_.invalid_load_transition_count;
+    }
+
+    snapshot_.last_load_commit_status = status;
+    snapshot_.last_status = MapLoadCommitStatus(status);
+    return status;
+}
+
+void ResourceRegistry::RecordLoadCommitSuccess(ResourceLoadState load_state) {
+    ++snapshot_.load_commit_count;
+    if (load_state == ResourceLoadState::Uploaded) {
+        ++snapshot_.loaded_resource_count;
+    }
+
+    if (load_state == ResourceLoadState::Failed) {
+        ++snapshot_.failed_resource_count;
+    }
+
+    snapshot_.last_load_state = load_state;
+    snapshot_.last_load_commit_status = ResourceLoadCommitStatus::Success;
+    snapshot_.last_status = ResourceStatus::Success;
+}
+
+ResourceLoadCommitStatus ResourceRegistry::ValidateLoadCommitRequest(
+    const ResourceLoadCommitRequest &request,
+    std::size_t *out_slot_index) const {
+    if (out_slot_index == nullptr) {
+        return ResourceLoadCommitStatus::InvalidArgument;
+    }
+
+    *out_slot_index = 0U;
+    if (request.commit_id == 0U) {
+        return ResourceLoadCommitStatus::InvalidArgument;
+    }
+
+    if (request.upload_id == 0U) {
+        return ResourceLoadCommitStatus::InvalidArgument;
+    }
+
+    if (!request.expected_type.IsValid()) {
+        return ResourceLoadCommitStatus::InvalidArgument;
+    }
+
+    if (request.load_state == ResourceLoadState::Unloaded) {
+        return ResourceLoadCommitStatus::InvalidArgument;
+    }
+
+    if (request.upload_byte_count == 0U) {
+        return ResourceLoadCommitStatus::InvalidArgument;
+    }
+
+    const ResourceStatus handle_status = ResolveHandle(request.resource, *out_slot_index);
+    if (handle_status != ResourceStatus::Success) {
+        return MapHandleStatus(handle_status);
+    }
+
+    const ResourceSlot &slot = slots_[*out_slot_index];
+    if (slot.type.value != request.expected_type.value) {
+        return ResourceLoadCommitStatus::TypeMismatch;
+    }
+
+    if (HasLoadCommitId(request.commit_id)) {
+        return ResourceLoadCommitStatus::DuplicateCommitId;
+    }
+
+    if (slot.load_state != ResourceLoadState::Unloaded) {
+        return ResourceLoadCommitStatus::InvalidTransition;
+    }
+
+    if (snapshot_.load_commit_record_count >= MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT) {
+        return ResourceLoadCommitStatus::CapacityExceeded;
+    }
+
+    return ResourceLoadCommitStatus::Success;
+}
+
+ResourceLoadCommitStatus ResourceRegistry::MapHandleStatus(ResourceStatus status) const {
+    if (status == ResourceStatus::InvalidHandle) {
+        return ResourceLoadCommitStatus::InvalidHandle;
+    }
+
+    if (status == ResourceStatus::GenerationMismatch) {
+        return ResourceLoadCommitStatus::GenerationMismatch;
+    }
+
+    if (status == ResourceStatus::TypeMismatch) {
+        return ResourceLoadCommitStatus::TypeMismatch;
+    }
+
+    return ResourceLoadCommitStatus::InvalidHandle;
+}
+
+ResourceStatus ResourceRegistry::MapLoadCommitStatus(ResourceLoadCommitStatus status) const {
+    switch (status) {
+        case ResourceLoadCommitStatus::Success:
+            return ResourceStatus::Success;
+        case ResourceLoadCommitStatus::InvalidHandle:
+            return ResourceStatus::InvalidHandle;
+        case ResourceLoadCommitStatus::GenerationMismatch:
+            return ResourceStatus::GenerationMismatch;
+        case ResourceLoadCommitStatus::TypeMismatch:
+            return ResourceStatus::TypeMismatch;
+        case ResourceLoadCommitStatus::CapacityExceeded:
+            return ResourceStatus::CapacityExceeded;
+        case ResourceLoadCommitStatus::InvalidArgument:
+        case ResourceLoadCommitStatus::DuplicateCommitId:
+        case ResourceLoadCommitStatus::InvalidTransition:
+        default:
+            break;
+    }
+
+    return ResourceStatus::UnsupportedInThisGate;
 }
 
 ResourceStatus ResourceRegistry::ResolveHandle(ResourceHandle handle, std::size_t& out_index) const {
@@ -348,6 +527,39 @@ bool ResourceRegistry::HasDuplicateActiveResource(const ResourceDescriptor& desc
         }
 
         ++index;
+    }
+
+    return false;
+}
+
+bool ResourceRegistry::HasLoadCommitId(std::uint64_t commit_id) const {
+    for (const ResourceLoadCommitRecord &record : load_commit_records_) {
+        if (!record.is_active) {
+            continue;
+        }
+
+        if (record.request.commit_id == commit_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool ResourceRegistry::StoreLoadCommitRecord(const ResourceLoadCommitRequest &request) {
+    if (snapshot_.load_commit_record_count >= MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT) {
+        return false;
+    }
+
+    for (ResourceLoadCommitRecord &record : load_commit_records_) {
+        if (record.is_active) {
+            continue;
+        }
+
+        record.request = request;
+        record.is_active = true;
+        ++snapshot_.load_commit_record_count;
+        return true;
     }
 
     return false;

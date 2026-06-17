@@ -15,6 +15,8 @@
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
 #include "YuEngine/Package/PackageRegistry.h"
 #include "YuEngine/Resource/ResourceDescriptor.h"
+#include "YuEngine/Resource/ResourceLoadCommitStatus.h"
+#include "YuEngine/Resource/ResourceLoadState.h"
 #include "YuEngine/Resource/ResourceRegistry.h"
 #include "YuEngine/Rhi/NullRhiDevice.h"
 #include "YuEngine/Rhi/RhiBufferDesc.h"
@@ -26,6 +28,7 @@
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Streaming/PackageResourceStagingQueue.h"
+#include "YuEngine/Streaming/ResourceUploadCommitQueue.h"
 #include "YuEngine/Streaming/ResourceUploadQueue.h"
 
 using yuengine::file::AsyncFileReadQueue;
@@ -47,6 +50,8 @@ using yuengine::package::PackageRegistrationResult;
 using yuengine::package::PackageSourceKey;
 using yuengine::resource::ResourceDescriptor;
 using yuengine::resource::ResourceHandle;
+using yuengine::resource::ResourceLoadCommitStatus;
+using yuengine::resource::ResourceLoadState;
 using yuengine::resource::ResourceLogicalKey;
 using yuengine::resource::ResourceRegistrationResult;
 using yuengine::resource::ResourceRegistry;
@@ -67,6 +72,12 @@ using yuengine::streaming::PackageResourceStagingQueueDesc;
 using yuengine::streaming::PackageResourceStagingRequest;
 using yuengine::streaming::PackageResourceStagingSnapshot;
 using yuengine::streaming::PackageResourceStagingStatus;
+using yuengine::streaming::ResourceUploadCommitCompletion;
+using yuengine::streaming::ResourceUploadCommitQueue;
+using yuengine::streaming::ResourceUploadCommitQueueDesc;
+using yuengine::streaming::ResourceUploadCommitRequest;
+using yuengine::streaming::ResourceUploadCommitSnapshot;
+using yuengine::streaming::ResourceUploadCommitStatus;
 using yuengine::streaming::ResourceUploadCompletion;
 using yuengine::streaming::ResourceUploadKind;
 using yuengine::streaming::ResourceUploadQueue;
@@ -130,6 +141,24 @@ constexpr const char *TEST_UPLOAD_SNAPSHOT =
     "Streaming_ResourceUpload_SnapshotReportsBoundedCounters";
 constexpr const char *TEST_UPLOAD_RHI_FAILURE =
     "Streaming_ResourceUpload_ReportsRhiFailureWithoutWritingOutput";
+constexpr const char *TEST_UPLOAD_COMMIT_SUCCESS =
+    "Streaming_ResourceUploadCommit_CommitsSuccessfulUpload";
+constexpr const char *TEST_UPLOAD_COMMIT_FAILED_UPLOAD =
+    "Streaming_ResourceUploadCommit_CommitsFailedUpload";
+constexpr const char *TEST_UPLOAD_COMMIT_INVALID_HANDLE =
+    "Streaming_ResourceUploadCommit_RejectsInvalidResourceHandleWithoutMutation";
+constexpr const char *TEST_UPLOAD_COMMIT_TYPE_MISMATCH =
+    "Streaming_ResourceUploadCommit_RejectsTypeMismatchWithoutMutation";
+constexpr const char *TEST_UPLOAD_COMMIT_DUPLICATE_ID =
+    "Streaming_ResourceUploadCommit_RejectsDuplicateCommitId";
+constexpr const char *TEST_UPLOAD_COMMIT_QUEUE_OVERFLOW =
+    "Streaming_ResourceUploadCommit_RejectsQueueOverflowWithoutMutation";
+constexpr const char *TEST_UPLOAD_COMMIT_COMPLETION_OVERFLOW =
+    "Streaming_ResourceUploadCommit_ReportsCompletionOverflowWithoutProcessingPending";
+constexpr const char *TEST_UPLOAD_COMMIT_SLOT_REUSE_ORDER =
+    "Streaming_ResourceUploadCommit_PreservesOldestOrderAfterSlotReuse";
+constexpr const char *TEST_UPLOAD_COMMIT_SNAPSHOT =
+    "Streaming_ResourceUploadCommit_SnapshotReportsBoundedCounters";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *PRIMARY_MOUNT = "Primary";
@@ -137,14 +166,21 @@ constexpr const char *FIXTURE_PATH = "Nested/FixtureFile.txt";
 constexpr const char *PACKAGE_SOURCE_KEY = "fixtures/fixture_file.txt";
 constexpr const char *FIXTURE_TEXT = "yuengine file fixture\n";
 constexpr const char *RESOURCE_KEY = "texture_fixture";
+constexpr const char *RESOURCE_KEY_ALT = "texture_fixture_alt";
+constexpr const char *RESOURCE_KEY_THIRD = "texture_fixture_third";
 constexpr PackageId PACKAGE_A{1U};
 constexpr PackageEntryId ENTRY_TEXTURE{1U};
 constexpr ResourceTypeId TYPE_TEXTURE{1U};
 constexpr ResourceTypeId TYPE_AUDIO{2U};
 constexpr std::uint64_t REQUEST_ONE = 1U;
 constexpr std::uint64_t REQUEST_TWO = 2U;
+constexpr std::uint64_t REQUEST_THREE = 3U;
 constexpr std::uint64_t UPLOAD_ONE = 101U;
 constexpr std::uint64_t UPLOAD_TWO = 102U;
+constexpr std::uint64_t UPLOAD_THREE = 103U;
+constexpr std::uint64_t COMMIT_ONE = 201U;
+constexpr std::uint64_t COMMIT_TWO = 202U;
+constexpr std::uint64_t COMMIT_THREE = 203U;
 constexpr std::uint32_t OUTPUT_CAPACITY = 64U;
 using TestFunction = int (*)();
 
@@ -208,6 +244,14 @@ bool BuildPackageRecord(PackageLoadPlanRecord *output_record, std::uint32_t byte
 
 ResourceRegistrationResult RegisterResource(ResourceRegistry &registry, ResourceTypeId type = TYPE_TEXTURE) {
     const ResourceDescriptor descriptor{type, ResourceLogicalKey(RESOURCE_KEY), 0U};
+    return registry.RegisterSyntheticDescriptor(descriptor);
+}
+
+ResourceRegistrationResult RegisterResourceWithKey(
+    ResourceRegistry &registry,
+    ResourceTypeId type,
+    const char *logical_key) {
+    const ResourceDescriptor descriptor{type, ResourceLogicalKey(logical_key), 0U};
     return registry.RegisterSyntheticDescriptor(descriptor);
 }
 
@@ -405,6 +449,78 @@ bool DrainOneUploadCompletion(ResourceUploadQueue &queue, ResourceUploadCompleti
 
     *completion = completions[0U];
     return true;
+}
+
+ResourceUploadCompletion BuildUploadCompletion(
+    ResourceHandle resource,
+    ResourceTypeId type,
+    ResourceUploadStatus status,
+    std::uint64_t upload_id,
+    std::uint64_t staging_request_id,
+    std::uint32_t byte_count) {
+    ResourceUploadCompletion completion;
+    completion.status = status;
+    completion.upload_kind = ResourceUploadKind::CreateBuffer;
+    completion.resource = resource;
+    completion.expected_type = type;
+    completion.upload_id = upload_id;
+    completion.staging_request_id = staging_request_id;
+    completion.upload_byte_count = byte_count;
+    if (status == ResourceUploadStatus::RhiUploadFailed) {
+        completion.rhi_status = RhiStatus::InvalidDescriptor;
+    }
+
+    return completion;
+}
+
+ResourceUploadCommitRequest BuildUploadCommitRequest(
+    ResourceRegistry &resource_registry,
+    const ResourceUploadCompletion &upload_completion,
+    std::uint64_t commit_id) {
+    ResourceUploadCommitRequest request;
+    request.resource_registry = &resource_registry;
+    request.upload_completion = upload_completion;
+    request.commit_id = commit_id;
+    return request;
+}
+
+bool DrainOneUploadCommitCompletion(
+    ResourceUploadCommitQueue &queue,
+    ResourceUploadCommitCompletion *completion) {
+    if (completion == nullptr) {
+        return false;
+    }
+
+    std::array<ResourceUploadCommitCompletion, 1U> completions{};
+    std::uint32_t written_count = 0U;
+    const ResourceUploadCommitStatus drain_status = queue.DrainCompletions(
+        completions.data(),
+        static_cast<std::uint32_t>(completions.size()),
+        &written_count);
+    if (drain_status != ResourceUploadCommitStatus::Success) {
+        return false;
+    }
+
+    if (written_count != 1U) {
+        return false;
+    }
+
+    *completion = completions[0U];
+    return true;
+}
+
+bool ResourceLoadStateMatches(
+    const ResourceRegistry &registry,
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    ResourceLoadState expected_state) {
+    ResourceLoadState load_state = ResourceLoadState::Unloaded;
+    const ResourceLoadCommitStatus status = registry.GetLoadState(resource, expected_type, &load_state);
+    if (status != ResourceLoadCommitStatus::Success) {
+        return false;
+    }
+
+    return load_state == expected_state;
 }
 
 int StreamingPackageResourceStagingSubmitsAndCompletesFixtureRead() {
@@ -1539,6 +1655,598 @@ int StreamingResourceUploadReportsRhiFailureWithoutWritingOutput() {
 
     return 0;
 }
+
+int StreamingResourceUploadCommitCommitsSuccessfulUpload() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    const ResourceUploadCompletion upload_completion = BuildUploadCompletion(
+        resource_result.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_ONE,
+        REQUEST_ONE,
+        4U);
+    const ResourceUploadCommitRequest request =
+        BuildUploadCommitRequest(resource_registry, upload_completion, COMMIT_ONE);
+    ResourceUploadCommitQueue queue(ResourceUploadCommitQueueDesc{2U, 2U});
+    if (queue.Submit(request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("upload commit request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::Success) {
+        return Fail("upload commit request did not succeed");
+    }
+
+    ResourceUploadCommitCompletion completion;
+    if (!DrainOneUploadCommitCompletion(queue, &completion)) {
+        return Fail("upload commit completion drain failed");
+    }
+
+    if (completion.load_state != ResourceLoadState::Uploaded) {
+        return Fail("upload commit did not report uploaded state");
+    }
+
+    if (completion.commit_id != COMMIT_ONE) {
+        return Fail("upload commit id was not preserved");
+    }
+
+    if (!ResourceLoadStateMatches(
+            resource_registry,
+            resource_result.handle,
+            TYPE_TEXTURE,
+            ResourceLoadState::Uploaded)) {
+        return Fail("upload commit did not update resource load state");
+    }
+
+    const ResourceUploadCommitSnapshot snapshot = queue.Snapshot();
+    if (snapshot.committed_count != 1U) {
+        return Fail("upload commit snapshot committed count changed");
+    }
+
+    if (snapshot.pending_count != 0U) {
+        return Fail("upload commit left pending records");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadCommitCommitsFailedUpload() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    const ResourceUploadCompletion upload_completion = BuildUploadCompletion(
+        resource_result.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::RhiUploadFailed,
+        UPLOAD_ONE,
+        REQUEST_ONE,
+        4U);
+    const ResourceUploadCommitRequest request =
+        BuildUploadCommitRequest(resource_registry, upload_completion, COMMIT_ONE);
+    ResourceUploadCommitQueue queue(ResourceUploadCommitQueueDesc{1U, 1U});
+    if (queue.Submit(request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("failed upload commit request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::Success) {
+        return Fail("failed upload commit did not record terminal state");
+    }
+
+    ResourceUploadCommitCompletion completion;
+    if (!DrainOneUploadCommitCompletion(queue, &completion)) {
+        return Fail("failed upload commit completion drain failed");
+    }
+
+    if (completion.load_state != ResourceLoadState::Failed) {
+        return Fail("failed upload commit did not report failed load state");
+    }
+
+    if (completion.upload_status != ResourceUploadStatus::RhiUploadFailed) {
+        return Fail("failed upload status was not preserved");
+    }
+
+    if (completion.rhi_status != RhiStatus::InvalidDescriptor) {
+        return Fail("failed upload RHI status was not preserved");
+    }
+
+    if (!ResourceLoadStateMatches(
+            resource_registry,
+            resource_result.handle,
+            TYPE_TEXTURE,
+            ResourceLoadState::Failed)) {
+        return Fail("failed upload commit did not update resource load state");
+    }
+
+    const ResourceUploadCommitSnapshot snapshot = queue.Snapshot();
+    if (snapshot.failed_upload_commit_count != 1U) {
+        return Fail("failed upload commit count was not tracked");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadCommitRejectsInvalidResourceHandleWithoutMutation() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    const ResourceUploadCompletion upload_completion = BuildUploadCompletion(
+        ResourceHandle{},
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_ONE,
+        REQUEST_ONE,
+        4U);
+    const ResourceUploadCommitRequest request =
+        BuildUploadCommitRequest(resource_registry, upload_completion, COMMIT_ONE);
+    ResourceUploadCommitQueue queue(ResourceUploadCommitQueueDesc{1U, 1U});
+    if (queue.Submit(request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("invalid handle upload commit request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::ResourceCommitFailed) {
+        return Fail("invalid handle upload commit did not fail during resource commit");
+    }
+
+    ResourceUploadCommitCompletion completion;
+    if (!DrainOneUploadCommitCompletion(queue, &completion)) {
+        return Fail("invalid handle upload commit completion drain failed");
+    }
+
+    if (completion.resource_commit_status != ResourceLoadCommitStatus::InvalidHandle) {
+        return Fail("invalid handle resource commit status was not preserved");
+    }
+
+    if (!ResourceLoadStateMatches(
+            resource_registry,
+            resource_result.handle,
+            TYPE_TEXTURE,
+            ResourceLoadState::Unloaded)) {
+        return Fail("invalid handle upload commit mutated a valid resource");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadCommitRejectsTypeMismatchWithoutMutation() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    const ResourceUploadCompletion upload_completion = BuildUploadCompletion(
+        resource_result.handle,
+        TYPE_AUDIO,
+        ResourceUploadStatus::Success,
+        UPLOAD_ONE,
+        REQUEST_ONE,
+        4U);
+    const ResourceUploadCommitRequest request =
+        BuildUploadCommitRequest(resource_registry, upload_completion, COMMIT_ONE);
+    ResourceUploadCommitQueue queue(ResourceUploadCommitQueueDesc{1U, 1U});
+    if (queue.Submit(request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("type mismatch upload commit request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::ResourceCommitFailed) {
+        return Fail("type mismatch upload commit did not fail during resource commit");
+    }
+
+    ResourceUploadCommitCompletion completion;
+    if (!DrainOneUploadCommitCompletion(queue, &completion)) {
+        return Fail("type mismatch upload commit completion drain failed");
+    }
+
+    if (completion.resource_commit_status != ResourceLoadCommitStatus::TypeMismatch) {
+        return Fail("type mismatch resource commit status was not preserved");
+    }
+
+    if (!ResourceLoadStateMatches(
+            resource_registry,
+            resource_result.handle,
+            TYPE_TEXTURE,
+            ResourceLoadState::Unloaded)) {
+        return Fail("type mismatch upload commit mutated the resource");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadCommitRejectsDuplicateCommitId() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult first_resource = RegisterResource(resource_registry);
+    if (!first_resource.Succeeded()) {
+        return Fail("first resource registration failed");
+    }
+
+    const ResourceRegistrationResult second_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_ALT);
+    if (!second_resource.Succeeded()) {
+        return Fail("second resource registration failed");
+    }
+
+    const ResourceUploadCompletion first_completion = BuildUploadCompletion(
+        first_resource.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_ONE,
+        REQUEST_ONE,
+        4U);
+    const ResourceUploadCompletion second_completion = BuildUploadCompletion(
+        second_resource.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_TWO,
+        REQUEST_TWO,
+        4U);
+    const ResourceUploadCommitRequest first_request =
+        BuildUploadCommitRequest(resource_registry, first_completion, COMMIT_ONE);
+    const ResourceUploadCommitRequest second_request =
+        BuildUploadCommitRequest(resource_registry, second_completion, COMMIT_ONE);
+    ResourceUploadCommitQueue queue(ResourceUploadCommitQueueDesc{2U, 2U});
+    if (queue.Submit(first_request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("first upload commit request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::Success) {
+        return Fail("first upload commit request did not succeed");
+    }
+
+    if (queue.Submit(second_request) != ResourceUploadCommitStatus::DuplicateCommitId) {
+        return Fail("duplicate commit id did not return explicit status");
+    }
+
+    const ResourceUploadCommitSnapshot snapshot = queue.Snapshot();
+    if (snapshot.duplicate_commit_count != 1U) {
+        return Fail("duplicate commit count was not tracked");
+    }
+
+    if (!ResourceLoadStateMatches(
+            resource_registry,
+            second_resource.handle,
+            TYPE_TEXTURE,
+            ResourceLoadState::Unloaded)) {
+        return Fail("duplicate commit id mutated second resource");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadCommitRejectsQueueOverflowWithoutMutation() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult first_resource = RegisterResource(resource_registry);
+    if (!first_resource.Succeeded()) {
+        return Fail("first resource registration failed");
+    }
+
+    const ResourceRegistrationResult second_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_ALT);
+    if (!second_resource.Succeeded()) {
+        return Fail("second resource registration failed");
+    }
+
+    const ResourceUploadCompletion first_completion = BuildUploadCompletion(
+        first_resource.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_ONE,
+        REQUEST_ONE,
+        4U);
+    const ResourceUploadCompletion second_completion = BuildUploadCompletion(
+        second_resource.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_TWO,
+        REQUEST_TWO,
+        4U);
+    const ResourceUploadCommitRequest first_request =
+        BuildUploadCommitRequest(resource_registry, first_completion, COMMIT_ONE);
+    const ResourceUploadCommitRequest second_request =
+        BuildUploadCommitRequest(resource_registry, second_completion, COMMIT_TWO);
+    ResourceUploadCommitQueue queue(ResourceUploadCommitQueueDesc{1U, 1U});
+    if (queue.Submit(first_request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("first upload commit request was not queued");
+    }
+
+    if (queue.Submit(second_request) != ResourceUploadCommitStatus::QueueFull) {
+        return Fail("upload commit queue overflow did not return explicit status");
+    }
+
+    const ResourceUploadCommitSnapshot snapshot = queue.Snapshot();
+    if (snapshot.pending_count != 1U) {
+        return Fail("upload commit queue overflow changed pending count");
+    }
+
+    if (!ResourceLoadStateMatches(
+            resource_registry,
+            second_resource.handle,
+            TYPE_TEXTURE,
+            ResourceLoadState::Unloaded)) {
+        return Fail("upload commit queue overflow mutated second resource");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadCommitReportsCompletionOverflowWithoutProcessingPending() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult first_resource = RegisterResource(resource_registry);
+    if (!first_resource.Succeeded()) {
+        return Fail("first resource registration failed");
+    }
+
+    const ResourceRegistrationResult second_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_ALT);
+    if (!second_resource.Succeeded()) {
+        return Fail("second resource registration failed");
+    }
+
+    const ResourceUploadCompletion first_completion = BuildUploadCompletion(
+        first_resource.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_ONE,
+        REQUEST_ONE,
+        4U);
+    const ResourceUploadCompletion second_completion = BuildUploadCompletion(
+        second_resource.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_TWO,
+        REQUEST_TWO,
+        4U);
+    const ResourceUploadCommitRequest first_request =
+        BuildUploadCommitRequest(resource_registry, first_completion, COMMIT_ONE);
+    const ResourceUploadCommitRequest second_request =
+        BuildUploadCommitRequest(resource_registry, second_completion, COMMIT_TWO);
+    ResourceUploadCommitQueue queue(ResourceUploadCommitQueueDesc{2U, 1U});
+    if (queue.Submit(first_request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("first upload commit request was not queued");
+    }
+
+    if (queue.Submit(second_request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("second upload commit request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::Success) {
+        return Fail("first upload commit request did not succeed");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::CompletionQueueFull) {
+        return Fail("upload commit completion overflow did not return explicit status");
+    }
+
+    const ResourceUploadCommitSnapshot snapshot = queue.Snapshot();
+    if (snapshot.pending_count != 1U) {
+        return Fail("upload commit completion overflow dropped pending record");
+    }
+
+    if (!ResourceLoadStateMatches(
+            resource_registry,
+            second_resource.handle,
+            TYPE_TEXTURE,
+            ResourceLoadState::Unloaded)) {
+        return Fail("upload commit completion overflow processed pending resource");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadCommitPreservesOldestOrderAfterSlotReuse() {
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult first_resource = RegisterResource(resource_registry);
+    if (!first_resource.Succeeded()) {
+        return Fail("first resource registration failed");
+    }
+
+    const ResourceRegistrationResult second_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_ALT);
+    if (!second_resource.Succeeded()) {
+        return Fail("second resource registration failed");
+    }
+
+    const ResourceRegistrationResult third_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_THIRD);
+    if (!third_resource.Succeeded()) {
+        return Fail("third resource registration failed");
+    }
+
+    const ResourceUploadCompletion first_completion = BuildUploadCompletion(
+        first_resource.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_ONE,
+        REQUEST_ONE,
+        4U);
+    const ResourceUploadCompletion second_completion = BuildUploadCompletion(
+        second_resource.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_TWO,
+        REQUEST_TWO,
+        4U);
+    const ResourceUploadCompletion third_completion = BuildUploadCompletion(
+        third_resource.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_THREE,
+        REQUEST_THREE,
+        4U);
+    const ResourceUploadCommitRequest first_request =
+        BuildUploadCommitRequest(resource_registry, first_completion, COMMIT_ONE);
+    const ResourceUploadCommitRequest second_request =
+        BuildUploadCommitRequest(resource_registry, second_completion, COMMIT_TWO);
+    const ResourceUploadCommitRequest third_request =
+        BuildUploadCommitRequest(resource_registry, third_completion, COMMIT_THREE);
+    ResourceUploadCommitQueue queue(ResourceUploadCommitQueueDesc{2U, 3U});
+    if (queue.Submit(first_request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("first upload commit request was not queued");
+    }
+
+    if (queue.Submit(second_request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("second upload commit request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::Success) {
+        return Fail("first upload commit request did not succeed");
+    }
+
+    if (queue.Submit(third_request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("third upload commit request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::Success) {
+        return Fail("oldest pending upload commit request did not succeed");
+    }
+
+    std::array<ResourceUploadCommitCompletion, 2U> completions{};
+    std::uint32_t written_count = 0U;
+    const ResourceUploadCommitStatus drain_status = queue.DrainCompletions(
+        completions.data(),
+        static_cast<std::uint32_t>(completions.size()),
+        &written_count);
+    if (drain_status != ResourceUploadCommitStatus::Success) {
+        return Fail("slot reuse upload commit drain failed");
+    }
+
+    if (written_count != 2U) {
+        return Fail("slot reuse upload commit drain count changed");
+    }
+
+    if (completions[0U].commit_id != COMMIT_ONE) {
+        return Fail("first upload commit completion order changed");
+    }
+
+    if (completions[1U].commit_id != COMMIT_TWO) {
+        return Fail("oldest pending upload commit order changed");
+    }
+
+    if (!ResourceLoadStateMatches(
+            resource_registry,
+            second_resource.handle,
+            TYPE_TEXTURE,
+            ResourceLoadState::Uploaded)) {
+        return Fail("second upload commit did not update resource load state");
+    }
+
+    if (!ResourceLoadStateMatches(
+            resource_registry,
+            third_resource.handle,
+            TYPE_TEXTURE,
+            ResourceLoadState::Unloaded)) {
+        return Fail("third upload commit was processed before older pending request");
+    }
+
+    const ResourceUploadCommitSnapshot snapshot = queue.Snapshot();
+    if (snapshot.pending_count != 1U) {
+        return Fail("slot reuse upload commit pending count changed");
+    }
+
+    if (snapshot.committed_count != 2U) {
+        return Fail("slot reuse upload commit committed count changed");
+    }
+
+    return 0;
+}
+
+int StreamingResourceUploadCommitSnapshotReportsBoundedCounters() {
+    ResourceUploadCommitQueue queue(ResourceUploadCommitQueueDesc{2U, 2U});
+    const ResourceUploadCommitSnapshot initial_snapshot = queue.Snapshot();
+    if (initial_snapshot.request_capacity != 2U) {
+        return Fail("upload commit snapshot request capacity changed");
+    }
+
+    if (initial_snapshot.completion_capacity != 2U) {
+        return Fail("upload commit snapshot completion capacity changed");
+    }
+
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult first_resource = RegisterResource(resource_registry);
+    if (!first_resource.Succeeded()) {
+        return Fail("first resource registration failed");
+    }
+
+    const ResourceRegistrationResult second_resource =
+        RegisterResourceWithKey(resource_registry, TYPE_TEXTURE, RESOURCE_KEY_ALT);
+    if (!second_resource.Succeeded()) {
+        return Fail("second resource registration failed");
+    }
+
+    const ResourceUploadCompletion first_completion = BuildUploadCompletion(
+        first_resource.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::Success,
+        UPLOAD_ONE,
+        REQUEST_ONE,
+        4U);
+    const ResourceUploadCompletion second_completion = BuildUploadCompletion(
+        second_resource.handle,
+        TYPE_TEXTURE,
+        ResourceUploadStatus::RhiUploadFailed,
+        UPLOAD_TWO,
+        REQUEST_TWO,
+        4U);
+    const ResourceUploadCommitRequest first_request =
+        BuildUploadCommitRequest(resource_registry, first_completion, COMMIT_ONE);
+    const ResourceUploadCommitRequest second_request =
+        BuildUploadCommitRequest(resource_registry, second_completion, COMMIT_TWO);
+    if (queue.Submit(first_request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("first snapshot upload commit request was not queued");
+    }
+
+    if (queue.Submit(second_request) != ResourceUploadCommitStatus::Queued) {
+        return Fail("second snapshot upload commit request was not queued");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::Success) {
+        return Fail("first snapshot upload commit request did not succeed");
+    }
+
+    if (queue.ProcessNext() != ResourceUploadCommitStatus::Success) {
+        return Fail("second snapshot upload commit request did not succeed");
+    }
+
+    const ResourceUploadCommitSnapshot final_snapshot = queue.Snapshot();
+    if (final_snapshot.max_pending_count != 2U) {
+        return Fail("upload commit snapshot max pending count changed");
+    }
+
+    if (final_snapshot.max_completion_count != 2U) {
+        return Fail("upload commit snapshot max completion count changed");
+    }
+
+    if (final_snapshot.submitted_count != 2U) {
+        return Fail("upload commit snapshot submitted count changed");
+    }
+
+    if (final_snapshot.committed_count != 2U) {
+        return Fail("upload commit snapshot committed count changed");
+    }
+
+    if (final_snapshot.failed_upload_commit_count != 1U) {
+        return Fail("upload commit snapshot failed upload count changed");
+    }
+
+    if (final_snapshot.last_load_state != ResourceLoadState::Failed) {
+        return Fail("upload commit snapshot last load state changed");
+    }
+
+    if (final_snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("upload commit snapshot allocation vocabulary changed");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -1573,7 +2281,17 @@ int main(int argc, char **argv) {
         {TEST_UPLOAD_COMPLETION_OVERFLOW, StreamingResourceUploadReportsCompletionOverflowWithoutProcessingPending},
         {TEST_UPLOAD_DUPLICATE_ID, StreamingResourceUploadRejectsDuplicateUploadId},
         {TEST_UPLOAD_SNAPSHOT, StreamingResourceUploadSnapshotReportsBoundedCounters},
-        {TEST_UPLOAD_RHI_FAILURE, StreamingResourceUploadReportsRhiFailureWithoutWritingOutput}};
+        {TEST_UPLOAD_RHI_FAILURE, StreamingResourceUploadReportsRhiFailureWithoutWritingOutput},
+        {TEST_UPLOAD_COMMIT_SUCCESS, StreamingResourceUploadCommitCommitsSuccessfulUpload},
+        {TEST_UPLOAD_COMMIT_FAILED_UPLOAD, StreamingResourceUploadCommitCommitsFailedUpload},
+        {TEST_UPLOAD_COMMIT_INVALID_HANDLE, StreamingResourceUploadCommitRejectsInvalidResourceHandleWithoutMutation},
+        {TEST_UPLOAD_COMMIT_TYPE_MISMATCH, StreamingResourceUploadCommitRejectsTypeMismatchWithoutMutation},
+        {TEST_UPLOAD_COMMIT_DUPLICATE_ID, StreamingResourceUploadCommitRejectsDuplicateCommitId},
+        {TEST_UPLOAD_COMMIT_QUEUE_OVERFLOW, StreamingResourceUploadCommitRejectsQueueOverflowWithoutMutation},
+        {TEST_UPLOAD_COMMIT_COMPLETION_OVERFLOW,
+         StreamingResourceUploadCommitReportsCompletionOverflowWithoutProcessingPending},
+        {TEST_UPLOAD_COMMIT_SLOT_REUSE_ORDER, StreamingResourceUploadCommitPreservesOldestOrderAfterSlotReuse},
+        {TEST_UPLOAD_COMMIT_SNAPSHOT, StreamingResourceUploadCommitSnapshotReportsBoundedCounters}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

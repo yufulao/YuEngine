@@ -10,11 +10,17 @@
 
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
 #include "YuEngine/Resource/ResourceConstants.h"
+#include "YuEngine/Resource/ResourceLoadCommitRequest.h"
+#include "YuEngine/Resource/ResourceLoadCommitStatus.h"
+#include "YuEngine/Resource/ResourceLoadState.h"
 #include "YuEngine/Resource/ResourceRegistry.h"
 
 using yuengine::memory::MemoryAccountingStatus;
 using yuengine::resource::ResourceDescriptor;
 using yuengine::resource::ResourceHandle;
+using yuengine::resource::ResourceLoadCommitRequest;
+using yuengine::resource::ResourceLoadCommitStatus;
+using yuengine::resource::ResourceLoadState;
 using ResourceLogicalKey = yuengine::resource::ResourceLogicalKey;
 using ResourceRegistry = yuengine::resource::ResourceRegistry;
 using yuengine::resource::ResourceRegistryDesc;
@@ -45,6 +51,16 @@ constexpr const char* TEST_DEPENDENCY_CYCLE = "Resource_DependencyValidationReje
 constexpr const char* TEST_NO_FILE_PACKAGE = "Resource_NoFileOrPackageDependency_ForHandleRegistry";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Resource_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Resource_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char *TEST_LOAD_COMMIT_SUCCESS = "Resource_LoadCommit_UploadSuccessSetsTerminalState";
+constexpr const char *TEST_LOAD_COMMIT_FAILED_UPLOAD = "Resource_LoadCommit_FailedUploadSetsFailedState";
+constexpr const char *TEST_LOAD_COMMIT_INVALID_HANDLE =
+    "Resource_LoadCommit_RejectsInvalidHandleWithoutSlotMutation";
+constexpr const char *TEST_LOAD_COMMIT_TYPE_MISMATCH =
+    "Resource_LoadCommit_RejectsTypeMismatchWithoutMutation";
+constexpr const char *TEST_LOAD_COMMIT_DUPLICATE = "Resource_LoadCommit_RejectsDuplicateCommitId";
+constexpr const char *TEST_LOAD_COMMIT_INVALID_TRANSITION =
+    "Resource_LoadCommit_RejectsInvalidTransition";
+constexpr const char *TEST_LOAD_COMMIT_SNAPSHOT = "Resource_LoadCommit_SnapshotTracksCounters";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr ResourceTypeId TYPE_TEXTURE{1U};
@@ -65,6 +81,12 @@ constexpr const char* TYPE_CAPACITY_RETRY_REGISTRATION_FAILED = "retry after typ
 constexpr const char* TYPE_CAPACITY_RETRY_SLOT_FAILED = "retry after type capacity failure used wrong slot";
 constexpr const char* TYPE_CAPACITY_RETRY_GENERATION_FAILED = "type capacity failure advanced retry slot generation";
 constexpr const char* TYPE_CAPACITY_RETRY_TYPE_COUNT_FAILED = "retry with existing type changed type count";
+constexpr std::uint64_t COMMIT_ONE = 2001U;
+constexpr std::uint64_t COMMIT_TWO = 2002U;
+constexpr std::uint64_t UPLOAD_ONE = 3001U;
+constexpr std::uint64_t UPLOAD_TWO = 3002U;
+constexpr std::uint64_t STAGING_ONE = 4001U;
+constexpr std::uint32_t UPLOAD_BYTE_COUNT = 64U;
 using TestFunction = int (*)();
 using TestRegistry = std::unordered_map<std::string_view, TestFunction>;
 
@@ -84,6 +106,37 @@ ResourceDescriptor DescriptorWithReferenceCount(ResourceTypeId type, const char*
 
 ResourceRegistrationResult Register(ResourceRegistry& registry, ResourceTypeId type, const char* key) {
     return registry.RegisterSyntheticDescriptor(Descriptor(type, key));
+}
+
+ResourceLoadCommitRequest LoadCommitRequest(
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    ResourceLoadState load_state,
+    std::uint64_t commit_id,
+    std::uint64_t upload_id) {
+    ResourceLoadCommitRequest request;
+    request.resource = resource;
+    request.expected_type = expected_type;
+    request.load_state = load_state;
+    request.commit_id = commit_id;
+    request.upload_id = upload_id;
+    request.staging_request_id = STAGING_ONE;
+    request.upload_byte_count = UPLOAD_BYTE_COUNT;
+    return request;
+}
+
+bool LoadStateMatches(
+    const ResourceRegistry &registry,
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    ResourceLoadState expected_state) {
+    ResourceLoadState load_state = ResourceLoadState::Unloaded;
+    const ResourceLoadCommitStatus status = registry.GetLoadState(resource, expected_type, &load_state);
+    if (status != ResourceLoadCommitStatus::Success) {
+        return false;
+    }
+
+    return load_state == expected_state;
 }
 
 bool SnapshotsMatch(const ResourceSnapshot& left, const ResourceSnapshot& right) {
@@ -654,6 +707,261 @@ int ResourceNoHiddenAllocationUsesYuMemorySignal() {
 
     return 0;
 }
+
+int ResourceLoadCommitUploadSuccessSetsTerminalState() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_load_success");
+    if (!result.Succeeded()) {
+        return Fail("load commit fixture registration failed");
+    }
+
+    const ResourceLoadCommitRequest request = LoadCommitRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (registry.CommitUploadCompletion(request) != ResourceLoadCommitStatus::Success) {
+        return Fail("load commit did not accept successful upload");
+    }
+
+    if (!LoadStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Uploaded)) {
+        return Fail("successful load commit did not set uploaded state");
+    }
+
+    const ResourceSnapshot snapshot = registry.Snapshot();
+    if (snapshot.load_commit_count != 1U) {
+        return Fail("load commit count was not tracked");
+    }
+
+    if (snapshot.loaded_resource_count != 1U) {
+        return Fail("loaded resource count was not tracked");
+    }
+
+    if (snapshot.last_load_state != ResourceLoadState::Uploaded) {
+        return Fail("last load state did not report uploaded");
+    }
+
+    return 0;
+}
+
+int ResourceLoadCommitFailedUploadSetsFailedState() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_load_failed");
+    if (!result.Succeeded()) {
+        return Fail("failed load fixture registration failed");
+    }
+
+    const ResourceLoadCommitRequest request = LoadCommitRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Failed,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (registry.CommitUploadCompletion(request) != ResourceLoadCommitStatus::Success) {
+        return Fail("load commit did not accept failed upload");
+    }
+
+    if (!LoadStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Failed)) {
+        return Fail("failed load commit did not set failed state");
+    }
+
+    const ResourceSnapshot snapshot = registry.Snapshot();
+    if (snapshot.failed_resource_count != 1U) {
+        return Fail("failed resource count was not tracked");
+    }
+
+    return 0;
+}
+
+int ResourceLoadCommitRejectsInvalidHandleWithoutSlotMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_invalid_handle_guard");
+    if (!result.Succeeded()) {
+        return Fail("invalid handle fixture registration failed");
+    }
+
+    const ResourceSnapshot before_snapshot = registry.Snapshot();
+    const ResourceLoadCommitRequest request = LoadCommitRequest(
+        ResourceHandle{},
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (registry.CommitUploadCompletion(request) != ResourceLoadCommitStatus::InvalidHandle) {
+        return Fail("invalid handle load commit returned wrong status");
+    }
+
+    if (!LoadStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Unloaded)) {
+        return Fail("invalid handle load commit changed live slot state");
+    }
+
+    const ResourceSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.load_commit_count != before_snapshot.load_commit_count) {
+        return Fail("invalid handle load commit changed committed count");
+    }
+
+    if (after_snapshot.load_commit_record_count != before_snapshot.load_commit_record_count) {
+        return Fail("invalid handle load commit stored a record");
+    }
+
+    return 0;
+}
+
+int ResourceLoadCommitRejectsTypeMismatchWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_type_guard");
+    if (!result.Succeeded()) {
+        return Fail("type mismatch fixture registration failed");
+    }
+
+    const ResourceLoadCommitRequest request = LoadCommitRequest(
+        result.handle,
+        TYPE_AUDIO,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (registry.CommitUploadCompletion(request) != ResourceLoadCommitStatus::TypeMismatch) {
+        return Fail("type mismatch load commit returned wrong status");
+    }
+
+    if (!LoadStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Unloaded)) {
+        return Fail("type mismatch load commit changed load state");
+    }
+
+    if (registry.Snapshot().load_commit_count != 0U) {
+        return Fail("type mismatch load commit changed committed count");
+    }
+
+    return 0;
+}
+
+int ResourceLoadCommitRejectsDuplicateCommitId() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_duplicate_commit");
+    if (!result.Succeeded()) {
+        return Fail("duplicate commit fixture registration failed");
+    }
+
+    const ResourceLoadCommitRequest first_request = LoadCommitRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (registry.CommitUploadCompletion(first_request) != ResourceLoadCommitStatus::Success) {
+        return Fail("first duplicate fixture commit failed");
+    }
+
+    const ResourceLoadCommitRequest duplicate_request = LoadCommitRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Failed,
+        COMMIT_ONE,
+        UPLOAD_TWO);
+    if (registry.CommitUploadCompletion(duplicate_request) != ResourceLoadCommitStatus::DuplicateCommitId) {
+        return Fail("duplicate commit id returned wrong status");
+    }
+
+    if (!LoadStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Uploaded)) {
+        return Fail("duplicate commit id changed terminal state");
+    }
+
+    if (registry.Snapshot().duplicate_load_commit_count != 1U) {
+        return Fail("duplicate load commit count was not tracked");
+    }
+
+    return 0;
+}
+
+int ResourceLoadCommitRejectsInvalidTransition() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_transition_guard");
+    if (!result.Succeeded()) {
+        return Fail("invalid transition fixture registration failed");
+    }
+
+    const ResourceLoadCommitRequest first_request = LoadCommitRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (registry.CommitUploadCompletion(first_request) != ResourceLoadCommitStatus::Success) {
+        return Fail("first transition fixture commit failed");
+    }
+
+    const ResourceLoadCommitRequest second_request = LoadCommitRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Failed,
+        COMMIT_TWO,
+        UPLOAD_TWO);
+    if (registry.CommitUploadCompletion(second_request) != ResourceLoadCommitStatus::InvalidTransition) {
+        return Fail("invalid transition returned wrong status");
+    }
+
+    if (!LoadStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Uploaded)) {
+        return Fail("invalid transition changed terminal state");
+    }
+
+    if (registry.Snapshot().invalid_load_transition_count != 1U) {
+        return Fail("invalid transition count was not tracked");
+    }
+
+    return 0;
+}
+
+int ResourceLoadCommitSnapshotTracksCounters() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult uploaded_result = Register(registry, TYPE_TEXTURE, "texture_snapshot_uploaded");
+    const ResourceRegistrationResult failed_result = Register(registry, TYPE_MATERIAL, "material_snapshot_failed");
+    if (!uploaded_result.Succeeded()) {
+        return Fail("snapshot uploaded registration failed");
+    }
+
+    if (!failed_result.Succeeded()) {
+        return Fail("snapshot failed registration failed");
+    }
+
+    const ResourceLoadCommitRequest uploaded_request = LoadCommitRequest(
+        uploaded_result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    const ResourceLoadCommitRequest failed_request = LoadCommitRequest(
+        failed_result.handle,
+        TYPE_MATERIAL,
+        ResourceLoadState::Failed,
+        COMMIT_TWO,
+        UPLOAD_TWO);
+    registry.CommitUploadCompletion(uploaded_request);
+    registry.CommitUploadCompletion(failed_request);
+
+    const ResourceSnapshot snapshot = registry.Snapshot();
+    if (snapshot.load_commit_record_count != 2U) {
+        return Fail("snapshot load commit record count changed");
+    }
+
+    if (snapshot.load_commit_count != 2U) {
+        return Fail("snapshot load commit count changed");
+    }
+
+    if (snapshot.loaded_resource_count != 1U) {
+        return Fail("snapshot loaded resource count changed");
+    }
+
+    if (snapshot.failed_resource_count != 1U) {
+        return Fail("snapshot failed resource count changed");
+    }
+
+    if (snapshot.allocation_accounting_status != MemoryAccountingStatus::ExplicitlyTrackedOnly) {
+        return Fail("load commit snapshot changed allocation vocabulary");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -679,7 +987,14 @@ int main(int argc, char** argv) {
         {TEST_DEPENDENCY_CYCLE, ResourceDependencyValidationRejectsCycle},
         {TEST_NO_FILE_PACKAGE, ResourceNoFileOrPackageDependencyForHandleRegistry},
         {TEST_DISABLED_DIAGNOSTICS, ResourceDisabledDiagnosticsDoesNotChangeResults},
-        {TEST_NO_HIDDEN_ALLOCATION, ResourceNoHiddenAllocationUsesYuMemorySignal}};
+        {TEST_NO_HIDDEN_ALLOCATION, ResourceNoHiddenAllocationUsesYuMemorySignal},
+        {TEST_LOAD_COMMIT_SUCCESS, ResourceLoadCommitUploadSuccessSetsTerminalState},
+        {TEST_LOAD_COMMIT_FAILED_UPLOAD, ResourceLoadCommitFailedUploadSetsFailedState},
+        {TEST_LOAD_COMMIT_INVALID_HANDLE, ResourceLoadCommitRejectsInvalidHandleWithoutSlotMutation},
+        {TEST_LOAD_COMMIT_TYPE_MISMATCH, ResourceLoadCommitRejectsTypeMismatchWithoutMutation},
+        {TEST_LOAD_COMMIT_DUPLICATE, ResourceLoadCommitRejectsDuplicateCommitId},
+        {TEST_LOAD_COMMIT_INVALID_TRANSITION, ResourceLoadCommitRejectsInvalidTransition},
+        {TEST_LOAD_COMMIT_SNAPSHOT, ResourceLoadCommitSnapshotTracksCounters}};
 
     const std::string_view test_name(argv[1]);
     const auto test_entry = test_registry.find(test_name);
