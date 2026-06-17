@@ -1,14 +1,15 @@
 # P2-GATE-030: RenderCore Render Graph Execution Plan
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: Split lower-engine review
 Depends on: P2-GATE-025, P2-GATE-020, P2-GATE-019, P2-GATE-017, P2-GATE-004, ADR-0011
 Related decisions: ADR-0011
 Source baseline: `8e61fd4`
-Proposal commit: Pending review commit
+Proposal commit: `221423f`
+Approval evidence: ENG-151A, ENG-151B, ENG-151C, ENG-151D, ENG-151E, and ENG-151F proposal review PASS.
 
 ## Layer
 
@@ -68,6 +69,46 @@ frame packet fixture can execute a batch, but there is no reviewed RenderCore
 unit that validates the prepared skeleton result, records execution-plan
 metadata, calls the landed frame packet fixture once, and proves deterministic
 query/release/counter behavior.
+
+## Approval Evidence
+
+Approved after ENG-151A, ENG-151B, ENG-151C, ENG-151D, ENG-151E, and ENG-151F
+proposal reviews PASS.
+
+Review evidence:
+
+- proposal commit `221423f84f9c1753522824231c2527cb3f3c7ca6` changes only
+  `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and this gate doc;
+- `git diff --check 221423f^..221423f` passed;
+- review work was read-only and made no source, doc, commit, push, approval, or
+  implementation changes;
+- boundary and quality review confirmed the proposal stays in RenderCore-owned
+  execution-plan metadata over landed `RenderGraphSkeleton` prepared batches
+  plus `RenderFramePacketFixture` execution and found no
+  `NEEDS_ARCHITECTURE` blocker;
+- implementability review confirmed existing `RenderGraphSkeleton::Prepare`,
+  `RenderFramePacketFixture::Execute`, `RenderSubmissionBatchFixture`,
+  `RenderFixturePass`, and public RHI value contracts are sufficient for the
+  first slice without new backend-native or RHI contract requirements;
+- test and preset review confirmed deterministic focused
+  `RenderCore_GraphExecutionPlan` evidence, `CMakePresets` no-drift, label
+  discovery, and `windows-hardware-smoke` isolation are sufficient;
+- dependency and public-leak review confirmed current RenderCore public and
+  production surfaces remain free of Resource, Streaming, Package, File, World,
+  UI, Script, Game Adapter, D3D, DXGI, COM, Platform, and native/backend leaks;
+- candidate consistency review confirmed this gate does not duplicate
+  P2-GATE-025 skeleton declaration/dependency validation and does not widen
+  into scheduler, frame graph, transient resource, scene, or upper-engine
+  systems;
+- performance and hardware evidence review confirmed fixed-capacity records,
+  capacity-before-mutation validation, caller-owned storage, deterministic fast
+  evidence, `PerformanceSmoke`/`EvidenceOracle` proof, and hardware-smoke
+  isolation are acceptable for the first slice;
+- proposal discovery matched the reviewed baseline: default fast gate `901`,
+  `RenderCore` `54`, `Material` `40`, `RHI` `148`, `Resource` `119`,
+  `Streaming` `36`, `Upload` `43`, `Fast` `901`, `PerformanceSmoke` `108`,
+  `EvidenceOracle` `305`, default `HardwareSmoke` `0`, and
+  `windows-hardware-smoke` `7` with no RenderCore graph execution-plan entries.
 
 ## Owns
 
