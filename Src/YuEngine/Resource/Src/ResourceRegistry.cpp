@@ -26,6 +26,7 @@ ResourceRegistry::ResourceRegistry(ResourceRegistryDesc desc)
     : slots_{},
       dependency_edges_{},
       load_commit_records_{},
+      residency_records_{},
       types_{},
       snapshot_{
           ClampCapacity(desc.resource_capacity, MAX_RESOURCE_COUNT),
@@ -49,7 +50,8 @@ ResourceRegistry::ResourceRegistry(ResourceRegistryDesc desc)
           MemoryAccountingStatus::ExplicitlyTrackedOnly,
           ResourceStatus::Success,
           ResourceLoadState::Unloaded,
-          ResourceLoadCommitStatus::Success} {
+          ResourceLoadCommitStatus::Success},
+      residency_snapshot_{} {
 }
 
 ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const ResourceDescriptor& descriptor) {
@@ -188,6 +190,11 @@ ResourceStatus ResourceRegistry::Acquire(ResourceHandle handle, ResourceTypeId e
         return RecordFailure(ResourceStatus::ReferenceCountOverflow);
     }
 
+    if (IsEvictionCandidate(slot)) {
+        residency_snapshot_.evictable_byte_count -= slot.loaded_byte_count;
+        slot.residency_state = ResourceResidencyState::Resident;
+    }
+
     ++slot.reference_count;
     ++snapshot_.acquired_handle_count;
     RecordSuccess();
@@ -235,6 +242,13 @@ ResourceLoadCommitStatus ResourceRegistry::CommitUploadCompletion(const Resource
     slot.last_upload_id = request.upload_id;
     slot.last_staging_request_id = request.staging_request_id;
     slot.loaded_byte_count = request.upload_byte_count;
+    if (request.load_state == ResourceLoadState::Uploaded) {
+        slot.residency_state = ResourceResidencyState::Uploaded;
+    }
+
+    if (request.load_state == ResourceLoadState::Failed) {
+        slot.residency_state = ResourceResidencyState::Failed;
+    }
 
     StoreLoadCommitRecord(request);
     RecordLoadCommitSuccess(request.load_state);
@@ -264,6 +278,261 @@ ResourceLoadCommitStatus ResourceRegistry::GetLoadState(
     return ResourceLoadCommitStatus::Success;
 }
 
+ResourceResidencyStatus ResourceRegistry::SetResidencyBudget(ResourceResidencyBudgetDesc desc) {
+    const ResourceResidencyRequest request{};
+    if (residency_snapshot_.residency_record_count >= MAX_RESOURCE_RESIDENCY_RECORD_COUNT) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::ConfigureBudget,
+            request,
+            ResourceResidencyStatus::CapacityExceeded);
+    }
+
+    if (desc.byte_capacity == 0U) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::ConfigureBudget,
+            request,
+            ResourceResidencyStatus::InvalidArgument);
+    }
+
+    if (desc.byte_capacity < residency_snapshot_.resident_byte_count) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::ConfigureBudget,
+            request,
+            ResourceResidencyStatus::BudgetExceeded);
+    }
+
+    residency_snapshot_.budget_byte_capacity = desc.byte_capacity;
+    RecordResidencySuccess(
+        ResourceResidencyOperation::ConfigureBudget,
+        request,
+        ResourceResidencyState::Unloaded);
+    return ResourceResidencyStatus::Success;
+}
+
+ResourceResidencyStatus ResourceRegistry::AdmitResident(const ResourceResidencyRequest &request) {
+    std::size_t slot_index = 0U;
+    const ResourceResidencyStatus validation_status = ValidateResidencyRequest(request, &slot_index);
+    if (validation_status != ResourceResidencyStatus::Success) {
+        return RecordResidencyRejected(ResourceResidencyOperation::Admit, request, validation_status);
+    }
+
+    ResourceSlot &slot = slots_[slot_index];
+    if (slot.load_state == ResourceLoadState::Failed) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::Admit,
+            request,
+            ResourceResidencyStatus::FailedLoad);
+    }
+
+    if (slot.load_state != ResourceLoadState::Uploaded) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::Admit,
+            request,
+            ResourceResidencyStatus::NotUploaded);
+    }
+
+    if (IsResidentState(slot.residency_state)) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::Admit,
+            request,
+            ResourceResidencyStatus::AlreadyResident);
+    }
+
+    const std::uint32_t remaining_byte_capacity =
+        residency_snapshot_.budget_byte_capacity - residency_snapshot_.resident_byte_count;
+    if (slot.loaded_byte_count > remaining_byte_capacity) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::Admit,
+            request,
+            ResourceResidencyStatus::BudgetExceeded);
+    }
+
+    if (slot.residency_state == ResourceResidencyState::Evicted) {
+        --residency_snapshot_.evicted_resource_count;
+    }
+
+    slot.residency_state = ResourceResidencyState::Resident;
+    ++residency_snapshot_.resident_resource_count;
+    residency_snapshot_.resident_byte_count += slot.loaded_byte_count;
+    RefreshEvictableState(slot);
+    RecordResidencySuccess(ResourceResidencyOperation::Admit, request, slot.residency_state);
+    return ResourceResidencyStatus::Success;
+}
+
+ResourceResidencyStatus ResourceRegistry::PinResident(const ResourceResidencyRequest &request) {
+    std::size_t slot_index = 0U;
+    const ResourceResidencyStatus validation_status = ValidateResidencyRequest(request, &slot_index);
+    if (validation_status != ResourceResidencyStatus::Success) {
+        return RecordResidencyRejected(ResourceResidencyOperation::Pin, request, validation_status);
+    }
+
+    ResourceSlot &slot = slots_[slot_index];
+    if (!IsResidentState(slot.residency_state)) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::Pin,
+            request,
+            ResourceResidencyStatus::NotResident);
+    }
+
+    if (slot.residency_state == ResourceResidencyState::Pinned) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::Pin,
+            request,
+            ResourceResidencyStatus::AlreadyPinned);
+    }
+
+    if (IsEvictionCandidate(slot)) {
+        residency_snapshot_.evictable_byte_count -= slot.loaded_byte_count;
+    }
+
+    slot.residency_state = ResourceResidencyState::Pinned;
+    ++residency_snapshot_.pinned_resource_count;
+    residency_snapshot_.pinned_byte_count += slot.loaded_byte_count;
+    RecordResidencySuccess(ResourceResidencyOperation::Pin, request, slot.residency_state);
+    return ResourceResidencyStatus::Success;
+}
+
+ResourceResidencyStatus ResourceRegistry::UnpinResident(const ResourceResidencyRequest &request) {
+    std::size_t slot_index = 0U;
+    const ResourceResidencyStatus validation_status = ValidateResidencyRequest(request, &slot_index);
+    if (validation_status != ResourceResidencyStatus::Success) {
+        return RecordResidencyRejected(ResourceResidencyOperation::Unpin, request, validation_status);
+    }
+
+    ResourceSlot &slot = slots_[slot_index];
+    if (!IsResidentState(slot.residency_state)) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::Unpin,
+            request,
+            ResourceResidencyStatus::NotResident);
+    }
+
+    if (slot.residency_state != ResourceResidencyState::Pinned) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::Unpin,
+            request,
+            ResourceResidencyStatus::NotPinned);
+    }
+
+    slot.residency_state = ResourceResidencyState::Resident;
+    --residency_snapshot_.pinned_resource_count;
+    residency_snapshot_.pinned_byte_count -= slot.loaded_byte_count;
+    RefreshEvictableState(slot);
+    RecordResidencySuccess(ResourceResidencyOperation::Unpin, request, slot.residency_state);
+    return ResourceResidencyStatus::Success;
+}
+
+ResourceResidencyStatus ResourceRegistry::EvictResident(const ResourceResidencyRequest &request) {
+    std::size_t slot_index = 0U;
+    const ResourceResidencyStatus validation_status = ValidateResidencyRequest(request, &slot_index);
+    if (validation_status != ResourceResidencyStatus::Success) {
+        return RecordResidencyRejected(ResourceResidencyOperation::Evict, request, validation_status);
+    }
+
+    ResourceSlot &slot = slots_[slot_index];
+    if (!IsResidentState(slot.residency_state)) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::Evict,
+            request,
+            ResourceResidencyStatus::NotResident);
+    }
+
+    if (slot.residency_state == ResourceResidencyState::Pinned) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::Evict,
+            request,
+            ResourceResidencyStatus::Pinned);
+    }
+
+    if (slot.reference_count != 0U) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::Evict,
+            request,
+            ResourceResidencyStatus::StillReferenced);
+    }
+
+    RemoveResidentCounters(slot);
+    slot.residency_state = ResourceResidencyState::Evicted;
+    ++residency_snapshot_.evicted_resource_count;
+    RecordResidencySuccess(ResourceResidencyOperation::Evict, request, slot.residency_state);
+    return ResourceResidencyStatus::Success;
+}
+
+ResourceResidencyStatus ResourceRegistry::SelectEvictionCandidate(ResourceHandle *output_handle) {
+    const ResourceResidencyRequest empty_request{};
+    if (output_handle == nullptr) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::SelectCandidate,
+            empty_request,
+            ResourceResidencyStatus::InvalidArgument);
+    }
+
+    *output_handle = ResourceHandle{};
+    if (residency_snapshot_.residency_record_count >= MAX_RESOURCE_RESIDENCY_RECORD_COUNT) {
+        return RecordResidencyRejected(
+            ResourceResidencyOperation::SelectCandidate,
+            empty_request,
+            ResourceResidencyStatus::CapacityExceeded);
+    }
+
+    std::uint32_t slot_index = 0U;
+    for (const ResourceSlot &slot : slots_) {
+        if (slot_index >= snapshot_.resource_capacity) {
+            break;
+        }
+
+        if (!IsEvictionCandidate(slot)) {
+            ++slot_index;
+            continue;
+        }
+
+        const ResourceHandle candidate{slot_index, slot.generation};
+        *output_handle = candidate;
+        residency_snapshot_.last_candidate = candidate;
+        ResourceResidencyRequest candidate_request;
+        candidate_request.resource = candidate;
+        candidate_request.expected_type = slot.type;
+        RecordResidencySuccess(
+            ResourceResidencyOperation::SelectCandidate,
+            candidate_request,
+            slot.residency_state);
+        return ResourceResidencyStatus::Success;
+    }
+
+    ++residency_snapshot_.eviction_candidate_miss_count;
+    return RecordResidencyRejected(
+        ResourceResidencyOperation::SelectCandidate,
+        empty_request,
+        ResourceResidencyStatus::NoCandidate);
+}
+
+ResourceResidencyStatus ResourceRegistry::GetResidencyState(
+    ResourceHandle handle,
+    ResourceTypeId expected_type,
+    ResourceResidencyState *output_state) const {
+    if (output_state == nullptr) {
+        return ResourceResidencyStatus::InvalidArgument;
+    }
+
+    std::size_t slot_index = 0U;
+    const ResourceStatus handle_status = ResolveHandle(handle, slot_index);
+    if (handle_status != ResourceStatus::Success) {
+        return MapHandleResidencyStatus(handle_status);
+    }
+
+    const ResourceSlot &slot = slots_[slot_index];
+    if (slot.type.value != expected_type.value) {
+        return ResourceResidencyStatus::TypeMismatch;
+    }
+
+    *output_state = slot.residency_state;
+    return ResourceResidencyStatus::Success;
+}
+
+ResourceResidencySnapshot ResourceRegistry::ResidencySnapshot() const {
+    return residency_snapshot_;
+}
+
 ResourceStatus ResourceRegistry::Release(ResourceHandle handle) {
     std::size_t slot_index = 0U;
     const ResourceStatus handle_status = ResolveHandle(handle, slot_index);
@@ -277,6 +546,7 @@ ResourceStatus ResourceRegistry::Release(ResourceHandle handle) {
     }
 
     --slot.reference_count;
+    RefreshEvictableState(slot);
     --snapshot_.acquired_handle_count;
     ++snapshot_.released_handle_count;
     RecordSuccess();
@@ -300,10 +570,12 @@ ResourceStatus ResourceRegistry::Retire(ResourceHandle handle) {
     }
 
     ClearOutboundEdges(slot_index);
+    ClearResidencySlot(slot);
     slot.is_active = false;
     slot.logical_key = ResourceLogicalKey{};
     slot.type = ResourceTypeId{};
     slot.load_state = ResourceLoadState::Unloaded;
+    slot.residency_state = ResourceResidencyState::Unloaded;
     slot.reference_count = 0U;
     slot.last_load_commit_id = 0U;
     slot.last_upload_id = 0U;
@@ -361,6 +633,54 @@ void ResourceRegistry::RecordLoadCommitSuccess(ResourceLoadState load_state) {
     snapshot_.last_status = ResourceStatus::Success;
 }
 
+ResourceResidencyStatus ResourceRegistry::RecordResidencyRejected(
+    ResourceResidencyOperation operation,
+    const ResourceResidencyRequest &request,
+    ResourceResidencyStatus status) {
+    ++residency_snapshot_.rejected_residency_request_count;
+    if (status == ResourceResidencyStatus::BudgetExceeded) {
+        ++residency_snapshot_.budget_rejected_residency_count;
+    }
+
+    ++snapshot_.failed_operation_count;
+    residency_snapshot_.last_status = status;
+    snapshot_.last_status = MapResidencyStatus(status);
+    StoreResidencyRecord(operation, request, status, ResourceResidencyState::Unloaded);
+    return status;
+}
+
+void ResourceRegistry::RecordResidencySuccess(
+    ResourceResidencyOperation operation,
+    const ResourceResidencyRequest &request,
+    ResourceResidencyState state) {
+    switch (operation) {
+        case ResourceResidencyOperation::Admit:
+            ++residency_snapshot_.admitted_resident_count;
+            break;
+        case ResourceResidencyOperation::Pin:
+            ++residency_snapshot_.pinned_resident_count;
+            break;
+        case ResourceResidencyOperation::Unpin:
+            ++residency_snapshot_.unpinned_resident_count;
+            break;
+        case ResourceResidencyOperation::Evict:
+            ++residency_snapshot_.evicted_resident_count;
+            break;
+        case ResourceResidencyOperation::SelectCandidate:
+            ++residency_snapshot_.eviction_candidate_count;
+            break;
+        case ResourceResidencyOperation::ConfigureBudget:
+        case ResourceResidencyOperation::None:
+        default:
+            break;
+    }
+
+    residency_snapshot_.last_status = ResourceResidencyStatus::Success;
+    residency_snapshot_.last_state = state;
+    snapshot_.last_status = ResourceStatus::Success;
+    StoreResidencyRecord(operation, request, ResourceResidencyStatus::Success, state);
+}
+
 ResourceLoadCommitStatus ResourceRegistry::ValidateLoadCommitRequest(
     const ResourceLoadCommitRequest &request,
     std::size_t *out_slot_index) const {
@@ -414,6 +734,35 @@ ResourceLoadCommitStatus ResourceRegistry::ValidateLoadCommitRequest(
     return ResourceLoadCommitStatus::Success;
 }
 
+ResourceResidencyStatus ResourceRegistry::ValidateResidencyRequest(
+    const ResourceResidencyRequest &request,
+    std::size_t *out_slot_index) const {
+    if (out_slot_index == nullptr) {
+        return ResourceResidencyStatus::InvalidArgument;
+    }
+
+    *out_slot_index = 0U;
+    if (!request.expected_type.IsValid()) {
+        return ResourceResidencyStatus::InvalidArgument;
+    }
+
+    if (residency_snapshot_.residency_record_count >= MAX_RESOURCE_RESIDENCY_RECORD_COUNT) {
+        return ResourceResidencyStatus::CapacityExceeded;
+    }
+
+    const ResourceStatus handle_status = ResolveHandle(request.resource, *out_slot_index);
+    if (handle_status != ResourceStatus::Success) {
+        return MapHandleResidencyStatus(handle_status);
+    }
+
+    const ResourceSlot &slot = slots_[*out_slot_index];
+    if (slot.type.value != request.expected_type.value) {
+        return ResourceResidencyStatus::TypeMismatch;
+    }
+
+    return ResourceResidencyStatus::Success;
+}
+
 ResourceLoadCommitStatus ResourceRegistry::MapHandleStatus(ResourceStatus status) const {
     if (status == ResourceStatus::InvalidHandle) {
         return ResourceLoadCommitStatus::InvalidHandle;
@@ -445,6 +794,53 @@ ResourceStatus ResourceRegistry::MapLoadCommitStatus(ResourceLoadCommitStatus st
         case ResourceLoadCommitStatus::InvalidArgument:
         case ResourceLoadCommitStatus::DuplicateCommitId:
         case ResourceLoadCommitStatus::InvalidTransition:
+        default:
+            break;
+    }
+
+    return ResourceStatus::UnsupportedInThisGate;
+}
+
+ResourceResidencyStatus ResourceRegistry::MapHandleResidencyStatus(ResourceStatus status) const {
+    if (status == ResourceStatus::InvalidHandle) {
+        return ResourceResidencyStatus::InvalidHandle;
+    }
+
+    if (status == ResourceStatus::GenerationMismatch) {
+        return ResourceResidencyStatus::GenerationMismatch;
+    }
+
+    if (status == ResourceStatus::TypeMismatch) {
+        return ResourceResidencyStatus::TypeMismatch;
+    }
+
+    return ResourceResidencyStatus::InvalidHandle;
+}
+
+ResourceStatus ResourceRegistry::MapResidencyStatus(ResourceResidencyStatus status) const {
+    switch (status) {
+        case ResourceResidencyStatus::Success:
+            return ResourceStatus::Success;
+        case ResourceResidencyStatus::InvalidHandle:
+            return ResourceStatus::InvalidHandle;
+        case ResourceResidencyStatus::GenerationMismatch:
+            return ResourceStatus::GenerationMismatch;
+        case ResourceResidencyStatus::TypeMismatch:
+            return ResourceStatus::TypeMismatch;
+        case ResourceResidencyStatus::BudgetExceeded:
+        case ResourceResidencyStatus::CapacityExceeded:
+            return ResourceStatus::CapacityExceeded;
+        case ResourceResidencyStatus::StillReferenced:
+            return ResourceStatus::StillReferenced;
+        case ResourceResidencyStatus::InvalidArgument:
+        case ResourceResidencyStatus::NotUploaded:
+        case ResourceResidencyStatus::FailedLoad:
+        case ResourceResidencyStatus::AlreadyResident:
+        case ResourceResidencyStatus::NotResident:
+        case ResourceResidencyStatus::AlreadyPinned:
+        case ResourceResidencyStatus::NotPinned:
+        case ResourceResidencyStatus::Pinned:
+        case ResourceResidencyStatus::NoCandidate:
         default:
             break;
     }
@@ -563,6 +959,116 @@ bool ResourceRegistry::StoreLoadCommitRecord(const ResourceLoadCommitRequest &re
     }
 
     return false;
+}
+
+bool ResourceRegistry::StoreResidencyRecord(
+    ResourceResidencyOperation operation,
+    const ResourceResidencyRequest &request,
+    ResourceResidencyStatus status,
+    ResourceResidencyState state) {
+    if (residency_snapshot_.residency_record_count >= MAX_RESOURCE_RESIDENCY_RECORD_COUNT) {
+        return false;
+    }
+
+    for (ResourceResidencyRecord &record : residency_records_) {
+        if (record.is_active) {
+            continue;
+        }
+
+        record.operation = operation;
+        record.request = request;
+        record.status = status;
+        record.state = state;
+        record.is_active = true;
+        ++residency_snapshot_.residency_record_count;
+        return true;
+    }
+
+    return false;
+}
+
+bool ResourceRegistry::IsResidentState(ResourceResidencyState state) const {
+    if (state == ResourceResidencyState::Resident) {
+        return true;
+    }
+
+    if (state == ResourceResidencyState::Pinned) {
+        return true;
+    }
+
+    return state == ResourceResidencyState::Evictable;
+}
+
+bool ResourceRegistry::IsEvictionCandidate(const ResourceSlot &slot) const {
+    if (!slot.is_active) {
+        return false;
+    }
+
+    if (slot.reference_count != 0U) {
+        return false;
+    }
+
+    if (slot.load_state != ResourceLoadState::Uploaded) {
+        return false;
+    }
+
+    if (slot.residency_state == ResourceResidencyState::Pinned) {
+        return false;
+    }
+
+    return IsResidentState(slot.residency_state);
+}
+
+void ResourceRegistry::RemoveResidentCounters(const ResourceSlot &slot) {
+    if (!IsResidentState(slot.residency_state)) {
+        return;
+    }
+
+    --residency_snapshot_.resident_resource_count;
+    residency_snapshot_.resident_byte_count -= slot.loaded_byte_count;
+
+    if (slot.residency_state == ResourceResidencyState::Pinned) {
+        --residency_snapshot_.pinned_resource_count;
+        residency_snapshot_.pinned_byte_count -= slot.loaded_byte_count;
+        return;
+    }
+
+    if (IsEvictionCandidate(slot)) {
+        residency_snapshot_.evictable_byte_count -= slot.loaded_byte_count;
+    }
+}
+
+void ResourceRegistry::RefreshEvictableState(ResourceSlot &slot) {
+    if (!IsResidentState(slot.residency_state)) {
+        return;
+    }
+
+    if (slot.residency_state == ResourceResidencyState::Pinned) {
+        return;
+    }
+
+    if (slot.reference_count == 0U) {
+        if (slot.residency_state != ResourceResidencyState::Evictable) {
+            slot.residency_state = ResourceResidencyState::Evictable;
+            residency_snapshot_.evictable_byte_count += slot.loaded_byte_count;
+        }
+
+        return;
+    }
+
+    if (slot.residency_state == ResourceResidencyState::Evictable) {
+        residency_snapshot_.evictable_byte_count -= slot.loaded_byte_count;
+        slot.residency_state = ResourceResidencyState::Resident;
+    }
+}
+
+void ResourceRegistry::ClearResidencySlot(ResourceSlot &slot) {
+    RemoveResidentCounters(slot);
+    if (slot.residency_state == ResourceResidencyState::Evicted) {
+        --residency_snapshot_.evicted_resource_count;
+    }
+
+    slot.residency_state = ResourceResidencyState::Unloaded;
 }
 
 bool ResourceRegistry::HasInboundEdge(std::size_t slot_index) const {

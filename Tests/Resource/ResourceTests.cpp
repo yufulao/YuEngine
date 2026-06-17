@@ -14,6 +14,11 @@
 #include "YuEngine/Resource/ResourceLoadCommitStatus.h"
 #include "YuEngine/Resource/ResourceLoadState.h"
 #include "YuEngine/Resource/ResourceRegistry.h"
+#include "YuEngine/Resource/ResourceResidencyBudgetDesc.h"
+#include "YuEngine/Resource/ResourceResidencyRequest.h"
+#include "YuEngine/Resource/ResourceResidencySnapshot.h"
+#include "YuEngine/Resource/ResourceResidencyState.h"
+#include "YuEngine/Resource/ResourceResidencyStatus.h"
 
 using yuengine::memory::MemoryAccountingStatus;
 using yuengine::resource::ResourceDescriptor;
@@ -21,6 +26,11 @@ using yuengine::resource::ResourceHandle;
 using yuengine::resource::ResourceLoadCommitRequest;
 using yuengine::resource::ResourceLoadCommitStatus;
 using yuengine::resource::ResourceLoadState;
+using yuengine::resource::ResourceResidencyBudgetDesc;
+using yuengine::resource::ResourceResidencyRequest;
+using yuengine::resource::ResourceResidencySnapshot;
+using yuengine::resource::ResourceResidencyState;
+using yuengine::resource::ResourceResidencyStatus;
 using ResourceLogicalKey = yuengine::resource::ResourceLogicalKey;
 using ResourceRegistry = yuengine::resource::ResourceRegistry;
 using yuengine::resource::ResourceRegistryDesc;
@@ -61,6 +71,22 @@ constexpr const char *TEST_LOAD_COMMIT_DUPLICATE = "Resource_LoadCommit_RejectsD
 constexpr const char *TEST_LOAD_COMMIT_INVALID_TRANSITION =
     "Resource_LoadCommit_RejectsInvalidTransition";
 constexpr const char *TEST_LOAD_COMMIT_SNAPSHOT = "Resource_LoadCommit_SnapshotTracksCounters";
+constexpr const char *TEST_RESIDENCY_ADMIT = "Resource_Residency_AdmitsUploadedSlotWithinBudget";
+constexpr const char *TEST_RESIDENCY_UNLOADED =
+    "Resource_Residency_RejectsUnloadedWithoutMutation";
+constexpr const char *TEST_RESIDENCY_FAILED_LOAD =
+    "Resource_Residency_RejectsFailedLoadWithoutMutation";
+constexpr const char *TEST_RESIDENCY_TYPE_MISMATCH =
+    "Resource_Residency_RejectsTypeMismatchWithoutMutation";
+constexpr const char *TEST_RESIDENCY_DUPLICATE = "Resource_Residency_RejectsDuplicateAdmission";
+constexpr const char *TEST_RESIDENCY_BUDGET = "Resource_Residency_RejectsBudgetOverflow";
+constexpr const char *TEST_RESIDENCY_PIN_UNPIN = "Resource_Residency_PinUnpinTracksCounters";
+constexpr const char *TEST_RESIDENCY_CANDIDATE =
+    "Resource_Residency_SelectsEvictionCandidateInSlotOrder";
+constexpr const char *TEST_RESIDENCY_NO_CANDIDATE = "Resource_Residency_ReportsNoEvictionCandidate";
+constexpr const char *TEST_RESIDENCY_FAILED_VALIDATION =
+    "Resource_Residency_FailedValidationDoesNotMutateResourceState";
+constexpr const char *TEST_RESIDENCY_EVICT = "Resource_Residency_EvictsResourceOwnedStateOnly";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr ResourceTypeId TYPE_TEXTURE{1U};
@@ -83,8 +109,10 @@ constexpr const char* TYPE_CAPACITY_RETRY_GENERATION_FAILED = "type capacity fai
 constexpr const char* TYPE_CAPACITY_RETRY_TYPE_COUNT_FAILED = "retry with existing type changed type count";
 constexpr std::uint64_t COMMIT_ONE = 2001U;
 constexpr std::uint64_t COMMIT_TWO = 2002U;
+constexpr std::uint64_t COMMIT_THREE = 2003U;
 constexpr std::uint64_t UPLOAD_ONE = 3001U;
 constexpr std::uint64_t UPLOAD_TWO = 3002U;
+constexpr std::uint64_t UPLOAD_THREE = 3003U;
 constexpr std::uint64_t STAGING_ONE = 4001U;
 constexpr std::uint32_t UPLOAD_BYTE_COUNT = 64U;
 using TestFunction = int (*)();
@@ -125,6 +153,13 @@ ResourceLoadCommitRequest LoadCommitRequest(
     return request;
 }
 
+ResourceResidencyRequest ResidencyRequest(ResourceHandle resource, ResourceTypeId expected_type) {
+    ResourceResidencyRequest request;
+    request.resource = resource;
+    request.expected_type = expected_type;
+    return request;
+}
+
 bool LoadStateMatches(
     const ResourceRegistry &registry,
     ResourceHandle resource,
@@ -137,6 +172,39 @@ bool LoadStateMatches(
     }
 
     return load_state == expected_state;
+}
+
+bool ResidencyStateMatches(
+    const ResourceRegistry &registry,
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    ResourceResidencyState expected_state) {
+    ResourceResidencyState residency_state = ResourceResidencyState::Unloaded;
+    const ResourceResidencyStatus status = registry.GetResidencyState(
+        resource,
+        expected_type,
+        &residency_state);
+    if (status != ResourceResidencyStatus::Success) {
+        return false;
+    }
+
+    return residency_state == expected_state;
+}
+
+bool CommitLoad(
+    ResourceRegistry &registry,
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    ResourceLoadState load_state,
+    std::uint64_t commit_id,
+    std::uint64_t upload_id) {
+    const ResourceLoadCommitRequest request = LoadCommitRequest(
+        resource,
+        expected_type,
+        load_state,
+        commit_id,
+        upload_id);
+    return registry.CommitUploadCompletion(request) == ResourceLoadCommitStatus::Success;
 }
 
 bool SnapshotsMatch(const ResourceSnapshot& left, const ResourceSnapshot& right) {
@@ -962,6 +1030,562 @@ int ResourceLoadCommitSnapshotTracksCounters() {
 
     return 0;
 }
+
+int ResourceResidencyAdmitsUploadedSlotWithinBudget() {
+    ResourceRegistry registry;
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = 128U;
+    if (registry.SetResidencyBudget(budget) != ResourceResidencyStatus::Success) {
+        return Fail("residency budget setup failed");
+    }
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_resident");
+    if (!result.Succeeded()) {
+        return Fail("residency admission registration failed");
+    }
+
+    const bool committed = CommitLoad(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (!committed) {
+        return Fail("residency admission upload commit failed");
+    }
+
+    const ResourceResidencyRequest request = ResidencyRequest(result.handle, TYPE_TEXTURE);
+    const ResourceResidencyStatus status = registry.AdmitResident(request);
+    if (status != ResourceResidencyStatus::Success) {
+        return Fail("uploaded resource was not admitted as resident");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Evictable)) {
+        return Fail("admitted resource did not become evictable resident");
+    }
+
+    const ResourceResidencySnapshot snapshot = registry.ResidencySnapshot();
+    if (snapshot.resident_resource_count != 1U) {
+        return Fail("resident resource count was not tracked");
+    }
+
+    if (snapshot.resident_byte_count != UPLOAD_BYTE_COUNT) {
+        return Fail("resident byte count was not tracked");
+    }
+
+    if (snapshot.evictable_byte_count != UPLOAD_BYTE_COUNT) {
+        return Fail("evictable byte count was not tracked");
+    }
+
+    return 0;
+}
+
+int ResourceResidencyRejectsUnloadedWithoutMutation() {
+    ResourceRegistry registry;
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = 128U;
+    registry.SetResidencyBudget(budget);
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_unloaded_residency");
+    if (!result.Succeeded()) {
+        return Fail("unloaded residency fixture registration failed");
+    }
+
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const ResourceResidencySnapshot before_residency_snapshot = registry.ResidencySnapshot();
+    const ResourceResidencyRequest request = ResidencyRequest(result.handle, TYPE_TEXTURE);
+    const ResourceResidencyStatus status = registry.AdmitResident(request);
+    if (status != ResourceResidencyStatus::NotUploaded) {
+        return Fail("unloaded residency request returned wrong status");
+    }
+
+    if (!LoadStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Unloaded)) {
+        return Fail("unloaded residency rejection changed load state");
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    if (after_resource_snapshot.load_commit_count != before_resource_snapshot.load_commit_count) {
+        return Fail("unloaded residency rejection changed load commits");
+    }
+
+    const ResourceResidencySnapshot after_residency_snapshot = registry.ResidencySnapshot();
+    if (after_residency_snapshot.resident_resource_count != before_residency_snapshot.resident_resource_count) {
+        return Fail("unloaded residency rejection changed resident count");
+    }
+
+    return 0;
+}
+
+int ResourceResidencyRejectsFailedLoadWithoutMutation() {
+    ResourceRegistry registry;
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = 128U;
+    registry.SetResidencyBudget(budget);
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_failed_residency");
+    if (!result.Succeeded()) {
+        return Fail("failed residency fixture registration failed");
+    }
+
+    const bool committed = CommitLoad(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Failed,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (!committed) {
+        return Fail("failed residency fixture load commit failed");
+    }
+
+    const ResourceResidencyRequest request = ResidencyRequest(result.handle, TYPE_TEXTURE);
+    const ResourceResidencyStatus status = registry.AdmitResident(request);
+    if (status != ResourceResidencyStatus::FailedLoad) {
+        return Fail("failed load residency request returned wrong status");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Failed)) {
+        return Fail("failed load residency rejection changed state");
+    }
+
+    if (registry.ResidencySnapshot().resident_resource_count != 0U) {
+        return Fail("failed load residency rejection admitted resource");
+    }
+
+    return 0;
+}
+
+int ResourceResidencyRejectsTypeMismatchWithoutMutation() {
+    ResourceRegistry registry;
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = 128U;
+    registry.SetResidencyBudget(budget);
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_residency_type");
+    if (!result.Succeeded()) {
+        return Fail("type mismatch residency fixture registration failed");
+    }
+
+    const bool committed = CommitLoad(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (!committed) {
+        return Fail("type mismatch residency fixture load commit failed");
+    }
+
+    const ResourceResidencyRequest request = ResidencyRequest(result.handle, TYPE_AUDIO);
+    const ResourceResidencyStatus status = registry.AdmitResident(request);
+    if (status != ResourceResidencyStatus::TypeMismatch) {
+        return Fail("residency type mismatch returned wrong status");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Uploaded)) {
+        return Fail("residency type mismatch changed state");
+    }
+
+    if (registry.ResidencySnapshot().resident_resource_count != 0U) {
+        return Fail("residency type mismatch admitted resource");
+    }
+
+    return 0;
+}
+
+int ResourceResidencyRejectsDuplicateAdmission() {
+    ResourceRegistry registry;
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = 128U;
+    registry.SetResidencyBudget(budget);
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_residency_duplicate");
+    if (!result.Succeeded()) {
+        return Fail("duplicate residency fixture registration failed");
+    }
+
+    const bool committed = CommitLoad(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (!committed) {
+        return Fail("duplicate residency fixture load commit failed");
+    }
+
+    const ResourceResidencyRequest request = ResidencyRequest(result.handle, TYPE_TEXTURE);
+    if (registry.AdmitResident(request) != ResourceResidencyStatus::Success) {
+        return Fail("first residency admission failed");
+    }
+
+    const ResourceResidencySnapshot before_snapshot = registry.ResidencySnapshot();
+    const ResourceResidencyStatus status = registry.AdmitResident(request);
+    if (status != ResourceResidencyStatus::AlreadyResident) {
+        return Fail("duplicate residency admission returned wrong status");
+    }
+
+    const ResourceResidencySnapshot after_snapshot = registry.ResidencySnapshot();
+    if (after_snapshot.resident_resource_count != before_snapshot.resident_resource_count) {
+        return Fail("duplicate residency admission changed resident count");
+    }
+
+    if (after_snapshot.resident_byte_count != before_snapshot.resident_byte_count) {
+        return Fail("duplicate residency admission changed resident bytes");
+    }
+
+    return 0;
+}
+
+int ResourceResidencyRejectsBudgetOverflow() {
+    ResourceRegistry registry;
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = 32U;
+    registry.SetResidencyBudget(budget);
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_residency_budget");
+    if (!result.Succeeded()) {
+        return Fail("budget residency fixture registration failed");
+    }
+
+    const bool committed = CommitLoad(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (!committed) {
+        return Fail("budget residency fixture load commit failed");
+    }
+
+    const ResourceResidencyRequest request = ResidencyRequest(result.handle, TYPE_TEXTURE);
+    const ResourceResidencyStatus status = registry.AdmitResident(request);
+    if (status != ResourceResidencyStatus::BudgetExceeded) {
+        return Fail("residency budget overflow returned wrong status");
+    }
+
+    const ResourceResidencySnapshot snapshot = registry.ResidencySnapshot();
+    if (snapshot.budget_rejected_residency_count != 1U) {
+        return Fail("residency budget rejection was not counted");
+    }
+
+    if (snapshot.resident_byte_count != 0U) {
+        return Fail("residency budget overflow changed resident bytes");
+    }
+
+    return 0;
+}
+
+int ResourceResidencyPinUnpinTracksCounters() {
+    ResourceRegistry registry;
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = 128U;
+    registry.SetResidencyBudget(budget);
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_residency_pin");
+    if (!result.Succeeded()) {
+        return Fail("pin residency fixture registration failed");
+    }
+
+    const bool committed = CommitLoad(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (!committed) {
+        return Fail("pin residency fixture load commit failed");
+    }
+
+    const ResourceResidencyRequest request = ResidencyRequest(result.handle, TYPE_TEXTURE);
+    if (registry.AdmitResident(request) != ResourceResidencyStatus::Success) {
+        return Fail("pin residency admission failed");
+    }
+
+    if (registry.PinResident(request) != ResourceResidencyStatus::Success) {
+        return Fail("pin resident failed");
+    }
+
+    ResourceResidencySnapshot pinned_snapshot = registry.ResidencySnapshot();
+    if (pinned_snapshot.pinned_byte_count != UPLOAD_BYTE_COUNT) {
+        return Fail("pin resident did not track pinned bytes");
+    }
+
+    if (pinned_snapshot.evictable_byte_count != 0U) {
+        return Fail("pin resident left resource evictable");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Pinned)) {
+        return Fail("pin resident did not set pinned state");
+    }
+
+    if (registry.UnpinResident(request) != ResourceResidencyStatus::Success) {
+        return Fail("unpin resident failed");
+    }
+
+    const ResourceResidencySnapshot unpinned_snapshot = registry.ResidencySnapshot();
+    if (unpinned_snapshot.pinned_byte_count != 0U) {
+        return Fail("unpin resident left pinned bytes");
+    }
+
+    if (unpinned_snapshot.evictable_byte_count != UPLOAD_BYTE_COUNT) {
+        return Fail("unpin resident did not restore evictable bytes");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Evictable)) {
+        return Fail("unpin resident did not restore evictable state");
+    }
+
+    return 0;
+}
+
+int ResourceResidencySelectsEvictionCandidateInSlotOrder() {
+    ResourceRegistry registry;
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = 256U;
+    registry.SetResidencyBudget(budget);
+
+    const ResourceRegistrationResult first = Register(registry, TYPE_TEXTURE, "texture_candidate_first");
+    const ResourceRegistrationResult second = Register(registry, TYPE_TEXTURE, "texture_candidate_second");
+    const ResourceRegistrationResult third = Register(registry, TYPE_TEXTURE, "texture_candidate_third");
+    if (!first.Succeeded()) {
+        return Fail("first candidate registration failed");
+    }
+
+    if (!second.Succeeded()) {
+        return Fail("second candidate registration failed");
+    }
+
+    if (!third.Succeeded()) {
+        return Fail("third candidate registration failed");
+    }
+
+    const bool first_commit = CommitLoad(
+        registry,
+        first.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    const bool second_commit = CommitLoad(
+        registry,
+        second.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_TWO,
+        UPLOAD_TWO);
+    const bool third_commit = CommitLoad(
+        registry,
+        third.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_THREE,
+        UPLOAD_THREE);
+    if (!first_commit) {
+        return Fail("first candidate load commit failed");
+    }
+
+    if (!second_commit) {
+        return Fail("second candidate load commit failed");
+    }
+
+    if (!third_commit) {
+        return Fail("third candidate load commit failed");
+    }
+
+    const ResourceResidencyRequest first_request = ResidencyRequest(first.handle, TYPE_TEXTURE);
+    const ResourceResidencyRequest second_request = ResidencyRequest(second.handle, TYPE_TEXTURE);
+    const ResourceResidencyRequest third_request = ResidencyRequest(third.handle, TYPE_TEXTURE);
+    registry.AdmitResident(first_request);
+    registry.AdmitResident(second_request);
+    registry.AdmitResident(third_request);
+    registry.PinResident(first_request);
+    registry.Acquire(second.handle, TYPE_TEXTURE);
+
+    ResourceHandle candidate;
+    const ResourceResidencyStatus status = registry.SelectEvictionCandidate(&candidate);
+    if (status != ResourceResidencyStatus::Success) {
+        return Fail("eviction candidate selection failed");
+    }
+
+    if (candidate.slot != third.handle.slot) {
+        return Fail("eviction candidate did not use deterministic slot order");
+    }
+
+    if (candidate.generation != third.handle.generation) {
+        return Fail("eviction candidate returned wrong generation");
+    }
+
+    if (registry.ResidencySnapshot().eviction_candidate_count != 1U) {
+        return Fail("eviction candidate selection was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceResidencyReportsNoEvictionCandidate() {
+    ResourceRegistry registry;
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = 128U;
+    registry.SetResidencyBudget(budget);
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_no_candidate");
+    if (!result.Succeeded()) {
+        return Fail("no candidate fixture registration failed");
+    }
+
+    const bool committed = CommitLoad(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (!committed) {
+        return Fail("no candidate fixture load commit failed");
+    }
+
+    const ResourceResidencyRequest request = ResidencyRequest(result.handle, TYPE_TEXTURE);
+    registry.AdmitResident(request);
+    registry.PinResident(request);
+
+    ResourceHandle candidate;
+    const ResourceResidencyStatus status = registry.SelectEvictionCandidate(&candidate);
+    if (status != ResourceResidencyStatus::NoCandidate) {
+        return Fail("no candidate selection returned wrong status");
+    }
+
+    if (candidate.IsValid()) {
+        return Fail("no candidate selection returned a valid handle");
+    }
+
+    if (registry.ResidencySnapshot().eviction_candidate_miss_count != 1U) {
+        return Fail("no candidate selection was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceResidencyFailedValidationDoesNotMutateResourceState() {
+    ResourceRegistry registry;
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = 128U;
+    registry.SetResidencyBudget(budget);
+
+    const ResourceRegistrationResult dependency = Register(registry, TYPE_TEXTURE, "texture_validation_dependency");
+    const ResourceRegistrationResult dependent = Register(registry, TYPE_MATERIAL, "material_validation_dependent");
+    if (!dependency.Succeeded()) {
+        return Fail("validation dependency registration failed");
+    }
+
+    if (!dependent.Succeeded()) {
+        return Fail("validation dependent registration failed");
+    }
+
+    if (registry.AddDependency(dependent.handle, dependency.handle) != ResourceStatus::Success) {
+        return Fail("validation dependency edge failed");
+    }
+
+    const bool committed = CommitLoad(
+        registry,
+        dependency.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (!committed) {
+        return Fail("validation fixture load commit failed");
+    }
+
+    const ResourceResidencyRequest admit_request = ResidencyRequest(dependency.handle, TYPE_TEXTURE);
+    registry.AdmitResident(admit_request);
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const ResourceResidencySnapshot before_residency_snapshot = registry.ResidencySnapshot();
+
+    const ResourceResidencyRequest invalid_request = ResidencyRequest(ResourceHandle{}, TYPE_TEXTURE);
+    const ResourceResidencyStatus status = registry.AdmitResident(invalid_request);
+    if (status != ResourceResidencyStatus::InvalidHandle) {
+        return Fail("invalid residency request returned wrong status");
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count) {
+        return Fail("invalid residency request changed registered count");
+    }
+
+    if (after_resource_snapshot.dependency_edge_count != before_resource_snapshot.dependency_edge_count) {
+        return Fail("invalid residency request changed dependency edges");
+    }
+
+    if (after_resource_snapshot.load_commit_count != before_resource_snapshot.load_commit_count) {
+        return Fail("invalid residency request changed load commits");
+    }
+
+    const ResourceResidencySnapshot after_residency_snapshot = registry.ResidencySnapshot();
+    if (after_residency_snapshot.resident_resource_count != before_residency_snapshot.resident_resource_count) {
+        return Fail("invalid residency request changed resident count");
+    }
+
+    if (after_residency_snapshot.resident_byte_count != before_residency_snapshot.resident_byte_count) {
+        return Fail("invalid residency request changed resident bytes");
+    }
+
+    return 0;
+}
+
+int ResourceResidencyEvictsResourceOwnedStateOnly() {
+    ResourceRegistry registry;
+    ResourceResidencyBudgetDesc budget;
+    budget.byte_capacity = 128U;
+    registry.SetResidencyBudget(budget);
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_residency_evict");
+    if (!result.Succeeded()) {
+        return Fail("evict residency fixture registration failed");
+    }
+
+    const bool committed = CommitLoad(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        ResourceLoadState::Uploaded,
+        COMMIT_ONE,
+        UPLOAD_ONE);
+    if (!committed) {
+        return Fail("evict residency fixture load commit failed");
+    }
+
+    const ResourceResidencyRequest request = ResidencyRequest(result.handle, TYPE_TEXTURE);
+    registry.AdmitResident(request);
+    const ResourceResidencyStatus status = registry.EvictResident(request);
+    if (status != ResourceResidencyStatus::Success) {
+        return Fail("resource-owned eviction state failed");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Evicted)) {
+        return Fail("resource-owned eviction did not set evicted state");
+    }
+
+    if (!LoadStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Uploaded)) {
+        return Fail("resource-owned eviction changed load state");
+    }
+
+    const ResourceResidencySnapshot snapshot = registry.ResidencySnapshot();
+    if (snapshot.resident_byte_count != 0U) {
+        return Fail("resource-owned eviction left resident bytes");
+    }
+
+    if (snapshot.evicted_resource_count != 1U) {
+        return Fail("resource-owned eviction was not tracked");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -994,7 +1618,18 @@ int main(int argc, char** argv) {
         {TEST_LOAD_COMMIT_TYPE_MISMATCH, ResourceLoadCommitRejectsTypeMismatchWithoutMutation},
         {TEST_LOAD_COMMIT_DUPLICATE, ResourceLoadCommitRejectsDuplicateCommitId},
         {TEST_LOAD_COMMIT_INVALID_TRANSITION, ResourceLoadCommitRejectsInvalidTransition},
-        {TEST_LOAD_COMMIT_SNAPSHOT, ResourceLoadCommitSnapshotTracksCounters}};
+        {TEST_LOAD_COMMIT_SNAPSHOT, ResourceLoadCommitSnapshotTracksCounters},
+        {TEST_RESIDENCY_ADMIT, ResourceResidencyAdmitsUploadedSlotWithinBudget},
+        {TEST_RESIDENCY_UNLOADED, ResourceResidencyRejectsUnloadedWithoutMutation},
+        {TEST_RESIDENCY_FAILED_LOAD, ResourceResidencyRejectsFailedLoadWithoutMutation},
+        {TEST_RESIDENCY_TYPE_MISMATCH, ResourceResidencyRejectsTypeMismatchWithoutMutation},
+        {TEST_RESIDENCY_DUPLICATE, ResourceResidencyRejectsDuplicateAdmission},
+        {TEST_RESIDENCY_BUDGET, ResourceResidencyRejectsBudgetOverflow},
+        {TEST_RESIDENCY_PIN_UNPIN, ResourceResidencyPinUnpinTracksCounters},
+        {TEST_RESIDENCY_CANDIDATE, ResourceResidencySelectsEvictionCandidateInSlotOrder},
+        {TEST_RESIDENCY_NO_CANDIDATE, ResourceResidencyReportsNoEvictionCandidate},
+        {TEST_RESIDENCY_FAILED_VALIDATION, ResourceResidencyFailedValidationDoesNotMutateResourceState},
+        {TEST_RESIDENCY_EVICT, ResourceResidencyEvictsResourceOwnedStateOnly}};
 
     const std::string_view test_name(argv[1]);
     const auto test_entry = test_registry.find(test_name);
