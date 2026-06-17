@@ -192,6 +192,7 @@ Required test-tier direction:
 | P2-GATE-021 | Resource Upload Completion Commit | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_021_RESOURCE_UPLOAD_COMPLETION_COMMIT.md`; landed at `475c371`; bounded Resource/Streaming upload completion commit bridge over landed `ResourceUploadCompletion` and ResourceRegistry values only; default fast gate is `809/809` PASS; no cache ownership, package parser, asset decode/import, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-022 | Resource Residency Budget Policy | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_022_RESOURCE_RESIDENCY_BUDGET_POLICY.md`; landed at `d2f2059`; Resource-owned residency state, budget counters, pin/unpin, and eviction-candidate policy over landed upload commit state only; default fast gate is `820/820` PASS; no cache payload storage, package parser, asset decode/import, RHI resource destruction, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-023 | Resource Cache Payload Ownership | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_023_RESOURCE_CACHE_PAYLOAD_OWNERSHIP.md`; landed at `aca6170`; Resource-owned opaque cache payload byte storage, cache-slot records, readback, release, and deterministic counters over landed load commit and residency state only; default fast gate is `832/832` PASS; no package parser, asset decode/import, RHI resource destruction, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-024 | Resource Asset Decode Plan | L4-L5 | `PROPOSED` | Proposed | Gate doc: `docs/gates/P2_GATE_024_RESOURCE_ASSET_DECODE_PLAN.md`; proposed Resource-owned decode-plan records over landed cache payload bytes only; no File IO expansion, package parser, real image/audio/mesh decode, RHI upload, render graph, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
 
@@ -444,6 +445,19 @@ Required test-tier direction:
   scheduling, scene/UI/World/Script/Game Adapter behavior, native/backend
   leakage, reports, screenshots, logs, sleeps, manual proof, hardware-only
   proof, or original-game evidence.
+- P2-GATE-024 is proposed as a Resource asset decode-plan first slice over
+  landed Resource cache payload bytes. It may validate a fixed Resource-owned
+  test header, record decode-plan metadata, and expose deterministic counters
+  through ResourceRegistry value contracts only. The proposal baseline is
+  `2112056`; discovery is `windows-fast-gate` `832/832`, `Resource` `84`,
+  `Streaming` `36`, `Upload` `43`, `RHI` `127`, `RenderCore` `40`, `Material`
+  `26`, `PerformanceSmoke` `83`, `EvidenceOracle` `236`, default
+  `HardwareSmoke` `0`, and `windows-hardware-smoke` `7`. It does not authorize
+  File IO expansion, package parsing, real image/audio/mesh decode, texture or
+  audio import, RHI upload, render graph, RenderCore scheduling, material graph,
+  scene/UI/World/Script/Game Adapter behavior, native/backend leakage, reports,
+  screenshots, logs, sleeps, manual proof, hardware-only proof, or original-game
+  evidence.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -564,6 +578,8 @@ Required test-tier direction:
     RenderCore scheduling, scene/UI/World/Script/Game Adapter behavior,
     native/backend leakage, reports, screenshots, logs, sleeps, manual proof,
     hardware-only proof, or original-game evidence.
-21. Define the next separate Resource asset decode/import boundary before any
-    decode, import, file expansion, render graph, scene streaming, World, UI,
-    Script, or Game Adapter implementation task is created.
+21. Review P2-GATE-024 before any Resource asset decode-plan implementation
+    task is created. The proposed first slice is limited to Resource-owned
+    decode-plan value contracts over already cached bytes; it does not authorize
+    File IO expansion, package parsing, real codec/decode output, RHI upload,
+    render graph, scene streaming, World, UI, Script, or Game Adapter behavior.
