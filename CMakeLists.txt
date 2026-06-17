@@ -186,6 +186,16 @@ target_include_directories(YuPackage
 )
 target_link_libraries(YuPackage PUBLIC YuMemory YuResource)
 
+add_library(YuStreaming
+    Src/YuEngine/Streaming/Src/PackageResourceStagingQueue.cpp
+)
+yuengine_apply_compile_options(YuStreaming)
+target_include_directories(YuStreaming
+    PUBLIC
+        Src/YuEngine/Streaming/Include
+)
+target_link_libraries(YuStreaming PUBLIC YuMemory YuPackage YuResource YuFile)
+
 add_library(YuInput
     Src/YuEngine/Input/Src/InputBridge.cpp
     Src/YuEngine/Input/Src/InputBridgeWindows.cpp
@@ -1055,6 +1065,23 @@ yuengine_add_labeled_test(Package_LoadPlanCapacityOverflow_DoesNotMutate YuPacka
 yuengine_add_labeled_test(Package_DisabledDiagnosticsDoesNotChangeResults YuPackageTests Fast ModuleFixture Package)
 yuengine_add_labeled_test(Package_NoFileReadOriginalPackageOrGameAdapterDependency YuPackageTests Fast ModuleFixture Package EvidenceOracle)
 yuengine_add_labeled_test(Package_NoHiddenAllocation_UsesYuMemorySignal YuPackageTests Fast ModuleFixture Package PerformanceSmoke)
+
+add_executable(YuStreamingTests
+    Tests/Streaming/StreamingTests.cpp
+)
+yuengine_apply_compile_options(YuStreamingTests)
+target_link_libraries(YuStreamingTests PRIVATE YuStreaming)
+target_compile_definitions(YuStreamingTests PRIVATE YUENGINE_FILE_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fixtures/File")
+yuengine_add_labeled_test(Streaming_PackageResourceStaging_SubmitsAndCompletesFixtureRead YuStreamingTests Fast ModuleFixture Streaming Upload Resource Package File AsyncIO EvidenceOracle)
+yuengine_add_labeled_test(Streaming_PackageResourceStaging_RejectsInvalidResourceHandleWithoutMutation YuStreamingTests Fast ModuleFixture Streaming Upload Resource Package File AsyncIO EvidenceOracle)
+yuengine_add_labeled_test(Streaming_PackageResourceStaging_RejectsResourceTypeMismatchWithoutMutation YuStreamingTests Fast ModuleFixture Streaming Upload Resource Package File AsyncIO EvidenceOracle)
+yuengine_add_labeled_test(Streaming_PackageResourceStaging_RejectsByteRangeOverflowWithoutMutation YuStreamingTests Fast ModuleFixture Streaming Upload Resource Package File AsyncIO EvidenceOracle)
+yuengine_add_labeled_test(Streaming_PackageResourceStaging_ReportsMissingFileCompletion YuStreamingTests Fast ModuleFixture Streaming Upload Resource Package File AsyncIO EvidenceOracle)
+yuengine_add_labeled_test(Streaming_PackageResourceStaging_RejectsQueueOverflowWithoutMutation YuStreamingTests Fast ModuleFixture Streaming Upload Resource Package File AsyncIO PerformanceSmoke)
+yuengine_add_labeled_test(Streaming_PackageResourceStaging_ReportsCompletionOverflowWithoutDroppingPending YuStreamingTests Fast ModuleFixture Streaming Upload Resource Package File AsyncIO PerformanceSmoke EvidenceOracle)
+yuengine_add_labeled_test(Streaming_PackageResourceStaging_RejectsDuplicateRequestId YuStreamingTests Fast ModuleFixture Streaming Upload Resource Package File AsyncIO EvidenceOracle)
+yuengine_add_labeled_test(Streaming_PackageResourceStaging_SnapshotReportsBoundedCounters YuStreamingTests Fast ModuleFixture Streaming Upload Resource Package File AsyncIO PerformanceSmoke EvidenceOracle)
+yuengine_add_labeled_test(Streaming_PackageResourceStaging_NoUpperRuntimeDependency YuStreamingTests Fast ModuleFixture Streaming Upload Resource Package File AsyncIO EvidenceOracle)
 
 add_executable(YuInputTests
     Tests/Input/InputTests.cpp
