@@ -151,6 +151,16 @@ target_include_directories(YuResource
 )
 target_link_libraries(YuResource PUBLIC YuMemory)
 
+add_library(YuAudioResource
+    Src/YuEngine/AudioResource/Src/AudioResourcePcmPacketImportBridge.cpp
+)
+yuengine_apply_compile_options(YuAudioResource)
+target_include_directories(YuAudioResource
+    PUBLIC
+        Src/YuEngine/AudioResource/Include
+)
+target_link_libraries(YuAudioResource PUBLIC YuAudio YuResource)
+
 add_library(YuObject
     Src/YuEngine/Object/Src/ObjectRegistry.cpp
 )
@@ -1066,6 +1076,20 @@ yuengine_apply_compile_options(YuAudioHardwareSmokeTests)
 target_link_libraries(YuAudioHardwareSmokeTests PRIVATE YuAudio)
 yuengine_add_labeled_test(Audio_HardwareCallback_CompletesSubmittedBuffer YuAudioHardwareSmokeTests HardwareSmoke Audio Win32 XAudio2)
 set_tests_properties(Audio_HardwareCallback_CompletesSubmittedBuffer PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(YuAudioResourceTests
+    Tests/AudioResource/AudioResourceTests.cpp
+)
+yuengine_apply_compile_options(YuAudioResourceTests)
+target_link_libraries(YuAudioResourceTests PRIVATE YuAudioResource)
+yuengine_add_labeled_test(AudioResource_PcmPacketImportBridge_MapsResourceDecodeResult YuAudioResourceTests Fast ModuleFixture AudioResource Audio Resource PerformanceSmoke EvidenceOracle)
+yuengine_add_labeled_test(AudioResource_PcmPacketImportBridge_RejectsNonAudioDecodeResult YuAudioResourceTests Fast ModuleFixture AudioResource Audio Resource EvidenceOracle)
+yuengine_add_labeled_test(AudioResource_PcmPacketImportBridge_RejectsDecodedByteMismatch YuAudioResourceTests Fast ModuleFixture AudioResource Audio Resource EvidenceOracle)
+yuengine_add_labeled_test(AudioResource_PcmPacketImportBridge_RejectsInvalidPacketShape YuAudioResourceTests Fast ModuleFixture AudioResource Audio Resource EvidenceOracle)
+yuengine_add_labeled_test(AudioResource_PcmPacketImportBridge_RejectsDuplicateImportAndPacketIds YuAudioResourceTests Fast ModuleFixture AudioResource Audio Resource PerformanceSmoke EvidenceOracle)
+yuengine_add_labeled_test(AudioResource_PcmPacketImportBridge_RejectsCapacityOverflow YuAudioResourceTests Fast ModuleFixture AudioResource Audio Resource PerformanceSmoke EvidenceOracle)
+yuengine_add_labeled_test(AudioResource_PcmPacketImportBridge_QueryAndReleaseInvalidateHandle YuAudioResourceTests Fast ModuleFixture AudioResource Audio Resource PerformanceSmoke EvidenceOracle)
+yuengine_add_labeled_test(AudioResource_PcmPacketImportBridge_PublicContractsArePlainValues YuAudioResourceTests Fast ModuleFixture AudioResource Audio Resource EvidenceOracle)
 
 add_executable(YuResourceTests
     Tests/Resource/ResourceTests.cpp
