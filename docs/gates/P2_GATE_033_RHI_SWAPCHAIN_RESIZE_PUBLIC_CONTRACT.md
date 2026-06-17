@@ -1,15 +1,15 @@
 # P2-GATE-033: RHI Swapchain Resize Public Contract
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `PROPOSED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 琪露诺
-Reviewers: Split lower-engine review with hardware evidence lane
+Reviewers: Combined lower-engine review with hardware evidence lane
 Depends on: P2-GATE-007, P2-GATE-006, P2-GATE-005, P2-GATE-004, P2-GATE-027, ADR-0011
 Related decisions: ADR-0011
-Source baseline: `7204e9b`
-Proposal commit: `TBD`
-Approval evidence: Pending split proposal review.
+Source baseline: `9323358`
+Proposal commit: `4021327`
+Approval evidence: ENG-156H hardware evidence PASS and ENG-156R combined proposal review PASS.
 
 ## Layer
 
@@ -74,9 +74,10 @@ old backbuffer handle is invalid after a real resize.
 
 ## Approval Evidence
 
-Pending split proposal review.
+Approved after ENG-156H hardware evidence PASS and ENG-156R combined proposal
+review PASS.
 
-Required proposal review evidence:
+Review evidence:
 
 - proposal commit changes only `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and
   this gate doc;
