@@ -186,7 +186,7 @@ Required test-tier direction:
 | P2-GATE-018 | Material Binding Fixture | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_018_MATERIAL_BINDING_FIXTURE.md`; landed at `b5620a3`; bounded material binding fixture over public `YuRHI` and landed `YuRenderCore` fixture values only; no material graph, shader compiler/source tooling, Resource/Streaming ownership, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-019 | RenderCore Submission Batch Fixture | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_019_RENDERCORE_SUBMISSION_BATCH_FIXTURE.md`; landed at `f4c3f64`; bounded submission batch fixture over landed `YuRenderCore` fixture pass, material binding fixture, and public `YuRHI` values only; default fast gate is `784/784` PASS; no render graph, frame graph, pass sorting, command-list parallelism, Resource/Streaming ownership, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-020 | RenderCore Frame Packet Fixture | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_020_RENDERCORE_FRAME_PACKET_FIXTURE.md`; landed at `b275168`; bounded frame packet fixture over landed `YuRenderCore` submission batch fixture and public `YuRHI` values only; default fast gate is `793/793` PASS; no render graph, frame graph, renderer scheduling, pass sorting, command-list parallelism, Resource/Streaming ownership, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
-| P2-GATE-021 | Resource Upload Completion Commit | L4-L5 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_021_RESOURCE_UPLOAD_COMPLETION_COMMIT.md`; proposed bounded Resource/Streaming upload completion commit bridge over landed `ResourceUploadCompletion` and ResourceRegistry values only; no cache ownership, package parser, asset decode/import, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-021 | Resource Upload Completion Commit | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_021_RESOURCE_UPLOAD_COMPLETION_COMMIT.md`; approved bounded Resource/Streaming upload completion commit bridge over landed `ResourceUploadCompletion` and ResourceRegistry values only; no cache ownership, package parser, asset decode/import, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
 
@@ -403,15 +403,15 @@ Required test-tier direction:
   compiler/source tooling, scene/UI/World/Script/Game Adapter behavior,
   native/backend leakage, reports, screenshots, logs, sleeps, manual proof,
   hardware-only proof, or original-game evidence.
-- P2-GATE-021 is proposed as a bounded Resource/Streaming upload completion
-  commit bridge. It would consume landed `ResourceUploadCompletion` values and
-  commit only Resource-owned terminal upload state through ResourceRegistry
-  value contracts. The proposal baseline is `06184b9`; discovery is
-  `windows-fast-gate` `793/793`, `Resource` `45`, `Streaming` `27`, `Upload`
-  `27`, `RHI` `127`, `RenderCore` `40`, `Material` `26`,
-  `PerformanceSmoke` `67`, `EvidenceOracle` `197`, default `HardwareSmoke`
-  `0`, and `windows-hardware-smoke` `7`. Current decision is `NOT_APPROVED`.
-  This proposal does not authorize implementation, cache ownership, package
+- P2-GATE-021 is approved for first slice after ENG-133A2 metadata consistency
+  PASS, ENG-133B implementability PASS, and ENG-133C test-policy PASS. It may
+  consume landed `ResourceUploadCompletion` values and commit only
+  Resource-owned terminal upload state through ResourceRegistry value contracts.
+  The proposal baseline is `06184b9`; discovery is `windows-fast-gate`
+  `793/793`, `Resource` `45`, `Streaming` `27`, `Upload` `27`, `RHI` `127`,
+  `RenderCore` `40`, `Material` `26`, `PerformanceSmoke` `67`,
+  `EvidenceOracle` `197`, default `HardwareSmoke` `0`, and
+  `windows-hardware-smoke` `7`. It does not authorize cache ownership, package
   parsing, asset decode/import, render graph, frame graph, RenderCore
   scheduling, scene/UI/World/Script/Game Adapter behavior, native/backend
   leakage, reports, screenshots, logs, sleeps, manual proof, hardware-only
@@ -512,7 +512,10 @@ Required test-tier direction:
     frame graph, renderer scheduling, scene traversal, Resource/Streaming
     ownership, UI, World, Script, Game Adapter, reports, screenshots, logs,
     sleeps, manual proof, hardware-only proof, or native/backend leakage.
-18. Review P2-GATE-021 only as a Resource/Streaming upload completion commit
-    proposal. It is still `NOT_APPROVED`; do not create implementation work
-    until boundary, implementability, and test-policy reviews all pass and the
-    gate is explicitly approved for first slice.
+18. Implement the approved P2-GATE-021 first slice as a bounded
+    Resource/Streaming upload completion commit bridge over landed
+    `ResourceUploadCompletion` and ResourceRegistry value contracts. Do not
+    pull in cache ownership, package parsing, asset decode/import, render graph,
+    frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter
+    behavior, native/backend leakage, reports, screenshots, logs, sleeps,
+    manual proof, hardware-only proof, or original-game evidence.
