@@ -1,14 +1,15 @@
 # P2-GATE-029: Audio Resource PCM Packet Import Bridge
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: Split lower-engine review
 Depends on: P2-GATE-026, P2-GATE-028, P2-GATE-024, P2-GATE-004, ADR-0012, ADR-0013
 Related decisions: ADR-0012, ADR-0013
 Source baseline: `6ec53b3`
-Proposal commit: Pending review commit
+Proposal commit: `5e80cd7`
+Approval evidence: ENG-149A, ENG-149B, ENG-149C, ENG-149D, ENG-149E, and ENG-149F proposal review PASS.
 Discovery evidence: ENG-149R candidate scan PASS.
 
 ## Layer
@@ -73,20 +74,43 @@ Current discovery on the proposal baseline:
 - `ctest --preset windows-hardware-smoke -N -L Audio`: `1`;
 - `ctest --preset windows-hardware-smoke -N -L Resource`: `0`.
 
-## Proposal Evidence
+## Approval Evidence
 
-Proposed after ENG-149R read-only candidate scan PASS.
+Approved after ENG-149A, ENG-149B, ENG-149C, ENG-149D, ENG-149E, and
+ENG-149F proposal reviews PASS.
 
-Candidate evidence:
+Review evidence:
 
-- scan work was read-only and made no source, doc, commit, push, approval, or
+- proposal commit `5e80cd7982bbf31a5634af48514faac4a6e9f027` changes only
+  `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and this gate doc;
+- `git diff --check 5e80cd7^..5e80cd7` passed;
+- review work was read-only and made no source, doc, commit, push, approval, or
   implementation changes;
 - ENG-149R recommended an Audio Resource PCM Packet Import Bridge as the next
   lower-engine candidate after P2-GATE-028 landing;
 - the key boundary is bridge-owned cross-module mapping, not direct
   `YuResource` ownership in `YuAudio` core and not Audio packet lifecycle in
   Resource core;
-- proposal implementation must wait for this gate to be reviewed and approved.
+- boundary and quality review confirmed the proposal stays in bridge-owned
+  metadata mapping and has no boundary blocker;
+- implementability review confirmed current Resource decode-result and Audio
+  PCM packet public contracts are sufficient for an independent bridge-owned
+  first slice;
+- test-policy review confirmed deterministic focused bridge tests, label
+  discovery, CMakePresets no-drift, hardware-smoke isolation, and proof-shape
+  requirements are sufficient;
+- candidate-consistency review confirmed the proposal did not widen ENG-149R
+  into decode, storage, streaming, or gameplay scope;
+- public dependency and leak review confirmed no public dependency,
+  native/backend, Audio core, or Resource core leak blocker;
+- implementation preflight review confirmed the first slice can be implemented
+  as bridge-owned value contracts and bounded metadata without touching codec,
+  byte storage, streaming, or upper-engine systems;
+- proposal discovery counts matched the reviewed baseline: default fast gate
+  `893`, `Audio` `45`, `Resource` `111`, `Streaming` `36`, `Upload` `43`,
+  `RHI` `148`, `RenderCore` `54`, `Material` `40`, `Fast` `893`,
+  `PerformanceSmoke` `104`, `EvidenceOracle` `297`, default `HardwareSmoke`
+  `0`, and `windows-hardware-smoke` `7` with `Audio` `1` and `Resource` `0`.
 
 ## Owns
 

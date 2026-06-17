@@ -198,7 +198,7 @@ Required test-tier direction:
 | P2-GATE-026 | Resource Decode Result Import-Ready Record | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_026_RESOURCE_DECODE_RESULT_IMPORT_READY_RECORD.md`; landed at `5d28e38`; Resource-owned import-ready decoded-result metadata over landed decode-plan records only; default fast gate is `873/873` PASS; no real codec, decoded byte storage, RHI upload, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-027 | RHI Primitive Retirement Ledger | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_027_RHI_PRIMITIVE_RETIREMENT_LEDGER.md`; landed at `3776664`; RHI-owned primitive retirement request, ledger, drain, and deterministic handle invalidation evidence over landed RHI primitive handles only; default fast gate is `880/880` PASS; no Resource/Streaming/File/Package/RenderCore/material/scene/UI/World/Script/Game Adapter dependency, backend-native public leak, new renderer scheduling, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-028 | Audio PCM Sample Packet | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_028_AUDIO_PCM_SAMPLE_PACKET.md`; landed at `534d3ef`; Audio-owned PCM sample packet value contracts, bounded packet-slot metadata, query/release snapshots, and deterministic counters only; default fast gate is `893/893` PASS; no Resource/File/Package/codec/streaming dependency, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
-| P2-GATE-029 | Audio Resource PCM Packet Import Bridge | L4-L5 over L3 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_029_AUDIO_RESOURCE_PCM_PACKET_IMPORT_BRIDGE.md`; proposal for bridge-owned mapping from Resource decode-result metadata into Audio PCM packet request descriptors only; no Resource ownership inside Audio core, no Audio packet lifecycle inside Resource core, no decoded byte storage, real codec, streaming audio, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
+| P2-GATE-029 | Audio Resource PCM Packet Import Bridge | L4-L5 over L3 | `APPROVED_FOR_FIRST_SLICE` | Proposal approved | Gate doc: `docs/gates/P2_GATE_029_AUDIO_RESOURCE_PCM_PACKET_IMPORT_BRIDGE.md`; approved after ENG-149A/B/C/D/E/F review PASS; bridge-owned mapping from Resource decode-result metadata into Audio PCM packet request descriptors only; no Resource ownership inside Audio core, no Audio packet lifecycle inside Resource core, no decoded byte storage, real codec, streaming audio, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
 
 ## Current Active Gates
 
@@ -515,8 +515,8 @@ Required test-tier direction:
   `1`. It does not authorize real decode output, Resource-backed audio assets,
   BGM/SE business IDs, reports, screenshots, logs, sleeps, audible proof,
   manual proof, hardware-only proof, or original-game evidence.
-- P2-GATE-029 is proposed as an Audio Resource PCM packet import bridge first
-  slice after P2-GATE-026 and P2-GATE-028 landed. It may map active Resource
+- P2-GATE-029 is approved as an Audio Resource PCM packet import bridge first
+  slice after ENG-149A/B/C/D/E/F review PASS. It may map active Resource
   decode-result metadata with audio asset/result classes into Audio PCM packet
   request descriptors, record bounded bridge metadata, expose query/release
   snapshots, and prove deterministic counters without storing decoded bytes or
@@ -691,7 +691,7 @@ Acceleration note:
     business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports,
     screenshots, logs, sleeps, audible proof, manual proof, hardware-only proof,
     or original-game evidence.
-26. Review P2-GATE-029 as a proposed bridge-owned Audio Resource PCM packet
+26. Treat approved P2-GATE-029 as a bridge-owned Audio Resource PCM packet
     import boundary. It must stay in cross-module metadata mapping from landed
     Resource decode-result records to landed Audio PCM packet request
     descriptors, and must not authorize Resource ownership inside Audio core,
