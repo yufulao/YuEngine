@@ -85,7 +85,7 @@ Current lower-engine reality:
 - RHI has D3D11 visible-triangle, indexed static-mesh, and texture-sampling
   capture-byte proof through P2-GATE-009, P2-GATE-013, and P2-GATE-014. The
   lower-engine path now has Resource upload queue and RenderCore fixture pass
-  proof through P2-GATE-016 and P2-GATE-017. The next proposed lower-engine
+  proof through P2-GATE-016 and P2-GATE-017. The next approved lower-engine
   step is a bounded material binding fixture; the engine still has no material
   graph, scene traversal, report, visual proof, UI, World, or Game Adapter
   behavior.
@@ -178,7 +178,7 @@ Required test-tier direction:
 | P2-GATE-015 | Package Resource Staging Queue | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_015_PACKAGE_RESOURCE_STAGING_QUEUE.md`; landed at `6e29663`; bounded staging bridge over existing Package load-plan, Resource handle/type, and File async values; default fast gate is `736/736` PASS; no package parser, decode, Resource load completion, RHI upload, RenderCore, material, scene/UI/World/Script/Game Adapter, reports, screenshots, or manual proof |
 | P2-GATE-016 | Resource Upload Queue | L4-L5 over L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_016_RESOURCE_UPLOAD_QUEUE.md`; landed at `55af599`; bounded upload bridge from package/resource staging completions and Resource validation into public `YuRHI` buffer/texture update value APIs; default fast gate is `753/753` PASS; no Resource load-state mutation, decode, RenderCore, material, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-017 | RenderCore Fixture Pass | L5 over L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_017_RENDERCORE_FIXTURE_PASS.md`; landed at `13ccdb3`; bounded RenderCore fixture pass over public `YuRHI` command and resource-handle values only; no Resource/Streaming ownership, material system, scene/UI/World/Script/Game Adapter, shader compiler/source tooling, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
-| P2-GATE-018 | Material Binding Fixture | L5 over L3-L5 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_018_MATERIAL_BINDING_FIXTURE.md`; proposed bounded material binding fixture over public `YuRHI` and landed `YuRenderCore` fixture values only; no material graph, shader compiler/source tooling, Resource/Streaming ownership, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-018 | Material Binding Fixture | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice approved | Gate doc: `docs/gates/P2_GATE_018_MATERIAL_BINDING_FIXTURE.md`; approved bounded material binding fixture over public `YuRHI` and landed `YuRenderCore` fixture values only; no material graph, shader compiler/source tooling, Resource/Streaming ownership, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
 
@@ -364,15 +364,14 @@ Required test-tier direction:
   create or decode assets, compile shaders, expose native/backend types, define
   material or scene meaning, use reports/screenshots/logs/sleeps/manual proof,
   or involve UI, World, Script, or Game Adapter behavior.
-- P2-GATE-018 is proposed for material binding fixture review. The proposal is
-  limited to bounded value grouping for public `YuRHI` pipeline, texture,
-  sampler, fixed constant, and landed `YuRenderCore` fixture request values. It
-  must not add material graph behavior, shader compiler/source tooling,
-  Resource/Streaming ownership, asset decode/import, scene/UI/World/Script/Game
-  Adapter behavior, native/backend leakage, reports, screenshots, logs, sleeps,
-  manual proof, hardware-only proof, or original-game evidence. It is
-  `NOT_APPROVED`; no implementation task may exist before review PASS and an
-  explicit approval commit.
+- P2-GATE-018 is approved for first-slice material binding fixture work. The
+  approved slice is limited to bounded value grouping for public `YuRHI`
+  pipeline, texture, sampler, fixed constant, and landed `YuRenderCore` fixture
+  request values. It must not add material graph behavior, shader compiler/
+  source tooling, Resource/Streaming ownership, asset decode/import,
+  scene/UI/World/Script/Game Adapter behavior, native/backend leakage, reports,
+  screenshots, logs, sleeps, manual proof, hardware-only proof, or original-game
+  evidence.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -451,9 +450,9 @@ Required test-tier direction:
     asset decode/import, shader compiler/source tooling, material,
     scene/UI/World/Script/Game Adapter, reports, screenshots, logs, sleeps,
     manual proof, hardware-only proof, or native/backend leakage.
-15. Review P2-GATE-018 before any material binding fixture implementation task
-    is created. The proposed first slice may only group caller-owned public
-    `YuRHI` and landed `YuRenderCore` fixture values; it must not add material
-    graph behavior, shader compiler/source tooling, Resource/Streaming
-    ownership, scene/UI/World/Script/Game Adapter, reports, screenshots, logs,
-    sleeps, manual proof, hardware-only proof, or native/backend leakage.
+15. Keep P2-GATE-018 material binding fixture implementation limited to the
+    approved first slice. It may only group caller-owned public `YuRHI` and
+    landed `YuRenderCore` fixture values; it must not add material graph
+    behavior, shader compiler/source tooling, Resource/Streaming ownership,
+    scene/UI/World/Script/Game Adapter, reports, screenshots, logs, sleeps,
+    manual proof, hardware-only proof, or native/backend leakage.

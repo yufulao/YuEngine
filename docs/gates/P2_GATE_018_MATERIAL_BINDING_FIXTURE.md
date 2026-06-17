@@ -1,14 +1,14 @@
 # P2-GATE-018: Material Binding Fixture
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-008, P2-GATE-014, P2-GATE-016, P2-GATE-017
 Related decisions: ADR-0011
 Source baseline: `616106d`
-Proposal commit: pending
+Proposal commit: `d918813`
 
 ## Layer
 
