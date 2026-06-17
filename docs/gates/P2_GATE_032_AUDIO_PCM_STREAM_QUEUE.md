@@ -1,14 +1,15 @@
 # P2-GATE-032: Audio PCM Stream Queue
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 博丽灵梦
 Reviewers: Combined lower-engine review
 Depends on: P2-GATE-028, P2-GATE-002, P2-GATE-011, P2-GATE-004, ADR-0012
 Related decisions: ADR-0012
 Source baseline: `7204e9b`
-Proposal commit: Pending review commit
+Proposal commit: `9323358`
+Approval evidence: ENG-155R combined proposal review PASS.
 
 ## Layer
 
@@ -296,13 +297,12 @@ Rejected proof:
 - No default fast-gate real-device, package-file, decoded-asset, or
   original-game requirement.
 
-## Review Request
+## Approval Evidence
 
-Request `APPROVED_FOR_FIRST_SLICE` only after combined lower-engine review
-confirms the proposal stays in Audio-owned PCM stream queue metadata over
-landed Audio PCM sample packet contracts, remains implementable with current
-public value contracts, preserves deterministic fast-gate proof, and does not
-introduce Resource, AudioResource, decoded bytes, real codec, streaming,
-callback submission, BGM/SE, UI, World, Script, Game Adapter, report,
-screenshot, log, sleep, manual, audible, hardware-only, or original-game
-evidence.
+`ENG-155R` completed combined proposal review with PASS and found no proposal
+blocker. The first slice is approved only as Audio-owned PCM stream queue
+metadata over landed Audio PCM sample packet contracts, with deterministic
+fast-gate proof and no Resource, AudioResource, decoded bytes, real codec,
+streaming, callback submission, BGM/SE, UI, World, Script, Game Adapter,
+report, screenshot, log, sleep, manual, audible, hardware-only, or
+original-game evidence.
