@@ -228,6 +228,7 @@ RhiStatus NullRhiDevice::Initialize(const RhiDeviceDesc &desc) {
         false,
         false,
         false,
+        false,
         true,
         MAX_RHI_BUFFERS,
         MAX_RHI_TEXTURES,
@@ -289,6 +290,16 @@ RhiStatus NullRhiDevice::CreateColorTarget(const RhiColorTargetDesc &desc, RhiTe
 RhiStatus NullRhiDevice::GetSwapchainColorTarget(RhiTextureHandle &out_handle) const {
     out_handle = RhiTextureHandle{};
     return RhiStatus::UnsupportedBackend;
+}
+
+RhiStatus NullRhiDevice::ResizeSwapchain(
+    const RhiSwapchainResizeRequest &request,
+    RhiSwapchainResizeResult &out_result) {
+    static_cast<void>(request);
+    out_result = RhiSwapchainResizeResult{};
+    out_result.status = RhiStatus::UnsupportedBackend;
+    out_result.snapshot = snapshot_.swapchain;
+    return RecordFailure(RhiStatus::UnsupportedBackend);
 }
 
 RhiStatus NullRhiDevice::DestroyTarget(RhiTextureHandle handle) {

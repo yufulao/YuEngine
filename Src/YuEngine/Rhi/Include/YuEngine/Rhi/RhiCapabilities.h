@@ -20,6 +20,7 @@ struct RhiCapabilities final {
     bool supports_capture = false;
     bool supports_native_surface = false;
     bool supports_swapchain = false;
+    bool supports_swapchain_resize = false;
     bool supports_hardware_device = false;
     bool supports_resource_primitives = false;
     std::size_t buffer_capacity = 0U;

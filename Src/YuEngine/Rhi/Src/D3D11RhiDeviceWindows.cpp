@@ -207,6 +207,7 @@ RhiStatus D3D11RhiDevice::Initialize(const RhiDeviceDesc &desc) {
         true,
         true,
         true,
+        true,
         MAX_RHI_BUFFERS,
         MAX_RHI_TEXTURES,
         MAX_RHI_SAMPLERS,
@@ -248,6 +249,85 @@ RhiStatus D3D11RhiDevice::GetSwapchainColorTarget(RhiTextureHandle &out_handle) 
     }
 
     out_handle = swapchain_target_;
+    return RhiStatus::Success;
+}
+
+RhiStatus D3D11RhiDevice::ResizeSwapchain(
+    const RhiSwapchainResizeRequest &request,
+    RhiSwapchainResizeResult &out_result) {
+    out_result = RhiSwapchainResizeResult{};
+    if (!initialized_) {
+        out_result.status = RhiStatus::InvalidLifecycle;
+        out_result.snapshot = snapshot_.swapchain;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    out_result.previous_extent = snapshot_.swapchain.extent;
+    out_result.previous_color_target = swapchain_target_;
+    out_result.snapshot = snapshot_.swapchain;
+    if (!IsSwapchainResizeRequestValid(request)) {
+        ++snapshot_.swapchain.rejected_resize_count;
+        out_result.status = RhiStatus::InvalidDescriptor;
+        out_result.snapshot = snapshot_.swapchain;
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    if (request.extent.width == swapchain_desc_.extent.width &&
+        request.extent.height == swapchain_desc_.extent.height) {
+        out_result.status = RhiStatus::Success;
+        out_result.snapshot = snapshot_.swapchain;
+        return RhiStatus::Success;
+    }
+
+    context_->OMSetRenderTargets(0U, nullptr, nullptr);
+    context_->Flush();
+    ReleaseBackbufferObjects();
+
+    const UINT width = static_cast<UINT>(request.extent.width);
+    const UINT height = static_cast<UINT>(request.extent.height);
+    const HRESULT resize_result = swapchain_->ResizeBuffers(0U, width, height, DXGI_FORMAT_UNKNOWN, 0U);
+    if (FAILED(resize_result)) {
+        ++snapshot_.swapchain.rejected_resize_count;
+        out_result.status = TranslateNativeFailure(resize_result);
+        out_result.snapshot = snapshot_.swapchain;
+        return RecordFailure(out_result.status);
+    }
+
+    swapchain_desc_.extent = request.extent;
+    const RhiStatus backbuffer_status = CreateBackbufferObjects();
+    if (backbuffer_status != RhiStatus::Success) {
+        ++snapshot_.swapchain.rejected_resize_count;
+        snapshot_.swapchain.valid = false;
+        out_result.status = backbuffer_status;
+        out_result.snapshot = snapshot_.swapchain;
+        return RecordFailure(backbuffer_status);
+    }
+
+    const RhiStatus capture_status = CreateCaptureTexture();
+    if (capture_status != RhiStatus::Success) {
+        ++snapshot_.swapchain.rejected_resize_count;
+        snapshot_.swapchain.valid = false;
+        out_result.status = capture_status;
+        out_result.snapshot = snapshot_.swapchain;
+        return RecordFailure(capture_status);
+    }
+
+    ++swapchain_target_.generation;
+    if (swapchain_target_.generation == INVALID_GENERATION) {
+        ++swapchain_target_.generation;
+    }
+
+    snapshot_.swapchain.extent = request.extent;
+    snapshot_.swapchain.color_target = swapchain_target_;
+    snapshot_.swapchain.valid = true;
+    snapshot_.swapchain.presented = false;
+    ++snapshot_.swapchain.resize_count;
+    submitted_ = false;
+    presented_ = false;
+
+    out_result.status = RhiStatus::Success;
+    out_result.resized = true;
+    out_result.snapshot = snapshot_.swapchain;
     return RhiStatus::Success;
 }
 
@@ -1270,21 +1350,7 @@ RhiDeviceSnapshot D3D11RhiDevice::Snapshot() const {
 
 void D3D11RhiDevice::ReleaseResources() {
     ReleasePrimitiveResources();
-
-    if (capture_texture_ != nullptr) {
-        capture_texture_->Release();
-        capture_texture_ = nullptr;
-    }
-
-    if (render_target_view_ != nullptr) {
-        render_target_view_->Release();
-        render_target_view_ = nullptr;
-    }
-
-    if (backbuffer_ != nullptr) {
-        backbuffer_->Release();
-        backbuffer_ = nullptr;
-    }
+    ReleaseBackbufferObjects();
 
     if (swapchain_ != nullptr) {
         swapchain_->Release();
@@ -1500,6 +1566,8 @@ RhiStatus D3D11RhiDevice::CreateBackbufferObjects() {
 
     const HRESULT view_result = device_->CreateRenderTargetView(backbuffer_, nullptr, &render_target_view_);
     if (FAILED(view_result)) {
+        backbuffer_->Release();
+        backbuffer_ = nullptr;
         return TranslateNativeFailure(view_result);
     }
 
@@ -1541,6 +1609,23 @@ RhiStatus D3D11RhiDevice::CopyBackbufferToCaptureTexture() {
     return RhiStatus::Success;
 }
 
+void D3D11RhiDevice::ReleaseBackbufferObjects() {
+    if (capture_texture_ != nullptr) {
+        capture_texture_->Release();
+        capture_texture_ = nullptr;
+    }
+
+    if (render_target_view_ != nullptr) {
+        render_target_view_->Release();
+        render_target_view_ = nullptr;
+    }
+
+    if (backbuffer_ != nullptr) {
+        backbuffer_->Release();
+        backbuffer_ = nullptr;
+    }
+}
+
 RhiStatus D3D11RhiDevice::TranslateNativeFailure(HRESULT native_result) const {
     if (native_result == DXGI_ERROR_DEVICE_REMOVED || native_result == DXGI_ERROR_DEVICE_RESET) {
         return RhiStatus::DeviceLost;
@@ -1563,6 +1648,12 @@ bool D3D11RhiDevice::IsSwapchainTarget(RhiTextureHandle handle) const {
     }
 
     return handle.generation == swapchain_target_.generation;
+}
+
+bool D3D11RhiDevice::IsSwapchainResizeRequestValid(const RhiSwapchainResizeRequest &request) const {
+    RhiSwapchainDesc desc = swapchain_desc_;
+    desc.extent = request.extent;
+    return IsSwapchainDescValid(desc);
 }
 
 bool D3D11RhiDevice::IsBufferHandleValid(RhiBufferHandle handle) const {

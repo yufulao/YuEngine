@@ -48,6 +48,9 @@ public:
     RhiStatus Initialize(const RhiDeviceDesc &desc) override;
     RhiStatus CreateColorTarget(const RhiColorTargetDesc &desc, RhiTextureHandle &out_handle) override;
     RhiStatus GetSwapchainColorTarget(RhiTextureHandle &out_handle) const override;
+    RhiStatus ResizeSwapchain(
+        const RhiSwapchainResizeRequest &request,
+        RhiSwapchainResizeResult &out_result) override;
     RhiStatus DestroyTarget(RhiTextureHandle handle) override;
     RhiStatus RecordClear(RhiCommandList &command_list, RhiTextureHandle handle, RhiColor color) override;
     RhiStatus RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) override;
@@ -150,8 +153,10 @@ private:
     RhiStatus CreateBackbufferObjects();
     RhiStatus CreateCaptureTexture();
     RhiStatus CopyBackbufferToCaptureTexture();
+    void ReleaseBackbufferObjects();
     RhiStatus TranslateNativeFailure(HRESULT native_result) const;
     bool IsSwapchainTarget(RhiTextureHandle handle) const;
+    bool IsSwapchainResizeRequestValid(const RhiSwapchainResizeRequest &request) const;
     bool IsBufferHandleValid(RhiBufferHandle handle) const;
     bool IsTextureHandleValid(RhiTextureHandle handle) const;
     bool IsSamplerHandleValid(RhiSamplerHandle handle) const;

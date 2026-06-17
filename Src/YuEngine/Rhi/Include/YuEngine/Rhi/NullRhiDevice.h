@@ -47,6 +47,15 @@ public:
      */
     RhiStatus GetSwapchainColorTarget(RhiTextureHandle &out_handle) const override;
     /**
+     * @comment Rejects swapchain resize for the null backend.
+     * @param request Input resize request.
+     * @param out_result Output resize result.
+     * @return Explicit operation status.
+     */
+    RhiStatus ResizeSwapchain(
+        const RhiSwapchainResizeRequest &request,
+        RhiSwapchainResizeResult &out_result) override;
+    /**
      * @comment Destroys target.
      * @param handle Input handle.
      * @return Explicit operation status.

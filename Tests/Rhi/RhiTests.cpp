@@ -15,6 +15,7 @@
 #include "YuEngine/Rhi/RhiBufferDesc.h"
 #include "YuEngine/Rhi/RhiBufferHandle.h"
 #include "YuEngine/Rhi/RhiBufferUsage.h"
+#include "YuEngine/Rhi/RhiCapabilities.h"
 #include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
@@ -41,6 +42,9 @@
 #include "YuEngine/Rhi/RhiShaderModuleHandle.h"
 #include "YuEngine/Rhi/RhiShaderStage.h"
 #include "YuEngine/Rhi/RhiSwapchainDesc.h"
+#include "YuEngine/Rhi/RhiSwapchainResizeRequest.h"
+#include "YuEngine/Rhi/RhiSwapchainResizeResult.h"
+#include "YuEngine/Rhi/RhiSwapchainSnapshot.h"
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
 
@@ -51,6 +55,7 @@ using RhiBufferDesc = yuengine::rhi::RhiBufferDesc;
 using RhiBufferHandle = yuengine::rhi::RhiBufferHandle;
 using yuengine::rhi::RhiBufferUsage;
 using RhiCaptureResult = yuengine::rhi::RhiCaptureResult;
+using RhiCapabilities = yuengine::rhi::RhiCapabilities;
 using RhiColor = yuengine::rhi::RhiColor;
 using RhiColorTargetDesc = yuengine::rhi::RhiColorTargetDesc;
 using RhiCommandList = yuengine::rhi::RhiCommandList;
@@ -86,6 +91,9 @@ using RhiShaderModuleHandle = yuengine::rhi::RhiShaderModuleHandle;
 using yuengine::rhi::RhiShaderStage;
 using yuengine::rhi::RhiStatus;
 using RhiSwapchainDesc = yuengine::rhi::RhiSwapchainDesc;
+using RhiSwapchainResizeRequest = yuengine::rhi::RhiSwapchainResizeRequest;
+using RhiSwapchainResizeResult = yuengine::rhi::RhiSwapchainResizeResult;
+using RhiSwapchainSnapshot = yuengine::rhi::RhiSwapchainSnapshot;
 using RhiTextureDesc = yuengine::rhi::RhiTextureDesc;
 using RhiTextureHandle = yuengine::rhi::RhiTextureHandle;
 using RhiVertexBufferView = yuengine::rhi::RhiVertexBufferView;
@@ -146,6 +154,8 @@ constexpr const char* TEST_FACTORY_RAW_STORAGE_TOO_SMALL = "RHI_Factory_RawStora
 constexpr const char* TEST_FACTORY_D3D11_INVALID_SURFACE = "RHI_Factory_D3D11InvalidSurfaceFailsBeforeHardware";
 constexpr const char* TEST_SWAPCHAIN_DESC_DEFAULT = "RHI_SwapchainDesc_DefaultIsBoundedPlainValue";
 constexpr const char* TEST_NULL_SWAPCHAIN_QUERY = "RHI_NullBackend_SwapchainQueryReturnsUnsupported";
+constexpr const char *TEST_SWAPCHAIN_RESIZE_DEFAULTS = "RHI_SwapchainResize_DefaultContractsAreExplicit";
+constexpr const char *TEST_NULL_SWAPCHAIN_RESIZE = "RHI_NullBackend_SwapchainResizeReturnsUnsupportedWithoutTarget";
 constexpr const char* TEST_PRIMITIVE_CAPABILITIES = "RHI_PrimitiveCapabilities_ReportBoundedCapacities";
 constexpr const char* TEST_CREATE_BUFFER = "RHI_CreateBuffer_ReturnsGenerationHandleAndSnapshot";
 constexpr const char* TEST_UPDATE_BUFFER = "RHI_UpdateBuffer_SignalsFenceAndRecordsBytes";
@@ -1209,6 +1219,99 @@ int RhiNullBackendSwapchainQueryReturnsUnsupported() {
 
     if (handle.generation != 0U) {
         return Fail("null swapchain query did not clear handle generation");
+    }
+
+    return 0;
+}
+
+int RhiSwapchainResizeDefaultContractsAreExplicit() {
+    RhiSwapchainResizeRequest request{};
+    if (request.extent.width != 0U) {
+        return Fail("default resize request width was nonzero");
+    }
+
+    if (request.extent.height != 0U) {
+        return Fail("default resize request height was nonzero");
+    }
+
+    RhiSwapchainResizeResult result{};
+    if (result.status != RhiStatus::InvalidDescriptor) {
+        return Fail("default resize result status was not invalid descriptor");
+    }
+
+    if (result.previous_extent.width != 0U || result.previous_extent.height != 0U) {
+        return Fail("default resize result previous extent was nonzero");
+    }
+
+    if (result.previous_color_target.slot != 0U || result.previous_color_target.generation != 0U) {
+        return Fail("default resize result previous handle was nonzero");
+    }
+
+    if (result.snapshot.valid) {
+        return Fail("default resize result snapshot was valid");
+    }
+
+    if (result.resized) {
+        return Fail("default resize result resized flag was true");
+    }
+
+    RhiSwapchainSnapshot snapshot{};
+    if (snapshot.resize_count != 0U) {
+        return Fail("default swapchain resize count was nonzero");
+    }
+
+    if (snapshot.rejected_resize_count != 0U) {
+        return Fail("default swapchain rejected resize count was nonzero");
+    }
+
+    RhiCapabilities capabilities{};
+    if (capabilities.supports_swapchain_resize) {
+        return Fail("default capabilities unexpectedly support swapchain resize");
+    }
+
+    return 0;
+}
+
+int RhiNullBackendSwapchainResizeReturnsUnsupportedWithoutTarget() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    const auto before_snapshot = device.Snapshot();
+
+    RhiSwapchainResizeRequest request{};
+    request.extent = {2U, 2U};
+    RhiSwapchainResizeResult result{};
+    const RhiStatus status = device_interface.ResizeSwapchain(request, result);
+    if (status != RhiStatus::UnsupportedBackend) {
+        return Fail("null swapchain resize did not return unsupported");
+    }
+
+    if (result.status != RhiStatus::UnsupportedBackend) {
+        return Fail("null swapchain resize result status was not unsupported");
+    }
+
+    if (result.resized) {
+        return Fail("null swapchain resize result reported resized");
+    }
+
+    if (result.previous_color_target.slot != 0U || result.previous_color_target.generation != 0U) {
+        return Fail("null swapchain resize wrote previous target");
+    }
+
+    if (result.snapshot.valid) {
+        return Fail("null swapchain resize returned a valid snapshot");
+    }
+
+    if (device.Capabilities().supports_swapchain_resize) {
+        return Fail("null capabilities unexpectedly support swapchain resize");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.failed_operation_count != before_snapshot.failed_operation_count + 1U) {
+        return Fail("null swapchain resize failure was not tracked");
+    }
+
+    if (after_snapshot.swapchain.valid) {
+        return Fail("null swapchain resize made swapchain valid");
     }
 
     return 0;
@@ -3880,6 +3983,8 @@ int main(int argc, char** argv) {
         {TEST_FACTORY_D3D11_INVALID_SURFACE, RhiFactoryD3D11InvalidSurfaceFailsBeforeHardware},
         {TEST_SWAPCHAIN_DESC_DEFAULT, RhiSwapchainDescDefaultIsBoundedPlainValue},
         {TEST_NULL_SWAPCHAIN_QUERY, RhiNullBackendSwapchainQueryReturnsUnsupported},
+        {TEST_SWAPCHAIN_RESIZE_DEFAULTS, RhiSwapchainResizeDefaultContractsAreExplicit},
+        {TEST_NULL_SWAPCHAIN_RESIZE, RhiNullBackendSwapchainResizeReturnsUnsupportedWithoutTarget},
         {TEST_CREATE_TARGET, RhiCreateTargetReturnsGenerationHandle},
         {TEST_CREATE_COLOR_TARGET, RhiCreateTargetReturnsGenerationHandle},
         {TEST_INVALID_DESCRIPTOR, RhiCreateColorTargetRejectsInvalidDescriptor},

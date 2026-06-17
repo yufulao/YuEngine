@@ -26,6 +26,7 @@
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
 #include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
+#include "YuEngine/Rhi/RhiExtent2D.h"
 #include "YuEngine/Rhi/RhiFenceHandle.h"
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiIndexFormat.h"
@@ -42,6 +43,8 @@
 #include "YuEngine/Rhi/RhiShaderModuleHandle.h"
 #include "YuEngine/Rhi/RhiShaderStage.h"
 #include "YuEngine/Rhi/RhiStatus.h"
+#include "YuEngine/Rhi/RhiSwapchainResizeRequest.h"
+#include "YuEngine/Rhi/RhiSwapchainResizeResult.h"
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
@@ -65,6 +68,7 @@ using yuengine::rhi::RhiDeviceDesc;
 using yuengine::rhi::RhiDeviceFactory;
 using yuengine::rhi::RhiDrawDesc;
 using yuengine::rhi::RhiDrawIndexedDesc;
+using yuengine::rhi::RhiExtent2D;
 using yuengine::rhi::RhiFenceHandle;
 using yuengine::rhi::RhiFormat;
 using yuengine::rhi::RhiIndexBufferView;
@@ -84,6 +88,8 @@ using yuengine::rhi::RhiShaderModuleDesc;
 using yuengine::rhi::RhiShaderModuleHandle;
 using yuengine::rhi::RhiShaderStage;
 using yuengine::rhi::RhiStatus;
+using yuengine::rhi::RhiSwapchainResizeRequest;
+using yuengine::rhi::RhiSwapchainResizeResult;
 using yuengine::rhi::RhiTextureDesc;
 using yuengine::rhi::RhiTextureHandle;
 using yuengine::rhi::RhiVertexBufferView;
@@ -94,7 +100,15 @@ constexpr const char *TEST_D3D11_PRIMITIVE_RESOURCE_PIPELINE = "RHI_D3D11Hardwar
 constexpr const char *TEST_D3D11_VISIBLE_TRIANGLE = "RHI_D3D11Hardware_VisibleTriangleCaptureBytes";
 constexpr const char *TEST_D3D11_INDEXED_STATIC_MESH = "RHI_D3D11Hardware_IndexedStaticMeshCaptureBytes";
 constexpr const char *TEST_D3D11_TEXTURE_SAMPLING = "RHI_D3D11Hardware_TextureSamplingCaptureBytes";
+constexpr const char *TEST_D3D11_SWAPCHAIN_RESIZE_GENERATION =
+    "RHI_D3D11Hardware_SwapchainResizeInvalidatesOldBackbufferGeneration";
+constexpr const char *TEST_D3D11_SWAPCHAIN_RESIZE_SAME_EXTENT =
+    "RHI_D3D11Hardware_SwapchainResizeSameExtentNoOpKeepsGeneration";
+constexpr const char *TEST_D3D11_SWAPCHAIN_RESIZE_REJECT =
+    "RHI_D3D11Hardware_SwapchainResizeRejectsInvalidExtent";
 constexpr std::uint32_t SMOKE_EXTENT = 4U;
+constexpr std::uint32_t RESIZED_WIDTH = 2U;
+constexpr std::uint32_t RESIZED_HEIGHT = 3U;
 constexpr int SKIP_RETURN_CODE = 77;
 constexpr std::uint32_t TRIANGLE_VERTEX_COUNT = 3U;
 constexpr std::uint32_t TRIANGLE_INDEX_COUNT = 3U;
@@ -478,6 +492,28 @@ RhiNativeSurfaceDesc ConvertSurface(const PlatformNativeSurface &surface) {
     return RhiNativeSurfaceDesc{surface.window_value, surface.instance_value, surface.valid};
 }
 
+RhiDeviceCreateResult CreateD3D11DeviceForWindow(
+    WindowsPlatformWindow &window,
+    std::vector<std::byte> &storage,
+    const RhiExtent2D &extent) {
+    const std::size_t storage_size = RhiDeviceFactory::RequiredDeviceStorageSize(RhiBackendKind::D3D11);
+    if (storage_size == 0U) {
+        return RhiDeviceCreateResult{RhiStatus::UnsupportedBackend, nullptr, {}};
+    }
+
+    storage.resize(storage_size);
+    RhiDeviceDesc device_desc{};
+    device_desc.backend_kind = RhiBackendKind::D3D11;
+    device_desc.native_surface = ConvertSurface(window.GetNativeSurface());
+    device_desc.requires_native_surface = true;
+    device_desc.requires_swapchain = true;
+    device_desc.swapchain.extent = extent;
+    device_desc.command_list_capacity = MAX_COMMANDS;
+
+    const std::span<std::byte> storage_span(storage.data(), storage.size());
+    return RhiDeviceFactory::CreateDevice(device_desc, storage_span);
+}
+
 bool BytesMatchColor(const std::vector<std::uint8_t> &bytes, RhiColor color) {
     for (std::size_t index = 0U; index < bytes.size(); index += RGBA8_BYTES_PER_PIXEL) {
         if (bytes[index] != color.r) {
@@ -770,6 +806,302 @@ int RunD3D11ClearPresentCapture() {
     const RhiStatus destroy_status = RhiDeviceFactory::DestroyDevice(create_result.device);
     if (destroy_status != RhiStatus::Success) {
         return Fail("d3d11 device destroy failed");
+    }
+
+    return 0;
+}
+
+int RunD3D11SwapchainResizeInvalidatesOldBackbufferGeneration() {
+    WindowsPlatformWindow window;
+    PlatformWindowDesc window_desc{};
+    window_desc.title = "YuEngine D3D11 Swapchain Resize Smoke";
+    window_desc.client_width = SMOKE_EXTENT;
+    window_desc.client_height = SMOKE_EXTENT;
+    window_desc.visible = false;
+
+    const PlatformWindowStatus window_status = window.Create(window_desc);
+    if (window_status != PlatformWindowStatus::Success) {
+        return Skip("d3d11 swapchain resize smoke skipped because a native window could not be created");
+    }
+
+    const RhiExtent2D initial_extent{SMOKE_EXTENT, SMOKE_EXTENT};
+    std::vector<std::byte> storage{};
+    const RhiDeviceCreateResult create_result = CreateD3D11DeviceForWindow(window, storage, initial_extent);
+    if (create_result.status == RhiStatus::UnsupportedBackend) {
+        return Skip("d3d11 swapchain resize smoke skipped because the backend is not compiled");
+    }
+
+    if (create_result.status == RhiStatus::MissingHardware) {
+        return Skip("d3d11 swapchain resize smoke skipped because a hardware D3D11 device is unavailable");
+    }
+
+    if (create_result.status != RhiStatus::Success) {
+        return Fail("d3d11 swapchain resize device creation failed");
+    }
+
+    if (create_result.device == nullptr) {
+        return Fail("d3d11 swapchain resize device creation returned null device");
+    }
+
+    if (!create_result.capabilities.supports_swapchain_resize) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 capabilities did not report swapchain resize");
+    }
+
+    IRhiDevice &device = *create_result.device;
+    RhiTextureHandle old_target{};
+    RhiStatus status = device.GetSwapchainColorTarget(old_target);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 swapchain resize old target query failed");
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    RhiSwapchainResizeRequest request{};
+    request.extent = {RESIZED_WIDTH, RESIZED_HEIGHT};
+    RhiSwapchainResizeResult result{};
+    status = device.ResizeSwapchain(request, result);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 swapchain resize failed");
+    }
+
+    if (!result.resized) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 swapchain resize did not report resized");
+    }
+
+    if (result.previous_extent.width != SMOKE_EXTENT || result.previous_extent.height != SMOKE_EXTENT) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 swapchain resize previous extent was wrong");
+    }
+
+    if (result.previous_color_target.slot != old_target.slot) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 swapchain resize previous target slot was wrong");
+    }
+
+    if (result.previous_color_target.generation != old_target.generation) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 swapchain resize previous target generation was wrong");
+    }
+
+    if (result.snapshot.resize_count != before_snapshot.swapchain.resize_count + 1U) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 swapchain resize count was not tracked");
+    }
+
+    if (result.snapshot.extent.width != RESIZED_WIDTH || result.snapshot.extent.height != RESIZED_HEIGHT) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 swapchain resize snapshot extent was wrong");
+    }
+
+    RhiTextureHandle new_target{};
+    status = device.GetSwapchainColorTarget(new_target);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 swapchain resize new target query failed");
+    }
+
+    if (new_target.generation == old_target.generation) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 swapchain resize did not invalidate old generation");
+    }
+
+    std::vector<std::uint8_t> capture(RESIZED_WIDTH * RESIZED_HEIGHT * RGBA8_BYTES_PER_PIXEL);
+    const RhiColor stale_clear_color{1U, 2U, 3U, 255U};
+    status = ClearPresentCapture(device, old_target, stale_clear_color, capture);
+    if (status != RhiStatus::InvalidHandle) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 swapchain resize accepted stale target");
+    }
+
+    const RhiColor clear_color{8U, 64U, 192U, 255U};
+    status = ClearPresentCapture(device, new_target, clear_color, capture);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 resized swapchain clear present capture failed");
+    }
+
+    if (!BytesMatchColor(capture, clear_color)) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 resized swapchain capture bytes did not match clear color");
+    }
+
+    const RhiStatus destroy_status = RhiDeviceFactory::DestroyDevice(create_result.device);
+    if (destroy_status != RhiStatus::Success) {
+        return Fail("d3d11 swapchain resize device destroy failed");
+    }
+
+    return 0;
+}
+
+int RunD3D11SwapchainResizeSameExtentNoOpKeepsGeneration() {
+    WindowsPlatformWindow window;
+    PlatformWindowDesc window_desc{};
+    window_desc.title = "YuEngine D3D11 Swapchain Same Extent Resize Smoke";
+    window_desc.client_width = SMOKE_EXTENT;
+    window_desc.client_height = SMOKE_EXTENT;
+    window_desc.visible = false;
+
+    const PlatformWindowStatus window_status = window.Create(window_desc);
+    if (window_status != PlatformWindowStatus::Success) {
+        return Skip("d3d11 same extent resize smoke skipped because a native window could not be created");
+    }
+
+    const RhiExtent2D initial_extent{SMOKE_EXTENT, SMOKE_EXTENT};
+    std::vector<std::byte> storage{};
+    const RhiDeviceCreateResult create_result = CreateD3D11DeviceForWindow(window, storage, initial_extent);
+    if (create_result.status == RhiStatus::UnsupportedBackend) {
+        return Skip("d3d11 same extent resize smoke skipped because the backend is not compiled");
+    }
+
+    if (create_result.status == RhiStatus::MissingHardware) {
+        return Skip("d3d11 same extent resize smoke skipped because a hardware D3D11 device is unavailable");
+    }
+
+    if (create_result.status != RhiStatus::Success) {
+        return Fail("d3d11 same extent resize device creation failed");
+    }
+
+    if (create_result.device == nullptr) {
+        return Fail("d3d11 same extent resize device creation returned null device");
+    }
+
+    IRhiDevice &device = *create_result.device;
+    RhiTextureHandle old_target{};
+    RhiStatus status = device.GetSwapchainColorTarget(old_target);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 same extent resize target query failed");
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    RhiSwapchainResizeRequest request{};
+    request.extent = initial_extent;
+    RhiSwapchainResizeResult result{};
+    status = device.ResizeSwapchain(request, result);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 same extent resize failed");
+    }
+
+    if (result.resized) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 same extent resize reported resized");
+    }
+
+    if (result.snapshot.resize_count != before_snapshot.swapchain.resize_count) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 same extent resize changed resize count");
+    }
+
+    RhiTextureHandle new_target{};
+    status = device.GetSwapchainColorTarget(new_target);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 same extent resize target requery failed");
+    }
+
+    if (new_target.generation != old_target.generation) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 same extent resize changed target generation");
+    }
+
+    const RhiStatus destroy_status = RhiDeviceFactory::DestroyDevice(create_result.device);
+    if (destroy_status != RhiStatus::Success) {
+        return Fail("d3d11 same extent resize device destroy failed");
+    }
+
+    return 0;
+}
+
+int RunD3D11SwapchainResizeRejectsInvalidExtent() {
+    WindowsPlatformWindow window;
+    PlatformWindowDesc window_desc{};
+    window_desc.title = "YuEngine D3D11 Swapchain Resize Reject Smoke";
+    window_desc.client_width = SMOKE_EXTENT;
+    window_desc.client_height = SMOKE_EXTENT;
+    window_desc.visible = false;
+
+    const PlatformWindowStatus window_status = window.Create(window_desc);
+    if (window_status != PlatformWindowStatus::Success) {
+        return Skip("d3d11 resize reject smoke skipped because a native window could not be created");
+    }
+
+    const RhiExtent2D initial_extent{SMOKE_EXTENT, SMOKE_EXTENT};
+    std::vector<std::byte> storage{};
+    const RhiDeviceCreateResult create_result = CreateD3D11DeviceForWindow(window, storage, initial_extent);
+    if (create_result.status == RhiStatus::UnsupportedBackend) {
+        return Skip("d3d11 resize reject smoke skipped because the backend is not compiled");
+    }
+
+    if (create_result.status == RhiStatus::MissingHardware) {
+        return Skip("d3d11 resize reject smoke skipped because a hardware D3D11 device is unavailable");
+    }
+
+    if (create_result.status != RhiStatus::Success) {
+        return Fail("d3d11 resize reject device creation failed");
+    }
+
+    if (create_result.device == nullptr) {
+        return Fail("d3d11 resize reject device creation returned null device");
+    }
+
+    IRhiDevice &device = *create_result.device;
+    RhiTextureHandle target_before{};
+    RhiStatus status = device.GetSwapchainColorTarget(target_before);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 resize reject target query failed");
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    RhiSwapchainResizeRequest request{};
+    request.extent = {0U, SMOKE_EXTENT};
+    RhiSwapchainResizeResult result{};
+    status = device.ResizeSwapchain(request, result);
+    if (status != RhiStatus::InvalidDescriptor) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 resize reject did not return invalid descriptor");
+    }
+
+    if (result.status != RhiStatus::InvalidDescriptor) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 resize reject result status was wrong");
+    }
+
+    if (result.resized) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 resize reject reported resized");
+    }
+
+    if (result.snapshot.rejected_resize_count != before_snapshot.swapchain.rejected_resize_count + 1U) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 resize reject count was not tracked");
+    }
+
+    RhiTextureHandle target_after{};
+    status = device.GetSwapchainColorTarget(target_after);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 resize reject target requery failed");
+    }
+
+    if (target_after.generation != target_before.generation) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 resize reject changed target generation");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.failed_operation_count != before_snapshot.failed_operation_count + 1U) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 resize reject failure was not tracked");
+    }
+
+    const RhiStatus destroy_status = RhiDeviceFactory::DestroyDevice(create_result.device);
+    if (destroy_status != RhiStatus::Success) {
+        return Fail("d3d11 resize reject device destroy failed");
     }
 
     return 0;
@@ -1817,6 +2149,18 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_D3D11_TEXTURE_SAMPLING) {
         return RunD3D11TextureSamplingCapture();
+    }
+
+    if (test_name == TEST_D3D11_SWAPCHAIN_RESIZE_GENERATION) {
+        return RunD3D11SwapchainResizeInvalidatesOldBackbufferGeneration();
+    }
+
+    if (test_name == TEST_D3D11_SWAPCHAIN_RESIZE_SAME_EXTENT) {
+        return RunD3D11SwapchainResizeSameExtentNoOpKeepsGeneration();
+    }
+
+    if (test_name == TEST_D3D11_SWAPCHAIN_RESIZE_REJECT) {
+        return RunD3D11SwapchainResizeRejectsInvalidExtent();
     }
 
     return Fail("unknown test name");

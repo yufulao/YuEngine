@@ -31,6 +31,8 @@
 #include "YuEngine/Rhi/RhiShaderModuleDesc.h"
 #include "YuEngine/Rhi/RhiShaderModuleHandle.h"
 #include "YuEngine/Rhi/RhiStatus.h"
+#include "YuEngine/Rhi/RhiSwapchainResizeRequest.h"
+#include "YuEngine/Rhi/RhiSwapchainResizeResult.h"
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
@@ -62,6 +64,15 @@ public:
      * @return Explicit operation status.
      */
     virtual RhiStatus GetSwapchainColorTarget(RhiTextureHandle &out_handle) const = 0;
+    /**
+     * @comment Resizes the swapchain backbuffer.
+     * @param request Input resize request.
+     * @param out_result Output resize result.
+     * @return Explicit operation status.
+     */
+    virtual RhiStatus ResizeSwapchain(
+        const RhiSwapchainResizeRequest &request,
+        RhiSwapchainResizeResult &out_result) = 0;
     /**
      * @comment Destroys a target.
      * @param handle Input handle.
