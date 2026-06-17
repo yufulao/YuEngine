@@ -1,6 +1,6 @@
 # P2-GATE-021: Resource Upload Completion Commit
 
-Status: Approved for first slice
+Status: First-slice covered
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
@@ -9,6 +9,7 @@ Depends on: P2-GATE-015, P2-GATE-016, P1-GATE-006
 Related decisions: ADR-0013
 Source baseline: `06184b9`
 Proposal commit: `19c4d97`
+Landed commit: `475c371`
 
 ## Layer
 
