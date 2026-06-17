@@ -110,6 +110,15 @@ public:
     RhiStatus DestroyShaderModule(RhiShaderModuleHandle handle) override;
     RhiStatus CreatePipeline(const RhiPipelineDesc &desc, RhiPipelineHandle &out_handle) override;
     RhiStatus DestroyPipeline(RhiPipelineHandle handle) override;
+    RhiStatus RequestPrimitiveRetirement(
+        const RhiPrimitiveRetirementRequest &request,
+        RhiPrimitiveRetirementRecord &out_record) override;
+    RhiStatus QueryPrimitiveRetirement(
+        std::uint64_t retirement_id,
+        RhiPrimitiveRetirementRecord &out_record) const override;
+    RhiStatus DrainPrimitiveRetirements(
+        const RhiPrimitiveRetirementDrainRequest &request,
+        RhiPrimitiveRetirementDrainResult &out_result) override;
     /**
      * @comment Returns the supported capabilities.
      * @return Capability data.
@@ -165,6 +174,16 @@ private:
     bool IsSamplerHandleValid(RhiSamplerHandle handle) const;
     bool IsShaderModuleHandleValid(RhiShaderModuleHandle handle) const;
     bool IsPipelineHandleValid(RhiPipelineHandle handle) const;
+    bool IsRetirementRequestValid(const RhiPrimitiveRetirementRequest &request) const;
+    bool IsRetirementWrongKind(const RhiPrimitiveRetirementRequest &request) const;
+    bool IsRetirementDuplicate(const RhiPrimitiveRetirementRequest &request) const;
+    bool IsRetirementFenceReady(RhiFenceHandle fence) const;
+    void RetireBufferSlot(std::uint32_t slot);
+    void RetireTextureSlot(std::uint32_t slot);
+    void RetireSamplerSlot(std::uint32_t slot);
+    void RetireShaderModuleSlot(std::uint32_t slot);
+    void RetirePipelineSlot(std::uint32_t slot);
+    void DrainRetirementRecord(RhiPrimitiveRetirementRecord &record);
     bool IsCommandTargetValidForFrame(const RhiCommandRecord &command, RhiTextureHandle frame_target) const;
     bool IsVertexBufferViewValid(const RhiVertexBufferView &view) const;
     bool IsIndexBufferViewValid(const RhiIndexBufferView &view) const;
@@ -192,12 +211,14 @@ private:
     std::vector<NullSamplerSlot> samplers_;
     std::vector<NullShaderModuleSlot> shader_modules_;
     std::vector<NullPipelineSlot> pipelines_;
+    std::vector<RhiPrimitiveRetirementRecord> primitive_retirements_;
     RhiCapabilities capabilities_;
     RhiDeviceSnapshot snapshot_;
     RhiTextureHandle submitted_handle_;
     RhiTextureHandle presented_handle_;
     std::uint32_t generation_seed_;
     std::uint32_t fence_generation_;
+    std::uint64_t next_primitive_retirement_id_;
     bool is_initialized_;
     bool has_submitted_frame_;
     bool has_presented_frame_;

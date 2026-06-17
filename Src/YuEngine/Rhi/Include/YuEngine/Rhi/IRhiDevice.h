@@ -20,6 +20,10 @@
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementDrainRequest.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementDrainResult.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementRecord.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementRequest.h"
 #include "YuEngine/Rhi/RhiSampledTextureBinding.h"
 #include "YuEngine/Rhi/RhiSamplerBinding.h"
 #include "YuEngine/Rhi/RhiSamplerDesc.h"
@@ -235,6 +239,33 @@ public:
      * @return Explicit operation status.
      */
     virtual RhiStatus DestroyPipeline(RhiPipelineHandle handle) = 0;
+    /**
+     * @comment Requests deferred primitive retirement.
+     * @param request Input request.
+     * @param out_record Output record written with accepted or rejected state.
+     * @return Explicit operation status.
+     */
+    virtual RhiStatus RequestPrimitiveRetirement(
+        const RhiPrimitiveRetirementRequest &request,
+        RhiPrimitiveRetirementRecord &out_record) = 0;
+    /**
+     * @comment Queries a primitive retirement record.
+     * @param retirement_id Input retirement id.
+     * @param out_record Output record written on success.
+     * @return Explicit operation status.
+     */
+    virtual RhiStatus QueryPrimitiveRetirement(
+        std::uint64_t retirement_id,
+        RhiPrimitiveRetirementRecord &out_record) const = 0;
+    /**
+     * @comment Drains ready primitive retirement records.
+     * @param request Input drain request.
+     * @param out_result Output drain result.
+     * @return Explicit operation status.
+     */
+    virtual RhiStatus DrainPrimitiveRetirements(
+        const RhiPrimitiveRetirementDrainRequest &request,
+        RhiPrimitiveRetirementDrainResult &out_result) = 0;
     /**
      * @comment Returns supported capabilities.
      * @return Capability data.

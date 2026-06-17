@@ -26,6 +26,12 @@
 #include "YuEngine/Rhi/RhiNativeSurfaceDesc.h"
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
+#include "YuEngine/Rhi/RhiPrimitiveKind.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementDrainRequest.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementDrainResult.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementRecord.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementRequest.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementStatus.h"
 #include "YuEngine/Rhi/RhiPrimitiveTopology.h"
 #include "YuEngine/Rhi/RhiSampledTextureBinding.h"
 #include "YuEngine/Rhi/RhiSamplerBinding.h"
@@ -64,6 +70,12 @@ using RhiInputLayoutDesc = yuengine::rhi::RhiInputLayoutDesc;
 using RhiNativeSurfaceDesc = yuengine::rhi::RhiNativeSurfaceDesc;
 using RhiPipelineDesc = yuengine::rhi::RhiPipelineDesc;
 using RhiPipelineHandle = yuengine::rhi::RhiPipelineHandle;
+using yuengine::rhi::RhiPrimitiveKind;
+using RhiPrimitiveRetirementDrainRequest = yuengine::rhi::RhiPrimitiveRetirementDrainRequest;
+using RhiPrimitiveRetirementDrainResult = yuengine::rhi::RhiPrimitiveRetirementDrainResult;
+using RhiPrimitiveRetirementRecord = yuengine::rhi::RhiPrimitiveRetirementRecord;
+using RhiPrimitiveRetirementRequest = yuengine::rhi::RhiPrimitiveRetirementRequest;
+using yuengine::rhi::RhiPrimitiveRetirementStatus;
 using yuengine::rhi::RhiPrimitiveTopology;
 using RhiSampledTextureBinding = yuengine::rhi::RhiSampledTextureBinding;
 using RhiSamplerBinding = yuengine::rhi::RhiSamplerBinding;
@@ -83,6 +95,7 @@ using yuengine::rhi::MAX_COLOR_TARGETS;
 using yuengine::rhi::MAX_RHI_BUFFERS;
 using yuengine::rhi::MAX_RHI_BUFFER_BYTES;
 using yuengine::rhi::MAX_RHI_PIPELINES;
+using yuengine::rhi::MAX_RHI_PRIMITIVE_RETIREMENTS;
 using yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS;
 using yuengine::rhi::MAX_RHI_SAMPLER_SLOTS;
 using yuengine::rhi::MAX_RHI_SAMPLERS;
@@ -145,6 +158,13 @@ constexpr const char* TEST_PIPELINE_LIFECYCLE = "RHI_PipelineCreateDestroy_UsesS
 constexpr const char* TEST_PRIMITIVE_STALE_HANDLE = "RHI_PrimitiveDestroyInvalidatesStaleHandles";
 constexpr const char* TEST_INTERFACE_PRIMITIVE = "RHI_Interface_PrimitiveLifecycle_MatchesNullDevice";
 constexpr const char* TEST_PRIMITIVE_SNAPSHOT_COMPARISON = "RHI_PrimitiveSnapshot_IsIncludedInDeviceSnapshotComparison";
+constexpr const char *TEST_PRIMITIVE_RETIREMENT_DEFAULTS = "RHI_PrimitiveRetirement_DefaultContractsAreExplicit";
+constexpr const char *TEST_PRIMITIVE_RETIREMENT_REQUEST = "RHI_PrimitiveRetirement_RequestCreatesPendingRecord";
+constexpr const char *TEST_PRIMITIVE_RETIREMENT_DRAIN = "RHI_PrimitiveRetirement_DrainInvalidatesHandleAndTracksCounters";
+constexpr const char *TEST_PRIMITIVE_RETIREMENT_REJECTS = "RHI_PrimitiveRetirement_RejectsInvalidWrongDuplicateAndCapacity";
+constexpr const char *TEST_PRIMITIVE_RETIREMENT_FENCE = "RHI_PrimitiveRetirement_FenceNotReadyDrainKeepsPending";
+constexpr const char *TEST_PRIMITIVE_RETIREMENT_IMMEDIATE = "RHI_PrimitiveRetirement_ImmediateDestroyCompatibility";
+constexpr const char *TEST_INTERFACE_PRIMITIVE_RETIREMENT = "RHI_Interface_PrimitiveRetirementMatchesNullDevice";
 constexpr const char* TEST_RECORD_VISIBLE_TRIANGLE = "RHI_CommandList_RecordsVisibleTriangleCommandsWithinCapacity";
 constexpr const char* TEST_DRAW_REQUIRES_PIPELINE = "RHI_SubmitDrawRejectsMissingPipelineWithoutMutation";
 constexpr const char* TEST_DRAW_RANGE_OVERFLOW = "RHI_SubmitDrawRejectsVertexBufferRangeOverflow";
@@ -384,6 +404,33 @@ bool CreateSamplerPrimitive(IRhiDevice &device, RhiSamplerHandle &out_handle) {
     desc.linear_filter = false;
     desc.clamp_to_edge = true;
     return device.CreateSampler(desc, out_handle) == RhiStatus::Success;
+}
+
+RhiPrimitiveRetirementRequest BufferRetirementRequest(std::uint64_t request_id, RhiBufferHandle handle) {
+    RhiPrimitiveRetirementRequest request{};
+    request.request_id = request_id;
+    request.primitive_kind = RhiPrimitiveKind::Buffer;
+    request.primitive_slot = handle.slot;
+    request.primitive_generation = handle.generation;
+    return request;
+}
+
+RhiPrimitiveRetirementRequest TextureRetirementRequest(std::uint64_t request_id, RhiTextureHandle handle) {
+    RhiPrimitiveRetirementRequest request{};
+    request.request_id = request_id;
+    request.primitive_kind = RhiPrimitiveKind::Texture;
+    request.primitive_slot = handle.slot;
+    request.primitive_generation = handle.generation;
+    return request;
+}
+
+RhiPrimitiveRetirementRequest SamplerRetirementRequest(std::uint64_t request_id, RhiSamplerHandle handle) {
+    RhiPrimitiveRetirementRequest request{};
+    request.request_id = request_id;
+    request.primitive_kind = RhiPrimitiveKind::Sampler;
+    request.primitive_slot = handle.slot;
+    request.primitive_generation = handle.generation;
+    return request;
 }
 
 RhiStatus RecordTriangleDrawFrame(
@@ -2402,6 +2449,382 @@ int RhiPrimitiveSnapshotIsIncludedInDeviceSnapshotComparison() {
     return 0;
 }
 
+int RhiPrimitiveRetirementDefaultContractsAreExplicit() {
+    const RhiPrimitiveRetirementRequest request{};
+    if (request.primitive_kind != RhiPrimitiveKind::Unsupported) {
+        return Fail("default retirement request kind was not unsupported");
+    }
+
+    if (request.request_id != 0U) {
+        return Fail("default retirement request id was not zero");
+    }
+
+    const RhiPrimitiveRetirementRecord record{};
+    if (record.status != RhiPrimitiveRetirementStatus::Invalid) {
+        return Fail("default retirement record status was not invalid");
+    }
+
+    const RhiPrimitiveRetirementDrainRequest drain_request{};
+    if (drain_request.max_retirements != 0U) {
+        return Fail("default retirement drain request was not bounded at zero");
+    }
+
+    const RhiPrimitiveRetirementDrainResult drain_result{};
+    if (drain_result.status != RhiStatus::Success) {
+        return Fail("default retirement drain result status was not success");
+    }
+
+    NullRhiDevice device = CreateInitializedDevice();
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.primitive_retirement.capacity != MAX_RHI_PRIMITIVE_RETIREMENTS) {
+        return Fail("retirement snapshot capacity did not match constant");
+    }
+
+    if (snapshot.resources.primitive_retirement.pending_count != 0U) {
+        return Fail("retirement snapshot pending count was not zero");
+    }
+
+    return 0;
+}
+
+int RhiPrimitiveRetirementRequestCreatesPendingRecord() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle handle{};
+    if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, handle) != RhiStatus::Success) {
+        return Fail("buffer creation failed");
+    }
+
+    const RhiPrimitiveRetirementRequest request = BufferRetirementRequest(1U, handle);
+    RhiPrimitiveRetirementRecord record{};
+    if (device.RequestPrimitiveRetirement(request, record) != RhiStatus::Success) {
+        return Fail("retirement request failed");
+    }
+
+    if (record.status != RhiPrimitiveRetirementStatus::Pending) {
+        return Fail("retirement request did not create pending record");
+    }
+
+    RhiPrimitiveRetirementRecord queried_record{};
+    if (device.QueryPrimitiveRetirement(record.retirement_id, queried_record) != RhiStatus::Success) {
+        return Fail("retirement query failed");
+    }
+
+    if (queried_record.request_id != request.request_id) {
+        return Fail("retirement query returned wrong request id");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.buffer_count != 1U) {
+        return Fail("pending retirement changed active buffer count");
+    }
+
+    if (snapshot.resources.destroyed_primitive_count != 0U) {
+        return Fail("pending retirement destroyed primitive");
+    }
+
+    if (snapshot.resources.primitive_retirement.pending_count != 1U) {
+        return Fail("pending retirement count was not tracked");
+    }
+
+    if (snapshot.resources.primitive_retirement.requested_count != 1U) {
+        return Fail("retirement request count was not tracked");
+    }
+
+    return 0;
+}
+
+int RhiPrimitiveRetirementDrainInvalidatesHandleAndTracksCounters() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle handle{};
+    if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, handle) != RhiStatus::Success) {
+        return Fail("buffer creation failed");
+    }
+
+    const RhiPrimitiveRetirementRequest request = BufferRetirementRequest(2U, handle);
+    RhiPrimitiveRetirementRecord record{};
+    if (device.RequestPrimitiveRetirement(request, record) != RhiStatus::Success) {
+        return Fail("retirement request failed");
+    }
+
+    RhiPrimitiveRetirementDrainRequest drain_request{};
+    drain_request.max_retirements = 1U;
+    RhiPrimitiveRetirementDrainResult drain_result{};
+    if (device.DrainPrimitiveRetirements(drain_request, drain_result) != RhiStatus::Success) {
+        return Fail("retirement drain failed");
+    }
+
+    if (drain_result.drained_count != 1U) {
+        return Fail("retirement drain count was wrong");
+    }
+
+    const std::array<std::uint8_t, 1U> update_bytes{1U};
+    const std::span<const std::uint8_t> update_span(update_bytes.data(), update_bytes.size());
+    RhiFenceHandle fence{};
+    if (device.UpdateBuffer(handle, update_span, fence) != RhiStatus::InvalidHandle) {
+        return Fail("drained retirement did not invalidate handle");
+    }
+
+    RhiPrimitiveRetirementRecord queried_record{};
+    if (device.QueryPrimitiveRetirement(record.retirement_id, queried_record) != RhiStatus::Success) {
+        return Fail("drained retirement query failed");
+    }
+
+    if (queried_record.status != RhiPrimitiveRetirementStatus::Drained) {
+        return Fail("retirement record did not become drained");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.buffer_count != 0U) {
+        return Fail("drained retirement did not reduce buffer count");
+    }
+
+    if (snapshot.resources.destroyed_primitive_count != 1U) {
+        return Fail("drained retirement did not track destroyed primitive count");
+    }
+
+    if (snapshot.resources.primitive_retirement.pending_count != 0U) {
+        return Fail("drained retirement left pending count");
+    }
+
+    if (snapshot.resources.primitive_retirement.drained_count != 1U) {
+        return Fail("drained retirement count was not tracked");
+    }
+
+    return 0;
+}
+
+int RhiPrimitiveRetirementRejectsInvalidWrongDuplicateAndCapacity() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RhiPrimitiveRetirementRequest invalid_request{};
+    invalid_request.request_id = 1U;
+    invalid_request.primitive_kind = RhiPrimitiveKind::Buffer;
+    invalid_request.primitive_slot = 99U;
+    invalid_request.primitive_generation = 1U;
+    RhiPrimitiveRetirementRecord invalid_record{};
+    if (device.RequestPrimitiveRetirement(invalid_request, invalid_record) != RhiStatus::InvalidHandle) {
+        return Fail("invalid retirement handle was not rejected");
+    }
+
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle buffer_handle{};
+    if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, buffer_handle) != RhiStatus::Success) {
+        return Fail("buffer creation failed");
+    }
+
+    RhiPrimitiveRetirementRequest wrong_kind_request = BufferRetirementRequest(2U, buffer_handle);
+    wrong_kind_request.primitive_kind = RhiPrimitiveKind::Texture;
+    RhiPrimitiveRetirementRecord wrong_kind_record{};
+    if (device.RequestPrimitiveRetirement(wrong_kind_request, wrong_kind_record) != RhiStatus::InvalidHandle) {
+        return Fail("wrong kind retirement was not rejected");
+    }
+
+    const RhiPrimitiveRetirementRequest request = BufferRetirementRequest(3U, buffer_handle);
+    RhiPrimitiveRetirementRecord record{};
+    if (device.RequestPrimitiveRetirement(request, record) != RhiStatus::Success) {
+        return Fail("retirement request failed");
+    }
+
+    RhiPrimitiveRetirementRecord duplicate_record{};
+    if (device.RequestPrimitiveRetirement(request, duplicate_record) != RhiStatus::InvalidLifecycle) {
+        return Fail("duplicate retirement was not rejected");
+    }
+
+    std::vector<RhiBufferHandle> buffer_handles;
+    buffer_handles.reserve(MAX_RHI_BUFFERS - 1U);
+    for (std::size_t index = 1U; index < MAX_RHI_BUFFERS; ++index) {
+        RhiBufferHandle handle{};
+        if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, handle) != RhiStatus::Success) {
+            return Fail("capacity setup buffer creation failed");
+        }
+
+        buffer_handles.emplace_back(handle);
+    }
+
+    std::uint64_t request_id = 4U;
+    for (RhiBufferHandle handle : buffer_handles) {
+        const RhiPrimitiveRetirementRequest buffer_request = BufferRetirementRequest(request_id, handle);
+        RhiPrimitiveRetirementRecord buffer_record{};
+        if (device.RequestPrimitiveRetirement(buffer_request, buffer_record) != RhiStatus::Success) {
+            return Fail("capacity setup buffer retirement failed");
+        }
+
+        ++request_id;
+    }
+
+    std::vector<RhiTextureHandle> texture_handles;
+    texture_handles.reserve(MAX_RHI_TEXTURES);
+    for (std::size_t index = 0U; index < MAX_RHI_TEXTURES; ++index) {
+        RhiTextureHandle handle{};
+        if (!CreateSampledTexture(device, handle)) {
+            return Fail("capacity setup texture creation failed");
+        }
+
+        texture_handles.emplace_back(handle);
+    }
+
+    for (RhiTextureHandle handle : texture_handles) {
+        const RhiPrimitiveRetirementRequest texture_request = TextureRetirementRequest(request_id, handle);
+        RhiPrimitiveRetirementRecord texture_record{};
+        if (device.RequestPrimitiveRetirement(texture_request, texture_record) != RhiStatus::Success) {
+            return Fail("capacity setup texture retirement failed");
+        }
+
+        ++request_id;
+    }
+
+    RhiSamplerHandle sampler_handle{};
+    if (!CreateSamplerPrimitive(device, sampler_handle)) {
+        return Fail("capacity overflow sampler creation failed");
+    }
+
+    const RhiPrimitiveRetirementRequest capacity_request = SamplerRetirementRequest(request_id, sampler_handle);
+    RhiPrimitiveRetirementRecord capacity_record{};
+    if (device.RequestPrimitiveRetirement(capacity_request, capacity_record) != RhiStatus::CapacityExceeded) {
+        return Fail("retirement capacity overflow was not rejected");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.primitive_retirement.invalid_handle_count != 1U) {
+        return Fail("invalid retirement handle count was wrong");
+    }
+
+    if (snapshot.resources.primitive_retirement.wrong_kind_count != 1U) {
+        return Fail("wrong kind retirement count was wrong");
+    }
+
+    if (snapshot.resources.primitive_retirement.duplicate_request_count != 1U) {
+        return Fail("duplicate retirement count was wrong");
+    }
+
+    if (snapshot.resources.primitive_retirement.capacity_rejected_count != 1U) {
+        return Fail("retirement capacity rejected count was wrong");
+    }
+
+    if (snapshot.resources.primitive_retirement.pending_count != MAX_RHI_PRIMITIVE_RETIREMENTS) {
+        return Fail("retirement capacity setup did not fill ledger");
+    }
+
+    return 0;
+}
+
+int RhiPrimitiveRetirementFenceNotReadyDrainKeepsPending() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle handle{};
+    if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, handle) != RhiStatus::Success) {
+        return Fail("buffer creation failed");
+    }
+
+    RhiPrimitiveRetirementRequest request = BufferRetirementRequest(1U, handle);
+    request.wait_fence = RhiFenceHandle{0U, 1U};
+    RhiPrimitiveRetirementRecord record{};
+    if (device.RequestPrimitiveRetirement(request, record) != RhiStatus::Success) {
+        return Fail("fenced retirement request failed");
+    }
+
+    RhiPrimitiveRetirementDrainRequest drain_request{};
+    drain_request.max_retirements = 1U;
+    RhiPrimitiveRetirementDrainResult first_result{};
+    if (device.DrainPrimitiveRetirements(drain_request, first_result) != RhiStatus::InvalidLifecycle) {
+        return Fail("not-ready retirement drain was not rejected");
+    }
+
+    if (first_result.pending_count != 1U) {
+        return Fail("not-ready retirement did not stay pending");
+    }
+
+    const std::array<std::uint8_t, 1U> update_bytes{1U};
+    const std::span<const std::uint8_t> update_span(update_bytes.data(), update_bytes.size());
+    RhiFenceHandle fence{};
+    if (device.UpdateBuffer(handle, update_span, fence) != RhiStatus::Success) {
+        return Fail("buffer update did not signal fence");
+    }
+
+    RhiPrimitiveRetirementDrainResult second_result{};
+    if (device.DrainPrimitiveRetirements(drain_request, second_result) != RhiStatus::Success) {
+        return Fail("ready retirement drain failed");
+    }
+
+    if (second_result.drained_count != 1U) {
+        return Fail("ready retirement did not drain");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.primitive_retirement.fence_not_ready_count != 1U) {
+        return Fail("fence not ready count was not tracked");
+    }
+
+    if (snapshot.resources.primitive_retirement.pending_count != 0U) {
+        return Fail("ready drain left retirement pending");
+    }
+
+    return 0;
+}
+
+int RhiPrimitiveRetirementImmediateDestroyCompatibility() {
+    NullRhiDevice device = CreateInitializedDevice();
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle handle{};
+    if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, handle) != RhiStatus::Success) {
+        return Fail("buffer creation failed");
+    }
+
+    if (device.DestroyBuffer(handle) != RhiStatus::Success) {
+        return Fail("immediate destroy failed");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.buffer_count != 0U) {
+        return Fail("immediate destroy did not reduce buffer count");
+    }
+
+    if (snapshot.resources.destroyed_primitive_count != 1U) {
+        return Fail("immediate destroy did not update destroyed count");
+    }
+
+    if (snapshot.resources.primitive_retirement.requested_count != 0U) {
+        return Fail("immediate destroy unexpectedly wrote retirement ledger");
+    }
+
+    return 0;
+}
+
+int RhiInterfacePrimitiveRetirementMatchesNullDevice() {
+    NullRhiDevice device_storage = CreateInitializedDevice();
+    IRhiDevice &device = device_storage;
+    const std::span<const std::uint8_t> empty_bytes{};
+    RhiBufferHandle handle{};
+    if (device.CreateBuffer(SmallVertexBufferDesc(), empty_bytes, handle) != RhiStatus::Success) {
+        return Fail("interface buffer creation failed");
+    }
+
+    const RhiPrimitiveRetirementRequest request = BufferRetirementRequest(1U, handle);
+    RhiPrimitiveRetirementRecord record{};
+    if (device.RequestPrimitiveRetirement(request, record) != RhiStatus::Success) {
+        return Fail("interface retirement request failed");
+    }
+
+    RhiPrimitiveRetirementDrainRequest drain_request{};
+    drain_request.max_retirements = 1U;
+    RhiPrimitiveRetirementDrainResult drain_result{};
+    if (device.DrainPrimitiveRetirements(drain_request, drain_result) != RhiStatus::Success) {
+        return Fail("interface retirement drain failed");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.buffer_count != 0U) {
+        return Fail("interface retirement did not reduce buffer count");
+    }
+
+    if (snapshot.resources.primitive_retirement.drained_count != 1U) {
+        return Fail("interface retirement did not track drained count");
+    }
+
+    return 0;
+}
+
 int RhiCommandListRecordsVisibleTriangleCommandsWithinCapacity() {
     NullRhiDevice device = CreateInitializedDevice();
     IRhiDevice &device_interface = device;
@@ -3494,6 +3917,13 @@ int main(int argc, char** argv) {
         {TEST_PRIMITIVE_STALE_HANDLE, RhiPrimitiveDestroyInvalidatesStaleHandles},
         {TEST_INTERFACE_PRIMITIVE, RhiInterfacePrimitiveLifecycleMatchesNullDevice},
         {TEST_PRIMITIVE_SNAPSHOT_COMPARISON, RhiPrimitiveSnapshotIsIncludedInDeviceSnapshotComparison},
+        {TEST_PRIMITIVE_RETIREMENT_DEFAULTS, RhiPrimitiveRetirementDefaultContractsAreExplicit},
+        {TEST_PRIMITIVE_RETIREMENT_REQUEST, RhiPrimitiveRetirementRequestCreatesPendingRecord},
+        {TEST_PRIMITIVE_RETIREMENT_DRAIN, RhiPrimitiveRetirementDrainInvalidatesHandleAndTracksCounters},
+        {TEST_PRIMITIVE_RETIREMENT_REJECTS, RhiPrimitiveRetirementRejectsInvalidWrongDuplicateAndCapacity},
+        {TEST_PRIMITIVE_RETIREMENT_FENCE, RhiPrimitiveRetirementFenceNotReadyDrainKeepsPending},
+        {TEST_PRIMITIVE_RETIREMENT_IMMEDIATE, RhiPrimitiveRetirementImmediateDestroyCompatibility},
+        {TEST_INTERFACE_PRIMITIVE_RETIREMENT, RhiInterfacePrimitiveRetirementMatchesNullDevice},
         {TEST_RECORD_VISIBLE_TRIANGLE, RhiCommandListRecordsVisibleTriangleCommandsWithinCapacity},
         {TEST_DRAW_REQUIRES_PIPELINE, RhiSubmitDrawRejectsMissingPipelineWithoutMutation},
         {TEST_DRAW_RANGE_OVERFLOW, RhiSubmitDrawRejectsVertexBufferRangeOverflow},

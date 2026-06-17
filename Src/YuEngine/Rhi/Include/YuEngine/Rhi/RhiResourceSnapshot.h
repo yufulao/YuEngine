@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "YuEngine/Rhi/RhiPrimitiveRetirementSnapshot.h"
+
 namespace yuengine::rhi {
 struct RhiResourceSnapshot final {
     std::size_t buffer_capacity = 0U;
@@ -23,5 +25,6 @@ struct RhiResourceSnapshot final {
     std::uint64_t updated_primitive_count = 0U;
     std::uint64_t signaled_fence_count = 0U;
     std::size_t last_update_bytes = 0U;
+    RhiPrimitiveRetirementSnapshot primitive_retirement{};
 };
 }

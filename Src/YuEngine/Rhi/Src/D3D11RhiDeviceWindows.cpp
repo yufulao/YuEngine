@@ -154,8 +154,10 @@ D3D11RhiDevice::D3D11RhiDevice()
       samplers_{},
       shader_modules_{},
       pipelines_{},
+      primitive_retirements_{},
       primitive_generation_seed_(INVALID_GENERATION),
       fence_generation_(INVALID_GENERATION),
+      next_primitive_retirement_id_(1U),
       initialized_(false),
       submitted_(false),
       presented_(false) {
@@ -225,6 +227,8 @@ RhiStatus D3D11RhiDevice::Initialize(const RhiDeviceDesc &desc) {
     snapshot_.resources.sampler_capacity = MAX_RHI_SAMPLERS;
     snapshot_.resources.shader_module_capacity = MAX_RHI_SHADER_MODULES;
     snapshot_.resources.pipeline_capacity = MAX_RHI_PIPELINES;
+    snapshot_.resources.primitive_retirement.capacity = MAX_RHI_PRIMITIVE_RETIREMENTS;
+    snapshot_.resources.primitive_retirement.next_retirement_id = next_primitive_retirement_id_;
     initialized_ = true;
     submitted_ = false;
     presented_ = false;
@@ -823,14 +827,7 @@ RhiStatus D3D11RhiDevice::DestroyBuffer(RhiBufferHandle handle) {
         return RecordFailure(RhiStatus::InvalidHandle);
     }
 
-    D3D11BufferSlot &slot = buffers_[handle.slot];
-    slot.buffer->Release();
-    slot.buffer = nullptr;
-    slot.desc = RhiBufferDesc{};
-    slot.is_active = false;
-    ++slot.generation;
-    --snapshot_.resources.buffer_count;
-    ++snapshot_.resources.destroyed_primitive_count;
+    RetireBufferSlot(handle.slot);
     return RhiStatus::Success;
 }
 
@@ -936,16 +933,7 @@ RhiStatus D3D11RhiDevice::DestroyTexture(RhiTextureHandle handle) {
         return RecordFailure(RhiStatus::InvalidHandle);
     }
 
-    D3D11TextureSlot &slot = textures_[handle.slot];
-    slot.shader_resource_view->Release();
-    slot.shader_resource_view = nullptr;
-    slot.texture->Release();
-    slot.texture = nullptr;
-    slot.desc = RhiTextureDesc{};
-    slot.is_active = false;
-    ++slot.generation;
-    --snapshot_.resources.texture_count;
-    ++snapshot_.resources.destroyed_primitive_count;
+    RetireTextureSlot(handle.slot);
     return RhiStatus::Success;
 }
 
@@ -999,14 +987,7 @@ RhiStatus D3D11RhiDevice::DestroySampler(RhiSamplerHandle handle) {
         return RecordFailure(RhiStatus::InvalidHandle);
     }
 
-    D3D11SamplerSlot &slot = samplers_[handle.slot];
-    slot.sampler->Release();
-    slot.sampler = nullptr;
-    slot.desc = RhiSamplerDesc{};
-    slot.is_active = false;
-    ++slot.generation;
-    --snapshot_.resources.sampler_count;
-    ++snapshot_.resources.destroyed_primitive_count;
+    RetireSamplerSlot(handle.slot);
     return RhiStatus::Success;
 }
 
@@ -1074,24 +1055,7 @@ RhiStatus D3D11RhiDevice::DestroyShaderModule(RhiShaderModuleHandle handle) {
         return RecordFailure(RhiStatus::InvalidHandle);
     }
 
-    D3D11ShaderModuleSlot &slot = shader_modules_[handle.slot];
-    if (slot.vertex_shader != nullptr) {
-        slot.vertex_shader->Release();
-        slot.vertex_shader = nullptr;
-    }
-
-    if (slot.pixel_shader != nullptr) {
-        slot.pixel_shader->Release();
-        slot.pixel_shader = nullptr;
-    }
-
-    slot.stage = RhiShaderStage::Unsupported;
-    slot.bytecode.fill(0U);
-    slot.bytecode_size = 0U;
-    slot.is_active = false;
-    ++slot.generation;
-    --snapshot_.resources.shader_module_count;
-    ++snapshot_.resources.destroyed_primitive_count;
+    RetireShaderModuleSlot(handle.slot);
     return RhiStatus::Success;
 }
 
@@ -1159,18 +1123,141 @@ RhiStatus D3D11RhiDevice::DestroyPipeline(RhiPipelineHandle handle) {
         return RecordFailure(RhiStatus::InvalidHandle);
     }
 
-    D3D11PipelineSlot &slot = pipelines_[handle.slot];
-    if (slot.input_layout != nullptr) {
-        slot.input_layout->Release();
-        slot.input_layout = nullptr;
+    RetirePipelineSlot(handle.slot);
+    return RhiStatus::Success;
+}
+
+RhiStatus D3D11RhiDevice::RequestPrimitiveRetirement(
+    const RhiPrimitiveRetirementRequest &request,
+    RhiPrimitiveRetirementRecord &out_record) {
+    out_record = RhiPrimitiveRetirementRecord{};
+    out_record.request_id = request.request_id;
+    out_record.primitive_kind = request.primitive_kind;
+    out_record.primitive_slot = request.primitive_slot;
+    out_record.primitive_generation = request.primitive_generation;
+    out_record.wait_fence = request.wait_fence;
+
+    if (!initialized_) {
+        out_record.status = RhiPrimitiveRetirementStatus::RejectedInvalidRequest;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
     }
 
-    slot.desc = RhiPipelineDesc{};
-    slot.is_active = false;
-    ++slot.generation;
-    --snapshot_.resources.pipeline_count;
-    ++snapshot_.resources.destroyed_primitive_count;
-    return RhiStatus::Success;
+    if (request.request_id == 0U || request.primitive_kind == RhiPrimitiveKind::Unsupported) {
+        out_record.status = RhiPrimitiveRetirementStatus::RejectedInvalidRequest;
+        ++snapshot_.resources.primitive_retirement.rejected_count;
+        return RecordFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    if (!IsRetirementRequestValid(request)) {
+        if (IsRetirementWrongKind(request)) {
+            out_record.status = RhiPrimitiveRetirementStatus::RejectedWrongKind;
+            ++snapshot_.resources.primitive_retirement.wrong_kind_count;
+            ++snapshot_.resources.primitive_retirement.rejected_count;
+            return RecordFailure(RhiStatus::InvalidHandle);
+        }
+
+        out_record.status = RhiPrimitiveRetirementStatus::RejectedInvalidHandle;
+        ++snapshot_.resources.primitive_retirement.invalid_handle_count;
+        ++snapshot_.resources.primitive_retirement.rejected_count;
+        return RecordFailure(RhiStatus::InvalidHandle);
+    }
+
+    if (IsRetirementDuplicate(request)) {
+        out_record.status = RhiPrimitiveRetirementStatus::RejectedDuplicate;
+        ++snapshot_.resources.primitive_retirement.duplicate_request_count;
+        ++snapshot_.resources.primitive_retirement.rejected_count;
+        return RecordFailure(RhiStatus::InvalidLifecycle);
+    }
+
+    for (RhiPrimitiveRetirementRecord &record : primitive_retirements_) {
+        if (record.status != RhiPrimitiveRetirementStatus::Invalid) {
+            continue;
+        }
+
+        record = out_record;
+        record.retirement_id = next_primitive_retirement_id_;
+        record.status = RhiPrimitiveRetirementStatus::Pending;
+        out_record = record;
+        ++next_primitive_retirement_id_;
+        ++snapshot_.resources.primitive_retirement.pending_count;
+        ++snapshot_.resources.primitive_retirement.requested_count;
+        snapshot_.resources.primitive_retirement.next_retirement_id = next_primitive_retirement_id_;
+        return RhiStatus::Success;
+    }
+
+    out_record.status = RhiPrimitiveRetirementStatus::RejectedCapacity;
+    ++snapshot_.resources.primitive_retirement.capacity_rejected_count;
+    ++snapshot_.resources.primitive_retirement.rejected_count;
+    return RecordFailure(RhiStatus::CapacityExceeded);
+}
+
+RhiStatus D3D11RhiDevice::QueryPrimitiveRetirement(
+    std::uint64_t retirement_id,
+    RhiPrimitiveRetirementRecord &out_record) const {
+    out_record = RhiPrimitiveRetirementRecord{};
+    if (retirement_id == 0U) {
+        return RhiStatus::InvalidHandle;
+    }
+
+    for (const RhiPrimitiveRetirementRecord &record : primitive_retirements_) {
+        if (record.retirement_id != retirement_id) {
+            continue;
+        }
+
+        if (record.status == RhiPrimitiveRetirementStatus::Invalid) {
+            continue;
+        }
+
+        out_record = record;
+        return RhiStatus::Success;
+    }
+
+    return RhiStatus::InvalidHandle;
+}
+
+RhiStatus D3D11RhiDevice::DrainPrimitiveRetirements(
+    const RhiPrimitiveRetirementDrainRequest &request,
+    RhiPrimitiveRetirementDrainResult &out_result) {
+    out_result = RhiPrimitiveRetirementDrainResult{};
+    if (!initialized_) {
+        out_result.status = RecordFailure(RhiStatus::InvalidLifecycle);
+        return out_result.status;
+    }
+
+    if (request.max_retirements == 0U) {
+        out_result.status = RecordFailure(RhiStatus::InvalidDescriptor);
+        return out_result.status;
+    }
+
+    for (RhiPrimitiveRetirementRecord &record : primitive_retirements_) {
+        if (out_result.drained_count >= request.max_retirements) {
+            break;
+        }
+
+        if (record.status != RhiPrimitiveRetirementStatus::Pending) {
+            continue;
+        }
+
+        if (!IsRetirementFenceReady(record.wait_fence)) {
+            ++out_result.rejected_count;
+            out_result.last_rejection_status = RhiPrimitiveRetirementStatus::RejectedFenceNotReady;
+            ++snapshot_.resources.primitive_retirement.fence_not_ready_count;
+            ++snapshot_.resources.primitive_retirement.rejected_count;
+            continue;
+        }
+
+        DrainRetirementRecord(record);
+        ++out_result.drained_count;
+    }
+
+    out_result.pending_count = snapshot_.resources.primitive_retirement.pending_count;
+    if (out_result.rejected_count > 0U && out_result.drained_count == 0U) {
+        out_result.status = RhiStatus::InvalidLifecycle;
+        return out_result.status;
+    }
+
+    out_result.status = RhiStatus::Success;
+    return out_result.status;
 }
 
 RhiCapabilities D3D11RhiDevice::Capabilities() const {
@@ -1304,6 +1391,9 @@ void D3D11RhiDevice::InitializePrimitiveSlots() {
     for (D3D11PipelineSlot &pipeline : pipelines_) {
         pipeline.generation = primitive_generation_seed_;
     }
+
+    primitive_retirements_.fill(RhiPrimitiveRetirementRecord{});
+    next_primitive_retirement_id_ = 1U;
 }
 
 RhiStatus D3D11RhiDevice::RecordFailure(RhiStatus status) {
@@ -1578,6 +1668,224 @@ bool D3D11RhiDevice::IsPipelineHandleValid(RhiPipelineHandle handle) const {
     }
 
     return slot.generation == handle.generation;
+}
+
+bool D3D11RhiDevice::IsRetirementRequestValid(const RhiPrimitiveRetirementRequest &request) const {
+    if (request.primitive_generation == INVALID_GENERATION) {
+        return false;
+    }
+
+    if (request.primitive_kind == RhiPrimitiveKind::Buffer) {
+        return IsBufferHandleValid(RhiBufferHandle{request.primitive_slot, request.primitive_generation});
+    }
+
+    if (request.primitive_kind == RhiPrimitiveKind::Texture) {
+        return IsTextureHandleValid(RhiTextureHandle{request.primitive_slot, request.primitive_generation});
+    }
+
+    if (request.primitive_kind == RhiPrimitiveKind::Sampler) {
+        return IsSamplerHandleValid(RhiSamplerHandle{request.primitive_slot, request.primitive_generation});
+    }
+
+    if (request.primitive_kind == RhiPrimitiveKind::ShaderModule) {
+        return IsShaderModuleHandleValid(RhiShaderModuleHandle{request.primitive_slot, request.primitive_generation});
+    }
+
+    if (request.primitive_kind == RhiPrimitiveKind::Pipeline) {
+        return IsPipelineHandleValid(RhiPipelineHandle{request.primitive_slot, request.primitive_generation});
+    }
+
+    if (request.primitive_kind == RhiPrimitiveKind::Fence) {
+        if (request.primitive_slot != 0U) {
+            return false;
+        }
+
+        return request.primitive_generation <= fence_generation_;
+    }
+
+    return false;
+}
+
+bool D3D11RhiDevice::IsRetirementWrongKind(const RhiPrimitiveRetirementRequest &request) const {
+    if (request.primitive_kind != RhiPrimitiveKind::Buffer) {
+        if (IsBufferHandleValid(RhiBufferHandle{request.primitive_slot, request.primitive_generation})) {
+            return true;
+        }
+    }
+
+    if (request.primitive_kind != RhiPrimitiveKind::Texture) {
+        if (IsTextureHandleValid(RhiTextureHandle{request.primitive_slot, request.primitive_generation})) {
+            return true;
+        }
+    }
+
+    if (request.primitive_kind != RhiPrimitiveKind::Sampler) {
+        if (IsSamplerHandleValid(RhiSamplerHandle{request.primitive_slot, request.primitive_generation})) {
+            return true;
+        }
+    }
+
+    if (request.primitive_kind != RhiPrimitiveKind::ShaderModule) {
+        if (IsShaderModuleHandleValid(RhiShaderModuleHandle{request.primitive_slot, request.primitive_generation})) {
+            return true;
+        }
+    }
+
+    if (request.primitive_kind != RhiPrimitiveKind::Pipeline) {
+        if (IsPipelineHandleValid(RhiPipelineHandle{request.primitive_slot, request.primitive_generation})) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool D3D11RhiDevice::IsRetirementDuplicate(const RhiPrimitiveRetirementRequest &request) const {
+    for (const RhiPrimitiveRetirementRecord &record : primitive_retirements_) {
+        if (record.status != RhiPrimitiveRetirementStatus::Pending) {
+            continue;
+        }
+
+        if (record.primitive_kind != request.primitive_kind) {
+            continue;
+        }
+
+        if (record.primitive_slot != request.primitive_slot) {
+            continue;
+        }
+
+        if (record.primitive_generation != request.primitive_generation) {
+            continue;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+bool D3D11RhiDevice::IsRetirementFenceReady(RhiFenceHandle fence) const {
+    if (fence.generation == INVALID_GENERATION) {
+        return true;
+    }
+
+    if (fence.slot != 0U) {
+        return false;
+    }
+
+    return fence.generation <= fence_generation_;
+}
+
+void D3D11RhiDevice::RetireBufferSlot(std::uint32_t slot_index) {
+    D3D11BufferSlot &slot = buffers_[slot_index];
+    if (slot.buffer != nullptr) {
+        slot.buffer->Release();
+        slot.buffer = nullptr;
+    }
+
+    slot.desc = RhiBufferDesc{};
+    slot.is_active = false;
+    ++slot.generation;
+    --snapshot_.resources.buffer_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+}
+
+void D3D11RhiDevice::RetireTextureSlot(std::uint32_t slot_index) {
+    D3D11TextureSlot &slot = textures_[slot_index];
+    if (slot.shader_resource_view != nullptr) {
+        slot.shader_resource_view->Release();
+        slot.shader_resource_view = nullptr;
+    }
+
+    if (slot.texture != nullptr) {
+        slot.texture->Release();
+        slot.texture = nullptr;
+    }
+
+    slot.desc = RhiTextureDesc{};
+    slot.is_active = false;
+    ++slot.generation;
+    --snapshot_.resources.texture_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+}
+
+void D3D11RhiDevice::RetireSamplerSlot(std::uint32_t slot_index) {
+    D3D11SamplerSlot &slot = samplers_[slot_index];
+    if (slot.sampler != nullptr) {
+        slot.sampler->Release();
+        slot.sampler = nullptr;
+    }
+
+    slot.desc = RhiSamplerDesc{};
+    slot.is_active = false;
+    ++slot.generation;
+    --snapshot_.resources.sampler_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+}
+
+void D3D11RhiDevice::RetireShaderModuleSlot(std::uint32_t slot_index) {
+    D3D11ShaderModuleSlot &slot = shader_modules_[slot_index];
+    if (slot.vertex_shader != nullptr) {
+        slot.vertex_shader->Release();
+        slot.vertex_shader = nullptr;
+    }
+
+    if (slot.pixel_shader != nullptr) {
+        slot.pixel_shader->Release();
+        slot.pixel_shader = nullptr;
+    }
+
+    slot.stage = RhiShaderStage::Unsupported;
+    slot.bytecode.fill(0U);
+    slot.bytecode_size = 0U;
+    slot.is_active = false;
+    ++slot.generation;
+    --snapshot_.resources.shader_module_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+}
+
+void D3D11RhiDevice::RetirePipelineSlot(std::uint32_t slot_index) {
+    D3D11PipelineSlot &slot = pipelines_[slot_index];
+    if (slot.input_layout != nullptr) {
+        slot.input_layout->Release();
+        slot.input_layout = nullptr;
+    }
+
+    slot.desc = RhiPipelineDesc{};
+    slot.is_active = false;
+    ++slot.generation;
+    --snapshot_.resources.pipeline_count;
+    ++snapshot_.resources.destroyed_primitive_count;
+}
+
+void D3D11RhiDevice::DrainRetirementRecord(RhiPrimitiveRetirementRecord &record) {
+    if (record.primitive_kind == RhiPrimitiveKind::Buffer) {
+        RetireBufferSlot(record.primitive_slot);
+    }
+
+    if (record.primitive_kind == RhiPrimitiveKind::Texture) {
+        RetireTextureSlot(record.primitive_slot);
+    }
+
+    if (record.primitive_kind == RhiPrimitiveKind::Sampler) {
+        RetireSamplerSlot(record.primitive_slot);
+    }
+
+    if (record.primitive_kind == RhiPrimitiveKind::ShaderModule) {
+        RetireShaderModuleSlot(record.primitive_slot);
+    }
+
+    if (record.primitive_kind == RhiPrimitiveKind::Pipeline) {
+        RetirePipelineSlot(record.primitive_slot);
+    }
+
+    if (record.primitive_kind == RhiPrimitiveKind::Fence) {
+        ++snapshot_.resources.destroyed_primitive_count;
+    }
+
+    record.status = RhiPrimitiveRetirementStatus::Drained;
+    --snapshot_.resources.primitive_retirement.pending_count;
+    ++snapshot_.resources.primitive_retirement.drained_count;
 }
 
 bool D3D11RhiDevice::IsVertexBufferViewValid(const RhiVertexBufferView &view) const {
