@@ -10,6 +10,8 @@ enum class RhiCommandType {
     BindPipeline,
     BindVertexBuffer,
     BindIndexBuffer,
+    BindSampledTexture,
+    BindSampler,
     Draw,
     DrawIndexed,
     EndFrame

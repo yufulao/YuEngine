@@ -10,6 +10,7 @@ namespace yuengine::rhi {
 enum class RhiInputElementSemantic {
     Position,
     Color,
+    TexCoord,
     Unsupported
 };
 

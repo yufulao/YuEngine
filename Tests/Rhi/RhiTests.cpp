@@ -27,6 +27,8 @@
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiPrimitiveTopology.h"
+#include "YuEngine/Rhi/RhiSampledTextureBinding.h"
+#include "YuEngine/Rhi/RhiSamplerBinding.h"
 #include "YuEngine/Rhi/RhiSamplerDesc.h"
 #include "YuEngine/Rhi/RhiSamplerHandle.h"
 #include "YuEngine/Rhi/RhiShaderModuleDesc.h"
@@ -63,6 +65,8 @@ using RhiNativeSurfaceDesc = yuengine::rhi::RhiNativeSurfaceDesc;
 using RhiPipelineDesc = yuengine::rhi::RhiPipelineDesc;
 using RhiPipelineHandle = yuengine::rhi::RhiPipelineHandle;
 using yuengine::rhi::RhiPrimitiveTopology;
+using RhiSampledTextureBinding = yuengine::rhi::RhiSampledTextureBinding;
+using RhiSamplerBinding = yuengine::rhi::RhiSamplerBinding;
 using RhiSamplerDesc = yuengine::rhi::RhiSamplerDesc;
 using RhiSamplerHandle = yuengine::rhi::RhiSamplerHandle;
 using RhiShaderModuleDesc = yuengine::rhi::RhiShaderModuleDesc;
@@ -79,6 +83,8 @@ using yuengine::rhi::MAX_COLOR_TARGETS;
 using yuengine::rhi::MAX_RHI_BUFFERS;
 using yuengine::rhi::MAX_RHI_BUFFER_BYTES;
 using yuengine::rhi::MAX_RHI_PIPELINES;
+using yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS;
+using yuengine::rhi::MAX_RHI_SAMPLER_SLOTS;
 using yuengine::rhi::MAX_RHI_SAMPLERS;
 using yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES;
 using yuengine::rhi::MAX_RHI_SHADER_MODULES;
@@ -148,6 +154,14 @@ constexpr const char* TEST_RECORD_INDEXED_STATIC_MESH = "RHI_CommandList_Records
 constexpr const char* TEST_INDEXED_DRAW_REQUIRES_INDEX_BUFFER = "RHI_SubmitIndexedDrawRejectsMissingIndexBufferWithoutMutation";
 constexpr const char* TEST_INDEXED_DRAW_RANGE_OVERFLOW = "RHI_SubmitIndexedDrawRejectsIndexRangeOverflow";
 constexpr const char* TEST_INDEXED_DRAW_SNAPSHOT = "RHI_SubmitIndexedDraw_UpdatesNullSnapshot";
+constexpr const char *TEST_SAMPLED_TEXTURE_BIND_DEFAULTS = "RHI_TextureSampling_DefaultBindingsAreBoundedValues";
+constexpr const char *TEST_RECORD_TEXTURE_SAMPLING = "RHI_CommandList_RecordsTextureSamplingWithinCapacity";
+constexpr const char *TEST_TEXTURE_SAMPLING_SLOT_OVERFLOW = "RHI_TextureSamplingSlotOverflow_DoesNotMutate";
+constexpr const char *TEST_TEXTURE_SAMPLING_REQUIRES_SAMPLER = "RHI_SubmitTextureSamplingRejectsMissingSamplerWithoutMutation";
+constexpr const char *TEST_SAMPLER_REQUIRES_TEXTURE = "RHI_SubmitSamplerRejectsMissingTextureWithoutMutation";
+constexpr const char *TEST_TEXTURE_SAMPLING_STALE_TEXTURE = "RHI_SubmitTextureSamplingRejectsStaleTextureHandle";
+constexpr const char *TEST_TEXTURE_SAMPLING_STALE_SAMPLER = "RHI_SubmitTextureSamplingRejectsStaleSamplerHandle";
+constexpr const char *TEST_TEXTURE_SAMPLING_SNAPSHOT = "RHI_SubmitTextureSampling_UpdatesNullSnapshot";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* REINIT_TARGET_CREATION_MESSAGE = "target creation failed";
@@ -270,6 +284,20 @@ RhiIndexBufferView TriangleIndexBufferViewFor(RhiBufferHandle handle) {
     return view;
 }
 
+RhiSampledTextureBinding SampledTextureBindingFor(RhiTextureHandle texture) {
+    RhiSampledTextureBinding binding{};
+    binding.texture = texture;
+    binding.slot = 0U;
+    return binding;
+}
+
+RhiSamplerBinding SamplerBindingFor(RhiSamplerHandle sampler) {
+    RhiSamplerBinding binding{};
+    binding.sampler = sampler;
+    binding.slot = 0U;
+    return binding;
+}
+
 RhiVertexBufferView OverflowTriangleVertexBufferViewFor(RhiBufferHandle handle) {
     RhiVertexBufferView view = TriangleVertexBufferViewFor(handle);
     view.size_bytes = TRIANGLE_VERTEX_STRIDE_BYTES * 2U;
@@ -340,6 +368,24 @@ bool CreateTriangleIndexBuffer(IRhiDevice &device, RhiBufferHandle &out_handle) 
     return device.CreateBuffer(TriangleIndexBufferDesc(), index_bytes, out_handle) == RhiStatus::Success;
 }
 
+bool CreateSampledTexture(IRhiDevice &device, RhiTextureHandle &out_handle) {
+    const std::array<std::uint8_t, 16U> texture_bytes{
+        255U, 0U, 0U, 255U,
+        0U, 255U, 0U, 255U,
+        0U, 0U, 255U, 255U,
+        255U, 255U, 255U, 255U};
+    const std::span<const std::uint8_t> texture_span(texture_bytes.data(), texture_bytes.size());
+    const RhiTextureDesc desc = SmallPrimitiveTextureDesc();
+    return device.CreateTexture(desc, texture_span, out_handle) == RhiStatus::Success;
+}
+
+bool CreateSamplerPrimitive(IRhiDevice &device, RhiSamplerHandle &out_handle) {
+    RhiSamplerDesc desc{};
+    desc.linear_filter = false;
+    desc.clamp_to_edge = true;
+    return device.CreateSampler(desc, out_handle) == RhiStatus::Success;
+}
+
 RhiStatus RecordTriangleDrawFrame(
     IRhiDevice &device,
     RhiCommandList &command_list,
@@ -394,6 +440,56 @@ RhiStatus RecordIndexedTriangleDrawFrame(
     }
 
     status = device.RecordBindIndexBuffer(command_list, index_buffer);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordDrawIndexed(command_list, draw);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    return command_list.EndFrame();
+}
+
+RhiStatus RecordSampledIndexedTriangleDrawFrame(
+    IRhiDevice &device,
+    RhiCommandList &command_list,
+    RhiTextureHandle target,
+    RhiPipelineHandle pipeline,
+    const RhiVertexBufferView &vertex_buffer,
+    const RhiIndexBufferView &index_buffer,
+    RhiTextureHandle sampled_texture,
+    RhiSamplerHandle sampler,
+    const RhiDrawIndexedDesc &draw) {
+    RhiStatus status = command_list.BeginFrame(target);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordBindPipeline(command_list, pipeline);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordBindVertexBuffer(command_list, vertex_buffer);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordBindIndexBuffer(command_list, index_buffer);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    const RhiSampledTextureBinding texture_binding = SampledTextureBindingFor(sampled_texture);
+    status = device.RecordBindSampledTexture(command_list, texture_binding);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    const RhiSamplerBinding sampler_binding = SamplerBindingFor(sampler);
+    status = device.RecordBindSampler(command_list, sampler_binding);
     if (status != RhiStatus::Success) {
         return status;
     }
@@ -515,7 +611,51 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
         return false;
     }
 
+    if (left.submitted_indexed_draw_count != right.submitted_indexed_draw_count) {
+        return false;
+    }
+
+    if (left.submitted_sampled_texture_bind_count != right.submitted_sampled_texture_bind_count) {
+        return false;
+    }
+
+    if (left.submitted_sampler_bind_count != right.submitted_sampler_bind_count) {
+        return false;
+    }
+
+    if (left.rejected_indexed_draw_count != right.rejected_indexed_draw_count) {
+        return false;
+    }
+
+    if (left.rejected_sampled_texture_bind_count != right.rejected_sampled_texture_bind_count) {
+        return false;
+    }
+
+    if (left.rejected_sampler_bind_count != right.rejected_sampler_bind_count) {
+        return false;
+    }
+
     if (left.last_draw_vertex_count != right.last_draw_vertex_count) {
+        return false;
+    }
+
+    if (left.last_indexed_draw_index_count != right.last_indexed_draw_index_count) {
+        return false;
+    }
+
+    if (left.last_bound_sampled_texture_slot != right.last_bound_sampled_texture_slot) {
+        return false;
+    }
+
+    if (left.last_bound_sampler_slot != right.last_bound_sampler_slot) {
+        return false;
+    }
+
+    if (left.last_bound_index_buffer_offset_bytes != right.last_bound_index_buffer_offset_bytes) {
+        return false;
+    }
+
+    if (left.last_bound_index_buffer_size_bytes != right.last_bound_index_buffer_size_bytes) {
         return false;
     }
 
@@ -2739,6 +2879,561 @@ int RhiSubmitIndexedDrawUpdatesNullSnapshot() {
 
     return 0;
 }
+
+int RhiTextureSamplingDefaultBindingsAreBoundedValues() {
+    const RhiSampledTextureBinding texture_binding{};
+    if (texture_binding.texture.generation != 0U) {
+        return Fail("default sampled texture handle was not empty");
+    }
+
+    if (texture_binding.slot != 0U) {
+        return Fail("default sampled texture slot was not zero");
+    }
+
+    const RhiSamplerBinding sampler_binding{};
+    if (sampler_binding.sampler.generation != 0U) {
+        return Fail("default sampler handle was not empty");
+    }
+
+    if (sampler_binding.slot != 0U) {
+        return Fail("default sampler slot was not zero");
+    }
+
+    static_assert(MAX_RHI_SAMPLED_TEXTURE_SLOTS > 0U, "sampled texture slot capacity was zero");
+    static_assert(MAX_RHI_SAMPLER_SLOTS > 0U, "sampler slot capacity was zero");
+
+    return 0;
+}
+
+int RhiCommandListRecordsTextureSamplingWithinCapacity() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiBufferHandle index_buffer{};
+    if (!CreateTriangleIndexBuffer(device_interface, index_buffer)) {
+        return Fail("triangle index buffer creation failed");
+    }
+
+    RhiTextureHandle sampled_texture{};
+    if (!CreateSampledTexture(device_interface, sampled_texture)) {
+        return Fail("sampled texture creation failed");
+    }
+
+    RhiSamplerHandle sampler{};
+    if (!CreateSamplerPrimitive(device_interface, sampler)) {
+        return Fail("sampler creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    const std::size_t capacity_before = command_list.Capacity();
+    const RhiStatus status = RecordSampledIndexedTriangleDrawFrame(
+        device_interface,
+        command_list,
+        target,
+        pipeline,
+        TriangleVertexBufferViewFor(vertex_buffer),
+        TriangleIndexBufferViewFor(index_buffer),
+        sampled_texture,
+        sampler,
+        TriangleDrawIndexedDesc());
+    if (status != RhiStatus::Success) {
+        return Fail("texture sampling command recording failed");
+    }
+
+    const auto snapshot = command_list.Snapshot();
+    if (snapshot.command_count != 8U) {
+        return Fail("texture sampling command count was unexpected");
+    }
+
+    if (snapshot.sampled_texture_bind_command_count != 1U) {
+        return Fail("sampled texture bind command was not tracked");
+    }
+
+    if (snapshot.sampler_bind_command_count != 1U) {
+        return Fail("sampler bind command was not tracked");
+    }
+
+    if (snapshot.indexed_draw_command_count != 1U) {
+        return Fail("texture sampling indexed draw command was not tracked");
+    }
+
+    if (command_list.Capacity() != capacity_before) {
+        return Fail("texture sampling command recording grew storage");
+    }
+
+    return 0;
+}
+
+int RhiTextureSamplingSlotOverflowDoesNotMutate() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle sampled_texture{};
+    if (!CreateSampledTexture(device_interface, sampled_texture)) {
+        return Fail("sampled texture creation failed");
+    }
+
+    RhiSamplerHandle sampler{};
+    if (!CreateSamplerPrimitive(device_interface, sampler)) {
+        return Fail("sampler creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    RhiSampledTextureBinding texture_binding = SampledTextureBindingFor(sampled_texture);
+    texture_binding.slot = static_cast<std::uint32_t>(MAX_RHI_SAMPLED_TEXTURE_SLOTS);
+    const auto before_snapshot = device.Snapshot();
+    RhiStatus status = device_interface.RecordBindSampledTexture(command_list, texture_binding);
+    if (status != RhiStatus::InvalidDescriptor) {
+        return Fail("sampled texture slot overflow did not return invalid descriptor");
+    }
+
+    const auto texture_snapshot = device.Snapshot();
+    if (texture_snapshot.recorded_command_count != before_snapshot.recorded_command_count) {
+        return Fail("sampled texture slot overflow recorded a command");
+    }
+
+    if (texture_snapshot.rejected_sampled_texture_bind_count != before_snapshot.rejected_sampled_texture_bind_count + 1U) {
+        return Fail("sampled texture slot overflow was not tracked");
+    }
+
+    RhiSamplerBinding sampler_binding = SamplerBindingFor(sampler);
+    sampler_binding.slot = static_cast<std::uint32_t>(MAX_RHI_SAMPLER_SLOTS);
+    status = device_interface.RecordBindSampler(command_list, sampler_binding);
+    if (status != RhiStatus::InvalidDescriptor) {
+        return Fail("sampler slot overflow did not return invalid descriptor");
+    }
+
+    const auto sampler_snapshot = device.Snapshot();
+    if (sampler_snapshot.recorded_command_count != before_snapshot.recorded_command_count) {
+        return Fail("sampler slot overflow recorded a command");
+    }
+
+    if (sampler_snapshot.rejected_sampler_bind_count != texture_snapshot.rejected_sampler_bind_count + 1U) {
+        return Fail("sampler slot overflow was not tracked");
+    }
+
+    return 0;
+}
+
+int RhiSubmitTextureSamplingRejectsMissingSamplerWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiBufferHandle index_buffer{};
+    if (!CreateTriangleIndexBuffer(device_interface, index_buffer)) {
+        return Fail("triangle index buffer creation failed");
+    }
+
+    RhiTextureHandle sampled_texture{};
+    if (!CreateSampledTexture(device_interface, sampled_texture)) {
+        return Fail("sampled texture creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    RhiStatus status = command_list.BeginFrame(target);
+    if (status != RhiStatus::Success) {
+        return Fail("begin frame failed");
+    }
+
+    status = device_interface.RecordBindPipeline(command_list, pipeline);
+    if (status != RhiStatus::Success) {
+        return Fail("pipeline bind recording failed");
+    }
+
+    status = device_interface.RecordBindVertexBuffer(command_list, TriangleVertexBufferViewFor(vertex_buffer));
+    if (status != RhiStatus::Success) {
+        return Fail("vertex buffer bind recording failed");
+    }
+
+    status = device_interface.RecordBindIndexBuffer(command_list, TriangleIndexBufferViewFor(index_buffer));
+    if (status != RhiStatus::Success) {
+        return Fail("index buffer bind recording failed");
+    }
+
+    const RhiSampledTextureBinding texture_binding = SampledTextureBindingFor(sampled_texture);
+    status = device_interface.RecordBindSampledTexture(command_list, texture_binding);
+    if (status != RhiStatus::Success) {
+        return Fail("sampled texture bind recording failed");
+    }
+
+    status = device_interface.RecordDrawIndexed(command_list, TriangleDrawIndexedDesc());
+    if (status != RhiStatus::Success) {
+        return Fail("indexed draw recording failed");
+    }
+
+    status = command_list.EndFrame();
+    if (status != RhiStatus::Success) {
+        return Fail("end frame failed");
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    status = device_interface.Submit(command_list);
+    if (status != RhiStatus::InvalidLifecycle) {
+        return Fail("texture sampling without sampler did not return invalid lifecycle");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.rejected_sampler_bind_count != before_snapshot.rejected_sampler_bind_count + 1U) {
+        return Fail("missing sampler rejection was not tracked");
+    }
+
+    if (after_snapshot.submitted_indexed_draw_count != before_snapshot.submitted_indexed_draw_count) {
+        return Fail("missing sampler rejection changed submitted indexed draw count");
+    }
+
+    if (after_snapshot.submit_count != before_snapshot.submit_count) {
+        return Fail("missing sampler rejection changed submit count");
+    }
+
+    return 0;
+}
+
+int RhiSubmitSamplerRejectsMissingTextureWithoutMutation() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiBufferHandle index_buffer{};
+    if (!CreateTriangleIndexBuffer(device_interface, index_buffer)) {
+        return Fail("triangle index buffer creation failed");
+    }
+
+    RhiSamplerHandle sampler{};
+    if (!CreateSamplerPrimitive(device_interface, sampler)) {
+        return Fail("sampler creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    RhiStatus status = command_list.BeginFrame(target);
+    if (status != RhiStatus::Success) {
+        return Fail("begin frame failed");
+    }
+
+    status = device_interface.RecordBindPipeline(command_list, pipeline);
+    if (status != RhiStatus::Success) {
+        return Fail("pipeline bind recording failed");
+    }
+
+    status = device_interface.RecordBindVertexBuffer(command_list, TriangleVertexBufferViewFor(vertex_buffer));
+    if (status != RhiStatus::Success) {
+        return Fail("vertex buffer bind recording failed");
+    }
+
+    status = device_interface.RecordBindIndexBuffer(command_list, TriangleIndexBufferViewFor(index_buffer));
+    if (status != RhiStatus::Success) {
+        return Fail("index buffer bind recording failed");
+    }
+
+    const RhiSamplerBinding sampler_binding = SamplerBindingFor(sampler);
+    status = device_interface.RecordBindSampler(command_list, sampler_binding);
+    if (status != RhiStatus::Success) {
+        return Fail("sampler bind recording failed");
+    }
+
+    status = device_interface.RecordDrawIndexed(command_list, TriangleDrawIndexedDesc());
+    if (status != RhiStatus::Success) {
+        return Fail("indexed draw recording failed");
+    }
+
+    status = command_list.EndFrame();
+    if (status != RhiStatus::Success) {
+        return Fail("end frame failed");
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    status = device_interface.Submit(command_list);
+    if (status != RhiStatus::InvalidLifecycle) {
+        return Fail("sampler without sampled texture did not return invalid lifecycle");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.rejected_sampled_texture_bind_count != before_snapshot.rejected_sampled_texture_bind_count + 1U) {
+        return Fail("missing sampled texture rejection was not tracked");
+    }
+
+    if (after_snapshot.submitted_indexed_draw_count != before_snapshot.submitted_indexed_draw_count) {
+        return Fail("missing sampled texture rejection changed submitted indexed draw count");
+    }
+
+    if (after_snapshot.submit_count != before_snapshot.submit_count) {
+        return Fail("missing sampled texture rejection changed submit count");
+    }
+
+    return 0;
+}
+
+int RhiSubmitTextureSamplingRejectsStaleTextureHandle() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiBufferHandle index_buffer{};
+    if (!CreateTriangleIndexBuffer(device_interface, index_buffer)) {
+        return Fail("triangle index buffer creation failed");
+    }
+
+    RhiTextureHandle sampled_texture{};
+    if (!CreateSampledTexture(device_interface, sampled_texture)) {
+        return Fail("sampled texture creation failed");
+    }
+
+    RhiSamplerHandle sampler{};
+    if (!CreateSamplerPrimitive(device_interface, sampler)) {
+        return Fail("sampler creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    const RhiStatus record_status = RecordSampledIndexedTriangleDrawFrame(
+        device_interface,
+        command_list,
+        target,
+        pipeline,
+        TriangleVertexBufferViewFor(vertex_buffer),
+        TriangleIndexBufferViewFor(index_buffer),
+        sampled_texture,
+        sampler,
+        TriangleDrawIndexedDesc());
+    if (record_status != RhiStatus::Success) {
+        return Fail("texture sampling command recording failed");
+    }
+
+    if (device_interface.DestroyTexture(sampled_texture) != RhiStatus::Success) {
+        return Fail("sampled texture destroy failed");
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    const RhiStatus submit_status = device_interface.Submit(command_list);
+    if (submit_status != RhiStatus::InvalidHandle) {
+        return Fail("stale sampled texture did not return invalid handle");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.rejected_sampled_texture_bind_count != before_snapshot.rejected_sampled_texture_bind_count + 1U) {
+        return Fail("stale sampled texture rejection was not tracked");
+    }
+
+    if (after_snapshot.submit_count != before_snapshot.submit_count) {
+        return Fail("stale sampled texture changed submit count");
+    }
+
+    return 0;
+}
+
+int RhiSubmitTextureSamplingRejectsStaleSamplerHandle() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiBufferHandle index_buffer{};
+    if (!CreateTriangleIndexBuffer(device_interface, index_buffer)) {
+        return Fail("triangle index buffer creation failed");
+    }
+
+    RhiTextureHandle sampled_texture{};
+    if (!CreateSampledTexture(device_interface, sampled_texture)) {
+        return Fail("sampled texture creation failed");
+    }
+
+    RhiSamplerHandle sampler{};
+    if (!CreateSamplerPrimitive(device_interface, sampler)) {
+        return Fail("sampler creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    const RhiStatus record_status = RecordSampledIndexedTriangleDrawFrame(
+        device_interface,
+        command_list,
+        target,
+        pipeline,
+        TriangleVertexBufferViewFor(vertex_buffer),
+        TriangleIndexBufferViewFor(index_buffer),
+        sampled_texture,
+        sampler,
+        TriangleDrawIndexedDesc());
+    if (record_status != RhiStatus::Success) {
+        return Fail("texture sampling command recording failed");
+    }
+
+    if (device_interface.DestroySampler(sampler) != RhiStatus::Success) {
+        return Fail("sampler destroy failed");
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    const RhiStatus submit_status = device_interface.Submit(command_list);
+    if (submit_status != RhiStatus::InvalidHandle) {
+        return Fail("stale sampler did not return invalid handle");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.rejected_sampler_bind_count != before_snapshot.rejected_sampler_bind_count + 1U) {
+        return Fail("stale sampler rejection was not tracked");
+    }
+
+    if (after_snapshot.submit_count != before_snapshot.submit_count) {
+        return Fail("stale sampler changed submit count");
+    }
+
+    return 0;
+}
+
+int RhiSubmitTextureSamplingUpdatesNullSnapshot() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiBufferHandle index_buffer{};
+    if (!CreateTriangleIndexBuffer(device_interface, index_buffer)) {
+        return Fail("triangle index buffer creation failed");
+    }
+
+    RhiTextureHandle sampled_texture{};
+    if (!CreateSampledTexture(device_interface, sampled_texture)) {
+        return Fail("sampled texture creation failed");
+    }
+
+    RhiSamplerHandle sampler{};
+    if (!CreateSamplerPrimitive(device_interface, sampler)) {
+        return Fail("sampler creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    const RhiStatus record_status = RecordSampledIndexedTriangleDrawFrame(
+        device_interface,
+        command_list,
+        target,
+        pipeline,
+        TriangleVertexBufferViewFor(vertex_buffer),
+        TriangleIndexBufferViewFor(index_buffer),
+        sampled_texture,
+        sampler,
+        TriangleDrawIndexedDesc());
+    if (record_status != RhiStatus::Success) {
+        return Fail("texture sampling command recording failed");
+    }
+
+    const RhiStatus submit_status = device_interface.Submit(command_list);
+    if (submit_status != RhiStatus::Success) {
+        return Fail("texture sampling submit failed");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.submitted_sampled_texture_bind_count != 1U) {
+        return Fail("submitted sampled texture bind count was not tracked");
+    }
+
+    if (snapshot.submitted_sampler_bind_count != 1U) {
+        return Fail("submitted sampler bind count was not tracked");
+    }
+
+    if (snapshot.rejected_sampled_texture_bind_count != 0U) {
+        return Fail("successful texture sampling changed sampled texture rejection count");
+    }
+
+    if (snapshot.rejected_sampler_bind_count != 0U) {
+        return Fail("successful texture sampling changed sampler rejection count");
+    }
+
+    if (snapshot.submitted_indexed_draw_count != 1U) {
+        return Fail("texture sampling indexed draw was not submitted");
+    }
+
+    if (snapshot.last_bound_sampled_texture_slot != 0U) {
+        return Fail("last sampled texture slot was not tracked");
+    }
+
+    if (snapshot.last_bound_sampler_slot != 0U) {
+        return Fail("last sampler slot was not tracked");
+    }
+
+    if (snapshot.command_storage_capacity_before_frame != MAX_COMMANDS) {
+        return Fail("texture sampling submit recorded wrong command capacity");
+    }
+
+    if (snapshot.command_storage_capacity_after_last_frame != MAX_COMMANDS) {
+        return Fail("texture sampling submit changed command capacity");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -2808,6 +3503,14 @@ int main(int argc, char** argv) {
         {TEST_INDEXED_DRAW_REQUIRES_INDEX_BUFFER, RhiSubmitIndexedDrawRejectsMissingIndexBufferWithoutMutation},
         {TEST_INDEXED_DRAW_RANGE_OVERFLOW, RhiSubmitIndexedDrawRejectsIndexRangeOverflow},
         {TEST_INDEXED_DRAW_SNAPSHOT, RhiSubmitIndexedDrawUpdatesNullSnapshot},
+        {TEST_SAMPLED_TEXTURE_BIND_DEFAULTS, RhiTextureSamplingDefaultBindingsAreBoundedValues},
+        {TEST_RECORD_TEXTURE_SAMPLING, RhiCommandListRecordsTextureSamplingWithinCapacity},
+        {TEST_TEXTURE_SAMPLING_SLOT_OVERFLOW, RhiTextureSamplingSlotOverflowDoesNotMutate},
+        {TEST_TEXTURE_SAMPLING_REQUIRES_SAMPLER, RhiSubmitTextureSamplingRejectsMissingSamplerWithoutMutation},
+        {TEST_SAMPLER_REQUIRES_TEXTURE, RhiSubmitSamplerRejectsMissingTextureWithoutMutation},
+        {TEST_TEXTURE_SAMPLING_STALE_TEXTURE, RhiSubmitTextureSamplingRejectsStaleTextureHandle},
+        {TEST_TEXTURE_SAMPLING_STALE_SAMPLER, RhiSubmitTextureSamplingRejectsStaleSamplerHandle},
+        {TEST_TEXTURE_SAMPLING_SNAPSHOT, RhiSubmitTextureSamplingUpdatesNullSnapshot},
         {TEST_NO_FORBIDDEN_DEPENDENCY, RhiNoResourceFileUploadShaderUiDependency}};
 
     const std::string_view test_name(argv[1]);

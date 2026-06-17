@@ -53,6 +53,10 @@ public:
     RhiStatus RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) override;
     RhiStatus RecordBindVertexBuffer(RhiCommandList &command_list, const RhiVertexBufferView &view) override;
     RhiStatus RecordBindIndexBuffer(RhiCommandList &command_list, const RhiIndexBufferView &view) override;
+    RhiStatus RecordBindSampledTexture(
+        RhiCommandList &command_list,
+        const RhiSampledTextureBinding &binding) override;
+    RhiStatus RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) override;
     RhiStatus RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) override;
     RhiStatus RecordDrawIndexed(RhiCommandList &command_list, const RhiDrawIndexedDesc &desc) override;
     RhiStatus Submit(const RhiCommandList &command_list) override;
@@ -95,6 +99,7 @@ private:
 
     struct D3D11TextureSlot final {
         ID3D11Texture2D *texture = nullptr;
+        ID3D11ShaderResourceView *shader_resource_view = nullptr;
         RhiTextureDesc desc{};
         std::uint32_t generation = 0U;
         bool is_active = false;
@@ -129,6 +134,8 @@ private:
     void InitializePrimitiveSlots();
     RhiStatus RecordFailure(RhiStatus status);
     RhiStatus RecordIndexedDrawFailure(RhiStatus status);
+    RhiStatus RecordSampledTextureBindFailure(RhiStatus status);
+    RhiStatus RecordSamplerBindFailure(RhiStatus status);
     RhiStatus ValidateDesc(const RhiDeviceDesc &desc) const;
     RhiStatus CreateNativeObjects(const RhiDeviceDesc &desc);
     RhiStatus CreateBackbufferObjects();
@@ -143,6 +150,8 @@ private:
     bool IsPipelineHandleValid(RhiPipelineHandle handle) const;
     bool IsVertexBufferViewValid(const RhiVertexBufferView &view) const;
     bool IsIndexBufferViewValid(const RhiIndexBufferView &view) const;
+    bool IsSampledTextureBindingValid(const RhiSampledTextureBinding &binding) const;
+    bool IsSamplerBindingValid(const RhiSamplerBinding &binding) const;
     bool IsDrawDescValid(const RhiDrawDesc &desc) const;
     bool IsDrawIndexedDescValid(const RhiDrawIndexedDesc &desc) const;
     bool IsSwapchainDescValid(const RhiSwapchainDesc &desc) const;

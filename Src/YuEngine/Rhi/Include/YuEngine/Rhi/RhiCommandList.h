@@ -13,6 +13,8 @@
 #include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
+#include "YuEngine/Rhi/RhiSampledTextureBinding.h"
+#include "YuEngine/Rhi/RhiSamplerBinding.h"
 #include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
@@ -62,6 +64,18 @@ public:
      * @return Explicit operation status.
      */
     RhiStatus RecordBindIndexBuffer(const RhiIndexBufferView &index_buffer);
+    /**
+     * @comment Records sampled texture binding.
+     * @param binding Input binding.
+     * @return Explicit operation status.
+     */
+    RhiStatus RecordBindSampledTexture(const RhiSampledTextureBinding &binding);
+    /**
+     * @comment Records sampler binding.
+     * @param binding Input binding.
+     * @return Explicit operation status.
+     */
+    RhiStatus RecordBindSampler(const RhiSamplerBinding &binding);
     /**
      * @comment Records draw.
      * @param desc Input descriptor.
@@ -119,6 +133,8 @@ private:
     std::size_t command_count_;
     std::size_t draw_command_count_;
     std::size_t indexed_draw_command_count_;
+    std::size_t sampled_texture_bind_command_count_;
+    std::size_t sampler_bind_command_count_;
     bool is_recording_;
     bool is_complete_;
 };

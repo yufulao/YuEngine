@@ -34,6 +34,8 @@
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiPrimitiveTopology.h"
+#include "YuEngine/Rhi/RhiSampledTextureBinding.h"
+#include "YuEngine/Rhi/RhiSamplerBinding.h"
 #include "YuEngine/Rhi/RhiSamplerDesc.h"
 #include "YuEngine/Rhi/RhiSamplerHandle.h"
 #include "YuEngine/Rhi/RhiShaderModuleDesc.h"
@@ -74,6 +76,8 @@ using yuengine::rhi::RhiNativeSurfaceDesc;
 using yuengine::rhi::RhiPipelineDesc;
 using yuengine::rhi::RhiPipelineHandle;
 using yuengine::rhi::RhiPrimitiveTopology;
+using yuengine::rhi::RhiSampledTextureBinding;
+using yuengine::rhi::RhiSamplerBinding;
 using yuengine::rhi::RhiSamplerDesc;
 using yuengine::rhi::RhiSamplerHandle;
 using yuengine::rhi::RhiShaderModuleDesc;
@@ -89,15 +93,22 @@ constexpr const char *TEST_D3D11_CLEAR_PRESENT_CAPTURE = "RHI_D3D11Hardware_Clea
 constexpr const char *TEST_D3D11_PRIMITIVE_RESOURCE_PIPELINE = "RHI_D3D11Hardware_PrimitiveResourcePipelineSnapshot";
 constexpr const char *TEST_D3D11_VISIBLE_TRIANGLE = "RHI_D3D11Hardware_VisibleTriangleCaptureBytes";
 constexpr const char *TEST_D3D11_INDEXED_STATIC_MESH = "RHI_D3D11Hardware_IndexedStaticMeshCaptureBytes";
+constexpr const char *TEST_D3D11_TEXTURE_SAMPLING = "RHI_D3D11Hardware_TextureSamplingCaptureBytes";
 constexpr std::uint32_t SMOKE_EXTENT = 4U;
 constexpr int SKIP_RETURN_CODE = 77;
 constexpr std::uint32_t TRIANGLE_VERTEX_COUNT = 3U;
 constexpr std::uint32_t TRIANGLE_INDEX_COUNT = 3U;
 constexpr std::size_t TRIANGLE_VERTEX_STRIDE_BYTES = sizeof(float) * 6U;
+constexpr std::size_t TEXTURED_VERTEX_STRIDE_BYTES = sizeof(float) * 4U;
+constexpr std::size_t TEXTURED_VERTEX_BUFFER_BYTES = TEXTURED_VERTEX_STRIDE_BYTES * TRIANGLE_VERTEX_COUNT;
 constexpr std::size_t TRIANGLE_INDEX_BUFFER_BYTES = sizeof(std::uint16_t) * TRIANGLE_INDEX_COUNT;
 struct TriangleVertex final {
     float position[2];
     float color[4];
+};
+struct TexturedVertex final {
+    float position[2];
+    float texcoord[2];
 };
 constexpr std::uint8_t VERTEX_SHADER_BYTES[] = {
     0x44U, 0x58U, 0x42U, 0x43U, 0x07U, 0x36U, 0x40U, 0xB0U,
@@ -300,6 +311,156 @@ constexpr std::uint8_t TRIANGLE_PIXEL_SHADER_BYTES[] = {
     0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
     0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U
 };
+constexpr std::uint8_t TEXTURE_SAMPLING_VERTEX_SHADER_BYTES[] = {
+    0x44U, 0x58U, 0x42U, 0x43U, 0x5BU, 0x3CU, 0xEDU, 0x58U,
+    0x72U, 0x41U, 0x88U, 0xD3U, 0xD4U, 0x50U, 0x41U, 0x0AU,
+    0x60U, 0xEDU, 0x66U, 0x53U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x38U, 0x02U, 0x00U, 0x00U, 0x05U, 0x00U, 0x00U, 0x00U,
+    0x34U, 0x00U, 0x00U, 0x00U, 0x80U, 0x00U, 0x00U, 0x00U,
+    0xD4U, 0x00U, 0x00U, 0x00U, 0x2CU, 0x01U, 0x00U, 0x00U,
+    0xBCU, 0x01U, 0x00U, 0x00U, 0x52U, 0x44U, 0x45U, 0x46U,
+    0x44U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x1CU, 0x00U, 0x00U, 0x00U, 0x00U, 0x04U, 0xFEU, 0xFFU,
+    0x00U, 0x01U, 0x00U, 0x00U, 0x1CU, 0x00U, 0x00U, 0x00U,
+    0x4DU, 0x69U, 0x63U, 0x72U, 0x6FU, 0x73U, 0x6FU, 0x66U,
+    0x74U, 0x20U, 0x28U, 0x52U, 0x29U, 0x20U, 0x48U, 0x4CU,
+    0x53U, 0x4CU, 0x20U, 0x53U, 0x68U, 0x61U, 0x64U, 0x65U,
+    0x72U, 0x20U, 0x43U, 0x6FU, 0x6DU, 0x70U, 0x69U, 0x6CU,
+    0x65U, 0x72U, 0x20U, 0x31U, 0x30U, 0x2EU, 0x31U, 0x00U,
+    0x49U, 0x53U, 0x47U, 0x4EU, 0x4CU, 0x00U, 0x00U, 0x00U,
+    0x02U, 0x00U, 0x00U, 0x00U, 0x08U, 0x00U, 0x00U, 0x00U,
+    0x38U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x03U, 0x03U, 0x00U, 0x00U,
+    0x41U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x03U, 0x03U, 0x00U, 0x00U,
+    0x50U, 0x4FU, 0x53U, 0x49U, 0x54U, 0x49U, 0x4FU, 0x4EU,
+    0x00U, 0x54U, 0x45U, 0x58U, 0x43U, 0x4FU, 0x4FU, 0x52U,
+    0x44U, 0x00U, 0xABU, 0xABU, 0x4FU, 0x53U, 0x47U, 0x4EU,
+    0x50U, 0x00U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+    0x08U, 0x00U, 0x00U, 0x00U, 0x38U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x03U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x0FU, 0x00U, 0x00U, 0x00U, 0x44U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x03U, 0x00U, 0x00U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x03U, 0x0CU, 0x00U, 0x00U, 0x53U, 0x56U, 0x5FU, 0x50U,
+    0x6FU, 0x73U, 0x69U, 0x74U, 0x69U, 0x6FU, 0x6EU, 0x00U,
+    0x54U, 0x45U, 0x58U, 0x43U, 0x4FU, 0x4FU, 0x52U, 0x44U,
+    0x00U, 0xABU, 0xABU, 0xABU, 0x53U, 0x48U, 0x44U, 0x52U,
+    0x88U, 0x00U, 0x00U, 0x00U, 0x40U, 0x00U, 0x01U, 0x00U,
+    0x22U, 0x00U, 0x00U, 0x00U, 0x5FU, 0x00U, 0x00U, 0x03U,
+    0x32U, 0x10U, 0x10U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x5FU, 0x00U, 0x00U, 0x03U, 0x32U, 0x10U, 0x10U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x67U, 0x00U, 0x00U, 0x04U,
+    0xF2U, 0x20U, 0x10U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x65U, 0x00U, 0x00U, 0x03U,
+    0x32U, 0x20U, 0x10U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x36U, 0x00U, 0x00U, 0x05U, 0x32U, 0x20U, 0x10U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x46U, 0x10U, 0x10U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x36U, 0x00U, 0x00U, 0x08U,
+    0xC2U, 0x20U, 0x10U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x02U, 0x40U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x80U, 0x3FU, 0x36U, 0x00U, 0x00U, 0x05U,
+    0x32U, 0x20U, 0x10U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x46U, 0x10U, 0x10U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x3EU, 0x00U, 0x00U, 0x01U, 0x53U, 0x54U, 0x41U, 0x54U,
+    0x74U, 0x00U, 0x00U, 0x00U, 0x04U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x04U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x03U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U
+};
+constexpr std::uint8_t TEXTURE_SAMPLING_PIXEL_SHADER_BYTES[] = {
+    0x44U, 0x58U, 0x42U, 0x43U, 0x06U, 0xDFU, 0x33U, 0xA5U,
+    0x1FU, 0x77U, 0x8DU, 0x63U, 0xE5U, 0x67U, 0x75U, 0xA9U,
+    0x9FU, 0x77U, 0x18U, 0xBCU, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x54U, 0x02U, 0x00U, 0x00U, 0x05U, 0x00U, 0x00U, 0x00U,
+    0x34U, 0x00U, 0x00U, 0x00U, 0xE0U, 0x00U, 0x00U, 0x00U,
+    0x38U, 0x01U, 0x00U, 0x00U, 0x6CU, 0x01U, 0x00U, 0x00U,
+    0xD8U, 0x01U, 0x00U, 0x00U, 0x52U, 0x44U, 0x45U, 0x46U,
+    0xA4U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+    0x1CU, 0x00U, 0x00U, 0x00U, 0x00U, 0x04U, 0xFFU, 0xFFU,
+    0x00U, 0x01U, 0x00U, 0x00U, 0x7CU, 0x00U, 0x00U, 0x00U,
+    0x5CU, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x6CU, 0x00U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+    0x05U, 0x00U, 0x00U, 0x00U, 0x04U, 0x00U, 0x00U, 0x00U,
+    0xFFU, 0xFFU, 0xFFU, 0xFFU, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x0DU, 0x00U, 0x00U, 0x00U,
+    0x73U, 0x61U, 0x6DU, 0x70U, 0x6CU, 0x65U, 0x64U, 0x5FU,
+    0x73U, 0x61U, 0x6DU, 0x70U, 0x6CU, 0x65U, 0x72U, 0x00U,
+    0x73U, 0x61U, 0x6DU, 0x70U, 0x6CU, 0x65U, 0x64U, 0x5FU,
+    0x74U, 0x65U, 0x78U, 0x74U, 0x75U, 0x72U, 0x65U, 0x00U,
+    0x4DU, 0x69U, 0x63U, 0x72U, 0x6FU, 0x73U, 0x6FU, 0x66U,
+    0x74U, 0x20U, 0x28U, 0x52U, 0x29U, 0x20U, 0x48U, 0x4CU,
+    0x53U, 0x4CU, 0x20U, 0x53U, 0x68U, 0x61U, 0x64U, 0x65U,
+    0x72U, 0x20U, 0x43U, 0x6FU, 0x6DU, 0x70U, 0x69U, 0x6CU,
+    0x65U, 0x72U, 0x20U, 0x31U, 0x30U, 0x2EU, 0x31U, 0x00U,
+    0x49U, 0x53U, 0x47U, 0x4EU, 0x50U, 0x00U, 0x00U, 0x00U,
+    0x02U, 0x00U, 0x00U, 0x00U, 0x08U, 0x00U, 0x00U, 0x00U,
+    0x38U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x0FU, 0x00U, 0x00U, 0x00U,
+    0x44U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x03U, 0x03U, 0x00U, 0x00U,
+    0x53U, 0x56U, 0x5FU, 0x50U, 0x6FU, 0x73U, 0x69U, 0x74U,
+    0x69U, 0x6FU, 0x6EU, 0x00U, 0x54U, 0x45U, 0x58U, 0x43U,
+    0x4FU, 0x4FU, 0x52U, 0x44U, 0x00U, 0xABU, 0xABU, 0xABU,
+    0x4FU, 0x53U, 0x47U, 0x4EU, 0x2CU, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x08U, 0x00U, 0x00U, 0x00U,
+    0x20U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x03U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x0FU, 0x00U, 0x00U, 0x00U,
+    0x53U, 0x56U, 0x5FU, 0x54U, 0x61U, 0x72U, 0x67U, 0x65U,
+    0x74U, 0x00U, 0xABU, 0xABU, 0x53U, 0x48U, 0x44U, 0x52U,
+    0x64U, 0x00U, 0x00U, 0x00U, 0x40U, 0x00U, 0x00U, 0x00U,
+    0x19U, 0x00U, 0x00U, 0x00U, 0x5AU, 0x00U, 0x00U, 0x03U,
+    0x00U, 0x60U, 0x10U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x58U, 0x18U, 0x00U, 0x04U, 0x00U, 0x70U, 0x10U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x55U, 0x55U, 0x00U, 0x00U,
+    0x62U, 0x10U, 0x00U, 0x03U, 0x32U, 0x10U, 0x10U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x65U, 0x00U, 0x00U, 0x03U,
+    0xF2U, 0x20U, 0x10U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x45U, 0x00U, 0x00U, 0x09U, 0xF2U, 0x20U, 0x10U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x46U, 0x10U, 0x10U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x46U, 0x7EU, 0x10U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x60U, 0x10U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x3EU, 0x00U, 0x00U, 0x01U,
+    0x53U, 0x54U, 0x41U, 0x54U, 0x74U, 0x00U, 0x00U, 0x00U,
+    0x02U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x01U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U
+};
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -392,6 +553,43 @@ bool CaptureContainsVisibleTriangle(const std::vector<std::uint8_t> &bytes) {
     return black_count > 0U;
 }
 
+bool IsBlueTexturePixel(const std::vector<std::uint8_t> &bytes, std::size_t index) {
+    if (bytes[index] > 40U) {
+        return false;
+    }
+
+    if (bytes[index + 1U] > 40U) {
+        return false;
+    }
+
+    if (bytes[index + 2U] < 200U) {
+        return false;
+    }
+
+    return bytes[index + 3U] == 255U;
+}
+
+bool CaptureContainsTextureSampling(const std::vector<std::uint8_t> &bytes) {
+    std::size_t blue_count = 0U;
+    std::size_t black_count = 0U;
+    for (std::size_t index = 0U; index < bytes.size(); index += RGBA8_BYTES_PER_PIXEL) {
+        if (IsBlueTexturePixel(bytes, index)) {
+            ++blue_count;
+            continue;
+        }
+
+        if (IsBlackBackgroundPixel(bytes, index)) {
+            ++black_count;
+        }
+    }
+
+    if (blue_count == 0U) {
+        return false;
+    }
+
+    return black_count > 0U;
+}
+
 RhiInputLayoutDesc TriangleInputLayoutDesc() {
     RhiInputLayoutDesc desc{};
     desc.elements[0U].semantic = RhiInputElementSemantic::Position;
@@ -402,6 +600,19 @@ RhiInputLayoutDesc TriangleInputLayoutDesc() {
     desc.elements[1U].offset_bytes = sizeof(float) * 2U;
     desc.element_count = 2U;
     desc.stride_bytes = TRIANGLE_VERTEX_STRIDE_BYTES;
+    return desc;
+}
+
+RhiInputLayoutDesc TexturedTriangleInputLayoutDesc() {
+    RhiInputLayoutDesc desc{};
+    desc.elements[0U].semantic = RhiInputElementSemantic::Position;
+    desc.elements[0U].format = RhiInputElementFormat::Float32x2;
+    desc.elements[0U].offset_bytes = 0U;
+    desc.elements[1U].semantic = RhiInputElementSemantic::TexCoord;
+    desc.elements[1U].format = RhiInputElementFormat::Float32x2;
+    desc.elements[1U].offset_bytes = sizeof(float) * 2U;
+    desc.element_count = 2U;
+    desc.stride_bytes = TEXTURED_VERTEX_STRIDE_BYTES;
     return desc;
 }
 
@@ -431,6 +642,15 @@ RhiVertexBufferView TriangleVertexBufferViewFor(RhiBufferHandle buffer) {
     return view;
 }
 
+RhiVertexBufferView TexturedVertexBufferViewFor(RhiBufferHandle buffer) {
+    RhiVertexBufferView view{};
+    view.buffer = buffer;
+    view.offset_bytes = 0U;
+    view.stride_bytes = TEXTURED_VERTEX_STRIDE_BYTES;
+    view.size_bytes = TEXTURED_VERTEX_BUFFER_BYTES;
+    return view;
+}
+
 RhiIndexBufferView TriangleIndexBufferViewFor(RhiBufferHandle buffer) {
     RhiIndexBufferView view{};
     view.buffer = buffer;
@@ -438,6 +658,20 @@ RhiIndexBufferView TriangleIndexBufferViewFor(RhiBufferHandle buffer) {
     view.size_bytes = TRIANGLE_INDEX_BUFFER_BYTES;
     view.format = RhiIndexFormat::Uint16;
     return view;
+}
+
+RhiSampledTextureBinding SampledTextureBindingFor(RhiTextureHandle texture) {
+    RhiSampledTextureBinding binding{};
+    binding.texture = texture;
+    binding.slot = 0U;
+    return binding;
+}
+
+RhiSamplerBinding SamplerBindingFor(RhiSamplerHandle sampler) {
+    RhiSamplerBinding binding{};
+    binding.sampler = sampler;
+    binding.slot = 0U;
+    return binding;
 }
 
 RhiStatus ClearPresentCapture(IRhiDevice &device, RhiTextureHandle target, RhiColor color, std::vector<std::uint8_t> &capture) {
@@ -1250,6 +1484,313 @@ int RunD3D11IndexedStaticMeshCapture() {
 
     return 0;
 }
+
+int RunD3D11TextureSamplingCapture() {
+    WindowsPlatformWindow window;
+    PlatformWindowDesc window_desc{};
+    window_desc.title = "YuEngine D3D11 Texture Sampling Smoke";
+    window_desc.client_width = SMOKE_EXTENT;
+    window_desc.client_height = SMOKE_EXTENT;
+    window_desc.visible = false;
+
+    const PlatformWindowStatus window_status = window.Create(window_desc);
+    if (window_status != PlatformWindowStatus::Success) {
+        return Skip("d3d11 texture sampling smoke skipped because a native window could not be created");
+    }
+
+    const std::size_t storage_size = RhiDeviceFactory::RequiredDeviceStorageSize(RhiBackendKind::D3D11);
+    if (storage_size == 0U) {
+        return Skip("d3d11 texture sampling smoke skipped because the backend is not compiled");
+    }
+
+    std::vector<std::byte> storage(storage_size);
+    RhiDeviceDesc device_desc{};
+    device_desc.backend_kind = RhiBackendKind::D3D11;
+    device_desc.native_surface = ConvertSurface(window.GetNativeSurface());
+    device_desc.requires_native_surface = true;
+    device_desc.requires_swapchain = true;
+    device_desc.swapchain.extent = {SMOKE_EXTENT, SMOKE_EXTENT};
+    device_desc.command_list_capacity = MAX_COMMANDS;
+
+    const RhiDeviceCreateResult create_result = RhiDeviceFactory::CreateDevice(
+        device_desc,
+        std::span<std::byte>(storage.data(), storage.size()));
+    if (create_result.status == RhiStatus::MissingHardware) {
+        return Skip("d3d11 texture sampling smoke skipped because a hardware D3D11 device is unavailable");
+    }
+
+    if (create_result.status != RhiStatus::Success) {
+        return Fail("d3d11 texture sampling device creation failed");
+    }
+
+    if (create_result.device == nullptr) {
+        return Fail("d3d11 texture sampling device creation returned null device");
+    }
+
+    IRhiDevice &device = *create_result.device;
+    RhiTextureHandle target{};
+    RhiStatus status = device.GetSwapchainColorTarget(target);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling swapchain target query failed");
+    }
+
+    std::array<TexturedVertex, 3U> vertices{};
+    vertices[0U].position[0U] = -1.0F;
+    vertices[0U].position[1U] = -1.0F;
+    vertices[0U].texcoord[0U] = 0.0F;
+    vertices[0U].texcoord[1U] = 1.0F;
+    vertices[1U].position[0U] = -1.0F;
+    vertices[1U].position[1U] = 1.0F;
+    vertices[1U].texcoord[0U] = 0.0F;
+    vertices[1U].texcoord[1U] = 0.0F;
+    vertices[2U].position[0U] = 1.0F;
+    vertices[2U].position[1U] = -1.0F;
+    vertices[2U].texcoord[0U] = 1.0F;
+    vertices[2U].texcoord[1U] = 1.0F;
+
+    const auto *vertex_byte_pointer = reinterpret_cast<const std::uint8_t *>(vertices.data());
+    const std::size_t vertex_byte_count = sizeof(TexturedVertex) * vertices.size();
+    const std::span<const std::uint8_t> vertex_span(vertex_byte_pointer, vertex_byte_count);
+    RhiBufferDesc vertex_buffer_desc{};
+    vertex_buffer_desc.usage = RhiBufferUsage::Vertex;
+    vertex_buffer_desc.size_bytes = vertex_byte_count;
+    RhiBufferHandle vertex_buffer{};
+    status = device.CreateBuffer(vertex_buffer_desc, vertex_span, vertex_buffer);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling vertex buffer creation failed");
+    }
+
+    const std::array<std::uint16_t, TRIANGLE_INDEX_COUNT> indices{0U, 1U, 2U};
+    const auto *index_byte_pointer = reinterpret_cast<const std::uint8_t *>(indices.data());
+    const std::span<const std::uint8_t> index_span(index_byte_pointer, TRIANGLE_INDEX_BUFFER_BYTES);
+    RhiBufferDesc index_buffer_desc{};
+    index_buffer_desc.usage = RhiBufferUsage::Index;
+    index_buffer_desc.size_bytes = TRIANGLE_INDEX_BUFFER_BYTES;
+    RhiBufferHandle index_buffer{};
+    status = device.CreateBuffer(index_buffer_desc, index_span, index_buffer);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling index buffer creation failed");
+    }
+
+    const std::uint8_t texture_bytes[] = {
+        0U, 0U, 255U, 255U,
+        0U, 0U, 255U, 255U,
+        0U, 0U, 255U, 255U,
+        0U, 0U, 255U, 255U};
+    const std::span<const std::uint8_t> texture_span(texture_bytes, sizeof(texture_bytes));
+    RhiTextureDesc texture_desc{};
+    texture_desc.format = RhiFormat::Rgba8Unorm;
+    texture_desc.extent = {2U, 2U};
+    RhiTextureHandle texture{};
+    status = device.CreateTexture(texture_desc, texture_span, texture);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling texture creation failed");
+    }
+
+    RhiSamplerDesc sampler_desc{};
+    sampler_desc.linear_filter = false;
+    sampler_desc.clamp_to_edge = true;
+    RhiSamplerHandle sampler{};
+    status = device.CreateSampler(sampler_desc, sampler);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling sampler creation failed");
+    }
+
+    const std::span<const std::uint8_t> vertex_bytecode(
+        TEXTURE_SAMPLING_VERTEX_SHADER_BYTES,
+        sizeof(TEXTURE_SAMPLING_VERTEX_SHADER_BYTES));
+    const RhiShaderModuleDesc vertex_desc{RhiShaderStage::Vertex, vertex_bytecode};
+    RhiShaderModuleHandle vertex_shader{};
+    status = device.CreateShaderModule(vertex_desc, vertex_shader);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling vertex shader creation failed");
+    }
+
+    const std::span<const std::uint8_t> pixel_bytecode(
+        TEXTURE_SAMPLING_PIXEL_SHADER_BYTES,
+        sizeof(TEXTURE_SAMPLING_PIXEL_SHADER_BYTES));
+    const RhiShaderModuleDesc pixel_desc{RhiShaderStage::Pixel, pixel_bytecode};
+    RhiShaderModuleHandle pixel_shader{};
+    status = device.CreateShaderModule(pixel_desc, pixel_shader);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling pixel shader creation failed");
+    }
+
+    RhiPipelineDesc pipeline_desc{};
+    pipeline_desc.vertex_shader = vertex_shader;
+    pipeline_desc.pixel_shader = pixel_shader;
+    pipeline_desc.input_layout = TexturedTriangleInputLayoutDesc();
+    RhiPipelineHandle pipeline{};
+    status = device.CreatePipeline(pipeline_desc, pipeline);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling pipeline creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    status = command_list.BeginFrame(target);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling begin frame failed");
+    }
+
+    status = device.RecordClear(command_list, target, RhiColor{0U, 0U, 0U, 255U});
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling clear recording failed");
+    }
+
+    status = device.RecordBindPipeline(command_list, pipeline);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling pipeline bind recording failed");
+    }
+
+    const RhiVertexBufferView vertex_view = TexturedVertexBufferViewFor(vertex_buffer);
+    status = device.RecordBindVertexBuffer(command_list, vertex_view);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling vertex buffer bind recording failed");
+    }
+
+    const RhiIndexBufferView index_view = TriangleIndexBufferViewFor(index_buffer);
+    status = device.RecordBindIndexBuffer(command_list, index_view);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling index buffer bind recording failed");
+    }
+
+    const RhiSampledTextureBinding texture_binding = SampledTextureBindingFor(texture);
+    status = device.RecordBindSampledTexture(command_list, texture_binding);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling sampled texture bind recording failed");
+    }
+
+    const RhiSamplerBinding sampler_binding = SamplerBindingFor(sampler);
+    status = device.RecordBindSampler(command_list, sampler_binding);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling sampler bind recording failed");
+    }
+
+    status = device.RecordDrawIndexed(command_list, TriangleDrawIndexedDesc());
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling draw recording failed");
+    }
+
+    status = command_list.EndFrame();
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling end frame failed");
+    }
+
+    status = device.Submit(command_list);
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling submit failed");
+    }
+
+    status = device.Present();
+    if (status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling present failed");
+    }
+
+    std::vector<std::uint8_t> capture(SMOKE_EXTENT * SMOKE_EXTENT * RGBA8_BYTES_PER_PIXEL);
+    const RhiCaptureResult capture_result = device.CapturePresentedTarget(
+        std::span<std::uint8_t>(capture.data(), capture.size()));
+    if (capture_result.status != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling capture failed");
+    }
+
+    if (capture_result.bytes_written != capture.size()) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling capture byte count was wrong");
+    }
+
+    if (!CaptureContainsTextureSampling(capture)) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling capture did not contain sampled texture and background pixels");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.submitted_indexed_draw_count != 1U) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling submitted indexed draw count was not tracked");
+    }
+
+    if (snapshot.submitted_sampled_texture_bind_count != 1U) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling sampled texture bind count was not tracked");
+    }
+
+    if (snapshot.submitted_sampler_bind_count != 1U) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling sampler bind count was not tracked");
+    }
+
+    if (snapshot.last_bound_sampled_texture_slot != 0U) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling sampled texture slot was not tracked");
+    }
+
+    if (snapshot.last_bound_sampler_slot != 0U) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling sampler slot was not tracked");
+    }
+
+    if (device.DestroyPipeline(pipeline) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling pipeline destroy failed");
+    }
+
+    if (device.DestroyShaderModule(pixel_shader) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling pixel shader destroy failed");
+    }
+
+    if (device.DestroyShaderModule(vertex_shader) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling vertex shader destroy failed");
+    }
+
+    if (device.DestroySampler(sampler) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling sampler destroy failed");
+    }
+
+    if (device.DestroyTexture(texture) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling texture destroy failed");
+    }
+
+    if (device.DestroyBuffer(index_buffer) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling index buffer destroy failed");
+    }
+
+    if (device.DestroyBuffer(vertex_buffer) != RhiStatus::Success) {
+        static_cast<void>(RhiDeviceFactory::DestroyDevice(create_result.device));
+        return Fail("d3d11 texture sampling vertex buffer destroy failed");
+    }
+
+    const RhiStatus destroy_status = RhiDeviceFactory::DestroyDevice(create_result.device);
+    if (destroy_status != RhiStatus::Success) {
+        return Fail("d3d11 texture sampling device destroy failed");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -1272,6 +1813,10 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_D3D11_INDEXED_STATIC_MESH) {
         return RunD3D11IndexedStaticMeshCapture();
+    }
+
+    if (test_name == TEST_D3D11_TEXTURE_SAMPLING) {
+        return RunD3D11TextureSamplingCapture();
     }
 
     return Fail("unknown test name");

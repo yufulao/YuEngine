@@ -4,6 +4,7 @@
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <new>
@@ -21,6 +22,8 @@ constexpr std::uint32_t SWAPCHAIN_TARGET_SLOT = 0U;
 constexpr std::uint32_t SWAPCHAIN_TARGET_GENERATION = 1U;
 constexpr std::uint32_t INVALID_GENERATION = 0U;
 constexpr std::size_t NO_STORAGE_REQUIRED = 0U;
+using SampledTextureSlotMask = std::array<bool, MAX_RHI_SAMPLED_TEXTURE_SLOTS>;
+using SamplerSlotMask = std::array<bool, MAX_RHI_SAMPLER_SLOTS>;
 
 std::size_t InputElementFormatByteCount(RhiInputElementFormat format) {
     if (format == RhiInputElementFormat::Float32x2) {
@@ -64,9 +67,53 @@ const char *NativeInputElementSemanticName(RhiInputElementSemantic semantic) {
         return "COLOR";
     }
 
+    if (semantic == RhiInputElementSemantic::TexCoord) {
+        return "TEXCOORD";
+    }
+
     return "";
 }
 #endif
+
+bool HasSampledTextureWithoutSampler(
+    const SampledTextureSlotMask &sampled_textures,
+    const SamplerSlotMask &samplers) {
+    for (std::size_t index = 0U; index < sampled_textures.size(); ++index) {
+        if (!sampled_textures[index]) {
+            continue;
+        }
+
+        if (index >= samplers.size()) {
+            return true;
+        }
+
+        if (!samplers[index]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool HasSamplerWithoutSampledTexture(
+    const SampledTextureSlotMask &sampled_textures,
+    const SamplerSlotMask &samplers) {
+    for (std::size_t index = 0U; index < samplers.size(); ++index) {
+        if (!samplers[index]) {
+            continue;
+        }
+
+        if (index >= sampled_textures.size()) {
+            return true;
+        }
+
+        if (!sampled_textures[index]) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 bool IsStorageAligned(std::span<std::byte> device_storage, std::size_t alignment) {
     if (device_storage.data() == nullptr) {
@@ -264,6 +311,44 @@ RhiStatus D3D11RhiDevice::RecordBindIndexBuffer(RhiCommandList &command_list, co
     return RhiStatus::Success;
 }
 
+RhiStatus D3D11RhiDevice::RecordBindSampledTexture(
+    RhiCommandList &command_list,
+    const RhiSampledTextureBinding &binding) {
+    if (binding.slot >= MAX_RHI_SAMPLED_TEXTURE_SLOTS) {
+        return RecordSampledTextureBindFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    if (!IsTextureHandleValid(binding.texture)) {
+        return RecordSampledTextureBindFailure(RhiStatus::InvalidHandle);
+    }
+
+    const RhiStatus status = command_list.RecordBindSampledTexture(binding);
+    if (status != RhiStatus::Success) {
+        return RecordSampledTextureBindFailure(status);
+    }
+
+    ++snapshot_.recorded_command_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus D3D11RhiDevice::RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) {
+    if (binding.slot >= MAX_RHI_SAMPLER_SLOTS) {
+        return RecordSamplerBindFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    if (!IsSamplerHandleValid(binding.sampler)) {
+        return RecordSamplerBindFailure(RhiStatus::InvalidHandle);
+    }
+
+    const RhiStatus status = command_list.RecordBindSampler(binding);
+    if (status != RhiStatus::Success) {
+        return RecordSamplerBindFailure(status);
+    }
+
+    ++snapshot_.recorded_command_count;
+    return RhiStatus::Success;
+}
+
 RhiStatus D3D11RhiDevice::RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) {
     if (!IsDrawDescValid(desc)) {
         return RecordFailure(RhiStatus::InvalidDescriptor);
@@ -312,13 +397,19 @@ RhiStatus D3D11RhiDevice::Submit(const RhiCommandList &command_list) {
     bool has_pipeline = false;
     bool has_vertex_buffer = false;
     bool has_index_buffer = false;
+    SampledTextureSlotMask has_sampled_texture{};
+    SamplerSlotMask has_sampler{};
     RhiPipelineHandle bound_pipeline{};
     RhiVertexBufferView bound_vertex_buffer{};
     RhiIndexBufferView bound_index_buffer{};
     std::uint64_t submitted_draw_count = 0U;
     std::uint64_t submitted_indexed_draw_count = 0U;
+    std::uint64_t submitted_sampled_texture_bind_count = 0U;
+    std::uint64_t submitted_sampler_bind_count = 0U;
     std::uint32_t last_draw_vertex_count = 0U;
     std::uint32_t last_indexed_draw_index_count = 0U;
+    std::uint32_t last_bound_sampled_texture_slot = 0U;
+    std::uint32_t last_bound_sampler_slot = 0U;
     for (std::size_t index = 0U; index < command_list.CommandCount(); ++index) {
         const RhiCommandRecord &command = command_list.CommandAt(index);
         if ((command.type == RhiCommandType::BeginFrame ||
@@ -358,6 +449,38 @@ RhiStatus D3D11RhiDevice::Submit(const RhiCommandList &command_list) {
             continue;
         }
 
+        if (command.type == RhiCommandType::BindSampledTexture) {
+            if (!IsSampledTextureBindingValid(command.sampled_texture)) {
+                if (command.sampled_texture.slot >= MAX_RHI_SAMPLED_TEXTURE_SLOTS) {
+                    return RecordSampledTextureBindFailure(RhiStatus::InvalidDescriptor);
+                }
+
+                return RecordSampledTextureBindFailure(RhiStatus::InvalidHandle);
+            }
+
+            const std::size_t slot = command.sampled_texture.slot;
+            has_sampled_texture[slot] = true;
+            ++submitted_sampled_texture_bind_count;
+            last_bound_sampled_texture_slot = command.sampled_texture.slot;
+            continue;
+        }
+
+        if (command.type == RhiCommandType::BindSampler) {
+            if (!IsSamplerBindingValid(command.sampler)) {
+                if (command.sampler.slot >= MAX_RHI_SAMPLER_SLOTS) {
+                    return RecordSamplerBindFailure(RhiStatus::InvalidDescriptor);
+                }
+
+                return RecordSamplerBindFailure(RhiStatus::InvalidHandle);
+            }
+
+            const std::size_t slot = command.sampler.slot;
+            has_sampler[slot] = true;
+            ++submitted_sampler_bind_count;
+            last_bound_sampler_slot = command.sampler.slot;
+            continue;
+        }
+
         if (command.type == RhiCommandType::Draw) {
             if (!has_pipeline) {
                 return RecordFailure(RhiStatus::InvalidLifecycle);
@@ -365,6 +488,14 @@ RhiStatus D3D11RhiDevice::Submit(const RhiCommandList &command_list) {
 
             if (!has_vertex_buffer) {
                 return RecordFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (HasSamplerWithoutSampledTexture(has_sampled_texture, has_sampler)) {
+                return RecordSampledTextureBindFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (HasSampledTextureWithoutSampler(has_sampled_texture, has_sampler)) {
+                return RecordSamplerBindFailure(RhiStatus::InvalidLifecycle);
             }
 
             if (!IsDrawDescValid(command.draw)) {
@@ -396,6 +527,14 @@ RhiStatus D3D11RhiDevice::Submit(const RhiCommandList &command_list) {
 
             if (!has_index_buffer) {
                 return RecordIndexedDrawFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (HasSamplerWithoutSampledTexture(has_sampled_texture, has_sampler)) {
+                return RecordSampledTextureBindFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (HasSampledTextureWithoutSampler(has_sampled_texture, has_sampler)) {
+                return RecordSamplerBindFailure(RhiStatus::InvalidLifecycle);
             }
 
             if (!IsDrawIndexedDescValid(command.draw_indexed)) {
@@ -442,6 +581,19 @@ RhiStatus D3D11RhiDevice::Submit(const RhiCommandList &command_list) {
 
         if (command.type == RhiCommandType::BindIndexBuffer) {
             bound_index_buffer = command.index_buffer;
+            continue;
+        }
+
+        if (command.type == RhiCommandType::BindSampledTexture) {
+            D3D11TextureSlot &texture = textures_[command.sampled_texture.texture.slot];
+            ID3D11ShaderResourceView *shader_resource_view = texture.shader_resource_view;
+            context_->PSSetShaderResources(command.sampled_texture.slot, 1U, &shader_resource_view);
+            continue;
+        }
+
+        if (command.type == RhiCommandType::BindSampler) {
+            D3D11SamplerSlot &sampler = samplers_[command.sampler.sampler.slot];
+            context_->PSSetSamplers(command.sampler.slot, 1U, &sampler.sampler);
             continue;
         }
 
@@ -507,8 +659,18 @@ RhiStatus D3D11RhiDevice::Submit(const RhiCommandList &command_list) {
     ++snapshot_.submit_count;
     snapshot_.submitted_draw_count += submitted_draw_count;
     snapshot_.submitted_indexed_draw_count += submitted_indexed_draw_count;
+    snapshot_.submitted_sampled_texture_bind_count += submitted_sampled_texture_bind_count;
+    snapshot_.submitted_sampler_bind_count += submitted_sampler_bind_count;
     snapshot_.last_draw_vertex_count = last_draw_vertex_count;
     snapshot_.last_indexed_draw_index_count = last_indexed_draw_index_count;
+    if (submitted_sampled_texture_bind_count > 0U) {
+        snapshot_.last_bound_sampled_texture_slot = last_bound_sampled_texture_slot;
+    }
+
+    if (submitted_sampler_bind_count > 0U) {
+        snapshot_.last_bound_sampler_slot = last_bound_sampler_slot;
+    }
+
     if (submitted_indexed_draw_count > 0U) {
         snapshot_.last_bound_index_buffer_offset_bytes = bound_index_buffer.offset_bytes;
         snapshot_.last_bound_index_buffer_size_bytes = bound_index_buffer.size_bytes;
@@ -718,11 +880,25 @@ RhiStatus D3D11RhiDevice::CreateTexture(
             return RecordFailure(TranslateNativeFailure(create_result));
         }
 
+        D3D11_SHADER_RESOURCE_VIEW_DESC native_view_desc{};
+        native_view_desc.Format = native_desc.Format;
+        native_view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        native_view_desc.Texture2D.MostDetailedMip = 0U;
+        native_view_desc.Texture2D.MipLevels = 1U;
+        ID3D11ShaderResourceView *native_view = nullptr;
+        const HRESULT view_result = device_->CreateShaderResourceView(native_texture, &native_view_desc, &native_view);
+        if (FAILED(view_result)) {
+            native_texture->Release();
+            native_texture = nullptr;
+            return RecordFailure(TranslateNativeFailure(view_result));
+        }
+
         if (slot.generation == INVALID_GENERATION) {
             slot.generation = 1U;
         }
 
         slot.texture = native_texture;
+        slot.shader_resource_view = native_view;
         slot.desc = desc;
         slot.is_active = true;
         out_handle = RhiTextureHandle{static_cast<std::uint32_t>(index), slot.generation};
@@ -761,6 +937,8 @@ RhiStatus D3D11RhiDevice::DestroyTexture(RhiTextureHandle handle) {
     }
 
     D3D11TextureSlot &slot = textures_[handle.slot];
+    slot.shader_resource_view->Release();
+    slot.shader_resource_view = nullptr;
     slot.texture->Release();
     slot.texture = nullptr;
     slot.desc = RhiTextureDesc{};
@@ -1078,6 +1256,11 @@ void D3D11RhiDevice::ReleasePrimitiveResources() {
     }
 
     for (D3D11TextureSlot &texture : textures_) {
+        if (texture.shader_resource_view != nullptr) {
+            texture.shader_resource_view->Release();
+            texture.shader_resource_view = nullptr;
+        }
+
         if (texture.texture != nullptr) {
             texture.texture->Release();
             texture.texture = nullptr;
@@ -1130,6 +1313,16 @@ RhiStatus D3D11RhiDevice::RecordFailure(RhiStatus status) {
 
 RhiStatus D3D11RhiDevice::RecordIndexedDrawFailure(RhiStatus status) {
     ++snapshot_.rejected_indexed_draw_count;
+    return RecordFailure(status);
+}
+
+RhiStatus D3D11RhiDevice::RecordSampledTextureBindFailure(RhiStatus status) {
+    ++snapshot_.rejected_sampled_texture_bind_count;
+    return RecordFailure(status);
+}
+
+RhiStatus D3D11RhiDevice::RecordSamplerBindFailure(RhiStatus status) {
+    ++snapshot_.rejected_sampler_bind_count;
     return RecordFailure(status);
 }
 
@@ -1450,6 +1643,22 @@ bool D3D11RhiDevice::IsIndexBufferViewValid(const RhiIndexBufferView &view) cons
     }
 
     return true;
+}
+
+bool D3D11RhiDevice::IsSampledTextureBindingValid(const RhiSampledTextureBinding &binding) const {
+    if (binding.slot >= MAX_RHI_SAMPLED_TEXTURE_SLOTS) {
+        return false;
+    }
+
+    return IsTextureHandleValid(binding.texture);
+}
+
+bool D3D11RhiDevice::IsSamplerBindingValid(const RhiSamplerBinding &binding) const {
+    if (binding.slot >= MAX_RHI_SAMPLER_SLOTS) {
+        return false;
+    }
+
+    return IsSamplerHandleValid(binding.sampler);
 }
 
 bool D3D11RhiDevice::IsDrawDescValid(const RhiDrawDesc &desc) const {

@@ -63,6 +63,10 @@ public:
     RhiStatus RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) override;
     RhiStatus RecordBindVertexBuffer(RhiCommandList &command_list, const RhiVertexBufferView &view) override;
     RhiStatus RecordBindIndexBuffer(RhiCommandList &command_list, const RhiIndexBufferView &view) override;
+    RhiStatus RecordBindSampledTexture(
+        RhiCommandList &command_list,
+        const RhiSampledTextureBinding &binding) override;
+    RhiStatus RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) override;
     RhiStatus RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) override;
     RhiStatus RecordDrawIndexed(RhiCommandList &command_list, const RhiDrawIndexedDesc &desc) override;
     /**
@@ -153,6 +157,8 @@ private:
 
     RhiStatus RecordFailure(RhiStatus status);
     RhiStatus RecordIndexedDrawFailure(RhiStatus status);
+    RhiStatus RecordSampledTextureBindFailure(RhiStatus status);
+    RhiStatus RecordSamplerBindFailure(RhiStatus status);
     bool IsTargetHandleValid(RhiTextureHandle handle) const;
     bool IsBufferHandleValid(RhiBufferHandle handle) const;
     bool IsTextureHandleValid(RhiTextureHandle handle) const;
@@ -162,6 +168,8 @@ private:
     bool IsCommandTargetValidForFrame(const RhiCommandRecord &command, RhiTextureHandle frame_target) const;
     bool IsVertexBufferViewValid(const RhiVertexBufferView &view) const;
     bool IsIndexBufferViewValid(const RhiIndexBufferView &view) const;
+    bool IsSampledTextureBindingValid(const RhiSampledTextureBinding &binding) const;
+    bool IsSamplerBindingValid(const RhiSamplerBinding &binding) const;
     bool IsDrawDescValid(const RhiDrawDesc &desc) const;
     bool IsDrawIndexedDescValid(const RhiDrawIndexedDesc &desc) const;
     bool IsInputLayoutDescValid(const RhiInputLayoutDesc &desc) const;

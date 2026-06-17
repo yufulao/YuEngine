@@ -9,6 +9,8 @@
 #include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
+#include "YuEngine/Rhi/RhiSampledTextureBinding.h"
+#include "YuEngine/Rhi/RhiSamplerBinding.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
 
@@ -20,6 +22,8 @@ struct RhiCommandRecord final {
     RhiPipelineHandle pipeline{};
     RhiVertexBufferView vertex_buffer{};
     RhiIndexBufferView index_buffer{};
+    RhiSampledTextureBinding sampled_texture{};
+    RhiSamplerBinding sampler{};
     RhiDrawDesc draw{};
     RhiDrawIndexedDesc draw_indexed{};
 };

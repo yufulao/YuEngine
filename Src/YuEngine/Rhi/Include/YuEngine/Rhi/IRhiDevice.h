@@ -20,6 +20,8 @@
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
+#include "YuEngine/Rhi/RhiSampledTextureBinding.h"
+#include "YuEngine/Rhi/RhiSamplerBinding.h"
 #include "YuEngine/Rhi/RhiSamplerDesc.h"
 #include "YuEngine/Rhi/RhiSamplerHandle.h"
 #include "YuEngine/Rhi/RhiShaderModuleDesc.h"
@@ -91,6 +93,22 @@ public:
      * @return Explicit operation status.
      */
     virtual RhiStatus RecordBindIndexBuffer(RhiCommandList &command_list, const RhiIndexBufferView &view) = 0;
+    /**
+     * @comment Records sampled texture binding.
+     * @param command_list Command list updated by the function.
+     * @param binding Input binding.
+     * @return Explicit operation status.
+     */
+    virtual RhiStatus RecordBindSampledTexture(
+        RhiCommandList &command_list,
+        const RhiSampledTextureBinding &binding) = 0;
+    /**
+     * @comment Records sampler binding.
+     * @param command_list Command list updated by the function.
+     * @param binding Input binding.
+     * @return Explicit operation status.
+     */
+    virtual RhiStatus RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) = 0;
     /**
      * @comment Records draw.
      * @param command_list Command list updated by the function.

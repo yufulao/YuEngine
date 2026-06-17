@@ -11,6 +11,8 @@ struct RhiCommandListSnapshot final {
     std::size_t command_count = 0U;
     std::size_t draw_command_count = 0U;
     std::size_t indexed_draw_command_count = 0U;
+    std::size_t sampled_texture_bind_command_count = 0U;
+    std::size_t sampler_bind_command_count = 0U;
     bool is_recording = false;
     bool is_complete = false;
 };

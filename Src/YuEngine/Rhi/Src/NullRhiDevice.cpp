@@ -4,6 +4,7 @@
 #include "YuEngine/Rhi/NullRhiDevice.h"
 
 #include <algorithm>
+#include <array>
 
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
 #include "YuEngine/Rhi/RhiConstants.h"
@@ -11,6 +12,8 @@
 namespace yuengine::rhi {
 namespace {
 constexpr std::uint32_t INVALID_GENERATION = 0U;
+using SampledTextureSlotMask = std::array<bool, MAX_RHI_SAMPLED_TEXTURE_SLOTS>;
+using SamplerSlotMask = std::array<bool, MAX_RHI_SAMPLER_SLOTS>;
 
 std::size_t InputElementFormatByteCount(RhiInputElementFormat format) {
     if (format == RhiInputElementFormat::Float32x2) {
@@ -26,6 +29,46 @@ std::size_t InputElementFormatByteCount(RhiInputElementFormat format) {
     }
 
     return 0U;
+}
+
+bool HasSampledTextureWithoutSampler(
+    const SampledTextureSlotMask &sampled_textures,
+    const SamplerSlotMask &samplers) {
+    for (std::size_t index = 0U; index < sampled_textures.size(); ++index) {
+        if (!sampled_textures[index]) {
+            continue;
+        }
+
+        if (index >= samplers.size()) {
+            return true;
+        }
+
+        if (!samplers[index]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool HasSamplerWithoutSampledTexture(
+    const SampledTextureSlotMask &sampled_textures,
+    const SamplerSlotMask &samplers) {
+    for (std::size_t index = 0U; index < samplers.size(); ++index) {
+        if (!samplers[index]) {
+            continue;
+        }
+
+        if (index >= sampled_textures.size()) {
+            return true;
+        }
+
+        if (!sampled_textures[index]) {
+            return true;
+        }
+    }
+
+    return false;
 }
 }
 
@@ -312,6 +355,44 @@ RhiStatus NullRhiDevice::RecordBindIndexBuffer(RhiCommandList &command_list, con
     return RhiStatus::Success;
 }
 
+RhiStatus NullRhiDevice::RecordBindSampledTexture(
+    RhiCommandList &command_list,
+    const RhiSampledTextureBinding &binding) {
+    if (binding.slot >= MAX_RHI_SAMPLED_TEXTURE_SLOTS) {
+        return RecordSampledTextureBindFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    if (!IsTextureHandleValid(binding.texture)) {
+        return RecordSampledTextureBindFailure(RhiStatus::InvalidHandle);
+    }
+
+    const RhiStatus status = command_list.RecordBindSampledTexture(binding);
+    if (status != RhiStatus::Success) {
+        return RecordSampledTextureBindFailure(status);
+    }
+
+    ++snapshot_.recorded_command_count;
+    return RhiStatus::Success;
+}
+
+RhiStatus NullRhiDevice::RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) {
+    if (binding.slot >= MAX_RHI_SAMPLER_SLOTS) {
+        return RecordSamplerBindFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    if (!IsSamplerHandleValid(binding.sampler)) {
+        return RecordSamplerBindFailure(RhiStatus::InvalidHandle);
+    }
+
+    const RhiStatus status = command_list.RecordBindSampler(binding);
+    if (status != RhiStatus::Success) {
+        return RecordSamplerBindFailure(status);
+    }
+
+    ++snapshot_.recorded_command_count;
+    return RhiStatus::Success;
+}
+
 RhiStatus NullRhiDevice::RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) {
     if (!IsDrawDescValid(desc)) {
         return RecordFailure(RhiStatus::InvalidDescriptor);
@@ -357,13 +438,19 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
     bool has_pipeline = false;
     bool has_vertex_buffer = false;
     bool has_index_buffer = false;
+    SampledTextureSlotMask has_sampled_texture{};
+    SamplerSlotMask has_sampler{};
     RhiPipelineHandle bound_pipeline{};
     RhiVertexBufferView bound_vertex_buffer{};
     RhiIndexBufferView bound_index_buffer{};
     std::uint64_t submitted_draw_count = 0U;
     std::uint64_t submitted_indexed_draw_count = 0U;
+    std::uint64_t submitted_sampled_texture_bind_count = 0U;
+    std::uint64_t submitted_sampler_bind_count = 0U;
     std::uint32_t last_draw_vertex_count = 0U;
     std::uint32_t last_indexed_draw_index_count = 0U;
+    std::uint32_t last_bound_sampled_texture_slot = 0U;
+    std::uint32_t last_bound_sampler_slot = 0U;
     for (std::size_t index = 0U; index < command_list.CommandCount(); ++index) {
         const RhiCommandRecord &command = command_list.CommandAt(index);
         if (!IsCommandTargetValidForFrame(command, target)) {
@@ -400,6 +487,38 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
             continue;
         }
 
+        if (command.type == RhiCommandType::BindSampledTexture) {
+            if (!IsSampledTextureBindingValid(command.sampled_texture)) {
+                if (command.sampled_texture.slot >= MAX_RHI_SAMPLED_TEXTURE_SLOTS) {
+                    return RecordSampledTextureBindFailure(RhiStatus::InvalidDescriptor);
+                }
+
+                return RecordSampledTextureBindFailure(RhiStatus::InvalidHandle);
+            }
+
+            const std::size_t slot = command.sampled_texture.slot;
+            has_sampled_texture[slot] = true;
+            ++submitted_sampled_texture_bind_count;
+            last_bound_sampled_texture_slot = command.sampled_texture.slot;
+            continue;
+        }
+
+        if (command.type == RhiCommandType::BindSampler) {
+            if (!IsSamplerBindingValid(command.sampler)) {
+                if (command.sampler.slot >= MAX_RHI_SAMPLER_SLOTS) {
+                    return RecordSamplerBindFailure(RhiStatus::InvalidDescriptor);
+                }
+
+                return RecordSamplerBindFailure(RhiStatus::InvalidHandle);
+            }
+
+            const std::size_t slot = command.sampler.slot;
+            has_sampler[slot] = true;
+            ++submitted_sampler_bind_count;
+            last_bound_sampler_slot = command.sampler.slot;
+            continue;
+        }
+
         if (command.type == RhiCommandType::Draw) {
             if (!has_pipeline) {
                 return RecordFailure(RhiStatus::InvalidLifecycle);
@@ -407,6 +526,14 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
 
             if (!has_vertex_buffer) {
                 return RecordFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (HasSamplerWithoutSampledTexture(has_sampled_texture, has_sampler)) {
+                return RecordSampledTextureBindFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (HasSampledTextureWithoutSampler(has_sampled_texture, has_sampler)) {
+                return RecordSamplerBindFailure(RhiStatus::InvalidLifecycle);
             }
 
             if (!IsDrawDescValid(command.draw)) {
@@ -438,6 +565,14 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
 
             if (!has_index_buffer) {
                 return RecordIndexedDrawFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (HasSamplerWithoutSampledTexture(has_sampled_texture, has_sampler)) {
+                return RecordSampledTextureBindFailure(RhiStatus::InvalidLifecycle);
+            }
+
+            if (HasSampledTextureWithoutSampler(has_sampled_texture, has_sampler)) {
+                return RecordSamplerBindFailure(RhiStatus::InvalidLifecycle);
             }
 
             if (!IsDrawIndexedDescValid(command.draw_indexed)) {
@@ -474,8 +609,18 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
     ++snapshot_.submit_count;
     snapshot_.submitted_draw_count += submitted_draw_count;
     snapshot_.submitted_indexed_draw_count += submitted_indexed_draw_count;
+    snapshot_.submitted_sampled_texture_bind_count += submitted_sampled_texture_bind_count;
+    snapshot_.submitted_sampler_bind_count += submitted_sampler_bind_count;
     snapshot_.last_draw_vertex_count = last_draw_vertex_count;
     snapshot_.last_indexed_draw_index_count = last_indexed_draw_index_count;
+    if (submitted_sampled_texture_bind_count > 0U) {
+        snapshot_.last_bound_sampled_texture_slot = last_bound_sampled_texture_slot;
+    }
+
+    if (submitted_sampler_bind_count > 0U) {
+        snapshot_.last_bound_sampler_slot = last_bound_sampler_slot;
+    }
+
     if (submitted_indexed_draw_count > 0U) {
         snapshot_.last_bound_index_buffer_offset_bytes = bound_index_buffer.offset_bytes;
         snapshot_.last_bound_index_buffer_size_bytes = bound_index_buffer.size_bytes;
@@ -829,6 +974,16 @@ RhiStatus NullRhiDevice::RecordIndexedDrawFailure(RhiStatus status) {
     return RecordFailure(status);
 }
 
+RhiStatus NullRhiDevice::RecordSampledTextureBindFailure(RhiStatus status) {
+    ++snapshot_.rejected_sampled_texture_bind_count;
+    return RecordFailure(status);
+}
+
+RhiStatus NullRhiDevice::RecordSamplerBindFailure(RhiStatus status) {
+    ++snapshot_.rejected_sampler_bind_count;
+    return RecordFailure(status);
+}
+
 bool NullRhiDevice::IsTargetHandleValid(RhiTextureHandle handle) const {
     if (!is_initialized_) {
         return false;
@@ -1034,6 +1189,22 @@ bool NullRhiDevice::IsIndexBufferViewValid(const RhiIndexBufferView &view) const
     }
 
     return true;
+}
+
+bool NullRhiDevice::IsSampledTextureBindingValid(const RhiSampledTextureBinding &binding) const {
+    if (binding.slot >= MAX_RHI_SAMPLED_TEXTURE_SLOTS) {
+        return false;
+    }
+
+    return IsTextureHandleValid(binding.texture);
+}
+
+bool NullRhiDevice::IsSamplerBindingValid(const RhiSamplerBinding &binding) const {
+    if (binding.slot >= MAX_RHI_SAMPLER_SLOTS) {
+        return false;
+    }
+
+    return IsSamplerHandleValid(binding.sampler);
 }
 
 bool NullRhiDevice::IsDrawDescValid(const RhiDrawDesc &desc) const {
