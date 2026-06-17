@@ -1,6 +1,6 @@
 # P2-GATE-025: RenderCore Render Graph Skeleton
 
-Status: Approved for first slice
+Status: First-slice covered
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
@@ -9,6 +9,7 @@ Depends on: P2-GATE-020, P2-GATE-019, P2-GATE-018, P2-GATE-017, P2-GATE-008
 Related decisions: ADR-0011
 Source baseline: `b8f74f0`
 Proposal commit: `39b16a7`
+Landed commit: `43dc361`
 
 ## Layer
 
