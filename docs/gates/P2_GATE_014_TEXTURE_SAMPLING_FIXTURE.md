@@ -1,13 +1,15 @@
 # P2-GATE-014: Texture Sampling Fixture
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-008, P2-GATE-009, P2-GATE-013, ENG-096
 Related decisions: ADR-0011
 Source baseline: `1ee9fa4`
+Proposal commit: `d096ffa`
+Amendment commit: `f832109`
 
 ## Layer
 
@@ -54,6 +56,52 @@ Current discovery on the proposal baseline:
 - `ctest --preset windows-hardware-smoke -N`: `6`;
 - `ctest --preset windows-hardware-smoke -N -L D3D11`: `4`;
 - `ctest --preset windows-hardware-smoke -N -L TextureSampling`: `0`.
+
+## Approval Evidence
+
+Approved after:
+
+- ENG-119A boundary and quality review found a queue consistency blocker;
+- ENG-119A2 boundary and quality rerun PASS after fix commit `f832109`;
+- ENG-119B implementability review PASS with no `NEEDS_IMPLEMENTABILITY`
+  blocker;
+- ENG-119C test and preset review PASS on proposal commit `d096ffa`;
+- ENG-119C2 test-policy rerun PASS after the TextureSampling label consistency
+  fix.
+
+Review evidence:
+
+- proposal commit `d096ffaea529b13494020e8164399dcc04c246e8` changes only
+  `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and this gate doc;
+- amendment commit `f832109ebb9fdb61558b7c3edf9a01e692a77d23` changes only
+  `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and this gate doc;
+- `git diff --check d096ffa^ d096ffa` passed;
+- `git diff --check f832109^ f832109` passed;
+- review worktrees stayed clean and reviewers made no source, doc, commit, or
+  push changes;
+- baseline discovery after the amendment is default `718`, `RHI` `62`, `Fast`
+  `718`, `PerformanceSmoke` `49`, and `EvidenceOracle` `123`;
+- default `HardwareSmoke`, `D3D11`, `Win32`, `TextureSampling`, and `Sampler`
+  discovery remains `0`;
+- `windows-hardware-smoke` discovers `6`, with `RHI` `4`, `D3D11` `4`,
+  `Win32` `6`, `HardwareSmoke` `6`, and no texture-sampling hardware test
+  admitted yet.
+
+Approval conditions:
+
+- implementation must keep public `YuRHI` headers free of Windows, D3D11, DXGI,
+  COM, Platform, RenderCore, Resource, Package, World, UI, report, screenshot,
+  visual-proof, and Game Adapter types;
+- implementation must keep default `windows-fast-gate` deterministic and
+  no-real-device;
+- texture/sampler binding and sampling proof must stay inside `YuRHI`, private
+  D3D11, `Tests/Rhi`, and root CMake labels;
+- optional hardware-smoke proof must be isolated in `windows-hardware-smoke`
+  with `HardwareSmoke`, `RHI`, `D3D11`, `Win32`, `TextureSampling`, and
+  `Sampler` labels;
+- proof must use capture bytes plus bounded counters/statuses, not reports,
+  screenshots, logs, sleeps, manual visual inspection, source tooling, file
+  proof, original-game output, or silent skip.
 
 ## Owns
 
