@@ -1,6 +1,6 @@
 # P2-GATE-029: Audio Resource PCM Packet Import Bridge
 
-Status: Approved for first slice
+Status: First-slice covered
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
 Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
@@ -9,6 +9,7 @@ Depends on: P2-GATE-026, P2-GATE-028, P2-GATE-024, P2-GATE-004, ADR-0012, ADR-00
 Related decisions: ADR-0012, ADR-0013
 Source baseline: `6ec53b3`
 Proposal commit: `5e80cd7`
+Landed commit: `0a22dac`
 Approval evidence: ENG-149A, ENG-149B, ENG-149C, ENG-149D, ENG-149E, and ENG-149F proposal review PASS.
 Discovery evidence: ENG-149R candidate scan PASS.
 
