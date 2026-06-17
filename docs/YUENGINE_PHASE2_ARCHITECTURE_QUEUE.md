@@ -98,9 +98,9 @@ Current lower-engine reality:
   behavior.
 - Thread/File/Resource/Package/Streaming have a worker lifecycle, async
   file-completion substrate, bounded package/resource staging bridge, Resource
-  upload queue, and Resource upload completion commit through P2-GATE-010,
-  P2-GATE-015, P2-GATE-016, and P2-GATE-021, but no Resource residency budget,
-  cache payload ownership, or asset decode pipeline.
+  upload queue, Resource upload completion commit, and Resource residency budget
+  policy through P2-GATE-010, P2-GATE-015, P2-GATE-016, P2-GATE-021, and
+  P2-GATE-022, but no cache payload ownership or asset decode pipeline.
 
 The immediate ordering is:
 
@@ -124,6 +124,7 @@ test tier labels and optional hardware-smoke presets
 -> RenderCore frame packet fixture
 -> resource upload completion commit
 -> Resource residency budget policy
+-> Resource cache payload ownership
 ```
 
 Hard sequencing constraints:
@@ -187,7 +188,7 @@ Required test-tier direction:
 | P2-GATE-019 | RenderCore Submission Batch Fixture | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_019_RENDERCORE_SUBMISSION_BATCH_FIXTURE.md`; landed at `f4c3f64`; bounded submission batch fixture over landed `YuRenderCore` fixture pass, material binding fixture, and public `YuRHI` values only; default fast gate is `784/784` PASS; no render graph, frame graph, pass sorting, command-list parallelism, Resource/Streaming ownership, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-020 | RenderCore Frame Packet Fixture | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_020_RENDERCORE_FRAME_PACKET_FIXTURE.md`; landed at `b275168`; bounded frame packet fixture over landed `YuRenderCore` submission batch fixture and public `YuRHI` values only; default fast gate is `793/793` PASS; no render graph, frame graph, renderer scheduling, pass sorting, command-list parallelism, Resource/Streaming ownership, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-021 | Resource Upload Completion Commit | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_021_RESOURCE_UPLOAD_COMPLETION_COMMIT.md`; landed at `475c371`; bounded Resource/Streaming upload completion commit bridge over landed `ResourceUploadCompletion` and ResourceRegistry values only; default fast gate is `809/809` PASS; no cache ownership, package parser, asset decode/import, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
-| P2-GATE-022 | Resource Residency Budget Policy | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_022_RESOURCE_RESIDENCY_BUDGET_POLICY.md`; approved Resource-owned residency state, budget counters, pin/unpin, and eviction-candidate policy over landed upload commit state only; no cache payload storage, package parser, asset decode/import, RHI resource destruction, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-022 | Resource Residency Budget Policy | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_022_RESOURCE_RESIDENCY_BUDGET_POLICY.md`; landed at `d2f2059`; Resource-owned residency state, budget counters, pin/unpin, and eviction-candidate policy over landed upload commit state only; default fast gate is `820/820` PASS; no cache payload storage, package parser, asset decode/import, RHI resource destruction, render graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
 
@@ -415,20 +416,18 @@ Required test-tier direction:
   graph, frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter
   behavior, native/backend leakage, reports, screenshots, logs, sleeps, manual
   proof, hardware-only proof, or original-game evidence.
-- P2-GATE-022 is approved for a Resource-owned residency budget policy first
-  slice after ENG-135A boundary/quality PASS, ENG-135B implementability PASS,
-  and ENG-135C test-policy PASS. It may classify uploaded Resource slots as
-  resident, pinned, evictable, or evicted and select deterministic eviction
-  candidates through ResourceRegistry value contracts only. The proposal
-  baseline is `c650d49`; discovery is `windows-fast-gate` `809/809`,
-  `Resource` `61`, `Streaming` `36`, `Upload` `43`, `RHI` `127`, `RenderCore`
-  `40`, `Material` `26`, `PerformanceSmoke` `72`, `EvidenceOracle` `213`,
-  default `HardwareSmoke` `0`, and `windows-hardware-smoke` `7`. It does not
-  authorize cache payload storage, package parsing, asset decode/import, RHI
-  resource destruction, render graph, frame graph, RenderCore scheduling,
-  scene/UI/World/Script/Game Adapter behavior, native/backend leakage, reports,
-  screenshots, logs, sleeps, manual proof, hardware-only proof, or
-  original-game evidence.
+- P2-GATE-022 landed the Resource residency budget policy first slice at
+  `d2f2059`. It classifies uploaded Resource slots as resident, pinned,
+  evictable, or evicted and selects deterministic eviction candidates through
+  ResourceRegistry value contracts only. The landed fast gate is `820/820` PASS
+  with `Resource` at `72`, `Streaming` at `36`, `Upload` at `43`, `RHI` at
+  `127`, `RenderCore` at `40`, `Material` at `26`, `PerformanceSmoke` at `78`,
+  `EvidenceOracle` at `224`, default `HardwareSmoke` at `0`, and
+  `windows-hardware-smoke` at `7`. It does not authorize cache payload storage,
+  package parsing, asset decode/import, RHI resource destruction, render graph,
+  frame graph, RenderCore scheduling, scene/UI/World/Script/Game Adapter
+  behavior, native/backend leakage, reports, screenshots, logs, sleeps, manual
+  proof, hardware-only proof, or original-game evidence.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -533,11 +532,16 @@ Required test-tier direction:
     scheduling, scene/UI/World/Script/Game Adapter behavior, native/backend
     leakage, reports, screenshots, logs, sleeps, manual proof, hardware-only
     proof, or original-game evidence.
-19. Implement the approved P2-GATE-022 Resource residency first slice. The
-    approved first slice is limited to Resource-owned residency state, budget
+19. Treat the landed P2-GATE-022 Resource residency first slice as Resource
+    budget proof only. It proves Resource-owned residency state, budget
     counters, pin/unpin, and deterministic eviction-candidate policy; it does
     not authorize cache payload storage, package parsing, asset decode/import,
     RHI resource destruction, render graph, frame graph, RenderCore scheduling,
     scene/UI/World/Script/Game Adapter behavior, native/backend leakage,
     reports, screenshots, logs, sleeps, manual proof, hardware-only proof, or
     original-game evidence.
+20. Propose the next Resource cache payload ownership gate before any decode,
+    package parser, render graph, scene traversal, UI, World, Script, or Game
+    Adapter expansion. The proposal must stay in Resource-owned value contracts,
+    cache-slot records, and deterministic fast proof unless a separate gate
+    explicitly approves broader scope.
