@@ -8,7 +8,7 @@ Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-001, P2-GATE-008, P2-GATE-017, P2-GATE-018, P2-GATE-019
 Related decisions: ADR-0011
 Source baseline: `eb664bb`
-Proposal commit: pending
+Proposal commit: `2bd618a`
 
 ## Layer
 
