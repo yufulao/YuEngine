@@ -10,6 +10,7 @@ namespace yuengine::audio {
 constexpr std::uint32_t SAMPLE_RATE = 48000U;
 constexpr std::uint16_t CHANNEL_COUNT = 2U;
 constexpr std::size_t MAX_SOURCES = 8U;
+constexpr std::size_t MAX_PCM_SAMPLE_PACKETS = 8U;
 constexpr std::size_t MAX_VOICES = 16U;
 constexpr std::size_t MAX_SOURCE_FRAMES = 256U;
 constexpr std::size_t MAX_OUTPUT_FRAMES = 64U;

@@ -14,6 +14,11 @@
 #include "YuEngine/Audio/AudioCallbackDeviceDesc.h"
 #include "YuEngine/Audio/AudioCallbackSnapshot.h"
 #include "YuEngine/Audio/AudioConstants.h"
+#include "YuEngine/Audio/AudioPcmSamplePacketHandle.h"
+#include "YuEngine/Audio/AudioPcmSamplePacketOperation.h"
+#include "YuEngine/Audio/AudioPcmSamplePacketRecord.h"
+#include "YuEngine/Audio/AudioPcmSamplePacketRequest.h"
+#include "YuEngine/Audio/AudioPcmSamplePacketSnapshot.h"
 #include "YuEngine/Audio/TestAudioDevice.h"
 
 using yuengine::audio::AudioBackendKind;
@@ -24,6 +29,11 @@ using yuengine::audio::AudioCallbackSnapshot;
 using yuengine::audio::AudioDeviceDesc;
 using yuengine::audio::AudioDeviceSnapshot;
 using yuengine::audio::AudioMixResult;
+using yuengine::audio::AudioPcmSamplePacketHandle;
+using yuengine::audio::AudioPcmSamplePacketOperation;
+using yuengine::audio::AudioPcmSamplePacketRecord;
+using yuengine::audio::AudioPcmSamplePacketRequest;
+using yuengine::audio::AudioPcmSamplePacketSnapshot;
 using yuengine::audio::AudioSampleFormat;
 using yuengine::audio::AudioSourceId;
 using yuengine::audio::AudioStatus;
@@ -31,6 +41,7 @@ using yuengine::audio::AudioVoiceHandle;
 using TestAudioDevice = yuengine::audio::TestAudioDevice;
 using yuengine::audio::CHANNEL_COUNT;
 using yuengine::audio::MAX_Q15_GAIN;
+using yuengine::audio::MAX_PCM_SAMPLE_PACKETS;
 using yuengine::audio::MAX_SOURCES;
 using yuengine::audio::MAX_VOICES;
 using yuengine::audio::S16_MAX;
@@ -70,6 +81,19 @@ constexpr const char* TEST_CALLBACK_UNSUPPORTED_BACKEND = "Audio_CallbackDevice_
 constexpr const char* TEST_CALLBACK_UNSUPPORTED_FORMAT = "Audio_CallbackDevice_RejectsUnsupportedFormatBeforeHardware";
 constexpr const char* TEST_CALLBACK_INVALID_BUFFER_SHAPE = "Audio_CallbackDevice_RejectsInvalidBufferShapeBeforeHardware";
 constexpr const char* TEST_CALLBACK_UNINITIALIZED_OPERATIONS = "Audio_CallbackDevice_UninitializedOperationsReturnExplicitStatus";
+constexpr const char* TEST_PCM_CREATE_QUERY_RELEASE = "Audio_PcmSamplePacket_CreatesQueriesAndReleasesMetadata";
+constexpr const char* TEST_PCM_DUPLICATE = "Audio_PcmSamplePacket_RejectsDuplicatePacketIdWithoutMutation";
+constexpr const char* TEST_PCM_UNSUPPORTED_FORMAT = "Audio_PcmSamplePacket_RejectsUnsupportedFormatWithoutMutation";
+constexpr const char* TEST_PCM_UNSUPPORTED_SAMPLE_RATE = "Audio_PcmSamplePacket_RejectsUnsupportedSampleRateWithoutMutation";
+constexpr const char* TEST_PCM_UNSUPPORTED_CHANNEL_COUNT = "Audio_PcmSamplePacket_RejectsUnsupportedChannelCountWithoutMutation";
+constexpr const char* TEST_PCM_ZERO_FRAME_COUNT = "Audio_PcmSamplePacket_RejectsZeroFrameCountWithoutMutation";
+constexpr const char* TEST_PCM_SAMPLE_COUNT_MISMATCH = "Audio_PcmSamplePacket_RejectsSampleCountMismatchWithoutMutation";
+constexpr const char* TEST_PCM_BYTE_COUNT_MISMATCH = "Audio_PcmSamplePacket_RejectsByteCountMismatchWithoutMutation";
+constexpr const char* TEST_PCM_CAPACITY = "Audio_PcmSamplePacket_RejectsCapacityOverflowWithoutMutation";
+constexpr const char* TEST_PCM_STALE_HANDLE = "Audio_PcmSamplePacket_RejectsStaleHandleWithoutMutation";
+constexpr const char* TEST_PCM_SNAPSHOT_COUNTERS = "Audio_PcmSamplePacket_SnapshotTracksCounters";
+constexpr const char* TEST_PCM_SOURCE_VOICE_BOUNDARY = "Audio_PcmSamplePacket_RejectionsDoNotMutateSourceVoiceState";
+constexpr const char* TEST_PCM_PUBLIC_CONTRACT = "Audio_PcmSamplePacket_PublicContractsArePlainValues";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* REINIT_SOURCE_REGISTRATION_MESSAGE = "source registration failed";
@@ -170,6 +194,49 @@ bool CallbackSnapshotsEqual(const AudioCallbackSnapshot &left, const AudioCallba
            left.initialized == right.initialized &&
            left.started == right.started &&
            left.shutdown == right.shutdown;
+}
+
+AudioPcmSamplePacketRequest BasicPcmSamplePacketRequest(std::uint32_t packet_id) {
+    constexpr std::size_t FRAME_COUNT = 2U;
+    constexpr std::size_t SAMPLE_COUNT = FRAME_COUNT * CHANNEL_COUNT;
+    constexpr std::size_t BYTE_COUNT = SAMPLE_COUNT * sizeof(std::int16_t);
+    return AudioPcmSamplePacketRequest{
+        packet_id,
+        AudioSampleFormat::Signed16,
+        SAMPLE_RATE,
+        CHANNEL_COUNT,
+        FRAME_COUNT,
+        SAMPLE_COUNT,
+        BYTE_COUNT};
+}
+
+bool CreateBasicPcmSamplePacket(TestAudioDevice& device, std::uint32_t packet_id, AudioPcmSamplePacketHandle& out_packet) {
+    const AudioPcmSamplePacketRequest request = BasicPcmSamplePacketRequest(packet_id);
+    return device.CreatePcmSamplePacket(request, out_packet) == AudioStatus::Success;
+}
+
+bool ExpectPcmCreateRejectedWithoutActiveMutation(TestAudioDevice& device, AudioPcmSamplePacketRequest request, AudioStatus expected_status) {
+    const AudioPcmSamplePacketSnapshot before_snapshot = device.PcmSamplePacketSnapshot();
+    AudioPcmSamplePacketHandle packet{};
+    const AudioStatus status = device.CreatePcmSamplePacket(request, packet);
+    if (status != expected_status) {
+        return false;
+    }
+
+    const AudioPcmSamplePacketSnapshot after_snapshot = device.PcmSamplePacketSnapshot();
+    if (after_snapshot.active_packet_count != before_snapshot.active_packet_count) {
+        return false;
+    }
+
+    if (after_snapshot.created_packet_count != before_snapshot.created_packet_count) {
+        return false;
+    }
+
+    if (after_snapshot.rejected_packet_count != before_snapshot.rejected_packet_count + 1U) {
+        return false;
+    }
+
+    return true;
 }
 
 bool ExpectCallbackInitializeStatusWithoutMutation(const AudioCallbackDeviceDesc &desc, AudioStatus expected_status) {
@@ -788,6 +855,331 @@ int AudioNoDeviceCodecResourceScriptUiGameAdapterDependency() {
     return 0;
 }
 
+int AudioPcmSamplePacketCreatesQueriesAndReleasesMetadata() {
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmSamplePacketHandle packet{};
+    if (!CreateBasicPcmSamplePacket(device, 42U, packet)) {
+        return Fail("pcm packet create failed");
+    }
+
+    AudioPcmSamplePacketRecord record{};
+    if (device.QueryPcmSamplePacket(packet, record) != AudioStatus::Success) {
+        return Fail("pcm packet query failed");
+    }
+
+    if (!record.is_active) {
+        return Fail("pcm packet record was not active");
+    }
+
+    if (record.packet_id != 42U) {
+        return Fail("pcm packet id changed");
+    }
+
+    if (record.frame_count != 2U) {
+        return Fail("pcm packet frame count changed");
+    }
+
+    if (record.interleaved_sample_count != 4U) {
+        return Fail("pcm packet sample count changed");
+    }
+
+    if (record.byte_count != 4U * sizeof(std::int16_t)) {
+        return Fail("pcm packet byte count changed");
+    }
+
+    if (device.ReleasePcmSamplePacket(packet) != AudioStatus::Success) {
+        return Fail("pcm packet release failed");
+    }
+
+    const AudioPcmSamplePacketSnapshot snapshot = device.PcmSamplePacketSnapshot();
+    if (snapshot.active_packet_count != 0U) {
+        return Fail("pcm packet release left active packet");
+    }
+
+    if (snapshot.created_packet_count != 1U || snapshot.queried_packet_count != 1U || snapshot.released_packet_count != 1U) {
+        return Fail("pcm packet lifecycle counters were unexpected");
+    }
+
+    return 0;
+}
+
+int AudioPcmSamplePacketRejectsDuplicatePacketIdWithoutMutation() {
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmSamplePacketHandle packet{};
+    if (!CreateBasicPcmSamplePacket(device, 7U, packet)) {
+        return Fail("baseline pcm packet create failed");
+    }
+
+    const AudioPcmSamplePacketRequest duplicate_request = BasicPcmSamplePacketRequest(7U);
+    if (!ExpectPcmCreateRejectedWithoutActiveMutation(device, duplicate_request, AudioStatus::InvalidDescriptor)) {
+        return Fail("duplicate pcm packet id was not rejected without active mutation");
+    }
+
+    const AudioPcmSamplePacketSnapshot snapshot = device.PcmSamplePacketSnapshot();
+    if (snapshot.duplicate_packet_rejected_count != 1U) {
+        return Fail("duplicate pcm packet rejection counter was unexpected");
+    }
+
+    return 0;
+}
+
+int AudioPcmSamplePacketRejectsUnsupportedFormatWithoutMutation() {
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmSamplePacketRequest request = BasicPcmSamplePacketRequest(8U);
+    request.format = AudioSampleFormat::Unsupported;
+    if (!ExpectPcmCreateRejectedWithoutActiveMutation(device, request, AudioStatus::UnsupportedFormat)) {
+        return Fail("unsupported pcm packet format was not rejected without active mutation");
+    }
+
+    return 0;
+}
+
+int AudioPcmSamplePacketRejectsUnsupportedSampleRateWithoutMutation() {
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmSamplePacketRequest request = BasicPcmSamplePacketRequest(9U);
+    request.sample_rate = SAMPLE_RATE - 1U;
+    if (!ExpectPcmCreateRejectedWithoutActiveMutation(device, request, AudioStatus::UnsupportedFormat)) {
+        return Fail("unsupported pcm packet sample rate was not rejected without active mutation");
+    }
+
+    return 0;
+}
+
+int AudioPcmSamplePacketRejectsUnsupportedChannelCountWithoutMutation() {
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmSamplePacketRequest request = BasicPcmSamplePacketRequest(10U);
+    request.channel_count = CHANNEL_COUNT + 1U;
+    if (!ExpectPcmCreateRejectedWithoutActiveMutation(device, request, AudioStatus::UnsupportedFormat)) {
+        return Fail("unsupported pcm packet channel count was not rejected without active mutation");
+    }
+
+    return 0;
+}
+
+int AudioPcmSamplePacketRejectsZeroFrameCountWithoutMutation() {
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmSamplePacketRequest request = BasicPcmSamplePacketRequest(11U);
+    request.frame_count = 0U;
+    request.interleaved_sample_count = 0U;
+    request.byte_count = 0U;
+    if (!ExpectPcmCreateRejectedWithoutActiveMutation(device, request, AudioStatus::InvalidDescriptor)) {
+        return Fail("zero frame pcm packet was not rejected without active mutation");
+    }
+
+    return 0;
+}
+
+int AudioPcmSamplePacketRejectsSampleCountMismatchWithoutMutation() {
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmSamplePacketRequest request = BasicPcmSamplePacketRequest(12U);
+    --request.interleaved_sample_count;
+    if (!ExpectPcmCreateRejectedWithoutActiveMutation(device, request, AudioStatus::InvalidDescriptor)) {
+        return Fail("pcm packet sample count mismatch was not rejected without active mutation");
+    }
+
+    return 0;
+}
+
+int AudioPcmSamplePacketRejectsByteCountMismatchWithoutMutation() {
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmSamplePacketRequest request = BasicPcmSamplePacketRequest(13U);
+    --request.byte_count;
+    if (!ExpectPcmCreateRejectedWithoutActiveMutation(device, request, AudioStatus::InvalidDescriptor)) {
+        return Fail("pcm packet byte count mismatch was not rejected without active mutation");
+    }
+
+    return 0;
+}
+
+int AudioPcmSamplePacketRejectsCapacityOverflowWithoutMutation() {
+    TestAudioDevice device = CreateInitializedDevice();
+    for (std::size_t index = 0U; index < MAX_PCM_SAMPLE_PACKETS; ++index) {
+        AudioPcmSamplePacketHandle packet{};
+        const std::uint32_t packet_id = static_cast<std::uint32_t>(index + 1U);
+        if (!CreateBasicPcmSamplePacket(device, packet_id, packet)) {
+            return Fail("pcm packet capacity setup failed");
+        }
+    }
+
+    const AudioPcmSamplePacketRequest overflow_request = BasicPcmSamplePacketRequest(static_cast<std::uint32_t>(MAX_PCM_SAMPLE_PACKETS + 1U));
+    if (!ExpectPcmCreateRejectedWithoutActiveMutation(device, overflow_request, AudioStatus::CapacityExceeded)) {
+        return Fail("pcm packet capacity overflow was not rejected without active mutation");
+    }
+
+    const AudioPcmSamplePacketSnapshot snapshot = device.PcmSamplePacketSnapshot();
+    if (snapshot.active_packet_count != MAX_PCM_SAMPLE_PACKETS) {
+        return Fail("pcm packet capacity rejection changed active count");
+    }
+
+    if (snapshot.capacity_rejected_count != 1U) {
+        return Fail("pcm packet capacity rejection counter was unexpected");
+    }
+
+    return 0;
+}
+
+int AudioPcmSamplePacketRejectsStaleHandleWithoutMutation() {
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmSamplePacketHandle packet{};
+    if (!CreateBasicPcmSamplePacket(device, 14U, packet)) {
+        return Fail("stale pcm packet setup failed");
+    }
+
+    if (device.ReleasePcmSamplePacket(packet) != AudioStatus::Success) {
+        return Fail("stale pcm packet release setup failed");
+    }
+
+    const AudioPcmSamplePacketSnapshot before_snapshot = device.PcmSamplePacketSnapshot();
+    AudioPcmSamplePacketRecord record{};
+    if (device.QueryPcmSamplePacket(packet, record) != AudioStatus::InvalidHandle) {
+        return Fail("stale pcm packet query did not return invalid handle");
+    }
+
+    if (device.ReleasePcmSamplePacket(packet) != AudioStatus::InvalidHandle) {
+        return Fail("stale pcm packet release did not return invalid handle");
+    }
+
+    const AudioPcmSamplePacketSnapshot after_snapshot = device.PcmSamplePacketSnapshot();
+    if (after_snapshot.active_packet_count != before_snapshot.active_packet_count) {
+        return Fail("stale pcm packet operation changed active count");
+    }
+
+    if (after_snapshot.stale_packet_rejected_count != before_snapshot.stale_packet_rejected_count + 2U) {
+        return Fail("stale pcm packet rejection counter was unexpected");
+    }
+
+    return 0;
+}
+
+int AudioPcmSamplePacketSnapshotTracksCounters() {
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmSamplePacketHandle first_packet{};
+    AudioPcmSamplePacketHandle second_packet{};
+    if (!CreateBasicPcmSamplePacket(device, 21U, first_packet)) {
+        return Fail("first pcm packet create failed");
+    }
+
+    if (!CreateBasicPcmSamplePacket(device, 22U, second_packet)) {
+        return Fail("second pcm packet create failed");
+    }
+
+    AudioPcmSamplePacketRecord record{};
+    if (device.QueryPcmSamplePacket(first_packet, record) != AudioStatus::Success) {
+        return Fail("pcm packet query for counter test failed");
+    }
+
+    if (device.ReleasePcmSamplePacket(second_packet) != AudioStatus::Success) {
+        return Fail("pcm packet release for counter test failed");
+    }
+
+    const AudioPcmSamplePacketRequest duplicate_request = BasicPcmSamplePacketRequest(21U);
+    AudioPcmSamplePacketHandle rejected_packet{};
+    if (device.CreatePcmSamplePacket(duplicate_request, rejected_packet) != AudioStatus::InvalidDescriptor) {
+        return Fail("pcm packet duplicate for counter test was not rejected");
+    }
+
+    const AudioPcmSamplePacketSnapshot snapshot = device.PcmSamplePacketSnapshot();
+    if (snapshot.packet_capacity != MAX_PCM_SAMPLE_PACKETS) {
+        return Fail("pcm packet snapshot capacity was unexpected");
+    }
+
+    if (snapshot.active_packet_count != 1U) {
+        return Fail("pcm packet snapshot active count was unexpected");
+    }
+
+    if (snapshot.created_packet_count != 2U || snapshot.queried_packet_count != 1U || snapshot.released_packet_count != 1U) {
+        return Fail("pcm packet snapshot lifecycle counters were unexpected");
+    }
+
+    if (snapshot.rejected_packet_count != 1U || snapshot.duplicate_packet_rejected_count != 1U) {
+        return Fail("pcm packet snapshot rejection counters were unexpected");
+    }
+
+    if (snapshot.last_status != AudioStatus::InvalidDescriptor) {
+        return Fail("pcm packet snapshot last status was unexpected");
+    }
+
+    if (snapshot.last_operation != AudioPcmSamplePacketOperation::Create) {
+        return Fail("pcm packet snapshot last operation was unexpected");
+    }
+
+    return 0;
+}
+
+int AudioPcmSamplePacketRejectionsDoNotMutateSourceVoiceState() {
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioVoiceHandle voice{};
+    if (!StartBasicVoice(device, voice)) {
+        return Fail("pcm packet boundary setup voice failed");
+    }
+
+    const AudioDeviceSnapshot before_device_snapshot = device.Snapshot();
+    AudioPcmSamplePacketRequest request = BasicPcmSamplePacketRequest(31U);
+    request.byte_count = 1U;
+    if (!ExpectPcmCreateRejectedWithoutActiveMutation(device, request, AudioStatus::InvalidDescriptor)) {
+        return Fail("pcm packet boundary rejection failed");
+    }
+
+    const AudioDeviceSnapshot after_device_snapshot = device.Snapshot();
+    if (after_device_snapshot.source_count != before_device_snapshot.source_count) {
+        return Fail("pcm packet rejection changed source count");
+    }
+
+    if (after_device_snapshot.active_voice_count != before_device_snapshot.active_voice_count) {
+        return Fail("pcm packet rejection changed voice count");
+    }
+
+    if (after_device_snapshot.registered_source_count != before_device_snapshot.registered_source_count) {
+        return Fail("pcm packet rejection changed registered source count");
+    }
+
+    if (after_device_snapshot.started_voice_count != before_device_snapshot.started_voice_count) {
+        return Fail("pcm packet rejection changed started voice count");
+    }
+
+    return 0;
+}
+
+int AudioPcmSamplePacketPublicContractsArePlainValues() {
+    if (!std::is_standard_layout_v<AudioPcmSamplePacketHandle>) {
+        return Fail("pcm packet handle was not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<AudioPcmSamplePacketHandle>) {
+        return Fail("pcm packet handle was not trivially copyable");
+    }
+
+    if (!std::is_standard_layout_v<AudioPcmSamplePacketRequest>) {
+        return Fail("pcm packet request was not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<AudioPcmSamplePacketRequest>) {
+        return Fail("pcm packet request was not trivially copyable");
+    }
+
+    if (!std::is_standard_layout_v<AudioPcmSamplePacketRecord>) {
+        return Fail("pcm packet record was not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<AudioPcmSamplePacketRecord>) {
+        return Fail("pcm packet record was not trivially copyable");
+    }
+
+    if (!std::is_standard_layout_v<AudioPcmSamplePacketSnapshot>) {
+        return Fail("pcm packet snapshot was not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<AudioPcmSamplePacketSnapshot>) {
+        return Fail("pcm packet snapshot was not trivially copyable");
+    }
+
+    if (!std::is_enum_v<AudioPcmSamplePacketOperation>) {
+        return Fail("pcm packet operation was not an enum");
+    }
+
+    return 0;
+}
+
 int AudioCallbackDescDefaultValuesAreBounded() {
     const AudioCallbackDeviceDesc desc{};
     if (desc.backend_kind != AudioBackendKind::Callback) {
@@ -1048,7 +1440,20 @@ int main(int argc, char** argv) {
         {TEST_CALLBACK_UNSUPPORTED_BACKEND, AudioCallbackDeviceRejectsUnsupportedBackendBeforeHardware},
         {TEST_CALLBACK_UNSUPPORTED_FORMAT, AudioCallbackDeviceRejectsUnsupportedFormatBeforeHardware},
         {TEST_CALLBACK_INVALID_BUFFER_SHAPE, AudioCallbackDeviceRejectsInvalidBufferShapeBeforeHardware},
-        {TEST_CALLBACK_UNINITIALIZED_OPERATIONS, AudioCallbackDeviceUninitializedOperationsReturnExplicitStatus}};
+        {TEST_CALLBACK_UNINITIALIZED_OPERATIONS, AudioCallbackDeviceUninitializedOperationsReturnExplicitStatus},
+        {TEST_PCM_CREATE_QUERY_RELEASE, AudioPcmSamplePacketCreatesQueriesAndReleasesMetadata},
+        {TEST_PCM_DUPLICATE, AudioPcmSamplePacketRejectsDuplicatePacketIdWithoutMutation},
+        {TEST_PCM_UNSUPPORTED_FORMAT, AudioPcmSamplePacketRejectsUnsupportedFormatWithoutMutation},
+        {TEST_PCM_UNSUPPORTED_SAMPLE_RATE, AudioPcmSamplePacketRejectsUnsupportedSampleRateWithoutMutation},
+        {TEST_PCM_UNSUPPORTED_CHANNEL_COUNT, AudioPcmSamplePacketRejectsUnsupportedChannelCountWithoutMutation},
+        {TEST_PCM_ZERO_FRAME_COUNT, AudioPcmSamplePacketRejectsZeroFrameCountWithoutMutation},
+        {TEST_PCM_SAMPLE_COUNT_MISMATCH, AudioPcmSamplePacketRejectsSampleCountMismatchWithoutMutation},
+        {TEST_PCM_BYTE_COUNT_MISMATCH, AudioPcmSamplePacketRejectsByteCountMismatchWithoutMutation},
+        {TEST_PCM_CAPACITY, AudioPcmSamplePacketRejectsCapacityOverflowWithoutMutation},
+        {TEST_PCM_STALE_HANDLE, AudioPcmSamplePacketRejectsStaleHandleWithoutMutation},
+        {TEST_PCM_SNAPSHOT_COUNTERS, AudioPcmSamplePacketSnapshotTracksCounters},
+        {TEST_PCM_SOURCE_VOICE_BOUNDARY, AudioPcmSamplePacketRejectionsDoNotMutateSourceVoiceState},
+        {TEST_PCM_PUBLIC_CONTRACT, AudioPcmSamplePacketPublicContractsArePlainValues}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

@@ -12,6 +12,12 @@
 #include "YuEngine/Audio/AudioDeviceDesc.h"
 #include "YuEngine/Audio/AudioDeviceSnapshot.h"
 #include "YuEngine/Audio/AudioMixResult.h"
+#include "YuEngine/Audio/AudioPcmSamplePacketHandle.h"
+#include "YuEngine/Audio/AudioPcmSamplePacketOperation.h"
+#include "YuEngine/Audio/AudioPcmSamplePacketRecord.h"
+#include "YuEngine/Audio/AudioPcmSamplePacketRequest.h"
+#include "YuEngine/Audio/AudioPcmSamplePacketSlot.h"
+#include "YuEngine/Audio/AudioPcmSamplePacketSnapshot.h"
 #include "YuEngine/Audio/AudioSourceId.h"
 #include "YuEngine/Audio/AudioSourceSlot.h"
 #include "YuEngine/Audio/AudioStatus.h"
@@ -40,6 +46,26 @@ public:
      * @return Explicit operation status.
      */
     AudioStatus RegisterSyntheticSource(std::span<const std::int16_t> interleaved_samples, std::size_t frame_count, AudioSourceId& out_source);
+    /**
+     * @comment Creates a bounded PCM sample packet metadata record.
+     * @param request Input packet request.
+     * @param out_packet Output packet handle written on success.
+     * @return Explicit operation status.
+     */
+    AudioStatus CreatePcmSamplePacket(const AudioPcmSamplePacketRequest& request, AudioPcmSamplePacketHandle& out_packet);
+    /**
+     * @comment Queries a PCM sample packet metadata record.
+     * @param packet Input packet handle.
+     * @param out_record Output packet record written on success.
+     * @return Explicit operation status.
+     */
+    AudioStatus QueryPcmSamplePacket(AudioPcmSamplePacketHandle packet, AudioPcmSamplePacketRecord& out_record);
+    /**
+     * @comment Releases a PCM sample packet metadata record.
+     * @param packet Input packet handle.
+     * @return Explicit operation status.
+     */
+    AudioStatus ReleasePcmSamplePacket(AudioPcmSamplePacketHandle packet);
     /**
      * @comment Starts voice.
      * @param source Input source.
@@ -71,21 +97,33 @@ public:
      * @return Snapshot value.
      */
     AudioDeviceSnapshot Snapshot() const;
+    /**
+     * @comment Returns a snapshot of PCM sample packet state.
+     * @return Snapshot value.
+     */
+    AudioPcmSamplePacketSnapshot PcmSamplePacketSnapshot() const;
 
 private:
     AudioStatus RecordFailure(AudioStatus status);
+    AudioStatus RecordPcmSamplePacketFailure(AudioStatus status, AudioPcmSamplePacketOperation operation);
+    AudioStatus ValidatePcmSamplePacketRequest(const AudioPcmSamplePacketRequest& request) const;
     bool IsDeviceFormatSupported(const AudioDeviceDesc& desc) const;
     bool IsSourceValid(AudioSourceId source) const;
     bool IsVoiceHandleValid(AudioVoiceHandle handle) const;
+    bool IsPcmSamplePacketHandleValid(AudioPcmSamplePacketHandle packet) const;
+    bool HasActivePcmSamplePacketId(std::uint32_t packet_id) const;
     std::int16_t ReadSourceSample(const AudioVoiceSlot& voice, std::size_t channel) const;
     std::int32_t ScaleSample(std::int16_t sample, std::uint32_t gain_q15) const;
     std::int16_t SaturateToS16(std::int64_t sample) const;
+    void SetPcmSamplePacketLastStatus(AudioStatus status, AudioPcmSamplePacketOperation operation);
     void StopVoiceSlot(AudioVoiceSlot& voice);
 
     std::vector<AudioSourceSlot> sources_;
     std::vector<AudioVoiceSlot> voices_;
+    std::vector<AudioPcmSamplePacketSlot> pcm_sample_packets_;
     AudioCapabilities capabilities_;
     AudioDeviceSnapshot snapshot_;
+    AudioPcmSamplePacketSnapshot pcm_sample_packet_snapshot_;
     std::uint32_t generation_seed_;
     bool is_initialized_;
 };
