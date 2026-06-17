@@ -201,6 +201,7 @@ Required test-tier direction:
 | P2-GATE-029 | Audio Resource PCM Packet Import Bridge | L4-L5 over L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_029_AUDIO_RESOURCE_PCM_PACKET_IMPORT_BRIDGE.md`; landed at `0a22dac`; bridge-owned mapping from Resource decode-result metadata into Audio PCM packet request descriptors only; default fast gate is `901/901` PASS; no Resource ownership inside Audio core, no Audio packet lifecycle inside Resource core, no decoded byte storage, real codec, streaming audio, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
 | P2-GATE-030 | RenderCore Render Graph Execution Plan | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_030_RENDERCORE_RENDER_GRAPH_EXECUTION_PLAN.md`; landed at `55f618f`; RenderCore-owned execution-plan metadata over landed render graph skeleton prepared batches and frame packet fixture only; default fast gate is `914/914` PASS; no renderer scheduler, frame graph system, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-031 | Resource Decoded Payload Ownership | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice approved | Gate doc: `docs/gates/P2_GATE_031_RESOURCE_DECODED_PAYLOAD_OWNERSHIP.md`; approved after ENG-153CR PASS at proposal commit `97afdb0`; Resource-owned decoded byte payload storage over landed cache payload, decode-plan, and decode-result metadata only; no real codec, File/Package/Streaming expansion, RHI upload, Audio lifecycle, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, audible proof, or manual proof |
+| P2-GATE-032 | Audio PCM Stream Queue | L3 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_032_AUDIO_PCM_STREAM_QUEUE.md`; proposed after P2-GATE-031 approval; Audio-owned fixed-capacity PCM stream queue over landed Audio PCM sample packet metadata only; no Resource/File/Package/Streaming ownership, AudioResource bridge execution, codec decode, decoded byte storage, callback submission, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
 
 ## Current Active Gates
 
@@ -559,6 +560,19 @@ Required test-tier direction:
   RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter
   behavior, native/backend leakage, reports, screenshots, logs, sleeps, audible
   proof, manual proof, hardware-only proof, or original-game evidence.
+- P2-GATE-032 is proposed as the next Audio PCM stream queue first slice. It
+  may add Audio-owned fixed-capacity queue records over landed Audio PCM sample
+  packet metadata, with deterministic chunk descriptor drain into caller-owned
+  output storage, query/release snapshots, and counters. The proposal baseline
+  is `7204e9b`, where the default fast gate discovers `914`, `Audio` is `53`,
+  `AudioResource` is `8`, `PerformanceSmoke` is `112`, `EvidenceOracle` is
+  `318`, default `HardwareSmoke` is `0`, and `windows-hardware-smoke` is `7`
+  with `Audio` at `1`. It must not authorize Resource/File/Package/Streaming
+  ownership, AudioResource bridge execution, codec decode, decoded byte storage,
+  callback submission, streaming audio, BGM/SE business IDs, audio scene,
+  UI/World/Script/Game Adapter behavior, native/backend leakage, reports,
+  screenshots, logs, sleeps, audible proof, manual proof, hardware-only proof,
+  or original-game evidence.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -743,3 +757,10 @@ Acceleration note:
     Script/Game Adapter behavior, native/backend leak, report, screenshot, log,
     sleep, audible proof, manual proof, hardware-only proof, or original-game
     evidence path.
+29. Review proposed P2-GATE-032 only as an Audio PCM stream queue metadata
+    boundary over landed Audio PCM sample packet records. It must not become a
+    Resource/File/Package/Streaming ownership path, AudioResource bridge
+    execution path, codec, decoded byte storage, callback submission, streaming
+    audio, BGM/SE business behavior, audio scene, UI/World/Script/Game Adapter
+    behavior, native/backend leak, report, screenshot, log, sleep, audible
+    proof, manual proof, hardware-only proof, or original-game evidence path.
