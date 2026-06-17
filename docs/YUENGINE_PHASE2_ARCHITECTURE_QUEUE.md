@@ -200,7 +200,7 @@ Required test-tier direction:
 | P2-GATE-028 | Audio PCM Sample Packet | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_028_AUDIO_PCM_SAMPLE_PACKET.md`; landed at `534d3ef`; Audio-owned PCM sample packet value contracts, bounded packet-slot metadata, query/release snapshots, and deterministic counters only; default fast gate is `893/893` PASS; no Resource/File/Package/codec/streaming dependency, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
 | P2-GATE-029 | Audio Resource PCM Packet Import Bridge | L4-L5 over L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_029_AUDIO_RESOURCE_PCM_PACKET_IMPORT_BRIDGE.md`; landed at `0a22dac`; bridge-owned mapping from Resource decode-result metadata into Audio PCM packet request descriptors only; default fast gate is `901/901` PASS; no Resource ownership inside Audio core, no Audio packet lifecycle inside Resource core, no decoded byte storage, real codec, streaming audio, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
 | P2-GATE-030 | RenderCore Render Graph Execution Plan | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_030_RENDERCORE_RENDER_GRAPH_EXECUTION_PLAN.md`; landed at `55f618f`; RenderCore-owned execution-plan metadata over landed render graph skeleton prepared batches and frame packet fixture only; default fast gate is `914/914` PASS; no renderer scheduler, frame graph system, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
-| P2-GATE-031 | Resource Decoded Payload Ownership | L4-L5 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_031_RESOURCE_DECODED_PAYLOAD_OWNERSHIP.md`; proposed after P2-GATE-030 landing; Resource-owned decoded byte payload storage over landed cache payload, decode-plan, and decode-result metadata only; no real codec, File/Package/Streaming expansion, RHI upload, Audio lifecycle, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, audible proof, or manual proof |
+| P2-GATE-031 | Resource Decoded Payload Ownership | L4-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice approved | Gate doc: `docs/gates/P2_GATE_031_RESOURCE_DECODED_PAYLOAD_OWNERSHIP.md`; approved after ENG-153CR PASS at proposal commit `97afdb0`; Resource-owned decoded byte payload storage over landed cache payload, decode-plan, and decode-result metadata only; no real codec, File/Package/Streaming expansion, RHI upload, Audio lifecycle, RenderCore scheduling, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, audible proof, or manual proof |
 
 ## Current Active Gates
 
@@ -544,11 +544,12 @@ Required test-tier direction:
   ownership, material graph, scene/UI/World/Script/Game Adapter behavior,
   native/backend leakage, reports, screenshots, logs, sleeps, manual proof,
   hardware-only proof, or original-game evidence.
-- P2-GATE-031 is proposed as the next Resource decoded-payload ownership first
+- P2-GATE-031 is approved as the next Resource decoded-payload ownership first
   slice. It may add Resource-owned fixed-capacity decoded byte storage over
   landed cache payload, decode-plan, and decode-result metadata, with
-  query/readback/release snapshots and deterministic counters. The current
-  proposal baseline is `c5d5125`, where the default fast gate discovers
+  query/readback/release snapshots and deterministic counters. The approved
+  proposal commit is `97afdb0`; the source baseline is `c5d5125`, where the
+  default fast gate discovers
   `914/914`, `Resource` is `119`, `Streaming` is `36`, `Upload` is `43`,
   `RHI` is `161`, `RenderCore` is `67`, `Material` is `53`, `Audio` is `53`,
   `AudioResource` is `8`, `PerformanceSmoke` is `112`, `EvidenceOracle` is
@@ -735,7 +736,7 @@ Acceleration note:
     Streaming/Package/File ownership path, material graph, scene/UI/World/
     Script/Game Adapter behavior, native/backend leak, report, screenshot, log,
     sleep, manual proof, hardware-only proof, or original-game evidence path.
-28. Review proposed P2-GATE-031 only as a Resource decoded-payload ownership
+28. Treat approved P2-GATE-031 only as a Resource decoded-payload ownership
     boundary over landed cache payload, decode-plan, and decode-result metadata.
     It must not become a codec, File/Package/Streaming expansion, RHI upload,
     Audio lifecycle, RenderCore scheduling, material graph, scene/UI/World/

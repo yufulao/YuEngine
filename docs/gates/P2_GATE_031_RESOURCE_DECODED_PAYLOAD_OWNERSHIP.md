@@ -1,14 +1,15 @@
 # P2-GATE-031: Resource Decoded Payload Ownership
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: Combined lower-engine review
 Depends on: P2-GATE-026, P2-GATE-024, P2-GATE-023, P2-GATE-022, P2-GATE-021, P2-GATE-004
 Related decisions: ADR-0011
 Source baseline: `c5d5125`
-Proposal commit: Pending review commit
+Proposal commit: `97afdb0`
+Approval evidence: ENG-153CR combined proposal review PASS.
 
 ## Layer
 
@@ -70,6 +71,43 @@ cache payload bytes, decode-plan metadata, and decode-result metadata, but there
 is no reviewed Resource unit that stores decoded bytes after metadata
 validation, reads them back, releases them, and clears dependent decoded payloads
 when earlier Resource-owned records are released.
+
+## Approval Evidence
+
+Approved after ENG-153CR combined proposal review PASS.
+
+Review evidence:
+
+- proposal commit `97afdb039036e5c4778b1e70bf269cd27d5fd178` changes only
+  `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md` and this gate doc;
+- `git diff --check 97afdb0^..97afdb0` passed;
+- review work was read-only and made no source, doc, implementation, approval,
+  commit, or push changes;
+- combined review found no `NEEDS_ARCHITECTURE`, no
+  `NEEDS_IMPLEMENTABILITY`, no `NEEDS_TEST_POLICY`, and no
+  `NEEDS_SCOPE_SPLIT` blocker;
+- boundary review confirmed the proposal stays in Resource-owned decoded byte
+  payload storage over landed cache payload, decode-plan, and decode-result
+  metadata;
+- implementability review confirmed existing `ResourceRegistry` cache payload,
+  decode-plan, decode-result, fixed-array, budget, validation, and dependent
+  clear patterns are sufficient for the first slice;
+- test and preset review confirmed deterministic focused
+  `Resource_DecodedPayload` evidence, `CMakePresets` no-drift, label
+  discovery, and `windows-hardware-smoke` isolation are sufficient;
+- public include and production dependency scans found no forbidden Resource
+  dependencies on Streaming, Package, File, RHI, RenderCore, Material, Audio,
+  AudioResource, scene, UI, World, Script, Game Adapter, or backend-native
+  surfaces;
+- proof-shape review confirmed screenshots, reports, generated artifacts,
+  logs, sleeps, manual proof, audible proof, hardware-only proof, and
+  original-game output remain rejected evidence;
+- proposal discovery matched the reviewed baseline: default fast gate `914`,
+  `Resource` `119`, `Streaming` `36`, `Upload` `43`, `RHI` `161`,
+  `RenderCore` `67`, `Material` `53`, `Audio` `53`, `AudioResource` `8`,
+  `Fast` `914`, `PerformanceSmoke` `112`, `EvidenceOracle` `318`, default
+  `HardwareSmoke` `0`, and `windows-hardware-smoke` `7` with no Resource
+  decoded-payload entries.
 
 ## Owns
 
