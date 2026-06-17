@@ -1,8 +1,8 @@
 # P2-GATE-020: RenderCore Frame Packet Fixture
 
-Status: Proposed
+Status: Approved for first slice
 Requested decision: `APPROVED_FOR_FIRST_SLICE`
-Current decision: `NOT_APPROVED`
+Current decision: `APPROVED_FOR_FIRST_SLICE`
 Owner: 八云紫
 Reviewers: 八云蓝, 博丽灵梦, 雾雨魔理沙
 Depends on: P2-GATE-001, P2-GATE-008, P2-GATE-017, P2-GATE-018, P2-GATE-019
