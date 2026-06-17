@@ -82,9 +82,9 @@ Current lower-engine reality:
 - Platform has the P2-GATE-005 first-slice window, native surface, and event
   pump boundary; it still has no GPU adapter discovery, swapchain, or RHI
   ownership.
-- RHI has D3D11 visible-triangle and indexed static-mesh capture-byte proof
-  through P2-GATE-009 and P2-GATE-013, but still has no texture sampling
-  fixture, Resource upload, RenderCore, material system, scene traversal,
+- RHI has D3D11 visible-triangle, indexed static-mesh, and texture-sampling
+  capture-byte proof through P2-GATE-009, P2-GATE-013, and P2-GATE-014, but
+  still has no Resource upload, RenderCore, material system, scene traversal,
   report, visual proof, UI, World, or Game Adapter behavior.
 - Audio has a private Windows XAudio2 callback first slice through
   P2-GATE-011, but no codec, streaming, Resource-backed audio asset pipeline,
@@ -110,7 +110,8 @@ test tier labels and optional hardware-smoke presets
 -> OS input bridge
 -> static mesh fixture
 -> texture sampling fixture
--> package/resource streaming and upload queue
+-> package/resource staging queue
+-> resource upload queue
 -> RenderCore fixture pass
 ```
 
@@ -167,7 +168,8 @@ Required test-tier direction:
 | P2-GATE-011 | Real Audio Backend Callback | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_011_REAL_AUDIO_BACKEND_CALLBACK.md`; landed at `1d7d2ca`; private Windows XAudio2 callback backend proof through existing mixer/test-sink contract; default fast gate remains deterministic; no codec, BGM/SE business IDs, Resource loading, UI, script, or gameplay |
 | P2-GATE-012 | Platform Input Device Bridge | L1-L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_012_PLATFORM_INPUT_DEVICE_BRIDGE.md`; landed at `58088bd`; private Windows input bridge into existing Input value boundary; default fast gate is `713/713` PASS; no UI navigation, title menu behavior, script, scene, gameplay mapping, manual proof, or Game Adapter |
 | P2-GATE-013 | Static Mesh Fixture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_013_STATIC_MESH_FIXTURE.md`; landed at `1ee9fa4`; indexed static-geometry fixture through RHI/D3D11 value contracts; default fast gate is `718/718` PASS; `windows-hardware-smoke` discovers and runs indexed static mesh capture; no Resource loading, RenderCore, material system, scene traversal, reports, screenshots, manual visual proof, or Game Adapter |
-| P2-GATE-014 | Texture Sampling Fixture | L3 | `APPROVED_FOR_FIRST_SLICE` | Approved for first slice | Gate doc: `docs/gates/P2_GATE_014_TEXTURE_SAMPLING_FIXTURE.md`; approved after ENG-119A2/B/C2 PASS; texture/sampler binding and sampling proof through RHI/D3D11 value contracts; no Resource loading, image decode, RenderCore, material system, scene traversal, reports, screenshots, shader compiler, manual visual proof, or Game Adapter |
+| P2-GATE-014 | Texture Sampling Fixture | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_014_TEXTURE_SAMPLING_FIXTURE.md`; landed at `49a14ae`; texture/sampler binding and sampling proof through RHI/D3D11 value contracts; default fast gate is `726/726` PASS; `windows-hardware-smoke` discovers and runs texture-sampling capture; no Resource loading, image decode, RenderCore, material system, scene traversal, reports, screenshots, shader compiler, manual visual proof, or Game Adapter |
+| P2-GATE-015 | Package Resource Staging Queue | L4-L5 | `NOT_APPROVED` | Proposal under review | Gate doc: `docs/gates/P2_GATE_015_PACKAGE_RESOURCE_STAGING_QUEUE.md`; proposed bounded staging bridge over existing Package load-plan, Resource handle/type, and File async values; no package parser, decode, Resource load completion, RHI upload, RenderCore, material, scene/UI/World/Script/Game Adapter, reports, screenshots, or manual proof |
 
 ## Current Active Gates
 
@@ -310,13 +312,23 @@ Required test-tier direction:
   not authorize Resource loading, Package streaming, RenderCore pass
   scheduling, material system, scene traversal, reports, screenshots, manual
   visual proof, UI, World, or Game Adapter behavior.
-- P2-GATE-014 is approved for first slice after ENG-119A2 boundary/quality PASS,
-  ENG-119B implementability PASS, and ENG-119C2 test-policy PASS. It is limited
-  to texture/sampler binding and sampling proof through existing `YuRHI` and
-  private D3D11 value contracts. It does not authorize Resource loading, image
-  decode, Package streaming, File IO, RenderCore pass scheduling, material
-  system, scene traversal, reports, screenshots, shader compiler/source
-  tooling, manual visual proof, UI, World, or Game Adapter behavior.
+- P2-GATE-014 first slice landed at `49a14ae` after ENG-120A implementation
+  PASS, ENG-120B verification PASS, and ENG-120QA boundary/quality PASS. It
+  proves texture/sampler binding and sampling through existing `YuRHI` and
+  private D3D11 value contracts. The default fast gate is `726/726` PASS and
+  `windows-hardware-smoke` discovers and runs the texture-sampling capture
+  proof. It does not authorize Resource loading, image decode, Package
+  streaming, File IO, RenderCore pass scheduling, material system, scene
+  traversal, reports, screenshots, shader compiler/source tooling, manual
+  visual proof, UI, World, or Game Adapter behavior.
+- P2-GATE-015 is proposed for boundary review after P2-GATE-014. It is limited
+  to a bounded package/resource staging queue over existing `YuPackage`
+  load-plan values, `YuResource` handle/type validation values, and `YuFile`
+  async request/completion values. It does not authorize package parsing,
+  original-game package readers, image/audio/mesh/shader decode, Resource load
+  completion mutation, RHI upload execution, RenderCore pass scheduling,
+  material system, scene traversal, reports, screenshots, manual visual proof,
+  UI, World, Script, or Game Adapter behavior.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -369,10 +381,16 @@ Required test-tier direction:
     authorize Resource, Package, RenderCore, material system, scene traversal,
     reports, screenshots, manual visual proof, or backend type leakage in public
     headers.
-11. Implement P2-GATE-014 only through the approved RHI/D3D11 texture-sampling
-    first slice. The implementation must prove texture/sampler binding and
-    sampling through value contracts, private D3D11 backend state, capture
-    bytes, and bounded counters/statuses; it must not add Resource loading,
-    image decode, RenderCore, material system, scene traversal, shader
-    compiler/source tooling, reports, screenshots, manual visual proof, or
-    backend type leakage in public headers.
+11. Treat the landed P2-GATE-014 texture sampling fixture as RHI-only sampling
+    proof. It proves texture/sampler binding and sampling through value
+    contracts, private D3D11 backend state, capture bytes, and bounded
+    counters/statuses; it does not authorize Resource loading, image decode,
+    RenderCore, material system, scene traversal, shader compiler/source
+    tooling, reports, screenshots, manual visual proof, or backend type leakage
+    in public headers.
+12. Review P2-GATE-015 before any package/resource staging implementation task
+    exists. The proposed first slice must stay within a bounded staging bridge
+    over Package load-plan, Resource handle/type, and File async values; it must
+    not add package parsers, Resource load completion mutation, decode, RHI
+    upload execution, RenderCore, material, scene/UI/World/Script/Game Adapter,
+    reports, screenshots, logs, sleeps, or manual proof.
