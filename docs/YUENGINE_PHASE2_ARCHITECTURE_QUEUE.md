@@ -82,10 +82,10 @@ Current lower-engine reality:
 - Platform has the P2-GATE-005 first-slice window, native surface, and event
   pump boundary; it still has no GPU adapter discovery, swapchain, or RHI
   ownership.
-- RHI has a D3D11 visible-triangle capture-byte proof through P2-GATE-009, but
-  still has no indexed static mesh fixture, Resource upload, RenderCore,
-  material system, scene traversal, report, visual proof, UI, World, or Game
-  Adapter behavior.
+- RHI has D3D11 visible-triangle and indexed static-mesh capture-byte proof
+  through P2-GATE-009 and P2-GATE-013, but still has no texture sampling
+  fixture, Resource upload, RenderCore, material system, scene traversal,
+  report, visual proof, UI, World, or Game Adapter behavior.
 - Audio has a private Windows XAudio2 callback first slice through
   P2-GATE-011, but no codec, streaming, Resource-backed audio asset pipeline,
   audio scene, BGM/SE service, UI, World, or Game Adapter behavior.
@@ -109,6 +109,7 @@ test tier labels and optional hardware-smoke presets
 -> real audio backend callback
 -> OS input bridge
 -> static mesh fixture
+-> texture sampling fixture
 -> package/resource streaming and upload queue
 -> RenderCore fixture pass
 ```

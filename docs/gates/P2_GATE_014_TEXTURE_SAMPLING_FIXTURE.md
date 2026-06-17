@@ -49,11 +49,11 @@ Current discovery on the proposal baseline:
 - `ctest --preset windows-fast-gate -N -L PerformanceSmoke`: `49`;
 - `ctest --preset windows-fast-gate -N -L EvidenceOracle`: `123`;
 - `ctest --preset windows-fast-gate -N -L HardwareSmoke`: `0`;
-- `ctest --preset windows-fast-gate -N -L Texture`: `0`;
+- `ctest --preset windows-fast-gate -N -L TextureSampling`: `0`;
 - `ctest --preset windows-fast-gate -N -L Sampler`: `0`;
 - `ctest --preset windows-hardware-smoke -N`: `6`;
 - `ctest --preset windows-hardware-smoke -N -L D3D11`: `4`;
-- `ctest --preset windows-hardware-smoke -N -L Texture`: `0`.
+- `ctest --preset windows-hardware-smoke -N -L TextureSampling`: `0`.
 
 ## Owns
 
