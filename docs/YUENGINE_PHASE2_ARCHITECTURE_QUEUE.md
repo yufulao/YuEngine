@@ -460,16 +460,20 @@ Required test-tier direction:
   scene/UI/World/Script/Game Adapter behavior, native/backend leakage, reports,
   screenshots, logs, sleeps, manual proof, hardware-only proof, or
   original-game evidence.
-- P2-GATE-025 is approved as a RenderCore render graph skeleton first slice
-  after ENG-140R combined lower-engine review PASS on proposal commit
-  `39b16a7`. The approved first slice is limited to RenderCore-owned graph
-  declaration and dependency validation values over landed fixture pass,
-  material binding, submission batch, frame packet, and public RHI value
-  contracts. It does not authorize render scheduling, frame graph execution,
-  command-list parallelism, transient resource aliasing, Resource, Streaming,
-  Package, File, material graph, scene, UI, World, Script, Game Adapter,
-  native/backend leakage, reports, screenshots, logs, sleeps, manual proof,
-  hardware-only proof, or original-game evidence.
+- P2-GATE-025 landed the RenderCore render graph skeleton first slice at
+  `43dc361`. It records bounded RenderCore-owned graph declarations, dependency
+  validation, deterministic rejection counters, and prepared submission batch
+  snapshots over landed fixture pass, material binding, submission batch, frame
+  packet, and public RHI value contracts only. The landed fast gate is
+  `858/858` PASS with `RenderCore` at `54`, `Material` at `40`, `RHI` at
+  `141`, `Resource` at `96`, `Streaming` at `36`, `Upload` at `43`,
+  `PerformanceSmoke` at `91`, `EvidenceOracle` at `262`, default
+  `HardwareSmoke` at `0`, and `windows-hardware-smoke` at `7`. It does not
+  authorize render scheduling, frame graph execution, command-list parallelism,
+  transient resource aliasing, Resource, Streaming, Package, File, material
+  graph, scene, UI, World, Script, Game Adapter, native/backend leakage,
+  reports, screenshots, logs, sleeps, manual proof, hardware-only proof, or
+  original-game evidence.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
