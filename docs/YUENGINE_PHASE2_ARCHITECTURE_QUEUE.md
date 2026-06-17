@@ -199,7 +199,7 @@ Required test-tier direction:
 | P2-GATE-027 | RHI Primitive Retirement Ledger | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_027_RHI_PRIMITIVE_RETIREMENT_LEDGER.md`; landed at `3776664`; RHI-owned primitive retirement request, ledger, drain, and deterministic handle invalidation evidence over landed RHI primitive handles only; default fast gate is `880/880` PASS; no Resource/Streaming/File/Package/RenderCore/material/scene/UI/World/Script/Game Adapter dependency, backend-native public leak, new renderer scheduling, reports, screenshots, logs, sleeps, or manual proof |
 | P2-GATE-028 | Audio PCM Sample Packet | L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_028_AUDIO_PCM_SAMPLE_PACKET.md`; landed at `534d3ef`; Audio-owned PCM sample packet value contracts, bounded packet-slot metadata, query/release snapshots, and deterministic counters only; default fast gate is `893/893` PASS; no Resource/File/Package/codec/streaming dependency, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
 | P2-GATE-029 | Audio Resource PCM Packet Import Bridge | L4-L5 over L3 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_029_AUDIO_RESOURCE_PCM_PACKET_IMPORT_BRIDGE.md`; landed at `0a22dac`; bridge-owned mapping from Resource decode-result metadata into Audio PCM packet request descriptors only; default fast gate is `901/901` PASS; no Resource ownership inside Audio core, no Audio packet lifecycle inside Resource core, no decoded byte storage, real codec, streaming audio, BGM/SE business IDs, audio scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps, audible proof, or manual proof |
-| P2-GATE-030 | RenderCore Render Graph Execution Plan | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | Proposal approved | Gate doc: `docs/gates/P2_GATE_030_RENDERCORE_RENDER_GRAPH_EXECUTION_PLAN.md`; approved after ENG-151A/B/C/D/E/F review PASS; RenderCore-owned execution-plan metadata over landed render graph skeleton prepared batches and frame packet fixture only; no renderer scheduler, frame graph system, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
+| P2-GATE-030 | RenderCore Render Graph Execution Plan | L5 over L3-L5 | `APPROVED_FOR_FIRST_SLICE` | First-slice covered | Gate doc: `docs/gates/P2_GATE_030_RENDERCORE_RENDER_GRAPH_EXECUTION_PLAN.md`; landed at `55f618f`; RenderCore-owned execution-plan metadata over landed render graph skeleton prepared batches and frame packet fixture only; default fast gate is `914/914` PASS; no renderer scheduler, frame graph system, command-list parallelism, transient resource aliasing, Resource/Streaming/Package/File ownership, material graph, scene/UI/World/Script/Game Adapter, native/backend leakage, reports, screenshots, logs, sleeps, or manual proof |
 
 ## Current Active Gates
 
@@ -531,17 +531,18 @@ Required test-tier direction:
   scene, UI/World/Script/Game Adapter behavior, reports, screenshots, logs,
   sleeps, audible proof, manual proof, hardware-only proof, or original-game
   evidence.
-- P2-GATE-030 is approved as the next RenderCore render graph execution-plan
-  first slice after ENG-151A/B/C/D/E/F review PASS. It may validate a
-  successful landed `RenderGraphSkeleton::Prepare` result, record bounded
-  execution-plan
-  metadata, execute exactly one prepared skeleton batch through the landed
-  `RenderFramePacketFixture` path, expose query/release snapshots, and prove
-  deterministic counters. It must not authorize renderer scheduling, frame
-  graph systems, command-list parallelism, transient resource aliasing,
-  Resource/Streaming/Package/File ownership, material graph, scene/UI/World/
-  Script/Game Adapter behavior, native/backend leakage, reports, screenshots,
-  logs, sleeps, manual proof, hardware-only proof, or original-game evidence.
+- P2-GATE-030 landed as the RenderCore render graph execution-plan first slice
+  at `55f618f`. It validates a successful landed `RenderGraphSkeleton::Prepare`
+  result, records bounded execution-plan metadata, executes exactly one
+  prepared skeleton batch through the landed `RenderFramePacketFixture` path,
+  exposes query/release snapshots, and proves deterministic counters. The
+  landed fast gate is `914/914` PASS with default `HardwareSmoke` at `0` and no
+  RenderCore graph execution-plan entries in `windows-hardware-smoke`. It must
+  not authorize renderer scheduling, frame graph systems, command-list
+  parallelism, transient resource aliasing, Resource/Streaming/Package/File
+  ownership, material graph, scene/UI/World/Script/Game Adapter behavior,
+  native/backend leakage, reports, screenshots, logs, sleeps, manual proof,
+  hardware-only proof, or original-game evidence.
 - No Phase 2 implementation task may be created until the owning gate is
   approved and sequencing confirms it will not pull in World/Game Adapter,
   RenderCore, scene policy, UI business, reports, or evidence tooling.
@@ -712,7 +713,7 @@ Acceleration note:
     UI/World/Script/Game Adapter behavior, reports, screenshots, logs, sleeps,
     audible proof, manual proof, hardware-only proof, or original-game
     evidence.
-27. Treat approved P2-GATE-030 only as a RenderCore execution-plan metadata
+27. Treat landed P2-GATE-030 only as a RenderCore execution-plan metadata
     boundary over landed graph skeleton prepared batches and frame packet
     fixture execution. It must not become a scheduler, frame graph system,
     command-list parallelism gate, transient resource policy, Resource/
