@@ -1410,22 +1410,224 @@ Create these documents in order:
 Do not create new broad implementation tasks until document 1 and document 2
 exist and are accepted.
 
-## 12. First 10 Landing Tasks
+## 12. Complete Backlog From Current L0 To L1 Closure
 
-These are the recommended next tasks for the landing team.
+This section is a full planning backlog, not a partial starter list. The landing
+team may split, merge, or assign these items, but should not skip the acceptance
+intent. If the team creates task messages, it should create them from this whole
+backlog or from phase-sized batches, not only from the first few rows.
 
-1. Create L0 completion matrix.
-2. Finish sample/repo hygiene cleanup.
-3. Create bridge audit.
-4. Close hardware skip grading for XAudio2 and XInput.
-5. Build YuEngine-owned L0 sample skeleton under `Samples/`.
-6. Wire Platform + RHI + RenderCore frame path in the sample.
-7. Wire File/Resource/Streaming texture or mesh fixture path in the sample.
-8. Wire Audio PCM stream path or explicit unavailable-device proof.
-9. Run Debug/Release/Fast/HardwareSmoke/sample-smoke verification.
-10. Create L1 runtime core matrix based on the accepted L0 result.
+### 12.1 L0 Governance And Hygiene
 
-After these, begin L1 runtime loop and object/component/transform closure.
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L0-GOV-001 | Create `YUENGINE_L0_COMPLETION_MATRIX.md` | none | Every L0 subsystem has state, owner, next action, required command, allowed skip, and forbidden scope |
+| L0-GOV-002 | Create `YUENGINE_BRIDGE_AUDIT.md` | none | Every bridge lists direction, source/destination owner, lifecycle owner, failure statuses, bounds, tests, and risk |
+| L0-GOV-003 | Grade hardware skips | L0-GOV-001 | XAudio2/XInput/other hardware skips are classified as acceptable environment skip, required closure blocker, or deferred |
+| L0-GOV-004 | Finish sample/repo hygiene | none | No committed generated exe/dll/capture under `Temp`; sample/tool/third-party provenance is documented |
+| L0-GOV-005 | Define sample-smoke command | L0-GOV-004 | One documented command builds/runs or intentionally skips the engine sample with explicit status |
+| L0-GOV-006 | Freeze new broad gates | none | No new World/Game Adapter/UI/gameplay expansion until L0 matrix and bridge audit are accepted |
+
+### 12.2 L0 Platform And Device Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L0-PLAT-001 | Confirm Win32 window lifecycle | current Platform first slices | create, resize, focus, close, destroy fixtures pass |
+| L0-PLAT-002 | Confirm bounded event pump | L0-PLAT-001 | deterministic drain, close/focus/resize event ordering, no sleep-based proof |
+| L0-PLAT-003 | Validate native surface descriptor boundary | L0-PLAT-001 | public value remains opaque; backend consumes through private path |
+| L0-PLAT-004 | Add Platform failure-state tests | L0-PLAT-001 | invalid descriptor/double destroy/unsupported mode return explicit statuses |
+| L0-PLAT-005 | Feed Platform state into FrameHost | L0-PLAT-001, L0-PLAT-002 | FrameHost consumes Platform events without owning Platform internals |
+
+### 12.3 L0 RHI And D3D11 Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L0-RHI-001 | Reconfirm backend-neutral device contract | current RHI first slices | capability flags, unsupported states, and handle generations are explicit |
+| L0-RHI-002 | Close D3D11 device/swapchain lifecycle | L0-RHI-001, L0-PLAT-003 | create, clear, present, capture, resize, shutdown path works on supported hardware |
+| L0-RHI-003 | Close D3D11 resource primitives | L0-RHI-002 | buffer, texture, sampler, shader, input layout, pipeline, and fence/retirement tests pass |
+| L0-RHI-004 | Close draw proof set | L0-RHI-003 | visible triangle, indexed static mesh, and texture sampling hardware-smoke pass or are explicitly environment-blocked |
+| L0-RHI-005 | Close resize proof | L0-RHI-002 | stale target rejection, backbuffer generation changes, and unsupported resize status are tested |
+| L0-RHI-006 | Close RHI failure model | L0-RHI-002, L0-RHI-003 | invalid descriptors, stale handles, unsupported operations, and device-unavailable statuses are deterministic |
+
+### 12.4 L0 RenderCore Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L0-REN-001 | Stabilize view packet contract | current RenderCore first slices | camera constants, viewport/scissor, frame index, and resize values are explicit |
+| L0-REN-002 | Stabilize draw packet contract | L0-REN-001, L0-RHI-003 | geometry, material, shader, and ordering values are caller-owned and bounded |
+| L0-REN-003 | Stabilize frame packet execution | L0-REN-002 | prepare/validate/submit path works over RHI values without scene dependencies |
+| L0-REN-004 | Stabilize graph skeleton/execution plan | L0-REN-003 | pass declarations and dependency validation pass without scheduler/frame-graph expansion |
+| L0-REN-005 | RenderCore failure model | L0-REN-002, L0-REN-004 | missing resources, stale handles, and graph validation failures report explicit status |
+
+### 12.5 L0 File, Package, Resource, Streaming Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L0-RES-001 | Close File/VFS loose read/write policy | current File first slices | path normalization, mount priority, fixture bounds, and write/read statuses are explicit |
+| L0-RES-002 | Close Package load-plan/staging baseline | L0-RES-001 | manifest/load-plan and staging records remain value contracts, not old-package compatibility |
+| L0-RES-003 | Close Resource cache/decode chain | current Resource first slices | cache payload, decode plan, decode result, decoded payload ownership, and release behavior pass |
+| L0-RES-004 | Close Resource residency/upload chain | L0-RES-003, L0-RHI-003 | upload queue, upload completion commit, residency budget, and stale handle failures pass |
+| L0-RES-005 | Close texture bridge to RHI | L0-RES-004, L0-RHI-003 | decoded texture payload maps to upload request without Resource owning RHI lifecycle |
+| L0-RES-006 | Close PCM bridge to Audio | L0-RES-003, L0-AUD-002 | decoded audio metadata maps to PCM request without Audio parsing Resource payloads |
+| L0-RES-007 | Add sample texture/mesh asset path | L0-RES-001, L0-RES-003, L0-RES-005 | sample asset reaches RenderCore/RHI through YuEngine modules |
+
+### 12.6 L0 Audio Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L0-AUD-001 | Reconfirm deterministic mixer/test backend | current Audio first slices | existing fast tests remain deterministic and no business BGM/SE IDs appear |
+| L0-AUD-002 | Close PCM packet/stream queue | L0-AUD-001 | caller-owned packet records and queue drain pass without hidden allocation |
+| L0-AUD-003 | Close XAudio2 callback proof | L0-AUD-002 | supported machine passes hardware smoke; unavailable machine reports explicit skip/status |
+| L0-AUD-004 | Audio callback cost proof | L0-AUD-003 | callback path has no file IO, sleeps, or unbounded allocation |
+| L0-AUD-005 | Add sample PCM path | L0-AUD-002, L0-RES-006 | sample plays/queues PCM or emits explicit unavailable-device status |
+
+### 12.7 L0 Input Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L0-IN-001 | Close Win32 keyboard/mouse bridge | current Input first slices | platform events translate to input values with bounded queue behavior |
+| L0-IN-002 | Close XInput bridge | current XInput first slice | available/unavailable/connect/disconnect behavior has explicit status |
+| L0-IN-003 | Reconfirm replay/action snapshot | L0-IN-001 | action snapshots are deterministic and platform-native types stay private |
+| L0-IN-004 | Add sample input path | L0-IN-001, L0-IN-003 | sample consumes input values without UI/gameplay ownership |
+
+### 12.8 L0 Diagnostics, Memory, Thread Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L0-COST-001 | Reconfirm Memory owner/tag vocabulary | current Memory first slices | owner/tag/counter limitations are documented and tested where available |
+| L0-COST-002 | Reconfirm Thread/async completion shutdown | current Thread/File slices | worker lifecycle and async completion shutdown are deterministic |
+| L0-COST-003 | Reconfirm Diagnostics disabled neutrality | current Diagnostics slices | disabling diagnostics does not change runtime behavior |
+| L0-COST-004 | Add L0 sample cost counters | L0 sample paths | sample emits bounded optional counters for frame/resource/audio/input |
+| L0-COST-005 | Add hot-path smoke checks | L0 sample paths | measured fixture paths do not grow containers unexpectedly |
+
+### 12.9 L0 Vertical Sample Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L0-SAMPLE-001 | Create YuEngine-owned sample skeleton | L0-GOV-004 | sample lives under `Samples/`, builds from YuEngine outputs, and has README |
+| L0-SAMPLE-002 | Wire Platform + RHI | L0-PLAT-005, L0-RHI-002 | sample creates window/surface/device/swapchain and presents/clears |
+| L0-SAMPLE-003 | Wire RenderCore frame | L0-REN-003, L0-SAMPLE-002 | sample submits a bounded view/draw/frame packet through RenderCore |
+| L0-SAMPLE-004 | Wire Resource texture/mesh path | L0-RES-007, L0-SAMPLE-003 | sample asset path goes through File/Resource/Streaming/RHI |
+| L0-SAMPLE-005 | Wire Input path | L0-IN-004, L0-SAMPLE-003 | sample consumes keyboard/gamepad value snapshots |
+| L0-SAMPLE-006 | Wire Audio path | L0-AUD-005 | sample queues/plays PCM or emits explicit unavailable-device status |
+| L0-SAMPLE-007 | Wire resize/shutdown | L0-RHI-005, L0-SAMPLE-002 | sample handles resize and shutdown with explicit status |
+| L0-SAMPLE-008 | Close Debug/Release/Fast/HardwareSmoke/sample smoke | all L0 sample tasks | required commands pass or skip only documented environment rows |
+
+### 12.10 L1 Governance Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-GOV-001 | Create `YUENGINE_L1_RUNTIME_CORE_MATRIX.md` | L0-GOV-001, L0-SAMPLE-008 or documented blocker | every L1 subsystem has owner, dependencies, forbidden scope, tests, and vertical evidence |
+| L1-GOV-002 | Freeze current World bridge expansion | L1-GOV-001 | no new World bridge gates without mapping to runtime vertical closure |
+| L1-GOV-003 | Decide L1 vertical sample scope | L1-GOV-001 | sample scene content, required subsystems, and non-goals are documented |
+
+### 12.11 L1 Runtime Kernel Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-KERN-001 | Define runtime app/host | L1-GOV-001, L0-SAMPLE-008 | zero-world runtime loop starts, ticks fixed frames, and shuts down |
+| L1-KERN-002 | Define frame phases | L1-KERN-001 | Begin/Poll/LoadCommit/Update/Prepare/Submit/Present/End phases are explicit |
+| L1-KERN-003 | Define FrameContext | L1-KERN-002 | frame index, delta/fixed time, input snapshot, diagnostics reference are value contracts |
+| L1-KERN-004 | Define runtime error/shutdown propagation | L1-KERN-001 | L0 failure statuses propagate without project-specific behavior |
+
+### 12.12 L1 Object, Component, Transform Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-OBJ-001 | Reconfirm Object identity/lifetime registry | current YuObject | generation handles, acquire/release, retire, and no-mutation failures pass |
+| L1-OBJ-002 | Promote component identity baseline | current World component bridges | component type/slot records are bounded and queryable without behavior lifecycle |
+| L1-OBJ-003 | Promote transform baseline | current transform bridge | POD transform records are bounded and queryable without hierarchy policy |
+| L1-OBJ-004 | Define destroy invalidation path | L1-OBJ-001, L1-OBJ-002, L1-OBJ-003 | object destruction invalidates or explicitly requires caller cleanup for sidecars |
+| L1-OBJ-005 | Hot-path object/component query smoke | L1-OBJ-002 | measured query/update fixture has no hidden growth |
+
+### 12.13 L1 World And Scene Assembly Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-WORLD-001 | Reconfirm World lifecycle fixture | current YuWorld | create/update/destroy phases are deterministic |
+| L1-WORLD-002 | Define scene assembly record set | L1-OBJ-001, L1-OBJ-002, L1-OBJ-003 | object/transform/component/resource-binding records have explicit ownership |
+| L1-WORLD-003 | Reconfirm decoded restore plan/preflight | current P3 scene plan slices | duplicate/missing object/resource statuses are deterministic and no-mutation |
+| L1-WORLD-004 | Design active restore coordinator gate | L1-WORLD-003 | validation-before-mutation and rollback/cleanup policy are written before code |
+| L1-WORLD-005 | Implement active restore coordinator only after gate | L1-WORLD-004 | active restore applies a validated scene assembly without hidden partial mutation |
+
+### 12.14 L1 Asset Manager Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-ASSET-001 | Define runtime asset handle | L0-RES-003, L1-GOV-001 | stable asset ID/type/generation/state contract exists |
+| L1-ASSET-002 | Define asset load states | L1-ASSET-001 | unloaded/loading/decoded/uploaded/resident/failed states are explicit |
+| L1-ASSET-003 | Define dependency traversal | L1-ASSET-001 | bounded dependency list and traversal failure statuses exist |
+| L1-ASSET-004 | Bind Asset Manager to Resource/Streaming | L1-ASSET-002, L0-RES-004 | asset operations use lower Resource primitives without owning RHI/Audio devices |
+| L1-ASSET-005 | Asset fixture path | L1-ASSET-004 | synthetic asset reaches texture/audio ready records and releases cleanly |
+
+### 12.15 L1 Render Scene Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-RSCENE-001 | Define render entity record | L1-OBJ-003, L1-ASSET-001 | object/transform/mesh/material handles are value references |
+| L1-RSCENE-002 | Define camera record | L1-KERN-003 | camera values produce RenderCore view packet values |
+| L1-RSCENE-003 | Define initial visibility path | L1-RSCENE-001 | full-list traversal works, culling remains deferred |
+| L1-RSCENE-004 | Assemble RenderCore packets | L1-RSCENE-001, L1-RSCENE-002, L0-REN-003 | scene records create RenderCore packets without D3D11 includes |
+| L1-RSCENE-005 | RenderScene failure states | L1-RSCENE-004 | missing mesh/material/camera returns explicit status |
+
+### 12.16 L1 Audio Scene Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-ASCENE-001 | Define sound asset binding | L1-ASSET-001, L0-AUD-002 | sound handles bind to Audio value contracts |
+| L1-ASCENE-002 | Define audio source record | L1-ASCENE-001 | play/stop/pause/gain/loop values are explicit |
+| L1-ASCENE-003 | Define minimal bus routing | L1-ASCENE-002 | fixed internal bus IDs route to mixer/test backend |
+| L1-ASCENE-004 | Submit audio source updates | L1-ASCENE-002, L0-AUD-005 | source state maps to PCM stream queue request or explicit unavailable status |
+| L1-ASCENE-005 | AudioScene failure states | L1-ASCENE-004 | missing asset/backend produces explicit status |
+
+### 12.17 L1 Input Mapping Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-INPUT-001 | Define action map | L0-IN-003 | action ID, device binding, button/axis values are explicit |
+| L1-INPUT-002 | Define input context | L1-INPUT-001 | active context/focus mode values are explicit |
+| L1-INPUT-003 | Produce runtime command snapshot | L1-INPUT-001, L1-KERN-003 | pressed/released/held/axis values are frame-indexed and replayable |
+| L1-INPUT-004 | Input mapping tests | L1-INPUT-003 | keyboard and XInput fixtures pass or skip only by documented hardware state |
+
+### 12.18 L1 Serialization, Save, Config Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-SER-001 | Reconfirm value stream contract | current YuSerialize | caller-provided buffer, version, unsupported status, and no-mutation failures pass |
+| L1-SER-002 | Serialize scene assembly records | L1-WORLD-002, L1-SER-001 | object/transform/component/resource-binding records roundtrip deterministically |
+| L1-SER-003 | Define runtime config record | L1-KERN-001, L1-SER-001 | config serializes without File/Package dependency inside Serialize core |
+| L1-SER-004 | Define save/profile boundary | L1-SER-002 | persistence policy stays outside Serialize core and original-save compatibility |
+
+### 12.19 L1 Script Native Bridge Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-SCRIPT-001 | Reconfirm native call registry | current YuScript | stable call IDs and caller-owned value slots pass |
+| L1-SCRIPT-002 | Runtime phase dispatch adapter | L1-WORLD-001, L1-SCRIPT-001 | World phase trace maps to call IDs without World core depending on Script core |
+| L1-SCRIPT-003 | Script error/failure states | L1-SCRIPT-001 | missing call/invalid slots return explicit status |
+
+### 12.20 L1 Runtime Diagnostics Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-DIAG-001 | Define runtime counters | L1-KERN-003 | frame/object/resource/render/audio/input counters are bounded and optional |
+| L1-DIAG-002 | Diagnostics-disabled equivalence | L1-DIAG-001 | runtime behavior is identical when diagnostics are disabled |
+| L1-DIAG-003 | Debug overlay hook proposal | L1-DIAG-001 | hook is optional tooling plane, not runtime dependency |
+
+### 12.21 L1 Vertical Sample Backlog
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-SAMPLE-001 | Define synthetic scene manifest | L1-WORLD-002, L1-ASSET-001 | manifest is project-independent and does not parse old package runtime |
+| L1-SAMPLE-002 | Boot runtime and create world | L1-KERN-001, L1-WORLD-001 | runtime creates world and enters fixed-frame loop |
+| L1-SAMPLE-003 | Instantiate objects/components/transforms | L1-OBJ-005, L1-SAMPLE-002 | sample object graph is deterministic |
+| L1-SAMPLE-004 | Bind resources/assets | L1-ASSET-005, L1-SAMPLE-003 | texture/audio handles bind through Asset Manager |
+| L1-SAMPLE-005 | Map input to command snapshot | L1-INPUT-004, L1-SAMPLE-002 | input affects sample state only through runtime command values |
+| L1-SAMPLE-006 | Submit render scene | L1-RSCENE-005, L1-SAMPLE-004 | sample produces RenderCore/RHI frame through L1 RenderScene |
+| L1-SAMPLE-007 | Submit audio scene | L1-ASCENE-005, L1-SAMPLE-004 | sample submits audio or explicit unavailable status |
+| L1-SAMPLE-008 | Serialize and reload snapshot | L1-SER-004, L1-SAMPLE-003 | sample state roundtrips through value streams without File/Package dependency in Serialize |
+| L1-SAMPLE-009 | Shutdown and cleanup proof | all L1 sample tasks | world/runtime/resources shut down with no leaked active records |
+| L1-SAMPLE-010 | Debug/Release/Fast validation | all L1 sample tasks | fast gate plus sample smoke pass; release validation command is documented |
 
 ## 13. Guardrails
 
@@ -1455,4 +1657,3 @@ Matrix -> Bridge Audit -> L0 Engine Sample -> L1 Runtime Matrix -> L1 Vertical S
 Keep YuEngine narrower than UE/Unity, but not weaker in production discipline.
 Avoid developer ecosystem work. Preserve clean ownership, deterministic tests,
 failure semantics, and performance budgets.
-
