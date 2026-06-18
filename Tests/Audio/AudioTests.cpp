@@ -20,6 +20,9 @@
 #include "YuEngine/Audio/AudioPcmSamplePacketRequest.h"
 #include "YuEngine/Audio/AudioPcmSamplePacketSnapshot.h"
 #include "YuEngine/Audio/AudioPcmStreamQueueChunk.h"
+#include "YuEngine/Audio/AudioPcmStreamQueueCallbackBridge.h"
+#include "YuEngine/Audio/AudioPcmStreamQueueCallbackResult.h"
+#include "YuEngine/Audio/AudioPcmStreamQueueCallbackSubmitter.h"
 #include "YuEngine/Audio/AudioPcmStreamQueueHandle.h"
 #include "YuEngine/Audio/AudioPcmStreamQueueOperation.h"
 #include "YuEngine/Audio/AudioPcmStreamQueueRecord.h"
@@ -42,6 +45,8 @@ using yuengine::audio::AudioPcmSamplePacketRecord;
 using yuengine::audio::AudioPcmSamplePacketRequest;
 using yuengine::audio::AudioPcmSamplePacketSnapshot;
 using yuengine::audio::AudioPcmStreamQueueChunk;
+using yuengine::audio::AudioPcmStreamQueueCallbackResult;
+using yuengine::audio::AudioPcmStreamQueueCallbackSubmitter;
 using yuengine::audio::AudioPcmStreamQueueHandle;
 using yuengine::audio::AudioPcmStreamQueueOperation;
 using yuengine::audio::AudioPcmStreamQueueRecord;
@@ -52,6 +57,7 @@ using yuengine::audio::AudioSampleFormat;
 using yuengine::audio::AudioSourceId;
 using yuengine::audio::AudioStatus;
 using yuengine::audio::AudioVoiceHandle;
+using yuengine::audio::SubmitPcmStreamQueueToCallback;
 using TestAudioDevice = yuengine::audio::TestAudioDevice;
 using yuengine::audio::CHANNEL_COUNT;
 using yuengine::audio::MAX_Q15_GAIN;
@@ -125,6 +131,12 @@ constexpr const char* TEST_STREAM_QUEUE_STALE = "Audio_PcmStreamQueue_RejectsSta
 constexpr const char* TEST_STREAM_QUEUE_NO_MUTATION = "Audio_PcmStreamQueue_RejectionsDoNotMutatePacketSourceVoiceCallbackState";
 constexpr const char* TEST_STREAM_QUEUE_SNAPSHOT = "Audio_PcmStreamQueue_SnapshotTracksCounters";
 constexpr const char* TEST_STREAM_QUEUE_PUBLIC_CONTRACT = "Audio_PcmStreamQueue_PublicContractsArePlainValues";
+constexpr const char *TEST_STREAM_QUEUE_CALLBACK_SUBMIT = "Audio_PcmStreamQueueCallback_SubmitsDrainedChunks";
+constexpr const char *TEST_STREAM_QUEUE_CALLBACK_PARTIAL = "Audio_PcmStreamQueueCallback_RejectsPartialFinalChunkWithoutDrain";
+constexpr const char *TEST_STREAM_QUEUE_CALLBACK_SMALL_SPAN = "Audio_PcmStreamQueueCallback_RejectsSmallSampleSpanWithoutDrain";
+constexpr const char *TEST_STREAM_QUEUE_CALLBACK_SUBMIT_FAILURE = "Audio_PcmStreamQueueCallback_StopsOnSubmitFailure";
+constexpr const char *TEST_STREAM_QUEUE_CALLBACK_UNSTARTED = "Audio_PcmStreamQueueCallback_RejectsUnstartedCallbackWithoutDrain";
+constexpr const char *TEST_STREAM_QUEUE_CALLBACK_PUBLIC_CONTRACT = "Audio_PcmStreamQueueCallback_PublicContractsArePlainValues";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* REINIT_SOURCE_REGISTRATION_MESSAGE = "source registration failed";
@@ -144,6 +156,18 @@ constexpr const char* REINIT_ACTIVE_VOICE_MESSAGE = "active voice did not surviv
 constexpr std::int16_t PREFILL_SAMPLE = 1234;
 constexpr std::int16_t SENTINEL_SAMPLE = -1234;
 using TestFunction = int (*)();
+
+struct FakeCallbackSubmitContext final {
+    std::size_t attempted_call_count = 0U;
+    std::size_t submitted_call_count = 0U;
+    std::size_t submitted_frame_count = 0U;
+    std::size_t submitted_sample_count = 0U;
+    std::size_t expected_frames_per_buffer = 0U;
+    std::size_t fail_on_call = 0U;
+    AudioStatus failure_status = AudioStatus::Success;
+    std::int16_t first_submitted_sample = 0;
+    std::int16_t last_submitted_sample = 0;
+};
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -298,6 +322,96 @@ bool CreateBasicPcmStreamQueue(TestAudioDevice& device, std::uint32_t packet_id,
 
     const AudioPcmStreamQueueRequest request = BasicPcmStreamQueueRequest(queue_id, packet, packet_id);
     return device.CreatePcmStreamQueue(request, out_queue) == AudioStatus::Success;
+}
+
+AudioPcmSamplePacketRequest PcmSamplePacketRequestForFrames(std::uint32_t packet_id, std::size_t frame_count) {
+    const std::size_t sample_count = frame_count * CHANNEL_COUNT;
+    const std::size_t byte_count = sample_count * sizeof(std::int16_t);
+    return AudioPcmSamplePacketRequest{
+        packet_id,
+        AudioSampleFormat::Signed16,
+        SAMPLE_RATE,
+        CHANNEL_COUNT,
+        frame_count,
+        sample_count,
+        byte_count};
+}
+
+AudioPcmStreamQueueRequest PcmStreamQueueRequestForFrames(std::uint32_t queue_id,
+                                                          AudioPcmSamplePacketHandle packet,
+                                                          std::uint32_t expected_packet_id,
+                                                          std::size_t frame_count,
+                                                          std::size_t chunk_frame_count) {
+    const std::size_t sample_count = frame_count * CHANNEL_COUNT;
+    const std::size_t byte_count = sample_count * sizeof(std::int16_t);
+    return AudioPcmStreamQueueRequest{
+        queue_id,
+        packet,
+        expected_packet_id,
+        AudioSampleFormat::Signed16,
+        SAMPLE_RATE,
+        CHANNEL_COUNT,
+        0U,
+        frame_count,
+        sample_count,
+        byte_count,
+        chunk_frame_count};
+}
+
+bool CreatePcmStreamQueueForFrames(TestAudioDevice& device,
+                                   std::uint32_t packet_id,
+                                   std::uint32_t queue_id,
+                                   std::size_t frame_count,
+                                   std::size_t chunk_frame_count,
+                                   AudioPcmStreamQueueHandle& out_queue) {
+    const AudioPcmSamplePacketRequest packet_request = PcmSamplePacketRequestForFrames(packet_id, frame_count);
+    AudioPcmSamplePacketHandle packet{};
+    if (device.CreatePcmSamplePacket(packet_request, packet) != AudioStatus::Success) {
+        return false;
+    }
+
+    const AudioPcmStreamQueueRequest queue_request = PcmStreamQueueRequestForFrames(queue_id, packet, packet_id, frame_count, chunk_frame_count);
+    return device.CreatePcmStreamQueue(queue_request, out_queue) == AudioStatus::Success;
+}
+
+AudioStatus FakeSubmitS16Buffer(void *context, std::span<const std::int16_t> interleaved_samples, std::size_t frame_count) {
+    if (context == nullptr) {
+        return AudioStatus::InvalidDescriptor;
+    }
+
+    FakeCallbackSubmitContext *submit_context = static_cast<FakeCallbackSubmitContext *>(context);
+    ++submit_context->attempted_call_count;
+    if (submit_context->fail_on_call == submit_context->attempted_call_count) {
+        return submit_context->failure_status;
+    }
+
+    if (frame_count != submit_context->expected_frames_per_buffer) {
+        return AudioStatus::InvalidDescriptor;
+    }
+
+    const std::size_t expected_sample_count = frame_count * CHANNEL_COUNT;
+    if (interleaved_samples.size() != expected_sample_count) {
+        return AudioStatus::InvalidDescriptor;
+    }
+
+    if (submit_context->submitted_call_count == 0U) {
+        submit_context->first_submitted_sample = interleaved_samples.front();
+    }
+
+    ++submit_context->submitted_call_count;
+    submit_context->submitted_frame_count += frame_count;
+    submit_context->submitted_sample_count += interleaved_samples.size();
+    submit_context->last_submitted_sample = interleaved_samples.back();
+    return AudioStatus::Success;
+}
+
+AudioPcmStreamQueueCallbackSubmitter FakeCallbackSubmitter(FakeCallbackSubmitContext *context, std::size_t frames_per_buffer) {
+    AudioPcmStreamQueueCallbackSubmitter submitter{};
+    submitter.context = context;
+    submitter.submit_s16_buffer = FakeSubmitS16Buffer;
+    submitter.frames_per_buffer = frames_per_buffer;
+    submitter.started = true;
+    return submitter;
 }
 
 bool ExpectPcmStreamQueueCreateRejectedWithoutActiveMutation(TestAudioDevice& device, AudioPcmStreamQueueRequest request, AudioStatus expected_status) {
@@ -1815,6 +1929,272 @@ int AudioPcmStreamQueuePublicContractsArePlainValues() {
     return 0;
 }
 
+int AudioPcmStreamQueueCallbackSubmitsDrainedChunks() {
+    constexpr std::size_t FRAMES_PER_BUFFER = 16U;
+    constexpr std::size_t FRAME_COUNT = FRAMES_PER_BUFFER * 2U;
+    constexpr std::size_t SAMPLE_COUNT = FRAME_COUNT * CHANNEL_COUNT;
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmStreamQueueHandle queue{};
+    if (!CreatePcmStreamQueueForFrames(device, 119U, 219U, FRAME_COUNT, FRAMES_PER_BUFFER, queue)) {
+        return Fail("stream queue callback setup failed");
+    }
+
+    std::array<std::int16_t, SAMPLE_COUNT> samples{};
+    for (std::size_t index = 0U; index < samples.size(); ++index) {
+        samples[index] = static_cast<std::int16_t>(index + 1U);
+    }
+
+    FakeCallbackSubmitContext context{};
+    context.expected_frames_per_buffer = FRAMES_PER_BUFFER;
+    const AudioPcmStreamQueueCallbackSubmitter submitter = FakeCallbackSubmitter(&context, FRAMES_PER_BUFFER);
+    std::array<AudioPcmStreamQueueChunk, 2U> chunks{};
+    AudioPcmStreamQueueCallbackResult result{};
+    const AudioStatus status = SubmitPcmStreamQueueToCallback(&device,
+                                                              queue,
+                                                              submitter,
+                                                              std::span<const std::int16_t>(samples.data(), samples.size()),
+                                                              std::span<AudioPcmStreamQueueChunk>(chunks.data(), chunks.size()),
+                                                              &result);
+    if (status != AudioStatus::Success) {
+        return Fail("stream queue callback submit failed");
+    }
+
+    if (result.status != AudioStatus::Success) {
+        return Fail("stream queue callback result status failed");
+    }
+
+    if (result.drained_chunk_count != 2U || result.submitted_chunk_count != 2U) {
+        return Fail("stream queue callback chunk counts changed");
+    }
+
+    if (result.submitted_frame_count != FRAME_COUNT || result.submitted_sample_count != SAMPLE_COUNT) {
+        return Fail("stream queue callback submitted sample counts changed");
+    }
+
+    if (!result.reached_final_chunk || result.last_submitted_first_frame != FRAMES_PER_BUFFER) {
+        return Fail("stream queue callback final chunk tracking changed");
+    }
+
+    if (context.attempted_call_count != 2U || context.submitted_call_count != 2U) {
+        return Fail("stream queue callback submit calls changed");
+    }
+
+    if (context.submitted_frame_count != FRAME_COUNT || context.submitted_sample_count != SAMPLE_COUNT) {
+        return Fail("stream queue callback fake submit counts changed");
+    }
+
+    if (context.first_submitted_sample != 1 || context.last_submitted_sample != static_cast<std::int16_t>(SAMPLE_COUNT)) {
+        return Fail("stream queue callback sample range changed");
+    }
+
+    AudioPcmStreamQueueRecord record{};
+    if (device.QueryPcmStreamQueue(queue, record) != AudioStatus::Success) {
+        return Fail("stream queue callback post-query failed");
+    }
+
+    if (record.remaining_frame_count != 0U || record.drained_frame_count != FRAME_COUNT) {
+        return Fail("stream queue callback did not drain queue");
+    }
+
+    return 0;
+}
+
+int AudioPcmStreamQueueCallbackRejectsPartialFinalChunkWithoutDrain() {
+    constexpr std::size_t FRAMES_PER_BUFFER = 16U;
+    constexpr std::size_t FRAME_COUNT = 24U;
+    constexpr std::size_t SAMPLE_COUNT = FRAME_COUNT * CHANNEL_COUNT;
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmStreamQueueHandle queue{};
+    if (!CreatePcmStreamQueueForFrames(device, 120U, 220U, FRAME_COUNT, FRAMES_PER_BUFFER, queue)) {
+        return Fail("stream queue callback partial setup failed");
+    }
+
+    std::array<std::int16_t, SAMPLE_COUNT> samples{};
+    FakeCallbackSubmitContext context{};
+    context.expected_frames_per_buffer = FRAMES_PER_BUFFER;
+    const AudioPcmStreamQueueCallbackSubmitter submitter = FakeCallbackSubmitter(&context, FRAMES_PER_BUFFER);
+    std::array<AudioPcmStreamQueueChunk, 2U> chunks{};
+    AudioPcmStreamQueueCallbackResult result{};
+    const AudioStatus status = SubmitPcmStreamQueueToCallback(&device,
+                                                              queue,
+                                                              submitter,
+                                                              std::span<const std::int16_t>(samples.data(), samples.size()),
+                                                              std::span<AudioPcmStreamQueueChunk>(chunks.data(), chunks.size()),
+                                                              &result);
+    if (status != AudioStatus::InvalidDescriptor) {
+        return Fail("stream queue callback partial chunk was not rejected");
+    }
+
+    if (context.attempted_call_count != 0U) {
+        return Fail("stream queue callback partial rejection submitted data");
+    }
+
+    AudioPcmStreamQueueRecord record{};
+    if (device.QueryPcmStreamQueue(queue, record) != AudioStatus::Success) {
+        return Fail("stream queue callback partial post-query failed");
+    }
+
+    if (record.remaining_frame_count != FRAME_COUNT || record.drained_frame_count != 0U) {
+        return Fail("stream queue callback partial rejection drained queue");
+    }
+
+    if (result.status != AudioStatus::InvalidDescriptor) {
+        return Fail("stream queue callback partial result status changed");
+    }
+
+    return 0;
+}
+
+int AudioPcmStreamQueueCallbackRejectsSmallSampleSpanWithoutDrain() {
+    constexpr std::size_t FRAMES_PER_BUFFER = 16U;
+    constexpr std::size_t FRAME_COUNT = 16U;
+    constexpr std::size_t SAMPLE_COUNT = FRAME_COUNT * CHANNEL_COUNT;
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmStreamQueueHandle queue{};
+    if (!CreatePcmStreamQueueForFrames(device, 121U, 221U, FRAME_COUNT, FRAMES_PER_BUFFER, queue)) {
+        return Fail("stream queue callback small span setup failed");
+    }
+
+    std::array<std::int16_t, SAMPLE_COUNT - 1U> samples{};
+    FakeCallbackSubmitContext context{};
+    context.expected_frames_per_buffer = FRAMES_PER_BUFFER;
+    const AudioPcmStreamQueueCallbackSubmitter submitter = FakeCallbackSubmitter(&context, FRAMES_PER_BUFFER);
+    std::array<AudioPcmStreamQueueChunk, 1U> chunks{};
+    AudioPcmStreamQueueCallbackResult result{};
+    const AudioStatus status = SubmitPcmStreamQueueToCallback(&device,
+                                                              queue,
+                                                              submitter,
+                                                              std::span<const std::int16_t>(samples.data(), samples.size()),
+                                                              std::span<AudioPcmStreamQueueChunk>(chunks.data(), chunks.size()),
+                                                              &result);
+    if (status != AudioStatus::InvalidDescriptor) {
+        return Fail("stream queue callback small span was not rejected");
+    }
+
+    if (context.attempted_call_count != 0U) {
+        return Fail("stream queue callback small span submitted data");
+    }
+
+    AudioPcmStreamQueueRecord record{};
+    if (device.QueryPcmStreamQueue(queue, record) != AudioStatus::Success) {
+        return Fail("stream queue callback small span post-query failed");
+    }
+
+    if (record.remaining_frame_count != FRAME_COUNT || record.drained_frame_count != 0U) {
+        return Fail("stream queue callback small span drained queue");
+    }
+
+    return 0;
+}
+
+int AudioPcmStreamQueueCallbackStopsOnSubmitFailure() {
+    constexpr std::size_t FRAMES_PER_BUFFER = 16U;
+    constexpr std::size_t FRAME_COUNT = FRAMES_PER_BUFFER * 2U;
+    constexpr std::size_t SAMPLE_COUNT = FRAME_COUNT * CHANNEL_COUNT;
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmStreamQueueHandle queue{};
+    if (!CreatePcmStreamQueueForFrames(device, 122U, 222U, FRAME_COUNT, FRAMES_PER_BUFFER, queue)) {
+        return Fail("stream queue callback failure setup failed");
+    }
+
+    std::array<std::int16_t, SAMPLE_COUNT> samples{};
+    FakeCallbackSubmitContext context{};
+    context.expected_frames_per_buffer = FRAMES_PER_BUFFER;
+    context.fail_on_call = 2U;
+    context.failure_status = AudioStatus::CapacityExceeded;
+    const AudioPcmStreamQueueCallbackSubmitter submitter = FakeCallbackSubmitter(&context, FRAMES_PER_BUFFER);
+    std::array<AudioPcmStreamQueueChunk, 2U> chunks{};
+    AudioPcmStreamQueueCallbackResult result{};
+    const AudioStatus status = SubmitPcmStreamQueueToCallback(&device,
+                                                              queue,
+                                                              submitter,
+                                                              std::span<const std::int16_t>(samples.data(), samples.size()),
+                                                              std::span<AudioPcmStreamQueueChunk>(chunks.data(), chunks.size()),
+                                                              &result);
+    if (status != AudioStatus::CapacityExceeded) {
+        return Fail("stream queue callback submit failure status changed");
+    }
+
+    if (context.attempted_call_count != 2U || context.submitted_call_count != 1U) {
+        return Fail("stream queue callback submit failure call counts changed");
+    }
+
+    if (result.drained_chunk_count != 2U || result.submitted_chunk_count != 1U) {
+        return Fail("stream queue callback submit failure result counts changed");
+    }
+
+    if (result.status != AudioStatus::CapacityExceeded) {
+        return Fail("stream queue callback submit failure result status changed");
+    }
+
+    AudioPcmStreamQueueRecord record{};
+    if (device.QueryPcmStreamQueue(queue, record) != AudioStatus::Success) {
+        return Fail("stream queue callback failure post-query failed");
+    }
+
+    if (record.remaining_frame_count != 0U) {
+        return Fail("stream queue callback failure did not drain descriptors");
+    }
+
+    return 0;
+}
+
+int AudioPcmStreamQueueCallbackRejectsUnstartedCallbackWithoutDrain() {
+    constexpr std::size_t FRAMES_PER_BUFFER = 16U;
+    constexpr std::size_t FRAME_COUNT = 16U;
+    constexpr std::size_t SAMPLE_COUNT = FRAME_COUNT * CHANNEL_COUNT;
+    TestAudioDevice device = CreateInitializedDevice();
+    AudioPcmStreamQueueHandle queue{};
+    if (!CreatePcmStreamQueueForFrames(device, 123U, 223U, FRAME_COUNT, FRAMES_PER_BUFFER, queue)) {
+        return Fail("stream queue callback unstarted setup failed");
+    }
+
+    AudioCallbackDevice callback_device;
+    std::array<std::int16_t, SAMPLE_COUNT> samples{};
+    std::array<AudioPcmStreamQueueChunk, 1U> chunks{};
+    AudioPcmStreamQueueCallbackResult result{};
+    const AudioStatus status = SubmitPcmStreamQueueToCallback(&device,
+                                                              queue,
+                                                              &callback_device,
+                                                              std::span<const std::int16_t>(samples.data(), samples.size()),
+                                                              std::span<AudioPcmStreamQueueChunk>(chunks.data(), chunks.size()),
+                                                              &result);
+    if (status != AudioStatus::NotStarted) {
+        return Fail("stream queue callback unstarted status changed");
+    }
+
+    AudioPcmStreamQueueRecord record{};
+    if (device.QueryPcmStreamQueue(queue, record) != AudioStatus::Success) {
+        return Fail("stream queue callback unstarted post-query failed");
+    }
+
+    if (record.remaining_frame_count != FRAME_COUNT || record.drained_frame_count != 0U) {
+        return Fail("stream queue callback unstarted drained queue");
+    }
+
+    return 0;
+}
+
+int AudioPcmStreamQueueCallbackPublicContractsArePlainValues() {
+    if (!std::is_standard_layout_v<AudioPcmStreamQueueCallbackResult>) {
+        return Fail("stream queue callback result was not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<AudioPcmStreamQueueCallbackResult>) {
+        return Fail("stream queue callback result was not trivially copyable");
+    }
+
+    if (!std::is_standard_layout_v<AudioPcmStreamQueueCallbackSubmitter>) {
+        return Fail("stream queue callback submitter was not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<AudioPcmStreamQueueCallbackSubmitter>) {
+        return Fail("stream queue callback submitter was not trivially copyable");
+    }
+
+    return 0;
+}
+
 int AudioCallbackDescDefaultValuesAreBounded() {
     const AudioCallbackDeviceDesc desc{};
     if (desc.backend_kind != AudioBackendKind::Callback) {
@@ -2103,7 +2483,13 @@ int main(int argc, char** argv) {
         {TEST_STREAM_QUEUE_STALE, AudioPcmStreamQueueRejectsStaleHandleWithoutMutation},
         {TEST_STREAM_QUEUE_NO_MUTATION, AudioPcmStreamQueueRejectionsDoNotMutatePacketSourceVoiceCallbackState},
         {TEST_STREAM_QUEUE_SNAPSHOT, AudioPcmStreamQueueSnapshotTracksCounters},
-        {TEST_STREAM_QUEUE_PUBLIC_CONTRACT, AudioPcmStreamQueuePublicContractsArePlainValues}};
+        {TEST_STREAM_QUEUE_PUBLIC_CONTRACT, AudioPcmStreamQueuePublicContractsArePlainValues},
+        {TEST_STREAM_QUEUE_CALLBACK_SUBMIT, AudioPcmStreamQueueCallbackSubmitsDrainedChunks},
+        {TEST_STREAM_QUEUE_CALLBACK_PARTIAL, AudioPcmStreamQueueCallbackRejectsPartialFinalChunkWithoutDrain},
+        {TEST_STREAM_QUEUE_CALLBACK_SMALL_SPAN, AudioPcmStreamQueueCallbackRejectsSmallSampleSpanWithoutDrain},
+        {TEST_STREAM_QUEUE_CALLBACK_SUBMIT_FAILURE, AudioPcmStreamQueueCallbackStopsOnSubmitFailure},
+        {TEST_STREAM_QUEUE_CALLBACK_UNSTARTED, AudioPcmStreamQueueCallbackRejectsUnstartedCallbackWithoutDrain},
+        {TEST_STREAM_QUEUE_CALLBACK_PUBLIC_CONTRACT, AudioPcmStreamQueueCallbackPublicContractsArePlainValues}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
