@@ -6,3 +6,11 @@ __pycache__/
 .pytest_cache/
 .idea/
 .codex/
+
+/Samples/AssetSmokeDemo/Build/
+/Samples/AssetSmokeDemo/CMakeFiles/
+/Samples/AssetSmokeDemo/CMakeCache.txt
+/Samples/AssetSmokeDemo/FormalOggCapture.bmp
+/Samples/AssetSmokeDemo/*.bmp
+/Samples/AssetSmokeDemo/*.png
+/Samples/AssetSmokeDemo/*.log

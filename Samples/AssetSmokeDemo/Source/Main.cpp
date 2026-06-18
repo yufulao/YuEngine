@@ -1,7 +1,7 @@
 /*
-Module: AssetSmokeDemo
-File: YuEngineScratch/AssetSmokeDemo/Source/Main.cpp
-Purpose: Isolated D3D11 textured mesh and looping BGM smoke demo.
+模块: AssetSmokeDemo
+文件: Samples/AssetSmokeDemo/Source/Main.cpp
+用途: 独立 D3D11 贴图网格和循环背景音乐 smoke demo。
 */
 
 #define NOMINMAX
@@ -1461,7 +1461,7 @@ int RunDemo(int argc, wchar_t **argv) {
     return 0;
 }
 
-} // namespace
+} // 匿名命名空间
 
 int wmain(int argc, wchar_t **argv) {
     HRESULT co_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
