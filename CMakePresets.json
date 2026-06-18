@@ -51,6 +51,44 @@
   ],
   "testPresets": [
     {
+      "name": "windows-dev-gate",
+      "configurePreset": "windows-fast-gate",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "EvidenceOracle|PerformanceSmoke|Hardware"
+        },
+        "exclude": {
+          "label": "HardwareSmoke"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-l0-gate",
+      "configurePreset": "windows-fast-gate",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "Platform|Diagnostics|Memory|Thread|File|Package|Resource|Streaming|RHI|RenderCore|Audio|AudioResource|Input|Hardware"
+        },
+        "exclude": {
+          "label": "HardwareSmoke"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
       "name": "windows-fast-gate",
       "configurePreset": "windows-fast-gate",
       "configuration": "Debug",
@@ -67,9 +105,45 @@
       }
     },
     {
+      "name": "windows-release-gate",
+      "configurePreset": "windows-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "exclude": {
+          "label": "HardwareSmoke"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
       "name": "windows-hardware-smoke",
       "configurePreset": "windows-fast-gate",
       "configuration": "Debug",
+      "filter": {
+        "include": {
+          "label": "HardwareSmoke"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "ignore"
+      }
+    },
+    {
+      "name": "windows-strict-hardware-smoke",
+      "configurePreset": "windows-fast-gate",
+      "configuration": "Debug",
+      "environment": {
+        "YUENGINE_AUDIO_STRICT_HARDWARE": "1",
+        "YUENGINE_REQUIRE_XINPUT_HARDWARE": "1"
+      },
       "filter": {
         "include": {
           "label": "HardwareSmoke"
