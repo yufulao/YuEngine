@@ -27,21 +27,21 @@ public:
     explicit ResourceUploadQueue(ResourceUploadQueueDesc desc);
 
     /**
-     * @comment 验证并 queues 一个 Resource upload 请求。
-     * @param request 输入 请求。
+     * @comment 验证并入队 Resource upload 请求。
+     * @param request 输入请求。
      * @return 显式操作状态。
      */
     ResourceUploadStatus Submit(const ResourceUploadRequest &request);
     /**
-     * @comment 处理 oldest queued upload 请求.
+     * @comment 处理最早入队的 upload 请求。
      * @return 显式操作状态。
      */
     ResourceUploadStatus ProcessNext();
     /**
-     * @comment 提取 upload completion 记录 写入 调用方持有 存储.
+     * @comment 提取 upload completion 记录并写入调用方持有的存储。
      * @param output_completions 输出 completion 存储。
-     * @param output_capacity 输出 存储容量。
-     * @param written_count 输出 写入数量。
+     * @param output_capacity 输出存储容量。
+     * @param written_count 输出写入数量。
      * @return 显式操作状态。
      */
     ResourceUploadStatus DrainCompletions(

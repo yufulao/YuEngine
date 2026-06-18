@@ -28,8 +28,8 @@ public:
     explicit PackageResourceStagingQueue(PackageResourceStagingQueueDesc desc);
 
     /**
-     * @comment 验证并 submits 一个 package-resource staging 请求。
-     * @param request 输入 请求。
+     * @comment 验证并提交 package-resource staging 请求。
+     * @param request 输入请求。
      * @return 显式操作状态。
      */
     PackageResourceStagingStatus Submit(const PackageResourceStagingRequest &request);
@@ -40,10 +40,10 @@ public:
      */
     PackageResourceStagingStatus CompleteFileRead(const file::AsyncFileReadResult &file_result);
     /**
-     * @comment 提取 staging completion 记录 写入 调用方持有 存储.
+     * @comment 提取 staging completion 记录并写入调用方持有的存储。
      * @param output_completions 输出 completion 存储。
-     * @param output_capacity 输出 存储容量。
-     * @param written_count 输出 写入数量。
+     * @param output_capacity 输出存储容量。
+     * @param written_count 输出写入数量。
      * @return 显式操作状态。
      */
     PackageResourceStagingStatus DrainCompletions(

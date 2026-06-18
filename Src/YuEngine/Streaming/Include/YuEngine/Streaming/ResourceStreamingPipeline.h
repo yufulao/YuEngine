@@ -18,49 +18,49 @@ namespace yuengine::streaming {
 class ResourceStreamingPipeline final {
 public:
     /**
-     * @comment 构造带固定容量 internal queue 的 Resource streaming pipeline。
+     * @comment 构造带固定容量内部队列的 Resource streaming pipeline。
      */
     ResourceStreamingPipeline();
 
     /**
-     * @comment 提交 一个 package-backed resource upload 流水线请求。
-     * @param request 输入 流水线请求。
-     * @return 显式 流水线状态。
+     * @comment 提交 package-backed resource upload 流水线请求。
+     * @param request 输入流水线请求。
+     * @return 显式流水线状态。
      */
     ResourceStreamingPipelineStatus Submit(const ResourceStreamingPipelineRequest &request);
     /**
      * @comment 消费调用方已排空的异步文件完成记录，并入队 upload 步骤。
      * @param file_result 输入 async file completion。
-     * @return 显式 流水线状态。
+     * @return 显式流水线状态。
      */
     ResourceStreamingPipelineStatus CompleteFileRead(const file::AsyncFileReadResult &file_result);
     /**
      * @comment 处理入队的 RHI upload 步骤，并入队 Resource commit 步骤。
-     * @return 显式 流水线状态。
+     * @return 显式流水线状态。
      */
     ResourceStreamingPipelineStatus ProcessUpload();
     /**
      * @comment 处理入队的 Resource commit 步骤。
-     * @return 显式 流水线状态。
+     * @return 显式流水线状态。
      */
     ResourceStreamingPipelineStatus ProcessCommit();
     /**
-     * @comment 返回 pipeline 计数器 和 last 状态es。
+     * @comment 返回 pipeline 计数器和最近状态。
      * @return 快照值。
      */
     ResourceStreamingPipelineSnapshot Snapshot() const;
     /**
-     * @comment 返回 last staging completion。
+     * @comment 返回最近的 staging completion。
      * @return Completion 值。
      */
     PackageResourceStagingCompletion LastStagingCompletion() const;
     /**
-     * @comment 返回 last upload completion。
+     * @comment 返回最近的 upload completion。
      * @return Completion 值。
      */
     ResourceUploadCompletion LastUploadCompletion() const;
     /**
-     * @comment 返回 last commit completion。
+     * @comment 返回最近的 commit completion。
      * @return Completion 值。
      */
     ResourceUploadCommitCompletion LastCommitCompletion() const;

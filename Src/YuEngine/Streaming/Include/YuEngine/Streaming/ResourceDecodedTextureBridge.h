@@ -20,13 +20,13 @@ public:
     ResourceDecodedTextureBridge();
 
     /**
-     * @comment 读取 一个 Resource 自有 decoded texture payload 和 uploads it as an RHI texture.
+     * @comment 读取 Resource 持有的 decoded texture payload，并上传为 RHI texture。
      * @param request 输入 decoded payload 和 upload 请求。
-     * @return 显式 bridge 结果 和 texture 绑定 值。
+     * @return 显式 bridge 结果和 texture 绑定值。
      */
     ResourceDecodedTextureBridgeResult UploadTexture(const ResourceDecodedTextureBridgeRequest &request);
     /**
-     * @comment 返回 bridge 计数器 和 last 状态es。
+     * @comment 返回 bridge 计数器和最近状态。
      * @return 快照值。
      */
     ResourceDecodedTextureBridgeSnapshot Snapshot() const;
