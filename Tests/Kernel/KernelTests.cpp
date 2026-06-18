@@ -1,5 +1,5 @@
-// Module: Tests Kernel
-// File: Tests/Kernel/KernelTests.cpp
+// 模块：Tests Kernel
+// 文件：Tests/Kernel/KernelTests.cpp
 
 #include <cstdint>
 #include <cstdio>

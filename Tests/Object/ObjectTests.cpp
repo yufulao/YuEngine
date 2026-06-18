@@ -1,5 +1,5 @@
-// Module: Tests Object
-// File: Tests/Object/ObjectTests.cpp
+// 模块：Tests Object
+// 文件：Tests/Object/ObjectTests.cpp
 
 #include <cstdint>
 #include <cstdio>

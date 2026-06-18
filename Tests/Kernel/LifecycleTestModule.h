@@ -1,5 +1,5 @@
-// Module: Tests Kernel
-// File: Tests/Kernel/LifecycleTestModule.h
+// 模块：Tests Kernel
+// 文件：Tests/Kernel/LifecycleTestModule.h
 
 #pragma once
 
@@ -119,7 +119,7 @@ public:
     }
 
 private:
-    // Verifies teardown can still read dependency-published services.
+    // 验证清理阶段仍能读取依赖发布的服务。
     KernelResult VerifyRequiredServicesOnShutdown() const {
         if (service_registry_ == nullptr) {
             return KernelResult::Failure(KernelStatus::ShutdownFailure, SHUTDOWN_FAILURE_MESSAGE);

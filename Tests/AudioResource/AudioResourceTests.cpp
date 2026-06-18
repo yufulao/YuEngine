@@ -1,5 +1,5 @@
-// Module: YuEngine AudioResource
-// File: Tests/AudioResource/AudioResourceTests.cpp
+// 模块：YuEngine AudioResource
+// 文件：Tests/AudioResource/AudioResourceTests.cpp
 
 #include <array>
 #include <cstdio>

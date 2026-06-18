@@ -1,5 +1,5 @@
-// Module: Tests Diagnostics
-// File: Tests/Diagnostics/DiagnosticsTests.cpp
+// 模块：Tests Diagnostics
+// 文件：Tests/Diagnostics/DiagnosticsTests.cpp
 
 #include <cstddef>
 #include <cstdint>

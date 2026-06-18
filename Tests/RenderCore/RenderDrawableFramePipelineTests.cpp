@@ -1,5 +1,5 @@
-// Module: Tests RenderCore
-// File: Tests/RenderCore/RenderDrawableFramePipelineTests.cpp
+// 模块：Tests RenderCore
+// 文件：Tests/RenderCore/RenderDrawableFramePipelineTests.cpp
 
 #include <cstddef>
 #include <cstdint>

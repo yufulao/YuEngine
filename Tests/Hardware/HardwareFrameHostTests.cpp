@@ -1,5 +1,5 @@
-// Module: Tests Hardware
-// File: Tests/Hardware/HardwareFrameHostTests.cpp
+// 模块：Tests Hardware
+// 文件：Tests/Hardware/HardwareFrameHostTests.cpp
 
 #include <array>
 #include <cstdint>

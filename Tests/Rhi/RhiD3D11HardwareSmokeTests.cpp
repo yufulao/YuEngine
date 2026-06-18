@@ -1,5 +1,5 @@
-// Module: Tests Rhi
-// File: Tests/Rhi/RhiD3D11HardwareSmokeTests.cpp
+// 模块：Tests Rhi
+// 文件：Tests/Rhi/RhiD3D11HardwareSmokeTests.cpp
 
 #include <array>
 #include <cstddef>

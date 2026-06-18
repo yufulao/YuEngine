@@ -1,5 +1,5 @@
-// Module: Tests RenderCore
-// File: Tests/RenderCore/RenderShaderProgramTests.cpp
+// 模块：Tests RenderCore
+// 文件：Tests/RenderCore/RenderShaderProgramTests.cpp
 
 #include <cstdio>
 #include <string_view>

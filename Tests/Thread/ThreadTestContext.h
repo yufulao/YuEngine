@@ -1,5 +1,5 @@
-// Module: Tests Thread
-// File: Tests/Thread/ThreadTestContext.h
+// 模块：Tests Thread
+// 文件：Tests/Thread/ThreadTestContext.h
 
 #pragma once
 

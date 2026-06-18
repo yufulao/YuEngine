@@ -1,5 +1,5 @@
-// Module: Tests Thread
-// File: Tests/Thread/ThreadTests.cpp
+// 模块：Tests Thread
+// 文件：Tests/Thread/ThreadTests.cpp
 
 #include <array>
 #include <condition_variable>

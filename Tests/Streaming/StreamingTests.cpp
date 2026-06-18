@@ -1,5 +1,5 @@
-// Module: Tests Streaming
-// File: Tests/Streaming/StreamingTests.cpp
+// 模块：Tests Streaming
+// 文件：Tests/Streaming/StreamingTests.cpp
 
 #include <array>
 #include <cstdint>

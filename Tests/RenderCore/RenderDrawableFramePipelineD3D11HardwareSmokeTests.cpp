@@ -1,5 +1,5 @@
-// Module: Tests RenderCore
-// File: Tests/RenderCore/RenderDrawableFramePipelineD3D11HardwareSmokeTests.cpp
+// 模块：Tests RenderCore
+// 文件：Tests/RenderCore/RenderDrawableFramePipelineD3D11HardwareSmokeTests.cpp
 
 #include "YuEngine/RenderCore/MaterialBindingFixtureStatus.h"
 #include "YuEngine/RenderCore/RenderDrawableFramePipeline.h"

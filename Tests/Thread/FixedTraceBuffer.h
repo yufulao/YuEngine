@@ -1,5 +1,5 @@
-// Module: Tests Thread
-// File: Tests/Thread/FixedTraceBuffer.h
+// 模块：Tests Thread
+// 文件：Tests/Thread/FixedTraceBuffer.h
 
 #pragma once
 
@@ -13,7 +13,7 @@ struct FixedTraceBuffer {
     std::array<int, THREAD_TEST_TRACE_CAPACITY> values{};
     std::size_t count = 0U;
 
-    // Appends a value when trace storage still has capacity.
+    // 当跟踪存储仍有容量时追加一个值。
     bool Append(int value) {
         if (count >= values.size()) {
             return false;
@@ -24,7 +24,7 @@ struct FixedTraceBuffer {
         return true;
     }
 
-    // Reports whether no trace values were recorded.
+    // 报告是否没有记录任何跟踪值。
     bool IsEmpty() const {
         return count == 0U;
     }

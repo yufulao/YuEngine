@@ -1,5 +1,5 @@
-// Module: Tests Platform
-// File: Tests/Platform/PlatformTests.cpp
+// 模块：Tests Platform
+// 文件：Tests/Platform/PlatformTests.cpp
 
 #include <cstdint>
 #include <cstdio>

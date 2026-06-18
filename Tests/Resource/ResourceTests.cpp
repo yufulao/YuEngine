@@ -1,5 +1,5 @@
-// Module: Tests Resource
-// File: Tests/Resource/ResourceTests.cpp
+// 模块：Tests Resource
+// 文件：Tests/Resource/ResourceTests.cpp
 
 #include <array>
 #include <cstdint>

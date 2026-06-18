@@ -1,5 +1,5 @@
-// Module: Tests RenderCore
-// File: Tests/RenderCore/RenderSwapchainFramePipelineD3D11HardwareSmokeTests.cpp
+// 模块：Tests RenderCore
+// 文件：Tests/RenderCore/RenderSwapchainFramePipelineD3D11HardwareSmokeTests.cpp
 
 #include <cstddef>
 #include <cstdint>

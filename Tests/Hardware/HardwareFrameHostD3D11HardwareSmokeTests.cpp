@@ -1,5 +1,5 @@
-// Module: Tests Hardware
-// File: Tests/Hardware/HardwareFrameHostD3D11HardwareSmokeTests.cpp
+// 模块：Tests Hardware
+// 文件：Tests/Hardware/HardwareFrameHostD3D11HardwareSmokeTests.cpp
 
 #include <array>
 #include <cstddef>

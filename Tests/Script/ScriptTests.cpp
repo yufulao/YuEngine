@@ -1,5 +1,5 @@
-// Module: Tests Script
-// File: Tests/Script/ScriptTests.cpp
+// 模块：Tests Script
+// 文件：Tests/Script/ScriptTests.cpp
 
 #include <array>
 #include <cstdint>

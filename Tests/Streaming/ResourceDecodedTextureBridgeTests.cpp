@@ -1,5 +1,5 @@
-// Module: Tests Streaming
-// File: Tests/Streaming/ResourceDecodedTextureBridgeTests.cpp
+// 模块：Tests Streaming
+// 文件：Tests/Streaming/ResourceDecodedTextureBridgeTests.cpp
 
 #include <array>
 #include <cstdint>

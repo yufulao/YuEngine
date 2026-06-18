@@ -1,5 +1,5 @@
-// Module: Tests Serialize
-// File: Tests/Serialize/StreamFixture.h
+// 模块：Tests Serialize
+// 文件：Tests/Serialize/StreamFixture.h
 
 #pragma once
 

@@ -1,5 +1,5 @@
-// Module: Tests Memory
-// File: Tests/Memory/MemoryTests.cpp
+// 模块：Tests Memory
+// 文件：Tests/Memory/MemoryTests.cpp
 
 #include <array>
 #include <cstddef>
