@@ -13,6 +13,14 @@
 #include <xaudio2.h>
 #include <wrl/client.h>
 
+#ifndef YU_ASSET_SMOKE_ENGINE_EVIDENCE
+#define YU_ASSET_SMOKE_ENGINE_EVIDENCE 0
+#endif
+
+#if YU_ASSET_SMOKE_ENGINE_EVIDENCE
+#include "L0EngineEvidence.h"
+#endif
+
 #pragma pack(push, 8)
 #include <vorbis/vorbisfile.h>
 #pragma pack(pop)
@@ -28,6 +36,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <span>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -1387,6 +1396,30 @@ int RunDemo(int argc, wchar_t **argv) {
         return 5;
     }
 
+#if YU_ASSET_SMOKE_ENGINE_EVIDENCE
+    asset_smoke_demo::L0EngineEvidenceResult engine_evidence = {};
+    asset_smoke_demo::L0EngineEvidenceInput engine_input = {};
+    engine_input.asset_root = asset_root;
+    engine_input.texture_path = texture_path;
+    engine_input.texture_rgba = std::span<const uint8_t>(texture.rgba.data(), texture.rgba.size());
+    engine_input.texture_width = texture.width;
+    engine_input.texture_height = texture.height;
+    if (!asset_smoke_demo::RunL0EngineEvidence(engine_input, &engine_evidence)) {
+        std::fprintf(
+            stderr,
+            "YuAssetSmokeDemo L0 engine evidence failed stage=%s file_read=%u resource_decode=%u texture_upload=%u rendercore=%u hardware=%u resize=%u shutdown=%u.\n",
+            engine_evidence.failure_stage,
+            engine_evidence.file_read ? 1U : 0U,
+            engine_evidence.resource_decode ? 1U : 0U,
+            engine_evidence.texture_upload ? 1U : 0U,
+            engine_evidence.rendercore_view_draw_material ? 1U : 0U,
+            engine_evidence.hardware_frame ? 1U : 0U,
+            engine_evidence.resize ? 1U : 0U,
+            engine_evidence.shutdown ? 1U : 0U);
+        return 9;
+    }
+#endif
+
     HINSTANCE instance = GetModuleHandleW(nullptr);
     HWND window = CreateDemoWindow(instance);
     if (window == nullptr) {
@@ -1458,6 +1491,18 @@ int RunDemo(int argc, wchar_t **argv) {
         static_cast<unsigned int>(texture.height),
         audio.GetMode().c_str(),
         seconds_to_run);
+#if YU_ASSET_SMOKE_ENGINE_EVIDENCE
+    std::printf(
+        "YuAssetSmokeDemo L0_ENGINE PASS file_bytes=%u decoded_texture=%ux%u upload_generation=%u render_frames=%u input_events=%u gamepad=%s audio=%s resize=pass shutdown=pass\n",
+        engine_evidence.file_read_byte_count,
+        engine_evidence.decoded_texture_width,
+        engine_evidence.decoded_texture_height,
+        engine_evidence.uploaded_texture_generation,
+        engine_evidence.render_frame_count,
+        engine_evidence.input_event_count,
+        engine_evidence.gamepad_state,
+        engine_evidence.audio_state);
+#endif
     return 0;
 }
 

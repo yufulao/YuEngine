@@ -10,7 +10,7 @@ function(yuengine_apply_compile_options target_name)
     target_compile_features(${target_name} PUBLIC cxx_std_20)
 
     if(MSVC)
-        target_compile_options(${target_name} PRIVATE /W4 /permissive-)
+        target_compile_options(${target_name} PRIVATE /W4 /permissive- /source-charset:utf-8)
         return()
     endif()
 
@@ -1523,6 +1523,8 @@ target_link_libraries(YuResourceDecodedTextureBridgeTests PRIVATE YuStreaming Yu
 yuengine_add_labeled_test(Streaming_ResourceDecodedTextureBridge_UploadsDecodedPayloadAsTextureBinding YuResourceDecodedTextureBridgeTests Fast ModuleFixture Streaming Resource RHI RenderCore TextureSampling EvidenceOracle)
 yuengine_add_labeled_test(Streaming_ResourceDecodedTextureBridge_RejectsTextureByteMismatchWithoutRhiMutation YuResourceDecodedTextureBridgeTests Fast ModuleFixture Streaming Resource RHI RenderCore TextureSampling EvidenceOracle)
 yuengine_add_labeled_test(Streaming_ResourceDecodedTextureBridge_RejectsSmallScratchWithoutRhiMutation YuResourceDecodedTextureBridgeTests Fast ModuleFixture Streaming Resource RHI RenderCore TextureSampling EvidenceOracle)
+yuengine_add_labeled_test(Streaming_ResourceDecodedTextureBridge_RejectsSampledTextureSlotOutOfRangeWithoutRhiMutation YuResourceDecodedTextureBridgeTests Fast ModuleFixture Streaming Resource RHI RenderCore TextureSampling EvidenceOracle)
+yuengine_add_labeled_test(Streaming_ResourceDecodedTextureBridge_ReportsRhiTextureCapacityWithoutWritingOutput YuResourceDecodedTextureBridgeTests Fast ModuleFixture Streaming Resource RHI RenderCore TextureSampling PerformanceSmoke EvidenceOracle)
 
 add_executable(YuInputTests
     Tests/Input/InputTests.cpp
@@ -1583,6 +1585,9 @@ yuengine_add_labeled_test(HardwareFrameHost_TranslatesInjectedPlatformInput YuHa
 yuengine_add_labeled_test(HardwareFrameHost_RejectsInvalidDescriptor YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input EvidenceOracle)
 yuengine_add_labeled_test(HardwareFrameHost_RejectsTickBeforeInitialize YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input)
 yuengine_add_labeled_test(HardwareFrameHost_GamepadPollRejectsInvalidIndex YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input XInput EvidenceOracle)
+yuengine_add_labeled_test(HardwareFrameHost_ShutdownAfterSuccessIsIdempotent YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input EvidenceOracle)
+yuengine_add_labeled_test(HardwareFrameHost_InvalidTickPreservesCallerOutput YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input EvidenceOracle)
+yuengine_add_labeled_test(HardwareFrameHost_ResizeEventWithoutRenderCompletesTick YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input Resize EvidenceOracle)
 
 add_executable(YuHardwareFrameHostD3D11Smoke
     Tests/Hardware/HardwareFrameHostD3D11HardwareSmokeTests.cpp

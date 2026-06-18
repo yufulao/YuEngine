@@ -37,6 +37,7 @@
 #include "YuEngine/Resource/ResourceResidencyStatus.h"
 #include "YuEngine/Resource/ResourceTypeId.h"
 #include "YuEngine/Rhi/NullRhiDevice.h"
+#include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiDeviceDesc.h"
 #include "YuEngine/Rhi/RhiDeviceSnapshot.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
@@ -50,6 +51,7 @@
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeResult.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeSnapshot.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeStatus.h"
+#include "YuEngine/Streaming/ResourceUploadStatus.h"
 
 using yuengine::rendercore::MaterialBindingFixture;
 using yuengine::rendercore::MaterialBindingFixtureRequest;
@@ -100,6 +102,7 @@ using yuengine::streaming::ResourceDecodedTextureBridgeRequest;
 using yuengine::streaming::ResourceDecodedTextureBridgeResult;
 using yuengine::streaming::ResourceDecodedTextureBridgeSnapshot;
 using yuengine::streaming::ResourceDecodedTextureBridgeStatus;
+using yuengine::streaming::ResourceUploadStatus;
 
 namespace {
 constexpr const char *TEST_UPLOADS_TEXTURE =
@@ -108,6 +111,10 @@ constexpr const char *TEST_REJECTS_MISMATCH =
     "Streaming_ResourceDecodedTextureBridge_RejectsTextureByteMismatchWithoutRhiMutation";
 constexpr const char *TEST_REJECTS_SMALL_SCRATCH =
     "Streaming_ResourceDecodedTextureBridge_RejectsSmallScratchWithoutRhiMutation";
+constexpr const char *TEST_REJECTS_SAMPLED_TEXTURE_SLOT =
+    "Streaming_ResourceDecodedTextureBridge_RejectsSampledTextureSlotOutOfRangeWithoutRhiMutation";
+constexpr const char *TEST_REPORTS_RHI_CAPACITY =
+    "Streaming_ResourceDecodedTextureBridge_ReportsRhiTextureCapacityWithoutWritingOutput";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr ResourceTypeId TYPE_TEXTURE{1U};
@@ -489,6 +496,131 @@ int StreamingResourceDecodedTextureBridgeRejectsSmallScratchWithoutRhiMutation()
     return 0;
 }
 
+int StreamingResourceDecodedTextureBridgeRejectsSampledTextureSlotOutOfRangeWithoutRhiMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult registration = RegisterTexture(registry);
+    if (!registration.Succeeded()) {
+        return Fail("slot texture resource registration failed");
+    }
+
+    NullRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("slot null rhi initialize failed");
+    }
+
+    std::array<std::uint8_t, TEXTURE_BYTE_COUNT> scratch_bytes{};
+    std::span<std::uint8_t> scratch_span(scratch_bytes.data(), scratch_bytes.size());
+    RhiTextureHandle output_texture{};
+    ResourceDecodedTextureBridge bridge;
+    ResourceDecodedTextureBridgeRequest request = BridgeRequest(
+        registry,
+        device,
+        registration.handle,
+        scratch_span,
+        TextureDesc(TEXTURE_WIDTH, TEXTURE_HEIGHT),
+        &output_texture);
+    request.sampled_texture_slot = static_cast<std::uint32_t>(yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS);
+    const ResourceDecodedTextureBridgeResult result = bridge.UploadTexture(request);
+    if (result.status != ResourceDecodedTextureBridgeStatus::SampledTextureSlotOutOfRange) {
+        return Fail("decoded texture bridge accepted out of range sampled slot");
+    }
+
+    if (device.Snapshot().resources.texture_count != 0U) {
+        return Fail("decoded texture sampled slot rejection created rhi texture");
+    }
+
+    if (output_texture.generation != 0U) {
+        return Fail("decoded texture sampled slot rejection wrote output handle");
+    }
+
+    const ResourceDecodedTextureBridgeSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.rejected_count != 1U || snapshot.last_status != result.status) {
+        return Fail("decoded texture sampled slot rejection snapshot mismatch");
+    }
+
+    return 0;
+}
+
+int StreamingResourceDecodedTextureBridgeReportsRhiTextureCapacityWithoutWritingOutput() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult registration = RegisterTexture(registry);
+    if (!registration.Succeeded()) {
+        return Fail("capacity texture resource registration failed");
+    }
+
+    const std::array<std::uint8_t, TEXTURE_BYTE_COUNT> decoded_bytes{};
+    if (!BuildDecodedTextureResource(registry, registration.handle, decoded_bytes)) {
+        return Fail("capacity decoded texture resource setup failed");
+    }
+
+    NullRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("capacity null rhi initialize failed");
+    }
+
+    std::array<std::uint8_t, TEXTURE_BYTE_COUNT> scratch_bytes{};
+    std::span<std::uint8_t> scratch_span(scratch_bytes.data(), scratch_bytes.size());
+    ResourceDecodedTextureBridge bridge;
+    for (std::size_t index = 0U; index < yuengine::rhi::MAX_RHI_TEXTURES; ++index) {
+        RhiTextureHandle output_texture{};
+        ResourceDecodedTextureBridgeRequest request = BridgeRequest(
+            registry,
+            device,
+            registration.handle,
+            scratch_span,
+            TextureDesc(TEXTURE_WIDTH, TEXTURE_HEIGHT),
+            &output_texture);
+        request.upload_id = BRIDGE_UPLOAD_ONE + static_cast<std::uint64_t>(index);
+        const ResourceDecodedTextureBridgeResult result = bridge.UploadTexture(request);
+        if (result.status != ResourceDecodedTextureBridgeStatus::Success) {
+            return Fail("decoded texture bridge did not fill rhi texture capacity");
+        }
+    }
+
+    if (device.Snapshot().resources.texture_count != yuengine::rhi::MAX_RHI_TEXTURES) {
+        return Fail("decoded texture bridge did not fill expected rhi texture capacity");
+    }
+
+    RhiTextureHandle overflow_texture{};
+    ResourceDecodedTextureBridgeRequest overflow_request = BridgeRequest(
+        registry,
+        device,
+        registration.handle,
+        scratch_span,
+        TextureDesc(TEXTURE_WIDTH, TEXTURE_HEIGHT),
+        &overflow_texture);
+    overflow_request.upload_id =
+        BRIDGE_UPLOAD_ONE + static_cast<std::uint64_t>(yuengine::rhi::MAX_RHI_TEXTURES);
+    const ResourceDecodedTextureBridgeResult overflow_result = bridge.UploadTexture(overflow_request);
+    if (overflow_result.status != ResourceDecodedTextureBridgeStatus::UploadProcessFailed) {
+        return Fail("decoded texture bridge did not report rhi capacity failure");
+    }
+
+    if (overflow_result.upload_status != ResourceUploadStatus::RhiUploadFailed) {
+        return Fail("decoded texture bridge did not expose rhi upload failure status");
+    }
+
+    if (overflow_result.rhi_status != RhiStatus::CapacityExceeded) {
+        return Fail("decoded texture bridge did not expose rhi capacity status");
+    }
+
+    if (overflow_texture.generation != 0U) {
+        return Fail("decoded texture bridge wrote overflow output handle");
+    }
+
+    const RhiDeviceSnapshot rhi_snapshot = device.Snapshot();
+    if (rhi_snapshot.resources.texture_count != yuengine::rhi::MAX_RHI_TEXTURES) {
+        return Fail("decoded texture bridge mutated rhi texture count after capacity failure");
+    }
+
+    const ResourceDecodedTextureBridgeSnapshot bridge_snapshot = bridge.Snapshot();
+    if (bridge_snapshot.failed_count != 1U || bridge_snapshot.last_rhi_status != RhiStatus::CapacityExceeded) {
+        return Fail("decoded texture bridge capacity snapshot mismatch");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view name) {
     if (name == TEST_UPLOADS_TEXTURE) {
         return StreamingResourceDecodedTextureBridgeUploadsDecodedPayloadAsTextureBinding();
@@ -500,6 +632,14 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_REJECTS_SMALL_SCRATCH) {
         return StreamingResourceDecodedTextureBridgeRejectsSmallScratchWithoutRhiMutation();
+    }
+
+    if (name == TEST_REJECTS_SAMPLED_TEXTURE_SLOT) {
+        return StreamingResourceDecodedTextureBridgeRejectsSampledTextureSlotOutOfRangeWithoutRhiMutation();
+    }
+
+    if (name == TEST_REPORTS_RHI_CAPACITY) {
+        return StreamingResourceDecodedTextureBridgeReportsRhiTextureCapacityWithoutWritingOutput();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

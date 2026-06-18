@@ -39,11 +39,15 @@ constexpr const char *TEST_TRANSLATES_INPUT = "HardwareFrameHost_TranslatesInjec
 constexpr const char *TEST_REJECTS_INVALID_DESC = "HardwareFrameHost_RejectsInvalidDescriptor";
 constexpr const char *TEST_REJECTS_TICK_BEFORE_INIT = "HardwareFrameHost_RejectsTickBeforeInitialize";
 constexpr const char *TEST_GAMEPAD_POLL_INVALID_INDEX = "HardwareFrameHost_GamepadPollRejectsInvalidIndex";
+constexpr const char *TEST_SHUTDOWN_IDEMPOTENT = "HardwareFrameHost_ShutdownAfterSuccessIsIdempotent";
+constexpr const char *TEST_INVALID_TICK_OUTPUT = "HardwareFrameHost_InvalidTickPreservesCallerOutput";
+constexpr const char *TEST_RESIZE_NO_RENDER = "HardwareFrameHost_ResizeEventWithoutRenderCompletesTick";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint32_t TEST_FRAME_ID = 1U;
 constexpr std::uint32_t TEST_KEY_CODE = 65U;
 constexpr std::int32_t TEST_WHEEL_DELTA = 120;
+constexpr std::size_t OUTPUT_COUNT_SENTINEL = 7U;
 using TestFunction = int (*)();
 
 int Fail(std::string_view message) {
@@ -84,6 +88,14 @@ PlatformWindowEvent MouseWheelEvent() {
     event.pointer_x = 4;
     event.pointer_y = 8;
     event.wheel_delta = TEST_WHEEL_DELTA;
+    return event;
+}
+
+PlatformWindowEvent ResizeEvent() {
+    PlatformWindowEvent event{};
+    event.type = PlatformWindowEventType::Resized;
+    event.client_width = 4U;
+    event.client_height = 8U;
     return event;
 }
 
@@ -230,6 +242,140 @@ int HardwareFrameHostGamepadPollRejectsInvalidIndex() {
     return 0;
 }
 
+int HardwareFrameHostShutdownAfterSuccessIsIdempotent() {
+    HardwareFrameHost host;
+    const HardwareFrameHostDesc desc = FastHostDesc();
+    const HardwareFrameHostStatus init_status = host.Initialize(desc);
+    if (init_status != HardwareFrameHostStatus::Success) {
+        return Fail("hardware frame host initialize failed");
+    }
+
+    const HardwareFrameHostStatus first_shutdown_status = host.Shutdown();
+    if (first_shutdown_status != HardwareFrameHostStatus::Success) {
+        return Fail("hardware frame host first shutdown failed");
+    }
+
+    const HardwareFrameHostSnapshot first_snapshot = host.Snapshot();
+    if (first_snapshot.initialized) {
+        return Fail("hardware frame host remained initialized after shutdown");
+    }
+
+    const HardwareFrameHostStatus second_shutdown_status = host.Shutdown();
+    if (second_shutdown_status != HardwareFrameHostStatus::Success) {
+        return Fail("hardware frame host second shutdown was not idempotent");
+    }
+
+    const HardwareFrameHostSnapshot second_snapshot = host.Snapshot();
+    if (second_snapshot.last_status != HardwareFrameHostStatus::Success) {
+        return Fail("hardware frame host did not preserve shutdown success status");
+    }
+
+    if (second_snapshot.initialized) {
+        return Fail("hardware frame host re-entered initialized state after shutdown");
+    }
+
+    return 0;
+}
+
+int HardwareFrameHostInvalidTickPreservesCallerOutput() {
+    HardwareFrameHost host;
+    const HardwareFrameHostDesc desc = FastHostDesc();
+    const HardwareFrameHostStatus init_status = host.Initialize(desc);
+    if (init_status != HardwareFrameHostStatus::Success) {
+        return Fail("hardware frame host initialize failed");
+    }
+
+    std::array<InputBridgeEvent, 1U> input_events{};
+    std::size_t input_event_count = OUTPUT_COUNT_SENTINEL;
+    HardwareFrameHostTickRequest request{};
+    request.input_events = std::span<InputBridgeEvent>(input_events.data(), input_events.size());
+    request.out_input_event_count = &input_event_count;
+    request.frame_id = 0U;
+
+    const HardwareFrameHostTickResult result = host.Tick(request);
+    if (result.status != HardwareFrameHostStatus::InvalidArgument) {
+        static_cast<void>(host.Shutdown());
+        return Fail("hardware frame host did not reject invalid frame id");
+    }
+
+    if (input_event_count != OUTPUT_COUNT_SENTINEL) {
+        static_cast<void>(host.Shutdown());
+        return Fail("hardware frame host mutated caller output on invalid tick");
+    }
+
+    const HardwareFrameHostSnapshot snapshot = host.Snapshot();
+    if (snapshot.tick_count != 0U) {
+        static_cast<void>(host.Shutdown());
+        return Fail("hardware frame host counted rejected tick as active tick");
+    }
+
+    if (snapshot.failed_tick_count != 1U) {
+        static_cast<void>(host.Shutdown());
+        return Fail("hardware frame host did not track rejected tick");
+    }
+
+    if (host.Shutdown() != HardwareFrameHostStatus::Success) {
+        return Fail("hardware frame host shutdown failed");
+    }
+
+    return 0;
+}
+
+int HardwareFrameHostResizeEventWithoutRenderCompletesTick() {
+    HardwareFrameHost host;
+    const HardwareFrameHostDesc desc = FastHostDesc();
+    const HardwareFrameHostStatus init_status = host.Initialize(desc);
+    if (init_status != HardwareFrameHostStatus::Success) {
+        return Fail("hardware frame host initialize failed");
+    }
+
+    std::array<PlatformWindowEvent, 1U> platform_events{};
+    platform_events[0U] = ResizeEvent();
+
+    std::array<InputBridgeEvent, 1U> input_events{};
+    std::size_t input_event_count = OUTPUT_COUNT_SENTINEL;
+    HardwareFrameHostTickRequest request{};
+    request.injected_platform_events = std::span<const PlatformWindowEvent>(
+        platform_events.data(),
+        platform_events.size());
+    request.input_events = std::span<InputBridgeEvent>(input_events.data(), input_events.size());
+    request.out_input_event_count = &input_event_count;
+    request.frame_id = TEST_FRAME_ID;
+
+    const HardwareFrameHostTickResult result = host.Tick(request);
+    if (result.status != HardwareFrameHostStatus::Success) {
+        static_cast<void>(host.Shutdown());
+        return Fail("hardware frame host failed resize event tick without render");
+    }
+
+    if (input_event_count != 0U) {
+        static_cast<void>(host.Shutdown());
+        return Fail("hardware frame host emitted input for resize event");
+    }
+
+    if (result.translated_input_event_count != 0U) {
+        static_cast<void>(host.Shutdown());
+        return Fail("hardware frame host translated resize as input");
+    }
+
+    const HardwareFrameHostSnapshot snapshot = host.Snapshot();
+    if (snapshot.completed_tick_count != 1U) {
+        static_cast<void>(host.Shutdown());
+        return Fail("hardware frame host did not complete resize tick");
+    }
+
+    if (snapshot.platform_event_count == 0U) {
+        static_cast<void>(host.Shutdown());
+        return Fail("hardware frame host did not track resize event");
+    }
+
+    if (host.Shutdown() != HardwareFrameHostStatus::Success) {
+        return Fail("hardware frame host shutdown failed");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view name) {
     if (name == TEST_TRANSLATES_INPUT) {
         return HardwareFrameHostTranslatesInjectedPlatformInput();
@@ -245,6 +391,18 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_GAMEPAD_POLL_INVALID_INDEX) {
         return HardwareFrameHostGamepadPollRejectsInvalidIndex();
+    }
+
+    if (name == TEST_SHUTDOWN_IDEMPOTENT) {
+        return HardwareFrameHostShutdownAfterSuccessIsIdempotent();
+    }
+
+    if (name == TEST_INVALID_TICK_OUTPUT) {
+        return HardwareFrameHostInvalidTickPreservesCallerOutput();
+    }
+
+    if (name == TEST_RESIZE_NO_RENDER) {
+        return HardwareFrameHostResizeEventWithoutRenderCompletesTick();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

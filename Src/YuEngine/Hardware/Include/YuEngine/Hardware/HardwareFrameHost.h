@@ -105,6 +105,7 @@ private:
     rhi::IRhiDevice *rhi_device_ = nullptr;
     HardwareFrameHostSnapshot snapshot_;
     bool initialized_ = false;
+    bool shutdown_completed_ = false;
     bool audio_initialized_ = false;
     bool audio_available_ = false;
 };

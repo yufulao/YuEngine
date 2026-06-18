@@ -2,6 +2,7 @@ param(
     [string]$Configuration = 'Debug',
     [string]$BuildDir = 'Build',
     [string]$UEEngineRoot = $env:UE_ENGINE_ROOT,
+    [string]$EngineRoot = '',
     [int]$Seconds = 8
 )
 
@@ -22,14 +23,17 @@ $configureArgs = @('-S', $root, '-B', $build)
 if (-not [string]::IsNullOrWhiteSpace($UEEngineRoot)) {
     $configureArgs += "-DYU_ASSET_SMOKE_UE_ENGINE_ROOT=$UEEngineRoot"
 }
+if (-not [string]::IsNullOrWhiteSpace($EngineRoot)) {
+    $configureArgs += "-DYU_ASSET_SMOKE_ENGINE_ROOT=$EngineRoot"
+}
 
-# 先配置和构建示例，避免依赖仓库中预提交的可执行文件或 DLL。
+# 先配置和构建示例目标，避免依赖仓库中预提交的可执行文件或 DLL。
 cmake @configureArgs
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-cmake --build $build --config $Configuration
+cmake --build $build --config $Configuration --target YuAssetSmokeDemo
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

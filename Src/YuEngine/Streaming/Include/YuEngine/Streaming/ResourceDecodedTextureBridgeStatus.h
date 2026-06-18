@@ -11,6 +11,7 @@ enum class ResourceDecodedTextureBridgeStatus {
     ResourceReadFailed,
     ScratchBufferTooSmall,
     TextureByteCountMismatch,
+    SampledTextureSlotOutOfRange,
     UploadSubmitFailed,
     UploadProcessFailed,
     UploadCompletionMissing

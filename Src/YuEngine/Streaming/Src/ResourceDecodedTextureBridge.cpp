@@ -159,6 +159,10 @@ ResourceDecodedTextureBridgeStatus ResourceDecodedTextureBridge::ValidateRequest
         return ResourceDecodedTextureBridgeStatus::InvalidArgument;
     }
 
+    if (request.sampled_texture_slot >= rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS) {
+        return ResourceDecodedTextureBridgeStatus::SampledTextureSlotOutOfRange;
+    }
+
     if (TextureByteCountOverflows(request.texture_desc)) {
         return ResourceDecodedTextureBridgeStatus::InvalidArgument;
     }

@@ -124,6 +124,7 @@ HardwareFrameHost::HardwareFrameHost()
       rhi_device_(nullptr),
       snapshot_(),
       initialized_(false),
+      shutdown_completed_(false),
       audio_initialized_(false),
       audio_available_(false) {
 }
@@ -187,6 +188,7 @@ HardwareFrameHostStatus HardwareFrameHost::Initialize(const HardwareFrameHostDes
     }
 
     initialized_ = true;
+    shutdown_completed_ = false;
     snapshot_.initialized = true;
     snapshot_.rhi_device_created = rhi_device_ != nullptr;
     snapshot_.audio_available = audio_available_;
@@ -251,6 +253,11 @@ HardwareFrameHostTickResult HardwareFrameHost::Tick(const HardwareFrameHostTickR
 
 HardwareFrameHostStatus HardwareFrameHost::Shutdown() {
     if (!initialized_) {
+        if (shutdown_completed_) {
+            snapshot_.last_status = HardwareFrameHostStatus::Success;
+            return HardwareFrameHostStatus::Success;
+        }
+
         snapshot_.last_status = HardwareFrameHostStatus::NotInitialized;
         return HardwareFrameHostStatus::NotInitialized;
     }
@@ -290,6 +297,7 @@ HardwareFrameHostStatus HardwareFrameHost::Shutdown() {
     }
 
     initialized_ = false;
+    shutdown_completed_ = true;
     audio_initialized_ = false;
     audio_available_ = false;
     snapshot_.initialized = false;
