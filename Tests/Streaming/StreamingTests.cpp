@@ -28,6 +28,10 @@
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Streaming/PackageResourceStagingQueue.h"
+#include "YuEngine/Streaming/ResourceStreamingPipeline.h"
+#include "YuEngine/Streaming/ResourceStreamingPipelineRequest.h"
+#include "YuEngine/Streaming/ResourceStreamingPipelineSnapshot.h"
+#include "YuEngine/Streaming/ResourceStreamingPipelineStatus.h"
 #include "YuEngine/Streaming/ResourceUploadCommitQueue.h"
 #include "YuEngine/Streaming/ResourceUploadQueue.h"
 
@@ -72,6 +76,10 @@ using yuengine::streaming::PackageResourceStagingQueueDesc;
 using yuengine::streaming::PackageResourceStagingRequest;
 using yuengine::streaming::PackageResourceStagingSnapshot;
 using yuengine::streaming::PackageResourceStagingStatus;
+using yuengine::streaming::ResourceStreamingPipeline;
+using yuengine::streaming::ResourceStreamingPipelineRequest;
+using yuengine::streaming::ResourceStreamingPipelineSnapshot;
+using yuengine::streaming::ResourceStreamingPipelineStatus;
 using yuengine::streaming::ResourceUploadCommitCompletion;
 using yuengine::streaming::ResourceUploadCommitQueue;
 using yuengine::streaming::ResourceUploadCommitQueueDesc;
@@ -159,6 +167,8 @@ constexpr const char *TEST_UPLOAD_COMMIT_SLOT_REUSE_ORDER =
     "Streaming_ResourceUploadCommit_PreservesOldestOrderAfterSlotReuse";
 constexpr const char *TEST_UPLOAD_COMMIT_SNAPSHOT =
     "Streaming_ResourceUploadCommit_SnapshotReportsBoundedCounters";
+constexpr const char *TEST_PIPELINE_FIXTURE_BUFFER =
+    "Streaming_ResourceStreamingPipeline_FixtureBufferReadUploadCommit";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *PRIMARY_MOUNT = "Primary";
@@ -2247,6 +2257,111 @@ int StreamingResourceUploadCommitSnapshotReportsBoundedCounters() {
 
     return 0;
 }
+
+int StreamingResourceStreamingPipelineFixtureBufferReadUploadCommit() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue file_queue;
+    if (file_queue.Initialize(2U, 2U) != AsyncFileReadStatus::Success) {
+        return Fail("pipeline file queue initialize failed");
+    }
+
+    if (file_queue.Start() != AsyncFileReadStatus::Success) {
+        return Fail("pipeline file queue start failed");
+    }
+
+    PackageLoadPlanRecord record;
+    if (!BuildPackageRecord(&record, 0U, FixtureByteCount())) {
+        return Fail("pipeline package record build failed");
+    }
+
+    ResourceRegistry resource_registry;
+    const ResourceRegistrationResult resource_result = RegisterResource(resource_registry);
+    if (!resource_result.Succeeded()) {
+        return Fail("pipeline resource registration failed");
+    }
+
+    NullRhiDevice device = CreateInitializedUploadDevice();
+    std::array<std::uint8_t, OUTPUT_CAPACITY> staged_bytes{};
+    RhiBufferHandle output_handle{};
+    ResourceStreamingPipelineRequest request;
+    request.resource_registry = &resource_registry;
+    request.file_queue = &file_queue;
+    request.rhi_device = &device;
+    request.package_record = record;
+    request.resource = resource_result.handle;
+    request.expected_type = TYPE_TEXTURE;
+    request.file_request = BuildFileRequest(table, staged_bytes.data(), staged_bytes.size());
+    request.staged_bytes = std::span<const std::uint8_t>(staged_bytes.data(), staged_bytes.size());
+    request.upload_byte_count = FixtureByteCount();
+    request.upload_kind = ResourceUploadKind::CreateBuffer;
+    request.buffer_desc = UploadBufferDesc(FixtureByteCount());
+    request.output_buffer_handle = &output_handle;
+    request.staging_request_id = REQUEST_ONE;
+    request.upload_id = UPLOAD_ONE;
+    request.commit_id = COMMIT_ONE;
+
+    ResourceStreamingPipeline pipeline;
+    if (pipeline.Submit(request) != ResourceStreamingPipelineStatus::Queued) {
+        return Fail("pipeline submit did not queue");
+    }
+
+    if (file_queue.Shutdown(false) != AsyncFileReadStatus::ShutdownComplete) {
+        return Fail("pipeline file queue shutdown failed");
+    }
+
+    AsyncFileReadResult file_result;
+    if (!DrainOneFileCompletion(file_queue, &file_result)) {
+        return Fail("pipeline file completion drain failed");
+    }
+
+    if (pipeline.CompleteFileRead(file_result) != ResourceStreamingPipelineStatus::Queued) {
+        return Fail("pipeline file completion did not queue upload");
+    }
+
+    if (pipeline.ProcessUpload() != ResourceStreamingPipelineStatus::Queued) {
+        return Fail("pipeline upload did not queue commit");
+    }
+
+    if (pipeline.ProcessCommit() != ResourceStreamingPipelineStatus::Success) {
+        return Fail("pipeline commit did not succeed");
+    }
+
+    if (output_handle.generation == 0U) {
+        return Fail("pipeline did not create output buffer");
+    }
+
+    if (!ResourceLoadStateMatches(
+            resource_registry,
+            resource_result.handle,
+            TYPE_TEXTURE,
+            ResourceLoadState::Uploaded)) {
+        return Fail("pipeline did not mark resource uploaded");
+    }
+
+    const ResourceUploadCommitCompletion commit_completion = pipeline.LastCommitCompletion();
+    if (commit_completion.upload_byte_count != FixtureByteCount()) {
+        return Fail("pipeline commit byte count changed");
+    }
+
+    const ResourceStreamingPipelineSnapshot snapshot = pipeline.Snapshot();
+    if (snapshot.submitted_count != 1U) {
+        return Fail("pipeline submitted count changed");
+    }
+
+    if (snapshot.completed_count != 1U) {
+        return Fail("pipeline completed count changed");
+    }
+
+    if (snapshot.failed_count != 0U) {
+        return Fail("pipeline failed count changed");
+    }
+
+    if (snapshot.has_active_request) {
+        return Fail("pipeline active request was not cleared");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -2291,7 +2406,8 @@ int main(int argc, char **argv) {
         {TEST_UPLOAD_COMMIT_COMPLETION_OVERFLOW,
          StreamingResourceUploadCommitReportsCompletionOverflowWithoutProcessingPending},
         {TEST_UPLOAD_COMMIT_SLOT_REUSE_ORDER, StreamingResourceUploadCommitPreservesOldestOrderAfterSlotReuse},
-        {TEST_UPLOAD_COMMIT_SNAPSHOT, StreamingResourceUploadCommitSnapshotReportsBoundedCounters}};
+        {TEST_UPLOAD_COMMIT_SNAPSHOT, StreamingResourceUploadCommitSnapshotReportsBoundedCounters},
+        {TEST_PIPELINE_FIXTURE_BUFFER, StreamingResourceStreamingPipelineFixtureBufferReadUploadCommit}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

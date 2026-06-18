@@ -198,6 +198,7 @@ target_link_libraries(YuPackage PUBLIC YuMemory YuResource)
 
 add_library(YuStreaming
     Src/YuEngine/Streaming/Src/PackageResourceStagingQueue.cpp
+    Src/YuEngine/Streaming/Src/ResourceStreamingPipeline.cpp
     Src/YuEngine/Streaming/Src/ResourceUploadCommitQueue.cpp
     Src/YuEngine/Streaming/Src/ResourceUploadQueue.cpp
 )
@@ -1339,6 +1340,7 @@ yuengine_add_labeled_test(Streaming_ResourceUploadCommit_RejectsQueueOverflowWit
 yuengine_add_labeled_test(Streaming_ResourceUploadCommit_ReportsCompletionOverflowWithoutProcessingPending YuStreamingTests Fast ModuleFixture Streaming Upload Resource PerformanceSmoke EvidenceOracle)
 yuengine_add_labeled_test(Streaming_ResourceUploadCommit_PreservesOldestOrderAfterSlotReuse YuStreamingTests Fast ModuleFixture Streaming Upload Resource PerformanceSmoke EvidenceOracle)
 yuengine_add_labeled_test(Streaming_ResourceUploadCommit_SnapshotReportsBoundedCounters YuStreamingTests Fast ModuleFixture Streaming Upload Resource PerformanceSmoke EvidenceOracle)
+yuengine_add_labeled_test(Streaming_ResourceStreamingPipeline_FixtureBufferReadUploadCommit YuStreamingTests Fast ModuleFixture Streaming Upload Resource Package File AsyncIO RHI PerformanceSmoke EvidenceOracle)
 
 add_executable(YuInputTests
     Tests/Input/InputTests.cpp
