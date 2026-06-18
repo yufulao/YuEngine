@@ -1,5 +1,5 @@
-// Module: Tests Audio
-// File: Tests/Audio/AudioHardwareSmokeTests.cpp
+// 模块：Tests Audio
+// 路径：Tests/Audio/AudioHardwareSmokeTests.cpp
 
 #include <array>
 #include <cstdint>

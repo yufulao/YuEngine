@@ -50,7 +50,7 @@ public:
     AsyncFileReadQueue& operator=(AsyncFileReadQueue&& other) = delete;
 
     /**
-     * @comment Initializes 固定容量 async file queue 存储.
+     * @comment 初始化固定容量 async file queue 存储。
      * @param work_capacity 输入 工作容量。
      * @param completion_capacity 输入 完成容量。
      * @return 显式操作状态。

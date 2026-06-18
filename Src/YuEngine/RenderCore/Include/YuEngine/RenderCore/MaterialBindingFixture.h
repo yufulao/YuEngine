@@ -38,7 +38,7 @@ public:
         RenderFixturePassRequest *pass_request);
 
     /**
-     * @comment Binds material 值 和 执行 调用方持有 fixture pass.
+     * @comment 绑定 material 值，并执行调用方持有的 fixture pass。
      * @param request 输入 材质绑定请求。
      * @param pass 调用方持有的 fixture pass。
      * @param pass_request 调用方持有的 RenderFixturePass 请求 到 update 和 execute。

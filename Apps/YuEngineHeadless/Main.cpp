@@ -1,5 +1,5 @@
-// Module: Apps YuEngineHeadless
-// File: Apps/YuEngineHeadless/Main.cpp
+// 模块：Apps YuEngineHeadless
+// 路径：Apps/YuEngineHeadless/Main.cpp
 
 #include "YuEngine/Diagnostics/DisabledLogSink.h"
 #include "YuEngine/Kernel/EngineKernel.h"

@@ -1,5 +1,5 @@
-// Module: Tests Input
-// File: Tests/Input/InputTests.cpp
+// 模块：Tests Input
+// 路径：Tests/Input/InputTests.cpp
 
 #include <array>
 #include <cstdint>
