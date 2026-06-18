@@ -5,7 +5,6 @@
 
 #include <array>
 
-#include "YuEngine/RenderCore/MaterialBindingFixture.h"
 #include "YuEngine/RenderCore/RenderDrawableFramePipelineConstants.h"
 #include "YuEngine/RenderCore/RenderDrawableFramePipelineDesc.h"
 #include "YuEngine/RenderCore/RenderDrawableFramePipelineRequest.h"
@@ -15,6 +14,7 @@
 #include "YuEngine/RenderCore/RenderFixturePass.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixture.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixture.h"
+#include "YuEngine/RenderCore/RenderViewPacket.h"
 
 namespace yuengine::rendercore {
 /**
@@ -56,12 +56,13 @@ private:
     void RecordRejectedResult(const RenderDrawableFramePipelineResult &result);
     void RecordRhiFailureResult(const RenderDrawableFramePipelineResult &result);
     void RecordMaterialFailureResult(const RenderDrawableFramePipelineResult &result);
+    void RecordViewPacketFailureResult(const RenderDrawableFramePipelineResult &result);
     void RecordFrameFailureResult(const RenderDrawableFramePipelineResult &result);
     void RecordSuccessResult(const RenderDrawableFramePipelineResult &result);
     void StoreLastResult(const RenderDrawableFramePipelineResult &result);
 
     RenderDrawableFramePipelineDesc desc_;
-    MaterialBindingFixture material_binding_;
+    RenderViewPacket view_packet_;
     RenderFixturePass fixture_pass_;
     RenderSubmissionBatchFixture submission_batch_;
     RenderFramePacketFixture frame_packet_;

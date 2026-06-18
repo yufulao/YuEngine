@@ -7,12 +7,15 @@
 #include <cstddef>
 #include <span>
 
-#include "YuEngine/RenderCore/MaterialBindingFixtureRequest.h"
 #include "YuEngine/RenderCore/MaterialBindingFixtureStatus.h"
+#include "YuEngine/RenderCore/RenderDrawPacketRequest.h"
 #include "YuEngine/RenderCore/RenderFixturePassRequest.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureRequest.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureStatus.h"
+#include "YuEngine/RenderCore/RenderMaterialRequest.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureRequest.h"
+#include "YuEngine/RenderCore/RenderViewPacketRequest.h"
+#include "YuEngine/RenderCore/RenderViewPacketStatus.h"
 #include "YuEngine/Rhi/RhiDeviceSnapshot.h"
 
 namespace yuengine::rendercore {
@@ -52,12 +55,48 @@ bool IsSwapchainValid(const yuengine::rhi::RhiSwapchainSnapshot &snapshot) {
 
     return snapshot.color_target.generation != 0U;
 }
+
+MaterialBindingFixtureStatus MaterialStatusToBindingStatus(RenderMaterialStatus status) {
+    if (status == RenderMaterialStatus::Success) {
+        return MaterialBindingFixtureStatus::Success;
+    }
+
+    if (status == RenderMaterialStatus::InvalidMaterialId) {
+        return MaterialBindingFixtureStatus::InvalidMaterialId;
+    }
+
+    if (status == RenderMaterialStatus::InvalidPipeline) {
+        return MaterialBindingFixtureStatus::InvalidPipeline;
+    }
+
+    if (status == RenderMaterialStatus::InvalidTextureBinding) {
+        return MaterialBindingFixtureStatus::InvalidTextureBinding;
+    }
+
+    if (status == RenderMaterialStatus::InvalidSamplerBinding) {
+        return MaterialBindingFixtureStatus::InvalidSamplerBinding;
+    }
+
+    if (status == RenderMaterialStatus::OversizedConstants) {
+        return MaterialBindingFixtureStatus::OversizedConstants;
+    }
+
+    if (status == RenderMaterialStatus::DuplicateMaterialId) {
+        return MaterialBindingFixtureStatus::DuplicateMaterialId;
+    }
+
+    if (status == RenderMaterialStatus::MaterialCapacityExceeded) {
+        return MaterialBindingFixtureStatus::BindingCapacityExceeded;
+    }
+
+    return MaterialBindingFixtureStatus::InvalidArgument;
+}
 }
 
 RenderDrawableFramePipeline::RenderDrawableFramePipeline(
     const RenderDrawableFramePipelineDesc &desc)
     : desc_(NormalizeDesc(desc)),
-      material_binding_(desc_.material_binding_desc),
+      view_packet_(desc_.view_packet_desc),
       fixture_pass_(desc_.fixture_pass_desc),
       submission_batch_(desc_.submission_batch_desc),
       frame_packet_(desc_.frame_packet_desc) {
@@ -93,26 +132,41 @@ RenderDrawableFramePipelineResult RenderDrawableFramePipeline::Execute(
         return result;
     }
 
+    RenderViewPacketRequest view_request{};
+    view_request.view_id = request.pass_id;
+    view_request.frame_id = request.frame_id;
+    view_request.target = target;
+    view_request.clear_color = request.clear_color;
+    view_request.capture_output = request.capture_output;
+    view_request.capture_byte_budget = request.capture_byte_budget;
+    view_request.material.material_id = request.material_id;
+    view_request.material.program_id = request.material_id;
+    view_request.material.pipeline = request.pipeline;
+    view_request.material.sampled_texture = request.sampled_texture;
+    view_request.material.sampler = request.sampler;
+    view_request.material.constant_bytes = request.material_constant_bytes;
+    view_request.material.pass_id = request.pass_id;
+    view_request.draw.draw_id = request.pass_id;
+    view_request.draw.pass_id = request.pass_id;
+    view_request.draw.material_id = request.material_id;
+    view_request.draw.vertex_buffer = request.vertex_buffer;
+    view_request.draw.index_buffer = request.index_buffer;
+    view_request.draw.draw = request.draw;
+
     RenderFixturePassRequest pass_request{};
     pass_request.rhi_device = request.rhi_device;
-    pass_request.target = target;
-    pass_request.vertex_buffer = request.vertex_buffer;
-    pass_request.index_buffer = request.index_buffer;
-    pass_request.draw = request.draw;
-    pass_request.clear_color = request.clear_color;
-    pass_request.capture_output = request.capture_output;
-    pass_request.capture_byte_budget = request.capture_byte_budget;
+    result.view_result = view_packet_.BuildPassRequest(view_request, &pass_request);
+    result.material_result.material_id = request.material_id;
+    result.material_result.pass_id = request.pass_id;
+    result.material_result.constant_byte_count = request.material_constant_bytes.size();
+    result.material_result.status = MaterialStatusToBindingStatus(result.view_result.material_status);
+    if (result.view_result.status != RenderViewPacketStatus::Success) {
+        if (result.view_result.status != RenderViewPacketStatus::MaterialFailed) {
+            result.status = RenderDrawableFramePipelineStatus::ViewPacketFailed;
+            RecordViewPacketFailureResult(result);
+            return result;
+        }
 
-    MaterialBindingFixtureRequest material_request{};
-    material_request.material_id = request.material_id;
-    material_request.pipeline = request.pipeline;
-    material_request.sampled_texture = request.sampled_texture;
-    material_request.sampler = request.sampler;
-    material_request.constant_bytes = request.material_constant_bytes;
-    material_request.pass_id = request.pass_id;
-
-    result.material_result = material_binding_.Bind(material_request, &pass_request);
-    if (result.material_result.status != MaterialBindingFixtureStatus::Success) {
         result.status = RenderDrawableFramePipelineStatus::MaterialBindingFailed;
         result.rhi_status = result.material_result.rhi_status;
         RecordMaterialFailureResult(result);
@@ -158,7 +212,7 @@ RenderDrawableFramePipelineSnapshot RenderDrawableFramePipeline::Snapshot() cons
 
 void RenderDrawableFramePipeline::Reset() {
     records_ = {};
-    material_binding_.Reset();
+    view_packet_.Reset();
     fixture_pass_.Reset();
     submission_batch_.Reset();
     frame_packet_.Reset();
@@ -228,6 +282,12 @@ void RenderDrawableFramePipeline::RecordMaterialFailureResult(
     const RenderDrawableFramePipelineResult &result) {
     StoreLastResult(result);
     ++snapshot_.material_failure_count;
+}
+
+void RenderDrawableFramePipeline::RecordViewPacketFailureResult(
+    const RenderDrawableFramePipelineResult &result) {
+    StoreLastResult(result);
+    ++snapshot_.view_packet_failure_count;
 }
 
 void RenderDrawableFramePipeline::RecordFrameFailureResult(

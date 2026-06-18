@@ -16,6 +16,7 @@
 #include "YuEngine/RenderCore/RenderDrawableFramePipelineStatus.h"
 #include "YuEngine/RenderCore/RenderFixturePassStatus.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureStatus.h"
+#include "YuEngine/RenderCore/RenderViewPacketStatus.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/RhiBackendKind.h"
 #include "YuEngine/Rhi/RhiBufferHandle.h"
@@ -43,6 +44,7 @@ using yuengine::rendercore::MaterialBindingFixtureStatus;
 using yuengine::rendercore::RenderDrawableFramePipelineStatus;
 using yuengine::rendercore::RenderFixturePassStatus;
 using yuengine::rendercore::RenderFramePacketFixtureStatus;
+using yuengine::rendercore::RenderViewPacketStatus;
 using yuengine::rhi::IRhiDevice;
 using yuengine::rhi::RhiBackendKind;
 using yuengine::rhi::RhiBufferDesc;
@@ -88,6 +90,7 @@ namespace {
 constexpr const char *TEST_EXECUTES = "RenderCore_DrawableFramePipeline_ExecutesMaterialFrameDrawCapture";
 constexpr const char *TEST_INVALID_SWAPCHAIN = "RenderCore_DrawableFramePipeline_RejectsInvalidSwapchainWithoutMutation";
 constexpr const char *TEST_INVALID_MATERIAL = "RenderCore_DrawableFramePipeline_RejectsInvalidMaterialWithoutRhiMutation";
+constexpr const char *TEST_INVALID_DRAW = "RenderCore_DrawableFramePipeline_RejectsInvalidDrawThroughViewPacket";
 constexpr const char *TEST_DUPLICATE_FRAME = "RenderCore_DrawableFramePipeline_RejectsDuplicateFrameThroughFramePacket";
 constexpr const char *TEST_COMMAND_CAPACITY = "RenderCore_DrawableFramePipeline_PropagatesFixtureCommandCapacityFailure";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -547,6 +550,7 @@ int RenderCoreDrawableFramePipelineExecutesMaterialFrameDrawCapture() {
     }
 
     if (result.material_result.status != MaterialBindingFixtureStatus::Success ||
+        result.view_result.status != RenderViewPacketStatus::Success ||
         result.frame_result.status != RenderFramePacketFixtureStatus::Success ||
         result.pass_result.status != RenderFixturePassStatus::Success) {
         return Fail("drawable frame pipeline did not execute rendercore stack");
@@ -619,6 +623,34 @@ int RenderCoreDrawableFramePipelineRejectsInvalidMaterialWithoutRhiMutation() {
     return 0;
 }
 
+int RenderCoreDrawableFramePipelineRejectsInvalidDrawThroughViewPacket() {
+    FakeDrawableRhiDevice device;
+    std::vector<std::uint8_t> capture(CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT), SENTINEL_BYTE);
+    RenderDrawableFramePipeline pipeline;
+    RenderDrawableFramePipelineRequest request = MakeRequest(device, capture);
+    request.draw.index_count = 0U;
+
+    const auto result = pipeline.Execute(request);
+    if (result.status != RenderDrawableFramePipelineStatus::ViewPacketFailed) {
+        return Fail("drawable frame pipeline accepted invalid draw packet");
+    }
+
+    if (result.view_result.status != RenderViewPacketStatus::DrawFailed) {
+        return Fail("drawable frame pipeline reported wrong view packet failure");
+    }
+
+    if (device.Snapshot().submit_count != 0U || device.Snapshot().recorded_command_count != 0U) {
+        return Fail("invalid draw packet mutated rhi state");
+    }
+
+    const RenderDrawableFramePipelineSnapshot snapshot = pipeline.Snapshot();
+    if (snapshot.view_packet_failure_count != 1U || snapshot.material_failure_count != 0U) {
+        return Fail("invalid draw packet updated wrong failure counters");
+    }
+
+    return 0;
+}
+
 int RenderCoreDrawableFramePipelineRejectsDuplicateFrameThroughFramePacket() {
     FakeDrawableRhiDevice device;
     std::vector<std::uint8_t> first_capture(CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT), SENTINEL_BYTE);
@@ -679,6 +711,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_INVALID_MATERIAL) {
         return RenderCoreDrawableFramePipelineRejectsInvalidMaterialWithoutRhiMutation();
+    }
+
+    if (name == TEST_INVALID_DRAW) {
+        return RenderCoreDrawableFramePipelineRejectsInvalidDrawThroughViewPacket();
     }
 
     if (name == TEST_DUPLICATE_FRAME) {

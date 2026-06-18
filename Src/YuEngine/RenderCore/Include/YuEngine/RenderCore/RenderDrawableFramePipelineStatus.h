@@ -17,6 +17,7 @@ enum class RenderDrawableFramePipelineStatus {
     FrameRecordCapacityExceeded,
     RhiFailure,
     MaterialBindingFailed,
+    ViewPacketFailed,
     FramePacketFailed
 };
 }

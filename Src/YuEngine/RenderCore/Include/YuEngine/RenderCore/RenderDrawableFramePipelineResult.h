@@ -10,6 +10,7 @@
 #include "YuEngine/RenderCore/RenderDrawableFramePipelineStatus.h"
 #include "YuEngine/RenderCore/RenderFixturePassResult.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureResult.h"
+#include "YuEngine/RenderCore/RenderViewPacketResult.h"
 #include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiSwapchainSnapshot.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
@@ -21,6 +22,7 @@ namespace yuengine::rendercore {
 struct RenderDrawableFramePipelineResult final {
     RenderDrawableFramePipelineStatus status = RenderDrawableFramePipelineStatus::InvalidArgument;
     yuengine::rhi::RhiStatus rhi_status = yuengine::rhi::RhiStatus::InvalidLifecycle;
+    RenderViewPacketResult view_result{};
     MaterialBindingFixtureResult material_result{};
     RenderFramePacketFixtureResult frame_result{};
     RenderFixturePassResult pass_result{};

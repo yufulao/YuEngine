@@ -22,6 +22,7 @@ struct RenderDrawableFramePipelineSnapshot final {
     std::uint64_t failed_validation_count = 0U;
     std::uint64_t rhi_failure_count = 0U;
     std::uint64_t material_failure_count = 0U;
+    std::uint64_t view_packet_failure_count = 0U;
     std::uint64_t frame_packet_failure_count = 0U;
     std::uint64_t frame_record_capacity_rejected_count = 0U;
     std::uint64_t capture_count = 0U;

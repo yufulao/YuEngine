@@ -10,6 +10,7 @@
 #include "YuEngine/RenderCore/RenderFixturePassDesc.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureDesc.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureDesc.h"
+#include "YuEngine/RenderCore/RenderViewPacketDesc.h"
 
 namespace yuengine::rendercore {
 /**
@@ -17,6 +18,7 @@ namespace yuengine::rendercore {
  */
 struct RenderDrawableFramePipelineDesc final {
     MaterialBindingFixtureDesc material_binding_desc{};
+    RenderViewPacketDesc view_packet_desc{};
     RenderFixturePassDesc fixture_pass_desc{};
     RenderSubmissionBatchFixtureDesc submission_batch_desc{};
     RenderFramePacketFixtureDesc frame_packet_desc{};
