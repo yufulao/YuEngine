@@ -199,6 +199,7 @@ target_link_libraries(YuPackage PUBLIC YuMemory YuResource)
 
 add_library(YuStreaming
     Src/YuEngine/Streaming/Src/PackageResourceStagingQueue.cpp
+    Src/YuEngine/Streaming/Src/ResourceDecodedTextureBridge.cpp
     Src/YuEngine/Streaming/Src/ResourceStreamingPipeline.cpp
     Src/YuEngine/Streaming/Src/ResourceUploadCommitQueue.cpp
     Src/YuEngine/Streaming/Src/ResourceUploadQueue.cpp
@@ -1401,6 +1402,15 @@ yuengine_add_labeled_test(Streaming_ResourceUploadCommit_ReportsCompletionOverfl
 yuengine_add_labeled_test(Streaming_ResourceUploadCommit_PreservesOldestOrderAfterSlotReuse YuStreamingTests Fast ModuleFixture Streaming Upload Resource PerformanceSmoke EvidenceOracle)
 yuengine_add_labeled_test(Streaming_ResourceUploadCommit_SnapshotReportsBoundedCounters YuStreamingTests Fast ModuleFixture Streaming Upload Resource PerformanceSmoke EvidenceOracle)
 yuengine_add_labeled_test(Streaming_ResourceStreamingPipeline_FixtureBufferReadUploadCommit YuStreamingTests Fast ModuleFixture Streaming Upload Resource Package File AsyncIO RHI PerformanceSmoke EvidenceOracle)
+
+add_executable(YuResourceDecodedTextureBridgeTests
+    Tests/Streaming/ResourceDecodedTextureBridgeTests.cpp
+)
+yuengine_apply_compile_options(YuResourceDecodedTextureBridgeTests)
+target_link_libraries(YuResourceDecodedTextureBridgeTests PRIVATE YuStreaming YuRenderCore)
+yuengine_add_labeled_test(Streaming_ResourceDecodedTextureBridge_UploadsDecodedPayloadAsTextureBinding YuResourceDecodedTextureBridgeTests Fast ModuleFixture Streaming Resource RHI RenderCore TextureSampling EvidenceOracle)
+yuengine_add_labeled_test(Streaming_ResourceDecodedTextureBridge_RejectsTextureByteMismatchWithoutRhiMutation YuResourceDecodedTextureBridgeTests Fast ModuleFixture Streaming Resource RHI RenderCore TextureSampling EvidenceOracle)
+yuengine_add_labeled_test(Streaming_ResourceDecodedTextureBridge_RejectsSmallScratchWithoutRhiMutation YuResourceDecodedTextureBridgeTests Fast ModuleFixture Streaming Resource RHI RenderCore TextureSampling EvidenceOracle)
 
 add_executable(YuInputTests
     Tests/Input/InputTests.cpp
