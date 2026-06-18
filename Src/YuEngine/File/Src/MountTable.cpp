@@ -118,7 +118,9 @@ MountTable::MountTable()
           0U,
           0U,
           0U,
+          0U,
           yuengine::memory::MemoryAccountingStatus::ExplicitlyTrackedOnly,
+          FileStatus::Success,
           FileStatus::Success} {
 }
 
@@ -178,6 +180,36 @@ FileReadResult MountTable::Read(FileReadRequest request) {
     return result;
 }
 
+FileWriteResult MountTable::Write(FileWriteRequest request) {
+    PathNormalizationResult normalized_path = Normalize(std::move(request.path));
+    if (!normalized_path.Succeeded()) {
+        RecordLastWriteStatus(normalized_path.status);
+        return FileWriteResult::Failure(normalized_path.status);
+    }
+
+    ++snapshot_.lookup_count;
+    if (normalized_path.path.ByteLength() > snapshot_.max_fixture_path_length) {
+        snapshot_.max_fixture_path_length = normalized_path.path.ByteLength();
+    }
+
+    const std::optional<std::size_t> mount_index = FindMountIndex(request.mount);
+    if (!mount_index.has_value()) {
+        RecordLastWriteStatus(FileStatus::MountNotFound);
+        return FileWriteResult::Failure(FileStatus::MountNotFound);
+    }
+
+    FileWriteResult result = mounts_[*mount_index].Source().Write(
+        normalized_path.path,
+        request.bytes,
+        request.byte_count);
+    if (result.Succeeded()) {
+        snapshot_.write_byte_count += result.byte_count;
+    }
+
+    RecordLastWriteStatus(result.status);
+    return result;
+}
+
 FileSnapshot MountTable::Snapshot() const {
     return snapshot_;
 }
@@ -221,5 +253,9 @@ void MountTable::RecordRejectedPath() {
 
 void MountTable::RecordLastReadStatus(FileStatus status) {
     snapshot_.last_read_status = status;
+}
+
+void MountTable::RecordLastWriteStatus(FileStatus status) {
+    snapshot_.last_write_status = status;
 }
 }

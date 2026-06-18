@@ -12,6 +12,8 @@
 #include "YuEngine/File/FileReadRequest.h"
 #include "YuEngine/File/FileReadResult.h"
 #include "YuEngine/File/FileSnapshot.h"
+#include "YuEngine/File/FileWriteRequest.h"
+#include "YuEngine/File/FileWriteResult.h"
 #include "YuEngine/File/MountPoint.h"
 #include "YuEngine/File/PathNormalizationResult.h"
 
@@ -43,6 +45,12 @@ public:
      */
     FileReadResult Read(FileReadRequest request);
     /**
+     * @comment Writes the operation.
+     * @param request Input request.
+     * @return Explicit operation result.
+     */
+    FileWriteResult Write(FileWriteRequest request);
+    /**
      * @comment Returns a snapshot of the current state.
      * @return Snapshot value.
      */
@@ -57,6 +65,7 @@ private:
     std::optional<std::size_t> FindMountIndex(MountId mount_id) const;
     void RecordRejectedPath();
     void RecordLastReadStatus(FileStatus status);
+    void RecordLastWriteStatus(FileStatus status);
 
     std::array<MountPoint, MAX_MOUNT_COUNT> mounts_;
     std::size_t mount_count_;

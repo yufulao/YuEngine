@@ -97,6 +97,7 @@ target_link_libraries(YuThread PUBLIC YuMemory)
 add_library(YuFile
     Src/YuEngine/File/Src/AsyncFileReadQueue.cpp
     Src/YuEngine/File/Src/FileReadResult.cpp
+    Src/YuEngine/File/Src/FileWriteResult.cpp
     Src/YuEngine/File/Src/LooseFileSource.cpp
     Src/YuEngine/File/Src/MountId.cpp
     Src/YuEngine/File/Src/MountPoint.cpp
@@ -848,6 +849,9 @@ yuengine_add_labeled_test(File_MountTable_UsesDeterministicPriorityOrder YuFileT
 yuengine_add_labeled_test(File_MountTable_ReportsMissingMountOrFile YuFileTests Fast ModuleFixture File)
 yuengine_add_labeled_test(File_LooseFixtureRead_ReturnsExactBytes YuFileTests Fast ModuleFixture File)
 yuengine_add_labeled_test(File_LooseFileSourceRejectsForgedNormalizedPathEscape YuFileTests Fast ModuleFixture File)
+yuengine_add_labeled_test(File_LooseFixtureWrite_RoundTripsExactBytes YuFileTests Fast ModuleFixture File)
+yuengine_add_labeled_test(File_LooseFixtureWrite_RejectsForgedPathAndOversizedBuffer YuFileTests Fast ModuleFixture File EvidenceOracle)
+yuengine_add_labeled_test(File_MountTableWrite_RecordsSnapshotAndMissingMount YuFileTests Fast ModuleFixture File)
 yuengine_add_labeled_test(File_ReadSnapshot_RecordsCountsAndBytes YuFileTests Fast ModuleFixture File)
 yuengine_add_labeled_test(File_DiagnosticsDisabled_DoesNotChangeBehavior YuFileTests Fast ModuleFixture File EvidenceOracle)
 yuengine_add_labeled_test(File_AsyncReadQueue_ReadsFixtureIntoCallerStorage YuFileTests Fast ModuleFixture File AsyncIO EvidenceOracle)

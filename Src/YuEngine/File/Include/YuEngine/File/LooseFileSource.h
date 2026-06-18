@@ -4,8 +4,11 @@
 #pragma once
 
 #include <filesystem>
+#include <cstddef>
+#include <cstdint>
 
 #include "YuEngine/File/FileReadResult.h"
+#include "YuEngine/File/FileWriteResult.h"
 #include "YuEngine/File/NormalizedPath.h"
 
 namespace yuengine::file {
@@ -27,6 +30,14 @@ public:
      * @return Explicit operation result.
      */
     FileReadResult Read(NormalizedPath path) const;
+    /**
+     * @comment Writes bytes to the operation.
+     * @param path Input path.
+     * @param bytes Input bytes.
+     * @param byte_count Input byte count.
+     * @return Explicit operation result.
+     */
+    FileWriteResult Write(NormalizedPath path, const std::uint8_t *bytes, std::size_t byte_count) const;
     /**
      * @comment Returns the root filesystem path.
      * @return Reference to the requested object.

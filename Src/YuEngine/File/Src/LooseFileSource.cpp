@@ -74,12 +74,12 @@ FileStatus ValidatePublicNormalizedPath(std::string_view value) {
         return FileStatus::InvalidPath;
     }
 
-    if (value.size() > MAX_NORMALIZED_PATH_LENGTH) {
-        return FileStatus::PathTooLong;
-    }
-
     if (IsAbsolutePath(value)) {
         return FileStatus::InvalidPath;
+    }
+
+    if (value.size() > MAX_NORMALIZED_PATH_LENGTH) {
+        return FileStatus::PathTooLong;
     }
 
     std::size_t segment_start = 0U;
@@ -198,6 +198,66 @@ FileReadResult LooseFileSource::Read(NormalizedPath path) const {
     }
 
     return FileReadResult::Success(std::move(bytes));
+}
+
+FileWriteResult LooseFileSource::Write(NormalizedPath path, const std::uint8_t *bytes, std::size_t byte_count) const {
+    const FileStatus path_status = ValidatePublicNormalizedPath(path.Value());
+    if (path_status != FileStatus::Success) {
+        return FileWriteResult::Failure(path_status);
+    }
+
+    if (byte_count > MAX_FIXTURE_WRITE_SIZE) {
+        return FileWriteResult::Failure(FileStatus::WriteTooLarge);
+    }
+
+    if (byte_count > 0U) {
+        if (bytes == nullptr) {
+            return FileWriteResult::Failure(FileStatus::InvalidBuffer);
+        }
+    }
+
+    std::error_code error;
+    const std::filesystem::path root = std::filesystem::weakly_canonical(root_path_, error);
+    if (error) {
+        return FileWriteResult::Failure(FileStatus::WriteFailure);
+    }
+
+    const std::filesystem::path candidate = root / std::filesystem::path(path.Value());
+    const std::filesystem::path parent = candidate.parent_path();
+    std::filesystem::create_directories(parent, error);
+    if (error) {
+        return FileWriteResult::Failure(FileStatus::WriteFailure);
+    }
+
+    const std::filesystem::path canonical_parent = std::filesystem::weakly_canonical(parent, error);
+    if (error) {
+        return FileWriteResult::Failure(FileStatus::WriteFailure);
+    }
+
+    const std::filesystem::path canonical_candidate = canonical_parent / candidate.filename();
+    if (!IsPathInsideRoot(root, canonical_candidate)) {
+        return FileWriteResult::Failure(FileStatus::PathEscape);
+    }
+
+    std::ofstream stream(canonical_candidate, std::ios::binary | std::ios::trunc);
+    if (!stream) {
+        return FileWriteResult::Failure(FileStatus::WriteFailure);
+    }
+
+    if (byte_count > 0U) {
+        const char *write_bytes = reinterpret_cast<const char *>(bytes);
+        stream.write(write_bytes, static_cast<std::streamsize>(byte_count));
+        if (!stream) {
+            return FileWriteResult::Failure(FileStatus::WriteFailure);
+        }
+    }
+
+    stream.close();
+    if (!stream) {
+        return FileWriteResult::Failure(FileStatus::WriteFailure);
+    }
+
+    return FileWriteResult::Success(byte_count);
 }
 
 const std::filesystem::path& LooseFileSource::RootPath() const {

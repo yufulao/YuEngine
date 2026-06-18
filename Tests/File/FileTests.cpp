@@ -39,6 +39,9 @@ constexpr const char* TEST_PRIORITY_ORDER = "File_MountTable_UsesDeterministicPr
 constexpr const char* TEST_MISSING = "File_MountTable_ReportsMissingMountOrFile";
 constexpr const char* TEST_READ = "File_LooseFixtureRead_ReturnsExactBytes";
 constexpr const char* TEST_FORGED_NORMALIZED_PATH = "File_LooseFileSourceRejectsForgedNormalizedPathEscape";
+constexpr const char* TEST_WRITE = "File_LooseFixtureWrite_RoundTripsExactBytes";
+constexpr const char* TEST_WRITE_REJECTS = "File_LooseFixtureWrite_RejectsForgedPathAndOversizedBuffer";
+constexpr const char* TEST_MOUNT_WRITE = "File_MountTableWrite_RecordsSnapshotAndMissingMount";
 constexpr const char* TEST_SNAPSHOT = "File_ReadSnapshot_RecordsCountsAndBytes";
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "File_DiagnosticsDisabled_DoesNotChangeBehavior";
 constexpr const char* TEST_ASYNC_READ = "File_AsyncReadQueue_ReadsFixtureIntoCallerStorage";
@@ -63,6 +66,10 @@ using TestFunction = int (*)();
 
 std::filesystem::path FixtureRoot() {
     return std::filesystem::path(YUENGINE_FILE_FIXTURE_ROOT);
+}
+
+std::filesystem::path WritableFixtureRoot() {
+    return std::filesystem::temp_directory_path() / "YuEngineFileWriteTests";
 }
 
 int Fail(const std::string& message) {
@@ -271,6 +278,102 @@ int FileLooseFileSourceRejectsForgedNormalizedPathEscape() {
         return Fail("forged absolute normalized path did not return invalid path status");
     }
 
+    return 0;
+}
+
+int FileLooseFixtureWriteRoundTripsExactBytes() {
+    const std::filesystem::path write_root = WritableFixtureRoot() / "RoundTrip";
+    std::filesystem::remove_all(write_root);
+    LooseFileSource source(write_root);
+    const std::array<std::uint8_t, 6U> bytes{10U, 20U, 30U, 40U, 50U, 60U};
+    const auto write_result = source.Write(NormalizedPath("Nested/Written.bin"), bytes.data(), bytes.size());
+    if (!write_result.Succeeded()) {
+        return Fail("loose file write failed");
+    }
+
+    if (write_result.byte_count != bytes.size()) {
+        return Fail("loose file write byte count changed");
+    }
+
+    const auto read_result = source.Read(NormalizedPath("Nested/Written.bin"));
+    if (!read_result.Succeeded()) {
+        return Fail("loose file write round trip read failed");
+    }
+
+    if (read_result.bytes != std::vector<std::uint8_t>(bytes.begin(), bytes.end())) {
+        return Fail("loose file write round trip bytes changed");
+    }
+
+    std::filesystem::remove_all(write_root);
+    return 0;
+}
+
+int FileLooseFixtureWriteRejectsForgedPathAndOversizedBuffer() {
+    const std::filesystem::path write_root = WritableFixtureRoot() / "Rejects";
+    std::filesystem::remove_all(write_root);
+    LooseFileSource source(write_root);
+    const std::array<std::uint8_t, 1U> bytes{7U};
+    const auto absolute_result = source.Write(
+        NormalizedPath((write_root / "escape.bin").generic_string()),
+        bytes.data(),
+        bytes.size());
+    if (absolute_result.status != FileStatus::InvalidPath) {
+        return Fail("loose file write accepted forged absolute path");
+    }
+
+    const auto traversal_result = source.Write(NormalizedPath("../escape.bin"), bytes.data(), bytes.size());
+    if (traversal_result.status != FileStatus::PathEscape) {
+        return Fail("loose file write accepted forged traversal path");
+    }
+
+    const auto null_result = source.Write(NormalizedPath("Nested/Null.bin"), nullptr, bytes.size());
+    if (null_result.status != FileStatus::InvalidBuffer) {
+        return Fail("loose file write accepted null byte buffer");
+    }
+
+    std::vector<std::uint8_t> oversized_bytes(yuengine::file::MAX_FIXTURE_WRITE_SIZE + 1U, 1U);
+    const auto oversized_result = source.Write(
+        NormalizedPath("Nested/Oversized.bin"),
+        oversized_bytes.data(),
+        oversized_bytes.size());
+    if (oversized_result.status != FileStatus::WriteTooLarge) {
+        return Fail("loose file write accepted oversized buffer");
+    }
+
+    std::filesystem::remove_all(write_root);
+    return 0;
+}
+
+int FileMountTableWriteRecordsSnapshotAndMissingMount() {
+    const std::filesystem::path write_root = WritableFixtureRoot() / "MountWrite";
+    std::filesystem::remove_all(write_root);
+    MountTable table;
+    const FileStatus mount_status = table.RegisterLooseMount(MountId(PRIMARY_MOUNT), write_root);
+    if (mount_status != FileStatus::Success) {
+        return Fail("mount write setup failed");
+    }
+
+    const std::array<std::uint8_t, 4U> bytes{1U, 2U, 3U, 4U};
+    const auto write_result = table.Write({MountId(PRIMARY_MOUNT), VirtualPath("Save/State.bin"), bytes.data(), bytes.size()});
+    if (!write_result.Succeeded()) {
+        return Fail("mount table write failed");
+    }
+
+    const auto missing_mount_result = table.Write({MountId(MISSING_MOUNT), VirtualPath("Save/Other.bin"), bytes.data(), bytes.size()});
+    if (missing_mount_result.status != FileStatus::MountNotFound) {
+        return Fail("mount table write missing mount status changed");
+    }
+
+    const auto snapshot = table.Snapshot();
+    if (snapshot.write_byte_count != bytes.size()) {
+        return Fail("mount table write byte count changed");
+    }
+
+    if (snapshot.last_write_status != FileStatus::MountNotFound) {
+        return Fail("mount table write last status changed");
+    }
+
+    std::filesystem::remove_all(write_root);
     return 0;
 }
 
@@ -603,6 +706,9 @@ int main(int argc, char** argv) {
         {TEST_MISSING, FileMountTableReportsMissingMountOrFile},
         {TEST_READ, FileLooseFixtureReadReturnsExactBytes},
         {TEST_FORGED_NORMALIZED_PATH, FileLooseFileSourceRejectsForgedNormalizedPathEscape},
+        {TEST_WRITE, FileLooseFixtureWriteRoundTripsExactBytes},
+        {TEST_WRITE_REJECTS, FileLooseFixtureWriteRejectsForgedPathAndOversizedBuffer},
+        {TEST_MOUNT_WRITE, FileMountTableWriteRecordsSnapshotAndMissingMount},
         {TEST_SNAPSHOT, FileReadSnapshotRecordsCountsAndBytes},
         {TEST_DISABLED_DIAGNOSTICS, FileDiagnosticsDisabledDoesNotChangeBehavior},
         {TEST_ASYNC_READ, FileAsyncReadQueueReadsFixtureIntoCallerStorage},

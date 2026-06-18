@@ -14,7 +14,10 @@ enum class FileStatus {
     MountTableFull,
     MountNotFound,
     FileNotFound,
+    InvalidBuffer,
     ReadFailure,
-    ReadTooLarge
+    ReadTooLarge,
+    WriteFailure,
+    WriteTooLarge
 };
 }
