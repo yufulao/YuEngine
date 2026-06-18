@@ -16,6 +16,12 @@
 #include "YuEngine/Resource/ResourceCachePayloadSnapshot.h"
 #include "YuEngine/Resource/ResourceCachePayloadStatus.h"
 #include "YuEngine/Resource/ResourceConstants.h"
+#include "YuEngine/Resource/ResourceDecodedPayloadBudgetDesc.h"
+#include "YuEngine/Resource/ResourceDecodedPayloadOperation.h"
+#include "YuEngine/Resource/ResourceDecodedPayloadRecord.h"
+#include "YuEngine/Resource/ResourceDecodedPayloadRequest.h"
+#include "YuEngine/Resource/ResourceDecodedPayloadSnapshot.h"
+#include "YuEngine/Resource/ResourceDecodedPayloadStatus.h"
 #include "YuEngine/Resource/ResourceDecodePlanAssetClass.h"
 #include "YuEngine/Resource/ResourceDecodePlanBudgetDesc.h"
 #include "YuEngine/Resource/ResourceDecodePlanOperation.h"
@@ -46,6 +52,12 @@ using yuengine::resource::ResourceCachePayloadRequest;
 using yuengine::resource::ResourceCachePayloadSnapshot;
 using yuengine::resource::ResourceCachePayloadStatus;
 using yuengine::resource::ResourceDescriptor;
+using yuengine::resource::ResourceDecodedPayloadBudgetDesc;
+using yuengine::resource::ResourceDecodedPayloadOperation;
+using yuengine::resource::ResourceDecodedPayloadRecord;
+using yuengine::resource::ResourceDecodedPayloadRequest;
+using yuengine::resource::ResourceDecodedPayloadSnapshot;
+using yuengine::resource::ResourceDecodedPayloadStatus;
 using yuengine::resource::ResourceDecodePlanAssetClass;
 using yuengine::resource::ResourceDecodePlanBudgetDesc;
 using yuengine::resource::ResourceDecodePlanOperation;
@@ -78,6 +90,7 @@ using yuengine::resource::ResourceTypeId;
 using yuengine::resource::INVALID_RESOURCE_GENERATION;
 using yuengine::resource::MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT;
 using yuengine::resource::MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT;
+using yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT;
 using yuengine::resource::MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD;
 using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT;
 using yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_MAGIC_0;
@@ -210,6 +223,46 @@ constexpr const char *TEST_DECODE_RESULT_PAYLOAD_RELEASE =
     "Resource_DecodeResult_ReleasingPayloadClearsDependentRecords";
 constexpr const char *TEST_DECODE_RESULT_FAILED_VALIDATION =
     "Resource_DecodeResult_FailedValidationDoesNotMutateResourceState";
+constexpr const char *TEST_DECODED_PAYLOAD_STORE_READ =
+    "Resource_DecodedPayload_StoresReadsQueriesAndReleasesBytes";
+constexpr const char *TEST_DECODED_PAYLOAD_MISSING_CACHE =
+    "Resource_DecodedPayload_RejectsMissingCachePayload";
+constexpr const char *TEST_DECODED_PAYLOAD_MISSING_PLAN =
+    "Resource_DecodedPayload_RejectsMissingDecodePlan";
+constexpr const char *TEST_DECODED_PAYLOAD_MISSING_RESULT =
+    "Resource_DecodedPayload_RejectsMissingDecodeResult";
+constexpr const char *TEST_DECODED_PAYLOAD_NULL_INPUT =
+    "Resource_DecodedPayload_RejectsNullInputBytes";
+constexpr const char *TEST_DECODED_PAYLOAD_EMPTY =
+    "Resource_DecodedPayload_RejectsEmptyPayload";
+constexpr const char *TEST_DECODED_PAYLOAD_OUTPUT_SMALL =
+    "Resource_DecodedPayload_ReadRejectsOutputBufferTooSmall";
+constexpr const char *TEST_DECODED_PAYLOAD_DUPLICATE =
+    "Resource_DecodedPayload_RejectsDuplicatePayloadId";
+constexpr const char *TEST_DECODED_PAYLOAD_CAPACITY =
+    "Resource_DecodedPayload_RejectsCapacityOverflow";
+constexpr const char *TEST_DECODED_PAYLOAD_BUDGET =
+    "Resource_DecodedPayload_RejectsBudgetOverflow";
+constexpr const char *TEST_DECODED_PAYLOAD_ASSET_CLASS =
+    "Resource_DecodedPayload_RejectsAssetClassMismatch";
+constexpr const char *TEST_DECODED_PAYLOAD_RESULT_CLASS =
+    "Resource_DecodedPayload_RejectsResultClassMismatch";
+constexpr const char *TEST_DECODED_PAYLOAD_DECODED_BYTES =
+    "Resource_DecodedPayload_RejectsDecodedByteCountMismatch";
+constexpr const char *TEST_DECODED_PAYLOAD_TYPE_MISMATCH =
+    "Resource_DecodedPayload_RejectsTypeMismatchWithoutMutation";
+constexpr const char *TEST_DECODED_PAYLOAD_NOT_RESIDENT =
+    "Resource_DecodedPayload_RejectsNotResidentWithoutMutation";
+constexpr const char *TEST_DECODED_PAYLOAD_FAILED_LOAD =
+    "Resource_DecodedPayload_RejectsFailedLoadWithoutMutation";
+constexpr const char *TEST_DECODED_PAYLOAD_RESULT_RELEASE =
+    "Resource_DecodedPayload_ReleasingResultClearsPayload";
+constexpr const char *TEST_DECODED_PAYLOAD_PLAN_RELEASE =
+    "Resource_DecodedPayload_ReleasingPlanClearsPayload";
+constexpr const char *TEST_DECODED_PAYLOAD_CACHE_RELEASE =
+    "Resource_DecodedPayload_ReleasingCachePayloadClearsPayload";
+constexpr const char *TEST_DECODED_PAYLOAD_FAILED_VALIDATION =
+    "Resource_DecodedPayload_FailedValidationDoesNotMutateResourceState";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr ResourceTypeId TYPE_TEXTURE{1U};
@@ -246,8 +299,11 @@ constexpr std::uint64_t DECODE_PLAN_TWO = 6002U;
 constexpr std::uint64_t DECODE_PLAN_THREE = 6003U;
 constexpr std::uint64_t DECODE_RESULT_ONE = 7001U;
 constexpr std::uint64_t DECODE_RESULT_TWO = 7002U;
+constexpr std::uint64_t DECODED_PAYLOAD_ONE = 8001U;
+constexpr std::uint64_t DECODED_PAYLOAD_TWO = 8002U;
 constexpr std::uint32_t DECODE_PLAN_DECODED_BYTE_COUNT = 128U;
 constexpr std::uint32_t DECODE_PLAN_PAYLOAD_BYTE_COUNT = RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT + 4U;
+constexpr std::uint32_t DECODED_PAYLOAD_BYTE_COUNT = DECODE_PLAN_DECODED_BYTE_COUNT;
 using TestFunction = int (*)();
 using TestRegistry = std::unordered_map<std::string_view, TestFunction>;
 
@@ -405,6 +461,42 @@ ResourceDecodeResultRequest DecodeResultRequest(
     return request;
 }
 
+std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> DecodedPayloadBytes(std::uint8_t seed) {
+    std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes{};
+    std::uint32_t byte_index = 0U;
+    while (byte_index < DECODED_PAYLOAD_BYTE_COUNT) {
+        bytes[byte_index] = static_cast<std::uint8_t>(seed + static_cast<std::uint8_t>(byte_index));
+        ++byte_index;
+    }
+
+    return bytes;
+}
+
+ResourceDecodedPayloadRequest DecodedPayloadRequest(
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint64_t payload_id,
+    std::uint64_t decode_plan_id,
+    std::uint64_t decode_result_id,
+    std::uint64_t decoded_payload_id,
+    ResourceDecodePlanAssetClass asset_class,
+    ResourceDecodeResultClass result_class,
+    const std::uint8_t *decoded_bytes,
+    std::uint32_t decoded_byte_count) {
+    ResourceDecodedPayloadRequest request;
+    request.resource = resource;
+    request.expected_type = expected_type;
+    request.payload_id = payload_id;
+    request.decode_plan_id = decode_plan_id;
+    request.decode_result_id = decode_result_id;
+    request.decoded_payload_id = decoded_payload_id;
+    request.asset_class = asset_class;
+    request.result_class = result_class;
+    request.decoded_bytes = decoded_bytes;
+    request.decoded_byte_count = decoded_byte_count;
+    return request;
+}
+
 bool StoreDecodePlanPayload(
     ResourceRegistry &registry,
     ResourceHandle resource,
@@ -446,6 +538,39 @@ bool CreateDecodePlanMetadata(
     return registry.CreateDecodePlan(request) == ResourceDecodePlanStatus::Success;
 }
 
+bool CommitDecodeResultMetadata(
+    ResourceRegistry &registry,
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint64_t payload_id,
+    std::uint64_t decode_plan_id,
+    std::uint64_t decode_result_id,
+    ResourceDecodePlanAssetClass asset_class,
+    ResourceDecodeResultClass result_class,
+    std::uint32_t decoded_byte_count) {
+    if (!CreateDecodePlanMetadata(
+        registry,
+        resource,
+        expected_type,
+        payload_id,
+        decode_plan_id,
+        asset_class,
+        decoded_byte_count)) {
+        return false;
+    }
+
+    const ResourceDecodeResultRequest request = DecodeResultRequest(
+        resource,
+        expected_type,
+        payload_id,
+        decode_plan_id,
+        decode_result_id,
+        asset_class,
+        result_class,
+        decoded_byte_count);
+    return registry.CommitDecodeResult(request) == ResourceDecodeResultStatus::Success;
+}
+
 bool CommitLoad(
     ResourceRegistry &registry,
     ResourceHandle resource,
@@ -480,6 +605,12 @@ bool ConfigureDecodeResultBudget(ResourceRegistry &registry, std::uint32_t byte_
     return registry.SetDecodeResultBudget(budget) == ResourceDecodeResultStatus::Success;
 }
 
+bool ConfigureDecodedPayloadBudget(ResourceRegistry &registry, std::uint32_t byte_capacity) {
+    ResourceDecodedPayloadBudgetDesc budget;
+    budget.decoded_byte_capacity = byte_capacity;
+    return registry.SetDecodedPayloadBudget(budget) == ResourceDecodedPayloadStatus::Success;
+}
+
 bool AdmitUploadedResident(
     ResourceRegistry &registry,
     ResourceHandle resource,
@@ -496,6 +627,26 @@ bool AdmitUploadedResident(
 
     const ResourceResidencyRequest request = ResidencyRequest(resource, expected_type);
     return registry.AdmitResident(request) == ResourceResidencyStatus::Success;
+}
+
+bool CreateTextureDecodeResultChain(
+    ResourceRegistry &registry,
+    ResourceHandle resource,
+    std::uint32_t decoded_byte_count) {
+    if (!AdmitUploadedResident(registry, resource, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return false;
+    }
+
+    return CommitDecodeResultMetadata(
+        registry,
+        resource,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        decoded_byte_count);
 }
 
 bool BytesMatch(
@@ -3882,6 +4033,1012 @@ int ResourceDecodeResultFailedValidationDoesNotMutateResourceState() {
 
     return 0;
 }
+
+int ResourceDecodedPayloadStoresReadsQueriesAndReleasesBytes() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_success");
+    if (!result.Succeeded()) {
+        return Fail("decoded payload success fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("decoded payload success fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x10U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        static_cast<std::uint32_t>(bytes.size()));
+    if (registry.StoreDecodedPayload(request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("decoded payload store failed");
+    }
+
+    ResourceDecodedPayloadRecord record;
+    if (registry.QueryDecodedPayload(request, &record) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("decoded payload query failed");
+    }
+
+    if (record.decoded_payload_id != DECODED_PAYLOAD_ONE) {
+        return Fail("decoded payload query returned wrong id");
+    }
+
+    if (record.decode_result_id != DECODE_RESULT_ONE) {
+        return Fail("decoded payload query returned wrong decode result id");
+    }
+
+    if (record.decoded_byte_count != DECODED_PAYLOAD_BYTE_COUNT) {
+        return Fail("decoded payload query returned wrong byte count");
+    }
+
+    std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> output{};
+    std::uint32_t output_byte_count = 0U;
+    const ResourceDecodedPayloadStatus read_status = registry.ReadDecodedPayload(
+        request,
+        output.data(),
+        static_cast<std::uint32_t>(output.size()),
+        &output_byte_count);
+    if (read_status != ResourceDecodedPayloadStatus::Success) {
+        return Fail("decoded payload read failed");
+    }
+
+    if (output_byte_count != DECODED_PAYLOAD_BYTE_COUNT) {
+        return Fail("decoded payload read returned wrong byte count");
+    }
+
+    if (!BytesMatch(output.data(), bytes.data(), output_byte_count)) {
+        return Fail("decoded payload read returned wrong bytes");
+    }
+
+    ResourceDecodedPayloadSnapshot snapshot = registry.DecodedPayloadSnapshot();
+    if (snapshot.active_payload_count != 1U) {
+        return Fail("decoded payload store did not track active count");
+    }
+
+    if (snapshot.stored_decoded_byte_count != DECODED_PAYLOAD_BYTE_COUNT) {
+        return Fail("decoded payload store did not track decoded bytes");
+    }
+
+    if (snapshot.stored_payload_count != 1U) {
+        return Fail("decoded payload store was not counted");
+    }
+
+    if (snapshot.queried_payload_count != 1U) {
+        return Fail("decoded payload query was not counted");
+    }
+
+    if (snapshot.read_payload_count != 1U) {
+        return Fail("decoded payload read was not counted");
+    }
+
+    if (registry.ReleaseDecodedPayload(request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("decoded payload release failed");
+    }
+
+    snapshot = registry.DecodedPayloadSnapshot();
+    if (snapshot.active_payload_count != 0U) {
+        return Fail("decoded payload release left active payload");
+    }
+
+    if (snapshot.stored_decoded_byte_count != 0U) {
+        return Fail("decoded payload release left decoded bytes");
+    }
+
+    if (snapshot.released_payload_count != 1U) {
+        return Fail("decoded payload release was not counted");
+    }
+
+    if (registry.DecodeResultSnapshot().active_result_count != 1U) {
+        return Fail("decoded payload release changed decode result count");
+    }
+
+    if (registry.DecodePlanSnapshot().active_plan_count != 1U) {
+        return Fail("decoded payload release changed decode plan count");
+    }
+
+    if (registry.CachePayloadSnapshot().cached_payload_count != 1U) {
+        return Fail("decoded payload release changed cache payload count");
+    }
+
+    const ResourceDecodedPayloadStatus query_status = registry.QueryDecodedPayload(request, &record);
+    if (query_status != ResourceDecodedPayloadStatus::MissingDecodedPayload) {
+        return Fail("released decoded payload query returned wrong status");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsMissingCachePayload() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_missing_cache");
+    if (!result.Succeeded()) {
+        return Fail("missing cache decoded payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("missing cache decoded payload fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x18U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::MissingCachePayload) {
+        return Fail("missing cache decoded payload returned wrong status");
+    }
+
+    if (registry.DecodedPayloadSnapshot().active_payload_count != 0U) {
+        return Fail("missing cache decoded payload created a payload");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsMissingDecodePlan() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_missing_plan");
+    if (!result.Succeeded()) {
+        return Fail("missing plan decoded payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("missing plan decoded payload fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> plan_payload = DecodePlanPayload(
+        ResourceDecodePlanAssetClass::Texture,
+        RESOURCE_DECODE_PLAN_HEADER_VERSION,
+        DECODED_PAYLOAD_BYTE_COUNT);
+    if (!StoreDecodePlanPayload(registry, result.handle, TYPE_TEXTURE, PAYLOAD_ONE, plan_payload)) {
+        return Fail("missing plan decoded payload cache store failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x19U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::MissingDecodePlan) {
+        return Fail("missing plan decoded payload returned wrong status");
+    }
+
+    if (registry.DecodedPayloadSnapshot().active_payload_count != 0U) {
+        return Fail("missing plan decoded payload created a payload");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsMissingDecodeResult() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_missing");
+    if (!result.Succeeded()) {
+        return Fail("missing result decoded payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("missing result decoded payload fixture residency failed");
+    }
+
+    if (!CreateDecodePlanMetadata(
+        registry,
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("missing result decoded payload plan create failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x20U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::MissingDecodeResult) {
+        return Fail("missing decode result decoded payload returned wrong status");
+    }
+
+    if (registry.DecodedPayloadSnapshot().active_payload_count != 0U) {
+        return Fail("missing decode result decoded payload created a payload");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsNullInputBytes() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_null_input");
+    if (!result.Succeeded()) {
+        return Fail("null input decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("null input decoded payload fixture chain failed");
+    }
+
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        nullptr,
+        DECODED_PAYLOAD_BYTE_COUNT);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::InvalidArgument) {
+        return Fail("null input decoded payload returned wrong status");
+    }
+
+    if (registry.DecodedPayloadSnapshot().active_payload_count != 0U) {
+        return Fail("null input decoded payload created a payload");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsEmptyPayload() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_empty");
+    if (!result.Succeeded()) {
+        return Fail("empty decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("empty decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x30U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        0U);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::EmptyPayload) {
+        return Fail("empty decoded payload returned wrong status");
+    }
+
+    if (registry.DecodedPayloadSnapshot().active_payload_count != 0U) {
+        return Fail("empty decoded payload created a payload");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadReadRejectsOutputBufferTooSmall() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_small_output");
+    if (!result.Succeeded()) {
+        return Fail("small output decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("small output decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x40U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    if (registry.StoreDecodedPayload(request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("small output decoded payload store failed");
+    }
+
+    std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> output{};
+    std::uint32_t output_byte_count = 99U;
+    const ResourceDecodedPayloadStatus status = registry.ReadDecodedPayload(
+        request,
+        output.data(),
+        DECODED_PAYLOAD_BYTE_COUNT - 1U,
+        &output_byte_count);
+    if (status != ResourceDecodedPayloadStatus::OutputBufferTooSmall) {
+        return Fail("small output decoded payload returned wrong status");
+    }
+
+    if (output_byte_count != 0U) {
+        return Fail("small output decoded payload changed output byte count");
+    }
+
+    const ResourceDecodedPayloadSnapshot snapshot = registry.DecodedPayloadSnapshot();
+    if (snapshot.active_payload_count != 1U) {
+        return Fail("small output decoded payload changed active count");
+    }
+
+    if (snapshot.output_buffer_too_small_count != 1U) {
+        return Fail("small output decoded payload was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsDuplicatePayloadId() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_duplicate");
+    if (!result.Succeeded()) {
+        return Fail("duplicate decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("duplicate decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x50U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    if (registry.StoreDecodedPayload(request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("first duplicate decoded payload store failed");
+    }
+
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::DuplicateDecodedPayloadId) {
+        return Fail("duplicate decoded payload id returned wrong status");
+    }
+
+    const ResourceDecodedPayloadSnapshot snapshot = registry.DecodedPayloadSnapshot();
+    if (snapshot.active_payload_count != 1U) {
+        return Fail("duplicate decoded payload changed active count");
+    }
+
+    if (snapshot.duplicate_payload_rejected_count != 1U) {
+        return Fail("duplicate decoded payload was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsCapacityOverflow() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_capacity");
+    if (!result.Succeeded()) {
+        return Fail("capacity decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, 1U)) {
+        return Fail("capacity decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x60U);
+    std::uint32_t payload_index = 0U;
+    while (payload_index < MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT) {
+        const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+            result.handle,
+            TYPE_TEXTURE,
+            PAYLOAD_ONE,
+            DECODE_PLAN_ONE,
+            DECODE_RESULT_ONE,
+            DECODED_PAYLOAD_ONE + payload_index,
+            ResourceDecodePlanAssetClass::Texture,
+            ResourceDecodeResultClass::Texture,
+            bytes.data(),
+            1U);
+        if (registry.StoreDecodedPayload(request) != ResourceDecodedPayloadStatus::Success) {
+            return Fail("capacity decoded payload setup store failed");
+        }
+
+        ++payload_index;
+    }
+
+    const ResourceDecodedPayloadRequest overflow_request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE + MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        1U);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(overflow_request);
+    if (status != ResourceDecodedPayloadStatus::CapacityExceeded) {
+        return Fail("capacity decoded payload returned wrong status");
+    }
+
+    const ResourceDecodedPayloadSnapshot snapshot = registry.DecodedPayloadSnapshot();
+    if (snapshot.active_payload_count != MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT) {
+        return Fail("capacity decoded payload changed active count");
+    }
+
+    if (snapshot.capacity_rejected_payload_count != 1U) {
+        return Fail("capacity decoded payload was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsBudgetOverflow() {
+    ResourceRegistry registry;
+    if (!ConfigureDecodedPayloadBudget(registry, 1U)) {
+        return Fail("budget decoded payload budget configuration failed");
+    }
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_budget");
+    if (!result.Succeeded()) {
+        return Fail("budget decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, 2U)) {
+        return Fail("budget decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x70U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        2U);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::BudgetExceeded) {
+        return Fail("budget decoded payload returned wrong status");
+    }
+
+    const ResourceDecodedPayloadSnapshot snapshot = registry.DecodedPayloadSnapshot();
+    if (snapshot.active_payload_count != 0U) {
+        return Fail("budget decoded payload created a payload");
+    }
+
+    if (snapshot.budget_rejected_payload_count != 1U) {
+        return Fail("budget decoded payload was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsAssetClassMismatch() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_asset");
+    if (!result.Succeeded()) {
+        return Fail("asset mismatch decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("asset mismatch decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x80U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Audio,
+        ResourceDecodeResultClass::Audio,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::AssetClassMismatch) {
+        return Fail("asset mismatch decoded payload returned wrong status");
+    }
+
+    if (registry.DecodedPayloadSnapshot().active_payload_count != 0U) {
+        return Fail("asset mismatch decoded payload created a payload");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsResultClassMismatch() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_result_class");
+    if (!result.Succeeded()) {
+        return Fail("result mismatch decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("result mismatch decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x90U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Audio,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::ResultClassMismatch) {
+        return Fail("result mismatch decoded payload returned wrong status");
+    }
+
+    if (registry.DecodedPayloadSnapshot().active_payload_count != 0U) {
+        return Fail("result mismatch decoded payload created a payload");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsDecodedByteCountMismatch() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_byte_count");
+    if (!result.Succeeded()) {
+        return Fail("byte mismatch decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("byte mismatch decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0xA0U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT - 1U);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::DecodedByteCountMismatch) {
+        return Fail("byte mismatch decoded payload returned wrong status");
+    }
+
+    if (registry.DecodedPayloadSnapshot().active_payload_count != 0U) {
+        return Fail("byte mismatch decoded payload created a payload");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsTypeMismatchWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_type");
+    if (!result.Succeeded()) {
+        return Fail("type mismatch decoded payload fixture registration failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0xB0U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_AUDIO,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::TypeMismatch) {
+        return Fail("type mismatch decoded payload returned wrong status");
+    }
+
+    if (registry.DecodedPayloadSnapshot().active_payload_count != 0U) {
+        return Fail("type mismatch decoded payload created a payload");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsNotResidentWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_not_resident");
+    if (!result.Succeeded()) {
+        return Fail("not resident decoded payload fixture registration failed");
+    }
+
+    if (!CommitLoad(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Uploaded, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("not resident decoded payload load commit failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0xC0U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::NotResident) {
+        return Fail("not resident decoded payload returned wrong status");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Uploaded)) {
+        return Fail("not resident decoded payload changed residency state");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsFailedLoadWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_failed");
+    if (!result.Succeeded()) {
+        return Fail("failed load decoded payload fixture registration failed");
+    }
+
+    if (!CommitLoad(registry, result.handle, TYPE_TEXTURE, ResourceLoadState::Failed, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("failed load decoded payload load commit failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0xD0U);
+    const ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::FailedLoad) {
+        return Fail("failed load decoded payload returned wrong status");
+    }
+
+    if (!ResidencyStateMatches(registry, result.handle, TYPE_TEXTURE, ResourceResidencyState::Failed)) {
+        return Fail("failed load decoded payload changed residency state");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadReleasingResultClearsPayload() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_result_release");
+    if (!result.Succeeded()) {
+        return Fail("result release decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("result release decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0xE0U);
+    const ResourceDecodedPayloadRequest decoded_request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    if (registry.StoreDecodedPayload(decoded_request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("result release decoded payload store failed");
+    }
+
+    const ResourceDecodeResultRequest result_request = DecodeResultRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        DECODED_PAYLOAD_BYTE_COUNT);
+    if (registry.ReleaseDecodeResult(result_request) != ResourceDecodeResultStatus::Success) {
+        return Fail("result release decoded payload result release failed");
+    }
+
+    const ResourceDecodedPayloadSnapshot snapshot = registry.DecodedPayloadSnapshot();
+    if (snapshot.active_payload_count != 0U) {
+        return Fail("result release left active decoded payload");
+    }
+
+    if (snapshot.stored_decoded_byte_count != 0U) {
+        return Fail("result release left decoded payload bytes");
+    }
+
+    if (snapshot.dependent_cleared_payload_count != 1U) {
+        return Fail("result release dependent clear was not counted");
+    }
+
+    ResourceDecodedPayloadRecord record;
+    const ResourceDecodedPayloadStatus query_status = registry.QueryDecodedPayload(decoded_request, &record);
+    if (query_status != ResourceDecodedPayloadStatus::MissingDecodedPayload) {
+        return Fail("result release decoded payload query returned wrong status");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadReleasingPlanClearsPayload() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_plan_release");
+    if (!result.Succeeded()) {
+        return Fail("plan release decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("plan release decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0xF0U);
+    const ResourceDecodedPayloadRequest decoded_request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    if (registry.StoreDecodedPayload(decoded_request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("plan release decoded payload store failed");
+    }
+
+    const ResourceDecodePlanRequest plan_request = DecodePlanRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        DECODED_PAYLOAD_BYTE_COUNT);
+    if (registry.ReleaseDecodePlan(plan_request) != ResourceDecodePlanStatus::Success) {
+        return Fail("plan release decoded payload plan release failed");
+    }
+
+    if (registry.DecodeResultSnapshot().active_result_count != 0U) {
+        return Fail("plan release left active decode result");
+    }
+
+    const ResourceDecodedPayloadSnapshot snapshot = registry.DecodedPayloadSnapshot();
+    if (snapshot.active_payload_count != 0U) {
+        return Fail("plan release left active decoded payload");
+    }
+
+    if (snapshot.stored_decoded_byte_count != 0U) {
+        return Fail("plan release left decoded payload bytes");
+    }
+
+    if (snapshot.dependent_cleared_payload_count != 1U) {
+        return Fail("plan release dependent clear was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadReleasingCachePayloadClearsPayload() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_cache_release");
+    if (!result.Succeeded()) {
+        return Fail("cache release decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("cache release decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x21U);
+    const ResourceDecodedPayloadRequest decoded_request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    if (registry.StoreDecodedPayload(decoded_request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("cache release decoded payload store failed");
+    }
+
+    const ResourceCachePayloadRequest cache_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        nullptr,
+        0U);
+    if (registry.ReleaseCachePayload(cache_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("cache release decoded payload cache release failed");
+    }
+
+    if (registry.DecodePlanSnapshot().active_plan_count != 0U) {
+        return Fail("cache release left active decode plan");
+    }
+
+    if (registry.DecodeResultSnapshot().active_result_count != 0U) {
+        return Fail("cache release left active decode result");
+    }
+
+    const ResourceDecodedPayloadSnapshot snapshot = registry.DecodedPayloadSnapshot();
+    if (snapshot.active_payload_count != 0U) {
+        return Fail("cache release left active decoded payload");
+    }
+
+    if (snapshot.stored_decoded_byte_count != 0U) {
+        return Fail("cache release left decoded payload bytes");
+    }
+
+    if (snapshot.dependent_cleared_payload_count != 1U) {
+        return Fail("cache release dependent clear was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadFailedValidationDoesNotMutateResourceState() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_validation");
+    if (!result.Succeeded()) {
+        return Fail("validation decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("validation decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x31U);
+    const ResourceDecodedPayloadRequest valid_request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    if (registry.StoreDecodedPayload(valid_request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("validation decoded payload store failed");
+    }
+
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const ResourceResidencySnapshot before_residency_snapshot = registry.ResidencySnapshot();
+    const ResourceCachePayloadSnapshot before_cache_snapshot = registry.CachePayloadSnapshot();
+    const ResourceDecodePlanSnapshot before_plan_snapshot = registry.DecodePlanSnapshot();
+    const ResourceDecodeResultSnapshot before_result_snapshot = registry.DecodeResultSnapshot();
+    const ResourceDecodedPayloadSnapshot before_payload_snapshot = registry.DecodedPayloadSnapshot();
+    const ResourceDecodedPayloadRequest invalid_request = DecodedPayloadRequest(
+        ResourceHandle{},
+        TYPE_TEXTURE,
+        PAYLOAD_TWO,
+        DECODE_PLAN_TWO,
+        DECODE_RESULT_TWO,
+        DECODED_PAYLOAD_TWO,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(invalid_request);
+    if (status != ResourceDecodedPayloadStatus::InvalidHandle) {
+        return Fail("invalid decoded payload request returned wrong status");
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count) {
+        return Fail("invalid decoded payload request changed registered count");
+    }
+
+    if (after_resource_snapshot.load_commit_count != before_resource_snapshot.load_commit_count) {
+        return Fail("invalid decoded payload request changed load commit count");
+    }
+
+    const ResourceResidencySnapshot after_residency_snapshot = registry.ResidencySnapshot();
+    if (after_residency_snapshot.resident_resource_count != before_residency_snapshot.resident_resource_count) {
+        return Fail("invalid decoded payload request changed resident count");
+    }
+
+    if (after_residency_snapshot.resident_byte_count != before_residency_snapshot.resident_byte_count) {
+        return Fail("invalid decoded payload request changed resident bytes");
+    }
+
+    const ResourceCachePayloadSnapshot after_cache_snapshot = registry.CachePayloadSnapshot();
+    if (after_cache_snapshot.cached_payload_count != before_cache_snapshot.cached_payload_count) {
+        return Fail("invalid decoded payload request changed cache payload count");
+    }
+
+    const ResourceDecodePlanSnapshot after_plan_snapshot = registry.DecodePlanSnapshot();
+    if (after_plan_snapshot.active_plan_count != before_plan_snapshot.active_plan_count) {
+        return Fail("invalid decoded payload request changed decode plan count");
+    }
+
+    const ResourceDecodeResultSnapshot after_result_snapshot = registry.DecodeResultSnapshot();
+    if (after_result_snapshot.active_result_count != before_result_snapshot.active_result_count) {
+        return Fail("invalid decoded payload request changed decode result count");
+    }
+
+    const ResourceDecodedPayloadSnapshot after_payload_snapshot = registry.DecodedPayloadSnapshot();
+    if (after_payload_snapshot.active_payload_count != before_payload_snapshot.active_payload_count) {
+        return Fail("invalid decoded payload request changed active decoded payload count");
+    }
+
+    if (after_payload_snapshot.stored_decoded_byte_count != before_payload_snapshot.stored_decoded_byte_count) {
+        return Fail("invalid decoded payload request changed stored decoded bytes");
+    }
+
+    ResourceDecodedPayloadRecord record;
+    if (registry.QueryDecodedPayload(valid_request, &record) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("valid decoded payload was not queryable after invalid request");
+    }
+
+    if (record.decoded_payload_id != DECODED_PAYLOAD_ONE) {
+        return Fail("invalid decoded payload request changed existing payload");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -3964,7 +5121,27 @@ int main(int argc, char** argv) {
         {TEST_DECODE_RESULT_DECODED_BYTES, ResourceDecodeResultRejectsDecodedByteCountMismatch},
         {TEST_DECODE_RESULT_PLAN_RELEASE, ResourceDecodeResultReleasingPlanClearsDependentRecords},
         {TEST_DECODE_RESULT_PAYLOAD_RELEASE, ResourceDecodeResultReleasingPayloadClearsDependentRecords},
-        {TEST_DECODE_RESULT_FAILED_VALIDATION, ResourceDecodeResultFailedValidationDoesNotMutateResourceState}};
+        {TEST_DECODE_RESULT_FAILED_VALIDATION, ResourceDecodeResultFailedValidationDoesNotMutateResourceState},
+        {TEST_DECODED_PAYLOAD_STORE_READ, ResourceDecodedPayloadStoresReadsQueriesAndReleasesBytes},
+        {TEST_DECODED_PAYLOAD_MISSING_CACHE, ResourceDecodedPayloadRejectsMissingCachePayload},
+        {TEST_DECODED_PAYLOAD_MISSING_PLAN, ResourceDecodedPayloadRejectsMissingDecodePlan},
+        {TEST_DECODED_PAYLOAD_MISSING_RESULT, ResourceDecodedPayloadRejectsMissingDecodeResult},
+        {TEST_DECODED_PAYLOAD_NULL_INPUT, ResourceDecodedPayloadRejectsNullInputBytes},
+        {TEST_DECODED_PAYLOAD_EMPTY, ResourceDecodedPayloadRejectsEmptyPayload},
+        {TEST_DECODED_PAYLOAD_OUTPUT_SMALL, ResourceDecodedPayloadReadRejectsOutputBufferTooSmall},
+        {TEST_DECODED_PAYLOAD_DUPLICATE, ResourceDecodedPayloadRejectsDuplicatePayloadId},
+        {TEST_DECODED_PAYLOAD_CAPACITY, ResourceDecodedPayloadRejectsCapacityOverflow},
+        {TEST_DECODED_PAYLOAD_BUDGET, ResourceDecodedPayloadRejectsBudgetOverflow},
+        {TEST_DECODED_PAYLOAD_ASSET_CLASS, ResourceDecodedPayloadRejectsAssetClassMismatch},
+        {TEST_DECODED_PAYLOAD_RESULT_CLASS, ResourceDecodedPayloadRejectsResultClassMismatch},
+        {TEST_DECODED_PAYLOAD_DECODED_BYTES, ResourceDecodedPayloadRejectsDecodedByteCountMismatch},
+        {TEST_DECODED_PAYLOAD_TYPE_MISMATCH, ResourceDecodedPayloadRejectsTypeMismatchWithoutMutation},
+        {TEST_DECODED_PAYLOAD_NOT_RESIDENT, ResourceDecodedPayloadRejectsNotResidentWithoutMutation},
+        {TEST_DECODED_PAYLOAD_FAILED_LOAD, ResourceDecodedPayloadRejectsFailedLoadWithoutMutation},
+        {TEST_DECODED_PAYLOAD_RESULT_RELEASE, ResourceDecodedPayloadReleasingResultClearsPayload},
+        {TEST_DECODED_PAYLOAD_PLAN_RELEASE, ResourceDecodedPayloadReleasingPlanClearsPayload},
+        {TEST_DECODED_PAYLOAD_CACHE_RELEASE, ResourceDecodedPayloadReleasingCachePayloadClearsPayload},
+        {TEST_DECODED_PAYLOAD_FAILED_VALIDATION, ResourceDecodedPayloadFailedValidationDoesNotMutateResourceState}};
 
     const std::string_view test_name(argv[1]);
     const auto test_entry = test_registry.find(test_name);

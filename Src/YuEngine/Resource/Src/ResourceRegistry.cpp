@@ -59,7 +59,9 @@ ResourceRegistry::ResourceRegistry(ResourceRegistryDesc desc)
       cache_payload_records_{},
       decode_plan_records_{},
       decode_result_records_{},
+      decoded_payload_records_{},
       cache_payload_bytes_{},
+      decoded_payload_bytes_{},
       types_{},
       snapshot_{
           ClampCapacity(desc.resource_capacity, MAX_RESOURCE_COUNT),
@@ -87,7 +89,8 @@ ResourceRegistry::ResourceRegistry(ResourceRegistryDesc desc)
       residency_snapshot_{},
       cache_payload_snapshot_{},
       decode_plan_snapshot_{},
-      decode_result_snapshot_{} {
+      decode_result_snapshot_{},
+      decoded_payload_snapshot_{} {
 }
 
 ResourceRegistrationResult ResourceRegistry::RegisterSyntheticDescriptor(const ResourceDescriptor& descriptor) {
@@ -1117,6 +1120,296 @@ ResourceDecodeResultSnapshot ResourceRegistry::DecodeResultSnapshot() const {
     return decode_result_snapshot_;
 }
 
+ResourceDecodedPayloadStatus ResourceRegistry::SetDecodedPayloadBudget(ResourceDecodedPayloadBudgetDesc desc) {
+    const ResourceDecodedPayloadRequest request{};
+    if (desc.decoded_byte_capacity == 0U) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::ConfigureBudget,
+            request,
+            ResourceDecodedPayloadStatus::InvalidArgument);
+    }
+
+    if (desc.decoded_byte_capacity < decoded_payload_snapshot_.stored_decoded_byte_count) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::ConfigureBudget,
+            request,
+            ResourceDecodedPayloadStatus::BudgetExceeded);
+    }
+
+    decoded_payload_snapshot_.budget_decoded_byte_capacity = desc.decoded_byte_capacity;
+    RecordDecodedPayloadSuccess(
+        ResourceDecodedPayloadOperation::ConfigureBudget,
+        request,
+        INVALID_RESOURCE_SLOT,
+        INVALID_RESOURCE_SLOT,
+        0U);
+    return ResourceDecodedPayloadStatus::Success;
+}
+
+ResourceDecodedPayloadStatus ResourceRegistry::StoreDecodedPayload(const ResourceDecodedPayloadRequest &request) {
+    std::size_t slot_index = 0U;
+    const ResourceDecodedPayloadStatus validation_status = ValidateDecodedPayloadRequest(request, &slot_index);
+    if (validation_status != ResourceDecodedPayloadStatus::Success) {
+        return RecordDecodedPayloadRejected(ResourceDecodedPayloadOperation::Store, request, validation_status);
+    }
+
+    if (request.decoded_bytes == nullptr) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Store,
+            request,
+            ResourceDecodedPayloadStatus::InvalidArgument);
+    }
+
+    if (request.decoded_byte_count > MAX_RESOURCE_DECODED_PAYLOAD_BYTES_PER_RECORD) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Store,
+            request,
+            ResourceDecodedPayloadStatus::CapacityExceeded);
+    }
+
+    std::size_t cache_payload_record_index = 0U;
+    if (!FindCachePayloadRecord(request.resource, request.payload_id, &cache_payload_record_index)) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Store,
+            request,
+            ResourceDecodedPayloadStatus::MissingCachePayload);
+    }
+
+    std::size_t decode_plan_record_index = 0U;
+    if (!FindDecodePlanRecord(request.resource, request.payload_id, request.decode_plan_id, &decode_plan_record_index)) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Store,
+            request,
+            ResourceDecodedPayloadStatus::MissingDecodePlan);
+    }
+
+    std::size_t decode_result_record_index = 0U;
+    if (!FindDecodeResultRecord(
+        request.resource,
+        request.payload_id,
+        request.decode_plan_id,
+        request.decode_result_id,
+        &decode_result_record_index)) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Store,
+            request,
+            ResourceDecodedPayloadStatus::MissingDecodeResult);
+    }
+
+    const ResourceDecodeResultRecord &decode_result_record = decode_result_records_[decode_result_record_index];
+    const ResourceDecodedPayloadStatus result_status = ValidateDecodedPayloadResult(request, decode_result_record);
+    if (result_status != ResourceDecodedPayloadStatus::Success) {
+        return RecordDecodedPayloadRejected(ResourceDecodedPayloadOperation::Store, request, result_status);
+    }
+
+    if (HasDecodedPayloadId(request.decoded_payload_id)) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Store,
+            request,
+            ResourceDecodedPayloadStatus::DuplicateDecodedPayloadId);
+    }
+
+    if (decoded_payload_snapshot_.active_payload_count >= MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Store,
+            request,
+            ResourceDecodedPayloadStatus::CapacityExceeded);
+    }
+
+    const std::uint32_t remaining_decoded_byte_capacity =
+        decoded_payload_snapshot_.budget_decoded_byte_capacity - decoded_payload_snapshot_.stored_decoded_byte_count;
+    if (request.decoded_byte_count > remaining_decoded_byte_capacity) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Store,
+            request,
+            ResourceDecodedPayloadStatus::BudgetExceeded);
+    }
+
+    std::size_t record_index = 0U;
+    if (!FindFreeDecodedPayloadRecord(&record_index)) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Store,
+            request,
+            ResourceDecodedPayloadStatus::CapacityExceeded);
+    }
+
+    std::uint32_t byte_index = 0U;
+    while (byte_index < request.decoded_byte_count) {
+        decoded_payload_bytes_[record_index][byte_index] = request.decoded_bytes[byte_index];
+        ++byte_index;
+    }
+
+    ResourceDecodedPayloadRecord &record = decoded_payload_records_[record_index];
+    record.operation = ResourceDecodedPayloadOperation::Store;
+    record.resource = request.resource;
+    record.expected_type = request.expected_type;
+    record.payload_id = request.payload_id;
+    record.decode_plan_id = request.decode_plan_id;
+    record.decode_result_id = request.decode_result_id;
+    record.decoded_payload_id = request.decoded_payload_id;
+    record.asset_class = request.asset_class;
+    record.result_class = request.result_class;
+    record.decoded_byte_count = request.decoded_byte_count;
+    record.decode_result_slot_index = static_cast<std::uint32_t>(decode_result_record_index);
+    record.decoded_payload_slot_index = static_cast<std::uint32_t>(record_index);
+    record.status = ResourceDecodedPayloadStatus::Success;
+    record.is_active = true;
+    ++decoded_payload_snapshot_.active_payload_count;
+    ++decoded_payload_snapshot_.decoded_payload_record_count;
+    decoded_payload_snapshot_.stored_decoded_byte_count += request.decoded_byte_count;
+    RecordDecodedPayloadSuccess(
+        ResourceDecodedPayloadOperation::Store,
+        request,
+        record.decode_result_slot_index,
+        record.decoded_payload_slot_index,
+        request.decoded_byte_count);
+    return ResourceDecodedPayloadStatus::Success;
+}
+
+ResourceDecodedPayloadStatus ResourceRegistry::QueryDecodedPayload(
+    const ResourceDecodedPayloadRequest &request,
+    ResourceDecodedPayloadRecord *output_record) {
+    if (output_record == nullptr) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Query,
+            request,
+            ResourceDecodedPayloadStatus::InvalidArgument);
+    }
+
+    *output_record = ResourceDecodedPayloadRecord{};
+    std::size_t slot_index = 0U;
+    const ResourceDecodedPayloadStatus validation_status = ValidateDecodedPayloadRequest(request, &slot_index);
+    if (validation_status != ResourceDecodedPayloadStatus::Success) {
+        return RecordDecodedPayloadRejected(ResourceDecodedPayloadOperation::Query, request, validation_status);
+    }
+
+    std::size_t record_index = 0U;
+    if (!FindDecodedPayloadRecord(
+        request.resource,
+        request.payload_id,
+        request.decode_plan_id,
+        request.decode_result_id,
+        request.decoded_payload_id,
+        &record_index)) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Query,
+            request,
+            ResourceDecodedPayloadStatus::MissingDecodedPayload);
+    }
+
+    *output_record = decoded_payload_records_[record_index];
+    RecordDecodedPayloadSuccess(
+        ResourceDecodedPayloadOperation::Query,
+        request,
+        output_record->decode_result_slot_index,
+        output_record->decoded_payload_slot_index,
+        output_record->decoded_byte_count);
+    return ResourceDecodedPayloadStatus::Success;
+}
+
+ResourceDecodedPayloadStatus ResourceRegistry::ReadDecodedPayload(
+    const ResourceDecodedPayloadRequest &request,
+    std::uint8_t *output_bytes,
+    std::uint32_t output_byte_capacity,
+    std::uint32_t *output_byte_count) {
+    if (output_byte_count == nullptr) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Read,
+            request,
+            ResourceDecodedPayloadStatus::InvalidArgument);
+    }
+
+    *output_byte_count = 0U;
+    if (output_bytes == nullptr) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Read,
+            request,
+            ResourceDecodedPayloadStatus::InvalidArgument);
+    }
+
+    std::size_t slot_index = 0U;
+    const ResourceDecodedPayloadStatus validation_status = ValidateDecodedPayloadRequest(request, &slot_index);
+    if (validation_status != ResourceDecodedPayloadStatus::Success) {
+        return RecordDecodedPayloadRejected(ResourceDecodedPayloadOperation::Read, request, validation_status);
+    }
+
+    std::size_t record_index = 0U;
+    if (!FindDecodedPayloadRecord(
+        request.resource,
+        request.payload_id,
+        request.decode_plan_id,
+        request.decode_result_id,
+        request.decoded_payload_id,
+        &record_index)) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Read,
+            request,
+            ResourceDecodedPayloadStatus::MissingDecodedPayload);
+    }
+
+    const ResourceDecodedPayloadRecord &record = decoded_payload_records_[record_index];
+    if (output_byte_capacity < record.decoded_byte_count) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Read,
+            request,
+            ResourceDecodedPayloadStatus::OutputBufferTooSmall);
+    }
+
+    std::uint32_t byte_index = 0U;
+    while (byte_index < record.decoded_byte_count) {
+        output_bytes[byte_index] = decoded_payload_bytes_[record_index][byte_index];
+        ++byte_index;
+    }
+
+    *output_byte_count = record.decoded_byte_count;
+    RecordDecodedPayloadSuccess(
+        ResourceDecodedPayloadOperation::Read,
+        request,
+        record.decode_result_slot_index,
+        record.decoded_payload_slot_index,
+        record.decoded_byte_count);
+    return ResourceDecodedPayloadStatus::Success;
+}
+
+ResourceDecodedPayloadStatus ResourceRegistry::ReleaseDecodedPayload(const ResourceDecodedPayloadRequest &request) {
+    std::size_t slot_index = 0U;
+    const ResourceDecodedPayloadStatus validation_status = ValidateDecodedPayloadRequest(request, &slot_index);
+    if (validation_status != ResourceDecodedPayloadStatus::Success) {
+        return RecordDecodedPayloadRejected(ResourceDecodedPayloadOperation::Release, request, validation_status);
+    }
+
+    std::size_t record_index = 0U;
+    if (!FindDecodedPayloadRecord(
+        request.resource,
+        request.payload_id,
+        request.decode_plan_id,
+        request.decode_result_id,
+        request.decoded_payload_id,
+        &record_index)) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Release,
+            request,
+            ResourceDecodedPayloadStatus::MissingDecodedPayload);
+    }
+
+    const ResourceDecodedPayloadRecord &record = decoded_payload_records_[record_index];
+    const std::uint32_t decode_result_slot_index = record.decode_result_slot_index;
+    const std::uint32_t decoded_payload_slot_index = record.decoded_payload_slot_index;
+    const std::uint32_t decoded_byte_count = record.decoded_byte_count;
+    ClearDecodedPayloadRecord(record_index);
+    RecordDecodedPayloadSuccess(
+        ResourceDecodedPayloadOperation::Release,
+        request,
+        decode_result_slot_index,
+        decoded_payload_slot_index,
+        decoded_byte_count);
+    return ResourceDecodedPayloadStatus::Success;
+}
+
+ResourceDecodedPayloadSnapshot ResourceRegistry::DecodedPayloadSnapshot() const {
+    return decoded_payload_snapshot_;
+}
+
 ResourceStatus ResourceRegistry::Release(ResourceHandle handle) {
     std::size_t slot_index = 0U;
     const ResourceStatus handle_status = ResolveHandle(handle, slot_index);
@@ -1463,6 +1756,84 @@ void ResourceRegistry::RecordDecodeResultSuccess(
     snapshot_.last_status = ResourceStatus::Success;
 }
 
+ResourceDecodedPayloadStatus ResourceRegistry::RecordDecodedPayloadRejected(
+    ResourceDecodedPayloadOperation operation,
+    const ResourceDecodedPayloadRequest &request,
+    ResourceDecodedPayloadStatus status) {
+    ++decoded_payload_snapshot_.rejected_payload_request_count;
+    if (status == ResourceDecodedPayloadStatus::DuplicateDecodedPayloadId) {
+        ++decoded_payload_snapshot_.duplicate_payload_rejected_count;
+    }
+
+    if (status == ResourceDecodedPayloadStatus::CapacityExceeded) {
+        ++decoded_payload_snapshot_.capacity_rejected_payload_count;
+    }
+
+    if (status == ResourceDecodedPayloadStatus::BudgetExceeded) {
+        ++decoded_payload_snapshot_.budget_rejected_payload_count;
+    }
+
+    if (status == ResourceDecodedPayloadStatus::OutputBufferTooSmall) {
+        ++decoded_payload_snapshot_.output_buffer_too_small_count;
+    }
+
+    ++snapshot_.failed_operation_count;
+    decoded_payload_snapshot_.last_operation = operation;
+    decoded_payload_snapshot_.last_status = status;
+    decoded_payload_snapshot_.last_resource = request.resource;
+    decoded_payload_snapshot_.last_payload_id = request.payload_id;
+    decoded_payload_snapshot_.last_decode_plan_id = request.decode_plan_id;
+    decoded_payload_snapshot_.last_decode_result_id = request.decode_result_id;
+    decoded_payload_snapshot_.last_decoded_payload_id = request.decoded_payload_id;
+    decoded_payload_snapshot_.last_asset_class = request.asset_class;
+    decoded_payload_snapshot_.last_result_class = request.result_class;
+    decoded_payload_snapshot_.last_decoded_byte_count = request.decoded_byte_count;
+    decoded_payload_snapshot_.last_decode_result_slot_index = INVALID_RESOURCE_SLOT;
+    decoded_payload_snapshot_.last_decoded_payload_slot_index = INVALID_RESOURCE_SLOT;
+    snapshot_.last_status = MapDecodedPayloadStatus(status);
+    return status;
+}
+
+void ResourceRegistry::RecordDecodedPayloadSuccess(
+    ResourceDecodedPayloadOperation operation,
+    const ResourceDecodedPayloadRequest &request,
+    std::uint32_t decode_result_slot_index,
+    std::uint32_t decoded_payload_slot_index,
+    std::uint32_t decoded_byte_count) {
+    switch (operation) {
+        case ResourceDecodedPayloadOperation::Store:
+            ++decoded_payload_snapshot_.stored_payload_count;
+            break;
+        case ResourceDecodedPayloadOperation::Query:
+            ++decoded_payload_snapshot_.queried_payload_count;
+            break;
+        case ResourceDecodedPayloadOperation::Read:
+            ++decoded_payload_snapshot_.read_payload_count;
+            break;
+        case ResourceDecodedPayloadOperation::Release:
+            ++decoded_payload_snapshot_.released_payload_count;
+            break;
+        case ResourceDecodedPayloadOperation::ConfigureBudget:
+        case ResourceDecodedPayloadOperation::None:
+        default:
+            break;
+    }
+
+    decoded_payload_snapshot_.last_operation = operation;
+    decoded_payload_snapshot_.last_status = ResourceDecodedPayloadStatus::Success;
+    decoded_payload_snapshot_.last_resource = request.resource;
+    decoded_payload_snapshot_.last_payload_id = request.payload_id;
+    decoded_payload_snapshot_.last_decode_plan_id = request.decode_plan_id;
+    decoded_payload_snapshot_.last_decode_result_id = request.decode_result_id;
+    decoded_payload_snapshot_.last_decoded_payload_id = request.decoded_payload_id;
+    decoded_payload_snapshot_.last_asset_class = request.asset_class;
+    decoded_payload_snapshot_.last_result_class = request.result_class;
+    decoded_payload_snapshot_.last_decoded_byte_count = decoded_byte_count;
+    decoded_payload_snapshot_.last_decode_result_slot_index = decode_result_slot_index;
+    decoded_payload_snapshot_.last_decoded_payload_slot_index = decoded_payload_slot_index;
+    snapshot_.last_status = ResourceStatus::Success;
+}
+
 ResourceLoadCommitStatus ResourceRegistry::ValidateLoadCommitRequest(
     const ResourceLoadCommitRequest &request,
     std::size_t *out_slot_index) const {
@@ -1790,6 +2161,93 @@ ResourceDecodeResultStatus ResourceRegistry::ValidateDecodeResultPlan(
     return ResourceDecodeResultStatus::Success;
 }
 
+ResourceDecodedPayloadStatus ResourceRegistry::ValidateDecodedPayloadRequest(
+    const ResourceDecodedPayloadRequest &request,
+    std::size_t *out_slot_index) const {
+    if (out_slot_index == nullptr) {
+        return ResourceDecodedPayloadStatus::InvalidArgument;
+    }
+
+    *out_slot_index = 0U;
+    if (!request.expected_type.IsValid()) {
+        return ResourceDecodedPayloadStatus::InvalidArgument;
+    }
+
+    if (request.payload_id == 0U) {
+        return ResourceDecodedPayloadStatus::InvalidPayloadId;
+    }
+
+    if (request.decode_plan_id == 0U) {
+        return ResourceDecodedPayloadStatus::InvalidDecodePlanId;
+    }
+
+    if (request.decode_result_id == 0U) {
+        return ResourceDecodedPayloadStatus::InvalidDecodeResultId;
+    }
+
+    if (request.decoded_payload_id == 0U) {
+        return ResourceDecodedPayloadStatus::InvalidDecodedPayloadId;
+    }
+
+    if (request.asset_class == ResourceDecodePlanAssetClass::Unknown) {
+        return ResourceDecodedPayloadStatus::InvalidArgument;
+    }
+
+    if (request.result_class == ResourceDecodeResultClass::Unknown) {
+        return ResourceDecodedPayloadStatus::InvalidArgument;
+    }
+
+    if (request.decoded_byte_count == 0U) {
+        return ResourceDecodedPayloadStatus::EmptyPayload;
+    }
+
+    const ResourceStatus handle_status = ResolveHandle(request.resource, *out_slot_index);
+    if (handle_status != ResourceStatus::Success) {
+        return MapHandleDecodedPayloadStatus(handle_status);
+    }
+
+    const ResourceSlot &slot = slots_[*out_slot_index];
+    if (slot.type.value != request.expected_type.value) {
+        return ResourceDecodedPayloadStatus::TypeMismatch;
+    }
+
+    if (slot.load_state == ResourceLoadState::Failed) {
+        return ResourceDecodedPayloadStatus::FailedLoad;
+    }
+
+    if (slot.load_state != ResourceLoadState::Uploaded) {
+        return ResourceDecodedPayloadStatus::NotUploaded;
+    }
+
+    if (!IsResidentState(slot.residency_state)) {
+        return ResourceDecodedPayloadStatus::NotResident;
+    }
+
+    return ResourceDecodedPayloadStatus::Success;
+}
+
+ResourceDecodedPayloadStatus ResourceRegistry::ValidateDecodedPayloadResult(
+    const ResourceDecodedPayloadRequest &request,
+    const ResourceDecodeResultRecord &decode_result_record) const {
+    if (!decode_result_record.is_active) {
+        return ResourceDecodedPayloadStatus::MissingDecodeResult;
+    }
+
+    if (decode_result_record.asset_class != request.asset_class) {
+        return ResourceDecodedPayloadStatus::AssetClassMismatch;
+    }
+
+    if (decode_result_record.result_class != request.result_class) {
+        return ResourceDecodedPayloadStatus::ResultClassMismatch;
+    }
+
+    if (decode_result_record.decoded_byte_count != request.decoded_byte_count) {
+        return ResourceDecodedPayloadStatus::DecodedByteCountMismatch;
+    }
+
+    return ResourceDecodedPayloadStatus::Success;
+}
+
 ResourceLoadCommitStatus ResourceRegistry::MapHandleStatus(ResourceStatus status) const {
     if (status == ResourceStatus::InvalidHandle) {
         return ResourceLoadCommitStatus::InvalidHandle;
@@ -2023,6 +2481,62 @@ ResourceStatus ResourceRegistry::MapDecodeResultStatus(ResourceDecodeResultStatu
     return ResourceStatus::UnsupportedInThisGate;
 }
 
+ResourceDecodedPayloadStatus ResourceRegistry::MapHandleDecodedPayloadStatus(ResourceStatus status) const {
+    if (status == ResourceStatus::InvalidHandle) {
+        return ResourceDecodedPayloadStatus::InvalidHandle;
+    }
+
+    if (status == ResourceStatus::GenerationMismatch) {
+        return ResourceDecodedPayloadStatus::GenerationMismatch;
+    }
+
+    if (status == ResourceStatus::TypeMismatch) {
+        return ResourceDecodedPayloadStatus::TypeMismatch;
+    }
+
+    return ResourceDecodedPayloadStatus::InvalidHandle;
+}
+
+ResourceStatus ResourceRegistry::MapDecodedPayloadStatus(ResourceDecodedPayloadStatus status) const {
+    switch (status) {
+        case ResourceDecodedPayloadStatus::Success:
+            return ResourceStatus::Success;
+        case ResourceDecodedPayloadStatus::InvalidHandle:
+            return ResourceStatus::InvalidHandle;
+        case ResourceDecodedPayloadStatus::GenerationMismatch:
+            return ResourceStatus::GenerationMismatch;
+        case ResourceDecodedPayloadStatus::TypeMismatch:
+            return ResourceStatus::TypeMismatch;
+        case ResourceDecodedPayloadStatus::MissingCachePayload:
+        case ResourceDecodedPayloadStatus::MissingDecodePlan:
+        case ResourceDecodedPayloadStatus::MissingDecodeResult:
+        case ResourceDecodedPayloadStatus::MissingDecodedPayload:
+            return ResourceStatus::NotFound;
+        case ResourceDecodedPayloadStatus::DuplicateDecodedPayloadId:
+            return ResourceStatus::DuplicateResource;
+        case ResourceDecodedPayloadStatus::CapacityExceeded:
+        case ResourceDecodedPayloadStatus::BudgetExceeded:
+        case ResourceDecodedPayloadStatus::OutputBufferTooSmall:
+            return ResourceStatus::CapacityExceeded;
+        case ResourceDecodedPayloadStatus::InvalidArgument:
+        case ResourceDecodedPayloadStatus::NotUploaded:
+        case ResourceDecodedPayloadStatus::FailedLoad:
+        case ResourceDecodedPayloadStatus::NotResident:
+        case ResourceDecodedPayloadStatus::InvalidPayloadId:
+        case ResourceDecodedPayloadStatus::InvalidDecodePlanId:
+        case ResourceDecodedPayloadStatus::InvalidDecodeResultId:
+        case ResourceDecodedPayloadStatus::InvalidDecodedPayloadId:
+        case ResourceDecodedPayloadStatus::AssetClassMismatch:
+        case ResourceDecodedPayloadStatus::ResultClassMismatch:
+        case ResourceDecodedPayloadStatus::DecodedByteCountMismatch:
+        case ResourceDecodedPayloadStatus::EmptyPayload:
+        default:
+            break;
+    }
+
+    return ResourceStatus::UnsupportedInThisGate;
+}
+
 ResourceStatus ResourceRegistry::ResolveHandle(ResourceHandle handle, std::size_t& out_index) const {
     if (!handle.IsValid()) {
         return ResourceStatus::InvalidHandle;
@@ -2152,6 +2666,20 @@ bool ResourceRegistry::HasDecodeResultId(std::uint64_t decode_result_id) const {
         }
 
         if (record.decode_result_id == decode_result_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool ResourceRegistry::HasDecodedPayloadId(std::uint64_t decoded_payload_id) const {
+    for (const ResourceDecodedPayloadRecord &record : decoded_payload_records_) {
+        if (!record.is_active) {
+            continue;
+        }
+
+        if (record.decoded_payload_id == decoded_payload_id) {
             return true;
         }
     }
@@ -2351,6 +2879,82 @@ bool ResourceRegistry::FindFreeDecodeResultRecord(std::size_t *out_record_index)
     return false;
 }
 
+bool ResourceRegistry::FindDecodedPayloadRecord(
+    ResourceHandle resource,
+    std::uint64_t payload_id,
+    std::uint64_t decode_plan_id,
+    std::uint64_t decode_result_id,
+    std::uint64_t decoded_payload_id,
+    std::size_t *out_record_index) const {
+    if (out_record_index == nullptr) {
+        return false;
+    }
+
+    *out_record_index = 0U;
+    std::size_t record_index = 0U;
+    for (const ResourceDecodedPayloadRecord &record : decoded_payload_records_) {
+        if (!record.is_active) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.decoded_payload_id != decoded_payload_id) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.decode_result_id != decode_result_id) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.decode_plan_id != decode_plan_id) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.payload_id != payload_id) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.resource.slot != resource.slot) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.resource.generation != resource.generation) {
+            ++record_index;
+            continue;
+        }
+
+        *out_record_index = record_index;
+        return true;
+    }
+
+    return false;
+}
+
+bool ResourceRegistry::FindFreeDecodedPayloadRecord(std::size_t *out_record_index) const {
+    if (out_record_index == nullptr) {
+        return false;
+    }
+
+    *out_record_index = 0U;
+    std::size_t record_index = 0U;
+    for (const ResourceDecodedPayloadRecord &record : decoded_payload_records_) {
+        if (record.is_active) {
+            ++record_index;
+            continue;
+        }
+
+        *out_record_index = record_index;
+        return true;
+    }
+
+    return false;
+}
+
 bool ResourceRegistry::StoreLoadCommitRecord(const ResourceLoadCommitRequest &request) {
     if (snapshot_.load_commit_record_count >= MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT) {
         return false;
@@ -2530,6 +3134,73 @@ void ResourceRegistry::ClearDecodePlansForCachePayload(ResourceHandle resource, 
     }
 }
 
+void ResourceRegistry::ClearDecodedPayloadRecord(std::size_t record_index) {
+    if (record_index >= MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT) {
+        return;
+    }
+
+    ResourceDecodedPayloadRecord &record = decoded_payload_records_[record_index];
+    if (!record.is_active) {
+        return;
+    }
+
+    const std::uint32_t decoded_byte_count = record.decoded_byte_count;
+    std::uint32_t byte_index = 0U;
+    while (byte_index < MAX_RESOURCE_DECODED_PAYLOAD_BYTES_PER_RECORD) {
+        decoded_payload_bytes_[record_index][byte_index] = 0U;
+        ++byte_index;
+    }
+
+    record = ResourceDecodedPayloadRecord{};
+    --decoded_payload_snapshot_.active_payload_count;
+    --decoded_payload_snapshot_.decoded_payload_record_count;
+    decoded_payload_snapshot_.stored_decoded_byte_count -= decoded_byte_count;
+}
+
+void ResourceRegistry::ClearDecodedPayloadsForDecodeResult(
+    ResourceHandle resource,
+    std::uint64_t payload_id,
+    std::uint64_t decode_plan_id,
+    std::uint64_t decode_result_id) {
+    std::size_t record_index = 0U;
+    while (record_index < MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT) {
+        const ResourceDecodedPayloadRecord &record = decoded_payload_records_[record_index];
+        if (!record.is_active) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.decode_result_id != decode_result_id) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.decode_plan_id != decode_plan_id) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.payload_id != payload_id) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.resource.slot != resource.slot) {
+            ++record_index;
+            continue;
+        }
+
+        if (record.resource.generation != resource.generation) {
+            ++record_index;
+            continue;
+        }
+
+        ClearDecodedPayloadRecord(record_index);
+        ++decoded_payload_snapshot_.dependent_cleared_payload_count;
+        ++record_index;
+    }
+}
+
 void ResourceRegistry::ClearDecodeResultRecord(std::size_t record_index) {
     if (record_index >= MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT) {
         return;
@@ -2541,6 +3212,11 @@ void ResourceRegistry::ClearDecodeResultRecord(std::size_t record_index) {
     }
 
     const std::uint32_t decoded_byte_count = record.decoded_byte_count;
+    const ResourceHandle resource = record.resource;
+    const std::uint64_t payload_id = record.payload_id;
+    const std::uint64_t decode_plan_id = record.decode_plan_id;
+    const std::uint64_t decode_result_id = record.decode_result_id;
+    ClearDecodedPayloadsForDecodeResult(resource, payload_id, decode_plan_id, decode_result_id);
     record = ResourceDecodeResultRecord{};
     --decode_result_snapshot_.active_result_count;
     --decode_result_snapshot_.decode_result_record_count;
