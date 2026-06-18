@@ -1,5 +1,5 @@
-// Module: YuEngine Input
-// File: Src/YuEngine/Input/Src/InputBridge.cpp
+// 模块: YuEngine Input
+// 文件: Src/YuEngine/Input/Src/InputBridge.cpp
 
 #include "YuEngine/Input/InputBridge.h"
 

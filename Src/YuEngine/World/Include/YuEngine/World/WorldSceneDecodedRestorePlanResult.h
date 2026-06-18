@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldSceneDecodedRestorePlanResult.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldSceneDecodedRestorePlanResult.h
 
 #pragma once
 
@@ -29,9 +29,9 @@ struct WorldSceneDecodedRestorePlanResult final {
     WorldSceneDecodedRestorePlanState state{};
 
     /**
-     * @comment Creates a successful decoded restore plan result.
-     * @param state Input operation state.
-     * @return Explicit operation result.
+     * @comment 创建成功 decoded restore plan result。
+     * @param state 输入 operation state。
+     * @return 显式操作结果。
      */
     static WorldSceneDecodedRestorePlanResult Success(
         const WorldSceneDecodedRestorePlanState &state) {
@@ -47,15 +47,15 @@ struct WorldSceneDecodedRestorePlanResult final {
     }
 
     /**
-     * @comment Creates a failed decoded restore plan result.
-     * @param status Input plan status.
-     * @param identity_status Input identity destination status.
-     * @param transform_status Input transform destination status.
-     * @param attachment_status Input attachment destination status.
-     * @param binding_status Input binding destination status.
-     * @param object_status Input object registry status.
-     * @param resource_status Input resource registry status.
-     * @return Explicit operation result.
+     * @comment 创建失败 decoded restore plan result。
+     * @param status 输入 plan status。
+     * @param identity_status 输入 identity destination status。
+     * @param transform_status 输入 transform destination status。
+     * @param attachment_status 输入 attachment destination status。
+     * @param binding_status 输入 binding destination status。
+     * @param object_status 输入 object registry status。
+     * @param resource_status 输入 resource registry status。
+     * @return 显式操作结果。
      */
     static WorldSceneDecodedRestorePlanResult Failure(
         WorldSceneDecodedRestorePlanStatus status,
@@ -81,8 +81,8 @@ struct WorldSceneDecodedRestorePlanResult final {
     }
 
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the result succeeded; false otherwise.
+     * @comment 检查 result 是否成功。
+     * @return result 成功时返回 true，否则返回 false。
      */
     bool Succeeded() const {
         return status == WorldSceneDecodedRestorePlanStatus::Success;

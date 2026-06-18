@@ -1,5 +1,5 @@
-// Module: YuEngine Thread
-// File: Src/YuEngine/Thread/Include/YuEngine/Thread/BoundedTaskQueue.h
+// 模块: YuEngine Thread
+// 文件: Src/YuEngine/Thread/Include/YuEngine/Thread/BoundedTaskQueue.h
 
 #pragma once
 
@@ -19,40 +19,40 @@ namespace yuengine::thread {
 class BoundedTaskQueue final {
 public:
     /**
-     * @comment Constructs a BoundedTaskQueue instance.
-     * @param capacity Input capacity.
-     * @param memory_tracker Memory tracker updated by the function.
+     * @comment 构造 BoundedTaskQueue 实例。
+     * @param capacity 输入容量。
+     * @param memory_tracker 函数更新的 memory tracker。
      */
     BoundedTaskQueue(std::size_t capacity, memory::IMemoryTracker& memory_tracker);
 
     /**
-     * @comment Submits requested work.
-     * @param callback Input callback.
-     * @param context Input context.
-     * @return Explicit operation result.
+     * @comment 提交 requested work。
+     * @param callback 输入 callback。
+     * @param context 输入 context。
+     * @return 显式操作结果。
      */
     TaskResult Submit(TaskCallback callback, void* context);
     /**
-     * @comment Drains queued work.
-     * @param executor Executor updated by the function.
-     * @return Explicit operation result.
+     * @comment 排空 queued work。
+     * @param executor 函数更新的 executor。
+     * @return 显式操作结果。
      */
     TaskResult Drain(InlineTaskExecutor& executor);
     /**
-     * @comment Shuts down the component.
-     * @param policy Input policy.
-     * @param executor Executor updated by the function.
-     * @return Explicit operation result.
+     * @comment 关闭 component。
+     * @param policy 输入 policy。
+     * @param executor 函数更新的 executor。
+     * @return 显式操作结果。
      */
     TaskResult Shutdown(ShutdownPolicy policy, InlineTaskExecutor& executor);
     /**
-     * @comment Returns a snapshot of the current state.
-     * @return Snapshot value.
+     * @comment 返回当前状态快照。
+     * @return 快照值。
      */
     TaskSchedulerSnapshot Snapshot() const;
     /**
-     * @comment Returns the storage capacity.
-     * @return Capacity value.
+     * @comment 返回 storage capacity。
+     * @return Capacity 值。
      */
     std::size_t Capacity() const;
 

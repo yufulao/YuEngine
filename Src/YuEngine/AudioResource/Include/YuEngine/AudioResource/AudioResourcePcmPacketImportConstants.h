@@ -1,5 +1,5 @@
-// Module: YuEngine AudioResource
-// File: Src/YuEngine/AudioResource/Include/YuEngine/AudioResource/AudioResourcePcmPacketImportConstants.h
+// 模块: YuEngine AudioResource
+// 文件: Src/YuEngine/AudioResource/Include/YuEngine/AudioResource/AudioResourcePcmPacketImportConstants.h
 
 #pragma once
 

@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldInstance.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldInstance.h
 
 #pragma once
 
@@ -19,66 +19,66 @@ namespace yuengine::world {
 class WorldInstance final {
 public:
     /**
-     * @comment Constructs a WorldInstance instance.
+     * @comment 构造 WorldInstance 实例。
      */
     WorldInstance();
     /**
-     * @comment Constructs a WorldInstance instance.
-     * @param desc Input descriptor.
+     * @comment 构造 WorldInstance 实例。
+     * @param desc 输入 descriptor。
      */
     explicit WorldInstance(WorldDesc desc);
 
     /**
-     * @comment Registers a fixture world object.
-     * @param desc Input world object descriptor.
-     * @return Explicit operation result.
+     * @comment 注册一个 fixture world object。
+     * @param desc 输入 world object descriptor。
+     * @return 显式操作结果。
      */
     WorldRegistrationResult RegisterObject(const WorldObjectDesc &desc);
     /**
-     * @comment Removes a fixture world object.
-     * @param id Input world object id.
-     * @return Explicit operation status.
+     * @comment 移除一个 fixture world object。
+     * @param id 输入 world object id。
+     * @return 显式操作状态。
      */
     WorldStatus RemoveObject(WorldObjectId id);
     /**
-     * @comment Starts the world lifecycle.
-     * @return Explicit operation status.
+     * @comment 启动 world lifecycle。
+     * @return 显式操作状态。
      */
     WorldStatus Start();
     /**
-     * @comment Runs one deterministic world update.
-     * @param frame_index Input frame index.
-     * @param fixed_step_duration Input fixed step duration.
-     * @param frame_delta_duration Input frame delta duration.
-     * @return Explicit operation status.
+     * @comment 运行 one deterministic world update。
+     * @param frame_index 输入 frame index。
+     * @param fixed_step_duration 输入 fixed step duration。
+     * @param frame_delta_duration 输入 frame delta duration。
+     * @return 显式操作状态。
      */
     WorldStatus Update(std::uint64_t frame_index,
         std::uint64_t fixed_step_duration,
         std::uint64_t frame_delta_duration);
     /**
-     * @comment Stops the world lifecycle.
-     * @return Explicit operation status.
+     * @comment 停止 world lifecycle。
+     * @return 显式操作状态。
      */
     WorldStatus Stop();
     /**
-     * @comment Returns a snapshot of the current world state.
-     * @return Snapshot value.
+     * @comment 返回当前 world 状态快照。
+     * @return 快照值。
      */
     WorldSnapshot Snapshot() const;
     /**
-     * @comment Returns deterministic phase trace records.
-     * @return Pointer to immutable phase trace records.
+     * @comment 返回 deterministic phase trace records。
+     * @return immutable phase trace records 指针。
      */
     const WorldPhaseTrace *GetPhaseTrace() const;
     /**
-     * @comment Returns deterministic phase trace record count.
-     * @return Phase trace record count.
+     * @comment 返回 deterministic phase trace record 数量。
+     * @return Phase trace record 数量。
      */
     std::uint32_t GetPhaseTraceCount() const;
     /**
-     * @comment Checks whether a fixture world object exists.
-     * @param id Input world object id.
-     * @return True when the world object exists; false otherwise.
+     * @comment 检查 fixture world object 是否存在。
+     * @param id 输入 world object id。
+     * @return world object 存在时返回 true，否则返回 false。
      */
     bool ContainsObject(WorldObjectId id) const;
 

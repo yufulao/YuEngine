@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldSceneObjectTransformRestoreResult.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldSceneObjectTransformRestoreResult.h
 
 #pragma once
 
@@ -19,9 +19,9 @@ struct WorldSceneObjectTransformRestoreResult final {
     WorldSceneObjectTransformRestoreState state{};
 
     /**
-     * @comment Creates a successful object-transform restore result.
-     * @param state Input operation state.
-     * @return Explicit operation result.
+     * @comment 创建成功 object-transform restore result。
+     * @param state 输入 operation state。
+     * @return 显式操作结果。
      */
     static WorldSceneObjectTransformRestoreResult Success(
         const WorldSceneObjectTransformRestoreState &state) {
@@ -34,12 +34,12 @@ struct WorldSceneObjectTransformRestoreResult final {
     }
 
     /**
-     * @comment Creates a failed object-transform restore result.
-     * @param status Input restore status.
-     * @param identity_status Input identity bridge status.
-     * @param transform_status Input transform bridge status.
-     * @param object_status Input object registry status.
-     * @return Explicit operation result.
+     * @comment 创建失败 object-transform restore result。
+     * @param status 输入 restore status。
+     * @param identity_status 输入 identity bridge status。
+     * @param transform_status 输入 transform bridge status。
+     * @param object_status 输入 object registry status。
+     * @return 显式操作结果。
      */
     static WorldSceneObjectTransformRestoreResult Failure(
         WorldSceneObjectTransformRestoreStatus status,
@@ -56,8 +56,8 @@ struct WorldSceneObjectTransformRestoreResult final {
     }
 
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the result succeeded; false otherwise.
+     * @comment 检查 result 是否成功。
+     * @return result 成功时返回 true，否则返回 false。
      */
     bool Succeeded() const {
         return status == WorldSceneObjectTransformRestoreStatus::Success;

@@ -1,5 +1,5 @@
-// Module: YuEngine Thread
-// File: Src/YuEngine/Thread/Include/YuEngine/Thread/InlineTaskExecutor.h
+// 模块: YuEngine Thread
+// 文件: Src/YuEngine/Thread/Include/YuEngine/Thread/InlineTaskExecutor.h
 
 #pragma once
 
@@ -10,10 +10,10 @@ namespace yuengine::thread {
 class InlineTaskExecutor final {
 public:
     /**
-     * @comment Executes queued work.
-     * @param callback Input callback.
-     * @param context Input context.
-     * @return Explicit operation status.
+     * @comment 执行 queued work。
+     * @param callback 输入 callback。
+     * @param context 输入 context。
+     * @return 显式操作状态。
      */
     TaskStatus Execute(TaskCallback callback, void* context);
 };

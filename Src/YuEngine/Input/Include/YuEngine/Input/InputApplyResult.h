@@ -1,5 +1,5 @@
-// Module: YuEngine Input
-// File: Src/YuEngine/Input/Include/YuEngine/Input/InputApplyResult.h
+// 模块: YuEngine Input
+// 文件: Src/YuEngine/Input/Include/YuEngine/Input/InputApplyResult.h
 
 #pragma once
 

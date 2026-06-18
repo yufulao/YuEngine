@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldSceneObjectTransformManifestStreamState.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldSceneObjectTransformManifestStreamState.h
 
 #pragma once
 

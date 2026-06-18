@@ -1,5 +1,5 @@
-// Module: YuEngine Audio
-// File: Src/YuEngine/Audio/Src/AudioCallbackDeviceWindows.cpp
+// 模块: YuEngine Audio
+// 文件: Src/YuEngine/Audio/Src/AudioCallbackDeviceWindows.cpp
 
 #include "YuEngine/Audio/AudioCallbackDevice.h"
 

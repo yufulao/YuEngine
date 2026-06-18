@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldSceneDecodedRestorePlanBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldSceneDecodedRestorePlanBridge.h
 
 #pragma once
 
@@ -38,33 +38,33 @@ class WorldTransformBridge;
 class WorldSceneDecodedRestorePlanBridge final {
 public:
     /**
-     * @comment Constructs a decoded scene restore plan bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 decoded scene restore plan bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldSceneDecodedRestorePlanBridge(
         WorldSceneDecodedRestorePlanBridgeDesc desc=
             WorldSceneDecodedRestorePlanBridgeDesc{});
 
     /**
-     * @comment Builds a no-mutation decoded scene restore plan after full preflight.
-     * @param world Caller-owned world instance used only for membership queries.
-     * @param object_registry Caller-owned object registry used only for const acquire preflight.
-     * @param resource_registry Caller-owned resource registry used only for const acquire preflight.
-     * @param identity_destination Optional identity destination for public capacity checks.
-     * @param transform_destination Optional transform destination for public capacity checks.
-     * @param attachment_destination Optional attachment destination for public capacity checks.
-     * @param binding_destination Optional binding destination for public capacity checks.
-     * @param input_identities Caller-owned identity input records.
-     * @param input_identity_count Input identity record count.
-     * @param input_transforms Caller-owned transform input records.
-     * @param input_transform_count Input transform record count.
-     * @param input_attachments Caller-owned attachment input records.
-     * @param input_attachment_count Input attachment record count.
-     * @param input_bindings Caller-owned binding input records.
-     * @param input_binding_count Input binding record count.
-     * @param output_plan Caller-owned output plan buffer.
-     * @param output_plan_capacity Output plan buffer capacity.
-     * @return Explicit operation result.
+     * @comment 在 full preflight 后构建 no-mutation decoded scene restore plan。
+     * @param world 调用方持有的 world instance used only for membership queries。
+     * @param object_registry 调用方持有的 object registry used only for const acquire preflight。
+     * @param resource_registry 调用方持有的 resource registry used only for const acquire preflight。
+     * @param identity_destination 用于 public capacity checks 的 optional identity destination。
+     * @param transform_destination 用于 public capacity checks 的 optional transform destination。
+     * @param attachment_destination 用于 public capacity checks 的 optional attachment destination。
+     * @param binding_destination 用于 public capacity checks 的 optional binding destination。
+     * @param input_identities 调用方持有的 identity input records。
+     * @param input_identity_count 输入 identity record count。
+     * @param input_transforms 调用方持有的 transform input records。
+     * @param input_transform_count 输入 transform record count。
+     * @param input_attachments 调用方持有的 attachment input records。
+     * @param input_attachment_count 输入 attachment record count。
+     * @param input_bindings 调用方持有的 binding input records。
+     * @param input_binding_count 输入 binding record count。
+     * @param output_plan 调用方持有的 output plan buffer。
+     * @param output_plan_capacity 输出 plan buffer capacity。
+     * @return 显式操作结果。
      */
     WorldSceneDecodedRestorePlanResult Plan(
         const WorldInstance *world,
@@ -85,8 +85,8 @@ public:
         WorldSceneDecodedRestorePlanRecord *output_plan,
         std::uint32_t output_plan_capacity);
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldSceneDecodedRestorePlanSnapshot Snapshot() const;
 

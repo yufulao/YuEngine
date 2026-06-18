@@ -1,5 +1,5 @@
-// Module: YuEngine Audio
-// File: Src/YuEngine/Audio/Include/YuEngine/Audio/AudioCallbackDevice.h
+// 模块: YuEngine Audio
+// 文件: Src/YuEngine/Audio/Include/YuEngine/Audio/AudioCallbackDevice.h
 
 #pragma once
 
@@ -17,11 +17,11 @@ struct AudioCallbackDeviceState;
 class AudioCallbackDevice final {
 public:
     /**
-     * @comment Constructs an empty audio callback device owner.
+     * @comment 构造空的 audio callback device owner。
      */
     AudioCallbackDevice();
     /**
-     * @comment Releases any private backend objects owned by the device.
+     * @comment 释放 device 持有的 private backend objects。
      */
     ~AudioCallbackDevice();
 
@@ -29,51 +29,51 @@ public:
     AudioCallbackDevice &operator=(const AudioCallbackDevice &) = delete;
 
     /**
-     * @comment Initializes a private callback backend from a value descriptor.
-     * @param desc Input callback backend descriptor.
-     * @return Explicit operation status.
+     * @comment 根据 value descriptor 初始化 private callback backend。
+     * @param desc 输入 callback backend descriptor。
+     * @return 显式操作状态。
      */
     AudioStatus Initialize(const AudioCallbackDeviceDesc &desc);
     /**
-     * @comment Starts callback processing for the initialized backend.
-     * @return Explicit operation status.
+     * @comment 为已初始化 backend 启动 callback processing。
+     * @return 显式操作状态。
      */
     AudioStatus Start();
     /**
-     * @comment Submits fixed S16 interleaved samples to a preallocated callback buffer.
-     * @param interleaved_samples Input caller-owned S16 interleaved samples.
-     * @param frame_count Input frame count.
-     * @return Explicit operation status.
+     * @comment 将 fixed S16 interleaved samples 提交到预分配 callback buffer。
+     * @param interleaved_samples 输入 caller-owned S16 interleaved samples。
+     * @param frame_count 输入 frame 数量。
+     * @return 显式操作状态。
      */
     AudioStatus SubmitS16Buffer(std::span<const std::int16_t> interleaved_samples, std::size_t frame_count);
     /**
-     * @comment Waits until at least target_completed_count callbacks are completed.
-     * @param target_completed_count Target completed callback count.
-     * @param timeout_milliseconds Bounded wait duration.
-     * @return Explicit operation status.
+     * @comment 等待至少 target_completed_count 个 callbacks 完成。
+     * @param target_completed_count Target completed callback 数量。
+     * @param timeout_milliseconds 有界等待时长。
+     * @return 显式操作状态。
      */
     AudioStatus WaitForCompletedCallbacks(std::uint64_t target_completed_count, std::uint32_t timeout_milliseconds);
     /**
-     * @comment Drains callback completion records into caller-owned storage.
-     * @param completions Caller-owned completion output buffer.
-     * @param completion_capacity Number of completion records available.
-     * @param out_completion_count Output written completion count.
-     * @return Explicit operation status.
+     * @comment 将 callback completion records 排空到调用方持有存储。
+     * @param completions 调用方持有的 completion output buffer。
+     * @param completion_capacity completion records 可用数量。
+     * @param out_completion_count 输出写入的 completion count。
+     * @return 显式操作状态。
      */
     AudioStatus DrainCompletions(AudioCallbackCompletion *completions, std::size_t completion_capacity, std::size_t &out_completion_count);
     /**
-     * @comment Stops callback processing without destroying private backend objects.
-     * @return Explicit operation status.
+     * @comment 停止 callback processing without destroying private backend objects。
+     * @return 显式操作状态。
      */
     AudioStatus Stop();
     /**
-     * @comment Shuts down the private backend and releases all platform objects.
-     * @return Explicit operation status.
+     * @comment 关闭 private backend 并释放所有 platform objects。
+     * @return 显式操作状态。
      */
     AudioStatus Shutdown();
     /**
-     * @comment Returns callback counters and lifecycle state.
-     * @return Snapshot value.
+     * @comment 返回 callback counters 和 lifecycle state。
+     * @return 快照值。
      */
     AudioCallbackSnapshot Snapshot() const;
 

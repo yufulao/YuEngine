@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldSceneApplyTimeRestoreProofBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldSceneApplyTimeRestoreProofBridge.h
 
 #pragma once
 
@@ -41,37 +41,37 @@ class WorldTransformBridge;
 class WorldSceneApplyTimeRestoreProofBridge final {
 public:
     /**
-     * @comment Constructs an apply-time scene restore proof bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 apply-time scene restore proof bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldSceneApplyTimeRestoreProofBridge(
         WorldSceneApplyTimeRestoreProofBridgeDesc desc=
             WorldSceneApplyTimeRestoreProofBridgeDesc{});
 
     /**
-     * @comment Proves same-call restore readiness without active mutation.
-     * @param world Caller-owned world instance used only for membership queries.
-     * @param object_registry Caller-owned object registry used only for const acquire preflight.
-     * @param resource_registry Caller-owned resource registry used only for const acquire preflight.
-     * @param identity_destination Current identity destination used only for public snapshots.
-     * @param transform_destination Current transform destination used only for public snapshots.
-     * @param attachment_destination Current attachment destination used only for public preflight.
-     * @param binding_destination Current binding destination used only for public preflight.
-     * @param input_identities Caller-owned identity input records.
-     * @param input_identity_count Input identity record count.
-     * @param input_transforms Caller-owned transform input records.
-     * @param input_transform_count Input transform record count.
-     * @param input_attachments Caller-owned attachment input records.
-     * @param input_attachment_count Input attachment record count.
-     * @param input_bindings Caller-owned binding input records.
-     * @param input_binding_count Input binding record count.
-     * @param plan_scratch Caller-owned P3-GATE-021 plan scratch buffer.
-     * @param plan_scratch_capacity Plan scratch buffer capacity.
-     * @param output_proofs Caller-owned output proof buffer.
-     * @param output_proof_capacity Output proof buffer capacity.
-     * @param output_slices Caller-owned output active-call slice buffer.
-     * @param output_slice_capacity Output active-call slice buffer capacity.
-     * @return Explicit operation result.
+     * @comment 在不做 active mutation 的情况下证明 same-call restore readiness。
+     * @param world 调用方持有的 world instance used only for membership queries。
+     * @param object_registry 调用方持有的 object registry used only for const acquire preflight。
+     * @param resource_registry 调用方持有的 resource registry used only for const acquire preflight。
+     * @param identity_destination 仅用于 public snapshots 的 current identity destination。
+     * @param transform_destination 仅用于 public snapshots 的 current transform destination。
+     * @param attachment_destination 仅用于 public preflight 的 current attachment destination。
+     * @param binding_destination 仅用于 public preflight 的 current binding destination。
+     * @param input_identities 调用方持有的 identity input records。
+     * @param input_identity_count 输入 identity record count。
+     * @param input_transforms 调用方持有的 transform input records。
+     * @param input_transform_count 输入 transform record count。
+     * @param input_attachments 调用方持有的 attachment input records。
+     * @param input_attachment_count 输入 attachment record count。
+     * @param input_bindings 调用方持有的 binding input records。
+     * @param input_binding_count 输入 binding record count。
+     * @param plan_scratch 调用方持有的 P3-GATE-021 plan scratch buffer。
+     * @param plan_scratch_capacity Plan scratch buffer 容量。
+     * @param output_proofs 调用方持有的 output proof buffer。
+     * @param output_proof_capacity 输出 proof buffer capacity。
+     * @param output_slices 调用方持有的 output active-call slice buffer。
+     * @param output_slice_capacity 输出 active-call slice buffer capacity。
+     * @return 显式操作结果。
      */
     WorldSceneApplyTimeRestoreProofResult Prove(
         const WorldInstance *world,
@@ -96,8 +96,8 @@ public:
         WorldSceneApplyTimeRestoreProofSliceRecord *output_slices,
         std::uint32_t output_slice_capacity);
     /**
-     * @comment Returns a snapshot of the current proof bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 proof bridge 状态快照。
+     * @return 快照值。
      */
     WorldSceneApplyTimeRestoreProofSnapshot Snapshot() const;
 

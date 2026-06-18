@@ -1,5 +1,5 @@
-// Module: YuEngine Input
-// File: Src/YuEngine/Input/Src/InputBridgeWindowsInternal.h
+// 模块: YuEngine Input
+// 文件: Src/YuEngine/Input/Src/InputBridgeWindowsInternal.h
 
 #pragma once
 

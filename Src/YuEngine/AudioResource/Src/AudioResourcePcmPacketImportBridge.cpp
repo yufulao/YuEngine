@@ -1,5 +1,5 @@
-// Module: YuEngine AudioResource
-// File: Src/YuEngine/AudioResource/Src/AudioResourcePcmPacketImportBridge.cpp
+// 模块: YuEngine AudioResource
+// 文件: Src/YuEngine/AudioResource/Src/AudioResourcePcmPacketImportBridge.cpp
 
 #include "YuEngine/AudioResource/AudioResourcePcmPacketImportBridge.h"
 

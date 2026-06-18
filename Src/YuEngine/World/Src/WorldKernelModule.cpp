@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Src/WorldKernelModule.cpp
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Src/WorldKernelModule.cpp
 
 #include "YuEngine/World/WorldKernelModule.h"
 

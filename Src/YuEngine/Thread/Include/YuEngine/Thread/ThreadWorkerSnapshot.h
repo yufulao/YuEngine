@@ -1,5 +1,5 @@
-// Module: YuEngine Thread
-// File: Src/YuEngine/Thread/Include/YuEngine/Thread/ThreadWorkerSnapshot.h
+// 模块: YuEngine Thread
+// 文件: Src/YuEngine/Thread/Include/YuEngine/Thread/ThreadWorkerSnapshot.h
 
 #pragma once
 

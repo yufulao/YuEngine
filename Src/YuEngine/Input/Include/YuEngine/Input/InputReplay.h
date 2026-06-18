@@ -1,5 +1,5 @@
-// Module: YuEngine Input
-// File: Src/YuEngine/Input/Include/YuEngine/Input/InputReplay.h
+// 模块: YuEngine Input
+// 文件: Src/YuEngine/Input/Include/YuEngine/Input/InputReplay.h
 
 #pragma once
 
@@ -21,50 +21,50 @@ namespace yuengine::input {
 class InputReplay final {
 public:
     /**
-     * @comment Constructs a InputReplay instance.
+     * @comment 构造 InputReplay 实例。
      */
     InputReplay();
 
     /**
-     * @comment Registers action binding.
-     * @param device Input device.
-     * @param control Input control.
-     * @param action Input action.
-     * @return Explicit operation result.
+     * @comment 注册 action binding。
+     * @param device 输入 device。
+     * @param control 输入 control。
+     * @param action 输入 action。
+     * @return 显式操作结果。
      */
     InputBindingResult RegisterActionBinding(InputDeviceId device, InputControlId control, InputActionId action);
     /**
-     * @comment Records replay event.
-     * @param frame_index Input frame index.
-     * @param event Input event.
-     * @return Explicit operation status.
+     * @comment 记录 replay event。
+     * @param frame_index 输入 frame index。
+     * @param event 输入 event。
+     * @return 显式操作状态。
      */
     InputStatus RecordReplayEvent(std::size_t frame_index, InputEvent event);
     /**
-     * @comment Applies next frame.
-     * @return Explicit operation result.
+     * @comment 应用 next frame。
+     * @return 显式操作结果。
      */
     InputApplyResult ApplyNextFrame();
     /**
-     * @comment Resets frame state.
-     * @return Explicit operation status.
+     * @comment 重置 frame state。
+     * @return 显式操作状态。
      */
     InputStatus ResetFrameState();
     /**
-     * @comment Queries action.
-     * @param action Input action.
-     * @return Explicit operation result.
+     * @comment 查询 action。
+     * @param action 输入 action。
+     * @return 显式操作结果。
      */
     InputActionQueryResult QueryAction(InputActionId action) const;
     /**
-     * @comment Returns a snapshot of the current state.
-     * @return Snapshot value.
+     * @comment 返回当前状态快照。
+     * @return 快照值。
      */
     InputReplaySnapshot Snapshot() const;
     /**
-     * @comment Returns the event count for a frame.
-     * @param frame_index Input frame index.
-     * @return Event count for frame value.
+     * @comment 返回一个 frame 的 event count。
+     * @param frame_index 输入 frame index。
+     * @return Event count for frame 值。
      */
     std::size_t EventCountForFrame(std::size_t frame_index) const;
 

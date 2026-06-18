@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldComponentResourceBindingRestoreResult.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldComponentResourceBindingRestoreResult.h
 
 #pragma once
 
@@ -19,9 +19,9 @@ struct WorldComponentResourceBindingRestoreResult final {
     WorldComponentResourceBindingRestoreState state{};
 
     /**
-     * @comment Creates a successful restore result.
-     * @param state Input operation state.
-     * @return Explicit operation result.
+     * @comment 创建成功 restore result。
+     * @param state 输入 operation state。
+     * @return 显式操作结果。
      */
     static WorldComponentResourceBindingRestoreResult Success(
         const WorldComponentResourceBindingRestoreState &state) {
@@ -33,11 +33,11 @@ struct WorldComponentResourceBindingRestoreResult final {
     }
 
     /**
-     * @comment Creates a failed restore result.
-     * @param status Input restore status.
-     * @param binding_status Input binding bridge status.
-     * @param resource_status Input resource registry status.
-     * @return Explicit operation result.
+     * @comment 创建失败 restore result。
+     * @param status 输入 restore status。
+     * @param binding_status 输入 binding bridge status。
+     * @param resource_status 输入 resource registry status。
+     * @return 显式操作结果。
      */
     static WorldComponentResourceBindingRestoreResult Failure(
         WorldComponentResourceBindingRestoreStatus status,
@@ -51,8 +51,8 @@ struct WorldComponentResourceBindingRestoreResult final {
     }
 
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the result succeeded; false otherwise.
+     * @comment 检查 result 是否成功。
+     * @return result 成功时返回 true，否则返回 false。
      */
     bool Succeeded() const {
         return status == WorldComponentResourceBindingRestoreStatus::Success;

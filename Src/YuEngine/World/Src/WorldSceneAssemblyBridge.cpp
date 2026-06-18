@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Src/WorldSceneAssemblyBridge.cpp
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Src/WorldSceneAssemblyBridge.cpp
 
 #include "YuEngine/World/WorldSceneAssemblyBridge.h"
 

@@ -1,5 +1,5 @@
-// Module: YuEngine Audio
-// File: Src/YuEngine/Audio/Src/AudioCallbackDeviceWindowsInternal.h
+// 模块: YuEngine Audio
+// 文件: Src/YuEngine/Audio/Src/AudioCallbackDeviceWindowsInternal.h
 
 #pragma once
 

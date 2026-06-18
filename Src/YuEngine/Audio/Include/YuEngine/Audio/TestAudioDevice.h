@@ -1,5 +1,5 @@
-// Module: YuEngine Audio
-// File: Src/YuEngine/Audio/Include/YuEngine/Audio/TestAudioDevice.h
+// 模块: YuEngine Audio
+// 文件: Src/YuEngine/Audio/Include/YuEngine/Audio/TestAudioDevice.h
 
 #pragma once
 
@@ -35,111 +35,111 @@ namespace yuengine::audio {
 class TestAudioDevice final {
 public:
     /**
-     * @comment Constructs a TestAudioDevice instance.
+     * @comment 构造 TestAudioDevice 实例。
      */
     TestAudioDevice();
 
     /**
-     * @comment Initializes the instance.
-     * @param desc Input descriptor.
-     * @return Explicit operation status.
+     * @comment 初始化实例。
+     * @param desc 输入 descriptor。
+     * @return 显式操作状态。
      */
     AudioStatus Initialize(const AudioDeviceDesc& desc);
     /**
-     * @comment Registers synthetic source.
-     * @param interleaved_samples Input interleaved samples.
-     * @param frame_count Input frame count.
-     * @param out_source Output source written on success.
-     * @return Explicit operation status.
+     * @comment 注册 synthetic source。
+     * @param interleaved_samples 输入 interleaved samples。
+     * @param frame_count 输入 frame 数量。
+     * @param out_source 成功时写入输出 source。
+     * @return 显式操作状态。
      */
     AudioStatus RegisterSyntheticSource(std::span<const std::int16_t> interleaved_samples, std::size_t frame_count, AudioSourceId& out_source);
     /**
-     * @comment Creates a bounded PCM sample packet metadata record.
-     * @param request Input packet request.
-     * @param out_packet Output packet handle written on success.
-     * @return Explicit operation status.
+     * @comment 创建有界 PCM sample packet 元数据记录。
+     * @param request 输入 packet request。
+     * @param out_packet 成功时写入输出 packet handle。
+     * @return 显式操作状态。
      */
     AudioStatus CreatePcmSamplePacket(const AudioPcmSamplePacketRequest& request, AudioPcmSamplePacketHandle& out_packet);
     /**
-     * @comment Queries a PCM sample packet metadata record.
-     * @param packet Input packet handle.
-     * @param out_record Output packet record written on success.
-     * @return Explicit operation status.
+     * @comment 查询 PCM sample packet 元数据记录。
+     * @param packet 输入 packet handle。
+     * @param out_record 成功时写入输出 packet record。
+     * @return 显式操作状态。
      */
     AudioStatus QueryPcmSamplePacket(AudioPcmSamplePacketHandle packet, AudioPcmSamplePacketRecord& out_record);
     /**
-     * @comment Releases a PCM sample packet metadata record.
-     * @param packet Input packet handle.
-     * @return Explicit operation status.
+     * @comment 释放 PCM sample packet 元数据记录。
+     * @param packet 输入 packet handle。
+     * @return 显式操作状态。
      */
     AudioStatus ReleasePcmSamplePacket(AudioPcmSamplePacketHandle packet);
     /**
-     * @comment Creates a bounded PCM stream queue metadata record.
-     * @param request Input queue request.
-     * @param out_queue Output queue handle written on success.
-     * @return Explicit operation status.
+     * @comment 创建有界 PCM stream queue 元数据记录。
+     * @param request 输入 queue request。
+     * @param out_queue 成功时写入输出 queue handle。
+     * @return 显式操作状态。
      */
     AudioStatus CreatePcmStreamQueue(const AudioPcmStreamQueueRequest& request, AudioPcmStreamQueueHandle& out_queue);
     /**
-     * @comment Queries a PCM stream queue metadata record.
-     * @param queue Input queue handle.
-     * @param out_record Output queue record written on success.
-     * @return Explicit operation status.
+     * @comment 查询 PCM stream queue 元数据记录。
+     * @param queue 输入 queue handle。
+     * @param out_record 成功时写入输出 queue record。
+     * @return 显式操作状态。
      */
     AudioStatus QueryPcmStreamQueue(AudioPcmStreamQueueHandle queue, AudioPcmStreamQueueRecord& out_record);
     /**
-     * @comment Drains PCM stream queue chunk descriptors into caller-owned storage.
-     * @param queue Input queue handle.
-     * @param out_chunks Output chunk descriptor storage.
-     * @param out_chunk_count Output chunk count written by the function.
-     * @return Explicit operation status.
+     * @comment 将 PCM stream queue chunk descriptors 排空到调用方持有存储。
+     * @param queue 输入 queue handle。
+     * @param out_chunks 输出 chunk descriptor 存储。
+     * @param out_chunk_count 函数写入的输出 chunk 数量。
+     * @return 显式操作状态。
      */
     AudioStatus DrainPcmStreamQueue(AudioPcmStreamQueueHandle queue, std::span<AudioPcmStreamQueueChunk> out_chunks, std::size_t& out_chunk_count);
     /**
-     * @comment Releases a PCM stream queue metadata record.
-     * @param queue Input queue handle.
-     * @return Explicit operation status.
+     * @comment 释放 PCM stream queue 元数据记录。
+     * @param queue 输入 queue handle。
+     * @return 显式操作状态。
      */
     AudioStatus ReleasePcmStreamQueue(AudioPcmStreamQueueHandle queue);
     /**
-     * @comment Starts voice.
-     * @param source Input source.
-     * @param gain_q15 Input gain q15.
-     * @param out_voice Output voice written on success.
-     * @return Explicit operation status.
+     * @comment 启动 voice。
+     * @param source 输入 source。
+     * @param gain_q15 输入 q15 gain。
+     * @param out_voice 成功时写入输出 voice。
+     * @return 显式操作状态。
      */
     AudioStatus StartVoice(AudioSourceId source, std::uint32_t gain_q15, AudioVoiceHandle& out_voice);
     /**
-     * @comment Stops voice.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 停止 voice。
+     * @param handle 输入 handle。
+     * @return 显式操作状态。
      */
     AudioStatus StopVoice(AudioVoiceHandle handle);
     /**
-     * @comment Mixes requested samples into the output buffer.
-     * @param output_samples Output sample buffer updated by the function.
-     * @param requested_frames Input requested frames.
-     * @return Explicit operation result.
+     * @comment 将请求的 samples 混入输出 buffer。
+     * @param output_samples 函数更新的输出 sample buffer。
+     * @param requested_frames 输入请求 frame 数量。
+     * @return 显式操作结果。
      */
     AudioMixResult Mix(std::span<std::int16_t> output_samples, std::size_t requested_frames);
     /**
-     * @comment Returns the supported capabilities.
-     * @return Capability data.
+     * @comment 返回支持的 capabilities。
+     * @return 能力数据。
      */
     AudioCapabilities Capabilities() const;
     /**
-     * @comment Returns a snapshot of the current state.
-     * @return Snapshot value.
+     * @comment 返回当前状态快照。
+     * @return 快照值。
      */
     AudioDeviceSnapshot Snapshot() const;
     /**
-     * @comment Returns a snapshot of PCM sample packet state.
-     * @return Snapshot value.
+     * @comment 返回 PCM sample packet 状态快照。
+     * @return 快照值。
      */
     AudioPcmSamplePacketSnapshot PcmSamplePacketSnapshot() const;
     /**
-     * @comment Returns a snapshot of PCM stream queue state.
-     * @return Snapshot value.
+     * @comment 返回 PCM stream queue 状态快照。
+     * @return 快照值。
      */
     AudioPcmStreamQueueSnapshot PcmStreamQueueSnapshot() const;
 

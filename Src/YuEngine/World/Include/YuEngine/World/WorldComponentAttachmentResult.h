@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldComponentAttachmentResult.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldComponentAttachmentResult.h
 
 #pragma once
 
@@ -15,11 +15,11 @@ struct WorldComponentAttachmentResult final {
     WorldComponentSlotId component_slot_id{};
 
     /**
-     * @comment Creates a successful result.
-     * @param world_object_id Input world object id.
-     * @param component_type_id Input component type id.
-     * @param component_slot_id Input component slot id.
-     * @return Explicit operation result.
+     * @comment 创建成功 result。
+     * @param world_object_id 输入 world object id。
+     * @param component_type_id 输入 component type id。
+     * @param component_slot_id 输入 component slot id。
+     * @return 显式操作结果。
      */
     static WorldComponentAttachmentResult Success(
         WorldObjectId world_object_id,
@@ -33,9 +33,9 @@ struct WorldComponentAttachmentResult final {
     }
 
     /**
-     * @comment Creates a failed result.
-     * @param status Input attachment status.
-     * @return Explicit operation result.
+     * @comment 创建失败 result。
+     * @param status 输入 attachment status。
+     * @return 显式操作结果。
      */
     static WorldComponentAttachmentResult Failure(WorldComponentAttachmentStatus status) {
         return WorldComponentAttachmentResult{
@@ -46,8 +46,8 @@ struct WorldComponentAttachmentResult final {
     }
 
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the result succeeded; false otherwise.
+     * @comment 检查 result 是否成功。
+     * @return result 成功时返回 true，否则返回 false。
      */
     bool Succeeded() const {
         return status == WorldComponentAttachmentStatus::Success;

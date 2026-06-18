@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldSceneObjectTransformManifestStreamBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldSceneObjectTransformManifestStreamBridge.h
 
 #pragma once
 
@@ -21,21 +21,21 @@ namespace yuengine::world {
 class WorldSceneObjectTransformManifestStreamBridge final {
 public:
     /**
-     * @comment Constructs a world scene object-transform manifest stream bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 world scene object-transform manifest stream bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldSceneObjectTransformManifestStreamBridge(
         WorldSceneObjectTransformManifestStreamDesc desc=
             WorldSceneObjectTransformManifestStreamDesc{});
 
     /**
-     * @comment Writes caller-owned object-transform records to a deterministic manifest stream.
-     * @param writer Caller-owned serialize writer.
-     * @param input_identities Caller-owned identity restore records.
-     * @param input_identity_count Input identity record count.
-     * @param input_transforms Caller-owned transform restore records.
-     * @param input_transform_count Input transform record count.
-     * @return Explicit operation result.
+     * @comment 将 caller-owned object-transform records 写入 deterministic manifest stream。
+     * @param writer 调用方持有的 serialize writer。
+     * @param input_identities 调用方持有的 identity restore records。
+     * @param input_identity_count 输入 identity record count。
+     * @param input_transforms 调用方持有的 transform restore records。
+     * @param input_transform_count 输入 transform record count。
+     * @return 显式操作结果。
      */
     WorldSceneObjectTransformManifestStreamResult WriteManifest(
         yuengine::serialize::SerializeWriter *writer,
@@ -44,15 +44,15 @@ public:
         const WorldSceneObjectTransformRestoreTransformRecord *input_transforms,
         std::uint32_t input_transform_count);
     /**
-     * @comment Reads caller-owned object-transform records from a deterministic manifest stream.
-     * @param reader Caller-owned serialize reader.
-     * @param output_identities Caller-owned identity output records.
-     * @param output_identity_capacity Identity output capacity.
-     * @param out_identity_count Output identity record count.
-     * @param output_transforms Caller-owned transform output records.
-     * @param output_transform_capacity Transform output capacity.
-     * @param out_transform_count Output transform record count.
-     * @return Explicit operation result.
+     * @comment 从 deterministic manifest stream 读取 caller-owned object-transform records。
+     * @param reader 调用方持有的 serialize reader。
+     * @param output_identities 调用方持有的 identity output records。
+     * @param output_identity_capacity Identity 输出容量。
+     * @param out_identity_count 输出 identity record count。
+     * @param output_transforms 调用方持有的 transform output records。
+     * @param output_transform_capacity Transform 输出容量。
+     * @param out_transform_count 输出 transform record count。
+     * @return 显式操作结果。
      */
     WorldSceneObjectTransformManifestStreamResult ReadManifest(
         yuengine::serialize::SerializeReader *reader,
@@ -63,13 +63,13 @@ public:
         std::uint32_t output_transform_capacity,
         std::uint32_t *out_transform_count);
     /**
-     * @comment Writes caller-owned object-transform records to a deterministic manifest stream.
-     * @param writer Caller-owned serialize writer.
-     * @param input_identities Caller-owned identity restore records.
-     * @param input_identity_count Input identity record count.
-     * @param input_transforms Caller-owned transform restore records.
-     * @param input_transform_count Input transform record count.
-     * @return Explicit operation result.
+     * @comment 将 caller-owned object-transform records 写入 deterministic manifest stream。
+     * @param writer 调用方持有的 serialize writer。
+     * @param input_identities 调用方持有的 identity restore records。
+     * @param input_identity_count 输入 identity record count。
+     * @param input_transforms 调用方持有的 transform restore records。
+     * @param input_transform_count 输入 transform record count。
+     * @return 显式操作结果。
      */
     WorldSceneObjectTransformManifestStreamResult WriteSnapshot(
         yuengine::serialize::SerializeWriter *writer,
@@ -78,15 +78,15 @@ public:
         const WorldSceneObjectTransformRestoreTransformRecord *input_transforms,
         std::uint32_t input_transform_count);
     /**
-     * @comment Reads caller-owned object-transform records from a deterministic manifest stream.
-     * @param reader Caller-owned serialize reader.
-     * @param output_identities Caller-owned identity output records.
-     * @param output_identity_capacity Identity output capacity.
-     * @param out_identity_count Output identity record count.
-     * @param output_transforms Caller-owned transform output records.
-     * @param output_transform_capacity Transform output capacity.
-     * @param out_transform_count Output transform record count.
-     * @return Explicit operation result.
+     * @comment 从 deterministic manifest stream 读取 caller-owned object-transform records。
+     * @param reader 调用方持有的 serialize reader。
+     * @param output_identities 调用方持有的 identity output records。
+     * @param output_identity_capacity Identity 输出容量。
+     * @param out_identity_count 输出 identity record count。
+     * @param output_transforms 调用方持有的 transform output records。
+     * @param output_transform_capacity Transform 输出容量。
+     * @param out_transform_count 输出 transform record count。
+     * @return 显式操作结果。
      */
     WorldSceneObjectTransformManifestStreamResult ReadSnapshot(
         yuengine::serialize::SerializeReader *reader,
@@ -97,8 +97,8 @@ public:
         std::uint32_t output_transform_capacity,
         std::uint32_t *out_transform_count);
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldSceneObjectTransformManifestStreamSnapshot Snapshot() const;
 

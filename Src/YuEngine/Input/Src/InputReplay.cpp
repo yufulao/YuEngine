@@ -1,5 +1,5 @@
-// Module: YuEngine Input
-// File: Src/YuEngine/Input/Src/InputReplay.cpp
+// 模块: YuEngine Input
+// 文件: Src/YuEngine/Input/Src/InputReplay.cpp
 
 #include "YuEngine/Input/InputReplay.h"
 

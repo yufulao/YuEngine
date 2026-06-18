@@ -1,5 +1,5 @@
-// Module: YuEngine Audio
-// File: Src/YuEngine/Audio/Include/YuEngine/Audio/AudioPcmStreamQueueRecord.h
+// 模块: YuEngine Audio
+// 文件: Src/YuEngine/Audio/Include/YuEngine/Audio/AudioPcmStreamQueueRecord.h
 
 #pragma once
 

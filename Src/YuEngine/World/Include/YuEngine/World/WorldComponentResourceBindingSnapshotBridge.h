@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldComponentResourceBindingSnapshotBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldComponentResourceBindingSnapshotBridge.h
 
 #pragma once
 
@@ -21,29 +21,29 @@ class WorldComponentResourceBindingBridge;
 class WorldComponentResourceBindingSnapshotBridge final {
 public:
     /**
-     * @comment Constructs a world component resource binding snapshot bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 world component resource binding snapshot bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldComponentResourceBindingSnapshotBridge(
         WorldComponentResourceBindingSnapshotBridgeDesc desc=
             WorldComponentResourceBindingSnapshotBridgeDesc{});
 
     /**
-     * @comment Writes active binding records through a caller-owned writer.
-     * @param writer Serialize writer updated by the function.
-     * @param source_bridge Source binding bridge read by the function.
-     * @return Explicit operation result.
+     * @comment 通过调用方持有的 writer 写入 active binding records。
+     * @param writer 函数更新的 Serialize writer。
+     * @param source_bridge 函数读取的 source binding bridge。
+     * @return 显式操作结果。
      */
     WorldComponentResourceBindingSnapshotResult WriteSnapshot(
         yuengine::serialize::SerializeWriter *writer,
         const WorldComponentResourceBindingBridge *source_bridge);
     /**
-     * @comment Reads binding records through a caller-owned reader.
-     * @param reader Serialize reader updated by the function.
-     * @param output_bindings Caller-owned output binding records.
-     * @param output_capacity Output binding record capacity.
-     * @param out_binding_count Output read binding count written on success.
-     * @return Explicit operation result.
+     * @comment 通过调用方持有的 reader 读取 binding records。
+     * @param reader 函数更新的 Serialize reader。
+     * @param output_bindings 调用方持有的 output binding records。
+     * @param output_capacity 输出 binding record capacity。
+     * @param out_binding_count 成功时写入输出 read binding count。
+     * @return 显式操作结果。
      */
     WorldComponentResourceBindingSnapshotResult ReadSnapshot(
         yuengine::serialize::SerializeReader *reader,
@@ -51,8 +51,8 @@ public:
         std::uint32_t output_capacity,
         std::uint32_t *out_binding_count);
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldComponentResourceBindingSnapshotBridgeSnapshot Snapshot() const;
 

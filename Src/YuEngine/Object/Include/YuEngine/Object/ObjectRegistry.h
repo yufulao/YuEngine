@@ -1,5 +1,5 @@
-// Module: YuEngine Object
-// File: Src/YuEngine/Object/Include/YuEngine/Object/ObjectRegistry.h
+// 模块: YuEngine Object
+// 文件: Src/YuEngine/Object/Include/YuEngine/Object/ObjectRegistry.h
 
 #pragma once
 
@@ -21,55 +21,55 @@ namespace yuengine::object {
 class ObjectRegistry final {
 public:
     /**
-     * @comment Constructs a ObjectRegistry instance.
+     * @comment 构造 ObjectRegistry 实例。
      */
     ObjectRegistry();
     /**
-     * @comment Constructs a ObjectRegistry instance.
-     * @param desc Input descriptor.
+     * @comment 构造 ObjectRegistry 实例。
+     * @param desc 输入 descriptor。
      */
     explicit ObjectRegistry(ObjectRegistryDesc desc);
 
     /**
-     * @comment Creates synthetic object.
-     * @param descriptor Input descriptor.
-     * @return Explicit operation result.
+     * @comment 创建 synthetic object。
+     * @param descriptor 输入 descriptor。
+     * @return 显式操作结果。
      */
     ObjectRegistrationResult CreateSyntheticObject(const ObjectDescriptor& descriptor);
     /**
-     * @comment Validates the operation.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 校验 operation。
+     * @param handle 输入 handle。
+     * @return 显式操作状态。
      */
     ObjectStatus Validate(ObjectHandle handle);
     /**
-     * @comment Validates that a projected acquire can succeed without mutating registry state.
-     * @param handle Input handle.
-     * @param projected_acquire_count Input acquire count budget.
-     * @return Explicit operation status.
+     * @comment 校验 projected acquire 是否可以在不修改 registry state 时成功。
+     * @param handle 输入 handle。
+     * @param projected_acquire_count 输入 acquire count budget。
+     * @return 显式操作状态。
      */
     ObjectStatus ValidateAcquire(ObjectHandle handle, std::uint32_t projected_acquire_count) const;
     /**
-     * @comment Acquires the operation.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 获取 operation。
+     * @param handle 输入 handle。
+     * @return 显式操作状态。
      */
     ObjectStatus Acquire(ObjectHandle handle);
     /**
-     * @comment Releases the operation.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 释放 operation。
+     * @param handle 输入 handle。
+     * @return 显式操作状态。
      */
     ObjectStatus Release(ObjectHandle handle);
     /**
-     * @comment Destroys the operation.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 销毁 operation。
+     * @param handle 输入 handle。
+     * @return 显式操作状态。
      */
     ObjectStatus Destroy(ObjectHandle handle);
     /**
-     * @comment Returns a snapshot of the current state.
-     * @return Snapshot value.
+     * @comment 返回当前状态快照。
+     * @return 快照值。
      */
     ObjectSnapshot Snapshot() const;
 

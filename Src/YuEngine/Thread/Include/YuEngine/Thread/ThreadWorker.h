@@ -1,5 +1,5 @@
-// Module: YuEngine Thread
-// File: Src/YuEngine/Thread/Include/YuEngine/Thread/ThreadWorker.h
+// 模块: YuEngine Thread
+// 文件: Src/YuEngine/Thread/Include/YuEngine/Thread/ThreadWorker.h
 
 #pragma once
 
@@ -18,11 +18,11 @@ struct ThreadWorkerState;
 class ThreadWorker final {
 public:
     /**
-     * @comment Constructs a ThreadWorker owner.
+     * @comment 构造 ThreadWorker owner。
      */
     ThreadWorker();
     /**
-     * @comment Destroys a ThreadWorker owner after explicit shutdown best effort.
+     * @comment 在显式 shutdown best effort 后销毁 ThreadWorker owner。
      */
     ~ThreadWorker();
 
@@ -32,55 +32,55 @@ public:
     ThreadWorker& operator=(ThreadWorker&& other) = delete;
 
     /**
-     * @comment Initializes bounded worker storage.
-     * @param desc Input descriptor.
-     * @return Explicit operation status.
+     * @comment 初始化 bounded worker storage。
+     * @param desc 输入 descriptor。
+     * @return 显式操作状态。
      */
     ThreadWorkerStatus Initialize(const ThreadWorkerDesc& desc);
     /**
-     * @comment Starts the owned worker thread.
-     * @return Explicit operation status.
+     * @comment 启动 owned worker thread。
+     * @return 显式操作状态。
      */
     ThreadWorkerStatus Start();
     /**
-     * @comment Submits bounded work.
-     * @param callback Input callback.
-     * @param context Input context.
-     * @param task_id Output task id.
-     * @return Explicit operation status.
+     * @comment 提交 bounded work。
+     * @param callback 输入 callback。
+     * @param context 输入 context。
+     * @param task_id 输出 task id。
+     * @return 显式操作状态。
      */
     ThreadWorkerStatus Submit(TaskCallback callback, void* context, TaskId* task_id=nullptr);
     /**
-     * @comment Requests worker stop using the provided policy.
-     * @param policy Input shutdown policy.
-     * @return Explicit operation status.
+     * @comment 按提供的 policy 请求 worker stop。
+     * @param policy 输入 shutdown policy。
+     * @return 显式操作状态。
      */
     ThreadWorkerStatus RequestStop(ShutdownPolicy policy);
     /**
-     * @comment Joins the worker after stop has been requested.
-     * @return Explicit operation status.
+     * @comment 在请求 stop 后 join worker。
+     * @return 显式操作状态。
      */
     ThreadWorkerStatus Join();
     /**
-     * @comment Requests stop and joins the worker.
-     * @param policy Input shutdown policy.
-     * @return Explicit operation status.
+     * @comment 请求 stop 并 join worker。
+     * @param policy 输入 shutdown policy。
+     * @return 显式操作状态。
      */
     ThreadWorkerStatus Shutdown(ShutdownPolicy policy);
     /**
-     * @comment Drains completion records into caller-owned storage.
-     * @param output_records Output completion records.
-     * @param output_capacity Output completion capacity.
-     * @param written_count Output written count.
-     * @return Explicit operation status.
+     * @comment 将 completion records 排空到调用方持有存储。
+     * @param output_records 输出 completion records。
+     * @param output_capacity 输出 completion capacity。
+     * @param written_count 输出写入数量。
+     * @return 显式操作状态。
      */
     ThreadWorkerStatus DrainCompletions(
         ThreadWorkerCompletion* output_records,
         std::size_t output_capacity,
         std::size_t* written_count);
     /**
-     * @comment Returns a worker snapshot.
-     * @return Snapshot value.
+     * @comment 返回 worker snapshot。
+     * @return 快照值。
      */
     ThreadWorkerSnapshot Snapshot() const;
 

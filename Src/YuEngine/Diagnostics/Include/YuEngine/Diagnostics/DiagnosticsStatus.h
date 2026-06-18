@@ -1,5 +1,5 @@
-// Module: YuEngine Diagnostics
-// File: Src/YuEngine/Diagnostics/Include/YuEngine/Diagnostics/DiagnosticsStatus.h
+// 模块: YuEngine Diagnostics
+// 文件: Src/YuEngine/Diagnostics/Include/YuEngine/Diagnostics/DiagnosticsStatus.h
 
 #pragma once
 

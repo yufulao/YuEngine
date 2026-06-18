@@ -1,5 +1,5 @@
-// Module: YuEngine Script
-// File: Src/YuEngine/Script/Include/YuEngine/Script/ScriptCallId.h
+// 模块: YuEngine Script
+// 文件: Src/YuEngine/Script/Include/YuEngine/Script/ScriptCallId.h
 
 #pragma once
 
@@ -12,8 +12,8 @@ struct ScriptCallId final {
     std::uint32_t value = INVALID_SCRIPT_CALL_ID_VALUE;
 
     /**
-     * @comment Checks whether the script call id is valid.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查 script call id 是否有效。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool IsValid() const {
         return value != INVALID_SCRIPT_CALL_ID_VALUE;

@@ -1,5 +1,5 @@
-// Module: YuEngine Serialize
-// File: Src/YuEngine/Serialize/Include/YuEngine/Serialize/SerializeRecordId.h
+// 模块: YuEngine Serialize
+// 文件: Src/YuEngine/Serialize/Include/YuEngine/Serialize/SerializeRecordId.h
 
 #pragma once
 
@@ -10,8 +10,8 @@ struct SerializeRecordId final {
     std::uint32_t value = 0U;
 
     /**
-     * @comment Checks whether the value is valid.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查 value 是否有效。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool IsValid() const {
         return value != 0U;

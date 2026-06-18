@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Src/WorldComponentQueryBridge.cpp
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Src/WorldComponentQueryBridge.cpp
 
 #include "YuEngine/World/WorldComponentQueryBridge.h"
 

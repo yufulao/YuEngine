@@ -1,5 +1,5 @@
-// Module: YuEngine Thread
-// File: Src/YuEngine/Thread/Src/BoundedTaskQueue.cpp
+// 模块: YuEngine Thread
+// 文件: Src/YuEngine/Thread/Src/BoundedTaskQueue.cpp
 
 #include "YuEngine/Thread/BoundedTaskQueue.h"
 

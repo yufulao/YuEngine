@@ -1,5 +1,5 @@
-// Module: YuEngine Script
-// File: Src/YuEngine/Script/Include/YuEngine/Script/ScriptNativeRegistry.h
+// 模块: YuEngine Script
+// 文件: Src/YuEngine/Script/Include/YuEngine/Script/ScriptNativeRegistry.h
 
 #pragma once
 
@@ -18,29 +18,29 @@ namespace yuengine::script {
 class ScriptNativeRegistry final {
 public:
     /**
-     * @comment Constructs a ScriptNativeRegistry instance.
+     * @comment 构造 ScriptNativeRegistry 实例。
      */
     ScriptNativeRegistry();
     /**
-     * @comment Constructs a ScriptNativeRegistry instance.
-     * @param desc Input descriptor.
+     * @comment 构造 ScriptNativeRegistry 实例。
+     * @param desc 输入 descriptor。
      */
     explicit ScriptNativeRegistry(ScriptNativeRegistryDesc desc);
 
     /**
-     * @comment Registers native call binding.
-     * @param binding Input native binding.
-     * @return Explicit operation result.
+     * @comment 注册 native call binding。
+     * @param binding 输入 native binding。
+     * @return 显式操作结果。
      */
     ScriptNativeRegistrationResult RegisterNativeCall(const ScriptNativeBinding &binding);
     /**
-     * @comment Invokes native call by stable call id.
-     * @param call_id Input call id.
-     * @param arguments Input argument slots.
-     * @param argument_count Input argument count.
-     * @param results Output result slots.
-     * @param result_count Input result count.
-     * @return Explicit operation status.
+     * @comment 按 stable call id 调用 native call。
+     * @param call_id 输入 call id。
+     * @param arguments 输入 argument slots。
+     * @param argument_count 输入 argument count。
+     * @param results 输出 result slots。
+     * @param result_count 输入 result count。
+     * @return 显式操作状态。
      */
     ScriptStatus Invoke(ScriptCallId call_id,
         const ScriptValue *arguments,
@@ -48,8 +48,8 @@ public:
         ScriptValue *results,
         std::uint32_t result_count);
     /**
-     * @comment Returns a snapshot of the current state.
-     * @return Snapshot value.
+     * @comment 返回当前状态快照。
+     * @return 快照值。
      */
     ScriptSnapshot Snapshot() const;
 

@@ -1,5 +1,5 @@
-// Module: YuEngine Object
-// File: Src/YuEngine/Object/Include/YuEngine/Object/ObjectStatus.h
+// 模块: YuEngine Object
+// 文件: Src/YuEngine/Object/Include/YuEngine/Object/ObjectStatus.h
 
 #pragma once
 

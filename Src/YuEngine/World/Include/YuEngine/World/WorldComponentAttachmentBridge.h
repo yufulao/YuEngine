@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldComponentAttachmentBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldComponentAttachmentBridge.h
 
 #pragma once
 
@@ -17,63 +17,63 @@ namespace yuengine::world {
 class WorldComponentAttachmentBridge final {
 public:
     /**
-     * @comment Constructs a world component attachment bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 world component attachment bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldComponentAttachmentBridge(
         WorldComponentAttachmentBridgeDesc desc=WorldComponentAttachmentBridgeDesc{});
 
     /**
-     * @comment Adds one caller-supplied component slot attachment.
-     * @param world_object_id Input world object id.
-     * @param component_type_id Input component type id.
-     * @param component_slot_id Input component slot id.
-     * @return Explicit operation result.
+     * @comment 添加一个调用方提供的 component slot attachment。
+     * @param world_object_id 输入 world object id。
+     * @param component_type_id 输入 component type id。
+     * @param component_slot_id 输入 component slot id。
+     * @return 显式操作结果。
      */
     WorldComponentAttachmentResult Add(
         WorldObjectId world_object_id,
         WorldComponentTypeId component_type_id,
         WorldComponentSlotId component_slot_id);
     /**
-     * @comment Queries one component attachment by world object id and component type id.
-     * @param world_object_id Input world object id.
-     * @param component_type_id Input component type id.
-     * @return Explicit operation result.
+     * @comment 按 world object id 和 component type id 查询一个 component attachment。
+     * @param world_object_id 输入 world object id。
+     * @param component_type_id 输入 component type id。
+     * @return 显式操作结果。
      */
     WorldComponentAttachmentResult Query(
         WorldObjectId world_object_id,
         WorldComponentTypeId component_type_id);
     /**
-     * @comment Removes one component attachment.
-     * @param world_object_id Input world object id.
-     * @param component_type_id Input component type id.
-     * @return Explicit operation status.
+     * @comment 移除一个 component attachment。
+     * @param world_object_id 输入 world object id。
+     * @param component_type_id 输入 component type id。
+     * @return 显式操作状态。
      */
     WorldComponentAttachmentStatus Remove(
         WorldObjectId world_object_id,
         WorldComponentTypeId component_type_id);
     /**
-     * @comment Clears all component attachments in deterministic slot order.
-     * @return Explicit operation status.
+     * @comment 清空 all component attachments in deterministic slot order。
+     * @return 显式操作状态。
      */
     WorldComponentAttachmentStatus Clear();
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldComponentAttachmentSnapshot Snapshot() const;
     /**
-     * @comment Validates destination state for explicit restore preflight.
-     * @param required_attachment_count Required attachment capacity.
-     * @return Explicit operation status.
+     * @comment 校验 explicit restore preflight 的 destination state。
+     * @param required_attachment_count Required attachment 容量。
+     * @return 显式操作状态。
      */
     WorldComponentAttachmentStatus ValidateRestoreDestination(
         std::uint32_t required_attachment_count) const;
     /**
-     * @comment Copies active attachment records in deterministic slot order.
-     * @param output_attachments Caller-owned output attachment buffer.
-     * @param output_capacity Output attachment buffer capacity.
-     * @return Total active attachment count.
+     * @comment 按 deterministic slot order 复制 active attachment records。
+     * @param output_attachments 调用方持有的 output attachment buffer。
+     * @param output_capacity 输出 attachment buffer capacity。
+     * @return active attachment 总数。
      */
     std::uint32_t ExportAttachments(
         WorldComponentAttachment *output_attachments,

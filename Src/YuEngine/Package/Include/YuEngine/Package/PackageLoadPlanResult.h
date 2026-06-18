@@ -1,5 +1,5 @@
-// Module: YuEngine Package
-// File: Src/YuEngine/Package/Include/YuEngine/Package/PackageLoadPlanResult.h
+// 模块: YuEngine Package
+// 文件: Src/YuEngine/Package/Include/YuEngine/Package/PackageLoadPlanResult.h
 
 #pragma once
 
@@ -12,20 +12,20 @@ struct PackageLoadPlanResult final {
     PackageLoadPlan plan;
 
     /**
-     * @comment Creates a successful result.
-     * @param plan Input plan.
-     * @return Explicit operation result.
+     * @comment 创建成功 result。
+     * @param plan 输入 plan。
+     * @return 显式操作结果。
      */
     static PackageLoadPlanResult Success(PackageLoadPlan plan);
     /**
-     * @comment Creates a failed result.
-     * @param status Input status.
-     * @return Explicit operation result.
+     * @comment 创建失败 result。
+     * @param status 输入 status。
+     * @return 显式操作结果。
      */
     static PackageLoadPlanResult Failure(PackageStatus status);
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查 result 是否成功。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool Succeeded() const;
 };

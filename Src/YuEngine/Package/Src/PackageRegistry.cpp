@@ -1,5 +1,5 @@
-// Module: YuEngine Package
-// File: Src/YuEngine/Package/Src/PackageRegistry.cpp
+// 模块: YuEngine Package
+// 文件: Src/YuEngine/Package/Src/PackageRegistry.cpp
 
 #include "YuEngine/Package/PackageRegistry.h"
 

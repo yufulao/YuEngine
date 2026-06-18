@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldObjectIdentityBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldObjectIdentityBridge.h
 
 #pragma once
 
@@ -19,43 +19,43 @@ namespace yuengine::world {
 class WorldObjectIdentityBridge final {
 public:
     /**
-     * @comment Constructs a bridge between one WorldInstance and one ObjectRegistry.
-     * @param world World instance queried by the bridge.
-     * @param object_registry Object registry used for handle lifetime operations.
-     * @param desc Input bridge descriptor.
+     * @comment 构造连接一个 WorldInstance 和一个 ObjectRegistry 的 bridge。
+     * @param world bridge 查询的 World instance。
+     * @param object_registry 用于 handle lifetime operations 的 Object registry。
+     * @param desc 输入 bridge descriptor。
      */
     WorldObjectIdentityBridge(WorldInstance &world,
         yuengine::object::ObjectRegistry &object_registry,
         WorldObjectIdentityBridgeDesc desc=WorldObjectIdentityBridgeDesc{});
 
     /**
-     * @comment Binds one world object id to one object handle and acquires the handle.
-     * @param world_object_id Input world object id.
-     * @param object_handle Input object handle.
-     * @return Explicit operation result.
+     * @comment 将一个 world object id 绑定到一个 object handle，并 acquire 该 handle。
+     * @param world_object_id 输入 world object id。
+     * @param object_handle 输入 object handle。
+     * @return 显式操作结果。
      */
     WorldObjectIdentityResult Bind(WorldObjectId world_object_id,
         yuengine::object::ObjectHandle object_handle);
     /**
-     * @comment Validates an existing binding through ObjectRegistry.
-     * @param world_object_id Input world object id.
-     * @return Explicit operation status.
+     * @comment 通过 ObjectRegistry 校验 existing binding。
+     * @param world_object_id 输入 world object id。
+     * @return 显式操作状态。
      */
     WorldObjectIdentityStatus Validate(WorldObjectId world_object_id);
     /**
-     * @comment Removes one binding and releases its acquired object handle.
-     * @param world_object_id Input world object id.
-     * @return Explicit operation status.
+     * @comment 移除一个 binding，并释放已 acquire 的 object handle。
+     * @param world_object_id 输入 world object id。
+     * @return 显式操作状态。
      */
     WorldObjectIdentityStatus Remove(WorldObjectId world_object_id);
     /**
-     * @comment Releases all active bindings.
-     * @return Explicit operation status.
+     * @comment 释放所有 active bindings。
+     * @return 显式操作状态。
      */
     WorldObjectIdentityStatus Clear();
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldObjectIdentitySnapshot Snapshot() const;
 

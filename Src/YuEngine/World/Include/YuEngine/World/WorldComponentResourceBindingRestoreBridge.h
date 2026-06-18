@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldComponentResourceBindingRestoreBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldComponentResourceBindingRestoreBridge.h
 
 #pragma once
 
@@ -24,21 +24,21 @@ class WorldComponentResourceBindingBridge;
 class WorldComponentResourceBindingRestoreBridge final {
 public:
     /**
-     * @comment Constructs a world component resource binding restore bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 world component resource binding restore bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldComponentResourceBindingRestoreBridge(
         WorldComponentResourceBindingRestoreBridgeDesc desc=
             WorldComponentResourceBindingRestoreBridgeDesc{});
 
     /**
-     * @comment Applies caller-owned binding records to an empty destination bridge.
-     * @param destination_bridge Caller-owned destination binding bridge.
-     * @param attachment_source Caller-owned component attachment source.
-     * @param resource_registry Caller-owned resource registry.
-     * @param input_bindings Caller-owned input binding records.
-     * @param input_binding_count Input binding record count.
-     * @return Explicit operation result.
+     * @comment 将调用方持有的 binding records 应用到空 destination bridge。
+     * @param destination_bridge 调用方持有的 destination binding bridge。
+     * @param attachment_source 调用方持有的 component attachment source。
+     * @param resource_registry 调用方持有的 resource registry。
+     * @param input_bindings 调用方持有的 input binding records。
+     * @param input_binding_count 输入 binding record count。
+     * @return 显式操作结果。
      */
     WorldComponentResourceBindingRestoreResult Restore(
         WorldComponentResourceBindingBridge *destination_bridge,
@@ -47,8 +47,8 @@ public:
         const WorldComponentResourceBinding *input_bindings,
         std::uint32_t input_binding_count);
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldComponentResourceBindingRestoreSnapshot Snapshot() const;
 

@@ -1,5 +1,5 @@
-// Module: YuEngine Package
-// File: Src/YuEngine/Package/Include/YuEngine/Package/PackageRegistry.h
+// 模块: YuEngine Package
+// 文件: Src/YuEngine/Package/Include/YuEngine/Package/PackageRegistry.h
 
 #pragma once
 
@@ -22,49 +22,49 @@ namespace yuengine::package {
 class PackageRegistry final {
 public:
     /**
-     * @comment Constructs a PackageRegistry instance.
+     * @comment 构造 PackageRegistry 实例。
      */
     PackageRegistry();
     /**
-     * @comment Constructs a PackageRegistry instance.
-     * @param desc Input descriptor.
+     * @comment 构造 PackageRegistry 实例。
+     * @param desc 输入 descriptor。
      */
     explicit PackageRegistry(PackageRegistryDesc desc);
 
     /**
-     * @comment Registers synthetic manifest.
-     * @param descriptor Input descriptor.
-     * @return Explicit operation result.
+     * @comment 注册 synthetic manifest。
+     * @param descriptor 输入 descriptor。
+     * @return 显式操作结果。
      */
     PackageRegistrationResult RegisterSyntheticManifest(const PackageManifestDescriptor& descriptor);
     /**
-     * @comment Registers entry.
-     * @param descriptor Input descriptor.
-     * @return Explicit operation result.
+     * @comment 注册 entry。
+     * @param descriptor 输入 descriptor。
+     * @return 显式操作结果。
      */
     PackageRegistrationResult RegisterEntry(const PackageEntryDescriptor& descriptor);
     /**
-     * @comment Adds dependency.
-     * @param package Input package.
-     * @param dependent Input dependent.
-     * @param dependency Input dependency.
-     * @return Explicit operation status.
+     * @comment 添加 dependency。
+     * @param package 输入 package。
+     * @param dependent 输入 dependent。
+     * @param dependency 输入 dependency。
+     * @return 显式操作状态。
      */
     PackageStatus AddDependency(PackageId package, PackageEntryId dependent, PackageEntryId dependency);
     /**
-     * @comment Resolves entry by resource key.
-     * @param package Input package.
-     * @param expected_type Input expected type.
-     * @param logical_key Input logical key.
-     * @return Explicit operation result.
+     * @comment 按 resource key 解析 entry。
+     * @param package 输入 package。
+     * @param expected_type 输入 expected type。
+     * @param logical_key 输入 logical key。
+     * @return 显式操作结果。
      */
     PackageLoadPlanResult ResolveEntryByResourceKey(
         PackageId package,
         ResourceTypeId expected_type,
         const ResourceLogicalKey& logical_key);
     /**
-     * @comment Returns a snapshot of the current state.
-     * @return Snapshot value.
+     * @comment 返回当前状态快照。
+     * @return 快照值。
      */
     PackageSnapshot Snapshot() const;
 

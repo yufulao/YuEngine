@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldObjectIdentityResult.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldObjectIdentityResult.h
 
 #pragma once
 
@@ -14,10 +14,10 @@ struct WorldObjectIdentityResult final {
     yuengine::object::ObjectHandle object_handle{};
 
     /**
-     * @comment Creates a successful result.
-     * @param world_object_id Input world object id.
-     * @param object_handle Input object handle.
-     * @return Explicit operation result.
+     * @comment 创建成功 result。
+     * @param world_object_id 输入 world object id。
+     * @param object_handle 输入 object handle。
+     * @return 显式操作结果。
      */
     static WorldObjectIdentityResult Success(WorldObjectId world_object_id,
         yuengine::object::ObjectHandle object_handle) {
@@ -28,17 +28,17 @@ struct WorldObjectIdentityResult final {
     }
 
     /**
-     * @comment Creates a failed result.
-     * @param status Input bridge status.
-     * @return Explicit operation result.
+     * @comment 创建失败 result。
+     * @param status 输入 bridge status。
+     * @return 显式操作结果。
      */
     static WorldObjectIdentityResult Failure(WorldObjectIdentityStatus status) {
         return WorldObjectIdentityResult{status, WorldObjectId{}, yuengine::object::ObjectHandle{}};
     }
 
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the result succeeded; false otherwise.
+     * @comment 检查 result 是否成功。
+     * @return result 成功时返回 true，否则返回 false。
      */
     bool Succeeded() const {
         return status == WorldObjectIdentityStatus::Success;

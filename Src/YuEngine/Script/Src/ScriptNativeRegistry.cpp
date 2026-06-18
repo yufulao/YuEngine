@@ -1,5 +1,5 @@
-// Module: YuEngine Script
-// File: Src/YuEngine/Script/Src/ScriptNativeRegistry.cpp
+// 模块: YuEngine Script
+// 文件: Src/YuEngine/Script/Src/ScriptNativeRegistry.cpp
 
 #include "YuEngine/Script/ScriptNativeRegistry.h"
 

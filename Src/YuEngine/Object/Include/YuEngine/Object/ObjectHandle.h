@@ -1,5 +1,5 @@
-// Module: YuEngine Object
-// File: Src/YuEngine/Object/Include/YuEngine/Object/ObjectHandle.h
+// 模块: YuEngine Object
+// 文件: Src/YuEngine/Object/Include/YuEngine/Object/ObjectHandle.h
 
 #pragma once
 
@@ -13,8 +13,8 @@ struct ObjectHandle final {
     std::uint32_t generation = INVALID_OBJECT_GENERATION;
 
     /**
-     * @comment Checks whether the value is valid.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查 value 是否有效。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool IsValid() const {
         if (slot == INVALID_OBJECT_SLOT) {

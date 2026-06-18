@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldComponentAttachment.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldComponentAttachment.h
 
 #pragma once
 
@@ -12,8 +12,8 @@ struct WorldComponentTypeId final {
     std::uint32_t value = 0U;
 
     /**
-     * @comment Checks whether the component type id is valid.
-     * @return True when the id is valid; false otherwise.
+     * @comment 检查 component type id 是否有效。
+     * @return id 有效时返回 true，否则返回 false。
      */
     bool IsValid() const {
         return value != 0U;
@@ -24,8 +24,8 @@ struct WorldComponentSlotId final {
     std::uint32_t value = 0U;
 
     /**
-     * @comment Checks whether the component slot id is valid.
-     * @return True when the id is valid; false otherwise.
+     * @comment 检查 component slot id 是否有效。
+     * @return id 有效时返回 true，否则返回 false。
      */
     bool IsValid() const {
         return value != 0U;

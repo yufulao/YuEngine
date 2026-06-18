@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldScriptDispatchBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldScriptDispatchBridge.h
 
 #pragma once
 
@@ -27,29 +27,29 @@ namespace yuengine::world {
 class WorldScriptDispatchBridge final {
 public:
     /**
-     * @comment Constructs a world-script dispatch bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 world-script dispatch bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldScriptDispatchBridge(WorldScriptDispatchBridgeDesc desc=WorldScriptDispatchBridgeDesc{});
 
     /**
-     * @comment Binds one world update phase to one script call id.
-     * @param phase Input world update phase.
-     * @param call_id Input script call id.
-     * @return Explicit operation result.
+     * @comment 绑定 one world update phase to one script call id。
+     * @param phase 输入 world update phase。
+     * @param call_id 输入 script call id。
+     * @return 显式操作结果。
      */
     WorldScriptDispatchResult Bind(WorldUpdatePhase phase,
         yuengine::script::ScriptCallId call_id);
     /**
-     * @comment Dispatches bound world phases in trace order.
-     * @param registry Script native registry used for dispatch.
-     * @param phase_trace Input world phase trace records.
-     * @param phase_trace_count Input trace record count.
-     * @param arguments Caller-owned argument slots.
-     * @param argument_count Input argument slot count.
-     * @param results Caller-owned result slots.
-     * @param result_count Input result slot count.
-     * @return Explicit operation status.
+     * @comment 按 trace order dispatch bound world phases。
+     * @param registry dispatch 使用的 Script native registry。
+     * @param phase_trace 输入 world phase trace records。
+     * @param phase_trace_count 输入 trace record count。
+     * @param arguments 调用方持有的 argument slots。
+     * @param argument_count 输入 argument slot count。
+     * @param results 调用方持有的 result slots。
+     * @param result_count 输入 result slot count。
+     * @return 显式操作状态。
      */
     WorldScriptDispatchStatus DispatchTrace(
         yuengine::script::ScriptNativeRegistry &registry,
@@ -60,8 +60,8 @@ public:
         yuengine::script::ScriptValue *results,
         std::uint32_t result_count);
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldScriptDispatchSnapshot Snapshot() const;
 

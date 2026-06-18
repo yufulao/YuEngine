@@ -1,5 +1,5 @@
-// Module: YuEngine Package
-// File: Src/YuEngine/Package/Include/YuEngine/Package/PackageEntryDescriptor.h
+// 模块: YuEngine Package
+// 文件: Src/YuEngine/Package/Include/YuEngine/Package/PackageEntryDescriptor.h
 
 #pragma once
 

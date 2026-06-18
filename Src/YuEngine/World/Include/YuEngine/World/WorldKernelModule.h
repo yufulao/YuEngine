@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldKernelModule.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldKernelModule.h
 
 #pragma once
 
@@ -18,53 +18,53 @@ namespace yuengine::world {
 class WorldKernelModule final : public kernel::IModule {
 public:
     /**
-     * @comment Constructs a WorldKernelModule adapter for one WorldInstance.
-     * @param world World instance updated by the module lifecycle.
-     * @param desc Input adapter descriptor.
+     * @comment 构造 WorldKernelModule adapter for one WorldInstance。
+     * @param world module lifecycle 更新的 World instance。
+     * @param desc 输入 adapter descriptor。
      */
     explicit WorldKernelModule(WorldInstance &world, WorldKernelModuleDesc desc=WorldKernelModuleDesc{});
 
     /**
-     * @comment Returns the stable Kernel module name.
-     * @return Module name value.
+     * @comment 返回 stable Kernel module name。
+     * @return Module name 值。
      */
     std::string_view Name() const override;
     /**
-     * @comment Returns declared Kernel module dependencies.
-     * @return Dependency identifiers.
+     * @comment 返回声明的 Kernel module dependencies。
+     * @return dependency identifiers 列表。
      */
     std::vector<std::string_view> Dependencies() const override;
     /**
-     * @comment Returns service identifiers required before start.
-     * @return Required service identifiers.
+     * @comment 返回 start 前要求的 service identifiers。
+     * @return required service identifiers 列表。
      */
     std::vector<std::string_view> RequiredServices() const override;
     /**
-     * @comment Returns service identifiers published during start.
-     * @return Published service identifiers.
+     * @comment 返回 start 期间 published 的 service identifiers。
+     * @return published service identifiers 列表。
      */
     std::vector<std::string_view> PublishedServices() const override;
     /**
-     * @comment Starts the world through the Kernel module lifecycle.
-     * @param service_registry Service registry updated by the function.
-     * @param lifecycle_trace Lifecycle trace updated by the function.
-     * @return Explicit Kernel operation result.
+     * @comment 通过 Kernel module lifecycle 启动 world。
+     * @param service_registry 函数更新的 service registry。
+     * @param lifecycle_trace 函数更新的 lifecycle trace。
+     * @return 显式 Kernel 操作结果。
      */
     kernel::KernelResult Start(kernel::ServiceRegistry &service_registry, std::vector<std::string> &lifecycle_trace) override;
     /**
-     * @comment Updates the world through the Kernel module lifecycle.
-     * @param frame_index Input frame index.
-     * @param tick_time_nanoseconds Input tick time nanoseconds.
-     * @param lifecycle_trace Lifecycle trace updated by the function.
-     * @return Explicit Kernel operation result.
+     * @comment 通过 Kernel module lifecycle 更新 world。
+     * @param frame_index 输入 frame index。
+     * @param tick_time_nanoseconds 输入 tick time nanoseconds。
+     * @param lifecycle_trace 函数更新的 lifecycle trace。
+     * @return 显式 Kernel 操作结果。
      */
     kernel::KernelResult Update(std::uint32_t frame_index,
         std::uint64_t tick_time_nanoseconds,
         std::vector<std::string> &lifecycle_trace) override;
     /**
-     * @comment Stops the world through the Kernel module lifecycle.
-     * @param lifecycle_trace Lifecycle trace updated by the function.
-     * @return Explicit Kernel operation result.
+     * @comment 通过 Kernel module lifecycle 停止 world。
+     * @param lifecycle_trace 函数更新的 lifecycle trace。
+     * @return 显式 Kernel 操作结果。
      */
     kernel::KernelResult Shutdown(std::vector<std::string> &lifecycle_trace) override;
 

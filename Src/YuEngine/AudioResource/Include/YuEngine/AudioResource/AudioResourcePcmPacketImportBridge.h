@@ -1,5 +1,5 @@
-// Module: YuEngine AudioResource
-// File: Src/YuEngine/AudioResource/Include/YuEngine/AudioResource/AudioResourcePcmPacketImportBridge.h
+// 模块: YuEngine AudioResource
+// 文件: Src/YuEngine/AudioResource/Include/YuEngine/AudioResource/AudioResourcePcmPacketImportBridge.h
 
 #pragma once
 
@@ -21,19 +21,19 @@ namespace yuengine::audioresource {
 class AudioResourcePcmPacketImportBridge final {
 public:
     /**
-     * @comment Constructs an Audio Resource PCM packet import bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 Audio Resource PCM packet import bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit AudioResourcePcmPacketImportBridge(
         AudioResourcePcmPacketImportBridgeDesc desc=AudioResourcePcmPacketImportBridgeDesc{});
 
     /**
-     * @comment Maps one active Resource audio decode-result record to a caller-owned Audio PCM packet request.
-     * @param decode_result Active Resource decode-result metadata.
-     * @param request Input bridge import request.
-     * @param out_handle Output bridge handle.
-     * @param out_packet_request Output Audio PCM packet request.
-     * @return Explicit operation status.
+     * @comment 将一个 active Resource audio decode-result record 映射到调用方持有的 Audio PCM packet request。
+     * @param decode_result 当前 active Resource decode-result metadata。
+     * @param request 输入 bridge import request。
+     * @param out_handle 输出 bridge handle。
+     * @param out_packet_request 输出 Audio PCM packet request。
+     * @return 显式操作状态。
      */
     AudioResourcePcmPacketImportStatus ImportPcmPacket(
         const yuengine::resource::ResourceDecodeResultRecord &decode_result,
@@ -41,24 +41,24 @@ public:
         AudioResourcePcmPacketImportHandle *out_handle,
         yuengine::audio::AudioPcmSamplePacketRequest *out_packet_request);
     /**
-     * @comment Queries one active bridge import record by handle.
-     * @param handle Input bridge handle.
-     * @param out_record Output bridge record.
-     * @return Explicit operation status.
+     * @comment 按 handle 查询一个 active bridge import record。
+     * @param handle 输入 bridge handle。
+     * @param out_record 输出 bridge record。
+     * @return 显式操作状态。
      */
     AudioResourcePcmPacketImportStatus QueryPcmPacketImport(
         AudioResourcePcmPacketImportHandle handle,
         AudioResourcePcmPacketImportRecord *out_record);
     /**
-     * @comment Releases one active bridge import record.
-     * @param handle Input bridge handle.
-     * @return Explicit operation status.
+     * @comment 释放一个 active bridge import record。
+     * @param handle 输入 bridge handle。
+     * @return 显式操作状态。
      */
     AudioResourcePcmPacketImportStatus ReleasePcmPacketImport(
         AudioResourcePcmPacketImportHandle handle);
     /**
-     * @comment Returns the bridge snapshot.
-     * @return Snapshot value.
+     * @comment 返回 bridge snapshot。
+     * @return 快照值。
      */
     AudioResourcePcmPacketImportSnapshot Snapshot() const;
 

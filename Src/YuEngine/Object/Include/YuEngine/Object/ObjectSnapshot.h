@@ -1,5 +1,5 @@
-// Module: YuEngine Object
-// File: Src/YuEngine/Object/Include/YuEngine/Object/ObjectSnapshot.h
+// 模块: YuEngine Object
+// 文件: Src/YuEngine/Object/Include/YuEngine/Object/ObjectSnapshot.h
 
 #pragma once
 

@@ -1,5 +1,5 @@
-// Module: YuEngine Diagnostics
-// File: Src/YuEngine/Diagnostics/Src/BoundedInMemoryLogSink.cpp
+// 模块: YuEngine Diagnostics
+// 文件: Src/YuEngine/Diagnostics/Src/BoundedInMemoryLogSink.cpp
 
 #include "YuEngine/Diagnostics/BoundedInMemoryLogSink.h"
 

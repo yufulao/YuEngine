@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldComponentAttachmentSnapshotBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldComponentAttachmentSnapshotBridge.h
 
 #pragma once
 
@@ -20,33 +20,33 @@ class WorldComponentAttachmentBridge;
 class WorldComponentAttachmentSnapshotBridge final {
 public:
     /**
-     * @comment Constructs a world component attachment snapshot bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 world component attachment snapshot bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldComponentAttachmentSnapshotBridge(
         WorldComponentAttachmentSnapshotBridgeDesc desc=WorldComponentAttachmentSnapshotBridgeDesc{});
 
     /**
-     * @comment Writes active attachment records through a caller-owned writer.
-     * @param writer Serialize writer updated by the function.
-     * @param source_bridge Source attachment bridge read by the function.
-     * @return Explicit operation result.
+     * @comment 通过调用方持有的 writer 写入 active attachment records。
+     * @param writer 函数更新的 Serialize writer。
+     * @param source_bridge 函数读取的 source attachment bridge。
+     * @return 显式操作结果。
      */
     WorldComponentAttachmentSnapshotResult WriteSnapshot(
         yuengine::serialize::SerializeWriter *writer,
         const WorldComponentAttachmentBridge *source_bridge);
     /**
-     * @comment Reads attachment records through a caller-owned reader.
-     * @param reader Serialize reader updated by the function.
-     * @param destination_bridge Destination attachment bridge restored on success.
-     * @return Explicit operation result.
+     * @comment 通过调用方持有的 reader 读取 attachment records。
+     * @param reader 函数更新的 Serialize reader。
+     * @param destination_bridge 成功时恢复的 destination attachment bridge。
+     * @return 显式操作结果。
      */
     WorldComponentAttachmentSnapshotResult ReadSnapshot(
         yuengine::serialize::SerializeReader *reader,
         WorldComponentAttachmentBridge *destination_bridge);
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldComponentAttachmentSnapshotBridgeSnapshot Snapshot() const;
 

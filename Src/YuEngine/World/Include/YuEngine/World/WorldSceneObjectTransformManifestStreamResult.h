@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldSceneObjectTransformManifestStreamResult.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldSceneObjectTransformManifestStreamResult.h
 
 #pragma once
 
@@ -16,9 +16,9 @@ struct WorldSceneObjectTransformManifestStreamResult final {
     WorldSceneObjectTransformManifestStreamState state{};
 
     /**
-     * @comment Creates a successful object-transform manifest stream result.
-     * @param state Input operation state.
-     * @return Explicit operation result.
+     * @comment 创建成功 object-transform manifest stream result。
+     * @param state 输入 operation state。
+     * @return 显式操作结果。
      */
     static WorldSceneObjectTransformManifestStreamResult Success(
         const WorldSceneObjectTransformManifestStreamState &state) {
@@ -29,10 +29,10 @@ struct WorldSceneObjectTransformManifestStreamResult final {
     }
 
     /**
-     * @comment Creates a failed object-transform manifest stream result.
-     * @param status Input manifest stream status.
-     * @param serialize_status Input serialize status.
-     * @return Explicit operation result.
+     * @comment 创建失败 object-transform manifest stream result。
+     * @param status 输入 manifest stream status。
+     * @param serialize_status 输入 serialize status。
+     * @return 显式操作结果。
      */
     static WorldSceneObjectTransformManifestStreamResult Failure(
         WorldSceneObjectTransformManifestStreamStatus status,
@@ -45,8 +45,8 @@ struct WorldSceneObjectTransformManifestStreamResult final {
     }
 
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the result succeeded; false otherwise.
+     * @comment 检查 result 是否成功。
+     * @return result 成功时返回 true，否则返回 false。
      */
     bool Succeeded() const {
         return status == WorldSceneObjectTransformManifestStreamStatus::Success;

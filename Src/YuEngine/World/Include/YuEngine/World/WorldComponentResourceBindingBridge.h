@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldComponentResourceBindingBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldComponentResourceBindingBridge.h
 
 #pragma once
 
@@ -27,22 +27,22 @@ class WorldComponentAttachmentBridge;
 class WorldComponentResourceBindingBridge final {
 public:
     /**
-     * @comment Constructs a world component resource binding bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 world component resource binding bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldComponentResourceBindingBridge(
         WorldComponentResourceBindingBridgeDesc desc=WorldComponentResourceBindingBridgeDesc{});
 
     /**
-     * @comment Binds one existing component attachment tuple to one resource handle.
-     * @param attachment_source Caller-owned component attachment source.
-     * @param resource_registry Caller-owned resource registry.
-     * @param world_object_id Input world object id.
-     * @param component_type_id Input component type id.
-     * @param component_slot_id Input component slot id.
-     * @param resource_handle Input resource handle.
-     * @param expected_resource_type Input expected resource type.
-     * @return Explicit operation result.
+     * @comment 将一个 existing component attachment tuple 绑定到一个 resource handle。
+     * @param attachment_source 调用方持有的 component attachment source。
+     * @param resource_registry 调用方持有的 resource registry。
+     * @param world_object_id 输入 world object id。
+     * @param component_type_id 输入 component type id。
+     * @param component_slot_id 输入 component slot id。
+     * @param resource_handle 输入 resource handle。
+     * @param expected_resource_type 输入 expected resource type。
+     * @return 显式操作结果。
      */
     WorldComponentResourceBindingResult Bind(
         const WorldComponentAttachmentBridge *attachment_source,
@@ -53,23 +53,23 @@ public:
         yuengine::resource::ResourceHandle resource_handle,
         yuengine::resource::ResourceTypeId expected_resource_type);
     /**
-     * @comment Queries one component resource binding by component attachment tuple.
-     * @param world_object_id Input world object id.
-     * @param component_type_id Input component type id.
-     * @param component_slot_id Input component slot id.
-     * @return Explicit operation result.
+     * @comment 按 component attachment tuple 查询一个 component resource binding。
+     * @param world_object_id 输入 world object id。
+     * @param component_type_id 输入 component type id。
+     * @param component_slot_id 输入 component slot id。
+     * @return 显式操作结果。
      */
     WorldComponentResourceBindingResult Query(
         WorldObjectId world_object_id,
         WorldComponentTypeId component_type_id,
         WorldComponentSlotId component_slot_id);
     /**
-     * @comment Removes one component resource binding and releases its resource handle.
-     * @param resource_registry Caller-owned resource registry.
-     * @param world_object_id Input world object id.
-     * @param component_type_id Input component type id.
-     * @param component_slot_id Input component slot id.
-     * @return Explicit operation status.
+     * @comment 移除一个 component resource binding，并释放其 resource handle。
+     * @param resource_registry 调用方持有的 resource registry。
+     * @param world_object_id 输入 world object id。
+     * @param component_type_id 输入 component type id。
+     * @param component_slot_id 输入 component slot id。
+     * @return 显式操作状态。
      */
     WorldComponentResourceBindingStatus Remove(
         yuengine::resource::ResourceRegistry *resource_registry,
@@ -77,28 +77,28 @@ public:
         WorldComponentTypeId component_type_id,
         WorldComponentSlotId component_slot_id);
     /**
-     * @comment Releases and clears all active component resource bindings in deterministic slot order.
-     * @param resource_registry Caller-owned resource registry.
-     * @return Explicit operation status.
+     * @comment 释放并清空 deterministic slot order 中的所有 active component resource bindings。
+     * @param resource_registry 调用方持有的 resource registry。
+     * @return 显式操作状态。
      */
     WorldComponentResourceBindingStatus Clear(yuengine::resource::ResourceRegistry *resource_registry);
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldComponentResourceBindingSnapshot Snapshot() const;
     /**
-     * @comment Validates destination state for explicit restore preflight.
-     * @param required_binding_count Required binding capacity.
-     * @return Explicit operation status.
+     * @comment 校验 explicit restore preflight 的 destination state。
+     * @param required_binding_count Required binding 容量。
+     * @return 显式操作状态。
      */
     WorldComponentResourceBindingStatus ValidateRestoreDestination(
         std::uint32_t required_binding_count) const;
     /**
-     * @comment Copies active component resource binding records in deterministic slot order.
-     * @param output_bindings Caller-owned output binding buffer.
-     * @param output_capacity Output binding buffer capacity.
-     * @return Total active binding count.
+     * @comment 按 deterministic slot order 复制 active component resource binding records。
+     * @param output_bindings 调用方持有的 output binding buffer。
+     * @param output_capacity 输出 binding buffer capacity。
+     * @return active binding 总数。
      */
     std::uint32_t ExportBindings(
         WorldComponentResourceBinding *output_bindings,

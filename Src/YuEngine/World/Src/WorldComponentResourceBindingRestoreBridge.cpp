@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Src/WorldComponentResourceBindingRestoreBridge.cpp
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Src/WorldComponentResourceBindingRestoreBridge.cpp
 
 #include "YuEngine/World/WorldComponentResourceBindingRestoreBridge.h"
 

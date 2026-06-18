@@ -1,5 +1,5 @@
-// Module: YuEngine Serialize
-// File: Src/YuEngine/Serialize/Src/SerializeReader.cpp
+// 模块: YuEngine Serialize
+// 文件: Src/YuEngine/Serialize/Src/SerializeReader.cpp
 
 #include "YuEngine/Serialize/SerializeReader.h"
 

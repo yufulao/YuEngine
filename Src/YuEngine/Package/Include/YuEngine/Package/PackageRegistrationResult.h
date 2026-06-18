@@ -1,5 +1,5 @@
-// Module: YuEngine Package
-// File: Src/YuEngine/Package/Include/YuEngine/Package/PackageRegistrationResult.h
+// 模块: YuEngine Package
+// 文件: Src/YuEngine/Package/Include/YuEngine/Package/PackageRegistrationResult.h
 
 #pragma once
 
@@ -14,27 +14,27 @@ struct PackageRegistrationResult final {
     PackageEntryId entry;
 
     /**
-     * @comment Creates a successful manifest registration result.
-     * @param package Input package.
-     * @return Explicit operation result.
+     * @comment 创建成功 manifest registration result。
+     * @param package 输入 package。
+     * @return 显式操作结果。
      */
     static PackageRegistrationResult ManifestSuccess(PackageId package);
     /**
-     * @comment Creates a successful entry registration result.
-     * @param package Input package.
-     * @param entry Input entry.
-     * @return Explicit operation result.
+     * @comment 创建成功 entry registration result。
+     * @param package 输入 package。
+     * @param entry 输入 entry。
+     * @return 显式操作结果。
      */
     static PackageRegistrationResult EntrySuccess(PackageId package, PackageEntryId entry);
     /**
-     * @comment Creates a failed result.
-     * @param status Input status.
-     * @return Explicit operation result.
+     * @comment 创建失败 result。
+     * @param status 输入 status。
+     * @return 显式操作结果。
      */
     static PackageRegistrationResult Failure(PackageStatus status);
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查 result 是否成功。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool Succeeded() const;
 };

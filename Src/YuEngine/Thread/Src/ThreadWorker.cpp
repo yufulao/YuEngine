@@ -1,5 +1,5 @@
-// Module: YuEngine Thread
-// File: Src/YuEngine/Thread/Src/ThreadWorker.cpp
+// 模块: YuEngine Thread
+// 文件: Src/YuEngine/Thread/Src/ThreadWorker.cpp
 
 #include "YuEngine/Thread/ThreadWorker.h"
 

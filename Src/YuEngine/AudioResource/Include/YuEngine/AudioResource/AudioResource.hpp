@@ -1,5 +1,5 @@
-// Module: YuEngine AudioResource
-// File: Src/YuEngine/AudioResource/Include/YuEngine/AudioResource/AudioResource.hpp
+// 模块: YuEngine AudioResource
+// 文件: Src/YuEngine/AudioResource/Include/YuEngine/AudioResource/AudioResource.hpp
 
 #pragma once
 

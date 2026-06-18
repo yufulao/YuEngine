@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldResourceBindingBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldResourceBindingBridge.h
 
 #pragma once
 
@@ -24,19 +24,19 @@ namespace yuengine::world {
 class WorldResourceBindingBridge final {
 public:
     /**
-     * @comment Constructs a world resource binding bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 world resource binding bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldResourceBindingBridge(
         WorldResourceBindingBridgeDesc desc=WorldResourceBindingBridgeDesc{});
 
     /**
-     * @comment Binds one caller-supplied world object id to one resource handle and acquires the handle.
-     * @param resource_registry Caller-owned resource registry.
-     * @param world_object_id Input world object id.
-     * @param resource_handle Input resource handle.
-     * @param expected_resource_type Input expected resource type.
-     * @return Explicit operation result.
+     * @comment 将一个调用方提供的 world object id 绑定到一个 resource handle，并 acquire 该 handle。
+     * @param resource_registry 调用方持有的 resource registry。
+     * @param world_object_id 输入 world object id。
+     * @param resource_handle 输入 resource handle。
+     * @param expected_resource_type 输入 expected resource type。
+     * @return 显式操作结果。
      */
     WorldResourceBindingResult Bind(
         yuengine::resource::ResourceRegistry *resource_registry,
@@ -44,29 +44,29 @@ public:
         yuengine::resource::ResourceHandle resource_handle,
         yuengine::resource::ResourceTypeId expected_resource_type);
     /**
-     * @comment Queries one binding by world object id.
-     * @param world_object_id Input world object id.
-     * @return Explicit operation result.
+     * @comment 按 world object id 查询一个 binding。
+     * @param world_object_id 输入 world object id。
+     * @return 显式操作结果。
      */
     WorldResourceBindingResult Query(WorldObjectId world_object_id);
     /**
-     * @comment Removes one binding and releases its acquired resource handle.
-     * @param resource_registry Caller-owned resource registry.
-     * @param world_object_id Input world object id.
-     * @return Explicit operation status.
+     * @comment 移除一个 binding，并释放已 acquire 的 resource handle。
+     * @param resource_registry 调用方持有的 resource registry。
+     * @param world_object_id 输入 world object id。
+     * @return 显式操作状态。
      */
     WorldResourceBindingStatus Remove(
         yuengine::resource::ResourceRegistry *resource_registry,
         WorldObjectId world_object_id);
     /**
-     * @comment Releases and clears all active bindings in deterministic slot order.
-     * @param resource_registry Caller-owned resource registry.
-     * @return Explicit operation status.
+     * @comment 释放并清空 deterministic slot order 中的所有 active bindings。
+     * @param resource_registry 调用方持有的 resource registry。
+     * @return 显式操作状态。
      */
     WorldResourceBindingStatus Clear(yuengine::resource::ResourceRegistry *resource_registry);
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldResourceBindingSnapshot Snapshot() const;
 

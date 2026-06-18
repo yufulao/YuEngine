@@ -1,5 +1,5 @@
-// Module: YuEngine Serialize
-// File: Src/YuEngine/Serialize/Include/YuEngine/Serialize/SerializeWriter.h
+// 模块: YuEngine Serialize
+// 文件: Src/YuEngine/Serialize/Include/YuEngine/Serialize/SerializeWriter.h
 
 #pragma once
 
@@ -17,78 +17,78 @@ namespace yuengine::serialize {
 class SerializeWriter final {
 public:
     /**
-     * @comment Constructs a SerializeWriter instance.
-     * @param buffer Input buffer.
-     * @param capacity Input capacity.
+     * @comment 构造 SerializeWriter 实例。
+     * @param buffer 输入 buffer。
+     * @param capacity 输入容量。
      */
     SerializeWriter(std::uint8_t* buffer, std::uint32_t capacity);
 
     /**
-     * @comment Begins a serialized stream.
-     * @return Explicit operation status.
+     * @comment 开始 serialized stream。
+     * @return 显式操作状态。
      */
     SerializeStatus BeginStream();
     /**
-     * @comment Begins a serialized record.
-     * @param record Input record.
-     * @return Explicit operation status.
+     * @comment 开始 serialized record。
+     * @param record 输入 record。
+     * @return 显式操作状态。
      */
     SerializeStatus BeginRecord(SerializeRecordId record);
     /**
-     * @comment Writes uint32.
-     * @param field Input field.
-     * @param value Input value.
-     * @return Explicit operation status.
+     * @comment 写入 uint32。
+     * @param field 输入 field。
+     * @param value 输入 value。
+     * @return 显式操作状态。
      */
     SerializeStatus WriteUInt32(SerializeFieldId field, std::uint32_t value);
     /**
-     * @comment Writes int32.
-     * @param field Input field.
-     * @param value Input value.
-     * @return Explicit operation status.
+     * @comment 写入 int32。
+     * @param field 输入 field。
+     * @param value 输入 value。
+     * @return 显式操作状态。
      */
     SerializeStatus WriteInt32(SerializeFieldId field, std::int32_t value);
     /**
-     * @comment Writes uint64.
-     * @param field Input field.
-     * @param value Input value.
-     * @return Explicit operation status.
+     * @comment 写入 uint64。
+     * @param field 输入 field。
+     * @param value 输入 value。
+     * @return 显式操作状态。
      */
     SerializeStatus WriteUInt64(SerializeFieldId field, std::uint64_t value);
     /**
-     * @comment Writes int64.
-     * @param field Input field.
-     * @param value Input value.
-     * @return Explicit operation status.
+     * @comment 写入 int64。
+     * @param field 输入 field。
+     * @param value 输入 value。
+     * @return 显式操作状态。
      */
     SerializeStatus WriteInt64(SerializeFieldId field, std::int64_t value);
     /**
-     * @comment Writes fixed bytes.
-     * @param field Input field.
-     * @param bytes Input byte count or byte payload.
-     * @param byte_count Input byte count.
-     * @return Explicit operation status.
+     * @comment 写入 fixed bytes。
+     * @param field 输入 field。
+     * @param bytes 输入 byte 数量或 byte payload。
+     * @param byte_count 输入 byte 数量。
+     * @return 显式操作状态。
      */
     SerializeStatus WriteFixedBytes(SerializeFieldId field, const std::uint8_t* bytes, std::uint32_t byte_count);
     /**
-     * @comment Returns the clamped byte capacity of the writer.
-     * @return Byte capacity.
+     * @comment 返回 writer 截断后的 byte 容量。
+     * @return byte 容量。
      */
     std::uint32_t GetByteCapacity() const;
     /**
-     * @comment Returns the remaining writable byte capacity.
-     * @return Remaining writable byte capacity.
+     * @comment 返回剩余可写 byte 容量。
+     * @return 剩余可写 byte 容量。
      */
     std::uint32_t GetRemainingByteCapacity() const;
     /**
-     * @comment Checks whether the writer can commit the requested byte count.
-     * @param byte_count Input byte count.
-     * @return True when the writer can commit the bytes; false otherwise.
+     * @comment 检查 writer 是否可以提交请求的 byte 数量。
+     * @param byte_count 输入 byte 数量。
+     * @return writer 可以提交 bytes 时返回 true，否则返回 false。
      */
     bool CanCommitByteCount(std::uint32_t byte_count) const;
     /**
-     * @comment Returns a snapshot of the current state.
-     * @return Snapshot value.
+     * @comment 返回当前状态快照。
+     * @return 快照值。
      */
     SerializeSnapshot Snapshot() const;
 

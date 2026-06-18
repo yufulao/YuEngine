@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldComponentAttachmentSnapshotResult.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldComponentAttachmentSnapshotResult.h
 
 #pragma once
 
@@ -14,9 +14,9 @@ struct WorldComponentAttachmentSnapshotResult final {
     WorldComponentAttachmentSnapshotState state{};
 
     /**
-     * @comment Creates a successful snapshot result.
-     * @param state Input operation state.
-     * @return Explicit operation result.
+     * @comment 创建成功 snapshot result。
+     * @param state 输入 operation state。
+     * @return 显式操作结果。
      */
     static WorldComponentAttachmentSnapshotResult Success(
         const WorldComponentAttachmentSnapshotState &state) {
@@ -27,10 +27,10 @@ struct WorldComponentAttachmentSnapshotResult final {
     }
 
     /**
-     * @comment Creates a failed snapshot result.
-     * @param status Input snapshot status.
-     * @param serialize_status Input serialize status.
-     * @return Explicit operation result.
+     * @comment 创建失败 snapshot result。
+     * @param status 输入 snapshot status。
+     * @param serialize_status 输入 serialize status。
+     * @return 显式操作结果。
      */
     static WorldComponentAttachmentSnapshotResult Failure(
         WorldComponentAttachmentSnapshotStatus status,
@@ -42,8 +42,8 @@ struct WorldComponentAttachmentSnapshotResult final {
     }
 
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the result succeeded; false otherwise.
+     * @comment 检查 result 是否成功。
+     * @return result 成功时返回 true，否则返回 false。
      */
     bool Succeeded() const {
         return status == WorldComponentAttachmentSnapshotStatus::Success;

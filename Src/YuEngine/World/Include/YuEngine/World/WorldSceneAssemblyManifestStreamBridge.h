@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldSceneAssemblyManifestStreamBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldSceneAssemblyManifestStreamBridge.h
 
 #pragma once
 
@@ -21,20 +21,20 @@ namespace yuengine::world {
 class WorldSceneAssemblyManifestStreamBridge final {
 public:
     /**
-     * @comment Constructs a world scene assembly manifest stream bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 world scene assembly manifest stream bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldSceneAssemblyManifestStreamBridge(
         WorldSceneAssemblyManifestStreamDesc desc=WorldSceneAssemblyManifestStreamDesc{});
 
     /**
-     * @comment Writes caller-owned sidecar records to a deterministic manifest stream.
-     * @param writer Caller-owned serialize writer.
-     * @param input_attachments Caller-owned attachment records.
-     * @param input_attachment_count Input attachment record count.
-     * @param input_bindings Caller-owned component-resource binding records.
-     * @param input_binding_count Input binding record count.
-     * @return Explicit operation result.
+     * @comment 将调用方持有的 sidecar records 写入 deterministic manifest stream。
+     * @param writer 调用方持有的 serialize writer。
+     * @param input_attachments 调用方持有的 attachment records。
+     * @param input_attachment_count 输入 attachment record count。
+     * @param input_bindings 调用方持有的 component-resource binding records。
+     * @param input_binding_count 输入 binding record count。
+     * @return 显式操作结果。
      */
     WorldSceneAssemblyManifestStreamResult WriteManifest(
         yuengine::serialize::SerializeWriter *writer,
@@ -43,15 +43,15 @@ public:
         const WorldComponentResourceBindingSnapshotRecord *input_bindings,
         std::uint32_t input_binding_count);
     /**
-     * @comment Reads caller-owned sidecar records from a deterministic manifest stream.
-     * @param reader Caller-owned serialize reader.
-     * @param output_attachments Caller-owned attachment output records.
-     * @param output_attachment_capacity Attachment output capacity.
-     * @param out_attachment_count Output attachment record count.
-     * @param output_bindings Caller-owned binding output records.
-     * @param output_binding_capacity Binding output capacity.
-     * @param out_binding_count Output binding record count.
-     * @return Explicit operation result.
+     * @comment 从 deterministic manifest stream 读取调用方持有的 sidecar records。
+     * @param reader 调用方持有的 serialize reader。
+     * @param output_attachments 调用方持有的 attachment output records。
+     * @param output_attachment_capacity Attachment 输出容量。
+     * @param out_attachment_count 输出 attachment record count。
+     * @param output_bindings 调用方持有的 binding output records。
+     * @param output_binding_capacity Binding 输出容量。
+     * @param out_binding_count 输出 binding record count。
+     * @return 显式操作结果。
      */
     WorldSceneAssemblyManifestStreamResult ReadManifest(
         yuengine::serialize::SerializeReader *reader,
@@ -62,13 +62,13 @@ public:
         std::uint32_t output_binding_capacity,
         std::uint32_t *out_binding_count);
     /**
-     * @comment Writes caller-owned sidecar records to a deterministic manifest stream.
-     * @param writer Caller-owned serialize writer.
-     * @param input_attachments Caller-owned attachment records.
-     * @param input_attachment_count Input attachment record count.
-     * @param input_bindings Caller-owned component-resource binding records.
-     * @param input_binding_count Input binding record count.
-     * @return Explicit operation result.
+     * @comment 将调用方持有的 sidecar records 写入 deterministic manifest stream。
+     * @param writer 调用方持有的 serialize writer。
+     * @param input_attachments 调用方持有的 attachment records。
+     * @param input_attachment_count 输入 attachment record count。
+     * @param input_bindings 调用方持有的 component-resource binding records。
+     * @param input_binding_count 输入 binding record count。
+     * @return 显式操作结果。
      */
     WorldSceneAssemblyManifestStreamResult WriteSnapshot(
         yuengine::serialize::SerializeWriter *writer,
@@ -77,15 +77,15 @@ public:
         const WorldComponentResourceBindingSnapshotRecord *input_bindings,
         std::uint32_t input_binding_count);
     /**
-     * @comment Reads caller-owned sidecar records from a deterministic manifest stream.
-     * @param reader Caller-owned serialize reader.
-     * @param output_attachments Caller-owned attachment output records.
-     * @param output_attachment_capacity Attachment output capacity.
-     * @param out_attachment_count Output attachment record count.
-     * @param output_bindings Caller-owned binding output records.
-     * @param output_binding_capacity Binding output capacity.
-     * @param out_binding_count Output binding record count.
-     * @return Explicit operation result.
+     * @comment 从 deterministic manifest stream 读取调用方持有的 sidecar records。
+     * @param reader 调用方持有的 serialize reader。
+     * @param output_attachments 调用方持有的 attachment output records。
+     * @param output_attachment_capacity Attachment 输出容量。
+     * @param out_attachment_count 输出 attachment record count。
+     * @param output_bindings 调用方持有的 binding output records。
+     * @param output_binding_capacity Binding 输出容量。
+     * @param out_binding_count 输出 binding record count。
+     * @return 显式操作结果。
      */
     WorldSceneAssemblyManifestStreamResult ReadSnapshot(
         yuengine::serialize::SerializeReader *reader,
@@ -96,8 +96,8 @@ public:
         std::uint32_t output_binding_capacity,
         std::uint32_t *out_binding_count);
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldSceneAssemblyManifestStreamSnapshot Snapshot() const;
 

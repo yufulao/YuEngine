@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldComponentResourceBindingResult.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldComponentResourceBindingResult.h
 
 #pragma once
 
@@ -21,13 +21,13 @@ struct WorldComponentResourceBindingResult final {
     yuengine::resource::ResourceTypeId expected_resource_type{};
 
     /**
-     * @comment Creates a successful result.
-     * @param world_object_id Input world object id.
-     * @param component_type_id Input component type id.
-     * @param component_slot_id Input component slot id.
-     * @param resource_handle Input resource handle.
-     * @param expected_resource_type Input expected resource type.
-     * @return Explicit operation result.
+     * @comment 创建成功 result。
+     * @param world_object_id 输入 world object id。
+     * @param component_type_id 输入 component type id。
+     * @param component_slot_id 输入 component slot id。
+     * @param resource_handle 输入 resource handle。
+     * @param expected_resource_type 输入 expected resource type。
+     * @return 显式操作结果。
      */
     static WorldComponentResourceBindingResult Success(
         WorldObjectId world_object_id,
@@ -46,10 +46,10 @@ struct WorldComponentResourceBindingResult final {
     }
 
     /**
-     * @comment Creates a failed result.
-     * @param status Input bridge status.
-     * @param resource_status Input resource status.
-     * @return Explicit operation result.
+     * @comment 创建失败 result。
+     * @param status 输入 bridge status。
+     * @param resource_status 输入 resource status。
+     * @return 显式操作结果。
      */
     static WorldComponentResourceBindingResult Failure(
         WorldComponentResourceBindingStatus status,
@@ -65,8 +65,8 @@ struct WorldComponentResourceBindingResult final {
     }
 
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the result succeeded; false otherwise.
+     * @comment 检查 result 是否成功。
+     * @return result 成功时返回 true，否则返回 false。
      */
     bool Succeeded() const {
         return status == WorldComponentResourceBindingStatus::Success;

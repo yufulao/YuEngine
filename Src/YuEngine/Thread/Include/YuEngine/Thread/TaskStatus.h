@@ -1,5 +1,5 @@
-// Module: YuEngine Thread
-// File: Src/YuEngine/Thread/Include/YuEngine/Thread/TaskStatus.h
+// 模块: YuEngine Thread
+// 文件: Src/YuEngine/Thread/Include/YuEngine/Thread/TaskStatus.h
 
 #pragma once
 

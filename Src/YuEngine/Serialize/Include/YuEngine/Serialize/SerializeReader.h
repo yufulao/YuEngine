@@ -1,5 +1,5 @@
-// Module: YuEngine Serialize
-// File: Src/YuEngine/Serialize/Include/YuEngine/Serialize/SerializeReader.h
+// 模块: YuEngine Serialize
+// 文件: Src/YuEngine/Serialize/Include/YuEngine/Serialize/SerializeReader.h
 
 #pragma once
 
@@ -15,57 +15,57 @@ namespace yuengine::serialize {
 class SerializeReader final {
 public:
     /**
-     * @comment Constructs a SerializeReader instance.
-     * @param buffer Input buffer.
-     * @param byte_count Input byte count.
+     * @comment 构造 SerializeReader 实例。
+     * @param buffer 输入 buffer。
+     * @param byte_count 输入 byte 数量。
      */
     SerializeReader(const std::uint8_t* buffer, std::uint32_t byte_count);
 
     /**
-     * @comment Opens a serialized stream.
-     * @return Explicit operation status.
+     * @comment 打开 serialized stream。
+     * @return 显式操作状态。
      */
     SerializeStatus OpenStream();
     /**
-     * @comment Reads uint32.
-     * @param record Input record.
-     * @param field Input field.
-     * @param out_value Output value written on success.
-     * @return Explicit operation status.
+     * @comment 读取 uint32。
+     * @param record 输入 record。
+     * @param field 输入 field。
+     * @param out_value 成功时写入输出 value。
+     * @return 显式操作状态。
      */
     SerializeStatus ReadUInt32(SerializeRecordId record, SerializeFieldId field, std::uint32_t& out_value);
     /**
-     * @comment Reads int32.
-     * @param record Input record.
-     * @param field Input field.
-     * @param out_value Output value written on success.
-     * @return Explicit operation status.
+     * @comment 读取 int32。
+     * @param record 输入 record。
+     * @param field 输入 field。
+     * @param out_value 成功时写入输出 value。
+     * @return 显式操作状态。
      */
     SerializeStatus ReadInt32(SerializeRecordId record, SerializeFieldId field, std::int32_t& out_value);
     /**
-     * @comment Reads uint64.
-     * @param record Input record.
-     * @param field Input field.
-     * @param out_value Output value written on success.
-     * @return Explicit operation status.
+     * @comment 读取 uint64。
+     * @param record 输入 record。
+     * @param field 输入 field。
+     * @param out_value 成功时写入输出 value。
+     * @return 显式操作状态。
      */
     SerializeStatus ReadUInt64(SerializeRecordId record, SerializeFieldId field, std::uint64_t& out_value);
     /**
-     * @comment Reads int64.
-     * @param record Input record.
-     * @param field Input field.
-     * @param out_value Output value written on success.
-     * @return Explicit operation status.
+     * @comment 读取 int64。
+     * @param record 输入 record。
+     * @param field 输入 field。
+     * @param out_value 成功时写入输出 value。
+     * @return 显式操作状态。
      */
     SerializeStatus ReadInt64(SerializeRecordId record, SerializeFieldId field, std::int64_t& out_value);
     /**
-     * @comment Reads fixed bytes.
-     * @param record Input record.
-     * @param field Input field.
-     * @param out_bytes Output bytes written on success.
-     * @param out_capacity Output capacity written on success.
-     * @param out_byte_count Output byte count written on success.
-     * @return Explicit operation status.
+     * @comment 读取 fixed bytes。
+     * @param record 输入 record。
+     * @param field 输入 field。
+     * @param out_bytes 成功时写入输出 bytes。
+     * @param out_capacity 成功时写入输出 capacity。
+     * @param out_byte_count 成功时写入输出 byte count。
+     * @return 显式操作状态。
      */
     SerializeStatus ReadFixedBytes(
         SerializeRecordId record,
@@ -74,8 +74,8 @@ public:
         std::uint32_t out_capacity,
         std::uint32_t& out_byte_count);
     /**
-     * @comment Returns a snapshot of the current state.
-     * @return Snapshot value.
+     * @comment 返回当前状态快照。
+     * @return 快照值。
      */
     SerializeSnapshot Snapshot() const;
 

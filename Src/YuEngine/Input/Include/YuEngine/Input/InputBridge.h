@@ -1,5 +1,5 @@
-// Module: YuEngine Input
-// File: Src/YuEngine/Input/Include/YuEngine/Input/InputBridge.h
+// 模块: YuEngine Input
+// 文件: Src/YuEngine/Input/Include/YuEngine/Input/InputBridge.h
 
 #pragma once
 
@@ -17,12 +17,12 @@ namespace yuengine::input {
 class InputBridge final {
 public:
     /**
-     * @comment Constructs an empty input bridge owner.
+     * @comment 构造空的 input bridge owner。
      */
     InputBridge();
 
     /**
-     * @comment Shuts down the bridge owner when initialized.
+     * @comment 已初始化时关闭 bridge owner。
      */
     ~InputBridge();
 
@@ -30,68 +30,68 @@ public:
     InputBridge &operator=(const InputBridge &) = delete;
 
     /**
-     * @comment Initializes the bridge with fixed capacity and backend policy.
-     * @param desc Input bridge descriptor.
-     * @return Explicit operation status.
+     * @comment 使用 fixed capacity 和 backend policy 初始化 bridge。
+     * @param desc 输入 bridge descriptor。
+     * @return 显式操作状态。
      */
     InputStatus Initialize(const InputBridgeDesc &desc);
 
     /**
-     * @comment Shuts down the bridge and clears queued events.
-     * @return Explicit operation status.
+     * @comment 关闭 bridge 并清空 queued events。
+     * @return 显式操作状态。
      */
     InputStatus Shutdown();
 
     /**
-     * @comment Updates source focus state and records focus counters.
-     * @param focused Whether input source focus is active.
-     * @return Explicit operation status.
+     * @comment 更新 source focus state 并记录 focus counters。
+     * @param focused 表示 input source focus 是否 active。
+     * @return 显式操作状态。
      */
     InputStatus SetFocus(bool focused);
 
     /**
-     * @comment Submits a backend-neutral event into bounded bridge storage.
-     * @param event Event value.
-     * @return Explicit operation status.
+     * @comment 将 backend-neutral event 提交到 bounded bridge storage。
+     * @param event Event 值。
+     * @return 显式操作状态。
      */
     InputStatus SubmitEvent(const InputBridgeEvent &event);
 
     /**
-     * @comment Translates a native source message into bounded bridge events.
-     * @param message_code Source message code.
-     * @param word_value Source word-sized value.
-     * @param long_value Source long-sized value.
-     * @param source_focused Whether source focus is active for this message.
-     * @return Explicit operation status.
+     * @comment 将 native source message 转换为 bounded bridge events。
+     * @param message_code 输入 source message code。
+     * @param word_value Source word-sized 值。
+     * @param long_value Source long-sized 值。
+     * @param source_focused 表示此 message 的 source focus 是否 active。
+     * @return 显式操作状态。
      */
     InputStatus SubmitSourceMessage(std::uint32_t message_code, std::uintptr_t word_value, std::intptr_t long_value, bool source_focused);
 
     /**
-     * @comment Submits a backend-neutral gamepad state into bridge events.
-     * @param state Gamepad state value.
-     * @return Explicit operation status.
+     * @comment 将 backend-neutral gamepad state 提交到 bridge events。
+     * @param state Gamepad state 值。
+     * @return 显式操作状态。
      */
     InputStatus SubmitGamepadState(const InputGamepadState &state);
 
     /**
-     * @comment Polls a native gamepad source and submits the translated state.
-     * @param user_index Native gamepad slot index.
-     * @return Explicit operation status.
+     * @comment 轮询 native gamepad source 并提交 translated state。
+     * @param user_index 输入 native gamepad slot index。
+     * @return 显式操作状态。
      */
     InputStatus PollGamepad(std::uint32_t user_index);
 
     /**
-     * @comment Drains queued bridge events into caller-owned storage.
-     * @param events Caller-owned output buffer.
-     * @param event_capacity Number of records available in events.
-     * @param out_event_count Written event count.
-     * @return Explicit operation status.
+     * @comment 将 queued bridge events 排空到调用方持有存储。
+     * @param events 调用方持有的 output buffer。
+     * @param event_capacity events 中可用 record 数量。
+     * @param out_event_count Written event 数量。
+     * @return 显式操作状态。
      */
     InputStatus DrainEvents(InputBridgeEvent *events, std::size_t event_capacity, std::size_t &out_event_count);
 
     /**
-     * @comment Returns current bridge counters and status.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge counters 和 status。
+     * @return 快照值。
      */
     InputBridgeSnapshot Snapshot() const;
 

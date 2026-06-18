@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Src/WorldSceneObjectTransformRestoreBridge.cpp
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Src/WorldSceneObjectTransformRestoreBridge.cpp
 
 #include "YuEngine/World/WorldSceneObjectTransformRestoreBridge.h"
 

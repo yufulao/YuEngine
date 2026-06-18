@@ -1,5 +1,5 @@
-// Module: YuEngine Object
-// File: Src/YuEngine/Object/Src/ObjectRegistry.cpp
+// 模块: YuEngine Object
+// 文件: Src/YuEngine/Object/Src/ObjectRegistry.cpp
 
 #include "YuEngine/Object/ObjectRegistry.h"
 

@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldTransformBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldTransformBridge.h
 
 #pragma once
 
@@ -18,49 +18,49 @@ namespace yuengine::world {
 class WorldTransformBridge final {
 public:
     /**
-     * @comment Constructs a transform data bridge for one WorldInstance.
-     * @param world World instance queried by the bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 transform data bridge for one WorldInstance。
+     * @param world bridge 查询的 World instance。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldTransformBridge(WorldInstance &world,
         WorldTransformBridgeDesc desc=WorldTransformBridgeDesc{});
 
     /**
-     * @comment Registers transform state for an existing world object.
-     * @param world_object_id Input world object id.
-     * @param transform_state Input transform state.
-     * @return Explicit operation result.
+     * @comment 为 existing world object 注册 transform state。
+     * @param world_object_id 输入 world object id。
+     * @param transform_state 输入 transform state。
+     * @return 显式操作结果。
      */
     WorldTransformResult Register(WorldObjectId world_object_id,
         const WorldTransformState &transform_state);
     /**
-     * @comment Updates transform state for an existing transform record.
-     * @param world_object_id Input world object id.
-     * @param transform_state Input transform state.
-     * @return Explicit operation status.
+     * @comment 更新 existing transform record 的 transform state。
+     * @param world_object_id 输入 world object id。
+     * @param transform_state 输入 transform state。
+     * @return 显式操作状态。
      */
     WorldTransformStatus Set(WorldObjectId world_object_id,
         const WorldTransformState &transform_state);
     /**
-     * @comment Queries transform state for an existing transform record.
-     * @param world_object_id Input world object id.
-     * @return Explicit operation result.
+     * @comment 查询 existing transform record 的 transform state。
+     * @param world_object_id 输入 world object id。
+     * @return 显式操作结果。
      */
     WorldTransformResult Query(WorldObjectId world_object_id);
     /**
-     * @comment Removes one transform record.
-     * @param world_object_id Input world object id.
-     * @return Explicit operation status.
+     * @comment 移除一个 transform record。
+     * @param world_object_id 输入 world object id。
+     * @return 显式操作状态。
      */
     WorldTransformStatus Remove(WorldObjectId world_object_id);
     /**
-     * @comment Removes all transform records.
-     * @return Explicit operation status.
+     * @comment 移除所有 transform records。
+     * @return 显式操作状态。
      */
     WorldTransformStatus Clear();
     /**
-     * @comment Returns a snapshot of the current transform bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 transform bridge 状态快照。
+     * @return 快照值。
      */
     WorldTransformSnapshot Snapshot() const;
 

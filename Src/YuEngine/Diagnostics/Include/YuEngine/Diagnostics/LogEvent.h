@@ -1,5 +1,5 @@
-// Module: YuEngine Diagnostics
-// File: Src/YuEngine/Diagnostics/Include/YuEngine/Diagnostics/LogEvent.h
+// 模块: YuEngine Diagnostics
+// 文件: Src/YuEngine/Diagnostics/Include/YuEngine/Diagnostics/LogEvent.h
 
 #pragma once
 

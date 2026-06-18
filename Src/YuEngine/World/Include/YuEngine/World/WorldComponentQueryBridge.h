@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldComponentQueryBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldComponentQueryBridge.h
 
 #pragma once
 
@@ -12,25 +12,25 @@ namespace yuengine::world {
 class WorldComponentQueryBridge final {
 public:
     /**
-     * @comment Constructs a world component query bridge.
+     * @comment 构造 world component query bridge。
      */
     WorldComponentQueryBridge();
 
     /**
-     * @comment Queries world object ids for one component type id.
-     * @param desc Input type query descriptor.
-     * @return Explicit operation result.
+     * @comment 查询 world object ids for one component type id。
+     * @param desc 输入 type query descriptor。
+     * @return 显式操作结果。
      */
     WorldComponentQueryResult QueryType(const WorldComponentQueryTypeDesc &desc);
     /**
-     * @comment Queries component attachments for one world object id.
-     * @param desc Input object query descriptor.
-     * @return Explicit operation result.
+     * @comment 查询 component attachments for one world object id。
+     * @param desc 输入 object query descriptor。
+     * @return 显式操作结果。
      */
     WorldComponentQueryResult QueryObject(const WorldComponentQueryObjectDesc &desc);
     /**
-     * @comment Returns a snapshot of the current query bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 query bridge 状态快照。
+     * @return 快照值。
      */
     WorldComponentQuerySnapshot Snapshot() const;
 

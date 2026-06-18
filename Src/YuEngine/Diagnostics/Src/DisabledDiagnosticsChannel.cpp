@@ -1,5 +1,5 @@
-// Module: YuEngine Diagnostics
-// File: Src/YuEngine/Diagnostics/Src/DisabledDiagnosticsChannel.cpp
+// 模块: YuEngine Diagnostics
+// 文件: Src/YuEngine/Diagnostics/Src/DisabledDiagnosticsChannel.cpp
 
 #include "YuEngine/Diagnostics/DisabledDiagnosticsChannel.h"
 

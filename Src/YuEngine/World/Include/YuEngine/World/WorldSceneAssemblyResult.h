@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldSceneAssemblyResult.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldSceneAssemblyResult.h
 
 #pragma once
 
@@ -24,9 +24,9 @@ struct WorldSceneAssemblyResult final {
     WorldSceneAssemblyState state{};
 
     /**
-     * @comment Creates a successful scene assembly result.
-     * @param state Input operation state.
-     * @return Explicit operation result.
+     * @comment 创建成功 scene assembly result。
+     * @param state 输入 operation state。
+     * @return 显式操作结果。
      */
     static WorldSceneAssemblyResult Success(const WorldSceneAssemblyState &state) {
         return WorldSceneAssemblyResult{
@@ -39,13 +39,13 @@ struct WorldSceneAssemblyResult final {
     }
 
     /**
-     * @comment Creates a failed scene assembly result.
-     * @param status Input scene assembly status.
-     * @param attachment_status Input component attachment status.
-     * @param binding_status Input component-resource binding status.
-     * @param binding_restore_status Input binding restore status.
-     * @param resource_status Input resource status.
-     * @return Explicit operation result.
+     * @comment 创建失败 scene assembly result。
+     * @param status 输入 scene assembly status。
+     * @param attachment_status 输入 component attachment status。
+     * @param binding_status 输入 component-resource binding status。
+     * @param binding_restore_status 输入 binding restore status。
+     * @param resource_status 输入 resource status。
+     * @return 显式操作结果。
      */
     static WorldSceneAssemblyResult Failure(
         WorldSceneAssemblyStatus status,
@@ -67,8 +67,8 @@ struct WorldSceneAssemblyResult final {
     }
 
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the result succeeded; false otherwise.
+     * @comment 检查 result 是否成功。
+     * @return result 成功时返回 true，否则返回 false。
      */
     bool Succeeded() const {
         return status == WorldSceneAssemblyStatus::Success;

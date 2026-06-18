@@ -1,5 +1,5 @@
-// Module: YuEngine Serialize
-// File: Src/YuEngine/Serialize/Include/YuEngine/Serialize/SerializeSnapshot.h
+// 模块: YuEngine Serialize
+// 文件: Src/YuEngine/Serialize/Include/YuEngine/Serialize/SerializeSnapshot.h
 
 #pragma once
 

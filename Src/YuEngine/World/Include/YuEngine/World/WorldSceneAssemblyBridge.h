@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldSceneAssemblyBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldSceneAssemblyBridge.h
 
 #pragma once
 
@@ -30,22 +30,22 @@ class WorldComponentResourceBindingBridge;
 class WorldSceneAssemblyBridge final {
 public:
     /**
-     * @comment Constructs a world scene assembly bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 world scene assembly bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldSceneAssemblyBridge(
         WorldSceneAssemblyBridgeDesc desc=WorldSceneAssemblyBridgeDesc{});
 
     /**
-     * @comment Restores caller-owned sidecar records after full assembly preflight.
-     * @param attachment_destination Caller-owned attachment destination.
-     * @param binding_destination Caller-owned binding destination.
-     * @param resource_registry Caller-owned resource registry.
-     * @param input_attachments Caller-owned attachment input records.
-     * @param input_attachment_count Input attachment record count.
-     * @param input_bindings Caller-owned binding input records.
-     * @param input_binding_count Input binding record count.
-     * @return Explicit operation result.
+     * @comment 在 full assembly preflight 后恢复调用方持有的 sidecar records。
+     * @param attachment_destination 调用方持有的 attachment destination。
+     * @param binding_destination 调用方持有的 binding destination。
+     * @param resource_registry 调用方持有的 resource registry。
+     * @param input_attachments 调用方持有的 attachment input records。
+     * @param input_attachment_count 输入 attachment record count。
+     * @param input_bindings 调用方持有的 binding input records。
+     * @param input_binding_count 输入 binding record count。
+     * @return 显式操作结果。
      */
     WorldSceneAssemblyResult Restore(
         WorldComponentAttachmentBridge *attachment_destination,
@@ -56,8 +56,8 @@ public:
         const WorldComponentResourceBindingSnapshotRecord *input_bindings,
         std::uint32_t input_binding_count);
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldSceneAssemblySnapshot Snapshot() const;
 

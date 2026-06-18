@@ -1,5 +1,5 @@
-// Module: YuEngine Package
-// File: Src/YuEngine/Package/Include/YuEngine/Package/PackageSourceKey.h
+// 模块: YuEngine Package
+// 文件: Src/YuEngine/Package/Include/YuEngine/Package/PackageSourceKey.h
 
 #pragma once
 
@@ -13,39 +13,39 @@ namespace yuengine::package {
 class PackageSourceKey final {
 public:
     /**
-     * @comment Constructs a PackageSourceKey instance.
+     * @comment 构造 PackageSourceKey 实例。
      */
     PackageSourceKey();
     /**
-     * @comment Constructs a PackageSourceKey instance.
-     * @param value Input value.
+     * @comment 构造 PackageSourceKey 实例。
+     * @param value 输入 value。
      */
     explicit PackageSourceKey(std::string_view value);
 
     /**
-     * @comment Returns the stored value.
-     * @return Value value.
+     * @comment 返回 stored value。
+     * @return Value 值。
      */
     std::string_view Value() const;
     /**
-     * @comment Returns the stored byte length.
-     * @return Byte length value.
+     * @comment 返回 stored byte length。
+     * @return Byte length 值。
      */
     std::size_t ByteLength() const;
     /**
-     * @comment Checks whether the value is valid.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查 value 是否有效。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool IsValid() const;
     /**
-     * @comment Checks whether the value is within bounds.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查 value 是否在范围内。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool IsWithinBounds() const;
     /**
-     * @comment Checks whether the values are equal.
-     * @param other Input other.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查 values 是否相等。
+     * @param other 输入 other。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool Equals(const PackageSourceKey& other) const;
 

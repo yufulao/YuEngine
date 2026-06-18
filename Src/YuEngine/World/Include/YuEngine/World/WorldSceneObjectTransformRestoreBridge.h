@@ -1,5 +1,5 @@
-// Module: YuEngine World
-// File: Src/YuEngine/World/Include/YuEngine/World/WorldSceneObjectTransformRestoreBridge.h
+// 模块: YuEngine World
+// 文件: Src/YuEngine/World/Include/YuEngine/World/WorldSceneObjectTransformRestoreBridge.h
 
 #pragma once
 
@@ -27,24 +27,24 @@ class WorldTransformBridge;
 class WorldSceneObjectTransformRestoreBridge final {
 public:
     /**
-     * @comment Constructs a world scene object-transform restore bridge.
-     * @param desc Input bridge descriptor.
+     * @comment 构造 world scene object-transform restore bridge。
+     * @param desc 输入 bridge descriptor。
      */
     explicit WorldSceneObjectTransformRestoreBridge(
         WorldSceneObjectTransformRestoreBridgeDesc desc=
             WorldSceneObjectTransformRestoreBridgeDesc{});
 
     /**
-     * @comment Applies caller-owned object identity and transform records after full preflight.
-     * @param world Caller-owned world instance.
-     * @param object_registry Caller-owned object registry.
-     * @param identity_destination Caller-owned identity destination bridge.
-     * @param transform_destination Caller-owned transform destination bridge.
-     * @param input_identities Caller-owned identity input records.
-     * @param input_identity_count Input identity record count.
-     * @param input_transforms Caller-owned transform input records.
-     * @param input_transform_count Input transform record count.
-     * @return Explicit operation result.
+     * @comment 在 full preflight 后应用调用方持有的 object identity 和 transform records。
+     * @param world 调用方持有的 world instance。
+     * @param object_registry 调用方持有的 object registry。
+     * @param identity_destination 调用方持有的 identity destination bridge。
+     * @param transform_destination 调用方持有的 transform destination bridge。
+     * @param input_identities 调用方持有的 identity input records。
+     * @param input_identity_count 输入 identity record count。
+     * @param input_transforms 调用方持有的 transform input records。
+     * @param input_transform_count 输入 transform record count。
+     * @return 显式操作结果。
      */
     WorldSceneObjectTransformRestoreResult Restore(
         WorldInstance *world,
@@ -56,8 +56,8 @@ public:
         const WorldSceneObjectTransformRestoreTransformRecord *input_transforms,
         std::uint32_t input_transform_count);
     /**
-     * @comment Returns a snapshot of the current bridge state.
-     * @return Snapshot value.
+     * @comment 返回当前 bridge 状态快照。
+     * @return 快照值。
      */
     WorldSceneObjectTransformRestoreSnapshot Snapshot() const;
 
