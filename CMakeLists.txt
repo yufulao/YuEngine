@@ -214,6 +214,7 @@ target_link_libraries(YuStreaming PUBLIC YuMemory YuPackage YuResource YuFile Yu
 
 add_library(YuRenderCore
     Src/YuEngine/RenderCore/Src/MaterialBindingFixture.cpp
+    Src/YuEngine/RenderCore/Src/RenderCamera.cpp
     Src/YuEngine/RenderCore/Src/RenderDrawableFramePipeline.cpp
     Src/YuEngine/RenderCore/Src/RenderFixturePass.cpp
     Src/YuEngine/RenderCore/Src/RenderFramePacketFixture.cpp
@@ -1006,6 +1007,18 @@ yuengine_add_labeled_test(RenderCore_FramePacket_RejectsDuplicateFrameIdWithoutM
 yuengine_add_labeled_test(RenderCore_FramePacket_RejectsPacketCapacityWithoutMutation YuRenderCoreTests Fast ModuleFixture Material RenderCore RHI PerformanceSmoke EvidenceOracle)
 yuengine_add_labeled_test(RenderCore_FramePacket_PropagatesSubmissionBatchFailure YuRenderCoreTests Fast ModuleFixture Material RenderCore RHI EvidenceOracle)
 yuengine_add_labeled_test(RenderCore_FramePacket_SnapshotTracksBoundedCounters YuRenderCoreTests Fast ModuleFixture Material RenderCore RHI PerformanceSmoke EvidenceOracle)
+
+add_executable(YuRenderCameraTests
+    Tests/RenderCore/RenderCameraTests.cpp
+)
+yuengine_apply_compile_options(YuRenderCameraTests)
+target_link_libraries(YuRenderCameraTests PRIVATE YuRenderCore)
+yuengine_add_labeled_test(RenderCore_CameraBuildsPerspectiveFrame YuRenderCameraTests Fast ModuleFixture Camera RenderCore EvidenceOracle)
+yuengine_add_labeled_test(RenderCore_CameraBuildsOrthographicFrame YuRenderCameraTests Fast ModuleFixture Camera RenderCore EvidenceOracle)
+yuengine_add_labeled_test(RenderCore_CameraRejectsInvalidProjectionWithoutOutputMutation YuRenderCameraTests Fast ModuleFixture Camera RenderCore EvidenceOracle)
+yuengine_add_labeled_test(RenderCore_CameraRejectsDegeneratePoseWithoutOutputMutation YuRenderCameraTests Fast ModuleFixture Camera RenderCore EvidenceOracle)
+yuengine_add_labeled_test(RenderCore_CameraSnapshotTracksCounters YuRenderCameraTests Fast ModuleFixture Camera RenderCore PerformanceSmoke EvidenceOracle)
+yuengine_add_labeled_test(RenderCore_CameraHasNarrowDependencyBoundary YuRenderCameraTests Fast ModuleFixture Camera RenderCore EvidenceOracle)
 
 add_executable(YuRenderDrawableFramePipelineTests
     Tests/RenderCore/RenderDrawableFramePipelineTests.cpp
