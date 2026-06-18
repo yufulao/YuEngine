@@ -269,6 +269,16 @@ target_include_directories(YuKernel
 target_link_libraries(YuKernel PUBLIC YuPlatform)
 target_link_libraries(YuWorld PUBLIC YuKernel)
 
+add_library(YuHardware
+    Src/YuEngine/Hardware/Src/HardwareFrameHost.cpp
+)
+yuengine_apply_compile_options(YuHardware)
+target_include_directories(YuHardware
+    PUBLIC
+        Src/YuEngine/Hardware/Include
+)
+target_link_libraries(YuHardware PUBLIC YuAudio YuInput YuPlatform YuRenderCore YuRHI)
+
 add_executable(YuHeadless
     Apps/YuEngineHeadless/Main.cpp
 )
@@ -1451,3 +1461,19 @@ add_executable(YuInputHardwareSmokeTests
 yuengine_apply_compile_options(YuInputHardwareSmokeTests)
 target_link_libraries(YuInputHardwareSmokeTests PRIVATE YuInput)
 yuengine_add_labeled_test(Input_HardwareBridge_TranslatesSourceMessages YuInputHardwareSmokeTests HardwareSmoke Input Win32 Win32Message)
+
+add_executable(YuHardwareFrameHostTests
+    Tests/Hardware/HardwareFrameHostTests.cpp
+)
+yuengine_apply_compile_options(YuHardwareFrameHostTests)
+target_link_libraries(YuHardwareFrameHostTests PRIVATE YuHardware)
+yuengine_add_labeled_test(HardwareFrameHost_TranslatesInjectedPlatformInput YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input EvidenceOracle)
+yuengine_add_labeled_test(HardwareFrameHost_RejectsInvalidDescriptor YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input EvidenceOracle)
+yuengine_add_labeled_test(HardwareFrameHost_RejectsTickBeforeInitialize YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input)
+
+add_executable(YuHardwareFrameHostD3D11Smoke
+    Tests/Hardware/HardwareFrameHostD3D11HardwareSmokeTests.cpp
+)
+yuengine_apply_compile_options(YuHardwareFrameHostD3D11Smoke)
+target_link_libraries(YuHardwareFrameHostD3D11Smoke PRIVATE YuHardware)
+yuengine_add_labeled_test(HardwareFrameHost_D3D11IntegratedFrameRuns YuHardwareFrameHostD3D11Smoke HardwareSmoke Hardware Platform Input RenderCore RHI D3D11 Win32 Audio XAudio2 FramePipeline EvidenceOracle)
