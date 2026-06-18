@@ -1,5 +1,5 @@
-// Module: YuEngine File
-// File: Src/YuEngine/File/Src/AsyncFileReadQueue.cpp
+// 模块: YuEngine File
+// 文件: Src/YuEngine/File/Src/AsyncFileReadQueue.cpp
 
 #include "YuEngine/File/AsyncFileReadQueue.h"
 

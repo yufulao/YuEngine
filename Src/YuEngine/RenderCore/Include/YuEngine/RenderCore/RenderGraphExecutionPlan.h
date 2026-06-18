@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlan.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlan.h
 
 #pragma once
 
@@ -18,42 +18,42 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Owns bounded RenderCore render graph execution-plan metadata records.
+ * @comment 持有固定容量 RenderCore render graph execution-plan 元数据记录。
  */
 class RenderGraphExecutionPlan final {
 public:
     /**
-     * @comment Constructs a RenderGraphExecutionPlan instance.
-     * @param desc Input descriptor.
+     * @comment 构造 RenderGraphExecutionPlan 实例。
+     * @param desc 输入描述。
      */
     explicit RenderGraphExecutionPlan(
         const RenderGraphExecutionPlanDesc &desc=RenderGraphExecutionPlanDesc());
 
     /**
-     * @comment Validates a prepared graph result and executes one frame packet handoff.
-     * @param request Caller-owned execution-plan request.
-     * @return Explicit operation result.
+     * @comment 验证准备好的 graph 结果并执行一次 frame packet 交接。
+     * @param request 调用方持有的 execution-plan 请求。
+     * @return 显式操作结果。
      */
     RenderGraphExecutionPlanResult Execute(const RenderGraphExecutionPlanRequest &request);
     /**
-     * @comment Copies retained execution-plan records into caller-owned output storage.
-     * @param output Caller-owned plan record output storage.
-     * @return Number of records copied.
+     * @comment 将保留的 execution-plan 记录复制到调用方持有输出存储。
+     * @param output 调用方持有的 plan 记录输出存储。
+     * @return 已复制的记录数量。
      */
     std::size_t QueryRecords(std::span<RenderGraphExecutionPlanRecord> output);
     /**
-     * @comment Releases one retained execution-plan metadata record.
-     * @param plan_id Plan identifier to release.
-     * @return Explicit operation status.
+     * @comment 释放一条保留的 execution-plan 元数据记录。
+     * @param plan_id 要释放的 Plan 标识符。
+     * @return 显式操作状态。
      */
     RenderGraphExecutionPlanStatus Release(std::uint32_t plan_id);
     /**
-     * @comment Returns the current execution-plan snapshot.
-     * @return Snapshot value.
+     * @comment 返回当前 execution-plan 快照。
+     * @return 快照值。
      */
     RenderGraphExecutionPlanSnapshot Snapshot() const;
     /**
-     * @comment Resets bounded execution-plan records and counters.
+     * @comment 重置固定容量 execution-plan 记录和计数。
      */
     void Reset();
 

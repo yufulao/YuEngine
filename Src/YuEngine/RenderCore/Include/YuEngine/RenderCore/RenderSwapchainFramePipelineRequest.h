@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSwapchainFramePipelineRequest.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSwapchainFramePipelineRequest.h
 
 #pragma once
 
@@ -13,7 +13,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Describes one RenderCore frame submitted to an RHI swapchain backbuffer.
+ * @comment 描述提交到 RHI swapchain backbuffer 的一个 RenderCore 帧。
  */
 struct RenderSwapchainFramePipelineRequest final {
     yuengine::rhi::IRhiDevice *rhi_device = nullptr;

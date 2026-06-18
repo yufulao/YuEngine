@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawPacketSnapshot.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawPacketSnapshot.h
 
 #pragma once
 
@@ -10,7 +10,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Snapshot of bounded RenderDrawPacket records and counters.
+ * @comment 固定容量 RenderDrawPacket 记录 和 计数器 的快照。
  */
 struct RenderDrawPacketSnapshot final {
     std::size_t draw_record_capacity = 0U;

@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderShaderProgramResult.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderShaderProgramResult.h
 
 #pragma once
 
@@ -9,7 +9,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains the result of one shader program operation.
+ * @comment 包含 结果 的 一个 shader program 操作。
  */
 struct RenderShaderProgramResult final {
     RenderShaderProgramStatus status = RenderShaderProgramStatus::InvalidArgument;

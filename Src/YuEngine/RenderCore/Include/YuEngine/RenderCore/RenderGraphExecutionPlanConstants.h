@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlanConstants.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlanConstants.h
 
 #pragma once
 
@@ -7,7 +7,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Maximum number of retained RenderCore render graph execution-plan records.
+ * @comment 最大数量： 保留的 RenderCore render graph execution-plan 记录.
  */
 constexpr std::size_t MAX_RENDER_GRAPH_EXECUTION_PLAN_RECORDS = 8U;
 }

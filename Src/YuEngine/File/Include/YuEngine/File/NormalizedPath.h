@@ -1,5 +1,5 @@
-// Module: YuEngine File
-// File: Src/YuEngine/File/Include/YuEngine/File/NormalizedPath.h
+// 模块: YuEngine File
+// 文件: Src/YuEngine/File/Include/YuEngine/File/NormalizedPath.h
 
 #pragma once
 
@@ -10,28 +10,28 @@ namespace yuengine::file {
 class NormalizedPath final {
 public:
     /**
-     * @comment Constructs a NormalizedPath instance.
+     * @comment 构造 NormalizedPath 实例。
      */
     NormalizedPath();
     /**
-     * @comment Constructs a NormalizedPath instance.
-     * @param value Input value.
+     * @comment 构造 NormalizedPath 实例。
+     * @param value 输入 值。
      */
     explicit NormalizedPath(std::string value);
 
     /**
-     * @comment Returns the stored value.
-     * @return Value value.
+     * @comment 返回保存的值。
+     * @return 值 值。
      */
     std::string_view Value() const;
     /**
-     * @comment Returns the stored byte length.
-     * @return Byte length value.
+     * @comment 返回保存的字节长度。
+     * @return 字节 length 值。
      */
     std::size_t ByteLength() const;
     /**
-     * @comment Checks whether the value is valid.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查值是否合法。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool IsValid() const;
 

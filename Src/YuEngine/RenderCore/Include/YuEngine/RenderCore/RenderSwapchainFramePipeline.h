@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSwapchainFramePipeline.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSwapchainFramePipeline.h
 
 #pragma once
 
@@ -15,30 +15,30 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Submits one bounded RenderCore frame to the current RHI swapchain backbuffer.
+ * @comment 提交 一个 固定容量 RenderCore frame 到 当前 RHI swapchain backbuffer。
  */
 class RenderSwapchainFramePipeline final {
 public:
     /**
-     * @comment Constructs a RenderSwapchainFramePipeline instance.
-     * @param desc Input descriptor.
+     * @comment 构造 RenderSwapchainFramePipeline 实例。
+     * @param desc 输入描述。
      */
     explicit RenderSwapchainFramePipeline(
         const RenderSwapchainFramePipelineDesc &desc=RenderSwapchainFramePipelineDesc());
 
     /**
-     * @comment Executes one clear, submit, present, and capture operation against an RHI swapchain.
-     * @param request Caller-owned frame request.
-     * @return Explicit operation result.
+     * @comment 对 RHI swapchain 执行一次 clear、submit、呈现 和 capture 操作。
+     * @param request 调用方持有的 帧请求。
+     * @return 显式操作结果。
      */
     RenderSwapchainFramePipelineResult Execute(const RenderSwapchainFramePipelineRequest &request);
     /**
-     * @comment Returns the current frame pipeline snapshot.
-     * @return Snapshot value.
+     * @comment 返回当前 frame pipeline 快照。
+     * @return 快照值。
      */
     RenderSwapchainFramePipelineSnapshot Snapshot() const;
     /**
-     * @comment Resets bounded frame records and counters.
+     * @comment 重置固定容量 frame 记录和计数。
      */
     void Reset();
 

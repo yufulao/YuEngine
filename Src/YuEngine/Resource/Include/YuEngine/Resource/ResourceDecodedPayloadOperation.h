@@ -1,13 +1,13 @@
 /**
  * @file Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceDecodedPayloadOperation.h
- * @brief Resource module decoded payload operation value contract.
+ * @brief Resource 模块解码载荷操作值契约。
  */
 #pragma once
 
 namespace yuengine::resource {
 
 /**
- * @brief Identifies the last operation applied to decoded payload storage.
+ * @brief 标识应用到 decoded payload 存储的最后操作。
  */
 enum class ResourceDecodedPayloadOperation {
     None,

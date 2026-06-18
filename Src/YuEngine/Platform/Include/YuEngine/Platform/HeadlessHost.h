@@ -1,5 +1,5 @@
-// Module: YuEngine Platform
-// File: Src/YuEngine/Platform/Include/YuEngine/Platform/HeadlessHost.h
+// 模块: YuEngine Platform
+// 文件: Src/YuEngine/Platform/Include/YuEngine/Platform/HeadlessHost.h
 
 #pragma once
 
@@ -13,17 +13,17 @@ namespace yuengine::platform {
 class HeadlessHost final {
 public:
     /**
-     * @comment Constructs a HeadlessHost instance.
-     * @param frame_clock Frame clock updated by the function.
-     * @param log_sink Log sink updated by the function.
+     * @comment 构造 HeadlessHost 实例。
+     * @param frame_clock 函数写入的 Frame clock。
+     * @param log_sink 函数写入的 Log sink。
      */
     HeadlessHost(IFrameClock& frame_clock, diagnostics::ILogSink& log_sink);
 
     /**
-     * @comment Runs the host loop.
-     * @param runtime Runtime updated by the function.
-     * @param config Input configuration.
-     * @return Explicit operation result.
+     * @comment 运行 host loop。
+     * @param runtime 函数写入的 Runtime。
+     * @param config 输入 configuration。
+     * @return 显式操作结果。
      */
     HostRunResult Run(IHostRuntime& runtime, const HeadlessHostConfig& config);
 

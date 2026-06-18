@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawPacketResult.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawPacketResult.h
 
 #pragma once
 
@@ -9,7 +9,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Result for one RenderDrawPacket build request.
+ * @comment 一个 RenderDrawPacket build 请求 的结果。
  */
 struct RenderDrawPacketResult final {
     RenderDrawPacketStatus status = RenderDrawPacketStatus::Success;

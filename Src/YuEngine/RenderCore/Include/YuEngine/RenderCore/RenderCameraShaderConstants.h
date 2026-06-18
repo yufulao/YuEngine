@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderCameraShaderConstants.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderCameraShaderConstants.h
 
 #pragma once
 
@@ -8,14 +8,14 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Stores the compact camera constant block used by first-slice shaders.
+ * @comment 存储 first-slice shader 使用的紧凑 camera constant block。
  */
 struct RenderCameraShaderConstants final {
     std::array<float, 16U> view_projection_values{};
 };
 
 /**
- * @comment Byte size of RenderCameraShaderConstants.
+ * @comment RenderCameraShaderConstants 的字节大小。
  */
 constexpr std::size_t RENDER_CAMERA_SHADER_CONSTANT_BYTES = 64U;
 }

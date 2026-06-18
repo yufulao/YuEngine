@@ -1,5 +1,5 @@
-// Module: YuEngine Platform
-// File: Src/YuEngine/Platform/Include/YuEngine/Platform/WindowsPlatformWindow.h
+// 模块: YuEngine Platform
+// 文件: Src/YuEngine/Platform/Include/YuEngine/Platform/WindowsPlatformWindow.h
 
 #pragma once
 
@@ -20,12 +20,12 @@ struct WindowsPlatformWindowAccess;
 class WindowsPlatformWindow final {
 public:
     /**
-     * @comment Constructs an empty Windows platform window wrapper.
+     * @comment 构造空 Windows platform 窗口 wrapper。
      */
     WindowsPlatformWindow();
 
     /**
-     * @comment Destroys the wrapped native window when one exists.
+     * @comment 存在 wrapped native 窗口 时销毁它。
      */
     ~WindowsPlatformWindow();
 
@@ -33,59 +33,59 @@ public:
     WindowsPlatformWindow& operator=(const WindowsPlatformWindow&) = delete;
 
     /**
-     * @comment Creates a native window from a validated Platform descriptor.
-     * @param desc Input window descriptor.
-     * @return Explicit operation status.
+     * @comment 创建 一个 native 窗口 从 一个 已验证 Platform 描述。
+     * @param desc 输入 窗口 描述。
+     * @return 显式操作状态。
      */
     PlatformWindowStatus Create(const PlatformWindowDesc& desc);
 
     /**
-     * @comment Destroys the native window and invalidates the native surface.
-     * @return Explicit operation status.
+     * @comment 销毁 native 窗口 并使 native surface 失效。
+     * @return 显式操作状态。
      */
     PlatformWindowStatus Destroy();
 
     /**
-     * @comment Shows the native window.
-     * @return Explicit operation status.
+     * @comment 显示 native 窗口。
+     * @return 显式操作状态。
      */
     PlatformWindowStatus Show();
 
     /**
-     * @comment Hides the native window.
-     * @return Explicit operation status.
+     * @comment 隐藏 native 窗口。
+     * @return 显式操作状态。
      */
     PlatformWindowStatus Hide();
 
     /**
-     * @comment Requests a close event without silently destroying the window.
-     * @return Explicit operation status.
+     * @comment 请求 一个 close event 且不 silently destroying 窗口。
+     * @return 显式操作状态。
      */
     PlatformWindowStatus RequestClose();
 
     /**
-     * @comment Polls pending platform events into caller-owned storage.
-     * @param events Caller-owned event output buffer.
-     * @param event_capacity Number of records available in events.
-     * @return Poll status and number of written events.
+     * @comment 轮询 待处理 platform events 写入 调用方持有 存储.
+     * @param events 调用方持有的 event output buffer。
+     * @param event_capacity 记录 可用 在 events 的数量。
+     * @return Poll 状态 和 数量 的 写入的 events.
      */
     PlatformWindowPollResult PollEvents(PlatformWindowEvent* events, std::size_t event_capacity);
 
     /**
-     * @comment Returns the current immutable Platform window snapshot.
-     * @return Current snapshot value.
+     * @comment 返回当前 immutable Platform 窗口 快照。
+     * @return 当前快照值。
      */
     PlatformWindowSnapshot GetSnapshot() const;
 
     /**
-     * @comment Returns the current opaque native surface value.
-     * @return Current native surface value.
+     * @comment 返回当前 opaque native surface 值。
+     * @return 当前 native surface 值。
      */
     PlatformNativeSurface GetNativeSurface() const;
 
     /**
-     * @comment Returns whether a native window is currently created.
-     * @return True when the native window is live.
+     * @comment 返回 native 窗口当前是否已创建。
+     * @return native 窗口 存活时返回 true。
      */
     bool IsCreated() const;
 

@@ -1,5 +1,5 @@
-// Module: YuEngine Memory
-// File: Src/YuEngine/Memory/Src/DisabledMemoryTracker.cpp
+// 模块: YuEngine Memory
+// 文件: Src/YuEngine/Memory/Src/DisabledMemoryTracker.cpp
 
 #include "YuEngine/Memory/DisabledMemoryTracker.h"
 

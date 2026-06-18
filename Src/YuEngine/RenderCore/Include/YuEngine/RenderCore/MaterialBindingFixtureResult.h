@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/MaterialBindingFixtureResult.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/MaterialBindingFixtureResult.h
 
 #pragma once
 
@@ -12,7 +12,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains the result of one material binding fixture operation.
+ * @comment 包含 结果 的 一个 material 绑定 fixture 操作。
  */
 struct MaterialBindingFixtureResult final {
     MaterialBindingFixtureStatus status = MaterialBindingFixtureStatus::InvalidArgument;

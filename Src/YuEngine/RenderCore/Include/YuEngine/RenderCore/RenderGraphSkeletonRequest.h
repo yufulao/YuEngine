@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphSkeletonRequest.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphSkeletonRequest.h
 
 #pragma once
 
@@ -15,7 +15,7 @@ namespace yuengine::rendercore {
 class RenderFixturePass;
 
 /**
- * @comment Describes one caller-owned RenderCore render graph skeleton prepare operation.
+ * @comment 描述 一个 调用方持有 RenderCore render graph skeleton prepare 操作.
  */
 struct RenderGraphSkeletonRequest final {
     std::uint32_t graph_id = 0U;

@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFixturePassDesc.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFixturePassDesc.h
 
 #pragma once
 
@@ -9,7 +9,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Configures bounded storage and command capacity for a fixture pass executor.
+ * @comment 配置 固定容量 存储 和 command 容量 用于 一个 fixture pass executor.
  */
 struct RenderFixturePassDesc final {
     std::size_t pass_record_capacity = MAX_RENDER_FIXTURE_PASS_RECORDS;

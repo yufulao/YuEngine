@@ -1,5 +1,5 @@
-// Module: YuEngine File
-// File: Src/YuEngine/File/Include/YuEngine/File/AsyncFileReadQueue.h
+// 模块: YuEngine File
+// 文件: Src/YuEngine/File/Include/YuEngine/File/AsyncFileReadQueue.h
 
 #pragma once
 
@@ -36,11 +36,11 @@ struct AsyncFileReadQueueSnapshot {
 class AsyncFileReadQueue final {
 public:
     /**
-     * @comment Constructs an AsyncFileReadQueue owner.
+     * @comment 构造 AsyncFileReadQueue 所有者。
      */
     AsyncFileReadQueue();
     /**
-     * @comment Destroys an AsyncFileReadQueue owner after explicit shutdown best effort.
+     * @comment 在尽力显式 关闭 后销毁 AsyncFileReadQueue 所有者。
      */
     ~AsyncFileReadQueue();
 
@@ -50,54 +50,54 @@ public:
     AsyncFileReadQueue& operator=(AsyncFileReadQueue&& other) = delete;
 
     /**
-     * @comment Initializes bounded async file queue storage.
-     * @param work_capacity Input work capacity.
-     * @param completion_capacity Input completion capacity.
-     * @return Explicit operation status.
+     * @comment Initializes 固定容量 async file queue 存储.
+     * @param work_capacity 输入 工作容量。
+     * @param completion_capacity 输入 完成容量。
+     * @return 显式操作状态。
      */
     AsyncFileReadStatus Initialize(std::size_t work_capacity, std::size_t completion_capacity);
     /**
-     * @comment Starts the private worker.
-     * @return Explicit operation status.
+     * @comment 启动 私有 工作线程。
+     * @return 显式操作状态。
      */
     AsyncFileReadStatus Start();
     /**
-     * @comment Submits an async file read request.
-     * @param request Input request.
-     * @return Explicit operation status.
+     * @comment 提交 an async file read 请求。
+     * @param request 输入 请求。
+     * @return 显式操作状态。
      */
     AsyncFileReadStatus Submit(const AsyncFileReadRequest& request);
     /**
-     * @comment Requests shutdown.
-     * @param cancel_pending True cancels pending work; false drains it.
-     * @return Explicit operation status.
+     * @comment 请求 关闭。
+     * @param cancel_pending true 表示取消等待任务，false 表示继续排空。
+     * @return 显式操作状态。
      */
     AsyncFileReadStatus RequestStop(bool cancel_pending);
     /**
-     * @comment Joins the private worker.
-     * @return Explicit operation status.
+     * @comment 等待私有工作线程退出。
+     * @return 显式操作状态。
      */
     AsyncFileReadStatus Join();
     /**
-     * @comment Requests shutdown and joins the private worker.
-     * @param cancel_pending True cancels pending work; false drains it.
-     * @return Explicit operation status.
+     * @comment 请求关闭并等待私有工作线程退出。
+     * @param cancel_pending true 表示取消等待任务，false 表示继续排空。
+     * @return 显式操作状态。
      */
     AsyncFileReadStatus Shutdown(bool cancel_pending);
     /**
-     * @comment Drains async file completion records into caller-owned storage.
-     * @param output_results Output result storage.
-     * @param output_capacity Output storage capacity.
-     * @param written_count Output written count.
-     * @return Explicit operation status.
+     * @comment 提取 async file completion 记录 写入 调用方持有 存储.
+     * @param output_results 输出 结果 存储。
+     * @param output_capacity 输出 存储容量。
+     * @param written_count 输出 写入数量。
+     * @return 显式操作状态。
      */
     AsyncFileReadStatus DrainCompletions(
         AsyncFileReadResult* output_results,
         std::size_t output_capacity,
         std::size_t* written_count);
     /**
-     * @comment Returns an async file queue snapshot.
-     * @return Snapshot value.
+     * @comment 返回 async file queue 快照。
+     * @return 快照值。
      */
     AsyncFileReadQueueSnapshot Snapshot() const;
 

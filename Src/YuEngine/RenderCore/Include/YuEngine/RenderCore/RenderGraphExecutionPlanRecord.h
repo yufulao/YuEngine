@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlanRecord.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlanRecord.h
 
 #pragma once
 
@@ -14,7 +14,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains one retained RenderCore render graph execution-plan metadata record.
+ * @comment 包含 一个 保留的 RenderCore render graph execution-plan metadata 记录。
  */
 struct RenderGraphExecutionPlanRecord final {
     std::uint32_t plan_id = 0U;

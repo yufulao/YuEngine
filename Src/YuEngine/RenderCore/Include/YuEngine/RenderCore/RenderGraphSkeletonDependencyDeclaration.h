@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphSkeletonDependencyDeclaration.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphSkeletonDependencyDeclaration.h
 
 #pragma once
 
@@ -7,7 +7,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Declares one caller-owned dependency edge for a RenderCore render graph skeleton.
+ * @comment 声明 一个 调用方持有 dependency edge 用于 一个 RenderCore render graph skeleton。
  */
 struct RenderGraphSkeletonDependencyDeclaration final {
     std::uint32_t before_pass_id = 0U;

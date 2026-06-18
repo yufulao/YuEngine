@@ -1,5 +1,5 @@
-// Module: YuEngine Hardware
-// File: Src/YuEngine/Hardware/Include/YuEngine/Hardware/HardwareFrameHost.h
+// 模块: YuEngine Hardware
+// 文件: Src/YuEngine/Hardware/Include/YuEngine/Hardware/HardwareFrameHost.h
 
 #pragma once
 
@@ -23,11 +23,11 @@ namespace yuengine::hardware {
 class HardwareFrameHost final {
 public:
     /**
-     * @comment Constructs an empty hardware frame host.
+     * @comment 构造空 hardware frame host。
      */
     HardwareFrameHost();
     /**
-     * @comment Shuts down any owned hardware objects.
+     * @comment 关闭 any owned hardware objects。
      */
     ~HardwareFrameHost();
 
@@ -35,25 +35,25 @@ public:
     HardwareFrameHost &operator=(const HardwareFrameHost &) = delete;
 
     /**
-     * @comment Creates window, input, optional RHI, and optional audio owners from a bounded descriptor.
-     * @param desc Input host descriptor.
-     * @return Explicit operation status.
+     * @comment 创建 窗口，input，可选 RHI，和 可选 audio 所有者 从 一个 固定容量 描述。
+     * @param desc 输入 host 描述。
+     * @return 显式操作状态。
      */
     HardwareFrameHostStatus Initialize(const HardwareFrameHostDesc &desc);
     /**
-     * @comment Runs one integrated platform input, render, and optional audio host tick.
-     * @param request Input tick request and caller-owned output buffers.
-     * @return Explicit tick result.
+     * @comment 运行 一个 integrated platform input，render，和 可选 audio host tick。
+     * @param request 输入 tick 请求 和 调用方持有 output buffers。
+     * @return 显式 tick 结果。
      */
     HardwareFrameHostTickResult Tick(const HardwareFrameHostTickRequest &request);
     /**
-     * @comment Stops and destroys all owned hardware objects.
-     * @return Explicit operation status.
+     * @comment 停止并销毁 all owned hardware objects。
+     * @return 显式操作状态。
      */
     HardwareFrameHostStatus Shutdown();
     /**
-     * @comment Returns current host counters and lifecycle flags.
-     * @return Snapshot value.
+     * @comment 返回 当前 host 计数器 和 生命周期 标志。
+     * @return 快照值。
      */
     HardwareFrameHostSnapshot Snapshot() const;
 

@@ -1,5 +1,5 @@
-// Module: YuEngine Streaming
-// File: Src/YuEngine/Streaming/Include/YuEngine/Streaming/ResourceStreamingPipeline.h
+// 模块: YuEngine Streaming
+// 文件: Src/YuEngine/Streaming/Include/YuEngine/Streaming/ResourceStreamingPipeline.h
 
 #pragma once
 
@@ -18,50 +18,50 @@ namespace yuengine::streaming {
 class ResourceStreamingPipeline final {
 public:
     /**
-     * @comment Constructs a Resource streaming pipeline with bounded internal queues.
+     * @comment 构造带固定容量 internal queue 的 Resource streaming pipeline。
      */
     ResourceStreamingPipeline();
 
     /**
-     * @comment Submits one package-backed resource upload pipeline request.
-     * @param request Input pipeline request.
-     * @return Explicit pipeline status.
+     * @comment 提交 一个 package-backed resource upload 流水线请求。
+     * @param request 输入 流水线请求。
+     * @return 显式 流水线状态。
      */
     ResourceStreamingPipelineStatus Submit(const ResourceStreamingPipelineRequest &request);
     /**
-     * @comment Consumes a caller-drained async file completion and queues the upload step.
-     * @param file_result Input async file completion.
-     * @return Explicit pipeline status.
+     * @comment 消费调用方已排空的异步文件完成记录，并入队 upload 步骤。
+     * @param file_result 输入 async file completion。
+     * @return 显式 流水线状态。
      */
     ResourceStreamingPipelineStatus CompleteFileRead(const file::AsyncFileReadResult &file_result);
     /**
-     * @comment Processes the queued RHI upload step and queues the Resource commit step.
-     * @return Explicit pipeline status.
+     * @comment 处理入队的 RHI upload 步骤，并入队 Resource commit 步骤。
+     * @return 显式 流水线状态。
      */
     ResourceStreamingPipelineStatus ProcessUpload();
     /**
-     * @comment Processes the queued Resource commit step.
-     * @return Explicit pipeline status.
+     * @comment 处理入队的 Resource commit 步骤。
+     * @return 显式 流水线状态。
      */
     ResourceStreamingPipelineStatus ProcessCommit();
     /**
-     * @comment Returns pipeline counters and last statuses.
-     * @return Snapshot value.
+     * @comment 返回 pipeline 计数器 和 last 状态es。
+     * @return 快照值。
      */
     ResourceStreamingPipelineSnapshot Snapshot() const;
     /**
-     * @comment Returns the last staging completion.
-     * @return Completion value.
+     * @comment 返回 last staging completion。
+     * @return Completion 值。
      */
     PackageResourceStagingCompletion LastStagingCompletion() const;
     /**
-     * @comment Returns the last upload completion.
-     * @return Completion value.
+     * @comment 返回 last upload completion。
+     * @return Completion 值。
      */
     ResourceUploadCompletion LastUploadCompletion() const;
     /**
-     * @comment Returns the last commit completion.
-     * @return Completion value.
+     * @comment 返回 last commit completion。
+     * @return Completion 值。
      */
     ResourceUploadCommitCompletion LastCommitCompletion() const;
 

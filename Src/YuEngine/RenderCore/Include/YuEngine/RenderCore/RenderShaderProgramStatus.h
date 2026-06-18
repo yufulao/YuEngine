@@ -1,11 +1,11 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderShaderProgramStatus.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderShaderProgramStatus.h
 
 #pragma once
 
 namespace yuengine::rendercore {
 /**
- * @comment Reports shader program validation and build status.
+ * @comment 报告 shader program validation 和 build 状态。
  */
 enum class RenderShaderProgramStatus {
     Success,

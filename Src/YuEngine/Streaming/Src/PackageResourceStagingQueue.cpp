@@ -1,5 +1,5 @@
-// Module: YuEngine Streaming
-// File: Src/YuEngine/Streaming/Src/PackageResourceStagingQueue.cpp
+// 模块: YuEngine Streaming
+// 文件: Src/YuEngine/Streaming/Src/PackageResourceStagingQueue.cpp
 
 #include "YuEngine/Streaming/PackageResourceStagingQueue.h"
 

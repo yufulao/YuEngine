@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSubmissionBatchFixtureConstants.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSubmissionBatchFixtureConstants.h
 
 #pragma once
 
@@ -7,7 +7,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Maximum number of retained RenderCore submission batch fixture records.
+ * @comment 最大数量： 保留的 RenderCore submission batch fixture 记录.
  */
 constexpr std::size_t MAX_RENDER_SUBMISSION_BATCH_FIXTURE_RECORDS = 8U;
 }

@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSubmissionBatchFixture.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSubmissionBatchFixture.h
 
 #pragma once
 
@@ -18,30 +18,30 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Executes a bounded sequence of prepared RenderCore fixture pass requests.
+ * @comment 执行 一个 固定容量 sequence 的 已准备 RenderCore fixture pass 请求s.
  */
 class RenderSubmissionBatchFixture final {
 public:
     /**
-     * @comment Constructs a RenderSubmissionBatchFixture instance.
-     * @param desc Input descriptor.
+     * @comment 构造 RenderSubmissionBatchFixture 实例。
+     * @param desc 输入描述。
      */
     explicit RenderSubmissionBatchFixture(
         const RenderSubmissionBatchFixtureDesc &desc=RenderSubmissionBatchFixtureDesc());
 
     /**
-     * @comment Executes prepared fixture pass requests in deterministic order.
-     * @param request Caller-owned submission batch request.
-     * @return Explicit operation result.
+     * @comment 执行 已准备 fixture pass 请求s 在 确定性 order.
+     * @param request 调用方持有的 submission batch 请求。
+     * @return 显式操作结果。
      */
     RenderSubmissionBatchFixtureResult Execute(const RenderSubmissionBatchFixtureRequest &request);
     /**
-     * @comment Returns the current submission batch fixture snapshot.
-     * @return Snapshot value.
+     * @comment 返回当前 submission batch fixture 快照。
+     * @return 快照值。
      */
     RenderSubmissionBatchFixtureSnapshot Snapshot() const;
     /**
-     * @comment Resets bounded submission batch records and counters.
+     * @comment 重置固定容量 submission batch 记录和计数。
      */
     void Reset();
 

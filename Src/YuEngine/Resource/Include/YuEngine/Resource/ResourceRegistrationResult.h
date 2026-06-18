@@ -1,5 +1,5 @@
-// Module: YuEngine Resource
-// File: Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceRegistrationResult.h
+// 模块: YuEngine Resource
+// 文件: Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceRegistrationResult.h
 
 #pragma once
 
@@ -12,26 +12,26 @@ struct ResourceRegistrationResult final {
     ResourceHandle handle;
 
     /**
-     * @comment Creates a successful result.
-     * @param handle Input handle.
-     * @return Explicit operation result.
+     * @comment 创建成功结果。
+     * @param handle 输入句柄。
+     * @return 显式操作结果。
      */
     static ResourceRegistrationResult Success(ResourceHandle handle) {
         return ResourceRegistrationResult{ResourceStatus::Success, handle};
     }
 
     /**
-     * @comment Creates a failed result.
-     * @param status Input status.
-     * @return Explicit operation result.
+     * @comment 创建失败结果。
+     * @param status 输入 状态。
+     * @return 显式操作结果。
      */
     static ResourceRegistrationResult Failure(ResourceStatus status) {
         return ResourceRegistrationResult{status, ResourceHandle{}};
     }
 
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查结果是否成功。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool Succeeded() const {
         return status == ResourceStatus::Success;

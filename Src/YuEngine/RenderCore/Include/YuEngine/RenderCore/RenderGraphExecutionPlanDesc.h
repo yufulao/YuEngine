@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlanDesc.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlanDesc.h
 
 #pragma once
 
@@ -9,7 +9,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Describes bounded RenderCore render graph execution-plan storage.
+ * @comment 描述 固定容量 RenderCore render graph execution-plan 存储.
  */
 struct RenderGraphExecutionPlanDesc final {
     std::size_t plan_record_capacity = MAX_RENDER_GRAPH_EXECUTION_PLAN_RECORDS;

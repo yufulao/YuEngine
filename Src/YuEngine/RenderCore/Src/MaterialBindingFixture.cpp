@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Src/MaterialBindingFixture.cpp
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Src/MaterialBindingFixture.cpp
 
 #include "YuEngine/RenderCore/MaterialBindingFixture.h"
 

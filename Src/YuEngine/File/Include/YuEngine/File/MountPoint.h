@@ -1,5 +1,5 @@
-// Module: YuEngine File
-// File: Src/YuEngine/File/Include/YuEngine/File/MountPoint.h
+// 模块: YuEngine File
+// 文件: Src/YuEngine/File/Include/YuEngine/File/MountPoint.h
 
 #pragma once
 
@@ -10,24 +10,24 @@ namespace yuengine::file {
 class MountPoint final {
 public:
     /**
-     * @comment Constructs a MountPoint instance.
+     * @comment 构造 MountPoint 实例。
      */
     MountPoint();
     /**
-     * @comment Constructs a MountPoint instance.
-     * @param id Input id.
-     * @param source Input source.
+     * @comment 构造 MountPoint 实例。
+     * @param id 输入 id。
+     * @param source 输入 source。
      */
     MountPoint(MountId id, LooseFileSource source);
 
     /**
-     * @comment Returns the identifier.
-     * @return Reference to the requested object.
+     * @comment 返回 identifier。
+     * @return 请求对象的引用。
      */
     const MountId& Id() const;
     /**
-     * @comment Returns the file source.
-     * @return Reference to the requested object.
+     * @comment 返回 文件来源。
+     * @return 请求对象的引用。
      */
     const LooseFileSource& Source() const;
 

@@ -1,5 +1,5 @@
-// Module: YuEngine Resource
-// File: Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceResidencyOperation.h
+// 模块: YuEngine Resource
+// 文件: Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceResidencyOperation.h
 
 #pragma once
 

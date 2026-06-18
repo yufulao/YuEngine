@@ -1,5 +1,5 @@
-// Module: YuEngine File
-// File: Src/YuEngine/File/Src/FileWriteResult.cpp
+// 模块: YuEngine File
+// 文件: Src/YuEngine/File/Src/FileWriteResult.cpp
 
 #include "YuEngine/File/FileWriteResult.h"
 

@@ -1,5 +1,5 @@
-// Module: YuEngine Rhi
-// File: Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiSwapchainResizeRequest.h
+// 模块: YuEngine Rhi
+// 文件: Src/YuEngine/Rhi/Include/YuEngine/Rhi/RhiSwapchainResizeRequest.h
 
 #pragma once
 

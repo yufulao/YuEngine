@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFramePacketFixtureResult.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFramePacketFixtureResult.h
 
 #pragma once
 
@@ -13,7 +13,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains the result of one RenderCore frame packet operation.
+ * @comment 包含 结果 的 一个 RenderCore frame packet 操作。
  */
 struct RenderFramePacketFixtureResult final {
     RenderFramePacketFixtureStatus status = RenderFramePacketFixtureStatus::InvalidArgument;

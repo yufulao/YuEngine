@@ -1,5 +1,5 @@
-// Module: YuEngine Kernel
-// File: Src/YuEngine/Kernel/Include/YuEngine/Kernel/KernelStatus.h
+// 模块: YuEngine Kernel
+// 文件: Src/YuEngine/Kernel/Include/YuEngine/Kernel/KernelStatus.h
 
 #pragma once
 

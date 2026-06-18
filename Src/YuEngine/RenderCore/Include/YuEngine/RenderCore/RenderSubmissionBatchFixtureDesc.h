@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSubmissionBatchFixtureDesc.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSubmissionBatchFixtureDesc.h
 
 #pragma once
 
@@ -9,7 +9,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Configures bounded storage for a RenderCore submission batch fixture.
+ * @comment 配置 固定容量 存储 用于 一个 RenderCore submission batch fixture.
  */
 struct RenderSubmissionBatchFixtureDesc final {
     std::size_t submission_record_capacity = MAX_RENDER_SUBMISSION_BATCH_FIXTURE_RECORDS;

@@ -1,11 +1,11 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/MaterialBindingFixtureStatus.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/MaterialBindingFixtureStatus.h
 
 #pragma once
 
 namespace yuengine::rendercore {
 /**
- * @comment Defines explicit material binding fixture status values.
+ * @comment 定义 explicit material 绑定 fixture 状态 值.
  */
 enum class MaterialBindingFixtureStatus {
     Success,

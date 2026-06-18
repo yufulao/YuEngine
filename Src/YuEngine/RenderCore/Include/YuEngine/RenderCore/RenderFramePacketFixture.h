@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFramePacketFixture.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFramePacketFixture.h
 
 #pragma once
 
@@ -16,30 +16,30 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Executes one prepared RenderCore submission batch inside a bounded frame packet envelope.
+ * @comment 执行 一个 已准备 RenderCore submission batch inside 一个 固定容量 frame packet envelope.
  */
 class RenderFramePacketFixture final {
 public:
     /**
-     * @comment Constructs a RenderFramePacketFixture instance.
-     * @param desc Input descriptor.
+     * @comment 构造 RenderFramePacketFixture 实例。
+     * @param desc 输入描述。
      */
     explicit RenderFramePacketFixture(
         const RenderFramePacketFixtureDesc &desc=RenderFramePacketFixtureDesc());
 
     /**
-     * @comment Executes a prepared submission batch as one deterministic frame packet.
-     * @param request Caller-owned frame packet request.
-     * @return Explicit operation result.
+     * @comment 将准备好的 submission batch 作为确定性的 frame packet 执行。
+     * @param request 调用方持有的 frame packet 请求。
+     * @return 显式操作结果。
      */
     RenderFramePacketFixtureResult Execute(const RenderFramePacketFixtureRequest &request);
     /**
-     * @comment Returns the current frame packet fixture snapshot.
-     * @return Snapshot value.
+     * @comment 返回当前 frame packet fixture 快照。
+     * @return 快照值。
      */
     RenderFramePacketFixtureSnapshot Snapshot() const;
     /**
-     * @comment Resets bounded frame packet records and counters.
+     * @comment 重置固定容量 frame packet 记录和计数。
      */
     void Reset();
 

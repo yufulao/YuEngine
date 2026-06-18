@@ -1,5 +1,5 @@
-// Module: YuEngine Rhi
-// File: Src/YuEngine/Rhi/Include/YuEngine/Rhi/IRhiDevice.h
+// 模块: YuEngine Rhi
+// 文件: Src/YuEngine/Rhi/Include/YuEngine/Rhi/IRhiDevice.h
 
 #pragma once
 
@@ -41,250 +41,250 @@ namespace yuengine::rhi {
 class IRhiDevice {
 public:
     /**
-     * @comment Destroys the interface.
+     * @comment 销毁接口。
      */
     virtual ~IRhiDevice() = default;
 
     /**
-     * @comment Initializes the device.
-     * @param desc Input descriptor.
-     * @return Explicit operation status.
+     * @comment 初始化设备。
+     * @param desc 输入描述。
+     * @return 显式操作状态。
      */
     virtual RhiStatus Initialize(const RhiDeviceDesc &desc) = 0;
     /**
-     * @comment Creates a color target.
-     * @param desc Input descriptor.
-     * @param out_handle Output handle written on success.
-     * @return Explicit operation status.
+     * @comment 创建颜色目标。
+     * @param desc 输入描述。
+     * @param out_handle 成功时写入的输出句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus CreateColorTarget(const RhiColorTargetDesc &desc, RhiTextureHandle &out_handle) = 0;
     /**
-     * @comment Returns the swapchain color target handle.
-     * @param out_handle Output handle written on success.
-     * @return Explicit operation status.
+     * @comment 返回交换链颜色目标句柄。
+     * @param out_handle 成功时写入的输出句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus GetSwapchainColorTarget(RhiTextureHandle &out_handle) const = 0;
     /**
-     * @comment Resizes the swapchain backbuffer.
-     * @param request Input resize request.
-     * @param out_result Output resize result.
-     * @return Explicit operation status.
+     * @comment 调整交换链 backbuffer 大小。
+     * @param request 输入 resize 请求。
+     * @param out_result 输出 resize 结果。
+     * @return 显式操作状态。
      */
     virtual RhiStatus ResizeSwapchain(
         const RhiSwapchainResizeRequest &request,
         RhiSwapchainResizeResult &out_result) = 0;
     /**
-     * @comment Destroys a target.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 销毁目标。
+     * @param handle 输入句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus DestroyTarget(RhiTextureHandle handle) = 0;
     /**
-     * @comment Records a clear command.
-     * @param command_list Command list updated by the function.
-     * @param handle Input handle.
-     * @param color Input color.
-     * @return Explicit operation status.
+     * @comment 记录清屏命令。
+     * @param command_list 函数写入的命令列表。
+     * @param handle 输入句柄。
+     * @param color 输入颜色。
+     * @return 显式操作状态。
      */
     virtual RhiStatus RecordClear(RhiCommandList &command_list, RhiTextureHandle handle, RhiColor color) = 0;
     /**
-     * @comment Records pipeline binding.
-     * @param command_list Command list updated by the function.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 记录流水线绑定。
+     * @param command_list 函数写入的命令列表。
+     * @param handle 输入句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) = 0;
     /**
-     * @comment Records vertex buffer binding.
-     * @param command_list Command list updated by the function.
-     * @param view Input view.
-     * @return Explicit operation status.
+     * @comment 记录顶点缓冲绑定。
+     * @param command_list 函数写入的命令列表。
+     * @param view 输入视图。
+     * @return 显式操作状态。
      */
     virtual RhiStatus RecordBindVertexBuffer(RhiCommandList &command_list, const RhiVertexBufferView &view) = 0;
     /**
-     * @comment Records index buffer binding.
-     * @param command_list Command list updated by the function.
-     * @param view Input view.
-     * @return Explicit operation status.
+     * @comment 记录索引缓冲绑定。
+     * @param command_list 函数写入的命令列表。
+     * @param view 输入视图。
+     * @return 显式操作状态。
      */
     virtual RhiStatus RecordBindIndexBuffer(RhiCommandList &command_list, const RhiIndexBufferView &view) = 0;
     /**
-     * @comment Records sampled texture binding.
-     * @param command_list Command list updated by the function.
-     * @param binding Input binding.
-     * @return Explicit operation status.
+     * @comment 记录采样纹理绑定。
+     * @param command_list 函数写入的命令列表。
+     * @param binding 输入绑定。
+     * @return 显式操作状态。
      */
     virtual RhiStatus RecordBindSampledTexture(
         RhiCommandList &command_list,
         const RhiSampledTextureBinding &binding) = 0;
     /**
-     * @comment Records sampler binding.
-     * @param command_list Command list updated by the function.
-     * @param binding Input binding.
-     * @return Explicit operation status.
+     * @comment 记录采样器绑定。
+     * @param command_list 函数写入的命令列表。
+     * @param binding 输入绑定。
+     * @return 显式操作状态。
      */
     virtual RhiStatus RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) = 0;
     /**
-     * @comment Records draw.
-     * @param command_list Command list updated by the function.
-     * @param desc Input descriptor.
-     * @return Explicit operation status.
+     * @comment 记录绘制。
+     * @param command_list 函数写入的命令列表。
+     * @param desc 输入描述。
+     * @return 显式操作状态。
      */
     virtual RhiStatus RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) = 0;
     /**
-     * @comment Records indexed draw.
-     * @param command_list Command list updated by the function.
-     * @param desc Input descriptor.
-     * @return Explicit operation status.
+     * @comment 记录索引绘制。
+     * @param command_list 函数写入的命令列表。
+     * @param desc 输入描述。
+     * @return 显式操作状态。
      */
     virtual RhiStatus RecordDrawIndexed(RhiCommandList &command_list, const RhiDrawIndexedDesc &desc) = 0;
     /**
-     * @comment Submits recorded work.
-     * @param command_list Input command list.
-     * @return Explicit operation status.
+     * @comment 提交已记录工作。
+     * @param command_list 输入命令列表。
+     * @return 显式操作状态。
      */
     virtual RhiStatus Submit(const RhiCommandList &command_list) = 0;
     /**
-     * @comment Presents submitted work.
-     * @return Explicit operation status.
+     * @comment 呈现 已提交工作。
+     * @return 显式操作状态。
      */
     virtual RhiStatus Present() = 0;
     /**
-     * @comment Captures the presented target into caller-owned storage.
-     * @param destination Input destination.
-     * @return Explicit operation result.
+     * @comment 将已 呈现 的目标捕获到调用方持有存储。
+     * @param destination 输入 目标。
+     * @return 显式操作结果。
      */
     virtual RhiCaptureResult CapturePresentedTarget(std::span<std::uint8_t> destination) = 0;
     /**
-     * @comment Creates a buffer primitive.
-     * @param desc Input descriptor.
-     * @param initial_bytes Optional caller-owned initial bytes.
-     * @param out_handle Output handle written on success.
-     * @return Explicit operation status.
+     * @comment 创建 一个 buffer primitive。
+     * @param desc 输入描述。
+     * @param initial_bytes 可选 调用方持有 初始 字节.
+     * @param out_handle 成功时写入的输出句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus CreateBuffer(
         const RhiBufferDesc &desc,
         std::span<const std::uint8_t> initial_bytes,
         RhiBufferHandle &out_handle) = 0;
     /**
-     * @comment Updates a buffer primitive from caller-owned bytes.
-     * @param handle Input handle.
-     * @param bytes Input bytes.
-     * @param out_fence Output fence handle written on success.
-     * @return Explicit operation status.
+     * @comment 更新 一个 buffer primitive 从 调用方持有 字节。
+     * @param handle 输入句柄。
+     * @param bytes 输入字节。
+     * @param out_fence 成功时写入的输出 fence 句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus UpdateBuffer(
         RhiBufferHandle handle,
         std::span<const std::uint8_t> bytes,
         RhiFenceHandle &out_fence) = 0;
     /**
-     * @comment Destroys a buffer primitive.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 销毁一个 buffer primitive。
+     * @param handle 输入句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus DestroyBuffer(RhiBufferHandle handle) = 0;
     /**
-     * @comment Creates a texture primitive.
-     * @param desc Input descriptor.
-     * @param initial_bytes Optional caller-owned initial bytes.
-     * @param out_handle Output handle written on success.
-     * @return Explicit operation status.
+     * @comment 创建 一个 texture primitive。
+     * @param desc 输入描述。
+     * @param initial_bytes 可选 调用方持有 初始 字节.
+     * @param out_handle 成功时写入的输出句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus CreateTexture(
         const RhiTextureDesc &desc,
         std::span<const std::uint8_t> initial_bytes,
         RhiTextureHandle &out_handle) = 0;
     /**
-     * @comment Updates a texture primitive from caller-owned bytes.
-     * @param handle Input handle.
-     * @param bytes Input bytes.
-     * @param out_fence Output fence handle written on success.
-     * @return Explicit operation status.
+     * @comment 更新 一个 texture primitive 从 调用方持有 字节。
+     * @param handle 输入句柄。
+     * @param bytes 输入字节。
+     * @param out_fence 成功时写入的输出 fence 句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus UpdateTexture(
         RhiTextureHandle handle,
         std::span<const std::uint8_t> bytes,
         RhiFenceHandle &out_fence) = 0;
     /**
-     * @comment Destroys a texture primitive.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 销毁一个 texture primitive。
+     * @param handle 输入句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus DestroyTexture(RhiTextureHandle handle) = 0;
     /**
-     * @comment Creates a sampler primitive.
-     * @param desc Input descriptor.
-     * @param out_handle Output handle written on success.
-     * @return Explicit operation status.
+     * @comment 创建 一个 sampler primitive。
+     * @param desc 输入描述。
+     * @param out_handle 成功时写入的输出句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus CreateSampler(const RhiSamplerDesc &desc, RhiSamplerHandle &out_handle) = 0;
     /**
-     * @comment Destroys a sampler primitive.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 销毁 sampler primitive。
+     * @param handle 输入句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus DestroySampler(RhiSamplerHandle handle) = 0;
     /**
-     * @comment Creates a shader module from caller-owned bytecode.
-     * @param desc Input descriptor.
-     * @param out_handle Output handle written on success.
-     * @return Explicit operation status.
+     * @comment 创建 一个 shader module 从 调用方持有 bytecode。
+     * @param desc 输入描述。
+     * @param out_handle 成功时写入的输出句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus CreateShaderModule(const RhiShaderModuleDesc &desc, RhiShaderModuleHandle &out_handle) = 0;
     /**
-     * @comment Destroys a shader module.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 销毁 shader module。
+     * @param handle 输入句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus DestroyShaderModule(RhiShaderModuleHandle handle) = 0;
     /**
-     * @comment Creates a pipeline primitive.
-     * @param desc Input descriptor.
-     * @param out_handle Output handle written on success.
-     * @return Explicit operation status.
+     * @comment 创建 一个 pipeline primitive。
+     * @param desc 输入描述。
+     * @param out_handle 成功时写入的输出句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus CreatePipeline(const RhiPipelineDesc &desc, RhiPipelineHandle &out_handle) = 0;
     /**
-     * @comment Destroys a pipeline primitive.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 销毁 pipeline primitive。
+     * @param handle 输入句柄。
+     * @return 显式操作状态。
      */
     virtual RhiStatus DestroyPipeline(RhiPipelineHandle handle) = 0;
     /**
-     * @comment Requests deferred primitive retirement.
-     * @param request Input request.
-     * @param out_record Output record written with accepted or rejected state.
-     * @return Explicit operation status.
+     * @comment 请求 deferred primitive retirement。
+     * @param request 输入 请求。
+     * @param out_record 输出记录，写入 accepted 或 rejected 状态。
+     * @return 显式操作状态。
      */
     virtual RhiStatus RequestPrimitiveRetirement(
         const RhiPrimitiveRetirementRequest &request,
         RhiPrimitiveRetirementRecord &out_record) = 0;
     /**
-     * @comment Queries a primitive retirement record.
-     * @param retirement_id Input retirement id.
-     * @param out_record Output record written on success.
-     * @return Explicit operation status.
+     * @comment 查询一个 primitive retirement 记录。
+     * @param retirement_id 输入 retirement id。
+     * @param out_record 成功时写入的输出记录。
+     * @return 显式操作状态。
      */
     virtual RhiStatus QueryPrimitiveRetirement(
         std::uint64_t retirement_id,
         RhiPrimitiveRetirementRecord &out_record) const = 0;
     /**
-     * @comment Drains ready primitive retirement records.
-     * @param request Input drain request.
-     * @param out_result Output drain result.
-     * @return Explicit operation status.
+     * @comment 提取就绪的 primitive retirement 记录。
+     * @param request 输入 drain 请求。
+     * @param out_result 输出 drain 结果。
+     * @return 显式操作状态。
      */
     virtual RhiStatus DrainPrimitiveRetirements(
         const RhiPrimitiveRetirementDrainRequest &request,
         RhiPrimitiveRetirementDrainResult &out_result) = 0;
     /**
-     * @comment Returns supported capabilities.
-     * @return Capability data.
+     * @comment 返回 支持的能力。
+     * @return 能力数据。
      */
     virtual RhiCapabilities Capabilities() const = 0;
     /**
-     * @comment Returns current device state.
-     * @return Snapshot value.
+     * @comment 返回 当前 device 状态。
+     * @return 快照值。
      */
     virtual RhiDeviceSnapshot Snapshot() const = 0;
 };

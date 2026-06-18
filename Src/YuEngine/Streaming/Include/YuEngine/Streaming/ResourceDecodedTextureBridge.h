@@ -1,5 +1,5 @@
-// Module: YuEngine Streaming
-// File: Src/YuEngine/Streaming/Include/YuEngine/Streaming/ResourceDecodedTextureBridge.h
+// 模块: YuEngine Streaming
+// 文件: Src/YuEngine/Streaming/Include/YuEngine/Streaming/ResourceDecodedTextureBridge.h
 
 #pragma once
 
@@ -15,19 +15,19 @@ namespace yuengine::streaming {
 class ResourceDecodedTextureBridge final {
 public:
     /**
-     * @comment Constructs a Resource decoded texture bridge with bounded upload storage.
+     * @comment 构造带固定容量 upload 存储的 Resource decoded texture bridge。
      */
     ResourceDecodedTextureBridge();
 
     /**
-     * @comment Reads a Resource-owned decoded texture payload and uploads it as an RHI texture.
-     * @param request Input decoded payload and upload request.
-     * @return Explicit bridge result and texture binding values.
+     * @comment 读取 一个 Resource 自有 decoded texture payload 和 uploads it as an RHI texture.
+     * @param request 输入 decoded payload 和 upload 请求。
+     * @return 显式 bridge 结果 和 texture 绑定 值。
      */
     ResourceDecodedTextureBridgeResult UploadTexture(const ResourceDecodedTextureBridgeRequest &request);
     /**
-     * @comment Returns bridge counters and last statuses.
-     * @return Snapshot value.
+     * @comment 返回 bridge 计数器 和 last 状态es。
+     * @return 快照值。
      */
     ResourceDecodedTextureBridgeSnapshot Snapshot() const;
 

@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderMaterialResult.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderMaterialResult.h
 
 #pragma once
 
@@ -10,7 +10,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains the result of one render material operation.
+ * @comment 包含 结果 的 一个 render material 操作。
  */
 struct RenderMaterialResult final {
     RenderMaterialStatus status = RenderMaterialStatus::InvalidArgument;

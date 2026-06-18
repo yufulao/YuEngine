@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFixturePassSnapshot.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFixturePassSnapshot.h
 
 #pragma once
 
@@ -11,7 +11,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains bounded fixture pass counters and the last observed result.
+ * @comment 包含 固定容量 fixture pass 计数器 和 last 观察到的 结果。
  */
 struct RenderFixturePassSnapshot final {
     std::size_t pass_record_capacity = 0U;

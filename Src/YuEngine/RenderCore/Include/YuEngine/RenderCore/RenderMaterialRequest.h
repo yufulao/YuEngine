@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderMaterialRequest.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderMaterialRequest.h
 
 #pragma once
 
@@ -12,7 +12,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Describes one value-only render material request.
+ * @comment 描述 一个 值-仅 render material 请求.
  */
 struct RenderMaterialRequest final {
     std::uint32_t material_id = 0U;

@@ -1,5 +1,5 @@
-// Module: YuEngine Rhi
-// File: Src/YuEngine/Rhi/Src/NullRhiDevice.cpp
+// 模块: YuEngine Rhi
+// 文件: Src/YuEngine/Rhi/Src/NullRhiDevice.cpp
 
 #include "YuEngine/Rhi/NullRhiDevice.h"
 

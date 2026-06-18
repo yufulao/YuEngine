@@ -1,5 +1,5 @@
-// Module: YuEngine Hardware
-// File: Src/YuEngine/Hardware/Include/YuEngine/Hardware/HardwareFrameHostTickRequest.h
+// 模块: YuEngine Hardware
+// 文件: Src/YuEngine/Hardware/Include/YuEngine/Hardware/HardwareFrameHostTickRequest.h
 
 #pragma once
 

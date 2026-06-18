@@ -1,6 +1,6 @@
 /**
  * @file Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceDecodeResultRequest.h
- * @brief Resource module decode result request value contract.
+ * @brief Resource 模块 解码结果请求 值契约。
  */
 #pragma once
 
@@ -14,7 +14,7 @@
 namespace yuengine::resource {
 
 /**
- * @brief Describes a decode-result metadata operation for one resource payload and decode plan.
+ * @brief 描述 一个 decode-结果 metadata 操作 用于 一个 resource payload 和 decode plan.
  */
 struct ResourceDecodeResultRequest {
     ResourceHandle resource;

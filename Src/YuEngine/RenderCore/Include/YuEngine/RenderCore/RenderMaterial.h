@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderMaterial.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderMaterial.h
 
 #pragma once
 
@@ -17,34 +17,34 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Builds validated material binding requests from compact render material values.
+ * @comment 构建 已验证 材质绑定请求s 从 紧凑 render material 值.
  */
 class RenderMaterial final {
 public:
     /**
-     * @comment Constructs a RenderMaterial instance.
-     * @param desc Input descriptor.
+     * @comment 构造 RenderMaterial 实例。
+     * @param desc 输入描述。
      */
     explicit RenderMaterial(const RenderMaterialDesc &desc=RenderMaterialDesc());
 
     /**
-     * @comment Validates material values and writes a caller-owned binding request.
-     * @param request Input render material request.
-     * @param out_request Caller-owned material binding request.
-     * @return Explicit operation result.
+     * @comment 验证 material 值 和 writes 一个 调用方持有 绑定 请求。
+     * @param request 输入 render material 请求。
+     * @param out_request 调用方持有的 材质绑定请求。
+     * @return 显式操作结果。
      */
     RenderMaterialResult BuildBindingRequest(
         const RenderMaterialRequest &request,
         MaterialBindingFixtureRequest *out_request);
 
     /**
-     * @comment Returns the current render material snapshot.
-     * @return Snapshot value.
+     * @comment 返回当前 render material 快照。
+     * @return 快照值。
      */
     RenderMaterialSnapshot Snapshot() const;
 
     /**
-     * @comment Resets bounded render material records and counters.
+     * @comment 重置固定容量 render material 记录和计数。
      */
     void Reset();
 

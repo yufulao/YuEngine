@@ -1,11 +1,11 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlanOperation.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlanOperation.h
 
 #pragma once
 
 namespace yuengine::rendercore {
 /**
- * @comment Defines explicit RenderCore render graph execution-plan operations.
+ * @comment 定义显式 RenderCore render graph execution-plan 操作。
  */
 enum class RenderGraphExecutionPlanOperation {
     None,

@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphSkeletonRecord.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphSkeletonRecord.h
 
 #pragma once
 
@@ -10,7 +10,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains one retained RenderCore render graph skeleton record.
+ * @comment 包含 一个 保留的 RenderCore render graph skeleton 记录。
  */
 struct RenderGraphSkeletonRecord final {
     std::uint32_t graph_id = 0U;

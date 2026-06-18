@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSubmissionBatchFixtureSnapshot.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSubmissionBatchFixtureSnapshot.h
 
 #pragma once
 
@@ -12,7 +12,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains bounded RenderCore submission batch fixture counters and last status values.
+ * @comment 包含 固定容量 RenderCore submission batch fixture 计数器 和 last 状态 值。
  */
 struct RenderSubmissionBatchFixtureSnapshot final {
     std::size_t submission_record_capacity = 0U;

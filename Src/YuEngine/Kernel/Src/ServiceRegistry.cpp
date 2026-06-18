@@ -1,5 +1,5 @@
-// Module: YuEngine Kernel
-// File: Src/YuEngine/Kernel/Src/ServiceRegistry.cpp
+// 模块: YuEngine Kernel
+// 文件: Src/YuEngine/Kernel/Src/ServiceRegistry.cpp
 
 #include "YuEngine/Kernel/ServiceRegistry.h"
 

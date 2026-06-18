@@ -1,5 +1,5 @@
-// Module: YuEngine Rhi
-// File: Src/YuEngine/Rhi/Src/D3D11RhiDeviceInternal.h
+// 模块: YuEngine Rhi
+// 文件: Src/YuEngine/Rhi/Src/D3D11RhiDeviceInternal.h
 
 #pragma once
 
@@ -34,11 +34,11 @@ namespace yuengine::rhi {
 class D3D11RhiDevice final : public IRhiDevice {
 public:
     /**
-     * @comment Constructs an empty D3D11 RHI device.
+     * @comment 构造空 D3D11 RHI device。
      */
     D3D11RhiDevice();
     /**
-     * @comment Releases native D3D11 objects owned by the instance.
+     * @comment 释放实例持有的 native D3D11 对象。
      */
     ~D3D11RhiDevice() override;
 

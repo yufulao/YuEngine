@@ -1,5 +1,5 @@
-// Module: YuEngine Rhi
-// File: Src/YuEngine/Rhi/Include/YuEngine/Rhi/NullRhiDevice.h
+// 模块: YuEngine Rhi
+// 文件: Src/YuEngine/Rhi/Include/YuEngine/Rhi/NullRhiDevice.h
 
 #pragma once
 
@@ -23,50 +23,50 @@ namespace yuengine::rhi {
 class NullRhiDevice final : public IRhiDevice {
 public:
     /**
-     * @comment Constructs a NullRhiDevice instance.
+     * @comment 构造 NullRhiDevice 实例。
      */
     NullRhiDevice();
 
     /**
-     * @comment Initializes the instance.
-     * @param desc Input descriptor.
-     * @return Explicit operation status.
+     * @comment 初始化实例。
+     * @param desc 输入描述。
+     * @return 显式操作状态。
      */
     RhiStatus Initialize(const RhiDeviceDesc &desc) override;
     /**
-     * @comment Creates color target.
-     * @param desc Input descriptor.
-     * @param out_handle Output handle written on success.
-     * @return Explicit operation status.
+     * @comment 创建 颜色 target。
+     * @param desc 输入描述。
+     * @param out_handle 成功时写入的输出句柄。
+     * @return 显式操作状态。
      */
     RhiStatus CreateColorTarget(const RhiColorTargetDesc &desc, RhiTextureHandle &out_handle) override;
     /**
-     * @comment Returns the swapchain color target handle.
-     * @param out_handle Output handle written on success.
-     * @return Explicit operation status.
+     * @comment 返回交换链颜色目标句柄。
+     * @param out_handle 成功时写入的输出句柄。
+     * @return 显式操作状态。
      */
     RhiStatus GetSwapchainColorTarget(RhiTextureHandle &out_handle) const override;
     /**
-     * @comment Rejects swapchain resize for the null backend.
-     * @param request Input resize request.
-     * @param out_result Output resize result.
-     * @return Explicit operation status.
+     * @comment 拒绝 null backend 的 swapchain resize。
+     * @param request 输入 resize 请求。
+     * @param out_result 输出 resize 结果。
+     * @return 显式操作状态。
      */
     RhiStatus ResizeSwapchain(
         const RhiSwapchainResizeRequest &request,
         RhiSwapchainResizeResult &out_result) override;
     /**
-     * @comment Destroys target.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 销毁目标。
+     * @param handle 输入句柄。
+     * @return 显式操作状态。
      */
     RhiStatus DestroyTarget(RhiTextureHandle handle) override;
     /**
-     * @comment Records clear.
-     * @param command_list Command list updated by the function.
-     * @param handle Input handle.
-     * @param color Input color.
-     * @return Explicit operation status.
+     * @comment 记录清屏。
+     * @param command_list 函数写入的命令列表。
+     * @param handle 输入句柄。
+     * @param color 输入颜色。
+     * @return 显式操作状态。
      */
     RhiStatus RecordClear(RhiCommandList &command_list, RhiTextureHandle handle, RhiColor color) override;
     RhiStatus RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) override;
@@ -79,20 +79,20 @@ public:
     RhiStatus RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) override;
     RhiStatus RecordDrawIndexed(RhiCommandList &command_list, const RhiDrawIndexedDesc &desc) override;
     /**
-     * @comment Submits requested work.
-     * @param command_list Input command list.
-     * @return Explicit operation status.
+     * @comment 提交 请求的 work。
+     * @param command_list 输入命令列表。
+     * @return 显式操作状态。
      */
     RhiStatus Submit(const RhiCommandList &command_list) override;
     /**
-     * @comment Presents the submitted target.
-     * @return Explicit operation status.
+     * @comment 呈现 已提交目标。
+     * @return 显式操作状态。
      */
     RhiStatus Present() override;
     /**
-     * @comment Captures the presented target.
-     * @param destination Input destination.
-     * @return Explicit operation result.
+     * @comment 捕获已 呈现 的目标。
+     * @param destination 输入 目标。
+     * @return 显式操作结果。
      */
     RhiCaptureResult CapturePresentedTarget(std::span<std::uint8_t> destination) override;
     RhiStatus CreateBuffer(
@@ -129,13 +129,13 @@ public:
         const RhiPrimitiveRetirementDrainRequest &request,
         RhiPrimitiveRetirementDrainResult &out_result) override;
     /**
-     * @comment Returns the supported capabilities.
-     * @return Capability data.
+     * @comment 返回 支持的能力。
+     * @return 能力数据。
      */
     RhiCapabilities Capabilities() const override;
     /**
-     * @comment Returns a snapshot of the current state.
-     * @return Snapshot value.
+     * @comment 返回当前状态快照。
+     * @return 快照值。
      */
     RhiDeviceSnapshot Snapshot() const override;
 

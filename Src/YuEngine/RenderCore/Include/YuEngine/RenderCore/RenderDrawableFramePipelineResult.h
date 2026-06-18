@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawableFramePipelineResult.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawableFramePipelineResult.h
 
 #pragma once
 
@@ -17,7 +17,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains one drawable frame pipeline result.
+ * @comment 包含 一个 drawable frame pipeline 结果。
  */
 struct RenderDrawableFramePipelineResult final {
     RenderDrawableFramePipelineStatus status = RenderDrawableFramePipelineStatus::InvalidArgument;

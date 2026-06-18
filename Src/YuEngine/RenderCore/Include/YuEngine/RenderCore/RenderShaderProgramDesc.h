@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderShaderProgramDesc.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderShaderProgramDesc.h
 
 #pragma once
 
@@ -9,7 +9,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Describes bounded RenderShaderProgram storage.
+ * @comment 描述 固定容量 RenderShaderProgram 存储.
  */
 struct RenderShaderProgramDesc final {
     std::size_t program_record_capacity = MAX_RENDER_SHADER_PROGRAM_RECORDS;

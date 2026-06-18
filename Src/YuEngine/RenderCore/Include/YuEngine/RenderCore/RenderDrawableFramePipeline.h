@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawableFramePipeline.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawableFramePipeline.h
 
 #pragma once
 
@@ -18,30 +18,30 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Executes one drawable RenderCore frame through material, submission, frame packet, and RHI swapchain paths.
+ * @comment 通过 material、submission、frame packet 和 RHI swapchain 路径执行一个 drawable RenderCore 帧。
  */
 class RenderDrawableFramePipeline final {
 public:
     /**
-     * @comment Constructs a RenderDrawableFramePipeline instance.
-     * @param desc Input descriptor.
+     * @comment 构造 RenderDrawableFramePipeline 实例。
+     * @param desc 输入描述。
      */
     explicit RenderDrawableFramePipeline(
         const RenderDrawableFramePipelineDesc &desc=RenderDrawableFramePipelineDesc());
 
     /**
-     * @comment Executes one drawable frame against the current RHI swapchain backbuffer.
-     * @param request Caller-owned frame request.
-     * @return Explicit operation result.
+     * @comment 针对当前 RHI swapchain backbuffer 执行一个 drawable frame。
+     * @param request 调用方持有的 帧请求。
+     * @return 显式操作结果。
      */
     RenderDrawableFramePipelineResult Execute(const RenderDrawableFramePipelineRequest &request);
     /**
-     * @comment Returns the current drawable frame pipeline snapshot.
-     * @return Snapshot value.
+     * @comment 返回当前 drawable frame pipeline 快照。
+     * @return 快照值。
      */
     RenderDrawableFramePipelineSnapshot Snapshot() const;
     /**
-     * @comment Resets bounded drawable frame records and inner RenderCore state.
+     * @comment 重置 固定容量 drawable frame 记录 和 inner RenderCore 状态。
      */
     void Reset();
 

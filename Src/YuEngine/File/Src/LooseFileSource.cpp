@@ -1,5 +1,5 @@
-// Module: YuEngine File
-// File: Src/YuEngine/File/Src/LooseFileSource.cpp
+// 模块: YuEngine File
+// 文件: Src/YuEngine/File/Src/LooseFileSource.cpp
 
 #include "YuEngine/File/LooseFileSource.h"
 

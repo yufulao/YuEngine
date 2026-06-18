@@ -1,5 +1,5 @@
-// Module: YuEngine Streaming
-// File: Src/YuEngine/Streaming/Include/YuEngine/Streaming/ResourceUploadQueue.h
+// 模块: YuEngine Streaming
+// 文件: Src/YuEngine/Streaming/Include/YuEngine/Streaming/ResourceUploadQueue.h
 
 #pragma once
 
@@ -17,40 +17,40 @@ namespace yuengine::streaming {
 class ResourceUploadQueue final {
 public:
     /**
-     * @comment Constructs a queue with default bounded storage.
+     * @comment 使用默认固定存储构造队列。
      */
     ResourceUploadQueue();
     /**
-     * @comment Constructs a queue with bounded storage limits.
-     * @param desc Input descriptor.
+     * @comment 使用固定存储上限构造队列。
+     * @param desc 输入描述。
      */
     explicit ResourceUploadQueue(ResourceUploadQueueDesc desc);
 
     /**
-     * @comment Validates and queues a Resource upload request.
-     * @param request Input request.
-     * @return Explicit operation status.
+     * @comment 验证并 queues 一个 Resource upload 请求。
+     * @param request 输入 请求。
+     * @return 显式操作状态。
      */
     ResourceUploadStatus Submit(const ResourceUploadRequest &request);
     /**
-     * @comment Processes the oldest queued upload request.
-     * @return Explicit operation status.
+     * @comment 处理 oldest queued upload 请求.
+     * @return 显式操作状态。
      */
     ResourceUploadStatus ProcessNext();
     /**
-     * @comment Drains upload completion records into caller-owned storage.
-     * @param output_completions Output completion storage.
-     * @param output_capacity Output storage capacity.
-     * @param written_count Output written count.
-     * @return Explicit operation status.
+     * @comment 提取 upload completion 记录 写入 调用方持有 存储.
+     * @param output_completions 输出 completion 存储。
+     * @param output_capacity 输出 存储容量。
+     * @param written_count 输出 写入数量。
+     * @return 显式操作状态。
      */
     ResourceUploadStatus DrainCompletions(
         ResourceUploadCompletion *output_completions,
         std::uint32_t output_capacity,
         std::uint32_t *written_count);
     /**
-     * @comment Returns a queue snapshot value.
-     * @return Snapshot value.
+     * @comment 返回队列快照值。
+     * @return 快照值。
      */
     ResourceUploadSnapshot Snapshot() const;
 

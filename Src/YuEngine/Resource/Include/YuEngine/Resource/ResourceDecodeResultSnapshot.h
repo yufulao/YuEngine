@@ -1,6 +1,6 @@
 /**
  * @file Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceDecodeResultSnapshot.h
- * @brief Resource module decode result snapshot value contract.
+ * @brief Resource 模块解码结果快照值契约。
  */
 #pragma once
 
@@ -16,7 +16,7 @@
 namespace yuengine::resource {
 
 /**
- * @brief Summarizes decode-result metadata operations and current budget usage.
+ * @brief 汇总解码结果元数据操作和当前预算使用。
  */
 struct ResourceDecodeResultSnapshot {
     std::uint32_t budget_decoded_byte_capacity = MAX_RESOURCE_DECODE_RESULT_TOTAL_DECODED_BYTES;

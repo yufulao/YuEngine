@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawableFramePipelineDesc.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawableFramePipelineDesc.h
 
 #pragma once
 
@@ -14,7 +14,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Describes bounded storage for drawable frame pipeline records and inner RenderCore steps.
+ * @comment 描述 固定容量 存储 用于 drawable frame pipeline 记录 和 inner RenderCore steps.
  */
 struct RenderDrawableFramePipelineDesc final {
     MaterialBindingFixtureDesc material_binding_desc{};

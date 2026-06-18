@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/MaterialBindingFixtureRequest.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/MaterialBindingFixtureRequest.h
 
 #pragma once
 
@@ -12,7 +12,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Describes one value-only material binding fixture request.
+ * @comment 描述 一个 值-仅 material 绑定 fixture 请求.
  */
 struct MaterialBindingFixtureRequest final {
     std::uint32_t material_id = 0U;

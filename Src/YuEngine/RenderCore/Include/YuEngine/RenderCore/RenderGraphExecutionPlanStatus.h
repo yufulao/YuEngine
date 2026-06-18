@@ -1,11 +1,11 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlanStatus.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlanStatus.h
 
 #pragma once
 
 namespace yuengine::rendercore {
 /**
- * @comment Defines explicit RenderCore render graph execution-plan status values.
+ * @comment 定义 explicit RenderCore render graph execution-plan 状态 值.
  */
 enum class RenderGraphExecutionPlanStatus {
     Success,

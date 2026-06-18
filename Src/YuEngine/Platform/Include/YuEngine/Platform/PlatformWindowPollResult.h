@@ -1,5 +1,5 @@
-// Module: YuEngine Platform
-// File: Src/YuEngine/Platform/Include/YuEngine/Platform/PlatformWindowPollResult.h
+// 模块: YuEngine Platform
+// 文件: Src/YuEngine/Platform/Include/YuEngine/Platform/PlatformWindowPollResult.h
 
 #pragma once
 

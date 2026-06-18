@@ -1,5 +1,5 @@
-// Module: YuEngine Platform
-// File: Src/YuEngine/Platform/Include/YuEngine/Platform/HostError.h
+// 模块: YuEngine Platform
+// 文件: Src/YuEngine/Platform/Include/YuEngine/Platform/HostError.h
 
 #pragma once
 
@@ -11,14 +11,14 @@ struct HostError {
     std::string message;
 
     /**
-     * @comment Creates a successful result.
-     * @return Success value.
+     * @comment 创建成功结果。
+     * @return 成功状态值。
      */
     static HostError Success();
     /**
-     * @comment Creates a failed result.
-     * @param message Input message text.
-     * @return Failure value.
+     * @comment 创建失败结果。
+     * @param message 输入 消息文本。
+     * @return Failure 值。
      */
     static HostError Failure(std::string message);
 };

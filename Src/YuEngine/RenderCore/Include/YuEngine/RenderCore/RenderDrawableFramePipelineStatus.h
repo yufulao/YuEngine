@@ -1,11 +1,11 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawableFramePipelineStatus.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawableFramePipelineStatus.h
 
 #pragma once
 
 namespace yuengine::rendercore {
 /**
- * @comment Defines explicit RenderCore drawable frame pipeline statuses.
+ * @comment 定义 explicit RenderCore drawable frame 流水线状态es.
  */
 enum class RenderDrawableFramePipelineStatus {
     Success,

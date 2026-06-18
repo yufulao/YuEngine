@@ -1,11 +1,11 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawPacketStatus.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawPacketStatus.h
 
 #pragma once
 
 namespace yuengine::rendercore {
 /**
- * @comment Explicit RenderDrawPacket operation status.
+ * @comment 显式 RenderDrawPacket 操作状态。
  */
 enum class RenderDrawPacketStatus {
     Success,

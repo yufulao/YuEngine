@@ -1,5 +1,5 @@
-// Module: YuEngine Memory
-// File: Src/YuEngine/Memory/Include/YuEngine/Memory/ActiveAllocationRecord.h
+// 模块: YuEngine Memory
+// 文件: Src/YuEngine/Memory/Include/YuEngine/Memory/ActiveAllocationRecord.h
 
 #pragma once
 

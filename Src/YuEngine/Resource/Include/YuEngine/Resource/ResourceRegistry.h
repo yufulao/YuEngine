@@ -1,5 +1,5 @@
-// Module: YuEngine Resource
-// File: Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceRegistry.h
+// 模块: YuEngine Resource
+// 文件: Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceRegistry.h
 
 #pragma once
 
@@ -55,134 +55,134 @@ namespace yuengine::resource {
 class ResourceRegistry final {
 public:
     /**
-     * @comment Constructs a ResourceRegistry instance.
+     * @comment 构造 ResourceRegistry 实例。
      */
     ResourceRegistry();
     /**
-     * @comment Constructs a ResourceRegistry instance.
-     * @param desc Input descriptor.
+     * @comment 构造 ResourceRegistry 实例。
+     * @param desc 输入描述。
      */
     explicit ResourceRegistry(ResourceRegistryDesc desc);
 
     /**
-     * @comment Registers synthetic descriptor.
-     * @param descriptor Input descriptor.
-     * @return Explicit operation result.
+     * @comment 注册 synthetic 描述.
+     * @param descriptor 输入描述。
+     * @return 显式操作结果。
      */
     ResourceRegistrationResult RegisterSyntheticDescriptor(const ResourceDescriptor& descriptor);
     /**
-     * @comment Adds dependency.
-     * @param dependent Input dependent.
-     * @param dependency Input dependency.
-     * @return Explicit operation status.
+     * @comment 添加依赖。
+     * @param dependent 输入 dependent。
+     * @param dependency 输入 dependency。
+     * @return 显式操作状态。
      */
     ResourceStatus AddDependency(ResourceHandle dependent, ResourceHandle dependency);
     /**
-     * @comment Acquires the operation.
-     * @param handle Input handle.
-     * @param expected_type Input expected type.
-     * @return Explicit operation status.
+     * @comment 获取操作。
+     * @param handle 输入句柄。
+     * @param expected_type 输入期望类型。
+     * @return 显式操作状态。
      */
     ResourceStatus Acquire(ResourceHandle handle, ResourceTypeId expected_type);
     /**
-     * @comment Validates that a projected acquire can succeed without mutating registry state.
-     * @param handle Input handle.
-     * @param expected_type Input expected type.
-     * @param projected_acquire_count Input acquire count budget.
-     * @return Explicit operation status.
+     * @comment 验证预计 acquire 可在不修改注册表状态的情况下成功。
+     * @param handle 输入句柄。
+     * @param expected_type 输入期望类型。
+     * @param projected_acquire_count 输入 acquire 计数预算。
+     * @return 显式操作状态。
      */
     ResourceStatus ValidateAcquire(
         ResourceHandle handle,
         ResourceTypeId expected_type,
         std::uint32_t projected_acquire_count) const;
     /**
-     * @comment Commits a terminal Resource load state from an upload completion value.
-     * @param request Input commit request.
-     * @return Explicit operation status.
+     * @comment 提交 upload completion 产生的最终 Resource 加载状态。
+     * @param request 输入提交请求。
+     * @return 显式操作状态。
      */
     ResourceLoadCommitStatus CommitUploadCompletion(const ResourceLoadCommitRequest &request);
     /**
-     * @comment Returns the Resource load state for a valid handle.
-     * @param handle Input handle.
-     * @param expected_type Input expected type.
-     * @param output_state Output load state.
-     * @return Explicit operation status.
+     * @comment 返回有效句柄的 Resource 加载状态。
+     * @param handle 输入句柄。
+     * @param expected_type 输入期望类型。
+     * @param output_state 输出加载状态。
+     * @return 显式操作状态。
      */
     ResourceLoadCommitStatus GetLoadState(
         ResourceHandle handle,
         ResourceTypeId expected_type,
         ResourceLoadState *output_state) const;
     /**
-     * @comment Configures the Resource-owned residency budget.
-     * @param desc Input budget descriptor.
-     * @return Explicit residency operation status.
+     * @comment 配置 Resource 自有驻留预算。
+     * @param desc 输入预算描述。
+     * @return 显式驻留操作状态。
      */
     ResourceResidencyStatus SetResidencyBudget(ResourceResidencyBudgetDesc desc);
     /**
-     * @comment Admits an uploaded Resource slot into resident state.
-     * @param request Input residency request.
-     * @return Explicit residency operation status.
+     * @comment 将已上传的 Resource 槽位纳入 resident 状态。
+     * @param request 输入驻留请求。
+     * @return 显式驻留操作状态。
      */
     ResourceResidencyStatus AdmitResident(const ResourceResidencyRequest &request);
     /**
-     * @comment Pins a resident Resource slot.
-     * @param request Input residency request.
-     * @return Explicit residency operation status.
+     * @comment 固定一个已驻留 Resource 槽位。
+     * @param request 输入驻留请求。
+     * @return 显式驻留操作状态。
      */
     ResourceResidencyStatus PinResident(const ResourceResidencyRequest &request);
     /**
-     * @comment Unpins a pinned Resource slot.
-     * @param request Input residency request.
-     * @return Explicit residency operation status.
+     * @comment 取消固定 一个已固定 Resource 槽位。
+     * @param request 输入驻留请求。
+     * @return 显式驻留操作状态。
      */
     ResourceResidencyStatus UnpinResident(const ResourceResidencyRequest &request);
     /**
-     * @comment Marks a resident Resource slot as evicted in Resource-owned state.
-     * @param request Input residency request.
-     * @return Explicit residency operation status.
+     * @comment 在 Resource 自有状态中将已驻留槽位标记为已驱逐。
+     * @param request 输入驻留请求。
+     * @return 显式驻留操作状态。
      */
     ResourceResidencyStatus EvictResident(const ResourceResidencyRequest &request);
     /**
-     * @comment Selects a deterministic Resource-owned eviction candidate.
-     * @param output_handle Output candidate handle.
-     * @return Explicit residency operation status.
+     * @comment 选择确定性的 Resource 自有驱逐候选项。
+     * @param output_handle 输出候选句柄。
+     * @return 显式驻留操作状态。
      */
     ResourceResidencyStatus SelectEvictionCandidate(ResourceHandle *output_handle);
     /**
-     * @comment Returns Resource-owned residency state for a valid handle.
-     * @param handle Input handle.
-     * @param expected_type Input expected type.
-     * @param output_state Output residency state.
-     * @return Explicit residency operation status.
+     * @comment 返回有效句柄的 Resource 自有驻留状态。
+     * @param handle 输入句柄。
+     * @param expected_type 输入期望类型。
+     * @param output_state 输出驻留状态。
+     * @return 显式驻留操作状态。
      */
     ResourceResidencyStatus GetResidencyState(
         ResourceHandle handle,
         ResourceTypeId expected_type,
         ResourceResidencyState *output_state) const;
     /**
-     * @comment Returns a snapshot of Resource-owned residency counters.
-     * @return Residency snapshot value.
+     * @comment 返回 Resource 自有驻留计数器快照。
+     * @return 驻留快照值。
      */
     ResourceResidencySnapshot ResidencySnapshot() const;
     /**
-     * @comment Configures the Resource-owned cache payload budget.
-     * @param desc Input budget descriptor.
-     * @return Explicit cache payload operation status.
+     * @comment 配置 Resource 自有缓存载荷预算。
+     * @param desc 输入预算描述。
+     * @return 显式缓存载荷操作状态。
      */
     ResourceCachePayloadStatus SetCachePayloadBudget(ResourceCachePayloadBudgetDesc desc);
     /**
-     * @comment Stores caller-provided opaque bytes in Resource-owned cache payload storage.
-     * @param request Input cache payload request.
-     * @return Explicit cache payload operation status.
+     * @comment 将调用方提供的不透明字节存入 Resource 自有缓存载荷存储。
+     * @param request 输入缓存载荷请求。
+     * @return 显式缓存载荷操作状态。
      */
     ResourceCachePayloadStatus StoreCachePayload(const ResourceCachePayloadRequest &request);
     /**
-     * @comment Reads Resource-owned opaque cache payload bytes into caller-owned output storage.
-     * @param request Input cache payload request.
-     * @param output_bytes Output byte storage.
-     * @param output_byte_capacity Output byte capacity.
-     * @param output_byte_count Output byte count.
-     * @return Explicit cache payload operation status.
+     * @comment 将 Resource 自有不透明缓存载荷字节读取到调用方持有输出存储。
+     * @param request 输入缓存载荷请求。
+     * @param output_bytes 输出 字节 存储。
+     * @param output_byte_capacity 输出 字节容量。
+     * @param output_byte_count 输出 字节数。
+     * @return 显式缓存载荷操作状态。
      */
     ResourceCachePayloadStatus ReadCachePayload(
         const ResourceCachePayloadRequest &request,
@@ -190,108 +190,108 @@ public:
         std::uint32_t output_byte_capacity,
         std::uint32_t *output_byte_count);
     /**
-     * @comment Releases Resource-owned cache payload bytes without changing load or residency state.
-     * @param request Input cache payload request.
-     * @return Explicit cache payload operation status.
+     * @comment 释放 Resource 自有缓存载荷字节，不改变加载或驻留状态。
+     * @param request 输入缓存载荷请求。
+     * @return 显式缓存载荷操作状态。
      */
     ResourceCachePayloadStatus ReleaseCachePayload(const ResourceCachePayloadRequest &request);
     /**
-     * @comment Returns a snapshot of Resource-owned cache payload counters.
-     * @return Cache payload snapshot value.
+     * @comment 返回 Resource 自有 cache payload 计数器 的快照。
+     * @return 缓存载荷快照值。
      */
     ResourceCachePayloadSnapshot CachePayloadSnapshot() const;
     /**
-     * @comment Configures the Resource-owned decode plan budget.
-     * @param desc Input budget descriptor.
-     * @return Explicit decode plan operation status.
+     * @comment 配置 Resource 自有 decode plan budget.
+     * @param desc 输入预算描述。
+     * @return 显式解码计划操作状态。
      */
     ResourceDecodePlanStatus SetDecodePlanBudget(ResourceDecodePlanBudgetDesc desc);
     /**
-     * @comment Creates a Resource-owned decode plan over an existing cache payload record.
-     * @param request Input decode plan request.
-     * @return Explicit decode plan operation status.
+     * @comment 基于已有 cache payload 记录创建一个 Resource 自有 decode plan。
+     * @param request 输入解码计划请求。
+     * @return 显式解码计划操作状态。
      */
     ResourceDecodePlanStatus CreateDecodePlan(const ResourceDecodePlanRequest &request);
     /**
-     * @comment Queries a Resource-owned decode plan record.
-     * @param request Input decode plan request.
-     * @param output_record Output decode plan record.
-     * @return Explicit decode plan operation status.
+     * @comment 查询一个 Resource 自有 decode plan 记录。
+     * @param request 输入解码计划请求。
+     * @param output_record 输出 decode plan 记录。
+     * @return 显式解码计划操作状态。
      */
     ResourceDecodePlanStatus QueryDecodePlan(
         const ResourceDecodePlanRequest &request,
         ResourceDecodePlanRecord *output_record);
     /**
-     * @comment Releases a Resource-owned decode plan record without changing payload or residency state.
-     * @param request Input decode plan request.
-     * @return Explicit decode plan operation status.
+     * @comment 释放一个 Resource 自有 decode plan 记录，且不改变 payload 或 residency 状态。
+     * @param request 输入解码计划请求。
+     * @return 显式解码计划操作状态。
      */
     ResourceDecodePlanStatus ReleaseDecodePlan(const ResourceDecodePlanRequest &request);
     /**
-     * @comment Returns a snapshot of Resource-owned decode plan counters.
-     * @return Decode plan snapshot value.
+     * @comment 返回 Resource 自有 decode plan 计数器 的快照。
+     * @return 解码计划快照值。
      */
     ResourceDecodePlanSnapshot DecodePlanSnapshot() const;
     /**
-     * @comment Configures the Resource-owned decode result budget.
-     * @param desc Input budget descriptor.
-     * @return Explicit decode result operation status.
+     * @comment 配置 Resource 自有 decode 结果 budget.
+     * @param desc 输入预算描述。
+     * @return 显式 decode 结果 操作状态。
      */
     ResourceDecodeResultStatus SetDecodeResultBudget(ResourceDecodeResultBudgetDesc desc);
     /**
-     * @comment Commits a Resource-owned import-ready decode result over an existing decode plan.
-     * @param request Input decode result request.
-     * @return Explicit decode result operation status.
+     * @comment 基于已有 decode plan 提交一个 Resource 自有 import-ready decode 结果。
+     * @param request 输入解码结果请求。
+     * @return 显式 decode 结果 操作状态。
      */
     ResourceDecodeResultStatus CommitDecodeResult(const ResourceDecodeResultRequest &request);
     /**
-     * @comment Queries a Resource-owned decode result record.
-     * @param request Input decode result request.
-     * @param output_record Output decode result record.
-     * @return Explicit decode result operation status.
+     * @comment 查询一个 Resource 自有 decode 结果记录。
+     * @param request 输入解码结果请求。
+     * @param output_record 输出 decode 结果 记录。
+     * @return 显式 decode 结果 操作状态。
      */
     ResourceDecodeResultStatus QueryDecodeResult(
         const ResourceDecodeResultRequest &request,
         ResourceDecodeResultRecord *output_record);
     /**
-     * @comment Releases a Resource-owned decode result record without changing payload or residency state.
-     * @param request Input decode result request.
-     * @return Explicit decode result operation status.
+     * @comment 释放一个 Resource 自有 decode 结果记录，且不改变 payload 或 residency 状态。
+     * @param request 输入解码结果请求。
+     * @return 显式 decode 结果 操作状态。
      */
     ResourceDecodeResultStatus ReleaseDecodeResult(const ResourceDecodeResultRequest &request);
     /**
-     * @comment Returns a snapshot of Resource-owned decode result counters.
-     * @return Decode result snapshot value.
+     * @comment 返回 Resource 自有 decode 结果 计数器 的快照。
+     * @return Decode 结果 快照 值。
      */
     ResourceDecodeResultSnapshot DecodeResultSnapshot() const;
     /**
-     * @comment Configures the Resource-owned decoded payload byte budget.
-     * @param desc Input budget descriptor.
-     * @return Explicit decoded payload operation status.
+     * @comment 配置 Resource 自有 decoded payload 字节 budget.
+     * @param desc 输入预算描述。
+     * @return 显式解码载荷操作状态。
      */
     ResourceDecodedPayloadStatus SetDecodedPayloadBudget(ResourceDecodedPayloadBudgetDesc desc);
     /**
-     * @comment Stores caller-provided decoded bytes in Resource-owned decoded payload storage.
-     * @param request Input decoded payload request.
-     * @return Explicit decoded payload operation status.
+     * @comment 存储 caller-provided decoded 字节 在 Resource 自有 decoded payload 存储。
+     * @param request 输入解码载荷请求。
+     * @return 显式解码载荷操作状态。
      */
     ResourceDecodedPayloadStatus StoreDecodedPayload(const ResourceDecodedPayloadRequest &request);
     /**
-     * @comment Queries a Resource-owned decoded payload record.
-     * @param request Input decoded payload request.
-     * @param output_record Output decoded payload record.
-     * @return Explicit decoded payload operation status.
+     * @comment 查询一个 Resource 自有 decoded payload 记录。
+     * @param request 输入解码载荷请求。
+     * @param output_record 输出 decoded payload 记录。
+     * @return 显式解码载荷操作状态。
      */
     ResourceDecodedPayloadStatus QueryDecodedPayload(
         const ResourceDecodedPayloadRequest &request,
         ResourceDecodedPayloadRecord *output_record);
     /**
-     * @comment Reads Resource-owned decoded payload bytes into caller-owned output storage.
-     * @param request Input decoded payload request.
-     * @param output_bytes Output byte storage.
-     * @param output_byte_capacity Output byte capacity.
-     * @param output_byte_count Output byte count.
-     * @return Explicit decoded payload operation status.
+     * @comment 读取 Resource 自有 decoded payload 字节 写入 调用方持有 output 存储.
+     * @param request 输入解码载荷请求。
+     * @param output_bytes 输出 字节 存储。
+     * @param output_byte_capacity 输出 字节容量。
+     * @param output_byte_count 输出 字节数。
+     * @return 显式解码载荷操作状态。
      */
     ResourceDecodedPayloadStatus ReadDecodedPayload(
         const ResourceDecodedPayloadRequest &request,
@@ -299,31 +299,31 @@ public:
         std::uint32_t output_byte_capacity,
         std::uint32_t *output_byte_count);
     /**
-     * @comment Releases Resource-owned decoded payload bytes without changing earlier Resource state.
-     * @param request Input decoded payload request.
-     * @return Explicit decoded payload operation status.
+     * @comment 释放 Resource 自有 decoded payload 字节 且不 changing earlier Resource 状态.
+     * @param request 输入解码载荷请求。
+     * @return 显式解码载荷操作状态。
      */
     ResourceDecodedPayloadStatus ReleaseDecodedPayload(const ResourceDecodedPayloadRequest &request);
     /**
-     * @comment Returns a snapshot of Resource-owned decoded payload counters.
-     * @return Decoded payload snapshot value.
+     * @comment 返回 Resource 自有 decoded payload 计数器 的快照。
+     * @return 解码载荷快照值。
      */
     ResourceDecodedPayloadSnapshot DecodedPayloadSnapshot() const;
     /**
-     * @comment Releases the operation.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 释放操作。
+     * @param handle 输入句柄。
+     * @return 显式操作状态。
      */
     ResourceStatus Release(ResourceHandle handle);
     /**
-     * @comment Retires the operation.
-     * @param handle Input handle.
-     * @return Explicit operation status.
+     * @comment 回收 操作。
+     * @param handle 输入句柄。
+     * @return 显式操作状态。
      */
     ResourceStatus Retire(ResourceHandle handle);
     /**
-     * @comment Returns a snapshot of the current state.
-     * @return Snapshot value.
+     * @comment 返回当前状态快照。
+     * @return 快照值。
      */
     ResourceSnapshot Snapshot() const;
 

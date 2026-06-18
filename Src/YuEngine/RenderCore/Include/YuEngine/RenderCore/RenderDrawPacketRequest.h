@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawPacketRequest.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawPacketRequest.h
 
 #pragma once
 
@@ -11,7 +11,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Describes one value-only indexed draw packet.
+ * @comment 描述一个仅含值的 indexed draw packet。
  */
 struct RenderDrawPacketRequest final {
     std::uint32_t draw_id = 0U;

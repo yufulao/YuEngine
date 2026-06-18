@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFixturePassRequest.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFixturePassRequest.h
 
 #pragma once
 
@@ -19,7 +19,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Describes one synthetic RenderCore fixture pass request.
+ * @comment 描述 一个 synthetic RenderCore fixture pass 请求.
  */
 struct RenderFixturePassRequest final {
     yuengine::rhi::IRhiDevice *rhi_device = nullptr;

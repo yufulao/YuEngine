@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderViewPacket.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderViewPacket.h
 
 #pragma once
 
@@ -17,32 +17,32 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Assembles one validated view-level RenderCore pass request from material and draw values.
+ * @comment 组装 一个 已验证 视图-level RenderCore pass 请求 从 material 和 draw 值.
  */
 class RenderViewPacket final {
 public:
     /**
-     * @comment Constructs a RenderViewPacket instance.
-     * @param desc Input descriptor.
+     * @comment 构造 RenderViewPacket 实例。
+     * @param desc 输入描述。
      */
     explicit RenderViewPacket(const RenderViewPacketDesc &desc=RenderViewPacketDesc());
 
     /**
-     * @comment Builds one caller-owned fixture pass request from a view packet request.
-     * @param request Caller-owned view packet request.
-     * @param out_request Caller-owned output pass request.
-     * @return Explicit operation result.
+     * @comment 构建 一个 调用方持有 fixture pass 请求 从 一个 视图 packet 请求.
+     * @param request 调用方持有的 视图 packet 请求。
+     * @param out_request 调用方持有的 输出 pass 请求。
+     * @return 显式操作结果。
      */
     RenderViewPacketResult BuildPassRequest(
         const RenderViewPacketRequest &request,
         RenderFixturePassRequest *out_request);
     /**
-     * @comment Returns the current view packet snapshot.
-     * @return Snapshot value.
+     * @comment 返回当前 视图 packet 快照。
+     * @return 快照值。
      */
     RenderViewPacketSnapshot Snapshot() const;
     /**
-     * @comment Resets bounded view packet records and counters.
+     * @comment 重置固定容量 视图 packet 记录和计数。
      */
     void Reset();
 

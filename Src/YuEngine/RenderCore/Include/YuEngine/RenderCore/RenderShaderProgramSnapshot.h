@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderShaderProgramSnapshot.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderShaderProgramSnapshot.h
 
 #pragma once
 
@@ -10,7 +10,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains bounded shader program counters and last status values.
+ * @comment 包含 固定容量 shader program 计数器 和 last 状态 值。
  */
 struct RenderShaderProgramSnapshot final {
     std::size_t program_record_capacity = 0U;

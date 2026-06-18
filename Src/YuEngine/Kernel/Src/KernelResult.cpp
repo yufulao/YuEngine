@@ -1,5 +1,5 @@
-// Module: YuEngine Kernel
-// File: Src/YuEngine/Kernel/Src/KernelResult.cpp
+// 模块: YuEngine Kernel
+// 文件: Src/YuEngine/Kernel/Src/KernelResult.cpp
 
 #include "YuEngine/Kernel/KernelResult.h"
 

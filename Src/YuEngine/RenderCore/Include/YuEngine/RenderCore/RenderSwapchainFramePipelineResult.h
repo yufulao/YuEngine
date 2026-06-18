@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSwapchainFramePipelineResult.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSwapchainFramePipelineResult.h
 
 #pragma once
 
@@ -14,7 +14,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains one RenderCore swapchain frame pipeline result.
+ * @comment 包含 一个 RenderCore swapchain frame pipeline 结果。
  */
 struct RenderSwapchainFramePipelineResult final {
     RenderSwapchainFramePipelineStatus status = RenderSwapchainFramePipelineStatus::InvalidArgument;

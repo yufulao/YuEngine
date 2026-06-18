@@ -1,5 +1,5 @@
-// Module: YuEngine Kernel
-// File: Src/YuEngine/Kernel/Include/YuEngine/Kernel/KernelResult.h
+// 模块: YuEngine Kernel
+// 文件: Src/YuEngine/Kernel/Include/YuEngine/Kernel/KernelResult.h
 
 #pragma once
 
@@ -14,15 +14,15 @@ struct KernelResult {
     std::string message;
 
     /**
-     * @comment Creates a successful result.
-     * @return Explicit operation result.
+     * @comment 创建成功结果。
+     * @return 显式操作结果。
      */
     static KernelResult Success();
     /**
-     * @comment Creates a failed result.
-     * @param status Input status.
-     * @param message Input message text.
-     * @return Explicit operation result.
+     * @comment 创建失败结果。
+     * @param status 输入 状态。
+     * @param message 输入 消息文本。
+     * @return 显式操作结果。
      */
     static KernelResult Failure(KernelStatus status, std::string message);
 };

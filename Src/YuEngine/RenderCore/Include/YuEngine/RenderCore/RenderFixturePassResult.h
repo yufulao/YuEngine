@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFixturePassResult.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFixturePassResult.h
 
 #pragma once
 
@@ -11,7 +11,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains the result of one fixture pass execution.
+ * @comment 包含 结果 的 一个 fixture pass execution。
  */
 struct RenderFixturePassResult final {
     RenderFixturePassStatus status = RenderFixturePassStatus::InvalidArgument;

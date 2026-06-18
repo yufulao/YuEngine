@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawableFramePipelineRequest.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawableFramePipelineRequest.h
 
 #pragma once
 
@@ -18,7 +18,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Describes one drawable frame submitted through RenderCore to the current swapchain target.
+ * @comment 描述 一个 drawable frame 提交的 through RenderCore 到 当前 swapchain target.
  */
 struct RenderDrawableFramePipelineRequest final {
     yuengine::rhi::IRhiDevice *rhi_device = nullptr;

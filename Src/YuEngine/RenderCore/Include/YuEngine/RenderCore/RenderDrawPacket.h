@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawPacket.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderDrawPacket.h
 
 #pragma once
 
@@ -17,32 +17,32 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Builds validated draw geometry fields for a RenderCore fixture pass request.
+ * @comment 构建 已验证 draw geometry fields 用于 一个 RenderCore fixture pass 请求.
  */
 class RenderDrawPacket final {
 public:
     /**
-     * @comment Constructs a RenderDrawPacket instance.
-     * @param desc Input descriptor.
+     * @comment 构造 RenderDrawPacket 实例。
+     * @param desc 输入描述。
      */
     explicit RenderDrawPacket(const RenderDrawPacketDesc &desc=RenderDrawPacketDesc());
 
     /**
-     * @comment Writes validated draw geometry into a caller-owned fixture pass request.
-     * @param request Caller-owned draw packet request.
-     * @param out_request Caller-owned output pass request.
-     * @return Explicit operation result.
+     * @comment 写入 已验证 draw geometry 写入 一个 调用方持有 fixture pass 请求。
+     * @param request 调用方持有的 draw packet 请求。
+     * @param out_request 调用方持有的 输出 pass 请求。
+     * @return 显式操作结果。
      */
     RenderDrawPacketResult BuildPassRequest(
         const RenderDrawPacketRequest &request,
         RenderFixturePassRequest *out_request);
     /**
-     * @comment Returns the current draw packet snapshot.
-     * @return Snapshot value.
+     * @comment 返回当前 draw packet 快照。
+     * @return 快照值。
      */
     RenderDrawPacketSnapshot Snapshot() const;
     /**
-     * @comment Resets bounded draw packet records and counters.
+     * @comment 重置固定容量 draw packet 记录和计数。
      */
     void Reset();
 

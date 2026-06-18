@@ -1,5 +1,5 @@
-// Module: YuEngine Streaming
-// File: Src/YuEngine/Streaming/Include/YuEngine/Streaming/ResourceUploadKind.h
+// 模块: YuEngine Streaming
+// 文件: Src/YuEngine/Streaming/Include/YuEngine/Streaming/ResourceUploadKind.h
 
 #pragma once
 

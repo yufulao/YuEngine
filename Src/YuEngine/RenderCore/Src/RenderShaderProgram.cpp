@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Src/RenderShaderProgram.cpp
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Src/RenderShaderProgram.cpp
 
 #include "YuEngine/RenderCore/RenderShaderProgram.h"
 

@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/MaterialBindingFixtureSnapshot.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/MaterialBindingFixtureSnapshot.h
 
 #pragma once
 
@@ -12,7 +12,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains bounded material binding fixture counters and last status values.
+ * @comment 包含 固定容量 material 绑定 fixture 计数器 和 last 状态 值。
  */
 struct MaterialBindingFixtureSnapshot final {
     std::size_t binding_record_capacity = 0U;

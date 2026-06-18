@@ -1,5 +1,5 @@
-// Module: YuEngine Memory
-// File: Src/YuEngine/Memory/Include/YuEngine/Memory/MemoryAccountingResult.h
+// 模块: YuEngine Memory
+// 文件: Src/YuEngine/Memory/Include/YuEngine/Memory/MemoryAccountingResult.h
 
 #pragma once
 
@@ -12,26 +12,26 @@ struct MemoryAccountingResult {
     MemoryAllocationId allocation_id;
 
     /**
-     * @comment Creates a successful result.
-     * @param allocation_id Input allocation id.
-     * @return Explicit operation result.
+     * @comment 创建成功结果。
+     * @param allocation_id 输入 allocation id。
+     * @return 显式操作结果。
      */
     static MemoryAccountingResult Success(MemoryAllocationId allocation_id) {
         return MemoryAccountingResult{MemoryAccountingStatus::Success, allocation_id};
     }
 
     /**
-     * @comment Creates a failed result.
-     * @param status Input status.
-     * @return Explicit operation result.
+     * @comment 创建失败结果。
+     * @param status 输入 状态。
+     * @return 显式操作结果。
      */
     static MemoryAccountingResult Failure(MemoryAccountingStatus status) {
         return MemoryAccountingResult{status, MemoryAllocationId{0U}};
     }
 
     /**
-     * @comment Checks whether the result succeeded.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查结果是否成功。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool Succeeded() const {
         return status == MemoryAccountingStatus::Success;

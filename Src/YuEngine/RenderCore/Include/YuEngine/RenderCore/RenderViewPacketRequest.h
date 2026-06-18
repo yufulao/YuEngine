@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderViewPacketRequest.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderViewPacketRequest.h
 
 #pragma once
 
@@ -14,7 +14,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Describes one value-only view packet assembled from material and draw inputs.
+ * @comment 描述 一个 值-仅 视图 packet assembled 从 material 和 draw inputs.
  */
 struct RenderViewPacketRequest final {
     std::uint32_t view_id = 0U;

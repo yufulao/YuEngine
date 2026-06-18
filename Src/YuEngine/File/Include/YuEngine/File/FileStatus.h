@@ -1,5 +1,5 @@
-// Module: YuEngine File
-// File: Src/YuEngine/File/Include/YuEngine/File/FileStatus.h
+// 模块: YuEngine File
+// 文件: Src/YuEngine/File/Include/YuEngine/File/FileStatus.h
 
 #pragma once
 

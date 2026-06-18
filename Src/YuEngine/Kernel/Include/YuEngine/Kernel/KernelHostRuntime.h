@@ -1,5 +1,5 @@
-// Module: YuEngine Kernel
-// File: Src/YuEngine/Kernel/Include/YuEngine/Kernel/KernelHostRuntime.h
+// 模块: YuEngine Kernel
+// 文件: Src/YuEngine/Kernel/Include/YuEngine/Kernel/KernelHostRuntime.h
 
 #pragma once
 
@@ -10,29 +10,29 @@ namespace yuengine::kernel {
 class KernelHostRuntime final : public platform::IHostRuntime {
 public:
     /**
-     * @comment Constructs a KernelHostRuntime instance.
-     * @param kernel Kernel updated by the function.
+     * @comment 构造 KernelHostRuntime 实例。
+     * @param kernel 函数写入的 Kernel。
      */
     explicit KernelHostRuntime(EngineKernel& kernel);
 
     /**
-     * @comment Starts the component.
-     * @param lifecycle_trace Lifecycle trace updated by the function.
-     * @return Start value.
+     * @comment 启动组件。
+     * @param lifecycle_trace 函数写入的生命周期轨迹。
+     * @return Start 值。
      */
     platform::HostError Start(std::vector<std::string>& lifecycle_trace) override;
     /**
-     * @comment Ticks the runtime for one frame.
-     * @param frame_index Input frame index.
-     * @param tick_time_nanoseconds Input tick time nanoseconds.
-     * @param lifecycle_trace Lifecycle trace updated by the function.
-     * @return Tick value.
+     * @comment 推进运行时一帧。
+     * @param frame_index 输入 帧索引。
+     * @param tick_time_nanoseconds 输入 tick 纳秒时间。
+     * @param lifecycle_trace 函数写入的生命周期轨迹。
+     * @return Tick 值。
      */
     platform::HostError Tick(std::uint32_t frame_index, std::uint64_t tick_time_nanoseconds, std::vector<std::string>& lifecycle_trace) override;
     /**
-     * @comment Shuts down the component.
-     * @param lifecycle_trace Lifecycle trace updated by the function.
-     * @return Shutdown value.
+     * @comment 关闭组件。
+     * @param lifecycle_trace 函数写入的生命周期轨迹。
+     * @return 关闭 值。
      */
     platform::HostError Shutdown(std::vector<std::string>& lifecycle_trace) override;
 

@@ -1,5 +1,5 @@
-// Module: YuEngine Memory
-// File: Src/YuEngine/Memory/Src/CountingMemoryTracker.cpp
+// 模块: YuEngine Memory
+// 文件: Src/YuEngine/Memory/Src/CountingMemoryTracker.cpp
 
 #include "YuEngine/Memory/CountingMemoryTracker.h"
 

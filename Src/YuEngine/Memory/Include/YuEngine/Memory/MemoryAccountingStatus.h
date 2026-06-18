@@ -1,5 +1,5 @@
-// Module: YuEngine Memory
-// File: Src/YuEngine/Memory/Include/YuEngine/Memory/MemoryAccountingStatus.h
+// 模块: YuEngine Memory
+// 文件: Src/YuEngine/Memory/Include/YuEngine/Memory/MemoryAccountingStatus.h
 
 #pragma once
 

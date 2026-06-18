@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderShaderProgramRequest.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderShaderProgramRequest.h
 
 #pragma once
 
@@ -10,7 +10,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Describes one value-only shader program request.
+ * @comment 描述 一个 值-仅 shader program 请求.
  */
 struct RenderShaderProgramRequest final {
     std::uint32_t program_id = 0U;

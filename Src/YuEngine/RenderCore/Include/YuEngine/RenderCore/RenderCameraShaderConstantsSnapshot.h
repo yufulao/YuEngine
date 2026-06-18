@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderCameraShaderConstantsSnapshot.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderCameraShaderConstantsSnapshot.h
 
 #pragma once
 
@@ -9,7 +9,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains camera shader constant writer counters and last status values.
+ * @comment 包含 camera shader constant writer 计数器 和 last 状态 值。
  */
 struct RenderCameraShaderConstantsSnapshot final {
     std::uint64_t accepted_write_count = 0U;

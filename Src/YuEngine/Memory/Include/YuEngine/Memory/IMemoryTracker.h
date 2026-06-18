@@ -1,5 +1,5 @@
-// Module: YuEngine Memory
-// File: Src/YuEngine/Memory/Include/YuEngine/Memory/IMemoryTracker.h
+// 模块: YuEngine Memory
+// 文件: Src/YuEngine/Memory/Include/YuEngine/Memory/IMemoryTracker.h
 
 #pragma once
 
@@ -20,13 +20,13 @@ public:
     virtual ~IMemoryTracker() = default;
 
     /**
-     * @comment Records allocation.
-     * @param owner Input owner.
-     * @param tag Input tag.
-     * @param budget_class Input budget class.
-     * @param bytes Input byte count or byte payload.
-     * @param alignment Input alignment.
-     * @return Explicit operation result.
+     * @comment 记录分配。
+     * @param owner 输入所有者。
+     * @param tag 输入标签。
+     * @param budget_class 输入 预算类别。
+     * @param bytes 输入字节数或字节载荷。
+     * @param alignment 输入 对齐。
+     * @return 显式操作结果。
      */
     virtual MemoryAccountingResult RecordAllocation(
         MemoryOwnerId owner,
@@ -35,22 +35,22 @@ public:
         std::size_t bytes,
         std::size_t alignment) = 0;
     /**
-     * @comment Records free.
-     * @param allocation_id Input allocation id.
-     * @param owner Input owner.
-     * @param tag Input tag.
-     * @return Explicit operation status.
+     * @comment 记录释放。
+     * @param allocation_id 输入 allocation id。
+     * @param owner 输入所有者。
+     * @param tag 输入标签。
+     * @return 显式操作状态。
      */
     virtual MemoryAccountingStatus RecordFree(MemoryAllocationId allocation_id, MemoryOwnerId owner, MemoryTag tag) = 0;
     /**
-     * @comment Returns a snapshot of the current state.
-     * @return Snapshot value.
+     * @comment 返回当前状态快照。
+     * @return 快照值。
      */
     virtual MemorySnapshot Snapshot() const = 0;
     /**
-     * @comment Returns count for budget.
-     * @param budget_class Input budget class.
-     * @return Allocation count for budget value.
+     * @comment 返回指定预算的计数。
+     * @param budget_class 输入 预算类别。
+     * @return budget 对应的 allocation 计数值。
      */
     virtual std::uint64_t AllocationCountForBudget(MemoryBudgetClass budget_class) const = 0;
 };

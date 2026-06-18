@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFixturePass.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFixturePass.h
 
 #pragma once
 
@@ -14,29 +14,29 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Executes a bounded synthetic RenderCore fixture pass over public RHI contracts.
+ * @comment 在 public RHI contract 上执行一个固定容量 synthetic RenderCore fixture pass。
  */
 class RenderFixturePass final {
 public:
     /**
-     * @comment Constructs a RenderFixturePass instance.
-     * @param desc Input descriptor.
+     * @comment 构造 RenderFixturePass 实例。
+     * @param desc 输入描述。
      */
     explicit RenderFixturePass(const RenderFixturePassDesc &desc=RenderFixturePassDesc());
 
     /**
-     * @comment Executes one fixture pass request.
-     * @param request Input pass request.
-     * @return Explicit operation result.
+     * @comment 执行 一个 fixture pass 请求.
+     * @param request 输入 pass 请求。
+     * @return 显式操作结果。
      */
     RenderFixturePassResult Execute(const RenderFixturePassRequest &request);
     /**
-     * @comment Returns the current fixture pass snapshot.
-     * @return Snapshot value.
+     * @comment 返回当前 fixture pass 快照。
+     * @return 快照值。
      */
     RenderFixturePassSnapshot Snapshot() const;
     /**
-     * @comment Resets bounded pass records and counters.
+     * @comment 重置固定容量 pass 记录和计数。
      */
     void Reset();
 

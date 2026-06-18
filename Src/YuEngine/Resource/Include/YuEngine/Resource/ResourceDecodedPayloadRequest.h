@@ -1,6 +1,6 @@
 /**
  * @file Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceDecodedPayloadRequest.h
- * @brief Resource module decoded payload request value contract.
+ * @brief Resource 模块解码载荷请求值契约。
  */
 #pragma once
 
@@ -14,7 +14,7 @@
 namespace yuengine::resource {
 
 /**
- * @brief Describes a decoded payload operation over an import-ready decode result.
+ * @brief 描述基于 import-ready decode 结果的 decoded payload 操作。
  */
 struct ResourceDecodedPayloadRequest {
     ResourceHandle resource;

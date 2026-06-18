@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSwapchainFramePipelineDesc.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSwapchainFramePipelineDesc.h
 
 #pragma once
 
@@ -9,7 +9,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Describes bounded storage for swapchain frame pipeline records and commands.
+ * @comment 描述 固定容量 存储 用于 swapchain frame pipeline 记录 和 commands.
  */
 struct RenderSwapchainFramePipelineDesc final {
     std::size_t frame_record_capacity = MAX_RENDER_SWAPCHAIN_FRAME_RECORDS;

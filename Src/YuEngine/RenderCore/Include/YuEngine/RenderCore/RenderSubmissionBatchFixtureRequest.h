@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSubmissionBatchFixtureRequest.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSubmissionBatchFixtureRequest.h
 
 #pragma once
 
@@ -12,7 +12,7 @@ namespace yuengine::rendercore {
 class RenderFixturePass;
 
 /**
- * @comment Describes one caller-owned RenderCore submission batch operation.
+ * @comment 描述 一个 调用方持有 RenderCore submission batch 操作.
  */
 struct RenderSubmissionBatchFixtureRequest final {
     RenderFixturePass *pass = nullptr;

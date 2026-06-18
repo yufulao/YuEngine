@@ -1,5 +1,5 @@
-// Module: YuEngine Streaming
-// File: Src/YuEngine/Streaming/Src/ResourceStreamingPipeline.cpp
+// 模块: YuEngine Streaming
+// 文件: Src/YuEngine/Streaming/Src/ResourceStreamingPipeline.cpp
 
 #include "YuEngine/Streaming/ResourceStreamingPipeline.h"
 

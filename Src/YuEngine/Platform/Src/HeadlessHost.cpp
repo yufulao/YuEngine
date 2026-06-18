@@ -1,5 +1,5 @@
-// Module: YuEngine Platform
-// File: Src/YuEngine/Platform/Src/HeadlessHost.cpp
+// 模块: YuEngine Platform
+// 文件: Src/YuEngine/Platform/Src/HeadlessHost.cpp
 
 #include "YuEngine/Platform/HeadlessHost.h"
 

@@ -1,5 +1,5 @@
-// Module: YuEngine Kernel
-// File: Src/YuEngine/Kernel/Include/YuEngine/Kernel/EngineKernel.h
+// 模块: YuEngine Kernel
+// 文件: Src/YuEngine/Kernel/Include/YuEngine/Kernel/EngineKernel.h
 
 #pragma once
 
@@ -17,46 +17,46 @@ namespace yuengine::kernel {
 class EngineKernel final {
 public:
     /**
-     * @comment Constructs a EngineKernel instance.
+     * @comment 构造 EngineKernel 实例。
      */
     EngineKernel();
 
     /**
-     * @comment Registers module.
-     * @param module Module updated by the function.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 注册模块。
+     * @param module 函数写入的 Module。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool RegisterModule(IModule& module);
 
     /**
-     * @comment Starts the component.
-     * @param lifecycle_trace Lifecycle trace updated by the function.
-     * @return Explicit operation result.
+     * @comment 启动组件。
+     * @param lifecycle_trace 函数写入的生命周期轨迹。
+     * @return 显式操作结果。
      */
     KernelResult Start(std::vector<std::string>& lifecycle_trace);
     /**
-     * @comment Updates the component for one frame.
-     * @param frame_index Input frame index.
-     * @param tick_time_nanoseconds Input tick time nanoseconds.
-     * @param lifecycle_trace Lifecycle trace updated by the function.
-     * @return Explicit operation result.
+     * @comment 更新组件一帧。
+     * @param frame_index 输入 帧索引。
+     * @param tick_time_nanoseconds 输入 tick 纳秒时间。
+     * @param lifecycle_trace 函数写入的生命周期轨迹。
+     * @return 显式操作结果。
      */
     KernelResult Update(std::uint32_t frame_index, std::uint64_t tick_time_nanoseconds, std::vector<std::string>& lifecycle_trace);
     /**
-     * @comment Shuts down the component.
-     * @param lifecycle_trace Lifecycle trace updated by the function.
-     * @return Explicit operation result.
+     * @comment 关闭组件。
+     * @param lifecycle_trace 函数写入的生命周期轨迹。
+     * @return 显式操作结果。
      */
     KernelResult Shutdown(std::vector<std::string>& lifecycle_trace);
 
     /**
-     * @comment Returns the service registry.
-     * @return Reference to the requested object.
+     * @comment 返回服务注册表。
+     * @return 请求对象的引用。
      */
     ServiceRegistry& Services();
     /**
-     * @comment Returns the service registry.
-     * @return Reference to the requested object.
+     * @comment 返回服务注册表。
+     * @return 请求对象的引用。
      */
     const ServiceRegistry& Services() const;
 

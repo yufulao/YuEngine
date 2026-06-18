@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphSkeletonSnapshot.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphSkeletonSnapshot.h
 
 #pragma once
 
@@ -12,7 +12,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains bounded RenderCore render graph skeleton counters and last status values.
+ * @comment 包含 固定容量 RenderCore render graph skeleton 计数器 和 last 状态 值。
  */
 struct RenderGraphSkeletonSnapshot final {
     std::size_t graph_record_capacity = 0U;

@@ -1,5 +1,5 @@
-// Module: YuEngine Hardware
-// File: Src/YuEngine/Hardware/Src/HardwareFrameHost.cpp
+// 模块: YuEngine Hardware
+// 文件: Src/YuEngine/Hardware/Src/HardwareFrameHost.cpp
 
 #include "YuEngine/Hardware/HardwareFrameHost.h"
 

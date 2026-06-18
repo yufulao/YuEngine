@@ -1,6 +1,6 @@
 /**
  * @file Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceDecodeResultRecord.h
- * @brief Resource module decode result record value contract.
+ * @brief Resource 模块 decode 结果 记录 值契约。
  */
 #pragma once
 
@@ -17,7 +17,7 @@
 namespace yuengine::resource {
 
 /**
- * @brief Stores import-ready decode-result metadata for one resource payload and decode plan.
+ * @brief 保存一个资源载荷和解码计划的可导入解码结果元数据。
  */
 struct ResourceDecodeResultRecord {
     ResourceDecodeResultOperation operation = ResourceDecodeResultOperation::None;

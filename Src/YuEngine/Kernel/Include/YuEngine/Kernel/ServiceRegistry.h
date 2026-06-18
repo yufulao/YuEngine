@@ -1,5 +1,5 @@
-// Module: YuEngine Kernel
-// File: Src/YuEngine/Kernel/Include/YuEngine/Kernel/ServiceRegistry.h
+// 模块: YuEngine Kernel
+// 文件: Src/YuEngine/Kernel/Include/YuEngine/Kernel/ServiceRegistry.h
 
 #pragma once
 
@@ -16,11 +16,11 @@ public:
     static constexpr const char* LOOKUP_POLICY = "SETUP_PATH_ONLY_CACHE_POINTERS_FOR_HOT_PATHS";
 
     /**
-     * @comment Registers the service instance.
-     * @param owner_module Input owner module.
-     * @param service_id Input service id.
-     * @param service Service updated by the function.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 注册 服务实例.
+     * @param owner_module 输入 所有者模块。
+     * @param service_id 输入 服务 id。
+     * @param service 函数写入的 Service。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     template <typename T>
     bool Register(std::string_view owner_module, std::string_view service_id, T& service) {
@@ -28,9 +28,9 @@ public:
     }
 
     /**
-     * @comment Resolves the service instance.
-     * @param service_id Input service id.
-     * @return Pointer to the requested object, or nullptr when unavailable.
+     * @comment 解析 服务实例。
+     * @param service_id 输入 服务 id。
+     * @return 请求对象指针；不可用时返回 nullptr。
      */
     template <typename T>
     T* Resolve(std::string_view service_id) const {
@@ -43,20 +43,20 @@ public:
     }
 
     /**
-     * @comment Checks whether the registry contains the requested item.
-     * @param service_id Input service id.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查 registry contains 请求的 item.
+     * @param service_id 输入 服务 id。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool Contains(std::string_view service_id) const;
     /**
-     * @comment Checks whether the owner has registered services.
-     * @param owner_module Input owner module.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查 所有者 是否已注册服务。
+     * @param owner_module 输入 所有者模块。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool OwnerHasServices(std::string_view owner_module) const;
     /**
-     * @comment Unregisters all services for the owner.
-     * @param owner_module Input owner module.
+     * @comment 注销 所有者的全部服务。
+     * @param owner_module 输入 所有者模块。
      */
     void UnregisterOwner(std::string_view owner_module);
 

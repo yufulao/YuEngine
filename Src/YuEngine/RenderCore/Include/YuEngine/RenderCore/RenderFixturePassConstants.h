@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFixturePassConstants.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFixturePassConstants.h
 
 #pragma once
 
@@ -9,15 +9,15 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Maximum number of retained fixture pass records.
+ * @comment 最大数量： 保留的 fixture pass 记录.
  */
 constexpr std::size_t MAX_RENDER_FIXTURE_PASS_RECORDS = 8U;
 /**
- * @comment Required command count for the synthetic fixture pass.
+ * @comment 所需 command 计数 用于 synthetic fixture pass。
  */
 constexpr std::size_t RENDER_FIXTURE_PASS_COMMAND_COUNT = 9U;
 /**
- * @comment Default command capacity delegated to the public RHI command list.
+ * @comment 委托给 public RHI 命令列表的默认 command 容量。
  */
 constexpr std::size_t DEFAULT_RENDER_FIXTURE_PASS_COMMAND_CAPACITY = yuengine::rhi::MAX_COMMANDS;
 }

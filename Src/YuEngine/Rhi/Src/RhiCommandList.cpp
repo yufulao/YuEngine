@@ -1,5 +1,5 @@
-// Module: YuEngine Rhi
-// File: Src/YuEngine/Rhi/Src/RhiCommandList.cpp
+// 模块: YuEngine Rhi
+// 文件: Src/YuEngine/Rhi/Src/RhiCommandList.cpp
 
 #include "YuEngine/Rhi/RhiCommandList.h"
 

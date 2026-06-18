@@ -1,5 +1,5 @@
-// Module: YuEngine Resource
-// File: Src/YuEngine/Resource/Src/ResourceRegistry.cpp
+// 模块: YuEngine Resource
+// 文件: Src/YuEngine/Resource/Src/ResourceRegistry.cpp
 
 #include "YuEngine/Resource/ResourceRegistry.h"
 

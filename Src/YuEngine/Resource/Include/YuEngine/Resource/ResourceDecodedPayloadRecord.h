@@ -1,6 +1,6 @@
 /**
  * @file Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceDecodedPayloadRecord.h
- * @brief Resource module decoded payload record value contract.
+ * @brief Resource 模块解码载荷记录值契约。
  */
 #pragma once
 
@@ -17,7 +17,7 @@
 namespace yuengine::resource {
 
 /**
- * @brief Stores Resource-owned decoded payload metadata for one decode result.
+ * @brief 保存一个解码结果的 Resource 自有解码载荷元数据。
  */
 struct ResourceDecodedPayloadRecord {
     ResourceDecodedPayloadOperation operation = ResourceDecodedPayloadOperation::None;

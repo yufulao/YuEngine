@@ -1,5 +1,5 @@
-// Module: YuEngine Platform
-// File: Src/YuEngine/Platform/Src/HostError.cpp
+// 模块: YuEngine Platform
+// 文件: Src/YuEngine/Platform/Src/HostError.cpp
 
 #include "YuEngine/Platform/HostError.h"
 

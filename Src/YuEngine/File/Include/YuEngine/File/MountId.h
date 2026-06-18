@@ -1,5 +1,5 @@
-// Module: YuEngine File
-// File: Src/YuEngine/File/Include/YuEngine/File/MountId.h
+// 模块: YuEngine File
+// 文件: Src/YuEngine/File/Include/YuEngine/File/MountId.h
 
 #pragma once
 
@@ -10,23 +10,23 @@ namespace yuengine::file {
 class MountId final {
 public:
     /**
-     * @comment Constructs a MountId instance.
+     * @comment 构造 MountId 实例。
      */
     MountId();
     /**
-     * @comment Constructs a MountId instance.
-     * @param value Input value.
+     * @comment 构造 MountId 实例。
+     * @param value 输入 值。
      */
     explicit MountId(std::string value);
 
     /**
-     * @comment Returns the stored value.
-     * @return Value value.
+     * @comment 返回保存的值。
+     * @return 值 值。
      */
     std::string_view Value() const;
     /**
-     * @comment Checks whether the value is valid.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查值是否合法。
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool IsValid() const;
 

@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderShaderProgram.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderShaderProgram.h
 
 #pragma once
 
@@ -17,34 +17,34 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Builds validated RHI pipeline descriptors from value-only shader program requests.
+ * @comment 构建 已验证 RHI pipeline 描述s 从 值-仅 shader program 请求s.
  */
 class RenderShaderProgram final {
 public:
     /**
-     * @comment Constructs a RenderShaderProgram instance.
-     * @param desc Input descriptor.
+     * @comment 构造 RenderShaderProgram 实例。
+     * @param desc 输入描述。
      */
     explicit RenderShaderProgram(const RenderShaderProgramDesc &desc=RenderShaderProgramDesc());
 
     /**
-     * @comment Validates shader module handles and writes a caller-owned pipeline descriptor.
-     * @param request Input shader program request.
-     * @param out_desc Caller-owned pipeline descriptor output.
-     * @return Explicit operation result.
+     * @comment 验证 shader module 句柄s 和 writes 一个 调用方持有 pipeline 描述。
+     * @param request 输入 shader program 请求。
+     * @param out_desc 调用方持有的 pipeline 描述 output。
+     * @return 显式操作结果。
      */
     RenderShaderProgramResult BuildPipelineDesc(
         const RenderShaderProgramRequest &request,
         yuengine::rhi::RhiPipelineDesc *out_desc);
 
     /**
-     * @comment Returns the current shader program snapshot.
-     * @return Snapshot value.
+     * @comment 返回当前 shader program 快照。
+     * @return 快照值。
      */
     RenderShaderProgramSnapshot Snapshot() const;
 
     /**
-     * @comment Resets bounded shader program records and counters.
+     * @comment 重置固定容量 shader program 记录和计数。
      */
     void Reset();
 

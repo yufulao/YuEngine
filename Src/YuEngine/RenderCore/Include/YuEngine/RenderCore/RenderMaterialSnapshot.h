@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderMaterialSnapshot.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderMaterialSnapshot.h
 
 #pragma once
 
@@ -10,7 +10,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains bounded render material counters and last status values.
+ * @comment 包含 固定容量 render material 计数器 和 last 状态 值。
  */
 struct RenderMaterialSnapshot final {
     std::size_t material_record_capacity = 0U;

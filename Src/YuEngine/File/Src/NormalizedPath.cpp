@@ -1,5 +1,5 @@
-// Module: YuEngine File
-// File: Src/YuEngine/File/Src/NormalizedPath.cpp
+// 模块: YuEngine File
+// 文件: Src/YuEngine/File/Src/NormalizedPath.cpp
 
 #include "YuEngine/File/NormalizedPath.h"
 

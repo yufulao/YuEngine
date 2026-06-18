@@ -1,5 +1,5 @@
-// Module: YuEngine Platform
-// File: Src/YuEngine/Platform/Include/YuEngine/Platform/FixedFrameClock.h
+// 模块: YuEngine Platform
+// 文件: Src/YuEngine/Platform/Include/YuEngine/Platform/FixedFrameClock.h
 
 #pragma once
 
@@ -11,15 +11,15 @@ namespace yuengine::platform {
 class FixedFrameClock final : public IFrameClock {
 public:
     /**
-     * @comment Constructs a FixedFrameClock instance.
-     * @param first_tick_nanoseconds Input first tick nanoseconds.
-     * @param step_nanoseconds Input step nanoseconds.
+     * @comment 构造 FixedFrameClock 实例。
+     * @param first_tick_nanoseconds 输入首个 tick 的纳秒值。
+     * @param step_nanoseconds 输入 step nanoseconds。
      */
     FixedFrameClock(std::uint64_t first_tick_nanoseconds, std::uint64_t step_nanoseconds);
 
     /**
-     * @comment Returns the next tick time in nanoseconds.
-     * @return Next tick nanoseconds value.
+     * @comment 返回下一次 tick 的纳秒时间。
+     * @return 下一次 tick 的纳秒值。
      */
     std::uint64_t NextTickNanoseconds() override;
 

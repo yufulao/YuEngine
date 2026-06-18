@@ -1,5 +1,5 @@
-// Module: YuEngine Kernel
-// File: Src/YuEngine/Kernel/Include/YuEngine/Kernel/IModule.h
+// 模块: YuEngine Kernel
+// 文件: Src/YuEngine/Kernel/Include/YuEngine/Kernel/IModule.h
 
 #pragma once
 
@@ -17,44 +17,44 @@ public:
     virtual ~IModule() = default;
 
     /**
-     * @comment Returns the module name.
-     * @return Name value.
+     * @comment 返回 模块名。
+     * @return Name 值。
      */
     virtual std::string_view Name() const = 0;
     /**
-     * @comment Returns declared module dependencies.
-     * @return Dependencies value.
+     * @comment 返回 声明的模块依赖。
+     * @return Dependencies 值。
      */
     virtual std::vector<std::string_view> Dependencies() const = 0;
     /**
-     * @comment Returns required service identifiers.
-     * @return Required services value.
+     * @comment 返回 所需 服务 identifiers。
+     * @return 所需 services 值。
      */
     virtual std::vector<std::string_view> RequiredServices() const = 0;
     /**
-     * @comment Returns published service identifiers.
-     * @return Published services value.
+     * @comment 返回已发布的服务标识符。
+     * @return 已发布的服务列表。
      */
     virtual std::vector<std::string_view> PublishedServices() const = 0;
     /**
-     * @comment Starts the component.
-     * @param service_registry Service registry updated by the function.
-     * @param lifecycle_trace Lifecycle trace updated by the function.
-     * @return Explicit operation result.
+     * @comment 启动组件。
+     * @param service_registry 函数写入的 Service registry。
+     * @param lifecycle_trace 函数写入的生命周期轨迹。
+     * @return 显式操作结果。
      */
     virtual KernelResult Start(ServiceRegistry& service_registry, std::vector<std::string>& lifecycle_trace) = 0;
     /**
-     * @comment Updates the component for one frame.
-     * @param frame_index Input frame index.
-     * @param tick_time_nanoseconds Input tick time nanoseconds.
-     * @param lifecycle_trace Lifecycle trace updated by the function.
-     * @return Explicit operation result.
+     * @comment 更新组件一帧。
+     * @param frame_index 输入 帧索引。
+     * @param tick_time_nanoseconds 输入 tick 纳秒时间。
+     * @param lifecycle_trace 函数写入的生命周期轨迹。
+     * @return 显式操作结果。
      */
     virtual KernelResult Update(std::uint32_t frame_index, std::uint64_t tick_time_nanoseconds, std::vector<std::string>& lifecycle_trace) = 0;
     /**
-     * @comment Shuts down the component.
-     * @param lifecycle_trace Lifecycle trace updated by the function.
-     * @return Explicit operation result.
+     * @comment 关闭组件。
+     * @param lifecycle_trace 函数写入的生命周期轨迹。
+     * @return 显式操作结果。
      */
     virtual KernelResult Shutdown(std::vector<std::string>& lifecycle_trace) = 0;
 };

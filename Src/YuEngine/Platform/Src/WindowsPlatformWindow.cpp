@@ -1,5 +1,5 @@
-// Module: YuEngine Platform
-// File: Src/YuEngine/Platform/Src/WindowsPlatformWindow.cpp
+// 模块: YuEngine Platform
+// 文件: Src/YuEngine/Platform/Src/WindowsPlatformWindow.cpp
 
 #include "YuEngine/Platform/WindowsPlatformWindow.h"
 

@@ -1,5 +1,5 @@
-// Module: YuEngine Rhi
-// File: Src/YuEngine/Rhi/Src/D3D11RhiDeviceWindows.cpp
+// 模块: YuEngine Rhi
+// 文件: Src/YuEngine/Rhi/Src/D3D11RhiDeviceWindows.cpp
 
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
 

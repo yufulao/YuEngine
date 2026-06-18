@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderCamera.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderCamera.h
 
 #pragma once
 
@@ -11,16 +11,16 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Builds backend-neutral camera matrices for RenderCore frame contracts.
+ * @comment 为 RenderCore 帧契约构建后端无关的相机矩阵。
  */
 class RenderCamera final {
 public:
     /**
-     * @comment Builds view, projection, and view-projection matrices.
-     * @param pose Input camera pose.
-     * @param projection Input projection descriptor.
-     * @param out_frame Caller-owned output frame.
-     * @return Explicit build status.
+     * @comment 构建 视图，projection，和 视图-projection matrices.
+     * @param pose 输入 camera pose。
+     * @param projection 输入 projection 描述。
+     * @param out_frame 调用方持有的 output frame。
+     * @return 显式 build 状态。
      */
     RenderCameraStatus BuildFrame(
         const RenderCameraPose &pose,
@@ -28,13 +28,13 @@ public:
         RenderCameraFrame *out_frame);
 
     /**
-     * @comment Returns bounded camera build counters.
-     * @return Snapshot value.
+     * @comment 返回 固定容量 camera build 计数器。
+     * @return 快照值。
      */
     RenderCameraSnapshot Snapshot() const;
 
     /**
-     * @comment Resets bounded camera build counters.
+     * @comment 重置固定容量 camera build 计数。
      */
     void Reset();
 

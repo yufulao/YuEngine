@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderCameraShaderConstantsWriter.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderCameraShaderConstantsWriter.h
 
 #pragma once
 
@@ -10,28 +10,28 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Writes compact shader constants from a validated camera frame.
+ * @comment 写入 紧凑 shader constants 从 一个 已验证 camera frame。
  */
 class RenderCameraShaderConstantsWriter final {
 public:
     /**
-     * @comment Writes the camera view-projection matrix into a compact shader constant block.
-     * @param frame Input camera frame.
-     * @param out_constants Caller-owned output constant block.
-     * @return Explicit operation status.
+     * @comment 写入 camera 视图-projection matrix 写入 一个 紧凑 shader constant block。
+     * @param frame 输入 camera frame。
+     * @param out_constants 调用方持有的 output constant block。
+     * @return 显式操作状态。
      */
     RenderCameraShaderConstantsStatus WriteViewProjection(
         const RenderCameraFrame &frame,
         RenderCameraShaderConstants *out_constants);
 
     /**
-     * @comment Returns the current camera shader constant writer snapshot.
-     * @return Snapshot value.
+     * @comment 返回当前 camera shader constant writer 快照。
+     * @return 快照值。
      */
     RenderCameraShaderConstantsSnapshot Snapshot() const;
 
     /**
-     * @comment Resets writer counters.
+     * @comment 重置 writer 计数器。
      */
     void Reset();
 

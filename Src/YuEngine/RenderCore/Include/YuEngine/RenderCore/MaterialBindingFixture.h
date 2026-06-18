@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/MaterialBindingFixture.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/MaterialBindingFixture.h
 
 #pragma once
 
@@ -17,32 +17,32 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Groups public RHI binding values into bounded synthetic material fixture records.
+ * @comment 组合 public RHI 绑定 值 写入 固定容量 synthetic material fixture 记录.
  */
 class MaterialBindingFixture final {
 public:
     /**
-     * @comment Constructs a MaterialBindingFixture instance.
-     * @param desc Input descriptor.
+     * @comment 构造 MaterialBindingFixture 实例。
+     * @param desc 输入描述。
      */
     explicit MaterialBindingFixture(const MaterialBindingFixtureDesc &desc=MaterialBindingFixtureDesc());
 
     /**
-     * @comment Validates and writes material binding values to a caller-owned fixture pass request.
-     * @param request Input material binding request.
-     * @param pass_request Caller-owned RenderFixturePass request to update.
-     * @return Explicit operation result.
+     * @comment 验证并 writes material 绑定 值 到 一个 调用方持有 fixture pass 请求。
+     * @param request 输入 材质绑定请求。
+     * @param pass_request 调用方持有的 RenderFixturePass 请求 到 update。
+     * @return 显式操作结果。
      */
     MaterialBindingFixtureResult Bind(
         const MaterialBindingFixtureRequest &request,
         RenderFixturePassRequest *pass_request);
 
     /**
-     * @comment Binds material values and executes the caller-owned fixture pass.
-     * @param request Input material binding request.
-     * @param pass Caller-owned fixture pass.
-     * @param pass_request Caller-owned RenderFixturePass request to update and execute.
-     * @return Explicit operation result.
+     * @comment Binds material 值 和 执行 调用方持有 fixture pass.
+     * @param request 输入 材质绑定请求。
+     * @param pass 调用方持有的 fixture pass。
+     * @param pass_request 调用方持有的 RenderFixturePass 请求 到 update 和 execute。
+     * @return 显式操作结果。
      */
     MaterialBindingFixtureResult BindAndExecute(
         const MaterialBindingFixtureRequest &request,
@@ -50,12 +50,12 @@ public:
         RenderFixturePassRequest *pass_request);
 
     /**
-     * @comment Returns the current material binding fixture snapshot.
-     * @return Snapshot value.
+     * @comment 返回当前 material 绑定 fixture 快照。
+     * @return 快照值。
      */
     MaterialBindingFixtureSnapshot Snapshot() const;
     /**
-     * @comment Resets bounded material binding fixture records and counters.
+     * @comment 重置固定容量 material 绑定 fixture 记录和计数。
      */
     void Reset();
 

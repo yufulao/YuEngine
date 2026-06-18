@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlanResult.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphExecutionPlanResult.h
 
 #pragma once
 
@@ -16,7 +16,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Contains the result of one RenderCore render graph execution-plan operation.
+ * @comment 包含 结果 的 一个 RenderCore render graph execution-plan 操作。
  */
 struct RenderGraphExecutionPlanResult final {
     RenderGraphExecutionPlanStatus status = RenderGraphExecutionPlanStatus::InvalidArgument;

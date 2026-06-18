@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Src/RenderCameraShaderConstantsWriter.cpp
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Src/RenderCameraShaderConstantsWriter.cpp
 
 #include "YuEngine/RenderCore/RenderCameraShaderConstantsWriter.h"
 

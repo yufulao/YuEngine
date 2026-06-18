@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphSkeletonDesc.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderGraphSkeletonDesc.h
 
 #pragma once
 
@@ -9,7 +9,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Configures bounded storage for a RenderCore render graph skeleton.
+ * @comment 配置 固定容量 存储 用于 一个 RenderCore render graph skeleton.
  */
 struct RenderGraphSkeletonDesc final {
     std::size_t graph_record_capacity = MAX_RENDER_GRAPH_SKELETON_RECORDS;

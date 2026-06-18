@@ -1,5 +1,5 @@
-// Module: YuEngine Memory
-// File: Src/YuEngine/Memory/Include/YuEngine/Memory/MemorySnapshot.h
+// 模块: YuEngine Memory
+// 文件: Src/YuEngine/Memory/Include/YuEngine/Memory/MemorySnapshot.h
 
 #pragma once
 
@@ -15,8 +15,8 @@ struct MemorySnapshot {
     std::size_t leak_count;
 
     /**
-     * @comment Checks whether retained allocations remain.
-     * @return True when the condition is satisfied; false otherwise.
+     * @comment 检查 保留的 allocations 保留.
+     * @return 条件满足时返回 true，否则返回 false。
      */
     bool HasLeaks() const {
         if (retained_bytes != 0U) {

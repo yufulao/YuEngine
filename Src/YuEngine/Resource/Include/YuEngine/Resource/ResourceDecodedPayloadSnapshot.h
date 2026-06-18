@@ -1,6 +1,6 @@
 /**
  * @file Src/YuEngine/Resource/Include/YuEngine/Resource/ResourceDecodedPayloadSnapshot.h
- * @brief Resource module decoded payload snapshot value contract.
+ * @brief Resource 模块解码载荷快照值契约。
  */
 #pragma once
 
@@ -16,7 +16,7 @@
 namespace yuengine::resource {
 
 /**
- * @brief Summarizes decoded payload storage operations and current budget usage.
+ * @brief 汇总解码载荷存储操作和当前预算使用。
  */
 struct ResourceDecodedPayloadSnapshot {
     std::uint32_t budget_decoded_byte_capacity = MAX_RESOURCE_DECODED_PAYLOAD_TOTAL_BYTES;

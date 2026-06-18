@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFramePacketFixtureDesc.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderFramePacketFixtureDesc.h
 
 #pragma once
 
@@ -9,7 +9,7 @@
 
 namespace yuengine::rendercore {
 /**
- * @comment Configures bounded storage for a RenderCore frame packet fixture.
+ * @comment 配置 固定容量 存储 用于 一个 RenderCore frame packet fixture.
  */
 struct RenderFramePacketFixtureDesc final {
     std::size_t frame_packet_record_capacity = MAX_RENDER_FRAME_PACKET_FIXTURE_RECORDS;

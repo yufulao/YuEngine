@@ -1,5 +1,5 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Src/RenderSwapchainFramePipeline.cpp
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Src/RenderSwapchainFramePipeline.cpp
 
 #include "YuEngine/RenderCore/RenderSwapchainFramePipeline.h"
 

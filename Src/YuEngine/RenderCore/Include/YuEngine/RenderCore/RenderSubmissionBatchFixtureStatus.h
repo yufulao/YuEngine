@@ -1,11 +1,11 @@
-// Module: YuEngine RenderCore
-// File: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSubmissionBatchFixtureStatus.h
+// 模块: YuEngine RenderCore
+// 文件: Src/YuEngine/RenderCore/Include/YuEngine/RenderCore/RenderSubmissionBatchFixtureStatus.h
 
 #pragma once
 
 namespace yuengine::rendercore {
 /**
- * @comment Defines explicit RenderCore submission batch fixture status values.
+ * @comment 定义 explicit RenderCore submission batch fixture 状态 值.
  */
 enum class RenderSubmissionBatchFixtureStatus {
     Success,

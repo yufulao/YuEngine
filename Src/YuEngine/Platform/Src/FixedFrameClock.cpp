@@ -1,5 +1,5 @@
-// Module: YuEngine Platform
-// File: Src/YuEngine/Platform/Src/FixedFrameClock.cpp
+// 模块: YuEngine Platform
+// 文件: Src/YuEngine/Platform/Src/FixedFrameClock.cpp
 
 #include "YuEngine/Platform/FixedFrameClock.h"
 
