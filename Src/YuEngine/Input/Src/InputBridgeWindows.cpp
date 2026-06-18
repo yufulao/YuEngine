@@ -3,10 +3,13 @@
 
 #include "YuEngine/Input/InputBridge.h"
 
+#include "YuEngine/Input/InputConstants.h"
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
+#include <Xinput.h>
 
 namespace yuengine::input {
 namespace {
@@ -70,6 +73,41 @@ InputBridgeEvent MakeMouseWheelEvent(InputDeviceId device, std::uintptr_t word_v
     event.wheel_delta = ReadSignedHighWord(static_cast<std::intptr_t>(word_value));
     event.axis_value = event.wheel_delta;
     return event;
+}
+
+std::int32_t ClampGamepadAxis(SHORT value) {
+    const auto signed_value = static_cast<std::int32_t>(value);
+    if (signed_value < AXIS_MIN_VALUE) {
+        return AXIS_MIN_VALUE;
+    }
+
+    if (signed_value > AXIS_MAX_VALUE) {
+        return AXIS_MAX_VALUE;
+    }
+
+    return signed_value;
+}
+
+InputGamepadState MakeUnavailableGamepadState(InputDeviceId device) {
+    InputGamepadState state{};
+    state.device = device;
+    state.connection = InputGamepadConnection::Unavailable;
+    return state;
+}
+
+InputGamepadState MakeConnectedGamepadState(InputDeviceId device, const XINPUT_STATE &native_state) {
+    InputGamepadState state{};
+    state.device = device;
+    state.connection = InputGamepadConnection::Connected;
+    state.packet_number = native_state.dwPacketNumber;
+    state.buttons = native_state.Gamepad.wButtons;
+    state.left_trigger = native_state.Gamepad.bLeftTrigger;
+    state.right_trigger = native_state.Gamepad.bRightTrigger;
+    state.left_thumb_x = ClampGamepadAxis(native_state.Gamepad.sThumbLX);
+    state.left_thumb_y = ClampGamepadAxis(native_state.Gamepad.sThumbLY);
+    state.right_thumb_x = ClampGamepadAxis(native_state.Gamepad.sThumbRX);
+    state.right_thumb_y = ClampGamepadAxis(native_state.Gamepad.sThumbRY);
+    return state;
 }
 }
 
@@ -153,5 +191,30 @@ InputStatus InputBridge::SubmitSourceMessage(std::uint32_t message_code, std::ui
             return RejectEvent(InputStatus::SourceUnavailable);
         }
     }
+}
+
+InputStatus InputBridge::PollGamepad(std::uint32_t user_index) {
+    if (!initialized_) {
+        return RejectEvent(InputStatus::NotInitialized);
+    }
+
+    if (user_index >= MAX_GAMEPAD_DEVICES) {
+        return RejectEvent(InputStatus::InvalidDescriptor);
+    }
+
+    XINPUT_STATE native_state{};
+    const DWORD poll_result = XInputGetState(user_index, &native_state);
+    if (poll_result == ERROR_DEVICE_NOT_CONNECTED) {
+        const InputGamepadState state = MakeUnavailableGamepadState(desc_.gamepad_device);
+        return SubmitGamepadState(state);
+    }
+
+    if (poll_result != ERROR_SUCCESS) {
+        const InputGamepadState state = MakeUnavailableGamepadState(desc_.gamepad_device);
+        return SubmitGamepadState(state);
+    }
+
+    const InputGamepadState state = MakeConnectedGamepadState(desc_.gamepad_device, native_state);
+    return SubmitGamepadState(state);
 }
 }

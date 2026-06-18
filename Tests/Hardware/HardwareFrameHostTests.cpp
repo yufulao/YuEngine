@@ -15,6 +15,8 @@
 #include "YuEngine/Hardware/HardwareFrameHostTickResult.h"
 #include "YuEngine/Input/InputBridgeEvent.h"
 #include "YuEngine/Input/InputBridgeDesc.h"
+#include "YuEngine/Input/InputConstants.h"
+#include "YuEngine/Input/InputStatus.h"
 #include "YuEngine/Platform/PlatformWindowEvent.h"
 #include "YuEngine/Platform/PlatformWindowEventType.h"
 
@@ -27,6 +29,8 @@ using yuengine::hardware::HardwareFrameHostTickResult;
 using yuengine::input::InputBridgeEvent;
 using yuengine::input::InputBridgeEventType;
 using yuengine::input::InputFocusPolicy;
+using yuengine::input::InputStatus;
+using yuengine::input::MAX_GAMEPAD_DEVICES;
 using yuengine::platform::PlatformWindowEvent;
 using yuengine::platform::PlatformWindowEventType;
 
@@ -34,6 +38,7 @@ namespace {
 constexpr const char *TEST_TRANSLATES_INPUT = "HardwareFrameHost_TranslatesInjectedPlatformInput";
 constexpr const char *TEST_REJECTS_INVALID_DESC = "HardwareFrameHost_RejectsInvalidDescriptor";
 constexpr const char *TEST_REJECTS_TICK_BEFORE_INIT = "HardwareFrameHost_RejectsTickBeforeInitialize";
+constexpr const char *TEST_GAMEPAD_POLL_INVALID_INDEX = "HardwareFrameHost_GamepadPollRejectsInvalidIndex";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint32_t TEST_FRAME_ID = 1U;
@@ -179,6 +184,52 @@ int HardwareFrameHostRejectsTickBeforeInitialize() {
     return 0;
 }
 
+int HardwareFrameHostGamepadPollRejectsInvalidIndex() {
+    HardwareFrameHost host;
+    const HardwareFrameHostDesc desc = FastHostDesc();
+    const HardwareFrameHostStatus init_status = host.Initialize(desc);
+    if (init_status != HardwareFrameHostStatus::Success) {
+        return Fail("hardware frame host initialize failed");
+    }
+
+    std::array<InputBridgeEvent, 1U> input_events{};
+    std::size_t input_event_count = 0U;
+    HardwareFrameHostTickRequest request{};
+    request.input_events = std::span<InputBridgeEvent>(input_events.data(), input_events.size());
+    request.out_input_event_count = &input_event_count;
+    request.frame_id = TEST_FRAME_ID;
+    request.poll_gamepad = true;
+    request.gamepad_user_index = MAX_GAMEPAD_DEVICES;
+
+    const HardwareFrameHostTickResult result = host.Tick(request);
+    if (result.status != HardwareFrameHostStatus::InputPollFailed) {
+        return Fail("hardware frame host did not report gamepad poll failure");
+    }
+
+    if (!result.gamepad_polled) {
+        return Fail("hardware frame host did not mark gamepad poll");
+    }
+
+    if (result.gamepad_poll_status != InputStatus::InvalidDescriptor) {
+        return Fail("hardware frame host did not report invalid gamepad user index");
+    }
+
+    const HardwareFrameHostSnapshot snapshot = host.Snapshot();
+    if (snapshot.failed_tick_count != 1U) {
+        return Fail("hardware frame host did not track failed gamepad tick");
+    }
+
+    if (snapshot.last_input_status != InputStatus::InvalidDescriptor) {
+        return Fail("hardware frame host did not store gamepad input status");
+    }
+
+    if (host.Shutdown() != HardwareFrameHostStatus::Success) {
+        return Fail("hardware frame host shutdown failed");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view name) {
     if (name == TEST_TRANSLATES_INPUT) {
         return HardwareFrameHostTranslatesInjectedPlatformInput();
@@ -190,6 +241,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_REJECTS_TICK_BEFORE_INIT) {
         return HardwareFrameHostRejectsTickBeforeInitialize();
+    }
+
+    if (name == TEST_GAMEPAD_POLL_INVALID_INDEX) {
+        return HardwareFrameHostGamepadPollRejectsInvalidIndex();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

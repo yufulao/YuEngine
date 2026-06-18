@@ -21,11 +21,13 @@ struct HardwareFrameHostTickResult final {
     rendercore::RenderSwapchainFramePipelineResult render_result{};
     rhi::RhiStatus rhi_status = rhi::RhiStatus::InvalidLifecycle;
     audio::AudioStatus audio_status = audio::AudioStatus::NotInitialized;
+    input::InputStatus gamepad_poll_status = input::InputStatus::NotInitialized;
     std::size_t platform_event_count = 0U;
     std::size_t translated_input_event_count = 0U;
     std::size_t drained_input_event_count = 0U;
     std::size_t audio_completion_count = 0U;
     std::uint32_t frame_id = 0U;
     bool audio_submitted = false;
+    bool gamepad_polled = false;
 };
 }

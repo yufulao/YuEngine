@@ -17,7 +17,10 @@ enum class InputBridgeEventType {
     MouseMoved,
     MouseButtonPressed,
     MouseButtonReleased,
-    MouseWheel
+    MouseWheel,
+    GamepadButtonPressed,
+    GamepadButtonReleased,
+    GamepadAxisMoved
 };
 
 struct InputBridgeEvent final {

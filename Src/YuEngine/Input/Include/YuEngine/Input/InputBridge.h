@@ -10,6 +10,7 @@
 #include "YuEngine/Input/InputBridgeDesc.h"
 #include "YuEngine/Input/InputBridgeEvent.h"
 #include "YuEngine/Input/InputBridgeSnapshot.h"
+#include "YuEngine/Input/InputGamepadState.h"
 #include "YuEngine/Input/InputStatus.h"
 
 namespace yuengine::input {
@@ -66,6 +67,20 @@ public:
     InputStatus SubmitSourceMessage(std::uint32_t message_code, std::uintptr_t word_value, std::intptr_t long_value, bool source_focused);
 
     /**
+     * @comment Submits a backend-neutral gamepad state into bridge events.
+     * @param state Gamepad state value.
+     * @return Explicit operation status.
+     */
+    InputStatus SubmitGamepadState(const InputGamepadState &state);
+
+    /**
+     * @comment Polls a native gamepad source and submits the translated state.
+     * @param user_index Native gamepad slot index.
+     * @return Explicit operation status.
+     */
+    InputStatus PollGamepad(std::uint32_t user_index);
+
+    /**
      * @comment Drains queued bridge events into caller-owned storage.
      * @param events Caller-owned output buffer.
      * @param event_capacity Number of records available in events.
@@ -86,7 +101,10 @@ private:
     InputStatus RecordStatus(InputStatus status);
     InputStatus RejectEvent(InputStatus status);
     InputStatus AcceptEvent(const InputBridgeEvent &event);
+    InputStatus AcceptGamepadState(const InputGamepadState &state);
     void ClearQueuedEvents();
+    std::size_t CountGamepadStateEvents(const InputGamepadState &state) const;
+    void SubmitGamepadStateEvents(const InputGamepadState &state);
     bool IsDeviceValid(InputDeviceId device) const;
     bool IsEventKnown(InputBridgeEventType type) const;
     bool IsAxisValueValid(std::int32_t value) const;
@@ -94,6 +112,7 @@ private:
     std::array<InputBridgeEvent, InputBridgeDesc::MAX_EVENT_CAPACITY> events_{};
     InputBridgeDesc desc_{};
     InputBridgeSnapshot snapshot_{};
+    InputGamepadState gamepad_state_{};
     std::size_t read_index_ = 0U;
     std::size_t write_index_ = 0U;
     std::size_t event_count_ = 0U;

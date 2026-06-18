@@ -24,6 +24,7 @@ struct InputBridgeDesc final {
     std::size_t event_capacity = DEFAULT_EVENT_CAPACITY;
     InputDeviceId keyboard_device{0U};
     InputDeviceId mouse_device{1U};
+    InputDeviceId gamepad_device{2U};
     bool start_focused = true;
 };
 }

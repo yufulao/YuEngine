@@ -77,6 +77,9 @@ private:
         const platform::PlatformWindowEvent &event,
         ResizeState *resize_state,
         HardwareFrameHostTickResult result);
+    HardwareFrameHostTickResult PollGamepadIfRequested(
+        const HardwareFrameHostTickRequest &request,
+        HardwareFrameHostTickResult result);
     HardwareFrameHostTickResult DrainInputEvents(
         const HardwareFrameHostTickRequest &request,
         HardwareFrameHostTickResult result);

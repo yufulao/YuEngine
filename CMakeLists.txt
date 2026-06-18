@@ -239,6 +239,9 @@ target_include_directories(YuInput
     PUBLIC
         Src/YuEngine/Input/Include
 )
+if(WIN32)
+    target_link_libraries(YuInput PRIVATE xinput9_1_0)
+endif()
 
 add_library(YuPlatform
     Src/YuEngine/Platform/Src/FixedFrameClock.cpp
@@ -1461,7 +1464,10 @@ yuengine_add_labeled_test(Input_BridgeSubmitAndDrain_RecordsKeyboardMouseWheel Y
 yuengine_add_labeled_test(Input_BridgeFocusLost_RejectsInputAndTracksCounters YuInputTests Fast ModuleFixture Input)
 yuengine_add_labeled_test(Input_BridgeCapacityOverflow_DoesNotGrow YuInputTests Fast ModuleFixture Input PerformanceSmoke)
 yuengine_add_labeled_test(Input_BridgeDrain_RejectsSmallOutputWithoutMutation YuInputTests Fast ModuleFixture Input)
-yuengine_add_labeled_test(Input_BridgeGamepadUnavailable_IsExplicit YuInputTests Fast ModuleFixture Input EvidenceOracle)
+yuengine_add_labeled_test(Input_BridgeGamepadUnavailableState_IsExplicit YuInputTests Fast ModuleFixture Input EvidenceOracle)
+yuengine_add_labeled_test(Input_BridgeGamepadConnectedState_QueuesButtonAndAxisEvents YuInputTests Fast ModuleFixture Input EvidenceOracle)
+yuengine_add_labeled_test(Input_BridgeGamepadRepeatedPacket_DoesNotQueueDuplicateEvents YuInputTests Fast ModuleFixture Input)
+yuengine_add_labeled_test(Input_BridgeGamepadCapacityOverflow_DoesNotQueuePartialEvents YuInputTests Fast ModuleFixture Input PerformanceSmoke)
 yuengine_add_labeled_test(Input_BridgeNoUiGameOrReportDispatch YuInputTests Fast ModuleFixture Input EvidenceOracle)
 
 add_executable(YuInputHardwareSmokeTests
@@ -1470,6 +1476,8 @@ add_executable(YuInputHardwareSmokeTests
 yuengine_apply_compile_options(YuInputHardwareSmokeTests)
 target_link_libraries(YuInputHardwareSmokeTests PRIVATE YuInput)
 yuengine_add_labeled_test(Input_HardwareBridge_TranslatesSourceMessages YuInputHardwareSmokeTests HardwareSmoke Input Win32 Win32Message)
+yuengine_add_labeled_test(Input_HardwareBridge_PollsXInputGamepad YuInputHardwareSmokeTests HardwareSmoke Input Win32 XInput)
+set_tests_properties(Input_HardwareBridge_PollsXInputGamepad PROPERTIES SKIP_RETURN_CODE 77)
 
 add_executable(YuHardwareFrameHostTests
     Tests/Hardware/HardwareFrameHostTests.cpp
@@ -1479,6 +1487,7 @@ target_link_libraries(YuHardwareFrameHostTests PRIVATE YuHardware)
 yuengine_add_labeled_test(HardwareFrameHost_TranslatesInjectedPlatformInput YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input EvidenceOracle)
 yuengine_add_labeled_test(HardwareFrameHost_RejectsInvalidDescriptor YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input EvidenceOracle)
 yuengine_add_labeled_test(HardwareFrameHost_RejectsTickBeforeInitialize YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input)
+yuengine_add_labeled_test(HardwareFrameHost_GamepadPollRejectsInvalidIndex YuHardwareFrameHostTests Fast ModuleFixture Hardware Platform Input XInput EvidenceOracle)
 
 add_executable(YuHardwareFrameHostD3D11Smoke
     Tests/Hardware/HardwareFrameHostD3D11HardwareSmokeTests.cpp

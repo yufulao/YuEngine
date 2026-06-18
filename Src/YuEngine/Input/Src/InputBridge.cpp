@@ -6,10 +6,74 @@
 #include "YuEngine/Input/InputConstants.h"
 
 namespace yuengine::input {
+namespace {
+constexpr std::array<std::uint16_t, 14U> GAMEPAD_BUTTON_MASKS{
+    GAMEPAD_BUTTON_DPAD_UP,
+    GAMEPAD_BUTTON_DPAD_DOWN,
+    GAMEPAD_BUTTON_DPAD_LEFT,
+    GAMEPAD_BUTTON_DPAD_RIGHT,
+    GAMEPAD_BUTTON_START,
+    GAMEPAD_BUTTON_BACK,
+    GAMEPAD_BUTTON_LEFT_THUMB,
+    GAMEPAD_BUTTON_RIGHT_THUMB,
+    GAMEPAD_BUTTON_LEFT_SHOULDER,
+    GAMEPAD_BUTTON_RIGHT_SHOULDER,
+    GAMEPAD_BUTTON_A,
+    GAMEPAD_BUTTON_B,
+    GAMEPAD_BUTTON_X,
+    GAMEPAD_BUTTON_Y};
+
+std::size_t CountAxisChange(std::int32_t previous_value, std::int32_t next_value) {
+    if (previous_value == next_value) {
+        return 0U;
+    }
+
+    return 1U;
+}
+
+std::size_t CountButtonChanges(std::uint16_t previous_buttons, std::uint16_t next_buttons) {
+    std::size_t result = 0U;
+    const std::uint16_t changed_buttons = static_cast<std::uint16_t>(previous_buttons ^ next_buttons);
+    for (std::uint16_t button_mask : GAMEPAD_BUTTON_MASKS) {
+        if ((changed_buttons & button_mask) != 0U) {
+            ++result;
+        }
+    }
+
+    return result;
+}
+
+InputBridgeEvent MakeGamepadButtonEvent(InputDeviceId device, std::uint32_t button_index, std::uint16_t button_mask, bool pressed) {
+    InputBridgeEvent event{};
+    event.device_kind = InputDeviceKind::Gamepad;
+    event.device = device;
+    event.control = InputControlId{GAMEPAD_BUTTON_CONTROL_BASE + button_index};
+    event.type = InputBridgeEventType::GamepadButtonReleased;
+    event.raw_code = button_mask;
+    if (pressed) {
+        event.type = InputBridgeEventType::GamepadButtonPressed;
+    }
+
+    return event;
+}
+
+InputBridgeEvent MakeGamepadAxisEvent(InputDeviceId device, std::uint32_t control, std::int32_t value) {
+    InputBridgeEvent event{};
+    event.device_kind = InputDeviceKind::Gamepad;
+    event.device = device;
+    event.control = InputControlId{control};
+    event.type = InputBridgeEventType::GamepadAxisMoved;
+    event.raw_code = control;
+    event.axis_value = value;
+    return event;
+}
+}
+
 InputBridge::InputBridge()
     : events_{},
       desc_{},
       snapshot_{},
+      gamepad_state_{},
       read_index_(0U),
       write_index_(0U),
       event_count_(0U),
@@ -37,7 +101,10 @@ InputStatus InputBridge::Initialize(const InputBridgeDesc &desc) {
     snapshot_.event_capacity = desc.event_capacity;
     snapshot_.initialized = true;
     snapshot_.focused = desc.start_focused;
+    snapshot_.gamepad_connection = InputGamepadConnection::Unavailable;
     snapshot_.last_status = InputStatus::Success;
+    gamepad_state_ = InputGamepadState{};
+    gamepad_state_.device = desc.gamepad_device;
     initialized_ = true;
     focused_ = desc.start_focused;
     ClearQueuedEvents();
@@ -55,7 +122,9 @@ InputStatus InputBridge::Shutdown() {
     focused_ = false;
     snapshot_.initialized = false;
     snapshot_.focused = false;
+    snapshot_.gamepad_connection = InputGamepadConnection::Unavailable;
     snapshot_.last_status = InputStatus::Success;
+    gamepad_state_ = InputGamepadState{};
     return InputStatus::Success;
 }
 
@@ -97,6 +166,39 @@ InputStatus InputBridge::SubmitEvent(const InputBridgeEvent &event) {
     }
 
     return AcceptEvent(event);
+}
+
+InputStatus InputBridge::SubmitGamepadState(const InputGamepadState &state) {
+    if (!initialized_) {
+        return RejectEvent(InputStatus::NotInitialized);
+    }
+
+    if (!IsDeviceValid(state.device)) {
+        return RejectEvent(InputStatus::UnknownDeviceControl);
+    }
+
+    if (state.device.value != desc_.gamepad_device.value) {
+        return RejectEvent(InputStatus::UnknownDeviceControl);
+    }
+
+    if (state.connection == InputGamepadConnection::Unknown) {
+        return RejectEvent(InputStatus::InvalidEvent);
+    }
+
+    ++snapshot_.gamepad_poll_count;
+    if (state.connection == InputGamepadConnection::Unavailable) {
+        ++snapshot_.gamepad_unavailable_poll_count;
+        snapshot_.gamepad_connection = InputGamepadConnection::Unavailable;
+        gamepad_state_ = InputGamepadState{};
+        gamepad_state_.device = desc_.gamepad_device;
+        return RecordStatus(InputStatus::SourceUnavailable);
+    }
+
+    if (state.connection != InputGamepadConnection::Connected) {
+        return RejectEvent(InputStatus::InvalidEvent);
+    }
+
+    return AcceptGamepadState(state);
 }
 
 InputStatus InputBridge::DrainEvents(InputBridgeEvent *events, std::size_t event_capacity, std::size_t &out_event_count) {
@@ -160,6 +262,10 @@ InputStatus InputBridge::ValidateDesc(const InputBridgeDesc &desc) const {
         return InputStatus::UnknownDeviceControl;
     }
 
+    if (desc.gamepad_device.value >= MAX_INPUT_DEVICES) {
+        return InputStatus::UnknownDeviceControl;
+    }
+
     return InputStatus::Success;
 }
 
@@ -172,11 +278,35 @@ InputStatus InputBridge::ValidateEvent(const InputBridgeEvent &event) const {
         return InputStatus::UnknownDeviceControl;
     }
 
-    if (event.device_kind == InputDeviceKind::Gamepad) {
-        return InputStatus::SourceUnavailable;
+    if (event.device_kind == InputDeviceKind::Unknown) {
+        return InputStatus::InvalidEvent;
     }
 
-    if (event.device_kind == InputDeviceKind::Unknown) {
+    if (event.device_kind == InputDeviceKind::Gamepad) {
+        if (event.type == InputBridgeEventType::GamepadButtonPressed) {
+            if (event.raw_code == 0U) {
+                return InputStatus::UnknownDeviceControl;
+            }
+
+            return InputStatus::Success;
+        }
+
+        if (event.type == InputBridgeEventType::GamepadButtonReleased) {
+            if (event.raw_code == 0U) {
+                return InputStatus::UnknownDeviceControl;
+            }
+
+            return InputStatus::Success;
+        }
+
+        if (event.type == InputBridgeEventType::GamepadAxisMoved) {
+            if (!IsAxisValueValid(event.axis_value)) {
+                return InputStatus::InvalidAxisValue;
+            }
+
+            return InputStatus::Success;
+        }
+
         return InputStatus::InvalidEvent;
     }
 
@@ -282,6 +412,50 @@ InputStatus InputBridge::AcceptEvent(const InputBridgeEvent &event) {
     return RecordStatus(InputStatus::Success);
 }
 
+InputStatus InputBridge::AcceptGamepadState(const InputGamepadState &state) {
+    if (!IsAxisValueValid(state.left_thumb_x)) {
+        return RejectEvent(InputStatus::InvalidAxisValue);
+    }
+
+    if (!IsAxisValueValid(state.left_thumb_y)) {
+        return RejectEvent(InputStatus::InvalidAxisValue);
+    }
+
+    if (!IsAxisValueValid(state.right_thumb_x)) {
+        return RejectEvent(InputStatus::InvalidAxisValue);
+    }
+
+    if (!IsAxisValueValid(state.right_thumb_y)) {
+        return RejectEvent(InputStatus::InvalidAxisValue);
+    }
+
+    if (!focused_) {
+        if (desc_.focus_policy == InputFocusPolicy::RejectWhenUnfocused) {
+            return RejectEvent(InputStatus::FocusLost);
+        }
+    }
+
+    ++snapshot_.gamepad_connected_poll_count;
+    snapshot_.gamepad_connection = InputGamepadConnection::Connected;
+    snapshot_.last_gamepad_packet_number = state.packet_number;
+    if (gamepad_state_.connection == InputGamepadConnection::Connected) {
+        if (state.packet_number == gamepad_state_.packet_number) {
+            gamepad_state_ = state;
+            return RecordStatus(InputStatus::Success);
+        }
+    }
+
+    const std::size_t state_event_count = CountGamepadStateEvents(state);
+    if (event_count_ + state_event_count > desc_.event_capacity) {
+        return RejectEvent(InputStatus::CapacityExceeded);
+    }
+
+    SubmitGamepadStateEvents(state);
+    gamepad_state_ = state;
+    snapshot_.gamepad_event_count += state_event_count;
+    return RecordStatus(InputStatus::Success);
+}
+
 void InputBridge::ClearQueuedEvents() {
     for (InputBridgeEvent &event : events_) {
         event = InputBridgeEvent{};
@@ -291,6 +465,62 @@ void InputBridge::ClearQueuedEvents() {
     write_index_ = 0U;
     event_count_ = 0U;
     snapshot_.queued_event_count = 0U;
+}
+
+std::size_t InputBridge::CountGamepadStateEvents(const InputGamepadState &state) const {
+    std::size_t result = CountButtonChanges(gamepad_state_.buttons, state.buttons);
+    result += CountAxisChange(gamepad_state_.left_trigger, state.left_trigger);
+    result += CountAxisChange(gamepad_state_.right_trigger, state.right_trigger);
+    result += CountAxisChange(gamepad_state_.left_thumb_x, state.left_thumb_x);
+    result += CountAxisChange(gamepad_state_.left_thumb_y, state.left_thumb_y);
+    result += CountAxisChange(gamepad_state_.right_thumb_x, state.right_thumb_x);
+    result += CountAxisChange(gamepad_state_.right_thumb_y, state.right_thumb_y);
+    return result;
+}
+
+void InputBridge::SubmitGamepadStateEvents(const InputGamepadState &state) {
+    const std::uint16_t changed_buttons = static_cast<std::uint16_t>(gamepad_state_.buttons ^ state.buttons);
+    for (std::size_t index = 0U; index < GAMEPAD_BUTTON_MASKS.size(); ++index) {
+        const std::uint16_t button_mask = GAMEPAD_BUTTON_MASKS[index];
+        if ((changed_buttons & button_mask) == 0U) {
+            continue;
+        }
+
+        const bool pressed = (state.buttons & button_mask) != 0U;
+        const auto button_index = static_cast<std::uint32_t>(index);
+        const InputBridgeEvent event = MakeGamepadButtonEvent(state.device, button_index, button_mask, pressed);
+        static_cast<void>(AcceptEvent(event));
+    }
+
+    if (gamepad_state_.left_trigger != state.left_trigger) {
+        const InputBridgeEvent event = MakeGamepadAxisEvent(state.device, GAMEPAD_LEFT_TRIGGER_CONTROL, state.left_trigger);
+        static_cast<void>(AcceptEvent(event));
+    }
+
+    if (gamepad_state_.right_trigger != state.right_trigger) {
+        const InputBridgeEvent event = MakeGamepadAxisEvent(state.device, GAMEPAD_RIGHT_TRIGGER_CONTROL, state.right_trigger);
+        static_cast<void>(AcceptEvent(event));
+    }
+
+    if (gamepad_state_.left_thumb_x != state.left_thumb_x) {
+        const InputBridgeEvent event = MakeGamepadAxisEvent(state.device, GAMEPAD_LEFT_THUMB_X_CONTROL, state.left_thumb_x);
+        static_cast<void>(AcceptEvent(event));
+    }
+
+    if (gamepad_state_.left_thumb_y != state.left_thumb_y) {
+        const InputBridgeEvent event = MakeGamepadAxisEvent(state.device, GAMEPAD_LEFT_THUMB_Y_CONTROL, state.left_thumb_y);
+        static_cast<void>(AcceptEvent(event));
+    }
+
+    if (gamepad_state_.right_thumb_x != state.right_thumb_x) {
+        const InputBridgeEvent event = MakeGamepadAxisEvent(state.device, GAMEPAD_RIGHT_THUMB_X_CONTROL, state.right_thumb_x);
+        static_cast<void>(AcceptEvent(event));
+    }
+
+    if (gamepad_state_.right_thumb_y != state.right_thumb_y) {
+        const InputBridgeEvent event = MakeGamepadAxisEvent(state.device, GAMEPAD_RIGHT_THUMB_Y_CONTROL, state.right_thumb_y);
+        static_cast<void>(AcceptEvent(event));
+    }
 }
 
 bool InputBridge::IsDeviceValid(InputDeviceId device) const {
@@ -318,7 +548,19 @@ bool InputBridge::IsEventKnown(InputBridgeEventType type) const {
         return true;
     }
 
-    return type == InputBridgeEventType::MouseWheel;
+    if (type == InputBridgeEventType::MouseWheel) {
+        return true;
+    }
+
+    if (type == InputBridgeEventType::GamepadButtonPressed) {
+        return true;
+    }
+
+    if (type == InputBridgeEventType::GamepadButtonReleased) {
+        return true;
+    }
+
+    return type == InputBridgeEventType::GamepadAxisMoved;
 }
 
 bool InputBridge::IsAxisValueValid(std::int32_t value) const {

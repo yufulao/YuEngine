@@ -24,5 +24,7 @@ struct HardwareFrameHostTickRequest final {
     std::uint32_t audio_wait_timeout_milliseconds = 0U;
     rhi::RhiColor clear_color{};
     std::uint32_t frame_id = 0U;
+    std::uint32_t gamepad_user_index = 0U;
+    bool poll_gamepad = false;
 };
 }

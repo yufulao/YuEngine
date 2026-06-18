@@ -16,6 +16,7 @@
 #include "YuEngine/Input/InputBridgeSnapshot.h"
 #include "YuEngine/Input/InputConstants.h"
 #include "YuEngine/Input/InputDeviceKind.h"
+#include "YuEngine/Input/InputGamepadState.h"
 #include "YuEngine/Input/InputReplay.h"
 
 using yuengine::input::InputActionId;
@@ -32,11 +33,17 @@ using yuengine::input::InputDeviceKind;
 using yuengine::input::InputEvent;
 using yuengine::input::InputEventType;
 using yuengine::input::InputFocusPolicy;
+using yuengine::input::InputGamepadConnection;
+using yuengine::input::InputGamepadState;
 using InputReplay = yuengine::input::InputReplay;
 using yuengine::input::InputReplaySnapshot;
 using yuengine::input::InputStatus;
 using yuengine::input::AXIS_MAX_VALUE;
 using yuengine::input::AXIS_MIN_VALUE;
+using yuengine::input::GAMEPAD_BUTTON_A;
+using yuengine::input::GAMEPAD_BUTTON_B;
+using yuengine::input::GAMEPAD_LEFT_THUMB_X_CONTROL;
+using yuengine::input::GAMEPAD_RIGHT_TRIGGER_CONTROL;
 using yuengine::input::MAX_EVENTS_PER_FRAME;
 using yuengine::input::MAX_INPUT_BINDINGS;
 using yuengine::input::MAX_REPLAY_FRAMES;
@@ -67,7 +74,10 @@ constexpr const char* TEST_BRIDGE_DRAIN = "Input_BridgeSubmitAndDrain_RecordsKey
 constexpr const char* TEST_BRIDGE_FOCUS = "Input_BridgeFocusLost_RejectsInputAndTracksCounters";
 constexpr const char* TEST_BRIDGE_CAPACITY = "Input_BridgeCapacityOverflow_DoesNotGrow";
 constexpr const char* TEST_BRIDGE_SMALL_DRAIN = "Input_BridgeDrain_RejectsSmallOutputWithoutMutation";
-constexpr const char* TEST_BRIDGE_GAMEPAD = "Input_BridgeGamepadUnavailable_IsExplicit";
+constexpr const char* TEST_BRIDGE_GAMEPAD_UNAVAILABLE = "Input_BridgeGamepadUnavailableState_IsExplicit";
+constexpr const char* TEST_BRIDGE_GAMEPAD_CONNECTED = "Input_BridgeGamepadConnectedState_QueuesButtonAndAxisEvents";
+constexpr const char* TEST_BRIDGE_GAMEPAD_REPEAT = "Input_BridgeGamepadRepeatedPacket_DoesNotQueueDuplicateEvents";
+constexpr const char* TEST_BRIDGE_GAMEPAD_CAPACITY = "Input_BridgeGamepadCapacityOverflow_DoesNotQueuePartialEvents";
 constexpr const char* TEST_BRIDGE_NO_DISPATCH = "Input_BridgeNoUiGameOrReportDispatch";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
@@ -135,14 +145,19 @@ InputBridgeEvent BridgeMouseWheel(std::int32_t delta) {
     return event;
 }
 
-InputBridgeEvent BridgeGamepadUnavailableEvent() {
-    InputBridgeEvent event{};
-    event.device_kind = InputDeviceKind::Gamepad;
-    event.device = DEVICE_A;
-    event.control = CONTROL_A;
-    event.type = InputBridgeEventType::KeyPressed;
-    event.raw_code = 1U;
-    return event;
+InputGamepadState GamepadState(InputDeviceId device, std::uint32_t packet_number) {
+    InputGamepadState state{};
+    state.device = device;
+    state.connection = InputGamepadConnection::Connected;
+    state.packet_number = packet_number;
+    return state;
+}
+
+InputGamepadState UnavailableGamepadState(InputDeviceId device) {
+    InputGamepadState state{};
+    state.device = device;
+    state.connection = InputGamepadConnection::Unavailable;
+    return state;
 }
 
 bool RegisterPrimaryBinding(InputReplay& replay) {
@@ -635,6 +650,10 @@ int InputBridgeDescDefaultValuesAreBounded() {
         return Fail("bridge default focus policy changed");
     }
 
+    if (desc.gamepad_device.value != 2U) {
+        return Fail("bridge default gamepad device changed");
+    }
+
     return 0;
 }
 
@@ -661,6 +680,14 @@ int InputBridgePublicContractUsesValueTypes() {
 
     if (!std::is_trivially_copyable_v<InputBridgeSnapshot>) {
         return Fail("bridge snapshot is not trivially copyable");
+    }
+
+    if (!std::is_standard_layout_v<InputGamepadState>) {
+        return Fail("gamepad state is not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<InputGamepadState>) {
+        return Fail("gamepad state is not trivially copyable");
     }
 
     if (std::is_copy_constructible_v<InputBridge>) {
@@ -866,14 +893,15 @@ int InputBridgeDrainRejectsSmallOutputWithoutMutation() {
     return 0;
 }
 
-int InputBridgeGamepadUnavailableIsExplicit() {
+int InputBridgeGamepadUnavailableStateIsExplicit() {
     InputBridge bridge;
     InputBridgeDesc desc{};
     if (bridge.Initialize(desc) != InputStatus::Success) {
         return Fail("bridge initialize failed");
     }
 
-    if (bridge.SubmitEvent(BridgeGamepadUnavailableEvent()) != InputStatus::SourceUnavailable) {
+    const InputGamepadState state = UnavailableGamepadState(desc.gamepad_device);
+    if (bridge.SubmitGamepadState(state) != InputStatus::SourceUnavailable) {
         return Fail("gamepad unavailable did not return explicit status");
     }
 
@@ -882,8 +910,163 @@ int InputBridgeGamepadUnavailableIsExplicit() {
         return Fail("gamepad unavailable counter mismatch");
     }
 
+    if (snapshot.gamepad_unavailable_poll_count != 1U) {
+        return Fail("gamepad unavailable poll counter mismatch");
+    }
+
+    if (snapshot.gamepad_connection != InputGamepadConnection::Unavailable) {
+        return Fail("gamepad unavailable connection state mismatch");
+    }
+
     if (snapshot.accepted_event_count != 0U) {
         return Fail("gamepad unavailable mutated accepted count");
+    }
+
+    return 0;
+}
+
+int InputBridgeGamepadConnectedStateQueuesButtonAndAxisEvents() {
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    desc.event_capacity = 4U;
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    InputGamepadState state = GamepadState(desc.gamepad_device, 1U);
+    state.buttons = GAMEPAD_BUTTON_A;
+    state.right_trigger = 64U;
+    state.left_thumb_x = 1234;
+    if (bridge.SubmitGamepadState(state) != InputStatus::Success) {
+        return Fail("gamepad connected state submit failed");
+    }
+
+    std::array<InputBridgeEvent, 3U> events{};
+    std::size_t event_count = 0U;
+    if (bridge.DrainEvents(events.data(), events.size(), event_count) != InputStatus::Success) {
+        return Fail("gamepad connected drain failed");
+    }
+
+    if (event_count != events.size()) {
+        return Fail("gamepad connected event count mismatch");
+    }
+
+    if (events[0U].type != InputBridgeEventType::GamepadButtonPressed) {
+        return Fail("gamepad connected did not queue button press");
+    }
+
+    if (events[0U].raw_code != GAMEPAD_BUTTON_A) {
+        return Fail("gamepad button raw code mismatch");
+    }
+
+    if (events[1U].type != InputBridgeEventType::GamepadAxisMoved) {
+        return Fail("gamepad connected did not queue trigger axis");
+    }
+
+    if (events[1U].control.value != GAMEPAD_RIGHT_TRIGGER_CONTROL) {
+        return Fail("gamepad trigger control mismatch");
+    }
+
+    if (events[2U].control.value != GAMEPAD_LEFT_THUMB_X_CONTROL) {
+        return Fail("gamepad thumb control mismatch");
+    }
+
+    const auto snapshot = bridge.Snapshot();
+    if (snapshot.gamepad_connection != InputGamepadConnection::Connected) {
+        return Fail("gamepad connected snapshot state mismatch");
+    }
+
+    if (snapshot.gamepad_event_count != 3U) {
+        return Fail("gamepad connected event counter mismatch");
+    }
+
+    if (snapshot.last_gamepad_packet_number != 1U) {
+        return Fail("gamepad packet number was not tracked");
+    }
+
+    return 0;
+}
+
+int InputBridgeGamepadRepeatedPacketDoesNotQueueDuplicateEvents() {
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    InputGamepadState state = GamepadState(desc.gamepad_device, 7U);
+    state.buttons = GAMEPAD_BUTTON_A;
+    if (bridge.SubmitGamepadState(state) != InputStatus::Success) {
+        return Fail("initial gamepad state submit failed");
+    }
+
+    std::array<InputBridgeEvent, 1U> first_events{};
+    std::size_t first_count = 0U;
+    if (bridge.DrainEvents(first_events.data(), first_events.size(), first_count) != InputStatus::Success) {
+        return Fail("initial gamepad drain failed");
+    }
+
+    if (first_count != 1U) {
+        return Fail("initial gamepad event count mismatch");
+    }
+
+    if (bridge.SubmitGamepadState(state) != InputStatus::Success) {
+        return Fail("repeated gamepad state submit failed");
+    }
+
+    std::array<InputBridgeEvent, 1U> repeated_events{};
+    std::size_t repeated_count = 0U;
+    if (bridge.DrainEvents(repeated_events.data(), repeated_events.size(), repeated_count) != InputStatus::Success) {
+        return Fail("repeated gamepad drain failed");
+    }
+
+    if (repeated_count != 0U) {
+        return Fail("repeated packet queued duplicate event");
+    }
+
+    const auto snapshot = bridge.Snapshot();
+    if (snapshot.gamepad_poll_count != 2U) {
+        return Fail("repeated packet poll counter mismatch");
+    }
+
+    if (snapshot.gamepad_event_count != 1U) {
+        return Fail("repeated packet event counter mismatch");
+    }
+
+    return 0;
+}
+
+int InputBridgeGamepadCapacityOverflowDoesNotQueuePartialEvents() {
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    desc.event_capacity = 1U;
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    InputGamepadState state = GamepadState(desc.gamepad_device, 2U);
+    state.buttons = static_cast<std::uint16_t>(GAMEPAD_BUTTON_A | GAMEPAD_BUTTON_B);
+    if (bridge.SubmitGamepadState(state) != InputStatus::CapacityExceeded) {
+        return Fail("gamepad capacity overflow did not reject");
+    }
+
+    std::array<InputBridgeEvent, 1U> events{};
+    std::size_t event_count = 0U;
+    if (bridge.DrainEvents(events.data(), events.size(), event_count) != InputStatus::Success) {
+        return Fail("gamepad overflow drain failed");
+    }
+
+    if (event_count != 0U) {
+        return Fail("gamepad overflow queued partial events");
+    }
+
+    const auto snapshot = bridge.Snapshot();
+    if (snapshot.overflow_count != 1U) {
+        return Fail("gamepad overflow counter mismatch");
+    }
+
+    if (snapshot.gamepad_event_count != 0U) {
+        return Fail("gamepad overflow mutated event counter");
     }
 
     return 0;
@@ -949,7 +1132,10 @@ int main(int argc, char** argv) {
         {TEST_BRIDGE_FOCUS, InputBridgeFocusLostRejectsInputAndTracksCounters},
         {TEST_BRIDGE_CAPACITY, InputBridgeCapacityOverflowDoesNotGrow},
         {TEST_BRIDGE_SMALL_DRAIN, InputBridgeDrainRejectsSmallOutputWithoutMutation},
-        {TEST_BRIDGE_GAMEPAD, InputBridgeGamepadUnavailableIsExplicit},
+        {TEST_BRIDGE_GAMEPAD_UNAVAILABLE, InputBridgeGamepadUnavailableStateIsExplicit},
+        {TEST_BRIDGE_GAMEPAD_CONNECTED, InputBridgeGamepadConnectedStateQueuesButtonAndAxisEvents},
+        {TEST_BRIDGE_GAMEPAD_REPEAT, InputBridgeGamepadRepeatedPacketDoesNotQueueDuplicateEvents},
+        {TEST_BRIDGE_GAMEPAD_CAPACITY, InputBridgeGamepadCapacityOverflowDoesNotQueuePartialEvents},
         {TEST_BRIDGE_NO_DISPATCH, InputBridgeNoUiGameOrReportDispatch}};
 
     const std::string_view test_name(argv[1]);

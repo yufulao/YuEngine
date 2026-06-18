@@ -17,6 +17,7 @@ enum class HardwareFrameHostStatus {
     AudioStartFailed,
     WindowPollFailed,
     InputSubmitFailed,
+    InputPollFailed,
     InputDrainFailed,
     RenderFrameFailed,
     AudioSubmitFailed,

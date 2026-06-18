@@ -226,6 +226,11 @@ HardwareFrameHostTickResult HardwareFrameHost::Tick(const HardwareFrameHostTickR
         return RecordTickFailed(result);
     }
 
+    result = PollGamepadIfRequested(request, result);
+    if (result.status != HardwareFrameHostStatus::Success) {
+        return RecordTickFailed(result);
+    }
+
     result = DrainInputEvents(request, result);
     if (result.status != HardwareFrameHostStatus::Success) {
         return RecordTickFailed(result);
@@ -528,6 +533,29 @@ HardwareFrameHostTickResult HardwareFrameHost::ProcessPlatformEvent(
     }
 
     ++result.translated_input_event_count;
+    return result;
+}
+
+HardwareFrameHostTickResult HardwareFrameHost::PollGamepadIfRequested(
+    const HardwareFrameHostTickRequest &request,
+    HardwareFrameHostTickResult result) {
+    if (!request.poll_gamepad) {
+        return result;
+    }
+
+    result.gamepad_polled = true;
+    result.gamepad_poll_status = input_bridge_.PollGamepad(request.gamepad_user_index);
+    result.input_status = result.gamepad_poll_status;
+    snapshot_.last_input_status = result.input_status;
+    if (result.gamepad_poll_status == input::InputStatus::Success) {
+        return result;
+    }
+
+    if (result.gamepad_poll_status == input::InputStatus::SourceUnavailable) {
+        return result;
+    }
+
+    result.status = HardwareFrameHostStatus::InputPollFailed;
     return result;
 }
 
