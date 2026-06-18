@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <cstdio>
 #include <span>
 #include <string_view>
@@ -62,6 +63,31 @@ int Skip(std::string_view message) {
     return SKIP_RETURN_CODE;
 }
 
+bool IsStrictHardwareRequested() {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4996)
+#endif
+    const char *value = std::getenv("YUENGINE_AUDIO_STRICT_HARDWARE");
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+    if (value == nullptr) {
+        return false;
+    }
+
+    const std::string_view request(value);
+    if (request == "1") {
+        return true;
+    }
+
+    if (request == "true") {
+        return true;
+    }
+
+    return request == "TRUE";
+}
+
 int FailAfterShutdown(AudioCallbackDevice &device, std::string_view message) {
     device.Shutdown();
     return Fail(message);
@@ -103,10 +129,18 @@ int AudioHardwareCallbackCompletesSubmittedBuffer() {
     AudioCallbackDevice device;
     AudioStatus status = device.Initialize(desc);
     if (status == AudioStatus::UnsupportedBackend) {
+        if (IsStrictHardwareRequested()) {
+            return Fail("audio callback hardware strict smoke failed because the backend is not compiled");
+        }
+
         return Skip("audio callback hardware smoke skipped because the backend is not compiled");
     }
 
     if (status == AudioStatus::DeviceUnavailable) {
+        if (IsStrictHardwareRequested()) {
+            return Fail("audio callback hardware strict smoke failed because a callback device is unavailable");
+        }
+
         return Skip("audio callback hardware smoke skipped because a callback device is unavailable");
     }
 
@@ -203,10 +237,18 @@ int AudioHardwareCallbackSubmitsPcmStreamQueue() {
     AudioCallbackDevice callback_device;
     AudioStatus status = callback_device.Initialize(desc);
     if (status == AudioStatus::UnsupportedBackend) {
+        if (IsStrictHardwareRequested()) {
+            return Fail("audio stream queue callback strict smoke failed because the backend is not compiled");
+        }
+
         return Skip("audio stream queue callback hardware smoke skipped because the backend is not compiled");
     }
 
     if (status == AudioStatus::DeviceUnavailable) {
+        if (IsStrictHardwareRequested()) {
+            return Fail("audio stream queue callback strict smoke failed because a callback device is unavailable");
+        }
+
         return Skip("audio stream queue callback hardware smoke skipped because a callback device is unavailable");
     }
 

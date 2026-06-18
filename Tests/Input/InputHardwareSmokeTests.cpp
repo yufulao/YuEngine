@@ -27,6 +27,7 @@ using yuengine::input::InputStatus;
 namespace {
 constexpr const char *TEST_SOURCE_MESSAGE = "Input_HardwareBridge_TranslatesSourceMessages";
 constexpr const char *TEST_XINPUT_GAMEPAD = "Input_HardwareBridge_PollsXInputGamepad";
+constexpr const char *STRICT_XINPUT_ENVIRONMENT = "YUENGINE_REQUIRE_XINPUT_HARDWARE";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr int SKIP_RETURN_CODE = 77;
@@ -42,6 +43,37 @@ int Skip(const std::string &message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stdout);
     std::fputc('\n', stdout);
     return SKIP_RETURN_CODE;
+}
+
+bool IsEnabledEnvironmentValue(const char *value) {
+    if (value == nullptr) {
+        return false;
+    }
+
+    const std::string_view text(value);
+    if (text == "1") {
+        return true;
+    }
+
+    if (text == "true") {
+        return true;
+    }
+
+    return text == "TRUE";
+}
+
+bool IsStrictXInputSmokeRequired() {
+    std::array<char, 8U> value{};
+    const DWORD value_length = GetEnvironmentVariableA(STRICT_XINPUT_ENVIRONMENT, value.data(), static_cast<DWORD>(value.size()));
+    if (value_length == 0U) {
+        return false;
+    }
+
+    if (value_length >= value.size()) {
+        return false;
+    }
+
+    return IsEnabledEnvironmentValue(value.data());
 }
 
 std::intptr_t MakePointValue(std::int16_t x, std::int16_t y) {
@@ -134,7 +166,11 @@ int InputHardwareBridgePollsXInputGamepad() {
     }
 
     const InputStatus poll_status = bridge.PollGamepad(0U);
-    if (poll_status == InputStatus::SourceUnavailable) {
+    if (poll_status == InputStatus::DeviceUnavailable) {
+        if (IsStrictXInputSmokeRequired()) {
+            return Fail("xinput gamepad hardware smoke requires a connected controller");
+        }
+
         return Skip("xinput gamepad hardware smoke skipped because no controller is connected");
     }
 

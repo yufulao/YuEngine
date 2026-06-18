@@ -3,6 +3,8 @@
 
 #include "YuEngine/Audio/AudioCallbackDevice.h"
 
+#include "AudioCallbackDeviceWindowsInternal.h"
+
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
@@ -16,6 +18,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
+#include <audioclient.h>
 #include <xaudio2.h>
 #endif
 
@@ -24,6 +27,7 @@ namespace {
 constexpr std::uint16_t BITS_PER_SAMPLE = 16U;
 constexpr std::uint16_t BYTES_PER_SAMPLE = BITS_PER_SAMPLE / 8U;
 constexpr std::uint64_t NO_COMPLETED_CALLBACKS = 0U;
+AudioCallbackDeviceBackendTestConfig s_backend_test_config{};
 
 AudioStatus ValidateCallbackDesc(const AudioCallbackDeviceDesc &desc) {
     if (desc.backend_kind != AudioBackendKind::Callback) {
@@ -64,6 +68,41 @@ AudioStatus ValidateCallbackDesc(const AudioCallbackDeviceDesc &desc) {
 std::size_t RequiredSampleCount(const AudioCallbackDeviceDesc &desc) {
     return desc.frames_per_buffer * static_cast<std::size_t>(desc.channel_count);
 }
+
+AudioCallbackDeviceBackendTestConfig CurrentBackendTestConfig() {
+    return s_backend_test_config;
+}
+
+#if defined(_WIN32)
+AudioStatus MapXAudio2InitializeStatus(HRESULT native_result) {
+    if (native_result == XAUDIO2_E_DEVICE_INVALIDATED) {
+        return AudioStatus::DeviceUnavailable;
+    }
+
+    if (native_result == AUDCLNT_E_DEVICE_INVALIDATED) {
+        return AudioStatus::DeviceUnavailable;
+    }
+
+    if (native_result == AUDCLNT_E_ENDPOINT_CREATE_FAILED) {
+        return AudioStatus::DeviceUnavailable;
+    }
+
+    if (native_result == AUDCLNT_E_SERVICE_NOT_RUNNING) {
+        return AudioStatus::DeviceUnavailable;
+    }
+
+    if (native_result == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) {
+        return AudioStatus::DeviceUnavailable;
+    }
+
+    if (native_result == HRESULT_FROM_WIN32(ERROR_DEVICE_NOT_CONNECTED)) {
+        return AudioStatus::DeviceUnavailable;
+    }
+
+    return AudioStatus::BackendError;
+}
+#endif
+
 }
 
 struct AudioCallbackBufferSlot final {
@@ -135,11 +174,13 @@ struct AudioCallbackDeviceState final {
     mutable std::mutex mutex{};
     std::condition_variable completion_signal{};
     std::uint64_t next_sequence = 1U;
+    bool uses_controlled_backend = false;
 #if defined(_WIN32)
     IXAudio2 *engine = nullptr;
     IXAudio2MasteringVoice *mastering_voice = nullptr;
     IXAudio2SourceVoice *source_voice = nullptr;
     VoiceCallback callback{};
+    bool com_initialized = false;
 #endif
 
     AudioStatus SetLastStatus(AudioStatus status) {
@@ -165,6 +206,11 @@ struct AudioCallbackDeviceState final {
             engine->StopEngine();
             engine->Release();
             engine = nullptr;
+        }
+
+        if (com_initialized) {
+            CoUninitialize();
+            com_initialized = false;
         }
 #endif
     }
@@ -228,6 +274,29 @@ struct AudioCallbackDeviceState final {
     }
 };
 
+void SetAudioCallbackDeviceBackendTestConfig(const AudioCallbackDeviceBackendTestConfig &config) {
+    s_backend_test_config = config;
+}
+
+void ClearAudioCallbackDeviceBackendTestConfig() {
+    s_backend_test_config = AudioCallbackDeviceBackendTestConfig{};
+}
+
+AudioStatus RollBackFailedSubmit(AudioCallbackDeviceState *state, AudioCallbackBufferSlot *slot, AudioStatus status) {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    slot->queued = false;
+    if (state->snapshot.queued_buffer_count > 0U) {
+        --state->snapshot.queued_buffer_count;
+    }
+
+    if (state->snapshot.submitted_buffer_count > 0U) {
+        --state->snapshot.submitted_buffer_count;
+    }
+
+    ++state->snapshot.failed_submission_count;
+    return state->SetLastStatus(status);
+}
+
 AudioCallbackDevice::AudioCallbackDevice()
     : state_(nullptr) {
 }
@@ -275,19 +344,42 @@ AudioStatus AudioCallbackDevice::Initialize(const AudioCallbackDeviceDesc &desc)
     state_->snapshot.channel_count = desc.channel_count;
     state_->snapshot.setup_allocation_count = desc.buffer_count + 2U;
 
-#if defined(_WIN32)
-    HRESULT native_result = XAudio2Create(&state_->engine, 0U, XAUDIO2_DEFAULT_PROCESSOR);
-    if (FAILED(native_result)) {
-        state_->ReleaseNativeObjects();
-        state_->SetLastStatus(AudioStatus::DeviceUnavailable);
-        return AudioStatus::DeviceUnavailable;
+    const AudioCallbackDeviceBackendTestConfig backend_test_config = CurrentBackendTestConfig();
+    if (backend_test_config.enabled) {
+        state_->uses_controlled_backend = true;
+        if (backend_test_config.initialize_status != AudioStatus::Success) {
+            return state_->SetLastStatus(backend_test_config.initialize_status);
+        }
+
+        state_->snapshot.initialized = true;
+        return state_->SetLastStatus(AudioStatus::Success);
     }
 
-    native_result = state_->engine->CreateMasteringVoice(&state_->mastering_voice, desc.channel_count, desc.sample_rate);
-    if (FAILED(native_result)) {
+#if defined(_WIN32)
+    HRESULT native_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const bool owns_com_apartment = SUCCEEDED(native_result);
+    if (FAILED(native_result) && native_result != RPC_E_CHANGED_MODE) {
         state_->ReleaseNativeObjects();
-        state_->SetLastStatus(AudioStatus::DeviceUnavailable);
-        return AudioStatus::DeviceUnavailable;
+        state_->SetLastStatus(AudioStatus::BackendError);
+        return AudioStatus::BackendError;
+    }
+
+    state_->com_initialized = owns_com_apartment;
+
+    native_result = XAudio2Create(&state_->engine, 0U, XAUDIO2_DEFAULT_PROCESSOR);
+    if (FAILED(native_result)) {
+        const AudioStatus status = MapXAudio2InitializeStatus(native_result);
+        state_->ReleaseNativeObjects();
+        state_->SetLastStatus(status);
+        return status;
+    }
+
+    native_result = state_->engine->CreateMasteringVoice(&state_->mastering_voice, XAUDIO2_DEFAULT_CHANNELS, XAUDIO2_DEFAULT_SAMPLERATE);
+    if (FAILED(native_result)) {
+        const AudioStatus status = MapXAudio2InitializeStatus(native_result);
+        state_->ReleaseNativeObjects();
+        state_->SetLastStatus(status);
+        return status;
     }
 
     WAVEFORMATEX wave_format{};
@@ -299,9 +391,10 @@ AudioStatus AudioCallbackDevice::Initialize(const AudioCallbackDeviceDesc &desc)
     wave_format.nAvgBytesPerSec = desc.sample_rate * wave_format.nBlockAlign;
     native_result = state_->engine->CreateSourceVoice(&state_->source_voice, &wave_format, 0U, XAUDIO2_DEFAULT_FREQ_RATIO, &state_->callback);
     if (FAILED(native_result)) {
+        const AudioStatus status = MapXAudio2InitializeStatus(native_result);
         state_->ReleaseNativeObjects();
-        state_->SetLastStatus(AudioStatus::DeviceUnavailable);
-        return AudioStatus::DeviceUnavailable;
+        state_->SetLastStatus(status);
+        return status;
     }
 
     state_->snapshot.initialized = true;
@@ -329,6 +422,16 @@ AudioStatus AudioCallbackDevice::Start() {
 
     if (state_->snapshot.started) {
         return state_->SetLastStatus(AudioStatus::AlreadyStarted);
+    }
+
+    if (state_->uses_controlled_backend) {
+        const AudioCallbackDeviceBackendTestConfig backend_test_config = CurrentBackendTestConfig();
+        if (backend_test_config.start_status != AudioStatus::Success) {
+            return state_->SetLastStatus(backend_test_config.start_status);
+        }
+
+        state_->snapshot.started = true;
+        return state_->SetLastStatus(AudioStatus::Success);
     }
 
 #if defined(_WIN32)
@@ -400,6 +503,26 @@ AudioStatus AudioCallbackDevice::SubmitS16Buffer(std::span<const std::int16_t> i
         state_->snapshot.max_queued_buffer_count = std::max(state_->snapshot.max_queued_buffer_count, state_->snapshot.queued_buffer_count);
     }
 
+    if (state_->uses_controlled_backend) {
+        const AudioCallbackDeviceBackendTestConfig backend_test_config = CurrentBackendTestConfig();
+        if (backend_test_config.submit_status != AudioStatus::Success) {
+            return RollBackFailedSubmit(state_, selected_slot, backend_test_config.submit_status);
+        }
+
+        if (backend_test_config.report_callback_error_on_submit) {
+            state_->OnVoiceError();
+            std::lock_guard<std::mutex> lock(state_->mutex);
+            return state_->SetLastStatus(AudioStatus::Success);
+        }
+
+        if (backend_test_config.complete_submitted_buffer) {
+            state_->OnBufferEnd(selected_slot);
+        }
+
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        return state_->SetLastStatus(AudioStatus::Success);
+    }
+
 #if defined(_WIN32)
     XAUDIO2_BUFFER native_buffer{};
     native_buffer.AudioBytes = static_cast<UINT32>(required_samples * sizeof(std::int16_t));
@@ -408,18 +531,7 @@ AudioStatus AudioCallbackDevice::SubmitS16Buffer(std::span<const std::int16_t> i
     native_buffer.pContext = selected_slot;
     const HRESULT native_result = state_->source_voice->SubmitSourceBuffer(&native_buffer);
     if (FAILED(native_result)) {
-        std::lock_guard<std::mutex> lock(state_->mutex);
-        selected_slot->queued = false;
-        if (state_->snapshot.queued_buffer_count > 0U) {
-            --state_->snapshot.queued_buffer_count;
-        }
-
-        if (state_->snapshot.submitted_buffer_count > 0U) {
-            --state_->snapshot.submitted_buffer_count;
-        }
-
-        ++state_->snapshot.failed_submission_count;
-        return state_->SetLastStatus(AudioStatus::BufferSubmitFailed);
+        return RollBackFailedSubmit(state_, selected_slot, AudioStatus::BufferSubmitFailed);
     }
 #endif
 
@@ -507,8 +619,10 @@ AudioStatus AudioCallbackDevice::Stop() {
     }
 
 #if defined(_WIN32)
-    state_->source_voice->Stop(0U);
-    state_->engine->StopEngine();
+    if (!state_->uses_controlled_backend) {
+        state_->source_voice->Stop(0U);
+        state_->engine->StopEngine();
+    }
 #endif
 
     state_->snapshot.started = false;

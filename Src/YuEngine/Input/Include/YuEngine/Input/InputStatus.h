@@ -16,10 +16,13 @@ enum class InputStatus {
     NotInitialized,
     AlreadyInitialized,
     InvalidDescriptor,
+    InvalidUserIndex = InvalidDescriptor,
     UnsupportedBackend,
     SourceUnavailable,
+    DeviceUnavailable = SourceUnavailable,
     FocusLost,
     NullPointer,
-    OutputBufferFull
+    OutputBufferFull,
+    BackendError
 };
 }

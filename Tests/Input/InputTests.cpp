@@ -18,6 +18,7 @@
 #include "YuEngine/Input/InputDeviceKind.h"
 #include "YuEngine/Input/InputGamepadState.h"
 #include "YuEngine/Input/InputReplay.h"
+#include "InputBridgeWindowsInternal.h"
 
 using yuengine::input::InputActionId;
 using yuengine::input::InputActionState;
@@ -44,9 +45,14 @@ using yuengine::input::GAMEPAD_BUTTON_A;
 using yuengine::input::GAMEPAD_BUTTON_B;
 using yuengine::input::GAMEPAD_LEFT_THUMB_X_CONTROL;
 using yuengine::input::GAMEPAD_RIGHT_TRIGGER_CONTROL;
+using yuengine::input::MAX_GAMEPAD_DEVICES;
 using yuengine::input::MAX_EVENTS_PER_FRAME;
 using yuengine::input::MAX_INPUT_BINDINGS;
 using yuengine::input::MAX_REPLAY_FRAMES;
+using yuengine::input::internal::InputNativeGamepadPollFunction;
+using yuengine::input::internal::InputNativeGamepadPollStatus;
+using yuengine::input::internal::InputNativeGamepadState;
+using yuengine::input::internal::SetInputNativeGamepadPollFunctionForTest;
 
 namespace {
 constexpr const char* TEST_REGISTER_BINDING = "Input_RegisterActionBinding_ReturnsStableActionId";
@@ -78,6 +84,10 @@ constexpr const char* TEST_BRIDGE_GAMEPAD_UNAVAILABLE = "Input_BridgeGamepadUnav
 constexpr const char* TEST_BRIDGE_GAMEPAD_CONNECTED = "Input_BridgeGamepadConnectedState_QueuesButtonAndAxisEvents";
 constexpr const char* TEST_BRIDGE_GAMEPAD_REPEAT = "Input_BridgeGamepadRepeatedPacket_DoesNotQueueDuplicateEvents";
 constexpr const char* TEST_BRIDGE_GAMEPAD_CAPACITY = "Input_BridgeGamepadCapacityOverflow_DoesNotQueuePartialEvents";
+constexpr const char *TEST_BRIDGE_XINPUT_UNAVAILABLE = "Input_BridgeXInputPollUnavailable_ReturnsDeviceUnavailable";
+constexpr const char *TEST_BRIDGE_XINPUT_CONNECTED = "Input_BridgeXInputPollConnected_QueuesButtonAxisAndPacket";
+constexpr const char *TEST_BRIDGE_XINPUT_BACKEND_ERROR = "Input_BridgeXInputPollBackendError_ReturnsExplicitStatus";
+constexpr const char *TEST_BRIDGE_XINPUT_INVALID_USER = "Input_BridgeXInputPollInvalidUserIndex_ReturnsExplicitStatus";
 constexpr const char* TEST_BRIDGE_NO_DISPATCH = "Input_BridgeNoUiGameOrReportDispatch";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
@@ -159,6 +169,58 @@ InputGamepadState UnavailableGamepadState(InputDeviceId device) {
     state.connection = InputGamepadConnection::Unavailable;
     return state;
 }
+
+InputNativeGamepadPollStatus PollNativeUnavailable(std::uint32_t user_index, InputNativeGamepadState *state) {
+    static_cast<void>(user_index);
+    if (state == nullptr) {
+        return InputNativeGamepadPollStatus::BackendError;
+    }
+
+    *state = InputNativeGamepadState{};
+    return InputNativeGamepadPollStatus::DeviceUnavailable;
+}
+
+InputNativeGamepadPollStatus PollNativeConnected(std::uint32_t user_index, InputNativeGamepadState *state) {
+    if (user_index != 0U) {
+        return InputNativeGamepadPollStatus::BackendError;
+    }
+
+    if (state == nullptr) {
+        return InputNativeGamepadPollStatus::BackendError;
+    }
+
+    state->packet_number = 31U;
+    state->buttons = GAMEPAD_BUTTON_A;
+    state->right_trigger = 64U;
+    state->left_thumb_x = -1234;
+    return InputNativeGamepadPollStatus::Success;
+}
+
+InputNativeGamepadPollStatus PollNativeBackendError(std::uint32_t user_index, InputNativeGamepadState *state) {
+    static_cast<void>(user_index);
+    if (state != nullptr) {
+        *state = InputNativeGamepadState{};
+    }
+
+    return InputNativeGamepadPollStatus::BackendError;
+}
+
+class ScopedNativeGamepadPollFunction final {
+public:
+    explicit ScopedNativeGamepadPollFunction(InputNativeGamepadPollFunction function)
+        : previous_function_(SetInputNativeGamepadPollFunctionForTest(function)) {
+    }
+
+    ~ScopedNativeGamepadPollFunction() {
+        static_cast<void>(SetInputNativeGamepadPollFunctionForTest(previous_function_));
+    }
+
+    ScopedNativeGamepadPollFunction(const ScopedNativeGamepadPollFunction &) = delete;
+    ScopedNativeGamepadPollFunction &operator=(const ScopedNativeGamepadPollFunction &) = delete;
+
+private:
+    InputNativeGamepadPollFunction previous_function_ = nullptr;
+};
 
 bool RegisterPrimaryBinding(InputReplay& replay) {
     return replay.RegisterActionBinding(DEVICE_A, CONTROL_A, ACTION_A).status == InputStatus::Success;
@@ -901,7 +963,7 @@ int InputBridgeGamepadUnavailableStateIsExplicit() {
     }
 
     const InputGamepadState state = UnavailableGamepadState(desc.gamepad_device);
-    if (bridge.SubmitGamepadState(state) != InputStatus::SourceUnavailable) {
+    if (bridge.SubmitGamepadState(state) != InputStatus::DeviceUnavailable) {
         return Fail("gamepad unavailable did not return explicit status");
     }
 
@@ -1072,6 +1134,177 @@ int InputBridgeGamepadCapacityOverflowDoesNotQueuePartialEvents() {
     return 0;
 }
 
+int InputBridgeXInputPollUnavailableReturnsDeviceUnavailable() {
+    ScopedNativeGamepadPollFunction poll_function(PollNativeUnavailable);
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    const InputStatus poll_status = bridge.PollGamepad(0U);
+    if (poll_status != InputStatus::DeviceUnavailable) {
+        return Fail("xinput unavailable did not return device unavailable");
+    }
+
+    const auto snapshot = bridge.Snapshot();
+    if (snapshot.gamepad_poll_count != 1U) {
+        return Fail("xinput unavailable poll count mismatch");
+    }
+
+    if (snapshot.gamepad_unavailable_poll_count != 1U) {
+        return Fail("xinput unavailable counter mismatch");
+    }
+
+    if (snapshot.gamepad_connection != InputGamepadConnection::Unavailable) {
+        return Fail("xinput unavailable connection mismatch");
+    }
+
+    if (snapshot.last_status != InputStatus::DeviceUnavailable) {
+        return Fail("xinput unavailable last status mismatch");
+    }
+
+    return 0;
+}
+
+int InputBridgeXInputPollConnectedQueuesButtonAxisAndPacket() {
+    ScopedNativeGamepadPollFunction poll_function(PollNativeConnected);
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    desc.event_capacity = 4U;
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    if (bridge.PollGamepad(0U) != InputStatus::Success) {
+        return Fail("xinput connected poll failed");
+    }
+
+    std::array<InputBridgeEvent, 3U> events{};
+    std::size_t event_count = 0U;
+    if (bridge.DrainEvents(events.data(), events.size(), event_count) != InputStatus::Success) {
+        return Fail("xinput connected drain failed");
+    }
+
+    if (event_count != events.size()) {
+        return Fail("xinput connected event count mismatch");
+    }
+
+    if (events[0U].type != InputBridgeEventType::GamepadButtonPressed) {
+        return Fail("xinput connected did not queue button event");
+    }
+
+    if (events[0U].raw_code != GAMEPAD_BUTTON_A) {
+        return Fail("xinput connected button raw code mismatch");
+    }
+
+    if (events[1U].control.value != GAMEPAD_RIGHT_TRIGGER_CONTROL) {
+        return Fail("xinput connected trigger control mismatch");
+    }
+
+    if (events[1U].axis_value != 64) {
+        return Fail("xinput connected trigger value mismatch");
+    }
+
+    if (events[2U].control.value != GAMEPAD_LEFT_THUMB_X_CONTROL) {
+        return Fail("xinput connected thumb control mismatch");
+    }
+
+    if (events[2U].axis_value != -1234) {
+        return Fail("xinput connected thumb value mismatch");
+    }
+
+    const auto first_snapshot = bridge.Snapshot();
+    if (first_snapshot.last_gamepad_packet_number != 31U) {
+        return Fail("xinput connected packet mismatch");
+    }
+
+    if (bridge.PollGamepad(0U) != InputStatus::Success) {
+        return Fail("xinput repeated packet poll failed");
+    }
+
+    std::array<InputBridgeEvent, 1U> repeated_events{};
+    std::size_t repeated_count = 0U;
+    if (bridge.DrainEvents(repeated_events.data(), repeated_events.size(), repeated_count) != InputStatus::Success) {
+        return Fail("xinput repeated packet drain failed");
+    }
+
+    if (repeated_count != 0U) {
+        return Fail("xinput repeated packet queued duplicate events");
+    }
+
+    const auto second_snapshot = bridge.Snapshot();
+    if (second_snapshot.gamepad_connected_poll_count != 2U) {
+        return Fail("xinput connected poll counter mismatch");
+    }
+
+    if (second_snapshot.gamepad_event_count != 3U) {
+        return Fail("xinput connected event counter mismatch");
+    }
+
+    return 0;
+}
+
+int InputBridgeXInputPollBackendErrorReturnsExplicitStatus() {
+    ScopedNativeGamepadPollFunction poll_function(PollNativeBackendError);
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    if (bridge.PollGamepad(0U) != InputStatus::BackendError) {
+        return Fail("xinput backend error did not return explicit status");
+    }
+
+    const auto snapshot = bridge.Snapshot();
+    if (snapshot.last_status != InputStatus::BackendError) {
+        return Fail("xinput backend error last status mismatch");
+    }
+
+    if (snapshot.rejected_event_count != 1U) {
+        return Fail("xinput backend error reject count mismatch");
+    }
+
+    if (snapshot.gamepad_poll_count != 0U) {
+        return Fail("xinput backend error mutated gamepad poll count");
+    }
+
+    if (snapshot.accepted_event_count != 0U) {
+        return Fail("xinput backend error mutated accepted events");
+    }
+
+    return 0;
+}
+
+int InputBridgeXInputPollInvalidUserIndexReturnsExplicitStatus() {
+    ScopedNativeGamepadPollFunction poll_function(PollNativeConnected);
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("bridge initialize failed");
+    }
+
+    if (bridge.PollGamepad(MAX_GAMEPAD_DEVICES) != InputStatus::InvalidUserIndex) {
+        return Fail("xinput invalid user index did not return explicit status");
+    }
+
+    const auto snapshot = bridge.Snapshot();
+    if (snapshot.last_status != InputStatus::InvalidUserIndex) {
+        return Fail("xinput invalid user index last status mismatch");
+    }
+
+    if (snapshot.rejected_event_count != 1U) {
+        return Fail("xinput invalid user index reject count mismatch");
+    }
+
+    if (snapshot.gamepad_poll_count != 0U) {
+        return Fail("xinput invalid user index called backend poll");
+    }
+
+    return 0;
+}
+
 int InputBridgeNoUiGameOrReportDispatch() {
     InputBridge bridge;
     InputBridgeDesc desc{};
@@ -1136,6 +1369,10 @@ int main(int argc, char** argv) {
         {TEST_BRIDGE_GAMEPAD_CONNECTED, InputBridgeGamepadConnectedStateQueuesButtonAndAxisEvents},
         {TEST_BRIDGE_GAMEPAD_REPEAT, InputBridgeGamepadRepeatedPacketDoesNotQueueDuplicateEvents},
         {TEST_BRIDGE_GAMEPAD_CAPACITY, InputBridgeGamepadCapacityOverflowDoesNotQueuePartialEvents},
+        {TEST_BRIDGE_XINPUT_UNAVAILABLE, InputBridgeXInputPollUnavailableReturnsDeviceUnavailable},
+        {TEST_BRIDGE_XINPUT_CONNECTED, InputBridgeXInputPollConnectedQueuesButtonAxisAndPacket},
+        {TEST_BRIDGE_XINPUT_BACKEND_ERROR, InputBridgeXInputPollBackendErrorReturnsExplicitStatus},
+        {TEST_BRIDGE_XINPUT_INVALID_USER, InputBridgeXInputPollInvalidUserIndexReturnsExplicitStatus},
         {TEST_BRIDGE_NO_DISPATCH, InputBridgeNoUiGameOrReportDispatch}};
 
     const std::string_view test_name(argv[1]);

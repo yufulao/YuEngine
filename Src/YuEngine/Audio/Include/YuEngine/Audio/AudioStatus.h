@@ -15,6 +15,7 @@ enum class AudioStatus {
     InvalidGain,
     AllocationFailure,
     DeviceUnavailable,
+    BackendError,
     DeviceStartFailed,
     BufferSubmitFailed,
     CallbackFailed,

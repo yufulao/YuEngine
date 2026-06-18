@@ -31,6 +31,8 @@
 #include "YuEngine/Audio/AudioPcmStreamQueueStatus.h"
 #include "YuEngine/Audio/TestAudioDevice.h"
 
+#include "AudioCallbackDeviceWindowsInternal.h"
+
 using yuengine::audio::AudioBackendKind;
 using yuengine::audio::AudioCallbackCompletion;
 using yuengine::audio::AudioCallbackDevice;
@@ -103,6 +105,10 @@ constexpr const char* TEST_CALLBACK_UNSUPPORTED_BACKEND = "Audio_CallbackDevice_
 constexpr const char* TEST_CALLBACK_UNSUPPORTED_FORMAT = "Audio_CallbackDevice_RejectsUnsupportedFormatBeforeHardware";
 constexpr const char* TEST_CALLBACK_INVALID_BUFFER_SHAPE = "Audio_CallbackDevice_RejectsInvalidBufferShapeBeforeHardware";
 constexpr const char* TEST_CALLBACK_UNINITIALIZED_OPERATIONS = "Audio_CallbackDevice_UninitializedOperationsReturnExplicitStatus";
+constexpr const char *TEST_CALLBACK_CONTROLLED_SUBMIT_DRAIN = "Audio_CallbackDevice_ControlledBackendSubmitsAndDrains";
+constexpr const char *TEST_CALLBACK_CONTROLLED_STATUS_SPLIT = "Audio_CallbackDevice_ControlledBackendSplitsUnavailableAndBackendError";
+constexpr const char *TEST_CALLBACK_CONTROLLED_SUBMIT_ERROR = "Audio_CallbackDevice_ControlledBackendSubmitErrorRollsBack";
+constexpr const char *TEST_CALLBACK_CONTROLLED_CALLBACK_ERROR = "Audio_CallbackDevice_ControlledBackendCallbackErrorReportsFailure";
 constexpr const char* TEST_PCM_CREATE_QUERY_RELEASE = "Audio_PcmSamplePacket_CreatesQueriesAndReleasesMetadata";
 constexpr const char* TEST_PCM_DUPLICATE = "Audio_PcmSamplePacket_RejectsDuplicatePacketIdWithoutMutation";
 constexpr const char* TEST_PCM_UNSUPPORTED_FORMAT = "Audio_PcmSamplePacket_RejectsUnsupportedFormatWithoutMutation";
@@ -157,6 +163,16 @@ constexpr std::int16_t PREFILL_SAMPLE = 1234;
 constexpr std::int16_t SENTINEL_SAMPLE = -1234;
 using TestFunction = int (*)();
 
+struct ScopedAudioCallbackBackendTestConfig final {
+    explicit ScopedAudioCallbackBackendTestConfig(const yuengine::audio::AudioCallbackDeviceBackendTestConfig &config) {
+        yuengine::audio::SetAudioCallbackDeviceBackendTestConfig(config);
+    }
+
+    ~ScopedAudioCallbackBackendTestConfig() {
+        yuengine::audio::ClearAudioCallbackDeviceBackendTestConfig();
+    }
+};
+
 struct FakeCallbackSubmitContext final {
     std::size_t attempted_call_count = 0U;
     std::size_t submitted_call_count = 0U;
@@ -173,6 +189,11 @@ int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
     std::fputc('\n', stderr);
     return 1;
+}
+
+int FailAfterShutdown(AudioCallbackDevice &device, std::string_view message) {
+    device.Shutdown();
+    return Fail(message);
 }
 
 TestAudioDevice CreateInitializedDevice() {
@@ -2416,6 +2437,225 @@ int AudioCallbackDeviceUninitializedOperationsReturnExplicitStatus() {
 
     return 0;
 }
+
+int AudioCallbackDeviceControlledBackendSubmitsAndDrains() {
+    yuengine::audio::AudioCallbackDeviceBackendTestConfig config{};
+    config.enabled = true;
+    config.complete_submitted_buffer = true;
+    ScopedAudioCallbackBackendTestConfig scoped_config(config);
+
+    AudioCallbackDeviceDesc desc{};
+    desc.frames_per_buffer = AudioCallbackDeviceDesc::MIN_FRAMES_PER_BUFFER;
+    AudioCallbackDevice device;
+    if (device.Initialize(desc) != AudioStatus::Success) {
+        return Fail("controlled callback initialize failed");
+    }
+
+    if (device.Start() != AudioStatus::Success) {
+        return FailAfterShutdown(device, "controlled callback start failed");
+    }
+
+    constexpr std::size_t SAMPLE_COUNT = AudioCallbackDeviceDesc::MIN_FRAMES_PER_BUFFER * CHANNEL_COUNT;
+    std::array<std::int16_t, SAMPLE_COUNT> samples{};
+    samples[0U] = 11;
+    samples[1U] = -11;
+    if (device.SubmitS16Buffer(std::span<const std::int16_t>(samples.data(), samples.size()), desc.frames_per_buffer) != AudioStatus::Success) {
+        return FailAfterShutdown(device, "controlled callback submit failed");
+    }
+
+    if (device.WaitForCompletedCallbacks(1U, 1U) != AudioStatus::Success) {
+        return FailAfterShutdown(device, "controlled callback wait failed");
+    }
+
+    std::array<AudioCallbackCompletion, AudioCallbackDeviceDesc::MAX_BUFFER_COUNT> completions{};
+    std::size_t completion_count = 0U;
+    if (device.DrainCompletions(completions.data(), completions.size(), completion_count) != AudioStatus::Success) {
+        return FailAfterShutdown(device, "controlled callback drain failed");
+    }
+
+    if (completion_count != 1U) {
+        return FailAfterShutdown(device, "controlled callback completion count changed");
+    }
+
+    if (completions[0U].status != AudioStatus::Success) {
+        return FailAfterShutdown(device, "controlled callback completion status changed");
+    }
+
+    if (completions[0U].frame_count != desc.frames_per_buffer) {
+        return FailAfterShutdown(device, "controlled callback completion frame count changed");
+    }
+
+    const AudioCallbackSnapshot before_shutdown_snapshot = device.Snapshot();
+    if (before_shutdown_snapshot.submitted_buffer_count != 1U) {
+        return FailAfterShutdown(device, "controlled callback submitted count changed");
+    }
+
+    if (before_shutdown_snapshot.completed_callback_count != 1U) {
+        return FailAfterShutdown(device, "controlled callback completed count changed");
+    }
+
+    if (before_shutdown_snapshot.drained_completion_count != 1U) {
+        return FailAfterShutdown(device, "controlled callback drained count changed");
+    }
+
+    if (before_shutdown_snapshot.queued_buffer_count != 0U) {
+        return FailAfterShutdown(device, "controlled callback queued count changed");
+    }
+
+    if (device.Stop() != AudioStatus::Success) {
+        return FailAfterShutdown(device, "controlled callback stop failed");
+    }
+
+    if (device.Shutdown() != AudioStatus::ShutdownComplete) {
+        return Fail("controlled callback shutdown failed");
+    }
+
+    return 0;
+}
+
+int AudioCallbackDeviceControlledBackendSplitsUnavailableAndBackendError() {
+    AudioCallbackDeviceDesc desc{};
+
+    yuengine::audio::AudioCallbackDeviceBackendTestConfig unavailable_config{};
+    unavailable_config.enabled = true;
+    unavailable_config.initialize_status = AudioStatus::DeviceUnavailable;
+    {
+        ScopedAudioCallbackBackendTestConfig scoped_config(unavailable_config);
+        AudioCallbackDevice device;
+        if (device.Initialize(desc) != AudioStatus::DeviceUnavailable) {
+            return Fail("controlled callback unavailable status changed");
+        }
+
+        const AudioCallbackSnapshot snapshot = device.Snapshot();
+        if (snapshot.initialized) {
+            return Fail("controlled callback unavailable initialized flag changed");
+        }
+
+        if (snapshot.last_status != AudioStatus::DeviceUnavailable) {
+            return Fail("controlled callback unavailable last status changed");
+        }
+    }
+
+    yuengine::audio::AudioCallbackDeviceBackendTestConfig backend_error_config{};
+    backend_error_config.enabled = true;
+    backend_error_config.initialize_status = AudioStatus::BackendError;
+    ScopedAudioCallbackBackendTestConfig scoped_config(backend_error_config);
+    AudioCallbackDevice device;
+    if (device.Initialize(desc) != AudioStatus::BackendError) {
+        return Fail("controlled callback backend error status changed");
+    }
+
+    const AudioCallbackSnapshot snapshot = device.Snapshot();
+    if (snapshot.initialized) {
+        return Fail("controlled callback backend error initialized flag changed");
+    }
+
+    if (snapshot.last_status != AudioStatus::BackendError) {
+        return Fail("controlled callback backend error last status changed");
+    }
+
+    return 0;
+}
+
+int AudioCallbackDeviceControlledBackendSubmitErrorRollsBack() {
+    yuengine::audio::AudioCallbackDeviceBackendTestConfig config{};
+    config.enabled = true;
+    config.submit_status = AudioStatus::BackendError;
+    ScopedAudioCallbackBackendTestConfig scoped_config(config);
+
+    AudioCallbackDeviceDesc desc{};
+    desc.frames_per_buffer = AudioCallbackDeviceDesc::MIN_FRAMES_PER_BUFFER;
+    AudioCallbackDevice device;
+    if (device.Initialize(desc) != AudioStatus::Success) {
+        return Fail("controlled callback submit error initialize failed");
+    }
+
+    if (device.Start() != AudioStatus::Success) {
+        return FailAfterShutdown(device, "controlled callback submit error start failed");
+    }
+
+    constexpr std::size_t SAMPLE_COUNT = AudioCallbackDeviceDesc::MIN_FRAMES_PER_BUFFER * CHANNEL_COUNT;
+    std::array<std::int16_t, SAMPLE_COUNT> samples{};
+    if (device.SubmitS16Buffer(std::span<const std::int16_t>(samples.data(), samples.size()), desc.frames_per_buffer) != AudioStatus::BackendError) {
+        return FailAfterShutdown(device, "controlled callback submit error status changed");
+    }
+
+    const AudioCallbackSnapshot snapshot = device.Snapshot();
+    if (snapshot.submitted_buffer_count != 0U) {
+        return FailAfterShutdown(device, "controlled callback failed submit kept submitted count");
+    }
+
+    if (snapshot.queued_buffer_count != 0U) {
+        return FailAfterShutdown(device, "controlled callback failed submit kept queued count");
+    }
+
+    if (snapshot.failed_submission_count != 1U) {
+        return FailAfterShutdown(device, "controlled callback failed submit counter changed");
+    }
+
+    if (snapshot.last_status != AudioStatus::BackendError) {
+        return FailAfterShutdown(device, "controlled callback failed submit last status changed");
+    }
+
+    if (device.Shutdown() != AudioStatus::ShutdownComplete) {
+        return Fail("controlled callback submit error shutdown failed");
+    }
+
+    return 0;
+}
+
+int AudioCallbackDeviceControlledBackendCallbackErrorReportsFailure() {
+    yuengine::audio::AudioCallbackDeviceBackendTestConfig config{};
+    config.enabled = true;
+    config.report_callback_error_on_submit = true;
+    ScopedAudioCallbackBackendTestConfig scoped_config(config);
+
+    AudioCallbackDeviceDesc desc{};
+    desc.frames_per_buffer = AudioCallbackDeviceDesc::MIN_FRAMES_PER_BUFFER;
+    AudioCallbackDevice device;
+    if (device.Initialize(desc) != AudioStatus::Success) {
+        return Fail("controlled callback error initialize failed");
+    }
+
+    if (device.Start() != AudioStatus::Success) {
+        return FailAfterShutdown(device, "controlled callback error start failed");
+    }
+
+    constexpr std::size_t SAMPLE_COUNT = AudioCallbackDeviceDesc::MIN_FRAMES_PER_BUFFER * CHANNEL_COUNT;
+    std::array<std::int16_t, SAMPLE_COUNT> samples{};
+    if (device.SubmitS16Buffer(std::span<const std::int16_t>(samples.data(), samples.size()), desc.frames_per_buffer) != AudioStatus::Success) {
+        return FailAfterShutdown(device, "controlled callback error submit failed");
+    }
+
+    if (device.WaitForCompletedCallbacks(1U, 1U) != AudioStatus::CallbackFailed) {
+        return FailAfterShutdown(device, "controlled callback error wait status changed");
+    }
+
+    const AudioCallbackSnapshot snapshot = device.Snapshot();
+    if (snapshot.failed_callback_count != 1U) {
+        return FailAfterShutdown(device, "controlled callback error counter changed");
+    }
+
+    if (snapshot.last_status != AudioStatus::CallbackFailed) {
+        return FailAfterShutdown(device, "controlled callback error last status changed");
+    }
+
+    std::array<AudioCallbackCompletion, AudioCallbackDeviceDesc::MAX_BUFFER_COUNT> completions{};
+    std::size_t completion_count = 0U;
+    if (device.DrainCompletions(completions.data(), completions.size(), completion_count) != AudioStatus::Success) {
+        return FailAfterShutdown(device, "controlled callback error drain failed");
+    }
+
+    if (completion_count != 0U) {
+        return FailAfterShutdown(device, "controlled callback error completion count changed");
+    }
+
+    if (device.Shutdown() != AudioStatus::ShutdownComplete) {
+        return Fail("controlled callback error shutdown failed");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -2456,6 +2696,10 @@ int main(int argc, char** argv) {
         {TEST_CALLBACK_UNSUPPORTED_FORMAT, AudioCallbackDeviceRejectsUnsupportedFormatBeforeHardware},
         {TEST_CALLBACK_INVALID_BUFFER_SHAPE, AudioCallbackDeviceRejectsInvalidBufferShapeBeforeHardware},
         {TEST_CALLBACK_UNINITIALIZED_OPERATIONS, AudioCallbackDeviceUninitializedOperationsReturnExplicitStatus},
+        {TEST_CALLBACK_CONTROLLED_SUBMIT_DRAIN, AudioCallbackDeviceControlledBackendSubmitsAndDrains},
+        {TEST_CALLBACK_CONTROLLED_STATUS_SPLIT, AudioCallbackDeviceControlledBackendSplitsUnavailableAndBackendError},
+        {TEST_CALLBACK_CONTROLLED_SUBMIT_ERROR, AudioCallbackDeviceControlledBackendSubmitErrorRollsBack},
+        {TEST_CALLBACK_CONTROLLED_CALLBACK_ERROR, AudioCallbackDeviceControlledBackendCallbackErrorReportsFailure},
         {TEST_PCM_CREATE_QUERY_RELEASE, AudioPcmSamplePacketCreatesQueriesAndReleasesMetadata},
         {TEST_PCM_DUPLICATE, AudioPcmSamplePacketRejectsDuplicatePacketIdWithoutMutation},
         {TEST_PCM_UNSUPPORTED_FORMAT, AudioPcmSamplePacketRejectsUnsupportedFormatWithoutMutation},

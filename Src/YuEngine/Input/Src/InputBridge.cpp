@@ -191,7 +191,7 @@ InputStatus InputBridge::SubmitGamepadState(const InputGamepadState &state) {
         snapshot_.gamepad_connection = InputGamepadConnection::Unavailable;
         gamepad_state_ = InputGamepadState{};
         gamepad_state_.device = desc_.gamepad_device;
-        return RecordStatus(InputStatus::SourceUnavailable);
+        return RecordStatus(InputStatus::DeviceUnavailable);
     }
 
     if (state.connection != InputGamepadConnection::Connected) {
@@ -377,7 +377,7 @@ InputStatus InputBridge::RecordStatus(InputStatus status) {
         return status;
     }
 
-    if (status == InputStatus::SourceUnavailable) {
+    if (status == InputStatus::DeviceUnavailable) {
         ++snapshot_.unavailable_count;
         return status;
     }

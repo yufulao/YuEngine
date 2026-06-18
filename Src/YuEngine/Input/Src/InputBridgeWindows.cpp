@@ -3,6 +3,8 @@
 
 #include "YuEngine/Input/InputBridge.h"
 
+#include "InputBridgeWindowsInternal.h"
+
 #include "YuEngine/Input/InputConstants.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -18,6 +20,8 @@ constexpr std::uint32_t MOUSE_WHEEL_CONTROL = 1U;
 constexpr std::uint32_t MOUSE_LEFT_BUTTON = 2U;
 constexpr std::uint32_t MOUSE_RIGHT_BUTTON = 3U;
 constexpr std::uint32_t MOUSE_MIDDLE_BUTTON = 4U;
+
+internal::InputNativeGamepadPollFunction g_input_native_gamepad_poll_function = nullptr;
 
 std::int32_t ReadSignedLowWord(std::intptr_t value) {
     const std::uint16_t word_value = static_cast<std::uint16_t>(value & 0xFFFF);
@@ -75,17 +79,16 @@ InputBridgeEvent MakeMouseWheelEvent(InputDeviceId device, std::uintptr_t word_v
     return event;
 }
 
-std::int32_t ClampGamepadAxis(SHORT value) {
-    const auto signed_value = static_cast<std::int32_t>(value);
-    if (signed_value < AXIS_MIN_VALUE) {
+std::int32_t ClampGamepadAxis(std::int32_t value) {
+    if (value < AXIS_MIN_VALUE) {
         return AXIS_MIN_VALUE;
     }
 
-    if (signed_value > AXIS_MAX_VALUE) {
+    if (value > AXIS_MAX_VALUE) {
         return AXIS_MAX_VALUE;
     }
 
-    return signed_value;
+    return value;
 }
 
 InputGamepadState MakeUnavailableGamepadState(InputDeviceId device) {
@@ -95,19 +98,63 @@ InputGamepadState MakeUnavailableGamepadState(InputDeviceId device) {
     return state;
 }
 
-InputGamepadState MakeConnectedGamepadState(InputDeviceId device, const XINPUT_STATE &native_state) {
+InputGamepadState MakeConnectedGamepadState(InputDeviceId device, const internal::InputNativeGamepadState &native_state) {
     InputGamepadState state{};
     state.device = device;
     state.connection = InputGamepadConnection::Connected;
-    state.packet_number = native_state.dwPacketNumber;
-    state.buttons = native_state.Gamepad.wButtons;
-    state.left_trigger = native_state.Gamepad.bLeftTrigger;
-    state.right_trigger = native_state.Gamepad.bRightTrigger;
-    state.left_thumb_x = ClampGamepadAxis(native_state.Gamepad.sThumbLX);
-    state.left_thumb_y = ClampGamepadAxis(native_state.Gamepad.sThumbLY);
-    state.right_thumb_x = ClampGamepadAxis(native_state.Gamepad.sThumbRX);
-    state.right_thumb_y = ClampGamepadAxis(native_state.Gamepad.sThumbRY);
+    state.packet_number = native_state.packet_number;
+    state.buttons = native_state.buttons;
+    state.left_trigger = native_state.left_trigger;
+    state.right_trigger = native_state.right_trigger;
+    state.left_thumb_x = ClampGamepadAxis(native_state.left_thumb_x);
+    state.left_thumb_y = ClampGamepadAxis(native_state.left_thumb_y);
+    state.right_thumb_x = ClampGamepadAxis(native_state.right_thumb_x);
+    state.right_thumb_y = ClampGamepadAxis(native_state.right_thumb_y);
     return state;
+}
+
+internal::InputNativeGamepadPollFunction GetNativeGamepadPollFunction() {
+    if (g_input_native_gamepad_poll_function == nullptr) {
+        return internal::PollNativeXInputGamepad;
+    }
+
+    return g_input_native_gamepad_poll_function;
+}
+}
+
+namespace internal {
+InputNativeGamepadPollFunction SetInputNativeGamepadPollFunctionForTest(InputNativeGamepadPollFunction function) {
+    const InputNativeGamepadPollFunction previous_function = g_input_native_gamepad_poll_function;
+    g_input_native_gamepad_poll_function = function;
+    return previous_function;
+}
+
+InputNativeGamepadPollStatus PollNativeXInputGamepad(std::uint32_t user_index, InputNativeGamepadState *state) {
+    if (state == nullptr) {
+        return InputNativeGamepadPollStatus::BackendError;
+    }
+
+    XINPUT_STATE native_state{};
+    const DWORD poll_result = XInputGetState(user_index, &native_state);
+    if (poll_result == ERROR_DEVICE_NOT_CONNECTED) {
+        *state = InputNativeGamepadState{};
+        return InputNativeGamepadPollStatus::DeviceUnavailable;
+    }
+
+    if (poll_result != ERROR_SUCCESS) {
+        *state = InputNativeGamepadState{};
+        return InputNativeGamepadPollStatus::BackendError;
+    }
+
+    state->packet_number = native_state.dwPacketNumber;
+    state->buttons = native_state.Gamepad.wButtons;
+    state->left_trigger = native_state.Gamepad.bLeftTrigger;
+    state->right_trigger = native_state.Gamepad.bRightTrigger;
+    state->left_thumb_x = ClampGamepadAxis(native_state.Gamepad.sThumbLX);
+    state->left_thumb_y = ClampGamepadAxis(native_state.Gamepad.sThumbLY);
+    state->right_thumb_x = ClampGamepadAxis(native_state.Gamepad.sThumbRX);
+    state->right_thumb_y = ClampGamepadAxis(native_state.Gamepad.sThumbRY);
+    return InputNativeGamepadPollStatus::Success;
 }
 }
 
@@ -199,19 +246,23 @@ InputStatus InputBridge::PollGamepad(std::uint32_t user_index) {
     }
 
     if (user_index >= MAX_GAMEPAD_DEVICES) {
-        return RejectEvent(InputStatus::InvalidDescriptor);
+        return RejectEvent(InputStatus::InvalidUserIndex);
     }
 
-    XINPUT_STATE native_state{};
-    const DWORD poll_result = XInputGetState(user_index, &native_state);
-    if (poll_result == ERROR_DEVICE_NOT_CONNECTED) {
+    internal::InputNativeGamepadState native_state{};
+    const internal::InputNativeGamepadPollFunction poll_function = GetNativeGamepadPollFunction();
+    const internal::InputNativeGamepadPollStatus poll_status = poll_function(user_index, &native_state);
+    if (poll_status == internal::InputNativeGamepadPollStatus::DeviceUnavailable) {
         const InputGamepadState state = MakeUnavailableGamepadState(desc_.gamepad_device);
         return SubmitGamepadState(state);
     }
 
-    if (poll_result != ERROR_SUCCESS) {
-        const InputGamepadState state = MakeUnavailableGamepadState(desc_.gamepad_device);
-        return SubmitGamepadState(state);
+    if (poll_status == internal::InputNativeGamepadPollStatus::BackendError) {
+        return RejectEvent(InputStatus::BackendError);
+    }
+
+    if (poll_status != internal::InputNativeGamepadPollStatus::Success) {
+        return RejectEvent(InputStatus::BackendError);
     }
 
     const InputGamepadState state = MakeConnectedGamepadState(desc_.gamepad_device, native_state);
