@@ -8,11 +8,14 @@
 
 #include "YuEngine/UiEditor/UiEditorShellState.h"
 
+using yuengine::uieditor::UiEditorInspectorRecord;
+using yuengine::uieditor::UiEditorLayoutNodeRecord;
 using yuengine::uieditor::UiEditorShellPanelId;
 using yuengine::uieditor::UiEditorShellPanelRecord;
 using yuengine::uieditor::UiEditorShellSnapshot;
 using yuengine::uieditor::UiEditorShellState;
 using yuengine::uieditor::UiEditorShellStatus;
+using yuengine::uieditor::UI_EDITOR_LAYOUT_MAX_NODE_COUNT;
 using yuengine::uieditor::UI_EDITOR_SHELL_REQUIRED_PANEL_COUNT;
 
 namespace {
@@ -24,8 +27,92 @@ constexpr std::string_view TEST_SMALL_OUTPUT =
     "UiEditor_ShellState_RejectsSmallPanelOutput";
 constexpr std::string_view TEST_BACKEND_GATE =
     "UiEditor_ShellState_DearImGuiBackendGateIsExplicit";
+constexpr std::string_view TEST_LAYOUT_LOAD =
+    "UiEditor_LayoutAsset_LoadsHierarchyAndInspector";
+constexpr std::string_view TEST_LAYOUT_SELECT =
+    "UiEditor_LayoutAsset_SelectNodeUpdatesInspector";
+constexpr std::string_view TEST_LAYOUT_DUPLICATE =
+    "UiEditor_LayoutAsset_RejectsDuplicateNodeId";
+constexpr std::string_view TEST_LAYOUT_MISSING_PARENT =
+    "UiEditor_LayoutAsset_RejectsMissingParent";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected exactly one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
+constexpr std::string_view SAMPLE_LAYOUT_TEXT = R"({
+  "schema": "YuEngine.UI.Layout",
+  "version": 1,
+  "layoutId": "UiCoreSmoke.SimpleWindow",
+  "rootNodeId": 1,
+  "nodes": [
+    {
+      "nodeId": 1,
+      "name": "Root",
+      "type": "Root",
+      "parentNodeId": 0,
+      "order": 0
+    },
+    {
+      "nodeId": 2,
+      "name": "MainWindow",
+      "type": "Window",
+      "parentNodeId": 1,
+      "order": 0
+    },
+    {
+      "nodeId": 3,
+      "name": "TitleBar",
+      "type": "TitleBar",
+      "parentNodeId": 2,
+      "order": 0
+    }
+  ],
+  "resources": []
+})";
+constexpr std::string_view DUPLICATE_NODE_LAYOUT_TEXT = R"({
+  "schema": "YuEngine.UI.Layout",
+  "version": 1,
+  "layoutId": "UiEditor.Duplicate",
+  "rootNodeId": 1,
+  "nodes": [
+    {
+      "nodeId": 1,
+      "name": "Root",
+      "type": "Root",
+      "parentNodeId": 0,
+      "order": 0
+    },
+    {
+      "nodeId": 1,
+      "name": "Duplicate",
+      "type": "Window",
+      "parentNodeId": 1,
+      "order": 0
+    }
+  ],
+  "resources": []
+})";
+constexpr std::string_view MISSING_PARENT_LAYOUT_TEXT = R"({
+  "schema": "YuEngine.UI.Layout",
+  "version": 1,
+  "layoutId": "UiEditor.MissingParent",
+  "rootNodeId": 1,
+  "nodes": [
+    {
+      "nodeId": 1,
+      "name": "Root",
+      "type": "Root",
+      "parentNodeId": 0,
+      "order": 0
+    },
+    {
+      "nodeId": 2,
+      "name": "Child",
+      "type": "Window",
+      "parentNodeId": 99,
+      "order": 0
+    }
+  ],
+  "resources": []
+})";
 
 int Fail(const std::string &message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -191,6 +278,152 @@ int UiEditorShellDearImGuiBackendGateIsExplicit() {
 
     return 0;
 }
+
+int LoadSampleLayout(UiEditorShellState &shell_state) {
+    UiEditorShellStatus status = shell_state.OpenDefaultPlaceholderPanels();
+    int ret_code = ExpectStatus(status, UiEditorShellStatus::Success, "open placeholders failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    status = shell_state.LoadLayoutAsset(SAMPLE_LAYOUT_TEXT);
+    return ExpectStatus(status, UiEditorShellStatus::Success, "load layout asset failed");
+}
+
+int ExportSampleHierarchy(
+    UiEditorShellState &shell_state,
+    std::array<UiEditorLayoutNodeRecord, UI_EDITOR_LAYOUT_MAX_NODE_COUNT> &nodes,
+    std::uint32_t *out_node_count) {
+    const UiEditorShellStatus status = shell_state.ExportHierarchyNodes(
+        nodes.data(),
+        static_cast<std::uint32_t>(nodes.size()),
+        out_node_count);
+    return ExpectStatus(status, UiEditorShellStatus::Success, "export hierarchy failed");
+}
+
+int UiEditorLayoutAssetLoadsHierarchyAndInspector() {
+    UiEditorShellState shell_state;
+    int ret_code = LoadSampleLayout(shell_state);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const UiEditorShellSnapshot snapshot = shell_state.Snapshot();
+    if (!snapshot.layout_loaded || snapshot.loaded_node_count != 3U) {
+        return Fail("layout snapshot did not report loaded nodes");
+    }
+
+    if (snapshot.placeholder_panel_count != 1U) {
+        return Fail("hierarchy and inspector did not switch away from placeholders");
+    }
+
+    std::array<UiEditorLayoutNodeRecord, UI_EDITOR_LAYOUT_MAX_NODE_COUNT> nodes{};
+    std::uint32_t node_count = 0U;
+    ret_code = ExportSampleHierarchy(shell_state, nodes, &node_count);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    if (node_count != 3U) {
+        return Fail("hierarchy node count mismatch");
+    }
+
+    if (nodes[0U].node_id != 1U || nodes[0U].parent_node_id != 0U) {
+        return Fail("root hierarchy node mismatch");
+    }
+
+    if (std::string_view(nodes[1U].name) != "MainWindow" || std::string_view(nodes[1U].type) != "Window") {
+        return Fail("window hierarchy record mismatch");
+    }
+
+    if (nodes[2U].parent_node_id != 2U || std::string_view(nodes[2U].name) != "TitleBar") {
+        return Fail("title hierarchy record mismatch");
+    }
+
+    UiEditorInspectorRecord inspector;
+    const UiEditorShellStatus inspector_status = shell_state.GetInspectorRecord(&inspector);
+    ret_code = ExpectStatus(inspector_status, UiEditorShellStatus::Success, "inspector query failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    if (!inspector.has_selection || inspector.node_id != 1U) {
+        return Fail("inspector did not select root node after load");
+    }
+
+    if (std::string_view(inspector.layout_id) != "UiCoreSmoke.SimpleWindow") {
+        return Fail("inspector layout id mismatch");
+    }
+
+    return 0;
+}
+
+int UiEditorLayoutAssetSelectNodeUpdatesInspector() {
+    UiEditorShellState shell_state;
+    int ret_code = LoadSampleLayout(shell_state);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiEditorShellStatus status = shell_state.SelectLayoutNode(2U);
+    ret_code = ExpectStatus(status, UiEditorShellStatus::Success, "select layout node failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiEditorInspectorRecord inspector;
+    status = shell_state.GetInspectorRecord(&inspector);
+    ret_code = ExpectStatus(status, UiEditorShellStatus::Success, "inspector query failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    if (inspector.node_id != 2U || inspector.parent_node_id != 1U || inspector.order != 0U) {
+        return Fail("inspector node identity mismatch");
+    }
+
+    if (std::string_view(inspector.name) != "MainWindow") {
+        return Fail("inspector node name mismatch");
+    }
+
+    if (std::string_view(inspector.type) != "Window") {
+        return Fail("inspector node type mismatch");
+    }
+
+    return 0;
+}
+
+int UiEditorLayoutAssetRejectsDuplicateNodeId() {
+    UiEditorShellState shell_state;
+    const UiEditorShellStatus status = shell_state.LoadLayoutAsset(DUPLICATE_NODE_LAYOUT_TEXT);
+    int ret_code = ExpectStatus(status, UiEditorShellStatus::DuplicateNodeId, "duplicate node id was not rejected");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const UiEditorShellSnapshot snapshot = shell_state.Snapshot();
+    if (snapshot.layout_loaded || snapshot.loaded_node_count != 0U) {
+        return Fail("duplicate layout mutated loaded state");
+    }
+
+    return 0;
+}
+
+int UiEditorLayoutAssetRejectsMissingParent() {
+    UiEditorShellState shell_state;
+    const UiEditorShellStatus status = shell_state.LoadLayoutAsset(MISSING_PARENT_LAYOUT_TEXT);
+    int ret_code = ExpectStatus(status, UiEditorShellStatus::MissingParentNode, "missing parent was not rejected");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const UiEditorShellSnapshot snapshot = shell_state.Snapshot();
+    if (snapshot.last_status != UiEditorShellStatus::MissingParentNode) {
+        return Fail("missing parent status was not recorded");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -213,6 +446,22 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_BACKEND_GATE) {
         return UiEditorShellDearImGuiBackendGateIsExplicit();
+    }
+
+    if (test_name == TEST_LAYOUT_LOAD) {
+        return UiEditorLayoutAssetLoadsHierarchyAndInspector();
+    }
+
+    if (test_name == TEST_LAYOUT_SELECT) {
+        return UiEditorLayoutAssetSelectNodeUpdatesInspector();
+    }
+
+    if (test_name == TEST_LAYOUT_DUPLICATE) {
+        return UiEditorLayoutAssetRejectsDuplicateNodeId();
+    }
+
+    if (test_name == TEST_LAYOUT_MISSING_PARENT) {
+        return UiEditorLayoutAssetRejectsMissingParent();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

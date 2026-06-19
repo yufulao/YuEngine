@@ -25,3 +25,14 @@
 - `YuUiEditorTests`：headless 验证默认 placeholder、panel 开关、输出容量和 Dear ImGui backend gate。
 
 `UI-E1-003` runtime preview viewport 不属于本首片；它需要等 `UI-S1-007` RenderCore bridge 完成后再使用真实 UI Core/RenderCore 路径实现。
+
+## Layout Asset Load
+
+`ENG-184D` 将 `UI-E1-002` 收敛为 editor-only headless 首片：
+
+- `YuUiEditorShellCore` 可加载 `YuEngine.UI.Layout` / `YuUILayout` 文本中的 `schema`、`version`、`layoutId`、`rootNodeId` 和 `nodes`。
+- hierarchy panel 导出 stable node id、parent id、order、name 和 type。
+- inspector record 跟随当前选中 node，默认选中 root node。
+- duplicate node id、missing parent、missing root 和输出容量不足会返回显式状态。
+
+当前 loader 只服务 editor 检查面，不做 runtime preview，不运行 Project UI Runtime lifecycle，也不引入 Dear ImGui 或 RenderCore 依赖。

@@ -5,9 +5,14 @@
 
 #include <array>
 #include <cstdint>
+#include <string_view>
 
 namespace yuengine::uieditor {
 constexpr std::uint32_t UI_EDITOR_SHELL_REQUIRED_PANEL_COUNT = 3U;
+constexpr std::uint32_t UI_EDITOR_LAYOUT_MAX_NODE_COUNT = 32U;
+constexpr std::uint32_t UI_EDITOR_LAYOUT_ID_CAPACITY = 64U;
+constexpr std::uint32_t UI_EDITOR_LAYOUT_NAME_CAPACITY = 64U;
+constexpr std::uint32_t UI_EDITOR_LAYOUT_TYPE_CAPACITY = 32U;
 
 enum class UiEditorShellPanelId {
     Invalid = 0,
@@ -21,7 +26,14 @@ enum class UiEditorShellStatus {
     InvalidPanel,
     InvalidOutput,
     OutputCapacityExceeded,
-    DearImGuiUnavailable
+    DearImGuiUnavailable,
+    LayoutNotLoaded,
+    InvalidLayoutAsset,
+    LayoutNodeCapacityExceeded,
+    DuplicateNodeId,
+    MissingRootNode,
+    MissingParentNode,
+    NodeNotFound
 };
 
 struct UiEditorShellPanelRecord {
@@ -31,12 +43,42 @@ struct UiEditorShellPanelRecord {
     bool is_placeholder = true;
 };
 
+struct UiEditorLayoutNodeRecord {
+    std::uint32_t node_id = 0U;
+    std::uint32_t parent_node_id = 0U;
+    std::uint32_t order = 0U;
+    char name[UI_EDITOR_LAYOUT_NAME_CAPACITY] = {};
+    char type[UI_EDITOR_LAYOUT_TYPE_CAPACITY] = {};
+};
+
+struct UiEditorInspectorRecord {
+    bool has_selection = false;
+    std::uint32_t node_id = 0U;
+    std::uint32_t parent_node_id = 0U;
+    std::uint32_t order = 0U;
+    char layout_id[UI_EDITOR_LAYOUT_ID_CAPACITY] = {};
+    char name[UI_EDITOR_LAYOUT_NAME_CAPACITY] = {};
+    char type[UI_EDITOR_LAYOUT_TYPE_CAPACITY] = {};
+};
+
+struct UiEditorLayoutDocument {
+    bool is_loaded = false;
+    std::uint32_t version = 0U;
+    std::uint32_t root_node_id = 0U;
+    std::uint32_t node_count = 0U;
+    char layout_id[UI_EDITOR_LAYOUT_ID_CAPACITY] = {};
+    std::array<UiEditorLayoutNodeRecord, UI_EDITOR_LAYOUT_MAX_NODE_COUNT> nodes{};
+};
+
 struct UiEditorShellSnapshot {
     std::uint32_t panel_count = 0U;
     std::uint32_t open_panel_count = 0U;
     std::uint32_t placeholder_panel_count = 0U;
     std::uint32_t required_placeholder_count = 0U;
+    std::uint32_t loaded_node_count = 0U;
+    std::uint32_t selected_node_id = 0U;
     bool dear_imgui_backend_ready = false;
+    bool layout_loaded = false;
     UiEditorShellStatus last_status = UiEditorShellStatus::Success;
 };
 
@@ -71,6 +113,35 @@ public:
         std::uint32_t output_capacity,
         std::uint32_t *out_count);
     /**
+     * @comment 加载 editor 可检查的 YuUILayout 文本。
+     * @param layout_text 输入 YuUILayout JSON 文本。
+     * @return 显式操作状态。
+     */
+    UiEditorShellStatus LoadLayoutAsset(std::string_view layout_text);
+    /**
+     * @comment 导出当前 layout hierarchy nodes。
+     * @param output_records 调用方持有的 output buffer。
+     * @param output_capacity output buffer capacity。
+     * @param out_count 写回需要的 node 数量。
+     * @return 显式操作状态。
+     */
+    UiEditorShellStatus ExportHierarchyNodes(
+        UiEditorLayoutNodeRecord *output_records,
+        std::uint32_t output_capacity,
+        std::uint32_t *out_count);
+    /**
+     * @comment 选中 layout node 并刷新 inspector record。
+     * @param node_id 输入 node id。
+     * @return 显式操作状态。
+     */
+    UiEditorShellStatus SelectLayoutNode(std::uint32_t node_id);
+    /**
+     * @comment 查询当前 inspector record。
+     * @param out_record 输出 inspector record。
+     * @return 显式操作状态。
+     */
+    UiEditorShellStatus GetInspectorRecord(UiEditorInspectorRecord *out_record);
+    /**
      * @comment 查询 visual backend gate 状态。
      * @return 当前 Dear ImGui backend 状态。
      */
@@ -85,8 +156,13 @@ private:
     UiEditorShellStatus RecordStatus(UiEditorShellStatus status);
     void RecountPanels();
     UiEditorShellPanelRecord *FindPanel(UiEditorShellPanelId panel_id);
+    const UiEditorLayoutNodeRecord *FindLayoutNode(std::uint32_t node_id) const;
+    void ResetLayoutState();
+    UiEditorShellStatus LoadInspectorFromNode(const UiEditorLayoutNodeRecord &node);
 
     std::array<UiEditorShellPanelRecord, UI_EDITOR_SHELL_REQUIRED_PANEL_COUNT> panels_;
+    UiEditorLayoutDocument layout_document_;
+    UiEditorInspectorRecord inspector_record_;
     UiEditorShellSnapshot snapshot_;
 };
 }
