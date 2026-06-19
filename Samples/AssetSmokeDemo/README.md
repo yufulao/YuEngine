@@ -35,6 +35,28 @@
 
 `gamepad=graded_skip` 表示当前机器没有可用手柄或 XInput 源不可用；`audio=graded_skip` 表示当前机器没有可用 XAudio2 输出设备或没有拿到硬件 completion。二者都是显式的硬件环境状态，不会伪装成 pass。
 
+## L1 验证路线
+
+L1 vertical sample 的验证路线由 `L1VerticalSamplePrep` 暴露为值契约，用于说明 Debug、Release 和 Fast 证据命令，不参与运行时依赖决策，也不要求 debug overlay 成为 runtime dependency。
+
+Debug / Fast 验证：
+
+```powershell
+cmake --preset windows-fast-gate
+cmake --build --preset windows-fast-gate --target YuSampleTests -- /v:minimal
+ctest --preset windows-fast-gate -R "^Sample_L1VerticalPrep_" --output-on-failure
+```
+
+Release 阶段验证：
+
+```powershell
+cmake --preset windows-release
+cmake --build --preset windows-release --target YuSampleTests -- /v:minimal
+ctest --preset windows-release-gate -R "^Sample_L1VerticalPrep_" --output-on-failure
+```
+
+默认迭代优先使用 Fast 路线；Release 和 full gate 只用于阶段收口或证据不足时补强。
+
 ## 运行
 
 在本目录执行：

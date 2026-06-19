@@ -9,6 +9,17 @@
 #include <cstdint>
 
 namespace asset_smoke_demo {
+struct L1VerticalSampleValidationRoute final {
+    const char *debug_build_command = "";
+    const char *release_build_command = "";
+    const char *fast_validation_command = "";
+    const char *sample_smoke_test_name = "";
+    bool debug_command_available = false;
+    bool release_command_available = false;
+    bool fast_command_available = false;
+    bool sample_smoke_registered = false;
+};
+
 struct L1VerticalSamplePrepResult final {
     const char *failure_stage = "not_run";
     bool runtime_boot = false;
@@ -26,6 +37,7 @@ struct L1VerticalSamplePrepResult final {
     bool audio_scene_route = false;
     bool resize_route = false;
     bool shutdown_route = false;
+    bool validation_route = false;
     std::uint32_t completed_frame_count = 0U;
     std::uint32_t world_object_count = 0U;
     std::uint32_t object_graph_export_count = 0U;
@@ -45,4 +57,5 @@ struct L1VerticalSamplePrepResult final {
 };
 
 bool RunL1VerticalSamplePrep(L1VerticalSamplePrepResult *result);
+bool BuildL1VerticalSampleValidationRoute(L1VerticalSampleValidationRoute *route);
 }

@@ -26,6 +26,10 @@
 #include "YuEngine/Diagnostics/RuntimeDiagnosticsCounterRecorder.h"
 #include "YuEngine/Diagnostics/RuntimeDiagnosticsCounters.h"
 #include "YuEngine/Diagnostics/RuntimeDiagnosticsRecordResult.h"
+#include "YuEngine/Diagnostics/RuntimeDiagnosticsOverlayHook.h"
+#include "YuEngine/Diagnostics/RuntimeDiagnosticsOverlayHookProposal.h"
+#include "YuEngine/Diagnostics/RuntimeDiagnosticsOverlayHookResult.h"
+#include "YuEngine/Diagnostics/RuntimeDiagnosticsOverlayHookStatus.h"
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
 #include "YuEngine/Platform/FixedFrameClock.h"
 #include "YuEngine/Platform/HeadlessHost.h"
@@ -45,6 +49,10 @@ using yuengine::diagnostics::LogLevel;
 using yuengine::diagnostics::RuntimeDiagnosticsCounterRecorder;
 using yuengine::diagnostics::RuntimeDiagnosticsCounters;
 using yuengine::diagnostics::RuntimeDiagnosticsRecordResult;
+using yuengine::diagnostics::RuntimeDiagnosticsOverlayHook;
+using yuengine::diagnostics::RuntimeDiagnosticsOverlayHookProposal;
+using yuengine::diagnostics::RuntimeDiagnosticsOverlayHookResult;
+using yuengine::diagnostics::RuntimeDiagnosticsOverlayHookStatus;
 using FixedFrameClock = yuengine::platform::FixedFrameClock;
 using HeadlessHost = yuengine::platform::HeadlessHost;
 using yuengine::platform::HeadlessHostConfig;
@@ -78,6 +86,10 @@ constexpr const char* TEST_RUNTIME_COUNTERS = "Diagnostics_RuntimeCounters_Regis
 constexpr const char* TEST_RUNTIME_DISABLED = "Diagnostics_RuntimeCounters_DisabledChannelDoesNotChangeRuntimeValues";
 constexpr const char* TEST_RUNTIME_NULL_CHANNEL = "Diagnostics_RuntimeCounters_RejectNullChannelWithoutMutation";
 constexpr const char* TEST_RUNTIME_PLAIN_VALUES = "Diagnostics_RuntimeCounters_ValueTypesArePlainValues";
+constexpr const char *TEST_OVERLAY_OPTIONAL = "Diagnostics_OverlayHookProposalStaysOptionalToolingPlane";
+constexpr const char *TEST_OVERLAY_REJECTS_RUNTIME_DEPENDENCY =
+    "Diagnostics_OverlayHookRejectsRuntimeDependency";
+constexpr const char *TEST_OVERLAY_DISABLED = "Diagnostics_OverlayHookDisabledDoesNotChangeRuntimeValues";
 constexpr const char* LOG_MODULE_PLATFORM = "Platform";
 constexpr const char* LOG_MODULE_AUDIO = "Audio";
 constexpr const char* LOG_MESSAGE_FILTERED = "filtered event";
@@ -773,6 +785,97 @@ int DiagnosticsRuntimeCountersValueTypesArePlainValues() {
         return Fail("runtime diagnostics record result is not trivially copyable");
     }
 
+    if (!std::is_standard_layout_v<RuntimeDiagnosticsOverlayHookProposal>) {
+        return Fail("runtime diagnostics overlay proposal is not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<RuntimeDiagnosticsOverlayHookProposal>) {
+        return Fail("runtime diagnostics overlay proposal is not trivially copyable");
+    }
+
+    if (!std::is_standard_layout_v<RuntimeDiagnosticsOverlayHookResult>) {
+        return Fail("runtime diagnostics overlay result is not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<RuntimeDiagnosticsOverlayHookResult>) {
+        return Fail("runtime diagnostics overlay result is not trivially copyable");
+    }
+
+    return 0;
+}
+
+int DiagnosticsOverlayHookProposalStaysOptionalToolingPlane() {
+    RuntimeDiagnosticsOverlayHookProposal proposal{};
+    proposal.is_enabled = true;
+    proposal.requested_line_capacity = 4U;
+    proposal.observed_counter_count = static_cast<std::uint32_t>(RUNTIME_DIAGNOSTICS_COUNTER_COUNT);
+
+    RuntimeDiagnosticsOverlayHook hook;
+    const RuntimeDiagnosticsOverlayHookResult result = hook.ValidateProposal(proposal);
+    if (result.status != RuntimeDiagnosticsOverlayHookStatus::Success) {
+        return Fail("runtime diagnostics overlay proposal was not accepted");
+    }
+
+    if (!result.is_optional_tooling_plane) {
+        return Fail("runtime diagnostics overlay stopped being optional tooling");
+    }
+
+    if (result.runtime_dependency_required) {
+        return Fail("runtime diagnostics overlay required runtime dependency");
+    }
+
+    if (result.accepted_line_capacity != proposal.requested_line_capacity) {
+        return Fail("runtime diagnostics overlay line capacity mismatch");
+    }
+
+    if (result.observed_counter_count != proposal.observed_counter_count) {
+        return Fail("runtime diagnostics overlay counter count mismatch");
+    }
+
+    return 0;
+}
+
+int DiagnosticsOverlayHookRejectsRuntimeDependency() {
+    RuntimeDiagnosticsOverlayHookProposal proposal{};
+    proposal.is_enabled = true;
+    proposal.requires_runtime_dependency = true;
+    proposal.requested_line_capacity = 1U;
+
+    RuntimeDiagnosticsOverlayHook hook;
+    const RuntimeDiagnosticsOverlayHookResult result = hook.ValidateProposal(proposal);
+    if (result.status != RuntimeDiagnosticsOverlayHookStatus::RuntimeDependencyRejected) {
+        return Fail("runtime diagnostics overlay accepted runtime dependency");
+    }
+
+    if (!result.is_optional_tooling_plane) {
+        return Fail("runtime diagnostics overlay lost optional tooling status");
+    }
+
+    if (!result.runtime_dependency_required) {
+        return Fail("runtime diagnostics overlay did not report rejected dependency");
+    }
+
+    return 0;
+}
+
+int DiagnosticsOverlayHookDisabledDoesNotChangeRuntimeValues() {
+    RuntimeDiagnosticsOverlayHookProposal proposal{};
+    RuntimeDiagnosticsOverlayHook hook;
+    const RuntimeDiagnosticsOverlayHookResult hook_result = hook.ValidateProposal(proposal);
+    if (hook_result.status != RuntimeDiagnosticsOverlayHookStatus::Disabled) {
+        return Fail("runtime diagnostics overlay disabled status mismatch");
+    }
+
+    const RuntimeProbeResult enabled_result = RunRuntimeProbe(true);
+    const RuntimeProbeResult disabled_result = RunRuntimeProbe(false);
+    if (enabled_result.runtime_status != disabled_result.runtime_status) {
+        return Fail("disabled overlay diagnostics changed runtime status");
+    }
+
+    if (!RuntimeCountersEqual(enabled_result.counters, disabled_result.counters)) {
+        return Fail("disabled overlay diagnostics changed runtime counters");
+    }
+
     return 0;
 }
 }
@@ -797,7 +900,10 @@ int main(int argc, char** argv) {
         {TEST_RUNTIME_COUNTERS, DiagnosticsRuntimeCountersRegisterAndRecordBoundedValues},
         {TEST_RUNTIME_DISABLED, DiagnosticsRuntimeCountersDisabledChannelDoesNotChangeRuntimeValues},
         {TEST_RUNTIME_NULL_CHANNEL, DiagnosticsRuntimeCountersRejectNullChannelWithoutMutation},
-        {TEST_RUNTIME_PLAIN_VALUES, DiagnosticsRuntimeCountersValueTypesArePlainValues}};
+        {TEST_RUNTIME_PLAIN_VALUES, DiagnosticsRuntimeCountersValueTypesArePlainValues},
+        {TEST_OVERLAY_OPTIONAL, DiagnosticsOverlayHookProposalStaysOptionalToolingPlane},
+        {TEST_OVERLAY_REJECTS_RUNTIME_DEPENDENCY, DiagnosticsOverlayHookRejectsRuntimeDependency},
+        {TEST_OVERLAY_DISABLED, DiagnosticsOverlayHookDisabledDoesNotChangeRuntimeValues}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

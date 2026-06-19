@@ -139,6 +139,14 @@ constexpr std::size_t CAPTURE_BYTE_COUNT = 16U;
 constexpr std::size_t VERTEX_STRIDE_BYTES = 24U;
 constexpr std::size_t VERTEX_BUFFER_BYTES = VERTEX_STRIDE_BYTES * 3U;
 constexpr std::size_t INDEX_BUFFER_BYTES = sizeof(std::uint16_t) * 3U;
+constexpr const char *SAMPLE_DEBUG_BUILD_COMMAND =
+    "cmake --preset windows-fast-gate && cmake --build --preset windows-fast-gate --target YuSampleTests -- /v:minimal";
+constexpr const char *SAMPLE_RELEASE_BUILD_COMMAND =
+    "cmake --preset windows-release && cmake --build --preset windows-release --target YuSampleTests -- /v:minimal";
+constexpr const char *SAMPLE_FAST_VALIDATION_COMMAND =
+    "ctest --preset windows-fast-gate -R \"^Sample_L1VerticalPrep_\" --output-on-failure";
+constexpr const char *SAMPLE_SMOKE_TEST_NAME =
+    "Sample_L1VerticalPrep_BuildsManifestAndSubmitPrep";
 
 struct SyntheticSceneManifest final {
     std::uint32_t manifest_version = SCENE_MANIFEST_VERSION;
@@ -169,6 +177,14 @@ bool FailStage(L1VerticalSamplePrepResult *result, const char *stage) {
     }
 
     return false;
+}
+
+bool HasText(const char *text) {
+    if (text == nullptr) {
+        return false;
+    }
+
+    return text[0] != '\0';
 }
 
 bool ValidateSyntheticSceneManifest(const SyntheticSceneManifest &manifest) {
@@ -930,6 +946,41 @@ bool CloseLifecycleRoutes(L1VerticalSamplePrepResult *result) {
 }
 }
 
+bool BuildL1VerticalSampleValidationRoute(L1VerticalSampleValidationRoute *route) {
+    if (route == nullptr) {
+        return false;
+    }
+
+    L1VerticalSampleValidationRoute next_route{};
+    next_route.debug_build_command = SAMPLE_DEBUG_BUILD_COMMAND;
+    next_route.release_build_command = SAMPLE_RELEASE_BUILD_COMMAND;
+    next_route.fast_validation_command = SAMPLE_FAST_VALIDATION_COMMAND;
+    next_route.sample_smoke_test_name = SAMPLE_SMOKE_TEST_NAME;
+    next_route.debug_command_available = HasText(next_route.debug_build_command);
+    next_route.release_command_available = HasText(next_route.release_build_command);
+    next_route.fast_command_available = HasText(next_route.fast_validation_command);
+    next_route.sample_smoke_registered = HasText(next_route.sample_smoke_test_name);
+
+    if (!next_route.debug_command_available) {
+        return false;
+    }
+
+    if (!next_route.release_command_available) {
+        return false;
+    }
+
+    if (!next_route.fast_command_available) {
+        return false;
+    }
+
+    if (!next_route.sample_smoke_registered) {
+        return false;
+    }
+
+    *route = next_route;
+    return true;
+}
+
 bool RunL1VerticalSamplePrep(L1VerticalSamplePrepResult *result) {
     if (result == nullptr) {
         return false;
@@ -976,6 +1027,12 @@ bool RunL1VerticalSamplePrep(L1VerticalSamplePrepResult *result) {
         return false;
     }
 
+    L1VerticalSampleValidationRoute validation_route{};
+    if (!BuildL1VerticalSampleValidationRoute(&validation_route)) {
+        return FailStage(result, "validation_route");
+    }
+
+    result->validation_route = true;
     result->failure_stage = "ok";
     return true;
 }

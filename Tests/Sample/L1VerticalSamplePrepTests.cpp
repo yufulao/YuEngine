@@ -12,6 +12,8 @@ constexpr const char *TEST_PREP = "Sample_L1VerticalPrep_BuildsManifestAndSubmit
 constexpr const char *TEST_BOUNDARY = "Sample_L1VerticalPrep_UsesValueContractsWithoutHardware";
 constexpr const char *TEST_OBJECT_GRAPH = "Sample_L1VerticalPrep_DeterministicObjectGraphHasStableSlots";
 constexpr const char *TEST_ROUTES = "Sample_L1VerticalPrep_RoutesAssetRenderAudioAndLifecycle";
+constexpr const char *TEST_VALIDATION_ROUTE =
+    "Sample_L1VerticalPrep_ExposesDebugReleaseFastValidationRoute";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 using TestFunction = int (*)();
@@ -20,6 +22,10 @@ int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
     std::fputc('\n', stderr);
     return 1;
+}
+
+bool ContainsText(std::string_view text, std::string_view expected) {
+    return text.find(expected) != std::string_view::npos;
 }
 
 int SampleL1VerticalPrepBuildsManifestAndSubmitPrep() {
@@ -38,6 +44,10 @@ int SampleL1VerticalPrepBuildsManifestAndSubmitPrep() {
 
     if (!result.render_scene_submit || !result.audio_scene_submit) {
         return Fail("sample did not prepare scene submits");
+    }
+
+    if (!result.validation_route) {
+        return Fail("sample did not expose validation route");
     }
 
     if (result.completed_frame_count != 2U) {
@@ -133,6 +143,39 @@ int SampleL1VerticalPrepRoutesAssetRenderAudioAndLifecycle() {
 
     return 0;
 }
+
+int SampleL1VerticalPrepExposesDebugReleaseFastValidationRoute() {
+    asset_smoke_demo::L1VerticalSampleValidationRoute route{};
+    if (!asset_smoke_demo::BuildL1VerticalSampleValidationRoute(&route)) {
+        return Fail("sample validation route build failed");
+    }
+
+    if (!route.debug_command_available || !route.release_command_available) {
+        return Fail("sample validation route missing build commands");
+    }
+
+    if (!route.fast_command_available || !route.sample_smoke_registered) {
+        return Fail("sample validation route missing smoke command");
+    }
+
+    if (!ContainsText(route.debug_build_command, "windows-fast-gate")) {
+        return Fail("sample debug validation command mismatch");
+    }
+
+    if (!ContainsText(route.release_build_command, "windows-release")) {
+        return Fail("sample release validation command mismatch");
+    }
+
+    if (!ContainsText(route.fast_validation_command, "Sample_L1VerticalPrep_")) {
+        return Fail("sample fast validation filter mismatch");
+    }
+
+    if (!ContainsText(route.sample_smoke_test_name, "Sample_L1VerticalPrep_")) {
+        return Fail("sample smoke test name mismatch");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -145,6 +188,7 @@ int main(int argc, char **argv) {
         {TEST_BOUNDARY, SampleL1VerticalPrepUsesValueContractsWithoutHardware},
         {TEST_OBJECT_GRAPH, SampleL1VerticalPrepDeterministicObjectGraphHasStableSlots},
         {TEST_ROUTES, SampleL1VerticalPrepRoutesAssetRenderAudioAndLifecycle},
+        {TEST_VALIDATION_ROUTE, SampleL1VerticalPrepExposesDebugReleaseFastValidationRoute},
     };
 
     const std::string_view test_name(argv[1]);
