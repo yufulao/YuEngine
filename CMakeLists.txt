@@ -267,6 +267,16 @@ target_include_directories(YuRenderCore
 )
 target_link_libraries(YuRenderCore PUBLIC YuRHI)
 
+add_library(YuUiRenderCoreBridge
+    Src/YuEngine/UiRenderCoreBridge/Src/UiRenderCoreBridge.cpp
+)
+yuengine_apply_compile_options(YuUiRenderCoreBridge)
+target_include_directories(YuUiRenderCoreBridge
+    PUBLIC
+        Src/YuEngine/UiRenderCoreBridge/Include
+)
+target_link_libraries(YuUiRenderCoreBridge PUBLIC YuUiCore YuRenderCore)
+
 add_library(YuRenderScene
     Src/YuEngine/RenderScene/Src/RenderSceneContractQueue.cpp
 )
@@ -1542,6 +1552,15 @@ yuengine_add_labeled_test(UiEditor_ShellState_DefaultPlaceholdersOpen YuUiEditor
 yuengine_add_labeled_test(UiEditor_ShellState_ClosePanelUpdatesSnapshot YuUiEditorTests Fast ModuleFixture UiEditor UI Editor EvidenceOracle)
 yuengine_add_labeled_test(UiEditor_ShellState_RejectsSmallPanelOutput YuUiEditorTests Fast ModuleFixture UiEditor UI Editor EvidenceOracle)
 yuengine_add_labeled_test(UiEditor_ShellState_DearImGuiBackendGateIsExplicit YuUiEditorTests Fast ModuleFixture UiEditor UI Editor EvidenceOracle)
+
+add_executable(YuUiRenderCoreBridgeTests
+    Tests/UiRenderCoreBridge/UiRenderCoreBridgeTests.cpp
+)
+yuengine_apply_compile_options(YuUiRenderCoreBridgeTests)
+target_link_libraries(YuUiRenderCoreBridgeTests PRIVATE YuUiRenderCoreBridge YuRHI)
+yuengine_add_labeled_test(UiRenderCoreBridge_SubmitsDrawElementsThroughRenderCore YuUiRenderCoreBridgeTests Fast ModuleFixture UiCore RenderCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRenderCoreBridge_RejectsInvalidDrawElementWithoutSubmission YuUiRenderCoreBridgeTests Fast ModuleFixture UiCore RenderCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRenderCoreBridge_RejectsSmallOutputStorageWithoutSubmission YuUiRenderCoreBridgeTests Fast ModuleFixture UiCore RenderCore UI L1 EvidenceOracle)
 
 add_executable(YuSerializeTests
     Tests/Serialize/SerializeTests.cpp
