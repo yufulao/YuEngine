@@ -239,6 +239,154 @@ bool RunRuntimeBoot(L1VerticalSamplePrepResult *result) {
     return true;
 }
 
+bool TransformMatches(
+    const yuengine::world::WorldTransformState &left,
+    const yuengine::world::WorldTransformState &right) {
+    if (left.translation_x != right.translation_x) {
+        return false;
+    }
+
+    if (left.translation_y != right.translation_y) {
+        return false;
+    }
+
+    if (left.translation_z != right.translation_z) {
+        return false;
+    }
+
+    if (left.rotation_x != right.rotation_x) {
+        return false;
+    }
+
+    if (left.rotation_y != right.rotation_y) {
+        return false;
+    }
+
+    if (left.rotation_z != right.rotation_z) {
+        return false;
+    }
+
+    if (left.rotation_w != right.rotation_w) {
+        return false;
+    }
+
+    if (left.scale_x != right.scale_x) {
+        return false;
+    }
+
+    if (left.scale_y != right.scale_y) {
+        return false;
+    }
+
+    return left.scale_z == right.scale_z;
+}
+
+bool WorldRecordMatchesDesc(
+    const yuengine::world::WorldIdentityBaselineRecord &record,
+    const yuengine::world::WorldIdentityBaselineObjectDesc &desc) {
+    if (record.world_object_id.value != desc.world_object_id.value) {
+        return false;
+    }
+
+    if (!record.object_handle.IsValid()) {
+        return false;
+    }
+
+    if (record.component_type_id.value != desc.component_type_id.value) {
+        return false;
+    }
+
+    if (record.component_slot_id.value != desc.component_slot_id.value) {
+        return false;
+    }
+
+    if (!TransformMatches(record.transform_state, desc.transform_state)) {
+        return false;
+    }
+
+    return record.is_active;
+}
+
+bool VerifyInvalidObjectGraphDoesNotMutate(
+    yuengine::world::WorldIdentityBaseline &baseline,
+    const yuengine::world::WorldIdentityBaselineObjectDesc &desc,
+    L1VerticalSamplePrepResult *result) {
+    const yuengine::world::WorldIdentityBaselineSnapshot before_snapshot = baseline.Snapshot();
+    yuengine::world::WorldIdentityBaselineObjectDesc invalid_desc = desc;
+    invalid_desc.component_slot_id = yuengine::world::WorldComponentSlotId{};
+    const yuengine::world::WorldIdentityBaselineResult invalid_result =
+        baseline.CreateObject(invalid_desc);
+    if (invalid_result.status != yuengine::world::WorldIdentityBaselineStatus::InvalidComponentSlotId) {
+        return FailStage(result, "world_graph_invalid_status");
+    }
+
+    const yuengine::world::WorldIdentityBaselineSnapshot after_snapshot = baseline.Snapshot();
+    if (after_snapshot.active_record_count != before_snapshot.active_record_count) {
+        return FailStage(result, "world_graph_invalid_active_count");
+    }
+
+    if (after_snapshot.created_record_count != before_snapshot.created_record_count) {
+        return FailStage(result, "world_graph_invalid_created_count");
+    }
+
+    if (after_snapshot.failed_operation_count != before_snapshot.failed_operation_count + 1ULL) {
+        return FailStage(result, "world_graph_invalid_failed_count");
+    }
+
+    std::array<yuengine::world::WorldIdentityBaselineRecord, 1U> records{};
+    const std::uint32_t export_count = baseline.ExportRecords(
+        records.data(),
+        static_cast<std::uint32_t>(records.size()));
+    if (export_count != 1U) {
+        return FailStage(result, "world_graph_invalid_export_count");
+    }
+
+    if (!WorldRecordMatchesDesc(records[0U], desc)) {
+        return FailStage(result, "world_graph_invalid_record_mutation");
+    }
+
+    result->object_graph_invalid_no_mutation = true;
+    return true;
+}
+
+bool VerifyDeterministicWorldObjectGraph(
+    const SyntheticSceneManifest &manifest,
+    yuengine::world::WorldIdentityBaseline &baseline,
+    const yuengine::world::WorldIdentityBaselineObjectDesc &desc,
+    L1VerticalSamplePrepResult *result) {
+    const yuengine::world::WorldIdentityBaselineResult query_result =
+        baseline.QueryObject(manifest.world_object_id);
+    if (!query_result.Succeeded()) {
+        return FailStage(result, "world_graph_query");
+    }
+
+    if (!WorldRecordMatchesDesc(query_result.record, desc)) {
+        return FailStage(result, "world_graph_query_record");
+    }
+
+    std::array<yuengine::world::WorldIdentityBaselineRecord, 1U> records{};
+    const std::uint32_t export_count = baseline.ExportRecords(
+        records.data(),
+        static_cast<std::uint32_t>(records.size()));
+    if (export_count != 1U) {
+        return FailStage(result, "world_graph_export_count");
+    }
+
+    if (!WorldRecordMatchesDesc(records[0U], desc)) {
+        return FailStage(result, "world_graph_export_record");
+    }
+
+    if (!VerifyInvalidObjectGraphDoesNotMutate(baseline, desc, result)) {
+        return false;
+    }
+
+    result->deterministic_object_graph = true;
+    result->object_graph_export_count = export_count;
+    result->object_graph_component_slot_id = records[0U].component_slot_id.value;
+    result->object_graph_transform_z = records[0U].transform_state.translation_z;
+    return true;
+}
+
 yuengine::world::WorldIdentityBaselineObjectDesc MakeWorldObjectDesc(
     const SyntheticSceneManifest &manifest) {
     yuengine::world::WorldIdentityBaselineObjectDesc desc{};
@@ -271,6 +419,10 @@ bool CreateWorldObject(
     *output_record = create_result.record;
     result->world_object = true;
     result->world_object_count = baseline.Snapshot().active_record_count;
+    if (!VerifyDeterministicWorldObjectGraph(manifest, baseline, desc, result)) {
+        return false;
+    }
+
     return true;
 }
 
