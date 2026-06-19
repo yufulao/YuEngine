@@ -28,6 +28,11 @@ Then: component templates, state preview, performance diagnostics
 Never: runtime dependency on editor-only classes
 ```
 
+This plan is reference-driven. It should not be implemented as an invented UI
+stack with no prior art. Each landing task should state which reference it is
+borrowing from, what is intentionally not copied, and what acceptance evidence
+proves the borrowed mechanism fits YuEngine.
+
 Naming rule:
 
 - The engine remains `YuEngine`.
@@ -41,6 +46,142 @@ Key architectural correction:
 - Interface lifecycle belongs to `UIManager + BaseUI` semantics. The current
   source uses `UICtrlBase`; the migration can preserve or rename that at the
   project-runtime layer, not in low-level UI Core.
+
+## Reference Inputs and Borrowing Rules
+
+This plan uses three reference families:
+
+1. Current YuFramework UI code as the product-behavior reference.
+2. Unity UGUI / TMP as the component and workflow reference.
+3. Unreal Slate / UMG as the invalidation, retainer, and UI-performance
+   reference.
+
+The goal is to borrow proven responsibilities and failure lessons, not to clone
+any one system.
+
+### YuFramework References
+
+Local source path:
+
+```text
+C:\Steam\steamapps\common\TouhouNewWorld\yufulao\framework
+```
+
+| Reference | Local Path | Borrow | Do Not Copy |
+| --- | --- | --- | --- |
+| UI manager semantics | `Scripts/Core/Manager/UIManager/UIManager.cs` | active panels, loaded panels, popup/fullscreen stacks, layer roots, sorting/order, open/close/cache behavior | Unity `Transform`, `Canvas`, `GraphicRaycaster`, Addressables/TextAsset loading details |
+| UI lifecycle semantics | `Scripts/Core/Manager/UIManager/UICtrlBase.cs` | `OnInit -> BindEvent -> OnOpen -> OnClose -> OnClear` as project UI runtime lifecycle | putting lifecycle callbacks into UI Core nodes |
+| Layer model | `Scripts/Core/Manager/UIManager/UILayer.cs`, `Def/DefUILayer.cs` | fullscreen/popup/game/loading/debug layer concepts | Unity sorting-order implementation as-is |
+| Panel metadata | `Scripts/Core/Manager/UIManager/UIPanelInfo.cs` | panel ID, panel state, layer and loaded/active bookkeeping | immediate dependency on config tables in Stage 1/2/3 |
+| Window architecture | `Scripts/UI/Windows/*/*Ctrl.cs`, `*View.cs`, `*Model.cs` | Ctrl/View/Model split and real product-window behavior | wholesale migration of every window before representative samples pass |
+| Grid/List behavior | `Scripts/UI/Component/FancyScrollViewExtensions/Base/GridViewBase.cs` | `FancyScrollView`-style grouped cells, pooling, scroll-to-index, selection, visible-cell reuse | a non-virtualized list that creates every item |
+| Text usage | `Scripts/UI/Windows/**` using `TextMeshProUGUI` / `LocalizeTextMeshProUGUI` | TMP-like font, localization, overflow, link/action behavior | full TMP feature parity in the first slice |
+| Slider usage | `Scripts/UI/Windows/**` using `Slider` | range/value/fill/handle interaction patterns | Unity event system dependency |
+
+### Unity References
+
+Unity is the reference for familiar authoring concepts and component behavior.
+
+Official sources:
+
+- uGUI Canvas:
+  <https://docs.unity3d.com/Packages/com.unity.ugui%402.0/manual/class-Canvas.html>
+- uGUI Basic Layout:
+  <https://docs.unity3d.com/Packages/com.unity.ugui%401.0/manual/UIBasicLayout.html>
+- uGUI Interaction Components:
+  <https://docs.unity3d.com/Packages/com.unity.ugui%402.6/manual/UIInteractionComponents.html>
+- uGUI Scroll Rect:
+  <https://docs.unity3d.com/Packages/com.unity.ugui%401.0/manual/script-ScrollRect.html>
+- uGUI Slider:
+  <https://docs.unity3d.com/Packages/com.unity.ugui%402.0/manual/script-Slider.html>
+- Sprite Atlas:
+  <https://docs.unity3d.com/6000.4/Documentation/Manual/sprite/atlas/atlas-introduction.html>
+- TextMeshPro Font Assets:
+  <https://docs.unity3d.com/Packages/com.unity.textmeshpro%404.0/manual/FontAssets.html>
+- TextMeshPro Sprite Assets:
+  <https://docs.unity3d.com/Packages/com.unity.textmeshpro%404.0/manual/Sprites.html>
+- UI Toolkit / UI Builder as editor-authoring reference only:
+  <https://docs.unity3d.com/6000.4/Documentation/Manual/UIElements.html>
+
+Borrow from Unity:
+
+- Rect/anchor/pivot mental model.
+- Canvas-like abstract UI space, but not Canvas as the only batching boundary.
+- Familiar Image/Button/Slider/ScrollRect component semantics.
+- Selectable navigation ideas for keyboard/gamepad.
+- SpriteAtlas workflow and one-atlas-reduces-draw-call lesson.
+- TMP font asset, glyph atlas, fallback, sprite-in-text, outline/shadow ideas.
+- UI Builder-like hierarchy/inspector/preview workflow for the UI Editor.
+
+Do not copy from Unity:
+
+- Unity `GameObject` / `MonoBehaviour` / `RectTransform` as runtime types.
+- Canvas rebuild behavior that makes small changes trigger large rebuilds.
+- Unity EventSystem dependency.
+- Prefab/Addressables/EasySave/TextAsset implementation details.
+- Full UI Toolkit ecosystem or USS/UXML feature breadth in the first UI plan.
+
+### Unreal References
+
+Unreal is the reference for UI invalidation and performance discipline.
+
+Official sources:
+
+- Slate/UMG invalidation:
+  <https://dev.epicgames.com/documentation/unreal-engine/invalidation-in-slate-and-umg-for-unreal-engine>
+- UMG optimization guidelines:
+  <https://dev.epicgames.com/documentation/unreal-engine/optimization-guidelines-for-umg-in-unreal-engine>
+- Invalidation Box:
+  <https://dev.epicgames.com/documentation/unreal-engine/using-the-invalidation-box-for-umg-in-unreal-engine>
+- Retainer Box API:
+  <https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/UMG/URetainerBox>
+
+Borrow from Unreal:
+
+- Invalidation categories and subtree invalidation.
+- Separating layout/prepass, paint, and hit-test update work.
+- Caching stable widget geometry/paint output.
+- Invalidation Box idea for cached widget subtrees.
+- Retainer/Retainer Box idea for optional render-to-texture caching when draw
+  call reduction justifies memory cost.
+- Performance diagnostics around redraw/rebuild behavior.
+
+Do not copy from Unreal:
+
+- Full Slate API surface.
+- Full UMG designer/editor ecosystem.
+- Blueprint/UI animation ecosystem.
+- Mandatory render-target retainer path for every UI.
+- Unreal naming and module structure.
+
+### Borrowing Matrix
+
+| YuEngine Area | Primary Reference | Secondary Reference | Decision Rule |
+| --- | --- | --- | --- |
+| Panel lifecycle | YuFramework `UIManager` + `UICtrlBase` | Unity window/controller habits | Preserve project semantics above UI Core |
+| Layout math | Unity Rect/anchor/pivot model | UI Toolkit box model | Implement only the subset needed for product layouts |
+| Component behavior | Unity UGUI + current windows | YuFramework wrappers/usages | Keep familiar states/events, remove Unity dependencies |
+| Text | TMP + current localized text usage | Unreal invalidation for text dirty | Start with font/glyph/fallback/localization, not full TMP clone |
+| Grid/List | YuFramework `FancyScrollView` grid | Unity ScrollRect/ListView | Virtualization is mandatory from first GridView slice |
+| Rebuild | Unreal Slate/UMG invalidation | Unity Canvas rebuild pain points | Prefer subtree invalidation and cached paint/layout |
+| Atlas | Unity SpriteAtlas + TMP atlas | RenderCore batching needs | Static atlas first, dynamic atlas only with safe-point updates |
+| Batching | RenderCore requirements | Unity SpriteAtlas / Unreal element batching ideas | Batch by state keys; do not expose backend details to components |
+| Editor workflow | Unity UI Builder-like workflow | Dear ImGui tooling shell | Editor generates/validates runtime data; preview uses real runtime path |
+
+### Reference Use in Landing Tasks
+
+Each implementation task should include:
+
+```text
+Reference used:
+Borrowed behavior:
+Not copied:
+YuEngine-specific acceptance:
+```
+
+This prevents the team from treating the plan as final class design. The plan
+sets scope and borrowing direction; implementation gates decide exact APIs,
+data structures, and performance thresholds.
 
 ## 2. Product Scope
 
