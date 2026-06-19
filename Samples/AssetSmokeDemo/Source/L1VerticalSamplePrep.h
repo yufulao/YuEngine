@@ -38,6 +38,9 @@ struct L1VerticalSamplePrepResult final {
     bool resize_route = false;
     bool shutdown_route = false;
     bool validation_route = false;
+    bool serialize_roundtrip = false;
+    bool cleanup_proof = false;
+    bool runtime_idle = false;
     std::uint32_t completed_frame_count = 0U;
     std::uint32_t world_object_count = 0U;
     std::uint32_t object_graph_export_count = 0U;
@@ -54,6 +57,9 @@ struct L1VerticalSamplePrepResult final {
     std::uint32_t audio_frame_id = 0U;
     std::uint32_t audio_bus_id = 0U;
     std::uint32_t audio_queue_id = 0U;
+    std::uint32_t serialize_roundtrip_record_count = 0U;
+    std::uint32_t cleanup_active_record_count = 0U;
+    std::uint32_t retired_resource_count = 0U;
 };
 
 bool RunL1VerticalSamplePrep(L1VerticalSamplePrepResult *result);

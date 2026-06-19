@@ -14,6 +14,8 @@ constexpr const char *TEST_OBJECT_GRAPH = "Sample_L1VerticalPrep_DeterministicOb
 constexpr const char *TEST_ROUTES = "Sample_L1VerticalPrep_RoutesAssetRenderAudioAndLifecycle";
 constexpr const char *TEST_VALIDATION_ROUTE =
     "Sample_L1VerticalPrep_ExposesDebugReleaseFastValidationRoute";
+constexpr const char *TEST_ROUNDTRIP_CLEANUP =
+    "Sample_L1VerticalPrep_RoundTripsStateAndCleansActiveRecords";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 using TestFunction = int (*)();
@@ -144,6 +146,39 @@ int SampleL1VerticalPrepRoutesAssetRenderAudioAndLifecycle() {
     return 0;
 }
 
+int SampleL1VerticalPrepRoundTripsStateAndCleansActiveRecords() {
+    asset_smoke_demo::L1VerticalSamplePrepResult result{};
+    if (!asset_smoke_demo::RunL1VerticalSamplePrep(&result)) {
+        return Fail(result.failure_stage);
+    }
+
+    if (!result.runtime_idle) {
+        return Fail("sample runtime did not finish idle");
+    }
+
+    if (!result.serialize_roundtrip) {
+        return Fail("sample state did not roundtrip through value streams");
+    }
+
+    if (!result.cleanup_proof) {
+        return Fail("sample did not prove cleanup");
+    }
+
+    if (result.serialize_roundtrip_record_count != 6U) {
+        return Fail("sample roundtrip record count mismatch");
+    }
+
+    if (result.cleanup_active_record_count != 0U) {
+        return Fail("sample cleanup left active records");
+    }
+
+    if (result.retired_resource_count != 4U) {
+        return Fail("sample cleanup did not retire resources");
+    }
+
+    return 0;
+}
+
 int SampleL1VerticalPrepExposesDebugReleaseFastValidationRoute() {
     asset_smoke_demo::L1VerticalSampleValidationRoute route{};
     if (!asset_smoke_demo::BuildL1VerticalSampleValidationRoute(&route)) {
@@ -189,6 +224,7 @@ int main(int argc, char **argv) {
         {TEST_OBJECT_GRAPH, SampleL1VerticalPrepDeterministicObjectGraphHasStableSlots},
         {TEST_ROUTES, SampleL1VerticalPrepRoutesAssetRenderAudioAndLifecycle},
         {TEST_VALIDATION_ROUTE, SampleL1VerticalPrepExposesDebugReleaseFastValidationRoute},
+        {TEST_ROUNDTRIP_CLEANUP, SampleL1VerticalPrepRoundTripsStateAndCleansActiveRecords},
     };
 
     const std::string_view test_name(argv[1]);

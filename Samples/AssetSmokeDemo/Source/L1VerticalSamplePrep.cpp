@@ -66,6 +66,7 @@
 #include "YuEngine/RenderScene/RenderSceneStatus.h"
 #include "YuEngine/RenderScene/RenderSceneSubmitRequest.h"
 #include "YuEngine/RenderScene/RenderSceneSubmitResult.h"
+#include "YuEngine/Resource/ResourceSnapshot.h"
 #include "YuEngine/Resource/ResourceDecodedPayloadRecord.h"
 #include "YuEngine/Resource/ResourceDecodedPayloadStatus.h"
 #include "YuEngine/Resource/ResourceDecodePlanAssetClass.h"
@@ -88,14 +89,30 @@
 #include "YuEngine/Rhi/RhiSamplerHandle.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
+#include "YuEngine/Serialize/RuntimeConfigRecord.h"
+#include "YuEngine/Serialize/RuntimeConfigStream.h"
+#include "YuEngine/Serialize/RuntimeProfileBoundary.h"
+#include "YuEngine/Serialize/RuntimeProfileBoundaryKind.h"
+#include "YuEngine/Serialize/SerializeConstants.h"
+#include "YuEngine/Serialize/SerializeReader.h"
+#include "YuEngine/Serialize/SerializeSnapshot.h"
+#include "YuEngine/Serialize/SerializeStatus.h"
+#include "YuEngine/Serialize/SerializeWriter.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeResult.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeStatus.h"
 #include "YuEngine/World/WorldComponentAttachment.h"
+#include "YuEngine/World/WorldComponentAttachmentSnapshotRecord.h"
+#include "YuEngine/World/WorldComponentResourceBindingSnapshotRecord.h"
 #include "YuEngine/World/WorldIdentityBaseline.h"
 #include "YuEngine/World/WorldIdentityBaselineObjectDesc.h"
 #include "YuEngine/World/WorldIdentityBaselineResult.h"
+#include "YuEngine/World/WorldIdentityBaselineSnapshot.h"
 #include "YuEngine/World/WorldIdentityBaselineStatus.h"
 #include "YuEngine/World/WorldObjectId.h"
+#include "YuEngine/World/WorldSceneObjectTransformRestoreIdentityRecord.h"
+#include "YuEngine/World/WorldSceneObjectTransformRestoreTransformRecord.h"
+#include "YuEngine/World/WorldSceneRecordValueStreamBridge.h"
+#include "YuEngine/World/WorldSceneRecordValueStreamResult.h"
 #include "YuEngine/World/WorldTransformState.h"
 
 namespace asset_smoke_demo {
@@ -147,6 +164,9 @@ constexpr const char *SAMPLE_FAST_VALIDATION_COMMAND =
     "ctest --preset windows-fast-gate -R \"^Sample_L1VerticalPrep_\" --output-on-failure";
 constexpr const char *SAMPLE_SMOKE_TEST_NAME =
     "Sample_L1VerticalPrep_BuildsManifestAndSubmitPrep";
+constexpr std::uint32_t RUNTIME_PROFILE_ID = 9001U;
+constexpr std::uint32_t RUNTIME_SAVE_SLOT_ID = 1U;
+constexpr std::uint32_t RUNTIME_CALLER_POLICY_TAG = 17604U;
 
 struct SyntheticSceneManifest final {
     std::uint32_t manifest_version = SCENE_MANIFEST_VERSION;
@@ -162,6 +182,10 @@ struct SyntheticSceneManifest final {
 };
 
 struct L1AssetBindings final {
+    yuengine::resource::ResourceHandle texture_resource;
+    yuengine::resource::ResourceHandle material_resource;
+    yuengine::resource::ResourceHandle mesh_resource;
+    yuengine::resource::ResourceHandle audio_resource;
     yuengine::asset::AssetHandle texture_asset;
     yuengine::asset::AssetHandle material_asset;
     yuengine::asset::AssetHandle mesh_asset;
@@ -254,7 +278,17 @@ bool RunRuntimeBoot(L1VerticalSamplePrepResult *result) {
         return FailStage(result, "runtime_phase_trace");
     }
 
+    const yuengine::kernel::RuntimeAppSnapshot snapshot = app.Snapshot();
+    if (snapshot.running) {
+        return FailStage(result, "runtime_still_running");
+    }
+
+    if (snapshot.shutdown_kernel_status != yuengine::kernel::KernelStatus::Success) {
+        return FailStage(result, "runtime_shutdown_status");
+    }
+
     result->runtime_boot = true;
+    result->runtime_idle = true;
     result->completed_frame_count = run_result.completed_frame_count;
     return true;
 }
@@ -423,23 +457,27 @@ yuengine::world::WorldIdentityBaselineObjectDesc MakeWorldObjectDesc(
 
 bool CreateWorldObject(
     const SyntheticSceneManifest &manifest,
+    yuengine::world::WorldIdentityBaseline *baseline,
     yuengine::world::WorldIdentityBaselineRecord *output_record,
     L1VerticalSamplePrepResult *result) {
+    if (baseline == nullptr) {
+        return FailStage(result, "world_baseline");
+    }
+
     if (output_record == nullptr) {
         return FailStage(result, "world_output");
     }
 
-    yuengine::world::WorldIdentityBaseline baseline;
     const yuengine::world::WorldIdentityBaselineObjectDesc desc = MakeWorldObjectDesc(manifest);
-    const yuengine::world::WorldIdentityBaselineResult create_result = baseline.CreateObject(desc);
+    const yuengine::world::WorldIdentityBaselineResult create_result = baseline->CreateObject(desc);
     if (create_result.status != yuengine::world::WorldIdentityBaselineStatus::Success) {
         return FailStage(result, "world_object_create");
     }
 
     *output_record = create_result.record;
     result->world_object = true;
-    result->world_object_count = baseline.Snapshot().active_record_count;
-    if (!VerifyDeterministicWorldObjectGraph(manifest, baseline, desc, result)) {
+    result->world_object_count = baseline->Snapshot().active_record_count;
+    if (!VerifyDeterministicWorldObjectGraph(manifest, *baseline, desc, result)) {
         return false;
     }
 
@@ -683,6 +721,10 @@ bool BindAssets(
         return false;
     }
 
+    bindings->texture_resource = texture_resource.handle;
+    bindings->material_resource = material_resource.handle;
+    bindings->mesh_resource = mesh_resource.handle;
+    bindings->audio_resource = audio_resource.handle;
     bindings->texture_asset = texture_asset.handle;
     bindings->material_asset = material_asset.handle;
     bindings->mesh_asset = mesh_asset.handle;
@@ -981,6 +1023,442 @@ bool BuildL1VerticalSampleValidationRoute(L1VerticalSampleValidationRoute *route
     return true;
 }
 
+namespace {
+bool ObjectHandlesMatch(
+    const yuengine::object::ObjectHandle &left,
+    const yuengine::object::ObjectHandle &right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+bool ResourceHandlesMatch(
+    const yuengine::resource::ResourceHandle &left,
+    const yuengine::resource::ResourceHandle &right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+bool IdentityRecordsMatch(
+    const yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord &left,
+    const yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord &right) {
+    if (left.world_object_id.value != right.world_object_id.value) {
+        return false;
+    }
+
+    return ObjectHandlesMatch(left.object_handle, right.object_handle);
+}
+
+bool TransformRecordsMatch(
+    const yuengine::world::WorldSceneObjectTransformRestoreTransformRecord &left,
+    const yuengine::world::WorldSceneObjectTransformRestoreTransformRecord &right) {
+    if (left.world_object_id.value != right.world_object_id.value) {
+        return false;
+    }
+
+    return TransformMatches(left.transform_state, right.transform_state);
+}
+
+bool AttachmentRecordsMatch(
+    const yuengine::world::WorldComponentAttachmentSnapshotRecord &left,
+    const yuengine::world::WorldComponentAttachmentSnapshotRecord &right) {
+    if (left.world_object_id.value != right.world_object_id.value) {
+        return false;
+    }
+
+    if (left.component_type_id.value != right.component_type_id.value) {
+        return false;
+    }
+
+    return left.component_slot_id.value == right.component_slot_id.value;
+}
+
+bool BindingRecordsMatch(
+    const yuengine::world::WorldComponentResourceBindingSnapshotRecord &left,
+    const yuengine::world::WorldComponentResourceBindingSnapshotRecord &right) {
+    if (left.world_object_id.value != right.world_object_id.value) {
+        return false;
+    }
+
+    if (left.component_type_id.value != right.component_type_id.value) {
+        return false;
+    }
+
+    if (left.component_slot_id.value != right.component_slot_id.value) {
+        return false;
+    }
+
+    if (!ResourceHandlesMatch(left.resource_handle, right.resource_handle)) {
+        return false;
+    }
+
+    return left.expected_resource_type.value == right.expected_resource_type.value;
+}
+
+yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord MakeSceneIdentityRecord(
+    const yuengine::world::WorldIdentityBaselineRecord &world_record) {
+    yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord record{};
+    record.world_object_id = world_record.world_object_id;
+    record.object_handle = world_record.object_handle;
+    return record;
+}
+
+yuengine::world::WorldSceneObjectTransformRestoreTransformRecord MakeSceneTransformRecord(
+    const yuengine::world::WorldIdentityBaselineRecord &world_record) {
+    yuengine::world::WorldSceneObjectTransformRestoreTransformRecord record{};
+    record.world_object_id = world_record.world_object_id;
+    record.transform_state = world_record.transform_state;
+    return record;
+}
+
+yuengine::world::WorldComponentAttachmentSnapshotRecord MakeSceneAttachmentRecord(
+    const yuengine::world::WorldIdentityBaselineRecord &world_record) {
+    yuengine::world::WorldComponentAttachmentSnapshotRecord record{};
+    record.world_object_id = world_record.world_object_id;
+    record.component_type_id = world_record.component_type_id;
+    record.component_slot_id = world_record.component_slot_id;
+    return record;
+}
+
+yuengine::world::WorldComponentResourceBindingSnapshotRecord MakeSceneBindingRecord(
+    const yuengine::world::WorldIdentityBaselineRecord &world_record,
+    const L1AssetBindings &bindings) {
+    yuengine::world::WorldComponentResourceBindingSnapshotRecord record{};
+    record.world_object_id = world_record.world_object_id;
+    record.component_type_id = world_record.component_type_id;
+    record.component_slot_id = world_record.component_slot_id;
+    record.resource_handle = bindings.texture_resource;
+    record.expected_resource_type = yuengine::resource::ResourceTypeId{RESOURCE_TYPE_TEXTURE};
+    return record;
+}
+
+bool RunSceneRecordRoundTrip(
+    const yuengine::world::WorldIdentityBaselineRecord &world_record,
+    const L1AssetBindings &bindings,
+    L1VerticalSamplePrepResult *result,
+    std::uint32_t *out_record_count) {
+    if (out_record_count == nullptr) {
+        return FailStage(result, "scene_record_output");
+    }
+
+    const std::array<yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord, 1U>
+        input_identities{MakeSceneIdentityRecord(world_record)};
+    const std::array<yuengine::world::WorldSceneObjectTransformRestoreTransformRecord, 1U>
+        input_transforms{MakeSceneTransformRecord(world_record)};
+    const std::array<yuengine::world::WorldComponentAttachmentSnapshotRecord, 1U>
+        input_attachments{MakeSceneAttachmentRecord(world_record)};
+    const std::array<yuengine::world::WorldComponentResourceBindingSnapshotRecord, 1U>
+        input_bindings{MakeSceneBindingRecord(world_record, bindings)};
+
+    std::array<std::uint8_t, yuengine::serialize::MAX_STREAM_BYTE_COUNT> buffer{};
+    const std::uint32_t buffer_size = static_cast<std::uint32_t>(buffer.size());
+    yuengine::serialize::SerializeWriter writer(buffer.data(), buffer_size);
+    yuengine::world::WorldSceneRecordValueStreamBridge bridge;
+    const std::uint32_t input_identity_count = static_cast<std::uint32_t>(input_identities.size());
+    const std::uint32_t input_transform_count = static_cast<std::uint32_t>(input_transforms.size());
+    const std::uint32_t input_attachment_count = static_cast<std::uint32_t>(input_attachments.size());
+    const std::uint32_t input_binding_count = static_cast<std::uint32_t>(input_bindings.size());
+    const yuengine::world::WorldSceneRecordValueStreamResult write_result = bridge.WriteSceneRecords(
+        &writer,
+        input_identities.data(),
+        input_identity_count,
+        input_transforms.data(),
+        input_transform_count,
+        input_attachments.data(),
+        input_attachment_count,
+        input_bindings.data(),
+        input_binding_count);
+    if (!write_result.Succeeded()) {
+        return FailStage(result, "scene_record_write");
+    }
+
+    std::array<yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{};
+    std::array<yuengine::world::WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{};
+    std::array<yuengine::world::WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{};
+    std::array<yuengine::world::WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{};
+    std::uint32_t identity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    std::uint32_t attachment_count = 0U;
+    std::uint32_t binding_count = 0U;
+    yuengine::serialize::SerializeReader reader(buffer.data(), write_result.state.committed_byte_count);
+    const yuengine::world::WorldSceneRecordValueStreamResult read_result = bridge.ReadSceneRecords(
+        &reader,
+        output_identities.data(),
+        static_cast<std::uint32_t>(output_identities.size()),
+        &identity_count,
+        output_transforms.data(),
+        static_cast<std::uint32_t>(output_transforms.size()),
+        &transform_count,
+        output_attachments.data(),
+        static_cast<std::uint32_t>(output_attachments.size()),
+        &attachment_count,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (!read_result.Succeeded()) {
+        return FailStage(result, "scene_record_read");
+    }
+
+    if (identity_count != input_identity_count || transform_count != input_transform_count) {
+        return FailStage(result, "scene_record_object_count");
+    }
+
+    if (attachment_count != input_attachment_count || binding_count != input_binding_count) {
+        return FailStage(result, "scene_record_binding_count");
+    }
+
+    if (!IdentityRecordsMatch(output_identities[0U], input_identities[0U])) {
+        return FailStage(result, "scene_record_identity");
+    }
+
+    if (!TransformRecordsMatch(output_transforms[0U], input_transforms[0U])) {
+        return FailStage(result, "scene_record_transform");
+    }
+
+    if (!AttachmentRecordsMatch(output_attachments[0U], input_attachments[0U])) {
+        return FailStage(result, "scene_record_attachment");
+    }
+
+    if (!BindingRecordsMatch(output_bindings[0U], input_bindings[0U])) {
+        return FailStage(result, "scene_record_binding");
+    }
+
+    *out_record_count = identity_count + transform_count + attachment_count + binding_count;
+    return true;
+}
+
+yuengine::serialize::RuntimeConfigRecord MakeRuntimeConfigRecord(
+    const SyntheticSceneManifest &manifest,
+    const yuengine::input::InputCommandSnapshot &input_snapshot) {
+    yuengine::serialize::RuntimeConfigRecord record{};
+    record.fixed_step_microseconds =
+        static_cast<std::uint32_t>(FIXED_DELTA_TIME_NANOSECONDS / 1000U);
+    record.max_frame_count = manifest.fixed_frame_count;
+    record.command_snapshot_capacity = static_cast<std::uint32_t>(input_snapshot.command_count);
+    record.diagnostics_enabled = true;
+    return record;
+}
+
+yuengine::serialize::RuntimeProfileBoundary MakeRuntimeProfileBoundary() {
+    yuengine::serialize::RuntimeProfileBoundary boundary{};
+    boundary.profile_id = RUNTIME_PROFILE_ID;
+    boundary.slot_id = RUNTIME_SAVE_SLOT_ID;
+    boundary.kind = yuengine::serialize::RuntimeProfileBoundaryKind::SaveSnapshot;
+    boundary.caller_policy_tag = RUNTIME_CALLER_POLICY_TAG;
+    return boundary;
+}
+
+bool RuntimeConfigRecordsMatch(
+    const yuengine::serialize::RuntimeConfigRecord &left,
+    const yuengine::serialize::RuntimeConfigRecord &right) {
+    if (left.schema_version != right.schema_version) {
+        return false;
+    }
+
+    if (left.fixed_step_microseconds != right.fixed_step_microseconds) {
+        return false;
+    }
+
+    if (left.max_frame_count != right.max_frame_count) {
+        return false;
+    }
+
+    if (left.command_snapshot_capacity != right.command_snapshot_capacity) {
+        return false;
+    }
+
+    return left.diagnostics_enabled == right.diagnostics_enabled;
+}
+
+bool RuntimeProfileBoundariesMatch(
+    const yuengine::serialize::RuntimeProfileBoundary &left,
+    const yuengine::serialize::RuntimeProfileBoundary &right) {
+    if (left.profile_id != right.profile_id) {
+        return false;
+    }
+
+    if (left.slot_id != right.slot_id) {
+        return false;
+    }
+
+    if (left.kind != right.kind) {
+        return false;
+    }
+
+    return left.caller_policy_tag == right.caller_policy_tag;
+}
+
+bool RunRuntimeConfigRoundTrip(
+    const SyntheticSceneManifest &manifest,
+    const yuengine::input::InputCommandSnapshot &input_snapshot,
+    L1VerticalSamplePrepResult *result,
+    std::uint32_t *out_record_count) {
+    if (out_record_count == nullptr) {
+        return FailStage(result, "runtime_config_output");
+    }
+
+    yuengine::serialize::RuntimeConfigStream stream;
+    const yuengine::serialize::RuntimeConfigRecord input_config =
+        MakeRuntimeConfigRecord(manifest, input_snapshot);
+    const yuengine::serialize::RuntimeProfileBoundary input_boundary =
+        MakeRuntimeProfileBoundary();
+    std::array<std::uint8_t, yuengine::serialize::MAX_STREAM_BYTE_COUNT> buffer{};
+    const std::uint32_t buffer_size = static_cast<std::uint32_t>(buffer.size());
+    yuengine::serialize::SerializeWriter writer(buffer.data(), buffer_size);
+    if (writer.BeginStream() != yuengine::serialize::SerializeStatus::Success) {
+        return FailStage(result, "runtime_config_begin");
+    }
+
+    const yuengine::serialize::SerializeStatus write_status =
+        stream.WriteRuntimeConfig(&writer, input_config, input_boundary);
+    if (write_status != yuengine::serialize::SerializeStatus::Success) {
+        return FailStage(result, "runtime_config_write");
+    }
+
+    const yuengine::serialize::SerializeSnapshot writer_snapshot = writer.Snapshot();
+    yuengine::serialize::SerializeReader reader(buffer.data(), writer_snapshot.committed_byte_count);
+    if (reader.OpenStream() != yuengine::serialize::SerializeStatus::Success) {
+        return FailStage(result, "runtime_config_open");
+    }
+
+    yuengine::serialize::RuntimeConfigRecord output_config{};
+    yuengine::serialize::RuntimeProfileBoundary output_boundary{};
+    const yuengine::serialize::SerializeStatus read_status =
+        stream.ReadRuntimeConfig(&reader, &output_config, &output_boundary);
+    if (read_status != yuengine::serialize::SerializeStatus::Success) {
+        return FailStage(result, "runtime_config_read");
+    }
+
+    if (!RuntimeConfigRecordsMatch(input_config, output_config)) {
+        return FailStage(result, "runtime_config_match");
+    }
+
+    if (!RuntimeProfileBoundariesMatch(input_boundary, output_boundary)) {
+        return FailStage(result, "runtime_boundary_match");
+    }
+
+    *out_record_count = writer_snapshot.record_count;
+    return true;
+}
+
+bool RoundTripSampleState(
+    const SyntheticSceneManifest &manifest,
+    const yuengine::world::WorldIdentityBaselineRecord &world_record,
+    const L1AssetBindings &bindings,
+    const yuengine::input::InputCommandSnapshot &input_snapshot,
+    L1VerticalSamplePrepResult *result) {
+    std::uint32_t scene_record_count = 0U;
+    if (!RunSceneRecordRoundTrip(world_record, bindings, result, &scene_record_count)) {
+        return false;
+    }
+
+    std::uint32_t runtime_record_count = 0U;
+    if (!RunRuntimeConfigRoundTrip(manifest, input_snapshot, result, &runtime_record_count)) {
+        return false;
+    }
+
+    result->serialize_roundtrip = true;
+    result->serialize_roundtrip_record_count = scene_record_count + runtime_record_count;
+    return true;
+}
+
+bool ReleaseRuntimeAsset(
+    yuengine::asset::AssetManager &asset_manager,
+    yuengine::resource::ResourceRegistry &resource_registry,
+    yuengine::asset::AssetHandle handle,
+    L1VerticalSamplePrepResult *result) {
+    const yuengine::asset::AssetStatus status =
+        asset_manager.ReleaseRuntimeAsset(&resource_registry, handle);
+    if (status != yuengine::asset::AssetStatus::Success) {
+        return FailStage(result, "cleanup_asset_release");
+    }
+
+    return true;
+}
+
+bool RetireResource(
+    yuengine::resource::ResourceRegistry &resource_registry,
+    yuengine::resource::ResourceHandle handle,
+    L1VerticalSamplePrepResult *result) {
+    const yuengine::resource::ResourceStatus status = resource_registry.Retire(handle);
+    if (status != yuengine::resource::ResourceStatus::Success) {
+        return FailStage(result, "cleanup_resource_retire");
+    }
+
+    return true;
+}
+
+bool ProveSampleCleanup(
+    const SyntheticSceneManifest &manifest,
+    yuengine::world::WorldIdentityBaseline &baseline,
+    yuengine::resource::ResourceRegistry &resource_registry,
+    yuengine::asset::AssetManager &asset_manager,
+    const L1AssetBindings &bindings,
+    L1VerticalSamplePrepResult *result) {
+    const yuengine::world::WorldIdentityBaselineStatus world_status =
+        baseline.DestroyObject(manifest.world_object_id);
+    if (world_status != yuengine::world::WorldIdentityBaselineStatus::Success) {
+        return FailStage(result, "cleanup_world_destroy");
+    }
+
+    const std::array<yuengine::asset::AssetHandle, 4U> asset_handles{
+        bindings.texture_asset,
+        bindings.material_asset,
+        bindings.mesh_asset,
+        bindings.audio_asset};
+    for (const yuengine::asset::AssetHandle &asset_handle : asset_handles) {
+        if (!ReleaseRuntimeAsset(asset_manager, resource_registry, asset_handle, result)) {
+            return false;
+        }
+    }
+
+    const std::array<yuengine::resource::ResourceHandle, 4U> resource_handles{
+        bindings.texture_resource,
+        bindings.material_resource,
+        bindings.mesh_resource,
+        bindings.audio_resource};
+    for (const yuengine::resource::ResourceHandle &resource_handle : resource_handles) {
+        if (!RetireResource(resource_registry, resource_handle, result)) {
+            return false;
+        }
+    }
+
+    const yuengine::world::WorldIdentityBaselineSnapshot world_snapshot = baseline.Snapshot();
+    const yuengine::asset::AssetSnapshot asset_snapshot = asset_manager.Snapshot();
+    const yuengine::resource::ResourceSnapshot resource_snapshot = resource_registry.Snapshot();
+    const std::uint64_t active_record_count =
+        static_cast<std::uint64_t>(world_snapshot.active_record_count) +
+        static_cast<std::uint64_t>(asset_snapshot.active_asset_count) +
+        static_cast<std::uint64_t>(asset_snapshot.active_dependency_edge_count) +
+        static_cast<std::uint64_t>(asset_snapshot.texture_ready_count) +
+        static_cast<std::uint64_t>(asset_snapshot.audio_ready_count) +
+        static_cast<std::uint64_t>(resource_snapshot.registered_resource_count) +
+        resource_snapshot.acquired_handle_count +
+        static_cast<std::uint64_t>(resource_snapshot.dependency_edge_count);
+    if (active_record_count != 0U) {
+        return FailStage(result, "cleanup_active_records");
+    }
+
+    if (asset_snapshot.released_asset_count != 4U) {
+        return FailStage(result, "cleanup_asset_count");
+    }
+
+    if (resource_snapshot.retired_resource_count != 4U) {
+        return FailStage(result, "cleanup_resource_count");
+    }
+
+    result->cleanup_active_record_count = static_cast<std::uint32_t>(active_record_count);
+    result->retired_resource_count = resource_snapshot.retired_resource_count;
+    result->cleanup_proof = true;
+    return true;
+}
+}
+
 bool RunL1VerticalSamplePrep(L1VerticalSamplePrepResult *result) {
     if (result == nullptr) {
         return false;
@@ -998,8 +1476,9 @@ bool RunL1VerticalSamplePrep(L1VerticalSamplePrepResult *result) {
 
     result->synthetic_manifest = true;
 
+    yuengine::world::WorldIdentityBaseline baseline;
     yuengine::world::WorldIdentityBaselineRecord world_record{};
-    if (!CreateWorldObject(manifest, &world_record, result)) {
+    if (!CreateWorldObject(manifest, &baseline, &world_record, result)) {
         return false;
     }
 
@@ -1033,6 +1512,19 @@ bool RunL1VerticalSamplePrep(L1VerticalSamplePrepResult *result) {
     }
 
     result->validation_route = true;
+    if (!RoundTripSampleState(manifest, world_record, bindings, input_snapshot, result)) {
+        return false;
+    }
+
+    if (!ProveSampleCleanup(
+        manifest,
+        baseline,
+        resource_registry,
+        asset_manager,
+        bindings,
+        result)) {
+        return false;
+    }
     result->failure_stage = "ok";
     return true;
 }
