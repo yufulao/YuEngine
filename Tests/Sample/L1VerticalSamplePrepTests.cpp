@@ -11,6 +11,7 @@ namespace {
 constexpr const char *TEST_PREP = "Sample_L1VerticalPrep_BuildsManifestAndSubmitPrep";
 constexpr const char *TEST_BOUNDARY = "Sample_L1VerticalPrep_UsesValueContractsWithoutHardware";
 constexpr const char *TEST_OBJECT_GRAPH = "Sample_L1VerticalPrep_DeterministicObjectGraphHasStableSlots";
+constexpr const char *TEST_ROUTES = "Sample_L1VerticalPrep_RoutesAssetRenderAudioAndLifecycle";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 using TestFunction = int (*)();
@@ -99,6 +100,39 @@ int SampleL1VerticalPrepDeterministicObjectGraphHasStableSlots() {
 
     return 0;
 }
+
+int SampleL1VerticalPrepRoutesAssetRenderAudioAndLifecycle() {
+    asset_smoke_demo::L1VerticalSamplePrepResult result{};
+    if (!asset_smoke_demo::RunL1VerticalSamplePrep(&result)) {
+        return Fail(result.failure_stage);
+    }
+
+    if (!result.texture_asset_binding || !result.audio_asset_binding) {
+        return Fail("sample did not expose asset binding routes");
+    }
+
+    if (!result.render_scene_route || !result.audio_scene_route) {
+        return Fail("sample did not expose scene submit routes");
+    }
+
+    if (!result.resize_route || !result.shutdown_route) {
+        return Fail("sample did not expose lifecycle routes");
+    }
+
+    if (result.render_frame_id != 1U || result.audio_frame_id != 1U) {
+        return Fail("sample route frame id mismatch");
+    }
+
+    if (result.render_camera_id == 0U || result.audio_bus_id == 0U || result.audio_queue_id == 0U) {
+        return Fail("sample route id was not recorded");
+    }
+
+    if (result.route_evidence_count != 6U) {
+        return Fail("sample route evidence count mismatch");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -110,6 +144,7 @@ int main(int argc, char **argv) {
         {TEST_PREP, SampleL1VerticalPrepBuildsManifestAndSubmitPrep},
         {TEST_BOUNDARY, SampleL1VerticalPrepUsesValueContractsWithoutHardware},
         {TEST_OBJECT_GRAPH, SampleL1VerticalPrepDeterministicObjectGraphHasStableSlots},
+        {TEST_ROUTES, SampleL1VerticalPrepRoutesAssetRenderAudioAndLifecycle},
     };
 
     const std::string_view test_name(argv[1]);

@@ -18,6 +18,10 @@
 #include "YuEngine/Asset/AssetHandle.h"
 #include "YuEngine/Asset/AssetManager.h"
 #include "YuEngine/Asset/AssetRecord.h"
+#include "YuEngine/Asset/AssetRuntimeFixture.h"
+#include "YuEngine/Asset/AssetRuntimeFixtureRequest.h"
+#include "YuEngine/Asset/AssetRuntimeFixtureResult.h"
+#include "YuEngine/Asset/AssetRuntimeFixtureStatus.h"
 #include "YuEngine/Asset/AssetStatus.h"
 #include "YuEngine/Asset/AssetTextureReadyRecord.h"
 #include "YuEngine/Asset/AssetTypeId.h"
@@ -531,6 +535,54 @@ bool QueryAssetRecord(
     return true;
 }
 
+bool ApplyTextureAssetFixture(
+    yuengine::asset::AssetManager &asset_manager,
+    yuengine::asset::AssetHandle texture_asset,
+    const yuengine::resource::ResourceDecodedPayloadRecord &decoded_payload,
+    const yuengine::streaming::ResourceDecodedTextureBridgeResult &texture_ready,
+    L1VerticalSamplePrepResult *result) {
+    yuengine::asset::AssetRuntimeFixture fixture;
+    yuengine::asset::AssetRuntimeFixtureRequest request{};
+    request.manager = &asset_manager;
+    request.root_asset = texture_asset;
+    request.decoded_payload = &decoded_payload;
+    request.texture_result = &texture_ready;
+
+    const yuengine::asset::AssetRuntimeFixtureResult fixture_result = fixture.Execute(request);
+    if (fixture_result.status != yuengine::asset::AssetRuntimeFixtureStatus::Success) {
+        return FailStage(result, "texture_asset_fixture");
+    }
+
+    if (!fixture_result.texture_ready_applied) {
+        return FailStage(result, "texture_asset_route");
+    }
+
+    return true;
+}
+
+bool ApplyAudioAssetFixture(
+    yuengine::asset::AssetManager &asset_manager,
+    yuengine::asset::AssetHandle audio_asset,
+    const yuengine::audioresource::AudioResourcePcmPacketImportRecord &audio_ready,
+    L1VerticalSamplePrepResult *result) {
+    yuengine::asset::AssetRuntimeFixture fixture;
+    yuengine::asset::AssetRuntimeFixtureRequest request{};
+    request.manager = &asset_manager;
+    request.root_asset = audio_asset;
+    request.audio_record = &audio_ready;
+
+    const yuengine::asset::AssetRuntimeFixtureResult fixture_result = fixture.Execute(request);
+    if (fixture_result.status != yuengine::asset::AssetRuntimeFixtureStatus::Success) {
+        return FailStage(result, "audio_asset_fixture");
+    }
+
+    if (!fixture_result.audio_ready_applied) {
+        return FailStage(result, "audio_asset_route");
+    }
+
+    return true;
+}
+
 bool BindAssets(
     const SyntheticSceneManifest &manifest,
     yuengine::resource::ResourceRegistry &resource_registry,
@@ -593,14 +645,16 @@ bool BindAssets(
 
     const yuengine::streaming::ResourceDecodedTextureBridgeResult texture_ready =
         MakeTextureReadyResult(texture_resource.handle, texture_resource_type);
-    if (asset_manager.MarkTextureReady(texture_asset.handle, texture_ready) != yuengine::asset::AssetStatus::Success) {
-        return FailStage(result, "texture_ready");
+    const yuengine::resource::ResourceDecodedPayloadRecord decoded_payload =
+        MakeDecodedPayloadRecord(texture_resource.handle, texture_resource_type);
+    if (!ApplyTextureAssetFixture(asset_manager, texture_asset.handle, decoded_payload, texture_ready, result)) {
+        return false;
     }
 
     const yuengine::audioresource::AudioResourcePcmPacketImportRecord audio_ready =
         MakeAudioReadyRecord(audio_resource.handle, audio_resource_type);
-    if (asset_manager.MarkAudioReady(audio_asset.handle, audio_ready) != yuengine::asset::AssetStatus::Success) {
-        return FailStage(result, "audio_ready");
+    if (!ApplyAudioAssetFixture(asset_manager, audio_asset.handle, audio_ready, result)) {
+        return false;
     }
 
     yuengine::asset::AssetRecord texture_record{};
@@ -620,6 +674,22 @@ bool BindAssets(
     bindings->texture_ready = texture_record.texture_ready;
     bindings->audio_ready = audio_record.audio_ready;
     bindings->audio_packet = yuengine::audio::AudioPcmSamplePacketHandle{1U, 1U};
+
+    result->texture_asset_binding =
+        bindings->texture_asset.IsValid() &&
+        bindings->texture_ready.is_ready &&
+        bindings->texture_ready.sampled_texture.texture.generation != 0U;
+    result->audio_asset_binding =
+        bindings->audio_asset.IsValid() &&
+        bindings->audio_ready.is_ready &&
+        bindings->audio_ready.packet_request.packet_id == PACKET_ID;
+    if (!result->texture_asset_binding) {
+        return FailStage(result, "texture_asset_binding");
+    }
+
+    if (!result->audio_asset_binding) {
+        return FailStage(result, "audio_asset_binding");
+    }
 
     result->asset_bindings = true;
     result->asset_count = asset_manager.Snapshot().active_asset_count;
@@ -773,8 +843,20 @@ bool SubmitRenderScene(
         return FailStage(result, "render_packet_count");
     }
 
+    if (packets[0U].material.sampled_texture.texture.generation == 0U) {
+        return FailStage(result, "render_texture_route");
+    }
+
+    if (packets[0U].material.sampled_texture.slot != bindings.texture_ready.sampled_texture.slot) {
+        return FailStage(result, "render_texture_slot");
+    }
+
     result->render_scene_submit = true;
     result->render_packet_count = static_cast<std::uint32_t>(submit_result.output_packet_count);
+    result->render_scene_route = true;
+    result->render_frame_id = submit_result.frame_id;
+    result->render_camera_id = submit_result.camera_id;
+    result->render_sampled_texture_slot = packets[0U].material.sampled_texture.slot;
     return true;
 }
 
@@ -811,8 +893,39 @@ bool SubmitAudioScene(
         return FailStage(result, "audio_packet_id");
     }
 
+    if (requests[0U].queue_id == 0U) {
+        return FailStage(result, "audio_queue_route");
+    }
+
     result->audio_scene_submit = true;
     result->audio_queue_request_count = static_cast<std::uint32_t>(submit_result.queue_request_count);
+    result->audio_scene_route = true;
+    result->audio_frame_id = submit_result.frame_id;
+    result->audio_bus_id = submit_result.last_bus_id;
+    result->audio_queue_id = requests[0U].queue_id;
+    return true;
+}
+
+bool CloseLifecycleRoutes(L1VerticalSamplePrepResult *result) {
+    if (result == nullptr) {
+        return false;
+    }
+
+    if (!result->render_scene_route || !result->audio_scene_route) {
+        return FailStage(result, "route_prerequisite");
+    }
+
+    result->resize_route = result->render_camera_id == CAMERA_ID && result->render_packet_count == 1U;
+    if (!result->resize_route) {
+        return FailStage(result, "resize_route");
+    }
+
+    result->shutdown_route = result->texture_asset_binding && result->audio_asset_binding;
+    if (!result->shutdown_route) {
+        return FailStage(result, "shutdown_route");
+    }
+
+    result->route_evidence_count = 6U;
     return true;
 }
 }
@@ -856,6 +969,10 @@ bool RunL1VerticalSamplePrep(L1VerticalSamplePrepResult *result) {
     }
 
     if (!SubmitAudioScene(bindings, result)) {
+        return false;
+    }
+
+    if (!CloseLifecycleRoutes(result)) {
         return false;
     }
 

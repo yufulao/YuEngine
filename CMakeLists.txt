@@ -1649,6 +1649,7 @@ target_link_libraries(YuSampleTests PRIVATE YuAsset YuAudioScene YuInput YuKerne
 yuengine_add_labeled_test(Sample_L1VerticalPrep_BuildsManifestAndSubmitPrep YuSampleTests Fast ModuleFixture Sample L1 RuntimeApp Asset Input RenderScene AudioScene EvidenceOracle)
 yuengine_add_labeled_test(Sample_L1VerticalPrep_UsesValueContractsWithoutHardware YuSampleTests Fast ModuleFixture Sample L1 EvidenceOracle)
 yuengine_add_labeled_test(Sample_L1VerticalPrep_DeterministicObjectGraphHasStableSlots YuSampleTests Fast ModuleFixture Sample L1 World Object EvidenceOracle)
+yuengine_add_labeled_test(Sample_L1VerticalPrep_RoutesAssetRenderAudioAndLifecycle YuSampleTests Fast ModuleFixture Sample L1 Asset RenderScene AudioScene EvidenceOracle)
 
 add_executable(YuInputTests
     Tests/Input/InputTests.cpp

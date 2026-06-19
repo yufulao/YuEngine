@@ -1517,16 +1517,21 @@ int RunDemo(int argc, wchar_t **argv) {
         engine_evidence.uploaded_texture_generation,
         engine_evidence.render_frame_count,
         engine_evidence.input_event_count,
-        engine_evidence.gamepad_state,
-        engine_evidence.audio_state);
+            engine_evidence.gamepad_state,
+            engine_evidence.audio_state);
     std::printf(
-        "YuAssetSmokeDemo L1_PREP PASS frames=%u world_objects=%u assets=%u input_commands=%u render_packets=%u audio_requests=%u\n",
+        "YuAssetSmokeDemo L1_PREP PASS frames=%u world_objects=%u assets=%u input_commands=%u render_packets=%u audio_requests=%u routes=%u texture_route=%u audio_route=%u resize=%u shutdown=%u\n",
         l1_prep.completed_frame_count,
         l1_prep.world_object_count,
         l1_prep.asset_count,
         l1_prep.input_command_count,
         l1_prep.render_packet_count,
-        l1_prep.audio_queue_request_count);
+        l1_prep.audio_queue_request_count,
+        l1_prep.route_evidence_count,
+        l1_prep.texture_asset_binding ? 1U : 0U,
+        l1_prep.audio_asset_binding ? 1U : 0U,
+        l1_prep.resize_route ? 1U : 0U,
+        l1_prep.shutdown_route ? 1U : 0U);
 #endif
     return 0;
 }

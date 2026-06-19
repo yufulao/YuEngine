@@ -17,9 +17,15 @@ struct L1VerticalSamplePrepResult final {
     bool deterministic_object_graph = false;
     bool object_graph_invalid_no_mutation = false;
     bool asset_bindings = false;
+    bool texture_asset_binding = false;
+    bool audio_asset_binding = false;
     bool input_command = false;
     bool render_scene_submit = false;
+    bool render_scene_route = false;
     bool audio_scene_submit = false;
+    bool audio_scene_route = false;
+    bool resize_route = false;
+    bool shutdown_route = false;
     std::uint32_t completed_frame_count = 0U;
     std::uint32_t world_object_count = 0U;
     std::uint32_t object_graph_export_count = 0U;
@@ -29,6 +35,13 @@ struct L1VerticalSamplePrepResult final {
     std::uint32_t input_command_count = 0U;
     std::uint32_t render_packet_count = 0U;
     std::uint32_t audio_queue_request_count = 0U;
+    std::uint32_t route_evidence_count = 0U;
+    std::uint32_t render_frame_id = 0U;
+    std::uint32_t render_camera_id = 0U;
+    std::uint32_t render_sampled_texture_slot = 0U;
+    std::uint32_t audio_frame_id = 0U;
+    std::uint32_t audio_bus_id = 0U;
+    std::uint32_t audio_queue_id = 0U;
 };
 
 bool RunL1VerticalSamplePrep(L1VerticalSamplePrepResult *result);
