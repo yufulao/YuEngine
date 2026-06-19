@@ -269,6 +269,7 @@ add_library(YuKernel
     Src/YuEngine/Kernel/Src/EngineKernel.cpp
     Src/YuEngine/Kernel/Src/KernelHostRuntime.cpp
     Src/YuEngine/Kernel/Src/KernelResult.cpp
+    Src/YuEngine/Kernel/Src/RuntimeApp.cpp
     Src/YuEngine/Kernel/Src/ServiceRegistry.cpp
 )
 yuengine_apply_compile_options(YuKernel)
@@ -355,6 +356,9 @@ yuengine_add_labeled_test(Kernel_ModuleStartupFailure_TearsDownStartedModules Yu
 yuengine_add_labeled_test(Kernel_DependencyChainServiceLookup_UsesModuleNameIndex YuKernelTests Fast ModuleFixture Kernel)
 yuengine_add_labeled_test(Kernel_ServiceRegistry_ResolveAndMissingService YuKernelTests Fast ModuleFixture Kernel)
 yuengine_add_labeled_test(Kernel_InvalidLifecycle_RejectsOutOfOrderCalls YuKernelTests Fast ModuleFixture Kernel)
+yuengine_add_labeled_test(Kernel_RuntimeAppZeroWorld_FixedFrameLoop YuKernelTests Fast ModuleFixture Kernel RuntimeApp EvidenceOracle)
+yuengine_add_labeled_test(Kernel_RuntimeAppFrameContext_ExposesValueContract YuKernelTests Fast ModuleFixture Kernel RuntimeApp EvidenceOracle)
+yuengine_add_labeled_test(Kernel_RuntimeAppUpdateFailure_PropagatesAndShutsDown YuKernelTests Fast ModuleFixture Kernel RuntimeApp EvidenceOracle)
 
 add_executable(YuMemoryTests
     Tests/Memory/MemoryTests.cpp

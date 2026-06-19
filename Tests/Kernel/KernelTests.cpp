@@ -11,10 +11,20 @@
 #include "LifecycleTestModule.h"
 #include "YuEngine/Kernel/EngineKernel.h"
 #include "YuEngine/Kernel/KernelStatus.h"
+#include "YuEngine/Kernel/RuntimeApp.h"
+#include "YuEngine/Kernel/RuntimeAppStatus.h"
+#include "YuEngine/Kernel/RuntimeFrameMode.h"
+#include "YuEngine/Kernel/RuntimeFramePhase.h"
 #include "YuEngine/Kernel/ServiceRegistry.h"
 
 using EngineKernel = yuengine::kernel::EngineKernel;
 using yuengine::kernel::KernelStatus;
+using RuntimeApp = yuengine::kernel::RuntimeApp;
+using yuengine::kernel::RuntimeAppDesc;
+using yuengine::kernel::RuntimeAppStatus;
+using yuengine::kernel::RuntimeFrameInputSnapshotRef;
+using yuengine::kernel::RuntimeFrameMode;
+using yuengine::kernel::RuntimeFramePhase;
 using ServiceRegistry = yuengine::kernel::ServiceRegistry;
 
 namespace {
@@ -23,6 +33,9 @@ constexpr const char* TEST_STARTUP_FAILURE = "Kernel_ModuleStartupFailure_TearsD
 constexpr const char* TEST_DEPENDENCY_CHAIN_SERVICE_LOOKUP = "Kernel_DependencyChainServiceLookup_UsesModuleNameIndex";
 constexpr const char* TEST_SERVICE_REGISTRY = "Kernel_ServiceRegistry_ResolveAndMissingService";
 constexpr const char* TEST_INVALID_LIFECYCLE = "Kernel_InvalidLifecycle_RejectsOutOfOrderCalls";
+constexpr const char* TEST_RUNTIME_APP_ZERO_WORLD = "Kernel_RuntimeAppZeroWorld_FixedFrameLoop";
+constexpr const char* TEST_RUNTIME_APP_FRAME_CONTEXT = "Kernel_RuntimeAppFrameContext_ExposesValueContract";
+constexpr const char* TEST_RUNTIME_APP_FAILURE_PROPAGATION = "Kernel_RuntimeAppUpdateFailure_PropagatesAndShutsDown";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* MODULE_A = "A";
@@ -61,6 +74,15 @@ constexpr const char* STARTUP_CLEANUP_FAILURE_FAILED_MESSAGE = "startup cleanup 
 constexpr const char* SELF_REQUIRED_SERVICE_MESSAGE = "self-published required service did not block startup";
 constexpr const char* SELF_REQUIRED_SERVICE_STATUS_MESSAGE = "self-published required service had wrong status";
 constexpr const char* SELF_REQUIRED_SERVICE_TRACE_MESSAGE = "self-published required service ran module startup";
+constexpr const char* RUNTIME_APP_INIT_MESSAGE = "runtime app initialization failed";
+constexpr const char* RUNTIME_APP_RUN_MESSAGE = "runtime app run failed";
+constexpr const char* RUNTIME_APP_TRACE_MESSAGE = "runtime app lifecycle trace was not deterministic";
+constexpr const char* RUNTIME_APP_PHASE_MESSAGE = "runtime app phase trace was not deterministic";
+constexpr const char* RUNTIME_APP_SNAPSHOT_MESSAGE = "runtime app snapshot was not updated";
+constexpr const char* RUNTIME_APP_CONTEXT_MESSAGE = "runtime app context value contract was not preserved";
+constexpr const char* RUNTIME_APP_FAILURE_STATUS_MESSAGE = "runtime app failure had wrong status";
+constexpr const char* RUNTIME_APP_KERNEL_STATUS_MESSAGE = "runtime app did not preserve kernel update status";
+constexpr const char* RUNTIME_APP_FAILURE_SHUTDOWN_MESSAGE = "runtime app did not shutdown after update failure";
 constexpr const char* DEPENDENCY_CHAIN_LOOKUP_START_MESSAGE = "indexed dependency-chain service lookup failed";
 constexpr const char* DEPENDENCY_CHAIN_LOOKUP_SHUTDOWN_MESSAGE = "indexed dependency-chain shutdown failed";
 constexpr const char* DEPENDENCY_CHAIN_LOOKUP_TRACE_MESSAGE = "indexed dependency-chain lifecycle was not deterministic";
@@ -83,6 +105,27 @@ int Fail(const std::string& message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
     std::fputc('\n', stderr);
     return 1;
+}
+
+void AppendExpectedRuntimeFramePhases(std::vector<RuntimeFramePhase>* phase_trace) {
+    phase_trace->push_back(RuntimeFramePhase::BeginFrame);
+    phase_trace->push_back(RuntimeFramePhase::PollPlatform);
+    phase_trace->push_back(RuntimeFramePhase::PollInput);
+    phase_trace->push_back(RuntimeFramePhase::LoadOrCommitResources);
+    phase_trace->push_back(RuntimeFramePhase::UpdateWorld);
+    phase_trace->push_back(RuntimeFramePhase::PrepareRender);
+    phase_trace->push_back(RuntimeFramePhase::SubmitAudio);
+    phase_trace->push_back(RuntimeFramePhase::SubmitRender);
+    phase_trace->push_back(RuntimeFramePhase::Present);
+    phase_trace->push_back(RuntimeFramePhase::EndFrame);
+}
+
+void AppendExpectedRuntimeFrameFailurePhases(std::vector<RuntimeFramePhase>* phase_trace) {
+    phase_trace->push_back(RuntimeFramePhase::BeginFrame);
+    phase_trace->push_back(RuntimeFramePhase::PollPlatform);
+    phase_trace->push_back(RuntimeFramePhase::PollInput);
+    phase_trace->push_back(RuntimeFramePhase::LoadOrCommitResources);
+    phase_trace->push_back(RuntimeFramePhase::UpdateWorld);
 }
 
 int KernelModuleLifecycleDependencyOrder() {
@@ -651,6 +694,183 @@ int KernelInvalidLifecycleRejectsOutOfOrderCalls() {
 
     return 0;
 }
+
+int KernelRuntimeAppZeroWorldFixedFrameLoop() {
+    EngineKernel kernel;
+    RuntimeApp runtime_app;
+    RuntimeAppDesc desc;
+    desc.frame_count = 3U;
+    desc.fixed_delta_time_nanoseconds = TICK_TIME_NANOSECONDS;
+    std::vector<std::string> lifecycle_trace;
+    std::vector<RuntimeFramePhase> phase_trace;
+
+    const bool initialized = runtime_app.Initialize(&kernel, desc);
+    if (!initialized) {
+        return Fail(RUNTIME_APP_INIT_MESSAGE);
+    }
+
+    const auto run_result = runtime_app.RunFixedFrames(&lifecycle_trace, &phase_trace);
+    if (!run_result.succeeded) {
+        return Fail(RUNTIME_APP_RUN_MESSAGE);
+    }
+
+    const std::vector<std::string> expected_lifecycle_trace{
+        TRACE_KERNEL_START,
+        "kernel.update",
+        "kernel.update",
+        "kernel.update",
+        TRACE_KERNEL_SHUTDOWN};
+
+    if (lifecycle_trace != expected_lifecycle_trace) {
+        return Fail(RUNTIME_APP_TRACE_MESSAGE);
+    }
+
+    std::vector<RuntimeFramePhase> expected_phase_trace;
+    AppendExpectedRuntimeFramePhases(&expected_phase_trace);
+    AppendExpectedRuntimeFramePhases(&expected_phase_trace);
+    AppendExpectedRuntimeFramePhases(&expected_phase_trace);
+    if (phase_trace != expected_phase_trace) {
+        return Fail(RUNTIME_APP_PHASE_MESSAGE);
+    }
+
+    const auto snapshot = runtime_app.Snapshot();
+    if (snapshot.status != RuntimeAppStatus::Success || snapshot.completed_frame_count != desc.frame_count || snapshot.running) {
+        return Fail(RUNTIME_APP_SNAPSHOT_MESSAGE);
+    }
+
+    if (run_result.last_frame_context.frame_index != 2U || run_result.last_frame_context.phase != RuntimeFramePhase::EndFrame) {
+        return Fail(RUNTIME_APP_CONTEXT_MESSAGE);
+    }
+
+    return 0;
+}
+
+int KernelRuntimeAppFrameContextExposesValueContract() {
+    EngineKernel kernel;
+    RuntimeApp runtime_app;
+    RuntimeAppDesc desc;
+    int input_snapshot = 13;
+    RuntimeFrameInputSnapshotRef input_snapshot_ref;
+    input_snapshot_ref.snapshot = &input_snapshot;
+    input_snapshot_ref.snapshot_version = 17U;
+    desc.frame_count = 1U;
+    desc.fixed_delta_time_nanoseconds = 33333333U;
+    desc.frame_mode = RuntimeFrameMode::Fixed;
+    desc.input_snapshot = input_snapshot_ref;
+    std::vector<std::string> lifecycle_trace;
+    std::vector<RuntimeFramePhase> phase_trace;
+
+    const bool initialized = runtime_app.Initialize(&kernel, desc);
+    if (!initialized) {
+        return Fail(RUNTIME_APP_INIT_MESSAGE);
+    }
+
+    const auto run_result = runtime_app.RunFixedFrames(&lifecycle_trace, &phase_trace);
+    if (!run_result.succeeded) {
+        return Fail(RUNTIME_APP_RUN_MESSAGE);
+    }
+
+    const auto context = runtime_app.FrameContext();
+    if (context.frame_index != 0U) {
+        return Fail(RUNTIME_APP_CONTEXT_MESSAGE);
+    }
+
+    if (context.delta_time_nanoseconds != desc.fixed_delta_time_nanoseconds) {
+        return Fail(RUNTIME_APP_CONTEXT_MESSAGE);
+    }
+
+    if (context.fixed_time_nanoseconds != desc.fixed_delta_time_nanoseconds) {
+        return Fail(RUNTIME_APP_CONTEXT_MESSAGE);
+    }
+
+    if (context.frame_mode != RuntimeFrameMode::Fixed) {
+        return Fail(RUNTIME_APP_CONTEXT_MESSAGE);
+    }
+
+    if (context.input_snapshot.snapshot != &input_snapshot || context.input_snapshot.snapshot_version != 17U) {
+        return Fail(RUNTIME_APP_CONTEXT_MESSAGE);
+    }
+
+    if (context.diagnostics_sink != nullptr) {
+        return Fail(RUNTIME_APP_CONTEXT_MESSAGE);
+    }
+
+    if (context.phase != RuntimeFramePhase::EndFrame) {
+        return Fail(RUNTIME_APP_CONTEXT_MESSAGE);
+    }
+
+    return 0;
+}
+
+int KernelRuntimeAppUpdateFailurePropagatesAndShutsDown() {
+    EngineKernel kernel;
+    RuntimeApp runtime_app;
+    RuntimeAppDesc desc;
+    LifecycleTestModule failing_module(
+        MODULE_FAIL,
+        std::vector<std::string_view>(),
+        std::vector<std::string_view>(),
+        std::vector<std::string_view>(),
+        false,
+        true);
+    std::vector<std::string> lifecycle_trace;
+    std::vector<RuntimeFramePhase> phase_trace;
+
+    kernel.RegisterModule(failing_module);
+    desc.frame_count = 2U;
+    desc.fixed_delta_time_nanoseconds = TICK_TIME_NANOSECONDS;
+
+    const bool initialized = runtime_app.Initialize(&kernel, desc);
+    if (!initialized) {
+        return Fail(RUNTIME_APP_INIT_MESSAGE);
+    }
+
+    const auto run_result = runtime_app.RunFixedFrames(&lifecycle_trace, &phase_trace);
+    if (run_result.succeeded) {
+        return Fail(RUNTIME_APP_FAILURE_STATUS_MESSAGE);
+    }
+
+    if (run_result.status != RuntimeAppStatus::KernelUpdateFailure) {
+        return Fail(RUNTIME_APP_FAILURE_STATUS_MESSAGE);
+    }
+
+    if (run_result.kernel_status != KernelStatus::UpdateFailure) {
+        return Fail(RUNTIME_APP_KERNEL_STATUS_MESSAGE);
+    }
+
+    if (run_result.shutdown_kernel_status != KernelStatus::Success) {
+        return Fail(RUNTIME_APP_FAILURE_SHUTDOWN_MESSAGE);
+    }
+
+    if (run_result.completed_frame_count != 0U) {
+        return Fail(RUNTIME_APP_FAILURE_STATUS_MESSAGE);
+    }
+
+    const std::vector<std::string> expected_lifecycle_trace{
+        TRACE_KERNEL_START,
+        TRACE_MODULE_START_FAIL,
+        "kernel.update",
+        "module.update.Fail",
+        TRACE_MODULE_SHUTDOWN_FAIL,
+        TRACE_KERNEL_SHUTDOWN};
+
+    if (lifecycle_trace != expected_lifecycle_trace) {
+        return Fail(RUNTIME_APP_TRACE_MESSAGE);
+    }
+
+    std::vector<RuntimeFramePhase> expected_phase_trace;
+    AppendExpectedRuntimeFrameFailurePhases(&expected_phase_trace);
+    if (phase_trace != expected_phase_trace) {
+        return Fail(RUNTIME_APP_PHASE_MESSAGE);
+    }
+
+    const auto snapshot = runtime_app.Snapshot();
+    if (snapshot.status != RuntimeAppStatus::KernelUpdateFailure || snapshot.running) {
+        return Fail(RUNTIME_APP_SNAPSHOT_MESSAGE);
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -663,7 +883,10 @@ int main(int argc, char** argv) {
         {TEST_STARTUP_FAILURE, KernelModuleStartupFailureTearsDownStartedModules},
         {TEST_DEPENDENCY_CHAIN_SERVICE_LOOKUP, KernelDependencyChainServiceLookupUsesModuleNameIndex},
         {TEST_SERVICE_REGISTRY, KernelServiceRegistryResolveAndMissingService},
-        {TEST_INVALID_LIFECYCLE, KernelInvalidLifecycleRejectsOutOfOrderCalls}};
+        {TEST_INVALID_LIFECYCLE, KernelInvalidLifecycleRejectsOutOfOrderCalls},
+        {TEST_RUNTIME_APP_ZERO_WORLD, KernelRuntimeAppZeroWorldFixedFrameLoop},
+        {TEST_RUNTIME_APP_FRAME_CONTEXT, KernelRuntimeAppFrameContextExposesValueContract},
+        {TEST_RUNTIME_APP_FAILURE_PROPAGATION, KernelRuntimeAppUpdateFailurePropagatesAndShutsDown}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
