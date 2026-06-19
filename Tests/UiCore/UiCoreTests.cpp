@@ -9,6 +9,25 @@
 #include <unordered_map>
 
 #include "YuEngine/UiCore/UiNodeDesc.h"
+#include "YuEngine/UiCore/UiDirtyChangeType.h"
+#include "YuEngine/UiCore/UiDirtyDomain.h"
+#include "YuEngine/UiCore/UiDirtyState.h"
+#include "YuEngine/UiCore/UiDirtyTracker.h"
+#include "YuEngine/UiCore/UiDrawElement.h"
+#include "YuEngine/UiCore/UiDrawElementDesc.h"
+#include "YuEngine/UiCore/UiDrawElementType.h"
+#include "YuEngine/UiCore/UiDrawListBuilder.h"
+#include "YuEngine/UiCore/UiDrawListResult.h"
+#include "YuEngine/UiCore/UiDrawListStatus.h"
+#include "YuEngine/UiCore/UiHitTestRequest.h"
+#include "YuEngine/UiCore/UiHitTestResolver.h"
+#include "YuEngine/UiCore/UiHitTestResult.h"
+#include "YuEngine/UiCore/UiHitTestStatus.h"
+#include "YuEngine/UiCore/UiLayoutContainerDesc.h"
+#include "YuEngine/UiCore/UiLayoutContainerType.h"
+#include "YuEngine/UiCore/UiLayoutPass.h"
+#include "YuEngine/UiCore/UiLayoutPassResult.h"
+#include "YuEngine/UiCore/UiLayoutPassStatus.h"
 #include "YuEngine/UiCore/UiNodeId.h"
 #include "YuEngine/UiCore/UiNodeRecord.h"
 #include "YuEngine/UiCore/UiNodeTree.h"
@@ -21,7 +40,26 @@
 #include "YuEngine/UiCore/UiRectMathResult.h"
 #include "YuEngine/UiCore/UiRectMathStatus.h"
 #include "YuEngine/UiCore/UiRectTransform.h"
+#include "YuEngine/UiCore/UiStackDirection.h"
 
+using yuengine::uicore::UiDirtyChangeType;
+using yuengine::uicore::UiDirtyState;
+using yuengine::uicore::UiDirtyTracker;
+using yuengine::uicore::UiDrawElement;
+using yuengine::uicore::UiDrawElementDesc;
+using yuengine::uicore::UiDrawElementType;
+using yuengine::uicore::UiDrawListBuilder;
+using yuengine::uicore::UiDrawListResult;
+using yuengine::uicore::UiDrawListStatus;
+using yuengine::uicore::UiHitTestRequest;
+using yuengine::uicore::UiHitTestResolver;
+using yuengine::uicore::UiHitTestResult;
+using yuengine::uicore::UiHitTestStatus;
+using yuengine::uicore::UiLayoutContainerDesc;
+using yuengine::uicore::UiLayoutContainerType;
+using yuengine::uicore::UiLayoutPass;
+using yuengine::uicore::UiLayoutPassResult;
+using yuengine::uicore::UiLayoutPassStatus;
 using yuengine::uicore::UiNodeDesc;
 using yuengine::uicore::UiNodeId;
 using yuengine::uicore::UiNodeRecord;
@@ -35,6 +73,10 @@ using yuengine::uicore::UiRectMath;
 using yuengine::uicore::UiRectMathResult;
 using yuengine::uicore::UiRectMathStatus;
 using yuengine::uicore::UiRectTransform;
+using yuengine::uicore::UiStackDirection;
+using yuengine::uicore::UI_DIRTY_HIT_TEST;
+using yuengine::uicore::UI_DIRTY_LAYOUT;
+using yuengine::uicore::UI_DIRTY_PAINT;
 
 namespace {
 constexpr std::string_view TEST_NODE_TREE_CREATE_ORDER =
@@ -45,6 +87,14 @@ constexpr std::string_view TEST_RECT_MATH =
     "UiCore_RectMath_ParentResizePivotMarginPaddingDpi";
 constexpr std::string_view TEST_NO_FORBIDDEN_DEPENDENCY =
     "UiCore_NoLifecycleConfigEditorRenderBackendDependency";
+constexpr std::string_view TEST_LAYOUT_CONTAINERS =
+    "UiCore_LayoutContainers_ResolveExpectedRects";
+constexpr std::string_view TEST_DIRTY_TRACKER =
+    "UiCore_DirtyTracker_PaintOnlyDoesNotTriggerLayoutRebuild";
+constexpr std::string_view TEST_HIT_TEST =
+    "UiCore_HitTest_LayerClipDisabled";
+constexpr std::string_view TEST_DRAW_LIST =
+    "UiCore_DrawList_DeterministicElements";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected exactly one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 using TestFunction = int (*)();
@@ -81,6 +131,15 @@ UiRectTransform ChildTransform(float left, float bottom, float right, float top)
     transform.pivot = {0.5F, 0.5F};
     transform.offset_min = {left, bottom};
     transform.offset_max = {-right, -top};
+    return transform;
+}
+
+UiRectTransform FixedChildTransform(float x, float y, float width, float height) {
+    UiRectTransform transform;
+    transform.anchor_min = {0.0F, 0.0F};
+    transform.anchor_max = {1.0F, 1.0F};
+    transform.offset_min = {x, y};
+    transform.offset_max = {x + width - 800.0F, y + height - 600.0F};
     return transform;
 }
 
@@ -128,6 +187,43 @@ bool RectEquals(const UiRect &rect, float x, float y, float width, float height)
     }
 
     return FloatEquals(rect.height, height);
+}
+
+int CreateNode(UiNodeTree &tree, const UiNodeDesc &desc, std::string_view message) {
+    const UiNodeTreeResult result = tree.CreateNode(desc);
+    return ExpectSuccess(result, message);
+}
+
+int QueryRectEquals(UiNodeTree &tree, UiNodeId node_id, const UiRect &expected_rect) {
+    const UiNodeTreeResult result = tree.QueryNode(node_id);
+    int ret_code = ExpectSuccess(result, "query rect failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    if (!RectEquals(result.record.world_rect, expected_rect.x, expected_rect.y, expected_rect.width, expected_rect.height)) {
+        return Fail("rect did not match expected value");
+    }
+
+    return 0;
+}
+
+int CreateRootAndChildren(UiNodeTree &tree, std::uint32_t child_count) {
+    const UiNodeDesc root_desc = MakeNodeDesc(NodeId(1U), UiNodeId{}, 0U);
+    int ret_code = CreateNode(tree, root_desc, "root create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    for (std::uint32_t index = 0U; index < child_count; ++index) {
+        const UiNodeDesc child_desc = MakeNodeDesc(NodeId(2U + index), NodeId(1U), index);
+        ret_code = CreateNode(tree, child_desc, "child create failed");
+        if (ret_code != 0) {
+            return ret_code;
+        }
+    }
+
+    return 0;
 }
 
 int UiCoreNodeTreeCreateAttachDetachOrder() {
@@ -333,6 +429,292 @@ int UiCoreRectMathParentResizePivotMarginPaddingDpi() {
     return 0;
 }
 
+int UiCoreLayoutContainersResolveExpectedRects() {
+    UiLayoutPass pass;
+    {
+        UiNodeTree tree(MakeTreeDesc());
+        int ret_code = CreateRootAndChildren(tree, 2U);
+        if (ret_code != 0) {
+            return ret_code;
+        }
+
+        std::array<UiLayoutContainerDesc, 1U> containers{};
+        containers[0].container_id = NodeId(1U);
+        containers[0].type = UiLayoutContainerType::Stack;
+        containers[0].stack_direction = UiStackDirection::Vertical;
+        containers[0].spacing_y = 10.0F;
+        const UiLayoutPassResult result = pass.Apply(&tree, containers);
+        if (!result.Succeeded()) {
+            return Fail("stack layout failed");
+        }
+
+        ret_code = QueryRectEquals(tree, NodeId(2U), UiRect{0.0F, 305.0F, 800.0F, 295.0F});
+        if (ret_code != 0) {
+            return ret_code;
+        }
+
+        ret_code = QueryRectEquals(tree, NodeId(3U), UiRect{0.0F, 0.0F, 800.0F, 295.0F});
+        if (ret_code != 0) {
+            return ret_code;
+        }
+    }
+
+    {
+        UiNodeTree tree(MakeTreeDesc());
+        int ret_code = CreateRootAndChildren(tree, 4U);
+        if (ret_code != 0) {
+            return ret_code;
+        }
+
+        std::array<UiLayoutContainerDesc, 1U> containers{};
+        containers[0].container_id = NodeId(1U);
+        containers[0].type = UiLayoutContainerType::Grid;
+        containers[0].grid_column_count = 2U;
+        containers[0].spacing_x = 10.0F;
+        containers[0].spacing_y = 20.0F;
+        const UiLayoutPassResult result = pass.Apply(&tree, containers);
+        if (result.status != UiLayoutPassStatus::Success || result.arranged_node_count != 4U) {
+            return Fail("grid layout result mismatch");
+        }
+
+        ret_code = QueryRectEquals(tree, NodeId(2U), UiRect{0.0F, 310.0F, 395.0F, 290.0F});
+        if (ret_code != 0) {
+            return ret_code;
+        }
+
+        ret_code = QueryRectEquals(tree, NodeId(5U), UiRect{405.0F, 0.0F, 395.0F, 290.0F});
+        if (ret_code != 0) {
+            return ret_code;
+        }
+    }
+
+    {
+        UiNodeTree tree(MakeTreeDesc());
+        int ret_code = CreateRootAndChildren(tree, 2U);
+        if (ret_code != 0) {
+            return ret_code;
+        }
+
+        std::array<UiLayoutContainerDesc, 1U> containers{};
+        containers[0].container_id = NodeId(1U);
+        containers[0].type = UiLayoutContainerType::Overlay;
+        const UiLayoutPassResult result = pass.Apply(&tree, containers);
+        if (!result.Succeeded()) {
+            return Fail("overlay layout failed");
+        }
+
+        ret_code = QueryRectEquals(tree, NodeId(2U), UiRect{0.0F, 0.0F, 800.0F, 600.0F});
+        if (ret_code != 0) {
+            return ret_code;
+        }
+    }
+
+    {
+        UiNodeTree tree(MakeTreeDesc());
+        int ret_code = CreateRootAndChildren(tree, 1U);
+        if (ret_code != 0) {
+            return ret_code;
+        }
+
+        std::array<UiLayoutContainerDesc, 1U> containers{};
+        containers[0].container_id = NodeId(1U);
+        containers[0].type = UiLayoutContainerType::ScrollViewport;
+        containers[0].item_width = 1000.0F;
+        containers[0].item_height = 900.0F;
+        containers[0].scroll_offset = {15.0F, 25.0F};
+        const UiLayoutPassResult result = pass.Apply(&tree, containers);
+        if (!result.Succeeded()) {
+            return Fail("scroll viewport layout failed");
+        }
+
+        ret_code = QueryRectEquals(tree, NodeId(2U), UiRect{-15.0F, -25.0F, 1000.0F, 900.0F});
+        if (ret_code != 0) {
+            return ret_code;
+        }
+    }
+
+    {
+        UiNodeTree tree(MakeTreeDesc());
+        UiNodeDesc root_desc = MakeNodeDesc(NodeId(1U), UiNodeId{}, 0U);
+        int ret_code = CreateNode(tree, root_desc, "root create failed");
+        if (ret_code != 0) {
+            return ret_code;
+        }
+
+        UiNodeDesc child_desc = MakeNodeDesc(NodeId(2U), NodeId(1U), 0U);
+        child_desc.rect_transform = ChildTransform(10.0F, 20.0F, 30.0F, 40.0F);
+        ret_code = CreateNode(tree, child_desc, "absolute child create failed");
+        if (ret_code != 0) {
+            return ret_code;
+        }
+
+        std::array<UiLayoutContainerDesc, 1U> containers{};
+        containers[0].container_id = NodeId(1U);
+        containers[0].type = UiLayoutContainerType::Absolute;
+        const UiLayoutPassResult result = pass.Apply(&tree, containers);
+        if (!result.Succeeded()) {
+            return Fail("absolute layout failed");
+        }
+
+        ret_code = QueryRectEquals(tree, NodeId(2U), UiRect{10.0F, 20.0F, 760.0F, 540.0F});
+        if (ret_code != 0) {
+            return ret_code;
+        }
+    }
+
+    return 0;
+}
+
+int UiCoreDirtyTrackerPaintOnlyDoesNotTriggerLayoutRebuild() {
+    UiDirtyTracker tracker;
+    UiDirtyState state = tracker.ApplyChange(UiDirtyChangeType::PaintOnly);
+    if (state.HasDomain(UI_DIRTY_LAYOUT)) {
+        return Fail("paint-only dirty triggered layout domain");
+    }
+
+    if (!state.HasDomain(UI_DIRTY_PAINT) || state.layout_rebuild_count != 0U) {
+        return Fail("paint-only dirty state mismatch");
+    }
+
+    state = tracker.ApplyChange(UiDirtyChangeType::AtlasPage);
+    if (state.HasDomain(UI_DIRTY_LAYOUT) || state.layout_rebuild_count != 0U) {
+        return Fail("atlas page dirty triggered layout rebuild");
+    }
+
+    tracker.Clear();
+    state = tracker.ApplyChange(UiDirtyChangeType::ScrollOffset);
+    if (state.HasDomain(UI_DIRTY_LAYOUT)) {
+        return Fail("scroll dirty triggered layout domain");
+    }
+
+    if (!state.HasDomain(UI_DIRTY_HIT_TEST) || state.layout_rebuild_count != 0U) {
+        return Fail("scroll dirty did not classify hit-test domain");
+    }
+
+    tracker.Clear();
+    state = tracker.ApplyChange(UiDirtyChangeType::Layout);
+    if (!state.HasDomain(UI_DIRTY_LAYOUT) || state.layout_rebuild_count != 1U) {
+        return Fail("layout dirty did not trigger one rebuild");
+    }
+
+    return 0;
+}
+
+int UiCoreHitTestLayerClipDisabled() {
+    UiNodeTree tree(MakeTreeDesc());
+    UiNodeDesc root_desc = MakeNodeDesc(NodeId(1U), UiNodeId{}, 0U);
+    int ret_code = CreateNode(tree, root_desc, "root create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc low_desc = MakeNodeDesc(NodeId(2U), NodeId(1U), 0U);
+    low_desc.layer = 1;
+    ret_code = CreateNode(tree, low_desc, "low child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc disabled_desc = MakeNodeDesc(NodeId(3U), NodeId(1U), 1U);
+    disabled_desc.layer = 5;
+    disabled_desc.is_enabled = false;
+    ret_code = CreateNode(tree, disabled_desc, "disabled child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc clipped_desc = MakeNodeDesc(NodeId(4U), NodeId(1U), 2U);
+    clipped_desc.layer = 6;
+    clipped_desc.rect_transform = FixedChildTransform(820.0F, 10.0F, 100.0F, 100.0F);
+    ret_code = CreateNode(tree, clipped_desc, "clipped child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiHitTestRequest request;
+    request.point = {10.0F, 10.0F};
+    const UiHitTestResult hit_result = UiHitTestResolver::Resolve(tree, request);
+    if (hit_result.status != UiHitTestStatus::Success || hit_result.node_id.value != 2U) {
+        return Fail("hit-test did not skip disabled top child");
+    }
+
+    request.point = {850.0F, 20.0F};
+    const UiHitTestResult clipped_result = UiHitTestResolver::Resolve(tree, request);
+    if (clipped_result.status != UiHitTestStatus::Miss) {
+        return Fail("hit-test did not respect parent clipping");
+    }
+
+    return 0;
+}
+
+int UiCoreDrawListDeterministicElements() {
+    UiNodeTree tree(MakeTreeDesc());
+    UiNodeDesc root_desc = MakeNodeDesc(NodeId(1U), UiNodeId{}, 0U);
+    int ret_code = CreateNode(tree, root_desc, "root create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc high_desc = MakeNodeDesc(NodeId(2U), NodeId(1U), 10U);
+    high_desc.layer = 2;
+    ret_code = CreateNode(tree, high_desc, "high child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc low_desc = MakeNodeDesc(NodeId(3U), NodeId(1U), 20U);
+    low_desc.layer = 1;
+    ret_code = CreateNode(tree, low_desc, "low child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc middle_desc = MakeNodeDesc(NodeId(4U), NodeId(1U), 5U);
+    middle_desc.layer = 2;
+    ret_code = CreateNode(tree, middle_desc, "middle child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc hidden_desc = MakeNodeDesc(NodeId(5U), NodeId(1U), 30U);
+    hidden_desc.is_visible = false;
+    ret_code = CreateNode(tree, hidden_desc, "hidden child create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const std::array<UiDrawElementDesc, 4U> descs{
+        UiDrawElementDesc{NodeId(2U), UiDrawElementType::Rect, 11U, 21U, 31U, 0U, true},
+        UiDrawElementDesc{NodeId(4U), UiDrawElementType::Text, 12U, 22U, 0U, 41U, false},
+        UiDrawElementDesc{NodeId(3U), UiDrawElementType::TexturedQuad, 13U, 23U, 33U, 0U, true},
+        UiDrawElementDesc{NodeId(5U), UiDrawElementType::Rect, 14U, 24U, 34U, 0U, false}};
+    std::array<UiDrawElement, 3U> elements{};
+    UiDrawListResult result;
+    UiDrawListBuilder builder;
+    const UiDrawListStatus status = builder.Build(tree, descs, elements, &result);
+    if (status != UiDrawListStatus::Success || result.element_count != 3U || result.skipped_node_count != 1U) {
+        return Fail("draw list result mismatch");
+    }
+
+    if (elements[0U].node_id.value != 3U || elements[1U].node_id.value != 4U || elements[2U].node_id.value != 2U) {
+        return Fail("draw list order was not deterministic");
+    }
+
+    if (elements[0U].type != UiDrawElementType::TexturedQuad || elements[0U].texture_key != 33U) {
+        return Fail("textured quad keys were not preserved");
+    }
+
+    if (elements[1U].type != UiDrawElementType::Text || elements[1U].text_key != 41U) {
+        return Fail("text keys were not preserved");
+    }
+
+    if (!elements[2U].scissor_enabled || elements[2U].style_key != 11U || elements[2U].material_key != 21U) {
+        return Fail("rect draw element keys were not preserved");
+    }
+
+    return 0;
+}
+
 int UiCoreNoLifecycleConfigEditorRenderBackendDependency() {
     UiNodeTree tree(MakeTreeDesc());
     UiNodeDesc desc = MakeNodeDesc(NodeId(9U), UiNodeId{}, 0U);
@@ -369,7 +751,11 @@ int main(int argc, char **argv) {
         {TEST_NODE_TREE_CREATE_ORDER, UiCoreNodeTreeCreateAttachDetachOrder},
         {TEST_NODE_TREE_DESTROY, UiCoreNodeTreeDestroyRemovesDescendants},
         {TEST_RECT_MATH, UiCoreRectMathParentResizePivotMarginPaddingDpi},
-        {TEST_NO_FORBIDDEN_DEPENDENCY, UiCoreNoLifecycleConfigEditorRenderBackendDependency}};
+        {TEST_NO_FORBIDDEN_DEPENDENCY, UiCoreNoLifecycleConfigEditorRenderBackendDependency},
+        {TEST_LAYOUT_CONTAINERS, UiCoreLayoutContainersResolveExpectedRects},
+        {TEST_DIRTY_TRACKER, UiCoreDirtyTrackerPaintOnlyDoesNotTriggerLayoutRebuild},
+        {TEST_HIT_TEST, UiCoreHitTestLayerClipDisabled},
+        {TEST_DRAW_LIST, UiCoreDrawListDeterministicElements}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
