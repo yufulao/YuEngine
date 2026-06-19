@@ -4,11 +4,13 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 
 #include "YuEngine/Asset/AssetManager.h"
+#include "YuEngine/Asset/AssetRuntimeFixture.h"
 #include "YuEngine/Audio/AudioSampleFormat.h"
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
 #include "YuEngine/Resource/ResourceDescriptor.h"
@@ -23,6 +25,11 @@ using AssetManager = yuengine::asset::AssetManager;
 using yuengine::asset::AssetManagerDesc;
 using yuengine::asset::AssetRecord;
 using yuengine::asset::AssetRegistrationResult;
+using yuengine::asset::AssetRuntimeFixture;
+using yuengine::asset::AssetRuntimeFixtureRequest;
+using yuengine::asset::AssetRuntimeFixtureResult;
+using yuengine::asset::AssetRuntimeFixtureSnapshot;
+using yuengine::asset::AssetRuntimeFixtureStatus;
 using yuengine::asset::AssetSnapshot;
 using yuengine::asset::AssetStatus;
 using yuengine::asset::AssetTypeId;
@@ -65,6 +72,10 @@ constexpr const char *TEST_AUDIO_READY =
 constexpr const char *TEST_REFRESH_STATE =
     "Asset_RefreshStateFromResourceMapsUploadedResidentAndFailed";
 constexpr const char *TEST_RELEASE = "Asset_ReleaseRuntimeAssetReleasesResourceAndClearsReadyRecords";
+constexpr const char *TEST_RUNTIME_FIXTURE =
+    "Asset_RuntimeFixtureClosesResidentTexturePathAndDependencies";
+constexpr const char *TEST_RUNTIME_FIXTURE_BOUNDARY =
+    "Asset_RuntimeFixtureRejectsSmallDependencyOutputBeforeMutation";
 constexpr const char *TEST_NO_UPPER_DEPENDENCY = "Asset_NoWorldGameAdapterUiDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
@@ -568,6 +579,163 @@ int AssetReleaseRuntimeAssetReleasesResourceAndClearsReadyRecords() {
     return 0;
 }
 
+int AssetRuntimeFixtureClosesResidentTexturePathAndDependencies() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult root_resource = RegisterResource(registry, 11U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult dependency_resource = RegisterResource(registry, 12U, RESOURCE_TYPE_TEXTURE);
+    if (!root_resource.Succeeded() || !dependency_resource.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    AssetManager manager;
+    const AssetRegistrationResult root_asset =
+        RegisterAsset(manager, registry, 7001U, ASSET_TYPE_TEXTURE, root_resource.handle, RESOURCE_TYPE_TEXTURE);
+    const AssetRegistrationResult dependency_asset =
+        RegisterAsset(manager, registry, 7002U, ASSET_TYPE_TEXTURE, dependency_resource.handle, RESOURCE_TYPE_TEXTURE);
+    if (!root_asset.Succeeded() || !dependency_asset.Succeeded()) {
+        return Fail("asset registration failed");
+    }
+
+    if (manager.AddDependency(root_asset.handle, dependency_asset.handle) != AssetStatus::Success) {
+        return Fail("asset dependency add failed");
+    }
+
+    ResourceLoadCommitRequest upload_commit{};
+    upload_commit.resource = root_resource.handle;
+    upload_commit.expected_type = RESOURCE_TYPE_TEXTURE;
+    upload_commit.load_state = ResourceLoadState::Uploaded;
+    upload_commit.commit_id = 7U;
+    upload_commit.upload_id = 8U;
+    upload_commit.staging_request_id = 9U;
+    upload_commit.upload_byte_count = 64U;
+    if (registry.CommitUploadCompletion(upload_commit) != ResourceLoadCommitStatus::Success) {
+        return Fail("resource upload commit failed");
+    }
+
+    ResourceResidencyBudgetDesc budget{};
+    budget.byte_capacity = 128U;
+    if (registry.SetResidencyBudget(budget) != ResourceResidencyStatus::Success) {
+        return Fail("resource residency budget failed");
+    }
+
+    ResourceResidencyRequest residency_request{};
+    residency_request.resource = root_resource.handle;
+    residency_request.expected_type = RESOURCE_TYPE_TEXTURE;
+    if (registry.AdmitResident(residency_request) != ResourceResidencyStatus::Success) {
+        return Fail("resource residency admit failed");
+    }
+
+    ResourceDecodedPayloadRecord decoded_payload =
+        MakeDecodedPayloadRecord(root_resource.handle, RESOURCE_TYPE_TEXTURE, 16U);
+    const ResourceDecodedTextureBridgeResult texture_result =
+        MakeTextureResult(root_resource.handle, RESOURCE_TYPE_TEXTURE);
+    std::array<AssetHandle, 1U> dependencies{};
+    AssetRuntimeFixture fixture;
+    AssetRuntimeFixtureRequest fixture_request{};
+    fixture_request.manager = &manager;
+    fixture_request.resource_registry = &registry;
+    fixture_request.root_asset = root_asset.handle;
+    fixture_request.dependency_output = std::span<AssetHandle>(dependencies.data(), dependencies.size());
+    fixture_request.decoded_payload = &decoded_payload;
+    fixture_request.texture_result = &texture_result;
+    fixture_request.refresh_state_from_resource = true;
+
+    const AssetRuntimeFixtureResult fixture_result = fixture.Execute(fixture_request);
+    if (fixture_result.status != AssetRuntimeFixtureStatus::Success) {
+        return Fail("asset runtime fixture failed");
+    }
+
+    if (fixture_result.dependency_count != 1U) {
+        return Fail("asset runtime fixture dependency count mismatch");
+    }
+
+    if (dependencies[0U].slot != dependency_asset.handle.slot) {
+        return Fail("asset runtime fixture dependency output mismatch");
+    }
+
+    if (!fixture_result.decoded_applied || !fixture_result.texture_ready_applied) {
+        return Fail("asset runtime fixture did not apply ready records");
+    }
+
+    if (!fixture_result.resource_state_refreshed) {
+        return Fail("asset runtime fixture did not refresh resource state");
+    }
+
+    if (fixture_result.root_record.state != AssetLoadState::Resident) {
+        return Fail("asset runtime fixture did not map resident state");
+    }
+
+    if (!fixture_result.root_record.texture_ready.is_ready) {
+        return Fail("asset runtime fixture did not keep texture ready record");
+    }
+
+    const AssetRuntimeFixtureSnapshot fixture_snapshot = fixture.Snapshot();
+    if (fixture_snapshot.executed_count != 1U) {
+        return Fail("asset runtime fixture execution count mismatch");
+    }
+
+    if (fixture_snapshot.dependency_traversal_count != 1U) {
+        return Fail("asset runtime fixture traversal count mismatch");
+    }
+
+    if (fixture_result.asset_snapshot.texture_ready_count != 1U) {
+        return Fail("asset snapshot texture ready count mismatch");
+    }
+
+    return 0;
+}
+
+int AssetRuntimeFixtureRejectsSmallDependencyOutputBeforeMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult root_resource = RegisterResource(registry, 13U, RESOURCE_TYPE_TEXTURE);
+    const ResourceRegistrationResult dependency_resource = RegisterResource(registry, 14U, RESOURCE_TYPE_TEXTURE);
+    if (!root_resource.Succeeded() || !dependency_resource.Succeeded()) {
+        return Fail("resource registration failed");
+    }
+
+    AssetManager manager;
+    const AssetRegistrationResult root_asset =
+        RegisterAsset(manager, registry, 8001U, ASSET_TYPE_TEXTURE, root_resource.handle, RESOURCE_TYPE_TEXTURE);
+    const AssetRegistrationResult dependency_asset =
+        RegisterAsset(manager, registry, 8002U, ASSET_TYPE_TEXTURE, dependency_resource.handle, RESOURCE_TYPE_TEXTURE);
+    if (!root_asset.Succeeded() || !dependency_asset.Succeeded()) {
+        return Fail("asset registration failed");
+    }
+
+    if (manager.AddDependency(root_asset.handle, dependency_asset.handle) != AssetStatus::Success) {
+        return Fail("asset dependency add failed");
+    }
+
+    AssetRuntimeFixture fixture;
+    AssetRuntimeFixtureRequest fixture_request{};
+    fixture_request.manager = &manager;
+    fixture_request.root_asset = root_asset.handle;
+
+    const AssetRuntimeFixtureResult fixture_result = fixture.Execute(fixture_request);
+    if (fixture_result.status != AssetRuntimeFixtureStatus::DependencyTraversalFailed) {
+        return Fail("small dependency output did not fail fixture traversal");
+    }
+
+    if (fixture_result.last_asset_status != AssetStatus::OutputBufferTooSmall) {
+        return Fail("fixture did not expose asset traversal failure");
+    }
+
+    AssetRecord root_record{};
+    if (manager.QueryAsset(root_asset.handle, &root_record) != AssetStatus::Success) {
+        return Fail("root asset query failed");
+    }
+
+    if (root_record.state != AssetLoadState::Unloaded) {
+        return Fail("fixture mutated root state after traversal failure");
+    }
+
+    if (fixture.Snapshot().rejected_count != 1U) {
+        return Fail("fixture rejected count mismatch");
+    }
+
+    return 0;
+}
+
 int AssetNoWorldGameAdapterUiDependency() {
     AssetManager manager;
     const AssetSnapshot snapshot = manager.Snapshot();
@@ -593,6 +761,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_AUDIO_READY, AssetAudioReadyRecordUsesImportRecordWithoutOwningDevice},
     {TEST_REFRESH_STATE, AssetRefreshStateFromResourceMapsUploadedResidentAndFailed},
     {TEST_RELEASE, AssetReleaseRuntimeAssetReleasesResourceAndClearsReadyRecords},
+    {TEST_RUNTIME_FIXTURE, AssetRuntimeFixtureClosesResidentTexturePathAndDependencies},
+    {TEST_RUNTIME_FIXTURE_BOUNDARY, AssetRuntimeFixtureRejectsSmallDependencyOutputBeforeMutation},
     {TEST_NO_UPPER_DEPENDENCY, AssetNoWorldGameAdapterUiDependency},
 };
 }

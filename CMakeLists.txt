@@ -219,6 +219,7 @@ target_link_libraries(YuStreaming PUBLIC YuMemory YuPackage YuResource YuFile Yu
 
 add_library(YuAsset
     Src/YuEngine/Asset/Src/AssetManager.cpp
+    Src/YuEngine/Asset/Src/AssetRuntimeFixture.cpp
 )
 yuengine_apply_compile_options(YuAsset)
 target_include_directories(YuAsset
@@ -1604,6 +1605,8 @@ yuengine_add_labeled_test(Asset_TextureReadyRecordUsesStreamingResultWithoutOwni
 yuengine_add_labeled_test(Asset_AudioReadyRecordUsesImportRecordWithoutOwningDevice YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
 yuengine_add_labeled_test(Asset_RefreshStateFromResourceMapsUploadedResidentAndFailed YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
 yuengine_add_labeled_test(Asset_ReleaseRuntimeAssetReleasesResourceAndClearsReadyRecords YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
+yuengine_add_labeled_test(Asset_RuntimeFixtureClosesResidentTexturePathAndDependencies YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
+yuengine_add_labeled_test(Asset_RuntimeFixtureRejectsSmallDependencyOutputBeforeMutation YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
 yuengine_add_labeled_test(Asset_NoWorldGameAdapterUiDependency YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
 
 add_executable(YuRenderSceneTests
