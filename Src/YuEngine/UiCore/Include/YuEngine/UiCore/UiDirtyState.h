@@ -11,6 +11,7 @@ namespace yuengine::uicore {
 struct UiDirtyState final {
     std::uint32_t domains = UI_DIRTY_NONE;
     std::uint32_t layout_rebuild_count = 0U;
+    std::uint32_t paint_rebuild_count = 0U;
     std::uint32_t paint_change_count = 0U;
     std::uint32_t hit_test_rebuild_count = 0U;
 

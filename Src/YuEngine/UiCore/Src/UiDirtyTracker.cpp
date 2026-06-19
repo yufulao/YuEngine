@@ -10,12 +10,14 @@ UiDirtyState UiDirtyTracker::ApplyChange(UiDirtyChangeType change_type) {
         {
             Mark(UI_DIRTY_LAYOUT | UI_DIRTY_TRANSFORM | UI_DIRTY_HIT_TEST | UI_DIRTY_PAINT);
             ++state_.layout_rebuild_count;
+            ++state_.paint_rebuild_count;
             ++state_.hit_test_rebuild_count;
             break;
         }
         case UiDirtyChangeType::PaintOnly:
         {
             Mark(UI_DIRTY_PAINT);
+            ++state_.paint_rebuild_count;
             ++state_.paint_change_count;
             break;
         }
@@ -23,6 +25,7 @@ UiDirtyState UiDirtyTracker::ApplyChange(UiDirtyChangeType change_type) {
         {
             Mark(UI_DIRTY_TRANSFORM | UI_DIRTY_HIT_TEST | UI_DIRTY_PAINT);
             ++state_.hit_test_rebuild_count;
+            ++state_.paint_rebuild_count;
             break;
         }
         case UiDirtyChangeType::HitTest:
@@ -34,12 +37,14 @@ UiDirtyState UiDirtyTracker::ApplyChange(UiDirtyChangeType change_type) {
         case UiDirtyChangeType::Text:
         {
             Mark(UI_DIRTY_TEXT | UI_DIRTY_PAINT);
+            ++state_.paint_rebuild_count;
             ++state_.paint_change_count;
             break;
         }
         case UiDirtyChangeType::HoverState:
         {
             Mark(UI_DIRTY_PAINT);
+            ++state_.paint_rebuild_count;
             ++state_.paint_change_count;
             break;
         }
@@ -47,12 +52,14 @@ UiDirtyState UiDirtyTracker::ApplyChange(UiDirtyChangeType change_type) {
         {
             Mark(UI_DIRTY_TRANSFORM | UI_DIRTY_HIT_TEST | UI_DIRTY_PAINT);
             ++state_.hit_test_rebuild_count;
+            ++state_.paint_rebuild_count;
             ++state_.paint_change_count;
             break;
         }
         case UiDirtyChangeType::AtlasPage:
         {
             Mark(UI_DIRTY_PAINT);
+            ++state_.paint_rebuild_count;
             ++state_.paint_change_count;
             break;
         }

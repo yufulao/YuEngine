@@ -185,6 +185,7 @@ add_library(YuUiCore
     Src/YuEngine/UiCore/Src/UiDrawBatcher.cpp
     Src/YuEngine/UiCore/Src/UiDrawListBuilder.cpp
     Src/YuEngine/UiCore/Src/UiHitTestResolver.cpp
+    Src/YuEngine/UiCore/Src/UiInvalidationModel.cpp
     Src/YuEngine/UiCore/Src/UiLayoutPass.cpp
     Src/YuEngine/UiCore/Src/UiNodeTree.cpp
     Src/YuEngine/UiCore/Src/UiRectMath.cpp
@@ -1553,6 +1554,8 @@ yuengine_add_labeled_test(UiCore_RectMath_ParentResizePivotMarginPaddingDpi YuUi
 yuengine_add_labeled_test(UiCore_NoLifecycleConfigEditorRenderBackendDependency YuUiCoreTests Fast ModuleFixture UiCore UI EvidenceOracle)
 yuengine_add_labeled_test(UiCore_LayoutContainers_ResolveExpectedRects YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_DirtyTracker_PaintOnlyDoesNotTriggerLayoutRebuild YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_InvalidationModel_SubtreeRulesExposeCacheCounters YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_InvalidationModel_RejectsSmallOutputWithoutMutation YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_HitTest_LayerClipDisabled YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_DrawList_DeterministicElements YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_StaticAtlasMetadata_ResolvesSpritePageUvNineSlice YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)

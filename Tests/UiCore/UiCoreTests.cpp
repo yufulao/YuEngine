@@ -23,6 +23,12 @@
 #include "YuEngine/UiCore/UiHitTestResolver.h"
 #include "YuEngine/UiCore/UiHitTestResult.h"
 #include "YuEngine/UiCore/UiHitTestStatus.h"
+#include "YuEngine/UiCore/UiInvalidatedNode.h"
+#include "YuEngine/UiCore/UiInvalidationModel.h"
+#include "YuEngine/UiCore/UiInvalidationRequest.h"
+#include "YuEngine/UiCore/UiInvalidationResult.h"
+#include "YuEngine/UiCore/UiInvalidationScope.h"
+#include "YuEngine/UiCore/UiInvalidationStatus.h"
 #include "YuEngine/UiCore/UiLayoutContainerDesc.h"
 #include "YuEngine/UiCore/UiLayoutContainerType.h"
 #include "YuEngine/UiCore/UiLayoutPass.h"
@@ -56,6 +62,12 @@ using yuengine::uicore::UiHitTestRequest;
 using yuengine::uicore::UiHitTestResolver;
 using yuengine::uicore::UiHitTestResult;
 using yuengine::uicore::UiHitTestStatus;
+using yuengine::uicore::UiInvalidatedNode;
+using yuengine::uicore::UiInvalidationModel;
+using yuengine::uicore::UiInvalidationRequest;
+using yuengine::uicore::UiInvalidationResult;
+using yuengine::uicore::UiInvalidationScope;
+using yuengine::uicore::UiInvalidationStatus;
 using yuengine::uicore::UiLayoutContainerDesc;
 using yuengine::uicore::UiLayoutContainerType;
 using yuengine::uicore::UiLayoutPass;
@@ -98,6 +110,10 @@ constexpr std::string_view TEST_LAYOUT_CONTAINERS =
     "UiCore_LayoutContainers_ResolveExpectedRects";
 constexpr std::string_view TEST_DIRTY_TRACKER =
     "UiCore_DirtyTracker_PaintOnlyDoesNotTriggerLayoutRebuild";
+constexpr std::string_view TEST_INVALIDATION_MODEL =
+    "UiCore_InvalidationModel_SubtreeRulesExposeCacheCounters";
+constexpr std::string_view TEST_INVALIDATION_SMALL_OUTPUT =
+    "UiCore_InvalidationModel_RejectsSmallOutputWithoutMutation";
 constexpr std::string_view TEST_HIT_TEST =
     "UiCore_HitTest_LayerClipDisabled";
 constexpr std::string_view TEST_DRAW_LIST =
@@ -628,9 +644,17 @@ int UiCoreDirtyTrackerPaintOnlyDoesNotTriggerLayoutRebuild() {
         return Fail("paint-only dirty state mismatch");
     }
 
+    if (state.paint_rebuild_count != 1U) {
+        return Fail("paint-only dirty did not expose paint rebuild count");
+    }
+
     state = tracker.ApplyChange(UiDirtyChangeType::AtlasPage);
     if (state.HasDomain(UI_DIRTY_LAYOUT) || state.layout_rebuild_count != 0U) {
         return Fail("atlas page dirty triggered layout rebuild");
+    }
+
+    if (state.paint_rebuild_count != 2U) {
+        return Fail("atlas page dirty did not increment paint rebuild count");
     }
 
     tracker.Clear();
@@ -643,10 +667,126 @@ int UiCoreDirtyTrackerPaintOnlyDoesNotTriggerLayoutRebuild() {
         return Fail("scroll dirty did not classify hit-test domain");
     }
 
+    if (state.paint_rebuild_count != 1U) {
+        return Fail("scroll dirty did not expose paint rebuild count");
+    }
+
     tracker.Clear();
     state = tracker.ApplyChange(UiDirtyChangeType::Layout);
     if (!state.HasDomain(UI_DIRTY_LAYOUT) || state.layout_rebuild_count != 1U) {
         return Fail("layout dirty did not trigger one rebuild");
+    }
+
+    if (state.paint_rebuild_count != 1U) {
+        return Fail("layout dirty did not expose paint rebuild count");
+    }
+
+    return 0;
+}
+
+int UiCoreInvalidationModelSubtreeRulesExposeCacheCounters() {
+    UiNodeTree tree(MakeTreeDesc());
+    int ret_code = CreateRootAndChildren(tree, 3U);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiNodeDesc grandchild_desc = MakeNodeDesc(NodeId(5U), NodeId(2U), 0U);
+    ret_code = CreateNode(tree, grandchild_desc, "grandchild create failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiInvalidationModel model;
+    UiInvalidationRequest request;
+    request.node_id = NodeId(1U);
+    request.change_type = UiDirtyChangeType::Layout;
+    request.scope = UiInvalidationScope::Subtree;
+
+    std::array<UiInvalidatedNode, 5U> affected_nodes{};
+    UiInvalidationResult result{};
+    UiInvalidationStatus status = model.Invalidate(tree, request, affected_nodes, &result);
+    if (status != UiInvalidationStatus::Success || !result.Succeeded()) {
+        return Fail("layout subtree invalidation failed");
+    }
+
+    if (result.affected_node_count != 5U) {
+        return Fail("layout subtree affected node count mismatch");
+    }
+
+    if (result.cache_counters.layout_rebuild_count != 5U || result.cache_counters.paint_rebuild_count != 5U) {
+        return Fail("layout subtree cache counters mismatch");
+    }
+
+    if (affected_nodes[0U].node_id.value != 1U || affected_nodes[1U].node_id.value != 2U) {
+        return Fail("layout subtree affected order mismatch");
+    }
+
+    if (affected_nodes[2U].node_id.value != 5U || affected_nodes[3U].node_id.value != 3U) {
+        return Fail("layout subtree affected order mismatch");
+    }
+
+    if (affected_nodes[4U].node_id.value != 4U) {
+        return Fail("layout subtree affected order mismatch");
+    }
+
+    if ((affected_nodes[0U].domains & UI_DIRTY_LAYOUT) == 0U) {
+        return Fail("layout subtree did not mark layout domain");
+    }
+
+    request.node_id = NodeId(2U);
+    request.change_type = UiDirtyChangeType::PaintOnly;
+    request.scope = UiInvalidationScope::Self;
+    affected_nodes = {};
+    result = UiInvalidationResult{};
+    status = model.Invalidate(tree, request, affected_nodes, &result);
+    if (status != UiInvalidationStatus::Success || result.affected_node_count != 1U) {
+        return Fail("paint self invalidation failed");
+    }
+
+    if (result.cache_counters.layout_rebuild_count != 0U || result.cache_counters.paint_rebuild_count != 1U) {
+        return Fail("paint self cache counters mismatch");
+    }
+
+    if ((affected_nodes[0U].domains & UI_DIRTY_PAINT) == 0U) {
+        return Fail("paint self did not mark paint domain");
+    }
+
+    return 0;
+}
+
+int UiCoreInvalidationModelRejectsSmallOutputWithoutMutation() {
+    UiNodeTree tree(MakeTreeDesc());
+    int ret_code = CreateRootAndChildren(tree, 2U);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiInvalidationModel model;
+    UiInvalidationRequest request;
+    request.node_id = NodeId(1U);
+    request.change_type = UiDirtyChangeType::Layout;
+    request.scope = UiInvalidationScope::Subtree;
+
+    std::array<UiInvalidatedNode, 1U> affected_nodes{};
+    affected_nodes[0U].node_id = NodeId(99U);
+    affected_nodes[0U].domains = 777U;
+    UiInvalidationResult result{};
+    const UiInvalidationStatus status = model.Invalidate(tree, request, affected_nodes, &result);
+    if (status != UiInvalidationStatus::OutputCapacityExceeded) {
+        return Fail("small invalidation output was not rejected");
+    }
+
+    if (result.affected_node_count != 3U) {
+        return Fail("small invalidation output did not report required count");
+    }
+
+    if (result.cache_counters.layout_rebuild_count != 3U || result.cache_counters.paint_rebuild_count != 3U) {
+        return Fail("small invalidation output did not expose cache counters");
+    }
+
+    if (affected_nodes[0U].node_id.value != 99U || affected_nodes[0U].domains != 777U) {
+        return Fail("small invalidation output mutated caller storage");
     }
 
     return 0;
@@ -902,6 +1042,8 @@ int main(int argc, char **argv) {
         {TEST_NO_FORBIDDEN_DEPENDENCY, UiCoreNoLifecycleConfigEditorRenderBackendDependency},
         {TEST_LAYOUT_CONTAINERS, UiCoreLayoutContainersResolveExpectedRects},
         {TEST_DIRTY_TRACKER, UiCoreDirtyTrackerPaintOnlyDoesNotTriggerLayoutRebuild},
+        {TEST_INVALIDATION_MODEL, UiCoreInvalidationModelSubtreeRulesExposeCacheCounters},
+        {TEST_INVALIDATION_SMALL_OUTPUT, UiCoreInvalidationModelRejectsSmallOutputWithoutMutation},
         {TEST_HIT_TEST, UiCoreHitTestLayerClipDisabled},
         {TEST_DRAW_LIST, UiCoreDrawListDeterministicElements},
         {TEST_STATIC_ATLAS_RESOLVE, UiCoreStaticAtlasMetadataResolvesSpritePageUvNineSlice},
