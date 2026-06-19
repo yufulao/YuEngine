@@ -113,8 +113,8 @@ README.
 ## 7. Relationship To L1 Runtime Matrix
 
 `docs/YUENGINE_L1_RUNTIME_CORE_MATRIX.md` records L1 value-contract subsystem
-state and names this document as a pending governance blocker. This document
-closes the L0 sample acceptance side of that blocker.
+state and treats native sample proof as separate stage-close evidence. This
+document closes the L0 sample acceptance side of that governance follow-through.
 
 The boundary between this document and L1 vertical sample acceptance is:
 

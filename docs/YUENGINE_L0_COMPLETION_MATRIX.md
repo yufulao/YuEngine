@@ -130,12 +130,13 @@ these are true:
 | --- | --- | --- |
 | Target hardware proof for D3D11, XAudio2, XInput, and integrated HardwareFrameHost | `BlockedByEnv` | Run `windows-hardware-smoke` and `windows-strict-hardware-smoke` on the target production Windows machine |
 | Release sample command with local Ogg/Vorbis dependency | `BlockedByEnv` | Run `RunAssetSmokeDemo.ps1 -Configuration Release` on a machine with `UE_ENGINE_ROOT` configured |
-| Bridge audit document missing | `Blocker` | Complete `ENG-177B` and verify high-risk bridge rows |
-| L1 governance documents after required docs 1/2 | `Deferred` | Create `YUENGINE_L1_RUNTIME_CORE_MATRIX.md`, `YUENGINE_L0_SAMPLE_ACCEPTANCE.md`, and `YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md` after docs 1/2 acceptance |
+| Bridge audit high-risk rows | `FirstSlice` | `docs/YUENGINE_BRIDGE_AUDIT.md` exists; keep high-risk bridge rows current and require target hardware proof before current-product done claim |
+| L1 governance follow-through | `FirstSlice` | `docs/YUENGINE_L1_RUNTIME_CORE_MATRIX.md`, `docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md`, and `docs/YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md` exist; use them as L1 closure inputs rather than re-opening L0 scope |
 
 ## 7. Forbidden Expansion Freeze
 
-Until this matrix and the bridge audit are accepted:
+Until this matrix, the bridge audit, and the L0/L1 sample acceptance documents
+are accepted:
 
 - Do not create new broad World, GameAdapter, UI, or gameplay implementation
   tasks.
