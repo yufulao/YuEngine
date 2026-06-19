@@ -57,6 +57,7 @@ if(YU_ASSET_SMOKE_ENGINE_EVIDENCE)
 
     list(APPEND YU_ASSET_SMOKE_SOURCES
         Source/L0EngineEvidence.cpp
+        Source/L1VerticalSamplePrep.cpp
     )
 endif()
 
@@ -94,12 +95,18 @@ target_link_libraries(YuAssetSmokeDemo PRIVATE
 if(YU_ASSET_SMOKE_ENGINE_EVIDENCE)
     target_compile_definitions(YuAssetSmokeDemo PRIVATE YU_ASSET_SMOKE_ENGINE_EVIDENCE=1)
     target_link_libraries(YuAssetSmokeDemo PRIVATE
+        YuAsset
+        YuAudioScene
         YuFile
         YuHardware
+        YuInput
+        YuKernel
         YuRenderCore
+        YuRenderScene
         YuResource
         YuRHI
         YuStreaming
+        YuWorld
     )
 endif()
 

@@ -12,6 +12,13 @@
 #include "YuEngine/Script/ScriptConstants.h"
 #include "YuEngine/Script/ScriptNativeBinding.h"
 #include "YuEngine/Script/ScriptNativeRegistry.h"
+#include "YuEngine/Script/ScriptRuntimePhase.h"
+#include "YuEngine/Script/ScriptRuntimePhaseDispatchAdapter.h"
+#include "YuEngine/Script/ScriptRuntimePhaseDispatchAdapterDesc.h"
+#include "YuEngine/Script/ScriptRuntimePhaseDispatchResult.h"
+#include "YuEngine/Script/ScriptRuntimePhaseDispatchSnapshot.h"
+#include "YuEngine/Script/ScriptRuntimePhaseDispatchStatus.h"
+#include "YuEngine/Script/ScriptRuntimePhaseTrace.h"
 #include "YuEngine/Script/ScriptStatus.h"
 #include "YuEngine/Script/ScriptValue.h"
 #include "YuEngine/Script/ScriptValueType.h"
@@ -20,9 +27,17 @@ using yuengine::memory::MemoryAccountingStatus;
 using yuengine::script::MAX_SCRIPT_NATIVE_BINDING_COUNT;
 using yuengine::script::ScriptCallId;
 using yuengine::script::ScriptNativeBinding;
+using yuengine::script::ScriptNativeFunction;
 using yuengine::script::ScriptNativeRegistrationResult;
 using yuengine::script::ScriptNativeRegistry;
 using yuengine::script::ScriptNativeRegistryDesc;
+using yuengine::script::ScriptRuntimePhase;
+using yuengine::script::ScriptRuntimePhaseDispatchAdapter;
+using yuengine::script::ScriptRuntimePhaseDispatchAdapterDesc;
+using yuengine::script::ScriptRuntimePhaseDispatchResult;
+using yuengine::script::ScriptRuntimePhaseDispatchSnapshot;
+using yuengine::script::ScriptRuntimePhaseDispatchStatus;
+using yuengine::script::ScriptRuntimePhaseTrace;
 using yuengine::script::ScriptSnapshot;
 using yuengine::script::ScriptStatus;
 using yuengine::script::ScriptValue;
@@ -43,11 +58,20 @@ constexpr const char *TEST_CALL_PATH_CAPACITY = "Script_CallPath_DoesNotGrowRegi
 constexpr const char *TEST_NO_FORBIDDEN_DEPENDENCY = "Script_NoWorldResourcePackageOrGameAdapterDependency";
 constexpr const char *TEST_NO_HIDDEN_ALLOCATION = "Script_NoHiddenAllocation_UsesYuMemorySignal";
 constexpr const char *TEST_SNAPSHOT = "Script_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_RUNTIME_PHASE_TRACE = "Script_RuntimePhaseDispatch_TraceMapsToCallIds";
+constexpr const char *TEST_RUNTIME_PHASE_MISSING_CALL =
+    "Script_RuntimePhaseDispatch_MissingCallReturnsExplicitStatus";
+constexpr const char *TEST_RUNTIME_PHASE_INVALID_SLOTS =
+    "Script_RuntimePhaseDispatch_InvalidSlotsReturnExplicitStatus";
+constexpr const char *TEST_RUNTIME_PHASE_INVALID_PHASE =
+    "Script_RuntimePhaseDispatch_InvalidPhaseDoesNotMutate";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr ScriptCallId CALL_ADD{1U};
 constexpr ScriptCallId CALL_FAILING{2U};
 constexpr ScriptCallId CALL_SECOND{3U};
+constexpr ScriptCallId CALL_RUNTIME_BEGIN{11U};
+constexpr ScriptCallId CALL_RUNTIME_END{12U};
 constexpr ScriptCallId CALL_UNKNOWN{99U};
 using TestFunction = int (*)();
 
@@ -93,6 +117,58 @@ ScriptStatus FailingNative(const ScriptValue *arguments,
     return ScriptStatus::NativeCallFailed;
 }
 
+ScriptStatus AddOneRuntimeNative(const ScriptValue *arguments,
+    std::uint32_t argument_count,
+    ScriptValue *results,
+    std::uint32_t result_count) {
+    static_cast<void>(arguments);
+    if (argument_count != 0U) {
+        return ScriptStatus::ArgumentCountMismatch;
+    }
+
+    if (result_count != 1U) {
+        return ScriptStatus::ResultCountMismatch;
+    }
+
+    if (results == nullptr) {
+        return ScriptStatus::InvalidResultBuffer;
+    }
+
+    if (results[0].type != ScriptValueType::UInt32) {
+        return ScriptStatus::ResultTypeMismatch;
+    }
+
+    const std::uint32_t current_value = results[0].AsUInt32();
+    results[0] = ScriptValue::UInt32(current_value + 1U);
+    return ScriptStatus::Success;
+}
+
+ScriptStatus AddTenRuntimeNative(const ScriptValue *arguments,
+    std::uint32_t argument_count,
+    ScriptValue *results,
+    std::uint32_t result_count) {
+    static_cast<void>(arguments);
+    if (argument_count != 0U) {
+        return ScriptStatus::ArgumentCountMismatch;
+    }
+
+    if (result_count != 1U) {
+        return ScriptStatus::ResultCountMismatch;
+    }
+
+    if (results == nullptr) {
+        return ScriptStatus::InvalidResultBuffer;
+    }
+
+    if (results[0].type != ScriptValueType::UInt32) {
+        return ScriptStatus::ResultTypeMismatch;
+    }
+
+    const std::uint32_t current_value = results[0].AsUInt32();
+    results[0] = ScriptValue::UInt32(current_value + 10U);
+    return ScriptStatus::Success;
+}
+
 ScriptNativeBinding MakeAddBinding(ScriptCallId call_id) {
     ScriptNativeBinding binding{};
     binding.call_id = call_id;
@@ -122,8 +198,26 @@ ScriptNativeBinding MakeNullBinding(ScriptCallId call_id) {
     return binding;
 }
 
+ScriptNativeBinding MakeRuntimePhaseBinding(ScriptCallId call_id, ScriptNativeFunction function) {
+    ScriptNativeBinding binding{};
+    binding.call_id = call_id;
+    binding.function = function;
+    binding.argument_count = 0U;
+    binding.result_count = 1U;
+    binding.result_types[0] = ScriptValueType::UInt32;
+    return binding;
+}
+
 ScriptNativeRegistrationResult RegisterAddBinding(ScriptNativeRegistry &registry) {
     const ScriptNativeBinding binding = MakeAddBinding(CALL_ADD);
+    return registry.RegisterNativeCall(binding);
+}
+
+ScriptNativeRegistrationResult RegisterRuntimeBinding(
+    ScriptNativeRegistry &registry,
+    ScriptCallId call_id,
+    ScriptNativeFunction function) {
+    const ScriptNativeBinding binding = MakeRuntimePhaseBinding(call_id, function);
     return registry.RegisterNativeCall(binding);
 }
 
@@ -138,6 +232,21 @@ std::array<ScriptValue, 1> MakeSingleIntResult(std::int32_t value) {
     std::array<ScriptValue, 1> results{};
     results[0] = ScriptValue::Int32(value);
     return results;
+}
+
+std::array<ScriptValue, 1> MakeRuntimeResult(std::uint32_t value) {
+    std::array<ScriptValue, 1> results{};
+    results[0] = ScriptValue::UInt32(value);
+    return results;
+}
+
+ScriptRuntimePhaseTrace RuntimeTrace(ScriptRuntimePhase phase, std::uint64_t frame_index) {
+    ScriptRuntimePhaseTrace trace{};
+    trace.phase = phase;
+    trace.frame_index = frame_index;
+    trace.active_object_count = 2U;
+    trace.skipped_object_count = 1U;
+    return trace;
 }
 
 int ScriptRegisterNativeCallReturnsStableId() {
@@ -480,6 +589,187 @@ int ScriptSnapshotReportsCountsAndLastStatus() {
 
     return 0;
 }
+
+int ScriptRuntimePhaseDispatchTraceMapsToCallIds() {
+    ScriptNativeRegistry registry;
+    const ScriptNativeRegistrationResult begin_registration =
+        RegisterRuntimeBinding(registry, CALL_RUNTIME_BEGIN, AddOneRuntimeNative);
+    if (!begin_registration.Succeeded()) {
+        return Fail("runtime begin binding registration failed");
+    }
+
+    const ScriptNativeRegistrationResult end_registration =
+        RegisterRuntimeBinding(registry, CALL_RUNTIME_END, AddTenRuntimeNative);
+    if (!end_registration.Succeeded()) {
+        return Fail("runtime end binding registration failed");
+    }
+
+    ScriptRuntimePhaseDispatchAdapter adapter;
+    const ScriptRuntimePhaseDispatchResult begin_bind =
+        adapter.Bind(ScriptRuntimePhase::BeginFrame, CALL_RUNTIME_BEGIN);
+    if (!begin_bind.Succeeded()) {
+        return Fail("runtime begin phase bind failed");
+    }
+
+    const ScriptRuntimePhaseDispatchResult end_bind =
+        adapter.Bind(ScriptRuntimePhase::EndFrame, CALL_RUNTIME_END);
+    if (!end_bind.Succeeded()) {
+        return Fail("runtime end phase bind failed");
+    }
+
+    const std::array<ScriptRuntimePhaseTrace, 3U> traces{
+        RuntimeTrace(ScriptRuntimePhase::BeginFrame, 7U),
+        RuntimeTrace(ScriptRuntimePhase::FixedStep, 7U),
+        RuntimeTrace(ScriptRuntimePhase::EndFrame, 7U)};
+    std::array<ScriptValue, 1U> results = MakeRuntimeResult(0U);
+    const ScriptRuntimePhaseDispatchStatus status = adapter.DispatchTrace(
+        registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (status != ScriptRuntimePhaseDispatchStatus::Success) {
+        return Fail("runtime phase dispatch failed");
+    }
+
+    if (results[0].AsUInt32() != 11U) {
+        return Fail("runtime phase dispatch did not map call ids in trace order");
+    }
+
+    const ScriptRuntimePhaseDispatchSnapshot snapshot = adapter.Snapshot();
+    if (snapshot.dispatched_call_count != 2ULL) {
+        return Fail("runtime phase dispatch count mismatch");
+    }
+
+    if (snapshot.skipped_phase_count != 1ULL) {
+        return Fail("runtime phase skipped count mismatch");
+    }
+
+    if (snapshot.binding_count != 2U) {
+        return Fail("runtime phase binding count mismatch");
+    }
+
+    return 0;
+}
+
+int ScriptRuntimePhaseDispatchMissingCallReturnsExplicitStatus() {
+    ScriptNativeRegistry registry;
+    ScriptRuntimePhaseDispatchAdapter adapter;
+    const ScriptRuntimePhaseDispatchResult bind_result =
+        adapter.Bind(ScriptRuntimePhase::BeginFrame, CALL_UNKNOWN);
+    if (!bind_result.Succeeded()) {
+        return Fail("missing call fixture bind failed");
+    }
+
+    const std::array<ScriptRuntimePhaseTrace, 1U> traces{
+        RuntimeTrace(ScriptRuntimePhase::BeginFrame, 8U)};
+    std::array<ScriptValue, 1U> results = MakeRuntimeResult(0U);
+    const ScriptRuntimePhaseDispatchStatus status = adapter.DispatchTrace(
+        registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (status != ScriptRuntimePhaseDispatchStatus::MissingCall) {
+        return Fail("missing script call did not return explicit dispatch status");
+    }
+
+    const ScriptRuntimePhaseDispatchSnapshot snapshot = adapter.Snapshot();
+    if (snapshot.last_script_status != ScriptStatus::InvalidCallId) {
+        return Fail("missing script call did not preserve script status");
+    }
+
+    if (snapshot.failed_dispatch_count != 1ULL) {
+        return Fail("missing script call did not record failed dispatch");
+    }
+
+    return 0;
+}
+
+int ScriptRuntimePhaseDispatchInvalidSlotsReturnExplicitStatus() {
+    ScriptNativeRegistry registry;
+    const ScriptNativeRegistrationResult registration =
+        RegisterRuntimeBinding(registry, CALL_RUNTIME_BEGIN, AddOneRuntimeNative);
+    if (!registration.Succeeded()) {
+        return Fail("invalid slot fixture registration failed");
+    }
+
+    ScriptRuntimePhaseDispatchAdapter adapter;
+    const ScriptRuntimePhaseDispatchResult bind_result =
+        adapter.Bind(ScriptRuntimePhase::BeginFrame, CALL_RUNTIME_BEGIN);
+    if (!bind_result.Succeeded()) {
+        return Fail("invalid slot fixture bind failed");
+    }
+
+    const std::array<ScriptRuntimePhaseTrace, 1U> traces{
+        RuntimeTrace(ScriptRuntimePhase::BeginFrame, 9U)};
+    std::array<ScriptValue, 1U> results = MakeSingleIntResult(0);
+    const ScriptRuntimePhaseDispatchStatus status = adapter.DispatchTrace(
+        registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (status != ScriptRuntimePhaseDispatchStatus::InvalidScriptSlot) {
+        return Fail("invalid script slot did not return explicit dispatch status");
+    }
+
+    const ScriptRuntimePhaseDispatchSnapshot snapshot = adapter.Snapshot();
+    if (snapshot.last_script_status != ScriptStatus::ResultTypeMismatch) {
+        return Fail("invalid script slot did not preserve script status");
+    }
+
+    if (snapshot.failed_dispatch_count != 1ULL) {
+        return Fail("invalid script slot did not record failed dispatch");
+    }
+
+    return 0;
+}
+
+int ScriptRuntimePhaseDispatchInvalidPhaseDoesNotMutate() {
+    ScriptRuntimePhaseDispatchAdapter adapter;
+    const std::array<ScriptRuntimePhaseTrace, 1U> traces{
+        RuntimeTrace(static_cast<ScriptRuntimePhase>(99), 10U)};
+    std::array<ScriptValue, 1U> results = MakeRuntimeResult(0U);
+    ScriptNativeRegistry registry;
+
+    const ScriptRuntimePhaseDispatchStatus status = adapter.DispatchTrace(
+        registry,
+        traces.data(),
+        static_cast<std::uint32_t>(traces.size()),
+        nullptr,
+        0U,
+        results.data(),
+        static_cast<std::uint32_t>(results.size()));
+    if (status != ScriptRuntimePhaseDispatchStatus::InvalidPhase) {
+        return Fail("invalid runtime phase did not return explicit status");
+    }
+
+    const ScriptRuntimePhaseDispatchSnapshot snapshot = adapter.Snapshot();
+    if (snapshot.binding_count != 0U) {
+        return Fail("invalid runtime phase mutated binding count");
+    }
+
+    if (snapshot.dispatched_call_count != 0ULL) {
+        return Fail("invalid runtime phase dispatched calls");
+    }
+
+    if (snapshot.skipped_phase_count != 0ULL) {
+        return Fail("invalid runtime phase skipped phases");
+    }
+
+    if (snapshot.failed_dispatch_count != 1ULL) {
+        return Fail("invalid runtime phase did not record failed dispatch");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -501,7 +791,11 @@ int main(int argc, char** argv) {
         {TEST_CALL_PATH_CAPACITY, ScriptCallPathDoesNotGrowRegistryStorage},
         {TEST_NO_FORBIDDEN_DEPENDENCY, ScriptNoWorldResourcePackageOrGameAdapterDependency},
         {TEST_NO_HIDDEN_ALLOCATION, ScriptNoHiddenAllocationUsesYuMemorySignal},
-        {TEST_SNAPSHOT, ScriptSnapshotReportsCountsAndLastStatus}};
+        {TEST_SNAPSHOT, ScriptSnapshotReportsCountsAndLastStatus},
+        {TEST_RUNTIME_PHASE_TRACE, ScriptRuntimePhaseDispatchTraceMapsToCallIds},
+        {TEST_RUNTIME_PHASE_MISSING_CALL, ScriptRuntimePhaseDispatchMissingCallReturnsExplicitStatus},
+        {TEST_RUNTIME_PHASE_INVALID_SLOTS, ScriptRuntimePhaseDispatchInvalidSlotsReturnExplicitStatus},
+        {TEST_RUNTIME_PHASE_INVALID_PHASE, ScriptRuntimePhaseDispatchInvalidPhaseDoesNotMutate}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

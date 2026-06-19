@@ -29,6 +29,7 @@ target_include_directories(YuMemory
 
 add_library(YuScript
     Src/YuEngine/Script/Src/ScriptNativeRegistry.cpp
+    Src/YuEngine/Script/Src/ScriptRuntimePhaseDispatchAdapter.cpp
 )
 yuengine_apply_compile_options(YuScript)
 target_include_directories(YuScript
@@ -427,6 +428,10 @@ yuengine_add_labeled_test(Script_CallPath_DoesNotGrowRegistryStorage YuScriptTes
 yuengine_add_labeled_test(Script_NoWorldResourcePackageOrGameAdapterDependency YuScriptTests Fast ModuleFixture Script EvidenceOracle)
 yuengine_add_labeled_test(Script_NoHiddenAllocation_UsesYuMemorySignal YuScriptTests Fast ModuleFixture Script PerformanceSmoke)
 yuengine_add_labeled_test(Script_SnapshotReportsCountsAndLastStatus YuScriptTests Fast ModuleFixture Script)
+yuengine_add_labeled_test(Script_RuntimePhaseDispatch_TraceMapsToCallIds YuScriptTests Fast ModuleFixture Script L1Runtime EvidenceOracle)
+yuengine_add_labeled_test(Script_RuntimePhaseDispatch_MissingCallReturnsExplicitStatus YuScriptTests Fast ModuleFixture Script L1Runtime EvidenceOracle)
+yuengine_add_labeled_test(Script_RuntimePhaseDispatch_InvalidSlotsReturnExplicitStatus YuScriptTests Fast ModuleFixture Script L1Runtime EvidenceOracle)
+yuengine_add_labeled_test(Script_RuntimePhaseDispatch_InvalidPhaseDoesNotMutate YuScriptTests Fast ModuleFixture Script L1Runtime EvidenceOracle)
 
 add_executable(YuWorldTests
     Tests/World/WorldTests.cpp
@@ -1610,6 +1615,16 @@ yuengine_add_labeled_test(AudioScene_MissingBackendReturnsExplicitStatus YuAudio
 yuengine_add_labeled_test(AudioScene_PausedSourceDoesNotSubmitQueue YuAudioSceneTests Fast ModuleFixture AudioScene Audio Asset AudioResource L1 EvidenceOracle)
 yuengine_add_labeled_test(AudioScene_MissingSoundAssetDoesNotMutateOutput YuAudioSceneTests Fast ModuleFixture AudioScene Audio Asset AudioResource L1 EvidenceOracle)
 yuengine_add_labeled_test(AudioScene_NoNativeOrUpperDependency YuAudioSceneTests Fast ModuleFixture AudioScene Audio Asset AudioResource L1 EvidenceOracle)
+
+add_executable(YuSampleTests
+    Samples/AssetSmokeDemo/Source/L1VerticalSamplePrep.cpp
+    Tests/Sample/L1VerticalSamplePrepTests.cpp
+)
+yuengine_apply_compile_options(YuSampleTests)
+target_include_directories(YuSampleTests PRIVATE Samples/AssetSmokeDemo/Source)
+target_link_libraries(YuSampleTests PRIVATE YuAsset YuAudioScene YuInput YuKernel YuRenderScene YuWorld)
+yuengine_add_labeled_test(Sample_L1VerticalPrep_BuildsManifestAndSubmitPrep YuSampleTests Fast ModuleFixture Sample L1 RuntimeApp Asset Input RenderScene AudioScene EvidenceOracle)
+yuengine_add_labeled_test(Sample_L1VerticalPrep_UsesValueContractsWithoutHardware YuSampleTests Fast ModuleFixture Sample L1 EvidenceOracle)
 
 add_executable(YuInputTests
     Tests/Input/InputTests.cpp

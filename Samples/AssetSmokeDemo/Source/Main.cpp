@@ -19,6 +19,7 @@
 
 #if YU_ASSET_SMOKE_ENGINE_EVIDENCE
 #include "L0EngineEvidence.h"
+#include "L1VerticalSamplePrep.h"
 #endif
 
 #pragma pack(push, 8)
@@ -1398,6 +1399,7 @@ int RunDemo(int argc, wchar_t **argv) {
 
 #if YU_ASSET_SMOKE_ENGINE_EVIDENCE
     asset_smoke_demo::L0EngineEvidenceResult engine_evidence = {};
+    asset_smoke_demo::L1VerticalSamplePrepResult l1_prep = {};
     asset_smoke_demo::L0EngineEvidenceInput engine_input = {};
     engine_input.asset_root = asset_root;
     engine_input.texture_path = texture_path;
@@ -1417,6 +1419,21 @@ int RunDemo(int argc, wchar_t **argv) {
             engine_evidence.resize ? 1U : 0U,
             engine_evidence.shutdown ? 1U : 0U);
         return 9;
+    }
+
+    if (!asset_smoke_demo::RunL1VerticalSamplePrep(&l1_prep)) {
+        std::fprintf(
+            stderr,
+            "YuAssetSmokeDemo L1 sample prep failed stage=%s runtime=%u manifest=%u world=%u assets=%u input=%u render=%u audio=%u.\n",
+            l1_prep.failure_stage,
+            l1_prep.runtime_boot ? 1U : 0U,
+            l1_prep.synthetic_manifest ? 1U : 0U,
+            l1_prep.world_object ? 1U : 0U,
+            l1_prep.asset_bindings ? 1U : 0U,
+            l1_prep.input_command ? 1U : 0U,
+            l1_prep.render_scene_submit ? 1U : 0U,
+            l1_prep.audio_scene_submit ? 1U : 0U);
+        return 10;
     }
 #endif
 
@@ -1502,6 +1519,14 @@ int RunDemo(int argc, wchar_t **argv) {
         engine_evidence.input_event_count,
         engine_evidence.gamepad_state,
         engine_evidence.audio_state);
+    std::printf(
+        "YuAssetSmokeDemo L1_PREP PASS frames=%u world_objects=%u assets=%u input_commands=%u render_packets=%u audio_requests=%u\n",
+        l1_prep.completed_frame_count,
+        l1_prep.world_object_count,
+        l1_prep.asset_count,
+        l1_prep.input_command_count,
+        l1_prep.render_packet_count,
+        l1_prep.audio_queue_request_count);
 #endif
     return 0;
 }
