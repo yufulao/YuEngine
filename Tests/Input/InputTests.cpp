@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -14,7 +15,13 @@
 #include "YuEngine/Input/InputBridgeDesc.h"
 #include "YuEngine/Input/InputBridgeEvent.h"
 #include "YuEngine/Input/InputBridgeSnapshot.h"
+#include "YuEngine/Input/InputCommandBinding.h"
+#include "YuEngine/Input/InputCommandMapper.h"
+#include "YuEngine/Input/InputCommandSnapshot.h"
+#include "YuEngine/Input/InputCommandValueKind.h"
 #include "YuEngine/Input/InputConstants.h"
+#include "YuEngine/Input/InputContextFocusMode.h"
+#include "YuEngine/Input/InputContextId.h"
 #include "YuEngine/Input/InputDeviceKind.h"
 #include "YuEngine/Input/InputGamepadState.h"
 #include "YuEngine/Input/InputReplay.h"
@@ -28,7 +35,13 @@ using yuengine::input::InputBridgeDesc;
 using yuengine::input::InputBridgeEvent;
 using yuengine::input::InputBridgeEventType;
 using yuengine::input::InputBridgeSnapshot;
+using yuengine::input::InputCommandBinding;
+using yuengine::input::InputCommandMapper;
+using yuengine::input::InputCommandSnapshot;
+using yuengine::input::InputCommandValueKind;
 using yuengine::input::InputControlId;
+using yuengine::input::InputContextFocusMode;
+using yuengine::input::InputContextId;
 using yuengine::input::InputDeviceId;
 using yuengine::input::InputDeviceKind;
 using yuengine::input::InputEvent;
@@ -89,9 +102,14 @@ constexpr const char *TEST_BRIDGE_XINPUT_CONNECTED = "Input_BridgeXInputPollConn
 constexpr const char *TEST_BRIDGE_XINPUT_BACKEND_ERROR = "Input_BridgeXInputPollBackendError_ReturnsExplicitStatus";
 constexpr const char *TEST_BRIDGE_XINPUT_INVALID_USER = "Input_BridgeXInputPollInvalidUserIndex_ReturnsExplicitStatus";
 constexpr const char* TEST_BRIDGE_NO_DISPATCH = "Input_BridgeNoUiGameOrReportDispatch";
+constexpr const char *TEST_COMMAND_KEYBOARD = "Input_CommandMapper_KeyboardBuildsFrameCommandSnapshot";
+constexpr const char *TEST_COMMAND_XINPUT_AXIS = "Input_CommandMapper_XInputStyleAxisBuildsCommandSnapshot";
+constexpr const char *TEST_COMMAND_FOCUS = "Input_CommandMapper_FocusRejectsInputWithoutMutation";
+constexpr const char *TEST_COMMAND_INVALID = "Input_CommandMapper_InvalidEventDoesNotMutateHeldState";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
+constexpr InputContextId CONTEXT_A{0U};
 constexpr InputDeviceId DEVICE_A{0U};
 constexpr InputDeviceId DEVICE_B{1U};
 constexpr InputDeviceId UNKNOWN_DEVICE{99U};
@@ -232,6 +250,42 @@ bool RegisterSecondaryBinding(InputReplay& replay) {
 
 bool RegisterSecondActionBinding(InputReplay& replay) {
     return replay.RegisterActionBinding(DEVICE_A, CONTROL_B, ACTION_B).status == InputStatus::Success;
+}
+
+InputCommandBinding ButtonCommandBinding(
+    InputContextId context,
+    InputDeviceId device,
+    InputControlId control,
+    InputActionId action) {
+    InputCommandBinding binding{};
+    binding.context = context;
+    binding.device = device;
+    binding.control = control;
+    binding.action = action;
+    binding.value_kind = InputCommandValueKind::Button;
+    return binding;
+}
+
+InputCommandBinding AxisCommandBinding(
+    InputContextId context,
+    InputDeviceId device,
+    InputControlId control,
+    InputActionId action) {
+    InputCommandBinding binding{};
+    binding.context = context;
+    binding.device = device;
+    binding.control = control;
+    binding.action = action;
+    binding.value_kind = InputCommandValueKind::Axis;
+    return binding;
+}
+
+bool RegisterCommandContext(InputCommandMapper &mapper) {
+    if (mapper.RegisterContext(CONTEXT_A) != InputStatus::Success) {
+        return false;
+    }
+
+    return mapper.SetActiveContext(CONTEXT_A, InputContextFocusMode::AcceptInput) == InputStatus::Success;
 }
 
 bool StateEquals(const InputActionState& left, const InputActionState& right) {
@@ -1332,6 +1386,193 @@ int InputBridgeNoUiGameOrReportDispatch() {
 
     return 0;
 }
+
+int InputCommandMapperKeyboardBuildsFrameCommandSnapshot() {
+    InputCommandMapper mapper;
+    if (!RegisterCommandContext(mapper)) {
+        return Fail("command context registration failed");
+    }
+
+    InputCommandBinding invalid_binding = ButtonCommandBinding(CONTEXT_A, DEVICE_A, CONTROL_B, ACTION_B);
+    invalid_binding.value_kind = static_cast<InputCommandValueKind>(99);
+    if (mapper.RegisterBinding(invalid_binding) != InputStatus::InvalidDescriptor) {
+        return Fail("invalid command value kind did not return explicit status");
+    }
+
+    if (mapper.RegisterBinding(ButtonCommandBinding(CONTEXT_A, DEVICE_A, CONTROL_A, ACTION_A)) != InputStatus::Success) {
+        return Fail("keyboard command binding failed");
+    }
+
+    std::array<InputEvent, 1U> press_events{ButtonPress(DEVICE_A, CONTROL_A)};
+    InputCommandSnapshot press_snapshot{};
+    const InputStatus press_status = mapper.BuildSnapshot(
+        42U,
+        std::span<const InputEvent>(press_events.data(), press_events.size()),
+        &press_snapshot);
+    if (press_status != InputStatus::Success) {
+        return Fail("keyboard command press snapshot failed");
+    }
+
+    if (press_snapshot.frame_index != 42U || press_snapshot.command_count != 1U) {
+        return Fail("keyboard command snapshot metadata mismatch");
+    }
+
+    const auto &press_record = press_snapshot.commands[0U];
+    if (!press_record.pressed_this_frame || !press_record.held || press_record.released_this_frame) {
+        return Fail("keyboard press command state mismatch");
+    }
+
+    InputCommandSnapshot held_snapshot{};
+    if (mapper.BuildSnapshot(43U, std::span<const InputEvent>(), &held_snapshot) != InputStatus::Success) {
+        return Fail("keyboard held command snapshot failed");
+    }
+
+    const auto &held_record = held_snapshot.commands[0U];
+    if (held_record.pressed_this_frame || !held_record.held || held_record.released_this_frame) {
+        return Fail("keyboard held command state mismatch");
+    }
+
+    std::array<InputEvent, 1U> release_events{ButtonRelease(DEVICE_A, CONTROL_A)};
+    InputCommandSnapshot release_snapshot{};
+    if (mapper.BuildSnapshot(
+        44U,
+        std::span<const InputEvent>(release_events.data(), release_events.size()),
+        &release_snapshot) != InputStatus::Success) {
+        return Fail("keyboard release command snapshot failed");
+    }
+
+    const auto &release_record = release_snapshot.commands[0U];
+    if (release_record.pressed_this_frame || release_record.held || !release_record.released_this_frame) {
+        return Fail("keyboard release command state mismatch");
+    }
+
+    return 0;
+}
+
+int InputCommandMapperXInputStyleAxisBuildsCommandSnapshot() {
+    InputCommandMapper mapper;
+    if (!RegisterCommandContext(mapper)) {
+        return Fail("command context registration failed");
+    }
+
+    const InputControlId gamepad_axis{GAMEPAD_LEFT_THUMB_X_CONTROL};
+    if (mapper.RegisterBinding(AxisCommandBinding(CONTEXT_A, DEVICE_B, gamepad_axis, ACTION_B)) != InputStatus::Success) {
+        return Fail("xinput style axis command binding failed");
+    }
+
+    std::array<InputEvent, 1U> axis_events{Axis(DEVICE_B, gamepad_axis, AXIS_NEGATIVE)};
+    InputCommandSnapshot snapshot{};
+    const InputStatus status = mapper.BuildSnapshot(
+        7U,
+        std::span<const InputEvent>(axis_events.data(), axis_events.size()),
+        &snapshot);
+    if (status != InputStatus::Success) {
+        return Fail("xinput style axis snapshot failed");
+    }
+
+    if (snapshot.command_count != 1U) {
+        return Fail("xinput style axis command count mismatch");
+    }
+
+    const auto &record = snapshot.commands[0U];
+    if (record.action.value != ACTION_B.value) {
+        return Fail("xinput style axis action mismatch");
+    }
+
+    if (record.value_kind != InputCommandValueKind::Axis) {
+        return Fail("xinput style axis value kind mismatch");
+    }
+
+    if (record.axis_value != AXIS_NEGATIVE) {
+        return Fail("xinput style axis value mismatch");
+    }
+
+    if (record.pressed_this_frame || record.released_this_frame || record.held) {
+        return Fail("xinput style axis emitted button state");
+    }
+
+    return 0;
+}
+
+int InputCommandMapperFocusRejectsInputWithoutMutation() {
+    InputCommandMapper mapper;
+    if (!RegisterCommandContext(mapper)) {
+        return Fail("command context registration failed");
+    }
+
+    if (mapper.RegisterBinding(ButtonCommandBinding(CONTEXT_A, DEVICE_A, CONTROL_A, ACTION_A)) != InputStatus::Success) {
+        return Fail("keyboard command binding failed");
+    }
+
+    if (mapper.SetActiveContext(CONTEXT_A, InputContextFocusMode::RejectInput) != InputStatus::Success) {
+        return Fail("focus reject setup failed");
+    }
+
+    std::array<InputEvent, 1U> press_events{ButtonPress(DEVICE_A, CONTROL_A)};
+    InputCommandSnapshot snapshot{};
+    const InputStatus status = mapper.BuildSnapshot(
+        9U,
+        std::span<const InputEvent>(press_events.data(), press_events.size()),
+        &snapshot);
+    if (status != InputStatus::FocusLost) {
+        return Fail("focus reject did not return focus lost");
+    }
+
+    if (snapshot.command_count != 0U) {
+        return Fail("focus reject emitted commands");
+    }
+
+    if (mapper.Snapshot().build_count != 0U) {
+        return Fail("focus reject mutated build count");
+    }
+
+    return 0;
+}
+
+int InputCommandMapperInvalidEventDoesNotMutateHeldState() {
+    InputCommandMapper mapper;
+    if (!RegisterCommandContext(mapper)) {
+        return Fail("command context registration failed");
+    }
+
+    if (mapper.RegisterBinding(ButtonCommandBinding(CONTEXT_A, DEVICE_A, CONTROL_A, ACTION_A)) != InputStatus::Success) {
+        return Fail("keyboard command binding failed");
+    }
+
+    std::array<InputEvent, 1U> press_events{ButtonPress(DEVICE_A, CONTROL_A)};
+    InputCommandSnapshot press_snapshot{};
+    if (mapper.BuildSnapshot(
+        1U,
+        std::span<const InputEvent>(press_events.data(), press_events.size()),
+        &press_snapshot) != InputStatus::Success) {
+        return Fail("initial press snapshot failed");
+    }
+
+    std::array<InputEvent, 1U> invalid_events{Axis(DEVICE_A, CONTROL_A, AXIS_POSITIVE)};
+    InputCommandSnapshot invalid_snapshot{};
+    if (mapper.BuildSnapshot(
+        2U,
+        std::span<const InputEvent>(invalid_events.data(), invalid_events.size()),
+        &invalid_snapshot) != InputStatus::InvalidEvent) {
+        return Fail("invalid button axis did not return explicit status");
+    }
+
+    InputCommandSnapshot held_snapshot{};
+    if (mapper.BuildSnapshot(3U, std::span<const InputEvent>(), &held_snapshot) != InputStatus::Success) {
+        return Fail("post-invalid held snapshot failed");
+    }
+
+    if (held_snapshot.command_count != 1U) {
+        return Fail("post-invalid held command count mismatch");
+    }
+
+    const auto &record = held_snapshot.commands[0U];
+    if (!record.held || record.pressed_this_frame || record.released_this_frame) {
+        return Fail("invalid event mutated held command state");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -1373,7 +1614,11 @@ int main(int argc, char** argv) {
         {TEST_BRIDGE_XINPUT_CONNECTED, InputBridgeXInputPollConnectedQueuesButtonAxisAndPacket},
         {TEST_BRIDGE_XINPUT_BACKEND_ERROR, InputBridgeXInputPollBackendErrorReturnsExplicitStatus},
         {TEST_BRIDGE_XINPUT_INVALID_USER, InputBridgeXInputPollInvalidUserIndexReturnsExplicitStatus},
-        {TEST_BRIDGE_NO_DISPATCH, InputBridgeNoUiGameOrReportDispatch}};
+        {TEST_BRIDGE_NO_DISPATCH, InputBridgeNoUiGameOrReportDispatch},
+        {TEST_COMMAND_KEYBOARD, InputCommandMapperKeyboardBuildsFrameCommandSnapshot},
+        {TEST_COMMAND_XINPUT_AXIS, InputCommandMapperXInputStyleAxisBuildsCommandSnapshot},
+        {TEST_COMMAND_FOCUS, InputCommandMapperFocusRejectsInputWithoutMutation},
+        {TEST_COMMAND_INVALID, InputCommandMapperInvalidEventDoesNotMutateHeldState}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

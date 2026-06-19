@@ -51,6 +51,7 @@ add_library(YuWorld
     Src/YuEngine/World/Src/WorldSceneDecodedRestorePlanBridge.cpp
     Src/YuEngine/World/Src/WorldSceneObjectTransformManifestStreamBridge.cpp
     Src/YuEngine/World/Src/WorldSceneObjectTransformRestoreBridge.cpp
+    Src/YuEngine/World/Src/WorldIdentityBaseline.cpp
     Src/YuEngine/World/Src/WorldObjectIdentityBridge.cpp
     Src/YuEngine/World/Src/WorldKernelModule.cpp
     Src/YuEngine/World/Src/WorldResourceBindingBridge.cpp
@@ -212,6 +213,16 @@ target_include_directories(YuStreaming
 )
 target_link_libraries(YuStreaming PUBLIC YuMemory YuPackage YuResource YuFile YuRHI)
 
+add_library(YuAsset
+    Src/YuEngine/Asset/Src/AssetManager.cpp
+)
+yuengine_apply_compile_options(YuAsset)
+target_include_directories(YuAsset
+    PUBLIC
+        Src/YuEngine/Asset/Include
+)
+target_link_libraries(YuAsset PUBLIC YuResource YuStreaming YuAudioResource)
+
 add_library(YuRenderCore
     Src/YuEngine/RenderCore/Src/MaterialBindingFixture.cpp
     Src/YuEngine/RenderCore/Src/RenderCamera.cpp
@@ -236,6 +247,7 @@ target_include_directories(YuRenderCore
 target_link_libraries(YuRenderCore PUBLIC YuRHI)
 
 add_library(YuInput
+    Src/YuEngine/Input/Src/InputCommandMapper.cpp
     Src/YuEngine/Input/Src/InputBridge.cpp
     Src/YuEngine/Input/Src/InputBridgeWindows.cpp
     Src/YuEngine/Input/Src/InputReplay.cpp
@@ -838,6 +850,16 @@ yuengine_add_labeled_test(WorldComponentAttachmentSnapshotBridge_NoActorComponen
 yuengine_add_labeled_test(WorldComponentAttachmentSnapshotBridge_NoObjectResourceScriptFilePackageOrGameAdapterDependency YuWorldTests Fast ModuleFixture World EvidenceOracle)
 yuengine_add_labeled_test(WorldComponentAttachmentSnapshotBridge_NoRenderPhysicsAudioInputUiToolOrReportDependency YuWorldTests Fast ModuleFixture World EvidenceOracle)
 yuengine_add_labeled_test(WorldComponentAttachmentSnapshotBridge_WorldInstanceCoreRemainsSnapshotFree YuWorldTests Fast ModuleFixture World)
+
+add_executable(YuWorldIdentityBaselineTests
+    Tests/World/WorldIdentityBaselineTests.cpp
+)
+yuengine_apply_compile_options(YuWorldIdentityBaselineTests)
+target_link_libraries(YuWorldIdentityBaselineTests PRIVATE YuWorld)
+yuengine_add_labeled_test(WorldIdentityBaseline_CreateQueryExportDestroyDeterministic YuWorldIdentityBaselineTests Fast ModuleFixture World Object L1Runtime EvidenceOracle)
+yuengine_add_labeled_test(WorldIdentityBaseline_InvalidComponentDoesNotMutate YuWorldIdentityBaselineTests Fast ModuleFixture World Object L1Runtime EvidenceOracle)
+yuengine_add_labeled_test(WorldIdentityBaseline_DuplicateWorldObjectDoesNotMutate YuWorldIdentityBaselineTests Fast ModuleFixture World Object L1Runtime EvidenceOracle)
+yuengine_add_labeled_test(WorldIdentityBaseline_DestroyMissingDoesNotMutate YuWorldIdentityBaselineTests Fast ModuleFixture World Object L1Runtime EvidenceOracle)
 
 add_executable(YuThreadTests
     Tests/Thread/ThreadTestContext.cpp
@@ -1530,6 +1552,19 @@ yuengine_add_labeled_test(Streaming_ResourceDecodedTextureBridge_RejectsSmallScr
 yuengine_add_labeled_test(Streaming_ResourceDecodedTextureBridge_RejectsSampledTextureSlotOutOfRangeWithoutRhiMutation YuResourceDecodedTextureBridgeTests Fast ModuleFixture Streaming Resource RHI RenderCore TextureSampling EvidenceOracle)
 yuengine_add_labeled_test(Streaming_ResourceDecodedTextureBridge_ReportsRhiTextureCapacityWithoutWritingOutput YuResourceDecodedTextureBridgeTests Fast ModuleFixture Streaming Resource RHI RenderCore TextureSampling PerformanceSmoke EvidenceOracle)
 
+add_executable(YuAssetTests
+    Tests/Asset/AssetManagerTests.cpp
+)
+yuengine_apply_compile_options(YuAssetTests)
+target_link_libraries(YuAssetTests PRIVATE YuAsset)
+yuengine_add_labeled_test(Asset_RegisterRuntimeAsset_ReturnsStableHandleAndState YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
+yuengine_add_labeled_test(Asset_DependenciesTraverseBoundedAndRejectCycle YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
+yuengine_add_labeled_test(Asset_TextureReadyRecordUsesStreamingResultWithoutOwningDevice YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 TextureSampling EvidenceOracle)
+yuengine_add_labeled_test(Asset_AudioReadyRecordUsesImportRecordWithoutOwningDevice YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
+yuengine_add_labeled_test(Asset_RefreshStateFromResourceMapsUploadedResidentAndFailed YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
+yuengine_add_labeled_test(Asset_ReleaseRuntimeAssetReleasesResourceAndClearsReadyRecords YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
+yuengine_add_labeled_test(Asset_NoWorldGameAdapterUiDependency YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
+
 add_executable(YuInputTests
     Tests/Input/InputTests.cpp
 )
@@ -1570,6 +1605,10 @@ yuengine_add_labeled_test(Input_BridgeXInputPollConnected_QueuesButtonAxisAndPac
 yuengine_add_labeled_test(Input_BridgeXInputPollBackendError_ReturnsExplicitStatus YuInputTests Fast ModuleFixture Input XInput EvidenceOracle)
 yuengine_add_labeled_test(Input_BridgeXInputPollInvalidUserIndex_ReturnsExplicitStatus YuInputTests Fast ModuleFixture Input XInput EvidenceOracle)
 yuengine_add_labeled_test(Input_BridgeNoUiGameOrReportDispatch YuInputTests Fast ModuleFixture Input EvidenceOracle)
+yuengine_add_labeled_test(Input_CommandMapper_KeyboardBuildsFrameCommandSnapshot YuInputTests Fast ModuleFixture Input L1 CommandSnapshot EvidenceOracle)
+yuengine_add_labeled_test(Input_CommandMapper_XInputStyleAxisBuildsCommandSnapshot YuInputTests Fast ModuleFixture Input L1 CommandSnapshot XInput EvidenceOracle)
+yuengine_add_labeled_test(Input_CommandMapper_FocusRejectsInputWithoutMutation YuInputTests Fast ModuleFixture Input L1 CommandSnapshot EvidenceOracle)
+yuengine_add_labeled_test(Input_CommandMapper_InvalidEventDoesNotMutateHeldState YuInputTests Fast ModuleFixture Input L1 CommandSnapshot EvidenceOracle)
 
 add_executable(YuInputHardwareSmokeTests
     Tests/Input/InputHardwareSmokeTests.cpp

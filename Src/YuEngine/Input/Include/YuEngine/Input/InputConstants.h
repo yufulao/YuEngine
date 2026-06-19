@@ -10,6 +10,8 @@ namespace yuengine::input {
 constexpr std::size_t MAX_INPUT_DEVICES = 4U;
 constexpr std::size_t MAX_INPUT_ACTIONS = 32U;
 constexpr std::size_t MAX_INPUT_BINDINGS = 64U;
+constexpr std::size_t MAX_INPUT_CONTEXTS = 8U;
+constexpr std::size_t MAX_INPUT_COMMAND_RECORDS = 32U;
 constexpr std::size_t MAX_REPLAY_FRAMES = 16U;
 constexpr std::size_t MAX_EVENTS_PER_FRAME = 32U;
 constexpr std::uint32_t MAX_GAMEPAD_DEVICES = 4U;
