@@ -1,0 +1,27 @@
+# YuUiEditor
+
+`Tools/UiEditor` 是 editor-only 工具目录，用于承载 `UI-E1-001` 的 editor shell 首片。这里的代码不能被 runtime UI Core 依赖，也不能把 Dear ImGui、D3D11、RenderCore preview viewport 或 Project UI Runtime lifecycle/config/window stack 传播到 `Src/YuEngine/UiCore`。
+
+## Dear ImGui 依赖状态
+
+`ENG-183C` 对当前仓库做了依赖核对：
+
+- `ThirdParty/` 只保留经过审查、明确需要随仓库分发的第三方包，目前没有 Dear ImGui。
+- 根 `CMakeLists.txt` 和源码中没有 Dear ImGui、ImGui 或等价 editor shell 依赖配置。
+- 因此当前不能声明真实 Dear ImGui docking shell 已落地。
+
+后续如果要接入真实 Dear ImGui 后端，必须先补齐：
+
+- 第三方来源、版本、许可证和仓库内分发策略。
+- `ThirdParty/DearImGui` 或显式本地依赖入口的 CMake gate。
+- editor-only 目标链接边界，确保 runtime library 不 include 或 link editor shell。
+
+## 当前首片
+
+当前落地的是可构建、可测试的 shell state 首片：
+
+- `YuUiEditorShellCore`：维护 hierarchy、inspector、preview 三个 placeholder panel 的 editor-only registry。
+- `YuUiEditorShell`：构建一个 shell entry；在 Dear ImGui 后端未配置时返回 explicit unavailable，不伪装成真实 docking UI。
+- `YuUiEditorTests`：headless 验证默认 placeholder、panel 开关、输出容量和 Dear ImGui backend gate。
+
+`UI-E1-003` runtime preview viewport 不属于本首片；它需要等 `UI-S1-007` RenderCore bridge 完成后再使用真实 UI Core/RenderCore 路径实现。

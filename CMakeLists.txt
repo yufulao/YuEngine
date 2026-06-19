@@ -349,6 +349,21 @@ add_executable(YuHeadless
 yuengine_apply_compile_options(YuHeadless)
 target_link_libraries(YuHeadless PRIVATE YuKernel)
 
+add_library(YuUiEditorShellCore
+    Tools/UiEditor/Src/UiEditorShellState.cpp
+)
+yuengine_apply_compile_options(YuUiEditorShellCore)
+target_include_directories(YuUiEditorShellCore
+    PUBLIC
+        Tools/UiEditor/Include
+)
+
+add_executable(YuUiEditorShell
+    Tools/UiEditor/Src/Main.cpp
+)
+yuengine_apply_compile_options(YuUiEditorShell)
+target_link_libraries(YuUiEditorShell PRIVATE YuUiEditorShellCore)
+
 enable_testing()
 
 function(yuengine_add_labeled_test test_name test_target)
@@ -1517,6 +1532,16 @@ yuengine_add_labeled_test(UiCore_LayoutContainers_ResolveExpectedRects YuUiCoreT
 yuengine_add_labeled_test(UiCore_DirtyTracker_PaintOnlyDoesNotTriggerLayoutRebuild YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_HitTest_LayerClipDisabled YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_DrawList_DeterministicElements YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+
+add_executable(YuUiEditorTests
+    Tests/UiEditor/UiEditorTests.cpp
+)
+yuengine_apply_compile_options(YuUiEditorTests)
+target_link_libraries(YuUiEditorTests PRIVATE YuUiEditorShellCore)
+yuengine_add_labeled_test(UiEditor_ShellState_DefaultPlaceholdersOpen YuUiEditorTests Fast ModuleFixture UiEditor UI Editor EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_ShellState_ClosePanelUpdatesSnapshot YuUiEditorTests Fast ModuleFixture UiEditor UI Editor EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_ShellState_RejectsSmallPanelOutput YuUiEditorTests Fast ModuleFixture UiEditor UI Editor EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_ShellState_DearImGuiBackendGateIsExplicit YuUiEditorTests Fast ModuleFixture UiEditor UI Editor EvidenceOracle)
 
 add_executable(YuSerializeTests
     Tests/Serialize/SerializeTests.cpp
