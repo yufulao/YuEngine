@@ -180,6 +180,16 @@ target_include_directories(YuObject
 target_link_libraries(YuObject PUBLIC YuMemory)
 target_link_libraries(YuWorld PUBLIC YuObject)
 
+add_library(YuUiCore
+    Src/YuEngine/UiCore/Src/UiNodeTree.cpp
+    Src/YuEngine/UiCore/Src/UiRectMath.cpp
+)
+yuengine_apply_compile_options(YuUiCore)
+target_include_directories(YuUiCore
+    PUBLIC
+        Src/YuEngine/UiCore/Include
+)
+
 add_library(YuSerialize
     Src/YuEngine/Serialize/Src/RuntimeConfigStream.cpp
     Src/YuEngine/Serialize/Src/SerializeReader.cpp
@@ -1489,6 +1499,16 @@ yuengine_add_labeled_test(Object_DisabledDiagnosticsDoesNotChangeResults YuObjec
 yuengine_add_labeled_test(Object_NoWorldScriptResourceOrGameAdapterDependency YuObjectTests Fast ModuleFixture Object EvidenceOracle)
 yuengine_add_labeled_test(Object_NoHiddenAllocation_UsesYuMemorySignal YuObjectTests Fast ModuleFixture Object PerformanceSmoke)
 yuengine_add_labeled_test(Object_HotPathValidateSmoke_DoesNotGrowRuntimeCounts YuObjectTests Fast ModuleFixture Object L1Runtime PerformanceSmoke)
+
+add_executable(YuUiCoreTests
+    Tests/UiCore/UiCoreTests.cpp
+)
+yuengine_apply_compile_options(YuUiCoreTests)
+target_link_libraries(YuUiCoreTests PRIVATE YuUiCore)
+yuengine_add_labeled_test(UiCore_NodeTree_CreateAttachDetachOrder YuUiCoreTests Fast ModuleFixture UiCore UI EvidenceOracle)
+yuengine_add_labeled_test(UiCore_NodeTree_DestroyRemovesDescendants YuUiCoreTests Fast ModuleFixture UiCore UI EvidenceOracle)
+yuengine_add_labeled_test(UiCore_RectMath_ParentResizePivotMarginPaddingDpi YuUiCoreTests Fast ModuleFixture UiCore UI EvidenceOracle)
+yuengine_add_labeled_test(UiCore_NoLifecycleConfigEditorRenderBackendDependency YuUiCoreTests Fast ModuleFixture UiCore UI EvidenceOracle)
 
 add_executable(YuSerializeTests
     Tests/Serialize/SerializeTests.cpp
