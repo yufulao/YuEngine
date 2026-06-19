@@ -104,6 +104,7 @@ constexpr const char *TEST_BRIDGE_XINPUT_INVALID_USER = "Input_BridgeXInputPollI
 constexpr const char* TEST_BRIDGE_NO_DISPATCH = "Input_BridgeNoUiGameOrReportDispatch";
 constexpr const char *TEST_COMMAND_KEYBOARD = "Input_CommandMapper_KeyboardBuildsFrameCommandSnapshot";
 constexpr const char *TEST_COMMAND_XINPUT_AXIS = "Input_CommandMapper_XInputStyleAxisBuildsCommandSnapshot";
+constexpr const char *TEST_COMMAND_RUNTIME_BOUNDARY = "Input_CommandMapper_KeyboardAndXInputFixturesStayRuntimeOnly";
 constexpr const char *TEST_COMMAND_FOCUS = "Input_CommandMapper_FocusRejectsInputWithoutMutation";
 constexpr const char *TEST_COMMAND_INVALID = "Input_CommandMapper_InvalidEventDoesNotMutateHeldState";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -1494,6 +1495,85 @@ int InputCommandMapperXInputStyleAxisBuildsCommandSnapshot() {
     return 0;
 }
 
+int InputCommandMapperKeyboardAndXInputFixturesStayRuntimeOnly() {
+    ScopedNativeGamepadPollFunction poll_function(PollNativeUnavailable);
+    InputBridge bridge;
+    InputBridgeDesc desc{};
+    if (bridge.Initialize(desc) != InputStatus::Success) {
+        return Fail("runtime boundary bridge initialize failed");
+    }
+
+    if (bridge.PollGamepad(0U) != InputStatus::DeviceUnavailable) {
+        return Fail("runtime boundary unavailable xinput did not return explicit status");
+    }
+
+    if (bridge.Snapshot().gamepad_connection != InputGamepadConnection::Unavailable) {
+        return Fail("runtime boundary unavailable xinput connection mismatch");
+    }
+
+    InputCommandMapper mapper;
+    if (!RegisterCommandContext(mapper)) {
+        return Fail("runtime boundary command context registration failed");
+    }
+
+    const InputControlId gamepad_axis{GAMEPAD_LEFT_THUMB_X_CONTROL};
+    if (mapper.RegisterBinding(ButtonCommandBinding(CONTEXT_A, DEVICE_A, CONTROL_A, ACTION_A)) != InputStatus::Success) {
+        return Fail("runtime boundary keyboard binding failed");
+    }
+
+    if (mapper.RegisterBinding(AxisCommandBinding(CONTEXT_A, DEVICE_B, gamepad_axis, ACTION_B)) != InputStatus::Success) {
+        return Fail("runtime boundary xinput axis binding failed");
+    }
+
+    std::array<InputEvent, 2U> events{
+        ButtonPress(DEVICE_A, CONTROL_A),
+        Axis(DEVICE_B, gamepad_axis, AXIS_NEGATIVE)};
+    InputCommandSnapshot snapshot{};
+    const InputStatus status = mapper.BuildSnapshot(
+        99U,
+        std::span<const InputEvent>(events.data(), events.size()),
+        &snapshot);
+    if (status != InputStatus::Success) {
+        return Fail("runtime boundary command snapshot failed");
+    }
+
+    if (snapshot.frame_index != 99U) {
+        return Fail("runtime boundary command frame mismatch");
+    }
+
+    if (snapshot.command_count != 2U) {
+        return Fail("runtime boundary command count mismatch");
+    }
+
+    const auto &keyboard_record = snapshot.commands[0U];
+    if (keyboard_record.action.value != ACTION_A.value) {
+        return Fail("runtime boundary keyboard action mismatch");
+    }
+
+    if (!keyboard_record.pressed_this_frame || !keyboard_record.held || keyboard_record.released_this_frame) {
+        return Fail("runtime boundary keyboard command state mismatch");
+    }
+
+    const auto &gamepad_record = snapshot.commands[1U];
+    if (gamepad_record.action.value != ACTION_B.value) {
+        return Fail("runtime boundary xinput action mismatch");
+    }
+
+    if (gamepad_record.value_kind != InputCommandValueKind::Axis) {
+        return Fail("runtime boundary xinput value kind mismatch");
+    }
+
+    if (gamepad_record.axis_value != AXIS_NEGATIVE) {
+        return Fail("runtime boundary xinput axis mismatch");
+    }
+
+    if (gamepad_record.pressed_this_frame || gamepad_record.released_this_frame || gamepad_record.held) {
+        return Fail("runtime boundary xinput emitted button state");
+    }
+
+    return 0;
+}
+
 int InputCommandMapperFocusRejectsInputWithoutMutation() {
     InputCommandMapper mapper;
     if (!RegisterCommandContext(mapper)) {
@@ -1617,6 +1697,7 @@ int main(int argc, char** argv) {
         {TEST_BRIDGE_NO_DISPATCH, InputBridgeNoUiGameOrReportDispatch},
         {TEST_COMMAND_KEYBOARD, InputCommandMapperKeyboardBuildsFrameCommandSnapshot},
         {TEST_COMMAND_XINPUT_AXIS, InputCommandMapperXInputStyleAxisBuildsCommandSnapshot},
+        {TEST_COMMAND_RUNTIME_BOUNDARY, InputCommandMapperKeyboardAndXInputFixturesStayRuntimeOnly},
         {TEST_COMMAND_FOCUS, InputCommandMapperFocusRejectsInputWithoutMutation},
         {TEST_COMMAND_INVALID, InputCommandMapperInvalidEventDoesNotMutateHeldState}};
 

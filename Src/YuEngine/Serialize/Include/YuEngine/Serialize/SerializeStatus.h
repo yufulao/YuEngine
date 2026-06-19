@@ -17,6 +17,7 @@ enum class SerializeStatus {
     TypeMismatch,
     DuplicateField,
     MalformedFieldLength,
-    FieldNotFound
+    FieldNotFound,
+    InvalidArgument
 };
 }

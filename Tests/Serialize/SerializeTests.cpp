@@ -9,11 +9,19 @@
 
 #include "StreamFixture.h"
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
+#include "YuEngine/Serialize/RuntimeConfigRecord.h"
+#include "YuEngine/Serialize/RuntimeConfigStream.h"
+#include "YuEngine/Serialize/RuntimeProfileBoundary.h"
+#include "YuEngine/Serialize/RuntimeProfileBoundaryKind.h"
 #include "YuEngine/Serialize/SerializeConstants.h"
 #include "YuEngine/Serialize/SerializeReader.h"
 #include "YuEngine/Serialize/SerializeWriter.h"
 
 using yuengine::memory::MemoryAccountingStatus;
+using yuengine::serialize::RuntimeConfigRecord;
+using yuengine::serialize::RuntimeConfigStream;
+using yuengine::serialize::RuntimeProfileBoundary;
+using yuengine::serialize::RuntimeProfileBoundaryKind;
 using SerializeFieldId = yuengine::serialize::SerializeFieldId;
 using SerializeReader = yuengine::serialize::SerializeReader;
 using SerializeRecordId = yuengine::serialize::SerializeRecordId;
@@ -28,6 +36,7 @@ using yuengine::serialize::MAX_FIELDS_PER_RECORD;
 using yuengine::serialize::MAX_RECORDS_PER_STREAM;
 using yuengine::serialize::MAX_STREAM_BYTE_COUNT;
 using yuengine::serialize::RECORD_HEADER_BYTE_COUNT;
+using yuengine::serialize::RUNTIME_CONFIG_SCHEMA_VERSION;
 using yuengine::serialize::STREAM_FLAGS;
 using yuengine::serialize::STREAM_FLAGS_OFFSET;
 using yuengine::serialize::STREAM_HEADER_BYTE_COUNT;
@@ -59,6 +68,12 @@ constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Serialize_DisabledDiagnostics
 constexpr const char* TEST_NO_FORBIDDEN_DEPENDENCY = "Serialize_NoFilePackageResourceObjectOrGameAdapterDependency";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Serialize_NoHiddenAllocationInReadWritePath";
 constexpr const char* TEST_SNAPSHOT = "Serialize_SnapshotReportsCountsAndLastStatus";
+constexpr const char *TEST_RUNTIME_CONFIG_ROUNDTRIP =
+    "Serialize_RuntimeConfigStream_RoundTripsCallerOwnedConfigBoundary";
+constexpr const char *TEST_RUNTIME_CONFIG_UNSUPPORTED =
+    "Serialize_RuntimeConfigStream_RejectsUnsupportedVersionWithoutMutation";
+constexpr const char *TEST_RUNTIME_CONFIG_BOUNDARY =
+    "Serialize_RuntimeConfigStream_KeepsPersistencePolicyOutsideCore";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* UNDERSIZED_FIXED_BYTES_READ_MESSAGE = "undersized fixed bytes read did not fail";
@@ -82,6 +97,17 @@ constexpr SerializeFieldId FIELD_U64{13U};
 constexpr SerializeFieldId FIELD_I64{14U};
 constexpr SerializeFieldId FIELD_BYTES{15U};
 constexpr SerializeFieldId FIELD_UNKNOWN{16U};
+constexpr SerializeRecordId RUNTIME_CONFIG_RECORD{2601U};
+constexpr SerializeRecordId RUNTIME_PROFILE_BOUNDARY_RECORD{2602U};
+constexpr SerializeFieldId RUNTIME_CONFIG_FIELD_SCHEMA_VERSION{1U};
+constexpr SerializeFieldId RUNTIME_CONFIG_FIELD_FIXED_STEP_MICROSECONDS{2U};
+constexpr SerializeFieldId RUNTIME_CONFIG_FIELD_MAX_FRAME_COUNT{3U};
+constexpr SerializeFieldId RUNTIME_CONFIG_FIELD_COMMAND_SNAPSHOT_CAPACITY{4U};
+constexpr SerializeFieldId RUNTIME_CONFIG_FIELD_DIAGNOSTICS_ENABLED{5U};
+constexpr SerializeFieldId RUNTIME_PROFILE_FIELD_PROFILE_ID{1U};
+constexpr SerializeFieldId RUNTIME_PROFILE_FIELD_SLOT_ID{2U};
+constexpr SerializeFieldId RUNTIME_PROFILE_FIELD_KIND{3U};
+constexpr SerializeFieldId RUNTIME_PROFILE_FIELD_CALLER_POLICY_TAG{4U};
 constexpr std::uint8_t SENTINEL_BYTE = 0xCDU;
 using TestFunction = int (*)();
 
@@ -208,6 +234,116 @@ int BuildRoundTripFixture(StreamFixture &fixture) {
 
     if (writer.WriteFixedBytes(FIELD_BYTES, bytes.data(), static_cast<std::uint32_t>(bytes.size())) != SerializeStatus::Success) {
         return Fail("write fixed bytes failed");
+    }
+
+    fixture.snapshot = writer.Snapshot();
+    fixture.byte_count = fixture.snapshot.committed_byte_count;
+    return 0;
+}
+
+RuntimeConfigRecord BuildRuntimeConfigRecord() {
+    RuntimeConfigRecord record{};
+    record.fixed_step_microseconds = 16666U;
+    record.max_frame_count = 8U;
+    record.command_snapshot_capacity = 4U;
+    record.diagnostics_enabled = true;
+    return record;
+}
+
+RuntimeProfileBoundary BuildRuntimeProfileBoundary() {
+    RuntimeProfileBoundary boundary{};
+    boundary.profile_id = 23U;
+    boundary.slot_id = 2U;
+    boundary.kind = RuntimeProfileBoundaryKind::SaveSnapshot;
+    boundary.caller_policy_tag = 77U;
+    return boundary;
+}
+
+bool RuntimeConfigRecordsMatch(const RuntimeConfigRecord &left, const RuntimeConfigRecord &right) {
+    if (left.schema_version != right.schema_version) {
+        return false;
+    }
+
+    if (left.fixed_step_microseconds != right.fixed_step_microseconds) {
+        return false;
+    }
+
+    if (left.max_frame_count != right.max_frame_count) {
+        return false;
+    }
+
+    if (left.command_snapshot_capacity != right.command_snapshot_capacity) {
+        return false;
+    }
+
+    return left.diagnostics_enabled == right.diagnostics_enabled;
+}
+
+bool RuntimeProfileBoundariesMatch(const RuntimeProfileBoundary &left, const RuntimeProfileBoundary &right) {
+    if (left.profile_id != right.profile_id) {
+        return false;
+    }
+
+    if (left.slot_id != right.slot_id) {
+        return false;
+    }
+
+    if (left.kind != right.kind) {
+        return false;
+    }
+
+    return left.caller_policy_tag == right.caller_policy_tag;
+}
+
+int WriteUnsupportedRuntimeConfigStream(StreamFixture &fixture) {
+    fixture.buffer.fill(SENTINEL_BYTE);
+    SerializeWriter writer(fixture.buffer.data(), static_cast<std::uint32_t>(fixture.buffer.size()));
+    if (writer.BeginStream() != SerializeStatus::Success) {
+        return Fail("begin unsupported stream failed");
+    }
+
+    if (writer.BeginRecord(RUNTIME_CONFIG_RECORD) != SerializeStatus::Success) {
+        return Fail("begin unsupported config record failed");
+    }
+
+    if (writer.WriteUInt32(RUNTIME_CONFIG_FIELD_SCHEMA_VERSION, RUNTIME_CONFIG_SCHEMA_VERSION + 1U) != SerializeStatus::Success) {
+        return Fail("write unsupported config schema failed");
+    }
+
+    if (writer.WriteUInt32(RUNTIME_CONFIG_FIELD_FIXED_STEP_MICROSECONDS, 16666U) != SerializeStatus::Success) {
+        return Fail("write unsupported config fixed step failed");
+    }
+
+    if (writer.WriteUInt32(RUNTIME_CONFIG_FIELD_MAX_FRAME_COUNT, 8U) != SerializeStatus::Success) {
+        return Fail("write unsupported config frame count failed");
+    }
+
+    if (writer.WriteUInt32(RUNTIME_CONFIG_FIELD_COMMAND_SNAPSHOT_CAPACITY, 4U) != SerializeStatus::Success) {
+        return Fail("write unsupported config command capacity failed");
+    }
+
+    if (writer.WriteUInt32(RUNTIME_CONFIG_FIELD_DIAGNOSTICS_ENABLED, 1U) != SerializeStatus::Success) {
+        return Fail("write unsupported config diagnostics failed");
+    }
+
+    if (writer.BeginRecord(RUNTIME_PROFILE_BOUNDARY_RECORD) != SerializeStatus::Success) {
+        return Fail("begin unsupported boundary record failed");
+    }
+
+    if (writer.WriteUInt32(RUNTIME_PROFILE_FIELD_PROFILE_ID, 23U) != SerializeStatus::Success) {
+        return Fail("write unsupported boundary profile failed");
+    }
+
+    if (writer.WriteUInt32(RUNTIME_PROFILE_FIELD_SLOT_ID, 2U) != SerializeStatus::Success) {
+        return Fail("write unsupported boundary slot failed");
+    }
+
+    if (writer.WriteUInt32(RUNTIME_PROFILE_FIELD_KIND, static_cast<std::uint32_t>(RuntimeProfileBoundaryKind::SaveSnapshot)) != SerializeStatus::Success) {
+        return Fail("write unsupported boundary kind failed");
+    }
+
+    if (writer.WriteUInt32(RUNTIME_PROFILE_FIELD_CALLER_POLICY_TAG, 77U) != SerializeStatus::Success) {
+        return Fail("write unsupported boundary policy tag failed");
     }
 
     fixture.snapshot = writer.Snapshot();
@@ -827,6 +963,122 @@ int SerializeSnapshotReportsCountsAndLastStatus() {
 
     return 0;
 }
+
+int SerializeRuntimeConfigStreamRoundTripsCallerOwnedConfigBoundary() {
+    RuntimeConfigStream stream;
+    RuntimeConfigRecord input_config = BuildRuntimeConfigRecord();
+    RuntimeProfileBoundary input_boundary = BuildRuntimeProfileBoundary();
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (writer.BeginStream() != SerializeStatus::Success) {
+        return Fail("runtime config begin stream failed");
+    }
+
+    if (stream.WriteRuntimeConfig(&writer, input_config, input_boundary) != SerializeStatus::Success) {
+        return Fail("runtime config write failed");
+    }
+
+    const SerializeSnapshot writer_snapshot = writer.Snapshot();
+    if (writer_snapshot.record_count != 2U) {
+        return Fail("runtime config record count mismatch");
+    }
+
+    if (writer_snapshot.field_count != 9U) {
+        return Fail("runtime config field count mismatch");
+    }
+
+    SerializeReader reader(buffer.data(), writer_snapshot.committed_byte_count);
+    if (reader.OpenStream() != SerializeStatus::Success) {
+        return Fail("runtime config reader open failed");
+    }
+
+    RuntimeConfigRecord output_config{};
+    RuntimeProfileBoundary output_boundary{};
+    if (stream.ReadRuntimeConfig(&reader, &output_config, &output_boundary) != SerializeStatus::Success) {
+        return Fail("runtime config read failed");
+    }
+
+    if (!RuntimeConfigRecordsMatch(input_config, output_config)) {
+        return Fail("runtime config record mismatch");
+    }
+
+    if (!RuntimeProfileBoundariesMatch(input_boundary, output_boundary)) {
+        return Fail("runtime config boundary mismatch");
+    }
+
+    return 0;
+}
+
+int SerializeRuntimeConfigStreamRejectsUnsupportedVersionWithoutMutation() {
+    RuntimeConfigStream stream;
+    StreamFixture fixture;
+    if (WriteUnsupportedRuntimeConfigStream(fixture) != 0) {
+        return 1;
+    }
+
+    SerializeReader reader(fixture.buffer.data(), fixture.byte_count);
+    if (reader.OpenStream() != SerializeStatus::Success) {
+        return Fail("unsupported runtime config reader open failed");
+    }
+
+    RuntimeConfigRecord output_config = BuildRuntimeConfigRecord();
+    output_config.fixed_step_microseconds = 30000U;
+    RuntimeConfigRecord original_config = output_config;
+    RuntimeProfileBoundary output_boundary = BuildRuntimeProfileBoundary();
+    output_boundary.profile_id = 99U;
+    RuntimeProfileBoundary original_boundary = output_boundary;
+    if (stream.ReadRuntimeConfig(&reader, &output_config, &output_boundary) != SerializeStatus::UnsupportedVersion) {
+        return Fail("unsupported runtime config version did not reject");
+    }
+
+    if (!RuntimeConfigRecordsMatch(original_config, output_config)) {
+        return Fail("unsupported runtime config mutated output config");
+    }
+
+    if (!RuntimeProfileBoundariesMatch(original_boundary, output_boundary)) {
+        return Fail("unsupported runtime config mutated output boundary");
+    }
+
+    return 0;
+}
+
+int SerializeRuntimeConfigStreamKeepsPersistencePolicyOutsideCore() {
+    RuntimeConfigStream stream;
+    RuntimeConfigRecord config = BuildRuntimeConfigRecord();
+    RuntimeProfileBoundary boundary = BuildRuntimeProfileBoundary();
+    boundary.kind = RuntimeProfileBoundaryKind::ProfileSnapshot;
+    boundary.caller_policy_tag = 1001U;
+    std::array<std::uint8_t, MAX_STREAM_BYTE_COUNT> buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (writer.BeginStream() != SerializeStatus::Success) {
+        return Fail("profile boundary begin stream failed");
+    }
+
+    if (stream.WriteRuntimeConfig(&writer, config, boundary) != SerializeStatus::Success) {
+        return Fail("profile boundary write failed");
+    }
+
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    if (reader.OpenStream() != SerializeStatus::Success) {
+        return Fail("profile boundary reader open failed");
+    }
+
+    RuntimeConfigRecord output_config{};
+    RuntimeProfileBoundary output_boundary{};
+    if (stream.ReadRuntimeConfig(&reader, &output_config, &output_boundary) != SerializeStatus::Success) {
+        return Fail("profile boundary read failed");
+    }
+
+    if (output_boundary.kind != RuntimeProfileBoundaryKind::ProfileSnapshot) {
+        return Fail("profile boundary kind mismatch");
+    }
+
+    if (output_boundary.caller_policy_tag != boundary.caller_policy_tag) {
+        return Fail("profile boundary policy tag mismatch");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -852,7 +1104,10 @@ int main(int argc, char** argv) {
         {TEST_DISABLED_DIAGNOSTICS, SerializeDisabledDiagnosticsDoesNotChangeResults},
         {TEST_NO_FORBIDDEN_DEPENDENCY, SerializeNoFilePackageResourceObjectOrGameAdapterDependency},
         {TEST_NO_HIDDEN_ALLOCATION, SerializeNoHiddenAllocationInReadWritePath},
-        {TEST_SNAPSHOT, SerializeSnapshotReportsCountsAndLastStatus}};
+        {TEST_SNAPSHOT, SerializeSnapshotReportsCountsAndLastStatus},
+        {TEST_RUNTIME_CONFIG_ROUNDTRIP, SerializeRuntimeConfigStreamRoundTripsCallerOwnedConfigBoundary},
+        {TEST_RUNTIME_CONFIG_UNSUPPORTED, SerializeRuntimeConfigStreamRejectsUnsupportedVersionWithoutMutation},
+        {TEST_RUNTIME_CONFIG_BOUNDARY, SerializeRuntimeConfigStreamKeepsPersistencePolicyOutsideCore}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
