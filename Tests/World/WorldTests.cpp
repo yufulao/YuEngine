@@ -150,6 +150,11 @@
 #include "YuEngine/World/WorldSceneObjectTransformRestoreSnapshot.h"
 #include "YuEngine/World/WorldSceneObjectTransformRestoreStatus.h"
 #include "YuEngine/World/WorldSceneObjectTransformRestoreTransformRecord.h"
+#include "YuEngine/World/WorldSceneRecordValueStreamBridge.h"
+#include "YuEngine/World/WorldSceneRecordValueStreamDesc.h"
+#include "YuEngine/World/WorldSceneRecordValueStreamResult.h"
+#include "YuEngine/World/WorldSceneRecordValueStreamSnapshot.h"
+#include "YuEngine/World/WorldSceneRecordValueStreamStatus.h"
 #include "YuEngine/World/WorldSceneAssemblyResult.h"
 #include "YuEngine/World/WorldSceneAssemblySnapshot.h"
 #include "YuEngine/World/WorldSceneAssemblyStatus.h"
@@ -378,6 +383,11 @@ using yuengine::world::WorldSceneObjectTransformRestoreResult;
 using yuengine::world::WorldSceneObjectTransformRestoreSnapshot;
 using yuengine::world::WorldSceneObjectTransformRestoreStatus;
 using yuengine::world::WorldSceneObjectTransformRestoreTransformRecord;
+using yuengine::world::WorldSceneRecordValueStreamBridge;
+using yuengine::world::WorldSceneRecordValueStreamDesc;
+using yuengine::world::WorldSceneRecordValueStreamResult;
+using yuengine::world::WorldSceneRecordValueStreamSnapshot;
+using yuengine::world::WorldSceneRecordValueStreamStatus;
 using yuengine::world::WorldSceneAssemblyResult;
 using yuengine::world::WorldSceneAssemblySnapshot;
 using yuengine::world::WorldSceneAssemblyStatus;
@@ -827,6 +837,14 @@ constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_NO_FILE_PACKAGE =
     "WorldSceneObjectTransformManifestStreamBridge_NoFilePackageResourceLoadDecodeUploadDependency";
 constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_CORE_FREE =
     "WorldSceneObjectTransformManifestStreamBridge_WorldObjectSerializeCoresRemainManifestFree";
+constexpr const char *TEST_SCENE_RECORD_VALUE_STREAM_ROUND_TRIP =
+    "WorldSceneRecordValueStreamBridge_WriteReadRoundTripsAllSceneRecordFamilies";
+constexpr const char *TEST_SCENE_RECORD_VALUE_STREAM_WRITER_CAPACITY =
+    "WorldSceneRecordValueStreamBridge_WriteRejectsCombinedWriterCapacityBeforePartialWrite";
+constexpr const char *TEST_SCENE_RECORD_VALUE_STREAM_ASSEMBLY_VERSION =
+    "WorldSceneRecordValueStreamBridge_ReadRejectsUnsupportedAssemblyVersionWithoutMutation";
+constexpr const char *TEST_SCENE_RECORD_VALUE_STREAM_COUNTERS =
+    "WorldSceneRecordValueStreamBridge_SnapshotReportsCountsAndLastStatus";
 constexpr const char *TEST_SCENE_DECODED_PLAN_ORDER =
     "WorldSceneDecodedRestorePlanBridge_PlansAllDecodedRecordFamiliesInDeterministicOrder";
 constexpr const char *TEST_SCENE_DECODED_PLAN_EMPTY =
@@ -14489,6 +14507,382 @@ int WorldSceneObjectTransformManifestStreamBridgeWorldObjectSerializeCoresRemain
     return 0;
 }
 
+int WorldSceneRecordValueStreamBridgeWriteReadRoundTripsAllSceneRecordFamilies() {
+    const ObjectHandle first_handle = MakeObjectTransformManifestHandle(1U, 1U);
+    const ObjectHandle second_handle = MakeObjectTransformManifestHandle(2U, 1U);
+    const ResourceHandle first_resource = MakeManifestResourceHandle(3U, 1U);
+    const ResourceHandle second_resource = MakeManifestResourceHandle(4U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, first_handle),
+        MakeSceneObjectTransformIdentityRecord(OBJECT_CAMERA, second_handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, Transform(1500.0F)),
+        MakeSceneObjectTransformTransformRecord(OBJECT_CAMERA, Transform(1600.0F))};
+    std::array<WorldComponentAttachmentSnapshotRecord, 2U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY),
+        MakeSceneAttachmentRecord(OBJECT_CAMERA, COMPONENT_TYPE_SECONDARY, COMPONENT_SLOT_SECONDARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 2U> input_bindings{
+        MakeSceneBindingRecord(
+            OBJECT_PLAYER,
+            COMPONENT_TYPE_PRIMARY,
+            COMPONENT_SLOT_PRIMARY,
+            first_resource,
+            RESOURCE_TYPE_TEXTURE),
+        MakeSceneBindingRecord(
+            OBJECT_CAMERA,
+            COMPONENT_TYPE_SECONDARY,
+            COMPONENT_SLOT_SECONDARY,
+            second_resource,
+            RESOURCE_TYPE_AUDIO)};
+
+    WorldSceneRecordValueStreamBridge bridge;
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    const WorldSceneRecordValueStreamResult write_result = bridge.WriteSceneRecords(
+        &writer,
+        input_identities.data(),
+        static_cast<std::uint32_t>(input_identities.size()),
+        input_transforms.data(),
+        static_cast<std::uint32_t>(input_transforms.size()),
+        input_attachments.data(),
+        static_cast<std::uint32_t>(input_attachments.size()),
+        input_bindings.data(),
+        static_cast<std::uint32_t>(input_bindings.size()));
+    if (!write_result.Succeeded()) {
+        return Fail("scene record value stream write failed");
+    }
+
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    const WorldComponentAttachmentSnapshotRecord sentinel_attachment = SentinelManifestAttachmentRecord();
+    const WorldComponentResourceBindingSnapshotRecord sentinel_binding = SentinelManifestBindingRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 3U> output_identities{
+        sentinel_identity,
+        sentinel_identity,
+        sentinel_identity};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 3U> output_transforms{
+        sentinel_transform,
+        sentinel_transform,
+        sentinel_transform};
+    std::array<WorldComponentAttachmentSnapshotRecord, 3U> output_attachments{
+        sentinel_attachment,
+        sentinel_attachment,
+        sentinel_attachment};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 3U> output_bindings{
+        sentinel_binding,
+        sentinel_binding,
+        sentinel_binding};
+    std::uint32_t identity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    std::uint32_t attachment_count = 0U;
+    std::uint32_t binding_count = 0U;
+    SerializeReader reader(buffer.data(), write_result.state.committed_byte_count);
+    const WorldSceneRecordValueStreamResult read_result = bridge.ReadSceneRecords(
+        &reader,
+        output_identities.data(),
+        static_cast<std::uint32_t>(output_identities.size()),
+        &identity_count,
+        output_transforms.data(),
+        static_cast<std::uint32_t>(output_transforms.size()),
+        &transform_count,
+        output_attachments.data(),
+        static_cast<std::uint32_t>(output_attachments.size()),
+        &attachment_count,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (!read_result.Succeeded()) {
+        return Fail("scene record value stream read failed");
+    }
+
+    if (identity_count != input_identities.size() || transform_count != input_transforms.size()) {
+        return Fail("scene record value stream object transform counts wrong");
+    }
+
+    if (attachment_count != input_attachments.size() || binding_count != input_bindings.size()) {
+        return Fail("scene record value stream assembly counts wrong");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], input_identities[0])) {
+        return Fail("scene record value stream first identity wrong");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[1], input_identities[1])) {
+        return Fail("scene record value stream second identity wrong");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[2], sentinel_identity)) {
+        return Fail("scene record value stream identity output overrun");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], input_transforms[0])) {
+        return Fail("scene record value stream first transform wrong");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[1], input_transforms[1])) {
+        return Fail("scene record value stream second transform wrong");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[2], sentinel_transform)) {
+        return Fail("scene record value stream transform output overrun");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[0], input_attachments[0])) {
+        return Fail("scene record value stream first attachment wrong");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[1], input_attachments[1])) {
+        return Fail("scene record value stream second attachment wrong");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[2], sentinel_attachment)) {
+        return Fail("scene record value stream attachment output overrun");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[0], input_bindings[0])) {
+        return Fail("scene record value stream first binding wrong");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[1], input_bindings[1])) {
+        return Fail("scene record value stream second binding wrong");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[2], sentinel_binding)) {
+        return Fail("scene record value stream binding output overrun");
+    }
+
+    if (write_result.state.committed_byte_count != read_result.state.committed_byte_count) {
+        return Fail("scene record value stream committed byte count mismatch");
+    }
+
+    return 0;
+}
+
+int WorldSceneRecordValueStreamBridgeWriteRejectsCombinedWriterCapacityBeforePartialWrite() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, Transform(1700.0F))};
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    std::array<std::uint8_t, STREAM_HEADER_BYTE_COUNT + 1U> buffer{};
+    buffer[STREAM_HEADER_BYTE_COUNT] = 0xABU;
+    SerializeWriter writer(buffer.data(), STREAM_HEADER_BYTE_COUNT);
+    const SerializeSnapshot before_writer = writer.Snapshot();
+    WorldSceneRecordValueStreamBridge bridge;
+    const WorldSceneRecordValueStreamResult result = bridge.WriteSceneRecords(
+        &writer,
+        input_identities.data(),
+        1U,
+        input_transforms.data(),
+        1U,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U);
+    if (result.status != WorldSceneRecordValueStreamStatus::SerializeFailure) {
+        return Fail("scene record value stream writer capacity status wrong");
+    }
+
+    if (result.serialize_status != SerializeStatus::BufferTooSmall) {
+        return Fail("scene record value stream writer capacity serialize status wrong");
+    }
+
+    if (!SerializeSnapshotsMatch(before_writer, writer.Snapshot())) {
+        return Fail("scene record value stream writer capacity mutated writer");
+    }
+
+    if (buffer[STREAM_HEADER_BYTE_COUNT] != 0xABU) {
+        return Fail("scene record value stream writer capacity overran buffer");
+    }
+
+    return 0;
+}
+
+int WorldSceneRecordValueStreamBridgeReadRejectsUnsupportedAssemblyVersionWithoutMutation() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{
+        MakeSceneObjectTransformTransformRecord(OBJECT_PLAYER, Transform(1800.0F))};
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    if (BeginSerializeStream(writer) != 0) {
+        return 1;
+    }
+
+    if (WriteObjectTransformManifestFixtureStream(
+            writer,
+            input_identities.data(),
+            1U,
+            input_transforms.data(),
+            1U) != 0) {
+        return 1;
+    }
+
+    if (WriteManifestMetadata(writer, 999U, 0U, 0U, 0U, 0U) != 0) {
+        return 1;
+    }
+
+    const WorldSceneObjectTransformRestoreIdentityRecord sentinel_identity =
+        SentinelObjectTransformManifestIdentityRecord();
+    const WorldSceneObjectTransformRestoreTransformRecord sentinel_transform =
+        SentinelObjectTransformManifestTransformRecord();
+    const WorldComponentAttachmentSnapshotRecord sentinel_attachment = SentinelManifestAttachmentRecord();
+    const WorldComponentResourceBindingSnapshotRecord sentinel_binding = SentinelManifestBindingRecord();
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{sentinel_identity};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{sentinel_transform};
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{sentinel_attachment};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{sentinel_binding};
+    std::uint32_t identity_count = 77U;
+    std::uint32_t transform_count = 88U;
+    std::uint32_t attachment_count = 99U;
+    std::uint32_t binding_count = 100U;
+    SerializeReader reader(buffer.data(), writer.Snapshot().committed_byte_count);
+    WorldSceneRecordValueStreamBridge bridge;
+    const WorldSceneRecordValueStreamResult result = bridge.ReadSceneRecords(
+        &reader,
+        output_identities.data(),
+        static_cast<std::uint32_t>(output_identities.size()),
+        &identity_count,
+        output_transforms.data(),
+        static_cast<std::uint32_t>(output_transforms.size()),
+        &transform_count,
+        output_attachments.data(),
+        static_cast<std::uint32_t>(output_attachments.size()),
+        &attachment_count,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (result.status != WorldSceneRecordValueStreamStatus::UnsupportedVersion) {
+        return Fail("scene record value stream unsupported assembly version status wrong");
+    }
+
+    if (identity_count != 77U || transform_count != 88U) {
+        return Fail("scene record value stream unsupported version mutated object counts");
+    }
+
+    if (attachment_count != 99U || binding_count != 100U) {
+        return Fail("scene record value stream unsupported version mutated assembly counts");
+    }
+
+    if (!ObjectTransformManifestIdentityRecordsMatch(output_identities[0], sentinel_identity)) {
+        return Fail("scene record value stream unsupported version mutated identity output");
+    }
+
+    if (!ObjectTransformManifestTransformRecordsMatch(output_transforms[0], sentinel_transform)) {
+        return Fail("scene record value stream unsupported version mutated transform output");
+    }
+
+    if (!ManifestAttachmentRecordsMatch(output_attachments[0], sentinel_attachment)) {
+        return Fail("scene record value stream unsupported version mutated attachment output");
+    }
+
+    if (!ManifestBindingRecordsMatch(output_bindings[0], sentinel_binding)) {
+        return Fail("scene record value stream unsupported version mutated binding output");
+    }
+
+    return 0;
+}
+
+int WorldSceneRecordValueStreamBridgeSnapshotReportsCountsAndLastStatus() {
+    const ObjectHandle handle = MakeObjectTransformManifestHandle(1U, 1U);
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> input_identities{
+        MakeSceneObjectTransformIdentityRecord(OBJECT_PLAYER, handle)};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> input_transforms{};
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> input_attachments{
+        MakeSceneAttachmentRecord(OBJECT_PLAYER, COMPONENT_TYPE_PRIMARY, COMPONENT_SLOT_PRIMARY)};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> input_bindings{};
+    WorldSceneRecordValueStreamBridge bridge;
+    SerializeBuffer buffer{};
+    SerializeWriter writer(buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    const WorldSceneRecordValueStreamResult write_result = bridge.WriteSceneRecords(
+        &writer,
+        input_identities.data(),
+        1U,
+        input_transforms.data(),
+        0U,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U);
+    if (!write_result.Succeeded()) {
+        return Fail("scene record value stream counters write failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> output_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> output_transforms{};
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> output_attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> output_bindings{};
+    std::uint32_t identity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    std::uint32_t attachment_count = 0U;
+    std::uint32_t binding_count = 0U;
+    SerializeReader reader(buffer.data(), write_result.state.committed_byte_count);
+    const WorldSceneRecordValueStreamResult read_result = bridge.ReadSceneRecords(
+        &reader,
+        output_identities.data(),
+        static_cast<std::uint32_t>(output_identities.size()),
+        &identity_count,
+        output_transforms.data(),
+        static_cast<std::uint32_t>(output_transforms.size()),
+        &transform_count,
+        output_attachments.data(),
+        static_cast<std::uint32_t>(output_attachments.size()),
+        &attachment_count,
+        output_bindings.data(),
+        static_cast<std::uint32_t>(output_bindings.size()),
+        &binding_count);
+    if (!read_result.Succeeded()) {
+        return Fail("scene record value stream counters read failed");
+    }
+
+    const WorldSceneRecordValueStreamResult failure_result = bridge.WriteSceneRecords(
+        &writer,
+        nullptr,
+        1U,
+        input_transforms.data(),
+        0U,
+        input_attachments.data(),
+        1U,
+        input_bindings.data(),
+        0U);
+    if (failure_result.status != WorldSceneRecordValueStreamStatus::InvalidIdentityInput) {
+        return Fail("scene record value stream counters failure status wrong");
+    }
+
+    const WorldSceneRecordValueStreamSnapshot snapshot = bridge.Snapshot();
+    if (snapshot.write_count != 1U || snapshot.read_count != 1U) {
+        return Fail("scene record value stream counters operation counts wrong");
+    }
+
+    if (snapshot.written_identity_count != 1U || snapshot.read_identity_count != 1U) {
+        return Fail("scene record value stream counters identity counts wrong");
+    }
+
+    if (snapshot.written_attachment_count != 1U || snapshot.read_attachment_count != 1U) {
+        return Fail("scene record value stream counters attachment counts wrong");
+    }
+
+    if (snapshot.failed_operation_count != 1U) {
+        return Fail("scene record value stream counters failed count wrong");
+    }
+
+    if (snapshot.last_status != WorldSceneRecordValueStreamStatus::InvalidIdentityInput) {
+        return Fail("scene record value stream counters last status wrong");
+    }
+
+    if (snapshot.last_serialize_status != SerializeStatus::Success) {
+        return Fail("scene record value stream counters serialize status wrong");
+    }
+
+    return 0;
+}
+
 int WorldSceneObjectTransformRestoreBridgeRestoresIdentityAndTransformRecordsInInputOrder() {
     WorldInstance world = MakeWorld(4U, 8U);
     ObjectRegistry registry = MakeRegistry();
@@ -21143,6 +21537,14 @@ int main(int argc, char **argv) {
             WorldSceneObjectTransformManifestStreamBridgeNoFilePackageResourceLoadDecodeUploadDependency},
         {TEST_SCENE_OBJECT_TRANSFORM_MANIFEST_CORE_FREE,
             WorldSceneObjectTransformManifestStreamBridgeWorldObjectSerializeCoresRemainManifestFree},
+        {TEST_SCENE_RECORD_VALUE_STREAM_ROUND_TRIP,
+            WorldSceneRecordValueStreamBridgeWriteReadRoundTripsAllSceneRecordFamilies},
+        {TEST_SCENE_RECORD_VALUE_STREAM_WRITER_CAPACITY,
+            WorldSceneRecordValueStreamBridgeWriteRejectsCombinedWriterCapacityBeforePartialWrite},
+        {TEST_SCENE_RECORD_VALUE_STREAM_ASSEMBLY_VERSION,
+            WorldSceneRecordValueStreamBridgeReadRejectsUnsupportedAssemblyVersionWithoutMutation},
+        {TEST_SCENE_RECORD_VALUE_STREAM_COUNTERS,
+            WorldSceneRecordValueStreamBridgeSnapshotReportsCountsAndLastStatus},
         {TEST_SCENE_DECODED_PLAN_ORDER,
             WorldSceneDecodedRestorePlanBridgePlansAllDecodedRecordFamiliesInDeterministicOrder},
         {TEST_SCENE_DECODED_PLAN_EMPTY,
