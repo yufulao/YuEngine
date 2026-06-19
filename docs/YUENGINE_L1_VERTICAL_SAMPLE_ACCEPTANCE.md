@@ -1,0 +1,171 @@
+# YuEngine L1 Vertical Sample Acceptance
+
+Status: ENG-178C governance document
+Baseline: `origin/main@3248a2eed7507f6685823eb8c2d780950d28e057`
+Aligned documents:
+
+- `docs/YUENGINE_L0_COMPLETION_MATRIX.md`
+- `docs/YUENGINE_BRIDGE_AUDIT.md`
+- `docs/YUENGINE_L1_RUNTIME_CORE_MATRIX.md`
+- `docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md`
+
+Source plan: `docs/YUENGINE_L0_L1_EXECUTION_PLAN.md` sections 11, 12.20,
+and 12.21
+Scope: L1 vertical sample acceptance, `L1-DIAG-003`, `L1-SAMPLE-001..010`,
+ENG-176 evidence, release validation route, docs-only next gates,
+deferred or environment blockers, and forbidden scope
+Aligned commits: `2b9734d8b334bf746f531fcca7096bb4031ebb21` for document 3
+and `3248a2eed7507f6685823eb8c2d780950d28e057` for document 4
+
+## 1. Purpose
+
+This document is the required L1 vertical sample acceptance document from the
+section 11 document order. It must stay after
+`docs/YUENGINE_L1_RUNTIME_CORE_MATRIX.md` and
+`docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md`.
+
+The document defines how the current project-independent L1 vertical sample is
+accepted as a value-contract proof. It does not replace L0 native sample smoke,
+does not claim target hardware closure, and does not create new implementation
+scope.
+
+The L1 vertical sample acceptance intent is:
+
+- prove the sample travels through L1 runtime value contracts rather than
+  TouhouNewWorld gameplay or old package runtime paths;
+- prove manifest, runtime boot, world/object graph, asset binding, input
+  command, render scene, audio scene, serialization, cleanup, diagnostics, and
+  validation route rows are covered;
+- keep native D3D11, XAudio2, XInput, Ogg/Vorbis, and display/session blockers
+  graded by `docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md`;
+- keep debug overlay support as an optional tooling plane, not a runtime
+  dependency.
+
+## 2. Acceptance States
+
+| State | Meaning |
+| --- | --- |
+| `Pass` | The value-contract row has deterministic fast evidence and matches the subsystem boundary from the L1 runtime matrix. |
+| `StageClose` | The row has a documented command or route, but final closure still requires stage-close VQ, release validation, or target-machine execution. |
+| `BlockedByEnv` | The code path exists, but native hardware, display/session state, local codec dependency, or target OS state must be supplied before the native proof can close. |
+| `Deferred` | The behavior is intentionally outside the current L1 vertical sample acceptance scope. |
+| `Fail` | The row hides missing hardware as success, depends on forbidden scope, mutates generated or implementation files, or violates the required value boundary. |
+
+Missing hardware, missing codec dependencies, and absent debug overlay UI must
+not be rewritten as `Pass`.
+
+## 3. Required Command Rows
+
+| Row | Purpose | Required command | Required evidence | Allowed skip |
+| --- | --- | --- | --- | --- |
+| Fast L1 vertical sample | Prove all current L1 sample value-contract rows | `cmake --preset windows-fast-gate`; `cmake --build --preset windows-fast-gate --target YuSampleTests YuDiagnosticsTests -- /v:minimal`; `ctest --preset windows-fast-gate -R "^(Sample_L1VerticalPrep_|Diagnostics_OverlayHook|Diagnostics_RuntimeCounters_)" --output-on-failure` | `YuSampleTests` and diagnostics rows pass; no native hardware is required for this row | None |
+| Filtered L1 integration | Keep L1 rows consistent with L0/L1 matrix routing | `ctest --preset windows-dev-gate --output-on-failure`; `ctest --preset windows-l0-gate --output-on-failure` | Filtered integration passes, or failures are documented as unrelated blockers | Hardware smoke rows are excluded and must not be counted as pass |
+| Release L1 sample route | Prove the L1 sample route is not Debug-only | `cmake --preset windows-release`; `cmake --build --preset windows-release --target YuSampleTests -- /v:minimal`; `ctest --preset windows-release-gate -R "^Sample_L1VerticalPrep_" --output-on-failure` | Release `YuSampleTests` rows pass at stage close | No skip for value-contract tests; failure is a closure blocker |
+| Native L0 sample route reference | Keep native sample smoke proof in the L0 document | See `docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md` Debug and Release sample smoke rows | Native sample emits `YuAssetSmokeDemo PASS`, `YuAssetSmokeDemo L0_ENGINE PASS`, and any L1 prep line only as additional evidence | `BlockedByEnv` only through explicit L0 sample acceptance states |
+| Docs-only governance lane | Prove this document did not change implementation scope | `git diff --name-status -- docs/YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md`; `git diff --check -- docs/YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md` | Only this document changes and whitespace is clean | None |
+
+## 4. ENG-176 Evidence Map
+
+| Evidence | Commit | Acceptance contribution |
+| --- | --- | --- |
+| Deterministic object graph | `d11a74e7666dc2a9ba724d78d5926f2d52d49ee0` | Adds deterministic object/component/transform sample evidence for `L1-SAMPLE-003` |
+| Asset, render, audio route closure | `f4b3495` | Adds texture/audio asset binding, RenderScene submit, AudioScene submit, lifecycle route evidence for `L1-SAMPLE-004`, `L1-SAMPLE-006`, and `L1-SAMPLE-007` |
+| Diagnostics and validation route | `ce88589` | Adds optional diagnostics overlay hook and Debug/Release/Fast validation route evidence for `L1-DIAG-003` and `L1-SAMPLE-010` |
+| Serialize, reload, cleanup proof | `501a460a66dc5d6d0ed7dc313e581a505c85f2d0` | Adds sample state roundtrip and active-record cleanup proof for `L1-SAMPLE-008` and `L1-SAMPLE-009` |
+
+These commits are evidence inputs, not a reason to bypass the command rows in
+section 3.
+
+## 5. L1 Vertical Sample Acceptance Matrix
+
+| ID | Acceptance target | Current evidence | State | Required test or command | Deferred / env blocker | Forbidden scope |
+| --- | --- | --- | --- | --- | --- | --- |
+| `L1-DIAG-003` | Debug overlay hook proposal is optional tooling | `RuntimeDiagnosticsOverlayHook` rejects runtime dependencies and keeps disabled equivalence | Pass | `ctest --preset windows-fast-gate -R "^(Diagnostics_OverlayHook|Diagnostics_RuntimeCounters_)" --output-on-failure` | Visual overlay UI is deferred tooling | Debug overlay required for correctness, report JSON as runtime API, unbounded logging |
+| `L1-SAMPLE-001` | Synthetic scene manifest is project-independent | `L1VerticalSamplePrep` builds fixed manifest values and avoids old package runtime parsing | Pass | `ctest --preset windows-fast-gate -R "^Sample_L1VerticalPrep_" --output-on-failure` | Native asset smoke remains in L0 acceptance | Old package runtime, product scene file parsing, gameplay scene content |
+| `L1-SAMPLE-002` | Runtime boots and creates world through fixed-frame loop | RuntimeApp and sample prep create runtime/world records and expose fixed-frame counts | Pass | `Sample_L1VerticalPrep_BuildsManifestAndSubmitPrep` | Target hardware failures stay in lower L0 rows | Gameplay update policy, UI/title behavior, old runtime service state |
+| `L1-SAMPLE-003` | Object/component/transform graph is deterministic | `Sample_L1VerticalPrep_DeterministicObjectGraphHasStableSlots` covers stable slots and transform snapshot | Pass | `ctest --preset windows-fast-gate -R "^Sample_L1VerticalPrep_DeterministicObjectGraphHasStableSlots$" --output-on-failure` | None for value-contract fixtures | Actor behavior lifecycle, script callbacks, physics or hierarchy policy |
+| `L1-SAMPLE-004` | Texture/audio handles bind through Asset Manager | Sample route uses runtime asset handles and keeps lower Resource/Audio ownership outside Asset | Pass | `Sample_L1VerticalPrep_RoutesAssetRenderAudioAndLifecycle` | Native texture/audio device proof stays in L0 acceptance | Asset owning RHI/Audio device lifecycle, game-specific asset IDs, old package compatibility |
+| `L1-SAMPLE-005` | Input affects sample only through runtime command values | Sample prep records input command snapshot values and current runtime matrix maps Input command tests | Pass | `Sample_L1VerticalPrep_BuildsManifestAndSubmitPrep`; `Input_CommandMapper_*` through focused L1 route | Real XInput device proof is L0 `BlockedByEnv` | UI navigation policy, text input framework, gameplay command execution |
+| `L1-SAMPLE-006` | RenderScene submits RenderCore/RHI-facing frame values | Sample route submits through L1 RenderScene contract queue without D3D11 public exposure | Pass | `Sample_L1VerticalPrep_RoutesAssetRenderAudioAndLifecycle`; `RenderScene_*` through focused L1 route | Real D3D11 frame proof stays in L0 sample/hardware rows | D3D11 includes in public L1 headers, material graph, UI renderer, editor viewport |
+| `L1-SAMPLE-007` | AudioScene submits audio or explicit unavailable status | Sample route submits through L1 AudioScene contract queue and keeps backend unavailable status explicit | Pass | `Sample_L1VerticalPrep_RoutesAssetRenderAudioAndLifecycle`; `AudioScene_*` through focused L1 route | Real XAudio2 callback/output proof stays in L0 sample/hardware rows | BGM/SE project service IDs, UI volume menu, blocking IO, device lifecycle ownership |
+| `L1-SAMPLE-008` | Sample state roundtrips through value streams | `Sample_L1VerticalPrep_RoundTripsStateAndCleansActiveRecords` covers serialize/reload proof | Pass | `ctest --preset windows-fast-gate -R "^Sample_L1VerticalPrep_RoundTripsStateAndCleansActiveRecords$" --output-on-failure` | File/profile persistence policy remains outside Serialize core | File/Package dependency inside Serialize, old save compatibility, object construction by Serialize |
+| `L1-SAMPLE-009` | Shutdown and cleanup leave no active records | Cleanup proof covers world/runtime/resource/asset active records or explicit unavailable states | Pass | `Sample_L1VerticalPrep_RoundTripsStateAndCleansActiveRecords` | Native device shutdown proof stays in L0 sample/hardware rows | Hidden partial cleanup, generated-output proof, sample-owned lower lifecycles |
+| `L1-SAMPLE-010` | Debug/Release/Fast validation route is documented | `L1VerticalSampleValidationRoute` exposes fast and release command values; README documents route | StageClose | Fast command row in section 3; Release command row in section 3 | Full release route and native sample smoke run are stage-close evidence if VQ requires them | Treating Debug-only evidence as complete, missing release command, debug overlay as runtime dependency |
+
+## 6. Relationship To L0 Sample Acceptance
+
+`docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md` owns native sample smoke and hardware
+environment grading. This document owns the L1 value-contract sample.
+
+The boundary is:
+
+- L1 sample rows may use explicit unavailable statuses from lower modules;
+- L1 value tests must not require D3D11, XAudio2, XInput, Ogg/Vorbis, or a
+  display session;
+- L0 native sample smoke must prove native output separately through the Debug,
+  Release, HardwareSmoke, and strict HardwareSmoke rows from the L0 sample
+  acceptance document;
+- an L1 prep line printed by `YuAssetSmokeDemo` is additional evidence only and
+  does not replace the L1 fast/release value-contract command rows.
+
+## 7. Deferred And Environment Blockers
+
+| Blocker | Classification | Effect on L1 vertical sample acceptance | Required follow-up |
+| --- | --- | --- | --- |
+| Target D3D11 device/swapchain/draw proof | `BlockedByEnv` | L1 RenderScene rows can pass as value contracts, but native frame output stays L0 proof | Run hardware/sample commands from `docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md` |
+| Target XAudio2 callback/output proof | `BlockedByEnv` | L1 AudioScene may pass with explicit unavailable status, but backend callback proof stays L0 proof | Run hardware audio smoke on a supported output device |
+| Target XInput gamepad proof | `BlockedByEnv` | L1 Input mapping fixtures can pass without connected hardware, but real gamepad proof stays L0 proof | Run XInput hardware smoke with a connected target controller |
+| Ogg/Vorbis local dependency | `BlockedByEnv` | L1 value tests are not blocked; native sample command may be environment-blocked | Configure `UE_ENGINE_ROOT` and rerun L0 sample acceptance rows |
+| Release value-contract route | `StageClose` | Fast evidence exists; release command is documented and should run before final closure | Run the Release L1 sample route from section 3 during VQ or final audit |
+| Visual debug overlay implementation | `Deferred` | Hook proposal/status is accepted; actual overlay UI is outside this document | Create a later tooling-only task if needed, without runtime dependency |
+
+## 8. Docs-Only Next Gates
+
+After this document lands, the next governance gates are:
+
+1. `ENG-178VQ` verifies required documents 3/4/5 together.
+2. `ENG-178VQ` checks section 11 order, section 12 coverage, docs-only scope,
+   and consistency with ENG-176/177 evidence.
+3. The final L0/L1 stop-condition audit may begin only if VQ reports COMPLETE
+   or records explicit blockers.
+4. Stage-close validation may run full fast, release, hardware, strict hardware,
+   and sample smoke routes when VQ or the coordinator needs stronger evidence.
+
+No new broad implementation lane is implied by this document.
+
+## 9. Forbidden Scope
+
+The L1 vertical sample acceptance path must not:
+
+- introduce UI, GameAdapter, gameplay, or product-specific scene behavior;
+- parse or rely on old package runtime compatibility as sample proof;
+- expose D3D11, XAudio2, XInput, Win32, or other backend-native types through
+  public L1 headers;
+- require report JSON, capture files, screenshots, manual audio listening, or a
+  debug overlay for runtime correctness;
+- require committed executable, DLL, log, capture, build, or generated output
+  artifacts;
+- edit source, CMake, tests, scripts, sample assets, or generated files for the
+  governance-doc lane that owns this document;
+- treat missing hardware, missing codec dependencies, or absent visual overlay
+  as `Pass`.
+
+## 10. Acceptance Checklist
+
+`docs/YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md` is accepted when:
+
+1. The document is committed after `docs/YUENGINE_L1_RUNTIME_CORE_MATRIX.md`
+   and `docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md`.
+2. It covers `L1-DIAG-003` and `L1-SAMPLE-001..010`.
+3. It maps ENG-176 evidence to each L1 vertical sample row.
+4. It defines Fast, filtered integration, Release, native L0 reference, and
+   docs-only governance command rows.
+5. It separates L1 value-contract sample proof from native L0 sample smoke and
+   hardware environment proof.
+6. It lists deferred, stage-close, and environment blockers without rewriting
+   them as pass.
+7. It preserves the forbidden scope from the L0 matrix, bridge audit, L1
+   runtime matrix, and L0 sample acceptance document.
+8. `ENG-178VQ` verifies this document together with
+   `docs/YUENGINE_L1_RUNTIME_CORE_MATRIX.md` and
+   `docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md`.
