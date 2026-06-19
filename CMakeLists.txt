@@ -246,6 +246,26 @@ target_include_directories(YuRenderCore
 )
 target_link_libraries(YuRenderCore PUBLIC YuRHI)
 
+add_library(YuRenderScene
+    Src/YuEngine/RenderScene/Src/RenderSceneContractQueue.cpp
+)
+yuengine_apply_compile_options(YuRenderScene)
+target_include_directories(YuRenderScene
+    PUBLIC
+        Src/YuEngine/RenderScene/Include
+)
+target_link_libraries(YuRenderScene PUBLIC YuAsset YuRenderCore YuWorld)
+
+add_library(YuAudioScene
+    Src/YuEngine/AudioScene/Src/AudioSceneContractQueue.cpp
+)
+yuengine_apply_compile_options(YuAudioScene)
+target_include_directories(YuAudioScene
+    PUBLIC
+        Src/YuEngine/AudioScene/Include
+)
+target_link_libraries(YuAudioScene PUBLIC YuAsset YuAudio)
+
 add_library(YuInput
     Src/YuEngine/Input/Src/InputCommandMapper.cpp
     Src/YuEngine/Input/Src/InputBridge.cpp
@@ -1564,6 +1584,27 @@ yuengine_add_labeled_test(Asset_AudioReadyRecordUsesImportRecordWithoutOwningDev
 yuengine_add_labeled_test(Asset_RefreshStateFromResourceMapsUploadedResidentAndFailed YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
 yuengine_add_labeled_test(Asset_ReleaseRuntimeAssetReleasesResourceAndClearsReadyRecords YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
 yuengine_add_labeled_test(Asset_NoWorldGameAdapterUiDependency YuAssetTests Fast ModuleFixture Asset Resource Streaming AudioResource L1 EvidenceOracle)
+
+add_executable(YuRenderSceneTests
+    Tests/RenderScene/RenderSceneContractQueueTests.cpp
+)
+yuengine_apply_compile_options(YuRenderSceneTests)
+target_link_libraries(YuRenderSceneTests PRIVATE YuRenderScene)
+yuengine_add_labeled_test(RenderScene_BuildsRenderCoreViewPacket YuRenderSceneTests Fast ModuleFixture RenderScene RenderCore Asset World L1 EvidenceOracle)
+yuengine_add_labeled_test(RenderScene_MissingMaterialAssetDoesNotMutateOutput YuRenderSceneTests Fast ModuleFixture RenderScene RenderCore Asset World L1 EvidenceOracle)
+yuengine_add_labeled_test(RenderScene_OutputCapacityFailureDoesNotMutateOutput YuRenderSceneTests Fast ModuleFixture RenderScene RenderCore Asset World L1 PerformanceSmoke EvidenceOracle)
+yuengine_add_labeled_test(RenderScene_NoNativeOrUpperDependency YuRenderSceneTests Fast ModuleFixture RenderScene RenderCore Asset World L1 EvidenceOracle)
+
+add_executable(YuAudioSceneTests
+    Tests/AudioScene/AudioSceneContractQueueTests.cpp
+)
+yuengine_apply_compile_options(YuAudioSceneTests)
+target_link_libraries(YuAudioSceneTests PRIVATE YuAudioScene)
+yuengine_add_labeled_test(AudioScene_PlayingSourceBuildsPcmQueueRequest YuAudioSceneTests Fast ModuleFixture AudioScene Audio Asset AudioResource L1 EvidenceOracle)
+yuengine_add_labeled_test(AudioScene_MissingBackendReturnsExplicitStatus YuAudioSceneTests Fast ModuleFixture AudioScene Audio Asset AudioResource L1 EvidenceOracle)
+yuengine_add_labeled_test(AudioScene_PausedSourceDoesNotSubmitQueue YuAudioSceneTests Fast ModuleFixture AudioScene Audio Asset AudioResource L1 EvidenceOracle)
+yuengine_add_labeled_test(AudioScene_MissingSoundAssetDoesNotMutateOutput YuAudioSceneTests Fast ModuleFixture AudioScene Audio Asset AudioResource L1 EvidenceOracle)
+yuengine_add_labeled_test(AudioScene_NoNativeOrUpperDependency YuAudioSceneTests Fast ModuleFixture AudioScene Audio Asset AudioResource L1 EvidenceOracle)
 
 add_executable(YuInputTests
     Tests/Input/InputTests.cpp
