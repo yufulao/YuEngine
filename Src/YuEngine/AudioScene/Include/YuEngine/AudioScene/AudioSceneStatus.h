@@ -14,6 +14,7 @@ enum class AudioSceneStatus {
     MissingAudioReadyRecord,
     MissingAudioPacket,
     InvalidSourceRecord,
+    InvalidBusId,
     InvalidGain,
     OutputCapacityExceeded
 };

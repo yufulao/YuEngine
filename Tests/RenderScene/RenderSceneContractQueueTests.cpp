@@ -53,8 +53,14 @@ using yuengine::world::WorldObjectId;
 
 namespace {
 constexpr const char *TEST_BUILD = "RenderScene_BuildsRenderCoreViewPacket";
+constexpr const char *TEST_FULL_LIST_VISIBILITY =
+    "RenderScene_FullListVisibilityOutputsOnlyVisibleEntities";
+constexpr const char *TEST_MISSING_MESH =
+    "RenderScene_MissingMeshAssetDoesNotMutateOutput";
 constexpr const char *TEST_MISSING_MATERIAL =
     "RenderScene_MissingMaterialAssetDoesNotMutateOutput";
+constexpr const char *TEST_MISSING_CAMERA =
+    "RenderScene_MissingCameraDoesNotMutateOutput";
 constexpr const char *TEST_OUTPUT_CAPACITY =
     "RenderScene_OutputCapacityFailureDoesNotMutateOutput";
 constexpr const char *TEST_BOUNDARY = "RenderScene_NoNativeOrUpperDependency";
@@ -181,6 +187,79 @@ int RenderSceneBuildsRenderCoreViewPacket() {
     return 0;
 }
 
+int RenderSceneFullListVisibilityOutputsOnlyVisibleEntities() {
+    std::array<std::uint8_t, CAPTURE_BYTES> capture{};
+    std::array<std::uint8_t, 4U> constants{1U, 2U, 3U, 4U};
+    const std::array<RenderSceneCameraRecord, 1U> cameras{CameraRecord()};
+    std::array<RenderSceneEntityRecord, 4U> entities{
+        EntityRecord(constants, DRAW_ID),
+        EntityRecord(constants, DRAW_ID + 1U),
+        EntityRecord(constants, DRAW_ID + 2U),
+        EntityRecord(constants, DRAW_ID + 3U),
+    };
+    entities[1].is_visible = false;
+    entities[2].is_active = false;
+    std::array<RenderViewPacketRequest, 2U> packets{};
+    RenderSceneSubmitResult result{};
+
+    RenderSceneContractQueue queue;
+    const RenderSceneStatus status =
+        queue.BuildRenderCorePackets(SubmitRequest(cameras, entities, capture), packets, &result);
+    if (status != RenderSceneStatus::Success) {
+        return Fail("render scene full list submit failed");
+    }
+
+    if (result.visible_entity_count != 2U) {
+        return Fail("render scene visible entity count mismatch");
+    }
+
+    if (result.output_packet_count != 2U) {
+        return Fail("render scene full list output count mismatch");
+    }
+
+    if (result.skipped_entity_count != 2U) {
+        return Fail("render scene skipped entity count mismatch");
+    }
+
+    if (packets[0].view_id != DRAW_ID) {
+        return Fail("render scene first visible entity mismatch");
+    }
+
+    if (packets[1].view_id != DRAW_ID + 3U) {
+        return Fail("render scene second visible entity mismatch");
+    }
+
+    if (queue.Snapshot().last_skipped_entity_count != 2U) {
+        return Fail("render scene snapshot skipped entity count mismatch");
+    }
+
+    return 0;
+}
+
+int RenderSceneMissingMeshAssetDoesNotMutateOutput() {
+    std::array<std::uint8_t, CAPTURE_BYTES> capture{};
+    std::array<std::uint8_t, 4U> constants{1U, 2U, 3U, 4U};
+    const std::array<RenderSceneCameraRecord, 1U> cameras{CameraRecord()};
+    std::array<RenderSceneEntityRecord, 1U> entities{EntityRecord(constants)};
+    entities[0].mesh_asset = AssetHandle{};
+    std::array<RenderViewPacketRequest, 1U> packets{};
+    packets[0].view_id = 88U;
+    RenderSceneSubmitResult result{};
+
+    RenderSceneContractQueue queue;
+    const RenderSceneStatus status =
+        queue.BuildRenderCorePackets(SubmitRequest(cameras, entities, capture), packets, &result);
+    if (status != RenderSceneStatus::MissingMeshAsset) {
+        return Fail("render scene did not report missing mesh asset");
+    }
+
+    if (packets[0].view_id != 88U) {
+        return Fail("render scene mutated output on failed mesh validation");
+    }
+
+    return 0;
+}
+
 int RenderSceneMissingMaterialAssetDoesNotMutateOutput() {
     std::array<std::uint8_t, CAPTURE_BYTES> capture{};
     std::array<std::uint8_t, 4U> constants{1U, 2U, 3U, 4U};
@@ -200,6 +279,30 @@ int RenderSceneMissingMaterialAssetDoesNotMutateOutput() {
 
     if (packets[0].view_id != 99U) {
         return Fail("render scene mutated output on failed material validation");
+    }
+
+    return 0;
+}
+
+int RenderSceneMissingCameraDoesNotMutateOutput() {
+    std::array<std::uint8_t, CAPTURE_BYTES> capture{};
+    std::array<std::uint8_t, 4U> constants{1U, 2U, 3U, 4U};
+    std::array<RenderSceneCameraRecord, 1U> cameras{CameraRecord()};
+    cameras[0].is_active = false;
+    const std::array<RenderSceneEntityRecord, 1U> entities{EntityRecord(constants)};
+    std::array<RenderViewPacketRequest, 1U> packets{};
+    packets[0].view_id = 66U;
+    RenderSceneSubmitResult result{};
+
+    RenderSceneContractQueue queue;
+    const RenderSceneStatus status =
+        queue.BuildRenderCorePackets(SubmitRequest(cameras, entities, capture), packets, &result);
+    if (status != RenderSceneStatus::MissingCamera) {
+        return Fail("render scene did not report missing camera");
+    }
+
+    if (packets[0].view_id != 66U) {
+        return Fail("render scene mutated output on missing camera");
     }
 
     return 0;
@@ -245,8 +348,20 @@ int RunNamedTest(std::string_view name) {
         return RenderSceneBuildsRenderCoreViewPacket();
     }
 
+    if (name == TEST_FULL_LIST_VISIBILITY) {
+        return RenderSceneFullListVisibilityOutputsOnlyVisibleEntities();
+    }
+
+    if (name == TEST_MISSING_MESH) {
+        return RenderSceneMissingMeshAssetDoesNotMutateOutput();
+    }
+
     if (name == TEST_MISSING_MATERIAL) {
         return RenderSceneMissingMaterialAssetDoesNotMutateOutput();
+    }
+
+    if (name == TEST_MISSING_CAMERA) {
+        return RenderSceneMissingCameraDoesNotMutateOutput();
     }
 
     if (name == TEST_OUTPUT_CAPACITY) {

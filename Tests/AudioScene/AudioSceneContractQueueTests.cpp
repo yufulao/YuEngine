@@ -17,6 +17,7 @@
 #include "YuEngine/Audio/AudioStatus.h"
 #include "YuEngine/Audio/TestAudioDevice.h"
 #include "YuEngine/AudioResource/AudioResourcePcmPacketImportHandle.h"
+#include "YuEngine/AudioScene/AudioSceneConstants.h"
 #include "YuEngine/AudioScene/AudioSceneContractQueue.h"
 #include "YuEngine/AudioScene/AudioSceneSourceRecord.h"
 #include "YuEngine/AudioScene/AudioSceneSourceState.h"
@@ -34,6 +35,9 @@ using yuengine::audio::AudioSampleFormat;
 using yuengine::audio::AudioStatus;
 using yuengine::audio::TestAudioDevice;
 using yuengine::audioresource::AudioResourcePcmPacketImportHandle;
+using yuengine::audioscene::AUDIO_SCENE_BUS_QUEUE_ID_STRIDE;
+using yuengine::audioscene::AUDIO_SCENE_EFFECTS_BUS_ID;
+using yuengine::audioscene::AUDIO_SCENE_MASTER_BUS_ID;
 using yuengine::audioscene::AudioSceneContractQueue;
 using yuengine::audioscene::AudioSceneSourceRecord;
 using yuengine::audioscene::AudioSceneSourceState;
@@ -43,9 +47,11 @@ using yuengine::audioscene::AudioSceneSubmitResult;
 
 namespace {
 constexpr const char *TEST_PLAYING_SOURCE = "AudioScene_PlayingSourceBuildsPcmQueueRequest";
+constexpr const char *TEST_BUS_ROUTING = "AudioScene_BusRoutingMapsFixedBusIdsToQueueIds";
 constexpr const char *TEST_MISSING_BACKEND = "AudioScene_MissingBackendReturnsExplicitStatus";
 constexpr const char *TEST_PAUSED_SOURCE = "AudioScene_PausedSourceDoesNotSubmitQueue";
 constexpr const char *TEST_MISSING_SOUND = "AudioScene_MissingSoundAssetDoesNotMutateOutput";
+constexpr const char *TEST_INVALID_BUS = "AudioScene_InvalidBusDoesNotMutateOutput";
 constexpr const char *TEST_BOUNDARY = "AudioScene_NoNativeOrUpperDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
@@ -140,6 +146,69 @@ int AudioScenePlayingSourceBuildsPcmQueueRequest() {
     return 0;
 }
 
+int AudioSceneBusRoutingMapsFixedBusIdsToQueueIds() {
+    TestAudioDevice device;
+    AudioDeviceDesc desc{};
+    if (device.Initialize(desc) != AudioStatus::Success) {
+        return Fail("test audio device init failed");
+    }
+
+    const AudioPcmSamplePacketHandle packet = CreatePacket(device);
+    if (packet.generation == 0U) {
+        return Fail("test audio packet create failed");
+    }
+
+    std::array<AudioSceneSourceRecord, 2U> sources{SourceRecord(packet), SourceRecord(packet)};
+    sources[0].source_id = {1U, 1U};
+    sources[0].bus_id = AUDIO_SCENE_MASTER_BUS_ID;
+    sources[1].source_id = {2U, 1U};
+    sources[1].bus_id = AUDIO_SCENE_EFFECTS_BUS_ID;
+    std::array<AudioPcmStreamQueueRequest, 2U> requests{};
+    AudioSceneSubmitResult result{};
+
+    AudioSceneContractQueue queue;
+    const AudioSceneStatus status = queue.SubmitSourceUpdates(SubmitRequest(sources), requests, &result);
+    if (status != AudioSceneStatus::Success) {
+        return Fail("audio scene bus route submit failed");
+    }
+
+    if (result.queue_request_count != 2U) {
+        return Fail("audio scene bus route count mismatch");
+    }
+
+    const std::uint32_t master_queue_id =
+        AUDIO_SCENE_MASTER_BUS_ID * AUDIO_SCENE_BUS_QUEUE_ID_STRIDE + sources[0].source_id.slot;
+    if (requests[0].queue_id != master_queue_id) {
+        return Fail("audio scene master bus queue id mismatch");
+    }
+
+    const std::uint32_t effects_queue_id =
+        AUDIO_SCENE_EFFECTS_BUS_ID * AUDIO_SCENE_BUS_QUEUE_ID_STRIDE + sources[1].source_id.slot;
+    if (requests[1].queue_id != effects_queue_id) {
+        return Fail("audio scene effects bus queue id mismatch");
+    }
+
+    if (result.last_bus_id != AUDIO_SCENE_EFFECTS_BUS_ID) {
+        return Fail("audio scene result bus id mismatch");
+    }
+
+    if (queue.Snapshot().last_bus_id != AUDIO_SCENE_EFFECTS_BUS_ID) {
+        return Fail("audio scene snapshot bus id mismatch");
+    }
+
+    AudioPcmStreamQueueHandle master_queue{};
+    if (device.CreatePcmStreamQueue(requests[0], master_queue) != AudioStatus::Success) {
+        return Fail("audio scene master bus did not fit test backend");
+    }
+
+    AudioPcmStreamQueueHandle effects_queue{};
+    if (device.CreatePcmStreamQueue(requests[1], effects_queue) != AudioStatus::Success) {
+        return Fail("audio scene effects bus did not fit test backend");
+    }
+
+    return 0;
+}
+
 int AudioSceneMissingBackendReturnsExplicitStatus() {
     const AudioPcmSamplePacketHandle packet{1U, 1U};
     const std::array<AudioSceneSourceRecord, 1U> sources{SourceRecord(packet)};
@@ -209,6 +278,31 @@ int AudioSceneMissingSoundAssetDoesNotMutateOutput() {
     return 0;
 }
 
+int AudioSceneInvalidBusDoesNotMutateOutput() {
+    const AudioPcmSamplePacketHandle packet{1U, 1U};
+    std::array<AudioSceneSourceRecord, 1U> sources{SourceRecord(packet)};
+    sources[0].bus_id = 0U;
+    std::array<AudioPcmStreamQueueRequest, 1U> requests{};
+    requests[0].queue_id = 55U;
+    AudioSceneSubmitResult result{};
+
+    AudioSceneContractQueue queue;
+    const AudioSceneStatus status = queue.SubmitSourceUpdates(SubmitRequest(sources), requests, &result);
+    if (status != AudioSceneStatus::InvalidBusId) {
+        return Fail("audio scene did not report invalid bus");
+    }
+
+    if (requests[0].queue_id != 55U) {
+        return Fail("audio scene mutated output on invalid bus");
+    }
+
+    if (queue.Snapshot().last_status != AudioSceneStatus::InvalidBusId) {
+        return Fail("audio scene snapshot did not record invalid bus");
+    }
+
+    return 0;
+}
+
 int AudioSceneNoNativeOrUpperDependency() {
     AudioSceneContractQueue queue;
     if (queue.Snapshot().last_status != AudioSceneStatus::Success) {
@@ -223,6 +317,10 @@ int RunNamedTest(std::string_view name) {
         return AudioScenePlayingSourceBuildsPcmQueueRequest();
     }
 
+    if (name == TEST_BUS_ROUTING) {
+        return AudioSceneBusRoutingMapsFixedBusIdsToQueueIds();
+    }
+
     if (name == TEST_MISSING_BACKEND) {
         return AudioSceneMissingBackendReturnsExplicitStatus();
     }
@@ -233,6 +331,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_MISSING_SOUND) {
         return AudioSceneMissingSoundAssetDoesNotMutateOutput();
+    }
+
+    if (name == TEST_INVALID_BUS) {
+        return AudioSceneInvalidBusDoesNotMutateOutput();
     }
 
     if (name == TEST_BOUNDARY) {

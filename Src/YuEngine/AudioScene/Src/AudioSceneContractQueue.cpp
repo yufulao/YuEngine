@@ -40,6 +40,7 @@ AudioSceneStatus AudioSceneContractQueue::SubmitSourceUpdates(
         }
 
         FillQueueRequest(request, source, &out_requests[output_index]);
+        result.last_bus_id = source.bus_id;
         ++output_index;
     }
 
@@ -128,6 +129,10 @@ AudioSceneStatus AudioSceneContractQueue::ValidateSource(const AudioSceneSourceR
         return AudioSceneStatus::InvalidGain;
     }
 
+    if (!IsBusIdValid(source.bus_id)) {
+        return AudioSceneStatus::InvalidBusId;
+    }
+
     if (!IsPlayingSource(source)) {
         return AudioSceneStatus::Success;
     }
@@ -167,6 +172,14 @@ bool AudioSceneContractQueue::IsKnownSourceState(AudioSceneSourceState state) co
     return state == AudioSceneSourceState::Paused;
 }
 
+bool AudioSceneContractQueue::IsBusIdValid(std::uint32_t bus_id) const {
+    if (bus_id < AUDIO_SCENE_MASTER_BUS_ID) {
+        return false;
+    }
+
+    return bus_id <= AUDIO_SCENE_MAX_BUS_ID;
+}
+
 bool AudioSceneContractQueue::IsPlayingSource(const AudioSceneSourceRecord &source) const {
     return source.state == AudioSceneSourceState::Playing;
 }
@@ -176,7 +189,15 @@ bool AudioSceneContractQueue::IsPacketHandleValid(yuengine::audio::AudioPcmSampl
 }
 
 bool AudioSceneContractQueue::IsSourceIdValid(yuengine::audio::AudioSourceId source) const {
-    return source.generation != 0U;
+    if (source.generation == 0U) {
+        return false;
+    }
+
+    return source.slot < AUDIO_SCENE_BUS_QUEUE_ID_STRIDE;
+}
+
+std::uint32_t AudioSceneContractQueue::BuildBusQueueId(const AudioSceneSourceRecord &source) const {
+    return source.bus_id * AUDIO_SCENE_BUS_QUEUE_ID_STRIDE + source.source_id.slot;
 }
 
 void AudioSceneContractQueue::FillQueueRequest(
@@ -188,7 +209,7 @@ void AudioSceneContractQueue::FillQueueRequest(
     }
 
     const yuengine::audio::AudioPcmSamplePacketRequest &packet_request = source.audio_ready.packet_request;
-    out_request->queue_id = source.source_id.slot;
+    out_request->queue_id = BuildBusQueueId(source);
     out_request->packet = source.packet;
     out_request->expected_packet_id = packet_request.packet_id;
     out_request->format = packet_request.format;
@@ -205,7 +226,10 @@ AudioSceneStatus AudioSceneContractQueue::RecordSuccess(const AudioSceneSubmitRe
     ++snapshot_.submit_count;
     snapshot_.last_frame_id = result.frame_id;
     snapshot_.last_active_source_count = result.active_source_count;
+    snapshot_.last_playing_source_count = result.playing_source_count;
     snapshot_.last_queue_request_count = result.queue_request_count;
+    snapshot_.last_skipped_source_count = result.skipped_source_count;
+    snapshot_.last_bus_id = result.last_bus_id;
     snapshot_.last_status = AudioSceneStatus::Success;
     return AudioSceneStatus::Success;
 }
@@ -216,7 +240,10 @@ AudioSceneStatus AudioSceneContractQueue::RecordFailure(
     ++snapshot_.failed_submit_count;
     snapshot_.last_frame_id = result.frame_id;
     snapshot_.last_active_source_count = result.active_source_count;
+    snapshot_.last_playing_source_count = result.playing_source_count;
     snapshot_.last_queue_request_count = result.queue_request_count;
+    snapshot_.last_skipped_source_count = result.skipped_source_count;
+    snapshot_.last_bus_id = result.last_bus_id;
     snapshot_.last_status = status;
     return status;
 }

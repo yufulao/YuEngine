@@ -42,9 +42,11 @@ private:
         std::size_t *out_playing_source_count) const;
     AudioSceneStatus ValidateSource(const AudioSceneSourceRecord &source) const;
     bool IsKnownSourceState(AudioSceneSourceState state) const;
+    bool IsBusIdValid(std::uint32_t bus_id) const;
     bool IsPlayingSource(const AudioSceneSourceRecord &source) const;
     bool IsPacketHandleValid(yuengine::audio::AudioPcmSamplePacketHandle packet) const;
     bool IsSourceIdValid(yuengine::audio::AudioSourceId source) const;
+    std::uint32_t BuildBusQueueId(const AudioSceneSourceRecord &source) const;
     void FillQueueRequest(
         const AudioSceneSubmitRequest &request,
         const AudioSceneSourceRecord &source,

@@ -199,6 +199,7 @@ RenderSceneStatus RenderSceneContractQueue::RecordSuccess(const RenderSceneSubmi
     snapshot_.last_camera_id = result.camera_id;
     snapshot_.last_output_packet_count = result.output_packet_count;
     snapshot_.last_visible_entity_count = result.visible_entity_count;
+    snapshot_.last_skipped_entity_count = result.skipped_entity_count;
     snapshot_.last_status = RenderSceneStatus::Success;
     return RenderSceneStatus::Success;
 }
@@ -211,6 +212,7 @@ RenderSceneStatus RenderSceneContractQueue::RecordFailure(
     snapshot_.last_camera_id = result.camera_id;
     snapshot_.last_output_packet_count = result.output_packet_count;
     snapshot_.last_visible_entity_count = result.visible_entity_count;
+    snapshot_.last_skipped_entity_count = result.skipped_entity_count;
     snapshot_.last_status = status;
     return status;
 }

@@ -16,5 +16,6 @@ struct AudioSceneSubmitResult final {
     std::size_t playing_source_count = 0U;
     std::size_t queue_request_count = 0U;
     std::size_t skipped_source_count = 0U;
+    std::uint32_t last_bus_id = 0U;
 };
 }
