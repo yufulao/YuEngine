@@ -374,6 +374,17 @@ add_executable(YuUiEditorShell
 yuengine_apply_compile_options(YuUiEditorShell)
 target_link_libraries(YuUiEditorShell PRIVATE YuUiEditorShellCore)
 
+add_executable(YuUiCoreSmokeSample
+    Samples/UiCoreSmoke/Source/Main.cpp
+    Samples/UiCoreSmoke/Source/UiCoreSmokeSample.cpp
+)
+yuengine_apply_compile_options(YuUiCoreSmokeSample)
+target_include_directories(YuUiCoreSmokeSample PRIVATE Samples/UiCoreSmoke/Source)
+target_compile_definitions(YuUiCoreSmokeSample PRIVATE
+    YU_UI_CORE_SMOKE_DEFAULT_LAYOUT="${CMAKE_CURRENT_SOURCE_DIR}/Samples/UiCoreSmoke/Layouts/SimpleWindow.YuUILayout.json"
+)
+target_link_libraries(YuUiCoreSmokeSample PRIVATE YuUiRenderCoreBridge YuRHI)
+
 enable_testing()
 
 function(yuengine_add_labeled_test test_name test_target)
@@ -1561,6 +1572,20 @@ target_link_libraries(YuUiRenderCoreBridgeTests PRIVATE YuUiRenderCoreBridge YuR
 yuengine_add_labeled_test(UiRenderCoreBridge_SubmitsDrawElementsThroughRenderCore YuUiRenderCoreBridgeTests Fast ModuleFixture UiCore RenderCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRenderCoreBridge_RejectsInvalidDrawElementWithoutSubmission YuUiRenderCoreBridgeTests Fast ModuleFixture UiCore RenderCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRenderCoreBridge_RejectsSmallOutputStorageWithoutSubmission YuUiRenderCoreBridgeTests Fast ModuleFixture UiCore RenderCore UI L1 EvidenceOracle)
+
+add_executable(YuUiCoreSmokeSampleTests
+    Samples/UiCoreSmoke/Source/UiCoreSmokeSample.cpp
+    Tests/UiCoreSmoke/UiCoreSmokeSampleTests.cpp
+)
+yuengine_apply_compile_options(YuUiCoreSmokeSampleTests)
+target_include_directories(YuUiCoreSmokeSampleTests PRIVATE Samples/UiCoreSmoke/Source)
+target_compile_definitions(YuUiCoreSmokeSampleTests PRIVATE
+    YU_UI_CORE_SMOKE_LAYOUT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/Samples/UiCoreSmoke/Layouts/SimpleWindow.YuUILayout.json"
+)
+target_link_libraries(YuUiCoreSmokeSampleTests PRIVATE YuUiRenderCoreBridge YuRHI)
+yuengine_add_labeled_test(UiCoreSmokeSample_LoadsLayoutRendersWindowReportsPass YuUiCoreSmokeSampleTests Fast ModuleFixture UiCore RenderCore UI Sample L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCoreSmokeSample_RejectsInvalidLayoutWithoutRenderSubmission YuUiCoreSmokeSampleTests Fast ModuleFixture UiCore RenderCore UI Sample L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCoreSmokeSample_ValidationRouteDocumentsCommands YuUiCoreSmokeSampleTests Fast ModuleFixture UiCore RenderCore UI Sample L1 EvidenceOracle)
 
 add_executable(YuSerializeTests
     Tests/Serialize/SerializeTests.cpp

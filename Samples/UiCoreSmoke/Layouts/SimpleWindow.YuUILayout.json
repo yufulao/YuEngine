@@ -1,0 +1,30 @@
+{
+  "schema": "YuEngine.UI.Layout",
+  "version": 1,
+  "layoutId": "UiCoreSmoke.SimpleWindow",
+  "rootNodeId": 1,
+  "nodes": [
+    {
+      "nodeId": 1,
+      "name": "Root",
+      "type": "Root",
+      "parentNodeId": 0,
+      "order": 0
+    },
+    {
+      "nodeId": 2,
+      "name": "MainWindow",
+      "type": "Window",
+      "parentNodeId": 1,
+      "order": 0
+    },
+    {
+      "nodeId": 3,
+      "name": "TitleBar",
+      "type": "TitleBar",
+      "parentNodeId": 2,
+      "order": 0
+    }
+  ],
+  "resources": []
+}
