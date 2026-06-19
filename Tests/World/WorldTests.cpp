@@ -158,6 +158,13 @@
 #include "YuEngine/World/WorldSceneAssemblyResult.h"
 #include "YuEngine/World/WorldSceneAssemblySnapshot.h"
 #include "YuEngine/World/WorldSceneAssemblyStatus.h"
+#include "YuEngine/World/WorldSceneActiveRestoreGateBridge.h"
+#include "YuEngine/World/WorldSceneActiveRestoreGateCleanupPolicy.h"
+#include "YuEngine/World/WorldSceneActiveRestoreGateDesc.h"
+#include "YuEngine/World/WorldSceneActiveRestoreGateRecord.h"
+#include "YuEngine/World/WorldSceneActiveRestoreGateResult.h"
+#include "YuEngine/World/WorldSceneActiveRestoreGateSnapshot.h"
+#include "YuEngine/World/WorldSceneActiveRestoreGateStatus.h"
 #include "YuEngine/World/WorldSnapshot.h"
 #include "YuEngine/World/WorldStatus.h"
 #include "YuEngine/World/WorldTransformBridge.h"
@@ -391,6 +398,13 @@ using yuengine::world::WorldSceneRecordValueStreamStatus;
 using yuengine::world::WorldSceneAssemblyResult;
 using yuengine::world::WorldSceneAssemblySnapshot;
 using yuengine::world::WorldSceneAssemblyStatus;
+using yuengine::world::WorldSceneActiveRestoreGateBridge;
+using yuengine::world::WorldSceneActiveRestoreGateCleanupPolicy;
+using yuengine::world::WorldSceneActiveRestoreGateDesc;
+using yuengine::world::WorldSceneActiveRestoreGateRecord;
+using yuengine::world::WorldSceneActiveRestoreGateResult;
+using yuengine::world::WorldSceneActiveRestoreGateSnapshot;
+using yuengine::world::WorldSceneActiveRestoreGateStatus;
 using yuengine::world::WorldSnapshot;
 using yuengine::world::WorldStatus;
 using yuengine::world::WorldTransformBridge;
@@ -1005,6 +1019,14 @@ constexpr const char *TEST_SCENE_APPLY_PROOF_NO_STREAM_FILE =
     "WorldSceneApplyTimeRestoreProofBridge_NoStreamDecodeFilePackageResourceLoadOrGameAdapterDependency";
 constexpr const char *TEST_SCENE_APPLY_PROOF_NO_CLEANUP =
     "WorldSceneApplyTimeRestoreProofBridge_NoCleanupRollbackOrCompensationPath";
+constexpr const char *TEST_SCENE_ACTIVE_RESTORE_GATE_POLICIES =
+    "WorldSceneActiveRestoreGateBridge_EmitsCleanupPoliciesAfterApplyTimeProof";
+constexpr const char *TEST_SCENE_ACTIVE_RESTORE_GATE_NO_MUTATION =
+    "WorldSceneActiveRestoreGateBridge_DoesNotMutateDestinationsOrRegistries";
+constexpr const char *TEST_SCENE_ACTIVE_RESTORE_GATE_STALE_OBJECT =
+    "WorldSceneActiveRestoreGateBridge_DestroyedObjectHandleRejectedWithoutSidecarMutation";
+constexpr const char *TEST_SCENE_ACTIVE_RESTORE_GATE_PATH =
+    "WorldSceneActiveRestoreGateBridge_GatePathDoesNotGrowStorage";
 constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_ORDER =
     "WorldSceneObjectTransformRestoreBridge_RestoresIdentityAndTransformRecordsInInputOrder";
 constexpr const char *TEST_SCENE_OBJECT_TRANSFORM_RESTORE_IDENTITY_ONLY =
@@ -1183,6 +1205,8 @@ using ApplyTimeRestoreProofOutput =
     std::array<WorldSceneApplyTimeRestoreProofRecord, APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY>;
 using ApplyTimeRestoreSliceOutput =
     std::array<WorldSceneApplyTimeRestoreProofSliceRecord, APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY>;
+using ActiveRestoreGateOutput =
+    std::array<WorldSceneActiveRestoreGateRecord, APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY>;
 
 class TestLogSink final : public yuengine::diagnostics::ILogSink {
 public:
@@ -19011,6 +19035,516 @@ int WorldSceneApplyTimeRestoreProofBridgeNoCleanupRollbackOrCompensationPath() {
     return 0;
 }
 
+struct ActiveRestoreGateCall final {
+    const WorldInstance *world = nullptr;
+    const ObjectRegistry *object_registry = nullptr;
+    const ResourceRegistry *resource_registry = nullptr;
+    const WorldObjectIdentityBridge *identity_destination = nullptr;
+    const WorldTransformBridge *transform_destination = nullptr;
+    const WorldComponentAttachmentBridge *attachment_destination = nullptr;
+    const WorldComponentResourceBindingBridge *binding_destination = nullptr;
+    const WorldSceneObjectTransformRestoreIdentityRecord *input_identities = nullptr;
+    std::uint32_t input_identity_count = 0U;
+    const WorldSceneObjectTransformRestoreTransformRecord *input_transforms = nullptr;
+    std::uint32_t input_transform_count = 0U;
+    const WorldComponentAttachmentSnapshotRecord *input_attachments = nullptr;
+    std::uint32_t input_attachment_count = 0U;
+    const WorldComponentResourceBindingSnapshotRecord *input_bindings = nullptr;
+    std::uint32_t input_binding_count = 0U;
+    WorldSceneDecodedRestorePlan *plan_scratch = nullptr;
+    std::uint32_t plan_scratch_capacity = 0U;
+    WorldSceneApplyTimeRestoreProofRecord *proof_scratch = nullptr;
+    std::uint32_t proof_scratch_capacity = 0U;
+    WorldSceneApplyTimeRestoreProofSliceRecord *slice_scratch = nullptr;
+    std::uint32_t slice_scratch_capacity = 0U;
+    WorldSceneActiveRestoreGateRecord *output_gates = nullptr;
+    std::uint32_t output_gate_capacity = 0U;
+};
+
+void FillActiveRestoreGateSentinel(
+    WorldSceneActiveRestoreGateRecord *gates,
+    std::uint32_t gate_count) {
+    if (gates == nullptr) {
+        return;
+    }
+
+    std::uint32_t index = 0U;
+    while (index < gate_count) {
+        std::memset(&gates[index], 0x4D, sizeof(WorldSceneActiveRestoreGateRecord));
+        ++index;
+    }
+}
+
+ActiveRestoreGateCall MakeActiveRestoreGateCall(
+    ApplyTimeRestoreProofFixture &fixture,
+    WorldSceneDecodedRestorePlan *plan_scratch,
+    std::uint32_t plan_scratch_capacity,
+    WorldSceneApplyTimeRestoreProofRecord *proof_scratch,
+    std::uint32_t proof_scratch_capacity,
+    WorldSceneApplyTimeRestoreProofSliceRecord *slice_scratch,
+    std::uint32_t slice_scratch_capacity,
+    WorldSceneActiveRestoreGateRecord *output_gates,
+    std::uint32_t output_gate_capacity) {
+    ActiveRestoreGateCall call{};
+    call.world = &fixture.decoded.world;
+    call.object_registry = &fixture.decoded.object_registry;
+    call.resource_registry = &fixture.decoded.resource_registry;
+    call.identity_destination = &fixture.identity_destination;
+    call.transform_destination = &fixture.transform_destination;
+    call.attachment_destination = &fixture.attachment_destination;
+    call.binding_destination = &fixture.binding_destination;
+    call.input_identities = fixture.decoded.identities.data();
+    call.input_identity_count = 2U;
+    call.input_transforms = fixture.decoded.transforms.data();
+    call.input_transform_count = 2U;
+    call.input_attachments = fixture.decoded.attachments.data();
+    call.input_attachment_count = 2U;
+    call.input_bindings = fixture.decoded.bindings.data();
+    call.input_binding_count = 2U;
+    call.plan_scratch = plan_scratch;
+    call.plan_scratch_capacity = plan_scratch_capacity;
+    call.proof_scratch = proof_scratch;
+    call.proof_scratch_capacity = proof_scratch_capacity;
+    call.slice_scratch = slice_scratch;
+    call.slice_scratch_capacity = slice_scratch_capacity;
+    call.output_gates = output_gates;
+    call.output_gate_capacity = output_gate_capacity;
+    return call;
+}
+
+WorldSceneActiveRestoreGateResult BuildActiveRestoreGate(
+    WorldSceneActiveRestoreGateBridge &bridge,
+    const ActiveRestoreGateCall &call) {
+    return bridge.BuildGate(
+        call.world,
+        call.object_registry,
+        call.resource_registry,
+        call.identity_destination,
+        call.transform_destination,
+        call.attachment_destination,
+        call.binding_destination,
+        call.input_identities,
+        call.input_identity_count,
+        call.input_transforms,
+        call.input_transform_count,
+        call.input_attachments,
+        call.input_attachment_count,
+        call.input_bindings,
+        call.input_binding_count,
+        call.plan_scratch,
+        call.plan_scratch_capacity,
+        call.proof_scratch,
+        call.proof_scratch_capacity,
+        call.slice_scratch,
+        call.slice_scratch_capacity,
+        call.output_gates,
+        call.output_gate_capacity);
+}
+
+WorldSceneActiveRestoreGateCleanupPolicy ExpectedActiveRestoreGateCleanupPolicy(
+    WorldSceneApplyTimeRestoreProofFamily family) {
+    switch (family) {
+    case WorldSceneApplyTimeRestoreProofFamily::Identity:
+        return WorldSceneActiveRestoreGateCleanupPolicy::ReleaseObjectIdentity;
+    case WorldSceneApplyTimeRestoreProofFamily::Transform:
+        return WorldSceneActiveRestoreGateCleanupPolicy::ClearTransformRecord;
+    case WorldSceneApplyTimeRestoreProofFamily::Attachment:
+        return WorldSceneActiveRestoreGateCleanupPolicy::RemoveComponentAttachment;
+    case WorldSceneApplyTimeRestoreProofFamily::Binding:
+        return WorldSceneActiveRestoreGateCleanupPolicy::ReleaseResourceBinding;
+    case WorldSceneApplyTimeRestoreProofFamily::None:
+    default:
+        break;
+    }
+
+    return WorldSceneActiveRestoreGateCleanupPolicy::None;
+}
+
+int CheckActiveRestoreGateRecord(
+    const WorldSceneApplyTimeRestoreProofSliceRecord &slice,
+    const WorldSceneActiveRestoreGateRecord &gate,
+    std::uint32_t gate_index) {
+    if (gate.family != slice.family) {
+        return Fail("active restore gate family wrong");
+    }
+
+    if (gate.cleanup_policy != ExpectedActiveRestoreGateCleanupPolicy(slice.family)) {
+        return Fail("active restore gate cleanup policy wrong");
+    }
+
+    if (gate.gate_index != gate_index) {
+        return Fail("active restore gate index wrong");
+    }
+
+    if (gate.plan_index != slice.plan_index) {
+        return Fail("active restore gate plan index wrong");
+    }
+
+    if (gate.input_index != slice.input_index) {
+        return Fail("active restore gate input index wrong");
+    }
+
+    if (gate.world_object_id.value != slice.world_object_id.value) {
+        return Fail("active restore gate world object id wrong");
+    }
+
+    if (!ObjectHandlesMatchForTest(gate.object_handle, slice.object_handle)) {
+        return Fail("active restore gate object handle wrong");
+    }
+
+    if (gate.component_type_id.value != slice.component_type_id.value) {
+        return Fail("active restore gate component type wrong");
+    }
+
+    if (gate.component_slot_id.value != slice.component_slot_id.value) {
+        return Fail("active restore gate component slot wrong");
+    }
+
+    if (!ResourceHandlesMatchForTest(gate.resource_handle, slice.resource_handle)) {
+        return Fail("active restore gate resource handle wrong");
+    }
+
+    if (gate.expected_resource_type.value != slice.expected_resource_type.value) {
+        return Fail("active restore gate resource type wrong");
+    }
+
+    if (gate.status != WorldSceneActiveRestoreGateStatus::Success) {
+        return Fail("active restore gate record status wrong");
+    }
+
+    return 0;
+}
+
+int CheckActiveRestoreGateOutput(
+    const WorldSceneActiveRestoreGateResult &result,
+    const WorldSceneApplyTimeRestoreProofSliceRecord *slices,
+    const WorldSceneActiveRestoreGateRecord *gates,
+    std::uint32_t identity_count,
+    std::uint32_t transform_count,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count) {
+    if (!result.Succeeded()) {
+        return Fail("active restore gate success status wrong");
+    }
+
+    if (slices == nullptr) {
+        return Fail("active restore gate slice output was null");
+    }
+
+    if (gates == nullptr) {
+        return Fail("active restore gate output was null");
+    }
+
+    const std::uint32_t record_count =
+        identity_count + transform_count + attachment_count + binding_count;
+    if (result.state.gate_record_count != record_count) {
+        return Fail("active restore gate record count wrong");
+    }
+
+    if (result.state.policy_record_count != record_count) {
+        return Fail("active restore gate policy count wrong");
+    }
+
+    if (result.state.identity_gate_count != identity_count) {
+        return Fail("active restore gate identity count wrong");
+    }
+
+    if (result.state.transform_gate_count != transform_count) {
+        return Fail("active restore gate transform count wrong");
+    }
+
+    if (result.state.attachment_gate_count != attachment_count) {
+        return Fail("active restore gate attachment count wrong");
+    }
+
+    if (result.state.binding_gate_count != binding_count) {
+        return Fail("active restore gate binding count wrong");
+    }
+
+    std::uint32_t index = 0U;
+    while (index < record_count) {
+        if (CheckActiveRestoreGateRecord(slices[index], gates[index], index) != 0) {
+            return 1;
+        }
+
+        ++index;
+    }
+
+    return 0;
+}
+
+int ExpectActiveRestoreGateSuccessWithoutMutation(
+    WorldSceneActiveRestoreGateBridge &bridge,
+    const ActiveRestoreGateCall &call,
+    std::uint32_t identity_count,
+    std::uint32_t transform_count,
+    std::uint32_t attachment_count,
+    std::uint32_t binding_count) {
+    const WorldSnapshot before_world = call.world->Snapshot();
+    const ObjectSnapshot before_object_registry = call.object_registry->Snapshot();
+    const ResourceSnapshot before_resource_registry = call.resource_registry->Snapshot();
+    const WorldObjectIdentitySnapshot before_identity_destination =
+        call.identity_destination->Snapshot();
+    const WorldTransformSnapshot before_transform_destination =
+        call.transform_destination->Snapshot();
+    const WorldComponentAttachmentSnapshot before_attachment_destination =
+        call.attachment_destination->Snapshot();
+    const WorldComponentResourceBindingSnapshot before_binding_destination =
+        call.binding_destination->Snapshot();
+
+    const WorldSceneActiveRestoreGateResult result = BuildActiveRestoreGate(bridge, call);
+    if (CheckActiveRestoreGateOutput(
+            result,
+            call.slice_scratch,
+            call.output_gates,
+            identity_count,
+            transform_count,
+            attachment_count,
+            binding_count) != 0) {
+        return 1;
+    }
+
+    if (!WorldSnapshotsMatch(before_world, call.world->Snapshot())) {
+        return Fail("active restore gate success mutated world");
+    }
+
+    if (!ObjectSnapshotsMatch(before_object_registry, call.object_registry->Snapshot())) {
+        return Fail("active restore gate success mutated object registry");
+    }
+
+    if (!ResourceSnapshotsMatch(before_resource_registry, call.resource_registry->Snapshot())) {
+        return Fail("active restore gate success mutated resource registry");
+    }
+
+    if (!ObjectIdentitySnapshotsMatch(before_identity_destination, call.identity_destination->Snapshot())) {
+        return Fail("active restore gate success mutated identity destination");
+    }
+
+    if (!TransformSnapshotsMatch(before_transform_destination, call.transform_destination->Snapshot())) {
+        return Fail("active restore gate success mutated transform destination");
+    }
+
+    if (!ComponentAttachmentSnapshotsMatch(before_attachment_destination, call.attachment_destination->Snapshot())) {
+        return Fail("active restore gate success mutated attachment destination");
+    }
+
+    if (!ComponentResourceBindingSnapshotsMatch(before_binding_destination, call.binding_destination->Snapshot())) {
+        return Fail("active restore gate success mutated binding destination");
+    }
+
+    return 0;
+}
+
+int RunActiveRestoreGateSuccessCase() {
+    ApplyTimeRestoreProofFixture fixture;
+    if (PrepareApplyTimeRestoreProofFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    DecodedRestorePlanOutput plan_scratch{};
+    ApplyTimeRestoreProofOutput proof_output{};
+    ApplyTimeRestoreSliceOutput slice_output{};
+    ActiveRestoreGateOutput gate_output{};
+    FillDecodedRestorePlanSentinel(plan_scratch.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreProofSentinel(proof_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreSliceSentinel(slice_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    FillActiveRestoreGateSentinel(gate_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    ActiveRestoreGateCall call = MakeActiveRestoreGateCall(
+        fixture,
+        plan_scratch.data(),
+        DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY,
+        proof_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY,
+        slice_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY,
+        gate_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    WorldSceneActiveRestoreGateBridge bridge;
+    return ExpectActiveRestoreGateSuccessWithoutMutation(bridge, call, 2U, 2U, 2U, 2U);
+}
+
+int WorldSceneActiveRestoreGateBridgeEmitsCleanupPoliciesAfterApplyTimeProof() {
+    return RunActiveRestoreGateSuccessCase();
+}
+
+int WorldSceneActiveRestoreGateBridgeDoesNotMutateDestinationsOrRegistries() {
+    return RunActiveRestoreGateSuccessCase();
+}
+
+int WorldSceneActiveRestoreGateBridgeDestroyedObjectHandleRejectedWithoutSidecarMutation() {
+    ApplyTimeRestoreProofFixture fixture;
+    if (PrepareApplyTimeRestoreProofFixture(&fixture) != 0) {
+        return 1;
+    }
+
+    const ObjectStatus destroy_status =
+        fixture.decoded.object_registry.Destroy(fixture.decoded.objects[0].handle);
+    if (destroy_status != ObjectStatus::Success) {
+        return Fail("active restore gate stale object fixture destroy failed");
+    }
+
+    DecodedRestorePlanOutput plan_scratch{};
+    ApplyTimeRestoreProofOutput proof_output{};
+    ApplyTimeRestoreSliceOutput slice_output{};
+    ActiveRestoreGateOutput gate_output{};
+    FillDecodedRestorePlanSentinel(plan_scratch.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreProofSentinel(proof_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    FillApplyTimeRestoreSliceSentinel(slice_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    FillActiveRestoreGateSentinel(gate_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    const ActiveRestoreGateOutput before_gate_output = gate_output;
+    const WorldSnapshot before_world = fixture.decoded.world.Snapshot();
+    const ObjectSnapshot before_object_registry = fixture.decoded.object_registry.Snapshot();
+    const ResourceSnapshot before_resource_registry = fixture.decoded.resource_registry.Snapshot();
+    const WorldObjectIdentitySnapshot before_identity_destination =
+        fixture.identity_destination.Snapshot();
+    const WorldTransformSnapshot before_transform_destination =
+        fixture.transform_destination.Snapshot();
+    const WorldComponentAttachmentSnapshot before_attachment_destination =
+        fixture.attachment_destination.Snapshot();
+    const WorldComponentResourceBindingSnapshot before_binding_destination =
+        fixture.binding_destination.Snapshot();
+
+    ActiveRestoreGateCall call = MakeActiveRestoreGateCall(
+        fixture,
+        plan_scratch.data(),
+        DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY,
+        proof_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY,
+        slice_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY,
+        gate_output.data(),
+        APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+    WorldSceneActiveRestoreGateBridge bridge;
+    const WorldSceneActiveRestoreGateResult result = BuildActiveRestoreGate(bridge, call);
+    if (result.status != WorldSceneActiveRestoreGateStatus::ObjectPreflightFailed) {
+        return Fail("active restore gate stale object status wrong");
+    }
+
+    if (std::memcmp(before_gate_output.data(), gate_output.data(), sizeof(ActiveRestoreGateOutput)) != 0) {
+        return Fail("active restore gate stale object mutated gate output");
+    }
+
+    if (!WorldSnapshotsMatch(before_world, fixture.decoded.world.Snapshot())) {
+        return Fail("active restore gate stale object mutated world");
+    }
+
+    if (!ObjectSnapshotsMatch(before_object_registry, fixture.decoded.object_registry.Snapshot())) {
+        return Fail("active restore gate stale object mutated object registry");
+    }
+
+    if (!ResourceSnapshotsMatch(before_resource_registry, fixture.decoded.resource_registry.Snapshot())) {
+        return Fail("active restore gate stale object mutated resource registry");
+    }
+
+    if (!ObjectIdentitySnapshotsMatch(before_identity_destination, fixture.identity_destination.Snapshot())) {
+        return Fail("active restore gate stale object mutated identity destination");
+    }
+
+    if (!TransformSnapshotsMatch(before_transform_destination, fixture.transform_destination.Snapshot())) {
+        return Fail("active restore gate stale object mutated transform destination");
+    }
+
+    if (!ComponentAttachmentSnapshotsMatch(before_attachment_destination, fixture.attachment_destination.Snapshot())) {
+        return Fail("active restore gate stale object mutated attachment destination");
+    }
+
+    if (!ComponentResourceBindingSnapshotsMatch(before_binding_destination, fixture.binding_destination.Snapshot())) {
+        return Fail("active restore gate stale object mutated binding destination");
+    }
+
+    return 0;
+}
+
+int WorldSceneActiveRestoreGateBridgeGatePathDoesNotGrowStorage() {
+    WorldSceneActiveRestoreGateDesc desc{};
+    desc.identity_capacity = 2U;
+    desc.transform_capacity = 2U;
+    desc.attachment_capacity = 2U;
+    desc.binding_capacity = 2U;
+    desc.plan_scratch_capacity = DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY;
+    desc.proof_scratch_capacity = APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY;
+    desc.slice_scratch_capacity = APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY;
+    desc.gate_output_capacity = APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY;
+    WorldSceneActiveRestoreGateBridge bridge(desc);
+    const WorldSceneActiveRestoreGateSnapshot before_snapshot = bridge.Snapshot();
+
+    std::uint32_t iteration = 0U;
+    while (iteration < 3U) {
+        ApplyTimeRestoreProofFixture fixture;
+        if (PrepareApplyTimeRestoreProofFixture(&fixture) != 0) {
+            return 1;
+        }
+
+        DecodedRestorePlanOutput plan_scratch{};
+        ApplyTimeRestoreProofOutput proof_output{};
+        ApplyTimeRestoreSliceOutput slice_output{};
+        ActiveRestoreGateOutput gate_output{};
+        FillDecodedRestorePlanSentinel(plan_scratch.data(), DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY);
+        FillApplyTimeRestoreProofSentinel(proof_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+        FillApplyTimeRestoreSliceSentinel(slice_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+        FillActiveRestoreGateSentinel(gate_output.data(), APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+        ActiveRestoreGateCall call = MakeActiveRestoreGateCall(
+            fixture,
+            plan_scratch.data(),
+            DECODED_RESTORE_PLAN_TEST_OUTPUT_CAPACITY,
+            proof_output.data(),
+            APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY,
+            slice_output.data(),
+            APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY,
+            gate_output.data(),
+            APPLY_TIME_RESTORE_PROOF_TEST_OUTPUT_CAPACITY);
+        const WorldSceneActiveRestoreGateResult result = BuildActiveRestoreGate(bridge, call);
+        if (!result.Succeeded()) {
+            return Fail("active restore gate path build failed");
+        }
+
+        ++iteration;
+    }
+
+    const WorldSceneActiveRestoreGateSnapshot after_snapshot = bridge.Snapshot();
+    if (after_snapshot.identity_capacity != before_snapshot.identity_capacity) {
+        return Fail("active restore gate path changed identity capacity");
+    }
+
+    if (after_snapshot.transform_capacity != before_snapshot.transform_capacity) {
+        return Fail("active restore gate path changed transform capacity");
+    }
+
+    if (after_snapshot.attachment_capacity != before_snapshot.attachment_capacity) {
+        return Fail("active restore gate path changed attachment capacity");
+    }
+
+    if (after_snapshot.binding_capacity != before_snapshot.binding_capacity) {
+        return Fail("active restore gate path changed binding capacity");
+    }
+
+    if (after_snapshot.plan_scratch_capacity != before_snapshot.plan_scratch_capacity) {
+        return Fail("active restore gate path changed plan scratch capacity");
+    }
+
+    if (after_snapshot.proof_scratch_capacity != before_snapshot.proof_scratch_capacity) {
+        return Fail("active restore gate path changed proof scratch capacity");
+    }
+
+    if (after_snapshot.slice_scratch_capacity != before_snapshot.slice_scratch_capacity) {
+        return Fail("active restore gate path changed slice scratch capacity");
+    }
+
+    if (after_snapshot.gate_output_capacity != before_snapshot.gate_output_capacity) {
+        return Fail("active restore gate path changed gate output capacity");
+    }
+
+    if (after_snapshot.allocation_accounting_status != before_snapshot.allocation_accounting_status) {
+        return Fail("active restore gate path changed allocation accounting");
+    }
+
+    if (after_snapshot.accepted_gate_count != before_snapshot.accepted_gate_count + 3U) {
+        return Fail("active restore gate path accepted count wrong");
+    }
+
+    return 0;
+}
+
 int WorldComponentAttachmentBridgeAddValidAttachmentStoresRecord() {
     WorldComponentAttachmentBridge bridge;
     const WorldComponentAttachmentResult result = bridge.Add(
@@ -21705,6 +22239,14 @@ int main(int argc, char **argv) {
             WorldSceneApplyTimeRestoreProofBridgeNoStreamDecodeFilePackageResourceLoadOrGameAdapterDependency},
         {TEST_SCENE_APPLY_PROOF_NO_CLEANUP,
             WorldSceneApplyTimeRestoreProofBridgeNoCleanupRollbackOrCompensationPath},
+        {TEST_SCENE_ACTIVE_RESTORE_GATE_POLICIES,
+            WorldSceneActiveRestoreGateBridgeEmitsCleanupPoliciesAfterApplyTimeProof},
+        {TEST_SCENE_ACTIVE_RESTORE_GATE_NO_MUTATION,
+            WorldSceneActiveRestoreGateBridgeDoesNotMutateDestinationsOrRegistries},
+        {TEST_SCENE_ACTIVE_RESTORE_GATE_STALE_OBJECT,
+            WorldSceneActiveRestoreGateBridgeDestroyedObjectHandleRejectedWithoutSidecarMutation},
+        {TEST_SCENE_ACTIVE_RESTORE_GATE_PATH,
+            WorldSceneActiveRestoreGateBridgeGatePathDoesNotGrowStorage},
         {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_ORDER,
             WorldSceneObjectTransformRestoreBridgeRestoresIdentityAndTransformRecordsInInputOrder},
         {TEST_SCENE_OBJECT_TRANSFORM_RESTORE_IDENTITY_ONLY,

@@ -40,6 +40,7 @@ constexpr const char* TEST_SNAPSHOT = "Object_RegistrySnapshot_ReportsCountsAndL
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Object_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_FORBIDDEN_DEPENDENCY = "Object_NoWorldScriptResourceOrGameAdapterDependency";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Object_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char* TEST_HOT_PATH_VALIDATE = "Object_HotPathValidateSmoke_DoesNotGrowRuntimeCounts";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* TYPE_CAPACITY_RETRY_CREATE_MESSAGE = "type capacity failure consumed free slot";
@@ -682,6 +683,58 @@ int ObjectNoHiddenAllocationUsesYuMemorySignal() {
 
     return 0;
 }
+
+int ObjectHotPathValidateSmokeDoesNotGrowRuntimeCounts() {
+    ObjectRegistry registry(ObjectRegistryDesc{4U, 4U});
+    const ObjectRegistrationResult first_result = Create(registry, TYPE_ACTOR);
+    const ObjectRegistrationResult second_result = Create(registry, TYPE_CAMERA);
+    if (!first_result.Succeeded() || !second_result.Succeeded()) {
+        return Fail("hot path fixture creation failed");
+    }
+
+    const ObjectSnapshot before_snapshot = registry.Snapshot();
+    std::uint32_t iteration = 0U;
+    while (iteration < 32U) {
+        const ObjectStatus first_status = registry.ValidateAcquire(first_result.handle, 0U);
+        if (first_status != ObjectStatus::Success) {
+            return Fail("hot path first validate acquire failed");
+        }
+
+        const ObjectStatus second_status = registry.ValidateAcquire(second_result.handle, 1U);
+        if (second_status != ObjectStatus::Success) {
+            return Fail("hot path second validate acquire failed");
+        }
+
+        ++iteration;
+    }
+
+    const ObjectSnapshot after_snapshot = registry.Snapshot();
+    if (after_snapshot.object_capacity != before_snapshot.object_capacity) {
+        return Fail("hot path changed object capacity");
+    }
+
+    if (after_snapshot.type_capacity != before_snapshot.type_capacity) {
+        return Fail("hot path changed type capacity");
+    }
+
+    if (!RuntimeCountsMatch(before_snapshot, after_snapshot)) {
+        return Fail("hot path changed runtime object counts");
+    }
+
+    if (after_snapshot.accepted_operation_count != before_snapshot.accepted_operation_count) {
+        return Fail("hot path changed accepted operation count");
+    }
+
+    if (after_snapshot.failed_operation_count != before_snapshot.failed_operation_count) {
+        return Fail("hot path changed failed operation count");
+    }
+
+    if (after_snapshot.last_status != before_snapshot.last_status) {
+        return Fail("hot path changed last status");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -706,7 +759,8 @@ int main(int argc, char** argv) {
         {TEST_SNAPSHOT, ObjectRegistrySnapshotReportsCountsAndLastStatus},
         {TEST_DISABLED_DIAGNOSTICS, ObjectDisabledDiagnosticsDoesNotChangeResults},
         {TEST_NO_FORBIDDEN_DEPENDENCY, ObjectNoWorldScriptResourceOrGameAdapterDependency},
-        {TEST_NO_HIDDEN_ALLOCATION, ObjectNoHiddenAllocationUsesYuMemorySignal}};
+        {TEST_NO_HIDDEN_ALLOCATION, ObjectNoHiddenAllocationUsesYuMemorySignal},
+        {TEST_HOT_PATH_VALIDATE, ObjectHotPathValidateSmokeDoesNotGrowRuntimeCounts}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
