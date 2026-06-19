@@ -41,6 +41,7 @@
 #include "YuEngine/UiCore/UiRectMathStatus.h"
 #include "YuEngine/UiCore/UiRectTransform.h"
 #include "YuEngine/UiCore/UiStackDirection.h"
+#include "YuEngine/UiCore/UiStaticAtlasMetadata.h"
 
 using yuengine::uicore::UiDirtyChangeType;
 using yuengine::uicore::UiDirtyState;
@@ -74,6 +75,12 @@ using yuengine::uicore::UiRectMathResult;
 using yuengine::uicore::UiRectMathStatus;
 using yuengine::uicore::UiRectTransform;
 using yuengine::uicore::UiStackDirection;
+using yuengine::uicore::UiStaticAtlasMetadata;
+using yuengine::uicore::UiStaticAtlasMetadataDesc;
+using yuengine::uicore::UiStaticAtlasPageDesc;
+using yuengine::uicore::UiStaticAtlasResolveResult;
+using yuengine::uicore::UiStaticAtlasSpriteDesc;
+using yuengine::uicore::UiStaticAtlasStatus;
 using yuengine::uicore::UI_DIRTY_HIT_TEST;
 using yuengine::uicore::UI_DIRTY_LAYOUT;
 using yuengine::uicore::UI_DIRTY_PAINT;
@@ -95,6 +102,12 @@ constexpr std::string_view TEST_HIT_TEST =
     "UiCore_HitTest_LayerClipDisabled";
 constexpr std::string_view TEST_DRAW_LIST =
     "UiCore_DrawList_DeterministicElements";
+constexpr std::string_view TEST_STATIC_ATLAS_RESOLVE =
+    "UiCore_StaticAtlasMetadata_ResolvesSpritePageUvNineSlice";
+constexpr std::string_view TEST_STATIC_ATLAS_MISSING =
+    "UiCore_StaticAtlasMetadata_MissingSpriteReportsStatus";
+constexpr std::string_view TEST_STATIC_ATLAS_INVALID =
+    "UiCore_StaticAtlasMetadata_RejectsInvalidSpriteMetadata";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected exactly one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 using TestFunction = int (*)();
@@ -114,6 +127,45 @@ UiNodeTreeDesc MakeTreeDesc() {
     desc.node_capacity = 8U;
     desc.viewport_rect = UiRect{0.0F, 0.0F, 800.0F, 600.0F};
     return desc;
+}
+
+UiStaticAtlasPageDesc MakeAtlasPage(
+    std::uint32_t page_key,
+    std::uint32_t texture_key,
+    std::uint32_t width,
+    std::uint32_t height) {
+    UiStaticAtlasPageDesc desc;
+    desc.page_key = page_key;
+    desc.texture_key = texture_key;
+    desc.width = width;
+    desc.height = height;
+    return desc;
+}
+
+UiStaticAtlasSpriteDesc MakeAtlasSprite(
+    std::uint32_t sprite_key,
+    std::uint32_t page_key,
+    std::uint32_t x,
+    std::uint32_t y,
+    std::uint32_t width,
+    std::uint32_t height) {
+    UiStaticAtlasSpriteDesc desc;
+    desc.sprite_key = sprite_key;
+    desc.page_key = page_key;
+    desc.x = x;
+    desc.y = y;
+    desc.width = width;
+    desc.height = height;
+    return desc;
+}
+
+bool FloatClose(float left, float right) {
+    float diff = left - right;
+    if (diff < 0.0F) {
+        diff = -diff;
+    }
+
+    return diff < 0.0001F;
 }
 
 UiRectTransform FullStretchTransform() {
@@ -715,6 +767,102 @@ int UiCoreDrawListDeterministicElements() {
     return 0;
 }
 
+int UiCoreStaticAtlasMetadataResolvesSpritePageUvNineSlice() {
+    const std::array<UiStaticAtlasPageDesc, 1U> pages{
+        MakeAtlasPage(7U, 77U, 256U, 128U)};
+    UiStaticAtlasSpriteDesc sprite = MakeAtlasSprite(11U, 7U, 64U, 32U, 64U, 32U);
+    sprite.nine_slice_enabled = true;
+    sprite.border_left = 4U;
+    sprite.border_top = 6U;
+    sprite.border_right = 8U;
+    sprite.border_bottom = 10U;
+    const std::array<UiStaticAtlasSpriteDesc, 1U> sprites{sprite};
+
+    UiStaticAtlasMetadata metadata;
+    const UiStaticAtlasMetadataDesc desc{pages, sprites};
+    const UiStaticAtlasResolveResult result = metadata.ResolveSprite(desc, 11U);
+    if (!result.Succeeded()) {
+        return Fail("static atlas sprite did not resolve");
+    }
+
+    if (result.page_key != 7U || result.texture_key != 77U) {
+        return Fail("static atlas page or texture key mismatch");
+    }
+
+    if (!FloatClose(result.uv_rect.u_min, 0.25F) || !FloatClose(result.uv_rect.v_min, 0.25F)) {
+        return Fail("static atlas uv min mismatch");
+    }
+
+    if (!FloatClose(result.uv_rect.u_max, 0.5F) || !FloatClose(result.uv_rect.v_max, 0.5F)) {
+        return Fail("static atlas uv max mismatch");
+    }
+
+    if (!result.nine_slice.enabled || result.nine_slice.border_left != 4U || result.nine_slice.border_top != 6U) {
+        return Fail("static atlas nine-slice leading borders mismatch");
+    }
+
+    if (result.nine_slice.border_right != 8U || result.nine_slice.border_bottom != 10U) {
+        return Fail("static atlas nine-slice trailing borders mismatch");
+    }
+
+    return 0;
+}
+
+int UiCoreStaticAtlasMetadataMissingSpriteReportsStatus() {
+    const std::array<UiStaticAtlasPageDesc, 1U> pages{
+        MakeAtlasPage(7U, 77U, 256U, 128U)};
+    const std::array<UiStaticAtlasSpriteDesc, 1U> sprites{
+        MakeAtlasSprite(11U, 7U, 64U, 32U, 64U, 32U)};
+
+    UiStaticAtlasMetadata metadata;
+    const UiStaticAtlasMetadataDesc desc{pages, sprites};
+    const UiStaticAtlasResolveResult result = metadata.ResolveSprite(desc, 999U);
+    if (result.status != UiStaticAtlasStatus::SpriteNotFound) {
+        return Fail("missing sprite did not report explicit status");
+    }
+
+    if (result.Succeeded()) {
+        return Fail("missing sprite reported success");
+    }
+
+    return 0;
+}
+
+int UiCoreStaticAtlasMetadataRejectsInvalidSpriteMetadata() {
+    const std::array<UiStaticAtlasPageDesc, 1U> pages{
+        MakeAtlasPage(7U, 77U, 256U, 128U)};
+    const std::array<UiStaticAtlasSpriteDesc, 1U> overflow_sprites{
+        MakeAtlasSprite(11U, 7U, 240U, 32U, 32U, 32U)};
+
+    UiStaticAtlasMetadata metadata;
+    UiStaticAtlasMetadataDesc desc{pages, overflow_sprites};
+    UiStaticAtlasStatus status = metadata.Validate(desc);
+    if (status != UiStaticAtlasStatus::InvalidSpriteRect) {
+        return Fail("overflow sprite rect was not rejected");
+    }
+
+    UiStaticAtlasSpriteDesc nine_slice_sprite = MakeAtlasSprite(12U, 7U, 64U, 32U, 64U, 32U);
+    nine_slice_sprite.nine_slice_enabled = true;
+    nine_slice_sprite.border_left = 40U;
+    nine_slice_sprite.border_right = 40U;
+    const std::array<UiStaticAtlasSpriteDesc, 1U> nine_slice_sprites{nine_slice_sprite};
+    desc = UiStaticAtlasMetadataDesc{pages, nine_slice_sprites};
+    status = metadata.Validate(desc);
+    if (status != UiStaticAtlasStatus::InvalidNineSlice) {
+        return Fail("invalid nine-slice metadata was not rejected");
+    }
+
+    const std::array<UiStaticAtlasSpriteDesc, 1U> missing_page_sprites{
+        MakeAtlasSprite(13U, 99U, 0U, 0U, 16U, 16U)};
+    desc = UiStaticAtlasMetadataDesc{pages, missing_page_sprites};
+    status = metadata.Validate(desc);
+    if (status != UiStaticAtlasStatus::AtlasPageNotFound) {
+        return Fail("missing atlas page was not rejected");
+    }
+
+    return 0;
+}
+
 int UiCoreNoLifecycleConfigEditorRenderBackendDependency() {
     UiNodeTree tree(MakeTreeDesc());
     UiNodeDesc desc = MakeNodeDesc(NodeId(9U), UiNodeId{}, 0U);
@@ -755,7 +903,10 @@ int main(int argc, char **argv) {
         {TEST_LAYOUT_CONTAINERS, UiCoreLayoutContainersResolveExpectedRects},
         {TEST_DIRTY_TRACKER, UiCoreDirtyTrackerPaintOnlyDoesNotTriggerLayoutRebuild},
         {TEST_HIT_TEST, UiCoreHitTestLayerClipDisabled},
-        {TEST_DRAW_LIST, UiCoreDrawListDeterministicElements}};
+        {TEST_DRAW_LIST, UiCoreDrawListDeterministicElements},
+        {TEST_STATIC_ATLAS_RESOLVE, UiCoreStaticAtlasMetadataResolvesSpritePageUvNineSlice},
+        {TEST_STATIC_ATLAS_MISSING, UiCoreStaticAtlasMetadataMissingSpriteReportsStatus},
+        {TEST_STATIC_ATLAS_INVALID, UiCoreStaticAtlasMetadataRejectsInvalidSpriteMetadata}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

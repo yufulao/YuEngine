@@ -187,6 +187,7 @@ add_library(YuUiCore
     Src/YuEngine/UiCore/Src/UiLayoutPass.cpp
     Src/YuEngine/UiCore/Src/UiNodeTree.cpp
     Src/YuEngine/UiCore/Src/UiRectMath.cpp
+    Src/YuEngine/UiCore/Src/UiStaticAtlasMetadata.cpp
 )
 yuengine_apply_compile_options(YuUiCore)
 target_include_directories(YuUiCore
@@ -1553,6 +1554,9 @@ yuengine_add_labeled_test(UiCore_LayoutContainers_ResolveExpectedRects YuUiCoreT
 yuengine_add_labeled_test(UiCore_DirtyTracker_PaintOnlyDoesNotTriggerLayoutRebuild YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_HitTest_LayerClipDisabled YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_DrawList_DeterministicElements YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_StaticAtlasMetadata_ResolvesSpritePageUvNineSlice YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_StaticAtlasMetadata_MissingSpriteReportsStatus YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_StaticAtlasMetadata_RejectsInvalidSpriteMetadata YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 
 add_executable(YuUiEditorTests
     Tests/UiEditor/UiEditorTests.cpp
@@ -1563,6 +1567,10 @@ yuengine_add_labeled_test(UiEditor_ShellState_DefaultPlaceholdersOpen YuUiEditor
 yuengine_add_labeled_test(UiEditor_ShellState_ClosePanelUpdatesSnapshot YuUiEditorTests Fast ModuleFixture UiEditor UI Editor EvidenceOracle)
 yuengine_add_labeled_test(UiEditor_ShellState_RejectsSmallPanelOutput YuUiEditorTests Fast ModuleFixture UiEditor UI Editor EvidenceOracle)
 yuengine_add_labeled_test(UiEditor_ShellState_DearImGuiBackendGateIsExplicit YuUiEditorTests Fast ModuleFixture UiEditor UI Editor EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_LayoutAsset_LoadsHierarchyAndInspector YuUiEditorTests Fast ModuleFixture UiEditor UI Editor LayoutAsset EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_LayoutAsset_SelectNodeUpdatesInspector YuUiEditorTests Fast ModuleFixture UiEditor UI Editor LayoutAsset EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_LayoutAsset_RejectsDuplicateNodeId YuUiEditorTests Fast ModuleFixture UiEditor UI Editor LayoutAsset EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_LayoutAsset_RejectsMissingParent YuUiEditorTests Fast ModuleFixture UiEditor UI Editor LayoutAsset EvidenceOracle)
 
 add_executable(YuUiRenderCoreBridgeTests
     Tests/UiRenderCoreBridge/UiRenderCoreBridgeTests.cpp
