@@ -13,6 +13,7 @@ enum class DiagnosticsStatus {
     UnknownCounterId,
     CapacityExceeded,
     CounterOverflow,
+    InvalidArgument,
     InvalidCapacity
 };
 }

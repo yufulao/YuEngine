@@ -7,6 +7,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -15,11 +16,16 @@
 #include "YuEngine/Diagnostics/DiagnosticsChannelConfig.h"
 #include "YuEngine/Diagnostics/DiagnosticsCounterId.h"
 #include "YuEngine/Diagnostics/DiagnosticsEventId.h"
+#include "YuEngine/Diagnostics/DiagnosticsLimits.h"
 #include "YuEngine/Diagnostics/DiagnosticsSnapshot.h"
 #include "YuEngine/Diagnostics/DiagnosticsStatus.h"
 #include "YuEngine/Diagnostics/DisabledDiagnosticsChannel.h"
 #include "YuEngine/Diagnostics/DisabledLogSink.h"
 #include "YuEngine/Diagnostics/LogLevel.h"
+#include "YuEngine/Diagnostics/RuntimeDiagnosticsCounterIds.h"
+#include "YuEngine/Diagnostics/RuntimeDiagnosticsCounterRecorder.h"
+#include "YuEngine/Diagnostics/RuntimeDiagnosticsCounters.h"
+#include "YuEngine/Diagnostics/RuntimeDiagnosticsRecordResult.h"
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
 #include "YuEngine/Platform/FixedFrameClock.h"
 #include "YuEngine/Platform/HeadlessHost.h"
@@ -36,6 +42,9 @@ using yuengine::diagnostics::DiagnosticsStatus;
 using DisabledDiagnosticsChannel = yuengine::diagnostics::DisabledDiagnosticsChannel;
 using DisabledLogSink = yuengine::diagnostics::DisabledLogSink;
 using yuengine::diagnostics::LogLevel;
+using yuengine::diagnostics::RuntimeDiagnosticsCounterRecorder;
+using yuengine::diagnostics::RuntimeDiagnosticsCounters;
+using yuengine::diagnostics::RuntimeDiagnosticsRecordResult;
 using FixedFrameClock = yuengine::platform::FixedFrameClock;
 using HeadlessHost = yuengine::platform::HeadlessHost;
 using yuengine::platform::HeadlessHostConfig;
@@ -43,6 +52,15 @@ using yuengine::platform::HostError;
 using yuengine::platform::HostStatus;
 using IHostRuntime = yuengine::platform::IHostRuntime;
 using yuengine::memory::MemoryAccountingStatus;
+using yuengine::diagnostics::MAX_DIAGNOSTICS_COUNTERS;
+using yuengine::diagnostics::RUNTIME_AUDIO_COUNT_COUNTER_ID;
+using yuengine::diagnostics::RUNTIME_DIAGNOSTICS_COUNTER_COUNT;
+using yuengine::diagnostics::RUNTIME_FRAME_COUNT_COUNTER_ID;
+using yuengine::diagnostics::RUNTIME_FRAME_TIME_COUNTER_ID;
+using yuengine::diagnostics::RUNTIME_INPUT_COUNT_COUNTER_ID;
+using yuengine::diagnostics::RUNTIME_OBJECT_COUNT_COUNTER_ID;
+using yuengine::diagnostics::RUNTIME_RENDER_COUNT_COUNTER_ID;
+using yuengine::diagnostics::RUNTIME_RESOURCE_COUNT_COUNTER_ID;
 
 namespace {
 constexpr const char* TEST_DISABLED_LOGGING = "Logging_DisabledSink_DoesNotChangeBehavior";
@@ -56,6 +74,10 @@ constexpr const char* TEST_UNKNOWN_IDS = "Diagnostics_ChannelRejectsUnknownIds_W
 constexpr const char* TEST_COUNTER_OVERFLOW = "Diagnostics_CounterOverflow_ReturnsExplicitStatusAndDoesNotMutate";
 constexpr const char* TEST_NO_REPORT_DEPENDENCY = "Diagnostics_NoReportDependency_ForRuntimeResults";
 constexpr const char* TEST_MEMORY_SIGNAL = "Diagnostics_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char* TEST_RUNTIME_COUNTERS = "Diagnostics_RuntimeCounters_RegisterAndRecordBoundedValues";
+constexpr const char* TEST_RUNTIME_DISABLED = "Diagnostics_RuntimeCounters_DisabledChannelDoesNotChangeRuntimeValues";
+constexpr const char* TEST_RUNTIME_NULL_CHANNEL = "Diagnostics_RuntimeCounters_RejectNullChannelWithoutMutation";
+constexpr const char* TEST_RUNTIME_PLAIN_VALUES = "Diagnostics_RuntimeCounters_ValueTypesArePlainValues";
 constexpr const char* LOG_MODULE_PLATFORM = "Platform";
 constexpr const char* LOG_MODULE_AUDIO = "Audio";
 constexpr const char* LOG_MESSAGE_FILTERED = "filtered event";
@@ -79,6 +101,16 @@ constexpr std::uint32_t SECOND_COUNTER_ID = 2U;
 constexpr std::uint32_t UNKNOWN_COUNTER_ID = 99U;
 constexpr std::uint64_t EVENT_PAYLOAD = 42U;
 constexpr std::uint64_t COUNTER_DELTA = 5U;
+constexpr std::uint64_t RUNTIME_FRAME_COUNT = 3U;
+constexpr std::uint64_t RUNTIME_FRAME_TIME = 16666666U;
+constexpr std::uint64_t RUNTIME_OBJECT_COUNT = 11U;
+constexpr std::uint64_t RUNTIME_RESOURCE_COUNT = 7U;
+constexpr std::uint64_t RUNTIME_RENDER_COUNT = 5U;
+constexpr std::uint64_t RUNTIME_AUDIO_COUNT = 2U;
+constexpr std::uint64_t RUNTIME_INPUT_COUNT = 4U;
+static_assert(
+    RUNTIME_DIAGNOSTICS_COUNTER_COUNT <= MAX_DIAGNOSTICS_COUNTERS,
+    "runtime diagnostics counter count exceeds bounded diagnostics capacity");
 using TestFunction = int (*)();
 
 class TraceRuntime final : public IHostRuntime {
@@ -101,6 +133,13 @@ public:
     }
 };
 
+struct RuntimeProbeResult {
+    HostStatus runtime_status = HostStatus::Success;
+    RuntimeDiagnosticsCounters counters{};
+    RuntimeDiagnosticsRecordResult diagnostics_result{};
+    DiagnosticsSnapshot diagnostics_snapshot{};
+};
+
 int Fail(const std::string& message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
     std::fputc('\n', stderr);
@@ -109,6 +148,15 @@ int Fail(const std::string& message) {
 
 DiagnosticsChannelConfig TestChannelConfig() {
     return DiagnosticsChannelConfig{EVENT_CAPACITY, COUNTER_CAPACITY, ID_CAPACITY, ID_CAPACITY, true};
+}
+
+DiagnosticsChannelConfig RuntimeChannelConfig() {
+    return DiagnosticsChannelConfig{
+        EVENT_CAPACITY,
+        RUNTIME_DIAGNOSTICS_COUNTER_COUNT,
+        ID_CAPACITY,
+        RUNTIME_DIAGNOSTICS_COUNTER_COUNT,
+        true};
 }
 
 BoundedDiagnosticsChannel CreateRegisteredChannel() {
@@ -122,6 +170,67 @@ BoundedDiagnosticsChannel CreateRegisteredChannel() {
     channel.RegisterCounterId(DiagnosticsCounterId{COUNTER_ID});
     channel.RegisterCounterId(DiagnosticsCounterId{SECOND_COUNTER_ID});
     return channel;
+}
+
+RuntimeDiagnosticsCounters RuntimeCounterSample() {
+    RuntimeDiagnosticsCounters counters{};
+    counters.frame_count = RUNTIME_FRAME_COUNT;
+    counters.frame_time_nanoseconds = RUNTIME_FRAME_TIME;
+    counters.object_count = RUNTIME_OBJECT_COUNT;
+    counters.resource_count = RUNTIME_RESOURCE_COUNT;
+    counters.render_submission_count = RUNTIME_RENDER_COUNT;
+    counters.audio_submission_count = RUNTIME_AUDIO_COUNT;
+    counters.input_command_count = RUNTIME_INPUT_COUNT;
+    return counters;
+}
+
+bool RuntimeCountersEqual(const RuntimeDiagnosticsCounters &left, const RuntimeDiagnosticsCounters &right) {
+    if (left.frame_count != right.frame_count) {
+        return false;
+    }
+
+    if (left.frame_time_nanoseconds != right.frame_time_nanoseconds) {
+        return false;
+    }
+
+    if (left.object_count != right.object_count) {
+        return false;
+    }
+
+    if (left.resource_count != right.resource_count) {
+        return false;
+    }
+
+    if (left.render_submission_count != right.render_submission_count) {
+        return false;
+    }
+
+    if (left.audio_submission_count != right.audio_submission_count) {
+        return false;
+    }
+
+    return left.input_command_count == right.input_command_count;
+}
+
+RuntimeProbeResult RunRuntimeProbe(bool diagnostics_enabled) {
+    RuntimeProbeResult result{};
+    result.runtime_status = HostStatus::Success;
+    result.counters = RuntimeCounterSample();
+
+    RuntimeDiagnosticsCounterRecorder recorder;
+    if (diagnostics_enabled) {
+        BoundedDiagnosticsChannel channel(RuntimeChannelConfig());
+        recorder.RegisterCounters(&channel);
+        result.diagnostics_result = recorder.RecordCounters(&channel, result.counters);
+        result.diagnostics_snapshot = channel.Snapshot();
+        return result;
+    }
+
+    DisabledDiagnosticsChannel channel;
+    recorder.RegisterCounters(&channel);
+    result.diagnostics_result = recorder.RecordCounters(&channel, result.counters);
+    result.diagnostics_snapshot = channel.Snapshot();
+    return result;
 }
 
 int LoggingDisabledSinkDoesNotChangeBehavior() {
@@ -496,6 +605,176 @@ int DiagnosticsNoHiddenAllocationUsesYuMemorySignal() {
 
     return 0;
 }
+
+int DiagnosticsRuntimeCountersRegisterAndRecordBoundedValues() {
+    RuntimeDiagnosticsCounterRecorder recorder;
+    BoundedDiagnosticsChannel channel(RuntimeChannelConfig());
+    const DiagnosticsStatus register_status = recorder.RegisterCounters(&channel);
+    if (register_status != DiagnosticsStatus::Success) {
+        return Fail("runtime diagnostics counters did not register");
+    }
+
+    const RuntimeDiagnosticsCounters counters = RuntimeCounterSample();
+    const RuntimeDiagnosticsRecordResult record_result = recorder.RecordCounters(&channel, counters);
+    if (record_result.status != DiagnosticsStatus::Success) {
+        return Fail("runtime diagnostics counters did not record");
+    }
+
+    const std::uint32_t expected_counter_count = static_cast<std::uint32_t>(RUNTIME_DIAGNOSTICS_COUNTER_COUNT);
+    if (record_result.contract_counter_count != expected_counter_count) {
+        return Fail("runtime diagnostics contract counter count was wrong");
+    }
+
+    if (record_result.recorded_counter_count != expected_counter_count) {
+        return Fail("runtime diagnostics recorded counter count was wrong");
+    }
+
+    const DiagnosticsSnapshot snapshot = channel.Snapshot();
+    if (snapshot.counter_count != RUNTIME_DIAGNOSTICS_COUNTER_COUNT) {
+        return Fail("runtime diagnostics snapshot counter count was wrong");
+    }
+
+    if (snapshot.successful_counter_update_count != RUNTIME_DIAGNOSTICS_COUNTER_COUNT) {
+        return Fail("runtime diagnostics update count was wrong");
+    }
+
+    if (snapshot.counters[0U].id.value != RUNTIME_FRAME_COUNT_COUNTER_ID.value) {
+        return Fail("runtime frame counter id was wrong");
+    }
+
+    if (snapshot.counters[0U].value != counters.frame_count) {
+        return Fail("runtime frame counter value was wrong");
+    }
+
+    if (snapshot.counters[1U].id.value != RUNTIME_FRAME_TIME_COUNTER_ID.value) {
+        return Fail("runtime frame time counter id was wrong");
+    }
+
+    if (snapshot.counters[1U].value != counters.frame_time_nanoseconds) {
+        return Fail("runtime frame time counter value was wrong");
+    }
+
+    if (snapshot.counters[2U].id.value != RUNTIME_OBJECT_COUNT_COUNTER_ID.value) {
+        return Fail("runtime object counter id was wrong");
+    }
+
+    if (snapshot.counters[2U].value != counters.object_count) {
+        return Fail("runtime object counter value was wrong");
+    }
+
+    if (snapshot.counters[3U].id.value != RUNTIME_RESOURCE_COUNT_COUNTER_ID.value) {
+        return Fail("runtime resource counter id was wrong");
+    }
+
+    if (snapshot.counters[3U].value != counters.resource_count) {
+        return Fail("runtime resource counter value was wrong");
+    }
+
+    if (snapshot.counters[4U].id.value != RUNTIME_RENDER_COUNT_COUNTER_ID.value) {
+        return Fail("runtime render counter id was wrong");
+    }
+
+    if (snapshot.counters[4U].value != counters.render_submission_count) {
+        return Fail("runtime render counter value was wrong");
+    }
+
+    if (snapshot.counters[5U].id.value != RUNTIME_AUDIO_COUNT_COUNTER_ID.value) {
+        return Fail("runtime audio counter id was wrong");
+    }
+
+    if (snapshot.counters[5U].value != counters.audio_submission_count) {
+        return Fail("runtime audio counter value was wrong");
+    }
+
+    if (snapshot.counters[6U].id.value != RUNTIME_INPUT_COUNT_COUNTER_ID.value) {
+        return Fail("runtime input counter id was wrong");
+    }
+
+    if (snapshot.counters[6U].value != counters.input_command_count) {
+        return Fail("runtime input counter value was wrong");
+    }
+
+    return 0;
+}
+
+int DiagnosticsRuntimeCountersDisabledChannelDoesNotChangeRuntimeValues() {
+    const RuntimeProbeResult enabled_result = RunRuntimeProbe(true);
+    const RuntimeProbeResult disabled_result = RunRuntimeProbe(false);
+
+    if (enabled_result.runtime_status != disabled_result.runtime_status) {
+        return Fail("disabled runtime diagnostics changed runtime status");
+    }
+
+    if (!RuntimeCountersEqual(enabled_result.counters, disabled_result.counters)) {
+        return Fail("disabled runtime diagnostics changed runtime counters");
+    }
+
+    if (enabled_result.diagnostics_result.status != DiagnosticsStatus::Success) {
+        return Fail("enabled runtime diagnostics did not record");
+    }
+
+    if (disabled_result.diagnostics_result.status != DiagnosticsStatus::Disabled) {
+        return Fail("disabled runtime diagnostics did not report disabled status");
+    }
+
+    if (disabled_result.diagnostics_result.recorded_counter_count != 0U) {
+        return Fail("disabled runtime diagnostics recorded counters");
+    }
+
+    if (disabled_result.diagnostics_snapshot.counter_count != 0U) {
+        return Fail("disabled runtime diagnostics snapshot stored counters");
+    }
+
+    return 0;
+}
+
+int DiagnosticsRuntimeCountersRejectNullChannelWithoutMutation() {
+    RuntimeDiagnosticsCounterRecorder recorder;
+    RuntimeDiagnosticsCounters counters = RuntimeCounterSample();
+    const RuntimeDiagnosticsCounters before_counters = counters;
+
+    const DiagnosticsStatus register_status = recorder.RegisterCounters(static_cast<BoundedDiagnosticsChannel *>(nullptr));
+    if (register_status != DiagnosticsStatus::InvalidArgument) {
+        return Fail("runtime diagnostics null register did not return invalid argument");
+    }
+
+    const RuntimeDiagnosticsRecordResult result = recorder.RecordCounters(
+        static_cast<BoundedDiagnosticsChannel *>(nullptr),
+        counters);
+    if (result.status != DiagnosticsStatus::InvalidArgument) {
+        return Fail("runtime diagnostics null record did not return invalid argument");
+    }
+
+    if (result.recorded_counter_count != 0U) {
+        return Fail("runtime diagnostics null record mutated result count");
+    }
+
+    if (!RuntimeCountersEqual(counters, before_counters)) {
+        return Fail("runtime diagnostics null record mutated counters");
+    }
+
+    return 0;
+}
+
+int DiagnosticsRuntimeCountersValueTypesArePlainValues() {
+    if (!std::is_standard_layout_v<RuntimeDiagnosticsCounters>) {
+        return Fail("runtime diagnostics counters are not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<RuntimeDiagnosticsCounters>) {
+        return Fail("runtime diagnostics counters are not trivially copyable");
+    }
+
+    if (!std::is_standard_layout_v<RuntimeDiagnosticsRecordResult>) {
+        return Fail("runtime diagnostics record result is not standard layout");
+    }
+
+    if (!std::is_trivially_copyable_v<RuntimeDiagnosticsRecordResult>) {
+        return Fail("runtime diagnostics record result is not trivially copyable");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -514,7 +793,11 @@ int main(int argc, char** argv) {
         {TEST_UNKNOWN_IDS, DiagnosticsChannelRejectsUnknownIdsWhenValidationEnabled},
         {TEST_COUNTER_OVERFLOW, DiagnosticsCounterOverflowReturnsExplicitStatusAndDoesNotMutate},
         {TEST_NO_REPORT_DEPENDENCY, DiagnosticsNoReportDependencyForRuntimeResults},
-        {TEST_MEMORY_SIGNAL, DiagnosticsNoHiddenAllocationUsesYuMemorySignal}};
+        {TEST_MEMORY_SIGNAL, DiagnosticsNoHiddenAllocationUsesYuMemorySignal},
+        {TEST_RUNTIME_COUNTERS, DiagnosticsRuntimeCountersRegisterAndRecordBoundedValues},
+        {TEST_RUNTIME_DISABLED, DiagnosticsRuntimeCountersDisabledChannelDoesNotChangeRuntimeValues},
+        {TEST_RUNTIME_NULL_CHANNEL, DiagnosticsRuntimeCountersRejectNullChannelWithoutMutation},
+        {TEST_RUNTIME_PLAIN_VALUES, DiagnosticsRuntimeCountersValueTypesArePlainValues}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);
