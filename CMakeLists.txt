@@ -390,6 +390,7 @@ yuengine_apply_compile_options(YuHeadless)
 target_link_libraries(YuHeadless PRIVATE YuKernel)
 
 add_library(YuUiEditorShellCore
+    Tools/UiEditor/Src/UiEditorComponentTemplate.cpp
     Tools/UiEditor/Src/UiEditorIdEventValidator.cpp
     Tools/UiEditor/Src/UiEditorResourceReferenceValidator.cpp
     Tools/UiEditor/Src/UiEditorShellState.cpp
@@ -1838,6 +1839,15 @@ yuengine_add_labeled_test(UiEditor_PreviewViewport_RendersLoadedLayoutThroughRun
 yuengine_add_labeled_test(UiEditor_PreviewViewport_RejectsBeforeLayoutLoad YuUiEditorTests Fast ModuleFixture UiEditor UI Editor RenderCore EvidenceOracle)
 yuengine_add_labeled_test(UiEditor_PreviewViewport_RejectsInvalidViewport YuUiEditorTests Fast ModuleFixture UiEditor UI Editor RenderCore EvidenceOracle)
 yuengine_add_labeled_test(UiEditor_PreviewViewport_WorksWithoutDearImGuiBackend YuUiEditorTests Fast ModuleFixture UiEditor UI Editor RenderCore EvidenceOracle)
+
+add_executable(YuUiEditorComponentTemplateTests
+    Tests/UiEditor/UiEditorComponentTemplateTests.cpp
+)
+yuengine_apply_compile_options(YuUiEditorComponentTemplateTests)
+target_link_libraries(YuUiEditorComponentTemplateTests PRIVATE YuUiEditorShellCore)
+yuengine_add_labeled_test(UiEditor_ComponentTemplate_CreatesAllValidLayoutNodes YuUiEditorComponentTemplateTests Fast ModuleFixture UiEditor UI Editor ComponentTemplate EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_ComponentTemplate_RejectsInvalidTemplateWithoutMutation YuUiEditorComponentTemplateTests Fast ModuleFixture UiEditor UI Editor ComponentTemplate EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_ComponentTemplate_RejectsInsufficientOutputWithoutMutation YuUiEditorComponentTemplateTests Fast ModuleFixture UiEditor UI Editor ComponentTemplate EvidenceOracle)
 
 add_executable(YuUiEditorResourceReferenceValidatorTests
     Tests/UiEditor/UiEditorResourceReferenceValidatorTests.cpp

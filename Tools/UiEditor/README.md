@@ -55,3 +55,14 @@
 - validator 先统计再写入 report buffer；输出容量不足、invalid node 或 invalid event 时不会污染调用方 report buffer。
 
 当前 validator 只证明 E1 的 ID/event 检查面，不接入真实 Dear ImGui 后端，不扩展 UI-E2/E3，也不改变 runtime UiCore ownership/lifecycle。
+
+## Component Templates
+
+`ENG-208A` 将 `UI-E2-001` 收敛为 editor-only component template 首片：
+
+- `UiEditorComponentTemplateFactory` 可为 Text、Image、Button、Slider、GridView 创建确定性的 layout node record。
+- template 输出包含 `kind`、`default_state`、layout node、resource references 和 event bindings。
+- 输出可被现有 layout asset loader、`UiEditorResourceReferenceValidator` 和 `UiEditorIdEventValidator` 验证。
+- buffer 容量不足、invalid template kind 或 invalid layout node 会返回显式状态，并避免污染调用方输出。
+
+当前 component template 首片不做 state preview、GridView 数据模拟、性能诊断、真实 Dear ImGui backend、RHI/D3D11/RenderCore backend 扩展，也不改变 Project UI Runtime 或产品窗口迁移边界。
