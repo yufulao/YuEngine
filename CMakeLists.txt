@@ -194,6 +194,7 @@ add_library(YuUiCore
     Src/YuEngine/UiCore/Src/UiNodeTree.cpp
     Src/YuEngine/UiCore/Src/UiRectMath.cpp
     Src/YuEngine/UiCore/Src/UiStaticAtlasMetadata.cpp
+    Src/YuEngine/UiCore/Src/UiTextComponent.cpp
 )
 yuengine_apply_compile_options(YuUiCore)
 target_include_directories(YuUiCore
@@ -1620,6 +1621,18 @@ yuengine_add_labeled_test(UiCore_ImageComponent_BuildsNineSliceRecordsAndBatches
 yuengine_add_labeled_test(UiCore_ImageComponent_ReportsMissingSpriteWithoutMutation YuUiImageComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_ImageComponent_RejectsSmallOutputWithoutMutation YuUiImageComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_ImageComponent_PaintInvalidationDoesNotTriggerLayout YuUiImageComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+
+add_executable(YuUiTextComponentTests
+    Tests/UiCore/UiTextComponentTests.cpp
+)
+yuengine_apply_compile_options(YuUiTextComponentTests)
+target_link_libraries(YuUiTextComponentTests PRIVATE YuUiCore)
+yuengine_add_labeled_test(UiCore_TextComponent_RendersAlignedWrappedPlainText YuUiTextComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_TextComponent_LocalizePlaceholderUsesFallback YuUiTextComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_TextComponent_ClipsOverflowAndWritesEffects YuUiTextComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_TextComponent_TextDirtyDoesNotTriggerLayout YuUiTextComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_TextComponent_ReportsMissingGlyphWithoutMutation YuUiTextComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_TextComponent_RejectsSmallOutputWithoutMutation YuUiTextComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 
 add_executable(YuUiEditorTests
     Tests/UiEditor/UiEditorTests.cpp
