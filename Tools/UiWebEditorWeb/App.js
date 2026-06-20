@@ -6,7 +6,9 @@
     const state = {
         document: model.CreateDefaultDocument(),
         filter: "",
-        drag: null
+        drag: null,
+        hierarchyDrag: null,
+        showRuntimeData: false
     };
 
     function GetElement(id) {
@@ -33,6 +35,16 @@
         RenderJsonPreview();
     }
 
+    function ClampNumber(value, min_value, max_value) {
+        if (value < min_value) {
+            return min_value;
+        }
+        if (value > max_value) {
+            return max_value;
+        }
+        return value;
+    }
+
     function CreateElement(tag_name, class_name, text) {
         const element = document.createElement(tag_name);
         if (class_name) {
@@ -50,6 +62,19 @@
             return null;
         }
         return inspector.node;
+    }
+
+    function FindNodeRecord(document_value, node_id) {
+        return document_value.nodes.find(function MatchNode(node) {
+            return node.nodeId === node_id;
+        }) || null;
+    }
+
+    function CompareNodeOrder(left, right) {
+        if (left.siblingOrder !== right.siblingOrder) {
+            return left.siblingOrder - right.siblingOrder;
+        }
+        return left.nodeId - right.nodeId;
     }
 
     function SelectNode(node_id) {
@@ -222,6 +247,24 @@
         container.appendChild(group);
     }
 
+    function AppendSelectOptions(container, label_text, value, options, on_input) {
+        const group = CreateElement("label", "field");
+        const label = CreateElement("span", "", label_text);
+        const select = CreateElement("select", "", "");
+        options.forEach(function AddOption(option_record) {
+            const option = CreateElement("option", "", option_record.label);
+            option.value = String(option_record.value);
+            option.selected = String(option_record.value) === String(value);
+            select.appendChild(option);
+        });
+        select.addEventListener("change", function OnChangeEvent() {
+            on_input(Number(select.value));
+        });
+        group.appendChild(label);
+        group.appendChild(select);
+        container.appendChild(group);
+    }
+
     function RenderSummary() {
         const result = model.ValidateDocument(state.document);
         const dirty_text = state.document.editor.dirty ? "Dirty" : "Saved";
@@ -236,12 +279,37 @@
         Clear(list);
         const items = model.BuildHierarchy(state.document);
         items.forEach(function RenderItem(item) {
-            const row = CreateElement("button", "tree-row", "");
-            row.type = "button";
+            const row = CreateElement("div", "tree-row", "");
+            row.tabIndex = 0;
+            row.draggable = item.canDrag;
+            row.setAttribute("role", "button");
+            row.dataset.nodeId = String(item.nodeId);
             row.style.paddingLeft = String(12 + item.depth * 16) + "px";
             row.dataset.selected = item.selected ? "true" : "false";
             row.addEventListener("click", function OnClickEvent() {
                 SelectNode(item.nodeId);
+            });
+            row.addEventListener("keydown", function OnKeyDownEvent(event) {
+                if (event.key !== "Enter" && event.key !== " ") {
+                    return;
+                }
+                event.preventDefault();
+                SelectNode(item.nodeId);
+            });
+            row.addEventListener("dragstart", function OnDragStartEvent(event) {
+                StartHierarchyDrag(event, item);
+            });
+            row.addEventListener("dragover", function OnDragOverEvent(event) {
+                UpdateHierarchyDragOver(event, row);
+            });
+            row.addEventListener("dragleave", function OnDragLeaveEvent() {
+                ClearHierarchyDropHint(row);
+            });
+            row.addEventListener("drop", function OnDropEvent(event) {
+                DropHierarchyNode(event, item, row);
+            });
+            row.addEventListener("dragend", function OnDragEndEvent() {
+                FinishHierarchyDrag();
             });
             const marker = CreateElement("span", "tree-marker", item.component.slice(0, 1).toUpperCase());
             const text = CreateElement("span", "tree-label", item.name);
@@ -253,9 +321,144 @@
         });
     }
 
+    function GetHierarchyDropMode(event, row) {
+        const rect = row.getBoundingClientRect();
+        const local_y = event.clientY - rect.top;
+        const third_height = rect.height / 3;
+        if (local_y < third_height) {
+            return "Before";
+        }
+        if (local_y > rect.height - third_height) {
+            return "After";
+        }
+        return "Inside";
+    }
+
+    function ClearHierarchyDropHint(row) {
+        row.dataset.dropMode = "";
+    }
+
+    function ClearHierarchyDropHints() {
+        const rows = document.querySelectorAll(".tree-row");
+        rows.forEach(function ClearRow(row) {
+            ClearHierarchyDropHint(row);
+        });
+    }
+
+    function StartHierarchyDrag(event, item) {
+        if (!item.canDrag) {
+            event.preventDefault();
+            return;
+        }
+        state.hierarchyDrag = {
+            nodeId: item.nodeId
+        };
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", String(item.nodeId));
+    }
+
+    function UpdateHierarchyDragOver(event, row) {
+        if (!state.hierarchyDrag) {
+            return;
+        }
+        event.preventDefault();
+        row.dataset.dropMode = GetHierarchyDropMode(event, row);
+        event.dataTransfer.dropEffect = "move";
+    }
+
+    function FinishHierarchyDrag() {
+        state.hierarchyDrag = null;
+        ClearHierarchyDropHints();
+    }
+
+    function ReadDraggedNodeId(event) {
+        const raw_value = event.dataTransfer.getData("text/plain");
+        const node_id = Number(raw_value);
+        if (Number.isFinite(node_id)) {
+            return node_id;
+        }
+        if (state.hierarchyDrag) {
+            return state.hierarchyDrag.nodeId;
+        }
+        return 0;
+    }
+
+    function GetSiblingDropIndex(document_value, moving_id, target_id, insert_after) {
+        const target = FindNodeRecord(document_value, target_id);
+        if (!target) {
+            return 0;
+        }
+        const siblings = document_value.nodes.filter(function MatchSibling(node) {
+            if (node.nodeId === moving_id) {
+                return false;
+            }
+            return node.parentId === target.parentId;
+        }).sort(CompareNodeOrder);
+        const target_index = siblings.findIndex(function MatchTarget(node) {
+            return node.nodeId === target.nodeId;
+        });
+        if (target_index < 0) {
+            return siblings.length;
+        }
+        if (insert_after) {
+            return target_index + 1;
+        }
+        return target_index;
+    }
+
+    function ApplyHierarchyDrop(moving_id, target_id, mode) {
+        if (moving_id === target_id) {
+            return;
+        }
+        const document_value = model.NormalizeDocument(state.document);
+        const target = FindNodeRecord(document_value, target_id);
+        if (!target) {
+            return;
+        }
+        let parent_id = target.nodeId;
+        let sibling_index = document_value.nodes.filter(function MatchChild(node) {
+            return node.parentId === target.nodeId;
+        }).length;
+        if (mode === "Before") {
+            parent_id = target.parentId;
+            sibling_index = GetSiblingDropIndex(document_value, moving_id, target_id, false);
+        }
+        if (mode === "After") {
+            parent_id = target.parentId;
+            sibling_index = GetSiblingDropIndex(document_value, moving_id, target_id, true);
+        }
+        if (parent_id <= 0) {
+            return;
+        }
+        if (!model.CanMoveNode(document_value, moving_id, parent_id)) {
+            return;
+        }
+        state.document = model.MoveNode(document_value, moving_id, parent_id, sibling_index);
+        Render();
+    }
+
+    function DropHierarchyNode(event, item, row) {
+        if (!state.hierarchyDrag) {
+            return;
+        }
+        event.preventDefault();
+        const moving_id = ReadDraggedNodeId(event);
+        const mode = GetHierarchyDropMode(event, row);
+        ApplyHierarchyDrop(moving_id, item.nodeId, mode);
+        FinishHierarchyDrag();
+    }
+
     function RenderCanvas() {
         const canvas = GetElement("canvas-surface");
         Clear(canvas);
+        const viewport = state.document.editor.viewport;
+        const width = viewport.runtimeRect.width * viewport.scale;
+        const height = viewport.runtimeRect.height * viewport.scale;
+        const grid_size = Math.max(8, 24 * viewport.scale);
+        canvas.style.width = String(width) + "px";
+        canvas.style.height = String(height) + "px";
+        canvas.style.backgroundSize = String(grid_size) + "px " + String(grid_size) + "px";
+        SetText("canvas-view-label", String(Math.round(viewport.scale * 100)) + "%");
         const items = model.BuildCanvasItems(state.document);
         items.forEach(function RenderCanvasItem(item) {
             const node = CreateElement("button", "canvas-node", "");
@@ -282,6 +485,27 @@
             });
             node.appendChild(handle);
             canvas.appendChild(node);
+        });
+    }
+
+    function RenderParentInspector(panel, node, parent_options) {
+        if (!parent_options || parent_options.length === 0) {
+            return;
+        }
+        const options = parent_options.map(function MapParentOption(option) {
+            const indent = "  ".repeat(option.depth);
+            return {
+                value: option.nodeId,
+                label: indent + option.name + " #" + option.nodeId
+            };
+        });
+        AppendSelectOptions(panel, "Parent", node.parentId, options, function UpdateParent(value) {
+            const document_value = model.NormalizeDocument(state.document);
+            const siblings = document_value.nodes.filter(function MatchChild(child) {
+                return child.parentId === value;
+            });
+            state.document = model.MoveNode(document_value, node.nodeId, value, siblings.length);
+            Render();
         });
     }
 
@@ -340,6 +564,7 @@
         AppendSelect(panel, "Component", node.component, ["Container", "Text", "Image", "Button", "Slider", "Toggle"], function UpdateComponent(value) {
             UpdateSelectedNode({ component: value });
         });
+        RenderParentInspector(panel, node, inspector.parentOptions);
         AppendInput(panel, "Text", node.text || "", function UpdateText(value) {
             UpdateSelectedNode({ text: value });
         });
@@ -453,9 +678,45 @@
     }
 
     function RenderJsonPreview() {
+        const center = GetElement("center-pane");
+        const panel = GetElement("runtime-data-panel");
+        const toggle = GetElement("runtime-json-toggle-button");
+        center.dataset.runtimeOpen = state.showRuntimeData ? "true" : "false";
+        panel.dataset.open = state.showRuntimeData ? "true" : "false";
+        toggle.setAttribute("aria-expanded", state.showRuntimeData ? "true" : "false");
+        if (!state.showRuntimeData) {
+            GetElement("json-preview").textContent = "";
+            return;
+        }
         const runtime_document = model.BuildRuntimeDocument(state.document);
         const text = model.FormatJson(runtime_document);
         GetElement("json-preview").textContent = text;
+    }
+
+    function UpdateViewportScale(scale) {
+        const viewport = state.document.editor.viewport;
+        viewport.scale = ClampNumber(scale, 0.25, 2.5);
+        viewport.panX = 0;
+        viewport.panY = 0;
+        state.document.editor.dirty = true;
+        Render();
+    }
+
+    function FitCanvasToFrame() {
+        const workbench = GetElement("canvas-workbench");
+        if (!workbench) {
+            return;
+        }
+        const viewport = state.document.editor.viewport;
+        const width_scale = Math.max(1, workbench.clientWidth - 48) / viewport.runtimeRect.width;
+        const height_scale = Math.max(1, workbench.clientHeight - 48) / viewport.runtimeRect.height;
+        const next_scale = Math.min(width_scale, height_scale);
+        UpdateViewportScale(next_scale);
+    }
+
+    function ToggleRuntimeData(open) {
+        state.showRuntimeData = open;
+        RenderJsonPreview();
     }
 
     function Render() {
@@ -527,6 +788,26 @@
         GetElement("validate-button").addEventListener("click", function OnClickEvent() {
             RenderValidation();
             RenderSummary();
+        });
+        GetElement("runtime-json-toggle-button").addEventListener("click", function OnClickEvent() {
+            ToggleRuntimeData(!state.showRuntimeData);
+        });
+        GetElement("runtime-json-close-button").addEventListener("click", function OnClickEvent() {
+            ToggleRuntimeData(false);
+        });
+        GetElement("canvas-fit-button").addEventListener("click", function OnClickEvent() {
+            FitCanvasToFrame();
+        });
+        GetElement("canvas-reset-view-button").addEventListener("click", function OnClickEvent() {
+            UpdateViewportScale(1);
+        });
+        GetElement("canvas-zoom-out-button").addEventListener("click", function OnClickEvent() {
+            const scale = state.document.editor.viewport.scale - 0.1;
+            UpdateViewportScale(scale);
+        });
+        GetElement("canvas-zoom-in-button").addEventListener("click", function OnClickEvent() {
+            const scale = state.document.editor.viewport.scale + 0.1;
+            UpdateViewportScale(scale);
         });
         GetElement("add-container-button").addEventListener("click", function OnClickEvent() {
             state.document = model.AddNode(state.document, "Container");

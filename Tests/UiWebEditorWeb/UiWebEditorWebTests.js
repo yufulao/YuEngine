@@ -44,6 +44,12 @@ function FindCanvasItem(document, node_id) {
     });
 }
 
+function FindRuntimeNode(document, node_id) {
+    return document.nodes.find(function MatchNode(node) {
+        return node.nodeId === node_id;
+    });
+}
+
 function CreateFullRectTransform() {
     return model.NormalizeRectTransform({});
 }
@@ -188,6 +194,20 @@ function TestAdapterForwardConversion() {
     AssertCanvasRectClose(canvas_rect, { left: 124, top: 162, width: 156, height: 44 });
 }
 
+function TestAdapterViewportScaleAndPanBoundary() {
+    const engine_rect = { x: -100, y: -50, width: 1000, height: 600 };
+    const viewport = {
+        runtimeRect: { x: -100, y: -50, width: 1000, height: 600 },
+        scale: 1.5,
+        panX: 12,
+        panY: 20
+    };
+    const canvas_rect = model.EngineRectToCanvasRect(engine_rect, viewport);
+    const inverse_rect = model.CanvasRectToEngineRect(canvas_rect, viewport);
+    AssertCanvasRectClose(canvas_rect, { left: 12, top: 20, width: 1500, height: 900 });
+    AssertRectClose(inverse_rect, engine_rect);
+}
+
 function TestAdapterInverseEditPath() {
     const document = model.CreateDefaultDocument();
     const before_item = FindCanvasItem(document, 2);
@@ -221,6 +241,55 @@ function TestAddNodeUpdatesSnapshots() {
     assert.ok(inspector.node.rectTransform);
     assert.ok(item.canvasRect);
     assert.ok(item.runtimeRect);
+}
+
+function TestMoveNodeReparentsAndPreservesRuntimeRect() {
+    const document = model.CreateDefaultDocument();
+    const before_item = FindCanvasItem(document, 3);
+    const next_document = model.MoveNode(document, 3, 2, 0);
+    const after_node = FindRuntimeNode(next_document, 3);
+    const after_item = FindCanvasItem(next_document, 3);
+    assert.equal(after_node.parentId, 2);
+    assert.equal(after_node.siblingOrder, 0);
+    assert.equal(next_document.editor.selectedNodeId, 3);
+    assert.equal(next_document.editor.dirty, true);
+    AssertCanvasRectClose(after_item.canvasRect, before_item.canvasRect);
+}
+
+function TestMoveNodeReordersSiblings() {
+    const document = model.AddNode(model.CreateDefaultDocument(), "Image");
+    const next_document = model.MoveNode(document, 2, 1, 2);
+    const root_children = model.BuildHierarchy(next_document).filter(function MatchRootChild(item) {
+        return item.parentId === 1;
+    }).map(function MapNodeId(item) {
+        return item.nodeId;
+    });
+    assert.deepEqual(root_children, [3, 4, 2]);
+}
+
+function TestMoveNodePreventsCyclesAndRootMove() {
+    const document = model.CreateDefaultDocument();
+    const with_node = model.AddNode(document, "Container");
+    const nested_document = model.MoveNode(with_node, 4, 2, 0);
+    const cyclic_document = model.MoveNode(nested_document, 2, 4, 0);
+    const root_document = model.MoveNode(nested_document, 1, 2, 0);
+    assert.equal(model.CanMoveNode(nested_document, 2, 4), false);
+    assert.equal(model.CanMoveNode(nested_document, 1, 2), false);
+    assert.equal(FindRuntimeNode(cyclic_document, 2).parentId, 1);
+    assert.equal(FindRuntimeNode(root_document, 1).parentId, 0);
+}
+
+function TestValidParentOptionsExcludeDescendants() {
+    const document = model.CreateDefaultDocument();
+    const with_node = model.AddNode(document, "Container");
+    const nested_document = model.MoveNode(with_node, 4, 2, 0);
+    const options = model.GetValidParentOptions(nested_document, 2).map(function MapOption(option) {
+        return option.nodeId;
+    });
+    assert.ok(options.includes(1));
+    assert.equal(options.includes(2), false);
+    assert.equal(options.includes(4), false);
+    assert.deepEqual(model.GetValidParentOptions(nested_document, 1), []);
 }
 
 function TestRemoveNodeRemovesChildRecords() {
@@ -287,6 +356,8 @@ function TestHtmlShellReferencesStaticAssets() {
     assert.ok(html.includes("App.js"));
     assert.ok(html.includes("hierarchy-list"));
     assert.ok(html.includes("canvas-surface"));
+    assert.ok(html.includes("canvas-fit-button"));
+    assert.ok(html.includes("runtime-json-toggle-button"));
     assert.ok(html.includes("inspector-panel"));
     assert.ok(html.includes("validation-panel"));
 }
@@ -300,8 +371,13 @@ function RunTests() {
         { name: "UiWebEditorWeb_CyclicParentReportsIssue", run: TestCyclicParentReportsIssue },
         { name: "UiWebEditorWeb_RectTransformGoldenResolve", run: TestRectTransformGoldenResolve },
         { name: "UiWebEditorWeb_AdapterForwardConversion", run: TestAdapterForwardConversion },
+        { name: "UiWebEditorWeb_AdapterViewportScaleAndPanBoundary", run: TestAdapterViewportScaleAndPanBoundary },
         { name: "UiWebEditorWeb_AdapterInverseEditPath", run: TestAdapterInverseEditPath },
         { name: "UiWebEditorWeb_AddNodeUpdatesSnapshots", run: TestAddNodeUpdatesSnapshots },
+        { name: "UiWebEditorWeb_MoveNodeReparentsAndPreservesRuntimeRect", run: TestMoveNodeReparentsAndPreservesRuntimeRect },
+        { name: "UiWebEditorWeb_MoveNodeReordersSiblings", run: TestMoveNodeReordersSiblings },
+        { name: "UiWebEditorWeb_MoveNodePreventsCyclesAndRootMove", run: TestMoveNodePreventsCyclesAndRootMove },
+        { name: "UiWebEditorWeb_ValidParentOptionsExcludeDescendants", run: TestValidParentOptionsExcludeDescendants },
         { name: "UiWebEditorWeb_RemoveNodeRemovesChildRecords", run: TestRemoveNodeRemovesChildRecords },
         { name: "UiWebEditorWeb_RuntimeExportStripsEditorState", run: TestRuntimeExportStripsEditorState },
         { name: "UiWebEditorWeb_LegacyRectMigratesToRectTransform", run: TestLegacyRectMigratesToRectTransform },

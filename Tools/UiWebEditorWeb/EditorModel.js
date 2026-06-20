@@ -410,6 +410,7 @@
         document.editor.selectedNodeId = ToNumber(document.editor.selectedNodeId, document.schema.rootNodeId);
         document.editor.dirty = ToBool(document.editor.dirty, false);
         document.editor.viewport = NormalizeEditorViewport(document.editor.viewport);
+        NormalizeAllSiblingOrders(document);
         return document;
     }
 
@@ -427,6 +428,56 @@
             }
         });
         return next_id;
+    }
+
+    function CompareSiblingNodes(left, right) {
+        if (left.siblingOrder !== right.siblingOrder) {
+            return left.siblingOrder - right.siblingOrder;
+        }
+        return left.nodeId - right.nodeId;
+    }
+
+    function GetChildNodes(document, parent_id) {
+        return GetArray(document.nodes).filter(function MatchParent(node) {
+            return node.parentId === parent_id;
+        }).sort(CompareSiblingNodes);
+    }
+
+    function NormalizeSiblingOrdersForParent(document, parent_id) {
+        const children = GetChildNodes(document, parent_id);
+        children.forEach(function AssignOrder(node, index) {
+            node.siblingOrder = index;
+        });
+    }
+
+    function NormalizeAllSiblingOrders(document) {
+        const parent_ids = new Set();
+        GetArray(document.nodes).forEach(function RegisterParent(node) {
+            parent_ids.add(node.parentId);
+        });
+        parent_ids.forEach(function NormalizeParent(parent_id) {
+            NormalizeSiblingOrdersForParent(document, parent_id);
+        });
+    }
+
+    function IsDescendantNode(document, ancestor_id, node_id) {
+        let current_id = node_id;
+        const visited = new Set();
+        while (current_id > 0) {
+            if (visited.has(current_id)) {
+                return false;
+            }
+            visited.add(current_id);
+            const current = FindNode(document, current_id);
+            if (!current) {
+                return false;
+            }
+            if (current.parentId === ancestor_id) {
+                return true;
+            }
+            current_id = current.parentId;
+        }
+        return false;
     }
 
     function PushIssue(issues, kind, message, node_id) {
@@ -656,23 +707,43 @@
 
     function BuildHierarchy(document) {
         const normalized = NormalizeDocument(document);
-        return normalized.nodes.slice().sort(function CompareNodes(left, right) {
-            if (left.layer !== right.layer) {
-                return left.layer - right.layer;
+        const rows = [];
+        const visited = new Set();
+
+        function PushHierarchyNode(node, depth) {
+            if (visited.has(node.nodeId)) {
+                return;
             }
-            return left.siblingOrder - right.siblingOrder;
-        }).map(function MapNode(node) {
-            return {
+            visited.add(node.nodeId);
+            rows.push({
                 nodeId: node.nodeId,
                 parentId: node.parentId,
                 name: node.name,
                 component: node.component,
-                depth: GetNodeDepth(normalized, node),
+                depth: depth,
                 selected: normalized.editor.selectedNodeId === node.nodeId,
                 visible: node.visible,
-                enabled: node.enabled
-            };
+                enabled: node.enabled,
+                canDrag: node.nodeId !== normalized.schema.rootNodeId
+            });
+            const children = GetChildNodes(normalized, node.nodeId);
+            children.forEach(function PushChild(child) {
+                PushHierarchyNode(child, depth + 1);
+            });
+        }
+
+        const root = FindNode(normalized, normalized.schema.rootNodeId);
+        if (root) {
+            PushHierarchyNode(root, 0);
+        }
+
+        normalized.nodes.slice().sort(CompareSiblingNodes).forEach(function PushUnvisited(node) {
+            if (visited.has(node.nodeId)) {
+                return;
+            }
+            PushHierarchyNode(node, GetNodeDepth(normalized, node));
         });
+        return rows;
     }
 
     function BuildCanvasItems(document) {
@@ -709,6 +780,7 @@
         }
         return {
             node: Clone(selected_node),
+            parentOptions: GetValidParentOptions(normalized, selected_node.nodeId),
             styleRefs: normalized.styleRefs.filter(function MatchStyle(style_ref) {
                 return ToNumber(style_ref.nodeId, 0) === selected_node.nodeId;
             }),
@@ -719,6 +791,109 @@
                 return ToNumber(binding.nodeId, 0) === selected_node.nodeId;
             })
         };
+    }
+
+    function CanMoveNode(source, node_id, parent_id) {
+        const document = NormalizeDocument(source);
+        const node = FindNode(document, node_id);
+        if (!node) {
+            return false;
+        }
+        if (node.nodeId === document.schema.rootNodeId) {
+            return false;
+        }
+        const parent = FindNode(document, parent_id);
+        if (!parent) {
+            return false;
+        }
+        if (node.nodeId === parent.nodeId) {
+            return false;
+        }
+        if (IsDescendantNode(document, node.nodeId, parent.nodeId)) {
+            return false;
+        }
+        return true;
+    }
+
+    function SetSubtreeLayer(document, node_id, layer) {
+        const node = FindNode(document, node_id);
+        if (!node) {
+            return;
+        }
+        node.layer = layer;
+        const children = GetChildNodes(document, node_id);
+        children.forEach(function UpdateChildLayer(child) {
+            SetSubtreeLayer(document, child.nodeId, layer + 1);
+        });
+    }
+
+    function ClampSiblingIndex(value, max_value) {
+        const index = Math.trunc(ToNumber(value, max_value));
+        if (index < 0) {
+            return 0;
+        }
+        if (index > max_value) {
+            return max_value;
+        }
+        return index;
+    }
+
+    function MoveNode(source, node_id, parent_id, sibling_index) {
+        const document = NormalizeDocument(source);
+        if (!CanMoveNode(document, node_id, parent_id)) {
+            return document;
+        }
+
+        const node = FindNode(document, node_id);
+        const parent = FindNode(document, parent_id);
+        const old_parent_id = node.parentId;
+        const before_result = ResolveDocumentRects(document).get(node_id);
+        node.parentId = parent.nodeId;
+        NormalizeSiblingOrdersForParent(document, old_parent_id);
+
+        const siblings = GetChildNodes(document, parent.nodeId).filter(function KeepOtherSibling(sibling) {
+            return sibling.nodeId !== node.nodeId;
+        });
+        const next_index = ClampSiblingIndex(sibling_index, siblings.length);
+        siblings.splice(next_index, 0, node);
+        siblings.forEach(function AssignOrder(sibling, index) {
+            sibling.siblingOrder = index;
+        });
+
+        const parent_result = ResolveDocumentRects(document).get(parent.nodeId);
+        if (before_result && before_result.status === "Success" && parent_result && parent_result.status === "Success") {
+            node.rectTransform = ApplyEngineRectToRectTransform(parent_result.rect, node.rectTransform, before_result.rect);
+        }
+        SetSubtreeLayer(document, node.nodeId, parent.layer + 1);
+        document.editor.selectedNodeId = node.nodeId;
+        document.editor.dirty = true;
+        return document;
+    }
+
+    function GetValidParentOptions(source, node_id) {
+        const document = NormalizeDocument(source);
+        const node = FindNode(document, node_id);
+        if (!node) {
+            return [];
+        }
+        if (node.nodeId === document.schema.rootNodeId) {
+            return [];
+        }
+        return BuildHierarchy(document).filter(function KeepParentOption(item) {
+            if (item.nodeId === node.nodeId) {
+                return false;
+            }
+            if (IsDescendantNode(document, node.nodeId, item.nodeId)) {
+                return false;
+            }
+            return true;
+        }).map(function MapParentOption(item) {
+            return {
+                nodeId: item.nodeId,
+                name: item.name,
+                depth: item.depth
+            };
+        });
     }
 
     function MergeRectTransform(current, patch) {
@@ -901,6 +1076,9 @@
         BuildHierarchy: BuildHierarchy,
         BuildCanvasItems: BuildCanvasItems,
         BuildInspector: BuildInspector,
+        CanMoveNode: CanMoveNode,
+        MoveNode: MoveNode,
+        GetValidParentOptions: GetValidParentOptions,
         UpdateNode: UpdateNode,
         UpdateNodeFromCanvasRect: UpdateNodeFromCanvasRect,
         AddNode: AddNode,

@@ -23,6 +23,7 @@
                 <button id="open-button" type="button">Open</button>
                 <button id="save-draft-button" type="button">Save Draft</button>
                 <button id="export-runtime-button" type="button">Export Runtime</button>
+                <button id="runtime-json-toggle-button" type="button" aria-expanded="false">Runtime JSON</button>
                 <button id="validate-button" type="button">Validate</button>
                 <input id="file-input" class="hidden-input" type="file" accept="application/json,.json">
             </nav>
@@ -57,15 +58,28 @@
                 </section>
             </aside>
 
-            <section class="center-pane" aria-label="Canvas and data view">
+            <section id="center-pane" class="center-pane" aria-label="Canvas and data view" data-runtime-open="false">
                 <div class="canvas-frame">
-                    <div class="canvas-ruler top-ruler"></div>
-                    <div class="canvas-ruler left-ruler"></div>
-                    <div id="canvas-surface" class="canvas-surface" aria-label="Layout canvas"></div>
+                    <div class="canvas-toolbar" aria-label="Canvas view controls">
+                        <div class="canvas-title">
+                            <h2>Canvas</h2>
+                            <span id="canvas-view-label">100%</span>
+                        </div>
+                        <div class="mini-toolbar">
+                            <button id="canvas-fit-button" type="button">Fit</button>
+                            <button id="canvas-zoom-out-button" type="button">-</button>
+                            <button id="canvas-reset-view-button" type="button">100%</button>
+                            <button id="canvas-zoom-in-button" type="button">+</button>
+                        </div>
+                    </div>
+                    <div id="canvas-workbench" class="canvas-workbench">
+                        <div id="canvas-surface" class="canvas-surface" aria-label="Layout canvas"></div>
+                    </div>
                 </div>
-                <section class="panel data-panel">
+                <section id="runtime-data-panel" class="panel data-panel" data-open="false">
                     <div class="panel-header">
                         <h2>Runtime Data</h2>
+                        <button id="runtime-json-close-button" type="button">Close</button>
                     </div>
                     <pre id="json-preview" class="json-preview"></pre>
                 </section>
