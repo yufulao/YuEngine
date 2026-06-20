@@ -184,6 +184,7 @@ add_library(YuUiCore
     Src/YuEngine/UiCore/Src/UiDirtyTracker.cpp
     Src/YuEngine/UiCore/Src/UiDrawBatcher.cpp
     Src/YuEngine/UiCore/Src/UiDrawListBuilder.cpp
+    Src/YuEngine/UiCore/Src/UiDynamicAtlasPacker.cpp
     Src/YuEngine/UiCore/Src/UiHitTestResolver.cpp
     Src/YuEngine/UiCore/Src/UiInvalidationModel.cpp
     Src/YuEngine/UiCore/Src/UiLayoutPass.cpp
@@ -1573,6 +1574,16 @@ yuengine_add_labeled_test(UiCore_DrawBatcher_DeterministicFixtureBatchCount YuUi
 yuengine_add_labeled_test(UiCore_DrawBatcher_SplitsTextAndTextureState YuUiDrawBatcherTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_DrawBatcher_RejectsInvalidElementWithoutMutation YuUiDrawBatcherTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_DrawBatcher_RejectsSmallOutputWithoutMutation YuUiDrawBatcherTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+
+add_executable(YuUiDynamicAtlasTests
+    Tests/UiCore/UiDynamicAtlasTests.cpp
+)
+yuengine_apply_compile_options(YuUiDynamicAtlasTests)
+target_link_libraries(YuUiDynamicAtlasTests PRIVATE YuUiCore)
+yuengine_add_labeled_test(UiCore_DynamicAtlasPacker_SafePointPacksAndResolves YuUiDynamicAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_DynamicAtlasPacker_RejectsPaintPathPacking YuUiDynamicAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_DynamicAtlasPacker_ReportsOverflowWithoutMutation YuUiDynamicAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_DynamicAtlasPacker_RejectsSmallOutputAndInvalidRequest YuUiDynamicAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 
 add_executable(YuUiEditorTests
     Tests/UiEditor/UiEditorTests.cpp
