@@ -187,6 +187,7 @@ add_library(YuUiCore
     Src/YuEngine/UiCore/Src/UiDynamicAtlasPacker.cpp
     Src/YuEngine/UiCore/Src/UiFontGlyphAtlas.cpp
     Src/YuEngine/UiCore/Src/UiGridViewSemantics.cpp
+    Src/YuEngine/UiCore/Src/UiGridViewVirtualizer.cpp
     Src/YuEngine/UiCore/Src/UiHitTestResolver.cpp
     Src/YuEngine/UiCore/Src/UiImageComponent.cpp
     Src/YuEngine/UiCore/Src/UiInvalidationModel.cpp
@@ -1600,6 +1601,17 @@ yuengine_add_labeled_test(UiCore_GridViewSemantics_RejectsFullPoolAsNonVirtualiz
 yuengine_add_labeled_test(UiCore_GridViewSemantics_BtnSelectionTouchesVisibleCellsOnly YuUiGridViewSemanticsTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_GridViewSemantics_ResolvesScrollToIndexTarget YuUiGridViewSemanticsTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_GridViewSemantics_RejectsInvalidAndSmallOutput YuUiGridViewSemanticsTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+
+add_executable(YuUiGridViewVirtualizerTests
+    Tests/UiCore/UiGridViewVirtualizerTests.cpp
+)
+yuengine_apply_compile_options(YuUiGridViewVirtualizerTests)
+target_link_libraries(YuUiGridViewVirtualizerTests PRIVATE YuUiCore)
+yuengine_add_labeled_test(UiCore_GridViewVirtualizer_LargeListUsesVisibleBufferPool YuUiGridViewVirtualizerTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_GridViewVirtualizer_TailGroupKeepsEmptyPoolSlotHidden YuUiGridViewVirtualizerTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_GridViewVirtualizer_RejectsFullPoolAsNonVirtualized YuUiGridViewVirtualizerTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_GridViewVirtualizer_RejectsSmallOutputWithoutMutation YuUiGridViewVirtualizerTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_GridViewVirtualizer_ResolvesAutoScrollAndAffectedDirtyCells YuUiGridViewVirtualizerTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 
 add_executable(YuUiFontGlyphAtlasTests
     Tests/UiCore/UiFontGlyphAtlasTests.cpp
