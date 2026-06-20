@@ -1,0 +1,129 @@
+{
+    "schema": {
+        "schemaId": "YUSC",
+        "schemaVersion": 1,
+        "documentId": "SceneDocumentSample",
+        "sceneKey": "SampleScene",
+        "documentHash": ""
+    },
+    "objects": [
+        {
+            "objectId": 1,
+            "objectKey": "SceneRoot",
+            "displayName": "Scene Root",
+            "order": 0,
+            "enabled": true
+        },
+        {
+            "objectId": 2,
+            "objectKey": "MarkerA",
+            "displayName": "Marker A",
+            "order": 1,
+            "enabled": true
+        },
+        {
+            "objectId": 3,
+            "objectKey": "MarkerB",
+            "displayName": "Marker B",
+            "order": 2,
+            "enabled": true
+        }
+    ],
+    "transforms": [
+        {
+            "objectId": 1,
+            "position": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+            },
+            "rotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+            },
+            "scale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+            }
+        },
+        {
+            "objectId": 2,
+            "position": {
+                "x": -2,
+                "y": 0,
+                "z": 1
+            },
+            "rotation": {
+                "x": 0,
+                "y": 20,
+                "z": 0
+            },
+            "scale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+            }
+        },
+        {
+            "objectId": 3,
+            "position": {
+                "x": 2,
+                "y": 0,
+                "z": -1
+            },
+            "rotation": {
+                "x": 0,
+                "y": -20,
+                "z": 0
+            },
+            "scale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+            }
+        }
+    ],
+    "resourceRefs": [
+        {
+            "objectId": 2,
+            "slot": "Mesh",
+            "resourceKey": "pkg://scene/marker-a"
+        },
+        {
+            "objectId": 3,
+            "slot": "Material",
+            "resourceKey": "pkg://scene/marker-material"
+        }
+    ],
+    "editor": {
+        "selectedObjectId": 1,
+        "dirty": false,
+        "viewport": {
+            "panX": 0,
+            "panY": 0,
+            "zoom": 40,
+            "gridSize": 1
+        },
+        "grid": {
+            "enabled": true,
+            "majorEvery": 5
+        },
+        "snap": {
+            "enabled": false,
+            "translateStep": 0.25,
+            "rotateStep": 15,
+            "scaleStep": 0.1
+        },
+        "gizmo": "Translate",
+        "foldouts": {
+            "scene": true,
+            "object": true,
+            "transform": true,
+            "resources": true,
+            "editor": false
+        },
+        "paneState": {}
+    }
+}

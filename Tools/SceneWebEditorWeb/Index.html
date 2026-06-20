@@ -1,0 +1,110 @@
+<!-- 模块: Tools SceneWebEditorWeb -->
+<!-- 文件: Tools/SceneWebEditorWeb/Index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>YuEngine Scene Web Editor</title>
+    <link rel="stylesheet" href="Style.css">
+</head>
+<body data-theme="light">
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="brand">
+                <span class="brand-mark">YS</span>
+                <div>
+                    <h1>Scene Web Editor</h1>
+                    <p>Runtime data authoring</p>
+                </div>
+            </div>
+            <nav class="toolbar" aria-label="Scene commands">
+                <button id="new-button" type="button">New</button>
+                <button id="open-button" type="button">Open</button>
+                <button id="save-draft-button" type="button">Save Draft</button>
+                <button id="export-runtime-button" type="button">Export Runtime</button>
+                <button id="runtime-json-toggle-button" type="button" aria-expanded="false">Runtime JSON</button>
+                <button id="theme-toggle-button" type="button">Dark</button>
+                <button id="validate-button" type="button">Validate</button>
+                <input id="file-input" class="hidden-input" type="file" accept="application/json,.json">
+            </nav>
+            <div class="status-cluster">
+                <span id="status-text" class="status-pill">Ready</span>
+                <span>Objects <strong id="object-count">0</strong></span>
+                <span>Issues <strong id="issue-count">0</strong></span>
+                <span>Hash <strong id="document-hash">0x00000000</strong></span>
+            </div>
+        </header>
+
+        <main id="workspace" class="workspace" data-runtime-open="false">
+            <aside class="left-pane" aria-label="Scene object panel">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Scene Objects</h2>
+                        <div class="mini-toolbar">
+                            <button id="add-object-button" type="button">Add</button>
+                            <button id="duplicate-object-button" type="button">Duplicate</button>
+                        </div>
+                    </div>
+                    <div id="object-list" class="object-list"></div>
+                    <button id="remove-object-button" class="danger-button" type="button">Remove Object</button>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Resources</h2>
+                    </div>
+                    <div id="resource-list" class="resource-list"></div>
+                </section>
+            </aside>
+
+            <div id="left-resizer" class="pane-resizer" role="separator" aria-orientation="vertical"></div>
+
+            <section class="center-pane" aria-label="Scene viewport and runtime data">
+                <div class="viewport-frame">
+                    <div class="viewport-toolbar" aria-label="Viewport controls">
+                        <div class="viewport-title">
+                            <h2>Viewport</h2>
+                            <span id="viewport-scale-label">40 px/u</span>
+                        </div>
+                        <div class="mini-toolbar">
+                            <button id="fit-view-button" type="button">Fit</button>
+                            <button id="zoom-out-button" type="button">-</button>
+                            <button id="zoom-reset-button" type="button">40</button>
+                            <button id="zoom-in-button" type="button">+</button>
+                        </div>
+                    </div>
+                    <div id="scene-viewport" class="scene-viewport" aria-label="Scene viewport"></div>
+                </div>
+                <section id="runtime-data-panel" class="panel runtime-panel" data-open="false">
+                    <div class="panel-header">
+                        <h2>Runtime Data</h2>
+                        <button id="runtime-json-close-button" type="button">Close</button>
+                    </div>
+                    <pre id="runtime-json-preview" class="json-preview"></pre>
+                </section>
+            </section>
+
+            <div id="right-resizer" class="pane-resizer" role="separator" aria-orientation="vertical"></div>
+
+            <aside class="right-pane" aria-label="Scene inspector and validation panel">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Inspector</h2>
+                    </div>
+                    <div id="inspector-panel" class="inspector-panel"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Validation</h2>
+                    </div>
+                    <div id="validation-panel" class="validation-panel"></div>
+                </section>
+            </aside>
+        </main>
+    </div>
+    <script src="SceneEditorModel.js"></script>
+    <script src="App.js"></script>
+</body>
+</html>
