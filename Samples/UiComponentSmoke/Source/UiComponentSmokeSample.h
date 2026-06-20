@@ -15,6 +15,19 @@ struct UiComponentSmokeSampleInput final {
 };
 
 /**
+ * @comment 描述 Stage 2 component smoke sample 的性能诊断输出。
+ */
+struct UiComponentPerformanceDiagnostics final {
+    bool reported = false;
+    std::uint32_t draw_call_count = 0U;
+    std::uint32_t batch_count = 0U;
+    std::uint32_t atlas_page_count = 0U;
+    std::uint32_t layout_rebuild_count = 0U;
+    std::uint32_t paint_rebuild_count = 0U;
+    std::uint32_t list_cell_count = 0U;
+};
+
+/**
  * @comment 描述 Stage 2 component smoke sample 的运行结果。
  */
 struct UiComponentSmokeSampleResult final {
@@ -38,6 +51,7 @@ struct UiComponentSmokeSampleResult final {
     std::uint32_t grid_pool_cell_count = 0U;
     std::uint32_t grid_dirty_cell_count = 0U;
     float slider_normalized_value = 0.0F;
+    UiComponentPerformanceDiagnostics performance_diagnostics;
 };
 
 /**

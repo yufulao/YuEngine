@@ -2,6 +2,7 @@
 // 文件: Tests/UiComponentSmoke/UiComponentSmokeSampleTests.cpp
 
 #include <cstdio>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -23,6 +24,8 @@ constexpr const char *TEST_INVALID_LAYOUT =
     "UiComponentSmokeSample_RejectsInvalidLayoutBeforeComponents";
 constexpr const char *TEST_GRID_VIRTUALIZATION =
     "UiComponentSmokeSample_KeepsGridViewListVirtualized";
+constexpr const char *TEST_PERFORMANCE_DIAGNOSTICS =
+    "UiComponentSmokeSample_ReportsPerformanceDiagnostics";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 using TestFunction = int (*)();
@@ -132,6 +135,10 @@ int UiComponentSmokeSampleRejectsInvalidLayoutBeforeComponents() {
         return Fail("invalid layout mutated component sample state");
     }
 
+    if (result.performance_diagnostics.reported) {
+        return Fail("invalid layout reported performance diagnostics");
+    }
+
     if (std::string_view(result.failure_stage) != "layout_load") {
         return Fail("invalid layout did not fail at layout load");
     }
@@ -165,6 +172,48 @@ int UiComponentSmokeSampleKeepsGridViewListVirtualized() {
     return 0;
 }
 
+int UiComponentSmokeSampleReportsPerformanceDiagnostics() {
+    ui_component_smoke_sample::UiComponentSmokeSampleResult result;
+    int ret_code = RunSample(&result);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const ui_component_smoke_sample::UiComponentPerformanceDiagnostics &diagnostics =
+        result.performance_diagnostics;
+    if (!diagnostics.reported) {
+        return Fail("sample did not report performance diagnostics");
+    }
+
+    const std::uint32_t expected_draw_call_count =
+        result.text_draw_record_count + result.image_draw_record_count;
+    if (diagnostics.draw_call_count != expected_draw_call_count) {
+        return Fail("diagnostic draw call count mismatch");
+    }
+
+    if (diagnostics.batch_count == 0U || diagnostics.batch_count > diagnostics.draw_call_count) {
+        return Fail("diagnostic batch count mismatch");
+    }
+
+    if (diagnostics.atlas_page_count != 1U) {
+        return Fail("diagnostic atlas page count mismatch");
+    }
+
+    if (diagnostics.layout_rebuild_count == 0U || diagnostics.paint_rebuild_count == 0U) {
+        return Fail("diagnostic rebuild count mismatch");
+    }
+
+    if (diagnostics.list_cell_count != result.grid_pool_cell_count) {
+        return Fail("diagnostic list cell count mismatch");
+    }
+
+    if (diagnostics.list_cell_count >= result.grid_item_count) {
+        return Fail("diagnostic list cell count was not virtualized");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view name) {
     if (name == TEST_COMPONENT_WINDOW) {
         return UiComponentSmokeSampleUsesStage2ComponentsInOneWindow();
@@ -176,6 +225,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_GRID_VIRTUALIZATION) {
         return UiComponentSmokeSampleKeepsGridViewListVirtualized();
+    }
+
+    if (name == TEST_PERFORMANCE_DIAGNOSTICS) {
+        return UiComponentSmokeSampleReportsPerformanceDiagnostics();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

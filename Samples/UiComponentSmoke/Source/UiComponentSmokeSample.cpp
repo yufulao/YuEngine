@@ -14,6 +14,12 @@
 #include "YuEngine/UiCore/UiButtonComponentResult.h"
 #include "YuEngine/UiCore/UiButtonComponentStatus.h"
 #include "YuEngine/UiCore/UiButtonVisualStateDesc.h"
+#include "YuEngine/UiCore/UiDirtyChangeType.h"
+#include "YuEngine/UiCore/UiDrawBatch.h"
+#include "YuEngine/UiCore/UiDrawBatcher.h"
+#include "YuEngine/UiCore/UiDrawBatchResult.h"
+#include "YuEngine/UiCore/UiDrawBatchStatus.h"
+#include "YuEngine/UiCore/UiDrawElement.h"
 #include "YuEngine/UiCore/UiFontGlyphAtlas.h"
 #include "YuEngine/UiCore/UiGridViewSemantics.h"
 #include "YuEngine/UiCore/UiGridViewVirtualizer.h"
@@ -23,6 +29,12 @@
 #include "YuEngine/UiCore/UiImageComponentStatus.h"
 #include "YuEngine/UiCore/UiImageDrawRecord.h"
 #include "YuEngine/UiCore/UiImageTint.h"
+#include "YuEngine/UiCore/UiInvalidatedNode.h"
+#include "YuEngine/UiCore/UiInvalidationModel.h"
+#include "YuEngine/UiCore/UiInvalidationRequest.h"
+#include "YuEngine/UiCore/UiInvalidationResult.h"
+#include "YuEngine/UiCore/UiInvalidationScope.h"
+#include "YuEngine/UiCore/UiInvalidationStatus.h"
 #include "YuEngine/UiCore/UiNodeDesc.h"
 #include "YuEngine/UiCore/UiNodeId.h"
 #include "YuEngine/UiCore/UiNodeTree.h"
@@ -52,6 +64,12 @@ using yuengine::uicore::UiButtonComponentDesc;
 using yuengine::uicore::UiButtonComponentResult;
 using yuengine::uicore::UiButtonComponentStatus;
 using yuengine::uicore::UiButtonVisualStateDesc;
+using yuengine::uicore::UiDirtyChangeType;
+using yuengine::uicore::UiDrawBatch;
+using yuengine::uicore::UiDrawBatcher;
+using yuengine::uicore::UiDrawBatchResult;
+using yuengine::uicore::UiDrawBatchStatus;
+using yuengine::uicore::UiDrawElement;
 using yuengine::uicore::UiFontAssetDesc;
 using yuengine::uicore::UiFontGlyphAtlasDesc;
 using yuengine::uicore::UiFontGlyphDesc;
@@ -69,6 +87,12 @@ using yuengine::uicore::UiImageComponentResult;
 using yuengine::uicore::UiImageComponentStatus;
 using yuengine::uicore::UiImageDrawRecord;
 using yuengine::uicore::UiImageTint;
+using yuengine::uicore::UiInvalidatedNode;
+using yuengine::uicore::UiInvalidationModel;
+using yuengine::uicore::UiInvalidationRequest;
+using yuengine::uicore::UiInvalidationResult;
+using yuengine::uicore::UiInvalidationScope;
+using yuengine::uicore::UiInvalidationStatus;
 using yuengine::uicore::UiNodeDesc;
 using yuengine::uicore::UiNodeId;
 using yuengine::uicore::UiNodeTree;
@@ -126,6 +150,8 @@ constexpr std::uint32_t GRID_VISIBLE_GROUP_COUNT = 2U;
 constexpr std::uint32_t GRID_BUFFER_GROUP_COUNT = 1U;
 constexpr std::uint32_t GRID_POOL_GROUP_COUNT = 4U;
 constexpr std::uint32_t GRID_POOL_CELL_COUNT = GRID_AXIS_CELL_COUNT * GRID_POOL_GROUP_COUNT;
+constexpr std::uint32_t DIAGNOSTIC_DRAW_ELEMENT_CAPACITY = 16U;
+constexpr std::uint32_t DIAGNOSTIC_INVALIDATION_CAPACITY = 16U;
 constexpr float SLIDER_VALUE = 25.0F;
 constexpr float SLIDER_MAX_VALUE = 100.0F;
 
@@ -133,6 +159,12 @@ struct ComponentLayout final {
     std::uint32_t node_count = 0U;
     std::uint32_t root_node_id = 0U;
     std::uint32_t window_node_id = 0U;
+};
+
+struct ComponentDiagnosticsScratch final {
+    std::array<UiDrawElement, DIAGNOSTIC_DRAW_ELEMENT_CAPACITY> draw_elements{};
+    std::uint32_t draw_element_count = 0U;
+    std::uint32_t atlas_page_count = 0U;
 };
 
 bool ContainsText(std::string_view text, std::string_view expected) {
@@ -456,8 +488,120 @@ UiGridViewDesc MakeGridDesc() {
     return desc;
 }
 
-bool BuildTextComponent(const UiNodeTree &tree, UiComponentSmokeSampleResult *sample_result) {
+bool AppendDrawElement(ComponentDiagnosticsScratch *scratch, const UiDrawElement &draw_element) {
+    if (scratch == nullptr) {
+        return false;
+    }
+
+    if (scratch->draw_element_count >= DIAGNOSTIC_DRAW_ELEMENT_CAPACITY) {
+        return false;
+    }
+
+    scratch->draw_elements[scratch->draw_element_count] = draw_element;
+    ++scratch->draw_element_count;
+    return true;
+}
+
+bool BuildBatchDiagnostics(
+    const ComponentDiagnosticsScratch &scratch,
+    UiComponentSmokeSampleResult *sample_result) {
     if (sample_result == nullptr) {
+        return false;
+    }
+
+    std::array<UiDrawBatch, DIAGNOSTIC_DRAW_ELEMENT_CAPACITY> batches{};
+    UiDrawBatchResult result{};
+    UiDrawBatcher batcher{};
+    const std::span<const UiDrawElement> draw_elements(scratch.draw_elements.data(), scratch.draw_element_count);
+    const UiDrawBatchStatus status = batcher.Build(draw_elements, batches, &result);
+    if (status != UiDrawBatchStatus::Success || !result.Succeeded()) {
+        sample_result->failure_stage = "diagnostics_batch";
+        return false;
+    }
+
+    sample_result->performance_diagnostics.draw_call_count = result.draw_element_count;
+    sample_result->performance_diagnostics.batch_count = result.batch_count;
+    return true;
+}
+
+bool BuildRebuildDiagnostics(
+    const UiNodeTree &tree,
+    UiComponentSmokeSampleResult *sample_result) {
+    if (sample_result == nullptr) {
+        return false;
+    }
+
+    UiInvalidationModel invalidation_model{};
+    UiInvalidationRequest layout_request{};
+    layout_request.node_id = NodeId(WINDOW_NODE_ID);
+    layout_request.change_type = UiDirtyChangeType::Layout;
+    layout_request.scope = UiInvalidationScope::Subtree;
+
+    std::array<UiInvalidatedNode, DIAGNOSTIC_INVALIDATION_CAPACITY> layout_nodes{};
+    UiInvalidationResult layout_result{};
+    const UiInvalidationStatus layout_status = invalidation_model.Invalidate(
+        tree,
+        layout_request,
+        layout_nodes,
+        &layout_result);
+    if (layout_status != UiInvalidationStatus::Success || !layout_result.Succeeded()) {
+        sample_result->failure_stage = "diagnostics_layout_rebuild";
+        return false;
+    }
+
+    UiInvalidationRequest paint_request{};
+    paint_request.node_id = NodeId(IMAGE_NODE_ID);
+    paint_request.change_type = UiDirtyChangeType::PaintOnly;
+    paint_request.scope = UiInvalidationScope::Self;
+
+    std::array<UiInvalidatedNode, DIAGNOSTIC_INVALIDATION_CAPACITY> paint_nodes{};
+    UiInvalidationResult paint_result{};
+    const UiInvalidationStatus paint_status = invalidation_model.Invalidate(
+        tree,
+        paint_request,
+        paint_nodes,
+        &paint_result);
+    if (paint_status != UiInvalidationStatus::Success || !paint_result.Succeeded()) {
+        sample_result->failure_stage = "diagnostics_paint_rebuild";
+        return false;
+    }
+
+    sample_result->performance_diagnostics.layout_rebuild_count = layout_result.cache_counters.layout_rebuild_count;
+    sample_result->performance_diagnostics.paint_rebuild_count = paint_result.cache_counters.paint_rebuild_count;
+    return true;
+}
+
+bool BuildPerformanceDiagnostics(
+    const UiNodeTree &tree,
+    const ComponentDiagnosticsScratch &scratch,
+    UiComponentSmokeSampleResult *sample_result) {
+    if (sample_result == nullptr) {
+        return false;
+    }
+
+    if (!BuildBatchDiagnostics(scratch, sample_result)) {
+        return false;
+    }
+
+    if (!BuildRebuildDiagnostics(tree, sample_result)) {
+        return false;
+    }
+
+    sample_result->performance_diagnostics.atlas_page_count = scratch.atlas_page_count;
+    sample_result->performance_diagnostics.list_cell_count = sample_result->grid_pool_cell_count;
+    sample_result->performance_diagnostics.reported = true;
+    return true;
+}
+
+bool BuildTextComponent(
+    const UiNodeTree &tree,
+    ComponentDiagnosticsScratch *scratch,
+    UiComponentSmokeSampleResult *sample_result) {
+    if (sample_result == nullptr) {
+        return false;
+    }
+
+    if (scratch == nullptr) {
         return false;
     }
 
@@ -479,9 +623,17 @@ bool BuildTextComponent(const UiNodeTree &tree, UiComponentSmokeSampleResult *sa
         return false;
     }
 
-    if (result.draw_record_count != codepoints.size()) {
+    const std::uint32_t expected_record_count = static_cast<std::uint32_t>(codepoints.size());
+    if (result.draw_record_count != expected_record_count) {
         sample_result->failure_stage = "text_count";
         return false;
+    }
+
+    for (std::uint32_t index = 0U; index < result.draw_record_count; ++index) {
+        if (!AppendDrawElement(scratch, records[index].draw_element)) {
+            sample_result->failure_stage = "diagnostics_draw";
+            return false;
+        }
     }
 
     sample_result->text_component_used = true;
@@ -492,8 +644,13 @@ bool BuildTextComponent(const UiNodeTree &tree, UiComponentSmokeSampleResult *sa
 bool BuildImageComponent(
     const UiNodeTree &tree,
     const UiStaticAtlasMetadataDesc &atlas_desc,
+    ComponentDiagnosticsScratch *scratch,
     UiComponentSmokeSampleResult *sample_result) {
     if (sample_result == nullptr) {
+        return false;
+    }
+
+    if (scratch == nullptr) {
         return false;
     }
 
@@ -509,6 +666,11 @@ bool BuildImageComponent(
 
     if (result.draw_record_count != 1U || records[0U].sprite_key != SPRITE_IMAGE_KEY) {
         sample_result->failure_stage = "image_count";
+        return false;
+    }
+
+    if (!AppendDrawElement(scratch, records[0U].draw_element)) {
+        sample_result->failure_stage = "diagnostics_draw";
         return false;
     }
 
@@ -634,12 +796,14 @@ bool BuildComponents(UiNodeTree &tree, UiComponentSmokeSampleResult *sample_resu
         MakeSprite(SPRITE_SLIDER_FILL_KEY, 304U, 0U, 48U, 12U),
         MakeSprite(SPRITE_SLIDER_HANDLE_KEY, 352U, 0U, 24U, 24U)};
     const UiStaticAtlasMetadataDesc atlas_desc = MakeAtlasDesc(pages, sprites);
+    ComponentDiagnosticsScratch diagnostics_scratch{};
+    diagnostics_scratch.atlas_page_count = static_cast<std::uint32_t>(pages.size());
 
-    if (!BuildTextComponent(tree, sample_result)) {
+    if (!BuildTextComponent(tree, &diagnostics_scratch, sample_result)) {
         return false;
     }
 
-    if (!BuildImageComponent(tree, atlas_desc, sample_result)) {
+    if (!BuildImageComponent(tree, atlas_desc, &diagnostics_scratch, sample_result)) {
         return false;
     }
 
@@ -651,7 +815,11 @@ bool BuildComponents(UiNodeTree &tree, UiComponentSmokeSampleResult *sample_resu
         return false;
     }
 
-    return BuildGridViewList(sample_result);
+    if (!BuildGridViewList(sample_result)) {
+        return false;
+    }
+
+    return BuildPerformanceDiagnostics(tree, diagnostics_scratch, sample_result);
 }
 }
 

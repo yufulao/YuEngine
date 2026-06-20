@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
     }
 
     std::printf(
-        "YuUiComponentSmokeSample PASS nodes=%u text=%u image=%u button=%u slider=%.2f gridVisible=%u gridPool=%u gridDirty=%u\n",
+        "YuUiComponentSmokeSample PASS nodes=%u text=%u image=%u button=%u slider=%.2f gridVisible=%u gridPool=%u gridDirty=%u diagDraw=%u diagBatches=%u diagAtlasPages=%u diagLayoutRebuild=%u diagPaintRebuild=%u diagListCells=%u\n",
         result.layout_node_count,
         result.text_draw_record_count,
         result.image_draw_record_count,
@@ -90,6 +90,12 @@ int main(int argc, char **argv) {
         static_cast<double>(result.slider_normalized_value),
         result.grid_visible_item_count,
         result.grid_pool_cell_count,
-        result.grid_dirty_cell_count);
+        result.grid_dirty_cell_count,
+        result.performance_diagnostics.draw_call_count,
+        result.performance_diagnostics.batch_count,
+        result.performance_diagnostics.atlas_page_count,
+        result.performance_diagnostics.layout_rebuild_count,
+        result.performance_diagnostics.paint_rebuild_count,
+        result.performance_diagnostics.list_cell_count);
     return 0;
 }
