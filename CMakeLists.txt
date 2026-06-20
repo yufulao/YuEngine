@@ -296,6 +296,7 @@ add_library(YuUiRuntime
     Src/YuEngine/UiRuntime/Src/UiManagerLayerModel.cpp
     Src/YuEngine/UiRuntime/Src/UiManagerPanelMap.cpp
     Src/YuEngine/UiRuntime/Src/UiManagerPopupStack.cpp
+    Src/YuEngine/UiRuntime/Src/UiProjectRuntimeSmokeSample.cpp
     Src/YuEngine/UiRuntime/Src/UiSimplePopupToastRepresentativeController.cpp
     Src/YuEngine/UiRuntime/Src/UiPanelRegistry.cpp
 )
@@ -1808,6 +1809,14 @@ yuengine_add_labeled_test(UiRuntime_GridViewRepresentative_ScrollSelectRefreshWi
 yuengine_add_labeled_test(UiRuntime_GridViewRepresentative_ClearAndReleaseResetState YuUiGridViewRepresentativeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRuntime_GridViewRepresentative_CloseReopenCacheAndFreshLifecycle YuUiGridViewRepresentativeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRuntime_GridViewRepresentative_StatusAndDuplicateRemainExplicit YuUiGridViewRepresentativeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+
+add_executable(YuUiProjectRuntimeSmokeSampleTests
+    Tests/UiRuntime/UiProjectRuntimeSmokeSampleTests.cpp
+)
+yuengine_apply_compile_options(YuUiProjectRuntimeSmokeSampleTests)
+target_link_libraries(YuUiProjectRuntimeSmokeSampleTests PRIVATE YuUiRuntime)
+yuengine_add_labeled_test(UiRuntime_ProjectRuntimeSmokeSample_OpensPopupFullscreenGridAndReportsPass YuUiProjectRuntimeSmokeSampleTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle SmokeSample)
+yuengine_add_labeled_test(UiRuntime_ProjectRuntimeSmokeSample_InvalidOutputReportsFailureStatus YuUiProjectRuntimeSmokeSampleTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle SmokeSample)
 
 add_executable(YuUiEditorTests
     Tests/UiEditor/UiEditorTests.cpp
