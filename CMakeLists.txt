@@ -292,6 +292,7 @@ add_library(YuUiRuntime
     Src/YuEngine/UiRuntime/Src/BaseUiController.cpp
     Src/YuEngine/UiRuntime/Src/UiManagerLayerModel.cpp
     Src/YuEngine/UiRuntime/Src/UiManagerPanelMap.cpp
+    Src/YuEngine/UiRuntime/Src/UiManagerPopupStack.cpp
     Src/YuEngine/UiRuntime/Src/UiPanelRegistry.cpp
 )
 yuengine_apply_compile_options(YuUiRuntime)
@@ -1733,6 +1734,17 @@ yuengine_add_labeled_test(UiRuntime_ManagerPanelMap_OpenCloseReopenRetainsLoaded
 yuengine_add_labeled_test(UiRuntime_ManagerPanelMap_RejectsMissingPanelLayerAndController YuUiManagerPanelMapTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRuntime_ManagerPanelMap_DuplicateOpenCloseAreIdempotent YuUiManagerPanelMapTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRuntime_ManagerPanelMap_ResolvesLoadedAndActiveLayerRoots YuUiManagerPanelMapTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+
+add_executable(YuUiManagerPopupStackTests
+    Tests/UiRuntime/UiManagerPopupStackTests.cpp
+)
+yuengine_apply_compile_options(YuUiManagerPopupStackTests)
+target_link_libraries(YuUiManagerPopupStackTests PRIVATE YuUiRuntime)
+yuengine_add_labeled_test(UiRuntime_ManagerPopupStack_OpenPushesPopupOrder YuUiManagerPopupStackTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_ManagerPopupStack_BringExistingPopupToTop YuUiManagerPopupStackTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_ManagerPopupStack_CloseRemovesPopupFromStack YuUiManagerPopupStackTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_ManagerPopupStack_DuplicateOpenMovesExistingPopup YuUiManagerPopupStackTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_ManagerPopupStack_RejectsMissingNonPopupAndUntrackedStatus YuUiManagerPopupStackTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 
 add_executable(YuUiEditorTests
     Tests/UiEditor/UiEditorTests.cpp
