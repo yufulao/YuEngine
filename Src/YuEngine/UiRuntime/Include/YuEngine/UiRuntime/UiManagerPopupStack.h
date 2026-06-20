@@ -38,6 +38,24 @@ public:
         BaseUiController *controller);
 
     /**
+     * @comment 携带 open 参数打开 popup panel，并把它移动到 stack 顶部。
+     * @param panel_id 输入 panel id。
+     * @param registry 输入 panel registry。
+     * @param layer_model 输入 layer model。
+     * @param panel_map 输入输出 panel map。
+     * @param controller 首次加载时由调用方持有的 controller。
+     * @param open_args 调用方提供的 open 参数视图，仅在本次调用期间有效。
+     * @return 显式 popup 打开结果。
+     */
+    UiManagerPopupStackResult OpenPopupPanelWithArgs(
+        UiPanelId panel_id,
+        const UiPanelRegistry &registry,
+        const UiManagerLayerModel &layer_model,
+        UiManagerPanelMap *panel_map,
+        BaseUiController *controller,
+        const UiPanelOpenArgs &open_args);
+
+    /**
      * @comment 将已打开 popup 移动到 stack 顶部。
      * @param panel_id 输入 panel id。
      * @param panel_map 输入 panel map。

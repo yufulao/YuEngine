@@ -35,6 +35,11 @@ BaseUiLifecycleStatus BaseUiController::Initialize() {
 }
 
 BaseUiLifecycleStatus BaseUiController::Open() {
+    UiPanelOpenArgs open_args{};
+    return OpenWithArgs(open_args);
+}
+
+BaseUiLifecycleStatus BaseUiController::OpenWithArgs(const UiPanelOpenArgs &open_args) {
     if (snapshot_.destroyed) {
         return SetLastStatus(BaseUiLifecycleStatus::Destroyed);
     }
@@ -48,7 +53,7 @@ BaseUiLifecycleStatus BaseUiController::Open() {
         return status;
     }
 
-    status = OnOpenEvent();
+    status = OnOpenWithArgsEvent(open_args);
     if (status != BaseUiLifecycleStatus::Success) {
         return SetLastStatus(status);
     }
@@ -139,6 +144,11 @@ BaseUiLifecycleStatus BaseUiController::OnBindEvent() {
 
 BaseUiLifecycleStatus BaseUiController::OnOpenEvent() {
     return BaseUiLifecycleStatus::Success;
+}
+
+BaseUiLifecycleStatus BaseUiController::OnOpenWithArgsEvent(const UiPanelOpenArgs &open_args) {
+    (void)open_args;
+    return OnOpenEvent();
 }
 
 BaseUiLifecycleStatus BaseUiController::OnCloseEvent() {

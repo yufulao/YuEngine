@@ -7,11 +7,13 @@
 
 #include "YuEngine/UiRuntime/UiManagerPanelMapRecord.h"
 #include "YuEngine/UiRuntime/UiManagerPanelMapStatus.h"
+#include "YuEngine/UiRuntime/UiPanelOpenArgsSnapshot.h"
 
 namespace yuengine::uiruntime {
 struct UiManagerPanelMapResult final {
     UiManagerPanelMapStatus status = UiManagerPanelMapStatus::InvalidOutputBuffer;
     UiManagerPanelMapRecord record;
+    UiPanelOpenArgsSnapshot open_args;
     std::uint32_t loaded_panel_count = 0U;
     std::uint32_t active_panel_count = 0U;
     bool reused_loaded = false;

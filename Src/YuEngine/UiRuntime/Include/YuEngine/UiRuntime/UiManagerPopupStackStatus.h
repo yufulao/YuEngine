@@ -17,6 +17,7 @@ enum class UiManagerPopupStackStatus {
     LayerNotFound,
     NonPopupPanel,
     PopupNotInStack,
+    InvalidOpenArgs,
     ControllerOpenFailed,
     ControllerCloseFailed,
     CapacityExceeded,

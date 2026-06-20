@@ -14,6 +14,17 @@ UiManagerPopupStackResult UiManagerPopupStack::OpenPopupPanel(
     const UiManagerLayerModel &layer_model,
     UiManagerPanelMap *panel_map,
     BaseUiController *controller) {
+    UiPanelOpenArgs open_args{};
+    return OpenPopupPanelWithArgs(panel_id, registry, layer_model, panel_map, controller, open_args);
+}
+
+UiManagerPopupStackResult UiManagerPopupStack::OpenPopupPanelWithArgs(
+    UiPanelId panel_id,
+    const UiPanelRegistry &registry,
+    const UiManagerLayerModel &layer_model,
+    UiManagerPanelMap *panel_map,
+    BaseUiController *controller,
+    const UiPanelOpenArgs &open_args) {
     if (!panel_id.IsValid()) {
         return MakeResult(
             RecordFailure(UiManagerPopupStackStatus::InvalidPanelId),
@@ -75,7 +86,7 @@ UiManagerPopupStackResult UiManagerPopupStack::OpenPopupPanel(
     }
 
     const UiManagerPanelMapResult panel_result =
-        panel_map->OpenPanel(panel_id, registry, layer_model, controller);
+        panel_map->OpenPanelWithArgs(panel_id, registry, layer_model, controller, open_args);
     if (!panel_result.Succeeded()) {
         const UiManagerPopupStackStatus status = TranslatePanelMapStatus(panel_result.status);
         return MakeResult(
@@ -537,6 +548,10 @@ UiManagerPopupStackStatus UiManagerPopupStack::TranslatePanelMapStatus(UiManager
 
     if (status == UiManagerPanelMapStatus::LayerNotFound) {
         return UiManagerPopupStackStatus::LayerNotFound;
+    }
+
+    if (status == UiManagerPanelMapStatus::InvalidOpenArgs) {
+        return UiManagerPopupStackStatus::InvalidOpenArgs;
     }
 
     if (status == UiManagerPanelMapStatus::ControllerOpenFailed) {

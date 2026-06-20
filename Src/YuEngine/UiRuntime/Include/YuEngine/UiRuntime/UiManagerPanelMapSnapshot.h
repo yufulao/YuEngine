@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "YuEngine/UiRuntime/UiManagerPanelMapStatus.h"
+#include "YuEngine/UiRuntime/UiPanelOpenArgsSnapshot.h"
 
 namespace yuengine::uiruntime {
 struct UiManagerPanelMapSnapshot final {
@@ -17,8 +18,12 @@ struct UiManagerPanelMapSnapshot final {
     std::uint32_t reused_loaded_count = 0U;
     std::uint32_t idempotent_open_count = 0U;
     std::uint32_t idempotent_close_count = 0U;
+    std::uint32_t parameter_open_count = 0U;
+    std::uint32_t empty_open_args_count = 0U;
+    std::uint32_t reopen_open_args_update_count = 0U;
     std::uint32_t accepted_operation_count = 0U;
     std::uint32_t rejected_operation_count = 0U;
+    UiPanelOpenArgsSnapshot last_open_args;
     UiManagerPanelMapStatus last_status = UiManagerPanelMapStatus::Success;
 };
 }

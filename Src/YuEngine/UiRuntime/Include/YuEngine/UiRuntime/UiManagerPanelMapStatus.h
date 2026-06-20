@@ -14,6 +14,7 @@ enum class UiManagerPanelMapStatus {
     PanelNotActive,
     PanelLayerNotBound,
     LayerNotFound,
+    InvalidOpenArgs,
     ControllerOpenFailed,
     ControllerCloseFailed,
     CapacityExceeded

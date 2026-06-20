@@ -4,6 +4,7 @@
 #include "YuEngine/UiRuntime/UiManagerPanelMap.h"
 
 #include "YuEngine/UiRuntime/BaseUiLifecycleStatus.h"
+#include "YuEngine/UiRuntime/UiPanelOpenArgsConstants.h"
 
 namespace yuengine::uiruntime {
 namespace {
@@ -22,17 +23,8 @@ UiManagerPanelMap::UiManagerPanelMap()
 
 UiManagerPanelMap::UiManagerPanelMap(UiManagerPanelMapDesc desc)
     : records_{},
-      snapshot_{ClampCapacity(desc.panel_capacity, MAX_UI_MANAGER_PANEL_MAP_RECORD_COUNT),
-                0U,
-                0U,
-                0U,
-                0U,
-                0U,
-                0U,
-                0U,
-                0U,
-                0U,
-                UiManagerPanelMapStatus::Success} {
+      snapshot_{} {
+    snapshot_.panel_capacity = ClampCapacity(desc.panel_capacity, MAX_UI_MANAGER_PANEL_MAP_RECORD_COUNT);
 }
 
 UiManagerPanelMapResult UiManagerPanelMap::OpenPanel(
@@ -40,10 +32,26 @@ UiManagerPanelMapResult UiManagerPanelMap::OpenPanel(
     const UiPanelRegistry &registry,
     const UiManagerLayerModel &layer_model,
     BaseUiController *controller) {
+    UiPanelOpenArgs open_args{};
+    return OpenPanelWithArgs(panel_id, registry, layer_model, controller, open_args);
+}
+
+UiManagerPanelMapResult UiManagerPanelMap::OpenPanelWithArgs(
+    UiPanelId panel_id,
+    const UiPanelRegistry &registry,
+    const UiManagerLayerModel &layer_model,
+    BaseUiController *controller,
+    const UiPanelOpenArgs &open_args) {
     if (!panel_id.IsValid()) {
         return MakeResult(RecordFailure(UiManagerPanelMapStatus::InvalidPanelId), UiManagerPanelMapRecord{}, false, false, false);
     }
 
+    const UiManagerPanelMapStatus open_args_status = ValidateOpenArgs(open_args);
+    if (open_args_status != UiManagerPanelMapStatus::Success) {
+        return MakeResult(RecordFailure(open_args_status), UiManagerPanelMapRecord{}, false, false, false);
+    }
+
+    const UiPanelOpenArgsSnapshot open_args_snapshot = MakeOpenArgsSnapshot(open_args);
     UiManagerPanelMapRecord *loaded_record = FindLoadedRecord(panel_id);
     if (loaded_record != nullptr) {
         if (loaded_record->active) {
@@ -56,15 +64,17 @@ UiManagerPanelMapResult UiManagerPanelMap::OpenPanel(
             return MakeResult(RecordFailure(UiManagerPanelMapStatus::InvalidController), *loaded_record, true, false, false);
         }
 
-        const BaseUiLifecycleStatus lifecycle_status = loaded_record->controller->Open();
+        const BaseUiLifecycleStatus lifecycle_status = loaded_record->controller->OpenWithArgs(open_args);
         if (lifecycle_status != BaseUiLifecycleStatus::Success) {
             return MakeResult(RecordFailure(UiManagerPanelMapStatus::ControllerOpenFailed), *loaded_record, true, false, false);
         }
 
+        loaded_record->open_args = open_args_snapshot;
         loaded_record->active = true;
         ++snapshot_.active_panel_count;
         ++snapshot_.open_operation_count;
         ++snapshot_.reused_loaded_count;
+        RecordOpenArgsAccepted(open_args_snapshot, true);
         RecordSuccess();
         return MakeResult(UiManagerPanelMapStatus::Success, *loaded_record, true, false, false);
     }
@@ -90,7 +100,7 @@ UiManagerPanelMapResult UiManagerPanelMap::OpenPanel(
         return MakeResult(RecordFailure(UiManagerPanelMapStatus::CapacityExceeded), UiManagerPanelMapRecord{}, false, false, false);
     }
 
-    const BaseUiLifecycleStatus lifecycle_status = controller->Open();
+    const BaseUiLifecycleStatus lifecycle_status = controller->OpenWithArgs(open_args);
     if (lifecycle_status != BaseUiLifecycleStatus::Success) {
         return MakeResult(RecordFailure(UiManagerPanelMapStatus::ControllerOpenFailed), UiManagerPanelMapRecord{}, false, false, false);
     }
@@ -99,6 +109,7 @@ UiManagerPanelMapResult UiManagerPanelMap::OpenPanel(
     record.panel_id = panel_id;
     record.manifest_record = manifest_record;
     record.layer_record = layer_record;
+    record.open_args = open_args_snapshot;
     record.controller = controller;
     record.loaded = true;
     record.active = true;
@@ -106,6 +117,7 @@ UiManagerPanelMapResult UiManagerPanelMap::OpenPanel(
     ++snapshot_.loaded_panel_count;
     ++snapshot_.active_panel_count;
     ++snapshot_.open_operation_count;
+    RecordOpenArgsAccepted(open_args_snapshot, false);
     RecordSuccess();
     return MakeResult(UiManagerPanelMapStatus::Success, records_[record_index], false, false, false);
 }
@@ -279,6 +291,30 @@ UiManagerPanelMapStatus UiManagerPanelMap::TranslateLayerStatus(UiManagerLayerMo
     return UiManagerPanelMapStatus::PanelLayerNotBound;
 }
 
+UiManagerPanelMapStatus UiManagerPanelMap::ValidateOpenArgs(const UiPanelOpenArgs &open_args) const {
+    if (open_args.value_count > MAX_UI_PANEL_OPEN_ARG_VALUE_COUNT) {
+        return UiManagerPanelMapStatus::InvalidOpenArgs;
+    }
+
+    if (open_args.value_count > 0U && open_args.values == nullptr) {
+        return UiManagerPanelMapStatus::InvalidOpenArgs;
+    }
+
+    return UiManagerPanelMapStatus::Success;
+}
+
+UiPanelOpenArgsSnapshot UiManagerPanelMap::MakeOpenArgsSnapshot(const UiPanelOpenArgs &open_args) const {
+    UiPanelOpenArgsSnapshot snapshot{};
+    snapshot.request_key = open_args.request_key;
+    snapshot.value_count = open_args.value_count;
+    snapshot.has_args = open_args.HasArgs();
+    for (std::uint32_t index = 0U; index < open_args.value_count; ++index) {
+        snapshot.values[index] = open_args.values[index];
+    }
+
+    return snapshot;
+}
+
 UiManagerPanelMapRecord *UiManagerPanelMap::FindLoadedRecord(UiPanelId panel_id) {
     if (!panel_id.IsValid()) {
         return nullptr;
@@ -334,6 +370,7 @@ UiManagerPanelMapResult UiManagerPanelMap::MakeResult(
     UiManagerPanelMapResult result{};
     result.status = status;
     result.record = record;
+    result.open_args = record.open_args;
     result.loaded_panel_count = snapshot_.loaded_panel_count;
     result.active_panel_count = snapshot_.active_panel_count;
     result.reused_loaded = reused_loaded;
@@ -346,6 +383,21 @@ UiManagerPanelMapStatus UiManagerPanelMap::RecordFailure(UiManagerPanelMapStatus
     ++snapshot_.rejected_operation_count;
     snapshot_.last_status = status;
     return status;
+}
+
+void UiManagerPanelMap::RecordOpenArgsAccepted(const UiPanelOpenArgsSnapshot &open_args_snapshot, bool reused_loaded) {
+    snapshot_.last_open_args = open_args_snapshot;
+    if (open_args_snapshot.has_args) {
+        ++snapshot_.parameter_open_count;
+    }
+
+    if (!open_args_snapshot.has_args) {
+        ++snapshot_.empty_open_args_count;
+    }
+
+    if (reused_loaded) {
+        ++snapshot_.reopen_open_args_update_count;
+    }
 }
 
 void UiManagerPanelMap::RecordSuccess() {

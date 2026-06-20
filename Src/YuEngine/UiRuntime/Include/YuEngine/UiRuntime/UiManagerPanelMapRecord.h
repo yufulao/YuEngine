@@ -6,12 +6,14 @@
 #include "YuEngine/UiRuntime/BaseUiController.h"
 #include "YuEngine/UiRuntime/UiManagerLayerRecord.h"
 #include "YuEngine/UiRuntime/UiPanelManifestRecord.h"
+#include "YuEngine/UiRuntime/UiPanelOpenArgsSnapshot.h"
 
 namespace yuengine::uiruntime {
 struct UiManagerPanelMapRecord final {
     UiPanelId panel_id;
     UiPanelManifestRecord manifest_record;
     UiManagerLayerRecord layer_record;
+    UiPanelOpenArgsSnapshot open_args;
     BaseUiController *controller = nullptr;
     bool loaded = false;
     bool active = false;

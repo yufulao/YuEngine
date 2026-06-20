@@ -14,6 +14,17 @@ UiManagerFullscreenStackResult UiManagerFullscreenStack::OpenFullscreenPanel(
     const UiManagerLayerModel &layer_model,
     UiManagerPanelMap *panel_map,
     BaseUiController *controller) {
+    UiPanelOpenArgs open_args{};
+    return OpenFullscreenPanelWithArgs(panel_id, registry, layer_model, panel_map, controller, open_args);
+}
+
+UiManagerFullscreenStackResult UiManagerFullscreenStack::OpenFullscreenPanelWithArgs(
+    UiPanelId panel_id,
+    const UiPanelRegistry &registry,
+    const UiManagerLayerModel &layer_model,
+    UiManagerPanelMap *panel_map,
+    BaseUiController *controller,
+    const UiPanelOpenArgs &open_args) {
     if (!panel_id.IsValid()) {
         return MakeResult(
             RecordFailure(UiManagerFullscreenStackStatus::InvalidPanelId),
@@ -172,7 +183,7 @@ UiManagerFullscreenStackResult UiManagerFullscreenStack::OpenFullscreenPanel(
     }
 
     const UiManagerPanelMapResult panel_result =
-        panel_map->OpenPanel(panel_id, registry, layer_model, controller);
+        panel_map->OpenPanelWithArgs(panel_id, registry, layer_model, controller, open_args);
     if (!panel_result.Succeeded()) {
         const UiManagerFullscreenStackStatus status = TranslatePanelMapStatus(panel_result.status);
         return MakeResult(
@@ -708,6 +719,10 @@ UiManagerFullscreenStackStatus UiManagerFullscreenStack::TranslatePanelMapStatus
         return UiManagerFullscreenStackStatus::LayerNotFound;
     }
 
+    if (status == UiManagerPanelMapStatus::InvalidOpenArgs) {
+        return UiManagerFullscreenStackStatus::InvalidOpenArgs;
+    }
+
     if (status == UiManagerPanelMapStatus::ControllerOpenFailed) {
         return UiManagerFullscreenStackStatus::ControllerOpenFailed;
     }
@@ -756,8 +771,33 @@ UiManagerFullscreenStackResult UiManagerFullscreenStack::RestoreTopFullscreen(
             closed_middle);
     }
 
+    UiManagerPanelMapRecord restored_record{};
+    const UiManagerPanelMapStatus restored_record_status =
+        panel_map->ResolveLoadedPanel(restored_panel_id, &restored_record);
+    if (restored_record_status != UiManagerPanelMapStatus::Success) {
+        const UiManagerFullscreenStackStatus status = TranslatePanelMapStatus(restored_record_status);
+        return MakeResult(
+            RecordFailure(status),
+            restored_record_status,
+            restored_record,
+            panel_id,
+            closed_panel_id,
+            restored_panel_id,
+            false,
+            false,
+            navigated_back,
+            false,
+            false,
+            true,
+            already_inactive,
+            true,
+            closed_current,
+            closed_middle);
+    }
+
+    const UiPanelOpenArgs restored_open_args = restored_record.open_args.ToArgs();
     const UiManagerPanelMapResult open_result =
-        panel_map->OpenPanel(restored_panel_id, registry, layer_model, nullptr);
+        panel_map->OpenPanelWithArgs(restored_panel_id, registry, layer_model, nullptr, restored_open_args);
     if (!open_result.Succeeded()) {
         const UiManagerFullscreenStackStatus status = TranslatePanelMapStatus(open_result.status);
         return MakeResult(

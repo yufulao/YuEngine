@@ -38,6 +38,24 @@ public:
         BaseUiController *controller);
 
     /**
+     * @comment 携带 open 参数打开 fullscreen panel，并把它设为当前 fullscreen。
+     * @param panel_id 输入 panel id。
+     * @param registry 输入 panel registry。
+     * @param layer_model 输入 layer model。
+     * @param panel_map 输入输出 panel map。
+     * @param controller 首次加载时由调用方持有的 controller。
+     * @param open_args 调用方提供的 open 参数视图，仅在本次调用期间有效。
+     * @return 显式 fullscreen 打开结果。
+     */
+    UiManagerFullscreenStackResult OpenFullscreenPanelWithArgs(
+        UiPanelId panel_id,
+        const UiPanelRegistry &registry,
+        const UiManagerLayerModel &layer_model,
+        UiManagerPanelMap *panel_map,
+        BaseUiController *controller,
+        const UiPanelOpenArgs &open_args);
+
+    /**
      * @comment 执行 fullscreen navigate-back，关闭当前 fullscreen 并恢复前序 fullscreen。
      * @param registry 输入 panel registry。
      * @param layer_model 输入 layer model。

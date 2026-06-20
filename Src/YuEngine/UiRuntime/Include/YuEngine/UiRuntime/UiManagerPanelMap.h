@@ -45,6 +45,22 @@ public:
         BaseUiController *controller);
 
     /**
+     * @comment 携带 open 参数打开已注册 panel，并写入 loaded 与 active map。
+     * @param panel_id 输入 panel id。
+     * @param registry 输入 panel registry。
+     * @param layer_model 输入 layer model。
+     * @param controller 首次加载时由调用方持有的 controller。
+     * @param open_args 调用方提供的 open 参数视图，仅在本次调用期间有效。
+     * @return 显式打开结果。
+     */
+    UiManagerPanelMapResult OpenPanelWithArgs(
+        UiPanelId panel_id,
+        const UiPanelRegistry &registry,
+        const UiManagerLayerModel &layer_model,
+        BaseUiController *controller,
+        const UiPanelOpenArgs &open_args);
+
+    /**
      * @comment 关闭 active panel，并保留 loaded map 记录。
      * @param panel_id 输入 panel id。
      * @return 显式关闭结果。
@@ -100,6 +116,8 @@ private:
         UiManagerLayerRecord *out_layer_record) const;
     UiManagerPanelMapStatus TranslateRegistryStatus(UiPanelRegistryStatus status) const;
     UiManagerPanelMapStatus TranslateLayerStatus(UiManagerLayerModelStatus status) const;
+    UiManagerPanelMapStatus ValidateOpenArgs(const UiPanelOpenArgs &open_args) const;
+    UiPanelOpenArgsSnapshot MakeOpenArgsSnapshot(const UiPanelOpenArgs &open_args) const;
     UiManagerPanelMapRecord *FindLoadedRecord(UiPanelId panel_id);
     const UiManagerPanelMapRecord *FindLoadedRecord(UiPanelId panel_id) const;
     std::uint32_t FindFreeRecordIndex() const;
@@ -110,6 +128,7 @@ private:
         bool already_active,
         bool already_inactive) const;
     UiManagerPanelMapStatus RecordFailure(UiManagerPanelMapStatus status);
+    void RecordOpenArgsAccepted(const UiPanelOpenArgsSnapshot &open_args_snapshot, bool reused_loaded);
     void RecordSuccess();
 
     std::array<UiManagerPanelMapRecord, MAX_UI_MANAGER_PANEL_MAP_RECORD_COUNT> records_;

@@ -18,6 +18,7 @@ enum class UiManagerFullscreenStackStatus {
     NonFullscreenPanel,
     FullscreenNotInStack,
     BackStackEmpty,
+    InvalidOpenArgs,
     ControllerOpenFailed,
     ControllerCloseFailed,
     CapacityExceeded,

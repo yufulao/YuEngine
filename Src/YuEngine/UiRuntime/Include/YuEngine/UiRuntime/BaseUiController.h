@@ -5,6 +5,7 @@
 
 #include "YuEngine/UiRuntime/BaseUiLifecycleSnapshot.h"
 #include "YuEngine/UiRuntime/BaseUiLifecycleStatus.h"
+#include "YuEngine/UiRuntime/UiPanelOpenArgs.h"
 
 namespace yuengine::uiruntime {
 class IBaseUiCloseRequestSink;
@@ -24,6 +25,13 @@ public:
      * @return 成功时返回 Success，否则返回明确生命周期状态。
      */
     BaseUiLifecycleStatus Open();
+
+    /**
+     * @comment 携带 open 参数激活 controller；首次激活会先执行一次 Initialize。
+     * @param open_args 调用方提供的 open 参数视图，仅在本次调用期间有效。
+     * @return 成功时返回 Success，否则返回明确生命周期状态。
+     */
+    BaseUiLifecycleStatus OpenWithArgs(const UiPanelOpenArgs &open_args);
 
     /**
      * @comment 反激活 controller。
@@ -54,6 +62,7 @@ protected:
     virtual BaseUiLifecycleStatus OnInitEvent();
     virtual BaseUiLifecycleStatus OnBindEvent();
     virtual BaseUiLifecycleStatus OnOpenEvent();
+    virtual BaseUiLifecycleStatus OnOpenWithArgsEvent(const UiPanelOpenArgs &open_args);
     virtual BaseUiLifecycleStatus OnCloseEvent();
     virtual BaseUiLifecycleStatus OnClearEvent();
 
