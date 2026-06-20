@@ -185,6 +185,7 @@ add_library(YuUiCore
     Src/YuEngine/UiCore/Src/UiDrawBatcher.cpp
     Src/YuEngine/UiCore/Src/UiDrawListBuilder.cpp
     Src/YuEngine/UiCore/Src/UiDynamicAtlasPacker.cpp
+    Src/YuEngine/UiCore/Src/UiFontGlyphAtlas.cpp
     Src/YuEngine/UiCore/Src/UiGridViewSemantics.cpp
     Src/YuEngine/UiCore/Src/UiHitTestResolver.cpp
     Src/YuEngine/UiCore/Src/UiInvalidationModel.cpp
@@ -1597,6 +1598,16 @@ yuengine_add_labeled_test(UiCore_GridViewSemantics_RejectsFullPoolAsNonVirtualiz
 yuengine_add_labeled_test(UiCore_GridViewSemantics_BtnSelectionTouchesVisibleCellsOnly YuUiGridViewSemanticsTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_GridViewSemantics_ResolvesScrollToIndexTarget YuUiGridViewSemanticsTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_GridViewSemantics_RejectsInvalidAndSmallOutput YuUiGridViewSemanticsTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+
+add_executable(YuUiFontGlyphAtlasTests
+    Tests/UiCore/UiFontGlyphAtlasTests.cpp
+)
+yuengine_apply_compile_options(YuUiFontGlyphAtlasTests)
+target_link_libraries(YuUiFontGlyphAtlasTests PRIVATE YuUiCore)
+yuengine_add_labeled_test(UiCore_FontGlyphAtlas_SafePointBuildResolvesPrimaryGlyph YuUiFontGlyphAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_FontGlyphAtlas_TextFixtureResolvesFallbackGlyph YuUiFontGlyphAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_FontGlyphAtlas_TextFixtureReportsMissingGlyph YuUiFontGlyphAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_FontGlyphAtlas_RejectsPaintPathPackAndDuplicateGlyph YuUiFontGlyphAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 
 add_executable(YuUiEditorTests
     Tests/UiEditor/UiEditorTests.cpp
