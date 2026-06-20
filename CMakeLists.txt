@@ -1740,6 +1740,17 @@ yuengine_add_labeled_test(UiWebEditorStatePreview_Data_RejectsSmallOutputWithout
 yuengine_add_labeled_test(UiWebEditorStatePreview_Data_RejectsInvalidStateInputWithoutMutation YuUiWebEditorStatePreviewTests Fast ModuleFixture UI WebEditorStatePreview StatePreviewData EvidenceOracle)
 yuengine_add_labeled_test(UiWebEditorStatePreview_Data_ReportsValidatorIssuesWithoutStateOutput YuUiWebEditorStatePreviewTests Fast ModuleFixture UI WebEditorStatePreview StatePreviewData EvidenceOracle)
 
+find_program(YUENGINE_NODE_EXECUTABLE NAMES node node.exe)
+if(YUENGINE_NODE_EXECUTABLE)
+    add_test(
+        NAME UiWebEditorWeb_WebModel_ValidatesDataEditorFoundation
+        COMMAND ${YUENGINE_NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Tests/UiWebEditorWeb/UiWebEditorWebTests.js
+    )
+    set_tests_properties(UiWebEditorWeb_WebModel_ValidatesDataEditorFoundation PROPERTIES
+        LABELS "Fast;ModuleFixture;UI;WebEditorWeb;WebFrontend;EvidenceOracle"
+    )
+endif()
+
 add_executable(YuUiDrawBatcherTests
     Tests/UiCore/UiDrawBatcherTests.cpp
 )

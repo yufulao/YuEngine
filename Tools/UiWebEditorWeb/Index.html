@@ -1,0 +1,108 @@
+<!-- 模块: Tools UiWebEditorWeb -->
+<!-- 文件: Tools/UiWebEditorWeb/Index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>YuEngine UI Web Editor</title>
+    <link rel="stylesheet" href="Style.css">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="brand">
+                <span class="brand-mark">YU</span>
+                <div>
+                    <h1>UI Web Editor</h1>
+                    <p>Data foundation</p>
+                </div>
+            </div>
+            <nav class="toolbar" aria-label="Editor commands">
+                <button id="new-button" type="button">New</button>
+                <button id="open-button" type="button">Open</button>
+                <button id="save-draft-button" type="button">Save Draft</button>
+                <button id="export-runtime-button" type="button">Export Runtime</button>
+                <button id="validate-button" type="button">Validate</button>
+                <input id="file-input" class="hidden-input" type="file" accept="application/json,.json">
+            </nav>
+            <div class="status-cluster">
+                <span id="status-text" class="status-pill">Ready</span>
+                <span>Layout <strong id="layout-id">0</strong></span>
+                <span>Nodes <strong id="node-count">0</strong></span>
+                <span>Issues <strong id="issue-count">0</strong></span>
+            </div>
+        </header>
+
+        <main class="workspace">
+            <aside class="left-pane" aria-label="Hierarchy and template panel">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Hierarchy</h2>
+                        <div class="mini-toolbar">
+                            <button id="add-container-button" type="button">Container</button>
+                            <button id="add-text-button" type="button">Text</button>
+                            <button id="add-button-button" type="button">Button</button>
+                        </div>
+                    </div>
+                    <div id="hierarchy-list" class="tree-list"></div>
+                    <button id="remove-node-button" class="danger-button" type="button">Remove Node</button>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Resources</h2>
+                    </div>
+                    <div id="resource-panel" class="resource-list"></div>
+                </section>
+            </aside>
+
+            <section class="center-pane" aria-label="Canvas and data view">
+                <div class="canvas-frame">
+                    <div class="canvas-ruler top-ruler"></div>
+                    <div class="canvas-ruler left-ruler"></div>
+                    <div id="canvas-surface" class="canvas-surface" aria-label="Layout canvas"></div>
+                </div>
+                <section class="panel data-panel">
+                    <div class="panel-header">
+                        <h2>Runtime Data</h2>
+                    </div>
+                    <pre id="json-preview" class="json-preview"></pre>
+                </section>
+            </section>
+
+            <aside class="right-pane" aria-label="Inspector and validation panel">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Inspector</h2>
+                    </div>
+                    <div id="inspector-panel" class="inspector-panel"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Style Theme</h2>
+                    </div>
+                    <div id="theme-panel" class="theme-panel"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>State Preview</h2>
+                    </div>
+                    <div id="state-panel" class="state-panel"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Validation</h2>
+                    </div>
+                    <div id="validation-panel" class="validation-panel"></div>
+                </section>
+            </aside>
+        </main>
+    </div>
+    <script src="EditorModel.js"></script>
+    <script src="App.js"></script>
+</body>
+</html>
