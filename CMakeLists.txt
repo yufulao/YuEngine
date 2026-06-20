@@ -363,6 +363,7 @@ yuengine_apply_compile_options(YuHeadless)
 target_link_libraries(YuHeadless PRIVATE YuKernel)
 
 add_library(YuUiEditorShellCore
+    Tools/UiEditor/Src/UiEditorResourceReferenceValidator.cpp
     Tools/UiEditor/Src/UiEditorShellState.cpp
 )
 yuengine_apply_compile_options(YuUiEditorShellCore)
@@ -370,6 +371,7 @@ target_include_directories(YuUiEditorShellCore
     PUBLIC
         Tools/UiEditor/Include
 )
+target_link_libraries(YuUiEditorShellCore PUBLIC YuUiCore)
 
 add_executable(YuUiEditorShell
     Tools/UiEditor/Src/Main.cpp
@@ -1587,6 +1589,17 @@ yuengine_add_labeled_test(UiEditor_LayoutAsset_RejectsDuplicateNodeId YuUiEditor
 yuengine_add_labeled_test(UiEditor_LayoutAsset_RejectsMissingParent YuUiEditorTests Fast ModuleFixture UiEditor UI Editor LayoutAsset EvidenceOracle)
 yuengine_add_labeled_test(UiEditor_PreviewVariants_ResolutionDpiSafeAreaExport YuUiEditorTests Fast ModuleFixture UiEditor UI Editor PreviewVariant EvidenceOracle)
 yuengine_add_labeled_test(UiEditor_PreviewVariants_RejectInvalidSafeAreaWithoutMutation YuUiEditorTests Fast ModuleFixture UiEditor UI Editor PreviewVariant EvidenceOracle)
+
+add_executable(YuUiEditorResourceReferenceValidatorTests
+    Tests/UiEditor/UiEditorResourceReferenceValidatorTests.cpp
+)
+yuengine_apply_compile_options(YuUiEditorResourceReferenceValidatorTests)
+target_link_libraries(YuUiEditorResourceReferenceValidatorTests PRIVATE YuUiEditorShellCore)
+yuengine_add_labeled_test(UiEditor_ResourceValidator_ReportsMissingReferences YuUiEditorResourceReferenceValidatorTests Fast ModuleFixture UiEditor UI Editor ResourceValidator EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_ResourceValidator_AcceptsExistingReferences YuUiEditorResourceReferenceValidatorTests Fast ModuleFixture UiEditor UI Editor ResourceValidator EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_ResourceValidator_RejectsSmallReportOutputWithoutMutation YuUiEditorResourceReferenceValidatorTests Fast ModuleFixture UiEditor UI Editor ResourceValidator EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_ResourceValidator_RejectsInvalidReferenceWithoutMutation YuUiEditorResourceReferenceValidatorTests Fast ModuleFixture UiEditor UI Editor ResourceValidator EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_ResourceValidator_RejectsInvalidAtlasMetadata YuUiEditorResourceReferenceValidatorTests Fast ModuleFixture UiEditor UI Editor ResourceValidator EvidenceOracle)
 
 add_executable(YuUiRenderCoreBridgeTests
     Tests/UiRenderCoreBridge/UiRenderCoreBridgeTests.cpp
