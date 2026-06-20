@@ -14,6 +14,27 @@
     const SCHEMA_VERSION = 1;
     const RESOURCE_KINDS = ["Sprite", "Font", "Localization", "Audio", "Custom"];
     const DEFAULT_VIEWPORT_RECT = { x: 0, y: 0, width: 960, height: 540 };
+    const COMPONENT_TYPES = ["Container", "Text", "Image", "Button", "Slider"];
+    const COMPONENT_RECORD_KEYS = ["common", "container", "text", "image", "button", "slider"];
+    const LAYOUT_TYPES = ["Absolute", "Stack", "Grid", "Overlay", "ScrollViewport"];
+    const TEXT_CONTENT_MODES = ["Plain", "LocalizationKey"];
+    const TEXT_FONT_STYLES = ["Normal", "Bold", "Italic", "BoldItalic"];
+    const TEXT_HORIZONTAL_ALIGNMENTS = ["Left", "Center", "Right"];
+    const TEXT_VERTICAL_ALIGNMENTS = ["Top", "Middle", "Bottom"];
+    const TEXT_WRAP_MODES = ["None", "Character"];
+    const TEXT_OVERFLOW_MODES = ["Clip"];
+    const IMAGE_TYPES = ["Simple", "Sliced"];
+    const SLIDER_AXES = ["Horizontal", "Vertical"];
+    const HIT_TEST_ROUTES = ["None", "Self", "Children"];
+    const COMPONENT_BACKLOG = [
+        { component: "Toggle", status: "NeedsNativeRuntime", reason: "Toggle native parity is not available yet" },
+        { component: "Progress", status: "NeedsNativeRuntime", reason: "Progress native parity is not available yet" },
+        { component: "TextAutoSize", status: "Backlog", reason: "Text autosize requires native text measurement support" },
+        { component: "TextEllipsis", status: "Backlog", reason: "Text ellipsis requires native overflow shaping support" },
+        { component: "RichText", status: "Backlog", reason: "Rich text and link metadata require native parser support" },
+        { component: "CameraPerspective", status: "NeedsNativeRuntime", reason: "Camera and perspective fields are outside current runtime UI data" },
+        { component: "NativeSchemaValidator", status: "NeedsNativeRuntime", reason: "Component-specific native schema validator is not implemented" }
+    ];
 
     function Clone(value) {
         return JSON.parse(JSON.stringify(value));
@@ -30,6 +51,46 @@
     function ToBool(value, fallback) {
         if (typeof value === "boolean") {
             return value;
+        }
+        return fallback;
+    }
+
+    function ToString(value, fallback) {
+        if (typeof value === "string") {
+            return value;
+        }
+        return fallback;
+    }
+
+    function NormalizeOption(value, fallback, options) {
+        const text = ToString(value, fallback);
+        if (options.includes(text)) {
+            return text;
+        }
+        return fallback;
+    }
+
+    function NormalizeKey(value, fallback) {
+        const key = Math.trunc(ToNumber(value, fallback));
+        if (key < 0) {
+            return 0;
+        }
+        return key;
+    }
+
+    function NormalizePositiveNumber(value, fallback) {
+        const number_value = ToNumber(value, fallback);
+        if (number_value > 0) {
+            return number_value;
+        }
+        return fallback;
+    }
+
+    function NormalizeColor(value, fallback) {
+        const text = ToString(value, fallback);
+        const color_pattern = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+        if (color_pattern.test(text)) {
+            return text;
         }
         return fallback;
     }
@@ -119,6 +180,325 @@
             margin: NormalizeThickness(source.margin, full_stretch.margin),
             padding: NormalizeThickness(source.padding, full_stretch.padding),
             dpiScale: Math.max(0.001, ToNumber(source.dpiScale, full_stretch.dpiScale))
+        };
+    }
+
+    function NormalizeComponentType(value) {
+        const component = String(value || "Container");
+        if (COMPONENT_TYPES.includes(component)) {
+            return component;
+        }
+        const backlog = COMPONENT_BACKLOG.find(function MatchBacklog(record) {
+            return record.component === component;
+        });
+        if (backlog) {
+            return backlog.component;
+        }
+        return component;
+    }
+
+    function GetComponentRecordKey(component) {
+        if (component === "Container") {
+            return "container";
+        }
+        if (component === "Text") {
+            return "text";
+        }
+        if (component === "Image") {
+            return "image";
+        }
+        if (component === "Button") {
+            return "button";
+        }
+        if (component === "Slider") {
+            return "slider";
+        }
+        return "";
+    }
+
+    function CreateDefaultCommonComponent() {
+        return {
+            layoutType: "Absolute",
+            styleKey: 0,
+            themeKey: 0,
+            tokenKey: 0,
+            resourceKey: 0,
+            eventKey: 0,
+            hitTestRoute: "Self",
+            clipChildren: false
+        };
+    }
+
+    function CreateDefaultTextComponent(label) {
+        return {
+            contentMode: "Plain",
+            content: String(label || "Text"),
+            localizationKey: "",
+            fontResourceKey: 0,
+            fallbackFontResourceKey: 0,
+            fontSize: 18,
+            fontStyle: "Normal",
+            horizontalAlignment: "Left",
+            verticalAlignment: "Middle",
+            wrap: "Character",
+            overflow: "Clip",
+            lineHeight: 1.2,
+            tint: "#111827",
+            outline: {
+                enabled: false,
+                color: "#000000",
+                width: 0
+            },
+            shadow: {
+                enabled: false,
+                color: "#000000",
+                offset: CreateVector2(0, -1)
+            },
+            materialKey: 0,
+            styleKey: 0,
+            scissor: false,
+            raycastTarget: false
+        };
+    }
+
+    function CreateDefaultImageComponent() {
+        return {
+            spriteResourceKey: 0,
+            atlasKey: 0,
+            materialKey: 0,
+            styleKey: 0,
+            imageType: "Simple",
+            tint: "#ffffff",
+            preserveAspect: false,
+            nineSlice: CreateThickness(0, 0, 0, 0),
+            scissor: false,
+            raycastTarget: false
+        };
+    }
+
+    function CreateDefaultButtonComponent(label) {
+        return {
+            label: String(label || "Button"),
+            textStyleKey: 0,
+            imageStyleKey: 0,
+            normalStyleKey: 0,
+            hoverStyleKey: 0,
+            pressedStyleKey: 0,
+            disabledStyleKey: 0,
+            selectedStyleKey: 0,
+            normalSpriteKey: 0,
+            hoverSpriteKey: 0,
+            pressedSpriteKey: 0,
+            disabledSpriteKey: 0,
+            selectedSpriteKey: 0,
+            submitEventKey: 0,
+            cancelEventKey: 0,
+            soundResourceKey: 0,
+            actionKey: "Submit",
+            pointerActivation: true,
+            keyboardActivation: true,
+            gamepadActivation: true,
+            raycastTarget: true
+        };
+    }
+
+    function CreateDefaultSliderComponent() {
+        return {
+            minValue: 0,
+            maxValue: 1,
+            value: 0.5,
+            step: 0.1,
+            axis: "Horizontal",
+            trackStyleKey: 0,
+            fillStyleKey: 0,
+            handleStyleKey: 0,
+            trackSpriteKey: 0,
+            fillSpriteKey: 0,
+            handleSpriteKey: 0,
+            changeEventKey: 0,
+            increaseActionKey: "Increase",
+            decreaseActionKey: "Decrease",
+            pointerDrag: true,
+            keyboardAdjust: true,
+            gamepadAdjust: true,
+            raycastTarget: true
+        };
+    }
+
+    function CreateDefaultContainerComponent() {
+        return {
+            layoutType: "Absolute",
+            styleKey: 0,
+            scissor: false,
+            raycastTarget: false
+        };
+    }
+
+    function NormalizeCommonComponent(value) {
+        const source = value || {};
+        return {
+            layoutType: NormalizeOption(source.layoutType, "Absolute", LAYOUT_TYPES),
+            styleKey: NormalizeKey(source.styleKey, 0),
+            themeKey: NormalizeKey(source.themeKey, 0),
+            tokenKey: NormalizeKey(source.tokenKey, 0),
+            resourceKey: NormalizeKey(source.resourceKey, 0),
+            eventKey: NormalizeKey(source.eventKey, 0),
+            hitTestRoute: NormalizeOption(source.hitTestRoute, "Self", HIT_TEST_ROUTES),
+            clipChildren: ToBool(source.clipChildren, false)
+        };
+    }
+
+    function NormalizeContainerComponent(value) {
+        const source = value || {};
+        return {
+            layoutType: NormalizeOption(source.layoutType, "Absolute", LAYOUT_TYPES),
+            styleKey: NormalizeKey(source.styleKey, 0),
+            scissor: ToBool(source.scissor, false),
+            raycastTarget: ToBool(source.raycastTarget, false)
+        };
+    }
+
+    function NormalizeTextComponent(value, legacy_text) {
+        const source = value || {};
+        const fallback_text = String(legacy_text || "Text");
+        const outline = source.outline || {};
+        const shadow = source.shadow || {};
+        return {
+            contentMode: NormalizeOption(source.contentMode, "Plain", TEXT_CONTENT_MODES),
+            content: ToString(source.content, fallback_text),
+            localizationKey: ToString(source.localizationKey, ""),
+            fontResourceKey: NormalizeKey(source.fontResourceKey, 0),
+            fallbackFontResourceKey: NormalizeKey(source.fallbackFontResourceKey, 0),
+            fontSize: NormalizePositiveNumber(source.fontSize, 18),
+            fontStyle: NormalizeOption(source.fontStyle, "Normal", TEXT_FONT_STYLES),
+            horizontalAlignment: NormalizeOption(source.horizontalAlignment, "Left", TEXT_HORIZONTAL_ALIGNMENTS),
+            verticalAlignment: NormalizeOption(source.verticalAlignment, "Middle", TEXT_VERTICAL_ALIGNMENTS),
+            wrap: NormalizeOption(source.wrap, "Character", TEXT_WRAP_MODES),
+            overflow: NormalizeOption(source.overflow, "Clip", TEXT_OVERFLOW_MODES),
+            lineHeight: NormalizePositiveNumber(source.lineHeight, 1.2),
+            tint: NormalizeColor(source.tint, "#111827"),
+            outline: {
+                enabled: ToBool(outline.enabled, false),
+                color: NormalizeColor(outline.color, "#000000"),
+                width: Math.max(0, ToNumber(outline.width, 0))
+            },
+            shadow: {
+                enabled: ToBool(shadow.enabled, false),
+                color: NormalizeColor(shadow.color, "#000000"),
+                offset: NormalizeVector2(shadow.offset, CreateVector2(0, -1))
+            },
+            materialKey: NormalizeKey(source.materialKey, 0),
+            styleKey: NormalizeKey(source.styleKey, 0),
+            scissor: ToBool(source.scissor, false),
+            raycastTarget: ToBool(source.raycastTarget, false)
+        };
+    }
+
+    function NormalizeImageComponent(value) {
+        const source = value || {};
+        return {
+            spriteResourceKey: NormalizeKey(source.spriteResourceKey, 0),
+            atlasKey: NormalizeKey(source.atlasKey, 0),
+            materialKey: NormalizeKey(source.materialKey, 0),
+            styleKey: NormalizeKey(source.styleKey, 0),
+            imageType: NormalizeOption(source.imageType, "Simple", IMAGE_TYPES),
+            tint: NormalizeColor(source.tint, "#ffffff"),
+            preserveAspect: ToBool(source.preserveAspect, false),
+            nineSlice: NormalizeThickness(source.nineSlice, CreateThickness(0, 0, 0, 0)),
+            scissor: ToBool(source.scissor, false),
+            raycastTarget: ToBool(source.raycastTarget, false)
+        };
+    }
+
+    function NormalizeButtonComponent(value, legacy_text) {
+        const source = value || {};
+        const fallback_label = String(legacy_text || "Button");
+        return {
+            label: ToString(source.label, fallback_label),
+            textStyleKey: NormalizeKey(source.textStyleKey, 0),
+            imageStyleKey: NormalizeKey(source.imageStyleKey, 0),
+            normalStyleKey: NormalizeKey(source.normalStyleKey, 0),
+            hoverStyleKey: NormalizeKey(source.hoverStyleKey, 0),
+            pressedStyleKey: NormalizeKey(source.pressedStyleKey, 0),
+            disabledStyleKey: NormalizeKey(source.disabledStyleKey, 0),
+            selectedStyleKey: NormalizeKey(source.selectedStyleKey, 0),
+            normalSpriteKey: NormalizeKey(source.normalSpriteKey, 0),
+            hoverSpriteKey: NormalizeKey(source.hoverSpriteKey, 0),
+            pressedSpriteKey: NormalizeKey(source.pressedSpriteKey, 0),
+            disabledSpriteKey: NormalizeKey(source.disabledSpriteKey, 0),
+            selectedSpriteKey: NormalizeKey(source.selectedSpriteKey, 0),
+            submitEventKey: NormalizeKey(source.submitEventKey, 0),
+            cancelEventKey: NormalizeKey(source.cancelEventKey, 0),
+            soundResourceKey: NormalizeKey(source.soundResourceKey, 0),
+            actionKey: ToString(source.actionKey, "Submit"),
+            pointerActivation: ToBool(source.pointerActivation, true),
+            keyboardActivation: ToBool(source.keyboardActivation, true),
+            gamepadActivation: ToBool(source.gamepadActivation, true),
+            raycastTarget: ToBool(source.raycastTarget, true)
+        };
+    }
+
+    function NormalizeSliderComponent(value) {
+        const source = value || {};
+        const min_value = ToNumber(source.minValue, 0);
+        let max_value = ToNumber(source.maxValue, 1);
+        if (max_value <= min_value) {
+            max_value = min_value + 1;
+        }
+        let current_value = ToNumber(source.value, min_value);
+        if (current_value < min_value) {
+            current_value = min_value;
+        }
+        if (current_value > max_value) {
+            current_value = max_value;
+        }
+        return {
+            minValue: min_value,
+            maxValue: max_value,
+            value: current_value,
+            step: NormalizePositiveNumber(source.step, 0.1),
+            axis: NormalizeOption(source.axis, "Horizontal", SLIDER_AXES),
+            trackStyleKey: NormalizeKey(source.trackStyleKey, 0),
+            fillStyleKey: NormalizeKey(source.fillStyleKey, 0),
+            handleStyleKey: NormalizeKey(source.handleStyleKey, 0),
+            trackSpriteKey: NormalizeKey(source.trackSpriteKey, 0),
+            fillSpriteKey: NormalizeKey(source.fillSpriteKey, 0),
+            handleSpriteKey: NormalizeKey(source.handleSpriteKey, 0),
+            changeEventKey: NormalizeKey(source.changeEventKey, 0),
+            increaseActionKey: ToString(source.increaseActionKey, "Increase"),
+            decreaseActionKey: ToString(source.decreaseActionKey, "Decrease"),
+            pointerDrag: ToBool(source.pointerDrag, true),
+            keyboardAdjust: ToBool(source.keyboardAdjust, true),
+            gamepadAdjust: ToBool(source.gamepadAdjust, true),
+            raycastTarget: ToBool(source.raycastTarget, true)
+        };
+    }
+
+    function CreateDefaultComponentRecords(component, label) {
+        const records = {
+            common: CreateDefaultCommonComponent(),
+            container: CreateDefaultContainerComponent(),
+            text: CreateDefaultTextComponent(label),
+            image: CreateDefaultImageComponent(),
+            button: CreateDefaultButtonComponent(label),
+            slider: CreateDefaultSliderComponent()
+        };
+        if (component === "Container") {
+            records.common.layoutType = "Stack";
+            records.container.layoutType = "Stack";
+        }
+        return records;
+    }
+
+    function NormalizeComponents(value, component, legacy_text) {
+        const source = value || {};
+        return {
+            common: NormalizeCommonComponent(source.common),
+            container: NormalizeContainerComponent(source.container),
+            text: NormalizeTextComponent(source.text, legacy_text),
+            image: NormalizeImageComponent(source.image),
+            button: NormalizeButtonComponent(source.button, legacy_text),
+            slider: NormalizeSliderComponent(source.slider)
         };
     }
 
@@ -221,6 +601,18 @@
 
     function CreateDefaultDocument() {
         const viewport = NormalizeEditorViewport({});
+        const root_components = CreateDefaultComponentRecords("Container", "Root");
+        const header_components = CreateDefaultComponentRecords("Text", "Title");
+        const button_components = CreateDefaultComponentRecords("Button", "Action");
+        root_components.common.styleKey = 1101;
+        header_components.common.styleKey = 1102;
+        header_components.common.resourceKey = 2101;
+        header_components.text.fontResourceKey = 2101;
+        header_components.text.styleKey = 1102;
+        button_components.common.styleKey = 1103;
+        button_components.common.eventKey = 4101;
+        button_components.button.normalStyleKey = 1103;
+        button_components.button.submitEventKey = 4101;
         return {
             schema: {
                 schemaId: SCHEMA_ID,
@@ -234,6 +626,7 @@
                     parentId: 0,
                     name: "Root",
                     component: "Container",
+                    components: root_components,
                     rectTransform: CreateFullStretchRectTransform(),
                     siblingOrder: 0,
                     layer: 0,
@@ -246,7 +639,7 @@
                     parentId: 1,
                     name: "Header",
                     component: "Text",
-                    text: "Title",
+                    components: header_components,
                     rectTransform: CreateFixedRectTransformFromCanvas(
                         { left: 32, top: 28, width: 320, height: 48 },
                         viewport),
@@ -261,7 +654,7 @@
                     parentId: 1,
                     name: "PreviewButton",
                     component: "Button",
-                    text: "Action",
+                    components: button_components,
                     rectTransform: CreateFixedRectTransformFromCanvas(
                         { left: 32, top: 108, width: 220, height: 48 },
                         viewport),
@@ -372,12 +765,14 @@
     function NormalizeNode(node, index) {
         const node_id = ToNumber(node.nodeId, index + 1);
         const rect_transform = node.rectTransform ? node.rectTransform : MigrateLegacyRect(node.rect || {});
+        const component = NormalizeComponentType(node.component);
+        const legacy_text = ToString(node.text, "");
         return {
             nodeId: node_id,
             parentId: ToNumber(node.parentId, 0),
             name: String(node.name || "Node" + node_id),
-            component: String(node.component || "Container"),
-            text: String(node.text || ""),
+            component: component,
+            components: NormalizeComponents(node.components, component, legacy_text),
             rectTransform: NormalizeRectTransform(rect_transform),
             siblingOrder: ToNumber(node.siblingOrder, index),
             layer: ToNumber(node.layer, 0),
@@ -529,6 +924,61 @@
         return "Success";
     }
 
+    function ValidateNodeComponents(issues, node) {
+        const backlog = COMPONENT_BACKLOG.find(function MatchBacklog(record) {
+            return record.component === node.component;
+        });
+        if (backlog) {
+            PushIssue(issues, backlog.status, backlog.reason, node.nodeId);
+            return;
+        }
+        if (!COMPONENT_TYPES.includes(node.component)) {
+            PushIssue(issues, "UnsupportedComponent", "Component type is not supported by runtime export", node.nodeId);
+            return;
+        }
+        const component_key = GetComponentRecordKey(node.component);
+        if (!component_key || !node.components[component_key]) {
+            PushIssue(issues, "MissingComponentRecord", "Node component record is missing", node.nodeId);
+            return;
+        }
+        if (!COMPONENT_RECORD_KEYS.every(function MatchRecordKey(key) {
+            return Object.prototype.hasOwnProperty.call(node.components, key);
+        })) {
+            PushIssue(issues, "MissingComponentRecord", "Common component records are incomplete", node.nodeId);
+            return;
+        }
+        if (node.component === "Slider") {
+            const slider = node.components.slider;
+            if (slider.maxValue <= slider.minValue) {
+                PushIssue(issues, "InvalidComponentRecord", "Slider max value must be greater than min value", node.nodeId);
+                return;
+            }
+            if (slider.step <= 0) {
+                PushIssue(issues, "InvalidComponentRecord", "Slider step must be positive", node.nodeId);
+                return;
+            }
+        }
+        if (node.component === "Text" && node.components.text.overflow !== "Clip") {
+            PushIssue(issues, "NeedsNativeRuntime", "Text overflow mode requires native runtime support", node.nodeId);
+            return;
+        }
+    }
+
+    function CountComponents(nodes) {
+        const counts = {};
+        COMPONENT_TYPES.forEach(function SetInitialCount(component) {
+            counts[component] = 0;
+        });
+        nodes.forEach(function CountNodeComponent(node) {
+            if (!Object.prototype.hasOwnProperty.call(counts, node.component)) {
+                counts.Unsupported = (counts.Unsupported || 0) + 1;
+                return;
+            }
+            counts[node.component] += 1;
+        });
+        return counts;
+    }
+
     function CreateFailedRectResult(status) {
         return {
             status: status,
@@ -633,6 +1083,7 @@
             if (rect_result && rect_result.status !== "Success") {
                 PushIssue(issues, rect_result.status, "RectTransform cannot resolve to a valid runtime rect", node.nodeId);
             }
+            ValidateNodeComponents(issues, node);
         });
 
         const root = FindNode(document, document.schema.rootNodeId);
@@ -681,6 +1132,7 @@
                 styleRefCount: document.styleRefs.length,
                 resourceRefCount: document.resourceRefs.length,
                 eventBindingCount: document.eventBindings.length,
+                componentCounts: CountComponents(document.nodes),
                 issueCount: issues.length
             }
         };
@@ -746,6 +1198,32 @@
         return rows;
     }
 
+    function GetComponentPreviewText(node) {
+        if (node.component === "Text") {
+            return node.components.text.content;
+        }
+        if (node.component === "Button") {
+            return node.components.button.label;
+        }
+        if (node.component === "Image") {
+            return "Sprite " + String(node.components.image.spriteResourceKey);
+        }
+        if (node.component === "Slider") {
+            return String(node.components.slider.value);
+        }
+        return node.name;
+    }
+
+    function GetComponentPreviewTint(node) {
+        if (node.component === "Text") {
+            return node.components.text.tint;
+        }
+        if (node.component === "Image") {
+            return node.components.image.tint;
+        }
+        return "";
+    }
+
     function BuildCanvasItems(document) {
         const normalized = NormalizeDocument(document);
         const resolved = ResolveDocumentRects(normalized);
@@ -767,7 +1245,9 @@
                 canvasRect: EngineRectToCanvasRect(runtime_rect, normalized.editor.viewport),
                 selected: normalized.editor.selectedNodeId === node.nodeId,
                 enabled: node.enabled,
-                hitTestable: node.hitTestable
+                hitTestable: node.hitTestable,
+                previewText: GetComponentPreviewText(node),
+                previewTint: GetComponentPreviewTint(node)
             };
         });
     }
@@ -780,6 +1260,8 @@
         }
         return {
             node: Clone(selected_node),
+            componentTypes: COMPONENT_TYPES.slice(),
+            componentBacklog: Clone(COMPONENT_BACKLOG),
             parentOptions: GetValidParentOptions(normalized, selected_node.nodeId),
             styleRefs: normalized.styleRefs.filter(function MatchStyle(style_ref) {
                 return ToNumber(style_ref.nodeId, 0) === selected_node.nodeId;
@@ -956,34 +1438,57 @@
         return UpdateNode(document, node_id, { rectTransform: rect_transform });
     }
 
+    function GetDefaultNodeSize(component) {
+        if (component === "Image") {
+            return { width: 160, height: 120 };
+        }
+        if (component === "Slider") {
+            return { width: 240, height: 40 };
+        }
+        return { width: 180, height: 44 };
+    }
+
+    function GetDefaultHitTestable(component) {
+        if (component === "Button") {
+            return true;
+        }
+        if (component === "Slider") {
+            return true;
+        }
+        return false;
+    }
+
     function AddNode(source, component) {
         const document = NormalizeDocument(source);
+        const component_type = NormalizeComponentType(component);
         const selected = FindNode(document, document.editor.selectedNodeId);
         const parent_id = selected ? selected.nodeId : document.schema.rootNodeId;
         const parent_rect = selected ? ResolveDocumentRects(document).get(selected.nodeId).rect : document.editor.viewport.runtimeRect;
         const node_id = GetNextNodeId(document);
+        const default_size = GetDefaultNodeSize(component_type);
         const sibling_order = document.nodes.filter(function MatchParent(node) {
             return node.parentId === parent_id;
         }).length;
         const engine_rect = {
             x: parent_rect.x + 48 + sibling_order * 24,
             y: parent_rect.y + parent_rect.height - 108 - sibling_order * 52,
-            width: 180,
-            height: 44
+            width: default_size.width,
+            height: default_size.height
         };
         const rect_transform = ApplyEngineRectToRectTransform(parent_rect, CreateFullStretchRectTransform(), engine_rect);
+        const label = String(component_type || "Container") + node_id;
         const new_node = {
             nodeId: node_id,
             parentId: parent_id,
-            name: String(component || "Container") + node_id,
-            component: String(component || "Container"),
-            text: String(component || "Container"),
+            name: label,
+            component: component_type,
+            components: CreateDefaultComponentRecords(component_type, label),
             rectTransform: rect_transform,
             siblingOrder: sibling_order,
             layer: selected ? selected.layer + 1 : 1,
             visible: true,
             enabled: true,
-            hitTestable: true
+            hitTestable: GetDefaultHitTestable(component_type)
         };
         document.nodes.push(new_node);
         document.editor.selectedNodeId = node_id;
@@ -1027,6 +1532,17 @@
         return document;
     }
 
+    function BuildRuntimeComponents(node) {
+        const component_key = GetComponentRecordKey(node.component);
+        const records = {
+            common: Clone(node.components.common)
+        };
+        if (component_key && node.components[component_key]) {
+            records[component_key] = Clone(node.components[component_key]);
+        }
+        return records;
+    }
+
     function BuildRuntimeDocument(source) {
         const document = NormalizeDocument(source);
         const runtime_nodes = document.nodes.map(function MapRuntimeNode(node) {
@@ -1035,7 +1551,7 @@
                 parentId: node.parentId,
                 name: node.name,
                 component: node.component,
-                text: node.text,
+                components: BuildRuntimeComponents(node),
                 rectTransform: Clone(node.rectTransform),
                 siblingOrder: node.siblingOrder,
                 layer: node.layer,
@@ -1056,6 +1572,21 @@
         return Clone(runtime_document);
     }
 
+    function GetComponentMatrix() {
+        return {
+            implemented: COMPONENT_TYPES.map(function MapComponent(component) {
+                return {
+                    component: component,
+                    status: "Implemented",
+                    recordKey: GetComponentRecordKey(component)
+                };
+            }),
+            records: COMPONENT_RECORD_KEYS.slice(),
+            layoutTypes: LAYOUT_TYPES.slice(),
+            backlog: Clone(COMPONENT_BACKLOG)
+        };
+    }
+
     function FormatJson(value) {
         return JSON.stringify(value, null, 4);
     }
@@ -1064,6 +1595,7 @@
         SCHEMA_ID: SCHEMA_ID,
         SCHEMA_VERSION: SCHEMA_VERSION,
         DEFAULT_VIEWPORT_RECT: DEFAULT_VIEWPORT_RECT,
+        COMPONENT_TYPES: COMPONENT_TYPES.slice(),
         CreateDefaultDocument: CreateDefaultDocument,
         NormalizeDocument: NormalizeDocument,
         NormalizeRectTransform: NormalizeRectTransform,
@@ -1084,6 +1616,7 @@
         AddNode: AddNode,
         RemoveNode: RemoveNode,
         BuildRuntimeDocument: BuildRuntimeDocument,
+        GetComponentMatrix: GetComponentMatrix,
         FormatJson: FormatJson
     };
 });

@@ -31,7 +31,7 @@ YuEngine-specific acceptance:
 | --- | --- | --- |
 | Web frontend | hierarchy, inspector, canvas overlay, resource list, style/theme editing, state preview inputs | `Index.html`, `App.js`, `EditorModel.js`, `Style.css` |
 | Editor draft | frontend selection and state preview inputs | `YuUiEditorDraft.json` export |
-| Runtime data | schema, nodes with RectTransform fields, layouts, style refs, resource refs, event bindings, theme tokens | `YuUiRuntimeData.json` export |
+| Runtime data | schema, nodes with RectTransform fields, typed UI component records, layouts, style refs, resource refs, event bindings, theme tokens | `YuUiRuntimeData.json` export |
 | Local editor service | optional file IO and validation service boundary | existing `Tools/UiWebEditorService` |
 | Engine runtime | data consumption and interpretation | no dependency on this directory |
 
@@ -49,6 +49,24 @@ adapter path and write RectTransform offsets back into the document.
 
 Runtime export includes RectTransform data and strips editor-only viewport,
 selection, state preview, canvas overlay, and browser preview state.
+
+## Component Records
+
+Runtime-facing node content lives in `components`, not loose `node.text`
+fields. Legacy `node.text` input is migrated into `components.text.content`
+during normalization, then omitted from runtime export.
+
+Implemented component records:
+- `components.common`: layout type, style/theme/resource/event keys, hit-test route, clipping.
+- `components.container`: layout, style, scissor, raycast target.
+- `components.text`: plain/localized content, font/fallback, size/style, alignment, character wrap, clip overflow, line height, tint, outline, shadow, material/style/scissor, raycast target.
+- `components.image`: sprite, atlas, material/style, tint, simple/sliced image type, nine-slice, aspect, scissor, raycast target.
+- `components.button`: label, text/image/state visuals, sprites, submit/cancel events, sound/action keys, pointer/keyboard/gamepad activation.
+- `components.slider`: range/value/step/axis, track/fill/handle visuals, change event, increase/decrease actions, pointer/keyboard/gamepad adjustment.
+
+Backlog or native-runtime-gated items stay out of editable runtime records:
+Toggle, Progress, Text autosize, ellipsis/truncate/scale, rich text/link,
+camera/perspective fields, and component-specific native schema validators.
 
 ## Run
 
@@ -93,5 +111,6 @@ node Tests/UiWebEditorWeb/UiWebEditorWebTests.js
 ```
 
 The tests validate RectTransform normalization, adapter forward conversion,
-inverse canvas edit updates, runtime export boundaries, clone independence,
-legacy rect migration, and the sample fixture.
+inverse canvas edit updates, typed component records, runtime export boundaries,
+clone independence, legacy rect/text migration, backlog gating, and the sample
+fixture.

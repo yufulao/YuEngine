@@ -95,6 +95,79 @@
         UpdateSelectedNode({ rectTransform: patch });
     }
 
+    function UpdateSelectedComponent(component_key, patch) {
+        const selected = GetSelectedNode();
+        if (!selected) {
+            return;
+        }
+        const components = Object.assign({}, selected.components || {});
+        const current = Object.assign({}, components[component_key] || {});
+        components[component_key] = Object.assign(current, patch);
+        UpdateSelectedNode({ components: components });
+    }
+
+    function UpdateSelectedComponentNested(component_key, field_name, patch) {
+        const selected = GetSelectedNode();
+        if (!selected) {
+            return;
+        }
+        const components = Object.assign({}, selected.components || {});
+        const current = Object.assign({}, components[component_key] || {});
+        const nested = Object.assign({}, current[field_name] || {}, patch);
+        current[field_name] = nested;
+        components[component_key] = current;
+        UpdateSelectedNode({ components: components });
+    }
+
+    function UpdateNodeRecord(collection_name, node_id, default_record, patch) {
+        const document_value = model.NormalizeDocument(state.document);
+        const records = (document_value[collection_name] || []).slice();
+        let record_index = records.findIndex(function MatchNode(record) {
+            return Number(record.nodeId) === Number(node_id);
+        });
+        const current = record_index >= 0 ? records[record_index] : default_record;
+        const next_record = Object.assign({}, current, patch);
+        next_record.nodeId = node_id;
+        if (record_index < 0) {
+            record_index = records.length;
+        }
+        records[record_index] = next_record;
+        document_value[collection_name] = records;
+        document_value.editor.dirty = true;
+        state.document = document_value;
+        Render();
+    }
+
+    function UpdateStyleRef(node_id, patch) {
+        UpdateNodeRecord("styleRefs", node_id, {
+            nodeId: node_id,
+            styleKey: 0,
+            themeKey: 0,
+            tokenKey: 0,
+            valueKind: "ColorRgba8",
+            value: "#ffffff",
+            overridesTheme: false
+        }, patch);
+    }
+
+    function UpdateResourceRef(node_id, patch) {
+        UpdateNodeRecord("resourceRefs", node_id, {
+            nodeId: node_id,
+            kind: "Custom",
+            resourceKey: 0,
+            label: ""
+        }, patch);
+    }
+
+    function UpdateEventBinding(node_id, patch) {
+        UpdateNodeRecord("eventBindings", node_id, {
+            nodeId: node_id,
+            bindingKey: 0,
+            eventKey: 0,
+            command: ""
+        }, patch);
+    }
+
     function CreateCanvasRectFromDrag() {
         const width = Math.max(8, state.drag.canvasRect.width);
         const height = Math.max(8, state.drag.canvasRect.height);
@@ -163,6 +236,20 @@
         const group = CreateElement("label", "field");
         const label = CreateElement("span", "", label_text);
         const input = CreateElement("input", "", "");
+        input.value = value;
+        input.addEventListener("input", function OnInputEvent() {
+            on_input(input.value);
+        });
+        group.appendChild(label);
+        group.appendChild(input);
+        container.appendChild(group);
+    }
+
+    function AppendColorInput(container, label_text, value, on_input) {
+        const group = CreateElement("label", "field");
+        const label = CreateElement("span", "", label_text);
+        const input = CreateElement("input", "", "");
+        input.type = "color";
         input.value = value;
         input.addEventListener("input", function OnInputEvent() {
             on_input(input.value);
@@ -479,6 +566,10 @@
             });
             node.appendChild(CreateElement("span", "canvas-node-title", item.name));
             node.appendChild(CreateElement("span", "canvas-node-kind", item.component));
+            if (item.previewTint) {
+                node.style.color = item.previewTint;
+            }
+            node.appendChild(CreateElement("span", "canvas-node-preview", item.previewText));
             const handle = CreateElement("span", "resize-handle", "");
             handle.addEventListener("pointerdown", function OnPointerDownEvent(event) {
                 StartCanvasResize(event, item);
@@ -537,6 +628,360 @@
         });
     }
 
+    function RenderCommonComponentInspector(panel, common) {
+        panel.appendChild(CreateElement("h3", "inspector-section-title", "Common Runtime"));
+        AppendSelect(panel, "Layout Type", common.layoutType, ["Absolute", "Stack", "Grid", "Overlay", "ScrollViewport"], function UpdateLayoutType(value) {
+            UpdateSelectedComponent("common", { layoutType: value });
+        });
+        AppendNumberInput(panel, "Style Key", common.styleKey, function UpdateStyleKey(value) {
+            UpdateSelectedComponent("common", { styleKey: value });
+        });
+        AppendNumberInput(panel, "Theme Key", common.themeKey, function UpdateThemeKey(value) {
+            UpdateSelectedComponent("common", { themeKey: value });
+        });
+        AppendNumberInput(panel, "Token Key", common.tokenKey, function UpdateTokenKey(value) {
+            UpdateSelectedComponent("common", { tokenKey: value });
+        });
+        AppendNumberInput(panel, "Resource Key", common.resourceKey, function UpdateResourceKey(value) {
+            UpdateSelectedComponent("common", { resourceKey: value });
+        });
+        AppendNumberInput(panel, "Event Key", common.eventKey, function UpdateEventKey(value) {
+            UpdateSelectedComponent("common", { eventKey: value });
+        });
+        AppendSelect(panel, "Hit Test Route", common.hitTestRoute, ["None", "Self", "Children"], function UpdateHitTestRoute(value) {
+            UpdateSelectedComponent("common", { hitTestRoute: value });
+        });
+        AppendCheckbox(panel, "Clip Children", common.clipChildren, function UpdateClipChildren(value) {
+            UpdateSelectedComponent("common", { clipChildren: value });
+        });
+    }
+
+    function RenderContainerComponentInspector(panel, container) {
+        panel.appendChild(CreateElement("h3", "inspector-section-title", "Container"));
+        AppendSelect(panel, "Container Layout", container.layoutType, ["Absolute", "Stack", "Grid", "Overlay", "ScrollViewport"], function UpdateLayoutType(value) {
+            UpdateSelectedComponent("container", { layoutType: value });
+        });
+        AppendNumberInput(panel, "Style Key", container.styleKey, function UpdateStyleKey(value) {
+            UpdateSelectedComponent("container", { styleKey: value });
+        });
+        AppendCheckbox(panel, "Scissor", container.scissor, function UpdateScissor(value) {
+            UpdateSelectedComponent("container", { scissor: value });
+        });
+        AppendCheckbox(panel, "Raycast Target", container.raycastTarget, function UpdateRaycastTarget(value) {
+            UpdateSelectedComponent("container", { raycastTarget: value });
+        });
+    }
+
+    function RenderTextComponentInspector(panel, text) {
+        panel.appendChild(CreateElement("h3", "inspector-section-title", "Text"));
+        AppendSelect(panel, "Content Mode", text.contentMode, ["Plain", "LocalizationKey"], function UpdateContentMode(value) {
+            UpdateSelectedComponent("text", { contentMode: value });
+        });
+        AppendInput(panel, "Content", text.content, function UpdateContent(value) {
+            UpdateSelectedComponent("text", { content: value });
+        });
+        AppendInput(panel, "Localization Key", text.localizationKey, function UpdateLocalizationKey(value) {
+            UpdateSelectedComponent("text", { localizationKey: value });
+        });
+        AppendNumberInput(panel, "Font Resource", text.fontResourceKey, function UpdateFontResource(value) {
+            UpdateSelectedComponent("text", { fontResourceKey: value });
+        });
+        AppendNumberInput(panel, "Fallback Font", text.fallbackFontResourceKey, function UpdateFallbackFont(value) {
+            UpdateSelectedComponent("text", { fallbackFontResourceKey: value });
+        });
+        AppendNumberInput(panel, "Font Size", text.fontSize, function UpdateFontSize(value) {
+            UpdateSelectedComponent("text", { fontSize: value });
+        });
+        AppendSelect(panel, "Font Style", text.fontStyle, ["Normal", "Bold", "Italic", "BoldItalic"], function UpdateFontStyle(value) {
+            UpdateSelectedComponent("text", { fontStyle: value });
+        });
+        AppendSelect(panel, "Horizontal Align", text.horizontalAlignment, ["Left", "Center", "Right"], function UpdateHorizontalAlignment(value) {
+            UpdateSelectedComponent("text", { horizontalAlignment: value });
+        });
+        AppendSelect(panel, "Vertical Align", text.verticalAlignment, ["Top", "Middle", "Bottom"], function UpdateVerticalAlignment(value) {
+            UpdateSelectedComponent("text", { verticalAlignment: value });
+        });
+        AppendSelect(panel, "Wrap", text.wrap, ["None", "Character"], function UpdateWrap(value) {
+            UpdateSelectedComponent("text", { wrap: value });
+        });
+        AppendSelect(panel, "Overflow", text.overflow, ["Clip"], function UpdateOverflow(value) {
+            UpdateSelectedComponent("text", { overflow: value });
+        });
+        AppendNumberInput(panel, "Line Height", text.lineHeight, function UpdateLineHeight(value) {
+            UpdateSelectedComponent("text", { lineHeight: value });
+        });
+        AppendColorInput(panel, "Tint", text.tint, function UpdateTint(value) {
+            UpdateSelectedComponent("text", { tint: value });
+        });
+        AppendCheckbox(panel, "Outline", text.outline.enabled, function UpdateOutline(value) {
+            UpdateSelectedComponentNested("text", "outline", { enabled: value });
+        });
+        AppendColorInput(panel, "Outline Color", text.outline.color, function UpdateOutlineColor(value) {
+            UpdateSelectedComponentNested("text", "outline", { color: value });
+        });
+        AppendNumberInput(panel, "Outline Width", text.outline.width, function UpdateOutlineWidth(value) {
+            UpdateSelectedComponentNested("text", "outline", { width: value });
+        });
+        AppendCheckbox(panel, "Shadow", text.shadow.enabled, function UpdateShadow(value) {
+            UpdateSelectedComponentNested("text", "shadow", { enabled: value });
+        });
+        AppendColorInput(panel, "Shadow Color", text.shadow.color, function UpdateShadowColor(value) {
+            UpdateSelectedComponentNested("text", "shadow", { color: value });
+        });
+        AppendNumberInput(panel, "Shadow X", text.shadow.offset.x, function UpdateShadowX(value) {
+            const offset = Object.assign({}, text.shadow.offset, { x: value });
+            UpdateSelectedComponentNested("text", "shadow", { offset: offset });
+        });
+        AppendNumberInput(panel, "Shadow Y", text.shadow.offset.y, function UpdateShadowY(value) {
+            const offset = Object.assign({}, text.shadow.offset, { y: value });
+            UpdateSelectedComponentNested("text", "shadow", { offset: offset });
+        });
+        AppendNumberInput(panel, "Material Key", text.materialKey, function UpdateMaterialKey(value) {
+            UpdateSelectedComponent("text", { materialKey: value });
+        });
+        AppendNumberInput(panel, "Style Key", text.styleKey, function UpdateStyleKey(value) {
+            UpdateSelectedComponent("text", { styleKey: value });
+        });
+        AppendCheckbox(panel, "Scissor", text.scissor, function UpdateScissor(value) {
+            UpdateSelectedComponent("text", { scissor: value });
+        });
+        AppendCheckbox(panel, "Raycast Target", text.raycastTarget, function UpdateRaycastTarget(value) {
+            UpdateSelectedComponent("text", { raycastTarget: value });
+        });
+    }
+
+    function RenderImageComponentInspector(panel, image) {
+        panel.appendChild(CreateElement("h3", "inspector-section-title", "Image"));
+        AppendNumberInput(panel, "Sprite Resource", image.spriteResourceKey, function UpdateSpriteResource(value) {
+            UpdateSelectedComponent("image", { spriteResourceKey: value });
+        });
+        AppendNumberInput(panel, "Atlas Key", image.atlasKey, function UpdateAtlasKey(value) {
+            UpdateSelectedComponent("image", { atlasKey: value });
+        });
+        AppendNumberInput(panel, "Material Key", image.materialKey, function UpdateMaterialKey(value) {
+            UpdateSelectedComponent("image", { materialKey: value });
+        });
+        AppendNumberInput(panel, "Style Key", image.styleKey, function UpdateStyleKey(value) {
+            UpdateSelectedComponent("image", { styleKey: value });
+        });
+        AppendSelect(panel, "Image Type", image.imageType, ["Simple", "Sliced"], function UpdateImageType(value) {
+            UpdateSelectedComponent("image", { imageType: value });
+        });
+        AppendColorInput(panel, "Tint", image.tint, function UpdateTint(value) {
+            UpdateSelectedComponent("image", { tint: value });
+        });
+        AppendCheckbox(panel, "Preserve Aspect", image.preserveAspect, function UpdatePreserveAspect(value) {
+            UpdateSelectedComponent("image", { preserveAspect: value });
+        });
+        AppendThicknessInputs(panel, "Nine Slice", image.nineSlice, function UpdateNineSlice(value) {
+            const nine_slice = Object.assign({}, image.nineSlice, value);
+            UpdateSelectedComponent("image", { nineSlice: nine_slice });
+        });
+        AppendCheckbox(panel, "Scissor", image.scissor, function UpdateScissor(value) {
+            UpdateSelectedComponent("image", { scissor: value });
+        });
+        AppendCheckbox(panel, "Raycast Target", image.raycastTarget, function UpdateRaycastTarget(value) {
+            UpdateSelectedComponent("image", { raycastTarget: value });
+        });
+    }
+
+    function RenderButtonComponentInspector(panel, button) {
+        panel.appendChild(CreateElement("h3", "inspector-section-title", "Button"));
+        AppendInput(panel, "Label", button.label, function UpdateLabel(value) {
+            UpdateSelectedComponent("button", { label: value });
+        });
+        AppendNumberInput(panel, "Text Style", button.textStyleKey, function UpdateTextStyle(value) {
+            UpdateSelectedComponent("button", { textStyleKey: value });
+        });
+        AppendNumberInput(panel, "Image Style", button.imageStyleKey, function UpdateImageStyle(value) {
+            UpdateSelectedComponent("button", { imageStyleKey: value });
+        });
+        AppendNumberInput(panel, "Normal Style", button.normalStyleKey, function UpdateNormalStyle(value) {
+            UpdateSelectedComponent("button", { normalStyleKey: value });
+        });
+        AppendNumberInput(panel, "Hover Style", button.hoverStyleKey, function UpdateHoverStyle(value) {
+            UpdateSelectedComponent("button", { hoverStyleKey: value });
+        });
+        AppendNumberInput(panel, "Pressed Style", button.pressedStyleKey, function UpdatePressedStyle(value) {
+            UpdateSelectedComponent("button", { pressedStyleKey: value });
+        });
+        AppendNumberInput(panel, "Disabled Style", button.disabledStyleKey, function UpdateDisabledStyle(value) {
+            UpdateSelectedComponent("button", { disabledStyleKey: value });
+        });
+        AppendNumberInput(panel, "Selected Style", button.selectedStyleKey, function UpdateSelectedStyle(value) {
+            UpdateSelectedComponent("button", { selectedStyleKey: value });
+        });
+        AppendNumberInput(panel, "Normal Sprite", button.normalSpriteKey, function UpdateNormalSprite(value) {
+            UpdateSelectedComponent("button", { normalSpriteKey: value });
+        });
+        AppendNumberInput(panel, "Pressed Sprite", button.pressedSpriteKey, function UpdatePressedSprite(value) {
+            UpdateSelectedComponent("button", { pressedSpriteKey: value });
+        });
+        AppendNumberInput(panel, "Submit Event", button.submitEventKey, function UpdateSubmitEvent(value) {
+            UpdateSelectedComponent("button", { submitEventKey: value });
+        });
+        AppendNumberInput(panel, "Cancel Event", button.cancelEventKey, function UpdateCancelEvent(value) {
+            UpdateSelectedComponent("button", { cancelEventKey: value });
+        });
+        AppendNumberInput(panel, "Sound Resource", button.soundResourceKey, function UpdateSoundResource(value) {
+            UpdateSelectedComponent("button", { soundResourceKey: value });
+        });
+        AppendInput(panel, "Action Key", button.actionKey, function UpdateActionKey(value) {
+            UpdateSelectedComponent("button", { actionKey: value });
+        });
+        AppendCheckbox(panel, "Pointer Activation", button.pointerActivation, function UpdatePointerActivation(value) {
+            UpdateSelectedComponent("button", { pointerActivation: value });
+        });
+        AppendCheckbox(panel, "Keyboard Activation", button.keyboardActivation, function UpdateKeyboardActivation(value) {
+            UpdateSelectedComponent("button", { keyboardActivation: value });
+        });
+        AppendCheckbox(panel, "Gamepad Activation", button.gamepadActivation, function UpdateGamepadActivation(value) {
+            UpdateSelectedComponent("button", { gamepadActivation: value });
+        });
+    }
+
+    function RenderSliderComponentInspector(panel, slider) {
+        panel.appendChild(CreateElement("h3", "inspector-section-title", "Slider"));
+        AppendNumberInput(panel, "Min", slider.minValue, function UpdateMinValue(value) {
+            UpdateSelectedComponent("slider", { minValue: value });
+        });
+        AppendNumberInput(panel, "Max", slider.maxValue, function UpdateMaxValue(value) {
+            UpdateSelectedComponent("slider", { maxValue: value });
+        });
+        AppendNumberInput(panel, "Value", slider.value, function UpdateValue(value) {
+            UpdateSelectedComponent("slider", { value: value });
+        });
+        AppendNumberInput(panel, "Step", slider.step, function UpdateStep(value) {
+            UpdateSelectedComponent("slider", { step: value });
+        });
+        AppendSelect(panel, "Axis", slider.axis, ["Horizontal", "Vertical"], function UpdateAxis(value) {
+            UpdateSelectedComponent("slider", { axis: value });
+        });
+        AppendNumberInput(panel, "Track Style", slider.trackStyleKey, function UpdateTrackStyle(value) {
+            UpdateSelectedComponent("slider", { trackStyleKey: value });
+        });
+        AppendNumberInput(panel, "Fill Style", slider.fillStyleKey, function UpdateFillStyle(value) {
+            UpdateSelectedComponent("slider", { fillStyleKey: value });
+        });
+        AppendNumberInput(panel, "Handle Style", slider.handleStyleKey, function UpdateHandleStyle(value) {
+            UpdateSelectedComponent("slider", { handleStyleKey: value });
+        });
+        AppendNumberInput(panel, "Track Sprite", slider.trackSpriteKey, function UpdateTrackSprite(value) {
+            UpdateSelectedComponent("slider", { trackSpriteKey: value });
+        });
+        AppendNumberInput(panel, "Fill Sprite", slider.fillSpriteKey, function UpdateFillSprite(value) {
+            UpdateSelectedComponent("slider", { fillSpriteKey: value });
+        });
+        AppendNumberInput(panel, "Handle Sprite", slider.handleSpriteKey, function UpdateHandleSprite(value) {
+            UpdateSelectedComponent("slider", { handleSpriteKey: value });
+        });
+        AppendNumberInput(panel, "Change Event", slider.changeEventKey, function UpdateChangeEvent(value) {
+            UpdateSelectedComponent("slider", { changeEventKey: value });
+        });
+        AppendInput(panel, "Increase Action", slider.increaseActionKey, function UpdateIncreaseAction(value) {
+            UpdateSelectedComponent("slider", { increaseActionKey: value });
+        });
+        AppendInput(panel, "Decrease Action", slider.decreaseActionKey, function UpdateDecreaseAction(value) {
+            UpdateSelectedComponent("slider", { decreaseActionKey: value });
+        });
+        AppendCheckbox(panel, "Pointer Drag", slider.pointerDrag, function UpdatePointerDrag(value) {
+            UpdateSelectedComponent("slider", { pointerDrag: value });
+        });
+        AppendCheckbox(panel, "Keyboard Adjust", slider.keyboardAdjust, function UpdateKeyboardAdjust(value) {
+            UpdateSelectedComponent("slider", { keyboardAdjust: value });
+        });
+        AppendCheckbox(panel, "Gamepad Adjust", slider.gamepadAdjust, function UpdateGamepadAdjust(value) {
+            UpdateSelectedComponent("slider", { gamepadAdjust: value });
+        });
+    }
+
+    function RenderComponentInspector(panel, node) {
+        RenderCommonComponentInspector(panel, node.components.common);
+        if (node.component === "Container") {
+            RenderContainerComponentInspector(panel, node.components.container);
+            return;
+        }
+        if (node.component === "Text") {
+            RenderTextComponentInspector(panel, node.components.text);
+            return;
+        }
+        if (node.component === "Image") {
+            RenderImageComponentInspector(panel, node.components.image);
+            return;
+        }
+        if (node.component === "Button") {
+            RenderButtonComponentInspector(panel, node.components.button);
+            return;
+        }
+        if (node.component === "Slider") {
+            RenderSliderComponentInspector(panel, node.components.slider);
+            return;
+        }
+        panel.appendChild(CreateElement("p", "empty-text", "Component requires native runtime support"));
+    }
+
+    function GetFirstRecord(records, fallback) {
+        if (records.length > 0) {
+            return records[0];
+        }
+        return fallback;
+    }
+
+    function RenderReferenceInspector(panel, node, inspector) {
+        const style_ref = GetFirstRecord(inspector.styleRefs, {
+            nodeId: node.nodeId,
+            styleKey: 0,
+            themeKey: 0,
+            tokenKey: 0,
+            valueKind: "ColorRgba8",
+            value: "#ffffff",
+            overridesTheme: false
+        });
+        const resource_ref = GetFirstRecord(inspector.resourceRefs, {
+            nodeId: node.nodeId,
+            kind: "Custom",
+            resourceKey: 0,
+            label: ""
+        });
+        const event_binding = GetFirstRecord(inspector.eventBindings, {
+            nodeId: node.nodeId,
+            bindingKey: 0,
+            eventKey: 0,
+            command: ""
+        });
+        panel.appendChild(CreateElement("h3", "inspector-section-title", "References"));
+        AppendNumberInput(panel, "Style Ref Key", style_ref.styleKey, function UpdateStyleKey(value) {
+            UpdateStyleRef(node.nodeId, { styleKey: value });
+        });
+        AppendNumberInput(panel, "Style Theme", style_ref.themeKey, function UpdateThemeKey(value) {
+            UpdateStyleRef(node.nodeId, { themeKey: value });
+        });
+        AppendNumberInput(panel, "Style Token", style_ref.tokenKey, function UpdateTokenKey(value) {
+            UpdateStyleRef(node.nodeId, { tokenKey: value });
+        });
+        AppendInput(panel, "Style Value", style_ref.value, function UpdateStyleValue(value) {
+            UpdateStyleRef(node.nodeId, { value: value });
+        });
+        AppendSelect(panel, "Resource Kind", resource_ref.kind, ["Sprite", "Font", "Localization", "Audio", "Custom"], function UpdateKind(value) {
+            UpdateResourceRef(node.nodeId, { kind: value });
+        });
+        AppendNumberInput(panel, "Resource Key", resource_ref.resourceKey, function UpdateResourceKey(value) {
+            UpdateResourceRef(node.nodeId, { resourceKey: value });
+        });
+        AppendInput(panel, "Resource Label", resource_ref.label || "", function UpdateResourceLabel(value) {
+            UpdateResourceRef(node.nodeId, { label: value });
+        });
+        AppendNumberInput(panel, "Binding Key", event_binding.bindingKey, function UpdateBindingKey(value) {
+            UpdateEventBinding(node.nodeId, { bindingKey: value });
+        });
+        AppendNumberInput(panel, "Event Key", event_binding.eventKey, function UpdateEventKey(value) {
+            UpdateEventBinding(node.nodeId, { eventKey: value });
+        });
+        AppendInput(panel, "Command", event_binding.command || "", function UpdateCommand(value) {
+            UpdateEventBinding(node.nodeId, { command: value });
+        });
+    }
+
     function RenderInspector() {
         const panel = GetElement("inspector-panel");
         Clear(panel);
@@ -561,13 +1006,10 @@
         AppendInput(panel, "Name", node.name, function UpdateName(value) {
             UpdateSelectedNode({ name: value });
         });
-        AppendSelect(panel, "Component", node.component, ["Container", "Text", "Image", "Button", "Slider", "Toggle"], function UpdateComponent(value) {
+        AppendSelect(panel, "Component", node.component, inspector.componentTypes, function UpdateComponent(value) {
             UpdateSelectedNode({ component: value });
         });
         RenderParentInspector(panel, node, inspector.parentOptions);
-        AppendInput(panel, "Text", node.text || "", function UpdateText(value) {
-            UpdateSelectedNode({ text: value });
-        });
         RenderRectTransformInspector(panel, node.rectTransform);
 
         AppendNumberInput(panel, "Layer", node.layer, function UpdateLayer(value) {
@@ -585,6 +1027,9 @@
         AppendCheckbox(panel, "Hit Test", node.hitTestable, function UpdateHitTest(value) {
             UpdateSelectedNode({ hitTestable: value });
         });
+
+        RenderComponentInspector(panel, node);
+        RenderReferenceInspector(panel, node, inspector);
 
         const counts = CreateElement("div", "record-counts", "");
         counts.appendChild(CreateElement("span", "", "Style " + inspector.styleRefs.length));
@@ -817,8 +1262,16 @@
             state.document = model.AddNode(state.document, "Text");
             Render();
         });
+        GetElement("add-image-button").addEventListener("click", function OnClickEvent() {
+            state.document = model.AddNode(state.document, "Image");
+            Render();
+        });
         GetElement("add-button-button").addEventListener("click", function OnClickEvent() {
             state.document = model.AddNode(state.document, "Button");
+            Render();
+        });
+        GetElement("add-slider-button").addEventListener("click", function OnClickEvent() {
+            state.document = model.AddNode(state.document, "Slider");
             Render();
         });
         GetElement("remove-node-button").addEventListener("click", function OnClickEvent() {

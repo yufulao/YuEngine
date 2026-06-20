@@ -92,12 +92,33 @@ function CreateResolveOrderDocument() {
 
 function TestDefaultDocumentValidates() {
     const document = model.CreateDefaultDocument();
+    const normalized = model.NormalizeDocument(document);
     const result = model.ValidateDocument(document);
     assert.equal(result.status, "Success");
     assert.equal(result.summary.nodeCount, 3);
     assert.equal(result.summary.issueCount, 0);
     assert.ok(document.nodes[0].rectTransform);
     assert.equal(document.nodes[0].rect, undefined);
+    assert.equal(normalized.nodes[1].text, undefined);
+    assert.equal(normalized.nodes[1].components.text.content, "Title");
+    assert.equal(normalized.nodes[2].components.button.label, "Action");
+    assert.equal(result.summary.componentCounts.Text, 1);
+    assert.equal(result.summary.componentCounts.Button, 1);
+}
+
+function TestComponentMatrixDeclaresImplementedAndBacklog() {
+    const matrix = model.GetComponentMatrix();
+    const implemented = matrix.implemented.map(function MapComponent(record) {
+        return record.component;
+    });
+    const backlog = matrix.backlog.map(function MapComponent(record) {
+        return record.component;
+    });
+    assert.deepEqual(implemented, ["Container", "Text", "Image", "Button", "Slider"]);
+    assert.ok(matrix.records.includes("common"));
+    assert.ok(backlog.includes("Toggle"));
+    assert.ok(backlog.includes("TextAutoSize"));
+    assert.ok(backlog.includes("NativeSchemaValidator"));
 }
 
 function TestDuplicateNodeReportsIssue() {
@@ -238,9 +259,25 @@ function TestAddNodeUpdatesSnapshots() {
     assert.equal(hierarchy.length, 4);
     assert.equal(canvas.length, 4);
     assert.equal(inspector.node.component, "Text");
+    assert.equal(inspector.node.text, undefined);
+    assert.equal(inspector.node.components.text.content, "Text4");
     assert.ok(inspector.node.rectTransform);
     assert.ok(item.canvasRect);
     assert.ok(item.runtimeRect);
+}
+
+function TestAddImageAndSliderUseTypedRecords() {
+    const document = model.CreateDefaultDocument();
+    const with_image = model.AddNode(document, "Image");
+    const with_slider = model.AddNode(with_image, "Slider");
+    const normalized = model.NormalizeDocument(with_slider);
+    const image_node = FindRuntimeNode(normalized, 4);
+    const slider_node = FindRuntimeNode(normalized, 5);
+    assert.equal(image_node.component, "Image");
+    assert.equal(image_node.components.image.imageType, "Simple");
+    assert.equal(slider_node.component, "Slider");
+    assert.equal(slider_node.components.slider.axis, "Horizontal");
+    assert.equal(slider_node.hitTestable, true);
 }
 
 function TestMoveNodeReparentsAndPreservesRuntimeRect() {
@@ -315,6 +352,11 @@ function TestRuntimeExportStripsEditorState() {
     assert.equal(runtime_document.theme.tokens.length, document.theme.tokens.length);
     assert.equal(runtime_document.nodes[0].rect, undefined);
     assert.ok(runtime_document.nodes[0].rectTransform);
+    assert.equal(runtime_document.nodes[1].text, undefined);
+    assert.equal(runtime_document.nodes[1].components.text.content, "Title");
+    assert.equal(runtime_document.nodes[2].components.button.label, "Action");
+    assert.equal(runtime_document.nodes[2].components.text, undefined);
+    assert.equal(runtime_document.nodes[2].components.common.styleKey, 1103);
     runtime_document.nodes[0].name = "Changed";
     runtime_document.nodes[0].rectTransform.offsetMin.x = 77;
     assert.equal(document.nodes[0].name, "Root");
@@ -337,16 +379,46 @@ function TestLegacyRectMigratesToRectTransform() {
     AssertCanvasRectClose(item.canvasRect, { left: 40, top: 36, width: 420, height: 48 });
 }
 
+function TestLegacyTextMigratesToTypedTextRecord() {
+    const document = model.CreateDefaultDocument();
+    delete document.nodes[1].components;
+    document.nodes[1].text = "Legacy Title";
+    const normalized = model.NormalizeDocument(document);
+    const runtime_document = model.BuildRuntimeDocument(document);
+    assert.equal(normalized.nodes[1].text, undefined);
+    assert.equal(normalized.nodes[1].components.text.content, "Legacy Title");
+    assert.equal(runtime_document.nodes[1].text, undefined);
+    assert.equal(runtime_document.nodes[1].components.text.content, "Legacy Title");
+}
+
+function TestBacklogComponentReportsNeedsNativeRuntime() {
+    const document = model.CreateDefaultDocument();
+    document.nodes[1].component = "Toggle";
+    const result = model.ValidateDocument(document);
+    const issue = result.issues.find(function MatchIssue(record) {
+        return record.kind === "NeedsNativeRuntime";
+    });
+    assert.equal(result.status, "IssuesFound");
+    assert.ok(issue);
+}
+
 function TestSampleFixtureValidates() {
     const document = LoadSampleDocument();
     const result = model.ValidateDocument(document);
     const runtime_document = model.BuildRuntimeDocument(document);
     assert.equal(result.status, "Success");
     assert.equal(result.summary.layoutCount, 1);
-    assert.equal(result.summary.resourceRefCount, 1);
-    assert.equal(result.summary.eventBindingCount, 1);
+    assert.equal(result.summary.resourceRefCount, 3);
+    assert.equal(result.summary.eventBindingCount, 2);
+    assert.equal(result.summary.componentCounts.Image, 1);
+    assert.equal(result.summary.componentCounts.Slider, 1);
     assert.equal(runtime_document.nodes[0].rect, undefined);
     assert.ok(runtime_document.nodes[0].rectTransform);
+    assert.equal(runtime_document.nodes[0].components.container.layoutType, "Stack");
+    assert.equal(runtime_document.nodes[1].components.text.content, "Sample Title");
+    assert.equal(runtime_document.nodes[2].components.image.spriteResourceKey, 23002);
+    assert.equal(runtime_document.nodes[3].components.button.submitEventKey, 43001);
+    assert.equal(runtime_document.nodes[4].components.slider.value, 60);
 }
 
 function TestHtmlShellReferencesStaticAssets() {
@@ -358,6 +430,8 @@ function TestHtmlShellReferencesStaticAssets() {
     assert.ok(html.includes("canvas-surface"));
     assert.ok(html.includes("canvas-fit-button"));
     assert.ok(html.includes("runtime-json-toggle-button"));
+    assert.ok(html.includes("add-image-button"));
+    assert.ok(html.includes("add-slider-button"));
     assert.ok(html.includes("inspector-panel"));
     assert.ok(html.includes("validation-panel"));
 }
@@ -365,6 +439,7 @@ function TestHtmlShellReferencesStaticAssets() {
 function RunTests() {
     const tests = [
         { name: "UiWebEditorWeb_DefaultDocumentValidates", run: TestDefaultDocumentValidates },
+        { name: "UiWebEditorWeb_ComponentMatrixDeclaresImplementedAndBacklog", run: TestComponentMatrixDeclaresImplementedAndBacklog },
         { name: "UiWebEditorWeb_DuplicateNodeReportsIssue", run: TestDuplicateNodeReportsIssue },
         { name: "UiWebEditorWeb_MissingParentReportsIssue", run: TestMissingParentReportsIssue },
         { name: "UiWebEditorWeb_RectTransformResolveIgnoresNodeRecordOrder", run: TestRectTransformResolveIgnoresNodeRecordOrder },
@@ -374,6 +449,7 @@ function RunTests() {
         { name: "UiWebEditorWeb_AdapterViewportScaleAndPanBoundary", run: TestAdapterViewportScaleAndPanBoundary },
         { name: "UiWebEditorWeb_AdapterInverseEditPath", run: TestAdapterInverseEditPath },
         { name: "UiWebEditorWeb_AddNodeUpdatesSnapshots", run: TestAddNodeUpdatesSnapshots },
+        { name: "UiWebEditorWeb_AddImageAndSliderUseTypedRecords", run: TestAddImageAndSliderUseTypedRecords },
         { name: "UiWebEditorWeb_MoveNodeReparentsAndPreservesRuntimeRect", run: TestMoveNodeReparentsAndPreservesRuntimeRect },
         { name: "UiWebEditorWeb_MoveNodeReordersSiblings", run: TestMoveNodeReordersSiblings },
         { name: "UiWebEditorWeb_MoveNodePreventsCyclesAndRootMove", run: TestMoveNodePreventsCyclesAndRootMove },
@@ -381,6 +457,8 @@ function RunTests() {
         { name: "UiWebEditorWeb_RemoveNodeRemovesChildRecords", run: TestRemoveNodeRemovesChildRecords },
         { name: "UiWebEditorWeb_RuntimeExportStripsEditorState", run: TestRuntimeExportStripsEditorState },
         { name: "UiWebEditorWeb_LegacyRectMigratesToRectTransform", run: TestLegacyRectMigratesToRectTransform },
+        { name: "UiWebEditorWeb_LegacyTextMigratesToTypedTextRecord", run: TestLegacyTextMigratesToTypedTextRecord },
+        { name: "UiWebEditorWeb_BacklogComponentReportsNeedsNativeRuntime", run: TestBacklogComponentReportsNeedsNativeRuntime },
         { name: "UiWebEditorWeb_SampleFixtureValidates", run: TestSampleFixtureValidates },
         { name: "UiWebEditorWeb_HtmlShellReferencesStaticAssets", run: TestHtmlShellReferencesStaticAssets }
     ];

@@ -11,40 +11,32 @@
             "parentId": 0,
             "name": "Root",
             "component": "Container",
-            "text": "",
+            "components": {
+                "common": {
+                    "layoutType": "Stack",
+                    "styleKey": 13001,
+                    "themeKey": 1,
+                    "tokenKey": 1,
+                    "resourceKey": 0,
+                    "eventKey": 0,
+                    "hitTestRoute": "Children",
+                    "clipChildren": true
+                },
+                "container": {
+                    "layoutType": "Stack",
+                    "styleKey": 13001,
+                    "scissor": false,
+                    "raycastTarget": false
+                }
+            },
             "rectTransform": {
-                "anchorMin": {
-                    "x": 0,
-                    "y": 0
-                },
-                "anchorMax": {
-                    "x": 1,
-                    "y": 1
-                },
-                "pivot": {
-                    "x": 0.5,
-                    "y": 0.5
-                },
-                "offsetMin": {
-                    "x": 0,
-                    "y": 0
-                },
-                "offsetMax": {
-                    "x": 0,
-                    "y": 0
-                },
-                "margin": {
-                    "left": 0,
-                    "top": 0,
-                    "right": 0,
-                    "bottom": 0
-                },
-                "padding": {
-                    "left": 0,
-                    "top": 0,
-                    "right": 0,
-                    "bottom": 0
-                },
+                "anchorMin": { "x": 0, "y": 0 },
+                "anchorMax": { "x": 1, "y": 1 },
+                "pivot": { "x": 0.5, "y": 0.5 },
+                "offsetMin": { "x": 0, "y": 0 },
+                "offsetMax": { "x": 0, "y": 0 },
+                "margin": { "left": 0, "top": 0, "right": 0, "bottom": 0 },
+                "padding": { "left": 0, "top": 0, "right": 0, "bottom": 0 },
                 "dpiScale": 1
             },
             "siblingOrder": 0,
@@ -58,40 +50,55 @@
             "parentId": 1,
             "name": "Title",
             "component": "Text",
-            "text": "Sample Title",
+            "components": {
+                "common": {
+                    "layoutType": "Absolute",
+                    "styleKey": 13002,
+                    "themeKey": 1,
+                    "tokenKey": 2,
+                    "resourceKey": 23001,
+                    "eventKey": 0,
+                    "hitTestRoute": "None",
+                    "clipChildren": false
+                },
+                "text": {
+                    "contentMode": "Plain",
+                    "content": "Sample Title",
+                    "localizationKey": "",
+                    "fontResourceKey": 23001,
+                    "fallbackFontResourceKey": 0,
+                    "fontSize": 28,
+                    "fontStyle": "Bold",
+                    "horizontalAlignment": "Left",
+                    "verticalAlignment": "Middle",
+                    "wrap": "Character",
+                    "overflow": "Clip",
+                    "lineHeight": 1.2,
+                    "tint": "#111827",
+                    "outline": {
+                        "enabled": false,
+                        "color": "#000000",
+                        "width": 0
+                    },
+                    "shadow": {
+                        "enabled": true,
+                        "color": "#d1d5db",
+                        "offset": { "x": 1, "y": -1 }
+                    },
+                    "materialKey": 0,
+                    "styleKey": 13002,
+                    "scissor": false,
+                    "raycastTarget": false
+                }
+            },
             "rectTransform": {
-                "anchorMin": {
-                    "x": 0,
-                    "y": 0
-                },
-                "anchorMax": {
-                    "x": 1,
-                    "y": 1
-                },
-                "pivot": {
-                    "x": 0.5,
-                    "y": 0.5
-                },
-                "offsetMin": {
-                    "x": 40,
-                    "y": 456
-                },
-                "offsetMax": {
-                    "x": -500,
-                    "y": -36
-                },
-                "margin": {
-                    "left": 0,
-                    "top": 0,
-                    "right": 0,
-                    "bottom": 0
-                },
-                "padding": {
-                    "left": 0,
-                    "top": 0,
-                    "right": 0,
-                    "bottom": 0
-                },
+                "anchorMin": { "x": 0, "y": 0 },
+                "anchorMax": { "x": 1, "y": 1 },
+                "pivot": { "x": 0.5, "y": 0.5 },
+                "offsetMin": { "x": 40, "y": 456 },
+                "offsetMax": { "x": -500, "y": -36 },
+                "margin": { "left": 0, "top": 0, "right": 0, "bottom": 0 },
+                "padding": { "left": 0, "top": 0, "right": 0, "bottom": 0 },
                 "dpiScale": 1
             },
             "siblingOrder": 0,
@@ -103,45 +110,157 @@
         {
             "nodeId": 3,
             "parentId": 1,
-            "name": "ConfirmButton",
-            "component": "Button",
-            "text": "Confirm",
+            "name": "HeroImage",
+            "component": "Image",
+            "components": {
+                "common": {
+                    "layoutType": "Absolute",
+                    "styleKey": 13004,
+                    "themeKey": 1,
+                    "tokenKey": 4,
+                    "resourceKey": 23002,
+                    "eventKey": 0,
+                    "hitTestRoute": "None",
+                    "clipChildren": false
+                },
+                "image": {
+                    "spriteResourceKey": 23002,
+                    "atlasKey": 23005,
+                    "materialKey": 0,
+                    "styleKey": 13004,
+                    "imageType": "Sliced",
+                    "tint": "#ffffff",
+                    "preserveAspect": true,
+                    "nineSlice": {
+                        "left": 8,
+                        "top": 8,
+                        "right": 8,
+                        "bottom": 8
+                    },
+                    "scissor": false,
+                    "raycastTarget": false
+                }
+            },
             "rectTransform": {
-                "anchorMin": {
-                    "x": 0,
-                    "y": 0
-                },
-                "anchorMax": {
-                    "x": 1,
-                    "y": 1
-                },
-                "pivot": {
-                    "x": 0.5,
-                    "y": 0.5
-                },
-                "offsetMin": {
-                    "x": 40,
-                    "y": 380
-                },
-                "offsetMax": {
-                    "x": -680,
-                    "y": -112
-                },
-                "margin": {
-                    "left": 0,
-                    "top": 0,
-                    "right": 0,
-                    "bottom": 0
-                },
-                "padding": {
-                    "left": 0,
-                    "top": 0,
-                    "right": 0,
-                    "bottom": 0
-                },
+                "anchorMin": { "x": 0, "y": 0 },
+                "anchorMax": { "x": 1, "y": 1 },
+                "pivot": { "x": 0.5, "y": 0.5 },
+                "offsetMin": { "x": 40, "y": 296 },
+                "offsetMax": { "x": -680, "y": -164 },
+                "margin": { "left": 0, "top": 0, "right": 0, "bottom": 0 },
+                "padding": { "left": 0, "top": 0, "right": 0, "bottom": 0 },
                 "dpiScale": 1
             },
             "siblingOrder": 1,
+            "layer": 1,
+            "visible": true,
+            "enabled": true,
+            "hitTestable": false
+        },
+        {
+            "nodeId": 4,
+            "parentId": 1,
+            "name": "ConfirmButton",
+            "component": "Button",
+            "components": {
+                "common": {
+                    "layoutType": "Absolute",
+                    "styleKey": 13003,
+                    "themeKey": 1,
+                    "tokenKey": 3,
+                    "resourceKey": 23003,
+                    "eventKey": 43001,
+                    "hitTestRoute": "Self",
+                    "clipChildren": false
+                },
+                "button": {
+                    "label": "Confirm",
+                    "textStyleKey": 13002,
+                    "imageStyleKey": 13003,
+                    "normalStyleKey": 13003,
+                    "hoverStyleKey": 13005,
+                    "pressedStyleKey": 13006,
+                    "disabledStyleKey": 13007,
+                    "selectedStyleKey": 13008,
+                    "normalSpriteKey": 23003,
+                    "hoverSpriteKey": 23003,
+                    "pressedSpriteKey": 23004,
+                    "disabledSpriteKey": 0,
+                    "selectedSpriteKey": 23004,
+                    "submitEventKey": 43001,
+                    "cancelEventKey": 0,
+                    "soundResourceKey": 23006,
+                    "actionKey": "Confirm",
+                    "pointerActivation": true,
+                    "keyboardActivation": true,
+                    "gamepadActivation": true,
+                    "raycastTarget": true
+                }
+            },
+            "rectTransform": {
+                "anchorMin": { "x": 0, "y": 0 },
+                "anchorMax": { "x": 1, "y": 1 },
+                "pivot": { "x": 0.5, "y": 0.5 },
+                "offsetMin": { "x": 40, "y": 220 },
+                "offsetMax": { "x": -680, "y": -276 },
+                "margin": { "left": 0, "top": 0, "right": 0, "bottom": 0 },
+                "padding": { "left": 0, "top": 0, "right": 0, "bottom": 0 },
+                "dpiScale": 1
+            },
+            "siblingOrder": 2,
+            "layer": 1,
+            "visible": true,
+            "enabled": true,
+            "hitTestable": true
+        },
+        {
+            "nodeId": 5,
+            "parentId": 1,
+            "name": "VolumeSlider",
+            "component": "Slider",
+            "components": {
+                "common": {
+                    "layoutType": "Absolute",
+                    "styleKey": 13009,
+                    "themeKey": 1,
+                    "tokenKey": 3,
+                    "resourceKey": 0,
+                    "eventKey": 43002,
+                    "hitTestRoute": "Self",
+                    "clipChildren": false
+                },
+                "slider": {
+                    "minValue": 0,
+                    "maxValue": 100,
+                    "value": 60,
+                    "step": 5,
+                    "axis": "Horizontal",
+                    "trackStyleKey": 13009,
+                    "fillStyleKey": 13010,
+                    "handleStyleKey": 13011,
+                    "trackSpriteKey": 23007,
+                    "fillSpriteKey": 23008,
+                    "handleSpriteKey": 23009,
+                    "changeEventKey": 43002,
+                    "increaseActionKey": "VolumeUp",
+                    "decreaseActionKey": "VolumeDown",
+                    "pointerDrag": true,
+                    "keyboardAdjust": true,
+                    "gamepadAdjust": true,
+                    "raycastTarget": true
+                }
+            },
+            "rectTransform": {
+                "anchorMin": { "x": 0, "y": 0 },
+                "anchorMax": { "x": 1, "y": 1 },
+                "pivot": { "x": 0.5, "y": 0.5 },
+                "offsetMin": { "x": 40, "y": 156 },
+                "offsetMax": { "x": -620, "y": -344 },
+                "margin": { "left": 0, "top": 0, "right": 0, "bottom": 0 },
+                "padding": { "left": 0, "top": 0, "right": 0, "bottom": 0 },
+                "dpiScale": 1
+            },
+            "siblingOrder": 3,
             "layer": 1,
             "visible": true,
             "enabled": true,
@@ -159,91 +278,36 @@
         }
     ],
     "styleRefs": [
-        {
-            "nodeId": 1,
-            "styleKey": 13001,
-            "themeKey": 1,
-            "tokenKey": 1,
-            "valueKind": "ColorRgba8",
-            "value": "#f8fafc",
-            "overridesTheme": true
-        },
-        {
-            "nodeId": 2,
-            "styleKey": 13002,
-            "themeKey": 1,
-            "tokenKey": 2,
-            "valueKind": "ColorRgba8",
-            "value": "#111827",
-            "overridesTheme": true
-        },
-        {
-            "nodeId": 3,
-            "styleKey": 13003,
-            "themeKey": 1,
-            "tokenKey": 3,
-            "valueKind": "ColorRgba8",
-            "value": "#2563eb",
-            "overridesTheme": true
-        }
+        { "nodeId": 1, "styleKey": 13001, "themeKey": 1, "tokenKey": 1, "valueKind": "ColorRgba8", "value": "#f8fafc", "overridesTheme": true },
+        { "nodeId": 2, "styleKey": 13002, "themeKey": 1, "tokenKey": 2, "valueKind": "ColorRgba8", "value": "#111827", "overridesTheme": true },
+        { "nodeId": 4, "styleKey": 13003, "themeKey": 1, "tokenKey": 3, "valueKind": "ColorRgba8", "value": "#2563eb", "overridesTheme": true },
+        { "nodeId": 3, "styleKey": 13004, "themeKey": 1, "tokenKey": 4, "valueKind": "ColorRgba8", "value": "#ffffff", "overridesTheme": true },
+        { "nodeId": 5, "styleKey": 13009, "themeKey": 1, "tokenKey": 3, "valueKind": "ColorRgba8", "value": "#2563eb", "overridesTheme": true }
     ],
     "resourceRefs": [
-        {
-            "nodeId": 2,
-            "kind": "Font",
-            "resourceKey": 23001,
-            "label": "DefaultSans"
-        }
+        { "nodeId": 2, "kind": "Font", "resourceKey": 23001, "label": "DefaultSans" },
+        { "nodeId": 3, "kind": "Sprite", "resourceKey": 23002, "label": "HeroAtlasSprite" },
+        { "nodeId": 4, "kind": "Audio", "resourceKey": 23006, "label": "ConfirmClick" }
     ],
     "eventBindings": [
-        {
-            "nodeId": 3,
-            "bindingKey": 33001,
-            "eventKey": 43001,
-            "command": "Confirm"
-        }
+        { "nodeId": 4, "bindingKey": 33001, "eventKey": 43001, "command": "Confirm" },
+        { "nodeId": 5, "bindingKey": 33002, "eventKey": 43002, "command": "VolumeChanged" }
     ],
     "theme": {
         "tokens": [
-            {
-                "tokenKey": 1,
-                "name": "Surface",
-                "role": "Color",
-                "valueKind": "ColorRgba8",
-                "value": "#f8fafc"
-            },
-            {
-                "tokenKey": 2,
-                "name": "TextPrimary",
-                "role": "Color",
-                "valueKind": "ColorRgba8",
-                "value": "#111827"
-            },
-            {
-                "tokenKey": 3,
-                "name": "Accent",
-                "role": "Color",
-                "valueKind": "ColorRgba8",
-                "value": "#2563eb"
-            }
+            { "tokenKey": 1, "name": "Surface", "role": "Color", "valueKind": "ColorRgba8", "value": "#f8fafc" },
+            { "tokenKey": 2, "name": "TextPrimary", "role": "Color", "valueKind": "ColorRgba8", "value": "#111827" },
+            { "tokenKey": 3, "name": "Accent", "role": "Color", "valueKind": "ColorRgba8", "value": "#2563eb" },
+            { "tokenKey": 4, "name": "ImageTint", "role": "Color", "valueKind": "ColorRgba8", "value": "#ffffff" }
         ],
         "themes": [
-            {
-                "themeKey": 1,
-                "name": "Default",
-                "tokenKeys": [
-                    1,
-                    2,
-                    3
-                ],
-                "default": true
-            }
+            { "themeKey": 1, "name": "Default", "tokenKeys": [1, 2, 3, 4], "default": true }
         ]
     },
     "statePreview": [
         {
             "inputKey": 53001,
-            "nodeId": 3,
+            "nodeId": 4,
             "name": "Pressed",
             "valueKind": "Bool",
             "value": false,
@@ -256,12 +320,7 @@
         "selectedNodeId": 1,
         "dirty": false,
         "viewport": {
-            "runtimeRect": {
-                "x": 0,
-                "y": 0,
-                "width": 960,
-                "height": 540
-            },
+            "runtimeRect": { "x": 0, "y": 0, "width": 960, "height": 540 },
             "scale": 1,
             "panX": 0,
             "panY": 0
