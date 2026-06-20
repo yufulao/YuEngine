@@ -195,6 +195,7 @@ add_library(YuUiCore
     Src/YuEngine/UiCore/Src/UiLayoutPass.cpp
     Src/YuEngine/UiCore/Src/UiNodeTree.cpp
     Src/YuEngine/UiCore/Src/UiRectMath.cpp
+    Src/YuEngine/UiCore/Src/UiSliderComponent.cpp
     Src/YuEngine/UiCore/Src/UiStaticAtlasMetadata.cpp
     Src/YuEngine/UiCore/Src/UiTextComponent.cpp
 )
@@ -1634,6 +1635,17 @@ yuengine_add_labeled_test(UiCore_ButtonComponent_PointerActivationEmitsHooks YuU
 yuengine_add_labeled_test(UiCore_ButtonComponent_KeyboardGamepadActivationPathsAreExplicit YuUiButtonComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_ButtonComponent_StateDirtyDoesNotTriggerLayout YuUiButtonComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_ButtonComponent_RejectsInvalidDesc YuUiButtonComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+
+add_executable(YuUiSliderComponentTests
+    Tests/UiCore/UiSliderComponentTests.cpp
+)
+yuengine_apply_compile_options(YuUiSliderComponentTests)
+target_link_libraries(YuUiSliderComponentTests PRIVATE YuUiCore)
+yuengine_add_labeled_test(UiCore_SliderComponent_MapsValueToFillAndHandle YuUiSliderComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_SliderComponent_PointerCaptureUpdatesValueAndHook YuUiSliderComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_SliderComponent_KeyboardGamepadAdjustmentPathsAreExplicit YuUiSliderComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_SliderComponent_ValueDirtyDoesNotTriggerLayout YuUiSliderComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_SliderComponent_RejectsInvalidDesc YuUiSliderComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 
 add_executable(YuUiImageComponentTests
     Tests/UiCore/UiImageComponentTests.cpp
