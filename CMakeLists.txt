@@ -291,6 +291,7 @@ target_link_libraries(YuUiRenderCoreBridge PUBLIC YuUiCore YuRenderCore)
 add_library(YuUiRuntime
     Src/YuEngine/UiRuntime/Src/BaseUiController.cpp
     Src/YuEngine/UiRuntime/Src/UiFullscreenRepresentativeController.cpp
+    Src/YuEngine/UiRuntime/Src/UiGridViewRepresentativeController.cpp
     Src/YuEngine/UiRuntime/Src/UiManagerFullscreenStack.cpp
     Src/YuEngine/UiRuntime/Src/UiManagerLayerModel.cpp
     Src/YuEngine/UiRuntime/Src/UiManagerPanelMap.cpp
@@ -303,6 +304,7 @@ target_include_directories(YuUiRuntime
     PUBLIC
         Src/YuEngine/UiRuntime/Include
 )
+target_link_libraries(YuUiRuntime PRIVATE YuUiCore)
 
 add_library(YuRenderScene
     Src/YuEngine/RenderScene/Src/RenderSceneContractQueue.cpp
@@ -1795,6 +1797,17 @@ yuengine_add_labeled_test(UiRuntime_FullscreenRepresentative_OpenSecondAndNaviga
 yuengine_add_labeled_test(UiRuntime_FullscreenRepresentative_CloseAndReleaseClearSnapshots YuUiFullscreenRepresentativeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRuntime_FullscreenRepresentative_ReopenCacheAndReleaseFreshLifecycle YuUiFullscreenRepresentativeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRuntime_FullscreenRepresentative_StatusAndDuplicateRemainExplicit YuUiFullscreenRepresentativeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+
+add_executable(YuUiGridViewRepresentativeTests
+    Tests/UiRuntime/UiGridViewRepresentativeTests.cpp
+)
+yuengine_apply_compile_options(YuUiGridViewRepresentativeTests)
+target_link_libraries(YuUiGridViewRepresentativeTests PRIVATE YuUiRuntime)
+yuengine_add_labeled_test(UiRuntime_GridViewRepresentative_OpenDisplaysInventoryWindow YuUiGridViewRepresentativeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_GridViewRepresentative_ScrollSelectRefreshWindow YuUiGridViewRepresentativeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_GridViewRepresentative_ClearAndReleaseResetState YuUiGridViewRepresentativeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_GridViewRepresentative_CloseReopenCacheAndFreshLifecycle YuUiGridViewRepresentativeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_GridViewRepresentative_StatusAndDuplicateRemainExplicit YuUiGridViewRepresentativeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 
 add_executable(YuUiEditorTests
     Tests/UiEditor/UiEditorTests.cpp
