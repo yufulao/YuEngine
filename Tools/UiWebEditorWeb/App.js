@@ -3,12 +3,32 @@
 
 (function StartUiWebEditorWeb() {
     const model = window.UiWebEditorModel;
+    const STORAGE_THEME = "YuEngine.UiWebEditor.Theme";
+    const STORAGE_LAYOUT = "YuEngine.UiWebEditor.Layout";
+    const STORAGE_GROUPS = "YuEngine.UiWebEditor.InspectorGroups";
+    const STORAGE_LIVE_DRAFT = "YuEngine.UiWebEditor.LiveDraft";
+    const LIVE_CHANNEL = "YuEngine.UiWebEditor.LiveChannel";
+    const instance_id = String(Date.now()) + "-" + Math.random().toString(16).slice(2);
     const state = {
         document: model.CreateDefaultDocument(),
         filter: "",
         drag: null,
         hierarchyDrag: null,
-        showRuntimeData: false
+        layoutDrag: null,
+        showRuntimeData: false,
+        theme: "light",
+        layout: {
+            leftWidth: 300,
+            rightWidth: 340,
+            runtimeHeight: 240
+        },
+        collapsedGroups: {},
+        liveDraftStamp: 0,
+        liveSourceUrl: "",
+        liveSourceText: "",
+        liveFetchPending: false,
+        liveChannel: null,
+        suppressLivePublish: false
     };
 
     function GetElement(id) {
@@ -29,10 +49,54 @@
         element.textContent = value;
     }
 
+    function ReadStorage(key) {
+        try {
+            const value = window.localStorage.getItem(key);
+            if (!value) {
+                return "";
+            }
+            return value;
+        } catch (error) {
+            return "";
+        }
+    }
+
+    function WriteStorage(key, value) {
+        try {
+            window.localStorage.setItem(key, value);
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function ReadJsonStorage(key, fallback) {
+        const text = ReadStorage(key);
+        if (!text) {
+            return fallback;
+        }
+        try {
+            return JSON.parse(text);
+        } catch (error) {
+            return fallback;
+        }
+    }
+
+    function WriteJsonStorage(key, value) {
+        const text = JSON.stringify(value);
+        return WriteStorage(key, text);
+    }
+
+    function ReadUrlParam(name) {
+        const params = new URLSearchParams(window.location.search);
+        return params.get(name) || "";
+    }
+
     function MarkDirty() {
         state.document.editor.dirty = true;
         RenderSummary();
         RenderJsonPreview();
+        PublishLiveDraft();
     }
 
     function ClampNumber(value, min_value, max_value) {
@@ -43,6 +107,179 @@
             return max_value;
         }
         return value;
+    }
+
+    function ApplyTheme(theme) {
+        let next_theme = "light";
+        if (theme === "dark") {
+            next_theme = "dark";
+        }
+        state.theme = next_theme;
+        document.body.dataset.theme = next_theme;
+        WriteStorage(STORAGE_THEME, next_theme);
+        const button = GetElement("theme-toggle-button");
+        if (!button) {
+            return;
+        }
+        button.textContent = next_theme === "dark" ? "Light" : "Dark";
+        button.setAttribute("aria-pressed", next_theme === "dark" ? "true" : "false");
+    }
+
+    function ToggleTheme() {
+        if (state.theme === "dark") {
+            ApplyTheme("light");
+            return;
+        }
+        ApplyTheme("dark");
+    }
+
+    function ApplyLayout() {
+        const root = document.documentElement;
+        root.style.setProperty("--left-pane-width", String(state.layout.leftWidth) + "px");
+        root.style.setProperty("--right-pane-width", String(state.layout.rightWidth) + "px");
+        root.style.setProperty("--runtime-pane-height", String(state.layout.runtimeHeight) + "px");
+        WriteJsonStorage(STORAGE_LAYOUT, state.layout);
+    }
+
+    function LoadLayout() {
+        const stored = ReadJsonStorage(STORAGE_LAYOUT, {});
+        state.layout.leftWidth = ClampNumber(Number(stored.leftWidth || state.layout.leftWidth), 220, 560);
+        state.layout.rightWidth = ClampNumber(Number(stored.rightWidth || state.layout.rightWidth), 260, 620);
+        state.layout.runtimeHeight = ClampNumber(Number(stored.runtimeHeight || state.layout.runtimeHeight), 140, 460);
+        ApplyLayout();
+    }
+
+    function LoadInspectorGroups() {
+        const stored = ReadJsonStorage(STORAGE_GROUPS, {});
+        if (!stored || typeof stored !== "object") {
+            state.collapsedGroups = {};
+            return;
+        }
+        state.collapsedGroups = stored;
+    }
+
+    function SaveInspectorGroups() {
+        WriteJsonStorage(STORAGE_GROUPS, state.collapsedGroups);
+    }
+
+    function CreateInspectorGroup(container, key, title, default_open) {
+        const details = CreateElement("details", "inspector-group", "");
+        const summary = CreateElement("summary", "inspector-group-title", title);
+        const body = CreateElement("div", "inspector-group-body", "");
+        const has_saved_state = Object.prototype.hasOwnProperty.call(state.collapsedGroups, key);
+        details.open = has_saved_state ? Boolean(state.collapsedGroups[key]) : default_open;
+        details.dataset.groupKey = key;
+        details.appendChild(summary);
+        details.appendChild(body);
+        details.addEventListener("toggle", function OnToggleEvent() {
+            state.collapsedGroups[key] = details.open;
+            SaveInspectorGroups();
+        });
+        container.appendChild(details);
+        return body;
+    }
+
+    function GetLiveSourceUrl() {
+        const source = ReadUrlParam("src");
+        if (source) {
+            return source;
+        }
+        return ReadUrlParam("document");
+    }
+
+    function PublishLiveDraft() {
+        if (state.suppressLivePublish) {
+            return;
+        }
+        const updated_at = Date.now();
+        const record = {
+            instanceId: instance_id,
+            updatedAt: updated_at,
+            document: model.NormalizeDocument(state.document)
+        };
+        state.liveDraftStamp = updated_at;
+        WriteJsonStorage(STORAGE_LIVE_DRAFT, record);
+        if (!state.liveChannel) {
+            return;
+        }
+        state.liveChannel.postMessage({ updatedAt: updated_at });
+    }
+
+    function ApplyExternalDocument(document_value, status_text) {
+        state.suppressLivePublish = true;
+        state.document = model.NormalizeDocument(document_value);
+        state.document.editor.dirty = false;
+        Render();
+        state.suppressLivePublish = false;
+        if (status_text) {
+            SetText("status-text", status_text);
+        }
+        return model.BuildRuntimeDocument(state.document);
+    }
+
+    function TryApplyStoredLiveDraft() {
+        const record = ReadJsonStorage(STORAGE_LIVE_DRAFT, null);
+        if (!record || !record.document) {
+            return false;
+        }
+        if (record.instanceId === instance_id) {
+            return false;
+        }
+        if (Number(record.updatedAt || 0) <= state.liveDraftStamp) {
+            return false;
+        }
+        state.liveDraftStamp = Number(record.updatedAt || Date.now());
+        ApplyExternalDocument(record.document, "Live data refreshed");
+        return true;
+    }
+
+    function FetchLiveSource() {
+        if (!state.liveSourceUrl) {
+            return;
+        }
+        if (state.liveFetchPending) {
+            return;
+        }
+        state.liveFetchPending = true;
+        fetch(state.liveSourceUrl, { cache: "no-store" }).then(function OnResponse(response) {
+            if (!response.ok) {
+                return "";
+            }
+            return response.text();
+        }).then(function OnText(text) {
+            state.liveFetchPending = false;
+            if (!text || text === state.liveSourceText) {
+                return;
+            }
+            state.liveSourceText = text;
+            const parsed = JSON.parse(text);
+            ApplyExternalDocument(parsed, "Live source refreshed");
+        }).catch(function OnError() {
+            state.liveFetchPending = false;
+        });
+    }
+
+    function RefreshLiveData() {
+        const applied = TryApplyStoredLiveDraft();
+        if (applied) {
+            return;
+        }
+        FetchLiveSource();
+    }
+
+    function RefreshStyleSheets() {
+        const links = document.querySelectorAll('link[rel="stylesheet"][href]');
+        const stamp = String(Date.now());
+        links.forEach(function RefreshLink(link) {
+            const url = new URL(link.getAttribute("href"), window.location.href);
+            url.searchParams.set("v", stamp);
+            link.href = url.href;
+        });
+    }
+
+    function RefreshEditorShell() {
+        RefreshStyleSheets();
+        RefreshLiveData();
     }
 
     function CreateElement(tag_name, class_name, text) {
@@ -230,6 +467,77 @@
 
     function FinishCanvasDrag() {
         state.drag = null;
+    }
+
+    function StartLayoutDrag(event, mode) {
+        event.preventDefault();
+        state.layoutDrag = {
+            mode: mode,
+            startX: event.clientX,
+            startY: event.clientY,
+            leftWidth: state.layout.leftWidth,
+            rightWidth: state.layout.rightWidth,
+            runtimeHeight: state.layout.runtimeHeight
+        };
+        document.body.dataset.resizing = "true";
+    }
+
+    function UpdateLayoutDrag(event) {
+        if (!state.layoutDrag) {
+            return;
+        }
+        const delta_x = event.clientX - state.layoutDrag.startX;
+        const delta_y = event.clientY - state.layoutDrag.startY;
+        if (state.layoutDrag.mode === "Left") {
+            state.layout.leftWidth = ClampNumber(state.layoutDrag.leftWidth + delta_x, 220, 560);
+            ApplyLayout();
+            return;
+        }
+        if (state.layoutDrag.mode === "Right") {
+            state.layout.rightWidth = ClampNumber(state.layoutDrag.rightWidth - delta_x, 260, 620);
+            ApplyLayout();
+            return;
+        }
+        if (state.layoutDrag.mode === "Runtime") {
+            state.layout.runtimeHeight = ClampNumber(state.layoutDrag.runtimeHeight - delta_y, 140, 460);
+            ApplyLayout();
+            return;
+        }
+    }
+
+    function FinishLayoutDrag() {
+        state.layoutDrag = null;
+        document.body.dataset.resizing = "false";
+    }
+
+    function AdjustLayoutByKeyboard(mode, delta) {
+        if (mode === "Left") {
+            state.layout.leftWidth = ClampNumber(state.layout.leftWidth + delta, 220, 560);
+            ApplyLayout();
+            return;
+        }
+        if (mode === "Right") {
+            state.layout.rightWidth = ClampNumber(state.layout.rightWidth - delta, 260, 620);
+            ApplyLayout();
+            return;
+        }
+        if (mode === "Runtime") {
+            state.layout.runtimeHeight = ClampNumber(state.layout.runtimeHeight + delta, 140, 460);
+            ApplyLayout();
+            return;
+        }
+    }
+
+    function HandleResizerKey(event, mode) {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+            return;
+        }
+        event.preventDefault();
+        let delta = 16;
+        if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+            delta = -16;
+        }
+        AdjustLayoutByKeyboard(mode, delta);
     }
 
     function AppendInput(container, label_text, value, on_input) {
@@ -601,296 +909,296 @@
     }
 
     function RenderRectTransformInspector(panel, rect_transform) {
-        panel.appendChild(CreateElement("h3", "inspector-section-title", "RectTransform"));
-        AppendVector2Inputs(panel, "Anchor Min", rect_transform.anchorMin, function UpdateAnchorMin(value) {
+        const group = CreateInspectorGroup(panel, "rect-transform", "RectTransform", true);
+        AppendVector2Inputs(group, "Anchor Min", rect_transform.anchorMin, function UpdateAnchorMin(value) {
             UpdateSelectedRectTransform({ anchorMin: value });
         });
-        AppendVector2Inputs(panel, "Anchor Max", rect_transform.anchorMax, function UpdateAnchorMax(value) {
+        AppendVector2Inputs(group, "Anchor Max", rect_transform.anchorMax, function UpdateAnchorMax(value) {
             UpdateSelectedRectTransform({ anchorMax: value });
         });
-        AppendVector2Inputs(panel, "Pivot", rect_transform.pivot, function UpdatePivot(value) {
+        AppendVector2Inputs(group, "Pivot", rect_transform.pivot, function UpdatePivot(value) {
             UpdateSelectedRectTransform({ pivot: value });
         });
-        AppendVector2Inputs(panel, "Offset Min", rect_transform.offsetMin, function UpdateOffsetMin(value) {
+        AppendVector2Inputs(group, "Offset Min", rect_transform.offsetMin, function UpdateOffsetMin(value) {
             UpdateSelectedRectTransform({ offsetMin: value });
         });
-        AppendVector2Inputs(panel, "Offset Max", rect_transform.offsetMax, function UpdateOffsetMax(value) {
+        AppendVector2Inputs(group, "Offset Max", rect_transform.offsetMax, function UpdateOffsetMax(value) {
             UpdateSelectedRectTransform({ offsetMax: value });
         });
-        AppendThicknessInputs(panel, "Margin", rect_transform.margin, function UpdateMargin(value) {
+        AppendThicknessInputs(group, "Margin", rect_transform.margin, function UpdateMargin(value) {
             UpdateSelectedRectTransform({ margin: value });
         });
-        AppendThicknessInputs(panel, "Padding", rect_transform.padding, function UpdatePadding(value) {
+        AppendThicknessInputs(group, "Padding", rect_transform.padding, function UpdatePadding(value) {
             UpdateSelectedRectTransform({ padding: value });
         });
-        AppendNumberInput(panel, "DPI Scale", rect_transform.dpiScale, function UpdateDpiScale(value) {
+        AppendNumberInput(group, "DPI Scale", rect_transform.dpiScale, function UpdateDpiScale(value) {
             UpdateSelectedRectTransform({ dpiScale: value });
         });
     }
 
     function RenderCommonComponentInspector(panel, common) {
-        panel.appendChild(CreateElement("h3", "inspector-section-title", "Common Runtime"));
-        AppendSelect(panel, "Layout Type", common.layoutType, ["Absolute", "Stack", "Grid", "Overlay", "ScrollViewport"], function UpdateLayoutType(value) {
+        const group = CreateInspectorGroup(panel, "component-common", "Common Runtime", true);
+        AppendSelect(group, "Layout Type", common.layoutType, ["Absolute", "Stack", "Grid", "Overlay", "ScrollViewport"], function UpdateLayoutType(value) {
             UpdateSelectedComponent("common", { layoutType: value });
         });
-        AppendNumberInput(panel, "Style Key", common.styleKey, function UpdateStyleKey(value) {
+        AppendNumberInput(group, "Style Key", common.styleKey, function UpdateStyleKey(value) {
             UpdateSelectedComponent("common", { styleKey: value });
         });
-        AppendNumberInput(panel, "Theme Key", common.themeKey, function UpdateThemeKey(value) {
+        AppendNumberInput(group, "Theme Key", common.themeKey, function UpdateThemeKey(value) {
             UpdateSelectedComponent("common", { themeKey: value });
         });
-        AppendNumberInput(panel, "Token Key", common.tokenKey, function UpdateTokenKey(value) {
+        AppendNumberInput(group, "Token Key", common.tokenKey, function UpdateTokenKey(value) {
             UpdateSelectedComponent("common", { tokenKey: value });
         });
-        AppendNumberInput(panel, "Resource Key", common.resourceKey, function UpdateResourceKey(value) {
+        AppendNumberInput(group, "Resource Key", common.resourceKey, function UpdateResourceKey(value) {
             UpdateSelectedComponent("common", { resourceKey: value });
         });
-        AppendNumberInput(panel, "Event Key", common.eventKey, function UpdateEventKey(value) {
+        AppendNumberInput(group, "Event Key", common.eventKey, function UpdateEventKey(value) {
             UpdateSelectedComponent("common", { eventKey: value });
         });
-        AppendSelect(panel, "Hit Test Route", common.hitTestRoute, ["None", "Self", "Children"], function UpdateHitTestRoute(value) {
+        AppendSelect(group, "Hit Test Route", common.hitTestRoute, ["None", "Self", "Children"], function UpdateHitTestRoute(value) {
             UpdateSelectedComponent("common", { hitTestRoute: value });
         });
-        AppendCheckbox(panel, "Clip Children", common.clipChildren, function UpdateClipChildren(value) {
+        AppendCheckbox(group, "Clip Children", common.clipChildren, function UpdateClipChildren(value) {
             UpdateSelectedComponent("common", { clipChildren: value });
         });
     }
 
     function RenderContainerComponentInspector(panel, container) {
-        panel.appendChild(CreateElement("h3", "inspector-section-title", "Container"));
-        AppendSelect(panel, "Container Layout", container.layoutType, ["Absolute", "Stack", "Grid", "Overlay", "ScrollViewport"], function UpdateLayoutType(value) {
+        const group = CreateInspectorGroup(panel, "component-container", "Container", true);
+        AppendSelect(group, "Container Layout", container.layoutType, ["Absolute", "Stack", "Grid", "Overlay", "ScrollViewport"], function UpdateLayoutType(value) {
             UpdateSelectedComponent("container", { layoutType: value });
         });
-        AppendNumberInput(panel, "Style Key", container.styleKey, function UpdateStyleKey(value) {
+        AppendNumberInput(group, "Style Key", container.styleKey, function UpdateStyleKey(value) {
             UpdateSelectedComponent("container", { styleKey: value });
         });
-        AppendCheckbox(panel, "Scissor", container.scissor, function UpdateScissor(value) {
+        AppendCheckbox(group, "Scissor", container.scissor, function UpdateScissor(value) {
             UpdateSelectedComponent("container", { scissor: value });
         });
-        AppendCheckbox(panel, "Raycast Target", container.raycastTarget, function UpdateRaycastTarget(value) {
+        AppendCheckbox(group, "Raycast Target", container.raycastTarget, function UpdateRaycastTarget(value) {
             UpdateSelectedComponent("container", { raycastTarget: value });
         });
     }
 
     function RenderTextComponentInspector(panel, text) {
-        panel.appendChild(CreateElement("h3", "inspector-section-title", "Text"));
-        AppendSelect(panel, "Content Mode", text.contentMode, ["Plain", "LocalizationKey"], function UpdateContentMode(value) {
+        const group = CreateInspectorGroup(panel, "component-text", "Text", true);
+        AppendSelect(group, "Content Mode", text.contentMode, ["Plain", "LocalizationKey"], function UpdateContentMode(value) {
             UpdateSelectedComponent("text", { contentMode: value });
         });
-        AppendInput(panel, "Content", text.content, function UpdateContent(value) {
+        AppendInput(group, "Content", text.content, function UpdateContent(value) {
             UpdateSelectedComponent("text", { content: value });
         });
-        AppendInput(panel, "Localization Key", text.localizationKey, function UpdateLocalizationKey(value) {
+        AppendInput(group, "Localization Key", text.localizationKey, function UpdateLocalizationKey(value) {
             UpdateSelectedComponent("text", { localizationKey: value });
         });
-        AppendNumberInput(panel, "Font Resource", text.fontResourceKey, function UpdateFontResource(value) {
+        AppendNumberInput(group, "Font Resource", text.fontResourceKey, function UpdateFontResource(value) {
             UpdateSelectedComponent("text", { fontResourceKey: value });
         });
-        AppendNumberInput(panel, "Fallback Font", text.fallbackFontResourceKey, function UpdateFallbackFont(value) {
+        AppendNumberInput(group, "Fallback Font", text.fallbackFontResourceKey, function UpdateFallbackFont(value) {
             UpdateSelectedComponent("text", { fallbackFontResourceKey: value });
         });
-        AppendNumberInput(panel, "Font Size", text.fontSize, function UpdateFontSize(value) {
+        AppendNumberInput(group, "Font Size", text.fontSize, function UpdateFontSize(value) {
             UpdateSelectedComponent("text", { fontSize: value });
         });
-        AppendSelect(panel, "Font Style", text.fontStyle, ["Normal", "Bold", "Italic", "BoldItalic"], function UpdateFontStyle(value) {
+        AppendSelect(group, "Font Style", text.fontStyle, ["Normal", "Bold", "Italic", "BoldItalic"], function UpdateFontStyle(value) {
             UpdateSelectedComponent("text", { fontStyle: value });
         });
-        AppendSelect(panel, "Horizontal Align", text.horizontalAlignment, ["Left", "Center", "Right"], function UpdateHorizontalAlignment(value) {
+        AppendSelect(group, "Horizontal Align", text.horizontalAlignment, ["Left", "Center", "Right"], function UpdateHorizontalAlignment(value) {
             UpdateSelectedComponent("text", { horizontalAlignment: value });
         });
-        AppendSelect(panel, "Vertical Align", text.verticalAlignment, ["Top", "Middle", "Bottom"], function UpdateVerticalAlignment(value) {
+        AppendSelect(group, "Vertical Align", text.verticalAlignment, ["Top", "Middle", "Bottom"], function UpdateVerticalAlignment(value) {
             UpdateSelectedComponent("text", { verticalAlignment: value });
         });
-        AppendSelect(panel, "Wrap", text.wrap, ["None", "Character"], function UpdateWrap(value) {
+        AppendSelect(group, "Wrap", text.wrap, ["None", "Character"], function UpdateWrap(value) {
             UpdateSelectedComponent("text", { wrap: value });
         });
-        AppendSelect(panel, "Overflow", text.overflow, ["Clip"], function UpdateOverflow(value) {
+        AppendSelect(group, "Overflow", text.overflow, ["Clip"], function UpdateOverflow(value) {
             UpdateSelectedComponent("text", { overflow: value });
         });
-        AppendNumberInput(panel, "Line Height", text.lineHeight, function UpdateLineHeight(value) {
+        AppendNumberInput(group, "Line Height", text.lineHeight, function UpdateLineHeight(value) {
             UpdateSelectedComponent("text", { lineHeight: value });
         });
-        AppendColorInput(panel, "Tint", text.tint, function UpdateTint(value) {
+        AppendColorInput(group, "Tint", text.tint, function UpdateTint(value) {
             UpdateSelectedComponent("text", { tint: value });
         });
-        AppendCheckbox(panel, "Outline", text.outline.enabled, function UpdateOutline(value) {
+        AppendCheckbox(group, "Outline", text.outline.enabled, function UpdateOutline(value) {
             UpdateSelectedComponentNested("text", "outline", { enabled: value });
         });
-        AppendColorInput(panel, "Outline Color", text.outline.color, function UpdateOutlineColor(value) {
+        AppendColorInput(group, "Outline Color", text.outline.color, function UpdateOutlineColor(value) {
             UpdateSelectedComponentNested("text", "outline", { color: value });
         });
-        AppendNumberInput(panel, "Outline Width", text.outline.width, function UpdateOutlineWidth(value) {
+        AppendNumberInput(group, "Outline Width", text.outline.width, function UpdateOutlineWidth(value) {
             UpdateSelectedComponentNested("text", "outline", { width: value });
         });
-        AppendCheckbox(panel, "Shadow", text.shadow.enabled, function UpdateShadow(value) {
+        AppendCheckbox(group, "Shadow", text.shadow.enabled, function UpdateShadow(value) {
             UpdateSelectedComponentNested("text", "shadow", { enabled: value });
         });
-        AppendColorInput(panel, "Shadow Color", text.shadow.color, function UpdateShadowColor(value) {
+        AppendColorInput(group, "Shadow Color", text.shadow.color, function UpdateShadowColor(value) {
             UpdateSelectedComponentNested("text", "shadow", { color: value });
         });
-        AppendNumberInput(panel, "Shadow X", text.shadow.offset.x, function UpdateShadowX(value) {
+        AppendNumberInput(group, "Shadow X", text.shadow.offset.x, function UpdateShadowX(value) {
             const offset = Object.assign({}, text.shadow.offset, { x: value });
             UpdateSelectedComponentNested("text", "shadow", { offset: offset });
         });
-        AppendNumberInput(panel, "Shadow Y", text.shadow.offset.y, function UpdateShadowY(value) {
+        AppendNumberInput(group, "Shadow Y", text.shadow.offset.y, function UpdateShadowY(value) {
             const offset = Object.assign({}, text.shadow.offset, { y: value });
             UpdateSelectedComponentNested("text", "shadow", { offset: offset });
         });
-        AppendNumberInput(panel, "Material Key", text.materialKey, function UpdateMaterialKey(value) {
+        AppendNumberInput(group, "Material Key", text.materialKey, function UpdateMaterialKey(value) {
             UpdateSelectedComponent("text", { materialKey: value });
         });
-        AppendNumberInput(panel, "Style Key", text.styleKey, function UpdateStyleKey(value) {
+        AppendNumberInput(group, "Style Key", text.styleKey, function UpdateStyleKey(value) {
             UpdateSelectedComponent("text", { styleKey: value });
         });
-        AppendCheckbox(panel, "Scissor", text.scissor, function UpdateScissor(value) {
+        AppendCheckbox(group, "Scissor", text.scissor, function UpdateScissor(value) {
             UpdateSelectedComponent("text", { scissor: value });
         });
-        AppendCheckbox(panel, "Raycast Target", text.raycastTarget, function UpdateRaycastTarget(value) {
+        AppendCheckbox(group, "Raycast Target", text.raycastTarget, function UpdateRaycastTarget(value) {
             UpdateSelectedComponent("text", { raycastTarget: value });
         });
     }
 
     function RenderImageComponentInspector(panel, image) {
-        panel.appendChild(CreateElement("h3", "inspector-section-title", "Image"));
-        AppendNumberInput(panel, "Sprite Resource", image.spriteResourceKey, function UpdateSpriteResource(value) {
+        const group = CreateInspectorGroup(panel, "component-image", "Image", true);
+        AppendNumberInput(group, "Sprite Resource", image.spriteResourceKey, function UpdateSpriteResource(value) {
             UpdateSelectedComponent("image", { spriteResourceKey: value });
         });
-        AppendNumberInput(panel, "Atlas Key", image.atlasKey, function UpdateAtlasKey(value) {
+        AppendNumberInput(group, "Atlas Key", image.atlasKey, function UpdateAtlasKey(value) {
             UpdateSelectedComponent("image", { atlasKey: value });
         });
-        AppendNumberInput(panel, "Material Key", image.materialKey, function UpdateMaterialKey(value) {
+        AppendNumberInput(group, "Material Key", image.materialKey, function UpdateMaterialKey(value) {
             UpdateSelectedComponent("image", { materialKey: value });
         });
-        AppendNumberInput(panel, "Style Key", image.styleKey, function UpdateStyleKey(value) {
+        AppendNumberInput(group, "Style Key", image.styleKey, function UpdateStyleKey(value) {
             UpdateSelectedComponent("image", { styleKey: value });
         });
-        AppendSelect(panel, "Image Type", image.imageType, ["Simple", "Sliced"], function UpdateImageType(value) {
+        AppendSelect(group, "Image Type", image.imageType, ["Simple", "Sliced"], function UpdateImageType(value) {
             UpdateSelectedComponent("image", { imageType: value });
         });
-        AppendColorInput(panel, "Tint", image.tint, function UpdateTint(value) {
+        AppendColorInput(group, "Tint", image.tint, function UpdateTint(value) {
             UpdateSelectedComponent("image", { tint: value });
         });
-        AppendCheckbox(panel, "Preserve Aspect", image.preserveAspect, function UpdatePreserveAspect(value) {
+        AppendCheckbox(group, "Preserve Aspect", image.preserveAspect, function UpdatePreserveAspect(value) {
             UpdateSelectedComponent("image", { preserveAspect: value });
         });
-        AppendThicknessInputs(panel, "Nine Slice", image.nineSlice, function UpdateNineSlice(value) {
+        AppendThicknessInputs(group, "Nine Slice", image.nineSlice, function UpdateNineSlice(value) {
             const nine_slice = Object.assign({}, image.nineSlice, value);
             UpdateSelectedComponent("image", { nineSlice: nine_slice });
         });
-        AppendCheckbox(panel, "Scissor", image.scissor, function UpdateScissor(value) {
+        AppendCheckbox(group, "Scissor", image.scissor, function UpdateScissor(value) {
             UpdateSelectedComponent("image", { scissor: value });
         });
-        AppendCheckbox(panel, "Raycast Target", image.raycastTarget, function UpdateRaycastTarget(value) {
+        AppendCheckbox(group, "Raycast Target", image.raycastTarget, function UpdateRaycastTarget(value) {
             UpdateSelectedComponent("image", { raycastTarget: value });
         });
     }
 
     function RenderButtonComponentInspector(panel, button) {
-        panel.appendChild(CreateElement("h3", "inspector-section-title", "Button"));
-        AppendInput(panel, "Label", button.label, function UpdateLabel(value) {
+        const group = CreateInspectorGroup(panel, "component-button", "Button", true);
+        AppendInput(group, "Label", button.label, function UpdateLabel(value) {
             UpdateSelectedComponent("button", { label: value });
         });
-        AppendNumberInput(panel, "Text Style", button.textStyleKey, function UpdateTextStyle(value) {
+        AppendNumberInput(group, "Text Style", button.textStyleKey, function UpdateTextStyle(value) {
             UpdateSelectedComponent("button", { textStyleKey: value });
         });
-        AppendNumberInput(panel, "Image Style", button.imageStyleKey, function UpdateImageStyle(value) {
+        AppendNumberInput(group, "Image Style", button.imageStyleKey, function UpdateImageStyle(value) {
             UpdateSelectedComponent("button", { imageStyleKey: value });
         });
-        AppendNumberInput(panel, "Normal Style", button.normalStyleKey, function UpdateNormalStyle(value) {
+        AppendNumberInput(group, "Normal Style", button.normalStyleKey, function UpdateNormalStyle(value) {
             UpdateSelectedComponent("button", { normalStyleKey: value });
         });
-        AppendNumberInput(panel, "Hover Style", button.hoverStyleKey, function UpdateHoverStyle(value) {
+        AppendNumberInput(group, "Hover Style", button.hoverStyleKey, function UpdateHoverStyle(value) {
             UpdateSelectedComponent("button", { hoverStyleKey: value });
         });
-        AppendNumberInput(panel, "Pressed Style", button.pressedStyleKey, function UpdatePressedStyle(value) {
+        AppendNumberInput(group, "Pressed Style", button.pressedStyleKey, function UpdatePressedStyle(value) {
             UpdateSelectedComponent("button", { pressedStyleKey: value });
         });
-        AppendNumberInput(panel, "Disabled Style", button.disabledStyleKey, function UpdateDisabledStyle(value) {
+        AppendNumberInput(group, "Disabled Style", button.disabledStyleKey, function UpdateDisabledStyle(value) {
             UpdateSelectedComponent("button", { disabledStyleKey: value });
         });
-        AppendNumberInput(panel, "Selected Style", button.selectedStyleKey, function UpdateSelectedStyle(value) {
+        AppendNumberInput(group, "Selected Style", button.selectedStyleKey, function UpdateSelectedStyle(value) {
             UpdateSelectedComponent("button", { selectedStyleKey: value });
         });
-        AppendNumberInput(panel, "Normal Sprite", button.normalSpriteKey, function UpdateNormalSprite(value) {
+        AppendNumberInput(group, "Normal Sprite", button.normalSpriteKey, function UpdateNormalSprite(value) {
             UpdateSelectedComponent("button", { normalSpriteKey: value });
         });
-        AppendNumberInput(panel, "Pressed Sprite", button.pressedSpriteKey, function UpdatePressedSprite(value) {
+        AppendNumberInput(group, "Pressed Sprite", button.pressedSpriteKey, function UpdatePressedSprite(value) {
             UpdateSelectedComponent("button", { pressedSpriteKey: value });
         });
-        AppendNumberInput(panel, "Submit Event", button.submitEventKey, function UpdateSubmitEvent(value) {
+        AppendNumberInput(group, "Submit Event", button.submitEventKey, function UpdateSubmitEvent(value) {
             UpdateSelectedComponent("button", { submitEventKey: value });
         });
-        AppendNumberInput(panel, "Cancel Event", button.cancelEventKey, function UpdateCancelEvent(value) {
+        AppendNumberInput(group, "Cancel Event", button.cancelEventKey, function UpdateCancelEvent(value) {
             UpdateSelectedComponent("button", { cancelEventKey: value });
         });
-        AppendNumberInput(panel, "Sound Resource", button.soundResourceKey, function UpdateSoundResource(value) {
+        AppendNumberInput(group, "Sound Resource", button.soundResourceKey, function UpdateSoundResource(value) {
             UpdateSelectedComponent("button", { soundResourceKey: value });
         });
-        AppendInput(panel, "Action Key", button.actionKey, function UpdateActionKey(value) {
+        AppendInput(group, "Action Key", button.actionKey, function UpdateActionKey(value) {
             UpdateSelectedComponent("button", { actionKey: value });
         });
-        AppendCheckbox(panel, "Pointer Activation", button.pointerActivation, function UpdatePointerActivation(value) {
+        AppendCheckbox(group, "Pointer Activation", button.pointerActivation, function UpdatePointerActivation(value) {
             UpdateSelectedComponent("button", { pointerActivation: value });
         });
-        AppendCheckbox(panel, "Keyboard Activation", button.keyboardActivation, function UpdateKeyboardActivation(value) {
+        AppendCheckbox(group, "Keyboard Activation", button.keyboardActivation, function UpdateKeyboardActivation(value) {
             UpdateSelectedComponent("button", { keyboardActivation: value });
         });
-        AppendCheckbox(panel, "Gamepad Activation", button.gamepadActivation, function UpdateGamepadActivation(value) {
+        AppendCheckbox(group, "Gamepad Activation", button.gamepadActivation, function UpdateGamepadActivation(value) {
             UpdateSelectedComponent("button", { gamepadActivation: value });
         });
     }
 
     function RenderSliderComponentInspector(panel, slider) {
-        panel.appendChild(CreateElement("h3", "inspector-section-title", "Slider"));
-        AppendNumberInput(panel, "Min", slider.minValue, function UpdateMinValue(value) {
+        const group = CreateInspectorGroup(panel, "component-slider", "Slider", true);
+        AppendNumberInput(group, "Min", slider.minValue, function UpdateMinValue(value) {
             UpdateSelectedComponent("slider", { minValue: value });
         });
-        AppendNumberInput(panel, "Max", slider.maxValue, function UpdateMaxValue(value) {
+        AppendNumberInput(group, "Max", slider.maxValue, function UpdateMaxValue(value) {
             UpdateSelectedComponent("slider", { maxValue: value });
         });
-        AppendNumberInput(panel, "Value", slider.value, function UpdateValue(value) {
+        AppendNumberInput(group, "Value", slider.value, function UpdateValue(value) {
             UpdateSelectedComponent("slider", { value: value });
         });
-        AppendNumberInput(panel, "Step", slider.step, function UpdateStep(value) {
+        AppendNumberInput(group, "Step", slider.step, function UpdateStep(value) {
             UpdateSelectedComponent("slider", { step: value });
         });
-        AppendSelect(panel, "Axis", slider.axis, ["Horizontal", "Vertical"], function UpdateAxis(value) {
+        AppendSelect(group, "Axis", slider.axis, ["Horizontal", "Vertical"], function UpdateAxis(value) {
             UpdateSelectedComponent("slider", { axis: value });
         });
-        AppendNumberInput(panel, "Track Style", slider.trackStyleKey, function UpdateTrackStyle(value) {
+        AppendNumberInput(group, "Track Style", slider.trackStyleKey, function UpdateTrackStyle(value) {
             UpdateSelectedComponent("slider", { trackStyleKey: value });
         });
-        AppendNumberInput(panel, "Fill Style", slider.fillStyleKey, function UpdateFillStyle(value) {
+        AppendNumberInput(group, "Fill Style", slider.fillStyleKey, function UpdateFillStyle(value) {
             UpdateSelectedComponent("slider", { fillStyleKey: value });
         });
-        AppendNumberInput(panel, "Handle Style", slider.handleStyleKey, function UpdateHandleStyle(value) {
+        AppendNumberInput(group, "Handle Style", slider.handleStyleKey, function UpdateHandleStyle(value) {
             UpdateSelectedComponent("slider", { handleStyleKey: value });
         });
-        AppendNumberInput(panel, "Track Sprite", slider.trackSpriteKey, function UpdateTrackSprite(value) {
+        AppendNumberInput(group, "Track Sprite", slider.trackSpriteKey, function UpdateTrackSprite(value) {
             UpdateSelectedComponent("slider", { trackSpriteKey: value });
         });
-        AppendNumberInput(panel, "Fill Sprite", slider.fillSpriteKey, function UpdateFillSprite(value) {
+        AppendNumberInput(group, "Fill Sprite", slider.fillSpriteKey, function UpdateFillSprite(value) {
             UpdateSelectedComponent("slider", { fillSpriteKey: value });
         });
-        AppendNumberInput(panel, "Handle Sprite", slider.handleSpriteKey, function UpdateHandleSprite(value) {
+        AppendNumberInput(group, "Handle Sprite", slider.handleSpriteKey, function UpdateHandleSprite(value) {
             UpdateSelectedComponent("slider", { handleSpriteKey: value });
         });
-        AppendNumberInput(panel, "Change Event", slider.changeEventKey, function UpdateChangeEvent(value) {
+        AppendNumberInput(group, "Change Event", slider.changeEventKey, function UpdateChangeEvent(value) {
             UpdateSelectedComponent("slider", { changeEventKey: value });
         });
-        AppendInput(panel, "Increase Action", slider.increaseActionKey, function UpdateIncreaseAction(value) {
+        AppendInput(group, "Increase Action", slider.increaseActionKey, function UpdateIncreaseAction(value) {
             UpdateSelectedComponent("slider", { increaseActionKey: value });
         });
-        AppendInput(panel, "Decrease Action", slider.decreaseActionKey, function UpdateDecreaseAction(value) {
+        AppendInput(group, "Decrease Action", slider.decreaseActionKey, function UpdateDecreaseAction(value) {
             UpdateSelectedComponent("slider", { decreaseActionKey: value });
         });
-        AppendCheckbox(panel, "Pointer Drag", slider.pointerDrag, function UpdatePointerDrag(value) {
+        AppendCheckbox(group, "Pointer Drag", slider.pointerDrag, function UpdatePointerDrag(value) {
             UpdateSelectedComponent("slider", { pointerDrag: value });
         });
-        AppendCheckbox(panel, "Keyboard Adjust", slider.keyboardAdjust, function UpdateKeyboardAdjust(value) {
+        AppendCheckbox(group, "Keyboard Adjust", slider.keyboardAdjust, function UpdateKeyboardAdjust(value) {
             UpdateSelectedComponent("slider", { keyboardAdjust: value });
         });
-        AppendCheckbox(panel, "Gamepad Adjust", slider.gamepadAdjust, function UpdateGamepadAdjust(value) {
+        AppendCheckbox(group, "Gamepad Adjust", slider.gamepadAdjust, function UpdateGamepadAdjust(value) {
             UpdateSelectedComponent("slider", { gamepadAdjust: value });
         });
     }
@@ -949,35 +1257,35 @@
             eventKey: 0,
             command: ""
         });
-        panel.appendChild(CreateElement("h3", "inspector-section-title", "References"));
-        AppendNumberInput(panel, "Style Ref Key", style_ref.styleKey, function UpdateStyleKey(value) {
+        const group = CreateInspectorGroup(panel, "references", "References", false);
+        AppendNumberInput(group, "Style Ref Key", style_ref.styleKey, function UpdateStyleKey(value) {
             UpdateStyleRef(node.nodeId, { styleKey: value });
         });
-        AppendNumberInput(panel, "Style Theme", style_ref.themeKey, function UpdateThemeKey(value) {
+        AppendNumberInput(group, "Style Theme", style_ref.themeKey, function UpdateThemeKey(value) {
             UpdateStyleRef(node.nodeId, { themeKey: value });
         });
-        AppendNumberInput(panel, "Style Token", style_ref.tokenKey, function UpdateTokenKey(value) {
+        AppendNumberInput(group, "Style Token", style_ref.tokenKey, function UpdateTokenKey(value) {
             UpdateStyleRef(node.nodeId, { tokenKey: value });
         });
-        AppendInput(panel, "Style Value", style_ref.value, function UpdateStyleValue(value) {
+        AppendInput(group, "Style Value", style_ref.value, function UpdateStyleValue(value) {
             UpdateStyleRef(node.nodeId, { value: value });
         });
-        AppendSelect(panel, "Resource Kind", resource_ref.kind, ["Sprite", "Font", "Localization", "Audio", "Custom"], function UpdateKind(value) {
+        AppendSelect(group, "Resource Kind", resource_ref.kind, ["Sprite", "Font", "Localization", "Audio", "Custom"], function UpdateKind(value) {
             UpdateResourceRef(node.nodeId, { kind: value });
         });
-        AppendNumberInput(panel, "Resource Key", resource_ref.resourceKey, function UpdateResourceKey(value) {
+        AppendNumberInput(group, "Resource Key", resource_ref.resourceKey, function UpdateResourceKey(value) {
             UpdateResourceRef(node.nodeId, { resourceKey: value });
         });
-        AppendInput(panel, "Resource Label", resource_ref.label || "", function UpdateResourceLabel(value) {
+        AppendInput(group, "Resource Label", resource_ref.label || "", function UpdateResourceLabel(value) {
             UpdateResourceRef(node.nodeId, { label: value });
         });
-        AppendNumberInput(panel, "Binding Key", event_binding.bindingKey, function UpdateBindingKey(value) {
+        AppendNumberInput(group, "Binding Key", event_binding.bindingKey, function UpdateBindingKey(value) {
             UpdateEventBinding(node.nodeId, { bindingKey: value });
         });
-        AppendNumberInput(panel, "Event Key", event_binding.eventKey, function UpdateEventKey(value) {
+        AppendNumberInput(group, "Event Key", event_binding.eventKey, function UpdateEventKey(value) {
             UpdateEventBinding(node.nodeId, { eventKey: value });
         });
-        AppendInput(panel, "Command", event_binding.command || "", function UpdateCommand(value) {
+        AppendInput(group, "Command", event_binding.command || "", function UpdateCommand(value) {
             UpdateEventBinding(node.nodeId, { command: value });
         });
     }
@@ -991,40 +1299,40 @@
             return;
         }
 
-        panel.appendChild(CreateElement("h3", "inspector-section-title", "Schema"));
-        AppendNumberInput(panel, "Layout ID", state.document.schema.layoutId, function UpdateLayoutId(value) {
+        const schema_group = CreateInspectorGroup(panel, "schema", "Schema", false);
+        AppendNumberInput(schema_group, "Layout ID", state.document.schema.layoutId, function UpdateLayoutId(value) {
             state.document.schema.layoutId = value;
             MarkDirty();
         });
-        AppendNumberInput(panel, "Root Node ID", state.document.schema.rootNodeId, function UpdateRootNodeId(value) {
+        AppendNumberInput(schema_group, "Root Node ID", state.document.schema.rootNodeId, function UpdateRootNodeId(value) {
             state.document.schema.rootNodeId = value;
             MarkDirty();
         });
 
         const node = inspector.node;
-        panel.appendChild(CreateElement("h3", "inspector-section-title", "Node"));
-        AppendInput(panel, "Name", node.name, function UpdateName(value) {
+        const node_group = CreateInspectorGroup(panel, "node", "Node", true);
+        AppendInput(node_group, "Name", node.name, function UpdateName(value) {
             UpdateSelectedNode({ name: value });
         });
-        AppendSelect(panel, "Component", node.component, inspector.componentTypes, function UpdateComponent(value) {
+        AppendSelect(node_group, "Component", node.component, inspector.componentTypes, function UpdateComponent(value) {
             UpdateSelectedNode({ component: value });
         });
-        RenderParentInspector(panel, node, inspector.parentOptions);
+        RenderParentInspector(node_group, node, inspector.parentOptions);
         RenderRectTransformInspector(panel, node.rectTransform);
 
-        AppendNumberInput(panel, "Layer", node.layer, function UpdateLayer(value) {
+        AppendNumberInput(node_group, "Layer", node.layer, function UpdateLayer(value) {
             UpdateSelectedNode({ layer: value });
         });
-        AppendNumberInput(panel, "Order", node.siblingOrder, function UpdateOrder(value) {
+        AppendNumberInput(node_group, "Order", node.siblingOrder, function UpdateOrder(value) {
             UpdateSelectedNode({ siblingOrder: value });
         });
-        AppendCheckbox(panel, "Visible", node.visible, function UpdateVisible(value) {
+        AppendCheckbox(node_group, "Visible", node.visible, function UpdateVisible(value) {
             UpdateSelectedNode({ visible: value });
         });
-        AppendCheckbox(panel, "Enabled", node.enabled, function UpdateEnabled(value) {
+        AppendCheckbox(node_group, "Enabled", node.enabled, function UpdateEnabled(value) {
             UpdateSelectedNode({ enabled: value });
         });
-        AppendCheckbox(panel, "Hit Test", node.hitTestable, function UpdateHitTest(value) {
+        AppendCheckbox(node_group, "Hit Test", node.hitTestable, function UpdateHitTest(value) {
             UpdateSelectedNode({ hitTestable: value });
         });
 
@@ -1035,7 +1343,7 @@
         counts.appendChild(CreateElement("span", "", "Style " + inspector.styleRefs.length));
         counts.appendChild(CreateElement("span", "", "Resource " + inspector.resourceRefs.length));
         counts.appendChild(CreateElement("span", "", "Event " + inspector.eventBindings.length));
-        panel.appendChild(counts);
+        node_group.appendChild(counts);
     }
 
     function RenderTheme() {
@@ -1175,6 +1483,7 @@
         RenderStatePreview();
         RenderValidation();
         RenderJsonPreview();
+        PublishLiveDraft();
     }
 
     function DownloadJson(file_name, payload) {
@@ -1234,6 +1543,12 @@
             RenderValidation();
             RenderSummary();
         });
+        GetElement("theme-toggle-button").addEventListener("click", function OnClickEvent() {
+            ToggleTheme();
+        });
+        GetElement("live-refresh-button").addEventListener("click", function OnClickEvent() {
+            RefreshEditorShell();
+        });
         GetElement("runtime-json-toggle-button").addEventListener("click", function OnClickEvent() {
             ToggleRuntimeData(!state.showRuntimeData);
         });
@@ -1285,13 +1600,90 @@
         GetElement("canvas-surface").addEventListener("click", function OnClickEvent() {
             SelectNode(state.document.schema.rootNodeId);
         });
+        GetElement("left-pane-resizer").addEventListener("pointerdown", function OnPointerDownEvent(event) {
+            StartLayoutDrag(event, "Left");
+        });
+        GetElement("right-pane-resizer").addEventListener("pointerdown", function OnPointerDownEvent(event) {
+            StartLayoutDrag(event, "Right");
+        });
+        GetElement("runtime-pane-resizer").addEventListener("pointerdown", function OnPointerDownEvent(event) {
+            StartLayoutDrag(event, "Runtime");
+        });
+        GetElement("left-pane-resizer").addEventListener("keydown", function OnKeyDownEvent(event) {
+            HandleResizerKey(event, "Left");
+        });
+        GetElement("right-pane-resizer").addEventListener("keydown", function OnKeyDownEvent(event) {
+            HandleResizerKey(event, "Right");
+        });
+        GetElement("runtime-pane-resizer").addEventListener("keydown", function OnKeyDownEvent(event) {
+            HandleResizerKey(event, "Runtime");
+        });
         window.addEventListener("pointermove", UpdateCanvasDrag);
+        window.addEventListener("pointermove", UpdateLayoutDrag);
         window.addEventListener("pointerup", FinishCanvasDrag);
+        window.addEventListener("pointerup", FinishLayoutDrag);
         window.addEventListener("pointercancel", FinishCanvasDrag);
+        window.addEventListener("pointercancel", FinishLayoutDrag);
+    }
+
+    function BindLiveRefresh() {
+        state.liveSourceUrl = GetLiveSourceUrl();
+        window.addEventListener("storage", function OnStorageEvent(event) {
+            if (event.key !== STORAGE_LIVE_DRAFT) {
+                return;
+            }
+            RefreshLiveData();
+        });
+        window.addEventListener("focus", function OnFocusEvent() {
+            RefreshEditorShell();
+        });
+        document.addEventListener("visibilitychange", function OnVisibilityChangeEvent() {
+            if (document.visibilityState !== "visible") {
+                return;
+            }
+            RefreshEditorShell();
+        });
+        if ("BroadcastChannel" in window) {
+            state.liveChannel = new BroadcastChannel(LIVE_CHANNEL);
+            state.liveChannel.addEventListener("message", function OnMessageEvent() {
+                RefreshLiveData();
+            });
+        }
+        window.setInterval(function OnPollEvent() {
+            if (!document.hasFocus()) {
+                return;
+            }
+            RefreshLiveData();
+        }, 1500);
+    }
+
+    function ExposeExternalApi() {
+        window.YuUiWebEditorApplyDocument = function ApplyDocument(document_value) {
+            return ApplyExternalDocument(document_value, "External data applied");
+        };
+        window.YuUiWebEditor = {
+            ApplyDocument: window.YuUiWebEditorApplyDocument,
+            GetDocument: function GetDocument() {
+                return model.NormalizeDocument(state.document);
+            },
+            GetRuntimeDocument: function GetRuntimeDocument() {
+                return model.BuildRuntimeDocument(state.document);
+            },
+            RefreshLiveData: RefreshLiveData,
+            RefreshEditorShell: RefreshEditorShell,
+            SetTheme: ApplyTheme
+        };
     }
 
     document.addEventListener("DOMContentLoaded", function OnDomReadyEvent() {
+        const stored_theme = ReadStorage(STORAGE_THEME);
+        ApplyTheme(stored_theme);
+        LoadLayout();
+        LoadInspectorGroups();
+        BindLiveRefresh();
+        ExposeExternalApi();
         BindToolbar();
+        RefreshLiveData();
         Render();
     });
 })();

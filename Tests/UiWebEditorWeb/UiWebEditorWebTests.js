@@ -18,6 +18,16 @@ function LoadHtmlShell() {
     return fs.readFileSync(html_path, "utf8");
 }
 
+function LoadAppScript() {
+    const app_path = path.resolve(__dirname, "../../Tools/UiWebEditorWeb/App.js");
+    return fs.readFileSync(app_path, "utf8");
+}
+
+function LoadStyleSheet() {
+    const style_path = path.resolve(__dirname, "../../Tools/UiWebEditorWeb/Style.css");
+    return fs.readFileSync(style_path, "utf8");
+}
+
 function AssertClose(actual, expected) {
     const delta = Math.abs(actual - expected);
     assert.ok(delta <= 0.000001, String(actual) + " should equal " + String(expected));
@@ -434,6 +444,36 @@ function TestHtmlShellReferencesStaticAssets() {
     assert.ok(html.includes("add-slider-button"));
     assert.ok(html.includes("inspector-panel"));
     assert.ok(html.includes("validation-panel"));
+    assert.ok(html.includes("theme-toggle-button"));
+    assert.ok(html.includes("live-refresh-button"));
+    assert.ok(html.includes("left-pane-resizer"));
+    assert.ok(html.includes("right-pane-resizer"));
+    assert.ok(html.includes("runtime-pane-resizer"));
+}
+
+function TestAppScriptContainsLiveUxHooks() {
+    const app = LoadAppScript();
+    assert.ok(app.includes("STORAGE_THEME"));
+    assert.ok(app.includes("STORAGE_LAYOUT"));
+    assert.ok(app.includes("STORAGE_GROUPS"));
+    assert.ok(app.includes("STORAGE_LIVE_DRAFT"));
+    assert.ok(app.includes("RefreshLiveData"));
+    assert.ok(app.includes("RefreshStyleSheets"));
+    assert.ok(app.includes("RefreshEditorShell"));
+    assert.ok(app.includes("visibilitychange"));
+    assert.ok(app.includes("BroadcastChannel"));
+    assert.ok(app.includes("YuUiWebEditorApplyDocument"));
+}
+
+function TestStyleSheetContainsLiveUxRules() {
+    const style = LoadStyleSheet();
+    assert.ok(style.includes("body[data-theme=\"dark\"]"));
+    assert.ok(style.includes("--left-pane-width"));
+    assert.ok(style.includes("--right-pane-width"));
+    assert.ok(style.includes("--runtime-pane-height"));
+    assert.ok(style.includes(".layout-resizer"));
+    assert.ok(style.includes(".runtime-resizer"));
+    assert.ok(style.includes(".inspector-group"));
 }
 
 function RunTests() {
@@ -460,7 +500,9 @@ function RunTests() {
         { name: "UiWebEditorWeb_LegacyTextMigratesToTypedTextRecord", run: TestLegacyTextMigratesToTypedTextRecord },
         { name: "UiWebEditorWeb_BacklogComponentReportsNeedsNativeRuntime", run: TestBacklogComponentReportsNeedsNativeRuntime },
         { name: "UiWebEditorWeb_SampleFixtureValidates", run: TestSampleFixtureValidates },
-        { name: "UiWebEditorWeb_HtmlShellReferencesStaticAssets", run: TestHtmlShellReferencesStaticAssets }
+        { name: "UiWebEditorWeb_HtmlShellReferencesStaticAssets", run: TestHtmlShellReferencesStaticAssets },
+        { name: "UiWebEditorWeb_AppScriptContainsLiveUxHooks", run: TestAppScriptContainsLiveUxHooks },
+        { name: "UiWebEditorWeb_StyleSheetContainsLiveUxRules", run: TestStyleSheetContainsLiveUxRules }
     ];
 
     tests.forEach(function RunTest(test) {

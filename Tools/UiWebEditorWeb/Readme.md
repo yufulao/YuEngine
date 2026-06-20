@@ -50,6 +50,37 @@ adapter path and write RectTransform offsets back into the document.
 Runtime export includes RectTransform data and strips editor-only viewport,
 selection, state preview, canvas overlay, and browser preview state.
 
+## Editor UX State
+
+The browser shell keeps editor-only interaction preferences outside runtime
+data:
+
+- Light or dark theme preference.
+- Left, right, and runtime data pane sizes.
+- Inspector group collapsed state.
+- Live draft handoff data for another tab or automation script.
+
+These values are stored in browser storage and are not exported by
+`Export Runtime`.
+
+For automation or AI-assisted iteration, an already-open page can receive new
+data without a full page refresh through:
+
+```javascript
+window.YuUiWebEditorApplyDocument(nextDocument);
+```
+
+The page also refreshes live draft data on focus, visibility changes, storage
+events, and BroadcastChannel messages. When using a local static server, a JSON
+document can be watched with a query string:
+
+```text
+http://127.0.0.1:8080/Index.html?src=Samples/GenericUiLayout.json
+```
+
+On focus or `Refresh Data`, stylesheet links are cache-busted so CSS edits can
+be previewed without manually reloading the page.
+
 ## Component Records
 
 Runtime-facing node content lives in `components`, not loose `node.text`

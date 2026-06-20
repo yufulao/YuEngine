@@ -24,6 +24,8 @@
                 <button id="save-draft-button" type="button">Save Draft</button>
                 <button id="export-runtime-button" type="button">Export Runtime</button>
                 <button id="runtime-json-toggle-button" type="button" aria-expanded="false">Runtime JSON</button>
+                <button id="theme-toggle-button" type="button" aria-pressed="false">Dark</button>
+                <button id="live-refresh-button" type="button">Refresh Data</button>
                 <button id="validate-button" type="button">Validate</button>
                 <input id="file-input" class="hidden-input" type="file" accept="application/json,.json">
             </nav>
@@ -35,7 +37,7 @@
             </div>
         </header>
 
-        <main class="workspace">
+        <main id="workspace" class="workspace">
             <aside class="left-pane" aria-label="Hierarchy and template panel">
                 <section class="panel">
                     <div class="panel-header">
@@ -60,6 +62,8 @@
                 </section>
             </aside>
 
+            <div id="left-pane-resizer" class="layout-resizer" role="separator" aria-label="Resize hierarchy pane" aria-orientation="vertical" tabindex="0"></div>
+
             <section id="center-pane" class="center-pane" aria-label="Canvas and data view" data-runtime-open="false">
                 <div class="canvas-frame">
                     <div class="canvas-toolbar" aria-label="Canvas view controls">
@@ -78,6 +82,7 @@
                         <div id="canvas-surface" class="canvas-surface" aria-label="Layout canvas"></div>
                     </div>
                 </div>
+                <div id="runtime-pane-resizer" class="runtime-resizer" role="separator" aria-label="Resize runtime data pane" aria-orientation="horizontal" tabindex="0"></div>
                 <section id="runtime-data-panel" class="panel data-panel" data-open="false">
                     <div class="panel-header">
                         <h2>Runtime Data</h2>
@@ -86,6 +91,8 @@
                     <pre id="json-preview" class="json-preview"></pre>
                 </section>
             </section>
+
+            <div id="right-pane-resizer" class="layout-resizer" role="separator" aria-label="Resize inspector pane" aria-orientation="vertical" tabindex="0"></div>
 
             <aside class="right-pane" aria-label="Inspector and validation panel">
                 <section class="panel">

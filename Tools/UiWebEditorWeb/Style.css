@@ -3,6 +3,9 @@
 
 :root {
     color-scheme: light;
+    --left-pane-width: 300px;
+    --right-pane-width: 340px;
+    --runtime-pane-height: 240px;
     --background: #f5f6f8;
     --surface: #ffffff;
     --surface-muted: #eef1f5;
@@ -10,12 +13,57 @@
     --text: #14171f;
     --text-muted: #657084;
     --border: #d9dee7;
+    --border-hover: #b6c0ce;
     --accent: #2563eb;
     --accent-muted: #dbeafe;
+    --accent-text: #0f3d99;
     --success: #16803c;
     --danger: #b42318;
     --warning: #a16207;
+    --brand-background: #111827;
+    --brand-text: #ffffff;
+    --canvas-workbench-background: #eef2f7;
+    --canvas-workbench-grid: #d7dde8;
+    --canvas-surface-background: #ffffff;
+    --canvas-surface-grid: #e8ecf3;
+    --canvas-border: #c4cad4;
+    --canvas-node-background: rgba(255, 255, 255, 0.92);
+    --canvas-node-border: #94a3b8;
+    --issue-background: #fff7ed;
+    --issue-border: #fed7aa;
+    --focus-ring: rgba(37, 99, 235, 0.35);
     --shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+body[data-theme="dark"] {
+    color-scheme: dark;
+    --background: #17191d;
+    --surface: #22252b;
+    --surface-muted: #2b2f36;
+    --surface-strong: #343943;
+    --text: #eceff4;
+    --text-muted: #aeb6c4;
+    --border: #414753;
+    --border-hover: #566071;
+    --accent: #65a7ff;
+    --accent-muted: #203a5e;
+    --accent-text: #d8e9ff;
+    --success: #6ed28a;
+    --danger: #ff8a80;
+    --warning: #f0c36a;
+    --brand-background: #e5e7eb;
+    --brand-text: #17191d;
+    --canvas-workbench-background: #1f2329;
+    --canvas-workbench-grid: #303642;
+    --canvas-surface-background: #242932;
+    --canvas-surface-grid: #343b47;
+    --canvas-border: #4c5565;
+    --canvas-node-background: rgba(34, 37, 43, 0.94);
+    --canvas-node-border: #6b7483;
+    --issue-background: #3c2d1e;
+    --issue-border: #7b5a31;
+    --focus-ring: rgba(101, 167, 255, 0.38);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
 }
 
 * {
@@ -54,14 +102,14 @@ button {
 }
 
 button:hover {
-    border-color: #b6c0ce;
+    border-color: var(--border-hover);
     background: var(--surface-muted);
 }
 
 button:focus-visible,
 input:focus-visible,
 select:focus-visible {
-    outline: 2px solid rgba(37, 99, 235, 0.35);
+    outline: 2px solid var(--focus-ring);
     outline-offset: 1px;
 }
 
@@ -96,8 +144,8 @@ select:focus-visible {
     align-items: center;
     justify-content: center;
     border-radius: 6px;
-    background: #111827;
-    color: #ffffff;
+    background: var(--brand-background);
+    color: var(--brand-text);
     font-weight: 700;
 }
 
@@ -151,8 +199,8 @@ select:focus-visible {
 
 .workspace {
     display: grid;
-    grid-template-columns: 300px minmax(640px, 1fr) 340px;
-    gap: 10px;
+    grid-template-columns: minmax(220px, var(--left-pane-width)) 6px minmax(420px, 1fr) 6px minmax(260px, var(--right-pane-width));
+    gap: 0;
     min-height: 0;
     flex: 1;
     padding: 10px;
@@ -172,15 +220,78 @@ select:focus-visible {
     overflow: hidden;
 }
 
+.left-pane {
+    padding-right: 5px;
+}
+
+.right-pane {
+    padding-left: 5px;
+}
+
 .center-pane {
     display: grid;
-    grid-template-rows: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 0 minmax(0, 0);
     gap: 10px;
     overflow: hidden;
+    padding: 0 5px;
 }
 
 .center-pane[data-runtime-open="true"] {
-    grid-template-rows: minmax(360px, 1fr) minmax(160px, 240px);
+    grid-template-rows: minmax(260px, 1fr) 6px minmax(140px, var(--runtime-pane-height));
+}
+
+.layout-resizer,
+.runtime-resizer {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    border: 0;
+    background: transparent;
+}
+
+.layout-resizer {
+    cursor: col-resize;
+}
+
+.runtime-resizer {
+    display: none;
+    cursor: row-resize;
+}
+
+.center-pane[data-runtime-open="true"] .runtime-resizer {
+    display: block;
+}
+
+.layout-resizer::before,
+.runtime-resizer::before {
+    position: absolute;
+    border-radius: 999px;
+    background: var(--border);
+    content: "";
+    transition: background-color 120ms ease;
+}
+
+.layout-resizer::before {
+    top: 6px;
+    bottom: 6px;
+    left: 2px;
+    width: 2px;
+}
+
+.runtime-resizer::before {
+    top: 2px;
+    right: 6px;
+    left: 6px;
+    height: 2px;
+}
+
+.layout-resizer:hover::before,
+.layout-resizer:focus-visible::before,
+.runtime-resizer:hover::before,
+.runtime-resizer:focus-visible::before,
+body[data-resizing="true"] .layout-resizer::before,
+body[data-resizing="true"] .runtime-resizer::before {
+    background: var(--accent);
 }
 
 .panel {
@@ -245,7 +356,7 @@ select:focus-visible {
 
 .tree-row[data-selected="true"] {
     background: var(--accent-muted);
-    color: #0f3d99;
+    color: var(--accent-text);
 }
 
 .tree-row[data-drop-mode="Before"]::before,
@@ -268,7 +379,7 @@ select:focus-visible {
 }
 
 .tree-row[data-drop-mode="Inside"] {
-    outline: 2px solid rgba(37, 99, 235, 0.36);
+    outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
 }
 
@@ -353,9 +464,9 @@ select:focus-visible {
     overflow: auto;
     padding: 24px;
     background:
-        linear-gradient(#d7dde8 1px, transparent 1px),
-        linear-gradient(90deg, #d7dde8 1px, transparent 1px),
-        #eef2f7;
+        linear-gradient(var(--canvas-workbench-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--canvas-workbench-grid) 1px, transparent 1px),
+        var(--canvas-workbench-background);
     background-size: 32px 32px;
 }
 
@@ -364,12 +475,12 @@ select:focus-visible {
     width: 960px;
     height: 540px;
     flex: 0 0 auto;
-    border: 1px solid #c4cad4;
+    border: 1px solid var(--canvas-border);
     border-radius: 8px;
     background:
-        linear-gradient(#e8ecf3 1px, transparent 1px),
-        linear-gradient(90deg, #e8ecf3 1px, transparent 1px),
-        #ffffff;
+        linear-gradient(var(--canvas-surface-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--canvas-surface-grid) 1px, transparent 1px),
+        var(--canvas-surface-background);
     background-size: 24px 24px;
 }
 
@@ -382,16 +493,16 @@ select:focus-visible {
     justify-content: center;
     gap: 2px;
     overflow: hidden;
-    border: 1px solid #94a3b8;
+    border: 1px solid var(--canvas-node-border);
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.92);
+    background: var(--canvas-node-background);
     padding: 6px 8px;
     text-align: left;
 }
 
 .canvas-node[data-selected="true"] {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
+    box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .canvas-node[data-enabled="false"] {
@@ -448,7 +559,7 @@ select:focus-visible {
     margin: 0;
     overflow: auto;
     padding: 10px;
-    color: #1f2937;
+    color: var(--text);
     font-family: Consolas, "Courier New", monospace;
     font-size: 12px;
     line-height: 1.45;
@@ -468,6 +579,49 @@ select:focus-visible {
     font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
+}
+
+.inspector-group {
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface);
+    overflow: hidden;
+}
+
+.inspector-group-title {
+    display: flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 9px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    list-style: none;
+    text-transform: uppercase;
+}
+
+.inspector-group-title::-webkit-details-marker {
+    display: none;
+}
+
+.inspector-group-title::after {
+    color: var(--text-muted);
+    content: "+";
+    font-size: 15px;
+    line-height: 1;
+}
+
+.inspector-group[open] > .inspector-group-title::after {
+    content: "-";
+}
+
+.inspector-group-body {
+    padding: 8px 9px 2px;
+    border-top: 1px solid var(--border);
 }
 
 .field-grid {
@@ -542,9 +696,9 @@ select:focus-visible {
 
 .issue-row {
     grid-template-columns: minmax(96px, 120px) minmax(0, 1fr) 68px;
-    border: 1px solid #fed7aa;
+    border: 1px solid var(--issue-border);
     border-radius: 6px;
-    background: #fff7ed;
+    background: var(--issue-background);
     padding: 8px;
     color: var(--warning);
 }
@@ -583,11 +737,22 @@ select:focus-visible {
 
     .workspace {
         grid-template-columns: 1fr;
+        gap: 10px;
     }
 
     .left-pane,
     .right-pane {
         overflow: visible;
+        padding: 0;
+    }
+
+    .center-pane {
+        padding: 0;
+    }
+
+    .layout-resizer,
+    .runtime-resizer {
+        display: none;
     }
 
     .center-pane {
