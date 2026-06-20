@@ -20,11 +20,11 @@ Included:
 
 Excluded:
 
-- `UI-S3-001+` Project UI Runtime and YuFramework migration.
-- `UI-E2` and `UI-E3` editor backlog work.
-- Dear ImGui runtime/editor backend import.
+- `UI-S3-001+` UIManager runtime framework.
+- Web Editor backlog work.
+- native editor runtime/backend import.
 - RHI, D3D11, RenderCore, or backend handles in `Src/YuEngine/UiCore`.
-- Gameplay window migration and project-specific UI lifecycle policy.
+- game-specific window work and UIManager lifecycle policy.
 
 ## 2. Acceptance Mapping
 

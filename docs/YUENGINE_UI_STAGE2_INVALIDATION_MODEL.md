@@ -8,7 +8,7 @@ the cache counter evidence required by `UI-S2-002`.
 The first slice stays inside backend-independent `YuUiCore`.
 
 It does not introduce component widgets, atlas ownership, batching policy,
-RenderCore, RHI, D3D11, Dear ImGui, project UI runtime, or editor lifecycle
+RenderCore, RHI, D3D11, UIManager runtime, or editor lifecycle
 dependencies.
 
 ## Invalidation Rules

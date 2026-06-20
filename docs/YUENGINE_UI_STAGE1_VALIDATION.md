@@ -18,9 +18,9 @@ Included:
 Excluded:
 
 - Stage2 Text/Image/Button/Slider/GridView component implementation.
-- Project UI Runtime lifecycle/config/window stack.
-- UI Editor runtime preview.
-- Dear ImGui runtime import.
+- UIManager runtime lifecycle/config/window stack.
+- Web Editor runtime preview protocol.
+- native editor runtime import.
 - RHI, D3D11, or backend handles in `Src/YuEngine/UiCore`.
 
 ## 2. Acceptance Mapping
