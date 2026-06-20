@@ -1,0 +1,86 @@
+{
+  "schema": "YuEngine.UI.Layout",
+  "version": 1,
+  "layoutId": "UiComponentSmoke.ComponentWindow",
+  "rootNodeId": 1,
+  "nodes": [
+    {
+      "nodeId": 1,
+      "name": "Root",
+      "type": "Root",
+      "parentNodeId": 0,
+      "order": 0
+    },
+    {
+      "nodeId": 2,
+      "name": "ComponentWindow",
+      "type": "Window",
+      "parentNodeId": 1,
+      "order": 0
+    },
+    {
+      "nodeId": 3,
+      "name": "HeadlineText",
+      "type": "Text",
+      "parentNodeId": 2,
+      "order": 0
+    },
+    {
+      "nodeId": 4,
+      "name": "IconImage",
+      "type": "Image",
+      "parentNodeId": 2,
+      "order": 1
+    },
+    {
+      "nodeId": 5,
+      "name": "PrimaryButton",
+      "type": "Button",
+      "parentNodeId": 2,
+      "order": 2
+    },
+    {
+      "nodeId": 6,
+      "name": "PrimaryButtonImage",
+      "type": "Image",
+      "parentNodeId": 2,
+      "order": 3
+    },
+    {
+      "nodeId": 7,
+      "name": "PrimaryButtonText",
+      "type": "Text",
+      "parentNodeId": 2,
+      "order": 4
+    },
+    {
+      "nodeId": 8,
+      "name": "VolumeSliderTrack",
+      "type": "Slider",
+      "parentNodeId": 2,
+      "order": 5
+    },
+    {
+      "nodeId": 9,
+      "name": "VolumeSliderFill",
+      "type": "Image",
+      "parentNodeId": 2,
+      "order": 6
+    },
+    {
+      "nodeId": 10,
+      "name": "VolumeSliderHandle",
+      "type": "Image",
+      "parentNodeId": 2,
+      "order": 7
+    },
+    {
+      "nodeId": 11,
+      "name": "InventoryGridView",
+      "type": "GridView",
+      "parentNodeId": 2,
+      "order": 8
+    }
+  ],
+  "resources": []
+}
