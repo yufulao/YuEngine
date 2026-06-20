@@ -136,10 +136,11 @@ Mechanism constraints:
 does not route through RenderCore or RHI. The accepted Stage 2 evidence keeps the
 component model inside `YuUiCore` value records and focused test fixtures.
 
-The editor and project runtime remain future stages:
+Generic UIManager runtime and Web Editor work remain future stages:
 
-- Editor state preview belongs to `UI-E2-002`.
-- Component templates and performance panels belong to later editor backlog
-  items.
-- Project UI Runtime lifecycle, `BaseUI`, `UICtrlBase`, and YuFramework window
-  migration begin at `UI-S3-001+`.
+- UIManager runtime lifecycle, registry, layer, map, stack, args, and
+  cache/release policy begin at `UI-S3-001+`.
+- Web Editor work starts from schema, local editor service, frontend, and
+  preview protocol tasks.
+- Native app editors, immediate-mode editor fallbacks, and game-window migration
+  are out of scope.
