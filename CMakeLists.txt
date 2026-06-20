@@ -181,6 +181,7 @@ target_link_libraries(YuObject PUBLIC YuMemory)
 target_link_libraries(YuWorld PUBLIC YuObject)
 
 add_library(YuUiCore
+    Src/YuEngine/UiCore/Src/UiButtonComponent.cpp
     Src/YuEngine/UiCore/Src/UiDirtyTracker.cpp
     Src/YuEngine/UiCore/Src/UiDrawBatcher.cpp
     Src/YuEngine/UiCore/Src/UiDrawListBuilder.cpp
@@ -1622,6 +1623,17 @@ yuengine_add_labeled_test(UiCore_FontGlyphAtlas_SafePointBuildResolvesPrimaryGly
 yuengine_add_labeled_test(UiCore_FontGlyphAtlas_TextFixtureResolvesFallbackGlyph YuUiFontGlyphAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_FontGlyphAtlas_TextFixtureReportsMissingGlyph YuUiFontGlyphAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_FontGlyphAtlas_RejectsPaintPathPackAndDuplicateGlyph YuUiFontGlyphAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+
+add_executable(YuUiButtonComponentTests
+    Tests/UiCore/UiButtonComponentTests.cpp
+)
+yuengine_apply_compile_options(YuUiButtonComponentTests)
+target_link_libraries(YuUiButtonComponentTests PRIVATE YuUiCore)
+yuengine_add_labeled_test(UiCore_ButtonComponent_ResolvesStateVisuals YuUiButtonComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_ButtonComponent_PointerActivationEmitsHooks YuUiButtonComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_ButtonComponent_KeyboardGamepadActivationPathsAreExplicit YuUiButtonComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_ButtonComponent_StateDirtyDoesNotTriggerLayout YuUiButtonComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_ButtonComponent_RejectsInvalidDesc YuUiButtonComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 
 add_executable(YuUiImageComponentTests
     Tests/UiCore/UiImageComponentTests.cpp
