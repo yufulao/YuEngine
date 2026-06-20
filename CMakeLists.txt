@@ -290,6 +290,7 @@ target_link_libraries(YuUiRenderCoreBridge PUBLIC YuUiCore YuRenderCore)
 
 add_library(YuUiRuntime
     Src/YuEngine/UiRuntime/Src/BaseUiController.cpp
+    Src/YuEngine/UiRuntime/Src/UiPanelRegistry.cpp
 )
 yuengine_apply_compile_options(YuUiRuntime)
 target_include_directories(YuUiRuntime
@@ -1700,6 +1701,16 @@ yuengine_add_labeled_test(UiRuntime_BaseUiController_OpenClosePerActivation YuUi
 yuengine_add_labeled_test(UiRuntime_BaseUiController_DestroyClearsOnce YuUiRuntimeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRuntime_BaseUiController_CloseSelfThroughManager YuUiRuntimeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRuntime_BaseUiController_RejectsInvalidLifecycleCalls YuUiRuntimeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+
+add_executable(YuUiPanelRegistryTests
+    Tests/UiRuntime/UiPanelRegistryTests.cpp
+)
+yuengine_apply_compile_options(YuUiPanelRegistryTests)
+target_link_libraries(YuUiPanelRegistryTests PRIVATE YuUiRuntime)
+yuengine_add_labeled_test(UiRuntime_PanelRegistry_RegistersAndResolvesRefs YuUiPanelRegistryTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_PanelRegistry_RejectsDuplicateAndMissingPanels YuUiPanelRegistryTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_PanelRegistry_LoadsExplicitTestManifestAtomically YuUiPanelRegistryTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_PanelRegistry_ExportsManifestAsReadOnlyCopy YuUiPanelRegistryTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 
 add_executable(YuUiEditorTests
     Tests/UiEditor/UiEditorTests.cpp
