@@ -185,6 +185,7 @@ add_library(YuUiCore
     Src/YuEngine/UiCore/Src/UiDrawBatcher.cpp
     Src/YuEngine/UiCore/Src/UiDrawListBuilder.cpp
     Src/YuEngine/UiCore/Src/UiDynamicAtlasPacker.cpp
+    Src/YuEngine/UiCore/Src/UiGridViewSemantics.cpp
     Src/YuEngine/UiCore/Src/UiHitTestResolver.cpp
     Src/YuEngine/UiCore/Src/UiInvalidationModel.cpp
     Src/YuEngine/UiCore/Src/UiLayoutPass.cpp
@@ -1585,6 +1586,17 @@ yuengine_add_labeled_test(UiCore_DynamicAtlasPacker_SafePointPacksAndResolves Yu
 yuengine_add_labeled_test(UiCore_DynamicAtlasPacker_RejectsPaintPathPacking YuUiDynamicAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_DynamicAtlasPacker_ReportsOverflowWithoutMutation YuUiDynamicAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_DynamicAtlasPacker_RejectsSmallOutputAndInvalidRequest YuUiDynamicAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+
+add_executable(YuUiGridViewSemanticsTests
+    Tests/UiCore/UiGridViewSemanticsTests.cpp
+)
+yuengine_apply_compile_options(YuUiGridViewSemanticsTests)
+target_link_libraries(YuUiGridViewSemanticsTests PRIVATE YuUiCore)
+yuengine_add_labeled_test(UiCore_GridViewSemantics_GroupsCellsAndVisibleBufferRange YuUiGridViewSemanticsTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_GridViewSemantics_RejectsFullPoolAsNonVirtualized YuUiGridViewSemanticsTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_GridViewSemantics_BtnSelectionTouchesVisibleCellsOnly YuUiGridViewSemanticsTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_GridViewSemantics_ResolvesScrollToIndexTarget YuUiGridViewSemanticsTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_GridViewSemantics_RejectsInvalidAndSmallOutput YuUiGridViewSemanticsTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 
 add_executable(YuUiEditorTests
     Tests/UiEditor/UiEditorTests.cpp
