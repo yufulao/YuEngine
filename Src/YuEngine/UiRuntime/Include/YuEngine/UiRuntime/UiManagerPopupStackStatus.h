@@ -20,6 +20,7 @@ enum class UiManagerPopupStackStatus {
     InvalidOpenArgs,
     ControllerOpenFailed,
     ControllerCloseFailed,
+    ControllerReleaseFailed,
     CapacityExceeded,
     PanelMapRejected
 };

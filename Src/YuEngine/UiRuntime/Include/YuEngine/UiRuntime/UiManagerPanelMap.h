@@ -68,6 +68,13 @@ public:
     UiManagerPanelMapResult ClosePanel(UiPanelId panel_id);
 
     /**
+     * @comment 释放 loaded panel，并清理 loaded map 记录与 open 参数快照。
+     * @param panel_id 输入 panel id。
+     * @return 显式释放结果。
+     */
+    UiManagerPanelMapResult ReleasePanel(UiPanelId panel_id);
+
+    /**
      * @comment 解析 loaded panel 记录。
      * @param panel_id 输入 panel id。
      * @param out_record 输出 loaded panel 记录。
@@ -120,13 +127,16 @@ private:
     UiPanelOpenArgsSnapshot MakeOpenArgsSnapshot(const UiPanelOpenArgs &open_args) const;
     UiManagerPanelMapRecord *FindLoadedRecord(UiPanelId panel_id);
     const UiManagerPanelMapRecord *FindLoadedRecord(UiPanelId panel_id) const;
+    std::uint32_t FindLoadedRecordIndex(UiPanelId panel_id) const;
     std::uint32_t FindFreeRecordIndex() const;
     UiManagerPanelMapResult MakeResult(
         UiManagerPanelMapStatus status,
         const UiManagerPanelMapRecord &record,
         bool reused_loaded,
         bool already_active,
-        bool already_inactive) const;
+        bool already_inactive,
+        bool released_loaded=false,
+        bool released_active=false) const;
     UiManagerPanelMapStatus RecordFailure(UiManagerPanelMapStatus status);
     void RecordOpenArgsAccepted(const UiPanelOpenArgsSnapshot &open_args_snapshot, bool reused_loaded);
     void RecordSuccess();

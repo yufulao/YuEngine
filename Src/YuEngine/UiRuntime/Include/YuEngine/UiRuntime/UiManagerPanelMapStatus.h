@@ -17,6 +17,7 @@ enum class UiManagerPanelMapStatus {
     InvalidOpenArgs,
     ControllerOpenFailed,
     ControllerCloseFailed,
+    ControllerReleaseFailed,
     CapacityExceeded
 };
 }

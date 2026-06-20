@@ -157,6 +157,60 @@ UiManagerPanelMapResult UiManagerPanelMap::ClosePanel(UiPanelId panel_id) {
     return MakeResult(UiManagerPanelMapStatus::Success, *loaded_record, true, false, false);
 }
 
+UiManagerPanelMapResult UiManagerPanelMap::ReleasePanel(UiPanelId panel_id) {
+    if (!panel_id.IsValid()) {
+        return MakeResult(RecordFailure(UiManagerPanelMapStatus::InvalidPanelId), UiManagerPanelMapRecord{}, false, false, false);
+    }
+
+    const std::uint32_t record_index = FindLoadedRecordIndex(panel_id);
+    if (record_index >= snapshot_.panel_capacity) {
+        return MakeResult(RecordFailure(UiManagerPanelMapStatus::PanelNotLoaded), UiManagerPanelMapRecord{}, false, false, false);
+    }
+
+    UiManagerPanelMapRecord *loaded_record = &records_[record_index];
+    if (loaded_record->controller == nullptr) {
+        return MakeResult(RecordFailure(UiManagerPanelMapStatus::InvalidController), *loaded_record, false, false, false);
+    }
+
+    const bool was_active = loaded_record->active;
+    if (was_active) {
+        const BaseUiLifecycleStatus close_status = loaded_record->controller->Close();
+        if (close_status != BaseUiLifecycleStatus::Success) {
+            return MakeResult(RecordFailure(UiManagerPanelMapStatus::ControllerCloseFailed), *loaded_record, false, false, false);
+        }
+
+        loaded_record->active = false;
+        if (snapshot_.active_panel_count > 0U) {
+            --snapshot_.active_panel_count;
+        }
+    }
+
+    const BaseUiLifecycleStatus lifecycle_status = loaded_record->controller->Destroy();
+    if (lifecycle_status != BaseUiLifecycleStatus::Success) {
+        return MakeResult(RecordFailure(UiManagerPanelMapStatus::ControllerReleaseFailed), *loaded_record, false, false, !was_active);
+    }
+
+    if (snapshot_.loaded_panel_count > 0U) {
+        --snapshot_.loaded_panel_count;
+    }
+
+    records_[record_index] = UiManagerPanelMapRecord{};
+    ++snapshot_.release_operation_count;
+    if (was_active) {
+        ++snapshot_.release_active_operation_count;
+    }
+
+    RecordSuccess();
+    return MakeResult(
+        UiManagerPanelMapStatus::Success,
+        records_[record_index],
+        false,
+        false,
+        !was_active,
+        true,
+        was_active);
+}
+
 UiManagerPanelMapStatus UiManagerPanelMap::ResolveLoadedPanel(
     UiPanelId panel_id,
     UiManagerPanelMapRecord *out_record) const {
@@ -351,6 +405,24 @@ const UiManagerPanelMapRecord *UiManagerPanelMap::FindLoadedRecord(UiPanelId pan
     return nullptr;
 }
 
+std::uint32_t UiManagerPanelMap::FindLoadedRecordIndex(UiPanelId panel_id) const {
+    if (!panel_id.IsValid()) {
+        return MAX_UI_MANAGER_PANEL_MAP_RECORD_COUNT;
+    }
+
+    for (std::uint32_t index = 0U; index < snapshot_.panel_capacity; ++index) {
+        if (!records_[index].loaded) {
+            continue;
+        }
+
+        if (records_[index].panel_id.value == panel_id.value) {
+            return index;
+        }
+    }
+
+    return MAX_UI_MANAGER_PANEL_MAP_RECORD_COUNT;
+}
+
 std::uint32_t UiManagerPanelMap::FindFreeRecordIndex() const {
     for (std::uint32_t index = 0U; index < snapshot_.panel_capacity; ++index) {
         if (!records_[index].loaded) {
@@ -366,7 +438,9 @@ UiManagerPanelMapResult UiManagerPanelMap::MakeResult(
     const UiManagerPanelMapRecord &record,
     bool reused_loaded,
     bool already_active,
-    bool already_inactive) const {
+    bool already_inactive,
+    bool released_loaded,
+    bool released_active) const {
     UiManagerPanelMapResult result{};
     result.status = status;
     result.record = record;
@@ -376,6 +450,8 @@ UiManagerPanelMapResult UiManagerPanelMap::MakeResult(
     result.reused_loaded = reused_loaded;
     result.already_active = already_active;
     result.already_inactive = already_inactive;
+    result.released_loaded = released_loaded;
+    result.released_active = released_active;
     return result;
 }
 

@@ -19,6 +19,8 @@ struct UiManagerPanelMapResult final {
     bool reused_loaded = false;
     bool already_active = false;
     bool already_inactive = false;
+    bool released_loaded = false;
+    bool released_active = false;
 
     /**
      * @comment 检查 panel map 操作是否成功。

@@ -74,6 +74,14 @@ public:
     UiManagerPopupStackResult ClosePopupPanel(UiPanelId panel_id, UiManagerPanelMap *panel_map);
 
     /**
+     * @comment 释放 popup panel，并同步移除 stack 中的 panel id。
+     * @param panel_id 输入 panel id。
+     * @param panel_map 输入输出 panel map。
+     * @return 显式释放结果。
+     */
+    UiManagerPopupStackResult ReleasePopupPanel(UiPanelId panel_id, UiManagerPanelMap *panel_map);
+
+    /**
      * @comment 导出 popup 顺序，索引越大越靠近顶部。
      * @param output_panel_ids 输出 panel id。
      * @param output_capacity 输出容量。

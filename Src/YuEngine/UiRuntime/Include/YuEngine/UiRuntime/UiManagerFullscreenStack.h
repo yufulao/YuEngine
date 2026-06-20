@@ -82,6 +82,20 @@ public:
         UiManagerPanelMap *panel_map);
 
     /**
+     * @comment 释放 fullscreen panel，并在释放当前 fullscreen 时恢复前序 fullscreen。
+     * @param panel_id 输入 panel id。
+     * @param registry 输入 panel registry。
+     * @param layer_model 输入 layer model。
+     * @param panel_map 输入输出 panel map。
+     * @return 显式释放结果。
+     */
+    UiManagerFullscreenStackResult ReleaseFullscreenPanel(
+        UiPanelId panel_id,
+        const UiPanelRegistry &registry,
+        const UiManagerLayerModel &layer_model,
+        UiManagerPanelMap *panel_map);
+
+    /**
      * @comment 导出 fullscreen 顺序，索引越大越靠近当前 fullscreen。
      * @param output_panel_ids 输出 panel id。
      * @param output_capacity 输出容量。

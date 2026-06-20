@@ -21,6 +21,7 @@ enum class UiManagerFullscreenStackStatus {
     InvalidOpenArgs,
     ControllerOpenFailed,
     ControllerCloseFailed,
+    ControllerReleaseFailed,
     CapacityExceeded,
     PanelMapRejected
 };

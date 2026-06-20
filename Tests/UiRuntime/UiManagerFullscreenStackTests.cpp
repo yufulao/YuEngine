@@ -69,6 +69,8 @@ constexpr const char *TEST_DUPLICATE_OPEN =
     "UiRuntime_ManagerFullscreenStack_DuplicateOpenMovesExistingFullscreen";
 constexpr const char *TEST_REJECTS_STATUS =
     "UiRuntime_ManagerFullscreenStack_RejectsMissingNonFullscreenAndBackEmptyStatus";
+constexpr const char *TEST_RELEASE_RESTORES =
+    "UiRuntime_ManagerFullscreenStack_ReleaseRestoresPreviousFullscreen";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
@@ -685,6 +687,115 @@ int RunRejectsMissingNonFullscreenAndBackEmptyStatusTest() {
     return RequireStatus(result.status, UiManagerFullscreenStackStatus::PanelNotLoaded, "missing close status mismatch");
 }
 
+int RunReleaseRestoresPreviousFullscreenTest() {
+    UiPanelRegistry registry;
+    UiManagerLayerModel layer_model;
+    const std::array<std::uint32_t, 3U> panel_ids{1051U, 1052U, 1053U};
+    if (SetupFullscreenLayer(&registry, &layer_model, std::span<const std::uint32_t>(panel_ids.data(), panel_ids.size())) != 0) {
+        return 1;
+    }
+
+    UiManagerPanelMap panel_map;
+    UiManagerFullscreenStack fullscreen_stack;
+    TestPanelController first_controller;
+    TestPanelController second_controller;
+    TestPanelController third_controller;
+    if (!fullscreen_stack.OpenFullscreenPanel(PanelId(1051U), registry, layer_model, &panel_map, &first_controller).Succeeded()) {
+        return Fail("first fullscreen open failed");
+    }
+
+    if (!fullscreen_stack.OpenFullscreenPanel(PanelId(1052U), registry, layer_model, &panel_map, &second_controller).Succeeded()) {
+        return Fail("second fullscreen open failed");
+    }
+
+    if (!fullscreen_stack.OpenFullscreenPanel(PanelId(1053U), registry, layer_model, &panel_map, &third_controller).Succeeded()) {
+        return Fail("third fullscreen open failed");
+    }
+
+    UiManagerFullscreenStackResult result =
+        fullscreen_stack.ReleaseFullscreenPanel(PanelId(1052U), registry, layer_model, &panel_map);
+    if (RequireStatus(result.status, UiManagerFullscreenStackStatus::Success, "middle fullscreen release failed") != 0) {
+        return 1;
+    }
+
+    if (!result.closed_middle || !result.already_inactive || !result.removed_from_stack) {
+        return Fail("middle release flags mismatch");
+    }
+
+    const std::array<std::uint32_t, 2U> middle_expected_order{1051U, 1053U};
+    if (RequireFullscreenOrder(fullscreen_stack, std::span<const std::uint32_t>(middle_expected_order.data(), middle_expected_order.size()), "middle release order mismatch") != 0) {
+        return 1;
+    }
+
+    UiManagerPanelMapRecord loaded_record{};
+    UiManagerPanelMapStatus map_status = panel_map.ResolveLoadedPanel(PanelId(1052U), &loaded_record);
+    if (map_status != UiManagerPanelMapStatus::PanelNotLoaded) {
+        return Fail("middle release left loaded record");
+    }
+
+    result = fullscreen_stack.ReleaseFullscreenPanel(PanelId(1053U), registry, layer_model, &panel_map);
+    if (RequireStatus(result.status, UiManagerFullscreenStackStatus::Success, "current fullscreen release failed") != 0) {
+        return 1;
+    }
+
+    if (!result.closed_current || !result.restored_previous || result.restored_panel_id.value != 1051U) {
+        return Fail("current release restore flags mismatch");
+    }
+
+    const std::array<std::uint32_t, 1U> current_expected_order{1051U};
+    if (RequireFullscreenOrder(fullscreen_stack, std::span<const std::uint32_t>(current_expected_order.data(), current_expected_order.size()), "current release order mismatch") != 0) {
+        return 1;
+    }
+
+    if (RequireActiveFullscreen(panel_map, 1051U, 960U, "release did not restore previous fullscreen") != 0) {
+        return 1;
+    }
+
+    map_status = panel_map.ResolveLoadedPanel(PanelId(1053U), &loaded_record);
+    if (map_status != UiManagerPanelMapStatus::PanelNotLoaded) {
+        return Fail("current release left loaded record");
+    }
+
+    const BaseUiLifecycleSnapshot second_snapshot = second_controller.Snapshot();
+    if (second_snapshot.clear_count != 1U || !second_snapshot.destroyed) {
+        return Fail("middle release lifecycle mismatch");
+    }
+
+    const BaseUiLifecycleSnapshot third_snapshot = third_controller.Snapshot();
+    if (third_snapshot.close_count != 1U ||
+        third_snapshot.clear_count != 1U ||
+        !third_snapshot.destroyed) {
+        return Fail("current release lifecycle mismatch");
+    }
+
+    const BaseUiLifecycleSnapshot first_snapshot = first_controller.Snapshot();
+    if (first_snapshot.open_count != 2U || first_snapshot.clear_count != 0U) {
+        return Fail("restored fullscreen lifecycle mismatch");
+    }
+
+    result = fullscreen_stack.ReleaseFullscreenPanel(PanelId(1052U), registry, layer_model, &panel_map);
+    if (RequireStatus(result.status, UiManagerFullscreenStackStatus::PanelNotLoaded, "duplicate fullscreen release status mismatch") != 0) {
+        return 1;
+    }
+
+    const UiManagerFullscreenStackSnapshot snapshot = fullscreen_stack.Snapshot();
+    if (snapshot.release_operation_count != 2U ||
+        snapshot.restore_operation_count != 1U ||
+        snapshot.rejected_operation_count != 1U) {
+        return Fail("fullscreen release counters mismatch");
+    }
+
+    const UiManagerPanelMapSnapshot panel_snapshot = panel_map.Snapshot();
+    if (panel_snapshot.loaded_panel_count != 1U ||
+        panel_snapshot.active_panel_count != 1U ||
+        panel_snapshot.release_operation_count != 2U ||
+        panel_snapshot.release_active_operation_count != 1U) {
+        return Fail("fullscreen release panel map counters mismatch");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view test_name) {
     if (test_name == TEST_OPEN_ORDER) {
         return RunOpenPushesFullscreenOrderTest();
@@ -704,6 +815,10 @@ int RunNamedTest(std::string_view test_name) {
 
     if (test_name == TEST_REJECTS_STATUS) {
         return RunRejectsMissingNonFullscreenAndBackEmptyStatusTest();
+    }
+
+    if (test_name == TEST_RELEASE_RESTORES) {
+        return RunReleaseRestoresPreviousFullscreenTest();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

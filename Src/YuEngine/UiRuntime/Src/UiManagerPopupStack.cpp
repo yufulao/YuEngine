@@ -352,6 +352,108 @@ UiManagerPopupStackResult UiManagerPopupStack::ClosePopupPanel(
         true);
 }
 
+UiManagerPopupStackResult UiManagerPopupStack::ReleasePopupPanel(
+    UiPanelId panel_id,
+    UiManagerPanelMap *panel_map) {
+    if (!panel_id.IsValid()) {
+        return MakeResult(
+            RecordFailure(UiManagerPopupStackStatus::InvalidPanelId),
+            UiManagerPanelMapStatus::Success,
+            UiManagerPanelMapRecord{},
+            panel_id,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false);
+    }
+
+    if (panel_map == nullptr) {
+        return MakeResult(
+            RecordFailure(UiManagerPopupStackStatus::InvalidPanelMap),
+            UiManagerPanelMapStatus::Success,
+            UiManagerPanelMapRecord{},
+            panel_id,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false);
+    }
+
+    UiManagerPanelMapRecord record{};
+    UiManagerPanelMapStatus panel_map_status = UiManagerPanelMapStatus::Success;
+    const UiManagerPopupStackStatus loaded_status =
+        ResolveLoadedPopupRecord(panel_id, *panel_map, &record, &panel_map_status);
+    if (loaded_status != UiManagerPopupStackStatus::Success) {
+        return MakeResult(
+            RecordFailure(loaded_status),
+            panel_map_status,
+            record,
+            panel_id,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false);
+    }
+
+    const std::uint32_t stack_index = FindStackIndex(panel_id);
+    if (record.active && stack_index >= snapshot_.popup_count) {
+        return MakeResult(
+            RecordFailure(UiManagerPopupStackStatus::PopupNotInStack),
+            panel_map_status,
+            record,
+            panel_id,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false);
+    }
+
+    const bool already_in_stack = stack_index < snapshot_.popup_count;
+    const UiManagerPanelMapResult panel_result = panel_map->ReleasePanel(panel_id);
+    if (!panel_result.Succeeded()) {
+        const UiManagerPopupStackStatus status = TranslatePanelMapStatus(panel_result.status);
+        return MakeResult(
+            RecordFailure(status),
+            panel_result.status,
+            panel_result.record,
+            panel_id,
+            false,
+            false,
+            false,
+            already_in_stack,
+            !record.active,
+            false);
+    }
+
+    bool removed_from_stack = false;
+    if (already_in_stack) {
+        RemovePopupAt(stack_index);
+        removed_from_stack = true;
+    }
+
+    ++snapshot_.release_operation_count;
+    RecordSuccess();
+    return MakeResult(
+        UiManagerPopupStackStatus::Success,
+        panel_result.status,
+        panel_result.record,
+        panel_id,
+        false,
+        false,
+        false,
+        already_in_stack,
+        panel_result.already_inactive,
+        removed_from_stack);
+}
+
 UiManagerPopupStackStatus UiManagerPopupStack::ExportPopupOrder(
     UiPanelId *output_panel_ids,
     std::uint32_t output_capacity) const {
@@ -560,6 +662,10 @@ UiManagerPopupStackStatus UiManagerPopupStack::TranslatePanelMapStatus(UiManager
 
     if (status == UiManagerPanelMapStatus::ControllerCloseFailed) {
         return UiManagerPopupStackStatus::ControllerCloseFailed;
+    }
+
+    if (status == UiManagerPanelMapStatus::ControllerReleaseFailed) {
+        return UiManagerPopupStackStatus::ControllerReleaseFailed;
     }
 
     if (status == UiManagerPanelMapStatus::CapacityExceeded) {

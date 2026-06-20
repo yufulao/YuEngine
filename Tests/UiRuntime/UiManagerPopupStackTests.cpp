@@ -69,6 +69,8 @@ constexpr const char *TEST_DUPLICATE_OPEN =
     "UiRuntime_ManagerPopupStack_DuplicateOpenMovesExistingPopup";
 constexpr const char *TEST_REJECTS_STATUS =
     "UiRuntime_ManagerPopupStack_RejectsMissingNonPopupAndUntrackedStatus";
+constexpr const char *TEST_RELEASE_REMOVES =
+    "UiRuntime_ManagerPopupStack_ReleaseRemovesPopupAndPanelCache";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
@@ -599,6 +601,87 @@ int RunRejectsMissingNonPopupAndUntrackedStatusTest() {
     return RequireStatus(result.status, UiManagerPopupStackStatus::PanelNotLoaded, "missing close status mismatch");
 }
 
+int RunReleaseRemovesPopupAndPanelCacheTest() {
+    UiPanelRegistry registry;
+    UiManagerLayerModel layer_model;
+    const std::array<std::uint32_t, 2U> panel_ids{951U, 952U};
+    if (SetupPopupLayer(&registry, &layer_model, std::span<const std::uint32_t>(panel_ids.data(), panel_ids.size())) != 0) {
+        return 1;
+    }
+
+    UiManagerPanelMap panel_map;
+    UiManagerPopupStack popup_stack;
+    TestPanelController first_controller;
+    TestPanelController second_controller;
+    if (!popup_stack.OpenPopupPanel(PanelId(951U), registry, layer_model, &panel_map, &first_controller).Succeeded()) {
+        return Fail("first popup open failed");
+    }
+
+    if (!popup_stack.OpenPopupPanel(PanelId(952U), registry, layer_model, &panel_map, &second_controller).Succeeded()) {
+        return Fail("second popup open failed");
+    }
+
+    UiManagerPopupStackResult result = popup_stack.ReleasePopupPanel(PanelId(951U), &panel_map);
+    if (RequireStatus(result.status, UiManagerPopupStackStatus::Success, "first popup release failed") != 0) {
+        return 1;
+    }
+
+    if (!result.already_in_stack || !result.removed_from_stack || result.popup_count != 1U) {
+        return Fail("first popup release flags mismatch");
+    }
+
+    const std::array<std::uint32_t, 1U> expected_order{952U};
+    if (RequirePopupOrder(popup_stack, std::span<const std::uint32_t>(expected_order.data(), expected_order.size()), "release popup order mismatch") != 0) {
+        return 1;
+    }
+
+    UiManagerPanelMapRecord loaded_record{};
+    UiManagerPanelMapStatus map_status = panel_map.ResolveLoadedPanel(PanelId(951U), &loaded_record);
+    if (map_status != UiManagerPanelMapStatus::PanelNotLoaded) {
+        return Fail("released popup remained loaded");
+    }
+
+    if (!panel_map.IsActive(PanelId(952U)) || !popup_stack.IsPopupStacked(PanelId(952U))) {
+        return Fail("release changed remaining popup");
+    }
+
+    const BaseUiLifecycleSnapshot first_snapshot = first_controller.Snapshot();
+    if (first_snapshot.close_count != 1U ||
+        first_snapshot.clear_count != 1U ||
+        !first_snapshot.destroyed) {
+        return Fail("released popup lifecycle mismatch");
+    }
+
+    result = popup_stack.ReleasePopupPanel(PanelId(951U), &panel_map);
+    if (RequireStatus(result.status, UiManagerPopupStackStatus::PanelNotLoaded, "duplicate popup release status mismatch") != 0) {
+        return 1;
+    }
+
+    result = popup_stack.ReleasePopupPanel(PanelId(952U), &panel_map);
+    if (RequireStatus(result.status, UiManagerPopupStackStatus::Success, "second popup release failed") != 0) {
+        return 1;
+    }
+
+    if (result.popup_count != 0U || popup_stack.Snapshot().top_panel_id.IsValid()) {
+        return Fail("second popup release left stack state");
+    }
+
+    const UiManagerPopupStackSnapshot snapshot = popup_stack.Snapshot();
+    if (snapshot.release_operation_count != 2U ||
+        snapshot.rejected_operation_count != 1U) {
+        return Fail("popup release counters mismatch");
+    }
+
+    const UiManagerPanelMapSnapshot panel_snapshot = panel_map.Snapshot();
+    if (panel_snapshot.loaded_panel_count != 0U ||
+        panel_snapshot.active_panel_count != 0U ||
+        panel_snapshot.release_operation_count != 2U) {
+        return Fail("popup release panel map counters mismatch");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view test_name) {
     if (test_name == TEST_OPEN_ORDER) {
         return RunOpenPushesPopupOrderTest();
@@ -618,6 +701,10 @@ int RunNamedTest(std::string_view test_name) {
 
     if (test_name == TEST_REJECTS_STATUS) {
         return RunRejectsMissingNonPopupAndUntrackedStatusTest();
+    }
+
+    if (test_name == TEST_RELEASE_REMOVES) {
+        return RunReleaseRemovesPopupAndPanelCacheTest();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

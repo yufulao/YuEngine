@@ -547,6 +547,161 @@ UiManagerFullscreenStackResult UiManagerFullscreenStack::CloseFullscreenPanel(
         true);
 }
 
+UiManagerFullscreenStackResult UiManagerFullscreenStack::ReleaseFullscreenPanel(
+    UiPanelId panel_id,
+    const UiPanelRegistry &registry,
+    const UiManagerLayerModel &layer_model,
+    UiManagerPanelMap *panel_map) {
+    if (!panel_id.IsValid()) {
+        return MakeResult(
+            RecordFailure(UiManagerFullscreenStackStatus::InvalidPanelId),
+            UiManagerPanelMapStatus::Success,
+            UiManagerPanelMapRecord{},
+            panel_id,
+            UiPanelId{},
+            UiPanelId{},
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false);
+    }
+
+    if (panel_map == nullptr) {
+        return MakeResult(
+            RecordFailure(UiManagerFullscreenStackStatus::InvalidPanelMap),
+            UiManagerPanelMapStatus::Success,
+            UiManagerPanelMapRecord{},
+            panel_id,
+            UiPanelId{},
+            UiPanelId{},
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false);
+    }
+
+    UiManagerPanelMapRecord record{};
+    UiManagerPanelMapStatus panel_map_status = UiManagerPanelMapStatus::Success;
+    const UiManagerFullscreenStackStatus loaded_status =
+        ResolveLoadedFullscreenRecord(panel_id, *panel_map, &record, &panel_map_status);
+    if (loaded_status != UiManagerFullscreenStackStatus::Success) {
+        return MakeResult(
+            RecordFailure(loaded_status),
+            panel_map_status,
+            record,
+            panel_id,
+            UiPanelId{},
+            UiPanelId{},
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false);
+    }
+
+    const std::uint32_t stack_index = FindStackIndex(panel_id);
+    const bool already_in_stack = stack_index < snapshot_.fullscreen_count;
+    if (record.active && !already_in_stack) {
+        return MakeResult(
+            RecordFailure(UiManagerFullscreenStackStatus::FullscreenNotInStack),
+            panel_map_status,
+            record,
+            panel_id,
+            UiPanelId{},
+            UiPanelId{},
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false);
+    }
+
+    const bool releasing_current = already_in_stack && stack_index + 1U == snapshot_.fullscreen_count;
+    const UiManagerPanelMapResult panel_result = panel_map->ReleasePanel(panel_id);
+    if (!panel_result.Succeeded()) {
+        const UiManagerFullscreenStackStatus status = TranslatePanelMapStatus(panel_result.status);
+        return MakeResult(
+            RecordFailure(status),
+            panel_result.status,
+            panel_result.record,
+            panel_id,
+            panel_id,
+            UiPanelId{},
+            false,
+            false,
+            false,
+            false,
+            false,
+            already_in_stack,
+            !record.active,
+            false,
+            releasing_current,
+            already_in_stack && !releasing_current);
+    }
+
+    bool removed_from_stack = false;
+    if (already_in_stack) {
+        RemoveFullscreenAt(stack_index);
+        removed_from_stack = true;
+    }
+
+    ++snapshot_.release_operation_count;
+    if (releasing_current) {
+        return RestoreTopFullscreen(
+            registry,
+            layer_model,
+            panel_map,
+            panel_id,
+            panel_id,
+            panel_result.record,
+            false,
+            panel_result.already_inactive,
+            true,
+            false);
+    }
+
+    RecordSuccess();
+    return MakeResult(
+        UiManagerFullscreenStackStatus::Success,
+        panel_result.status,
+        panel_result.record,
+        panel_id,
+        panel_id,
+        snapshot_.top_panel_id,
+        false,
+        false,
+        false,
+        false,
+        false,
+        already_in_stack,
+        panel_result.already_inactive,
+        removed_from_stack,
+        false,
+        already_in_stack);
+}
+
 UiManagerFullscreenStackStatus UiManagerFullscreenStack::ExportFullscreenOrder(
     UiPanelId *output_panel_ids,
     std::uint32_t output_capacity) const {
@@ -729,6 +884,10 @@ UiManagerFullscreenStackStatus UiManagerFullscreenStack::TranslatePanelMapStatus
 
     if (status == UiManagerPanelMapStatus::ControllerCloseFailed) {
         return UiManagerFullscreenStackStatus::ControllerCloseFailed;
+    }
+
+    if (status == UiManagerPanelMapStatus::ControllerReleaseFailed) {
+        return UiManagerFullscreenStackStatus::ControllerReleaseFailed;
     }
 
     if (status == UiManagerPanelMapStatus::CapacityExceeded) {

@@ -19,6 +19,7 @@ struct UiManagerPopupStackSnapshot final {
     std::uint32_t open_operation_count = 0U;
     std::uint32_t bring_to_top_operation_count = 0U;
     std::uint32_t close_operation_count = 0U;
+    std::uint32_t release_operation_count = 0U;
     std::uint32_t idempotent_open_count = 0U;
     std::uint32_t idempotent_bring_to_top_count = 0U;
     std::uint32_t idempotent_close_count = 0U;

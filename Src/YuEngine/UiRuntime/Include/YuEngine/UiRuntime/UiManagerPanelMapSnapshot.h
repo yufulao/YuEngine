@@ -15,6 +15,8 @@ struct UiManagerPanelMapSnapshot final {
     std::uint32_t active_panel_count = 0U;
     std::uint32_t open_operation_count = 0U;
     std::uint32_t close_operation_count = 0U;
+    std::uint32_t release_operation_count = 0U;
+    std::uint32_t release_active_operation_count = 0U;
     std::uint32_t reused_loaded_count = 0U;
     std::uint32_t idempotent_open_count = 0U;
     std::uint32_t idempotent_close_count = 0U;

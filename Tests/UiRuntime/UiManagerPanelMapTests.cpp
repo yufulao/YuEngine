@@ -23,6 +23,8 @@
 #include "YuEngine/UiRuntime/UiManagerPanelMapStatus.h"
 #include "YuEngine/UiRuntime/UiPanelId.h"
 #include "YuEngine/UiRuntime/UiPanelManifestRecord.h"
+#include "YuEngine/UiRuntime/UiPanelOpenArgs.h"
+#include "YuEngine/UiRuntime/UiPanelOpenArgsSnapshot.h"
 #include "YuEngine/UiRuntime/UiPanelRegistry.h"
 #include "YuEngine/UiRuntime/UiPanelRegistryResult.h"
 
@@ -46,6 +48,8 @@ using yuengine::uiruntime::UiPanelControllerRef;
 using yuengine::uiruntime::UiPanelId;
 using yuengine::uiruntime::UiPanelLayoutRef;
 using yuengine::uiruntime::UiPanelManifestRecord;
+using yuengine::uiruntime::UiPanelOpenArgs;
+using yuengine::uiruntime::UiPanelOpenArgsSnapshot;
 using yuengine::uiruntime::UiPanelRegistry;
 using yuengine::uiruntime::UiPanelRegistryResult;
 using yuengine::uiruntime::UiPanelResourceRef;
@@ -59,6 +63,10 @@ constexpr const char *TEST_DUPLICATE_IDEMPOTENT =
     "UiRuntime_ManagerPanelMap_DuplicateOpenCloseAreIdempotent";
 constexpr const char *TEST_RESOLVE_ROOTS =
     "UiRuntime_ManagerPanelMap_ResolvesLoadedAndActiveLayerRoots";
+constexpr const char *TEST_RELEASE_CLEARS =
+    "UiRuntime_ManagerPanelMap_ReleaseClearsLoadedControllerAndArgs";
+constexpr const char *TEST_RELEASE_ACTIVE_REOPEN =
+    "UiRuntime_ManagerPanelMap_ReleaseActiveAndReopenUsesNewLifecycle";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 
@@ -159,6 +167,14 @@ UiManagerPanelLayerBinding PanelBinding(std::uint32_t panel_id, std::uint32_t la
     return binding;
 }
 
+UiPanelOpenArgs OpenArgs(std::uint32_t request_key, std::span<const std::uint32_t> values) {
+    UiPanelOpenArgs args{};
+    args.request_key = request_key;
+    args.values = values.data();
+    args.value_count = static_cast<std::uint32_t>(values.size());
+    return args;
+}
+
 int RequireStatus(
     UiManagerPanelMapStatus actual,
     UiManagerPanelMapStatus expected,
@@ -212,6 +228,16 @@ int RequireSnapshotCounts(
     }
 
     return Fail(message);
+}
+
+int RequireEmptyOpenArgs(
+    const UiPanelOpenArgsSnapshot &snapshot,
+    std::string_view message) {
+    if (snapshot.request_key != 0U || snapshot.value_count != 0U || snapshot.has_args) {
+        return Fail(message);
+    }
+
+    return 0;
 }
 
 int RunOpenCloseReopenRetainsLoadedControllerTest() {
@@ -416,6 +442,143 @@ int RunResolvesLoadedAndActiveLayerRootsTest() {
     return RequireStatus(status, UiManagerPanelMapStatus::PanelNotActive, "inactive active resolve status mismatch");
 }
 
+int RunReleaseClearsLoadedControllerAndArgsTest() {
+    UiPanelRegistry registry;
+    UiManagerLayerModel layer_model;
+    if (RegisterPanelAndLayer(&registry, &layer_model, 811U, 15U, 905U) != 0) {
+        return 1;
+    }
+
+    UiManagerPanelMap panel_map;
+    TestPanelController controller;
+    std::array<std::uint32_t, 2U> values{31U, 37U};
+    const std::span<const std::uint32_t> value_span(values.data(), values.size());
+    const UiPanelOpenArgs open_args = OpenArgs(9101U, value_span);
+    UiManagerPanelMapResult result =
+        panel_map.OpenPanelWithArgs(PanelId(811U), registry, layer_model, &controller, open_args);
+    if (!result.Succeeded()) {
+        return Fail("open with args failed");
+    }
+
+    result = panel_map.ClosePanel(PanelId(811U));
+    if (!result.Succeeded()) {
+        return Fail("close before release failed");
+    }
+
+    result = panel_map.ReleasePanel(PanelId(811U));
+    if (RequireStatus(result.status, UiManagerPanelMapStatus::Success, "release failed") != 0) {
+        return 1;
+    }
+
+    if (!result.released_loaded || result.released_active || !result.already_inactive) {
+        return Fail("release result flags mismatch");
+    }
+
+    if (result.record.loaded || result.record.active || result.record.controller != nullptr) {
+        return Fail("release result did not clear record");
+    }
+
+    if (RequireEmptyOpenArgs(result.open_args, "release result args not cleared") != 0) {
+        return 1;
+    }
+
+    UiManagerPanelMapRecord loaded_record{};
+    const UiManagerPanelMapStatus loaded_status =
+        panel_map.ResolveLoadedPanel(PanelId(811U), &loaded_record);
+    if (RequireStatus(loaded_status, UiManagerPanelMapStatus::PanelNotLoaded, "released panel still loaded") != 0) {
+        return 1;
+    }
+
+    const BaseUiLifecycleSnapshot controller_snapshot = controller.Snapshot();
+    if (controller_snapshot.open_count != 1U ||
+        controller_snapshot.close_count != 1U ||
+        controller_snapshot.clear_count != 1U ||
+        !controller_snapshot.destroyed) {
+        return Fail("release lifecycle snapshot mismatch");
+    }
+
+    const UiManagerPanelMapSnapshot snapshot = panel_map.Snapshot();
+    if (snapshot.release_operation_count != 1U ||
+        snapshot.release_active_operation_count != 0U ||
+        snapshot.loaded_panel_count != 0U ||
+        snapshot.active_panel_count != 0U) {
+        return Fail("release snapshot counters mismatch");
+    }
+
+    return 0;
+}
+
+int RunReleaseActiveAndReopenUsesNewLifecycleTest() {
+    UiPanelRegistry registry;
+    UiManagerLayerModel layer_model;
+    if (RegisterPanelAndLayer(&registry, &layer_model, 812U, 16U, 906U) != 0) {
+        return 1;
+    }
+
+    UiManagerPanelMap panel_map;
+    TestPanelController first_controller;
+    UiManagerPanelMapResult result =
+        panel_map.OpenPanel(PanelId(812U), registry, layer_model, &first_controller);
+    if (!result.Succeeded()) {
+        return Fail("first open failed");
+    }
+
+    result = panel_map.ReleasePanel(PanelId(812U));
+    if (RequireStatus(result.status, UiManagerPanelMapStatus::Success, "active release failed") != 0) {
+        return 1;
+    }
+
+    if (!result.released_loaded || !result.released_active || result.already_inactive) {
+        return Fail("active release flags mismatch");
+    }
+
+    BaseUiLifecycleSnapshot controller_snapshot = first_controller.Snapshot();
+    if (controller_snapshot.open_count != 1U ||
+        controller_snapshot.close_count != 1U ||
+        controller_snapshot.clear_count != 1U ||
+        !controller_snapshot.destroyed) {
+        return Fail("active release lifecycle mismatch");
+    }
+
+    result = panel_map.ReleasePanel(PanelId(812U));
+    if (RequireStatus(result.status, UiManagerPanelMapStatus::PanelNotLoaded, "duplicate release status mismatch") != 0) {
+        return 1;
+    }
+
+    TestPanelController second_controller;
+    result = panel_map.OpenPanel(PanelId(812U), registry, layer_model, &second_controller);
+    if (RequireStatus(result.status, UiManagerPanelMapStatus::Success, "reopen after release failed") != 0) {
+        return 1;
+    }
+
+    if (result.reused_loaded || result.record.controller != &second_controller) {
+        return Fail("reopen after release reused old controller");
+    }
+
+    controller_snapshot = first_controller.Snapshot();
+    if (controller_snapshot.open_count != 1U || controller_snapshot.clear_count != 1U) {
+        return Fail("old controller lifecycle changed after reopen");
+    }
+
+    const BaseUiLifecycleSnapshot second_snapshot = second_controller.Snapshot();
+    if (second_snapshot.open_count != 1U ||
+        second_snapshot.clear_count != 0U ||
+        !second_snapshot.open) {
+        return Fail("new controller lifecycle mismatch");
+    }
+
+    const UiManagerPanelMapSnapshot snapshot = panel_map.Snapshot();
+    if (snapshot.release_operation_count != 1U ||
+        snapshot.release_active_operation_count != 1U ||
+        snapshot.loaded_panel_count != 1U ||
+        snapshot.active_panel_count != 1U ||
+        snapshot.rejected_operation_count != 1U) {
+        return Fail("active release counters mismatch");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view test_name) {
     if (test_name == TEST_OPEN_CLOSE_REOPEN) {
         return RunOpenCloseReopenRetainsLoadedControllerTest();
@@ -431,6 +594,14 @@ int RunNamedTest(std::string_view test_name) {
 
     if (test_name == TEST_RESOLVE_ROOTS) {
         return RunResolvesLoadedAndActiveLayerRootsTest();
+    }
+
+    if (test_name == TEST_RELEASE_CLEARS) {
+        return RunReleaseClearsLoadedControllerAndArgsTest();
+    }
+
+    if (test_name == TEST_RELEASE_ACTIVE_REOPEN) {
+        return RunReleaseActiveAndReopenUsesNewLifecycleTest();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);
