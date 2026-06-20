@@ -77,3 +77,14 @@
 - 非 Button template、invalid state 和 invalid output 都返回显式状态，并避免污染调用方 preview record。
 
 当前 state preview 首片不做 GridView 数据模拟、性能诊断、真实 Dear ImGui backend、RHI/D3D11/RenderCore backend 扩展，也不改变 UiCore lifecycle、Project UI Runtime 或产品窗口迁移边界。
+
+## GridView Data Simulation
+
+`ENG-210A` 将 `UI-E2-003` 收敛为 editor-only GridView data simulation 首片：
+
+- `UiEditorGridViewDataSimulationFactory` 接收 `UiEditorComponentTemplateFactory` 创建的 GridView template record。
+- simulation 输入 `sample_count`、`first_visible_item_index`、`visible_cell_count` 和 `buffer_cell_count`，输出确定性的 visible/buffer cell preview。
+- 输出记录包含 sample count、实际写入 cell 数、visible cell 数、buffer cell 数和最后一个 visible item index。
+- invalid template、invalid sample/count、buffer 上限和输出容量不足会返回显式状态，并避免污染调用方 record/cell buffer。
+
+当前 GridView data simulation 首片只证明 editor preview 的 sample count 到 visible/buffer cell 映射，不做 UI-E3 性能诊断、anti-pattern warnings、真实 Dear ImGui backend、RHI/D3D11/RenderCore backend 扩展，也不改变 UiCore lifecycle、Project UI Runtime 或产品窗口迁移边界。
