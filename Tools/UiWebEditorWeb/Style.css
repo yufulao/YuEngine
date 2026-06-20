@@ -361,6 +361,17 @@ select:focus-visible {
     white-space: nowrap;
 }
 
+.resize-handle {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    width: 10px;
+    height: 10px;
+    border-right: 2px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+    cursor: nwse-resize;
+}
+
 .data-panel {
     overflow: hidden;
 }

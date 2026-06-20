@@ -12,22 +12,38 @@
             "name": "Root",
             "component": "Container",
             "text": "",
-            "rect": {
-                "x": 0,
-                "y": 0,
-                "width": 960,
-                "height": 540,
+            "rectTransform": {
                 "anchorMin": {
                     "x": 0,
                     "y": 0
                 },
                 "anchorMax": {
-                    "x": 0,
-                    "y": 0
+                    "x": 1,
+                    "y": 1
                 },
                 "pivot": {
                     "x": 0.5,
                     "y": 0.5
+                },
+                "offsetMin": {
+                    "x": 0,
+                    "y": 0
+                },
+                "offsetMax": {
+                    "x": 0,
+                    "y": 0
+                },
+                "margin": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0
+                },
+                "padding": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0
                 },
                 "dpiScale": 1
             },
@@ -43,22 +59,38 @@
             "name": "Title",
             "component": "Text",
             "text": "Sample Title",
-            "rect": {
-                "x": 40,
-                "y": 36,
-                "width": 420,
-                "height": 48,
+            "rectTransform": {
                 "anchorMin": {
                     "x": 0,
                     "y": 0
                 },
                 "anchorMax": {
-                    "x": 0,
-                    "y": 0
+                    "x": 1,
+                    "y": 1
                 },
                 "pivot": {
                     "x": 0.5,
                     "y": 0.5
+                },
+                "offsetMin": {
+                    "x": 40,
+                    "y": 456
+                },
+                "offsetMax": {
+                    "x": -500,
+                    "y": -36
+                },
+                "margin": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0
+                },
+                "padding": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0
                 },
                 "dpiScale": 1
             },
@@ -74,22 +106,38 @@
             "name": "ConfirmButton",
             "component": "Button",
             "text": "Confirm",
-            "rect": {
-                "x": 40,
-                "y": 112,
-                "width": 240,
-                "height": 48,
+            "rectTransform": {
                 "anchorMin": {
                     "x": 0,
                     "y": 0
                 },
                 "anchorMax": {
-                    "x": 0,
-                    "y": 0
+                    "x": 1,
+                    "y": 1
                 },
                 "pivot": {
                     "x": 0.5,
                     "y": 0.5
+                },
+                "offsetMin": {
+                    "x": 40,
+                    "y": 380
+                },
+                "offsetMax": {
+                    "x": -680,
+                    "y": -112
+                },
+                "margin": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0
+                },
+                "padding": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0
                 },
                 "dpiScale": 1
             },
@@ -206,6 +254,17 @@
     ],
     "editor": {
         "selectedNodeId": 1,
-        "dirty": false
+        "dirty": false,
+        "viewport": {
+            "runtimeRect": {
+                "x": 0,
+                "y": 0,
+                "width": 960,
+                "height": 540
+            },
+            "scale": 1,
+            "panX": 0,
+            "panY": 0
+        }
     }
 }

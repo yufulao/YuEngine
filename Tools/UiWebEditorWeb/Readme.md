@@ -31,9 +31,24 @@ YuEngine-specific acceptance:
 | --- | --- | --- |
 | Web frontend | hierarchy, inspector, canvas overlay, resource list, style/theme editing, state preview inputs | `Index.html`, `App.js`, `EditorModel.js`, `Style.css` |
 | Editor draft | frontend selection and state preview inputs | `YuUiEditorDraft.json` export |
-| Runtime data | schema, nodes, layouts, style refs, resource refs, event bindings, theme tokens | `YuUiRuntimeData.json` export |
+| Runtime data | schema, nodes with RectTransform fields, layouts, style refs, resource refs, event bindings, theme tokens | `YuUiRuntimeData.json` export |
 | Local editor service | optional file IO and validation service boundary | existing `Tools/UiWebEditorService` |
 | Engine runtime | data consumption and interpretation | no dependency on this directory |
+
+## Layout Source
+
+The runtime layout source of truth is the YuEngine RectTransform data shape:
+`anchorMin`, `anchorMax`, `pivot`, `offsetMin`, `offsetMax`, `margin`,
+`padding`, and `dpiScale`. Browser `left`, `top`, `width`, and `height`
+values are adapter output for the editor canvas only.
+
+The Web adapter resolves RectTransform data with the same arithmetic as
+`UiRectMath`, then converts engine bottom-left runtime coordinates into
+browser top-left canvas coordinates. Drag and resize operations run the inverse
+adapter path and write RectTransform offsets back into the document.
+
+Runtime export includes RectTransform data and strips editor-only viewport,
+selection, state preview, canvas overlay, and browser preview state.
 
 ## Run
 
@@ -77,5 +92,6 @@ Run the focused frontend model tests:
 node Tests/UiWebEditorWeb/UiWebEditorWebTests.js
 ```
 
-The tests validate default data, duplicate IDs, missing parents, add/remove
-node operations, runtime export boundaries, and the sample fixture.
+The tests validate RectTransform normalization, adapter forward conversion,
+inverse canvas edit updates, runtime export boundaries, clone independence,
+legacy rect migration, and the sample fixture.

@@ -5,7 +5,8 @@
     const model = window.UiWebEditorModel;
     const state = {
         document: model.CreateDefaultDocument(),
-        filter: ""
+        filter: "",
+        drag: null
     };
 
     function GetElement(id) {
@@ -65,6 +66,74 @@
         Render();
     }
 
+    function UpdateSelectedRectTransform(patch) {
+        UpdateSelectedNode({ rectTransform: patch });
+    }
+
+    function CreateCanvasRectFromDrag() {
+        const width = Math.max(8, state.drag.canvasRect.width);
+        const height = Math.max(8, state.drag.canvasRect.height);
+        return {
+            left: state.drag.canvasRect.left,
+            top: state.drag.canvasRect.top,
+            width: width,
+            height: height
+        };
+    }
+
+    function StartCanvasDrag(event, item, mode) {
+        event.preventDefault();
+        event.stopPropagation();
+        state.drag = {
+            mode: mode,
+            nodeId: item.nodeId,
+            startX: event.clientX,
+            startY: event.clientY,
+            canvasRect: {
+                left: item.canvasRect.left,
+                top: item.canvasRect.top,
+                width: item.canvasRect.width,
+                height: item.canvasRect.height
+            }
+        };
+        SelectNode(item.nodeId);
+    }
+
+    function StartCanvasMove(event, item) {
+        StartCanvasDrag(event, item, "Move");
+    }
+
+    function StartCanvasResize(event, item) {
+        StartCanvasDrag(event, item, "Resize");
+    }
+
+    function UpdateCanvasDrag(event) {
+        if (!state.drag) {
+            return;
+        }
+        const delta_x = event.clientX - state.drag.startX;
+        const delta_y = event.clientY - state.drag.startY;
+        const next_rect = CreateCanvasRectFromDrag();
+        if (state.drag.mode === "Move") {
+            next_rect.left += delta_x;
+            next_rect.top += delta_y;
+            state.document = model.UpdateNodeFromCanvasRect(state.document, state.drag.nodeId, next_rect);
+            Render();
+            return;
+        }
+        if (state.drag.mode === "Resize") {
+            next_rect.width = Math.max(8, next_rect.width + delta_x);
+            next_rect.height = Math.max(8, next_rect.height + delta_y);
+            state.document = model.UpdateNodeFromCanvasRect(state.document, state.drag.nodeId, next_rect);
+            Render();
+            return;
+        }
+    }
+
+    function FinishCanvasDrag() {
+        state.drag = null;
+    }
+
     function AppendInput(container, label_text, value, on_input) {
         const group = CreateElement("label", "field");
         const label = CreateElement("span", "", label_text);
@@ -90,6 +159,34 @@
         });
         group.appendChild(label);
         group.appendChild(input);
+        container.appendChild(group);
+    }
+
+    function AppendVector2Inputs(container, title, value, on_input) {
+        const group = CreateElement("div", "field-grid");
+        AppendNumberInput(group, title + " X", value.x, function UpdateX(next_value) {
+            on_input({ x: next_value });
+        });
+        AppendNumberInput(group, title + " Y", value.y, function UpdateY(next_value) {
+            on_input({ y: next_value });
+        });
+        container.appendChild(group);
+    }
+
+    function AppendThicknessInputs(container, title, value, on_input) {
+        const group = CreateElement("div", "field-grid");
+        AppendNumberInput(group, title + " L", value.left, function UpdateLeft(next_value) {
+            on_input({ left: next_value });
+        });
+        AppendNumberInput(group, title + " T", value.top, function UpdateTop(next_value) {
+            on_input({ top: next_value });
+        });
+        AppendNumberInput(group, title + " R", value.right, function UpdateRight(next_value) {
+            on_input({ right: next_value });
+        });
+        AppendNumberInput(group, title + " B", value.bottom, function UpdateBottom(next_value) {
+            on_input({ bottom: next_value });
+        });
         container.appendChild(group);
     }
 
@@ -162,20 +259,57 @@
         const items = model.BuildCanvasItems(state.document);
         items.forEach(function RenderCanvasItem(item) {
             const node = CreateElement("button", "canvas-node", "");
+            const rect = item.canvasRect;
             node.type = "button";
             node.dataset.selected = item.selected ? "true" : "false";
             node.dataset.enabled = item.enabled ? "true" : "false";
-            node.style.left = String(item.rect.x) + "px";
-            node.style.top = String(item.rect.y) + "px";
-            node.style.width = String(item.rect.width) + "px";
-            node.style.height = String(item.rect.height) + "px";
+            node.style.left = String(rect.left) + "px";
+            node.style.top = String(rect.top) + "px";
+            node.style.width = String(rect.width) + "px";
+            node.style.height = String(rect.height) + "px";
             node.addEventListener("click", function OnClickEvent(event) {
                 event.stopPropagation();
                 SelectNode(item.nodeId);
             });
+            node.addEventListener("pointerdown", function OnPointerDownEvent(event) {
+                StartCanvasMove(event, item);
+            });
             node.appendChild(CreateElement("span", "canvas-node-title", item.name));
             node.appendChild(CreateElement("span", "canvas-node-kind", item.component));
+            const handle = CreateElement("span", "resize-handle", "");
+            handle.addEventListener("pointerdown", function OnPointerDownEvent(event) {
+                StartCanvasResize(event, item);
+            });
+            node.appendChild(handle);
             canvas.appendChild(node);
+        });
+    }
+
+    function RenderRectTransformInspector(panel, rect_transform) {
+        panel.appendChild(CreateElement("h3", "inspector-section-title", "RectTransform"));
+        AppendVector2Inputs(panel, "Anchor Min", rect_transform.anchorMin, function UpdateAnchorMin(value) {
+            UpdateSelectedRectTransform({ anchorMin: value });
+        });
+        AppendVector2Inputs(panel, "Anchor Max", rect_transform.anchorMax, function UpdateAnchorMax(value) {
+            UpdateSelectedRectTransform({ anchorMax: value });
+        });
+        AppendVector2Inputs(panel, "Pivot", rect_transform.pivot, function UpdatePivot(value) {
+            UpdateSelectedRectTransform({ pivot: value });
+        });
+        AppendVector2Inputs(panel, "Offset Min", rect_transform.offsetMin, function UpdateOffsetMin(value) {
+            UpdateSelectedRectTransform({ offsetMin: value });
+        });
+        AppendVector2Inputs(panel, "Offset Max", rect_transform.offsetMax, function UpdateOffsetMax(value) {
+            UpdateSelectedRectTransform({ offsetMax: value });
+        });
+        AppendThicknessInputs(panel, "Margin", rect_transform.margin, function UpdateMargin(value) {
+            UpdateSelectedRectTransform({ margin: value });
+        });
+        AppendThicknessInputs(panel, "Padding", rect_transform.padding, function UpdatePadding(value) {
+            UpdateSelectedRectTransform({ padding: value });
+        });
+        AppendNumberInput(panel, "DPI Scale", rect_transform.dpiScale, function UpdateDpiScale(value) {
+            UpdateSelectedRectTransform({ dpiScale: value });
         });
     }
 
@@ -209,21 +343,7 @@
         AppendInput(panel, "Text", node.text || "", function UpdateText(value) {
             UpdateSelectedNode({ text: value });
         });
-
-        const rect_group = CreateElement("div", "field-grid");
-        AppendNumberInput(rect_group, "X", node.rect.x, function UpdateX(value) {
-            UpdateSelectedNode({ rect: { x: value } });
-        });
-        AppendNumberInput(rect_group, "Y", node.rect.y, function UpdateY(value) {
-            UpdateSelectedNode({ rect: { y: value } });
-        });
-        AppendNumberInput(rect_group, "W", node.rect.width, function UpdateWidth(value) {
-            UpdateSelectedNode({ rect: { width: Math.max(1, value) } });
-        });
-        AppendNumberInput(rect_group, "H", node.rect.height, function UpdateHeight(value) {
-            UpdateSelectedNode({ rect: { height: Math.max(1, value) } });
-        });
-        panel.appendChild(rect_group);
+        RenderRectTransformInspector(panel, node.rectTransform);
 
         AppendNumberInput(panel, "Layer", node.layer, function UpdateLayer(value) {
             UpdateSelectedNode({ layer: value });
@@ -431,6 +551,9 @@
         GetElement("canvas-surface").addEventListener("click", function OnClickEvent() {
             SelectNode(state.document.schema.rootNodeId);
         });
+        window.addEventListener("pointermove", UpdateCanvasDrag);
+        window.addEventListener("pointerup", FinishCanvasDrag);
+        window.addEventListener("pointercancel", FinishCanvasDrag);
     }
 
     document.addEventListener("DOMContentLoaded", function OnDomReadyEvent() {
