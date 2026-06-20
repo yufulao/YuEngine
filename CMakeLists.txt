@@ -188,6 +188,7 @@ add_library(YuUiCore
     Src/YuEngine/UiCore/Src/UiFontGlyphAtlas.cpp
     Src/YuEngine/UiCore/Src/UiGridViewSemantics.cpp
     Src/YuEngine/UiCore/Src/UiHitTestResolver.cpp
+    Src/YuEngine/UiCore/Src/UiImageComponent.cpp
     Src/YuEngine/UiCore/Src/UiInvalidationModel.cpp
     Src/YuEngine/UiCore/Src/UiLayoutPass.cpp
     Src/YuEngine/UiCore/Src/UiNodeTree.cpp
@@ -1608,6 +1609,17 @@ yuengine_add_labeled_test(UiCore_FontGlyphAtlas_SafePointBuildResolvesPrimaryGly
 yuengine_add_labeled_test(UiCore_FontGlyphAtlas_TextFixtureResolvesFallbackGlyph YuUiFontGlyphAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_FontGlyphAtlas_TextFixtureReportsMissingGlyph YuUiFontGlyphAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_FontGlyphAtlas_RejectsPaintPathPackAndDuplicateGlyph YuUiFontGlyphAtlasTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+
+add_executable(YuUiImageComponentTests
+    Tests/UiCore/UiImageComponentTests.cpp
+)
+yuengine_apply_compile_options(YuUiImageComponentTests)
+target_link_libraries(YuUiImageComponentTests PRIVATE YuUiCore)
+yuengine_add_labeled_test(UiCore_ImageComponent_BuildsSpriteDrawRecord YuUiImageComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_ImageComponent_BuildsNineSliceRecordsAndBatches YuUiImageComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_ImageComponent_ReportsMissingSpriteWithoutMutation YuUiImageComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_ImageComponent_RejectsSmallOutputWithoutMutation YuUiImageComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiCore_ImageComponent_PaintInvalidationDoesNotTriggerLayout YuUiImageComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 
 add_executable(YuUiEditorTests
     Tests/UiEditor/UiEditorTests.cpp
