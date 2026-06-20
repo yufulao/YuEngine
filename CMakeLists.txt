@@ -288,6 +288,15 @@ target_include_directories(YuUiRenderCoreBridge
 )
 target_link_libraries(YuUiRenderCoreBridge PUBLIC YuUiCore YuRenderCore)
 
+add_library(YuUiRuntime
+    Src/YuEngine/UiRuntime/Src/BaseUiController.cpp
+)
+yuengine_apply_compile_options(YuUiRuntime)
+target_include_directories(YuUiRuntime
+    PUBLIC
+        Src/YuEngine/UiRuntime/Include
+)
+
 add_library(YuRenderScene
     Src/YuEngine/RenderScene/Src/RenderSceneContractQueue.cpp
 )
@@ -1680,6 +1689,17 @@ yuengine_add_labeled_test(UiCore_TextComponent_ClipsOverflowAndWritesEffects YuU
 yuengine_add_labeled_test(UiCore_TextComponent_TextDirtyDoesNotTriggerLayout YuUiTextComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_TextComponent_ReportsMissingGlyphWithoutMutation YuUiTextComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_TextComponent_RejectsSmallOutputWithoutMutation YuUiTextComponentTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+
+add_executable(YuUiRuntimeTests
+    Tests/UiRuntime/BaseUiControllerTests.cpp
+)
+yuengine_apply_compile_options(YuUiRuntimeTests)
+target_link_libraries(YuUiRuntimeTests PRIVATE YuUiRuntime)
+yuengine_add_labeled_test(UiRuntime_BaseUiController_InitializeBindsOnce YuUiRuntimeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_BaseUiController_OpenClosePerActivation YuUiRuntimeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_BaseUiController_DestroyClearsOnce YuUiRuntimeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_BaseUiController_CloseSelfThroughManager YuUiRuntimeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_BaseUiController_RejectsInvalidLifecycleCalls YuUiRuntimeTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 
 add_executable(YuUiEditorTests
     Tests/UiEditor/UiEditorTests.cpp
