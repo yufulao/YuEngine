@@ -66,3 +66,14 @@
 - buffer 容量不足、invalid template kind 或 invalid layout node 会返回显式状态，并避免污染调用方输出。
 
 当前 component template 首片不做 state preview、GridView 数据模拟、性能诊断、真实 Dear ImGui backend、RHI/D3D11/RenderCore backend 扩展，也不改变 Project UI Runtime 或产品窗口迁移边界。
+
+## State Preview
+
+`ENG-209A` 将 `UI-E2-002` 收敛为 editor-only Button state preview 首片：
+
+- `UiEditorStatePreviewFactory` 接收 `UiEditorComponentTemplateFactory` 创建的 Button template record。
+- preview 输出 normal、hover、pressed、disabled、selected 的可见状态名和显式标记。
+- disabled state 输出 `disabled_overlay_visible`，selected state 输出 `selected_outline_visible`。
+- 非 Button template、invalid state 和 invalid output 都返回显式状态，并避免污染调用方 preview record。
+
+当前 state preview 首片不做 GridView 数据模拟、性能诊断、真实 Dear ImGui backend、RHI/D3D11/RenderCore backend 扩展，也不改变 UiCore lifecycle、Project UI Runtime 或产品窗口迁移边界。
