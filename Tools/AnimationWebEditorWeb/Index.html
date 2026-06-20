@@ -1,0 +1,122 @@
+<!-- 模块: Tools AnimationWebEditorWeb -->
+<!-- 文件: Tools/AnimationWebEditorWeb/Index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>YuEngine Animation Web Editor</title>
+    <link rel="stylesheet" href="Style.css">
+</head>
+<body data-theme="light">
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="brand">
+                <span class="brand-mark">YA</span>
+                <div>
+                    <h1>Animation Web Editor</h1>
+                    <p>Runtime clip data authoring</p>
+                </div>
+            </div>
+            <nav class="toolbar" aria-label="Animation commands">
+                <button id="new-button" type="button">New</button>
+                <button id="open-button" type="button">Open</button>
+                <button id="save-draft-button" type="button">Save Draft</button>
+                <button id="export-runtime-button" type="button">Export Runtime</button>
+                <button id="runtime-json-toggle-button" type="button" aria-expanded="false">Runtime JSON</button>
+                <button id="theme-toggle-button" type="button">Dark</button>
+                <button id="validate-button" type="button">Validate</button>
+                <input id="file-input" class="hidden-input" type="file" accept="application/json,.json">
+            </nav>
+            <div class="status-cluster">
+                <span id="status-text" class="status-pill">Ready</span>
+                <span>Clips <strong id="clip-count">0</strong></span>
+                <span>Tracks <strong id="track-count">0</strong></span>
+                <span>Events <strong id="event-count">0</strong></span>
+                <span>Issues <strong id="issue-count">0</strong></span>
+                <span>Hash <strong id="document-hash">0x00000000</strong></span>
+            </div>
+        </header>
+
+        <main id="workspace" class="workspace" data-runtime-open="false">
+            <aside class="left-pane" aria-label="Animation clip panel">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Clips</h2>
+                        <div class="mini-toolbar">
+                            <button id="add-clip-button" type="button">Add Clip</button>
+                        </div>
+                    </div>
+                    <div id="clip-list" class="clip-list"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Tracks</h2>
+                        <div class="mini-toolbar">
+                            <button id="add-track-button" type="button">Add Track</button>
+                        </div>
+                    </div>
+                    <div id="track-list" class="track-list"></div>
+                    <button id="remove-selected-button" class="danger-button" type="button">Remove Selected</button>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Resources</h2>
+                    </div>
+                    <div id="resource-list" class="resource-list"></div>
+                </section>
+            </aside>
+
+            <div id="left-resizer" class="pane-resizer" role="separator" aria-orientation="vertical"></div>
+
+            <section class="center-pane" aria-label="Animation timeline and runtime data">
+                <div class="timeline-frame">
+                    <div class="timeline-toolbar" aria-label="Timeline controls">
+                        <div class="timeline-title">
+                            <h2>Timeline</h2>
+                            <span id="timeline-scale-label">0.08 px/tick</span>
+                        </div>
+                        <div class="mini-toolbar">
+                            <button id="add-marker-button" type="button">Add Marker</button>
+                            <button id="fit-time-button" type="button">Fit</button>
+                            <button id="zoom-out-button" type="button">-</button>
+                            <button id="zoom-reset-button" type="button">100%</button>
+                            <button id="zoom-in-button" type="button">+</button>
+                        </div>
+                    </div>
+                    <div id="timeline-view" class="timeline-view" aria-label="Animation timeline"></div>
+                </div>
+                <section id="runtime-data-panel" class="panel runtime-panel" data-open="false">
+                    <div class="panel-header">
+                        <h2>Runtime Data</h2>
+                        <button id="runtime-json-close-button" type="button">Close</button>
+                    </div>
+                    <pre id="runtime-json-preview" class="json-preview"></pre>
+                </section>
+            </section>
+
+            <div id="right-resizer" class="pane-resizer" role="separator" aria-orientation="vertical"></div>
+
+            <aside class="right-pane" aria-label="Animation inspector and validation panel">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Inspector</h2>
+                    </div>
+                    <div id="inspector-panel" class="inspector-panel"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Validation</h2>
+                    </div>
+                    <div id="validation-panel" class="validation-panel"></div>
+                </section>
+            </aside>
+        </main>
+    </div>
+    <script src="AnimationEditorModel.js"></script>
+    <script src="App.js"></script>
+</body>
+</html>
