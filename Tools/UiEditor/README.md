@@ -24,8 +24,6 @@
 - `YuUiEditorShell`：构建一个 shell entry；在 Dear ImGui 后端未配置时返回 explicit unavailable，不伪装成真实 docking UI。
 - `YuUiEditorTests`：headless 验证默认 placeholder、panel 开关、输出容量和 Dear ImGui backend gate。
 
-`UI-E1-003` runtime preview viewport 不属于本首片；它需要等 `UI-S1-007` RenderCore bridge 完成后再使用真实 UI Core/RenderCore 路径实现。
-
 ## Layout Asset Load
 
 `ENG-184D` 将 `UI-E1-002` 收敛为 editor-only headless 首片：
@@ -36,3 +34,14 @@
 - duplicate node id、missing parent、missing root 和输出容量不足会返回显式状态。
 
 当前 loader 只服务 editor 检查面，不做 runtime preview，不运行 Project UI Runtime lifecycle，也不引入 Dear ImGui 或 RenderCore 依赖。
+
+## Runtime Preview Viewport
+
+`ENG-185B` 将 `UI-E1-003` 收敛为 editor-only headless 首片：
+
+- `YuUiEditorShellCore` 在 layout asset 已加载后，可显式构建 runtime preview viewport。
+- preview route 使用 `UiNodeTree`、`UiLayoutPass`、`UiDrawListBuilder`、`UiRenderCoreBridge`、`RenderFixturePass` 和 `NullRhiDevice`，属于无窗口 headless RenderCore 等价路径。
+- preview panel 只有在 headless RenderCore route 成功提交后才从 placeholder 切换为 data-backed。
+- Dear ImGui visual docking backend 仍然保持 explicit unavailable；本首片不静默引入 Dear ImGui，不声明真实 docking viewport 已完成。
+
+当前 preview viewport 只覆盖 layout-to-draw-to-RenderCore fixture 的确定性首片，不运行 Project UI Runtime lifecycle，不接入 D3D11/真实 GPU backend，也不扩展 UI-E2/E3。

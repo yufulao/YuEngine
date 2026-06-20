@@ -13,6 +13,8 @@ using yuengine::uieditor::UiEditorLayoutNodeRecord;
 using yuengine::uieditor::UiEditorPreviewSafeArea;
 using yuengine::uieditor::UiEditorPreviewVariantDesc;
 using yuengine::uieditor::UiEditorPreviewVariantRecord;
+using yuengine::uieditor::UiEditorPreviewViewportDesc;
+using yuengine::uieditor::UiEditorPreviewViewportRecord;
 using yuengine::uieditor::UiEditorShellPanelId;
 using yuengine::uieditor::UiEditorShellPanelRecord;
 using yuengine::uieditor::UiEditorShellSnapshot;
@@ -43,6 +45,14 @@ constexpr std::string_view TEST_PREVIEW_VARIANTS =
     "UiEditor_PreviewVariants_ResolutionDpiSafeAreaExport";
 constexpr std::string_view TEST_PREVIEW_VARIANT_INVALID =
     "UiEditor_PreviewVariants_RejectInvalidSafeAreaWithoutMutation";
+constexpr std::string_view TEST_PREVIEW_RENDER =
+    "UiEditor_PreviewViewport_RendersLoadedLayoutThroughRuntimePath";
+constexpr std::string_view TEST_PREVIEW_BEFORE_LAYOUT =
+    "UiEditor_PreviewViewport_RejectsBeforeLayoutLoad";
+constexpr std::string_view TEST_PREVIEW_INVALID_VIEWPORT =
+    "UiEditor_PreviewViewport_RejectsInvalidViewport";
+constexpr std::string_view TEST_PREVIEW_WITHOUT_DEAR_IMGUI =
+    "UiEditor_PreviewViewport_WorksWithoutDearImGuiBackend";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected exactly one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::string_view SAMPLE_LAYOUT_TEXT = R"({
@@ -536,6 +546,174 @@ int UiEditorPreviewVariantsRejectInvalidSafeAreaWithoutMutation() {
 
     return 0;
 }
+
+int BuildDefaultPreviewViewport(
+    UiEditorShellState &shell_state,
+    UiEditorPreviewViewportRecord *record) {
+    UiEditorPreviewViewportDesc desc;
+    desc.viewport_width = 800U;
+    desc.viewport_height = 600U;
+
+    const UiEditorShellStatus status = shell_state.BuildRuntimePreviewViewport(desc, record);
+    return ExpectStatus(status, UiEditorShellStatus::Success, "preview viewport build failed");
+}
+
+int UiEditorPreviewViewportRendersLoadedLayoutThroughRuntimePath() {
+    UiEditorShellState shell_state;
+    int ret_code = LoadSampleLayout(shell_state);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiEditorPreviewViewportRecord record;
+    ret_code = BuildDefaultPreviewViewport(shell_state, &record);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    if (!record.is_ready || !record.uses_headless_rendercore_path) {
+        return Fail("preview route did not report ready headless RenderCore path");
+    }
+
+    if (record.viewport_width != 800U || record.viewport_height != 600U) {
+        return Fail("preview viewport dimensions mismatch");
+    }
+
+    if (record.layout_node_count != 3U || record.layout_container_count != 2U) {
+        return Fail("preview layout counts mismatch");
+    }
+
+    if (record.draw_element_count != 2U) {
+        return Fail("preview draw element count mismatch");
+    }
+
+    if (record.submitted_entry_count != static_cast<std::size_t>(2U)) {
+        return Fail("preview submitted entry count mismatch");
+    }
+
+    if (record.render_submit_count != static_cast<std::uint64_t>(2U)) {
+        return Fail("preview render submit count mismatch");
+    }
+
+    if (std::string_view(record.layout_id) != "UiCoreSmoke.SimpleWindow") {
+        return Fail("preview layout id mismatch");
+    }
+
+    const UiEditorShellSnapshot snapshot = shell_state.Snapshot();
+    if (!snapshot.preview_ready || snapshot.preview_draw_element_count != 2U) {
+        return Fail("preview snapshot did not record ready path");
+    }
+
+    if (snapshot.placeholder_panel_count != 0U) {
+        return Fail("preview panel stayed placeholder after render path");
+    }
+
+    std::array<UiEditorShellPanelRecord, UI_EDITOR_SHELL_REQUIRED_PANEL_COUNT> panels{};
+    ret_code = ExportDefaultPanels(shell_state, panels);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    if (panels[2U].panel_id != UiEditorShellPanelId::Preview) {
+        return Fail("preview panel index mismatch");
+    }
+
+    if (panels[2U].is_placeholder) {
+        return Fail("preview panel did not switch away from placeholder");
+    }
+
+    return 0;
+}
+
+int UiEditorPreviewViewportRejectsBeforeLayoutLoad() {
+    UiEditorShellState shell_state;
+    UiEditorPreviewViewportDesc desc;
+    desc.viewport_width = 800U;
+    desc.viewport_height = 600U;
+    UiEditorPreviewViewportRecord record;
+
+    const UiEditorShellStatus status = shell_state.BuildRuntimePreviewViewport(desc, &record);
+    int ret_code = ExpectStatus(
+        status,
+        UiEditorShellStatus::LayoutNotLoaded,
+        "preview before layout did not fail explicitly");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const UiEditorShellSnapshot snapshot = shell_state.Snapshot();
+    if (snapshot.preview_ready || record.is_ready) {
+        return Fail("preview before layout mutated ready state");
+    }
+
+    return 0;
+}
+
+int UiEditorPreviewViewportRejectsInvalidViewport() {
+    UiEditorShellState shell_state;
+    int ret_code = LoadSampleLayout(shell_state);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiEditorPreviewViewportDesc desc;
+    desc.viewport_width = 0U;
+    desc.viewport_height = 600U;
+    UiEditorPreviewViewportRecord record;
+    const UiEditorShellStatus status = shell_state.BuildRuntimePreviewViewport(desc, &record);
+    ret_code = ExpectStatus(
+        status,
+        UiEditorShellStatus::InvalidPreviewViewport,
+        "invalid preview viewport was not rejected");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const UiEditorShellSnapshot snapshot = shell_state.Snapshot();
+    if (!snapshot.layout_loaded || snapshot.preview_ready || record.is_ready) {
+        return Fail("invalid preview viewport mutated layout or preview state");
+    }
+
+    return 0;
+}
+
+int UiEditorPreviewViewportWorksWithoutDearImGuiBackend() {
+    UiEditorShellState shell_state;
+    int ret_code = LoadSampleLayout(shell_state);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiEditorShellStatus status = shell_state.GetVisualBackendStatus();
+    ret_code = ExpectStatus(
+        status,
+        UiEditorShellStatus::DearImGuiUnavailable,
+        "Dear ImGui gate was not unavailable before preview");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiEditorPreviewViewportRecord record;
+    ret_code = BuildDefaultPreviewViewport(shell_state, &record);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    status = shell_state.GetVisualBackendStatus();
+    ret_code = ExpectStatus(
+        status,
+        UiEditorShellStatus::DearImGuiUnavailable,
+        "headless preview changed Dear ImGui backend gate");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    if (!record.uses_headless_rendercore_path || record.render_submit_count == 0U) {
+        return Fail("headless preview did not submit through RenderCore");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -582,6 +760,22 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_PREVIEW_VARIANT_INVALID) {
         return UiEditorPreviewVariantsRejectInvalidSafeAreaWithoutMutation();
+    }
+
+    if (test_name == TEST_PREVIEW_RENDER) {
+        return UiEditorPreviewViewportRendersLoadedLayoutThroughRuntimePath();
+    }
+
+    if (test_name == TEST_PREVIEW_BEFORE_LAYOUT) {
+        return UiEditorPreviewViewportRejectsBeforeLayoutLoad();
+    }
+
+    if (test_name == TEST_PREVIEW_INVALID_VIEWPORT) {
+        return UiEditorPreviewViewportRejectsInvalidViewport();
+    }
+
+    if (test_name == TEST_PREVIEW_WITHOUT_DEAR_IMGUI) {
+        return UiEditorPreviewViewportWorksWithoutDearImGuiBackend();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

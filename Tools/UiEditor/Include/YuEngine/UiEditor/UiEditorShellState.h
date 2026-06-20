@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 
@@ -14,6 +15,7 @@ constexpr std::uint32_t UI_EDITOR_LAYOUT_ID_CAPACITY = 64U;
 constexpr std::uint32_t UI_EDITOR_LAYOUT_NAME_CAPACITY = 64U;
 constexpr std::uint32_t UI_EDITOR_LAYOUT_TYPE_CAPACITY = 32U;
 constexpr std::uint32_t UI_EDITOR_PREVIEW_VARIANT_CAPACITY = 8U;
+constexpr std::uint32_t UI_EDITOR_PREVIEW_MAX_DRAW_ELEMENT_COUNT = UI_EDITOR_LAYOUT_MAX_NODE_COUNT;
 
 enum class UiEditorShellPanelId {
     Invalid = 0,
@@ -37,7 +39,12 @@ enum class UiEditorShellStatus {
     NodeNotFound,
     InvalidPreviewVariant,
     PreviewVariantCapacityExceeded,
-    DuplicatePreviewVariantId
+    DuplicatePreviewVariantId,
+    InvalidPreviewViewport,
+    PreviewNodeTreeFailed,
+    PreviewLayoutPassFailed,
+    PreviewDrawListFailed,
+    PreviewRenderSubmitFailed
 };
 
 struct UiEditorShellPanelRecord {
@@ -102,6 +109,24 @@ struct UiEditorLayoutDocument {
     std::array<UiEditorLayoutNodeRecord, UI_EDITOR_LAYOUT_MAX_NODE_COUNT> nodes{};
 };
 
+struct UiEditorPreviewViewportDesc {
+    std::uint32_t viewport_width = 0U;
+    std::uint32_t viewport_height = 0U;
+};
+
+struct UiEditorPreviewViewportRecord {
+    bool is_ready = false;
+    bool uses_headless_rendercore_path = false;
+    std::uint32_t viewport_width = 0U;
+    std::uint32_t viewport_height = 0U;
+    std::uint32_t layout_node_count = 0U;
+    std::uint32_t layout_container_count = 0U;
+    std::uint32_t draw_element_count = 0U;
+    std::size_t submitted_entry_count = 0U;
+    std::uint64_t render_submit_count = 0U;
+    char layout_id[UI_EDITOR_LAYOUT_ID_CAPACITY] = {};
+};
+
 struct UiEditorShellSnapshot {
     std::uint32_t panel_count = 0U;
     std::uint32_t open_panel_count = 0U;
@@ -112,6 +137,8 @@ struct UiEditorShellSnapshot {
     std::uint32_t preview_variant_count = 0U;
     bool dear_imgui_backend_ready = false;
     bool layout_loaded = false;
+    bool preview_ready = false;
+    std::uint32_t preview_draw_element_count = 0U;
     UiEditorShellStatus last_status = UiEditorShellStatus::Success;
 };
 
@@ -192,6 +219,15 @@ public:
         std::uint32_t output_capacity,
         std::uint32_t *out_count);
     /**
+     * @comment 构建 editor-only runtime preview viewport。
+     * @param desc 输入 preview viewport 描述。
+     * @param out_record 输出 preview 记录。
+     * @return 显式操作状态。
+     */
+    UiEditorShellStatus BuildRuntimePreviewViewport(
+        const UiEditorPreviewViewportDesc &desc,
+        UiEditorPreviewViewportRecord *out_record);
+    /**
      * @comment 查询 visual backend gate 状态。
      * @return 当前 Dear ImGui backend 状态。
      */
@@ -212,12 +248,14 @@ private:
         const UiEditorPreviewVariantDesc &desc,
         UiEditorPreviewVariantRecord *out_record) const;
     void ResetLayoutState();
+    void ResetPreviewState();
     UiEditorShellStatus LoadInspectorFromNode(const UiEditorLayoutNodeRecord &node);
 
     std::array<UiEditorShellPanelRecord, UI_EDITOR_SHELL_REQUIRED_PANEL_COUNT> panels_;
     UiEditorLayoutDocument layout_document_;
     UiEditorInspectorRecord inspector_record_;
     std::array<UiEditorPreviewVariantRecord, UI_EDITOR_PREVIEW_VARIANT_CAPACITY> preview_variants_;
+    UiEditorPreviewViewportRecord preview_viewport_record_;
     UiEditorShellSnapshot snapshot_;
 };
 }

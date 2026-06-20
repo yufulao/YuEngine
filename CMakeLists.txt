@@ -373,6 +373,7 @@ target_include_directories(YuUiEditorShellCore
         Tools/UiEditor/Include
 )
 target_link_libraries(YuUiEditorShellCore PUBLIC YuUiCore)
+target_link_libraries(YuUiEditorShellCore PRIVATE YuUiRenderCoreBridge YuRHI)
 
 add_executable(YuUiEditorShell
     Tools/UiEditor/Src/Main.cpp
@@ -1600,6 +1601,10 @@ yuengine_add_labeled_test(UiEditor_LayoutAsset_RejectsDuplicateNodeId YuUiEditor
 yuengine_add_labeled_test(UiEditor_LayoutAsset_RejectsMissingParent YuUiEditorTests Fast ModuleFixture UiEditor UI Editor LayoutAsset EvidenceOracle)
 yuengine_add_labeled_test(UiEditor_PreviewVariants_ResolutionDpiSafeAreaExport YuUiEditorTests Fast ModuleFixture UiEditor UI Editor PreviewVariant EvidenceOracle)
 yuengine_add_labeled_test(UiEditor_PreviewVariants_RejectInvalidSafeAreaWithoutMutation YuUiEditorTests Fast ModuleFixture UiEditor UI Editor PreviewVariant EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_PreviewViewport_RendersLoadedLayoutThroughRuntimePath YuUiEditorTests Fast ModuleFixture UiEditor UI Editor RenderCore EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_PreviewViewport_RejectsBeforeLayoutLoad YuUiEditorTests Fast ModuleFixture UiEditor UI Editor RenderCore EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_PreviewViewport_RejectsInvalidViewport YuUiEditorTests Fast ModuleFixture UiEditor UI Editor RenderCore EvidenceOracle)
+yuengine_add_labeled_test(UiEditor_PreviewViewport_WorksWithoutDearImGuiBackend YuUiEditorTests Fast ModuleFixture UiEditor UI Editor RenderCore EvidenceOracle)
 
 add_executable(YuUiEditorResourceReferenceValidatorTests
     Tests/UiEditor/UiEditorResourceReferenceValidatorTests.cpp
