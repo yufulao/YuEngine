@@ -44,6 +44,46 @@ function FindCanvasItem(document, node_id) {
     });
 }
 
+function CreateFullRectTransform() {
+    return model.NormalizeRectTransform({});
+}
+
+function CreateTestNode(node_id, parent_id, name, rect_transform, layer) {
+    return {
+        nodeId: node_id,
+        parentId: parent_id,
+        name: name,
+        component: "Container",
+        text: "",
+        rectTransform: rect_transform,
+        siblingOrder: 0,
+        layer: layer,
+        visible: true,
+        enabled: true,
+        hitTestable: true
+    };
+}
+
+function CreateResolveOrderDocument() {
+    const document = model.CreateDefaultDocument();
+    const parent_transform = model.ApplyEngineRectToRectTransform(
+        model.DEFAULT_VIEWPORT_RECT,
+        CreateFullRectTransform(),
+        { x: 100, y: 100, width: 200, height: 150 });
+    document.schema.rootNodeId = 100;
+    document.nodes = [
+        CreateTestNode(1, 2, "Child", CreateFullRectTransform(), 2),
+        CreateTestNode(2, 100, "Parent", parent_transform, 1),
+        CreateTestNode(100, 0, "Root", CreateFullRectTransform(), 0)
+    ];
+    document.layouts = [];
+    document.styleRefs = [];
+    document.resourceRefs = [];
+    document.eventBindings = [];
+    document.statePreview = [];
+    return document;
+}
+
 function TestDefaultDocumentValidates() {
     const document = model.CreateDefaultDocument();
     const result = model.ValidateDocument(document);
@@ -75,6 +115,45 @@ function TestMissingParentReportsIssue() {
     });
     assert.equal(result.status, "IssuesFound");
     assert.ok(issue);
+}
+
+function TestRectTransformResolveIgnoresNodeRecordOrder() {
+    const document = CreateResolveOrderDocument();
+    const result = model.ValidateDocument(document);
+    const resolved = model.ResolveDocumentRects(document);
+    const parent_result = resolved.get(2);
+    const child_result = resolved.get(1);
+    assert.equal(result.status, "Success");
+    assert.equal(result.summary.issueCount, 0);
+    assert.equal(parent_result.status, "Success");
+    assert.equal(child_result.status, "Success");
+    AssertRectClose(parent_result.rect, { x: 100, y: 100, width: 200, height: 150 });
+    AssertRectClose(child_result.rect, parent_result.rect);
+}
+
+function TestCyclicParentReportsIssue() {
+    const document = model.CreateDefaultDocument();
+    document.schema.rootNodeId = 1;
+    document.nodes = [
+        CreateTestNode(1, 2, "CycleA", CreateFullRectTransform(), 0),
+        CreateTestNode(2, 1, "CycleB", CreateFullRectTransform(), 1)
+    ];
+    document.layouts = [];
+    document.styleRefs = [];
+    document.resourceRefs = [];
+    document.eventBindings = [];
+    document.statePreview = [];
+    const result = model.ValidateDocument(document);
+    const resolved = model.ResolveDocumentRects(document);
+    const hierarchy = model.BuildHierarchy(document);
+    const issue = result.issues.find(function MatchIssue(record) {
+        return record.kind === "CyclicParentNode";
+    });
+    assert.equal(result.status, "IssuesFound");
+    assert.ok(issue);
+    assert.equal(hierarchy.length, 2);
+    assert.equal(resolved.get(1).status, "CyclicParentNode");
+    assert.equal(resolved.get(2).status, "CyclicParentNode");
 }
 
 function TestRectTransformGoldenResolve() {
@@ -217,6 +296,8 @@ function RunTests() {
         { name: "UiWebEditorWeb_DefaultDocumentValidates", run: TestDefaultDocumentValidates },
         { name: "UiWebEditorWeb_DuplicateNodeReportsIssue", run: TestDuplicateNodeReportsIssue },
         { name: "UiWebEditorWeb_MissingParentReportsIssue", run: TestMissingParentReportsIssue },
+        { name: "UiWebEditorWeb_RectTransformResolveIgnoresNodeRecordOrder", run: TestRectTransformResolveIgnoresNodeRecordOrder },
+        { name: "UiWebEditorWeb_CyclicParentReportsIssue", run: TestCyclicParentReportsIssue },
         { name: "UiWebEditorWeb_RectTransformGoldenResolve", run: TestRectTransformGoldenResolve },
         { name: "UiWebEditorWeb_AdapterForwardConversion", run: TestAdapterForwardConversion },
         { name: "UiWebEditorWeb_AdapterInverseEditPath", run: TestAdapterInverseEditPath },

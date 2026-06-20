@@ -478,21 +478,67 @@
         return "Success";
     }
 
+    function CreateFailedRectResult(status) {
+        return {
+            status: status,
+            rect: CreateRect(0, 0, 0, 0),
+            contentRect: CreateRect(0, 0, 0, 0),
+            pivotPoint: CreateVector2(0, 0)
+        };
+    }
+
     function ResolveDocumentRects(source) {
         const document = NormalizeDocument(source);
         const viewport = document.editor.viewport;
         const resolved = new Map();
-        const ordered_nodes = document.nodes.slice().sort(function CompareNodes(left, right) {
-            if (left.parentId !== right.parentId) {
-                return left.parentId - right.parentId;
+        const visiting = new Set();
+        const nodes_by_id = new Map();
+        document.nodes.forEach(function RegisterNode(node) {
+            if (nodes_by_id.has(node.nodeId)) {
+                return;
             }
-            return left.siblingOrder - right.siblingOrder;
+            nodes_by_id.set(node.nodeId, node);
         });
-        ordered_nodes.forEach(function ResolveNode(node) {
-            const parent_result = resolved.get(node.parentId);
-            const parent_rect = parent_result ? parent_result.rect : viewport.runtimeRect;
+
+        function ResolveNode(node) {
+            const cached = resolved.get(node.nodeId);
+            if (cached) {
+                return cached;
+            }
+            if (visiting.has(node.nodeId)) {
+                const cyclic_result = CreateFailedRectResult("CyclicParentNode");
+                resolved.set(node.nodeId, cyclic_result);
+                return cyclic_result;
+            }
+
+            visiting.add(node.nodeId);
+            let parent_rect = viewport.runtimeRect;
+            if (node.parentId > 0) {
+                const parent = nodes_by_id.get(node.parentId);
+                if (!parent) {
+                    const missing_result = CreateFailedRectResult("MissingParentNode");
+                    resolved.set(node.nodeId, missing_result);
+                    visiting.delete(node.nodeId);
+                    return missing_result;
+                }
+                const parent_result = ResolveNode(parent);
+                if (parent_result.status !== "Success") {
+                    const parent_failed_result = CreateFailedRectResult(parent_result.status);
+                    resolved.set(node.nodeId, parent_failed_result);
+                    visiting.delete(node.nodeId);
+                    return parent_failed_result;
+                }
+                parent_rect = parent_result.rect;
+            }
+
             const result = ResolveRectTransform(parent_rect, node.rectTransform);
             resolved.set(node.nodeId, result);
+            visiting.delete(node.nodeId);
+            return result;
+        }
+
+        document.nodes.forEach(function ResolveNodeEntry(node) {
+            ResolveNode(node);
         });
         return resolved;
     }
@@ -592,7 +638,12 @@
     function GetNodeDepth(document, node) {
         let depth = 0;
         let parent_id = node.parentId;
+        const visited = new Set();
         while (parent_id > 0) {
+            if (visited.has(parent_id)) {
+                return depth;
+            }
+            visited.add(parent_id);
             const parent = FindNode(document, parent_id);
             if (!parent) {
                 return depth;
