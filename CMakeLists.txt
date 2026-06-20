@@ -206,6 +206,16 @@ target_include_directories(YuUiCore
         Src/YuEngine/UiCore/Include
 )
 
+add_library(YuUiWebEditorService
+    Tools/UiWebEditorService/Src/UiWebEditorLocalService.cpp
+)
+yuengine_apply_compile_options(YuUiWebEditorService)
+target_include_directories(YuUiWebEditorService
+    PUBLIC
+        Tools/UiWebEditorService/Include
+)
+target_link_libraries(YuUiWebEditorService PUBLIC YuUiCore)
+
 add_library(YuSerialize
     Src/YuEngine/Serialize/Src/RuntimeConfigStream.cpp
     Src/YuEngine/Serialize/Src/SerializeReader.cpp
@@ -1592,6 +1602,17 @@ yuengine_add_labeled_test(UiCore_UiFileSchema_ReportsMissingDuplicateAndBindingI
 yuengine_add_labeled_test(UiCore_UiFileSchema_RejectsInvalidHeaderWithoutMutation YuUiFileSchemaValidatorTests Fast ModuleFixture UiCore UI FileSchema EvidenceOracle)
 yuengine_add_labeled_test(UiCore_UiFileSchema_RejectsInvalidRecordsWithoutMutation YuUiFileSchemaValidatorTests Fast ModuleFixture UiCore UI FileSchema EvidenceOracle)
 yuengine_add_labeled_test(UiCore_UiFileSchema_RejectsSmallIssueOutputWithoutMutation YuUiFileSchemaValidatorTests Fast ModuleFixture UiCore UI FileSchema EvidenceOracle)
+
+add_executable(YuUiWebEditorLocalServiceTests
+    Tests/UiWebEditorService/UiWebEditorLocalServiceTests.cpp
+)
+yuengine_apply_compile_options(YuUiWebEditorLocalServiceTests)
+target_link_libraries(YuUiWebEditorLocalServiceTests PRIVATE YuUiWebEditorService)
+yuengine_add_labeled_test(UiWebEditorService_LocalService_LoadValidatesAndCreatesDocument YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
+yuengine_add_labeled_test(UiWebEditorService_LocalService_ValidateReportsSchemaIssues YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
+yuengine_add_labeled_test(UiWebEditorService_LocalService_SaveValidatesGenericPayload YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
+yuengine_add_labeled_test(UiWebEditorService_LocalService_RejectsInvalidDocumentWithoutMutation YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
+yuengine_add_labeled_test(UiWebEditorService_LocalService_RejectsSmallIssueOutputWithoutMutation YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
 
 add_executable(YuUiDrawBatcherTests
     Tests/UiCore/UiDrawBatcherTests.cpp
