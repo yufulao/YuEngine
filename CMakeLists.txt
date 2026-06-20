@@ -186,6 +186,7 @@ add_library(YuUiCore
     Src/YuEngine/UiCore/Src/UiDrawBatcher.cpp
     Src/YuEngine/UiCore/Src/UiDrawListBuilder.cpp
     Src/YuEngine/UiCore/Src/UiDynamicAtlasPacker.cpp
+    Src/YuEngine/UiCore/Src/UiFileSchemaValidator.cpp
     Src/YuEngine/UiCore/Src/UiFontGlyphAtlas.cpp
     Src/YuEngine/UiCore/Src/UiGridViewSemantics.cpp
     Src/YuEngine/UiCore/Src/UiGridViewVirtualizer.cpp
@@ -1580,6 +1581,17 @@ yuengine_add_labeled_test(UiCore_DrawList_DeterministicElements YuUiCoreTests Fa
 yuengine_add_labeled_test(UiCore_StaticAtlasMetadata_ResolvesSpritePageUvNineSlice YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_StaticAtlasMetadata_MissingSpriteReportsStatus YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiCore_StaticAtlasMetadata_RejectsInvalidSpriteMetadata YuUiCoreTests Fast ModuleFixture UiCore UI L1 EvidenceOracle)
+
+add_executable(YuUiFileSchemaValidatorTests
+    Tests/UiCore/UiFileSchemaValidatorTests.cpp
+)
+yuengine_apply_compile_options(YuUiFileSchemaValidatorTests)
+target_link_libraries(YuUiFileSchemaValidatorTests PRIVATE YuUiCore)
+yuengine_add_labeled_test(UiCore_UiFileSchema_ValidatesGenericRuntimeData YuUiFileSchemaValidatorTests Fast ModuleFixture UiCore UI FileSchema EvidenceOracle)
+yuengine_add_labeled_test(UiCore_UiFileSchema_ReportsMissingDuplicateAndBindingIssues YuUiFileSchemaValidatorTests Fast ModuleFixture UiCore UI FileSchema EvidenceOracle)
+yuengine_add_labeled_test(UiCore_UiFileSchema_RejectsInvalidHeaderWithoutMutation YuUiFileSchemaValidatorTests Fast ModuleFixture UiCore UI FileSchema EvidenceOracle)
+yuengine_add_labeled_test(UiCore_UiFileSchema_RejectsInvalidRecordsWithoutMutation YuUiFileSchemaValidatorTests Fast ModuleFixture UiCore UI FileSchema EvidenceOracle)
+yuengine_add_labeled_test(UiCore_UiFileSchema_RejectsSmallIssueOutputWithoutMutation YuUiFileSchemaValidatorTests Fast ModuleFixture UiCore UI FileSchema EvidenceOracle)
 
 add_executable(YuUiDrawBatcherTests
     Tests/UiCore/UiDrawBatcherTests.cpp
