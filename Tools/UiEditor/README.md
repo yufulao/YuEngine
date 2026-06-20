@@ -45,3 +45,13 @@
 - Dear ImGui visual docking backend 仍然保持 explicit unavailable；本首片不静默引入 Dear ImGui，不声明真实 docking viewport 已完成。
 
 当前 preview viewport 只覆盖 layout-to-draw-to-RenderCore fixture 的确定性首片，不运行 Project UI Runtime lifecycle，不接入 D3D11/真实 GPU backend，也不扩展 UI-E2/E3。
+
+## ID/Event Validator
+
+`ENG-207A` 将 `UI-E1-006` 收敛为 editor-only validation 首片：
+
+- `UiEditorIdEventValidator` 独立于 `UiEditorShellState`，输入由 editor layout 抽取的 node id 与 event binding。
+- duplicate node id 和 missing event name 会输出带 `issue_kind`、`node_id`、`context_id`、计数和状态的 validation report。
+- validator 先统计再写入 report buffer；输出容量不足、invalid node 或 invalid event 时不会污染调用方 report buffer。
+
+当前 validator 只证明 E1 的 ID/event 检查面，不接入真实 Dear ImGui 后端，不扩展 UI-E2/E3，也不改变 runtime UiCore ownership/lifecycle。
