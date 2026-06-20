@@ -140,7 +140,9 @@ Generic UIManager runtime and Web Editor work remain future stages:
 
 - UIManager runtime lifecycle, registry, layer, map, stack, args, and
   cache/release policy begin at `UI-S3-001+`.
-- Web Editor work starts from schema, local editor service, frontend, and
-  preview protocol tasks.
+- Web Editor work starts from schema, local backend service, a real
+  TypeScript/React-style frontend workspace, and preview protocol tasks.
+- Normal hierarchy/inspector/canvas/template/theme/state-preview iteration must
+  not be modeled as C++ tool targets or require CMake rebuilds.
 - Native app editors, immediate-mode editor fallbacks, and game-window migration
   are out of scope.

@@ -5,6 +5,8 @@ Requested: 2026-06-20
 Owner: Architecture
 Scope: UI Framework, UI Core, UI Component Library, UIManager runtime framework, Web Editor
 
+Frontend boundary supplement: `docs/YUENGINE_UI_WEB_EDITOR_FRONTEND_BOUNDARY.md`
+
 ## 1. Correction
 
 This document replaces the earlier UI plan.
@@ -125,11 +127,28 @@ The UI Editor direction is Web. This is not "Web first"; it is the direction.
 The editor architecture is:
 
 ```text
-Web frontend
--> local editor service
+Web frontend workspace (TypeScript/React, hot reload)
+-> local editor service / backend bridge
 -> file/schema/validator/cook commands
 -> optional engine preview process through IPC/WebSocket
 ```
+
+The Web frontend is the editor product surface. It should iterate like the
+OpenAgents workspace-style web app: change TS/React/CSS/data files, refresh or
+hot reload, and validate with frontend commands. Editing hierarchy panels,
+inspector controls, templates, themes, state-preview UI, drag/drop, shortcuts,
+and visual workflow must not require recompiling YuEngine C++ targets.
+
+C++ is allowed only behind the Web frontend boundary:
+
+- stable runtime schema validation
+- local file/service bridge
+- cook/asset validation bridge
+- runtime preview protocol and preview-process control
+
+C++ is not allowed to own editor UI composition, panel layout, component
+template catalogs, style/theme authoring state, or state-preview UI workflow.
+Those belong to the Web frontend or editable data files.
 
 ### 3.1 Web Frontend
 
@@ -147,7 +166,7 @@ Owns:
 - keyboard shortcuts and editor workflow
 
 The frontend edits runtime data files. It must not become a game runtime
-dependency.
+dependency, and it must not be modeled as C++ libraries under `Tools/`.
 
 ### 3.2 Local Editor Service
 
@@ -163,6 +182,9 @@ Owns:
 - exposing a local HTTP/WebSocket API for the Web frontend
 
 The service is tooling. It is not part of shipped runtime.
+It may be implemented in C++ where it directly touches YuEngine runtime
+contracts, but it must expose stable APIs to the Web frontend instead of
+encoding frontend panels or editor catalogs in C++.
 
 ### 3.3 Engine Preview
 
@@ -295,13 +317,13 @@ Work items:
 | ID | Work item | Acceptance |
 | --- | --- | --- |
 | UI-EW-001 | Define UI file schema | schema version, node tree, layout, style refs, resource refs |
-| UI-EW-002 | Local editor service skeleton | load/save/validate API, no runtime dependency |
-| UI-EW-003 | Web editor shell | hierarchy, inspector, canvas, resource panel |
-| UI-EW-004 | Runtime preview protocol | WebSocket/IPC contract to engine preview process |
-| UI-EW-005 | Validator integration | schema, duplicate ID, resource ref, overflow reports |
-| UI-EW-006 | Component template data | templates are data files consumed by Web editor and runtime validator |
-| UI-EW-007 | Style/theme editing | Web edits data; runtime owns interpretation |
-| UI-EW-008 | State preview | Web controls state input; engine path validates output |
+| UI-EW-002 | Local editor service backend | C++ only for file/schema/cook/preview bridge; no frontend panel/model ownership |
+| UI-EW-003 | Web frontend workspace | Next/Vite-style TS/React app with hierarchy, inspector, canvas, resource panel, hot reload |
+| UI-EW-004 | Runtime preview protocol | WebSocket/IPC contract to engine preview process; no C++ editor shell dependency |
+| UI-EW-005 | Validator integration endpoint | schema, duplicate ID, resource ref, overflow reports exposed through the service API |
+| UI-EW-006 | Component template catalog | JSON/TS/data-file catalog consumed by Web frontend and runtime validator, not compiled C++ |
+| UI-EW-007 | Style/theme editing | Web edits data files; runtime owns interpretation |
+| UI-EW-008 | State preview UI | Web controls state input; engine path validates output |
 
 ## 6. Hard Blocks
 
@@ -312,9 +334,13 @@ These are blocking violations:
 - recreating the old game-window matrix
 - adding native app/editor targets as engine capabilities
 - keeping a native editor shell fallback
+- adding C++ targets for Web editor shell, panel model, template catalog,
+  style/theme editing, or state-preview workflow
 - moving window lifecycle into UI Core
 - making UI runtime depend on editor-only modules
 - making Web Editor logic part of shipped runtime
+- requiring CMake/C++ rebuild for normal editor UI, template, theme, or state
+  preview changes
 - making config tables mandatory for current UI Framework work
 - implementing Grid/List by materializing all items
 - allowing dynamic atlas repack during paint hot path
@@ -362,7 +388,7 @@ Allowed examples:
 - implement GridView virtualization counters
 - implement UIManager popup stack
 - implement UI schema validator
-- implement Web Editor hierarchy panel
+- implement Web Editor hierarchy panel in the Web frontend workspace
 
 Not allowed:
 
@@ -370,3 +396,4 @@ Not allowed:
 - validate UI Framework using a game-specific panel
 - build native app editor shell
 - keep a fallback editor path outside Web
+- add a C++ Web editor shell/panel/template/theme/state-preview target

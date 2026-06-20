@@ -15,8 +15,6 @@ UiWebEditorPreviewStatus UiWebEditorPreviewProtocol::BuildHandshakeResponse(
     out_response->protocol_version = UI_WEB_EDITOR_PREVIEW_PROTOCOL_VERSION;
     out_response->service_version =
         yuengine::ui_web_editor_service::UI_WEB_EDITOR_LOCAL_SERVICE_VERSION;
-    out_response->shell_version =
-        yuengine::ui_web_editor_shell::UI_WEB_EDITOR_SHELL_VERSION;
     out_response->server_capability_flags = UI_WEB_EDITOR_PREVIEW_CAPABILITY_FLAGS;
     out_response->accepted_capability_flags =
         request.client_capability_flags & UI_WEB_EDITOR_PREVIEW_CAPABILITY_FLAGS;
@@ -84,7 +82,6 @@ UiWebEditorPreviewStatus UiWebEditorPreviewProtocol::BuildPreviewResponse(
     out_response->error_kind = UiWebEditorPreviewErrorKind::None;
     out_response->diagnostic_count = required_diagnostic_count;
     out_response->document_ready = true;
-    out_response->shell_snapshot_ready = true;
     out_response->diagnostics_ready = request.message_kind == UiWebEditorPreviewMessageKind::RenderDiagnostics;
     return UiWebEditorPreviewStatus::Success;
 }
@@ -138,21 +135,13 @@ bool UiWebEditorPreviewProtocol::ValidateDocumentPayload(
         return false;
     }
 
-    if (!request.shell_snapshot.Succeeded()) {
-        return false;
-    }
-
-    if (request.shell_snapshot.document_id != request.document.document_id) {
-        return false;
-    }
-
-    return request.shell_snapshot.layout_id == request.document.layout_id;
+    return true;
 }
 
 std::uint32_t UiWebEditorPreviewProtocol::GetRequiredDiagnosticCount(
     UiWebEditorPreviewMessageKind message_kind) const {
     if (message_kind == UiWebEditorPreviewMessageKind::RenderDiagnostics) {
-        return 3U;
+        return 2U;
     }
 
     return 0U;
@@ -176,7 +165,6 @@ void UiWebEditorPreviewProtocol::WriteBaseResponse(
     out_response->schema_issue_count = request.local_service_result.issue_count;
     out_response->local_service_status = request.local_service_result.status;
     out_response->schema_status = request.local_service_result.schema_status;
-    out_response->shell_status = request.shell_snapshot.status;
     out_response->selected_node_id = request.selected_node_id;
     out_response->has_selection = request.has_selection;
 }
@@ -196,7 +184,7 @@ void UiWebEditorPreviewProtocol::WriteFailureResponse(
 void UiWebEditorPreviewProtocol::WriteRenderDiagnostics(
     const UiWebEditorPreviewRequest &request,
     std::span<UiWebEditorPreviewDiagnosticRecord> out_diagnostics) const {
-    if (out_diagnostics.size() < 3U) {
+    if (out_diagnostics.size() < 2U) {
         return;
     }
 
@@ -208,20 +196,12 @@ void UiWebEditorPreviewProtocol::WriteRenderDiagnostics(
     protocol_record.status_code = request.protocol_version;
     out_diagnostics[0U] = protocol_record;
 
-    UiWebEditorPreviewDiagnosticRecord shell_record{};
-    shell_record.kind = UiWebEditorPreviewDiagnosticKind::Shell;
-    shell_record.severity = UiWebEditorPreviewDiagnosticSeverity::Info;
-    shell_record.node_id = request.shell_snapshot.inspector_node_id;
-    shell_record.context_key = request.shell_snapshot.hierarchy_item_count;
-    shell_record.status_code = static_cast<std::uint32_t>(request.shell_snapshot.status);
-    out_diagnostics[1U] = shell_record;
-
     UiWebEditorPreviewDiagnosticRecord render_record{};
     render_record.kind = UiWebEditorPreviewDiagnosticKind::Render;
     render_record.severity = UiWebEditorPreviewDiagnosticSeverity::Info;
     render_record.node_id = request.selected_node_id;
     render_record.context_key = request.schema.header.layout_id;
     render_record.status_code = 0U;
-    out_diagnostics[2U] = render_record;
+    out_diagnostics[1U] = render_record;
 }
 }

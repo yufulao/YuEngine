@@ -13,7 +13,6 @@
 #include "YuEngine/UiCore/UiStackDirection.h"
 #include "YuEngine/UiWebEditorPreviewProtocol/UiWebEditorPreviewProtocol.h"
 #include "YuEngine/UiWebEditorService/UiWebEditorLocalService.h"
-#include "YuEngine/UiWebEditorShell/UiWebEditorShell.h"
 
 using yuengine::uicore::UiFileEventBinding;
 using yuengine::uicore::UiFileLayoutRecord;
@@ -50,15 +49,6 @@ using yuengine::ui_web_editor_service::UiWebEditorLocalService;
 using yuengine::ui_web_editor_service::UiWebEditorLocalServiceResult;
 using yuengine::ui_web_editor_service::UiWebEditorLocalServiceStatus;
 using yuengine::ui_web_editor_service::UI_WEB_EDITOR_LOCAL_SERVICE_VERSION;
-using yuengine::ui_web_editor_shell::UiWebEditorCanvasItemRecord;
-using yuengine::ui_web_editor_shell::UiWebEditorHierarchyItemRecord;
-using yuengine::ui_web_editor_shell::UiWebEditorInspectorRecord;
-using yuengine::ui_web_editor_shell::UiWebEditorResourceItemRecord;
-using yuengine::ui_web_editor_shell::UiWebEditorShell;
-using yuengine::ui_web_editor_shell::UiWebEditorShellRequest;
-using yuengine::ui_web_editor_shell::UiWebEditorShellSnapshot;
-using yuengine::ui_web_editor_shell::UiWebEditorShellStatus;
-using yuengine::ui_web_editor_shell::UI_WEB_EDITOR_SHELL_VERSION;
 
 namespace {
 constexpr const char *TEST_HANDSHAKE =
@@ -237,28 +227,6 @@ bool LoadDocument(
     return status == UiWebEditorLocalServiceStatus::Success;
 }
 
-bool BuildShellSnapshot(
-    const UiFileSchemaDesc &schema,
-    const UiWebEditorLocalDocumentRecord &document,
-    std::uint32_t selected_node_id,
-    bool has_selection,
-    UiWebEditorShellSnapshot *out_snapshot) {
-    UiWebEditorShellRequest request{};
-    request.document = document;
-    request.schema = schema;
-    request.selected_node_id = NodeId(selected_node_id);
-    request.has_selection = has_selection;
-
-    std::array<UiWebEditorHierarchyItemRecord, 2U> hierarchy{};
-    UiWebEditorInspectorRecord inspector{};
-    std::array<UiWebEditorCanvasItemRecord, 2U> canvas{};
-    std::array<UiWebEditorResourceItemRecord, 1U> resources{};
-    const UiWebEditorShell shell{};
-    const UiWebEditorShellStatus status =
-        shell.BuildSnapshot(request, hierarchy, &inspector, canvas, resources, out_snapshot);
-    return status == UiWebEditorShellStatus::Success;
-}
-
 bool BuildPreviewRequest(
     ValidSchemaFixture *fixture,
     UiWebEditorPreviewMessageKind message_kind,
@@ -277,11 +245,6 @@ bool BuildPreviewRequest(
         return false;
     }
 
-    UiWebEditorShellSnapshot shell_snapshot{};
-    if (!BuildShellSnapshot(schema, document, selected_node_id, has_selection, &shell_snapshot)) {
-        return false;
-    }
-
     UiWebEditorPreviewRequest request{};
     request.message_kind = message_kind;
     request.request_id = request_id;
@@ -289,7 +252,6 @@ bool BuildPreviewRequest(
     request.schema = schema;
     request.document = document;
     request.local_service_result = local_result;
-    request.shell_snapshot = shell_snapshot;
     request.selected_node_id = NodeId(selected_node_id);
     request.has_selection = has_selection;
     *out_request = request;
@@ -310,8 +272,7 @@ int UiWebEditorPreviewProtocolProtocolBuildsHandshake() {
     }
 
     if (response.accepted_protocol_version != UI_WEB_EDITOR_PREVIEW_PROTOCOL_VERSION ||
-        response.service_version != UI_WEB_EDITOR_LOCAL_SERVICE_VERSION ||
-        response.shell_version != UI_WEB_EDITOR_SHELL_VERSION) {
+        response.service_version != UI_WEB_EDITOR_LOCAL_SERVICE_VERSION) {
         return Fail("preview protocol handshake version mismatch");
     }
 
@@ -356,7 +317,7 @@ int UiWebEditorPreviewProtocolProtocolBuildsLoadResponse() {
         return Fail("preview protocol load response counts mismatch");
     }
 
-    if (!response.document_ready || !response.shell_snapshot_ready || response.diagnostics_ready) {
+    if (!response.document_ready || response.diagnostics_ready) {
         return Fail("preview protocol load response readiness mismatch");
     }
 
@@ -387,8 +348,7 @@ int UiWebEditorPreviewProtocolProtocolBuildsSelectResponse() {
         return Fail("preview protocol select response selection mismatch");
     }
 
-    if (response.local_service_status != UiWebEditorLocalServiceStatus::Success ||
-        response.shell_status != UiWebEditorShellStatus::Success) {
+    if (response.local_service_status != UiWebEditorLocalServiceStatus::Success) {
         return Fail("preview protocol select status mismatch");
     }
 
@@ -408,24 +368,22 @@ int UiWebEditorPreviewProtocolProtocolWritesRenderDiagnostics() {
         return Fail("preview protocol diagnostic fixture did not build");
     }
 
-    std::array<UiWebEditorPreviewDiagnosticRecord, 3U> diagnostics{};
+    std::array<UiWebEditorPreviewDiagnosticRecord, 2U> diagnostics{};
     UiWebEditorPreviewResponse response{};
     const UiWebEditorPreviewProtocol protocol{};
     const UiWebEditorPreviewStatus status =
         protocol.BuildPreviewResponse(request, diagnostics, &response);
-    if (status != UiWebEditorPreviewStatus::Success || response.diagnostic_count != 3U) {
+    if (status != UiWebEditorPreviewStatus::Success || response.diagnostic_count != 2U) {
         return Fail("preview protocol render diagnostics did not succeed");
     }
 
     if (diagnostics[0U].kind != UiWebEditorPreviewDiagnosticKind::Protocol ||
-        diagnostics[1U].kind != UiWebEditorPreviewDiagnosticKind::Shell ||
-        diagnostics[2U].kind != UiWebEditorPreviewDiagnosticKind::Render) {
+        diagnostics[1U].kind != UiWebEditorPreviewDiagnosticKind::Render) {
         return Fail("preview protocol render diagnostic kind mismatch");
     }
 
     if (diagnostics[0U].context_key != 303U ||
-        diagnostics[1U].context_key != request.shell_snapshot.hierarchy_item_count ||
-        diagnostics[2U].context_key != 8001U) {
+        diagnostics[1U].context_key != 8001U) {
         return Fail("preview protocol render diagnostic context mismatch");
     }
 
@@ -474,8 +432,7 @@ int UiWebEditorPreviewProtocolProtocolRejectsSmallDiagnosticOutputWithoutMutatio
         return Fail("preview protocol small diagnostic fixture did not build");
     }
 
-    std::array<UiWebEditorPreviewDiagnosticRecord, 2U> diagnostics{
-        SentinelDiagnostic(),
+    std::array<UiWebEditorPreviewDiagnosticRecord, 1U> diagnostics{
         SentinelDiagnostic()};
     UiWebEditorPreviewResponse response{};
     const UiWebEditorPreviewProtocol protocol{};
@@ -485,12 +442,12 @@ int UiWebEditorPreviewProtocolProtocolRejectsSmallDiagnosticOutputWithoutMutatio
         return Fail("preview protocol small diagnostic output was not rejected");
     }
 
-    if (response.diagnostic_count != 3U ||
+    if (response.diagnostic_count != 2U ||
         response.error_kind != UiWebEditorPreviewErrorKind::OutputCapacityExceeded) {
         return Fail("preview protocol small diagnostic response mismatch");
     }
 
-    if (!DiagnosticMatchesSentinel(diagnostics[0U]) || !DiagnosticMatchesSentinel(diagnostics[1U])) {
+    if (!DiagnosticMatchesSentinel(diagnostics[0U])) {
         return Fail("preview protocol small diagnostic output mutated diagnostics");
     }
 

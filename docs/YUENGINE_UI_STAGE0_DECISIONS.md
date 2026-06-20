@@ -103,6 +103,17 @@ owns file IO, schema validation, version migration, resource validation, cook
 commands, and preview-process control. The game runtime must not depend on the
 Web Editor.
 
+The Web frontend is a TypeScript/React-style hot-reload workspace, not a C++
+tool target. Hierarchy, inspector, canvas, resource picker, component
+templates, style/theme editing, state preview, drag/drop, shortcuts, and visual
+workflow must iterate through frontend files and data files without rebuilding
+YuEngine C++.
+
+C++ is allowed only for stable backend contracts: runtime schema validation,
+local file/service bridge, cook/asset validation bridge, and preview protocol.
+C++ must not own Web editor shell composition, panel models, template catalogs,
+style/theme authoring state, or state-preview workflow.
+
 ## 4. Reference Inputs
 
 Allowed references:
@@ -133,6 +144,7 @@ YuEngine-specific acceptance:
 - Config tables are deferred.
 - Web Editor is the only editor direction.
 - No native app editor path is retained.
+- No C++ Web editor shell/panel/template/theme/state-preview path is retained.
 - No old game windows are used as validation samples.
 - No old game-window matrix is part of UI Framework progress.
 - List/GridView is virtualized.
@@ -173,4 +185,5 @@ Stage 2 may implement component library and mechanisms only.
 Stage 3 may implement UIManager runtime framework only.
 
 Web Editor work must start from Web schema/service/frontend/preview protocol
-tasks. It must not add native app/editor targets.
+tasks. It must not add native app/editor targets, and it must not model the Web
+frontend as C++ libraries.

@@ -8,7 +8,6 @@
 
 #include "YuEngine/UiCore/UiFileSchemaValidator.h"
 #include "YuEngine/UiWebEditorService/UiWebEditorLocalService.h"
-#include "YuEngine/UiWebEditorShell/UiWebEditorShell.h"
 
 namespace yuengine::ui_web_editor_preview_protocol {
 constexpr std::uint32_t UI_WEB_EDITOR_PREVIEW_PROTOCOL_VERSION = 1U;
@@ -51,7 +50,6 @@ enum class UiWebEditorPreviewDiagnosticKind {
     None = 0,
     Protocol,
     Schema,
-    Shell,
     Render
 };
 
@@ -73,7 +71,6 @@ struct UiWebEditorPreviewHandshakeResponse final {
     std::uint32_t protocol_version = UI_WEB_EDITOR_PREVIEW_PROTOCOL_VERSION;
     std::uint32_t accepted_protocol_version = 0U;
     std::uint32_t service_version = 0U;
-    std::uint32_t shell_version = 0U;
     std::uint32_t server_capability_flags = 0U;
     std::uint32_t accepted_capability_flags = 0U;
 
@@ -93,7 +90,6 @@ struct UiWebEditorPreviewRequest final {
     yuengine::uicore::UiFileSchemaDesc schema;
     yuengine::ui_web_editor_service::UiWebEditorLocalDocumentRecord document;
     yuengine::ui_web_editor_service::UiWebEditorLocalServiceResult local_service_result;
-    yuengine::ui_web_editor_shell::UiWebEditorShellSnapshot shell_snapshot;
     yuengine::uicore::UiNodeId selected_node_id;
     bool has_selection = false;
 };
@@ -105,8 +101,6 @@ struct UiWebEditorPreviewResponse final {
     yuengine::ui_web_editor_service::UiWebEditorLocalServiceStatus local_service_status =
         yuengine::ui_web_editor_service::UiWebEditorLocalServiceStatus::Success;
     yuengine::uicore::UiFileSchemaStatus schema_status = yuengine::uicore::UiFileSchemaStatus::Success;
-    yuengine::ui_web_editor_shell::UiWebEditorShellStatus shell_status =
-        yuengine::ui_web_editor_shell::UiWebEditorShellStatus::Success;
     std::uint32_t request_id = 0U;
     std::uint32_t protocol_version = UI_WEB_EDITOR_PREVIEW_PROTOCOL_VERSION;
     std::uint32_t document_id = 0U;
@@ -119,7 +113,6 @@ struct UiWebEditorPreviewResponse final {
     yuengine::uicore::UiNodeId selected_node_id;
     bool has_selection = false;
     bool document_ready = false;
-    bool shell_snapshot_ready = false;
     bool diagnostics_ready = false;
 
     /**
@@ -152,7 +145,7 @@ public:
         UiWebEditorPreviewHandshakeResponse *out_response) const;
 
     /**
-     * @comment 基于 generic UI schema、local service result 和 Web editor shell snapshot 构建 preview response。
+     * @comment 基于 generic UI schema 和 local service result 构建 runtime preview response。
      * @param request preview message 输入。
      * @param out_diagnostics 调用方持有的 diagnostic 输出。
      * @param out_response 输出 preview response。

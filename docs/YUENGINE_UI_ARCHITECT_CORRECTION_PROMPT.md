@@ -34,16 +34,21 @@
 
 6. UI Editor 的方向就是 Web，不是 Web 优先。
    Web frontend + local editor service + engine preview/validator。
+   Web frontend 必须是类似 OpenAgents workspace 的快速迭代前端工程：
+   TS/React/CSS/data 文件热更新，改层级树、属性面板、模板、主题、状态预览、
+   拖拽、快捷键、编辑体验时不需要重新编译 YuEngine C++。
    Web 负责编辑体验、属性面板、拖拽、层级树、资源选择、校验展示。
-   local service 负责读写文件、schema/version、validator、cook、preview IPC。
+   local service 只负责读写文件、schema/version、validator、cook、preview IPC。
    YuEngine runtime 只负责真实预览和运行时解释。
    不再做 C++ app 编辑器，不再做 ImGui 编辑器 fallback。
+   也不要把 Web editor shell、panel model、component template、style/theme、
+   state preview workflow 做成 C++ target；这些属于 Web frontend 或数据文件。
 
 7. 接下来只允许创建通用任务：
    - UI Core layout/node/input/draw
    - UI component library
    - UIManager/BaseUI runtime records
-   - Web Editor schema/service/frontend/preview protocol
+   - Web Editor schema/service/backend bridge/frontend workspace/preview protocol
    禁止创建任何业务窗口迁移任务。
 
 8. 提交前必须跑：
