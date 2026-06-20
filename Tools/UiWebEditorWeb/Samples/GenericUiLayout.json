@@ -1,0 +1,270 @@
+{
+    "schema": {
+        "schemaId": "YUFS",
+        "schemaVersion": 1,
+        "layoutId": 12001,
+        "rootNodeId": 1
+    },
+    "nodes": [
+        {
+            "nodeId": 1,
+            "parentId": 0,
+            "name": "Root",
+            "component": "Container",
+            "text": "",
+            "rectTransform": {
+                "anchorMin": {
+                    "x": 0,
+                    "y": 0
+                },
+                "anchorMax": {
+                    "x": 1,
+                    "y": 1
+                },
+                "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                },
+                "offsetMin": {
+                    "x": 0,
+                    "y": 0
+                },
+                "offsetMax": {
+                    "x": 0,
+                    "y": 0
+                },
+                "margin": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0
+                },
+                "padding": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0
+                },
+                "dpiScale": 1
+            },
+            "siblingOrder": 0,
+            "layer": 0,
+            "visible": true,
+            "enabled": true,
+            "hitTestable": false
+        },
+        {
+            "nodeId": 2,
+            "parentId": 1,
+            "name": "Title",
+            "component": "Text",
+            "text": "Sample Title",
+            "rectTransform": {
+                "anchorMin": {
+                    "x": 0,
+                    "y": 0
+                },
+                "anchorMax": {
+                    "x": 1,
+                    "y": 1
+                },
+                "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                },
+                "offsetMin": {
+                    "x": 40,
+                    "y": 456
+                },
+                "offsetMax": {
+                    "x": -500,
+                    "y": -36
+                },
+                "margin": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0
+                },
+                "padding": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0
+                },
+                "dpiScale": 1
+            },
+            "siblingOrder": 0,
+            "layer": 1,
+            "visible": true,
+            "enabled": true,
+            "hitTestable": false
+        },
+        {
+            "nodeId": 3,
+            "parentId": 1,
+            "name": "ConfirmButton",
+            "component": "Button",
+            "text": "Confirm",
+            "rectTransform": {
+                "anchorMin": {
+                    "x": 0,
+                    "y": 0
+                },
+                "anchorMax": {
+                    "x": 1,
+                    "y": 1
+                },
+                "pivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                },
+                "offsetMin": {
+                    "x": 40,
+                    "y": 380
+                },
+                "offsetMax": {
+                    "x": -680,
+                    "y": -112
+                },
+                "margin": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0
+                },
+                "padding": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0
+                },
+                "dpiScale": 1
+            },
+            "siblingOrder": 1,
+            "layer": 1,
+            "visible": true,
+            "enabled": true,
+            "hitTestable": true
+        }
+    ],
+    "layouts": [
+        {
+            "containerNodeId": 1,
+            "type": "Stack",
+            "direction": "Vertical",
+            "gridColumnCount": 1,
+            "spacing": 12,
+            "padding": 24
+        }
+    ],
+    "styleRefs": [
+        {
+            "nodeId": 1,
+            "styleKey": 13001,
+            "themeKey": 1,
+            "tokenKey": 1,
+            "valueKind": "ColorRgba8",
+            "value": "#f8fafc",
+            "overridesTheme": true
+        },
+        {
+            "nodeId": 2,
+            "styleKey": 13002,
+            "themeKey": 1,
+            "tokenKey": 2,
+            "valueKind": "ColorRgba8",
+            "value": "#111827",
+            "overridesTheme": true
+        },
+        {
+            "nodeId": 3,
+            "styleKey": 13003,
+            "themeKey": 1,
+            "tokenKey": 3,
+            "valueKind": "ColorRgba8",
+            "value": "#2563eb",
+            "overridesTheme": true
+        }
+    ],
+    "resourceRefs": [
+        {
+            "nodeId": 2,
+            "kind": "Font",
+            "resourceKey": 23001,
+            "label": "DefaultSans"
+        }
+    ],
+    "eventBindings": [
+        {
+            "nodeId": 3,
+            "bindingKey": 33001,
+            "eventKey": 43001,
+            "command": "Confirm"
+        }
+    ],
+    "theme": {
+        "tokens": [
+            {
+                "tokenKey": 1,
+                "name": "Surface",
+                "role": "Color",
+                "valueKind": "ColorRgba8",
+                "value": "#f8fafc"
+            },
+            {
+                "tokenKey": 2,
+                "name": "TextPrimary",
+                "role": "Color",
+                "valueKind": "ColorRgba8",
+                "value": "#111827"
+            },
+            {
+                "tokenKey": 3,
+                "name": "Accent",
+                "role": "Color",
+                "valueKind": "ColorRgba8",
+                "value": "#2563eb"
+            }
+        ],
+        "themes": [
+            {
+                "themeKey": 1,
+                "name": "Default",
+                "tokenKeys": [
+                    1,
+                    2,
+                    3
+                ],
+                "default": true
+            }
+        ]
+    },
+    "statePreview": [
+        {
+            "inputKey": 53001,
+            "nodeId": 3,
+            "name": "Pressed",
+            "valueKind": "Bool",
+            "value": false,
+            "affectsVisibility": false,
+            "affectsEnabled": true,
+            "affectsResource": false
+        }
+    ],
+    "editor": {
+        "selectedNodeId": 1,
+        "dirty": false,
+        "viewport": {
+            "runtimeRect": {
+                "x": 0,
+                "y": 0,
+                "width": 960,
+                "height": 540
+            },
+            "scale": 1,
+            "panX": 0,
+            "panY": 0
+        }
+    }
+}

@@ -204,6 +204,62 @@ Not allowed:
 - adding a native app editor fallback
 - adding a native immediate-mode editor shell fallback
 
+### 3.4 Layout Coordinate Boundary
+
+This is a required boundary because HTML/CSS and engine UI layout do not share
+the same model.
+
+The Web frontend uses HTML/CSS for the editor shell only. CSS `border-box`,
+DOM `left/top`, flex, grid, browser padding, and browser border behavior are
+not YuEngine runtime layout semantics.
+
+YuEngine runtime layout data is the source of truth:
+
+- parent-relative normalized anchors
+- offsets
+- pivot
+- margin and padding
+- size policy
+- DPI and safe-area inputs
+- engine runtime rect and content rect
+
+The Web canvas must render runtime data through an explicit coordinate adapter.
+The adapter owns conversion between engine runtime coordinates and browser
+canvas coordinates. In particular, engine runtime rects use the engine layout
+coordinate convention, while browser canvas placement uses top-left DOM
+coordinates.
+
+Required display conversion shape:
+
+```text
+cssLeft = runtimeX * scale + panX
+cssTop = (viewportHeight - runtimeY - runtimeHeight) * scale + panY
+cssWidth = runtimeWidth * scale
+cssHeight = runtimeHeight * scale
+```
+
+The inverse conversion is required for drag and resize operations. Dragging a
+node updates runtime layout fields according to the current anchor preset; it
+must not infer anchor semantics from CSS `left/top/width/height` alone.
+
+Required rules:
+
+- the inspector edits anchors, offsets, pivot, margin, padding, size policy,
+  DPI, and safe-area data as runtime fields
+- anchor preset changes are explicit user actions
+- fixed-anchor drags update offsets
+- stretch-edge drags update min/max offsets
+- Web selection boxes, resize handles, guides, and borders are editor overlays
+  and never part of runtime rect data
+- Web fast preview may use a JavaScript/TypeScript rect solver only if it is
+  tested against YuEngine runtime layout golden fixtures
+- C++ runtime/headless preview is authoritative when Web fast preview and
+  engine layout disagree
+
+The current Web editor foundation may start with absolute CSS placement for
+rapid iteration, but the planned editor is not complete until the coordinate
+adapter and runtime-layout parity tests exist.
+
 ## 4. Reference Inputs
 
 Reference use is constrained to generic behavior.
@@ -216,7 +272,8 @@ Reference use is constrained to generic behavior.
 | Unity UGUI | rect/anchor/pivot, common component behavior | Canvas rebuild model as-is, Unity object model |
 | TextMeshPro | font asset/glyph/fallback concepts | full TMP feature parity in first slice |
 | Unreal Slate/UMG | invalidation, retainer-like caching, UI performance vocabulary | Unreal editor/runtime architecture |
-| Web platform | editor shell, DOM controls, drag/drop, fast iteration | game runtime UI |
+| Web platform | editor shell, DOM controls, drag/drop, fast iteration | game runtime UI or runtime layout semantics |
+| YuEngine `UiRectTransform` and runtime rect math | authoritative anchors, offsets, pivot, margin, padding, DPI, safe-area, engine rect/content rect semantics | CSS box model, browser layout policy, DOM coordinate semantics |
 
 Each landing task must record:
 
@@ -317,13 +374,16 @@ Work items:
 | ID | Work item | Acceptance |
 | --- | --- | --- |
 | UI-EW-001 | Define UI file schema | schema version, node tree, layout, style refs, resource refs |
-| UI-EW-002 | Local editor service backend | C++ only for file/schema/cook/preview bridge; no frontend panel/model ownership |
-| UI-EW-003 | Web frontend workspace | Next/Vite-style TS/React app with hierarchy, inspector, canvas, resource panel, hot reload |
-| UI-EW-004 | Runtime preview protocol | WebSocket/IPC contract to engine preview process; no C++ editor shell dependency |
-| UI-EW-005 | Validator integration endpoint | schema, duplicate ID, resource ref, overflow reports exposed through the service API |
-| UI-EW-006 | Component template catalog | JSON/TS/data-file catalog consumed by Web frontend and runtime validator, not compiled C++ |
-| UI-EW-007 | Style/theme editing | Web edits data files; runtime owns interpretation |
-| UI-EW-008 | State preview UI | Web controls state input; engine path validates output |
+| UI-EW-002 | Local editor service skeleton | load/save/validate API, no runtime dependency |
+| UI-EW-003 | Web editor shell | hierarchy, inspector, canvas, resource panel; canvas uses editor overlays only |
+| UI-EW-004 | Runtime preview protocol | WebSocket/IPC contract to engine preview process |
+| UI-EW-005 | Validator integration | schema, duplicate ID, resource ref, overflow reports |
+| UI-EW-006 | Component template data | templates are data files consumed by Web editor and runtime validator |
+| UI-EW-007 | Style/theme editing | Web edits data; runtime owns interpretation |
+| UI-EW-008 | State preview | Web controls state input; engine path validates output |
+| UI-EW-009 | Layout coordinate spec | documents engine runtime rects, DOM canvas rects, y-axis conversion, pan/zoom, DPI, safe-area, border/overlay exclusion |
+| UI-EW-010 | Coordinate adapter | converts engine rects to Web canvas rects and back; drag/resize updates runtime offsets instead of CSS-only fields |
+| UI-EW-011 | Runtime layout parity tests | Web fast solver matches YuEngine runtime golden fixtures; C++ preview result is authoritative |
 
 ## 6. Hard Blocks
 
@@ -341,6 +401,11 @@ These are blocking violations:
 - making Web Editor logic part of shipped runtime
 - requiring CMake/C++ rebuild for normal editor UI, template, theme, or state
   preview changes
+- using HTML/CSS border-box as runtime layout semantics
+- exporting DOM `left/top/width/height` as authoritative runtime layout without
+  anchor/offset/pivot conversion
+- letting Web preview disagree with the runtime layout solver without a failing
+  parity test
 - making config tables mandatory for current UI Framework work
 - implementing Grid/List by materializing all items
 - allowing dynamic atlas repack during paint hot path
@@ -362,6 +427,12 @@ Focused UI runtime route:
 ctest --preset windows-fast-gate -R "^(BaseUiController_|UiPanelRegistry_|UiRuntime_ManagerLayerModel_|UiRuntime_ManagerPanelMap_|UiRuntime_ManagerPopupStack_|UiRuntime_ManagerFullscreenStack_|UiRuntime_PanelParameter_)" --output-on-failure
 ```
 
+Focused Web editor model route:
+
+```powershell
+node Tests/UiWebEditorWeb/UiWebEditorWebTests.js
+```
+
 ## 8. Completion Definition
 
 The UI Framework first round is complete only when:
@@ -374,6 +445,10 @@ The UI Framework first round is complete only when:
 - UIManager runtime records pass lifecycle, layer, map, stack, args, and release
   tests
 - Web Editor foundation is specified as Web-only tooling
+- Web Editor layout uses a documented coordinate adapter instead of treating
+  HTML/CSS border-box as runtime layout
+- Web fast preview is covered by runtime-layout parity tests against the
+  YuEngine authoritative layout solver
 - no native app/editor engine capability remains
 - no game-specific window or game-specific sample remains in engine scope
 
