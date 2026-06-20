@@ -216,6 +216,16 @@ target_include_directories(YuUiWebEditorService
 )
 target_link_libraries(YuUiWebEditorService PUBLIC YuUiCore)
 
+add_library(YuUiWebEditorShell
+    Tools/UiWebEditorShell/Src/UiWebEditorShell.cpp
+)
+yuengine_apply_compile_options(YuUiWebEditorShell)
+target_include_directories(YuUiWebEditorShell
+    PUBLIC
+        Tools/UiWebEditorShell/Include
+)
+target_link_libraries(YuUiWebEditorShell PUBLIC YuUiWebEditorService)
+
 add_library(YuSerialize
     Src/YuEngine/Serialize/Src/RuntimeConfigStream.cpp
     Src/YuEngine/Serialize/Src/SerializeReader.cpp
@@ -1613,6 +1623,17 @@ yuengine_add_labeled_test(UiWebEditorService_LocalService_ValidateReportsSchemaI
 yuengine_add_labeled_test(UiWebEditorService_LocalService_SaveValidatesGenericPayload YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
 yuengine_add_labeled_test(UiWebEditorService_LocalService_RejectsInvalidDocumentWithoutMutation YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
 yuengine_add_labeled_test(UiWebEditorService_LocalService_RejectsSmallIssueOutputWithoutMutation YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
+
+add_executable(YuUiWebEditorShellTests
+    Tests/UiWebEditorShell/UiWebEditorShellTests.cpp
+)
+yuengine_apply_compile_options(YuUiWebEditorShellTests)
+target_link_libraries(YuUiWebEditorShellTests PRIVATE YuUiWebEditorShell)
+yuengine_add_labeled_test(UiWebEditorShell_Shell_BuildsFourPanelSnapshot YuUiWebEditorShellTests Fast ModuleFixture UI WebEditorShell Shell EvidenceOracle)
+yuengine_add_labeled_test(UiWebEditorShell_Shell_UsesRootInspectorWithoutSelection YuUiWebEditorShellTests Fast ModuleFixture UI WebEditorShell Shell EvidenceOracle)
+yuengine_add_labeled_test(UiWebEditorShell_Shell_RejectsMissingSelectionWithoutMutation YuUiWebEditorShellTests Fast ModuleFixture UI WebEditorShell Shell EvidenceOracle)
+yuengine_add_labeled_test(UiWebEditorShell_Shell_RejectsDocumentCountMismatchWithoutMutation YuUiWebEditorShellTests Fast ModuleFixture UI WebEditorShell Shell EvidenceOracle)
+yuengine_add_labeled_test(UiWebEditorShell_Shell_RejectsSmallOutputWithoutMutation YuUiWebEditorShellTests Fast ModuleFixture UI WebEditorShell Shell EvidenceOracle)
 
 add_executable(YuUiDrawBatcherTests
     Tests/UiCore/UiDrawBatcherTests.cpp
