@@ -972,6 +972,9 @@ Stage 3 is done when:
 `UI-S3-013` migration batches are owned by
 `docs/YUENGINE_UI_STAGE3_MIGRATION_MATRIX.md`.
 
+`UI-S3-014` validation evidence is owned by
+`docs/YUENGINE_UI_STAGE3_VALIDATION.md`.
+
 ## 9. UI Editor Plan
 
 The UI Editor should advance beside the runtime. It should not block Stage 1,
