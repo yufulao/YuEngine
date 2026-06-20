@@ -291,6 +291,7 @@ target_link_libraries(YuUiRenderCoreBridge PUBLIC YuUiCore YuRenderCore)
 add_library(YuUiRuntime
     Src/YuEngine/UiRuntime/Src/BaseUiController.cpp
     Src/YuEngine/UiRuntime/Src/UiManagerLayerModel.cpp
+    Src/YuEngine/UiRuntime/Src/UiManagerPanelMap.cpp
     Src/YuEngine/UiRuntime/Src/UiPanelRegistry.cpp
 )
 yuengine_apply_compile_options(YuUiRuntime)
@@ -1722,6 +1723,16 @@ yuengine_add_labeled_test(UiRuntime_ManagerLayerModel_RegistersFiveLayerRoots Yu
 yuengine_add_labeled_test(UiRuntime_ManagerLayerModel_RejectsDuplicateAndMissingLayers YuUiManagerLayerModelTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRuntime_ManagerLayerModel_ExportsLayersInStableOrder YuUiManagerLayerModelTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRuntime_ManagerLayerModel_ResolvesPanelIdsToLayerRoots YuUiManagerLayerModelTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+
+add_executable(YuUiManagerPanelMapTests
+    Tests/UiRuntime/UiManagerPanelMapTests.cpp
+)
+yuengine_apply_compile_options(YuUiManagerPanelMapTests)
+target_link_libraries(YuUiManagerPanelMapTests PRIVATE YuUiRuntime)
+yuengine_add_labeled_test(UiRuntime_ManagerPanelMap_OpenCloseReopenRetainsLoadedController YuUiManagerPanelMapTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_ManagerPanelMap_RejectsMissingPanelLayerAndController YuUiManagerPanelMapTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_ManagerPanelMap_DuplicateOpenCloseAreIdempotent YuUiManagerPanelMapTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiRuntime_ManagerPanelMap_ResolvesLoadedAndActiveLayerRoots YuUiManagerPanelMapTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 
 add_executable(YuUiEditorTests
     Tests/UiEditor/UiEditorTests.cpp
