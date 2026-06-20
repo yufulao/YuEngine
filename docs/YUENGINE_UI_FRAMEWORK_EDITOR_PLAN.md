@@ -969,6 +969,9 @@ Stage 3 is done when:
 - config tables are still optional/deferred
 - remaining windows have a migration matrix
 
+`UI-S3-013` migration batches are owned by
+`docs/YUENGINE_UI_STAGE3_MIGRATION_MATRIX.md`.
+
 ## 9. UI Editor Plan
 
 The UI Editor should advance beside the runtime. It should not block Stage 1,
