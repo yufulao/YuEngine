@@ -13,6 +13,7 @@ constexpr std::uint32_t UI_EDITOR_LAYOUT_MAX_NODE_COUNT = 32U;
 constexpr std::uint32_t UI_EDITOR_LAYOUT_ID_CAPACITY = 64U;
 constexpr std::uint32_t UI_EDITOR_LAYOUT_NAME_CAPACITY = 64U;
 constexpr std::uint32_t UI_EDITOR_LAYOUT_TYPE_CAPACITY = 32U;
+constexpr std::uint32_t UI_EDITOR_PREVIEW_VARIANT_CAPACITY = 8U;
 
 enum class UiEditorShellPanelId {
     Invalid = 0,
@@ -33,7 +34,10 @@ enum class UiEditorShellStatus {
     DuplicateNodeId,
     MissingRootNode,
     MissingParentNode,
-    NodeNotFound
+    NodeNotFound,
+    InvalidPreviewVariant,
+    PreviewVariantCapacityExceeded,
+    DuplicatePreviewVariantId
 };
 
 struct UiEditorShellPanelRecord {
@@ -61,6 +65,34 @@ struct UiEditorInspectorRecord {
     char type[UI_EDITOR_LAYOUT_TYPE_CAPACITY] = {};
 };
 
+struct UiEditorPreviewSafeArea {
+    std::uint32_t left = 0U;
+    std::uint32_t top = 0U;
+    std::uint32_t right = 0U;
+    std::uint32_t bottom = 0U;
+};
+
+struct UiEditorPreviewVariantDesc {
+    std::uint32_t variant_id = 0U;
+    std::uint32_t target_width = 0U;
+    std::uint32_t target_height = 0U;
+    std::uint32_t dpi_scale_percent = 100U;
+    UiEditorPreviewSafeArea safe_area;
+};
+
+struct UiEditorPreviewVariantRecord {
+    std::uint32_t variant_id = 0U;
+    std::uint32_t target_width = 0U;
+    std::uint32_t target_height = 0U;
+    std::uint32_t dpi_scale_percent = 100U;
+    UiEditorPreviewSafeArea safe_area;
+    float logical_x = 0.0F;
+    float logical_y = 0.0F;
+    float logical_width = 0.0F;
+    float logical_height = 0.0F;
+    std::uint32_t previewed_node_count = 0U;
+};
+
 struct UiEditorLayoutDocument {
     bool is_loaded = false;
     std::uint32_t version = 0U;
@@ -77,6 +109,7 @@ struct UiEditorShellSnapshot {
     std::uint32_t required_placeholder_count = 0U;
     std::uint32_t loaded_node_count = 0U;
     std::uint32_t selected_node_id = 0U;
+    std::uint32_t preview_variant_count = 0U;
     bool dear_imgui_backend_ready = false;
     bool layout_loaded = false;
     UiEditorShellStatus last_status = UiEditorShellStatus::Success;
@@ -142,6 +175,23 @@ public:
      */
     UiEditorShellStatus GetInspectorRecord(UiEditorInspectorRecord *out_record);
     /**
+     * @comment 注册 resolution/DPI/safe-area preview variant。
+     * @param desc 输入 preview variant 描述。
+     * @return 显式操作状态。
+     */
+    UiEditorShellStatus RegisterPreviewVariant(const UiEditorPreviewVariantDesc &desc);
+    /**
+     * @comment 导出当前 preview variants。
+     * @param output_records 调用方持有的 output buffer。
+     * @param output_capacity output buffer capacity。
+     * @param out_count 写回需要的 variant 数量。
+     * @return 显式操作状态。
+     */
+    UiEditorShellStatus ExportPreviewVariants(
+        UiEditorPreviewVariantRecord *output_records,
+        std::uint32_t output_capacity,
+        std::uint32_t *out_count);
+    /**
      * @comment 查询 visual backend gate 状态。
      * @return 当前 Dear ImGui backend 状态。
      */
@@ -157,12 +207,17 @@ private:
     void RecountPanels();
     UiEditorShellPanelRecord *FindPanel(UiEditorShellPanelId panel_id);
     const UiEditorLayoutNodeRecord *FindLayoutNode(std::uint32_t node_id) const;
+    bool HasPreviewVariantId(std::uint32_t variant_id) const;
+    UiEditorShellStatus BuildPreviewVariant(
+        const UiEditorPreviewVariantDesc &desc,
+        UiEditorPreviewVariantRecord *out_record) const;
     void ResetLayoutState();
     UiEditorShellStatus LoadInspectorFromNode(const UiEditorLayoutNodeRecord &node);
 
     std::array<UiEditorShellPanelRecord, UI_EDITOR_SHELL_REQUIRED_PANEL_COUNT> panels_;
     UiEditorLayoutDocument layout_document_;
     UiEditorInspectorRecord inspector_record_;
+    std::array<UiEditorPreviewVariantRecord, UI_EDITOR_PREVIEW_VARIANT_CAPACITY> preview_variants_;
     UiEditorShellSnapshot snapshot_;
 };
 }

@@ -433,11 +433,13 @@ UiEditorShellState::UiEditorShellState()
           MakePanelRecord(UiEditorShellPanelId::Preview, PANEL_PREVIEW_NAME)},
       layout_document_{},
       inspector_record_{},
+      preview_variants_{},
       snapshot_{
           UI_EDITOR_SHELL_REQUIRED_PANEL_COUNT,
           0U,
           UI_EDITOR_SHELL_REQUIRED_PANEL_COUNT,
           UI_EDITOR_SHELL_REQUIRED_PANEL_COUNT,
+          0U,
           0U,
           0U,
           false,
@@ -594,6 +596,54 @@ UiEditorShellStatus UiEditorShellState::GetInspectorRecord(UiEditorInspectorReco
     return RecordStatus(UiEditorShellStatus::Success);
 }
 
+UiEditorShellStatus UiEditorShellState::RegisterPreviewVariant(const UiEditorPreviewVariantDesc &desc) {
+    if (!layout_document_.is_loaded) {
+        return RecordStatus(UiEditorShellStatus::LayoutNotLoaded);
+    }
+
+    if (snapshot_.preview_variant_count >= UI_EDITOR_PREVIEW_VARIANT_CAPACITY) {
+        return RecordStatus(UiEditorShellStatus::PreviewVariantCapacityExceeded);
+    }
+
+    if (HasPreviewVariantId(desc.variant_id)) {
+        return RecordStatus(UiEditorShellStatus::DuplicatePreviewVariantId);
+    }
+
+    UiEditorPreviewVariantRecord record;
+    const UiEditorShellStatus build_status = BuildPreviewVariant(desc, &record);
+    if (build_status != UiEditorShellStatus::Success) {
+        return RecordStatus(build_status);
+    }
+
+    preview_variants_[snapshot_.preview_variant_count] = record;
+    ++snapshot_.preview_variant_count;
+    return RecordStatus(UiEditorShellStatus::Success);
+}
+
+UiEditorShellStatus UiEditorShellState::ExportPreviewVariants(
+    UiEditorPreviewVariantRecord *output_records,
+    std::uint32_t output_capacity,
+    std::uint32_t *out_count) {
+    if (out_count == nullptr) {
+        return RecordStatus(UiEditorShellStatus::InvalidOutput);
+    }
+
+    *out_count = snapshot_.preview_variant_count;
+    if (output_capacity < snapshot_.preview_variant_count) {
+        return RecordStatus(UiEditorShellStatus::OutputCapacityExceeded);
+    }
+
+    if (output_records == nullptr) {
+        return RecordStatus(UiEditorShellStatus::InvalidOutput);
+    }
+
+    for (std::uint32_t index = 0U; index < snapshot_.preview_variant_count; ++index) {
+        output_records[index] = preview_variants_[index];
+    }
+
+    return RecordStatus(UiEditorShellStatus::Success);
+}
+
 UiEditorShellStatus UiEditorShellState::GetVisualBackendStatus() const {
     return UiEditorShellStatus::DearImGuiUnavailable;
 }
@@ -654,12 +704,71 @@ const UiEditorLayoutNodeRecord *UiEditorShellState::FindLayoutNode(std::uint32_t
     return nullptr;
 }
 
+bool UiEditorShellState::HasPreviewVariantId(std::uint32_t variant_id) const {
+    if (variant_id == 0U) {
+        return false;
+    }
+
+    for (std::uint32_t index = 0U; index < snapshot_.preview_variant_count; ++index) {
+        if (preview_variants_[index].variant_id == variant_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+UiEditorShellStatus UiEditorShellState::BuildPreviewVariant(
+    const UiEditorPreviewVariantDesc &desc,
+    UiEditorPreviewVariantRecord *out_record) const {
+    if (out_record == nullptr) {
+        return UiEditorShellStatus::InvalidOutput;
+    }
+
+    if (desc.variant_id == 0U || desc.target_width == 0U || desc.target_height == 0U) {
+        return UiEditorShellStatus::InvalidPreviewVariant;
+    }
+
+    if (desc.dpi_scale_percent == 0U) {
+        return UiEditorShellStatus::InvalidPreviewVariant;
+    }
+
+    const std::uint32_t horizontal_safe_area = desc.safe_area.left + desc.safe_area.right;
+    const std::uint32_t vertical_safe_area = desc.safe_area.top + desc.safe_area.bottom;
+    if (horizontal_safe_area >= desc.target_width) {
+        return UiEditorShellStatus::InvalidPreviewVariant;
+    }
+
+    if (vertical_safe_area >= desc.target_height) {
+        return UiEditorShellStatus::InvalidPreviewVariant;
+    }
+
+    const float dpi_scale = static_cast<float>(desc.dpi_scale_percent) / 100.0F;
+    const float safe_width = static_cast<float>(desc.target_width - horizontal_safe_area);
+    const float safe_height = static_cast<float>(desc.target_height - vertical_safe_area);
+    UiEditorPreviewVariantRecord record;
+    record.variant_id = desc.variant_id;
+    record.target_width = desc.target_width;
+    record.target_height = desc.target_height;
+    record.dpi_scale_percent = desc.dpi_scale_percent;
+    record.safe_area = desc.safe_area;
+    record.logical_x = static_cast<float>(desc.safe_area.left) / dpi_scale;
+    record.logical_y = static_cast<float>(desc.safe_area.top) / dpi_scale;
+    record.logical_width = safe_width / dpi_scale;
+    record.logical_height = safe_height / dpi_scale;
+    record.previewed_node_count = layout_document_.node_count;
+    *out_record = record;
+    return UiEditorShellStatus::Success;
+}
+
 void UiEditorShellState::ResetLayoutState() {
     layout_document_ = {};
     inspector_record_ = {};
+    preview_variants_ = {};
     snapshot_.layout_loaded = false;
     snapshot_.loaded_node_count = 0U;
     snapshot_.selected_node_id = 0U;
+    snapshot_.preview_variant_count = 0U;
 
     UiEditorShellPanelRecord *hierarchy_panel = FindPanel(UiEditorShellPanelId::Hierarchy);
     UiEditorShellPanelRecord *inspector_panel = FindPanel(UiEditorShellPanelId::Inspector);

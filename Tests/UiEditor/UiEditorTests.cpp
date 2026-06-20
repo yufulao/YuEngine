@@ -10,12 +10,16 @@
 
 using yuengine::uieditor::UiEditorInspectorRecord;
 using yuengine::uieditor::UiEditorLayoutNodeRecord;
+using yuengine::uieditor::UiEditorPreviewSafeArea;
+using yuengine::uieditor::UiEditorPreviewVariantDesc;
+using yuengine::uieditor::UiEditorPreviewVariantRecord;
 using yuengine::uieditor::UiEditorShellPanelId;
 using yuengine::uieditor::UiEditorShellPanelRecord;
 using yuengine::uieditor::UiEditorShellSnapshot;
 using yuengine::uieditor::UiEditorShellState;
 using yuengine::uieditor::UiEditorShellStatus;
 using yuengine::uieditor::UI_EDITOR_LAYOUT_MAX_NODE_COUNT;
+using yuengine::uieditor::UI_EDITOR_PREVIEW_VARIANT_CAPACITY;
 using yuengine::uieditor::UI_EDITOR_SHELL_REQUIRED_PANEL_COUNT;
 
 namespace {
@@ -35,6 +39,10 @@ constexpr std::string_view TEST_LAYOUT_DUPLICATE =
     "UiEditor_LayoutAsset_RejectsDuplicateNodeId";
 constexpr std::string_view TEST_LAYOUT_MISSING_PARENT =
     "UiEditor_LayoutAsset_RejectsMissingParent";
+constexpr std::string_view TEST_PREVIEW_VARIANTS =
+    "UiEditor_PreviewVariants_ResolutionDpiSafeAreaExport";
+constexpr std::string_view TEST_PREVIEW_VARIANT_INVALID =
+    "UiEditor_PreviewVariants_RejectInvalidSafeAreaWithoutMutation";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected exactly one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::string_view SAMPLE_LAYOUT_TEXT = R"({
@@ -424,6 +432,110 @@ int UiEditorLayoutAssetRejectsMissingParent() {
 
     return 0;
 }
+
+bool FloatClose(float left, float right) {
+    float diff = left - right;
+    if (diff < 0.0F) {
+        diff = -diff;
+    }
+
+    return diff < 0.001F;
+}
+
+int UiEditorPreviewVariantsResolutionDpiSafeAreaExport() {
+    UiEditorShellState shell_state;
+    int ret_code = LoadSampleLayout(shell_state);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiEditorPreviewVariantDesc desktop_desc;
+    desktop_desc.variant_id = 1U;
+    desktop_desc.target_width = 1920U;
+    desktop_desc.target_height = 1080U;
+    desktop_desc.dpi_scale_percent = 100U;
+    UiEditorShellStatus status = shell_state.RegisterPreviewVariant(desktop_desc);
+    ret_code = ExpectStatus(status, UiEditorShellStatus::Success, "desktop preview variant failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiEditorPreviewVariantDesc phone_desc;
+    phone_desc.variant_id = 2U;
+    phone_desc.target_width = 390U;
+    phone_desc.target_height = 844U;
+    phone_desc.dpi_scale_percent = 200U;
+    phone_desc.safe_area = UiEditorPreviewSafeArea{0U, 47U, 0U, 34U};
+    status = shell_state.RegisterPreviewVariant(phone_desc);
+    ret_code = ExpectStatus(status, UiEditorShellStatus::Success, "phone preview variant failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const UiEditorShellSnapshot snapshot = shell_state.Snapshot();
+    if (snapshot.preview_variant_count != 2U) {
+        return Fail("preview variant count mismatch");
+    }
+
+    std::array<UiEditorPreviewVariantRecord, UI_EDITOR_PREVIEW_VARIANT_CAPACITY> variants{};
+    std::uint32_t variant_count = 0U;
+    status = shell_state.ExportPreviewVariants(
+        variants.data(),
+        static_cast<std::uint32_t>(variants.size()),
+        &variant_count);
+    ret_code = ExpectStatus(status, UiEditorShellStatus::Success, "export preview variants failed");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    if (variant_count != 2U) {
+        return Fail("exported preview variant count mismatch");
+    }
+
+    if (variants[0U].target_width != 1920U || variants[0U].previewed_node_count != 3U) {
+        return Fail("desktop preview variant did not preserve layout data");
+    }
+
+    if (!FloatClose(variants[0U].logical_width, 1920.0F) || !FloatClose(variants[0U].logical_height, 1080.0F)) {
+        return Fail("desktop preview logical rect mismatch");
+    }
+
+    if (!FloatClose(variants[1U].logical_y, 23.5F)) {
+        return Fail("phone preview safe-area y mismatch");
+    }
+
+    if (!FloatClose(variants[1U].logical_width, 195.0F) || !FloatClose(variants[1U].logical_height, 381.5F)) {
+        return Fail("phone preview logical rect mismatch");
+    }
+
+    return 0;
+}
+
+int UiEditorPreviewVariantsRejectInvalidSafeAreaWithoutMutation() {
+    UiEditorShellState shell_state;
+    int ret_code = LoadSampleLayout(shell_state);
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    UiEditorPreviewVariantDesc invalid_desc;
+    invalid_desc.variant_id = 3U;
+    invalid_desc.target_width = 100U;
+    invalid_desc.target_height = 100U;
+    invalid_desc.safe_area = UiEditorPreviewSafeArea{60U, 0U, 60U, 0U};
+    const UiEditorShellStatus status = shell_state.RegisterPreviewVariant(invalid_desc);
+    ret_code = ExpectStatus(status, UiEditorShellStatus::InvalidPreviewVariant, "invalid safe area was accepted");
+    if (ret_code != 0) {
+        return ret_code;
+    }
+
+    const UiEditorShellSnapshot snapshot = shell_state.Snapshot();
+    if (snapshot.preview_variant_count != 0U) {
+        return Fail("invalid preview variant mutated registry");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -462,6 +574,14 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_LAYOUT_MISSING_PARENT) {
         return UiEditorLayoutAssetRejectsMissingParent();
+    }
+
+    if (test_name == TEST_PREVIEW_VARIANTS) {
+        return UiEditorPreviewVariantsResolutionDpiSafeAreaExport();
+    }
+
+    if (test_name == TEST_PREVIEW_VARIANT_INVALID) {
+        return UiEditorPreviewVariantsRejectInvalidSafeAreaWithoutMutation();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);
