@@ -125,6 +125,14 @@ This is runtime scope. It must not be blocked on editor work, UI work, or input
 handling. If this cannot pass after the claimed L0/L1 work, then L0/L1 is not
 closed.
 
+The implementation order must follow
+`docs/YUENGINE_RUNTIME_VISUAL_FOUNDATION_PLAN.md`. Do not jump straight to the
+final cube/cylinder/cone scene. Camera capture, scene placement,
+geometry/model, material texture slots, shader/pipeline binding, animation
+interpolation, transform application, and capture diagnostics are separate
+foundation floors. Each floor must pass or name its blocker before the combined
+runtime visual sample can be used as closure evidence.
+
 ## 3. Updated Layer Model
 
 The old restart plan used a broader L0-L7 diagram. For the next execution
@@ -188,6 +196,8 @@ Included modules and future modules:
 - Render Scene over RenderCore/RHI
 - Audio Scene over Audio/Resource
 - Input Mapping over Input devices/actions
+- Camera and capture records as runtime values
+- Animation clip/track interpolation and transform application
 - Save/Profile/Config primitives
 - Runtime diagnostics surface
 
@@ -214,7 +224,8 @@ Runtime visual addendum:
 A project-independent visual sample can render and capture a deterministic
 multi-object scene through the L1 scene/render/material/resource path. The
 minimum accepted sample is the cube/cylinder/cone orbit-camera capture set from
-section 2.4.
+section 2.4, built from the module floors in
+`docs/YUENGINE_RUNTIME_VISUAL_FOUNDATION_PLAN.md`.
 ```
 
 ### L2: Project / Product Layer
@@ -1453,6 +1464,7 @@ Create these documents in order:
 3. `docs/YUENGINE_L1_RUNTIME_CORE_MATRIX.md`
 4. `docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md`
 5. `docs/YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md`
+6. `docs/YUENGINE_RUNTIME_VISUAL_FOUNDATION_PLAN.md`
 
 Do not create new broad implementation tasks until document 1 and document 2
 exist and are accepted.
@@ -1618,6 +1630,33 @@ backlog or from phase-sized batches, not only from the first few rows.
 | L1-RSCENE-005 | RenderScene failure states | L1-RSCENE-004 | missing mesh/material/camera returns explicit status |
 | L1-RSCENE-006 | Close runtime multi-entity visual frame | L1-RSCENE-004, L0-REN-003, L0-RHI-004, L0-RES-007 | multiple scene entities submit to one runtime frame with distinct transforms, shared material, texture bindings, camera constants, and captured output through YuEngine modules |
 
+### 12.15A L1 Runtime Visual Foundation Backlog
+
+Source document: `docs/YUENGINE_RUNTIME_VISUAL_FOUNDATION_PLAN.md`.
+
+These rows are the shallow-to-deep module floors for runtime visual closure.
+They prevent the team from treating one late sample as a substitute for basic
+engine capabilities.
+
+| ID | Work item | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| L1-CAMERA-001 | Define runtime camera record | L1-KERN-003 | position/orientation or target, FOV, aspect, near/far produce deterministic view/projection values |
+| L1-CAMERA-002 | Active camera frame binding | L1-CAMERA-001, L1-RSCENE-004 | RenderScene frame references one active camera record and rejects missing camera |
+| L1-CAMERA-003 | Camera capture metadata | L1-CAMERA-002, L0-RHI-002 | runtime capture records frame index, camera pose, capture target/status, and bounded output metadata |
+| L1-GEOM-001 | Runtime primitive geometry records | L0-REN-003, L1-ASSET-001 | cube/cylinder/cone geometry records expose bounded vertex/index/draw ranges |
+| L1-MAT-001 | Runtime material texture-slot record | L0-REN-004, L1-ASSET-005 | one material binds at least three texture inputs by slot with explicit missing/invalid statuses |
+| L1-ANIM-001 | Animation clip/track/keyframe records | L1-KERN-003 | bounded runtime records exist without editor timeline or gameplay dependency |
+| L1-ANIM-002 | Interpolation sampler | L1-ANIM-001 | deterministic scalar/vector/rotation or transform interpolation tests pass at fixed times |
+| L1-ANIM-003 | Runtime time sampling | L1-ANIM-002 | `FrameContext` time samples tracks without hidden global time |
+| L1-ANIM-004 | Apply sampled transform | L1-ANIM-003, L1-OBJ-003 | sampled output updates object transform records before RenderScene consumes them |
+| L1-ANIM-005 | Animation failure states | L1-ANIM-001 | missing clip/track, unsupported interpolation, out-of-range time, and capacity overflow return explicit statuses |
+| L1-VIS-001 | Static one-cube capture | L1-CAMERA-003, L1-GEOM-001, L1-MAT-001 | checked-in runtime command captures one cube through YuEngine modules |
+| L1-VIS-002 | Three-primitive placed scene | L1-VIS-001, L1-RSCENE-006 | cube/cylinder/cone submit as three entities with fixed-seed transforms |
+| L1-VIS-003 | Shared three-texture material scene | L1-VIS-002, L1-MAT-001 | all primitives use one material with three distinct texture inputs |
+| L1-VIS-004 | Animated transform scene | L1-VIS-002, L1-ANIM-004 | object rotations are driven by runtime animation or the command reports `L1-ANIM-*` blocker |
+| L1-VIS-005 | Orbit capture sequence | L1-VIS-003, L1-VIS-004 | one full camera orbit emits bounded frame/capture set |
+| L1-VIS-006 | Missing-layer diagnostic route | L1-VIS-005 | failure names the exact missing layer: camera, geometry/model, material, shader/pipeline, scene placement, animation, RenderScene, RenderCore/RHI, capture, or resource resolution |
+
 ### 12.16 L1 Audio Scene Backlog
 
 | ID | Work item | Depends on | Acceptance |
@@ -1676,8 +1715,8 @@ backlog or from phase-sized batches, not only from the first few rows.
 | L1-SAMPLE-008 | Serialize and reload snapshot | L1-SER-004, L1-SAMPLE-003 | sample state roundtrips through value streams without File/Package dependency in Serialize |
 | L1-SAMPLE-009 | Shutdown and cleanup proof | all L1 sample tasks | world/runtime/resources shut down with no leaked active records |
 | L1-SAMPLE-010 | Debug/Release/Fast validation | all L1 sample tasks | fast gate plus sample smoke pass; release validation command is documented |
-| L1-SAMPLE-011 | Runtime visual scene proof | L1-RSCENE-006, L1-ASSET-005, L1-OBJ-003 | cube/cylinder/cone scene renders with deterministic placement, per-object rotation, shared three-texture material, orbit camera, and bounded capture set |
-| L1-SAMPLE-012 | Runtime visual blocker report | L1-SAMPLE-011 | if the visual scene cannot run, output names the missing layer exactly: geometry/model path, material texture slots, shader/pipeline, RenderScene multi-entity, RenderCore multi-draw, RHI capture, camera orbit, or resource resolution |
+| L1-SAMPLE-011 | Runtime visual scene proof | L1-VIS-005, L1-RSCENE-006, L1-ASSET-005, L1-OBJ-003 | cube/cylinder/cone scene renders with deterministic placement, animation-driven or explicitly blocked per-object rotation, shared three-texture material, orbit camera, and bounded capture set |
+| L1-SAMPLE-012 | Runtime visual blocker report | L1-SAMPLE-011 | if the visual scene cannot run, output names the missing layer exactly: camera, geometry/model path, material texture slots, shader/pipeline, scene placement, animation interpolation, transform application, RenderScene multi-entity, RenderCore multi-draw, RHI capture, camera orbit, or resource resolution |
 
 ## 13. Guardrails
 

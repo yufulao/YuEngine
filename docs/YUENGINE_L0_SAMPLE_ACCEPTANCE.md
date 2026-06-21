@@ -41,6 +41,8 @@ that only proves a lower-layer native smoke route. It is not accepted as proof
 that YuEngine can render a runtime scene with multiple objects, a shared
 multi-texture material, runtime object rotation, orbit camera, and bounded
 capture sequence. That requirement belongs to L1 runtime visual sample closure.
+The shallow-to-deep module floors for that closure are defined in
+`docs/YUENGINE_RUNTIME_VISUAL_FOUNDATION_PLAN.md`.
 
 ## 2. Acceptance States
 
@@ -88,7 +90,8 @@ the L1-specific rows.
 Likewise, a captured image from `YuAssetSmokeDemo` is not by itself L1 visual
 scene evidence. It is L0 native smoke evidence unless the command path proves
 the full runtime scene chain required by
-`docs/YUENGINE_L0_L1_EXECUTION_PLAN.md` section 2.4.
+`docs/YUENGINE_L0_L1_EXECUTION_PLAN.md` section 2.4 and the module floors in
+`docs/YUENGINE_RUNTIME_VISUAL_FOUNDATION_PLAN.md`.
 
 ## 5. Allowed Environment Skips
 
@@ -132,10 +135,14 @@ The boundary between this document and L1 vertical sample acceptance is:
 
 - this document owns native sample smoke, hardware environment grading,
   Debug/Release sample command acceptance, and generated-output policy;
-- `docs/YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md` owns `L1-SAMPLE-001..010`,
+- `docs/YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md` owns `L1-SAMPLE-001..012`,
   `L1-DIAG-003`, project-independent scene manifest acceptance, runtime value
   route acceptance, runtime visual scene closure, and final L1 vertical sample
   stop conditions.
+- `docs/YUENGINE_RUNTIME_VISUAL_FOUNDATION_PLAN.md` owns the camera, scene
+  placement, geometry/model, material/texture, shader/pipeline, animation
+  interpolation, transform application, RenderScene/RenderCore/RHI capture, and
+  missing-layer diagnostic floors that must precede final L1 visual closure.
 
 L1 value-contract tests may consume explicit unavailable statuses from L0, but
 they must not convert missing D3D11, XAudio2, XInput, or Ogg/Vorbis dependencies
