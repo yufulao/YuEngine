@@ -19,6 +19,7 @@ constexpr const char *DIAGNOSTIC_NAME_RENDER_SCENE_MULTI_ENTITY_SUBMISSION =
     "RenderSceneMultiEntitySubmission";
 constexpr const char *DIAGNOSTIC_NAME_RENDER_CORE_RHI_DRAW_CAPTURE = "RenderCoreRhiDrawCapture";
 constexpr const char *DIAGNOSTIC_NAME_CAMERA_ORBIT_SEQUENCING = "CameraOrbitSequencing";
+constexpr const char *DIAGNOSTIC_NAME_CAMERA_TWEEN_SAMPLING = "CameraTweenSampling";
 constexpr const char *DIAGNOSTIC_NAME_OUTPUT_BOUNDING = "OutputBounding";
 constexpr const char *DIAGNOSTIC_NAME_CAPTURE_TARGET_RESOLUTION = "CaptureTargetResolution";
 constexpr const char *DIAGNOSTIC_NAME_CAPTURE_OUTPUT_IMAGE = "CaptureOutputImage";
@@ -107,6 +108,10 @@ RenderSceneMissingLayerDiagnosticLayer RenderSceneMissingLayerDiagnosticRoute::L
         return RenderSceneMissingLayerDiagnosticLayer::CameraOrbitSequencing;
     }
 
+    if (fault == RenderSceneMissingLayerDiagnosticFault::MissingCameraTweenSampling) {
+        return RenderSceneMissingLayerDiagnosticLayer::CameraTweenSampling;
+    }
+
     if (fault == RenderSceneMissingLayerDiagnosticFault::MissingOutputBounding) {
         return RenderSceneMissingLayerDiagnosticLayer::OutputBounding;
     }
@@ -191,6 +196,10 @@ const char *RenderSceneMissingLayerDiagnosticRoute::NameForLayer(
 
     if (layer == RenderSceneMissingLayerDiagnosticLayer::CameraOrbitSequencing) {
         return DIAGNOSTIC_NAME_CAMERA_ORBIT_SEQUENCING;
+    }
+
+    if (layer == RenderSceneMissingLayerDiagnosticLayer::CameraTweenSampling) {
+        return DIAGNOSTIC_NAME_CAMERA_TWEEN_SAMPLING;
     }
 
     if (layer == RenderSceneMissingLayerDiagnosticLayer::OutputBounding) {

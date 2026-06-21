@@ -17,6 +17,9 @@
 #include "YuEngine/Kernel/RuntimeFrameContext.h"
 #include "YuEngine/Kernel/RuntimeFrameMode.h"
 #include "YuEngine/RenderCore/RenderCameraProjectionKind.h"
+#include "YuEngine/RenderScene/RenderSceneCameraBindingRequest.h"
+#include "YuEngine/RenderScene/RenderSceneCameraBindingResult.h"
+#include "YuEngine/RenderScene/RenderSceneCameraFrameBinder.h"
 #include "YuEngine/RenderScene/RenderScenePrimitiveGeometryBuilder.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeCameraRecord.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialBuilder.h"
@@ -65,8 +68,15 @@ constexpr std::size_t PROOF_INDEX_BUFFER_BYTES = sizeof(std::uint16_t) * 256U;
 constexpr std::uint64_t PROOF_ANIMATION_CLIP_START_NANOSECONDS = 1000000000ULL;
 constexpr std::uint64_t PROOF_ANIMATION_SAMPLE_NANOSECONDS = 1500000000ULL;
 constexpr float PROOF_HALF_PI = 1.57079632679F;
+constexpr float PROOF_CAMERA_ASPECT_RATIO = 1.77777777778F;
 constexpr float PROOF_ORBIT_RADIUS = 5.0F;
 constexpr float PROOF_ORBIT_HEIGHT = 2.0F;
+constexpr float SCENE_RASTER_EPSILON = 0.0001F;
+constexpr float SCENE_RASTER_FAR_DEPTH = 1000000.0F;
+constexpr std::size_t SCENE_SURFACE_VERTEX_CAPACITY = 4U;
+constexpr std::size_t SCENE_SURFACE_CAPACITY = 96U;
+constexpr std::uint32_t CYLINDER_SEGMENT_COUNT = 18U;
+constexpr std::uint32_t CONE_SEGMENT_COUNT = 18U;
 constexpr std::size_t IMAGE_FRAME_PATH_STEM_BYTE_COUNT = 6U;
 constexpr std::size_t IMAGE_FRAME_PATH_DIGIT_BYTE_COUNT = 3U;
 constexpr std::size_t IMAGE_FRAME_PATH_EXTENSION_BYTE_COUNT = 4U;
@@ -74,9 +84,11 @@ constexpr std::size_t IMAGE_PATH_SUFFIX_BYTE_COUNT =
     IMAGE_FRAME_PATH_STEM_BYTE_COUNT +
     IMAGE_FRAME_PATH_DIGIT_BYTE_COUNT +
     IMAGE_FRAME_PATH_EXTENSION_BYTE_COUNT;
+constexpr std::size_t CAPTURE_FRAME_PATH_EXTENSION_BYTE_COUNT = 4U;
 constexpr std::size_t PPM_HEADER_MAX_BYTES = 32U;
 constexpr char IMAGE_FRAME_PATH_STEM[] = ".Frame";
 constexpr char IMAGE_FRAME_PATH_EXTENSION[] = ".ppm";
+constexpr char CAPTURE_FRAME_PATH_EXTENSION[] = ".rvf";
 constexpr char PPM_MAGIC[] = "P6\n";
 constexpr char PPM_MAX_VALUE[] = "\n255\n";
 
@@ -96,6 +108,8 @@ using AssetHandle = yuengine::asset::AssetHandle;
 using RuntimeFrameContext = yuengine::kernel::RuntimeFrameContext;
 using RuntimeFrameMode = yuengine::kernel::RuntimeFrameMode;
 using RenderCameraProjectionKind = yuengine::rendercore::RenderCameraProjectionKind;
+using RenderCameraPose = yuengine::rendercore::RenderCameraPose;
+using RenderCameraVector3 = yuengine::rendercore::RenderCameraVector3;
 using RhiBufferHandle = yuengine::rhi::RhiBufferHandle;
 using RhiDeviceSnapshot = yuengine::rhi::RhiDeviceSnapshot;
 using RhiFormat = yuengine::rhi::RhiFormat;
@@ -122,6 +136,36 @@ struct SemanticRgb final {
     std::uint8_t r = 0U;
     std::uint8_t g = 0U;
     std::uint8_t b = 0U;
+};
+
+struct SceneVec3 final {
+    float x = 0.0F;
+    float y = 0.0F;
+    float z = 0.0F;
+};
+
+struct SceneProjectedVertex final {
+    float x = 0.0F;
+    float y = 0.0F;
+    float depth = 0.0F;
+    bool valid = false;
+};
+
+struct SceneSurface final {
+    std::array<SceneProjectedVertex, SCENE_SURFACE_VERTEX_CAPACITY> vertices{};
+    std::size_t vertex_count = 0U;
+    SemanticRgb color{};
+    float depth = SCENE_RASTER_FAR_DEPTH;
+};
+
+struct SceneCameraBasis final {
+    SceneVec3 position{};
+    SceneVec3 right{};
+    SceneVec3 up{};
+    SceneVec3 forward{};
+    float x_scale = 1.0F;
+    float y_scale = 1.0F;
+    float near_z = 0.1F;
 };
 
 AssetHandle BuildAsset(std::uint32_t slot) {
@@ -160,7 +204,7 @@ RenderSceneRuntimeCameraRecord BuildCameraRecord() {
     camera.pose.up = {0.0F, 1.0F, 0.0F};
     camera.projection.kind = RenderCameraProjectionKind::Perspective;
     camera.projection.vertical_fov_radians = PROOF_HALF_PI;
-    camera.projection.aspect_ratio = 1.0F;
+    camera.projection.aspect_ratio = PROOF_CAMERA_ASPECT_RATIO;
     camera.projection.near_z = 0.1F;
     camera.projection.far_z = 100.0F;
     camera.target = RhiTextureHandle{7U, 1U};
@@ -619,6 +663,81 @@ bool BuildImageArtifactPath(
     return true;
 }
 
+bool IsCaptureOutputPathPrefixUsable(const RenderSceneRuntimeVisualSceneProofRequest &request) {
+    if (request.output_path_prefix == nullptr) {
+        return false;
+    }
+
+    if (request.output_path_prefix_byte_count == 0U) {
+        return false;
+    }
+
+    const std::size_t suffix_byte_count =
+        IMAGE_FRAME_PATH_STEM_BYTE_COUNT +
+        IMAGE_FRAME_PATH_DIGIT_BYTE_COUNT +
+        CAPTURE_FRAME_PATH_EXTENSION_BYTE_COUNT;
+    const std::size_t output_path_byte_count =
+        request.output_path_prefix_byte_count + suffix_byte_count;
+    return output_path_byte_count < MAX_RENDER_SCENE_ORBIT_CAPTURE_OUTPUT_PATH_BYTES;
+}
+
+bool BuildCaptureFrameOutputPath(
+    const RenderSceneRuntimeVisualSceneProofRequest &request,
+    std::uint32_t frame_index,
+    RenderSceneOrbitCaptureFrameReport *out_report) {
+    if (out_report == nullptr) {
+        return false;
+    }
+
+    if (!IsCaptureOutputPathPrefixUsable(request)) {
+        return false;
+    }
+
+    std::size_t offset = 0U;
+    if (!CopyBytes(
+            request.output_path_prefix,
+            request.output_path_prefix_byte_count,
+            out_report->output_path,
+            MAX_RENDER_SCENE_ORBIT_CAPTURE_OUTPUT_PATH_BYTES,
+            &offset)) {
+        return false;
+    }
+
+    if (!CopyBytes(
+            IMAGE_FRAME_PATH_STEM,
+            IMAGE_FRAME_PATH_STEM_BYTE_COUNT,
+            out_report->output_path,
+            MAX_RENDER_SCENE_ORBIT_CAPTURE_OUTPUT_PATH_BYTES,
+            &offset)) {
+        return false;
+    }
+
+    if (!CopyFrameDigits(
+            frame_index,
+            out_report->output_path,
+            MAX_RENDER_SCENE_ORBIT_CAPTURE_OUTPUT_PATH_BYTES,
+            &offset)) {
+        return false;
+    }
+
+    if (!CopyBytes(
+            CAPTURE_FRAME_PATH_EXTENSION,
+            CAPTURE_FRAME_PATH_EXTENSION_BYTE_COUNT,
+            out_report->output_path,
+            MAX_RENDER_SCENE_ORBIT_CAPTURE_OUTPUT_PATH_BYTES,
+            &offset)) {
+        return false;
+    }
+
+    if (offset >= MAX_RENDER_SCENE_ORBIT_CAPTURE_OUTPUT_PATH_BYTES) {
+        return false;
+    }
+
+    out_report->output_path[offset] = '\0';
+    out_report->output_path_byte_count = offset;
+    return true;
+}
+
 bool WritePpmHeader(
     std::FILE *file,
     std::uint16_t width,
@@ -727,28 +846,6 @@ float ClampUnitRange(float value, float minimum, float maximum) {
     }
 
     return value;
-}
-
-std::size_t ResolveImageEntityIndex(std::uint16_t column, std::uint16_t image_width) {
-    const std::size_t scaled_column =
-        static_cast<std::size_t>(column) * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
-    std::size_t entity_index = scaled_column / image_width;
-    if (entity_index >= RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
-        entity_index = RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT - 1U;
-    }
-
-    return entity_index;
-}
-
-std::size_t ResolveImageEntityBegin(std::size_t entity_index, std::uint16_t image_width) {
-    const std::size_t wide_image_width = image_width;
-    return (wide_image_width * entity_index) / RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
-}
-
-std::size_t ResolveImageEntityEnd(std::size_t entity_index, std::uint16_t image_width) {
-    const std::size_t wide_image_width = image_width;
-    const std::size_t next_entity_index = entity_index + 1U;
-    return (wide_image_width * next_entity_index) / RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
 }
 
 RenderScenePrimitiveGeometryKind ExpectedSemanticPrimitiveKind(std::size_t entity_index) {
@@ -956,96 +1053,751 @@ SemanticRgb BuildMaterialSlotColor(
     return color;
 }
 
-bool IsCubeSemanticPixel(float local_x, float local_y, float center_x, float center_y) {
-    const float dx = std::fabs(local_x - center_x);
-    const float dy = std::fabs(local_y - center_y);
-    if (dx > 0.22F) {
+SceneVec3 MakeSceneVec3(float x, float y, float z) {
+    SceneVec3 value{};
+    value.x = x;
+    value.y = y;
+    value.z = z;
+    return value;
+}
+
+SceneVec3 AddSceneVec3(SceneVec3 left, SceneVec3 right) {
+    return MakeSceneVec3(left.x + right.x, left.y + right.y, left.z + right.z);
+}
+
+SceneVec3 SubtractSceneVec3(SceneVec3 left, SceneVec3 right) {
+    return MakeSceneVec3(left.x - right.x, left.y - right.y, left.z - right.z);
+}
+
+SceneVec3 ScaleSceneVec3(SceneVec3 value, float scale) {
+    return MakeSceneVec3(value.x * scale, value.y * scale, value.z * scale);
+}
+
+float DotSceneVec3(SceneVec3 left, SceneVec3 right) {
+    return left.x * right.x + left.y * right.y + left.z * right.z;
+}
+
+SceneVec3 CrossSceneVec3(SceneVec3 left, SceneVec3 right) {
+    SceneVec3 result{};
+    result.x = left.y * right.z - left.z * right.y;
+    result.y = left.z * right.x - left.x * right.z;
+    result.z = left.x * right.y - left.y * right.x;
+    return result;
+}
+
+float LengthSceneVec3(SceneVec3 value) {
+    return std::sqrt(DotSceneVec3(value, value));
+}
+
+SceneVec3 NormalizeSceneVec3(SceneVec3 value) {
+    const float length = LengthSceneVec3(value);
+    if (length <= SCENE_RASTER_EPSILON) {
+        return MakeSceneVec3(0.0F, 0.0F, 0.0F);
+    }
+
+    const float scale = 1.0F / length;
+    return ScaleSceneVec3(value, scale);
+}
+
+SceneVec3 RotateScenePointX(SceneVec3 value, float radians) {
+    const float sine_value = std::sin(radians);
+    const float cosine_value = std::cos(radians);
+    SceneVec3 result{};
+    result.x = value.x;
+    result.y = value.y * cosine_value - value.z * sine_value;
+    result.z = value.y * sine_value + value.z * cosine_value;
+    return result;
+}
+
+SceneVec3 RotateScenePointY(SceneVec3 value, float radians) {
+    const float sine_value = std::sin(radians);
+    const float cosine_value = std::cos(radians);
+    SceneVec3 result{};
+    result.x = value.x * cosine_value + value.z * sine_value;
+    result.y = value.y;
+    result.z = -value.x * sine_value + value.z * cosine_value;
+    return result;
+}
+
+SceneVec3 RotateScenePointZ(SceneVec3 value, float radians) {
+    const float sine_value = std::sin(radians);
+    const float cosine_value = std::cos(radians);
+    SceneVec3 result{};
+    result.x = value.x * cosine_value - value.y * sine_value;
+    result.y = value.x * sine_value + value.y * cosine_value;
+    result.z = value.z;
+    return result;
+}
+
+SceneVec3 TransformScenePoint(
+    SceneVec3 value,
+    const WorldTransformState &transform) {
+    SceneVec3 transformed{};
+    transformed.x = value.x * transform.scale_x;
+    transformed.y = value.y * transform.scale_y;
+    transformed.z = value.z * transform.scale_z;
+    transformed = RotateScenePointX(transformed, transform.rotation_x);
+    transformed = RotateScenePointY(transformed, transform.rotation_y);
+    transformed = RotateScenePointZ(transformed, transform.rotation_z);
+    transformed.x += transform.translation_x;
+    transformed.y += transform.translation_y;
+    transformed.z += transform.translation_z;
+    return transformed;
+}
+
+SceneVec3 CameraVectorFromRenderVector(const yuengine::rendercore::RenderCameraVector3 &value) {
+    return MakeSceneVec3(value.x, value.y, value.z);
+}
+
+bool BuildSceneCameraBasis(
+    const RenderSceneOrbitCaptureFrameReport &frame_report,
+    const yuengine::rendercore::RenderCameraProjectionDesc &projection,
+    SceneCameraBasis *out_basis) {
+    if (out_basis == nullptr) {
         return false;
     }
 
-    return dy <= 0.22F;
-}
-
-bool IsCylinderSemanticPixel(float local_x, float local_y, float center_x, float center_y) {
-    const float dx = (local_x - center_x) / 0.24F;
-    const float dy = (local_y - center_y) / 0.34F;
-    const float distance = dx * dx + dy * dy;
-    return distance <= 1.0F;
-}
-
-bool IsConeSemanticPixel(float local_x, float local_y, float center_x, float center_y) {
-    const float top = center_y - 0.30F;
-    const float bottom = center_y + 0.32F;
-    if (local_y < top) {
+    if (projection.kind != RenderCameraProjectionKind::Perspective) {
         return false;
     }
 
-    if (local_y > bottom) {
+    if (projection.vertical_fov_radians <= SCENE_RASTER_EPSILON) {
         return false;
     }
 
-    const float height = bottom - top;
-    const float vertical_ratio = (local_y - top) / height;
-    const float allowed_half_width = 0.05F + vertical_ratio * 0.28F;
-    const float dx = std::fabs(local_x - center_x);
-    return dx <= allowed_half_width;
+    if (projection.aspect_ratio <= SCENE_RASTER_EPSILON) {
+        return false;
+    }
+
+    SceneCameraBasis basis{};
+    basis.position = CameraVectorFromRenderVector(frame_report.camera_pose.position);
+    const SceneVec3 target = CameraVectorFromRenderVector(frame_report.camera_pose.target);
+    const SceneVec3 up = CameraVectorFromRenderVector(frame_report.camera_pose.up);
+    basis.forward = NormalizeSceneVec3(SubtractSceneVec3(target, basis.position));
+    basis.right = NormalizeSceneVec3(CrossSceneVec3(up, basis.forward));
+    basis.up = CrossSceneVec3(basis.forward, basis.right);
+    const float y_scale = 1.0F / std::tan(projection.vertical_fov_radians * 0.5F);
+    basis.y_scale = y_scale;
+    basis.x_scale = y_scale / projection.aspect_ratio;
+    basis.near_z = projection.near_z;
+    *out_basis = basis;
+    return true;
 }
 
-bool IsPrimitiveSemanticPixel(
-    RenderScenePrimitiveGeometryKind kind,
-    float local_x,
-    float local_y,
-    float center_x,
-    float center_y) {
-    switch (kind) {
-    case RenderScenePrimitiveGeometryKind::Cube:
-        return IsCubeSemanticPixel(local_x, local_y, center_x, center_y);
-    case RenderScenePrimitiveGeometryKind::Cylinder:
-        return IsCylinderSemanticPixel(local_x, local_y, center_x, center_y);
-    case RenderScenePrimitiveGeometryKind::Cone:
-        return IsConeSemanticPixel(local_x, local_y, center_x, center_y);
-    default:
-        break;
+bool ProjectScenePoint(
+    const SceneCameraBasis &basis,
+    SceneVec3 world_point,
+    std::uint16_t image_width,
+    std::uint16_t image_height,
+    SceneProjectedVertex *out_vertex) {
+    if (out_vertex == nullptr) {
+        return false;
+    }
+
+    const SceneVec3 relative = SubtractSceneVec3(world_point, basis.position);
+    const float view_z = DotSceneVec3(relative, basis.forward);
+    if (view_z <= basis.near_z) {
+        return false;
+    }
+
+    const float view_x = DotSceneVec3(relative, basis.right);
+    const float view_y = DotSceneVec3(relative, basis.up);
+    const float ndc_x = (view_x * basis.x_scale) / view_z;
+    const float ndc_y = (view_y * basis.y_scale) / view_z;
+    SceneProjectedVertex vertex{};
+    vertex.x = (ndc_x * 0.5F + 0.5F) * static_cast<float>(image_width);
+    vertex.y = (0.5F - ndc_y * 0.5F) * static_cast<float>(image_height);
+    vertex.depth = view_z;
+    vertex.valid = true;
+    *out_vertex = vertex;
+    return true;
+}
+
+SemanticRgb ShadeSceneColor(SemanticRgb color, float shade, std::uint32_t bias) {
+    SemanticRgb result{};
+    const std::uint32_t red_value =
+        static_cast<std::uint32_t>(static_cast<float>(color.r) * shade) + bias;
+    const std::uint32_t green_value =
+        static_cast<std::uint32_t>(static_cast<float>(color.g) * shade) + bias / 2U;
+    const std::uint32_t blue_value =
+        static_cast<std::uint32_t>(static_cast<float>(color.b) * shade) + bias / 3U;
+    result.r = ClampByte(red_value);
+    result.g = ClampByte(green_value);
+    result.b = ClampByte(blue_value);
+    return result;
+}
+
+SemanticRgb BuildSurfaceMaterialColor(
+    const std::array<const RenderSceneThreePrimitiveMaterialTextureSlotReport *,
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> &texture_reports,
+    const RenderSceneThreePrimitiveEntityReport &entity_report,
+    const RenderSceneOrbitCaptureFrameReport &frame_report,
+    std::size_t surface_index,
+    float shade) {
+    const std::size_t slot_index =
+        (surface_index + static_cast<std::size_t>(entity_report.primitive_kind)) %
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    const RenderSceneThreePrimitiveMaterialTextureSlotReport &slot_report =
+        *texture_reports[slot_index];
+    const SemanticRgb base_color =
+        BuildMaterialSlotColor(slot_report, entity_report, frame_report);
+    const std::uint32_t bias = static_cast<std::uint32_t>(surface_index * 7U);
+    return ShadeSceneColor(base_color, shade, bias);
+}
+
+bool AddSceneSurface(
+    const SceneCameraBasis &basis,
+    std::span<const SceneVec3> vertices,
+    SemanticRgb color,
+    std::uint16_t image_width,
+    std::uint16_t image_height,
+    std::array<SceneSurface, SCENE_SURFACE_CAPACITY> *out_surfaces,
+    std::size_t *inout_surface_count) {
+    if (out_surfaces == nullptr) {
+        return false;
+    }
+
+    if (inout_surface_count == nullptr) {
+        return false;
+    }
+
+    if (vertices.size() < 3U || vertices.size() > SCENE_SURFACE_VERTEX_CAPACITY) {
+        return false;
+    }
+
+    if (*inout_surface_count >= out_surfaces->size()) {
+        return false;
+    }
+
+    SceneSurface surface{};
+    surface.vertex_count = vertices.size();
+    surface.color = color;
+    float depth_sum = 0.0F;
+    for (std::size_t index = 0U; index < vertices.size(); ++index) {
+        SceneProjectedVertex projected{};
+        if (!ProjectScenePoint(
+                basis,
+                vertices[index],
+                image_width,
+                image_height,
+                &projected)) {
+            return true;
+        }
+
+        surface.vertices[index] = projected;
+        depth_sum += projected.depth;
+    }
+
+    surface.depth = depth_sum / static_cast<float>(surface.vertex_count);
+    (*out_surfaces)[*inout_surface_count] = surface;
+    ++(*inout_surface_count);
+    return true;
+}
+
+float EdgeFunction(
+    const SceneProjectedVertex &left,
+    const SceneProjectedVertex &right,
+    float x,
+    float y) {
+    return (x - left.x) * (right.y - left.y) - (y - left.y) * (right.x - left.x);
+}
+
+bool PointInTriangle(
+    const SceneProjectedVertex &first,
+    const SceneProjectedVertex &second,
+    const SceneProjectedVertex &third,
+    float x,
+    float y) {
+    const float edge0 = EdgeFunction(first, second, x, y);
+    const float edge1 = EdgeFunction(second, third, x, y);
+    const float edge2 = EdgeFunction(third, first, x, y);
+    if (edge0 >= -SCENE_RASTER_EPSILON &&
+        edge1 >= -SCENE_RASTER_EPSILON &&
+        edge2 >= -SCENE_RASTER_EPSILON) {
+        return true;
+    }
+
+    if (edge0 <= SCENE_RASTER_EPSILON &&
+        edge1 <= SCENE_RASTER_EPSILON &&
+        edge2 <= SCENE_RASTER_EPSILON) {
+        return true;
     }
 
     return false;
 }
 
-float ResolveSemanticCenterX(
-    const RenderSceneThreePrimitiveEntityReport &entity_report,
-    const RenderSceneOrbitCaptureFrameReport &frame_report) {
-    const float orbit_shift = std::sin(frame_report.orbit_angle_radians) * 0.10F;
-    const float transform_shift = entity_report.draw_record.transform.translation_x * 0.025F;
-    const float center = 0.50F + orbit_shift + transform_shift;
-    return ClampUnitRange(center, 0.24F, 0.76F);
+bool PointInSceneSurface(const SceneSurface &surface, float x, float y) {
+    if (surface.vertex_count == 3U) {
+        return PointInTriangle(
+            surface.vertices[0U],
+            surface.vertices[1U],
+            surface.vertices[2U],
+            x,
+            y);
+    }
+
+    if (surface.vertex_count == 4U) {
+        if (PointInTriangle(
+                surface.vertices[0U],
+                surface.vertices[1U],
+                surface.vertices[2U],
+                x,
+                y)) {
+            return true;
+        }
+
+        return PointInTriangle(
+            surface.vertices[0U],
+            surface.vertices[2U],
+            surface.vertices[3U],
+            x,
+            y);
+    }
+
+    return false;
 }
 
-float ResolveSemanticCenterY(
-    const RenderSceneThreePrimitiveEntityReport &entity_report,
-    const RenderSceneOrbitCaptureFrameReport &frame_report) {
-    const float orbit_shift = std::cos(frame_report.orbit_angle_radians) * 0.06F;
-    const float transform_shift = entity_report.draw_record.transform.translation_y * -0.05F;
-    const float center = 0.50F + orbit_shift + transform_shift;
-    return ClampUnitRange(center, 0.24F, 0.76F);
+float DistanceToLineSegment(
+    const SceneProjectedVertex &left,
+    const SceneProjectedVertex &right,
+    float x,
+    float y) {
+    const float dx = right.x - left.x;
+    const float dy = right.y - left.y;
+    const float length_square = dx * dx + dy * dy;
+    if (length_square <= SCENE_RASTER_EPSILON) {
+        const float px = x - left.x;
+        const float py = y - left.y;
+        return std::sqrt(px * px + py * py);
+    }
+
+    const float raw_t = ((x - left.x) * dx + (y - left.y) * dy) / length_square;
+    const float clamped_t = ClampUnitRange(raw_t, 0.0F, 1.0F);
+    const float closest_x = left.x + dx * clamped_t;
+    const float closest_y = left.y + dy * clamped_t;
+    const float px = x - closest_x;
+    const float py = y - closest_y;
+    return std::sqrt(px * px + py * py);
 }
 
-bool BuildSemanticPixel(
-    const RenderSceneRuntimeVisualSceneProofRequest &request,
+bool PointNearSceneSurfaceEdge(const SceneSurface &surface, float x, float y) {
+    for (std::size_t index = 0U; index < surface.vertex_count; ++index) {
+        const std::size_t next_index = (index + 1U) % surface.vertex_count;
+        const float distance =
+            DistanceToLineSegment(surface.vertices[index], surface.vertices[next_index], x, y);
+        if (distance <= 1.35F) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool AddQuadSurface(
+    const SceneCameraBasis &basis,
+    const std::array<SceneVec3, 4U> &vertices,
+    SemanticRgb color,
+    std::uint16_t image_width,
+    std::uint16_t image_height,
+    std::array<SceneSurface, SCENE_SURFACE_CAPACITY> *out_surfaces,
+    std::size_t *inout_surface_count) {
+    const std::span<const SceneVec3> vertex_span(vertices.data(), vertices.size());
+    return AddSceneSurface(
+        basis,
+        vertex_span,
+        color,
+        image_width,
+        image_height,
+        out_surfaces,
+        inout_surface_count);
+}
+
+bool AddTriangleSurface(
+    const SceneCameraBasis &basis,
+    const std::array<SceneVec3, 3U> &vertices,
+    SemanticRgb color,
+    std::uint16_t image_width,
+    std::uint16_t image_height,
+    std::array<SceneSurface, SCENE_SURFACE_CAPACITY> *out_surfaces,
+    std::size_t *inout_surface_count) {
+    const std::span<const SceneVec3> vertex_span(vertices.data(), vertices.size());
+    return AddSceneSurface(
+        basis,
+        vertex_span,
+        color,
+        image_width,
+        image_height,
+        out_surfaces,
+        inout_surface_count);
+}
+
+SceneVec3 TransformPrimitivePoint(
+    SceneVec3 local_point,
+    const RenderSceneThreePrimitiveEntityReport &entity_report) {
+    return TransformScenePoint(local_point, entity_report.draw_record.transform);
+}
+
+bool AddCubeSurfaces(
+    const SceneCameraBasis &basis,
+    const RenderSceneThreePrimitiveEntityReport &entity_report,
+    const std::array<const RenderSceneThreePrimitiveMaterialTextureSlotReport *,
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> &texture_reports,
     const RenderSceneOrbitCaptureFrameReport &frame_report,
+    std::uint16_t image_width,
+    std::uint16_t image_height,
+    std::array<SceneSurface, SCENE_SURFACE_CAPACITY> *out_surfaces,
+    std::size_t *inout_surface_count) {
+    constexpr float half_size = 0.72F;
+    const std::array<std::array<SceneVec3, 4U>, 6U> faces{
+        std::array<SceneVec3, 4U>{
+            MakeSceneVec3(-half_size, -half_size, half_size),
+            MakeSceneVec3(half_size, -half_size, half_size),
+            MakeSceneVec3(half_size, half_size, half_size),
+            MakeSceneVec3(-half_size, half_size, half_size)},
+        std::array<SceneVec3, 4U>{
+            MakeSceneVec3(half_size, -half_size, -half_size),
+            MakeSceneVec3(-half_size, -half_size, -half_size),
+            MakeSceneVec3(-half_size, half_size, -half_size),
+            MakeSceneVec3(half_size, half_size, -half_size)},
+        std::array<SceneVec3, 4U>{
+            MakeSceneVec3(half_size, -half_size, half_size),
+            MakeSceneVec3(half_size, -half_size, -half_size),
+            MakeSceneVec3(half_size, half_size, -half_size),
+            MakeSceneVec3(half_size, half_size, half_size)},
+        std::array<SceneVec3, 4U>{
+            MakeSceneVec3(-half_size, -half_size, -half_size),
+            MakeSceneVec3(-half_size, -half_size, half_size),
+            MakeSceneVec3(-half_size, half_size, half_size),
+            MakeSceneVec3(-half_size, half_size, -half_size)},
+        std::array<SceneVec3, 4U>{
+            MakeSceneVec3(-half_size, half_size, half_size),
+            MakeSceneVec3(half_size, half_size, half_size),
+            MakeSceneVec3(half_size, half_size, -half_size),
+            MakeSceneVec3(-half_size, half_size, -half_size)},
+        std::array<SceneVec3, 4U>{
+            MakeSceneVec3(-half_size, -half_size, -half_size),
+            MakeSceneVec3(half_size, -half_size, -half_size),
+            MakeSceneVec3(half_size, -half_size, half_size),
+            MakeSceneVec3(-half_size, -half_size, half_size)}};
+    const std::array<float, 6U> shades{1.12F, 0.62F, 0.88F, 0.78F, 1.25F, 0.52F};
+    for (std::size_t face_index = 0U; face_index < faces.size(); ++face_index) {
+        std::array<SceneVec3, 4U> world_vertices{};
+        for (std::size_t vertex_index = 0U; vertex_index < world_vertices.size(); ++vertex_index) {
+            world_vertices[vertex_index] =
+                TransformPrimitivePoint(faces[face_index][vertex_index], entity_report);
+        }
+
+        const SemanticRgb color = BuildSurfaceMaterialColor(
+            texture_reports,
+            entity_report,
+            frame_report,
+            face_index,
+            shades[face_index]);
+        if (!AddQuadSurface(
+                basis,
+                world_vertices,
+                color,
+                image_width,
+                image_height,
+                out_surfaces,
+                inout_surface_count)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+float SegmentAngle(std::uint32_t index, std::uint32_t segment_count) {
+    const float ratio = static_cast<float>(index) / static_cast<float>(segment_count);
+    return ratio * 6.28318530718F;
+}
+
+bool AddCylinderSurfaces(
+    const SceneCameraBasis &basis,
     const RenderSceneThreePrimitiveEntityReport &entity_report,
-    const RenderSceneThreePrimitiveMaterialTextureSlotReport &slot_report,
+    const std::array<const RenderSceneThreePrimitiveMaterialTextureSlotReport *,
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> &texture_reports,
+    const RenderSceneOrbitCaptureFrameReport &frame_report,
+    std::uint16_t image_width,
+    std::uint16_t image_height,
+    std::array<SceneSurface, SCENE_SURFACE_CAPACITY> *out_surfaces,
+    std::size_t *inout_surface_count) {
+    constexpr float radius = 0.58F;
+    constexpr float half_height = 0.78F;
+    for (std::uint32_t segment = 0U; segment < CYLINDER_SEGMENT_COUNT; ++segment) {
+        const std::uint32_t next_segment = segment + 1U;
+        const float angle0 = SegmentAngle(segment, CYLINDER_SEGMENT_COUNT);
+        const float angle1 = SegmentAngle(next_segment, CYLINDER_SEGMENT_COUNT);
+        const float x0 = std::cos(angle0) * radius;
+        const float z0 = std::sin(angle0) * radius;
+        const float x1 = std::cos(angle1) * radius;
+        const float z1 = std::sin(angle1) * radius;
+        std::array<SceneVec3, 4U> side_vertices{
+            TransformPrimitivePoint(MakeSceneVec3(x0, -half_height, z0), entity_report),
+            TransformPrimitivePoint(MakeSceneVec3(x1, -half_height, z1), entity_report),
+            TransformPrimitivePoint(MakeSceneVec3(x1, half_height, z1), entity_report),
+            TransformPrimitivePoint(MakeSceneVec3(x0, half_height, z0), entity_report)};
+        const float shade = 0.64F + 0.32F * ClampUnitRange(std::cos(angle0), 0.0F, 1.0F);
+        const SemanticRgb side_color = BuildSurfaceMaterialColor(
+            texture_reports,
+            entity_report,
+            frame_report,
+            static_cast<std::size_t>(segment),
+            shade);
+        if (!AddQuadSurface(
+                basis,
+                side_vertices,
+                side_color,
+                image_width,
+                image_height,
+                out_surfaces,
+                inout_surface_count)) {
+            return false;
+        }
+
+        const SceneVec3 top_center =
+            TransformPrimitivePoint(MakeSceneVec3(0.0F, half_height, 0.0F), entity_report);
+        const SceneVec3 bottom_center =
+            TransformPrimitivePoint(MakeSceneVec3(0.0F, -half_height, 0.0F), entity_report);
+        const std::array<SceneVec3, 3U> top_vertices{
+            top_center,
+            TransformPrimitivePoint(MakeSceneVec3(x0, half_height, z0), entity_report),
+            TransformPrimitivePoint(MakeSceneVec3(x1, half_height, z1), entity_report)};
+        const SemanticRgb top_color = BuildSurfaceMaterialColor(
+            texture_reports,
+            entity_report,
+            frame_report,
+            static_cast<std::size_t>(segment + CYLINDER_SEGMENT_COUNT),
+            1.18F);
+        if (!AddTriangleSurface(
+                basis,
+                top_vertices,
+                top_color,
+                image_width,
+                image_height,
+                out_surfaces,
+                inout_surface_count)) {
+            return false;
+        }
+
+        const std::array<SceneVec3, 3U> bottom_vertices{
+            bottom_center,
+            TransformPrimitivePoint(MakeSceneVec3(x1, -half_height, z1), entity_report),
+            TransformPrimitivePoint(MakeSceneVec3(x0, -half_height, z0), entity_report)};
+        const SemanticRgb bottom_color = BuildSurfaceMaterialColor(
+            texture_reports,
+            entity_report,
+            frame_report,
+            static_cast<std::size_t>(segment + CYLINDER_SEGMENT_COUNT * 2U),
+            0.48F);
+        if (!AddTriangleSurface(
+                basis,
+                bottom_vertices,
+                bottom_color,
+                image_width,
+                image_height,
+                out_surfaces,
+                inout_surface_count)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool AddConeSurfaces(
+    const SceneCameraBasis &basis,
+    const RenderSceneThreePrimitiveEntityReport &entity_report,
+    const std::array<const RenderSceneThreePrimitiveMaterialTextureSlotReport *,
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> &texture_reports,
+    const RenderSceneOrbitCaptureFrameReport &frame_report,
+    std::uint16_t image_width,
+    std::uint16_t image_height,
+    std::array<SceneSurface, SCENE_SURFACE_CAPACITY> *out_surfaces,
+    std::size_t *inout_surface_count) {
+    constexpr float radius = 0.68F;
+    constexpr float base_y = -0.70F;
+    constexpr float apex_y = 0.90F;
+    const SceneVec3 apex =
+        TransformPrimitivePoint(MakeSceneVec3(0.0F, apex_y, 0.0F), entity_report);
+    const SceneVec3 base_center =
+        TransformPrimitivePoint(MakeSceneVec3(0.0F, base_y, 0.0F), entity_report);
+    for (std::uint32_t segment = 0U; segment < CONE_SEGMENT_COUNT; ++segment) {
+        const std::uint32_t next_segment = segment + 1U;
+        const float angle0 = SegmentAngle(segment, CONE_SEGMENT_COUNT);
+        const float angle1 = SegmentAngle(next_segment, CONE_SEGMENT_COUNT);
+        const float x0 = std::cos(angle0) * radius;
+        const float z0 = std::sin(angle0) * radius;
+        const float x1 = std::cos(angle1) * radius;
+        const float z1 = std::sin(angle1) * radius;
+        const std::array<SceneVec3, 3U> side_vertices{
+            apex,
+            TransformPrimitivePoint(MakeSceneVec3(x0, base_y, z0), entity_report),
+            TransformPrimitivePoint(MakeSceneVec3(x1, base_y, z1), entity_report)};
+        const float shade = 0.58F + 0.42F * ClampUnitRange(std::sin(angle0), 0.0F, 1.0F);
+        const SemanticRgb side_color = BuildSurfaceMaterialColor(
+            texture_reports,
+            entity_report,
+            frame_report,
+            static_cast<std::size_t>(segment),
+            shade);
+        if (!AddTriangleSurface(
+                basis,
+                side_vertices,
+                side_color,
+                image_width,
+                image_height,
+                out_surfaces,
+                inout_surface_count)) {
+            return false;
+        }
+
+        const std::array<SceneVec3, 3U> base_vertices{
+            base_center,
+            TransformPrimitivePoint(MakeSceneVec3(x1, base_y, z1), entity_report),
+            TransformPrimitivePoint(MakeSceneVec3(x0, base_y, z0), entity_report)};
+        const SemanticRgb base_color = BuildSurfaceMaterialColor(
+            texture_reports,
+            entity_report,
+            frame_report,
+            static_cast<std::size_t>(segment + CONE_SEGMENT_COUNT),
+            0.48F);
+        if (!AddTriangleSurface(
+                basis,
+                base_vertices,
+                base_color,
+                image_width,
+                image_height,
+                out_surfaces,
+                inout_surface_count)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool AddEntitySurfaces(
+    const SceneCameraBasis &basis,
+    const RenderSceneThreePrimitiveEntityReport &entity_report,
+    const std::array<const RenderSceneThreePrimitiveMaterialTextureSlotReport *,
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> &texture_reports,
+    const RenderSceneOrbitCaptureFrameReport &frame_report,
+    std::uint16_t image_width,
+    std::uint16_t image_height,
+    std::array<SceneSurface, SCENE_SURFACE_CAPACITY> *out_surfaces,
+    std::size_t *inout_surface_count) {
+    if (entity_report.primitive_kind == RenderScenePrimitiveGeometryKind::Cube) {
+        return AddCubeSurfaces(
+            basis,
+            entity_report,
+            texture_reports,
+            frame_report,
+            image_width,
+            image_height,
+            out_surfaces,
+            inout_surface_count);
+    }
+
+    if (entity_report.primitive_kind == RenderScenePrimitiveGeometryKind::Cylinder) {
+        return AddCylinderSurfaces(
+            basis,
+            entity_report,
+            texture_reports,
+            frame_report,
+            image_width,
+            image_height,
+            out_surfaces,
+            inout_surface_count);
+    }
+
+    if (entity_report.primitive_kind == RenderScenePrimitiveGeometryKind::Cone) {
+        return AddConeSurfaces(
+            basis,
+            entity_report,
+            texture_reports,
+            frame_report,
+            image_width,
+            image_height,
+            out_surfaces,
+            inout_surface_count);
+    }
+
+    return false;
+}
+
+bool BuildSceneSurfaces(
+    const RenderSceneOrbitCaptureFrameReport &frame_report,
+    const yuengine::rendercore::RenderCameraProjectionDesc &projection,
+    const std::array<const RenderSceneThreePrimitiveEntityReport *,
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> &entity_reports,
+    const std::array<const RenderSceneThreePrimitiveMaterialTextureSlotReport *,
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> &texture_reports,
+    std::uint16_t image_width,
+    std::uint16_t image_height,
+    std::array<SceneSurface, SCENE_SURFACE_CAPACITY> *out_surfaces,
+    std::size_t *out_surface_count) {
+    if (out_surfaces == nullptr) {
+        return false;
+    }
+
+    if (out_surface_count == nullptr) {
+        return false;
+    }
+
+    SceneCameraBasis basis{};
+    if (!BuildSceneCameraBasis(frame_report, projection, &basis)) {
+        return false;
+    }
+
+    std::size_t surface_count = 0U;
+    for (std::size_t entity_index = 0U;
+        entity_index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+        ++entity_index) {
+        if (!AddEntitySurfaces(
+                basis,
+                *entity_reports[entity_index],
+                texture_reports,
+                frame_report,
+                image_width,
+                image_height,
+                out_surfaces,
+                &surface_count)) {
+            return false;
+        }
+    }
+
+    *out_surface_count = surface_count;
+    return surface_count > 0U;
+}
+
+bool BuildSceneBackgroundPixel(
+    const RenderSceneRuntimeVisualSceneProofRequest &request,
     std::size_t frame_capture_offset,
-    std::size_t entity_index,
     std::uint16_t source_width,
     std::uint16_t source_height,
-    std::size_t source_column,
-    std::size_t source_row,
+    std::uint16_t image_width,
+    std::uint16_t image_height,
+    std::uint16_t column,
+    std::uint16_t row,
     std::size_t source_byte_count_per_entity,
-    float local_x,
-    float local_y,
     SemanticRgb *out_color) {
     if (out_color == nullptr) {
         return false;
+    }
+
+    const std::size_t entity_index = 0U;
+    std::size_t source_column =
+        (static_cast<std::size_t>(column) * source_width) / image_width;
+    if (source_column >= source_width) {
+        source_column = static_cast<std::size_t>(source_width) - 1U;
+    }
+
+    std::size_t source_row =
+        (static_cast<std::size_t>(row) * source_height) / image_height;
+    if (source_row >= source_height) {
+        source_row = static_cast<std::size_t>(source_height) - 1U;
     }
 
     SemanticRgb captured_color{};
@@ -1062,26 +1814,80 @@ bool BuildSemanticPixel(
         return false;
     }
 
-    const float center_x = ResolveSemanticCenterX(entity_report, frame_report);
-    const float center_y = ResolveSemanticCenterY(entity_report, frame_report);
-    const bool primitive_pixel = IsPrimitiveSemanticPixel(
-        entity_report.primitive_kind,
-        local_x,
-        local_y,
-        center_x,
-        center_y);
-    if (!primitive_pixel) {
-        *out_color = BuildSemanticBackground(captured_color);
-        return true;
+    *out_color = BuildSemanticBackground(captured_color);
+    return true;
+}
+
+SemanticRgb ResolveSceneSurfacePixelColor(const SceneSurface &surface, float x, float y) {
+    if (PointNearSceneSurfaceEdge(surface, x, y)) {
+        return ShadeSceneColor(surface.color, 0.32F, 0U);
     }
 
-    *out_color = BuildMaterialSlotColor(slot_report, entity_report, frame_report);
+    return surface.color;
+}
+
+bool BuildPerspectiveScenePixel(
+    const RenderSceneRuntimeVisualSceneProofRequest &request,
+    const std::array<SceneSurface, SCENE_SURFACE_CAPACITY> &surfaces,
+    std::size_t surface_count,
+    std::size_t frame_capture_offset,
+    std::uint16_t source_width,
+    std::uint16_t source_height,
+    std::uint16_t image_width,
+    std::uint16_t image_height,
+    std::uint16_t column,
+    std::uint16_t row,
+    std::size_t source_byte_count_per_entity,
+    SemanticRgb *out_color) {
+    if (out_color == nullptr) {
+        return false;
+    }
+
+    if (!BuildSceneBackgroundPixel(
+            request,
+            frame_capture_offset,
+            source_width,
+            source_height,
+            image_width,
+            image_height,
+            column,
+            row,
+            source_byte_count_per_entity,
+            out_color)) {
+        return false;
+    }
+
+    const float sample_x = static_cast<float>(column) + 0.5F;
+    const float sample_y = static_cast<float>(row) + 0.5F;
+    float nearest_depth = SCENE_RASTER_FAR_DEPTH;
+    bool surface_found = false;
+    SemanticRgb surface_color{};
+    for (std::size_t surface_index = 0U; surface_index < surface_count; ++surface_index) {
+        const SceneSurface &surface = surfaces[surface_index];
+        if (surface.depth >= nearest_depth) {
+            continue;
+        }
+
+        if (!PointInSceneSurface(surface, sample_x, sample_y)) {
+            continue;
+        }
+
+        nearest_depth = surface.depth;
+        surface_color = ResolveSceneSurfacePixelColor(surface, sample_x, sample_y);
+        surface_found = true;
+    }
+
+    if (surface_found) {
+        *out_color = surface_color;
+    }
+
     return true;
 }
 
 bool WriteFramePpmImage(
     const RenderSceneRuntimeVisualSceneProofRequest &request,
     const RenderSceneOrbitCaptureFrameReport &frame_report,
+    const yuengine::rendercore::RenderCameraProjectionDesc &projection,
     std::size_t frame_capture_offset,
     std::uint16_t source_width,
     std::uint16_t source_height,
@@ -1105,6 +1911,20 @@ bool WriteFramePpmImage(
         return false;
     }
 
+    std::array<SceneSurface, SCENE_SURFACE_CAPACITY> surfaces{};
+    std::size_t surface_count = 0U;
+    if (!BuildSceneSurfaces(
+            frame_report,
+            projection,
+            entity_reports,
+            texture_reports,
+            image_width,
+            image_height,
+            &surfaces,
+            &surface_count)) {
+        return false;
+    }
+
     if (!CreateImageArtifactParentDirectory(out_report->output_path)) {
         return false;
     }
@@ -1122,53 +1942,19 @@ bool WriteFramePpmImage(
 
     for (std::uint16_t row = 0U; row < image_height; ++row) {
         for (std::uint16_t column = 0U; column < image_width; ++column) {
-            const std::size_t entity_index = ResolveImageEntityIndex(column, image_width);
-            const std::size_t entity_column_begin =
-                ResolveImageEntityBegin(entity_index, image_width);
-            const std::size_t entity_column_end =
-                ResolveImageEntityEnd(entity_index, image_width);
-            if (entity_column_end <= entity_column_begin) {
-                std::fclose(file);
-                return false;
-            }
-
-            const std::size_t entity_column_width =
-                entity_column_end - entity_column_begin;
-            const std::size_t relative_column =
-                static_cast<std::size_t>(column) - entity_column_begin;
-            std::size_t source_column =
-                (relative_column * source_width) / entity_column_width;
-            if (source_column >= source_width) {
-                source_column = static_cast<std::size_t>(source_width) - 1U;
-            }
-
-            std::size_t source_row =
-                (static_cast<std::size_t>(row) * source_height) / image_height;
-            if (source_row >= source_height) {
-                source_row = static_cast<std::size_t>(source_height) - 1U;
-            }
-
-            const float local_x =
-                (static_cast<float>(relative_column) + 0.5F) /
-                static_cast<float>(entity_column_width);
-            const float local_y =
-                (static_cast<float>(row) + 0.5F) / static_cast<float>(image_height);
-
             SemanticRgb pixel{};
-            if (!BuildSemanticPixel(
+            if (!BuildPerspectiveScenePixel(
                     request,
-                    frame_report,
-                    *entity_reports[entity_index],
-                    *texture_reports[entity_index],
+                    surfaces,
+                    surface_count,
                     frame_capture_offset,
-                    entity_index,
                     source_width,
                     source_height,
-                    source_column,
-                    source_row,
+                    image_width,
+                    image_height,
+                    column,
+                    row,
                     source_byte_count_per_entity,
-                    local_x,
-                    local_y,
                     &pixel)) {
                 std::fclose(file);
                 return false;
@@ -1207,6 +1993,7 @@ bool WriteFramePpmImage(
 
 bool EmitImageArtifacts(
     const RenderSceneRuntimeVisualSceneProofRequest &request,
+    const yuengine::rendercore::RenderCameraProjectionDesc &projection,
     RenderSceneRuntimeVisualSceneProofResult *out_result) {
     if (out_result == nullptr) {
         return false;
@@ -1279,9 +2066,16 @@ bool EmitImageArtifacts(
             return false;
         }
 
+        auto frame_projection = projection;
+        if (out_result->camera_tween_used) {
+            frame_projection.vertical_fov_radians =
+                out_result->camera_tween_frame_reports[frame_index].vertical_fov_radians;
+        }
+
         if (!WriteFramePpmImage(
                 request,
                 out_result->orbit_result.frames[frame_index],
+                frame_projection,
                 frame_capture_offset,
                 source_width,
                 source_height,
@@ -1616,12 +2410,432 @@ bool FillRenderSceneConsumedReports(RenderSceneRuntimeVisualSceneProofResult *ou
     return true;
 }
 
-bool IsRequestStorageUsable(const RenderSceneRuntimeVisualSceneProofRequest &request) {
-    if (request.output_path_prefix == nullptr) {
+bool IsFiniteFloat(float value) {
+    return std::isfinite(value);
+}
+
+bool IsFiniteCameraVector(RenderCameraVector3 value) {
+    if (!IsFiniteFloat(value.x)) {
         return false;
     }
 
-    if (request.output_path_prefix_byte_count == 0U) {
+    if (!IsFiniteFloat(value.y)) {
+        return false;
+    }
+
+    return IsFiniteFloat(value.z);
+}
+
+bool IsFiniteCameraPose(const RenderCameraPose &pose) {
+    if (!IsFiniteCameraVector(pose.position)) {
+        return false;
+    }
+
+    if (!IsFiniteCameraVector(pose.target)) {
+        return false;
+    }
+
+    return IsFiniteCameraVector(pose.up);
+}
+
+bool IsCameraTweenEaseUsable(RenderSceneRuntimeVisualSceneCameraTweenEase ease) {
+    if (ease == RenderSceneRuntimeVisualSceneCameraTweenEase::Linear) {
+        return true;
+    }
+
+    return ease == RenderSceneRuntimeVisualSceneCameraTweenEase::SmoothStep;
+}
+
+bool IsCameraTweenKeyframeUsable(
+    const RenderSceneRuntimeVisualSceneCameraTweenKeyframe &keyframe) {
+    if (!IsFiniteFloat(keyframe.time_seconds)) {
+        return false;
+    }
+
+    if (!IsFiniteCameraPose(keyframe.pose)) {
+        return false;
+    }
+
+    if (!IsFiniteFloat(keyframe.vertical_fov_radians)) {
+        return false;
+    }
+
+    if (keyframe.vertical_fov_radians <= SCENE_RASTER_EPSILON) {
+        return false;
+    }
+
+    return IsCameraTweenEaseUsable(keyframe.ease);
+}
+
+bool IsCameraTweenRequestUsable(const RenderSceneRuntimeVisualSceneProofRequest &request) {
+    if (!request.camera_tween_requested) {
+        return true;
+    }
+
+    const std::span<const RenderSceneRuntimeVisualSceneCameraTweenKeyframe> keyframes =
+        request.camera_tween_keyframes;
+    if (keyframes.size() < 2U) {
+        return false;
+    }
+
+    if (keyframes.size() > MAX_RENDER_SCENE_RUNTIME_VISUAL_SCENE_CAMERA_TWEEN_KEYFRAME_COUNT) {
+        return false;
+    }
+
+    float previous_time = keyframes[0U].time_seconds;
+    if (!IsCameraTweenKeyframeUsable(keyframes[0U])) {
+        return false;
+    }
+
+    for (std::size_t index = 1U; index < keyframes.size(); ++index) {
+        const RenderSceneRuntimeVisualSceneCameraTweenKeyframe &keyframe = keyframes[index];
+        if (!IsCameraTweenKeyframeUsable(keyframe)) {
+            return false;
+        }
+
+        if (keyframe.time_seconds <= previous_time) {
+            return false;
+        }
+
+        previous_time = keyframe.time_seconds;
+    }
+
+    return true;
+}
+
+float EvaluateCameraTweenEase(
+    RenderSceneRuntimeVisualSceneCameraTweenEase ease,
+    float linear_t) {
+    const float clamped_t = ClampUnitRange(linear_t, 0.0F, 1.0F);
+    if (ease == RenderSceneRuntimeVisualSceneCameraTweenEase::SmoothStep) {
+        return clamped_t * clamped_t * (3.0F - 2.0F * clamped_t);
+    }
+
+    return clamped_t;
+}
+
+float LerpFloat(float first, float second, float t) {
+    return first + (second - first) * t;
+}
+
+RenderCameraVector3 LerpCameraVector(
+    RenderCameraVector3 first,
+    RenderCameraVector3 second,
+    float t) {
+    RenderCameraVector3 result{};
+    result.x = LerpFloat(first.x, second.x, t);
+    result.y = LerpFloat(first.y, second.y, t);
+    result.z = LerpFloat(first.z, second.z, t);
+    return result;
+}
+
+RenderCameraPose LerpCameraPose(
+    const RenderCameraPose &first,
+    const RenderCameraPose &second,
+    float t) {
+    RenderCameraPose result{};
+    result.position = LerpCameraVector(first.position, second.position, t);
+    result.target = LerpCameraVector(first.target, second.target, t);
+    result.up = LerpCameraVector(first.up, second.up, t);
+    return result;
+}
+
+bool FindCameraTweenSegment(
+    std::span<const RenderSceneRuntimeVisualSceneCameraTweenKeyframe> keyframes,
+    float sample_time_seconds,
+    std::size_t *out_source_index,
+    std::size_t *out_target_index) {
+    if (out_source_index == nullptr) {
+        return false;
+    }
+
+    if (out_target_index == nullptr) {
+        return false;
+    }
+
+    if (keyframes.size() < 2U) {
+        return false;
+    }
+
+    const std::size_t last_index = keyframes.size() - 1U;
+    if (sample_time_seconds <= keyframes[0U].time_seconds) {
+        *out_source_index = 0U;
+        *out_target_index = 1U;
+        return true;
+    }
+
+    if (sample_time_seconds >= keyframes[last_index].time_seconds) {
+        *out_source_index = last_index - 1U;
+        *out_target_index = last_index;
+        return true;
+    }
+
+    for (std::size_t index = 0U; index < last_index; ++index) {
+        const float source_time = keyframes[index].time_seconds;
+        const float target_time = keyframes[index + 1U].time_seconds;
+        if (sample_time_seconds >= source_time && sample_time_seconds <= target_time) {
+            *out_source_index = index;
+            *out_target_index = index + 1U;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool SampleCameraTweenFrame(
+    const RenderSceneRuntimeVisualSceneProofRequest &request,
+    std::uint32_t frame_index,
+    RenderSceneRuntimeVisualSceneCameraTweenFrameReport *out_report) {
+    if (out_report == nullptr) {
+        return false;
+    }
+
+    if (!IsCameraTweenRequestUsable(request)) {
+        return false;
+    }
+
+    const std::span<const RenderSceneRuntimeVisualSceneCameraTweenKeyframe> keyframes =
+        request.camera_tween_keyframes;
+    const std::size_t last_keyframe_index = keyframes.size() - 1U;
+    const float start_time = keyframes[0U].time_seconds;
+    const float end_time = keyframes[last_keyframe_index].time_seconds;
+    const float frame_ratio =
+        static_cast<float>(frame_index) / static_cast<float>(request.frame_count - 1U);
+    const float sample_time_seconds = LerpFloat(start_time, end_time, frame_ratio);
+
+    std::size_t source_index = 0U;
+    std::size_t target_index = 0U;
+    if (!FindCameraTweenSegment(
+            keyframes,
+            sample_time_seconds,
+            &source_index,
+            &target_index)) {
+        return false;
+    }
+
+    const RenderSceneRuntimeVisualSceneCameraTweenKeyframe &source_keyframe =
+        keyframes[source_index];
+    const RenderSceneRuntimeVisualSceneCameraTweenKeyframe &target_keyframe =
+        keyframes[target_index];
+    const float segment_duration =
+        target_keyframe.time_seconds - source_keyframe.time_seconds;
+    if (segment_duration <= SCENE_RASTER_EPSILON) {
+        return false;
+    }
+
+    const float linear_t =
+        (sample_time_seconds - source_keyframe.time_seconds) / segment_duration;
+    const float eased_t = EvaluateCameraTweenEase(source_keyframe.ease, linear_t);
+
+    RenderSceneRuntimeVisualSceneCameraTweenFrameReport report{};
+    report.frame_index = frame_index;
+    report.frame_id = request.first_frame_id + frame_index;
+    report.source_keyframe_index = source_index;
+    report.target_keyframe_index = target_index;
+    report.sample_time_seconds = sample_time_seconds;
+    report.linear_t = ClampUnitRange(linear_t, 0.0F, 1.0F);
+    report.eased_t = eased_t;
+    report.vertical_fov_radians =
+        LerpFloat(source_keyframe.vertical_fov_radians, target_keyframe.vertical_fov_radians, eased_t);
+    report.camera_pose = LerpCameraPose(source_keyframe.pose, target_keyframe.pose, eased_t);
+    *out_report = report;
+    return true;
+}
+
+RenderSceneOrbitCaptureMissingLayer MapCameraTweenCaptureMissingLayer(
+    RenderSceneThreePrimitiveCaptureMissingLayer layer) {
+    if (layer == RenderSceneThreePrimitiveCaptureMissingLayer::None) {
+        return RenderSceneOrbitCaptureMissingLayer::None;
+    }
+
+    if (layer == RenderSceneThreePrimitiveCaptureMissingLayer::Camera) {
+        return RenderSceneOrbitCaptureMissingLayer::Camera;
+    }
+
+    if (layer == RenderSceneThreePrimitiveCaptureMissingLayer::GeometryModel) {
+        return RenderSceneOrbitCaptureMissingLayer::GeometryModel;
+    }
+
+    if (layer == RenderSceneThreePrimitiveCaptureMissingLayer::MaterialTextureSlots) {
+        return RenderSceneOrbitCaptureMissingLayer::MaterialTextureSlots;
+    }
+
+    if (layer == RenderSceneThreePrimitiveCaptureMissingLayer::ShaderPipeline) {
+        return RenderSceneOrbitCaptureMissingLayer::ShaderPipeline;
+    }
+
+    if (layer == RenderSceneThreePrimitiveCaptureMissingLayer::ScenePlacement) {
+        return RenderSceneOrbitCaptureMissingLayer::ScenePlacement;
+    }
+
+    if (layer == RenderSceneThreePrimitiveCaptureMissingLayer::RenderSceneSubmission) {
+        return RenderSceneOrbitCaptureMissingLayer::RenderSceneSubmission;
+    }
+
+    if (layer == RenderSceneThreePrimitiveCaptureMissingLayer::RenderCoreRhiDrawCapture) {
+        return RenderSceneOrbitCaptureMissingLayer::RenderCoreRhiDrawCapture;
+    }
+
+    if (layer == RenderSceneThreePrimitiveCaptureMissingLayer::RhiCaptureTarget) {
+        return RenderSceneOrbitCaptureMissingLayer::RhiCaptureTarget;
+    }
+
+    if (layer == RenderSceneThreePrimitiveCaptureMissingLayer::OutputPath) {
+        return RenderSceneOrbitCaptureMissingLayer::OutputPath;
+    }
+
+    return RenderSceneOrbitCaptureMissingLayer::RenderCoreRhiDrawCapture;
+}
+
+RenderSceneOrbitCaptureStatus MapCameraTweenCaptureFrameStatus(
+    const RenderSceneThreePrimitiveCaptureResult &capture_result,
+    RenderSceneOrbitCaptureFrameReport *out_report) {
+    if (out_report == nullptr) {
+        return RenderSceneOrbitCaptureStatus::InvalidArgument;
+    }
+
+    out_report->first_missing_layer =
+        MapCameraTweenCaptureMissingLayer(capture_result.first_missing_layer);
+    if (capture_result.status == RenderSceneThreePrimitiveCaptureStatus::Success) {
+        out_report->status = RenderSceneOrbitCaptureStatus::Success;
+        out_report->first_missing_layer = RenderSceneOrbitCaptureMissingLayer::None;
+        return out_report->status;
+    }
+
+    if (capture_result.status == RenderSceneThreePrimitiveCaptureStatus::BlockedByEnv) {
+        out_report->status = RenderSceneOrbitCaptureStatus::BlockedByEnv;
+        return out_report->status;
+    }
+
+    if (capture_result.status == RenderSceneThreePrimitiveCaptureStatus::InvalidArgument) {
+        out_report->status = RenderSceneOrbitCaptureStatus::InvalidArgument;
+        if (out_report->first_missing_layer == RenderSceneOrbitCaptureMissingLayer::None) {
+            out_report->first_missing_layer = RenderSceneOrbitCaptureMissingLayer::CaptureStorage;
+        }
+
+        return out_report->status;
+    }
+
+    out_report->status = RenderSceneOrbitCaptureStatus::Fail;
+    return out_report->status;
+}
+
+RenderSceneOrbitCaptureStatus ExecuteCameraTweenCapture(
+    const RenderSceneRuntimeVisualSceneProofRequest &request,
+    const RenderSceneRuntimeCameraRecord &proof_camera,
+    const RenderSceneRuntimeMaterialRecord &material,
+    std::span<const RenderSceneThreePrimitiveEntityRequest> entities,
+    RenderSceneRuntimeVisualSceneProofResult *out_result) {
+    if (out_result == nullptr) {
+        return RenderSceneOrbitCaptureStatus::InvalidArgument;
+    }
+
+    if (!IsCameraTweenRequestUsable(request)) {
+        out_result->orbit_result.status = RenderSceneOrbitCaptureStatus::InvalidArgument;
+        out_result->orbit_result.first_missing_layer =
+            RenderSceneOrbitCaptureMissingLayer::AnimationInterpolation;
+        return out_result->orbit_result.status;
+    }
+
+    RenderSceneOrbitCaptureResult &result = out_result->orbit_result;
+    result.first_frame_id = request.first_frame_id;
+    result.requested_frame_count = request.frame_count;
+    result.target = request.camera_tween_keyframes[0U].pose.target;
+    result.orbit_radius = 0.0F;
+    result.orbit_height = 0.0F;
+    result.frame_capture_byte_budget =
+        request.capture_byte_budget_per_entity * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    out_result->camera_tween_used = true;
+    out_result->camera_tween_keyframe_count = request.camera_tween_keyframes.size();
+
+    RenderSceneCameraFrameBinder camera_binder;
+    RenderSceneThreePrimitiveCaptureRoute capture_route;
+    for (std::uint32_t frame_index = 0U; frame_index < request.frame_count; ++frame_index) {
+        RenderSceneRuntimeVisualSceneCameraTweenFrameReport tween_report{};
+        if (!SampleCameraTweenFrame(request, frame_index, &tween_report)) {
+            result.status = RenderSceneOrbitCaptureStatus::InvalidArgument;
+            result.first_missing_layer = RenderSceneOrbitCaptureMissingLayer::AnimationInterpolation;
+            return result.status;
+        }
+
+        out_result->camera_tween_frame_reports[frame_index] = tween_report;
+
+        RenderSceneOrbitCaptureFrameReport &frame_report = result.frames[frame_index];
+        frame_report.frame_index = frame_index;
+        frame_report.frame_id = tween_report.frame_id;
+        frame_report.orbit_angle_radians = 0.0F;
+        frame_report.target = tween_report.camera_pose.target;
+        frame_report.camera_pose = tween_report.camera_pose;
+        if (!BuildCaptureFrameOutputPath(request, frame_index, &frame_report)) {
+            result.status = RenderSceneOrbitCaptureStatus::Fail;
+            result.first_missing_layer = RenderSceneOrbitCaptureMissingLayer::OutputPath;
+            return result.status;
+        }
+
+        RenderSceneRuntimeCameraRecord camera = proof_camera;
+        camera.pose = tween_report.camera_pose;
+        camera.projection.vertical_fov_radians = tween_report.vertical_fov_radians;
+        const std::array<RenderSceneRuntimeCameraRecord, 1U> cameras{camera};
+
+        RenderSceneCameraBindingRequest camera_request{};
+        camera_request.frame_id = frame_report.frame_id;
+        camera_request.active_camera_id = camera.camera_id;
+        camera_request.cameras = cameras;
+        camera_request.capture_byte_budget = result.frame_capture_byte_budget;
+        camera_request.capture_requested = true;
+
+        RenderSceneCameraBindingResult camera_result{};
+        const RenderSceneStatus camera_status =
+            camera_binder.BuildActiveCameraFrame(camera_request, &camera_result);
+        frame_report.capture = camera_result.capture;
+        if (camera_status != RenderSceneStatus::Success) {
+            frame_report.status = RenderSceneOrbitCaptureStatus::Fail;
+            frame_report.first_missing_layer = RenderSceneOrbitCaptureMissingLayer::Camera;
+            result.status = frame_report.status;
+            result.first_missing_layer = frame_report.first_missing_layer;
+            return result.status;
+        }
+
+        const std::size_t frame_capture_offset =
+            static_cast<std::size_t>(frame_index) * result.frame_capture_byte_budget;
+        const std::span<std::uint8_t> frame_capture_output =
+            request.capture_output.subspan(frame_capture_offset, result.frame_capture_byte_budget);
+
+        RenderSceneThreePrimitiveCaptureRequest capture_request{};
+        capture_request.frame_id = frame_report.frame_id;
+        capture_request.camera = camera_result;
+        capture_request.material = material;
+        capture_request.entities = entities;
+        capture_request.rhi_device = request.rhi_device;
+        capture_request.output_path = frame_report.output_path;
+        capture_request.output_path_byte_count = frame_report.output_path_byte_count;
+        capture_request.capture_output = frame_capture_output;
+        capture_request.capture_byte_budget_per_entity = request.capture_byte_budget_per_entity;
+
+        capture_route.Execute(capture_request, &frame_report.capture_result);
+        frame_report.capture = frame_report.capture_result.capture;
+        frame_report.output_status = frame_report.capture_result.output_status;
+        frame_report.capture_bytes_written = frame_report.capture_result.capture_bytes_written;
+        const RenderSceneOrbitCaptureStatus frame_status =
+            MapCameraTweenCaptureFrameStatus(frame_report.capture_result, &frame_report);
+        if (frame_status != RenderSceneOrbitCaptureStatus::Success) {
+            result.status = frame_status;
+            result.first_missing_layer = frame_report.first_missing_layer;
+            return result.status;
+        }
+
+        ++result.completed_frame_count;
+        result.capture_bytes_written += frame_report.capture_bytes_written;
+    }
+
+    result.status = RenderSceneOrbitCaptureStatus::Success;
+    result.first_missing_layer = RenderSceneOrbitCaptureMissingLayer::None;
+    return result.status;
+}
+
+bool IsRequestStorageUsable(const RenderSceneRuntimeVisualSceneProofRequest &request) {
+    if (!IsCaptureOutputPathPrefixUsable(request)) {
         return false;
     }
 
@@ -1648,6 +2862,7 @@ RenderSceneRuntimeVisualSceneProofStatus RenderSceneRuntimeVisualSceneProofRoute
     result.requested_target_capture_height = request.target_capture_height;
     result.requested_minimum_image_artifact_width = request.minimum_image_artifact_width;
     result.requested_minimum_image_artifact_height = request.minimum_image_artifact_height;
+    result.close_orbit_loop = request.close_orbit_loop;
     *out_result = result;
 
     if (request.diagnostic_fault != RenderSceneMissingLayerDiagnosticFault::None) {
@@ -1669,6 +2884,12 @@ RenderSceneRuntimeVisualSceneProofStatus RenderSceneRuntimeVisualSceneProofRoute
     if (!IsRequestStorageUsable(request)) {
         return CompleteWithDiagnostic(
             RenderSceneMissingLayerDiagnosticFault::MissingOutputBounding,
+            out_result);
+    }
+
+    if (!IsCameraTweenRequestUsable(request)) {
+        return CompleteWithDiagnostic(
+            RenderSceneMissingLayerDiagnosticFault::MissingCameraTweenSampling,
             out_result);
     }
 
@@ -1716,32 +2937,65 @@ RenderSceneRuntimeVisualSceneProofStatus RenderSceneRuntimeVisualSceneProofRoute
         return CompleteWithDiagnostic(animation_fault, out_result);
     }
 
-    RenderSceneOrbitCaptureRequest orbit_request{};
-    orbit_request.first_frame_id = request.first_frame_id;
-    orbit_request.frame_count = request.frame_count;
-    orbit_request.camera_template = BuildCameraRecord();
-    orbit_request.material = BuildRuntimeMaterialRecord();
-    orbit_request.entities = entities;
-    orbit_request.target = yuengine::rendercore::RenderCameraVector3{0.0F, 0.0F, 0.0F};
-    orbit_request.orbit_radius = PROOF_ORBIT_RADIUS;
-    orbit_request.orbit_height = PROOF_ORBIT_HEIGHT;
-    orbit_request.rhi_device = request.rhi_device;
-    orbit_request.output_path_prefix = request.output_path_prefix;
-    orbit_request.output_path_prefix_byte_count = request.output_path_prefix_byte_count;
-    orbit_request.capture_output = request.capture_output;
-    orbit_request.capture_byte_budget_per_entity = request.capture_byte_budget_per_entity;
+    const RenderSceneRuntimeCameraRecord proof_camera = BuildCameraRecord();
+    out_result->camera_projection_kind = proof_camera.projection.kind;
+    out_result->camera_vertical_fov_radians = proof_camera.projection.vertical_fov_radians;
+    out_result->camera_aspect_ratio = proof_camera.projection.aspect_ratio;
+    out_result->camera_orthographic_height = proof_camera.projection.orthographic_height;
+    out_result->camera_perspective_projection_used =
+        proof_camera.projection.kind == RenderCameraProjectionKind::Perspective;
 
-    RenderSceneOrbitCaptureRoute orbit_route;
-    const RenderSceneOrbitCaptureStatus orbit_status =
-        orbit_route.Execute(orbit_request, &out_result->orbit_result);
+    const RenderSceneRuntimeMaterialRecord proof_material = BuildRuntimeMaterialRecord();
+    RenderSceneOrbitCaptureStatus orbit_status = RenderSceneOrbitCaptureStatus::InvalidArgument;
+    if (request.camera_tween_requested) {
+        orbit_status = ExecuteCameraTweenCapture(
+            request,
+            proof_camera,
+            proof_material,
+            std::span<const RenderSceneThreePrimitiveEntityRequest>(entities.data(), entities.size()),
+            out_result);
+    }
+
+    if (!request.camera_tween_requested) {
+        RenderSceneOrbitCaptureRequest orbit_request{};
+        orbit_request.first_frame_id = request.first_frame_id;
+        orbit_request.frame_count = request.frame_count;
+        orbit_request.camera_template = proof_camera;
+        orbit_request.material = proof_material;
+        orbit_request.entities = entities;
+        orbit_request.target = RenderCameraVector3{0.0F, 0.0F, 0.0F};
+        orbit_request.orbit_radius = PROOF_ORBIT_RADIUS;
+        orbit_request.orbit_height = PROOF_ORBIT_HEIGHT;
+        orbit_request.close_orbit_loop = request.close_orbit_loop;
+        orbit_request.rhi_device = request.rhi_device;
+        orbit_request.output_path_prefix = request.output_path_prefix;
+        orbit_request.output_path_prefix_byte_count = request.output_path_prefix_byte_count;
+        orbit_request.capture_output = request.capture_output;
+        orbit_request.capture_byte_budget_per_entity = request.capture_byte_budget_per_entity;
+
+        RenderSceneOrbitCaptureRoute orbit_route;
+        orbit_status = orbit_route.Execute(orbit_request, &out_result->orbit_result);
+    }
+
     out_result->completed_frame_count = out_result->orbit_result.completed_frame_count;
     out_result->capture_bytes_written = out_result->orbit_result.capture_bytes_written;
     out_result->frame_capture_byte_budget = out_result->orbit_result.frame_capture_byte_budget;
 
     if (orbit_status != RenderSceneOrbitCaptureStatus::Success) {
-        const RenderSceneMissingLayerDiagnosticFault fault =
+        RenderSceneMissingLayerDiagnosticFault fault =
             MapOrbitMissingLayer(out_result->orbit_result.first_missing_layer);
+        if (request.camera_tween_requested &&
+            out_result->orbit_result.first_missing_layer ==
+                RenderSceneOrbitCaptureMissingLayer::AnimationInterpolation) {
+            fault = RenderSceneMissingLayerDiagnosticFault::MissingCameraTweenSampling;
+        }
+
         return CompleteWithDiagnostic(fault, out_result);
+    }
+
+    if (request.camera_tween_requested) {
+        out_result->camera_vertical_fov_radians =
+            out_result->camera_tween_frame_reports[0U].vertical_fov_radians;
     }
 
     if (!FillRenderSceneConsumedReports(out_result)) {
@@ -1750,7 +3004,7 @@ RenderSceneRuntimeVisualSceneProofStatus RenderSceneRuntimeVisualSceneProofRoute
             out_result);
     }
 
-    if (!EmitImageArtifacts(request, out_result)) {
+    if (!EmitImageArtifacts(request, proof_camera.projection, out_result)) {
         return CompleteWithDiagnostic(
             RenderSceneMissingLayerDiagnosticFault::MissingCaptureOutputImage,
             out_result);

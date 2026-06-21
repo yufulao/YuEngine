@@ -52,6 +52,7 @@ struct RenderSceneOrbitCaptureRequest final {
     yuengine::rendercore::RenderCameraVector3 target{};
     float orbit_radius = 0.0F;
     float orbit_height = 0.0F;
+    bool close_orbit_loop = true;
     yuengine::rhi::IRhiDevice *rhi_device = nullptr;
     const char *output_path_prefix = nullptr;
     std::size_t output_path_prefix_byte_count = 0U;

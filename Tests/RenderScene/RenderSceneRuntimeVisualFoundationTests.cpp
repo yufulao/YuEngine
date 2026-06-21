@@ -105,6 +105,7 @@ using yuengine::asset::AssetHandle;
 using yuengine::kernel::RuntimeFrameContext;
 using yuengine::kernel::RuntimeFrameMode;
 using yuengine::rendercore::RenderCameraProjectionKind;
+using yuengine::rendercore::RenderCameraPose;
 using yuengine::rendercore::RenderCameraVector3;
 using yuengine::rendercore::RenderDrawableFramePipelineStatus;
 using yuengine::renderscene::RenderSceneCameraBindingRequest;
@@ -135,6 +136,9 @@ using yuengine::renderscene::RenderSceneRuntimeVisualSceneProofRequest;
 using yuengine::renderscene::RenderSceneRuntimeVisualSceneProofResult;
 using yuengine::renderscene::RenderSceneRuntimeVisualSceneProofRoute;
 using yuengine::renderscene::RenderSceneRuntimeVisualSceneProofStatus;
+using yuengine::renderscene::RenderSceneRuntimeVisualSceneCameraTweenEase;
+using yuengine::renderscene::RenderSceneRuntimeVisualSceneCameraTweenFrameReport;
+using yuengine::renderscene::RenderSceneRuntimeVisualSceneCameraTweenKeyframe;
 using yuengine::renderscene::RenderScenePrimitiveGeometryBuilder;
 using yuengine::renderscene::RenderScenePrimitiveGeometryKind;
 using yuengine::renderscene::RenderScenePrimitiveGeometryRecord;
@@ -276,6 +280,8 @@ constexpr const char *TEST_L1_SAMPLE_014_USER_VISIBLE_TARGET =
     "RenderScene_L1Sample014EmitsUserVisibleCaptureTargetArtifacts";
 constexpr const char *TEST_L1_SAMPLE_015_SCENE_PIXEL_SEMANTICS =
     "RenderScene_L1Sample015EmitsScenePixelSemanticsArtifacts";
+constexpr const char *TEST_L1_SAMPLE_016_PERSPECTIVE_3D_CAMERA_TWEEN =
+    "RenderScene_L1Sample016EmitsPerspective3DPrimitiveCameraTweenArtifacts";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -298,6 +304,9 @@ constexpr char L1_SAMPLE_014_IMAGE_ARTIFACT_DIRECTORY[] = "Artifacts/L1Sample011
 constexpr char L1_SAMPLE_015_IMAGE_OUTPUT_PATH_PREFIX[] =
     "Artifacts/L1Sample011/RVF015/RuntimeVisualScene";
 constexpr char L1_SAMPLE_015_IMAGE_ARTIFACT_DIRECTORY[] = "Artifacts/L1Sample011/RVF015";
+constexpr char L1_SAMPLE_016_IMAGE_OUTPUT_PATH_PREFIX[] =
+    "Artifacts/L1Sample011/RVF016/RuntimeVisualScene";
+constexpr char L1_SAMPLE_016_IMAGE_ARTIFACT_DIRECTORY[] = "Artifacts/L1Sample011/RVF016";
 constexpr char L1_SAMPLE_011_IMAGE_HEADER[] = "P6\n12 4\n255\n";
 constexpr char L1_SAMPLE_014_IMAGE_HEADER[] = "P6\n640 360\n255\n";
 constexpr char L1_VIS_002_CUBE_NAME[] = "Cube";
@@ -308,6 +317,7 @@ constexpr float PI_VALUE = 3.14159265359F;
 constexpr float HALF_PI = 1.57079632679F;
 constexpr float THREE_HALF_PI = 4.71238898038F;
 constexpr float FULL_ORBIT_RADIANS = 6.28318530718F;
+constexpr float L1_SAMPLE_016_CAMERA_ASPECT = 1.77777777778F;
 constexpr float TOLERANCE = 0.0001F;
 constexpr std::uint32_t FRAME_ID = 9101U;
 constexpr std::uint32_t CAMERA_ID = 9201U;
@@ -327,6 +337,7 @@ constexpr std::uint8_t CAPTURE_SENTINEL = 0xCCU;
 constexpr std::uint64_t L1_VIS_004_CLIP_START_NANOSECONDS = 1000000000ULL;
 constexpr std::uint64_t L1_VIS_004_SAMPLE_NANOSECONDS = 1500000000ULL;
 constexpr std::uint32_t L1_VIS_005_FRAME_COUNT = 5U;
+constexpr std::uint32_t L1_SAMPLE_016_FRAME_COUNT = 8U;
 constexpr std::uint16_t L1_SAMPLE_013_MINIMUM_IMAGE_WIDTH = 320U;
 constexpr std::uint16_t L1_SAMPLE_013_MINIMUM_IMAGE_HEIGHT = 180U;
 constexpr std::uint16_t L1_SAMPLE_014_TARGET_IMAGE_WIDTH = 640U;
@@ -1377,6 +1388,61 @@ RenderSceneRuntimeVisualSceneProofRequest MakeRuntimeVisualSceneSemanticTargetIm
     return request;
 }
 
+RenderSceneRuntimeVisualSceneProofRequest MakeRuntimeVisualScenePerspectiveTargetImageProofRequest(
+    L1Vis001RhiDevice &device,
+    std::vector<std::uint8_t> &capture) {
+    RenderSceneRuntimeVisualSceneProofRequest request =
+        MakeRuntimeVisualSceneSemanticTargetImageProofRequest(device, capture);
+    request.frame_count = L1_SAMPLE_016_FRAME_COUNT;
+    request.image_output_path_prefix = L1_SAMPLE_016_IMAGE_OUTPUT_PATH_PREFIX;
+    request.image_output_path_prefix_byte_count =
+        sizeof(L1_SAMPLE_016_IMAGE_OUTPUT_PATH_PREFIX) - 1U;
+    request.camera_tween_requested = true;
+    return request;
+}
+
+RenderSceneRuntimeVisualSceneCameraTweenKeyframe MakeRuntimeVisualSceneCameraTweenKeyframe(
+    float time_seconds,
+    RenderCameraVector3 position,
+    RenderCameraVector3 target,
+    float vertical_fov_radians,
+    RenderSceneRuntimeVisualSceneCameraTweenEase ease) {
+    RenderSceneRuntimeVisualSceneCameraTweenKeyframe keyframe{};
+    keyframe.time_seconds = time_seconds;
+    keyframe.pose.position = position;
+    keyframe.pose.target = target;
+    keyframe.pose.up = RenderCameraVector3{0.0F, 1.0F, 0.0F};
+    keyframe.vertical_fov_radians = vertical_fov_radians;
+    keyframe.ease = ease;
+    return keyframe;
+}
+
+std::array<RenderSceneRuntimeVisualSceneCameraTweenKeyframe, 3U>
+MakeRuntimeVisualSceneCameraTweenKeyframes() {
+    const float middle_time =
+        4.0F / static_cast<float>(L1_SAMPLE_016_FRAME_COUNT - 1U);
+    std::array<RenderSceneRuntimeVisualSceneCameraTweenKeyframe, 3U> keyframes{
+        MakeRuntimeVisualSceneCameraTweenKeyframe(
+            0.0F,
+            RenderCameraVector3{-4.7F, 2.4F, -5.2F},
+            RenderCameraVector3{-0.2F, 0.6F, 0.1F},
+            1.08F,
+            RenderSceneRuntimeVisualSceneCameraTweenEase::SmoothStep),
+        MakeRuntimeVisualSceneCameraTweenKeyframe(
+            middle_time,
+            RenderCameraVector3{2.4F, 3.1F, -3.4F},
+            RenderCameraVector3{0.1F, 0.7F, 0.0F},
+            0.82F,
+            RenderSceneRuntimeVisualSceneCameraTweenEase::Linear),
+        MakeRuntimeVisualSceneCameraTweenKeyframe(
+            1.0F,
+            RenderCameraVector3{4.6F, 2.0F, 3.8F},
+            RenderCameraVector3{0.3F, 0.5F, -0.2F},
+            1.16F,
+            RenderSceneRuntimeVisualSceneCameraTweenEase::SmoothStep)};
+    return keyframes;
+}
+
 bool CaptureWasWritten(const std::vector<std::uint8_t> &capture) {
     for (std::uint8_t value : capture) {
         if (value != CAPTURE_SENTINEL) {
@@ -1563,6 +1629,42 @@ std::string_view RuntimeVisualSceneSemanticTargetImagePathForFrame(std::uint32_t
     return {};
 }
 
+std::string_view RuntimeVisualScenePerspectiveTargetImagePathForFrame(std::uint32_t frame_index) {
+    if (frame_index == 0U) {
+        return "Artifacts/L1Sample011/RVF016/RuntimeVisualScene.Frame000.ppm";
+    }
+
+    if (frame_index == 1U) {
+        return "Artifacts/L1Sample011/RVF016/RuntimeVisualScene.Frame001.ppm";
+    }
+
+    if (frame_index == 2U) {
+        return "Artifacts/L1Sample011/RVF016/RuntimeVisualScene.Frame002.ppm";
+    }
+
+    if (frame_index == 3U) {
+        return "Artifacts/L1Sample011/RVF016/RuntimeVisualScene.Frame003.ppm";
+    }
+
+    if (frame_index == 4U) {
+        return "Artifacts/L1Sample011/RVF016/RuntimeVisualScene.Frame004.ppm";
+    }
+
+    if (frame_index == 5U) {
+        return "Artifacts/L1Sample011/RVF016/RuntimeVisualScene.Frame005.ppm";
+    }
+
+    if (frame_index == 6U) {
+        return "Artifacts/L1Sample011/RVF016/RuntimeVisualScene.Frame006.ppm";
+    }
+
+    if (frame_index == 7U) {
+        return "Artifacts/L1Sample011/RVF016/RuntimeVisualScene.Frame007.ppm";
+    }
+
+    return {};
+}
+
 bool OrbitOutputPathMatches(const RenderSceneOrbitCaptureFrameReport &frame_report) {
     const std::string_view expected = OrbitOutputPathForFrame(frame_report.frame_index);
     if (expected.empty()) {
@@ -1618,6 +1720,18 @@ bool RuntimeVisualSceneSemanticTargetImagePathMatches(
     return actual == expected;
 }
 
+bool RuntimeVisualScenePerspectiveTargetImagePathMatches(
+    const RenderSceneRuntimeVisualSceneImageArtifactReport &report) {
+    const std::string_view expected =
+        RuntimeVisualScenePerspectiveTargetImagePathForFrame(report.frame_index);
+    if (expected.empty()) {
+        return false;
+    }
+
+    const std::string_view actual(report.output_path, report.output_path_byte_count);
+    return actual == expected;
+}
+
 bool CleanRuntimeVisualSceneImageArtifactDirectory() {
     std::error_code error;
     std::filesystem::remove_all(L1_SAMPLE_011_IMAGE_ARTIFACT_DIRECTORY, error);
@@ -1639,6 +1753,12 @@ bool CleanRuntimeVisualSceneUserVisibleTargetImageArtifactDirectory() {
 bool CleanRuntimeVisualSceneSemanticTargetImageArtifactDirectory() {
     std::error_code error;
     std::filesystem::remove_all(L1_SAMPLE_015_IMAGE_ARTIFACT_DIRECTORY, error);
+    return !error;
+}
+
+bool CleanRuntimeVisualScenePerspectiveTargetImageArtifactDirectory() {
+    std::error_code error;
+    std::filesystem::remove_all(L1_SAMPLE_016_IMAGE_ARTIFACT_DIRECTORY, error);
     return !error;
 }
 
@@ -1782,17 +1902,6 @@ bool RgbSamplesMatch(RgbSample left, RgbSample right) {
     return left.b == right.b;
 }
 
-std::size_t RuntimeVisualRegionBegin(std::size_t entity_index) {
-    const std::size_t image_width = L1_SAMPLE_014_TARGET_IMAGE_WIDTH;
-    return (image_width * entity_index) / RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
-}
-
-std::size_t RuntimeVisualRegionEnd(std::size_t entity_index) {
-    const std::size_t image_width = L1_SAMPLE_014_TARGET_IMAGE_WIDTH;
-    const std::size_t next_entity_index = entity_index + 1U;
-    return (image_width * next_entity_index) / RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
-}
-
 bool ReadPpmPixel(
     const std::vector<std::uint8_t> &bytes,
     std::size_t header_byte_count,
@@ -1825,50 +1934,68 @@ bool ReadPpmPixel(
     return true;
 }
 
-bool FindRegionSecondColor(
+std::uint32_t MaxRgbComponent(RgbSample sample) {
+    std::uint32_t max_value = sample.r;
+    if (sample.g > max_value) {
+        max_value = sample.g;
+    }
+
+    if (sample.b > max_value) {
+        max_value = sample.b;
+    }
+
+    return max_value;
+}
+
+bool IsBrightSurfaceSample(RgbSample sample) {
+    return MaxRgbComponent(sample) > 78U;
+}
+
+bool IsDarkEdgeSample(RgbSample sample) {
+    return MaxRgbComponent(sample) < 68U;
+}
+
+bool SampleExists(
+    const std::array<RgbSample, 64U> &samples,
+    std::size_t sample_count,
+    RgbSample target) {
+    for (std::size_t index = 0U; index < sample_count; ++index) {
+        if (RgbSamplesMatch(samples[index], target)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool RuntimeVisualFrameHasRichSurfaceColors(
     const std::vector<std::uint8_t> &bytes,
     std::size_t header_byte_count,
-    std::size_t entity_index,
-    RgbSample *out_sample) {
-    if (out_sample == nullptr) {
-        return false;
-    }
-
-    if (entity_index >= RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
-        return false;
-    }
-
-    const std::size_t image_width = L1_SAMPLE_014_TARGET_IMAGE_WIDTH;
-    const std::size_t image_height = L1_SAMPLE_014_TARGET_IMAGE_HEIGHT;
-    const std::size_t expected_byte_count =
-        header_byte_count + image_width * image_height * 3U;
-    if (bytes.size() != expected_byte_count) {
-        return false;
-    }
-
-    const std::size_t region_begin = RuntimeVisualRegionBegin(entity_index);
-    const std::size_t region_end = RuntimeVisualRegionEnd(entity_index);
-    if (region_end <= region_begin) {
-        return false;
-    }
-
-    bool first_sample_valid = false;
-    RgbSample first_sample{};
-    for (std::size_t row = 0U; row < image_height; ++row) {
-        for (std::size_t column = region_begin; column < region_end; ++column) {
-            RgbSample current_sample{};
-            if (!ReadPpmPixel(bytes, header_byte_count, row, column, &current_sample)) {
+    std::size_t minimum_color_count) {
+    std::array<RgbSample, 64U> samples{};
+    std::size_t sample_count = 0U;
+    for (std::size_t row = 0U; row < L1_SAMPLE_014_TARGET_IMAGE_HEIGHT; row += 3U) {
+        for (std::size_t column = 0U; column < L1_SAMPLE_014_TARGET_IMAGE_WIDTH; column += 3U) {
+            RgbSample sample{};
+            if (!ReadPpmPixel(bytes, header_byte_count, row, column, &sample)) {
                 return false;
             }
 
-            if (!first_sample_valid) {
-                first_sample = current_sample;
-                first_sample_valid = true;
+            if (!IsBrightSurfaceSample(sample)) {
                 continue;
             }
 
-            if (!RgbSamplesMatch(first_sample, current_sample)) {
-                *out_sample = current_sample;
+            if (SampleExists(samples, sample_count, sample)) {
+                continue;
+            }
+
+            samples[sample_count] = sample;
+            ++sample_count;
+            if (sample_count >= minimum_color_count) {
+                return true;
+            }
+
+            if (sample_count >= samples.size()) {
                 return true;
             }
         }
@@ -1877,17 +2004,136 @@ bool FindRegionSecondColor(
     return false;
 }
 
-bool RuntimeVisualRegionSamplesAreDistinct(
-    const std::array<RgbSample, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> &samples) {
-    if (RgbSamplesMatch(samples[0U], samples[1U])) {
+bool RuntimeVisualFrameHasEdgeCue(
+    const std::vector<std::uint8_t> &bytes,
+    std::size_t header_byte_count) {
+    for (std::size_t row = 1U; row + 1U < L1_SAMPLE_014_TARGET_IMAGE_HEIGHT; row += 2U) {
+        for (std::size_t column = 1U; column + 1U < L1_SAMPLE_014_TARGET_IMAGE_WIDTH; column += 2U) {
+            RgbSample sample{};
+            RgbSample right_sample{};
+            if (!ReadPpmPixel(bytes, header_byte_count, row, column, &sample)) {
+                return false;
+            }
+
+            if (!ReadPpmPixel(bytes, header_byte_count, row, column + 1U, &right_sample)) {
+                return false;
+            }
+
+            if (IsDarkEdgeSample(sample) && IsBrightSurfaceSample(right_sample)) {
+                return true;
+            }
+
+            if (IsBrightSurfaceSample(sample) && IsDarkEdgeSample(right_sample)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool RuntimeVisualFrameHasBrightCoverage(
+    const std::vector<std::uint8_t> &bytes,
+    std::size_t header_byte_count) {
+    std::size_t min_column = L1_SAMPLE_014_TARGET_IMAGE_WIDTH;
+    std::size_t max_column = 0U;
+    std::size_t min_row = L1_SAMPLE_014_TARGET_IMAGE_HEIGHT;
+    std::size_t max_row = 0U;
+    bool found = false;
+    for (std::size_t row = 0U; row < L1_SAMPLE_014_TARGET_IMAGE_HEIGHT; row += 2U) {
+        for (std::size_t column = 0U; column < L1_SAMPLE_014_TARGET_IMAGE_WIDTH; column += 2U) {
+            RgbSample sample{};
+            if (!ReadPpmPixel(bytes, header_byte_count, row, column, &sample)) {
+                return false;
+            }
+
+            if (!IsBrightSurfaceSample(sample)) {
+                continue;
+            }
+
+            if (column < min_column) {
+                min_column = column;
+            }
+
+            if (column > max_column) {
+                max_column = column;
+            }
+
+            if (row < min_row) {
+                min_row = row;
+            }
+
+            if (row > max_row) {
+                max_row = row;
+            }
+
+            found = true;
+        }
+    }
+
+    if (!found) {
         return false;
     }
 
-    if (RgbSamplesMatch(samples[0U], samples[2U])) {
+    const std::size_t width = max_column - min_column;
+    const std::size_t height = max_row - min_row;
+    if (width < 130U) {
         return false;
     }
 
-    return !RgbSamplesMatch(samples[1U], samples[2U]);
+    return height >= 70U;
+}
+
+bool RuntimeVisualFrameHasPerspectivePrimitiveCues(
+    const std::vector<std::uint8_t> &bytes,
+    std::size_t header_byte_count) {
+    if (!RuntimeVisualFrameHasRichSurfaceColors(bytes, header_byte_count, 14U)) {
+        return false;
+    }
+
+    if (!RuntimeVisualFrameHasEdgeCue(bytes, header_byte_count)) {
+        return false;
+    }
+
+    return RuntimeVisualFrameHasBrightCoverage(bytes, header_byte_count);
+}
+
+bool CameraVectorMatches(RenderCameraVector3 left, RenderCameraVector3 right) {
+    if (!Approx(left.x, right.x)) {
+        return false;
+    }
+
+    if (!Approx(left.y, right.y)) {
+        return false;
+    }
+
+    return Approx(left.z, right.z);
+}
+
+bool CameraPoseMatches(const RenderCameraPose &left, const RenderCameraPose &right) {
+    if (!CameraVectorMatches(left.position, right.position)) {
+        return false;
+    }
+
+    if (!CameraVectorMatches(left.target, right.target)) {
+        return false;
+    }
+
+    return CameraVectorMatches(left.up, right.up);
+}
+
+bool CameraTweenFrameMatchesKeyframe(
+    const RenderSceneRuntimeVisualSceneCameraTweenFrameReport &frame_report,
+    const RenderSceneRuntimeVisualSceneCameraTweenKeyframe &keyframe) {
+    if (!Approx(frame_report.sample_time_seconds, keyframe.time_seconds)) {
+        return false;
+    }
+
+    if (!Approx(frame_report.vertical_fov_radians, keyframe.vertical_fov_radians)) {
+        return false;
+    }
+
+    return CameraPoseMatches(frame_report.camera_pose, keyframe.pose);
 }
 
 RenderScenePrimitiveGeometryKind RuntimeVisualExpectedPrimitiveKind(std::size_t entity_index) {
@@ -3741,7 +3987,6 @@ int RenderSceneL1Sample015EmitsScenePixelSemanticsArtifacts() {
         return Fail("l1 sample runtime visual semantic image total byte count mismatch");
     }
 
-    std::array<RgbSample, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> region_samples{};
     for (std::size_t index = 0U; index < L1_VIS_005_FRAME_COUNT; ++index) {
         const RenderSceneRuntimeVisualSceneImageArtifactReport &report =
             result.image_artifact_reports[index];
@@ -3826,21 +4071,11 @@ int RenderSceneL1Sample015EmitsScenePixelSemanticsArtifacts() {
             return Fail("l1 sample runtime visual semantic image read failed");
         }
 
-        for (std::size_t entity_index = 0U;
-            entity_index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
-            ++entity_index) {
-            if (!FindRegionSecondColor(
-                    frame_bytes,
-                    expected_header_byte_count,
-                    entity_index,
-                    &region_samples[entity_index])) {
-                return Fail("l1 sample runtime visual semantic image still has fixed bars");
-            }
+        if (!RuntimeVisualFrameHasPerspectivePrimitiveCues(
+                frame_bytes,
+                expected_header_byte_count)) {
+            return Fail("l1 sample runtime visual semantic image still lacks scene cues");
         }
-    }
-
-    if (!RuntimeVisualRegionSamplesAreDistinct(region_samples)) {
-        return Fail("l1 sample runtime visual semantic image material colors are not distinct");
     }
 
     if (!FilesHaveDifferentBytes(
@@ -3862,6 +4097,242 @@ int RenderSceneL1Sample015EmitsScenePixelSemanticsArtifacts() {
     if (snapshot.last_capture_extent.width != L1_SAMPLE_014_TARGET_CAPTURE_WIDTH ||
         snapshot.last_capture_extent.height != L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT) {
         return Fail("l1 sample runtime visual semantic image rhi extent mismatch");
+    }
+
+    return 0;
+}
+
+int RenderSceneL1Sample016EmitsPerspective3DPrimitiveCameraTweenArtifacts() {
+    if (!CleanRuntimeVisualScenePerspectiveTargetImageArtifactDirectory()) {
+        return Fail("l1 sample runtime visual perspective image cleanup failed");
+    }
+
+    L1Vis001RhiDevice device;
+    const std::size_t entity_capture_byte_count = CaptureByteCount(
+        L1_SAMPLE_014_TARGET_CAPTURE_WIDTH,
+        L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT);
+    const std::size_t frame_capture_byte_count =
+        entity_capture_byte_count * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    std::vector<std::uint8_t> capture(
+        frame_capture_byte_count * L1_SAMPLE_016_FRAME_COUNT,
+        CAPTURE_SENTINEL);
+
+    RenderSceneRuntimeVisualSceneProofRoute route;
+    RenderSceneRuntimeVisualSceneProofResult result{};
+    const std::array<RenderSceneRuntimeVisualSceneCameraTweenKeyframe, 3U> keyframes =
+        MakeRuntimeVisualSceneCameraTweenKeyframes();
+    RenderSceneRuntimeVisualSceneProofRequest request =
+        MakeRuntimeVisualScenePerspectiveTargetImageProofRequest(device, capture);
+    request.camera_tween_keyframes = keyframes;
+    const RenderSceneRuntimeVisualSceneProofStatus status = route.Execute(request, &result);
+    if (status != RenderSceneRuntimeVisualSceneProofStatus::Success) {
+        return Fail("l1 sample runtime visual perspective image route did not complete");
+    }
+
+    if (result.first_missing_layer != RenderSceneMissingLayerDiagnosticLayer::None ||
+        result.diagnostic.status != RenderSceneMissingLayerDiagnosticStatus::Success) {
+        return Fail("l1 sample runtime visual perspective image reported missing layer");
+    }
+
+    if (result.camera_projection_kind != RenderCameraProjectionKind::Perspective ||
+        !result.camera_perspective_projection_used ||
+        !result.camera_tween_used) {
+        return Fail("l1 sample runtime visual perspective image did not use perspective camera");
+    }
+
+    if (!Approx(result.camera_vertical_fov_radians, keyframes[0U].vertical_fov_radians) ||
+        !Approx(result.camera_aspect_ratio, L1_SAMPLE_016_CAMERA_ASPECT)) {
+        return Fail("l1 sample runtime visual perspective image projection metadata mismatch");
+    }
+
+    if (result.camera_tween_keyframe_count != keyframes.size()) {
+        return Fail("l1 sample runtime visual perspective image keyframe count mismatch");
+    }
+
+    if (result.requested_frame_count != L1_SAMPLE_016_FRAME_COUNT ||
+        result.completed_frame_count != L1_SAMPLE_016_FRAME_COUNT ||
+        result.orbit_result.completed_frame_count != L1_SAMPLE_016_FRAME_COUNT) {
+        return Fail("l1 sample runtime visual perspective image frame count mismatch");
+    }
+
+    if (result.available_image_artifact_width != L1_SAMPLE_014_TARGET_IMAGE_WIDTH ||
+        result.available_image_artifact_height != L1_SAMPLE_014_TARGET_IMAGE_HEIGHT) {
+        return Fail("l1 sample runtime visual perspective image available extent mismatch");
+    }
+
+    if (result.entity_report_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
+        result.material_texture_slot_report_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return Fail("l1 sample runtime visual perspective image route report count mismatch");
+    }
+
+    if (result.frame_capture_byte_budget != frame_capture_byte_count ||
+        result.capture_bytes_written != capture.size()) {
+        return Fail("l1 sample runtime visual perspective image capture byte count mismatch");
+    }
+
+    if (result.image_artifact_report_count != L1_SAMPLE_016_FRAME_COUNT) {
+        return Fail("l1 sample runtime visual perspective image artifact count mismatch");
+    }
+
+    const std::size_t expected_header_byte_count =
+        sizeof(L1_SAMPLE_014_IMAGE_HEADER) - 1U;
+    const std::size_t expected_file_byte_count =
+        expected_header_byte_count + RuntimeVisualSceneTargetImageRgbByteCount();
+    if (result.image_artifact_bytes_written !=
+        expected_file_byte_count * L1_SAMPLE_016_FRAME_COUNT) {
+        return Fail("l1 sample runtime visual perspective image total byte count mismatch");
+    }
+
+    for (std::size_t entity_index = 0U;
+        entity_index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+        ++entity_index) {
+        const RenderSceneRuntimeVisualSceneProofEntityReport &entity_report =
+            result.entity_reports[entity_index];
+        if (!entity_report.render_scene_submitted) {
+            return Fail("l1 sample runtime visual perspective image entity was not submitted");
+        }
+
+        if (entity_report.primitive_kind != RuntimeVisualExpectedPrimitiveKind(entity_index)) {
+            return Fail("l1 sample runtime visual perspective image primitive mismatch");
+        }
+    }
+
+    for (std::size_t index = 0U; index < L1_SAMPLE_016_FRAME_COUNT; ++index) {
+        const RenderSceneRuntimeVisualSceneImageArtifactReport &report =
+            result.image_artifact_reports[index];
+        if (report.status != RenderSceneRuntimeVisualSceneImageArtifactStatus::Written) {
+            return Fail("l1 sample runtime visual perspective image status mismatch");
+        }
+
+        if (!RuntimeVisualScenePerspectiveTargetImagePathMatches(report)) {
+            return Fail("l1 sample runtime visual perspective image path mismatch");
+        }
+
+        if (report.width != L1_SAMPLE_014_TARGET_IMAGE_WIDTH ||
+            report.height != L1_SAMPLE_014_TARGET_IMAGE_HEIGHT ||
+            report.source_byte_count != frame_capture_byte_count ||
+            report.file_byte_count != expected_file_byte_count) {
+            return Fail("l1 sample runtime visual perspective image metadata mismatch");
+        }
+
+        if (!FileStartsWithBytes(
+                report.output_path,
+                L1_SAMPLE_014_IMAGE_HEADER,
+                expected_header_byte_count)) {
+            return Fail("l1 sample runtime visual perspective image header mismatch");
+        }
+
+        const RenderSceneOrbitCaptureFrameReport &frame_report =
+            result.orbit_result.frames[index];
+        const RenderSceneRuntimeVisualSceneCameraTweenFrameReport &tween_report =
+            result.camera_tween_frame_reports[index];
+
+        if (frame_report.status != RenderSceneOrbitCaptureStatus::Success ||
+            frame_report.capture_bytes_written != frame_capture_byte_count ||
+            frame_report.capture.output_byte_budget != frame_capture_byte_count) {
+            return Fail("l1 sample runtime visual perspective image frame metadata mismatch");
+        }
+
+        if (tween_report.frame_index != index ||
+            tween_report.frame_id != request.first_frame_id + static_cast<std::uint32_t>(index) ||
+            !CameraPoseMatches(tween_report.camera_pose, frame_report.camera_pose)) {
+            return Fail("l1 sample runtime visual perspective image tween frame mismatch");
+        }
+
+        if (index == 0U &&
+            !CameraTweenFrameMatchesKeyframe(tween_report, keyframes[0U])) {
+            return Fail("l1 sample runtime visual perspective image start keyframe mismatch");
+        }
+
+        if (index == 4U &&
+            !CameraTweenFrameMatchesKeyframe(tween_report, keyframes[1U])) {
+            return Fail("l1 sample runtime visual perspective image middle keyframe mismatch");
+        }
+
+        if (index == L1_SAMPLE_016_FRAME_COUNT - 1U &&
+            !CameraTweenFrameMatchesKeyframe(tween_report, keyframes[2U])) {
+            return Fail("l1 sample runtime visual perspective image end keyframe mismatch");
+        }
+
+        if (!OrbitFrameCaptureSegmentWasWritten(capture, index, frame_capture_byte_count)) {
+            return Fail("l1 sample runtime visual perspective image did not use route capture");
+        }
+
+        if (frame_report.capture_result.material_texture_slot_report_count !=
+            RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+            return Fail("l1 sample runtime visual perspective image material slot count mismatch");
+        }
+
+        for (std::size_t slot_index = 0U;
+            slot_index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+            ++slot_index) {
+            const auto &slot_report =
+                frame_report.capture_result.material_texture_slot_reports[slot_index];
+            if (slot_report.slot != slot_index ||
+                !slot_report.texture_resource_resolved ||
+                !slot_report.sampled_texture_bound ||
+                !slot_report.sampler_bound) {
+                return Fail("l1 sample runtime visual perspective image material report mismatch");
+            }
+        }
+
+        if (index > 0U &&
+            !FilesHaveDifferentBytes(
+                result.image_artifact_reports[index - 1U].output_path,
+                report.output_path)) {
+            return Fail("l1 sample runtime visual perspective image adjacent frames are identical");
+        }
+    }
+
+    const RenderSceneRuntimeVisualSceneCameraTweenFrameReport &interpolated_frame =
+        result.camera_tween_frame_reports[1U];
+    if (interpolated_frame.source_keyframe_index != 0U ||
+        interpolated_frame.target_keyframe_index != 1U ||
+        interpolated_frame.linear_t <= 0.0F ||
+        interpolated_frame.linear_t >= 1.0F ||
+        Approx(interpolated_frame.linear_t, interpolated_frame.eased_t)) {
+        return Fail("l1 sample runtime visual perspective image interpolation mismatch");
+    }
+
+    if (Approx(
+            result.camera_tween_frame_reports[0U].vertical_fov_radians,
+            result.camera_tween_frame_reports[4U].vertical_fov_radians) ||
+        Approx(
+            result.camera_tween_frame_reports[4U].vertical_fov_radians,
+            result.camera_tween_frame_reports[L1_SAMPLE_016_FRAME_COUNT - 1U].vertical_fov_radians)) {
+        return Fail("l1 sample runtime visual perspective image fov did not change");
+    }
+
+    if (!FilesHaveDifferentBytes(
+            result.image_artifact_reports[0U].output_path,
+            result.image_artifact_reports[L1_SAMPLE_016_FRAME_COUNT - 1U].output_path)) {
+        return Fail("l1 sample runtime visual perspective image first and last frames are identical");
+    }
+
+    std::vector<std::uint8_t> first_frame_bytes{};
+    if (!ReadBinaryFile(result.image_artifact_reports[0U].output_path, &first_frame_bytes)) {
+        return Fail("l1 sample runtime visual perspective image read failed");
+    }
+
+    if (!RuntimeVisualFrameHasPerspectivePrimitiveCues(
+            first_frame_bytes,
+            expected_header_byte_count)) {
+        return Fail("l1 sample runtime visual perspective image lacks 3d primitive cues");
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    const std::uint64_t expected_draw_count =
+        static_cast<std::uint64_t>(L1_SAMPLE_016_FRAME_COUNT) *
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    if (snapshot.swapchain.resize_count != 1U ||
+        snapshot.capture_count != expected_draw_count ||
+        snapshot.last_capture_bytes_written != entity_capture_byte_count) {
+        return Fail("l1 sample runtime visual perspective image rhi counter mismatch");
+    }
+
+    if (snapshot.last_capture_extent.width != L1_SAMPLE_014_TARGET_CAPTURE_WIDTH ||
+        snapshot.last_capture_extent.height != L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT) {
+        return Fail("l1 sample runtime visual perspective image rhi extent mismatch");
     }
 
     return 0;
@@ -4060,6 +4531,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_L1_SAMPLE_015_SCENE_PIXEL_SEMANTICS) {
         return RenderSceneL1Sample015EmitsScenePixelSemanticsArtifacts();
+    }
+
+    if (name == TEST_L1_SAMPLE_016_PERSPECTIVE_3D_CAMERA_TWEEN) {
+        return RenderSceneL1Sample016EmitsPerspective3DPrimitiveCameraTweenArtifacts();
     }
 
     if (name == TEST_BOUNDARY) {

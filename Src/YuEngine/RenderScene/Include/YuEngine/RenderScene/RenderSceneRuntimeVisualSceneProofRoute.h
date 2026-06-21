@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <span>
 
+#include "YuEngine/RenderCore/RenderCameraPose.h"
+#include "YuEngine/RenderCore/RenderCameraProjectionKind.h"
 #include "YuEngine/RenderScene/RenderSceneMissingLayerDiagnosticRoute.h"
 #include "YuEngine/RenderScene/RenderSceneOrbitCaptureRoute.h"
 #include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
@@ -20,6 +22,7 @@ constexpr std::size_t MAX_RENDER_SCENE_RUNTIME_VISUAL_SCENE_OBJECT_NAME_BYTES =
     MAX_RENDER_SCENE_THREE_PRIMITIVE_OBJECT_NAME_BYTES;
 constexpr std::size_t MAX_RENDER_SCENE_RUNTIME_VISUAL_SCENE_IMAGE_PATH_BYTES =
     MAX_RENDER_SCENE_ORBIT_CAPTURE_OUTPUT_PATH_BYTES;
+constexpr std::size_t MAX_RENDER_SCENE_RUNTIME_VISUAL_SCENE_CAMERA_TWEEN_KEYFRAME_COUNT = 4U;
 
 enum class RenderSceneRuntimeVisualSceneProofStatus {
     Success,
@@ -32,6 +35,31 @@ enum class RenderSceneRuntimeVisualSceneImageArtifactStatus {
     NotRequested,
     Written,
     Fail
+};
+
+enum class RenderSceneRuntimeVisualSceneCameraTweenEase {
+    Linear,
+    SmoothStep
+};
+
+struct RenderSceneRuntimeVisualSceneCameraTweenKeyframe final {
+    float time_seconds = 0.0F;
+    yuengine::rendercore::RenderCameraPose pose{};
+    float vertical_fov_radians = 0.0F;
+    RenderSceneRuntimeVisualSceneCameraTweenEase ease =
+        RenderSceneRuntimeVisualSceneCameraTweenEase::Linear;
+};
+
+struct RenderSceneRuntimeVisualSceneCameraTweenFrameReport final {
+    std::uint32_t frame_index = 0U;
+    std::uint32_t frame_id = 0U;
+    std::size_t source_keyframe_index = 0U;
+    std::size_t target_keyframe_index = 0U;
+    float sample_time_seconds = 0.0F;
+    float linear_t = 0.0F;
+    float eased_t = 0.0F;
+    float vertical_fov_radians = 0.0F;
+    yuengine::rendercore::RenderCameraPose camera_pose{};
 };
 
 struct RenderSceneRuntimeVisualSceneProofRequest final {
@@ -52,6 +80,9 @@ struct RenderSceneRuntimeVisualSceneProofRequest final {
     std::span<std::uint8_t> capture_output{};
     std::size_t capture_byte_budget_per_entity = 0U;
     bool target_capture_environment_available = true;
+    bool close_orbit_loop = true;
+    bool camera_tween_requested = false;
+    std::span<const RenderSceneRuntimeVisualSceneCameraTweenKeyframe> camera_tween_keyframes{};
     RenderSceneMissingLayerDiagnosticFault diagnostic_fault =
         RenderSceneMissingLayerDiagnosticFault::None;
 };
@@ -104,11 +135,23 @@ struct RenderSceneRuntimeVisualSceneProofResult final {
     std::uint16_t requested_minimum_image_artifact_height = 0U;
     std::uint16_t available_image_artifact_width = 0U;
     std::uint16_t available_image_artifact_height = 0U;
+    yuengine::rendercore::RenderCameraProjectionKind camera_projection_kind =
+        yuengine::rendercore::RenderCameraProjectionKind::Perspective;
+    float camera_vertical_fov_radians = 0.0F;
+    float camera_aspect_ratio = 0.0F;
+    float camera_orthographic_height = 0.0F;
+    bool camera_perspective_projection_used = false;
+    bool close_orbit_loop = true;
+    bool camera_tween_used = false;
+    std::size_t camera_tween_keyframe_count = 0U;
     std::size_t material_texture_slot_report_count = 0U;
     std::size_t entity_report_count = 0U;
     std::array<
         RenderSceneRuntimeVisualSceneImageArtifactReport,
         MAX_RENDER_SCENE_ORBIT_CAPTURE_FRAME_COUNT> image_artifact_reports{};
+    std::array<
+        RenderSceneRuntimeVisualSceneCameraTweenFrameReport,
+        MAX_RENDER_SCENE_ORBIT_CAPTURE_FRAME_COUNT> camera_tween_frame_reports{};
     std::array<
         RenderSceneRuntimeVisualSceneProofEntityReport,
         RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> entity_reports{};

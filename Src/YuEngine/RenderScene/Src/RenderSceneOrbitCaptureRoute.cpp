@@ -183,7 +183,11 @@ RenderSceneOrbitCaptureStatus RenderSceneOrbitCaptureRoute::Execute(
         RenderSceneOrbitCaptureFrameReport &frame_report = result.frames[frame_index];
         frame_report.frame_index = frame_index;
         frame_report.frame_id = request.first_frame_id + frame_index;
-        const std::uint32_t orbit_step_count = request.frame_count - 1U;
+        std::uint32_t orbit_step_count = request.frame_count - 1U;
+        if (!request.close_orbit_loop) {
+            orbit_step_count = request.frame_count;
+        }
+
         const float frame_ratio =
             static_cast<float>(frame_index) / static_cast<float>(orbit_step_count);
         frame_report.orbit_angle_radians = FULL_ORBIT_RADIANS * frame_ratio;
