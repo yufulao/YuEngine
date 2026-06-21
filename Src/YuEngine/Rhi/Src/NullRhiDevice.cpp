@@ -410,6 +410,20 @@ RhiStatus NullRhiDevice::RecordBindSampler(RhiCommandList &command_list, const R
     return RhiStatus::Success;
 }
 
+RhiStatus NullRhiDevice::RecordBindBlendState(RhiCommandList &command_list, const RhiBlendStateDesc &desc) {
+    if (!IsBlendStateDescValid(desc)) {
+        return RecordBlendStateBindFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    const RhiStatus status = command_list.RecordBindBlendState(desc);
+    if (status != RhiStatus::Success) {
+        return RecordBlendStateBindFailure(status);
+    }
+
+    ++snapshot_.recorded_command_count;
+    return RhiStatus::Success;
+}
+
 RhiStatus NullRhiDevice::RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) {
     if (!IsDrawDescValid(desc)) {
         return RecordFailure(RhiStatus::InvalidDescriptor);
@@ -464,10 +478,12 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
     std::uint64_t submitted_indexed_draw_count = 0U;
     std::uint64_t submitted_sampled_texture_bind_count = 0U;
     std::uint64_t submitted_sampler_bind_count = 0U;
+    std::uint64_t submitted_blend_state_bind_count = 0U;
     std::uint32_t last_draw_vertex_count = 0U;
     std::uint32_t last_indexed_draw_index_count = 0U;
     std::uint32_t last_bound_sampled_texture_slot = 0U;
     std::uint32_t last_bound_sampler_slot = 0U;
+    RhiBlendStateDesc bound_blend_state{};
     for (std::size_t index = 0U; index < command_list.CommandCount(); ++index) {
         const RhiCommandRecord &command = command_list.CommandAt(index);
         if (!IsCommandTargetValidForFrame(command, target)) {
@@ -533,6 +549,16 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
             has_sampler[slot] = true;
             ++submitted_sampler_bind_count;
             last_bound_sampler_slot = command.sampler.slot;
+            continue;
+        }
+
+        if (command.type == RhiCommandType::BindBlendState) {
+            if (!IsBlendStateDescValid(command.blend_state)) {
+                return RecordBlendStateBindFailure(RhiStatus::InvalidDescriptor);
+            }
+
+            bound_blend_state = command.blend_state;
+            ++submitted_blend_state_bind_count;
             continue;
         }
 
@@ -628,6 +654,7 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
     snapshot_.submitted_indexed_draw_count += submitted_indexed_draw_count;
     snapshot_.submitted_sampled_texture_bind_count += submitted_sampled_texture_bind_count;
     snapshot_.submitted_sampler_bind_count += submitted_sampler_bind_count;
+    snapshot_.submitted_blend_state_bind_count += submitted_blend_state_bind_count;
     snapshot_.last_draw_vertex_count = last_draw_vertex_count;
     snapshot_.last_indexed_draw_index_count = last_indexed_draw_index_count;
     if (submitted_sampled_texture_bind_count > 0U) {
@@ -636,6 +663,11 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
 
     if (submitted_sampler_bind_count > 0U) {
         snapshot_.last_bound_sampler_slot = last_bound_sampler_slot;
+    }
+
+    if (submitted_blend_state_bind_count > 0U) {
+        snapshot_.last_alpha_blend_enabled = bound_blend_state.mode == RhiBlendMode::AlphaOver;
+        snapshot_.last_blend_constant_alpha = bound_blend_state.constant_alpha;
     }
 
     if (submitted_indexed_draw_count > 0U) {
@@ -1109,6 +1141,11 @@ RhiStatus NullRhiDevice::RecordSamplerBindFailure(RhiStatus status) {
     return RecordFailure(status);
 }
 
+RhiStatus NullRhiDevice::RecordBlendStateBindFailure(RhiStatus status) {
+    ++snapshot_.rejected_blend_state_bind_count;
+    return RecordFailure(status);
+}
+
 bool NullRhiDevice::IsTargetHandleValid(RhiTextureHandle handle) const {
     if (!is_initialized_) {
         return false;
@@ -1514,6 +1551,14 @@ bool NullRhiDevice::IsSamplerBindingValid(const RhiSamplerBinding &binding) cons
     }
 
     return IsSamplerHandleValid(binding.sampler);
+}
+
+bool NullRhiDevice::IsBlendStateDescValid(const RhiBlendStateDesc &desc) const {
+    if (desc.mode == RhiBlendMode::Opaque) {
+        return true;
+    }
+
+    return desc.mode == RhiBlendMode::AlphaOver;
 }
 
 bool NullRhiDevice::IsDrawDescValid(const RhiDrawDesc &desc) const {

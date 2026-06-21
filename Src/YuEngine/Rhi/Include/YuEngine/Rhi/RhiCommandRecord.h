@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "YuEngine/Rhi/RhiBlendStateDesc.h"
 #include "YuEngine/Rhi/RhiColor.h"
 #include "YuEngine/Rhi/RhiCommandType.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
@@ -24,6 +25,7 @@ struct RhiCommandRecord final {
     RhiIndexBufferView index_buffer{};
     RhiSampledTextureBinding sampled_texture{};
     RhiSamplerBinding sampler{};
+    RhiBlendStateDesc blend_state{};
     RhiDrawDesc draw{};
     RhiDrawIndexedDesc draw_indexed{};
 };

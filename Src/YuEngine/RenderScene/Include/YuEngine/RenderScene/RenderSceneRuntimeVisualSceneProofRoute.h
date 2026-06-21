@@ -14,6 +14,7 @@
 #include "YuEngine/RenderScene/RenderSceneOrbitCaptureRoute.h"
 #include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
+#include "YuEngine/Rhi/RhiColor.h"
 #include "YuEngine/World/WorldObjectId.h"
 #include "YuEngine/World/WorldTransformState.h"
 
@@ -82,6 +83,7 @@ struct RenderSceneRuntimeVisualSceneProofRequest final {
     bool target_capture_environment_available = true;
     bool close_orbit_loop = true;
     bool camera_tween_requested = false;
+    bool transparent_panel_blend_requested = false;
     std::span<const RenderSceneRuntimeVisualSceneCameraTweenKeyframe> camera_tween_keyframes{};
     RenderSceneMissingLayerDiagnosticFault diagnostic_fault =
         RenderSceneMissingLayerDiagnosticFault::None;
@@ -143,9 +145,19 @@ struct RenderSceneRuntimeVisualSceneProofResult final {
     bool camera_perspective_projection_used = false;
     bool close_orbit_loop = true;
     bool camera_tween_used = false;
+    bool transparent_panel_blend_used = false;
+    bool transparent_panel_overlaps_primitive = false;
+    bool transparent_panel_overlaps_background = false;
+    std::uint8_t transparent_panel_alpha = 0U;
     std::size_t camera_tween_keyframe_count = 0U;
     std::size_t material_texture_slot_report_count = 0U;
     std::size_t entity_report_count = 0U;
+    yuengine::rhi::RhiColor transparent_panel_source_color{};
+    yuengine::rhi::RhiColor transparent_panel_background_color{};
+    yuengine::rhi::RhiColor transparent_panel_primitive_color{};
+    yuengine::rhi::RhiColor transparent_panel_blended_background_pixel{};
+    yuengine::rhi::RhiColor transparent_panel_blended_primitive_pixel{};
+    yuengine::rhi::RhiColor transparent_panel_opaque_pixel{};
     std::array<
         RenderSceneRuntimeVisualSceneImageArtifactReport,
         MAX_RENDER_SCENE_ORBIT_CAPTURE_FRAME_COUNT> image_artifact_reports{};

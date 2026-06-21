@@ -30,6 +30,9 @@
 #include "YuEngine/Platform/PlatformWindowPollResult.h"
 #include "YuEngine/Platform/PlatformWindowStatus.h"
 #include "YuEngine/Platform/WindowsPlatformWindow.h"
+#include "YuEngine/Rhi/RhiBlendStateDesc.h"
+#include "YuEngine/Rhi/RhiBlendUtility.h"
+#include "YuEngine/Rhi/RhiColor.h"
 
 using PlatformNativeSurface = yuengine::platform::PlatformNativeSurface;
 using PlatformWindowDesc = yuengine::platform::PlatformWindowDesc;
@@ -38,6 +41,10 @@ using PlatformWindowEventType = yuengine::platform::PlatformWindowEventType;
 using PlatformWindowPollResult = yuengine::platform::PlatformWindowPollResult;
 using PlatformWindowStatus = yuengine::platform::PlatformWindowStatus;
 using WindowsPlatformWindow = yuengine::platform::WindowsPlatformWindow;
+using RhiBlendMode = yuengine::rhi::RhiBlendMode;
+using RhiBlendStateDesc = yuengine::rhi::RhiBlendStateDesc;
+using RhiColor = yuengine::rhi::RhiColor;
+using yuengine::rhi::BlendRhiColor;
 
 namespace {
 constexpr int VIEWER_WIDTH = 960;
@@ -54,6 +61,11 @@ constexpr std::uint32_t CYLINDER_SEGMENT_COUNT = 18U;
 constexpr std::uint32_t CONE_SEGMENT_COUNT = 18U;
 constexpr std::size_t SURFACE_VERTEX_CAPACITY = 4U;
 constexpr std::size_t SURFACE_CAPACITY = 96U;
+constexpr int TRANSPARENT_PANEL_MIN_X = 196;
+constexpr int TRANSPARENT_PANEL_MAX_X = 444;
+constexpr int TRANSPARENT_PANEL_MIN_Y = 100;
+constexpr int TRANSPARENT_PANEL_MAX_Y = 255;
+constexpr std::uint8_t TRANSPARENT_PANEL_ALPHA = 128U;
 constexpr const char *USAGE_TEXT =
     "Usage: YuRuntimeVisualCameraTweenViewer [--frames <count>]\n";
 
@@ -133,7 +145,7 @@ int Fail(std::string_view message) {
 }
 
 int Blocker(std::string_view layer, std::string_view detail) {
-    std::fprintf(stderr, "RVF017 BLOCKER layer=%.*s detail=%.*s\n",
+    std::fprintf(stderr, "RVF018 BLOCKER layer=%.*s detail=%.*s\n",
         static_cast<int>(layer.size()),
         layer.data(),
         static_cast<int>(detail.size()),
@@ -461,6 +473,61 @@ std::uint32_t PackBgr32(Rgb color) {
     return static_cast<std::uint32_t>(color.b) |
         (static_cast<std::uint32_t>(color.g) << 8U) |
         (static_cast<std::uint32_t>(color.r) << 16U);
+}
+
+std::uint32_t PackBgr32(RhiColor color) {
+    return static_cast<std::uint32_t>(color.b) |
+        (static_cast<std::uint32_t>(color.g) << 8U) |
+        (static_cast<std::uint32_t>(color.r) << 16U);
+}
+
+RhiColor UnpackBgr32(std::uint32_t pixel) {
+    RhiColor color{};
+    color.b = static_cast<std::uint8_t>(pixel & 0xFFU);
+    color.g = static_cast<std::uint8_t>((pixel >> 8U) & 0xFFU);
+    color.r = static_cast<std::uint8_t>((pixel >> 16U) & 0xFFU);
+    color.a = 255U;
+    return color;
+}
+
+RhiBlendStateDesc BuildTransparentPanelBlendState() {
+    RhiBlendStateDesc blend_state{};
+    blend_state.mode = RhiBlendMode::AlphaOver;
+    blend_state.constant_alpha = 255U;
+    return blend_state;
+}
+
+RhiColor TransparentPanelSourceColor(int row, int column, float time_seconds) {
+    const int time_phase = static_cast<int>(time_seconds * 5.0F);
+    const int stripe_index = ((column / 18) + (row / 18) + time_phase) % 3;
+    if (stripe_index == 0) {
+        return RhiColor{236U, 216U, 48U, TRANSPARENT_PANEL_ALPHA};
+    }
+
+    if (stripe_index == 1) {
+        return RhiColor{64U, 198U, 255U, 116U};
+    }
+
+    return RhiColor{255U, 96U, 168U, 140U};
+}
+
+void RasterTransparentPanel(FrameBuffer *frame_buffer, float time_seconds) {
+    if (frame_buffer == nullptr) {
+        return;
+    }
+
+    const RhiBlendStateDesc blend_state = BuildTransparentPanelBlendState();
+    for (int row = TRANSPARENT_PANEL_MIN_Y; row <= TRANSPARENT_PANEL_MAX_Y; ++row) {
+        for (int column = TRANSPARENT_PANEL_MIN_X; column <= TRANSPARENT_PANEL_MAX_X; ++column) {
+            const std::size_t offset =
+                static_cast<std::size_t>(row) * static_cast<std::size_t>(RENDER_WIDTH) +
+                static_cast<std::size_t>(column);
+            const RhiColor destination = UnpackBgr32(frame_buffer->pixels[offset]);
+            const RhiColor source = TransparentPanelSourceColor(row, column, time_seconds);
+            const RhiColor blended = BlendRhiColor(source, destination, blend_state);
+            frame_buffer->pixels[offset] = PackBgr32(blended);
+        }
+    }
 }
 
 bool AddSurface(
@@ -847,6 +914,7 @@ bool RenderSceneFrame(float time_seconds, FrameBuffer *frame_buffer) {
         RasterSurface(surfaces[index], frame_buffer);
     }
 
+    RasterTransparentPanel(frame_buffer, time_seconds);
     return true;
 }
 
@@ -911,7 +979,7 @@ bool ShouldCloseWindow(WindowsPlatformWindow &window) {
 int RunViewer(const RunOptions &options) {
     WindowsPlatformWindow window;
     PlatformWindowDesc desc{};
-    desc.title = "YuEngine RVF-017 Camera Tween Viewer";
+    desc.title = "YuEngine RVF-018 Camera Tween Blend Viewer";
     desc.client_width = VIEWER_WIDTH;
     desc.client_height = VIEWER_HEIGHT;
     desc.visible = true;
@@ -966,7 +1034,7 @@ int RunViewer(const RunOptions &options) {
     }
 
     static_cast<void>(window.Destroy());
-    std::printf("RVF017 PASS frames=%u mode=camera_tween window=live\n", frame_index);
+    std::printf("RVF018 PASS frames=%u mode=camera_tween panel=alpha_blend window=live\n", frame_index);
     return 0;
 }
 }

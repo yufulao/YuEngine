@@ -7,6 +7,7 @@
 #include <span>
 
 #include "YuEngine/Rhi/RhiCapabilities.h"
+#include "YuEngine/Rhi/RhiBlendStateDesc.h"
 #include "YuEngine/Rhi/RhiBufferDesc.h"
 #include "YuEngine/Rhi/RhiBufferHandle.h"
 #include "YuEngine/Rhi/RhiCaptureResult.h"
@@ -124,6 +125,13 @@ public:
      * @return 显式操作状态。
      */
     virtual RhiStatus RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) = 0;
+    /**
+     * @comment 记录 blend state 绑定。
+     * @param command_list 函数写入的命令列表。
+     * @param desc 输入 blend state。
+     * @return 显式操作状态。
+     */
+    virtual RhiStatus RecordBindBlendState(RhiCommandList &command_list, const RhiBlendStateDesc &desc) = 0;
     /**
      * @comment 记录绘制。
      * @param command_list 函数写入的命令列表。

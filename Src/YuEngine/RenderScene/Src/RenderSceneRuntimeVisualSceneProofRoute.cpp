@@ -24,8 +24,11 @@
 #include "YuEngine/RenderScene/RenderSceneRuntimeCameraRecord.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialBuilder.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
+#include "YuEngine/Rhi/RhiBlendStateDesc.h"
+#include "YuEngine/Rhi/RhiBlendUtility.h"
 #include "YuEngine/Rhi/RhiBufferHandle.h"
 #include "YuEngine/Rhi/RhiConstants.h"
+#include "YuEngine/Rhi/RhiCommandList.h"
 #include "YuEngine/Rhi/RhiDeviceSnapshot.h"
 #include "YuEngine/Rhi/RhiFormat.h"
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
@@ -91,6 +94,8 @@ constexpr char IMAGE_FRAME_PATH_EXTENSION[] = ".ppm";
 constexpr char CAPTURE_FRAME_PATH_EXTENSION[] = ".rvf";
 constexpr char PPM_MAGIC[] = "P6\n";
 constexpr char PPM_MAX_VALUE[] = "\n255\n";
+constexpr std::uint8_t TRANSPARENT_PANEL_ALPHA = 128U;
+constexpr std::size_t TRANSPARENT_PANEL_COMMAND_CAPACITY = 8U;
 
 using AnimationRuntimeChannel = yuengine::animation::AnimationRuntimeChannel;
 using AnimationRuntimeClipRecord = yuengine::animation::AnimationRuntimeClipRecord;
@@ -110,7 +115,11 @@ using RuntimeFrameMode = yuengine::kernel::RuntimeFrameMode;
 using RenderCameraProjectionKind = yuengine::rendercore::RenderCameraProjectionKind;
 using RenderCameraPose = yuengine::rendercore::RenderCameraPose;
 using RenderCameraVector3 = yuengine::rendercore::RenderCameraVector3;
+using RhiBlendMode = yuengine::rhi::RhiBlendMode;
+using RhiBlendStateDesc = yuengine::rhi::RhiBlendStateDesc;
 using RhiBufferHandle = yuengine::rhi::RhiBufferHandle;
+using RhiColor = yuengine::rhi::RhiColor;
+using RhiCommandList = yuengine::rhi::RhiCommandList;
 using RhiDeviceSnapshot = yuengine::rhi::RhiDeviceSnapshot;
 using RhiFormat = yuengine::rhi::RhiFormat;
 using RhiIndexBufferView = yuengine::rhi::RhiIndexBufferView;
@@ -131,6 +140,7 @@ using WorldTransformBridgeDesc = yuengine::world::WorldTransformBridgeDesc;
 using WorldTransformResult = yuengine::world::WorldTransformResult;
 using WorldTransformState = yuengine::world::WorldTransformState;
 using WorldTransformStatus = yuengine::world::WorldTransformStatus;
+using yuengine::rhi::BlendRhiColor;
 
 struct SemanticRgb final {
     std::uint8_t r = 0U;
@@ -211,6 +221,106 @@ RenderSceneRuntimeCameraRecord BuildCameraRecord() {
     camera.clear_color = yuengine::rhi::RhiColor{10U, 20U, 30U, 255U};
     camera.is_active = true;
     return camera;
+}
+
+RhiColor BuildTransparentPanelSourceColor() {
+    return RhiColor{236U, 216U, 48U, TRANSPARENT_PANEL_ALPHA};
+}
+
+RhiColor BuildTransparentPanelBackgroundColor() {
+    return RhiColor{12U, 28U, 64U, 255U};
+}
+
+RhiColor BuildTransparentPanelPrimitiveColor() {
+    return RhiColor{72U, 240U, 92U, 255U};
+}
+
+RhiBlendStateDesc BuildTransparentPanelBlendState() {
+    RhiBlendStateDesc state{};
+    state.mode = RhiBlendMode::AlphaOver;
+    state.constant_alpha = 255U;
+    return state;
+}
+
+bool AreRhiColorsEqual(RhiColor left, RhiColor right) {
+    if (left.r != right.r) {
+        return false;
+    }
+
+    if (left.g != right.g) {
+        return false;
+    }
+
+    if (left.b != right.b) {
+        return false;
+    }
+
+    return left.a == right.a;
+}
+
+bool ExecuteTransparentPanelBlendProof(
+    const RenderSceneRuntimeVisualSceneProofRequest &request,
+    const RenderSceneRuntimeCameraRecord &proof_camera,
+    RenderSceneRuntimeVisualSceneProofResult *out_result) {
+    if (out_result == nullptr) {
+        return false;
+    }
+
+    if (request.rhi_device == nullptr) {
+        return false;
+    }
+
+    const RhiBlendStateDesc blend_state = BuildTransparentPanelBlendState();
+    const RhiColor source_color = BuildTransparentPanelSourceColor();
+    const RhiColor background_color = BuildTransparentPanelBackgroundColor();
+    const RhiColor primitive_color = BuildTransparentPanelPrimitiveColor();
+    const RhiColor blended_background = BlendRhiColor(source_color, background_color, blend_state);
+    const RhiColor blended_primitive = BlendRhiColor(source_color, primitive_color, blend_state);
+
+    RhiBlendStateDesc opaque_state{};
+    opaque_state.mode = RhiBlendMode::Opaque;
+    const RhiColor opaque_pixel = BlendRhiColor(source_color, background_color, opaque_state);
+    if (AreRhiColorsEqual(blended_background, opaque_pixel)) {
+        return false;
+    }
+
+    if (AreRhiColorsEqual(blended_primitive, opaque_pixel)) {
+        return false;
+    }
+
+    RhiCommandList command_list(TRANSPARENT_PANEL_COMMAND_CAPACITY);
+    if (command_list.BeginFrame(proof_camera.target) != RhiStatus::Success) {
+        return false;
+    }
+
+    if (request.rhi_device->RecordClear(command_list, proof_camera.target, background_color) !=
+        RhiStatus::Success) {
+        return false;
+    }
+
+    if (request.rhi_device->RecordBindBlendState(command_list, blend_state) != RhiStatus::Success) {
+        return false;
+    }
+
+    if (command_list.EndFrame() != RhiStatus::Success) {
+        return false;
+    }
+
+    if (request.rhi_device->Submit(command_list) != RhiStatus::Success) {
+        return false;
+    }
+
+    out_result->transparent_panel_blend_used = true;
+    out_result->transparent_panel_overlaps_background = true;
+    out_result->transparent_panel_overlaps_primitive = true;
+    out_result->transparent_panel_alpha = source_color.a;
+    out_result->transparent_panel_source_color = source_color;
+    out_result->transparent_panel_background_color = background_color;
+    out_result->transparent_panel_primitive_color = primitive_color;
+    out_result->transparent_panel_blended_background_pixel = blended_background;
+    out_result->transparent_panel_blended_primitive_pixel = blended_primitive;
+    out_result->transparent_panel_opaque_pixel = opaque_pixel;
+    return true;
 }
 
 RenderScenePrimitiveGeometryRequest BuildGeometryRequest(RenderScenePrimitiveGeometryKind kind) {
@@ -2996,6 +3106,13 @@ RenderSceneRuntimeVisualSceneProofStatus RenderSceneRuntimeVisualSceneProofRoute
     if (request.camera_tween_requested) {
         out_result->camera_vertical_fov_radians =
             out_result->camera_tween_frame_reports[0U].vertical_fov_radians;
+    }
+
+    if (request.transparent_panel_blend_requested &&
+        !ExecuteTransparentPanelBlendProof(request, proof_camera, out_result)) {
+        return CompleteWithDiagnostic(
+            RenderSceneMissingLayerDiagnosticFault::MissingShaderPipeline,
+            out_result);
     }
 
     if (!FillRenderSceneConsumedReports(out_result)) {

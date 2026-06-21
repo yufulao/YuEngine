@@ -47,6 +47,7 @@ using yuengine::rendercore::RenderFramePacketFixtureStatus;
 using yuengine::rendercore::RenderViewPacketStatus;
 using yuengine::rhi::IRhiDevice;
 using yuengine::rhi::RhiBackendKind;
+using yuengine::rhi::RhiBlendStateDesc;
 using yuengine::rhi::RhiBufferDesc;
 using yuengine::rhi::RhiBufferHandle;
 using yuengine::rhi::RhiCapabilities;
@@ -256,6 +257,10 @@ public:
 
         ++snapshot_.recorded_command_count;
         return RhiStatus::Success;
+    }
+
+    RhiStatus RecordBindBlendState(RhiCommandList &, const RhiBlendStateDesc &) override {
+        return RhiStatus::UnsupportedBackend;
     }
 
     RhiStatus RecordDraw(RhiCommandList &, const RhiDrawDesc &) override {

@@ -30,6 +30,7 @@ using RenderSwapchainFramePipelineSnapshot = yuengine::rendercore::RenderSwapcha
 using yuengine::rendercore::RenderSwapchainFramePipelineStatus;
 using yuengine::rhi::IRhiDevice;
 using yuengine::rhi::RhiBackendKind;
+using yuengine::rhi::RhiBlendStateDesc;
 using yuengine::rhi::RhiBufferDesc;
 using yuengine::rhi::RhiBufferHandle;
 using yuengine::rhi::RhiCaptureResult;
@@ -201,6 +202,10 @@ public:
     }
 
     RhiStatus RecordBindSampler(RhiCommandList &, const RhiSamplerBinding &) override {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus RecordBindBlendState(RhiCommandList &, const RhiBlendStateDesc &) override {
         return RhiStatus::UnsupportedBackend;
     }
 

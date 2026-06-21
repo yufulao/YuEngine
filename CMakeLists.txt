@@ -431,8 +431,8 @@ if(WIN32)
         Apps/YuRuntimeVisualCameraTweenViewer/Main.cpp
     )
     yuengine_apply_compile_options(YuRuntimeVisualCameraTweenViewer)
-    target_link_libraries(YuRuntimeVisualCameraTweenViewer PRIVATE YuPlatform gdi32)
-endif()
+    target_link_libraries(YuRuntimeVisualCameraTweenViewer PRIVATE YuPlatform YuRHI gdi32)
+  endif()
 
 add_executable(YuUiCoreSmokeSample
     Samples/UiCoreSmoke/Source/Main.cpp
@@ -2107,6 +2107,7 @@ yuengine_add_labeled_test(RenderScene_L1Sample013ReportsUserVisibleCaptureResolu
 yuengine_add_labeled_test(RenderScene_L1Sample014EmitsUserVisibleCaptureTargetArtifacts YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Animation Camera Geometry Material RenderCore RHI World Sample L1 RuntimeVisualScene ImageArtifact EvidenceOracle)
 yuengine_add_labeled_test(RenderScene_L1Sample015EmitsScenePixelSemanticsArtifacts YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Animation Camera Geometry Material RenderCore RHI World Sample L1 RuntimeVisualScene ImageArtifact EvidenceOracle)
 yuengine_add_labeled_test(RenderScene_L1Sample016EmitsPerspective3DPrimitiveCameraTweenArtifacts YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Animation Camera Geometry Material RenderCore RHI World Sample L1 RuntimeVisualScene ImageArtifact EvidenceOracle)
+yuengine_add_labeled_test(RenderScene_L1Sample018BlendsTransparentRuntimePanel YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Animation Camera Geometry Material RenderCore RHI Blend World Sample L1 RuntimeVisualScene EvidenceOracle)
 yuengine_add_labeled_test(RenderScene_L1Vis002ReportsGeometryMissingLayerForCylinder YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Geometry RenderCore L1 RuntimeVisualFoundation EvidenceOracle)
 yuengine_add_labeled_test(RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Camera Geometry Material MultiEntity L1 RuntimeVisualFoundation EvidenceOracle)
 

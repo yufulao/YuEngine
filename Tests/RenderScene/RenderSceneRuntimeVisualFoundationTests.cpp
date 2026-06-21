@@ -44,6 +44,8 @@
 #include "YuEngine/RenderScene/RenderSceneRuntimeVisualSceneProofRoute.h"
 #include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
+#include "YuEngine/Rhi/RhiBlendStateDesc.h"
+#include "YuEngine/Rhi/RhiBlendUtility.h"
 #include "YuEngine/Rhi/RhiBackendKind.h"
 #include "YuEngine/Rhi/RhiBufferDesc.h"
 #include "YuEngine/Rhi/RhiBufferHandle.h"
@@ -166,6 +168,8 @@ using yuengine::renderscene::RenderSceneThreePrimitiveCaptureStatus;
 using yuengine::renderscene::RenderSceneThreePrimitiveEntityRequest;
 using yuengine::renderscene::RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
 using yuengine::rhi::IRhiDevice;
+using yuengine::rhi::RhiBlendMode;
+using yuengine::rhi::RhiBlendStateDesc;
 using yuengine::rhi::RhiBackendKind;
 using yuengine::rhi::RhiBufferDesc;
 using yuengine::rhi::RhiBufferHandle;
@@ -205,6 +209,7 @@ using yuengine::rhi::MAX_CAPTURE_FIXTURE_EXTENT;
 using yuengine::rhi::MAX_COLOR_TARGET_EXTENT;
 using yuengine::rhi::MAX_COMMANDS;
 using yuengine::rhi::RGBA8_BYTES_PER_PIXEL;
+using yuengine::rhi::BlendRhiColor;
 using yuengine::world::WorldInstance;
 using yuengine::world::WorldObjectDesc;
 using yuengine::world::WorldObjectId;
@@ -282,6 +287,8 @@ constexpr const char *TEST_L1_SAMPLE_015_SCENE_PIXEL_SEMANTICS =
     "RenderScene_L1Sample015EmitsScenePixelSemanticsArtifacts";
 constexpr const char *TEST_L1_SAMPLE_016_PERSPECTIVE_3D_CAMERA_TWEEN =
     "RenderScene_L1Sample016EmitsPerspective3DPrimitiveCameraTweenArtifacts";
+constexpr const char *TEST_L1_SAMPLE_018_TRANSPARENT_PANEL_BLEND =
+    "RenderScene_L1Sample018BlendsTransparentRuntimePanel";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -388,6 +395,22 @@ int Fail(std::string_view message) {
 bool Approx(float left, float right) {
     const float delta = std::fabs(left - right);
     return delta <= TOLERANCE;
+}
+
+bool RhiColorsMatch(RhiColor left, RhiColor right) {
+    if (left.r != right.r) {
+        return false;
+    }
+
+    if (left.g != right.g) {
+        return false;
+    }
+
+    if (left.b != right.b) {
+        return false;
+    }
+
+    return left.a == right.a;
 }
 
 bool TextureHandlesMatch(RhiTextureHandle left, RhiTextureHandle right) {
@@ -611,6 +634,25 @@ public:
         return RhiStatus::Success;
     }
 
+    RhiStatus RecordBindBlendState(RhiCommandList &command_list, const RhiBlendStateDesc &desc) override {
+        if (!IsBlendStateDescValid(desc)) {
+            ++snapshot_.failed_operation_count;
+            ++snapshot_.rejected_blend_state_bind_count;
+            return RhiStatus::InvalidDescriptor;
+        }
+
+        const RhiStatus status = command_list.RecordBindBlendState(desc);
+        if (status != RhiStatus::Success) {
+            ++snapshot_.failed_operation_count;
+            ++snapshot_.rejected_blend_state_bind_count;
+            return status;
+        }
+
+        last_blend_state_ = desc;
+        ++snapshot_.recorded_command_count;
+        return RhiStatus::Success;
+    }
+
     RhiStatus RecordDraw(RhiCommandList &, const RhiDrawDesc &) override {
         return RhiStatus::UnsupportedBackend;
     }
@@ -649,7 +691,13 @@ public:
         snapshot_.submitted_indexed_draw_count += command_snapshot.indexed_draw_command_count;
         snapshot_.submitted_sampled_texture_bind_count += command_snapshot.sampled_texture_bind_command_count;
         snapshot_.submitted_sampler_bind_count += command_snapshot.sampler_bind_command_count;
+        snapshot_.submitted_blend_state_bind_count += command_snapshot.blend_state_bind_command_count;
         snapshot_.last_indexed_draw_index_count = last_draw_index_count_;
+        if (command_snapshot.blend_state_bind_command_count > 0U) {
+            snapshot_.last_alpha_blend_enabled = last_blend_state_.mode == RhiBlendMode::AlphaOver;
+            snapshot_.last_blend_constant_alpha = last_blend_state_.constant_alpha;
+        }
+
         ++snapshot_.submit_count;
         submitted_ = true;
         return RhiStatus::Success;
@@ -820,8 +868,17 @@ private:
         snapshot_.swapchain.color_target = target_;
         last_clear_color_ = RhiColor{};
         last_draw_index_count_ = 0U;
+        last_blend_state_ = RhiBlendStateDesc{};
         submitted_ = false;
         presented_ = false;
+    }
+
+    bool IsBlendStateDescValid(const RhiBlendStateDesc &desc) const {
+        if (desc.mode == RhiBlendMode::Opaque) {
+            return true;
+        }
+
+        return desc.mode == RhiBlendMode::AlphaOver;
     }
 
     RhiDeviceSnapshot snapshot_{};
@@ -830,6 +887,7 @@ private:
     RhiBufferHandle vertex_buffer_{};
     RhiBufferHandle index_buffer_{};
     RhiColor last_clear_color_{};
+    RhiBlendStateDesc last_blend_state_{};
     std::uint32_t last_draw_index_count_ = 0U;
     bool submitted_ = false;
     bool presented_ = false;
@@ -4338,6 +4396,114 @@ int RenderSceneL1Sample016EmitsPerspective3DPrimitiveCameraTweenArtifacts() {
     return 0;
 }
 
+int RenderSceneL1Sample018BlendsTransparentRuntimePanel() {
+    L1Vis001RhiDevice device;
+    const std::size_t entity_capture_byte_count = L1VisCaptureByteCount();
+    const std::size_t frame_capture_byte_count =
+        entity_capture_byte_count * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    std::vector<std::uint8_t> capture(
+        frame_capture_byte_count * L1_SAMPLE_016_FRAME_COUNT,
+        CAPTURE_SENTINEL);
+
+    RenderSceneRuntimeVisualSceneProofRoute route;
+    RenderSceneRuntimeVisualSceneProofResult result{};
+    const std::array<RenderSceneRuntimeVisualSceneCameraTweenKeyframe, 3U> keyframes =
+        MakeRuntimeVisualSceneCameraTweenKeyframes();
+    RenderSceneRuntimeVisualSceneProofRequest request =
+        MakeRuntimeVisualSceneProofRequest(device, capture);
+    request.frame_count = L1_SAMPLE_016_FRAME_COUNT;
+    request.camera_tween_requested = true;
+    request.camera_tween_keyframes = keyframes;
+    request.transparent_panel_blend_requested = true;
+    const RenderSceneRuntimeVisualSceneProofStatus status = route.Execute(request, &result);
+    if (status != RenderSceneRuntimeVisualSceneProofStatus::Success) {
+        return Fail("l1 sample runtime visual transparent panel blend route did not complete");
+    }
+
+    if (result.first_missing_layer != RenderSceneMissingLayerDiagnosticLayer::None ||
+        result.diagnostic.status != RenderSceneMissingLayerDiagnosticStatus::Success) {
+        return Fail("l1 sample runtime visual transparent panel blend reported missing layer");
+    }
+
+    if (!result.camera_tween_used || !result.camera_perspective_projection_used) {
+        return Fail("l1 sample runtime visual transparent panel blend lost camera tween");
+    }
+
+    if (!result.transparent_panel_blend_used ||
+        !result.transparent_panel_overlaps_background ||
+        !result.transparent_panel_overlaps_primitive) {
+        return Fail("l1 sample runtime visual transparent panel blend metadata mismatch");
+    }
+
+    if (result.transparent_panel_alpha == 0U || result.transparent_panel_alpha == 255U) {
+        return Fail("l1 sample runtime visual transparent panel alpha was not translucent");
+    }
+
+    RhiBlendStateDesc alpha_state{};
+    alpha_state.mode = RhiBlendMode::AlphaOver;
+    alpha_state.constant_alpha = 255U;
+    const RhiColor expected_background =
+        BlendRhiColor(
+            result.transparent_panel_source_color,
+            result.transparent_panel_background_color,
+            alpha_state);
+    const RhiColor expected_primitive =
+        BlendRhiColor(
+            result.transparent_panel_source_color,
+            result.transparent_panel_primitive_color,
+            alpha_state);
+
+    RhiBlendStateDesc opaque_state{};
+    opaque_state.mode = RhiBlendMode::Opaque;
+    const RhiColor expected_opaque =
+        BlendRhiColor(
+            result.transparent_panel_source_color,
+            result.transparent_panel_background_color,
+            opaque_state);
+
+    if (!RhiColorsMatch(result.transparent_panel_blended_background_pixel, expected_background) ||
+        !RhiColorsMatch(result.transparent_panel_blended_primitive_pixel, expected_primitive) ||
+        !RhiColorsMatch(result.transparent_panel_opaque_pixel, expected_opaque)) {
+        return Fail("l1 sample runtime visual transparent panel blend color math mismatch");
+    }
+
+    if (RhiColorsMatch(
+            result.transparent_panel_blended_background_pixel,
+            result.transparent_panel_opaque_pixel)) {
+        return Fail("l1 sample runtime visual transparent panel background was opaque overwrite");
+    }
+
+    if (RhiColorsMatch(
+            result.transparent_panel_blended_primitive_pixel,
+            result.transparent_panel_opaque_pixel)) {
+        return Fail("l1 sample runtime visual transparent panel primitive was opaque overwrite");
+    }
+
+    if (result.image_artifact_report_count != 0U ||
+        result.image_artifact_bytes_written != 0U) {
+        return Fail("l1 sample runtime visual transparent panel blend wrote unexpected image artifact");
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    const std::uint64_t expected_draw_count =
+        static_cast<std::uint64_t>(L1_SAMPLE_016_FRAME_COUNT) *
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    const std::uint64_t expected_submit_count = expected_draw_count + 1U;
+    if (snapshot.submit_count != expected_submit_count ||
+        snapshot.submitted_indexed_draw_count != expected_draw_count ||
+        snapshot.submitted_blend_state_bind_count != 1U) {
+        return Fail("l1 sample runtime visual transparent panel blend rhi submit mismatch");
+    }
+
+    if (!snapshot.last_alpha_blend_enabled ||
+        snapshot.last_blend_constant_alpha != 255U ||
+        snapshot.rejected_blend_state_bind_count != 0U) {
+        return Fail("l1 sample runtime visual transparent panel blend rhi state mismatch");
+    }
+
+    return 0;
+}
+
 int RenderSceneL1Vis002ReportsGeometryMissingLayerForCylinder() {
     L1Vis001RhiDevice device;
     std::vector<std::uint8_t> capture(
@@ -4535,6 +4701,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_L1_SAMPLE_016_PERSPECTIVE_3D_CAMERA_TWEEN) {
         return RenderSceneL1Sample016EmitsPerspective3DPrimitiveCameraTweenArtifacts();
+    }
+
+    if (name == TEST_L1_SAMPLE_018_TRANSPARENT_PANEL_BLEND) {
+        return RenderSceneL1Sample018BlendsTransparentRuntimePanel();
     }
 
     if (name == TEST_BOUNDARY) {

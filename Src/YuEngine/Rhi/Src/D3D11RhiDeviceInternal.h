@@ -60,6 +60,7 @@ public:
         RhiCommandList &command_list,
         const RhiSampledTextureBinding &binding) override;
     RhiStatus RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) override;
+    RhiStatus RecordBindBlendState(RhiCommandList &command_list, const RhiBlendStateDesc &desc) override;
     RhiStatus RecordDraw(RhiCommandList &command_list, const RhiDrawDesc &desc) override;
     RhiStatus RecordDrawIndexed(RhiCommandList &command_list, const RhiDrawIndexedDesc &desc) override;
     RhiStatus Submit(const RhiCommandList &command_list) override;
@@ -148,6 +149,7 @@ private:
     RhiStatus RecordIndexedDrawFailure(RhiStatus status);
     RhiStatus RecordSampledTextureBindFailure(RhiStatus status);
     RhiStatus RecordSamplerBindFailure(RhiStatus status);
+    RhiStatus RecordBlendStateBindFailure(RhiStatus status);
     RhiStatus ValidateDesc(const RhiDeviceDesc &desc) const;
     RhiStatus CreateNativeObjects(const RhiDeviceDesc &desc);
     RhiStatus CreateBackbufferObjects();
@@ -176,6 +178,7 @@ private:
     bool IsIndexBufferViewValid(const RhiIndexBufferView &view) const;
     bool IsSampledTextureBindingValid(const RhiSampledTextureBinding &binding) const;
     bool IsSamplerBindingValid(const RhiSamplerBinding &binding) const;
+    bool IsBlendStateDescValid(const RhiBlendStateDesc &desc) const;
     bool IsDrawDescValid(const RhiDrawDesc &desc) const;
     bool IsDrawIndexedDescValid(const RhiDrawIndexedDesc &desc) const;
     bool IsSwapchainDescValid(const RhiSwapchainDesc &desc) const;
