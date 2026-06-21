@@ -43,6 +43,20 @@ The preview host may call approved engine runtime surfaces to build an isolated
 preview session. It must not become a lower-layer dependency and must not make
 shipped runtime modules depend on Web editor code.
 
+## L0/L1 Boundary
+
+L0/L1 completion is a prerequisite, not this gate's acceptance result.
+
+Passing file/resource/package value tests, RHI D3D11 capture-byte tests,
+RenderCore fixture tests, RenderScene packet-value tests, or isolated
+AssetSmokeDemo screenshots does not prove editor preview capability. Those
+results prove the lower layers are available enough to start this gate.
+
+This gate becomes meaningful only when a preview-host session can compose those
+lower layers into an engine-owned visual or headless preview output. For Scene
+preview, that means at minimum a multi-object, material/texture, camera-driven
+frame sequence through YuEngine runtime paths rather than a standalone sample.
+
 ## Reference Boundary
 
 Reference engines are used only for responsibility separation:
@@ -125,7 +139,9 @@ This gate does not own:
    timeline drawing.
 9. Scene preview must use engine-rendered or engine-headless scene outputs, not
    a standalone Web canvas mock.
-10. Failures must be explicit and no-mutation where applicable.
+10. L0/L1 pass, RHI fixture pass, RenderCore fixture pass, and isolated sample
+    screenshots must never be reported as Preview Host pass.
+11. Failures must be explicit and no-mutation where applicable.
 
 ## Minimum Contract Values
 
@@ -160,6 +176,7 @@ This gate recommends, but does not approve, the first implementable slice:
 | EPV-003 | Camera state contract | orbit/pan/zoom or equivalent camera state changes preview output identity/status |
 | EPV-004 | Resource diagnostics bridge | missing/stale/type-mismatch refs report bounded diagnostics without mutation |
 | EPV-005 | Selection/hit feedback records | preview returns bounded hit/selection records; Web overlays remain editor-only |
+| EPV-006 | Canonical scene proof contract | fixed-seed cube/cylinder/cone scene with one three-texture material, object rotation, orbit camera, and bounded frame capture set reports pass or exact missing-layer blocker |
 
 UI runtime render hook, Scene viewport transform gizmo, Animation playback
 target, and cook/package/run smoke should remain later slices unless a reviewer
@@ -178,6 +195,7 @@ to:
 - `EditorPreviewHost_ResourceRefFailureReportsDiagnostic`
 - `EditorPreviewHost_WebOverlayStateDoesNotExportAsRuntimeData`
 - `EditorPreviewHost_ShutdownReleasesSessionCapacity`
+- `EditorPreviewHost_CanonicalScene_CapturesCubeCylinderConeOrbitSequence`
 
 Focused editor-specific implementation gates should add their own tests:
 
@@ -227,6 +245,9 @@ Before any implementation task is created:
 
 The following are blocking violations:
 
+- claiming L0/L1 plan completion, RHI fixture capture, RenderCore fixture pass,
+  RenderScene packet values, or isolated sample screenshots satisfy Preview Host
+  or editor visual capability;
 - accepting Web shell, form UI, DOM/CSS, 2D canvas sketches, or static
   screenshots as authoritative runtime preview;
 - calling UI, Scene, or Animation editor usable before engine preview host
@@ -249,6 +270,8 @@ This gate is ready for review when:
 - it is linked from the shared editor preview host plan;
 - UI, Scene, and Animation editor plans reference it as the shared preview
   boundary;
+- it explicitly separates L0/L1 foundation completion from editor visual
+  capability acceptance;
 - the first slice remains explicitly unapproved until review lanes close;
 - the plan keeps Web workspace, local service, and preview host responsibilities
   separate;

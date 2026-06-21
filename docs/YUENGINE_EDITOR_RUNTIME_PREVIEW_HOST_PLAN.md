@@ -54,6 +54,49 @@ must be understood as Unity-like usability:
 
 Anything below this is a data/configuration page, not a usable engine editor.
 
+## 2.1 L0/L1 Boundary Correction
+
+Completing the historical L0/L1 execution plan does not satisfy the editor
+visual requirement.
+
+L0/L1 proves foundation only:
+
+- file, resource, package, and value-record paths exist
+- RHI can clear, draw primitive fixtures, sample a texture, present, and capture
+- RenderCore can execute bounded fixture passes
+- RenderScene can produce RenderCore packet values
+- sample programs can prove isolated vertical smoke paths
+
+These are prerequisites, not editor preview acceptance. A D3D11 sample
+screenshot or a capture-byte fixture must not be reported as Scene Editor,
+Animation Editor, UI Editor, or Preview Host completion.
+
+The first credible visual proof must run through a YuEngine preview-host path
+that combines the required runtime layers into one frame sequence:
+
+```text
+preview session
+-> resource/model/texture/material resolution
+-> scene/object transform records
+-> material texture-slot binding
+-> shader/pipeline selection
+-> RenderScene multi-entity submission
+-> RenderCore/RHI multi-draw frame
+-> camera-controlled frame capture sequence
+```
+
+The minimum scene-proof sample is intentionally concrete:
+
+- one cube, one cylinder, and one cone
+- deterministic pseudo-random placement from a fixed seed
+- per-object rotation over time
+- one material record applied to all three objects
+- at least three distinct texture inputs bound by that material record
+- an orbit camera that captures a full turn as a bounded screenshot/frame set
+
+If any layer in that chain is missing, the correct status is a blocked or
+partial preview-host implementation, not "L0/L1 complete".
+
 ## 3. Shared Architecture
 
 ### 3.1 Web Workspace
@@ -114,6 +157,8 @@ authoritative runtime output.
 The editor plan order is:
 
 ```text
+L0/L1 runtime foundation only
+-> Editor visual capability correction
 Engine Preview Host
 -> Resource Browser / Import Settings
 -> RenderScene / Material / Texture / Shader preview path
@@ -172,11 +217,14 @@ Recommended first batch:
 | EPV-006 | UI runtime preview hook | UI layout renders through engine UI runtime, not HTML/CSS |
 | EPV-007 | Animation playback preview hook | play/pause/scrub/step returns sampled state and visible target feedback |
 | EPV-008 | Cook/package smoke bridge | previewed data can be validated as cook/package/run input |
+| EPV-009 | Canonical scene visual proof | cube/cylinder/cone scene with three-texture material, object rotation, orbit camera, and bounded captured frame set comes from YuEngine preview host |
 
 ## 7. Hard Blocks
 
 These are blocking violations:
 
+- claiming L0/L1 completion, RHI fixture capture, RenderCore fixture pass, or
+  isolated sample screenshots satisfy editor preview capability
 - accepting Web shell, form UI, 2D canvas sketches, or static screenshots as
   core editor preview
 - treating CSS/HTML visual output as the game editor's authoritative preview
@@ -197,6 +245,8 @@ The shared editor foundation is complete only when:
 - preview frames or headless runtime outputs come from YuEngine systems
 - resources are resolved through engine Resource/Package/File paths
 - camera/viewport controls affect engine output
+- the canonical cube/cylinder/cone scene proof can be captured through the
+  preview host, or the exact missing runtime layer is reported as a blocker
 - Scene, Animation, and UI editor data can each be validated against runtime
   data formats
 - cook/package/run smoke can consume the same data

@@ -58,6 +58,10 @@ Scene Editor is not usable until it can show engine-rendered scene content:
 - resource binding diagnostics
 - runtime scene data that can be cooked, packaged, and loaded
 
+The L0/L1 execution plan, RHI capture-byte fixtures, RenderCore fixture passes,
+RenderScene packet-value tests, and isolated sample screenshots are lower-level
+prerequisites only. They do not count as Scene Editor viewport completion.
+
 ## 2. Non-Goals
 
 Scene Editor does not own:
@@ -290,8 +294,9 @@ Work items:
 | SE-PV-004 | Model/material/texture preview | renderable records load resources and show material/texture diagnostics |
 | SE-PV-005 | RenderScene preview | renderable records produce preview frame/status through runtime path |
 | SE-PV-006 | AudioScene preview | audio records produce preview status through runtime path when present |
-| SE-PV-007 | Diagnostics snapshot | object count, component count, resource refs, draw/audio counts, failures |
-| SE-PV-008 | Build/run/package check | sample scene enters package/build validation path |
+| SE-PV-007 | Canonical visual scene proof | fixed-seed cube/cylinder/cone scene with shared three-texture material, per-object rotation, orbit camera, and bounded captured frame set comes from preview host |
+| SE-PV-008 | Diagnostics snapshot | object count, component count, resource refs, draw/audio counts, failures |
+| SE-PV-009 | Build/run/package check | sample scene enters package/build validation path |
 
 ### Stage 5: Product-Layer Handoff
 
@@ -316,6 +321,9 @@ These are blocking violations:
 - using old project scene managers as runtime API shape
 - adding a native scene editor app or immediate-mode fallback
 - accepting 2D Web canvas, HTML forms, or static screenshots as scene preview
+- accepting L0/L1 completion, RHI fixture captures, RenderCore fixture passes,
+  RenderScene packet values, or isolated sample screenshots as Scene Editor
+  viewport proof
 - calling Scene Editor usable before model/texture/material loading entry,
   camera controls, transform gizmo, and engine viewport exist
 - making the runtime depend on Web editor code
@@ -360,6 +368,8 @@ Scene Editor first round is complete only when:
 - Resource Browser and Import Settings are shared
 - engine preview host provides camera viewport frame/status output
 - model, texture, and material resource references can be loaded or diagnosed
+- the canonical cube/cylinder/cone visual scene proof passes through the
+  preview host, or the exact missing runtime layer is documented as a blocker
 - cook/package validation reports dependency correctness
 - decoded restore plan and apply-time proof gate runtime preview
 - runtime preview returns RenderScene/AudioScene/diagnostic status through
