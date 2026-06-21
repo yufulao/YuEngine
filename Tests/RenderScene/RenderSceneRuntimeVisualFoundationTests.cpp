@@ -200,12 +200,15 @@ constexpr const char *TEST_L1_VIS_THREE_PRIMITIVE_CAPTURE =
     "RenderScene_L1Vis002CapturesThreePrimitivePlacedSceneThroughRuntimeRoute";
 constexpr const char *TEST_L1_VIS_THREE_PRIMITIVE_GEOMETRY_MISSING =
     "RenderScene_L1Vis002ReportsGeometryMissingLayerForCylinder";
+constexpr const char *TEST_L1_VIS_SHARED_THREE_TEXTURE_MATERIAL =
+    "RenderScene_L1Vis003CapturesSharedThreeTextureMaterialSceneThroughRuntimeRoute";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr char L1_VIS_001_OUTPUT_PATH[] = "Artifacts/L1Vis001/StaticOneCube.rvf";
 constexpr char L1_VIS_002_OUTPUT_PATH[] = "Artifacts/L1Vis002/ThreePrimitivePlaced.rvf";
+constexpr char L1_VIS_003_OUTPUT_PATH[] = "Artifacts/L1Vis003/SharedThreeTextureMaterial.rvf";
 constexpr char L1_VIS_002_CUBE_NAME[] = "Cube";
 constexpr char L1_VIS_002_CYLINDER_NAME[] = "Cylinder";
 constexpr char L1_VIS_002_CONE_NAME[] = "Cone";
@@ -242,6 +245,22 @@ bool TextureHandlesMatch(RhiTextureHandle left, RhiTextureHandle right) {
     }
 
     return left.generation == right.generation;
+}
+
+bool SamplerHandlesMatch(RhiSamplerHandle left, RhiSamplerHandle right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+RhiTextureHandle TextureHandleForSlot(std::uint32_t slot) {
+    return RhiTextureHandle{10U + slot, 1U};
+}
+
+RhiSamplerHandle SamplerHandleForSlot(std::uint32_t slot) {
+    return RhiSamplerHandle{20U + slot, 1U};
 }
 
 std::size_t L1VisCaptureByteCount() {
@@ -355,7 +374,8 @@ public:
     RhiStatus RecordBindSampledTexture(
         RhiCommandList &command_list,
         const RhiSampledTextureBinding &binding) override {
-        if (!TextureHandlesMatch(binding.texture, texture_)) {
+        const RhiTextureHandle expected = TextureHandleForSlot(binding.slot);
+        if (!TextureHandlesMatch(binding.texture, expected)) {
             ++snapshot_.failed_operation_count;
             return RhiStatus::InvalidHandle;
         }
@@ -371,7 +391,8 @@ public:
     }
 
     RhiStatus RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) override {
-        if (binding.sampler.slot != sampler_.slot || binding.sampler.generation != sampler_.generation) {
+        const RhiSamplerHandle expected = SamplerHandleForSlot(binding.slot);
+        if (!SamplerHandlesMatch(binding.sampler, expected)) {
             ++snapshot_.failed_operation_count;
             return RhiStatus::InvalidHandle;
         }
@@ -581,8 +602,6 @@ private:
         pipeline_ = RhiPipelineHandle{4U, 1U};
         vertex_buffer_ = RhiBufferHandle{1U, 1U};
         index_buffer_ = RhiBufferHandle{2U, 1U};
-        texture_ = RhiTextureHandle{10U, 1U};
-        sampler_ = RhiSamplerHandle{20U, 1U};
         snapshot_ = RhiDeviceSnapshot{};
         snapshot_.color_target_capacity = 1U;
         snapshot_.color_target_count = 1U;
@@ -603,8 +622,6 @@ private:
     RhiPipelineHandle pipeline_{};
     RhiBufferHandle vertex_buffer_{};
     RhiBufferHandle index_buffer_{};
-    RhiTextureHandle texture_{};
-    RhiSamplerHandle sampler_{};
     RhiColor last_clear_color_{};
     std::uint32_t last_draw_index_count_ = 0U;
     bool submitted_ = false;
@@ -681,9 +698,9 @@ RenderSceneRuntimeMaterialTextureSlot MakeMaterialTextureSlot(std::uint32_t slot
     RenderSceneRuntimeMaterialTextureSlot texture_slot{};
     texture_slot.slot = slot;
     texture_slot.texture_asset = MakeAsset(TEXTURE_ASSET_SLOT + slot);
-    texture_slot.sampled_texture.texture = RhiTextureHandle{10U + slot, 1U};
+    texture_slot.sampled_texture.texture = TextureHandleForSlot(slot);
     texture_slot.sampled_texture.slot = slot;
-    texture_slot.sampler.sampler = RhiSamplerHandle{20U + slot, 1U};
+    texture_slot.sampler.sampler = SamplerHandleForSlot(slot);
     texture_slot.sampler.slot = slot;
     return texture_slot;
 }
@@ -814,6 +831,17 @@ RenderSceneThreePrimitiveCaptureRequest MakeThreePrimitiveCaptureRequest(
     request.output_path_byte_count = sizeof(L1_VIS_002_OUTPUT_PATH) - 1U;
     request.capture_output = std::span<std::uint8_t>(capture.data(), capture.size());
     request.capture_byte_budget_per_entity = L1VisCaptureByteCount();
+    return request;
+}
+
+RenderSceneThreePrimitiveCaptureRequest MakeThreeTextureMaterialCaptureRequest(
+    L1Vis001RhiDevice &device,
+    std::vector<std::uint8_t> &capture,
+    std::span<const RenderSceneThreePrimitiveEntityRequest> entities) {
+    RenderSceneThreePrimitiveCaptureRequest request =
+        MakeThreePrimitiveCaptureRequest(device, capture, entities);
+    request.output_path = L1_VIS_003_OUTPUT_PATH;
+    request.output_path_byte_count = sizeof(L1_VIS_003_OUTPUT_PATH) - 1U;
     return request;
 }
 
@@ -1420,11 +1448,117 @@ int RenderSceneL1Vis002CapturesThreePrimitivePlacedSceneThroughRuntimeRoute() {
     }
 
     const RhiDeviceSnapshot snapshot = device.Snapshot();
+    const std::size_t expected_binding_count =
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT * result.material_texture_slot_report_count;
     if (snapshot.submitted_indexed_draw_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
-        snapshot.submitted_sampled_texture_bind_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
-        snapshot.submitted_sampler_bind_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
+        snapshot.submitted_sampled_texture_bind_count != expected_binding_count ||
+        snapshot.submitted_sampler_bind_count != expected_binding_count ||
         snapshot.capture_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
         return Fail("l1 vis three primitive route did not drive rhi counters");
+    }
+
+    return 0;
+}
+
+int RenderSceneL1Vis003CapturesSharedThreeTextureMaterialSceneThroughRuntimeRoute() {
+    L1Vis001RhiDevice device;
+    std::vector<std::uint8_t> capture(
+        L1VisCaptureByteCount() * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT,
+        CAPTURE_SENTINEL);
+    const std::array<RenderSceneThreePrimitiveEntityRequest, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT>
+        entities = MakeThreePrimitiveEntities();
+    RenderSceneThreePrimitiveCaptureRoute route;
+    RenderSceneThreePrimitiveCaptureResult result{};
+
+    const RenderSceneThreePrimitiveCaptureRequest request =
+        MakeThreeTextureMaterialCaptureRequest(device, capture, entities);
+    const RenderSceneThreePrimitiveCaptureStatus status = route.Execute(request, &result);
+    if (status != RenderSceneThreePrimitiveCaptureStatus::Success) {
+        return Fail("l1 vis shared three texture material route did not complete");
+    }
+
+    if (result.shared_material_id != MATERIAL_ID ||
+        result.frame_result.material_id != MATERIAL_ID) {
+        return Fail("l1 vis shared material id mismatch");
+    }
+
+    if (result.material_texture_slot_report_count != 3U ||
+        result.frame_result.material_texture_slot_count != 3U) {
+        return Fail("l1 vis shared material did not report three texture slots");
+    }
+
+    for (std::size_t index = 0U; index < result.material_texture_slot_report_count; ++index) {
+        const auto &slot_report = result.material_texture_slot_reports[index];
+        const std::uint32_t slot = static_cast<std::uint32_t>(index);
+        if (slot_report.material_id != MATERIAL_ID || slot_report.slot != slot) {
+            return Fail("l1 vis shared material slot identity mismatch");
+        }
+
+        if (slot_report.texture_asset.slot != TEXTURE_ASSET_SLOT + slot ||
+            slot_report.texture_asset.generation != 1U) {
+            return Fail("l1 vis shared material texture resource mismatch");
+        }
+
+        if (!TextureHandlesMatch(slot_report.sampled_texture.texture, TextureHandleForSlot(slot)) ||
+            slot_report.sampled_texture.slot != slot) {
+            return Fail("l1 vis shared material sampled texture binding mismatch");
+        }
+
+        if (!SamplerHandlesMatch(slot_report.sampler.sampler, SamplerHandleForSlot(slot)) ||
+            slot_report.sampler.slot != slot) {
+            return Fail("l1 vis shared material sampler binding mismatch");
+        }
+
+        if (!slot_report.texture_resource_resolved ||
+            !slot_report.sampled_texture_bound ||
+            !slot_report.sampler_bound) {
+            return Fail("l1 vis shared material binding status mismatch");
+        }
+    }
+
+    if (result.material_texture_slot_reports[0U].texture_asset.slot ==
+        result.material_texture_slot_reports[1U].texture_asset.slot) {
+        return Fail("l1 vis shared material texture resources were not distinct");
+    }
+
+    if (result.material_texture_slot_reports[1U].texture_asset.slot ==
+        result.material_texture_slot_reports[2U].texture_asset.slot) {
+        return Fail("l1 vis shared material texture resources were not distinct");
+    }
+
+    for (std::size_t index = 0U; index < result.entity_report_count; ++index) {
+        if (result.entity_reports[index].material_id != MATERIAL_ID) {
+            return Fail("l1 vis entity did not use shared material id");
+        }
+
+        if (result.entity_reports[index].draw_record.draw.material_id != MATERIAL_ID) {
+            return Fail("l1 vis entity draw record did not use shared material id");
+        }
+
+        if (result.render_results[index].material_id != MATERIAL_ID) {
+            return Fail("l1 vis render result did not use shared material id");
+        }
+
+        if (result.render_results[index].pass_result.recorded_command_count != 13U) {
+            return Fail("l1 vis shared material draw did not bind three texture and sampler slots");
+        }
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    const std::size_t expected_binding_count =
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT * result.material_texture_slot_report_count;
+    if (snapshot.submitted_sampled_texture_bind_count != expected_binding_count ||
+        snapshot.submitted_sampler_bind_count != expected_binding_count ||
+        snapshot.submitted_indexed_draw_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return Fail("l1 vis shared material rhi binding counters mismatch");
+    }
+
+    if (result.output_path_byte_count != sizeof(L1_VIS_003_OUTPUT_PATH) - 1U) {
+        return Fail("l1 vis shared material output path metadata mismatch");
+    }
+
+    if (result.capture_bytes_written != capture.size()) {
+        return Fail("l1 vis shared material capture byte count mismatch");
     }
 
     return 0;
@@ -1583,6 +1717,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_L1_VIS_THREE_PRIMITIVE_GEOMETRY_MISSING) {
         return RenderSceneL1Vis002ReportsGeometryMissingLayerForCylinder();
+    }
+
+    if (name == TEST_L1_VIS_SHARED_THREE_TEXTURE_MATERIAL) {
+        return RenderSceneL1Vis003CapturesSharedThreeTextureMaterialSceneThroughRuntimeRoute();
     }
 
     if (name == TEST_BOUNDARY) {

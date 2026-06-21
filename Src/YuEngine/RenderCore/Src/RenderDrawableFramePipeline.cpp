@@ -144,6 +144,8 @@ RenderDrawableFramePipelineResult RenderDrawableFramePipeline::Execute(
     view_request.material.pipeline = request.pipeline;
     view_request.material.sampled_texture = request.sampled_texture;
     view_request.material.sampler = request.sampler;
+    view_request.material.sampled_textures = request.sampled_textures;
+    view_request.material.samplers = request.samplers;
     view_request.material.constant_bytes = request.material_constant_bytes;
     view_request.material.pass_id = request.pass_id;
     view_request.draw.draw_id = request.pass_id;

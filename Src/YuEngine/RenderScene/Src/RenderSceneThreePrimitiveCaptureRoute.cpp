@@ -14,6 +14,8 @@
 #include "YuEngine/RenderScene/RenderSceneRuntimeFrameEntityRequest.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeFrameRequest.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialBuilder.h"
+#include "YuEngine/Rhi/RhiSampledTextureBinding.h"
+#include "YuEngine/Rhi/RhiSamplerBinding.h"
 
 namespace yuengine::renderscene {
 namespace {
@@ -157,6 +159,32 @@ RenderSceneThreePrimitiveCaptureStatus RenderSceneThreePrimitiveCaptureRoute::Ex
         return FailWithLayer(layer, out_result);
     }
 
+    result.shared_material_id = request.material.material_id;
+    std::array<
+        yuengine::rhi::RhiSampledTextureBinding,
+        MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS> sampled_textures{};
+    std::array<
+        yuengine::rhi::RhiSamplerBinding,
+        MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS> samplers{};
+    for (std::size_t index = 0U; index < request.material.texture_slot_count; ++index) {
+        const RenderSceneRuntimeMaterialTextureSlot &texture_slot = request.material.texture_slots[index];
+        sampled_textures[index] = texture_slot.sampled_texture;
+        samplers[index] = texture_slot.sampler;
+
+        RenderSceneThreePrimitiveMaterialTextureSlotReport &slot_report =
+            result.material_texture_slot_reports[index];
+        slot_report.material_id = request.material.material_id;
+        slot_report.slot = texture_slot.slot;
+        slot_report.texture_asset = texture_slot.texture_asset;
+        slot_report.sampled_texture = texture_slot.sampled_texture;
+        slot_report.sampler = texture_slot.sampler;
+        slot_report.texture_resource_resolved = true;
+        slot_report.sampled_texture_bound = true;
+        slot_report.sampler_bound = true;
+    }
+
+    result.material_texture_slot_report_count = request.material.texture_slot_count;
+
     if (request.entities.size() != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
         *out_result = result;
         return FailWithLayer(RenderSceneThreePrimitiveCaptureMissingLayer::ScenePlacement, out_result);
@@ -199,7 +227,6 @@ RenderSceneThreePrimitiveCaptureStatus RenderSceneThreePrimitiveCaptureRoute::Ex
         return FailWithLayer(layer, out_result);
     }
 
-    const RenderSceneRuntimeMaterialTextureSlot &texture_slot = request.material.texture_slots[0U];
     for (std::size_t index = 0U; index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT; ++index) {
         const RenderSceneThreePrimitiveEntityRequest &entity = request.entities[index];
         RenderSceneThreePrimitiveEntityReport &report = result.entity_reports[index];
@@ -207,6 +234,7 @@ RenderSceneThreePrimitiveCaptureStatus RenderSceneThreePrimitiveCaptureRoute::Ex
         report.transform = entity.transform;
         report.primitive_kind = entity.geometry.kind;
         report.draw_record = draws[index];
+        report.material_id = request.material.material_id;
         report.submitted = true;
         if (!CopyObjectName(entity, &report)) {
             *out_result = result;
@@ -222,8 +250,14 @@ RenderSceneThreePrimitiveCaptureStatus RenderSceneThreePrimitiveCaptureRoute::Ex
         render_request.pipeline = request.material.pipeline;
         render_request.vertex_buffer = draws[index].draw.vertex_buffer;
         render_request.index_buffer = draws[index].draw.index_buffer;
-        render_request.sampled_texture = texture_slot.sampled_texture;
-        render_request.sampler = texture_slot.sampler;
+        render_request.sampled_texture = sampled_textures[0U];
+        render_request.sampler = samplers[0U];
+        render_request.sampled_textures = std::span<const yuengine::rhi::RhiSampledTextureBinding>(
+            sampled_textures.data(),
+            request.material.texture_slot_count);
+        render_request.samplers = std::span<const yuengine::rhi::RhiSamplerBinding>(
+            samplers.data(),
+            request.material.texture_slot_count);
         render_request.draw = draws[index].draw.draw;
         render_request.clear_color = request.camera.camera.clear_color;
         render_request.capture_output = capture_output;

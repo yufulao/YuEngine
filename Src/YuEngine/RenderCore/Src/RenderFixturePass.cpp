@@ -81,6 +81,70 @@ bool IsSamplerBindingValid(const yuengine::rhi::RhiSamplerBinding &binding) {
     return binding.slot < yuengine::rhi::MAX_RHI_SAMPLER_SLOTS;
 }
 
+bool UsesBindingSpans(const RenderFixturePassRequest &request) {
+    if (!request.sampled_textures.empty()) {
+        return true;
+    }
+
+    return !request.samplers.empty();
+}
+
+std::span<const yuengine::rhi::RhiSampledTextureBinding> SampledTextureBindings(
+    const RenderFixturePassRequest &request) {
+    if (!request.sampled_textures.empty()) {
+        return request.sampled_textures;
+    }
+
+    return std::span<const yuengine::rhi::RhiSampledTextureBinding>(&request.sampled_texture, 1U);
+}
+
+std::span<const yuengine::rhi::RhiSamplerBinding> SamplerBindings(
+    const RenderFixturePassRequest &request) {
+    if (!request.samplers.empty()) {
+        return request.samplers;
+    }
+
+    return std::span<const yuengine::rhi::RhiSamplerBinding>(&request.sampler, 1U);
+}
+
+std::size_t RequiredCommandCount(const RenderFixturePassRequest &request) {
+    const std::size_t binding_count = SampledTextureBindings(request).size();
+    const std::size_t extra_binding_count = binding_count > 0U ? binding_count - 1U : 0U;
+    return RENDER_FIXTURE_PASS_COMMAND_COUNT + extra_binding_count * 2U;
+}
+
+bool AreBindingSpansValid(const RenderFixturePassRequest &request) {
+    if (!UsesBindingSpans(request)) {
+        return true;
+    }
+
+    if (request.sampled_textures.data() == nullptr) {
+        return false;
+    }
+
+    if (request.samplers.data() == nullptr) {
+        return false;
+    }
+
+    if (request.sampled_textures.size() == 0U) {
+        return false;
+    }
+
+    if (request.sampled_textures.size() != request.samplers.size()) {
+        return false;
+    }
+
+    if (request.sampled_textures.size() > yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS) {
+        return false;
+    }
+
+    if (request.samplers.size() > yuengine::rhi::MAX_RHI_SAMPLER_SLOTS) {
+        return false;
+    }
+
+    return true;
+}
+
 bool IsDrawValid(const yuengine::rhi::RhiDrawIndexedDesc &draw) {
     if (draw.topology == yuengine::rhi::RhiPrimitiveTopology::Unsupported) {
         return false;
@@ -118,7 +182,8 @@ RenderFixturePassResult RenderFixturePass::Execute(const RenderFixturePassReques
         return result;
     }
 
-    if (desc_.command_capacity < RENDER_FIXTURE_PASS_COMMAND_COUNT) {
+    snapshot_.required_command_count = RequiredCommandCount(request);
+    if (desc_.command_capacity < snapshot_.required_command_count) {
         result.status = RenderFixturePassStatus::CommandCapacityExceeded;
         RecordRejectedResult(result);
         return result;
@@ -177,20 +242,27 @@ RenderFixturePassResult RenderFixturePass::Execute(const RenderFixturePassReques
         return result;
     }
 
-    rhi_status = request.rhi_device->RecordBindSampledTexture(command_list_, request.sampled_texture);
-    if (rhi_status != yuengine::rhi::RhiStatus::Success) {
-        result.rhi_status = rhi_status;
-        result.recorded_command_count = command_list_.CommandCount();
-        RecordRhiFailureResult(&result);
-        return result;
+    const std::span<const yuengine::rhi::RhiSampledTextureBinding> sampled_textures =
+        SampledTextureBindings(request);
+    for (const yuengine::rhi::RhiSampledTextureBinding &binding : sampled_textures) {
+        rhi_status = request.rhi_device->RecordBindSampledTexture(command_list_, binding);
+        if (rhi_status != yuengine::rhi::RhiStatus::Success) {
+            result.rhi_status = rhi_status;
+            result.recorded_command_count = command_list_.CommandCount();
+            RecordRhiFailureResult(&result);
+            return result;
+        }
     }
 
-    rhi_status = request.rhi_device->RecordBindSampler(command_list_, request.sampler);
-    if (rhi_status != yuengine::rhi::RhiStatus::Success) {
-        result.rhi_status = rhi_status;
-        result.recorded_command_count = command_list_.CommandCount();
-        RecordRhiFailureResult(&result);
-        return result;
+    const std::span<const yuengine::rhi::RhiSamplerBinding> samplers = SamplerBindings(request);
+    for (const yuengine::rhi::RhiSamplerBinding &binding : samplers) {
+        rhi_status = request.rhi_device->RecordBindSampler(command_list_, binding);
+        if (rhi_status != yuengine::rhi::RhiStatus::Success) {
+            result.rhi_status = rhi_status;
+            result.recorded_command_count = command_list_.CommandCount();
+            RecordRhiFailureResult(&result);
+            return result;
+        }
     }
 
     rhi_status = request.rhi_device->RecordDrawIndexed(command_list_, request.draw);
@@ -273,11 +345,26 @@ RenderFixturePassStatus RenderFixturePass::ValidateRequest(const RenderFixturePa
         return RenderFixturePassStatus::MissingIndexBuffer;
     }
 
-    if (!IsSampledTextureBindingValid(request.sampled_texture)) {
+    if (!AreBindingSpansValid(request)) {
         return RenderFixturePassStatus::InvalidTextureBinding;
     }
 
-    if (!IsSamplerBindingValid(request.sampler)) {
+    const std::span<const yuengine::rhi::RhiSampledTextureBinding> sampled_textures =
+        SampledTextureBindings(request);
+    const std::span<const yuengine::rhi::RhiSamplerBinding> samplers = SamplerBindings(request);
+    for (const yuengine::rhi::RhiSampledTextureBinding &binding : sampled_textures) {
+        if (!IsSampledTextureBindingValid(binding)) {
+            return RenderFixturePassStatus::InvalidTextureBinding;
+        }
+    }
+
+    for (const yuengine::rhi::RhiSamplerBinding &binding : samplers) {
+        if (!IsSamplerBindingValid(binding)) {
+            return RenderFixturePassStatus::InvalidSamplerBinding;
+        }
+    }
+
+    if (sampled_textures.size() != samplers.size()) {
         return RenderFixturePassStatus::InvalidSamplerBinding;
     }
 

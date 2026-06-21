@@ -20,6 +20,8 @@ struct RenderMaterialRequest final {
     yuengine::rhi::RhiPipelineHandle pipeline{};
     yuengine::rhi::RhiSampledTextureBinding sampled_texture{};
     yuengine::rhi::RhiSamplerBinding sampler{};
+    std::span<const yuengine::rhi::RhiSampledTextureBinding> sampled_textures{};
+    std::span<const yuengine::rhi::RhiSamplerBinding> samplers{};
     std::span<const std::uint8_t> constant_bytes{};
     std::uint32_t pass_id = 0U;
 };

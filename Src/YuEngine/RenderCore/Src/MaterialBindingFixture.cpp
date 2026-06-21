@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <span>
 
 #include "YuEngine/Rhi/RhiConstants.h"
 
@@ -44,6 +45,60 @@ bool IsSamplerBindingValid(const yuengine::rhi::RhiSamplerBinding &binding) {
     }
 
     return binding.slot < yuengine::rhi::MAX_RHI_SAMPLER_SLOTS;
+}
+
+bool UsesBindingSpans(const MaterialBindingFixtureRequest &request) {
+    if (!request.sampled_textures.empty()) {
+        return true;
+    }
+
+    return !request.samplers.empty();
+}
+
+std::span<const yuengine::rhi::RhiSampledTextureBinding> SampledTextureBindings(
+    const MaterialBindingFixtureRequest &request) {
+    if (!request.sampled_textures.empty()) {
+        return request.sampled_textures;
+    }
+
+    return std::span<const yuengine::rhi::RhiSampledTextureBinding>(&request.sampled_texture, 1U);
+}
+
+std::span<const yuengine::rhi::RhiSamplerBinding> SamplerBindings(
+    const MaterialBindingFixtureRequest &request) {
+    if (!request.samplers.empty()) {
+        return request.samplers;
+    }
+
+    return std::span<const yuengine::rhi::RhiSamplerBinding>(&request.sampler, 1U);
+}
+
+bool AreBindingSpansValid(const MaterialBindingFixtureRequest &request) {
+    if (!UsesBindingSpans(request)) {
+        return true;
+    }
+
+    if (request.sampled_textures.data() == nullptr) {
+        return false;
+    }
+
+    if (request.samplers.data() == nullptr) {
+        return false;
+    }
+
+    if (request.sampled_textures.size() == 0U) {
+        return false;
+    }
+
+    if (request.sampled_textures.size() != request.samplers.size()) {
+        return false;
+    }
+
+    if (request.sampled_textures.size() > yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS) {
+        return false;
+    }
+
+    return request.samplers.size() <= yuengine::rhi::MAX_RHI_SAMPLER_SLOTS;
 }
 }
 
@@ -138,12 +193,23 @@ MaterialBindingFixtureStatus MaterialBindingFixture::ValidateRequest(
         return MaterialBindingFixtureStatus::InvalidPipeline;
     }
 
-    if (!IsSampledTextureBindingValid(request.sampled_texture)) {
+    if (!AreBindingSpansValid(request)) {
         return MaterialBindingFixtureStatus::InvalidTextureBinding;
     }
 
-    if (!IsSamplerBindingValid(request.sampler)) {
-        return MaterialBindingFixtureStatus::InvalidSamplerBinding;
+    const std::span<const yuengine::rhi::RhiSampledTextureBinding> sampled_textures =
+        SampledTextureBindings(request);
+    for (const yuengine::rhi::RhiSampledTextureBinding &binding : sampled_textures) {
+        if (!IsSampledTextureBindingValid(binding)) {
+            return MaterialBindingFixtureStatus::InvalidTextureBinding;
+        }
+    }
+
+    const std::span<const yuengine::rhi::RhiSamplerBinding> samplers = SamplerBindings(request);
+    for (const yuengine::rhi::RhiSamplerBinding &binding : samplers) {
+        if (!IsSamplerBindingValid(binding)) {
+            return MaterialBindingFixtureStatus::InvalidSamplerBinding;
+        }
     }
 
     if (request.constant_bytes.size() > MAX_MATERIAL_BINDING_FIXTURE_CONSTANT_BYTES) {
@@ -185,6 +251,8 @@ void MaterialBindingFixture::FillPassRequest(
     pass_request->pipeline = request.pipeline;
     pass_request->sampled_texture = request.sampled_texture;
     pass_request->sampler = request.sampler;
+    pass_request->sampled_textures = request.sampled_textures;
+    pass_request->samplers = request.samplers;
     pass_request->material_id = request.material_id;
     pass_request->material_constant_byte_count = request.constant_bytes.size();
     pass_request->pass_id = request.pass_id;

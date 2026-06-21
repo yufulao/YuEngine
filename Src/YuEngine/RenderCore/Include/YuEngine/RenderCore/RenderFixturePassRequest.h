@@ -29,6 +29,8 @@ struct RenderFixturePassRequest final {
     yuengine::rhi::RhiIndexBufferView index_buffer{};
     yuengine::rhi::RhiSampledTextureBinding sampled_texture{};
     yuengine::rhi::RhiSamplerBinding sampler{};
+    std::span<const yuengine::rhi::RhiSampledTextureBinding> sampled_textures{};
+    std::span<const yuengine::rhi::RhiSamplerBinding> samplers{};
     yuengine::rhi::RhiDrawIndexedDesc draw{};
     yuengine::rhi::RhiColor clear_color{};
     std::span<std::uint8_t> capture_output{};

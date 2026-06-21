@@ -4,6 +4,7 @@
 #include "YuEngine/RenderCore/RenderViewPacket.h"
 
 #include <cstddef>
+#include <span>
 
 #include "YuEngine/RenderCore/RenderMaterialConstants.h"
 #include "YuEngine/Rhi/RhiConstants.h"
@@ -52,6 +53,59 @@ bool IsSamplerBindingValid(const yuengine::rhi::RhiSamplerBinding &binding) {
     return binding.slot < yuengine::rhi::MAX_RHI_SAMPLER_SLOTS;
 }
 
+bool UsesBindingSpans(const RenderMaterialRequest &request) {
+    if (!request.sampled_textures.empty()) {
+        return true;
+    }
+
+    return !request.samplers.empty();
+}
+
+std::span<const yuengine::rhi::RhiSampledTextureBinding> SampledTextureBindings(
+    const RenderMaterialRequest &request) {
+    if (!request.sampled_textures.empty()) {
+        return request.sampled_textures;
+    }
+
+    return std::span<const yuengine::rhi::RhiSampledTextureBinding>(&request.sampled_texture, 1U);
+}
+
+std::span<const yuengine::rhi::RhiSamplerBinding> SamplerBindings(const RenderMaterialRequest &request) {
+    if (!request.samplers.empty()) {
+        return request.samplers;
+    }
+
+    return std::span<const yuengine::rhi::RhiSamplerBinding>(&request.sampler, 1U);
+}
+
+bool AreBindingSpansValid(const RenderMaterialRequest &request) {
+    if (!UsesBindingSpans(request)) {
+        return true;
+    }
+
+    if (request.sampled_textures.data() == nullptr) {
+        return false;
+    }
+
+    if (request.samplers.data() == nullptr) {
+        return false;
+    }
+
+    if (request.sampled_textures.size() == 0U) {
+        return false;
+    }
+
+    if (request.sampled_textures.size() != request.samplers.size()) {
+        return false;
+    }
+
+    if (request.sampled_textures.size() > yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS) {
+        return false;
+    }
+
+    return request.samplers.size() <= yuengine::rhi::MAX_RHI_SAMPLER_SLOTS;
+}
+
 RenderMaterialStatus ValidateMaterialRequest(const RenderMaterialRequest &request) {
     if (request.material_id == 0U) {
         return RenderMaterialStatus::InvalidMaterialId;
@@ -65,12 +119,23 @@ RenderMaterialStatus ValidateMaterialRequest(const RenderMaterialRequest &reques
         return RenderMaterialStatus::InvalidPipeline;
     }
 
-    if (!IsSampledTextureBindingValid(request.sampled_texture)) {
+    if (!AreBindingSpansValid(request)) {
         return RenderMaterialStatus::InvalidTextureBinding;
     }
 
-    if (!IsSamplerBindingValid(request.sampler)) {
-        return RenderMaterialStatus::InvalidSamplerBinding;
+    const std::span<const yuengine::rhi::RhiSampledTextureBinding> sampled_textures =
+        SampledTextureBindings(request);
+    for (const yuengine::rhi::RhiSampledTextureBinding &binding : sampled_textures) {
+        if (!IsSampledTextureBindingValid(binding)) {
+            return RenderMaterialStatus::InvalidTextureBinding;
+        }
+    }
+
+    const std::span<const yuengine::rhi::RhiSamplerBinding> samplers = SamplerBindings(request);
+    for (const yuengine::rhi::RhiSamplerBinding &binding : samplers) {
+        if (!IsSamplerBindingValid(binding)) {
+            return RenderMaterialStatus::InvalidSamplerBinding;
+        }
     }
 
     if (request.constant_bytes.size() > MAX_RENDER_MATERIAL_CONSTANT_BYTES) {
@@ -327,6 +392,8 @@ void RenderViewPacket::FillPassRequest(
     out_request->index_buffer = request.draw.index_buffer;
     out_request->sampled_texture = request.material.sampled_texture;
     out_request->sampler = request.material.sampler;
+    out_request->sampled_textures = request.material.sampled_textures;
+    out_request->samplers = request.material.samplers;
     out_request->draw = request.draw.draw;
     out_request->clear_color = request.clear_color;
     out_request->capture_output = request.capture_output;

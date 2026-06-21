@@ -70,7 +70,19 @@ struct RenderSceneThreePrimitiveEntityReport final {
     yuengine::world::WorldTransformState transform{};
     RenderScenePrimitiveGeometryKind primitive_kind = RenderScenePrimitiveGeometryKind::Cube;
     RenderSceneRuntimeFrameDrawRecord draw_record{};
+    std::uint32_t material_id = 0U;
     bool submitted = false;
+};
+
+struct RenderSceneThreePrimitiveMaterialTextureSlotReport final {
+    std::uint32_t material_id = 0U;
+    std::uint32_t slot = 0U;
+    yuengine::asset::AssetHandle texture_asset{};
+    yuengine::rhi::RhiSampledTextureBinding sampled_texture{};
+    yuengine::rhi::RhiSamplerBinding sampler{};
+    bool texture_resource_resolved = false;
+    bool sampled_texture_bound = false;
+    bool sampler_bound = false;
 };
 
 struct RenderSceneThreePrimitiveCaptureRequest final {
@@ -95,6 +107,11 @@ struct RenderSceneThreePrimitiveCaptureResult final {
     std::uint32_t frame_id = 0U;
     RenderSceneCameraCaptureMetadata capture{};
     RenderSceneRuntimeFrameResult frame_result{};
+    std::uint32_t shared_material_id = 0U;
+    std::array<
+        RenderSceneThreePrimitiveMaterialTextureSlotReport,
+        MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS> material_texture_slot_reports{};
+    std::size_t material_texture_slot_report_count = 0U;
     std::array<RenderSceneThreePrimitiveEntityReport, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT>
         entity_reports{};
     std::size_t entity_report_count = 0U;
@@ -109,7 +126,7 @@ struct RenderSceneThreePrimitiveCaptureResult final {
 class RenderSceneThreePrimitiveCaptureRoute final {
 public:
     /**
-     * @comment 执行 L1-VIS-002 three-primitive placed runtime scene route。
+     * @comment 执行 L1-VIS-002/003 three-primitive runtime visual route。
      * @param request 输入 three-primitive capture request。
      * @param out_result 调用方持有的输出报告。
      * @return 显式 route 状态。
