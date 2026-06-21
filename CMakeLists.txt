@@ -426,6 +426,14 @@ add_executable(YuHeadless
 yuengine_apply_compile_options(YuHeadless)
 target_link_libraries(YuHeadless PRIVATE YuKernel)
 
+if(WIN32)
+    add_executable(YuRuntimeVisualCameraTweenViewer
+        Apps/YuRuntimeVisualCameraTweenViewer/Main.cpp
+    )
+    yuengine_apply_compile_options(YuRuntimeVisualCameraTweenViewer)
+    target_link_libraries(YuRuntimeVisualCameraTweenViewer PRIVATE YuPlatform gdi32)
+endif()
+
 add_executable(YuUiCoreSmokeSample
     Samples/UiCoreSmoke/Source/Main.cpp
     Samples/UiCoreSmoke/Source/UiCoreSmokeSample.cpp
