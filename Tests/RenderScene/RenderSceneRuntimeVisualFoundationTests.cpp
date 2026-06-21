@@ -34,6 +34,7 @@
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
 #include "YuEngine/RenderScene/RenderSceneStatus.h"
+#include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/RhiBackendKind.h"
 #include "YuEngine/Rhi/RhiBufferDesc.h"
@@ -103,6 +104,14 @@ using yuengine::renderscene::RenderSceneRuntimeMaterialRequest;
 using yuengine::renderscene::RenderSceneRuntimeMaterialStatus;
 using yuengine::renderscene::RenderSceneRuntimeMaterialTextureSlot;
 using yuengine::renderscene::RenderSceneStatus;
+using yuengine::renderscene::RenderSceneThreePrimitiveCaptureMissingLayer;
+using yuengine::renderscene::RenderSceneThreePrimitiveCaptureOutputStatus;
+using yuengine::renderscene::RenderSceneThreePrimitiveCaptureRequest;
+using yuengine::renderscene::RenderSceneThreePrimitiveCaptureResult;
+using yuengine::renderscene::RenderSceneThreePrimitiveCaptureRoute;
+using yuengine::renderscene::RenderSceneThreePrimitiveCaptureStatus;
+using yuengine::renderscene::RenderSceneThreePrimitiveEntityRequest;
+using yuengine::renderscene::RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
 using yuengine::rhi::IRhiDevice;
 using yuengine::rhi::RhiBackendKind;
 using yuengine::rhi::RhiBufferDesc;
@@ -187,11 +196,19 @@ constexpr const char *TEST_L1_VIS_ENV_BLOCKED =
     "RenderScene_L1Vis001ReportsBlockedEnvForMissingSwapchain";
 constexpr const char *TEST_L1_VIS_SHADER_MISSING =
     "RenderScene_L1Vis001ReportsShaderPipelineMissingLayer";
+constexpr const char *TEST_L1_VIS_THREE_PRIMITIVE_CAPTURE =
+    "RenderScene_L1Vis002CapturesThreePrimitivePlacedSceneThroughRuntimeRoute";
+constexpr const char *TEST_L1_VIS_THREE_PRIMITIVE_GEOMETRY_MISSING =
+    "RenderScene_L1Vis002ReportsGeometryMissingLayerForCylinder";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr char L1_VIS_001_OUTPUT_PATH[] = "Artifacts/L1Vis001/StaticOneCube.rvf";
+constexpr char L1_VIS_002_OUTPUT_PATH[] = "Artifacts/L1Vis002/ThreePrimitivePlaced.rvf";
+constexpr char L1_VIS_002_CUBE_NAME[] = "Cube";
+constexpr char L1_VIS_002_CYLINDER_NAME[] = "Cylinder";
+constexpr char L1_VIS_002_CONE_NAME[] = "Cone";
 constexpr float HALF_PI = 1.57079632679F;
 constexpr float TOLERANCE = 0.0001F;
 constexpr std::uint32_t FRAME_ID = 9101U;
@@ -758,9 +775,68 @@ RenderSceneOneCubeCaptureRequest MakeOneCubeCaptureRequest(
     return request;
 }
 
+std::array<RenderSceneThreePrimitiveEntityRequest, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT>
+MakeThreePrimitiveEntities() {
+    std::array<RenderSceneThreePrimitiveEntityRequest, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> entities{};
+
+    entities[0U].world_object_id = WorldObjectId{601U};
+    entities[0U].object_name = L1_VIS_002_CUBE_NAME;
+    entities[0U].object_name_byte_count = sizeof(L1_VIS_002_CUBE_NAME) - 1U;
+    entities[0U].transform = MakeTransform(-2.0F, 0.0F, 0.0F);
+    entities[0U].geometry = MakePrimitiveGeometryRecord(RenderScenePrimitiveGeometryKind::Cube);
+
+    entities[1U].world_object_id = WorldObjectId{602U};
+    entities[1U].object_name = L1_VIS_002_CYLINDER_NAME;
+    entities[1U].object_name_byte_count = sizeof(L1_VIS_002_CYLINDER_NAME) - 1U;
+    entities[1U].transform = MakeTransform(0.0F, 1.0F, 0.0F);
+    entities[1U].geometry = MakePrimitiveGeometryRecord(RenderScenePrimitiveGeometryKind::Cylinder);
+
+    entities[2U].world_object_id = WorldObjectId{603U};
+    entities[2U].object_name = L1_VIS_002_CONE_NAME;
+    entities[2U].object_name_byte_count = sizeof(L1_VIS_002_CONE_NAME) - 1U;
+    entities[2U].transform = MakeTransform(2.0F, 0.0F, 1.0F);
+    entities[2U].geometry = MakePrimitiveGeometryRecord(RenderScenePrimitiveGeometryKind::Cone);
+
+    return entities;
+}
+
+RenderSceneThreePrimitiveCaptureRequest MakeThreePrimitiveCaptureRequest(
+    L1Vis001RhiDevice &device,
+    std::vector<std::uint8_t> &capture,
+    std::span<const RenderSceneThreePrimitiveEntityRequest> entities) {
+    RenderSceneThreePrimitiveCaptureRequest request{};
+    request.frame_id = FRAME_ID;
+    request.camera = MakeCameraBinding();
+    request.material = MakeRuntimeMaterialRecord();
+    request.entities = entities;
+    request.rhi_device = &device;
+    request.output_path = L1_VIS_002_OUTPUT_PATH;
+    request.output_path_byte_count = sizeof(L1_VIS_002_OUTPUT_PATH) - 1U;
+    request.capture_output = std::span<std::uint8_t>(capture.data(), capture.size());
+    request.capture_byte_budget_per_entity = L1VisCaptureByteCount();
+    return request;
+}
+
 bool CaptureWasWritten(const std::vector<std::uint8_t> &capture) {
     for (std::uint8_t value : capture) {
         if (value != CAPTURE_SENTINEL) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool CaptureSegmentWasWritten(const std::vector<std::uint8_t> &capture, std::size_t segment_index) {
+    const std::size_t segment_byte_count = L1VisCaptureByteCount();
+    const std::size_t begin_index = segment_index * segment_byte_count;
+    const std::size_t end_index = begin_index + segment_byte_count;
+    if (end_index > capture.size()) {
+        return false;
+    }
+
+    for (std::size_t index = begin_index; index < end_index; ++index) {
+        if (capture[index] != CAPTURE_SENTINEL) {
             return true;
         }
     }
@@ -1265,6 +1341,128 @@ int RenderSceneL1Vis001ReportsShaderPipelineMissingLayer() {
     return 0;
 }
 
+int RenderSceneL1Vis002CapturesThreePrimitivePlacedSceneThroughRuntimeRoute() {
+    L1Vis001RhiDevice device;
+    std::vector<std::uint8_t> capture(
+        L1VisCaptureByteCount() * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT,
+        CAPTURE_SENTINEL);
+    const std::array<RenderSceneThreePrimitiveEntityRequest, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT>
+        entities = MakeThreePrimitiveEntities();
+    RenderSceneThreePrimitiveCaptureRoute route;
+    RenderSceneThreePrimitiveCaptureResult result{};
+
+    const RenderSceneThreePrimitiveCaptureRequest request =
+        MakeThreePrimitiveCaptureRequest(device, capture, entities);
+    const RenderSceneThreePrimitiveCaptureStatus status = route.Execute(request, &result);
+    if (status != RenderSceneThreePrimitiveCaptureStatus::Success) {
+        return Fail("l1 vis three primitive route did not complete");
+    }
+
+    if (result.first_missing_layer != RenderSceneThreePrimitiveCaptureMissingLayer::None) {
+        return Fail("l1 vis three primitive route reported a missing layer on success");
+    }
+
+    if (result.output_status != RenderSceneThreePrimitiveCaptureOutputStatus::CaptureAvailable) {
+        return Fail("l1 vis three primitive route did not report capture availability");
+    }
+
+    if (result.frame_result.output_draw_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
+        result.frame_result.submitted_entity_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return Fail("l1 vis three primitive route did not submit exactly three entities");
+    }
+
+    if (result.entity_report_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
+        result.render_result_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return Fail("l1 vis three primitive route report counts mismatch");
+    }
+
+    if (result.entity_reports[0U].world_object_id.value != 601U ||
+        result.entity_reports[1U].world_object_id.value != 602U ||
+        result.entity_reports[2U].world_object_id.value != 603U) {
+        return Fail("l1 vis three primitive route object ids mismatch");
+    }
+
+    if (std::string_view(result.entity_reports[0U].object_name, result.entity_reports[0U].object_name_byte_count) !=
+        L1_VIS_002_CUBE_NAME) {
+        return Fail("l1 vis three primitive cube name mismatch");
+    }
+
+    if (result.entity_reports[0U].primitive_kind != RenderScenePrimitiveGeometryKind::Cube ||
+        result.entity_reports[1U].primitive_kind != RenderScenePrimitiveGeometryKind::Cylinder ||
+        result.entity_reports[2U].primitive_kind != RenderScenePrimitiveGeometryKind::Cone) {
+        return Fail("l1 vis three primitive geometry kind mismatch");
+    }
+
+    if (!Approx(result.entity_reports[0U].transform.translation_x, -2.0F) ||
+        !Approx(result.entity_reports[1U].transform.translation_y, 1.0F) ||
+        !Approx(result.entity_reports[2U].transform.translation_z, 1.0F)) {
+        return Fail("l1 vis three primitive fixed transforms mismatch");
+    }
+
+    if (result.entity_reports[0U].draw_record.draw.draw.index_count != 36U ||
+        result.entity_reports[1U].draw_record.draw.draw.index_count != 192U ||
+        result.entity_reports[2U].draw_record.draw.draw.index_count != 96U) {
+        return Fail("l1 vis three primitive draw ranges mismatch");
+    }
+
+    if (result.capture_bytes_written != capture.size()) {
+        return Fail("l1 vis three primitive capture byte count mismatch");
+    }
+
+    for (std::size_t index = 0U; index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT; ++index) {
+        if (result.render_results[index].status != RenderDrawableFramePipelineStatus::Success) {
+            return Fail("l1 vis three primitive rendercore result mismatch");
+        }
+
+        if (!CaptureSegmentWasWritten(capture, index)) {
+            return Fail("l1 vis three primitive capture segment was not written");
+        }
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    if (snapshot.submitted_indexed_draw_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
+        snapshot.submitted_sampled_texture_bind_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
+        snapshot.submitted_sampler_bind_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
+        snapshot.capture_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return Fail("l1 vis three primitive route did not drive rhi counters");
+    }
+
+    return 0;
+}
+
+int RenderSceneL1Vis002ReportsGeometryMissingLayerForCylinder() {
+    L1Vis001RhiDevice device;
+    std::vector<std::uint8_t> capture(
+        L1VisCaptureByteCount() * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT,
+        CAPTURE_SENTINEL);
+    std::array<RenderSceneThreePrimitiveEntityRequest, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT>
+        entities = MakeThreePrimitiveEntities();
+    entities[1U].geometry = RenderScenePrimitiveGeometryRecord{};
+
+    RenderSceneThreePrimitiveCaptureRoute route;
+    RenderSceneThreePrimitiveCaptureResult result{};
+    const RenderSceneThreePrimitiveCaptureRequest request =
+        MakeThreePrimitiveCaptureRequest(device, capture, entities);
+    const RenderSceneThreePrimitiveCaptureStatus status = route.Execute(request, &result);
+    if (status != RenderSceneThreePrimitiveCaptureStatus::Fail) {
+        return Fail("l1 vis three primitive route did not fail on missing cylinder geometry");
+    }
+
+    if (result.first_missing_layer != RenderSceneThreePrimitiveCaptureMissingLayer::GeometryModel) {
+        return Fail("l1 vis three primitive route reported wrong missing layer");
+    }
+
+    if (result.output_status == RenderSceneThreePrimitiveCaptureOutputStatus::BlockedByEnv) {
+        return Fail("l1 vis three primitive route hid semantic failure as env block");
+    }
+
+    if (device.Snapshot().submit_count != 0U || CaptureWasWritten(capture)) {
+        return Fail("l1 vis three primitive route mutated rhi on semantic failure");
+    }
+
+    return 0;
+}
+
 int RenderSceneRuntimeVisualFoundationNoEditorWebUiInputDependency() {
     RenderSceneCameraFrameBinder binder;
     RenderScenePrimitiveGeometryBuilder builder;
@@ -1377,6 +1575,14 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_L1_VIS_SHADER_MISSING) {
         return RenderSceneL1Vis001ReportsShaderPipelineMissingLayer();
+    }
+
+    if (name == TEST_L1_VIS_THREE_PRIMITIVE_CAPTURE) {
+        return RenderSceneL1Vis002CapturesThreePrimitivePlacedSceneThroughRuntimeRoute();
+    }
+
+    if (name == TEST_L1_VIS_THREE_PRIMITIVE_GEOMETRY_MISSING) {
+        return RenderSceneL1Vis002ReportsGeometryMissingLayerForCylinder();
     }
 
     if (name == TEST_BOUNDARY) {
