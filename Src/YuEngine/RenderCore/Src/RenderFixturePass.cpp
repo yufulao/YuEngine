@@ -301,6 +301,7 @@ RenderFixturePassResult RenderFixturePass::Execute(const RenderFixturePassReques
     if (capture_result.status != yuengine::rhi::RhiStatus::Success) {
         result.rhi_status = capture_result.status;
         result.capture_bytes_written = capture_result.bytes_written;
+        result.capture_extent = capture_result.extent;
         RecordRhiFailureResult(&result);
         return result;
     }
@@ -308,6 +309,7 @@ RenderFixturePassResult RenderFixturePass::Execute(const RenderFixturePassReques
     result.status = RenderFixturePassStatus::Success;
     result.rhi_status = yuengine::rhi::RhiStatus::Success;
     result.capture_bytes_written = capture_result.bytes_written;
+    result.capture_extent = capture_result.extent;
     RecordSuccessResult(result);
     return result;
 }
@@ -389,6 +391,7 @@ void RenderFixturePass::RecordRejectedResult(const RenderFixturePassResult &resu
     snapshot_.last_pass_id = result.pass_id;
     snapshot_.last_recorded_command_count = result.recorded_command_count;
     snapshot_.last_capture_bytes_written = result.capture_bytes_written;
+    snapshot_.last_capture_extent = result.capture_extent;
     if (result.status == RenderFixturePassStatus::CommandCapacityExceeded) {
         ++snapshot_.command_capacity_rejected_count;
         return;
@@ -420,6 +423,7 @@ void RenderFixturePass::RecordRhiFailureResult(RenderFixturePassResult *result) 
     snapshot_.last_pass_id = result->pass_id;
     snapshot_.last_recorded_command_count = result->recorded_command_count;
     snapshot_.last_capture_bytes_written = result->capture_bytes_written;
+    snapshot_.last_capture_extent = result->capture_extent;
 }
 
 void RenderFixturePass::RecordSuccessResult(const RenderFixturePassResult &result) {
@@ -435,5 +439,6 @@ void RenderFixturePass::RecordSuccessResult(const RenderFixturePassResult &resul
     snapshot_.last_pass_id = result.pass_id;
     snapshot_.last_recorded_command_count = result.recorded_command_count;
     snapshot_.last_capture_bytes_written = result.capture_bytes_written;
+    snapshot_.last_capture_extent = result.capture_extent;
 }
 }

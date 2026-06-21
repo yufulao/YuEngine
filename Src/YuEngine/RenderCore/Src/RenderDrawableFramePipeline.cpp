@@ -194,6 +194,7 @@ RenderDrawableFramePipelineResult RenderDrawableFramePipeline::Execute(
     result.rhi_status = result.frame_result.rhi_status;
     result.recorded_command_count = result.pass_result.recorded_command_count;
     result.capture_bytes_written = result.pass_result.capture_bytes_written;
+    result.capture_extent = result.pass_result.capture_extent;
     if (result.frame_result.status != RenderFramePacketFixtureStatus::Success) {
         result.status = RenderDrawableFramePipelineStatus::FramePacketFailed;
         RecordFrameFailureResult(result);
@@ -327,6 +328,7 @@ void RenderDrawableFramePipeline::StoreLastResult(
     snapshot_.last_material_id = result.material_id;
     snapshot_.last_recorded_command_count = result.recorded_command_count;
     snapshot_.last_capture_bytes_written = result.capture_bytes_written;
+    snapshot_.last_capture_extent = result.capture_extent;
     snapshot_.last_status = result.status;
     snapshot_.last_rhi_status = result.rhi_status;
     snapshot_.last_swapchain_snapshot = result.swapchain_snapshot;

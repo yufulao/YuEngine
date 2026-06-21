@@ -796,6 +796,7 @@ RhiCaptureResult D3D11RhiDevice::CapturePresentedTarget(std::span<std::uint8_t> 
     if (destination.size() < byte_count) {
         RecordFailure(RhiStatus::CapacityExceeded);
         snapshot_.last_capture_bytes_written = 0U;
+        snapshot_.last_capture_extent = RhiExtent2D{};
         return RhiCaptureResult{RhiStatus::CapacityExceeded, 0U};
     }
 
@@ -805,6 +806,7 @@ RhiCaptureResult D3D11RhiDevice::CapturePresentedTarget(std::span<std::uint8_t> 
         const RhiStatus status = TranslateNativeFailure(map_result);
         RecordFailure(status);
         snapshot_.last_capture_bytes_written = 0U;
+        snapshot_.last_capture_extent = RhiExtent2D{};
         return RhiCaptureResult{status, 0U};
     }
 
@@ -819,7 +821,8 @@ RhiCaptureResult D3D11RhiDevice::CapturePresentedTarget(std::span<std::uint8_t> 
     context_->Unmap(capture_texture_, 0U);
     ++snapshot_.capture_count;
     snapshot_.last_capture_bytes_written = byte_count;
-    return RhiCaptureResult{RhiStatus::Success, byte_count};
+    snapshot_.last_capture_extent = swapchain_desc_.extent;
+    return RhiCaptureResult{RhiStatus::Success, byte_count, swapchain_desc_.extent};
 }
 
 RhiStatus D3D11RhiDevice::CreateBuffer(

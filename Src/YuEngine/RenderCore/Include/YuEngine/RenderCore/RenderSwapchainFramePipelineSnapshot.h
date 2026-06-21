@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "YuEngine/RenderCore/RenderSwapchainFramePipelineStatus.h"
+#include "YuEngine/Rhi/RhiExtent2D.h"
 #include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiSwapchainSnapshot.h"
 
@@ -32,6 +33,7 @@ struct RenderSwapchainFramePipelineSnapshot final {
     std::uint32_t last_frame_id = 0U;
     std::size_t last_recorded_command_count = 0U;
     std::size_t last_capture_bytes_written = 0U;
+    yuengine::rhi::RhiExtent2D last_capture_extent{};
     RenderSwapchainFramePipelineStatus last_status = RenderSwapchainFramePipelineStatus::InvalidArgument;
     yuengine::rhi::RhiStatus last_rhi_status = yuengine::rhi::RhiStatus::InvalidLifecycle;
     yuengine::rhi::RhiSwapchainSnapshot last_swapchain_snapshot{};

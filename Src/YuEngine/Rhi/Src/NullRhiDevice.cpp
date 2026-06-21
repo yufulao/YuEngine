@@ -673,10 +673,11 @@ RhiCaptureResult NullRhiDevice::CapturePresentedTarget(std::span<std::uint8_t> d
         return RhiCaptureResult{RhiStatus::InvalidHandle, 0U};
     }
 
-    const RhiTargetSlot& slot = targets_[presented_handle_.slot];
+    const RhiTargetSlot &slot = targets_[presented_handle_.slot];
     if (slot.desc.extent.width > MAX_CAPTURE_FIXTURE_EXTENT || slot.desc.extent.height > MAX_CAPTURE_FIXTURE_EXTENT) {
         RecordFailure(RhiStatus::CapacityExceeded);
         snapshot_.last_capture_bytes_written = 0U;
+        snapshot_.last_capture_extent = RhiExtent2D{};
         return RhiCaptureResult{RhiStatus::CapacityExceeded, 0U};
     }
 
@@ -684,13 +685,15 @@ RhiCaptureResult NullRhiDevice::CapturePresentedTarget(std::span<std::uint8_t> d
     if (destination.size() < byte_count) {
         RecordFailure(RhiStatus::CapacityExceeded);
         snapshot_.last_capture_bytes_written = 0U;
+        snapshot_.last_capture_extent = RhiExtent2D{};
         return RhiCaptureResult{RhiStatus::CapacityExceeded, 0U};
     }
 
     std::copy(slot.bytes.begin(), slot.bytes.end(), destination.begin());
     ++snapshot_.capture_count;
     snapshot_.last_capture_bytes_written = byte_count;
-    return RhiCaptureResult{RhiStatus::Success, byte_count};
+    snapshot_.last_capture_extent = slot.desc.extent;
+    return RhiCaptureResult{RhiStatus::Success, byte_count, slot.desc.extent};
 }
 
 RhiStatus NullRhiDevice::CreateBuffer(

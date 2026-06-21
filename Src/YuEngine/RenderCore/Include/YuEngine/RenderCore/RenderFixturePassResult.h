@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "YuEngine/RenderCore/RenderFixturePassStatus.h"
+#include "YuEngine/Rhi/RhiExtent2D.h"
 #include "YuEngine/Rhi/RhiStatus.h"
 
 namespace yuengine::rendercore {
@@ -18,6 +19,7 @@ struct RenderFixturePassResult final {
     yuengine::rhi::RhiStatus rhi_status = yuengine::rhi::RhiStatus::InvalidLifecycle;
     std::size_t recorded_command_count = 0U;
     std::size_t capture_bytes_written = 0U;
+    yuengine::rhi::RhiExtent2D capture_extent{};
     std::uint32_t pass_id = 0U;
 };
 }

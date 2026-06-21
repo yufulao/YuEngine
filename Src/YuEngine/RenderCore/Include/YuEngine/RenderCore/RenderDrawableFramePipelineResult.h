@@ -11,6 +11,7 @@
 #include "YuEngine/RenderCore/RenderFixturePassResult.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureResult.h"
 #include "YuEngine/RenderCore/RenderViewPacketResult.h"
+#include "YuEngine/Rhi/RhiExtent2D.h"
 #include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiSwapchainSnapshot.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
@@ -33,5 +34,6 @@ struct RenderDrawableFramePipelineResult final {
     std::uint32_t material_id = 0U;
     std::size_t recorded_command_count = 0U;
     std::size_t capture_bytes_written = 0U;
+    yuengine::rhi::RhiExtent2D capture_extent{};
 };
 }

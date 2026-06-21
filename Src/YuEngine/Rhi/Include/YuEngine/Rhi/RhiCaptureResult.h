@@ -5,11 +5,13 @@
 
 #include <cstddef>
 
+#include "YuEngine/Rhi/RhiExtent2D.h"
 #include "YuEngine/Rhi/RhiStatus.h"
 
 namespace yuengine::rhi {
 struct RhiCaptureResult final {
     RhiStatus status = RhiStatus::InvalidLifecycle;
     std::size_t bytes_written = 0U;
+    RhiExtent2D extent{};
 };
 }

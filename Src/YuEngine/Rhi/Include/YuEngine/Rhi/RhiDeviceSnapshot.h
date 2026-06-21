@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "YuEngine/Rhi/RhiAccountingStatus.h"
+#include "YuEngine/Rhi/RhiExtent2D.h"
 #include "YuEngine/Rhi/RhiResourceSnapshot.h"
 #include "YuEngine/Rhi/RhiSwapchainSnapshot.h"
 
@@ -37,6 +38,7 @@ struct RhiDeviceSnapshot final {
     std::size_t last_bound_index_buffer_offset_bytes = 0U;
     std::size_t last_bound_index_buffer_size_bytes = 0U;
     std::size_t last_capture_bytes_written = 0U;
+    RhiExtent2D last_capture_extent{};
     RhiSwapchainSnapshot swapchain{};
     RhiResourceSnapshot resources{};
     RhiAccountingStatus allocation_accounting_status = RhiAccountingStatus::DeferredUntilYuMemoryIntegration;

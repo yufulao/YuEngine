@@ -270,7 +270,8 @@ public:
 
         ++snapshot_.capture_count;
         snapshot_.last_capture_bytes_written = byte_count;
-        return RhiCaptureResult{RhiStatus::Success, byte_count};
+        snapshot_.last_capture_extent = snapshot_.swapchain.extent;
+        return RhiCaptureResult{RhiStatus::Success, byte_count, snapshot_.swapchain.extent};
     }
 
     RhiStatus CreateBuffer(
@@ -463,6 +464,11 @@ int RenderCoreSwapchainFramePipelineExecutesClearSubmitPresentCapture() {
         return Fail("swapchain frame pipeline reported wrong rhi result");
     }
 
+    if (result.capture_extent.width != DEFAULT_EXTENT ||
+        result.capture_extent.height != DEFAULT_EXTENT) {
+        return Fail("swapchain frame pipeline did not expose capture extent");
+    }
+
     if (!CaptureMatchesColor(capture, request.clear_color)) {
         return Fail("swapchain frame pipeline capture did not match clear color");
     }
@@ -478,6 +484,11 @@ int RenderCoreSwapchainFramePipelineExecutesClearSubmitPresentCapture() {
     const RenderSwapchainFramePipelineSnapshot snapshot = pipeline.Snapshot();
     if (snapshot.completed_frame_count != 1U || snapshot.last_recorded_command_count != 3U) {
         return Fail("swapchain frame pipeline snapshot did not track completed frame");
+    }
+
+    if (snapshot.last_capture_extent.width != DEFAULT_EXTENT ||
+        snapshot.last_capture_extent.height != DEFAULT_EXTENT) {
+        return Fail("swapchain frame pipeline snapshot did not track capture extent");
     }
 
     return 0;
@@ -502,9 +513,23 @@ int RenderCoreSwapchainFramePipelineResizesBeforeSubmit() {
         return Fail("swapchain frame pipeline did not expose resized extent");
     }
 
+    if (result.capture_bytes_written != capture.size()) {
+        return Fail("swapchain frame pipeline resize capture byte count mismatch");
+    }
+
+    if (result.capture_extent.width != RESIZED_WIDTH ||
+        result.capture_extent.height != RESIZED_HEIGHT) {
+        return Fail("swapchain frame pipeline did not expose resized capture extent");
+    }
+
     const RenderSwapchainFramePipelineSnapshot snapshot = pipeline.Snapshot();
     if (snapshot.resize_request_count != 1U || snapshot.resized_frame_count != 1U) {
         return Fail("swapchain frame pipeline did not track resize counters");
+    }
+
+    if (snapshot.last_capture_extent.width != RESIZED_WIDTH ||
+        snapshot.last_capture_extent.height != RESIZED_HEIGHT) {
+        return Fail("swapchain frame pipeline snapshot did not track resized capture extent");
     }
 
     return 0;

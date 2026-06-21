@@ -30,6 +30,9 @@
 #include "YuEngine/Rhi/RhiSamplerBinding.h"
 #include "YuEngine/Rhi/RhiSamplerHandle.h"
 #include "YuEngine/Rhi/RhiSampledTextureBinding.h"
+#include "YuEngine/Rhi/RhiStatus.h"
+#include "YuEngine/Rhi/RhiSwapchainResizeRequest.h"
+#include "YuEngine/Rhi/RhiSwapchainResizeResult.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
 #include "YuEngine/World/WorldInstance.h"
@@ -99,6 +102,9 @@ using RhiIndexBufferView = yuengine::rhi::RhiIndexBufferView;
 using RhiIndexFormat = yuengine::rhi::RhiIndexFormat;
 using RhiPipelineHandle = yuengine::rhi::RhiPipelineHandle;
 using RhiSamplerHandle = yuengine::rhi::RhiSamplerHandle;
+using RhiStatus = yuengine::rhi::RhiStatus;
+using RhiSwapchainResizeRequest = yuengine::rhi::RhiSwapchainResizeRequest;
+using RhiSwapchainResizeResult = yuengine::rhi::RhiSwapchainResizeResult;
 using RhiTextureHandle = yuengine::rhi::RhiTextureHandle;
 using RhiVertexBufferView = yuengine::rhi::RhiVertexBufferView;
 using WorldInstance = yuengine::world::WorldInstance;
@@ -362,6 +368,111 @@ bool IsMinimumImageArtifactResolutionRequested(
     return request.minimum_image_artifact_height > 0U;
 }
 
+bool IsTargetImageArtifactResolutionRequested(
+    const RenderSceneRuntimeVisualSceneProofRequest &request) {
+    if (request.target_image_artifact_width > 0U) {
+        return true;
+    }
+
+    return request.target_image_artifact_height > 0U;
+}
+
+bool IsTargetCaptureResolutionRequested(
+    const RenderSceneRuntimeVisualSceneProofRequest &request) {
+    if (request.target_capture_width > 0U) {
+        return true;
+    }
+
+    return request.target_capture_height > 0U;
+}
+
+bool ResolveImageArtifactOutputExtent(
+    const RenderSceneRuntimeVisualSceneProofRequest &request,
+    std::uint16_t source_width,
+    std::uint16_t source_height,
+    std::uint16_t *out_width,
+    std::uint16_t *out_height) {
+    if (out_width == nullptr) {
+        return false;
+    }
+
+    if (out_height == nullptr) {
+        return false;
+    }
+
+    if (source_width == 0U) {
+        return false;
+    }
+
+    if (source_height == 0U) {
+        return false;
+    }
+
+    if (source_width > std::numeric_limits<std::uint16_t>::max() /
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return false;
+    }
+
+    const std::uint16_t natural_width =
+        static_cast<std::uint16_t>(source_width * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT);
+    std::uint16_t image_width = natural_width;
+    std::uint16_t image_height = source_height;
+    if (IsTargetImageArtifactResolutionRequested(request)) {
+        if (request.target_image_artifact_width == 0U) {
+            return false;
+        }
+
+        if (request.target_image_artifact_height == 0U) {
+            return false;
+        }
+
+        if (request.target_image_artifact_width > natural_width) {
+            return false;
+        }
+
+        if (request.target_image_artifact_height > source_height) {
+            return false;
+        }
+
+        image_width = request.target_image_artifact_width;
+        image_height = request.target_image_artifact_height;
+    }
+
+    *out_width = image_width;
+    *out_height = image_height;
+    return true;
+}
+
+RenderSceneMissingLayerDiagnosticFault ConfigureRequestedCaptureTarget(
+    const RenderSceneRuntimeVisualSceneProofRequest &request) {
+    if (!IsTargetCaptureResolutionRequested(request)) {
+        return RenderSceneMissingLayerDiagnosticFault::None;
+    }
+
+    if (request.rhi_device == nullptr) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingRhiCaptureTarget;
+    }
+
+    if (request.target_capture_width == 0U) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingCaptureTargetResolution;
+    }
+
+    if (request.target_capture_height == 0U) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingCaptureTargetResolution;
+    }
+
+    RhiSwapchainResizeRequest resize_request{};
+    resize_request.extent = {request.target_capture_width, request.target_capture_height};
+    RhiSwapchainResizeResult resize_result{};
+    const RhiStatus resize_status =
+        request.rhi_device->ResizeSwapchain(resize_request, resize_result);
+    if (resize_status == RhiStatus::Success) {
+        return RenderSceneMissingLayerDiagnosticFault::None;
+    }
+
+    return RenderSceneMissingLayerDiagnosticFault::MissingCaptureTargetResolution;
+}
+
 RenderSceneMissingLayerDiagnosticFault AssessImageArtifactResolutionRequest(
     const RenderSceneRuntimeVisualSceneProofRequest &request,
     RenderSceneRuntimeVisualSceneProofResult *out_result) {
@@ -400,22 +511,26 @@ RenderSceneMissingLayerDiagnosticFault AssessImageArtifactResolutionRequest(
         return RenderSceneMissingLayerDiagnosticFault::MissingCaptureOutputImage;
     }
 
-    if (source_width > std::numeric_limits<std::uint16_t>::max() /
-        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
-        return RenderSceneMissingLayerDiagnosticFault::MissingCaptureOutputImage;
+    std::uint16_t image_width = 0U;
+    std::uint16_t image_height = 0U;
+    if (!ResolveImageArtifactOutputExtent(
+            request,
+            source_width,
+            source_height,
+            &image_width,
+            &image_height)) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingCaptureTargetResolution;
     }
 
-    const std::uint16_t image_width =
-        static_cast<std::uint16_t>(source_width * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT);
     out_result->available_image_artifact_width = image_width;
-    out_result->available_image_artifact_height = source_height;
+    out_result->available_image_artifact_height = image_height;
     if (request.minimum_image_artifact_width > 0U &&
         image_width < request.minimum_image_artifact_width) {
         return RenderSceneMissingLayerDiagnosticFault::MissingCaptureTargetResolution;
     }
 
     if (request.minimum_image_artifact_height > 0U &&
-        source_height < request.minimum_image_artifact_height) {
+        image_height < request.minimum_image_artifact_height) {
         return RenderSceneMissingLayerDiagnosticFault::MissingCaptureTargetResolution;
     }
 
@@ -592,9 +707,15 @@ bool WriteFramePpmImage(
     std::size_t frame_capture_offset,
     std::uint16_t source_width,
     std::uint16_t source_height,
+    std::uint16_t image_width,
+    std::uint16_t image_height,
     std::size_t source_byte_count_per_entity,
     RenderSceneRuntimeVisualSceneImageArtifactReport *out_report) {
     if (out_report == nullptr) {
+        return false;
+    }
+
+    if (image_height > source_height) {
         return false;
     }
 
@@ -607,44 +728,54 @@ bool WriteFramePpmImage(
         return false;
     }
 
-    const std::uint16_t image_width =
-        static_cast<std::uint16_t>(source_width * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT);
     std::size_t file_byte_count = 0U;
-    if (!WritePpmHeader(file, image_width, source_height, &file_byte_count)) {
+    if (!WritePpmHeader(file, image_width, image_height, &file_byte_count)) {
         std::fclose(file);
         return false;
     }
 
-    for (std::uint16_t row = 0U; row < source_height; ++row) {
-        for (std::size_t entity_index = 0U;
-            entity_index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
-            ++entity_index) {
+    for (std::uint16_t row = 0U; row < image_height; ++row) {
+        for (std::uint16_t column = 0U; column < image_width; ++column) {
+            const std::size_t scaled_column =
+                static_cast<std::size_t>(column) * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+            std::size_t entity_index = scaled_column / image_width;
+            if (entity_index >= RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+                entity_index = RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT - 1U;
+            }
+
+            const std::size_t entity_column_begin =
+                (static_cast<std::size_t>(image_width) * entity_index) /
+                RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+            const std::size_t source_column = static_cast<std::size_t>(column) - entity_column_begin;
+            if (source_column >= source_width) {
+                std::fclose(file);
+                return false;
+            }
+
             const std::size_t entity_offset =
                 frame_capture_offset + entity_index * request.capture_byte_budget_per_entity;
-            for (std::uint16_t column = 0U; column < source_width; ++column) {
-                const std::size_t pixel_index =
-                    entity_offset +
-                    ((static_cast<std::size_t>(row) * source_width + column) *
-                        yuengine::rhi::RGBA8_BYTES_PER_PIXEL);
-                if (pixel_index + 2U >= request.capture_output.size()) {
-                    std::fclose(file);
-                    return false;
-                }
+            const std::size_t pixel_index =
+                entity_offset +
+                ((static_cast<std::size_t>(row) * source_width + source_column) *
+                    yuengine::rhi::RGBA8_BYTES_PER_PIXEL);
+            if (pixel_index + 2U >= request.capture_output.size()) {
+                std::fclose(file);
+                return false;
+            }
 
-                if (!WritePpmByte(file, request.capture_output[pixel_index], &file_byte_count)) {
-                    std::fclose(file);
-                    return false;
-                }
+            if (!WritePpmByte(file, request.capture_output[pixel_index], &file_byte_count)) {
+                std::fclose(file);
+                return false;
+            }
 
-                if (!WritePpmByte(file, request.capture_output[pixel_index + 1U], &file_byte_count)) {
-                    std::fclose(file);
-                    return false;
-                }
+            if (!WritePpmByte(file, request.capture_output[pixel_index + 1U], &file_byte_count)) {
+                std::fclose(file);
+                return false;
+            }
 
-                if (!WritePpmByte(file, request.capture_output[pixel_index + 2U], &file_byte_count)) {
-                    std::fclose(file);
-                    return false;
-                }
+            if (!WritePpmByte(file, request.capture_output[pixel_index + 2U], &file_byte_count)) {
+                std::fclose(file);
+                return false;
             }
         }
     }
@@ -656,7 +787,7 @@ bool WriteFramePpmImage(
 
     out_report->status = RenderSceneRuntimeVisualSceneImageArtifactStatus::Written;
     out_report->width = image_width;
-    out_report->height = source_height;
+    out_report->height = image_height;
     out_report->source_byte_count =
         source_byte_count_per_entity * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
     out_report->file_byte_count = file_byte_count;
@@ -699,15 +830,19 @@ bool EmitImageArtifacts(
         return false;
     }
 
-    if (source_width > std::numeric_limits<std::uint16_t>::max() /
-        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+    std::uint16_t image_width = 0U;
+    std::uint16_t image_height = 0U;
+    if (!ResolveImageArtifactOutputExtent(
+            request,
+            source_width,
+            source_height,
+            &image_width,
+            &image_height)) {
         return false;
     }
 
-    const std::uint16_t image_width =
-        static_cast<std::uint16_t>(source_width * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT);
     out_result->available_image_artifact_width = image_width;
-    out_result->available_image_artifact_height = source_height;
+    out_result->available_image_artifact_height = image_height;
 
     const std::size_t frame_capture_byte_budget =
         request.capture_byte_budget_per_entity * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
@@ -738,6 +873,8 @@ bool EmitImageArtifacts(
                 frame_capture_offset,
                 source_width,
                 source_height,
+                image_width,
+                image_height,
                 source_byte_count_per_entity,
                 &report)) {
             return false;
@@ -1093,6 +1230,10 @@ RenderSceneRuntimeVisualSceneProofStatus RenderSceneRuntimeVisualSceneProofRoute
 
     RenderSceneRuntimeVisualSceneProofResult result{};
     result.requested_frame_count = request.frame_count;
+    result.requested_target_image_artifact_width = request.target_image_artifact_width;
+    result.requested_target_image_artifact_height = request.target_image_artifact_height;
+    result.requested_target_capture_width = request.target_capture_width;
+    result.requested_target_capture_height = request.target_capture_height;
     result.requested_minimum_image_artifact_width = request.minimum_image_artifact_width;
     result.requested_minimum_image_artifact_height = request.minimum_image_artifact_height;
     *out_result = result;
@@ -1135,6 +1276,12 @@ RenderSceneRuntimeVisualSceneProofStatus RenderSceneRuntimeVisualSceneProofRoute
         return CompleteWithDiagnostic(
             RenderSceneMissingLayerDiagnosticFault::MissingRhiCaptureTarget,
             out_result);
+    }
+
+    const RenderSceneMissingLayerDiagnosticFault capture_target_fault =
+        ConfigureRequestedCaptureTarget(request);
+    if (capture_target_fault != RenderSceneMissingLayerDiagnosticFault::None) {
+        return CompleteWithDiagnostic(capture_target_fault, out_result);
     }
 
     const RenderSceneMissingLayerDiagnosticFault image_resolution_fault =

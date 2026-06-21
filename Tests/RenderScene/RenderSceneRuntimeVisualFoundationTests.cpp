@@ -272,6 +272,8 @@ constexpr const char *TEST_L1_SAMPLE_012_RUNTIME_VISUAL_BLOCKER =
     "RenderScene_L1Sample012ReportsExactRuntimeVisualBlocker";
 constexpr const char *TEST_L1_SAMPLE_013_USER_VISIBLE_RESOLUTION_BLOCKER =
     "RenderScene_L1Sample013ReportsUserVisibleCaptureResolutionBlocker";
+constexpr const char *TEST_L1_SAMPLE_014_USER_VISIBLE_TARGET =
+    "RenderScene_L1Sample014EmitsUserVisibleCaptureTargetArtifacts";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -288,7 +290,11 @@ constexpr char L1_SAMPLE_011_IMAGE_ARTIFACT_DIRECTORY[] = "Artifacts/L1Sample011
 constexpr char L1_SAMPLE_013_IMAGE_OUTPUT_PATH_PREFIX[] =
     "Artifacts/L1Sample011/RVF013/RuntimeVisualScene";
 constexpr char L1_SAMPLE_013_IMAGE_ARTIFACT_DIRECTORY[] = "Artifacts/L1Sample011/RVF013";
+constexpr char L1_SAMPLE_014_IMAGE_OUTPUT_PATH_PREFIX[] =
+    "Artifacts/L1Sample011/RVF014/RuntimeVisualScene";
+constexpr char L1_SAMPLE_014_IMAGE_ARTIFACT_DIRECTORY[] = "Artifacts/L1Sample011/RVF014";
 constexpr char L1_SAMPLE_011_IMAGE_HEADER[] = "P6\n12 4\n255\n";
+constexpr char L1_SAMPLE_014_IMAGE_HEADER[] = "P6\n640 360\n255\n";
 constexpr char L1_VIS_002_CUBE_NAME[] = "Cube";
 constexpr char L1_VIS_002_CYLINDER_NAME[] = "Cylinder";
 constexpr char L1_VIS_002_CONE_NAME[] = "Cone";
@@ -318,6 +324,10 @@ constexpr std::uint64_t L1_VIS_004_SAMPLE_NANOSECONDS = 1500000000ULL;
 constexpr std::uint32_t L1_VIS_005_FRAME_COUNT = 5U;
 constexpr std::uint16_t L1_SAMPLE_013_MINIMUM_IMAGE_WIDTH = 320U;
 constexpr std::uint16_t L1_SAMPLE_013_MINIMUM_IMAGE_HEIGHT = 180U;
+constexpr std::uint16_t L1_SAMPLE_014_TARGET_IMAGE_WIDTH = 640U;
+constexpr std::uint16_t L1_SAMPLE_014_TARGET_IMAGE_HEIGHT = 360U;
+constexpr std::uint16_t L1_SAMPLE_014_TARGET_CAPTURE_WIDTH = 640U;
+constexpr std::uint16_t L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT = 360U;
 constexpr float L1_VIS_005_ORBIT_RADIUS = 5.0F;
 constexpr float L1_VIS_005_ORBIT_HEIGHT = 2.0F;
 
@@ -388,6 +398,12 @@ std::size_t L1VisCaptureByteCount() {
     return width * height * RGBA8_BYTES_PER_PIXEL;
 }
 
+std::size_t CaptureByteCount(std::uint16_t width, std::uint16_t height) {
+    const std::size_t wide_width = width;
+    const std::size_t wide_height = height;
+    return wide_width * wide_height * RGBA8_BYTES_PER_PIXEL;
+}
+
 class L1Vis001RhiDevice final : public IRhiDevice {
 public:
     L1Vis001RhiDevice() {
@@ -415,10 +431,57 @@ public:
     }
 
     RhiStatus ResizeSwapchain(
-        const RhiSwapchainResizeRequest &,
+        const RhiSwapchainResizeRequest &request,
         RhiSwapchainResizeResult &out_result) override {
         out_result = RhiSwapchainResizeResult{};
-        return RhiStatus::UnsupportedBackend;
+        out_result.previous_extent = snapshot_.swapchain.extent;
+        out_result.previous_color_target = target_;
+        out_result.snapshot = snapshot_.swapchain;
+        if (!snapshot_.swapchain.valid) {
+            ++snapshot_.swapchain.rejected_resize_count;
+            ++snapshot_.failed_operation_count;
+            out_result.status = RhiStatus::InvalidLifecycle;
+            out_result.snapshot = snapshot_.swapchain;
+            return RhiStatus::InvalidLifecycle;
+        }
+
+        if (request.extent.width == 0U || request.extent.height == 0U) {
+            ++snapshot_.swapchain.rejected_resize_count;
+            ++snapshot_.failed_operation_count;
+            out_result.status = RhiStatus::InvalidDescriptor;
+            out_result.snapshot = snapshot_.swapchain;
+            return RhiStatus::InvalidDescriptor;
+        }
+
+        if (request.extent.width > MAX_CAPTURE_FIXTURE_EXTENT ||
+            request.extent.height > MAX_CAPTURE_FIXTURE_EXTENT) {
+            ++snapshot_.swapchain.rejected_resize_count;
+            ++snapshot_.failed_operation_count;
+            out_result.status = RhiStatus::CapacityExceeded;
+            out_result.snapshot = snapshot_.swapchain;
+            return RhiStatus::CapacityExceeded;
+        }
+
+        if (request.extent.width == snapshot_.swapchain.extent.width &&
+            request.extent.height == snapshot_.swapchain.extent.height) {
+            out_result.status = RhiStatus::Success;
+            out_result.snapshot = snapshot_.swapchain;
+            return RhiStatus::Success;
+        }
+
+        ++target_.generation;
+        snapshot_.swapchain.extent = request.extent;
+        snapshot_.swapchain.color_target = target_;
+        snapshot_.swapchain.presented = false;
+        ++snapshot_.swapchain.resize_count;
+        snapshot_.last_capture_bytes_written = 0U;
+        snapshot_.last_capture_extent = {};
+        submitted_ = false;
+        presented_ = false;
+        out_result.status = RhiStatus::Success;
+        out_result.snapshot = snapshot_.swapchain;
+        out_result.resized = true;
+        return RhiStatus::Success;
     }
 
     RhiStatus DestroyTarget(RhiTextureHandle) override {
@@ -588,7 +651,9 @@ public:
             return RhiCaptureResult{RhiStatus::InvalidLifecycle, 0U};
         }
 
-        const std::size_t byte_count = L1VisCaptureByteCount();
+        const std::size_t byte_count = CaptureByteCount(
+            snapshot_.swapchain.extent.width,
+            snapshot_.swapchain.extent.height);
         if (destination.size() < byte_count) {
             ++snapshot_.failed_operation_count;
             return RhiCaptureResult{RhiStatus::CapacityExceeded, 0U};
@@ -603,7 +668,8 @@ public:
 
         ++snapshot_.capture_count;
         snapshot_.last_capture_bytes_written = byte_count;
-        return RhiCaptureResult{RhiStatus::Success, byte_count};
+        snapshot_.last_capture_extent = snapshot_.swapchain.extent;
+        return RhiCaptureResult{RhiStatus::Success, byte_count, snapshot_.swapchain.extent};
     }
 
     RhiStatus CreateBuffer(
@@ -1268,6 +1334,27 @@ RenderSceneRuntimeVisualSceneProofRequest MakeRuntimeVisualSceneUserVisibleImage
     return request;
 }
 
+RenderSceneRuntimeVisualSceneProofRequest MakeRuntimeVisualSceneUserVisibleTargetImageProofRequest(
+    L1Vis001RhiDevice &device,
+    std::vector<std::uint8_t> &capture) {
+    RenderSceneRuntimeVisualSceneProofRequest request =
+        MakeRuntimeVisualSceneProofRequest(device, capture);
+    request.image_artifact_requested = true;
+    request.image_output_path_prefix = L1_SAMPLE_014_IMAGE_OUTPUT_PATH_PREFIX;
+    request.image_output_path_prefix_byte_count =
+        sizeof(L1_SAMPLE_014_IMAGE_OUTPUT_PATH_PREFIX) - 1U;
+    request.minimum_image_artifact_width = L1_SAMPLE_013_MINIMUM_IMAGE_WIDTH;
+    request.minimum_image_artifact_height = L1_SAMPLE_013_MINIMUM_IMAGE_HEIGHT;
+    request.target_image_artifact_width = L1_SAMPLE_014_TARGET_IMAGE_WIDTH;
+    request.target_image_artifact_height = L1_SAMPLE_014_TARGET_IMAGE_HEIGHT;
+    request.target_capture_width = L1_SAMPLE_014_TARGET_CAPTURE_WIDTH;
+    request.target_capture_height = L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT;
+    request.capture_byte_budget_per_entity = CaptureByteCount(
+        L1_SAMPLE_014_TARGET_CAPTURE_WIDTH,
+        L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT);
+    return request;
+}
+
 bool CaptureWasWritten(const std::vector<std::uint8_t> &capture) {
     for (std::uint8_t value : capture) {
         if (value != CAPTURE_SENTINEL) {
@@ -1300,6 +1387,25 @@ bool OrbitFrameCaptureSegmentWasWritten(
     std::size_t frame_index) {
     const std::size_t frame_byte_count =
         L1VisCaptureByteCount() * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    const std::size_t begin_index = frame_index * frame_byte_count;
+    const std::size_t end_index = begin_index + frame_byte_count;
+    if (end_index > capture.size()) {
+        return false;
+    }
+
+    for (std::size_t index = begin_index; index < end_index; ++index) {
+        if (capture[index] != CAPTURE_SENTINEL) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool OrbitFrameCaptureSegmentWasWritten(
+    const std::vector<std::uint8_t> &capture,
+    std::size_t frame_index,
+    std::size_t frame_byte_count) {
     const std::size_t begin_index = frame_index * frame_byte_count;
     const std::size_t end_index = begin_index + frame_byte_count;
     if (end_index > capture.size()) {
@@ -1387,6 +1493,30 @@ std::string_view RuntimeVisualSceneImagePathForFrame(std::uint32_t frame_index) 
     return {};
 }
 
+std::string_view RuntimeVisualSceneUserVisibleTargetImagePathForFrame(std::uint32_t frame_index) {
+    if (frame_index == 0U) {
+        return "Artifacts/L1Sample011/RVF014/RuntimeVisualScene.Frame000.ppm";
+    }
+
+    if (frame_index == 1U) {
+        return "Artifacts/L1Sample011/RVF014/RuntimeVisualScene.Frame001.ppm";
+    }
+
+    if (frame_index == 2U) {
+        return "Artifacts/L1Sample011/RVF014/RuntimeVisualScene.Frame002.ppm";
+    }
+
+    if (frame_index == 3U) {
+        return "Artifacts/L1Sample011/RVF014/RuntimeVisualScene.Frame003.ppm";
+    }
+
+    if (frame_index == 4U) {
+        return "Artifacts/L1Sample011/RVF014/RuntimeVisualScene.Frame004.ppm";
+    }
+
+    return {};
+}
+
 bool OrbitOutputPathMatches(const RenderSceneOrbitCaptureFrameReport &frame_report) {
     const std::string_view expected = OrbitOutputPathForFrame(frame_report.frame_index);
     if (expected.empty()) {
@@ -1418,6 +1548,18 @@ bool RuntimeVisualSceneImagePathMatches(
     return actual == expected;
 }
 
+bool RuntimeVisualSceneUserVisibleTargetImagePathMatches(
+    const RenderSceneRuntimeVisualSceneImageArtifactReport &report) {
+    const std::string_view expected =
+        RuntimeVisualSceneUserVisibleTargetImagePathForFrame(report.frame_index);
+    if (expected.empty()) {
+        return false;
+    }
+
+    const std::string_view actual(report.output_path, report.output_path_byte_count);
+    return actual == expected;
+}
+
 bool CleanRuntimeVisualSceneImageArtifactDirectory() {
     std::error_code error;
     std::filesystem::remove_all(L1_SAMPLE_011_IMAGE_ARTIFACT_DIRECTORY, error);
@@ -1430,11 +1572,23 @@ bool CleanRuntimeVisualSceneUserVisibleImageArtifactDirectory() {
     return !error;
 }
 
+bool CleanRuntimeVisualSceneUserVisibleTargetImageArtifactDirectory() {
+    std::error_code error;
+    std::filesystem::remove_all(L1_SAMPLE_014_IMAGE_ARTIFACT_DIRECTORY, error);
+    return !error;
+}
+
 std::size_t RuntimeVisualSceneImageRgbByteCount() {
     const std::size_t width =
         static_cast<std::size_t>(L1_VIS_CAPTURE_EXTENT) *
         RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
     const std::size_t height = L1_VIS_CAPTURE_EXTENT;
+    return width * height * 3U;
+}
+
+std::size_t RuntimeVisualSceneTargetImageRgbByteCount() {
+    const std::size_t width = L1_SAMPLE_014_TARGET_IMAGE_WIDTH;
+    const std::size_t height = L1_SAMPLE_014_TARGET_IMAGE_HEIGHT;
     return width * height * 3U;
 }
 
@@ -3100,6 +3254,168 @@ int RenderSceneL1Sample013ReportsUserVisibleCaptureResolutionBlocker() {
     return 0;
 }
 
+int RenderSceneL1Sample014EmitsUserVisibleCaptureTargetArtifacts() {
+    if (!CleanRuntimeVisualSceneUserVisibleTargetImageArtifactDirectory()) {
+        return Fail("l1 sample runtime visual target image cleanup failed");
+    }
+
+    L1Vis001RhiDevice device;
+    const std::size_t entity_capture_byte_count = CaptureByteCount(
+        L1_SAMPLE_014_TARGET_CAPTURE_WIDTH,
+        L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT);
+    const std::size_t frame_capture_byte_count =
+        entity_capture_byte_count * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    std::vector<std::uint8_t> capture(
+        frame_capture_byte_count * L1_VIS_005_FRAME_COUNT,
+        CAPTURE_SENTINEL);
+
+    RenderSceneRuntimeVisualSceneProofRoute route;
+    RenderSceneRuntimeVisualSceneProofResult result{};
+    const RenderSceneRuntimeVisualSceneProofRequest request =
+        MakeRuntimeVisualSceneUserVisibleTargetImageProofRequest(device, capture);
+    const RenderSceneRuntimeVisualSceneProofStatus status = route.Execute(request, &result);
+    if (status != RenderSceneRuntimeVisualSceneProofStatus::Success) {
+        return Fail("l1 sample runtime visual target image route did not complete");
+    }
+
+    if (result.first_missing_layer != RenderSceneMissingLayerDiagnosticLayer::None ||
+        result.diagnostic.status != RenderSceneMissingLayerDiagnosticStatus::Success) {
+        return Fail("l1 sample runtime visual target image reported missing layer");
+    }
+
+    if (result.requested_target_image_artifact_width != L1_SAMPLE_014_TARGET_IMAGE_WIDTH ||
+        result.requested_target_image_artifact_height != L1_SAMPLE_014_TARGET_IMAGE_HEIGHT ||
+        result.requested_target_capture_width != L1_SAMPLE_014_TARGET_CAPTURE_WIDTH ||
+        result.requested_target_capture_height != L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT) {
+        return Fail("l1 sample runtime visual target image request metadata mismatch");
+    }
+
+    if (result.requested_minimum_image_artifact_width != L1_SAMPLE_013_MINIMUM_IMAGE_WIDTH ||
+        result.requested_minimum_image_artifact_height != L1_SAMPLE_013_MINIMUM_IMAGE_HEIGHT) {
+        return Fail("l1 sample runtime visual target image minimum metadata mismatch");
+    }
+
+    if (result.available_image_artifact_width != L1_SAMPLE_014_TARGET_IMAGE_WIDTH ||
+        result.available_image_artifact_height != L1_SAMPLE_014_TARGET_IMAGE_HEIGHT) {
+        return Fail("l1 sample runtime visual target image available extent mismatch");
+    }
+
+    if (result.frame_capture_byte_budget != frame_capture_byte_count ||
+        result.capture_bytes_written != capture.size()) {
+        return Fail("l1 sample runtime visual target image capture byte count mismatch");
+    }
+
+    if (result.image_artifact_report_count != L1_VIS_005_FRAME_COUNT) {
+        return Fail("l1 sample runtime visual target image frame count mismatch");
+    }
+
+    const std::size_t expected_header_byte_count =
+        sizeof(L1_SAMPLE_014_IMAGE_HEADER) - 1U;
+    const std::size_t expected_file_byte_count =
+        expected_header_byte_count + RuntimeVisualSceneTargetImageRgbByteCount();
+    if (result.image_artifact_bytes_written != expected_file_byte_count * L1_VIS_005_FRAME_COUNT) {
+        return Fail("l1 sample runtime visual target image total byte count mismatch");
+    }
+
+    for (std::size_t index = 0U; index < L1_VIS_005_FRAME_COUNT; ++index) {
+        const RenderSceneRuntimeVisualSceneImageArtifactReport &report =
+            result.image_artifact_reports[index];
+        if (report.status != RenderSceneRuntimeVisualSceneImageArtifactStatus::Written) {
+            return Fail("l1 sample runtime visual target image status mismatch");
+        }
+
+        const std::uint32_t frame_index = static_cast<std::uint32_t>(index);
+        if (report.frame_index != frame_index || report.frame_id != FRAME_ID + frame_index) {
+            return Fail("l1 sample runtime visual target image identity mismatch");
+        }
+
+        if (!RuntimeVisualSceneUserVisibleTargetImagePathMatches(report)) {
+            return Fail("l1 sample runtime visual target image path mismatch");
+        }
+
+        if (report.width != L1_SAMPLE_014_TARGET_IMAGE_WIDTH ||
+            report.height != L1_SAMPLE_014_TARGET_IMAGE_HEIGHT) {
+            return Fail("l1 sample runtime visual target image dimensions mismatch");
+        }
+
+        if (report.source_byte_count != frame_capture_byte_count ||
+            report.file_byte_count != expected_file_byte_count) {
+            return Fail("l1 sample runtime visual target image byte metadata mismatch");
+        }
+
+        std::error_code error;
+        const bool image_exists = std::filesystem::exists(report.output_path, error);
+        if (error || !image_exists) {
+            return Fail("l1 sample runtime visual target image file missing");
+        }
+
+        const std::uintmax_t file_size = std::filesystem::file_size(report.output_path, error);
+        if (error || file_size != static_cast<std::uintmax_t>(report.file_byte_count)) {
+            return Fail("l1 sample runtime visual target image disk size mismatch");
+        }
+
+        if (!FileStartsWithBytes(
+                report.output_path,
+                L1_SAMPLE_014_IMAGE_HEADER,
+                expected_header_byte_count)) {
+            return Fail("l1 sample runtime visual target image header mismatch");
+        }
+
+        const RenderSceneOrbitCaptureFrameReport &frame_report =
+            result.orbit_result.frames[index];
+        if (frame_report.status != RenderSceneOrbitCaptureStatus::Success ||
+            frame_report.capture_bytes_written != frame_capture_byte_count ||
+            frame_report.capture.output_byte_budget != frame_capture_byte_count) {
+            return Fail("l1 sample runtime visual target image frame metadata mismatch");
+        }
+
+        if (!OrbitFrameCaptureSegmentWasWritten(capture, index, frame_capture_byte_count)) {
+            return Fail("l1 sample runtime visual target image did not use route capture");
+        }
+
+        if (frame_report.capture_result.render_result_count !=
+            RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+            return Fail("l1 sample runtime visual target image render result count mismatch");
+        }
+
+        for (std::size_t entity_index = 0U;
+            entity_index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+            ++entity_index) {
+            const auto &render_result = frame_report.capture_result.render_results[entity_index];
+            if (render_result.capture_bytes_written != entity_capture_byte_count) {
+                return Fail("l1 sample runtime visual target image render byte mismatch");
+            }
+
+            if (render_result.capture_extent.width != L1_SAMPLE_014_TARGET_CAPTURE_WIDTH ||
+                render_result.capture_extent.height != L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT) {
+                return Fail("l1 sample runtime visual target image render extent mismatch");
+            }
+
+            if (render_result.pass_result.capture_extent.width != L1_SAMPLE_014_TARGET_CAPTURE_WIDTH ||
+                render_result.pass_result.capture_extent.height != L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT) {
+                return Fail("l1 sample runtime visual target image pass extent mismatch");
+            }
+        }
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    const std::uint64_t expected_draw_count =
+        static_cast<std::uint64_t>(L1_VIS_005_FRAME_COUNT) *
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    if (snapshot.swapchain.resize_count != 1U ||
+        snapshot.capture_count != expected_draw_count ||
+        snapshot.last_capture_bytes_written != entity_capture_byte_count) {
+        return Fail("l1 sample runtime visual target image rhi counter mismatch");
+    }
+
+    if (snapshot.last_capture_extent.width != L1_SAMPLE_014_TARGET_CAPTURE_WIDTH ||
+        snapshot.last_capture_extent.height != L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT) {
+        return Fail("l1 sample runtime visual target image rhi extent mismatch");
+    }
+
+    return 0;
+}
+
 int RenderSceneL1Vis002ReportsGeometryMissingLayerForCylinder() {
     L1Vis001RhiDevice device;
     std::vector<std::uint8_t> capture(
@@ -3285,6 +3601,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_L1_SAMPLE_013_USER_VISIBLE_RESOLUTION_BLOCKER) {
         return RenderSceneL1Sample013ReportsUserVisibleCaptureResolutionBlocker();
+    }
+
+    if (name == TEST_L1_SAMPLE_014_USER_VISIBLE_TARGET) {
+        return RenderSceneL1Sample014EmitsUserVisibleCaptureTargetArtifacts();
     }
 
     if (name == TEST_BOUNDARY) {

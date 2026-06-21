@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "YuEngine/RenderCore/RenderSwapchainFramePipelineStatus.h"
+#include "YuEngine/Rhi/RhiExtent2D.h"
 #include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiSwapchainResizeResult.h"
 #include "YuEngine/Rhi/RhiSwapchainSnapshot.h"
@@ -25,6 +26,7 @@ struct RenderSwapchainFramePipelineResult final {
     std::uint32_t frame_id = 0U;
     std::size_t recorded_command_count = 0U;
     std::size_t capture_bytes_written = 0U;
+    yuengine::rhi::RhiExtent2D capture_extent{};
     bool resize_requested = false;
     bool resized = false;
 };

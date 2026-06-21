@@ -160,6 +160,7 @@ RenderSwapchainFramePipelineResult RenderSwapchainFramePipeline::Execute(
     const yuengine::rhi::RhiCaptureResult capture_result = request.rhi_device->CapturePresentedTarget(capture_span);
     result.rhi_status = capture_result.status;
     result.capture_bytes_written = capture_result.bytes_written;
+    result.capture_extent = capture_result.extent;
     if (capture_result.status != yuengine::rhi::RhiStatus::Success) {
         result.status = RenderSwapchainFramePipelineStatus::RhiFailure;
         RecordRhiFailureResult(result);
@@ -293,6 +294,7 @@ void RenderSwapchainFramePipeline::StoreLastResult(
     snapshot_.last_frame_id = result.frame_id;
     snapshot_.last_recorded_command_count = result.recorded_command_count;
     snapshot_.last_capture_bytes_written = result.capture_bytes_written;
+    snapshot_.last_capture_extent = result.capture_extent;
     snapshot_.last_status = result.status;
     snapshot_.last_rhi_status = result.rhi_status;
     snapshot_.last_swapchain_snapshot = result.swapchain_snapshot;

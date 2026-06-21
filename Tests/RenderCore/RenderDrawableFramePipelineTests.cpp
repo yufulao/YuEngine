@@ -337,7 +337,8 @@ public:
 
         ++snapshot_.capture_count;
         snapshot_.last_capture_bytes_written = byte_count;
-        return RhiCaptureResult{RhiStatus::Success, byte_count};
+        snapshot_.last_capture_extent = snapshot_.swapchain.extent;
+        return RhiCaptureResult{RhiStatus::Success, byte_count, snapshot_.swapchain.extent};
     }
 
     RhiStatus CreateBuffer(
@@ -560,6 +561,13 @@ int RenderCoreDrawableFramePipelineExecutesMaterialFrameDrawCapture() {
         return Fail("drawable frame pipeline reported wrong command or capture count");
     }
 
+    if (result.capture_extent.width != DEFAULT_EXTENT ||
+        result.capture_extent.height != DEFAULT_EXTENT ||
+        result.pass_result.capture_extent.width != DEFAULT_EXTENT ||
+        result.pass_result.capture_extent.height != DEFAULT_EXTENT) {
+        return Fail("drawable frame pipeline did not propagate capture extent");
+    }
+
     if (!CaptureWasWritten(capture)) {
         return Fail("drawable frame pipeline did not write capture output");
     }
@@ -577,6 +585,11 @@ int RenderCoreDrawableFramePipelineExecutesMaterialFrameDrawCapture() {
     const RenderDrawableFramePipelineSnapshot snapshot = pipeline.Snapshot();
     if (snapshot.completed_frame_count != 1U || snapshot.last_recorded_command_count != 9U) {
         return Fail("drawable frame pipeline snapshot did not track completed frame");
+    }
+
+    if (snapshot.last_capture_extent.width != DEFAULT_EXTENT ||
+        snapshot.last_capture_extent.height != DEFAULT_EXTENT) {
+        return Fail("drawable frame pipeline snapshot did not track capture extent");
     }
 
     return 0;

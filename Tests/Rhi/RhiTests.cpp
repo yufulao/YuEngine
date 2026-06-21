@@ -98,6 +98,7 @@ using RhiTextureDesc = yuengine::rhi::RhiTextureDesc;
 using RhiTextureHandle = yuengine::rhi::RhiTextureHandle;
 using RhiVertexBufferView = yuengine::rhi::RhiVertexBufferView;
 using yuengine::rhi::MAX_COMMANDS;
+using yuengine::rhi::MAX_CAPTURE_FIXTURE_EXTENT;
 using yuengine::rhi::MAX_COLOR_TARGET_EXTENT;
 using yuengine::rhi::MAX_COLOR_TARGETS;
 using yuengine::rhi::MAX_RHI_BUFFERS;
@@ -135,6 +136,8 @@ constexpr const char* TEST_PRESENT_COUNTER = "RHI_ClearSubmitPresent_UpdatesPres
 constexpr const char* TEST_CAPTURE_BEFORE_PRESENT = "RHI_CaptureBeforePresent_ReturnsExplicitStatus";
 constexpr const char* TEST_CLEAR_COLOR = "RHI_ClearColor_UsesExactRgba8ByteChannels";
 constexpr const char* TEST_CAPTURE_DETERMINISTIC = "RHI_CapturePresentedTarget_WritesDeterministicRgba8Bytes";
+constexpr const char *TEST_CAPTURE_USER_VISIBLE_RESOLUTION =
+    "RHI_CapturePresentedTarget_WritesUserVisibleResolution";
 constexpr const char* TEST_CAPTURE_DESTROYED_PRESENTED_TARGET = "RHI_CaptureRejectsDestroyedPresentedTargetWithoutMutation";
 constexpr const char* TEST_UNDERSIZED_CAPTURE = "RHI_CaptureRejectsUndersizedBufferWithoutWritingBytes";
 constexpr const char* TEST_OVERSIZED_CAPTURE_FIXTURE = "RHI_CaptureRejectsTargetLargerThanFixtureCapWithoutWritingBytes";
@@ -228,6 +231,8 @@ constexpr std::uint32_t TRIANGLE_INDEX_COUNT = 3U;
 constexpr std::size_t TRIANGLE_VERTEX_STRIDE_BYTES = sizeof(float) * 6U;
 constexpr std::size_t TRIANGLE_VERTEX_BUFFER_BYTES = TRIANGLE_VERTEX_STRIDE_BYTES * TRIANGLE_VERTEX_COUNT;
 constexpr std::size_t TRIANGLE_INDEX_BUFFER_BYTES = sizeof(std::uint16_t) * TRIANGLE_INDEX_COUNT;
+constexpr std::uint16_t USER_VISIBLE_CAPTURE_WIDTH = 640U;
+constexpr std::uint16_t USER_VISIBLE_CAPTURE_HEIGHT = 360U;
 using TestFunction = int (*)();
 
 int Fail(std::string_view message) {
@@ -248,6 +253,18 @@ RhiColorTargetDesc MaxTargetDesc() {
     return RhiColorTargetDesc{
         RhiFormat::Rgba8Unorm,
         {MAX_COLOR_TARGET_EXTENT, MAX_COLOR_TARGET_EXTENT}};
+}
+
+RhiColorTargetDesc UserVisibleTargetDesc() {
+    return RhiColorTargetDesc{
+        RhiFormat::Rgba8Unorm,
+        {USER_VISIBLE_CAPTURE_WIDTH, USER_VISIBLE_CAPTURE_HEIGHT}};
+}
+
+RhiColorTargetDesc OversizedCaptureTargetDesc() {
+    return RhiColorTargetDesc{
+        RhiFormat::Rgba8Unorm,
+        {static_cast<std::uint16_t>(MAX_CAPTURE_FIXTURE_EXTENT + 1U), 1U}};
 }
 
 RhiBufferDesc SmallVertexBufferDesc() {
@@ -732,6 +749,14 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
         return false;
     }
 
+    if (left.last_capture_extent.width != right.last_capture_extent.width) {
+        return false;
+    }
+
+    if (left.last_capture_extent.height != right.last_capture_extent.height) {
+        return false;
+    }
+
     if (left.swapchain.extent.width != right.swapchain.extent.width) {
         return false;
     }
@@ -849,6 +874,10 @@ int RhiCreateNullDeviceReturnsCapabilities() {
 
     if (!capabilities.supports_capture) {
         return Fail("capabilities did not report capture support");
+    }
+
+    if (capabilities.max_capture_fixture_extent != MAX_CAPTURE_FIXTURE_EXTENT) {
+        return Fail("capabilities reported wrong capture extent");
     }
 
     return 0;
@@ -1936,6 +1965,64 @@ int RhiCapturePresentedTargetWritesDeterministicRgba8Bytes() {
         return Fail("deterministic capture did not match clear color");
     }
 
+    if (first_result.extent.width != CaptureFixtureTargetDesc().extent.width ||
+        first_result.extent.height != CaptureFixtureTargetDesc().extent.height) {
+        return Fail("deterministic capture result did not report target extent");
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    if (snapshot.last_capture_extent.width != CaptureFixtureTargetDesc().extent.width ||
+        snapshot.last_capture_extent.height != CaptureFixtureTargetDesc().extent.height) {
+        return Fail("deterministic capture snapshot did not report target extent");
+    }
+
+    return 0;
+}
+
+int RhiCapturePresentedTargetWritesUserVisibleResolution() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RhiTextureHandle handle{};
+    const RhiColorTargetDesc desc = UserVisibleTargetDesc();
+    if (device.CreateColorTarget(desc, handle) != RhiStatus::Success) {
+        return Fail("user-visible target creation failed");
+    }
+
+    const RhiColor color{12U, 34U, 56U, 255U};
+    if (ClearSubmitPresent(device, handle, color) != RhiStatus::Success) {
+        return Fail("user-visible clear submit present failed");
+    }
+
+    const std::size_t byte_count =
+        static_cast<std::size_t>(desc.extent.width) *
+        static_cast<std::size_t>(desc.extent.height) *
+        RGBA8_BYTES_PER_PIXEL;
+    std::vector<std::uint8_t> capture(byte_count, SENTINEL_BYTE);
+    const RhiCaptureResult result =
+        device.CapturePresentedTarget(std::span<std::uint8_t>(capture.data(), capture.size()));
+    if (result.status != RhiStatus::Success) {
+        return Fail("user-visible capture failed");
+    }
+
+    if (result.bytes_written != byte_count) {
+        return Fail("user-visible capture byte count mismatch");
+    }
+
+    if (result.extent.width != USER_VISIBLE_CAPTURE_WIDTH ||
+        result.extent.height != USER_VISIBLE_CAPTURE_HEIGHT) {
+        return Fail("user-visible capture extent mismatch");
+    }
+
+    if (!BytesMatchColor(capture, color)) {
+        return Fail("user-visible capture did not match clear color");
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    if (snapshot.last_capture_bytes_written != byte_count ||
+        snapshot.last_capture_extent.width != USER_VISIBLE_CAPTURE_WIDTH ||
+        snapshot.last_capture_extent.height != USER_VISIBLE_CAPTURE_HEIGHT) {
+        return Fail("user-visible capture snapshot mismatch");
+    }
+
     return 0;
 }
 
@@ -2030,16 +2117,17 @@ int RhiCaptureRejectsUndersizedBufferWithoutWritingBytes() {
 int RhiCaptureRejectsTargetLargerThanFixtureCapWithoutWritingBytes() {
     NullRhiDevice device = CreateInitializedDevice();
     RhiTextureHandle handle{};
-    if (device.CreateColorTarget(MaxTargetDesc(), handle) != RhiStatus::Success) {
-        return Fail("max target creation failed");
+    const RhiColorTargetDesc desc = OversizedCaptureTargetDesc();
+    if (device.CreateColorTarget(desc, handle) != RhiStatus::Success) {
+        return Fail("oversized capture target creation failed");
     }
 
     if (ClearSubmitPresent(device, handle, RhiColor{1U, 2U, 3U, 4U}) != RhiStatus::Success) {
         return Fail("clear submit present failed");
     }
 
-    const std::size_t full_target_bytes = static_cast<std::size_t>(MAX_COLOR_TARGET_EXTENT) *
-        static_cast<std::size_t>(MAX_COLOR_TARGET_EXTENT) * RGBA8_BYTES_PER_PIXEL;
+    const std::size_t full_target_bytes = static_cast<std::size_t>(desc.extent.width) *
+        static_cast<std::size_t>(desc.extent.height) * RGBA8_BYTES_PER_PIXEL;
     std::vector<std::uint8_t> destination(full_target_bytes, SENTINEL_BYTE);
     const RhiCaptureResult result = device.CapturePresentedTarget(std::span<std::uint8_t>(destination.data(), destination.size()));
     if (result.status != RhiStatus::CapacityExceeded) {
@@ -4005,6 +4093,7 @@ int main(int argc, char** argv) {
         {TEST_CAPTURE_BEFORE_PRESENT, RhiCaptureBeforePresentReturnsExplicitStatus},
         {TEST_CLEAR_COLOR, RhiClearColorUsesExactRgba8ByteChannels},
         {TEST_CAPTURE_DETERMINISTIC, RhiCapturePresentedTargetWritesDeterministicRgba8Bytes},
+        {TEST_CAPTURE_USER_VISIBLE_RESOLUTION, RhiCapturePresentedTargetWritesUserVisibleResolution},
         {TEST_CAPTURE_DESTROYED_PRESENTED_TARGET, RhiCaptureRejectsDestroyedPresentedTargetWithoutMutation},
         {TEST_UNDERSIZED_CAPTURE, RhiCaptureRejectsUndersizedBufferWithoutWritingBytes},
         {TEST_OVERSIZED_CAPTURE_FIXTURE, RhiCaptureRejectsTargetLargerThanFixtureCapWithoutWritingBytes},
