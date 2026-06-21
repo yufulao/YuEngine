@@ -37,6 +37,7 @@
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
 #include "YuEngine/RenderScene/RenderSceneStatus.h"
+#include "YuEngine/RenderScene/RenderSceneMissingLayerDiagnosticRoute.h"
 #include "YuEngine/RenderScene/RenderSceneOrbitCaptureRoute.h"
 #include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
@@ -112,6 +113,12 @@ using yuengine::renderscene::RenderSceneOneCubeCaptureRequest;
 using yuengine::renderscene::RenderSceneOneCubeCaptureResult;
 using yuengine::renderscene::RenderSceneOneCubeCaptureRoute;
 using yuengine::renderscene::RenderSceneOneCubeCaptureStatus;
+using yuengine::renderscene::RenderSceneMissingLayerDiagnosticFault;
+using yuengine::renderscene::RenderSceneMissingLayerDiagnosticLayer;
+using yuengine::renderscene::RenderSceneMissingLayerDiagnosticRequest;
+using yuengine::renderscene::RenderSceneMissingLayerDiagnosticResult;
+using yuengine::renderscene::RenderSceneMissingLayerDiagnosticRoute;
+using yuengine::renderscene::RenderSceneMissingLayerDiagnosticStatus;
 using yuengine::renderscene::RenderSceneOrbitCaptureFrameReport;
 using yuengine::renderscene::RenderSceneOrbitCaptureMissingLayer;
 using yuengine::renderscene::RenderSceneOrbitCaptureRequest;
@@ -245,6 +252,8 @@ constexpr const char *TEST_L1_VIS_ANIMATED_TRANSFORM =
     "RenderScene_L1Vis004CapturesAnimatedTransformSceneThroughRuntimeRoute";
 constexpr const char *TEST_L1_VIS_ORBIT_CAPTURE =
     "RenderScene_L1Vis005CapturesDeterministicOrbitSequence";
+constexpr const char *TEST_L1_VIS_MISSING_LAYER_DIAGNOSTIC =
+    "RenderScene_L1Vis006ReportsExactMissingLayers";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -300,6 +309,14 @@ struct L1VisAnimatedEntityReport final {
         RenderSceneThreePrimitiveCaptureStatus::InvalidArgument;
     RenderSceneThreePrimitiveCaptureMissingLayer first_missing_layer =
         RenderSceneThreePrimitiveCaptureMissingLayer::None;
+};
+
+struct L1Vis006DiagnosticExpectation final {
+    RenderSceneMissingLayerDiagnosticFault fault = RenderSceneMissingLayerDiagnosticFault::None;
+    RenderSceneMissingLayerDiagnosticLayer layer = RenderSceneMissingLayerDiagnosticLayer::None;
+    RenderSceneMissingLayerDiagnosticStatus status = RenderSceneMissingLayerDiagnosticStatus::Success;
+    const char *diagnostic_name = nullptr;
+    bool blocked_by_environment = false;
 };
 
 int Fail(std::string_view message) {
@@ -1288,6 +1305,50 @@ bool OrbitFramePoseMatches(
     }
 
     return Approx(frame_report.camera_pose.target.z, 0.0F);
+}
+
+int CheckL1Vis006DiagnosticExpectation(
+    const RenderSceneMissingLayerDiagnosticRoute &route,
+    const L1Vis006DiagnosticExpectation &expectation) {
+    RenderSceneMissingLayerDiagnosticRequest request{};
+    request.fault = expectation.fault;
+    request.target_capture_environment_available = true;
+
+    RenderSceneMissingLayerDiagnosticResult result{};
+    const RenderSceneMissingLayerDiagnosticStatus status = route.Execute(request, &result);
+    if (status != expectation.status) {
+        return Fail("l1 vis diagnostic status mismatch");
+    }
+
+    if (result.status != expectation.status) {
+        return Fail("l1 vis diagnostic result status mismatch");
+    }
+
+    if (result.first_missing_layer != expectation.layer) {
+        return Fail("l1 vis diagnostic layer mismatch");
+    }
+
+    if (result.fault != expectation.fault) {
+        return Fail("l1 vis diagnostic fault mismatch");
+    }
+
+    if (result.blocked_by_environment != expectation.blocked_by_environment) {
+        return Fail("l1 vis diagnostic env flag mismatch");
+    }
+
+    const std::string_view actual_name(
+        result.diagnostic_name,
+        result.diagnostic_name_byte_count);
+    if (actual_name != expectation.diagnostic_name) {
+        return Fail("l1 vis diagnostic name mismatch");
+    }
+
+    if (!expectation.blocked_by_environment &&
+        status == RenderSceneMissingLayerDiagnosticStatus::BlockedByEnv) {
+        return Fail("l1 vis diagnostic hid semantic layer as env block");
+    }
+
+    return 0;
 }
 
 int RenderSceneRuntimeCameraRecordBuildsDeterministicFrame() {
@@ -2300,6 +2361,124 @@ int RenderSceneL1Vis005CapturesDeterministicOrbitSequence() {
     return 0;
 }
 
+int RenderSceneL1Vis006ReportsExactMissingLayers() {
+    RenderSceneMissingLayerDiagnosticRoute route;
+
+    RenderSceneMissingLayerDiagnosticRequest success_request{};
+    RenderSceneMissingLayerDiagnosticResult success_result{};
+    const RenderSceneMissingLayerDiagnosticStatus success_status =
+        route.Execute(success_request, &success_result);
+    if (success_status != RenderSceneMissingLayerDiagnosticStatus::Success) {
+        return Fail("l1 vis diagnostic success route failed");
+    }
+
+    if (success_result.first_missing_layer != RenderSceneMissingLayerDiagnosticLayer::None) {
+        return Fail("l1 vis diagnostic success reported missing layer");
+    }
+
+    const std::array<L1Vis006DiagnosticExpectation, 13U> expectations{
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingCamera,
+            RenderSceneMissingLayerDiagnosticLayer::Camera,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "Camera",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingGeometryModel,
+            RenderSceneMissingLayerDiagnosticLayer::GeometryModel,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "GeometryModel",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingMaterialTextureSlots,
+            RenderSceneMissingLayerDiagnosticLayer::MaterialTextureSlots,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "MaterialTextureSlots",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingTextureResourceResolution,
+            RenderSceneMissingLayerDiagnosticLayer::TextureResourceResolution,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "TextureResourceResolution",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingSamplerBinding,
+            RenderSceneMissingLayerDiagnosticLayer::SamplerBinding,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "SamplerBinding",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingShaderPipeline,
+            RenderSceneMissingLayerDiagnosticLayer::ShaderPipeline,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "ShaderPipeline",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingAnimationInterpolation,
+            RenderSceneMissingLayerDiagnosticLayer::AnimationInterpolation,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "AnimationInterpolation",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingTransformApply,
+            RenderSceneMissingLayerDiagnosticLayer::TransformApply,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "TransformApply",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingRenderSceneMultiEntitySubmission,
+            RenderSceneMissingLayerDiagnosticLayer::RenderSceneMultiEntitySubmission,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "RenderSceneMultiEntitySubmission",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingRenderCoreRhiDrawCapture,
+            RenderSceneMissingLayerDiagnosticLayer::RenderCoreRhiDrawCapture,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "RenderCoreRhiDrawCapture",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingCameraOrbitSequencing,
+            RenderSceneMissingLayerDiagnosticLayer::CameraOrbitSequencing,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "CameraOrbitSequencing",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingOutputBounding,
+            RenderSceneMissingLayerDiagnosticLayer::OutputBounding,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "OutputBounding",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingRhiCaptureTarget,
+            RenderSceneMissingLayerDiagnosticLayer::RhiCaptureTarget,
+            RenderSceneMissingLayerDiagnosticStatus::BlockedByEnv,
+            "RhiCaptureTarget",
+            true}};
+
+    for (const L1Vis006DiagnosticExpectation &expectation : expectations) {
+        const int ret_code = CheckL1Vis006DiagnosticExpectation(route, expectation);
+        if (ret_code != 0) {
+            return ret_code;
+        }
+    }
+
+    RenderSceneMissingLayerDiagnosticRequest env_request{};
+    env_request.target_capture_environment_available = false;
+    RenderSceneMissingLayerDiagnosticResult env_result{};
+    const RenderSceneMissingLayerDiagnosticStatus env_status =
+        route.Execute(env_request, &env_result);
+    if (env_status != RenderSceneMissingLayerDiagnosticStatus::BlockedByEnv) {
+        return Fail("l1 vis diagnostic did not reserve env block for capture target");
+    }
+
+    if (env_result.first_missing_layer != RenderSceneMissingLayerDiagnosticLayer::RhiCaptureTarget) {
+        return Fail("l1 vis diagnostic env block reported wrong layer");
+    }
+
+    return 0;
+}
+
 int RenderSceneL1Vis002ReportsGeometryMissingLayerForCylinder() {
     L1Vis001RhiDevice device;
     std::vector<std::uint8_t> capture(
@@ -2465,6 +2644,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_L1_VIS_ORBIT_CAPTURE) {
         return RenderSceneL1Vis005CapturesDeterministicOrbitSequence();
+    }
+
+    if (name == TEST_L1_VIS_MISSING_LAYER_DIAGNOSTIC) {
+        return RenderSceneL1Vis006ReportsExactMissingLayers();
     }
 
     if (name == TEST_BOUNDARY) {
