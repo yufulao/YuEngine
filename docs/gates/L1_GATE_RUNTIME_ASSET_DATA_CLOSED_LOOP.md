@@ -35,8 +35,8 @@ that a later first-slice implementation gate must satisfy.
 
 ## Layer
 
-L1 runtime data contract over L0/L1 File/VFS/Resource and L1/L5
-Asset/RenderScene/RenderCore/RHI value paths.
+L1 runtime data contract over lower File/VFS/Resource/RenderCore/RHI paths and
+L1 Asset/RenderScene/World/Animation runtime records.
 
 The gate is below editor, Web, UI, input, gameplay, and Game Adapter work. It is
 above individual lower-engine fixtures because it requires a cross-module data
