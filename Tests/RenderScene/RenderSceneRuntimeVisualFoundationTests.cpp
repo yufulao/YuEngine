@@ -19,6 +19,12 @@
 #include "YuEngine/RenderScene/RenderScenePrimitiveGeometryRequest.h"
 #include "YuEngine/RenderScene/RenderScenePrimitiveGeometryStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeCameraRecord.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameBuilder.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameDrawRecord.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameEntityRequest.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameRequest.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameResult.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialBuilder.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRecord.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRequest.h"
@@ -34,6 +40,8 @@
 #include "YuEngine/Rhi/RhiSamplerHandle.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
+#include "YuEngine/World/WorldObjectId.h"
+#include "YuEngine/World/WorldTransformState.h"
 
 using yuengine::asset::AssetHandle;
 using yuengine::rendercore::RenderCameraProjectionKind;
@@ -46,6 +54,12 @@ using yuengine::renderscene::RenderScenePrimitiveGeometryRecord;
 using yuengine::renderscene::RenderScenePrimitiveGeometryRequest;
 using yuengine::renderscene::RenderScenePrimitiveGeometryStatus;
 using yuengine::renderscene::RenderSceneRuntimeCameraRecord;
+using yuengine::renderscene::RenderSceneRuntimeFrameBuilder;
+using yuengine::renderscene::RenderSceneRuntimeFrameDrawRecord;
+using yuengine::renderscene::RenderSceneRuntimeFrameEntityRequest;
+using yuengine::renderscene::RenderSceneRuntimeFrameRequest;
+using yuengine::renderscene::RenderSceneRuntimeFrameResult;
+using yuengine::renderscene::RenderSceneRuntimeFrameStatus;
 using yuengine::renderscene::RenderSceneRuntimeMaterialBuilder;
 using yuengine::renderscene::RenderSceneRuntimeMaterialRecord;
 using yuengine::renderscene::RenderSceneRuntimeMaterialRequest;
@@ -61,6 +75,8 @@ using yuengine::rhi::RhiPrimitiveTopology;
 using yuengine::rhi::RhiSamplerHandle;
 using yuengine::rhi::RhiTextureHandle;
 using yuengine::rhi::RhiVertexBufferView;
+using yuengine::world::WorldObjectId;
+using yuengine::world::WorldTransformState;
 
 namespace {
 constexpr const char *TEST_CAMERA_FRAME =
@@ -87,6 +103,16 @@ constexpr const char *TEST_MATERIAL_INVALID_SAMPLER =
     "RenderScene_RuntimeMaterialReportsInvalidSamplerBinding";
 constexpr const char *TEST_MATERIAL_INVALID_PIPELINE =
     "RenderScene_RuntimeMaterialReportsInvalidPipeline";
+constexpr const char *TEST_FRAME_THREE_ENTITIES =
+    "RenderScene_RuntimeFrameSubmitsThreeEntitiesWithSharedMaterial";
+constexpr const char *TEST_FRAME_DUPLICATE_TRANSFORM =
+    "RenderScene_RuntimeFrameRejectsDuplicateTransforms";
+constexpr const char *TEST_FRAME_OUTPUT_CAPACITY =
+    "RenderScene_RuntimeFrameRejectsSmallOutputCapacity";
+constexpr const char *TEST_FRAME_MISSING_MATERIAL =
+    "RenderScene_RuntimeFrameReportsMissingMaterial";
+constexpr const char *TEST_FRAME_MISSING_GEOMETRY =
+    "RenderScene_RuntimeFrameReportsMissingGeometry";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -200,6 +226,65 @@ RenderSceneRuntimeMaterialRequest MakeMaterialRequest(
     request.material_id = MATERIAL_ID;
     request.pipeline = MakePipelineHandle();
     request.texture_slots = slots;
+    return request;
+}
+
+RenderSceneCameraBindingResult MakeCameraBinding() {
+    const std::array<RenderSceneRuntimeCameraRecord, 1U> cameras{CameraRecord()};
+    RenderSceneCameraBindingResult result{};
+    RenderSceneCameraFrameBinder binder;
+    binder.BuildActiveCameraFrame(CameraRequest(cameras), &result);
+    return result;
+}
+
+RenderScenePrimitiveGeometryRecord MakePrimitiveGeometryRecord(RenderScenePrimitiveGeometryKind kind) {
+    RenderScenePrimitiveGeometryBuilder builder;
+    RenderScenePrimitiveGeometryRecord record{};
+    builder.Build(GeometryRequest(kind), &record);
+    return record;
+}
+
+RenderSceneRuntimeMaterialRecord MakeRuntimeMaterialRecord() {
+    const std::array<RenderSceneRuntimeMaterialTextureSlot, 3U> slots{
+        MakeMaterialTextureSlot(0U),
+        MakeMaterialTextureSlot(1U),
+        MakeMaterialTextureSlot(2U)};
+    RenderSceneRuntimeMaterialBuilder builder;
+    RenderSceneRuntimeMaterialRecord record{};
+    builder.Build(MakeMaterialRequest(slots), &record);
+    return record;
+}
+
+WorldTransformState MakeTransform(float x, float y, float z) {
+    WorldTransformState transform{};
+    transform.translation_x = x;
+    transform.translation_y = y;
+    transform.translation_z = z;
+    return transform;
+}
+
+RenderSceneRuntimeFrameEntityRequest MakeRuntimeFrameEntity(
+    std::uint32_t world_object_id,
+    const WorldTransformState &transform,
+    RenderScenePrimitiveGeometryKind kind) {
+    RenderSceneRuntimeFrameEntityRequest entity{};
+    entity.world_object_id = WorldObjectId{world_object_id};
+    entity.transform = transform;
+    entity.geometry = MakePrimitiveGeometryRecord(kind);
+    entity.is_visible = true;
+    entity.is_active = true;
+    return entity;
+}
+
+RenderSceneRuntimeFrameRequest MakeRuntimeFrameRequest(
+    const RenderSceneCameraBindingResult &camera,
+    const RenderSceneRuntimeMaterialRecord &material,
+    std::span<const RenderSceneRuntimeFrameEntityRequest> entities) {
+    RenderSceneRuntimeFrameRequest request{};
+    request.frame_id = FRAME_ID;
+    request.camera = camera;
+    request.material = material;
+    request.entities = entities;
     return request;
 }
 
@@ -460,9 +545,127 @@ int RenderSceneRuntimeMaterialReportsInvalidPipeline() {
     return 0;
 }
 
+int RenderSceneRuntimeFrameSubmitsThreeEntitiesWithSharedMaterial() {
+    const RenderSceneCameraBindingResult camera = MakeCameraBinding();
+    const RenderSceneRuntimeMaterialRecord material = MakeRuntimeMaterialRecord();
+    const std::array<RenderSceneRuntimeFrameEntityRequest, 3U> entities{
+        MakeRuntimeFrameEntity(101U, MakeTransform(-2.0F, 0.0F, 0.0F), RenderScenePrimitiveGeometryKind::Cube),
+        MakeRuntimeFrameEntity(102U, MakeTransform(0.0F, 1.0F, 0.0F), RenderScenePrimitiveGeometryKind::Cylinder),
+        MakeRuntimeFrameEntity(103U, MakeTransform(2.0F, 0.0F, 1.0F), RenderScenePrimitiveGeometryKind::Cone)};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 3U> draws{};
+    RenderSceneRuntimeFrameResult result{};
+
+    RenderSceneRuntimeFrameBuilder builder;
+    const RenderSceneRuntimeFrameStatus status =
+        builder.Build(MakeRuntimeFrameRequest(camera, material, entities), draws, &result);
+    if (status != RenderSceneRuntimeFrameStatus::Success) {
+        return Fail("runtime frame three entity submission failed");
+    }
+
+    if (result.output_draw_count != 3U || result.material_id != MATERIAL_ID) {
+        return Fail("runtime frame output count or material mismatch");
+    }
+
+    if (draws[0U].draw.material_id != MATERIAL_ID || draws[1U].draw.material_id != MATERIAL_ID) {
+        return Fail("runtime frame did not share material across draws");
+    }
+
+    if (draws[2U].geometry_kind != RenderScenePrimitiveGeometryKind::Cone) {
+        return Fail("runtime frame geometry kind mismatch");
+    }
+
+    if (draws[0U].transform.translation_x == draws[1U].transform.translation_x) {
+        return Fail("runtime frame transforms were not distinct");
+    }
+
+    if (draws[1U].draw.draw.index_count != 192U) {
+        return Fail("runtime frame cylinder draw range mismatch");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeFrameRejectsDuplicateTransforms() {
+    const RenderSceneCameraBindingResult camera = MakeCameraBinding();
+    const RenderSceneRuntimeMaterialRecord material = MakeRuntimeMaterialRecord();
+    const WorldTransformState transform = MakeTransform(1.0F, 0.0F, 0.0F);
+    const std::array<RenderSceneRuntimeFrameEntityRequest, 2U> entities{
+        MakeRuntimeFrameEntity(101U, transform, RenderScenePrimitiveGeometryKind::Cube),
+        MakeRuntimeFrameEntity(102U, transform, RenderScenePrimitiveGeometryKind::Cylinder)};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 2U> draws{};
+    RenderSceneRuntimeFrameResult result{};
+
+    RenderSceneRuntimeFrameBuilder builder;
+    const RenderSceneRuntimeFrameStatus status =
+        builder.Build(MakeRuntimeFrameRequest(camera, material, entities), draws, &result);
+    if (status != RenderSceneRuntimeFrameStatus::DuplicateTransform) {
+        return Fail("runtime frame did not report duplicate transform");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeFrameRejectsSmallOutputCapacity() {
+    const RenderSceneCameraBindingResult camera = MakeCameraBinding();
+    const RenderSceneRuntimeMaterialRecord material = MakeRuntimeMaterialRecord();
+    const std::array<RenderSceneRuntimeFrameEntityRequest, 3U> entities{
+        MakeRuntimeFrameEntity(101U, MakeTransform(-2.0F, 0.0F, 0.0F), RenderScenePrimitiveGeometryKind::Cube),
+        MakeRuntimeFrameEntity(102U, MakeTransform(0.0F, 1.0F, 0.0F), RenderScenePrimitiveGeometryKind::Cylinder),
+        MakeRuntimeFrameEntity(103U, MakeTransform(2.0F, 0.0F, 1.0F), RenderScenePrimitiveGeometryKind::Cone)};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 2U> draws{};
+    RenderSceneRuntimeFrameResult result{};
+
+    RenderSceneRuntimeFrameBuilder builder;
+    const RenderSceneRuntimeFrameStatus status =
+        builder.Build(MakeRuntimeFrameRequest(camera, material, entities), draws, &result);
+    if (status != RenderSceneRuntimeFrameStatus::OutputCapacityExceeded) {
+        return Fail("runtime frame did not report output capacity");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeFrameReportsMissingMaterial() {
+    const RenderSceneCameraBindingResult camera = MakeCameraBinding();
+    const RenderSceneRuntimeMaterialRecord material{};
+    const std::array<RenderSceneRuntimeFrameEntityRequest, 1U> entities{
+        MakeRuntimeFrameEntity(101U, MakeTransform(0.0F, 0.0F, 0.0F), RenderScenePrimitiveGeometryKind::Cube)};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 1U> draws{};
+    RenderSceneRuntimeFrameResult result{};
+
+    RenderSceneRuntimeFrameBuilder builder;
+    const RenderSceneRuntimeFrameStatus status =
+        builder.Build(MakeRuntimeFrameRequest(camera, material, entities), draws, &result);
+    if (status != RenderSceneRuntimeFrameStatus::MissingMaterialRecord) {
+        return Fail("runtime frame did not report missing material");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeFrameReportsMissingGeometry() {
+    const RenderSceneCameraBindingResult camera = MakeCameraBinding();
+    const RenderSceneRuntimeMaterialRecord material = MakeRuntimeMaterialRecord();
+    std::array<RenderSceneRuntimeFrameEntityRequest, 1U> entities{
+        MakeRuntimeFrameEntity(101U, MakeTransform(0.0F, 0.0F, 0.0F), RenderScenePrimitiveGeometryKind::Cube)};
+    entities[0U].geometry = RenderScenePrimitiveGeometryRecord{};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 1U> draws{};
+    RenderSceneRuntimeFrameResult result{};
+
+    RenderSceneRuntimeFrameBuilder builder;
+    const RenderSceneRuntimeFrameStatus status =
+        builder.Build(MakeRuntimeFrameRequest(camera, material, entities), draws, &result);
+    if (status != RenderSceneRuntimeFrameStatus::MissingGeometryRecord) {
+        return Fail("runtime frame did not report missing geometry");
+    }
+
+    return 0;
+}
+
 int RenderSceneRuntimeVisualFoundationNoEditorWebUiInputDependency() {
     RenderSceneCameraFrameBinder binder;
     RenderScenePrimitiveGeometryBuilder builder;
+    RenderSceneRuntimeFrameBuilder frame_builder;
     RenderSceneRuntimeMaterialBuilder material_builder;
     RenderScenePrimitiveGeometryRecord record{};
     const RenderScenePrimitiveGeometryStatus status = builder.Validate(record);
@@ -479,6 +682,14 @@ int RenderSceneRuntimeVisualFoundationNoEditorWebUiInputDependency() {
     RenderSceneRuntimeMaterialRecord material_record{};
     if (material_builder.Validate(material_record) != RenderSceneRuntimeMaterialStatus::MissingMaterialRecord) {
         return Fail("runtime visual boundary material setup failed");
+    }
+
+    RenderSceneRuntimeFrameResult frame_result{};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 1U> draws{};
+    RenderSceneRuntimeFrameRequest frame_request{};
+    frame_request.frame_id = FRAME_ID;
+    if (frame_builder.Build(frame_request, draws, &frame_result) != RenderSceneRuntimeFrameStatus::MissingCamera) {
+        return Fail("runtime visual boundary frame setup failed");
     }
 
     return 0;
@@ -531,6 +742,26 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_MATERIAL_INVALID_PIPELINE) {
         return RenderSceneRuntimeMaterialReportsInvalidPipeline();
+    }
+
+    if (name == TEST_FRAME_THREE_ENTITIES) {
+        return RenderSceneRuntimeFrameSubmitsThreeEntitiesWithSharedMaterial();
+    }
+
+    if (name == TEST_FRAME_DUPLICATE_TRANSFORM) {
+        return RenderSceneRuntimeFrameRejectsDuplicateTransforms();
+    }
+
+    if (name == TEST_FRAME_OUTPUT_CAPACITY) {
+        return RenderSceneRuntimeFrameRejectsSmallOutputCapacity();
+    }
+
+    if (name == TEST_FRAME_MISSING_MATERIAL) {
+        return RenderSceneRuntimeFrameReportsMissingMaterial();
+    }
+
+    if (name == TEST_FRAME_MISSING_GEOMETRY) {
+        return RenderSceneRuntimeFrameReportsMissingGeometry();
     }
 
     if (name == TEST_BOUNDARY) {
