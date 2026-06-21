@@ -37,6 +37,7 @@
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
 #include "YuEngine/RenderScene/RenderSceneStatus.h"
+#include "YuEngine/RenderScene/RenderSceneOrbitCaptureRoute.h"
 #include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/RhiBackendKind.h"
@@ -100,6 +101,7 @@ using yuengine::asset::AssetHandle;
 using yuengine::kernel::RuntimeFrameContext;
 using yuengine::kernel::RuntimeFrameMode;
 using yuengine::rendercore::RenderCameraProjectionKind;
+using yuengine::rendercore::RenderCameraVector3;
 using yuengine::rendercore::RenderDrawableFramePipelineStatus;
 using yuengine::renderscene::RenderSceneCameraBindingRequest;
 using yuengine::renderscene::RenderSceneCameraBindingResult;
@@ -110,6 +112,12 @@ using yuengine::renderscene::RenderSceneOneCubeCaptureRequest;
 using yuengine::renderscene::RenderSceneOneCubeCaptureResult;
 using yuengine::renderscene::RenderSceneOneCubeCaptureRoute;
 using yuengine::renderscene::RenderSceneOneCubeCaptureStatus;
+using yuengine::renderscene::RenderSceneOrbitCaptureFrameReport;
+using yuengine::renderscene::RenderSceneOrbitCaptureMissingLayer;
+using yuengine::renderscene::RenderSceneOrbitCaptureRequest;
+using yuengine::renderscene::RenderSceneOrbitCaptureResult;
+using yuengine::renderscene::RenderSceneOrbitCaptureRoute;
+using yuengine::renderscene::RenderSceneOrbitCaptureStatus;
 using yuengine::renderscene::RenderScenePrimitiveGeometryBuilder;
 using yuengine::renderscene::RenderScenePrimitiveGeometryKind;
 using yuengine::renderscene::RenderScenePrimitiveGeometryRecord;
@@ -235,6 +243,8 @@ constexpr const char *TEST_L1_VIS_SHARED_THREE_TEXTURE_MATERIAL =
     "RenderScene_L1Vis003CapturesSharedThreeTextureMaterialSceneThroughRuntimeRoute";
 constexpr const char *TEST_L1_VIS_ANIMATED_TRANSFORM =
     "RenderScene_L1Vis004CapturesAnimatedTransformSceneThroughRuntimeRoute";
+constexpr const char *TEST_L1_VIS_ORBIT_CAPTURE =
+    "RenderScene_L1Vis005CapturesDeterministicOrbitSequence";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -243,11 +253,15 @@ constexpr char L1_VIS_001_OUTPUT_PATH[] = "Artifacts/L1Vis001/StaticOneCube.rvf"
 constexpr char L1_VIS_002_OUTPUT_PATH[] = "Artifacts/L1Vis002/ThreePrimitivePlaced.rvf";
 constexpr char L1_VIS_003_OUTPUT_PATH[] = "Artifacts/L1Vis003/SharedThreeTextureMaterial.rvf";
 constexpr char L1_VIS_004_OUTPUT_PATH[] = "Artifacts/L1Vis004/AnimatedTransform.rvf";
+constexpr char L1_VIS_005_OUTPUT_PATH_PREFIX[] = "Artifacts/L1Vis005/OrbitCapture";
 constexpr char L1_VIS_002_CUBE_NAME[] = "Cube";
 constexpr char L1_VIS_002_CYLINDER_NAME[] = "Cylinder";
 constexpr char L1_VIS_002_CONE_NAME[] = "Cone";
 constexpr char L1_VIS_004_CLIP_NAME[] = "L1VisAnimatedTransform";
+constexpr float PI_VALUE = 3.14159265359F;
 constexpr float HALF_PI = 1.57079632679F;
+constexpr float THREE_HALF_PI = 4.71238898038F;
+constexpr float FULL_ORBIT_RADIANS = 6.28318530718F;
 constexpr float TOLERANCE = 0.0001F;
 constexpr std::uint32_t FRAME_ID = 9101U;
 constexpr std::uint32_t CAMERA_ID = 9201U;
@@ -266,6 +280,9 @@ constexpr std::uint16_t L1_VIS_CAPTURE_EXTENT = 4U;
 constexpr std::uint8_t CAPTURE_SENTINEL = 0xCCU;
 constexpr std::uint64_t L1_VIS_004_CLIP_START_NANOSECONDS = 1000000000ULL;
 constexpr std::uint64_t L1_VIS_004_SAMPLE_NANOSECONDS = 1500000000ULL;
+constexpr std::uint32_t L1_VIS_005_FRAME_COUNT = 5U;
+constexpr float L1_VIS_005_ORBIT_RADIUS = 5.0F;
+constexpr float L1_VIS_005_ORBIT_HEIGHT = 2.0F;
 
 struct L1VisAnimatedEntityReport final {
     WorldObjectId world_object_id{};
@@ -1080,6 +1097,91 @@ RenderSceneThreePrimitiveCaptureRequest MakeAnimatedThreeTextureMaterialCaptureR
     return request;
 }
 
+bool ApplyL1Vis004RuntimeAnimationToEntities(
+    std::array<RenderSceneThreePrimitiveEntityRequest, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT>
+        *out_entities) {
+    if (out_entities == nullptr) {
+        return false;
+    }
+
+    WorldInstance world;
+    WorldTransformBridgeDesc bridge_desc{};
+    bridge_desc.bridge_capacity = static_cast<std::uint32_t>(RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT);
+    WorldTransformBridge bridge(world, bridge_desc);
+    if (!RegisterAnimationTargets(world, bridge, *out_entities)) {
+        return false;
+    }
+
+    const std::array<AnimationRuntimeClipRecord, 1U> clips{MakeL1Vis004Clip()};
+    const WorldObjectId cube_id = (*out_entities)[0U].world_object_id;
+    const WorldObjectId cylinder_id = (*out_entities)[1U].world_object_id;
+    const WorldObjectId cone_id = (*out_entities)[2U].world_object_id;
+    const std::array<AnimationRuntimeTrackRecord, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> tracks{
+        MakeL1Vis004Track(0U, cube_id,
+            AnimationRuntimeChannel::RotationY, AnimationRuntimeInterpolation::Linear),
+        MakeL1Vis004Track(1U, cylinder_id,
+            AnimationRuntimeChannel::RotationZ, AnimationRuntimeInterpolation::Step),
+        MakeL1Vis004Track(2U, cone_id,
+            AnimationRuntimeChannel::RotationX, AnimationRuntimeInterpolation::Linear)};
+    const std::array<AnimationRuntimeKeyframeRecord, 6U> keyframes{
+        MakeL1Vis004Keyframe(0.0F, 0.0F),
+        MakeL1Vis004Keyframe(1.0F, 0.8F),
+        MakeL1Vis004Keyframe(0.0F, 0.25F),
+        MakeL1Vis004Keyframe(1.0F, 0.75F),
+        MakeL1Vis004Keyframe(0.0F, 0.0F),
+        MakeL1Vis004Keyframe(1.0F, 1.0F)};
+
+    std::array<AnimationRuntimeSampledValue, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> sampled_values{};
+    AnimationRuntimeSampleResult sample_result{};
+    AnimationRuntimeSampler sampler;
+    const AnimationRuntimeSampleRequest sample_request =
+        MakeL1Vis004SampleRequest(clips, tracks, keyframes);
+    const AnimationRuntimeStatus sample_status =
+        sampler.Sample(sample_request, sampled_values, &sample_result);
+    if (sample_status != AnimationRuntimeStatus::Success) {
+        return false;
+    }
+
+    AnimationRuntimeTransformApplyResult apply_result{};
+    const AnimationRuntimeTransformApplyRequest apply_request{&bridge, sampled_values};
+    const AnimationRuntimeStatus apply_status =
+        sampler.ApplySampledTransform(apply_request, &apply_result);
+    if (apply_status != AnimationRuntimeStatus::Success) {
+        return false;
+    }
+
+    if (apply_result.applied_value_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return false;
+    }
+
+    if (apply_result.updated_object_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return false;
+    }
+
+    return ApplyAnimatedTransformsToEntities(bridge, out_entities);
+}
+
+RenderSceneOrbitCaptureRequest MakeOrbitCaptureRequest(
+    L1Vis001RhiDevice &device,
+    std::vector<std::uint8_t> &capture,
+    std::span<const RenderSceneThreePrimitiveEntityRequest> entities) {
+    RenderSceneOrbitCaptureRequest request{};
+    request.first_frame_id = FRAME_ID;
+    request.frame_count = L1_VIS_005_FRAME_COUNT;
+    request.camera_template = CameraRecord();
+    request.material = MakeRuntimeMaterialRecord();
+    request.entities = entities;
+    request.target = RenderCameraVector3{0.0F, 0.0F, 0.0F};
+    request.orbit_radius = L1_VIS_005_ORBIT_RADIUS;
+    request.orbit_height = L1_VIS_005_ORBIT_HEIGHT;
+    request.rhi_device = &device;
+    request.output_path_prefix = L1_VIS_005_OUTPUT_PATH_PREFIX;
+    request.output_path_prefix_byte_count = sizeof(L1_VIS_005_OUTPUT_PATH_PREFIX) - 1U;
+    request.capture_output = std::span<std::uint8_t>(capture.data(), capture.size());
+    request.capture_byte_budget_per_entity = L1VisCaptureByteCount();
+    return request;
+}
+
 bool CaptureWasWritten(const std::vector<std::uint8_t> &capture) {
     for (std::uint8_t value : capture) {
         if (value != CAPTURE_SENTINEL) {
@@ -1105,6 +1207,87 @@ bool CaptureSegmentWasWritten(const std::vector<std::uint8_t> &capture, std::siz
     }
 
     return false;
+}
+
+bool OrbitFrameCaptureSegmentWasWritten(
+    const std::vector<std::uint8_t> &capture,
+    std::size_t frame_index) {
+    const std::size_t frame_byte_count =
+        L1VisCaptureByteCount() * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    const std::size_t begin_index = frame_index * frame_byte_count;
+    const std::size_t end_index = begin_index + frame_byte_count;
+    if (end_index > capture.size()) {
+        return false;
+    }
+
+    for (std::size_t index = begin_index; index < end_index; ++index) {
+        if (capture[index] != CAPTURE_SENTINEL) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+std::string_view OrbitOutputPathForFrame(std::uint32_t frame_index) {
+    if (frame_index == 0U) {
+        return "Artifacts/L1Vis005/OrbitCapture.Frame000.rvf";
+    }
+
+    if (frame_index == 1U) {
+        return "Artifacts/L1Vis005/OrbitCapture.Frame001.rvf";
+    }
+
+    if (frame_index == 2U) {
+        return "Artifacts/L1Vis005/OrbitCapture.Frame002.rvf";
+    }
+
+    if (frame_index == 3U) {
+        return "Artifacts/L1Vis005/OrbitCapture.Frame003.rvf";
+    }
+
+    if (frame_index == 4U) {
+        return "Artifacts/L1Vis005/OrbitCapture.Frame004.rvf";
+    }
+
+    return {};
+}
+
+bool OrbitOutputPathMatches(const RenderSceneOrbitCaptureFrameReport &frame_report) {
+    const std::string_view expected = OrbitOutputPathForFrame(frame_report.frame_index);
+    if (expected.empty()) {
+        return false;
+    }
+
+    const std::string_view actual(frame_report.output_path, frame_report.output_path_byte_count);
+    return actual == expected;
+}
+
+bool OrbitFramePoseMatches(
+    const RenderSceneOrbitCaptureFrameReport &frame_report,
+    float expected_x,
+    float expected_z) {
+    if (!Approx(frame_report.camera_pose.position.x, expected_x)) {
+        return false;
+    }
+
+    if (!Approx(frame_report.camera_pose.position.y, L1_VIS_005_ORBIT_HEIGHT)) {
+        return false;
+    }
+
+    if (!Approx(frame_report.camera_pose.position.z, expected_z)) {
+        return false;
+    }
+
+    if (!Approx(frame_report.camera_pose.target.x, 0.0F)) {
+        return false;
+    }
+
+    if (!Approx(frame_report.camera_pose.target.y, 0.0F)) {
+        return false;
+    }
+
+    return Approx(frame_report.camera_pose.target.z, 0.0F);
 }
 
 int RenderSceneRuntimeCameraRecordBuildsDeterministicFrame() {
@@ -1982,6 +2165,141 @@ int RenderSceneL1Vis004CapturesAnimatedTransformSceneThroughRuntimeRoute() {
     return 0;
 }
 
+int RenderSceneL1Vis005CapturesDeterministicOrbitSequence() {
+    L1Vis001RhiDevice device;
+    const std::size_t frame_capture_byte_count =
+        L1VisCaptureByteCount() * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    std::vector<std::uint8_t> capture(
+        frame_capture_byte_count * L1_VIS_005_FRAME_COUNT,
+        CAPTURE_SENTINEL);
+    std::array<RenderSceneThreePrimitiveEntityRequest, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT>
+        entities = MakeThreePrimitiveEntities();
+    if (!ApplyL1Vis004RuntimeAnimationToEntities(&entities)) {
+        return Fail("l1 vis orbit capture animation setup failed");
+    }
+
+    RenderSceneOrbitCaptureRoute route;
+    RenderSceneOrbitCaptureResult result{};
+    const RenderSceneOrbitCaptureRequest request =
+        MakeOrbitCaptureRequest(device, capture, entities);
+    const RenderSceneOrbitCaptureStatus status = route.Execute(request, &result);
+    if (status != RenderSceneOrbitCaptureStatus::Success) {
+        return Fail("l1 vis orbit capture route did not complete");
+    }
+
+    if (result.first_missing_layer != RenderSceneOrbitCaptureMissingLayer::None) {
+        return Fail("l1 vis orbit capture reported missing layer on success");
+    }
+
+    if (result.requested_frame_count != L1_VIS_005_FRAME_COUNT ||
+        result.completed_frame_count != L1_VIS_005_FRAME_COUNT) {
+        return Fail("l1 vis orbit capture did not emit bounded frame set");
+    }
+
+    if (!Approx(result.orbit_radius, L1_VIS_005_ORBIT_RADIUS) ||
+        !Approx(result.orbit_height, L1_VIS_005_ORBIT_HEIGHT)) {
+        return Fail("l1 vis orbit capture metadata lost orbit bounds");
+    }
+
+    if (result.frame_capture_byte_budget != frame_capture_byte_count ||
+        result.capture_bytes_written != capture.size()) {
+        return Fail("l1 vis orbit capture byte budget mismatch");
+    }
+
+    const std::array<float, L1_VIS_005_FRAME_COUNT> expected_angles{
+        0.0F,
+        HALF_PI,
+        PI_VALUE,
+        THREE_HALF_PI,
+        FULL_ORBIT_RADIANS};
+    const std::array<float, L1_VIS_005_FRAME_COUNT> expected_x{
+        0.0F,
+        L1_VIS_005_ORBIT_RADIUS,
+        0.0F,
+        -L1_VIS_005_ORBIT_RADIUS,
+        0.0F};
+    const std::array<float, L1_VIS_005_FRAME_COUNT> expected_z{
+        -L1_VIS_005_ORBIT_RADIUS,
+        0.0F,
+        L1_VIS_005_ORBIT_RADIUS,
+        0.0F,
+        -L1_VIS_005_ORBIT_RADIUS};
+    for (std::size_t index = 0U; index < L1_VIS_005_FRAME_COUNT; ++index) {
+        const std::uint32_t frame_index = static_cast<std::uint32_t>(index);
+        const RenderSceneOrbitCaptureFrameReport &frame_report = result.frames[index];
+        if (frame_report.status != RenderSceneOrbitCaptureStatus::Success) {
+            return Fail("l1 vis orbit capture frame status mismatch");
+        }
+
+        if (frame_report.first_missing_layer != RenderSceneOrbitCaptureMissingLayer::None) {
+            return Fail("l1 vis orbit capture frame reported missing layer");
+        }
+
+        if (frame_report.frame_index != frame_index ||
+            frame_report.frame_id != FRAME_ID + frame_index) {
+            return Fail("l1 vis orbit capture frame identity mismatch");
+        }
+
+        if (!Approx(frame_report.orbit_angle_radians, expected_angles[index])) {
+            return Fail("l1 vis orbit capture angle mismatch");
+        }
+
+        if (!OrbitFramePoseMatches(frame_report, expected_x[index], expected_z[index])) {
+            return Fail("l1 vis orbit capture camera pose mismatch");
+        }
+
+        if (frame_report.capture.frame_id != frame_report.frame_id ||
+            frame_report.capture.camera_id != CAMERA_ID ||
+            frame_report.capture.output_byte_budget != frame_capture_byte_count) {
+            return Fail("l1 vis orbit capture frame metadata mismatch");
+        }
+
+        if (frame_report.output_status != RenderSceneThreePrimitiveCaptureOutputStatus::CaptureAvailable ||
+            !OrbitOutputPathMatches(frame_report)) {
+            return Fail("l1 vis orbit capture output metadata mismatch");
+        }
+
+        if (frame_report.capture_bytes_written != frame_capture_byte_count ||
+            frame_report.capture_result.capture_bytes_written != frame_capture_byte_count) {
+            return Fail("l1 vis orbit capture frame byte count mismatch");
+        }
+
+        if (frame_report.capture_result.entity_report_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
+            frame_report.capture_result.render_result_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+            return Fail("l1 vis orbit capture frame entity count mismatch");
+        }
+
+        if (!Approx(frame_report.capture_result.entity_reports[0U].draw_record.transform.rotation_y, 0.4F) ||
+            !Approx(frame_report.capture_result.entity_reports[1U].draw_record.transform.rotation_z, 0.25F) ||
+            !Approx(frame_report.capture_result.entity_reports[2U].draw_record.transform.rotation_x, 0.5F)) {
+            return Fail("l1 vis orbit capture did not consume animated transforms");
+        }
+
+        if (!OrbitFrameCaptureSegmentWasWritten(capture, index)) {
+            return Fail("l1 vis orbit capture frame segment was not written");
+        }
+    }
+
+    if (std::string_view(result.frames[0U].output_path, result.frames[0U].output_path_byte_count) ==
+        std::string_view(result.frames[1U].output_path, result.frames[1U].output_path_byte_count)) {
+        return Fail("l1 vis orbit capture collapsed output paths to one still");
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    const std::uint64_t expected_draw_count =
+        static_cast<std::uint64_t>(L1_VIS_005_FRAME_COUNT) *
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    const std::uint64_t expected_binding_count = expected_draw_count * 3U;
+    if (snapshot.submitted_indexed_draw_count != expected_draw_count ||
+        snapshot.submitted_sampled_texture_bind_count != expected_binding_count ||
+        snapshot.submitted_sampler_bind_count != expected_binding_count ||
+        snapshot.capture_count != expected_draw_count) {
+        return Fail("l1 vis orbit capture did not drive multi-frame rhi counters");
+    }
+
+    return 0;
+}
+
 int RenderSceneL1Vis002ReportsGeometryMissingLayerForCylinder() {
     L1Vis001RhiDevice device;
     std::vector<std::uint8_t> capture(
@@ -2143,6 +2461,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_L1_VIS_ANIMATED_TRANSFORM) {
         return RenderSceneL1Vis004CapturesAnimatedTransformSceneThroughRuntimeRoute();
+    }
+
+    if (name == TEST_L1_VIS_ORBIT_CAPTURE) {
+        return RenderSceneL1Vis005CapturesDeterministicOrbitSequence();
     }
 
     if (name == TEST_BOUNDARY) {
