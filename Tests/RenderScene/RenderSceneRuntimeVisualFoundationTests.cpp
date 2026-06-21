@@ -7,9 +7,12 @@
 #include <cstdio>
 #include <span>
 #include <string_view>
+#include <vector>
 
 #include "YuEngine/Asset/AssetHandle.h"
 #include "YuEngine/RenderCore/RenderCameraProjectionKind.h"
+#include "YuEngine/RenderCore/RenderDrawableFramePipelineStatus.h"
+#include "YuEngine/RenderScene/RenderSceneOneCubeCaptureRoute.h"
 #include "YuEngine/RenderScene/RenderSceneCameraBindingRequest.h"
 #include "YuEngine/RenderScene/RenderSceneCameraBindingResult.h"
 #include "YuEngine/RenderScene/RenderSceneCameraFrameBinder.h"
@@ -31,13 +34,40 @@
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
 #include "YuEngine/RenderScene/RenderSceneStatus.h"
+#include "YuEngine/Rhi/IRhiDevice.h"
+#include "YuEngine/Rhi/RhiBackendKind.h"
+#include "YuEngine/Rhi/RhiBufferDesc.h"
 #include "YuEngine/Rhi/RhiBufferHandle.h"
+#include "YuEngine/Rhi/RhiCapabilities.h"
+#include "YuEngine/Rhi/RhiCaptureResult.h"
 #include "YuEngine/Rhi/RhiColor.h"
+#include "YuEngine/Rhi/RhiColorTargetDesc.h"
+#include "YuEngine/Rhi/RhiCommandList.h"
+#include "YuEngine/Rhi/RhiConstants.h"
+#include "YuEngine/Rhi/RhiDeviceDesc.h"
+#include "YuEngine/Rhi/RhiDeviceSnapshot.h"
+#include "YuEngine/Rhi/RhiDrawDesc.h"
+#include "YuEngine/Rhi/RhiFenceHandle.h"
+#include "YuEngine/Rhi/RhiFormat.h"
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiIndexFormat.h"
+#include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiPrimitiveTopology.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementDrainRequest.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementDrainResult.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementRecord.h"
+#include "YuEngine/Rhi/RhiPrimitiveRetirementRequest.h"
+#include "YuEngine/Rhi/RhiSamplerBinding.h"
+#include "YuEngine/Rhi/RhiSamplerDesc.h"
 #include "YuEngine/Rhi/RhiSamplerHandle.h"
+#include "YuEngine/Rhi/RhiSampledTextureBinding.h"
+#include "YuEngine/Rhi/RhiShaderModuleDesc.h"
+#include "YuEngine/Rhi/RhiShaderModuleHandle.h"
+#include "YuEngine/Rhi/RhiStatus.h"
+#include "YuEngine/Rhi/RhiSwapchainResizeRequest.h"
+#include "YuEngine/Rhi/RhiSwapchainResizeResult.h"
+#include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
 #include "YuEngine/World/WorldObjectId.h"
@@ -45,9 +75,16 @@
 
 using yuengine::asset::AssetHandle;
 using yuengine::rendercore::RenderCameraProjectionKind;
+using yuengine::rendercore::RenderDrawableFramePipelineStatus;
 using yuengine::renderscene::RenderSceneCameraBindingRequest;
 using yuengine::renderscene::RenderSceneCameraBindingResult;
 using yuengine::renderscene::RenderSceneCameraFrameBinder;
+using yuengine::renderscene::RenderSceneOneCubeCaptureMissingLayer;
+using yuengine::renderscene::RenderSceneOneCubeCaptureOutputStatus;
+using yuengine::renderscene::RenderSceneOneCubeCaptureRequest;
+using yuengine::renderscene::RenderSceneOneCubeCaptureResult;
+using yuengine::renderscene::RenderSceneOneCubeCaptureRoute;
+using yuengine::renderscene::RenderSceneOneCubeCaptureStatus;
 using yuengine::renderscene::RenderScenePrimitiveGeometryBuilder;
 using yuengine::renderscene::RenderScenePrimitiveGeometryKind;
 using yuengine::renderscene::RenderScenePrimitiveGeometryRecord;
@@ -66,15 +103,46 @@ using yuengine::renderscene::RenderSceneRuntimeMaterialRequest;
 using yuengine::renderscene::RenderSceneRuntimeMaterialStatus;
 using yuengine::renderscene::RenderSceneRuntimeMaterialTextureSlot;
 using yuengine::renderscene::RenderSceneStatus;
+using yuengine::rhi::IRhiDevice;
+using yuengine::rhi::RhiBackendKind;
+using yuengine::rhi::RhiBufferDesc;
 using yuengine::rhi::RhiBufferHandle;
+using yuengine::rhi::RhiCapabilities;
+using yuengine::rhi::RhiCaptureResult;
 using yuengine::rhi::RhiColor;
+using yuengine::rhi::RhiColorTargetDesc;
+using yuengine::rhi::RhiCommandList;
+using yuengine::rhi::RhiDeviceDesc;
+using yuengine::rhi::RhiDeviceSnapshot;
+using yuengine::rhi::RhiDrawDesc;
+using yuengine::rhi::RhiDrawIndexedDesc;
+using yuengine::rhi::RhiFenceHandle;
+using yuengine::rhi::RhiFormat;
 using yuengine::rhi::RhiIndexBufferView;
 using yuengine::rhi::RhiIndexFormat;
+using yuengine::rhi::RhiPipelineDesc;
 using yuengine::rhi::RhiPipelineHandle;
+using yuengine::rhi::RhiPrimitiveRetirementDrainRequest;
+using yuengine::rhi::RhiPrimitiveRetirementDrainResult;
+using yuengine::rhi::RhiPrimitiveRetirementRecord;
+using yuengine::rhi::RhiPrimitiveRetirementRequest;
 using yuengine::rhi::RhiPrimitiveTopology;
+using yuengine::rhi::RhiSamplerBinding;
+using yuengine::rhi::RhiSamplerDesc;
 using yuengine::rhi::RhiSamplerHandle;
+using yuengine::rhi::RhiSampledTextureBinding;
+using yuengine::rhi::RhiShaderModuleDesc;
+using yuengine::rhi::RhiShaderModuleHandle;
+using yuengine::rhi::RhiStatus;
+using yuengine::rhi::RhiSwapchainResizeRequest;
+using yuengine::rhi::RhiSwapchainResizeResult;
+using yuengine::rhi::RhiTextureDesc;
 using yuengine::rhi::RhiTextureHandle;
 using yuengine::rhi::RhiVertexBufferView;
+using yuengine::rhi::MAX_CAPTURE_FIXTURE_EXTENT;
+using yuengine::rhi::MAX_COLOR_TARGET_EXTENT;
+using yuengine::rhi::MAX_COMMANDS;
+using yuengine::rhi::RGBA8_BYTES_PER_PIXEL;
 using yuengine::world::WorldObjectId;
 using yuengine::world::WorldTransformState;
 
@@ -113,10 +181,17 @@ constexpr const char *TEST_FRAME_MISSING_MATERIAL =
     "RenderScene_RuntimeFrameReportsMissingMaterial";
 constexpr const char *TEST_FRAME_MISSING_GEOMETRY =
     "RenderScene_RuntimeFrameReportsMissingGeometry";
+constexpr const char *TEST_L1_VIS_ONE_CUBE_CAPTURE =
+    "RenderScene_L1Vis001CapturesStaticCubeThroughRuntimeRoute";
+constexpr const char *TEST_L1_VIS_ENV_BLOCKED =
+    "RenderScene_L1Vis001ReportsBlockedEnvForMissingSwapchain";
+constexpr const char *TEST_L1_VIS_SHADER_MISSING =
+    "RenderScene_L1Vis001ReportsShaderPipelineMissingLayer";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
+constexpr char L1_VIS_001_OUTPUT_PATH[] = "Artifacts/L1Vis001/StaticOneCube.rvf";
 constexpr float HALF_PI = 1.57079632679F;
 constexpr float TOLERANCE = 0.0001F;
 constexpr std::uint32_t FRAME_ID = 9101U;
@@ -130,6 +205,8 @@ constexpr std::size_t VERTEX_STRIDE_BYTES = 32U;
 constexpr std::size_t VERTEX_BUFFER_BYTES = VERTEX_STRIDE_BYTES * 128U;
 constexpr std::size_t INDEX_BUFFER_BYTES = sizeof(std::uint16_t) * 256U;
 constexpr std::size_t CAPTURE_BUDGET = 4096U;
+constexpr std::uint16_t L1_VIS_CAPTURE_EXTENT = 4U;
+constexpr std::uint8_t CAPTURE_SENTINEL = 0xCCU;
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -141,6 +218,381 @@ bool Approx(float left, float right) {
     const float delta = std::fabs(left - right);
     return delta <= TOLERANCE;
 }
+
+bool TextureHandlesMatch(RhiTextureHandle left, RhiTextureHandle right) {
+    if (left.slot != right.slot) {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+std::size_t L1VisCaptureByteCount() {
+    const std::size_t width = L1_VIS_CAPTURE_EXTENT;
+    const std::size_t height = L1_VIS_CAPTURE_EXTENT;
+    return width * height * RGBA8_BYTES_PER_PIXEL;
+}
+
+class L1Vis001RhiDevice final : public IRhiDevice {
+public:
+    L1Vis001RhiDevice() {
+        ResetSwapchain();
+    }
+
+    RhiStatus Initialize(const RhiDeviceDesc &) override {
+        ResetSwapchain();
+        return RhiStatus::Success;
+    }
+
+    RhiStatus CreateColorTarget(const RhiColorTargetDesc &, RhiTextureHandle &out_handle) override {
+        out_handle = RhiTextureHandle{};
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus GetSwapchainColorTarget(RhiTextureHandle &out_handle) const override {
+        out_handle = RhiTextureHandle{};
+        if (!snapshot_.swapchain.valid) {
+            return RhiStatus::InvalidLifecycle;
+        }
+
+        out_handle = target_;
+        return RhiStatus::Success;
+    }
+
+    RhiStatus ResizeSwapchain(
+        const RhiSwapchainResizeRequest &,
+        RhiSwapchainResizeResult &out_result) override {
+        out_result = RhiSwapchainResizeResult{};
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus DestroyTarget(RhiTextureHandle) override {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus RecordClear(RhiCommandList &command_list, RhiTextureHandle handle, RhiColor color) override {
+        if (!TextureHandlesMatch(handle, target_)) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidHandle;
+        }
+
+        const RhiStatus status = command_list.RecordClear(handle, color);
+        if (status != RhiStatus::Success) {
+            ++snapshot_.failed_operation_count;
+            return status;
+        }
+
+        last_clear_color_ = color;
+        ++snapshot_.recorded_command_count;
+        return RhiStatus::Success;
+    }
+
+    RhiStatus RecordBindPipeline(RhiCommandList &command_list, RhiPipelineHandle handle) override {
+        if (handle.slot != pipeline_.slot || handle.generation != pipeline_.generation) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidHandle;
+        }
+
+        const RhiStatus status = command_list.RecordBindPipeline(handle);
+        if (status != RhiStatus::Success) {
+            ++snapshot_.failed_operation_count;
+            return status;
+        }
+
+        ++snapshot_.recorded_command_count;
+        return RhiStatus::Success;
+    }
+
+    RhiStatus RecordBindVertexBuffer(RhiCommandList &command_list, const RhiVertexBufferView &view) override {
+        if (view.buffer.slot != vertex_buffer_.slot || view.buffer.generation != vertex_buffer_.generation) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidHandle;
+        }
+
+        const RhiStatus status = command_list.RecordBindVertexBuffer(view);
+        if (status != RhiStatus::Success) {
+            ++snapshot_.failed_operation_count;
+            return status;
+        }
+
+        ++snapshot_.recorded_command_count;
+        return RhiStatus::Success;
+    }
+
+    RhiStatus RecordBindIndexBuffer(RhiCommandList &command_list, const RhiIndexBufferView &view) override {
+        if (view.buffer.slot != index_buffer_.slot || view.buffer.generation != index_buffer_.generation) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidHandle;
+        }
+
+        const RhiStatus status = command_list.RecordBindIndexBuffer(view);
+        if (status != RhiStatus::Success) {
+            ++snapshot_.failed_operation_count;
+            return status;
+        }
+
+        ++snapshot_.recorded_command_count;
+        return RhiStatus::Success;
+    }
+
+    RhiStatus RecordBindSampledTexture(
+        RhiCommandList &command_list,
+        const RhiSampledTextureBinding &binding) override {
+        if (!TextureHandlesMatch(binding.texture, texture_)) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidHandle;
+        }
+
+        const RhiStatus status = command_list.RecordBindSampledTexture(binding);
+        if (status != RhiStatus::Success) {
+            ++snapshot_.failed_operation_count;
+            return status;
+        }
+
+        ++snapshot_.recorded_command_count;
+        return RhiStatus::Success;
+    }
+
+    RhiStatus RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) override {
+        if (binding.sampler.slot != sampler_.slot || binding.sampler.generation != sampler_.generation) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidHandle;
+        }
+
+        const RhiStatus status = command_list.RecordBindSampler(binding);
+        if (status != RhiStatus::Success) {
+            ++snapshot_.failed_operation_count;
+            return status;
+        }
+
+        ++snapshot_.recorded_command_count;
+        return RhiStatus::Success;
+    }
+
+    RhiStatus RecordDraw(RhiCommandList &, const RhiDrawDesc &) override {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus RecordDrawIndexed(RhiCommandList &command_list, const RhiDrawIndexedDesc &desc) override {
+        if (desc.topology != RhiPrimitiveTopology::TriangleList) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidDescriptor;
+        }
+
+        const RhiStatus status = command_list.RecordDrawIndexed(desc);
+        if (status != RhiStatus::Success) {
+            ++snapshot_.failed_operation_count;
+            return status;
+        }
+
+        last_draw_index_count_ = desc.index_count;
+        ++snapshot_.recorded_command_count;
+        return RhiStatus::Success;
+    }
+
+    RhiStatus Submit(const RhiCommandList &command_list) override {
+        if (!command_list.IsComplete()) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidLifecycle;
+        }
+
+        if (!TextureHandlesMatch(command_list.TargetHandle(), target_)) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidHandle;
+        }
+
+        const auto command_snapshot = command_list.Snapshot();
+        snapshot_.command_storage_capacity_before_frame = command_snapshot.capacity;
+        snapshot_.command_storage_capacity_after_last_frame = command_snapshot.capacity;
+        snapshot_.submitted_indexed_draw_count += command_snapshot.indexed_draw_command_count;
+        snapshot_.submitted_sampled_texture_bind_count += command_snapshot.sampled_texture_bind_command_count;
+        snapshot_.submitted_sampler_bind_count += command_snapshot.sampler_bind_command_count;
+        snapshot_.last_indexed_draw_index_count = last_draw_index_count_;
+        ++snapshot_.submit_count;
+        submitted_ = true;
+        return RhiStatus::Success;
+    }
+
+    RhiStatus Present() override {
+        if (!submitted_) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidLifecycle;
+        }
+
+        ++snapshot_.present_count;
+        snapshot_.swapchain.presented = true;
+        presented_ = true;
+        return RhiStatus::Success;
+    }
+
+    RhiCaptureResult CapturePresentedTarget(std::span<std::uint8_t> destination) override {
+        if (!presented_) {
+            ++snapshot_.failed_operation_count;
+            return RhiCaptureResult{RhiStatus::InvalidLifecycle, 0U};
+        }
+
+        const std::size_t byte_count = L1VisCaptureByteCount();
+        if (destination.size() < byte_count) {
+            ++snapshot_.failed_operation_count;
+            return RhiCaptureResult{RhiStatus::CapacityExceeded, 0U};
+        }
+
+        for (std::size_t index = 0U; index < byte_count; index += RGBA8_BYTES_PER_PIXEL) {
+            destination[index] = last_clear_color_.r;
+            destination[index + 1U] = static_cast<std::uint8_t>(last_draw_index_count_);
+            destination[index + 2U] = last_clear_color_.b;
+            destination[index + 3U] = last_clear_color_.a;
+        }
+
+        ++snapshot_.capture_count;
+        snapshot_.last_capture_bytes_written = byte_count;
+        return RhiCaptureResult{RhiStatus::Success, byte_count};
+    }
+
+    RhiStatus CreateBuffer(
+        const RhiBufferDesc &,
+        std::span<const std::uint8_t>,
+        RhiBufferHandle &out_handle) override {
+        out_handle = RhiBufferHandle{};
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus UpdateBuffer(
+        RhiBufferHandle,
+        std::span<const std::uint8_t>,
+        RhiFenceHandle &out_fence) override {
+        out_fence = RhiFenceHandle{};
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus DestroyBuffer(RhiBufferHandle) override {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus CreateTexture(
+        const RhiTextureDesc &,
+        std::span<const std::uint8_t>,
+        RhiTextureHandle &out_handle) override {
+        out_handle = RhiTextureHandle{};
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus UpdateTexture(
+        RhiTextureHandle,
+        std::span<const std::uint8_t>,
+        RhiFenceHandle &out_fence) override {
+        out_fence = RhiFenceHandle{};
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus DestroyTexture(RhiTextureHandle) override {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus CreateSampler(const RhiSamplerDesc &, RhiSamplerHandle &out_handle) override {
+        out_handle = RhiSamplerHandle{};
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus DestroySampler(RhiSamplerHandle) override {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus CreateShaderModule(const RhiShaderModuleDesc &, RhiShaderModuleHandle &out_handle) override {
+        out_handle = RhiShaderModuleHandle{};
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus DestroyShaderModule(RhiShaderModuleHandle) override {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus CreatePipeline(const RhiPipelineDesc &, RhiPipelineHandle &out_handle) override {
+        out_handle = RhiPipelineHandle{};
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus DestroyPipeline(RhiPipelineHandle) override {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus RequestPrimitiveRetirement(
+        const RhiPrimitiveRetirementRequest &,
+        RhiPrimitiveRetirementRecord &out_record) override {
+        out_record = RhiPrimitiveRetirementRecord{};
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus QueryPrimitiveRetirement(
+        std::uint64_t,
+        RhiPrimitiveRetirementRecord &out_record) const override {
+        out_record = RhiPrimitiveRetirementRecord{};
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus DrainPrimitiveRetirements(
+        const RhiPrimitiveRetirementDrainRequest &,
+        RhiPrimitiveRetirementDrainResult &out_result) override {
+        out_result = RhiPrimitiveRetirementDrainResult{};
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiCapabilities Capabilities() const override {
+        RhiCapabilities capabilities{};
+        capabilities.backend_kind = RhiBackendKind::Null;
+        capabilities.color_format = RhiFormat::Rgba8Unorm;
+        capabilities.color_target_capacity = 1U;
+        capabilities.command_list_capacity = MAX_COMMANDS;
+        capabilities.max_color_target_extent = MAX_COLOR_TARGET_EXTENT;
+        capabilities.max_capture_fixture_extent = MAX_CAPTURE_FIXTURE_EXTENT;
+        capabilities.supports_capture = true;
+        capabilities.supports_swapchain = true;
+        return capabilities;
+    }
+
+    RhiDeviceSnapshot Snapshot() const override {
+        return snapshot_;
+    }
+
+    void SetSwapchainValid(bool value) {
+        snapshot_.swapchain.valid = value;
+    }
+
+private:
+    void ResetSwapchain() {
+        target_ = RhiTextureHandle{7U, 1U};
+        pipeline_ = RhiPipelineHandle{4U, 1U};
+        vertex_buffer_ = RhiBufferHandle{1U, 1U};
+        index_buffer_ = RhiBufferHandle{2U, 1U};
+        texture_ = RhiTextureHandle{10U, 1U};
+        sampler_ = RhiSamplerHandle{20U, 1U};
+        snapshot_ = RhiDeviceSnapshot{};
+        snapshot_.color_target_capacity = 1U;
+        snapshot_.color_target_count = 1U;
+        snapshot_.created_target_count = 1U;
+        snapshot_.swapchain.valid = true;
+        snapshot_.swapchain.extent.width = L1_VIS_CAPTURE_EXTENT;
+        snapshot_.swapchain.extent.height = L1_VIS_CAPTURE_EXTENT;
+        snapshot_.swapchain.color_format = RhiFormat::Rgba8Unorm;
+        snapshot_.swapchain.color_target = target_;
+        last_clear_color_ = RhiColor{};
+        last_draw_index_count_ = 0U;
+        submitted_ = false;
+        presented_ = false;
+    }
+
+    RhiDeviceSnapshot snapshot_{};
+    RhiTextureHandle target_{};
+    RhiPipelineHandle pipeline_{};
+    RhiBufferHandle vertex_buffer_{};
+    RhiBufferHandle index_buffer_{};
+    RhiTextureHandle texture_{};
+    RhiSamplerHandle sampler_{};
+    RhiColor last_clear_color_{};
+    std::uint32_t last_draw_index_count_ = 0U;
+    bool submitted_ = false;
+    bool presented_ = false;
+};
 
 RenderSceneRuntimeCameraRecord CameraRecord(std::uint32_t camera_id=CAMERA_ID) {
     RenderSceneRuntimeCameraRecord camera{};
@@ -286,6 +738,34 @@ RenderSceneRuntimeFrameRequest MakeRuntimeFrameRequest(
     request.material = material;
     request.entities = entities;
     return request;
+}
+
+RenderSceneOneCubeCaptureRequest MakeOneCubeCaptureRequest(
+    L1Vis001RhiDevice &device,
+    std::vector<std::uint8_t> &capture) {
+    RenderSceneOneCubeCaptureRequest request{};
+    request.frame_id = FRAME_ID;
+    request.camera = MakeCameraBinding();
+    request.cube_geometry = MakePrimitiveGeometryRecord(RenderScenePrimitiveGeometryKind::Cube);
+    request.material = MakeRuntimeMaterialRecord();
+    request.world_object_id = WorldObjectId{501U};
+    request.transform = MakeTransform(0.0F, 0.0F, 0.0F);
+    request.rhi_device = &device;
+    request.output_path = L1_VIS_001_OUTPUT_PATH;
+    request.output_path_byte_count = sizeof(L1_VIS_001_OUTPUT_PATH) - 1U;
+    request.capture_output = std::span<std::uint8_t>(capture.data(), capture.size());
+    request.capture_byte_budget = capture.size();
+    return request;
+}
+
+bool CaptureWasWritten(const std::vector<std::uint8_t> &capture) {
+    for (std::uint8_t value : capture) {
+        if (value != CAPTURE_SENTINEL) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 int RenderSceneRuntimeCameraRecordBuildsDeterministicFrame() {
@@ -662,6 +1142,129 @@ int RenderSceneRuntimeFrameReportsMissingGeometry() {
     return 0;
 }
 
+int RenderSceneL1Vis001CapturesStaticCubeThroughRuntimeRoute() {
+    L1Vis001RhiDevice device;
+    std::vector<std::uint8_t> capture(L1VisCaptureByteCount(), CAPTURE_SENTINEL);
+    RenderSceneOneCubeCaptureRoute route;
+    RenderSceneOneCubeCaptureResult result{};
+
+    const RenderSceneOneCubeCaptureStatus status =
+        route.Execute(MakeOneCubeCaptureRequest(device, capture), &result);
+    if (status != RenderSceneOneCubeCaptureStatus::Success) {
+        return Fail("l1 vis one cube route did not complete");
+    }
+
+    if (result.first_missing_layer != RenderSceneOneCubeCaptureMissingLayer::None) {
+        return Fail("l1 vis one cube route reported a missing layer on success");
+    }
+
+    if (result.output_status != RenderSceneOneCubeCaptureOutputStatus::CaptureAvailable) {
+        return Fail("l1 vis one cube route did not report capture availability");
+    }
+
+    if (result.capture.frame_id != FRAME_ID || result.capture.camera_id != CAMERA_ID) {
+        return Fail("l1 vis one cube route capture metadata mismatch");
+    }
+
+    if (result.frame_result.output_draw_count != 1U || result.frame_result.submitted_entity_count != 1U) {
+        return Fail("l1 vis one cube route did not submit exactly one entity");
+    }
+
+    if (result.draw_record.geometry_kind != RenderScenePrimitiveGeometryKind::Cube) {
+        return Fail("l1 vis one cube route did not submit cube geometry");
+    }
+
+    if (result.draw_record.draw.draw.index_count != 36U) {
+        return Fail("l1 vis one cube route cube draw range mismatch");
+    }
+
+    if (result.render_result.status != RenderDrawableFramePipelineStatus::Success) {
+        return Fail("l1 vis one cube route did not execute rendercore pipeline");
+    }
+
+    if (result.capture_bytes_written != capture.size()) {
+        return Fail("l1 vis one cube route capture byte count mismatch");
+    }
+
+    if (!CaptureWasWritten(capture)) {
+        return Fail("l1 vis one cube route did not write capture bytes");
+    }
+
+    if (result.output_path_byte_count != sizeof(L1_VIS_001_OUTPUT_PATH) - 1U) {
+        return Fail("l1 vis one cube route output path metadata mismatch");
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    if (snapshot.submitted_indexed_draw_count != 1U ||
+        snapshot.submitted_sampled_texture_bind_count != 1U ||
+        snapshot.submitted_sampler_bind_count != 1U ||
+        snapshot.capture_count != 1U) {
+        return Fail("l1 vis one cube route did not drive rhi draw capture counters");
+    }
+
+    return 0;
+}
+
+int RenderSceneL1Vis001ReportsBlockedEnvForMissingSwapchain() {
+    L1Vis001RhiDevice device;
+    device.SetSwapchainValid(false);
+    std::vector<std::uint8_t> capture(L1VisCaptureByteCount(), CAPTURE_SENTINEL);
+    RenderSceneOneCubeCaptureRoute route;
+    RenderSceneOneCubeCaptureResult result{};
+
+    const RenderSceneOneCubeCaptureStatus status =
+        route.Execute(MakeOneCubeCaptureRequest(device, capture), &result);
+    if (status != RenderSceneOneCubeCaptureStatus::BlockedByEnv) {
+        return Fail("l1 vis one cube route did not report env block for missing swapchain");
+    }
+
+    if (result.first_missing_layer != RenderSceneOneCubeCaptureMissingLayer::RhiCaptureTarget) {
+        return Fail("l1 vis one cube route reported wrong env missing layer");
+    }
+
+    if (result.output_status != RenderSceneOneCubeCaptureOutputStatus::BlockedByEnv) {
+        return Fail("l1 vis one cube route reported wrong output status for env block");
+    }
+
+    if (result.render_result.status != RenderDrawableFramePipelineStatus::InvalidSwapchain) {
+        return Fail("l1 vis one cube route did not expose rendercore swapchain status");
+    }
+
+    if (CaptureWasWritten(capture)) {
+        return Fail("l1 vis one cube route wrote capture on env block");
+    }
+
+    return 0;
+}
+
+int RenderSceneL1Vis001ReportsShaderPipelineMissingLayer() {
+    L1Vis001RhiDevice device;
+    std::vector<std::uint8_t> capture(L1VisCaptureByteCount(), CAPTURE_SENTINEL);
+    RenderSceneOneCubeCaptureRequest request = MakeOneCubeCaptureRequest(device, capture);
+    request.material.pipeline = RhiPipelineHandle{};
+    RenderSceneOneCubeCaptureRoute route;
+    RenderSceneOneCubeCaptureResult result{};
+
+    const RenderSceneOneCubeCaptureStatus status = route.Execute(request, &result);
+    if (status != RenderSceneOneCubeCaptureStatus::Fail) {
+        return Fail("l1 vis one cube route did not fail on missing shader pipeline");
+    }
+
+    if (result.first_missing_layer != RenderSceneOneCubeCaptureMissingLayer::ShaderPipeline) {
+        return Fail("l1 vis one cube route reported wrong semantic missing layer");
+    }
+
+    if (result.output_status == RenderSceneOneCubeCaptureOutputStatus::BlockedByEnv) {
+        return Fail("l1 vis one cube route hid semantic failure as env block");
+    }
+
+    if (device.Snapshot().submit_count != 0U || CaptureWasWritten(capture)) {
+        return Fail("l1 vis one cube route mutated rhi on semantic failure");
+    }
+
+    return 0;
+}
+
 int RenderSceneRuntimeVisualFoundationNoEditorWebUiInputDependency() {
     RenderSceneCameraFrameBinder binder;
     RenderScenePrimitiveGeometryBuilder builder;
@@ -762,6 +1365,18 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_FRAME_MISSING_GEOMETRY) {
         return RenderSceneRuntimeFrameReportsMissingGeometry();
+    }
+
+    if (name == TEST_L1_VIS_ONE_CUBE_CAPTURE) {
+        return RenderSceneL1Vis001CapturesStaticCubeThroughRuntimeRoute();
+    }
+
+    if (name == TEST_L1_VIS_ENV_BLOCKED) {
+        return RenderSceneL1Vis001ReportsBlockedEnvForMissingSwapchain();
+    }
+
+    if (name == TEST_L1_VIS_SHADER_MISSING) {
+        return RenderSceneL1Vis001ReportsShaderPipelineMissingLayer();
     }
 
     if (name == TEST_BOUNDARY) {
