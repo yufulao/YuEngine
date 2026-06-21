@@ -19,12 +19,19 @@
 #include "YuEngine/RenderScene/RenderScenePrimitiveGeometryRequest.h"
 #include "YuEngine/RenderScene/RenderScenePrimitiveGeometryStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeCameraRecord.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialBuilder.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRecord.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRequest.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialStatus.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
 #include "YuEngine/RenderScene/RenderSceneStatus.h"
 #include "YuEngine/Rhi/RhiBufferHandle.h"
 #include "YuEngine/Rhi/RhiColor.h"
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiIndexFormat.h"
+#include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiPrimitiveTopology.h"
+#include "YuEngine/Rhi/RhiSamplerHandle.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
 
@@ -39,12 +46,19 @@ using yuengine::renderscene::RenderScenePrimitiveGeometryRecord;
 using yuengine::renderscene::RenderScenePrimitiveGeometryRequest;
 using yuengine::renderscene::RenderScenePrimitiveGeometryStatus;
 using yuengine::renderscene::RenderSceneRuntimeCameraRecord;
+using yuengine::renderscene::RenderSceneRuntimeMaterialBuilder;
+using yuengine::renderscene::RenderSceneRuntimeMaterialRecord;
+using yuengine::renderscene::RenderSceneRuntimeMaterialRequest;
+using yuengine::renderscene::RenderSceneRuntimeMaterialStatus;
+using yuengine::renderscene::RenderSceneRuntimeMaterialTextureSlot;
 using yuengine::renderscene::RenderSceneStatus;
 using yuengine::rhi::RhiBufferHandle;
 using yuengine::rhi::RhiColor;
 using yuengine::rhi::RhiIndexBufferView;
 using yuengine::rhi::RhiIndexFormat;
+using yuengine::rhi::RhiPipelineHandle;
 using yuengine::rhi::RhiPrimitiveTopology;
+using yuengine::rhi::RhiSamplerHandle;
 using yuengine::rhi::RhiTextureHandle;
 using yuengine::rhi::RhiVertexBufferView;
 
@@ -61,6 +75,18 @@ constexpr const char *TEST_GEOMETRY_MISSING =
     "RenderScene_PrimitiveGeometryMissingRecordReportsStatus";
 constexpr const char *TEST_GEOMETRY_SMALL_BUFFER =
     "RenderScene_PrimitiveGeometryRejectsSmallBufferRanges";
+constexpr const char *TEST_MATERIAL_THREE_SLOTS =
+    "RenderScene_RuntimeMaterialBindsThreeTextureSlots";
+constexpr const char *TEST_MATERIAL_MISSING_SLOT =
+    "RenderScene_RuntimeMaterialRejectsMissingThirdSlot";
+constexpr const char *TEST_MATERIAL_INVALID_TEXTURE =
+    "RenderScene_RuntimeMaterialReportsInvalidTextureAsset";
+constexpr const char *TEST_MATERIAL_INVALID_TEXTURE_BINDING =
+    "RenderScene_RuntimeMaterialReportsInvalidTextureBinding";
+constexpr const char *TEST_MATERIAL_INVALID_SAMPLER =
+    "RenderScene_RuntimeMaterialReportsInvalidSamplerBinding";
+constexpr const char *TEST_MATERIAL_INVALID_PIPELINE =
+    "RenderScene_RuntimeMaterialReportsInvalidPipeline";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -72,6 +98,8 @@ constexpr std::uint32_t CAMERA_ID = 9201U;
 constexpr std::uint32_t DRAW_ID = 9301U;
 constexpr std::uint32_t PASS_ID = 9401U;
 constexpr std::uint32_t MATERIAL_ID = 9501U;
+constexpr std::uint32_t MATERIAL_ASSET_SLOT = 9601U;
+constexpr std::uint32_t TEXTURE_ASSET_SLOT = 9701U;
 constexpr std::size_t VERTEX_STRIDE_BYTES = 32U;
 constexpr std::size_t VERTEX_BUFFER_BYTES = VERTEX_STRIDE_BYTES * 128U;
 constexpr std::size_t INDEX_BUFFER_BYTES = sizeof(std::uint16_t) * 256U;
@@ -143,6 +171,35 @@ RenderScenePrimitiveGeometryRequest GeometryRequest(RenderScenePrimitiveGeometry
     request.material_id = MATERIAL_ID;
     request.vertex_buffer = VertexBufferView();
     request.index_buffer = IndexBufferView();
+    return request;
+}
+
+AssetHandle MakeAsset(std::uint32_t slot) {
+    return AssetHandle{slot, 1U};
+}
+
+RhiPipelineHandle MakePipelineHandle() {
+    return RhiPipelineHandle{4U, 1U};
+}
+
+RenderSceneRuntimeMaterialTextureSlot MakeMaterialTextureSlot(std::uint32_t slot) {
+    RenderSceneRuntimeMaterialTextureSlot texture_slot{};
+    texture_slot.slot = slot;
+    texture_slot.texture_asset = MakeAsset(TEXTURE_ASSET_SLOT + slot);
+    texture_slot.sampled_texture.texture = RhiTextureHandle{10U + slot, 1U};
+    texture_slot.sampled_texture.slot = slot;
+    texture_slot.sampler.sampler = RhiSamplerHandle{20U + slot, 1U};
+    texture_slot.sampler.slot = slot;
+    return texture_slot;
+}
+
+RenderSceneRuntimeMaterialRequest MakeMaterialRequest(
+    std::span<const RenderSceneRuntimeMaterialTextureSlot> slots) {
+    RenderSceneRuntimeMaterialRequest request{};
+    request.material_asset = MakeAsset(MATERIAL_ASSET_SLOT);
+    request.material_id = MATERIAL_ID;
+    request.pipeline = MakePipelineHandle();
+    request.texture_slots = slots;
     return request;
 }
 
@@ -285,9 +342,128 @@ int RenderScenePrimitiveGeometryRejectsSmallBufferRanges() {
     return 0;
 }
 
+int RenderSceneRuntimeMaterialBindsThreeTextureSlots() {
+    const std::array<RenderSceneRuntimeMaterialTextureSlot, 3U> slots{
+        MakeMaterialTextureSlot(2U),
+        MakeMaterialTextureSlot(0U),
+        MakeMaterialTextureSlot(1U)};
+    RenderSceneRuntimeMaterialBuilder builder;
+    RenderSceneRuntimeMaterialRecord record{};
+    const RenderSceneRuntimeMaterialStatus status = builder.Build(MakeMaterialRequest(slots), &record);
+    if (status != RenderSceneRuntimeMaterialStatus::Success) {
+        return Fail("runtime material three slot build failed");
+    }
+
+    if (record.material_id != MATERIAL_ID || record.texture_slot_count != 3U) {
+        return Fail("runtime material identity or slot count mismatch");
+    }
+
+    if (record.texture_slots[0U].slot != 0U || record.texture_slots[1U].slot != 1U) {
+        return Fail("runtime material slots were not sorted");
+    }
+
+    if (record.texture_slots[2U].sampled_texture.slot != 2U) {
+        return Fail("runtime material sampled texture slot mismatch");
+    }
+
+    if (record.texture_slots[2U].sampler.slot != 2U) {
+        return Fail("runtime material sampler slot mismatch");
+    }
+
+    if (builder.Validate(record) != RenderSceneRuntimeMaterialStatus::Success) {
+        return Fail("runtime material validation failed");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeMaterialRejectsMissingThirdSlot() {
+    const std::array<RenderSceneRuntimeMaterialTextureSlot, 2U> slots{
+        MakeMaterialTextureSlot(0U),
+        MakeMaterialTextureSlot(1U)};
+    RenderSceneRuntimeMaterialBuilder builder;
+    RenderSceneRuntimeMaterialRecord record{};
+    const RenderSceneRuntimeMaterialStatus status = builder.Build(MakeMaterialRequest(slots), &record);
+    if (status != RenderSceneRuntimeMaterialStatus::MissingTextureSlot) {
+        return Fail("runtime material did not report missing third slot");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeMaterialReportsInvalidTextureAsset() {
+    std::array<RenderSceneRuntimeMaterialTextureSlot, 3U> slots{
+        MakeMaterialTextureSlot(0U),
+        MakeMaterialTextureSlot(1U),
+        MakeMaterialTextureSlot(2U)};
+    slots[1U].texture_asset = AssetHandle{};
+
+    RenderSceneRuntimeMaterialBuilder builder;
+    RenderSceneRuntimeMaterialRecord record{};
+    const RenderSceneRuntimeMaterialStatus status = builder.Build(MakeMaterialRequest(slots), &record);
+    if (status != RenderSceneRuntimeMaterialStatus::InvalidTextureAsset) {
+        return Fail("runtime material did not report invalid texture asset");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeMaterialReportsInvalidTextureBinding() {
+    std::array<RenderSceneRuntimeMaterialTextureSlot, 3U> slots{
+        MakeMaterialTextureSlot(0U),
+        MakeMaterialTextureSlot(1U),
+        MakeMaterialTextureSlot(2U)};
+    slots[0U].sampled_texture.texture.generation = 0U;
+
+    RenderSceneRuntimeMaterialBuilder builder;
+    RenderSceneRuntimeMaterialRecord record{};
+    const RenderSceneRuntimeMaterialStatus status = builder.Build(MakeMaterialRequest(slots), &record);
+    if (status != RenderSceneRuntimeMaterialStatus::InvalidTextureBinding) {
+        return Fail("runtime material did not report invalid texture binding");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeMaterialReportsInvalidSamplerBinding() {
+    std::array<RenderSceneRuntimeMaterialTextureSlot, 3U> slots{
+        MakeMaterialTextureSlot(0U),
+        MakeMaterialTextureSlot(1U),
+        MakeMaterialTextureSlot(2U)};
+    slots[2U].sampler.sampler.generation = 0U;
+
+    RenderSceneRuntimeMaterialBuilder builder;
+    RenderSceneRuntimeMaterialRecord record{};
+    const RenderSceneRuntimeMaterialStatus status = builder.Build(MakeMaterialRequest(slots), &record);
+    if (status != RenderSceneRuntimeMaterialStatus::InvalidSamplerBinding) {
+        return Fail("runtime material did not report invalid sampler binding");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeMaterialReportsInvalidPipeline() {
+    const std::array<RenderSceneRuntimeMaterialTextureSlot, 3U> slots{
+        MakeMaterialTextureSlot(0U),
+        MakeMaterialTextureSlot(1U),
+        MakeMaterialTextureSlot(2U)};
+    RenderSceneRuntimeMaterialRequest request = MakeMaterialRequest(slots);
+    request.pipeline.generation = 0U;
+
+    RenderSceneRuntimeMaterialBuilder builder;
+    RenderSceneRuntimeMaterialRecord record{};
+    const RenderSceneRuntimeMaterialStatus status = builder.Build(request, &record);
+    if (status != RenderSceneRuntimeMaterialStatus::InvalidPipeline) {
+        return Fail("runtime material did not report invalid pipeline");
+    }
+
+    return 0;
+}
+
 int RenderSceneRuntimeVisualFoundationNoEditorWebUiInputDependency() {
     RenderSceneCameraFrameBinder binder;
     RenderScenePrimitiveGeometryBuilder builder;
+    RenderSceneRuntimeMaterialBuilder material_builder;
     RenderScenePrimitiveGeometryRecord record{};
     const RenderScenePrimitiveGeometryStatus status = builder.Validate(record);
     if (status != RenderScenePrimitiveGeometryStatus::MissingGeometryRecord) {
@@ -298,6 +474,11 @@ int RenderSceneRuntimeVisualFoundationNoEditorWebUiInputDependency() {
     RenderSceneCameraBindingResult result{};
     if (binder.BuildActiveCameraFrame(CameraRequest(cameras), &result) != RenderSceneStatus::Success) {
         return Fail("runtime visual boundary camera setup failed");
+    }
+
+    RenderSceneRuntimeMaterialRecord material_record{};
+    if (material_builder.Validate(material_record) != RenderSceneRuntimeMaterialStatus::MissingMaterialRecord) {
+        return Fail("runtime visual boundary material setup failed");
     }
 
     return 0;
@@ -326,6 +507,30 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_GEOMETRY_SMALL_BUFFER) {
         return RenderScenePrimitiveGeometryRejectsSmallBufferRanges();
+    }
+
+    if (name == TEST_MATERIAL_THREE_SLOTS) {
+        return RenderSceneRuntimeMaterialBindsThreeTextureSlots();
+    }
+
+    if (name == TEST_MATERIAL_MISSING_SLOT) {
+        return RenderSceneRuntimeMaterialRejectsMissingThirdSlot();
+    }
+
+    if (name == TEST_MATERIAL_INVALID_TEXTURE) {
+        return RenderSceneRuntimeMaterialReportsInvalidTextureAsset();
+    }
+
+    if (name == TEST_MATERIAL_INVALID_TEXTURE_BINDING) {
+        return RenderSceneRuntimeMaterialReportsInvalidTextureBinding();
+    }
+
+    if (name == TEST_MATERIAL_INVALID_SAMPLER) {
+        return RenderSceneRuntimeMaterialReportsInvalidSamplerBinding();
+    }
+
+    if (name == TEST_MATERIAL_INVALID_PIPELINE) {
+        return RenderSceneRuntimeMaterialReportsInvalidPipeline();
     }
 
     if (name == TEST_BOUNDARY) {
