@@ -14,7 +14,7 @@
     const SCHEMA_VERSION = 1;
     const RESOURCE_KINDS = ["Sprite", "Font", "Localization", "Audio", "Custom"];
     const DEFAULT_VIEWPORT_RECT = { x: 0, y: 0, width: 960, height: 540 };
-    const COMPONENT_TYPES = ["Container", "Text", "Image", "Button", "Slider"];
+    const COMPONENT_TYPES = ["Node", "Container", "Text", "Image", "Button", "Slider"];
     const COMPONENT_RECORD_KEYS = ["common", "container", "text", "image", "button", "slider"];
     const LAYOUT_TYPES = ["Absolute", "Stack", "Grid", "Overlay", "ScrollViewport"];
     const TEXT_CONTENT_MODES = ["Plain", "LocalizationKey"];
@@ -198,6 +198,9 @@
     }
 
     function GetComponentRecordKey(component) {
+        if (component === "Node") {
+            return "";
+        }
         if (component === "Container") {
             return "container";
         }
@@ -937,6 +940,13 @@
             return;
         }
         const component_key = GetComponentRecordKey(node.component);
+        if (node.component === "Node") {
+            if (!node.components.common) {
+                PushIssue(issues, "MissingComponentRecord", "Node common component record is missing", node.nodeId);
+                return;
+            }
+            return;
+        }
         if (!component_key || !node.components[component_key]) {
             PushIssue(issues, "MissingComponentRecord", "Node component record is missing", node.nodeId);
             return;

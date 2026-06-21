@@ -295,6 +295,7 @@ body[data-resizing="true"] .runtime-resizer::before {
 }
 
 .panel {
+    position: relative;
     display: flex;
     min-height: 0;
     flex-direction: column;
@@ -335,6 +336,84 @@ body[data-resizing="true"] .runtime-resizer::before {
     flex: 1;
 }
 
+.hierarchy-search-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.hierarchy-search-row input {
+    width: 100%;
+    min-height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    padding: 0 9px;
+}
+
+.create-menu,
+.context-menu {
+    z-index: 30;
+    min-width: 176px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+    padding: 6px;
+}
+
+.create-menu {
+    position: absolute;
+    top: 46px;
+    right: 8px;
+}
+
+.context-menu {
+    position: fixed;
+}
+
+.create-menu[data-open="false"],
+.context-menu[data-open="false"] {
+    display: none;
+}
+
+.create-menu button,
+.context-menu-button {
+    display: block;
+    width: 100%;
+    min-height: 28px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    padding: 0 8px;
+    text-align: left;
+}
+
+.context-menu-button:disabled {
+    color: var(--text-muted);
+    cursor: default;
+    opacity: 0.55;
+}
+
+.context-menu-title {
+    overflow: hidden;
+    padding: 4px 8px 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.context-menu-separator {
+    height: 1px;
+    margin: 5px 0;
+    background: var(--border);
+}
+
 .tree-row,
 .resource-row {
     display: grid;
@@ -348,15 +427,25 @@ body[data-resizing="true"] .runtime-resizer::before {
 
 .tree-row {
     position: relative;
-    grid-template-columns: 24px minmax(0, 1fr) 48px;
-    gap: 6px;
-    min-height: 34px;
+    grid-template-columns: auto 18px 22px minmax(0, 1fr) 38px 24px 24px 24px;
+    gap: 4px;
+    min-height: 28px;
+    padding-right: 4px;
     cursor: pointer;
 }
 
 .tree-row[data-selected="true"] {
     background: var(--accent-muted);
     color: var(--accent-text);
+}
+
+.tree-row[data-visible="false"] .tree-label,
+.tree-row[data-enabled="false"] .tree-label {
+    opacity: 0.55;
+}
+
+.tree-row[data-locked="true"] .tree-label {
+    font-style: italic;
 }
 
 .tree-row[data-drop-mode="Before"]::before,
@@ -385,15 +474,41 @@ body[data-resizing="true"] .runtime-resizer::before {
 
 .tree-marker {
     display: inline-flex;
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     align-items: center;
     justify-content: center;
     border: 1px solid var(--border);
-    border-radius: 5px;
+    border-radius: 4px;
     background: var(--surface);
     font-size: 11px;
     font-weight: 700;
+}
+
+.tree-indent {
+    display: block;
+    height: 1px;
+}
+
+.tree-fold,
+.tree-action {
+    min-height: 20px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    padding: 0;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.tree-fold:hover,
+.tree-action:hover {
+    background: var(--surface-muted);
+    color: var(--text);
+}
+
+.tree-fold-spacer {
+    width: 18px;
 }
 
 .tree-label,
@@ -407,6 +522,17 @@ body[data-resizing="true"] .runtime-resizer::before {
     color: var(--text-muted);
     font-family: Consolas, "Courier New", monospace;
     font-size: 12px;
+}
+
+.tree-rename-input {
+    width: 100%;
+    min-width: 0;
+    min-height: 24px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text);
+    padding: 0 5px;
 }
 
 .danger-button {
@@ -476,7 +602,7 @@ body[data-resizing="true"] .runtime-resizer::before {
     height: 540px;
     flex: 0 0 auto;
     border: 1px solid var(--canvas-border);
-    border-radius: 8px;
+    border-radius: 0;
     background:
         linear-gradient(var(--canvas-surface-grid) 1px, transparent 1px),
         linear-gradient(90deg, var(--canvas-surface-grid) 1px, transparent 1px),
@@ -494,7 +620,7 @@ body[data-resizing="true"] .runtime-resizer::before {
     gap: 2px;
     overflow: hidden;
     border: 1px solid var(--canvas-node-border);
-    border-radius: 6px;
+    border-radius: 0;
     background: var(--canvas-node-background);
     padding: 6px 8px;
     text-align: left;
@@ -507,6 +633,10 @@ body[data-resizing="true"] .runtime-resizer::before {
 
 .canvas-node[data-enabled="false"] {
     opacity: 0.55;
+}
+
+.canvas-node[data-locked="true"] {
+    cursor: not-allowed;
 }
 
 .canvas-node-title {
@@ -536,12 +666,57 @@ body[data-resizing="true"] .runtime-resizer::before {
 
 .resize-handle {
     position: absolute;
-    right: 2px;
-    bottom: 2px;
-    width: 10px;
-    height: 10px;
-    border-right: 2px solid var(--accent);
-    border-bottom: 2px solid var(--accent);
+    width: 8px;
+    height: 8px;
+    border: 1px solid var(--accent);
+    background: var(--surface);
+}
+
+.resize-handle-n {
+    top: -5px;
+    left: calc(50% - 4px);
+    cursor: ns-resize;
+}
+
+.resize-handle-ne {
+    top: -5px;
+    right: -5px;
+    cursor: nesw-resize;
+}
+
+.resize-handle-e {
+    top: calc(50% - 4px);
+    right: -5px;
+    cursor: ew-resize;
+}
+
+.resize-handle-se {
+    right: -5px;
+    bottom: -5px;
+    cursor: nwse-resize;
+}
+
+.resize-handle-s {
+    bottom: -5px;
+    left: calc(50% - 4px);
+    cursor: ns-resize;
+}
+
+.resize-handle-sw {
+    bottom: -5px;
+    left: -5px;
+    cursor: nesw-resize;
+}
+
+.resize-handle-w {
+    top: calc(50% - 4px);
+    left: -5px;
+    cursor: ew-resize;
+}
+
+.resize-handle-nw {
+    top: -5px;
+    left: -5px;
     cursor: nwse-resize;
 }
 
@@ -626,6 +801,28 @@ body[data-resizing="true"] .runtime-resizer::before {
 
 .field-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.preset-title {
+    margin: 0 0 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.rect-preset-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 34px);
+    gap: 4px;
+    margin-bottom: 10px;
+}
+
+.rect-preset-button {
+    min-height: 26px;
+    border-radius: 4px;
+    padding: 0;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 11px;
 }
 
 .field span {

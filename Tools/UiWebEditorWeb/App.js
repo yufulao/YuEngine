@@ -15,6 +15,14 @@
         drag: null,
         hierarchyDrag: null,
         layoutDrag: null,
+        renameNodeId: 0,
+        createMenuOpen: false,
+        contextMenu: {
+            open: false,
+            nodeId: 0,
+            x: 0,
+            y: 0
+        },
         showRuntimeData: false,
         theme: "light",
         layout: {
@@ -314,7 +322,143 @@
         return left.nodeId - right.nodeId;
     }
 
-    function SelectNode(node_id) {
+    function GetEditorBoolMap(key) {
+        state.document.editor = state.document.editor || {};
+        const current = state.document.editor[key];
+        if (current && typeof current === "object") {
+            return current;
+        }
+        state.document.editor[key] = {};
+        return state.document.editor[key];
+    }
+
+    function IsNodeCollapsed(node_id) {
+        const collapsed = GetEditorBoolMap("collapsedNodeIds");
+        return Boolean(collapsed[String(node_id)]);
+    }
+
+    function IsNodeSelectionLocked(node_id) {
+        const locked = GetEditorBoolMap("selectionLockedNodeIds");
+        return Boolean(locked[String(node_id)]);
+    }
+
+    function SetEditorBoolMapValue(key, node_id, value) {
+        const map = GetEditorBoolMap(key);
+        const text_id = String(node_id);
+        if (value) {
+            map[text_id] = true;
+            state.document.editor.dirty = true;
+            Render();
+            return;
+        }
+        delete map[text_id];
+        state.document.editor.dirty = true;
+        Render();
+    }
+
+    function ToggleNodeCollapsed(node_id) {
+        SetEditorBoolMapValue("collapsedNodeIds", node_id, !IsNodeCollapsed(node_id));
+    }
+
+    function ToggleNodeSelectionLock(node_id) {
+        SetEditorBoolMapValue("selectionLockedNodeIds", node_id, !IsNodeSelectionLocked(node_id));
+    }
+
+    function ToggleNodeVisible(node_id) {
+        const node = FindNodeRecord(model.NormalizeDocument(state.document), node_id);
+        if (!node) {
+            return;
+        }
+        state.document = model.UpdateNode(state.document, node_id, { visible: !node.visible });
+        Render();
+    }
+
+    function ToggleNodeEnabled(node_id) {
+        const node = FindNodeRecord(model.NormalizeDocument(state.document), node_id);
+        if (!node) {
+            return;
+        }
+        state.document = model.UpdateNode(state.document, node_id, { enabled: !node.enabled });
+        Render();
+    }
+
+    function GetNodeChildCounts(document_value) {
+        const counts = new Map();
+        document_value.nodes.forEach(function CountChild(node) {
+            const current = counts.get(node.parentId) || 0;
+            counts.set(node.parentId, current + 1);
+        });
+        return counts;
+    }
+
+    function GetNodeParentMap(document_value) {
+        const parents = new Map();
+        document_value.nodes.forEach(function RegisterNode(node) {
+            parents.set(node.nodeId, node.parentId);
+        });
+        return parents;
+    }
+
+    function CollectAncestorIds(node_id, parent_map, output) {
+        let parent_id = parent_map.get(node_id) || 0;
+        while (parent_id > 0) {
+            output.add(parent_id);
+            parent_id = parent_map.get(parent_id) || 0;
+        }
+    }
+
+    function MatchesHierarchySearch(item, search_text) {
+        if (!search_text) {
+            return true;
+        }
+        const name = String(item.name || "").toLowerCase();
+        const component = String(item.component || "").toLowerCase();
+        const id_text = "#" + String(item.nodeId);
+        if (name.includes(search_text)) {
+            return true;
+        }
+        if (component.includes(search_text)) {
+            return true;
+        }
+        return id_text.includes(search_text);
+    }
+
+    function IsHiddenByCollapsedAncestor(item, parent_map) {
+        let parent_id = parent_map.get(item.nodeId) || 0;
+        while (parent_id > 0) {
+            if (IsNodeCollapsed(parent_id)) {
+                return true;
+            }
+            parent_id = parent_map.get(parent_id) || 0;
+        }
+        return false;
+    }
+
+    function BuildVisibleHierarchyItems(items, document_value) {
+        const search_text = String(state.filter || "").trim().toLowerCase();
+        const parent_map = GetNodeParentMap(document_value);
+        if (!search_text) {
+            return items.filter(function KeepExpandedItem(item) {
+                return !IsHiddenByCollapsedAncestor(item, parent_map);
+            });
+        }
+        const visible_ids = new Set();
+        items.forEach(function MatchItem(item) {
+            if (!MatchesHierarchySearch(item, search_text)) {
+                return;
+            }
+            visible_ids.add(item.nodeId);
+            CollectAncestorIds(item.nodeId, parent_map, visible_ids);
+        });
+        return items.filter(function KeepSearchItem(item) {
+            return visible_ids.has(item.nodeId);
+        });
+    }
+
+    function SelectNode(node_id, force_select) {
+        if (!force_select && IsNodeSelectionLocked(node_id)) {
+            return;
+        }
         state.document.editor.selectedNodeId = node_id;
         Render();
     }
@@ -354,6 +498,49 @@
         current[field_name] = nested;
         components[component_key] = current;
         UpdateSelectedNode({ components: components });
+    }
+
+    function AddNodeUnderParent(component, parent_id) {
+        const document_value = model.NormalizeDocument(state.document);
+        const parent = FindNodeRecord(document_value, parent_id);
+        const target_parent_id = parent ? parent.nodeId : document_value.schema.rootNodeId;
+        document_value.editor.selectedNodeId = target_parent_id;
+        state.document = model.AddNode(document_value, component);
+        SelectNode(state.document.editor.selectedNodeId, true);
+    }
+
+    function BeginRenameNode(node_id) {
+        state.renameNodeId = node_id;
+        SelectNode(node_id, true);
+    }
+
+    function CommitNodeRename(node_id, value) {
+        const name = String(value || "").trim();
+        if (!name) {
+            state.renameNodeId = 0;
+            Render();
+            return;
+        }
+        state.renameNodeId = 0;
+        state.document = model.UpdateNode(state.document, node_id, { name: name });
+        Render();
+    }
+
+    function RemoveNodeById(node_id) {
+        const document_value = model.NormalizeDocument(state.document);
+        if (node_id === document_value.schema.rootNodeId) {
+            return;
+        }
+        state.document = model.RemoveNode(document_value, node_id);
+        Render();
+    }
+
+    function RemoveSelectedNode() {
+        const selected = GetSelectedNode();
+        if (!selected) {
+            return;
+        }
+        RemoveNodeById(selected.nodeId);
     }
 
     function UpdateNodeRecord(collection_name, node_id, default_record, patch) {
@@ -416,11 +603,15 @@
         };
     }
 
-    function StartCanvasDrag(event, item, mode) {
+    function StartCanvasDrag(event, item, mode, handle) {
         event.preventDefault();
         event.stopPropagation();
+        if (IsNodeSelectionLocked(item.nodeId)) {
+            return;
+        }
         state.drag = {
             mode: mode,
+            handle: handle || "",
             nodeId: item.nodeId,
             startX: event.clientX,
             startY: event.clientY,
@@ -435,11 +626,38 @@
     }
 
     function StartCanvasMove(event, item) {
-        StartCanvasDrag(event, item, "Move");
+        StartCanvasDrag(event, item, "Move", "");
     }
 
-    function StartCanvasResize(event, item) {
-        StartCanvasDrag(event, item, "Resize");
+    function StartCanvasResize(event, item, handle) {
+        StartCanvasDrag(event, item, "Resize", handle);
+    }
+
+    function ApplyResizeHandleDelta(rect, handle, delta_x, delta_y) {
+        const min_size = 8;
+        const next_rect = {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height
+        };
+        if (handle.includes("w")) {
+            const right = next_rect.left + next_rect.width;
+            next_rect.left = Math.min(right - min_size, next_rect.left + delta_x);
+            next_rect.width = right - next_rect.left;
+        }
+        if (handle.includes("e")) {
+            next_rect.width = Math.max(min_size, next_rect.width + delta_x);
+        }
+        if (handle.includes("n")) {
+            const bottom = next_rect.top + next_rect.height;
+            next_rect.top = Math.min(bottom - min_size, next_rect.top + delta_y);
+            next_rect.height = bottom - next_rect.top;
+        }
+        if (handle.includes("s")) {
+            next_rect.height = Math.max(min_size, next_rect.height + delta_y);
+        }
+        return next_rect;
     }
 
     function UpdateCanvasDrag(event) {
@@ -457,9 +675,8 @@
             return;
         }
         if (state.drag.mode === "Resize") {
-            next_rect.width = Math.max(8, next_rect.width + delta_x);
-            next_rect.height = Math.max(8, next_rect.height + delta_y);
-            state.document = model.UpdateNodeFromCanvasRect(state.document, state.drag.nodeId, next_rect);
+            const resized_rect = ApplyResizeHandleDelta(next_rect, state.drag.handle, delta_x, delta_y);
+            state.document = model.UpdateNodeFromCanvasRect(state.document, state.drag.nodeId, resized_rect);
             Render();
             return;
         }
@@ -540,14 +757,89 @@
         AdjustLayoutByKeyboard(mode, delta);
     }
 
+    function IsTextEditingElement(element) {
+        if (!element) {
+            return false;
+        }
+        const tag_name = String(element.tagName || "").toLowerCase();
+        if (tag_name === "input") {
+            return true;
+        }
+        if (tag_name === "select") {
+            return true;
+        }
+        if (tag_name === "textarea") {
+            return true;
+        }
+        return Boolean(element.isContentEditable);
+    }
+
+    function BindCommittedTextInput(input, value, on_input) {
+        let committed_value = String(value);
+        function CommitValue() {
+            if (input.value === committed_value) {
+                return;
+            }
+            committed_value = input.value;
+            on_input(input.value);
+        }
+        input.addEventListener("blur", function OnBlurEvent() {
+            CommitValue();
+        });
+        input.addEventListener("keydown", function OnKeyDownEvent(event) {
+            if (event.key === "Escape") {
+                input.value = committed_value;
+                input.blur();
+                return;
+            }
+            if (event.key !== "Enter") {
+                return;
+            }
+            event.preventDefault();
+            CommitValue();
+            input.blur();
+        });
+    }
+
+    function BindCommittedNumberInput(input, value, on_input) {
+        let committed_value = String(value);
+        function CommitValue() {
+            if (input.value === committed_value) {
+                return;
+            }
+            const next_value = Number(input.value);
+            if (!Number.isFinite(next_value)) {
+                input.value = committed_value;
+                return;
+            }
+            committed_value = String(next_value);
+            input.value = committed_value;
+            on_input(next_value);
+        }
+        input.addEventListener("blur", function OnBlurEvent() {
+            CommitValue();
+        });
+        input.addEventListener("keydown", function OnKeyDownEvent(event) {
+            if (event.key === "Escape") {
+                input.value = committed_value;
+                input.blur();
+                return;
+            }
+            if (event.key !== "Enter") {
+                return;
+            }
+            event.preventDefault();
+            CommitValue();
+            input.blur();
+        });
+    }
+
     function AppendInput(container, label_text, value, on_input) {
         const group = CreateElement("label", "field");
         const label = CreateElement("span", "", label_text);
         const input = CreateElement("input", "", "");
-        input.value = value;
-        input.addEventListener("input", function OnInputEvent() {
-            on_input(input.value);
-        });
+        input.value = String(value);
+        BindCommittedTextInput(input, value, on_input);
         group.appendChild(label);
         group.appendChild(input);
         container.appendChild(group);
@@ -573,10 +865,7 @@
         const input = CreateElement("input", "", "");
         input.type = "number";
         input.value = String(value);
-        input.addEventListener("input", function OnInputEvent() {
-            const next_value = Number(input.value);
-            on_input(next_value);
-        });
+        BindCommittedNumberInput(input, value, on_input);
         group.appendChild(label);
         group.appendChild(input);
         container.appendChild(group);
@@ -669,20 +958,154 @@
         SetText("layout-id", String(state.document.schema.layoutId));
     }
 
+    function RenderCreateMenuState() {
+        const menu = GetElement("hierarchy-create-menu");
+        const button = GetElement("hierarchy-create-button");
+        if (!menu || !button) {
+            return;
+        }
+        menu.dataset.open = state.createMenuOpen ? "true" : "false";
+        button.setAttribute("aria-expanded", state.createMenuOpen ? "true" : "false");
+    }
+
+    function CloseFloatingMenus() {
+        state.createMenuOpen = false;
+        state.contextMenu.open = false;
+        state.contextMenu.nodeId = 0;
+        RenderCreateMenuState();
+        RenderHierarchyContextMenu();
+    }
+
+    function ToggleCreateMenu() {
+        state.createMenuOpen = !state.createMenuOpen;
+        state.contextMenu.open = false;
+        RenderCreateMenuState();
+        RenderHierarchyContextMenu();
+    }
+
+    function GetContextTargetNodeId() {
+        if (state.contextMenu.nodeId > 0) {
+            return state.contextMenu.nodeId;
+        }
+        const selected = GetSelectedNode();
+        if (selected) {
+            return selected.nodeId;
+        }
+        return state.document.schema.rootNodeId;
+    }
+
+    function AppendContextMenuButton(menu, label, on_click) {
+        const button = CreateElement("button", "context-menu-button", label);
+        button.type = "button";
+        button.addEventListener("click", function OnClickEvent(event) {
+            event.stopPropagation();
+            CloseFloatingMenus();
+            on_click();
+        });
+        menu.appendChild(button);
+        return button;
+    }
+
+    function RenderHierarchyContextMenu() {
+        const menu = GetElement("hierarchy-context-menu");
+        if (!menu) {
+            return;
+        }
+        Clear(menu);
+        menu.dataset.open = state.contextMenu.open ? "true" : "false";
+        if (!state.contextMenu.open) {
+            return;
+        }
+        const document_value = model.NormalizeDocument(state.document);
+        const node_id = GetContextTargetNodeId();
+        const node = FindNodeRecord(document_value, node_id);
+        const target_id = node ? node.nodeId : document_value.schema.rootNodeId;
+        menu.style.left = String(state.contextMenu.x) + "px";
+        menu.style.top = String(state.contextMenu.y) + "px";
+        menu.appendChild(CreateElement("div", "context-menu-title", node ? node.name : "Hierarchy"));
+        AppendContextMenuButton(menu, "Create Node", function CreateNode() {
+            AddNodeUnderParent("Node", target_id);
+        });
+        AppendContextMenuButton(menu, "Create Container Layout", function CreateContainer() {
+            AddNodeUnderParent("Container", target_id);
+        });
+        AppendContextMenuButton(menu, "Create Text", function CreateText() {
+            AddNodeUnderParent("Text", target_id);
+        });
+        AppendContextMenuButton(menu, "Create Image", function CreateImage() {
+            AddNodeUnderParent("Image", target_id);
+        });
+        AppendContextMenuButton(menu, "Create Button", function CreateButton() {
+            AddNodeUnderParent("Button", target_id);
+        });
+        AppendContextMenuButton(menu, "Create Slider", function CreateSlider() {
+            AddNodeUnderParent("Slider", target_id);
+        });
+        menu.appendChild(CreateElement("div", "context-menu-separator", ""));
+        AppendContextMenuButton(menu, "Rename", function RenameNode() {
+            BeginRenameNode(target_id);
+        });
+        AppendContextMenuButton(menu, node && node.visible ? "Hide" : "Show", function ToggleVisible() {
+            ToggleNodeVisible(target_id);
+        });
+        AppendContextMenuButton(menu, node && node.enabled ? "Deactivate" : "Activate", function ToggleActive() {
+            ToggleNodeEnabled(target_id);
+        });
+        AppendContextMenuButton(menu, IsNodeSelectionLocked(target_id) ? "Unlock Selection" : "Lock Selection", function ToggleLock() {
+            ToggleNodeSelectionLock(target_id);
+        });
+        const delete_button = AppendContextMenuButton(menu, "Delete", function DeleteNode() {
+            RemoveNodeById(target_id);
+        });
+        delete_button.disabled = target_id === document_value.schema.rootNodeId;
+    }
+
+    function OpenHierarchyContextMenu(event, node_id) {
+        event.preventDefault();
+        event.stopPropagation();
+        state.createMenuOpen = false;
+        state.contextMenu.open = true;
+        state.contextMenu.nodeId = node_id;
+        state.contextMenu.x = event.clientX;
+        state.contextMenu.y = event.clientY;
+        RenderCreateMenuState();
+        RenderHierarchyContextMenu();
+    }
+
     function RenderHierarchy() {
         const list = GetElement("hierarchy-list");
         Clear(list);
-        const items = model.BuildHierarchy(state.document);
+        const document_value = model.NormalizeDocument(state.document);
+        const child_counts = GetNodeChildCounts(document_value);
+        const items = BuildVisibleHierarchyItems(model.BuildHierarchy(document_value), document_value);
+        if (items.length === 0) {
+            list.appendChild(CreateElement("p", "empty-text", "No matching nodes"));
+            RenderCreateMenuState();
+            RenderHierarchyContextMenu();
+            return;
+        }
         items.forEach(function RenderItem(item) {
             const row = CreateElement("div", "tree-row", "");
+            const has_children = Boolean(child_counts.get(item.nodeId));
+            const is_collapsed = IsNodeCollapsed(item.nodeId);
+            const is_locked = IsNodeSelectionLocked(item.nodeId);
             row.tabIndex = 0;
             row.draggable = item.canDrag;
-            row.setAttribute("role", "button");
+            row.setAttribute("role", "treeitem");
             row.dataset.nodeId = String(item.nodeId);
-            row.style.paddingLeft = String(12 + item.depth * 16) + "px";
             row.dataset.selected = item.selected ? "true" : "false";
+            row.dataset.visible = item.visible ? "true" : "false";
+            row.dataset.enabled = item.enabled ? "true" : "false";
+            row.dataset.locked = is_locked ? "true" : "false";
             row.addEventListener("click", function OnClickEvent() {
                 SelectNode(item.nodeId);
+            });
+            row.addEventListener("dblclick", function OnDoubleClickEvent(event) {
+                event.preventDefault();
+                BeginRenameNode(item.nodeId);
+            });
+            row.addEventListener("contextmenu", function OnContextMenuEvent(event) {
+                OpenHierarchyContextMenu(event, item.nodeId);
             });
             row.addEventListener("keydown", function OnKeyDownEvent(event) {
                 if (event.key !== "Enter" && event.key !== " ") {
@@ -706,14 +1129,85 @@
             row.addEventListener("dragend", function OnDragEndEvent() {
                 FinishHierarchyDrag();
             });
+            const indent = CreateElement("span", "tree-indent", "");
+            indent.style.width = String(item.depth * 14) + "px";
+            row.appendChild(indent);
+            if (has_children) {
+                const fold = CreateElement("button", "tree-fold", is_collapsed ? "+" : "-");
+                fold.type = "button";
+                fold.title = is_collapsed ? "Expand" : "Collapse";
+                fold.addEventListener("click", function OnClickEvent(event) {
+                    event.stopPropagation();
+                    ToggleNodeCollapsed(item.nodeId);
+                });
+                row.appendChild(fold);
+            }
+            if (!has_children) {
+                row.appendChild(CreateElement("span", "tree-fold-spacer", ""));
+            }
             const marker = CreateElement("span", "tree-marker", item.component.slice(0, 1).toUpperCase());
             const text = CreateElement("span", "tree-label", item.name);
             const meta = CreateElement("span", "tree-meta", "#" + item.nodeId);
             row.appendChild(marker);
-            row.appendChild(text);
+            if (state.renameNodeId === item.nodeId) {
+                const rename = CreateElement("input", "tree-rename-input", "");
+                rename.value = item.name;
+                rename.addEventListener("click", function OnClickEvent(event) {
+                    event.stopPropagation();
+                });
+                rename.addEventListener("keydown", function OnKeyDownEvent(event) {
+                    if (event.key === "Escape") {
+                        state.renameNodeId = 0;
+                        Render();
+                        return;
+                    }
+                    if (event.key !== "Enter") {
+                        return;
+                    }
+                    event.preventDefault();
+                    CommitNodeRename(item.nodeId, rename.value);
+                });
+                rename.addEventListener("blur", function OnBlurEvent() {
+                    CommitNodeRename(item.nodeId, rename.value);
+                });
+                row.appendChild(rename);
+                window.setTimeout(function FocusRenameInput() {
+                    rename.focus();
+                    rename.select();
+                }, 0);
+            }
+            if (state.renameNodeId !== item.nodeId) {
+                row.appendChild(text);
+            }
             row.appendChild(meta);
+            const visible = CreateElement("button", "tree-action", item.visible ? "V" : "-");
+            visible.type = "button";
+            visible.title = item.visible ? "Visible" : "Hidden";
+            visible.addEventListener("click", function OnClickEvent(event) {
+                event.stopPropagation();
+                ToggleNodeVisible(item.nodeId);
+            });
+            row.appendChild(visible);
+            const enabled = CreateElement("button", "tree-action", item.enabled ? "A" : "I");
+            enabled.type = "button";
+            enabled.title = item.enabled ? "Active" : "Inactive";
+            enabled.addEventListener("click", function OnClickEvent(event) {
+                event.stopPropagation();
+                ToggleNodeEnabled(item.nodeId);
+            });
+            row.appendChild(enabled);
+            const lock = CreateElement("button", "tree-action", is_locked ? "L" : "S");
+            lock.type = "button";
+            lock.title = is_locked ? "Selection locked" : "Selectable";
+            lock.addEventListener("click", function OnClickEvent(event) {
+                event.stopPropagation();
+                ToggleNodeSelectionLock(item.nodeId);
+            });
+            row.appendChild(lock);
             list.appendChild(row);
         });
+        RenderCreateMenuState();
+        RenderHierarchyContextMenu();
     }
 
     function GetHierarchyDropMode(event, row) {
@@ -861,6 +1355,7 @@
             node.type = "button";
             node.dataset.selected = item.selected ? "true" : "false";
             node.dataset.enabled = item.enabled ? "true" : "false";
+            node.dataset.locked = IsNodeSelectionLocked(item.nodeId) ? "true" : "false";
             node.style.left = String(rect.left) + "px";
             node.style.top = String(rect.top) + "px";
             node.style.width = String(rect.width) + "px";
@@ -878,11 +1373,16 @@
                 node.style.color = item.previewTint;
             }
             node.appendChild(CreateElement("span", "canvas-node-preview", item.previewText));
-            const handle = CreateElement("span", "resize-handle", "");
-            handle.addEventListener("pointerdown", function OnPointerDownEvent(event) {
-                StartCanvasResize(event, item);
-            });
-            node.appendChild(handle);
+            if (item.selected) {
+                ["n", "ne", "e", "se", "s", "sw", "w", "nw"].forEach(function RenderResizeHandle(handle_name) {
+                    const handle = CreateElement("span", "resize-handle resize-handle-" + handle_name, "");
+                    handle.dataset.handle = handle_name;
+                    handle.addEventListener("pointerdown", function OnPointerDownEvent(event) {
+                        StartCanvasResize(event, item, handle_name);
+                    });
+                    node.appendChild(handle);
+                });
+            }
             canvas.appendChild(node);
         });
     }
@@ -908,8 +1408,73 @@
         });
     }
 
+    function ApplyRectTransformPreset(preset) {
+        const document_value = model.NormalizeDocument(state.document);
+        const selected = FindNodeRecord(document_value, document_value.editor.selectedNodeId);
+        if (!selected) {
+            return;
+        }
+        const resolved = model.ResolveDocumentRects(document_value);
+        const current_result = resolved.get(selected.nodeId);
+        if (!current_result || current_result.status !== "Success") {
+            return;
+        }
+        let parent_rect = document_value.editor.viewport.runtimeRect;
+        if (selected.parentId > 0) {
+            const parent_result = resolved.get(selected.parentId);
+            if (parent_result && parent_result.status === "Success") {
+                parent_rect = parent_result.rect;
+            }
+        }
+        const current = model.NormalizeRectTransform(selected.rectTransform);
+        const transform = {
+            anchorMin: preset.anchorMin,
+            anchorMax: preset.anchorMax,
+            pivot: preset.pivot,
+            offsetMin: { x: 0, y: 0 },
+            offsetMax: { x: 0, y: 0 },
+            margin: current.margin,
+            padding: current.padding,
+            dpiScale: current.dpiScale
+        };
+        const next_transform = model.ApplyEngineRectToRectTransform(parent_rect, transform, current_result.rect);
+        state.document = model.UpdateNode(document_value, selected.nodeId, { rectTransform: next_transform });
+        Render();
+    }
+
+    function RenderRectTransformPresets(container) {
+        const title = CreateElement("div", "preset-title", "Anchor Presets");
+        const grid = CreateElement("div", "rect-preset-grid", "");
+        const presets = [
+            { label: "TL", anchorMin: { x: 0, y: 1 }, anchorMax: { x: 0, y: 1 }, pivot: { x: 0, y: 1 } },
+            { label: "TC", anchorMin: { x: 0.5, y: 1 }, anchorMax: { x: 0.5, y: 1 }, pivot: { x: 0.5, y: 1 } },
+            { label: "TR", anchorMin: { x: 1, y: 1 }, anchorMax: { x: 1, y: 1 }, pivot: { x: 1, y: 1 } },
+            { label: "ML", anchorMin: { x: 0, y: 0.5 }, anchorMax: { x: 0, y: 0.5 }, pivot: { x: 0, y: 0.5 } },
+            { label: "MC", anchorMin: { x: 0.5, y: 0.5 }, anchorMax: { x: 0.5, y: 0.5 }, pivot: { x: 0.5, y: 0.5 } },
+            { label: "MR", anchorMin: { x: 1, y: 0.5 }, anchorMax: { x: 1, y: 0.5 }, pivot: { x: 1, y: 0.5 } },
+            { label: "BL", anchorMin: { x: 0, y: 0 }, anchorMax: { x: 0, y: 0 }, pivot: { x: 0, y: 0 } },
+            { label: "BC", anchorMin: { x: 0.5, y: 0 }, anchorMax: { x: 0.5, y: 0 }, pivot: { x: 0.5, y: 0 } },
+            { label: "BR", anchorMin: { x: 1, y: 0 }, anchorMax: { x: 1, y: 0 }, pivot: { x: 1, y: 0 } },
+            { label: "H", anchorMin: { x: 0, y: 0.5 }, anchorMax: { x: 1, y: 0.5 }, pivot: { x: 0.5, y: 0.5 } },
+            { label: "V", anchorMin: { x: 0.5, y: 0 }, anchorMax: { x: 0.5, y: 1 }, pivot: { x: 0.5, y: 0.5 } },
+            { label: "F", anchorMin: { x: 0, y: 0 }, anchorMax: { x: 1, y: 1 }, pivot: { x: 0.5, y: 0.5 } }
+        ];
+        presets.forEach(function RenderPreset(preset) {
+            const button = CreateElement("button", "rect-preset-button", preset.label);
+            button.type = "button";
+            button.title = "Apply " + preset.label + " anchor preset";
+            button.addEventListener("click", function OnClickEvent() {
+                ApplyRectTransformPreset(preset);
+            });
+            grid.appendChild(button);
+        });
+        container.appendChild(title);
+        container.appendChild(grid);
+    }
+
     function RenderRectTransformInspector(panel, rect_transform) {
         const group = CreateInspectorGroup(panel, "rect-transform", "RectTransform", true);
+        RenderRectTransformPresets(group);
         AppendVector2Inputs(group, "Anchor Min", rect_transform.anchorMin, function UpdateAnchorMin(value) {
             UpdateSelectedRectTransform({ anchorMin: value });
         });
@@ -1569,33 +2134,43 @@
             const scale = state.document.editor.viewport.scale + 0.1;
             UpdateViewportScale(scale);
         });
+        GetElement("hierarchy-search-input").addEventListener("input", function OnInputEvent(event) {
+            state.filter = String(event.target.value || "");
+            RenderHierarchy();
+        });
+        GetElement("hierarchy-create-button").addEventListener("click", function OnClickEvent(event) {
+            event.stopPropagation();
+            ToggleCreateMenu();
+        });
+        GetElement("hierarchy-list").addEventListener("contextmenu", function OnContextMenuEvent(event) {
+            OpenHierarchyContextMenu(event, state.document.schema.rootNodeId);
+        });
+        GetElement("add-node-button").addEventListener("click", function OnClickEvent() {
+            const parent_id = GetContextTargetNodeId();
+            AddNodeUnderParent("Node", parent_id);
+        });
         GetElement("add-container-button").addEventListener("click", function OnClickEvent() {
-            state.document = model.AddNode(state.document, "Container");
-            Render();
+            const parent_id = GetContextTargetNodeId();
+            AddNodeUnderParent("Container", parent_id);
         });
         GetElement("add-text-button").addEventListener("click", function OnClickEvent() {
-            state.document = model.AddNode(state.document, "Text");
-            Render();
+            const parent_id = GetContextTargetNodeId();
+            AddNodeUnderParent("Text", parent_id);
         });
         GetElement("add-image-button").addEventListener("click", function OnClickEvent() {
-            state.document = model.AddNode(state.document, "Image");
-            Render();
+            const parent_id = GetContextTargetNodeId();
+            AddNodeUnderParent("Image", parent_id);
         });
         GetElement("add-button-button").addEventListener("click", function OnClickEvent() {
-            state.document = model.AddNode(state.document, "Button");
-            Render();
+            const parent_id = GetContextTargetNodeId();
+            AddNodeUnderParent("Button", parent_id);
         });
         GetElement("add-slider-button").addEventListener("click", function OnClickEvent() {
-            state.document = model.AddNode(state.document, "Slider");
-            Render();
+            const parent_id = GetContextTargetNodeId();
+            AddNodeUnderParent("Slider", parent_id);
         });
         GetElement("remove-node-button").addEventListener("click", function OnClickEvent() {
-            const selected = GetSelectedNode();
-            if (!selected) {
-                return;
-            }
-            state.document = model.RemoveNode(state.document, selected.nodeId);
-            Render();
+            RemoveSelectedNode();
         });
         GetElement("canvas-surface").addEventListener("click", function OnClickEvent() {
             SelectNode(state.document.schema.rootNodeId);
@@ -1624,6 +2199,23 @@
         window.addEventListener("pointerup", FinishLayoutDrag);
         window.addEventListener("pointercancel", FinishCanvasDrag);
         window.addEventListener("pointercancel", FinishLayoutDrag);
+        window.addEventListener("click", function OnClickEvent() {
+            CloseFloatingMenus();
+        });
+        window.addEventListener("keydown", function OnKeyDownEvent(event) {
+            if (event.key === "Escape") {
+                CloseFloatingMenus();
+                return;
+            }
+            if (event.key !== "Delete") {
+                return;
+            }
+            if (IsTextEditingElement(event.target)) {
+                return;
+            }
+            event.preventDefault();
+            RemoveSelectedNode();
+        });
     }
 
     function BindLiveRefresh() {

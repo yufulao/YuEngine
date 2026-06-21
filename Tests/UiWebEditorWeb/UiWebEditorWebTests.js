@@ -124,7 +124,7 @@ function TestComponentMatrixDeclaresImplementedAndBacklog() {
     const backlog = matrix.backlog.map(function MapComponent(record) {
         return record.component;
     });
-    assert.deepEqual(implemented, ["Container", "Text", "Image", "Button", "Slider"]);
+    assert.deepEqual(implemented, ["Node", "Container", "Text", "Image", "Button", "Slider"]);
     assert.ok(matrix.records.includes("common"));
     assert.ok(backlog.includes("Toggle"));
     assert.ok(backlog.includes("TextAutoSize"));
@@ -260,7 +260,7 @@ function TestAdapterInverseEditPath() {
 
 function TestAddNodeUpdatesSnapshots() {
     const document = model.CreateDefaultDocument();
-    const next_document = model.AddNode(document, "Text");
+    const next_document = model.AddNode(document, "Node");
     const hierarchy = model.BuildHierarchy(next_document);
     const canvas = model.BuildCanvasItems(next_document);
     const inspector = model.BuildInspector(next_document);
@@ -268,12 +268,28 @@ function TestAddNodeUpdatesSnapshots() {
     assert.equal(next_document.nodes.length, 4);
     assert.equal(hierarchy.length, 4);
     assert.equal(canvas.length, 4);
-    assert.equal(inspector.node.component, "Text");
+    assert.equal(inspector.node.component, "Node");
     assert.equal(inspector.node.text, undefined);
-    assert.equal(inspector.node.components.text.content, "Text4");
+    assert.equal(inspector.node.components.text.content, "Node4");
     assert.ok(inspector.node.rectTransform);
     assert.ok(item.canvasRect);
     assert.ok(item.runtimeRect);
+}
+
+function TestNodeComponentExportsCommonOnly() {
+    const document = model.CreateDefaultDocument();
+    const next_document = model.AddNode(document, "Node");
+    const result = model.ValidateDocument(next_document);
+    const runtime_document = model.BuildRuntimeDocument(next_document);
+    const runtime_node = FindRuntimeNode(runtime_document, 4);
+    assert.equal(result.status, "Success");
+    assert.equal(runtime_node.component, "Node");
+    assert.ok(runtime_node.components.common);
+    assert.equal(runtime_node.components.container, undefined);
+    assert.equal(runtime_node.components.text, undefined);
+    assert.equal(runtime_node.components.image, undefined);
+    assert.equal(runtime_node.components.button, undefined);
+    assert.equal(runtime_node.components.slider, undefined);
 }
 
 function TestAddImageAndSliderUseTypedRecords() {
@@ -437,6 +453,10 @@ function TestHtmlShellReferencesStaticAssets() {
     assert.ok(html.includes("EditorModel.js"));
     assert.ok(html.includes("App.js"));
     assert.ok(html.includes("hierarchy-list"));
+    assert.ok(html.includes("hierarchy-search-input"));
+    assert.ok(html.includes("hierarchy-create-menu"));
+    assert.ok(html.includes("hierarchy-context-menu"));
+    assert.ok(html.includes("add-node-button"));
     assert.ok(html.includes("canvas-surface"));
     assert.ok(html.includes("canvas-fit-button"));
     assert.ok(html.includes("runtime-json-toggle-button"));
@@ -463,6 +483,11 @@ function TestAppScriptContainsLiveUxHooks() {
     assert.ok(app.includes("visibilitychange"));
     assert.ok(app.includes("BroadcastChannel"));
     assert.ok(app.includes("YuUiWebEditorApplyDocument"));
+    assert.ok(app.includes("OpenHierarchyContextMenu"));
+    assert.ok(app.includes("ToggleNodeSelectionLock"));
+    assert.ok(app.includes("RenderRectTransformPresets"));
+    assert.ok(app.includes("ApplyResizeHandleDelta"));
+    assert.ok(app.includes("BindCommittedNumberInput"));
 }
 
 function TestStyleSheetContainsLiveUxRules() {
@@ -474,6 +499,11 @@ function TestStyleSheetContainsLiveUxRules() {
     assert.ok(style.includes(".layout-resizer"));
     assert.ok(style.includes(".runtime-resizer"));
     assert.ok(style.includes(".inspector-group"));
+    assert.ok(style.includes(".create-menu"));
+    assert.ok(style.includes(".context-menu"));
+    assert.ok(style.includes(".tree-action"));
+    assert.ok(style.includes(".resize-handle-nw"));
+    assert.ok(style.includes(".rect-preset-grid"));
 }
 
 function RunTests() {
@@ -489,6 +519,7 @@ function RunTests() {
         { name: "UiWebEditorWeb_AdapterViewportScaleAndPanBoundary", run: TestAdapterViewportScaleAndPanBoundary },
         { name: "UiWebEditorWeb_AdapterInverseEditPath", run: TestAdapterInverseEditPath },
         { name: "UiWebEditorWeb_AddNodeUpdatesSnapshots", run: TestAddNodeUpdatesSnapshots },
+        { name: "UiWebEditorWeb_NodeComponentExportsCommonOnly", run: TestNodeComponentExportsCommonOnly },
         { name: "UiWebEditorWeb_AddImageAndSliderUseTypedRecords", run: TestAddImageAndSliderUseTypedRecords },
         { name: "UiWebEditorWeb_MoveNodeReparentsAndPreservesRuntimeRect", run: TestMoveNodeReparentsAndPreservesRuntimeRect },
         { name: "UiWebEditorWeb_MoveNodeReordersSiblings", run: TestMoveNodeReordersSiblings },

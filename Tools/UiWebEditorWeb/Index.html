@@ -42,7 +42,12 @@
                 <section class="panel">
                     <div class="panel-header">
                         <h2>Hierarchy</h2>
-                        <div class="mini-toolbar">
+                        <button id="hierarchy-create-button" type="button" aria-expanded="false">Create</button>
+                    </div>
+                    <div class="hierarchy-search-row">
+                        <input id="hierarchy-search-input" type="search" placeholder="Search nodes">
+                        <div id="hierarchy-create-menu" class="create-menu" data-open="false">
+                            <button id="add-node-button" type="button">Node</button>
                             <button id="add-container-button" type="button">Container</button>
                             <button id="add-text-button" type="button">Text</button>
                             <button id="add-image-button" type="button">Image</button>
@@ -50,8 +55,9 @@
                             <button id="add-slider-button" type="button">Slider</button>
                         </div>
                     </div>
-                    <div id="hierarchy-list" class="tree-list"></div>
+                    <div id="hierarchy-list" class="tree-list" role="tree"></div>
                     <button id="remove-node-button" class="danger-button" type="button">Remove Node</button>
+                    <div id="hierarchy-context-menu" class="context-menu" data-open="false"></div>
                 </section>
 
                 <section class="panel">
