@@ -353,6 +353,75 @@ bool IsImageArtifactRequestUsable(const RenderSceneRuntimeVisualSceneProofReques
     return output_path_byte_count < MAX_RENDER_SCENE_RUNTIME_VISUAL_SCENE_IMAGE_PATH_BYTES;
 }
 
+bool IsMinimumImageArtifactResolutionRequested(
+    const RenderSceneRuntimeVisualSceneProofRequest &request) {
+    if (request.minimum_image_artifact_width > 0U) {
+        return true;
+    }
+
+    return request.minimum_image_artifact_height > 0U;
+}
+
+RenderSceneMissingLayerDiagnosticFault AssessImageArtifactResolutionRequest(
+    const RenderSceneRuntimeVisualSceneProofRequest &request,
+    RenderSceneRuntimeVisualSceneProofResult *out_result) {
+    if (!request.image_artifact_requested) {
+        return RenderSceneMissingLayerDiagnosticFault::None;
+    }
+
+    if (!IsMinimumImageArtifactResolutionRequested(request)) {
+        return RenderSceneMissingLayerDiagnosticFault::None;
+    }
+
+    if (out_result == nullptr) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingCaptureOutputImage;
+    }
+
+    if (request.rhi_device == nullptr) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingRhiCaptureTarget;
+    }
+
+    const RhiDeviceSnapshot snapshot = request.rhi_device->Snapshot();
+    if (!snapshot.swapchain.valid) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingCaptureOutputImage;
+    }
+
+    if (snapshot.swapchain.color_format != RhiFormat::Rgba8Unorm) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingCaptureOutputImage;
+    }
+
+    const std::uint16_t source_width = snapshot.swapchain.extent.width;
+    const std::uint16_t source_height = snapshot.swapchain.extent.height;
+    if (source_width == 0U) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingCaptureOutputImage;
+    }
+
+    if (source_height == 0U) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingCaptureOutputImage;
+    }
+
+    if (source_width > std::numeric_limits<std::uint16_t>::max() /
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingCaptureOutputImage;
+    }
+
+    const std::uint16_t image_width =
+        static_cast<std::uint16_t>(source_width * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT);
+    out_result->available_image_artifact_width = image_width;
+    out_result->available_image_artifact_height = source_height;
+    if (request.minimum_image_artifact_width > 0U &&
+        image_width < request.minimum_image_artifact_width) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingCaptureTargetResolution;
+    }
+
+    if (request.minimum_image_artifact_height > 0U &&
+        source_height < request.minimum_image_artifact_height) {
+        return RenderSceneMissingLayerDiagnosticFault::MissingCaptureTargetResolution;
+    }
+
+    return RenderSceneMissingLayerDiagnosticFault::None;
+}
+
 std::size_t CalculateRgba8SourceByteCount(std::uint16_t width, std::uint16_t height) {
     if (width == 0U) {
         return 0U;
@@ -634,6 +703,11 @@ bool EmitImageArtifacts(
         RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
         return false;
     }
+
+    const std::uint16_t image_width =
+        static_cast<std::uint16_t>(source_width * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT);
+    out_result->available_image_artifact_width = image_width;
+    out_result->available_image_artifact_height = source_height;
 
     const std::size_t frame_capture_byte_budget =
         request.capture_byte_budget_per_entity * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
@@ -1019,6 +1093,8 @@ RenderSceneRuntimeVisualSceneProofStatus RenderSceneRuntimeVisualSceneProofRoute
 
     RenderSceneRuntimeVisualSceneProofResult result{};
     result.requested_frame_count = request.frame_count;
+    result.requested_minimum_image_artifact_width = request.minimum_image_artifact_width;
+    result.requested_minimum_image_artifact_height = request.minimum_image_artifact_height;
     *out_result = result;
 
     if (request.diagnostic_fault != RenderSceneMissingLayerDiagnosticFault::None) {
@@ -1059,6 +1135,12 @@ RenderSceneRuntimeVisualSceneProofStatus RenderSceneRuntimeVisualSceneProofRoute
         return CompleteWithDiagnostic(
             RenderSceneMissingLayerDiagnosticFault::MissingRhiCaptureTarget,
             out_result);
+    }
+
+    const RenderSceneMissingLayerDiagnosticFault image_resolution_fault =
+        AssessImageArtifactResolutionRequest(request, out_result);
+    if (image_resolution_fault != RenderSceneMissingLayerDiagnosticFault::None) {
+        return CompleteWithDiagnostic(image_resolution_fault, out_result);
     }
 
     std::array<RenderSceneThreePrimitiveEntityRequest, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT>

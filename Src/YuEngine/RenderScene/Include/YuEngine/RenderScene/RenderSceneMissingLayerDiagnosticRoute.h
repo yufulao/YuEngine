@@ -30,6 +30,7 @@ enum class RenderSceneMissingLayerDiagnosticFault {
     MissingRenderCoreRhiDrawCapture,
     MissingCameraOrbitSequencing,
     MissingOutputBounding,
+    MissingCaptureTargetResolution,
     MissingCaptureOutputImage,
     MissingRhiCaptureTarget
 };
@@ -49,6 +50,7 @@ enum class RenderSceneMissingLayerDiagnosticLayer {
     RenderCoreRhiDrawCapture,
     CameraOrbitSequencing,
     OutputBounding,
+    CaptureTargetResolution,
     CaptureOutputImage,
     RhiCaptureTarget
 };

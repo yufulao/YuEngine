@@ -43,6 +43,8 @@ struct RenderSceneRuntimeVisualSceneProofRequest final {
     bool image_artifact_requested = false;
     const char *image_output_path_prefix = nullptr;
     std::size_t image_output_path_prefix_byte_count = 0U;
+    std::uint16_t minimum_image_artifact_width = 0U;
+    std::uint16_t minimum_image_artifact_height = 0U;
     std::span<std::uint8_t> capture_output{};
     std::size_t capture_byte_budget_per_entity = 0U;
     bool target_capture_environment_available = true;
@@ -90,6 +92,10 @@ struct RenderSceneRuntimeVisualSceneProofResult final {
     std::size_t frame_capture_byte_budget = 0U;
     std::size_t image_artifact_report_count = 0U;
     std::size_t image_artifact_bytes_written = 0U;
+    std::uint16_t requested_minimum_image_artifact_width = 0U;
+    std::uint16_t requested_minimum_image_artifact_height = 0U;
+    std::uint16_t available_image_artifact_width = 0U;
+    std::uint16_t available_image_artifact_height = 0U;
     std::size_t material_texture_slot_report_count = 0U;
     std::size_t entity_report_count = 0U;
     std::array<

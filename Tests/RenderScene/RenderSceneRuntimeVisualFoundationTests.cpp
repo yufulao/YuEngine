@@ -270,6 +270,8 @@ constexpr const char *TEST_L1_SAMPLE_011_RUNTIME_VISUAL_IMAGE_ARTIFACTS =
     "RenderScene_L1Sample011EmitsFinalOrbitImageArtifacts";
 constexpr const char *TEST_L1_SAMPLE_012_RUNTIME_VISUAL_BLOCKER =
     "RenderScene_L1Sample012ReportsExactRuntimeVisualBlocker";
+constexpr const char *TEST_L1_SAMPLE_013_USER_VISIBLE_RESOLUTION_BLOCKER =
+    "RenderScene_L1Sample013ReportsUserVisibleCaptureResolutionBlocker";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -283,6 +285,9 @@ constexpr char L1_SAMPLE_011_OUTPUT_PATH_PREFIX[] = "Artifacts/L1Sample011/Runti
 constexpr char L1_SAMPLE_011_IMAGE_OUTPUT_PATH_PREFIX[] =
     "Artifacts/L1Sample011/RVF012/RuntimeVisualScene";
 constexpr char L1_SAMPLE_011_IMAGE_ARTIFACT_DIRECTORY[] = "Artifacts/L1Sample011/RVF012";
+constexpr char L1_SAMPLE_013_IMAGE_OUTPUT_PATH_PREFIX[] =
+    "Artifacts/L1Sample011/RVF013/RuntimeVisualScene";
+constexpr char L1_SAMPLE_013_IMAGE_ARTIFACT_DIRECTORY[] = "Artifacts/L1Sample011/RVF013";
 constexpr char L1_SAMPLE_011_IMAGE_HEADER[] = "P6\n12 4\n255\n";
 constexpr char L1_VIS_002_CUBE_NAME[] = "Cube";
 constexpr char L1_VIS_002_CYLINDER_NAME[] = "Cylinder";
@@ -311,6 +316,8 @@ constexpr std::uint8_t CAPTURE_SENTINEL = 0xCCU;
 constexpr std::uint64_t L1_VIS_004_CLIP_START_NANOSECONDS = 1000000000ULL;
 constexpr std::uint64_t L1_VIS_004_SAMPLE_NANOSECONDS = 1500000000ULL;
 constexpr std::uint32_t L1_VIS_005_FRAME_COUNT = 5U;
+constexpr std::uint16_t L1_SAMPLE_013_MINIMUM_IMAGE_WIDTH = 320U;
+constexpr std::uint16_t L1_SAMPLE_013_MINIMUM_IMAGE_HEIGHT = 180U;
 constexpr float L1_VIS_005_ORBIT_RADIUS = 5.0F;
 constexpr float L1_VIS_005_ORBIT_HEIGHT = 2.0F;
 
@@ -1247,6 +1254,20 @@ RenderSceneRuntimeVisualSceneProofRequest MakeRuntimeVisualSceneImageProofReques
     return request;
 }
 
+RenderSceneRuntimeVisualSceneProofRequest MakeRuntimeVisualSceneUserVisibleImageProofRequest(
+    L1Vis001RhiDevice &device,
+    std::vector<std::uint8_t> &capture) {
+    RenderSceneRuntimeVisualSceneProofRequest request =
+        MakeRuntimeVisualSceneProofRequest(device, capture);
+    request.image_artifact_requested = true;
+    request.image_output_path_prefix = L1_SAMPLE_013_IMAGE_OUTPUT_PATH_PREFIX;
+    request.image_output_path_prefix_byte_count =
+        sizeof(L1_SAMPLE_013_IMAGE_OUTPUT_PATH_PREFIX) - 1U;
+    request.minimum_image_artifact_width = L1_SAMPLE_013_MINIMUM_IMAGE_WIDTH;
+    request.minimum_image_artifact_height = L1_SAMPLE_013_MINIMUM_IMAGE_HEIGHT;
+    return request;
+}
+
 bool CaptureWasWritten(const std::vector<std::uint8_t> &capture) {
     for (std::uint8_t value : capture) {
         if (value != CAPTURE_SENTINEL) {
@@ -1400,6 +1421,12 @@ bool RuntimeVisualSceneImagePathMatches(
 bool CleanRuntimeVisualSceneImageArtifactDirectory() {
     std::error_code error;
     std::filesystem::remove_all(L1_SAMPLE_011_IMAGE_ARTIFACT_DIRECTORY, error);
+    return !error;
+}
+
+bool CleanRuntimeVisualSceneUserVisibleImageArtifactDirectory() {
+    std::error_code error;
+    std::filesystem::remove_all(L1_SAMPLE_013_IMAGE_ARTIFACT_DIRECTORY, error);
     return !error;
 }
 
@@ -2562,7 +2589,7 @@ int RenderSceneL1Vis006ReportsExactMissingLayers() {
         return Fail("l1 vis diagnostic success reported missing layer");
     }
 
-    const std::array<L1Vis006DiagnosticExpectation, 15U> expectations{
+    const std::array<L1Vis006DiagnosticExpectation, 16U> expectations{
         L1Vis006DiagnosticExpectation{
             RenderSceneMissingLayerDiagnosticFault::MissingCamera,
             RenderSceneMissingLayerDiagnosticLayer::Camera,
@@ -2640,6 +2667,12 @@ int RenderSceneL1Vis006ReportsExactMissingLayers() {
             RenderSceneMissingLayerDiagnosticLayer::OutputBounding,
             RenderSceneMissingLayerDiagnosticStatus::Fail,
             "OutputBounding",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingCaptureTargetResolution,
+            RenderSceneMissingLayerDiagnosticLayer::CaptureTargetResolution,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "CaptureTargetResolution",
             false},
         L1Vis006DiagnosticExpectation{
             RenderSceneMissingLayerDiagnosticFault::MissingCaptureOutputImage,
@@ -2995,6 +3028,78 @@ int RenderSceneL1Sample012ReportsExactRuntimeVisualBlocker() {
     return 0;
 }
 
+int RenderSceneL1Sample013ReportsUserVisibleCaptureResolutionBlocker() {
+    if (!CleanRuntimeVisualSceneUserVisibleImageArtifactDirectory()) {
+        return Fail("l1 sample runtime visual user resolution cleanup failed");
+    }
+
+    L1Vis001RhiDevice device;
+    const std::size_t frame_capture_byte_count =
+        L1VisCaptureByteCount() * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    std::vector<std::uint8_t> capture(
+        frame_capture_byte_count * L1_VIS_005_FRAME_COUNT,
+        CAPTURE_SENTINEL);
+
+    RenderSceneRuntimeVisualSceneProofRoute route;
+    RenderSceneRuntimeVisualSceneProofResult result{};
+    const RenderSceneRuntimeVisualSceneProofRequest request =
+        MakeRuntimeVisualSceneUserVisibleImageProofRequest(device, capture);
+    const RenderSceneRuntimeVisualSceneProofStatus status = route.Execute(request, &result);
+    if (status != RenderSceneRuntimeVisualSceneProofStatus::Fail) {
+        return Fail("l1 sample runtime visual user resolution did not fail exact layer");
+    }
+
+    if (result.first_missing_layer !=
+        RenderSceneMissingLayerDiagnosticLayer::CaptureTargetResolution) {
+        return Fail("l1 sample runtime visual user resolution reported wrong layer");
+    }
+
+    if (result.diagnostic.status != RenderSceneMissingLayerDiagnosticStatus::Fail) {
+        return Fail("l1 sample runtime visual user resolution status mismatch");
+    }
+
+    const std::string_view resolution_name(
+        result.diagnostic.diagnostic_name,
+        result.diagnostic.diagnostic_name_byte_count);
+    if (resolution_name != "CaptureTargetResolution") {
+        return Fail("l1 sample runtime visual user resolution diagnostic name mismatch");
+    }
+
+    if (result.diagnostic.blocked_by_environment) {
+        return Fail("l1 sample runtime visual user resolution hid layer as env block");
+    }
+
+    if (result.requested_minimum_image_artifact_width != L1_SAMPLE_013_MINIMUM_IMAGE_WIDTH ||
+        result.requested_minimum_image_artifact_height != L1_SAMPLE_013_MINIMUM_IMAGE_HEIGHT) {
+        return Fail("l1 sample runtime visual user resolution request metadata mismatch");
+    }
+
+    const std::uint16_t expected_available_width =
+        static_cast<std::uint16_t>(
+            L1_VIS_CAPTURE_EXTENT * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT);
+    if (result.available_image_artifact_width != expected_available_width ||
+        result.available_image_artifact_height != L1_VIS_CAPTURE_EXTENT) {
+        return Fail("l1 sample runtime visual user resolution available extent mismatch");
+    }
+
+    if (result.image_artifact_report_count != 0U || result.image_artifact_bytes_written != 0U) {
+        return Fail("l1 sample runtime visual user resolution emitted undersized artifacts");
+    }
+
+    if (CaptureWasWritten(capture) || device.Snapshot().submit_count != 0U) {
+        return Fail("l1 sample runtime visual user resolution mutated runtime output");
+    }
+
+    std::error_code error;
+    const bool artifact_directory_exists =
+        std::filesystem::exists(L1_SAMPLE_013_IMAGE_ARTIFACT_DIRECTORY, error);
+    if (error || artifact_directory_exists) {
+        return Fail("l1 sample runtime visual user resolution created artifact directory");
+    }
+
+    return 0;
+}
+
 int RenderSceneL1Vis002ReportsGeometryMissingLayerForCylinder() {
     L1Vis001RhiDevice device;
     std::vector<std::uint8_t> capture(
@@ -3176,6 +3281,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_L1_SAMPLE_012_RUNTIME_VISUAL_BLOCKER) {
         return RenderSceneL1Sample012ReportsExactRuntimeVisualBlocker();
+    }
+
+    if (name == TEST_L1_SAMPLE_013_USER_VISIBLE_RESOLUTION_BLOCKER) {
+        return RenderSceneL1Sample013ReportsUserVisibleCaptureResolutionBlocker();
     }
 
     if (name == TEST_BOUNDARY) {

@@ -20,6 +20,7 @@ constexpr const char *DIAGNOSTIC_NAME_RENDER_SCENE_MULTI_ENTITY_SUBMISSION =
 constexpr const char *DIAGNOSTIC_NAME_RENDER_CORE_RHI_DRAW_CAPTURE = "RenderCoreRhiDrawCapture";
 constexpr const char *DIAGNOSTIC_NAME_CAMERA_ORBIT_SEQUENCING = "CameraOrbitSequencing";
 constexpr const char *DIAGNOSTIC_NAME_OUTPUT_BOUNDING = "OutputBounding";
+constexpr const char *DIAGNOSTIC_NAME_CAPTURE_TARGET_RESOLUTION = "CaptureTargetResolution";
 constexpr const char *DIAGNOSTIC_NAME_CAPTURE_OUTPUT_IMAGE = "CaptureOutputImage";
 constexpr const char *DIAGNOSTIC_NAME_RHI_CAPTURE_TARGET = "RhiCaptureTarget";
 }
@@ -110,6 +111,10 @@ RenderSceneMissingLayerDiagnosticLayer RenderSceneMissingLayerDiagnosticRoute::L
         return RenderSceneMissingLayerDiagnosticLayer::OutputBounding;
     }
 
+    if (fault == RenderSceneMissingLayerDiagnosticFault::MissingCaptureTargetResolution) {
+        return RenderSceneMissingLayerDiagnosticLayer::CaptureTargetResolution;
+    }
+
     if (fault == RenderSceneMissingLayerDiagnosticFault::MissingCaptureOutputImage) {
         return RenderSceneMissingLayerDiagnosticLayer::CaptureOutputImage;
     }
@@ -190,6 +195,10 @@ const char *RenderSceneMissingLayerDiagnosticRoute::NameForLayer(
 
     if (layer == RenderSceneMissingLayerDiagnosticLayer::OutputBounding) {
         return DIAGNOSTIC_NAME_OUTPUT_BOUNDING;
+    }
+
+    if (layer == RenderSceneMissingLayerDiagnosticLayer::CaptureTargetResolution) {
+        return DIAGNOSTIC_NAME_CAPTURE_TARGET_RESOLUTION;
     }
 
     if (layer == RenderSceneMissingLayerDiagnosticLayer::CaptureOutputImage) {
