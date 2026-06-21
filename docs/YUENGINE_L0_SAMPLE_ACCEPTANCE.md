@@ -23,6 +23,7 @@ and before `docs/YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md`.
 The document defines how the current `Samples/AssetSmokeDemo` path is accepted
 as an L0 sample smoke route. It does not create implementation scope, does not
 replace module tests, and does not declare the commercial engine complete.
+It also does not close the L1 runtime visual-scene requirement.
 
 The sample acceptance intent is:
 
@@ -34,6 +35,12 @@ The sample acceptance intent is:
   consistently with the L0 completion matrix;
 - keep L1 vertical sample value-contract proof separate from native L0 sample
   smoke proof.
+
+The current L0 sample may render one textured mesh and emit capture output, but
+that only proves a lower-layer native smoke route. It is not accepted as proof
+that YuEngine can render a runtime scene with multiple objects, a shared
+multi-texture material, runtime object rotation, orbit camera, and bounded
+capture sequence. That requirement belongs to L1 runtime visual sample closure.
 
 ## 2. Acceptance States
 
@@ -77,6 +84,11 @@ reports that state.
 `YuAssetSmokeDemo L1_PREP PASS` may appear after later L1 sample work, but it
 does not replace the L0 sample output above. L1 vertical sample acceptance owns
 the L1-specific rows.
+
+Likewise, a captured image from `YuAssetSmokeDemo` is not by itself L1 visual
+scene evidence. It is L0 native smoke evidence unless the command path proves
+the full runtime scene chain required by
+`docs/YUENGINE_L0_L1_EXECUTION_PLAN.md` section 2.4.
 
 ## 5. Allowed Environment Skips
 
@@ -122,7 +134,8 @@ The boundary between this document and L1 vertical sample acceptance is:
   Debug/Release sample command acceptance, and generated-output policy;
 - `docs/YUENGINE_L1_VERTICAL_SAMPLE_ACCEPTANCE.md` owns `L1-SAMPLE-001..010`,
   `L1-DIAG-003`, project-independent scene manifest acceptance, runtime value
-  route acceptance, and final L1 vertical sample stop conditions.
+  route acceptance, runtime visual scene closure, and final L1 vertical sample
+  stop conditions.
 
 L1 value-contract tests may consume explicit unavailable statuses from L0, but
 they must not convert missing D3D11, XAudio2, XInput, or Ogg/Vorbis dependencies
@@ -133,6 +146,8 @@ into L0 completion.
 The L0 sample acceptance path must not:
 
 - introduce UI, GameAdapter, gameplay, or product-specific scene behavior;
+- require an editor, Web preview host, UI surface, or input handling to prove
+  the pure runtime visual scene sample;
 - use old package runtime compatibility as sample proof;
 - expose D3D11, XAudio2, XInput, Win32, or other backend-native types through
   public runtime headers;

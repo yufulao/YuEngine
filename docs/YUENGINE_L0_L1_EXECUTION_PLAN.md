@@ -87,6 +87,44 @@ The landing team should make these changes now:
    pass.
 6. Reframe L1 work from "more bridges" to "runtime core vertical closure".
 
+### 2.4 Runtime Visual Closure Correction
+
+L0/L1 closure must not be reduced to fixture tests, value-contract rows, or a
+single isolated sample screenshot. A pure runtime visual requirement does not
+need an editor and does not need input.
+
+The current `YuAssetSmokeDemo` route proves useful lower-layer facts, but it is
+not enough to close the L1 runtime scene/render capability. L1 closure requires
+a YuEngine-owned runtime visual sample that composes the lower layers into a
+scene frame sequence:
+
+```text
+runtime app/session
+-> resource/model/texture/material resolution
+-> scene/object transform records
+-> shared material with multiple texture inputs
+-> shader/pipeline binding
+-> RenderScene multi-entity submission
+-> RenderCore/RHI multi-draw frame
+-> camera time/orbit update
+-> bounded capture set written by runtime
+```
+
+The minimum visual sample is:
+
+- one cube, one cylinder, and one cone;
+- deterministic pseudo-random placement from a fixed seed;
+- per-object rotation driven by runtime frame time;
+- one material record applied to all three objects;
+- at least three distinct texture inputs bound by that material record;
+- an orbit camera that captures one full turn as a bounded screenshot/frame set;
+- deterministic status/diagnostics that name the exact missing layer if the
+  sample cannot run.
+
+This is runtime scope. It must not be blocked on editor work, UI work, or input
+handling. If this cannot pass after the claimed L0/L1 work, then L0/L1 is not
+closed.
+
 ## 3. Updated Layer Model
 
 The old restart plan used a broader L0-L7 diagram. For the next execution
@@ -168,6 +206,15 @@ L1 exit condition:
 A small project scene can load, instantiate objects/components, bind resources,
 respond to input, submit render/audio through L0, save/reload core state, and
 shut down cleanly without project-specific shortcuts.
+```
+
+Runtime visual addendum:
+
+```text
+A project-independent visual sample can render and capture a deterministic
+multi-object scene through the L1 scene/render/material/resource path. The
+minimum accepted sample is the cube/cylinder/cone orbit-camera capture set from
+section 2.4.
 ```
 
 ### L2: Project / Product Layer
@@ -1569,6 +1616,7 @@ backlog or from phase-sized batches, not only from the first few rows.
 | L1-RSCENE-003 | Define initial visibility path | L1-RSCENE-001 | full-list traversal works, culling remains deferred |
 | L1-RSCENE-004 | Assemble RenderCore packets | L1-RSCENE-001, L1-RSCENE-002, L0-REN-003 | scene records create RenderCore packets without D3D11 includes |
 | L1-RSCENE-005 | RenderScene failure states | L1-RSCENE-004 | missing mesh/material/camera returns explicit status |
+| L1-RSCENE-006 | Close runtime multi-entity visual frame | L1-RSCENE-004, L0-REN-003, L0-RHI-004, L0-RES-007 | multiple scene entities submit to one runtime frame with distinct transforms, shared material, texture bindings, camera constants, and captured output through YuEngine modules |
 
 ### 12.16 L1 Audio Scene Backlog
 
@@ -1628,6 +1676,8 @@ backlog or from phase-sized batches, not only from the first few rows.
 | L1-SAMPLE-008 | Serialize and reload snapshot | L1-SER-004, L1-SAMPLE-003 | sample state roundtrips through value streams without File/Package dependency in Serialize |
 | L1-SAMPLE-009 | Shutdown and cleanup proof | all L1 sample tasks | world/runtime/resources shut down with no leaked active records |
 | L1-SAMPLE-010 | Debug/Release/Fast validation | all L1 sample tasks | fast gate plus sample smoke pass; release validation command is documented |
+| L1-SAMPLE-011 | Runtime visual scene proof | L1-RSCENE-006, L1-ASSET-005, L1-OBJ-003 | cube/cylinder/cone scene renders with deterministic placement, per-object rotation, shared three-texture material, orbit camera, and bounded capture set |
+| L1-SAMPLE-012 | Runtime visual blocker report | L1-SAMPLE-011 | if the visual scene cannot run, output names the missing layer exactly: geometry/model path, material texture slots, shader/pipeline, RenderScene multi-entity, RenderCore multi-draw, RHI capture, camera orbit, or resource resolution |
 
 ## 13. Guardrails
 
