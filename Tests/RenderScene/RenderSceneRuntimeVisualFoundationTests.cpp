@@ -5,8 +5,10 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <span>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 #include "YuEngine/Animation/AnimationRuntimeSampler.h"
@@ -127,6 +129,8 @@ using yuengine::renderscene::RenderSceneOrbitCaptureResult;
 using yuengine::renderscene::RenderSceneOrbitCaptureRoute;
 using yuengine::renderscene::RenderSceneOrbitCaptureStatus;
 using yuengine::renderscene::RenderSceneRuntimeVisualSceneProofEntityReport;
+using yuengine::renderscene::RenderSceneRuntimeVisualSceneImageArtifactReport;
+using yuengine::renderscene::RenderSceneRuntimeVisualSceneImageArtifactStatus;
 using yuengine::renderscene::RenderSceneRuntimeVisualSceneProofRequest;
 using yuengine::renderscene::RenderSceneRuntimeVisualSceneProofResult;
 using yuengine::renderscene::RenderSceneRuntimeVisualSceneProofRoute;
@@ -262,6 +266,8 @@ constexpr const char *TEST_L1_VIS_MISSING_LAYER_DIAGNOSTIC =
     "RenderScene_L1Vis006ReportsExactMissingLayers";
 constexpr const char *TEST_L1_SAMPLE_011_RUNTIME_VISUAL_SCENE =
     "RenderScene_L1Sample011CapturesFinalRuntimeVisualScene";
+constexpr const char *TEST_L1_SAMPLE_011_RUNTIME_VISUAL_IMAGE_ARTIFACTS =
+    "RenderScene_L1Sample011EmitsFinalOrbitImageArtifacts";
 constexpr const char *TEST_L1_SAMPLE_012_RUNTIME_VISUAL_BLOCKER =
     "RenderScene_L1Sample012ReportsExactRuntimeVisualBlocker";
 constexpr const char *TEST_BOUNDARY =
@@ -274,6 +280,10 @@ constexpr char L1_VIS_003_OUTPUT_PATH[] = "Artifacts/L1Vis003/SharedThreeTexture
 constexpr char L1_VIS_004_OUTPUT_PATH[] = "Artifacts/L1Vis004/AnimatedTransform.rvf";
 constexpr char L1_VIS_005_OUTPUT_PATH_PREFIX[] = "Artifacts/L1Vis005/OrbitCapture";
 constexpr char L1_SAMPLE_011_OUTPUT_PATH_PREFIX[] = "Artifacts/L1Sample011/RuntimeVisualScene";
+constexpr char L1_SAMPLE_011_IMAGE_OUTPUT_PATH_PREFIX[] =
+    "Artifacts/L1Sample011/RVF012/RuntimeVisualScene";
+constexpr char L1_SAMPLE_011_IMAGE_ARTIFACT_DIRECTORY[] = "Artifacts/L1Sample011/RVF012";
+constexpr char L1_SAMPLE_011_IMAGE_HEADER[] = "P6\n12 4\n255\n";
 constexpr char L1_VIS_002_CUBE_NAME[] = "Cube";
 constexpr char L1_VIS_002_CYLINDER_NAME[] = "Cylinder";
 constexpr char L1_VIS_002_CONE_NAME[] = "Cone";
@@ -1225,6 +1235,18 @@ RenderSceneRuntimeVisualSceneProofRequest MakeRuntimeVisualSceneProofRequest(
     return request;
 }
 
+RenderSceneRuntimeVisualSceneProofRequest MakeRuntimeVisualSceneImageProofRequest(
+    L1Vis001RhiDevice &device,
+    std::vector<std::uint8_t> &capture) {
+    RenderSceneRuntimeVisualSceneProofRequest request =
+        MakeRuntimeVisualSceneProofRequest(device, capture);
+    request.image_artifact_requested = true;
+    request.image_output_path_prefix = L1_SAMPLE_011_IMAGE_OUTPUT_PATH_PREFIX;
+    request.image_output_path_prefix_byte_count =
+        sizeof(L1_SAMPLE_011_IMAGE_OUTPUT_PATH_PREFIX) - 1U;
+    return request;
+}
+
 bool CaptureWasWritten(const std::vector<std::uint8_t> &capture) {
     for (std::uint8_t value : capture) {
         if (value != CAPTURE_SENTINEL) {
@@ -1320,6 +1342,30 @@ std::string_view RuntimeVisualSceneOutputPathForFrame(std::uint32_t frame_index)
     return {};
 }
 
+std::string_view RuntimeVisualSceneImagePathForFrame(std::uint32_t frame_index) {
+    if (frame_index == 0U) {
+        return "Artifacts/L1Sample011/RVF012/RuntimeVisualScene.Frame000.ppm";
+    }
+
+    if (frame_index == 1U) {
+        return "Artifacts/L1Sample011/RVF012/RuntimeVisualScene.Frame001.ppm";
+    }
+
+    if (frame_index == 2U) {
+        return "Artifacts/L1Sample011/RVF012/RuntimeVisualScene.Frame002.ppm";
+    }
+
+    if (frame_index == 3U) {
+        return "Artifacts/L1Sample011/RVF012/RuntimeVisualScene.Frame003.ppm";
+    }
+
+    if (frame_index == 4U) {
+        return "Artifacts/L1Sample011/RVF012/RuntimeVisualScene.Frame004.ppm";
+    }
+
+    return {};
+}
+
 bool OrbitOutputPathMatches(const RenderSceneOrbitCaptureFrameReport &frame_report) {
     const std::string_view expected = OrbitOutputPathForFrame(frame_report.frame_index);
     if (expected.empty()) {
@@ -1338,6 +1384,86 @@ bool RuntimeVisualSceneOutputPathMatches(const RenderSceneOrbitCaptureFrameRepor
 
     const std::string_view actual(frame_report.output_path, frame_report.output_path_byte_count);
     return actual == expected;
+}
+
+bool RuntimeVisualSceneImagePathMatches(
+    const RenderSceneRuntimeVisualSceneImageArtifactReport &report) {
+    const std::string_view expected = RuntimeVisualSceneImagePathForFrame(report.frame_index);
+    if (expected.empty()) {
+        return false;
+    }
+
+    const std::string_view actual(report.output_path, report.output_path_byte_count);
+    return actual == expected;
+}
+
+bool CleanRuntimeVisualSceneImageArtifactDirectory() {
+    std::error_code error;
+    std::filesystem::remove_all(L1_SAMPLE_011_IMAGE_ARTIFACT_DIRECTORY, error);
+    return !error;
+}
+
+std::size_t RuntimeVisualSceneImageRgbByteCount() {
+    const std::size_t width =
+        static_cast<std::size_t>(L1_VIS_CAPTURE_EXTENT) *
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    const std::size_t height = L1_VIS_CAPTURE_EXTENT;
+    return width * height * 3U;
+}
+
+std::FILE *OpenBinaryReadFile(const char *path) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+    std::FILE *file = std::fopen(path, "rb");
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+    return file;
+}
+
+bool FileStartsWithBytes(
+    const char *path,
+    const char *expected_bytes,
+    std::size_t expected_byte_count) {
+    if (path == nullptr) {
+        return false;
+    }
+
+    if (expected_bytes == nullptr) {
+        return false;
+    }
+
+    std::FILE *file = OpenBinaryReadFile(path);
+    if (file == nullptr) {
+        return false;
+    }
+
+    std::array<char, 32U> actual_bytes{};
+    if (expected_byte_count > actual_bytes.size()) {
+        std::fclose(file);
+        return false;
+    }
+
+    const std::size_t read_count =
+        std::fread(actual_bytes.data(), sizeof(char), expected_byte_count, file);
+    const int close_result = std::fclose(file);
+    if (close_result != 0) {
+        return false;
+    }
+
+    if (read_count != expected_byte_count) {
+        return false;
+    }
+
+    for (std::size_t index = 0U; index < expected_byte_count; ++index) {
+        if (actual_bytes[index] != expected_bytes[index]) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool OrbitFramePoseMatches(
@@ -2436,7 +2562,7 @@ int RenderSceneL1Vis006ReportsExactMissingLayers() {
         return Fail("l1 vis diagnostic success reported missing layer");
     }
 
-    const std::array<L1Vis006DiagnosticExpectation, 14U> expectations{
+    const std::array<L1Vis006DiagnosticExpectation, 15U> expectations{
         L1Vis006DiagnosticExpectation{
             RenderSceneMissingLayerDiagnosticFault::MissingCamera,
             RenderSceneMissingLayerDiagnosticLayer::Camera,
@@ -2514,6 +2640,12 @@ int RenderSceneL1Vis006ReportsExactMissingLayers() {
             RenderSceneMissingLayerDiagnosticLayer::OutputBounding,
             RenderSceneMissingLayerDiagnosticStatus::Fail,
             "OutputBounding",
+            false},
+        L1Vis006DiagnosticExpectation{
+            RenderSceneMissingLayerDiagnosticFault::MissingCaptureOutputImage,
+            RenderSceneMissingLayerDiagnosticLayer::CaptureOutputImage,
+            RenderSceneMissingLayerDiagnosticStatus::Fail,
+            "CaptureOutputImage",
             false},
         L1Vis006DiagnosticExpectation{
             RenderSceneMissingLayerDiagnosticFault::MissingRhiCaptureTarget,
@@ -2669,6 +2801,108 @@ int RenderSceneL1Sample011CapturesFinalRuntimeVisualScene() {
     return 0;
 }
 
+int RenderSceneL1Sample011EmitsFinalOrbitImageArtifacts() {
+    if (!CleanRuntimeVisualSceneImageArtifactDirectory()) {
+        return Fail("l1 sample runtime visual image artifact cleanup failed");
+    }
+
+    L1Vis001RhiDevice device;
+    const std::size_t frame_capture_byte_count =
+        L1VisCaptureByteCount() * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    std::vector<std::uint8_t> capture(
+        frame_capture_byte_count * L1_VIS_005_FRAME_COUNT,
+        CAPTURE_SENTINEL);
+
+    RenderSceneRuntimeVisualSceneProofRoute route;
+    RenderSceneRuntimeVisualSceneProofResult result{};
+    const RenderSceneRuntimeVisualSceneProofRequest request =
+        MakeRuntimeVisualSceneImageProofRequest(device, capture);
+    const RenderSceneRuntimeVisualSceneProofStatus status = route.Execute(request, &result);
+    if (status != RenderSceneRuntimeVisualSceneProofStatus::Success) {
+        return Fail("l1 sample runtime visual image artifact route did not complete");
+    }
+
+    if (result.first_missing_layer != RenderSceneMissingLayerDiagnosticLayer::None) {
+        return Fail("l1 sample runtime visual image artifact reported missing layer");
+    }
+
+    if (result.image_artifact_report_count != L1_VIS_005_FRAME_COUNT) {
+        return Fail("l1 sample runtime visual image artifact frame count mismatch");
+    }
+
+    const std::uint16_t expected_width =
+        static_cast<std::uint16_t>(
+            L1_VIS_CAPTURE_EXTENT * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT);
+    const std::size_t expected_header_byte_count =
+        sizeof(L1_SAMPLE_011_IMAGE_HEADER) - 1U;
+    const std::size_t expected_file_byte_count =
+        expected_header_byte_count + RuntimeVisualSceneImageRgbByteCount();
+    if (result.image_artifact_bytes_written != expected_file_byte_count * L1_VIS_005_FRAME_COUNT) {
+        return Fail("l1 sample runtime visual image artifact total byte count mismatch");
+    }
+
+    for (std::size_t index = 0U; index < L1_VIS_005_FRAME_COUNT; ++index) {
+        const RenderSceneRuntimeVisualSceneImageArtifactReport &report =
+            result.image_artifact_reports[index];
+        if (report.status != RenderSceneRuntimeVisualSceneImageArtifactStatus::Written) {
+            return Fail("l1 sample runtime visual image artifact status mismatch");
+        }
+
+        const std::uint32_t frame_index = static_cast<std::uint32_t>(index);
+        if (report.frame_index != frame_index || report.frame_id != FRAME_ID + frame_index) {
+            return Fail("l1 sample runtime visual image artifact identity mismatch");
+        }
+
+        if (!RuntimeVisualSceneImagePathMatches(report)) {
+            return Fail("l1 sample runtime visual image artifact path mismatch");
+        }
+
+        if (report.width != expected_width || report.height != L1_VIS_CAPTURE_EXTENT) {
+            return Fail("l1 sample runtime visual image artifact dimensions mismatch");
+        }
+
+        if (report.source_byte_count != frame_capture_byte_count) {
+            return Fail("l1 sample runtime visual image artifact source byte mismatch");
+        }
+
+        if (report.file_byte_count != expected_file_byte_count) {
+            return Fail("l1 sample runtime visual image artifact file byte mismatch");
+        }
+
+        std::error_code error;
+        const bool image_exists = std::filesystem::exists(report.output_path, error);
+        if (error || !image_exists) {
+            return Fail("l1 sample runtime visual image artifact file missing");
+        }
+
+        const std::uintmax_t file_size = std::filesystem::file_size(report.output_path, error);
+        if (error || file_size != static_cast<std::uintmax_t>(report.file_byte_count)) {
+            return Fail("l1 sample runtime visual image artifact disk size mismatch");
+        }
+
+        if (!FileStartsWithBytes(
+                report.output_path,
+                L1_SAMPLE_011_IMAGE_HEADER,
+                expected_header_byte_count)) {
+            return Fail("l1 sample runtime visual image artifact header mismatch");
+        }
+
+        if (!OrbitFrameCaptureSegmentWasWritten(capture, index)) {
+            return Fail("l1 sample runtime visual image artifact did not use route capture");
+        }
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    const std::uint64_t expected_draw_count =
+        static_cast<std::uint64_t>(L1_VIS_005_FRAME_COUNT) *
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    if (snapshot.capture_count != expected_draw_count) {
+        return Fail("l1 sample runtime visual image artifact bypassed rhi capture");
+    }
+
+    return 0;
+}
+
 int RenderSceneL1Sample012ReportsExactRuntimeVisualBlocker() {
     L1Vis001RhiDevice device;
     const std::size_t frame_capture_byte_count =
@@ -2723,6 +2957,39 @@ int RenderSceneL1Sample012ReportsExactRuntimeVisualBlocker() {
     if (env_result.first_missing_layer != RenderSceneMissingLayerDiagnosticLayer::RhiCaptureTarget ||
         !env_result.diagnostic.blocked_by_environment) {
         return Fail("l1 sample runtime visual blocker env layer mismatch");
+    }
+
+    L1Vis001RhiDevice image_device;
+    std::vector<std::uint8_t> image_capture(
+        frame_capture_byte_count * L1_VIS_005_FRAME_COUNT,
+        CAPTURE_SENTINEL);
+    RenderSceneRuntimeVisualSceneProofResult image_result{};
+    RenderSceneRuntimeVisualSceneProofRequest image_request =
+        MakeRuntimeVisualSceneProofRequest(image_device, image_capture);
+    image_request.image_artifact_requested = true;
+    const RenderSceneRuntimeVisualSceneProofStatus image_status =
+        route.Execute(image_request, &image_result);
+    if (image_status != RenderSceneRuntimeVisualSceneProofStatus::Fail) {
+        return Fail("l1 sample runtime visual image blocker did not fail exact layer");
+    }
+
+    if (image_result.first_missing_layer != RenderSceneMissingLayerDiagnosticLayer::CaptureOutputImage) {
+        return Fail("l1 sample runtime visual image blocker reported wrong layer");
+    }
+
+    const std::string_view image_name(
+        image_result.diagnostic.diagnostic_name,
+        image_result.diagnostic.diagnostic_name_byte_count);
+    if (image_name != "CaptureOutputImage") {
+        return Fail("l1 sample runtime visual image blocker diagnostic name mismatch");
+    }
+
+    if (image_result.diagnostic.blocked_by_environment) {
+        return Fail("l1 sample runtime visual image blocker hid output layer as env block");
+    }
+
+    if (CaptureWasWritten(image_capture) || image_device.Snapshot().submit_count != 0U) {
+        return Fail("l1 sample runtime visual image blocker mutated runtime output");
     }
 
     return 0;
@@ -2901,6 +3168,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_L1_SAMPLE_011_RUNTIME_VISUAL_SCENE) {
         return RenderSceneL1Sample011CapturesFinalRuntimeVisualScene();
+    }
+
+    if (name == TEST_L1_SAMPLE_011_RUNTIME_VISUAL_IMAGE_ARTIFACTS) {
+        return RenderSceneL1Sample011EmitsFinalOrbitImageArtifacts();
     }
 
     if (name == TEST_L1_SAMPLE_012_RUNTIME_VISUAL_BLOCKER) {

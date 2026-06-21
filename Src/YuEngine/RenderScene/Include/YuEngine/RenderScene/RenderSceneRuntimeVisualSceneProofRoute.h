@@ -18,6 +18,8 @@
 namespace yuengine::renderscene {
 constexpr std::size_t MAX_RENDER_SCENE_RUNTIME_VISUAL_SCENE_OBJECT_NAME_BYTES =
     MAX_RENDER_SCENE_THREE_PRIMITIVE_OBJECT_NAME_BYTES;
+constexpr std::size_t MAX_RENDER_SCENE_RUNTIME_VISUAL_SCENE_IMAGE_PATH_BYTES =
+    MAX_RENDER_SCENE_ORBIT_CAPTURE_OUTPUT_PATH_BYTES;
 
 enum class RenderSceneRuntimeVisualSceneProofStatus {
     Success,
@@ -26,12 +28,21 @@ enum class RenderSceneRuntimeVisualSceneProofStatus {
     InvalidArgument
 };
 
+enum class RenderSceneRuntimeVisualSceneImageArtifactStatus {
+    NotRequested,
+    Written,
+    Fail
+};
+
 struct RenderSceneRuntimeVisualSceneProofRequest final {
     std::uint32_t first_frame_id = 0U;
     std::uint32_t frame_count = 0U;
     yuengine::rhi::IRhiDevice *rhi_device = nullptr;
     const char *output_path_prefix = nullptr;
     std::size_t output_path_prefix_byte_count = 0U;
+    bool image_artifact_requested = false;
+    const char *image_output_path_prefix = nullptr;
+    std::size_t image_output_path_prefix_byte_count = 0U;
     std::span<std::uint8_t> capture_output{};
     std::size_t capture_byte_budget_per_entity = 0U;
     bool target_capture_environment_available = true;
@@ -55,6 +66,19 @@ struct RenderSceneRuntimeVisualSceneProofEntityReport final {
     bool render_scene_submitted = false;
 };
 
+struct RenderSceneRuntimeVisualSceneImageArtifactReport final {
+    RenderSceneRuntimeVisualSceneImageArtifactStatus status =
+        RenderSceneRuntimeVisualSceneImageArtifactStatus::NotRequested;
+    std::uint32_t frame_index = 0U;
+    std::uint32_t frame_id = 0U;
+    std::uint16_t width = 0U;
+    std::uint16_t height = 0U;
+    std::size_t source_byte_count = 0U;
+    std::size_t file_byte_count = 0U;
+    char output_path[MAX_RENDER_SCENE_RUNTIME_VISUAL_SCENE_IMAGE_PATH_BYTES]{};
+    std::size_t output_path_byte_count = 0U;
+};
+
 struct RenderSceneRuntimeVisualSceneProofResult final {
     RenderSceneRuntimeVisualSceneProofStatus status =
         RenderSceneRuntimeVisualSceneProofStatus::InvalidArgument;
@@ -64,8 +88,13 @@ struct RenderSceneRuntimeVisualSceneProofResult final {
     std::uint32_t completed_frame_count = 0U;
     std::size_t capture_bytes_written = 0U;
     std::size_t frame_capture_byte_budget = 0U;
+    std::size_t image_artifact_report_count = 0U;
+    std::size_t image_artifact_bytes_written = 0U;
     std::size_t material_texture_slot_report_count = 0U;
     std::size_t entity_report_count = 0U;
+    std::array<
+        RenderSceneRuntimeVisualSceneImageArtifactReport,
+        MAX_RENDER_SCENE_ORBIT_CAPTURE_FRAME_COUNT> image_artifact_reports{};
     std::array<
         RenderSceneRuntimeVisualSceneProofEntityReport,
         RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> entity_reports{};
