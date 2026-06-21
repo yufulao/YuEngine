@@ -7,6 +7,7 @@ Scope: Animation runtime data, Animation Editor, event/state preview, validation
 
 Related:
 
+- `docs/YUENGINE_EDITOR_RUNTIME_PREVIEW_HOST_PLAN.md`
 - `docs/YUENGINE_SCENE_EDITOR_PLAN.md`
 - `docs/YUENGINE_UI_FRAMEWORK_EDITOR_PLAN.md`
 - `docs/YUENGINE_UI_WEB_EDITOR_FRONTEND_BOUNDARY.md`
@@ -16,8 +17,9 @@ Related:
 
 ## 1. Decision
 
-Animation Editor work must start with runtime animation data contracts, then
-build a narrow timeline/event/state preview editor around those contracts.
+Animation Editor work must start with runtime animation data contracts and a
+real engine preview target, then build a narrow timeline/event/state preview
+editor around those contracts.
 
 The useful first direction is:
 
@@ -26,11 +28,13 @@ runtime animation clip/state/event data
 -> Web editor workspace
 -> local animation editor service
 -> resource/import/cook validation
--> engine runtime preview and diagnostics
+-> engine preview host playback viewport and diagnostics
 ```
 
 The Animation Editor is not a full DCC tool, not a Unity Animator clone, not an
 Unreal Sequencer clone, and not a project gameplay FSM editor.
+It is also not usable if it only draws tracks and forms. It must show playback
+feedback against a model, sprite, UI target, or other runtime preview target.
 
 Animation Editor must share the production loop with UI Editor and Scene
 Editor:
@@ -44,6 +48,15 @@ Editor:
 An editor report that only proves a timeline can draw or a state box can be
 dragged is incomplete unless the data can pass this loop.
 
+Animation Editor is not usable until it can show:
+
+- a visible runtime preview target
+- clip play/pause/scrub/step feedback
+- keyframe or sampled-value feedback
+- event marker timing feedback
+- resource/import diagnostics for missing clip/model/material/texture data
+- cooked runtime data that can be loaded by the engine
+
 ## 2. Non-Goals
 
 Animation Editor does not own:
@@ -54,6 +67,7 @@ Animation Editor does not own:
 - a full Animator Controller or Blueprint-like visual scripting system
 - character movement FSMs, customer/player/stall states, quest triggers, or any
   gameplay behavior graph
+- a track-only Web page as core animation preview
 - old Unity `Animator`, `Animation`, or `AnimationCurve` API shape
 - old project animation helpers as runtime API shape
 - asset codec implementation beyond approved Resource/import gates
@@ -102,6 +116,7 @@ Reference use is constrained to behavior lessons.
 | Unreal Animation/Sequencer | separation of source asset, runtime playback, notify/event tracks, preview tooling | Sequencer scope, Blueprint/AnimGraph API, editor extensibility |
 | YuEngine Resource/Package gates | asset identity, import/cook/package validation | package expansion, old package compatibility |
 | YuEngine World/Scene gates | preview attachment to scene objects and resource bindings | gameplay component behavior or scene editor ownership |
+| YuEngine editor preview host | visible playback target, frame/status output, resource diagnostics | track-only Web timeline or fake playback |
 
 Each implementation task must record:
 
@@ -167,6 +182,8 @@ Owns:
 
 The workspace should follow the same Web direction used by the UI Editor:
 frontend workflow changes must not require rebuilding YuEngine C++.
+However, timeline drawing is not core preview. Playback feedback must come from
+the engine preview host.
 
 ### 5.4 Local Animation Editor Service
 
@@ -184,14 +201,15 @@ behavior, or state-preview UI in C++.
 
 ### 5.5 Runtime Preview
 
-Preview should use the real runtime path:
+Preview must use the real runtime path:
 
 ```text
 animation document
 -> validate
 -> cook/import check
 -> headless sample/event pass
--> optional scene-object preview target
+-> scene/model/sprite/UI preview target through preview host
+-> playback frame/status/event diagnostics
 -> runtime diagnostics back to Web editor
 ```
 
@@ -202,13 +220,14 @@ Editor must not own scene construction.
 
 ### Stage 0: Boundary Freeze
 
-Goal: make Animation a runtime-data feature first.
+Goal: make Animation a runtime-data and runtime-preview feature first.
 
 Required:
 
 - document that source DCC authoring remains external
 - forbid full Animator/Sequencer clone scope
 - forbid gameplay FSM scope
+- forbid timeline-only Web pages as usable animation preview
 - define initial runtime animation document families
 - align with shared Resource Browser, cook/package validator, and runtime
   preview loop
@@ -270,7 +289,8 @@ character controller, or quest/action graph.
 
 ### Stage 4: Web Animation Editor Workspace
 
-Goal: build the authoring surface around runtime animation data.
+Goal: build the authoring surface around runtime animation data and engine
+playback preview.
 
 Work items:
 
@@ -281,9 +301,11 @@ Work items:
 | AN-EW-003 | Inspector | edits runtime fields and import settings, not runtime-invisible UI state |
 | AN-EW-004 | Event editor | adds, moves, deletes event markers with validator feedback |
 | AN-EW-005 | State preview graph | simple state/transition preview only, no gameplay FSM |
-| AN-EW-006 | Scrub/play controls | uses runtime preview protocol for sample/event result |
-| AN-EW-007 | Validation panel | shows import, schema, event, sampling, and package diagnostics |
-| AN-EW-008 | Frontend test route | editor UI/data tests pass without CMake rebuild |
+| AN-EW-006 | Engine playback viewport | visible target/frame/status comes from preview host |
+| AN-EW-007 | Scrub/play controls | uses runtime preview protocol for sample/event result |
+| AN-EW-008 | Keyframe feedback | key/sample edits produce visible runtime target changes |
+| AN-EW-009 | Validation panel | shows import, schema, event, sampling, and package diagnostics |
+| AN-EW-010 | Frontend test route | editor UI/data tests pass without CMake rebuild |
 
 ### Stage 5: Scene Preview Integration
 
@@ -294,10 +316,12 @@ Work items:
 | ID | Work item | Acceptance |
 | --- | --- | --- |
 | AN-PV-001 | Preview target binding | selected scene object/resource binding is read through Scene/World data |
-| AN-PV-002 | Headless sample preview | clip samples and events returned without visual target dependency |
-| AN-PV-003 | Render preview hook | optional preview frame comes through runtime render path |
-| AN-PV-004 | Diagnostics snapshot | sample count, event count, active state, missing resources, failed refs |
-| AN-PV-005 | Build/run/package check | cooked animation fixture participates in package validation |
+| AN-PV-002 | Visible playback target | model, sprite, UI, or equivalent target displays clip output |
+| AN-PV-003 | Headless sample preview | clip samples and events returned without visual target dependency |
+| AN-PV-004 | Render preview hook | preview frame comes through runtime render path |
+| AN-PV-005 | Step/scrub feedback | play/pause/scrub/step produces deterministic frame/event output |
+| AN-PV-006 | Diagnostics snapshot | sample count, event count, active state, missing resources, failed refs |
+| AN-PV-007 | Build/run/package check | cooked animation fixture participates in package validation |
 
 ## 7. Hard Blocks
 
@@ -308,6 +332,10 @@ These are blocking violations:
 - making game-specific character/customer/stall/player FSMs part of Animation
   Editor scope
 - using old project animation helpers as runtime API shape
+- accepting a Web timeline, 2D canvas, HTML forms, or static screenshots as
+  animation preview
+- calling Animation Editor usable before visible playback, scrub/step, keyframe
+  feedback, and event timing feedback exist on a runtime preview target
 - adding a native animation editor app or immediate-mode fallback
 - making Web editor logic part of shipped runtime
 - hiding runtime state in editor-only timeline or graph layout data
@@ -349,6 +377,9 @@ Animation Editor first round is complete only when:
 - import settings and Resource Browser are shared
 - clip validator and runtime player first slice pass focused tests
 - event marker and playback cursor behavior are deterministic
+- visible preview target and playback frame/status path come from engine preview
+  host
+- keyframe, scrub, step, and event marker changes produce runtime feedback
 - state-preview records remain separate from gameplay FSMs
 - editor-only timeline/graph state is separated from runtime data
 - runtime preview returns sample/event/diagnostic status through engine paths

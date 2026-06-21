@@ -6,6 +6,7 @@ Owner: Architecture
 Scope: UI Framework, UI Core, UI Component Library, UIManager runtime framework, Web Editor
 
 Frontend boundary supplement: `docs/YUENGINE_UI_WEB_EDITOR_FRONTEND_BOUNDARY.md`
+Shared preview-host gate: `docs/YUENGINE_EDITOR_RUNTIME_PREVIEW_HOST_PLAN.md`
 
 ## 1. Correction
 
@@ -15,7 +16,7 @@ The corrected direction is:
 
 ```text
 YuEngine UI work = generic UI runtime framework + generic UIManager framework.
-UI Editor direction = Web.
+UI Editor direction = Web workspace plus engine UI runtime preview.
 ```
 
 There is no engine-stage scope for game-specific windows, game-specific
@@ -31,6 +32,8 @@ The following are explicitly out of scope:
 - making config tables part of the current UI scope
 - making the Web Editor depend on game runtime code
 - making the game runtime depend on Web Editor code
+- accepting HTML/CSS, form UI, 2D canvas sketches, or static screenshots as
+  core UI editor preview
 
 The only allowed use of the old framework is as a reference for generic
 patterns:
@@ -123,6 +126,9 @@ Does not own:
 ## 3. Web Editor Direction
 
 The UI Editor direction is Web. This is not "Web first"; it is the direction.
+This means the editor workspace is Web; it does not mean the preview is an
+HTML/CSS page. The usable UI Editor floor requires an engine-rendered UI runtime
+preview through the shared preview host.
 
 The editor architecture is:
 
@@ -130,14 +136,19 @@ The editor architecture is:
 Web frontend workspace (TypeScript/React, hot reload)
 -> local editor service / backend bridge
 -> file/schema/validator/cook commands
--> optional engine preview process through IPC/WebSocket
+-> required engine preview host through IPC/WebSocket
 ```
 
-The Web frontend is the editor product surface. It should iterate like the
-OpenAgents workspace-style web app: change TS/React/CSS/data files, refresh or
-hot reload, and validate with frontend commands. Editing hierarchy panels,
-inspector controls, templates, themes, state-preview UI, drag/drop, shortcuts,
-and visual workflow must not require recompiling YuEngine C++ targets.
+The Web frontend is the workspace surface for panels and workflow. It should
+iterate like the OpenAgents workspace-style web app: change TS/React/CSS/data
+files, refresh or hot reload, and validate with frontend commands. Editing
+hierarchy panels, inspector controls, templates, themes, state-preview UI,
+drag/drop, shortcuts, and workflow must not require recompiling YuEngine C++
+targets.
+
+The preview viewport is different: it must be backed by YuEngine UI runtime.
+HTML/CSS output, administrative-form styling, or a browser-only canvas mock is
+not acceptable core UI preview.
 
 C++ is allowed only behind the Web frontend boundary:
 
@@ -188,7 +199,8 @@ encoding frontend panels or editor catalogs in C++.
 
 ### 3.3 Engine Preview
 
-Preview must use the real UI runtime path where possible.
+Preview must use the real UI runtime path. It is not optional for usable-editor
+acceptance.
 
 Allowed preview modes:
 
@@ -201,6 +213,7 @@ Not allowed:
 
 - reimplementing runtime layout rules only in Web
 - making Web DOM the game UI runtime
+- accepting an HTML/CSS-styled page as the UI editor preview
 - adding a native app editor fallback
 - adding a native immediate-mode editor shell fallback
 
@@ -274,6 +287,7 @@ Reference use is constrained to generic behavior.
 | Unreal Slate/UMG | invalidation, retainer-like caching, UI performance vocabulary | Unreal editor/runtime architecture |
 | Web platform | editor shell, DOM controls, drag/drop, fast iteration | game runtime UI or runtime layout semantics |
 | YuEngine `UiRectTransform` and runtime rect math | authoritative anchors, offsets, pivot, margin, padding, DPI, safe-area, engine rect/content rect semantics | CSS box model, browser layout policy, DOM coordinate semantics |
+| YuEngine editor preview host | engine-rendered viewport/frame/status/diagnostics for UI runtime data | browser-only visual fake, static screenshot, or HTML admin surface |
 
 Each landing task must record:
 
@@ -365,9 +379,10 @@ Work items:
 No additional Stage 3 items are allowed until these generic records are reviewed
 and accepted.
 
-### Stage 4: Web Editor Foundation
+### Stage 4: Web Editor Foundation And Runtime Preview
 
-Goal: start the Web Editor as tooling around runtime files.
+Goal: start the Web Editor as tooling around runtime files and connect it to
+the engine UI runtime preview path.
 
 Work items:
 
@@ -375,8 +390,8 @@ Work items:
 | --- | --- | --- |
 | UI-EW-001 | Define UI file schema | schema version, node tree, layout, style refs, resource refs |
 | UI-EW-002 | Local editor service skeleton | load/save/validate API, no runtime dependency |
-| UI-EW-003 | Web editor shell | hierarchy, inspector, canvas, resource panel; canvas uses editor overlays only |
-| UI-EW-004 | Runtime preview protocol | WebSocket/IPC contract to engine preview process |
+| UI-EW-003 | Web workspace shell | hierarchy, inspector, resource panel, command routing; shell does not pretend to be runtime preview |
+| UI-EW-004 | Runtime preview protocol | WebSocket/IPC contract to engine preview host |
 | UI-EW-005 | Validator integration | schema, duplicate ID, resource ref, overflow reports |
 | UI-EW-006 | Component template data | templates are data files consumed by Web editor and runtime validator |
 | UI-EW-007 | Style/theme editing | Web edits data; runtime owns interpretation |
@@ -384,6 +399,8 @@ Work items:
 | UI-EW-009 | Layout coordinate spec | documents engine runtime rects, DOM canvas rects, y-axis conversion, pan/zoom, DPI, safe-area, border/overlay exclusion |
 | UI-EW-010 | Coordinate adapter | converts engine rects to Web canvas rects and back; drag/resize updates runtime offsets instead of CSS-only fields |
 | UI-EW-011 | Runtime layout parity tests | Web fast solver matches YuEngine runtime golden fixtures; C++ preview result is authoritative |
+| UI-EW-012 | Engine UI viewport | UI layout/style/resource data renders through YuEngine UI runtime, not HTML/CSS |
+| UI-EW-013 | UI resource preview | sprites, textures, fonts, atlases, materials, and missing-resource diagnostics are visible through engine preview |
 
 ## 6. Hard Blocks
 
@@ -401,6 +418,10 @@ These are blocking violations:
 - making Web Editor logic part of shipped runtime
 - requiring CMake/C++ rebuild for normal editor UI, template, theme, or state
   preview changes
+- accepting Web shell, HTML/CSS, 2D canvas sketches, or static screenshots as
+  core UI editor preview
+- calling UI Editor usable before engine UI runtime viewport/frame/diagnostics
+  are available
 - using HTML/CSS border-box as runtime layout semantics
 - exporting DOM `left/top/width/height` as authoritative runtime layout without
   anchor/offset/pivot conversion
@@ -445,6 +466,10 @@ The UI Framework first round is complete only when:
 - UIManager runtime records pass lifecycle, layer, map, stack, args, and release
   tests
 - Web Editor foundation is specified as Web-only tooling
+- UI Editor has an engine UI runtime viewport/frame/status path through the
+  shared preview host
+- sprites, textures, fonts, atlas refs, style refs, and missing-resource
+  diagnostics are visible through engine preview
 - Web Editor layout uses a documented coordinate adapter instead of treating
   HTML/CSS border-box as runtime layout
 - Web fast preview is covered by runtime-layout parity tests against the

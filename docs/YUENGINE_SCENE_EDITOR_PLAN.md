@@ -9,6 +9,7 @@ Related:
 
 - `docs/YUENGINE_UI_FRAMEWORK_EDITOR_PLAN.md`
 - `docs/YUENGINE_UI_WEB_EDITOR_FRONTEND_BOUNDARY.md`
+- `docs/YUENGINE_EDITOR_RUNTIME_PREVIEW_HOST_PLAN.md`
 - `docs/YUENGINE_PHASE3_ARCHITECTURE_QUEUE.md`
 - `docs/gates/P3_GATE_017_WORLD_SCENE_ASSEMBLY_SNAPSHOT_RESTORE_COORDINATOR.md`
 - `docs/gates/P3_GATE_018_WORLD_SCENE_ASSEMBLY_MANIFEST_STREAM_BRIDGE.md`
@@ -17,8 +18,9 @@ Related:
 
 ## 1. Decision
 
-Scene Editor work must be a narrow scene-assembly data editor and validator.
-It is not a full Unity or Unreal editor clone.
+Scene Editor work must be a narrow scene-assembly data editor and validator
+with a real engine viewport. It is not a full Unity or Unreal editor clone, but
+the minimum usable floor is a Unity-like operational editor, not a 2D web mock.
 
 The useful first direction is:
 
@@ -27,7 +29,7 @@ runtime-loadable scene records
 -> Web editor workspace
 -> local scene editor service
 -> cook/package/resource validation
--> engine runtime preview and diagnostics
+-> engine preview host viewport and diagnostics
 ```
 
 The editor edits data that the runtime can load. The editor does not define the
@@ -45,12 +47,23 @@ Editor:
 An editor report that only proves hierarchy drawing, a viewport mock, or JSON
 editing is incomplete unless the data can pass this loop.
 
+Scene Editor is not usable until it can show engine-rendered scene content:
+
+- camera and viewport controls
+- object selection
+- translate/rotate/scale gizmo feedback
+- model loading entry
+- texture and material loading entry
+- resource binding diagnostics
+- runtime scene data that can be cooked, packaged, and loaded
+
 ## 2. Non-Goals
 
 Scene Editor does not own:
 
 - a general editor plugin ecosystem
 - a native C++ editor app or immediate-mode fallback
+- a 2D canvas or HTML page as core scene preview
 - a copied Unity Scene/GameObject/Component editor model
 - a copied Unreal World/Actor/Component editor model
 - gameplay scene flow, quest triggers, player spawn policy, save-slot policy, or
@@ -93,6 +106,7 @@ Reference use is constrained to responsibility boundaries.
 | YuEngine component attachment/resource binding bridges | generic component/resource sidecar records | component payload lifecycle or gameplay component logic |
 | YuEngine `Resource`, `Package`, and `File` gates | resource identity, package load-plan, path/load validation | package expansion or old game package compatibility |
 | YuEngine `RenderScene` and `AudioScene` | preview projections from runtime records | editor-only render/audio behavior ownership |
+| YuEngine editor preview host | engine-rendered viewport, camera, transform gizmo feedback, resource diagnostics | 2D canvas mock or static screenshot as preview proof |
 | old `SceneManager.cs` | high-level need for scene id, loaded scene tracking, active scene switching, and scene change notification | Unity Addressables, Unity scene APIs, config table dependency, EventManager behavior |
 | Unity Scene view | hierarchy, inspector, transform editing, gizmo workflow vocabulary | Unity API shape, prefab/asset database model, serialized object model |
 | Unreal level/world tooling | separation of world data, actors/components, asset refs, viewport diagnostics | Unreal API shape, actor lifecycle, editor extensibility model |
@@ -134,7 +148,7 @@ Does not own:
 Owns:
 
 - scene hierarchy panel
-- scene viewport shell and overlays
+- scene viewport shell, overlays, and command routing
 - transform inspector
 - component attachment inspector
 - resource picker integration
@@ -146,6 +160,9 @@ Owns:
 The workspace should follow the same fast iteration boundary as the UI Web
 Editor: TypeScript/React/CSS/data changes must not require rebuilding YuEngine
 C++.
+However, the scene image itself must come from the engine preview host. The Web
+workspace may draw selection/gizmo overlays, but it must not fake the scene
+viewport with HTML/CSS or a standalone 2D canvas.
 
 ### 5.3 Local Scene Editor Service
 
@@ -164,7 +181,8 @@ behavior, or editor templates in C++.
 
 ### 5.4 Runtime Preview
 
-Preview uses the real runtime path where possible:
+Preview uses the real runtime path. It is mandatory for usable-editor
+acceptance:
 
 ```text
 scene document
@@ -172,7 +190,8 @@ scene document
 -> decoded restore plan
 -> apply-time restore proof
 -> controlled runtime preview world
--> RenderScene/AudioScene projections
+-> model/texture/material resource resolution
+-> camera and RenderScene/AudioScene projections
 -> diagnostics back to Web editor
 ```
 
@@ -183,13 +202,15 @@ Those overlays are never runtime scene data.
 
 ### Stage 0: Boundary Freeze
 
-Goal: prevent scene editor work from becoming a full editor ecosystem.
+Goal: prevent scene editor work from becoming a full editor ecosystem or a Web
+mock.
 
 Required:
 
 - document Scene Editor as a runtime-data editor, not a copied Unity/Unreal
   editor
 - forbid a native C++ editor shell fallback
+- forbid 2D canvas / HTML / static screenshot preview as core acceptance
 - identify exact runtime scene records that are editable
 - identify editor-only state that must not export
 - align Scene Editor with shared Resource Browser, cook/package validator, and
@@ -235,7 +256,8 @@ Work items:
 
 ### Stage 3: Web Scene Editor Workspace
 
-Goal: build the authoring surface around runtime records.
+Goal: build the authoring surface around runtime records and an engine-backed
+viewport.
 
 Work items:
 
@@ -245,10 +267,13 @@ Work items:
 | SE-EW-002 | Transform inspector | edits runtime transform fields, not CSS or editor-only placement |
 | SE-EW-003 | Component inspector | edits generic component attachment/resource binding records only |
 | SE-EW-004 | Resource picker | uses shared Resource Browser and typed Import Settings |
-| SE-EW-005 | Viewport overlay | selection, gizmo, grid, and labels are editor overlays only |
-| SE-EW-006 | Undo/redo commands | command log mutates runtime document data deterministically |
-| SE-EW-007 | Validation panel | shows schema, resource, package, restore-plan, and preview diagnostics |
-| SE-EW-008 | Frontend test route | editor UI/data tests pass without CMake rebuild |
+| SE-EW-005 | Engine viewport bridge | viewport image/status comes from engine preview host |
+| SE-EW-006 | Viewport overlay | selection, gizmo, grid, and labels are editor overlays only |
+| SE-EW-007 | Camera and gizmo commands | orbit/pan/zoom and translate/rotate/scale commands update preview host/runtime data |
+| SE-EW-008 | Model/material/texture entry | mesh/material/texture refs can be selected through Resource Browser and previewed |
+| SE-EW-009 | Undo/redo commands | command log mutates runtime document data deterministically |
+| SE-EW-010 | Validation panel | shows schema, resource, package, restore-plan, and preview diagnostics |
+| SE-EW-011 | Frontend test route | editor UI/data tests pass without CMake rebuild |
 
 ### Stage 4: Runtime Preview And Diagnostics
 
@@ -260,10 +285,12 @@ Work items:
 | --- | --- | --- |
 | SE-PV-001 | Preview session protocol | Web can start, update, and stop a runtime preview session |
 | SE-PV-002 | Headless restore preview | scene data passes decoded plan and apply-time proof before mutation |
-| SE-PV-003 | RenderScene preview | renderable records produce preview frame/status through runtime path |
-| SE-PV-004 | AudioScene preview | audio records produce preview status through runtime path when present |
-| SE-PV-005 | Diagnostics snapshot | object count, component count, resource refs, draw/audio counts, failures |
-| SE-PV-006 | Build/run/package check | sample scene enters package/build validation path |
+| SE-PV-003 | Camera viewport preview | camera state produces engine-rendered frame/status output |
+| SE-PV-004 | Model/material/texture preview | renderable records load resources and show material/texture diagnostics |
+| SE-PV-005 | RenderScene preview | renderable records produce preview frame/status through runtime path |
+| SE-PV-006 | AudioScene preview | audio records produce preview status through runtime path when present |
+| SE-PV-007 | Diagnostics snapshot | object count, component count, resource refs, draw/audio counts, failures |
+| SE-PV-008 | Build/run/package check | sample scene enters package/build validation path |
 
 ### Stage 5: Product-Layer Handoff
 
@@ -287,6 +314,9 @@ These are blocking violations:
   policy into Scene Editor scope
 - using old project scene managers as runtime API shape
 - adding a native scene editor app or immediate-mode fallback
+- accepting 2D Web canvas, HTML forms, or static screenshots as scene preview
+- calling Scene Editor usable before model/texture/material loading entry,
+  camera controls, transform gizmo, and engine viewport exist
 - making the runtime depend on Web editor code
 - making editor-only selection/camera/gizmo state part of runtime scene data
 - bypassing scene restore plan and apply-time proof for preview
@@ -327,6 +357,8 @@ Scene Editor first round is complete only when:
 - scene document schema is runtime-loadable
 - editor-only state is separated from runtime data
 - Resource Browser and Import Settings are shared
+- engine preview host provides camera viewport frame/status output
+- model, texture, and material resource references can be loaded or diagnosed
 - cook/package validation reports dependency correctness
 - decoded restore plan and apply-time proof gate runtime preview
 - runtime preview returns RenderScene/AudioScene/diagnostic status through
