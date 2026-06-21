@@ -8,6 +8,7 @@ Scope: Animation runtime data, Animation Editor, event/state preview, validation
 Related:
 
 - `docs/YUENGINE_EDITOR_RUNTIME_PREVIEW_HOST_PLAN.md`
+- `docs/gates/EDITOR_GATE_001_RUNTIME_PREVIEW_HOST.md`
 - `docs/YUENGINE_SCENE_EDITOR_PLAN.md`
 - `docs/YUENGINE_UI_FRAMEWORK_EDITOR_PLAN.md`
 - `docs/YUENGINE_UI_WEB_EDITOR_FRONTEND_BOUNDARY.md`

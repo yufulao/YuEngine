@@ -4,7 +4,8 @@ Status: corrective boundary
 Owner: Architecture
 Scope: Web Editor frontend, local backend bridge, runtime preview contract
 
-Shared preview-host gate: `docs/YUENGINE_EDITOR_RUNTIME_PREVIEW_HOST_PLAN.md`
+Shared preview-host gate: `docs/gates/EDITOR_GATE_001_RUNTIME_PREVIEW_HOST.md`
+Shared preview-host plan: `docs/YUENGINE_EDITOR_RUNTIME_PREVIEW_HOST_PLAN.md`
 
 ## Decision
 

@@ -6,7 +6,8 @@ Owner: Architecture
 Scope: UI Framework, UI Core, UI Component Library, UIManager runtime framework, Web Editor
 
 Frontend boundary supplement: `docs/YUENGINE_UI_WEB_EDITOR_FRONTEND_BOUNDARY.md`
-Shared preview-host gate: `docs/YUENGINE_EDITOR_RUNTIME_PREVIEW_HOST_PLAN.md`
+Shared preview-host gate: `docs/gates/EDITOR_GATE_001_RUNTIME_PREVIEW_HOST.md`
+Shared preview-host plan: `docs/YUENGINE_EDITOR_RUNTIME_PREVIEW_HOST_PLAN.md`
 
 ## 1. Correction
 
