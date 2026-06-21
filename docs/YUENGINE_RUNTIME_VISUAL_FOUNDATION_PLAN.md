@@ -7,6 +7,9 @@ Owner: Architecture
 Scope: pure engine runtime capability ladder for camera, scene placement,
 geometry/model, material/texture/shader binding, animation interpolation, render
 submission, and runtime capture
+Related runtime data contract:
+`docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md` and
+`docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
 
 This document exists because the runtime visual requirement must be built from
 basic module capabilities, not from a single late "preview" milestone. A camera
@@ -167,3 +170,10 @@ L0/L1 may not be called complete by saying "the final sample is planned." The
 module floors above must either pass in order or produce explicit blocker rows.
 The final cube/cylinder/cone orbit capture is valid only when it is the
 composition of these module floors.
+
+If the final scene claims runtime asset/data loading, it must also satisfy the
+runtime asset/data closed loop gate: generator-written disk files read through
+File/VFS/Resource, validated/cooked/loaded into runtime records/resources, then
+rendered and captured through RenderScene, RenderCore, and RHI. RVF helper
+image artifacts, CPU semantic PPM output, and GDI/software viewer output remain
+auxiliary evidence only.

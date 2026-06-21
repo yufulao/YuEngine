@@ -41,6 +41,14 @@ binding, animation interpolation, transform application, RenderScene submission,
 RenderCore/RHI draw/capture, and missing-layer diagnostics are separate module
 floors. A final orbit sample does not replace those floors.
 
+When the visual sample claims runtime asset/data loading, it must also satisfy
+the runtime asset/data contract tracked by
+`docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md` and
+`docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`: disk files generated
+deterministically, read through File/VFS/Resource, validated/cooked/loaded, and
+then rendered through RenderScene, RenderCore, and RHI. CPU helper images or
+viewer output do not replace that path.
+
 The L1 vertical sample acceptance intent is:
 
 - prove the sample travels through L1 runtime value contracts rather than
