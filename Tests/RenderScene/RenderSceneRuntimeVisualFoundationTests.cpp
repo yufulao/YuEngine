@@ -289,6 +289,8 @@ constexpr const char *TEST_L1_SAMPLE_016_PERSPECTIVE_3D_CAMERA_TWEEN =
     "RenderScene_L1Sample016EmitsPerspective3DPrimitiveCameraTweenArtifacts";
 constexpr const char *TEST_L1_SAMPLE_018_TRANSPARENT_PANEL_BLEND =
     "RenderScene_L1Sample018BlendsTransparentRuntimePanel";
+constexpr const char *TEST_L1_SAMPLE_019_TEXTURED_GLASS_EMISSIVE_METAL =
+    "RenderScene_L1Sample019RendersTexturedGlassEmissiveMetalMaterials";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -411,6 +413,12 @@ bool RhiColorsMatch(RhiColor left, RhiColor right) {
     }
 
     return left.a == right.a;
+}
+
+std::uint32_t RhiColorLight(RhiColor color) {
+    return static_cast<std::uint32_t>(color.r) +
+        static_cast<std::uint32_t>(color.g) +
+        static_cast<std::uint32_t>(color.b);
 }
 
 bool TextureHandlesMatch(RhiTextureHandle left, RhiTextureHandle right) {
@@ -4504,6 +4512,118 @@ int RenderSceneL1Sample018BlendsTransparentRuntimePanel() {
     return 0;
 }
 
+int RenderSceneL1Sample019RendersTexturedGlassEmissiveMetalMaterials() {
+    L1Vis001RhiDevice device;
+    const std::size_t entity_capture_byte_count = L1VisCaptureByteCount();
+    const std::size_t frame_capture_byte_count =
+        entity_capture_byte_count * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    std::vector<std::uint8_t> capture(
+        frame_capture_byte_count * L1_SAMPLE_016_FRAME_COUNT,
+        CAPTURE_SENTINEL);
+
+    RenderSceneRuntimeVisualSceneProofRoute route;
+    RenderSceneRuntimeVisualSceneProofResult result{};
+    const std::array<RenderSceneRuntimeVisualSceneCameraTweenKeyframe, 3U> keyframes =
+        MakeRuntimeVisualSceneCameraTweenKeyframes();
+    RenderSceneRuntimeVisualSceneProofRequest request =
+        MakeRuntimeVisualSceneProofRequest(device, capture);
+    request.frame_count = L1_SAMPLE_016_FRAME_COUNT;
+    request.camera_tween_requested = true;
+    request.camera_tween_keyframes = keyframes;
+    request.transparent_panel_blend_requested = true;
+    request.material_proof_requested = true;
+    const RenderSceneRuntimeVisualSceneProofStatus status = route.Execute(request, &result);
+    if (status != RenderSceneRuntimeVisualSceneProofStatus::Success) {
+        return Fail("l1 sample runtime visual material proof route did not complete");
+    }
+
+    if (result.first_missing_layer != RenderSceneMissingLayerDiagnosticLayer::None ||
+        result.diagnostic.status != RenderSceneMissingLayerDiagnosticStatus::Success) {
+        return Fail("l1 sample runtime visual material proof reported missing layer");
+    }
+
+    if (!result.camera_tween_used ||
+        !result.camera_perspective_projection_used ||
+        !result.transparent_panel_blend_used) {
+        return Fail("l1 sample runtime visual material proof lost prior visual layers");
+    }
+
+    if (!result.textured_material_used ||
+        !result.textured_material_varies_from_pure_color ||
+        !result.glass_material_used ||
+        !result.emissive_material_used ||
+        !result.emissive_material_brighter_than_diffuse ||
+        !result.metal_material_used ||
+        !result.metal_material_differs_from_diffuse) {
+        return Fail("l1 sample runtime visual material proof metadata mismatch");
+    }
+
+    if (RhiColorsMatch(result.textured_material_sample_a, result.textured_material_sample_b)) {
+        return Fail("l1 sample runtime visual textured material samples did not vary");
+    }
+
+    if (RhiColorsMatch(
+            result.textured_material_sample_a,
+            result.textured_material_flat_reference) ||
+        RhiColorsMatch(
+            result.textured_material_sample_b,
+            result.textured_material_flat_reference)) {
+        return Fail("l1 sample runtime visual textured material matched flat color");
+    }
+
+    RhiBlendStateDesc alpha_state{};
+    alpha_state.mode = RhiBlendMode::AlphaOver;
+    alpha_state.constant_alpha = 255U;
+    const RhiColor expected_glass =
+        BlendRhiColor(
+            result.transparent_panel_source_color,
+            result.transparent_panel_primitive_color,
+            alpha_state);
+    if (!RhiColorsMatch(result.glass_material_blended_pixel, expected_glass)) {
+        return Fail("l1 sample runtime visual glass material blend math mismatch");
+    }
+
+    if (RhiColorsMatch(
+            result.glass_material_blended_pixel,
+            result.glass_material_opaque_pixel)) {
+        return Fail("l1 sample runtime visual glass material was opaque overwrite");
+    }
+
+    if (RhiColorLight(result.emissive_material_pixel) <=
+        RhiColorLight(result.emissive_material_diffuse_reference)) {
+        return Fail("l1 sample runtime visual emissive material was not brighter than diffuse");
+    }
+
+    if (RhiColorsMatch(
+            result.metal_material_pixel,
+            result.metal_material_diffuse_reference)) {
+        return Fail("l1 sample runtime visual metal material matched diffuse");
+    }
+
+    if (RhiColorLight(result.metal_material_pixel) <=
+        RhiColorLight(result.metal_material_diffuse_reference)) {
+        return Fail("l1 sample runtime visual metal material lacked highlight evidence");
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    const std::uint64_t expected_draw_count =
+        static_cast<std::uint64_t>(L1_SAMPLE_016_FRAME_COUNT) *
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    const std::uint64_t expected_submit_count = expected_draw_count + 1U;
+    if (snapshot.submit_count != expected_submit_count ||
+        snapshot.submitted_indexed_draw_count != expected_draw_count ||
+        snapshot.submitted_blend_state_bind_count != 1U) {
+        return Fail("l1 sample runtime visual material proof rhi submit mismatch");
+    }
+
+    if (!snapshot.last_alpha_blend_enabled ||
+        snapshot.rejected_blend_state_bind_count != 0U) {
+        return Fail("l1 sample runtime visual material proof blend state mismatch");
+    }
+
+    return 0;
+}
+
 int RenderSceneL1Vis002ReportsGeometryMissingLayerForCylinder() {
     L1Vis001RhiDevice device;
     std::vector<std::uint8_t> capture(
@@ -4705,6 +4825,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_L1_SAMPLE_018_TRANSPARENT_PANEL_BLEND) {
         return RenderSceneL1Sample018BlendsTransparentRuntimePanel();
+    }
+
+    if (name == TEST_L1_SAMPLE_019_TEXTURED_GLASS_EMISSIVE_METAL) {
+        return RenderSceneL1Sample019RendersTexturedGlassEmissiveMetalMaterials();
     }
 
     if (name == TEST_BOUNDARY) {

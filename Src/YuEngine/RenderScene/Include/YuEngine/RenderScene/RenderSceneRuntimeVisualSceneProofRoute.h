@@ -84,6 +84,7 @@ struct RenderSceneRuntimeVisualSceneProofRequest final {
     bool close_orbit_loop = true;
     bool camera_tween_requested = false;
     bool transparent_panel_blend_requested = false;
+    bool material_proof_requested = false;
     std::span<const RenderSceneRuntimeVisualSceneCameraTweenKeyframe> camera_tween_keyframes{};
     RenderSceneMissingLayerDiagnosticFault diagnostic_fault =
         RenderSceneMissingLayerDiagnosticFault::None;
@@ -148,10 +149,26 @@ struct RenderSceneRuntimeVisualSceneProofResult final {
     bool transparent_panel_blend_used = false;
     bool transparent_panel_overlaps_primitive = false;
     bool transparent_panel_overlaps_background = false;
+    bool textured_material_used = false;
+    bool textured_material_varies_from_pure_color = false;
+    bool glass_material_used = false;
+    bool emissive_material_used = false;
+    bool emissive_material_brighter_than_diffuse = false;
+    bool metal_material_used = false;
+    bool metal_material_differs_from_diffuse = false;
     std::uint8_t transparent_panel_alpha = 0U;
     std::size_t camera_tween_keyframe_count = 0U;
     std::size_t material_texture_slot_report_count = 0U;
     std::size_t entity_report_count = 0U;
+    yuengine::rhi::RhiColor textured_material_sample_a{};
+    yuengine::rhi::RhiColor textured_material_sample_b{};
+    yuengine::rhi::RhiColor textured_material_flat_reference{};
+    yuengine::rhi::RhiColor glass_material_blended_pixel{};
+    yuengine::rhi::RhiColor glass_material_opaque_pixel{};
+    yuengine::rhi::RhiColor emissive_material_pixel{};
+    yuengine::rhi::RhiColor emissive_material_diffuse_reference{};
+    yuengine::rhi::RhiColor metal_material_pixel{};
+    yuengine::rhi::RhiColor metal_material_diffuse_reference{};
     yuengine::rhi::RhiColor transparent_panel_source_color{};
     yuengine::rhi::RhiColor transparent_panel_background_color{};
     yuengine::rhi::RhiColor transparent_panel_primitive_color{};

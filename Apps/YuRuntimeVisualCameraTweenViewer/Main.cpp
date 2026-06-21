@@ -88,6 +88,13 @@ struct CameraPose final {
     float vertical_fov_radians = 1.0F;
 };
 
+enum class ViewerMaterialKind {
+    Diffuse,
+    Textured,
+    Emissive,
+    Metal
+};
+
 enum class TweenEase {
     Linear,
     SmoothStep
@@ -120,6 +127,8 @@ struct Surface final {
     std::array<ProjectedVertex, SURFACE_VERTEX_CAPACITY> vertices{};
     std::size_t vertex_count = 0U;
     Rgb color{};
+    ViewerMaterialKind material_kind = ViewerMaterialKind::Diffuse;
+    std::uint32_t material_slot = 0U;
     float depth = FAR_DEPTH;
 };
 
@@ -145,7 +154,7 @@ int Fail(std::string_view message) {
 }
 
 int Blocker(std::string_view layer, std::string_view detail) {
-    std::fprintf(stderr, "RVF018 BLOCKER layer=%.*s detail=%.*s\n",
+    std::fprintf(stderr, "RVF019 BLOCKER layer=%.*s detail=%.*s\n",
         static_cast<int>(layer.size()),
         layer.data(),
         static_cast<int>(detail.size()),
@@ -501,14 +510,14 @@ RhiColor TransparentPanelSourceColor(int row, int column, float time_seconds) {
     const int time_phase = static_cast<int>(time_seconds * 5.0F);
     const int stripe_index = ((column / 18) + (row / 18) + time_phase) % 3;
     if (stripe_index == 0) {
-        return RhiColor{236U, 216U, 48U, TRANSPARENT_PANEL_ALPHA};
+        return RhiColor{172U, 230U, 255U, TRANSPARENT_PANEL_ALPHA};
     }
 
     if (stripe_index == 1) {
-        return RhiColor{64U, 198U, 255U, 116U};
+        return RhiColor{98U, 188U, 255U, 116U};
     }
 
-    return RhiColor{255U, 96U, 168U, 140U};
+    return RhiColor{218U, 246U, 255U, 140U};
 }
 
 void RasterTransparentPanel(FrameBuffer *frame_buffer, float time_seconds) {
@@ -534,6 +543,8 @@ bool AddSurface(
     const CameraBasis &basis,
     std::span<const Vec3> vertices,
     Rgb color,
+    ViewerMaterialKind material_kind,
+    std::uint32_t material_slot,
     std::array<Surface, SURFACE_CAPACITY> *out_surfaces,
     std::size_t *inout_surface_count) {
     if (out_surfaces == nullptr) {
@@ -555,6 +566,8 @@ bool AddSurface(
     Surface surface{};
     surface.vertex_count = vertices.size();
     surface.color = color;
+    surface.material_kind = material_kind;
+    surface.material_slot = material_slot;
     float depth_sum = 0.0F;
     for (std::size_t index = 0U; index < vertices.size(); ++index) {
         ProjectedVertex vertex{};
@@ -576,20 +589,38 @@ bool AddQuad(
     const CameraBasis &basis,
     const std::array<Vec3, 4U> &vertices,
     Rgb color,
+    ViewerMaterialKind material_kind,
+    std::uint32_t material_slot,
     std::array<Surface, SURFACE_CAPACITY> *out_surfaces,
     std::size_t *inout_surface_count) {
     const std::span<const Vec3> vertex_span(vertices.data(), vertices.size());
-    return AddSurface(basis, vertex_span, color, out_surfaces, inout_surface_count);
+    return AddSurface(
+        basis,
+        vertex_span,
+        color,
+        material_kind,
+        material_slot,
+        out_surfaces,
+        inout_surface_count);
 }
 
 bool AddTriangle(
     const CameraBasis &basis,
     const std::array<Vec3, 3U> &vertices,
     Rgb color,
+    ViewerMaterialKind material_kind,
+    std::uint32_t material_slot,
     std::array<Surface, SURFACE_CAPACITY> *out_surfaces,
     std::size_t *inout_surface_count) {
     const std::span<const Vec3> vertex_span(vertices.data(), vertices.size());
-    return AddSurface(basis, vertex_span, color, out_surfaces, inout_surface_count);
+    return AddSurface(
+        basis,
+        vertex_span,
+        color,
+        material_kind,
+        material_slot,
+        out_surfaces,
+        inout_surface_count);
 }
 
 bool BuildCube(
@@ -626,7 +657,14 @@ bool BuildCube(
             world[face[2U]],
             world[face[3U]]};
         const Rgb color = MaterialColor(0U, face_index, 0.78F + static_cast<float>(face_index) * 0.04F);
-        if (!AddQuad(basis, vertices, color, out_surfaces, inout_surface_count)) {
+        if (!AddQuad(
+                basis,
+                vertices,
+                color,
+                ViewerMaterialKind::Textured,
+                static_cast<std::uint32_t>(face_index),
+                out_surfaces,
+                inout_surface_count)) {
             return false;
         }
     }
@@ -661,7 +699,14 @@ bool BuildCylinder(
         const float shade = 0.64F + 0.32F * static_cast<float>(segment % 3U) / 2.0F;
         const Rgb side_color = MaterialColor(1U, segment, shade);
         const std::array<Vec3, 4U> side{bottom_first, bottom_second, top_second, top_first};
-        if (!AddQuad(basis, side, side_color, out_surfaces, inout_surface_count)) {
+        if (!AddQuad(
+                basis,
+                side,
+                side_color,
+                ViewerMaterialKind::Metal,
+                segment,
+                out_surfaces,
+                inout_surface_count)) {
             return false;
         }
 
@@ -669,11 +714,25 @@ bool BuildCylinder(
         const std::array<Vec3, 3U> bottom{bottom_center, bottom_second, bottom_first};
         const Rgb top_color = MaterialColor(1U, segment + 1U, 0.86F);
         const Rgb bottom_color = MaterialColor(1U, segment + 2U, 0.54F);
-        if (!AddTriangle(basis, top, top_color, out_surfaces, inout_surface_count)) {
+        if (!AddTriangle(
+                basis,
+                top,
+                top_color,
+                ViewerMaterialKind::Metal,
+                segment + 1U,
+                out_surfaces,
+                inout_surface_count)) {
             return false;
         }
 
-        if (!AddTriangle(basis, bottom, bottom_color, out_surfaces, inout_surface_count)) {
+        if (!AddTriangle(
+                basis,
+                bottom,
+                bottom_color,
+                ViewerMaterialKind::Metal,
+                segment + 2U,
+                out_surfaces,
+                inout_surface_count)) {
             return false;
         }
     }
@@ -702,13 +761,27 @@ bool BuildCone(
         const float shade = 0.58F + 0.38F * static_cast<float>(segment % 4U) / 3.0F;
         const std::array<Vec3, 3U> side{apex, first, second};
         const Rgb side_color = MaterialColor(2U, segment, shade);
-        if (!AddTriangle(basis, side, side_color, out_surfaces, inout_surface_count)) {
+        if (!AddTriangle(
+                basis,
+                side,
+                side_color,
+                ViewerMaterialKind::Emissive,
+                segment,
+                out_surfaces,
+                inout_surface_count)) {
             return false;
         }
 
         const std::array<Vec3, 3U> base{base_center, second, first};
         const Rgb base_color = MaterialColor(2U, segment + 2U, 0.50F);
-        if (!AddTriangle(basis, base, base_color, out_surfaces, inout_surface_count)) {
+        if (!AddTriangle(
+                basis,
+                base,
+                base_color,
+                ViewerMaterialKind::Emissive,
+                segment + 2U,
+                out_surfaces,
+                inout_surface_count)) {
             return false;
         }
     }
@@ -807,6 +880,60 @@ Rgb DarkenColor(Rgb color) {
     return result;
 }
 
+Rgb ApplyTexturedMaterial(Rgb color, int row, int column, std::uint32_t material_slot) {
+    const int slot_offset = static_cast<int>(material_slot);
+    const int checker = ((column / 14) + (row / 14) + slot_offset) % 2;
+    if (checker == 0) {
+        Rgb result{};
+        result.r = ClampByte(static_cast<std::uint32_t>(color.r) + 92U);
+        result.g = ClampByte(static_cast<std::uint32_t>(color.g) / 2U + 42U);
+        result.b = ClampByte(static_cast<std::uint32_t>(color.b) + 22U);
+        return result;
+    }
+
+    Rgb result{};
+    result.r = ClampByte(static_cast<std::uint32_t>(color.r) / 2U + 16U);
+    result.g = ClampByte(static_cast<std::uint32_t>(color.g) + 74U);
+    result.b = ClampByte(static_cast<std::uint32_t>(color.b) / 2U + 86U);
+    return result;
+}
+
+Rgb ApplyEmissiveMaterial(Rgb color, int row, int column) {
+    const int band = ((column / 18) + (row / 18)) % 2;
+    const std::uint32_t boost = band == 0 ? 122U : 64U;
+    Rgb result{};
+    result.r = ClampByte(static_cast<std::uint32_t>(color.r) + boost);
+    result.g = ClampByte(static_cast<std::uint32_t>(color.g) + 96U);
+    result.b = ClampByte(static_cast<std::uint32_t>(color.b) + 28U);
+    return result;
+}
+
+Rgb ApplyMetalMaterial(Rgb color, int row, int column) {
+    const int diagonal = ((column + row) / 22) % 5;
+    const std::uint32_t highlight = diagonal == 0 ? 132U : 34U;
+    Rgb result{};
+    result.r = ClampByte(static_cast<std::uint32_t>(color.r) / 2U + highlight);
+    result.g = ClampByte(static_cast<std::uint32_t>(color.g) / 2U + highlight + 12U);
+    result.b = ClampByte(static_cast<std::uint32_t>(color.b) / 2U + highlight + 24U);
+    return result;
+}
+
+Rgb ApplyViewerMaterial(const Surface &surface, Rgb color, int row, int column) {
+    if (surface.material_kind == ViewerMaterialKind::Textured) {
+        return ApplyTexturedMaterial(color, row, column, surface.material_slot);
+    }
+
+    if (surface.material_kind == ViewerMaterialKind::Emissive) {
+        return ApplyEmissiveMaterial(color, row, column);
+    }
+
+    if (surface.material_kind == ViewerMaterialKind::Metal) {
+        return ApplyMetalMaterial(color, row, column);
+    }
+
+    return color;
+}
+
 void FillBackground(FrameBuffer *frame_buffer, float time_seconds) {
     if (frame_buffer == nullptr) {
         return;
@@ -864,7 +991,7 @@ void RasterSurface(const Surface &surface, FrameBuffer *frame_buffer) {
                 continue;
             }
 
-            Rgb color = surface.color;
+            Rgb color = ApplyViewerMaterial(surface, surface.color, row, column);
             if (PointNearSurfaceEdge(surface, x, y)) {
                 color = DarkenColor(color);
             }
@@ -979,7 +1106,7 @@ bool ShouldCloseWindow(WindowsPlatformWindow &window) {
 int RunViewer(const RunOptions &options) {
     WindowsPlatformWindow window;
     PlatformWindowDesc desc{};
-    desc.title = "YuEngine RVF-018 Camera Tween Blend Viewer";
+    desc.title = "YuEngine RVF-019 Material Camera Tween Viewer";
     desc.client_width = VIEWER_WIDTH;
     desc.client_height = VIEWER_HEIGHT;
     desc.visible = true;
@@ -1034,7 +1161,9 @@ int RunViewer(const RunOptions &options) {
     }
 
     static_cast<void>(window.Destroy());
-    std::printf("RVF018 PASS frames=%u mode=camera_tween panel=alpha_blend window=live\n", frame_index);
+    std::printf(
+        "RVF019 PASS frames=%u mode=camera_tween materials=textured,glass,emissive,metal panel=alpha_blend window=live\n",
+        frame_index);
     return 0;
 }
 }

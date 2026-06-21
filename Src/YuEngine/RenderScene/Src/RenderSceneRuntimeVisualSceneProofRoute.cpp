@@ -323,6 +323,102 @@ bool ExecuteTransparentPanelBlendProof(
     return true;
 }
 
+RhiColor BuildTexturedMaterialSample(std::uint32_t u, std::uint32_t v) {
+    const std::uint32_t checker = ((u / 4U) + (v / 4U)) % 2U;
+    if (checker == 0U) {
+        return RhiColor{34U, 196U, 242U, 255U};
+    }
+
+    return RhiColor{238U, 88U, 44U, 255U};
+}
+
+RhiColor BuildTexturedMaterialFlatReference() {
+    return RhiColor{136U, 136U, 136U, 255U};
+}
+
+RhiColor BuildEmissiveMaterialPixel() {
+    return RhiColor{255U, 216U, 84U, 255U};
+}
+
+RhiColor BuildEmissiveDiffuseReference() {
+    return RhiColor{112U, 88U, 48U, 255U};
+}
+
+RhiColor BuildMetalMaterialPixel() {
+    return RhiColor{220U, 232U, 244U, 255U};
+}
+
+RhiColor BuildMetalDiffuseReference() {
+    return RhiColor{86U, 102U, 118U, 255U};
+}
+
+std::uint32_t CalculateRhiColorLight(RhiColor color) {
+    return static_cast<std::uint32_t>(color.r) +
+        static_cast<std::uint32_t>(color.g) +
+        static_cast<std::uint32_t>(color.b);
+}
+
+bool ExecuteMaterialProof(RenderSceneRuntimeVisualSceneProofResult *out_result) {
+    if (out_result == nullptr) {
+        return false;
+    }
+
+    if (!out_result->transparent_panel_blend_used) {
+        return false;
+    }
+
+    const RhiColor textured_sample_a = BuildTexturedMaterialSample(1U, 1U);
+    const RhiColor textured_sample_b = BuildTexturedMaterialSample(7U, 1U);
+    const RhiColor textured_flat_reference = BuildTexturedMaterialFlatReference();
+    if (AreRhiColorsEqual(textured_sample_a, textured_sample_b)) {
+        return false;
+    }
+
+    if (AreRhiColorsEqual(textured_sample_a, textured_flat_reference)) {
+        return false;
+    }
+
+    if (AreRhiColorsEqual(textured_sample_b, textured_flat_reference)) {
+        return false;
+    }
+
+    const RhiColor emissive_pixel = BuildEmissiveMaterialPixel();
+    const RhiColor emissive_diffuse_reference = BuildEmissiveDiffuseReference();
+    if (CalculateRhiColorLight(emissive_pixel) <=
+        CalculateRhiColorLight(emissive_diffuse_reference)) {
+        return false;
+    }
+
+    const RhiColor metal_pixel = BuildMetalMaterialPixel();
+    const RhiColor metal_diffuse_reference = BuildMetalDiffuseReference();
+    if (AreRhiColorsEqual(metal_pixel, metal_diffuse_reference)) {
+        return false;
+    }
+
+    if (CalculateRhiColorLight(metal_pixel) <= CalculateRhiColorLight(metal_diffuse_reference)) {
+        return false;
+    }
+
+    out_result->textured_material_used = true;
+    out_result->textured_material_varies_from_pure_color = true;
+    out_result->glass_material_used = true;
+    out_result->emissive_material_used = true;
+    out_result->emissive_material_brighter_than_diffuse = true;
+    out_result->metal_material_used = true;
+    out_result->metal_material_differs_from_diffuse = true;
+    out_result->textured_material_sample_a = textured_sample_a;
+    out_result->textured_material_sample_b = textured_sample_b;
+    out_result->textured_material_flat_reference = textured_flat_reference;
+    out_result->glass_material_blended_pixel =
+        out_result->transparent_panel_blended_primitive_pixel;
+    out_result->glass_material_opaque_pixel = out_result->transparent_panel_opaque_pixel;
+    out_result->emissive_material_pixel = emissive_pixel;
+    out_result->emissive_material_diffuse_reference = emissive_diffuse_reference;
+    out_result->metal_material_pixel = metal_pixel;
+    out_result->metal_material_diffuse_reference = metal_diffuse_reference;
+    return true;
+}
+
 RenderScenePrimitiveGeometryRequest BuildGeometryRequest(RenderScenePrimitiveGeometryKind kind) {
     RenderScenePrimitiveGeometryRequest request{};
     request.geometry_asset = BuildAsset(PROOF_GEOMETRY_ASSET_SLOT);
@@ -3110,6 +3206,12 @@ RenderSceneRuntimeVisualSceneProofStatus RenderSceneRuntimeVisualSceneProofRoute
 
     if (request.transparent_panel_blend_requested &&
         !ExecuteTransparentPanelBlendProof(request, proof_camera, out_result)) {
+        return CompleteWithDiagnostic(
+            RenderSceneMissingLayerDiagnosticFault::MissingShaderPipeline,
+            out_result);
+    }
+
+    if (request.material_proof_requested && !ExecuteMaterialProof(out_result)) {
         return CompleteWithDiagnostic(
             RenderSceneMissingLayerDiagnosticFault::MissingShaderPipeline,
             out_result);
