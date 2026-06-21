@@ -9,7 +9,10 @@
 #include <string_view>
 #include <vector>
 
+#include "YuEngine/Animation/AnimationRuntimeSampler.h"
 #include "YuEngine/Asset/AssetHandle.h"
+#include "YuEngine/Kernel/RuntimeFrameContext.h"
+#include "YuEngine/Kernel/RuntimeFrameMode.h"
 #include "YuEngine/RenderCore/RenderCameraProjectionKind.h"
 #include "YuEngine/RenderCore/RenderDrawableFramePipelineStatus.h"
 #include "YuEngine/RenderScene/RenderSceneOneCubeCaptureRoute.h"
@@ -71,10 +74,31 @@
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiTextureHandle.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
+#include "YuEngine/World/WorldInstance.h"
 #include "YuEngine/World/WorldObjectId.h"
+#include "YuEngine/World/WorldObjectDesc.h"
+#include "YuEngine/World/WorldRegistrationResult.h"
+#include "YuEngine/World/WorldTransformBridge.h"
+#include "YuEngine/World/WorldTransformBridgeDesc.h"
+#include "YuEngine/World/WorldTransformResult.h"
 #include "YuEngine/World/WorldTransformState.h"
+#include "YuEngine/World/WorldTransformStatus.h"
 
+using yuengine::animation::AnimationRuntimeChannel;
+using yuengine::animation::AnimationRuntimeClipRecord;
+using yuengine::animation::AnimationRuntimeInterpolation;
+using yuengine::animation::AnimationRuntimeKeyframeRecord;
+using yuengine::animation::AnimationRuntimeSampledValue;
+using yuengine::animation::AnimationRuntimeSampler;
+using yuengine::animation::AnimationRuntimeSampleRequest;
+using yuengine::animation::AnimationRuntimeSampleResult;
+using yuengine::animation::AnimationRuntimeStatus;
+using yuengine::animation::AnimationRuntimeTrackRecord;
+using yuengine::animation::AnimationRuntimeTransformApplyRequest;
+using yuengine::animation::AnimationRuntimeTransformApplyResult;
 using yuengine::asset::AssetHandle;
+using yuengine::kernel::RuntimeFrameContext;
+using yuengine::kernel::RuntimeFrameMode;
 using yuengine::rendercore::RenderCameraProjectionKind;
 using yuengine::rendercore::RenderDrawableFramePipelineStatus;
 using yuengine::renderscene::RenderSceneCameraBindingRequest;
@@ -152,8 +176,15 @@ using yuengine::rhi::MAX_CAPTURE_FIXTURE_EXTENT;
 using yuengine::rhi::MAX_COLOR_TARGET_EXTENT;
 using yuengine::rhi::MAX_COMMANDS;
 using yuengine::rhi::RGBA8_BYTES_PER_PIXEL;
+using yuengine::world::WorldInstance;
+using yuengine::world::WorldObjectDesc;
 using yuengine::world::WorldObjectId;
+using yuengine::world::WorldRegistrationResult;
+using yuengine::world::WorldTransformBridge;
+using yuengine::world::WorldTransformBridgeDesc;
+using yuengine::world::WorldTransformResult;
 using yuengine::world::WorldTransformState;
+using yuengine::world::WorldTransformStatus;
 
 namespace {
 constexpr const char *TEST_CAMERA_FRAME =
@@ -202,6 +233,8 @@ constexpr const char *TEST_L1_VIS_THREE_PRIMITIVE_GEOMETRY_MISSING =
     "RenderScene_L1Vis002ReportsGeometryMissingLayerForCylinder";
 constexpr const char *TEST_L1_VIS_SHARED_THREE_TEXTURE_MATERIAL =
     "RenderScene_L1Vis003CapturesSharedThreeTextureMaterialSceneThroughRuntimeRoute";
+constexpr const char *TEST_L1_VIS_ANIMATED_TRANSFORM =
+    "RenderScene_L1Vis004CapturesAnimatedTransformSceneThroughRuntimeRoute";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -209,9 +242,11 @@ constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr char L1_VIS_001_OUTPUT_PATH[] = "Artifacts/L1Vis001/StaticOneCube.rvf";
 constexpr char L1_VIS_002_OUTPUT_PATH[] = "Artifacts/L1Vis002/ThreePrimitivePlaced.rvf";
 constexpr char L1_VIS_003_OUTPUT_PATH[] = "Artifacts/L1Vis003/SharedThreeTextureMaterial.rvf";
+constexpr char L1_VIS_004_OUTPUT_PATH[] = "Artifacts/L1Vis004/AnimatedTransform.rvf";
 constexpr char L1_VIS_002_CUBE_NAME[] = "Cube";
 constexpr char L1_VIS_002_CYLINDER_NAME[] = "Cylinder";
 constexpr char L1_VIS_002_CONE_NAME[] = "Cone";
+constexpr char L1_VIS_004_CLIP_NAME[] = "L1VisAnimatedTransform";
 constexpr float HALF_PI = 1.57079632679F;
 constexpr float TOLERANCE = 0.0001F;
 constexpr std::uint32_t FRAME_ID = 9101U;
@@ -221,12 +256,34 @@ constexpr std::uint32_t PASS_ID = 9401U;
 constexpr std::uint32_t MATERIAL_ID = 9501U;
 constexpr std::uint32_t MATERIAL_ASSET_SLOT = 9601U;
 constexpr std::uint32_t TEXTURE_ASSET_SLOT = 9701U;
+constexpr std::uint32_t L1_VIS_004_CLIP_ID = 9801U;
+constexpr std::uint32_t L1_VIS_004_TRACK_ID = 9901U;
 constexpr std::size_t VERTEX_STRIDE_BYTES = 32U;
 constexpr std::size_t VERTEX_BUFFER_BYTES = VERTEX_STRIDE_BYTES * 128U;
 constexpr std::size_t INDEX_BUFFER_BYTES = sizeof(std::uint16_t) * 256U;
 constexpr std::size_t CAPTURE_BUDGET = 4096U;
 constexpr std::uint16_t L1_VIS_CAPTURE_EXTENT = 4U;
 constexpr std::uint8_t CAPTURE_SENTINEL = 0xCCU;
+constexpr std::uint64_t L1_VIS_004_CLIP_START_NANOSECONDS = 1000000000ULL;
+constexpr std::uint64_t L1_VIS_004_SAMPLE_NANOSECONDS = 1500000000ULL;
+
+struct L1VisAnimatedEntityReport final {
+    WorldObjectId world_object_id{};
+    std::uint32_t clip_id = 0U;
+    const char *clip_name = nullptr;
+    std::size_t clip_name_byte_count = 0U;
+    std::uint32_t track_id = 0U;
+    AnimationRuntimeChannel channel = AnimationRuntimeChannel::RotationX;
+    float sample_time_seconds = 0.0F;
+    AnimationRuntimeInterpolation interpolation = AnimationRuntimeInterpolation::Linear;
+    AnimationRuntimeSampledValue sampled_value{};
+    WorldTransformState applied_transform{};
+    WorldTransformState render_scene_consumed_transform{};
+    RenderSceneThreePrimitiveCaptureStatus capture_status =
+        RenderSceneThreePrimitiveCaptureStatus::InvalidArgument;
+    RenderSceneThreePrimitiveCaptureMissingLayer first_missing_layer =
+        RenderSceneThreePrimitiveCaptureMissingLayer::None;
+};
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -749,6 +806,173 @@ WorldTransformState MakeTransform(float x, float y, float z) {
     return transform;
 }
 
+RuntimeFrameContext MakeL1Vis004FrameContext() {
+    RuntimeFrameContext context{};
+    context.frame_index = FRAME_ID;
+    context.delta_time_nanoseconds = 16666667ULL;
+    context.fixed_time_nanoseconds = L1_VIS_004_SAMPLE_NANOSECONDS;
+    context.frame_mode = RuntimeFrameMode::Fixed;
+    return context;
+}
+
+AnimationRuntimeClipRecord MakeL1Vis004Clip() {
+    AnimationRuntimeClipRecord clip{};
+    clip.clip_id = L1_VIS_004_CLIP_ID;
+    clip.duration_seconds = 1.0F;
+    clip.first_track_index = 0U;
+    clip.track_count = RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    clip.layer_count = 1U;
+    clip.is_valid = true;
+    return clip;
+}
+
+AnimationRuntimeTrackRecord MakeL1Vis004Track(
+    std::uint32_t index,
+    WorldObjectId target,
+    AnimationRuntimeChannel channel,
+    AnimationRuntimeInterpolation interpolation) {
+    AnimationRuntimeTrackRecord track{};
+    track.track_id = L1_VIS_004_TRACK_ID + index;
+    track.target = target;
+    track.channel = channel;
+    track.interpolation = interpolation;
+    track.first_keyframe_index = static_cast<std::size_t>(index) * 2U;
+    track.keyframe_count = 2U;
+    track.is_valid = true;
+    return track;
+}
+
+AnimationRuntimeKeyframeRecord MakeL1Vis004Keyframe(float time_seconds, float value) {
+    AnimationRuntimeKeyframeRecord keyframe{};
+    keyframe.time_seconds = time_seconds;
+    keyframe.value = value;
+    keyframe.is_valid = true;
+    return keyframe;
+}
+
+AnimationRuntimeSampleRequest MakeL1Vis004SampleRequest(
+    std::span<const AnimationRuntimeClipRecord> clips,
+    std::span<const AnimationRuntimeTrackRecord> tracks,
+    std::span<const AnimationRuntimeKeyframeRecord> keyframes) {
+    AnimationRuntimeSampleRequest request{};
+    request.clip_id = L1_VIS_004_CLIP_ID;
+    request.clips = clips;
+    request.tracks = tracks;
+    request.keyframes = keyframes;
+    request.frame_context = MakeL1Vis004FrameContext();
+    request.clip_start_time_nanoseconds = L1_VIS_004_CLIP_START_NANOSECONDS;
+    return request;
+}
+
+bool RegisterAnimationTargets(
+    WorldInstance &world,
+    WorldTransformBridge &bridge,
+    const std::array<RenderSceneThreePrimitiveEntityRequest, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT>
+        &entities) {
+    for (const RenderSceneThreePrimitiveEntityRequest &entity : entities) {
+        const WorldRegistrationResult registration =
+            world.RegisterObject(WorldObjectDesc{entity.world_object_id, true});
+        if (!registration.Succeeded()) {
+            return false;
+        }
+
+        const WorldTransformResult transform_result =
+            bridge.Register(entity.world_object_id, entity.transform);
+        if (transform_result.status != WorldTransformStatus::Success) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool ApplyAnimatedTransformsToEntities(
+    WorldTransformBridge &bridge,
+    std::array<RenderSceneThreePrimitiveEntityRequest, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT>
+        *out_entities) {
+    if (out_entities == nullptr) {
+        return false;
+    }
+
+    for (RenderSceneThreePrimitiveEntityRequest &entity : *out_entities) {
+        const WorldTransformResult transform_result = bridge.Query(entity.world_object_id);
+        if (transform_result.status != WorldTransformStatus::Success) {
+            return false;
+        }
+
+        entity.transform = transform_result.transform_state;
+    }
+
+    return true;
+}
+
+void FillAnimatedEntityReport(
+    std::size_t index,
+    const AnimationRuntimeSampleResult &sample_result,
+    const AnimationRuntimeTrackRecord &track,
+    const AnimationRuntimeSampledValue &sampled_value,
+    const RenderSceneThreePrimitiveCaptureResult &capture_result,
+    L1VisAnimatedEntityReport *out_report) {
+    if (out_report == nullptr) {
+        return;
+    }
+
+    const auto &entity_report = capture_result.entity_reports[index];
+    out_report->world_object_id = track.target;
+    out_report->clip_id = sample_result.clip_id;
+    out_report->clip_name = L1_VIS_004_CLIP_NAME;
+    out_report->clip_name_byte_count = sizeof(L1_VIS_004_CLIP_NAME) - 1U;
+    out_report->track_id = track.track_id;
+    out_report->channel = track.channel;
+    out_report->sample_time_seconds = sample_result.sample_time_seconds;
+    out_report->interpolation = track.interpolation;
+    out_report->sampled_value = sampled_value;
+    out_report->applied_transform = entity_report.transform;
+    out_report->render_scene_consumed_transform = entity_report.draw_record.transform;
+    out_report->capture_status = capture_result.status;
+    out_report->first_missing_layer = capture_result.first_missing_layer;
+}
+
+bool TransformMatches(const WorldTransformState &left, const WorldTransformState &right) {
+    if (!Approx(left.translation_x, right.translation_x)) {
+        return false;
+    }
+
+    if (!Approx(left.translation_y, right.translation_y)) {
+        return false;
+    }
+
+    if (!Approx(left.translation_z, right.translation_z)) {
+        return false;
+    }
+
+    if (!Approx(left.rotation_x, right.rotation_x)) {
+        return false;
+    }
+
+    if (!Approx(left.rotation_y, right.rotation_y)) {
+        return false;
+    }
+
+    if (!Approx(left.rotation_z, right.rotation_z)) {
+        return false;
+    }
+
+    if (!Approx(left.rotation_w, right.rotation_w)) {
+        return false;
+    }
+
+    if (!Approx(left.scale_x, right.scale_x)) {
+        return false;
+    }
+
+    if (!Approx(left.scale_y, right.scale_y)) {
+        return false;
+    }
+
+    return Approx(left.scale_z, right.scale_z);
+}
+
 RenderSceneRuntimeFrameEntityRequest MakeRuntimeFrameEntity(
     std::uint32_t world_object_id,
     const WorldTransformState &transform,
@@ -842,6 +1066,17 @@ RenderSceneThreePrimitiveCaptureRequest MakeThreeTextureMaterialCaptureRequest(
         MakeThreePrimitiveCaptureRequest(device, capture, entities);
     request.output_path = L1_VIS_003_OUTPUT_PATH;
     request.output_path_byte_count = sizeof(L1_VIS_003_OUTPUT_PATH) - 1U;
+    return request;
+}
+
+RenderSceneThreePrimitiveCaptureRequest MakeAnimatedThreeTextureMaterialCaptureRequest(
+    L1Vis001RhiDevice &device,
+    std::vector<std::uint8_t> &capture,
+    std::span<const RenderSceneThreePrimitiveEntityRequest> entities) {
+    RenderSceneThreePrimitiveCaptureRequest request =
+        MakeThreeTextureMaterialCaptureRequest(device, capture, entities);
+    request.output_path = L1_VIS_004_OUTPUT_PATH;
+    request.output_path_byte_count = sizeof(L1_VIS_004_OUTPUT_PATH) - 1U;
     return request;
 }
 
@@ -1564,6 +1799,189 @@ int RenderSceneL1Vis003CapturesSharedThreeTextureMaterialSceneThroughRuntimeRout
     return 0;
 }
 
+int RenderSceneL1Vis004CapturesAnimatedTransformSceneThroughRuntimeRoute() {
+    L1Vis001RhiDevice device;
+    std::vector<std::uint8_t> capture(
+        L1VisCaptureByteCount() * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT,
+        CAPTURE_SENTINEL);
+    std::array<RenderSceneThreePrimitiveEntityRequest, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT>
+        entities = MakeThreePrimitiveEntities();
+    WorldInstance world;
+    WorldTransformBridgeDesc bridge_desc{};
+    bridge_desc.bridge_capacity = static_cast<std::uint32_t>(RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT);
+    WorldTransformBridge bridge(world, bridge_desc);
+    if (!RegisterAnimationTargets(world, bridge, entities)) {
+        return Fail("l1 vis animated transform target setup failed");
+    }
+
+    const std::array<AnimationRuntimeClipRecord, 1U> clips{MakeL1Vis004Clip()};
+    const std::array<AnimationRuntimeTrackRecord, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> tracks{
+        MakeL1Vis004Track(0U, entities[0U].world_object_id,
+            AnimationRuntimeChannel::RotationY, AnimationRuntimeInterpolation::Linear),
+        MakeL1Vis004Track(1U, entities[1U].world_object_id,
+            AnimationRuntimeChannel::RotationZ, AnimationRuntimeInterpolation::Step),
+        MakeL1Vis004Track(2U, entities[2U].world_object_id,
+            AnimationRuntimeChannel::RotationX, AnimationRuntimeInterpolation::Linear)};
+    const std::array<AnimationRuntimeKeyframeRecord, 6U> keyframes{
+        MakeL1Vis004Keyframe(0.0F, 0.0F),
+        MakeL1Vis004Keyframe(1.0F, 0.8F),
+        MakeL1Vis004Keyframe(0.0F, 0.25F),
+        MakeL1Vis004Keyframe(1.0F, 0.75F),
+        MakeL1Vis004Keyframe(0.0F, 0.0F),
+        MakeL1Vis004Keyframe(1.0F, 1.0F)};
+    std::array<AnimationRuntimeSampledValue, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> sampled_values{};
+    AnimationRuntimeSampleResult sample_result{};
+    AnimationRuntimeSampler sampler;
+    const AnimationRuntimeStatus sample_status = sampler.Sample(
+        MakeL1Vis004SampleRequest(clips, tracks, keyframes),
+        sampled_values,
+        &sample_result);
+    if (sample_status != AnimationRuntimeStatus::Success) {
+        return Fail("l1 vis animated transform failed at l1 anim sampling layer");
+    }
+
+    if (sample_result.clip_id != L1_VIS_004_CLIP_ID ||
+        sample_result.sampled_value_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return Fail("l1 vis animated transform sample identity mismatch");
+    }
+
+    if (!Approx(sample_result.sample_time_seconds, 0.5F)) {
+        return Fail("l1 vis animated transform did not use frame context time");
+    }
+
+    if (sampled_values[0U].channel != AnimationRuntimeChannel::RotationY ||
+        sampled_values[1U].channel != AnimationRuntimeChannel::RotationZ ||
+        sampled_values[2U].channel != AnimationRuntimeChannel::RotationX) {
+        return Fail("l1 vis animated transform sampled wrong channels");
+    }
+
+    if (!Approx(sampled_values[0U].value, 0.4F) ||
+        !Approx(sampled_values[1U].value, 0.25F) ||
+        !Approx(sampled_values[2U].value, 0.5F)) {
+        return Fail("l1 vis animated transform sampled wrong keyframe values");
+    }
+
+    AnimationRuntimeTransformApplyResult apply_result{};
+    const AnimationRuntimeTransformApplyRequest apply_request{&bridge, sampled_values};
+    const AnimationRuntimeStatus apply_status =
+        sampler.ApplySampledTransform(apply_request, &apply_result);
+    if (apply_status != AnimationRuntimeStatus::Success) {
+        return Fail("l1 vis animated transform failed at l1 anim apply layer");
+    }
+
+    if (apply_result.applied_value_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
+        apply_result.updated_object_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return Fail("l1 vis animated transform apply counters mismatch");
+    }
+
+    if (!ApplyAnimatedTransformsToEntities(bridge, &entities)) {
+        return Fail("l1 vis animated transform world apply query failed");
+    }
+
+    RenderSceneThreePrimitiveCaptureRoute route;
+    RenderSceneThreePrimitiveCaptureResult result{};
+    const RenderSceneThreePrimitiveCaptureRequest request =
+        MakeAnimatedThreeTextureMaterialCaptureRequest(device, capture, entities);
+    const RenderSceneThreePrimitiveCaptureStatus status = route.Execute(request, &result);
+    if (status != RenderSceneThreePrimitiveCaptureStatus::Success) {
+        return Fail("l1 vis animated transform route did not complete");
+    }
+
+    if (result.first_missing_layer != RenderSceneThreePrimitiveCaptureMissingLayer::None) {
+        return Fail("l1 vis animated transform route reported missing layer on success");
+    }
+
+    if (result.output_status != RenderSceneThreePrimitiveCaptureOutputStatus::CaptureAvailable) {
+        return Fail("l1 vis animated transform route did not report capture availability");
+    }
+
+    std::array<L1VisAnimatedEntityReport, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> reports{};
+    for (std::size_t index = 0U; index < reports.size(); ++index) {
+        FillAnimatedEntityReport(
+            index,
+            sample_result,
+            tracks[index],
+            sampled_values[index],
+            result,
+            &reports[index]);
+    }
+
+    for (std::size_t index = 0U; index < reports.size(); ++index) {
+        const L1VisAnimatedEntityReport &report = reports[index];
+        if (report.clip_id != L1_VIS_004_CLIP_ID) {
+            return Fail("l1 vis animated transform report clip id mismatch");
+        }
+
+        if (std::string_view(report.clip_name, report.clip_name_byte_count) != L1_VIS_004_CLIP_NAME) {
+            return Fail("l1 vis animated transform report clip name mismatch");
+        }
+
+        if (report.track_id != tracks[index].track_id || report.channel != tracks[index].channel) {
+            return Fail("l1 vis animated transform report track mismatch");
+        }
+
+        if (report.interpolation != tracks[index].interpolation ||
+            !Approx(report.sample_time_seconds, 0.5F)) {
+            return Fail("l1 vis animated transform report sample metadata mismatch");
+        }
+
+        if (!Approx(report.sampled_value.value, sampled_values[index].value)) {
+            return Fail("l1 vis animated transform report sampled value mismatch");
+        }
+
+        if (!TransformMatches(report.applied_transform, report.render_scene_consumed_transform)) {
+            return Fail("l1 vis animated transform render scene consumed stale transform");
+        }
+
+        if (report.capture_status != RenderSceneThreePrimitiveCaptureStatus::Success ||
+            report.first_missing_layer != RenderSceneThreePrimitiveCaptureMissingLayer::None) {
+            return Fail("l1 vis animated transform report capture status mismatch");
+        }
+    }
+
+    if (!Approx(reports[0U].render_scene_consumed_transform.rotation_y, 0.4F) ||
+        !Approx(reports[1U].render_scene_consumed_transform.rotation_z, 0.25F) ||
+        !Approx(reports[2U].render_scene_consumed_transform.rotation_x, 0.5F)) {
+        return Fail("l1 vis animated transform render scene rotation mismatch");
+    }
+
+    if (!Approx(reports[0U].render_scene_consumed_transform.translation_x, -2.0F) ||
+        !Approx(reports[1U].render_scene_consumed_transform.translation_y, 1.0F) ||
+        !Approx(reports[2U].render_scene_consumed_transform.translation_z, 1.0F)) {
+        return Fail("l1 vis animated transform lost base scene placement");
+    }
+
+    if (result.capture_bytes_written != capture.size()) {
+        return Fail("l1 vis animated transform capture byte count mismatch");
+    }
+
+    for (std::size_t index = 0U; index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT; ++index) {
+        if (result.render_results[index].status != RenderDrawableFramePipelineStatus::Success) {
+            return Fail("l1 vis animated transform rendercore result mismatch");
+        }
+
+        if (!CaptureSegmentWasWritten(capture, index)) {
+            return Fail("l1 vis animated transform capture segment was not written");
+        }
+    }
+
+    if (result.output_path_byte_count != sizeof(L1_VIS_004_OUTPUT_PATH) - 1U) {
+        return Fail("l1 vis animated transform output path metadata mismatch");
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    const std::size_t expected_binding_count =
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT * result.material_texture_slot_report_count;
+    if (snapshot.submitted_indexed_draw_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
+        snapshot.submitted_sampled_texture_bind_count != expected_binding_count ||
+        snapshot.submitted_sampler_bind_count != expected_binding_count ||
+        snapshot.capture_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return Fail("l1 vis animated transform did not drive rhi counters");
+    }
+
+    return 0;
+}
+
 int RenderSceneL1Vis002ReportsGeometryMissingLayerForCylinder() {
     L1Vis001RhiDevice device;
     std::vector<std::uint8_t> capture(
@@ -1721,6 +2139,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_L1_VIS_SHARED_THREE_TEXTURE_MATERIAL) {
         return RenderSceneL1Vis003CapturesSharedThreeTextureMaterialSceneThroughRuntimeRoute();
+    }
+
+    if (name == TEST_L1_VIS_ANIMATED_TRANSFORM) {
+        return RenderSceneL1Vis004CapturesAnimatedTransformSceneThroughRuntimeRoute();
     }
 
     if (name == TEST_BOUNDARY) {
