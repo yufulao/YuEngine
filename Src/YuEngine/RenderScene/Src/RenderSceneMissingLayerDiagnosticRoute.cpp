@@ -12,6 +12,7 @@ constexpr const char *DIAGNOSTIC_NAME_MATERIAL_TEXTURE_SLOTS = "MaterialTextureS
 constexpr const char *DIAGNOSTIC_NAME_TEXTURE_RESOURCE_RESOLUTION = "TextureResourceResolution";
 constexpr const char *DIAGNOSTIC_NAME_SAMPLER_BINDING = "SamplerBinding";
 constexpr const char *DIAGNOSTIC_NAME_SHADER_PIPELINE = "ShaderPipeline";
+constexpr const char *DIAGNOSTIC_NAME_SCENE_PLACEMENT = "ScenePlacement";
 constexpr const char *DIAGNOSTIC_NAME_ANIMATION_INTERPOLATION = "AnimationInterpolation";
 constexpr const char *DIAGNOSTIC_NAME_TRANSFORM_APPLY = "TransformApply";
 constexpr const char *DIAGNOSTIC_NAME_RENDER_SCENE_MULTI_ENTITY_SUBMISSION =
@@ -78,6 +79,10 @@ RenderSceneMissingLayerDiagnosticLayer RenderSceneMissingLayerDiagnosticRoute::L
 
     if (fault == RenderSceneMissingLayerDiagnosticFault::MissingShaderPipeline) {
         return RenderSceneMissingLayerDiagnosticLayer::ShaderPipeline;
+    }
+
+    if (fault == RenderSceneMissingLayerDiagnosticFault::MissingScenePlacement) {
+        return RenderSceneMissingLayerDiagnosticLayer::ScenePlacement;
     }
 
     if (fault == RenderSceneMissingLayerDiagnosticFault::MissingAnimationInterpolation) {
@@ -152,6 +157,10 @@ const char *RenderSceneMissingLayerDiagnosticRoute::NameForLayer(
 
     if (layer == RenderSceneMissingLayerDiagnosticLayer::ShaderPipeline) {
         return DIAGNOSTIC_NAME_SHADER_PIPELINE;
+    }
+
+    if (layer == RenderSceneMissingLayerDiagnosticLayer::ScenePlacement) {
+        return DIAGNOSTIC_NAME_SCENE_PLACEMENT;
     }
 
     if (layer == RenderSceneMissingLayerDiagnosticLayer::AnimationInterpolation) {

@@ -333,6 +333,7 @@ add_library(YuRenderScene
     Src/YuEngine/RenderScene/Src/RenderScenePrimitiveGeometryBuilder.cpp
     Src/YuEngine/RenderScene/Src/RenderSceneRuntimeFrameBuilder.cpp
     Src/YuEngine/RenderScene/Src/RenderSceneRuntimeMaterialBuilder.cpp
+    Src/YuEngine/RenderScene/Src/RenderSceneRuntimeVisualSceneProofRoute.cpp
     Src/YuEngine/RenderScene/Src/RenderSceneThreePrimitiveCaptureRoute.cpp
 )
 yuengine_apply_compile_options(YuRenderScene)
@@ -341,6 +342,7 @@ target_include_directories(YuRenderScene
         Src/YuEngine/RenderScene/Include
 )
 target_link_libraries(YuRenderScene PUBLIC YuAsset YuRenderCore YuWorld)
+target_link_libraries(YuRenderScene PRIVATE YuAnimation)
 
 add_library(YuAudioScene
     Src/YuEngine/AudioScene/Src/AudioSceneContractQueue.cpp
@@ -2090,6 +2092,8 @@ yuengine_add_labeled_test(RenderScene_L1Vis003CapturesSharedThreeTextureMaterial
 yuengine_add_labeled_test(RenderScene_L1Vis004CapturesAnimatedTransformSceneThroughRuntimeRoute YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Animation Geometry Material RenderCore RHI World L1 RuntimeVisualFoundation EvidenceOracle)
 yuengine_add_labeled_test(RenderScene_L1Vis005CapturesDeterministicOrbitSequence YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Animation Camera Geometry Material RenderCore RHI World L1 RuntimeVisualFoundation EvidenceOracle)
 yuengine_add_labeled_test(RenderScene_L1Vis006ReportsExactMissingLayers YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Animation Camera Geometry Material RenderCore RHI World L1 RuntimeVisualFoundation EvidenceOracle)
+yuengine_add_labeled_test(RenderScene_L1Sample011CapturesFinalRuntimeVisualScene YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Animation Camera Geometry Material RenderCore RHI World Sample L1 RuntimeVisualScene EvidenceOracle)
+yuengine_add_labeled_test(RenderScene_L1Sample012ReportsExactRuntimeVisualBlocker YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Animation Camera Geometry Material RenderCore RHI World Sample L1 RuntimeVisualScene EvidenceOracle)
 yuengine_add_labeled_test(RenderScene_L1Vis002ReportsGeometryMissingLayerForCylinder YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Geometry RenderCore L1 RuntimeVisualFoundation EvidenceOracle)
 yuengine_add_labeled_test(RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency YuRenderSceneRuntimeVisualFoundationTests Fast ModuleFixture RenderScene Camera Geometry Material MultiEntity L1 RuntimeVisualFoundation EvidenceOracle)
 
