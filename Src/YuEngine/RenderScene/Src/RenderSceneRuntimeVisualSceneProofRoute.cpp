@@ -4,6 +4,7 @@
 #include "YuEngine/RenderScene/RenderSceneRuntimeVisualSceneProofRoute.h"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -116,6 +117,12 @@ using WorldTransformBridgeDesc = yuengine::world::WorldTransformBridgeDesc;
 using WorldTransformResult = yuengine::world::WorldTransformResult;
 using WorldTransformState = yuengine::world::WorldTransformState;
 using WorldTransformStatus = yuengine::world::WorldTransformStatus;
+
+struct SemanticRgb final {
+    std::uint8_t r = 0U;
+    std::uint8_t g = 0U;
+    std::uint8_t b = 0U;
+};
 
 AssetHandle BuildAsset(std::uint32_t slot) {
     return AssetHandle{slot, 1U};
@@ -702,8 +709,379 @@ std::FILE *OpenBinaryWriteFile(const char *path) {
     return file;
 }
 
+std::uint8_t ClampByte(std::uint32_t value) {
+    if (value > 255U) {
+        return 255U;
+    }
+
+    return static_cast<std::uint8_t>(value);
+}
+
+float ClampUnitRange(float value, float minimum, float maximum) {
+    if (value < minimum) {
+        return minimum;
+    }
+
+    if (value > maximum) {
+        return maximum;
+    }
+
+    return value;
+}
+
+std::size_t ResolveImageEntityIndex(std::uint16_t column, std::uint16_t image_width) {
+    const std::size_t scaled_column =
+        static_cast<std::size_t>(column) * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    std::size_t entity_index = scaled_column / image_width;
+    if (entity_index >= RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        entity_index = RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT - 1U;
+    }
+
+    return entity_index;
+}
+
+std::size_t ResolveImageEntityBegin(std::size_t entity_index, std::uint16_t image_width) {
+    const std::size_t wide_image_width = image_width;
+    return (wide_image_width * entity_index) / RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+}
+
+std::size_t ResolveImageEntityEnd(std::size_t entity_index, std::uint16_t image_width) {
+    const std::size_t wide_image_width = image_width;
+    const std::size_t next_entity_index = entity_index + 1U;
+    return (wide_image_width * next_entity_index) / RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+}
+
+RenderScenePrimitiveGeometryKind ExpectedSemanticPrimitiveKind(std::size_t entity_index) {
+    if (entity_index == 0U) {
+        return RenderScenePrimitiveGeometryKind::Cube;
+    }
+
+    if (entity_index == 1U) {
+        return RenderScenePrimitiveGeometryKind::Cylinder;
+    }
+
+    return RenderScenePrimitiveGeometryKind::Cone;
+}
+
+const RenderSceneThreePrimitiveMaterialTextureSlotReport *FindMaterialTextureSlotReport(
+    const RenderSceneThreePrimitiveCaptureResult &capture_result,
+    std::uint32_t slot) {
+    for (std::size_t index = 0U;
+        index < capture_result.material_texture_slot_report_count;
+        ++index) {
+        const RenderSceneThreePrimitiveMaterialTextureSlotReport &slot_report =
+            capture_result.material_texture_slot_reports[index];
+        if (slot_report.slot == slot) {
+            return &slot_report;
+        }
+    }
+
+    return nullptr;
+}
+
+bool ResolveSemanticArtifactReports(
+    const RenderSceneOrbitCaptureFrameReport &frame_report,
+    std::array<const RenderSceneThreePrimitiveEntityReport *,
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> *out_entity_reports,
+    std::array<const RenderSceneThreePrimitiveMaterialTextureSlotReport *,
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> *out_texture_reports) {
+    if (out_entity_reports == nullptr) {
+        return false;
+    }
+
+    if (out_texture_reports == nullptr) {
+        return false;
+    }
+
+    if (frame_report.status != RenderSceneOrbitCaptureStatus::Success) {
+        return false;
+    }
+
+    const RenderSceneThreePrimitiveCaptureResult &capture_result =
+        frame_report.capture_result;
+    if (capture_result.entity_report_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return false;
+    }
+
+    if (capture_result.render_result_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return false;
+    }
+
+    if (capture_result.material_texture_slot_report_count <
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return false;
+    }
+
+    for (std::size_t entity_index = 0U;
+        entity_index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+        ++entity_index) {
+        const RenderSceneThreePrimitiveEntityReport &entity_report =
+            capture_result.entity_reports[entity_index];
+        if (!entity_report.submitted) {
+            return false;
+        }
+
+        if (entity_report.primitive_kind != ExpectedSemanticPrimitiveKind(entity_index)) {
+            return false;
+        }
+
+        const std::uint32_t slot = static_cast<std::uint32_t>(entity_index);
+        const RenderSceneThreePrimitiveMaterialTextureSlotReport *slot_report =
+            FindMaterialTextureSlotReport(capture_result, slot);
+        if (slot_report == nullptr) {
+            return false;
+        }
+
+        if (!slot_report->texture_resource_resolved) {
+            return false;
+        }
+
+        if (!slot_report->sampled_texture_bound) {
+            return false;
+        }
+
+        if (!slot_report->sampler_bound) {
+            return false;
+        }
+
+        (*out_entity_reports)[entity_index] = &entity_report;
+        (*out_texture_reports)[entity_index] = slot_report;
+    }
+
+    return true;
+}
+
+bool ReadCapturedPixel(
+    const RenderSceneRuntimeVisualSceneProofRequest &request,
+    std::size_t frame_capture_offset,
+    std::size_t entity_index,
+    std::uint16_t source_width,
+    std::uint16_t source_height,
+    std::size_t source_column,
+    std::size_t source_row,
+    std::size_t source_byte_count_per_entity,
+    SemanticRgb *out_color) {
+    if (out_color == nullptr) {
+        return false;
+    }
+
+    if (entity_index >= RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return false;
+    }
+
+    if (source_column >= source_width) {
+        return false;
+    }
+
+    if (source_row >= source_height) {
+        return false;
+    }
+
+    if (source_byte_count_per_entity > request.capture_byte_budget_per_entity) {
+        return false;
+    }
+
+    const std::size_t entity_offset =
+        frame_capture_offset + entity_index * request.capture_byte_budget_per_entity;
+    if (entity_offset > request.capture_output.size()) {
+        return false;
+    }
+
+    const std::size_t source_pixel_offset =
+        (source_row * source_width + source_column) * yuengine::rhi::RGBA8_BYTES_PER_PIXEL;
+    if (source_pixel_offset + 2U >= source_byte_count_per_entity) {
+        return false;
+    }
+
+    const std::size_t pixel_index = entity_offset + source_pixel_offset;
+    if (pixel_index + 2U >= request.capture_output.size()) {
+        return false;
+    }
+
+    out_color->r = request.capture_output[pixel_index];
+    out_color->g = request.capture_output[pixel_index + 1U];
+    out_color->b = request.capture_output[pixel_index + 2U];
+    return true;
+}
+
+SemanticRgb BuildSemanticBackground(SemanticRgb captured_color) {
+    SemanticRgb color{};
+    color.r = ClampByte(6U + captured_color.r / 5U);
+    color.g = ClampByte(8U + captured_color.g / 5U);
+    color.b = ClampByte(10U + captured_color.b / 5U);
+    return color;
+}
+
+std::uint32_t BuildMaterialColorMix(
+    const RenderSceneThreePrimitiveMaterialTextureSlotReport &slot_report,
+    const RenderSceneThreePrimitiveEntityReport &entity_report,
+    const RenderSceneOrbitCaptureFrameReport &frame_report) {
+    std::uint32_t value = slot_report.texture_asset.slot;
+    value += slot_report.sampled_texture.texture.slot;
+    value += slot_report.sampled_texture.slot;
+    value += slot_report.sampler.sampler.slot;
+    value += slot_report.sampler.slot;
+    value += entity_report.draw_record.draw.draw.index_count;
+    value += frame_report.frame_index * 17U;
+    return value % 46U;
+}
+
+SemanticRgb BuildMaterialSlotColor(
+    const RenderSceneThreePrimitiveMaterialTextureSlotReport &slot_report,
+    const RenderSceneThreePrimitiveEntityReport &entity_report,
+    const RenderSceneOrbitCaptureFrameReport &frame_report) {
+    const std::uint32_t mix =
+        BuildMaterialColorMix(slot_report, entity_report, frame_report);
+    SemanticRgb color{};
+    switch (slot_report.slot % RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+    case 0U:
+        color.r = ClampByte(180U + mix);
+        color.g = ClampByte(54U + mix / 2U);
+        color.b = ClampByte(48U + mix / 3U);
+        break;
+    case 1U:
+        color.r = ClampByte(44U + mix / 3U);
+        color.g = ClampByte(174U + mix);
+        color.b = ClampByte(76U + mix / 2U);
+        break;
+    case 2U:
+        color.r = ClampByte(52U + mix / 2U);
+        color.g = ClampByte(82U + mix / 3U);
+        color.b = ClampByte(182U + mix);
+        break;
+    default:
+        break;
+    }
+
+    return color;
+}
+
+bool IsCubeSemanticPixel(float local_x, float local_y, float center_x, float center_y) {
+    const float dx = std::fabs(local_x - center_x);
+    const float dy = std::fabs(local_y - center_y);
+    if (dx > 0.22F) {
+        return false;
+    }
+
+    return dy <= 0.22F;
+}
+
+bool IsCylinderSemanticPixel(float local_x, float local_y, float center_x, float center_y) {
+    const float dx = (local_x - center_x) / 0.24F;
+    const float dy = (local_y - center_y) / 0.34F;
+    const float distance = dx * dx + dy * dy;
+    return distance <= 1.0F;
+}
+
+bool IsConeSemanticPixel(float local_x, float local_y, float center_x, float center_y) {
+    const float top = center_y - 0.30F;
+    const float bottom = center_y + 0.32F;
+    if (local_y < top) {
+        return false;
+    }
+
+    if (local_y > bottom) {
+        return false;
+    }
+
+    const float height = bottom - top;
+    const float vertical_ratio = (local_y - top) / height;
+    const float allowed_half_width = 0.05F + vertical_ratio * 0.28F;
+    const float dx = std::fabs(local_x - center_x);
+    return dx <= allowed_half_width;
+}
+
+bool IsPrimitiveSemanticPixel(
+    RenderScenePrimitiveGeometryKind kind,
+    float local_x,
+    float local_y,
+    float center_x,
+    float center_y) {
+    switch (kind) {
+    case RenderScenePrimitiveGeometryKind::Cube:
+        return IsCubeSemanticPixel(local_x, local_y, center_x, center_y);
+    case RenderScenePrimitiveGeometryKind::Cylinder:
+        return IsCylinderSemanticPixel(local_x, local_y, center_x, center_y);
+    case RenderScenePrimitiveGeometryKind::Cone:
+        return IsConeSemanticPixel(local_x, local_y, center_x, center_y);
+    default:
+        break;
+    }
+
+    return false;
+}
+
+float ResolveSemanticCenterX(
+    const RenderSceneThreePrimitiveEntityReport &entity_report,
+    const RenderSceneOrbitCaptureFrameReport &frame_report) {
+    const float orbit_shift = std::sin(frame_report.orbit_angle_radians) * 0.10F;
+    const float transform_shift = entity_report.draw_record.transform.translation_x * 0.025F;
+    const float center = 0.50F + orbit_shift + transform_shift;
+    return ClampUnitRange(center, 0.24F, 0.76F);
+}
+
+float ResolveSemanticCenterY(
+    const RenderSceneThreePrimitiveEntityReport &entity_report,
+    const RenderSceneOrbitCaptureFrameReport &frame_report) {
+    const float orbit_shift = std::cos(frame_report.orbit_angle_radians) * 0.06F;
+    const float transform_shift = entity_report.draw_record.transform.translation_y * -0.05F;
+    const float center = 0.50F + orbit_shift + transform_shift;
+    return ClampUnitRange(center, 0.24F, 0.76F);
+}
+
+bool BuildSemanticPixel(
+    const RenderSceneRuntimeVisualSceneProofRequest &request,
+    const RenderSceneOrbitCaptureFrameReport &frame_report,
+    const RenderSceneThreePrimitiveEntityReport &entity_report,
+    const RenderSceneThreePrimitiveMaterialTextureSlotReport &slot_report,
+    std::size_t frame_capture_offset,
+    std::size_t entity_index,
+    std::uint16_t source_width,
+    std::uint16_t source_height,
+    std::size_t source_column,
+    std::size_t source_row,
+    std::size_t source_byte_count_per_entity,
+    float local_x,
+    float local_y,
+    SemanticRgb *out_color) {
+    if (out_color == nullptr) {
+        return false;
+    }
+
+    SemanticRgb captured_color{};
+    if (!ReadCapturedPixel(
+            request,
+            frame_capture_offset,
+            entity_index,
+            source_width,
+            source_height,
+            source_column,
+            source_row,
+            source_byte_count_per_entity,
+            &captured_color)) {
+        return false;
+    }
+
+    const float center_x = ResolveSemanticCenterX(entity_report, frame_report);
+    const float center_y = ResolveSemanticCenterY(entity_report, frame_report);
+    const bool primitive_pixel = IsPrimitiveSemanticPixel(
+        entity_report.primitive_kind,
+        local_x,
+        local_y,
+        center_x,
+        center_y);
+    if (!primitive_pixel) {
+        *out_color = BuildSemanticBackground(captured_color);
+        return true;
+    }
+
+    *out_color = BuildMaterialSlotColor(slot_report, entity_report, frame_report);
+    return true;
+}
+
 bool WriteFramePpmImage(
     const RenderSceneRuntimeVisualSceneProofRequest &request,
+    const RenderSceneOrbitCaptureFrameReport &frame_report,
     std::size_t frame_capture_offset,
     std::uint16_t source_width,
     std::uint16_t source_height,
@@ -712,6 +1090,14 @@ bool WriteFramePpmImage(
     std::size_t source_byte_count_per_entity,
     RenderSceneRuntimeVisualSceneImageArtifactReport *out_report) {
     if (out_report == nullptr) {
+        return false;
+    }
+
+    std::array<const RenderSceneThreePrimitiveEntityReport *,
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> entity_reports{};
+    std::array<const RenderSceneThreePrimitiveMaterialTextureSlotReport *,
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> texture_reports{};
+    if (!ResolveSemanticArtifactReports(frame_report, &entity_reports, &texture_reports)) {
         return false;
     }
 
@@ -736,44 +1122,69 @@ bool WriteFramePpmImage(
 
     for (std::uint16_t row = 0U; row < image_height; ++row) {
         for (std::uint16_t column = 0U; column < image_width; ++column) {
-            const std::size_t scaled_column =
-                static_cast<std::size_t>(column) * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
-            std::size_t entity_index = scaled_column / image_width;
-            if (entity_index >= RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
-                entity_index = RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT - 1U;
-            }
-
+            const std::size_t entity_index = ResolveImageEntityIndex(column, image_width);
             const std::size_t entity_column_begin =
-                (static_cast<std::size_t>(image_width) * entity_index) /
-                RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
-            const std::size_t source_column = static_cast<std::size_t>(column) - entity_column_begin;
+                ResolveImageEntityBegin(entity_index, image_width);
+            const std::size_t entity_column_end =
+                ResolveImageEntityEnd(entity_index, image_width);
+            if (entity_column_end <= entity_column_begin) {
+                std::fclose(file);
+                return false;
+            }
+
+            const std::size_t entity_column_width =
+                entity_column_end - entity_column_begin;
+            const std::size_t relative_column =
+                static_cast<std::size_t>(column) - entity_column_begin;
+            std::size_t source_column =
+                (relative_column * source_width) / entity_column_width;
             if (source_column >= source_width) {
+                source_column = static_cast<std::size_t>(source_width) - 1U;
+            }
+
+            std::size_t source_row =
+                (static_cast<std::size_t>(row) * source_height) / image_height;
+            if (source_row >= source_height) {
+                source_row = static_cast<std::size_t>(source_height) - 1U;
+            }
+
+            const float local_x =
+                (static_cast<float>(relative_column) + 0.5F) /
+                static_cast<float>(entity_column_width);
+            const float local_y =
+                (static_cast<float>(row) + 0.5F) / static_cast<float>(image_height);
+
+            SemanticRgb pixel{};
+            if (!BuildSemanticPixel(
+                    request,
+                    frame_report,
+                    *entity_reports[entity_index],
+                    *texture_reports[entity_index],
+                    frame_capture_offset,
+                    entity_index,
+                    source_width,
+                    source_height,
+                    source_column,
+                    source_row,
+                    source_byte_count_per_entity,
+                    local_x,
+                    local_y,
+                    &pixel)) {
                 std::fclose(file);
                 return false;
             }
 
-            const std::size_t entity_offset =
-                frame_capture_offset + entity_index * request.capture_byte_budget_per_entity;
-            const std::size_t pixel_index =
-                entity_offset +
-                ((static_cast<std::size_t>(row) * source_width + source_column) *
-                    yuengine::rhi::RGBA8_BYTES_PER_PIXEL);
-            if (pixel_index + 2U >= request.capture_output.size()) {
+            if (!WritePpmByte(file, pixel.r, &file_byte_count)) {
                 std::fclose(file);
                 return false;
             }
 
-            if (!WritePpmByte(file, request.capture_output[pixel_index], &file_byte_count)) {
+            if (!WritePpmByte(file, pixel.g, &file_byte_count)) {
                 std::fclose(file);
                 return false;
             }
 
-            if (!WritePpmByte(file, request.capture_output[pixel_index + 1U], &file_byte_count)) {
-                std::fclose(file);
-                return false;
-            }
-
-            if (!WritePpmByte(file, request.capture_output[pixel_index + 2U], &file_byte_count)) {
+            if (!WritePpmByte(file, pixel.b, &file_byte_count)) {
                 std::fclose(file);
                 return false;
             }
@@ -870,6 +1281,7 @@ bool EmitImageArtifacts(
 
         if (!WriteFramePpmImage(
                 request,
+                out_result->orbit_result.frames[frame_index],
                 frame_capture_offset,
                 source_width,
                 source_height,

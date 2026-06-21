@@ -274,6 +274,8 @@ constexpr const char *TEST_L1_SAMPLE_013_USER_VISIBLE_RESOLUTION_BLOCKER =
     "RenderScene_L1Sample013ReportsUserVisibleCaptureResolutionBlocker";
 constexpr const char *TEST_L1_SAMPLE_014_USER_VISIBLE_TARGET =
     "RenderScene_L1Sample014EmitsUserVisibleCaptureTargetArtifacts";
+constexpr const char *TEST_L1_SAMPLE_015_SCENE_PIXEL_SEMANTICS =
+    "RenderScene_L1Sample015EmitsScenePixelSemanticsArtifacts";
 constexpr const char *TEST_BOUNDARY =
     "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -293,6 +295,9 @@ constexpr char L1_SAMPLE_013_IMAGE_ARTIFACT_DIRECTORY[] = "Artifacts/L1Sample011
 constexpr char L1_SAMPLE_014_IMAGE_OUTPUT_PATH_PREFIX[] =
     "Artifacts/L1Sample011/RVF014/RuntimeVisualScene";
 constexpr char L1_SAMPLE_014_IMAGE_ARTIFACT_DIRECTORY[] = "Artifacts/L1Sample011/RVF014";
+constexpr char L1_SAMPLE_015_IMAGE_OUTPUT_PATH_PREFIX[] =
+    "Artifacts/L1Sample011/RVF015/RuntimeVisualScene";
+constexpr char L1_SAMPLE_015_IMAGE_ARTIFACT_DIRECTORY[] = "Artifacts/L1Sample011/RVF015";
 constexpr char L1_SAMPLE_011_IMAGE_HEADER[] = "P6\n12 4\n255\n";
 constexpr char L1_SAMPLE_014_IMAGE_HEADER[] = "P6\n640 360\n255\n";
 constexpr char L1_VIS_002_CUBE_NAME[] = "Cube";
@@ -355,6 +360,12 @@ struct L1Vis006DiagnosticExpectation final {
     RenderSceneMissingLayerDiagnosticStatus status = RenderSceneMissingLayerDiagnosticStatus::Success;
     const char *diagnostic_name = nullptr;
     bool blocked_by_environment = false;
+};
+
+struct RgbSample final {
+    std::uint8_t r = 0U;
+    std::uint8_t g = 0U;
+    std::uint8_t b = 0U;
 };
 
 int Fail(std::string_view message) {
@@ -1355,6 +1366,17 @@ RenderSceneRuntimeVisualSceneProofRequest MakeRuntimeVisualSceneUserVisibleTarge
     return request;
 }
 
+RenderSceneRuntimeVisualSceneProofRequest MakeRuntimeVisualSceneSemanticTargetImageProofRequest(
+    L1Vis001RhiDevice &device,
+    std::vector<std::uint8_t> &capture) {
+    RenderSceneRuntimeVisualSceneProofRequest request =
+        MakeRuntimeVisualSceneUserVisibleTargetImageProofRequest(device, capture);
+    request.image_output_path_prefix = L1_SAMPLE_015_IMAGE_OUTPUT_PATH_PREFIX;
+    request.image_output_path_prefix_byte_count =
+        sizeof(L1_SAMPLE_015_IMAGE_OUTPUT_PATH_PREFIX) - 1U;
+    return request;
+}
+
 bool CaptureWasWritten(const std::vector<std::uint8_t> &capture) {
     for (std::uint8_t value : capture) {
         if (value != CAPTURE_SENTINEL) {
@@ -1517,6 +1539,30 @@ std::string_view RuntimeVisualSceneUserVisibleTargetImagePathForFrame(std::uint3
     return {};
 }
 
+std::string_view RuntimeVisualSceneSemanticTargetImagePathForFrame(std::uint32_t frame_index) {
+    if (frame_index == 0U) {
+        return "Artifacts/L1Sample011/RVF015/RuntimeVisualScene.Frame000.ppm";
+    }
+
+    if (frame_index == 1U) {
+        return "Artifacts/L1Sample011/RVF015/RuntimeVisualScene.Frame001.ppm";
+    }
+
+    if (frame_index == 2U) {
+        return "Artifacts/L1Sample011/RVF015/RuntimeVisualScene.Frame002.ppm";
+    }
+
+    if (frame_index == 3U) {
+        return "Artifacts/L1Sample011/RVF015/RuntimeVisualScene.Frame003.ppm";
+    }
+
+    if (frame_index == 4U) {
+        return "Artifacts/L1Sample011/RVF015/RuntimeVisualScene.Frame004.ppm";
+    }
+
+    return {};
+}
+
 bool OrbitOutputPathMatches(const RenderSceneOrbitCaptureFrameReport &frame_report) {
     const std::string_view expected = OrbitOutputPathForFrame(frame_report.frame_index);
     if (expected.empty()) {
@@ -1560,6 +1606,18 @@ bool RuntimeVisualSceneUserVisibleTargetImagePathMatches(
     return actual == expected;
 }
 
+bool RuntimeVisualSceneSemanticTargetImagePathMatches(
+    const RenderSceneRuntimeVisualSceneImageArtifactReport &report) {
+    const std::string_view expected =
+        RuntimeVisualSceneSemanticTargetImagePathForFrame(report.frame_index);
+    if (expected.empty()) {
+        return false;
+    }
+
+    const std::string_view actual(report.output_path, report.output_path_byte_count);
+    return actual == expected;
+}
+
 bool CleanRuntimeVisualSceneImageArtifactDirectory() {
     std::error_code error;
     std::filesystem::remove_all(L1_SAMPLE_011_IMAGE_ARTIFACT_DIRECTORY, error);
@@ -1575,6 +1633,12 @@ bool CleanRuntimeVisualSceneUserVisibleImageArtifactDirectory() {
 bool CleanRuntimeVisualSceneUserVisibleTargetImageArtifactDirectory() {
     std::error_code error;
     std::filesystem::remove_all(L1_SAMPLE_014_IMAGE_ARTIFACT_DIRECTORY, error);
+    return !error;
+}
+
+bool CleanRuntimeVisualSceneSemanticTargetImageArtifactDirectory() {
+    std::error_code error;
+    std::filesystem::remove_all(L1_SAMPLE_015_IMAGE_ARTIFACT_DIRECTORY, error);
     return !error;
 }
 
@@ -1645,6 +1709,197 @@ bool FileStartsWithBytes(
     }
 
     return true;
+}
+
+bool ReadBinaryFile(const char *path, std::vector<std::uint8_t> *out_bytes) {
+    if (path == nullptr) {
+        return false;
+    }
+
+    if (out_bytes == nullptr) {
+        return false;
+    }
+
+    std::error_code error;
+    const std::uintmax_t file_size = std::filesystem::file_size(path, error);
+    if (error) {
+        return false;
+    }
+
+    if (file_size == 0U || file_size > 5000000U) {
+        return false;
+    }
+
+    std::FILE *file = OpenBinaryReadFile(path);
+    if (file == nullptr) {
+        return false;
+    }
+
+    out_bytes->assign(static_cast<std::size_t>(file_size), 0U);
+    const std::size_t read_count =
+        std::fread(out_bytes->data(), sizeof(std::uint8_t), out_bytes->size(), file);
+    const int close_result = std::fclose(file);
+    if (close_result != 0) {
+        return false;
+    }
+
+    return read_count == out_bytes->size();
+}
+
+bool FilesHaveDifferentBytes(const char *left_path, const char *right_path) {
+    std::vector<std::uint8_t> left_bytes{};
+    std::vector<std::uint8_t> right_bytes{};
+    if (!ReadBinaryFile(left_path, &left_bytes)) {
+        return false;
+    }
+
+    if (!ReadBinaryFile(right_path, &right_bytes)) {
+        return false;
+    }
+
+    if (left_bytes.size() != right_bytes.size()) {
+        return true;
+    }
+
+    for (std::size_t index = 0U; index < left_bytes.size(); ++index) {
+        if (left_bytes[index] != right_bytes[index]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool RgbSamplesMatch(RgbSample left, RgbSample right) {
+    if (left.r != right.r) {
+        return false;
+    }
+
+    if (left.g != right.g) {
+        return false;
+    }
+
+    return left.b == right.b;
+}
+
+std::size_t RuntimeVisualRegionBegin(std::size_t entity_index) {
+    const std::size_t image_width = L1_SAMPLE_014_TARGET_IMAGE_WIDTH;
+    return (image_width * entity_index) / RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+}
+
+std::size_t RuntimeVisualRegionEnd(std::size_t entity_index) {
+    const std::size_t image_width = L1_SAMPLE_014_TARGET_IMAGE_WIDTH;
+    const std::size_t next_entity_index = entity_index + 1U;
+    return (image_width * next_entity_index) / RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+}
+
+bool ReadPpmPixel(
+    const std::vector<std::uint8_t> &bytes,
+    std::size_t header_byte_count,
+    std::size_t row,
+    std::size_t column,
+    RgbSample *out_sample) {
+    if (out_sample == nullptr) {
+        return false;
+    }
+
+    const std::size_t image_width = L1_SAMPLE_014_TARGET_IMAGE_WIDTH;
+    const std::size_t image_height = L1_SAMPLE_014_TARGET_IMAGE_HEIGHT;
+    if (row >= image_height) {
+        return false;
+    }
+
+    if (column >= image_width) {
+        return false;
+    }
+
+    const std::size_t pixel_offset =
+        header_byte_count + (row * image_width + column) * 3U;
+    if (pixel_offset + 2U >= bytes.size()) {
+        return false;
+    }
+
+    out_sample->r = bytes[pixel_offset];
+    out_sample->g = bytes[pixel_offset + 1U];
+    out_sample->b = bytes[pixel_offset + 2U];
+    return true;
+}
+
+bool FindRegionSecondColor(
+    const std::vector<std::uint8_t> &bytes,
+    std::size_t header_byte_count,
+    std::size_t entity_index,
+    RgbSample *out_sample) {
+    if (out_sample == nullptr) {
+        return false;
+    }
+
+    if (entity_index >= RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return false;
+    }
+
+    const std::size_t image_width = L1_SAMPLE_014_TARGET_IMAGE_WIDTH;
+    const std::size_t image_height = L1_SAMPLE_014_TARGET_IMAGE_HEIGHT;
+    const std::size_t expected_byte_count =
+        header_byte_count + image_width * image_height * 3U;
+    if (bytes.size() != expected_byte_count) {
+        return false;
+    }
+
+    const std::size_t region_begin = RuntimeVisualRegionBegin(entity_index);
+    const std::size_t region_end = RuntimeVisualRegionEnd(entity_index);
+    if (region_end <= region_begin) {
+        return false;
+    }
+
+    bool first_sample_valid = false;
+    RgbSample first_sample{};
+    for (std::size_t row = 0U; row < image_height; ++row) {
+        for (std::size_t column = region_begin; column < region_end; ++column) {
+            RgbSample current_sample{};
+            if (!ReadPpmPixel(bytes, header_byte_count, row, column, &current_sample)) {
+                return false;
+            }
+
+            if (!first_sample_valid) {
+                first_sample = current_sample;
+                first_sample_valid = true;
+                continue;
+            }
+
+            if (!RgbSamplesMatch(first_sample, current_sample)) {
+                *out_sample = current_sample;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool RuntimeVisualRegionSamplesAreDistinct(
+    const std::array<RgbSample, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> &samples) {
+    if (RgbSamplesMatch(samples[0U], samples[1U])) {
+        return false;
+    }
+
+    if (RgbSamplesMatch(samples[0U], samples[2U])) {
+        return false;
+    }
+
+    return !RgbSamplesMatch(samples[1U], samples[2U]);
+}
+
+RenderScenePrimitiveGeometryKind RuntimeVisualExpectedPrimitiveKind(std::size_t entity_index) {
+    if (entity_index == 0U) {
+        return RenderScenePrimitiveGeometryKind::Cube;
+    }
+
+    if (entity_index == 1U) {
+        return RenderScenePrimitiveGeometryKind::Cylinder;
+    }
+
+    return RenderScenePrimitiveGeometryKind::Cone;
 }
 
 bool OrbitFramePoseMatches(
@@ -3416,6 +3671,202 @@ int RenderSceneL1Sample014EmitsUserVisibleCaptureTargetArtifacts() {
     return 0;
 }
 
+int RenderSceneL1Sample015EmitsScenePixelSemanticsArtifacts() {
+    if (!CleanRuntimeVisualSceneSemanticTargetImageArtifactDirectory()) {
+        return Fail("l1 sample runtime visual semantic image cleanup failed");
+    }
+
+    L1Vis001RhiDevice device;
+    const std::size_t entity_capture_byte_count = CaptureByteCount(
+        L1_SAMPLE_014_TARGET_CAPTURE_WIDTH,
+        L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT);
+    const std::size_t frame_capture_byte_count =
+        entity_capture_byte_count * RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    std::vector<std::uint8_t> capture(
+        frame_capture_byte_count * L1_VIS_005_FRAME_COUNT,
+        CAPTURE_SENTINEL);
+
+    RenderSceneRuntimeVisualSceneProofRoute route;
+    RenderSceneRuntimeVisualSceneProofResult result{};
+    const RenderSceneRuntimeVisualSceneProofRequest request =
+        MakeRuntimeVisualSceneSemanticTargetImageProofRequest(device, capture);
+    const RenderSceneRuntimeVisualSceneProofStatus status = route.Execute(request, &result);
+    if (status != RenderSceneRuntimeVisualSceneProofStatus::Success) {
+        return Fail("l1 sample runtime visual semantic image route did not complete");
+    }
+
+    if (result.first_missing_layer != RenderSceneMissingLayerDiagnosticLayer::None ||
+        result.diagnostic.status != RenderSceneMissingLayerDiagnosticStatus::Success) {
+        return Fail("l1 sample runtime visual semantic image reported missing layer");
+    }
+
+    if (result.available_image_artifact_width != L1_SAMPLE_014_TARGET_IMAGE_WIDTH ||
+        result.available_image_artifact_height != L1_SAMPLE_014_TARGET_IMAGE_HEIGHT) {
+        return Fail("l1 sample runtime visual semantic image available extent mismatch");
+    }
+
+    if (result.entity_report_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT ||
+        result.material_texture_slot_report_count != RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+        return Fail("l1 sample runtime visual semantic image route report count mismatch");
+    }
+
+    for (std::size_t entity_index = 0U;
+        entity_index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+        ++entity_index) {
+        const RenderSceneRuntimeVisualSceneProofEntityReport &entity_report =
+            result.entity_reports[entity_index];
+        if (!entity_report.render_scene_submitted) {
+            return Fail("l1 sample runtime visual semantic image entity was not submitted");
+        }
+
+        if (entity_report.primitive_kind != RuntimeVisualExpectedPrimitiveKind(entity_index)) {
+            return Fail("l1 sample runtime visual semantic image primitive mismatch");
+        }
+    }
+
+    if (result.frame_capture_byte_budget != frame_capture_byte_count ||
+        result.capture_bytes_written != capture.size()) {
+        return Fail("l1 sample runtime visual semantic image capture byte count mismatch");
+    }
+
+    if (result.image_artifact_report_count != L1_VIS_005_FRAME_COUNT) {
+        return Fail("l1 sample runtime visual semantic image frame count mismatch");
+    }
+
+    const std::size_t expected_header_byte_count =
+        sizeof(L1_SAMPLE_014_IMAGE_HEADER) - 1U;
+    const std::size_t expected_file_byte_count =
+        expected_header_byte_count + RuntimeVisualSceneTargetImageRgbByteCount();
+    if (result.image_artifact_bytes_written != expected_file_byte_count * L1_VIS_005_FRAME_COUNT) {
+        return Fail("l1 sample runtime visual semantic image total byte count mismatch");
+    }
+
+    std::array<RgbSample, RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT> region_samples{};
+    for (std::size_t index = 0U; index < L1_VIS_005_FRAME_COUNT; ++index) {
+        const RenderSceneRuntimeVisualSceneImageArtifactReport &report =
+            result.image_artifact_reports[index];
+        if (report.status != RenderSceneRuntimeVisualSceneImageArtifactStatus::Written) {
+            return Fail("l1 sample runtime visual semantic image status mismatch");
+        }
+
+        if (!RuntimeVisualSceneSemanticTargetImagePathMatches(report)) {
+            return Fail("l1 sample runtime visual semantic image path mismatch");
+        }
+
+        if (report.width != L1_SAMPLE_014_TARGET_IMAGE_WIDTH ||
+            report.height != L1_SAMPLE_014_TARGET_IMAGE_HEIGHT) {
+            return Fail("l1 sample runtime visual semantic image dimensions mismatch");
+        }
+
+        if (report.source_byte_count != frame_capture_byte_count ||
+            report.file_byte_count != expected_file_byte_count) {
+            return Fail("l1 sample runtime visual semantic image byte metadata mismatch");
+        }
+
+        if (!FileStartsWithBytes(
+                report.output_path,
+                L1_SAMPLE_014_IMAGE_HEADER,
+                expected_header_byte_count)) {
+            return Fail("l1 sample runtime visual semantic image header mismatch");
+        }
+
+        const RenderSceneOrbitCaptureFrameReport &frame_report =
+            result.orbit_result.frames[index];
+        if (frame_report.status != RenderSceneOrbitCaptureStatus::Success ||
+            frame_report.capture_bytes_written != frame_capture_byte_count ||
+            frame_report.capture.output_byte_budget != frame_capture_byte_count) {
+            return Fail("l1 sample runtime visual semantic image frame metadata mismatch");
+        }
+
+        if (!OrbitFrameCaptureSegmentWasWritten(capture, index, frame_capture_byte_count)) {
+            return Fail("l1 sample runtime visual semantic image did not use route capture");
+        }
+
+        if (frame_report.capture_result.entity_report_count !=
+            RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+            return Fail("l1 sample runtime visual semantic image entity result count mismatch");
+        }
+
+        if (frame_report.capture_result.render_result_count !=
+            RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+            return Fail("l1 sample runtime visual semantic image render result count mismatch");
+        }
+
+        if (frame_report.capture_result.material_texture_slot_report_count !=
+            RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT) {
+            return Fail("l1 sample runtime visual semantic image material slot count mismatch");
+        }
+
+        for (std::size_t entity_index = 0U;
+            entity_index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+            ++entity_index) {
+            const auto &entity_report =
+                frame_report.capture_result.entity_reports[entity_index];
+            if (!entity_report.submitted ||
+                entity_report.primitive_kind != RuntimeVisualExpectedPrimitiveKind(entity_index)) {
+                return Fail("l1 sample runtime visual semantic image draw report mismatch");
+            }
+
+            const auto &slot_report =
+                frame_report.capture_result.material_texture_slot_reports[entity_index];
+            if (slot_report.slot != entity_index ||
+                !slot_report.texture_resource_resolved ||
+                !slot_report.sampled_texture_bound ||
+                !slot_report.sampler_bound) {
+                return Fail("l1 sample runtime visual semantic image material report mismatch");
+            }
+        }
+
+        if (index != 0U) {
+            continue;
+        }
+
+        std::vector<std::uint8_t> frame_bytes{};
+        if (!ReadBinaryFile(report.output_path, &frame_bytes)) {
+            return Fail("l1 sample runtime visual semantic image read failed");
+        }
+
+        for (std::size_t entity_index = 0U;
+            entity_index < RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+            ++entity_index) {
+            if (!FindRegionSecondColor(
+                    frame_bytes,
+                    expected_header_byte_count,
+                    entity_index,
+                    &region_samples[entity_index])) {
+                return Fail("l1 sample runtime visual semantic image still has fixed bars");
+            }
+        }
+    }
+
+    if (!RuntimeVisualRegionSamplesAreDistinct(region_samples)) {
+        return Fail("l1 sample runtime visual semantic image material colors are not distinct");
+    }
+
+    if (!FilesHaveDifferentBytes(
+            result.image_artifact_reports[0U].output_path,
+            result.image_artifact_reports[1U].output_path)) {
+        return Fail("l1 sample runtime visual semantic image orbit frames are identical");
+    }
+
+    const RhiDeviceSnapshot snapshot = device.Snapshot();
+    const std::uint64_t expected_draw_count =
+        static_cast<std::uint64_t>(L1_VIS_005_FRAME_COUNT) *
+        RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
+    if (snapshot.swapchain.resize_count != 1U ||
+        snapshot.capture_count != expected_draw_count ||
+        snapshot.last_capture_bytes_written != entity_capture_byte_count) {
+        return Fail("l1 sample runtime visual semantic image rhi counter mismatch");
+    }
+
+    if (snapshot.last_capture_extent.width != L1_SAMPLE_014_TARGET_CAPTURE_WIDTH ||
+        snapshot.last_capture_extent.height != L1_SAMPLE_014_TARGET_CAPTURE_HEIGHT) {
+        return Fail("l1 sample runtime visual semantic image rhi extent mismatch");
+    }
+
+    return 0;
+}
+
 int RenderSceneL1Vis002ReportsGeometryMissingLayerForCylinder() {
     L1Vis001RhiDevice device;
     std::vector<std::uint8_t> capture(
@@ -3605,6 +4056,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_L1_SAMPLE_014_USER_VISIBLE_TARGET) {
         return RenderSceneL1Sample014EmitsUserVisibleCaptureTargetArtifacts();
+    }
+
+    if (name == TEST_L1_SAMPLE_015_SCENE_PIXEL_SEMANTICS) {
+        return RenderSceneL1Sample015EmitsScenePixelSemanticsArtifacts();
     }
 
     if (name == TEST_BOUNDARY) {
