@@ -3,6 +3,7 @@
 Status: RuntimeAsset module, validator, and cook/decode smoke slices implemented; full production contract still open
 Owner: Architecture
 Task: #73
+Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
 Resource Browser scope: `docs/YUENGINE_RESOURCE_BROWSER_IMPORT_COOK_DIAGNOSTICS_SCOPE.md`
 Prerequisites:

@@ -6,6 +6,7 @@ Current decision: `RUNTIME_ASSET_MODULE_SLICE_IMPLEMENTED_WITH_PRODUCTION_GAPS`
 Owner: Architecture
 Task: #73
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
+Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 Depends on:
 
 - task #71 `RVF Recovery 0: restore clean windows-fast-gate configure/build/test`
