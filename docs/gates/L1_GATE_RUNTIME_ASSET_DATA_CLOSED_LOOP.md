@@ -1,8 +1,8 @@
 # L1-GATE: Runtime Asset Data Closed Loop
 
-Status: First smoke and validator slices implemented
+Status: RuntimeAsset module and first cook/decode slices implemented
 Requested decision: `FIRST_SLICE_CONTINUE`
-Current decision: `FIRST_SLICE_IMPLEMENTED_WITH_COOK_LOAD_GAPS`
+Current decision: `RUNTIME_ASSET_MODULE_SLICE_IMPLEMENTED_WITH_PRODUCTION_GAPS`
 Owner: Architecture
 Task: #73
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
@@ -30,8 +30,9 @@ fixture generator writes disk files
 -> RenderCore/RHI renders and captures the cube/cylinder/cone scene
 ```
 
-This gate now records the first smoke implementation slice. It still defines the
-acceptance shape for the remaining validator/cook/load slices.
+This gate now records the first smoke, validator, and `YuRuntimeAsset` module
+implementation slices. It still defines the acceptance shape for the remaining
+production validator/cook/load slices.
 
 ## Layer
 
@@ -55,13 +56,16 @@ Current RVF work proves several useful runtime value floors:
 - the RVF tests exercise a cube/cylinder/cone route and emit helper image
   artifacts.
 
-Those facts did not prove a runtime asset/data contract by themselves. The first
-RuntimeAssetData smoke and validator slices now load the canonical scene from
-generated disk files through File/VFS, Resource, Asset, RenderScene, RenderCore,
-and RHI before capture. They also reject unsupported versions, invalid mesh
-bounds, and missing/duplicate scene dependencies before runtime output
-mutation. The remaining work is the full cook/load API, decoded payload, shader
-bytecode, and disk animation sampling contract.
+Those facts did not prove a runtime asset/data contract by themselves. The
+RuntimeAssetData slices now load the canonical scene from generated disk files
+through File/VFS, `YuRuntimeAsset`, Resource, Asset, RenderScene, RenderCore, and
+RHI before capture. They also reject unsupported versions, invalid mesh bounds,
+and missing/duplicate scene dependencies before runtime output mutation.
+`YuRuntimeAsset` now stores cache payloads, deterministic decoded payload records
+for mesh/material/texture, and Resource/Asset dependency edges. The remaining
+work is the full production cook/load API, decoded texture upload consumption by
+RenderScene materials, shader bytecode/program ownership, and disk animation
+sampling contract.
 
 ## Owns
 
@@ -146,12 +150,16 @@ The implementation must prove the following in order:
    animation data by typed ids.
 7. `RuntimeAssetData_LoadCreatesRenderSceneRuntimeRecords` proves loaded data
    becomes RenderScene geometry, material, camera, entity, and frame records.
-8. `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi`
+8. `RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture` proves
+   mesh/material/texture families produce Resource decoded payload records.
+9. `RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges` proves scene
+   dependencies are represented in both Resource and Asset dependency graphs.
+10. `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi`
    executes through RenderCore/RHI and captures the canonical scene, or reports
    `BlockedByEnv` only for target display/D3D11 constraints.
-9. `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` proves CPU image
+11. `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` proves CPU image
    helpers run only after the RHI/RenderCore capture source exists.
-10. `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` proves no
+12. `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` proves no
     editor, Web, UI, input, GDI viewer, or software raster dependency is part of
     the closed-loop proof.
 
@@ -166,9 +174,11 @@ Current first-slice status:
 | 5. loader uses File/VFS/Resource | PASS |
 | 6. scene references mesh/material/texture/shader | PASS for smoke; camera/animation are checked as scene tokens and need fuller typed descriptor records |
 | 7. loaded data creates RenderScene runtime records | PASS |
-| 8. RenderCore/RHI capture | PASS |
-| 9. CPU oracle guard | PASS |
-| 10. no editor/Web/UI/input/GDI viewer dependency | PASS |
+| 8. mesh/material/texture decoded payload records | PASS |
+| 9. Resource/Asset dependency edges | PASS |
+| 10. RenderCore/RHI capture | PASS |
+| 11. CPU oracle guard | PASS |
+| 12. no editor/Web/UI/input/GDI viewer dependency | PASS |
 
 ## Candidate First Slice
 
@@ -180,7 +190,7 @@ This gate recommends this remaining slice shape:
 | RADC-002 | Deterministic fixture generator | writes mesh/material/texture/shader/scene/animation source files to ignored output dirs |
 | RADC-003 | Mesh/material/texture/shader validator | validates file bytes and dependency graph through File/VFS/Resource paths |
 | RADC-004 | Scene/camera/animation validator | validates scene refs, transforms, camera refs, and clip refs or names animation blocker |
-| RADC-005 | Cook/load bridge | emits runtime-ready Resource/Asset/RenderScene records without direct struct injection |
+| RADC-005 | Cook/load bridge | partially implemented in `YuRuntimeAsset`; still needs production scene loader output API |
 | RADC-006 | Canonical render smoke | loads cube/cylinder/cone scene and renders/captures through RenderScene/RenderCore/RHI |
 | RADC-007 | Helper-oracle guard | CPU PPM/image artifact output is checked only as auxiliary evidence after runtime capture |
 
@@ -218,6 +228,8 @@ Accepted proof:
 - validator/cook/load records created from bytes read through approved engine
   file/resource paths;
 - no-mutation tests for rejected file, dependency, output, and budget cases;
+- Resource cache payload, Resource decoded payload, Resource dependency, and
+  Asset dependency records written by runtime code, not private test helpers;
 - runtime records/resources consumed by RenderScene/RenderCore/RHI;
 - canonical scene capture from the loaded graph.
 

@@ -40,6 +40,7 @@
 #include "YuEngine/Rhi/RhiShaderModuleDesc.h"
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
+#include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
 
 namespace {
 using yuengine::asset::AssetDescriptor;
@@ -94,6 +95,16 @@ using yuengine::resource::ResourceResidencyRequest;
 using yuengine::resource::ResourceResidencyStatus;
 using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
+using yuengine::runtimeasset::HashRuntimeAssetDataBytes;
+using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
+using yuengine::runtimeasset::RuntimeAssetDataStatus;
+using yuengine::runtimeasset::RuntimeAssetFileDesc;
+using yuengine::runtimeasset::RuntimeAssetFileKind;
+using yuengine::runtimeasset::RuntimeAssetGraphLoadRequest;
+using yuengine::runtimeasset::RuntimeAssetGraphLoadResult;
+using yuengine::runtimeasset::RuntimeAssetLoadedFile;
+using yuengine::runtimeasset::RuntimeAssetValidationResult;
+using yuengine::runtimeasset::ValidateRuntimeAssetDataBytes;
 using yuengine::rhi::IRhiDevice;
 using yuengine::rhi::NullRhiDevice;
 using yuengine::rhi::RhiBufferDesc;
@@ -139,6 +150,10 @@ constexpr const char *TEST_SCENE_REFERENCES =
     "RuntimeAssetData_SceneReferencesMeshMaterialTextureShader";
 constexpr const char *TEST_LOADED_RENDER_RECORDS =
     "RuntimeAssetData_LoadCreatesRenderSceneRuntimeRecords";
+constexpr const char *TEST_DECODED_PAYLOADS =
+    "RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture";
+constexpr const char *TEST_RUNTIME_DEPENDENCIES =
+    "RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges";
 constexpr const char *TEST_LOAD_RENDER =
     "RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi";
 constexpr const char *TEST_CPU_ORACLE =
@@ -171,25 +186,16 @@ constexpr std::size_t CAPTURE_BYTES_PER_ENTITY = 64U;
 constexpr std::size_t TOTAL_CAPTURE_BYTES = CAPTURE_BYTES_PER_ENTITY * 3U;
 
 struct FixtureFile final {
-    const char *path = nullptr;
+    RuntimeAssetFileDesc desc{};
     const char *bytes = nullptr;
-    ResourceTypeId resource_type{};
-    AssetTypeId asset_type{};
-    std::uint64_t stable_id = 0U;
-};
-
-struct LoadedAsset final {
-    ResourceHandle resource;
-    AssetHandle asset;
-    std::uint64_t hash = 0U;
-    std::size_t byte_count = 0U;
 };
 
 struct LoadedGraph final {
-    std::array<LoadedAsset, FIXTURE_FILE_COUNT> assets{};
-    LoadedAsset scene_asset{};
+    std::array<RuntimeAssetLoadedFile, FIXTURE_FILE_COUNT> assets{};
+    RuntimeAssetLoadedFile scene_asset{};
     std::size_t file_read_count = 0U;
     std::size_t resource_payload_count = 0U;
+    std::size_t decoded_payload_count = 0U;
     std::size_t dependency_count = 0U;
     RenderSceneRuntimeFrameResult frame_result{};
     RenderSceneThreePrimitiveCaptureResult capture_result{};
@@ -201,22 +207,6 @@ struct LoadedGraph final {
 };
 
 using TestFunction = int (*)();
-
-enum class RuntimeAssetDataStatus {
-    Success,
-    InvalidArgument,
-    InvalidHeader,
-    UnsupportedVersion,
-    InvalidBounds,
-    MissingDependency,
-    DuplicateDependency
-};
-
-struct RuntimeAssetValidationResult final {
-    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
-    std::size_t dependency_count = 0U;
-    std::size_t byte_count = 0U;
-};
 
 class RuntimeAssetRhiDevice final : public IRhiDevice {
 public:
@@ -449,6 +439,53 @@ bool FailStep(std::string_view message) {
     return false;
 }
 
+const char *StatusName(RuntimeAssetDataStatus status) {
+    switch (status) {
+        case RuntimeAssetDataStatus::Success:
+            return "Success";
+        case RuntimeAssetDataStatus::InvalidArgument:
+            return "InvalidArgument";
+        case RuntimeAssetDataStatus::InvalidHeader:
+            return "InvalidHeader";
+        case RuntimeAssetDataStatus::UnsupportedVersion:
+            return "UnsupportedVersion";
+        case RuntimeAssetDataStatus::InvalidBounds:
+            return "InvalidBounds";
+        case RuntimeAssetDataStatus::MissingDependency:
+            return "MissingDependency";
+        case RuntimeAssetDataStatus::DuplicateDependency:
+            return "DuplicateDependency";
+        case RuntimeAssetDataStatus::CapacityExceeded:
+            return "CapacityExceeded";
+        case RuntimeAssetDataStatus::FileReadFailed:
+            return "FileReadFailed";
+        case RuntimeAssetDataStatus::ResourceRegistrationFailed:
+            return "ResourceRegistrationFailed";
+        case RuntimeAssetDataStatus::ResourceLoadCommitFailed:
+            return "ResourceLoadCommitFailed";
+        case RuntimeAssetDataStatus::ResourceResidencyFailed:
+            return "ResourceResidencyFailed";
+        case RuntimeAssetDataStatus::CachePayloadStoreFailed:
+            return "CachePayloadStoreFailed";
+        case RuntimeAssetDataStatus::DecodePlanFailed:
+            return "DecodePlanFailed";
+        case RuntimeAssetDataStatus::DecodeResultFailed:
+            return "DecodeResultFailed";
+        case RuntimeAssetDataStatus::DecodedPayloadStoreFailed:
+            return "DecodedPayloadStoreFailed";
+        case RuntimeAssetDataStatus::AssetRegistrationFailed:
+            return "AssetRegistrationFailed";
+        case RuntimeAssetDataStatus::ResourceDependencyFailed:
+            return "ResourceDependencyFailed";
+        case RuntimeAssetDataStatus::AssetDependencyFailed:
+            return "AssetDependencyFailed";
+        default:
+            break;
+    }
+
+    return "Unknown";
+}
+
 std::filesystem::path TestRoot(std::string_view test_name) {
     std::filesystem::path root = std::filesystem::temp_directory_path();
     root /= "YuEngineRuntimeAssetDataTests";
@@ -459,59 +496,98 @@ std::filesystem::path TestRoot(std::string_view test_name) {
 std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
     return std::array<FixtureFile, FIXTURE_FILE_COUNT>{
         FixtureFile{
-            "Mesh/Cube.yumesh",
-            "YUASSET MESH 1\nid=cube_mesh\nkind=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\n",
-            ResourceTypeId{RESOURCE_TYPE_MESH},
-            AssetTypeId{ASSET_TYPE_MESH},
-            1001U},
+            RuntimeAssetFileDesc{
+                "Mesh/Cube.yumesh",
+                RuntimeAssetFileKind::Mesh,
+                ResourceTypeId{RESOURCE_TYPE_MESH},
+                AssetTypeId{ASSET_TYPE_MESH},
+                1001U,
+                yuengine::resource::ResourceDecodePlanAssetClass::Mesh,
+                yuengine::resource::ResourceDecodeResultClass::Mesh,
+                96U},
+            "YUASSET MESH 1\nid=cube_mesh\nkind=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\n"},
         FixtureFile{
-            "Mesh/Cylinder.yumesh",
-            "YUASSET MESH 1\nid=cylinder_mesh\nkind=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\n",
-            ResourceTypeId{RESOURCE_TYPE_MESH},
-            AssetTypeId{ASSET_TYPE_MESH},
-            1002U},
+            RuntimeAssetFileDesc{
+                "Mesh/Cylinder.yumesh",
+                RuntimeAssetFileKind::Mesh,
+                ResourceTypeId{RESOURCE_TYPE_MESH},
+                AssetTypeId{ASSET_TYPE_MESH},
+                1002U,
+                yuengine::resource::ResourceDecodePlanAssetClass::Mesh,
+                yuengine::resource::ResourceDecodeResultClass::Mesh,
+                96U},
+            "YUASSET MESH 1\nid=cylinder_mesh\nkind=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\n"},
         FixtureFile{
-            "Mesh/Cone.yumesh",
-            "YUASSET MESH 1\nid=cone_mesh\nkind=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\n",
-            ResourceTypeId{RESOURCE_TYPE_MESH},
-            AssetTypeId{ASSET_TYPE_MESH},
-            1003U},
+            RuntimeAssetFileDesc{
+                "Mesh/Cone.yumesh",
+                RuntimeAssetFileKind::Mesh,
+                ResourceTypeId{RESOURCE_TYPE_MESH},
+                AssetTypeId{ASSET_TYPE_MESH},
+                1003U,
+                yuengine::resource::ResourceDecodePlanAssetClass::Mesh,
+                yuengine::resource::ResourceDecodeResultClass::Mesh,
+                96U},
+            "YUASSET MESH 1\nid=cone_mesh\nkind=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\n"},
         FixtureFile{
-            "Material/Shared.yumat",
-            "YUASSET MATERIAL 1\nid=shared_material\nshader=Shader/RuntimeProgram.yuprogram\ntexture0=Texture/Albedo.yutex\ntexture1=Texture/Normal.yutex\ntexture2=Texture/Mask.yutex\n",
-            ResourceTypeId{RESOURCE_TYPE_MATERIAL},
-            AssetTypeId{ASSET_TYPE_MATERIAL},
-            2001U},
+            RuntimeAssetFileDesc{
+                "Material/Shared.yumat",
+                RuntimeAssetFileKind::Material,
+                ResourceTypeId{RESOURCE_TYPE_MATERIAL},
+                AssetTypeId{ASSET_TYPE_MATERIAL},
+                2001U,
+                yuengine::resource::ResourceDecodePlanAssetClass::Material,
+                yuengine::resource::ResourceDecodeResultClass::Material,
+                128U},
+            "YUASSET MATERIAL 1\nid=shared_material\nshader=Shader/RuntimeProgram.yuprogram\ntexture0=Texture/Albedo.yutex\ntexture1=Texture/Normal.yutex\ntexture2=Texture/Mask.yutex\n"},
         FixtureFile{
-            "Texture/Albedo.yutex",
-            "YUASSET TEXTURE 1\nid=albedo\nformat=rgba8\nextent=2x2\npayload=checker\n",
-            ResourceTypeId{RESOURCE_TYPE_TEXTURE},
-            AssetTypeId{ASSET_TYPE_TEXTURE},
-            3001U},
+            RuntimeAssetFileDesc{
+                "Texture/Albedo.yutex",
+                RuntimeAssetFileKind::Texture,
+                ResourceTypeId{RESOURCE_TYPE_TEXTURE},
+                AssetTypeId{ASSET_TYPE_TEXTURE},
+                3001U,
+                yuengine::resource::ResourceDecodePlanAssetClass::Texture,
+                yuengine::resource::ResourceDecodeResultClass::Texture,
+                16U},
+            "YUASSET TEXTURE 1\nid=albedo\nformat=rgba8\nextent=2x2\npayload=checker\n"},
         FixtureFile{
-            "Texture/Normal.yutex",
-            "YUASSET TEXTURE 1\nid=normal\nformat=rgba8\nextent=2x2\npayload=normal\n",
-            ResourceTypeId{RESOURCE_TYPE_TEXTURE},
-            AssetTypeId{ASSET_TYPE_TEXTURE},
-            3002U},
+            RuntimeAssetFileDesc{
+                "Texture/Normal.yutex",
+                RuntimeAssetFileKind::Texture,
+                ResourceTypeId{RESOURCE_TYPE_TEXTURE},
+                AssetTypeId{ASSET_TYPE_TEXTURE},
+                3002U,
+                yuengine::resource::ResourceDecodePlanAssetClass::Texture,
+                yuengine::resource::ResourceDecodeResultClass::Texture,
+                16U},
+            "YUASSET TEXTURE 1\nid=normal\nformat=rgba8\nextent=2x2\npayload=normal\n"},
         FixtureFile{
-            "Texture/Mask.yutex",
-            "YUASSET TEXTURE 1\nid=mask\nformat=rgba8\nextent=2x2\npayload=mask\n",
-            ResourceTypeId{RESOURCE_TYPE_TEXTURE},
-            AssetTypeId{ASSET_TYPE_TEXTURE},
-            3003U},
+            RuntimeAssetFileDesc{
+                "Texture/Mask.yutex",
+                RuntimeAssetFileKind::Texture,
+                ResourceTypeId{RESOURCE_TYPE_TEXTURE},
+                AssetTypeId{ASSET_TYPE_TEXTURE},
+                3003U,
+                yuengine::resource::ResourceDecodePlanAssetClass::Texture,
+                yuengine::resource::ResourceDecodeResultClass::Texture,
+                16U},
+            "YUASSET TEXTURE 1\nid=mask\nformat=rgba8\nextent=2x2\npayload=mask\n"},
         FixtureFile{
-            "Shader/RuntimeProgram.yuprogram",
-            "YUASSET SHADER 1\nid=runtime_program\ninput=position,color\ntextures=3\n",
-            ResourceTypeId{RESOURCE_TYPE_SHADER},
-            AssetTypeId{ASSET_TYPE_SHADER},
-            4001U},
+            RuntimeAssetFileDesc{
+                "Shader/RuntimeProgram.yuprogram",
+                RuntimeAssetFileKind::Shader,
+                ResourceTypeId{RESOURCE_TYPE_SHADER},
+                AssetTypeId{ASSET_TYPE_SHADER},
+                4001U},
+            "YUASSET SHADER 1\nid=runtime_program\ninput=position,color\ntextures=3\n"},
         FixtureFile{
-            "Animation/Spin.yuanim",
-            "YUASSET ANIMATION 1\nid=spin\ntracks=3\nsample_rate=30\n",
-            ResourceTypeId{RESOURCE_TYPE_ANIMATION},
-            AssetTypeId{ASSET_TYPE_ANIMATION},
-            5001U}};
+            RuntimeAssetFileDesc{
+                "Animation/Spin.yuanim",
+                RuntimeAssetFileKind::Animation,
+                ResourceTypeId{RESOURCE_TYPE_ANIMATION},
+                AssetTypeId{ASSET_TYPE_ANIMATION},
+                5001U},
+            "YUASSET ANIMATION 1\nid=spin\ntracks=3\nsample_rate=30\n"}};
 }
 
 std::string SceneBytes() {
@@ -528,144 +604,12 @@ std::string SceneBytes() {
         "entities=3\n");
 }
 
-std::uint64_t HashBytes(std::span<const std::uint8_t> bytes) {
-    std::uint64_t hash = FNV_OFFSET;
-    for (const std::uint8_t byte : bytes) {
-        hash ^= static_cast<std::uint64_t>(byte);
-        hash *= FNV_PRIME;
-    }
-
-    return hash;
-}
-
 std::vector<std::uint8_t> BytesFromString(const std::string &text) {
     return std::vector<std::uint8_t>(text.begin(), text.end());
 }
 
 bool Contains(std::string_view text, std::string_view token) {
     return text.find(token) != std::string_view::npos;
-}
-
-std::size_t CountToken(std::string_view text, std::string_view token) {
-    std::size_t count = 0U;
-    std::size_t offset = 0U;
-    while (offset < text.size()) {
-        const std::size_t found = text.find(token, offset);
-        if (found == std::string_view::npos) {
-            return count;
-        }
-
-        ++count;
-        offset = found + token.size();
-    }
-
-    return count;
-}
-
-bool HeaderHasSupportedVersion(std::string_view text, std::string_view expected_kind) {
-    const std::string header = "YUASSET " + std::string(expected_kind) + " 1";
-    return Contains(text, header);
-}
-
-bool HeaderHasUnsupportedVersion(std::string_view text, std::string_view expected_kind) {
-    const std::string header = "YUASSET " + std::string(expected_kind) + " 2";
-    return Contains(text, header);
-}
-
-RuntimeAssetDataStatus ValidateSceneDependencies(std::string_view text, RuntimeAssetValidationResult *out_result) {
-    if (out_result == nullptr) {
-        return RuntimeAssetDataStatus::InvalidArgument;
-    }
-
-    const std::array<std::string_view, 8U> tokens{
-        "m0=",
-        "m1=",
-        "m2=",
-        "mat=",
-        "t0=",
-        "prog=",
-        "cam=",
-        "anim="};
-    for (const std::string_view token : tokens) {
-        const std::size_t count = CountToken(text, token);
-        if (count == 0U) {
-            return RuntimeAssetDataStatus::MissingDependency;
-        }
-
-        if (count > 1U) {
-            return RuntimeAssetDataStatus::DuplicateDependency;
-        }
-
-        ++out_result->dependency_count;
-    }
-
-    return RuntimeAssetDataStatus::Success;
-}
-
-RuntimeAssetDataStatus ValidateRuntimeAssetBytes(
-    const std::vector<std::uint8_t> &bytes,
-    std::string_view expected_kind,
-    RuntimeAssetValidationResult *out_result) {
-    if (out_result == nullptr) {
-        return RuntimeAssetDataStatus::InvalidArgument;
-    }
-
-    RuntimeAssetValidationResult result{};
-    result.byte_count = bytes.size();
-    const std::string text(bytes.begin(), bytes.end());
-    if (HeaderHasUnsupportedVersion(text, expected_kind)) {
-        result.status = RuntimeAssetDataStatus::UnsupportedVersion;
-        *out_result = result;
-        return result.status;
-    }
-
-    if (!HeaderHasSupportedVersion(text, expected_kind)) {
-        result.status = RuntimeAssetDataStatus::InvalidHeader;
-        *out_result = result;
-        return result.status;
-    }
-
-    if (expected_kind == "MESH") {
-        if (Contains(text, "vertices=0") || Contains(text, "indices=0")) {
-            result.status = RuntimeAssetDataStatus::InvalidBounds;
-            *out_result = result;
-            return result.status;
-        }
-    }
-
-    if (expected_kind == "SCENE") {
-        result.status = ValidateSceneDependencies(text, &result);
-        *out_result = result;
-        return result.status;
-    }
-
-    result.status = RuntimeAssetDataStatus::Success;
-    *out_result = result;
-    return result.status;
-}
-
-std::string_view ExpectedKindForFile(const FixtureFile &file) {
-    if (file.resource_type.value == RESOURCE_TYPE_MESH) {
-        return "MESH";
-    }
-
-    if (file.resource_type.value == RESOURCE_TYPE_MATERIAL) {
-        return "MATERIAL";
-    }
-
-    if (file.resource_type.value == RESOURCE_TYPE_TEXTURE) {
-        return "TEXTURE";
-    }
-
-    if (file.resource_type.value == RESOURCE_TYPE_SHADER) {
-        return "SHADER";
-    }
-
-    if (file.resource_type.value == RESOURCE_TYPE_ANIMATION) {
-        return "ANIMATION";
-    }
-
-    return "";
 }
 
 bool WriteBytes(MountTable &table, const char *path, const std::vector<std::uint8_t> &bytes) {
@@ -682,7 +626,7 @@ bool WriteCanonicalFixture(MountTable &table) {
     for (const FixtureFile &file : files) {
         const std::string text(file.bytes);
         const std::vector<std::uint8_t> bytes = BytesFromString(text);
-        if (!WriteBytes(table, file.path, bytes)) {
+        if (!WriteBytes(table, file.desc.path, bytes)) {
             return false;
         }
     }
@@ -753,73 +697,6 @@ bool SceneReferencesRequiredAssets(const std::vector<std::uint8_t> &scene_bytes)
     }
 
     return Contains(scene, "anim=Animation/Spin.yuanim");
-}
-
-bool RegisterResourcePayload(
-    ResourceRegistry &registry,
-    AssetManager &manager,
-    const FixtureFile &file,
-    const std::vector<std::uint8_t> &bytes,
-    LoadedAsset *out_asset) {
-    if (out_asset == nullptr) {
-        return FailStep("null loaded asset output");
-    }
-
-    const std::string key = "radc." + std::to_string(file.stable_id);
-    ResourceDescriptor resource_descriptor{};
-    resource_descriptor.type = file.resource_type;
-    resource_descriptor.logical_key = ResourceLogicalKey(key);
-    const ResourceRegistrationResult resource_result =
-        registry.RegisterSyntheticDescriptor(resource_descriptor);
-    if (!resource_result.Succeeded()) {
-        return FailStep("resource registration failed");
-    }
-
-    ResourceLoadCommitRequest commit_request{};
-    commit_request.resource = resource_result.handle;
-    commit_request.expected_type = file.resource_type;
-    commit_request.load_state = ResourceLoadState::Uploaded;
-    commit_request.commit_id = file.stable_id + 10000U;
-    commit_request.upload_id = file.stable_id + 20000U;
-    commit_request.staging_request_id = file.stable_id + 30000U;
-    commit_request.upload_byte_count = static_cast<std::uint32_t>(bytes.size());
-    if (registry.CommitUploadCompletion(commit_request) != ResourceLoadCommitStatus::Success) {
-        return FailStep("resource upload commit failed");
-    }
-
-    ResourceResidencyRequest residency_request{};
-    residency_request.resource = resource_result.handle;
-    residency_request.expected_type = file.resource_type;
-    if (registry.AdmitResident(residency_request) != ResourceResidencyStatus::Success) {
-        return FailStep("resource residency admit failed");
-    }
-
-    ResourceCachePayloadRequest payload_request{};
-    payload_request.resource = resource_result.handle;
-    payload_request.expected_type = file.resource_type;
-    payload_request.payload_id = file.stable_id + 40000U;
-    payload_request.payload_bytes = bytes.data();
-    payload_request.payload_byte_count = static_cast<std::uint32_t>(bytes.size());
-    if (registry.StoreCachePayload(payload_request) != ResourceCachePayloadStatus::Success) {
-        return FailStep("resource cache payload store failed");
-    }
-
-    AssetDescriptor asset_descriptor{};
-    asset_descriptor.stable_id = file.stable_id;
-    asset_descriptor.asset_type = file.asset_type;
-    asset_descriptor.resource = resource_result.handle;
-    asset_descriptor.resource_type = file.resource_type;
-    const AssetRegistrationResult asset_result =
-        manager.RegisterRuntimeAsset(&registry, asset_descriptor);
-    if (!asset_result.Succeeded()) {
-        return FailStep("asset registration failed");
-    }
-
-    out_asset->resource = resource_result.handle;
-    out_asset->asset = asset_result.handle;
-    out_asset->hash = HashBytes(std::span<const std::uint8_t>(bytes.data(), bytes.size()));
-    out_asset->byte_count = bytes.size();
-    return true;
 }
 
 bool CreateShaderModule(IRhiDevice &device, RhiShaderStage stage, RhiShaderModuleHandle *out_handle) {
@@ -1049,7 +926,7 @@ WorldTransformState Transform(float x, float y, float z) {
 
 bool ExecuteLoadedRenderPath(
     IRhiDevice &device,
-    const std::array<LoadedAsset, FIXTURE_FILE_COUNT> &assets,
+    const std::array<RuntimeAssetLoadedFile, FIXTURE_FILE_COUNT> &assets,
     RenderSceneRuntimeFrameResult *out_frame_result,
     RenderSceneThreePrimitiveCaptureResult *out_capture_result) {
     if (out_frame_result == nullptr) {
@@ -1226,70 +1103,44 @@ bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
     }
 
     LoadedGraph graph{};
-    std::vector<std::uint8_t> scene_bytes{};
-    if (!ReadFile(table, SCENE_PATH, &scene_bytes)) {
-        return FailStep("validate scene header failed");
-    }
-
-    graph.loader_used_file_mount = true;
-    ++graph.file_read_count;
-    RuntimeAssetValidationResult scene_validation{};
-    if (ValidateRuntimeAssetBytes(scene_bytes, "SCENE", &scene_validation) != RuntimeAssetDataStatus::Success) {
-        return FailStep("scene references failed");
-    }
-
-    graph.scene_references_mesh_material_texture_shader = SceneReferencesRequiredAssets(scene_bytes);
-    if (!graph.scene_references_mesh_material_texture_shader) {
-        return FailStep("residency budget failed");
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        file_descs[index] = files[index].desc;
     }
 
     ResourceRegistry registry;
-    ResourceResidencyBudgetDesc residency_budget{};
-    residency_budget.byte_capacity = 4096U;
-    if (registry.SetResidencyBudget(residency_budget) != ResourceResidencyStatus::Success) {
-        return FailStep("cache payload budget failed");
-    }
-
-    if (registry.SetCachePayloadBudget({4096U}) != ResourceCachePayloadStatus::Success) {
-        return false;
-    }
-
     AssetManager manager;
-    const FixtureFile scene_file{
-        SCENE_PATH,
-        "",
-        ResourceTypeId{RESOURCE_TYPE_SCENE},
-        AssetTypeId{ASSET_TYPE_SCENE},
-        6001U};
-    if (!RegisterResourcePayload(registry, manager, scene_file, scene_bytes, &graph.scene_asset)) {
-        return FailStep("register scene payload failed");
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = &table;
+    load_request.mount = MountId(MOUNT_ID);
+    load_request.scene_path = VirtualPath(SCENE_PATH);
+    load_request.scene_resource_type = ResourceTypeId{RESOURCE_TYPE_SCENE};
+    load_request.scene_asset_type = AssetTypeId{ASSET_TYPE_SCENE};
+    load_request.scene_stable_id = 6001U;
+    load_request.files = file_descs.data();
+    load_request.file_count = static_cast<std::uint32_t>(file_descs.size());
+    load_request.resource_registry = &registry;
+    load_request.asset_manager = &manager;
+    load_request.loaded_files = graph.assets.data();
+    load_request.loaded_file_capacity = static_cast<std::uint32_t>(graph.assets.size());
+
+    RuntimeAssetGraphLoadResult load_result{};
+    const RuntimeAssetDataStatus load_status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+    if (load_status != RuntimeAssetDataStatus::Success) {
+        std::fwrite(StatusName(load_status), sizeof(char), std::string_view(StatusName(load_status)).size(), stderr);
+        std::fputc('\n', stderr);
+        return FailStep("runtime asset graph load failed");
     }
 
-    ++graph.resource_payload_count;
-
-    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
-    for (std::size_t index = 0U; index < files.size(); ++index) {
-        std::vector<std::uint8_t> bytes{};
-        if (!ReadFile(table, files[index].path, &bytes)) {
-            return FailStep("read asset file failed");
-        }
-
-        ++graph.file_read_count;
-        RuntimeAssetValidationResult asset_validation{};
-        const std::string_view expected_kind = ExpectedKindForFile(files[index]);
-        if (ValidateRuntimeAssetBytes(bytes, expected_kind, &asset_validation) != RuntimeAssetDataStatus::Success) {
-            return FailStep("validate asset file failed");
-        }
-
-        if (!RegisterResourcePayload(registry, manager, files[index], bytes, &graph.assets[index])) {
-            return FailStep("register resource payload failed");
-        }
-
-        ++graph.resource_payload_count;
-    }
-
-    graph.resource_payloads_stored = graph.resource_payload_count == files.size() + 1U;
-    graph.dependency_count = scene_validation.dependency_count + 1U;
+    graph.scene_asset = load_result.scene;
+    graph.loader_used_file_mount = load_result.file_read_count == FIXTURE_FILE_COUNT + 1U;
+    graph.file_read_count = load_result.file_read_count;
+    graph.resource_payload_count = load_result.cache_payload_count;
+    graph.decoded_payload_count = load_result.decoded_payload_count;
+    graph.resource_payloads_stored = load_result.cache_payload_count > FIXTURE_FILE_COUNT;
+    graph.dependency_count = load_result.resource_dependency_count + load_result.asset_dependency_count;
+    graph.scene_references_mesh_material_texture_shader = load_result.scene_references_runtime_asset_families;
 
     RuntimeAssetRhiDevice device;
     if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
@@ -1339,8 +1190,10 @@ int RuntimeAssetDataGeneratorWritesDeterministicFilesAndHashes() {
         return Fail("deterministic scene size changed");
     }
 
-    const std::uint64_t first_hash = HashBytes(std::span<const std::uint8_t>(first_scene.data(), first_scene.size()));
-    const std::uint64_t second_hash = HashBytes(std::span<const std::uint8_t>(second_scene.data(), second_scene.size()));
+    const std::uint64_t first_hash = HashRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(first_scene.data(), first_scene.size()));
+    const std::uint64_t second_hash = HashRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(second_scene.data(), second_scene.size()));
     if (first_hash != second_hash) {
         return Fail("deterministic scene hash changed");
     }
@@ -1364,7 +1217,10 @@ int RuntimeAssetDataFormatHeaderRejectsUnsupportedVersion() {
         "vertices=24\n"
         "indices=36\n");
     RuntimeAssetValidationResult result{};
-    const RuntimeAssetDataStatus status = ValidateRuntimeAssetBytes(bytes, "MESH", &result);
+    const RuntimeAssetDataStatus status = ValidateRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+        RuntimeAssetFileKind::Mesh,
+        &result);
     if (status != RuntimeAssetDataStatus::UnsupportedVersion) {
         return Fail("unsupported version was not rejected");
     }
@@ -1393,7 +1249,10 @@ int RuntimeAssetDataValidatorRejectsInvalidBoundsWithoutOutputs() {
         "indices=36\n"
         "bounds=-1,-1,-1,1,1,1\n");
     RuntimeAssetValidationResult result{};
-    const RuntimeAssetDataStatus status = ValidateRuntimeAssetBytes(bytes, "MESH", &result);
+    const RuntimeAssetDataStatus status = ValidateRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+        RuntimeAssetFileKind::Mesh,
+        &result);
     if (status != RuntimeAssetDataStatus::InvalidBounds) {
         return Fail("invalid mesh bounds were not rejected");
     }
@@ -1425,7 +1284,10 @@ int RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs() {
         "anim=Animation/Spin.yuanim\n");
     RuntimeAssetValidationResult missing_result{};
     const RuntimeAssetDataStatus missing_status =
-        ValidateRuntimeAssetBytes(missing_bytes, "SCENE", &missing_result);
+        ValidateRuntimeAssetDataBytes(
+            std::span<const std::uint8_t>(missing_bytes.data(), missing_bytes.size()),
+            RuntimeAssetFileKind::Scene,
+            &missing_result);
     if (missing_status != RuntimeAssetDataStatus::MissingDependency) {
         return Fail("missing dependency was not rejected");
     }
@@ -1443,7 +1305,10 @@ int RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs() {
         "anim=Animation/Spin.yuanim\n");
     RuntimeAssetValidationResult duplicate_result{};
     const RuntimeAssetDataStatus duplicate_status =
-        ValidateRuntimeAssetBytes(duplicate_bytes, "SCENE", &duplicate_result);
+        ValidateRuntimeAssetDataBytes(
+            std::span<const std::uint8_t>(duplicate_bytes.data(), duplicate_bytes.size()),
+            RuntimeAssetFileKind::Scene,
+            &duplicate_result);
     if (duplicate_status != RuntimeAssetDataStatus::DuplicateDependency) {
         return Fail("duplicate dependency was not rejected");
     }
@@ -1497,7 +1362,10 @@ int RuntimeAssetDataSceneReferencesMeshMaterialTextureShader() {
     }
 
     RuntimeAssetValidationResult result{};
-    const RuntimeAssetDataStatus status = ValidateRuntimeAssetBytes(scene_bytes, "SCENE", &result);
+    const RuntimeAssetDataStatus status = ValidateRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(scene_bytes.data(), scene_bytes.size()),
+        RuntimeAssetFileKind::Scene,
+        &result);
     if (status != RuntimeAssetDataStatus::Success) {
         return Fail("scene dependency validator failed");
     }
@@ -1538,6 +1406,75 @@ int RuntimeAssetDataLoadCreatesRenderSceneRuntimeRecords() {
 
     if (graph.capture_result.material_texture_slot_report_count != 3U) {
         return Fail("RenderScene material texture slot count changed");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("DecodedPayloads"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    LoadedGraph graph{};
+    if (!LoadGraph(table, &graph)) {
+        return Fail("loaded graph failed");
+    }
+
+    if (graph.decoded_payload_count != 7U) {
+        return Fail("decoded payload count changed");
+    }
+
+    std::size_t index = 0U;
+    while (index < 7U) {
+        if (!graph.assets[index].decoded_payload_stored) {
+            return Fail("decoded runtime asset payload was not stored");
+        }
+
+        ++index;
+    }
+
+    if (graph.assets[7U].decoded_payload_stored) {
+        return Fail("shader payload was incorrectly marked decoded");
+    }
+
+    if (graph.assets[8U].decoded_payload_stored) {
+        return Fail("animation payload was incorrectly marked decoded");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("DependencyEdges"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    LoadedGraph graph{};
+    if (!LoadGraph(table, &graph)) {
+        return Fail("loaded graph failed");
+    }
+
+    if (!graph.scene_asset.resource.IsValid()) {
+        return Fail("scene resource handle was not registered");
+    }
+
+    if (!graph.scene_asset.asset.IsValid()) {
+        return Fail("scene asset handle was not registered");
+    }
+
+    if (graph.dependency_count != FIXTURE_FILE_COUNT * 2U) {
+        return Fail("resource and asset dependency edge count changed");
     }
 
     return 0;
@@ -1626,7 +1563,7 @@ int RuntimeAssetDataDoesNotDependOnEditorWebUiInputOrGdiViewer() {
         return Fail("unexpected file read count");
     }
 
-    if (graph.dependency_count != 9U) {
+    if (graph.dependency_count != FIXTURE_FILE_COUNT * 2U) {
         return Fail("dependency graph count was not recorded");
     }
 
@@ -1645,6 +1582,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_LOADER_FILE_RESOURCE, RuntimeAssetDataLoaderUsesFileResourcePathNotInMemoryStructs},
     {TEST_SCENE_REFERENCES, RuntimeAssetDataSceneReferencesMeshMaterialTextureShader},
     {TEST_LOADED_RENDER_RECORDS, RuntimeAssetDataLoadCreatesRenderSceneRuntimeRecords},
+    {TEST_DECODED_PAYLOADS, RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture},
+    {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},
     {TEST_NO_UPPER, RuntimeAssetDataDoesNotDependOnEditorWebUiInputOrGdiViewer},

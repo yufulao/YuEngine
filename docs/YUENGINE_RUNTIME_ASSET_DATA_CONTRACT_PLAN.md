@@ -1,6 +1,6 @@
 # YuEngine Runtime Asset Data Contract Plan
 
-Status: First smoke and validator slices implemented; full cook/load contract still open
+Status: RuntimeAsset module, validator, and cook/decode smoke slices implemented; full production contract still open
 Owner: Architecture
 Task: #73
 Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
@@ -43,17 +43,19 @@ animation, RenderScene, RenderCore, RHI, and capture floors. The repository also
 has current `RenderSceneRuntimeVisualSceneProofRoute` and RVF tests for the
 cube/cylinder/cone route.
 
-The first smoke and validator gaps are now partly closed by
-`YuRuntimeAssetDataClosedLoopTests`: a
+The first smoke, validator, and minimal cook/decode gaps are now partly closed by
+`YuRuntimeAsset` plus `YuRuntimeAssetDataClosedLoopTests`: a
 deterministic generator writes mesh/material/texture/shader/scene/animation
-records to disk, the loader reads them through `MountTable`, registers
-Resource/Asset records, builds RenderScene runtime records, and captures through
-RenderCore/RHI. The validator smoke now rejects unsupported versions, invalid
-mesh bounds without output mutation, and missing/duplicate scene dependencies.
-The remaining gap is the production-quality cook/load contract: full typed
-dependency validation across every file family, decoded texture payloads, shader
-bytecode ownership, animation clip sampling from disk, and production loader
-APIs.
+records to disk, `YuRuntimeAsset` reads them through `MountTable`, validates
+headers and scene dependencies, registers Resource/Asset records, stores cache
+payloads, creates deterministic decoded payload records for mesh/material/texture,
+adds Resource and Asset dependency edges, builds RenderScene runtime records, and
+captures through RenderCore/RHI. The validator smoke rejects unsupported
+versions, invalid mesh bounds without output mutation, and missing/duplicate
+scene dependencies. The remaining gap is the production-quality contract: full
+typed dependency validation across every file family, decoded texture payload
+upload into RHI material slots, shader bytecode/program ownership, animation clip
+sampling from disk, and production scene loader output APIs.
 
 The following evidence is useful but insufficient on its own:
 
@@ -127,10 +129,10 @@ The generator must be deterministic under repeated runs from the same source
 inputs. A required test must compare output file sizes and hashes across two
 fresh output directories.
 
-## First Smoke Slice
+## First Smoke And RuntimeAsset Module Slices
 
-The first implementation slice is intentionally narrow and test-owned. It
-establishes that the lower runtime route can no longer be claimed from pure
+The first implementation slices are intentionally narrow and module-backed. They
+establish that the lower runtime route can no longer be claimed from pure
 C++ in-memory construction alone.
 
 | Proof | Status | Evidence |
@@ -139,15 +141,18 @@ C++ in-memory construction alone.
 | Unsupported version validation | PASS | `RuntimeAssetData_FormatHeaderRejectsUnsupportedVersion` |
 | Invalid bounds no-output validation | PASS | `RuntimeAssetData_ValidatorRejectsInvalidBoundsWithoutOutputs` |
 | Missing/duplicate dependency validation | PASS | `RuntimeAssetData_DependencyGraphRejectsMissingAndDuplicateRefs` |
-| File/VFS read path | PASS | fixture bytes are read through `MountTable` loose mount |
+| File/VFS read path | PASS | fixture bytes are read through `MountTable` loose mount by `YuRuntimeAsset` |
 | Resource/Asset registration | PASS | scene and all generated asset families register synthetic Resource descriptors and runtime Asset handles |
+| Resource/Asset dependency edges | PASS | `RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges` records scene dependencies in both registries |
+| Mesh/material/texture cook payloads | PASS | `RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture` stores decoded payload records for seven decodable runtime records |
 | RenderScene records | PASS | loaded handles feed cube/cylinder/cone geometry, shared material, camera, and frame records |
 | RenderCore/RHI capture | PASS | `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi` |
 | CPU oracle guard | PASS | `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` |
 | Upper-layer dependency guard | PASS | `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` |
 
-This slice is not a complete asset system. It leaves the hard format, validator,
-cook, decoded payload, shader bytecode, and animation-clip loader work open.
+These slices are not a complete asset system. They leave the full typed format
+validators, decoded texture-to-RHI bridge use in RenderScene, shader bytecode
+loader, animation-clip loader/sampler, and production scene loader APIs open.
 
 ## Validator, Cook, Load, Render
 
