@@ -34,7 +34,7 @@ The following are explicitly out of scope:
 - making editor-only code part of shipped game runtime
 - making the game runtime depend on editor-only code
 - forbidden restoration of deprecated Web Editor, deprecated Web frontend workspace, React/Vite workflow, or
-  HTML/CSS/browser canvas preview as active editor direction
+  HTML/CSS/browser-only preview as active editor direction
 - forbidden acceptance of HTML/CSS, form UI, 2D canvas sketches, or static screenshots as
   core UI editor preview
 
@@ -170,7 +170,7 @@ Owns:
 - inspector
 - property controls
 - drag and drop
-- layout canvas interaction
+- layout viewport interaction
 - resource picker UI
 - style/theme editing UI
 - state preview UI
@@ -238,23 +238,25 @@ YuEngine runtime layout data is the source of truth:
 - engine runtime rect and content rect
 
 Any editor viewport must render runtime data through an explicit coordinate adapter.
-The adapter owns conversion between engine runtime coordinates and browser
-canvas coordinates. In particular, engine runtime rects use the engine layout
-coordinate convention, while browser canvas placement uses top-left DOM
-coordinates.
+The adapter owns conversion between engine runtime coordinates and native/editor
+viewport overlay coordinates. In particular, engine runtime rects use the engine
+layout coordinate convention, while editor overlays use a viewport-local display
+space owned by the native/editor host.
 
 Required display conversion shape:
 
 ```text
-cssLeft = runtimeX * scale + panX
-cssTop = (viewportHeight - runtimeY - runtimeHeight) * scale + panY
-cssWidth = runtimeWidth * scale
-cssHeight = runtimeHeight * scale
+editorViewportX = runtimeX * scale + panX
+editorViewportY = (viewportHeight - runtimeY - runtimeHeight) * scale + panY
+editorViewportWidth = runtimeWidth * scale
+editorViewportHeight = runtimeHeight * scale
 ```
 
 The inverse conversion is required for drag and resize operations. Dragging a
 node updates runtime layout fields according to the current anchor preset; it
-must not infer anchor semantics from CSS `left/top/width/height` alone.
+must not infer anchor semantics from display rect fields alone. CSS
+`left/top/width/height` is a forbidden historical Web representation, not an
+editor data contract.
 
 Required rules:
 
@@ -397,8 +399,8 @@ Work items:
 | UI-EW-006 | Component template data | templates are data files consumed by editor tooling and runtime validator |
 | UI-EW-007 | Style/theme editing | editor edits data; runtime owns interpretation |
 | UI-EW-008 | State preview | editor controls state input; engine path validates output |
-| UI-EW-009 | Layout coordinate spec | documents engine runtime rects, DOM canvas rects, y-axis conversion, pan/zoom, DPI, safe-area, border/overlay exclusion |
-| UI-EW-010 | Coordinate adapter | converts engine rects to editor viewport rects and back; drag/resize updates runtime offsets instead of CSS-only fields |
+| UI-EW-009 | Layout coordinate spec | documents engine runtime rects, native/editor viewport overlay rects, y-axis conversion, pan/zoom, DPI, safe-area, border/overlay exclusion |
+| UI-EW-010 | Coordinate adapter | converts engine rects to editor viewport rects and back; drag/resize updates runtime offsets instead of display-only fields |
 | UI-EW-011 | Runtime layout parity tests | editor overlay solver matches YuEngine runtime golden fixtures; engine preview result is authoritative |
 | UI-EW-012 | Engine UI viewport | UI layout/style/resource data renders through YuEngine UI runtime, not HTML/CSS |
 | UI-EW-013 | UI resource preview | sprites, textures, fonts, atlases, materials, and missing-resource diagnostics are visible through engine preview |
