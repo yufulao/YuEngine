@@ -12,7 +12,6 @@ Related plans:
 - `docs/YUENGINE_UI_FRAMEWORK_EDITOR_PLAN.md`
 - `docs/YUENGINE_SCENE_EDITOR_PLAN.md`
 - `docs/YUENGINE_ANIMATION_EDITOR_PLAN.md`
-- `docs/YUENGINE_UI_WEB_EDITOR_FRONTEND_BOUNDARY.md`
 
 ## Purpose
 
@@ -21,18 +20,19 @@ Animation editor work claims usable editor progress.
 
 This gate is architecture and reference guidance only. It does not authorize
 implementation, does not create a native editor application, and does not allow
-Web, HTML/CSS, 2D canvas sketches, or static screenshots to become authoritative
-runtime preview.
+Deprecated Web, HTML/CSS, 2D canvas sketches, or static screenshots must not
+become authoritative runtime preview. Web is retained only as deprecated
+historical wording.
 
-The preview host is the bridge between Web editor workspaces and YuEngine
+The preview host is the bridge between editor tooling and YuEngine
 runtime capability:
 
 ```text
-Web workspace commands
+editor-host commands
 -> local editor service
 -> isolated engine preview host session
 -> runtime validation / resource resolution / frame or headless output
--> bounded status, diagnostics, hit, selection, and frame records back to Web
+-> bounded status, diagnostics, hit, selection, and frame records back to editor tooling
 ```
 
 ## Layer
@@ -41,7 +41,8 @@ L7 editor tooling over approved runtime modules.
 
 The preview host may call approved engine runtime surfaces to build an isolated
 preview session. It must not become a lower-layer dependency and must not make
-shipped runtime modules depend on Web editor code.
+shipped runtime modules depend on editor-only code. Deprecated Web editor code
+must not be a runtime dependency.
 
 ## L0/L1 Boundary
 
@@ -61,9 +62,9 @@ frame sequence through YuEngine runtime paths rather than a standalone sample.
 
 Reference engines are used only for responsibility separation:
 
-- Unity and Unreal both treat editor workspaces, runtime preview viewports,
+- Unity and Unreal both treat editor surfaces, runtime preview viewports,
   resource validation, and play/simulate sessions as separate responsibilities.
-- YuEngine should borrow that separation: Web owns workspace panels and editor
+- YuEngine should borrow that separation: editor tooling owns panels and editor
   commands; the preview host owns authoritative runtime preview output.
 - YuEngine must not copy Unity Scene/GameObject/Animator/UGUI APIs, Unreal
   World/Actor/Component/Slate APIs, plugin ecosystems, asset database shape, or
@@ -93,24 +94,24 @@ This gate owns the architecture contract for a future shared preview host:
 - resource reference diagnostics for missing, stale, type-mismatched,
   unsupported, or not-yet-cooked resources;
 - preview diagnostics, counters, and snapshots with fixed capacities;
-- IPC/WebSocket/HTTP protocol shape between local editor service and Web
-  workspace;
+- local editor-host protocol shape between local editor service and editor
+  tooling;
 - no-mutation failure semantics for invalid requests and insufficient output
   capacity;
 - explicit session shutdown behavior and stale-session rejection.
 
-The host may expose runtime-derived data to Web. Web may draw overlays such as
-selection boxes, transform handles, grid, labels, and timeline markers, but
-those overlays are editor-only and never authoritative runtime output.
+The host may expose runtime-derived data to editor tooling. Editor overlays such
+as selection boxes, transform handles, grid, labels, and timeline markers are
+editor-only and never authoritative runtime output.
 
 ## Does Not Own
 
 This gate does not own:
 
-- Web editor panel layout, hierarchy, inspector, resource browser, timeline,
+- editor panel layout, hierarchy, inspector, resource browser, timeline,
   shortcuts, drag/drop, undo/redo, or workflow behavior;
-- a native editor app, immediate-mode editor fallback, or C++ Web editor shell;
-- HTML/CSS/DOM/canvas as authoritative game/editor preview;
+- a native editor app, immediate-mode editor fallback, or deprecated C++ Web editor shell;
+- forbidden HTML/CSS/DOM/canvas as authoritative game/editor preview;
 - UI runtime implementation, Scene runtime implementation, Animation runtime
   implementation, RenderScene, AudioScene, Resource, Package, or File expansion;
 - material graph editing, shader tooling, animation graph authoring,
@@ -124,7 +125,7 @@ This gate does not own:
 
 ## Required Architecture Rules
 
-1. Web workspace is a client, not preview authority.
+1. Editor tooling is a client, not preview authority.
 2. Local editor service routes load/save/validate/cook/preview commands. It must
    not own frontend panels or runtime behavior.
 3. Preview host sessions are isolated from the normal game runtime and must be
@@ -138,7 +139,7 @@ This gate does not own:
 8. Animation preview must use runtime clip/player/sample/event output, not only
    timeline drawing.
 9. Scene preview must use engine-rendered or engine-headless scene outputs, not
-   a standalone Web canvas mock.
+   a standalone deprecated Web canvas mock.
 10. L0/L1 pass, RHI fixture pass, RenderCore fixture pass, and isolated sample
     screenshots must never be reported as Preview Host pass.
 11. Failures must be explicit and no-mutation where applicable.
@@ -175,7 +176,7 @@ This gate recommends, but does not approve, the first implementable slice:
 | EPV-002 | Frame/headless output descriptor | host reports format, size, status, and diagnostics into caller-owned outputs |
 | EPV-003 | Camera state contract | orbit/pan/zoom or equivalent camera state changes preview output identity/status |
 | EPV-004 | Resource diagnostics bridge | missing/stale/type-mismatch refs report bounded diagnostics without mutation |
-| EPV-005 | Selection/hit feedback records | preview returns bounded hit/selection records; Web overlays remain editor-only |
+| EPV-005 | Selection/hit feedback records | preview returns bounded hit/selection records; editor overlays remain editor-only |
 | EPV-006 | Canonical scene proof contract | fixed-seed cube/cylinder/cone scene with one three-texture material, object rotation, orbit camera, and bounded frame capture set reports pass or exact missing-layer blocker |
 
 UI runtime render hook, Scene viewport transform gizmo, Animation playback
@@ -212,11 +213,11 @@ Performance review must check:
 - fixed diagnostic, hit, selection, and counter capacities;
 - caller-owned frame/headless outputs or explicitly bounded storage;
 - no hidden allocation or unbounded growth on update/frame paths;
-- bounded IPC/WebSocket/HTTP payload sizes;
+- bounded local editor-host protocol payload sizes;
 - explicit frame output format and buffer-size failure;
 - explicit shutdown and stale-session cleanup;
 - no ordinary preview heartbeat/status traffic in durable runtime event streams;
-- no UI refresh or Web polling design that forces unbounded engine work.
+- no UI refresh, polling, or editor-host design that forces unbounded engine work.
 
 Security and local-machine rules:
 
@@ -224,7 +225,7 @@ Security and local-machine rules:
 - no remote shell or cloud preview execution;
 - no provider token, environment secret, local credential, or raw file content in
   preview diagnostics;
-- diagnostics must be bounded and sanitized before Web display.
+- diagnostics must be bounded and sanitized before editor display.
 
 ## Review Routing
 
@@ -248,19 +249,19 @@ The following are blocking violations:
 - claiming L0/L1 plan completion, RHI fixture capture, RenderCore fixture pass,
   RenderScene packet values, or isolated sample screenshots satisfy Preview Host
   or editor visual capability;
-- accepting Web shell, form UI, DOM/CSS, 2D canvas sketches, or static
+- accepting deprecated Web shell, form UI, DOM/CSS, 2D canvas sketches, or static
   screenshots as authoritative runtime preview;
 - calling UI, Scene, or Animation editor usable before engine preview host
   output exists for the relevant runtime behavior;
-- making Web editor code a dependency of runtime modules;
+- making deprecated Web editor code a dependency of runtime modules;
 - making runtime modules depend on editor-only state;
 - using fake preview data that cannot pass cook/package/runtime validation;
 - bypassing Resource/Package/File validation for preview resource refs;
 - bypassing world restore plan or apply-time proof for Scene preview;
 - making diagnostics, reports, or oracle outputs own runtime behavior;
 - copying old TouhouNewWorld runtime/editor data flow into engine API shape;
-- adding a native editor shell fallback to compensate for missing Web/runtime
-  preview contracts;
+- adding a native editor shell fallback to compensate for missing runtime preview
+  contracts;
 - introducing remote/cloud preview execution.
 
 ## Exit Criteria
@@ -273,7 +274,8 @@ This gate is ready for review when:
 - it explicitly separates L0/L1 foundation completion from editor visual
   capability acceptance;
 - the first slice remains explicitly unapproved until review lanes close;
-- the plan keeps Web workspace, local service, and preview host responsibilities
-  separate;
-- hard blocks prevent Web-only editor pages from being counted as usable editor
+- the plan keeps editor tooling, local service, and preview host
+  responsibilities separate, with Web retained only as deprecated historical
+  wording;
+- hard blocks prevent deprecated Web-only editor pages from being counted as usable editor
   completion.

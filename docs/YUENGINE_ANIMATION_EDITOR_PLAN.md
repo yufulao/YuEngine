@@ -11,7 +11,6 @@ Related:
 - `docs/gates/EDITOR_GATE_001_RUNTIME_PREVIEW_HOST.md`
 - `docs/YUENGINE_SCENE_EDITOR_PLAN.md`
 - `docs/YUENGINE_UI_FRAMEWORK_EDITOR_PLAN.md`
-- `docs/YUENGINE_UI_WEB_EDITOR_FRONTEND_BOUNDARY.md`
 - `docs/YUENGINE_L0_L1_EXECUTION_PLAN.md`
 - `docs/YUENGINE_PHASE2_ARCHITECTURE_QUEUE.md`
 - `docs/YUENGINE_PHASE3_ARCHITECTURE_QUEUE.md`
@@ -26,7 +25,7 @@ The useful first direction is:
 
 ```text
 runtime animation clip/state/event data
--> Web editor workspace
+-> native/engine editor surface
 -> local animation editor service
 -> resource/import/cook validation
 -> engine preview host playback viewport and diagnostics
@@ -68,7 +67,7 @@ Animation Editor does not own:
 - a full Animator Controller or Blueprint-like visual scripting system
 - character movement FSMs, customer/player/stall states, quest triggers, or any
   gameplay behavior graph
-- a track-only Web page as core animation preview
+- a forbidden track-only Web page as core animation preview
 - old Unity `Animator`, `Animation`, or `AnimationCurve` API shape
 - old project animation helpers as runtime API shape
 - asset codec implementation beyond approved Resource/import gates
@@ -117,7 +116,7 @@ Reference use is constrained to behavior lessons.
 | Unreal Animation/Sequencer | separation of source asset, runtime playback, notify/event tracks, preview tooling | Sequencer scope, Blueprint/AnimGraph API, editor extensibility |
 | YuEngine Resource/Package gates | asset identity, import/cook/package validation | package expansion, old package compatibility |
 | YuEngine World/Scene gates | preview attachment to scene objects and resource bindings | gameplay component behavior or scene editor ownership |
-| YuEngine editor preview host | visible playback target, frame/status output, resource diagnostics | track-only Web timeline or fake playback |
+| YuEngine editor preview host | visible playback target, frame/status output, resource diagnostics | deprecated track-only Web timeline or fake playback |
 
 Each implementation task must record:
 
@@ -168,7 +167,7 @@ First slice should prefer a data-only or headless player. Visual deformation,
 skinning, blend trees, IK, root motion, and runtime graph evaluation need later
 gates.
 
-### 5.3 Web Animation Editor Workspace
+### 5.3 Native/Engine Animation Editor Surface
 
 Owns:
 
@@ -181,10 +180,9 @@ Owns:
 - preview target selection
 - editor-only selection, snapping, zoom, track colors, and panel state
 
-The workspace should follow the same Web direction used by the UI Editor:
-frontend workflow changes must not require rebuilding YuEngine C++.
-However, timeline drawing is not core preview. Playback feedback must come from
-the engine preview host.
+Timeline drawing is not core preview. Playback feedback must come from the
+engine preview host. Deprecated Web timeline, HTML/CSS, browser-only canvas, and
+static screenshots are forbidden as preview correctness proof.
 
 ### 5.4 Local Animation Editor Service
 
@@ -195,10 +193,10 @@ Owns backend support only:
 - schema and version migration
 - resource/cook/package validation calls
 - preview session control
-- exposing a local API for the Web frontend
+- exposing a local API for the native/engine editor host
 
-The service must not encode frontend timeline widgets, graph layout, shortcut
-behavior, or state-preview UI in C++.
+The service must not encode browser timeline widgets, graph layout, shortcut
+behavior, deprecated Web workflow, or state-preview UI in C++.
 
 ### 5.5 Runtime Preview
 
@@ -211,7 +209,7 @@ animation document
 -> headless sample/event pass
 -> scene/model/sprite/UI preview target through preview host
 -> playback frame/status/event diagnostics
--> runtime diagnostics back to Web editor
+-> runtime diagnostics back to the editor host
 ```
 
 Scene attachment is optional and must go through Scene/World records. Animation
@@ -228,7 +226,7 @@ Required:
 - document that source DCC authoring remains external
 - forbid full Animator/Sequencer clone scope
 - forbid gameplay FSM scope
-- forbid timeline-only Web pages as usable animation preview
+- forbid deprecated timeline-only Web pages as usable animation preview
 - define initial runtime animation document families
 - align with shared Resource Browser, cook/package validator, and runtime
   preview loop
@@ -288,7 +286,7 @@ Work items:
 This is a preview/data feature. It must not become a gameplay behavior tree,
 character controller, or quest/action graph.
 
-### Stage 4: Web Animation Editor Workspace
+### Stage 4: Native/Engine Animation Editor Surface
 
 Goal: build the authoring surface around runtime animation data and engine
 playback preview.
@@ -306,7 +304,7 @@ Work items:
 | AN-EW-007 | Scrub/play controls | uses runtime preview protocol for sample/event result |
 | AN-EW-008 | Keyframe feedback | key/sample edits produce visible runtime target changes |
 | AN-EW-009 | Validation panel | shows import, schema, event, sampling, and package diagnostics |
-| AN-EW-010 | Frontend test route | editor UI/data tests pass without CMake rebuild |
+| AN-EW-010 | Editor surface test route | editor UI/data tests prove runtime-data edits without deprecated Web acceptance |
 
 ### Stage 5: Scene Preview Integration
 
@@ -333,17 +331,17 @@ These are blocking violations:
 - making game-specific character/customer/stall/player FSMs part of Animation
   Editor scope
 - using old project animation helpers as runtime API shape
-- accepting a Web timeline, 2D canvas, HTML forms, or static screenshots as
+- accepting a deprecated Web timeline, 2D canvas, HTML/CSS forms, or static screenshots as
   animation preview
 - calling Animation Editor usable before visible playback, scrub/step, keyframe
   feedback, and event timing feedback exist on a runtime preview target
 - adding a native animation editor app or immediate-mode fallback
-- making Web editor logic part of shipped runtime
+- making deprecated Web editor logic part of shipped runtime
 - hiding runtime state in editor-only timeline or graph layout data
 - validating progress only by drawing a timeline or node graph
 - expanding Resource/Package/File/Scene behavior without approved gates
-- requiring CMake rebuild for ordinary timeline, graph, template, or inspector
-  frontend changes
+- requiring deprecated Web editor work for ordinary timeline, graph, template, or
+  inspector changes
 
 ## 8. Verification
 
@@ -367,8 +365,8 @@ Focused future routes should include:
 ctest --preset windows-fast-gate -R "(Animation|Resource|Package|WorldScene|RenderScene)" --output-on-failure
 ```
 
-Frontend-only changes should add an Animation Editor Web command analogous to
-the UI Web route, and that command must not require a C++ rebuild.
+Deprecated Web editor commands are not active acceptance routes. Editor surface
+tests must prove runtime-data edits and preview-host integration.
 
 ## 9. Completion Definition
 

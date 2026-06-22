@@ -11,11 +11,11 @@ Related:
 - `docs/YUENGINE_UI_FRAMEWORK_EDITOR_PLAN.md`
 - `docs/YUENGINE_SCENE_EDITOR_PLAN.md`
 - `docs/YUENGINE_ANIMATION_EDITOR_PLAN.md`
-- `docs/YUENGINE_UI_WEB_EDITOR_FRONTEND_BOUNDARY.md`
 
 ## 1. Correction
 
 The editor direction is not "build Web forms first and improve them later".
+Web is no longer a YuEngine editor direction.
 
 For UI, Scene, and Animation, the editor is only credible when it is a visual
 entry point into YuEngine runtime capability:
@@ -25,15 +25,16 @@ runtime data
 -> resource/import/cook validation
 -> engine preview host
 -> engine-rendered viewport or frame output
--> Web workspace panels and commands
+-> native/engine editor panels and commands
 ```
 
-Web is the workspace shell: hierarchy, inspector, resource browser, timeline,
-validation panels, command routing, and workflow. Web is not the authoritative
-preview renderer.
+The editor surface is native/engine-hosted tooling: hierarchy, inspector,
+resource browser, timeline, validation panels, command routing, and workflow.
+Web shells are deprecated historical scaffolding and are not editor direction.
 
-HTML/CSS, 2D canvas sketches, static screenshots, and administrative-form style
-pages are not acceptable core preview capability for a game engine editor.
+Forbidden HTML/CSS, 2D canvas sketches, browser-only output, static screenshots, and
+administrative-form style pages are not acceptable core preview capability for a
+game engine editor.
 
 ## 2. Minimum Usable Editor Floor
 
@@ -99,7 +100,7 @@ partial preview-host implementation, not "L0/L1 complete".
 
 ## 3. Shared Architecture
 
-### 3.1 Web Workspace
+### 3.1 Native/Engine Editor Surface
 
 Owns:
 
@@ -128,7 +129,7 @@ Owns:
 - validation command routing
 - cook/package command routing
 - preview session lifecycle
-- IPC/WebSocket/HTTP bridge between Web workspace and engine preview host
+- local editor-host bridge to the engine preview host
 
 Does not own:
 
@@ -149,8 +150,8 @@ Owns:
 - headless preview outputs when visual output is not required
 
 The host must be an engine capability. It may expose frames, snapshots, IDs,
-diagnostics, and hit/selection results to Web, but Web must not fake these as
-authoritative runtime output.
+diagnostics, and hit/selection results to the editor surface, but browser or
+deprecated Web output must not fake these as authoritative runtime output.
 
 ## 4. Required Landing Order
 
@@ -171,8 +172,9 @@ Engine Preview Host
 -> Cook / Package / Run smoke
 ```
 
-UI work can keep Web workspace scaffolding, but it is not usable-editor progress
-until engine UI runtime preview is visible and validated through the host.
+Removed Web workspace scaffolding is residual cleanup context only. It is not
+usable-editor progress; engine UI runtime preview must be visible and validated
+through the host.
 
 Scene work can keep scene data/schema scaffolding, but it is not usable-editor
 progress until the viewport can load and inspect models/materials/textures with
@@ -182,26 +184,20 @@ Animation work can keep clip/event data scaffolding, but it is not
 usable-editor progress until playback, scrub, event timing, and keyframe
 feedback are visible against a model, sprite, or other runtime preview target.
 
-## 5. Current Web Slices
+## 5. Deprecated Web Slices
 
-Current folders such as:
-
-- `Tools/UiWebEditorWeb`
-- `Tools/SceneWebEditorWeb`
-- `Tools/AnimationWebEditorWeb`
-
-are allowed only as Web workspace scaffolding unless and until they connect to
-the engine preview host. They must not be reported as usable editor completion
-by themselves.
+Removed historical browser-editor folders are deprecated scaffolding. They must
+not be connected forward as an editor compatibility path and must not be
+reported as usable editor completion.
 
 In particular:
 
-- a UI Web page without engine UI runtime rendering is not usable UI Editor
-  progress
-- a Scene Web canvas without engine-rendered model/material/texture viewport is
-  not usable Scene Editor progress
-- an Animation Web timeline without visible runtime playback target is not
-  usable Animation Editor progress
+- a deprecated UI Web page without engine UI runtime rendering is not usable UI
+  Editor progress
+- a deprecated Scene Web canvas without engine-rendered model/material/texture
+  viewport is not usable Scene Editor progress
+- a deprecated Animation Web timeline without visible runtime playback target
+  is not usable Animation Editor progress
 
 ## 6. First Preview Host Batch
 
@@ -209,8 +205,8 @@ Recommended first batch:
 
 | ID | Work item | Acceptance |
 | --- | --- | --- |
-| EPV-001 | Preview host process/session contract | Web can start/stop isolated engine preview sessions |
-| EPV-002 | Viewport frame protocol | host can return a frame/status/diagnostics payload to Web |
+| EPV-001 | Preview host process/session contract | editor host can start/stop isolated engine preview sessions |
+| EPV-002 | Viewport frame protocol | host can return a frame/status/diagnostics payload to editor tooling |
 | EPV-003 | Preview camera contract | orbit/pan/zoom or equivalent camera state affects engine viewport output |
 | EPV-004 | Resource preview bridge | model/texture/material/sprite/clip refs resolve through engine resource path or return explicit diagnostics |
 | EPV-005 | Transform and selection feedback | viewport supports select and translate/rotate/scale feedback for scene objects |
@@ -225,7 +221,7 @@ These are blocking violations:
 
 - claiming L0/L1 completion, RHI fixture capture, RenderCore fixture pass, or
   isolated sample screenshots satisfy editor preview capability
-- accepting Web shell, form UI, 2D canvas sketches, or static screenshots as
+- accepting deprecated Web shell, form UI, 2D canvas sketches, or static screenshots as
   core editor preview
 - treating CSS/HTML visual output as the game editor's authoritative preview
 - calling Scene Editor usable without model/texture/material loading entry,
@@ -233,7 +229,7 @@ These are blocking violations:
 - calling Animation Editor usable without visible playback, scrub, keyframe or
   event feedback on a runtime preview target
 - calling UI Editor usable without engine UI runtime render preview
-- optimizing a bad Web-form surface instead of adding engine preview capability
+- optimizing a deprecated Web-form surface instead of adding engine preview capability
 - using fake preview data that cannot be cooked, packaged, and loaded by runtime
 - expanding gameplay/product logic to mask missing engine preview foundations
 
@@ -241,7 +237,7 @@ These are blocking violations:
 
 The shared editor foundation is complete only when:
 
-- Web can control an engine preview session
+- editor tooling can control an engine preview session
 - preview frames or headless runtime outputs come from YuEngine systems
 - resources are resolved through engine Resource/Package/File paths
 - camera/viewport controls affect engine output

@@ -1,6 +1,7 @@
 /build/
 /out/
 /research/script_ir/
+/Artifacts/
 __pycache__/
 *.py[cod]
 .pytest_cache/
