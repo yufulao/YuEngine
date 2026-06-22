@@ -200,6 +200,10 @@ constexpr const char *TEST_PRODUCTION_SCENE_LOADER_OUTPUT =
     "RuntimeAssetData_ProductionSceneLoaderOutputsDeterministicRecords";
 constexpr const char *TEST_DISK_ANIMATION_SAMPLING =
     "RuntimeAssetData_DiskAnimationSamplingFeedsSceneTransforms";
+constexpr const char *TEST_SCENE_LOADER_INVALID_ENTITY_NO_MUTATION =
+    "RuntimeAssetData_SceneLoaderRejectsInvalidEntityWithoutOutputMutation";
+constexpr const char *TEST_SCENE_LOADER_INVALID_KEYFRAME_NO_MUTATION =
+    "RuntimeAssetData_SceneLoaderRejectsInvalidKeyframesWithoutOutputMutation";
 constexpr const char *TEST_DECODED_PAYLOADS =
     "RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture";
 constexpr const char *TEST_TEXTURE_MATERIAL_SLOT_BRIDGE =
@@ -1397,6 +1401,183 @@ bool LoadRuntimeAssetRecords(
     return true;
 }
 
+void SeedSceneLoaderFailureSentinels(
+    std::array<RuntimeAssetSceneResourceRef, FIXTURE_FILE_COUNT> &refs,
+    std::array<RuntimeAssetSceneCameraRecord, 1U> &cameras,
+    std::array<RuntimeAssetSceneEntityRecord, 3U> &entities,
+    std::array<RuntimeAssetSceneTransformOutputRecord, 3U> &transforms,
+    RuntimeAssetSceneLoaderOutput *output) {
+    for (std::uint32_t index = 0U; index < refs.size(); ++index) {
+        refs[index].kind = RuntimeAssetFileKind::Shader;
+        refs[index].stable_id = 7000U + index;
+        refs[index].loaded_file_index = 90U + index;
+        refs[index].resource = ResourceHandle{10U + index, 20U + index};
+        refs[index].asset = AssetHandle{30U + index, 40U + index};
+    }
+
+    cameras[0U].camera_id = 77U;
+    cameras[0U].is_active = true;
+
+    for (std::uint32_t index = 0U; index < entities.size(); ++index) {
+        entities[index].entity_id = 80U + index;
+        entities[index].world_object_id = WorldObjectId{800U + index};
+        entities[index].transform.translation_x = 81.0F + static_cast<float>(index);
+        entities[index].transform.rotation_y = 82.0F + static_cast<float>(index);
+        entities[index].mesh_ref_index = 83U + index;
+        entities[index].material_ref_index = 84U + index;
+        entities[index].texture_ref_index = 85U + index;
+        entities[index].shader_ref_index = 86U + index;
+        entities[index].camera_index = 87U + index;
+        entities[index].animation_ref_index = 88U + index;
+        entities[index].is_visible = false;
+        entities[index].is_active = false;
+    }
+
+    for (std::uint32_t index = 0U; index < transforms.size(); ++index) {
+        transforms[index].world_object_id = WorldObjectId{900U + index};
+        transforms[index].transform.translation_x = 91.0F + static_cast<float>(index);
+        transforms[index].transform.rotation_y = 92.0F + static_cast<float>(index);
+    }
+
+    if (output != nullptr) {
+        output->status = RuntimeAssetDataStatus::BudgetExceeded;
+        output->scene_id = 777U;
+        output->scene_hash = 778U;
+        output->entity_count = 779U;
+        output->transform_count = 780U;
+        output->resource_ref_count = 781U;
+        output->camera_count = 782U;
+        output->animation_sampled_value_count = 783U;
+        output->animation_sample_status = AnimationRuntimeStatus::InvalidClip;
+        output->animation_apply_status = AnimationRuntimeStatus::InvalidTarget;
+    }
+}
+
+bool SceneLoaderFailureSentinelsUnchanged(
+    const std::array<RuntimeAssetSceneResourceRef, FIXTURE_FILE_COUNT> &refs,
+    const std::array<RuntimeAssetSceneCameraRecord, 1U> &cameras,
+    const std::array<RuntimeAssetSceneEntityRecord, 3U> &entities,
+    const std::array<RuntimeAssetSceneTransformOutputRecord, 3U> &transforms,
+    const RuntimeAssetSceneLoaderOutput &output) {
+    for (std::uint32_t index = 0U; index < refs.size(); ++index) {
+        if (refs[index].kind != RuntimeAssetFileKind::Shader ||
+            refs[index].stable_id != 7000U + index ||
+            refs[index].loaded_file_index != 90U + index ||
+            refs[index].resource.slot != 10U + index ||
+            refs[index].resource.generation != 20U + index ||
+            refs[index].asset.slot != 30U + index ||
+            refs[index].asset.generation != 40U + index) {
+            return FailStep("scene loader failure mutated resource refs");
+        }
+    }
+
+    if (cameras[0U].camera_id != 77U || !cameras[0U].is_active) {
+        return FailStep("scene loader failure mutated camera output");
+    }
+
+    for (std::uint32_t index = 0U; index < entities.size(); ++index) {
+        if (entities[index].entity_id != 80U + index ||
+            entities[index].world_object_id.value != 800U + index ||
+            !Approx(entities[index].transform.translation_x, 81.0F + static_cast<float>(index)) ||
+            !Approx(entities[index].transform.rotation_y, 82.0F + static_cast<float>(index)) ||
+            entities[index].mesh_ref_index != 83U + index ||
+            entities[index].material_ref_index != 84U + index ||
+            entities[index].texture_ref_index != 85U + index ||
+            entities[index].shader_ref_index != 86U + index ||
+            entities[index].camera_index != 87U + index ||
+            entities[index].animation_ref_index != 88U + index ||
+            entities[index].is_visible ||
+            entities[index].is_active) {
+            return FailStep("scene loader failure mutated entity output");
+        }
+    }
+
+    for (std::uint32_t index = 0U; index < transforms.size(); ++index) {
+        if (transforms[index].world_object_id.value != 900U + index ||
+            !Approx(transforms[index].transform.translation_x, 91.0F + static_cast<float>(index)) ||
+            !Approx(transforms[index].transform.rotation_y, 92.0F + static_cast<float>(index))) {
+            return FailStep("scene loader failure mutated transform output");
+        }
+    }
+
+    if (output.status != RuntimeAssetDataStatus::BudgetExceeded ||
+        output.scene_id != 777U ||
+        output.scene_hash != 778U ||
+        output.entity_count != 779U ||
+        output.transform_count != 780U ||
+        output.resource_ref_count != 781U ||
+        output.camera_count != 782U ||
+        output.animation_sampled_value_count != 783U ||
+        output.animation_sample_status != AnimationRuntimeStatus::InvalidClip ||
+        output.animation_apply_status != AnimationRuntimeStatus::InvalidTarget) {
+        return FailStep("scene loader failure mutated loader output");
+    }
+
+    return true;
+}
+
+bool ProbeSceneLoaderFailureWithoutOutputMutation(MountTable &table, RuntimeAssetDataStatus expected_status) {
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        file_descs[index] = files[index].desc;
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<RuntimeAssetLoadedFile, FIXTURE_FILE_COUNT> loaded_files{};
+    std::array<RuntimeAssetSceneResourceRef, FIXTURE_FILE_COUNT> scene_resource_refs{};
+    std::array<RuntimeAssetSceneCameraRecord, 1U> scene_cameras{};
+    std::array<RuntimeAssetSceneEntityRecord, 3U> scene_entities{};
+    std::array<RuntimeAssetSceneTransformOutputRecord, 3U> scene_transforms{};
+    RuntimeAssetSceneLoaderOutput scene_output{};
+    SeedSceneLoaderFailureSentinels(
+        scene_resource_refs,
+        scene_cameras,
+        scene_entities,
+        scene_transforms,
+        &scene_output);
+
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = &table;
+    load_request.mount = MountId(MOUNT_ID);
+    load_request.scene_path = VirtualPath(SCENE_PATH);
+    load_request.scene_resource_type = ResourceTypeId{RESOURCE_TYPE_SCENE};
+    load_request.scene_asset_type = AssetTypeId{ASSET_TYPE_SCENE};
+    load_request.scene_stable_id = 6001U;
+    load_request.files = file_descs.data();
+    load_request.file_count = static_cast<std::uint32_t>(file_descs.size());
+    load_request.resource_registry = &registry;
+    load_request.asset_manager = &manager;
+    load_request.loaded_files = loaded_files.data();
+    load_request.loaded_file_capacity = static_cast<std::uint32_t>(loaded_files.size());
+    load_request.scene_resource_refs = scene_resource_refs.data();
+    load_request.scene_resource_ref_capacity = static_cast<std::uint32_t>(scene_resource_refs.size());
+    load_request.scene_cameras = scene_cameras.data();
+    load_request.scene_camera_capacity = static_cast<std::uint32_t>(scene_cameras.size());
+    load_request.scene_entities = scene_entities.data();
+    load_request.scene_entity_capacity = static_cast<std::uint32_t>(scene_entities.size());
+    load_request.scene_transforms = scene_transforms.data();
+    load_request.scene_transform_capacity = static_cast<std::uint32_t>(scene_transforms.size());
+    load_request.scene_output = &scene_output;
+    load_request.animation_frame_context.frame_index = 1U;
+    load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+
+    RuntimeAssetGraphLoadResult load_result{};
+    const RuntimeAssetDataStatus load_status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+    if (load_status != expected_status || load_result.status != expected_status) {
+        return FailStep("scene loader failure did not return expected status");
+    }
+
+    return SceneLoaderFailureSentinelsUnchanged(
+        scene_resource_refs,
+        scene_cameras,
+        scene_entities,
+        scene_transforms,
+        scene_output);
+}
+
 bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
     if (out_graph == nullptr) {
         return FailStep("read scene failed");
@@ -2364,6 +2545,72 @@ int RuntimeAssetDataDiskAnimationSamplingFeedsSceneTransforms() {
     return 0;
 }
 
+int RuntimeAssetDataSceneLoaderRejectsInvalidEntityWithoutOutputMutation() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("SceneLoaderInvalidEntityNoMutation"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    const std::string invalid_scene =
+        "YUASSET SCENE 1\n"
+        "m0=Mesh/Cube.yumesh\n"
+        "m1=Mesh/Cylinder.yumesh\n"
+        "m2=Mesh/Cone.yumesh\n"
+        "mat=Material/Shared.yumat\n"
+        "t0=Texture/Albedo.yutex\n"
+        "prog=Shader/RuntimeProgram.yuprogram\n"
+        "anim=Animation/Spin.yuanim\n"
+        "cam=camera:orbit\n"
+        "e0=101:-2,0,0\n"
+        "e1=102:bad,0,0\n"
+        "e2=103:2,0,0\n";
+    if (!WriteBytes(table, SCENE_PATH, BytesFromString(invalid_scene))) {
+        return Fail("invalid scene write failed");
+    }
+
+    if (!ProbeSceneLoaderFailureWithoutOutputMutation(table, RuntimeAssetDataStatus::InvalidDependency)) {
+        return Fail("invalid scene entity failure mutated scene loader outputs");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataSceneLoaderRejectsInvalidKeyframesWithoutOutputMutation() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("SceneLoaderInvalidKeyframeNoMutation"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    const std::string invalid_animation =
+        "YUASSET ANIMATION 1\n"
+        "id=spin\n"
+        "clip=1\n"
+        "duration=1\n"
+        "target=scene_entity:101\n"
+        "track=transform:rotation_y\n"
+        "key0=0:0\n"
+        "key1=1:bad\n"
+        "tracks=1\n"
+        "sample_rate=30\n";
+    if (!WriteBytes(table, "Animation/Spin.yuanim", BytesFromString(invalid_animation))) {
+        return Fail("invalid animation write failed");
+    }
+
+    if (!ProbeSceneLoaderFailureWithoutOutputMutation(table, RuntimeAssetDataStatus::InvalidDependency)) {
+        return Fail("invalid keyframe failure mutated scene loader outputs");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("DecodedPayloads"), &table)) {
@@ -2784,6 +3031,10 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_LOADED_RENDER_RECORDS, RuntimeAssetDataLoadCreatesRenderSceneRuntimeRecords},
     {TEST_PRODUCTION_SCENE_LOADER_OUTPUT, RuntimeAssetDataProductionSceneLoaderOutputsDeterministicRecords},
     {TEST_DISK_ANIMATION_SAMPLING, RuntimeAssetDataDiskAnimationSamplingFeedsSceneTransforms},
+    {TEST_SCENE_LOADER_INVALID_ENTITY_NO_MUTATION,
+     RuntimeAssetDataSceneLoaderRejectsInvalidEntityWithoutOutputMutation},
+    {TEST_SCENE_LOADER_INVALID_KEYFRAME_NO_MUTATION,
+     RuntimeAssetDataSceneLoaderRejectsInvalidKeyframesWithoutOutputMutation},
     {TEST_DECODED_PAYLOADS, RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture},
     {TEST_TEXTURE_MATERIAL_SLOT_BRIDGE, RuntimeAssetDataDecodedTexturePayloadsDriveRhiMaterialSlots},
     {TEST_TEXTURE_MATERIAL_SLOT_BRIDGE_FAILURES,
