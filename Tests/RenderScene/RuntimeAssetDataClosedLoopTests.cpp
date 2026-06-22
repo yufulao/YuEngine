@@ -2,6 +2,7 @@
 // 文件: Tests/RenderScene/RuntimeAssetDataClosedLoopTests.cpp
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -26,6 +27,7 @@
 #include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
 #include "YuEngine/Resource/ResourceCachePayloadRequest.h"
 #include "YuEngine/Resource/ResourceCachePayloadStatus.h"
+#include "YuEngine/Resource/ResourceConstants.h"
 #include "YuEngine/Resource/ResourceDecodedPayloadRequest.h"
 #include "YuEngine/Resource/ResourceDecodedPayloadStatus.h"
 #include "YuEngine/Resource/ResourceDescriptor.h"
@@ -52,6 +54,7 @@
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeStatus.h"
 
 namespace {
+using yuengine::animation::AnimationRuntimeStatus;
 using yuengine::asset::AssetDescriptor;
 using yuengine::asset::AssetHandle;
 using yuengine::asset::AssetManager;
@@ -119,6 +122,11 @@ using yuengine::runtimeasset::RuntimeAssetGraphLoadRequest;
 using yuengine::runtimeasset::RuntimeAssetGraphLoadResult;
 using yuengine::runtimeasset::RuntimeAssetLoadedFile;
 using yuengine::runtimeasset::RuntimeAssetLoadedShaderProgramData;
+using yuengine::runtimeasset::RuntimeAssetSceneCameraRecord;
+using yuengine::runtimeasset::RuntimeAssetSceneEntityRecord;
+using yuengine::runtimeasset::RuntimeAssetSceneLoaderOutput;
+using yuengine::runtimeasset::RuntimeAssetSceneResourceRef;
+using yuengine::runtimeasset::RuntimeAssetSceneTransformOutputRecord;
 using yuengine::runtimeasset::RuntimeAssetShaderProgramPipelineRequest;
 using yuengine::runtimeasset::RuntimeAssetShaderProgramPipelineResult;
 using yuengine::runtimeasset::RuntimeAssetValidationResult;
@@ -188,6 +196,10 @@ constexpr const char *TEST_ANIMATION_DEPENDENCIES =
     "RuntimeAssetData_AnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
 constexpr const char *TEST_LOADED_RENDER_RECORDS =
     "RuntimeAssetData_LoadCreatesRenderSceneRuntimeRecords";
+constexpr const char *TEST_PRODUCTION_SCENE_LOADER_OUTPUT =
+    "RuntimeAssetData_ProductionSceneLoaderOutputsDeterministicRecords";
+constexpr const char *TEST_DISK_ANIMATION_SAMPLING =
+    "RuntimeAssetData_DiskAnimationSamplingFeedsSceneTransforms";
 constexpr const char *TEST_DECODED_PAYLOADS =
     "RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture";
 constexpr const char *TEST_TEXTURE_MATERIAL_SLOT_BRIDGE =
@@ -210,6 +222,7 @@ constexpr std::uint64_t FNV_OFFSET = 14695981039346656037ULL;
 constexpr std::uint64_t FNV_PRIME = 1099511628211ULL;
 constexpr std::uint32_t MATERIAL_ID = 4101U;
 constexpr std::uint32_t FRAME_ID = 9001U;
+constexpr std::uint64_t HALF_SECOND_NANOSECONDS = 500000000ULL;
 constexpr std::uint32_t SEGMENT_COUNT = 8U;
 constexpr std::uint32_t RUNTIME_TEXTURE_WIDTH = 2U;
 constexpr std::uint32_t RUNTIME_TEXTURE_HEIGHT = 2U;
@@ -238,7 +251,12 @@ struct FixtureFile final {
 
 struct LoadedGraph final {
     std::array<RuntimeAssetLoadedFile, FIXTURE_FILE_COUNT> assets{};
+    std::array<RuntimeAssetSceneResourceRef, FIXTURE_FILE_COUNT> scene_resource_refs{};
+    std::array<RuntimeAssetSceneCameraRecord, 1U> scene_cameras{};
+    std::array<RuntimeAssetSceneEntityRecord, 3U> scene_entities{};
+    std::array<RuntimeAssetSceneTransformOutputRecord, 3U> scene_transforms{};
     RuntimeAssetLoadedFile scene_asset{};
+    RuntimeAssetSceneLoaderOutput scene_output{};
     std::size_t file_read_count = 0U;
     std::size_t resource_payload_count = 0U;
     std::size_t decoded_payload_count = 0U;
@@ -681,7 +699,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_ANIMATION},
                 AssetTypeId{ASSET_TYPE_ANIMATION},
                 5001U},
-            "YUASSET ANIMATION 1\nid=spin\ntarget=scene_entity:101\ntrack=transform:rotation_y\ntracks=3\nsample_rate=30\n"}};
+            "YUASSET ANIMATION 1\nid=spin\nclip=1\nduration=1\ntarget=scene_entity:101\ntrack=transform:rotation_y\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n"}};
 }
 
 std::string SceneBytes() {
@@ -695,7 +713,9 @@ std::string SceneBytes() {
         "prog=Shader/RuntimeProgram.yuprogram\n"
         "anim=Animation/Spin.yuanim\n"
         "cam=camera:orbit\n"
-        "entities=3\n");
+        "e0=101:-2,0,0\n"
+        "e1=102:0,0,0\n"
+        "e2=103:2,0,0\n");
 }
 
 std::vector<std::uint8_t> BytesFromString(const std::string &text) {
@@ -704,6 +724,10 @@ std::vector<std::uint8_t> BytesFromString(const std::string &text) {
 
 bool Contains(std::string_view text, std::string_view token) {
     return text.find(token) != std::string_view::npos;
+}
+
+bool Approx(float actual, float expected) {
+    return std::fabs(actual - expected) < 0.001F;
 }
 
 bool WriteBytes(MountTable &table, const char *path, const std::vector<std::uint8_t> &bytes) {
@@ -788,6 +812,16 @@ bool SceneReferencesRequiredAssets(const std::vector<std::uint8_t> &scene_bytes)
 
     if (!Contains(scene, "cam=camera:orbit")) {
         return FailStep("missing camera dependency");
+    }
+
+    if (scene_bytes.size() > yuengine::resource::MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD) {
+        return FailStep("scene source payload exceeded cache record capacity");
+    }
+
+    if (!Contains(scene, "e0=101:-2,0,0") ||
+        !Contains(scene, "e1=102:0,0,0") ||
+        !Contains(scene, "e2=103:2,0,0")) {
+        return FailStep("missing scene entity transform records");
     }
 
     return Contains(scene, "anim=Animation/Spin.yuanim");
@@ -1115,7 +1149,7 @@ bool ExecuteLoadedRenderPath(
     IRhiDevice &device,
     ResourceRegistry &registry,
     AssetManager &manager,
-    const std::array<RuntimeAssetLoadedFile, FIXTURE_FILE_COUNT> &assets,
+    const LoadedGraph &graph,
     RenderSceneRuntimeFrameResult *out_frame_result,
     RenderSceneThreePrimitiveCaptureResult *out_capture_result,
     std::size_t *out_runtime_texture_upload_count,
@@ -1167,10 +1201,15 @@ bool ExecuteLoadedRenderPath(
         return FailStep("create cone index buffer failed");
     }
 
+    if (graph.scene_output.status != RuntimeAssetDataStatus::Success ||
+        graph.scene_output.entity_count != graph.scene_entities.size()) {
+        return FailStep("production scene loader output is unavailable");
+    }
+
     std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
     if (!BuildGeometry(
             RenderScenePrimitiveGeometryKind::Cube,
-            assets[0U].asset,
+            graph.assets[0U].asset,
             11U,
             VertexView(cube_vertex, 24U),
             IndexView(cube_index, 36U),
@@ -1180,7 +1219,7 @@ bool ExecuteLoadedRenderPath(
 
     if (!BuildGeometry(
             RenderScenePrimitiveGeometryKind::Cylinder,
-            assets[1U].asset,
+            graph.assets[1U].asset,
             12U,
             VertexView(cylinder_vertex, 18U),
             IndexView(cylinder_index, 96U),
@@ -1190,7 +1229,7 @@ bool ExecuteLoadedRenderPath(
 
     if (!BuildGeometry(
             RenderScenePrimitiveGeometryKind::Cone,
-            assets[2U].asset,
+            graph.assets[2U].asset,
             13U,
             VertexView(cone_vertex, 10U),
             IndexView(cone_index, 48U),
@@ -1199,15 +1238,15 @@ bool ExecuteLoadedRenderPath(
     }
 
     const std::array<RuntimeAssetLoadedFile, RUNTIME_TEXTURE_SLOT_COUNT> texture_assets{
-        assets[4U],
-        assets[5U],
-        assets[6U]};
+        graph.assets[4U],
+        graph.assets[5U],
+        graph.assets[6U]};
     RenderSceneRuntimeMaterialRecord material{};
     const RuntimeTextureMaterialSlotBridgeResult material_result = BuildMaterial(
         device,
         registry,
         manager,
-        assets[3U].asset,
+        graph.assets[3U].asset,
         std::span<const RuntimeAssetLoadedFile>(texture_assets.data(), texture_assets.size()),
         RuntimeTextureDesc(),
         &material);
@@ -1224,21 +1263,14 @@ bool ExecuteLoadedRenderPath(
     }
 
     std::array<RenderSceneRuntimeFrameEntityRequest, 3U> frame_entities{};
-    frame_entities[0U].world_object_id = WorldObjectId{101U};
-    frame_entities[0U].transform = Transform(-2.0F, 0.0F, 0.0F);
-    frame_entities[0U].geometry = geometry[0U];
-    frame_entities[0U].is_visible = true;
-    frame_entities[0U].is_active = true;
-    frame_entities[1U].world_object_id = WorldObjectId{102U};
-    frame_entities[1U].transform = Transform(0.0F, 0.0F, 0.0F);
-    frame_entities[1U].geometry = geometry[1U];
-    frame_entities[1U].is_visible = true;
-    frame_entities[1U].is_active = true;
-    frame_entities[2U].world_object_id = WorldObjectId{103U};
-    frame_entities[2U].transform = Transform(2.0F, 0.0F, 0.0F);
-    frame_entities[2U].geometry = geometry[2U];
-    frame_entities[2U].is_visible = true;
-    frame_entities[2U].is_active = true;
+    for (std::size_t index = 0U; index < frame_entities.size(); ++index) {
+        const RuntimeAssetSceneEntityRecord &scene_entity = graph.scene_entities[index];
+        frame_entities[index].world_object_id = scene_entity.world_object_id;
+        frame_entities[index].transform = scene_entity.transform;
+        frame_entities[index].geometry = geometry[index];
+        frame_entities[index].is_visible = scene_entity.is_visible;
+        frame_entities[index].is_active = scene_entity.is_active;
+    }
 
     std::array<RenderSceneRuntimeFrameDrawRecord, 3U> draws{};
     RenderSceneRuntimeFrameRequest frame_request{};
@@ -1256,27 +1288,27 @@ bool ExecuteLoadedRenderPath(
     }
 
     std::array<RenderSceneThreePrimitiveEntityRequest, 3U> capture_entities{};
-    capture_entities[0U].world_object_id = WorldObjectId{101U};
+    capture_entities[0U].world_object_id = graph.scene_entities[0U].world_object_id;
     capture_entities[0U].object_name = "Cube";
     capture_entities[0U].object_name_byte_count = 4U;
-    capture_entities[0U].transform = Transform(-2.0F, 0.0F, 0.0F);
+    capture_entities[0U].transform = graph.scene_entities[0U].transform;
     capture_entities[0U].geometry = geometry[0U];
-    capture_entities[0U].is_visible = true;
-    capture_entities[0U].is_active = true;
-    capture_entities[1U].world_object_id = WorldObjectId{102U};
+    capture_entities[0U].is_visible = graph.scene_entities[0U].is_visible;
+    capture_entities[0U].is_active = graph.scene_entities[0U].is_active;
+    capture_entities[1U].world_object_id = graph.scene_entities[1U].world_object_id;
     capture_entities[1U].object_name = "Cylinder";
     capture_entities[1U].object_name_byte_count = 8U;
-    capture_entities[1U].transform = Transform(0.0F, 0.0F, 0.0F);
+    capture_entities[1U].transform = graph.scene_entities[1U].transform;
     capture_entities[1U].geometry = geometry[1U];
-    capture_entities[1U].is_visible = true;
-    capture_entities[1U].is_active = true;
-    capture_entities[2U].world_object_id = WorldObjectId{103U};
+    capture_entities[1U].is_visible = graph.scene_entities[1U].is_visible;
+    capture_entities[1U].is_active = graph.scene_entities[1U].is_active;
+    capture_entities[2U].world_object_id = graph.scene_entities[2U].world_object_id;
     capture_entities[2U].object_name = "Cone";
     capture_entities[2U].object_name_byte_count = 4U;
-    capture_entities[2U].transform = Transform(2.0F, 0.0F, 0.0F);
+    capture_entities[2U].transform = graph.scene_entities[2U].transform;
     capture_entities[2U].geometry = geometry[2U];
-    capture_entities[2U].is_visible = true;
-    capture_entities[2U].is_active = true;
+    capture_entities[2U].is_visible = graph.scene_entities[2U].is_visible;
+    capture_entities[2U].is_active = graph.scene_entities[2U].is_active;
 
     std::array<std::uint8_t, TOTAL_CAPTURE_BYTES> capture_bytes{};
     RenderSceneThreePrimitiveCaptureRequest capture_request{};
@@ -1331,6 +1363,18 @@ bool LoadRuntimeAssetRecords(
     load_request.asset_manager = &manager;
     load_request.loaded_files = graph.assets.data();
     load_request.loaded_file_capacity = static_cast<std::uint32_t>(graph.assets.size());
+    load_request.scene_resource_refs = graph.scene_resource_refs.data();
+    load_request.scene_resource_ref_capacity = static_cast<std::uint32_t>(graph.scene_resource_refs.size());
+    load_request.scene_cameras = graph.scene_cameras.data();
+    load_request.scene_camera_capacity = static_cast<std::uint32_t>(graph.scene_cameras.size());
+    load_request.scene_entities = graph.scene_entities.data();
+    load_request.scene_entity_capacity = static_cast<std::uint32_t>(graph.scene_entities.size());
+    load_request.scene_transforms = graph.scene_transforms.data();
+    load_request.scene_transform_capacity = static_cast<std::uint32_t>(graph.scene_transforms.size());
+    load_request.scene_output = &graph.scene_output;
+    load_request.animation_frame_context.frame_index = 1U;
+    load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
 
     RuntimeAssetGraphLoadResult load_result{};
     const RuntimeAssetDataStatus load_status = LoadRuntimeAssetDataGraph(load_request, &load_result);
@@ -1374,7 +1418,7 @@ bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
             device,
             registry,
             manager,
-            graph.assets,
+            graph,
             &graph.frame_result,
             &graph.capture_result,
             &graph.runtime_texture_upload_count,
@@ -2192,6 +2236,134 @@ int RuntimeAssetDataLoadCreatesRenderSceneRuntimeRecords() {
     return 0;
 }
 
+int RuntimeAssetDataProductionSceneLoaderOutputsDeterministicRecords() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("ProductionSceneLoaderOutput"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    LoadedGraph graph{};
+    if (!LoadGraph(table, &graph)) {
+        return Fail("loaded graph failed");
+    }
+
+    if (graph.scene_output.status != RuntimeAssetDataStatus::Success) {
+        return Fail("production scene loader output status failed");
+    }
+
+    if (graph.scene_output.scene_id != 6001U || graph.scene_output.scene_hash == 0U) {
+        return Fail("production scene loader scene identity changed");
+    }
+
+    if (graph.scene_output.resource_ref_count != FIXTURE_FILE_COUNT ||
+        graph.scene_output.entity_count != graph.scene_entities.size() ||
+        graph.scene_output.transform_count != graph.scene_transforms.size() ||
+        graph.scene_output.camera_count != graph.scene_cameras.size()) {
+        return Fail("production scene loader output counts changed");
+    }
+
+    if (graph.scene_output.resource_ref_capacity != graph.scene_resource_refs.size() ||
+        graph.scene_output.entity_capacity != graph.scene_entities.size() ||
+        graph.scene_output.transform_capacity != graph.scene_transforms.size() ||
+        graph.scene_output.camera_capacity != graph.scene_cameras.size()) {
+        return Fail("production scene loader capacity counts changed");
+    }
+
+    if (graph.scene_output.file_read_count != FIXTURE_FILE_COUNT + 1U ||
+        graph.scene_output.dependency_count != FIXTURE_FILE_COUNT * 2U ||
+        graph.scene_output.cache_payload_count != graph.resource_payload_count ||
+        graph.scene_output.decoded_payload_count != graph.decoded_payload_count) {
+        return Fail("production scene loader diagnostics changed");
+    }
+
+    if (graph.scene_resource_refs[0U].kind != RuntimeAssetFileKind::Mesh ||
+        graph.scene_resource_refs[3U].kind != RuntimeAssetFileKind::Material ||
+        graph.scene_resource_refs[4U].kind != RuntimeAssetFileKind::Texture ||
+        graph.scene_resource_refs[7U].kind != RuntimeAssetFileKind::Shader ||
+        graph.scene_resource_refs[8U].kind != RuntimeAssetFileKind::Animation) {
+        return Fail("production scene loader resource refs changed");
+    }
+
+    if (!graph.scene_resource_refs[0U].resource.IsValid() ||
+        !graph.scene_resource_refs[0U].asset.IsValid() ||
+        graph.scene_resource_refs[0U].stable_id != 1001U ||
+        graph.scene_resource_refs[8U].stable_id != 5001U) {
+        return Fail("production scene loader resource ref identity changed");
+    }
+
+    if (graph.scene_cameras[0U].camera_id != 1U || !graph.scene_cameras[0U].is_active) {
+        return Fail("production scene loader camera record changed");
+    }
+
+    if (graph.scene_entities[0U].world_object_id.value != 101U ||
+        graph.scene_entities[1U].world_object_id.value != 102U ||
+        graph.scene_entities[2U].world_object_id.value != 103U) {
+        return Fail("production scene loader entity ids changed");
+    }
+
+    if (graph.scene_entities[0U].mesh_ref_index != 0U ||
+        graph.scene_entities[1U].mesh_ref_index != 1U ||
+        graph.scene_entities[2U].mesh_ref_index != 2U ||
+        graph.scene_entities[0U].material_ref_index != 3U ||
+        graph.scene_entities[0U].texture_ref_index != 4U ||
+        graph.scene_entities[0U].shader_ref_index != 7U ||
+        graph.scene_entities[0U].animation_ref_index != 8U) {
+        return Fail("production scene loader entity refs changed");
+    }
+
+    if (!Approx(graph.scene_entities[0U].transform.translation_x, -2.0F) ||
+        !Approx(graph.scene_entities[1U].transform.translation_x, 0.0F) ||
+        !Approx(graph.scene_entities[2U].transform.translation_x, 2.0F)) {
+        return Fail("production scene loader transforms changed");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataDiskAnimationSamplingFeedsSceneTransforms() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("DiskAnimationSampling"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    LoadedGraph graph{};
+    if (!LoadGraph(table, &graph)) {
+        return Fail("loaded graph failed");
+    }
+
+    if (graph.scene_output.animation_sample_status != AnimationRuntimeStatus::Success ||
+        graph.scene_output.animation_apply_status != AnimationRuntimeStatus::Success ||
+        graph.scene_output.animation_sampled_value_count != 1U) {
+        return Fail("disk animation sampler diagnostics changed");
+    }
+
+    if (!Approx(graph.scene_entities[0U].transform.rotation_y, 0.5F) ||
+        !Approx(graph.scene_transforms[0U].transform.rotation_y, 0.5F)) {
+        return Fail("disk animation did not feed scene transform output");
+    }
+
+    if (!Approx(graph.scene_entities[1U].transform.rotation_y, 0.0F) ||
+        !Approx(graph.scene_entities[2U].transform.rotation_y, 0.0F)) {
+        return Fail("disk animation mutated unrelated scene transforms");
+    }
+
+    if (graph.capture_result.entity_report_count != 3U ||
+        !Approx(graph.capture_result.entity_reports[0U].transform.rotation_y, 0.5F) ||
+        !Approx(graph.capture_result.entity_reports[0U].draw_record.transform.rotation_y, 0.5F)) {
+        return Fail("RenderScene did not consume production loader transform output");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("DecodedPayloads"), &table)) {
@@ -2610,6 +2782,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES, RuntimeAssetDataSceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation},
     {TEST_ANIMATION_DEPENDENCIES, RuntimeAssetDataAnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_LOADED_RENDER_RECORDS, RuntimeAssetDataLoadCreatesRenderSceneRuntimeRecords},
+    {TEST_PRODUCTION_SCENE_LOADER_OUTPUT, RuntimeAssetDataProductionSceneLoaderOutputsDeterministicRecords},
+    {TEST_DISK_ANIMATION_SAMPLING, RuntimeAssetDataDiskAnimationSamplingFeedsSceneTransforms},
     {TEST_DECODED_PAYLOADS, RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture},
     {TEST_TEXTURE_MATERIAL_SLOT_BRIDGE, RuntimeAssetDataDecodedTexturePayloadsDriveRhiMaterialSlots},
     {TEST_TEXTURE_MATERIAL_SLOT_BRIDGE_FAILURES,

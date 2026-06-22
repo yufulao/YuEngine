@@ -5,11 +5,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "YuEngine/Animation/AnimationRuntimeSampler.h"
 #include "YuEngine/Asset/AssetDescriptor.h"
 #include "YuEngine/Asset/AssetManager.h"
 #include "YuEngine/File/FileReadRequest.h"
@@ -41,6 +43,13 @@
 #include "YuEngine/Rhi/RhiShaderModuleDesc.h"
 #include "YuEngine/Rhi/RhiShaderStage.h"
 #include "YuEngine/Rhi/RhiStatus.h"
+#include "YuEngine/World/WorldInstance.h"
+#include "YuEngine/World/WorldObjectDesc.h"
+#include "YuEngine/World/WorldRegistrationResult.h"
+#include "YuEngine/World/WorldTransformBridge.h"
+#include "YuEngine/World/WorldTransformBridgeDesc.h"
+#include "YuEngine/World/WorldTransformResult.h"
+#include "YuEngine/World/WorldTransformStatus.h"
 
 namespace yuengine::runtimeasset {
 namespace {
@@ -48,6 +57,18 @@ using yuengine::asset::AssetDescriptor;
 using yuengine::asset::AssetManager;
 using yuengine::asset::AssetRegistrationResult;
 using yuengine::asset::AssetStatus;
+using yuengine::animation::AnimationRuntimeChannel;
+using yuengine::animation::AnimationRuntimeClipRecord;
+using yuengine::animation::AnimationRuntimeInterpolation;
+using yuengine::animation::AnimationRuntimeKeyframeRecord;
+using yuengine::animation::AnimationRuntimeSampleRequest;
+using yuengine::animation::AnimationRuntimeSampleResult;
+using yuengine::animation::AnimationRuntimeSampledValue;
+using yuengine::animation::AnimationRuntimeSampler;
+using yuengine::animation::AnimationRuntimeStatus;
+using yuengine::animation::AnimationRuntimeTrackRecord;
+using yuengine::animation::AnimationRuntimeTransformApplyRequest;
+using yuengine::animation::AnimationRuntimeTransformApplyResult;
 using yuengine::file::FileReadRequest;
 using yuengine::file::FileReadResult;
 using yuengine::file::MountTable;
@@ -72,6 +93,15 @@ using yuengine::resource::ResourceRegistrationResult;
 using yuengine::resource::ResourceResidencyRequest;
 using yuengine::resource::ResourceResidencyStatus;
 using yuengine::resource::ResourceStatus;
+using yuengine::world::WorldInstance;
+using yuengine::world::WorldObjectDesc;
+using yuengine::world::WorldObjectId;
+using yuengine::world::WorldRegistrationResult;
+using yuengine::world::WorldTransformBridge;
+using yuengine::world::WorldTransformBridgeDesc;
+using yuengine::world::WorldTransformResult;
+using yuengine::world::WorldTransformState;
+using yuengine::world::WorldTransformStatus;
 
 constexpr std::uint64_t FNV_OFFSET = 14695981039346656037ULL;
 constexpr std::uint64_t FNV_PRIME = 1099511628211ULL;
@@ -88,6 +118,9 @@ constexpr std::uint32_t DEFAULT_PAYLOAD_BYTE_CAPACITY = 4096U;
 constexpr std::string_view RUNTIME_ASSET_SOURCE_SCHEMA = "rav0-source";
 constexpr std::string_view SHADER_BYTECODE_PREFIX = "bytecode:";
 constexpr std::string_view SHADER_LAYOUT_PREFIX = "layout:";
+constexpr std::uint32_t RUNTIME_ASSET_SCENE_ENTITY_COUNT = 3U;
+constexpr std::uint32_t RUNTIME_ASSET_SCENE_CAMERA_COUNT = 1U;
+constexpr std::uint32_t RUNTIME_ASSET_SCENE_TRANSFORM_COUNT = 3U;
 
 bool Contains(std::string_view text, std::string_view token) {
     return text.find(token) != std::string_view::npos;
@@ -128,28 +161,6 @@ std::string_view ValueForToken(std::string_view text, std::string_view token) {
     return text.substr(value_offset, line_end - value_offset);
 }
 
-bool HasSupportedHeader(std::string_view text, RuntimeAssetFileKind expected_kind) {
-    const std::string header =
-        "YUASSET " + std::string(RuntimeAssetFileKindName(expected_kind)) + " 1";
-    return Contains(text, header);
-}
-
-bool HasUnsupportedHeader(std::string_view text, RuntimeAssetFileKind expected_kind) {
-    const std::string header =
-        "YUASSET " + std::string(RuntimeAssetFileKindName(expected_kind)) + " 2";
-    return Contains(text, header);
-}
-
-std::uint64_t HashRuntimeAssetText(std::string_view text) {
-    std::uint64_t hash = FNV_OFFSET;
-    for (const char character : text) {
-        hash ^= static_cast<std::uint64_t>(static_cast<std::uint8_t>(character));
-        hash *= FNV_PRIME;
-    }
-
-    return hash;
-}
-
 bool ParseU32(std::string_view text, std::uint32_t *out_value) {
     if (out_value == nullptr) {
         return false;
@@ -174,6 +185,255 @@ bool ParseU32(std::string_view text, std::uint32_t *out_value) {
 
     *out_value = static_cast<std::uint32_t>(value);
     return true;
+}
+
+bool ParseFloat(std::string_view text, float *out_value) {
+    if (out_value == nullptr || text.empty()) {
+        return false;
+    }
+
+    const std::string copy(text);
+    char *end = nullptr;
+    const float parsed = std::strtof(copy.c_str(), &end);
+    if (end != copy.c_str() + copy.size()) {
+        return false;
+    }
+
+    *out_value = parsed;
+    return true;
+}
+
+bool ParseVec3(std::string_view text, float *out_x, float *out_y, float *out_z) {
+    const std::size_t first_comma = text.find(',');
+    if (first_comma == std::string_view::npos) {
+        return false;
+    }
+
+    const std::size_t second_comma = text.find(',', first_comma + 1U);
+    if (second_comma == std::string_view::npos) {
+        return false;
+    }
+
+    return ParseFloat(text.substr(0U, first_comma), out_x) &&
+        ParseFloat(text.substr(first_comma + 1U, second_comma - first_comma - 1U), out_y) &&
+        ParseFloat(text.substr(second_comma + 1U), out_z);
+}
+
+bool ParseSceneEntityValue(
+    std::string_view value,
+    std::uint32_t entity_id,
+    std::uint32_t mesh_ref_index,
+    std::uint32_t material_ref_index,
+    std::uint32_t texture_ref_index,
+    std::uint32_t shader_ref_index,
+    std::uint32_t camera_index,
+    std::uint32_t animation_ref_index,
+    RuntimeAssetSceneEntityRecord *out_record) {
+    if (out_record == nullptr) {
+        return false;
+    }
+
+    std::uint32_t world_id = 0U;
+    std::string_view transform_components{};
+    constexpr std::string_view entity_prefix = "scene_entity:";
+    constexpr std::string_view transform_prefix = "transform:";
+    if (StartsWith(value, entity_prefix)) {
+        const std::size_t comma = value.find(',');
+        if (comma == std::string_view::npos) {
+            return false;
+        }
+
+        if (!ParseU32(value.substr(entity_prefix.size(), comma - entity_prefix.size()), &world_id)) {
+            return false;
+        }
+
+        const std::string_view transform_value = value.substr(comma + 1U);
+        if (!StartsWith(transform_value, transform_prefix)) {
+            return false;
+        }
+
+        transform_components = transform_value.substr(transform_prefix.size());
+    } else {
+        const std::size_t colon = value.find(':');
+        if (colon == std::string_view::npos) {
+            return false;
+        }
+
+        if (!ParseU32(value.substr(0U, colon), &world_id)) {
+            return false;
+        }
+
+        transform_components = value.substr(colon + 1U);
+    }
+
+    WorldTransformState transform{};
+    if (!ParseVec3(
+            transform_components,
+            &transform.translation_x,
+            &transform.translation_y,
+            &transform.translation_z)) {
+        return false;
+    }
+
+    out_record->entity_id = entity_id;
+    out_record->world_object_id = WorldObjectId{world_id};
+    out_record->transform = transform;
+    out_record->mesh_ref_index = mesh_ref_index;
+    out_record->material_ref_index = material_ref_index;
+    out_record->texture_ref_index = texture_ref_index;
+    out_record->shader_ref_index = shader_ref_index;
+    out_record->camera_index = camera_index;
+    out_record->animation_ref_index = animation_ref_index;
+    out_record->is_visible = true;
+    out_record->is_active = true;
+    return true;
+}
+
+bool ParseAnimationChannel(std::string_view value, AnimationRuntimeChannel *out_channel) {
+    if (out_channel == nullptr) {
+        return false;
+    }
+
+    if (value == "transform:translation_x") {
+        *out_channel = AnimationRuntimeChannel::TranslationX;
+        return true;
+    }
+
+    if (value == "transform:translation_y") {
+        *out_channel = AnimationRuntimeChannel::TranslationY;
+        return true;
+    }
+
+    if (value == "transform:translation_z") {
+        *out_channel = AnimationRuntimeChannel::TranslationZ;
+        return true;
+    }
+
+    if (value == "transform:rotation_x") {
+        *out_channel = AnimationRuntimeChannel::RotationX;
+        return true;
+    }
+
+    if (value == "transform:rotation_y") {
+        *out_channel = AnimationRuntimeChannel::RotationY;
+        return true;
+    }
+
+    if (value == "transform:rotation_z") {
+        *out_channel = AnimationRuntimeChannel::RotationZ;
+        return true;
+    }
+
+    if (value == "transform:rotation_w") {
+        *out_channel = AnimationRuntimeChannel::RotationW;
+        return true;
+    }
+
+    if (value == "transform:scale_x") {
+        *out_channel = AnimationRuntimeChannel::ScaleX;
+        return true;
+    }
+
+    if (value == "transform:scale_y") {
+        *out_channel = AnimationRuntimeChannel::ScaleY;
+        return true;
+    }
+
+    if (value == "transform:scale_z") {
+        *out_channel = AnimationRuntimeChannel::ScaleZ;
+        return true;
+    }
+
+    return false;
+}
+
+bool ParseAnimationTarget(std::string_view value, WorldObjectId *out_target) {
+    if (out_target == nullptr) {
+        return false;
+    }
+
+    constexpr std::string_view prefix = "scene_entity:";
+    if (!StartsWith(value, prefix)) {
+        return false;
+    }
+
+    std::uint32_t id = 0U;
+    if (!ParseU32(value.substr(prefix.size()), &id)) {
+        return false;
+    }
+
+    *out_target = WorldObjectId{id};
+    return true;
+}
+
+bool ParseKeyframe(std::string_view value, AnimationRuntimeKeyframeRecord *out_keyframe) {
+    if (out_keyframe == nullptr) {
+        return false;
+    }
+
+    const std::size_t colon = value.find(':');
+    if (colon == std::string_view::npos) {
+        return false;
+    }
+
+    AnimationRuntimeKeyframeRecord keyframe{};
+    if (!ParseFloat(value.substr(0U, colon), &keyframe.time_seconds) ||
+        !ParseFloat(value.substr(colon + 1U), &keyframe.value)) {
+        return false;
+    }
+
+    keyframe.is_valid = true;
+    *out_keyframe = keyframe;
+    return true;
+}
+
+bool FindRefIndex(
+    const RuntimeAssetFileDesc *files,
+    std::uint32_t file_count,
+    RuntimeAssetFileKind kind,
+    std::uint32_t ordinal,
+    std::uint32_t *out_index) {
+    if (files == nullptr || out_index == nullptr) {
+        return false;
+    }
+
+    std::uint32_t found_count = 0U;
+    for (std::uint32_t index = 0U; index < file_count; ++index) {
+        if (files[index].kind != kind) {
+            continue;
+        }
+
+        if (found_count == ordinal) {
+            *out_index = index;
+            return true;
+        }
+
+        ++found_count;
+    }
+
+    return false;
+}
+
+bool HasSupportedHeader(std::string_view text, RuntimeAssetFileKind expected_kind) {
+    const std::string header =
+        "YUASSET " + std::string(RuntimeAssetFileKindName(expected_kind)) + " 1";
+    return Contains(text, header);
+}
+
+bool HasUnsupportedHeader(std::string_view text, RuntimeAssetFileKind expected_kind) {
+    const std::string header =
+        "YUASSET " + std::string(RuntimeAssetFileKindName(expected_kind)) + " 2";
+    return Contains(text, header);
+}
+
+std::uint64_t HashRuntimeAssetText(std::string_view text) {
+    std::uint64_t hash = FNV_OFFSET;
+    for (const char character : text) {
+        hash ^= static_cast<std::uint64_t>(static_cast<std::uint8_t>(character));
+        hash *= FNV_PRIME;
+    }
+
+    return hash;
 }
 
 bool ParseU64(std::string_view text, std::uint64_t *out_value) {
@@ -1086,6 +1346,22 @@ RuntimeAssetDataStatus ValidateGraphRequest(const RuntimeAssetGraphLoadRequest &
         return RuntimeAssetDataStatus::CapacityExceeded;
     }
 
+    if (request.scene_output != nullptr) {
+        if (request.scene_resource_refs == nullptr ||
+            request.scene_cameras == nullptr ||
+            request.scene_entities == nullptr ||
+            request.scene_transforms == nullptr) {
+            return RuntimeAssetDataStatus::InvalidArgument;
+        }
+
+        if (request.scene_resource_ref_capacity < request.file_count ||
+            request.scene_camera_capacity < RUNTIME_ASSET_SCENE_CAMERA_COUNT ||
+            request.scene_entity_capacity < RUNTIME_ASSET_SCENE_ENTITY_COUNT ||
+            request.scene_transform_capacity < RUNTIME_ASSET_SCENE_TRANSFORM_COUNT) {
+            return RuntimeAssetDataStatus::CapacityExceeded;
+        }
+    }
+
     if (request.scene_stable_id == 0U) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
@@ -1215,6 +1491,200 @@ RuntimeAssetDataStatus ValidateShaderProgramPipelineRequest(
     }
 
     return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus BuildSceneLoaderOutput(
+    const RuntimeAssetGraphLoadRequest &request,
+    const RuntimeAssetGraphLoadResult &load_result,
+    std::string_view scene_text,
+    std::string_view animation_text) {
+    if (request.scene_output == nullptr) {
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    RuntimeAssetSceneLoaderOutput output{};
+    output.scene_id = request.scene_stable_id;
+    output.scene_hash = load_result.scene.hash;
+    output.entity_capacity = request.scene_entity_capacity;
+    output.transform_capacity = request.scene_transform_capacity;
+    output.resource_ref_capacity = request.scene_resource_ref_capacity;
+    output.camera_capacity = request.scene_camera_capacity;
+    output.file_read_count = load_result.file_read_count;
+    output.dependency_count = load_result.resource_dependency_count + load_result.asset_dependency_count;
+    output.cache_payload_count = load_result.cache_payload_count;
+    output.decoded_payload_count = load_result.decoded_payload_count;
+
+    const auto finish = [&](RuntimeAssetDataStatus status) {
+        output.status = status;
+        *request.scene_output = output;
+        return status;
+    };
+
+    for (std::uint32_t index = 0U; index < request.file_count; ++index) {
+        RuntimeAssetSceneResourceRef ref{};
+        ref.kind = request.files[index].kind;
+        ref.stable_id = request.files[index].stable_id;
+        ref.loaded_file_index = index;
+        ref.resource = request.loaded_files[index].resource;
+        ref.asset = request.loaded_files[index].asset;
+        request.scene_resource_refs[index] = ref;
+    }
+    output.resource_ref_count = request.file_count;
+
+    std::uint32_t cube_ref = 0U;
+    std::uint32_t cylinder_ref = 0U;
+    std::uint32_t cone_ref = 0U;
+    std::uint32_t material_ref = 0U;
+    std::uint32_t texture_ref = 0U;
+    std::uint32_t shader_ref = 0U;
+    std::uint32_t animation_ref = 0U;
+    if (!FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Mesh, 0U, &cube_ref) ||
+        !FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Mesh, 1U, &cylinder_ref) ||
+        !FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Mesh, 2U, &cone_ref) ||
+        !FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Material, 0U, &material_ref) ||
+        !FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Texture, 0U, &texture_ref) ||
+        !FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Shader, 0U, &shader_ref) ||
+        !FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Animation, 0U, &animation_ref)) {
+        return finish(RuntimeAssetDataStatus::MissingDependency);
+    }
+
+    RuntimeAssetSceneCameraRecord camera{};
+    camera.camera_id = 1U;
+    camera.is_active = true;
+    request.scene_cameras[0U] = camera;
+    output.camera_count = 1U;
+
+    if (!ParseSceneEntityValue(
+            ValueForToken(scene_text, "e0="),
+            1U,
+            cube_ref,
+            material_ref,
+            texture_ref,
+            shader_ref,
+            0U,
+            animation_ref,
+            &request.scene_entities[0U]) ||
+        !ParseSceneEntityValue(
+            ValueForToken(scene_text, "e1="),
+            2U,
+            cylinder_ref,
+            material_ref,
+            texture_ref,
+            shader_ref,
+            0U,
+            animation_ref,
+            &request.scene_entities[1U]) ||
+        !ParseSceneEntityValue(
+            ValueForToken(scene_text, "e2="),
+            3U,
+            cone_ref,
+            material_ref,
+            texture_ref,
+            shader_ref,
+            0U,
+            animation_ref,
+            &request.scene_entities[2U])) {
+        return finish(RuntimeAssetDataStatus::InvalidDependency);
+    }
+    output.entity_count = RUNTIME_ASSET_SCENE_ENTITY_COUNT;
+
+    if (animation_text.empty()) {
+        return finish(RuntimeAssetDataStatus::MissingDependency);
+    }
+
+    std::uint32_t clip_id = 0U;
+    float duration_seconds = 0.0F;
+    WorldObjectId animation_target{};
+    AnimationRuntimeChannel animation_channel = AnimationRuntimeChannel::TranslationX;
+    std::array<AnimationRuntimeKeyframeRecord, 2U> keyframes{};
+    if (!ParseU32(ValueForToken(animation_text, "clip="), &clip_id) ||
+        !ParseFloat(ValueForToken(animation_text, "duration="), &duration_seconds) ||
+        !ParseAnimationTarget(ValueForToken(animation_text, "target="), &animation_target) ||
+        !ParseAnimationChannel(ValueForToken(animation_text, "track="), &animation_channel) ||
+        !ParseKeyframe(ValueForToken(animation_text, "key0="), &keyframes[0U]) ||
+        !ParseKeyframe(ValueForToken(animation_text, "key1="), &keyframes[1U])) {
+        return finish(RuntimeAssetDataStatus::InvalidDependency);
+    }
+
+    WorldInstance world;
+    WorldTransformBridge bridge(world, WorldTransformBridgeDesc{RUNTIME_ASSET_SCENE_ENTITY_COUNT});
+    for (std::uint32_t index = 0U; index < RUNTIME_ASSET_SCENE_ENTITY_COUNT; ++index) {
+        const RuntimeAssetSceneEntityRecord &entity = request.scene_entities[index];
+        const WorldRegistrationResult registration =
+            world.RegisterObject(WorldObjectDesc{entity.world_object_id, entity.is_active});
+        if (!registration.Succeeded()) {
+            return finish(RuntimeAssetDataStatus::InvalidDependency);
+        }
+
+        if (bridge.Register(entity.world_object_id, entity.transform).status != WorldTransformStatus::Success) {
+            return finish(RuntimeAssetDataStatus::InvalidDependency);
+        }
+    }
+
+    AnimationRuntimeClipRecord clip{};
+    clip.clip_id = clip_id;
+    clip.duration_seconds = duration_seconds;
+    clip.first_track_index = 0U;
+    clip.track_count = 1U;
+    clip.layer_count = 1U;
+    clip.is_valid = true;
+
+    AnimationRuntimeTrackRecord track{};
+    track.track_id = 1U;
+    track.target = animation_target;
+    track.channel = animation_channel;
+    track.interpolation = AnimationRuntimeInterpolation::Linear;
+    track.first_keyframe_index = 0U;
+    track.keyframe_count = keyframes.size();
+    track.is_valid = true;
+
+    const std::array<AnimationRuntimeClipRecord, 1U> clips{clip};
+    const std::array<AnimationRuntimeTrackRecord, 1U> tracks{track};
+    std::array<AnimationRuntimeSampledValue, 1U> sampled_values{};
+
+    AnimationRuntimeSampleRequest sample_request{};
+    sample_request.clip_id = clip_id;
+    sample_request.clips = std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size());
+    sample_request.tracks = std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size());
+    sample_request.keyframes = std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size());
+    sample_request.frame_context = request.animation_frame_context;
+    sample_request.clip_start_time_nanoseconds = request.animation_clip_start_time_nanoseconds;
+
+    AnimationRuntimeSampleResult sample_result{};
+    const AnimationRuntimeSampler sampler;
+    output.animation_sample_status = sampler.Sample(
+        sample_request,
+        std::span<AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+        &sample_result);
+    output.animation_sampled_value_count = static_cast<std::uint32_t>(sample_result.sampled_value_count);
+    if (output.animation_sample_status != AnimationRuntimeStatus::Success) {
+        return finish(RuntimeAssetDataStatus::InvalidDependency);
+    }
+
+    AnimationRuntimeTransformApplyResult apply_result{};
+    output.animation_apply_status = sampler.ApplySampledTransform(
+        AnimationRuntimeTransformApplyRequest{&bridge, std::span<const AnimationRuntimeSampledValue>(
+            sampled_values.data(),
+            sample_result.sampled_value_count)},
+        &apply_result);
+    if (output.animation_apply_status != AnimationRuntimeStatus::Success) {
+        return finish(RuntimeAssetDataStatus::InvalidDependency);
+    }
+
+    for (std::uint32_t index = 0U; index < RUNTIME_ASSET_SCENE_ENTITY_COUNT; ++index) {
+        const WorldTransformResult transform_result =
+            bridge.Query(request.scene_entities[index].world_object_id);
+        if (transform_result.status != WorldTransformStatus::Success) {
+            return finish(RuntimeAssetDataStatus::InvalidDependency);
+        }
+
+        request.scene_entities[index].transform = transform_result.transform_state;
+        request.scene_transforms[index].world_object_id = request.scene_entities[index].world_object_id;
+        request.scene_transforms[index].transform = transform_result.transform_state;
+    }
+    output.transform_count = RUNTIME_ASSET_SCENE_TRANSFORM_COUNT;
+
+    return finish(RuntimeAssetDataStatus::Success);
 }
 }
 
@@ -1460,6 +1930,7 @@ RuntimeAssetDataStatus LoadRuntimeAssetDataGraph(
     result.scene_registered = true;
     ++result.cache_payload_count;
 
+    std::string animation_text{};
     std::uint32_t file_index = 0U;
     while (file_index < request.file_count) {
         const RuntimeAssetFileDesc &file = request.files[file_index];
@@ -1488,6 +1959,10 @@ RuntimeAssetDataStatus LoadRuntimeAssetDataGraph(
             result.status = status;
             *out_result = result;
             return status;
+        }
+
+        if (file.kind == RuntimeAssetFileKind::Animation) {
+            animation_text = std::string(bytes.begin(), bytes.end());
         }
 
         status = RegisterLoadedFile(
@@ -1526,6 +2001,13 @@ RuntimeAssetDataStatus LoadRuntimeAssetDataGraph(
         ++result.resource_dependency_count;
         ++result.asset_dependency_count;
         ++file_index;
+    }
+
+    status = BuildSceneLoaderOutput(request, result, scene_text, animation_text);
+    if (status != RuntimeAssetDataStatus::Success) {
+        result.status = status;
+        *out_result = result;
+        return status;
     }
 
     result.status = RuntimeAssetDataStatus::Success;

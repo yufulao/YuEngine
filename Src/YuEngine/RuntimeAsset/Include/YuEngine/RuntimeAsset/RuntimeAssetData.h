@@ -10,8 +10,10 @@
 
 #include "YuEngine/Asset/AssetHandle.h"
 #include "YuEngine/Asset/AssetTypeId.h"
+#include "YuEngine/Animation/AnimationRuntimeSampler.h"
 #include "YuEngine/File/MountId.h"
 #include "YuEngine/File/VirtualPath.h"
+#include "YuEngine/Kernel/RuntimeFrameContext.h"
 #include "YuEngine/Resource/ResourceDecodePlanAssetClass.h"
 #include "YuEngine/Resource/ResourceDecodeResultClass.h"
 #include "YuEngine/Resource/ResourceHandle.h"
@@ -22,6 +24,8 @@
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiShaderModuleHandle.h"
+#include "YuEngine/World/WorldObjectId.h"
+#include "YuEngine/World/WorldTransformState.h"
 
 namespace yuengine::asset {
 class AssetManager;
@@ -154,6 +158,76 @@ struct RuntimeAssetLoadedFile final {
 };
 
 /**
+ * @brief Identifies a loaded runtime asset referenced by scene records.
+ */
+struct RuntimeAssetSceneResourceRef final {
+    RuntimeAssetFileKind kind = RuntimeAssetFileKind::Unknown;
+    std::uint64_t stable_id = 0U;
+    std::uint32_t loaded_file_index = 0U;
+    yuengine::resource::ResourceHandle resource;
+    yuengine::asset::AssetHandle asset;
+};
+
+/**
+ * @brief Disk scene camera record emitted by the RuntimeAsset production loader.
+ */
+struct RuntimeAssetSceneCameraRecord final {
+    std::uint32_t camera_id = 0U;
+    bool is_active = false;
+};
+
+/**
+ * @brief Disk scene entity record emitted after animation sampling.
+ */
+struct RuntimeAssetSceneEntityRecord final {
+    std::uint32_t entity_id = 0U;
+    yuengine::world::WorldObjectId world_object_id{};
+    yuengine::world::WorldTransformState transform{};
+    std::uint32_t mesh_ref_index = 0U;
+    std::uint32_t material_ref_index = 0U;
+    std::uint32_t texture_ref_index = 0U;
+    std::uint32_t shader_ref_index = 0U;
+    std::uint32_t camera_index = 0U;
+    std::uint32_t animation_ref_index = 0U;
+    bool is_visible = true;
+    bool is_active = true;
+};
+
+/**
+ * @brief Scene transform output record consumed by runtime scene builders.
+ */
+struct RuntimeAssetSceneTransformOutputRecord final {
+    yuengine::world::WorldObjectId world_object_id{};
+    yuengine::world::WorldTransformState transform{};
+};
+
+/**
+ * @brief Deterministic RuntimeAsset scene loader output and diagnostics.
+ */
+struct RuntimeAssetSceneLoaderOutput final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    std::uint64_t scene_id = 0U;
+    std::uint64_t scene_hash = 0U;
+    std::uint32_t entity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    std::uint32_t resource_ref_count = 0U;
+    std::uint32_t camera_count = 0U;
+    std::uint32_t animation_sampled_value_count = 0U;
+    std::uint32_t entity_capacity = 0U;
+    std::uint32_t transform_capacity = 0U;
+    std::uint32_t resource_ref_capacity = 0U;
+    std::uint32_t camera_capacity = 0U;
+    std::uint32_t file_read_count = 0U;
+    std::uint32_t dependency_count = 0U;
+    std::uint32_t cache_payload_count = 0U;
+    std::uint32_t decoded_payload_count = 0U;
+    yuengine::animation::AnimationRuntimeStatus animation_sample_status =
+        yuengine::animation::AnimationRuntimeStatus::MissingClip;
+    yuengine::animation::AnimationRuntimeStatus animation_apply_status =
+        yuengine::animation::AnimationRuntimeStatus::MissingSample;
+};
+
+/**
  * @brief Requests a disk-backed runtime asset graph load through File, Resource, and Asset.
  */
 struct RuntimeAssetGraphLoadRequest final {
@@ -169,6 +243,17 @@ struct RuntimeAssetGraphLoadRequest final {
     yuengine::asset::AssetManager *asset_manager = nullptr;
     RuntimeAssetLoadedFile *loaded_files = nullptr;
     std::uint32_t loaded_file_capacity = 0U;
+    RuntimeAssetSceneResourceRef *scene_resource_refs = nullptr;
+    std::uint32_t scene_resource_ref_capacity = 0U;
+    RuntimeAssetSceneCameraRecord *scene_cameras = nullptr;
+    std::uint32_t scene_camera_capacity = 0U;
+    RuntimeAssetSceneEntityRecord *scene_entities = nullptr;
+    std::uint32_t scene_entity_capacity = 0U;
+    RuntimeAssetSceneTransformOutputRecord *scene_transforms = nullptr;
+    std::uint32_t scene_transform_capacity = 0U;
+    RuntimeAssetSceneLoaderOutput *scene_output = nullptr;
+    yuengine::kernel::RuntimeFrameContext animation_frame_context{};
+    std::uint64_t animation_clip_start_time_nanoseconds = 0U;
 };
 
 /**
