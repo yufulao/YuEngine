@@ -178,6 +178,8 @@ constexpr const char *TEST_MATERIAL_TYPED_REFS =
     "RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
 constexpr const char *TEST_TEXTURE_TYPED_METADATA =
     "RuntimeAssetData_TextureValidatorRejectsInvalidFormatExtentPayload";
+constexpr const char *TEST_SHADER_SCENE_ANIMATION_SCHEMA =
+    "RuntimeAssetData_ShaderSceneAnimationRequireSourceSchema";
 constexpr const char *TEST_INVALID_DEPENDENCY =
     "RuntimeAssetData_DependencyGraphRejectsMissingAndDuplicateRefs";
 constexpr const char *TEST_SHADER_PROGRAM_PIPELINE_BRIDGE =
@@ -188,6 +190,8 @@ constexpr const char *TEST_LOADER_FILE_RESOURCE =
     "RuntimeAssetData_LoaderUsesFileResourcePathNotInMemoryStructs";
 constexpr const char *TEST_SCENE_REFERENCES =
     "RuntimeAssetData_SceneReferencesMeshMaterialTextureShader";
+constexpr const char *TEST_SCENE_FAMILY_PATH_INDEPENDENT =
+    "RuntimeAssetData_SceneFamilyDetectionIsPathIndependent";
 constexpr const char *TEST_SHADER_PROGRAM_DEPENDENCIES =
     "RuntimeAssetData_ShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
 constexpr const char *TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES =
@@ -695,7 +699,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_SHADER},
                 AssetTypeId{ASSET_TYPE_SHADER},
                 4001U},
-            "YUASSET SHADER 1\nid=runtime_program\nstage_vs=bytecode:runtime_program_vs\nstage_ps=bytecode:runtime_program_ps\ninput=layout:position,color\ntextures=3\n"},
+            "YUASSET SHADER 1\nschema=rav0-source\nid=runtime_program\nstage_vs=bytecode:runtime_program_vs\nstage_ps=bytecode:runtime_program_ps\ninput=layout:position,color\ntextures=3\n"},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Animation/Spin.yuanim",
@@ -703,23 +707,62 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_ANIMATION},
                 AssetTypeId{ASSET_TYPE_ANIMATION},
                 5001U},
-            "YUASSET ANIMATION 1\nid=spin\nclip=1\nduration=1\ntarget=scene_entity:101\ntrack=transform:rotation_y\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n"}};
+            "YUASSET ANIMATION 1\nschema=rav0-source\nid=spin\nclip=1\nduration=1\ntarget=scene_entity:101\ntrack=transform:rotation_y\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n"}};
 }
 
 std::string SceneBytes() {
     return std::string(
         "YUASSET SCENE 1\n"
-        "m0=Mesh/Cube.yumesh\n"
-        "m1=Mesh/Cylinder.yumesh\n"
-        "m2=Mesh/Cone.yumesh\n"
-        "mat=Material/Shared.yumat\n"
-        "t0=Texture/Albedo.yutex\n"
-        "prog=Shader/RuntimeProgram.yuprogram\n"
-        "anim=Animation/Spin.yuanim\n"
+        "schema=rav0-source\n"
+        "id=scene\n"
+        "m0=Mesh/C.yumesh\n"
+        "m1=Mesh/Y.yumesh\n"
+        "m2=Mesh/N.yumesh\n"
+        "mat=Material/M.yumat\n"
+        "t0=Texture/A.yutex\n"
+        "prog=Shader/P.yuprogram\n"
+        "anim=Animation/S.yuanim\n"
         "cam=camera:orbit\n"
         "e0=101:-2,0,0\n"
         "e1=102:0,0,0\n"
         "e2=103:2,0,0\n");
+}
+
+std::string AlternateRuntimeFamilySceneBytes() {
+    return std::string(
+        "YUASSET SCENE 1\n"
+        "schema=rav0-source\n"
+        "id=alt_scene\n"
+        "m0=Mesh/C.alt\n"
+        "m1=Mesh/Y.alt\n"
+        "m2=Mesh/N.alt\n"
+        "mat=Material/M.alt\n"
+        "t0=Texture/T.alt\n"
+        "prog=Shader/P.alt\n"
+        "anim=Animation/A.alt\n"
+        "cam=camera:orbit\n"
+        "e0=101:-2,0,0\n"
+        "e1=102:0,0,0\n"
+        "e2=103:2,0,0\n");
+}
+
+std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> AlternateRuntimeFamilyFileDescs() {
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> descs{};
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        descs[index] = files[index].desc;
+    }
+
+    descs[0U].path = "Mesh/C.alt";
+    descs[1U].path = "Mesh/Y.alt";
+    descs[2U].path = "Mesh/N.alt";
+    descs[3U].path = "Material/M.alt";
+    descs[4U].path = "Texture/T.alt";
+    descs[5U].path = "Texture/N.alt";
+    descs[6U].path = "Texture/K.alt";
+    descs[7U].path = "Shader/P.alt";
+    descs[8U].path = "Animation/A.alt";
+    return descs;
 }
 
 std::vector<std::uint8_t> BytesFromString(const std::string &text) {
@@ -757,6 +800,21 @@ bool WriteCanonicalFixture(MountTable &table) {
     return WriteBytes(table, SCENE_PATH, scene_bytes);
 }
 
+bool WriteAlternateRuntimeFamilyFixture(MountTable &table, const char *scene_path) {
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    const std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> descs = AlternateRuntimeFamilyFileDescs();
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        const std::string text(files[index].bytes);
+        const std::vector<std::uint8_t> bytes = BytesFromString(text);
+        if (!WriteBytes(table, descs[index].path, bytes)) {
+            return false;
+        }
+    }
+
+    const std::vector<std::uint8_t> scene_bytes = BytesFromString(AlternateRuntimeFamilySceneBytes());
+    return WriteBytes(table, scene_path, scene_bytes);
+}
+
 bool CreateMountedTable(const std::filesystem::path &root, MountTable *out_table) {
     if (out_table == nullptr) {
         return FailStep("null mount table output");
@@ -790,27 +848,27 @@ bool ReadFile(MountTable &table, const char *path, std::vector<std::uint8_t> *ou
 
 bool SceneReferencesRequiredAssets(const std::vector<std::uint8_t> &scene_bytes) {
     const std::string scene(scene_bytes.begin(), scene_bytes.end());
-    if (!Contains(scene, "m0=Mesh/Cube.yumesh")) {
+    if (!Contains(scene, "m0=Mesh/C.yumesh")) {
         return FailStep("missing cube mesh dependency");
     }
 
-    if (!Contains(scene, "m1=Mesh/Cylinder.yumesh")) {
+    if (!Contains(scene, "m1=Mesh/Y.yumesh")) {
         return FailStep("missing cylinder mesh dependency");
     }
 
-    if (!Contains(scene, "m2=Mesh/Cone.yumesh")) {
+    if (!Contains(scene, "m2=Mesh/N.yumesh")) {
         return FailStep("missing cone mesh dependency");
     }
 
-    if (!Contains(scene, "mat=Material/Shared.yumat")) {
+    if (!Contains(scene, "mat=Material/M.yumat")) {
         return FailStep("missing material dependency");
     }
 
-    if (!Contains(scene, "t0=Texture/Albedo.yutex")) {
+    if (!Contains(scene, "t0=Texture/A.yutex")) {
         return FailStep("missing texture dependency");
     }
 
-    if (!Contains(scene, "prog=Shader/RuntimeProgram.yuprogram")) {
+    if (!Contains(scene, "prog=Shader/P.yuprogram")) {
         return FailStep("missing shader dependency");
     }
 
@@ -828,7 +886,7 @@ bool SceneReferencesRequiredAssets(const std::vector<std::uint8_t> &scene_bytes)
         return FailStep("missing scene entity transform records");
     }
 
-    return Contains(scene, "anim=Animation/Spin.yuanim");
+    return Contains(scene, "anim=Animation/S.yuanim");
 }
 
 bool CreateShaderModule(IRhiDevice &device, RhiShaderStage stage, RhiShaderModuleHandle *out_handle) {
@@ -1736,6 +1794,8 @@ int RuntimeAssetDataValidatorRejectsInvalidBoundsWithoutOutputs() {
 int RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs() {
     const std::vector<std::uint8_t> missing_bytes = BytesFromString(
         "YUASSET SCENE 1\n"
+        "schema=rav0-source\n"
+        "id=missing_scene_ref\n"
         "m1=Mesh/Cylinder.yumesh\n"
         "m2=Mesh/Cone.yumesh\n"
         "mat=Material/Shared.yumat\n"
@@ -1755,6 +1815,8 @@ int RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs() {
 
     const std::vector<std::uint8_t> duplicate_bytes = BytesFromString(
         "YUASSET SCENE 1\n"
+        "schema=rav0-source\n"
+        "id=duplicate_scene_ref\n"
         "m0=Mesh/Cube.yumesh\n"
         "m0=Mesh/Cube.yumesh\n"
         "m1=Mesh/Cylinder.yumesh\n"
@@ -1772,6 +1834,88 @@ int RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs() {
             &duplicate_result);
     if (duplicate_status != RuntimeAssetDataStatus::DuplicateDependency) {
         return Fail("duplicate dependency was not rejected");
+    }
+
+    return 0;
+}
+
+bool ExpectValidationStatus(
+    std::string_view text,
+    RuntimeAssetFileKind kind,
+    RuntimeAssetDataStatus expected_status);
+bool ValidateText(
+    std::string_view text,
+    RuntimeAssetFileKind kind,
+    RuntimeAssetValidationResult *out_result);
+
+int RuntimeAssetDataShaderSceneAnimationRequireSourceSchema() {
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+
+    RuntimeAssetValidationResult shader_result{};
+    if (!ValidateText(files[7U].bytes, RuntimeAssetFileKind::Shader, &shader_result)) {
+        return Fail("shader schema validator rejected canonical shader");
+    }
+
+    if (shader_result.schema_version != 1U || shader_result.identity_hash == 0U) {
+        return Fail("shader schema metadata was not recorded");
+    }
+
+    RuntimeAssetValidationResult scene_result{};
+    if (!ValidateText(SceneBytes(), RuntimeAssetFileKind::Scene, &scene_result)) {
+        return Fail("scene schema validator rejected canonical scene");
+    }
+
+    if (scene_result.schema_version != 1U || scene_result.identity_hash == 0U) {
+        return Fail("scene schema metadata was not recorded");
+    }
+
+    RuntimeAssetValidationResult animation_result{};
+    if (!ValidateText(files[8U].bytes, RuntimeAssetFileKind::Animation, &animation_result)) {
+        return Fail("animation schema validator rejected canonical animation");
+    }
+
+    if (animation_result.schema_version != 1U || animation_result.identity_hash == 0U) {
+        return Fail("animation schema metadata was not recorded");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET SHADER 1\n"
+            "id=runtime_program\n"
+            "stage_vs=bytecode:runtime_program_vs\n"
+            "stage_ps=bytecode:runtime_program_ps\n"
+            "input=layout:position,color\n"
+            "textures=3\n",
+            RuntimeAssetFileKind::Shader,
+            RuntimeAssetDataStatus::InvalidSchema)) {
+        return Fail("shader without source schema was not rejected");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET SCENE 1\n"
+            "id=canonical_scene\n"
+            "m0=Mesh/Cube.yumesh\n"
+            "m1=Mesh/Cylinder.yumesh\n"
+            "m2=Mesh/Cone.yumesh\n"
+            "mat=Material/Shared.yumat\n"
+            "t0=Texture/Albedo.yutex\n"
+            "prog=Shader/RuntimeProgram.yuprogram\n"
+            "anim=Animation/Spin.yuanim\n"
+            "cam=camera:orbit\n",
+            RuntimeAssetFileKind::Scene,
+            RuntimeAssetDataStatus::InvalidSchema)) {
+        return Fail("scene without source schema was not rejected");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET ANIMATION 1\n"
+            "id=spin\n"
+            "target=scene_entity:101\n"
+            "track=transform:rotation_y\n"
+            "tracks=1\n"
+            "sample_rate=30\n",
+            RuntimeAssetFileKind::Animation,
+            RuntimeAssetDataStatus::InvalidSchema)) {
+        return Fail("animation without source schema was not rejected");
     }
 
     return 0;
@@ -1837,6 +1981,65 @@ int RuntimeAssetDataSceneReferencesMeshMaterialTextureShader() {
 
     if (!SceneReferencesRequiredAssets(scene_bytes)) {
         return Fail("scene did not reference required asset families");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataSceneFamilyDetectionIsPathIndependent() {
+    constexpr const char *alternate_scene_path = "Scene/AlternateScene.sceneasset";
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("SceneFamilyPathIndependent"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteAlternateRuntimeFamilyFixture(table, alternate_scene_path)) {
+        return Fail("alternate family fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    const std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs = AlternateRuntimeFamilyFileDescs();
+
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = &table;
+    load_request.mount = MountId(MOUNT_ID);
+    load_request.scene_path = VirtualPath(alternate_scene_path);
+    load_request.scene_resource_type = ResourceTypeId{RESOURCE_TYPE_SCENE};
+    load_request.scene_asset_type = AssetTypeId{ASSET_TYPE_SCENE};
+    load_request.scene_stable_id = 6002U;
+    load_request.files = file_descs.data();
+    load_request.file_count = static_cast<std::uint32_t>(file_descs.size());
+    load_request.resource_registry = &registry;
+    load_request.asset_manager = &manager;
+    load_request.loaded_files = graph.assets.data();
+    load_request.loaded_file_capacity = static_cast<std::uint32_t>(graph.assets.size());
+    load_request.scene_resource_refs = graph.scene_resource_refs.data();
+    load_request.scene_resource_ref_capacity = static_cast<std::uint32_t>(graph.scene_resource_refs.size());
+    load_request.scene_cameras = graph.scene_cameras.data();
+    load_request.scene_camera_capacity = static_cast<std::uint32_t>(graph.scene_cameras.size());
+    load_request.scene_entities = graph.scene_entities.data();
+    load_request.scene_entity_capacity = static_cast<std::uint32_t>(graph.scene_entities.size());
+    load_request.scene_transforms = graph.scene_transforms.data();
+    load_request.scene_transform_capacity = static_cast<std::uint32_t>(graph.scene_transforms.size());
+    load_request.scene_output = &graph.scene_output;
+    load_request.animation_frame_context.frame_index = 1U;
+    load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+
+    RuntimeAssetGraphLoadResult load_result{};
+    const RuntimeAssetDataStatus load_status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+    if (load_status != RuntimeAssetDataStatus::Success) {
+        return Fail("path-independent scene family load failed");
+    }
+
+    if (!load_result.scene_references_runtime_asset_families) {
+        return Fail("scene family detection depended on exact smoke fixture paths");
+    }
+
+    if (load_result.file_read_count != FIXTURE_FILE_COUNT + 1U) {
+        return Fail("path-independent scene family load read unexpected file count");
     }
 
     return 0;
@@ -2175,6 +2378,7 @@ bool ExpectShaderBridgeRejectedWithoutRhiMutation(
 int RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation() {
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
             "YUASSET SHADER 1\n"
+            "schema=rav0-source\n"
             "id=runtime_program\n"
             "stage_vs=Texture/Albedo.yutex\n"
             "stage_ps=bytecode:runtime_program_ps\n"
@@ -2186,6 +2390,7 @@ int RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutati
 
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
             "YUASSET SHADER 1\n"
+            "schema=rav0-source\n"
             "id=runtime_program\n"
             "stage_vs=bytecode:\n"
             "stage_ps=bytecode:runtime_program_ps\n"
@@ -2197,6 +2402,7 @@ int RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutati
 
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
             "YUASSET SHADER 1\n"
+            "schema=rav0-source\n"
             "id=runtime_program\n"
             "stage_vs=bytecode:runtime_program_vs\n"
             "stage_ps=bytecode:runtime_program_ps\n"
@@ -2209,6 +2415,7 @@ int RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutati
 
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
             "YUASSET SHADER 1\n"
+            "schema=rav0-source\n"
             "id=runtime_program\n"
             "stage_vs=bytecode:runtime_program_vs\n"
             "stage_ps=bytecode:runtime_program_ps\n"
@@ -2220,6 +2427,7 @@ int RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutati
 
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
             "YUASSET SHADER 1\n"
+            "schema=rav0-source\n"
             "id=runtime_program\n"
             "stage_vs=bytecode:runtime_program_vs\n"
             "stage_ps=bytecode:runtime_program_ps\n"
@@ -2231,6 +2439,7 @@ int RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutati
 
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
             "YUASSET SHADER 1\n"
+            "schema=rav0-source\n"
             "id=runtime_program\n"
             "stage_vs=bytecode:runtime_program_vs\n"
             "stage_ps=bytecode:runtime_program_ps\n"
@@ -2251,6 +2460,7 @@ int RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTy
 
     if (!ExpectValidationStatus(
             "YUASSET SHADER 1\n"
+            "schema=rav0-source\n"
             "id=runtime_program\n"
             "stage_vs=bytecode:runtime_program_vs\n"
             "input=layout:position,color\n"
@@ -2262,6 +2472,7 @@ int RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTy
 
     if (!ExpectValidationStatus(
             "YUASSET SHADER 1\n"
+            "schema=rav0-source\n"
             "id=runtime_program\n"
             "stage_vs=bytecode:runtime_program_vs\n"
             "stage_vs=bytecode:runtime_program_vs\n"
@@ -2275,6 +2486,7 @@ int RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTy
 
     if (!ExpectValidationStatus(
             "YUASSET SHADER 1\n"
+            "schema=rav0-source\n"
             "id=runtime_program\n"
             "stage_vs=Texture/Albedo.yutex\n"
             "stage_ps=bytecode:runtime_program_ps\n"
@@ -2300,6 +2512,8 @@ int RuntimeAssetDataSceneCameraAnimationDependencyValidatorRejectsTypeMismatchWi
 
     if (!ExpectValidationStatus(
             "YUASSET SCENE 1\n"
+            "schema=rav0-source\n"
+            "id=camera_type_mismatch_scene\n"
             "m0=Mesh/Cube.yumesh\n"
             "m1=Mesh/Cylinder.yumesh\n"
             "m2=Mesh/Cone.yumesh\n"
@@ -2315,6 +2529,8 @@ int RuntimeAssetDataSceneCameraAnimationDependencyValidatorRejectsTypeMismatchWi
 
     if (!ExpectValidationStatus(
             "YUASSET SCENE 1\n"
+            "schema=rav0-source\n"
+            "id=animation_type_mismatch_scene\n"
             "m0=Mesh/Cube.yumesh\n"
             "m1=Mesh/Cylinder.yumesh\n"
             "m2=Mesh/Cone.yumesh\n"
@@ -2342,6 +2558,7 @@ int RuntimeAssetDataAnimationDependencyValidatorRejectsMissingDuplicateAndTypeMi
 
     if (!ExpectValidationStatus(
             "YUASSET ANIMATION 1\n"
+            "schema=rav0-source\n"
             "id=spin\n"
             "track=transform:rotation_y\n"
             "tracks=3\n"
@@ -2353,6 +2570,7 @@ int RuntimeAssetDataAnimationDependencyValidatorRejectsMissingDuplicateAndTypeMi
 
     if (!ExpectValidationStatus(
             "YUASSET ANIMATION 1\n"
+            "schema=rav0-source\n"
             "id=spin\n"
             "target=scene_entity:101\n"
             "target=scene_entity:102\n"
@@ -2366,6 +2584,7 @@ int RuntimeAssetDataAnimationDependencyValidatorRejectsMissingDuplicateAndTypeMi
 
     if (!ExpectValidationStatus(
             "YUASSET ANIMATION 1\n"
+            "schema=rav0-source\n"
             "id=spin\n"
             "target=Mesh/Cube.yumesh\n"
             "track=transform:rotation_y\n"
@@ -2557,13 +2776,15 @@ int RuntimeAssetDataSceneLoaderRejectsInvalidEntityWithoutOutputMutation() {
 
     const std::string invalid_scene =
         "YUASSET SCENE 1\n"
-        "m0=Mesh/Cube.yumesh\n"
-        "m1=Mesh/Cylinder.yumesh\n"
-        "m2=Mesh/Cone.yumesh\n"
-        "mat=Material/Shared.yumat\n"
-        "t0=Texture/Albedo.yutex\n"
-        "prog=Shader/RuntimeProgram.yuprogram\n"
-        "anim=Animation/Spin.yuanim\n"
+        "schema=rav0-source\n"
+        "id=invalid_scene\n"
+        "m0=Mesh/C.yumesh\n"
+        "m1=Mesh/Y.yumesh\n"
+        "m2=Mesh/N.yumesh\n"
+        "mat=Material/M.yumat\n"
+        "t0=Texture/A.yutex\n"
+        "prog=Shader/P.yuprogram\n"
+        "anim=Animation/S.yuanim\n"
         "cam=camera:orbit\n"
         "e0=101:-2,0,0\n"
         "e1=102:bad,0,0\n"
@@ -2591,6 +2812,7 @@ int RuntimeAssetDataSceneLoaderRejectsInvalidKeyframesWithoutOutputMutation() {
 
     const std::string invalid_animation =
         "YUASSET ANIMATION 1\n"
+        "schema=rav0-source\n"
         "id=spin\n"
         "clip=1\n"
         "duration=1\n"
@@ -3020,11 +3242,13 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_TYPED_MESH_MATERIAL_TEXTURE, RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata},
     {TEST_MATERIAL_TYPED_REFS, RuntimeAssetDataMaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_TEXTURE_TYPED_METADATA, RuntimeAssetDataTextureValidatorRejectsInvalidFormatExtentPayload},
+    {TEST_SHADER_SCENE_ANIMATION_SCHEMA, RuntimeAssetDataShaderSceneAnimationRequireSourceSchema},
     {TEST_INVALID_DEPENDENCY, RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs},
     {TEST_SHADER_PROGRAM_PIPELINE_BRIDGE, RuntimeAssetDataShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode},
     {TEST_SHADER_PROGRAM_PIPELINE_REJECTS, RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation},
     {TEST_LOADER_FILE_RESOURCE, RuntimeAssetDataLoaderUsesFileResourcePathNotInMemoryStructs},
     {TEST_SCENE_REFERENCES, RuntimeAssetDataSceneReferencesMeshMaterialTextureShader},
+    {TEST_SCENE_FAMILY_PATH_INDEPENDENT, RuntimeAssetDataSceneFamilyDetectionIsPathIndependent},
     {TEST_SHADER_PROGRAM_DEPENDENCIES, RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES, RuntimeAssetDataSceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation},
     {TEST_ANIMATION_DEPENDENCIES, RuntimeAssetDataAnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},

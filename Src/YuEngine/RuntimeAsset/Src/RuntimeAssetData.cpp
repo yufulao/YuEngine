@@ -237,7 +237,8 @@ bool ParseSceneEntityValue(
     std::string_view transform_components{};
     constexpr std::string_view entity_prefix = "scene_entity:";
     constexpr std::string_view transform_prefix = "transform:";
-    if (StartsWith(value, entity_prefix)) {
+    const bool uses_scene_entity_prefix = StartsWith(value, entity_prefix);
+    if (uses_scene_entity_prefix) {
         const std::size_t comma = value.find(',');
         if (comma == std::string_view::npos) {
             return false;
@@ -253,7 +254,9 @@ bool ParseSceneEntityValue(
         }
 
         transform_components = transform_value.substr(transform_prefix.size());
-    } else {
+    }
+
+    if (!uses_scene_entity_prefix) {
         const std::size_t colon = value.find(':');
         if (colon == std::string_view::npos) {
             return false;
@@ -496,15 +499,7 @@ bool ParseExtent(std::string_view text, std::uint32_t *out_width, std::uint32_t 
 }
 
 bool RequiresSourceSchema(RuntimeAssetFileKind kind) {
-    if (kind == RuntimeAssetFileKind::Mesh) {
-        return true;
-    }
-
-    if (kind == RuntimeAssetFileKind::Material) {
-        return true;
-    }
-
-    return kind == RuntimeAssetFileKind::Texture;
+    return kind != RuntimeAssetFileKind::Unknown;
 }
 
 RuntimeAssetDataStatus ValidateCommonMetadata(
@@ -991,36 +986,47 @@ RuntimeAssetDataStatus ValidateShaderProgramMetadata(
     return RuntimeAssetDataStatus::Success;
 }
 
+bool TokenValueStartsWith(std::string_view text, std::string_view token, std::string_view prefix) {
+    const std::string_view value = ValueForToken(text, token);
+    return !value.empty() && StartsWith(value, prefix);
+}
+
 bool SceneReferencesRuntimeFamilies(std::string_view scene_text) {
-    if (!Contains(scene_text, "m0=Mesh/Cube.yumesh")) {
+    RuntimeAssetValidationResult validation{};
+    if (ValidateCommonMetadata(scene_text, RuntimeAssetFileKind::Scene, &validation) !=
+        RuntimeAssetDataStatus::Success) {
         return false;
     }
 
-    if (!Contains(scene_text, "m1=Mesh/Cylinder.yumesh")) {
+    if (!TokenValueStartsWith(scene_text, "m0=", "Mesh/")) {
         return false;
     }
 
-    if (!Contains(scene_text, "m2=Mesh/Cone.yumesh")) {
+    if (!TokenValueStartsWith(scene_text, "m1=", "Mesh/")) {
         return false;
     }
 
-    if (!Contains(scene_text, "mat=Material/Shared.yumat")) {
+    if (!TokenValueStartsWith(scene_text, "m2=", "Mesh/")) {
         return false;
     }
 
-    if (!Contains(scene_text, "t0=Texture/Albedo.yutex")) {
+    if (!TokenValueStartsWith(scene_text, "mat=", "Material/")) {
         return false;
     }
 
-    if (!Contains(scene_text, "prog=Shader/RuntimeProgram.yuprogram")) {
+    if (!TokenValueStartsWith(scene_text, "t0=", "Texture/")) {
         return false;
     }
 
-    if (!Contains(scene_text, "cam=camera:orbit")) {
+    if (!TokenValueStartsWith(scene_text, "prog=", "Shader/")) {
         return false;
     }
 
-    return Contains(scene_text, "anim=Animation/Spin.yuanim");
+    if (!TokenValueStartsWith(scene_text, "cam=", "camera:")) {
+        return false;
+    }
+
+    return TokenValueStartsWith(scene_text, "anim=", "Animation/");
 }
 
 bool ConfigureRuntimeAssetResourceBudgets(ResourceRegistry &registry) {
