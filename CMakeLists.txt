@@ -206,26 +206,6 @@ target_include_directories(YuUiCore
         Src/YuEngine/UiCore/Include
 )
 
-add_library(YuUiWebEditorService
-    Tools/UiWebEditorService/Src/UiWebEditorLocalService.cpp
-)
-yuengine_apply_compile_options(YuUiWebEditorService)
-target_include_directories(YuUiWebEditorService
-    PUBLIC
-        Tools/UiWebEditorService/Include
-)
-target_link_libraries(YuUiWebEditorService PUBLIC YuUiCore)
-
-add_library(YuUiWebEditorPreviewProtocol
-    Tools/UiWebEditorPreviewProtocol/Src/UiWebEditorPreviewProtocol.cpp
-)
-yuengine_apply_compile_options(YuUiWebEditorPreviewProtocol)
-target_include_directories(YuUiWebEditorPreviewProtocol
-    PUBLIC
-        Tools/UiWebEditorPreviewProtocol/Include
-)
-target_link_libraries(YuUiWebEditorPreviewProtocol PUBLIC YuUiWebEditorService)
-
 add_library(YuSerialize
     Src/YuEngine/Serialize/Src/RuntimeConfigStream.cpp
     Src/YuEngine/Serialize/Src/SerializeReader.cpp
@@ -1650,40 +1630,6 @@ yuengine_add_labeled_test(UiCore_UiFileSchema_ReportsMissingDuplicateAndBindingI
 yuengine_add_labeled_test(UiCore_UiFileSchema_RejectsInvalidHeaderWithoutMutation YuUiFileSchemaValidatorTests Fast ModuleFixture UiCore UI FileSchema EvidenceOracle)
 yuengine_add_labeled_test(UiCore_UiFileSchema_RejectsInvalidRecordsWithoutMutation YuUiFileSchemaValidatorTests Fast ModuleFixture UiCore UI FileSchema EvidenceOracle)
 yuengine_add_labeled_test(UiCore_UiFileSchema_RejectsSmallIssueOutputWithoutMutation YuUiFileSchemaValidatorTests Fast ModuleFixture UiCore UI FileSchema EvidenceOracle)
-
-add_executable(YuUiWebEditorLocalServiceTests
-    Tests/UiWebEditorService/UiWebEditorLocalServiceTests.cpp
-)
-yuengine_apply_compile_options(YuUiWebEditorLocalServiceTests)
-target_link_libraries(YuUiWebEditorLocalServiceTests PRIVATE YuUiWebEditorService)
-yuengine_add_labeled_test(UiWebEditorService_LocalService_LoadValidatesAndCreatesDocument YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
-yuengine_add_labeled_test(UiWebEditorService_LocalService_ValidateReportsSchemaIssues YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
-yuengine_add_labeled_test(UiWebEditorService_LocalService_SaveValidatesGenericPayload YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
-yuengine_add_labeled_test(UiWebEditorService_LocalService_RejectsInvalidDocumentWithoutMutation YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
-yuengine_add_labeled_test(UiWebEditorService_LocalService_RejectsSmallIssueOutputWithoutMutation YuUiWebEditorLocalServiceTests Fast ModuleFixture UI WebEditorService LocalService EvidenceOracle)
-
-add_executable(YuUiWebEditorPreviewProtocolTests
-    Tests/UiWebEditorPreviewProtocol/UiWebEditorPreviewProtocolTests.cpp
-)
-yuengine_apply_compile_options(YuUiWebEditorPreviewProtocolTests)
-target_link_libraries(YuUiWebEditorPreviewProtocolTests PRIVATE YuUiWebEditorPreviewProtocol)
-yuengine_add_labeled_test(UiWebEditorPreviewProtocol_Protocol_BuildsHandshake YuUiWebEditorPreviewProtocolTests Fast ModuleFixture UI WebEditorPreviewProtocol Protocol EvidenceOracle)
-yuengine_add_labeled_test(UiWebEditorPreviewProtocol_Protocol_BuildsLoadResponse YuUiWebEditorPreviewProtocolTests Fast ModuleFixture UI WebEditorPreviewProtocol Protocol EvidenceOracle)
-yuengine_add_labeled_test(UiWebEditorPreviewProtocol_Protocol_BuildsSelectResponse YuUiWebEditorPreviewProtocolTests Fast ModuleFixture UI WebEditorPreviewProtocol Protocol EvidenceOracle)
-yuengine_add_labeled_test(UiWebEditorPreviewProtocol_Protocol_WritesRenderDiagnostics YuUiWebEditorPreviewProtocolTests Fast ModuleFixture UI WebEditorPreviewProtocol Protocol EvidenceOracle)
-yuengine_add_labeled_test(UiWebEditorPreviewProtocol_Protocol_RejectsVersionMismatch YuUiWebEditorPreviewProtocolTests Fast ModuleFixture UI WebEditorPreviewProtocol Protocol EvidenceOracle)
-yuengine_add_labeled_test(UiWebEditorPreviewProtocol_Protocol_RejectsSmallDiagnosticOutputWithoutMutation YuUiWebEditorPreviewProtocolTests Fast ModuleFixture UI WebEditorPreviewProtocol Protocol EvidenceOracle)
-
-find_program(YUENGINE_NODE_EXECUTABLE NAMES node node.exe)
-if(YUENGINE_NODE_EXECUTABLE)
-    add_test(
-        NAME UiWebEditorWeb_WebModel_ValidatesDataEditorFoundation
-        COMMAND ${YUENGINE_NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Tests/UiWebEditorWeb/UiWebEditorWebTests.js
-    )
-    set_tests_properties(UiWebEditorWeb_WebModel_ValidatesDataEditorFoundation PROPERTIES
-        LABELS "Fast;ModuleFixture;UI;WebEditorWeb;WebFrontend;EvidenceOracle"
-    )
-endif()
 
 add_executable(YuUiDrawBatcherTests
     Tests/UiCore/UiDrawBatcherTests.cpp
