@@ -148,6 +148,12 @@ constexpr const char *TEST_LOADER_FILE_RESOURCE =
     "RuntimeAssetData_LoaderUsesFileResourcePathNotInMemoryStructs";
 constexpr const char *TEST_SCENE_REFERENCES =
     "RuntimeAssetData_SceneReferencesMeshMaterialTextureShader";
+constexpr const char *TEST_SHADER_PROGRAM_DEPENDENCIES =
+    "RuntimeAssetData_ShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
+constexpr const char *TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES =
+    "RuntimeAssetData_SceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation";
+constexpr const char *TEST_ANIMATION_DEPENDENCIES =
+    "RuntimeAssetData_AnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
 constexpr const char *TEST_LOADED_RENDER_RECORDS =
     "RuntimeAssetData_LoadCreatesRenderSceneRuntimeRecords";
 constexpr const char *TEST_DECODED_PAYLOADS =
@@ -599,7 +605,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_SHADER},
                 AssetTypeId{ASSET_TYPE_SHADER},
                 4001U},
-            "YUASSET SHADER 1\nid=runtime_program\ninput=position,color\ntextures=3\n"},
+            "YUASSET SHADER 1\nid=runtime_program\nstage_vs=bytecode:runtime_program_vs\nstage_ps=bytecode:runtime_program_ps\ninput=layout:position,color\ntextures=3\n"},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Animation/Spin.yuanim",
@@ -607,7 +613,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_ANIMATION},
                 AssetTypeId{ASSET_TYPE_ANIMATION},
                 5001U},
-            "YUASSET ANIMATION 1\nid=spin\ntracks=3\nsample_rate=30\n"}};
+            "YUASSET ANIMATION 1\nid=spin\ntarget=scene_entity:101\ntrack=transform:rotation_y\ntracks=3\nsample_rate=30\n"}};
 }
 
 std::string SceneBytes() {
@@ -620,7 +626,7 @@ std::string SceneBytes() {
         "t0=Texture/Albedo.yutex\n"
         "prog=Shader/RuntimeProgram.yuprogram\n"
         "anim=Animation/Spin.yuanim\n"
-        "cam=perspective\n"
+        "cam=camera:orbit\n"
         "entities=3\n");
 }
 
@@ -712,7 +718,7 @@ bool SceneReferencesRequiredAssets(const std::vector<std::uint8_t> &scene_bytes)
         return FailStep("missing shader dependency");
     }
 
-    if (!Contains(scene, "cam=perspective")) {
+    if (!Contains(scene, "cam=camera:orbit")) {
         return FailStep("missing camera dependency");
     }
 
@@ -1401,6 +1407,165 @@ int RuntimeAssetDataSceneReferencesMeshMaterialTextureShader() {
     return 0;
 }
 
+bool ExpectValidationStatus(
+    std::string_view text,
+    RuntimeAssetFileKind kind,
+    RuntimeAssetDataStatus expected_status) {
+    const std::vector<std::uint8_t> bytes = BytesFromString(std::string(text));
+    RuntimeAssetValidationResult result{};
+    const RuntimeAssetDataStatus status = ValidateRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+        kind,
+        &result);
+    if (status != expected_status) {
+        std::fwrite(StatusName(status), sizeof(char), std::string_view(StatusName(status)).size(), stderr);
+        std::fputc('\n', stderr);
+        return false;
+    }
+
+    return true;
+}
+
+int RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs() {
+    LoadedGraph graph{};
+    graph.file_read_count = 15U;
+    graph.resource_payload_count = 16U;
+    graph.render_capture_completed = true;
+
+    if (!ExpectValidationStatus(
+            "YUASSET SHADER 1\n"
+            "id=runtime_program\n"
+            "stage_vs=bytecode:runtime_program_vs\n"
+            "input=layout:position,color\n"
+            "textures=3\n",
+            RuntimeAssetFileKind::Shader,
+            RuntimeAssetDataStatus::MissingDependency)) {
+        return Fail("missing shader stage dependency was not rejected");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET SHADER 1\n"
+            "id=runtime_program\n"
+            "stage_vs=bytecode:runtime_program_vs\n"
+            "stage_vs=bytecode:runtime_program_vs\n"
+            "stage_ps=bytecode:runtime_program_ps\n"
+            "input=layout:position,color\n"
+            "textures=3\n",
+            RuntimeAssetFileKind::Shader,
+            RuntimeAssetDataStatus::DuplicateDependency)) {
+        return Fail("duplicate shader stage dependency was not rejected");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET SHADER 1\n"
+            "id=runtime_program\n"
+            "stage_vs=Texture/Albedo.yutex\n"
+            "stage_ps=bytecode:runtime_program_ps\n"
+            "input=layout:position,color\n"
+            "textures=3\n",
+            RuntimeAssetFileKind::Shader,
+            RuntimeAssetDataStatus::TypeMismatch)) {
+        return Fail("shader stage type mismatch was not rejected");
+    }
+
+    if (graph.file_read_count != 15U || graph.resource_payload_count != 16U ||
+        !graph.render_capture_completed) {
+        return Fail("shader validator mutated output state");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataSceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation() {
+    LoadedGraph graph{};
+    graph.dependency_count = 17U;
+    graph.render_capture_completed = true;
+
+    if (!ExpectValidationStatus(
+            "YUASSET SCENE 1\n"
+            "m0=Mesh/Cube.yumesh\n"
+            "m1=Mesh/Cylinder.yumesh\n"
+            "m2=Mesh/Cone.yumesh\n"
+            "mat=Material/Shared.yumat\n"
+            "t0=Texture/Albedo.yutex\n"
+            "prog=Shader/RuntimeProgram.yuprogram\n"
+            "anim=Animation/Spin.yuanim\n"
+            "cam=Animation/Spin.yuanim\n",
+            RuntimeAssetFileKind::Scene,
+            RuntimeAssetDataStatus::TypeMismatch)) {
+        return Fail("scene camera type mismatch was not rejected");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET SCENE 1\n"
+            "m0=Mesh/Cube.yumesh\n"
+            "m1=Mesh/Cylinder.yumesh\n"
+            "m2=Mesh/Cone.yumesh\n"
+            "mat=Material/Shared.yumat\n"
+            "t0=Texture/Albedo.yutex\n"
+            "prog=Shader/RuntimeProgram.yuprogram\n"
+            "anim=Texture/Albedo.yutex\n"
+            "cam=camera:orbit\n",
+            RuntimeAssetFileKind::Scene,
+            RuntimeAssetDataStatus::TypeMismatch)) {
+        return Fail("scene animation type mismatch was not rejected");
+    }
+
+    if (graph.dependency_count != 17U || !graph.render_capture_completed) {
+        return Fail("scene typed dependency validator mutated output state");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataAnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs() {
+    LoadedGraph graph{};
+    graph.file_read_count = 19U;
+    graph.resource_payload_count = 23U;
+
+    if (!ExpectValidationStatus(
+            "YUASSET ANIMATION 1\n"
+            "id=spin\n"
+            "track=transform:rotation_y\n"
+            "tracks=3\n"
+            "sample_rate=30\n",
+            RuntimeAssetFileKind::Animation,
+            RuntimeAssetDataStatus::MissingDependency)) {
+        return Fail("missing animation target dependency was not rejected");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET ANIMATION 1\n"
+            "id=spin\n"
+            "target=scene_entity:101\n"
+            "target=scene_entity:102\n"
+            "track=transform:rotation_y\n"
+            "tracks=3\n"
+            "sample_rate=30\n",
+            RuntimeAssetFileKind::Animation,
+            RuntimeAssetDataStatus::DuplicateDependency)) {
+        return Fail("duplicate animation target dependency was not rejected");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET ANIMATION 1\n"
+            "id=spin\n"
+            "target=Mesh/Cube.yumesh\n"
+            "track=transform:rotation_y\n"
+            "tracks=3\n"
+            "sample_rate=30\n",
+            RuntimeAssetFileKind::Animation,
+            RuntimeAssetDataStatus::TypeMismatch)) {
+        return Fail("animation target type mismatch was not rejected");
+    }
+
+    if (graph.file_read_count != 19U || graph.resource_payload_count != 23U) {
+        return Fail("animation dependency validator mutated output state");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataLoadCreatesRenderSceneRuntimeRecords() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("RuntimeRecords"), &table)) {
@@ -1601,6 +1766,9 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_INVALID_DEPENDENCY, RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs},
     {TEST_LOADER_FILE_RESOURCE, RuntimeAssetDataLoaderUsesFileResourcePathNotInMemoryStructs},
     {TEST_SCENE_REFERENCES, RuntimeAssetDataSceneReferencesMeshMaterialTextureShader},
+    {TEST_SHADER_PROGRAM_DEPENDENCIES, RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
+    {TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES, RuntimeAssetDataSceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation},
+    {TEST_ANIMATION_DEPENDENCIES, RuntimeAssetDataAnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_LOADED_RENDER_RECORDS, RuntimeAssetDataLoadCreatesRenderSceneRuntimeRecords},
     {TEST_DECODED_PAYLOADS, RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture},
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},

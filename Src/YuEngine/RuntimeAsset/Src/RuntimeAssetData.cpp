@@ -84,6 +84,10 @@ bool Contains(std::string_view text, std::string_view token) {
     return text.find(token) != std::string_view::npos;
 }
 
+bool StartsWith(std::string_view text, std::string_view prefix) {
+    return text.size() >= prefix.size() && text.substr(0U, prefix.size()) == prefix;
+}
+
 std::size_t CountToken(std::string_view text, std::string_view token) {
     std::size_t count = 0U;
     std::size_t offset = 0U;
@@ -100,6 +104,21 @@ std::size_t CountToken(std::string_view text, std::string_view token) {
     return count;
 }
 
+std::string_view ValueForToken(std::string_view text, std::string_view token) {
+    const std::size_t found = text.find(token);
+    if (found == std::string_view::npos) {
+        return {};
+    }
+
+    const std::size_t value_offset = found + token.size();
+    const std::size_t line_end = text.find('\n', value_offset);
+    if (line_end == std::string_view::npos) {
+        return text.substr(value_offset);
+    }
+
+    return text.substr(value_offset, line_end - value_offset);
+}
+
 bool HasSupportedHeader(std::string_view text, RuntimeAssetFileKind expected_kind) {
     const std::string header =
         "YUASSET " + std::string(RuntimeAssetFileKindName(expected_kind)) + " 1";
@@ -112,24 +131,21 @@ bool HasUnsupportedHeader(std::string_view text, RuntimeAssetFileKind expected_k
     return Contains(text, header);
 }
 
-RuntimeAssetDataStatus ValidateSceneDependencies(
+struct DependencyRule final {
+    std::string_view token;
+    std::string_view expected_prefix;
+};
+
+RuntimeAssetDataStatus ValidateDependencyRules(
     std::string_view text,
+    std::span<const DependencyRule> rules,
     RuntimeAssetValidationResult *out_result) {
     if (out_result == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    const std::array<std::string_view, 8U> tokens{
-        "m0=",
-        "m1=",
-        "m2=",
-        "mat=",
-        "t0=",
-        "prog=",
-        "cam=",
-        "anim="};
-    for (const std::string_view token : tokens) {
-        const std::size_t count = CountToken(text, token);
+    for (const DependencyRule &rule : rules) {
+        const std::size_t count = CountToken(text, rule.token);
         if (count == 0U) {
             return RuntimeAssetDataStatus::MissingDependency;
         }
@@ -138,10 +154,58 @@ RuntimeAssetDataStatus ValidateSceneDependencies(
             return RuntimeAssetDataStatus::DuplicateDependency;
         }
 
+        if (!rule.expected_prefix.empty()) {
+            const std::string_view value = ValueForToken(text, rule.token);
+            if (!StartsWith(value, rule.expected_prefix)) {
+                return RuntimeAssetDataStatus::TypeMismatch;
+            }
+        }
+
         ++out_result->dependency_count;
     }
 
     return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateSceneDependencies(
+    std::string_view text,
+    RuntimeAssetValidationResult *out_result) {
+    constexpr std::array<DependencyRule, 8U> rules{{
+        {"m0=", "Mesh/"},
+        {"m1=", "Mesh/"},
+        {"m2=", "Mesh/"},
+        {"mat=", "Material/"},
+        {"t0=", "Texture/"},
+        {"prog=", "Shader/"},
+        {"cam=", "camera:"},
+        {"anim=", "Animation/"},
+    }};
+
+    return ValidateDependencyRules(text, std::span<const DependencyRule>(rules.data(), rules.size()), out_result);
+}
+
+RuntimeAssetDataStatus ValidateShaderProgramDependencies(
+    std::string_view text,
+    RuntimeAssetValidationResult *out_result) {
+    constexpr std::array<DependencyRule, 4U> rules{{
+        {"stage_vs=", "bytecode:"},
+        {"stage_ps=", "bytecode:"},
+        {"input=", "layout:"},
+        {"textures=", "3"},
+    }};
+
+    return ValidateDependencyRules(text, std::span<const DependencyRule>(rules.data(), rules.size()), out_result);
+}
+
+RuntimeAssetDataStatus ValidateAnimationDependencies(
+    std::string_view text,
+    RuntimeAssetValidationResult *out_result) {
+    constexpr std::array<DependencyRule, 2U> rules{{
+        {"target=", "scene_entity:"},
+        {"track=", "transform:"},
+    }};
+
+    return ValidateDependencyRules(text, std::span<const DependencyRule>(rules.data(), rules.size()), out_result);
 }
 
 bool SceneReferencesRuntimeFamilies(std::string_view scene_text) {
@@ -169,7 +233,7 @@ bool SceneReferencesRuntimeFamilies(std::string_view scene_text) {
         return false;
     }
 
-    if (!Contains(scene_text, "cam=perspective")) {
+    if (!Contains(scene_text, "cam=camera:orbit")) {
         return false;
     }
 
@@ -577,6 +641,18 @@ RuntimeAssetDataStatus ValidateRuntimeAssetDataBytes(
 
     if (expected_kind == RuntimeAssetFileKind::Scene) {
         result.status = ValidateSceneDependencies(text, &result);
+        *out_result = result;
+        return result.status;
+    }
+
+    if (expected_kind == RuntimeAssetFileKind::Shader) {
+        result.status = ValidateShaderProgramDependencies(text, &result);
+        *out_result = result;
+        return result.status;
+    }
+
+    if (expected_kind == RuntimeAssetFileKind::Animation) {
+        result.status = ValidateAnimationDependencies(text, &result);
         *out_result = result;
         return result.status;
     }
