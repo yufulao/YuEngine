@@ -6,7 +6,7 @@ Current decision: `REVIEW_ONLY_NOT_IMPLEMENTATION_APPROVED`
 Owner: Architecture
 Task: #70; #YuPart task #38
 Source baseline: `5dabfae`
-Current review baseline: `9e89ea8`
+Current review baseline: `7ec26be`
 Related plans:
 
 - `docs/YUENGINE_EDITOR_RUNTIME_PREVIEW_HOST_PLAN.md`
