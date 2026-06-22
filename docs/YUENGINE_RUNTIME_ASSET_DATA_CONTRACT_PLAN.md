@@ -6,6 +6,7 @@ Task: #73 baseline; #50 RAV1 production contract amendment
 Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 Format policy and validator vocabulary: `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md`
 Loader transaction plan: `docs/YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md`
+Payload bridge RHI route: `docs/YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md`
 Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
 Resource Browser scope: `docs/YUENGINE_RESOURCE_BROWSER_IMPORT_COOK_DIAGNOSTICS_SCOPE.md`
 Prerequisites:
@@ -90,6 +91,13 @@ because the final visual scene references them as one graph.
 | Shader / program descriptor | program id, stage references, entry semantics, input layout, constant ranges, texture slots | RenderCore/RHI shader, pipeline, and input-layout values |
 | Scene data | scene id, entity ids, transforms, mesh refs, material refs, camera refs, dependency list | World/Transform values, RenderScene runtime frame records |
 | Animation data | clip ids, track ids, keyframe ranges, sample rate, target entity/transform refs | Animation runtime sampler and transform-apply records |
+
+The texture/material/shader rows are refined by
+`docs/YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md`: cooked texture
+payloads own byte layout, row pitch, size, hash, and decoded payload identity;
+materials own bounded texture/sampler slot tables; shader/program records own
+stage bytecode payloads, hashes, minimal reflection, input layout, and slot
+counts before any RHI texture, shader module, or pipeline handle is published.
 
 Animation may be carried as a same-gate dependency or named blocker for the
 first review. The final cube/cylinder/cone route must not silently replace a
@@ -246,9 +254,12 @@ C++ in-memory construction alone.
 | CPU oracle guard | PASS | `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` |
 | Upper-layer dependency guard | PASS | `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` |
 
-These slices are not a complete asset system. They leave the full typed format
-validators, decoded texture-to-RHI bridge use in RenderScene, shader bytecode
-loader, animation-clip loader/sampler, and production scene loader APIs open.
+These slices are not a complete asset system. RAV0 #44/#45/#46 are accepted as
+smoke floors for decoded texture material slots, loaded shader bytecode, disk
+animation sampling, and staged scene loader output. The production cooked
+payload bridge route, transaction boundary, bounded record contracts, and later
+test matrix remain RAV1 planning work; the texture/material/shader route is
+defined in `docs/YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md`.
 
 ## Validator, Cook, Load, Render
 

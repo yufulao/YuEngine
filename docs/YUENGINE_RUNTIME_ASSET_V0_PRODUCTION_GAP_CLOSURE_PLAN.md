@@ -7,6 +7,7 @@ Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
 Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
 Format policy and validator vocabulary: `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md`
 Loader transaction plan: `docs/YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md`
+Payload bridge RHI route plan: `docs/YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md`
 
 ## Purpose
 
@@ -124,10 +125,17 @@ Acceptance shape:
 
 ### B. Decoded Texture Payload To RHI Material Slots
 
-Current smoke stores texture decoded payload records, but RenderScene test
-material slots still create RHI texture handles from deterministic fixture bytes.
-RuntimeAsset v0 must bridge decoded texture payload ownership into the material
-slot path consumed by RenderScene/RenderCore/RHI.
+RAV0 #44 proves that loaded texture metadata can drive decoded payload upload
+through `ResourceDecodedTextureBridge`, `AssetManager::MarkTextureReady`, and
+`RenderSceneRuntimeMaterialTextureSlot`. RuntimeAsset v0 production still needs
+cooked texture payload ownership instead of fixture-shaped payload assumptions.
+
+RAV1-C defines the production bridge route in
+`docs/YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md`. The RAV0 #44
+implementation is accepted only as a decoded-payload smoke floor: production
+still needs cooked texture payload records carrying descriptor metadata, row
+pitch, payload size/hash, color-space policy, and Resource decoded payload
+identity before RHI upload.
 
 Acceptance shape:
 
@@ -140,12 +148,16 @@ Acceptance shape:
 
 ### C. Shader / Program Bytecode Ownership
 
-Current shader/program descriptor smoke proves a referenced file exists and is in
-the dependency graph. RHI shader modules and pipelines still use fixture byte
-arrays created by the test path.
+RAV0 #45 proves that `RuntimeAssetLoadedShaderProgramData` can feed
+`BuildRuntimeAssetShaderProgramPipeline`, creating RHI shader modules and a
+pipeline from loaded/decoded program data instead of local test byte arrays.
+RuntimeAsset v0 production still needs cooked shader/program payload ownership
+instead of `bytecode:` source-text assumptions.
 
-RuntimeAsset v0 must own shader/program bytecode records enough for the runtime
-path to build RHI shader modules and pipelines from loaded data.
+RAV1-C keeps the RAV0 #45 bridge as a smoke floor only. Production shader/program
+records still need cooked stage payload ownership, bytecode size/hash/alignment,
+minimal reflection, input-layout, texture/sampler slot counts, and cleanup rules
+for partial RHI shader module or pipeline creation.
 
 Acceptance shape:
 

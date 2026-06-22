@@ -9,6 +9,7 @@ Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
 Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 Format policy and validator vocabulary: `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md`
 Loader transaction plan: `docs/YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md`
+Payload bridge RHI route: `docs/YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md`
 Depends on:
 
 - task #71 `RVF Recovery 0: restore clean windows-fast-gate configure/build/test`
@@ -70,10 +71,13 @@ through File/VFS, `YuRuntimeAsset`, Resource, Asset, RenderScene, RenderCore, an
 RHI before capture. They also reject unsupported versions, invalid mesh bounds,
 and missing/duplicate scene dependencies before runtime output mutation.
 `YuRuntimeAsset` now stores cache payloads, deterministic decoded payload records
-for mesh/material/texture, and Resource/Asset dependency edges. The remaining
-work is the full production cook/load API, decoded texture upload consumption by
-RenderScene materials, shader bytecode/program ownership, and disk animation
-sampling contract.
+for mesh/material/texture, and Resource/Asset dependency edges. RAV0 also added
+decoded texture upload consumption by RenderScene materials, shader
+bytecode/program ownership into RHI modules/pipeline, disk animation sampling,
+and staged scene loader output as smoke floors. The remaining RAV1 work is the
+production source/cooked artifact contract, loader transaction/no-mutation API,
+cooked payload bridge contract, bounded scene/animation record plan, and
+evidence matrix before implementation authorization.
 
 ## Owns
 
@@ -245,6 +249,22 @@ The implementation must prove the following in order:
 12. `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` proves no
     editor, Web, UI, input, GDI viewer, or software raster dependency is part of
     the closed-loop proof.
+
+RAV1-C adds the required production payload bridge proof shape for later
+implementation:
+
+13. cooked texture payload records carry descriptor, row-pitch, byte-count,
+    alignment, and hash ownership before RHI texture creation;
+14. cooked material records resolve bounded texture/sampler slot tables into
+    RenderScene material slots only after every referenced texture payload is
+    validated and uploaded;
+15. cooked shader/program records create RHI shader modules and pipelines from
+    owned stage bytecode, hashes, minimal reflection, input layout, and slot
+    counts rather than `bytecode:` source-text fixtures;
+16. invalid format, extent, size, alignment, hash, missing/duplicate deps,
+    bytecode mismatch, slot overflow, and partial RHI creation failures leave
+    Resource/Asset transactions, RenderScene outputs, and published RHI handles
+    unmutated.
 
 Current first-slice status:
 
