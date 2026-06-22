@@ -344,14 +344,16 @@ The following are blocking violations:
 
 ## Exit Criteria
 
-This plan is ready for the next implementation slice when:
+This plan is ready for RAV1-A docs/gate acceptance when:
 
-1. the paired gate records that the first smoke slice has been implemented;
-2. task #71 and task #72 are recorded as prerequisites and remain passing;
-3. every runtime data family lists version/header, bounds, dependencies,
+1. the paired gate records `RAV1_DOCS_GATE_NOT_IMPLEMENTATION_APPROVED`;
+2. implementation split still waits for #51-#55, RAV1 review gate acceptance,
+   and explicit `APPROVED_FOR_FIRST_SLICE` or `APPROVED_FOR_NEXT_SLICE`;
+3. task #71 and task #72 are recorded as prerequisites and remain passing;
+4. every runtime data family lists version/header, bounds, dependencies,
    deterministic identity/hash/size, coordinate rules, statuses, and validator
    behavior;
-4. the minimal generator -> File/VFS/Resource -> Resource/Asset ->
+5. the minimal generator -> File/VFS/Resource -> Resource/Asset ->
    RenderScene/RenderCore/RHI -> capture loop is proven by focused tests;
-5. hard blocks prevent current RVF helper output or viewer output from being
+6. hard blocks prevent current RVF helper output or viewer output from being
    counted as the final proof.
