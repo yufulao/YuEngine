@@ -1,8 +1,8 @@
 # YuEngine RuntimeAsset v0 Format Policy And Validator Vocabulary
 
-Status: planning / implementation-prep
+Status: accepted vocabulary; used by RAV1 production contract gate
 Owner: Architecture
-Task: #41
+Task: #41 baseline; #50 RAV1 contract consumer
 Related closure plan: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 
 ## Purpose
@@ -128,3 +128,22 @@ status observable for its family.
 Downstream tasks should not introduce parallel status enums for mesh, material,
 texture, shader/program, scene, camera, or animation validators unless a later
 architecture task explicitly replaces this vocabulary.
+
+## RAV1 Contract Usage
+
+The RAV1 production contract and cook/load/render gate consume this document
+without replacing it:
+
+- source artifacts and cooked artifacts both identify family by internal
+  `magic`/`version`/`kind`/`schema` metadata, never by filename suffix;
+- source artifacts may be readable text or manifests, while cooked artifacts
+  should be runtime-optimized binary unless a later gate approves a narrower
+  exception;
+- family validators use the shared status vocabulary above for format,
+  dependency, hash, capacity, and budget failures;
+- File, Resource, Asset, decoded payload, input-layout, and RHI statuses remain
+  integration statuses after validator/cook preflight, not substitutes for
+  validator failures;
+- no-mutation failure semantics apply to staged scene loader output and RHI
+  shader/pipeline or texture-object creation as well as Resource and Asset
+  registration.

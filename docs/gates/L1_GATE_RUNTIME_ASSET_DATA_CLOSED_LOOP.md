@@ -1,10 +1,10 @@
 # L1-GATE: Runtime Asset Data Closed Loop
 
-Status: RuntimeAsset module and first cook/decode slices implemented
-Requested decision: `FIRST_SLICE_CONTINUE`
-Current decision: `RUNTIME_ASSET_MODULE_SLICE_IMPLEMENTED_WITH_PRODUCTION_GAPS`
+Status: RuntimeAsset module and RAV0 validator/cook/load floors implemented; RAV1 production contract gate in review
+Requested decision: `RAV1_PHASE_A_CONTRACT_REVIEW`
+Current decision: `RAV1_DOCS_GATE_NOT_IMPLEMENTATION_APPROVED`
 Owner: Architecture
-Task: #73
+Task: #73 baseline; #50 RAV1 production contract amendment
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
 Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 Format policy and validator vocabulary: `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md`
@@ -33,8 +33,13 @@ fixture generator writes disk files
 ```
 
 This gate now records the first smoke, validator, and `YuRuntimeAsset` module
-implementation slices. It still defines the acceptance shape for the remaining
-production validator/cook/load slices.
+implementation slices plus the RAV0 production floors for typed validators,
+path-independent family detection, shader/program bytecode to RHI pipeline,
+decoded texture payload to material slots, disk animation sampling, deterministic
+scene loader output, and scene loader no-mutation failures.
+
+Task #50 adds the RAV1 Phase A contract/gate layer only. It does not approve
+new runtime implementation by itself.
 
 ## Layer
 
@@ -140,6 +145,74 @@ a compact custom test format, but it must still carry all of the rows above and
 must not optimize for external ecosystem, plugin-marketplace, or commercial-
 engine compatibility over YuEngine runtime cleanliness.
 
+## RAV1 Production Contract Gate
+
+The RAV1 gate treats RuntimeAsset v0 as two explicit artifact classes:
+
+- **source artifact**: readable text or manifest-shaped input used for
+  authoring/review/cook; it must carry internal magic/header, version, kind,
+  schema, id, source hash, dependency table, family bounds, and coordinate
+  rules;
+- **cooked artifact**: runtime-optimized output, preferably binary, with
+  internal magic/version/kind/schema, table directory, payload offsets, byte
+  order, alignment, deterministic ids, payload hashes, dependency hashes, and
+  total byte size/hash.
+
+The loader may use a path to find bytes through File/Mount/VFS, but it must not
+use the path suffix as family identity. The authoritative family identity is the
+internal `kind`/`version`/`schema` plus the typed dependency table.
+
+RAV1 production proof must cover these family rows at contract level:
+
+| Family | Contract fields | Runtime ownership boundary |
+| --- | --- | --- |
+| Mesh | id, vertex layout, topology, vertices, indices, draw ranges, bounds, coordinate spec, payload hash | RuntimeAsset validates/cooks payload records; RenderScene/RenderCore/RHI consume geometry records without direct fixture structs |
+| Material | id, shader/program ref, texture/sampler slots, constants, render state, dependency hashes | Material slots resolve through decoded texture payload records and loaded shader/program refs |
+| Texture | id, format, extent, mip count, color space, sampler ref, payload range/hash, decoded payload budget | Resource decoded payload owns bytes; RHI texture/update route consumes those bytes |
+| Shader/program | id, stage refs, bytecode size/hash, entry semantics, input layout, constants, texture slots | RuntimeAsset owns bytecode decode; RHI shader modules and pipelines are created from loaded data |
+| Scene/camera | scene id, entity ids, transforms, mesh/material/texture/shader refs, camera refs, dependency order | Scene loader emits deterministic staged records; RenderScene consumes them after preflight succeeds |
+| Animation | clip id, track id, target entity/transform refs, sample rate, interpolation, keyframe ranges | Animation sampler produces sampled transforms that feed staged scene output before RenderScene mutation |
+
+Common validation failures must use the #41 `RuntimeAssetDataStatus` vocabulary:
+`InvalidArgument`, `InvalidHeader`, `UnsupportedVersion`, `InvalidKind`,
+`InvalidSchema`, `InvalidCount`, `InvalidSize`, `InvalidAlignment`,
+`InvalidBounds`, `InvalidDependency`, `MissingDependency`,
+`DuplicateDependency`, `TypeMismatch`, `HashMismatch`,
+`UnsupportedFieldValue`, `CapacityExceeded`, and `BudgetExceeded`.
+
+Integration statuses such as File read, Resource registration, cache/decoded
+payload, Asset registration, dependency edge, input-layout, RHI shader module,
+and RHI pipeline failures may appear only after validator/cook preflight has
+classified format, dependency, capacity, and budget failures.
+
+## RAV1 Cook / Load / Render Route
+
+The next implementation wave must preserve this staged route:
+
+```text
+deterministic disk artifact
+-> File/Mount/VFS byte read
+-> source/cooked header + table validation
+-> dependency/hash/budget preflight
+-> cook to runtime-ready records or payload staging
+-> Resource and Asset registration plus dependency edges
+-> decoded payload / shader program / animation sample ownership
+-> staged scene loader output
+-> RenderScene frame records
+-> RenderCore/RHI submit, present, and capture evidence
+```
+
+No stage may partially mutate later-stage output on failure. Scene loader
+failures must leave Resource/Asset registries, decoded payload stores, staged
+scene output, RenderScene records, RenderCore state, and RHI objects unchanged
+unless the gate explicitly names a prior committed stage and its rollback or
+cleanup semantics.
+
+The accepted capture evidence is RenderCore/RHI output from loaded RuntimeAsset
+data. CPU/PPM semantic output, screenshots, reports, logs, the GDI viewer, or
+manual inspection can only be auxiliary evidence after RHI/RenderCore capture
+exists.
+
 ## Required Closed-Loop Proof
 
 The implementation must prove the following in order:
@@ -189,19 +262,38 @@ Current first-slice status:
 | 11. CPU oracle guard | PASS |
 | 12. no editor/Web/UI/input/GDI viewer dependency | PASS |
 
+RAV0 added additional proof names that RAV1 must keep passing or supersede with
+approved equivalents:
+
+- `RuntimeAssetData_MeshMaterialTextureTypedValidatorsAcceptStructuredMetadata`
+- `RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs`
+- `RuntimeAssetData_TextureValidatorRejectsInvalidFormatExtentPayload`
+- `RuntimeAssetData_ShaderSceneAnimationRequireSourceSchema`
+- `RuntimeAssetData_SceneFamilyDetectionIsPathIndependent`
+- `RuntimeAssetData_ShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs`
+- `RuntimeAssetData_SceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation`
+- `RuntimeAssetData_AnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs`
+- `RuntimeAssetData_ShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode`
+- `RuntimeAssetData_ShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation`
+- `RuntimeAssetData_ProductionSceneLoaderOutputsDeterministicRecords`
+- `RuntimeAssetData_DiskAnimationSamplingFeedsSceneTransforms`
+- `RuntimeAssetData_SceneLoaderRejectsInvalidEntityWithoutOutputMutation`
+- `RuntimeAssetData_SceneLoaderRejectsInvalidKeyframesWithoutOutputMutation`
+- `RuntimeAssetData_DecodedTexturePayloadsDriveRhiMaterialSlots`
+- `RuntimeAssetData_TextureMaterialSlotBridgeFailuresDoNotMutateRenderSceneOutputs`
+
 ## Candidate First Slice
 
-This gate recommends this remaining slice shape:
+This gate recommends this RAV1 implementation routing after Phase A review:
 
 | ID | Work item | Acceptance direction |
 | --- | --- | --- |
-| RADC-001 | Common runtime data header and validator vocabulary | shared header/version/bounds/hash/status/no-mutation rules |
-| RADC-002 | Deterministic fixture generator | writes mesh/material/texture/shader/scene/animation source files to ignored output dirs |
-| RADC-003 | Mesh/material/texture/shader validator | validates file bytes and dependency graph through File/VFS/Resource paths |
-| RADC-004 | Scene/camera/animation validator | validates scene refs, transforms, camera refs, and clip refs or names animation blocker |
-| RADC-005 | Cook/load bridge | partially implemented in `YuRuntimeAsset`; still needs production scene loader output API |
-| RADC-006 | Canonical render smoke | loads cube/cylinder/cone scene and renders/captures through RenderScene/RenderCore/RHI |
-| RADC-007 | Helper-oracle guard | CPU PPM/image artifact output is checked only as auxiliary evidence after runtime capture |
+| RAV1-A | Production contract and gate | docs-only contract/gate amendment; no runtime implementation approval |
+| RAV1-B | Suffix-free loader transaction design | no path suffix family inference; staged no-mutation transaction semantics |
+| RAV1-C | Cooked texture/material/shader payload bridge plan | decoded texture, material slots, shader bytecode, RHI program route stays loaded-data-owned |
+| RAV1-D | Bounded scene/animation record loader plan | beyond fixed three-entity fixture; explicit capacities and sample/output semantics |
+| RAV1-E | Evidence matrix and acceptance commands | maps current tests, changed paths, off-scope scans, and required commands |
+| RAV1 review gate | Architecture/code/perf/evidence review | required before any implementation authorization |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer
@@ -267,7 +359,8 @@ Before any remaining implementation slice is created:
    frame paths.
 5. Implementability review confirms the tests can be enforced without
    widening lower modules or relying on viewer/image helper output.
-6. PM/final gate state must issue explicit `APPROVED_FOR_FIRST_SLICE`.
+6. PM/final gate state must issue explicit `APPROVED_FOR_FIRST_SLICE` or
+   `APPROVED_FOR_NEXT_SLICE` after the RAV1 review gate closes.
 
 ## Hard Blocks
 
@@ -294,7 +387,7 @@ This gate is ready for the next implementation slice when:
 
 1. this document and the paired plan are committed;
 2. both documents record the current decision
-   `FIRST_SLICE_IMPLEMENTED_WITH_COOK_LOAD_GAPS`;
+   `RAV1_DOCS_GATE_NOT_IMPLEMENTATION_APPROVED`;
 3. task #71 and task #72 are listed as prerequisites;
 4. data families cover mesh, material, texture descriptor/payload reference,
    shader/program descriptor, scene data, and animation clip/sampled transform

@@ -1,8 +1,8 @@
 # YuEngine Runtime Asset Data Contract Plan
 
-Status: RuntimeAsset module, validator, and cook/decode smoke slices implemented; full production contract still open
+Status: RuntimeAsset module and RAV0 validator/cook/load floors implemented; RAV1 production contract gate in review
 Owner: Architecture
-Task: #73
+Task: #73 baseline; #50 RAV1 production contract amendment
 Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
 Format policy and validator vocabulary: `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md`
 Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
@@ -55,10 +55,17 @@ payloads, creates deterministic decoded payload records for mesh/material/textur
 adds Resource and Asset dependency edges, builds RenderScene runtime records, and
 captures through RenderCore/RHI. The validator smoke rejects unsupported
 versions, invalid mesh bounds without output mutation, and missing/duplicate
-scene dependencies. The remaining gap is the production-quality contract: full
-typed dependency validation across every file family, decoded texture payload
-upload into RHI material slots, shader bytecode/program ownership, animation clip
-sampling from disk, and production scene loader output APIs.
+scene dependencies.
+
+The RAV0 implementation wave then added the first production floors for typed
+family validators, path-independent family detection, shader/program dependency
+validation and RHI pipeline creation from loaded bytecode, decoded texture
+payloads driving material slots, disk animation sampling into scene transforms,
+and deterministic staged scene loader output with no-mutation failure coverage.
+Those floors close the previous "smoke only" blockers, but RAV1 still needs this
+contract and the paired gate to freeze exactly what counts as source artifact,
+cooked artifact, cook/load/render closure, and accepted evidence before further
+implementation waves treat RuntimeAsset v0 as stable.
 
 The following evidence is useful but insufficient on its own:
 
@@ -86,6 +93,84 @@ because the final visual scene references them as one graph.
 Animation may be carried as a same-gate dependency or named blocker for the
 first review. The final cube/cylinder/cone route must not silently replace a
 missing animation contract with per-frame sample math.
+
+## RAV1 Production RuntimeAsset v0 Contract
+
+RuntimeAsset v0 identity is internal and suffix-free. A path, extension, or
+fixture name may help tests locate bytes, but it is never authoritative for
+type, version, schema, dependency identity, payload identity, or accepted proof.
+
+### Source Artifact Contract
+
+Source artifacts are the deterministic authoring/review input to the cook. They
+may be readable text records or manifests when that improves single-team
+iteration, but every source artifact must normalize to these fields before
+validation or cook:
+
+| Field | Contract |
+| --- | --- |
+| `magic` / header | family-independent source marker; reject absent or malformed markers as `InvalidHeader` |
+| `version` | v0 source version and minimum compatible source version; unsupported values return `UnsupportedVersion` |
+| `kind` | mesh, material, texture, shader/program, scene, camera-if-split, animation, or approved extension; mismatches return `InvalidKind` or `TypeMismatch` |
+| `schema` | v0 source schema identifier such as the current `rav0-source` vocabulary; missing or incompatible schemas return `InvalidSchema` |
+| `id` / stable identity | deterministic logical id used for Resource/Asset registration; duplicates within a graph are invalid |
+| `sourceHash` | deterministic hash over the exact source bytes or manifest expansion used for cook |
+| `payloadHash` | deterministic hash over embedded or referenced payload bytes when a family owns payload data |
+| `dependencyTable` | typed refs to other RuntimeAsset ids; no implicit lookup by display name or filename suffix |
+| `record bounds` | counts, byte sizes, string lengths, coordinate values, extents, keyframes, and slots within the family budget |
+| `coordinateSpec` | units, handedness, transform order, winding, UV origin, and animation time basis where relevant |
+
+The current `.yumesh`, `.yumat`, `.yutex`, `.yuprogram`, `.yuscene`, and
+`.yuanim` names remain smoke-fixture names only. Source artifacts must keep
+working if the same bytes arrive through another approved path.
+
+### Cooked Artifact Contract
+
+Cooked artifacts are runtime-optimized output. They should be binary unless a
+later approved gate names a readable cooked representation for a narrow reason.
+Every cooked artifact must carry enough internal metadata to validate and load
+without the source path:
+
+| Field | Contract |
+| --- | --- |
+| internal magic/version/kind/schema | same authoritative identity as source, encoded in the cooked header or table directory |
+| table directory | bounded record tables, payload table offsets, sizes, alignments, and byte order |
+| deterministic ids | graph-stable asset id, Resource type id, Asset type id, scene/entity/camera/animation ids as applicable |
+| payload ownership | whether bytes are embedded, external within the cooked bundle, or referenced through an approved Resource payload id |
+| dependency table | typed refs with expected family, required/optional bit, dependency hash, and load order constraints |
+| hash coverage | source hash, cooked payload hash, dependency hash where required, and total byte size/hash |
+| budgets | explicit file size, table count, dependency count, decoded payload byte count, animation sample count, and loader output capacities |
+
+Cooked validation must reject invalid counts, sizes, alignments, hash mismatches,
+unsupported field values, capacity overflow, and budget overflow before Resource,
+Asset, RenderScene, RenderCore, RHI, or scene loader output mutation.
+
+### Family-Level Contract
+
+| Family | Required source fields | Cooked payload ownership | Required validation focus |
+| --- | --- | --- | --- |
+| Mesh | mesh id, vertex layout, topology, vertices, indices, draw ranges, bounds, coordinate spec | vertex/index payload ranges or approved primitive decode records | vertex/index count, stride/alignment, topology, bounds, payload hash, material/scene ref compatibility |
+| Material | material id, shader/program ref, texture/sampler slots, constants, render state | material record plus typed refs to decoded texture payloads and shader program | required slots, duplicate slots, shader/type mismatch, unsupported constants/state, payload dependency hashes |
+| Texture | texture id, format, extent, mip count, color space, sampler ref, payload ref/hash | descriptor plus decoded payload bytes or Resource decoded payload id | format/extent/mip bounds, alignment, byte count, hash, decoded payload budget, material slot compatibility |
+| Shader/program | program id, stage refs, bytecode refs/hashes, entry semantics, input layout, constants, texture slots | shader bytecode payloads and pipeline/input-layout descriptor | stage presence, bytecode size/hash, unsupported semantics, input-layout validity, RHI module/pipeline no-mutation failures |
+| Scene/camera | scene id, entity ids, transforms, mesh/material/texture/shader refs, camera refs, dependency order | staged scene loader output records and camera records | typed refs, entity/camera bounds, transform bounds, missing decoded payload/program/camera, output capacity |
+| Animation | clip id, track id, target entity/transform refs, sample rate, interpolation, keyframe ranges | sampled transform inputs or approved clip payload records consumed by Animation sampler | time/keyframe bounds, unsupported interpolation, target mismatch, sample budget, no partial scene transform output |
+
+### Status Vocabulary
+
+Family validators and cook/load/render preflight use the #41
+`RuntimeAssetDataStatus` vocabulary exactly for common failures:
+`InvalidArgument`, `InvalidHeader`, `UnsupportedVersion`, `InvalidKind`,
+`InvalidSchema`, `InvalidCount`, `InvalidSize`, `InvalidAlignment`,
+`InvalidBounds`, `InvalidDependency`, `MissingDependency`,
+`DuplicateDependency`, `TypeMismatch`, `HashMismatch`,
+`UnsupportedFieldValue`, `CapacityExceeded`, and `BudgetExceeded`.
+
+Post-validation integration may additionally surface the existing RuntimeAsset
+load statuses for File, Resource, Asset, decoded payload, dependency edge, input
+layout, RHI shader module, and RHI pipeline failures. These integration statuses
+do not replace the #41 validator vocabulary and must not be used to hide a
+format, dependency, capacity, or budget failure.
 
 ## Common Format Rules
 
@@ -168,17 +253,22 @@ loader, animation-clip loader/sampler, and production scene loader APIs open.
 
 The accepted closed loop is staged:
 
-1. **Generate**: write fixture source files to disk with deterministic metadata.
-2. **Validate**: read files through File/VFS and validate headers, bounds,
-   dependency graph, hashes, coordinate rules, and output capacities.
-3. **Cook**: produce runtime-ready records or package/resource staging records
-   with deterministic ids and hashes.
-4. **Load**: use Resource and related runtime load contracts to create runtime
-   mesh, material, texture, shader, scene, camera, and animation records.
-5. **Render**: build RenderScene frame records from the loaded scene, execute
-   through RenderCore/RHI, and capture the cube/cylinder/cone sequence.
-6. **Diagnose**: if a layer is missing, report the exact missing layer and the
-   file/dependency that caused it.
+1. **Generate / read source**: deterministic source artifacts are written or
+   mounted on disk; tests may generate them, but runtime proof must read bytes.
+2. **File / Mount / VFS**: `MountTable` and approved File/VFS paths open those
+   bytes. A path may locate the bytes but not identify the family.
+3. **Validate**: validate internal magic, version, kind, schema, bounds,
+   dependency graph, hashes, coordinate rules, alignments, and output
+   capacities.
+4. **Cook**: produce cooked artifacts or runtime-ready staging records with
+   deterministic ids, hashes, dependency tables, and payload ownership.
+5. **Load**: register Resource and Asset records, store cache/decoded payloads,
+   create dependency edges, and build staged scene loader outputs only after
+   validation/cook succeeds.
+6. **Render**: RenderScene consumes the staged loader output, RenderCore/RHI owns
+   submission, shader/pipeline/texture handles, and capture proof.
+7. **Diagnose**: if a layer is missing, report the exact missing layer, status,
+   file/dependency, and no-mutation point that caused it.
 
 The loader must not stuff fixture structs directly into RenderScene. Direct
 construction remains allowed inside narrow unit tests for individual value

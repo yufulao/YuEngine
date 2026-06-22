@@ -1,8 +1,8 @@
 # YuEngine RuntimeAsset v0 Production-Gap Closure Plan
 
-Status: planning / gate dependency
+Status: RAV0 floors implemented; RAV1 production contract gate in review
 Owner: Architecture
-Task: #36
+Task: #36 baseline; #50 RAV1 production contract amendment
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
 Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
 Format policy and validator vocabulary: `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md`
@@ -70,12 +70,30 @@ plugin marketplace conventions, or commercial-engine import format parity. The
 priority is single-team development efficiency on the source side and YuEngine
 runtime performance on the cooked/runtime side.
 
-## Open Production Gaps
+## RAV0 Production Floors And Remaining RAV1 Gate Work
+
+RAV0 implementation tasks have now proven the first production floors for:
+
+- shared format/status vocabulary and suffix-free identity checks;
+- typed mesh/material/texture validators;
+- shader/program, scene/camera, and animation dependency validators;
+- decoded texture payloads driving material slot bridge tests;
+- shader bytecode/program ownership through RHI shader module and pipeline
+  creation tests;
+- disk animation sampling feeding scene transforms;
+- deterministic staged scene loader output and scene loader no-mutation failures.
+
+Those floors close the original "smoke only" blockers. The remaining RAV1-A
+work is review-only docs/gate work: freeze the source/cooked artifact contract,
+the suffix-free cook/load/render route, the exact #41 status vocabulary usage,
+and the evidence boundary before any follow-up implementation task treats
+RuntimeAsset v0 as stable.
+
+## Production Contract Requirements
 
 ### A. Typed Validators For Every File Family
 
-Current validation is header and selected string-token smoke. RuntimeAsset v0
-must add typed validators for every approved family:
+RuntimeAsset v0 keeps typed validators for every approved family:
 
 - mesh
 - material
@@ -187,9 +205,16 @@ Acceptance shape:
 | RAV0-2 | Cook/decode payload bridges | parallel texture payload -> RHI material slots, shader bytecode -> RHI program, animation clip -> sampler |
 | RAV0-3 | Production scene loader output API | single integration slice after RAV0-1 and relevant RAV0-2 outputs |
 | RAV0-4 | End-to-end closed-loop verification | integration slice proving generated disk files -> validator/cook/load -> RenderScene/RenderCore/RHI capture |
+| RAV1-A | Production RuntimeAsset v0 contract and cook/load/render gate | docs-only architecture slice; no runtime implementation approval |
+| RAV1-B | Suffix-free loader transaction and no-mutation API plan | design slice consuming this contract |
+| RAV1-C | Cooked texture/material/shader payload bridge plan to RHI route | design slice consuming this contract |
+| RAV1-D | Bounded scene/animation record loader plan | design slice consuming this contract |
+| RAV1-E | Evidence matrix and acceptance commands | review/evidence slice before implementation authorization |
 
 Every implementation task must restate that editor, Web, UI, Game Adapter,
 original package parser, and external authoring bridge work are out of scope.
+RAV1-A is not an implementation task; it only records the contract and gate that
+later slices must obey.
 
 ## Downstream Blockers
 
@@ -249,18 +274,22 @@ package/parser gate. They must not define RuntimeAsset v0 API shape.
 
 ## Exit Criteria
 
-RuntimeAsset v0 production-gap closure is ready for implementation split only
-when:
+RuntimeAsset v0 RAV1 implementation split is ready only when:
 
-1. common family validator/status vocabulary is accepted;
-2. all file-family validators have named no-mutation tests;
-3. texture decoded payloads drive RHI material slots from loaded data;
-4. shader/program bytecode records drive RHI shader module and pipeline creation;
-5. animation file data is sampled through the Animation runtime sampler, or a
+1. the RAV1-A production contract and paired gate are committed and accepted as
+   review-only docs/gate output;
+2. common family validator/status vocabulary remains the #41
+   `RuntimeAssetDataStatus` vocabulary and no parallel family status enum is
+   introduced;
+3. all file-family validators have named no-mutation tests or approved
+   equivalents in the RAV1 evidence matrix;
+4. texture decoded payloads drive RHI material slots from loaded data;
+5. shader/program bytecode records drive RHI shader module and pipeline creation;
+6. animation file data is sampled through the Animation runtime sampler, or a
    same-gate blocker remains explicit;
-6. production scene loader output records feed RenderScene without test-private
+7. production scene loader output records feed RenderScene without test-private
    bridges;
-7. focused RuntimeAssetData tests and full `windows-fast-gate` pass;
-8. dependency scans prove no editor, Web, UI, Game Adapter, original package
+8. focused RuntimeAssetData tests and full `windows-fast-gate` pass;
+9. dependency scans prove no editor, Web, UI, Game Adapter, original package
    parser, external authoring bridge, report, screenshot, GDI viewer, or helper
    image path is part of acceptance.
