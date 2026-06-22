@@ -60,6 +60,7 @@ using yuengine::asset::AssetHandle;
 using yuengine::asset::AssetManager;
 using yuengine::asset::AssetRecord;
 using yuengine::asset::AssetRegistrationResult;
+using yuengine::asset::AssetSnapshot;
 using yuengine::asset::AssetStatus;
 using yuengine::asset::AssetTypeId;
 using yuengine::file::FileReadResult;
@@ -109,6 +110,7 @@ using yuengine::resource::ResourceRegistrationResult;
 using yuengine::resource::ResourceResidencyBudgetDesc;
 using yuengine::resource::ResourceResidencyRequest;
 using yuengine::resource::ResourceResidencyStatus;
+using yuengine::resource::ResourceSnapshot;
 using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
 using yuengine::runtimeasset::HashRuntimeAssetDataBytes;
@@ -1583,6 +1585,8 @@ bool ProbeSceneLoaderFailureWithoutOutputMutation(MountTable &table, RuntimeAsse
 
     ResourceRegistry registry;
     AssetManager manager;
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const AssetSnapshot before_asset_snapshot = manager.Snapshot();
     std::array<RuntimeAssetLoadedFile, FIXTURE_FILE_COUNT> loaded_files{};
     std::array<RuntimeAssetSceneResourceRef, FIXTURE_FILE_COUNT> scene_resource_refs{};
     std::array<RuntimeAssetSceneCameraRecord, 1U> scene_cameras{};
@@ -1628,12 +1632,32 @@ bool ProbeSceneLoaderFailureWithoutOutputMutation(MountTable &table, RuntimeAsse
         return FailStep("scene loader failure did not return expected status");
     }
 
-    return SceneLoaderFailureSentinelsUnchanged(
-        scene_resource_refs,
-        scene_cameras,
-        scene_entities,
-        scene_transforms,
-        scene_output);
+    if (!SceneLoaderFailureSentinelsUnchanged(
+            scene_resource_refs,
+            scene_cameras,
+            scene_entities,
+            scene_transforms,
+            scene_output)) {
+        return false;
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count ||
+        after_resource_snapshot.dependency_edge_count != before_resource_snapshot.dependency_edge_count ||
+        after_resource_snapshot.load_commit_record_count != before_resource_snapshot.load_commit_record_count ||
+        after_resource_snapshot.loaded_resource_count != before_resource_snapshot.loaded_resource_count) {
+        return FailStep("scene loader failure mutated Resource registry state");
+    }
+
+    const AssetSnapshot after_asset_snapshot = manager.Snapshot();
+    if (after_asset_snapshot.active_asset_count != before_asset_snapshot.active_asset_count ||
+        after_asset_snapshot.active_dependency_edge_count != before_asset_snapshot.active_dependency_edge_count ||
+        after_asset_snapshot.registered_asset_count != before_asset_snapshot.registered_asset_count ||
+        after_asset_snapshot.referenced_asset_count != before_asset_snapshot.referenced_asset_count) {
+        return FailStep("scene loader failure mutated Asset manager state");
+    }
+
+    return true;
 }
 
 bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
