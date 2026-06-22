@@ -17,7 +17,7 @@ This document records what the existing runtime visual work proves today and wha
 | Configure | `cmake --preset windows-fast-gate` PASS |
 | Build | `cmake --build --preset windows-fast-gate` PASS |
 | Full tests before first RuntimeAssetData slice | `ctest --preset windows-fast-gate` PASS, `1261/1261` |
-| Full tests after first RuntimeAssetData slice | `ctest --preset windows-fast-gate --output-on-failure` PASS, `1265/1265` |
+| Full tests after RuntimeAssetData validator slice | `ctest --preset windows-fast-gate --output-on-failure` PASS, `1271/1271` |
 
 ## Evidence Classes
 
@@ -36,8 +36,8 @@ This document records what the existing runtime visual work proves today and wha
 | `git worktree add --detach C:\Steam\steamapps\common\TouhouNewWorld\YuEngineCleanGate origin/main` | PASS | Clean checkout for gate proof |
 | `cmake --preset windows-fast-gate` | PASS | Configure/regenerate now succeeds |
 | `cmake --build --preset windows-fast-gate` | PASS | Full Debug build succeeds |
-| `ctest --preset windows-fast-gate --output-on-failure` | PASS | `1265/1265` tests passed after adding RuntimeAssetData tests |
-| Focused runtime asset visual tests | PASS | `ctest --preset windows-fast-gate -R "RuntimeAssetData" --output-on-failure`, `4/4` |
+| `ctest --preset windows-fast-gate --output-on-failure` | PASS | `1271/1271` tests passed after adding RuntimeAssetData validator tests |
+| Focused runtime asset visual tests | PASS | `ctest --preset windows-fast-gate -R "RuntimeAssetData" --output-on-failure`, `10/10` |
 
 ## Matrix
 
@@ -56,10 +56,10 @@ This document records what the existing runtime visual work proves today and wha
 
 ## Current Conclusion
 
-Current runtime visual evidence proves that the engine has useful lower-level runtime contracts for camera data, primitive geometry, material slots, animation sampling, transform application, RenderScene submission, RenderCore/RHI capture, blend state, and exact missing-layer reporting. The first RuntimeAssetData smoke test now also proves a minimal disk-backed file -> Resource/Asset -> RenderScene -> RenderCore/RHI capture path.
+Current runtime visual evidence proves that the engine has useful lower-level runtime contracts for camera data, primitive geometry, material slots, animation sampling, transform application, RenderScene submission, RenderCore/RHI capture, blend state, and exact missing-layer reporting. The RuntimeAssetData smoke tests now also prove a minimal disk-backed file -> validator -> Resource/Asset -> RenderScene -> RenderCore/RHI capture path.
 
 It still does not prove the full production runtime asset/data system. The remaining path is:
 
-`typed format validator -> no-mutation failure tests -> dependency/cook/load records -> decoded texture/shader/animation payloads -> production loader APIs -> RenderScene records/resources -> RenderCore/RHI render -> capture`.
+`full typed format coverage -> dependency/cook/load records -> decoded texture/shader/animation payloads -> production loader APIs -> RenderScene records/resources -> RenderCore/RHI render -> capture`.
 
 CPU semantic pixels, PPM artifacts, and the GDI viewer remain useful development or oracle tools, but they are not acceptable substitutes for the disk asset load and RenderCore/RHI render path.

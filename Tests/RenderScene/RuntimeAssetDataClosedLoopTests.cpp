@@ -127,6 +127,18 @@ using yuengine::world::WorldTransformState;
 
 constexpr const char *TEST_GENERATOR =
     "RuntimeAssetData_GeneratorWritesDeterministicFilesAndHashes";
+constexpr const char *TEST_UNSUPPORTED_VERSION =
+    "RuntimeAssetData_FormatHeaderRejectsUnsupportedVersion";
+constexpr const char *TEST_INVALID_BOUNDS =
+    "RuntimeAssetData_ValidatorRejectsInvalidBoundsWithoutOutputs";
+constexpr const char *TEST_INVALID_DEPENDENCY =
+    "RuntimeAssetData_DependencyGraphRejectsMissingAndDuplicateRefs";
+constexpr const char *TEST_LOADER_FILE_RESOURCE =
+    "RuntimeAssetData_LoaderUsesFileResourcePathNotInMemoryStructs";
+constexpr const char *TEST_SCENE_REFERENCES =
+    "RuntimeAssetData_SceneReferencesMeshMaterialTextureShader";
+constexpr const char *TEST_LOADED_RENDER_RECORDS =
+    "RuntimeAssetData_LoadCreatesRenderSceneRuntimeRecords";
 constexpr const char *TEST_LOAD_RENDER =
     "RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi";
 constexpr const char *TEST_CPU_ORACLE =
@@ -189,6 +201,22 @@ struct LoadedGraph final {
 };
 
 using TestFunction = int (*)();
+
+enum class RuntimeAssetDataStatus {
+    Success,
+    InvalidArgument,
+    InvalidHeader,
+    UnsupportedVersion,
+    InvalidBounds,
+    MissingDependency,
+    DuplicateDependency
+};
+
+struct RuntimeAssetValidationResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    std::size_t dependency_count = 0U;
+    std::size_t byte_count = 0U;
+};
 
 class RuntimeAssetRhiDevice final : public IRhiDevice {
 public:
@@ -518,6 +546,128 @@ bool Contains(std::string_view text, std::string_view token) {
     return text.find(token) != std::string_view::npos;
 }
 
+std::size_t CountToken(std::string_view text, std::string_view token) {
+    std::size_t count = 0U;
+    std::size_t offset = 0U;
+    while (offset < text.size()) {
+        const std::size_t found = text.find(token, offset);
+        if (found == std::string_view::npos) {
+            return count;
+        }
+
+        ++count;
+        offset = found + token.size();
+    }
+
+    return count;
+}
+
+bool HeaderHasSupportedVersion(std::string_view text, std::string_view expected_kind) {
+    const std::string header = "YUASSET " + std::string(expected_kind) + " 1";
+    return Contains(text, header);
+}
+
+bool HeaderHasUnsupportedVersion(std::string_view text, std::string_view expected_kind) {
+    const std::string header = "YUASSET " + std::string(expected_kind) + " 2";
+    return Contains(text, header);
+}
+
+RuntimeAssetDataStatus ValidateSceneDependencies(std::string_view text, RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const std::array<std::string_view, 8U> tokens{
+        "m0=",
+        "m1=",
+        "m2=",
+        "mat=",
+        "t0=",
+        "prog=",
+        "cam=",
+        "anim="};
+    for (const std::string_view token : tokens) {
+        const std::size_t count = CountToken(text, token);
+        if (count == 0U) {
+            return RuntimeAssetDataStatus::MissingDependency;
+        }
+
+        if (count > 1U) {
+            return RuntimeAssetDataStatus::DuplicateDependency;
+        }
+
+        ++out_result->dependency_count;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateRuntimeAssetBytes(
+    const std::vector<std::uint8_t> &bytes,
+    std::string_view expected_kind,
+    RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetValidationResult result{};
+    result.byte_count = bytes.size();
+    const std::string text(bytes.begin(), bytes.end());
+    if (HeaderHasUnsupportedVersion(text, expected_kind)) {
+        result.status = RuntimeAssetDataStatus::UnsupportedVersion;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!HeaderHasSupportedVersion(text, expected_kind)) {
+        result.status = RuntimeAssetDataStatus::InvalidHeader;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (expected_kind == "MESH") {
+        if (Contains(text, "vertices=0") || Contains(text, "indices=0")) {
+            result.status = RuntimeAssetDataStatus::InvalidBounds;
+            *out_result = result;
+            return result.status;
+        }
+    }
+
+    if (expected_kind == "SCENE") {
+        result.status = ValidateSceneDependencies(text, &result);
+        *out_result = result;
+        return result.status;
+    }
+
+    result.status = RuntimeAssetDataStatus::Success;
+    *out_result = result;
+    return result.status;
+}
+
+std::string_view ExpectedKindForFile(const FixtureFile &file) {
+    if (file.resource_type.value == RESOURCE_TYPE_MESH) {
+        return "MESH";
+    }
+
+    if (file.resource_type.value == RESOURCE_TYPE_MATERIAL) {
+        return "MATERIAL";
+    }
+
+    if (file.resource_type.value == RESOURCE_TYPE_TEXTURE) {
+        return "TEXTURE";
+    }
+
+    if (file.resource_type.value == RESOURCE_TYPE_SHADER) {
+        return "SHADER";
+    }
+
+    if (file.resource_type.value == RESOURCE_TYPE_ANIMATION) {
+        return "ANIMATION";
+    }
+
+    return "";
+}
+
 bool WriteBytes(MountTable &table, const char *path, const std::vector<std::uint8_t> &bytes) {
     FileWriteRequest request{};
     request.mount = MountId(MOUNT_ID);
@@ -572,12 +722,6 @@ bool ReadFile(MountTable &table, const char *path, std::vector<std::uint8_t> *ou
     return true;
 }
 
-bool ValidateHeader(const std::vector<std::uint8_t> &bytes, std::string_view expected_kind) {
-    const std::string text(bytes.begin(), bytes.end());
-    const std::string header = "YUASSET " + std::string(expected_kind) + " 1";
-    return Contains(text, header);
-}
-
 bool SceneReferencesRequiredAssets(const std::vector<std::uint8_t> &scene_bytes) {
     const std::string scene(scene_bytes.begin(), scene_bytes.end());
     if (!Contains(scene, "m0=Mesh/Cube.yumesh")) {
@@ -602,6 +746,10 @@ bool SceneReferencesRequiredAssets(const std::vector<std::uint8_t> &scene_bytes)
 
     if (!Contains(scene, "prog=Shader/RuntimeProgram.yuprogram")) {
         return FailStep("missing shader dependency");
+    }
+
+    if (!Contains(scene, "cam=perspective")) {
+        return FailStep("missing camera dependency");
     }
 
     return Contains(scene, "anim=Animation/Spin.yuanim");
@@ -1085,7 +1233,8 @@ bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
 
     graph.loader_used_file_mount = true;
     ++graph.file_read_count;
-    if (!ValidateHeader(scene_bytes, "SCENE")) {
+    RuntimeAssetValidationResult scene_validation{};
+    if (ValidateRuntimeAssetBytes(scene_bytes, "SCENE", &scene_validation) != RuntimeAssetDataStatus::Success) {
         return FailStep("scene references failed");
     }
 
@@ -1126,6 +1275,12 @@ bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
         }
 
         ++graph.file_read_count;
+        RuntimeAssetValidationResult asset_validation{};
+        const std::string_view expected_kind = ExpectedKindForFile(files[index]);
+        if (ValidateRuntimeAssetBytes(bytes, expected_kind, &asset_validation) != RuntimeAssetDataStatus::Success) {
+            return FailStep("validate asset file failed");
+        }
+
         if (!RegisterResourcePayload(registry, manager, files[index], bytes, &graph.assets[index])) {
             return FailStep("register resource payload failed");
         }
@@ -1134,7 +1289,7 @@ bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
     }
 
     graph.resource_payloads_stored = graph.resource_payload_count == files.size() + 1U;
-    graph.dependency_count = 8U;
+    graph.dependency_count = scene_validation.dependency_count + 1U;
 
     RuntimeAssetRhiDevice device;
     if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
@@ -1192,6 +1347,197 @@ int RuntimeAssetDataGeneratorWritesDeterministicFilesAndHashes() {
 
     if (!SceneReferencesRequiredAssets(first_scene)) {
         return Fail("scene did not reference required asset families");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataFormatHeaderRejectsUnsupportedVersion() {
+    LoadedGraph graph{};
+    graph.resource_payload_count = 99U;
+    graph.render_capture_completed = true;
+
+    const std::vector<std::uint8_t> bytes = BytesFromString(
+        "YUASSET MESH 2\n"
+        "id=bad_mesh\n"
+        "kind=cube\n"
+        "vertices=24\n"
+        "indices=36\n");
+    RuntimeAssetValidationResult result{};
+    const RuntimeAssetDataStatus status = ValidateRuntimeAssetBytes(bytes, "MESH", &result);
+    if (status != RuntimeAssetDataStatus::UnsupportedVersion) {
+        return Fail("unsupported version was not rejected");
+    }
+
+    if (graph.resource_payload_count != 99U) {
+        return Fail("validator mutated resource output state");
+    }
+
+    if (!graph.render_capture_completed) {
+        return Fail("validator mutated render output state");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataValidatorRejectsInvalidBoundsWithoutOutputs() {
+    LoadedGraph graph{};
+    graph.file_read_count = 77U;
+    graph.resource_payload_count = 88U;
+
+    const std::vector<std::uint8_t> bytes = BytesFromString(
+        "YUASSET MESH 1\n"
+        "id=bad_bounds\n"
+        "kind=cube\n"
+        "vertices=0\n"
+        "indices=36\n"
+        "bounds=-1,-1,-1,1,1,1\n");
+    RuntimeAssetValidationResult result{};
+    const RuntimeAssetDataStatus status = ValidateRuntimeAssetBytes(bytes, "MESH", &result);
+    if (status != RuntimeAssetDataStatus::InvalidBounds) {
+        return Fail("invalid mesh bounds were not rejected");
+    }
+
+    if (graph.file_read_count != 77U) {
+        return Fail("invalid bounds mutated file read count");
+    }
+
+    if (graph.resource_payload_count != 88U) {
+        return Fail("invalid bounds mutated resource outputs");
+    }
+
+    if (graph.frame_result.output_draw_count != 0U) {
+        return Fail("invalid bounds produced frame draws");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs() {
+    const std::vector<std::uint8_t> missing_bytes = BytesFromString(
+        "YUASSET SCENE 1\n"
+        "m1=Mesh/Cylinder.yumesh\n"
+        "m2=Mesh/Cone.yumesh\n"
+        "mat=Material/Shared.yumat\n"
+        "t0=Texture/Albedo.yutex\n"
+        "prog=Shader/RuntimeProgram.yuprogram\n"
+        "cam=perspective\n"
+        "anim=Animation/Spin.yuanim\n");
+    RuntimeAssetValidationResult missing_result{};
+    const RuntimeAssetDataStatus missing_status =
+        ValidateRuntimeAssetBytes(missing_bytes, "SCENE", &missing_result);
+    if (missing_status != RuntimeAssetDataStatus::MissingDependency) {
+        return Fail("missing dependency was not rejected");
+    }
+
+    const std::vector<std::uint8_t> duplicate_bytes = BytesFromString(
+        "YUASSET SCENE 1\n"
+        "m0=Mesh/Cube.yumesh\n"
+        "m0=Mesh/Cube.yumesh\n"
+        "m1=Mesh/Cylinder.yumesh\n"
+        "m2=Mesh/Cone.yumesh\n"
+        "mat=Material/Shared.yumat\n"
+        "t0=Texture/Albedo.yutex\n"
+        "prog=Shader/RuntimeProgram.yuprogram\n"
+        "cam=perspective\n"
+        "anim=Animation/Spin.yuanim\n");
+    RuntimeAssetValidationResult duplicate_result{};
+    const RuntimeAssetDataStatus duplicate_status =
+        ValidateRuntimeAssetBytes(duplicate_bytes, "SCENE", &duplicate_result);
+    if (duplicate_status != RuntimeAssetDataStatus::DuplicateDependency) {
+        return Fail("duplicate dependency was not rejected");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataLoaderUsesFileResourcePathNotInMemoryStructs() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("LoaderPath"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    LoadedGraph graph{};
+    if (!LoadGraph(table, &graph)) {
+        return Fail("loaded graph failed");
+    }
+
+    if (!graph.loader_used_file_mount) {
+        return Fail("loader did not use file mount");
+    }
+
+    if (graph.file_read_count != FIXTURE_FILE_COUNT + 1U) {
+        return Fail("loader did not read expected file graph");
+    }
+
+    if (!graph.resource_payloads_stored) {
+        return Fail("resource payloads were not stored");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataSceneReferencesMeshMaterialTextureShader() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("SceneRefs"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    std::vector<std::uint8_t> scene_bytes{};
+    if (!ReadFile(table, SCENE_PATH, &scene_bytes)) {
+        return Fail("scene read failed");
+    }
+
+    RuntimeAssetValidationResult result{};
+    const RuntimeAssetDataStatus status = ValidateRuntimeAssetBytes(scene_bytes, "SCENE", &result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return Fail("scene dependency validator failed");
+    }
+
+    if (result.dependency_count != 8U) {
+        return Fail("scene dependency count changed");
+    }
+
+    if (!SceneReferencesRequiredAssets(scene_bytes)) {
+        return Fail("scene did not reference required asset families");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataLoadCreatesRenderSceneRuntimeRecords() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("RuntimeRecords"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    LoadedGraph graph{};
+    if (!LoadGraph(table, &graph)) {
+        return Fail("loaded graph failed");
+    }
+
+    if (graph.frame_result.output_draw_count != 3U) {
+        return Fail("RenderScene runtime draw count changed");
+    }
+
+    if (graph.capture_result.entity_report_count != 3U) {
+        return Fail("RenderScene entity report count changed");
+    }
+
+    if (graph.capture_result.material_texture_slot_report_count != 3U) {
+        return Fail("RenderScene material texture slot count changed");
     }
 
     return 0;
@@ -1280,7 +1626,7 @@ int RuntimeAssetDataDoesNotDependOnEditorWebUiInputOrGdiViewer() {
         return Fail("unexpected file read count");
     }
 
-    if (graph.dependency_count != 8U) {
+    if (graph.dependency_count != 9U) {
         return Fail("dependency graph count was not recorded");
     }
 
@@ -1293,6 +1639,12 @@ int RuntimeAssetDataDoesNotDependOnEditorWebUiInputOrGdiViewer() {
 
 const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_GENERATOR, RuntimeAssetDataGeneratorWritesDeterministicFilesAndHashes},
+    {TEST_UNSUPPORTED_VERSION, RuntimeAssetDataFormatHeaderRejectsUnsupportedVersion},
+    {TEST_INVALID_BOUNDS, RuntimeAssetDataValidatorRejectsInvalidBoundsWithoutOutputs},
+    {TEST_INVALID_DEPENDENCY, RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs},
+    {TEST_LOADER_FILE_RESOURCE, RuntimeAssetDataLoaderUsesFileResourcePathNotInMemoryStructs},
+    {TEST_SCENE_REFERENCES, RuntimeAssetDataSceneReferencesMeshMaterialTextureShader},
+    {TEST_LOADED_RENDER_RECORDS, RuntimeAssetDataLoadCreatesRenderSceneRuntimeRecords},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},
     {TEST_NO_UPPER, RuntimeAssetDataDoesNotDependOnEditorWebUiInputOrGdiViewer},

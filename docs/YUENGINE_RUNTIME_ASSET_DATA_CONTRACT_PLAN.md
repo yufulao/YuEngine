@@ -1,6 +1,6 @@
 # YuEngine Runtime Asset Data Contract Plan
 
-Status: First smoke slice implemented; full validator/cook/load contract still open
+Status: First smoke and validator slices implemented; full cook/load contract still open
 Owner: Architecture
 Task: #73
 Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
@@ -43,14 +43,17 @@ animation, RenderScene, RenderCore, RHI, and capture floors. The repository also
 has current `RenderSceneRuntimeVisualSceneProofRoute` and RVF tests for the
 cube/cylinder/cone route.
 
-The first smoke gap is now closed by `YuRuntimeAssetDataClosedLoopTests`: a
+The first smoke and validator gaps are now partly closed by
+`YuRuntimeAssetDataClosedLoopTests`: a
 deterministic generator writes mesh/material/texture/shader/scene/animation
 records to disk, the loader reads them through `MountTable`, registers
 Resource/Asset records, builds RenderScene runtime records, and captures through
-RenderCore/RHI. The remaining gap is the production-quality validator/cook/load
-contract: no-mutation failure tests, full typed dependency validation, decoded
-texture payloads, shader bytecode ownership, animation clip sampling from disk,
-and production loader APIs.
+RenderCore/RHI. The validator smoke now rejects unsupported versions, invalid
+mesh bounds without output mutation, and missing/duplicate scene dependencies.
+The remaining gap is the production-quality cook/load contract: full typed
+dependency validation across every file family, decoded texture payloads, shader
+bytecode ownership, animation clip sampling from disk, and production loader
+APIs.
 
 The following evidence is useful but insufficient on its own:
 
@@ -133,6 +136,9 @@ C++ in-memory construction alone.
 | Proof | Status | Evidence |
 | --- | --- | --- |
 | Deterministic disk generation | PASS | `RuntimeAssetData_GeneratorWritesDeterministicFilesAndHashes` |
+| Unsupported version validation | PASS | `RuntimeAssetData_FormatHeaderRejectsUnsupportedVersion` |
+| Invalid bounds no-output validation | PASS | `RuntimeAssetData_ValidatorRejectsInvalidBoundsWithoutOutputs` |
+| Missing/duplicate dependency validation | PASS | `RuntimeAssetData_DependencyGraphRejectsMissingAndDuplicateRefs` |
 | File/VFS read path | PASS | fixture bytes are read through `MountTable` loose mount |
 | Resource/Asset registration | PASS | scene and all generated asset families register synthetic Resource descriptors and runtime Asset handles |
 | RenderScene records | PASS | loaded handles feed cube/cylinder/cone geometry, shared material, camera, and frame records |

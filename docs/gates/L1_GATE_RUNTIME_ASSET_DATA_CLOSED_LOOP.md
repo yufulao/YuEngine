@@ -1,8 +1,8 @@
 # L1-GATE: Runtime Asset Data Closed Loop
 
-Status: First smoke slice implemented
+Status: First smoke and validator slices implemented
 Requested decision: `FIRST_SLICE_CONTINUE`
-Current decision: `FIRST_SLICE_IMPLEMENTED_WITH_VALIDATOR_GAPS`
+Current decision: `FIRST_SLICE_IMPLEMENTED_WITH_COOK_LOAD_GAPS`
 Owner: Architecture
 Task: #73
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
@@ -56,10 +56,12 @@ Current RVF work proves several useful runtime value floors:
   artifacts.
 
 Those facts did not prove a runtime asset/data contract by themselves. The first
-RuntimeAssetData smoke slice now loads the canonical scene from generated disk
-files through File/VFS, Resource, Asset, RenderScene, RenderCore, and RHI before
-capture. The remaining work is the full format validator, cook/load API, decoded
-payload, shader bytecode, and disk animation sampling contract.
+RuntimeAssetData smoke and validator slices now load the canonical scene from
+generated disk files through File/VFS, Resource, Asset, RenderScene, RenderCore,
+and RHI before capture. They also reject unsupported versions, invalid mesh
+bounds, and missing/duplicate scene dependencies before runtime output
+mutation. The remaining work is the full cook/load API, decoded payload, shader
+bytecode, and disk animation sampling contract.
 
 ## Owns
 
@@ -158,11 +160,11 @@ Current first-slice status:
 | Proof | Status |
 | --- | --- |
 | 1. deterministic disk files | PASS |
-| 2. unsupported-version no-mutation validator | OPEN |
-| 3. invalid-bounds no-output validator | OPEN |
-| 4. dependency missing/duplicate validator | OPEN |
+| 2. unsupported-version no-mutation validator | PASS |
+| 3. invalid-bounds no-output validator | PASS |
+| 4. dependency missing/duplicate validator | PASS |
 | 5. loader uses File/VFS/Resource | PASS |
-| 6. scene references mesh/material/texture/shader | PASS for smoke; camera/animation need fuller typed refs |
+| 6. scene references mesh/material/texture/shader | PASS for smoke; camera/animation are checked as scene tokens and need fuller typed descriptor records |
 | 7. loaded data creates RenderScene runtime records | PASS |
 | 8. RenderCore/RHI capture | PASS |
 | 9. CPU oracle guard | PASS |
@@ -271,7 +273,7 @@ This gate is ready for the next implementation slice when:
 
 1. this document and the paired plan are committed;
 2. both documents record the current decision
-   `FIRST_SLICE_IMPLEMENTED_WITH_VALIDATOR_GAPS`;
+   `FIRST_SLICE_IMPLEMENTED_WITH_COOK_LOAD_GAPS`;
 3. task #71 and task #72 are listed as prerequisites;
 4. data families cover mesh, material, texture descriptor/payload reference,
    shader/program descriptor, scene data, and animation clip/sampled transform
