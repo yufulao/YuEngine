@@ -11,7 +11,7 @@ This document records what the existing runtime visual work proves today and wha
 
 | Item | Result |
 | --- | --- |
-| Audited revision | `origin/main @ 9def0c008a823ce38c97e3f82cdee146d4343153` |
+| Audited revision | `origin/main @ 883692aff9dbf6ce3c92ea17a702f3a74bc24880` |
 | Clean checkout path | `C:\Steam\steamapps\common\TouhouNewWorld\YuEngineCleanGate` |
 | Stale `UiWebEditor*` test-source blocker | Fixed by `41708bf Remove stale UI web editor tests` |
 | Configure | `cmake --preset windows-fast-gate` PASS |
