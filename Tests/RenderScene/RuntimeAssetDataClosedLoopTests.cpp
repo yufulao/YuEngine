@@ -449,14 +449,34 @@ const char *StatusName(RuntimeAssetDataStatus status) {
             return "InvalidHeader";
         case RuntimeAssetDataStatus::UnsupportedVersion:
             return "UnsupportedVersion";
+        case RuntimeAssetDataStatus::InvalidKind:
+            return "InvalidKind";
+        case RuntimeAssetDataStatus::InvalidSchema:
+            return "InvalidSchema";
+        case RuntimeAssetDataStatus::InvalidCount:
+            return "InvalidCount";
+        case RuntimeAssetDataStatus::InvalidSize:
+            return "InvalidSize";
+        case RuntimeAssetDataStatus::InvalidAlignment:
+            return "InvalidAlignment";
         case RuntimeAssetDataStatus::InvalidBounds:
             return "InvalidBounds";
+        case RuntimeAssetDataStatus::InvalidDependency:
+            return "InvalidDependency";
         case RuntimeAssetDataStatus::MissingDependency:
             return "MissingDependency";
         case RuntimeAssetDataStatus::DuplicateDependency:
             return "DuplicateDependency";
+        case RuntimeAssetDataStatus::TypeMismatch:
+            return "TypeMismatch";
+        case RuntimeAssetDataStatus::HashMismatch:
+            return "HashMismatch";
+        case RuntimeAssetDataStatus::UnsupportedFieldValue:
+            return "UnsupportedFieldValue";
         case RuntimeAssetDataStatus::CapacityExceeded:
             return "CapacityExceeded";
+        case RuntimeAssetDataStatus::BudgetExceeded:
+            return "BudgetExceeded";
         case RuntimeAssetDataStatus::FileReadFailed:
             return "FileReadFailed";
         case RuntimeAssetDataStatus::ResourceRegistrationFailed:
