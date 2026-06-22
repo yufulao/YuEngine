@@ -1,8 +1,8 @@
 # L1-GATE: Runtime Asset Data Closed Loop
 
-Status: Proposed architecture/reference gate
-Requested decision: `REFERENCE_GATE_REVIEW`
-Current decision: `REVIEW_ONLY_NOT_IMPLEMENTATION_APPROVED`
+Status: First smoke slice implemented
+Requested decision: `FIRST_SLICE_CONTINUE`
+Current decision: `FIRST_SLICE_IMPLEMENTED_WITH_VALIDATOR_GAPS`
 Owner: Architecture
 Task: #73
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
@@ -16,8 +16,8 @@ Depends on:
 
 ## Purpose
 
-Define the review-only L1 gate for a disk-backed runtime asset/data closed loop.
-This gate exists so generated runtime visual assets become stable YuEngine data
+Define the L1 gate record for a disk-backed runtime asset/data closed loop. This
+gate exists so generated runtime visual assets become stable YuEngine data
 instead of test-only in-memory structures, CPU helper images, or viewer output.
 
 The required closed loop is:
@@ -30,8 +30,8 @@ fixture generator writes disk files
 -> RenderCore/RHI renders and captures the cube/cylinder/cone scene
 ```
 
-This gate does not authorize implementation. It defines the acceptance shape
-that a later first-slice implementation gate must satisfy.
+This gate now records the first smoke implementation slice. It still defines the
+acceptance shape for the remaining validator/cook/load slices.
 
 ## Layer
 
@@ -55,11 +55,11 @@ Current RVF work proves several useful runtime value floors:
 - the RVF tests exercise a cube/cylinder/cone route and emit helper image
   artifacts.
 
-Those facts do not yet prove a runtime asset/data contract. The current route
-can still be assembled by C++ fixture structs, CPU helper artifacts, and
-viewer-side output. This gate requires the same scene to be loaded from runtime
-data files through approved engine paths before it counts as L1 visual data
-closure.
+Those facts did not prove a runtime asset/data contract by themselves. The first
+RuntimeAssetData smoke slice now loads the canonical scene from generated disk
+files through File/VFS, Resource, Asset, RenderScene, RenderCore, and RHI before
+capture. The remaining work is the full format validator, cook/load API, decoded
+payload, shader bytecode, and disk animation sampling contract.
 
 ## Owns
 
@@ -127,7 +127,7 @@ still carry all of the rows above.
 
 ## Required Closed-Loop Proof
 
-A future implementation slice must prove the following in order:
+The implementation must prove the following in order:
 
 1. `RuntimeAssetData_GeneratorWritesDeterministicFilesAndHashes` writes the
    fixture graph to disk twice and verifies byte size/hash equality.
@@ -153,9 +153,24 @@ A future implementation slice must prove the following in order:
     editor, Web, UI, input, GDI viewer, or software raster dependency is part of
     the closed-loop proof.
 
+Current first-slice status:
+
+| Proof | Status |
+| --- | --- |
+| 1. deterministic disk files | PASS |
+| 2. unsupported-version no-mutation validator | OPEN |
+| 3. invalid-bounds no-output validator | OPEN |
+| 4. dependency missing/duplicate validator | OPEN |
+| 5. loader uses File/VFS/Resource | PASS |
+| 6. scene references mesh/material/texture/shader | PASS for smoke; camera/animation need fuller typed refs |
+| 7. loaded data creates RenderScene runtime records | PASS |
+| 8. RenderCore/RHI capture | PASS |
+| 9. CPU oracle guard | PASS |
+| 10. no editor/Web/UI/input/GDI viewer dependency | PASS |
+
 ## Candidate First Slice
 
-This gate recommends this first slice shape after review lanes close:
+This gate recommends this remaining slice shape:
 
 | ID | Work item | Acceptance direction |
 | --- | --- | --- |
@@ -213,9 +228,9 @@ Rejected proof:
 - direct D3D sample bypasses;
 - silent skip for semantic data/loader/render gaps.
 
-## Review Routing
+## Remaining Slice Routing
 
-Before any implementation task is created:
+Before any remaining implementation slice is created:
 
 1. Architecture review confirms this gate is the correct L1 data contract
    boundary and that animation is either in-scope or explicitly blocked.
@@ -252,11 +267,11 @@ The following are blocking violations:
 
 ## Exit Criteria
 
-This gate is ready for review when:
+This gate is ready for the next implementation slice when:
 
 1. this document and the paired plan are committed;
-2. both documents keep the current decision
-   `REVIEW_ONLY_NOT_IMPLEMENTATION_APPROVED`;
+2. both documents record the current decision
+   `FIRST_SLICE_IMPLEMENTED_WITH_VALIDATOR_GAPS`;
 3. task #71 and task #72 are listed as prerequisites;
 4. data families cover mesh, material, texture descriptor/payload reference,
    shader/program descriptor, scene data, and animation clip/sampled transform
@@ -264,8 +279,8 @@ This gate is ready for review when:
 5. common file format rules cover version/header, bounds, dependency list,
    deterministic identity/hash/size, coordinate/unit/handedness, errors, and
    validator behavior;
-6. minimum proof requires generator disk files, File/VFS/Resource read path,
-   validator/cook/load, RenderScene/RenderCore/RHI records, and
+6. minimum proof keeps generator disk files, File/VFS/Resource read path,
+   Resource/Asset registration, RenderScene/RenderCore/RHI records, and
    cube/cylinder/cone capture;
 7. hard blocks prevent current helper/viewer/oracle paths from being promoted
    to final acceptance.

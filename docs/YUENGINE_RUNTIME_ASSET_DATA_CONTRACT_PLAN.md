@@ -1,6 +1,6 @@
 # YuEngine Runtime Asset Data Contract Plan
 
-Status: Draft L1 contract plan
+Status: First smoke slice implemented; full validator/cook/load contract still open
 Owner: Architecture
 Task: #73
 Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
@@ -9,6 +9,8 @@ Prerequisites:
 - task #71 restores clean configure, build, and test for the main line.
 - task #72 records which current RVF layers can be reused and which must be
   reworked before they count as runtime asset/data evidence.
+- user scope correction approved continuing with the first RuntimeAssetData
+  implementation slice after the review-only plan and matrix landed.
 
 ## Purpose
 
@@ -41,9 +43,14 @@ animation, RenderScene, RenderCore, RHI, and capture floors. The repository also
 has current `RenderSceneRuntimeVisualSceneProofRoute` and RVF tests for the
 cube/cylinder/cone route.
 
-The remaining gap is that a runtime visual pass can still be assembled from
-test-side structs and helper artifacts instead of proving that YuEngine can
-consume runtime asset/data files. This plan blocks that shortcut.
+The first smoke gap is now closed by `YuRuntimeAssetDataClosedLoopTests`: a
+deterministic generator writes mesh/material/texture/shader/scene/animation
+records to disk, the loader reads them through `MountTable`, registers
+Resource/Asset records, builds RenderScene runtime records, and captures through
+RenderCore/RHI. The remaining gap is the production-quality validator/cook/load
+contract: no-mutation failure tests, full typed dependency validation, decoded
+texture payloads, shader bytecode ownership, animation clip sampling from disk,
+and production loader APIs.
 
 The following evidence is useful but insufficient on its own:
 
@@ -116,6 +123,25 @@ Minimum generated fixture set:
 The generator must be deterministic under repeated runs from the same source
 inputs. A required test must compare output file sizes and hashes across two
 fresh output directories.
+
+## First Smoke Slice
+
+The first implementation slice is intentionally narrow and test-owned. It
+establishes that the lower runtime route can no longer be claimed from pure
+C++ in-memory construction alone.
+
+| Proof | Status | Evidence |
+| --- | --- | --- |
+| Deterministic disk generation | PASS | `RuntimeAssetData_GeneratorWritesDeterministicFilesAndHashes` |
+| File/VFS read path | PASS | fixture bytes are read through `MountTable` loose mount |
+| Resource/Asset registration | PASS | scene and all generated asset families register synthetic Resource descriptors and runtime Asset handles |
+| RenderScene records | PASS | loaded handles feed cube/cylinder/cone geometry, shared material, camera, and frame records |
+| RenderCore/RHI capture | PASS | `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi` |
+| CPU oracle guard | PASS | `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` |
+| Upper-layer dependency guard | PASS | `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` |
+
+This slice is not a complete asset system. It leaves the hard format, validator,
+cook, decoded payload, shader bytecode, and animation-clip loader work open.
 
 ## Validator, Cook, Load, Render
 
@@ -202,14 +228,14 @@ The following are blocking violations:
 
 ## Exit Criteria
 
-This plan is ready for review when:
+This plan is ready for the next implementation slice when:
 
-1. the paired gate exists and stays `REVIEW_ONLY_NOT_IMPLEMENTATION_APPROVED`;
-2. task #71 and task #72 are recorded as prerequisites;
+1. the paired gate records that the first smoke slice has been implemented;
+2. task #71 and task #72 are recorded as prerequisites and remain passing;
 3. every runtime data family lists version/header, bounds, dependencies,
    deterministic identity/hash/size, coordinate rules, statuses, and validator
    behavior;
-4. the minimal generator -> File/VFS/Resource -> validator/cook/load ->
-   RenderScene/RenderCore/RHI -> capture loop is explicit;
+4. the minimal generator -> File/VFS/Resource -> Resource/Asset ->
+   RenderScene/RenderCore/RHI -> capture loop is proven by focused tests;
 5. hard blocks prevent current RVF helper output or viewer output from being
    counted as the final proof.
