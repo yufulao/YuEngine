@@ -11,6 +11,7 @@ Related:
 - `docs/YUENGINE_UI_FRAMEWORK_EDITOR_PLAN.md`
 - `docs/YUENGINE_SCENE_EDITOR_PLAN.md`
 - `docs/YUENGINE_ANIMATION_EDITOR_PLAN.md`
+- `docs/YUENGINE_RESOURCE_BROWSER_IMPORT_COOK_DIAGNOSTICS_SCOPE.md`
 
 ## 1. Correction
 
@@ -161,7 +162,7 @@ The editor plan order is:
 L0/L1 runtime foundation only
 -> Editor visual capability correction
 Engine Preview Host
--> Resource Browser / Import Settings
+-> Resource Browser / Import Settings scope
 -> RenderScene / Material / Texture / Shader preview path
 -> Scene runtime format and viewport
 -> Scene Editor
@@ -240,6 +241,8 @@ The shared editor foundation is complete only when:
 - editor tooling can control an engine preview session
 - preview frames or headless runtime outputs come from YuEngine systems
 - resources are resolved through engine Resource/Package/File paths
+- resource preview requests come from the Resource Browser/import/cook scope
+  after validation, not from editor-only fake assets
 - camera/viewport controls affect engine output
 - the canonical cube/cylinder/cone scene proof can be captured through the
   preview host, or the exact missing runtime layer is reported as a blocker

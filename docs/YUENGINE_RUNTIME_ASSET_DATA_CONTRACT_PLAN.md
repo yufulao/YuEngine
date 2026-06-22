@@ -4,6 +4,7 @@ Status: RuntimeAsset module, validator, and cook/decode smoke slices implemented
 Owner: Architecture
 Task: #73
 Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
+Resource Browser scope: `docs/YUENGINE_RESOURCE_BROWSER_IMPORT_COOK_DIAGNOSTICS_SCOPE.md`
 Prerequisites:
 
 - task #71 restores clean configure, build, and test for the main line.
@@ -203,6 +204,10 @@ This plan strengthens, but does not replace:
 
 The runtime asset/data contract is the missing data spine for the visual route.
 Editor preview host work can consume this route later, but cannot define it.
+Resource Browser/import/cook/diagnostics work is also downstream of this
+contract: it may display source/import/cook state and route commands, but it
+must not redefine RuntimeAssetData file families, validator semantics, Resource
+or Asset ownership, or runtime output records.
 
 ## First Review Questions
 
