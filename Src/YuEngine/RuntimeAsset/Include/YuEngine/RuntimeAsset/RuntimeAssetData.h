@@ -112,13 +112,21 @@ struct RuntimeAssetLoadedFile final {
     yuengine::resource::ResourceHandle resource;
     yuengine::asset::AssetHandle asset;
     RuntimeAssetFileKind kind = RuntimeAssetFileKind::Unknown;
+    yuengine::resource::ResourceTypeId resource_type;
+    yuengine::asset::AssetTypeId asset_type;
     std::uint64_t stable_id = 0U;
     std::uint64_t hash = 0U;
     std::uint32_t byte_count = 0U;
     std::uint64_t cache_payload_id = 0U;
+    std::uint64_t decode_plan_payload_id = 0U;
     std::uint64_t decode_plan_id = 0U;
     std::uint64_t decode_result_id = 0U;
     std::uint64_t decoded_payload_id = 0U;
+    yuengine::resource::ResourceDecodePlanAssetClass decode_asset_class =
+        yuengine::resource::ResourceDecodePlanAssetClass::Unknown;
+    yuengine::resource::ResourceDecodeResultClass decode_result_class =
+        yuengine::resource::ResourceDecodeResultClass::Unknown;
+    std::uint32_t decoded_byte_count = 0U;
     bool cache_payload_stored = false;
     bool decode_plan_created = false;
     bool decode_result_committed = false;

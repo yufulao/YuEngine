@@ -421,6 +421,7 @@ RuntimeAssetDataStatus StoreDecodedPayload(
         return RuntimeAssetDataStatus::DecodedPayloadStoreFailed;
     }
 
+    out_record->decode_plan_payload_id = plan_payload_id;
     out_record->decode_plan_id = plan_request.decode_plan_id;
     out_record->decode_result_id = result_request.decode_result_id;
     out_record->decoded_payload_id = decoded_request.decoded_payload_id;
@@ -446,9 +447,14 @@ RuntimeAssetDataStatus RegisterLoadedFile(
 
     RuntimeAssetLoadedFile record{};
     record.kind = desc.kind;
+    record.resource_type = desc.resource_type;
+    record.asset_type = desc.asset_type;
     record.stable_id = desc.stable_id;
     record.hash = HashRuntimeAssetDataBytes(bytes);
     record.byte_count = static_cast<std::uint32_t>(bytes.size());
+    record.decode_asset_class = desc.decode_asset_class;
+    record.decode_result_class = desc.decode_result_class;
+    record.decoded_byte_count = desc.decoded_byte_count;
 
     ResourceDescriptor resource_descriptor{};
     resource_descriptor.type = desc.resource_type;

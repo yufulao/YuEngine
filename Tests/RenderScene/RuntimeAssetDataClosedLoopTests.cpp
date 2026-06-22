@@ -14,6 +14,8 @@
 
 #include "YuEngine/Asset/AssetDescriptor.h"
 #include "YuEngine/Asset/AssetManager.h"
+#include "YuEngine/Asset/AssetRecord.h"
+#include "YuEngine/Asset/AssetStatus.h"
 #include "YuEngine/File/FileWriteResult.h"
 #include "YuEngine/File/MountTable.h"
 #include "YuEngine/RenderCore/RenderCameraProjectionKind.h"
@@ -24,6 +26,8 @@
 #include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
 #include "YuEngine/Resource/ResourceCachePayloadRequest.h"
 #include "YuEngine/Resource/ResourceCachePayloadStatus.h"
+#include "YuEngine/Resource/ResourceDecodedPayloadRequest.h"
+#include "YuEngine/Resource/ResourceDecodedPayloadStatus.h"
 #include "YuEngine/Resource/ResourceDescriptor.h"
 #include "YuEngine/Resource/ResourceLoadCommitRequest.h"
 #include "YuEngine/Resource/ResourceLogicalKey.h"
@@ -32,6 +36,7 @@
 #include "YuEngine/Rhi/NullRhiDevice.h"
 #include "YuEngine/Rhi/RhiBufferDesc.h"
 #include "YuEngine/Rhi/RhiColorTargetDesc.h"
+#include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiDeviceDesc.h"
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiInputLayoutDesc.h"
@@ -41,12 +46,18 @@
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
+#include "YuEngine/Streaming/ResourceDecodedTextureBridge.h"
+#include "YuEngine/Streaming/ResourceDecodedTextureBridgeRequest.h"
+#include "YuEngine/Streaming/ResourceDecodedTextureBridgeResult.h"
+#include "YuEngine/Streaming/ResourceDecodedTextureBridgeStatus.h"
 
 namespace {
 using yuengine::asset::AssetDescriptor;
 using yuengine::asset::AssetHandle;
 using yuengine::asset::AssetManager;
+using yuengine::asset::AssetRecord;
 using yuengine::asset::AssetRegistrationResult;
+using yuengine::asset::AssetStatus;
 using yuengine::asset::AssetTypeId;
 using yuengine::file::FileReadResult;
 using yuengine::file::FileStatus;
@@ -82,6 +93,8 @@ using yuengine::renderscene::RenderSceneThreePrimitiveCaptureStatus;
 using yuengine::renderscene::RenderSceneThreePrimitiveEntityRequest;
 using yuengine::resource::ResourceCachePayloadRequest;
 using yuengine::resource::ResourceCachePayloadStatus;
+using yuengine::resource::ResourceDecodedPayloadRequest;
+using yuengine::resource::ResourceDecodedPayloadStatus;
 using yuengine::resource::ResourceDescriptor;
 using yuengine::resource::ResourceHandle;
 using yuengine::resource::ResourceLoadCommitRequest;
@@ -105,6 +118,10 @@ using yuengine::runtimeasset::RuntimeAssetGraphLoadResult;
 using yuengine::runtimeasset::RuntimeAssetLoadedFile;
 using yuengine::runtimeasset::RuntimeAssetValidationResult;
 using yuengine::runtimeasset::ValidateRuntimeAssetDataBytes;
+using yuengine::streaming::ResourceDecodedTextureBridge;
+using yuengine::streaming::ResourceDecodedTextureBridgeRequest;
+using yuengine::streaming::ResourceDecodedTextureBridgeResult;
+using yuengine::streaming::ResourceDecodedTextureBridgeStatus;
 using yuengine::rhi::IRhiDevice;
 using yuengine::rhi::NullRhiDevice;
 using yuengine::rhi::RhiBufferDesc;
@@ -158,6 +175,10 @@ constexpr const char *TEST_LOADED_RENDER_RECORDS =
     "RuntimeAssetData_LoadCreatesRenderSceneRuntimeRecords";
 constexpr const char *TEST_DECODED_PAYLOADS =
     "RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture";
+constexpr const char *TEST_TEXTURE_MATERIAL_SLOT_BRIDGE =
+    "RuntimeAssetData_DecodedTexturePayloadsDriveRhiMaterialSlots";
+constexpr const char *TEST_TEXTURE_MATERIAL_SLOT_BRIDGE_FAILURES =
+    "RuntimeAssetData_TextureMaterialSlotBridgeFailuresDoNotMutateRenderSceneOutputs";
 constexpr const char *TEST_RUNTIME_DEPENDENCIES =
     "RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges";
 constexpr const char *TEST_LOAD_RENDER =
@@ -175,6 +196,10 @@ constexpr std::uint64_t FNV_PRIME = 1099511628211ULL;
 constexpr std::uint32_t MATERIAL_ID = 4101U;
 constexpr std::uint32_t FRAME_ID = 9001U;
 constexpr std::uint32_t SEGMENT_COUNT = 8U;
+constexpr std::uint32_t RUNTIME_TEXTURE_WIDTH = 2U;
+constexpr std::uint32_t RUNTIME_TEXTURE_HEIGHT = 2U;
+constexpr std::uint32_t RUNTIME_TEXTURE_BYTE_COUNT = 16U;
+constexpr std::uint32_t RUNTIME_TEXTURE_SLOT_COUNT = 3U;
 constexpr std::uint32_t RESOURCE_TYPE_MESH = 101U;
 constexpr std::uint32_t RESOURCE_TYPE_MATERIAL = 102U;
 constexpr std::uint32_t RESOURCE_TYPE_TEXTURE = 103U;
@@ -203,13 +228,35 @@ struct LoadedGraph final {
     std::size_t resource_payload_count = 0U;
     std::size_t decoded_payload_count = 0U;
     std::size_t dependency_count = 0U;
+    std::size_t runtime_texture_upload_count = 0U;
+    std::size_t material_texture_slot_count = 0U;
     RenderSceneRuntimeFrameResult frame_result{};
     RenderSceneThreePrimitiveCaptureResult capture_result{};
     bool scene_references_mesh_material_texture_shader = false;
     bool loader_used_file_mount = false;
     bool resource_payloads_stored = false;
+    bool material_slots_from_decoded_payloads = false;
     bool render_capture_completed = false;
     bool cpu_oracle_allowed = false;
+};
+
+enum class RuntimeTextureMaterialSlotBridgeStatus {
+    Success,
+    InvalidArgument,
+    InvalidLoadedTexture,
+    TextureBridgeFailed,
+    TextureReadyFailed,
+    AssetQueryFailed,
+    MaterialBuildFailed
+};
+
+struct RuntimeTextureMaterialSlotBridgeResult final {
+    RuntimeTextureMaterialSlotBridgeStatus status = RuntimeTextureMaterialSlotBridgeStatus::InvalidArgument;
+    ResourceDecodedTextureBridgeStatus texture_status = ResourceDecodedTextureBridgeStatus::Success;
+    ResourceDecodedPayloadStatus decoded_payload_status = ResourceDecodedPayloadStatus::Success;
+    RhiStatus rhi_status = RhiStatus::Success;
+    std::size_t runtime_texture_upload_count = 0U;
+    std::size_t material_texture_slot_count = 0U;
 };
 
 using TestFunction = int (*)();
@@ -783,23 +830,6 @@ bool CreateBuffer(
     return device.CreateBuffer(desc, empty_bytes, *out_handle) == RhiStatus::Success;
 }
 
-bool CreateTexture(IRhiDevice &device, RhiTextureHandle *out_handle) {
-    if (out_handle == nullptr) {
-        return false;
-    }
-
-    const std::array<std::uint8_t, 16U> texture_bytes{
-        255U, 0U, 0U, 255U,
-        0U, 255U, 0U, 255U,
-        0U, 0U, 255U, 255U,
-        255U, 255U, 255U, 255U};
-    RhiTextureDesc desc{};
-    desc.format = RhiFormat::Rgba8Unorm;
-    desc.extent = {2U, 2U};
-    return device.CreateTexture(desc, std::span<const std::uint8_t>(texture_bytes.data(), texture_bytes.size()), *out_handle) ==
-        RhiStatus::Success;
-}
-
 bool CreateSampler(IRhiDevice &device, RhiSamplerHandle *out_handle) {
     if (out_handle == nullptr) {
         return false;
@@ -809,6 +839,60 @@ bool CreateSampler(IRhiDevice &device, RhiSamplerHandle *out_handle) {
     desc.linear_filter = false;
     desc.clamp_to_edge = true;
     return device.CreateSampler(desc, *out_handle) == RhiStatus::Success;
+}
+
+RhiTextureDesc RuntimeTextureDesc() {
+    RhiTextureDesc desc{};
+    desc.format = RhiFormat::Rgba8Unorm;
+    desc.extent = {RUNTIME_TEXTURE_WIDTH, RUNTIME_TEXTURE_HEIGHT};
+    return desc;
+}
+
+bool IsLoadedRuntimeTexture(const RuntimeAssetLoadedFile &file) {
+    if (file.kind != RuntimeAssetFileKind::Texture) {
+        return false;
+    }
+
+    if (!file.resource.IsValid() || !file.asset.IsValid()) {
+        return false;
+    }
+
+    if (file.resource_type.value != RESOURCE_TYPE_TEXTURE || file.asset_type.value != ASSET_TYPE_TEXTURE) {
+        return false;
+    }
+
+    if (!file.decode_plan_created || !file.decode_result_committed || !file.decoded_payload_stored) {
+        return false;
+    }
+
+    if (file.decode_plan_payload_id == 0U || file.decode_plan_id == 0U ||
+        file.decode_result_id == 0U || file.decoded_payload_id == 0U) {
+        return false;
+    }
+
+    if (file.decode_asset_class != yuengine::resource::ResourceDecodePlanAssetClass::Texture) {
+        return false;
+    }
+
+    if (file.decode_result_class != yuengine::resource::ResourceDecodeResultClass::Texture) {
+        return false;
+    }
+
+    return file.decoded_byte_count == RUNTIME_TEXTURE_BYTE_COUNT;
+}
+
+ResourceDecodedPayloadRequest DecodedPayloadRequestFor(const RuntimeAssetLoadedFile &texture_file) {
+    ResourceDecodedPayloadRequest request{};
+    request.resource = texture_file.resource;
+    request.expected_type = texture_file.resource_type;
+    request.payload_id = texture_file.decode_plan_payload_id;
+    request.decode_plan_id = texture_file.decode_plan_id;
+    request.decode_result_id = texture_file.decode_result_id;
+    request.decoded_payload_id = texture_file.decoded_payload_id;
+    request.asset_class = texture_file.decode_asset_class;
+    request.result_class = texture_file.decode_result_class;
+    request.decoded_byte_count = texture_file.decoded_byte_count;
+    return request;
 }
 
 RhiVertexBufferView VertexView(RhiBufferHandle handle, std::size_t vertex_count) {
@@ -855,40 +939,89 @@ bool BuildGeometry(
     return status == RenderScenePrimitiveGeometryStatus::Success;
 }
 
-bool BuildMaterial(
+RuntimeTextureMaterialSlotBridgeResult BuildMaterial(
     IRhiDevice &device,
+    ResourceRegistry &registry,
+    AssetManager &manager,
     AssetHandle material_asset,
-    std::span<const AssetHandle> texture_assets,
+    std::span<const RuntimeAssetLoadedFile> texture_assets,
+    RhiTextureDesc texture_desc,
     RenderSceneRuntimeMaterialRecord *out_material) {
+    RuntimeTextureMaterialSlotBridgeResult result{};
     if (out_material == nullptr) {
-        return false;
+        return result;
     }
 
-    if (texture_assets.size() < 3U) {
-        return false;
+    if (texture_assets.size() < RUNTIME_TEXTURE_SLOT_COUNT) {
+        return result;
     }
 
     RhiPipelineHandle pipeline{};
     if (!CreatePipeline(device, &pipeline)) {
-        return false;
+        result.status = RuntimeTextureMaterialSlotBridgeStatus::InvalidArgument;
+        return result;
     }
 
-    std::array<RenderSceneRuntimeMaterialTextureSlot, 3U> slots{};
+    ResourceDecodedTextureBridge texture_bridge;
+    std::array<RenderSceneRuntimeMaterialTextureSlot, RUNTIME_TEXTURE_SLOT_COUNT> slots{};
     for (std::size_t index = 0U; index < slots.size(); ++index) {
+        const RuntimeAssetLoadedFile &texture_asset = texture_assets[index];
+        if (!IsLoadedRuntimeTexture(texture_asset)) {
+            result.status = RuntimeTextureMaterialSlotBridgeStatus::InvalidLoadedTexture;
+            return result;
+        }
+
+        std::array<std::uint8_t, RUNTIME_TEXTURE_BYTE_COUNT> scratch_bytes{};
         RhiTextureHandle texture{};
-        if (!CreateTexture(device, &texture)) {
-            return false;
+        ResourceDecodedTextureBridgeRequest bridge_request{};
+        bridge_request.resource_registry = &registry;
+        bridge_request.rhi_device = &device;
+        bridge_request.decoded_payload = DecodedPayloadRequestFor(texture_asset);
+        bridge_request.scratch_bytes = std::span<std::uint8_t>(scratch_bytes.data(), scratch_bytes.size());
+        bridge_request.texture_desc = texture_desc;
+        bridge_request.output_texture_handle = &texture;
+        bridge_request.staging_request_id = texture_asset.stable_id + 300000U;
+        bridge_request.upload_id = texture_asset.stable_id + 400000U;
+        bridge_request.sampled_texture_slot = static_cast<std::uint32_t>(index);
+        const ResourceDecodedTextureBridgeResult texture_result = texture_bridge.UploadTexture(bridge_request);
+        if (texture_result.status != ResourceDecodedTextureBridgeStatus::Success) {
+            result.status = RuntimeTextureMaterialSlotBridgeStatus::TextureBridgeFailed;
+            result.texture_status = texture_result.status;
+            result.decoded_payload_status = texture_result.decoded_payload_status;
+            result.rhi_status = texture_result.rhi_status;
+            return result;
+        }
+
+        if (manager.MarkTextureReady(texture_asset.asset, texture_result) != AssetStatus::Success) {
+            result.status = RuntimeTextureMaterialSlotBridgeStatus::TextureReadyFailed;
+            result.texture_status = texture_result.status;
+            result.decoded_payload_status = texture_result.decoded_payload_status;
+            result.rhi_status = texture_result.rhi_status;
+            return result;
+        }
+
+        AssetRecord texture_record{};
+        if (manager.QueryAsset(texture_asset.asset, &texture_record) != AssetStatus::Success) {
+            result.status = RuntimeTextureMaterialSlotBridgeStatus::AssetQueryFailed;
+            return result;
+        }
+
+        if (!texture_record.texture_ready.is_ready) {
+            result.status = RuntimeTextureMaterialSlotBridgeStatus::TextureReadyFailed;
+            return result;
         }
 
         RhiSamplerHandle sampler{};
         if (!CreateSampler(device, &sampler)) {
-            return false;
+            result.status = RuntimeTextureMaterialSlotBridgeStatus::InvalidArgument;
+            return result;
         }
 
         slots[index].slot = static_cast<std::uint32_t>(index);
-        slots[index].texture_asset = texture_assets[index];
-        slots[index].sampled_texture = RhiSampledTextureBinding{texture, static_cast<std::uint32_t>(index)};
+        slots[index].texture_asset = texture_asset.asset;
+        slots[index].sampled_texture = texture_record.texture_ready.sampled_texture;
         slots[index].sampler = RhiSamplerBinding{sampler, static_cast<std::uint32_t>(index)};
+        ++result.runtime_texture_upload_count;
     }
 
     RenderSceneRuntimeMaterialRequest request{};
@@ -899,7 +1032,14 @@ bool BuildMaterial(
 
     RenderSceneRuntimeMaterialBuilder builder;
     const RenderSceneRuntimeMaterialStatus status = builder.Build(request, out_material);
-    return status == RenderSceneRuntimeMaterialStatus::Success;
+    if (status != RenderSceneRuntimeMaterialStatus::Success) {
+        result.status = RuntimeTextureMaterialSlotBridgeStatus::MaterialBuildFailed;
+        return result;
+    }
+
+    result.material_texture_slot_count = out_material->texture_slot_count;
+    result.status = RuntimeTextureMaterialSlotBridgeStatus::Success;
+    return result;
 }
 
 bool BuildCamera(IRhiDevice &device, RenderSceneCameraBindingResult *out_camera) {
@@ -952,15 +1092,23 @@ WorldTransformState Transform(float x, float y, float z) {
 
 bool ExecuteLoadedRenderPath(
     IRhiDevice &device,
+    ResourceRegistry &registry,
+    AssetManager &manager,
     const std::array<RuntimeAssetLoadedFile, FIXTURE_FILE_COUNT> &assets,
     RenderSceneRuntimeFrameResult *out_frame_result,
-    RenderSceneThreePrimitiveCaptureResult *out_capture_result) {
+    RenderSceneThreePrimitiveCaptureResult *out_capture_result,
+    std::size_t *out_runtime_texture_upload_count,
+    std::size_t *out_material_texture_slot_count) {
     if (out_frame_result == nullptr) {
         return FailStep("null frame result output");
     }
 
     if (out_capture_result == nullptr) {
         return FailStep("null capture result output");
+    }
+
+    if (out_runtime_texture_upload_count == nullptr || out_material_texture_slot_count == nullptr) {
+        return FailStep("null material texture bridge count output");
     }
 
     RhiBufferHandle buffer_slot_guard{};
@@ -1029,15 +1177,25 @@ bool ExecuteLoadedRenderPath(
         return FailStep("build cone geometry failed");
     }
 
-    const std::array<AssetHandle, 3U> texture_assets{assets[4U].asset, assets[5U].asset, assets[6U].asset};
+    const std::array<RuntimeAssetLoadedFile, RUNTIME_TEXTURE_SLOT_COUNT> texture_assets{
+        assets[4U],
+        assets[5U],
+        assets[6U]};
     RenderSceneRuntimeMaterialRecord material{};
-    if (!BuildMaterial(
-            device,
-            assets[3U].asset,
-            std::span<const AssetHandle>(texture_assets.data(), texture_assets.size()),
-            &material)) {
+    const RuntimeTextureMaterialSlotBridgeResult material_result = BuildMaterial(
+        device,
+        registry,
+        manager,
+        assets[3U].asset,
+        std::span<const RuntimeAssetLoadedFile>(texture_assets.data(), texture_assets.size()),
+        RuntimeTextureDesc(),
+        &material);
+    if (material_result.status != RuntimeTextureMaterialSlotBridgeStatus::Success) {
         return FailStep("build material failed");
     }
+
+    *out_runtime_texture_upload_count = material_result.runtime_texture_upload_count;
+    *out_material_texture_slot_count = material_result.material_texture_slot_count;
 
     RenderSceneCameraBindingResult camera{};
     if (!BuildCamera(device, &camera)) {
@@ -1123,7 +1281,11 @@ bool ExecuteLoadedRenderPath(
     return true;
 }
 
-bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
+bool LoadRuntimeAssetRecords(
+    MountTable &table,
+    ResourceRegistry &registry,
+    AssetManager &manager,
+    LoadedGraph *out_graph) {
     if (out_graph == nullptr) {
         return FailStep("read scene failed");
     }
@@ -1135,8 +1297,6 @@ bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
         file_descs[index] = files[index].desc;
     }
 
-    ResourceRegistry registry;
-    AssetManager manager;
     RuntimeAssetGraphLoadRequest load_request{};
     load_request.mount_table = &table;
     load_request.mount = MountId(MOUNT_ID);
@@ -1168,15 +1328,43 @@ bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
     graph.dependency_count = load_result.resource_dependency_count + load_result.asset_dependency_count;
     graph.scene_references_mesh_material_texture_shader = load_result.scene_references_runtime_asset_families;
 
+    *out_graph = graph;
+    return true;
+}
+
+bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
+    if (out_graph == nullptr) {
+        return FailStep("read scene failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return false;
+    }
+
     RuntimeAssetRhiDevice device;
     if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
         return FailStep("initialize rhi failed");
     }
 
-    if (!ExecuteLoadedRenderPath(device, graph.assets, &graph.frame_result, &graph.capture_result)) {
+    if (!ExecuteLoadedRenderPath(
+            device,
+            registry,
+            manager,
+            graph.assets,
+            &graph.frame_result,
+            &graph.capture_result,
+            &graph.runtime_texture_upload_count,
+            &graph.material_texture_slot_count)) {
         return FailStep("execute loaded render path failed");
     }
 
+    graph.material_slots_from_decoded_payloads =
+        graph.runtime_texture_upload_count == RUNTIME_TEXTURE_SLOT_COUNT &&
+        graph.material_texture_slot_count == RUNTIME_TEXTURE_SLOT_COUNT &&
+        graph.capture_result.material_texture_slot_report_count == RUNTIME_TEXTURE_SLOT_COUNT;
     graph.render_capture_completed = graph.capture_result.capture_bytes_written > 0U;
     graph.cpu_oracle_allowed = graph.render_capture_completed;
     *out_graph = graph;
@@ -1593,6 +1781,10 @@ int RuntimeAssetDataLoadCreatesRenderSceneRuntimeRecords() {
         return Fail("RenderScene material texture slot count changed");
     }
 
+    if (!graph.material_slots_from_decoded_payloads) {
+        return Fail("RenderScene material slots bypassed decoded texture payloads");
+    }
+
     return 0;
 }
 
@@ -1630,6 +1822,241 @@ int RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture() {
 
     if (graph.assets[8U].decoded_payload_stored) {
         return Fail("animation payload was incorrectly marked decoded");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataDecodedTexturePayloadsDriveRhiMaterialSlots() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("DecodedTextureMaterialSlots"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    LoadedGraph graph{};
+    if (!LoadGraph(table, &graph)) {
+        return Fail("loaded graph failed");
+    }
+
+    if (!graph.material_slots_from_decoded_payloads) {
+        return Fail("material slots did not come from decoded texture payload uploads");
+    }
+
+    if (graph.runtime_texture_upload_count != RUNTIME_TEXTURE_SLOT_COUNT) {
+        return Fail("decoded texture payload upload count changed");
+    }
+
+    if (graph.material_texture_slot_count != RUNTIME_TEXTURE_SLOT_COUNT) {
+        return Fail("runtime material texture slot count changed");
+    }
+
+    if (graph.capture_result.material_texture_slot_report_count != RUNTIME_TEXTURE_SLOT_COUNT) {
+        return Fail("capture route did not receive runtime material texture slots");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataTextureMaterialSlotBridgeFailuresDoNotMutateRenderSceneOutputs() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("DecodedTextureMaterialSlotFailures"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("runtime asset records failed");
+    }
+
+    const std::array<RuntimeAssetLoadedFile, RUNTIME_TEXTURE_SLOT_COUNT> texture_assets{
+        graph.assets[4U],
+        graph.assets[5U],
+        graph.assets[6U]};
+
+    {
+        RuntimeAssetRhiDevice device;
+        if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+            return Fail("initialize damaged texture metadata rhi failed");
+        }
+
+        std::array<RuntimeAssetLoadedFile, RUNTIME_TEXTURE_SLOT_COUNT> damaged_assets = texture_assets;
+        damaged_assets[0U].decoded_byte_count = RUNTIME_TEXTURE_BYTE_COUNT - 4U;
+
+        RenderSceneRuntimeMaterialRecord material{};
+        const RuntimeTextureMaterialSlotBridgeResult result = BuildMaterial(
+            device,
+            registry,
+            manager,
+            graph.assets[3U].asset,
+            std::span<const RuntimeAssetLoadedFile>(damaged_assets.data(), damaged_assets.size()),
+            RuntimeTextureDesc(),
+            &material);
+        if (result.status != RuntimeTextureMaterialSlotBridgeStatus::InvalidLoadedTexture) {
+            return Fail("damaged texture metadata did not return InvalidLoadedTexture");
+        }
+
+        if (material.is_resolved || material.texture_slot_count != 0U) {
+            return Fail("damaged texture metadata mutated RenderScene material output");
+        }
+    }
+
+    {
+        RuntimeAssetRhiDevice device;
+        if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+            return Fail("initialize missing decoded payload rhi failed");
+        }
+
+        std::array<RuntimeAssetLoadedFile, RUNTIME_TEXTURE_SLOT_COUNT> missing_assets = texture_assets;
+        missing_assets[0U].decoded_payload_id += 700000U;
+
+        RenderSceneRuntimeMaterialRecord material{};
+        const RuntimeTextureMaterialSlotBridgeResult result = BuildMaterial(
+            device,
+            registry,
+            manager,
+            graph.assets[3U].asset,
+            std::span<const RuntimeAssetLoadedFile>(missing_assets.data(), missing_assets.size()),
+            RuntimeTextureDesc(),
+            &material);
+        if (result.status != RuntimeTextureMaterialSlotBridgeStatus::TextureBridgeFailed) {
+            return Fail("missing decoded payload did not fail through texture bridge");
+        }
+
+        if (result.texture_status != ResourceDecodedTextureBridgeStatus::ResourceQueryFailed) {
+            return Fail("missing decoded payload did not expose bridge query failure");
+        }
+
+        if (result.decoded_payload_status != ResourceDecodedPayloadStatus::MissingDecodedPayload) {
+            return Fail("missing decoded payload did not expose decoded payload status");
+        }
+
+        if (material.is_resolved || material.texture_slot_count != 0U) {
+            return Fail("missing decoded payload mutated RenderScene material output");
+        }
+    }
+
+    {
+        RuntimeAssetRhiDevice device;
+        if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+            return Fail("initialize decoded size mismatch rhi failed");
+        }
+
+        RhiTextureDesc size_mismatch_desc = RuntimeTextureDesc();
+        size_mismatch_desc.extent = {1U, 2U};
+
+        RenderSceneRuntimeMaterialRecord material{};
+        const RuntimeTextureMaterialSlotBridgeResult result = BuildMaterial(
+            device,
+            registry,
+            manager,
+            graph.assets[3U].asset,
+            std::span<const RuntimeAssetLoadedFile>(texture_assets.data(), texture_assets.size()),
+            size_mismatch_desc,
+            &material);
+        if (result.status != RuntimeTextureMaterialSlotBridgeStatus::TextureBridgeFailed) {
+            return Fail("decoded texture byte mismatch did not fail through texture bridge");
+        }
+
+        if (result.texture_status != ResourceDecodedTextureBridgeStatus::TextureByteCountMismatch) {
+            return Fail("decoded texture byte mismatch did not expose bridge byte-count status");
+        }
+
+        if (material.is_resolved || material.texture_slot_count != 0U) {
+            return Fail("decoded texture byte mismatch mutated RenderScene material output");
+        }
+    }
+
+    {
+        RuntimeAssetRhiDevice device;
+        if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+            return Fail("initialize unsupported texture format rhi failed");
+        }
+
+        RhiTextureDesc unsupported_format_desc = RuntimeTextureDesc();
+        unsupported_format_desc.format = RhiFormat::Unsupported;
+
+        RenderSceneRuntimeMaterialRecord material{};
+        const RuntimeTextureMaterialSlotBridgeResult result = BuildMaterial(
+            device,
+            registry,
+            manager,
+            graph.assets[3U].asset,
+            std::span<const RuntimeAssetLoadedFile>(texture_assets.data(), texture_assets.size()),
+            unsupported_format_desc,
+            &material);
+        if (result.status != RuntimeTextureMaterialSlotBridgeStatus::TextureBridgeFailed) {
+            return Fail("unsupported texture format did not fail through texture bridge");
+        }
+
+        if (result.texture_status != ResourceDecodedTextureBridgeStatus::InvalidArgument) {
+            return Fail("unsupported texture format did not expose bridge invalid-argument status");
+        }
+
+        if (material.is_resolved || material.texture_slot_count != 0U) {
+            return Fail("unsupported texture format mutated RenderScene material output");
+        }
+    }
+
+    {
+        RuntimeAssetRhiDevice device;
+        if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+            return Fail("initialize capacity rhi failed");
+        }
+
+        std::array<std::uint8_t, RUNTIME_TEXTURE_BYTE_COUNT> texture_bytes{};
+        for (std::size_t index = 0U; index < yuengine::rhi::MAX_RHI_TEXTURES; ++index) {
+            RhiTextureHandle texture{};
+            const RhiStatus status = device.CreateTexture(
+                RuntimeTextureDesc(),
+                std::span<const std::uint8_t>(texture_bytes.data(), texture_bytes.size()),
+                texture);
+            if (status != RhiStatus::Success) {
+                return Fail("failed to fill rhi texture capacity");
+            }
+        }
+
+        RenderSceneRuntimeMaterialRecord material{};
+        const RuntimeTextureMaterialSlotBridgeResult result = BuildMaterial(
+            device,
+            registry,
+            manager,
+            graph.assets[3U].asset,
+            std::span<const RuntimeAssetLoadedFile>(texture_assets.data(), texture_assets.size()),
+            RuntimeTextureDesc(),
+            &material);
+        if (result.status != RuntimeTextureMaterialSlotBridgeStatus::TextureBridgeFailed) {
+            return Fail("rhi texture capacity did not fail through texture bridge");
+        }
+
+        if (result.texture_status != ResourceDecodedTextureBridgeStatus::UploadProcessFailed) {
+            return Fail("rhi texture capacity did not expose bridge upload failure");
+        }
+
+        if (result.rhi_status != RhiStatus::CapacityExceeded) {
+            return Fail("rhi texture capacity did not expose capacity status");
+        }
+
+        if (material.is_resolved || material.texture_slot_count != 0U) {
+            return Fail("rhi texture capacity mutated RenderScene material output");
+        }
+    }
+
+    if (graph.frame_result.output_draw_count != 0U) {
+        return Fail("failure probes mutated RenderScene frame output");
+    }
+
+    if (graph.capture_result.capture_bytes_written != 0U) {
+        return Fail("failure probes mutated RenderScene capture output");
     }
 
     return 0;
@@ -1698,6 +2125,10 @@ int RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi() {
 
     if (!graph.render_capture_completed) {
         return Fail("capture bytes were not produced");
+    }
+
+    if (!graph.material_slots_from_decoded_payloads) {
+        return Fail("runtime render path did not use decoded texture payload material slots");
     }
 
     return 0;
@@ -1771,6 +2202,9 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_ANIMATION_DEPENDENCIES, RuntimeAssetDataAnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_LOADED_RENDER_RECORDS, RuntimeAssetDataLoadCreatesRenderSceneRuntimeRecords},
     {TEST_DECODED_PAYLOADS, RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture},
+    {TEST_TEXTURE_MATERIAL_SLOT_BRIDGE, RuntimeAssetDataDecodedTexturePayloadsDriveRhiMaterialSlots},
+    {TEST_TEXTURE_MATERIAL_SLOT_BRIDGE_FAILURES,
+     RuntimeAssetDataTextureMaterialSlotBridgeFailuresDoNotMutateRenderSceneOutputs},
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},
