@@ -109,6 +109,8 @@ using yuengine::resource::ResourceResidencyStatus;
 using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
 using yuengine::runtimeasset::HashRuntimeAssetDataBytes;
+using yuengine::runtimeasset::BuildRuntimeAssetShaderProgramPipeline;
+using yuengine::runtimeasset::DecodeRuntimeAssetShaderProgramData;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
 using yuengine::runtimeasset::RuntimeAssetDataStatus;
 using yuengine::runtimeasset::RuntimeAssetFileDesc;
@@ -116,6 +118,9 @@ using yuengine::runtimeasset::RuntimeAssetFileKind;
 using yuengine::runtimeasset::RuntimeAssetGraphLoadRequest;
 using yuengine::runtimeasset::RuntimeAssetGraphLoadResult;
 using yuengine::runtimeasset::RuntimeAssetLoadedFile;
+using yuengine::runtimeasset::RuntimeAssetLoadedShaderProgramData;
+using yuengine::runtimeasset::RuntimeAssetShaderProgramPipelineRequest;
+using yuengine::runtimeasset::RuntimeAssetShaderProgramPipelineResult;
 using yuengine::runtimeasset::RuntimeAssetValidationResult;
 using yuengine::runtimeasset::ValidateRuntimeAssetDataBytes;
 using yuengine::streaming::ResourceDecodedTextureBridge;
@@ -159,8 +164,18 @@ constexpr const char *TEST_UNSUPPORTED_VERSION =
     "RuntimeAssetData_FormatHeaderRejectsUnsupportedVersion";
 constexpr const char *TEST_INVALID_BOUNDS =
     "RuntimeAssetData_ValidatorRejectsInvalidBoundsWithoutOutputs";
+constexpr const char *TEST_TYPED_MESH_MATERIAL_TEXTURE =
+    "RuntimeAssetData_MeshMaterialTextureTypedValidatorsAcceptStructuredMetadata";
+constexpr const char *TEST_MATERIAL_TYPED_REFS =
+    "RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
+constexpr const char *TEST_TEXTURE_TYPED_METADATA =
+    "RuntimeAssetData_TextureValidatorRejectsInvalidFormatExtentPayload";
 constexpr const char *TEST_INVALID_DEPENDENCY =
     "RuntimeAssetData_DependencyGraphRejectsMissingAndDuplicateRefs";
+constexpr const char *TEST_SHADER_PROGRAM_PIPELINE_BRIDGE =
+    "RuntimeAssetData_ShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode";
+constexpr const char *TEST_SHADER_PROGRAM_PIPELINE_REJECTS =
+    "RuntimeAssetData_ShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation";
 constexpr const char *TEST_LOADER_FILE_RESOURCE =
     "RuntimeAssetData_LoaderUsesFileResourcePathNotInMemoryStructs";
 constexpr const char *TEST_SCENE_REFERENCES =
@@ -552,6 +567,12 @@ const char *StatusName(RuntimeAssetDataStatus status) {
             return "ResourceDependencyFailed";
         case RuntimeAssetDataStatus::AssetDependencyFailed:
             return "AssetDependencyFailed";
+        case RuntimeAssetDataStatus::InvalidInputLayout:
+            return "InvalidInputLayout";
+        case RuntimeAssetDataStatus::RhiShaderModuleFailed:
+            return "RhiShaderModuleFailed";
+        case RuntimeAssetDataStatus::RhiPipelineFailed:
+            return "RhiPipelineFailed";
         default:
             break;
     }
@@ -578,7 +599,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 yuengine::resource::ResourceDecodePlanAssetClass::Mesh,
                 yuengine::resource::ResourceDecodeResultClass::Mesh,
                 96U},
-            "YUASSET MESH 1\nid=cube_mesh\nkind=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\n"},
+            "YUASSET MESH 1\nschema=rav0-source\nid=cube_mesh\nkind=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\n"},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Mesh/Cylinder.yumesh",
@@ -589,7 +610,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 yuengine::resource::ResourceDecodePlanAssetClass::Mesh,
                 yuengine::resource::ResourceDecodeResultClass::Mesh,
                 96U},
-            "YUASSET MESH 1\nid=cylinder_mesh\nkind=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\n"},
+            "YUASSET MESH 1\nschema=rav0-source\nid=cylinder_mesh\nkind=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\n"},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Mesh/Cone.yumesh",
@@ -600,7 +621,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 yuengine::resource::ResourceDecodePlanAssetClass::Mesh,
                 yuengine::resource::ResourceDecodeResultClass::Mesh,
                 96U},
-            "YUASSET MESH 1\nid=cone_mesh\nkind=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\n"},
+            "YUASSET MESH 1\nschema=rav0-source\nid=cone_mesh\nkind=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\n"},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Material/Shared.yumat",
@@ -611,7 +632,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 yuengine::resource::ResourceDecodePlanAssetClass::Material,
                 yuengine::resource::ResourceDecodeResultClass::Material,
                 128U},
-            "YUASSET MATERIAL 1\nid=shared_material\nshader=Shader/RuntimeProgram.yuprogram\ntexture0=Texture/Albedo.yutex\ntexture1=Texture/Normal.yutex\ntexture2=Texture/Mask.yutex\n"},
+            "YUASSET MATERIAL 1\nschema=rav0-source\nid=shared_material\nshader=Shader/RuntimeProgram.yuprogram\ntexture0=Texture/Albedo.yutex\ntexture1=Texture/Normal.yutex\ntexture2=Texture/Mask.yutex\n"},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Texture/Albedo.yutex",
@@ -622,7 +643,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 yuengine::resource::ResourceDecodePlanAssetClass::Texture,
                 yuengine::resource::ResourceDecodeResultClass::Texture,
                 16U},
-            "YUASSET TEXTURE 1\nid=albedo\nformat=rgba8\nextent=2x2\npayload=checker\n"},
+            "YUASSET TEXTURE 1\nschema=rav0-source\nid=albedo\nformat=rgba8\nextent=2x2\npayload=checker\n"},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Texture/Normal.yutex",
@@ -633,7 +654,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 yuengine::resource::ResourceDecodePlanAssetClass::Texture,
                 yuengine::resource::ResourceDecodeResultClass::Texture,
                 16U},
-            "YUASSET TEXTURE 1\nid=normal\nformat=rgba8\nextent=2x2\npayload=normal\n"},
+            "YUASSET TEXTURE 1\nschema=rav0-source\nid=normal\nformat=rgba8\nextent=2x2\npayload=normal\n"},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Texture/Mask.yutex",
@@ -644,7 +665,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 yuengine::resource::ResourceDecodePlanAssetClass::Texture,
                 yuengine::resource::ResourceDecodeResultClass::Texture,
                 16U},
-            "YUASSET TEXTURE 1\nid=mask\nformat=rgba8\nextent=2x2\npayload=mask\n"},
+            "YUASSET TEXTURE 1\nschema=rav0-source\nid=mask\nformat=rgba8\nextent=2x2\npayload=mask\n"},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Shader/RuntimeProgram.yuprogram",
@@ -1457,6 +1478,7 @@ int RuntimeAssetDataValidatorRejectsInvalidBoundsWithoutOutputs() {
 
     const std::vector<std::uint8_t> bytes = BytesFromString(
         "YUASSET MESH 1\n"
+        "schema=rav0-source\n"
         "id=bad_bounds\n"
         "kind=cube\n"
         "vertices=0\n"
@@ -1612,6 +1634,388 @@ bool ExpectValidationStatus(
     }
 
     return true;
+}
+
+bool ValidateText(
+    std::string_view text,
+    RuntimeAssetFileKind kind,
+    RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return false;
+    }
+
+    const std::vector<std::uint8_t> bytes = BytesFromString(std::string(text));
+    const RuntimeAssetDataStatus status = ValidateRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+        kind,
+        out_result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        std::fwrite(StatusName(status), sizeof(char), std::string_view(StatusName(status)).size(), stderr);
+        std::fputc('\n', stderr);
+        return false;
+    }
+
+    return true;
+}
+
+int RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata() {
+    RuntimeAssetValidationResult mesh_result{};
+    if (!ValidateText(
+            "YUASSET MESH 1\n"
+            "schema=rav0-source\n"
+            "id=cube_mesh\n"
+            "kind=cube\n"
+            "vertices=24\n"
+            "indices=36\n"
+            "bounds=-1,-1,-1,1,1,1\n",
+            RuntimeAssetFileKind::Mesh,
+            &mesh_result)) {
+        return Fail("mesh metadata validator rejected valid mesh");
+    }
+
+    if (mesh_result.version != 1U || mesh_result.schema_version != 1U ||
+        mesh_result.identity_hash == 0U) {
+        return Fail("mesh metadata did not report version schema identity");
+    }
+
+    if (mesh_result.vertex_count != 24U || mesh_result.index_count != 36U) {
+        return Fail("mesh metadata counts were not parsed");
+    }
+
+    RuntimeAssetValidationResult material_result{};
+    if (!ValidateText(
+            "YUASSET MATERIAL 1\n"
+            "schema=rav0-source\n"
+            "id=shared_material\n"
+            "shader=Shader/RuntimeProgram.yuprogram\n"
+            "texture0=Texture/Albedo.yutex\n"
+            "texture1=Texture/Normal.yutex\n"
+            "texture2=Texture/Mask.yutex\n",
+            RuntimeAssetFileKind::Material,
+            &material_result)) {
+        return Fail("material metadata validator rejected valid material");
+    }
+
+    if (material_result.dependency_count != 4U || material_result.texture_slot_count != 3U) {
+        return Fail("material dependency metadata was not parsed");
+    }
+
+    RuntimeAssetValidationResult texture_result{};
+    if (!ValidateText(
+            "YUASSET TEXTURE 1\n"
+            "schema=rav0-source\n"
+            "id=albedo\n"
+            "format=rgba8\n"
+            "extent=2x2\n"
+            "payload=checker\n",
+            RuntimeAssetFileKind::Texture,
+            &texture_result)) {
+        return Fail("texture metadata validator rejected valid texture");
+    }
+
+    if (texture_result.texture_width != 2U || texture_result.texture_height != 2U) {
+        return Fail("texture extent metadata was not parsed");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataMaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs() {
+    LoadedGraph graph{};
+    graph.file_read_count = 31U;
+    graph.resource_payload_count = 32U;
+    graph.render_capture_completed = true;
+
+    if (!ExpectValidationStatus(
+            "YUASSET MATERIAL 1\n"
+            "schema=rav0-source\n"
+            "id=shared_material\n"
+            "shader=Shader/RuntimeProgram.yuprogram\n"
+            "texture0=Texture/Albedo.yutex\n"
+            "texture1=Texture/Normal.yutex\n",
+            RuntimeAssetFileKind::Material,
+            RuntimeAssetDataStatus::MissingDependency)) {
+        return Fail("material missing texture dependency was not rejected");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET MATERIAL 1\n"
+            "schema=rav0-source\n"
+            "id=shared_material\n"
+            "shader=Shader/RuntimeProgram.yuprogram\n"
+            "texture0=Texture/Albedo.yutex\n"
+            "texture1=Texture/Albedo.yutex\n"
+            "texture2=Texture/Mask.yutex\n",
+            RuntimeAssetFileKind::Material,
+            RuntimeAssetDataStatus::DuplicateDependency)) {
+        return Fail("material duplicate texture dependency was not rejected");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET MATERIAL 1\n"
+            "schema=rav0-source\n"
+            "id=shared_material\n"
+            "shader=Texture/Albedo.yutex\n"
+            "texture0=Texture/Albedo.yutex\n"
+            "texture1=Texture/Normal.yutex\n"
+            "texture2=Texture/Mask.yutex\n",
+            RuntimeAssetFileKind::Material,
+            RuntimeAssetDataStatus::TypeMismatch)) {
+        return Fail("material shader type mismatch was not rejected");
+    }
+
+    if (graph.file_read_count != 31U || graph.resource_payload_count != 32U ||
+        !graph.render_capture_completed) {
+        return Fail("material validator mutated output state");
+    }
+
+    if (graph.frame_result.output_draw_count != 0U) {
+        return Fail("material validator produced frame draws");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataTextureValidatorRejectsInvalidFormatExtentPayload() {
+    LoadedGraph graph{};
+    graph.file_read_count = 41U;
+    graph.resource_payload_count = 42U;
+    graph.render_capture_completed = true;
+
+    if (!ExpectValidationStatus(
+            "YUASSET TEXTURE 1\n"
+            "schema=rav0-source\n"
+            "id=albedo\n"
+            "format=bc7\n"
+            "extent=2x2\n"
+            "payload=checker\n",
+            RuntimeAssetFileKind::Texture,
+            RuntimeAssetDataStatus::TypeMismatch)) {
+        return Fail("texture format mismatch was not rejected");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET TEXTURE 1\n"
+            "schema=rav0-source\n"
+            "id=albedo\n"
+            "format=rgba8\n"
+            "extent=0x2\n"
+            "payload=checker\n",
+            RuntimeAssetFileKind::Texture,
+            RuntimeAssetDataStatus::InvalidBounds)) {
+        return Fail("texture invalid extent was not rejected");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET TEXTURE 1\n"
+            "schema=rav0-source\n"
+            "id=albedo\n"
+            "format=rgba8\n"
+            "extent=2x2\n"
+            "payload=\n",
+            RuntimeAssetFileKind::Texture,
+            RuntimeAssetDataStatus::InvalidSize)) {
+        return Fail("texture empty payload was not rejected");
+    }
+
+    if (graph.file_read_count != 41U || graph.resource_payload_count != 42U ||
+        !graph.render_capture_completed) {
+        return Fail("texture validator mutated output state");
+    }
+
+    if (graph.frame_result.output_draw_count != 0U) {
+        return Fail("texture validator produced frame draws");
+    }
+
+    return 0;
+}
+
+std::string CanonicalShaderProgramText() {
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    for (const FixtureFile &file : files) {
+        if (file.desc.kind == RuntimeAssetFileKind::Shader) {
+            return std::string(file.bytes);
+        }
+    }
+
+    return {};
+}
+
+RuntimeAssetDataStatus DecodeShaderProgramText(
+    std::string_view text,
+    RuntimeAssetLoadedShaderProgramData *out_program) {
+    if (out_program == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const std::vector<std::uint8_t> bytes = BytesFromString(std::string(text));
+    return DecodeRuntimeAssetShaderProgramData(
+        std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+        4001U,
+        out_program);
+}
+
+RuntimeAssetShaderProgramPipelineRequest ProgramPipelineRequest(
+    RuntimeAssetRhiDevice *device,
+    const RuntimeAssetLoadedShaderProgramData *program) {
+    RuntimeAssetShaderProgramPipelineRequest request{};
+    request.device = device;
+    request.program = program;
+    return request;
+}
+
+int RuntimeAssetDataShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode() {
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("rhi init failed");
+    }
+
+    RuntimeAssetLoadedShaderProgramData program{};
+    if (DecodeShaderProgramText(CanonicalShaderProgramText(), &program) != RuntimeAssetDataStatus::Success) {
+        return Fail("runtime asset shader program decode failed");
+    }
+
+    const RuntimeAssetShaderProgramPipelineRequest request = ProgramPipelineRequest(&device, &program);
+    RuntimeAssetShaderProgramPipelineResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetShaderProgramPipeline(request, &result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return Fail("runtime asset shader bridge rejected valid bytecode");
+    }
+
+    if (result.vertex_shader.generation == 0U || result.pixel_shader.generation == 0U ||
+        result.pipeline.generation == 0U) {
+        return Fail("runtime asset shader bridge did not create RHI primitives");
+    }
+
+    if (result.vertex_bytecode_hash == result.pixel_bytecode_hash) {
+        return Fail("runtime asset shader bridge did not track distinct bytecode hashes");
+    }
+
+    if (result.vertex_bytecode_hash != program.vertex_bytecode_hash ||
+        result.pixel_bytecode_hash != program.pixel_bytecode_hash) {
+        return Fail("runtime asset shader bridge did not use decoded program hashes");
+    }
+
+    if (result.pipeline_desc.input_layout.element_count != program.input_layout.element_count ||
+        result.texture_slot_count != program.texture_slot_count) {
+        return Fail("runtime asset shader bridge did not preserve layout or texture slots");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.shader_module_count != 2U || snapshot.resources.pipeline_count != 1U) {
+        return Fail("runtime asset shader bridge did not update RHI ownership counts");
+    }
+
+    return 0;
+}
+
+bool ExpectShaderBridgeRejectedWithoutRhiMutation(
+    std::string_view text,
+    RuntimeAssetDataStatus expected_status) {
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return FailStep("rhi init failed");
+    }
+
+    const auto before = device.Snapshot();
+    RuntimeAssetLoadedShaderProgramData program{};
+    const RuntimeAssetDataStatus decode_status = DecodeShaderProgramText(text, &program);
+    if (decode_status != expected_status) {
+        return FailStep("shader program decode returned unexpected status");
+    }
+
+    const RuntimeAssetShaderProgramPipelineRequest request = ProgramPipelineRequest(&device, &program);
+    RuntimeAssetShaderProgramPipelineResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetShaderProgramPipeline(request, &result);
+    if (status != expected_status) {
+        return FailStep("runtime asset shader bridge returned unexpected rejection status");
+    }
+
+    const auto after = device.Snapshot();
+    if (before.resources.shader_module_count != after.resources.shader_module_count ||
+        before.resources.pipeline_count != after.resources.pipeline_count ||
+        before.resources.created_primitive_count != after.resources.created_primitive_count ||
+        before.failed_operation_count != after.failed_operation_count) {
+        return FailStep("runtime asset shader bridge mutated RHI on invalid program data");
+    }
+
+    if (result.vertex_shader.generation != 0U || result.pixel_shader.generation != 0U ||
+        result.pipeline.generation != 0U) {
+        return FailStep("runtime asset shader bridge returned handles on invalid program data");
+    }
+
+    return true;
+}
+
+int RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation() {
+    if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
+            "YUASSET SHADER 1\n"
+            "id=runtime_program\n"
+            "stage_vs=Texture/Albedo.yutex\n"
+            "stage_ps=bytecode:runtime_program_ps\n"
+            "input=layout:position,color\n"
+            "textures=3\n",
+            RuntimeAssetDataStatus::TypeMismatch)) {
+        return Fail("runtime asset shader bridge accepted invalid stage refs");
+    }
+
+    if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
+            "YUASSET SHADER 1\n"
+            "id=runtime_program\n"
+            "stage_vs=bytecode:\n"
+            "stage_ps=bytecode:runtime_program_ps\n"
+            "input=layout:position,color\n"
+            "textures=3\n",
+            RuntimeAssetDataStatus::InvalidSize)) {
+        return Fail("runtime asset shader bridge accepted missing bytecode");
+    }
+
+    if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
+            "YUASSET SHADER 1\n"
+            "id=runtime_program\n"
+            "stage_vs=bytecode:runtime_program_vs\n"
+            "stage_ps=bytecode:runtime_program_ps\n"
+            "stage_vs_hash=1\n"
+            "input=layout:position,color\n"
+            "textures=3\n",
+            RuntimeAssetDataStatus::HashMismatch)) {
+        return Fail("runtime asset shader bridge accepted hash mismatch");
+    }
+
+    if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
+            "YUASSET SHADER 1\n"
+            "id=runtime_program\n"
+            "stage_vs=bytecode:runtime_program_vs\n"
+            "stage_ps=bytecode:runtime_program_ps\n"
+            "input=layout:color\n"
+            "textures=3\n",
+            RuntimeAssetDataStatus::InvalidInputLayout)) {
+        return Fail("runtime asset shader bridge accepted input-layout mismatch");
+    }
+
+    if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
+            "YUASSET SHADER 1\n"
+            "id=runtime_program\n"
+            "stage_vs=bytecode:runtime_program_vs\n"
+            "stage_ps=bytecode:runtime_program_ps\n"
+            "input=layout:position,normal\n"
+            "textures=3\n",
+            RuntimeAssetDataStatus::UnsupportedFieldValue)) {
+        return Fail("runtime asset shader bridge accepted unsupported semantic");
+    }
+
+    if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
+            "YUASSET SHADER 1\n"
+            "id=runtime_program\n"
+            "stage_vs=bytecode:runtime_program_vs\n"
+            "stage_ps=bytecode:runtime_program_ps\n"
+            "input=layout:position,color,texcoord\n"
+            "textures=3\n",
+            RuntimeAssetDataStatus::CapacityExceeded)) {
+        return Fail("runtime asset shader bridge accepted layout capacity overflow");
+    }
+
+    return 0;
 }
 
 int RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs() {
@@ -2194,7 +2598,12 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_GENERATOR, RuntimeAssetDataGeneratorWritesDeterministicFilesAndHashes},
     {TEST_UNSUPPORTED_VERSION, RuntimeAssetDataFormatHeaderRejectsUnsupportedVersion},
     {TEST_INVALID_BOUNDS, RuntimeAssetDataValidatorRejectsInvalidBoundsWithoutOutputs},
+    {TEST_TYPED_MESH_MATERIAL_TEXTURE, RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata},
+    {TEST_MATERIAL_TYPED_REFS, RuntimeAssetDataMaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
+    {TEST_TEXTURE_TYPED_METADATA, RuntimeAssetDataTextureValidatorRejectsInvalidFormatExtentPayload},
     {TEST_INVALID_DEPENDENCY, RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs},
+    {TEST_SHADER_PROGRAM_PIPELINE_BRIDGE, RuntimeAssetDataShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode},
+    {TEST_SHADER_PROGRAM_PIPELINE_REJECTS, RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation},
     {TEST_LOADER_FILE_RESOURCE, RuntimeAssetDataLoaderUsesFileResourcePathNotInMemoryStructs},
     {TEST_SCENE_REFERENCES, RuntimeAssetDataSceneReferencesMeshMaterialTextureShader},
     {TEST_SHADER_PROGRAM_DEPENDENCIES, RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},

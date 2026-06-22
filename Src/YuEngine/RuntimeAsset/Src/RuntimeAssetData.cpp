@@ -3,7 +3,9 @@
 
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
 
+#include <algorithm>
 #include <array>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -35,6 +37,10 @@
 #include "YuEngine/Resource/ResourceResidencyBudgetDesc.h"
 #include "YuEngine/Resource/ResourceResidencyRequest.h"
 #include "YuEngine/Resource/ResourceResidencyStatus.h"
+#include "YuEngine/Rhi/RhiConstants.h"
+#include "YuEngine/Rhi/RhiShaderModuleDesc.h"
+#include "YuEngine/Rhi/RhiShaderStage.h"
+#include "YuEngine/Rhi/RhiStatus.h"
 
 namespace yuengine::runtimeasset {
 namespace {
@@ -79,6 +85,9 @@ constexpr std::uint64_t DECODE_RESULT_ID_OFFSET = 100000U;
 constexpr std::uint64_t DECODED_PAYLOAD_ID_OFFSET = 110000U;
 constexpr std::uint32_t DEFAULT_RESIDENCY_BYTE_CAPACITY = 4096U;
 constexpr std::uint32_t DEFAULT_PAYLOAD_BYTE_CAPACITY = 4096U;
+constexpr std::string_view RUNTIME_ASSET_SOURCE_SCHEMA = "rav0-source";
+constexpr std::string_view SHADER_BYTECODE_PREFIX = "bytecode:";
+constexpr std::string_view SHADER_LAYOUT_PREFIX = "layout:";
 
 bool Contains(std::string_view text, std::string_view token) {
     return text.find(token) != std::string_view::npos;
@@ -129,6 +138,167 @@ bool HasUnsupportedHeader(std::string_view text, RuntimeAssetFileKind expected_k
     const std::string header =
         "YUASSET " + std::string(RuntimeAssetFileKindName(expected_kind)) + " 2";
     return Contains(text, header);
+}
+
+std::uint64_t HashRuntimeAssetText(std::string_view text) {
+    std::uint64_t hash = FNV_OFFSET;
+    for (const char character : text) {
+        hash ^= static_cast<std::uint64_t>(static_cast<std::uint8_t>(character));
+        hash *= FNV_PRIME;
+    }
+
+    return hash;
+}
+
+bool ParseU32(std::string_view text, std::uint32_t *out_value) {
+    if (out_value == nullptr) {
+        return false;
+    }
+
+    if (text.empty()) {
+        return false;
+    }
+
+    std::uint64_t value = 0U;
+    for (const char character : text) {
+        if (character < '0' || character > '9') {
+            return false;
+        }
+
+        value *= 10U;
+        value += static_cast<std::uint64_t>(character - '0');
+        if (value > std::numeric_limits<std::uint32_t>::max()) {
+            return false;
+        }
+    }
+
+    *out_value = static_cast<std::uint32_t>(value);
+    return true;
+}
+
+bool ParseU64(std::string_view text, std::uint64_t *out_value) {
+    if (out_value == nullptr) {
+        return false;
+    }
+
+    if (text.empty()) {
+        return false;
+    }
+
+    std::uint64_t value = 0U;
+    for (const char character : text) {
+        if (character < '0' || character > '9') {
+            return false;
+        }
+
+        const std::uint64_t digit = static_cast<std::uint64_t>(character - '0');
+        if (value > (std::numeric_limits<std::uint64_t>::max() - digit) / 10U) {
+            return false;
+        }
+
+        value *= 10U;
+        value += digit;
+    }
+
+    *out_value = value;
+    return true;
+}
+
+bool ParseExtent(std::string_view text, std::uint32_t *out_width, std::uint32_t *out_height) {
+    if (out_width == nullptr) {
+        return false;
+    }
+
+    if (out_height == nullptr) {
+        return false;
+    }
+
+    const std::size_t separator = text.find('x');
+    if (separator == std::string_view::npos) {
+        return false;
+    }
+
+    const std::string_view width_text = text.substr(0U, separator);
+    const std::string_view height_text = text.substr(separator + 1U);
+    std::uint32_t width = 0U;
+    std::uint32_t height = 0U;
+    if (!ParseU32(width_text, &width)) {
+        return false;
+    }
+
+    if (!ParseU32(height_text, &height)) {
+        return false;
+    }
+
+    *out_width = width;
+    *out_height = height;
+    return true;
+}
+
+bool RequiresSourceSchema(RuntimeAssetFileKind kind) {
+    if (kind == RuntimeAssetFileKind::Mesh) {
+        return true;
+    }
+
+    if (kind == RuntimeAssetFileKind::Material) {
+        return true;
+    }
+
+    return kind == RuntimeAssetFileKind::Texture;
+}
+
+RuntimeAssetDataStatus ValidateCommonMetadata(
+    std::string_view text,
+    RuntimeAssetFileKind expected_kind,
+    RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (HasUnsupportedHeader(text, expected_kind)) {
+        out_result->version = 2U;
+        return RuntimeAssetDataStatus::UnsupportedVersion;
+    }
+
+    if (!HasSupportedHeader(text, expected_kind)) {
+        if (Contains(text, "YUASSET ")) {
+            return RuntimeAssetDataStatus::InvalidKind;
+        }
+
+        return RuntimeAssetDataStatus::InvalidHeader;
+    }
+
+    out_result->version = 1U;
+    const std::string_view schema = ValueForToken(text, "schema=");
+    if (!RequiresSourceSchema(expected_kind) && schema.empty()) {
+        const std::string_view id = ValueForToken(text, "id=");
+        if (!id.empty() && Contains(id, " ")) {
+            return RuntimeAssetDataStatus::InvalidSchema;
+        }
+
+        if (!id.empty()) {
+            out_result->identity_hash = HashRuntimeAssetText(id);
+        }
+
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    if (schema != RUNTIME_ASSET_SOURCE_SCHEMA) {
+        return RuntimeAssetDataStatus::InvalidSchema;
+    }
+
+    out_result->schema_version = 1U;
+    const std::string_view id = ValueForToken(text, "id=");
+    if (id.empty()) {
+        return RuntimeAssetDataStatus::InvalidSchema;
+    }
+
+    if (Contains(id, " ")) {
+        return RuntimeAssetDataStatus::InvalidSchema;
+    }
+
+    out_result->identity_hash = HashRuntimeAssetText(id);
+    return RuntimeAssetDataStatus::Success;
 }
 
 struct DependencyRule final {
@@ -206,6 +376,359 @@ RuntimeAssetDataStatus ValidateAnimationDependencies(
     }};
 
     return ValidateDependencyRules(text, std::span<const DependencyRule>(rules.data(), rules.size()), out_result);
+}
+
+RuntimeAssetDataStatus ValidateMeshMetadata(
+    std::string_view text,
+    RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const std::string_view mesh_kind = ValueForToken(text, "kind=");
+    if (mesh_kind.empty()) {
+        return RuntimeAssetDataStatus::InvalidKind;
+    }
+
+    if (mesh_kind != "cube" && mesh_kind != "cylinder" && mesh_kind != "cone") {
+        return RuntimeAssetDataStatus::InvalidKind;
+    }
+
+    std::uint32_t vertex_count = 0U;
+    if (!ParseU32(ValueForToken(text, "vertices="), &vertex_count)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (vertex_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    std::uint32_t index_count = 0U;
+    if (!ParseU32(ValueForToken(text, "indices="), &index_count)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (index_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    const std::string_view bounds = ValueForToken(text, "bounds=");
+    if (CountToken(bounds, ",") != 5U) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    out_result->vertex_count = vertex_count;
+    out_result->index_count = index_count;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateMaterialMetadata(
+    std::string_view text,
+    RuntimeAssetValidationResult *out_result) {
+    constexpr std::array<DependencyRule, 4U> rules{{
+        {"shader=", "Shader/"},
+        {"texture0=", "Texture/"},
+        {"texture1=", "Texture/"},
+        {"texture2=", "Texture/"},
+    }};
+
+    RuntimeAssetDataStatus status =
+        ValidateDependencyRules(text, std::span<const DependencyRule>(rules.data(), rules.size()), out_result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    const std::string_view texture0 = ValueForToken(text, "texture0=");
+    const std::string_view texture1 = ValueForToken(text, "texture1=");
+    const std::string_view texture2 = ValueForToken(text, "texture2=");
+    if (texture0 == texture1 || texture0 == texture2 || texture1 == texture2) {
+        return RuntimeAssetDataStatus::DuplicateDependency;
+    }
+
+    out_result->texture_slot_count = 3U;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateTextureMetadata(
+    std::string_view text,
+    RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const std::string_view format = ValueForToken(text, "format=");
+    if (format != "rgba8") {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    std::uint32_t width = 0U;
+    std::uint32_t height = 0U;
+    if (!ParseExtent(ValueForToken(text, "extent="), &width, &height)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (width == 0U || height == 0U) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (width > 4096U || height > 4096U) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    const std::string_view payload = ValueForToken(text, "payload=");
+    if (payload.empty()) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    out_result->texture_width = width;
+    out_result->texture_height = height;
+    return RuntimeAssetDataStatus::Success;
+}
+
+std::size_t ShaderInputElementByteSize(yuengine::rhi::RhiInputElementFormat format) {
+    switch (format) {
+        case yuengine::rhi::RhiInputElementFormat::Float32x2:
+            return 8U;
+        case yuengine::rhi::RhiInputElementFormat::Float32x3:
+            return 12U;
+        case yuengine::rhi::RhiInputElementFormat::Float32x4:
+            return 16U;
+        case yuengine::rhi::RhiInputElementFormat::Unsupported:
+            break;
+        default:
+            break;
+    }
+
+    return 0U;
+}
+
+RuntimeAssetDataStatus DecodeShaderInputElement(
+    std::string_view semantic,
+    std::size_t offset_bytes,
+    yuengine::rhi::RhiInputElementDesc *out_element,
+    std::size_t *out_byte_count) {
+    if (out_element == nullptr || out_byte_count == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    yuengine::rhi::RhiInputElementDesc element{};
+    if (semantic == "position") {
+        element.semantic = yuengine::rhi::RhiInputElementSemantic::Position;
+        element.format = yuengine::rhi::RhiInputElementFormat::Float32x2;
+    }
+
+    if (semantic == "color") {
+        element.semantic = yuengine::rhi::RhiInputElementSemantic::Color;
+        element.format = yuengine::rhi::RhiInputElementFormat::Float32x4;
+    }
+
+    if (semantic == "texcoord") {
+        element.semantic = yuengine::rhi::RhiInputElementSemantic::TexCoord;
+        element.format = yuengine::rhi::RhiInputElementFormat::Float32x2;
+    }
+
+    if (element.semantic == yuengine::rhi::RhiInputElementSemantic::Unsupported) {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    const std::size_t byte_count = ShaderInputElementByteSize(element.format);
+    if (byte_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    element.offset_bytes = offset_bytes;
+    *out_element = element;
+    *out_byte_count = byte_count;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus DecodeShaderInputLayout(
+    std::string_view input,
+    yuengine::rhi::RhiInputLayoutDesc *out_layout) {
+    if (out_layout == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (!StartsWith(input, SHADER_LAYOUT_PREFIX)) {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    const std::string_view semantic_list = input.substr(SHADER_LAYOUT_PREFIX.size());
+    if (semantic_list.empty()) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    yuengine::rhi::RhiInputLayoutDesc layout{};
+    std::size_t cursor = 0U;
+    std::size_t stride_bytes = 0U;
+    bool has_position = false;
+    while (cursor <= semantic_list.size()) {
+        const std::size_t separator = semantic_list.find(',', cursor);
+        std::string_view semantic{};
+        if (separator == std::string_view::npos) {
+            semantic = semantic_list.substr(cursor);
+        }
+
+        if (separator != std::string_view::npos) {
+            semantic = semantic_list.substr(cursor, separator - cursor);
+        }
+
+        if (semantic.empty()) {
+            return RuntimeAssetDataStatus::InvalidInputLayout;
+        }
+
+        if (layout.element_count >= yuengine::rhi::MAX_RHI_INPUT_ELEMENTS) {
+            return RuntimeAssetDataStatus::CapacityExceeded;
+        }
+
+        yuengine::rhi::RhiInputElementDesc element{};
+        std::size_t element_byte_count = 0U;
+        const RuntimeAssetDataStatus status =
+            DecodeShaderInputElement(semantic, stride_bytes, &element, &element_byte_count);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+
+        if (element.semantic == yuengine::rhi::RhiInputElementSemantic::Position) {
+            has_position = true;
+        }
+
+        layout.elements[layout.element_count] = element;
+        ++layout.element_count;
+        stride_bytes += element_byte_count;
+        if (separator == std::string_view::npos) {
+            break;
+        }
+
+        cursor = separator + 1U;
+    }
+
+    if (!has_position) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    layout.stride_bytes = stride_bytes;
+    *out_layout = layout;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ShaderBytecodePayloadForValue(
+    std::string_view value,
+    std::string_view *out_payload) {
+    if (out_payload == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (!StartsWith(value, SHADER_BYTECODE_PREFIX)) {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    const std::string_view payload = value.substr(SHADER_BYTECODE_PREFIX.size());
+    if (payload.empty()) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (payload.size() > yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    *out_payload = payload;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus CopyShaderBytecode(
+    std::string_view text,
+    std::string_view token,
+    std::array<std::uint8_t, yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES> *destination,
+    std::size_t *out_size,
+    std::uint64_t *out_hash) {
+    if (destination == nullptr || out_size == nullptr || out_hash == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    std::string_view payload{};
+    const RuntimeAssetDataStatus status =
+        ShaderBytecodePayloadForValue(ValueForToken(text, token), &payload);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    std::fill(destination->begin(), destination->end(), std::uint8_t{0U});
+    std::transform(
+        payload.begin(),
+        payload.end(),
+        destination->begin(),
+        [](char character) {
+            return static_cast<std::uint8_t>(character);
+        });
+    *out_size = payload.size();
+    *out_hash = HashRuntimeAssetText(payload);
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateOptionalShaderHash(
+    std::string_view text,
+    std::string_view token,
+    std::uint64_t actual_hash) {
+    const std::string_view hash_text = ValueForToken(text, token);
+    if (hash_text.empty()) {
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    std::uint64_t expected_hash = 0U;
+    if (!ParseU64(hash_text, &expected_hash)) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    if (expected_hash != actual_hash) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateShaderProgramMetadata(
+    std::string_view text,
+    RuntimeAssetValidationResult *out_result) {
+    RuntimeAssetDataStatus status = ValidateShaderProgramDependencies(text, out_result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    std::uint32_t texture_slot_count = 0U;
+    if (!ParseU32(ValueForToken(text, "textures="), &texture_slot_count)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (texture_slot_count > yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    out_result->shader_stage_count = 2U;
+    out_result->texture_slot_count = texture_slot_count;
+    const std::string_view vertex_stage = ValueForToken(text, "stage_vs=");
+    const std::string_view pixel_stage = ValueForToken(text, "stage_ps=");
+    std::string_view vertex_payload{};
+    status = ShaderBytecodePayloadForValue(vertex_stage, &vertex_payload);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    std::string_view pixel_payload{};
+    status = ShaderBytecodePayloadForValue(pixel_stage, &pixel_payload);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    yuengine::rhi::RhiInputLayoutDesc input_layout{};
+    status = DecodeShaderInputLayout(ValueForToken(text, "input="), &input_layout);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    out_result->shader_bytecode_byte_count =
+        static_cast<std::uint32_t>(vertex_payload.size() + pixel_payload.size());
+    return RuntimeAssetDataStatus::Success;
 }
 
 bool SceneReferencesRuntimeFamilies(std::string_view scene_text) {
@@ -577,6 +1100,122 @@ RuntimeAssetDataStatus ValidateGraphRequest(const RuntimeAssetGraphLoadRequest &
 
     return RuntimeAssetDataStatus::Success;
 }
+
+std::size_t GetInputElementByteSize(yuengine::rhi::RhiInputElementFormat format) {
+    return ShaderInputElementByteSize(format);
+}
+
+bool IsInputElementValid(
+    const yuengine::rhi::RhiInputElementDesc &element,
+    std::size_t stride_bytes) {
+    if (element.semantic == yuengine::rhi::RhiInputElementSemantic::Unsupported) {
+        return false;
+    }
+
+    const std::size_t element_size = GetInputElementByteSize(element.format);
+    if (element_size == 0U) {
+        return false;
+    }
+
+    if (stride_bytes < element_size) {
+        return false;
+    }
+
+    const std::size_t max_offset = stride_bytes - element_size;
+    return element.offset_bytes <= max_offset;
+}
+
+bool IsInputLayoutValid(const yuengine::rhi::RhiInputLayoutDesc &layout) {
+    if (layout.element_count == 0U) {
+        return false;
+    }
+
+    if (layout.element_count > yuengine::rhi::MAX_RHI_INPUT_ELEMENTS) {
+        return false;
+    }
+
+    if (layout.stride_bytes == 0U) {
+        return false;
+    }
+
+    for (std::size_t index = 0U; index < layout.element_count; ++index) {
+        if (!IsInputElementValid(layout.elements[index], layout.stride_bytes)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+std::span<const std::uint8_t> VertexShaderBytecodeSpan(
+    const RuntimeAssetLoadedShaderProgramData &program) {
+    return std::span<const std::uint8_t>(
+        program.vertex_bytecode.data(),
+        program.vertex_bytecode_size);
+}
+
+std::span<const std::uint8_t> PixelShaderBytecodeSpan(
+    const RuntimeAssetLoadedShaderProgramData &program) {
+    return std::span<const std::uint8_t>(
+        program.pixel_bytecode.data(),
+        program.pixel_bytecode_size);
+}
+
+RuntimeAssetDataStatus ValidateShaderProgramPipelineRequest(
+    const RuntimeAssetShaderProgramPipelineRequest &request) {
+    if (request.device == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (request.program == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const RuntimeAssetLoadedShaderProgramData &program = *request.program;
+    if (program.status != RuntimeAssetDataStatus::Success) {
+        return program.status;
+    }
+
+    if (program.program_id == 0U) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const std::span<const std::uint8_t> vertex_bytecode = VertexShaderBytecodeSpan(program);
+    const std::span<const std::uint8_t> pixel_bytecode = PixelShaderBytecodeSpan(program);
+    if (vertex_bytecode.empty()) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (pixel_bytecode.empty()) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (vertex_bytecode.size() > yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    if (pixel_bytecode.size() > yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    if (HashRuntimeAssetDataBytes(vertex_bytecode) != program.vertex_bytecode_hash) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    if (HashRuntimeAssetDataBytes(pixel_bytecode) != program.pixel_bytecode_hash) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    if (!IsInputLayoutValid(program.input_layout)) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    if (program.texture_slot_count > yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
 }
 
 const char *RuntimeAssetFileKindName(RuntimeAssetFileKind kind) {
@@ -625,24 +1264,28 @@ RuntimeAssetDataStatus ValidateRuntimeAssetDataBytes(
     result.hash = HashRuntimeAssetDataBytes(bytes);
 
     const std::string text(bytes.begin(), bytes.end());
-    if (HasUnsupportedHeader(text, expected_kind)) {
-        result.status = RuntimeAssetDataStatus::UnsupportedVersion;
-        *out_result = result;
-        return result.status;
-    }
-
-    if (!HasSupportedHeader(text, expected_kind)) {
-        result.status = RuntimeAssetDataStatus::InvalidHeader;
+    result.status = ValidateCommonMetadata(text, expected_kind, &result);
+    if (result.status != RuntimeAssetDataStatus::Success) {
         *out_result = result;
         return result.status;
     }
 
     if (expected_kind == RuntimeAssetFileKind::Mesh) {
-        if (Contains(text, "vertices=0") || Contains(text, "indices=0")) {
-            result.status = RuntimeAssetDataStatus::InvalidBounds;
-            *out_result = result;
-            return result.status;
-        }
+        result.status = ValidateMeshMetadata(text, &result);
+        *out_result = result;
+        return result.status;
+    }
+
+    if (expected_kind == RuntimeAssetFileKind::Material) {
+        result.status = ValidateMaterialMetadata(text, &result);
+        *out_result = result;
+        return result.status;
+    }
+
+    if (expected_kind == RuntimeAssetFileKind::Texture) {
+        result.status = ValidateTextureMetadata(text, &result);
+        *out_result = result;
+        return result.status;
     }
 
     if (expected_kind == RuntimeAssetFileKind::Scene) {
@@ -652,7 +1295,7 @@ RuntimeAssetDataStatus ValidateRuntimeAssetDataBytes(
     }
 
     if (expected_kind == RuntimeAssetFileKind::Shader) {
-        result.status = ValidateShaderProgramDependencies(text, &result);
+        result.status = ValidateShaderProgramMetadata(text, &result);
         *out_result = result;
         return result.status;
     }
@@ -666,6 +1309,84 @@ RuntimeAssetDataStatus ValidateRuntimeAssetDataBytes(
     result.status = RuntimeAssetDataStatus::Success;
     *out_result = result;
     return result.status;
+}
+
+RuntimeAssetDataStatus DecodeRuntimeAssetShaderProgramData(
+    std::span<const std::uint8_t> bytes,
+    std::uint32_t program_id,
+    RuntimeAssetLoadedShaderProgramData *out_data) {
+    if (out_data == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetLoadedShaderProgramData data{};
+    data.program_id = program_id;
+    if (program_id == 0U) {
+        data.status = RuntimeAssetDataStatus::InvalidArgument;
+        *out_data = data;
+        return data.status;
+    }
+
+    RuntimeAssetValidationResult validation{};
+    RuntimeAssetDataStatus status =
+        ValidateRuntimeAssetDataBytes(bytes, RuntimeAssetFileKind::Shader, &validation);
+    data.validation = validation;
+    if (status != RuntimeAssetDataStatus::Success) {
+        data.status = status;
+        *out_data = data;
+        return data.status;
+    }
+
+    const std::string text(bytes.begin(), bytes.end());
+    status = CopyShaderBytecode(
+        text,
+        "stage_vs=",
+        &data.vertex_bytecode,
+        &data.vertex_bytecode_size,
+        &data.vertex_bytecode_hash);
+    if (status != RuntimeAssetDataStatus::Success) {
+        data.status = status;
+        *out_data = data;
+        return data.status;
+    }
+
+    status = CopyShaderBytecode(
+        text,
+        "stage_ps=",
+        &data.pixel_bytecode,
+        &data.pixel_bytecode_size,
+        &data.pixel_bytecode_hash);
+    if (status != RuntimeAssetDataStatus::Success) {
+        data.status = status;
+        *out_data = data;
+        return data.status;
+    }
+
+    status = ValidateOptionalShaderHash(text, "stage_vs_hash=", data.vertex_bytecode_hash);
+    if (status != RuntimeAssetDataStatus::Success) {
+        data.status = status;
+        *out_data = data;
+        return data.status;
+    }
+
+    status = ValidateOptionalShaderHash(text, "stage_ps_hash=", data.pixel_bytecode_hash);
+    if (status != RuntimeAssetDataStatus::Success) {
+        data.status = status;
+        *out_data = data;
+        return data.status;
+    }
+
+    status = DecodeShaderInputLayout(ValueForToken(text, "input="), &data.input_layout);
+    if (status != RuntimeAssetDataStatus::Success) {
+        data.status = status;
+        *out_data = data;
+        return data.status;
+    }
+
+    data.texture_slot_count = validation.texture_slot_count;
+    data.status = RuntimeAssetDataStatus::Success;
+    *out_data = data;
+    return data.status;
 }
 
 RuntimeAssetDataStatus LoadRuntimeAssetDataGraph(
@@ -807,6 +1528,77 @@ RuntimeAssetDataStatus LoadRuntimeAssetDataGraph(
         ++file_index;
     }
 
+    result.status = RuntimeAssetDataStatus::Success;
+    *out_result = result;
+    return result.status;
+}
+
+RuntimeAssetDataStatus BuildRuntimeAssetShaderProgramPipeline(
+    const RuntimeAssetShaderProgramPipelineRequest &request,
+    RuntimeAssetShaderProgramPipelineResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetShaderProgramPipelineResult result{};
+    if (request.program != nullptr) {
+        result.program_id = request.program->program_id;
+        result.texture_slot_count = request.program->texture_slot_count;
+        result.vertex_bytecode_hash = request.program->vertex_bytecode_hash;
+        result.pixel_bytecode_hash = request.program->pixel_bytecode_hash;
+    }
+
+    result.status = ValidateShaderProgramPipelineRequest(request);
+    if (result.status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return result.status;
+    }
+
+    const RuntimeAssetLoadedShaderProgramData &program = *request.program;
+    const std::span<const std::uint8_t> vertex_bytecode = VertexShaderBytecodeSpan(program);
+    const std::span<const std::uint8_t> pixel_bytecode = PixelShaderBytecodeSpan(program);
+
+    yuengine::rhi::RhiShaderModuleDesc vertex_desc{};
+    vertex_desc.stage = yuengine::rhi::RhiShaderStage::Vertex;
+    vertex_desc.bytecode = vertex_bytecode;
+    const yuengine::rhi::RhiStatus vertex_status =
+        request.device->CreateShaderModule(vertex_desc, result.vertex_shader);
+    if (vertex_status != yuengine::rhi::RhiStatus::Success) {
+        result.status = RuntimeAssetDataStatus::RhiShaderModuleFailed;
+        *out_result = result;
+        return result.status;
+    }
+
+    yuengine::rhi::RhiShaderModuleDesc pixel_desc{};
+    pixel_desc.stage = yuengine::rhi::RhiShaderStage::Pixel;
+    pixel_desc.bytecode = pixel_bytecode;
+    const yuengine::rhi::RhiStatus pixel_status =
+        request.device->CreateShaderModule(pixel_desc, result.pixel_shader);
+    if (pixel_status != yuengine::rhi::RhiStatus::Success) {
+        request.device->DestroyShaderModule(result.vertex_shader);
+        result.vertex_shader = {};
+        result.status = RuntimeAssetDataStatus::RhiShaderModuleFailed;
+        *out_result = result;
+        return result.status;
+    }
+
+    yuengine::rhi::RhiPipelineDesc pipeline_desc{};
+    pipeline_desc.vertex_shader = result.vertex_shader;
+    pipeline_desc.pixel_shader = result.pixel_shader;
+    pipeline_desc.input_layout = program.input_layout;
+    const yuengine::rhi::RhiStatus pipeline_status =
+        request.device->CreatePipeline(pipeline_desc, result.pipeline);
+    if (pipeline_status != yuengine::rhi::RhiStatus::Success) {
+        request.device->DestroyShaderModule(result.pixel_shader);
+        request.device->DestroyShaderModule(result.vertex_shader);
+        result.pixel_shader = {};
+        result.vertex_shader = {};
+        result.status = RuntimeAssetDataStatus::RhiPipelineFailed;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.pipeline_desc = pipeline_desc;
     result.status = RuntimeAssetDataStatus::Success;
     *out_result = result;
     return result.status;

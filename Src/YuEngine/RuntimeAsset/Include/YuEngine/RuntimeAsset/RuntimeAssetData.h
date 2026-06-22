@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -15,6 +16,12 @@
 #include "YuEngine/Resource/ResourceDecodeResultClass.h"
 #include "YuEngine/Resource/ResourceHandle.h"
 #include "YuEngine/Resource/ResourceTypeId.h"
+#include "YuEngine/Rhi/IRhiDevice.h"
+#include "YuEngine/Rhi/RhiConstants.h"
+#include "YuEngine/Rhi/RhiInputLayoutDesc.h"
+#include "YuEngine/Rhi/RhiPipelineDesc.h"
+#include "YuEngine/Rhi/RhiPipelineHandle.h"
+#include "YuEngine/Rhi/RhiShaderModuleHandle.h"
 
 namespace yuengine::asset {
 class AssetManager;
@@ -75,7 +82,10 @@ enum class RuntimeAssetDataStatus {
     DecodedPayloadStoreFailed,
     AssetRegistrationFailed,
     ResourceDependencyFailed,
-    AssetDependencyFailed
+    AssetDependencyFailed,
+    InvalidInputLayout,
+    RhiShaderModuleFailed,
+    RhiPipelineFailed
 };
 
 /**
@@ -100,9 +110,19 @@ struct RuntimeAssetFileDesc final {
 struct RuntimeAssetValidationResult final {
     RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
     RuntimeAssetFileKind kind = RuntimeAssetFileKind::Unknown;
+    std::uint32_t version = 0U;
+    std::uint32_t schema_version = 0U;
     std::uint64_t hash = 0U;
+    std::uint64_t identity_hash = 0U;
     std::size_t byte_count = 0U;
     std::size_t dependency_count = 0U;
+    std::uint32_t vertex_count = 0U;
+    std::uint32_t index_count = 0U;
+    std::uint32_t texture_width = 0U;
+    std::uint32_t texture_height = 0U;
+    std::uint32_t texture_slot_count = 0U;
+    std::uint32_t shader_stage_count = 0U;
+    std::uint32_t shader_bytecode_byte_count = 0U;
 };
 
 /**
@@ -169,6 +189,46 @@ struct RuntimeAssetGraphLoadResult final {
 };
 
 /**
+ * @brief Owns decoded RuntimeAsset shader program data before RHI upload.
+ */
+struct RuntimeAssetLoadedShaderProgramData final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    std::uint32_t program_id = 0U;
+    RuntimeAssetValidationResult validation{};
+    std::array<std::uint8_t, yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES> vertex_bytecode{};
+    std::array<std::uint8_t, yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES> pixel_bytecode{};
+    std::size_t vertex_bytecode_size = 0U;
+    std::size_t pixel_bytecode_size = 0U;
+    std::uint64_t vertex_bytecode_hash = 0U;
+    std::uint64_t pixel_bytecode_hash = 0U;
+    yuengine::rhi::RhiInputLayoutDesc input_layout{};
+    std::uint32_t texture_slot_count = 0U;
+};
+
+/**
+ * @brief Requests a RuntimeAsset-owned shader program bridge into RHI primitives.
+ */
+struct RuntimeAssetShaderProgramPipelineRequest final {
+    yuengine::rhi::IRhiDevice *device = nullptr;
+    const RuntimeAssetLoadedShaderProgramData *program = nullptr;
+};
+
+/**
+ * @brief Reports shader module and pipeline ownership created from RuntimeAsset bytecode.
+ */
+struct RuntimeAssetShaderProgramPipelineResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    std::uint32_t program_id = 0U;
+    std::uint64_t vertex_bytecode_hash = 0U;
+    std::uint64_t pixel_bytecode_hash = 0U;
+    std::uint32_t texture_slot_count = 0U;
+    yuengine::rhi::RhiShaderModuleHandle vertex_shader{};
+    yuengine::rhi::RhiShaderModuleHandle pixel_shader{};
+    yuengine::rhi::RhiPipelineHandle pipeline{};
+    yuengine::rhi::RhiPipelineDesc pipeline_desc{};
+};
+
+/**
  * @brief Returns the file kind token used by the runtime asset header.
  * @param kind Input file family.
  * @return Static token string.
@@ -192,6 +252,17 @@ RuntimeAssetDataStatus ValidateRuntimeAssetDataBytes(
     RuntimeAssetFileKind expected_kind,
     RuntimeAssetValidationResult *out_result);
 /**
+ * @brief Decodes RuntimeAsset shader program bytes into bridge-owned data.
+ * @param bytes Source/cooked program bytes.
+ * @param program_id Stable shader program id.
+ * @param out_data Output decoded program payload.
+ * @return Explicit decode status.
+ */
+RuntimeAssetDataStatus DecodeRuntimeAssetShaderProgramData(
+    std::span<const std::uint8_t> bytes,
+    std::uint32_t program_id,
+    RuntimeAssetLoadedShaderProgramData *out_data);
+/**
  * @brief Loads a runtime asset graph from File/VFS into Resource and Asset records.
  * @param request Input graph load request.
  * @param out_result Output load result.
@@ -200,5 +271,14 @@ RuntimeAssetDataStatus ValidateRuntimeAssetDataBytes(
 RuntimeAssetDataStatus LoadRuntimeAssetDataGraph(
     const RuntimeAssetGraphLoadRequest &request,
     RuntimeAssetGraphLoadResult *out_result);
+/**
+ * @brief Creates RHI shader modules and a pipeline from RuntimeAsset-owned bytecode.
+ * @param request Input bytecode, layout, and RHI device.
+ * @param out_result Output module and pipeline ownership records.
+ * @return Explicit bridge status.
+ */
+RuntimeAssetDataStatus BuildRuntimeAssetShaderProgramPipeline(
+    const RuntimeAssetShaderProgramPipelineRequest &request,
+    RuntimeAssetShaderProgramPipelineResult *out_result);
 
 }
