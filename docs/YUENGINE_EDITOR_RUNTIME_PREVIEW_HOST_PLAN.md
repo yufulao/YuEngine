@@ -12,6 +12,9 @@ Related:
 - `docs/YUENGINE_SCENE_EDITOR_PLAN.md`
 - `docs/YUENGINE_ANIMATION_EDITOR_PLAN.md`
 - `docs/YUENGINE_RESOURCE_BROWSER_IMPORT_COOK_DIAGNOSTICS_SCOPE.md`
+- `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
+- `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
+- `docs/YUENGINE_EDITOR_DEPENDENCY_CHAIN_NO_BUILD_LIST.md`
 
 ## 1. Correction
 
@@ -99,6 +102,44 @@ The minimum scene-proof sample is intentionally concrete:
 If any layer in that chain is missing, the correct status is a blocked or
 partial preview-host implementation, not "L0/L1 complete".
 
+## 2.2 Runtime Asset v0 Boundary
+
+The first preview-host MVP is after RuntimeAsset v0, not a replacement for it.
+RuntimeAsset v0 means the current `YuRuntimeAsset` and `RuntimeAssetData_*`
+closed-loop smoke can load generated runtime files through File/VFS, Resource,
+Asset, RenderScene, RenderCore, and RHI. It still carries production gaps:
+complete typed source/runtime file contracts, decoded texture payload consumption
+by RenderScene materials, shader bytecode/program ownership, disk animation
+sampling, and production scene loader output APIs remain under the runtime asset
+contract work.
+
+The Preview Host MVP consumes that v0 route:
+
+```text
+RuntimeAsset v0 loaded files and statuses
+-> Resource/Asset handles and dependency diagnostics
+-> RenderScene records
+-> RenderCore/RHI frame or headless output
+-> preview session frame/status/diagnostic records
+```
+
+It must not choose source asset formats, import metadata, cook/package ownership,
+or production loader policy. If the canonical cube/cylinder/cone proof reaches a
+RuntimeAsset production gap, the Preview Host returns an explicit blocker or
+partial status instead of substituting fixture structs, editor mock data,
+screenshots, or report/oracle output.
+
+The MVP boundary for #YuPart task #38 is therefore:
+
+| Interface | Owned here | Owned elsewhere |
+| --- | --- | --- |
+| Session lifecycle | start/update/stop, stale-session failure, shutdown release | native editor app lifecycle |
+| Frame/status/diagnostics | caller-owned frame/headless descriptors, bounded diagnostics, explicit capacity failure | report/oracle schema or screenshot acceptance |
+| Camera/orbit | preview camera records that affect runtime output identity/status | full editor viewport UX and shortcuts |
+| Runtime resource preview bridge | RuntimeAsset/Resource/Asset refs and missing/stale/type mismatch diagnostics | Resource Browser/import settings UX (#39) |
+| Selection/transform feedback | bounded hit, selection, and transform feedback records from preview output | Scene editor gizmo workflow and command stack (#40) |
+| Canonical scene proof | loaded runtime files produce cube/cylinder/cone frame sequence, or exact #36 blocker is returned | source data format and production loader gap closure (#36) |
+
 ## 3. Shared Architecture
 
 ### 3.1 Native/Engine Editor Surface
@@ -160,8 +201,9 @@ The editor plan order is:
 
 ```text
 L0/L1 runtime foundation only
+-> RuntimeAssetData v0 disk-backed closed loop
 -> Editor visual capability correction
-Engine Preview Host
+-> Engine Preview Host MVP gate
 -> Resource Browser / Import Settings scope
 -> RenderScene / Material / Texture / Shader preview path
 -> Scene runtime format and viewport
@@ -172,6 +214,12 @@ Engine Preview Host
 -> UI Editor
 -> Cook / Package / Run smoke
 ```
+
+Resource Browser/import work may be planned in parallel, but it is not allowed
+to stand in for preview-host output. Likewise, Scene/Animation/UI editor plans
+may keep data-schema preparation work, but they must not claim usable editor
+progress until their runtime data can pass validation and the shared preview host
+can return authoritative runtime output or an exact blocker.
 
 Removed Web workspace scaffolding is residual cleanup context only. It is not
 usable-editor progress; engine UI runtime preview must be visible and validated
@@ -202,19 +250,26 @@ In particular:
 
 ## 6. First Preview Host Batch
 
-Recommended first batch:
+Recommended MVP gate batch after RuntimeAsset v0:
 
 | ID | Work item | Acceptance |
 | --- | --- | --- |
 | EPV-001 | Preview host process/session contract | editor host can start/stop isolated engine preview sessions |
 | EPV-002 | Viewport frame protocol | host can return a frame/status/diagnostics payload to editor tooling |
 | EPV-003 | Preview camera contract | orbit/pan/zoom or equivalent camera state affects engine viewport output |
-| EPV-004 | Resource preview bridge | model/texture/material/sprite/clip refs resolve through engine resource path or return explicit diagnostics |
-| EPV-005 | Transform and selection feedback | viewport supports select and translate/rotate/scale feedback for scene objects |
-| EPV-006 | UI runtime preview hook | UI layout renders through engine UI runtime, not HTML/CSS |
-| EPV-007 | Animation playback preview hook | play/pause/scrub/step returns sampled state and visible target feedback |
-| EPV-008 | Cook/package smoke bridge | previewed data can be validated as cook/package/run input |
-| EPV-009 | Canonical scene visual proof | cube/cylinder/cone scene with three-texture material, object rotation, orbit camera, and bounded captured frame set comes from YuEngine preview host |
+| EPV-004 | RuntimeAsset v0 resource preview bridge | model/texture/material refs resolve through RuntimeAsset/Resource/Asset path or return explicit bounded diagnostics |
+| EPV-005 | Transform and selection feedback | preview returns bounded hit, selection, and transform feedback records; editor overlays remain editor-only |
+| EPV-006 | Canonical scene visual proof or blocker | cube/cylinder/cone scene with three-texture material, object rotation, orbit camera, and bounded captured frame set comes from loaded runtime files, or reports the exact #36 production-gap blocker |
+
+Later editor-facing batches:
+
+| ID | Work item | Acceptance |
+| --- | --- | --- |
+| EPV-LATER-001 | Resource Browser / Import Settings integration | shared browser and typed import settings consume preview diagnostics without owning runtime truth |
+| EPV-LATER-002 | UI runtime preview hook | UI layout renders through engine UI runtime, not HTML/CSS |
+| EPV-LATER-003 | Animation playback preview hook | play/pause/scrub/step returns sampled state and visible target feedback |
+| EPV-LATER-004 | Scene viewport command bridge | transform gizmo and viewport commands update runtime data through approved scene/world gates |
+| EPV-LATER-005 | Cook/package/run smoke bridge | previewed data can be validated as cook/package/run input after owning asset/package gates close |
 
 ## 7. Hard Blocks
 
@@ -222,6 +277,8 @@ These are blocking violations:
 
 - claiming L0/L1 completion, RHI fixture capture, RenderCore fixture pass, or
   isolated sample screenshots satisfy editor preview capability
+- claiming RuntimeAsset v0 smoke closes the full production asset contract or
+  lets Preview Host define source asset formats
 - accepting deprecated Web shell, form UI, 2D canvas sketches, or static screenshots as
   core editor preview
 - treating CSS/HTML visual output as the game editor's authoritative preview
@@ -232,9 +289,23 @@ These are blocking violations:
 - calling UI Editor usable without engine UI runtime render preview
 - optimizing a deprecated Web-form surface instead of adding engine preview capability
 - using fake preview data that cannot be cooked, packaged, and loaded by runtime
+- bypassing loaded runtime files with in-memory fixture structs, editor-only mock
+  data, report/oracle output, or screenshots for the canonical scene proof
 - expanding gameplay/product logic to mask missing engine preview foundations
 
 ## 8. Completion Definition
+
+The #YuPart task #38 MVP gate is complete when:
+
+- this plan and `docs/gates/EDITOR_GATE_001_RUNTIME_PREVIEW_HOST.md` define
+  Preview Host as an after-RuntimeAsset-v0 consumer;
+- MVP interfaces include session, frame/status/diagnostics, camera/orbit,
+  runtime resource preview bridge, and selection/transform feedback;
+- the canonical cube/cylinder/cone proof requires loaded runtime files and
+  reports exact #36 production-gap blockers instead of bypassing them;
+- Resource Browser/import settings ownership remains with #39;
+- Scene/Animation/UI dependency ordering and no-build-yet items remain with #40;
+- documentation-only verification passes with `git diff --check`.
 
 The shared editor foundation is complete only when:
 

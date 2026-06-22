@@ -4,14 +4,19 @@ Status: Proposed architecture/reference gate
 Requested decision: `REFERENCE_GATE_REVIEW`
 Current decision: `REVIEW_ONLY_NOT_IMPLEMENTATION_APPROVED`
 Owner: Architecture
-Task: #70
+Task: #70; #YuPart task #38
 Source baseline: `5dabfae`
+Current review baseline: `9e89ea8`
 Related plans:
 
 - `docs/YUENGINE_EDITOR_RUNTIME_PREVIEW_HOST_PLAN.md`
 - `docs/YUENGINE_UI_FRAMEWORK_EDITOR_PLAN.md`
 - `docs/YUENGINE_SCENE_EDITOR_PLAN.md`
 - `docs/YUENGINE_ANIMATION_EDITOR_PLAN.md`
+- `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
+- `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
+- `docs/YUENGINE_RESOURCE_BROWSER_IMPORT_COOK_DIAGNOSTICS_SCOPE.md`
+- `docs/YUENGINE_EDITOR_DEPENDENCY_CHAIN_NO_BUILD_LIST.md`
 
 ## Purpose
 
@@ -19,10 +24,10 @@ Define the shared editor runtime preview host boundary before UI, Scene, and
 Animation editor work claims usable editor progress.
 
 This gate is architecture and reference guidance only. It does not authorize
-implementation, does not create a native editor application, and does not allow
-Deprecated Web, HTML/CSS, 2D canvas sketches, or static screenshots must not
-become authoritative runtime preview. Web is retained only as deprecated
-historical wording.
+implementation and does not create a native editor application. Deprecated Web,
+HTML/CSS, 2D canvas sketches, or static screenshots must not become
+authoritative runtime preview. Web is retained only as deprecated historical
+wording.
 
 The preview host is the bridge between editor tooling and YuEngine
 runtime capability:
@@ -57,6 +62,33 @@ This gate becomes meaningful only when a preview-host session can compose those
 lower layers into an engine-owned visual or headless preview output. For Scene
 preview, that means at minimum a multi-object, material/texture, camera-driven
 frame sequence through YuEngine runtime paths rather than a standalone sample.
+
+## Runtime Asset v0 Input Boundary
+
+The RuntimeAsset v0 input for this gate is the current L1 state recorded as
+`RUNTIME_ASSET_MODULE_SLICE_IMPLEMENTED_WITH_PRODUCTION_GAPS`: generated runtime
+files are read through File/VFS, `YuRuntimeAsset`, Resource, Asset, RenderScene,
+RenderCore, and RHI, and the focused `RuntimeAssetData_*` tests prove the first
+disk-backed cube/cylinder/cone closed loop.
+
+That v0 state is enough to define the preview-host MVP interface. It is not
+enough to declare the production asset contract complete. The preview host may
+consume loaded runtime files, Resource/Asset handles, RenderScene records,
+RenderCore/RHI frame output, and the RuntimeAssetData status vocabulary. It must
+not define source asset formats, choose cook/package ownership, invent import
+metadata, or fill gaps with editor-only fixture structures.
+
+| Neighbor task | Interface to this gate |
+| --- | --- |
+| #36 Runtime asset contract v0 production-gap closure | owns source/runtime file contract gaps, texture payload consumption, shader program ownership, disk animation sampling, and production scene loader output API |
+| #37 UE editor asset/import/preview boundary audit | supplies responsibility-separation evidence only; this gate must not copy Unreal API shape, asset database behavior, or editor extensibility |
+| #39 Resource Browser + import/cook/diagnostics scope | owns editor-facing browser/import settings UX and diagnostic display shape; this gate only exposes resource preview refs/statuses |
+| #40 Scene/Animation/UI dependency chain and no-build-yet list | owns editor dependency ordering and explicit no-build-yet items; this gate only defines the shared preview host floor they later depend on |
+
+If #36 records a production gap for the canonical scene route, the MVP preview
+host must report that exact gap as a blocker or partial status. It must not route
+around the gap through in-memory fixture structs, Web/editor mock data,
+screenshots, or report/oracle output.
 
 ## Reference Boundary
 
@@ -133,16 +165,19 @@ This gate does not own:
 4. Runtime data is the source of truth. Editor-only state must be sidecar data.
 5. Preview resource resolution must use approved Resource/Package/File paths or
    return explicit diagnostics.
-6. Preview cannot bypass approved restore/preflight/proof gates when Scene or
+6. Preview may consume RuntimeAsset v0 loaded graphs and statuses, but must not
+   define asset source formats, import metadata, cook/package ownership, or
+   production loader gaps.
+7. Preview cannot bypass approved restore/preflight/proof gates when Scene or
    World data is involved.
-7. UI preview must use YuEngine UI runtime output, not browser layout.
-8. Animation preview must use runtime clip/player/sample/event output, not only
+8. UI preview must use YuEngine UI runtime output, not browser layout.
+9. Animation preview must use runtime clip/player/sample/event output, not only
    timeline drawing.
-9. Scene preview must use engine-rendered or engine-headless scene outputs, not
-   a standalone deprecated Web canvas mock.
-10. L0/L1 pass, RHI fixture pass, RenderCore fixture pass, and isolated sample
+10. Scene preview must use engine-rendered or engine-headless scene outputs, not
+    a standalone deprecated Web canvas mock.
+11. L0/L1 pass, RHI fixture pass, RenderCore fixture pass, and isolated sample
     screenshots must never be reported as Preview Host pass.
-11. Failures must be explicit and no-mutation where applicable.
+12. Failures must be explicit and no-mutation where applicable.
 
 ## Minimum Contract Values
 
@@ -175,13 +210,13 @@ This gate recommends, but does not approve, the first implementable slice:
 | EPV-001 | Session lifecycle contract | start/update/stop returns explicit status and stale-session failure |
 | EPV-002 | Frame/headless output descriptor | host reports format, size, status, and diagnostics into caller-owned outputs |
 | EPV-003 | Camera state contract | orbit/pan/zoom or equivalent camera state changes preview output identity/status |
-| EPV-004 | Resource diagnostics bridge | missing/stale/type-mismatch refs report bounded diagnostics without mutation |
-| EPV-005 | Selection/hit feedback records | preview returns bounded hit/selection records; editor overlays remain editor-only |
-| EPV-006 | Canonical scene proof contract | fixed-seed cube/cylinder/cone scene with one three-texture material, object rotation, orbit camera, and bounded frame capture set reports pass or exact missing-layer blocker |
+| EPV-004 | RuntimeAsset v0 resource diagnostics bridge | missing/stale/type-mismatch RuntimeAsset/Resource/Asset refs report bounded diagnostics without mutation |
+| EPV-005 | Selection/hit/transform feedback records | preview returns bounded hit, selection, and transform feedback records; editor overlays remain editor-only |
+| EPV-006 | Canonical scene proof contract | fixed-seed cube/cylinder/cone scene loaded from RuntimeAsset v0 files, with one three-texture material, object rotation, orbit camera, and bounded frame capture set, reports pass or exact #36 production-gap blocker |
 
-UI runtime render hook, Scene viewport transform gizmo, Animation playback
-target, and cook/package/run smoke should remain later slices unless a reviewer
-explicitly approves a narrower staged order.
+Resource Browser/import UI, UI runtime render hook, Scene viewport transform
+gizmo, Animation playback target, and cook/package/run smoke should remain later
+slices unless a reviewer explicitly approves a narrower staged order.
 
 ## Required Future Tests
 
@@ -197,6 +232,9 @@ to:
 - `EditorPreviewHost_WebOverlayStateDoesNotExportAsRuntimeData`
 - `EditorPreviewHost_ShutdownReleasesSessionCapacity`
 - `EditorPreviewHost_CanonicalScene_CapturesCubeCylinderConeOrbitSequence`
+- `EditorPreviewHost_UsesRuntimeAssetV0LoadedGraphWithoutDefiningFormats`
+- `EditorPreviewHost_ReportsRuntimeAssetProductionGapAsExplicitBlocker`
+- `EditorPreviewHost_SelectionTransformFeedbackRejectsInvalidRequestWithoutMutation`
 
 Focused editor-specific implementation gates should add their own tests:
 
@@ -242,6 +280,14 @@ Before any implementation task is created:
    UI, animation, save, report, or old-runtime facts are proposed as acceptance
    inputs.
 
+For #YuPart task #38 specifically, review must also confirm:
+
+- #36 owns RuntimeAsset v0 production-gap closure and this gate only consumes its
+  loaded-graph/status output;
+- #37 reference findings are used only as boundary evidence;
+- #39 owns Resource Browser/import/cook/diagnostic editor UX beyond preview refs;
+- #40 owns Scene/Animation/UI dependency ordering and no-build-yet items.
+
 ## Hard Blocks
 
 The following are blocking violations:
@@ -251,11 +297,15 @@ The following are blocking violations:
   or editor visual capability;
 - accepting deprecated Web shell, form UI, DOM/CSS, 2D canvas sketches, or static
   screenshots as authoritative runtime preview;
+- claiming RuntimeAsset v0 smoke closes the production asset contract or lets
+  Preview Host define source asset formats;
 - calling UI, Scene, or Animation editor usable before engine preview host
   output exists for the relevant runtime behavior;
 - making deprecated Web editor code a dependency of runtime modules;
 - making runtime modules depend on editor-only state;
 - using fake preview data that cannot pass cook/package/runtime validation;
+- using in-memory fixture structs, editor-only mock data, or helper/oracle output
+  to bypass loaded runtime files for the canonical scene proof;
 - bypassing Resource/Package/File validation for preview resource refs;
 - bypassing world restore plan or apply-time proof for Scene preview;
 - making diagnostics, reports, or oracle outputs own runtime behavior;
@@ -269,6 +319,8 @@ The following are blocking violations:
 This gate is ready for review when:
 
 - it is linked from the shared editor preview host plan;
+- it is linked from the RuntimeAssetData plan and L1 runtime asset closed-loop
+  gate as an after-asset-v0 consumer, not an asset-contract owner;
 - UI, Scene, and Animation editor plans reference it as the shared preview
   boundary;
 - it explicitly separates L0/L1 foundation completion from editor visual
@@ -277,5 +329,7 @@ This gate is ready for review when:
 - the plan keeps editor tooling, local service, and preview host
   responsibilities separate, with Web retained only as deprecated historical
   wording;
+- the task #36/#37/#39/#40 interfaces are named so MVP scope cannot silently
+  absorb asset, reference-audit, resource-browser, or editor-chain ownership;
 - hard blocks prevent deprecated Web-only editor pages from being counted as usable editor
   completion.
