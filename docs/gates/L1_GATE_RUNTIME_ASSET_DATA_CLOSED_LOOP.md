@@ -121,6 +121,7 @@ Every approved file family must specify:
 | Requirement | Required content |
 | --- | --- |
 | Header/version | magic, version, byte order, compatible/minimum version policy |
+| Family identity | internal kind/schema metadata; no production dependency on `.yu*` suffixes |
 | Bounds | record counts, byte counts, string/path length, alignment, extent, vertex/index limits |
 | Dependencies | typed refs, dependency list order, missing/duplicate/type mismatch status |
 | Identity/hash/size | deterministic asset id, source hash, payload hash, total file size |
@@ -129,8 +130,14 @@ Every approved file family must specify:
 | Validator | no-mutation failure behavior, output capacity behavior, diagnostics bounds |
 | Cook/load | deterministic runtime id, dependency resolution, Resource state transition, runtime output ownership |
 
-The first implementation may choose a compact custom test format, but it must
-still carry all of the rows above.
+The current `.yu*` names are smoke-fixture names only. Production source and
+authoring data may use AI-/human-readable schema text or manifests, but type
+identity must come from internal metadata rather than suffixes. Runtime/cook/
+export data should be high-performance binary with internal magic, version,
+kind, hash, dependency, and table metadata. The first implementation may choose
+a compact custom test format, but it must still carry all of the rows above and
+must not optimize for external ecosystem, plugin-marketplace, or commercial-
+engine compatibility over YuEngine runtime cleanliness.
 
 ## Required Closed-Loop Proof
 

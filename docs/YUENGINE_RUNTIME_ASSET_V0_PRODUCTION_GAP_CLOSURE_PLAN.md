@@ -47,6 +47,28 @@ The current implementation proves these useful floors:
 These floors are enough to reject pure test-struct and helper-image claims. They
 are not enough to call RuntimeAsset v0 production-ready.
 
+## Format Naming And Identification Policy
+
+The current `.yumesh`, `.yumat`, `.yutex`, `.yuprogram`, `.yuscene`, and
+`.yuanim` names are smoke-fixture names only. They are not a production format
+naming strategy, and production RuntimeAsset v0 must not depend on filename
+extensions to identify asset type.
+
+Source and authoring-side files should prefer AI- and human-readable
+schema-shaped text or manifests where useful for single-team iteration speed.
+Type identification must come from internal metadata such as `kind`, `version`,
+`schema`, and dependency table records, not from suffixes.
+
+Runtime, cook, and export output should generate high-performance binary data
+for fast loading and validation. Binary runtime files must carry internal magic,
+version, kind, hash, dependency, and table metadata sufficient to validate and
+load without trusting external names.
+
+Do not trade YuEngine format cleanliness for external ecosystem compatibility,
+plugin marketplace conventions, or commercial-engine import format parity. The
+priority is single-team development efficiency on the source side and YuEngine
+runtime performance on the cooked/runtime side.
+
 ## Open Production Gaps
 
 ### A. Typed Validators For Every File Family
@@ -68,6 +90,8 @@ typed dependency refs, coordinate/units/handedness/winding/UV origin, and explic
 statuses for invalid header, unsupported version, invalid size/count, invalid
 dependency, duplicate id, missing dependency, type mismatch, hash mismatch,
 unsupported field value, output capacity exceeded, and budget exceeded.
+Validators must use internal kind/version/schema metadata and must not infer
+file family from `.yu*` or any other filename suffix.
 
 Acceptance shape:
 
@@ -213,6 +237,8 @@ Do not include in RuntimeAsset v0:
 - Web editor, browser canvas, UI editor, native editor shell, or viewport overlay;
 - Game Adapter behavior;
 - old TouhouNewWorld package parser or original package compatibility;
+- external ecosystem, plugin-marketplace, or commercial-engine format
+  compatibility constraints;
 - external DCC/authoring bridge, hot reload, asset database UX, or remote cook;
 - screenshots, reports, CPU PPM artifacts, GDI/software viewers, sleeps, or
   manual inspection as acceptance.

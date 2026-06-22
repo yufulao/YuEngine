@@ -95,6 +95,8 @@ Every file family must specify the same validation vocabulary:
   requirements;
 - deterministic identity, source hash, payload hash, and total file size;
 - dependency list with typed references and no implicit lookup by display name;
+- file-family identification from internal `kind` / `version` / `schema` or
+  equivalent metadata, not from `.yu*` filename suffixes;
 - coordinate system, units, handedness, transform order, winding, and UV origin;
 - explicit error/status values for unsupported version, invalid header,
   invalid count, invalid size, invalid dependency, duplicate id, missing
@@ -105,10 +107,15 @@ Every file family must specify the same validation vocabulary:
 - generated-file policy: fixture outputs are produced by checked-in tools but
   are not committed unless a reviewer approves a tiny source fixture file.
 
-The first format can be binary, text, or mixed only after reviewers accept the
-tradeoff. The important contract is not the syntax; it is that the same bytes
-are read from disk through approved engine paths and produce deterministic
-runtime records.
+The current `.yu*` file names are smoke-fixture names only, not a production
+format naming policy. Source and authoring-side data should prefer AI- and
+human-readable schema-shaped text or manifests when that improves single-team
+iteration. Runtime/cook/export output should produce high-performance binary data
+with internal magic, version, kind, hash, dependency, and table metadata. The
+important contract is not the suffix; it is that the same bytes are read from
+disk through approved engine paths and produce deterministic runtime records.
+Do not sacrifice clean YuEngine runtime data for external ecosystem, plugin
+marketplace, or commercial-engine format compatibility.
 
 ## Deterministic Fixture Generator
 
