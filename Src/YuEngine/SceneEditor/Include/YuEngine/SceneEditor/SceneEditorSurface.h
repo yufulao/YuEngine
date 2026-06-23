@@ -22,6 +22,33 @@ enum class SceneEditorSurfaceStatus {
     SelectionRequired
 };
 
+enum class SceneEditorTransformCommandStatus {
+    Success,
+    InvalidArgument,
+    InvalidAuthoringDocument,
+    OutputCapacityExceeded,
+    SelectionRequired,
+    ObjectNotFound,
+    TransformNotFound,
+    UndoStackEmpty,
+    RedoStackEmpty
+};
+
+enum class SceneEditorTransformCommandMode {
+    Apply,
+    Undo,
+    Redo
+};
+
+enum class SceneEditorTransformCommandBlockedLayer {
+    None,
+    AuthoringDocument,
+    Selection,
+    TransformRecord,
+    UndoRedoLedger,
+    Output
+};
+
 struct SceneEditorHierarchyRow final {
     yuengine::world::WorldObjectId world_object_id{};
     yuengine::object::ObjectHandle object_handle{};
@@ -84,8 +111,62 @@ struct SceneEditorSurfaceResult final {
     }
 };
 
+struct SceneEditorTransformLedgerRecord final {
+    yuengine::world::WorldObjectId world_object_id{};
+    yuengine::world::WorldTransformState before_transform{};
+    yuengine::world::WorldTransformState after_transform{};
+    std::uint32_t command_sequence = 0U;
+    bool applied = false;
+    bool undone = false;
+    bool redone = false;
+    bool undo_available = false;
+    bool redo_available = false;
+};
+
+struct SceneEditorTransformCommandRequest final {
+    const yuengine::world::WorldSceneAuthoringDocument *document = nullptr;
+    yuengine::world::WorldObjectId selected_world_object_id{};
+    yuengine::world::WorldTransformState requested_transform{};
+    const SceneEditorTransformLedgerRecord *history_record = nullptr;
+    SceneEditorTransformCommandMode mode = SceneEditorTransformCommandMode::Apply;
+    std::span<yuengine::world::WorldSceneObjectTransformRestoreTransformRecord>
+        transform_output{};
+    std::span<SceneEditorTransformLedgerRecord> ledger_output{};
+};
+
+struct SceneEditorTransformCommandResult final {
+    SceneEditorTransformCommandStatus status =
+        SceneEditorTransformCommandStatus::InvalidArgument;
+    yuengine::world::WorldSceneAuthoringDocumentStatus authoring_status =
+        yuengine::world::WorldSceneAuthoringDocumentStatus::Success;
+    SceneEditorTransformCommandBlockedLayer blocked_layer =
+        SceneEditorTransformCommandBlockedLayer::AuthoringDocument;
+    yuengine::world::WorldObjectId selected_world_object_id{};
+    yuengine::world::WorldTransformState previous_transform{};
+    yuengine::world::WorldTransformState current_transform{};
+    std::uint32_t transform_record_count = 0U;
+    std::uint32_t ledger_record_count = 0U;
+    bool consumed_authoring_document = false;
+    bool consumed_selection = false;
+    bool wrote_transform_output = false;
+    bool emitted_undo_redo_ledger = false;
+    bool undo_available = false;
+    bool redo_available = false;
+    bool mutated_runtime_data = false;
+    bool opened_native_window = false;
+    bool used_preview_feedback = false;
+
+    bool Succeeded() const {
+        return status == SceneEditorTransformCommandStatus::Success;
+    }
+};
+
 SceneEditorSurfaceStatus BuildSceneEditorNativeSurface(
     const SceneEditorSurfaceRequest &request,
     SceneEditorSurfaceResult *out_result);
+
+SceneEditorTransformCommandStatus ApplySceneEditorTransformCommand(
+    const SceneEditorTransformCommandRequest &request,
+    SceneEditorTransformCommandResult *out_result);
 
 }

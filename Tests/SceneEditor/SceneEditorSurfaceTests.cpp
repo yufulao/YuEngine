@@ -18,6 +18,7 @@
 
 namespace {
 using yuengine::object::ObjectHandle;
+using yuengine::sceneeditor::ApplySceneEditorTransformCommand;
 using yuengine::resource::ResourceHandle;
 using yuengine::resource::ResourceTypeId;
 using yuengine::sceneeditor::BuildSceneEditorNativeSurface;
@@ -26,6 +27,12 @@ using yuengine::sceneeditor::SceneEditorInspectorRow;
 using yuengine::sceneeditor::SceneEditorSurfaceRequest;
 using yuengine::sceneeditor::SceneEditorSurfaceResult;
 using yuengine::sceneeditor::SceneEditorSurfaceStatus;
+using yuengine::sceneeditor::SceneEditorTransformCommandBlockedLayer;
+using yuengine::sceneeditor::SceneEditorTransformCommandMode;
+using yuengine::sceneeditor::SceneEditorTransformCommandRequest;
+using yuengine::sceneeditor::SceneEditorTransformCommandResult;
+using yuengine::sceneeditor::SceneEditorTransformCommandStatus;
+using yuengine::sceneeditor::SceneEditorTransformLedgerRecord;
 using yuengine::world::WorldComponentAttachmentSnapshotRecord;
 using yuengine::world::WorldComponentResourceBindingSnapshotRecord;
 using yuengine::world::WorldComponentSlotId;
@@ -53,6 +60,12 @@ constexpr const char *TEST_FIELD_GROUPING =
     "SceneEditorSurface_GroupsRuntimeAndEditorOnlyInspectorFields";
 constexpr const char *TEST_BOUNDARY_FLAGS =
     "SceneEditorSurface_RemainsEditorDataOnlyWithoutRuntimeMutation";
+constexpr const char *TEST_TRANSFORM_APPLY =
+    "SceneEditorTransformCommand_AppliesSelectedTransformAndWritesUndoLedger";
+constexpr const char *TEST_TRANSFORM_UNDO_REDO =
+    "SceneEditorTransformCommand_UndoRedoReplaysLedgerDeterministically";
+constexpr const char *TEST_TRANSFORM_INVALID_SELECTION =
+    "SceneEditorTransformCommand_RejectsInvalidSelectionWithoutMutation";
 
 int Fail(const char *message) {
     std::fprintf(stderr, "%s\n", message);
@@ -167,6 +180,35 @@ bool SentinelInspectorUnchanged(const SceneEditorInspectorRow &row) {
     return row.world_object_id.value == 901U &&
         row.object_handle.slot == 91U &&
         row.component_count == 77U;
+}
+
+bool TransformMatches(
+    const WorldTransformState &left,
+    const WorldTransformState &right) {
+    return left.translation_x == right.translation_x &&
+        left.translation_y == right.translation_y &&
+        left.translation_z == right.translation_z &&
+        left.rotation_x == right.rotation_x &&
+        left.rotation_y == right.rotation_y &&
+        left.rotation_z == right.rotation_z &&
+        left.rotation_w == right.rotation_w &&
+        left.scale_x == right.scale_x &&
+        left.scale_y == right.scale_y &&
+        left.scale_z == right.scale_z;
+}
+
+bool SentinelTransformUnchanged(
+    const WorldSceneObjectTransformRestoreTransformRecord &record) {
+    return record.world_object_id.value == 990U &&
+        record.transform_state.translation_x == 991.0F;
+}
+
+bool SentinelLedgerUnchanged(const SceneEditorTransformLedgerRecord &record) {
+    return record.world_object_id.value == 992U &&
+        record.command_sequence == 993U &&
+        !record.applied &&
+        !record.undone &&
+        !record.redone;
 }
 
 int SceneEditorSurfaceBuildsHierarchyAndInspectorFromAuthoringDocument() {
@@ -468,6 +510,230 @@ int SceneEditorSurfaceRemainsEditorDataOnlyWithoutRuntimeMutation() {
 
     return 0;
 }
+
+int SceneEditorTransformCommandAppliesSelectedTransformAndWritesUndoLedger() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> identities{
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)},
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(2U), MakeObjectHandle(2U, 10U)}};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> transforms{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(1U), Transform(10.0F)},
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(2U), Transform(20.0F)}};
+    std::array<WorldSceneEditorSidecarRecord, 1U> sidecars{
+        SelectionSidecar(ObjectId(2U))};
+    const WorldSceneAuthoringDocument document = MakeDocument(
+        identities.data(),
+        2U,
+        transforms.data(),
+        2U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        sidecars.data(),
+        1U);
+
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> transform_output{};
+    std::array<SceneEditorTransformLedgerRecord, 1U> ledger_output{};
+    const WorldTransformState requested = Transform(200.0F);
+    SceneEditorTransformCommandRequest request{};
+    request.document = &document;
+    request.selected_world_object_id = ObjectId(2U);
+    request.requested_transform = requested;
+    request.mode = SceneEditorTransformCommandMode::Apply;
+    request.transform_output =
+        std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+            transform_output.data(),
+            transform_output.size());
+    request.ledger_output =
+        std::span<SceneEditorTransformLedgerRecord>(
+            ledger_output.data(),
+            ledger_output.size());
+
+    SceneEditorTransformCommandResult result{};
+    const SceneEditorTransformCommandStatus status =
+        ApplySceneEditorTransformCommand(request, &result);
+    if (status != SceneEditorTransformCommandStatus::Success ||
+        !result.Succeeded() ||
+        result.blocked_layer != SceneEditorTransformCommandBlockedLayer::None ||
+        result.selected_world_object_id.value != 2U ||
+        result.transform_record_count != 2U ||
+        result.ledger_record_count != 1U ||
+        !result.consumed_authoring_document ||
+        !result.consumed_selection ||
+        !result.wrote_transform_output ||
+        !result.emitted_undo_redo_ledger ||
+        !result.undo_available ||
+        result.redo_available ||
+        result.mutated_runtime_data ||
+        result.opened_native_window ||
+        result.used_preview_feedback) {
+        return Fail("scene editor transform apply result ledger changed");
+    }
+
+    if (!TransformMatches(transform_output[0U].transform_state, transforms[0U].transform_state) ||
+        !TransformMatches(transform_output[1U].transform_state, requested) ||
+        !TransformMatches(ledger_output[0U].before_transform, transforms[1U].transform_state) ||
+        !TransformMatches(ledger_output[0U].after_transform, requested) ||
+        ledger_output[0U].world_object_id.value != 2U ||
+        ledger_output[0U].command_sequence != 1U ||
+        !ledger_output[0U].applied ||
+        !ledger_output[0U].undo_available ||
+        ledger_output[0U].redo_available) {
+        return Fail("scene editor transform apply did not write selected transform and ledger");
+    }
+
+    return 0;
+}
+
+int SceneEditorTransformCommandUndoRedoReplaysLedgerDeterministically() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)}};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(1U), Transform(10.0F)}};
+    std::array<WorldSceneEditorSidecarRecord, 1U> sidecars{
+        SelectionSidecar(ObjectId(1U))};
+    const WorldSceneAuthoringDocument document = MakeDocument(
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        sidecars.data(),
+        1U);
+
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> apply_transforms{};
+    std::array<SceneEditorTransformLedgerRecord, 1U> apply_ledger{};
+    SceneEditorTransformCommandRequest apply_request{};
+    apply_request.document = &document;
+    apply_request.selected_world_object_id = ObjectId(1U);
+    apply_request.requested_transform = Transform(50.0F);
+    apply_request.mode = SceneEditorTransformCommandMode::Apply;
+    apply_request.transform_output =
+        std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+            apply_transforms.data(),
+            apply_transforms.size());
+    apply_request.ledger_output =
+        std::span<SceneEditorTransformLedgerRecord>(
+            apply_ledger.data(),
+            apply_ledger.size());
+    SceneEditorTransformCommandResult apply_result{};
+    if (ApplySceneEditorTransformCommand(apply_request, &apply_result) !=
+        SceneEditorTransformCommandStatus::Success) {
+        return Fail("scene editor transform undo redo setup apply failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> undo_transforms{};
+    std::array<SceneEditorTransformLedgerRecord, 1U> undo_ledger{};
+    SceneEditorTransformCommandRequest undo_request{};
+    undo_request.document = &document;
+    undo_request.history_record = &apply_ledger[0U];
+    undo_request.mode = SceneEditorTransformCommandMode::Undo;
+    undo_request.transform_output =
+        std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+            undo_transforms.data(),
+            undo_transforms.size());
+    undo_request.ledger_output =
+        std::span<SceneEditorTransformLedgerRecord>(
+            undo_ledger.data(),
+            undo_ledger.size());
+    SceneEditorTransformCommandResult undo_result{};
+    if (ApplySceneEditorTransformCommand(undo_request, &undo_result) !=
+        SceneEditorTransformCommandStatus::Success ||
+        !undo_ledger[0U].undone ||
+        undo_ledger[0U].undo_available ||
+        !undo_ledger[0U].redo_available ||
+        undo_ledger[0U].command_sequence != 2U ||
+        !TransformMatches(undo_transforms[0U].transform_state, transforms[0U].transform_state)) {
+        return Fail("scene editor transform undo did not replay previous transform");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> redo_transforms{};
+    std::array<SceneEditorTransformLedgerRecord, 1U> redo_ledger{};
+    SceneEditorTransformCommandRequest redo_request{};
+    redo_request.document = &document;
+    redo_request.history_record = &apply_ledger[0U];
+    redo_request.mode = SceneEditorTransformCommandMode::Redo;
+    redo_request.transform_output =
+        std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+            redo_transforms.data(),
+            redo_transforms.size());
+    redo_request.ledger_output =
+        std::span<SceneEditorTransformLedgerRecord>(
+            redo_ledger.data(),
+            redo_ledger.size());
+    SceneEditorTransformCommandResult redo_result{};
+    if (ApplySceneEditorTransformCommand(redo_request, &redo_result) !=
+        SceneEditorTransformCommandStatus::Success ||
+        !redo_ledger[0U].redone ||
+        !redo_ledger[0U].undo_available ||
+        redo_ledger[0U].redo_available ||
+        redo_ledger[0U].command_sequence != 2U ||
+        !TransformMatches(redo_transforms[0U].transform_state, apply_transforms[0U].transform_state)) {
+        return Fail("scene editor transform redo did not replay applied transform");
+    }
+
+    return 0;
+}
+
+int SceneEditorTransformCommandRejectsInvalidSelectionWithoutMutation() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)}};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(1U), Transform(10.0F)}};
+    const WorldSceneAuthoringDocument document = MakeDocument(
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U);
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transform_output{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(990U), Transform(991.0F)}};
+    std::array<SceneEditorTransformLedgerRecord, 1U> ledger_output{};
+    ledger_output[0U].world_object_id = ObjectId(992U);
+    ledger_output[0U].command_sequence = 993U;
+
+    SceneEditorTransformCommandRequest request{};
+    request.document = &document;
+    request.selected_world_object_id = ObjectId(99U);
+    request.requested_transform = Transform(200.0F);
+    request.mode = SceneEditorTransformCommandMode::Apply;
+    request.transform_output =
+        std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+            transform_output.data(),
+            transform_output.size());
+    request.ledger_output =
+        std::span<SceneEditorTransformLedgerRecord>(
+            ledger_output.data(),
+            ledger_output.size());
+
+    SceneEditorTransformCommandResult result{};
+    const SceneEditorTransformCommandStatus status =
+        ApplySceneEditorTransformCommand(request, &result);
+    if (status != SceneEditorTransformCommandStatus::ObjectNotFound ||
+        result.blocked_layer != SceneEditorTransformCommandBlockedLayer::Selection ||
+        result.wrote_transform_output ||
+        result.emitted_undo_redo_ledger ||
+        !SentinelTransformUnchanged(transform_output[0U]) ||
+        !SentinelLedgerUnchanged(ledger_output[0U])) {
+        return Fail("scene editor transform invalid selection mutated outputs");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -498,6 +764,18 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_BOUNDARY_FLAGS) {
         return SceneEditorSurfaceRemainsEditorDataOnlyWithoutRuntimeMutation();
+    }
+
+    if (test_name == TEST_TRANSFORM_APPLY) {
+        return SceneEditorTransformCommandAppliesSelectedTransformAndWritesUndoLedger();
+    }
+
+    if (test_name == TEST_TRANSFORM_UNDO_REDO) {
+        return SceneEditorTransformCommandUndoRedoReplaysLedgerDeterministically();
+    }
+
+    if (test_name == TEST_TRANSFORM_INVALID_SELECTION) {
+        return SceneEditorTransformCommandRejectsInvalidSelectionWithoutMutation();
     }
 
     return Fail("unknown test name");

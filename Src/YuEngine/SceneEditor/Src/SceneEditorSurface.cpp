@@ -48,6 +48,23 @@ bool IsSpanStorageValid(std::span<SceneEditorInspectorRow> rows) {
     return rows.data() != nullptr;
 }
 
+bool IsSpanStorageValid(
+    std::span<WorldSceneObjectTransformRestoreTransformRecord> records) {
+    if (records.empty()) {
+        return true;
+    }
+
+    return records.data() != nullptr;
+}
+
+bool IsSpanStorageValid(std::span<SceneEditorTransformLedgerRecord> records) {
+    if (records.empty()) {
+        return true;
+    }
+
+    return records.data() != nullptr;
+}
+
 bool IsObjectEqual(WorldObjectId left, WorldObjectId right) {
     return left.value == right.value;
 }
@@ -336,6 +353,75 @@ void FillResultMetadata(
     result->consumed_editor_sidecar = document.header.sidecar_record_count > 0U;
 }
 
+std::uint32_t NextCommandSequence(
+    const SceneEditorTransformLedgerRecord *history_record) {
+    if (history_record == nullptr) {
+        return 1U;
+    }
+
+    return history_record->command_sequence + 1U;
+}
+
+WorldObjectId ResolveCommandWorldObjectId(
+    const SceneEditorTransformCommandRequest &request) {
+    if (request.mode == SceneEditorTransformCommandMode::Apply) {
+        return request.selected_world_object_id;
+    }
+
+    if (request.history_record != nullptr) {
+        return request.history_record->world_object_id;
+    }
+
+    return WorldObjectId{};
+}
+
+SceneEditorTransformCommandStatus ValidateHistoryRecord(
+    const SceneEditorTransformCommandRequest &request) {
+    if (request.mode == SceneEditorTransformCommandMode::Apply) {
+        return SceneEditorTransformCommandStatus::Success;
+    }
+
+    if (request.mode == SceneEditorTransformCommandMode::Undo &&
+        request.history_record == nullptr) {
+        return SceneEditorTransformCommandStatus::UndoStackEmpty;
+    }
+
+    if (request.mode == SceneEditorTransformCommandMode::Redo &&
+        request.history_record == nullptr) {
+        return SceneEditorTransformCommandStatus::RedoStackEmpty;
+    }
+
+    return SceneEditorTransformCommandStatus::Success;
+}
+
+SceneEditorTransformLedgerRecord BuildTransformLedgerRecord(
+    const SceneEditorTransformCommandRequest &request,
+    WorldObjectId world_object_id,
+    const yuengine::world::WorldTransformState &before_transform,
+    const yuengine::world::WorldTransformState &after_transform) {
+    SceneEditorTransformLedgerRecord record{};
+    record.world_object_id = world_object_id;
+    record.before_transform = before_transform;
+    record.after_transform = after_transform;
+    record.command_sequence = NextCommandSequence(request.history_record);
+    if (request.mode == SceneEditorTransformCommandMode::Apply) {
+        record.applied = true;
+        record.undo_available = true;
+    }
+
+    if (request.mode == SceneEditorTransformCommandMode::Undo) {
+        record.undone = true;
+        record.redo_available = true;
+    }
+
+    if (request.mode == SceneEditorTransformCommandMode::Redo) {
+        record.redone = true;
+        record.undo_available = true;
+    }
+
+    return record;
+}
+
 }
 
 SceneEditorSurfaceStatus BuildSceneEditorNativeSurface(
@@ -413,6 +499,129 @@ SceneEditorSurfaceStatus BuildSceneEditorNativeSurface(
     }
 
     result.status = SceneEditorSurfaceStatus::Success;
+    *out_result = result;
+    return result.status;
+}
+
+SceneEditorTransformCommandStatus ApplySceneEditorTransformCommand(
+    const SceneEditorTransformCommandRequest &request,
+    SceneEditorTransformCommandResult *out_result) {
+    if (out_result == nullptr) {
+        return SceneEditorTransformCommandStatus::InvalidArgument;
+    }
+
+    SceneEditorTransformCommandResult result{};
+    if (request.document == nullptr ||
+        !IsSpanStorageValid(request.transform_output) ||
+        !IsSpanStorageValid(request.ledger_output)) {
+        *out_result = result;
+        return result.status;
+    }
+
+    const WorldSceneAuthoringDocument &document = *request.document;
+    result.consumed_authoring_document = true;
+    const WorldSceneAuthoringDocumentStatus authoring_status =
+        ValidateAuthoringDocument(document);
+    result.authoring_status = authoring_status;
+    if (authoring_status != WorldSceneAuthoringDocumentStatus::Success) {
+        result.status = SceneEditorTransformCommandStatus::InvalidAuthoringDocument;
+        result.blocked_layer = SceneEditorTransformCommandBlockedLayer::AuthoringDocument;
+        *out_result = result;
+        return result.status;
+    }
+
+    const SceneEditorTransformCommandStatus history_status =
+        ValidateHistoryRecord(request);
+    if (history_status != SceneEditorTransformCommandStatus::Success) {
+        result.status = history_status;
+        result.blocked_layer = SceneEditorTransformCommandBlockedLayer::UndoRedoLedger;
+        *out_result = result;
+        return result.status;
+    }
+
+    const WorldObjectId world_object_id = ResolveCommandWorldObjectId(request);
+    result.selected_world_object_id = world_object_id;
+    if (!world_object_id.IsValid()) {
+        result.status = SceneEditorTransformCommandStatus::SelectionRequired;
+        result.blocked_layer = SceneEditorTransformCommandBlockedLayer::Selection;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.consumed_selection = true;
+    if (FindIdentity(document, world_object_id) == nullptr) {
+        result.status = SceneEditorTransformCommandStatus::ObjectNotFound;
+        result.blocked_layer = SceneEditorTransformCommandBlockedLayer::Selection;
+        *out_result = result;
+        return result.status;
+    }
+
+    const WorldSceneObjectTransformRestoreTransformRecord *selected_transform =
+        FindTransform(document, world_object_id);
+    if (selected_transform == nullptr) {
+        result.status = SceneEditorTransformCommandStatus::TransformNotFound;
+        result.blocked_layer = SceneEditorTransformCommandBlockedLayer::TransformRecord;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.transform_output.size() < document.header.transform_record_count ||
+        request.ledger_output.empty()) {
+        result.status = SceneEditorTransformCommandStatus::OutputCapacityExceeded;
+        result.blocked_layer = SceneEditorTransformCommandBlockedLayer::Output;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.previous_transform = selected_transform->transform_state;
+    result.current_transform = request.requested_transform;
+    if (request.mode == SceneEditorTransformCommandMode::Undo &&
+        request.history_record != nullptr) {
+        result.previous_transform = request.history_record->after_transform;
+        result.current_transform = request.history_record->before_transform;
+    }
+
+    if (request.mode == SceneEditorTransformCommandMode::Redo &&
+        request.history_record != nullptr) {
+        result.previous_transform = request.history_record->before_transform;
+        result.current_transform = request.history_record->after_transform;
+    }
+
+    std::array<
+        WorldSceneObjectTransformRestoreTransformRecord,
+        yuengine::world::MAX_WORLD_OBJECT_COUNT> staged_transforms{};
+    std::uint32_t transform_index = 0U;
+    while (transform_index < document.header.transform_record_count) {
+        staged_transforms[transform_index] = document.transform_records[transform_index];
+        if (IsObjectEqual(
+                staged_transforms[transform_index].world_object_id,
+                world_object_id)) {
+            staged_transforms[transform_index].transform_state = result.current_transform;
+        }
+
+        ++transform_index;
+    }
+
+    SceneEditorTransformLedgerRecord ledger_record = BuildTransformLedgerRecord(
+        request,
+        world_object_id,
+        result.previous_transform,
+        result.current_transform);
+    transform_index = 0U;
+    while (transform_index < document.header.transform_record_count) {
+        request.transform_output[transform_index] = staged_transforms[transform_index];
+        ++result.transform_record_count;
+        ++transform_index;
+    }
+
+    request.ledger_output[0U] = ledger_record;
+    result.ledger_record_count = 1U;
+    result.undo_available = ledger_record.undo_available;
+    result.redo_available = ledger_record.redo_available;
+    result.wrote_transform_output = true;
+    result.emitted_undo_redo_ledger = true;
+    result.blocked_layer = SceneEditorTransformCommandBlockedLayer::None;
+    result.status = SceneEditorTransformCommandStatus::Success;
     *out_result = result;
     return result.status;
 }
