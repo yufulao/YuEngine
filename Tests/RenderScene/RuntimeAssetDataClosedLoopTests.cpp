@@ -19,6 +19,7 @@
 #include "YuEngine/Asset/AssetStatus.h"
 #include "YuEngine/File/FileWriteResult.h"
 #include "YuEngine/File/MountTable.h"
+#include "YuEngine/Object/ObjectHandle.h"
 #include "YuEngine/Package/PackageArtifact.h"
 #include "YuEngine/Kernel/RuntimeFramePhase.h"
 #include "YuEngine/Package/PackageEntryDescriptor.h"
@@ -72,6 +73,9 @@
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeRequest.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeResult.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeStatus.h"
+#include "YuEngine/World/WorldSceneAuthoringDocument.h"
+#include "YuEngine/World/WorldSceneObjectTransformRestoreIdentityRecord.h"
+#include "YuEngine/World/WorldSceneObjectTransformRestoreTransformRecord.h"
 
 namespace {
 using yuengine::animation::AnimationRuntimeStatus;
@@ -126,6 +130,9 @@ using yuengine::previewhost::PreviewHostSessionId;
 using yuengine::previewhost::PreviewHostSessionResult;
 using yuengine::previewhost::PreviewHostStatus;
 using yuengine::previewhost::PreviewHostTransformFeedback;
+using yuengine::previewhost::PreviewHostSceneDocumentViewportBlockedLayer;
+using yuengine::previewhost::PreviewHostSceneDocumentViewportRequest;
+using yuengine::previewhost::PreviewHostSceneDocumentViewportResult;
 using yuengine::previewhost::PreviewHostViewportSessionRequest;
 using yuengine::previewhost::PreviewHostViewportSessionResult;
 using yuengine::rendercore::RenderDrawableFramePipeline;
@@ -287,6 +294,12 @@ using yuengine::rhi::RhiTextureDesc;
 using yuengine::rhi::RhiTextureHandle;
 using yuengine::rhi::RhiVertexBufferView;
 using yuengine::world::WorldObjectId;
+using yuengine::world::WorldSceneAuthoringDependencyRecord;
+using yuengine::world::WorldSceneAuthoringDocument;
+using yuengine::world::WorldSceneAuthoringDocumentStatus;
+using yuengine::world::WorldSceneAuthoringRuntimeExport;
+using yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord;
+using yuengine::world::WorldSceneObjectTransformRestoreTransformRecord;
 using yuengine::world::WorldTransformState;
 
 constexpr const char *TEST_GENERATOR =
@@ -425,6 +438,10 @@ constexpr const char *TEST_PREVIEW_HOST_VIEWPORT_SURFACE =
     "PreviewHost_BuildsViewportSessionSurfaceFromResourceBrowserSelection";
 constexpr const char *TEST_PREVIEW_HOST_VIEWPORT_SURFACE_BLOCKED =
     "PreviewHost_RejectsBlockedViewportSelectionWithoutFrameMutation";
+constexpr const char *TEST_PREVIEW_HOST_SCENE_DOCUMENT_BRIDGE =
+    "PreviewHost_BuildsViewportSessionFromSceneAuthoringDocument";
+constexpr const char *TEST_PREVIEW_HOST_SCENE_DOCUMENT_BRIDGE_REJECTS =
+    "PreviewHost_RejectsInvalidSceneAuthoringDocumentWithoutMutation";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *MOUNT_ID = "runtime";
@@ -458,6 +475,7 @@ constexpr std::uint32_t ASSET_TYPE_ANIMATION = 206U;
 constexpr std::size_t FIXTURE_FILE_COUNT = 9U;
 constexpr std::size_t CAPTURE_BYTES_PER_ENTITY = 64U;
 constexpr std::size_t TOTAL_CAPTURE_BYTES = CAPTURE_BYTES_PER_ENTITY * 3U;
+constexpr std::uint32_t AUTHORING_SENTINEL_COUNT = 0xCAFEU;
 constexpr int SKIP_RETURN_CODE = 77;
 
 struct FixtureFile final {
@@ -1883,6 +1901,61 @@ bool BuildPreviewHostResourceBrowserSelection(
 
     ResolveResourceBrowserSurfaceSelection(selection_request, out_selection);
     return true;
+}
+
+yuengine::object::ObjectHandle ObjectHandleForWorldObject(
+    WorldObjectId world_object_id) {
+    return yuengine::object::ObjectHandle{
+        world_object_id.value,
+        9U};
+}
+
+WorldSceneAuthoringDocument MakePreviewHostSceneDocument(
+    const std::array<WorldSceneObjectTransformRestoreIdentityRecord, 3U> &identities,
+    const std::array<WorldSceneObjectTransformRestoreTransformRecord, 3U> &transforms,
+    const std::array<WorldSceneAuthoringDependencyRecord, 1U> &dependencies) {
+    WorldSceneAuthoringDocument document{};
+    document.header.scene_document_id = 0x830001U;
+    document.header.deterministic_document_hash = 0x8300AAU;
+    document.header.identity_record_count =
+        static_cast<std::uint32_t>(identities.size());
+    document.header.transform_record_count =
+        static_cast<std::uint32_t>(transforms.size());
+    document.header.dependency_record_count =
+        static_cast<std::uint32_t>(dependencies.size());
+    document.identity_records = identities.data();
+    document.transform_records = transforms.data();
+    document.dependency_records = dependencies.data();
+    return document;
+}
+
+WorldSceneAuthoringRuntimeExport MakePreviewHostSceneRuntimeExport(
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 3U> &identities,
+    std::uint32_t *identity_count,
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 3U> &transforms,
+    std::uint32_t *transform_count,
+    std::uint32_t *attachment_count,
+    std::uint32_t *binding_count,
+    std::array<WorldSceneAuthoringDependencyRecord, 1U> &dependencies,
+    std::uint32_t *dependency_count) {
+    WorldSceneAuthoringRuntimeExport runtime_export{};
+    runtime_export.identity_records = identities.data();
+    runtime_export.identity_capacity =
+        static_cast<std::uint32_t>(identities.size());
+    runtime_export.identity_count = identity_count;
+    runtime_export.transform_records = transforms.data();
+    runtime_export.transform_capacity =
+        static_cast<std::uint32_t>(transforms.size());
+    runtime_export.transform_count = transform_count;
+    runtime_export.attachment_capacity = 0U;
+    runtime_export.attachment_count = attachment_count;
+    runtime_export.binding_capacity = 0U;
+    runtime_export.binding_count = binding_count;
+    runtime_export.dependency_records = dependencies.data();
+    runtime_export.dependency_capacity =
+        static_cast<std::uint32_t>(dependencies.size());
+    runtime_export.dependency_count = dependency_count;
+    return runtime_export;
 }
 
 bool LoadRuntimeAssetRecords(
@@ -8458,6 +8531,315 @@ int PreviewHostRejectsBlockedViewportSelectionWithoutFrameMutation() {
     return 0;
 }
 
+int PreviewHostBuildsViewportSessionFromSceneAuthoringDocument() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("PreviewHostSceneDocumentBridge"), &table)) {
+        return Fail("preview scene document bridge mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("preview scene document bridge fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("preview scene document bridge runtime graph load failed");
+    }
+
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("preview scene document bridge rhi initialize failed");
+    }
+
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneCameraBindingResult camera{};
+    if (!BuildPreviewHostSceneInputs(
+            device,
+            registry,
+            manager,
+            graph,
+            &geometry,
+            &material,
+            &camera)) {
+        return Fail("preview scene document bridge render inputs failed");
+    }
+
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> rows{};
+    ResourceBrowserSurfaceSelectionResult selection{};
+    if (!BuildPreviewHostResourceBrowserSelection(
+            table,
+            registry,
+            manager,
+            graph,
+            0U,
+            {},
+            &entries,
+            &rows,
+            &selection)) {
+        return Fail("preview scene document bridge resource browser selection failed");
+    }
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 3U> identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 3U> transforms{};
+    for (std::uint32_t index = 0U; index < graph.scene_output.entity_count; ++index) {
+        const RuntimeAssetSceneEntityRecord &entity = graph.scene_entities[index];
+        identities[index].world_object_id = entity.world_object_id;
+        identities[index].object_handle = ObjectHandleForWorldObject(entity.world_object_id);
+        transforms[index].world_object_id = entity.world_object_id;
+        transforms[index].transform_state = entity.transform;
+        transforms[index].transform_state.translation_x += 10.0F + static_cast<float>(index);
+        transforms[index].transform_state.rotation_y += 0.5F + static_cast<float>(index);
+    }
+
+    std::array<WorldSceneAuthoringDependencyRecord, 1U> dependencies{};
+    dependencies[0U].stable_resource_id = graph.scene_resource_refs[0U].stable_id;
+    dependencies[0U].resource_handle = graph.scene_resource_refs[0U].resource;
+    dependencies[0U].expected_resource_type = ResourceTypeId{RESOURCE_TYPE_MESH};
+    const WorldSceneAuthoringDocument document =
+        MakePreviewHostSceneDocument(identities, transforms, dependencies);
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 3U> output_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 3U> output_transforms{};
+    std::array<WorldSceneAuthoringDependencyRecord, 1U> output_dependencies{};
+    std::uint32_t identity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    std::uint32_t attachment_count = 0U;
+    std::uint32_t binding_count = 0U;
+    std::uint32_t dependency_count = 0U;
+    WorldSceneAuthoringRuntimeExport runtime_export =
+        MakePreviewHostSceneRuntimeExport(
+            output_identities,
+            &identity_count,
+            output_transforms,
+            &transform_count,
+            &attachment_count,
+            &binding_count,
+            output_dependencies,
+            &dependency_count);
+
+    PreviewHost host;
+    PreviewHostSessionResult session_result{};
+    if (host.StartSession(PreviewHostSessionDesc{PreviewHostDocumentKind::Scene}, &session_result) !=
+        PreviewHostStatus::Success) {
+        return Fail("preview scene document bridge session start failed");
+    }
+
+    std::array<PreviewHostDiagnostic, 4U> diagnostics{};
+    std::array<PreviewHostHitRecord, 3U> hits{};
+    std::array<PreviewHostSelectionRecord, 3U> selections{};
+    std::array<PreviewHostTransformFeedback, 3U> feedback{};
+    PreviewHostFrameRequest frame_request{};
+    frame_request.session = session_result.session;
+    frame_request.document_kind = PreviewHostDocumentKind::Scene;
+    frame_request.frame.frame_id = FRAME_ID + 701U;
+    frame_request.frame.width = 800U;
+    frame_request.frame.height = 450U;
+    frame_request.frame.format = PreviewHostFrameFormat::Headless;
+    frame_request.camera_state.camera_id = 1U;
+    frame_request.camera_state.orbit_angle_radians = 1.25F;
+    frame_request.camera_state.orbit_radius = 5.0F;
+    frame_request.camera_state.orbit_height = 2.0F;
+    frame_request.runtime_graph = &graph.load_result;
+    frame_request.scene_output = &graph.scene_output;
+    frame_request.loaded_files =
+        std::span<const RuntimeAssetLoadedFile>(graph.assets.data(), graph.assets.size());
+    frame_request.resource_refs = std::span<const RuntimeAssetSceneResourceRef>(
+        graph.scene_resource_refs.data(),
+        graph.scene_resource_refs.size());
+    frame_request.scene_entities = std::span<const RuntimeAssetSceneEntityRecord>(
+        graph.scene_entities.data(),
+        graph.scene_entities.size());
+    frame_request.geometry_records =
+        std::span<const RenderScenePrimitiveGeometryRecord>(geometry.data(), geometry.size());
+    frame_request.camera = camera;
+    frame_request.material = material;
+    frame_request.diagnostics = std::span<PreviewHostDiagnostic>(diagnostics.data(), diagnostics.size());
+    frame_request.hit_records = std::span<PreviewHostHitRecord>(hits.data(), hits.size());
+    frame_request.selection_records =
+        std::span<PreviewHostSelectionRecord>(selections.data(), selections.size());
+    frame_request.transform_feedback =
+        std::span<PreviewHostTransformFeedback>(feedback.data(), feedback.size());
+
+    PreviewHostViewportSessionRequest viewport_request{};
+    viewport_request.frame_request = frame_request;
+    viewport_request.resource_browser_selection = &selection.state;
+    viewport_request.selected_entity_index = 2U;
+    viewport_request.require_selected_entity = true;
+
+    std::array<RuntimeAssetSceneEntityRecord, 3U> scene_entity_output{};
+    for (std::uint32_t index = 0U; index < graph.scene_output.entity_count; ++index) {
+        scene_entity_output[index] = graph.scene_entities[index];
+    }
+
+    PreviewHostSceneDocumentViewportRequest bridge_request{};
+    bridge_request.scene_document = &document;
+    bridge_request.runtime_export = runtime_export;
+    bridge_request.viewport_request = viewport_request;
+    bridge_request.scene_entity_output =
+        std::span<RuntimeAssetSceneEntityRecord>(
+            scene_entity_output.data(),
+            graph.scene_output.entity_count);
+
+    PreviewHostSceneDocumentViewportResult bridge_result{};
+    if (host.BuildSceneDocumentViewportSession(bridge_request, &bridge_result) !=
+        PreviewHostStatus::Success) {
+        return Fail("preview scene document bridge did not build viewport session");
+    }
+
+    if (!bridge_result.consumed_scene_authoring_document ||
+        !bridge_result.exported_runtime_records ||
+        !bridge_result.consumed_runtime_scene_entities ||
+        !bridge_result.updated_scene_entities_from_document ||
+        !bridge_result.built_viewport_session ||
+        !bridge_result.preserved_resource_browser_selection ||
+        bridge_result.blocked_layer != PreviewHostSceneDocumentViewportBlockedLayer::None) {
+        return Fail("preview scene document bridge ledger incomplete");
+    }
+
+    if (bridge_result.exported_identity_count != identities.size() ||
+        bridge_result.exported_transform_count != transforms.size() ||
+        bridge_result.exported_dependency_count != dependencies.size() ||
+        bridge_result.updated_scene_entity_count != transforms.size()) {
+        return Fail("preview scene document bridge exported counts changed");
+    }
+
+    if (!bridge_result.viewport.built_frame ||
+        !bridge_result.viewport.frame.consumed_runtime_asset_graph ||
+        !bridge_result.viewport.frame.submitted_render_scene_frame ||
+        !bridge_result.viewport.frame.headless_output ||
+        !bridge_result.viewport.emitted_transform_feedback ||
+        bridge_result.viewport.selected_entity_index != 2U ||
+        bridge_result.viewport.viewport_width != 800U ||
+        bridge_result.viewport.viewport_height != 450U) {
+        return Fail("preview scene document bridge viewport result changed");
+    }
+
+    for (std::uint32_t index = 0U; index < graph.scene_output.entity_count; ++index) {
+        if (!Approx(scene_entity_output[index].transform.translation_x,
+                transforms[index].transform_state.translation_x) ||
+            !Approx(scene_entity_output[index].transform.rotation_y,
+                transforms[index].transform_state.rotation_y) ||
+            !feedback[index].transform_available ||
+            !Approx(feedback[index].transform.translation_x,
+                transforms[index].transform_state.translation_x) ||
+            !hits[index].hit_available ||
+            !selections[index].selectable) {
+            return Fail("preview scene document bridge did not publish transformed entities");
+        }
+    }
+
+    return 0;
+}
+
+int PreviewHostRejectsInvalidSceneAuthoringDocumentWithoutMutation() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> identities{};
+    identities[0U].world_object_id = WorldObjectId{1U};
+    identities[0U].object_handle = yuengine::object::ObjectHandle{1U, 9U};
+    identities[1U].world_object_id = WorldObjectId{1U};
+    identities[1U].object_handle = yuengine::object::ObjectHandle{2U, 9U};
+
+    WorldSceneAuthoringDocument document{};
+    document.header.scene_document_id = 0x830002U;
+    document.header.deterministic_document_hash = 0x8300BBU;
+    document.header.identity_record_count =
+        static_cast<std::uint32_t>(identities.size());
+    document.identity_records = identities.data();
+
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 3U> output_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 3U> output_transforms{};
+    std::array<WorldSceneAuthoringDependencyRecord, 1U> output_dependencies{};
+    output_identities[0U].world_object_id = WorldObjectId{90U};
+    output_transforms[0U].world_object_id = WorldObjectId{91U};
+    output_transforms[0U].transform_state.translation_x = 92.0F;
+    output_dependencies[0U].stable_resource_id = 93U;
+    std::uint32_t identity_count = AUTHORING_SENTINEL_COUNT;
+    std::uint32_t transform_count = AUTHORING_SENTINEL_COUNT;
+    std::uint32_t attachment_count = AUTHORING_SENTINEL_COUNT;
+    std::uint32_t binding_count = AUTHORING_SENTINEL_COUNT;
+    std::uint32_t dependency_count = AUTHORING_SENTINEL_COUNT;
+    WorldSceneAuthoringRuntimeExport runtime_export =
+        MakePreviewHostSceneRuntimeExport(
+            output_identities,
+            &identity_count,
+            output_transforms,
+            &transform_count,
+            &attachment_count,
+            &binding_count,
+            output_dependencies,
+            &dependency_count);
+
+    std::array<RuntimeAssetSceneEntityRecord, 3U> scene_entity_output{};
+    scene_entity_output[0U].entity_id = 800U;
+    scene_entity_output[0U].world_object_id = WorldObjectId{801U};
+    scene_entity_output[0U].transform.translation_x = 802.0F;
+    std::array<PreviewHostHitRecord, 1U> hits{};
+    hits[0U].entity_index = 88U;
+    hits[0U].hit_available = false;
+    std::array<PreviewHostTransformFeedback, 1U> feedback{};
+    feedback[0U].world_object_id = WorldObjectId{89U};
+
+    PreviewHostFrameRequest frame_request{};
+    frame_request.hit_records = std::span<PreviewHostHitRecord>(hits.data(), hits.size());
+    frame_request.transform_feedback =
+        std::span<PreviewHostTransformFeedback>(feedback.data(), feedback.size());
+
+    PreviewHostViewportSessionRequest viewport_request{};
+    viewport_request.frame_request = frame_request;
+
+    PreviewHostSceneDocumentViewportRequest bridge_request{};
+    bridge_request.scene_document = &document;
+    bridge_request.runtime_export = runtime_export;
+    bridge_request.viewport_request = viewport_request;
+    bridge_request.scene_entity_output =
+        std::span<RuntimeAssetSceneEntityRecord>(
+            scene_entity_output.data(),
+            scene_entity_output.size());
+
+    PreviewHost host;
+    PreviewHostSceneDocumentViewportResult bridge_result{};
+    if (host.BuildSceneDocumentViewportSession(bridge_request, &bridge_result) !=
+        PreviewHostStatus::RuntimeAssetStatusFailed) {
+        return Fail("preview scene document bridge accepted invalid authoring document");
+    }
+
+    if (bridge_result.scene_document_status !=
+            WorldSceneAuthoringDocumentStatus::DuplicateIdentityWorldObjectId ||
+        bridge_result.blocked_layer !=
+            PreviewHostSceneDocumentViewportBlockedLayer::SceneAuthoringDocument ||
+        bridge_result.built_viewport_session ||
+        bridge_result.viewport.built_frame) {
+        return Fail("preview scene document bridge failure ledger changed");
+    }
+
+    if (identity_count != AUTHORING_SENTINEL_COUNT ||
+        transform_count != AUTHORING_SENTINEL_COUNT ||
+        attachment_count != AUTHORING_SENTINEL_COUNT ||
+        binding_count != AUTHORING_SENTINEL_COUNT ||
+        dependency_count != AUTHORING_SENTINEL_COUNT ||
+        output_identities[0U].world_object_id.value != 90U ||
+        output_transforms[0U].world_object_id.value != 91U ||
+        !Approx(output_transforms[0U].transform_state.translation_x, 92.0F) ||
+        output_dependencies[0U].stable_resource_id != 93U) {
+        return Fail("preview scene document bridge mutated runtime export on failure");
+    }
+
+    if (scene_entity_output[0U].entity_id != 800U ||
+        scene_entity_output[0U].world_object_id.value != 801U ||
+        !Approx(scene_entity_output[0U].transform.translation_x, 802.0F) ||
+        hits[0U].entity_index != 88U ||
+        hits[0U].hit_available ||
+        feedback[0U].world_object_id.value != 89U ||
+        feedback[0U].transform_available) {
+        return Fail("preview scene document bridge mutated frame outputs on failure");
+    }
+
+    return 0;
+}
+
 const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_GENERATOR, RuntimeAssetDataGeneratorWritesDeterministicFilesAndHashes},
     {TEST_IMPORT_COOK_COMMAND_WRITES, RuntimeAssetDataImportCookCommandWritesSourceAndCookedDiskFixtures},
@@ -8553,6 +8935,10 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_PREVIEW_HOST_VIEWPORT_SURFACE, PreviewHostBuildsViewportSessionSurfaceFromResourceBrowserSelection},
     {TEST_PREVIEW_HOST_VIEWPORT_SURFACE_BLOCKED,
      PreviewHostRejectsBlockedViewportSelectionWithoutFrameMutation},
+    {TEST_PREVIEW_HOST_SCENE_DOCUMENT_BRIDGE,
+     PreviewHostBuildsViewportSessionFromSceneAuthoringDocument},
+    {TEST_PREVIEW_HOST_SCENE_DOCUMENT_BRIDGE_REJECTS,
+     PreviewHostRejectsInvalidSceneAuthoringDocumentWithoutMutation},
 };
 }
 

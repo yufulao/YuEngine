@@ -57,6 +57,9 @@ This slice does not approve Scene Editor hierarchy/inspector/gizmo, Animation
 Editor, UI Editor, final native editor application, package launcher, original
 package compatibility, or external Unity/UE/DCC bridge.
 
+The next scene-document bridge slice is recorded in
+`docs/YUENGINE_PREVIEW_HOST_RAV5_SCENE_DOCUMENT_BRIDGE.md`.
+
 It does not make Resource Browser locator paths authoritative type truth. It
 does not bypass RuntimeAsset graph validation, Resource/Asset mapping, or
 RenderScene/RenderCore/RHI paths with a UI-only preview.

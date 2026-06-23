@@ -21,6 +21,12 @@ using RuntimeAssetLoadedFile = yuengine::runtimeasset::RuntimeAssetLoadedFile;
 using RuntimeAssetSceneEntityRecord = yuengine::runtimeasset::RuntimeAssetSceneEntityRecord;
 using RuntimeAssetSceneLoaderOutput = yuengine::runtimeasset::RuntimeAssetSceneLoaderOutput;
 using RuntimeAssetSceneResourceRef = yuengine::runtimeasset::RuntimeAssetSceneResourceRef;
+using WorldSceneAuthoringDocumentResult =
+    yuengine::world::WorldSceneAuthoringDocumentResult;
+using WorldSceneAuthoringDocumentValidator =
+    yuengine::world::WorldSceneAuthoringDocumentValidator;
+using WorldSceneObjectTransformRestoreTransformRecord =
+    yuengine::world::WorldSceneObjectTransformRestoreTransformRecord;
 using ResourceBrowserDependencyState = yuengine::resourcebrowser::ResourceBrowserDependencyState;
 using ResourceBrowserDiagnosticRecord = yuengine::resourcebrowser::ResourceBrowserDiagnosticRecord;
 using ResourceBrowserDiagnosticSeverity = yuengine::resourcebrowser::ResourceBrowserDiagnosticSeverity;
@@ -1173,6 +1179,91 @@ PreviewHostStatus EmitViewportSelectionFailure(
     result->frame.diagnostic_count = 1U;
     return status;
 }
+
+const WorldSceneObjectTransformRestoreTransformRecord *FindSceneDocumentTransform(
+    const WorldSceneObjectTransformRestoreTransformRecord *records,
+    std::uint32_t count,
+    yuengine::world::WorldObjectId world_object_id) {
+    if (records == nullptr || !world_object_id.IsValid()) {
+        return nullptr;
+    }
+
+    for (std::uint32_t index = 0U; index < count; ++index) {
+        if (records[index].world_object_id.value == world_object_id.value) {
+            return &records[index];
+        }
+    }
+
+    return nullptr;
+}
+
+bool HasRuntimeSceneEntity(
+    std::span<const RuntimeAssetSceneEntityRecord> scene_entities,
+    std::uint32_t entity_count,
+    yuengine::world::WorldObjectId world_object_id) {
+    if (!world_object_id.IsValid() || entity_count > scene_entities.size()) {
+        return false;
+    }
+
+    for (std::uint32_t index = 0U; index < entity_count; ++index) {
+        if (scene_entities[index].world_object_id.value == world_object_id.value) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool FeedbackCapacityAvailable(
+    const PreviewHostFrameRequest &frame_request,
+    std::uint32_t entity_count) {
+    if (!frame_request.hit_records.empty() &&
+        frame_request.hit_records.size() < entity_count) {
+        return false;
+    }
+
+    if (!frame_request.selection_records.empty() &&
+        frame_request.selection_records.size() < entity_count) {
+        return false;
+    }
+
+    if (!frame_request.transform_feedback.empty() &&
+        frame_request.transform_feedback.size() < entity_count) {
+        return false;
+    }
+
+    return true;
+}
+
+void CopySceneDocumentViewportFeedback(
+    const PreviewHostFrameRequest &target,
+    const PreviewHostFrameRequest &source,
+    const PreviewHostFrameResult &frame_result) {
+    for (std::size_t index = 0U; index < frame_result.hit_record_count; ++index) {
+        if (index < target.hit_records.size() && index < source.hit_records.size()) {
+            target.hit_records[index] = source.hit_records[index];
+        }
+    }
+
+    for (std::size_t index = 0U; index < frame_result.selection_record_count; ++index) {
+        if (index < target.selection_records.size() && index < source.selection_records.size()) {
+            target.selection_records[index] = source.selection_records[index];
+        }
+    }
+
+    for (std::size_t index = 0U; index < frame_result.transform_feedback_count; ++index) {
+        if (index < target.transform_feedback.size() &&
+            index < source.transform_feedback.size()) {
+            target.transform_feedback[index] = source.transform_feedback[index];
+        }
+    }
+
+    for (std::size_t index = 0U; index < frame_result.diagnostic_count; ++index) {
+        if (index < target.diagnostics.size() && index < source.diagnostics.size()) {
+            target.diagnostics[index] = source.diagnostics[index];
+        }
+    }
+}
 }
 
 PreviewHostStatus PreviewHost::StartSession(
@@ -1622,6 +1713,182 @@ PreviewHostStatus PreviewHost::BuildViewportSessionSurface(
     result.emitted_hit_feedback = frame_result.hit_record_count > 0U;
     result.emitted_selection_feedback = frame_result.selection_record_count > 0U;
     result.emitted_transform_feedback = frame_result.transform_feedback_count > 0U;
+    *out_result = result;
+    return result.status;
+}
+
+PreviewHostStatus PreviewHost::BuildSceneDocumentViewportSession(
+    const PreviewHostSceneDocumentViewportRequest &request,
+    PreviewHostSceneDocumentViewportResult *out_result) const {
+    if (out_result == nullptr) {
+        return PreviewHostStatus::InvalidArgument;
+    }
+
+    PreviewHostSceneDocumentViewportResult result{};
+    result.viewport.frame.frame = request.viewport_request.frame_request.frame;
+    result.viewport.frame.camera_state = request.viewport_request.frame_request.camera_state;
+    result.viewport.camera_state = request.viewport_request.frame_request.camera_state;
+    result.viewport.viewport_width = request.viewport_request.frame_request.frame.width;
+    result.viewport.viewport_height = request.viewport_request.frame_request.frame.height;
+    result.viewport.selected_entity_index = request.viewport_request.selected_entity_index;
+
+    if (request.scene_document == nullptr) {
+        result.status = PreviewHostStatus::InvalidArgument;
+        result.blocked_layer =
+            PreviewHostSceneDocumentViewportBlockedLayer::SceneAuthoringDocument;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.consumed_scene_authoring_document = true;
+    result.source_entity_count = request.scene_document->header.identity_record_count;
+
+    WorldSceneAuthoringDocumentValidator validator;
+    yuengine::world::WorldSceneAuthoringRuntimeExport runtime_export =
+        request.runtime_export;
+    WorldSceneAuthoringDocumentResult document_result =
+        validator.ValidateAndExport(*request.scene_document, &runtime_export);
+    result.scene_document_status = document_result.status;
+    result.scene_document_state = document_result.state;
+    if (!document_result.Succeeded()) {
+        result.status = PreviewHostStatus::RuntimeAssetStatusFailed;
+        result.blocked_layer =
+            PreviewHostSceneDocumentViewportBlockedLayer::SceneAuthoringDocument;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.exported_runtime_records = true;
+    result.exported_identity_count = document_result.state.exported_identity_count;
+    result.exported_transform_count = document_result.state.exported_transform_count;
+    result.exported_attachment_count = document_result.state.exported_attachment_count;
+    result.exported_binding_count = document_result.state.exported_binding_count;
+    result.exported_dependency_count = document_result.state.exported_dependency_count;
+
+    const PreviewHostFrameRequest &frame_request =
+        request.viewport_request.frame_request;
+    if (frame_request.scene_output == nullptr ||
+        frame_request.scene_output->entity_count == 0U ||
+        frame_request.scene_output->entity_count > MAX_PREVIEW_HOST_FRAME_ENTITIES ||
+        frame_request.scene_output->entity_count > frame_request.scene_entities.size() ||
+        frame_request.scene_output->entity_count > request.scene_entity_output.size()) {
+        result.status = PreviewHostStatus::RuntimeAssetGraphStale;
+        result.blocked_layer =
+            PreviewHostSceneDocumentViewportBlockedLayer::RuntimeSceneEntityMapping;
+        *out_result = result;
+        return result.status;
+    }
+
+    const std::uint32_t entity_count = frame_request.scene_output->entity_count;
+    if (!FeedbackCapacityAvailable(frame_request, entity_count)) {
+        result.status = PreviewHostStatus::OutputCapacityExceeded;
+        result.blocked_layer =
+            PreviewHostSceneDocumentViewportBlockedLayer::ViewportSession;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::uint32_t transform_count = 0U;
+    if (runtime_export.transform_count != nullptr) {
+        transform_count = *runtime_export.transform_count;
+    }
+
+    for (std::uint32_t transform_index = 0U; transform_index < transform_count; ++transform_index) {
+        const yuengine::world::WorldObjectId world_object_id =
+            runtime_export.transform_records[transform_index].world_object_id;
+        if (!HasRuntimeSceneEntity(frame_request.scene_entities, entity_count, world_object_id)) {
+            result.status = PreviewHostStatus::MissingResourceRef;
+            result.blocked_layer =
+                PreviewHostSceneDocumentViewportBlockedLayer::RuntimeSceneEntityMapping;
+            *out_result = result;
+            return result.status;
+        }
+    }
+
+    std::array<RuntimeAssetSceneEntityRecord, MAX_PREVIEW_HOST_FRAME_ENTITIES>
+        staged_scene_entities{};
+    for (std::uint32_t entity_index = 0U; entity_index < entity_count; ++entity_index) {
+        staged_scene_entities[entity_index] = frame_request.scene_entities[entity_index];
+        const WorldSceneObjectTransformRestoreTransformRecord *transform =
+            FindSceneDocumentTransform(
+                runtime_export.transform_records,
+                transform_count,
+                staged_scene_entities[entity_index].world_object_id);
+        if (transform != nullptr) {
+            staged_scene_entities[entity_index].transform = transform->transform_state;
+            ++result.updated_scene_entity_count;
+        }
+    }
+
+    result.consumed_runtime_scene_entities = true;
+
+    std::array<PreviewHostDiagnostic, 4U> staged_diagnostics{};
+    std::array<PreviewHostHitRecord, MAX_PREVIEW_HOST_FRAME_ENTITIES> staged_hits{};
+    std::array<PreviewHostSelectionRecord, MAX_PREVIEW_HOST_FRAME_ENTITIES>
+        staged_selections{};
+    std::array<PreviewHostTransformFeedback, MAX_PREVIEW_HOST_FRAME_ENTITIES>
+        staged_transform_feedback{};
+
+    PreviewHostFrameRequest staged_frame_request = frame_request;
+    staged_frame_request.scene_entities =
+        std::span<const RuntimeAssetSceneEntityRecord>(
+            staged_scene_entities.data(),
+            entity_count);
+    if (!frame_request.diagnostics.empty()) {
+        staged_frame_request.diagnostics =
+            std::span<PreviewHostDiagnostic>(
+                staged_diagnostics.data(),
+                staged_diagnostics.size());
+    }
+
+    if (!frame_request.hit_records.empty()) {
+        staged_frame_request.hit_records =
+            std::span<PreviewHostHitRecord>(staged_hits.data(), entity_count);
+    }
+
+    if (!frame_request.selection_records.empty()) {
+        staged_frame_request.selection_records =
+            std::span<PreviewHostSelectionRecord>(staged_selections.data(), entity_count);
+    }
+
+    if (!frame_request.transform_feedback.empty()) {
+        staged_frame_request.transform_feedback =
+            std::span<PreviewHostTransformFeedback>(
+                staged_transform_feedback.data(),
+                entity_count);
+    }
+
+    PreviewHostViewportSessionRequest staged_viewport_request =
+        request.viewport_request;
+    staged_viewport_request.frame_request = staged_frame_request;
+    PreviewHostViewportSessionResult viewport_result{};
+    const PreviewHostStatus viewport_status =
+        BuildViewportSessionSurface(staged_viewport_request, &viewport_result);
+    result.viewport = viewport_result;
+    result.status = viewport_status;
+    result.preserved_resource_browser_selection =
+        viewport_result.consumed_resource_browser_selection;
+    result.emitted_transform_feedback =
+        viewport_result.emitted_transform_feedback;
+    if (viewport_status != PreviewHostStatus::Success) {
+        result.blocked_layer =
+            PreviewHostSceneDocumentViewportBlockedLayer::ViewportSession;
+        *out_result = result;
+        return result.status;
+    }
+
+    for (std::uint32_t entity_index = 0U; entity_index < entity_count; ++entity_index) {
+        request.scene_entity_output[entity_index] = staged_scene_entities[entity_index];
+    }
+
+    CopySceneDocumentViewportFeedback(
+        frame_request,
+        staged_frame_request,
+        viewport_result.frame);
+    result.blocked_layer = PreviewHostSceneDocumentViewportBlockedLayer::None;
+    result.built_viewport_session = true;
+    result.updated_scene_entities_from_document =
+        result.updated_scene_entity_count > 0U;
     *out_result = result;
     return result.status;
 }

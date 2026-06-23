@@ -18,6 +18,7 @@
 #include "YuEngine/ResourceBrowser/ResourceBrowserSurface.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
+#include "YuEngine/World/WorldSceneAuthoringDocument.h"
 #include "YuEngine/World/WorldObjectId.h"
 #include "YuEngine/World/WorldTransformState.h"
 
@@ -58,6 +59,14 @@ enum class PreviewHostStatus {
     MissingCommandOutput,
     InvalidCookedRecord,
     UnsupportedBridgeLayer
+};
+
+enum class PreviewHostSceneDocumentViewportBlockedLayer {
+    None,
+    SceneAuthoringDocument,
+    RuntimeExport,
+    RuntimeSceneEntityMapping,
+    ViewportSession
 };
 
 enum class PreviewHostDiagnosticCode {
@@ -278,6 +287,37 @@ struct PreviewHostViewportSessionResult final {
     bool emitted_transform_feedback = false;
 };
 
+struct PreviewHostSceneDocumentViewportRequest final {
+    const yuengine::world::WorldSceneAuthoringDocument *scene_document = nullptr;
+    yuengine::world::WorldSceneAuthoringRuntimeExport runtime_export{};
+    PreviewHostViewportSessionRequest viewport_request{};
+    std::span<yuengine::runtimeasset::RuntimeAssetSceneEntityRecord> scene_entity_output{};
+};
+
+struct PreviewHostSceneDocumentViewportResult final {
+    PreviewHostStatus status = PreviewHostStatus::InvalidArgument;
+    yuengine::world::WorldSceneAuthoringDocumentStatus scene_document_status =
+        yuengine::world::WorldSceneAuthoringDocumentStatus::Success;
+    yuengine::world::WorldSceneAuthoringDocumentState scene_document_state{};
+    PreviewHostSceneDocumentViewportBlockedLayer blocked_layer =
+        PreviewHostSceneDocumentViewportBlockedLayer::SceneAuthoringDocument;
+    PreviewHostViewportSessionResult viewport{};
+    std::uint32_t source_entity_count = 0U;
+    std::uint32_t exported_identity_count = 0U;
+    std::uint32_t exported_transform_count = 0U;
+    std::uint32_t exported_attachment_count = 0U;
+    std::uint32_t exported_binding_count = 0U;
+    std::uint32_t exported_dependency_count = 0U;
+    std::uint32_t updated_scene_entity_count = 0U;
+    bool consumed_scene_authoring_document = false;
+    bool exported_runtime_records = false;
+    bool consumed_runtime_scene_entities = false;
+    bool updated_scene_entities_from_document = false;
+    bool built_viewport_session = false;
+    bool preserved_resource_browser_selection = false;
+    bool emitted_transform_feedback = false;
+};
+
 class PreviewHost final {
 public:
     PreviewHostStatus StartSession(
@@ -292,6 +332,9 @@ public:
     PreviewHostStatus BuildViewportSessionSurface(
         const PreviewHostViewportSessionRequest &request,
         PreviewHostViewportSessionResult *out_result) const;
+    PreviewHostStatus BuildSceneDocumentViewportSession(
+        const PreviewHostSceneDocumentViewportRequest &request,
+        PreviewHostSceneDocumentViewportResult *out_result) const;
     PreviewHostStatus ResolveResourceBrowserPreview(
         const PreviewHostResourceBrowserPreviewRequest &request,
         PreviewHostResourceBrowserPreviewResult *out_result) const;
