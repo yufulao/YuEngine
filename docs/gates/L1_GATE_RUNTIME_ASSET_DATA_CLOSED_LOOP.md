@@ -304,7 +304,7 @@ approved equivalents:
 - `RuntimeAssetData_SceneLoaderRejectsInvalidKeyframesWithoutOutputMutation`
 - `RuntimeAssetData_DecodedTexturePayloadsDriveRhiMaterialSlots`
 - `RuntimeAssetData_TextureMaterialSlotBridgeFailuresDoNotMutateRenderSceneOutputs`
-- `RuntimeAssetData_PackageCookRunSmokeReportsPackagedRuntimeEntryPointBlocker`
+- `RuntimeAssetData_PackageCookRunSmokeRunsPackagedRuntimeEntryPoint`
 
 ## Candidate First Slice
 
@@ -355,10 +355,10 @@ Accepted proof:
 - RAV2-A import/cook command entry and deterministic source+cooked fixture
   generator documented in
   `docs/YUENGINE_RUNTIME_ASSET_V0_IMPORT_COOK_COMMAND_CONTRACT.md`;
-- RAV3-F package/cook/run smoke gate proving current Package
-  manifest/load-plan, RuntimeAsset cooked visual proof, and RuntimeApp
-  fixed-frame loop before reporting
-  `BlockedByLayer=PackagedRuntimeEntryPoint`;
+- RAV3-G package/cook/run smoke gate proving current Package
+  manifest/load-plan, RuntimeAsset packaged entrypoint consumption,
+  RuntimeAsset cooked visual proof, and RuntimeApp fixed-frame loop with
+  `RuntimeAssetPackagedRunBlockedLayer::None`;
 - no-mutation tests for rejected file, dependency, output, and budget cases;
 - Resource cache payload, Resource decoded payload, Resource dependency, and
   Asset dependency records written by runtime code, not private test helpers;

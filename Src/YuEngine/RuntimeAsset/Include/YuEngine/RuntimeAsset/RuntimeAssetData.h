@@ -15,11 +15,15 @@
 #include "YuEngine/File/FileStatus.h"
 #include "YuEngine/File/MountId.h"
 #include "YuEngine/File/VirtualPath.h"
+#include "YuEngine/Kernel/RuntimeAppDesc.h"
+#include "YuEngine/Kernel/RuntimeAppRunResult.h"
 #include "YuEngine/RenderScene/RenderScenePrimitiveGeometryKind.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRecord.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
 #include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
+#include "YuEngine/Package/PackageLoadPlan.h"
+#include "YuEngine/Package/PackageStatus.h"
 #include "YuEngine/Resource/ResourceDecodedPayloadStatus.h"
 #include "YuEngine/Kernel/RuntimeFrameContext.h"
 #include "YuEngine/Resource/ResourceDecodePlanAssetClass.h"
@@ -733,6 +737,82 @@ struct RuntimeAssetVisualProofResult final {
 };
 
 /**
+ * @brief First layer that can block a packaged RuntimeAsset run entrypoint.
+ */
+enum class RuntimeAssetPackagedRunBlockedLayer {
+    None,
+    PackageLoadPlan,
+    RuntimeAssetData,
+    ResourceAsset,
+    ShaderProgram,
+    RenderSceneRenderCoreRhi,
+    RuntimeAppFrameLoop
+};
+
+/**
+ * @brief Request for the first engine-owned packaged RuntimeAsset run entrypoint.
+ */
+struct RuntimeAssetPackagedRunRequest final {
+    yuengine::file::MountTable *mount_table = nullptr;
+    yuengine::file::MountId mount;
+    const yuengine::package::PackageLoadPlan *package_load_plan = nullptr;
+    RuntimeAssetFileDesc scene{};
+    const RuntimeAssetFileDesc *files = nullptr;
+    std::uint32_t file_count = 0U;
+    yuengine::resource::ResourceRegistry *resource_registry = nullptr;
+    yuengine::asset::AssetManager *asset_manager = nullptr;
+    yuengine::rhi::IRhiDevice *rhi_device = nullptr;
+    RuntimeAssetLoadedFile *loaded_files = nullptr;
+    std::uint32_t loaded_file_capacity = 0U;
+    RuntimeAssetSceneResourceRef *scene_resource_refs = nullptr;
+    std::uint32_t scene_resource_ref_capacity = 0U;
+    RuntimeAssetSceneCameraRecord *scene_cameras = nullptr;
+    std::uint32_t scene_camera_capacity = 0U;
+    RuntimeAssetSceneEntityRecord *scene_entities = nullptr;
+    std::uint32_t scene_entity_capacity = 0U;
+    RuntimeAssetSceneTransformOutputRecord *scene_transforms = nullptr;
+    std::uint32_t scene_transform_capacity = 0U;
+    RuntimeAssetSceneLoaderOutput *scene_output = nullptr;
+    RuntimeAssetLoadedShaderProgramData *shader_program = nullptr;
+    yuengine::kernel::RuntimeFrameContext animation_frame_context{};
+    std::uint64_t animation_clip_start_time_nanoseconds = 0U;
+    std::span<std::uint8_t> scratch_bytes{};
+    std::span<std::uint8_t> capture_output{};
+    std::size_t capture_byte_budget_per_entity = 0U;
+    std::uint32_t first_frame_id = 0U;
+    std::uint32_t visual_frame_count = 1U;
+    const char *output_path = nullptr;
+    std::size_t output_path_byte_count = 0U;
+    yuengine::kernel::RuntimeAppDesc runtime_app{};
+};
+
+/**
+ * @brief Result of the packaged RuntimeAsset run entrypoint.
+ */
+struct RuntimeAssetPackagedRunResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    RuntimeAssetPackagedRunBlockedLayer blocked_layer =
+        RuntimeAssetPackagedRunBlockedLayer::PackageLoadPlan;
+    yuengine::package::PackageStatus package_status =
+        yuengine::package::PackageStatus::NotFound;
+    RuntimeAssetGraphLoadResult graph_load_result{};
+    RuntimeAssetVisualProofResult visual_proof_result{};
+    yuengine::kernel::RuntimeAppRunResult runtime_app_result{};
+    std::uint32_t package_load_plan_record_count = 0U;
+    std::uint32_t loaded_file_count = 0U;
+    std::uint32_t resource_dependency_count = 0U;
+    std::uint32_t asset_dependency_count = 0U;
+    std::uint32_t runtime_app_completed_frame_count = 0U;
+    bool package_load_plan_consumed = false;
+    bool runtime_asset_validation_load_success = false;
+    bool resource_asset_registration_success = false;
+    bool shader_program_decoded = false;
+    bool render_scene_render_core_rhi_success = false;
+    bool runtime_app_frame_loop_success = false;
+    bool packaged_runtime_entrypoint_available = false;
+};
+
+/**
  * @brief Returns the file kind token used by the runtime asset header.
  * @param kind Input file family.
  * @return Static token string.
@@ -829,5 +909,14 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedShaderProgramPipeline(
 RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
     const RuntimeAssetVisualProofRequest &request,
     RuntimeAssetVisualProofResult *out_result);
+/**
+ * @brief Runs a Package-load-plan backed RuntimeAsset graph through RuntimeApp.
+ * @param request Package load plan, graph buffers, RHI, and RuntimeApp descriptor.
+ * @param out_result Output package consumption, graph, render, and RuntimeApp ledger.
+ * @return Explicit RuntimeAsset packaged run status.
+ */
+RuntimeAssetDataStatus RunRuntimeAssetPackagedEntryPoint(
+    const RuntimeAssetPackagedRunRequest &request,
+    RuntimeAssetPackagedRunResult *out_result);
 
 }

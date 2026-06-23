@@ -19,9 +19,6 @@
 #include "YuEngine/Asset/AssetStatus.h"
 #include "YuEngine/File/FileWriteResult.h"
 #include "YuEngine/File/MountTable.h"
-#include "YuEngine/Kernel/EngineKernel.h"
-#include "YuEngine/Kernel/RuntimeApp.h"
-#include "YuEngine/Kernel/RuntimeAppStatus.h"
 #include "YuEngine/Kernel/RuntimeFramePhase.h"
 #include "YuEngine/Package/PackageEntryDescriptor.h"
 #include "YuEngine/Package/PackageLoadPlanResult.h"
@@ -90,14 +87,11 @@ using yuengine::file::FileWriteRequest;
 using yuengine::file::MountId;
 using yuengine::file::MountTable;
 using yuengine::file::VirtualPath;
-using yuengine::kernel::EngineKernel;
-using yuengine::kernel::RuntimeApp;
-using yuengine::kernel::RuntimeAppDesc;
-using yuengine::kernel::RuntimeAppStatus;
 using yuengine::kernel::RuntimeFramePhase;
 using yuengine::package::PackageEntryDescriptor;
 using yuengine::package::PackageEntryId;
 using yuengine::package::PackageId;
+using yuengine::package::PackageLoadPlan;
 using yuengine::package::PackageLoadPlanResult;
 using yuengine::package::PackageRegistry;
 using yuengine::package::PackageSourceKey;
@@ -215,6 +209,9 @@ using yuengine::runtimeasset::RuntimeAssetImportCookMissingLayer;
 using yuengine::runtimeasset::RuntimeAssetLoadedFile;
 using yuengine::runtimeasset::RuntimeAssetLoadedShaderProgramData;
 using yuengine::runtimeasset::RuntimeAssetLoadTransactionPhase;
+using yuengine::runtimeasset::RuntimeAssetPackagedRunBlockedLayer;
+using yuengine::runtimeasset::RuntimeAssetPackagedRunRequest;
+using yuengine::runtimeasset::RuntimeAssetPackagedRunResult;
 using yuengine::runtimeasset::RuntimeAssetSceneCameraRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneEntityRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneLoaderOutput;
@@ -226,6 +223,7 @@ using yuengine::runtimeasset::RuntimeAssetValidationResult;
 using yuengine::runtimeasset::RuntimeAssetVisualProofMissingLayer;
 using yuengine::runtimeasset::RuntimeAssetVisualProofRequest;
 using yuengine::runtimeasset::RuntimeAssetVisualProofResult;
+using yuengine::runtimeasset::RunRuntimeAssetPackagedEntryPoint;
 using yuengine::runtimeasset::ValidateRuntimeAssetDataBytes;
 using yuengine::streaming::ResourceDecodedTextureBridge;
 using yuengine::streaming::ResourceDecodedTextureBridgeRequest;
@@ -372,7 +370,7 @@ constexpr const char *TEST_COOKED_VISUAL_PROOF_D3D11 =
 constexpr const char *TEST_COOKED_VISUAL_PROOF_MISSING_LAYERS =
     "RuntimeAssetData_CookedRuntimeVisualProofReportsExactMissingLayers";
 constexpr const char *TEST_PACKAGE_COOK_RUN_SMOKE =
-    "RuntimeAssetData_PackageCookRunSmokeReportsPackagedRuntimeEntryPointBlocker";
+    "RuntimeAssetData_PackageCookRunSmokeRunsPackagedRuntimeEntryPoint";
 constexpr const char *TEST_RUNTIME_DEPENDENCIES =
     "RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges";
 constexpr const char *TEST_LOAD_RENDER =
@@ -397,7 +395,6 @@ constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *MOUNT_ID = "runtime";
 constexpr const char *SCENE_PATH = "Scene/CanonicalScene.yuscene";
-constexpr const char *PACKAGED_RUNTIME_ENTRYPOINT_BLOCKER = "BlockedByLayer=PackagedRuntimeEntryPoint";
 constexpr std::uint64_t FNV_OFFSET = 14695981039346656037ULL;
 constexpr std::uint64_t FNV_PRIME = 1099511628211ULL;
 constexpr PackageId RUNTIME_ASSET_SMOKE_PACKAGE{7001U};
@@ -908,35 +905,22 @@ const char *VisualProofLayerName(RuntimeAssetVisualProofMissingLayer layer) {
     return "Unknown";
 }
 
-enum class PackageCookRunSmokeBlockedLayer {
-    None,
-    ImportCookCommand,
-    RuntimeAssetData,
-    PackageManifest,
-    PackageLoadPlan,
-    RenderSceneRenderCoreRhi,
-    RuntimeAppFrameLoop,
-    PackagedRuntimeEntryPoint
-};
-
-const char *PackageCookRunSmokeBlockedLayerName(PackageCookRunSmokeBlockedLayer layer) {
+const char *PackagedRunBlockedLayerName(RuntimeAssetPackagedRunBlockedLayer layer) {
     switch (layer) {
-        case PackageCookRunSmokeBlockedLayer::None:
+        case RuntimeAssetPackagedRunBlockedLayer::None:
             return "None";
-        case PackageCookRunSmokeBlockedLayer::ImportCookCommand:
-            return "ImportCookCommand";
-        case PackageCookRunSmokeBlockedLayer::RuntimeAssetData:
-            return "RuntimeAssetData";
-        case PackageCookRunSmokeBlockedLayer::PackageManifest:
-            return "PackageManifest";
-        case PackageCookRunSmokeBlockedLayer::PackageLoadPlan:
+        case RuntimeAssetPackagedRunBlockedLayer::PackageLoadPlan:
             return "PackageLoadPlan";
-        case PackageCookRunSmokeBlockedLayer::RenderSceneRenderCoreRhi:
+        case RuntimeAssetPackagedRunBlockedLayer::RuntimeAssetData:
+            return "RuntimeAssetData";
+        case RuntimeAssetPackagedRunBlockedLayer::ResourceAsset:
+            return "ResourceAsset";
+        case RuntimeAssetPackagedRunBlockedLayer::ShaderProgram:
+            return "ShaderProgram";
+        case RuntimeAssetPackagedRunBlockedLayer::RenderSceneRenderCoreRhi:
             return "RenderSceneRenderCoreRhi";
-        case PackageCookRunSmokeBlockedLayer::RuntimeAppFrameLoop:
+        case RuntimeAssetPackagedRunBlockedLayer::RuntimeAppFrameLoop:
             return "RuntimeAppFrameLoop";
-        case PackageCookRunSmokeBlockedLayer::PackagedRuntimeEntryPoint:
-            return "PackagedRuntimeEntryPoint";
     }
 
     return "Unknown";
@@ -3552,30 +3536,16 @@ RuntimeAssetVisualProofRequest CookedVisualProofRequest(
 }
 
 struct PackageCookRunSmokeLedger final {
-    PackageCookRunSmokeBlockedLayer blocked_layer =
-        PackageCookRunSmokeBlockedLayer::ImportCookCommand;
     RuntimeAssetDataStatus import_cook_status = RuntimeAssetDataStatus::InvalidArgument;
-    RuntimeAssetDataStatus runtime_asset_load_status = RuntimeAssetDataStatus::InvalidArgument;
     PackageStatus package_status = PackageStatus::NotFound;
-    RuntimeAssetDataStatus visual_proof_status = RuntimeAssetDataStatus::InvalidArgument;
-    RuntimeAppStatus runtime_app_status = RuntimeAppStatus::InvalidDescriptor;
+    RuntimeAssetPackagedRunResult packaged_run{};
+    PackageLoadPlan package_load_plan{};
     std::uint32_t source_file_count = 0U;
     std::uint32_t cooked_file_count = 0U;
-    std::uint32_t loaded_file_count = 0U;
-    std::uint32_t resource_dependency_count = 0U;
-    std::uint32_t asset_dependency_count = 0U;
     std::uint32_t package_load_plan_record_count = 0U;
-    std::uint32_t visual_submitted_draw_count = 0U;
-    std::uint32_t visual_completed_frame_count = 0U;
-    std::uint32_t runtime_app_completed_frame_count = 0U;
     bool import_cook_command_success = false;
-    bool runtime_asset_validation_load_success = false;
-    bool resource_asset_registration_success = false;
     bool package_manifest_success = false;
     bool package_load_plan_success = false;
-    bool render_scene_render_core_rhi_success = false;
-    bool runtime_app_frame_loop_success = false;
-    bool full_packaged_runtime_entrypoint_available = false;
 };
 
 bool RegisterRuntimeAssetPackageEntry(
@@ -3661,40 +3631,54 @@ bool BuildRuntimeAssetCookedPackagePlan(
 
     ledger->package_load_plan_success = true;
     ledger->package_load_plan_record_count = plan.plan.record_count;
+    ledger->package_load_plan = plan.plan;
     return plan.plan.record_count == context.fixture.command.fixture.cooked_file_count + 1U &&
         plan.plan.records[plan.plan.record_count - 1U].entry.value == RUNTIME_ASSET_SMOKE_SCENE_ENTRY.value;
 }
 
-bool RunZeroWorldRuntimeAppFrame(PackageCookRunSmokeLedger *ledger) {
-    if (ledger == nullptr) {
-        return FailStep("null package cook run runtime ledger");
-    }
-
-    EngineKernel kernel;
-    RuntimeApp runtime_app;
-    RuntimeAppDesc desc{};
-    desc.frame_count = 1U;
-    desc.fixed_delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
-    std::vector<std::string> lifecycle_trace{};
-    std::vector<RuntimeFramePhase> phase_trace{};
-
-    if (!runtime_app.Initialize(&kernel, desc)) {
-        return false;
-    }
-
-    const auto run_result = runtime_app.RunFixedFrames(&lifecycle_trace, &phase_trace);
-    ledger->runtime_app_status = run_result.status;
-    ledger->runtime_app_completed_frame_count = run_result.completed_frame_count;
-    return run_result.succeeded &&
-        run_result.completed_frame_count == 1U &&
-        run_result.last_frame_context.phase == RuntimeFramePhase::EndFrame;
+RuntimeAssetPackagedRunRequest BuildPackagedRunRequest(CookedVisualProofContext &context, PackageCookRunSmokeLedger &ledger) {
+    RuntimeAssetPackagedRunRequest request{};
+    request.mount_table = &context.fixture.table;
+    request.mount = MountId(MOUNT_ID);
+    request.package_load_plan = &ledger.package_load_plan;
+    request.scene = context.fixture.command.fixture.cooked_scene;
+    request.files = context.fixture.cooked_files.data();
+    request.file_count = static_cast<std::uint32_t>(context.fixture.cooked_files.size());
+    request.resource_registry = &context.registry;
+    request.asset_manager = &context.manager;
+    request.rhi_device = &context.device;
+    request.loaded_files = context.loaded_files.data();
+    request.loaded_file_capacity = static_cast<std::uint32_t>(context.loaded_files.size());
+    request.scene_resource_refs = context.scene_refs.data();
+    request.scene_resource_ref_capacity = static_cast<std::uint32_t>(context.scene_refs.size());
+    request.scene_cameras = context.scene_cameras.data();
+    request.scene_camera_capacity = static_cast<std::uint32_t>(context.scene_cameras.size());
+    request.scene_entities = context.scene_entities.data();
+    request.scene_entity_capacity = static_cast<std::uint32_t>(context.scene_entities.size());
+    request.scene_transforms = context.scene_transforms.data();
+    request.scene_transform_capacity = static_cast<std::uint32_t>(context.scene_transforms.size());
+    request.scene_output = &context.scene_output;
+    request.shader_program = &context.shader_program;
+    request.animation_frame_context.frame_index = 1U;
+    request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    request.animation_frame_context.phase = RuntimeFramePhase::LoadOrCommitResources;
+    request.scratch_bytes = std::span<std::uint8_t>(context.scratch_bytes.data(), context.scratch_bytes.size());
+    request.capture_output = std::span<std::uint8_t>(context.capture_bytes.data(), context.capture_bytes.size());
+    request.capture_byte_budget_per_entity = CAPTURE_BYTES_PER_ENTITY;
+    request.first_frame_id = FRAME_ID + 700U;
+    request.visual_frame_count = 2U;
+    request.output_path = "Artifacts/RuntimeAssetData/PackageCookRun.rvf";
+    request.output_path_byte_count = 44U;
+    request.runtime_app.frame_count = 1U;
+    request.runtime_app.fixed_delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    return request;
 }
 
-PackageCookRunSmokeLedger ExecuteCurrentPackageCookRunSmoke() {
+PackageCookRunSmokeLedger ExecutePackagedPackageCookRunSmoke() {
     PackageCookRunSmokeLedger ledger{};
     CookedVisualProofContext context{};
 
-    ledger.blocked_layer = PackageCookRunSmokeBlockedLayer::ImportCookCommand;
     if (!ExecuteGeneratedFixtureCommand("PackageCookRunSmoke", &context.fixture)) {
         return ledger;
     }
@@ -3711,66 +3695,16 @@ PackageCookRunSmokeLedger ExecuteCurrentPackageCookRunSmoke() {
         return ledger;
     }
 
-    ledger.blocked_layer = PackageCookRunSmokeBlockedLayer::RuntimeAssetData;
-    if (!LoadCookedVisualProofGraph(&context) || !DecodeCookedVisualProofShader(&context)) {
-        ledger.runtime_asset_load_status = context.load_result.status;
-        return ledger;
-    }
-
-    ledger.runtime_asset_load_status = context.load_result.status;
-    ledger.loaded_file_count = context.load_result.loaded_file_count;
-    ledger.resource_dependency_count = context.load_result.resource_dependency_count;
-    ledger.asset_dependency_count = context.load_result.asset_dependency_count;
-    ledger.runtime_asset_validation_load_success =
-        context.load_result.status == RuntimeAssetDataStatus::Success &&
-        context.load_result.scene.artifact_class == RuntimeAssetArtifactClass::Cooked &&
-        context.scene_output.status == RuntimeAssetDataStatus::Success;
-    ledger.resource_asset_registration_success =
-        context.load_result.scene_registered &&
-        context.load_result.resource_dependency_count == RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT &&
-        context.load_result.asset_dependency_count == RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT;
-    if (!ledger.runtime_asset_validation_load_success || !ledger.resource_asset_registration_success) {
-        return ledger;
-    }
-
-    ledger.blocked_layer = PackageCookRunSmokeBlockedLayer::PackageManifest;
     if (!BuildRuntimeAssetCookedPackagePlan(context, &ledger)) {
-        if (ledger.package_manifest_success) {
-            ledger.blocked_layer = PackageCookRunSmokeBlockedLayer::PackageLoadPlan;
-        }
         return ledger;
     }
 
-    ledger.blocked_layer = PackageCookRunSmokeBlockedLayer::RenderSceneRenderCoreRhi;
     if (context.device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
         return ledger;
     }
 
-    RuntimeAssetVisualProofRequest proof_request = CookedVisualProofRequest(context);
-    RuntimeAssetVisualProofResult proof_result{};
-    const RuntimeAssetDataStatus visual_status =
-        BuildRuntimeAssetCookedVisualProofRoute(proof_request, &proof_result);
-    ledger.visual_proof_status = visual_status;
-    ledger.visual_submitted_draw_count = proof_result.submitted_draw_count;
-    ledger.visual_completed_frame_count = proof_result.completed_frame_count;
-    ledger.render_scene_render_core_rhi_success =
-        visual_status == RuntimeAssetDataStatus::Success &&
-        proof_result.status == RuntimeAssetDataStatus::Success &&
-        proof_result.first_missing_layer == RuntimeAssetVisualProofMissingLayer::None &&
-        proof_result.render_scene_routed &&
-        proof_result.render_core_rhi_capture_routed;
-    if (!ledger.render_scene_render_core_rhi_success) {
-        return ledger;
-    }
-
-    ledger.blocked_layer = PackageCookRunSmokeBlockedLayer::RuntimeAppFrameLoop;
-    if (!RunZeroWorldRuntimeAppFrame(&ledger)) {
-        return ledger;
-    }
-
-    ledger.runtime_app_frame_loop_success = true;
-    ledger.blocked_layer = PackageCookRunSmokeBlockedLayer::PackagedRuntimeEntryPoint;
-    ledger.full_packaged_runtime_entrypoint_available = false;
+    RuntimeAssetPackagedRunRequest request = BuildPackagedRunRequest(context, ledger);
+    RunRuntimeAssetPackagedEntryPoint(request, &ledger.packaged_run);
     return ledger;
 }
 
@@ -4082,35 +4016,18 @@ int RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers() {
     return 0;
 }
 
-int RuntimeAssetDataPackageCookRunSmokeReportsPackagedRuntimeEntryPointBlocker() {
-    const PackageCookRunSmokeLedger ledger = ExecuteCurrentPackageCookRunSmoke();
+int RuntimeAssetDataPackageCookRunSmokeRunsPackagedRuntimeEntryPoint() {
+    const PackageCookRunSmokeLedger ledger = ExecutePackagedPackageCookRunSmoke();
     if (!ledger.import_cook_command_success ||
         ledger.source_file_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
         ledger.cooked_file_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT) {
         std::fprintf(
             stderr,
-            "BlockedByLayer=%s import=%s source=%u cooked=%u\n",
-            PackageCookRunSmokeBlockedLayerName(ledger.blocked_layer),
+            "import=%s source=%u cooked=%u\n",
             StatusName(ledger.import_cook_status),
             ledger.source_file_count,
             ledger.cooked_file_count);
         return Fail("package smoke import/cook command floor failed");
-    }
-
-    if (!ledger.runtime_asset_validation_load_success ||
-        !ledger.resource_asset_registration_success ||
-        ledger.loaded_file_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
-        ledger.resource_dependency_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
-        ledger.asset_dependency_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT) {
-        std::fprintf(
-            stderr,
-            "BlockedByLayer=%s load=%s loaded=%u resourceDeps=%u assetDeps=%u\n",
-            PackageCookRunSmokeBlockedLayerName(ledger.blocked_layer),
-            StatusName(ledger.runtime_asset_load_status),
-            ledger.loaded_file_count,
-            ledger.resource_dependency_count,
-            ledger.asset_dependency_count);
-        return Fail("package smoke RuntimeAsset load floor failed");
     }
 
     if (!ledger.package_manifest_success ||
@@ -4118,51 +4035,75 @@ int RuntimeAssetDataPackageCookRunSmokeReportsPackagedRuntimeEntryPointBlocker()
         ledger.package_load_plan_record_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U) {
         std::fprintf(
             stderr,
-            "BlockedByLayer=%s package=%u planRecords=%u\n",
-            PackageCookRunSmokeBlockedLayerName(ledger.blocked_layer),
+            "package=%u planRecords=%u\n",
             static_cast<unsigned>(ledger.package_status),
             ledger.package_load_plan_record_count);
         return Fail("package smoke Package manifest/load-plan floor failed");
     }
 
-    if (!ledger.render_scene_render_core_rhi_success ||
-        ledger.visual_proof_status != RuntimeAssetDataStatus::Success ||
-        ledger.visual_completed_frame_count != 2U ||
-        ledger.visual_submitted_draw_count != 6U) {
+    const RuntimeAssetPackagedRunResult &run = ledger.packaged_run;
+    if (run.status != RuntimeAssetDataStatus::Success ||
+        run.blocked_layer != RuntimeAssetPackagedRunBlockedLayer::None ||
+        !run.package_load_plan_consumed ||
+        !run.packaged_runtime_entrypoint_available) {
         std::fprintf(
             stderr,
-            "BlockedByLayer=%s visual=%s frames=%u draws=%u\n",
-            PackageCookRunSmokeBlockedLayerName(ledger.blocked_layer),
-            StatusName(ledger.visual_proof_status),
-            ledger.visual_completed_frame_count,
-            ledger.visual_submitted_draw_count);
+            "BlockedByLayer=%s status=%s consumed=%u available=%u package=%u records=%u\n",
+            PackagedRunBlockedLayerName(run.blocked_layer),
+            StatusName(run.status),
+            run.package_load_plan_consumed ? 1U : 0U,
+            run.packaged_runtime_entrypoint_available ? 1U : 0U,
+            static_cast<unsigned>(run.package_status),
+            run.package_load_plan_record_count);
+        return Fail("package smoke packaged RuntimeAsset entrypoint did not close");
+    }
+
+    if (!run.runtime_asset_validation_load_success ||
+        !run.resource_asset_registration_success ||
+        run.loaded_file_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
+        run.resource_dependency_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
+        run.asset_dependency_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT) {
+        std::fprintf(
+            stderr,
+            "BlockedByLayer=%s load=%s loaded=%u resourceDeps=%u assetDeps=%u\n",
+            PackagedRunBlockedLayerName(run.blocked_layer),
+            StatusName(run.graph_load_result.status),
+            run.loaded_file_count,
+            run.resource_dependency_count,
+            run.asset_dependency_count);
+        return Fail("package smoke RuntimeAsset load floor failed");
+    }
+
+    if (!run.shader_program_decoded ||
+        !run.render_scene_render_core_rhi_success ||
+        run.visual_proof_result.status != RuntimeAssetDataStatus::Success ||
+        run.visual_proof_result.completed_frame_count != 2U ||
+        run.visual_proof_result.submitted_draw_count != 6U ||
+        !run.visual_proof_result.loaded_records_verified) {
+        std::fprintf(
+            stderr,
+            "BlockedByLayer=%s shader=%u visual=%s frames=%u draws=%u records=%u\n",
+            PackagedRunBlockedLayerName(run.blocked_layer),
+            run.shader_program_decoded ? 1U : 0U,
+            StatusName(run.visual_proof_result.status),
+            run.visual_proof_result.completed_frame_count,
+            run.visual_proof_result.submitted_draw_count,
+            run.visual_proof_result.loaded_records_verified ? 1U : 0U);
         return Fail("package smoke RenderScene/RenderCore/RHI floor failed");
     }
 
-    if (!ledger.runtime_app_frame_loop_success ||
-        ledger.runtime_app_status != RuntimeAppStatus::Success ||
-        ledger.runtime_app_completed_frame_count != 1U) {
+    if (!run.runtime_app_frame_loop_success ||
+        !run.runtime_app_result.succeeded ||
+        run.runtime_app_completed_frame_count != 1U ||
+        run.runtime_app_result.last_frame_context.phase != RuntimeFramePhase::EndFrame) {
         std::fprintf(
             stderr,
-            "BlockedByLayer=%s runtimeApp=%u frames=%u\n",
-            PackageCookRunSmokeBlockedLayerName(ledger.blocked_layer),
-            static_cast<unsigned>(ledger.runtime_app_status),
-            ledger.runtime_app_completed_frame_count);
+            "BlockedByLayer=%s runtimeApp=%u frames=%u phase=%u\n",
+            PackagedRunBlockedLayerName(run.blocked_layer),
+            static_cast<unsigned>(run.runtime_app_result.status),
+            run.runtime_app_completed_frame_count,
+            static_cast<unsigned>(run.runtime_app_result.last_frame_context.phase));
         return Fail("package smoke RuntimeApp frame-loop floor failed");
-    }
-
-    if (ledger.blocked_layer != PackageCookRunSmokeBlockedLayer::PackagedRuntimeEntryPoint ||
-        ledger.full_packaged_runtime_entrypoint_available) {
-        std::fprintf(
-            stderr,
-            "BlockedByLayer=%s available=%u\n",
-            PackageCookRunSmokeBlockedLayerName(ledger.blocked_layer),
-            ledger.full_packaged_runtime_entrypoint_available ? 1U : 0U);
-        return Fail("package smoke did not stop at the exact packaged runtime entrypoint blocker");
-    }
-
-    if (std::string_view(PACKAGED_RUNTIME_ENTRYPOINT_BLOCKER) != "BlockedByLayer=PackagedRuntimeEntryPoint") {
-        return Fail("package smoke blocker token changed");
     }
 
     return 0;
@@ -8061,7 +8002,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_COOKED_VISUAL_PROOF_MISSING_LAYERS,
      RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers},
     {TEST_PACKAGE_COOK_RUN_SMOKE,
-     RuntimeAssetDataPackageCookRunSmokeReportsPackagedRuntimeEntryPointBlocker},
+     RuntimeAssetDataPackageCookRunSmokeRunsPackagedRuntimeEntryPoint},
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},

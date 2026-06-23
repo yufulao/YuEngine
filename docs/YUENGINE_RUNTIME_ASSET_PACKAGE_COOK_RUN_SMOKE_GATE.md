@@ -1,15 +1,15 @@
 # YuEngine RuntimeAsset Package / Cook / Run Smoke Gate
 
-Status: RAV3-F first smoke gate
-Task: #74
+Status: RAV3-G packaged RuntimeAsset entrypoint smoke
+Task: #75
 Base: RAV3 RuntimeAsset visual proof and Resource Browser/PreviewHost gates
-Decision: `RUNTIME_ASSET_PACKAGE_RUN_ENTRYPOINT_BLOCKED`
+Decision: `RUNTIME_ASSET_PACKAGE_RUN_ENTRYPOINT_PASS`
 
 ## Purpose
 
 This gate defines the first executable package/cook/run smoke for the
 deterministic RuntimeAsset sample without pretending that YuEngine has a final
-product package runner.
+installer or release package runner.
 
 The current accepted route is:
 
@@ -20,19 +20,21 @@ RuntimeAsset import/cook command
 -> Resource/Asset registration and dependency edges
 -> synthetic Package manifest and Package load plan for cooked records
 -> RenderScene / RenderCore / RHI cooked visual proof
--> Kernel RuntimeApp fixed-frame loop
--> BlockedByLayer=PackagedRuntimeEntryPoint
+-> RuntimeAsset packaged run entrypoint consumes the Package load plan
+-> RuntimeApp owns the entrypoint module and fixed-frame loop
+-> deterministic PASS ledger
 ```
 
-The final blocker is exact: YuEngine can prove the cooked RuntimeAsset graph,
-Package registry/load-plan data, RHI visual route, and generic RuntimeApp loop,
-but it does not yet have a packaged runtime entrypoint that consumes the Package
-load plan and launches the RuntimeAsset scene as a product run.
+RAV3-G removes the previous exact blocker
+`BlockedByLayer=PackagedRuntimeEntryPoint`. YuEngine now exposes an
+engine-owned RuntimeAsset packaged run entrypoint that consumes a Package load
+plan, bootstraps the cooked RuntimeAsset graph, and runs the render proof through
+`RuntimeApp` module ownership.
 
 ## Current Smoke Result
 
-`RuntimeAssetData_PackageCookRunSmokeReportsPackagedRuntimeEntryPointBlocker`
-is the focused executable gate. It must report these floors before the blocker:
+`RuntimeAssetData_PackageCookRunSmokeRunsPackagedRuntimeEntryPoint` is the
+focused executable gate. It must report these floors:
 
 | Stage | Required result |
 | --- | --- |
@@ -41,24 +43,28 @@ is the focused executable gate. It must report these floors before the blocker:
 | Resource/Asset | scene and dependencies are registered in Resource and Asset graphs |
 | Package | cooked scene and cooked records register into a synthetic manifest and resolve as a load plan |
 | Render route | cooked records drive RenderScene/RenderCore/RHI visual proof |
-| Runtime loop | `RuntimeApp` runs a fixed-frame loop successfully |
-| Product run | `BlockedByLayer=PackagedRuntimeEntryPoint` |
+| Runtime entrypoint | `RunRuntimeAssetPackagedEntryPoint` consumes the Package load plan |
+| Runtime loop | `RuntimeApp` runs the entrypoint module through a fixed-frame loop successfully |
+| Product run | PASS with `RuntimeAssetPackagedRunBlockedLayer::None` |
 
 The Package stage is intentionally synthetic at this slice. It proves manifest,
 entry, dependency, and load-plan wiring for the cooked RuntimeAsset records. It
 is not a package-file format, installer, launcher, product boot command, remote
 cook service, or original-game package adapter.
 
-## Missing Layer
+## Closed Layer
 
-`BlockedByLayer=PackagedRuntimeEntryPoint` means:
+The previous `BlockedByLayer=PackagedRuntimeEntryPoint` meant:
 
 - there is no engine-owned run command that takes a Package load plan as input;
 - `RuntimeApp` does not yet own a RuntimeAsset scene bootstrap module;
 - the Package registry is not yet backed by a final package artifact file;
 - no product package/install/run executable has been accepted.
 
-This is not `BlockedByEnv`. It is a missing engine/product layer.
+RAV3-G closes the first two bullets for the deterministic cooked RuntimeAsset
+route. The remaining bullets stay intentionally out of scope: Package file
+artifacts, installers, final launchers, and release packaging are not approved by
+this gate.
 
 ## Required Commands
 
@@ -67,7 +73,7 @@ Focused gate:
 ```powershell
 cmake --preset windows-fast-gate
 cmake --build --preset windows-fast-gate --target YuRuntimeAssetDataClosedLoopTests -- /v:minimal
-ctest --preset windows-fast-gate -R "RuntimeAssetData_PackageCookRunSmokeReportsPackagedRuntimeEntryPointBlocker" --output-on-failure
+ctest --preset windows-fast-gate -R "RuntimeAssetData_PackageCookRunSmokeRunsPackagedRuntimeEntryPoint" --output-on-failure
 ```
 
 Related package/cook/render confidence:
@@ -105,7 +111,8 @@ This gate does not accept:
 
 ## Next Required Slice
 
-The next product slice should implement a real packaged runtime entrypoint:
+The next product slice should move beyond the deterministic synthetic manifest
+into a separately approved package artifact or product-run layer:
 
 ```text
 Package artifact / manifest
@@ -116,4 +123,5 @@ Package artifact / manifest
 -> deterministic process exit code and capture/output ledger
 ```
 
-Only that later slice may remove `BlockedByLayer=PackagedRuntimeEntryPoint`.
+RAV3-G does not authorize that broader package artifact or final product visual
+closure work.

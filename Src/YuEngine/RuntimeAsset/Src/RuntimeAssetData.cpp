@@ -22,6 +22,11 @@
 #include "YuEngine/File/FileWriteRequest.h"
 #include "YuEngine/File/FileWriteResult.h"
 #include "YuEngine/File/MountTable.h"
+#include "YuEngine/Kernel/EngineKernel.h"
+#include "YuEngine/Kernel/IModule.h"
+#include "YuEngine/Kernel/KernelResult.h"
+#include "YuEngine/Kernel/KernelStatus.h"
+#include "YuEngine/Kernel/RuntimeApp.h"
 #include "YuEngine/RenderCore/RenderCameraProjectionKind.h"
 #include "YuEngine/RenderScene/RenderSceneCameraBindingRequest.h"
 #include "YuEngine/RenderScene/RenderSceneCameraBindingResult.h"
@@ -102,6 +107,15 @@ using yuengine::file::FileReadResult;
 using yuengine::file::FileWriteRequest;
 using yuengine::file::FileWriteResult;
 using yuengine::file::MountTable;
+using yuengine::kernel::EngineKernel;
+using yuengine::kernel::IModule;
+using yuengine::kernel::KernelResult;
+using yuengine::kernel::KernelStatus;
+using yuengine::kernel::RuntimeApp;
+using yuengine::kernel::RuntimeAppRunResult;
+using yuengine::kernel::RuntimeFramePhase;
+using yuengine::package::PackageLoadPlanRecord;
+using yuengine::package::PackageStatus;
 using yuengine::resource::ResourceCachePayloadRequest;
 using yuengine::resource::ResourceCachePayloadSnapshot;
 using yuengine::resource::ResourceCachePayloadStatus;
@@ -6349,6 +6363,453 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
         result.texture_record_count >= RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT;
     result.status = RuntimeAssetDataStatus::Success;
     result.first_missing_layer = RuntimeAssetVisualProofMissingLayer::None;
+    *out_result = result;
+    return result.status;
+}
+
+namespace {
+constexpr const char *RUNTIME_ASSET_PACKAGED_RUN_MODULE = "RuntimeAssetPackagedRun";
+constexpr const char *RUNTIME_ASSET_PACKAGED_RUN_UPDATE_FAILURE =
+    "runtime asset packaged run module failed";
+constexpr const char *RUNTIME_ASSET_PACKAGE_LOGICAL_KEY_PREFIX = "runtime_asset_";
+constexpr const char *RUNTIME_ASSET_PACKAGE_SOURCE_KEY_PREFIX = "cooked_record_";
+
+std::string RuntimeAssetPackageLogicalKeyForStableId(std::uint64_t stable_id) {
+    return std::string(RUNTIME_ASSET_PACKAGE_LOGICAL_KEY_PREFIX) + std::to_string(stable_id);
+}
+
+std::string RuntimeAssetPackageSourceKeyForStableId(std::uint64_t stable_id) {
+    return std::string(RUNTIME_ASSET_PACKAGE_SOURCE_KEY_PREFIX) + std::to_string(stable_id);
+}
+
+bool RuntimeAssetPackageRecordMatchesDesc(
+    const PackageLoadPlanRecord &record,
+    const RuntimeAssetFileDesc &desc) {
+    if (record.type.value != desc.resource_type.value) {
+        return false;
+    }
+
+    if (record.byte_size == 0U) {
+        return false;
+    }
+
+    const std::string logical_key = RuntimeAssetPackageLogicalKeyForStableId(desc.stable_id);
+    if (record.logical_key.Value() != std::string_view(logical_key)) {
+        return false;
+    }
+
+    const std::string source_key = RuntimeAssetPackageSourceKeyForStableId(desc.stable_id);
+    return record.source_key.Value() == std::string_view(source_key);
+}
+
+const PackageLoadPlanRecord *FindRuntimeAssetPackageRecordForDesc(
+    const yuengine::package::PackageLoadPlan &plan,
+    const RuntimeAssetFileDesc &desc) {
+    for (std::uint32_t index = 0U; index < plan.record_count; ++index) {
+        if (RuntimeAssetPackageRecordMatchesDesc(plan.records[index], desc)) {
+            return &plan.records[index];
+        }
+    }
+
+    return nullptr;
+}
+
+RuntimeAssetDataStatus ValidateRuntimeAssetPackageLoadPlan(
+    const RuntimeAssetPackagedRunRequest &request,
+    RuntimeAssetPackagedRunResult *result) {
+    if (request.package_load_plan == nullptr || result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const yuengine::package::PackageLoadPlan &plan = *request.package_load_plan;
+    result->package_load_plan_record_count = plan.record_count;
+    if (plan.record_count == 0U) {
+        result->package_status = PackageStatus::NotFound;
+        return RuntimeAssetDataStatus::InvalidCount;
+    }
+
+    if (request.files == nullptr || request.file_count == 0U) {
+        result->package_status = PackageStatus::NotFound;
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (plan.record_count != request.file_count + 1U) {
+        result->package_status = PackageStatus::LoadPlanCapacityExceeded;
+        return RuntimeAssetDataStatus::InvalidCount;
+    }
+
+    const PackageLoadPlanRecord &scene_record = plan.records[plan.record_count - 1U];
+    if (!RuntimeAssetPackageRecordMatchesDesc(scene_record, request.scene)) {
+        result->package_status = PackageStatus::TypeMismatch;
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    for (std::uint32_t index = 0U; index < request.file_count; ++index) {
+        const PackageLoadPlanRecord *record =
+            FindRuntimeAssetPackageRecordForDesc(plan, request.files[index]);
+        if (record == nullptr) {
+            result->package_status = PackageStatus::NotFound;
+            return RuntimeAssetDataStatus::MissingDependency;
+        }
+    }
+
+    result->package_status = PackageStatus::Success;
+    result->package_load_plan_consumed = true;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ReadRuntimeAssetPackagedBytes(
+    MountTable &mount_table,
+    yuengine::file::MountId mount,
+    const char *path,
+    std::vector<std::uint8_t> *out_bytes) {
+    if (path == nullptr || out_bytes == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const FileReadResult read_result = mount_table.Read({mount, yuengine::file::VirtualPath(path)});
+    if (!read_result.Succeeded()) {
+        return RuntimeAssetDataStatus::FileReadFailed;
+    }
+
+    *out_bytes = read_result.bytes;
+    return RuntimeAssetDataStatus::Success;
+}
+
+const RuntimeAssetFileDesc *FindRuntimeAssetPackagedFile(
+    const RuntimeAssetPackagedRunRequest &request,
+    RuntimeAssetFileKind kind) {
+    if (request.files == nullptr) {
+        return nullptr;
+    }
+
+    for (std::uint32_t index = 0U; index < request.file_count; ++index) {
+        if (request.files[index].kind == kind) {
+            return &request.files[index];
+        }
+    }
+
+    return nullptr;
+}
+
+RuntimeAssetDataStatus DecodeRuntimeAssetPackagedShader(
+    const RuntimeAssetPackagedRunRequest &request,
+    RuntimeAssetPackagedRunResult *result) {
+    if (request.mount_table == nullptr ||
+        request.shader_program == nullptr ||
+        result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const RuntimeAssetFileDesc *shader_desc =
+        FindRuntimeAssetPackagedFile(request, RuntimeAssetFileKind::Shader);
+    if (shader_desc == nullptr) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    std::vector<std::uint8_t> bytes{};
+    RuntimeAssetDataStatus status = ReadRuntimeAssetPackagedBytes(
+        *request.mount_table,
+        request.mount,
+        shader_desc->path,
+        &bytes);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = DecodeRuntimeAssetShaderProgramData(
+        std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+        static_cast<std::uint32_t>(shader_desc->stable_id),
+        request.shader_program);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    if (request.shader_program->validation.artifact_class != RuntimeAssetArtifactClass::Cooked) {
+        return RuntimeAssetDataStatus::InvalidSchema;
+    }
+
+    result->shader_program_decoded = true;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetGraphLoadRequest BuildRuntimeAssetPackagedGraphLoadRequest(
+    const RuntimeAssetPackagedRunRequest &request) {
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = request.mount_table;
+    load_request.mount = request.mount;
+    load_request.scene_path = yuengine::file::VirtualPath(request.scene.path);
+    load_request.scene_resource_type = request.scene.resource_type;
+    load_request.scene_asset_type = request.scene.asset_type;
+    load_request.scene_stable_id = request.scene.stable_id;
+    load_request.files = request.files;
+    load_request.file_count = request.file_count;
+    load_request.resource_registry = request.resource_registry;
+    load_request.asset_manager = request.asset_manager;
+    load_request.loaded_files = request.loaded_files;
+    load_request.loaded_file_capacity = request.loaded_file_capacity;
+    load_request.scene_resource_refs = request.scene_resource_refs;
+    load_request.scene_resource_ref_capacity = request.scene_resource_ref_capacity;
+    load_request.scene_cameras = request.scene_cameras;
+    load_request.scene_camera_capacity = request.scene_camera_capacity;
+    load_request.scene_entities = request.scene_entities;
+    load_request.scene_entity_capacity = request.scene_entity_capacity;
+    load_request.scene_transforms = request.scene_transforms;
+    load_request.scene_transform_capacity = request.scene_transform_capacity;
+    load_request.scene_output = request.scene_output;
+    load_request.animation_frame_context = request.animation_frame_context;
+    load_request.animation_clip_start_time_nanoseconds =
+        request.animation_clip_start_time_nanoseconds;
+    return load_request;
+}
+
+RuntimeAssetVisualProofRequest BuildRuntimeAssetPackagedVisualProofRequest(
+    const RuntimeAssetPackagedRunRequest &request,
+    const RuntimeAssetGraphLoadResult &graph_load_result) {
+    RuntimeAssetVisualProofRequest proof_request{};
+    proof_request.resource_registry = request.resource_registry;
+    proof_request.asset_manager = request.asset_manager;
+    proof_request.rhi_device = request.rhi_device;
+    proof_request.scene = &graph_load_result.scene;
+    proof_request.loaded_files =
+        std::span<const RuntimeAssetLoadedFile>(request.loaded_files, graph_load_result.loaded_file_count);
+    proof_request.scene_cameras =
+        std::span<const RuntimeAssetSceneCameraRecord>(request.scene_cameras, request.scene_output->camera_count);
+    proof_request.scene_entities =
+        std::span<const RuntimeAssetSceneEntityRecord>(request.scene_entities, request.scene_output->entity_count);
+    proof_request.scene_transforms =
+        std::span<const RuntimeAssetSceneTransformOutputRecord>(request.scene_transforms, request.scene_output->transform_count);
+    proof_request.scene_output = request.scene_output;
+    proof_request.shader_program = request.shader_program;
+    proof_request.scratch_bytes = request.scratch_bytes;
+    proof_request.capture_output = request.capture_output;
+    proof_request.capture_byte_budget_per_entity = request.capture_byte_budget_per_entity;
+    proof_request.first_frame_id = request.first_frame_id;
+    proof_request.frame_count = request.visual_frame_count;
+    proof_request.output_path = request.output_path;
+    proof_request.output_path_byte_count = request.output_path_byte_count;
+    proof_request.require_cooked_records = true;
+    return proof_request;
+}
+
+bool RuntimeAssetPackagedRunRequestHasRequiredPointers(
+    const RuntimeAssetPackagedRunRequest &request) {
+    return request.mount_table != nullptr &&
+        request.resource_registry != nullptr &&
+        request.asset_manager != nullptr &&
+        request.rhi_device != nullptr &&
+        request.loaded_files != nullptr &&
+        request.scene_resource_refs != nullptr &&
+        request.scene_cameras != nullptr &&
+        request.scene_entities != nullptr &&
+        request.scene_transforms != nullptr &&
+        request.scene_output != nullptr &&
+        request.shader_program != nullptr &&
+        request.scratch_bytes.data() != nullptr &&
+        request.capture_output.data() != nullptr;
+}
+
+class RuntimeAssetPackagedRunModule final : public IModule {
+public:
+    RuntimeAssetPackagedRunModule(
+        const RuntimeAssetPackagedRunRequest &request,
+        RuntimeAssetPackagedRunResult *result)
+        : request_(request),
+          result_(result) {
+    }
+
+    std::string_view Name() const override {
+        return RUNTIME_ASSET_PACKAGED_RUN_MODULE;
+    }
+
+    std::vector<std::string_view> Dependencies() const override {
+        return std::vector<std::string_view>{};
+    }
+
+    std::vector<std::string_view> RequiredServices() const override {
+        return std::vector<std::string_view>{};
+    }
+
+    std::vector<std::string_view> PublishedServices() const override {
+        return std::vector<std::string_view>{};
+    }
+
+    KernelResult Start(
+        yuengine::kernel::ServiceRegistry &service_registry,
+        std::vector<std::string> &lifecycle_trace) override {
+        (void)service_registry;
+        lifecycle_trace.push_back("module.start.RuntimeAssetPackagedRun");
+        return KernelResult::Success();
+    }
+
+    KernelResult Update(
+        std::uint32_t frame_index,
+        std::uint64_t tick_time_nanoseconds,
+        std::vector<std::string> &lifecycle_trace) override {
+        lifecycle_trace.push_back("module.update.RuntimeAssetPackagedRun");
+        if (executed_) {
+            return KernelResult::Success();
+        }
+
+        executed_ = true;
+        RuntimeAssetDataStatus status = Execute(frame_index, tick_time_nanoseconds);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return KernelResult::Failure(
+                KernelStatus::UpdateFailure,
+                RUNTIME_ASSET_PACKAGED_RUN_UPDATE_FAILURE);
+        }
+
+        return KernelResult::Success();
+    }
+
+    KernelResult Shutdown(std::vector<std::string> &lifecycle_trace) override {
+        lifecycle_trace.push_back("module.shutdown.RuntimeAssetPackagedRun");
+        return KernelResult::Success();
+    }
+
+private:
+    RuntimeAssetDataStatus Execute(
+        std::uint32_t frame_index,
+        std::uint64_t tick_time_nanoseconds) {
+        if (result_ == nullptr) {
+            return RuntimeAssetDataStatus::InvalidArgument;
+        }
+
+        RuntimeAssetDataStatus status = ValidateRuntimeAssetPackageLoadPlan(request_, result_);
+        if (status != RuntimeAssetDataStatus::Success) {
+            result_->status = status;
+            result_->blocked_layer = RuntimeAssetPackagedRunBlockedLayer::PackageLoadPlan;
+            return status;
+        }
+
+        result_->blocked_layer = RuntimeAssetPackagedRunBlockedLayer::RuntimeAssetData;
+        RuntimeAssetGraphLoadRequest load_request = BuildRuntimeAssetPackagedGraphLoadRequest(request_);
+        if (load_request.animation_frame_context.delta_time_nanoseconds == 0U) {
+            load_request.animation_frame_context.frame_index = frame_index;
+            load_request.animation_frame_context.delta_time_nanoseconds = tick_time_nanoseconds;
+            load_request.animation_frame_context.fixed_time_nanoseconds = tick_time_nanoseconds;
+            load_request.animation_frame_context.phase = RuntimeFramePhase::LoadOrCommitResources;
+        }
+
+        status = LoadRuntimeAssetDataGraph(load_request, &result_->graph_load_result);
+        result_->loaded_file_count = result_->graph_load_result.loaded_file_count;
+        result_->resource_dependency_count = result_->graph_load_result.resource_dependency_count;
+        result_->asset_dependency_count = result_->graph_load_result.asset_dependency_count;
+        result_->runtime_asset_validation_load_success =
+            status == RuntimeAssetDataStatus::Success &&
+            result_->graph_load_result.status == RuntimeAssetDataStatus::Success &&
+            result_->graph_load_result.scene.artifact_class == RuntimeAssetArtifactClass::Cooked &&
+            request_.scene_output->status == RuntimeAssetDataStatus::Success;
+        if (!result_->runtime_asset_validation_load_success) {
+            result_->status = status;
+            return status;
+        }
+
+        result_->blocked_layer = RuntimeAssetPackagedRunBlockedLayer::ResourceAsset;
+        result_->resource_asset_registration_success =
+            result_->graph_load_result.scene_registered &&
+            result_->graph_load_result.resource_dependency_count == request_.file_count &&
+            result_->graph_load_result.asset_dependency_count == request_.file_count;
+        if (!result_->resource_asset_registration_success) {
+            result_->status = RuntimeAssetDataStatus::ResourceDependencyFailed;
+            return result_->status;
+        }
+
+        result_->blocked_layer = RuntimeAssetPackagedRunBlockedLayer::ShaderProgram;
+        status = DecodeRuntimeAssetPackagedShader(request_, result_);
+        if (status != RuntimeAssetDataStatus::Success) {
+            result_->status = status;
+            return status;
+        }
+
+        result_->blocked_layer = RuntimeAssetPackagedRunBlockedLayer::RenderSceneRenderCoreRhi;
+        RuntimeAssetVisualProofRequest proof_request =
+            BuildRuntimeAssetPackagedVisualProofRequest(request_, result_->graph_load_result);
+        status = BuildRuntimeAssetCookedVisualProofRoute(
+            proof_request,
+            &result_->visual_proof_result);
+        result_->render_scene_render_core_rhi_success =
+            status == RuntimeAssetDataStatus::Success &&
+            result_->visual_proof_result.status == RuntimeAssetDataStatus::Success &&
+            result_->visual_proof_result.first_missing_layer == RuntimeAssetVisualProofMissingLayer::None &&
+            result_->visual_proof_result.render_scene_routed &&
+            result_->visual_proof_result.render_core_rhi_capture_routed;
+        if (!result_->render_scene_render_core_rhi_success) {
+            result_->status = status;
+            return status;
+        }
+
+        result_->status = RuntimeAssetDataStatus::Success;
+        return result_->status;
+    }
+
+    const RuntimeAssetPackagedRunRequest &request_;
+    RuntimeAssetPackagedRunResult *result_ = nullptr;
+    bool executed_ = false;
+};
+}
+
+RuntimeAssetDataStatus RunRuntimeAssetPackagedEntryPoint(
+    const RuntimeAssetPackagedRunRequest &request,
+    RuntimeAssetPackagedRunResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetPackagedRunResult result{};
+    if (!RuntimeAssetPackagedRunRequestHasRequiredPointers(request) ||
+        request.scene.path == nullptr ||
+        request.capture_byte_budget_per_entity == 0U ||
+        request.visual_frame_count == 0U) {
+        result.status = RuntimeAssetDataStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    EngineKernel kernel{};
+    RuntimeAssetPackagedRunModule module(request, &result);
+    if (!kernel.RegisterModule(module)) {
+        result.status = RuntimeAssetDataStatus::InvalidArgument;
+        result.blocked_layer = RuntimeAssetPackagedRunBlockedLayer::RuntimeAppFrameLoop;
+        *out_result = result;
+        return result.status;
+    }
+
+    RuntimeApp runtime_app{};
+    if (!runtime_app.Initialize(&kernel, request.runtime_app)) {
+        result.status = RuntimeAssetDataStatus::InvalidArgument;
+        result.blocked_layer = RuntimeAssetPackagedRunBlockedLayer::RuntimeAppFrameLoop;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::vector<std::string> lifecycle_trace{};
+    std::vector<RuntimeFramePhase> phase_trace{};
+    const RuntimeAppRunResult run_result =
+        runtime_app.RunFixedFrames(&lifecycle_trace, &phase_trace);
+    result.runtime_app_result = run_result;
+    result.runtime_app_completed_frame_count = run_result.completed_frame_count;
+    result.runtime_app_frame_loop_success =
+        run_result.succeeded &&
+        run_result.completed_frame_count == request.runtime_app.frame_count &&
+        run_result.last_frame_context.phase == RuntimeFramePhase::EndFrame;
+    if (!result.runtime_app_frame_loop_success) {
+        if (result.status == RuntimeAssetDataStatus::Success) {
+            result.status = RuntimeAssetDataStatus::InvalidArgument;
+            result.blocked_layer = RuntimeAssetPackagedRunBlockedLayer::RuntimeAppFrameLoop;
+        }
+
+        *out_result = result;
+        return result.status;
+    }
+
+    if (result.status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return result.status;
+    }
+
+    result.blocked_layer = RuntimeAssetPackagedRunBlockedLayer::None;
+    result.packaged_runtime_entrypoint_available = true;
     *out_result = result;
     return result.status;
 }
