@@ -120,12 +120,19 @@ using yuengine::resource::ResourceSnapshot;
 using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
 using yuengine::runtimeasset::HashRuntimeAssetDataBytes;
+using yuengine::runtimeasset::BuildRuntimeAssetCookedShaderProgramPipeline;
 using yuengine::runtimeasset::BuildRuntimeAssetCookedTextureMaterialBridge;
 using yuengine::runtimeasset::BuildRuntimeAssetShaderProgramPipeline;
 using yuengine::runtimeasset::DecodeRuntimeAssetShaderProgramData;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
 using yuengine::runtimeasset::RuntimeAssetArtifactClass;
 using yuengine::runtimeasset::RuntimeAssetCookedMaterialSlotDesc;
+using yuengine::runtimeasset::RuntimeAssetCookedProgramDesc;
+using yuengine::runtimeasset::RuntimeAssetCookedProgramPipelineClass;
+using yuengine::runtimeasset::RuntimeAssetCookedShaderBytecodeFormat;
+using yuengine::runtimeasset::RuntimeAssetCookedShaderProgramPipelineRequest;
+using yuengine::runtimeasset::RuntimeAssetCookedShaderProgramPipelineResult;
+using yuengine::runtimeasset::RuntimeAssetCookedShaderStagePayloadDesc;
 using yuengine::runtimeasset::RuntimeAssetCookedTextureColorSpace;
 using yuengine::runtimeasset::RuntimeAssetCookedTextureMaterialBridgeRequest;
 using yuengine::runtimeasset::RuntimeAssetCookedTextureMaterialBridgeResult;
@@ -202,6 +209,14 @@ constexpr const char *TEST_SHADER_PROGRAM_PIPELINE_BRIDGE =
     "RuntimeAssetData_ShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode";
 constexpr const char *TEST_SHADER_PROGRAM_PIPELINE_REJECTS =
     "RuntimeAssetData_ShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation";
+constexpr const char *TEST_COOKED_SHADER_STAGE_MODULES =
+    "RuntimeAssetData_CookedShaderStagePayloadsCreateRhiModules";
+constexpr const char *TEST_COOKED_PROGRAM_PIPELINE_REFLECTION =
+    "RuntimeAssetData_CookedProgramPipelineUsesLoadedReflectionAndInputLayout";
+constexpr const char *TEST_COOKED_SHADER_PAYLOAD_REJECTS =
+    "RuntimeAssetData_CookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation";
+constexpr const char *TEST_COOKED_SHADER_PROGRAM_RHI_CLEANUP =
+    "RuntimeAssetData_CookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles";
 constexpr const char *TEST_LOADER_FILE_RESOURCE =
     "RuntimeAssetData_LoaderUsesFileResourcePathNotInMemoryStructs";
 constexpr const char *TEST_SCENE_REFERENCES =
@@ -3948,6 +3963,396 @@ int RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutati
     return 0;
 }
 
+template <std::size_t Size>
+RuntimeAssetCookedShaderStagePayloadDesc CookedShaderStagePayload(
+    RhiShaderStage stage,
+    const std::array<std::uint8_t, Size> &bytes) {
+    RuntimeAssetCookedShaderStagePayloadDesc desc{};
+    desc.stage = stage;
+    desc.entry_point = stage == RhiShaderStage::Vertex ? "VSMain" : "PSMain";
+    desc.bytecode_profile = stage == RhiShaderStage::Vertex ? "vs_5_0" : "ps_5_0";
+    desc.bytecode_format = RuntimeAssetCookedShaderBytecodeFormat::OpaqueBytecode;
+    desc.payload_id = stage == RhiShaderStage::Vertex ? 501U : 502U;
+    desc.payload_bytes = bytes.data();
+    desc.payload_byte_count = static_cast<std::uint32_t>(bytes.size());
+    desc.bytecode_offset = 0U;
+    desc.bytecode_byte_count = static_cast<std::uint32_t>(bytes.size());
+    desc.bytecode_alignment = 4U;
+    const std::uint64_t hash = HashRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(bytes.data(), bytes.size()));
+    desc.bytecode_hash = hash;
+    desc.expected_stage_hash = hash;
+    return desc;
+}
+
+std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> ValidCookedShaderStages(
+    const std::array<std::uint8_t, 8U> &vertex_bytes,
+    const std::array<std::uint8_t, 8U> &pixel_bytes) {
+    return {
+        CookedShaderStagePayload(RhiShaderStage::Vertex, vertex_bytes),
+        CookedShaderStagePayload(RhiShaderStage::Pixel, pixel_bytes)};
+}
+
+RuntimeAssetCookedProgramDesc CookedProgramDescriptor(
+    std::span<const RuntimeAssetCookedShaderStagePayloadDesc> stages) {
+    RuntimeAssetCookedProgramDesc program{};
+    program.program_id = 7001U;
+    program.pipeline_class = RuntimeAssetCookedProgramPipelineClass::Graphics;
+    program.stages = stages.data();
+    program.stage_count = static_cast<std::uint32_t>(stages.size());
+    program.input_layout = RuntimeInputLayout();
+    program.vertex_stride_bytes = static_cast<std::uint32_t>(program.input_layout.stride_bytes);
+    program.texture_slot_count = 2U;
+    program.sampler_slot_count = 2U;
+    program.required_input_semantics[0U] = RhiInputElementSemantic::Position;
+    program.required_input_semantic_count = 1U;
+    program.constant_range_count = 1U;
+    return program;
+}
+
+RuntimeAssetCookedShaderProgramPipelineRequest CookedProgramPipelineRequest(
+    RuntimeAssetRhiDevice *device,
+    const RuntimeAssetCookedProgramDesc *program) {
+    RuntimeAssetCookedShaderProgramPipelineRequest request{};
+    request.device = device;
+    request.program = program;
+    return request;
+}
+
+bool BuildCookedShaderProgram(
+    RuntimeAssetRhiDevice &device,
+    const RuntimeAssetCookedProgramDesc &program,
+    RuntimeAssetCookedShaderProgramPipelineResult *out_result) {
+    if (out_result == nullptr) {
+        return false;
+    }
+
+    const RuntimeAssetCookedShaderProgramPipelineRequest request =
+        CookedProgramPipelineRequest(&device, &program);
+    const RuntimeAssetDataStatus status =
+        BuildRuntimeAssetCookedShaderProgramPipeline(request, out_result);
+    return status == out_result->status;
+}
+
+int RuntimeAssetDataCookedShaderStagePayloadsCreateRhiModules() {
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("rhi init failed");
+    }
+
+    const std::array<std::uint8_t, 8U> vertex_bytes{0x56U, 0x53U, 0x10U, 0x01U, 0x22U, 0x33U, 0x44U, 0x55U};
+    const std::array<std::uint8_t, 8U> pixel_bytes{0x50U, 0x53U, 0x20U, 0x02U, 0x66U, 0x77U, 0x88U, 0x99U};
+    const std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> stages =
+        ValidCookedShaderStages(vertex_bytes, pixel_bytes);
+    const RuntimeAssetCookedProgramDesc program =
+        CookedProgramDescriptor(std::span<const RuntimeAssetCookedShaderStagePayloadDesc>(stages.data(), stages.size()));
+
+    RuntimeAssetCookedShaderProgramPipelineResult result{};
+    if (!BuildCookedShaderProgram(device, program, &result) ||
+        result.status != RuntimeAssetDataStatus::Success) {
+        return Fail("cooked shader bridge rejected valid stage payloads");
+    }
+
+    if (!result.published_handles ||
+        result.vertex_shader.generation == 0U ||
+        result.pixel_shader.generation == 0U ||
+        result.pipeline.generation == 0U) {
+        return Fail("cooked shader bridge did not publish complete RHI handles");
+    }
+
+    if (result.created_shader_module_count != 2U || result.destroyed_shader_module_count != 0U) {
+        return Fail("cooked shader bridge reported wrong creation ledger");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.resources.shader_module_count != 2U || snapshot.resources.pipeline_count != 1U) {
+        return Fail("cooked shader bridge did not create RHI module/pipeline ownership");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataCookedProgramPipelineUsesLoadedReflectionAndInputLayout() {
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("rhi init failed");
+    }
+
+    const std::array<std::uint8_t, 8U> vertex_bytes{0x31U, 0x32U, 0x33U, 0x34U, 0x35U, 0x36U, 0x37U, 0x38U};
+    const std::array<std::uint8_t, 8U> pixel_bytes{0x41U, 0x42U, 0x43U, 0x44U, 0x45U, 0x46U, 0x47U, 0x48U};
+    const std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> stages =
+        ValidCookedShaderStages(vertex_bytes, pixel_bytes);
+    RuntimeAssetCookedProgramDesc program =
+        CookedProgramDescriptor(std::span<const RuntimeAssetCookedShaderStagePayloadDesc>(stages.data(), stages.size()));
+    program.input_layout.elements[1U].semantic = RhiInputElementSemantic::Color;
+    program.input_layout.elements[1U].format = RhiInputElementFormat::Float32x4;
+    program.input_layout.elements[1U].offset_bytes = sizeof(float) * 2U;
+    program.input_layout.element_count = 2U;
+    program.input_layout.stride_bytes = sizeof(float) * 6U;
+    program.vertex_stride_bytes = static_cast<std::uint32_t>(program.input_layout.stride_bytes);
+    program.texture_slot_count = 3U;
+    program.sampler_slot_count = 2U;
+    program.required_input_semantics[0U] = RhiInputElementSemantic::Position;
+    program.required_input_semantics[1U] = RhiInputElementSemantic::Color;
+    program.required_input_semantic_count = 2U;
+
+    RuntimeAssetCookedShaderProgramPipelineResult result{};
+    if (!BuildCookedShaderProgram(device, program, &result) ||
+        result.status != RuntimeAssetDataStatus::Success) {
+        return Fail("cooked program bridge rejected loaded reflection");
+    }
+
+    if (result.pipeline_desc.input_layout.element_count != 2U ||
+        result.pipeline_desc.input_layout.stride_bytes != sizeof(float) * 6U ||
+        result.texture_slot_count != 3U ||
+        result.sampler_slot_count != 2U) {
+        return Fail("cooked program bridge did not preserve reflection/input layout/slot counts");
+    }
+
+    if (result.vertex_bytecode_hash != stages[0U].bytecode_hash ||
+        result.pixel_bytecode_hash != stages[1U].bytecode_hash) {
+        return Fail("cooked program bridge did not report loaded stage hashes");
+    }
+
+    return 0;
+}
+
+bool ExpectCookedShaderBridgeRejectedWithoutRhiMutation(
+    const RuntimeAssetCookedProgramDesc &program,
+    RuntimeAssetDataStatus expected_status) {
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return FailStep("rhi init failed");
+    }
+
+    const auto before = device.Snapshot();
+    RuntimeAssetCookedShaderProgramPipelineResult result{};
+    if (!BuildCookedShaderProgram(device, program, &result) || result.status != expected_status) {
+        return FailStep("cooked shader bridge returned unexpected rejection status");
+    }
+
+    const auto after = device.Snapshot();
+    if (before.resources.shader_module_count != after.resources.shader_module_count ||
+        before.resources.pipeline_count != after.resources.pipeline_count ||
+        before.resources.created_primitive_count != after.resources.created_primitive_count ||
+        before.failed_operation_count != after.failed_operation_count) {
+        return FailStep("cooked shader bridge mutated RHI during preflight rejection");
+    }
+
+    if (result.published_handles ||
+        result.vertex_shader.generation != 0U ||
+        result.pixel_shader.generation != 0U ||
+        result.pipeline.generation != 0U) {
+        return FailStep("cooked shader bridge published handles on preflight rejection");
+    }
+
+    return true;
+}
+
+int RuntimeAssetDataCookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation() {
+    const std::array<std::uint8_t, 8U> vertex_bytes{0x11U, 0x12U, 0x13U, 0x14U, 0x15U, 0x16U, 0x17U, 0x18U};
+    const std::array<std::uint8_t, 8U> pixel_bytes{0x21U, 0x22U, 0x23U, 0x24U, 0x25U, 0x26U, 0x27U, 0x28U};
+
+    {
+        std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> stages =
+            ValidCookedShaderStages(vertex_bytes, pixel_bytes);
+        stages[0U].bytecode_profile = "ps_5_0";
+        const RuntimeAssetCookedProgramDesc program =
+            CookedProgramDescriptor(std::span<const RuntimeAssetCookedShaderStagePayloadDesc>(stages.data(), stages.size()));
+        if (!ExpectCookedShaderBridgeRejectedWithoutRhiMutation(program, RuntimeAssetDataStatus::TypeMismatch)) {
+            return Fail("cooked shader bridge accepted stage/profile mismatch");
+        }
+    }
+
+    {
+        std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> stages =
+            ValidCookedShaderStages(vertex_bytes, pixel_bytes);
+        stages[0U].bytecode_byte_count = 0U;
+        const RuntimeAssetCookedProgramDesc program =
+            CookedProgramDescriptor(std::span<const RuntimeAssetCookedShaderStagePayloadDesc>(stages.data(), stages.size()));
+        if (!ExpectCookedShaderBridgeRejectedWithoutRhiMutation(program, RuntimeAssetDataStatus::InvalidSize)) {
+            return Fail("cooked shader bridge accepted missing bytecode");
+        }
+    }
+
+    {
+        std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> stages =
+            ValidCookedShaderStages(vertex_bytes, pixel_bytes);
+        stages[1U].bytecode_hash = 1U;
+        const RuntimeAssetCookedProgramDesc program =
+            CookedProgramDescriptor(std::span<const RuntimeAssetCookedShaderStagePayloadDesc>(stages.data(), stages.size()));
+        if (!ExpectCookedShaderBridgeRejectedWithoutRhiMutation(program, RuntimeAssetDataStatus::HashMismatch)) {
+            return Fail("cooked shader bridge accepted bytecode hash mismatch");
+        }
+    }
+
+    {
+        std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> stages =
+            ValidCookedShaderStages(vertex_bytes, pixel_bytes);
+        RuntimeAssetCookedProgramDesc program =
+            CookedProgramDescriptor(std::span<const RuntimeAssetCookedShaderStagePayloadDesc>(stages.data(), stages.size()));
+        program.input_layout.elements[0U].semantic = RhiInputElementSemantic::Unsupported;
+        if (!ExpectCookedShaderBridgeRejectedWithoutRhiMutation(program, RuntimeAssetDataStatus::UnsupportedFieldValue)) {
+            return Fail("cooked shader bridge accepted unsupported input semantic");
+        }
+    }
+
+    {
+        std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> stages =
+            ValidCookedShaderStages(vertex_bytes, pixel_bytes);
+        RuntimeAssetCookedProgramDesc program =
+            CookedProgramDescriptor(std::span<const RuntimeAssetCookedShaderStagePayloadDesc>(stages.data(), stages.size()));
+        program.required_input_semantics[1U] = RhiInputElementSemantic::Color;
+        program.required_input_semantic_count = 2U;
+        if (!ExpectCookedShaderBridgeRejectedWithoutRhiMutation(program, RuntimeAssetDataStatus::InvalidInputLayout)) {
+            return Fail("cooked shader bridge accepted reflection/input-layout mismatch");
+        }
+    }
+
+    {
+        std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> stages =
+            ValidCookedShaderStages(vertex_bytes, pixel_bytes);
+        RuntimeAssetCookedProgramDesc program =
+            CookedProgramDescriptor(std::span<const RuntimeAssetCookedShaderStagePayloadDesc>(stages.data(), stages.size()));
+        program.texture_slot_count = static_cast<std::uint32_t>(yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS + 1U);
+        if (!ExpectCookedShaderBridgeRejectedWithoutRhiMutation(program, RuntimeAssetDataStatus::CapacityExceeded)) {
+            return Fail("cooked shader bridge accepted slot overflow");
+        }
+    }
+
+    return 0;
+}
+
+bool CreatePipelineWithShaderHandles(
+    IRhiDevice &device,
+    RhiShaderModuleHandle *out_vertex_shader,
+    RhiShaderModuleHandle *out_pixel_shader,
+    RhiPipelineHandle *out_pipeline) {
+    if (out_vertex_shader == nullptr || out_pixel_shader == nullptr || out_pipeline == nullptr) {
+        return false;
+    }
+
+    if (!CreateShaderModule(device, RhiShaderStage::Vertex, out_vertex_shader)) {
+        return false;
+    }
+
+    if (!CreateShaderModule(device, RhiShaderStage::Pixel, out_pixel_shader)) {
+        return false;
+    }
+
+    RhiPipelineDesc desc{};
+    desc.vertex_shader = *out_vertex_shader;
+    desc.pixel_shader = *out_pixel_shader;
+    desc.input_layout = RuntimeInputLayout();
+    return device.CreatePipeline(desc, *out_pipeline) == RhiStatus::Success;
+}
+
+int RuntimeAssetDataCookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles() {
+    const std::array<std::uint8_t, 8U> vertex_bytes{0x61U, 0x62U, 0x63U, 0x64U, 0x65U, 0x66U, 0x67U, 0x68U};
+    const std::array<std::uint8_t, 8U> pixel_bytes{0x71U, 0x72U, 0x73U, 0x74U, 0x75U, 0x76U, 0x77U, 0x78U};
+
+    {
+        RuntimeAssetRhiDevice device;
+        if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+            return Fail("rhi init failed");
+        }
+
+        std::array<RhiShaderModuleHandle, yuengine::rhi::MAX_RHI_SHADER_MODULES - 1U> existing_modules{};
+        for (std::size_t index = 0U; index < existing_modules.size(); ++index) {
+            const RhiShaderStage stage = (index % 2U) == 0U ? RhiShaderStage::Vertex : RhiShaderStage::Pixel;
+            if (!CreateShaderModule(device, stage, &existing_modules[index])) {
+                return Fail("failed to reserve shader module capacity");
+            }
+        }
+
+        const auto before = device.Snapshot();
+        std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> stages =
+            ValidCookedShaderStages(vertex_bytes, pixel_bytes);
+        const RuntimeAssetCookedProgramDesc program =
+            CookedProgramDescriptor(std::span<const RuntimeAssetCookedShaderStagePayloadDesc>(stages.data(), stages.size()));
+        RuntimeAssetCookedShaderProgramPipelineResult result{};
+        if (!BuildCookedShaderProgram(device, program, &result) ||
+            result.status != RuntimeAssetDataStatus::RhiShaderModuleFailed) {
+            return Fail("cooked shader bridge did not report pixel module failure");
+        }
+
+        const auto after = device.Snapshot();
+        if (after.resources.shader_module_count != before.resources.shader_module_count ||
+            after.resources.pipeline_count != before.resources.pipeline_count ||
+            after.failed_operation_count != before.failed_operation_count + 1U) {
+            return Fail("cooked shader bridge did not cleanup transient vertex module");
+        }
+
+        if (result.created_shader_module_count != 1U ||
+            result.destroyed_shader_module_count != 1U ||
+            result.published_handles ||
+            result.vertex_shader.generation != 0U ||
+            result.pixel_shader.generation != 0U ||
+            result.pipeline.generation != 0U) {
+            return Fail("cooked shader bridge published handles after module failure");
+        }
+    }
+
+    {
+        RuntimeAssetRhiDevice device;
+        if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+            return Fail("rhi init failed");
+        }
+
+        std::array<RhiShaderModuleHandle, yuengine::rhi::MAX_RHI_PIPELINES> vertex_shaders{};
+        std::array<RhiShaderModuleHandle, yuengine::rhi::MAX_RHI_PIPELINES> pixel_shaders{};
+        std::array<RhiPipelineHandle, yuengine::rhi::MAX_RHI_PIPELINES> pipelines{};
+        for (std::size_t index = 0U; index < pipelines.size(); ++index) {
+            if (!CreatePipelineWithShaderHandles(
+                    device,
+                    &vertex_shaders[index],
+                    &pixel_shaders[index],
+                    &pipelines[index])) {
+                return Fail("failed to reserve pipeline capacity");
+            }
+
+            if (device.DestroyShaderModule(pixel_shaders[index]) != RhiStatus::Success ||
+                device.DestroyShaderModule(vertex_shaders[index]) != RhiStatus::Success) {
+                return Fail("failed to free shader module capacity");
+            }
+        }
+
+        const auto before = device.Snapshot();
+        if (before.resources.pipeline_count != yuengine::rhi::MAX_RHI_PIPELINES ||
+            before.resources.shader_module_count != 0U) {
+            return Fail("pipeline failure setup did not isolate pipeline capacity");
+        }
+
+        std::array<RuntimeAssetCookedShaderStagePayloadDesc, 2U> stages =
+            ValidCookedShaderStages(vertex_bytes, pixel_bytes);
+        const RuntimeAssetCookedProgramDesc program =
+            CookedProgramDescriptor(std::span<const RuntimeAssetCookedShaderStagePayloadDesc>(stages.data(), stages.size()));
+        RuntimeAssetCookedShaderProgramPipelineResult result{};
+        if (!BuildCookedShaderProgram(device, program, &result) ||
+            result.status != RuntimeAssetDataStatus::RhiPipelineFailed) {
+            return Fail("cooked shader bridge did not report pipeline capacity failure");
+        }
+
+        const auto after = device.Snapshot();
+        if (after.resources.shader_module_count != before.resources.shader_module_count ||
+            after.resources.pipeline_count != before.resources.pipeline_count ||
+            after.failed_operation_count != before.failed_operation_count + 1U) {
+            return Fail("cooked shader bridge did not cleanup transient modules after pipeline failure");
+        }
+
+        if (result.created_shader_module_count != 2U ||
+            result.destroyed_shader_module_count != 2U ||
+            result.published_handles ||
+            result.vertex_shader.generation != 0U ||
+            result.pixel_shader.generation != 0U ||
+            result.pipeline.generation != 0U) {
+            return Fail("cooked shader bridge published handles after pipeline failure");
+        }
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs() {
     LoadedGraph graph{};
     graph.file_read_count = 15U;
@@ -5398,6 +5803,13 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_INVALID_DEPENDENCY, RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs},
     {TEST_SHADER_PROGRAM_PIPELINE_BRIDGE, RuntimeAssetDataShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode},
     {TEST_SHADER_PROGRAM_PIPELINE_REJECTS, RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation},
+    {TEST_COOKED_SHADER_STAGE_MODULES, RuntimeAssetDataCookedShaderStagePayloadsCreateRhiModules},
+    {TEST_COOKED_PROGRAM_PIPELINE_REFLECTION,
+     RuntimeAssetDataCookedProgramPipelineUsesLoadedReflectionAndInputLayout},
+    {TEST_COOKED_SHADER_PAYLOAD_REJECTS,
+     RuntimeAssetDataCookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation},
+    {TEST_COOKED_SHADER_PROGRAM_RHI_CLEANUP,
+     RuntimeAssetDataCookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles},
     {TEST_LOADER_FILE_RESOURCE, RuntimeAssetDataLoaderUsesFileResourcePathNotInMemoryStructs},
     {TEST_SCENE_REFERENCES, RuntimeAssetDataSceneReferencesMeshMaterialTextureShader},
     {TEST_SCENE_FAMILY_PATH_INDEPENDENT, RuntimeAssetDataSceneFamilyDetectionIsPathIndependent},

@@ -31,6 +31,7 @@
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiSamplerDesc.h"
 #include "YuEngine/Rhi/RhiShaderModuleHandle.h"
+#include "YuEngine/Rhi/RhiShaderStage.h"
 #include "YuEngine/Rhi/RhiStatus.h"
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeStatus.h"
@@ -472,6 +473,88 @@ struct RuntimeAssetCookedTextureMaterialBridgeResult final {
 };
 
 /**
+ * @brief Cooked shader bytecode format accepted by the RuntimeAsset bridge.
+ */
+enum class RuntimeAssetCookedShaderBytecodeFormat {
+    Unknown,
+    OpaqueBytecode
+};
+
+/**
+ * @brief Runtime pipeline class declared by a cooked RuntimeAsset program.
+ */
+enum class RuntimeAssetCookedProgramPipelineClass {
+    Unknown,
+    Graphics
+};
+
+/**
+ * @brief One cooked shader stage payload row owned by RuntimeAsset data.
+ */
+struct RuntimeAssetCookedShaderStagePayloadDesc final {
+    yuengine::rhi::RhiShaderStage stage = yuengine::rhi::RhiShaderStage::Unsupported;
+    const char *entry_point = nullptr;
+    const char *bytecode_profile = nullptr;
+    RuntimeAssetCookedShaderBytecodeFormat bytecode_format =
+        RuntimeAssetCookedShaderBytecodeFormat::Unknown;
+    std::uint64_t payload_id = 0U;
+    const std::uint8_t *payload_bytes = nullptr;
+    std::uint32_t payload_byte_count = 0U;
+    std::uint32_t bytecode_offset = 0U;
+    std::uint32_t bytecode_byte_count = 0U;
+    std::uint32_t bytecode_alignment = 0U;
+    std::uint64_t bytecode_hash = 0U;
+    std::uint64_t expected_stage_hash = 0U;
+};
+
+/**
+ * @brief Cooked shader program reflection and stage table used for RHI creation.
+ */
+struct RuntimeAssetCookedProgramDesc final {
+    std::uint32_t program_id = 0U;
+    RuntimeAssetCookedProgramPipelineClass pipeline_class =
+        RuntimeAssetCookedProgramPipelineClass::Unknown;
+    const RuntimeAssetCookedShaderStagePayloadDesc *stages = nullptr;
+    std::uint32_t stage_count = 0U;
+    yuengine::rhi::RhiInputLayoutDesc input_layout{};
+    std::uint32_t vertex_stride_bytes = 0U;
+    std::uint32_t texture_slot_count = 0U;
+    std::uint32_t sampler_slot_count = 0U;
+    std::array<yuengine::rhi::RhiInputElementSemantic, yuengine::rhi::MAX_RHI_INPUT_ELEMENTS>
+        required_input_semantics{};
+    std::uint32_t required_input_semantic_count = 0U;
+    std::uint32_t constant_range_count = 0U;
+};
+
+/**
+ * @brief Requests cooked RuntimeAsset shader/program RHI bridge creation.
+ */
+struct RuntimeAssetCookedShaderProgramPipelineRequest final {
+    yuengine::rhi::IRhiDevice *device = nullptr;
+    const RuntimeAssetCookedProgramDesc *program = nullptr;
+};
+
+/**
+ * @brief Reports cooked shader/program bridge outputs and cleanup ledger counts.
+ */
+struct RuntimeAssetCookedShaderProgramPipelineResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    std::uint32_t program_id = 0U;
+    std::uint64_t vertex_bytecode_hash = 0U;
+    std::uint64_t pixel_bytecode_hash = 0U;
+    std::uint32_t texture_slot_count = 0U;
+    std::uint32_t sampler_slot_count = 0U;
+    std::uint32_t preflight_stage_count = 0U;
+    std::uint32_t created_shader_module_count = 0U;
+    std::uint32_t destroyed_shader_module_count = 0U;
+    bool published_handles = false;
+    yuengine::rhi::RhiShaderModuleHandle vertex_shader{};
+    yuengine::rhi::RhiShaderModuleHandle pixel_shader{};
+    yuengine::rhi::RhiPipelineHandle pipeline{};
+    yuengine::rhi::RhiPipelineDesc pipeline_desc{};
+};
+
+/**
  * @brief Returns the file kind token used by the runtime asset header.
  * @param kind Input file family.
  * @return Static token string.
@@ -532,5 +615,14 @@ RuntimeAssetDataStatus BuildRuntimeAssetShaderProgramPipeline(
 RuntimeAssetDataStatus BuildRuntimeAssetCookedTextureMaterialBridge(
     const RuntimeAssetCookedTextureMaterialBridgeRequest &request,
     RuntimeAssetCookedTextureMaterialBridgeResult *out_result);
+/**
+ * @brief Creates RHI shader modules and a pipeline from cooked RuntimeAsset bytecode payload rows.
+ * @param request Input cooked stage payloads, reflection, and RHI device.
+ * @param out_result Output module, pipeline, and cleanup ledger records.
+ * @return Explicit bridge status.
+ */
+RuntimeAssetDataStatus BuildRuntimeAssetCookedShaderProgramPipeline(
+    const RuntimeAssetCookedShaderProgramPipelineRequest &request,
+    RuntimeAssetCookedShaderProgramPipelineResult *out_result);
 
 }

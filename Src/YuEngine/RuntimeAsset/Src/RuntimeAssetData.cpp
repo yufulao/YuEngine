@@ -2236,6 +2236,268 @@ RuntimeAssetDataStatus ValidateShaderProgramPipelineRequest(
     return RuntimeAssetDataStatus::Success;
 }
 
+bool IsCookedShaderPowerOfTwo(std::uint32_t value) {
+    return value != 0U && (value & (value - 1U)) == 0U;
+}
+
+bool IsCStringEmpty(const char *value) {
+    return value == nullptr || value[0U] == '\0';
+}
+
+bool IsCookedShaderStageProfile(
+    yuengine::rhi::RhiShaderStage stage,
+    const char *profile) {
+    if (profile == nullptr) {
+        return false;
+    }
+
+    const std::string_view text(profile);
+    if (stage == yuengine::rhi::RhiShaderStage::Vertex) {
+        return text == "vs_5_0";
+    }
+
+    if (stage == yuengine::rhi::RhiShaderStage::Pixel) {
+        return text == "ps_5_0";
+    }
+
+    return false;
+}
+
+std::span<const std::uint8_t> CookedShaderStageBytecodeSpan(
+    const RuntimeAssetCookedShaderStagePayloadDesc &stage) {
+    return std::span<const std::uint8_t>(
+        stage.payload_bytes + stage.bytecode_offset,
+        stage.bytecode_byte_count);
+}
+
+RuntimeAssetDataStatus ValidateCookedShaderStagePayload(
+    const RuntimeAssetCookedShaderStagePayloadDesc &stage) {
+    if (stage.stage != yuengine::rhi::RhiShaderStage::Vertex &&
+        stage.stage != yuengine::rhi::RhiShaderStage::Pixel) {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    if (IsCStringEmpty(stage.entry_point)) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (IsCStringEmpty(stage.bytecode_profile)) {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    if (!IsCookedShaderStageProfile(stage.stage, stage.bytecode_profile)) {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    if (stage.bytecode_format != RuntimeAssetCookedShaderBytecodeFormat::OpaqueBytecode) {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    if (stage.payload_id == 0U) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (stage.payload_bytes == nullptr || stage.payload_byte_count == 0U ||
+        stage.bytecode_byte_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (stage.bytecode_offset > stage.payload_byte_count ||
+        stage.bytecode_byte_count > stage.payload_byte_count - stage.bytecode_offset) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (!IsCookedShaderPowerOfTwo(stage.bytecode_alignment) ||
+        (stage.bytecode_offset % stage.bytecode_alignment) != 0U) {
+        return RuntimeAssetDataStatus::InvalidAlignment;
+    }
+
+    if (stage.bytecode_byte_count > yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    const std::span<const std::uint8_t> bytecode = CookedShaderStageBytecodeSpan(stage);
+    const std::uint64_t bytecode_hash = HashRuntimeAssetDataBytes(bytecode);
+    if (bytecode_hash != stage.bytecode_hash) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    if (stage.expected_stage_hash == 0U || stage.expected_stage_hash != bytecode_hash) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateCookedInputElement(
+    const yuengine::rhi::RhiInputElementDesc &element,
+    std::size_t stride_bytes) {
+    if (element.semantic == yuengine::rhi::RhiInputElementSemantic::Unsupported) {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    const std::size_t element_size = GetInputElementByteSize(element.format);
+    if (element_size == 0U) {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    if (stride_bytes < element_size) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    const std::size_t max_offset = stride_bytes - element_size;
+    if (element.offset_bytes > max_offset) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+bool CookedInputLayoutHasSemantic(
+    const yuengine::rhi::RhiInputLayoutDesc &layout,
+    yuengine::rhi::RhiInputElementSemantic semantic) {
+    for (std::size_t index = 0U; index < layout.element_count; ++index) {
+        if (layout.elements[index].semantic == semantic) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+RuntimeAssetDataStatus ValidateCookedProgramInputLayout(
+    const RuntimeAssetCookedProgramDesc &program) {
+    const yuengine::rhi::RhiInputLayoutDesc &layout = program.input_layout;
+    if (layout.element_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    if (layout.element_count > yuengine::rhi::MAX_RHI_INPUT_ELEMENTS) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    if (layout.stride_bytes == 0U || program.vertex_stride_bytes == 0U ||
+        program.vertex_stride_bytes != layout.stride_bytes) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    bool has_position = false;
+    for (std::size_t index = 0U; index < layout.element_count; ++index) {
+        const RuntimeAssetDataStatus status =
+            ValidateCookedInputElement(layout.elements[index], layout.stride_bytes);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+
+        if (layout.elements[index].semantic == yuengine::rhi::RhiInputElementSemantic::Position) {
+            has_position = true;
+        }
+    }
+
+    if (!has_position) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    if (program.required_input_semantic_count > yuengine::rhi::MAX_RHI_INPUT_ELEMENTS) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    for (std::uint32_t index = 0U; index < program.required_input_semantic_count; ++index) {
+        const yuengine::rhi::RhiInputElementSemantic semantic =
+            program.required_input_semantics[index];
+        if (semantic == yuengine::rhi::RhiInputElementSemantic::Unsupported) {
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
+
+        if (!CookedInputLayoutHasSemantic(layout, semantic)) {
+            return RuntimeAssetDataStatus::InvalidInputLayout;
+        }
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateCookedShaderProgramRequest(
+    const RuntimeAssetCookedShaderProgramPipelineRequest &request,
+    const RuntimeAssetCookedShaderStagePayloadDesc **out_vertex_stage,
+    const RuntimeAssetCookedShaderStagePayloadDesc **out_pixel_stage) {
+    if (out_vertex_stage == nullptr || out_pixel_stage == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    *out_vertex_stage = nullptr;
+    *out_pixel_stage = nullptr;
+
+    if (request.device == nullptr || request.program == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const RuntimeAssetCookedProgramDesc &program = *request.program;
+    if (program.program_id == 0U) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (program.pipeline_class != RuntimeAssetCookedProgramPipelineClass::Graphics) {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    if (program.stages == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (program.stage_count == 0U) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (program.stage_count > 2U) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    for (std::uint32_t index = 0U; index < program.stage_count; ++index) {
+        const RuntimeAssetCookedShaderStagePayloadDesc &stage = program.stages[index];
+        const RuntimeAssetDataStatus stage_status = ValidateCookedShaderStagePayload(stage);
+        if (stage_status != RuntimeAssetDataStatus::Success) {
+            return stage_status;
+        }
+
+        if (stage.stage == yuengine::rhi::RhiShaderStage::Vertex) {
+            if (*out_vertex_stage != nullptr) {
+                return RuntimeAssetDataStatus::DuplicateDependency;
+            }
+
+            *out_vertex_stage = &stage;
+        }
+
+        if (stage.stage == yuengine::rhi::RhiShaderStage::Pixel) {
+            if (*out_pixel_stage != nullptr) {
+                return RuntimeAssetDataStatus::DuplicateDependency;
+            }
+
+            *out_pixel_stage = &stage;
+        }
+    }
+
+    if (*out_vertex_stage == nullptr || *out_pixel_stage == nullptr) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    const RuntimeAssetDataStatus layout_status = ValidateCookedProgramInputLayout(program);
+    if (layout_status != RuntimeAssetDataStatus::Success) {
+        return layout_status;
+    }
+
+    if (program.texture_slot_count > yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS ||
+        program.sampler_slot_count > yuengine::rhi::MAX_RHI_SAMPLER_SLOTS) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    if (program.constant_range_count > 8U) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
 RuntimeAssetDataStatus ParseAnimationClipRecord(
     std::string_view value,
     std::uint32_t track_count,
@@ -3979,6 +4241,88 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedTextureMaterialBridge(
     }
 
     result.status = BuildCookedTextureMaterialCommit(request, &result);
+    *out_result = result;
+    return result.status;
+}
+
+RuntimeAssetDataStatus BuildRuntimeAssetCookedShaderProgramPipeline(
+    const RuntimeAssetCookedShaderProgramPipelineRequest &request,
+    RuntimeAssetCookedShaderProgramPipelineResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetCookedShaderProgramPipelineResult result{};
+    if (request.program != nullptr) {
+        result.program_id = request.program->program_id;
+        result.texture_slot_count = request.program->texture_slot_count;
+        result.sampler_slot_count = request.program->sampler_slot_count;
+        result.preflight_stage_count = request.program->stage_count;
+    }
+
+    const RuntimeAssetCookedShaderStagePayloadDesc *vertex_stage = nullptr;
+    const RuntimeAssetCookedShaderStagePayloadDesc *pixel_stage = nullptr;
+    result.status = ValidateCookedShaderProgramRequest(request, &vertex_stage, &pixel_stage);
+    if (result.status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return result.status;
+    }
+
+    const std::span<const std::uint8_t> vertex_bytecode = CookedShaderStageBytecodeSpan(*vertex_stage);
+    const std::span<const std::uint8_t> pixel_bytecode = CookedShaderStageBytecodeSpan(*pixel_stage);
+    result.vertex_bytecode_hash = vertex_stage->bytecode_hash;
+    result.pixel_bytecode_hash = pixel_stage->bytecode_hash;
+
+    yuengine::rhi::RhiShaderModuleDesc vertex_desc{};
+    vertex_desc.stage = yuengine::rhi::RhiShaderStage::Vertex;
+    vertex_desc.bytecode = vertex_bytecode;
+    yuengine::rhi::RhiShaderModuleHandle vertex_shader{};
+    const yuengine::rhi::RhiStatus vertex_status =
+        request.device->CreateShaderModule(vertex_desc, vertex_shader);
+    if (vertex_status != yuengine::rhi::RhiStatus::Success) {
+        result.status = RuntimeAssetDataStatus::RhiShaderModuleFailed;
+        *out_result = result;
+        return result.status;
+    }
+    ++result.created_shader_module_count;
+
+    yuengine::rhi::RhiShaderModuleDesc pixel_desc{};
+    pixel_desc.stage = yuengine::rhi::RhiShaderStage::Pixel;
+    pixel_desc.bytecode = pixel_bytecode;
+    yuengine::rhi::RhiShaderModuleHandle pixel_shader{};
+    const yuengine::rhi::RhiStatus pixel_status =
+        request.device->CreateShaderModule(pixel_desc, pixel_shader);
+    if (pixel_status != yuengine::rhi::RhiStatus::Success) {
+        request.device->DestroyShaderModule(vertex_shader);
+        ++result.destroyed_shader_module_count;
+        result.status = RuntimeAssetDataStatus::RhiShaderModuleFailed;
+        *out_result = result;
+        return result.status;
+    }
+    ++result.created_shader_module_count;
+
+    yuengine::rhi::RhiPipelineDesc pipeline_desc{};
+    pipeline_desc.vertex_shader = vertex_shader;
+    pipeline_desc.pixel_shader = pixel_shader;
+    pipeline_desc.input_layout = request.program->input_layout;
+    yuengine::rhi::RhiPipelineHandle pipeline{};
+    const yuengine::rhi::RhiStatus pipeline_status =
+        request.device->CreatePipeline(pipeline_desc, pipeline);
+    if (pipeline_status != yuengine::rhi::RhiStatus::Success) {
+        request.device->DestroyShaderModule(pixel_shader);
+        request.device->DestroyShaderModule(vertex_shader);
+        result.destroyed_shader_module_count += 2U;
+        result.status = RuntimeAssetDataStatus::RhiPipelineFailed;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.vertex_shader = vertex_shader;
+    result.pixel_shader = pixel_shader;
+    result.pipeline = pipeline;
+    result.pipeline_desc = pipeline_desc;
+    result.published_handles = true;
+    result.status = RuntimeAssetDataStatus::Success;
     *out_result = result;
     return result.status;
 }
