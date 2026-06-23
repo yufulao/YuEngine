@@ -57,6 +57,7 @@ namespace {
 using yuengine::asset::AssetDescriptor;
 using yuengine::asset::AssetManager;
 using yuengine::asset::AssetRegistrationResult;
+using yuengine::asset::AssetSnapshot;
 using yuengine::asset::AssetStatus;
 using yuengine::animation::AnimationRuntimeChannel;
 using yuengine::animation::AnimationRuntimeClipRecord;
@@ -74,14 +75,18 @@ using yuengine::file::FileReadRequest;
 using yuengine::file::FileReadResult;
 using yuengine::file::MountTable;
 using yuengine::resource::ResourceCachePayloadRequest;
+using yuengine::resource::ResourceCachePayloadSnapshot;
 using yuengine::resource::ResourceCachePayloadStatus;
 using yuengine::resource::ResourceDecodedPayloadRequest;
+using yuengine::resource::ResourceDecodedPayloadSnapshot;
 using yuengine::resource::ResourceDecodedPayloadStatus;
 using yuengine::resource::ResourceDecodePlanAssetClass;
 using yuengine::resource::ResourceDecodePlanRequest;
+using yuengine::resource::ResourceDecodePlanSnapshot;
 using yuengine::resource::ResourceDecodePlanStatus;
 using yuengine::resource::ResourceDecodeResultClass;
 using yuengine::resource::ResourceDecodeResultRequest;
+using yuengine::resource::ResourceDecodeResultSnapshot;
 using yuengine::resource::ResourceDecodeResultStatus;
 using yuengine::resource::ResourceDescriptor;
 using yuengine::resource::ResourceHandle;
@@ -93,6 +98,7 @@ using yuengine::resource::ResourceRegistry;
 using yuengine::resource::ResourceRegistrationResult;
 using yuengine::resource::ResourceResidencyRequest;
 using yuengine::resource::ResourceResidencyStatus;
+using yuengine::resource::ResourceSnapshot;
 using yuengine::resource::ResourceStatus;
 using yuengine::world::WorldInstance;
 using yuengine::world::WorldObjectDesc;
@@ -2103,13 +2109,19 @@ RuntimeAssetDataStatus PreflightRuntimeAssetCommitIntents(
     const RuntimeAssetGraphLoadRequest &request,
     const RuntimeAssetGraphTransactionData &transaction) {
     const std::uint32_t record_count = request.file_count + 1U;
-    if (record_count > yuengine::resource::MAX_RESOURCE_COUNT ||
-        record_count > yuengine::asset::MAX_ASSET_COUNT) {
+    const ResourceSnapshot resource_snapshot = request.resource_registry->Snapshot();
+    const AssetSnapshot asset_snapshot = request.asset_manager->Snapshot();
+    if ((resource_snapshot.registered_resource_count + record_count) > yuengine::resource::MAX_RESOURCE_COUNT ||
+        (resource_snapshot.load_commit_record_count + record_count) >
+            yuengine::resource::MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT ||
+        (asset_snapshot.active_asset_count + record_count) > yuengine::asset::MAX_ASSET_COUNT) {
         return RuntimeAssetDataStatus::CapacityExceeded;
     }
 
-    if ((request.file_count * 2U) > yuengine::resource::MAX_DEPENDENCY_EDGE_COUNT ||
-        (request.file_count * 2U) > yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT) {
+    if ((resource_snapshot.dependency_edge_count + request.file_count) >
+            yuengine::resource::MAX_DEPENDENCY_EDGE_COUNT ||
+        (asset_snapshot.active_dependency_edge_count + request.file_count) >
+            yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT) {
         return RuntimeAssetDataStatus::CapacityExceeded;
     }
 
@@ -2160,6 +2172,31 @@ RuntimeAssetDataStatus PreflightRuntimeAssetCommitIntents(
 
     if (cache_payload_bytes > DEFAULT_PAYLOAD_BYTE_CAPACITY ||
         decoded_payload_bytes > yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_TOTAL_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    const ResourceCachePayloadSnapshot cache_snapshot = request.resource_registry->CachePayloadSnapshot();
+    const ResourceDecodePlanSnapshot decode_plan_snapshot = request.resource_registry->DecodePlanSnapshot();
+    const ResourceDecodeResultSnapshot decode_result_snapshot = request.resource_registry->DecodeResultSnapshot();
+    const ResourceDecodedPayloadSnapshot decoded_snapshot = request.resource_registry->DecodedPayloadSnapshot();
+    if ((cache_snapshot.cache_payload_record_count + transaction.plan.cache_payload_commit_count) >
+            yuengine::resource::MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT ||
+        (decode_plan_snapshot.decode_plan_record_count + transaction.plan.decoded_payload_commit_count) >
+            yuengine::resource::MAX_RESOURCE_DECODE_PLAN_RECORD_COUNT ||
+        (decode_result_snapshot.decode_result_record_count + transaction.plan.decoded_payload_commit_count) >
+            yuengine::resource::MAX_RESOURCE_DECODE_RESULT_RECORD_COUNT ||
+        (decoded_snapshot.decoded_payload_record_count + transaction.plan.decoded_payload_commit_count) >
+            yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    if ((cache_snapshot.cached_byte_count + cache_payload_bytes) > DEFAULT_PAYLOAD_BYTE_CAPACITY ||
+        (decode_plan_snapshot.planned_decoded_byte_count + decoded_payload_bytes) >
+            yuengine::resource::MAX_RESOURCE_DECODE_PLAN_TOTAL_DECODED_BYTES ||
+        (decode_result_snapshot.committed_decoded_byte_count + decoded_payload_bytes) >
+            yuengine::resource::MAX_RESOURCE_DECODE_RESULT_TOTAL_DECODED_BYTES ||
+        (decoded_snapshot.stored_decoded_byte_count + decoded_payload_bytes) >
+            yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_TOTAL_BYTES) {
         return RuntimeAssetDataStatus::BudgetExceeded;
     }
 

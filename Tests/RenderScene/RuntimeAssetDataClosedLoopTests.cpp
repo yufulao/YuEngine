@@ -206,6 +206,8 @@ constexpr const char *TEST_LOADER_REJECTS_SCHEMA_KIND_SUFFIX =
     "RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation";
 constexpr const char *TEST_LOADER_TRANSACTION_INVALID_SCHEMA =
     "RuntimeAssetData_LoaderRejectsMissingSchemaBeforeMutation";
+constexpr const char *TEST_LOADER_TRANSACTION_COMMIT_FAILURE =
+    "RuntimeAssetData_LoaderCommitFailureReportsMutatedState";
 constexpr const char *TEST_SHADER_PROGRAM_DEPENDENCIES =
     "RuntimeAssetData_ShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
 constexpr const char *TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES =
@@ -2276,6 +2278,114 @@ int RuntimeAssetDataLoaderRejectsMissingSchemaBeforeMutation() {
     return 0;
 }
 
+int RuntimeAssetDataLoaderCommitFailureReportsMutatedState() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("LoaderCommitFailureMutatedState"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    ResourceRegistry registry;
+    ResourceDescriptor duplicate_scene{};
+    duplicate_scene.type = ResourceTypeId{RESOURCE_TYPE_SCENE};
+    duplicate_scene.logical_key = ResourceLogicalKey("radc.6001");
+    if (!registry.RegisterSyntheticDescriptor(duplicate_scene).Succeeded()) {
+        return Fail("duplicate scene resource seed failed");
+    }
+
+    AssetManager manager;
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const AssetSnapshot before_asset_snapshot = manager.Snapshot();
+
+    LoadedGraph graph{};
+    SeedSceneLoaderFailureSentinels(
+        graph.scene_resource_refs,
+        graph.scene_cameras,
+        graph.scene_entities,
+        graph.scene_transforms,
+        &graph.scene_output);
+
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        file_descs[index] = files[index].desc;
+    }
+
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = &table;
+    load_request.mount = MountId(MOUNT_ID);
+    load_request.scene_path = VirtualPath(SCENE_PATH);
+    load_request.scene_resource_type = ResourceTypeId{RESOURCE_TYPE_SCENE};
+    load_request.scene_asset_type = AssetTypeId{ASSET_TYPE_SCENE};
+    load_request.scene_stable_id = 6001U;
+    load_request.files = file_descs.data();
+    load_request.file_count = static_cast<std::uint32_t>(file_descs.size());
+    load_request.resource_registry = &registry;
+    load_request.asset_manager = &manager;
+    load_request.loaded_files = graph.assets.data();
+    load_request.loaded_file_capacity = static_cast<std::uint32_t>(graph.assets.size());
+    load_request.scene_resource_refs = graph.scene_resource_refs.data();
+    load_request.scene_resource_ref_capacity = static_cast<std::uint32_t>(graph.scene_resource_refs.size());
+    load_request.scene_cameras = graph.scene_cameras.data();
+    load_request.scene_camera_capacity = static_cast<std::uint32_t>(graph.scene_cameras.size());
+    load_request.scene_entities = graph.scene_entities.data();
+    load_request.scene_entity_capacity = static_cast<std::uint32_t>(graph.scene_entities.size());
+    load_request.scene_transforms = graph.scene_transforms.data();
+    load_request.scene_transform_capacity = static_cast<std::uint32_t>(graph.scene_transforms.size());
+    load_request.scene_output = &graph.scene_output;
+    load_request.animation_frame_context.frame_index = 1U;
+    load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+
+    RuntimeAssetGraphLoadResult load_result{};
+    const RuntimeAssetDataStatus status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+    if (status != RuntimeAssetDataStatus::ResourceRegistrationFailed ||
+        load_result.status != RuntimeAssetDataStatus::ResourceRegistrationFailed) {
+        return Fail("commit failure did not return duplicate resource registration status");
+    }
+
+    if (load_result.transaction_plan.status != RuntimeAssetDataStatus::Success ||
+        load_result.transaction_plan.phase != RuntimeAssetLoadTransactionPhase::PreflightCommit ||
+        load_result.transaction_result.status != RuntimeAssetDataStatus::ResourceRegistrationFailed ||
+        load_result.transaction_result.phase != RuntimeAssetLoadTransactionPhase::CommitResources ||
+        !load_result.transaction_result.mutated_state) {
+        return Fail("commit failure did not report post-commit mutation diagnostics");
+    }
+
+    if (load_result.scene_registered ||
+        load_result.loaded_file_count != 0U ||
+        load_result.resource_dependency_count != 0U ||
+        load_result.asset_dependency_count != 0U ||
+        load_result.transaction_result.committed_resource_count != 0U ||
+        load_result.transaction_result.committed_asset_count != 0U ||
+        load_result.transaction_result.committed_dependency_edge_count != 0U) {
+        return Fail("commit failure recorded committed graph outputs");
+    }
+
+    if (!SceneLoaderFailureSentinelsUnchanged(
+            graph.scene_resource_refs,
+            graph.scene_cameras,
+            graph.scene_entities,
+            graph.scene_transforms,
+            graph.scene_output)) {
+        return Fail("commit failure mutated scene loader outputs");
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    const AssetSnapshot after_asset_snapshot = manager.Snapshot();
+    if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count ||
+        after_resource_snapshot.dependency_edge_count != before_resource_snapshot.dependency_edge_count ||
+        after_asset_snapshot.active_asset_count != before_asset_snapshot.active_asset_count ||
+        after_asset_snapshot.active_dependency_edge_count != before_asset_snapshot.active_dependency_edge_count) {
+        return Fail("commit failure registered graph records before reporting failure");
+    }
+
+    return 0;
+}
+
 bool ExpectValidationStatus(
     std::string_view text,
     RuntimeAssetFileKind kind,
@@ -3854,6 +3964,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_LOADER_REJECTS_SCHEMA_KIND_SUFFIX,
      RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation},
     {TEST_LOADER_TRANSACTION_INVALID_SCHEMA, RuntimeAssetDataLoaderRejectsMissingSchemaBeforeMutation},
+    {TEST_LOADER_TRANSACTION_COMMIT_FAILURE, RuntimeAssetDataLoaderCommitFailureReportsMutatedState},
     {TEST_SHADER_PROGRAM_DEPENDENCIES, RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES, RuntimeAssetDataSceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation},
     {TEST_ANIMATION_DEPENDENCIES, RuntimeAssetDataAnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
