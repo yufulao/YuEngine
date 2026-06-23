@@ -428,10 +428,13 @@ or final render closure.
 
 ## Package-Level Evidence For #62
 
-Package range: `6acf380..f1d0511`
+Package range before #62 first review: `6acf380..f1d0511`
 
 Final implementation anchor before #62 review: `f1d0511 Record RuntimeAsset RAV1
 shader evidence`
+
+#62 AMEND implementation anchor: `eb74f29 Amend RuntimeAsset RAV1 review
+blockers`
 
 Package validation commands:
 
@@ -444,7 +447,7 @@ ctest --preset windows-fast-gate --output-on-failure
 ctest --preset windows-fast-gate -R "RuntimeAssetData_(RenderClosedLoop_CapturesCubeCylinderConeThroughRhi|CpuPpmOracleDoesNotBypassRhiRenderCore|DoesNotDependOnEditorWebUiInputOrGdiViewer)$" --output-on-failure
 ```
 
-Local result: diff/show/configure/build PASS, full fast gate PASS 1298/1298,
+Local result after #62 AMEND: diff/show/configure/build PASS, full fast gate PASS 1299/1299,
 and final route focused tests PASS 3/3.
 
 Package off-scope scan:
@@ -475,16 +478,57 @@ evidence rows, but this document still does not approve the implementation by
 itself. #62 must review the package range and return explicit PASS/AMEND before
 the next RuntimeAsset slice opens.
 
+## #62 AMEND Closure Evidence
+
+#62 first review AMEND: message `152d745b`
+
+Code amend anchor: `eb74f29 Amend RuntimeAsset RAV1 review blockers`
+
+Closed blocker 1: package-added `else` / `else if` / `[&]` full capture.
+
+```powershell
+git diff --unified=0 8c9e913..HEAD -- CMakeLists.txt Src\YuEngine\RuntimeAsset\Src\RuntimeAssetData.cpp Tests\RenderScene\RuntimeAssetDataClosedLoopTests.cpp | rg -n "^\+.*(\belse\b|\[&\]|\[=\])"
+rg -n "\belse\b|\[&\]|\[=\]" Src\YuEngine\RuntimeAsset\Src\RuntimeAssetData.cpp Tests\RenderScene\RuntimeAssetDataClosedLoopTests.cpp
+```
+
+Local result: both scans returned no matches. The amend rewrites package-added
+branching into early-return/sequential `if` form and replaces the test full
+capture with an explicit capture list.
+
+Closed blocker 2: transaction request count preflight before dynamic staging.
+
+Implementation result: `ValidateGraphRequest` now builds checked graph request
+counts before `PlanRuntimeAssetCommitIntents`, scene reads, file dependency
+loops, and `transaction->file_bytes.resize(request.file_count)`. The checked
+counts cover `file_count + 1U` and `file_count * 2U` before storing diagnostic
+plan counters. `PreflightRuntimeAssetCommitIntents` now uses bounded capacity
+addition instead of unchecked snapshot + count arithmetic.
+
+Focused AMEND commands:
+
+```powershell
+cmake --preset windows-fast-gate
+cmake --build --preset windows-fast-gate --target YuRuntimeAssetDataClosedLoopTests -- /v:minimal
+ctest --preset windows-fast-gate -R "RuntimeAssetData_Loader(RejectsOversizedFileCountBeforeReadAndMutation|RejectsMissingSchemaBeforeMutation|CommitFailureReportsMutatedState)$" --output-on-failure
+ctest --preset windows-fast-gate -R "^RuntimeAssetData_" --output-on-failure
+cmake --build --preset windows-fast-gate -- /v:minimal
+ctest --preset windows-fast-gate --output-on-failure
+```
+
+Local result: configure PASS, target build PASS, AMEND transaction tests PASS
+3/3, RuntimeAssetData PASS 50/50, full build PASS, full fast gate PASS
+1299/1299.
+
 ## Focused Proof Rows
 
 | Proof area | Minimum focused tests or equivalents | Status |
 | --- | --- | --- |
 | Source/cooked parser | missing schema, wrong kind, unsupported version, invalid count/size/alignment/hash, misleading suffix | PASS at `232c911`: `RuntimeAssetData_HeaderParserRejectsPartialVersionsAndNoise`, `RuntimeAssetData_SourceCookedParserReportsBoundedMetadata`, `RuntimeAssetData_SourceCookedParserRejectsInvalidTablesHashesAndDependencies`, `RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation` |
-| Loader transaction | preflight failure no mutation, commit failure `mutated_state`, dependency/decoded-payload intent ordering | PASS at `81c97be`: `RuntimeAssetData_LoaderRejectsMissingSchemaBeforeMutation`, `RuntimeAssetData_LoaderCommitFailureReportsMutatedState`, `RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation` |
+| Loader transaction | preflight failure no mutation, commit failure `mutated_state`, dependency/decoded-payload intent ordering | PASS at `81c97be` plus #62 AMEND at `eb74f29`: `RuntimeAssetData_LoaderRejectsMissingSchemaBeforeMutation`, `RuntimeAssetData_LoaderCommitFailureReportsMutatedState`, `RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation`, `RuntimeAssetData_LoaderRejectsOversizedFileCountBeforeReadAndMutation` |
 | Texture/material payload | cooked texture layout/hash/row pitch, slot resolution, invalid payload no output mutation, RHI texture cleanup | PASS at `f32ee36`: `RuntimeAssetData_CookedTexturePayloadTableValidatesLayoutHashAndRowPitch`, `RuntimeAssetData_CookedMaterialTextureSlotTableResolvesLoadedPayloads`, `RuntimeAssetData_CookedPayloadBridgeRejectsTextureFormatExtentSizeAlignmentHashWithoutMutation`, `RuntimeAssetData_CookedPayloadBridgeRejectsMissingDuplicateTypeMismatchDepsWithoutMutation`, `RuntimeAssetData_CookedMaterialSlotOverflowDoesNotMutateRenderSceneOutputs`, `RuntimeAssetData_CookedRhiPartialCreationFailureDestroysTransientHandles` |
 | Shader/program payload | cooked stage bytecode, reflection/input-layout, hash/stage mismatch no mutation, module/pipeline cleanup | PASS at `c8d2054`: `RuntimeAssetData_CookedShaderStagePayloadsCreateRhiModules`, `RuntimeAssetData_CookedProgramPipelineUsesLoadedReflectionAndInputLayout`, `RuntimeAssetData_CookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation`, `RuntimeAssetData_CookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles` |
 | Scene/animation loader | bounded N entities, capacity overflow, invalid transforms/keyframes, target mismatch, path independence, RenderScene consumption | PASS at `749e2e6`: `RuntimeAssetData_SceneLoaderRejectsInvalidEntityWithoutOutputMutation`, `RuntimeAssetData_SceneLoaderRejectsInvalidKeyframesWithoutOutputMutation`, `RuntimeAssetData_SceneAnimationLoaderLoadsBoundedNEntityScene`, `RuntimeAssetData_SceneAnimationLoaderRejectsEntityCapacityOverflowWithoutMutation`, `RuntimeAssetData_SceneAnimationLoaderRejectsMissingRefsWithoutMutation`, `RuntimeAssetData_SceneAnimationLoaderRejectsInvalidRecordsWithoutMutation`, `RuntimeAssetData_SceneAnimationLoaderPathIndependentSceneAnimationDetection` |
-| Final route | File/Mount/VFS -> Resource/Asset -> RenderScene/RenderCore/RHI from loaded RuntimeAsset records | PASS at `f1d0511`: full `windows-fast-gate` 1298/1298 PASS plus `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi`, `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore`, `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` |
+| Final route | File/Mount/VFS -> Resource/Asset -> RenderScene/RenderCore/RHI from loaded RuntimeAsset records | PASS at `f1d0511`, rechecked after #62 AMEND at `eb74f29`: full `windows-fast-gate` 1299/1299 PASS plus `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi`, `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore`, `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` |
 
 ## Required Scans
 
