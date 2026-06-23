@@ -200,6 +200,8 @@ constexpr const char *TEST_SOURCE_COOKED_METADATA =
     "RuntimeAssetData_SourceCookedParserReportsBoundedMetadata";
 constexpr const char *TEST_SOURCE_COOKED_REJECTS =
     "RuntimeAssetData_SourceCookedParserRejectsInvalidTablesHashesAndDependencies";
+constexpr const char *TEST_HEADER_REJECTS_PARTIAL_VERSION =
+    "RuntimeAssetData_HeaderParserRejectsPartialVersionsAndNoise";
 constexpr const char *TEST_LOADER_REJECTS_SCHEMA_KIND_SUFFIX =
     "RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation";
 constexpr const char *TEST_LOADER_TRANSACTION_INVALID_SCHEMA =
@@ -791,15 +793,30 @@ std::uint64_t HashText(std::string_view text) {
     return hash;
 }
 
-std::string CookedTextureText(
+std::string SourceMeshText(std::string_view header_line) {
+    std::string text(header_line);
+    text +=
+        "\n"
+        "schema=rav0-source\n"
+        "id=cube_mesh\n"
+        "kind=cube\n"
+        "vertices=24\n"
+        "indices=36\n"
+        "bounds=-1,-1,-1,1,1,1\n";
+    return text;
+}
+
+std::string CookedTextureTextWithHeader(
+    std::string_view header_line,
     std::string_view payload,
     std::uint32_t dependency_table_count,
     std::uint32_t record_table_count,
     std::uint32_t record_byte_count,
     std::uint32_t payload_alignment,
     std::uint64_t payload_hash) {
-    std::string text =
-        "YUCOOKED TEXTURE 1\n"
+    std::string text(header_line);
+    text +=
+        "\n"
         "schema=rav1-cooked\n"
         "id=albedo_cooked\n"
         "kind=texture\n";
@@ -821,6 +838,23 @@ std::string CookedTextureText(
     text += payload;
     text += "\n";
     return text;
+}
+
+std::string CookedTextureText(
+    std::string_view payload,
+    std::uint32_t dependency_table_count,
+    std::uint32_t record_table_count,
+    std::uint32_t record_byte_count,
+    std::uint32_t payload_alignment,
+    std::uint64_t payload_hash) {
+    return CookedTextureTextWithHeader(
+        "YUCOOKED TEXTURE 1",
+        payload,
+        dependency_table_count,
+        record_table_count,
+        record_byte_count,
+        payload_alignment,
+        payload_hash);
 }
 
 std::string ValidCookedTextureText() {
@@ -2469,6 +2503,82 @@ int RuntimeAssetDataSourceCookedParserRejectsInvalidTablesHashesAndDependencies(
     return 0;
 }
 
+int RuntimeAssetDataHeaderParserRejectsPartialVersionsAndNoise() {
+    constexpr std::string_view payload = "checker";
+
+    if (!ExpectValidationStatus(
+            SourceMeshText("YUASSET MESH 10"),
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetDataStatus::UnsupportedVersion)) {
+        return Fail("source version 10 was treated as supported version 1");
+    }
+
+    if (!ExpectValidationStatus(
+            CookedTextureTextWithHeader(
+                "YUCOOKED TEXTURE 10",
+                payload,
+                1U,
+                1U,
+                64U,
+                4U,
+                HashText(payload)),
+            RuntimeAssetFileKind::Texture,
+            RuntimeAssetDataStatus::UnsupportedVersion)) {
+        return Fail("cooked version 10 was treated as supported version 1");
+    }
+
+    if (!ExpectValidationStatus(
+            SourceMeshText("YUASSET MESH 3"),
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetDataStatus::UnsupportedVersion)) {
+        return Fail("source version 3 did not return unsupported version");
+    }
+
+    if (!ExpectValidationStatus(
+            CookedTextureTextWithHeader(
+                "YUCOOKED TEXTURE 3",
+                payload,
+                1U,
+                1U,
+                64U,
+                4U,
+                HashText(payload)),
+            RuntimeAssetFileKind::Texture,
+            RuntimeAssetDataStatus::UnsupportedVersion)) {
+        return Fail("cooked version 3 did not return unsupported version");
+    }
+
+    if (!ExpectValidationStatus(
+            SourceMeshText("prefix YUASSET MESH 1"),
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetDataStatus::InvalidHeader)) {
+        return Fail("source header accepted prefix noise by substring");
+    }
+
+    if (!ExpectValidationStatus(
+            CookedTextureTextWithHeader(
+                "YUCOOKED TEXTURE 1 suffix",
+                payload,
+                1U,
+                1U,
+                64U,
+                4U,
+                HashText(payload)),
+            RuntimeAssetFileKind::Texture,
+            RuntimeAssetDataStatus::InvalidHeader)) {
+        return Fail("cooked header accepted suffix noise by substring");
+    }
+
+    if (!ExpectValidationStatus(
+            std::string("noise\n") + SourceMeshText("YUASSET MESH 1"),
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetDataStatus::InvalidHeader)) {
+        return Fail("source parser accepted valid header from non-header line");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation() {
     constexpr const char *misleading_scene_path = "Scene/MisleadingScene.yuscene";
 
@@ -3740,6 +3850,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_SCENE_FAMILY_PATH_INDEPENDENT, RuntimeAssetDataSceneFamilyDetectionIsPathIndependent},
     {TEST_SOURCE_COOKED_METADATA, RuntimeAssetDataSourceCookedParserReportsBoundedMetadata},
     {TEST_SOURCE_COOKED_REJECTS, RuntimeAssetDataSourceCookedParserRejectsInvalidTablesHashesAndDependencies},
+    {TEST_HEADER_REJECTS_PARTIAL_VERSION, RuntimeAssetDataHeaderParserRejectsPartialVersionsAndNoise},
     {TEST_LOADER_REJECTS_SCHEMA_KIND_SUFFIX,
      RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation},
     {TEST_LOADER_TRANSACTION_INVALID_SCHEMA, RuntimeAssetDataLoaderRejectsMissingSchemaBeforeMutation},

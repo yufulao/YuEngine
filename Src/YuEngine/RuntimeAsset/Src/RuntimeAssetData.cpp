@@ -423,65 +423,6 @@ bool FindRefIndex(
     return false;
 }
 
-std::string HeaderFor(
-    RuntimeAssetArtifactClass artifact_class,
-    RuntimeAssetFileKind expected_kind,
-    std::uint32_t version) {
-    const char *prefix = "YUASSET ";
-    if (artifact_class == RuntimeAssetArtifactClass::Cooked) {
-        prefix = "YUCOOKED ";
-    }
-
-    return std::string(prefix) + std::string(RuntimeAssetFileKindName(expected_kind)) + " " +
-        std::to_string(version);
-}
-
-bool HasSupportedHeader(
-    std::string_view text,
-    RuntimeAssetFileKind expected_kind,
-    RuntimeAssetArtifactClass artifact_class) {
-    const std::string header =
-        HeaderFor(artifact_class, expected_kind, 1U);
-    return Contains(text, header);
-}
-
-bool HasUnsupportedHeader(
-    std::string_view text,
-    RuntimeAssetFileKind expected_kind,
-    RuntimeAssetArtifactClass artifact_class) {
-    const std::string header =
-        HeaderFor(artifact_class, expected_kind, 2U);
-    return Contains(text, header);
-}
-
-RuntimeAssetArtifactClass DetectSupportedArtifactClass(
-    std::string_view text,
-    RuntimeAssetFileKind expected_kind) {
-    if (HasSupportedHeader(text, expected_kind, RuntimeAssetArtifactClass::Source)) {
-        return RuntimeAssetArtifactClass::Source;
-    }
-
-    if (HasSupportedHeader(text, expected_kind, RuntimeAssetArtifactClass::Cooked)) {
-        return RuntimeAssetArtifactClass::Cooked;
-    }
-
-    return RuntimeAssetArtifactClass::Unknown;
-}
-
-RuntimeAssetArtifactClass DetectUnsupportedArtifactClass(
-    std::string_view text,
-    RuntimeAssetFileKind expected_kind) {
-    if (HasUnsupportedHeader(text, expected_kind, RuntimeAssetArtifactClass::Source)) {
-        return RuntimeAssetArtifactClass::Source;
-    }
-
-    if (HasUnsupportedHeader(text, expected_kind, RuntimeAssetArtifactClass::Cooked)) {
-        return RuntimeAssetArtifactClass::Cooked;
-    }
-
-    return RuntimeAssetArtifactClass::Unknown;
-}
-
 std::string_view RuntimeAssetFamilyToken(RuntimeAssetFileKind kind) {
     switch (kind) {
         case RuntimeAssetFileKind::Mesh:
@@ -508,6 +449,106 @@ std::string_view RuntimeAssetFamilyToken(RuntimeAssetFileKind kind) {
 bool IsSupportedPayloadAlignment(std::uint32_t alignment) {
     return alignment == 1U || alignment == 2U || alignment == 4U ||
         alignment == 8U || alignment == 16U;
+}
+
+struct RuntimeAssetHeaderParseResult final {
+    RuntimeAssetArtifactClass artifact_class = RuntimeAssetArtifactClass::Unknown;
+    std::uint32_t version = 0U;
+    bool has_runtime_magic = false;
+    bool kind_matches_expected = false;
+    bool version_parsed = false;
+    bool exact_token_count = false;
+};
+
+bool IsHeaderWhitespace(char character) {
+    return character == ' ' || character == '\t';
+}
+
+std::string_view FirstHeaderLine(std::string_view text) {
+    const std::size_t line_end = text.find('\n');
+    std::string_view line =
+        line_end == std::string_view::npos ? text : text.substr(0U, line_end);
+    if (!line.empty() && line.back() == '\r') {
+        line.remove_suffix(1U);
+    }
+
+    return line;
+}
+
+bool ReadHeaderToken(
+    std::string_view line,
+    std::size_t *in_out_offset,
+    std::string_view *out_token) {
+    if (in_out_offset == nullptr || out_token == nullptr) {
+        return false;
+    }
+
+    std::size_t offset = *in_out_offset;
+    while (offset < line.size() && IsHeaderWhitespace(line[offset])) {
+        ++offset;
+    }
+
+    if (offset >= line.size()) {
+        return false;
+    }
+
+    const std::size_t token_start = offset;
+    while (offset < line.size() && !IsHeaderWhitespace(line[offset])) {
+        ++offset;
+    }
+
+    *in_out_offset = offset;
+    *out_token = line.substr(token_start, offset - token_start);
+    return true;
+}
+
+bool HeaderHasRemainingToken(std::string_view line, std::size_t offset) {
+    while (offset < line.size()) {
+        if (!IsHeaderWhitespace(line[offset])) {
+            return true;
+        }
+
+        ++offset;
+    }
+
+    return false;
+}
+
+RuntimeAssetHeaderParseResult ParseRuntimeAssetHeader(
+    std::string_view text,
+    RuntimeAssetFileKind expected_kind) {
+    RuntimeAssetHeaderParseResult result{};
+    const std::string_view line = FirstHeaderLine(text);
+    std::size_t offset = 0U;
+    std::string_view magic{};
+    std::string_view kind{};
+    std::string_view version{};
+    if (!ReadHeaderToken(line, &offset, &magic)) {
+        return result;
+    }
+
+    if (magic == "YUASSET") {
+        result.artifact_class = RuntimeAssetArtifactClass::Source;
+        result.has_runtime_magic = true;
+    } else if (magic == "YUCOOKED") {
+        result.artifact_class = RuntimeAssetArtifactClass::Cooked;
+        result.has_runtime_magic = true;
+    } else {
+        return result;
+    }
+
+    if (!ReadHeaderToken(line, &offset, &kind)) {
+        return result;
+    }
+
+    result.kind_matches_expected = kind == RuntimeAssetFileKindName(expected_kind);
+    if (!ReadHeaderToken(line, &offset, &version)) {
+        return result;
+    }
+
+    result.version_parsed = ParseU32(version, &result.version);
+    result.exact_token_count = !HeaderHasRemainingToken(line, offset);
+    return result;
 }
 
 std::uint64_t HashRuntimeAssetText(std::string_view text) {
@@ -747,27 +788,26 @@ RuntimeAssetDataStatus ValidateCommonMetadata(
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    const RuntimeAssetArtifactClass unsupported_artifact =
-        DetectUnsupportedArtifactClass(text, expected_kind);
-    if (unsupported_artifact != RuntimeAssetArtifactClass::Unknown) {
-        out_result->artifact_class = unsupported_artifact;
-        out_result->version = 2U;
-        return RuntimeAssetDataStatus::UnsupportedVersion;
-    }
-
-    const RuntimeAssetArtifactClass artifact_class =
-        DetectSupportedArtifactClass(text, expected_kind);
-    if (artifact_class == RuntimeAssetArtifactClass::Unknown) {
-        if (Contains(text, "YUASSET ") || Contains(text, "YUCOOKED ")) {
-            return RuntimeAssetDataStatus::InvalidKind;
-        }
-
+    const RuntimeAssetHeaderParseResult header = ParseRuntimeAssetHeader(text, expected_kind);
+    if (!header.has_runtime_magic) {
         return RuntimeAssetDataStatus::InvalidHeader;
     }
 
-    out_result->artifact_class = artifact_class;
-    out_result->version = 1U;
-    if (artifact_class == RuntimeAssetArtifactClass::Cooked) {
+    out_result->artifact_class = header.artifact_class;
+    if (!header.kind_matches_expected) {
+        return RuntimeAssetDataStatus::InvalidKind;
+    }
+
+    if (!header.version_parsed || !header.exact_token_count) {
+        return RuntimeAssetDataStatus::InvalidHeader;
+    }
+
+    out_result->version = header.version;
+    if (header.version != 1U) {
+        return RuntimeAssetDataStatus::UnsupportedVersion;
+    }
+
+    if (header.artifact_class == RuntimeAssetArtifactClass::Cooked) {
         return ValidateCookedMetadata(text, expected_kind, out_result);
     }
 
