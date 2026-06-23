@@ -23,7 +23,7 @@ task #62 reviews once #56 through #60 have concrete commits and test results.
 | #56 RAV1-I0 | source/cooked parser and validator skeleton | #50 contract, #54 Phase A evidence | accepted: `232c911 Amend RuntimeAsset header parsing strictness` | focused parser/validator tests, suffix-free type truth, no-mutation failures, changed-path summary |
 | #57 RAV1-I1 | loader transaction core and commit semantics | #51 transaction plan, #54 Phase A evidence | accepted: `81c97be Harden RuntimeAsset graph transaction preflight` | preflight/commit tests, `mutated_state` or rollback ledger proof, registry/output no-mutation probes |
 | #58 RAV1-I2 | cooked texture/material payload bridge | #52 payload route, #54 Phase A evidence | accepted: `f32ee36 Bridge cooked texture payloads to material slots` | texture layout/hash/row-pitch tests, material slot resolution tests, RHI texture cleanup/no-output-mutation tests |
-| #59 RAV1-I3 | cooked shader/program payload bridge | #52 payload route, #54 Phase A evidence | pending | cooked bytecode descriptor tests, reflection/input-layout tests, module/pipeline cleanup tests |
+| #59 RAV1-I3 | cooked shader/program payload bridge | #52 payload route, #54 Phase A evidence | accepted: `c8d2054 Bridge cooked shader programs to RHI` | cooked bytecode descriptor tests, reflection/input-layout tests, module/pipeline cleanup tests |
 | #60 RAV1-I4 | bounded scene/animation record loader | #53 scene/animation plan, #54 Phase A evidence | accepted: `749e2e6 Implement bounded RuntimeAsset scene animation loader` | bounded N-entity success, capacity/ref/track/keyframe/target/hash failures without mutation, RenderScene consumption |
 | #61 Evidence | implementation evidence matrix and commands | #56-#60 delivery threads | this document | complete command matrix, off-scope scans, suffix scans, changed files, PASS/FAIL/blocker rows |
 | #62 Review | implementation review gate | #56-#61 evidence | pending | explicit commit anchor and PASS/AMEND before any next slice opens |
@@ -262,6 +262,87 @@ is not shader/program payload approval, scene/animation loader approval, a
 complete binary parser, editor/import bridge, package parser, or final render
 closure.
 
+### #59 RAV1-I3 Cooked Shader/Program Payload Bridge
+
+Accepted anchor: `c8d2054 Bridge cooked shader programs to RHI`
+
+Implementation note: #59 is reviewed as independent RuntimeAssetData delta
+`6cc293c..c8d2054`. This row accepts only cooked shader/program payload bridge
+scope. It does not replace #62 final package review.
+
+Changed files:
+
+- `CMakeLists.txt`
+- `Src/YuEngine/RuntimeAsset/Include/YuEngine/RuntimeAsset/RuntimeAssetData.h`
+- `Src/YuEngine/RuntimeAsset/Src/RuntimeAssetData.cpp`
+- `Tests/RenderScene/RuntimeAssetDataClosedLoopTests.cpp`
+
+Owner-reported verification at `c8d2054`:
+
+```powershell
+git diff --cached --check
+git show --check --format=short HEAD
+cmake --preset windows-fast-gate
+cmake --build --preset windows-fast-gate --target YuRuntimeAssetDataClosedLoopTests -- /v:minimal
+ctest --preset windows-fast-gate -R "RuntimeAssetData_(CookedShaderStagePayloadsCreateRhiModules|CookedProgramPipelineUsesLoadedReflectionAndInputLayout|CookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation|CookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles)$" --output-on-failure
+ctest --preset windows-fast-gate -R RuntimeAssetData --output-on-failure
+cmake --build --preset windows-fast-gate -- /v:minimal
+ctest --preset windows-fast-gate --output-on-failure
+```
+
+Reported result: diff/show/configure/build PASS, focused #59 4/4 PASS,
+RuntimeAssetData 49/49 PASS, RHI shader/pipeline 3/3 PASS, RenderCore
+shader-program 7/7 PASS, full fast gate 1298/1298 PASS.
+
+Architecture local spot-check in the detached review worktree at `8c67c4c`
+(code content includes later #61 evidence update):
+
+```powershell
+git diff --check 6cc293c..c8d2054
+git show --check --format=short c8d2054
+cmake --preset windows-fast-gate
+cmake --build --preset windows-fast-gate --target YuRuntimeAssetDataClosedLoopTests -- /v:minimal
+ctest --preset windows-fast-gate -R "RuntimeAssetData_(CookedShaderStagePayloadsCreateRhiModules|CookedProgramPipelineUsesLoadedReflectionAndInputLayout|CookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation|CookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles)$" --output-on-failure
+ctest --preset windows-fast-gate -R RuntimeAssetData --output-on-failure
+ctest --preset windows-fast-gate -R "(RHI_.*Shader|RenderCore_.*Shader|ShaderProgram)" --output-on-failure
+```
+
+Local result: diff/show/configure/build PASS, focused #59 tests 4/4 PASS,
+RuntimeAssetData 49/49 PASS, RHI/RenderCore shader-related tests 21/21 PASS.
+
+Additional local diff-limited scans:
+
+```powershell
+git diff --unified=0 6cc293c..c8d2054 -- CMakeLists.txt Src\YuEngine\RuntimeAsset\Include\YuEngine\RuntimeAsset\RuntimeAssetData.h Src\YuEngine\RuntimeAsset\Src\RuntimeAssetData.cpp Tests\RenderScene\RuntimeAssetDataClosedLoopTests.cpp | rg -n "editor|Editor|Web|UI|input|Game Adapter|original package|TouhouNewWorld package|GDI|screenshot|manual inspection|direct struct"
+git diff --unified=0 6cc293c..c8d2054 -- CMakeLists.txt Src\YuEngine\RuntimeAsset\Include\YuEngine\RuntimeAsset\RuntimeAssetData.h Src\YuEngine\RuntimeAsset\Src\RuntimeAssetData.cpp Tests\RenderScene\RuntimeAssetDataClosedLoopTests.cpp | rg -n "\.yu(mesh|mat|tex|program|scene|anim)|suffix|fixture name|type truth|internal metadata"
+```
+
+Local result: off-scope matches are shader/program `input_layout` and
+`required_input_semantics` only; they are RHI input-layout metadata, not YuInput,
+UI, editor, or Web scope. Suffix scan returned no #59 added matches.
+
+Scope accepted:
+
+- cooked shader stage payload descriptors cover stage kind, entry-point
+  presence, shader profile, bytecode format, payload id, bytecode offset/count,
+  bytecode alignment, bytecode hash, and expected stage hash;
+- cooked program descriptors cover graphics pipeline class, exactly one vertex
+  stage and one pixel stage, reflected RHI input layout, vertex stride, required
+  input semantics, texture/sampler slot counts, and constant-range count;
+- preflight failures reject stage/profile mismatch, missing bytecode, bytecode
+  bounds/alignment/hash mismatch, unsupported format/semantic, input-layout
+  mismatch, missing/duplicate stages, and slot/capacity overflow before RHI
+  mutation or handle publication;
+- successful commit creates RHI shader modules and pipeline from cooked payload
+  byte spans and publishes handles only after the full pipeline succeeds;
+- pixel-module and pipeline partial failures destroy transient shader modules,
+  report cleanup ledger counts, leave no published handles, and keep RHI module
+  and pipeline counts stable after cleanup.
+
+Boundary: #59 proves the current cooked shader/program bridge route only. It is
+not a shader compiler, pipeline cache, material graph, scene/animation loader
+approval, editor/import bridge, original package parser, or final render closure.
+
 ### #60 RAV1-I4 Bounded Scene/Animation Record Loader
 
 Accepted anchor: `749e2e6 Implement bounded RuntimeAsset scene animation loader`
@@ -352,7 +433,7 @@ or final render closure.
 | Source/cooked parser | missing schema, wrong kind, unsupported version, invalid count/size/alignment/hash, misleading suffix | PASS at `232c911`: `RuntimeAssetData_HeaderParserRejectsPartialVersionsAndNoise`, `RuntimeAssetData_SourceCookedParserReportsBoundedMetadata`, `RuntimeAssetData_SourceCookedParserRejectsInvalidTablesHashesAndDependencies`, `RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation` |
 | Loader transaction | preflight failure no mutation, commit failure `mutated_state`, dependency/decoded-payload intent ordering | PASS at `81c97be`: `RuntimeAssetData_LoaderRejectsMissingSchemaBeforeMutation`, `RuntimeAssetData_LoaderCommitFailureReportsMutatedState`, `RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation` |
 | Texture/material payload | cooked texture layout/hash/row pitch, slot resolution, invalid payload no output mutation, RHI texture cleanup | PASS at `f32ee36`: `RuntimeAssetData_CookedTexturePayloadTableValidatesLayoutHashAndRowPitch`, `RuntimeAssetData_CookedMaterialTextureSlotTableResolvesLoadedPayloads`, `RuntimeAssetData_CookedPayloadBridgeRejectsTextureFormatExtentSizeAlignmentHashWithoutMutation`, `RuntimeAssetData_CookedPayloadBridgeRejectsMissingDuplicateTypeMismatchDepsWithoutMutation`, `RuntimeAssetData_CookedMaterialSlotOverflowDoesNotMutateRenderSceneOutputs`, `RuntimeAssetData_CookedRhiPartialCreationFailureDestroysTransientHandles` |
-| Shader/program payload | cooked stage bytecode, reflection/input-layout, hash/stage mismatch no mutation, module/pipeline cleanup | pending |
+| Shader/program payload | cooked stage bytecode, reflection/input-layout, hash/stage mismatch no mutation, module/pipeline cleanup | PASS at `c8d2054`: `RuntimeAssetData_CookedShaderStagePayloadsCreateRhiModules`, `RuntimeAssetData_CookedProgramPipelineUsesLoadedReflectionAndInputLayout`, `RuntimeAssetData_CookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation`, `RuntimeAssetData_CookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles` |
 | Scene/animation loader | bounded N entities, capacity overflow, invalid transforms/keyframes, target mismatch, path independence, RenderScene consumption | PASS at `749e2e6`: `RuntimeAssetData_SceneLoaderRejectsInvalidEntityWithoutOutputMutation`, `RuntimeAssetData_SceneLoaderRejectsInvalidKeyframesWithoutOutputMutation`, `RuntimeAssetData_SceneAnimationLoaderLoadsBoundedNEntityScene`, `RuntimeAssetData_SceneAnimationLoaderRejectsEntityCapacityOverflowWithoutMutation`, `RuntimeAssetData_SceneAnimationLoaderRejectsMissingRefsWithoutMutation`, `RuntimeAssetData_SceneAnimationLoaderRejectsInvalidRecordsWithoutMutation`, `RuntimeAssetData_SceneAnimationLoaderPathIndependentSceneAnimationDetection` |
 | Final route | File/Mount/VFS -> Resource/Asset -> RenderScene/RenderCore/RHI from loaded RuntimeAsset records | pending |
 
