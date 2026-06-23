@@ -21,7 +21,7 @@ task #62 reviews once #56 through #60 have concrete commits and test results.
 | Task | Scope | Owner input | Current anchor | Required evidence before #62 |
 | --- | --- | --- | --- | --- |
 | #56 RAV1-I0 | source/cooked parser and validator skeleton | #50 contract, #54 Phase A evidence | accepted: `232c911 Amend RuntimeAsset header parsing strictness` | focused parser/validator tests, suffix-free type truth, no-mutation failures, changed-path summary |
-| #57 RAV1-I1 | loader transaction core and commit semantics | #51 transaction plan, #54 Phase A evidence | pending | preflight/commit tests, `mutated_state` or rollback ledger proof, registry/output no-mutation probes |
+| #57 RAV1-I1 | loader transaction core and commit semantics | #51 transaction plan, #54 Phase A evidence | accepted: `81c97be Harden RuntimeAsset graph transaction preflight` | preflight/commit tests, `mutated_state` or rollback ledger proof, registry/output no-mutation probes |
 | #58 RAV1-I2 | cooked texture/material payload bridge | #52 payload route, #54 Phase A evidence | pending | texture layout/hash/row-pitch tests, material slot resolution tests, RHI texture cleanup/no-output-mutation tests |
 | #59 RAV1-I3 | cooked shader/program payload bridge | #52 payload route, #54 Phase A evidence | pending | cooked bytecode descriptor tests, reflection/input-layout tests, module/pipeline cleanup tests |
 | #60 RAV1-I4 | bounded scene/animation record loader | #53 scene/animation plan, #54 Phase A evidence | pending | bounded N-entity success, capacity/ref/track/keyframe/target/hash failures without mutation, RenderScene consumption |
@@ -107,12 +107,87 @@ a complete production binary parser, payload bridge, transaction approval,
 bounded scene/animation loader approval, editor/import bridge, or final render
 closure.
 
+### #57 RAV1-I1 Loader Transaction Core And Commit Semantics
+
+Accepted anchors:
+
+- `70a2fc8 Implement RuntimeAsset graph load transaction`
+- `81c97be Harden RuntimeAsset graph transaction preflight`
+
+Implementation note: #57 is reviewed as two RuntimeAssetData deltas:
+`191f46b..70a2fc8` for the initial transaction implementation and
+`232c911..81c97be` for preflight hardening. This row accepts transaction
+diagnostics and commit semantics only. It does not accept payload bridges,
+bounded scene/animation loader scope, a rollback ledger, or final runtime
+render closure.
+
+Changed files:
+
+- `CMakeLists.txt`
+- `Src/YuEngine/RuntimeAsset/Include/YuEngine/RuntimeAsset/RuntimeAssetData.h`
+- `Src/YuEngine/RuntimeAsset/Src/RuntimeAssetData.cpp`
+- `Tests/RenderScene/RuntimeAssetDataClosedLoopTests.cpp`
+
+Owner-reported verification at `81c97be`:
+
+```powershell
+git diff --check origin/main..HEAD -- CMakeLists.txt Src/YuEngine/RuntimeAsset/Include/YuEngine/RuntimeAsset/RuntimeAssetData.h Src/YuEngine/RuntimeAsset/Src/RuntimeAssetData.cpp Tests/RenderScene/RuntimeAssetDataClosedLoopTests.cpp
+git show --check --format=short HEAD
+cmake --preset windows-fast-gate
+cmake --build --preset windows-fast-gate -- /v:minimal
+ctest --preset windows-fast-gate -R "RuntimeAssetData" --output-on-failure
+ctest --preset windows-fast-gate --output-on-failure
+```
+
+Reported result: diff/show/configure/build PASS, RuntimeAssetData 34/34 PASS,
+full fast gate 1283/1283 PASS.
+
+Architecture local spot-check in the detached review worktree at `97d0364`
+(code content includes `81c97be` plus the #61 evidence doc update):
+
+```powershell
+git diff --check 191f46b..70a2fc8
+git diff --check 232c911..81c97be
+git show --check --format=short 81c97be
+cmake --preset windows-fast-gate
+cmake --build --preset windows-fast-gate --target YuRuntimeAssetDataClosedLoopTests -- /v:minimal
+ctest --preset windows-fast-gate -R "RuntimeAssetData_(LoaderRejectsMissingSchemaBeforeMutation|LoaderCommitFailureReportsMutatedState|LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation)" --output-on-failure
+ctest --preset windows-fast-gate -R RuntimeAssetData --output-on-failure
+```
+
+Local result: diff/show/configure/build PASS, focused #57 tests 3/3 PASS,
+RuntimeAssetData 34/34 PASS.
+
+Scope accepted:
+
+- graph load now builds a request-local transaction plan before runtime
+  mutation, with record, Resource/Asset, cache payload, decoded payload, and
+  dependency-edge commit counts;
+- preflight reads and validates all RuntimeAsset records, scene dependency
+  family checks, scene-output staging, request-local ids/capacities, current
+  Resource/Asset capacity, cache/decode/decoded payload capacity, and payload
+  byte budgets before commit;
+- commit order is deterministic: configure budgets, scene Resource/Asset/file
+  payloads, file Resource/Asset/payloads, dependency edges, scene output;
+- commit phase sets `transaction_result.mutated_state = true` when commit
+  begins; no rollback ledger is claimed;
+- pre-commit failures leave caller loaded-file outputs, scene output records,
+  ResourceRegistry, AssetManager, cache payloads, decoded payloads, dependency
+  edges, and RHI snapshots unchanged;
+- commit failure diagnostics report `mutated_state == true` and the failing
+  commit phase.
+
+Boundary: #57 proves transaction staging/diagnostics for the current
+RuntimeAsset graph loader slice only. It is not rollback support, a complete
+binary parser, payload bridge approval, scene/animation loader approval, or
+final render closure.
+
 ## Focused Proof Rows
 
 | Proof area | Minimum focused tests or equivalents | Status |
 | --- | --- | --- |
 | Source/cooked parser | missing schema, wrong kind, unsupported version, invalid count/size/alignment/hash, misleading suffix | PASS at `232c911`: `RuntimeAssetData_HeaderParserRejectsPartialVersionsAndNoise`, `RuntimeAssetData_SourceCookedParserReportsBoundedMetadata`, `RuntimeAssetData_SourceCookedParserRejectsInvalidTablesHashesAndDependencies`, `RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation` |
-| Loader transaction | preflight failure no mutation, commit failure `mutated_state`, dependency/decoded-payload intent ordering | pending |
+| Loader transaction | preflight failure no mutation, commit failure `mutated_state`, dependency/decoded-payload intent ordering | PASS at `81c97be`: `RuntimeAssetData_LoaderRejectsMissingSchemaBeforeMutation`, `RuntimeAssetData_LoaderCommitFailureReportsMutatedState`, `RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation` |
 | Texture/material payload | cooked texture layout/hash/row pitch, slot resolution, invalid payload no output mutation, RHI texture cleanup | pending |
 | Shader/program payload | cooked stage bytecode, reflection/input-layout, hash/stage mismatch no mutation, module/pipeline cleanup | pending |
 | Scene/animation loader | bounded N entities, capacity overflow, invalid transforms/keyframes, target mismatch, path independence, RenderScene consumption | pending |
