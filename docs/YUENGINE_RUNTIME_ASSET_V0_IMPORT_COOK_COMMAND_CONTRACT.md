@@ -7,6 +7,7 @@ Base: RAV1 implementation baseline `origin/main@d1a1b86`
 Related evidence:
 
 - `docs/YUENGINE_RUNTIME_ASSET_V0_RAV2_EVIDENCE_MATRIX.md`
+- `docs/YUENGINE_RUNTIME_ASSET_PACKAGE_COOK_RUN_SMOKE_GATE.md`
 
 ## Purpose
 
@@ -112,6 +113,7 @@ Focused RAV2-A tests:
 RuntimeAssetData_ImportCookCommandWritesSourceAndCookedDiskFixtures
 RuntimeAssetData_ImportCookCommandLoadsGeneratedSourceAndCookedViaFileResourceRoute
 RuntimeAssetData_ImportCookCommandReportsMissingLayerStatus
+RuntimeAssetData_PackageCookRunSmokeReportsPackagedRuntimeEntryPointBlocker
 ```
 
 Gate commands:
