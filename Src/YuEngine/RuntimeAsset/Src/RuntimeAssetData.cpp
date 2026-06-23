@@ -27,6 +27,8 @@
 #include "YuEngine/Kernel/KernelResult.h"
 #include "YuEngine/Kernel/KernelStatus.h"
 #include "YuEngine/Kernel/RuntimeApp.h"
+#include "YuEngine/Package/PackageLoadPlanResult.h"
+#include "YuEngine/Package/PackageRegistry.h"
 #include "YuEngine/RenderCore/RenderCameraProjectionKind.h"
 #include "YuEngine/RenderScene/RenderSceneCameraBindingRequest.h"
 #include "YuEngine/RenderScene/RenderSceneCameraBindingResult.h"
@@ -114,8 +116,13 @@ using yuengine::kernel::KernelStatus;
 using yuengine::kernel::RuntimeApp;
 using yuengine::kernel::RuntimeAppRunResult;
 using yuengine::kernel::RuntimeFramePhase;
+using yuengine::package::PackageArtifactReadRequest;
+using yuengine::package::PackageArtifactResult;
 using yuengine::package::PackageLoadPlanRecord;
+using yuengine::package::PackageLoadPlanResult;
+using yuengine::package::PackageRegistry;
 using yuengine::package::PackageStatus;
+using yuengine::package::ReadPackageArtifact;
 using yuengine::resource::ResourceCachePayloadRequest;
 using yuengine::resource::ResourceCachePayloadSnapshot;
 using yuengine::resource::ResourceCachePayloadStatus;
@@ -6810,6 +6817,114 @@ RuntimeAssetDataStatus RunRuntimeAssetPackagedEntryPoint(
 
     result.blocked_layer = RuntimeAssetPackagedRunBlockedLayer::None;
     result.packaged_runtime_entrypoint_available = true;
+    *out_result = result;
+    return result.status;
+}
+
+namespace {
+bool RuntimeAssetPackageArtifactProductRunRequestHasRequiredInputs(
+    const RuntimeAssetPackageArtifactProductRunRequest &request) {
+    return request.mount_table != nullptr &&
+        request.package_artifact_path.ByteLength() > 0U &&
+        request.package.IsValid() &&
+        request.scene_resource_type.IsValid() &&
+        request.scene_logical_key.IsValid();
+}
+
+RuntimeAssetDataStatus RuntimeAssetPackageArtifactFailureStatus(
+    const PackageArtifactResult &artifact_result) {
+    if (artifact_result.status == PackageStatus::FileReadFailed) {
+        return RuntimeAssetDataStatus::FileReadFailed;
+    }
+
+    if (artifact_result.status == PackageStatus::TypeMismatch) {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    return RuntimeAssetDataStatus::InvalidSchema;
+}
+
+RuntimeAssetPackageArtifactProductRunMissingLayer ProductRunLayerForPackagedRun(
+    RuntimeAssetPackagedRunBlockedLayer layer) {
+    if (layer == RuntimeAssetPackagedRunBlockedLayer::PackageLoadPlan) {
+        return RuntimeAssetPackageArtifactProductRunMissingLayer::PackageLoadPlan;
+    }
+
+    return RuntimeAssetPackageArtifactProductRunMissingLayer::PackagedRuntimeEntryPoint;
+}
+}
+
+RuntimeAssetDataStatus RunRuntimeAssetPackageArtifactProductCommand(
+    const RuntimeAssetPackageArtifactProductRunRequest &request,
+    RuntimeAssetPackageArtifactProductRunResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetPackageArtifactProductRunResult result{};
+    if (!RuntimeAssetPackageArtifactProductRunRequestHasRequiredInputs(request)) {
+        result.status = RuntimeAssetDataStatus::InvalidArgument;
+        result.missing_layer = RuntimeAssetPackageArtifactProductRunMissingLayer::Command;
+        *out_result = result;
+        return result.status;
+    }
+
+    PackageRegistry artifact_registry(request.package_registry);
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = request.mount_table;
+    read_request.mount = request.mount;
+    read_request.artifact_path = request.package_artifact_path;
+    read_request.registry = &artifact_registry;
+    read_request.registry_desc = request.package_registry;
+    result.package_artifact = ReadPackageArtifact(read_request);
+    result.file_status = result.package_artifact.file_status;
+    result.package_status = result.package_artifact.status;
+    result.package_artifact_read = result.package_artifact.read_artifact;
+    result.package_registry_rebuilt = result.package_artifact.rebuilt_registry;
+    if (result.package_artifact.status != PackageStatus::Success ||
+        !result.package_artifact.read_artifact ||
+        !result.package_artifact.rebuilt_registry) {
+        result.status = RuntimeAssetPackageArtifactFailureStatus(result.package_artifact);
+        result.missing_layer =
+            result.package_artifact.status == PackageStatus::FileReadFailed
+                ? RuntimeAssetPackageArtifactProductRunMissingLayer::FileVfs
+                : RuntimeAssetPackageArtifactProductRunMissingLayer::PackageArtifact;
+        *out_result = result;
+        return result.status;
+    }
+
+    const PackageLoadPlanResult load_plan_result = artifact_registry.ResolveEntryByResourceKey(
+        request.package,
+        request.scene_resource_type,
+        request.scene_logical_key);
+    result.package_status = load_plan_result.status;
+    result.package_load_plan_record_count = load_plan_result.plan.record_count;
+    if (!load_plan_result.Succeeded()) {
+        result.status =
+            load_plan_result.status == PackageStatus::TypeMismatch
+                ? RuntimeAssetDataStatus::TypeMismatch
+                : RuntimeAssetDataStatus::MissingDependency;
+        result.missing_layer = RuntimeAssetPackageArtifactProductRunMissingLayer::PackageLoadPlan;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.package_load_plan_resolved = true;
+    RuntimeAssetPackagedRunRequest packaged_request = request.packaged_run;
+    packaged_request.package_load_plan = &load_plan_result.plan;
+    result.packaged_run_executed = true;
+    result.status = RunRuntimeAssetPackagedEntryPoint(packaged_request, &result.packaged_run);
+    result.package_status = result.packaged_run.package_status;
+    result.package_load_plan_record_count = result.packaged_run.package_load_plan_record_count;
+    if (result.status != RuntimeAssetDataStatus::Success ||
+        result.packaged_run.status != RuntimeAssetDataStatus::Success ||
+        result.packaged_run.blocked_layer != RuntimeAssetPackagedRunBlockedLayer::None) {
+        result.missing_layer = ProductRunLayerForPackagedRun(result.packaged_run.blocked_layer);
+        *out_result = result;
+        return result.status;
+    }
+
+    result.missing_layer = RuntimeAssetPackageArtifactProductRunMissingLayer::None;
     *out_result = result;
     return result.status;
 }

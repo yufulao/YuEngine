@@ -22,13 +22,17 @@
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
 #include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
+#include "YuEngine/Package/PackageArtifact.h"
+#include "YuEngine/Package/PackageId.h"
 #include "YuEngine/Package/PackageLoadPlan.h"
+#include "YuEngine/Package/PackageRegistryDesc.h"
 #include "YuEngine/Package/PackageStatus.h"
 #include "YuEngine/Resource/ResourceDecodedPayloadStatus.h"
 #include "YuEngine/Kernel/RuntimeFrameContext.h"
 #include "YuEngine/Resource/ResourceDecodePlanAssetClass.h"
 #include "YuEngine/Resource/ResourceDecodeResultClass.h"
 #include "YuEngine/Resource/ResourceHandle.h"
+#include "YuEngine/Resource/ResourceLogicalKey.h"
 #include "YuEngine/Resource/ResourceTypeId.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/RhiConstants.h"
@@ -813,6 +817,51 @@ struct RuntimeAssetPackagedRunResult final {
 };
 
 /**
+ * @brief First layer that can block a file-backed Package artifact product run command.
+ */
+enum class RuntimeAssetPackageArtifactProductRunMissingLayer {
+    None,
+    Command,
+    FileVfs,
+    PackageArtifact,
+    PackageLoadPlan,
+    PackagedRuntimeEntryPoint
+};
+
+/**
+ * @brief Command request that starts a RuntimeAsset product run from a Package artifact path.
+ */
+struct RuntimeAssetPackageArtifactProductRunRequest final {
+    yuengine::file::MountTable *mount_table = nullptr;
+    yuengine::file::MountId mount;
+    yuengine::file::VirtualPath package_artifact_path;
+    yuengine::package::PackageId package;
+    yuengine::package::PackageRegistryDesc package_registry{};
+    yuengine::resource::ResourceTypeId scene_resource_type;
+    yuengine::resource::ResourceLogicalKey scene_logical_key;
+    RuntimeAssetPackagedRunRequest packaged_run{};
+};
+
+/**
+ * @brief Product run command ledger from Package artifact read through RuntimeApp.
+ */
+struct RuntimeAssetPackageArtifactProductRunResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    RuntimeAssetPackageArtifactProductRunMissingLayer missing_layer =
+        RuntimeAssetPackageArtifactProductRunMissingLayer::Command;
+    yuengine::file::FileStatus file_status = yuengine::file::FileStatus::Success;
+    yuengine::package::PackageStatus package_status =
+        yuengine::package::PackageStatus::NotFound;
+    yuengine::package::PackageArtifactResult package_artifact{};
+    RuntimeAssetPackagedRunResult packaged_run{};
+    std::uint32_t package_load_plan_record_count = 0U;
+    bool package_artifact_read = false;
+    bool package_registry_rebuilt = false;
+    bool package_load_plan_resolved = false;
+    bool packaged_run_executed = false;
+};
+
+/**
  * @brief Returns the file kind token used by the runtime asset header.
  * @param kind Input file family.
  * @return Static token string.
@@ -918,5 +967,14 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
 RuntimeAssetDataStatus RunRuntimeAssetPackagedEntryPoint(
     const RuntimeAssetPackagedRunRequest &request,
     RuntimeAssetPackagedRunResult *out_result);
+/**
+ * @brief Reads a file-backed Package artifact and runs the packaged RuntimeAsset entrypoint.
+ * @param request Artifact path, package lookup key, and packaged-run buffers.
+ * @param out_result Output artifact, load-plan, packaged run, and missing-layer ledger.
+ * @return Explicit product run status.
+ */
+RuntimeAssetDataStatus RunRuntimeAssetPackageArtifactProductCommand(
+    const RuntimeAssetPackageArtifactProductRunRequest &request,
+    RuntimeAssetPackageArtifactProductRunResult *out_result);
 
 }

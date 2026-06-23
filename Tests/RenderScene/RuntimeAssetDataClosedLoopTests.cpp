@@ -216,6 +216,9 @@ using yuengine::runtimeasset::RuntimeAssetImportCookMissingLayer;
 using yuengine::runtimeasset::RuntimeAssetLoadedFile;
 using yuengine::runtimeasset::RuntimeAssetLoadedShaderProgramData;
 using yuengine::runtimeasset::RuntimeAssetLoadTransactionPhase;
+using yuengine::runtimeasset::RuntimeAssetPackageArtifactProductRunMissingLayer;
+using yuengine::runtimeasset::RuntimeAssetPackageArtifactProductRunRequest;
+using yuengine::runtimeasset::RuntimeAssetPackageArtifactProductRunResult;
 using yuengine::runtimeasset::RuntimeAssetPackagedRunBlockedLayer;
 using yuengine::runtimeasset::RuntimeAssetPackagedRunRequest;
 using yuengine::runtimeasset::RuntimeAssetPackagedRunResult;
@@ -231,6 +234,7 @@ using yuengine::runtimeasset::RuntimeAssetVisualProofMissingLayer;
 using yuengine::runtimeasset::RuntimeAssetVisualProofRequest;
 using yuengine::runtimeasset::RuntimeAssetVisualProofResult;
 using yuengine::runtimeasset::RunRuntimeAssetPackagedEntryPoint;
+using yuengine::runtimeasset::RunRuntimeAssetPackageArtifactProductCommand;
 using yuengine::runtimeasset::ValidateRuntimeAssetDataBytes;
 using yuengine::streaming::ResourceDecodedTextureBridge;
 using yuengine::streaming::ResourceDecodedTextureBridgeRequest;
@@ -380,6 +384,10 @@ constexpr const char *TEST_PACKAGE_COOK_RUN_SMOKE =
     "RuntimeAssetData_PackageCookRunSmokeRunsPackagedRuntimeEntryPoint";
 constexpr const char *TEST_PACKAGE_ARTIFACT_PRODUCT_RUN =
     "RuntimeAssetData_PackageArtifactCookRunSmokeRunsProductRuntimeEntryPoint";
+constexpr const char *TEST_PRODUCT_RUN_COMMAND =
+    "RuntimeAssetData_ProductRunCommandConsumesPackageArtifactPath";
+constexpr const char *TEST_PRODUCT_RUN_COMMAND_MISSING_ARTIFACT =
+    "RuntimeAssetData_ProductRunCommandReportsMissingPackageArtifactPath";
 constexpr const char *TEST_RUNTIME_DEPENDENCIES =
     "RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges";
 constexpr const char *TEST_LOAD_RENDER =
@@ -3710,6 +3718,26 @@ RuntimeAssetPackagedRunRequest BuildPackagedRunRequest(CookedVisualProofContext 
     return request;
 }
 
+ResourceLogicalKey RuntimeAssetSmokeSceneLogicalKey(const RuntimeAssetFileDesc &scene_desc) {
+    return ResourceLogicalKey(std::string("runtime_asset_") + std::to_string(scene_desc.stable_id));
+}
+
+RuntimeAssetPackageArtifactProductRunRequest BuildProductRunCommandRequest(
+    CookedVisualProofContext &context,
+    PackageCookRunSmokeLedger &ledger,
+    const char *artifact_path = RUNTIME_ASSET_SMOKE_PACKAGE_ARTIFACT_PATH) {
+    RuntimeAssetPackageArtifactProductRunRequest request{};
+    request.mount_table = &context.fixture.table;
+    request.mount = MountId(MOUNT_ID);
+    request.package_artifact_path = VirtualPath(artifact_path);
+    request.package = RUNTIME_ASSET_SMOKE_PACKAGE;
+    request.scene_resource_type = context.fixture.command.fixture.cooked_scene.resource_type;
+    request.scene_logical_key = RuntimeAssetSmokeSceneLogicalKey(context.fixture.command.fixture.cooked_scene);
+    request.packaged_run = BuildPackagedRunRequest(context, ledger);
+    request.packaged_run.package_load_plan = nullptr;
+    return request;
+}
+
 PackageCookRunSmokeLedger ExecutePackagedPackageCookRunSmoke() {
     PackageCookRunSmokeLedger ledger{};
     CookedVisualProofContext context{};
@@ -4168,6 +4196,106 @@ int RuntimeAssetDataPackageCookRunSmokeRunsPackagedRuntimeEntryPoint() {
 
 int RuntimeAssetDataPackageArtifactCookRunSmokeRunsProductRuntimeEntryPoint() {
     return RuntimeAssetDataPackageCookRunSmokeRunsPackagedRuntimeEntryPoint();
+}
+
+int RuntimeAssetDataProductRunCommandConsumesPackageArtifactPath() {
+    PackageCookRunSmokeLedger ledger{};
+    CookedVisualProofContext context{};
+    if (!ExecuteGeneratedFixtureCommand("ProductRunCommandSuccess", &context.fixture)) {
+        return Fail("product run command fixture setup failed");
+    }
+
+    if (!BuildRuntimeAssetCookedPackagePlan(context, &ledger)) {
+        return Fail("product run command package artifact setup failed");
+    }
+
+    if (context.device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("product run command rhi init failed");
+    }
+
+    RuntimeAssetPackageArtifactProductRunRequest request =
+        BuildProductRunCommandRequest(context, ledger);
+    if (request.packaged_run.package_load_plan != nullptr) {
+        return Fail("product run command fixture still carried caller load plan");
+    }
+
+    RuntimeAssetPackageArtifactProductRunResult result{};
+    const RuntimeAssetDataStatus status =
+        RunRuntimeAssetPackageArtifactProductCommand(request, &result);
+    if (status != RuntimeAssetDataStatus::Success ||
+        result.status != RuntimeAssetDataStatus::Success ||
+        result.missing_layer != RuntimeAssetPackageArtifactProductRunMissingLayer::None) {
+        std::fprintf(
+            stderr,
+            "status=%s result=%s layer=%u package=%u file=%u records=%u\n",
+            StatusName(status),
+            StatusName(result.status),
+            static_cast<unsigned>(result.missing_layer),
+            static_cast<unsigned>(result.package_status),
+            static_cast<unsigned>(result.file_status),
+            result.package_load_plan_record_count);
+        return Fail("product run command did not consume artifact path");
+    }
+
+    if (!result.package_artifact_read ||
+        !result.package_registry_rebuilt ||
+        !result.package_load_plan_resolved ||
+        !result.packaged_run_executed ||
+        result.package_load_plan_record_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U) {
+        return Fail("product run command did not expose artifact/load-plan ledger");
+    }
+
+    const RuntimeAssetPackagedRunResult &run = result.packaged_run;
+    if (run.blocked_layer != RuntimeAssetPackagedRunBlockedLayer::None ||
+        !run.package_load_plan_consumed ||
+        !run.packaged_runtime_entrypoint_available ||
+        !run.runtime_app_frame_loop_success) {
+        std::fprintf(
+            stderr,
+            "BlockedByLayer=%s consumed=%u available=%u runtimeApp=%u\n",
+            PackagedRunBlockedLayerName(run.blocked_layer),
+            run.package_load_plan_consumed ? 1U : 0U,
+            run.packaged_runtime_entrypoint_available ? 1U : 0U,
+            run.runtime_app_frame_loop_success ? 1U : 0U);
+        return Fail("product run command did not run packaged RuntimeAsset entrypoint");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataProductRunCommandReportsMissingPackageArtifactPath() {
+    PackageCookRunSmokeLedger ledger{};
+    CookedVisualProofContext context{};
+    if (!ExecuteGeneratedFixtureCommand("ProductRunCommandMissingArtifact", &context.fixture)) {
+        return Fail("missing artifact product command fixture setup failed");
+    }
+
+    RuntimeAssetPackageArtifactProductRunRequest request =
+        BuildProductRunCommandRequest(context, ledger, "Package/MissingProductRun.yupackage");
+    RuntimeAssetPackageArtifactProductRunResult result{};
+    const RuntimeAssetDataStatus status =
+        RunRuntimeAssetPackageArtifactProductCommand(request, &result);
+    if (status != RuntimeAssetDataStatus::FileReadFailed ||
+        result.status != RuntimeAssetDataStatus::FileReadFailed ||
+        result.missing_layer != RuntimeAssetPackageArtifactProductRunMissingLayer::FileVfs ||
+        result.package_artifact_read ||
+        result.package_registry_rebuilt ||
+        result.package_load_plan_resolved ||
+        result.packaged_run_executed) {
+        std::fprintf(
+            stderr,
+            "status=%s result=%s layer=%u artifact=%u rebuilt=%u plan=%u executed=%u\n",
+            StatusName(status),
+            StatusName(result.status),
+            static_cast<unsigned>(result.missing_layer),
+            result.package_artifact_read ? 1U : 0U,
+            result.package_registry_rebuilt ? 1U : 0U,
+            result.package_load_plan_resolved ? 1U : 0U,
+            result.packaged_run_executed ? 1U : 0U);
+        return Fail("missing package artifact did not stop product command at File/VFS");
+    }
+
+    return 0;
 }
 
 int RuntimeAssetDataFormatHeaderRejectsUnsupportedVersion() {
@@ -8066,6 +8194,9 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataPackageCookRunSmokeRunsPackagedRuntimeEntryPoint},
     {TEST_PACKAGE_ARTIFACT_PRODUCT_RUN,
      RuntimeAssetDataPackageArtifactCookRunSmokeRunsProductRuntimeEntryPoint},
+    {TEST_PRODUCT_RUN_COMMAND, RuntimeAssetDataProductRunCommandConsumesPackageArtifactPath},
+    {TEST_PRODUCT_RUN_COMMAND_MISSING_ARTIFACT,
+     RuntimeAssetDataProductRunCommandReportsMissingPackageArtifactPath},
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},

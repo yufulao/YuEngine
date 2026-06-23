@@ -1,7 +1,7 @@
 # YuEngine RuntimeAsset Package Artifact Product-Run Gate
 
 Status: RAV4-A file-backed Package artifact smoke
-Task: #76
+Tasks: #76, #77
 Decision: `RUNTIME_ASSET_PACKAGE_ARTIFACT_PRODUCT_RUN_SMOKE`
 
 ## Purpose
@@ -11,6 +11,12 @@ manifest/load-plan route. The accepted first slice is a deterministic Package
 artifact fixture that is written through File/VFS, read back through File/VFS,
 rebuilt into a Package registry, resolved into a load plan, and then consumed by
 the existing RuntimeAsset packaged run entrypoint.
+
+RAV4-B adds the first product-run command seam on top of that artifact. The
+command takes a Package artifact virtual path and package lookup key, reads the
+artifact through File/VFS, rebuilds the Package registry, resolves the load
+plan internally, and then calls the RuntimeAsset packaged entrypoint. The caller
+does not provide a `PackageLoadPlan` pointer as the product-run boundary.
 
 The accepted route is:
 
@@ -42,6 +48,12 @@ Focused RuntimeAsset product-run smoke:
 ctest --preset windows-fast-gate -R "RuntimeAssetData_PackageArtifactCookRunSmokeRunsProductRuntimeEntryPoint" --output-on-failure
 ```
 
+Focused product-run command seam:
+
+```powershell
+ctest --preset windows-fast-gate -R "RuntimeAssetData_ProductRunCommand" --output-on-failure
+```
+
 Related package/cook confidence:
 
 ```powershell
@@ -65,6 +77,7 @@ This gate accepts only deterministic fixture artifact ownership. It does not
 accept:
 
 - installer, patcher, launcher, or release package output;
+- a final command-line interface or user-facing executable launcher;
 - original TouhouNewWorld package compatibility;
 - archive compression, encryption, signing, or patch manifest format;
 - remote cook service;
