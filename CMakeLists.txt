@@ -279,6 +279,16 @@ target_include_directories(YuResourceBrowser
 )
 target_link_libraries(YuResourceBrowser PUBLIC YuRuntimeAsset)
 
+add_library(YuSceneEditor
+    Src/YuEngine/SceneEditor/Src/SceneEditorSurface.cpp
+)
+yuengine_apply_compile_options(YuSceneEditor)
+target_include_directories(YuSceneEditor
+    PUBLIC
+        Src/YuEngine/SceneEditor/Include
+)
+target_link_libraries(YuSceneEditor PUBLIC YuWorld)
+
 add_library(YuRenderCore
     Src/YuEngine/RenderCore/Src/MaterialBindingFixture.cpp
     Src/YuEngine/RenderCore/Src/RenderCamera.cpp
@@ -1046,6 +1056,17 @@ yuengine_add_labeled_test(WorldSceneAuthoringDocument_RejectsCapacityOverflowWit
 yuengine_add_labeled_test(WorldSceneAuthoringDocument_RejectsMissingCookDependencyWithoutMutation YuWorldSceneAuthoringDocumentTests Fast ModuleFixture World)
 yuengine_add_labeled_test(WorldSceneAuthoringDocument_RejectsSidecarMissingObjectWithoutMutation YuWorldSceneAuthoringDocumentTests Fast ModuleFixture World)
 yuengine_add_labeled_test(WorldSceneAuthoringDocument_SnapshotReportsCountsAndSidecarRejection YuWorldSceneAuthoringDocumentTests Fast ModuleFixture World)
+
+add_executable(YuSceneEditorSurfaceTests
+    Tests/SceneEditor/SceneEditorSurfaceTests.cpp
+)
+yuengine_apply_compile_options(YuSceneEditorSurfaceTests)
+target_link_libraries(YuSceneEditorSurfaceTests PRIVATE YuSceneEditor)
+yuengine_add_labeled_test(SceneEditorSurface_BuildsHierarchyAndInspectorFromAuthoringDocument YuSceneEditorSurfaceTests Fast ModuleFixture SceneEditor World EvidenceOracle)
+yuengine_add_labeled_test(SceneEditorSurface_RejectsSmallHierarchyOutputWithoutMutation YuSceneEditorSurfaceTests Fast ModuleFixture SceneEditor World)
+yuengine_add_labeled_test(SceneEditorSurface_RejectsInvalidAuthoringDocumentWithoutMutation YuSceneEditorSurfaceTests Fast ModuleFixture SceneEditor World)
+yuengine_add_labeled_test(SceneEditorSurface_ReportsSelectionRequiredWithoutMutation YuSceneEditorSurfaceTests Fast ModuleFixture SceneEditor World)
+yuengine_add_labeled_test(SceneEditorSurface_RemainsEditorDataOnlyWithoutRuntimeMutation YuSceneEditorSurfaceTests Fast ModuleFixture SceneEditor World EvidenceOracle)
 
 add_executable(YuWorldIdentityBaselineTests
     Tests/World/WorldIdentityBaselineTests.cpp
