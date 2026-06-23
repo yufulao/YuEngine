@@ -368,6 +368,16 @@ target_include_directories(YuPreviewHost
 )
 target_link_libraries(YuPreviewHost PUBLIC YuRuntimeAsset YuRenderScene YuResourceBrowser YuWorld)
 
+add_library(YuUiEditor
+    Src/YuEngine/UiEditor/Src/UiEditorSurface.cpp
+)
+yuengine_apply_compile_options(YuUiEditor)
+target_include_directories(YuUiEditor
+    PUBLIC
+        Src/YuEngine/UiEditor/Include
+)
+target_link_libraries(YuUiEditor PUBLIC YuPreviewHost YuUiCore)
+
 add_library(YuAudioScene
     Src/YuEngine/AudioScene/Src/AudioSceneContractQueue.cpp
 )
@@ -1878,6 +1888,15 @@ yuengine_add_labeled_test(UiRuntime_PanelParameter_OpenArgsReachController YuUiP
 yuengine_add_labeled_test(UiRuntime_PanelParameter_EmptyArgsAndInvalidArgsAreStable YuUiPanelParameterTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRuntime_PanelParameter_ReopenLoadedUpdatesArgs YuUiPanelParameterTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiRuntime_PanelParameter_PopupAndFullscreenPassArgs YuUiPanelParameterTests Fast ModuleFixture UiRuntime UI L1 EvidenceOracle)
+
+add_executable(YuUiEditorSurfaceTests
+    Tests/UiEditor/UiEditorSurfaceTests.cpp
+)
+yuengine_apply_compile_options(YuUiEditorSurfaceTests)
+target_link_libraries(YuUiEditorSurfaceTests PRIVATE YuUiEditor)
+yuengine_add_labeled_test(UiEditorSurface_BuildsRuntimeDocumentHierarchyRows YuUiEditorSurfaceTests Fast ModuleFixture UiEditor UiCore PreviewHost UI EvidenceOracle)
+yuengine_add_labeled_test(UiEditorSurface_ConsumesPreviewHostFrameFeedback YuUiEditorSurfaceTests Fast ModuleFixture UiEditor UiCore PreviewHost UI EvidenceOracle)
+yuengine_add_labeled_test(UiEditorSurface_RejectsMissingPreviewFeedbackWithoutMutation YuUiEditorSurfaceTests Fast ModuleFixture UiEditor UiCore PreviewHost UI EvidenceOracle)
 
 add_executable(YuUiRenderCoreBridgeTests
     Tests/UiRenderCoreBridge/UiRenderCoreBridgeTests.cpp
