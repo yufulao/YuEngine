@@ -15,13 +15,18 @@
 #include "YuEngine/Asset/AssetConstants.h"
 #include "YuEngine/Asset/AssetDescriptor.h"
 #include "YuEngine/Asset/AssetManager.h"
+#include "YuEngine/Asset/AssetRecord.h"
 #include "YuEngine/File/FileReadRequest.h"
 #include "YuEngine/File/FileReadResult.h"
 #include "YuEngine/File/MountTable.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialBuilder.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialConstants.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRequest.h"
 #include "YuEngine/Resource/ResourceCachePayloadBudgetDesc.h"
 #include "YuEngine/Resource/ResourceCachePayloadRequest.h"
 #include "YuEngine/Resource/ResourceCachePayloadStatus.h"
 #include "YuEngine/Resource/ResourceConstants.h"
+#include "YuEngine/Resource/ResourceDecodedPayloadRecord.h"
 #include "YuEngine/Resource/ResourceDecodedPayloadBudgetDesc.h"
 #include "YuEngine/Resource/ResourceDecodedPayloadRequest.h"
 #include "YuEngine/Resource/ResourceDecodedPayloadStatus.h"
@@ -41,9 +46,15 @@
 #include "YuEngine/Resource/ResourceResidencyRequest.h"
 #include "YuEngine/Resource/ResourceResidencyStatus.h"
 #include "YuEngine/Rhi/RhiConstants.h"
+#include "YuEngine/Rhi/RhiFormat.h"
+#include "YuEngine/Rhi/RhiSamplerBinding.h"
 #include "YuEngine/Rhi/RhiShaderModuleDesc.h"
 #include "YuEngine/Rhi/RhiShaderStage.h"
 #include "YuEngine/Rhi/RhiStatus.h"
+#include "YuEngine/Streaming/ResourceDecodedTextureBridge.h"
+#include "YuEngine/Streaming/ResourceDecodedTextureBridgeRequest.h"
+#include "YuEngine/Streaming/ResourceDecodedTextureBridgeResult.h"
+#include "YuEngine/Streaming/ResourceDecodedTextureBridgeStatus.h"
 #include "YuEngine/World/WorldInstance.h"
 #include "YuEngine/World/WorldObjectDesc.h"
 #include "YuEngine/World/WorldRegistrationResult.h"
@@ -56,6 +67,7 @@ namespace yuengine::runtimeasset {
 namespace {
 using yuengine::asset::AssetDescriptor;
 using yuengine::asset::AssetManager;
+using yuengine::asset::AssetRecord;
 using yuengine::asset::AssetRegistrationResult;
 using yuengine::asset::AssetSnapshot;
 using yuengine::asset::AssetStatus;
@@ -100,6 +112,20 @@ using yuengine::resource::ResourceResidencyRequest;
 using yuengine::resource::ResourceResidencyStatus;
 using yuengine::resource::ResourceSnapshot;
 using yuengine::resource::ResourceStatus;
+using yuengine::renderscene::RenderSceneRuntimeMaterialBuilder;
+using yuengine::renderscene::RenderSceneRuntimeMaterialRecord;
+using yuengine::renderscene::RenderSceneRuntimeMaterialRequest;
+using yuengine::renderscene::RenderSceneRuntimeMaterialStatus;
+using yuengine::renderscene::RenderSceneRuntimeMaterialTextureSlot;
+using yuengine::rhi::RhiFormat;
+using yuengine::rhi::RhiSamplerBinding;
+using yuengine::rhi::RhiSamplerHandle;
+using yuengine::rhi::RhiStatus;
+using yuengine::rhi::RhiTextureHandle;
+using yuengine::streaming::ResourceDecodedTextureBridge;
+using yuengine::streaming::ResourceDecodedTextureBridgeRequest;
+using yuengine::streaming::ResourceDecodedTextureBridgeResult;
+using yuengine::streaming::ResourceDecodedTextureBridgeStatus;
 using yuengine::world::WorldInstance;
 using yuengine::world::WorldObjectDesc;
 using yuengine::world::WorldObjectId;
@@ -2458,6 +2484,540 @@ RuntimeAssetDataStatus CommitRuntimeAssetGraphTransaction(
     transaction->result.transaction_result.phase = RuntimeAssetLoadTransactionPhase::CommitSceneOutput;
     return RuntimeAssetDataStatus::Success;
 }
+
+bool IsPipelineHandleSet(yuengine::rhi::RhiPipelineHandle handle) {
+    return handle.generation != 0U;
+}
+
+bool IsTextureHandleSet(RhiTextureHandle handle) {
+    return handle.generation != 0U;
+}
+
+bool IsSamplerHandleSet(RhiSamplerHandle handle) {
+    return handle.generation != 0U;
+}
+
+bool IsPowerOfTwo(std::uint32_t value) {
+    return value != 0U && (value & (value - 1U)) == 0U;
+}
+
+bool IsCookedTextureColorSpaceSupported(RuntimeAssetCookedTextureColorSpace color_space) {
+    return color_space == RuntimeAssetCookedTextureColorSpace::Linear ||
+        color_space == RuntimeAssetCookedTextureColorSpace::Srgb;
+}
+
+std::uint32_t RuntimeAssetRgba8RowPitch(const yuengine::rhi::RhiTextureDesc &desc) {
+    return static_cast<std::uint32_t>(desc.extent.width) *
+        static_cast<std::uint32_t>(yuengine::rhi::RGBA8_BYTES_PER_PIXEL);
+}
+
+std::uint32_t RuntimeAssetRgba8SlicePitch(const yuengine::rhi::RhiTextureDesc &desc) {
+    return RuntimeAssetRgba8RowPitch(desc) * static_cast<std::uint32_t>(desc.extent.height);
+}
+
+ResourceDecodedPayloadRequest DecodedPayloadRequestForCookedTexture(
+    const RuntimeAssetCookedTexturePayloadDesc &texture) {
+    ResourceDecodedPayloadRequest request{};
+    if (texture.loaded_texture == nullptr) {
+        return request;
+    }
+
+    const RuntimeAssetLoadedFile &loaded_texture = *texture.loaded_texture;
+    request.resource = loaded_texture.resource;
+    request.expected_type = loaded_texture.resource_type;
+    request.payload_id = loaded_texture.decode_plan_payload_id;
+    request.decode_plan_id = loaded_texture.decode_plan_id;
+    request.decode_result_id = loaded_texture.decode_result_id;
+    request.decoded_payload_id = texture.decoded_payload_id;
+    request.asset_class = loaded_texture.decode_asset_class;
+    request.result_class = loaded_texture.decode_result_class;
+    request.decoded_byte_count = texture.payload_byte_count;
+    return request;
+}
+
+RuntimeAssetDataStatus MapDecodedPayloadStatus(ResourceDecodedPayloadStatus status) {
+    switch (status) {
+        case ResourceDecodedPayloadStatus::Success:
+            return RuntimeAssetDataStatus::Success;
+        case ResourceDecodedPayloadStatus::MissingDecodedPayload:
+        case ResourceDecodedPayloadStatus::MissingDecodeResult:
+        case ResourceDecodedPayloadStatus::MissingDecodePlan:
+        case ResourceDecodedPayloadStatus::MissingCachePayload:
+            return RuntimeAssetDataStatus::MissingDependency;
+        case ResourceDecodedPayloadStatus::TypeMismatch:
+        case ResourceDecodedPayloadStatus::AssetClassMismatch:
+        case ResourceDecodedPayloadStatus::ResultClassMismatch:
+            return RuntimeAssetDataStatus::TypeMismatch;
+        case ResourceDecodedPayloadStatus::DecodedByteCountMismatch:
+        case ResourceDecodedPayloadStatus::OutputBufferTooSmall:
+        case ResourceDecodedPayloadStatus::EmptyPayload:
+            return RuntimeAssetDataStatus::InvalidSize;
+        case ResourceDecodedPayloadStatus::CapacityExceeded:
+            return RuntimeAssetDataStatus::CapacityExceeded;
+        case ResourceDecodedPayloadStatus::BudgetExceeded:
+            return RuntimeAssetDataStatus::BudgetExceeded;
+        default:
+            break;
+    }
+
+    return RuntimeAssetDataStatus::InvalidDependency;
+}
+
+RuntimeAssetDataStatus MapTextureBridgeStatus(
+    const ResourceDecodedTextureBridgeResult &texture_result) {
+    switch (texture_result.status) {
+        case ResourceDecodedTextureBridgeStatus::Success:
+            return RuntimeAssetDataStatus::Success;
+        case ResourceDecodedTextureBridgeStatus::ResourceQueryFailed:
+        case ResourceDecodedTextureBridgeStatus::ResourceReadFailed:
+            return MapDecodedPayloadStatus(texture_result.decoded_payload_status);
+        case ResourceDecodedTextureBridgeStatus::ScratchBufferTooSmall:
+        case ResourceDecodedTextureBridgeStatus::TextureByteCountMismatch:
+            return RuntimeAssetDataStatus::InvalidSize;
+        case ResourceDecodedTextureBridgeStatus::SampledTextureSlotOutOfRange:
+            return RuntimeAssetDataStatus::CapacityExceeded;
+        case ResourceDecodedTextureBridgeStatus::UploadSubmitFailed:
+        case ResourceDecodedTextureBridgeStatus::UploadCompletionMissing:
+            return RuntimeAssetDataStatus::CapacityExceeded;
+        case ResourceDecodedTextureBridgeStatus::UploadProcessFailed:
+            return RuntimeAssetDataStatus::RhiTextureFailed;
+        case ResourceDecodedTextureBridgeStatus::InvalidArgument:
+            return RuntimeAssetDataStatus::InvalidArgument;
+        default:
+            break;
+    }
+
+    return RuntimeAssetDataStatus::RhiTextureFailed;
+}
+
+RuntimeAssetDataStatus ValidateLoadedCookedTexture(
+    AssetManager &manager,
+    const RuntimeAssetCookedTexturePayloadDesc &texture,
+    RuntimeAssetCookedTextureMaterialBridgeResult *result) {
+    if (texture.loaded_texture == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const RuntimeAssetLoadedFile &loaded_texture = *texture.loaded_texture;
+    if (loaded_texture.kind != RuntimeAssetFileKind::Texture ||
+        loaded_texture.decode_asset_class != ResourceDecodePlanAssetClass::Texture ||
+        loaded_texture.decode_result_class != ResourceDecodeResultClass::Texture) {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    if (!loaded_texture.resource.IsValid() ||
+        !loaded_texture.asset.IsValid() ||
+        !loaded_texture.decode_plan_created ||
+        !loaded_texture.decode_result_committed ||
+        !loaded_texture.decoded_payload_stored ||
+        loaded_texture.decode_plan_payload_id == 0U ||
+        loaded_texture.decode_plan_id == 0U ||
+        loaded_texture.decode_result_id == 0U ||
+        loaded_texture.decoded_payload_id == 0U ||
+        texture.decoded_payload_id == 0U) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (loaded_texture.decoded_byte_count != texture.payload_byte_count) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    AssetRecord texture_record{};
+    const AssetStatus asset_status = manager.QueryAsset(loaded_texture.asset, &texture_record);
+    if (asset_status != AssetStatus::Success) {
+        if (result != nullptr) {
+            result->asset_status = asset_status;
+        }
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (texture_record.resource.slot != loaded_texture.resource.slot ||
+        texture_record.resource.generation != loaded_texture.resource.generation ||
+        texture_record.resource_type.value != loaded_texture.resource_type.value ||
+        texture_record.asset_type.value != loaded_texture.asset_type.value) {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateCookedTextureLayout(
+    const RuntimeAssetCookedTexturePayloadDesc &texture) {
+    if (texture.texture_desc.format != RhiFormat::Rgba8Unorm) {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    if (texture.texture_desc.extent.width == 0U || texture.texture_desc.extent.height == 0U) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (!IsCookedTextureColorSpaceSupported(texture.color_space)) {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    if (!IsPowerOfTwo(texture.payload_alignment_bytes)) {
+        return RuntimeAssetDataStatus::InvalidAlignment;
+    }
+
+    if ((texture.payload_offset_bytes % texture.payload_alignment_bytes) != 0U) {
+        return RuntimeAssetDataStatus::InvalidAlignment;
+    }
+
+    if (texture.payload_offset_bytes != 0U) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    const std::uint32_t expected_row_pitch = RuntimeAssetRgba8RowPitch(texture.texture_desc);
+    const std::uint32_t expected_slice_pitch = RuntimeAssetRgba8SlicePitch(texture.texture_desc);
+    if (texture.row_pitch_bytes != expected_row_pitch ||
+        texture.slice_pitch_bytes != expected_slice_pitch ||
+        texture.payload_byte_count != expected_slice_pitch) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (texture.payload_hash == 0U) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    if (texture.staging_request_id == 0U || texture.upload_id == 0U) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateCookedTexturePayloadBytes(
+    const RuntimeAssetCookedTextureMaterialBridgeRequest &request,
+    const RuntimeAssetCookedTexturePayloadDesc &texture,
+    RuntimeAssetCookedTextureMaterialBridgeResult *result) {
+    if (request.scratch_bytes.size() < texture.payload_byte_count) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    const ResourceDecodedPayloadRequest payload_request = DecodedPayloadRequestForCookedTexture(texture);
+    yuengine::resource::ResourceDecodedPayloadRecord decoded_record{};
+    ResourceDecodedPayloadStatus decoded_status =
+        request.resource_registry->QueryDecodedPayload(payload_request, &decoded_record);
+    if (decoded_status != ResourceDecodedPayloadStatus::Success) {
+        if (result != nullptr) {
+            result->decoded_payload_status = decoded_status;
+        }
+        return MapDecodedPayloadStatus(decoded_status);
+    }
+
+    if (decoded_record.decoded_byte_count != texture.payload_byte_count) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    std::uint32_t read_byte_count = 0U;
+    decoded_status = request.resource_registry->ReadDecodedPayload(
+        payload_request,
+        request.scratch_bytes.data(),
+        static_cast<std::uint32_t>(request.scratch_bytes.size()),
+        &read_byte_count);
+    if (decoded_status != ResourceDecodedPayloadStatus::Success) {
+        if (result != nullptr) {
+            result->decoded_payload_status = decoded_status;
+        }
+        return MapDecodedPayloadStatus(decoded_status);
+    }
+
+    if (read_byte_count != texture.payload_byte_count) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    const std::uint64_t actual_hash = HashRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(request.scratch_bytes.data(), texture.payload_byte_count));
+    if (actual_hash != texture.payload_hash) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateCookedMaterialSlots(
+    const RuntimeAssetCookedTextureMaterialBridgeRequest &request) {
+    if (request.material_slots.size() < yuengine::renderscene::MIN_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (request.material_slots.size() > yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    std::array<bool, yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS> material_slots{};
+    std::array<bool, yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS> texture_binding_slots{};
+    std::array<bool, yuengine::rhi::MAX_RHI_SAMPLER_SLOTS> sampler_binding_slots{};
+    std::array<bool, yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS> texture_payload_refs{};
+
+    for (const RuntimeAssetCookedMaterialSlotDesc &slot : request.material_slots) {
+        if (slot.texture_payload_index >= request.textures.size()) {
+            return RuntimeAssetDataStatus::MissingDependency;
+        }
+
+        if (slot.material_slot >= yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS ||
+            slot.texture_binding_slot >= yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS ||
+            slot.sampler_binding_slot >= yuengine::rhi::MAX_RHI_SAMPLER_SLOTS) {
+            return RuntimeAssetDataStatus::CapacityExceeded;
+        }
+
+        if (material_slots[slot.material_slot] ||
+            texture_binding_slots[slot.texture_binding_slot] ||
+            sampler_binding_slots[slot.sampler_binding_slot] ||
+            texture_payload_refs[slot.texture_payload_index]) {
+            return RuntimeAssetDataStatus::DuplicateDependency;
+        }
+
+        material_slots[slot.material_slot] = true;
+        texture_binding_slots[slot.texture_binding_slot] = true;
+        sampler_binding_slots[slot.sampler_binding_slot] = true;
+        texture_payload_refs[slot.texture_payload_index] = true;
+
+        if (slot.texture_binding_slot != slot.material_slot ||
+            slot.sampler_binding_slot != slot.material_slot) {
+            return RuntimeAssetDataStatus::TypeMismatch;
+        }
+
+        if (!IsCookedTextureColorSpaceSupported(slot.expected_color_space)) {
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
+
+        const RuntimeAssetCookedTexturePayloadDesc &texture = request.textures[slot.texture_payload_index];
+        if (slot.expected_format != texture.texture_desc.format ||
+            slot.expected_color_space != texture.color_space) {
+            return RuntimeAssetDataStatus::TypeMismatch;
+        }
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateCookedTextureMaterialBridgeRequest(
+    const RuntimeAssetCookedTextureMaterialBridgeRequest &request,
+    RuntimeAssetCookedTextureMaterialBridgeResult *result) {
+    if (request.resource_registry == nullptr ||
+        request.asset_manager == nullptr ||
+        request.rhi_device == nullptr ||
+        request.out_material == nullptr ||
+        request.textures.data() == nullptr ||
+        request.material_slots.data() == nullptr ||
+        request.scratch_bytes.data() == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (!request.material_asset.IsValid() || request.material_id == 0U || !IsPipelineHandleSet(request.pipeline)) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (request.scratch_bytes.size() > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (request.textures.empty()) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (request.textures.size() > yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    AssetRecord material_record{};
+    const AssetStatus material_asset_status = request.asset_manager->QueryAsset(
+        request.material_asset,
+        &material_record);
+    if (material_asset_status != AssetStatus::Success) {
+        if (result != nullptr) {
+            result->asset_status = material_asset_status;
+        }
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    for (const RuntimeAssetCookedTexturePayloadDesc &texture : request.textures) {
+        RuntimeAssetDataStatus status = ValidateLoadedCookedTexture(*request.asset_manager, texture, result);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+
+        status = ValidateCookedTextureLayout(texture);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+
+        status = ValidateCookedTexturePayloadBytes(request, texture, result);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+    }
+
+    return ValidateCookedMaterialSlots(request);
+}
+
+void CleanupCookedTextureMaterialBridge(
+    const RuntimeAssetCookedTextureMaterialBridgeRequest &request,
+    std::span<const RhiTextureHandle> texture_handles,
+    std::span<const RhiSamplerHandle> sampler_handles,
+    RuntimeAssetCookedTextureMaterialBridgeResult *result) {
+    if (request.rhi_device == nullptr || result == nullptr) {
+        return;
+    }
+
+    for (const RhiSamplerHandle sampler : sampler_handles) {
+        if (!IsSamplerHandleSet(sampler)) {
+            continue;
+        }
+
+        const RhiStatus status = request.rhi_device->DestroySampler(sampler);
+        if (status == RhiStatus::Success) {
+            ++result->cleanup_sampler_count;
+        } else if (result->rhi_status == RhiStatus::Success) {
+            result->rhi_status = status;
+        }
+    }
+
+    for (const RhiTextureHandle texture : texture_handles) {
+        if (!IsTextureHandleSet(texture)) {
+            continue;
+        }
+
+        const RhiStatus status = request.rhi_device->DestroyTexture(texture);
+        if (status == RhiStatus::Success) {
+            ++result->cleanup_texture_count;
+        } else if (result->rhi_status == RhiStatus::Success) {
+            result->rhi_status = status;
+        }
+    }
+}
+
+ResourceDecodedTextureBridgeRequest BuildCookedTextureBridgeRequest(
+    const RuntimeAssetCookedTextureMaterialBridgeRequest &request,
+    const RuntimeAssetCookedTexturePayloadDesc &texture,
+    const RuntimeAssetCookedMaterialSlotDesc &slot,
+    RhiTextureHandle *out_texture_handle) {
+    ResourceDecodedTextureBridgeRequest bridge_request{};
+    bridge_request.resource_registry = request.resource_registry;
+    bridge_request.rhi_device = request.rhi_device;
+    bridge_request.decoded_payload = DecodedPayloadRequestForCookedTexture(texture);
+    bridge_request.scratch_bytes = request.scratch_bytes;
+    bridge_request.texture_desc = texture.texture_desc;
+    bridge_request.output_texture_handle = out_texture_handle;
+    bridge_request.staging_request_id = texture.staging_request_id;
+    bridge_request.upload_id = texture.upload_id;
+    bridge_request.sampled_texture_slot = slot.texture_binding_slot;
+    return bridge_request;
+}
+
+RuntimeAssetDataStatus BuildCookedTextureMaterialCommit(
+    const RuntimeAssetCookedTextureMaterialBridgeRequest &request,
+    RuntimeAssetCookedTextureMaterialBridgeResult *result) {
+    std::array<RhiTextureHandle, yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS>
+        transient_textures{};
+    std::array<RhiSamplerHandle, yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS>
+        transient_samplers{};
+    std::array<ResourceDecodedTextureBridgeResult, yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS>
+        texture_results{};
+    std::array<RenderSceneRuntimeMaterialTextureSlot, yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS>
+        render_slots{};
+
+    ResourceDecodedTextureBridge texture_bridge;
+    std::uint32_t uploaded_count = 0U;
+    std::uint32_t sampler_count = 0U;
+    for (std::size_t index = 0U; index < request.material_slots.size(); ++index) {
+        const RuntimeAssetCookedMaterialSlotDesc &slot = request.material_slots[index];
+        const RuntimeAssetCookedTexturePayloadDesc &texture = request.textures[slot.texture_payload_index];
+
+        RhiTextureHandle texture_handle{};
+        const ResourceDecodedTextureBridgeRequest bridge_request =
+            BuildCookedTextureBridgeRequest(request, texture, slot, &texture_handle);
+        const ResourceDecodedTextureBridgeResult texture_result =
+            texture_bridge.UploadTexture(bridge_request);
+        result->texture_bridge_status = texture_result.status;
+        result->decoded_payload_status = texture_result.decoded_payload_status;
+        result->rhi_status = texture_result.rhi_status;
+        if (texture_result.status != ResourceDecodedTextureBridgeStatus::Success) {
+            result->status = MapTextureBridgeStatus(texture_result);
+            CleanupCookedTextureMaterialBridge(
+                request,
+                std::span<const RhiTextureHandle>(transient_textures.data(), uploaded_count),
+                std::span<const RhiSamplerHandle>(transient_samplers.data(), sampler_count),
+                result);
+            return result->status;
+        }
+
+        result->mutated_state = true;
+        transient_textures[uploaded_count] = texture_result.texture_handle;
+        texture_results[uploaded_count] = texture_result;
+        ++uploaded_count;
+
+        RhiSamplerHandle sampler{};
+        const RhiStatus sampler_status = request.rhi_device->CreateSampler(slot.sampler_desc, sampler);
+        result->rhi_status = sampler_status;
+        if (sampler_status != RhiStatus::Success) {
+            result->status = RuntimeAssetDataStatus::RhiSamplerFailed;
+            CleanupCookedTextureMaterialBridge(
+                request,
+                std::span<const RhiTextureHandle>(transient_textures.data(), uploaded_count),
+                std::span<const RhiSamplerHandle>(transient_samplers.data(), sampler_count),
+                result);
+            return result->status;
+        }
+
+        result->mutated_state = true;
+        transient_samplers[sampler_count] = sampler;
+        ++sampler_count;
+
+        render_slots[index].slot = slot.material_slot;
+        render_slots[index].texture_asset = texture.loaded_texture->asset;
+        render_slots[index].sampled_texture = texture_result.sampled_texture;
+        render_slots[index].sampler = RhiSamplerBinding{sampler, slot.sampler_binding_slot};
+    }
+
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneRuntimeMaterialRequest material_request{};
+    material_request.material_asset = request.material_asset;
+    material_request.material_id = request.material_id;
+    material_request.pipeline = request.pipeline;
+    material_request.texture_slots = std::span<const RenderSceneRuntimeMaterialTextureSlot>(
+        render_slots.data(),
+        request.material_slots.size());
+
+    RenderSceneRuntimeMaterialBuilder builder;
+    const RenderSceneRuntimeMaterialStatus material_status =
+        builder.Build(material_request, &material);
+    result->material_status = material_status;
+    if (material_status != RenderSceneRuntimeMaterialStatus::Success) {
+        result->status = RuntimeAssetDataStatus::RenderSceneMaterialFailed;
+        CleanupCookedTextureMaterialBridge(
+            request,
+            std::span<const RhiTextureHandle>(transient_textures.data(), uploaded_count),
+            std::span<const RhiSamplerHandle>(transient_samplers.data(), sampler_count),
+            result);
+        return result->status;
+    }
+
+    for (std::size_t index = 0U; index < request.material_slots.size(); ++index) {
+        const RuntimeAssetCookedMaterialSlotDesc &slot = request.material_slots[index];
+        const RuntimeAssetCookedTexturePayloadDesc &texture = request.textures[slot.texture_payload_index];
+        const AssetStatus asset_status =
+            request.asset_manager->MarkTextureReady(texture.loaded_texture->asset, texture_results[index]);
+        result->asset_status = asset_status;
+        if (asset_status != AssetStatus::Success) {
+            result->status = RuntimeAssetDataStatus::AssetRegistrationFailed;
+            CleanupCookedTextureMaterialBridge(
+                request,
+                std::span<const RhiTextureHandle>(transient_textures.data(), uploaded_count),
+                std::span<const RhiSamplerHandle>(transient_samplers.data(), sampler_count),
+                result);
+            return result->status;
+        }
+    }
+
+    *request.out_material = material;
+    result->runtime_texture_upload_count = uploaded_count;
+    result->material_texture_slot_count = static_cast<std::uint32_t>(material.texture_slot_count);
+    result->published_material = true;
+    result->status = RuntimeAssetDataStatus::Success;
+    return result->status;
+}
 }
 
 const char *RuntimeAssetFileKindName(RuntimeAssetFileKind kind) {
@@ -2717,6 +3277,25 @@ RuntimeAssetDataStatus BuildRuntimeAssetShaderProgramPipeline(
 
     result.pipeline_desc = pipeline_desc;
     result.status = RuntimeAssetDataStatus::Success;
+    *out_result = result;
+    return result.status;
+}
+
+RuntimeAssetDataStatus BuildRuntimeAssetCookedTextureMaterialBridge(
+    const RuntimeAssetCookedTextureMaterialBridgeRequest &request,
+    RuntimeAssetCookedTextureMaterialBridgeResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetCookedTextureMaterialBridgeResult result{};
+    result.status = ValidateCookedTextureMaterialBridgeRequest(request, &result);
+    if (result.status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return result.status;
+    }
+
+    result.status = BuildCookedTextureMaterialCommit(request, &result);
     *out_result = result;
     return result.status;
 }

@@ -9,10 +9,15 @@
 #include <span>
 
 #include "YuEngine/Asset/AssetHandle.h"
+#include "YuEngine/Asset/AssetStatus.h"
 #include "YuEngine/Asset/AssetTypeId.h"
 #include "YuEngine/Animation/AnimationRuntimeSampler.h"
 #include "YuEngine/File/MountId.h"
 #include "YuEngine/File/VirtualPath.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRecord.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialStatus.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
+#include "YuEngine/Resource/ResourceDecodedPayloadStatus.h"
 #include "YuEngine/Kernel/RuntimeFrameContext.h"
 #include "YuEngine/Resource/ResourceDecodePlanAssetClass.h"
 #include "YuEngine/Resource/ResourceDecodeResultClass.h"
@@ -20,10 +25,15 @@
 #include "YuEngine/Resource/ResourceTypeId.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/RhiConstants.h"
+#include "YuEngine/Rhi/RhiFormat.h"
 #include "YuEngine/Rhi/RhiInputLayoutDesc.h"
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
+#include "YuEngine/Rhi/RhiSamplerDesc.h"
 #include "YuEngine/Rhi/RhiShaderModuleHandle.h"
+#include "YuEngine/Rhi/RhiStatus.h"
+#include "YuEngine/Rhi/RhiTextureDesc.h"
+#include "YuEngine/Streaming/ResourceDecodedTextureBridgeStatus.h"
 #include "YuEngine/World/WorldObjectId.h"
 #include "YuEngine/World/WorldTransformState.h"
 
@@ -98,7 +108,10 @@ enum class RuntimeAssetDataStatus {
     AssetDependencyFailed,
     InvalidInputLayout,
     RhiShaderModuleFailed,
-    RhiPipelineFailed
+    RhiPipelineFailed,
+    RhiTextureFailed,
+    RhiSamplerFailed,
+    RenderSceneMaterialFailed
 };
 
 /**
@@ -382,6 +395,83 @@ struct RuntimeAssetShaderProgramPipelineResult final {
 };
 
 /**
+ * @brief Color-space tag carried by cooked RuntimeAsset texture payload descriptors.
+ */
+enum class RuntimeAssetCookedTextureColorSpace {
+    Unknown,
+    Linear,
+    Srgb
+};
+
+/**
+ * @brief Describes one cooked texture payload that can be verified before RHI upload.
+ */
+struct RuntimeAssetCookedTexturePayloadDesc final {
+    const RuntimeAssetLoadedFile *loaded_texture = nullptr;
+    yuengine::rhi::RhiTextureDesc texture_desc{};
+    RuntimeAssetCookedTextureColorSpace color_space = RuntimeAssetCookedTextureColorSpace::Unknown;
+    std::uint32_t row_pitch_bytes = 0U;
+    std::uint32_t slice_pitch_bytes = 0U;
+    std::uint32_t payload_offset_bytes = 0U;
+    std::uint32_t payload_byte_count = 0U;
+    std::uint32_t payload_alignment_bytes = 1U;
+    std::uint64_t payload_hash = 0U;
+    std::uint64_t decoded_payload_id = 0U;
+    std::uint64_t staging_request_id = 0U;
+    std::uint64_t upload_id = 0U;
+};
+
+/**
+ * @brief Describes one material texture slot that references a cooked texture payload.
+ */
+struct RuntimeAssetCookedMaterialSlotDesc final {
+    std::uint32_t material_slot = 0U;
+    std::uint32_t texture_payload_index = 0U;
+    yuengine::rhi::RhiFormat expected_format = yuengine::rhi::RhiFormat::Rgba8Unorm;
+    RuntimeAssetCookedTextureColorSpace expected_color_space = RuntimeAssetCookedTextureColorSpace::Unknown;
+    std::uint32_t texture_binding_slot = 0U;
+    std::uint32_t sampler_binding_slot = 0U;
+    yuengine::rhi::RhiSamplerDesc sampler_desc{};
+};
+
+/**
+ * @brief Requests a cooked texture payload bridge into RHI textures and RenderScene material slots.
+ */
+struct RuntimeAssetCookedTextureMaterialBridgeRequest final {
+    yuengine::resource::ResourceRegistry *resource_registry = nullptr;
+    yuengine::asset::AssetManager *asset_manager = nullptr;
+    yuengine::rhi::IRhiDevice *rhi_device = nullptr;
+    yuengine::asset::AssetHandle material_asset{};
+    std::uint32_t material_id = 0U;
+    yuengine::rhi::RhiPipelineHandle pipeline{};
+    std::span<const RuntimeAssetCookedTexturePayloadDesc> textures{};
+    std::span<const RuntimeAssetCookedMaterialSlotDesc> material_slots{};
+    std::span<std::uint8_t> scratch_bytes{};
+    yuengine::renderscene::RenderSceneRuntimeMaterialRecord *out_material = nullptr;
+};
+
+/**
+ * @brief Reports cooked payload bridge validation, upload, material binding, and cleanup state.
+ */
+struct RuntimeAssetCookedTextureMaterialBridgeResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    yuengine::resource::ResourceDecodedPayloadStatus decoded_payload_status =
+        yuengine::resource::ResourceDecodedPayloadStatus::Success;
+    yuengine::streaming::ResourceDecodedTextureBridgeStatus texture_bridge_status =
+        yuengine::streaming::ResourceDecodedTextureBridgeStatus::Success;
+    yuengine::rhi::RhiStatus rhi_status = yuengine::rhi::RhiStatus::Success;
+    yuengine::asset::AssetStatus asset_status = yuengine::asset::AssetStatus::Success;
+    yuengine::renderscene::RenderSceneRuntimeMaterialStatus material_status =
+        yuengine::renderscene::RenderSceneRuntimeMaterialStatus::Success;
+    std::uint32_t runtime_texture_upload_count = 0U;
+    std::uint32_t material_texture_slot_count = 0U;
+    std::uint32_t cleanup_texture_count = 0U;
+    std::uint32_t cleanup_sampler_count = 0U;
+    bool mutated_state = false;
+    bool published_material = false;
+};
+
+/**
  * @brief Returns the file kind token used by the runtime asset header.
  * @param kind Input file family.
  * @return Static token string.
@@ -433,5 +523,14 @@ RuntimeAssetDataStatus LoadRuntimeAssetDataGraph(
 RuntimeAssetDataStatus BuildRuntimeAssetShaderProgramPipeline(
     const RuntimeAssetShaderProgramPipelineRequest &request,
     RuntimeAssetShaderProgramPipelineResult *out_result);
+/**
+ * @brief Bridges validated cooked texture payloads to RHI handles and RenderScene material texture slots.
+ * @param request Input descriptors, registries, RHI device, and output material storage.
+ * @param out_result Output bridge result and cleanup ledger.
+ * @return Explicit bridge status.
+ */
+RuntimeAssetDataStatus BuildRuntimeAssetCookedTextureMaterialBridge(
+    const RuntimeAssetCookedTextureMaterialBridgeRequest &request,
+    RuntimeAssetCookedTextureMaterialBridgeResult *out_result);
 
 }
