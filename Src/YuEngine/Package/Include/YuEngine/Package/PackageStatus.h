@@ -26,6 +26,13 @@ enum class PackageStatus {
     DependencyMissing,
     DependencyCycle,
     InvalidArtifact,
+    InvalidArtifactManifest,
+    InvalidArtifactEntryTable,
+    InvalidArtifactDependencyTable,
+    ArtifactUnknownSection,
+    ArtifactTruncated,
+    ArtifactBadCount,
+    ArtifactParseFailure,
     ArtifactCapacityExceeded,
     FileReadFailed,
     FileWriteFailed

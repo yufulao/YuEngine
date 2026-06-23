@@ -28,12 +28,16 @@ PackageArtifactResult PackageArtifactFailure(
     return result;
 }
 
-bool CountIsWithinBounds(std::uint32_t entry_count, std::uint32_t dependency_count) {
-    if (entry_count == 0U || entry_count > MAX_PACKAGE_ENTRY_COUNT) {
-        return false;
+PackageStatus ValidateArtifactRecordCounts(std::uint32_t entry_count, std::uint32_t dependency_count) {
+    if (entry_count == 0U) {
+        return PackageStatus::InvalidArtifactEntryTable;
     }
 
-    return dependency_count <= MAX_PACKAGE_DEPENDENCY_EDGE_COUNT;
+    if (entry_count > MAX_PACKAGE_ENTRY_COUNT || dependency_count > MAX_PACKAGE_DEPENDENCY_EDGE_COUNT) {
+        return PackageStatus::ArtifactCapacityExceeded;
+    }
+
+    return PackageStatus::Success;
 }
 
 PackageStatus BuildRegistryFromRecords(
@@ -48,15 +52,16 @@ PackageStatus BuildRegistryFromRecords(
     }
 
     if (entries == nullptr || entry_count == 0U) {
-        return PackageStatus::InvalidArtifact;
+        return PackageStatus::InvalidArtifactEntryTable;
     }
 
     if (dependencies == nullptr && dependency_count > 0U) {
-        return PackageStatus::InvalidArtifact;
+        return PackageStatus::InvalidArtifactDependencyTable;
     }
 
-    if (!CountIsWithinBounds(entry_count, dependency_count)) {
-        return PackageStatus::ArtifactCapacityExceeded;
+    const PackageStatus count_status = ValidateArtifactRecordCounts(entry_count, dependency_count);
+    if (count_status != PackageStatus::Success) {
+        return count_status;
     }
 
     const PackageRegistrationResult manifest_result = registry.RegisterSyntheticManifest({package});
@@ -163,29 +168,46 @@ bool ParseUInt32(std::string_view text, std::uint32_t *out_value) {
     return true;
 }
 
-bool ParseHeaderCountLine(
+PackageStatus ParseHeaderCountLine(
     const std::string &line,
     std::string_view expected_token,
     std::uint32_t *out_value) {
     const std::vector<std::string_view> fields = SplitFields(line);
     if (fields.size() != 2U || fields[0] != expected_token) {
-        return false;
+        return PackageStatus::InvalidArtifactManifest;
     }
 
-    return ParseUInt32(fields[1], out_value);
+    if (!ParseUInt32(fields[1], out_value)) {
+        return PackageStatus::ArtifactBadCount;
+    }
+
+    return PackageStatus::Success;
 }
 
-bool ParseEntryLine(
+PackageStatus ParsePackageLine(const std::string &line, std::uint32_t *out_value) {
+    const std::vector<std::string_view> fields = SplitFields(line);
+    if (fields.size() != 2U || fields[0] != "package") {
+        return PackageStatus::InvalidArtifactManifest;
+    }
+
+    if (!ParseUInt32(fields[1], out_value)) {
+        return PackageStatus::ArtifactParseFailure;
+    }
+
+    return PackageStatus::Success;
+}
+
+PackageStatus ParseEntryLine(
     const std::string &line,
     PackageId package,
     PackageEntryDescriptor *out_entry) {
     if (out_entry == nullptr) {
-        return false;
+        return PackageStatus::InvalidArtifactEntryTable;
     }
 
     const std::vector<std::string_view> fields = SplitFields(line);
     if (fields.size() != 7U || fields[0] != "entry") {
-        return false;
+        return PackageStatus::InvalidArtifactEntryTable;
     }
 
     std::uint32_t entry_value = 0U;
@@ -196,7 +218,7 @@ bool ParseEntryLine(
         !ParseUInt32(fields[2], &type_value) ||
         !ParseUInt32(fields[5], &byte_offset) ||
         !ParseUInt32(fields[6], &byte_size)) {
-        return false;
+        return PackageStatus::ArtifactParseFailure;
     }
 
     *out_entry = PackageEntryDescriptor{
@@ -207,29 +229,29 @@ bool ParseEntryLine(
         PackageSourceKey(fields[4]),
         byte_offset,
         byte_size};
-    return true;
+    return PackageStatus::Success;
 }
 
-bool ParseDependencyLine(
+PackageStatus ParseDependencyLine(
     const std::string &line,
     PackageArtifactDependency *out_dependency) {
     if (out_dependency == nullptr) {
-        return false;
+        return PackageStatus::InvalidArtifactDependencyTable;
     }
 
     const std::vector<std::string_view> fields = SplitFields(line);
     if (fields.size() != 3U || fields[0] != "dependency") {
-        return false;
+        return PackageStatus::InvalidArtifactDependencyTable;
     }
 
     std::uint32_t dependent = 0U;
     std::uint32_t dependency = 0U;
     if (!ParseUInt32(fields[1], &dependent) || !ParseUInt32(fields[2], &dependency)) {
-        return false;
+        return PackageStatus::ArtifactParseFailure;
     }
 
     *out_dependency = PackageArtifactDependency{PackageEntryId{dependent}, PackageEntryId{dependency}};
-    return true;
+    return PackageStatus::Success;
 }
 
 PackageArtifactResult ReadArtifactText(
@@ -241,27 +263,53 @@ PackageArtifactResult ReadArtifactText(
     }
 
     const std::vector<std::string> lines = SplitLines(text);
-    if (lines.size() < 5U || lines[0] != PACKAGE_ARTIFACT_MAGIC) {
-        return PackageArtifactFailure(PackageStatus::InvalidArtifact);
+    if (lines.empty()) {
+        return PackageArtifactFailure(PackageStatus::ArtifactTruncated);
+    }
+
+    if (lines[0] != PACKAGE_ARTIFACT_MAGIC) {
+        return PackageArtifactFailure(PackageStatus::ArtifactParseFailure);
+    }
+
+    if (lines.size() < 4U) {
+        return PackageArtifactFailure(PackageStatus::ArtifactTruncated);
     }
 
     std::uint32_t package_value = 0U;
     std::uint32_t entry_count = 0U;
     std::uint32_t dependency_count = 0U;
-    if (!ParseHeaderCountLine(lines[1], "package", &package_value) ||
-        !ParseHeaderCountLine(lines[2], "entries", &entry_count) ||
-        !ParseHeaderCountLine(lines[3], "dependencies", &dependency_count)) {
-        return PackageArtifactFailure(PackageStatus::InvalidArtifact);
+    PackageStatus parse_status = ParsePackageLine(lines[1], &package_value);
+    if (parse_status != PackageStatus::Success) {
+        return PackageArtifactFailure(parse_status);
     }
 
-    if (!CountIsWithinBounds(entry_count, dependency_count)) {
-        return PackageArtifactFailure(PackageStatus::ArtifactCapacityExceeded);
+    parse_status = ParseHeaderCountLine(lines[2], "entries", &entry_count);
+    if (parse_status != PackageStatus::Success) {
+        return PackageArtifactFailure(parse_status);
+    }
+
+    parse_status = ParseHeaderCountLine(lines[3], "dependencies", &dependency_count);
+    if (parse_status != PackageStatus::Success) {
+        return PackageArtifactFailure(parse_status);
+    }
+
+    parse_status = ValidateArtifactRecordCounts(entry_count, dependency_count);
+    if (parse_status != PackageStatus::Success) {
+        return PackageArtifactFailure(parse_status);
     }
 
     const std::size_t required_line_count =
         5U + static_cast<std::size_t>(entry_count) + static_cast<std::size_t>(dependency_count);
-    if (lines.size() != required_line_count || lines[required_line_count - 1U] != "end") {
-        return PackageArtifactFailure(PackageStatus::InvalidArtifact);
+    if (lines.size() < required_line_count) {
+        return PackageArtifactFailure(PackageStatus::ArtifactTruncated);
+    }
+
+    if (lines[required_line_count - 1U] != "end") {
+        return PackageArtifactFailure(PackageStatus::ArtifactTruncated);
+    }
+
+    if (lines.size() > required_line_count) {
+        return PackageArtifactFailure(PackageStatus::ArtifactUnknownSection);
     }
 
     std::array<PackageEntryDescriptor, MAX_PACKAGE_ENTRY_COUNT> entries{};
@@ -269,16 +317,18 @@ PackageArtifactResult ReadArtifactText(
     const PackageId package{package_value};
     std::size_t line_index = 4U;
     for (std::uint32_t index = 0U; index < entry_count; ++index) {
-        if (!ParseEntryLine(lines[line_index], package, &entries[index])) {
-            return PackageArtifactFailure(PackageStatus::InvalidArtifact);
+        parse_status = ParseEntryLine(lines[line_index], package, &entries[index]);
+        if (parse_status != PackageStatus::Success) {
+            return PackageArtifactFailure(parse_status);
         }
 
         ++line_index;
     }
 
     for (std::uint32_t index = 0U; index < dependency_count; ++index) {
-        if (!ParseDependencyLine(lines[line_index], &dependencies[index])) {
-            return PackageArtifactFailure(PackageStatus::InvalidArtifact);
+        parse_status = ParseDependencyLine(lines[line_index], &dependencies[index]);
+        if (parse_status != PackageStatus::Success) {
+            return PackageArtifactFailure(parse_status);
         }
 
         ++line_index;

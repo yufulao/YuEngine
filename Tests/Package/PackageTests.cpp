@@ -42,6 +42,7 @@ using yuengine::resource::ResourceTypeId;
 using yuengine::package::ReadPackageArtifact;
 using yuengine::package::WritePackageArtifact;
 using yuengine::package::MAX_DECLARED_ENTRY_SIZE;
+using yuengine::package::MAX_PACKAGE_DEPENDENCY_EDGE_COUNT;
 using yuengine::package::MAX_PACKAGE_ENTRY_COUNT;
 using yuengine::package::MAX_PACKAGE_SOURCE_KEY_BYTES;
 using yuengine::resource::MAX_LOGICAL_KEY_BYTES;
@@ -74,6 +75,14 @@ constexpr const char* TEST_NO_FILE_ORIGINAL = "Package_NoFileReadOriginalPackage
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Package_NoHiddenAllocation_UsesYuMemorySignal";
 constexpr const char* TEST_ARTIFACT_ROUND_TRIP = "Package_FileBackedArtifactRoundTripsLoadPlanThroughFileVfs";
 constexpr const char* TEST_ARTIFACT_INVALID = "Package_FileBackedArtifactRejectsInvalidBytesWithoutMutation";
+constexpr const char* TEST_ARTIFACT_MANIFEST_VALIDATION =
+    "Package_FileBackedArtifactRejectsManifestParseAndSectionErrorsWithoutMutation";
+constexpr const char* TEST_ARTIFACT_ENTRY_VALIDATION =
+    "Package_FileBackedArtifactRejectsEntryMetadataWithoutMutation";
+constexpr const char* TEST_ARTIFACT_DEPENDENCY_VALIDATION =
+    "Package_FileBackedArtifactRejectsDependencyMetadataWithoutMutation";
+constexpr const char* TEST_ARTIFACT_WRITE_INVALID =
+    "Package_FileBackedArtifactWriteRejectsInvalidMetadataWithoutFileWrite";
 constexpr const char* TEST_ARTIFACT_MISSING = "Package_FileBackedArtifactReportsMissingFile";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
@@ -104,6 +113,7 @@ constexpr const char* ERROR_INDEX_DEPENDENCY_CAPACITY = "indexed lookup changed 
 constexpr const char* ERROR_INDEX_LOAD_PLAN_CAPACITY = "indexed lookup changed load-plan capacity";
 constexpr const char* PACKAGE_ARTIFACT_MOUNT = "package_artifact_test";
 constexpr const char* PACKAGE_ARTIFACT_PATH = "Packages/RuntimeAssetSample.yupackage";
+constexpr const char* PACKAGE_ARTIFACT_MAGIC = "YUPACKAGE_ARTIFACT_V1";
 
 constexpr PackageId PACKAGE_A{1U};
 constexpr PackageId PACKAGE_B{2U};
@@ -131,6 +141,15 @@ MountTable CreatePackageArtifactTable(std::string_view test_name) {
     MountTable table;
     table.RegisterLooseMount(MountId(PACKAGE_ARTIFACT_MOUNT), root);
     return table;
+}
+
+bool WriteRawPackageArtifact(MountTable& table, std::string_view artifact_text) {
+    const auto write_result = table.Write({
+        MountId(PACKAGE_ARTIFACT_MOUNT),
+        VirtualPath(PACKAGE_ARTIFACT_PATH),
+        reinterpret_cast<const std::uint8_t *>(artifact_text.data()),
+        artifact_text.size()});
+    return write_result.Succeeded();
 }
 
 int Fail(const std::string& message) {
@@ -206,6 +225,40 @@ bool SnapshotsMatch(const PackageSnapshot& left, const PackageSnapshot& right) {
     }
 
     return left.allocation_accounting_status == right.allocation_accounting_status;
+}
+
+int ExpectInvalidArtifactRead(
+    MountTable& table,
+    std::string_view artifact_text,
+    PackageStatus expected_status,
+    const char* failure_message,
+    PackageRegistryDesc registry_desc = PackageRegistryDesc{}) {
+    if (!WriteRawPackageArtifact(table, artifact_text)) {
+        return Fail("artifact validation fixture write failed");
+    }
+
+    PackageRegistry registry;
+    if (!RegisterManifest(registry).Succeeded()) {
+        return Fail("artifact validation sentinel manifest failed");
+    }
+
+    const PackageSnapshot before_snapshot = registry.Snapshot();
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = &table;
+    read_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    read_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    read_request.registry = &registry;
+    read_request.registry_desc = registry_desc;
+    const PackageArtifactResult read_result = ReadPackageArtifact(read_request);
+    if (read_result.status != expected_status || read_result.read_artifact || read_result.rebuilt_registry) {
+        return Fail(failure_message);
+    }
+
+    if (!SnapshotsMatch(before_snapshot, registry.Snapshot())) {
+        return Fail("invalid artifact read mutated caller registry");
+    }
+
+    return 0;
 }
 
 int PackageRegisterSyntheticManifestReturnsStableId() {
@@ -990,7 +1043,7 @@ int PackageFileBackedArtifactRejectsInvalidBytesWithoutMutation() {
     read_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
     read_request.registry = &registry;
     const PackageArtifactResult read_result = ReadPackageArtifact(read_request);
-    if (read_result.status != PackageStatus::InvalidArtifact ||
+    if (read_result.status != PackageStatus::ArtifactParseFailure ||
         read_result.read_artifact ||
         read_result.rebuilt_registry) {
         return Fail("invalid package artifact did not report explicit parse failure");
@@ -1001,6 +1054,294 @@ int PackageFileBackedArtifactRejectsInvalidBytesWithoutMutation() {
     }
 
     std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_INVALID));
+    return 0;
+}
+
+int PackageFileBackedArtifactRejectsManifestParseAndSectionErrorsWithoutMutation() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_MANIFEST_VALIDATION);
+
+    const std::string invalid_package =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|0\nentries|1\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|0|16\nend\n";
+    const std::string invalid_manifest_header =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\nmanifest|1\nentries|1\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|0|16\nend\n";
+    const std::string bad_count =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|many\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|0|16\nend\n";
+    const std::string truncated =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|0|16\n";
+    const std::string extra_section =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|0|16\nend\nextra|1\n";
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            "not-a-package-artifact\n",
+            PackageStatus::ArtifactParseFailure,
+            "artifact bad magic did not return parse failure") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            invalid_package,
+            PackageStatus::InvalidPackageId,
+            "artifact invalid package id did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            invalid_manifest_header,
+            PackageStatus::InvalidArtifactManifest,
+            "artifact invalid manifest header did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            bad_count,
+            PackageStatus::ArtifactBadCount,
+            "artifact bad count did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            truncated,
+            PackageStatus::ArtifactTruncated,
+            "artifact truncated bytes did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            extra_section,
+            PackageStatus::ArtifactUnknownSection,
+            "artifact extra section did not return explicit status") != 0) {
+        return 1;
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_MANIFEST_VALIDATION));
+    return 0;
+}
+
+int PackageFileBackedArtifactRejectsEntryMetadataWithoutMutation() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_ENTRY_VALIDATION);
+
+    const std::string wrong_table =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nrecord|1|1|texture_a|textures/texture_a.bin|0|16\nend\n";
+    const std::string parse_failure =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nentry|entry|1|texture_a|textures/texture_a.bin|0|16\nend\n";
+    const std::string invalid_type =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nentry|1|0|texture_a|textures/texture_a.bin|0|16\nend\n";
+    const std::string invalid_logical =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|Texture_A|textures/texture_a.bin|0|16\nend\n";
+    const std::string invalid_source =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|texture_a|Textures/texture_a.bin|0|16\nend\n";
+    const std::string bad_range =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|4294967295|1\nend\n";
+    const std::string duplicate_entry =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|2\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|0|16\n"
+        "entry|1|2|material_a|materials/material_a.bin|16|16\nend\n";
+    const std::string duplicate_resource_key =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|2\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|0|16\n"
+        "entry|2|1|texture_a|textures/texture_a_copy.bin|16|16\nend\n";
+    const std::string entry_capacity =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|" + std::to_string(MAX_PACKAGE_ENTRY_COUNT + 1U) + "\ndependencies|0\nend\n";
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            wrong_table,
+            PackageStatus::InvalidArtifactEntryTable,
+            "artifact entry table did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            parse_failure,
+            PackageStatus::ArtifactParseFailure,
+            "artifact entry parse failure did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            invalid_type,
+            PackageStatus::InvalidResourceType,
+            "artifact invalid resource type did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            invalid_logical,
+            PackageStatus::InvalidLogicalKey,
+            "artifact invalid logical key did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            invalid_source,
+            PackageStatus::InvalidSourceKey,
+            "artifact invalid source key did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            bad_range,
+            PackageStatus::ByteRangeOutOfBounds,
+            "artifact byte range did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            duplicate_entry,
+            PackageStatus::DuplicateEntry,
+            "artifact duplicate entry did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            duplicate_resource_key,
+            PackageStatus::DuplicateResourceKey,
+            "artifact duplicate resource key did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            entry_capacity,
+            PackageStatus::ArtifactCapacityExceeded,
+            "artifact entry capacity did not return explicit status") != 0) {
+        return 1;
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_ENTRY_VALIDATION));
+    return 0;
+}
+
+int PackageFileBackedArtifactRejectsDependencyMetadataWithoutMutation() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_DEPENDENCY_VALIDATION);
+
+    const std::string wrong_table =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|1\nentry|1|1|texture_a|textures/texture_a.bin|0|16\n"
+        "edge|1|2\nend\n";
+    const std::string parse_failure =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|1\nentry|1|1|texture_a|textures/texture_a.bin|0|16\n"
+        "dependency|1|dependency\nend\n";
+    const std::string missing_entry =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|1\nentry|1|1|texture_a|textures/texture_a.bin|0|16\n"
+        "dependency|1|2\nend\n";
+    const std::string cycle =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|1\nentry|1|1|texture_a|textures/texture_a.bin|0|16\n"
+        "dependency|1|1\nend\n";
+    const std::string dependency_capacity =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|" +
+        std::to_string(MAX_PACKAGE_DEPENDENCY_EDGE_COUNT + 1U) +
+        "\nentry|1|1|texture_a|textures/texture_a.bin|0|16\nend\n";
+    const std::string valid_dependency_zero_capacity =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|2\ndependencies|1\nentry|1|1|texture_a|textures/texture_a.bin|0|16\n"
+        "entry|2|2|material_a|materials/material_a.bin|16|16\n"
+        "dependency|1|2\nend\n";
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            wrong_table,
+            PackageStatus::InvalidArtifactDependencyTable,
+            "artifact dependency table did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            parse_failure,
+            PackageStatus::ArtifactParseFailure,
+            "artifact dependency parse failure did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            missing_entry,
+            PackageStatus::DependencyMissing,
+            "artifact missing dependency did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            cycle,
+            PackageStatus::DependencyCycle,
+            "artifact dependency cycle did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            dependency_capacity,
+            PackageStatus::ArtifactCapacityExceeded,
+            "artifact dependency capacity did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            valid_dependency_zero_capacity,
+            PackageStatus::DependencyCapacityExceeded,
+            "artifact registry dependency capacity did not return explicit status",
+            PackageRegistryDesc{1U, 2U, 0U, 2U}) != 0) {
+        return 1;
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_DEPENDENCY_VALIDATION));
+    return 0;
+}
+
+int PackageFileBackedArtifactWriteRejectsInvalidMetadataWithoutFileWrite() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_WRITE_INVALID);
+    const std::array<PackageEntryDescriptor, 1U> entries{
+        Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "Texture_A", "textures/texture_a.bin", 0U, 16U)};
+
+    PackageArtifactWriteRequest write_request{};
+    write_request.mount_table = &table;
+    write_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    write_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    write_request.package = PACKAGE_A;
+    write_request.entries = entries.data();
+    write_request.entry_count = static_cast<std::uint32_t>(entries.size());
+    const PackageArtifactResult write_result = WritePackageArtifact(write_request);
+    if (write_result.status != PackageStatus::InvalidLogicalKey || write_result.wrote_artifact) {
+        return Fail("invalid artifact write metadata did not return explicit status");
+    }
+
+    if (table.Snapshot().write_byte_count != 0U) {
+        return Fail("invalid artifact write mutated File/VFS bytes");
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_WRITE_INVALID));
     return 0;
 }
 
@@ -1056,6 +1397,11 @@ int main(int argc, char** argv) {
         {TEST_NO_HIDDEN_ALLOCATION, PackageNoHiddenAllocationUsesYuMemorySignal},
         {TEST_ARTIFACT_ROUND_TRIP, PackageFileBackedArtifactRoundTripsLoadPlanThroughFileVfs},
         {TEST_ARTIFACT_INVALID, PackageFileBackedArtifactRejectsInvalidBytesWithoutMutation},
+        {TEST_ARTIFACT_MANIFEST_VALIDATION,
+         PackageFileBackedArtifactRejectsManifestParseAndSectionErrorsWithoutMutation},
+        {TEST_ARTIFACT_ENTRY_VALIDATION, PackageFileBackedArtifactRejectsEntryMetadataWithoutMutation},
+        {TEST_ARTIFACT_DEPENDENCY_VALIDATION, PackageFileBackedArtifactRejectsDependencyMetadataWithoutMutation},
+        {TEST_ARTIFACT_WRITE_INVALID, PackageFileBackedArtifactWriteRejectsInvalidMetadataWithoutFileWrite},
         {TEST_ARTIFACT_MISSING, PackageFileBackedArtifactReportsMissingFile}};
 
     const std::string_view test_name(argv[1]);
