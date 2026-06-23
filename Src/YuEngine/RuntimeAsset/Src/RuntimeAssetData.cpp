@@ -116,11 +116,16 @@ constexpr std::uint64_t DECODED_PAYLOAD_ID_OFFSET = 110000U;
 constexpr std::uint32_t DEFAULT_RESIDENCY_BYTE_CAPACITY = 4096U;
 constexpr std::uint32_t DEFAULT_PAYLOAD_BYTE_CAPACITY = 4096U;
 constexpr std::string_view RUNTIME_ASSET_SOURCE_SCHEMA = "rav0-source";
+constexpr std::string_view RUNTIME_ASSET_COOKED_SCHEMA = "rav1-cooked";
 constexpr std::string_view SHADER_BYTECODE_PREFIX = "bytecode:";
 constexpr std::string_view SHADER_LAYOUT_PREFIX = "layout:";
 constexpr std::uint32_t RUNTIME_ASSET_SCENE_ENTITY_COUNT = 3U;
 constexpr std::uint32_t RUNTIME_ASSET_SCENE_CAMERA_COUNT = 1U;
 constexpr std::uint32_t RUNTIME_ASSET_SCENE_TRANSFORM_COUNT = 3U;
+constexpr std::uint32_t MAX_RUNTIME_ASSET_DEPENDENCY_ROWS = 64U;
+constexpr std::uint32_t MAX_RUNTIME_ASSET_RECORD_TABLES = 16U;
+constexpr std::uint32_t MAX_RUNTIME_ASSET_RECORD_BYTES = 4096U;
+constexpr std::uint32_t MAX_RUNTIME_ASSET_PAYLOAD_BYTES = 4096U;
 
 bool Contains(std::string_view text, std::string_view token) {
     return text.find(token) != std::string_view::npos;
@@ -417,16 +422,91 @@ bool FindRefIndex(
     return false;
 }
 
-bool HasSupportedHeader(std::string_view text, RuntimeAssetFileKind expected_kind) {
+std::string HeaderFor(
+    RuntimeAssetArtifactClass artifact_class,
+    RuntimeAssetFileKind expected_kind,
+    std::uint32_t version) {
+    const char *prefix = "YUASSET ";
+    if (artifact_class == RuntimeAssetArtifactClass::Cooked) {
+        prefix = "YUCOOKED ";
+    }
+
+    return std::string(prefix) + std::string(RuntimeAssetFileKindName(expected_kind)) + " " +
+        std::to_string(version);
+}
+
+bool HasSupportedHeader(
+    std::string_view text,
+    RuntimeAssetFileKind expected_kind,
+    RuntimeAssetArtifactClass artifact_class) {
     const std::string header =
-        "YUASSET " + std::string(RuntimeAssetFileKindName(expected_kind)) + " 1";
+        HeaderFor(artifact_class, expected_kind, 1U);
     return Contains(text, header);
 }
 
-bool HasUnsupportedHeader(std::string_view text, RuntimeAssetFileKind expected_kind) {
+bool HasUnsupportedHeader(
+    std::string_view text,
+    RuntimeAssetFileKind expected_kind,
+    RuntimeAssetArtifactClass artifact_class) {
     const std::string header =
-        "YUASSET " + std::string(RuntimeAssetFileKindName(expected_kind)) + " 2";
+        HeaderFor(artifact_class, expected_kind, 2U);
     return Contains(text, header);
+}
+
+RuntimeAssetArtifactClass DetectSupportedArtifactClass(
+    std::string_view text,
+    RuntimeAssetFileKind expected_kind) {
+    if (HasSupportedHeader(text, expected_kind, RuntimeAssetArtifactClass::Source)) {
+        return RuntimeAssetArtifactClass::Source;
+    }
+
+    if (HasSupportedHeader(text, expected_kind, RuntimeAssetArtifactClass::Cooked)) {
+        return RuntimeAssetArtifactClass::Cooked;
+    }
+
+    return RuntimeAssetArtifactClass::Unknown;
+}
+
+RuntimeAssetArtifactClass DetectUnsupportedArtifactClass(
+    std::string_view text,
+    RuntimeAssetFileKind expected_kind) {
+    if (HasUnsupportedHeader(text, expected_kind, RuntimeAssetArtifactClass::Source)) {
+        return RuntimeAssetArtifactClass::Source;
+    }
+
+    if (HasUnsupportedHeader(text, expected_kind, RuntimeAssetArtifactClass::Cooked)) {
+        return RuntimeAssetArtifactClass::Cooked;
+    }
+
+    return RuntimeAssetArtifactClass::Unknown;
+}
+
+std::string_view RuntimeAssetFamilyToken(RuntimeAssetFileKind kind) {
+    switch (kind) {
+        case RuntimeAssetFileKind::Mesh:
+            return "mesh";
+        case RuntimeAssetFileKind::Material:
+            return "material";
+        case RuntimeAssetFileKind::Texture:
+            return "texture";
+        case RuntimeAssetFileKind::Shader:
+            return "shader";
+        case RuntimeAssetFileKind::Scene:
+            return "scene";
+        case RuntimeAssetFileKind::Animation:
+            return "animation";
+        case RuntimeAssetFileKind::Unknown:
+            break;
+        default:
+            break;
+    }
+
+    return {};
+}
+
+bool IsSupportedPayloadAlignment(std::uint32_t alignment) {
+    return alignment == 1U || alignment == 2U || alignment == 4U ||
+        alignment == 8U || alignment == 16U;
 }
 
 std::uint64_t HashRuntimeAssetText(std::string_view text) {
@@ -498,6 +578,162 @@ bool ParseExtent(std::string_view text, std::uint32_t *out_width, std::uint32_t 
     return true;
 }
 
+RuntimeAssetDataStatus ValidateCookedDependencyRows(
+    std::string_view text,
+    std::uint32_t dependency_count,
+    RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (dependency_count > MAX_RUNTIME_ASSET_DEPENDENCY_ROWS) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    std::uint32_t index = 0U;
+    while (index < dependency_count) {
+        const std::string token = "dep" + std::to_string(index) + "=";
+        const std::size_t token_count = CountToken(text, token);
+        if (token_count == 0U) {
+            return RuntimeAssetDataStatus::MissingDependency;
+        }
+
+        if (token_count > 1U) {
+            return RuntimeAssetDataStatus::DuplicateDependency;
+        }
+
+        const std::string_view row = ValueForToken(text, token);
+        const std::size_t first_separator = row.find(':');
+        const std::size_t second_separator =
+            first_separator == std::string_view::npos
+                ? std::string_view::npos
+                : row.find(':', first_separator + 1U);
+        if (first_separator == std::string_view::npos ||
+            second_separator == std::string_view::npos ||
+            first_separator == 0U ||
+            second_separator + 1U >= row.size()) {
+            return RuntimeAssetDataStatus::InvalidDependency;
+        }
+
+        std::uint64_t dependency_hash = 0U;
+        if (!ParseU64(row.substr(second_separator + 1U), &dependency_hash) ||
+            dependency_hash == 0U) {
+            return RuntimeAssetDataStatus::HashMismatch;
+        }
+
+        ++index;
+    }
+
+    out_result->dependency_count = dependency_count;
+    out_result->dependency_table_count = dependency_count;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateCookedMetadata(
+    std::string_view text,
+    RuntimeAssetFileKind expected_kind,
+    RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (ValueForToken(text, "schema=") != RUNTIME_ASSET_COOKED_SCHEMA) {
+        return RuntimeAssetDataStatus::InvalidSchema;
+    }
+
+    const std::string_view family = RuntimeAssetFamilyToken(expected_kind);
+    if (family.empty() || ValueForToken(text, "kind=") != family) {
+        return RuntimeAssetDataStatus::InvalidKind;
+    }
+
+    const std::string_view id = ValueForToken(text, "id=");
+    if (id.empty() || Contains(id, " ")) {
+        return RuntimeAssetDataStatus::InvalidSchema;
+    }
+
+    std::uint32_t dependency_count = 0U;
+    if (!ParseU32(ValueForToken(text, "dependencyTable="), &dependency_count)) {
+        return RuntimeAssetDataStatus::InvalidCount;
+    }
+
+    std::uint32_t record_table_count = 0U;
+    if (!ParseU32(ValueForToken(text, "recordTable="), &record_table_count) ||
+        record_table_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidCount;
+    }
+
+    if (record_table_count > MAX_RUNTIME_ASSET_RECORD_TABLES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    std::uint32_t record_byte_count = 0U;
+    if (!ParseU32(ValueForToken(text, "recordBytes="), &record_byte_count) ||
+        record_byte_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (record_byte_count > MAX_RUNTIME_ASSET_RECORD_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    std::uint32_t payload_byte_count = 0U;
+    if (!ParseU32(ValueForToken(text, "payloadBytes="), &payload_byte_count)) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (payload_byte_count > MAX_RUNTIME_ASSET_PAYLOAD_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    std::uint32_t payload_alignment = 0U;
+    if (!ParseU32(ValueForToken(text, "payloadAlign="), &payload_alignment) ||
+        !IsSupportedPayloadAlignment(payload_alignment)) {
+        return RuntimeAssetDataStatus::InvalidAlignment;
+    }
+
+    std::uint64_t source_hash = 0U;
+    if (!ParseU64(ValueForToken(text, "sourceHash="), &source_hash) ||
+        source_hash == 0U) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    std::uint64_t payload_hash = 0U;
+    if (!ParseU64(ValueForToken(text, "payloadHash="), &payload_hash)) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    const std::string_view payload = ValueForToken(text, "payload=");
+    if (payload_byte_count > 0U) {
+        if (payload.empty() || payload.size() != payload_byte_count) {
+            return RuntimeAssetDataStatus::InvalidSize;
+        }
+
+        if (HashRuntimeAssetText(payload) != payload_hash) {
+            return RuntimeAssetDataStatus::HashMismatch;
+        }
+    }
+
+    if (payload_byte_count == 0U && payload_hash != 0U) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    RuntimeAssetDataStatus status = ValidateCookedDependencyRows(text, dependency_count, out_result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    out_result->artifact_class = RuntimeAssetArtifactClass::Cooked;
+    out_result->schema_version = 1U;
+    out_result->identity_hash = HashRuntimeAssetText(id);
+    out_result->source_hash = source_hash;
+    out_result->payload_hash = payload_hash;
+    out_result->record_table_count = record_table_count;
+    out_result->record_table_byte_count = record_byte_count;
+    out_result->payload_byte_count = payload_byte_count;
+    out_result->payload_alignment = payload_alignment;
+    return RuntimeAssetDataStatus::Success;
+}
+
 bool RequiresSourceSchema(RuntimeAssetFileKind kind) {
     return kind != RuntimeAssetFileKind::Unknown;
 }
@@ -510,20 +746,30 @@ RuntimeAssetDataStatus ValidateCommonMetadata(
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    if (HasUnsupportedHeader(text, expected_kind)) {
+    const RuntimeAssetArtifactClass unsupported_artifact =
+        DetectUnsupportedArtifactClass(text, expected_kind);
+    if (unsupported_artifact != RuntimeAssetArtifactClass::Unknown) {
+        out_result->artifact_class = unsupported_artifact;
         out_result->version = 2U;
         return RuntimeAssetDataStatus::UnsupportedVersion;
     }
 
-    if (!HasSupportedHeader(text, expected_kind)) {
-        if (Contains(text, "YUASSET ")) {
+    const RuntimeAssetArtifactClass artifact_class =
+        DetectSupportedArtifactClass(text, expected_kind);
+    if (artifact_class == RuntimeAssetArtifactClass::Unknown) {
+        if (Contains(text, "YUASSET ") || Contains(text, "YUCOOKED ")) {
             return RuntimeAssetDataStatus::InvalidKind;
         }
 
         return RuntimeAssetDataStatus::InvalidHeader;
     }
 
+    out_result->artifact_class = artifact_class;
     out_result->version = 1U;
+    if (artifact_class == RuntimeAssetArtifactClass::Cooked) {
+        return ValidateCookedMetadata(text, expected_kind, out_result);
+    }
+
     const std::string_view schema = ValueForToken(text, "schema=");
     if (!RequiresSourceSchema(expected_kind) && schema.empty()) {
         const std::string_view id = ValueForToken(text, "id=");
@@ -535,6 +781,10 @@ RuntimeAssetDataStatus ValidateCommonMetadata(
             out_result->identity_hash = HashRuntimeAssetText(id);
         }
 
+        out_result->artifact_class = RuntimeAssetArtifactClass::Source;
+        out_result->source_hash = out_result->hash;
+        out_result->record_table_count = 1U;
+        out_result->record_table_byte_count = static_cast<std::uint32_t>(out_result->byte_count);
         return RuntimeAssetDataStatus::Success;
     }
 
@@ -553,6 +803,14 @@ RuntimeAssetDataStatus ValidateCommonMetadata(
     }
 
     out_result->identity_hash = HashRuntimeAssetText(id);
+    out_result->artifact_class = RuntimeAssetArtifactClass::Source;
+    out_result->source_hash = out_result->hash;
+    out_result->record_table_count = 1U;
+    if (out_result->byte_count > MAX_RUNTIME_ASSET_RECORD_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    out_result->record_table_byte_count = static_cast<std::uint32_t>(out_result->byte_count);
     return RuntimeAssetDataStatus::Success;
 }
 
@@ -601,6 +859,7 @@ RuntimeAssetDataStatus ValidateDependencyRules(
         ++out_result->dependency_count;
     }
 
+    out_result->dependency_table_count = static_cast<std::uint32_t>(out_result->dependency_count);
     return RuntimeAssetDataStatus::Success;
 }
 
@@ -652,7 +911,11 @@ RuntimeAssetDataStatus ValidateMeshMetadata(
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    const std::string_view mesh_kind = ValueForToken(text, "kind=");
+    std::string_view mesh_kind = ValueForToken(text, "shape=");
+    if (mesh_kind.empty()) {
+        mesh_kind = ValueForToken(text, "kind=");
+    }
+
     if (mesh_kind.empty()) {
         return RuntimeAssetDataStatus::InvalidKind;
     }

@@ -117,6 +117,7 @@ using yuengine::runtimeasset::HashRuntimeAssetDataBytes;
 using yuengine::runtimeasset::BuildRuntimeAssetShaderProgramPipeline;
 using yuengine::runtimeasset::DecodeRuntimeAssetShaderProgramData;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
+using yuengine::runtimeasset::RuntimeAssetArtifactClass;
 using yuengine::runtimeasset::RuntimeAssetDataStatus;
 using yuengine::runtimeasset::RuntimeAssetFileDesc;
 using yuengine::runtimeasset::RuntimeAssetFileKind;
@@ -194,6 +195,12 @@ constexpr const char *TEST_SCENE_REFERENCES =
     "RuntimeAssetData_SceneReferencesMeshMaterialTextureShader";
 constexpr const char *TEST_SCENE_FAMILY_PATH_INDEPENDENT =
     "RuntimeAssetData_SceneFamilyDetectionIsPathIndependent";
+constexpr const char *TEST_SOURCE_COOKED_METADATA =
+    "RuntimeAssetData_SourceCookedParserReportsBoundedMetadata";
+constexpr const char *TEST_SOURCE_COOKED_REJECTS =
+    "RuntimeAssetData_SourceCookedParserRejectsInvalidTablesHashesAndDependencies";
+constexpr const char *TEST_LOADER_REJECTS_SCHEMA_KIND_SUFFIX =
+    "RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation";
 constexpr const char *TEST_SHADER_PROGRAM_DEPENDENCIES =
     "RuntimeAssetData_ShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
 constexpr const char *TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES =
@@ -769,6 +776,53 @@ std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> AlternateRuntimeFamilyFileD
 
 std::vector<std::uint8_t> BytesFromString(const std::string &text) {
     return std::vector<std::uint8_t>(text.begin(), text.end());
+}
+
+std::uint64_t HashText(std::string_view text) {
+    std::uint64_t hash = FNV_OFFSET;
+    for (const char character : text) {
+        hash ^= static_cast<std::uint64_t>(static_cast<std::uint8_t>(character));
+        hash *= FNV_PRIME;
+    }
+
+    return hash;
+}
+
+std::string CookedTextureText(
+    std::string_view payload,
+    std::uint32_t dependency_table_count,
+    std::uint32_t record_table_count,
+    std::uint32_t record_byte_count,
+    std::uint32_t payload_alignment,
+    std::uint64_t payload_hash) {
+    std::string text =
+        "YUCOOKED TEXTURE 1\n"
+        "schema=rav1-cooked\n"
+        "id=albedo_cooked\n"
+        "kind=texture\n";
+    text += "sourceHash=" + std::to_string(HashText("albedo_source")) + "\n";
+    text += "payloadHash=" + std::to_string(payload_hash) + "\n";
+    text += "dependencyTable=" + std::to_string(dependency_table_count) + "\n";
+    text += "recordTable=" + std::to_string(record_table_count) + "\n";
+    text += "recordBytes=" + std::to_string(record_byte_count) + "\n";
+    text += "payloadBytes=" + std::to_string(payload.size()) + "\n";
+    text += "payloadAlign=" + std::to_string(payload_alignment) + "\n";
+    text +=
+        "format=rgba8\n"
+        "extent=2x2\n";
+    if (dependency_table_count > 0U) {
+        text += "dep0=material:shared_material:" + std::to_string(HashText("shared_material")) + "\n";
+    }
+
+    text += "payload=";
+    text += payload;
+    text += "\n";
+    return text;
+}
+
+std::string ValidCookedTextureText() {
+    constexpr std::string_view payload = "checker";
+    return CookedTextureText(payload, 1U, 1U, 64U, 4U, HashText(payload));
 }
 
 bool Contains(std::string_view text, std::string_view token) {
@@ -2110,6 +2164,292 @@ bool ValidateText(
     return true;
 }
 
+bool ExpectLoaderRejectsAlbedoTextureWithoutMutation(
+    std::string_view texture_text,
+    RuntimeAssetDataStatus expected_status) {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("CookedTextureRejectsWithoutMutation"), &table)) {
+        return false;
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return FailStep("canonical fixture write failed");
+    }
+
+    const std::vector<std::uint8_t> texture_bytes = BytesFromString(std::string(texture_text));
+    if (!WriteBytes(table, "Texture/Albedo.yutex", texture_bytes)) {
+        return FailStep("invalid cooked texture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    graph.scene_output.status = RuntimeAssetDataStatus::BudgetExceeded;
+    graph.assets[0U].stable_id = 7777U;
+    graph.assets[0U].cache_payload_stored = true;
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        file_descs[index] = files[index].desc;
+    }
+
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = &table;
+    load_request.mount = MountId(MOUNT_ID);
+    load_request.scene_path = VirtualPath(SCENE_PATH);
+    load_request.scene_resource_type = ResourceTypeId{RESOURCE_TYPE_SCENE};
+    load_request.scene_asset_type = AssetTypeId{ASSET_TYPE_SCENE};
+    load_request.scene_stable_id = 6004U;
+    load_request.files = file_descs.data();
+    load_request.file_count = static_cast<std::uint32_t>(file_descs.size());
+    load_request.resource_registry = &registry;
+    load_request.asset_manager = &manager;
+    load_request.loaded_files = graph.assets.data();
+    load_request.loaded_file_capacity = static_cast<std::uint32_t>(graph.assets.size());
+    load_request.scene_resource_refs = graph.scene_resource_refs.data();
+    load_request.scene_resource_ref_capacity = static_cast<std::uint32_t>(graph.scene_resource_refs.size());
+    load_request.scene_cameras = graph.scene_cameras.data();
+    load_request.scene_camera_capacity = static_cast<std::uint32_t>(graph.scene_cameras.size());
+    load_request.scene_entities = graph.scene_entities.data();
+    load_request.scene_entity_capacity = static_cast<std::uint32_t>(graph.scene_entities.size());
+    load_request.scene_transforms = graph.scene_transforms.data();
+    load_request.scene_transform_capacity = static_cast<std::uint32_t>(graph.scene_transforms.size());
+    load_request.scene_output = &graph.scene_output;
+
+    RuntimeAssetGraphLoadResult load_result{};
+    const RuntimeAssetDataStatus status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+    if (status != expected_status) {
+        std::fwrite(StatusName(status), sizeof(char), std::string_view(StatusName(status)).size(), stderr);
+        std::fputc('\n', stderr);
+        return FailStep("loader returned unexpected invalid cooked texture status");
+    }
+
+    if (load_result.scene_registered ||
+        load_result.loaded_file_count != 0U ||
+        load_result.cache_payload_count != 0U ||
+        load_result.resource_dependency_count != 0U ||
+        load_result.asset_dependency_count != 0U ||
+        graph.scene_output.status != RuntimeAssetDataStatus::BudgetExceeded ||
+        graph.assets[0U].stable_id != 7777U ||
+        !graph.assets[0U].cache_payload_stored) {
+        return FailStep("invalid cooked texture mutated runtime outputs");
+    }
+
+    return true;
+}
+
+int RuntimeAssetDataSourceCookedParserReportsBoundedMetadata() {
+    RuntimeAssetValidationResult source_result{};
+    const std::string source_text =
+        "YUASSET MESH 1\n"
+        "schema=rav0-source\n"
+        "id=cube_mesh\n"
+        "kind=cube\n"
+        "vertices=24\n"
+        "indices=36\n"
+        "bounds=-1,-1,-1,1,1,1\n";
+    if (!ValidateText(source_text, RuntimeAssetFileKind::Mesh, &source_result)) {
+        return Fail("source parser rejected canonical mesh");
+    }
+
+    if (source_result.artifact_class != RuntimeAssetArtifactClass::Source ||
+        source_result.source_hash != source_result.hash ||
+        source_result.record_table_count != 1U ||
+        source_result.record_table_byte_count != source_text.size() ||
+        source_result.identity_hash == 0U) {
+        return Fail("source parser did not report bounded source metadata");
+    }
+
+    RuntimeAssetValidationResult cooked_result{};
+    const std::string cooked_text = ValidCookedTextureText();
+    if (!ValidateText(cooked_text, RuntimeAssetFileKind::Texture, &cooked_result)) {
+        return Fail("cooked parser rejected valid cooked texture");
+    }
+
+    if (cooked_result.artifact_class != RuntimeAssetArtifactClass::Cooked ||
+        cooked_result.schema_version != 1U ||
+        cooked_result.source_hash != HashText("albedo_source") ||
+        cooked_result.payload_hash != HashText("checker") ||
+        cooked_result.dependency_table_count != 1U ||
+        cooked_result.dependency_count != 1U ||
+        cooked_result.record_table_count != 1U ||
+        cooked_result.record_table_byte_count != 64U ||
+        cooked_result.payload_byte_count != 7U ||
+        cooked_result.payload_alignment != 4U) {
+        return Fail("cooked parser did not report bounded table/hash metadata");
+    }
+
+    if (cooked_result.texture_width != 2U || cooked_result.texture_height != 2U) {
+        return Fail("cooked texture family metadata was not validated");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataSourceCookedParserRejectsInvalidTablesHashesAndDependencies() {
+    const std::string zero_record_table =
+        CookedTextureText("checker", 1U, 0U, 64U, 4U, HashText("checker"));
+    if (!ExpectValidationStatus(
+            zero_record_table,
+            RuntimeAssetFileKind::Texture,
+            RuntimeAssetDataStatus::InvalidCount) ||
+        !ExpectLoaderRejectsAlbedoTextureWithoutMutation(
+            zero_record_table,
+            RuntimeAssetDataStatus::InvalidCount)) {
+        return Fail("cooked zero record table was not rejected");
+    }
+
+    const std::string zero_record_bytes =
+        CookedTextureText("checker", 1U, 1U, 0U, 4U, HashText("checker"));
+    if (!ExpectValidationStatus(
+            zero_record_bytes,
+            RuntimeAssetFileKind::Texture,
+            RuntimeAssetDataStatus::InvalidSize) ||
+        !ExpectLoaderRejectsAlbedoTextureWithoutMutation(
+            zero_record_bytes,
+            RuntimeAssetDataStatus::InvalidSize)) {
+        return Fail("cooked zero record bytes were not rejected");
+    }
+
+    const std::string invalid_alignment =
+        CookedTextureText("checker", 1U, 1U, 64U, 3U, HashText("checker"));
+    if (!ExpectValidationStatus(
+            invalid_alignment,
+            RuntimeAssetFileKind::Texture,
+            RuntimeAssetDataStatus::InvalidAlignment) ||
+        !ExpectLoaderRejectsAlbedoTextureWithoutMutation(
+            invalid_alignment,
+            RuntimeAssetDataStatus::InvalidAlignment)) {
+        return Fail("cooked invalid alignment was not rejected");
+    }
+
+    const std::string wrong_payload_hash =
+        CookedTextureText("checker", 1U, 1U, 64U, 4U, HashText("wrong_payload"));
+    if (!ExpectValidationStatus(
+            wrong_payload_hash,
+            RuntimeAssetFileKind::Texture,
+            RuntimeAssetDataStatus::HashMismatch) ||
+        !ExpectLoaderRejectsAlbedoTextureWithoutMutation(
+            wrong_payload_hash,
+            RuntimeAssetDataStatus::HashMismatch)) {
+        return Fail("cooked payload hash mismatch was not rejected");
+    }
+
+    const std::string missing_dependency =
+        CookedTextureText("checker", 2U, 1U, 64U, 4U, HashText("checker"));
+    if (!ExpectValidationStatus(
+            missing_dependency,
+            RuntimeAssetFileKind::Texture,
+            RuntimeAssetDataStatus::MissingDependency) ||
+        !ExpectLoaderRejectsAlbedoTextureWithoutMutation(
+            missing_dependency,
+            RuntimeAssetDataStatus::MissingDependency)) {
+        return Fail("cooked missing dependency row was not rejected");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation() {
+    constexpr const char *misleading_scene_path = "Scene/MisleadingScene.yuscene";
+
+    auto probe = [&](std::string_view scene_text, RuntimeAssetDataStatus expected_status) -> bool {
+        MountTable table;
+        if (!CreateMountedTable(TestRoot("LoaderRejectsMetadata"), &table)) {
+            return false;
+        }
+
+        if (!WriteCanonicalFixture(table)) {
+            return FailStep("canonical fixture write failed");
+        }
+
+        const std::vector<std::uint8_t> scene_bytes = BytesFromString(std::string(scene_text));
+        if (!WriteBytes(table, misleading_scene_path, scene_bytes)) {
+            return FailStep("misleading scene write failed");
+        }
+
+        ResourceRegistry registry;
+        AssetManager manager;
+        LoadedGraph graph{};
+        graph.scene_output.status = RuntimeAssetDataStatus::BudgetExceeded;
+        const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+        std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
+        for (std::size_t index = 0U; index < files.size(); ++index) {
+            file_descs[index] = files[index].desc;
+        }
+
+        RuntimeAssetGraphLoadRequest load_request{};
+        load_request.mount_table = &table;
+        load_request.mount = MountId(MOUNT_ID);
+        load_request.scene_path = VirtualPath(misleading_scene_path);
+        load_request.scene_resource_type = ResourceTypeId{RESOURCE_TYPE_SCENE};
+        load_request.scene_asset_type = AssetTypeId{ASSET_TYPE_SCENE};
+        load_request.scene_stable_id = 6003U;
+        load_request.files = file_descs.data();
+        load_request.file_count = static_cast<std::uint32_t>(file_descs.size());
+        load_request.resource_registry = &registry;
+        load_request.asset_manager = &manager;
+        load_request.loaded_files = graph.assets.data();
+        load_request.loaded_file_capacity = static_cast<std::uint32_t>(graph.assets.size());
+        load_request.scene_resource_refs = graph.scene_resource_refs.data();
+        load_request.scene_resource_ref_capacity = static_cast<std::uint32_t>(graph.scene_resource_refs.size());
+        load_request.scene_cameras = graph.scene_cameras.data();
+        load_request.scene_camera_capacity = static_cast<std::uint32_t>(graph.scene_cameras.size());
+        load_request.scene_entities = graph.scene_entities.data();
+        load_request.scene_entity_capacity = static_cast<std::uint32_t>(graph.scene_entities.size());
+        load_request.scene_transforms = graph.scene_transforms.data();
+        load_request.scene_transform_capacity = static_cast<std::uint32_t>(graph.scene_transforms.size());
+        load_request.scene_output = &graph.scene_output;
+
+        RuntimeAssetGraphLoadResult load_result{};
+        const RuntimeAssetDataStatus status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+        if (status != expected_status) {
+            std::fwrite(StatusName(status), sizeof(char), std::string_view(StatusName(status)).size(), stderr);
+            std::fputc('\n', stderr);
+            return FailStep("loader metadata rejection returned unexpected status");
+        }
+
+        if (load_result.scene_registered ||
+            load_result.loaded_file_count != 0U ||
+            load_result.cache_payload_count != 0U ||
+            graph.scene_output.status != RuntimeAssetDataStatus::BudgetExceeded ||
+            graph.assets[0U].cache_payload_stored) {
+            return FailStep("loader metadata rejection mutated runtime outputs");
+        }
+
+        return true;
+    };
+
+    if (!probe(
+            "YUASSET SCENE 1\n"
+            "id=missing_schema_scene\n"
+            "m0=Mesh/Cube.yumesh\n"
+            "m1=Mesh/Cylinder.yumesh\n"
+            "m2=Mesh/Cone.yumesh\n"
+            "mat=Material/Shared.yumat\n"
+            "t0=Texture/Albedo.yutex\n"
+            "prog=Shader/RuntimeProgram.yuprogram\n"
+            "cam=camera:orbit\n"
+            "anim=Animation/Spin.yuanim\n",
+            RuntimeAssetDataStatus::InvalidSchema)) {
+        return Fail("loader did not reject missing scene schema before mutation");
+    }
+
+    if (!probe(
+            "YUASSET MESH 1\n"
+            "schema=rav0-source\n"
+            "id=mesh_inside_yuscene_path\n"
+            "kind=cube\n"
+            "vertices=24\n"
+            "indices=36\n"
+            "bounds=-1,-1,-1,1,1,1\n",
+            RuntimeAssetDataStatus::InvalidKind)) {
+        return Fail("loader trusted misleading .yuscene suffix over internal kind");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata() {
     RuntimeAssetValidationResult mesh_result{};
     if (!ValidateText(
@@ -3273,6 +3613,10 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_LOADER_FILE_RESOURCE, RuntimeAssetDataLoaderUsesFileResourcePathNotInMemoryStructs},
     {TEST_SCENE_REFERENCES, RuntimeAssetDataSceneReferencesMeshMaterialTextureShader},
     {TEST_SCENE_FAMILY_PATH_INDEPENDENT, RuntimeAssetDataSceneFamilyDetectionIsPathIndependent},
+    {TEST_SOURCE_COOKED_METADATA, RuntimeAssetDataSourceCookedParserReportsBoundedMetadata},
+    {TEST_SOURCE_COOKED_REJECTS, RuntimeAssetDataSourceCookedParserRejectsInvalidTablesHashesAndDependencies},
+    {TEST_LOADER_REJECTS_SCHEMA_KIND_SUFFIX,
+     RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation},
     {TEST_SHADER_PROGRAM_DEPENDENCIES, RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES, RuntimeAssetDataSceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation},
     {TEST_ANIMATION_DEPENDENCIES, RuntimeAssetDataAnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},

@@ -55,6 +55,15 @@ enum class RuntimeAssetFileKind {
 };
 
 /**
+ * @brief RuntimeAsset v0 artifact class parsed from internal metadata.
+ */
+enum class RuntimeAssetArtifactClass {
+    Unknown,
+    Source,
+    Cooked
+};
+
+/**
  * @brief Runtime asset data validation, cook, and load status.
  */
 enum class RuntimeAssetDataStatus {
@@ -113,13 +122,21 @@ struct RuntimeAssetFileDesc final {
  */
 struct RuntimeAssetValidationResult final {
     RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    RuntimeAssetArtifactClass artifact_class = RuntimeAssetArtifactClass::Unknown;
     RuntimeAssetFileKind kind = RuntimeAssetFileKind::Unknown;
     std::uint32_t version = 0U;
     std::uint32_t schema_version = 0U;
     std::uint64_t hash = 0U;
     std::uint64_t identity_hash = 0U;
+    std::uint64_t source_hash = 0U;
+    std::uint64_t payload_hash = 0U;
     std::size_t byte_count = 0U;
     std::size_t dependency_count = 0U;
+    std::uint32_t dependency_table_count = 0U;
+    std::uint32_t record_table_count = 0U;
+    std::uint32_t record_table_byte_count = 0U;
+    std::uint32_t payload_byte_count = 0U;
+    std::uint32_t payload_alignment = 0U;
     std::uint32_t vertex_count = 0U;
     std::uint32_t index_count = 0U;
     std::uint32_t texture_width = 0U;
