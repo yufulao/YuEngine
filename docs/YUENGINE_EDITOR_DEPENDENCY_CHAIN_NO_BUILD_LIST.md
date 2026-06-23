@@ -11,6 +11,7 @@ Related documents:
 - `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
 - `docs/YUENGINE_EDITOR_RUNTIME_PREVIEW_HOST_PLAN.md`
 - `docs/gates/EDITOR_GATE_001_RUNTIME_PREVIEW_HOST.md`
+- `docs/YUENGINE_PREVIEW_HOST_RAV2_MVP.md`
 - `docs/YUENGINE_SCENE_EDITOR_PLAN.md`
 - `docs/YUENGINE_ANIMATION_EDITOR_PLAN.md`
 - `docs/YUENGINE_UI_FRAMEWORK_EDITOR_PLAN.md`
@@ -54,10 +55,13 @@ runtime asset contract remains open for full typed validation across file
 families, decoded texture upload into material slots, shader bytecode/program
 ownership, animation clip sampling from disk, and production scene loader APIs.
 
-`EDITOR-GATE-001` is review-only architecture guidance. It does not approve a
-preview-host implementation, native editor app, immediate-mode fallback, or
-editor surface. It defines the responsibilities and test shape that a later
-implementation gate must satisfy.
+`EDITOR-GATE-001` started as review-only architecture guidance. The later
+#YuPart task #65 authorizes only the bounded `YuPreviewHost` first slice
+documented in `docs/YUENGINE_PREVIEW_HOST_RAV2_MVP.md`: value/session records,
+RuntimeAsset graph/ref validation, bounded diagnostics, and RenderScene/
+RenderCore/RHI frame or capture output. It still does not approve a native
+editor app, immediate-mode fallback, local editor service process, Resource
+Browser UI, Scene Editor, Animation Editor, UI Editor, or editor surface.
 
 UI Stage 1 through Stage 3 validation documents record accepted generic UI Core,
 Component Library, and UIManager runtime framework evidence. They do not
@@ -249,7 +253,9 @@ sample binaries for the following until an explicit later gate approves them.
 
 ### Shared Editor Infrastructure
 
-- no `EditorRuntimePreviewHost` implementation target yet;
+- no `EditorRuntimePreviewHost` implementation target yet; task #65 adds only
+  the lower `YuPreviewHost` engine value/session target, not an editor app or
+  local editor service;
 - no local editor service process or daemon target yet;
 - no native editor application target yet;
 - no immediate-mode native editor fallback target yet;

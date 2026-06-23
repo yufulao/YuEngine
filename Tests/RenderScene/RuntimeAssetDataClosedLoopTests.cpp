@@ -50,6 +50,7 @@
 #include "YuEngine/Rhi/RhiShaderModuleDesc.h"
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
+#include "YuEngine/PreviewHost/PreviewHost.h"
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridge.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeRequest.h"
@@ -72,6 +73,21 @@ using yuengine::file::FileWriteRequest;
 using yuengine::file::MountId;
 using yuengine::file::MountTable;
 using yuengine::file::VirtualPath;
+using yuengine::previewhost::PreviewHost;
+using yuengine::previewhost::PreviewHostDiagnostic;
+using yuengine::previewhost::PreviewHostDiagnosticCode;
+using yuengine::previewhost::PreviewHostDocumentKind;
+using yuengine::previewhost::PreviewHostFrameDescriptor;
+using yuengine::previewhost::PreviewHostFrameFormat;
+using yuengine::previewhost::PreviewHostFrameRequest;
+using yuengine::previewhost::PreviewHostFrameResult;
+using yuengine::previewhost::PreviewHostHitRecord;
+using yuengine::previewhost::PreviewHostSelectionRecord;
+using yuengine::previewhost::PreviewHostSessionDesc;
+using yuengine::previewhost::PreviewHostSessionId;
+using yuengine::previewhost::PreviewHostSessionResult;
+using yuengine::previewhost::PreviewHostStatus;
+using yuengine::previewhost::PreviewHostTransformFeedback;
 using yuengine::rendercore::RenderDrawableFramePipeline;
 using yuengine::rendercore::RenderDrawableFramePipelineRequest;
 using yuengine::rendercore::RenderDrawableFramePipelineStatus;
@@ -302,6 +318,14 @@ constexpr const char *TEST_CPU_ORACLE =
     "RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore";
 constexpr const char *TEST_NO_UPPER =
     "RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer";
+constexpr const char *TEST_PREVIEW_HOST_CAPTURE =
+    "PreviewHost_ConsumesRuntimeAssetGraphAndCapturesThroughRhi";
+constexpr const char *TEST_PREVIEW_HOST_DIAGNOSTICS =
+    "PreviewHost_ReportsBoundedResourceDiagnostics";
+constexpr const char *TEST_PREVIEW_HOST_STALE_SESSION =
+    "PreviewHost_RejectsStaleSessionWithoutMutation";
+constexpr const char *TEST_PREVIEW_HOST_NOT_COOKED =
+    "PreviewHost_ReportsNotCookedRuntimeAssetRef";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *MOUNT_ID = "runtime";
@@ -345,6 +369,7 @@ struct LoadedGraph final {
     std::array<RuntimeAssetSceneTransformOutputRecord, 3U> scene_transforms{};
     RuntimeAssetLoadedFile scene_asset{};
     RuntimeAssetSceneLoaderOutput scene_output{};
+    RuntimeAssetGraphLoadResult load_result{};
     std::size_t file_read_count = 0U;
     std::size_t resource_payload_count = 0U;
     std::size_t decoded_payload_count = 0U;
@@ -1464,6 +1489,100 @@ bool ExpectCookedBridgeFailureWithoutRhiMutation(
     return true;
 }
 
+RhiVertexBufferView VertexView(RhiBufferHandle handle, std::size_t vertex_count);
+RhiIndexBufferView IndexView(RhiBufferHandle handle, std::size_t index_count);
+bool BuildGeometry(
+    RenderScenePrimitiveGeometryKind kind,
+    AssetHandle asset,
+    std::uint32_t draw_id,
+    RhiVertexBufferView vertex_view,
+    RhiIndexBufferView index_view,
+    RenderScenePrimitiveGeometryRecord *out_record);
+bool BuildCamera(
+    IRhiDevice &device,
+    RenderSceneCameraBindingResult *out_camera,
+    std::uint32_t camera_id);
+
+bool BuildPreviewHostSceneInputs(
+    IRhiDevice &device,
+    ResourceRegistry &registry,
+    AssetManager &manager,
+    const LoadedGraph &graph,
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> *out_geometry,
+    RenderSceneRuntimeMaterialRecord *out_material,
+    RenderSceneCameraBindingResult *out_camera) {
+    if (out_geometry == nullptr || out_material == nullptr || out_camera == nullptr) {
+        return FailStep("null preview host scene input output");
+    }
+
+    RhiBufferHandle buffer_slot_guard{};
+    if (!CreateBuffer(device, RhiBufferUsage::Vertex, sizeof(float) * 2U, &buffer_slot_guard)) {
+        return FailStep("create preview buffer slot guard failed");
+    }
+
+    RhiBufferHandle cube_vertex{};
+    RhiBufferHandle cube_index{};
+    RhiBufferHandle cylinder_vertex{};
+    RhiBufferHandle cylinder_index{};
+    RhiBufferHandle cone_vertex{};
+    RhiBufferHandle cone_index{};
+    if (!CreateBuffer(device, RhiBufferUsage::Vertex, sizeof(float) * 2U * 24U, &cube_vertex) ||
+        !CreateBuffer(device, RhiBufferUsage::Index, sizeof(std::uint16_t) * 36U, &cube_index) ||
+        !CreateBuffer(device, RhiBufferUsage::Vertex, sizeof(float) * 2U * 18U, &cylinder_vertex) ||
+        !CreateBuffer(device, RhiBufferUsage::Index, sizeof(std::uint16_t) * 96U, &cylinder_index) ||
+        !CreateBuffer(device, RhiBufferUsage::Vertex, sizeof(float) * 2U * 10U, &cone_vertex) ||
+        !CreateBuffer(device, RhiBufferUsage::Index, sizeof(std::uint16_t) * 48U, &cone_index)) {
+        return FailStep("create preview geometry buffers failed");
+    }
+
+    if (!BuildGeometry(
+            RenderScenePrimitiveGeometryKind::Cube,
+            graph.assets[0U].asset,
+            21U,
+            VertexView(cube_vertex, 24U),
+            IndexView(cube_index, 36U),
+            &(*out_geometry)[0U]) ||
+        !BuildGeometry(
+            RenderScenePrimitiveGeometryKind::Cylinder,
+            graph.assets[1U].asset,
+            22U,
+            VertexView(cylinder_vertex, 18U),
+            IndexView(cylinder_index, 96U),
+            &(*out_geometry)[1U]) ||
+        !BuildGeometry(
+            RenderScenePrimitiveGeometryKind::Cone,
+            graph.assets[2U].asset,
+            23U,
+            VertexView(cone_vertex, 10U),
+            IndexView(cone_index, 48U),
+            &(*out_geometry)[2U])) {
+        return FailStep("build preview geometry failed");
+    }
+
+    const std::array<RuntimeAssetLoadedFile, RUNTIME_TEXTURE_SLOT_COUNT> texture_assets{
+        graph.assets[4U],
+        graph.assets[5U],
+        graph.assets[6U]};
+    const RuntimeAssetCookedTextureMaterialBridgeResult material_result = BuildCookedMaterial(
+        device,
+        registry,
+        manager,
+        graph.assets[3U].asset,
+        std::span<const RuntimeAssetLoadedFile>(texture_assets.data(), texture_assets.size()),
+        out_material);
+    if (material_result.status != RuntimeAssetDataStatus::Success ||
+        material_result.runtime_texture_upload_count != RUNTIME_TEXTURE_SLOT_COUNT ||
+        material_result.material_texture_slot_count != RUNTIME_TEXTURE_SLOT_COUNT) {
+        return FailStep("build preview material failed");
+    }
+
+    if (!BuildCamera(device, out_camera, 1U)) {
+        return FailStep("build preview camera failed");
+    }
+
+    return true;
+}
+
 bool LoadRuntimeAssetRecords(
     MountTable &table,
     ResourceRegistry &registry,
@@ -1970,6 +2089,7 @@ bool LoadRuntimeAssetRecords(
     graph.resource_payloads_stored = load_result.cache_payload_count > FIXTURE_FILE_COUNT;
     graph.dependency_count = load_result.resource_dependency_count + load_result.asset_dependency_count;
     graph.scene_references_mesh_material_texture_shader = load_result.scene_references_runtime_asset_families;
+    graph.load_result = load_result;
 
     *out_graph = graph;
     return true;
@@ -6181,6 +6301,371 @@ int RuntimeAssetDataDoesNotDependOnEditorWebUiInputOrGdiViewer() {
     return 0;
 }
 
+int PreviewHostConsumesRuntimeAssetGraphAndCapturesThroughRhi() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("PreviewHostCapture"), &table)) {
+        return Fail("preview host mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("preview host fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("preview host runtime asset graph load failed");
+    }
+
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("preview host rhi initialize failed");
+    }
+
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneCameraBindingResult camera{};
+    if (!BuildPreviewHostSceneInputs(
+            device,
+            registry,
+            manager,
+            graph,
+            &geometry,
+            &material,
+            &camera)) {
+        return Fail("preview host render inputs failed");
+    }
+
+    PreviewHost host;
+    PreviewHostSessionResult session_result{};
+    if (host.StartSession(PreviewHostSessionDesc{PreviewHostDocumentKind::Scene}, &session_result) !=
+        PreviewHostStatus::Success) {
+        return Fail("preview host session start failed");
+    }
+
+    std::array<std::uint8_t, TOTAL_CAPTURE_BYTES> capture_bytes{};
+    std::array<PreviewHostDiagnostic, 4U> diagnostics{};
+    std::array<PreviewHostHitRecord, 3U> hits{};
+    std::array<PreviewHostSelectionRecord, 3U> selections{};
+    std::array<PreviewHostTransformFeedback, 3U> transforms{};
+    constexpr std::string_view output_path = "Artifacts/PreviewHost/Canonical.rvf";
+
+    PreviewHostFrameRequest request{};
+    request.session = session_result.session;
+    request.document_kind = PreviewHostDocumentKind::Scene;
+    request.frame.frame_id = FRAME_ID + 101U;
+    request.frame.width = 2U;
+    request.frame.height = 2U;
+    request.frame.format = PreviewHostFrameFormat::Rgba8;
+    request.frame.capture_requested = true;
+    request.runtime_graph = &graph.load_result;
+    request.scene_output = &graph.scene_output;
+    request.loaded_files = std::span<const RuntimeAssetLoadedFile>(graph.assets.data(), graph.assets.size());
+    request.resource_refs = std::span<const RuntimeAssetSceneResourceRef>(
+        graph.scene_resource_refs.data(),
+        graph.scene_resource_refs.size());
+    request.scene_entities = std::span<const RuntimeAssetSceneEntityRecord>(
+        graph.scene_entities.data(),
+        graph.scene_entities.size());
+    request.geometry_records = std::span<const RenderScenePrimitiveGeometryRecord>(
+        geometry.data(),
+        geometry.size());
+    request.camera = camera;
+    request.material = material;
+    request.rhi_device = &device;
+    request.output_path = output_path.data();
+    request.output_path_byte_count = output_path.size();
+    request.capture_output = std::span<std::uint8_t>(capture_bytes.data(), capture_bytes.size());
+    request.capture_byte_budget_per_entity = CAPTURE_BYTES_PER_ENTITY;
+    request.diagnostics = std::span<PreviewHostDiagnostic>(diagnostics.data(), diagnostics.size());
+    request.hit_records = std::span<PreviewHostHitRecord>(hits.data(), hits.size());
+    request.selection_records = std::span<PreviewHostSelectionRecord>(selections.data(), selections.size());
+    request.transform_feedback =
+        std::span<PreviewHostTransformFeedback>(transforms.data(), transforms.size());
+
+    PreviewHostFrameResult frame_result{};
+    const PreviewHostStatus status = host.BuildFrame(request, &frame_result);
+    if (status != PreviewHostStatus::Success) {
+        std::fprintf(
+            stderr,
+            "preview host status=%u diagnostics=%zu code=%u missing=%u frame=%u capture=%u runtime=%u\n",
+            static_cast<unsigned>(status),
+            frame_result.diagnostic_count,
+            static_cast<unsigned>(diagnostics[0U].code),
+            static_cast<unsigned>(frame_result.capture.first_missing_layer),
+            static_cast<unsigned>(frame_result.render_frame.status),
+            static_cast<unsigned>(frame_result.capture.status),
+            static_cast<unsigned>(frame_result.runtime_asset_status));
+        return Fail("preview host capture did not succeed");
+    }
+
+    if (!frame_result.consumed_runtime_asset_graph || !frame_result.consumed_resource_refs) {
+        return Fail("preview host did not consume RuntimeAsset graph/resource refs");
+    }
+
+    if (!frame_result.submitted_render_scene_frame ||
+        !frame_result.captured_through_render_core_rhi ||
+        frame_result.capture.status != RenderSceneThreePrimitiveCaptureStatus::Success) {
+        return Fail("preview host did not capture through RenderScene/RenderCore/RHI");
+    }
+
+    if (frame_result.submitted_entity_count != 3U ||
+        frame_result.hit_record_count != 3U ||
+        frame_result.selection_record_count != 3U ||
+        frame_result.transform_feedback_count != 3U) {
+        return Fail("preview host output counts changed");
+    }
+
+    if (!hits[0U].hit_available ||
+        !selections[1U].selectable ||
+        !transforms[2U].transform_available) {
+        return Fail("preview host feedback records were not written");
+    }
+
+    if (frame_result.capture_bytes_written == 0U) {
+        return Fail("preview host capture bytes were not written");
+    }
+
+    return 0;
+}
+
+int PreviewHostReportsBoundedResourceDiagnostics() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("PreviewHostDiagnostics"), &table)) {
+        return Fail("preview diagnostics mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("preview diagnostics fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("preview diagnostics runtime asset graph load failed");
+    }
+
+    PreviewHost host;
+    PreviewHostSessionResult scene_session{};
+    if (host.StartSession(PreviewHostSessionDesc{PreviewHostDocumentKind::Scene}, &scene_session) !=
+        PreviewHostStatus::Success) {
+        return Fail("preview diagnostics scene session start failed");
+    }
+
+    std::array<PreviewHostDiagnostic, 2U> diagnostics{};
+    std::array<PreviewHostHitRecord, 3U> hits{};
+    hits[0U].entity_index = 99U;
+
+    std::array<RuntimeAssetSceneResourceRef, FIXTURE_FILE_COUNT> type_mismatch_refs =
+        graph.scene_resource_refs;
+    type_mismatch_refs[0U].kind = RuntimeAssetFileKind::Texture;
+
+    PreviewHostFrameRequest request{};
+    request.session = scene_session.session;
+    request.document_kind = PreviewHostDocumentKind::Scene;
+    request.frame.frame_id = FRAME_ID + 201U;
+    request.runtime_graph = &graph.load_result;
+    request.scene_output = &graph.scene_output;
+    request.loaded_files = std::span<const RuntimeAssetLoadedFile>(graph.assets.data(), graph.assets.size());
+    request.resource_refs = std::span<const RuntimeAssetSceneResourceRef>(
+        type_mismatch_refs.data(),
+        type_mismatch_refs.size());
+    request.scene_entities = std::span<const RuntimeAssetSceneEntityRecord>(
+        graph.scene_entities.data(),
+        graph.scene_entities.size());
+    request.diagnostics = std::span<PreviewHostDiagnostic>(diagnostics.data(), diagnostics.size());
+    request.hit_records = std::span<PreviewHostHitRecord>(hits.data(), hits.size());
+
+    PreviewHostFrameResult frame_result{};
+    if (host.BuildFrame(request, &frame_result) != PreviewHostStatus::TypeMismatch) {
+        return Fail("preview host did not report type mismatch");
+    }
+
+    if (frame_result.diagnostic_count != 1U ||
+        diagnostics[0U].code != PreviewHostDiagnosticCode::TypeMismatch ||
+        diagnostics[0U].expected_kind != RuntimeAssetFileKind::Mesh) {
+        return Fail("preview host type mismatch diagnostic changed");
+    }
+
+    if (hits[0U].entity_index != 99U) {
+        return Fail("preview host mutated feedback output on type mismatch");
+    }
+
+    std::array<RuntimeAssetSceneResourceRef, FIXTURE_FILE_COUNT> missing_refs =
+        graph.scene_resource_refs;
+    missing_refs[0U].loaded_file_index = static_cast<std::uint32_t>(graph.assets.size() + 1U);
+    request.resource_refs = std::span<const RuntimeAssetSceneResourceRef>(
+        missing_refs.data(),
+        missing_refs.size());
+    if (host.BuildFrame(request, &frame_result) != PreviewHostStatus::MissingResourceRef) {
+        return Fail("preview host did not report missing resource ref");
+    }
+
+    if (diagnostics[0U].code != PreviewHostDiagnosticCode::MissingResourceRef ||
+        diagnostics[0U].resource_ref_index != 0U) {
+        return Fail("preview host missing ref diagnostic changed");
+    }
+
+    PreviewHostSessionResult animation_session{};
+    if (host.StartSession(PreviewHostSessionDesc{PreviewHostDocumentKind::Animation}, &animation_session) !=
+        PreviewHostStatus::Success) {
+        return Fail("preview diagnostics animation session start failed");
+    }
+
+    request.session = animation_session.session;
+    request.document_kind = PreviewHostDocumentKind::Animation;
+    request.resource_refs = std::span<const RuntimeAssetSceneResourceRef>(
+        graph.scene_resource_refs.data(),
+        graph.scene_resource_refs.size());
+    if (host.BuildFrame(request, &frame_result) != PreviewHostStatus::UnsupportedDocumentKind) {
+        return Fail("preview host did not report unsupported document kind");
+    }
+
+    if (diagnostics[0U].code != PreviewHostDiagnosticCode::UnsupportedDocumentKind) {
+        return Fail("preview host unsupported diagnostic changed");
+    }
+
+    return 0;
+}
+
+int PreviewHostRejectsStaleSessionWithoutMutation() {
+    PreviewHost host;
+    PreviewHostSessionResult start_result{};
+    if (host.StartSession(PreviewHostSessionDesc{PreviewHostDocumentKind::Scene}, &start_result) !=
+        PreviewHostStatus::Success) {
+        return Fail("preview stale session start failed");
+    }
+
+    PreviewHostSessionResult stop_result{};
+    if (host.StopSession(start_result.session, &stop_result) != PreviewHostStatus::Success) {
+        return Fail("preview stale session stop failed");
+    }
+
+    std::array<PreviewHostDiagnostic, 1U> diagnostics{};
+    std::array<PreviewHostHitRecord, 1U> hits{};
+    hits[0U].entity_index = 77U;
+
+    PreviewHostFrameRequest request{};
+    request.session = start_result.session;
+    request.document_kind = PreviewHostDocumentKind::Scene;
+    request.frame.frame_id = FRAME_ID + 301U;
+    request.diagnostics = std::span<PreviewHostDiagnostic>(diagnostics.data(), diagnostics.size());
+    request.hit_records = std::span<PreviewHostHitRecord>(hits.data(), hits.size());
+
+    PreviewHostFrameResult frame_result{};
+    if (host.BuildFrame(request, &frame_result) != PreviewHostStatus::StaleSession) {
+        return Fail("preview host did not reject stale session");
+    }
+
+    if (frame_result.diagnostic_count != 1U ||
+        diagnostics[0U].status != PreviewHostStatus::StaleSession) {
+        return Fail("preview stale session diagnostic changed");
+    }
+
+    if (hits[0U].entity_index != 77U) {
+        return Fail("preview stale session mutated hit output");
+    }
+
+    return 0;
+}
+
+int PreviewHostReportsNotCookedRuntimeAssetRef() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("PreviewHostNotCooked"), &table)) {
+        return Fail("preview not cooked mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("preview not cooked fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("preview not cooked runtime asset graph load failed");
+    }
+
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("preview not cooked rhi initialize failed");
+    }
+
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneCameraBindingResult camera{};
+    if (!BuildPreviewHostSceneInputs(
+            device,
+            registry,
+            manager,
+            graph,
+            &geometry,
+            &material,
+            &camera)) {
+        return Fail("preview not cooked render inputs failed");
+    }
+
+    graph.assets[4U].decoded_payload_stored = false;
+
+    PreviewHost host;
+    PreviewHostSessionResult session_result{};
+    if (host.StartSession(PreviewHostSessionDesc{PreviewHostDocumentKind::Scene}, &session_result) !=
+        PreviewHostStatus::Success) {
+        return Fail("preview not cooked session start failed");
+    }
+
+    std::array<PreviewHostDiagnostic, 2U> diagnostics{};
+    PreviewHostFrameRequest request{};
+    request.session = session_result.session;
+    request.document_kind = PreviewHostDocumentKind::Scene;
+    request.frame.frame_id = FRAME_ID + 401U;
+    request.frame.format = PreviewHostFrameFormat::Headless;
+    request.runtime_graph = &graph.load_result;
+    request.scene_output = &graph.scene_output;
+    request.loaded_files = std::span<const RuntimeAssetLoadedFile>(graph.assets.data(), graph.assets.size());
+    request.resource_refs = std::span<const RuntimeAssetSceneResourceRef>(
+        graph.scene_resource_refs.data(),
+        graph.scene_resource_refs.size());
+    request.scene_entities = std::span<const RuntimeAssetSceneEntityRecord>(
+        graph.scene_entities.data(),
+        graph.scene_entities.size());
+    request.geometry_records = std::span<const RenderScenePrimitiveGeometryRecord>(
+        geometry.data(),
+        geometry.size());
+    request.camera = camera;
+    request.material = material;
+    request.diagnostics = std::span<PreviewHostDiagnostic>(diagnostics.data(), diagnostics.size());
+
+    PreviewHostFrameResult frame_result{};
+    if (host.BuildFrame(request, &frame_result) != PreviewHostStatus::NotCooked) {
+        std::fprintf(
+            stderr,
+            "preview not-cooked status=%u diagnostics=%zu code=%u expected=%u actual=%u ref=%u file=%u\n",
+            static_cast<unsigned>(frame_result.status),
+            frame_result.diagnostic_count,
+            static_cast<unsigned>(diagnostics[0U].code),
+            static_cast<unsigned>(diagnostics[0U].expected_kind),
+            static_cast<unsigned>(diagnostics[0U].actual_kind),
+            diagnostics[0U].resource_ref_index,
+            diagnostics[0U].loaded_file_index);
+        return Fail("preview host did not report not-cooked ref");
+    }
+
+    if (frame_result.diagnostic_count != 1U ||
+        diagnostics[0U].code != PreviewHostDiagnosticCode::NotCooked ||
+        diagnostics[0U].expected_kind != RuntimeAssetFileKind::Texture) {
+        return Fail("preview host not-cooked diagnostic changed");
+    }
+
+    if (frame_result.submitted_render_scene_frame || frame_result.captured_through_render_core_rhi) {
+        return Fail("preview host rendered after not-cooked ref");
+    }
+
+    return 0;
+}
+
 const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_GENERATOR, RuntimeAssetDataGeneratorWritesDeterministicFilesAndHashes},
     {TEST_IMPORT_COOK_COMMAND_WRITES, RuntimeAssetDataImportCookCommandWritesSourceAndCookedDiskFixtures},
@@ -6254,6 +6739,10 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},
     {TEST_NO_UPPER, RuntimeAssetDataDoesNotDependOnEditorWebUiInputOrGdiViewer},
+    {TEST_PREVIEW_HOST_CAPTURE, PreviewHostConsumesRuntimeAssetGraphAndCapturesThroughRhi},
+    {TEST_PREVIEW_HOST_DIAGNOSTICS, PreviewHostReportsBoundedResourceDiagnostics},
+    {TEST_PREVIEW_HOST_STALE_SESSION, PreviewHostRejectsStaleSessionWithoutMutation},
+    {TEST_PREVIEW_HOST_NOT_COOKED, PreviewHostReportsNotCookedRuntimeAssetRef},
 };
 }
 

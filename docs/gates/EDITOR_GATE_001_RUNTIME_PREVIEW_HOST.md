@@ -17,6 +17,7 @@ Related plans:
 - `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
 - `docs/YUENGINE_RESOURCE_BROWSER_IMPORT_COOK_DIAGNOSTICS_SCOPE.md`
 - `docs/YUENGINE_EDITOR_DEPENDENCY_CHAIN_NO_BUILD_LIST.md`
+- `docs/YUENGINE_PREVIEW_HOST_RAV2_MVP.md`
 
 ## Purpose
 
@@ -203,7 +204,14 @@ Names may change during implementation, but the responsibilities must not.
 
 ## Candidate First Slice
 
-This gate recommends, but does not approve, the first implementable slice:
+#YuPart task #65 implements the first bounded `YuPreviewHost` target described
+in `docs/YUENGINE_PREVIEW_HOST_RAV2_MVP.md`. It realizes the value/session,
+RuntimeAsset graph/ref diagnostics, headless/frame output, and canonical
+RenderScene/RenderCore/RHI capture portions below. It remains a lower engine
+preview host slice, not `EditorRuntimePreviewHost`, a native editor app, local
+editor service, Resource Browser UX, or any Scene/Animation/UI editor panel.
+
+The historical candidate table was:
 
 | ID | Work item | Acceptance direction |
 | --- | --- | --- |

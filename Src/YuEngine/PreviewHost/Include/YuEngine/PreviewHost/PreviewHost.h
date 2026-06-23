@@ -1,0 +1,225 @@
+// Module: YuEngine PreviewHost
+// File: Src/YuEngine/PreviewHost/Include/YuEngine/PreviewHost/PreviewHost.h
+
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <span>
+
+#include "YuEngine/RenderScene/RenderSceneCameraBindingResult.h"
+#include "YuEngine/RenderScene/RenderScenePrimitiveGeometryRecord.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameResult.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameStatus.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRecord.h"
+#include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
+#include "YuEngine/Rhi/IRhiDevice.h"
+#include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
+#include "YuEngine/World/WorldObjectId.h"
+#include "YuEngine/World/WorldTransformState.h"
+
+namespace yuengine::previewhost {
+constexpr std::size_t MAX_PREVIEW_HOST_SESSIONS = 2U;
+constexpr std::size_t MAX_PREVIEW_HOST_FRAME_ENTITIES = 16U;
+
+enum class PreviewHostDocumentKind {
+    Unknown,
+    Scene,
+    Animation,
+    Ui,
+    Resource
+};
+
+enum class PreviewHostFrameFormat {
+    Unknown,
+    Headless,
+    Rgba8
+};
+
+enum class PreviewHostStatus {
+    Success,
+    InvalidArgument,
+    SessionCapacityExceeded,
+    StaleSession,
+    UnsupportedDocumentKind,
+    RuntimeAssetStatusFailed,
+    RuntimeAssetGraphStale,
+    MissingResourceRef,
+    TypeMismatch,
+    NotCooked,
+    OutputCapacityExceeded,
+    MissingCamera,
+    UnsupportedPreviewRoute,
+    RenderSceneFailed,
+    RenderCoreRhiFailed
+};
+
+enum class PreviewHostDiagnosticCode {
+    None,
+    MissingRuntimeAssetGraph,
+    StaleSession,
+    RuntimeAssetStatusFailed,
+    RuntimeAssetGraphStale,
+    MissingResourceRef,
+    StaleResourceRef,
+    TypeMismatch,
+    UnsupportedDocumentKind,
+    UnsupportedPreviewRoute,
+    NotCooked,
+    OutputCapacityExceeded,
+    MissingCamera,
+    RenderSceneFailed,
+    RenderCoreRhiFailed
+};
+
+struct PreviewHostSessionId final {
+    std::uint32_t slot = 0U;
+    std::uint32_t generation = 0U;
+
+    bool IsValid() const {
+        if (slot == 0U) {
+            return false;
+        }
+
+        return generation != 0U;
+    }
+};
+
+struct PreviewHostSessionDesc final {
+    PreviewHostDocumentKind document_kind = PreviewHostDocumentKind::Scene;
+};
+
+struct PreviewHostSessionResult final {
+    PreviewHostStatus status = PreviewHostStatus::InvalidArgument;
+    PreviewHostSessionId session{};
+    std::size_t active_session_count = 0U;
+};
+
+struct PreviewHostFrameDescriptor final {
+    std::uint32_t frame_id = 0U;
+    std::uint16_t width = 0U;
+    std::uint16_t height = 0U;
+    PreviewHostFrameFormat format = PreviewHostFrameFormat::Headless;
+    bool capture_requested = false;
+};
+
+struct PreviewHostCameraState final {
+    std::uint32_t camera_id = 0U;
+    float orbit_angle_radians = 0.0F;
+    float orbit_radius = 0.0F;
+    float orbit_height = 0.0F;
+};
+
+struct PreviewHostDiagnostic final {
+    PreviewHostDiagnosticCode code = PreviewHostDiagnosticCode::None;
+    PreviewHostStatus status = PreviewHostStatus::Success;
+    yuengine::runtimeasset::RuntimeAssetDataStatus runtime_asset_status =
+        yuengine::runtimeasset::RuntimeAssetDataStatus::Success;
+    yuengine::renderscene::RenderSceneRuntimeFrameStatus frame_status =
+        yuengine::renderscene::RenderSceneRuntimeFrameStatus::Success;
+    yuengine::renderscene::RenderSceneThreePrimitiveCaptureMissingLayer missing_layer =
+        yuengine::renderscene::RenderSceneThreePrimitiveCaptureMissingLayer::None;
+    yuengine::runtimeasset::RuntimeAssetFileKind expected_kind =
+        yuengine::runtimeasset::RuntimeAssetFileKind::Unknown;
+    yuengine::runtimeasset::RuntimeAssetFileKind actual_kind =
+        yuengine::runtimeasset::RuntimeAssetFileKind::Unknown;
+    std::uint64_t stable_id = 0U;
+    std::uint32_t loaded_file_index = 0U;
+    std::uint32_t resource_ref_index = 0U;
+    std::uint32_t entity_index = 0U;
+};
+
+struct PreviewHostHitRecord final {
+    yuengine::world::WorldObjectId world_object_id{};
+    std::uint32_t entity_index = 0U;
+    bool hit_available = false;
+};
+
+struct PreviewHostSelectionRecord final {
+    yuengine::world::WorldObjectId world_object_id{};
+    std::uint32_t entity_index = 0U;
+    bool selectable = false;
+};
+
+struct PreviewHostTransformFeedback final {
+    yuengine::world::WorldObjectId world_object_id{};
+    yuengine::world::WorldTransformState transform{};
+    bool transform_available = false;
+};
+
+struct PreviewHostFrameRequest final {
+    PreviewHostSessionId session{};
+    PreviewHostDocumentKind document_kind = PreviewHostDocumentKind::Scene;
+    PreviewHostFrameDescriptor frame{};
+    PreviewHostCameraState camera_state{};
+    const yuengine::runtimeasset::RuntimeAssetGraphLoadResult *runtime_graph = nullptr;
+    const yuengine::runtimeasset::RuntimeAssetSceneLoaderOutput *scene_output = nullptr;
+    std::span<const yuengine::runtimeasset::RuntimeAssetLoadedFile> loaded_files{};
+    std::span<const yuengine::runtimeasset::RuntimeAssetSceneResourceRef> resource_refs{};
+    std::span<const yuengine::runtimeasset::RuntimeAssetSceneEntityRecord> scene_entities{};
+    std::span<const yuengine::renderscene::RenderScenePrimitiveGeometryRecord> geometry_records{};
+    yuengine::renderscene::RenderSceneCameraBindingResult camera{};
+    yuengine::renderscene::RenderSceneRuntimeMaterialRecord material{};
+    yuengine::rhi::IRhiDevice *rhi_device = nullptr;
+    const char *output_path = nullptr;
+    std::size_t output_path_byte_count = 0U;
+    std::span<std::uint8_t> capture_output{};
+    std::size_t capture_byte_budget_per_entity = 0U;
+    std::span<PreviewHostDiagnostic> diagnostics{};
+    std::span<PreviewHostHitRecord> hit_records{};
+    std::span<PreviewHostSelectionRecord> selection_records{};
+    std::span<PreviewHostTransformFeedback> transform_feedback{};
+};
+
+struct PreviewHostFrameResult final {
+    PreviewHostStatus status = PreviewHostStatus::InvalidArgument;
+    PreviewHostFrameDescriptor frame{};
+    PreviewHostCameraState camera_state{};
+    yuengine::runtimeasset::RuntimeAssetDataStatus runtime_asset_status =
+        yuengine::runtimeasset::RuntimeAssetDataStatus::Success;
+    yuengine::renderscene::RenderSceneRuntimeFrameResult render_frame{};
+    yuengine::renderscene::RenderSceneThreePrimitiveCaptureResult capture{};
+    std::size_t diagnostic_count = 0U;
+    std::size_t hit_record_count = 0U;
+    std::size_t selection_record_count = 0U;
+    std::size_t transform_feedback_count = 0U;
+    std::uint32_t runtime_loaded_file_count = 0U;
+    std::uint32_t resource_ref_count = 0U;
+    std::uint32_t submitted_entity_count = 0U;
+    std::size_t capture_bytes_written = 0U;
+    bool consumed_runtime_asset_graph = false;
+    bool consumed_resource_refs = false;
+    bool submitted_render_scene_frame = false;
+    bool captured_through_render_core_rhi = false;
+    bool headless_output = false;
+};
+
+class PreviewHost final {
+public:
+    PreviewHostStatus StartSession(
+        const PreviewHostSessionDesc &desc,
+        PreviewHostSessionResult *out_result);
+    PreviewHostStatus StopSession(
+        PreviewHostSessionId session,
+        PreviewHostSessionResult *out_result);
+    PreviewHostStatus BuildFrame(
+        const PreviewHostFrameRequest &request,
+        PreviewHostFrameResult *out_result) const;
+
+private:
+    struct SessionSlot final {
+        PreviewHostSessionId id{};
+        PreviewHostDocumentKind document_kind = PreviewHostDocumentKind::Unknown;
+        bool active = false;
+    };
+
+    std::array<SessionSlot, MAX_PREVIEW_HOST_SESSIONS> sessions_{};
+    std::uint32_t next_generation_ = 1U;
+
+    std::size_t ActiveSessionCount() const;
+    bool IsSessionActive(
+        PreviewHostSessionId session,
+        PreviewHostDocumentKind document_kind) const;
+};
+}

@@ -15,6 +15,7 @@ Related:
 - `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
 - `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
 - `docs/YUENGINE_EDITOR_DEPENDENCY_CHAIN_NO_BUILD_LIST.md`
+- `docs/YUENGINE_PREVIEW_HOST_RAV2_MVP.md`
 
 ## 1. Correction
 
@@ -249,6 +250,13 @@ In particular:
   is not usable Animation Editor progress
 
 ## 6. First Preview Host Batch
+
+Task #65 implements the first bounded `YuPreviewHost` engine target documented
+in `docs/YUENGINE_PREVIEW_HOST_RAV2_MVP.md`. That slice covers value/session
+records, RuntimeAsset loaded graph/status/resource-ref validation, bounded
+diagnostics, headless/capture frame output, and selection/hit/transform feedback
+records. It remains below editor panels and does not define source asset
+formats, Resource Browser import settings UX, or editor mock scenes.
 
 Recommended MVP gate batch after RuntimeAsset v0:
 
