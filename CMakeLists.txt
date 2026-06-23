@@ -434,6 +434,16 @@ target_include_directories(YuAnimation
 )
 target_link_libraries(YuAnimation PUBLIC YuKernel YuWorld)
 
+add_library(YuAnimationEditor
+    Src/YuEngine/AnimationEditor/Src/AnimationEditorSurface.cpp
+)
+yuengine_apply_compile_options(YuAnimationEditor)
+target_include_directories(YuAnimationEditor
+    PUBLIC
+        Src/YuEngine/AnimationEditor/Include
+)
+target_link_libraries(YuAnimationEditor PUBLIC YuAnimation YuPreviewHost)
+
 add_library(YuHardware
     Src/YuEngine/Hardware/Src/HardwareFrameHost.cpp
 )
@@ -2200,6 +2210,15 @@ yuengine_add_labeled_test(Animation_RuntimeSamplerInterpolatesDeterministicTrans
 yuengine_add_labeled_test(Animation_RuntimeSamplerUsesFrameContextTime YuAnimationRuntimeFoundationTests Fast ModuleFixture Animation Kernel World L1 RuntimeVisualFoundation EvidenceOracle)
 yuengine_add_labeled_test(Animation_RuntimeSamplerAppliesTransformBeforeRenderSceneConsumes YuAnimationRuntimeFoundationTests Fast ModuleFixture Animation Kernel World RenderScene L1 RuntimeVisualFoundation EvidenceOracle)
 yuengine_add_labeled_test(Animation_RuntimeSamplerReportsFailureStates YuAnimationRuntimeFoundationTests Fast ModuleFixture Animation Kernel World L1 RuntimeVisualFoundation EvidenceOracle)
+
+add_executable(YuAnimationEditorSurfaceTests
+    Tests/AnimationEditor/AnimationEditorSurfaceTests.cpp
+)
+yuengine_apply_compile_options(YuAnimationEditorSurfaceTests)
+target_link_libraries(YuAnimationEditorSurfaceTests PRIVATE YuAnimationEditor)
+yuengine_add_labeled_test(AnimationEditorSurface_BuildsClipTrackTimelineFromRuntimeRecords YuAnimationEditorSurfaceTests Fast ModuleFixture AnimationEditor Animation PreviewHost World EvidenceOracle)
+yuengine_add_labeled_test(AnimationEditorSurface_ConsumesPreviewHostTransformFeedbackForScrub YuAnimationEditorSurfaceTests Fast ModuleFixture AnimationEditor Animation PreviewHost World EvidenceOracle)
+yuengine_add_labeled_test(AnimationEditorSurface_RejectsMissingPreviewFeedbackWithoutMutation YuAnimationEditorSurfaceTests Fast ModuleFixture AnimationEditor Animation PreviewHost World EvidenceOracle)
 
 add_executable(YuAudioSceneTests
     Tests/AudioScene/AudioSceneContractQueueTests.cpp
