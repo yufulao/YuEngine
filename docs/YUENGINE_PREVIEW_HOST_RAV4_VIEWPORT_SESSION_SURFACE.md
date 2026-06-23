@@ -60,6 +60,9 @@ package compatibility, or external Unity/UE/DCC bridge.
 The next scene-document bridge slice is recorded in
 `docs/YUENGINE_PREVIEW_HOST_RAV5_SCENE_DOCUMENT_BRIDGE.md`.
 
+The next editor interaction slice is recorded in
+`docs/YUENGINE_PREVIEW_HOST_RAV6_EDITOR_VIEWPORT_INTERACTION.md`.
+
 It does not make Resource Browser locator paths authoritative type truth. It
 does not bypass RuntimeAsset graph validation, Resource/Asset mapping, or
 RenderScene/RenderCore/RHI paths with a UI-only preview.

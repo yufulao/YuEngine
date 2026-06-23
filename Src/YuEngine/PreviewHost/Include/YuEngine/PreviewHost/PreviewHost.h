@@ -69,6 +69,23 @@ enum class PreviewHostSceneDocumentViewportBlockedLayer {
     ViewportSession
 };
 
+enum class PreviewHostViewportInteractionKind {
+    None,
+    Orbit,
+    Pan,
+    Zoom,
+    SelectEntity
+};
+
+enum class PreviewHostViewportInteractionBlockedLayer {
+    None,
+    ViewportSession,
+    Command,
+    CameraState,
+    Selection,
+    Output
+};
+
 enum class PreviewHostDiagnosticCode {
     None,
     MissingRuntimeAssetGraph,
@@ -318,6 +335,68 @@ struct PreviewHostSceneDocumentViewportResult final {
     bool emitted_transform_feedback = false;
 };
 
+struct PreviewHostViewportInteractionCommand final {
+    PreviewHostViewportInteractionKind kind = PreviewHostViewportInteractionKind::None;
+    float orbit_delta_radians = 0.0F;
+    float pan_delta_angle_radians = 0.0F;
+    float pan_delta_height = 0.0F;
+    float zoom_delta_radius = 0.0F;
+    std::uint32_t target_entity_index = 0U;
+};
+
+struct PreviewHostViewportInteractionLedgerRecord final {
+    std::uint32_t frame_id = 0U;
+    std::uint32_t command_sequence = 0U;
+    PreviewHostViewportInteractionKind kind = PreviewHostViewportInteractionKind::None;
+    PreviewHostCameraState before_camera{};
+    PreviewHostCameraState after_camera{};
+    std::uint32_t selected_entity_index = 0U;
+    yuengine::world::WorldObjectId selected_world_object_id{};
+    bool consumed_engine_viewport_frame = false;
+    bool camera_changed = false;
+    bool selection_changed = false;
+};
+
+struct PreviewHostEditorViewportInteractionRequest final {
+    const PreviewHostViewportSessionResult *viewport_session = nullptr;
+    PreviewHostViewportInteractionCommand command{};
+    std::uint32_t command_sequence = 0U;
+    std::span<const yuengine::runtimeasset::RuntimeAssetSceneEntityRecord> scene_entities{};
+    std::span<PreviewHostHitRecord> hit_output{};
+    std::span<PreviewHostSelectionRecord> selection_output{};
+    std::span<PreviewHostTransformFeedback> transform_feedback_output{};
+    std::span<PreviewHostViewportInteractionLedgerRecord> ledger_output{};
+};
+
+struct PreviewHostEditorViewportInteractionResult final {
+    PreviewHostStatus status = PreviewHostStatus::InvalidArgument;
+    PreviewHostViewportInteractionBlockedLayer blocked_layer =
+        PreviewHostViewportInteractionBlockedLayer::ViewportSession;
+    PreviewHostViewportInteractionKind command_kind = PreviewHostViewportInteractionKind::None;
+    PreviewHostCameraState before_camera{};
+    PreviewHostCameraState after_camera{};
+    std::uint32_t selected_entity_index = 0U;
+    yuengine::world::WorldObjectId selected_world_object_id{};
+    std::size_t hit_record_count = 0U;
+    std::size_t selection_record_count = 0U;
+    std::size_t transform_feedback_count = 0U;
+    std::size_t ledger_record_count = 0U;
+    bool consumed_viewport_session = false;
+    bool consumed_engine_viewport_frame = false;
+    bool processed_camera_command = false;
+    bool processed_selection_command = false;
+    bool emitted_hit_feedback = false;
+    bool emitted_selection_feedback = false;
+    bool emitted_transform_feedback = false;
+    bool emitted_interaction_ledger = false;
+    bool opened_native_window = false;
+    bool used_forbidden_preview_path = false;
+
+    bool Succeeded() const {
+        return status == PreviewHostStatus::Success;
+    }
+};
+
 class PreviewHost final {
 public:
     PreviewHostStatus StartSession(
@@ -332,6 +411,9 @@ public:
     PreviewHostStatus BuildViewportSessionSurface(
         const PreviewHostViewportSessionRequest &request,
         PreviewHostViewportSessionResult *out_result) const;
+    PreviewHostStatus BuildEditorViewportInteractionSurface(
+        const PreviewHostEditorViewportInteractionRequest &request,
+        PreviewHostEditorViewportInteractionResult *out_result) const;
     PreviewHostStatus BuildSceneDocumentViewportSession(
         const PreviewHostSceneDocumentViewportRequest &request,
         PreviewHostSceneDocumentViewportResult *out_result) const;

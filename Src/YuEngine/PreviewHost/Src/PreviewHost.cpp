@@ -1264,6 +1264,111 @@ void CopySceneDocumentViewportFeedback(
         }
     }
 }
+
+template <typename T>
+bool IsMutableSpanStorageValid(std::span<T> values) {
+    if (values.empty()) {
+        return true;
+    }
+
+    return values.data() != nullptr;
+}
+
+template <typename T>
+bool IsReadOnlySpanStorageValid(std::span<const T> values) {
+    if (values.empty()) {
+        return true;
+    }
+
+    return values.data() != nullptr;
+}
+
+bool IsViewportInteractionCommandValid(PreviewHostViewportInteractionKind kind) {
+    if (kind == PreviewHostViewportInteractionKind::Orbit) {
+        return true;
+    }
+
+    if (kind == PreviewHostViewportInteractionKind::Pan) {
+        return true;
+    }
+
+    if (kind == PreviewHostViewportInteractionKind::Zoom) {
+        return true;
+    }
+
+    return kind == PreviewHostViewportInteractionKind::SelectEntity;
+}
+
+bool IsCameraStateValid(const PreviewHostCameraState &camera_state) {
+    if (camera_state.camera_id == 0U) {
+        return false;
+    }
+
+    return camera_state.orbit_radius > 0.0F;
+}
+
+bool HasEngineViewportFrame(const PreviewHostViewportSessionResult &session) {
+    if (session.status != PreviewHostStatus::Success || !session.built_frame) {
+        return false;
+    }
+
+    return session.frame.submitted_render_scene_frame ||
+        session.frame.captured_through_render_core_rhi;
+}
+
+PreviewHostCameraState ApplyViewportInteractionCameraCommand(
+    const PreviewHostCameraState &before_camera,
+    const PreviewHostViewportInteractionCommand &command) {
+    PreviewHostCameraState after_camera = before_camera;
+    if (command.kind == PreviewHostViewportInteractionKind::Orbit) {
+        after_camera.orbit_angle_radians += command.orbit_delta_radians;
+    }
+
+    if (command.kind == PreviewHostViewportInteractionKind::Pan) {
+        after_camera.orbit_angle_radians += command.pan_delta_angle_radians;
+        after_camera.orbit_height += command.pan_delta_height;
+    }
+
+    if (command.kind == PreviewHostViewportInteractionKind::Zoom) {
+        after_camera.orbit_radius += command.zoom_delta_radius;
+    }
+
+    return after_camera;
+}
+
+bool IsCameraCommand(PreviewHostViewportInteractionKind kind) {
+    if (kind == PreviewHostViewportInteractionKind::Orbit) {
+        return true;
+    }
+
+    if (kind == PreviewHostViewportInteractionKind::Pan) {
+        return true;
+    }
+
+    return kind == PreviewHostViewportInteractionKind::Zoom;
+}
+
+PreviewHostViewportInteractionLedgerRecord BuildViewportInteractionLedger(
+    const PreviewHostViewportSessionResult &session,
+    const PreviewHostEditorViewportInteractionRequest &request,
+    const PreviewHostCameraState &before_camera,
+    const PreviewHostCameraState &after_camera,
+    std::uint32_t selected_entity_index,
+    yuengine::world::WorldObjectId selected_world_object_id) {
+    PreviewHostViewportInteractionLedgerRecord record{};
+    record.frame_id = session.frame.frame.frame_id;
+    record.command_sequence = request.command_sequence;
+    record.kind = request.command.kind;
+    record.before_camera = before_camera;
+    record.after_camera = after_camera;
+    record.selected_entity_index = selected_entity_index;
+    record.selected_world_object_id = selected_world_object_id;
+    record.consumed_engine_viewport_frame = true;
+    record.camera_changed = IsCameraCommand(request.command.kind);
+    record.selection_changed =
+        request.command.kind == PreviewHostViewportInteractionKind::SelectEntity;
+    return record;
+}
 }
 
 PreviewHostStatus PreviewHost::StartSession(
@@ -1713,6 +1818,169 @@ PreviewHostStatus PreviewHost::BuildViewportSessionSurface(
     result.emitted_hit_feedback = frame_result.hit_record_count > 0U;
     result.emitted_selection_feedback = frame_result.selection_record_count > 0U;
     result.emitted_transform_feedback = frame_result.transform_feedback_count > 0U;
+    *out_result = result;
+    return result.status;
+}
+
+PreviewHostStatus PreviewHost::BuildEditorViewportInteractionSurface(
+    const PreviewHostEditorViewportInteractionRequest &request,
+    PreviewHostEditorViewportInteractionResult *out_result) const {
+    if (out_result == nullptr) {
+        return PreviewHostStatus::InvalidArgument;
+    }
+
+    PreviewHostEditorViewportInteractionResult result{};
+    result.command_kind = request.command.kind;
+
+    if (!IsReadOnlySpanStorageValid(request.scene_entities) ||
+        !IsMutableSpanStorageValid(request.hit_output) ||
+        !IsMutableSpanStorageValid(request.selection_output) ||
+        !IsMutableSpanStorageValid(request.transform_feedback_output) ||
+        !IsMutableSpanStorageValid(request.ledger_output)) {
+        result.status = PreviewHostStatus::InvalidArgument;
+        result.blocked_layer = PreviewHostViewportInteractionBlockedLayer::Output;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.viewport_session == nullptr ||
+        !HasEngineViewportFrame(*request.viewport_session)) {
+        result.status = PreviewHostStatus::StaleSession;
+        result.blocked_layer = PreviewHostViewportInteractionBlockedLayer::ViewportSession;
+        *out_result = result;
+        return result.status;
+    }
+
+    const PreviewHostViewportSessionResult &session = *request.viewport_session;
+    result.consumed_viewport_session = true;
+    result.consumed_engine_viewport_frame = true;
+    result.before_camera = session.camera_state;
+    result.after_camera = session.camera_state;
+    result.selected_entity_index = session.selected_entity_index;
+
+    if (!IsViewportInteractionCommandValid(request.command.kind)) {
+        result.status = PreviewHostStatus::InvalidArgument;
+        result.blocked_layer = PreviewHostViewportInteractionBlockedLayer::Command;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.ledger_output.empty()) {
+        result.status = PreviewHostStatus::OutputCapacityExceeded;
+        result.blocked_layer = PreviewHostViewportInteractionBlockedLayer::Output;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!IsCameraStateValid(session.camera_state)) {
+        result.status = PreviewHostStatus::MissingCamera;
+        result.blocked_layer = PreviewHostViewportInteractionBlockedLayer::CameraState;
+        *out_result = result;
+        return result.status;
+    }
+
+    PreviewHostCameraState staged_camera = session.camera_state;
+    std::uint32_t staged_selected_entity_index = session.selected_entity_index;
+    yuengine::world::WorldObjectId staged_selected_world_object_id{};
+    PreviewHostHitRecord staged_hit{};
+    PreviewHostSelectionRecord staged_selection{};
+    PreviewHostTransformFeedback staged_transform{};
+    std::size_t hit_count = 0U;
+    std::size_t selection_count = 0U;
+    std::size_t transform_count = 0U;
+
+    if (IsCameraCommand(request.command.kind)) {
+        staged_camera =
+            ApplyViewportInteractionCameraCommand(session.camera_state, request.command);
+        if (!IsCameraStateValid(staged_camera)) {
+            result.status = PreviewHostStatus::InvalidArgument;
+            result.blocked_layer = PreviewHostViewportInteractionBlockedLayer::CameraState;
+            *out_result = result;
+            return result.status;
+        }
+
+        result.processed_camera_command = true;
+    }
+
+    if (request.command.kind == PreviewHostViewportInteractionKind::SelectEntity) {
+        if (request.command.target_entity_index >= request.scene_entities.size() ||
+            request.command.target_entity_index >= session.frame.submitted_entity_count) {
+            result.status = PreviewHostStatus::MissingResourceRef;
+            result.blocked_layer = PreviewHostViewportInteractionBlockedLayer::Selection;
+            *out_result = result;
+            return result.status;
+        }
+
+        if (request.hit_output.empty() ||
+            request.selection_output.empty() ||
+            request.transform_feedback_output.empty()) {
+            result.status = PreviewHostStatus::OutputCapacityExceeded;
+            result.blocked_layer = PreviewHostViewportInteractionBlockedLayer::Output;
+            *out_result = result;
+            return result.status;
+        }
+
+        const RuntimeAssetSceneEntityRecord &entity =
+            request.scene_entities[request.command.target_entity_index];
+        if (!entity.world_object_id.IsValid()) {
+            result.status = PreviewHostStatus::MissingResourceRef;
+            result.blocked_layer = PreviewHostViewportInteractionBlockedLayer::Selection;
+            *out_result = result;
+            return result.status;
+        }
+
+        staged_selected_entity_index = request.command.target_entity_index;
+        staged_selected_world_object_id = entity.world_object_id;
+        staged_hit.world_object_id = entity.world_object_id;
+        staged_hit.entity_index = staged_selected_entity_index;
+        staged_hit.hit_available = true;
+        staged_selection.world_object_id = entity.world_object_id;
+        staged_selection.entity_index = staged_selected_entity_index;
+        staged_selection.selectable = true;
+        staged_transform.world_object_id = entity.world_object_id;
+        staged_transform.transform = entity.transform;
+        staged_transform.transform_available = true;
+        hit_count = 1U;
+        selection_count = 1U;
+        transform_count = 1U;
+        result.processed_selection_command = true;
+    }
+
+    const PreviewHostViewportInteractionLedgerRecord staged_ledger =
+        BuildViewportInteractionLedger(
+            session,
+            request,
+            session.camera_state,
+            staged_camera,
+            staged_selected_entity_index,
+            staged_selected_world_object_id);
+
+    request.ledger_output[0U] = staged_ledger;
+    if (hit_count > 0U) {
+        request.hit_output[0U] = staged_hit;
+    }
+
+    if (selection_count > 0U) {
+        request.selection_output[0U] = staged_selection;
+    }
+
+    if (transform_count > 0U) {
+        request.transform_feedback_output[0U] = staged_transform;
+    }
+
+    result.status = PreviewHostStatus::Success;
+    result.blocked_layer = PreviewHostViewportInteractionBlockedLayer::None;
+    result.after_camera = staged_camera;
+    result.selected_entity_index = staged_selected_entity_index;
+    result.selected_world_object_id = staged_selected_world_object_id;
+    result.hit_record_count = hit_count;
+    result.selection_record_count = selection_count;
+    result.transform_feedback_count = transform_count;
+    result.ledger_record_count = 1U;
+    result.emitted_hit_feedback = hit_count > 0U;
+    result.emitted_selection_feedback = selection_count > 0U;
+    result.emitted_transform_feedback = transform_count > 0U;
+    result.emitted_interaction_ledger = true;
     *out_result = result;
     return result.status;
 }
