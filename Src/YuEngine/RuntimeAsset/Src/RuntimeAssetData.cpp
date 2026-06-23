@@ -1830,11 +1830,17 @@ RuntimeAssetDataStatus ValidateMeshMetadata(
     RuntimeAssetMeshGeometryKind geometry_kind = RuntimeAssetMeshGeometryKind::Unknown;
     if (mesh_kind == "cube") {
         geometry_kind = RuntimeAssetMeshGeometryKind::Cube;
-    } else if (mesh_kind == "cylinder") {
+    }
+
+    if (mesh_kind == "cylinder") {
         geometry_kind = RuntimeAssetMeshGeometryKind::Cylinder;
-    } else if (mesh_kind == "cone") {
+    }
+
+    if (mesh_kind == "cone") {
         geometry_kind = RuntimeAssetMeshGeometryKind::Cone;
-    } else {
+    }
+
+    if (geometry_kind == RuntimeAssetMeshGeometryKind::Unknown) {
         return RuntimeAssetDataStatus::InvalidKind;
     }
 
@@ -4565,7 +4571,9 @@ void CountVisualProofLoadedRecord(
 
     if (file.artifact_class == RuntimeAssetArtifactClass::Cooked) {
         ++result->cooked_record_count;
-    } else if (file.artifact_class == RuntimeAssetArtifactClass::Source) {
+    }
+
+    if (file.artifact_class == RuntimeAssetArtifactClass::Source) {
         ++result->source_record_count;
     }
 
