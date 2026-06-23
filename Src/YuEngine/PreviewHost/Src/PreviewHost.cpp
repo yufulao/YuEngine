@@ -16,6 +16,7 @@ namespace {
 using RuntimeAssetDataStatus = yuengine::runtimeasset::RuntimeAssetDataStatus;
 using RuntimeAssetFileKind = yuengine::runtimeasset::RuntimeAssetFileKind;
 using RuntimeAssetGraphLoadResult = yuengine::runtimeasset::RuntimeAssetGraphLoadResult;
+using RuntimeAssetImportCookMissingLayer = yuengine::runtimeasset::RuntimeAssetImportCookMissingLayer;
 using RuntimeAssetLoadedFile = yuengine::runtimeasset::RuntimeAssetLoadedFile;
 using RuntimeAssetSceneEntityRecord = yuengine::runtimeasset::RuntimeAssetSceneEntityRecord;
 using RuntimeAssetSceneLoaderOutput = yuengine::runtimeasset::RuntimeAssetSceneLoaderOutput;
@@ -75,12 +76,15 @@ PreviewHostStatus EmitFailure(
     std::uint64_t stable_id,
     std::uint32_t loaded_file_index,
     std::uint32_t resource_ref_index,
-    std::uint32_t entity_index) {
+    std::uint32_t entity_index,
+    RuntimeAssetImportCookMissingLayer import_cook_missing_layer =
+        RuntimeAssetImportCookMissingLayer::None) {
     if (result == nullptr) {
         return PreviewHostStatus::InvalidArgument;
     }
 
     result->runtime_asset_status = runtime_status;
+    result->import_cook_missing_layer = import_cook_missing_layer;
     result->render_frame.status = frame_status;
     result->capture.first_missing_layer = missing_layer;
 
@@ -94,6 +98,7 @@ PreviewHostStatus EmitFailure(
     diagnostic.code = code;
     diagnostic.status = status;
     diagnostic.runtime_asset_status = runtime_status;
+    diagnostic.import_cook_missing_layer = import_cook_missing_layer;
     diagnostic.frame_status = frame_status;
     diagnostic.missing_layer = missing_layer;
     diagnostic.expected_kind = expected_kind;
@@ -341,6 +346,219 @@ PreviewHostStatus ResolveResourceRef(
 
     *out_ref = &ref;
     *out_file = &file;
+    return PreviewHostStatus::Success;
+}
+
+PreviewHostStatus StatusForImportCookLayer(RuntimeAssetImportCookMissingLayer layer) {
+    switch (layer) {
+        case RuntimeAssetImportCookMissingLayer::None:
+            return PreviewHostStatus::InvalidCookedRecord;
+        case RuntimeAssetImportCookMissingLayer::Command:
+        case RuntimeAssetImportCookMissingLayer::FileVfs:
+            return PreviewHostStatus::MissingCommandOutput;
+        case RuntimeAssetImportCookMissingLayer::RuntimeAssetData:
+            return PreviewHostStatus::InvalidCookedRecord;
+        case RuntimeAssetImportCookMissingLayer::Resource:
+        case RuntimeAssetImportCookMissingLayer::Asset:
+            return PreviewHostStatus::UnsupportedBridgeLayer;
+    }
+
+    return PreviewHostStatus::InvalidCookedRecord;
+}
+
+PreviewHostDiagnosticCode DiagnosticForImportCookLayer(RuntimeAssetImportCookMissingLayer layer) {
+    switch (StatusForImportCookLayer(layer)) {
+        case PreviewHostStatus::MissingCommandOutput:
+            return PreviewHostDiagnosticCode::MissingCommandOutput;
+        case PreviewHostStatus::UnsupportedBridgeLayer:
+            return PreviewHostDiagnosticCode::UnsupportedBridgeLayer;
+        case PreviewHostStatus::InvalidCookedRecord:
+            return PreviewHostDiagnosticCode::InvalidCookedRecord;
+        default:
+            break;
+    }
+
+    return PreviewHostDiagnosticCode::InvalidCookedRecord;
+}
+
+PreviewHostStatus EmitImportCookFailure(
+    const PreviewHostFrameRequest &request,
+    PreviewHostFrameResult *result,
+    RuntimeAssetDataStatus runtime_status,
+    RuntimeAssetImportCookMissingLayer missing_layer,
+    RuntimeAssetFileKind expected_kind,
+    RuntimeAssetFileKind actual_kind,
+    std::uint64_t stable_id,
+    std::uint32_t loaded_file_index) {
+    if (result == nullptr) {
+        return PreviewHostStatus::InvalidArgument;
+    }
+
+    result->import_cook_status = runtime_status;
+    const PreviewHostStatus status = StatusForImportCookLayer(missing_layer);
+    return EmitFailure(
+        request,
+        result,
+        status,
+        DiagnosticForImportCookLayer(missing_layer),
+        runtime_status,
+        RenderSceneRuntimeFrameStatus::Success,
+        RenderSceneThreePrimitiveCaptureMissingLayer::None,
+        expected_kind,
+        actual_kind,
+        stable_id,
+        loaded_file_index,
+        0U,
+        0U,
+        missing_layer);
+}
+
+bool CommandOutputRequired(const PreviewHostFrameRequest &request) {
+    if (request.command_output.require_cooked_records) {
+        return true;
+    }
+
+    return request.command_output.command != nullptr;
+}
+
+PreviewHostStatus ValidateCommandOutput(
+    const PreviewHostFrameRequest &request,
+    PreviewHostFrameResult *result) {
+    if (!CommandOutputRequired(request)) {
+        return PreviewHostStatus::Success;
+    }
+
+    if (result == nullptr) {
+        return PreviewHostStatus::InvalidArgument;
+    }
+
+    if (request.command_output.command == nullptr) {
+        return EmitImportCookFailure(
+            request,
+            result,
+            RuntimeAssetDataStatus::InvalidArgument,
+            RuntimeAssetImportCookMissingLayer::Command,
+            RuntimeAssetFileKind::Scene,
+            RuntimeAssetFileKind::Unknown,
+            0U,
+            0U);
+    }
+
+    const yuengine::runtimeasset::RuntimeAssetImportCookCommandResult &command =
+        *request.command_output.command;
+    result->import_cook_status = command.status;
+    result->import_cook_missing_layer = command.missing_layer;
+
+    if (command.status != RuntimeAssetDataStatus::Success ||
+        command.fixture.status != RuntimeAssetDataStatus::Success ||
+        command.missing_layer != RuntimeAssetImportCookMissingLayer::None) {
+        RuntimeAssetImportCookMissingLayer layer = command.missing_layer;
+        if (layer == RuntimeAssetImportCookMissingLayer::None) {
+            layer = command.fixture.missing_layer;
+        }
+
+        if (layer == RuntimeAssetImportCookMissingLayer::None) {
+            layer = RuntimeAssetImportCookMissingLayer::RuntimeAssetData;
+        }
+
+        return EmitImportCookFailure(
+            request,
+            result,
+            command.status,
+            layer,
+            RuntimeAssetFileKind::Scene,
+            RuntimeAssetFileKind::Unknown,
+            command.fixture.cooked_scene.stable_id,
+            0U);
+    }
+
+    if (!command.fixture.wrote_to_disk || !command.fixture.validated_cooked_files) {
+        return EmitImportCookFailure(
+            request,
+            result,
+            RuntimeAssetDataStatus::InvalidArgument,
+            RuntimeAssetImportCookMissingLayer::FileVfs,
+            RuntimeAssetFileKind::Scene,
+            RuntimeAssetFileKind::Unknown,
+            command.fixture.cooked_scene.stable_id,
+            0U);
+    }
+
+    if (request.command_output.cooked_scene == nullptr ||
+        request.command_output.cooked_files.empty() ||
+        command.fixture.cooked_file_count == 0U ||
+        command.fixture.cooked_file_count > request.command_output.cooked_files.size()) {
+        return EmitImportCookFailure(
+            request,
+            result,
+            RuntimeAssetDataStatus::MissingDependency,
+            RuntimeAssetImportCookMissingLayer::RuntimeAssetData,
+            RuntimeAssetFileKind::Scene,
+            RuntimeAssetFileKind::Unknown,
+            command.fixture.cooked_scene.stable_id,
+            command.fixture.cooked_file_count);
+    }
+
+    const yuengine::runtimeasset::RuntimeAssetFileDesc &command_scene =
+        *request.command_output.cooked_scene;
+    if (command_scene.kind != RuntimeAssetFileKind::Scene ||
+        command_scene.path == nullptr ||
+        command_scene.stable_id != command.fixture.cooked_scene.stable_id ||
+        request.runtime_graph->scene.stable_id != command_scene.stable_id ||
+        request.runtime_graph->scene.kind != RuntimeAssetFileKind::Scene ||
+        request.runtime_graph->scene.artifact_class != yuengine::runtimeasset::RuntimeAssetArtifactClass::Cooked) {
+        return EmitImportCookFailure(
+            request,
+            result,
+            RuntimeAssetDataStatus::TypeMismatch,
+            RuntimeAssetImportCookMissingLayer::RuntimeAssetData,
+            RuntimeAssetFileKind::Scene,
+            request.runtime_graph->scene.kind,
+            command_scene.stable_id,
+            0U);
+    }
+
+    if (request.runtime_graph->loaded_file_count != command.fixture.cooked_file_count) {
+        return EmitImportCookFailure(
+            request,
+            result,
+            RuntimeAssetDataStatus::InvalidBounds,
+            RuntimeAssetImportCookMissingLayer::RuntimeAssetData,
+            RuntimeAssetFileKind::Unknown,
+            RuntimeAssetFileKind::Unknown,
+            command_scene.stable_id,
+            request.runtime_graph->loaded_file_count);
+    }
+
+    for (std::uint32_t index = 0U; index < command.fixture.cooked_file_count; ++index) {
+        const yuengine::runtimeasset::RuntimeAssetFileDesc &desc =
+            request.command_output.cooked_files[index];
+        const RuntimeAssetLoadedFile &file = request.loaded_files[index];
+        if (desc.path == nullptr ||
+            file.kind != desc.kind ||
+            file.stable_id != desc.stable_id ||
+            file.resource_type.value != desc.resource_type.value ||
+            file.asset_type.value != desc.asset_type.value ||
+            file.artifact_class != yuengine::runtimeasset::RuntimeAssetArtifactClass::Cooked ||
+            file.schema_version == 0U ||
+            file.identity_hash == 0U ||
+            file.payload_hash == 0U) {
+            return EmitImportCookFailure(
+                request,
+                result,
+                RuntimeAssetDataStatus::TypeMismatch,
+                RuntimeAssetImportCookMissingLayer::RuntimeAssetData,
+                desc.kind,
+                file.kind,
+                desc.stable_id,
+                index);
+        }
+    }
+
+    result->import_cook_status = RuntimeAssetDataStatus::Success;
+    result->import_cook_missing_layer = RuntimeAssetImportCookMissingLayer::None;
+    result->command_cooked_file_count = command.fixture.cooked_file_count;
+    result->consumed_import_cook_command_output = true;
     return PreviewHostStatus::Success;
 }
 
@@ -783,6 +1001,8 @@ PreviewHostStatus PreviewHost::BuildFrame(
     result.frame = request.frame;
     result.camera_state = request.camera_state;
     result.runtime_asset_status = RuntimeAssetDataStatus::Success;
+    result.import_cook_status = RuntimeAssetDataStatus::Success;
+    result.import_cook_missing_layer = RuntimeAssetImportCookMissingLayer::None;
 
     if (!IsSessionActive(request.session, request.document_kind)) {
         const PreviewHostStatus status = EmitFailure(
@@ -842,6 +1062,12 @@ PreviewHostStatus PreviewHost::BuildFrame(
     }
 
     PreviewHostStatus status = ValidateGraph(request, &result);
+    if (status != PreviewHostStatus::Success) {
+        *out_result = result;
+        return status;
+    }
+
+    status = ValidateCommandOutput(request, &result);
     if (status != PreviewHostStatus::Success) {
         *out_result = result;
         return status;

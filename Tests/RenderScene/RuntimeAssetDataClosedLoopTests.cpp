@@ -74,6 +74,7 @@ using yuengine::file::MountId;
 using yuengine::file::MountTable;
 using yuengine::file::VirtualPath;
 using yuengine::previewhost::PreviewHost;
+using yuengine::previewhost::PreviewHostCommandOutputRef;
 using yuengine::previewhost::PreviewHostDiagnostic;
 using yuengine::previewhost::PreviewHostDiagnosticCode;
 using yuengine::previewhost::PreviewHostDocumentKind;
@@ -328,6 +329,8 @@ constexpr const char *TEST_NO_UPPER =
     "RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer";
 constexpr const char *TEST_PREVIEW_HOST_CAPTURE =
     "PreviewHost_ConsumesRuntimeAssetGraphAndCapturesThroughRhi";
+constexpr const char *TEST_PREVIEW_HOST_COMMAND_OUTPUT =
+    "PreviewHost_ConsumesImportCookCommandOutputs";
 constexpr const char *TEST_PREVIEW_HOST_DIAGNOSTICS =
     "PreviewHost_ReportsBoundedResourceDiagnostics";
 constexpr const char *TEST_PREVIEW_HOST_STALE_SESSION =
@@ -6852,6 +6855,184 @@ int PreviewHostConsumesRuntimeAssetGraphAndCapturesThroughRhi() {
     return 0;
 }
 
+int PreviewHostConsumesImportCookCommandOutputs() {
+    CookedVisualProofContext context{};
+    if (!SetupCookedVisualProofContext("PreviewHostCommandOutput", &context)) {
+        return Fail("preview host command output setup failed");
+    }
+
+    LoadedGraph graph{};
+    graph.assets = context.loaded_files;
+    graph.scene_resource_refs = context.scene_refs;
+    graph.scene_entities = context.scene_entities;
+    graph.scene_output = context.scene_output;
+    graph.load_result = context.load_result;
+
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneCameraBindingResult camera{};
+    if (!BuildPreviewHostSceneInputs(
+            context.device,
+            context.registry,
+            context.manager,
+            graph,
+            &geometry,
+            &material,
+            &camera)) {
+        return Fail("preview host command output render inputs failed");
+    }
+
+    PreviewHost host;
+    PreviewHostSessionResult session_result{};
+    if (host.StartSession(PreviewHostSessionDesc{PreviewHostDocumentKind::Scene}, &session_result) !=
+        PreviewHostStatus::Success) {
+        return Fail("preview host command output session start failed");
+    }
+
+    PreviewHostCommandOutputRef command_output{};
+    command_output.command = &context.fixture.command;
+    command_output.cooked_scene = &context.fixture.command.fixture.cooked_scene;
+    command_output.cooked_files = std::span<const RuntimeAssetFileDesc>(
+        context.fixture.cooked_files.data(),
+        context.fixture.command.fixture.cooked_file_count);
+    command_output.require_cooked_records = true;
+
+    std::array<std::uint8_t, TOTAL_CAPTURE_BYTES> capture_bytes{};
+    std::array<PreviewHostDiagnostic, 4U> diagnostics{};
+    std::array<PreviewHostHitRecord, 3U> hits{};
+    std::array<PreviewHostSelectionRecord, 3U> selections{};
+    std::array<PreviewHostTransformFeedback, 3U> transforms{};
+    constexpr std::string_view output_path = "Artifacts/PreviewHost/ImportCookCommand.rvf";
+
+    PreviewHostFrameRequest request{};
+    request.session = session_result.session;
+    request.document_kind = PreviewHostDocumentKind::Scene;
+    request.frame.frame_id = FRAME_ID + 451U;
+    request.frame.width = 2U;
+    request.frame.height = 2U;
+    request.frame.format = PreviewHostFrameFormat::Rgba8;
+    request.frame.capture_requested = true;
+    request.command_output = command_output;
+    request.runtime_graph = &context.load_result;
+    request.scene_output = &context.scene_output;
+    request.loaded_files = std::span<const RuntimeAssetLoadedFile>(
+        context.loaded_files.data(),
+        context.load_result.loaded_file_count);
+    request.resource_refs = std::span<const RuntimeAssetSceneResourceRef>(
+        context.scene_refs.data(),
+        context.scene_output.resource_ref_count);
+    request.scene_entities = std::span<const RuntimeAssetSceneEntityRecord>(
+        context.scene_entities.data(),
+        context.scene_output.entity_count);
+    request.geometry_records = std::span<const RenderScenePrimitiveGeometryRecord>(
+        geometry.data(),
+        geometry.size());
+    request.camera = camera;
+    request.material = material;
+    request.rhi_device = &context.device;
+    request.output_path = output_path.data();
+    request.output_path_byte_count = output_path.size();
+    request.capture_output = std::span<std::uint8_t>(capture_bytes.data(), capture_bytes.size());
+    request.capture_byte_budget_per_entity = CAPTURE_BYTES_PER_ENTITY;
+    request.diagnostics = std::span<PreviewHostDiagnostic>(diagnostics.data(), diagnostics.size());
+    request.hit_records = std::span<PreviewHostHitRecord>(hits.data(), hits.size());
+    request.selection_records = std::span<PreviewHostSelectionRecord>(selections.data(), selections.size());
+    request.transform_feedback =
+        std::span<PreviewHostTransformFeedback>(transforms.data(), transforms.size());
+
+    PreviewHostFrameResult frame_result{};
+    if (host.BuildFrame(request, &frame_result) != PreviewHostStatus::Success) {
+        return Fail("preview host did not consume import/cook command output");
+    }
+
+    if (!frame_result.consumed_import_cook_command_output ||
+        frame_result.import_cook_status != RuntimeAssetDataStatus::Success ||
+        frame_result.import_cook_missing_layer != RuntimeAssetImportCookMissingLayer::None ||
+        frame_result.command_cooked_file_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
+        !frame_result.consumed_runtime_asset_graph ||
+        !frame_result.submitted_render_scene_frame ||
+        !frame_result.captured_through_render_core_rhi ||
+        frame_result.capture_bytes_written == 0U) {
+        return Fail("preview host command output ledger was incomplete");
+    }
+
+    if (frame_result.hit_record_count != 3U ||
+        frame_result.selection_record_count != 3U ||
+        frame_result.transform_feedback_count != 3U ||
+        !hits[0U].hit_available ||
+        !selections[1U].selectable ||
+        !transforms[2U].transform_available) {
+        return Fail("preview host command output feedback was incomplete");
+    }
+
+    std::array<PreviewHostDiagnostic, 2U> failure_diagnostics{};
+    std::array<PreviewHostHitRecord, 3U> failure_hits{};
+    failure_hits[0U].entity_index = 77U;
+
+    PreviewHostFrameRequest missing_command_request = request;
+    missing_command_request.command_output.command = nullptr;
+    missing_command_request.diagnostics =
+        std::span<PreviewHostDiagnostic>(failure_diagnostics.data(), failure_diagnostics.size());
+    missing_command_request.hit_records =
+        std::span<PreviewHostHitRecord>(failure_hits.data(), failure_hits.size());
+    PreviewHostFrameResult missing_command_result{};
+    if (host.BuildFrame(missing_command_request, &missing_command_result) !=
+        PreviewHostStatus::MissingCommandOutput) {
+        return Fail("preview host did not report missing command output");
+    }
+
+    if (failure_diagnostics[0U].code != PreviewHostDiagnosticCode::MissingCommandOutput ||
+        failure_diagnostics[0U].import_cook_missing_layer != RuntimeAssetImportCookMissingLayer::Command ||
+        failure_hits[0U].entity_index != 77U) {
+        return Fail("preview host missing command diagnostic changed");
+    }
+
+    std::array<RuntimeAssetFileDesc, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> invalid_cooked_files =
+        context.fixture.cooked_files;
+    invalid_cooked_files[0U].stable_id += 99U;
+    PreviewHostCommandOutputRef invalid_command_output = command_output;
+    invalid_command_output.cooked_files = std::span<const RuntimeAssetFileDesc>(
+        invalid_cooked_files.data(),
+        invalid_cooked_files.size());
+    PreviewHostFrameRequest invalid_cooked_request = request;
+    invalid_cooked_request.command_output = invalid_command_output;
+    invalid_cooked_request.diagnostics =
+        std::span<PreviewHostDiagnostic>(failure_diagnostics.data(), failure_diagnostics.size());
+    PreviewHostFrameResult invalid_cooked_result{};
+    if (host.BuildFrame(invalid_cooked_request, &invalid_cooked_result) !=
+        PreviewHostStatus::InvalidCookedRecord) {
+        return Fail("preview host did not report invalid cooked command record");
+    }
+
+    if (failure_diagnostics[0U].code != PreviewHostDiagnosticCode::InvalidCookedRecord ||
+        failure_diagnostics[0U].import_cook_missing_layer != RuntimeAssetImportCookMissingLayer::RuntimeAssetData) {
+        return Fail("preview host invalid cooked diagnostic changed");
+    }
+
+    RuntimeAssetImportCookCommandResult unsupported_command = context.fixture.command;
+    unsupported_command.status = RuntimeAssetDataStatus::InvalidArgument;
+    unsupported_command.missing_layer = RuntimeAssetImportCookMissingLayer::Resource;
+    unsupported_command.fixture.status = RuntimeAssetDataStatus::InvalidArgument;
+    PreviewHostCommandOutputRef unsupported_command_output = command_output;
+    unsupported_command_output.command = &unsupported_command;
+    PreviewHostFrameRequest unsupported_request = request;
+    unsupported_request.command_output = unsupported_command_output;
+    unsupported_request.diagnostics =
+        std::span<PreviewHostDiagnostic>(failure_diagnostics.data(), failure_diagnostics.size());
+    PreviewHostFrameResult unsupported_result{};
+    if (host.BuildFrame(unsupported_request, &unsupported_result) !=
+        PreviewHostStatus::UnsupportedBridgeLayer) {
+        return Fail("preview host did not report unsupported command bridge layer");
+    }
+
+    if (failure_diagnostics[0U].code != PreviewHostDiagnosticCode::UnsupportedBridgeLayer ||
+        failure_diagnostics[0U].import_cook_missing_layer != RuntimeAssetImportCookMissingLayer::Resource) {
+        return Fail("preview host unsupported bridge diagnostic changed");
+    }
+
+    return 0;
+}
+
 int PreviewHostReportsBoundedResourceDiagnostics() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("PreviewHostDiagnostics"), &table)) {
@@ -7166,6 +7347,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},
     {TEST_NO_UPPER, RuntimeAssetDataDoesNotDependOnEditorWebUiInputOrGdiViewer},
     {TEST_PREVIEW_HOST_CAPTURE, PreviewHostConsumesRuntimeAssetGraphAndCapturesThroughRhi},
+    {TEST_PREVIEW_HOST_COMMAND_OUTPUT, PreviewHostConsumesImportCookCommandOutputs},
     {TEST_PREVIEW_HOST_DIAGNOSTICS, PreviewHostReportsBoundedResourceDiagnostics},
     {TEST_PREVIEW_HOST_STALE_SESSION, PreviewHostRejectsStaleSessionWithoutMutation},
     {TEST_PREVIEW_HOST_NOT_COOKED, PreviewHostReportsNotCookedRuntimeAssetRef},

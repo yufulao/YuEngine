@@ -52,7 +52,10 @@ enum class PreviewHostStatus {
     MissingCamera,
     UnsupportedPreviewRoute,
     RenderSceneFailed,
-    RenderCoreRhiFailed
+    RenderCoreRhiFailed,
+    MissingCommandOutput,
+    InvalidCookedRecord,
+    UnsupportedBridgeLayer
 };
 
 enum class PreviewHostDiagnosticCode {
@@ -70,7 +73,10 @@ enum class PreviewHostDiagnosticCode {
     OutputCapacityExceeded,
     MissingCamera,
     RenderSceneFailed,
-    RenderCoreRhiFailed
+    RenderCoreRhiFailed,
+    MissingCommandOutput,
+    InvalidCookedRecord,
+    UnsupportedBridgeLayer
 };
 
 struct PreviewHostSessionId final {
@@ -116,6 +122,8 @@ struct PreviewHostDiagnostic final {
     PreviewHostStatus status = PreviewHostStatus::Success;
     yuengine::runtimeasset::RuntimeAssetDataStatus runtime_asset_status =
         yuengine::runtimeasset::RuntimeAssetDataStatus::Success;
+    yuengine::runtimeasset::RuntimeAssetImportCookMissingLayer import_cook_missing_layer =
+        yuengine::runtimeasset::RuntimeAssetImportCookMissingLayer::None;
     yuengine::renderscene::RenderSceneRuntimeFrameStatus frame_status =
         yuengine::renderscene::RenderSceneRuntimeFrameStatus::Success;
     yuengine::renderscene::RenderSceneThreePrimitiveCaptureMissingLayer missing_layer =
@@ -148,11 +156,19 @@ struct PreviewHostTransformFeedback final {
     bool transform_available = false;
 };
 
+struct PreviewHostCommandOutputRef final {
+    const yuengine::runtimeasset::RuntimeAssetImportCookCommandResult *command = nullptr;
+    const yuengine::runtimeasset::RuntimeAssetFileDesc *cooked_scene = nullptr;
+    std::span<const yuengine::runtimeasset::RuntimeAssetFileDesc> cooked_files{};
+    bool require_cooked_records = false;
+};
+
 struct PreviewHostFrameRequest final {
     PreviewHostSessionId session{};
     PreviewHostDocumentKind document_kind = PreviewHostDocumentKind::Scene;
     PreviewHostFrameDescriptor frame{};
     PreviewHostCameraState camera_state{};
+    PreviewHostCommandOutputRef command_output{};
     const yuengine::runtimeasset::RuntimeAssetGraphLoadResult *runtime_graph = nullptr;
     const yuengine::runtimeasset::RuntimeAssetSceneLoaderOutput *scene_output = nullptr;
     std::span<const yuengine::runtimeasset::RuntimeAssetLoadedFile> loaded_files{};
@@ -178,6 +194,10 @@ struct PreviewHostFrameResult final {
     PreviewHostCameraState camera_state{};
     yuengine::runtimeasset::RuntimeAssetDataStatus runtime_asset_status =
         yuengine::runtimeasset::RuntimeAssetDataStatus::Success;
+    yuengine::runtimeasset::RuntimeAssetDataStatus import_cook_status =
+        yuengine::runtimeasset::RuntimeAssetDataStatus::Success;
+    yuengine::runtimeasset::RuntimeAssetImportCookMissingLayer import_cook_missing_layer =
+        yuengine::runtimeasset::RuntimeAssetImportCookMissingLayer::None;
     yuengine::renderscene::RenderSceneRuntimeFrameResult render_frame{};
     yuengine::renderscene::RenderSceneThreePrimitiveCaptureResult capture{};
     std::size_t diagnostic_count = 0U;
@@ -185,10 +205,12 @@ struct PreviewHostFrameResult final {
     std::size_t selection_record_count = 0U;
     std::size_t transform_feedback_count = 0U;
     std::uint32_t runtime_loaded_file_count = 0U;
+    std::uint32_t command_cooked_file_count = 0U;
     std::uint32_t resource_ref_count = 0U;
     std::uint32_t submitted_entity_count = 0U;
     std::size_t capture_bytes_written = 0U;
     bool consumed_runtime_asset_graph = false;
+    bool consumed_import_cook_command_output = false;
     bool consumed_resource_refs = false;
     bool submitted_render_scene_frame = false;
     bool captured_through_render_core_rhi = false;

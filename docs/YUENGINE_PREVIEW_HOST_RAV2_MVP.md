@@ -4,6 +4,10 @@ Status: implemented first slice for #YuPart task #65
 Owner: Preview Host implementation
 Target: `YuPreviewHost`
 
+Related:
+
+- `docs/YUENGINE_PREVIEW_HOST_RAV3_COMMAND_OUTPUT_WIRING.md`
+
 Related evidence:
 
 - `docs/YUENGINE_RUNTIME_ASSET_V0_RAV2_EVIDENCE_MATRIX.md`
@@ -100,7 +104,8 @@ Remaining later work:
 
 - consume RAV2 Resource Browser query/diagnostic records in a later preview-host
   wiring task; task #64 only supplies the lower Resource Browser contract;
-- consume RAV2-A command/cook outputs in a later preview-host wiring task;
+- task #70 adds the first Preview Host command/cook-output wiring; future work
+  may broaden beyond deterministic fixture command outputs;
 - broaden beyond the canonical three-primitive scene only after RuntimeAsset
   exposes production mesh/material/scene records for the wider route;
 - add editor service/panel integration in later tasks, not in #65.
