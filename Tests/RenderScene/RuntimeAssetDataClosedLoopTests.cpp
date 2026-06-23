@@ -66,6 +66,7 @@
 #include "YuEngine/Rhi/RhiTextureDesc.h"
 #include "YuEngine/Rhi/RhiVertexBufferView.h"
 #include "YuEngine/PreviewHost/PreviewHost.h"
+#include "YuEngine/ResourceBrowser/ResourceBrowserSurface.h"
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridge.h"
 #include "YuEngine/Streaming/ResourceDecodedTextureBridgeRequest.h"
@@ -125,6 +126,8 @@ using yuengine::previewhost::PreviewHostSessionId;
 using yuengine::previewhost::PreviewHostSessionResult;
 using yuengine::previewhost::PreviewHostStatus;
 using yuengine::previewhost::PreviewHostTransformFeedback;
+using yuengine::previewhost::PreviewHostViewportSessionRequest;
+using yuengine::previewhost::PreviewHostViewportSessionResult;
 using yuengine::rendercore::RenderDrawableFramePipeline;
 using yuengine::rendercore::RenderDrawableFramePipelineRequest;
 using yuengine::rendercore::RenderDrawableFramePipelineStatus;
@@ -182,6 +185,16 @@ using yuengine::resourcebrowser::ResourceBrowserDiagnosticsResult;
 using yuengine::resourcebrowser::ResourceBrowserDiagnosticsStatus;
 using yuengine::resourcebrowser::ResourceBrowserDiagnosticSeverity;
 using yuengine::resourcebrowser::ResourceBrowserResourceEntry;
+using yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceRequest;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceResult;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceRow;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionRequest;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionResult;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionStatus;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceStatus;
+using yuengine::resourcebrowser::BuildResourceBrowserNativeSurface;
+using yuengine::resourcebrowser::ResolveResourceBrowserSurfaceSelection;
 using yuengine::runtimeasset::HashRuntimeAssetDataBytes;
 using yuengine::runtimeasset::BuildRuntimeAssetCookedVisualProofRoute;
 using yuengine::runtimeasset::BuildRuntimeAssetCookedShaderProgramPipeline;
@@ -408,6 +421,10 @@ constexpr const char *TEST_PREVIEW_HOST_STALE_SESSION =
     "PreviewHost_RejectsStaleSessionWithoutMutation";
 constexpr const char *TEST_PREVIEW_HOST_NOT_COOKED =
     "PreviewHost_ReportsNotCookedRuntimeAssetRef";
+constexpr const char *TEST_PREVIEW_HOST_VIEWPORT_SURFACE =
+    "PreviewHost_BuildsViewportSessionSurfaceFromResourceBrowserSelection";
+constexpr const char *TEST_PREVIEW_HOST_VIEWPORT_SURFACE_BLOCKED =
+    "PreviewHost_RejectsBlockedViewportSelectionWithoutFrameMutation";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char *MOUNT_ID = "runtime";
@@ -1793,6 +1810,78 @@ bool BuildPreviewHostSceneInputs(
         return FailStep("build preview camera failed");
     }
 
+    return true;
+}
+
+bool BuildPreviewHostResourceBrowserSelection(
+    MountTable &table,
+    ResourceRegistry &registry,
+    AssetManager &manager,
+    const LoadedGraph &graph,
+    std::uint32_t selected_index,
+    std::span<const ResourceBrowserDiagnosticRecord> surface_diagnostics,
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> *out_entries,
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> *out_rows,
+    ResourceBrowserSurfaceSelectionResult *out_selection) {
+    if (out_entries == nullptr || out_rows == nullptr || out_selection == nullptr) {
+        return FailStep("null preview host resource browser selection output");
+    }
+
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> descs{};
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        descs[index] = files[index].desc;
+    }
+
+    std::array<ResourceBrowserDiagnosticRecord, 8U> diagnostics{};
+    ResourceBrowserDiagnosticsRequest diagnostics_request{};
+    diagnostics_request.mount_table = &table;
+    diagnostics_request.mount = MountId(MOUNT_ID);
+    diagnostics_request.files = descs.data();
+    diagnostics_request.file_count = static_cast<std::uint32_t>(descs.size());
+    diagnostics_request.loaded_files = graph.assets.data();
+    diagnostics_request.loaded_file_count = graph.load_result.loaded_file_count;
+    diagnostics_request.resource_registry = &registry;
+    diagnostics_request.asset_manager = &manager;
+    diagnostics_request.entries = out_entries->data();
+    diagnostics_request.entry_capacity = static_cast<std::uint32_t>(out_entries->size());
+    diagnostics_request.diagnostics = diagnostics.data();
+    diagnostics_request.diagnostic_capacity =
+        static_cast<std::uint32_t>(diagnostics.size());
+
+    ResourceBrowserDiagnosticsResult diagnostics_result{};
+    if (BuildResourceBrowserRuntimeAssetDiagnostics(diagnostics_request, &diagnostics_result) !=
+        ResourceBrowserDiagnosticsStatus::Success) {
+        return FailStep("preview host resource browser diagnostics failed");
+    }
+
+    ResourceBrowserSurfaceRequest surface_request{};
+    surface_request.entries =
+        std::span<const ResourceBrowserResourceEntry>(out_entries->data(), out_entries->size());
+    surface_request.diagnostics = surface_diagnostics;
+    surface_request.rows = std::span<ResourceBrowserSurfaceRow>(out_rows->data(), out_rows->size());
+
+    ResourceBrowserSurfaceResult surface_result{};
+    if (BuildResourceBrowserNativeSurface(surface_request, &surface_result) !=
+        ResourceBrowserSurfaceStatus::Success) {
+        return FailStep("preview host resource browser surface failed");
+    }
+
+    if (selected_index >= surface_result.row_count) {
+        return FailStep("preview host resource browser selection index invalid");
+    }
+
+    ResourceBrowserSurfaceSelectionRequest selection_request{};
+    selection_request.entries =
+        std::span<const ResourceBrowserResourceEntry>(out_entries->data(), out_entries->size());
+    selection_request.rows =
+        std::span<const ResourceBrowserSurfaceRow>(out_rows->data(), out_rows->size());
+    selection_request.diagnostics = surface_diagnostics;
+    selection_request.import_settings = (*out_entries)[selected_index].import_settings;
+    selection_request.selected_index = selected_index;
+    selection_request.validate_import_settings = true;
+
+    ResolveResourceBrowserSurfaceSelection(selection_request, out_selection);
     return true;
 }
 
@@ -8115,6 +8204,260 @@ int PreviewHostReportsNotCookedRuntimeAssetRef() {
     return 0;
 }
 
+int PreviewHostBuildsViewportSessionSurfaceFromResourceBrowserSelection() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("PreviewHostViewportSurface"), &table)) {
+        return Fail("preview viewport surface mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("preview viewport surface fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("preview viewport surface runtime asset graph load failed");
+    }
+
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("preview viewport surface rhi initialize failed");
+    }
+
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneCameraBindingResult camera{};
+    if (!BuildPreviewHostSceneInputs(
+            device,
+            registry,
+            manager,
+            graph,
+            &geometry,
+            &material,
+            &camera)) {
+        return Fail("preview viewport surface render inputs failed");
+    }
+
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> rows{};
+    ResourceBrowserSurfaceSelectionResult selection{};
+    if (!BuildPreviewHostResourceBrowserSelection(
+            table,
+            registry,
+            manager,
+            graph,
+            0U,
+            {},
+            &entries,
+            &rows,
+            &selection)) {
+        return Fail("preview viewport surface resource browser selection failed");
+    }
+
+    if (selection.status != ResourceBrowserSurfaceSelectionStatus::Success ||
+        !selection.state.preview_eligible ||
+        selection.state.preview_state != ResourceBrowserSurfacePreviewState::Eligible) {
+        return Fail("preview viewport surface selection was not eligible");
+    }
+
+    PreviewHost host;
+    PreviewHostSessionResult session_result{};
+    if (host.StartSession(PreviewHostSessionDesc{PreviewHostDocumentKind::Scene}, &session_result) !=
+        PreviewHostStatus::Success) {
+        return Fail("preview viewport surface session start failed");
+    }
+
+    std::array<PreviewHostDiagnostic, 4U> diagnostics{};
+    std::array<PreviewHostHitRecord, 3U> hits{};
+    std::array<PreviewHostSelectionRecord, 3U> selections{};
+    std::array<PreviewHostTransformFeedback, 3U> transforms{};
+
+    PreviewHostFrameRequest frame_request{};
+    frame_request.session = session_result.session;
+    frame_request.document_kind = PreviewHostDocumentKind::Scene;
+    frame_request.frame.frame_id = FRAME_ID + 501U;
+    frame_request.frame.width = 640U;
+    frame_request.frame.height = 360U;
+    frame_request.frame.format = PreviewHostFrameFormat::Headless;
+    frame_request.camera_state.camera_id = 1U;
+    frame_request.camera_state.orbit_angle_radians = 0.75F;
+    frame_request.camera_state.orbit_radius = 4.0F;
+    frame_request.camera_state.orbit_height = 1.5F;
+    frame_request.runtime_graph = &graph.load_result;
+    frame_request.scene_output = &graph.scene_output;
+    frame_request.loaded_files =
+        std::span<const RuntimeAssetLoadedFile>(graph.assets.data(), graph.assets.size());
+    frame_request.resource_refs = std::span<const RuntimeAssetSceneResourceRef>(
+        graph.scene_resource_refs.data(),
+        graph.scene_resource_refs.size());
+    frame_request.scene_entities = std::span<const RuntimeAssetSceneEntityRecord>(
+        graph.scene_entities.data(),
+        graph.scene_entities.size());
+    frame_request.geometry_records =
+        std::span<const RenderScenePrimitiveGeometryRecord>(geometry.data(), geometry.size());
+    frame_request.camera = camera;
+    frame_request.material = material;
+    frame_request.diagnostics = std::span<PreviewHostDiagnostic>(diagnostics.data(), diagnostics.size());
+    frame_request.hit_records = std::span<PreviewHostHitRecord>(hits.data(), hits.size());
+    frame_request.selection_records =
+        std::span<PreviewHostSelectionRecord>(selections.data(), selections.size());
+    frame_request.transform_feedback =
+        std::span<PreviewHostTransformFeedback>(transforms.data(), transforms.size());
+
+    PreviewHostViewportSessionRequest viewport_request{};
+    viewport_request.frame_request = frame_request;
+    viewport_request.resource_browser_selection = &selection.state;
+    viewport_request.selected_entity_index = 1U;
+    viewport_request.require_selected_entity = true;
+
+    PreviewHostViewportSessionResult viewport_result{};
+    if (host.BuildViewportSessionSurface(viewport_request, &viewport_result) !=
+        PreviewHostStatus::Success) {
+        return Fail("preview viewport surface did not build");
+    }
+
+    if (!viewport_result.consumed_viewport_controls ||
+        !viewport_result.consumed_resource_browser_selection ||
+        !viewport_result.resource_browser_preview_eligible ||
+        !viewport_result.resource_asset_mapping_preserved ||
+        viewport_result.used_locator_path_as_type_truth ||
+        !viewport_result.built_frame ||
+        !viewport_result.frame.consumed_runtime_asset_graph ||
+        !viewport_result.frame.submitted_render_scene_frame ||
+        !viewport_result.frame.headless_output) {
+        return Fail("preview viewport surface ledger was incomplete");
+    }
+
+    if (!viewport_result.selected_entity_available ||
+        viewport_result.selected_entity_index != 1U ||
+        viewport_result.viewport_width != 640U ||
+        viewport_result.viewport_height != 360U ||
+        viewport_result.camera_state.orbit_angle_radians != 0.75F ||
+        viewport_result.camera_state.orbit_radius != 4.0F ||
+        viewport_result.camera_state.orbit_height != 1.5F) {
+        return Fail("preview viewport surface controls changed");
+    }
+
+    if (!viewport_result.emitted_hit_feedback ||
+        !viewport_result.emitted_selection_feedback ||
+        !viewport_result.emitted_transform_feedback ||
+        viewport_result.frame.hit_record_count != 3U ||
+        viewport_result.frame.selection_record_count != 3U ||
+        viewport_result.frame.transform_feedback_count != 3U ||
+        !hits[1U].hit_available ||
+        !selections[1U].selectable ||
+        !transforms[1U].transform_available) {
+        return Fail("preview viewport surface feedback was not emitted");
+    }
+
+    return 0;
+}
+
+int PreviewHostRejectsBlockedViewportSelectionWithoutFrameMutation() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("PreviewHostViewportBlocked"), &table)) {
+        return Fail("preview blocked viewport mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("preview blocked viewport fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("preview blocked viewport runtime asset graph load failed");
+    }
+
+    std::array<ResourceBrowserDiagnosticRecord, 1U> blocking_diagnostics{};
+    blocking_diagnostics[0U].code = ResourceBrowserDiagnosticCode::StaleSchema;
+    blocking_diagnostics[0U].severity = ResourceBrowserDiagnosticSeverity::Error;
+    blocking_diagnostics[0U].phase = ResourceBrowserDiagnosticPhase::Validate;
+    blocking_diagnostics[0U].runtime_status = RuntimeAssetDataStatus::InvalidSchema;
+    blocking_diagnostics[0U].expected_kind = RuntimeAssetFileKind::Mesh;
+    blocking_diagnostics[0U].file_index = 0U;
+
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> rows{};
+    ResourceBrowserSurfaceSelectionResult selection{};
+    if (!BuildPreviewHostResourceBrowserSelection(
+            table,
+            registry,
+            manager,
+            graph,
+            0U,
+            std::span<const ResourceBrowserDiagnosticRecord>(
+                blocking_diagnostics.data(),
+                blocking_diagnostics.size()),
+            &entries,
+            &rows,
+            &selection)) {
+        return Fail("preview blocked viewport resource browser selection failed");
+    }
+
+    if (selection.status != ResourceBrowserSurfaceSelectionStatus::PreviewBlocked ||
+        selection.state.preview_state != ResourceBrowserSurfacePreviewState::BlockedByDiagnostic ||
+        selection.state.matched_diagnostic_count != 1U) {
+        return Fail("preview blocked viewport selection did not preserve blocker");
+    }
+
+    PreviewHost host;
+    PreviewHostSessionResult session_result{};
+    if (host.StartSession(PreviewHostSessionDesc{PreviewHostDocumentKind::Scene}, &session_result) !=
+        PreviewHostStatus::Success) {
+        return Fail("preview blocked viewport session start failed");
+    }
+
+    std::array<PreviewHostDiagnostic, 1U> diagnostics{};
+    std::array<PreviewHostHitRecord, 1U> hits{};
+    hits[0U].entity_index = 88U;
+
+    PreviewHostFrameRequest frame_request{};
+    frame_request.session = session_result.session;
+    frame_request.document_kind = PreviewHostDocumentKind::Scene;
+    frame_request.frame.frame_id = FRAME_ID + 601U;
+    frame_request.frame.width = 320U;
+    frame_request.frame.height = 180U;
+    frame_request.camera_state.camera_id = 1U;
+    frame_request.diagnostics = std::span<PreviewHostDiagnostic>(diagnostics.data(), diagnostics.size());
+    frame_request.hit_records = std::span<PreviewHostHitRecord>(hits.data(), hits.size());
+
+    PreviewHostViewportSessionRequest viewport_request{};
+    viewport_request.frame_request = frame_request;
+    viewport_request.resource_browser_selection = &selection.state;
+    viewport_request.selected_entity_index = 0U;
+    viewport_request.require_selected_entity = true;
+
+    PreviewHostViewportSessionResult viewport_result{};
+    if (host.BuildViewportSessionSurface(viewport_request, &viewport_result) !=
+        PreviewHostStatus::RuntimeAssetStatusFailed) {
+        return Fail("preview blocked viewport selection was not rejected");
+    }
+
+    if (viewport_result.built_frame ||
+        viewport_result.frame.submitted_render_scene_frame ||
+        viewport_result.frame.captured_through_render_core_rhi ||
+        hits[0U].entity_index != 88U) {
+        return Fail("preview blocked viewport mutated frame outputs");
+    }
+
+    if (!viewport_result.consumed_resource_browser_selection ||
+        viewport_result.resource_browser_preview_eligible ||
+        viewport_result.matched_resource_browser_diagnostic_count != 1U ||
+        viewport_result.resource_browser_preview_state !=
+            ResourceBrowserSurfacePreviewState::BlockedByDiagnostic ||
+        diagnostics[0U].code != PreviewHostDiagnosticCode::RuntimeAssetStatusFailed ||
+        diagnostics[0U].resource_browser_code != ResourceBrowserDiagnosticCode::StaleSchema ||
+        !diagnostics[0U].from_resource_browser_diagnostics) {
+        return Fail("preview blocked viewport diagnostic ledger changed");
+    }
+
+    return 0;
+}
+
 const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_GENERATOR, RuntimeAssetDataGeneratorWritesDeterministicFilesAndHashes},
     {TEST_IMPORT_COOK_COMMAND_WRITES, RuntimeAssetDataImportCookCommandWritesSourceAndCookedDiskFixtures},
@@ -8207,6 +8550,9 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_PREVIEW_HOST_RESOURCE_BROWSER_DECISION, PreviewHostUsesResourceBrowserDiagnosticsForPreviewDecision},
     {TEST_PREVIEW_HOST_STALE_SESSION, PreviewHostRejectsStaleSessionWithoutMutation},
     {TEST_PREVIEW_HOST_NOT_COOKED, PreviewHostReportsNotCookedRuntimeAssetRef},
+    {TEST_PREVIEW_HOST_VIEWPORT_SURFACE, PreviewHostBuildsViewportSessionSurfaceFromResourceBrowserSelection},
+    {TEST_PREVIEW_HOST_VIEWPORT_SURFACE_BLOCKED,
+     PreviewHostRejectsBlockedViewportSelectionWithoutFrameMutation},
 };
 }
 

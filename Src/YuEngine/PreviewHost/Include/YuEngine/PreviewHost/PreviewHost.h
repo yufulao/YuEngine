@@ -15,6 +15,7 @@
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRecord.h"
 #include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
 #include "YuEngine/ResourceBrowser/ResourceBrowserDiagnostics.h"
+#include "YuEngine/ResourceBrowser/ResourceBrowserSurface.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
 #include "YuEngine/World/WorldObjectId.h"
@@ -243,6 +244,40 @@ struct PreviewHostFrameResult final {
     bool headless_output = false;
 };
 
+struct PreviewHostViewportSessionRequest final {
+    PreviewHostFrameRequest frame_request{};
+    const yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionState
+        *resource_browser_selection = nullptr;
+    std::uint32_t selected_entity_index = 0U;
+    bool require_selected_entity = false;
+};
+
+struct PreviewHostViewportSessionResult final {
+    PreviewHostStatus status = PreviewHostStatus::InvalidArgument;
+    PreviewHostFrameResult frame{};
+    PreviewHostCameraState camera_state{};
+    yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState
+        resource_browser_preview_state =
+            yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState::Unknown;
+    yuengine::resourcebrowser::ResourceBrowserSurfaceDocumentKind
+        resource_browser_document_kind =
+            yuengine::resourcebrowser::ResourceBrowserSurfaceDocumentKind::None;
+    std::uint32_t selected_entity_index = 0U;
+    std::uint32_t viewport_width = 0U;
+    std::uint32_t viewport_height = 0U;
+    std::uint32_t matched_resource_browser_diagnostic_count = 0U;
+    bool consumed_viewport_controls = false;
+    bool consumed_resource_browser_selection = false;
+    bool resource_browser_preview_eligible = false;
+    bool resource_asset_mapping_preserved = false;
+    bool selected_entity_available = false;
+    bool used_locator_path_as_type_truth = false;
+    bool built_frame = false;
+    bool emitted_hit_feedback = false;
+    bool emitted_selection_feedback = false;
+    bool emitted_transform_feedback = false;
+};
+
 class PreviewHost final {
 public:
     PreviewHostStatus StartSession(
@@ -254,6 +289,9 @@ public:
     PreviewHostStatus BuildFrame(
         const PreviewHostFrameRequest &request,
         PreviewHostFrameResult *out_result) const;
+    PreviewHostStatus BuildViewportSessionSurface(
+        const PreviewHostViewportSessionRequest &request,
+        PreviewHostViewportSessionResult *out_result) const;
     PreviewHostStatus ResolveResourceBrowserPreview(
         const PreviewHostResourceBrowserPreviewRequest &request,
         PreviewHostResourceBrowserPreviewResult *out_result) const;

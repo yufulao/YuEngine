@@ -4,6 +4,9 @@ Status: implemented first slice for #YuPart task #70
 Base: `origin/main@9009eb2`
 Target: `YuPreviewHost`
 
+Next viewport session slice:
+`docs/YUENGINE_PREVIEW_HOST_RAV4_VIEWPORT_SESSION_SURFACE.md`
+
 ## Scope
 
 This slice wires the Engine Preview Host to the #63 RuntimeAsset import/cook

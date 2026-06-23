@@ -25,6 +25,12 @@ using ResourceBrowserDependencyState = yuengine::resourcebrowser::ResourceBrowse
 using ResourceBrowserDiagnosticRecord = yuengine::resourcebrowser::ResourceBrowserDiagnosticRecord;
 using ResourceBrowserDiagnosticSeverity = yuengine::resourcebrowser::ResourceBrowserDiagnosticSeverity;
 using ResourceBrowserResourceEntry = yuengine::resourcebrowser::ResourceBrowserResourceEntry;
+using ResourceBrowserSurfaceDocumentKind =
+    yuengine::resourcebrowser::ResourceBrowserSurfaceDocumentKind;
+using ResourceBrowserSurfacePreviewState =
+    yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState;
+using ResourceBrowserSurfaceSelectionState =
+    yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionState;
 using RenderScenePrimitiveGeometryKind = yuengine::renderscene::RenderScenePrimitiveGeometryKind;
 using RenderScenePrimitiveGeometryRecord = yuengine::renderscene::RenderScenePrimitiveGeometryRecord;
 using RenderSceneRuntimeFrameBuilder = yuengine::renderscene::RenderSceneRuntimeFrameBuilder;
@@ -1057,6 +1063,116 @@ void FillFeedback(
     result->selection_record_count = request.selection_records.empty() ? 0U : entity_count;
     result->transform_feedback_count = request.transform_feedback.empty() ? 0U : entity_count;
 }
+
+PreviewHostStatus StatusForSurfacePreviewState(ResourceBrowserSurfacePreviewState state) {
+    switch (state) {
+        case ResourceBrowserSurfacePreviewState::Eligible:
+            return PreviewHostStatus::Success;
+        case ResourceBrowserSurfacePreviewState::BlockedByValidation:
+        case ResourceBrowserSurfacePreviewState::BlockedByDiagnostic:
+            return PreviewHostStatus::RuntimeAssetStatusFailed;
+        case ResourceBrowserSurfacePreviewState::BlockedByDependency:
+        case ResourceBrowserSurfacePreviewState::BlockedByResourceAssetRecord:
+            return PreviewHostStatus::MissingResourceRef;
+        case ResourceBrowserSurfacePreviewState::BlockedByLoadRecord:
+            return PreviewHostStatus::RuntimeAssetGraphStale;
+        case ResourceBrowserSurfacePreviewState::BlockedByUnsupportedKind:
+            return PreviewHostStatus::UnsupportedPreviewRoute;
+        case ResourceBrowserSurfacePreviewState::Unknown:
+            break;
+    }
+
+    return PreviewHostStatus::RuntimeAssetGraphStale;
+}
+
+RuntimeAssetDataStatus RuntimeStatusForSurfaceSelection(
+    const ResourceBrowserSurfaceSelectionState &selection) {
+    if (selection.validation_status != RuntimeAssetDataStatus::Success) {
+        return selection.validation_status;
+    }
+
+    if (!selection.import_settings_valid) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (selection.preview_state == ResourceBrowserSurfacePreviewState::BlockedByDependency ||
+        selection.preview_state == ResourceBrowserSurfacePreviewState::BlockedByLoadRecord ||
+        selection.preview_state == ResourceBrowserSurfacePreviewState::BlockedByResourceAssetRecord) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (selection.preview_state == ResourceBrowserSurfacePreviewState::BlockedByUnsupportedKind) {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    if (selection.preview_state == ResourceBrowserSurfacePreviewState::BlockedByDiagnostic) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+void CopySurfaceSelectionToViewportResult(
+    const ResourceBrowserSurfaceSelectionState &selection,
+    PreviewHostViewportSessionResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->resource_browser_preview_state = selection.preview_state;
+    result->resource_browser_document_kind = selection.preview_document_kind;
+    result->matched_resource_browser_diagnostic_count = selection.matched_diagnostic_count;
+    result->consumed_resource_browser_selection = selection.selected;
+    result->resource_browser_preview_eligible = selection.preview_eligible;
+    result->resource_asset_mapping_preserved = selection.resource_asset_mapping_preserved;
+    result->used_locator_path_as_type_truth = selection.used_locator_path_as_type_truth;
+}
+
+PreviewHostStatus EmitViewportSelectionFailure(
+    const PreviewHostViewportSessionRequest &request,
+    PreviewHostViewportSessionResult *result,
+    PreviewHostStatus status,
+    RuntimeAssetDataStatus runtime_status) {
+    if (result == nullptr) {
+        return PreviewHostStatus::InvalidArgument;
+    }
+
+    result->status = status;
+    result->frame.status = status;
+    result->frame.frame = request.frame_request.frame;
+    result->frame.camera_state = request.frame_request.camera_state;
+    result->frame.runtime_asset_status = runtime_status;
+
+    const ResourceBrowserSurfaceSelectionState *selection =
+        request.resource_browser_selection;
+    if (selection != nullptr) {
+        CopySurfaceSelectionToViewportResult(*selection, result);
+    }
+
+    if (request.frame_request.diagnostics.empty()) {
+        return status;
+    }
+
+    PreviewHostDiagnostic diagnostic{};
+    diagnostic.status = status;
+    diagnostic.code = DiagnosticForResourceBrowserStatus(status);
+    diagnostic.runtime_asset_status = runtime_status;
+    if (selection != nullptr) {
+        diagnostic.resource_browser_code = selection->blocking_diagnostic_code;
+        diagnostic.resource_browser_severity = selection->blocking_diagnostic_severity;
+        diagnostic.resource_browser_phase = selection->blocking_diagnostic_phase;
+        diagnostic.resource_browser_dependency_state = selection->dependency_state;
+        diagnostic.stable_id = selection->stable_id;
+        diagnostic.resource_ref_index = selection->selected_index;
+        diagnostic.from_resource_browser_diagnostics =
+            selection->matched_diagnostic_count > 0U ||
+            selection->diagnostic_blocks_preview;
+    }
+
+    request.frame_request.diagnostics[0U] = diagnostic;
+    result->frame.diagnostic_count = 1U;
+    return status;
+}
 }
 
 PreviewHostStatus PreviewHost::StartSession(
@@ -1384,6 +1500,128 @@ PreviewHostStatus PreviewHost::BuildFrame(
     result.submitted_render_scene_frame = true;
     result.captured_through_render_core_rhi = result.capture.capture_bytes_written > 0U;
     FillFeedback(request, &result, entity_count);
+    *out_result = result;
+    return result.status;
+}
+
+PreviewHostStatus PreviewHost::BuildViewportSessionSurface(
+    const PreviewHostViewportSessionRequest &request,
+    PreviewHostViewportSessionResult *out_result) const {
+    if (out_result == nullptr) {
+        return PreviewHostStatus::InvalidArgument;
+    }
+
+    PreviewHostViewportSessionResult result{};
+    result.frame.frame = request.frame_request.frame;
+    result.frame.camera_state = request.frame_request.camera_state;
+    result.camera_state = request.frame_request.camera_state;
+    result.viewport_width = request.frame_request.frame.width;
+    result.viewport_height = request.frame_request.frame.height;
+    result.selected_entity_index = request.selected_entity_index;
+    result.consumed_viewport_controls =
+        request.frame_request.frame.frame_id != 0U &&
+        request.frame_request.frame.width != 0U &&
+        request.frame_request.frame.height != 0U &&
+        request.frame_request.camera_state.camera_id != 0U;
+
+    if (request.resource_browser_selection == nullptr) {
+        const PreviewHostStatus status = EmitViewportSelectionFailure(
+            request,
+            &result,
+            PreviewHostStatus::InvalidArgument,
+            RuntimeAssetDataStatus::InvalidArgument);
+        *out_result = result;
+        return status;
+    }
+
+    const ResourceBrowserSurfaceSelectionState &selection =
+        *request.resource_browser_selection;
+    CopySurfaceSelectionToViewportResult(selection, &result);
+
+    if (!selection.selected) {
+        const PreviewHostStatus status = EmitViewportSelectionFailure(
+            request,
+            &result,
+            PreviewHostStatus::InvalidArgument,
+            RuntimeAssetDataStatus::InvalidArgument);
+        *out_result = result;
+        return status;
+    }
+
+    if (!selection.import_settings_valid) {
+        const PreviewHostStatus status = EmitViewportSelectionFailure(
+            request,
+            &result,
+            PreviewHostStatus::RuntimeAssetStatusFailed,
+            RuntimeAssetDataStatus::InvalidArgument);
+        *out_result = result;
+        return status;
+    }
+
+    if (selection.used_locator_path_as_type_truth) {
+        const PreviewHostStatus status = EmitViewportSelectionFailure(
+            request,
+            &result,
+            PreviewHostStatus::RuntimeAssetGraphStale,
+            RuntimeAssetDataStatus::HashMismatch);
+        *out_result = result;
+        return status;
+    }
+
+    if (!selection.resource_asset_mapping_preserved) {
+        const PreviewHostStatus status = EmitViewportSelectionFailure(
+            request,
+            &result,
+            PreviewHostStatus::MissingResourceRef,
+            RuntimeAssetDataStatus::MissingDependency);
+        *out_result = result;
+        return status;
+    }
+
+    if (!selection.preview_eligible) {
+        const PreviewHostStatus status =
+            StatusForSurfacePreviewState(selection.preview_state);
+        const RuntimeAssetDataStatus runtime_status =
+            RuntimeStatusForSurfaceSelection(selection);
+        const PreviewHostStatus emitted_status = EmitViewportSelectionFailure(
+            request,
+            &result,
+            status,
+            runtime_status);
+        *out_result = result;
+        return emitted_status;
+    }
+
+    if (request.require_selected_entity) {
+        if (request.frame_request.scene_output == nullptr ||
+            request.selected_entity_index >= request.frame_request.scene_output->entity_count) {
+            const PreviewHostStatus status = EmitViewportSelectionFailure(
+                request,
+                &result,
+                PreviewHostStatus::MissingResourceRef,
+                RuntimeAssetDataStatus::MissingDependency);
+            *out_result = result;
+            return status;
+        }
+    }
+
+    PreviewHostFrameResult frame_result{};
+    const PreviewHostStatus frame_status =
+        BuildFrame(request.frame_request, &frame_result);
+    result.frame = frame_result;
+    result.camera_state = frame_result.camera_state;
+    result.status = frame_status;
+    if (frame_status != PreviewHostStatus::Success) {
+        *out_result = result;
+        return frame_status;
+    }
+
+    result.built_frame = true;
+    result.selected_entity_available =
+        request.selected_entity_index < frame_result.submitted_entity_count;
+    result.emitted_hit_feedback = frame_result.hit_record_count > 0U;
+    result.emitted_selection_feedback = frame_result.selection_record_count > 0U;
+    result.emitted_transform_feedback = frame_result.transform_feedback_count > 0U;
     *out_result = result;
     return result.status;
 }

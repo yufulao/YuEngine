@@ -344,7 +344,9 @@ ResourceBrowserSurfaceStatus BuildResourceBrowserNativeSurface(
 
         if (row.preview_state == ResourceBrowserSurfacePreviewState::Eligible) {
             ++result.eligible_preview_count;
-        } else {
+        }
+
+        if (row.preview_state != ResourceBrowserSurfacePreviewState::Eligible) {
             ++result.blocked_preview_count;
         }
     }
