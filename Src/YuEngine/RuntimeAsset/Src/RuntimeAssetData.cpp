@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "YuEngine/Animation/AnimationRuntimeSampler.h"
+#include "YuEngine/Asset/AssetConstants.h"
 #include "YuEngine/Asset/AssetDescriptor.h"
 #include "YuEngine/Asset/AssetManager.h"
 #include "YuEngine/File/FileReadRequest.h"
@@ -2000,6 +2001,386 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
     *request.scene_output = output;
     return RuntimeAssetDataStatus::Success;
 }
+
+struct RuntimeAssetGraphTransactionData final {
+    RuntimeAssetLoadTransactionPlan plan;
+    RuntimeAssetGraphLoadResult result;
+    std::vector<std::uint8_t> scene_bytes;
+    std::vector<std::vector<std::uint8_t>> file_bytes;
+    std::string scene_text;
+    std::string animation_text;
+    RuntimeAssetSceneLoaderStage scene_stage;
+};
+
+void SetTransactionFailure(
+    RuntimeAssetGraphTransactionData *transaction,
+    RuntimeAssetDataStatus status,
+    RuntimeAssetLoadTransactionPhase phase,
+    std::uint32_t first_failed_record_index = 0U,
+    std::uint32_t first_failed_dependency_index = 0U) {
+    transaction->plan.status = status;
+    transaction->plan.phase = phase;
+    transaction->result.status = status;
+    transaction->result.transaction_plan = transaction->plan;
+    transaction->result.transaction_result.status = status;
+    transaction->result.transaction_result.phase = phase;
+    transaction->result.transaction_result.first_failed_record_index = first_failed_record_index;
+    transaction->result.transaction_result.first_failed_dependency_index = first_failed_dependency_index;
+}
+
+void SetTransactionPhase(
+    RuntimeAssetGraphTransactionData *transaction,
+    RuntimeAssetLoadTransactionPhase phase) {
+    transaction->plan.phase = phase;
+    transaction->result.transaction_plan = transaction->plan;
+    transaction->result.transaction_result.phase = phase;
+}
+
+void SetCommitPhase(
+    RuntimeAssetGraphTransactionData *transaction,
+    RuntimeAssetLoadTransactionPhase phase) {
+    transaction->result.transaction_result.phase = phase;
+}
+
+bool HasDuplicateStableId(
+    const RuntimeAssetGraphLoadRequest &request,
+    std::uint64_t stable_id,
+    std::uint32_t before_file_index) {
+    if (stable_id == request.scene_stable_id) {
+        return true;
+    }
+
+    for (std::uint32_t index = 0U; index < before_file_index; ++index) {
+        if (request.files[index].stable_id == stable_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+RuntimeAssetDataStatus PreflightRuntimeAssetCommitIntents(
+    const RuntimeAssetGraphLoadRequest &request,
+    const RuntimeAssetGraphTransactionData &transaction) {
+    const std::uint32_t record_count = request.file_count + 1U;
+    if (record_count > yuengine::resource::MAX_RESOURCE_COUNT ||
+        record_count > yuengine::asset::MAX_ASSET_COUNT) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    if ((request.file_count * 2U) > yuengine::resource::MAX_DEPENDENCY_EDGE_COUNT ||
+        (request.file_count * 2U) > yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    std::uint32_t cache_payload_bytes = static_cast<std::uint32_t>(transaction.scene_bytes.size());
+    if (cache_payload_bytes > yuengine::resource::MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    std::uint32_t decoded_payload_bytes = 0U;
+    for (std::uint32_t index = 0U; index < request.file_count; ++index) {
+        const RuntimeAssetFileDesc &file = request.files[index];
+        if (file.path == nullptr) {
+            return RuntimeAssetDataStatus::InvalidArgument;
+        }
+
+        if (file.kind == RuntimeAssetFileKind::Unknown ||
+            file.stable_id == 0U ||
+            !file.resource_type.IsValid() ||
+            !file.asset_type.IsValid()) {
+            return RuntimeAssetDataStatus::InvalidArgument;
+        }
+
+        if (HasDuplicateStableId(request, file.stable_id, index)) {
+            return RuntimeAssetDataStatus::DuplicateDependency;
+        }
+
+        const std::uint32_t source_byte_count =
+            static_cast<std::uint32_t>(transaction.file_bytes[index].size());
+        if (source_byte_count > yuengine::resource::MAX_RESOURCE_CACHE_PAYLOAD_BYTES_PER_RECORD) {
+            return RuntimeAssetDataStatus::CapacityExceeded;
+        }
+
+        cache_payload_bytes += source_byte_count;
+        if (file.decode_asset_class != ResourceDecodePlanAssetClass::Unknown) {
+            if (file.decode_result_class == ResourceDecodeResultClass::Unknown ||
+                file.decoded_byte_count == 0U) {
+                return RuntimeAssetDataStatus::InvalidArgument;
+            }
+
+            if (file.decoded_byte_count > yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_BYTES_PER_RECORD) {
+                return RuntimeAssetDataStatus::CapacityExceeded;
+            }
+
+            cache_payload_bytes += yuengine::resource::RESOURCE_DECODE_PLAN_HEADER_BYTE_COUNT;
+            decoded_payload_bytes += file.decoded_byte_count;
+        }
+    }
+
+    if (cache_payload_bytes > DEFAULT_PAYLOAD_BYTE_CAPACITY ||
+        decoded_payload_bytes > yuengine::resource::MAX_RESOURCE_DECODED_PAYLOAD_TOTAL_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+void PlanRuntimeAssetCommitIntents(
+    const RuntimeAssetGraphLoadRequest &request,
+    RuntimeAssetGraphTransactionData *transaction) {
+    transaction->plan.record_count = request.file_count + 1U;
+    transaction->plan.resource_commit_count = request.file_count + 1U;
+    transaction->plan.asset_commit_count = request.file_count + 1U;
+    transaction->plan.cache_payload_commit_count = request.file_count + 1U;
+    transaction->plan.dependency_edge_commit_count = request.file_count * 2U;
+    for (std::uint32_t index = 0U; index < request.file_count; ++index) {
+        if (request.files[index].decode_asset_class != ResourceDecodePlanAssetClass::Unknown) {
+            ++transaction->plan.cache_payload_commit_count;
+            ++transaction->plan.decoded_payload_commit_count;
+        }
+    }
+}
+
+RuntimeAssetDataStatus BuildRuntimeAssetGraphTransactionPlan(
+    const RuntimeAssetGraphLoadRequest &request,
+    RuntimeAssetGraphTransactionData *transaction) {
+    if (transaction == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    *transaction = RuntimeAssetGraphTransactionData{};
+    SetTransactionPhase(transaction, RuntimeAssetLoadTransactionPhase::Preflight);
+    RuntimeAssetDataStatus status = ValidateGraphRequest(request);
+    if (status != RuntimeAssetDataStatus::Success) {
+        SetTransactionFailure(transaction, status, RuntimeAssetLoadTransactionPhase::Preflight);
+        return status;
+    }
+
+    PlanRuntimeAssetCommitIntents(request, transaction);
+    SetTransactionPhase(transaction, RuntimeAssetLoadTransactionPhase::ReadBytes);
+    status = ReadRuntimeAssetFile(request, request.scene_path, &transaction->scene_bytes);
+    if (status != RuntimeAssetDataStatus::Success) {
+        SetTransactionFailure(transaction, status, RuntimeAssetLoadTransactionPhase::ReadBytes);
+        return status;
+    }
+
+    ++transaction->result.file_read_count;
+    RuntimeAssetValidationResult scene_validation{};
+    SetTransactionPhase(transaction, RuntimeAssetLoadTransactionPhase::ValidateRecord);
+    status = ValidateRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(transaction->scene_bytes.data(), transaction->scene_bytes.size()),
+        RuntimeAssetFileKind::Scene,
+        &scene_validation);
+    if (status != RuntimeAssetDataStatus::Success) {
+        SetTransactionFailure(transaction, status, RuntimeAssetLoadTransactionPhase::ValidateRecord);
+        return status;
+    }
+
+    transaction->scene_text = std::string(transaction->scene_bytes.begin(), transaction->scene_bytes.end());
+    transaction->result.scene_dependency_count = scene_validation.dependency_count;
+    transaction->plan.dependency_count = static_cast<std::uint32_t>(scene_validation.dependency_count);
+    transaction->result.scene_references_runtime_asset_families =
+        SceneReferencesRuntimeFamilies(transaction->scene_text);
+    if (!transaction->result.scene_references_runtime_asset_families) {
+        status = RuntimeAssetDataStatus::MissingDependency;
+        SetTransactionFailure(transaction, status, RuntimeAssetLoadTransactionPhase::ValidateDependencies);
+        return status;
+    }
+
+    transaction->file_bytes.resize(request.file_count);
+    std::uint32_t file_index = 0U;
+    while (file_index < request.file_count) {
+        const RuntimeAssetFileDesc &file = request.files[file_index];
+        if (file.path == nullptr) {
+            status = RuntimeAssetDataStatus::InvalidArgument;
+            SetTransactionFailure(
+                transaction,
+                status,
+                RuntimeAssetLoadTransactionPhase::Preflight,
+                file_index + 1U);
+            return status;
+        }
+
+        SetTransactionPhase(transaction, RuntimeAssetLoadTransactionPhase::ReadBytes);
+        const yuengine::file::VirtualPath path(file.path);
+        status = ReadRuntimeAssetFile(request, path, &transaction->file_bytes[file_index]);
+        if (status != RuntimeAssetDataStatus::Success) {
+            SetTransactionFailure(
+                transaction,
+                status,
+                RuntimeAssetLoadTransactionPhase::ReadBytes,
+                file_index + 1U);
+            return status;
+        }
+
+        ++transaction->result.file_read_count;
+        RuntimeAssetValidationResult validation{};
+        SetTransactionPhase(transaction, RuntimeAssetLoadTransactionPhase::ValidateRecord);
+        status = ValidateRuntimeAssetDataBytes(
+            std::span<const std::uint8_t>(
+                transaction->file_bytes[file_index].data(),
+                transaction->file_bytes[file_index].size()),
+            file.kind,
+            &validation);
+        if (status != RuntimeAssetDataStatus::Success) {
+            SetTransactionFailure(
+                transaction,
+                status,
+                RuntimeAssetLoadTransactionPhase::ValidateRecord,
+                file_index + 1U);
+            return status;
+        }
+
+        if (file.kind == RuntimeAssetFileKind::Animation) {
+            transaction->animation_text = std::string(
+                transaction->file_bytes[file_index].begin(),
+                transaction->file_bytes[file_index].end());
+        }
+
+        ++file_index;
+    }
+
+    if (request.scene_output != nullptr) {
+        SetTransactionPhase(transaction, RuntimeAssetLoadTransactionPhase::StageSceneOutput);
+        status = BuildSceneLoaderStage(
+            request,
+            transaction->scene_text,
+            transaction->animation_text,
+            &transaction->scene_stage);
+        if (status != RuntimeAssetDataStatus::Success) {
+            SetTransactionFailure(transaction, status, RuntimeAssetLoadTransactionPhase::StageSceneOutput);
+            return status;
+        }
+    }
+
+    SetTransactionPhase(transaction, RuntimeAssetLoadTransactionPhase::PreflightCommit);
+    status = PreflightRuntimeAssetCommitIntents(request, *transaction);
+    if (status != RuntimeAssetDataStatus::Success) {
+        SetTransactionFailure(transaction, status, RuntimeAssetLoadTransactionPhase::PreflightCommit);
+        return status;
+    }
+
+    transaction->plan.status = RuntimeAssetDataStatus::Success;
+    transaction->plan.phase = RuntimeAssetLoadTransactionPhase::PreflightCommit;
+    transaction->result.transaction_plan = transaction->plan;
+    transaction->result.transaction_result.status = RuntimeAssetDataStatus::Success;
+    transaction->result.transaction_result.phase = RuntimeAssetLoadTransactionPhase::PreflightCommit;
+    return RuntimeAssetDataStatus::Success;
+}
+
+void RecordCommittedRuntimeAssetFile(
+    const RuntimeAssetLoadedFile &file,
+    RuntimeAssetGraphLoadResult *result) {
+    ++result->transaction_result.committed_resource_count;
+    ++result->transaction_result.committed_asset_count;
+    ++result->transaction_result.committed_cache_payload_count;
+    ++result->cache_payload_count;
+    if (file.decode_plan_created) {
+        ++result->transaction_result.committed_cache_payload_count;
+        ++result->cache_payload_count;
+    }
+
+    if (file.decoded_payload_stored) {
+        ++result->transaction_result.committed_decoded_payload_count;
+        ++result->decoded_payload_count;
+    }
+}
+
+void SetCommitFailure(
+    RuntimeAssetGraphTransactionData *transaction,
+    RuntimeAssetDataStatus status,
+    RuntimeAssetLoadTransactionPhase phase) {
+    transaction->result.status = status;
+    transaction->result.transaction_result.status = status;
+    transaction->result.transaction_result.phase = phase;
+}
+
+RuntimeAssetDataStatus CommitRuntimeAssetGraphTransaction(
+    const RuntimeAssetGraphLoadRequest &request,
+    RuntimeAssetGraphTransactionData *transaction) {
+    SetCommitPhase(transaction, RuntimeAssetLoadTransactionPhase::CommitResources);
+    transaction->result.transaction_result.mutated_state = true;
+    if (!ConfigureRuntimeAssetResourceBudgets(*request.resource_registry)) {
+        SetCommitFailure(
+            transaction,
+            RuntimeAssetDataStatus::ResourceResidencyFailed,
+            RuntimeAssetLoadTransactionPhase::CommitResources);
+        return transaction->result.status;
+    }
+
+    RuntimeAssetFileDesc scene_desc{};
+    scene_desc.path = request.scene_path.Value().data();
+    scene_desc.kind = RuntimeAssetFileKind::Scene;
+    scene_desc.resource_type = request.scene_resource_type;
+    scene_desc.asset_type = request.scene_asset_type;
+    scene_desc.stable_id = request.scene_stable_id;
+    RuntimeAssetDataStatus status = RegisterLoadedFile(
+        *request.resource_registry,
+        *request.asset_manager,
+        scene_desc,
+        std::span<const std::uint8_t>(transaction->scene_bytes.data(), transaction->scene_bytes.size()),
+        &transaction->result.scene);
+    if (status != RuntimeAssetDataStatus::Success) {
+        SetCommitFailure(transaction, status, RuntimeAssetLoadTransactionPhase::CommitResources);
+        return status;
+    }
+
+    transaction->result.scene_registered = true;
+    RecordCommittedRuntimeAssetFile(transaction->result.scene, &transaction->result);
+
+    std::uint32_t file_index = 0U;
+    while (file_index < request.file_count) {
+        const RuntimeAssetFileDesc &file = request.files[file_index];
+        status = RegisterLoadedFile(
+            *request.resource_registry,
+            *request.asset_manager,
+            file,
+            std::span<const std::uint8_t>(
+                transaction->file_bytes[file_index].data(),
+                transaction->file_bytes[file_index].size()),
+            &request.loaded_files[file_index]);
+        if (status != RuntimeAssetDataStatus::Success) {
+            SetCommitFailure(transaction, status, RuntimeAssetLoadTransactionPhase::CommitResources);
+            return status;
+        }
+
+        ++transaction->result.loaded_file_count;
+        RecordCommittedRuntimeAssetFile(request.loaded_files[file_index], &transaction->result);
+        ++file_index;
+    }
+
+    SetCommitPhase(transaction, RuntimeAssetLoadTransactionPhase::CommitDependencies);
+    file_index = 0U;
+    while (file_index < request.file_count) {
+        status = AddLoadedDependency(
+            *request.resource_registry,
+            *request.asset_manager,
+            transaction->result.scene,
+            request.loaded_files[file_index]);
+        if (status != RuntimeAssetDataStatus::Success) {
+            SetCommitFailure(transaction, status, RuntimeAssetLoadTransactionPhase::CommitDependencies);
+            return status;
+        }
+
+        ++transaction->result.resource_dependency_count;
+        ++transaction->result.asset_dependency_count;
+        transaction->result.transaction_result.committed_dependency_edge_count += 2U;
+        ++file_index;
+    }
+
+    SetCommitPhase(transaction, RuntimeAssetLoadTransactionPhase::CommitSceneOutput);
+    status = CommitSceneLoaderOutput(request, transaction->result, transaction->scene_stage);
+    if (status != RuntimeAssetDataStatus::Success) {
+        SetCommitFailure(transaction, status, RuntimeAssetLoadTransactionPhase::CommitSceneOutput);
+        return status;
+    }
+
+    transaction->result.status = RuntimeAssetDataStatus::Success;
+    transaction->result.transaction_result.status = RuntimeAssetDataStatus::Success;
+    transaction->result.transaction_result.phase = RuntimeAssetLoadTransactionPhase::CommitSceneOutput;
+    return RuntimeAssetDataStatus::Success;
+}
 }
 
 const char *RuntimeAssetFileKindName(RuntimeAssetFileKind kind) {
@@ -2180,170 +2561,16 @@ RuntimeAssetDataStatus LoadRuntimeAssetDataGraph(
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    RuntimeAssetGraphLoadResult result{};
-    RuntimeAssetDataStatus status = ValidateGraphRequest(request);
+    RuntimeAssetGraphTransactionData transaction{};
+    RuntimeAssetDataStatus status = BuildRuntimeAssetGraphTransactionPlan(request, &transaction);
     if (status != RuntimeAssetDataStatus::Success) {
-        result.status = status;
-        *out_result = result;
+        *out_result = transaction.result;
         return status;
     }
 
-    std::vector<std::uint8_t> scene_bytes{};
-    status = ReadRuntimeAssetFile(request, request.scene_path, &scene_bytes);
-    if (status != RuntimeAssetDataStatus::Success) {
-        result.status = status;
-        *out_result = result;
-        return status;
-    }
-
-    ++result.file_read_count;
-    RuntimeAssetValidationResult scene_validation{};
-    status = ValidateRuntimeAssetDataBytes(
-        std::span<const std::uint8_t>(scene_bytes.data(), scene_bytes.size()),
-        RuntimeAssetFileKind::Scene,
-        &scene_validation);
-    if (status != RuntimeAssetDataStatus::Success) {
-        result.status = status;
-        *out_result = result;
-        return status;
-    }
-
-    const std::string scene_text(scene_bytes.begin(), scene_bytes.end());
-    result.scene_dependency_count = scene_validation.dependency_count;
-    result.scene_references_runtime_asset_families = SceneReferencesRuntimeFamilies(scene_text);
-    if (!result.scene_references_runtime_asset_families) {
-        result.status = RuntimeAssetDataStatus::MissingDependency;
-        *out_result = result;
-        return result.status;
-    }
-
-    std::vector<std::vector<std::uint8_t>> file_bytes{};
-    file_bytes.resize(request.file_count);
-    std::string animation_text{};
-    std::uint32_t file_index = 0U;
-    while (file_index < request.file_count) {
-        const RuntimeAssetFileDesc &file = request.files[file_index];
-        if (file.path == nullptr) {
-            result.status = RuntimeAssetDataStatus::InvalidArgument;
-            *out_result = result;
-            return result.status;
-        }
-
-        const yuengine::file::VirtualPath path(file.path);
-        status = ReadRuntimeAssetFile(request, path, &file_bytes[file_index]);
-        if (status != RuntimeAssetDataStatus::Success) {
-            result.status = status;
-            *out_result = result;
-            return status;
-        }
-
-        ++result.file_read_count;
-        RuntimeAssetValidationResult validation{};
-        status = ValidateRuntimeAssetDataBytes(
-            std::span<const std::uint8_t>(file_bytes[file_index].data(), file_bytes[file_index].size()),
-            file.kind,
-            &validation);
-        if (status != RuntimeAssetDataStatus::Success) {
-            result.status = status;
-            *out_result = result;
-            return status;
-        }
-
-        if (file.kind == RuntimeAssetFileKind::Animation) {
-            animation_text = std::string(file_bytes[file_index].begin(), file_bytes[file_index].end());
-        }
-
-        ++file_index;
-    }
-
-    RuntimeAssetSceneLoaderStage scene_stage{};
-    if (request.scene_output != nullptr) {
-        status = BuildSceneLoaderStage(request, scene_text, animation_text, &scene_stage);
-        if (status != RuntimeAssetDataStatus::Success) {
-            result.status = status;
-            *out_result = result;
-            return status;
-        }
-    }
-
-    if (!ConfigureRuntimeAssetResourceBudgets(*request.resource_registry)) {
-        result.status = RuntimeAssetDataStatus::ResourceResidencyFailed;
-        *out_result = result;
-        return result.status;
-    }
-
-    RuntimeAssetFileDesc scene_desc{};
-    scene_desc.path = request.scene_path.Value().data();
-    scene_desc.kind = RuntimeAssetFileKind::Scene;
-    scene_desc.resource_type = request.scene_resource_type;
-    scene_desc.asset_type = request.scene_asset_type;
-    scene_desc.stable_id = request.scene_stable_id;
-    status = RegisterLoadedFile(
-        *request.resource_registry,
-        *request.asset_manager,
-        scene_desc,
-        std::span<const std::uint8_t>(scene_bytes.data(), scene_bytes.size()),
-        &result.scene);
-    if (status != RuntimeAssetDataStatus::Success) {
-        result.status = status;
-        *out_result = result;
-        return status;
-    }
-
-    result.scene_registered = true;
-    ++result.cache_payload_count;
-
-    file_index = 0U;
-    while (file_index < request.file_count) {
-        const RuntimeAssetFileDesc &file = request.files[file_index];
-        status = RegisterLoadedFile(
-            *request.resource_registry,
-            *request.asset_manager,
-            file,
-            std::span<const std::uint8_t>(file_bytes[file_index].data(), file_bytes[file_index].size()),
-            &request.loaded_files[file_index]);
-        if (status != RuntimeAssetDataStatus::Success) {
-            result.status = status;
-            *out_result = result;
-            return status;
-        }
-
-        ++result.loaded_file_count;
-        ++result.cache_payload_count;
-        if (request.loaded_files[file_index].decode_plan_created) {
-            ++result.cache_payload_count;
-        }
-
-        if (request.loaded_files[file_index].decoded_payload_stored) {
-            ++result.decoded_payload_count;
-        }
-
-        status = AddLoadedDependency(
-            *request.resource_registry,
-            *request.asset_manager,
-            result.scene,
-            request.loaded_files[file_index]);
-        if (status != RuntimeAssetDataStatus::Success) {
-            result.status = status;
-            *out_result = result;
-            return status;
-        }
-
-        ++result.resource_dependency_count;
-        ++result.asset_dependency_count;
-        ++file_index;
-    }
-
-    status = CommitSceneLoaderOutput(request, result, scene_stage);
-    if (status != RuntimeAssetDataStatus::Success) {
-        result.status = status;
-        *out_result = result;
-        return status;
-    }
-
-    result.status = RuntimeAssetDataStatus::Success;
-    *out_result = result;
-    return result.status;
+    status = CommitRuntimeAssetGraphTransaction(request, &transaction);
+    *out_result = transaction.result;
+    return status;
 }
 
 RuntimeAssetDataStatus BuildRuntimeAssetShaderProgramPipeline(

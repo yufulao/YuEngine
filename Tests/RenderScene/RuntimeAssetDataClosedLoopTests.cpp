@@ -125,6 +125,7 @@ using yuengine::runtimeasset::RuntimeAssetGraphLoadRequest;
 using yuengine::runtimeasset::RuntimeAssetGraphLoadResult;
 using yuengine::runtimeasset::RuntimeAssetLoadedFile;
 using yuengine::runtimeasset::RuntimeAssetLoadedShaderProgramData;
+using yuengine::runtimeasset::RuntimeAssetLoadTransactionPhase;
 using yuengine::runtimeasset::RuntimeAssetSceneCameraRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneEntityRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneLoaderOutput;
@@ -201,6 +202,8 @@ constexpr const char *TEST_SOURCE_COOKED_REJECTS =
     "RuntimeAssetData_SourceCookedParserRejectsInvalidTablesHashesAndDependencies";
 constexpr const char *TEST_LOADER_REJECTS_SCHEMA_KIND_SUFFIX =
     "RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation";
+constexpr const char *TEST_LOADER_TRANSACTION_INVALID_SCHEMA =
+    "RuntimeAssetData_LoaderRejectsMissingSchemaBeforeMutation";
 constexpr const char *TEST_SHADER_PROGRAM_DEPENDENCIES =
     "RuntimeAssetData_ShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
 constexpr const char *TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES =
@@ -1502,6 +1505,21 @@ bool LoadRuntimeAssetRecords(
         return FailStep("runtime asset graph load failed");
     }
 
+    if (load_result.transaction_plan.status != RuntimeAssetDataStatus::Success ||
+        load_result.transaction_plan.phase != RuntimeAssetLoadTransactionPhase::PreflightCommit ||
+        load_result.transaction_plan.record_count != FIXTURE_FILE_COUNT + 1U ||
+        load_result.transaction_plan.resource_commit_count != FIXTURE_FILE_COUNT + 1U ||
+        load_result.transaction_plan.asset_commit_count != FIXTURE_FILE_COUNT + 1U ||
+        load_result.transaction_plan.dependency_edge_commit_count != FIXTURE_FILE_COUNT * 2U ||
+        load_result.transaction_result.status != RuntimeAssetDataStatus::Success ||
+        load_result.transaction_result.phase != RuntimeAssetLoadTransactionPhase::CommitSceneOutput ||
+        !load_result.transaction_result.mutated_state ||
+        load_result.transaction_result.committed_resource_count != FIXTURE_FILE_COUNT + 1U ||
+        load_result.transaction_result.committed_asset_count != FIXTURE_FILE_COUNT + 1U ||
+        load_result.transaction_result.committed_dependency_edge_count != FIXTURE_FILE_COUNT * 2U) {
+        return FailStep("runtime asset graph transaction diagnostics changed");
+    }
+
     graph.scene_asset = load_result.scene;
     graph.loader_used_file_mount = load_result.file_read_count == FIXTURE_FILE_COUNT + 1U;
     graph.file_read_count = load_result.file_read_count;
@@ -1630,7 +1648,10 @@ bool SceneLoaderFailureSentinelsUnchanged(
     return true;
 }
 
-bool ProbeSceneLoaderFailureWithoutOutputMutation(MountTable &table, RuntimeAssetDataStatus expected_status) {
+bool ProbeSceneLoaderFailureWithoutOutputMutation(
+    MountTable &table,
+    RuntimeAssetDataStatus expected_status,
+    RuntimeAssetLoadTransactionPhase expected_phase) {
     const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
     std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
     for (std::size_t index = 0U; index < files.size(); ++index) {
@@ -1640,7 +1661,20 @@ bool ProbeSceneLoaderFailureWithoutOutputMutation(MountTable &table, RuntimeAsse
     ResourceRegistry registry;
     AssetManager manager;
     const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const auto before_cache_snapshot = registry.CachePayloadSnapshot();
+    const auto before_decoded_snapshot = registry.DecodedPayloadSnapshot();
     const AssetSnapshot before_asset_snapshot = manager.Snapshot();
+    RuntimeAssetRhiDevice rhi_device;
+    if (rhi_device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return FailStep("scene loader failure rhi sentinel init failed");
+    }
+
+    RhiTextureHandle before_rhi_target{};
+    if (rhi_device.GetSwapchainColorTarget(before_rhi_target) != RhiStatus::Success) {
+        return FailStep("scene loader failure rhi sentinel target failed");
+    }
+
+    const auto before_rhi_snapshot = rhi_device.Snapshot();
     std::array<RuntimeAssetLoadedFile, FIXTURE_FILE_COUNT> loaded_files{};
     std::array<RuntimeAssetSceneResourceRef, FIXTURE_FILE_COUNT> scene_resource_refs{};
     std::array<RuntimeAssetSceneCameraRecord, 1U> scene_cameras{};
@@ -1686,6 +1720,19 @@ bool ProbeSceneLoaderFailureWithoutOutputMutation(MountTable &table, RuntimeAsse
         return FailStep("scene loader failure did not return expected status");
     }
 
+    if (load_result.transaction_result.status != expected_status ||
+        load_result.transaction_plan.status != expected_status ||
+        load_result.transaction_plan.phase != expected_phase ||
+        load_result.transaction_result.phase != expected_phase ||
+        load_result.transaction_result.mutated_state ||
+        load_result.transaction_result.committed_resource_count != 0U ||
+        load_result.transaction_result.committed_asset_count != 0U ||
+        load_result.transaction_result.committed_cache_payload_count != 0U ||
+        load_result.transaction_result.committed_decoded_payload_count != 0U ||
+        load_result.transaction_result.committed_dependency_edge_count != 0U) {
+        return FailStep("scene loader failure transaction mutated before commit");
+    }
+
     if (!SceneLoaderFailureSentinelsUnchanged(
             scene_resource_refs,
             scene_cameras,
@@ -1703,12 +1750,54 @@ bool ProbeSceneLoaderFailureWithoutOutputMutation(MountTable &table, RuntimeAsse
         return FailStep("scene loader failure mutated Resource registry state");
     }
 
+    const auto after_cache_snapshot = registry.CachePayloadSnapshot();
+    if (after_cache_snapshot.cached_byte_count != before_cache_snapshot.cached_byte_count ||
+        after_cache_snapshot.cached_payload_count != before_cache_snapshot.cached_payload_count ||
+        after_cache_snapshot.cache_payload_record_count != before_cache_snapshot.cache_payload_record_count ||
+        after_cache_snapshot.stored_payload_count != before_cache_snapshot.stored_payload_count) {
+        return FailStep("scene loader failure mutated Resource cache payload state");
+    }
+
+    const auto after_decoded_snapshot = registry.DecodedPayloadSnapshot();
+    if (after_decoded_snapshot.stored_decoded_byte_count != before_decoded_snapshot.stored_decoded_byte_count ||
+        after_decoded_snapshot.active_payload_count != before_decoded_snapshot.active_payload_count ||
+        after_decoded_snapshot.decoded_payload_record_count != before_decoded_snapshot.decoded_payload_record_count ||
+        after_decoded_snapshot.stored_payload_count != before_decoded_snapshot.stored_payload_count) {
+        return FailStep("scene loader failure mutated Resource decoded payload state");
+    }
+
     const AssetSnapshot after_asset_snapshot = manager.Snapshot();
     if (after_asset_snapshot.active_asset_count != before_asset_snapshot.active_asset_count ||
         after_asset_snapshot.active_dependency_edge_count != before_asset_snapshot.active_dependency_edge_count ||
         after_asset_snapshot.registered_asset_count != before_asset_snapshot.registered_asset_count ||
         after_asset_snapshot.referenced_asset_count != before_asset_snapshot.referenced_asset_count) {
         return FailStep("scene loader failure mutated Asset manager state");
+    }
+
+    RhiTextureHandle after_rhi_target{};
+    if (rhi_device.GetSwapchainColorTarget(after_rhi_target) != RhiStatus::Success) {
+        return FailStep("scene loader failure rhi sentinel target query failed");
+    }
+
+    const auto after_rhi_snapshot = rhi_device.Snapshot();
+    if (after_rhi_target.slot != before_rhi_target.slot ||
+        after_rhi_target.generation != before_rhi_target.generation ||
+        after_rhi_snapshot.color_target_count != before_rhi_snapshot.color_target_count ||
+        after_rhi_snapshot.created_target_count != before_rhi_snapshot.created_target_count ||
+        after_rhi_snapshot.resources.buffer_count != before_rhi_snapshot.resources.buffer_count ||
+        after_rhi_snapshot.resources.texture_count != before_rhi_snapshot.resources.texture_count ||
+        after_rhi_snapshot.resources.sampler_count != before_rhi_snapshot.resources.sampler_count ||
+        after_rhi_snapshot.resources.shader_module_count != before_rhi_snapshot.resources.shader_module_count ||
+        after_rhi_snapshot.resources.pipeline_count != before_rhi_snapshot.resources.pipeline_count) {
+        return FailStep("scene loader failure mutated RHI handle state");
+    }
+
+    for (const RuntimeAssetLoadedFile &loaded_file : loaded_files) {
+        if (loaded_file.stable_id != 0U ||
+            loaded_file.resource.IsValid() ||
+            loaded_file.asset.IsValid()) {
+            return FailStep("scene loader failure mutated caller loaded file outputs");
+        }
     }
 
     return true;
@@ -2118,6 +2207,36 @@ int RuntimeAssetDataSceneFamilyDetectionIsPathIndependent() {
 
     if (load_result.file_read_count != FIXTURE_FILE_COUNT + 1U) {
         return Fail("path-independent scene family load read unexpected file count");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataLoaderRejectsMissingSchemaBeforeMutation() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("LoaderMissingSchemaNoMutation"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    const std::string invalid_texture =
+        "YUASSET TEXTURE 1\n"
+        "id=albedo\n"
+        "format=rgba8\n"
+        "extent=2x2\n"
+        "payload=checker\n";
+    if (!WriteBytes(table, "Texture/Albedo.yutex", BytesFromString(invalid_texture))) {
+        return Fail("invalid texture write failed");
+    }
+
+    if (!ProbeSceneLoaderFailureWithoutOutputMutation(
+            table,
+            RuntimeAssetDataStatus::InvalidSchema,
+            RuntimeAssetLoadTransactionPhase::ValidateRecord)) {
+        return Fail("missing schema loader failure mutated pre-commit state");
     }
 
     return 0;
@@ -3157,7 +3276,10 @@ int RuntimeAssetDataSceneLoaderRejectsInvalidEntityWithoutOutputMutation() {
         return Fail("invalid scene write failed");
     }
 
-    if (!ProbeSceneLoaderFailureWithoutOutputMutation(table, RuntimeAssetDataStatus::InvalidDependency)) {
+    if (!ProbeSceneLoaderFailureWithoutOutputMutation(
+            table,
+            RuntimeAssetDataStatus::InvalidDependency,
+            RuntimeAssetLoadTransactionPhase::StageSceneOutput)) {
         return Fail("invalid scene entity failure mutated scene loader outputs");
     }
 
@@ -3190,7 +3312,10 @@ int RuntimeAssetDataSceneLoaderRejectsInvalidKeyframesWithoutOutputMutation() {
         return Fail("invalid animation write failed");
     }
 
-    if (!ProbeSceneLoaderFailureWithoutOutputMutation(table, RuntimeAssetDataStatus::InvalidDependency)) {
+    if (!ProbeSceneLoaderFailureWithoutOutputMutation(
+            table,
+            RuntimeAssetDataStatus::InvalidDependency,
+            RuntimeAssetLoadTransactionPhase::StageSceneOutput)) {
         return Fail("invalid keyframe failure mutated scene loader outputs");
     }
 
@@ -3617,6 +3742,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_SOURCE_COOKED_REJECTS, RuntimeAssetDataSourceCookedParserRejectsInvalidTablesHashesAndDependencies},
     {TEST_LOADER_REJECTS_SCHEMA_KIND_SUFFIX,
      RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation},
+    {TEST_LOADER_TRANSACTION_INVALID_SCHEMA, RuntimeAssetDataLoaderRejectsMissingSchemaBeforeMutation},
     {TEST_SHADER_PROGRAM_DEPENDENCIES, RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES, RuntimeAssetDataSceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation},
     {TEST_ANIMATION_DEPENDENCIES, RuntimeAssetDataAnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},

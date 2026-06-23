@@ -102,6 +102,24 @@ enum class RuntimeAssetDataStatus {
 };
 
 /**
+ * @brief Coarse phase reported by the RuntimeAsset loader transaction.
+ */
+enum class RuntimeAssetLoadTransactionPhase {
+    Preflight,
+    ReadBytes,
+    ParseHeader,
+    ValidateRecord,
+    ValidateDependencies,
+    PreflightCommit,
+    StageSceneOutput,
+    CommitResources,
+    CommitAssets,
+    CommitPayloads,
+    CommitDependencies,
+    CommitSceneOutput
+};
+
+/**
  * @brief Describes one runtime asset file expected by a graph load request.
  */
 struct RuntimeAssetFileDesc final {
@@ -274,10 +292,43 @@ struct RuntimeAssetGraphLoadRequest final {
 };
 
 /**
+ * @brief Bounded commit plan summary produced before runtime mutation begins.
+ */
+struct RuntimeAssetLoadTransactionPlan final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    RuntimeAssetLoadTransactionPhase phase = RuntimeAssetLoadTransactionPhase::Preflight;
+    std::uint32_t record_count = 0U;
+    std::uint32_t dependency_count = 0U;
+    std::uint32_t resource_commit_count = 0U;
+    std::uint32_t asset_commit_count = 0U;
+    std::uint32_t cache_payload_commit_count = 0U;
+    std::uint32_t decoded_payload_commit_count = 0U;
+    std::uint32_t dependency_edge_commit_count = 0U;
+};
+
+/**
+ * @brief Diagnostics for graph-load transaction preflight and commit.
+ */
+struct RuntimeAssetLoadTransactionResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    RuntimeAssetLoadTransactionPhase phase = RuntimeAssetLoadTransactionPhase::Preflight;
+    std::uint32_t first_failed_record_index = 0U;
+    std::uint32_t first_failed_dependency_index = 0U;
+    std::uint32_t committed_resource_count = 0U;
+    std::uint32_t committed_asset_count = 0U;
+    std::uint32_t committed_cache_payload_count = 0U;
+    std::uint32_t committed_decoded_payload_count = 0U;
+    std::uint32_t committed_dependency_edge_count = 0U;
+    bool mutated_state = false;
+};
+
+/**
  * @brief Reports the closed-loop graph load result.
  */
 struct RuntimeAssetGraphLoadResult final {
     RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    RuntimeAssetLoadTransactionPlan transaction_plan;
+    RuntimeAssetLoadTransactionResult transaction_result;
     RuntimeAssetLoadedFile scene;
     std::uint32_t loaded_file_count = 0U;
     std::uint32_t file_read_count = 0U;
