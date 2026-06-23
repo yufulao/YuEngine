@@ -7,6 +7,8 @@ Baseline: `6acf380 Amend RuntimeAsset RAV1 evidence commands`
 Phase A package decision: `APPROVE_RAV1_PHASE_A_DOCS_PACKAGE`
 Phase A evidence matrix: `docs/YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md`
 Implementation review gate: task #62
+Follow-up RAV2 evidence package:
+`docs/YUENGINE_RUNTIME_ASSET_V0_RAV2_EVIDENCE_MATRIX.md`
 
 ## Purpose
 

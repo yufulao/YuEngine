@@ -4,6 +4,10 @@ Status: RAV2-A implementation contract
 Task: #63
 Base: RAV1 implementation baseline `origin/main@d1a1b86`
 
+Related evidence:
+
+- `docs/YUENGINE_RUNTIME_ASSET_V0_RAV2_EVIDENCE_MATRIX.md`
+
 ## Purpose
 
 RAV2-A adds the first engine-owned import/cook command surface before Resource
