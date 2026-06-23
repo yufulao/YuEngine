@@ -1587,7 +1587,7 @@ bool NullRhiDevice::IsDrawIndexedDescValid(const RhiDrawIndexedDesc &desc) const
 
 bool NullRhiDevice::IsInputLayoutDescValid(const RhiInputLayoutDesc &desc) const {
     if (desc.element_count == 0U) {
-        return false;
+        return desc.stride_bytes == 0U;
     }
 
     if (desc.element_count > MAX_RHI_INPUT_ELEMENTS) {

@@ -19,6 +19,10 @@
 #include "YuEngine/Asset/AssetStatus.h"
 #include "YuEngine/File/FileWriteResult.h"
 #include "YuEngine/File/MountTable.h"
+#include "YuEngine/Platform/PlatformNativeSurface.h"
+#include "YuEngine/Platform/PlatformWindowDesc.h"
+#include "YuEngine/Platform/PlatformWindowStatus.h"
+#include "YuEngine/Platform/WindowsPlatformWindow.h"
 #include "YuEngine/RenderCore/RenderCameraProjectionKind.h"
 #include "YuEngine/RenderCore/RenderDrawableFramePipeline.h"
 #include "YuEngine/RenderCore/RenderDrawableFramePipelineRequest.h"
@@ -42,9 +46,12 @@
 #include "YuEngine/Rhi/RhiBufferDesc.h"
 #include "YuEngine/Rhi/RhiColorTargetDesc.h"
 #include "YuEngine/Rhi/RhiConstants.h"
+#include "YuEngine/Rhi/RhiDeviceCreateResult.h"
 #include "YuEngine/Rhi/RhiDeviceDesc.h"
+#include "YuEngine/Rhi/RhiDeviceFactory.h"
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiInputLayoutDesc.h"
+#include "YuEngine/Rhi/RhiNativeSurfaceDesc.h"
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
 #include "YuEngine/Rhi/RhiSamplerDesc.h"
 #include "YuEngine/Rhi/RhiShaderModuleDesc.h"
@@ -73,6 +80,10 @@ using yuengine::file::FileWriteRequest;
 using yuengine::file::MountId;
 using yuengine::file::MountTable;
 using yuengine::file::VirtualPath;
+using yuengine::platform::PlatformNativeSurface;
+using yuengine::platform::PlatformWindowDesc;
+using yuengine::platform::PlatformWindowStatus;
+using yuengine::platform::WindowsPlatformWindow;
 using yuengine::previewhost::PreviewHost;
 using yuengine::previewhost::PreviewHostCommandOutputRef;
 using yuengine::previewhost::PreviewHostDiagnostic;
@@ -187,19 +198,24 @@ using yuengine::streaming::ResourceDecodedTextureBridgeRequest;
 using yuengine::streaming::ResourceDecodedTextureBridgeResult;
 using yuengine::streaming::ResourceDecodedTextureBridgeStatus;
 using yuengine::rhi::IRhiDevice;
+using yuengine::rhi::MAX_COMMANDS;
 using yuengine::rhi::NullRhiDevice;
+using yuengine::rhi::RhiBackendKind;
 using yuengine::rhi::RhiBufferDesc;
 using yuengine::rhi::RhiBufferHandle;
 using yuengine::rhi::RhiBufferUsage;
 using yuengine::rhi::RhiColor;
 using yuengine::rhi::RhiColorTargetDesc;
+using yuengine::rhi::RhiDeviceCreateResult;
 using yuengine::rhi::RhiDeviceDesc;
+using yuengine::rhi::RhiDeviceFactory;
 using yuengine::rhi::RhiFormat;
 using yuengine::rhi::RhiIndexBufferView;
 using yuengine::rhi::RhiIndexFormat;
 using yuengine::rhi::RhiInputElementFormat;
 using yuengine::rhi::RhiInputElementSemantic;
 using yuengine::rhi::RhiInputLayoutDesc;
+using yuengine::rhi::RhiNativeSurfaceDesc;
 using yuengine::rhi::RhiPipelineDesc;
 using yuengine::rhi::RhiPipelineHandle;
 using yuengine::rhi::RhiPrimitiveTopology;
@@ -317,6 +333,8 @@ constexpr const char *TEST_COOKED_RHI_CLEANUP =
     "RuntimeAssetData_CookedRhiPartialCreationFailureDestroysTransientHandles";
 constexpr const char *TEST_COOKED_VISUAL_PROOF =
     "RuntimeAssetData_CookedRecordsDriveRuntimeVisualProofThroughRenderCoreRhi";
+constexpr const char *TEST_COOKED_VISUAL_PROOF_D3D11 =
+    "RuntimeAssetData_D3D11Hardware_CookedRecordsDriveDeviceBackedVisualProof";
 constexpr const char *TEST_COOKED_VISUAL_PROOF_MISSING_LAYERS =
     "RuntimeAssetData_CookedRuntimeVisualProofReportsExactMissingLayers";
 constexpr const char *TEST_RUNTIME_DEPENDENCIES =
@@ -366,6 +384,7 @@ constexpr std::uint32_t ASSET_TYPE_ANIMATION = 206U;
 constexpr std::size_t FIXTURE_FILE_COUNT = 9U;
 constexpr std::size_t CAPTURE_BYTES_PER_ENTITY = 64U;
 constexpr std::size_t TOTAL_CAPTURE_BYTES = CAPTURE_BYTES_PER_ENTITY * 3U;
+constexpr int SKIP_RETURN_CODE = 77;
 
 struct FixtureFile final {
     RuntimeAssetFileDesc desc{};
@@ -649,6 +668,86 @@ private:
     yuengine::rhi::RhiExtent2D swapchain_extent_{};
     bool swapchain_valid_ = false;
 };
+
+struct RuntimeAssetD3D11DeviceContext final {
+    ~RuntimeAssetD3D11DeviceContext() {
+        if (device != nullptr) {
+            RhiDeviceFactory::DestroyDevice(device);
+            device = nullptr;
+        }
+
+        if (window.IsCreated()) {
+            window.Destroy();
+        }
+    }
+
+    WindowsPlatformWindow window{};
+    std::vector<std::byte> storage{};
+    IRhiDevice *device = nullptr;
+};
+
+RhiNativeSurfaceDesc RhiSurfaceFromPlatformSurface(const PlatformNativeSurface &surface) {
+    RhiNativeSurfaceDesc desc{};
+    desc.window_value = surface.window_value;
+    desc.instance_value = surface.instance_value;
+    desc.valid = surface.valid;
+    return desc;
+}
+
+int CreateD3D11RuntimeAssetDevice(RuntimeAssetD3D11DeviceContext *context) {
+    if (context == nullptr) {
+        std::fputs("null D3D11 RuntimeAsset device context\n", stderr);
+        return 1;
+    }
+
+    PlatformWindowDesc window_desc{};
+    window_desc.title = "YuEngine RuntimeAsset D3D11 Visual Proof";
+    window_desc.client_width = 2U;
+    window_desc.client_height = 2U;
+    window_desc.visible = false;
+    const PlatformWindowStatus window_status = context->window.Create(window_desc);
+    if (window_status != PlatformWindowStatus::Success) {
+        std::fprintf(stderr, "D3D11 RuntimeAsset window unavailable status=%u\n", static_cast<unsigned>(window_status));
+        return SKIP_RETURN_CODE;
+    }
+
+    const PlatformNativeSurface surface = context->window.GetNativeSurface();
+    if (!surface.valid) {
+        std::fputs("D3D11 RuntimeAsset native surface unavailable\n", stderr);
+        return SKIP_RETURN_CODE;
+    }
+
+    const std::size_t storage_size = RhiDeviceFactory::RequiredDeviceStorageSize(RhiBackendKind::D3D11);
+    if (storage_size == 0U) {
+        std::fputs("D3D11 RuntimeAsset backend storage unavailable\n", stderr);
+        return SKIP_RETURN_CODE;
+    }
+
+    context->storage.assign(storage_size, std::byte{0});
+    RhiDeviceDesc desc{};
+    desc.backend_kind = RhiBackendKind::D3D11;
+    desc.native_surface = RhiSurfaceFromPlatformSurface(surface);
+    desc.command_list_capacity = MAX_COMMANDS;
+    desc.requires_native_surface = true;
+    desc.requires_swapchain = true;
+    desc.swapchain.color_format = RhiFormat::Rgba8Unorm;
+    desc.swapchain.extent = {2U, 2U};
+    desc.swapchain.vsync_enabled = false;
+
+    const RhiDeviceCreateResult create_result = RhiDeviceFactory::CreateDevice(
+        desc,
+        std::span<std::byte>(context->storage.data(), context->storage.size()));
+    if (create_result.status != RhiStatus::Success || create_result.device == nullptr) {
+        std::fprintf(
+            stderr,
+            "D3D11 RuntimeAsset device unavailable status=%u\n",
+            static_cast<unsigned>(create_result.status));
+        return SKIP_RETURN_CODE;
+    }
+
+    context->device = create_result.device;
+    return 0;
+}
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -2935,6 +3034,15 @@ bool ExecuteGeneratedFixtureCommand(std::string_view root_name, GeneratedFixture
 
     const RuntimeAssetDataStatus status = ExecuteRuntimeAssetImportCookCommand(request, &context.command);
     if (status != RuntimeAssetDataStatus::Success || context.command.status != RuntimeAssetDataStatus::Success) {
+        std::fprintf(
+            stderr,
+            "generated fixture command failed status=%s result=%s validation=%s layer=%u kind=%u index=%u\n",
+            StatusName(status),
+            StatusName(context.command.status),
+            StatusName(context.command.fixture.validation_status),
+            static_cast<unsigned>(context.command.fixture.missing_layer),
+            static_cast<unsigned>(context.command.fixture.first_failed_kind),
+            context.command.fixture.first_failed_artifact_index);
         return FailStep("generated fixture command failed");
     }
 
@@ -3275,6 +3383,15 @@ bool LoadCookedVisualProofGraph(CookedVisualProofContext *context) {
     const RuntimeAssetDataStatus status = LoadRuntimeAssetDataGraph(load_request, &context->load_result);
     if (status != RuntimeAssetDataStatus::Success ||
         context->load_result.status != RuntimeAssetDataStatus::Success) {
+        std::fprintf(
+            stderr,
+            "generated cooked graph load failed status=%s result=%s phase=%u record=%u dependency=%u loaded=%u\n",
+            StatusName(status),
+            StatusName(context->load_result.status),
+            static_cast<unsigned>(context->load_result.transaction_result.phase),
+            context->load_result.transaction_result.first_failed_record_index,
+            context->load_result.transaction_result.first_failed_dependency_index,
+            context->load_result.loaded_file_count);
         return FailStep("generated cooked graph load failed");
     }
 
@@ -3438,6 +3555,94 @@ int RuntimeAssetDataCookedRecordsDriveRuntimeVisualProofThroughRenderCoreRhi() {
             result.capture_bytes_written,
             expected_capture_bytes);
         return Fail("cooked visual proof route produced incomplete capture ledger");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataD3D11HardwareCookedRecordsDriveDeviceBackedVisualProof() {
+    CookedVisualProofContext context{};
+    if (!SetupCookedVisualProofContext("CookedVisualProofD3D11", &context)) {
+        return Fail("D3D11 cooked visual proof setup failed");
+    }
+
+    RuntimeAssetD3D11DeviceContext d3d11_context{};
+    const int device_status = CreateD3D11RuntimeAssetDevice(&d3d11_context);
+    if (device_status != 0) {
+        return device_status;
+    }
+
+    RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context);
+    request.rhi_device = d3d11_context.device;
+
+    RuntimeAssetVisualProofResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetCookedVisualProofRoute(request, &result);
+    if (status != RuntimeAssetDataStatus::Success ||
+        result.status != RuntimeAssetDataStatus::Success ||
+        result.first_missing_layer != RuntimeAssetVisualProofMissingLayer::None) {
+        const auto snapshot = d3d11_context.device->Snapshot();
+        std::fprintf(
+            stderr,
+            "BlockedByLayer=%s status=%s result=%s shader=%s material=%s material_rhi=%u capture_bytes=%zu draws=%u targets=%zu buffers=%zu textures=%zu failed_rhi=%llu\n",
+            VisualProofLayerName(result.first_missing_layer),
+            StatusName(status),
+            StatusName(result.status),
+            StatusName(result.shader_pipeline_result.status),
+            StatusName(result.material_result.status),
+            static_cast<unsigned>(result.material_result.rhi_status),
+            result.capture_bytes_written,
+            result.submitted_draw_count,
+            snapshot.color_target_count,
+            snapshot.resources.buffer_count,
+            snapshot.resources.texture_count,
+            static_cast<unsigned long long>(snapshot.failed_operation_count));
+        return Fail("D3D11 RuntimeAsset visual route did not close");
+    }
+
+    const std::size_t expected_capture_bytes =
+        static_cast<std::size_t>(result.submitted_draw_count) * RUNTIME_TEXTURE_BYTE_COUNT;
+    if (!result.loaded_records_verified ||
+        !result.shader_pipeline_from_runtime_asset ||
+        !result.material_slots_from_cooked_payloads ||
+        !result.scene_transforms_from_animation_sampling ||
+        !result.render_scene_routed ||
+        !result.render_core_rhi_capture_routed ||
+        result.completed_frame_count != 2U ||
+        result.submitted_draw_count != 6U ||
+        result.capture_bytes_written != expected_capture_bytes) {
+        std::fprintf(
+            stderr,
+            "D3D11 ledger records=%u shader=%u material=%u anim=%u scene=%u core=%u frames=%u draws=%u capture=%zu expected=%zu\n",
+            result.cooked_record_count,
+            result.shader_pipeline_from_runtime_asset ? 1U : 0U,
+            result.material_slots_from_cooked_payloads ? 1U : 0U,
+            result.scene_transforms_from_animation_sampling ? 1U : 0U,
+            result.render_scene_routed ? 1U : 0U,
+            result.render_core_rhi_capture_routed ? 1U : 0U,
+            result.completed_frame_count,
+            result.submitted_draw_count,
+            result.capture_bytes_written,
+            expected_capture_bytes);
+        return Fail("D3D11 RuntimeAsset visual route ledger was incomplete");
+    }
+
+    const auto snapshot = d3d11_context.device->Snapshot();
+    if (snapshot.submitted_indexed_draw_count < static_cast<std::uint64_t>(result.submitted_draw_count) ||
+        snapshot.present_count < static_cast<std::uint64_t>(result.submitted_draw_count) ||
+        snapshot.capture_count < static_cast<std::uint64_t>(result.submitted_draw_count) ||
+        snapshot.last_capture_bytes_written != RUNTIME_TEXTURE_BYTE_COUNT ||
+        snapshot.last_capture_extent.width != 2U ||
+        snapshot.last_capture_extent.height != 2U) {
+        std::fprintf(
+            stderr,
+            "D3D11 snapshot draws=%llu presents=%llu captures=%llu last_capture=%zu extent=%ux%u\n",
+            static_cast<unsigned long long>(snapshot.submitted_indexed_draw_count),
+            static_cast<unsigned long long>(snapshot.present_count),
+            static_cast<unsigned long long>(snapshot.capture_count),
+            snapshot.last_capture_bytes_written,
+            snapshot.last_capture_extent.width,
+            snapshot.last_capture_extent.height);
+        return Fail("D3D11 RHI did not submit/present/capture the RuntimeAsset route");
     }
 
     return 0;
@@ -7340,6 +7545,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataCookedRhiPartialCreationFailureDestroysTransientHandles},
     {TEST_COOKED_VISUAL_PROOF,
      RuntimeAssetDataCookedRecordsDriveRuntimeVisualProofThroughRenderCoreRhi},
+    {TEST_COOKED_VISUAL_PROOF_D3D11,
+     RuntimeAssetDataD3D11HardwareCookedRecordsDriveDeviceBackedVisualProof},
     {TEST_COOKED_VISUAL_PROOF_MISSING_LAYERS,
      RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers},
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},

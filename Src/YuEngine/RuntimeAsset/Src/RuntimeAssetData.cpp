@@ -194,7 +194,19 @@ constexpr std::uint32_t DEFAULT_PAYLOAD_BYTE_CAPACITY = 8192U;
 constexpr std::string_view RUNTIME_ASSET_SOURCE_SCHEMA = "rav0-source";
 constexpr std::string_view RUNTIME_ASSET_COOKED_SCHEMA = "rav1-cooked";
 constexpr std::string_view SHADER_BYTECODE_PREFIX = "bytecode:";
+constexpr std::string_view SHADER_BYTECODE_BASE64_PREFIX = "b64:";
+constexpr std::string_view SHADER_BYTECODE_HEX_PREFIX = "hex:";
 constexpr std::string_view SHADER_LAYOUT_PREFIX = "layout:";
+constexpr std::string_view SHADER_LAYOUT_NONE = "none";
+constexpr std::string_view RUNTIME_ASSET_D3D11_VISUAL_PROOF_VERTEX_SHADER_BASE64 =
+    "RFhCQwc2QLD2f/IqqN7bCwxpOPUBAAAA3AAAAAMAAAAsAAAAYAAAAJQAAABJU0dOLAAAAAEAAAAIAAAAIAAAAAAAAA"
+    "AGAAAAAQAAAAAAAAABAAAAU1ZfVmVydGV4SUQAT1NHTiwAAAABAAAACAAAACAAAAAAAAAAAQAAAAMAAAAAAAAADwAA"
+    "AFNWX1Bvc2l0aW9uAFNIRVhAAAAAUAABABAAAABqCAABZwAABPIgEAAAAAAAAQAAADYAAAjyIBAAAAAAAAJAAAAAAA"
+    "AAAAAAAAAAAAAAAIA/PgAAAQ==";
+constexpr std::string_view RUNTIME_ASSET_D3D11_VISUAL_PROOF_PIXEL_SHADER_BASE64 =
+    "RFhCQ+5NC5Qp7gIBY6Rd809W4bEBAAAAtAAAAAMAAAAsAAAAPAAAAHAAAABJU0dOCAAAAAAAAAAIAAAAT1NHTiwAAA"
+    "ABAAAACAAAACAAAAAAAAAAAAAAAAMAAAAAAAAADwAAAFNWX1RhcmdldACrq1NIRVg8AAAAUAAAAA8AAABqCAABZQAA"
+    "A/IgEAAAAAAANgAACPIgEAAAAAAAAkAAAAAAgD8AAAAAAAAAAAAAgD8+AAAB";
 constexpr std::uint32_t RUNTIME_ASSET_SCENE_ENTITY_COUNT = 3U;
 constexpr std::uint32_t RUNTIME_ASSET_SCENE_CAMERA_COUNT = 1U;
 constexpr std::uint32_t RUNTIME_ASSET_SCENE_TRANSFORM_COUNT = 3U;
@@ -1217,6 +1229,15 @@ std::string RuntimeAssetCookedText(
     return text;
 }
 
+std::string RuntimeAssetCookedVisualProofShaderFields() {
+    std::string text("stage_vs=bytecode:b64:");
+    text += RUNTIME_ASSET_D3D11_VISUAL_PROOF_VERTEX_SHADER_BASE64;
+    text += "\nstage_ps=bytecode:b64:";
+    text += RUNTIME_ASSET_D3D11_VISUAL_PROOF_PIXEL_SHADER_BASE64;
+    text += "\ninput=layout:none\ntextures=3\n";
+    return text;
+}
+
 std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
 RuntimeAssetCookedFixtureArtifacts() {
     const std::array<std::string_view, 0U> no_deps{};
@@ -1226,6 +1247,7 @@ RuntimeAssetCookedFixtureArtifacts() {
         "texture:normal:3002",
         "texture:mask:3003",
     }};
+    const std::string visual_proof_shader_fields = RuntimeAssetCookedVisualProofShaderFields();
 
     return std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>{
         RuntimeAssetFixtureArtifact{
@@ -1304,7 +1326,7 @@ RuntimeAssetCookedFixtureArtifacts() {
                 RuntimeAssetFileKind::Shader,
                 "runtime_program_cooked",
                 "shader-program-payload",
-                "stage_vs=bytecode:runtime_program_vs\nstage_ps=bytecode:runtime_program_ps\ninput=layout:position,color\ntextures=3\n",
+                visual_proof_shader_fields,
                 std::span<const std::string_view>(no_deps.data(), no_deps.size()),
                 128U,
                 4U)},
@@ -1993,6 +2015,268 @@ RuntimeAssetDataStatus DecodeShaderInputElement(
     return RuntimeAssetDataStatus::Success;
 }
 
+bool HexNibbleValue(char character, std::uint8_t *out_value) {
+    if (out_value == nullptr) {
+        return false;
+    }
+
+    if (character >= '0' && character <= '9') {
+        *out_value = static_cast<std::uint8_t>(character - '0');
+        return true;
+    }
+
+    if (character >= 'A' && character <= 'F') {
+        *out_value = static_cast<std::uint8_t>((character - 'A') + 10);
+        return true;
+    }
+
+    if (character >= 'a' && character <= 'f') {
+        *out_value = static_cast<std::uint8_t>((character - 'a') + 10);
+        return true;
+    }
+
+    return false;
+}
+
+bool Base64Value(char character, std::uint8_t *out_value) {
+    if (out_value == nullptr) {
+        return false;
+    }
+
+    if (character >= 'A' && character <= 'Z') {
+        *out_value = static_cast<std::uint8_t>(character - 'A');
+        return true;
+    }
+
+    if (character >= 'a' && character <= 'z') {
+        *out_value = static_cast<std::uint8_t>((character - 'a') + 26);
+        return true;
+    }
+
+    if (character >= '0' && character <= '9') {
+        *out_value = static_cast<std::uint8_t>((character - '0') + 52);
+        return true;
+    }
+
+    if (character == '+') {
+        *out_value = 62U;
+        return true;
+    }
+
+    if (character == '/') {
+        *out_value = 63U;
+        return true;
+    }
+
+    return false;
+}
+
+RuntimeAssetDataStatus ValidateBase64ShaderBytecodePayload(
+    std::string_view base64_payload,
+    std::size_t *out_byte_count) {
+    if (out_byte_count == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    *out_byte_count = 0U;
+    if (base64_payload.empty() || (base64_payload.size() % 4U) != 0U) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    std::size_t padding_count = 0U;
+    if (base64_payload[base64_payload.size() - 1U] == '=') {
+        padding_count = 1U;
+    }
+
+    if (base64_payload[base64_payload.size() - 2U] == '=') {
+        padding_count = 2U;
+    }
+
+    const std::size_t data_character_count = base64_payload.size() - padding_count;
+    for (std::size_t index = 0U; index < data_character_count; ++index) {
+        std::uint8_t value = 0U;
+        if (!Base64Value(base64_payload[index], &value)) {
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
+    }
+
+    for (std::size_t index = data_character_count; index < base64_payload.size(); ++index) {
+        if (base64_payload[index] != '=') {
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
+    }
+
+    const std::size_t byte_count = ((base64_payload.size() / 4U) * 3U) - padding_count;
+    if (byte_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (byte_count > yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    *out_byte_count = byte_count;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateHexShaderBytecodePayload(
+    std::string_view hex_payload,
+    std::size_t *out_byte_count) {
+    if (out_byte_count == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    *out_byte_count = 0U;
+    if (hex_payload.empty()) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if ((hex_payload.size() % 2U) != 0U) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    const std::size_t byte_count = hex_payload.size() / 2U;
+    if (byte_count > yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    for (const char character : hex_payload) {
+        std::uint8_t value = 0U;
+        if (!HexNibbleValue(character, &value)) {
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
+    }
+
+    *out_byte_count = byte_count;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ShaderBytecodePayloadByteCount(
+    std::string_view payload,
+    std::size_t *out_byte_count) {
+    if (out_byte_count == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (StartsWith(payload, SHADER_BYTECODE_BASE64_PREFIX)) {
+        return ValidateBase64ShaderBytecodePayload(
+            payload.substr(SHADER_BYTECODE_BASE64_PREFIX.size()),
+            out_byte_count);
+    }
+
+    if (StartsWith(payload, SHADER_BYTECODE_HEX_PREFIX)) {
+        return ValidateHexShaderBytecodePayload(
+            payload.substr(SHADER_BYTECODE_HEX_PREFIX.size()),
+            out_byte_count);
+    }
+
+    if (payload.empty()) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (payload.size() > yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    *out_byte_count = payload.size();
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus CopyBase64ShaderBytecodePayload(
+    std::string_view base64_payload,
+    std::array<std::uint8_t, yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES> *destination,
+    std::size_t *out_size,
+    std::uint64_t *out_hash) {
+    if (destination == nullptr || out_size == nullptr || out_hash == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    std::size_t byte_count = 0U;
+    RuntimeAssetDataStatus status = ValidateBase64ShaderBytecodePayload(base64_payload, &byte_count);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    std::size_t write_index = 0U;
+    for (std::size_t index = 0U; index < base64_payload.size(); index += 4U) {
+        std::uint8_t first = 0U;
+        std::uint8_t second = 0U;
+        std::uint8_t third = 0U;
+        std::uint8_t fourth = 0U;
+        if (!Base64Value(base64_payload[index], &first) ||
+            !Base64Value(base64_payload[index + 1U], &second)) {
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
+
+        (*destination)[write_index] = static_cast<std::uint8_t>((first << 2U) | (second >> 4U));
+        ++write_index;
+        if (base64_payload[index + 2U] == '=') {
+            continue;
+        }
+
+        if (!Base64Value(base64_payload[index + 2U], &third)) {
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
+
+        (*destination)[write_index] = static_cast<std::uint8_t>((second << 4U) | (third >> 2U));
+        ++write_index;
+        if (base64_payload[index + 3U] == '=') {
+            continue;
+        }
+
+        if (!Base64Value(base64_payload[index + 3U], &fourth)) {
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
+
+        (*destination)[write_index] = static_cast<std::uint8_t>((third << 6U) | fourth);
+        ++write_index;
+    }
+
+    if (write_index != byte_count) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    *out_size = byte_count;
+    *out_hash = HashRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(destination->data(), byte_count));
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus CopyHexShaderBytecodePayload(
+    std::string_view hex_payload,
+    std::array<std::uint8_t, yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES> *destination,
+    std::size_t *out_size,
+    std::uint64_t *out_hash) {
+    if (destination == nullptr || out_size == nullptr || out_hash == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    std::size_t byte_count = 0U;
+    RuntimeAssetDataStatus status = ValidateHexShaderBytecodePayload(hex_payload, &byte_count);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    for (std::size_t byte_index = 0U; byte_index < byte_count; ++byte_index) {
+        std::uint8_t high = 0U;
+        std::uint8_t low = 0U;
+        if (!HexNibbleValue(hex_payload[(byte_index * 2U)], &high)) {
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
+
+        if (!HexNibbleValue(hex_payload[(byte_index * 2U) + 1U], &low)) {
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
+
+        (*destination)[byte_index] = static_cast<std::uint8_t>((high << 4U) | low);
+    }
+
+    *out_size = byte_count;
+    *out_hash = HashRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(destination->data(), byte_count));
+    return RuntimeAssetDataStatus::Success;
+}
+
 RuntimeAssetDataStatus DecodeShaderInputLayout(
     std::string_view input,
     yuengine::rhi::RhiInputLayoutDesc *out_layout) {
@@ -2010,6 +2294,11 @@ RuntimeAssetDataStatus DecodeShaderInputLayout(
     }
 
     yuengine::rhi::RhiInputLayoutDesc layout{};
+    if (semantic_list == SHADER_LAYOUT_NONE) {
+        *out_layout = layout;
+        return RuntimeAssetDataStatus::Success;
+    }
+
     std::size_t cursor = 0U;
     std::size_t stride_bytes = 0U;
     bool has_position = false;
@@ -2079,8 +2368,10 @@ RuntimeAssetDataStatus ShaderBytecodePayloadForValue(
         return RuntimeAssetDataStatus::InvalidSize;
     }
 
-    if (payload.size() > yuengine::rhi::MAX_RHI_SHADER_BYTECODE_BYTES) {
-        return RuntimeAssetDataStatus::BudgetExceeded;
+    std::size_t byte_count = 0U;
+    const RuntimeAssetDataStatus status = ShaderBytecodePayloadByteCount(payload, &byte_count);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
     }
 
     *out_payload = payload;
@@ -2105,6 +2396,22 @@ RuntimeAssetDataStatus CopyShaderBytecode(
     }
 
     std::fill(destination->begin(), destination->end(), std::uint8_t{0U});
+    if (StartsWith(payload, SHADER_BYTECODE_BASE64_PREFIX)) {
+        return CopyBase64ShaderBytecodePayload(
+            payload.substr(SHADER_BYTECODE_BASE64_PREFIX.size()),
+            destination,
+            out_size,
+            out_hash);
+    }
+
+    if (StartsWith(payload, SHADER_BYTECODE_HEX_PREFIX)) {
+        return CopyHexShaderBytecodePayload(
+            payload.substr(SHADER_BYTECODE_HEX_PREFIX.size()),
+            destination,
+            out_size,
+            out_hash);
+    }
+
     std::transform(
         payload.begin(),
         payload.end(),
@@ -2171,6 +2478,18 @@ RuntimeAssetDataStatus ValidateShaderProgramMetadata(
         return status;
     }
 
+    std::size_t vertex_byte_count = 0U;
+    status = ShaderBytecodePayloadByteCount(vertex_payload, &vertex_byte_count);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    std::size_t pixel_byte_count = 0U;
+    status = ShaderBytecodePayloadByteCount(pixel_payload, &pixel_byte_count);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
     yuengine::rhi::RhiInputLayoutDesc input_layout{};
     status = DecodeShaderInputLayout(ValueForToken(text, "input="), &input_layout);
     if (status != RuntimeAssetDataStatus::Success) {
@@ -2178,7 +2497,7 @@ RuntimeAssetDataStatus ValidateShaderProgramMetadata(
     }
 
     out_result->shader_bytecode_byte_count =
-        static_cast<std::uint32_t>(vertex_payload.size() + pixel_payload.size());
+        static_cast<std::uint32_t>(vertex_byte_count + pixel_byte_count);
     return RuntimeAssetDataStatus::Success;
 }
 
@@ -2708,7 +3027,7 @@ bool IsInputElementValid(
 
 bool IsInputLayoutValid(const yuengine::rhi::RhiInputLayoutDesc &layout) {
     if (layout.element_count == 0U) {
-        return false;
+        return layout.stride_bytes == 0U;
     }
 
     if (layout.element_count > yuengine::rhi::MAX_RHI_INPUT_ELEMENTS) {
@@ -4766,6 +5085,7 @@ RuntimeAssetDataStatus CreateVisualProofBuffer(
     IRhiDevice &device,
     RhiBufferUsage usage,
     std::size_t byte_count,
+    std::span<const std::uint8_t> initial_bytes,
     RhiBufferHandle *out_handle) {
     if (out_handle == nullptr || byte_count == 0U) {
         return RuntimeAssetDataStatus::InvalidArgument;
@@ -4774,9 +5094,33 @@ RuntimeAssetDataStatus CreateVisualProofBuffer(
     RhiBufferDesc desc{};
     desc.usage = usage;
     desc.size_bytes = byte_count;
-    const std::span<const std::uint8_t> initial_bytes{};
     const RhiStatus status = device.CreateBuffer(desc, initial_bytes, *out_handle);
     return status == RhiStatus::Success ? RuntimeAssetDataStatus::Success : RuntimeAssetDataStatus::RhiCaptureFailed;
+}
+
+RuntimeAssetDataStatus BuildVisualProofIndexBytes(
+    std::uint32_t index_count,
+    std::array<std::uint8_t, yuengine::rhi::MAX_RHI_BUFFER_BYTES> *out_bytes,
+    std::size_t *out_byte_count) {
+    if (out_bytes == nullptr || out_byte_count == nullptr || index_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const std::size_t byte_count = sizeof(std::uint16_t) * static_cast<std::size_t>(index_count);
+    if (byte_count > out_bytes->size()) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    std::fill(out_bytes->begin(), out_bytes->end(), std::uint8_t{0U});
+    for (std::uint32_t index = 0U; index < index_count; ++index) {
+        const std::uint16_t value = static_cast<std::uint16_t>(index % 3U);
+        const std::size_t byte_offset = static_cast<std::size_t>(index) * sizeof(std::uint16_t);
+        (*out_bytes)[byte_offset] = static_cast<std::uint8_t>(value & 0xFFU);
+        (*out_bytes)[byte_offset + 1U] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
+    }
+
+    *out_byte_count = byte_count;
+    return RuntimeAssetDataStatus::Success;
 }
 
 RuntimeAssetDataStatus BuildVisualProofGeometry(
@@ -4804,13 +5148,22 @@ RuntimeAssetDataStatus BuildVisualProofGeometry(
     }
 
     RhiBufferHandle vertex_buffer{};
+    const std::span<const std::uint8_t> empty_initial_bytes{};
     RuntimeAssetDataStatus status = CreateVisualProofBuffer(
         device,
         RhiBufferUsage::Vertex,
         vertex_stride_bytes * vertex_count,
+        empty_initial_bytes,
         &vertex_buffer);
     if (status != RuntimeAssetDataStatus::Success) {
         return FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::RhiCapture, result);
+    }
+
+    std::array<std::uint8_t, yuengine::rhi::MAX_RHI_BUFFER_BYTES> index_initial_bytes{};
+    std::size_t index_initial_byte_count = 0U;
+    status = BuildVisualProofIndexBytes(index_count, &index_initial_bytes, &index_initial_byte_count);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::Model, result);
     }
 
     RhiBufferHandle index_buffer{};
@@ -4818,6 +5171,7 @@ RuntimeAssetDataStatus BuildVisualProofGeometry(
         device,
         RhiBufferUsage::Index,
         sizeof(std::uint16_t) * index_count,
+        std::span<const std::uint8_t>(index_initial_bytes.data(), index_initial_byte_count),
         &index_buffer);
     if (status != RuntimeAssetDataStatus::Success) {
         return FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::RhiCapture, result);
@@ -4995,6 +5349,32 @@ BuildVisualProofMaterialSlots() {
     return slots;
 }
 
+RuntimeAssetDataStatus ResolveVisualProofCameraTarget(
+    IRhiDevice &device,
+    RhiTextureHandle *out_target) {
+    if (out_target == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RhiTextureHandle target{};
+    if (device.GetSwapchainColorTarget(target) == RhiStatus::Success) {
+        *out_target = target;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    RhiColorTargetDesc target_desc{};
+    target_desc.format = RhiFormat::Rgba8Unorm;
+    target_desc.extent = {
+        static_cast<std::uint16_t>(RUNTIME_ASSET_VISUAL_PROOF_TARGET_WIDTH),
+        static_cast<std::uint16_t>(RUNTIME_ASSET_VISUAL_PROOF_TARGET_HEIGHT)};
+    if (device.CreateColorTarget(target_desc, target) == RhiStatus::Success) {
+        *out_target = target;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    return RuntimeAssetDataStatus::RhiCaptureFailed;
+}
+
 RuntimeAssetDataStatus BuildVisualProofMaterial(
     const RuntimeAssetVisualProofRequest &request,
     RenderSceneRuntimeMaterialRecord *out_material,
@@ -5098,12 +5478,7 @@ RuntimeAssetDataStatus BuildVisualProofCamera(
     }
 
     RhiTextureHandle target{};
-    RhiColorTargetDesc target_desc{};
-    target_desc.format = RhiFormat::Rgba8Unorm;
-    target_desc.extent = {
-        static_cast<std::uint16_t>(RUNTIME_ASSET_VISUAL_PROOF_TARGET_WIDTH),
-        static_cast<std::uint16_t>(RUNTIME_ASSET_VISUAL_PROOF_TARGET_HEIGHT)};
-    if (request.rhi_device->CreateColorTarget(target_desc, target) != RhiStatus::Success) {
+    if (ResolveVisualProofCameraTarget(*request.rhi_device, &target) != RuntimeAssetDataStatus::Success) {
         return FailVisualProof(
             RuntimeAssetDataStatus::RhiCaptureFailed,
             RuntimeAssetVisualProofMissingLayer::RhiCapture,
@@ -5902,6 +6277,7 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
         *request.rhi_device,
         RhiBufferUsage::Vertex,
         sizeof(float) * 2U,
+        std::span<const std::uint8_t>{},
         &buffer_slot_guard);
     if (status != RuntimeAssetDataStatus::Success) {
         FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::RhiCapture, &result);
