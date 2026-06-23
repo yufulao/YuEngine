@@ -37,7 +37,7 @@ RAV1_DOCS_GATE_NOT_IMPLEMENTATION_APPROVED
 
 | Task | Anchor | Artifact | Evidence value | Gate risk to check |
 | --- | --- | --- | --- | --- |
-| #50 RAV1-A production contract | `3cb54aa` | `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`, `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md` | Defines source/cooked artifact classes, suffix-free identity, family rows, status vocabulary, hard blocks, and implementation split wording. | Must not imply the first implementation slice is already approved; exit criteria must keep `RAV1_DOCS_GATE_NOT_IMPLEMENTATION_APPROVED`. |
+| #50 RAV1-A production contract | `3cb54aa` | `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`, `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`, `docs/YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md` | Defines source/cooked artifact classes, suffix-free identity, family rows, consumed validator vocabulary, status vocabulary, hard blocks, and implementation split wording. | Must not imply the first implementation slice is already approved; exit criteria must keep `RAV1_DOCS_GATE_NOT_IMPLEMENTATION_APPROVED`. |
 | #51 RAV1-B transaction API | `f21750f` | `docs/YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md` | Defines suffix-free loader phases, request/plan/commit/result shape, preflight/no-mutation rules, and `mutated_state` semantics for commit failures. | Must not promise no-mutation after runtime mutation has started unless rollback is explicitly approved and tested. |
 | #52 RAV1-C payload bridge | `bcee5de` | `docs/YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md` | Defines cooked texture/material/shader/program payload ownership, Resource decoded payload route, RHI texture/module/pipeline creation, cleanup ledger, and later focused tests. | Must keep RAV0 #44/#45 as smoke floors, not production cooked payload closure. |
 | #53 RAV1-D scene/animation loader | `e3a79e9` | `docs/YUENGINE_RUNTIME_ASSET_V0_SCENE_ANIMATION_LOADER_PLAN.md` | Defines bounded scene/entity/transform/camera/animation records, caps, failure status matrix, transaction phase alignment, deterministic output order, and later tests. | Must not expand into an authoring scene parser, editor/import bridge, gameplay object factory, or World persistence format. |
@@ -99,7 +99,7 @@ git fetch origin
 git checkout --detach origin/main
 git log --oneline --decorate -8
 git show --check --format=short HEAD
-git diff --check 4b846aa..HEAD -- docs\YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md docs\gates\L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md docs\YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_SCENE_ANIMATION_LOADER_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md
+git diff --check 4b846aa..HEAD -- docs\YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md docs\gates\L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md docs\YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md docs\YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_SCENE_ANIMATION_LOADER_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md
 ```
 
 Package review must inspect these exact anchors:
@@ -119,7 +119,7 @@ The package must not authorize upper-layer or bypass proof. Run these scans over
 the RuntimeAsset RAV1 docs touched by Phase A:
 
 ```powershell
-rg -n "editor|Editor|Web|UI|input|Game Adapter|original package|TouhouNewWorld package|GDI|screenshot|manual inspection" docs\YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md docs\gates\L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md docs\YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_SCENE_ANIMATION_LOADER_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md
+rg -n "editor|Editor|Web|UI|input|Game Adapter|original package|TouhouNewWorld package|GDI|screenshot|manual inspection" docs\YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md docs\gates\L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md docs\YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md docs\YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_SCENE_ANIMATION_LOADER_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md
 ```
 
 Matches are allowed only when they define hard exclusions, blockers, or
@@ -128,7 +128,7 @@ auxiliary evidence that cannot satisfy the gate.
 Run this suffix/type-truth scan:
 
 ```powershell
-rg -n "\.yu(mesh|mat|tex|program|scene|anim)|suffix|fixture name|type truth|internal metadata" docs\YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md docs\gates\L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md docs\YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_SCENE_ANIMATION_LOADER_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md
+rg -n "\.yu(mesh|mat|tex|program|scene|anim)|suffix|fixture name|type truth|internal metadata" docs\YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md docs\gates\L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md docs\YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md docs\YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_SCENE_ANIMATION_LOADER_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md
 ```
 
 Allowed meaning: `.yu*` names are smoke locators only, while internal
