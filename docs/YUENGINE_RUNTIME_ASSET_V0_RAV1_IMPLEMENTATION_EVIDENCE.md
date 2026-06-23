@@ -1,6 +1,6 @@
 # YuEngine RuntimeAsset v0 RAV1 Implementation Evidence
 
-Status: implementation evidence skeleton
+Status: implementation evidence in progress
 Owner: Architecture / Evidence
 Task: #61
 Baseline: `6acf380 Amend RuntimeAsset RAV1 evidence commands`
@@ -20,7 +20,7 @@ task #62 reviews once #56 through #60 have concrete commits and test results.
 
 | Task | Scope | Owner input | Current anchor | Required evidence before #62 |
 | --- | --- | --- | --- | --- |
-| #56 RAV1-I0 | source/cooked parser and validator skeleton | #50 contract, #54 Phase A evidence | pending | focused parser/validator tests, suffix-free type truth, no-mutation failures, changed-path summary |
+| #56 RAV1-I0 | source/cooked parser and validator skeleton | #50 contract, #54 Phase A evidence | accepted: `232c911 Amend RuntimeAsset header parsing strictness` | focused parser/validator tests, suffix-free type truth, no-mutation failures, changed-path summary |
 | #57 RAV1-I1 | loader transaction core and commit semantics | #51 transaction plan, #54 Phase A evidence | pending | preflight/commit tests, `mutated_state` or rollback ledger proof, registry/output no-mutation probes |
 | #58 RAV1-I2 | cooked texture/material payload bridge | #52 payload route, #54 Phase A evidence | pending | texture layout/hash/row-pitch tests, material slot resolution tests, RHI texture cleanup/no-output-mutation tests |
 | #59 RAV1-I3 | cooked shader/program payload bridge | #52 payload route, #54 Phase A evidence | pending | cooked bytecode descriptor tests, reflection/input-layout tests, module/pipeline cleanup tests |
@@ -45,11 +45,73 @@ Focused tests must be listed separately. Full fast gate can be deferred only whe
 a task is docs-only; #56 through #60 are code-bearing implementation tasks and
 therefore need build/test evidence before #62 PASS.
 
+## Recorded Delivery Evidence
+
+### #56 RAV1-I0 Source/Cooked Parser And Validator Skeleton
+
+Accepted anchor: `232c911 Amend RuntimeAsset header parsing strictness`
+
+Implementation note: `232c911` is rebased on `70a2fc8 Implement RuntimeAsset
+graph load transaction`. This row accepts only the #56 parser/validator
+skeleton and AMEND fix. It does not accept #57 transaction semantics, which
+remain pending independent review.
+
+Changed files:
+
+- `CMakeLists.txt`
+- `Src/YuEngine/RuntimeAsset/Src/RuntimeAssetData.cpp`
+- `Tests/RenderScene/RuntimeAssetDataClosedLoopTests.cpp`
+
+Owner-reported verification at `232c911`:
+
+```powershell
+git diff --check
+git show --check --format=short HEAD
+cmake --preset windows-fast-gate
+cmake --build --preset windows-fast-gate -- /v:minimal
+ctest --preset windows-fast-gate -R RuntimeAssetData --output-on-failure
+ctest --preset windows-fast-gate --output-on-failure
+```
+
+Reported result: diff/show/configure/build PASS, RuntimeAssetData 33/33 PASS,
+full fast gate 1282/1282 PASS.
+
+Architecture local spot-check in the detached review worktree:
+
+```powershell
+git diff --check 70a2fc8..232c911
+git show --check --format=short HEAD
+cmake --preset windows-fast-gate
+cmake --build --preset windows-fast-gate --target YuRuntimeAssetDataClosedLoopTests -- /v:minimal
+ctest --preset windows-fast-gate -R "RuntimeAssetData_(HeaderParserRejectsPartialVersionsAndNoise|SourceCookedParserReportsBoundedMetadata|SourceCookedParserRejectsInvalidTablesHashesAndDependencies|LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation)" --output-on-failure
+```
+
+Local result: diff/show/configure/build PASS, focused #56 tests 4/4 PASS.
+
+Scope accepted:
+
+- RuntimeAsset header detection now parses only the first line as strict
+  `magic kind version` tokens.
+- `magic` must be exactly `YUASSET` or `YUCOOKED`.
+- `kind` must match the expected RuntimeAsset family; path suffixes do not
+  participate in type recognition.
+- parsed `version != 1` returns `UnsupportedVersion`, including versions `3`
+  and `10`; prefix/suffix noise and valid-looking later-line headers reject as
+  `InvalidHeader`.
+- cooked skeleton checks table counts/sizes, supported alignment, source/payload
+  hashes, dependency rows, family metadata, and loader pre-commit no-mutation
+  for invalid cooked metadata.
+
+Boundary: #56 is a source/cooked parser and validator skeleton only. It is not
+a complete production binary parser, payload bridge, transaction approval,
+bounded scene/animation loader approval, editor/import bridge, or final render
+closure.
+
 ## Focused Proof Rows
 
 | Proof area | Minimum focused tests or equivalents | Status |
 | --- | --- | --- |
-| Source/cooked parser | missing schema, wrong kind, unsupported version, invalid count/size/alignment/hash, misleading suffix | pending |
+| Source/cooked parser | missing schema, wrong kind, unsupported version, invalid count/size/alignment/hash, misleading suffix | PASS at `232c911`: `RuntimeAssetData_HeaderParserRejectsPartialVersionsAndNoise`, `RuntimeAssetData_SourceCookedParserReportsBoundedMetadata`, `RuntimeAssetData_SourceCookedParserRejectsInvalidTablesHashesAndDependencies`, `RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation` |
 | Loader transaction | preflight failure no mutation, commit failure `mutated_state`, dependency/decoded-payload intent ordering | pending |
 | Texture/material payload | cooked texture layout/hash/row pitch, slot resolution, invalid payload no output mutation, RHI texture cleanup | pending |
 | Shader/program payload | cooked stage bytecode, reflection/input-layout, hash/stage mismatch no mutation, module/pipeline cleanup | pending |
