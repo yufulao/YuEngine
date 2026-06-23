@@ -426,6 +426,55 @@ It is not a generic scene editor, editor/import/gameplay/save system, original
 package parser, full production binary format, shader/program payload approval,
 or final render closure.
 
+## Package-Level Evidence For #62
+
+Package range: `6acf380..f1d0511`
+
+Final implementation anchor before #62 review: `f1d0511 Record RuntimeAsset RAV1
+shader evidence`
+
+Package validation commands:
+
+```powershell
+git diff --check 6acf380..HEAD
+git show --check --format=short HEAD
+cmake --preset windows-fast-gate
+cmake --build --preset windows-fast-gate -- /v:minimal
+ctest --preset windows-fast-gate --output-on-failure
+ctest --preset windows-fast-gate -R "RuntimeAssetData_(RenderClosedLoop_CapturesCubeCylinderConeThroughRhi|CpuPpmOracleDoesNotBypassRhiRenderCore|DoesNotDependOnEditorWebUiInputOrGdiViewer)$" --output-on-failure
+```
+
+Local result: diff/show/configure/build PASS, full fast gate PASS 1298/1298,
+and final route focused tests PASS 3/3.
+
+Package off-scope scan:
+
+```powershell
+git diff --unified=0 6acf380..HEAD -- CMakeLists.txt Src\YuEngine\Resource\Include\YuEngine\Resource\ResourceConstants.h Src\YuEngine\RuntimeAsset\Include\YuEngine\RuntimeAsset\RuntimeAssetData.h Src\YuEngine\RuntimeAsset\Src\RuntimeAssetData.cpp Tests\RenderScene\RuntimeAssetDataClosedLoopTests.cpp docs\YUENGINE_RUNTIME_ASSET_V0_RAV1_IMPLEMENTATION_EVIDENCE.md | rg -n "editor|Editor|Web|UI|input|Game Adapter|original package|TouhouNewWorld package|GDI|screenshot|manual inspection|direct struct"
+```
+
+Local result: matches are RHI shader/program `input_layout`,
+`required_input_semantics`, cooked shader `input=layout:` fixture text, one
+bounded graph `render input` diagnostic, and evidence-document exclusion text.
+No editor, Web, UI, GDI/software viewer, original package parser, screenshot,
+manual-inspection, or direct-struct route is counted as RuntimeAsset proof.
+
+Package suffix/type-truth scan:
+
+```powershell
+git diff --unified=0 6acf380..HEAD -- CMakeLists.txt Src\YuEngine\Resource\Include\YuEngine\Resource\ResourceConstants.h Src\YuEngine\RuntimeAsset\Include\YuEngine\RuntimeAsset\RuntimeAssetData.h Src\YuEngine\RuntimeAsset\Src\RuntimeAssetData.cpp Tests\RenderScene\RuntimeAssetDataClosedLoopTests.cpp docs\YUENGINE_RUNTIME_ASSET_V0_RAV1_IMPLEMENTATION_EVIDENCE.md | rg -n "\.yu(mesh|mat|tex|program|scene|anim)|suffix|fixture name|type truth|internal metadata"
+```
+
+Local result: matches are internal-metadata documentation, parser helper text,
+fixture path locators, misleading-suffix negative tests, and evidence-document
+boundaries. Type truth remains internal magic/version/kind/schema/id/hash and
+dependency metadata, not filename suffixes.
+
+Package boundary: #56 through #60 now have accepted implementation anchors and
+evidence rows, but this document still does not approve the implementation by
+itself. #62 must review the package range and return explicit PASS/AMEND before
+the next RuntimeAsset slice opens.
+
 ## Focused Proof Rows
 
 | Proof area | Minimum focused tests or equivalents | Status |
@@ -435,7 +484,7 @@ or final render closure.
 | Texture/material payload | cooked texture layout/hash/row pitch, slot resolution, invalid payload no output mutation, RHI texture cleanup | PASS at `f32ee36`: `RuntimeAssetData_CookedTexturePayloadTableValidatesLayoutHashAndRowPitch`, `RuntimeAssetData_CookedMaterialTextureSlotTableResolvesLoadedPayloads`, `RuntimeAssetData_CookedPayloadBridgeRejectsTextureFormatExtentSizeAlignmentHashWithoutMutation`, `RuntimeAssetData_CookedPayloadBridgeRejectsMissingDuplicateTypeMismatchDepsWithoutMutation`, `RuntimeAssetData_CookedMaterialSlotOverflowDoesNotMutateRenderSceneOutputs`, `RuntimeAssetData_CookedRhiPartialCreationFailureDestroysTransientHandles` |
 | Shader/program payload | cooked stage bytecode, reflection/input-layout, hash/stage mismatch no mutation, module/pipeline cleanup | PASS at `c8d2054`: `RuntimeAssetData_CookedShaderStagePayloadsCreateRhiModules`, `RuntimeAssetData_CookedProgramPipelineUsesLoadedReflectionAndInputLayout`, `RuntimeAssetData_CookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation`, `RuntimeAssetData_CookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles` |
 | Scene/animation loader | bounded N entities, capacity overflow, invalid transforms/keyframes, target mismatch, path independence, RenderScene consumption | PASS at `749e2e6`: `RuntimeAssetData_SceneLoaderRejectsInvalidEntityWithoutOutputMutation`, `RuntimeAssetData_SceneLoaderRejectsInvalidKeyframesWithoutOutputMutation`, `RuntimeAssetData_SceneAnimationLoaderLoadsBoundedNEntityScene`, `RuntimeAssetData_SceneAnimationLoaderRejectsEntityCapacityOverflowWithoutMutation`, `RuntimeAssetData_SceneAnimationLoaderRejectsMissingRefsWithoutMutation`, `RuntimeAssetData_SceneAnimationLoaderRejectsInvalidRecordsWithoutMutation`, `RuntimeAssetData_SceneAnimationLoaderPathIndependentSceneAnimationDetection` |
-| Final route | File/Mount/VFS -> Resource/Asset -> RenderScene/RenderCore/RHI from loaded RuntimeAsset records | pending |
+| Final route | File/Mount/VFS -> Resource/Asset -> RenderScene/RenderCore/RHI from loaded RuntimeAsset records | PASS at `f1d0511`: full `windows-fast-gate` 1298/1298 PASS plus `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi`, `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore`, `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` |
 
 ## Required Scans
 
