@@ -90,6 +90,15 @@ Resource Browser surface projection. It consumes only
 does not read files, import assets, create runtime handles, render UI widgets,
 or call Preview Host.
 
+Task #79 keeps that boundary but adds the first native/editor-facing workflow
+model through `ResolveResourceBrowserSurfaceSelection`. The workflow consumes
+existing surface rows, entries, diagnostics, and a structured
+`ResourceBrowserImportSettings` record. It produces a stable selection state
+with selected row identity, Resource/Asset handles, import-setting validation,
+diagnostic blockers, and preview eligibility; it does not infer target kind from
+the locator path and does not mutate Resource, Asset, RuntimeAsset, Preview
+Host, Scene, Animation, or UI state.
+
 Each `ResourceBrowserSurfaceRow` exposes the fields the first native/editor
 surface needs to display:
 
@@ -104,14 +113,26 @@ surface needs to display:
 Preview eligibility is intentionally conservative. A row is eligible only when
 validation succeeds, dependencies are ready, a RuntimeAsset loaded record exists,
 Resource/Asset records are visible, and the validated runtime kind is one of the
-approved RuntimeAsset families. Otherwise the row records the exact blocker:
-validation, dependency, missing loaded record, missing Resource/Asset record, or
-unsupported kind. This is Resource Browser surface eligibility only; it does not
-claim final Preview Host behavior, Scene Editor workflow, package/run closure,
-external importer support, or product completeness.
+approved RuntimeAsset families. Blocking diagnostics gate otherwise eligible
+rows before preview. Otherwise the row records the exact blocker: validation,
+dependency, missing loaded record, missing Resource/Asset record, unsupported
+kind, or diagnostic gate. This is Resource Browser surface eligibility only; it
+does not claim final Preview Host behavior, Scene Editor workflow, package/run
+closure, external importer support, or product completeness.
+
+Selection validation is structured-record based. It requires source path, target
+kind, Resource/Asset type ids, stable id, importer version, schema version, and
+optional expected source hash consistency. If validation already succeeded for
+the selected row, target kind is checked against the validated runtime header
+kind, not the source-path suffix. Validation failures block preview while
+preserving the selected Resource/Asset handle mapping.
 
 Additional focused tests:
 
 - `ResourceBrowserSurface_BuildsRowsWithStatusAndPreviewEligibility`
 - `ResourceBrowserSurface_DoesNotUseLocatorSuffixAsTypeTruth`
 - `ResourceBrowserSurface_RejectsSmallOutputWithoutPartialRows`
+- `ResourceBrowserSurface_SelectionWorkflowAcceptsValidSelection`
+- `ResourceBrowserSurface_SelectionWorkflowRejectsInvalidSetting`
+- `ResourceBrowserSurface_DiagnosticBlocksPreviewEligibility`
+- `ResourceBrowserSurface_SelectionValidationDoesNotMutateResourceAssetMapping`

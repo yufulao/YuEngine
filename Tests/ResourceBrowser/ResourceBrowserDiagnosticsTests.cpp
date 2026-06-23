@@ -45,6 +45,10 @@ using yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceRequest;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceResult;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceRow;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionRequest;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionResult;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionStatus;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceSettingValidationCode;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceStatus;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
 using yuengine::runtimeasset::RuntimeAssetDataStatus;
@@ -104,6 +108,14 @@ constexpr const char *TEST_SURFACE_SUFFIX_BOUNDARY =
     "ResourceBrowserSurface_DoesNotUseLocatorSuffixAsTypeTruth";
 constexpr const char *TEST_SURFACE_CAPACITY =
     "ResourceBrowserSurface_RejectsSmallOutputWithoutPartialRows";
+constexpr const char *TEST_SURFACE_VALID_SELECTION =
+    "ResourceBrowserSurface_SelectionWorkflowAcceptsValidSelection";
+constexpr const char *TEST_SURFACE_INVALID_SETTING =
+    "ResourceBrowserSurface_SelectionWorkflowRejectsInvalidSetting";
+constexpr const char *TEST_SURFACE_PREVIEW_GATING =
+    "ResourceBrowserSurface_DiagnosticBlocksPreviewEligibility";
+constexpr const char *TEST_SURFACE_SELECTION_NO_MUTATION =
+    "ResourceBrowserSurface_SelectionValidationDoesNotMutateResourceAssetMapping";
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -363,6 +375,18 @@ bool AssetSnapshotSame(const AssetSnapshot &left, const AssetSnapshot &right) {
         left.failed_operation_count == right.failed_operation_count &&
         left.registered_asset_count == right.registered_asset_count &&
         left.accepted_operation_count == right.accepted_operation_count;
+}
+
+bool ResourceHandleSame(
+    yuengine::resource::ResourceHandle left,
+    yuengine::resource::ResourceHandle right) {
+    return left.slot == right.slot && left.generation == right.generation;
+}
+
+bool AssetHandleSame(
+    yuengine::asset::AssetHandle left,
+    yuengine::asset::AssetHandle right) {
+    return left.slot == right.slot && left.generation == right.generation;
 }
 
 ResourceBrowserSurfaceResult BuildSurfaceRows(
@@ -727,6 +751,247 @@ int ResourceBrowserSurfaceRejectsSmallOutputWithoutPartialRows() {
     return 0;
 }
 
+int ResourceBrowserSurfaceSelectionWorkflowAcceptsValidSelection() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("SurfaceValidSelection"), &table) ||
+        !WriteCanonicalFixture(table)) {
+        return Fail("failed to create valid selection fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadCanonicalGraph(table, registry, manager, &graph)) {
+        return Fail("canonical graph load failed for valid selection");
+    }
+
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    const std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> descs = CanonicalDescs();
+    const ResourceBrowserDiagnosticsResult diagnostics_result =
+        BuildDiagnostics(table, descs, &graph, &registry, &manager, &entries, &diagnostics);
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> rows{};
+    const ResourceBrowserSurfaceResult surface =
+        BuildSurfaceRows(entries, diagnostics, diagnostics_result.diagnostic_count, &rows);
+    if (!surface.Succeeded()) {
+        return Fail("surface rows failed for valid selection");
+    }
+
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    ResourceBrowserSurfaceSelectionRequest request{};
+    request.entries = std::span<const ResourceBrowserResourceEntry>(entries.data(), entries.size());
+    request.rows = std::span<const ResourceBrowserSurfaceRow>(rows.data(), rows.size());
+    request.diagnostics = std::span<const ResourceBrowserDiagnosticRecord>(
+        diagnostics.data(),
+        diagnostics_result.diagnostic_count);
+    request.selected_index = SELECTED_TEXTURE;
+    request.import_settings = entries[SELECTED_TEXTURE].import_settings;
+    request.import_settings.expected_source_hash = entries[SELECTED_TEXTURE].validation.source_hash;
+    request.validate_import_settings = true;
+
+    ResourceBrowserSurfaceSelectionResult result{};
+    ResolveResourceBrowserSurfaceSelection(request, &result);
+    if (result.status != ResourceBrowserSurfaceSelectionStatus::Success ||
+        !result.state.selected ||
+        !result.state.import_settings_valid ||
+        !result.state.preview_eligible ||
+        result.state.preview_state != ResourceBrowserSurfacePreviewState::Eligible ||
+        result.state.preview_document_kind != ResourceBrowserSurfaceDocumentKind::Resource ||
+        result.state.setting_validation != ResourceBrowserSurfaceSettingValidationCode::None ||
+        result.state.diagnostic_blocks_preview ||
+        result.state.used_locator_path_as_type_truth ||
+        !result.state.resource_asset_mapping_preserved ||
+        !ResourceHandleSame(result.state.resource, entries[SELECTED_TEXTURE].resource) ||
+        !AssetHandleSame(result.state.asset, entries[SELECTED_TEXTURE].asset)) {
+        return Fail("surface selection workflow did not accept valid selection");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserSurfaceSelectionWorkflowRejectsInvalidSetting() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("SurfaceInvalidSetting"), &table) ||
+        !WriteCanonicalFixture(table)) {
+        return Fail("failed to create invalid setting fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadCanonicalGraph(table, registry, manager, &graph)) {
+        return Fail("canonical graph load failed for invalid setting");
+    }
+
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    const std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> descs = CanonicalDescs();
+    const ResourceBrowserDiagnosticsResult diagnostics_result =
+        BuildDiagnostics(table, descs, &graph, &registry, &manager, &entries, &diagnostics);
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> rows{};
+    const ResourceBrowserSurfaceResult surface =
+        BuildSurfaceRows(entries, diagnostics, diagnostics_result.diagnostic_count, &rows);
+    if (!surface.Succeeded()) {
+        return Fail("surface rows failed for invalid setting");
+    }
+
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    ResourceBrowserSurfaceSelectionRequest request{};
+    request.entries = std::span<const ResourceBrowserResourceEntry>(entries.data(), entries.size());
+    request.rows = std::span<const ResourceBrowserSurfaceRow>(rows.data(), rows.size());
+    request.selected_index = SELECTED_TEXTURE;
+    request.import_settings = entries[SELECTED_TEXTURE].import_settings;
+    request.import_settings.target_kind = RuntimeAssetFileKind::Material;
+    request.validate_import_settings = true;
+
+    ResourceBrowserSurfaceSelectionResult result{};
+    ResolveResourceBrowserSurfaceSelection(request, &result);
+    if (result.status != ResourceBrowserSurfaceSelectionStatus::InvalidImportSettings ||
+        result.state.import_settings_valid ||
+        result.state.preview_eligible ||
+        result.state.preview_state != ResourceBrowserSurfacePreviewState::BlockedByValidation ||
+        result.state.setting_validation != ResourceBrowserSurfaceSettingValidationCode::TargetKindMismatch ||
+        !result.state.resource_asset_mapping_preserved ||
+        !ResourceHandleSame(result.state.resource, entries[SELECTED_TEXTURE].resource) ||
+        !AssetHandleSame(result.state.asset, entries[SELECTED_TEXTURE].asset)) {
+        return Fail("surface selection workflow did not reject invalid structured setting");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserSurfaceDiagnosticBlocksPreviewEligibility() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("SurfacePreviewGate"), &table) ||
+        !WriteCanonicalFixture(table)) {
+        return Fail("failed to create preview gate fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadCanonicalGraph(table, registry, manager, &graph)) {
+        return Fail("canonical graph load failed for preview gate");
+    }
+
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    const std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> descs = CanonicalDescs();
+    const ResourceBrowserDiagnosticsResult diagnostics_result =
+        BuildDiagnostics(table, descs, &graph, &registry, &manager, &entries, &diagnostics);
+    if (diagnostics_result.diagnostic_count != 0U) {
+        return Fail("preview gate fixture unexpectedly produced diagnostics");
+    }
+
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> baseline_rows{};
+    const ResourceBrowserSurfaceResult baseline_surface =
+        BuildSurfaceRows(entries, diagnostics, diagnostics_result.diagnostic_count, &baseline_rows);
+    if (baseline_surface.status != ResourceBrowserSurfaceStatus::Success ||
+        baseline_rows[SELECTED_TEXTURE].preview_state != ResourceBrowserSurfacePreviewState::Eligible) {
+        return Fail("preview gate baseline row was not eligible");
+    }
+
+    diagnostics[0U].code = ResourceBrowserDiagnosticCode::StaleHash;
+    diagnostics[0U].severity = yuengine::resourcebrowser::ResourceBrowserDiagnosticSeverity::Error;
+    diagnostics[0U].phase = yuengine::resourcebrowser::ResourceBrowserDiagnosticPhase::Validate;
+    diagnostics[0U].runtime_status = RuntimeAssetDataStatus::HashMismatch;
+    diagnostics[0U].source_path = entries[SELECTED_TEXTURE].import_settings.source_path;
+    diagnostics[0U].expected_kind = RuntimeAssetFileKind::Texture;
+    diagnostics[0U].file_index = SELECTED_TEXTURE;
+
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> gated_rows{};
+    const ResourceBrowserSurfaceResult surface = BuildSurfaceRows(entries, diagnostics, 1U, &gated_rows);
+    if (surface.status != ResourceBrowserSurfaceStatus::Success ||
+        surface.eligible_preview_count != FIXTURE_FILE_COUNT - 1U ||
+        surface.blocked_preview_count != 1U ||
+        gated_rows[SELECTED_TEXTURE].preview_state != ResourceBrowserSurfacePreviewState::BlockedByDiagnostic ||
+        !gated_rows[SELECTED_TEXTURE].has_blocking_diagnostic) {
+        return Fail("surface rows did not convert blocking diagnostic into preview gate");
+    }
+
+    ResourceBrowserSurfaceSelectionRequest request{};
+    request.entries = std::span<const ResourceBrowserResourceEntry>(entries.data(), entries.size());
+    request.rows = std::span<const ResourceBrowserSurfaceRow>(baseline_rows.data(), baseline_rows.size());
+    request.diagnostics = std::span<const ResourceBrowserDiagnosticRecord>(diagnostics.data(), 1U);
+    request.selected_index = SELECTED_TEXTURE;
+    request.import_settings = entries[SELECTED_TEXTURE].import_settings;
+    request.validate_import_settings = true;
+
+    ResourceBrowserSurfaceSelectionResult result{};
+    ResolveResourceBrowserSurfaceSelection(request, &result);
+    if (result.status != ResourceBrowserSurfaceSelectionStatus::PreviewBlocked ||
+        !result.state.import_settings_valid ||
+        result.state.preview_eligible ||
+        !result.state.diagnostic_blocks_preview ||
+        result.state.preview_state != ResourceBrowserSurfacePreviewState::BlockedByDiagnostic ||
+        result.state.blocking_diagnostic_code != ResourceBrowserDiagnosticCode::StaleHash) {
+        return Fail("surface selection did not block preview from diagnostic");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserSurfaceSelectionValidationDoesNotMutateResourceAssetMapping() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("SurfaceSelectionNoMutation"), &table) ||
+        !WriteCanonicalFixture(table)) {
+        return Fail("failed to create selection no-mutation fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadCanonicalGraph(table, registry, manager, &graph)) {
+        return Fail("canonical graph load failed for selection no-mutation");
+    }
+
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    const std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> descs = CanonicalDescs();
+    const ResourceBrowserDiagnosticsResult diagnostics_result =
+        BuildDiagnostics(table, descs, &graph, &registry, &manager, &entries, &diagnostics);
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> rows{};
+    const ResourceBrowserSurfaceResult surface =
+        BuildSurfaceRows(entries, diagnostics, diagnostics_result.diagnostic_count, &rows);
+    if (!surface.Succeeded()) {
+        return Fail("surface rows failed for selection no-mutation");
+    }
+
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    const auto before_entry_resource = entries[SELECTED_TEXTURE].resource;
+    const auto before_entry_asset = entries[SELECTED_TEXTURE].asset;
+    const auto before_row_resource = rows[SELECTED_TEXTURE].resource;
+    const auto before_row_asset = rows[SELECTED_TEXTURE].asset;
+    const ResourceSnapshot resource_before = registry.Snapshot();
+    const AssetSnapshot asset_before = manager.Snapshot();
+
+    ResourceBrowserSurfaceSelectionRequest request{};
+    request.entries = std::span<const ResourceBrowserResourceEntry>(entries.data(), entries.size());
+    request.rows = std::span<const ResourceBrowserSurfaceRow>(rows.data(), rows.size());
+    request.selected_index = SELECTED_TEXTURE;
+    request.import_settings = entries[SELECTED_TEXTURE].import_settings;
+    request.import_settings.expected_source_hash = entries[SELECTED_TEXTURE].validation.source_hash + 1U;
+    request.validate_import_settings = true;
+
+    ResourceBrowserSurfaceSelectionResult result{};
+    ResolveResourceBrowserSurfaceSelection(request, &result);
+    if (result.status != ResourceBrowserSurfaceSelectionStatus::InvalidImportSettings ||
+        result.state.setting_validation != ResourceBrowserSurfaceSettingValidationCode::SourceHashMismatch ||
+        result.state.mutated_runtime_state ||
+        !result.state.resource_asset_mapping_preserved ||
+        !ResourceHandleSame(before_entry_resource, entries[SELECTED_TEXTURE].resource) ||
+        !AssetHandleSame(before_entry_asset, entries[SELECTED_TEXTURE].asset) ||
+        !ResourceHandleSame(before_row_resource, rows[SELECTED_TEXTURE].resource) ||
+        !AssetHandleSame(before_row_asset, rows[SELECTED_TEXTURE].asset) ||
+        !ResourceSnapshotSame(resource_before, registry.Snapshot()) ||
+        !AssetSnapshotSame(asset_before, manager.Snapshot())) {
+        return Fail("surface setting validation mutated Resource or Asset mapping");
+    }
+
+    return 0;
+}
+
 const std::unordered_map<std::string_view, TestFunction> &Tests() {
     static const std::unordered_map<std::string_view, TestFunction> tests{
         {TEST_ENTRIES_FROM_RUNTIME_PATH, ResourceBrowserDiagnosticsEntriesComeFromRuntimeAssetFileResourceAssetPath},
@@ -735,6 +1000,10 @@ const std::unordered_map<std::string_view, TestFunction> &Tests() {
         {TEST_SURFACE_ROWS, ResourceBrowserSurfaceBuildsRowsWithStatusAndPreviewEligibility},
         {TEST_SURFACE_SUFFIX_BOUNDARY, ResourceBrowserSurfaceDoesNotUseLocatorSuffixAsTypeTruth},
         {TEST_SURFACE_CAPACITY, ResourceBrowserSurfaceRejectsSmallOutputWithoutPartialRows},
+        {TEST_SURFACE_VALID_SELECTION, ResourceBrowserSurfaceSelectionWorkflowAcceptsValidSelection},
+        {TEST_SURFACE_INVALID_SETTING, ResourceBrowserSurfaceSelectionWorkflowRejectsInvalidSetting},
+        {TEST_SURFACE_PREVIEW_GATING, ResourceBrowserSurfaceDiagnosticBlocksPreviewEligibility},
+        {TEST_SURFACE_SELECTION_NO_MUTATION, ResourceBrowserSurfaceSelectionValidationDoesNotMutateResourceAssetMapping},
     };
     return tests;
 }
