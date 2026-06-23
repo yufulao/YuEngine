@@ -9,6 +9,7 @@ runtime editor host direction
 Shared preview-host gate: `docs/gates/EDITOR_GATE_001_RUNTIME_PREVIEW_HOST.md`
 Shared preview-host plan: `docs/YUENGINE_EDITOR_RUNTIME_PREVIEW_HOST_PLAN.md`
 RAV5 runtime UI document slice: `docs/YUENGINE_UI_EDITOR_RAV5_RUNTIME_DOCUMENT_PREVIEW_FEEDBACK.md`
+RAV5 review gate: `docs/YUENGINE_RAV5_EDITOR_SURFACE_REVIEW_EVIDENCE.md`
 
 ## 1. Correction
 
