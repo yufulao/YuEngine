@@ -49,6 +49,8 @@ constexpr const char *TEST_REJECTS_INVALID_DOCUMENT =
     "SceneEditorSurface_RejectsInvalidAuthoringDocumentWithoutMutation";
 constexpr const char *TEST_SELECTION_REQUIRED =
     "SceneEditorSurface_ReportsSelectionRequiredWithoutMutation";
+constexpr const char *TEST_FIELD_GROUPING =
+    "SceneEditorSurface_GroupsRuntimeAndEditorOnlyInspectorFields";
 constexpr const char *TEST_BOUNDARY_FLAGS =
     "SceneEditorSurface_RemainsEditorDataOnlyWithoutRuntimeMutation";
 
@@ -236,6 +238,8 @@ int SceneEditorSurfaceBuildsHierarchyAndInspectorFromAuthoringDocument() {
         hierarchy_rows[0U].component_count != 2U ||
         hierarchy_rows[0U].resource_binding_count != 1U ||
         !hierarchy_rows[0U].has_transform ||
+        !hierarchy_rows[0U].visible ||
+        !hierarchy_rows[0U].active ||
         !hierarchy_rows[0U].selected ||
         !hierarchy_rows[0U].expanded) {
         return Fail("first hierarchy row did not expose selected object summary");
@@ -245,6 +249,8 @@ int SceneEditorSurfaceBuildsHierarchyAndInspectorFromAuthoringDocument() {
         hierarchy_rows[1U].component_count != 0U ||
         hierarchy_rows[1U].resource_binding_count != 0U ||
         !hierarchy_rows[1U].has_transform ||
+        !hierarchy_rows[1U].visible ||
+        !hierarchy_rows[1U].active ||
         hierarchy_rows[1U].selected ||
         hierarchy_rows[1U].expanded) {
         return Fail("second hierarchy row did not preserve foldout sidecar state");
@@ -257,6 +263,9 @@ int SceneEditorSurfaceBuildsHierarchyAndInspectorFromAuthoringDocument() {
         !inspector_rows[0U].has_resource_bindings ||
         inspector_rows[0U].component_count != 2U ||
         inspector_rows[0U].resource_binding_count != 1U ||
+        inspector_rows[0U].runtime_export_field_count != 5U ||
+        inspector_rows[0U].editor_only_sidecar_field_count != 1U ||
+        !inspector_rows[0U].separated_runtime_and_editor_fields ||
         inspector_rows[0U].transform.translation_x != 10.0F) {
         return Fail("inspector row did not expose selected object details");
     }
@@ -370,6 +379,57 @@ int SceneEditorSurfaceReportsSelectionRequiredWithoutMutation() {
     return 0;
 }
 
+int SceneEditorSurfaceGroupsRuntimeAndEditorOnlyInspectorFields() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)}};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(1U), Transform(10.0F)}};
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> attachments{
+        WorldComponentAttachmentSnapshotRecord{ObjectId(1U), WorldComponentTypeId{7U}, WorldComponentSlotId{1U}}};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> bindings{
+        WorldComponentResourceBindingSnapshotRecord{
+            ObjectId(1U),
+            WorldComponentTypeId{7U},
+            WorldComponentSlotId{1U},
+            MakeResourceHandle(3U, 11U),
+            ResourceTypeId{12U}}};
+    std::array<WorldSceneAuthoringDependencyRecord, 1U> dependencies{
+        WorldSceneAuthoringDependencyRecord{7001U, MakeResourceHandle(3U, 11U), ResourceTypeId{12U}}};
+    std::array<WorldSceneEditorSidecarRecord, 2U> sidecars{
+        SelectionSidecar(ObjectId(1U)),
+        FoldoutSidecar(ObjectId(1U), 1U)};
+    const WorldSceneAuthoringDocument document = MakeDocument(
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U,
+        attachments.data(),
+        1U,
+        bindings.data(),
+        1U,
+        dependencies.data(),
+        1U,
+        sidecars.data(),
+        2U);
+    std::array<SceneEditorHierarchyRow, 1U> hierarchy_rows{};
+    std::array<SceneEditorInspectorRow, 1U> inspector_rows{};
+
+    SceneEditorSurfaceResult result{};
+    const SceneEditorSurfaceStatus status = BuildSceneEditorNativeSurface(
+        MakeRequest(&document, hierarchy_rows.data(), 1U, inspector_rows.data(), 1U, true),
+        &result);
+    if (status != SceneEditorSurfaceStatus::Success ||
+        inspector_rows[0U].runtime_export_field_count != 4U ||
+        inspector_rows[0U].editor_only_sidecar_field_count != 2U ||
+        !inspector_rows[0U].separated_runtime_and_editor_fields ||
+        !hierarchy_rows[0U].visible ||
+        !hierarchy_rows[0U].active) {
+        return Fail("inspector field grouping did not separate runtime and sidecar data");
+    }
+
+    return 0;
+}
+
 int SceneEditorSurfaceRemainsEditorDataOnlyWithoutRuntimeMutation() {
     std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
         WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)}};
@@ -430,6 +490,10 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_SELECTION_REQUIRED) {
         return SceneEditorSurfaceReportsSelectionRequiredWithoutMutation();
+    }
+
+    if (test_name == TEST_FIELD_GROUPING) {
+        return SceneEditorSurfaceGroupsRuntimeAndEditorOnlyInspectorFields();
     }
 
     if (test_name == TEST_BOUNDARY_FLAGS) {

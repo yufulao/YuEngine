@@ -30,6 +30,8 @@ struct SceneEditorHierarchyRow final {
     std::uint32_t component_count = 0U;
     std::uint32_t resource_binding_count = 0U;
     bool has_transform = false;
+    bool visible = false;
+    bool active = false;
     bool selected = false;
     bool expanded = true;
 };
@@ -40,9 +42,12 @@ struct SceneEditorInspectorRow final {
     yuengine::world::WorldTransformState transform{};
     std::uint32_t component_count = 0U;
     std::uint32_t resource_binding_count = 0U;
+    std::uint32_t runtime_export_field_count = 0U;
+    std::uint32_t editor_only_sidecar_field_count = 0U;
     bool has_transform = false;
     bool has_component_attachments = false;
     bool has_resource_bindings = false;
+    bool separated_runtime_and_editor_fields = false;
     bool selected = false;
 };
 

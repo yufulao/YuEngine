@@ -52,6 +52,10 @@ bool IsObjectEqual(WorldObjectId left, WorldObjectId right) {
     return left.value == right.value;
 }
 
+bool IsObjectHandleActive(yuengine::object::ObjectHandle handle) {
+    return handle.IsValid();
+}
+
 SceneEditorSurfaceStatus MapAuthoringStatus(WorldSceneAuthoringDocumentStatus status) {
     if (status == WorldSceneAuthoringDocumentStatus::Success) {
         return SceneEditorSurfaceStatus::Success;
@@ -204,6 +208,23 @@ bool HasSidecarKindForObject(
     return false;
 }
 
+std::uint32_t CountSidecarsForObject(
+    const WorldSceneAuthoringDocument &document,
+    WorldObjectId world_object_id) {
+    std::uint32_t count = 0U;
+    std::uint32_t index = 0U;
+    while (index < document.header.sidecar_record_count) {
+        const WorldSceneEditorSidecarRecord &record = document.sidecar_records[index];
+        if (IsObjectEqual(record.world_object_id, world_object_id)) {
+            ++count;
+        }
+
+        ++index;
+    }
+
+    return count;
+}
+
 bool IsExpanded(
     const WorldSceneAuthoringDocument &document,
     WorldObjectId world_object_id) {
@@ -254,6 +275,8 @@ SceneEditorHierarchyRow BuildHierarchyRow(
     row.component_count = CountAttachmentsForObject(document, identity.world_object_id);
     row.resource_binding_count = CountBindingsForObject(document, identity.world_object_id);
     row.has_transform = FindTransform(document, identity.world_object_id) != nullptr;
+    row.visible = identity.world_object_id.IsValid();
+    row.active = IsObjectHandleActive(identity.object_handle);
     row.selected = HasSidecarKindForObject(
         document,
         WorldSceneEditorSidecarKind::Selection,
@@ -277,8 +300,18 @@ SceneEditorInspectorRow BuildInspectorRow(
 
     row.component_count = CountAttachmentsForObject(document, identity.world_object_id);
     row.resource_binding_count = CountBindingsForObject(document, identity.world_object_id);
+    row.runtime_export_field_count = 1U;
+    if (row.has_transform) {
+        ++row.runtime_export_field_count;
+    }
+
+    row.runtime_export_field_count += row.component_count;
+    row.runtime_export_field_count += row.resource_binding_count;
+    row.editor_only_sidecar_field_count =
+        CountSidecarsForObject(document, identity.world_object_id);
     row.has_component_attachments = row.component_count > 0U;
     row.has_resource_bindings = row.resource_binding_count > 0U;
+    row.separated_runtime_and_editor_fields = true;
     row.selected = true;
     return row;
 }

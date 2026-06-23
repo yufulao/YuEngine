@@ -19,11 +19,13 @@ The surface consumes:
 - editor-only sidecar records for selection and foldout state.
 
 It returns caller-owned hierarchy rows and inspector rows. Hierarchy rows follow
-authoring document object order. Inspector rows follow editor-only selection
-sidecar order. The result records scene id/hash, selected object count, foldout
-count, component count, resource binding count, and boundary flags proving this
-slice did not open a native window, use preview feedback, mutate runtime data, or
-export runtime records.
+authoring document object order and expose explicit visible/active state derived
+from validated object identity records. Inspector rows follow editor-only
+selection sidecar order and report separate runtime-export field counts and
+editor-only sidecar field counts. The result records scene id/hash, selected
+object count, foldout count, component count, resource binding count, and
+boundary flags proving this slice did not open a native window, use preview
+feedback, mutate runtime data, or export runtime records.
 
 ## Acceptance
 
@@ -31,9 +33,10 @@ Required checks:
 
 - hierarchy rows expose world object id, object handle, deterministic row index,
   depth, component count, resource binding count, transform presence, selection
-  state, and foldout state;
+  state, visibility, active state, and foldout state;
 - inspector rows expose selected object identity, transform values when present,
-  component count, resource binding count, and selected state;
+  component count, resource binding count, selected state, runtime-export field
+  count, editor-only sidecar field count, and explicit field separation;
 - invalid authoring documents reject before row output mutation;
 - too-small hierarchy or inspector buffers reject before row output mutation;
 - missing selection can be reported explicitly when a caller requires selected
