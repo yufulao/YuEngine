@@ -125,3 +125,6 @@ Package artifact / manifest
 
 RAV3-G does not authorize that broader package artifact or final product visual
 closure work.
+
+RAV4-A is tracked separately in
+`docs/YUENGINE_RUNTIME_ASSET_PACKAGE_ARTIFACT_PRODUCT_RUN_GATE.md`.

@@ -219,6 +219,7 @@ target_include_directories(YuSerialize
 target_link_libraries(YuSerialize PUBLIC YuMemory)
 
 add_library(YuPackage
+    Src/YuEngine/Package/Src/PackageArtifact.cpp
     Src/YuEngine/Package/Src/PackageLoadPlanResult.cpp
     Src/YuEngine/Package/Src/PackageRegistrationResult.cpp
     Src/YuEngine/Package/Src/PackageRegistry.cpp
@@ -229,7 +230,7 @@ target_include_directories(YuPackage
     PUBLIC
         Src/YuEngine/Package/Include
 )
-target_link_libraries(YuPackage PUBLIC YuMemory YuResource)
+target_link_libraries(YuPackage PUBLIC YuFile YuMemory YuResource)
 
 add_library(YuStreaming
     Src/YuEngine/Streaming/Src/PackageResourceStagingQueue.cpp
@@ -1921,6 +1922,9 @@ yuengine_add_labeled_test(Package_LoadPlanCapacityOverflow_DoesNotMutate YuPacka
 yuengine_add_labeled_test(Package_DisabledDiagnosticsDoesNotChangeResults YuPackageTests Fast ModuleFixture Package)
 yuengine_add_labeled_test(Package_NoFileReadOriginalPackageOrGameAdapterDependency YuPackageTests Fast ModuleFixture Package EvidenceOracle)
 yuengine_add_labeled_test(Package_NoHiddenAllocation_UsesYuMemorySignal YuPackageTests Fast ModuleFixture Package PerformanceSmoke)
+yuengine_add_labeled_test(Package_FileBackedArtifactRoundTripsLoadPlanThroughFileVfs YuPackageTests Fast ModuleFixture Package File EvidenceOracle)
+yuengine_add_labeled_test(Package_FileBackedArtifactRejectsInvalidBytesWithoutMutation YuPackageTests Fast ModuleFixture Package File EvidenceOracle)
+yuengine_add_labeled_test(Package_FileBackedArtifactReportsMissingFile YuPackageTests Fast ModuleFixture Package File EvidenceOracle)
 
 add_executable(YuStreamingTests
     Tests/Streaming/StreamingTests.cpp
@@ -2107,6 +2111,7 @@ yuengine_add_labeled_test(RuntimeAssetData_D3D11Hardware_CookedRecordsDriveDevic
 set_tests_properties(RuntimeAssetData_D3D11Hardware_CookedRecordsDriveDeviceBackedVisualProof PROPERTIES SKIP_RETURN_CODE 77)
 yuengine_add_labeled_test(RuntimeAssetData_CookedRuntimeVisualProofReportsExactMissingLayers YuRuntimeAssetDataClosedLoopTests Fast ModuleFixture RuntimeAssetData File Resource Asset Streaming Shader RenderScene RenderCore RHI L1 TextureSampling EvidenceOracle)
 yuengine_add_labeled_test(RuntimeAssetData_PackageCookRunSmokeRunsPackagedRuntimeEntryPoint YuRuntimeAssetDataClosedLoopTests Fast ModuleFixture RuntimeAssetData ImportCook Package RuntimeApp File Resource Asset Streaming Shader RenderScene RenderCore RHI L1 EvidenceOracle)
+yuengine_add_labeled_test(RuntimeAssetData_PackageArtifactCookRunSmokeRunsProductRuntimeEntryPoint YuRuntimeAssetDataClosedLoopTests Fast ModuleFixture RuntimeAssetData ImportCook Package RuntimeApp File Resource Asset Streaming Shader RenderScene RenderCore RHI L1 EvidenceOracle)
 yuengine_add_labeled_test(RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges YuRuntimeAssetDataClosedLoopTests Fast ModuleFixture RuntimeAssetData File Resource Asset RenderScene RenderCore RHI L1 EvidenceOracle)
 yuengine_add_labeled_test(RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi YuRuntimeAssetDataClosedLoopTests Fast ModuleFixture RuntimeAssetData File Resource Asset RenderScene RenderCore RHI L1 EvidenceOracle)
 yuengine_add_labeled_test(RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore YuRuntimeAssetDataClosedLoopTests Fast ModuleFixture RuntimeAssetData File Resource Asset RenderScene RenderCore RHI L1 EvidenceOracle)

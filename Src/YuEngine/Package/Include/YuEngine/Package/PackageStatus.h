@@ -24,6 +24,10 @@ enum class PackageStatus {
     NotFound,
     TypeMismatch,
     DependencyMissing,
-    DependencyCycle
+    DependencyCycle,
+    InvalidArtifact,
+    ArtifactCapacityExceeded,
+    FileReadFailed,
+    FileWriteFailed
 };
 }

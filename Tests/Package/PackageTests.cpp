@@ -1,20 +1,32 @@
 // 模块：Tests Package
 // 文件：Tests/Package/PackageTests.cpp
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 
+#include "YuEngine/File/MountTable.h"
+#include "YuEngine/File/VirtualPath.h"
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
+#include "YuEngine/Package/PackageArtifact.h"
 #include "YuEngine/Package/PackageConstants.h"
 #include "YuEngine/Package/PackageRegistry.h"
 #include "YuEngine/Resource/ResourceLogicalKey.h"
 #include "YuEngine/Resource/ResourceTypeId.h"
 
+using yuengine::file::MountId;
+using yuengine::file::MountTable;
+using yuengine::file::VirtualPath;
 using yuengine::memory::MemoryAccountingStatus;
+using yuengine::package::PackageArtifactDependency;
+using yuengine::package::PackageArtifactReadRequest;
+using yuengine::package::PackageArtifactResult;
+using yuengine::package::PackageArtifactWriteRequest;
 using yuengine::package::PackageEntryDescriptor;
 using yuengine::package::PackageEntryId;
 using yuengine::package::PackageId;
@@ -27,6 +39,8 @@ using PackageSourceKey = yuengine::package::PackageSourceKey;
 using yuengine::package::PackageStatus;
 using ResourceLogicalKey = yuengine::resource::ResourceLogicalKey;
 using yuengine::resource::ResourceTypeId;
+using yuengine::package::ReadPackageArtifact;
+using yuengine::package::WritePackageArtifact;
 using yuengine::package::MAX_DECLARED_ENTRY_SIZE;
 using yuengine::package::MAX_PACKAGE_ENTRY_COUNT;
 using yuengine::package::MAX_PACKAGE_SOURCE_KEY_BYTES;
@@ -58,6 +72,9 @@ constexpr const char* TEST_LOAD_PLAN_CAPACITY = "Package_LoadPlanCapacityOverflo
 constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Package_DisabledDiagnosticsDoesNotChangeResults";
 constexpr const char* TEST_NO_FILE_ORIGINAL = "Package_NoFileReadOriginalPackageOrGameAdapterDependency";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Package_NoHiddenAllocation_UsesYuMemorySignal";
+constexpr const char* TEST_ARTIFACT_ROUND_TRIP = "Package_FileBackedArtifactRoundTripsLoadPlanThroughFileVfs";
+constexpr const char* TEST_ARTIFACT_INVALID = "Package_FileBackedArtifactRejectsInvalidBytesWithoutMutation";
+constexpr const char* TEST_ARTIFACT_MISSING = "Package_FileBackedArtifactReportsMissingFile";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* INDEX_TEXTURE_LOGICAL = "index_texture";
@@ -85,6 +102,8 @@ constexpr const char* ERROR_INDEX_MANIFEST_CAPACITY = "indexed lookup changed ma
 constexpr const char* ERROR_INDEX_ENTRY_CAPACITY = "indexed lookup changed entry capacity";
 constexpr const char* ERROR_INDEX_DEPENDENCY_CAPACITY = "indexed lookup changed dependency capacity";
 constexpr const char* ERROR_INDEX_LOAD_PLAN_CAPACITY = "indexed lookup changed load-plan capacity";
+constexpr const char* PACKAGE_ARTIFACT_MOUNT = "package_artifact_test";
+constexpr const char* PACKAGE_ARTIFACT_PATH = "Packages/RuntimeAssetSample.yupackage";
 
 constexpr PackageId PACKAGE_A{1U};
 constexpr PackageId PACKAGE_B{2U};
@@ -97,6 +116,22 @@ constexpr ResourceTypeId TYPE_MATERIAL{2U};
 constexpr ResourceTypeId TYPE_AUDIO{3U};
 constexpr ResourceTypeId TYPE_EFFECT{4U};
 using TestFunction = int (*)();
+
+std::filesystem::path PackageArtifactRoot(std::string_view test_name) {
+    std::filesystem::path root = std::filesystem::temp_directory_path();
+    root /= "YuEnginePackageArtifactTests";
+    root /= std::string(test_name);
+    return root;
+}
+
+MountTable CreatePackageArtifactTable(std::string_view test_name) {
+    const std::filesystem::path root = PackageArtifactRoot(test_name);
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    MountTable table;
+    table.RegisterLooseMount(MountId(PACKAGE_ARTIFACT_MOUNT), root);
+    return table;
+}
 
 int Fail(const std::string& message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -869,6 +904,124 @@ int PackageNoHiddenAllocationUsesYuMemorySignal() {
 
     return 0;
 }
+
+int PackageFileBackedArtifactRoundTripsLoadPlanThroughFileVfs() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_ROUND_TRIP);
+    const std::array<PackageEntryDescriptor, 3U> entries{
+        Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin", 0U, 16U),
+        Entry(PACKAGE_A, ENTRY_AUDIO, TYPE_AUDIO, "audio_a", "audio/audio_a.bin", 16U, 32U),
+        Entry(PACKAGE_A, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin", 48U, 24U)};
+    const std::array<PackageArtifactDependency, 2U> dependencies{
+        PackageArtifactDependency{ENTRY_TEXTURE, ENTRY_AUDIO},
+        PackageArtifactDependency{ENTRY_TEXTURE, ENTRY_MATERIAL}};
+
+    PackageArtifactWriteRequest write_request{};
+    write_request.mount_table = &table;
+    write_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    write_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    write_request.package = PACKAGE_A;
+    write_request.entries = entries.data();
+    write_request.entry_count = static_cast<std::uint32_t>(entries.size());
+    write_request.dependencies = dependencies.data();
+    write_request.dependency_count = static_cast<std::uint32_t>(dependencies.size());
+    const PackageArtifactResult write_result = WritePackageArtifact(write_request);
+    if (write_result.status != PackageStatus::Success ||
+        !write_result.wrote_artifact ||
+        write_result.artifact_byte_count == 0U) {
+        return Fail("package artifact did not write through File/VFS");
+    }
+
+    PackageRegistry artifact_registry;
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = &table;
+    read_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    read_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    read_request.registry = &artifact_registry;
+    const PackageArtifactResult read_result = ReadPackageArtifact(read_request);
+    if (read_result.status != PackageStatus::Success ||
+        !read_result.read_artifact ||
+        !read_result.rebuilt_registry ||
+        read_result.entry_count != entries.size() ||
+        read_result.dependency_count != dependencies.size()) {
+        return Fail("package artifact did not rebuild registry from File/VFS bytes");
+    }
+
+    const PackageLoadPlanResult plan =
+        artifact_registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
+    if (!plan.Succeeded() || plan.plan.record_count != 3U) {
+        return Fail("file-backed artifact did not resolve deterministic load plan");
+    }
+
+    if (plan.plan.records[0U].entry.value != ENTRY_AUDIO.value ||
+        plan.plan.records[1U].entry.value != ENTRY_MATERIAL.value ||
+        plan.plan.records[2U].entry.value != ENTRY_TEXTURE.value) {
+        return Fail("file-backed artifact load plan did not preserve dependency order");
+    }
+
+    if (table.Snapshot().write_byte_count == 0U || table.Snapshot().read_byte_count == 0U) {
+        return Fail("package artifact did not exercise MountTable read/write counters");
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_ROUND_TRIP));
+    return 0;
+}
+
+int PackageFileBackedArtifactRejectsInvalidBytesWithoutMutation() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_INVALID);
+    const std::string invalid_artifact = "not-a-package-artifact\n";
+    const auto write_result = table.Write({
+        MountId(PACKAGE_ARTIFACT_MOUNT),
+        VirtualPath(PACKAGE_ARTIFACT_PATH),
+        reinterpret_cast<const std::uint8_t *>(invalid_artifact.data()),
+        invalid_artifact.size()});
+    if (!write_result.Succeeded()) {
+        return Fail("invalid artifact fixture write failed");
+    }
+
+    PackageRegistry registry;
+    if (!RegisterManifest(registry).Succeeded()) {
+        return Fail("registry fixture manifest failed");
+    }
+
+    const PackageSnapshot before_snapshot = registry.Snapshot();
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = &table;
+    read_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    read_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    read_request.registry = &registry;
+    const PackageArtifactResult read_result = ReadPackageArtifact(read_request);
+    if (read_result.status != PackageStatus::InvalidArtifact ||
+        read_result.read_artifact ||
+        read_result.rebuilt_registry) {
+        return Fail("invalid package artifact did not report explicit parse failure");
+    }
+
+    if (!SnapshotsMatch(before_snapshot, registry.Snapshot())) {
+        return Fail("invalid package artifact mutated caller registry");
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_INVALID));
+    return 0;
+}
+
+int PackageFileBackedArtifactReportsMissingFile() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_MISSING);
+    PackageRegistry registry;
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = &table;
+    read_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    read_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    read_request.registry = &registry;
+    const PackageArtifactResult read_result = ReadPackageArtifact(read_request);
+    if (read_result.status != PackageStatus::FileReadFailed ||
+        read_result.read_artifact ||
+        read_result.rebuilt_registry) {
+        return Fail("missing package artifact did not report file read failure");
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_MISSING));
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -900,7 +1053,10 @@ int main(int argc, char** argv) {
         {TEST_LOAD_PLAN_CAPACITY, PackageLoadPlanCapacityOverflowDoesNotMutate},
         {TEST_DISABLED_DIAGNOSTICS, PackageDisabledDiagnosticsDoesNotChangeResults},
         {TEST_NO_FILE_ORIGINAL, PackageNoFileReadOriginalPackageOrGameAdapterDependency},
-        {TEST_NO_HIDDEN_ALLOCATION, PackageNoHiddenAllocationUsesYuMemorySignal}};
+        {TEST_NO_HIDDEN_ALLOCATION, PackageNoHiddenAllocationUsesYuMemorySignal},
+        {TEST_ARTIFACT_ROUND_TRIP, PackageFileBackedArtifactRoundTripsLoadPlanThroughFileVfs},
+        {TEST_ARTIFACT_INVALID, PackageFileBackedArtifactRejectsInvalidBytesWithoutMutation},
+        {TEST_ARTIFACT_MISSING, PackageFileBackedArtifactReportsMissingFile}};
 
     const std::string_view test_name(argv[1]);
     const auto test_iterator = test_registry.find(test_name);

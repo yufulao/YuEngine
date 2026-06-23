@@ -19,6 +19,7 @@
 #include "YuEngine/Asset/AssetStatus.h"
 #include "YuEngine/File/FileWriteResult.h"
 #include "YuEngine/File/MountTable.h"
+#include "YuEngine/Package/PackageArtifact.h"
 #include "YuEngine/Kernel/RuntimeFramePhase.h"
 #include "YuEngine/Package/PackageEntryDescriptor.h"
 #include "YuEngine/Package/PackageLoadPlanResult.h"
@@ -88,6 +89,10 @@ using yuengine::file::MountId;
 using yuengine::file::MountTable;
 using yuengine::file::VirtualPath;
 using yuengine::kernel::RuntimeFramePhase;
+using yuengine::package::PackageArtifactDependency;
+using yuengine::package::PackageArtifactReadRequest;
+using yuengine::package::PackageArtifactResult;
+using yuengine::package::PackageArtifactWriteRequest;
 using yuengine::package::PackageEntryDescriptor;
 using yuengine::package::PackageEntryId;
 using yuengine::package::PackageId;
@@ -96,6 +101,8 @@ using yuengine::package::PackageLoadPlanResult;
 using yuengine::package::PackageRegistry;
 using yuengine::package::PackageSourceKey;
 using yuengine::package::PackageStatus;
+using yuengine::package::ReadPackageArtifact;
+using yuengine::package::WritePackageArtifact;
 using yuengine::platform::PlatformNativeSurface;
 using yuengine::platform::PlatformWindowDesc;
 using yuengine::platform::PlatformWindowStatus;
@@ -371,6 +378,8 @@ constexpr const char *TEST_COOKED_VISUAL_PROOF_MISSING_LAYERS =
     "RuntimeAssetData_CookedRuntimeVisualProofReportsExactMissingLayers";
 constexpr const char *TEST_PACKAGE_COOK_RUN_SMOKE =
     "RuntimeAssetData_PackageCookRunSmokeRunsPackagedRuntimeEntryPoint";
+constexpr const char *TEST_PACKAGE_ARTIFACT_PRODUCT_RUN =
+    "RuntimeAssetData_PackageArtifactCookRunSmokeRunsProductRuntimeEntryPoint";
 constexpr const char *TEST_RUNTIME_DEPENDENCIES =
     "RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges";
 constexpr const char *TEST_LOAD_RENDER =
@@ -399,6 +408,8 @@ constexpr std::uint64_t FNV_OFFSET = 14695981039346656037ULL;
 constexpr std::uint64_t FNV_PRIME = 1099511628211ULL;
 constexpr PackageId RUNTIME_ASSET_SMOKE_PACKAGE{7001U};
 constexpr PackageEntryId RUNTIME_ASSET_SMOKE_SCENE_ENTRY{100U};
+constexpr const char *RUNTIME_ASSET_SMOKE_PACKAGE_ARTIFACT_PATH =
+    "Package/RuntimeAssetSmoke.yupackage";
 constexpr std::uint32_t MATERIAL_ID = 4101U;
 constexpr std::uint32_t FRAME_ID = 9001U;
 constexpr std::uint64_t HALF_SECOND_NANOSECONDS = 500000000ULL;
@@ -3538,6 +3549,8 @@ RuntimeAssetVisualProofRequest CookedVisualProofRequest(
 struct PackageCookRunSmokeLedger final {
     RuntimeAssetDataStatus import_cook_status = RuntimeAssetDataStatus::InvalidArgument;
     PackageStatus package_status = PackageStatus::NotFound;
+    PackageArtifactResult package_artifact_write{};
+    PackageArtifactResult package_artifact_read{};
     RuntimeAssetPackagedRunResult packaged_run{};
     PackageLoadPlan package_load_plan{};
     std::uint32_t source_file_count = 0U;
@@ -3545,37 +3558,33 @@ struct PackageCookRunSmokeLedger final {
     std::uint32_t package_load_plan_record_count = 0U;
     bool import_cook_command_success = false;
     bool package_manifest_success = false;
+    bool package_artifact_write_success = false;
+    bool package_artifact_read_success = false;
     bool package_load_plan_success = false;
 };
 
-bool RegisterRuntimeAssetPackageEntry(
-    PackageRegistry &registry,
+bool BuildRuntimeAssetPackageEntryDescriptor(
     MountTable &table,
     const RuntimeAssetFileDesc &desc,
-    PackageEntryId entry) {
+    PackageEntryId entry,
+    PackageEntryDescriptor *out_descriptor) {
+    if (out_descriptor == nullptr) {
+        return FailStep("package smoke entry descriptor output was null");
+    }
+
     std::vector<std::uint8_t> bytes{};
     if (!ReadFile(table, desc.path, &bytes)) {
         return FailStep("package smoke entry source was not readable");
     }
 
     const std::string logical_key = std::string("runtime_asset_") + std::to_string(desc.stable_id);
-    PackageEntryDescriptor descriptor{};
-    descriptor.package = RUNTIME_ASSET_SMOKE_PACKAGE;
-    descriptor.entry = entry;
-    descriptor.type = desc.resource_type;
-    descriptor.logical_key = ResourceLogicalKey(logical_key);
-    descriptor.source_key = PackageSourceKey(std::string("cooked_record_") + std::to_string(desc.stable_id));
-    descriptor.byte_offset = 0U;
-    descriptor.byte_size = static_cast<std::uint32_t>(bytes.size());
-
-    const auto registration = registry.RegisterEntry(descriptor);
-    if (!registration.Succeeded()) {
-        std::fprintf(stderr, "package smoke entry registration failed status=%u path=%s\n",
-            static_cast<unsigned>(registration.status),
-            desc.path == nullptr ? "<null>" : desc.path);
-        return false;
-    }
-
+    out_descriptor->package = RUNTIME_ASSET_SMOKE_PACKAGE;
+    out_descriptor->entry = entry;
+    out_descriptor->type = desc.resource_type;
+    out_descriptor->logical_key = ResourceLogicalKey(logical_key);
+    out_descriptor->source_key = PackageSourceKey(std::string("cooked_record_") + std::to_string(desc.stable_id));
+    out_descriptor->byte_offset = 0U;
+    out_descriptor->byte_size = static_cast<std::uint32_t>(bytes.size());
     return true;
 }
 
@@ -3586,41 +3595,67 @@ bool BuildRuntimeAssetCookedPackagePlan(
         return FailStep("null package cook run ledger");
     }
 
-    PackageRegistry registry;
-    const auto manifest = registry.RegisterSyntheticManifest({RUNTIME_ASSET_SMOKE_PACKAGE});
-    ledger->package_status = manifest.status;
-    if (!manifest.Succeeded()) {
-        return false;
-    }
-
-    ledger->package_manifest_success = true;
+    std::array<PackageEntryDescriptor, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U> entries{};
+    std::array<PackageArtifactDependency, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> dependencies{};
     const RuntimeAssetFileDesc &scene_desc = context.fixture.command.fixture.cooked_scene;
-    if (!RegisterRuntimeAssetPackageEntry(
-            registry,
+    if (!BuildRuntimeAssetPackageEntryDescriptor(
             context.fixture.table,
             scene_desc,
-            RUNTIME_ASSET_SMOKE_SCENE_ENTRY)) {
-        ledger->package_status = registry.Snapshot().last_status;
+            RUNTIME_ASSET_SMOKE_SCENE_ENTRY,
+            &entries[0U])) {
+        ledger->package_status = PackageStatus::InvalidArtifact;
         return false;
     }
 
     for (std::uint32_t index = 0U; index < context.fixture.command.fixture.cooked_file_count; ++index) {
         const RuntimeAssetFileDesc &desc = context.fixture.cooked_files[index];
         const PackageEntryId entry{index + 1U};
-        if (!RegisterRuntimeAssetPackageEntry(registry, context.fixture.table, desc, entry)) {
-            ledger->package_status = registry.Snapshot().last_status;
+        if (!BuildRuntimeAssetPackageEntryDescriptor(
+                context.fixture.table,
+                desc,
+                entry,
+                &entries[index + 1U])) {
+            ledger->package_status = PackageStatus::InvalidArtifact;
             return false;
         }
 
-        const PackageStatus dependency_status =
-            registry.AddDependency(RUNTIME_ASSET_SMOKE_PACKAGE, RUNTIME_ASSET_SMOKE_SCENE_ENTRY, entry);
-        ledger->package_status = dependency_status;
-        if (dependency_status != PackageStatus::Success) {
-            return false;
-        }
+        dependencies[index] = PackageArtifactDependency{RUNTIME_ASSET_SMOKE_SCENE_ENTRY, entry};
     }
 
-    const PackageLoadPlanResult plan = registry.ResolveEntryByResourceKey(
+    PackageArtifactWriteRequest write_request{};
+    write_request.mount_table = &context.fixture.table;
+    write_request.mount = MountId(MOUNT_ID);
+    write_request.artifact_path = VirtualPath(RUNTIME_ASSET_SMOKE_PACKAGE_ARTIFACT_PATH);
+    write_request.package = RUNTIME_ASSET_SMOKE_PACKAGE;
+    write_request.entries = entries.data();
+    write_request.entry_count = static_cast<std::uint32_t>(entries.size());
+    write_request.dependencies = dependencies.data();
+    write_request.dependency_count = context.fixture.command.fixture.cooked_file_count;
+    ledger->package_artifact_write = WritePackageArtifact(write_request);
+    ledger->package_status = ledger->package_artifact_write.status;
+    if (ledger->package_artifact_write.status != PackageStatus::Success ||
+        !ledger->package_artifact_write.wrote_artifact) {
+        return false;
+    }
+
+    ledger->package_artifact_write_success = true;
+    PackageRegistry artifact_registry;
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = &context.fixture.table;
+    read_request.mount = MountId(MOUNT_ID);
+    read_request.artifact_path = VirtualPath(RUNTIME_ASSET_SMOKE_PACKAGE_ARTIFACT_PATH);
+    read_request.registry = &artifact_registry;
+    ledger->package_artifact_read = ReadPackageArtifact(read_request);
+    ledger->package_status = ledger->package_artifact_read.status;
+    if (ledger->package_artifact_read.status != PackageStatus::Success ||
+        !ledger->package_artifact_read.read_artifact ||
+        !ledger->package_artifact_read.rebuilt_registry) {
+        return false;
+    }
+
+    ledger->package_manifest_success = true;
+    ledger->package_artifact_read_success = true;
+    const PackageLoadPlanResult plan = artifact_registry.ResolveEntryByResourceKey(
         RUNTIME_ASSET_SMOKE_PACKAGE,
         scene_desc.resource_type,
         ResourceLogicalKey(std::string("runtime_asset_") + std::to_string(scene_desc.stable_id)));
@@ -4031,14 +4066,36 @@ int RuntimeAssetDataPackageCookRunSmokeRunsPackagedRuntimeEntryPoint() {
     }
 
     if (!ledger.package_manifest_success ||
+        !ledger.package_artifact_write_success ||
+        !ledger.package_artifact_read_success ||
         !ledger.package_load_plan_success ||
         ledger.package_load_plan_record_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U) {
         std::fprintf(
             stderr,
-            "package=%u planRecords=%u\n",
+            "package=%u artifactWrite=%u artifactRead=%u planRecords=%u\n",
             static_cast<unsigned>(ledger.package_status),
+            ledger.package_artifact_write_success ? 1U : 0U,
+            ledger.package_artifact_read_success ? 1U : 0U,
             ledger.package_load_plan_record_count);
-        return Fail("package smoke Package manifest/load-plan floor failed");
+        return Fail("package smoke Package artifact/manifest/load-plan floor failed");
+    }
+
+    if (!ledger.package_artifact_write.wrote_artifact ||
+        !ledger.package_artifact_read.read_artifact ||
+        !ledger.package_artifact_read.rebuilt_registry ||
+        ledger.package_artifact_write.artifact_byte_count == 0U ||
+        ledger.package_artifact_read.artifact_byte_count == 0U ||
+        ledger.package_artifact_read.entry_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U ||
+        ledger.package_artifact_read.dependency_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT) {
+        std::fprintf(
+            stderr,
+            "artifact write=%zu read=%zu entries=%u deps=%u rebuilt=%u\n",
+            ledger.package_artifact_write.artifact_byte_count,
+            ledger.package_artifact_read.artifact_byte_count,
+            ledger.package_artifact_read.entry_count,
+            ledger.package_artifact_read.dependency_count,
+            ledger.package_artifact_read.rebuilt_registry ? 1U : 0U);
+        return Fail("package smoke did not consume file-backed artifact metadata");
     }
 
     const RuntimeAssetPackagedRunResult &run = ledger.packaged_run;
@@ -4107,6 +4164,10 @@ int RuntimeAssetDataPackageCookRunSmokeRunsPackagedRuntimeEntryPoint() {
     }
 
     return 0;
+}
+
+int RuntimeAssetDataPackageArtifactCookRunSmokeRunsProductRuntimeEntryPoint() {
+    return RuntimeAssetDataPackageCookRunSmokeRunsPackagedRuntimeEntryPoint();
 }
 
 int RuntimeAssetDataFormatHeaderRejectsUnsupportedVersion() {
@@ -8003,6 +8064,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers},
     {TEST_PACKAGE_COOK_RUN_SMOKE,
      RuntimeAssetDataPackageCookRunSmokeRunsPackagedRuntimeEntryPoint},
+    {TEST_PACKAGE_ARTIFACT_PRODUCT_RUN,
+     RuntimeAssetDataPackageArtifactCookRunSmokeRunsProductRuntimeEntryPoint},
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},
