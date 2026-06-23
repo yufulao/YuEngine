@@ -266,6 +266,16 @@ target_include_directories(YuRuntimeAsset
 )
 target_link_libraries(YuRuntimeAsset PUBLIC YuAnimation YuAsset YuFile YuRHI YuStreaming)
 
+add_library(YuResourceBrowser
+    Src/YuEngine/ResourceBrowser/Src/ResourceBrowserDiagnostics.cpp
+)
+yuengine_apply_compile_options(YuResourceBrowser)
+target_include_directories(YuResourceBrowser
+    PUBLIC
+        Src/YuEngine/ResourceBrowser/Include
+)
+target_link_libraries(YuResourceBrowser PUBLIC YuRuntimeAsset)
+
 add_library(YuRenderCore
     Src/YuEngine/RenderCore/Src/MaterialBindingFixture.cpp
     Src/YuEngine/RenderCore/Src/RenderCamera.cpp
@@ -2084,6 +2094,15 @@ yuengine_add_labeled_test(RuntimeAssetData_LoadRegistersResourceAndAssetDependen
 yuengine_add_labeled_test(RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi YuRuntimeAssetDataClosedLoopTests Fast ModuleFixture RuntimeAssetData File Resource Asset RenderScene RenderCore RHI L1 EvidenceOracle)
 yuengine_add_labeled_test(RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore YuRuntimeAssetDataClosedLoopTests Fast ModuleFixture RuntimeAssetData File Resource Asset RenderScene RenderCore RHI L1 EvidenceOracle)
 yuengine_add_labeled_test(RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer YuRuntimeAssetDataClosedLoopTests Fast ModuleFixture RuntimeAssetData File Resource Asset RenderScene RenderCore RHI L1 EvidenceOracle)
+
+add_executable(YuResourceBrowserDiagnosticsTests
+    Tests/ResourceBrowser/ResourceBrowserDiagnosticsTests.cpp
+)
+yuengine_apply_compile_options(YuResourceBrowserDiagnosticsTests)
+target_link_libraries(YuResourceBrowserDiagnosticsTests PRIVATE YuResourceBrowser)
+yuengine_add_labeled_test(ResourceBrowserDiagnostics_EntriesComeFromRuntimeAssetFileResourceAssetPath YuResourceBrowserDiagnosticsTests Fast ModuleFixture ResourceBrowser RuntimeAssetData File Resource Asset L1 EvidenceOracle)
+yuengine_add_labeled_test(ResourceBrowserDiagnostics_ClassifiesMissingTypeMismatchStaleSchemaAndHash YuResourceBrowserDiagnosticsTests Fast ModuleFixture ResourceBrowser RuntimeAssetData File Resource Asset L1 EvidenceOracle)
+yuengine_add_labeled_test(ResourceBrowserDiagnostics_ClassifiesCapacityAndBudgetWithoutResourceAssetMutation YuResourceBrowserDiagnosticsTests Fast ModuleFixture ResourceBrowser RuntimeAssetData File Resource Asset L1 EvidenceOracle)
 
 add_executable(YuAnimationRuntimeFoundationTests
     Tests/Animation/AnimationRuntimeFoundationTests.cpp
