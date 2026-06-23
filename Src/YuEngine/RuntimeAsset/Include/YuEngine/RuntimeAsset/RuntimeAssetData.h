@@ -15,9 +15,11 @@
 #include "YuEngine/File/FileStatus.h"
 #include "YuEngine/File/MountId.h"
 #include "YuEngine/File/VirtualPath.h"
+#include "YuEngine/RenderScene/RenderScenePrimitiveGeometryKind.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRecord.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
+#include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
 #include "YuEngine/Resource/ResourceDecodedPayloadStatus.h"
 #include "YuEngine/Kernel/RuntimeFrameContext.h"
 #include "YuEngine/Resource/ResourceDecodePlanAssetClass.h"
@@ -64,6 +66,16 @@ enum class RuntimeAssetFileKind {
     Shader,
     Scene,
     Animation
+};
+
+/**
+ * @brief Runtime mesh geometry family parsed from RuntimeAsset mesh records.
+ */
+enum class RuntimeAssetMeshGeometryKind {
+    Unknown,
+    Cube,
+    Cylinder,
+    Cone
 };
 
 /**
@@ -114,7 +126,8 @@ enum class RuntimeAssetDataStatus {
     RhiPipelineFailed,
     RhiTextureFailed,
     RhiSamplerFailed,
-    RenderSceneMaterialFailed
+    RenderSceneMaterialFailed,
+    RhiCaptureFailed
 };
 
 /**
@@ -250,6 +263,7 @@ struct RuntimeAssetValidationResult final {
     std::uint32_t payload_alignment = 0U;
     std::uint32_t vertex_count = 0U;
     std::uint32_t index_count = 0U;
+    RuntimeAssetMeshGeometryKind mesh_geometry_kind = RuntimeAssetMeshGeometryKind::Unknown;
     std::uint32_t texture_width = 0U;
     std::uint32_t texture_height = 0U;
     std::uint32_t texture_slot_count = 0U;
@@ -268,7 +282,24 @@ struct RuntimeAssetLoadedFile final {
     yuengine::asset::AssetTypeId asset_type;
     std::uint64_t stable_id = 0U;
     std::uint64_t hash = 0U;
+    RuntimeAssetArtifactClass artifact_class = RuntimeAssetArtifactClass::Unknown;
+    std::uint32_t schema_version = 0U;
+    std::uint64_t identity_hash = 0U;
+    std::uint64_t source_hash = 0U;
+    std::uint64_t payload_hash = 0U;
     std::uint32_t byte_count = 0U;
+    std::uint32_t record_table_count = 0U;
+    std::uint32_t record_table_byte_count = 0U;
+    std::uint32_t payload_byte_count = 0U;
+    std::uint32_t payload_alignment = 0U;
+    std::uint32_t vertex_count = 0U;
+    std::uint32_t index_count = 0U;
+    RuntimeAssetMeshGeometryKind mesh_geometry_kind = RuntimeAssetMeshGeometryKind::Unknown;
+    std::uint32_t texture_width = 0U;
+    std::uint32_t texture_height = 0U;
+    std::uint32_t texture_slot_count = 0U;
+    std::uint32_t shader_stage_count = 0U;
+    std::uint32_t shader_bytecode_byte_count = 0U;
     std::uint64_t cache_payload_id = 0U;
     std::uint64_t decode_plan_payload_id = 0U;
     std::uint64_t decode_plan_id = 0U;
@@ -634,6 +665,74 @@ struct RuntimeAssetCookedShaderProgramPipelineResult final {
 };
 
 /**
+ * @brief First missing runtime visual layer when proving cooked RuntimeAsset records.
+ */
+enum class RuntimeAssetVisualProofMissingLayer {
+    None,
+    Model,
+    MaterialSlot,
+    ShaderPipeline,
+    SceneTransform,
+    Camera,
+    RhiCapture
+};
+
+/**
+ * @brief Request to prove a cooked RuntimeAsset graph through RenderScene, RenderCore, and RHI.
+ */
+struct RuntimeAssetVisualProofRequest final {
+    yuengine::resource::ResourceRegistry *resource_registry = nullptr;
+    yuengine::asset::AssetManager *asset_manager = nullptr;
+    yuengine::rhi::IRhiDevice *rhi_device = nullptr;
+    const RuntimeAssetLoadedFile *scene = nullptr;
+    std::span<const RuntimeAssetLoadedFile> loaded_files{};
+    std::span<const RuntimeAssetSceneCameraRecord> scene_cameras{};
+    std::span<const RuntimeAssetSceneEntityRecord> scene_entities{};
+    std::span<const RuntimeAssetSceneTransformOutputRecord> scene_transforms{};
+    const RuntimeAssetSceneLoaderOutput *scene_output = nullptr;
+    const RuntimeAssetLoadedShaderProgramData *shader_program = nullptr;
+    std::span<std::uint8_t> scratch_bytes{};
+    std::span<std::uint8_t> capture_output{};
+    std::size_t capture_byte_budget_per_entity = 0U;
+    std::uint32_t first_frame_id = 0U;
+    std::uint32_t frame_count = 0U;
+    const char *output_path = nullptr;
+    std::size_t output_path_byte_count = 0U;
+    bool require_cooked_records = true;
+};
+
+/**
+ * @brief Result of the cooked RuntimeAsset visual proof route.
+ */
+struct RuntimeAssetVisualProofResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    RuntimeAssetVisualProofMissingLayer first_missing_layer =
+        RuntimeAssetVisualProofMissingLayer::None;
+    std::uint32_t cooked_record_count = 0U;
+    std::uint32_t source_record_count = 0U;
+    std::uint32_t mesh_record_count = 0U;
+    std::uint32_t texture_record_count = 0U;
+    std::uint32_t scene_entity_count = 0U;
+    std::uint32_t scene_transform_count = 0U;
+    std::uint32_t scene_camera_count = 0U;
+    std::uint32_t animation_sampled_value_count = 0U;
+    std::uint32_t material_texture_slot_count = 0U;
+    std::uint32_t runtime_texture_upload_count = 0U;
+    std::uint32_t submitted_draw_count = 0U;
+    std::uint32_t completed_frame_count = 0U;
+    std::size_t capture_bytes_written = 0U;
+    bool loaded_records_verified = false;
+    bool shader_pipeline_from_runtime_asset = false;
+    bool material_slots_from_cooked_payloads = false;
+    bool scene_transforms_from_animation_sampling = false;
+    bool render_scene_routed = false;
+    bool render_core_rhi_capture_routed = false;
+    RuntimeAssetShaderProgramPipelineResult shader_pipeline_result{};
+    RuntimeAssetCookedTextureMaterialBridgeResult material_result{};
+    yuengine::renderscene::RenderSceneThreePrimitiveCaptureResult capture_result{};
+};
+
+/**
  * @brief Returns the file kind token used by the runtime asset header.
  * @param kind Input file family.
  * @return Static token string.
@@ -721,5 +820,14 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedTextureMaterialBridge(
 RuntimeAssetDataStatus BuildRuntimeAssetCookedShaderProgramPipeline(
     const RuntimeAssetCookedShaderProgramPipelineRequest &request,
     RuntimeAssetCookedShaderProgramPipelineResult *out_result);
+/**
+ * @brief Proves cooked RuntimeAsset loaded records through RenderScene, RenderCore, and RHI capture.
+ * @param request Loaded cooked records, registries, RHI, shader data, and output buffers.
+ * @param out_result Output proof ledger and first missing layer.
+ * @return Explicit RuntimeAsset visual proof status.
+ */
+RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
+    const RuntimeAssetVisualProofRequest &request,
+    RuntimeAssetVisualProofResult *out_result);
 
 }

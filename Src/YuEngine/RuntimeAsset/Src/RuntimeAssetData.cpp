@@ -22,6 +22,13 @@
 #include "YuEngine/File/FileWriteRequest.h"
 #include "YuEngine/File/FileWriteResult.h"
 #include "YuEngine/File/MountTable.h"
+#include "YuEngine/RenderCore/RenderCameraProjectionKind.h"
+#include "YuEngine/RenderScene/RenderSceneCameraBindingRequest.h"
+#include "YuEngine/RenderScene/RenderSceneCameraBindingResult.h"
+#include "YuEngine/RenderScene/RenderSceneCameraFrameBinder.h"
+#include "YuEngine/RenderScene/RenderScenePrimitiveGeometryBuilder.h"
+#include "YuEngine/RenderScene/RenderScenePrimitiveGeometryRequest.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeCameraRecord.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialBuilder.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialConstants.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRequest.h"
@@ -48,8 +55,12 @@
 #include "YuEngine/Resource/ResourceResidencyBudgetDesc.h"
 #include "YuEngine/Resource/ResourceResidencyRequest.h"
 #include "YuEngine/Resource/ResourceResidencyStatus.h"
+#include "YuEngine/Rhi/RhiBufferDesc.h"
+#include "YuEngine/Rhi/RhiBufferUsage.h"
+#include "YuEngine/Rhi/RhiColorTargetDesc.h"
 #include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiFormat.h"
+#include "YuEngine/Rhi/RhiIndexFormat.h"
 #include "YuEngine/Rhi/RhiSamplerBinding.h"
 #include "YuEngine/Rhi/RhiShaderModuleDesc.h"
 #include "YuEngine/Rhi/RhiShaderStage.h"
@@ -118,16 +129,42 @@ using yuengine::resource::ResourceResidencyStatus;
 using yuengine::resource::ResourceSnapshot;
 using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
+using yuengine::renderscene::RenderSceneCameraBindingRequest;
+using yuengine::renderscene::RenderSceneCameraBindingResult;
+using yuengine::renderscene::RenderSceneCameraFrameBinder;
+using yuengine::renderscene::RenderScenePrimitiveGeometryBuilder;
+using yuengine::renderscene::RenderScenePrimitiveGeometryKind;
+using yuengine::renderscene::RenderScenePrimitiveGeometryRecord;
+using yuengine::renderscene::RenderScenePrimitiveGeometryRequest;
+using yuengine::renderscene::RenderScenePrimitiveGeometryStatus;
+using yuengine::renderscene::RenderSceneRuntimeCameraRecord;
 using yuengine::renderscene::RenderSceneRuntimeMaterialBuilder;
 using yuengine::renderscene::RenderSceneRuntimeMaterialRecord;
 using yuengine::renderscene::RenderSceneRuntimeMaterialRequest;
 using yuengine::renderscene::RenderSceneRuntimeMaterialStatus;
 using yuengine::renderscene::RenderSceneRuntimeMaterialTextureSlot;
+using yuengine::renderscene::RenderSceneStatus;
+using yuengine::renderscene::RenderSceneThreePrimitiveCaptureMissingLayer;
+using yuengine::renderscene::RenderSceneThreePrimitiveCaptureRequest;
+using yuengine::renderscene::RenderSceneThreePrimitiveCaptureResult;
+using yuengine::renderscene::RenderSceneThreePrimitiveCaptureRoute;
+using yuengine::renderscene::RenderSceneThreePrimitiveCaptureStatus;
+using yuengine::renderscene::RenderSceneThreePrimitiveEntityRequest;
+using yuengine::rhi::IRhiDevice;
+using yuengine::rhi::RhiBufferDesc;
+using yuengine::rhi::RhiBufferHandle;
+using yuengine::rhi::RhiBufferUsage;
+using yuengine::rhi::RhiColor;
+using yuengine::rhi::RhiColorTargetDesc;
 using yuengine::rhi::RhiFormat;
+using yuengine::rhi::RhiIndexBufferView;
+using yuengine::rhi::RhiIndexFormat;
 using yuengine::rhi::RhiSamplerBinding;
+using yuengine::rhi::RhiSamplerDesc;
 using yuengine::rhi::RhiSamplerHandle;
 using yuengine::rhi::RhiStatus;
 using yuengine::rhi::RhiTextureHandle;
+using yuengine::rhi::RhiVertexBufferView;
 using yuengine::streaming::ResourceDecodedTextureBridge;
 using yuengine::streaming::ResourceDecodedTextureBridgeRequest;
 using yuengine::streaming::ResourceDecodedTextureBridgeResult;
@@ -171,6 +208,13 @@ constexpr std::uint32_t RUNTIME_ASSET_MAX_ANIMATION_CLIP_COUNT = 8U;
 constexpr std::uint32_t RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT = 128U;
 constexpr std::uint32_t RUNTIME_ASSET_MAX_ANIMATION_KEYFRAME_COUNT = 512U;
 constexpr std::uint32_t RUNTIME_ASSET_MAX_ANIMATION_SAMPLED_VALUE_COUNT = 128U;
+constexpr std::uint32_t RUNTIME_ASSET_VISUAL_PROOF_MATERIAL_ID = 4101U;
+constexpr std::uint32_t RUNTIME_ASSET_VISUAL_PROOF_PASS_ID = 7201U;
+constexpr std::uint32_t RUNTIME_ASSET_VISUAL_PROOF_FIRST_DRAW_ID = 7301U;
+constexpr std::uint32_t RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT = 3U;
+constexpr std::size_t RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT = 3U;
+constexpr std::uint32_t RUNTIME_ASSET_VISUAL_PROOF_TARGET_WIDTH = 2U;
+constexpr std::uint32_t RUNTIME_ASSET_VISUAL_PROOF_TARGET_HEIGHT = 2U;
 
 bool Contains(std::string_view text, std::string_view token) {
     return text.find(token) != std::string_view::npos;
@@ -1783,7 +1827,14 @@ RuntimeAssetDataStatus ValidateMeshMetadata(
         return RuntimeAssetDataStatus::InvalidKind;
     }
 
-    if (mesh_kind != "cube" && mesh_kind != "cylinder" && mesh_kind != "cone") {
+    RuntimeAssetMeshGeometryKind geometry_kind = RuntimeAssetMeshGeometryKind::Unknown;
+    if (mesh_kind == "cube") {
+        geometry_kind = RuntimeAssetMeshGeometryKind::Cube;
+    } else if (mesh_kind == "cylinder") {
+        geometry_kind = RuntimeAssetMeshGeometryKind::Cylinder;
+    } else if (mesh_kind == "cone") {
+        geometry_kind = RuntimeAssetMeshGeometryKind::Cone;
+    } else {
         return RuntimeAssetDataStatus::InvalidKind;
     }
 
@@ -1812,6 +1863,7 @@ RuntimeAssetDataStatus ValidateMeshMetadata(
 
     out_result->vertex_count = vertex_count;
     out_result->index_count = index_count;
+    out_result->mesh_geometry_kind = geometry_kind;
     return RuntimeAssetDataStatus::Success;
 }
 
@@ -2254,6 +2306,34 @@ std::vector<std::uint8_t> BuildDecodedBytes(
     return decoded_bytes;
 }
 
+void CopyValidationMetadataToLoadedFile(
+    const RuntimeAssetValidationResult &validation,
+    RuntimeAssetLoadedFile *out_record) {
+    if (out_record == nullptr) {
+        return;
+    }
+
+    out_record->hash = validation.hash;
+    out_record->artifact_class = validation.artifact_class;
+    out_record->schema_version = validation.schema_version;
+    out_record->identity_hash = validation.identity_hash;
+    out_record->source_hash = validation.source_hash;
+    out_record->payload_hash = validation.payload_hash;
+    out_record->byte_count = static_cast<std::uint32_t>(validation.byte_count);
+    out_record->record_table_count = validation.record_table_count;
+    out_record->record_table_byte_count = validation.record_table_byte_count;
+    out_record->payload_byte_count = validation.payload_byte_count;
+    out_record->payload_alignment = validation.payload_alignment;
+    out_record->vertex_count = validation.vertex_count;
+    out_record->index_count = validation.index_count;
+    out_record->mesh_geometry_kind = validation.mesh_geometry_kind;
+    out_record->texture_width = validation.texture_width;
+    out_record->texture_height = validation.texture_height;
+    out_record->texture_slot_count = validation.texture_slot_count;
+    out_record->shader_stage_count = validation.shader_stage_count;
+    out_record->shader_bytecode_byte_count = validation.shader_bytecode_byte_count;
+}
+
 RuntimeAssetDataStatus StoreSourcePayload(
     ResourceRegistry &registry,
     ResourceHandle resource,
@@ -2372,16 +2452,21 @@ RuntimeAssetDataStatus RegisterLoadedFile(
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
+    RuntimeAssetValidationResult validation{};
+    RuntimeAssetDataStatus status = ValidateRuntimeAssetDataBytes(bytes, desc.kind, &validation);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
     RuntimeAssetLoadedFile record{};
     record.kind = desc.kind;
     record.resource_type = desc.resource_type;
     record.asset_type = desc.asset_type;
     record.stable_id = desc.stable_id;
-    record.hash = HashRuntimeAssetDataBytes(bytes);
-    record.byte_count = static_cast<std::uint32_t>(bytes.size());
     record.decode_asset_class = desc.decode_asset_class;
     record.decode_result_class = desc.decode_result_class;
     record.decoded_byte_count = desc.decoded_byte_count;
+    CopyValidationMetadataToLoadedFile(validation, &record);
 
     ResourceDescriptor resource_descriptor{};
     resource_descriptor.type = desc.resource_type;
@@ -2412,7 +2497,7 @@ RuntimeAssetDataStatus RegisterLoadedFile(
         return RuntimeAssetDataStatus::ResourceResidencyFailed;
     }
 
-    RuntimeAssetDataStatus status = StoreSourcePayload(
+    status = StoreSourcePayload(
         registry,
         resource_result.handle,
         desc,
@@ -4470,6 +4555,794 @@ RuntimeAssetDataStatus BuildCookedTextureMaterialCommit(
     result->status = RuntimeAssetDataStatus::Success;
     return result->status;
 }
+
+void CountVisualProofLoadedRecord(
+    const RuntimeAssetLoadedFile &file,
+    RuntimeAssetVisualProofResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    if (file.artifact_class == RuntimeAssetArtifactClass::Cooked) {
+        ++result->cooked_record_count;
+    } else if (file.artifact_class == RuntimeAssetArtifactClass::Source) {
+        ++result->source_record_count;
+    }
+
+    if (file.kind == RuntimeAssetFileKind::Mesh) {
+        ++result->mesh_record_count;
+    }
+
+    if (file.kind == RuntimeAssetFileKind::Texture) {
+        ++result->texture_record_count;
+    }
+}
+
+void SeedVisualProofLedger(
+    const RuntimeAssetVisualProofRequest &request,
+    RuntimeAssetVisualProofResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    if (request.scene != nullptr) {
+        CountVisualProofLoadedRecord(*request.scene, result);
+    }
+
+    for (const RuntimeAssetLoadedFile &file : request.loaded_files) {
+        CountVisualProofLoadedRecord(file, result);
+    }
+
+    result->scene_entity_count = request.scene_output != nullptr ?
+        request.scene_output->entity_count :
+        static_cast<std::uint32_t>(request.scene_entities.size());
+    result->scene_transform_count = request.scene_output != nullptr ?
+        request.scene_output->transform_count :
+        static_cast<std::uint32_t>(request.scene_transforms.size());
+    result->scene_camera_count = request.scene_output != nullptr ?
+        request.scene_output->camera_count :
+        static_cast<std::uint32_t>(request.scene_cameras.size());
+    result->animation_sampled_value_count = request.scene_output != nullptr ?
+        request.scene_output->animation_sampled_value_count :
+        0U;
+}
+
+RuntimeAssetDataStatus FailVisualProof(
+    RuntimeAssetDataStatus status,
+    RuntimeAssetVisualProofMissingLayer layer,
+    RuntimeAssetVisualProofResult *result) {
+    if (result != nullptr) {
+        result->status = status;
+        result->first_missing_layer = layer;
+    }
+
+    return status;
+}
+
+bool IsLoadedRuntimeAssetRecordUsable(
+    const RuntimeAssetLoadedFile &file,
+    RuntimeAssetFileKind expected_kind,
+    bool require_cooked) {
+    if (file.kind != expected_kind) {
+        return false;
+    }
+
+    if (!file.resource.IsValid() || !file.asset.IsValid()) {
+        return false;
+    }
+
+    if (file.stable_id == 0U || file.hash == 0U || !file.cache_payload_stored) {
+        return false;
+    }
+
+    if (require_cooked && file.artifact_class != RuntimeAssetArtifactClass::Cooked) {
+        return false;
+    }
+
+    return file.artifact_class != RuntimeAssetArtifactClass::Unknown;
+}
+
+const RuntimeAssetLoadedFile *FindVisualProofLoadedFile(
+    const RuntimeAssetVisualProofRequest &request,
+    RuntimeAssetFileKind kind,
+    std::uint32_t ordinal) {
+    std::uint32_t matched_count = 0U;
+    for (const RuntimeAssetLoadedFile &file : request.loaded_files) {
+        if (file.kind != kind) {
+            continue;
+        }
+
+        if (matched_count == ordinal) {
+            return &file;
+        }
+
+        ++matched_count;
+    }
+
+    return nullptr;
+}
+
+RuntimeAssetDataStatus RequireVisualProofRecord(
+    const RuntimeAssetVisualProofRequest &request,
+    RuntimeAssetFileKind kind,
+    std::uint32_t ordinal,
+    RuntimeAssetVisualProofMissingLayer layer,
+    const RuntimeAssetLoadedFile **out_file,
+    RuntimeAssetVisualProofResult *result) {
+    if (out_file == nullptr) {
+        return FailVisualProof(RuntimeAssetDataStatus::InvalidArgument, layer, result);
+    }
+
+    const RuntimeAssetLoadedFile *file = FindVisualProofLoadedFile(request, kind, ordinal);
+    if (file == nullptr || !IsLoadedRuntimeAssetRecordUsable(*file, kind, request.require_cooked_records)) {
+        *out_file = nullptr;
+        return FailVisualProof(RuntimeAssetDataStatus::MissingDependency, layer, result);
+    }
+
+    *out_file = file;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RenderScenePrimitiveGeometryKind ToRenderScenePrimitiveKind(RuntimeAssetMeshGeometryKind kind) {
+    if (kind == RuntimeAssetMeshGeometryKind::Cylinder) {
+        return RenderScenePrimitiveGeometryKind::Cylinder;
+    }
+
+    if (kind == RuntimeAssetMeshGeometryKind::Cone) {
+        return RenderScenePrimitiveGeometryKind::Cone;
+    }
+
+    return RenderScenePrimitiveGeometryKind::Cube;
+}
+
+bool ResolveVisualProofMeshCounts(
+    const RuntimeAssetLoadedFile &mesh,
+    std::uint32_t *out_segment_count,
+    std::uint32_t *out_vertex_count,
+    std::uint32_t *out_index_count) {
+    if (out_segment_count == nullptr || out_vertex_count == nullptr || out_index_count == nullptr) {
+        return false;
+    }
+
+    if (mesh.vertex_count == 0U || mesh.index_count == 0U) {
+        return false;
+    }
+
+    if (mesh.mesh_geometry_kind == RuntimeAssetMeshGeometryKind::Cube) {
+        if (mesh.vertex_count != 24U || mesh.index_count != 36U) {
+            return false;
+        }
+
+        *out_segment_count = 0U;
+        *out_vertex_count = mesh.vertex_count;
+        *out_index_count = mesh.index_count;
+        return true;
+    }
+
+    if (mesh.mesh_geometry_kind == RuntimeAssetMeshGeometryKind::Cylinder) {
+        if ((mesh.index_count % 12U) != 0U) {
+            return false;
+        }
+
+        const std::uint32_t segment_count = mesh.index_count / 12U;
+        if (mesh.vertex_count != ((segment_count * 2U) + 2U)) {
+            return false;
+        }
+
+        *out_segment_count = segment_count;
+        *out_vertex_count = mesh.vertex_count;
+        *out_index_count = mesh.index_count;
+        return true;
+    }
+
+    if (mesh.mesh_geometry_kind == RuntimeAssetMeshGeometryKind::Cone) {
+        if ((mesh.index_count % 6U) != 0U) {
+            return false;
+        }
+
+        const std::uint32_t segment_count = mesh.index_count / 6U;
+        if (mesh.vertex_count != (segment_count + 2U)) {
+            return false;
+        }
+
+        *out_segment_count = segment_count;
+        *out_vertex_count = mesh.vertex_count;
+        *out_index_count = mesh.index_count;
+        return true;
+    }
+
+    return false;
+}
+
+RuntimeAssetDataStatus CreateVisualProofBuffer(
+    IRhiDevice &device,
+    RhiBufferUsage usage,
+    std::size_t byte_count,
+    RhiBufferHandle *out_handle) {
+    if (out_handle == nullptr || byte_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RhiBufferDesc desc{};
+    desc.usage = usage;
+    desc.size_bytes = byte_count;
+    const std::span<const std::uint8_t> initial_bytes{};
+    const RhiStatus status = device.CreateBuffer(desc, initial_bytes, *out_handle);
+    return status == RhiStatus::Success ? RuntimeAssetDataStatus::Success : RuntimeAssetDataStatus::RhiCaptureFailed;
+}
+
+RuntimeAssetDataStatus BuildVisualProofGeometry(
+    const RuntimeAssetLoadedFile &mesh,
+    std::uint32_t index,
+    std::size_t vertex_stride_bytes,
+    IRhiDevice &device,
+    RenderScenePrimitiveGeometryRecord *out_geometry,
+    RuntimeAssetVisualProofResult *result) {
+    if (out_geometry == nullptr || vertex_stride_bytes == 0U) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::InvalidArgument,
+            RuntimeAssetVisualProofMissingLayer::Model,
+            result);
+    }
+
+    std::uint32_t segment_count = 0U;
+    std::uint32_t vertex_count = 0U;
+    std::uint32_t index_count = 0U;
+    if (!ResolveVisualProofMeshCounts(mesh, &segment_count, &vertex_count, &index_count)) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::MissingDependency,
+            RuntimeAssetVisualProofMissingLayer::Model,
+            result);
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    RuntimeAssetDataStatus status = CreateVisualProofBuffer(
+        device,
+        RhiBufferUsage::Vertex,
+        vertex_stride_bytes * vertex_count,
+        &vertex_buffer);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::RhiCapture, result);
+    }
+
+    RhiBufferHandle index_buffer{};
+    status = CreateVisualProofBuffer(
+        device,
+        RhiBufferUsage::Index,
+        sizeof(std::uint16_t) * index_count,
+        &index_buffer);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::RhiCapture, result);
+    }
+
+    RenderScenePrimitiveGeometryRequest request{};
+    request.geometry_asset = mesh.asset;
+    request.kind = ToRenderScenePrimitiveKind(mesh.mesh_geometry_kind);
+    request.segment_count = segment_count;
+    request.draw_id = RUNTIME_ASSET_VISUAL_PROOF_FIRST_DRAW_ID + index;
+    request.pass_id = RUNTIME_ASSET_VISUAL_PROOF_PASS_ID;
+    request.material_id = RUNTIME_ASSET_VISUAL_PROOF_MATERIAL_ID;
+    request.vertex_buffer = RhiVertexBufferView{
+        vertex_buffer,
+        0U,
+        vertex_stride_bytes,
+        vertex_stride_bytes * vertex_count};
+    request.index_buffer = RhiIndexBufferView{
+        index_buffer,
+        0U,
+        sizeof(std::uint16_t) * index_count,
+        RhiIndexFormat::Uint16};
+
+    RenderScenePrimitiveGeometryBuilder builder;
+    const RenderScenePrimitiveGeometryStatus geometry_status = builder.Build(request, out_geometry);
+    if (geometry_status != RenderScenePrimitiveGeometryStatus::Success) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::MissingDependency,
+            RuntimeAssetVisualProofMissingLayer::Model,
+            result);
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus BuildVisualProofShaderPipeline(
+    const RuntimeAssetVisualProofRequest &request,
+    RuntimeAssetVisualProofResult *result) {
+    const RuntimeAssetLoadedFile *shader = nullptr;
+    RuntimeAssetDataStatus status = RequireVisualProofRecord(
+        request,
+        RuntimeAssetFileKind::Shader,
+        0U,
+        RuntimeAssetVisualProofMissingLayer::ShaderPipeline,
+        &shader,
+        result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    if (shader == nullptr ||
+        shader->shader_stage_count < 2U ||
+        shader->shader_bytecode_byte_count == 0U ||
+        request.shader_program == nullptr ||
+        request.shader_program->status != RuntimeAssetDataStatus::Success ||
+        request.shader_program->validation.artifact_class == RuntimeAssetArtifactClass::Unknown ||
+        (request.require_cooked_records &&
+            request.shader_program->validation.artifact_class != RuntimeAssetArtifactClass::Cooked) ||
+        request.shader_program->texture_slot_count < RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::RhiPipelineFailed,
+            RuntimeAssetVisualProofMissingLayer::ShaderPipeline,
+            result);
+    }
+
+    RuntimeAssetShaderProgramPipelineRequest shader_request{};
+    shader_request.device = request.rhi_device;
+    shader_request.program = request.shader_program;
+    status = BuildRuntimeAssetShaderProgramPipeline(shader_request, &result->shader_pipeline_result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::RhiPipelineFailed,
+            RuntimeAssetVisualProofMissingLayer::ShaderPipeline,
+            result);
+    }
+
+    result->shader_pipeline_from_runtime_asset = true;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ReadVisualProofDecodedTexturePayload(
+    ResourceRegistry &registry,
+    const RuntimeAssetLoadedFile &texture,
+    std::vector<std::uint8_t> *out_bytes) {
+    if (out_bytes == nullptr || texture.decoded_byte_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    out_bytes->assign(texture.decoded_byte_count, 0U);
+    ResourceDecodedPayloadRequest request{};
+    request.resource = texture.resource;
+    request.expected_type = texture.resource_type;
+    request.payload_id = texture.decode_plan_payload_id;
+    request.decode_plan_id = texture.decode_plan_id;
+    request.decode_result_id = texture.decode_result_id;
+    request.decoded_payload_id = texture.decoded_payload_id;
+    request.asset_class = texture.decode_asset_class;
+    request.result_class = texture.decode_result_class;
+    request.decoded_byte_count = texture.decoded_byte_count;
+
+    std::uint32_t read_byte_count = 0U;
+    const ResourceDecodedPayloadStatus status = registry.ReadDecodedPayload(
+        request,
+        out_bytes->data(),
+        static_cast<std::uint32_t>(out_bytes->size()),
+        &read_byte_count);
+    if (status != ResourceDecodedPayloadStatus::Success || read_byte_count != texture.decoded_byte_count) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus BuildVisualProofTexturePayloadDesc(
+    ResourceRegistry &registry,
+    const RuntimeAssetLoadedFile &texture,
+    std::uint32_t texture_index,
+    RuntimeAssetCookedTexturePayloadDesc *out_desc) {
+    if (out_desc == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (texture.kind != RuntimeAssetFileKind::Texture ||
+        texture.texture_width == 0U ||
+        texture.texture_height == 0U ||
+        texture.payload_hash == 0U ||
+        !texture.decoded_payload_stored ||
+        texture.decoded_payload_id == 0U ||
+        texture.decode_asset_class != ResourceDecodePlanAssetClass::Texture ||
+        texture.decode_result_class != ResourceDecodeResultClass::Texture) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    std::vector<std::uint8_t> decoded_bytes{};
+    RuntimeAssetDataStatus status =
+        ReadVisualProofDecodedTexturePayload(registry, texture, &decoded_bytes);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    RuntimeAssetCookedTexturePayloadDesc desc{};
+    desc.loaded_texture = &texture;
+    desc.texture_desc.format = RhiFormat::Rgba8Unorm;
+    desc.texture_desc.extent = {
+        static_cast<std::uint16_t>(texture.texture_width),
+        static_cast<std::uint16_t>(texture.texture_height)};
+    desc.color_space = RuntimeAssetCookedTextureColorSpace::Linear;
+    desc.row_pitch_bytes = RuntimeAssetRgba8RowPitch(desc.texture_desc);
+    desc.slice_pitch_bytes = RuntimeAssetRgba8SlicePitch(desc.texture_desc);
+    desc.payload_offset_bytes = 0U;
+    desc.payload_byte_count = texture.decoded_byte_count;
+    desc.payload_alignment_bytes = static_cast<std::uint32_t>(yuengine::rhi::RGBA8_BYTES_PER_PIXEL);
+    desc.payload_hash = HashRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(decoded_bytes.data(), decoded_bytes.size()));
+    desc.decoded_payload_id = texture.decoded_payload_id;
+    desc.staging_request_id = texture.stable_id + STAGING_ID_OFFSET + texture_index + 1U;
+    desc.upload_id = texture.stable_id + UPLOAD_ID_OFFSET + texture_index + 1U;
+    *out_desc = desc;
+    return RuntimeAssetDataStatus::Success;
+}
+
+std::array<RuntimeAssetCookedMaterialSlotDesc, RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT>
+BuildVisualProofMaterialSlots() {
+    std::array<RuntimeAssetCookedMaterialSlotDesc, RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT> slots{};
+    for (std::uint32_t index = 0U; index < slots.size(); ++index) {
+        slots[index].material_slot = index;
+        slots[index].texture_payload_index = index;
+        slots[index].expected_format = RhiFormat::Rgba8Unorm;
+        slots[index].expected_color_space = RuntimeAssetCookedTextureColorSpace::Linear;
+        slots[index].texture_binding_slot = index;
+        slots[index].sampler_binding_slot = index;
+        slots[index].sampler_desc = RhiSamplerDesc{};
+    }
+
+    return slots;
+}
+
+RuntimeAssetDataStatus BuildVisualProofMaterial(
+    const RuntimeAssetVisualProofRequest &request,
+    RenderSceneRuntimeMaterialRecord *out_material,
+    RuntimeAssetVisualProofResult *result) {
+    const RuntimeAssetLoadedFile *material = nullptr;
+    RuntimeAssetDataStatus status = RequireVisualProofRecord(
+        request,
+        RuntimeAssetFileKind::Material,
+        0U,
+        RuntimeAssetVisualProofMissingLayer::MaterialSlot,
+        &material,
+        result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    if (material == nullptr || material->texture_slot_count < RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::MissingDependency,
+            RuntimeAssetVisualProofMissingLayer::MaterialSlot,
+            result);
+    }
+
+    std::array<RuntimeAssetCookedTexturePayloadDesc, RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT> textures{};
+    for (std::uint32_t index = 0U; index < textures.size(); ++index) {
+        const RuntimeAssetLoadedFile *texture = nullptr;
+        status = RequireVisualProofRecord(
+            request,
+            RuntimeAssetFileKind::Texture,
+            index,
+            RuntimeAssetVisualProofMissingLayer::MaterialSlot,
+            &texture,
+            result);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+
+        status = BuildVisualProofTexturePayloadDesc(
+            *request.resource_registry,
+            *texture,
+            index,
+            &textures[index]);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::MaterialSlot, result);
+        }
+    }
+
+    const std::array<RuntimeAssetCookedMaterialSlotDesc, RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT> slots =
+        BuildVisualProofMaterialSlots();
+
+    RuntimeAssetCookedTextureMaterialBridgeRequest material_request{};
+    material_request.resource_registry = request.resource_registry;
+    material_request.asset_manager = request.asset_manager;
+    material_request.rhi_device = request.rhi_device;
+    material_request.material_asset = material->asset;
+    material_request.material_id = RUNTIME_ASSET_VISUAL_PROOF_MATERIAL_ID;
+    material_request.pipeline = result->shader_pipeline_result.pipeline;
+    material_request.textures = std::span<const RuntimeAssetCookedTexturePayloadDesc>(textures.data(), textures.size());
+    material_request.material_slots = std::span<const RuntimeAssetCookedMaterialSlotDesc>(slots.data(), slots.size());
+    material_request.scratch_bytes = request.scratch_bytes;
+    material_request.out_material = out_material;
+
+    status = BuildRuntimeAssetCookedTextureMaterialBridge(material_request, &result->material_result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::MaterialSlot, result);
+    }
+
+    result->runtime_texture_upload_count = result->material_result.runtime_texture_upload_count;
+    result->material_texture_slot_count = result->material_result.material_texture_slot_count;
+    result->material_slots_from_cooked_payloads =
+        result->runtime_texture_upload_count == RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT &&
+        result->material_texture_slot_count == RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus BuildVisualProofCamera(
+    const RuntimeAssetVisualProofRequest &request,
+    std::uint32_t frame_id,
+    RenderSceneCameraBindingResult *out_camera,
+    RuntimeAssetVisualProofResult *result) {
+    if (out_camera == nullptr || request.scene_output == nullptr || request.scene_output->camera_count == 0U) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::MissingDependency,
+            RuntimeAssetVisualProofMissingLayer::Camera,
+            result);
+    }
+
+    const RuntimeAssetSceneCameraRecord *active_camera = nullptr;
+    for (const RuntimeAssetSceneCameraRecord &camera : request.scene_cameras) {
+        if (camera.is_active && camera.camera_id != 0U) {
+            active_camera = &camera;
+            break;
+        }
+    }
+
+    if (active_camera == nullptr) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::MissingDependency,
+            RuntimeAssetVisualProofMissingLayer::Camera,
+            result);
+    }
+
+    RhiTextureHandle target{};
+    RhiColorTargetDesc target_desc{};
+    target_desc.format = RhiFormat::Rgba8Unorm;
+    target_desc.extent = {
+        static_cast<std::uint16_t>(RUNTIME_ASSET_VISUAL_PROOF_TARGET_WIDTH),
+        static_cast<std::uint16_t>(RUNTIME_ASSET_VISUAL_PROOF_TARGET_HEIGHT)};
+    if (request.rhi_device->CreateColorTarget(target_desc, target) != RhiStatus::Success) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::RhiCaptureFailed,
+            RuntimeAssetVisualProofMissingLayer::RhiCapture,
+            result);
+    }
+
+    RenderSceneRuntimeCameraRecord camera{};
+    camera.camera_id = active_camera->camera_id;
+    camera.pose.position = {-4.0F, 2.0F, -6.0F};
+    camera.pose.target = {0.0F, 0.0F, 0.0F};
+    camera.pose.up = {0.0F, 1.0F, 0.0F};
+    camera.projection.kind = yuengine::rendercore::RenderCameraProjectionKind::Perspective;
+    camera.projection.aspect_ratio = 1.0F;
+    camera.projection.vertical_fov_radians = 1.0471975512F;
+    camera.projection.near_z = 0.1F;
+    camera.projection.far_z = 100.0F;
+    camera.target = target;
+    camera.clear_color = RhiColor{16U, 24U, 40U, 255U};
+    camera.is_active = true;
+
+    const std::array<RenderSceneRuntimeCameraRecord, 1U> cameras{camera};
+    RenderSceneCameraBindingRequest camera_request{};
+    camera_request.frame_id = frame_id;
+    camera_request.active_camera_id = camera.camera_id;
+    camera_request.cameras = std::span<const RenderSceneRuntimeCameraRecord>(cameras.data(), cameras.size());
+    camera_request.capture_byte_budget =
+        request.capture_byte_budget_per_entity * RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT;
+    camera_request.capture_requested = true;
+
+    RenderSceneCameraFrameBinder binder;
+    const RenderSceneStatus status = binder.BuildActiveCameraFrame(camera_request, out_camera);
+    if (status != RenderSceneStatus::Success) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::MissingDependency,
+            RuntimeAssetVisualProofMissingLayer::Camera,
+            result);
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+const RuntimeAssetSceneTransformOutputRecord *FindSceneTransformOutput(
+    const RuntimeAssetVisualProofRequest &request,
+    WorldObjectId world_object_id) {
+    for (const RuntimeAssetSceneTransformOutputRecord &transform : request.scene_transforms) {
+        if (transform.world_object_id.value == world_object_id.value) {
+            return &transform;
+        }
+    }
+
+    return nullptr;
+}
+
+RuntimeAssetDataStatus ValidateVisualProofSceneOutputs(
+    const RuntimeAssetVisualProofRequest &request,
+    RuntimeAssetVisualProofResult *result) {
+    if (request.scene == nullptr ||
+        !IsLoadedRuntimeAssetRecordUsable(
+            *request.scene,
+            RuntimeAssetFileKind::Scene,
+            request.require_cooked_records) ||
+        request.scene_output == nullptr ||
+        request.scene_output->status != RuntimeAssetDataStatus::Success ||
+        request.scene_output->entity_count < RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT ||
+        request.scene_output->transform_count < RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT ||
+        request.scene_output->animation_sampled_value_count == 0U ||
+        request.scene_output->animation_sample_status != AnimationRuntimeStatus::Success ||
+        request.scene_output->animation_apply_status != AnimationRuntimeStatus::Success ||
+        request.scene_entities.size() < RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT ||
+        request.scene_transforms.size() < RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::MissingDependency,
+            RuntimeAssetVisualProofMissingLayer::SceneTransform,
+            result);
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus BuildVisualProofEntities(
+    const RuntimeAssetVisualProofRequest &request,
+    std::span<const RenderScenePrimitiveGeometryRecord> geometry,
+    std::array<RenderSceneThreePrimitiveEntityRequest, RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT> *out_entities,
+    RuntimeAssetVisualProofResult *result) {
+    if (out_entities == nullptr || geometry.size() < RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::InvalidArgument,
+            RuntimeAssetVisualProofMissingLayer::SceneTransform,
+            result);
+    }
+
+    RuntimeAssetDataStatus status = ValidateVisualProofSceneOutputs(request, result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    constexpr std::array<const char *, RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT> names{
+        "Cube",
+        "Cylinder",
+        "Cone"};
+    constexpr std::array<std::size_t, RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT> name_sizes{4U, 8U, 4U};
+
+    for (std::size_t index = 0U; index < RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT; ++index) {
+        const RuntimeAssetSceneEntityRecord &scene_entity = request.scene_entities[index];
+        const RuntimeAssetSceneTransformOutputRecord *transform =
+            FindSceneTransformOutput(request, scene_entity.world_object_id);
+        if (transform == nullptr ||
+            !scene_entity.world_object_id.IsValid() ||
+            !scene_entity.is_visible ||
+            !scene_entity.is_active) {
+            return FailVisualProof(
+                RuntimeAssetDataStatus::MissingDependency,
+                RuntimeAssetVisualProofMissingLayer::SceneTransform,
+                result);
+        }
+
+        RuntimeAssetSceneEntityRecord entity = scene_entity;
+        entity.transform = transform->transform;
+        (*out_entities)[index].world_object_id = entity.world_object_id;
+        (*out_entities)[index].object_name = names[index];
+        (*out_entities)[index].object_name_byte_count = name_sizes[index];
+        (*out_entities)[index].transform = entity.transform;
+        (*out_entities)[index].geometry = geometry[index];
+        (*out_entities)[index].is_visible = entity.is_visible;
+        (*out_entities)[index].is_active = entity.is_active;
+    }
+
+    result->scene_transforms_from_animation_sampling = true;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetVisualProofMissingLayer MapVisualProofCaptureLayer(
+    RenderSceneThreePrimitiveCaptureMissingLayer layer) {
+    switch (layer) {
+        case RenderSceneThreePrimitiveCaptureMissingLayer::None:
+            return RuntimeAssetVisualProofMissingLayer::None;
+        case RenderSceneThreePrimitiveCaptureMissingLayer::Camera:
+            return RuntimeAssetVisualProofMissingLayer::Camera;
+        case RenderSceneThreePrimitiveCaptureMissingLayer::GeometryModel:
+            return RuntimeAssetVisualProofMissingLayer::Model;
+        case RenderSceneThreePrimitiveCaptureMissingLayer::MaterialTextureSlots:
+            return RuntimeAssetVisualProofMissingLayer::MaterialSlot;
+        case RenderSceneThreePrimitiveCaptureMissingLayer::ShaderPipeline:
+            return RuntimeAssetVisualProofMissingLayer::ShaderPipeline;
+        case RenderSceneThreePrimitiveCaptureMissingLayer::ScenePlacement:
+        case RenderSceneThreePrimitiveCaptureMissingLayer::RenderSceneSubmission:
+            return RuntimeAssetVisualProofMissingLayer::SceneTransform;
+        case RenderSceneThreePrimitiveCaptureMissingLayer::RenderCoreRhiDrawCapture:
+        case RenderSceneThreePrimitiveCaptureMissingLayer::RhiCaptureTarget:
+        case RenderSceneThreePrimitiveCaptureMissingLayer::OutputPath:
+            return RuntimeAssetVisualProofMissingLayer::RhiCapture;
+        default:
+            break;
+    }
+
+    return RuntimeAssetVisualProofMissingLayer::RhiCapture;
+}
+
+RuntimeAssetDataStatus MapVisualProofCaptureStatus(
+    const RenderSceneThreePrimitiveCaptureResult &capture_result) {
+    const RuntimeAssetVisualProofMissingLayer layer =
+        MapVisualProofCaptureLayer(capture_result.first_missing_layer);
+    if (layer == RuntimeAssetVisualProofMissingLayer::Model ||
+        layer == RuntimeAssetVisualProofMissingLayer::MaterialSlot ||
+        layer == RuntimeAssetVisualProofMissingLayer::SceneTransform ||
+        layer == RuntimeAssetVisualProofMissingLayer::Camera) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (layer == RuntimeAssetVisualProofMissingLayer::ShaderPipeline) {
+        return RuntimeAssetDataStatus::RhiPipelineFailed;
+    }
+
+    return RuntimeAssetDataStatus::RhiCaptureFailed;
+}
+
+RuntimeAssetDataStatus ExecuteVisualProofCaptureFrames(
+    const RuntimeAssetVisualProofRequest &request,
+    const RenderSceneRuntimeMaterialRecord &material,
+    std::span<const RenderSceneThreePrimitiveEntityRequest> entities,
+    RuntimeAssetVisualProofResult *result) {
+    if (request.frame_count == 0U || request.first_frame_id == 0U ||
+        request.capture_byte_budget_per_entity == 0U ||
+        request.capture_output.data() == nullptr ||
+        request.output_path == nullptr ||
+        request.output_path_byte_count == 0U) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::InvalidArgument,
+            RuntimeAssetVisualProofMissingLayer::RhiCapture,
+            result);
+    }
+
+    const std::size_t frame_capture_bytes =
+        request.capture_byte_budget_per_entity * RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT;
+    if (request.capture_output.size() < (frame_capture_bytes * request.frame_count)) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::InvalidArgument,
+            RuntimeAssetVisualProofMissingLayer::RhiCapture,
+            result);
+    }
+
+    RenderSceneThreePrimitiveCaptureRoute capture_route;
+    for (std::uint32_t frame_index = 0U; frame_index < request.frame_count; ++frame_index) {
+        RenderSceneCameraBindingResult camera{};
+        RuntimeAssetDataStatus status = BuildVisualProofCamera(
+            request,
+            request.first_frame_id + frame_index,
+            &camera,
+            result);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+
+        const std::size_t capture_offset = frame_capture_bytes * frame_index;
+        RenderSceneThreePrimitiveCaptureRequest capture_request{};
+        capture_request.frame_id = request.first_frame_id + frame_index;
+        capture_request.camera = camera;
+        capture_request.material = material;
+        capture_request.entities = entities;
+        capture_request.rhi_device = request.rhi_device;
+        capture_request.output_path = request.output_path;
+        capture_request.output_path_byte_count = request.output_path_byte_count;
+        capture_request.capture_output =
+            request.capture_output.subspan(capture_offset, frame_capture_bytes);
+        capture_request.capture_byte_budget_per_entity = request.capture_byte_budget_per_entity;
+
+        RenderSceneThreePrimitiveCaptureResult capture_result{};
+        const RenderSceneThreePrimitiveCaptureStatus capture_status =
+            capture_route.Execute(capture_request, &capture_result);
+        result->capture_result = capture_result;
+        if (capture_status != RenderSceneThreePrimitiveCaptureStatus::Success) {
+            const RuntimeAssetVisualProofMissingLayer layer =
+                MapVisualProofCaptureLayer(capture_result.first_missing_layer);
+            return FailVisualProof(MapVisualProofCaptureStatus(capture_result), layer, result);
+        }
+
+        result->capture_bytes_written += capture_result.capture_bytes_written;
+        result->submitted_draw_count += static_cast<std::uint32_t>(capture_result.frame_result.output_draw_count);
+        ++result->completed_frame_count;
+    }
+
+    result->render_scene_routed =
+        result->submitted_draw_count >=
+        (RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT * result->completed_frame_count);
+    result->render_core_rhi_capture_routed = result->capture_bytes_written > 0U;
+    return RuntimeAssetDataStatus::Success;
+}
 }
 
 const char *RuntimeAssetFileKindName(RuntimeAssetFileKind kind) {
@@ -4970,6 +5843,128 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedShaderProgramPipeline(
     result.pipeline_desc = pipeline_desc;
     result.published_handles = true;
     result.status = RuntimeAssetDataStatus::Success;
+    *out_result = result;
+    return result.status;
+}
+
+RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
+    const RuntimeAssetVisualProofRequest &request,
+    RuntimeAssetVisualProofResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetVisualProofResult result{};
+    SeedVisualProofLedger(request, &result);
+
+    if (request.resource_registry == nullptr ||
+        request.asset_manager == nullptr ||
+        request.loaded_files.data() == nullptr ||
+        request.loaded_files.empty() ||
+        request.scene_entities.data() == nullptr ||
+        request.scene_transforms.data() == nullptr ||
+        request.scene_cameras.data() == nullptr ||
+        request.scratch_bytes.data() == nullptr) {
+        result.status = RuntimeAssetDataStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.rhi_device == nullptr) {
+        result.status = RuntimeAssetDataStatus::RhiCaptureFailed;
+        result.first_missing_layer = RuntimeAssetVisualProofMissingLayer::RhiCapture;
+        *out_result = result;
+        return result.status;
+    }
+
+    RuntimeAssetDataStatus status = ValidateVisualProofSceneOutputs(request, &result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return status;
+    }
+
+    status = BuildVisualProofShaderPipeline(request, &result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return status;
+    }
+
+    RhiBufferHandle buffer_slot_guard{};
+    status = CreateVisualProofBuffer(
+        *request.rhi_device,
+        RhiBufferUsage::Vertex,
+        sizeof(float) * 2U,
+        &buffer_slot_guard);
+    if (status != RuntimeAssetDataStatus::Success) {
+        FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::RhiCapture, &result);
+        *out_result = result;
+        return status;
+    }
+
+    std::array<RenderScenePrimitiveGeometryRecord, RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT> geometry{};
+    const std::size_t vertex_stride_bytes = sizeof(float) * 2U;
+    for (std::uint32_t index = 0U; index < geometry.size(); ++index) {
+        const RuntimeAssetLoadedFile *mesh = nullptr;
+        status = RequireVisualProofRecord(
+            request,
+            RuntimeAssetFileKind::Mesh,
+            index,
+            RuntimeAssetVisualProofMissingLayer::Model,
+            &mesh,
+            &result);
+        if (status != RuntimeAssetDataStatus::Success) {
+            *out_result = result;
+            return status;
+        }
+
+        status = BuildVisualProofGeometry(
+            *mesh,
+            index,
+            vertex_stride_bytes,
+            *request.rhi_device,
+            &geometry[index],
+            &result);
+        if (status != RuntimeAssetDataStatus::Success) {
+            *out_result = result;
+            return status;
+        }
+    }
+
+    RenderSceneRuntimeMaterialRecord material{};
+    status = BuildVisualProofMaterial(request, &material, &result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return status;
+    }
+
+    std::array<RenderSceneThreePrimitiveEntityRequest, RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT> entities{};
+    status = BuildVisualProofEntities(
+        request,
+        std::span<const RenderScenePrimitiveGeometryRecord>(geometry.data(), geometry.size()),
+        &entities,
+        &result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return status;
+    }
+
+    status = ExecuteVisualProofCaptureFrames(
+        request,
+        material,
+        std::span<const RenderSceneThreePrimitiveEntityRequest>(entities.data(), entities.size()),
+        &result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return status;
+    }
+
+    result.loaded_records_verified =
+        (!request.require_cooked_records || result.source_record_count == 0U) &&
+        result.cooked_record_count >= (request.loaded_files.size() + 1U) &&
+        result.mesh_record_count >= RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT &&
+        result.texture_record_count >= RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT;
+    result.status = RuntimeAssetDataStatus::Success;
+    result.first_missing_layer = RuntimeAssetVisualProofMissingLayer::None;
     *out_result = result;
     return result.status;
 }

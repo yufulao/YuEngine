@@ -136,6 +136,7 @@ using yuengine::resource::ResourceSnapshot;
 using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
 using yuengine::runtimeasset::HashRuntimeAssetDataBytes;
+using yuengine::runtimeasset::BuildRuntimeAssetCookedVisualProofRoute;
 using yuengine::runtimeasset::BuildRuntimeAssetCookedShaderProgramPipeline;
 using yuengine::runtimeasset::BuildRuntimeAssetCookedTextureMaterialBridge;
 using yuengine::runtimeasset::BuildRuntimeAssetShaderProgramPipeline;
@@ -176,6 +177,9 @@ using yuengine::runtimeasset::RuntimeAssetSceneTransformOutputRecord;
 using yuengine::runtimeasset::RuntimeAssetShaderProgramPipelineRequest;
 using yuengine::runtimeasset::RuntimeAssetShaderProgramPipelineResult;
 using yuengine::runtimeasset::RuntimeAssetValidationResult;
+using yuengine::runtimeasset::RuntimeAssetVisualProofMissingLayer;
+using yuengine::runtimeasset::RuntimeAssetVisualProofRequest;
+using yuengine::runtimeasset::RuntimeAssetVisualProofResult;
 using yuengine::runtimeasset::ValidateRuntimeAssetDataBytes;
 using yuengine::streaming::ResourceDecodedTextureBridge;
 using yuengine::streaming::ResourceDecodedTextureBridgeRequest;
@@ -310,6 +314,10 @@ constexpr const char *TEST_COOKED_SLOT_OVERFLOW =
     "RuntimeAssetData_CookedMaterialSlotOverflowDoesNotMutateRenderSceneOutputs";
 constexpr const char *TEST_COOKED_RHI_CLEANUP =
     "RuntimeAssetData_CookedRhiPartialCreationFailureDestroysTransientHandles";
+constexpr const char *TEST_COOKED_VISUAL_PROOF =
+    "RuntimeAssetData_CookedRecordsDriveRuntimeVisualProofThroughRenderCoreRhi";
+constexpr const char *TEST_COOKED_VISUAL_PROOF_MISSING_LAYERS =
+    "RuntimeAssetData_CookedRuntimeVisualProofReportsExactMissingLayers";
 constexpr const char *TEST_RUNTIME_DEPENDENCIES =
     "RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges";
 constexpr const char *TEST_LOAD_RENDER =
@@ -725,6 +733,31 @@ const char *StatusName(RuntimeAssetDataStatus status) {
             return "RhiSamplerFailed";
         case RuntimeAssetDataStatus::RenderSceneMaterialFailed:
             return "RenderSceneMaterialFailed";
+        case RuntimeAssetDataStatus::RhiCaptureFailed:
+            return "RhiCaptureFailed";
+        default:
+            break;
+    }
+
+    return "Unknown";
+}
+
+const char *VisualProofLayerName(RuntimeAssetVisualProofMissingLayer layer) {
+    switch (layer) {
+        case RuntimeAssetVisualProofMissingLayer::None:
+            return "None";
+        case RuntimeAssetVisualProofMissingLayer::Model:
+            return "Model";
+        case RuntimeAssetVisualProofMissingLayer::MaterialSlot:
+            return "MaterialSlot";
+        case RuntimeAssetVisualProofMissingLayer::ShaderPipeline:
+            return "ShaderPipeline";
+        case RuntimeAssetVisualProofMissingLayer::SceneTransform:
+            return "SceneTransform";
+        case RuntimeAssetVisualProofMissingLayer::Camera:
+            return "Camera";
+        case RuntimeAssetVisualProofMissingLayer::RhiCapture:
+            return "RhiCapture";
         default:
             break;
     }
@@ -3149,6 +3182,395 @@ int RuntimeAssetDataImportCookCommandReportsMissingLayerStatus() {
     if (capacity_status != RuntimeAssetDataStatus::CapacityExceeded ||
         small_capacity.missing_layer != RuntimeAssetImportCookMissingLayer::RuntimeAssetData) {
         return Fail("descriptor capacity failure did not report RuntimeAssetData layer");
+    }
+
+    return 0;
+}
+
+struct CookedVisualProofContext final {
+    GeneratedFixtureCommandContext fixture;
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<RuntimeAssetLoadedFile, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> loaded_files{};
+    std::array<RuntimeAssetSceneResourceRef, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> scene_refs{};
+    std::array<RuntimeAssetSceneCameraRecord, 1U> scene_cameras{};
+    std::array<RuntimeAssetSceneEntityRecord, 3U> scene_entities{};
+    std::array<RuntimeAssetSceneTransformOutputRecord, 3U> scene_transforms{};
+    RuntimeAssetSceneLoaderOutput scene_output{};
+    RuntimeAssetGraphLoadResult load_result{};
+    RuntimeAssetLoadedShaderProgramData shader_program{};
+    RuntimeAssetRhiDevice device;
+    std::array<std::uint8_t, RUNTIME_TEXTURE_BYTE_COUNT> scratch_bytes{};
+    std::array<std::uint8_t, TOTAL_CAPTURE_BYTES * 2U> capture_bytes{};
+};
+
+bool DecodeCookedVisualProofShader(CookedVisualProofContext *context) {
+    if (context == nullptr) {
+        return FailStep("null cooked visual proof shader context");
+    }
+
+    const RuntimeAssetFileDesc *shader_desc = nullptr;
+    for (const RuntimeAssetFileDesc &desc : context->fixture.cooked_files) {
+        if (desc.kind == RuntimeAssetFileKind::Shader) {
+            shader_desc = &desc;
+            break;
+        }
+    }
+
+    if (shader_desc == nullptr) {
+        return FailStep("generated cooked fixture did not include shader desc");
+    }
+
+    std::vector<std::uint8_t> bytes{};
+    if (!ReadFile(context->fixture.table, shader_desc->path, &bytes)) {
+        return FailStep("generated cooked shader read failed");
+    }
+
+    const RuntimeAssetDataStatus status = DecodeRuntimeAssetShaderProgramData(
+        std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+        static_cast<std::uint32_t>(shader_desc->stable_id),
+        &context->shader_program);
+    if (status != RuntimeAssetDataStatus::Success ||
+        context->shader_program.validation.artifact_class != RuntimeAssetArtifactClass::Cooked) {
+        return FailStep("generated cooked shader decode failed");
+    }
+
+    return true;
+}
+
+bool LoadCookedVisualProofGraph(CookedVisualProofContext *context) {
+    if (context == nullptr) {
+        return FailStep("null cooked visual proof graph context");
+    }
+
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = &context->fixture.table;
+    load_request.mount = MountId(MOUNT_ID);
+    load_request.scene_path = VirtualPath(context->fixture.command.fixture.cooked_scene.path);
+    load_request.scene_resource_type = context->fixture.command.fixture.cooked_scene.resource_type;
+    load_request.scene_asset_type = context->fixture.command.fixture.cooked_scene.asset_type;
+    load_request.scene_stable_id = context->fixture.command.fixture.cooked_scene.stable_id;
+    load_request.files = context->fixture.cooked_files.data();
+    load_request.file_count = static_cast<std::uint32_t>(context->fixture.cooked_files.size());
+    load_request.resource_registry = &context->registry;
+    load_request.asset_manager = &context->manager;
+    load_request.loaded_files = context->loaded_files.data();
+    load_request.loaded_file_capacity = static_cast<std::uint32_t>(context->loaded_files.size());
+    load_request.scene_resource_refs = context->scene_refs.data();
+    load_request.scene_resource_ref_capacity = static_cast<std::uint32_t>(context->scene_refs.size());
+    load_request.scene_cameras = context->scene_cameras.data();
+    load_request.scene_camera_capacity = static_cast<std::uint32_t>(context->scene_cameras.size());
+    load_request.scene_entities = context->scene_entities.data();
+    load_request.scene_entity_capacity = static_cast<std::uint32_t>(context->scene_entities.size());
+    load_request.scene_transforms = context->scene_transforms.data();
+    load_request.scene_transform_capacity = static_cast<std::uint32_t>(context->scene_transforms.size());
+    load_request.scene_output = &context->scene_output;
+    load_request.animation_frame_context.frame_index = 1U;
+    load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+
+    const RuntimeAssetDataStatus status = LoadRuntimeAssetDataGraph(load_request, &context->load_result);
+    if (status != RuntimeAssetDataStatus::Success ||
+        context->load_result.status != RuntimeAssetDataStatus::Success) {
+        return FailStep("generated cooked graph load failed");
+    }
+
+    if (context->load_result.loaded_file_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
+        context->load_result.scene.artifact_class != RuntimeAssetArtifactClass::Cooked ||
+        context->load_result.scene_registered == false ||
+        context->scene_output.status != RuntimeAssetDataStatus::Success) {
+        return FailStep("generated cooked graph diagnostics are incomplete");
+    }
+
+    for (const RuntimeAssetLoadedFile &file : context->loaded_files) {
+        if (file.artifact_class != RuntimeAssetArtifactClass::Cooked ||
+            file.schema_version != 1U ||
+            file.identity_hash == 0U ||
+            file.payload_hash == 0U ||
+            file.record_table_count == 0U) {
+            return FailStep("loaded cooked record validation metadata was not carried forward");
+        }
+    }
+
+    return true;
+}
+
+bool SetupCookedVisualProofContext(std::string_view root_name, CookedVisualProofContext *context) {
+    if (context == nullptr) {
+        return FailStep("null cooked visual proof context");
+    }
+
+    if (!ExecuteGeneratedFixtureCommand(root_name, &context->fixture)) {
+        return FailStep("generated cooked visual proof fixture setup failed");
+    }
+
+    if (!LoadCookedVisualProofGraph(context)) {
+        return false;
+    }
+
+    if (!DecodeCookedVisualProofShader(context)) {
+        return false;
+    }
+
+    if (context->device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return FailStep("cooked visual proof rhi init failed");
+    }
+
+    return true;
+}
+
+RuntimeAssetVisualProofRequest CookedVisualProofRequest(
+    CookedVisualProofContext &context,
+    std::uint32_t frame_count = 2U) {
+    RuntimeAssetVisualProofRequest request{};
+    request.resource_registry = &context.registry;
+    request.asset_manager = &context.manager;
+    request.rhi_device = &context.device;
+    request.scene = &context.load_result.scene;
+    request.loaded_files = std::span<const RuntimeAssetLoadedFile>(
+        context.loaded_files.data(),
+        context.load_result.loaded_file_count);
+    request.scene_cameras = std::span<const RuntimeAssetSceneCameraRecord>(
+        context.scene_cameras.data(),
+        context.scene_output.camera_count);
+    request.scene_entities = std::span<const RuntimeAssetSceneEntityRecord>(
+        context.scene_entities.data(),
+        context.scene_output.entity_count);
+    request.scene_transforms = std::span<const RuntimeAssetSceneTransformOutputRecord>(
+        context.scene_transforms.data(),
+        context.scene_output.transform_count);
+    request.scene_output = &context.scene_output;
+    request.shader_program = &context.shader_program;
+    request.scratch_bytes = std::span<std::uint8_t>(
+        context.scratch_bytes.data(),
+        context.scratch_bytes.size());
+    request.capture_output = std::span<std::uint8_t>(
+        context.capture_bytes.data(),
+        context.capture_bytes.size());
+    request.capture_byte_budget_per_entity = CAPTURE_BYTES_PER_ENTITY;
+    request.first_frame_id = FRAME_ID + 500U;
+    request.frame_count = frame_count;
+    request.output_path = "Artifacts/RuntimeAssetData/CookedVisualProof.rvf";
+    request.output_path_byte_count = 48U;
+    request.require_cooked_records = true;
+    return request;
+}
+
+int RuntimeAssetDataCookedRecordsDriveRuntimeVisualProofThroughRenderCoreRhi() {
+    CookedVisualProofContext context{};
+    if (!SetupCookedVisualProofContext("CookedVisualProofSuccess", &context)) {
+        return Fail("cooked visual proof setup failed");
+    }
+
+    RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context);
+    RuntimeAssetVisualProofResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetCookedVisualProofRoute(request, &result);
+    if (status != RuntimeAssetDataStatus::Success ||
+        result.status != RuntimeAssetDataStatus::Success ||
+        result.first_missing_layer != RuntimeAssetVisualProofMissingLayer::None) {
+        std::fprintf(
+            stderr,
+            "status=%s result=%s layer=%s capture_bytes=%zu draws=%u\n",
+            StatusName(status),
+            StatusName(result.status),
+            VisualProofLayerName(result.first_missing_layer),
+            result.capture_bytes_written,
+            result.submitted_draw_count);
+        for (const RuntimeAssetLoadedFile &file : context.loaded_files) {
+            if (file.kind == RuntimeAssetFileKind::Mesh) {
+                std::fprintf(
+                    stderr,
+                    "mesh stable=%llu geom=%u vertices=%u indices=%u asset=%u/%u resource=%u/%u\n",
+                    static_cast<unsigned long long>(file.stable_id),
+                    static_cast<unsigned int>(file.mesh_geometry_kind),
+                    file.vertex_count,
+                    file.index_count,
+                    file.asset.slot,
+                    file.asset.generation,
+                    file.resource.slot,
+                    file.resource.generation);
+            }
+        }
+        return Fail("cooked visual proof route rejected generated cooked records");
+    }
+
+    if (!result.loaded_records_verified ||
+        result.cooked_record_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U ||
+        result.source_record_count != 0U ||
+        result.mesh_record_count != 3U ||
+        result.texture_record_count != 3U) {
+        return Fail("cooked visual proof did not verify the loaded RuntimeAsset ledger");
+    }
+
+    if (!result.shader_pipeline_from_runtime_asset ||
+        !result.material_slots_from_cooked_payloads ||
+        !result.scene_transforms_from_animation_sampling ||
+        !result.render_scene_routed ||
+        !result.render_core_rhi_capture_routed) {
+        return Fail("cooked visual proof did not route every required runtime layer");
+    }
+
+    const std::size_t expected_capture_bytes =
+        static_cast<std::size_t>(result.submitted_draw_count) * RUNTIME_TEXTURE_BYTE_COUNT;
+    if (result.scene_entity_count != 3U ||
+        result.scene_transform_count != 3U ||
+        result.scene_camera_count != 1U ||
+        result.animation_sampled_value_count == 0U ||
+        result.material_texture_slot_count != RUNTIME_TEXTURE_SLOT_COUNT ||
+        result.runtime_texture_upload_count != RUNTIME_TEXTURE_SLOT_COUNT ||
+        result.completed_frame_count != 2U ||
+        result.submitted_draw_count != 6U ||
+        result.capture_bytes_written != expected_capture_bytes) {
+        std::fprintf(
+            stderr,
+            "entities=%u transforms=%u cameras=%u anim=%u slots=%u uploads=%u frames=%u draws=%u capture=%zu expected_capture=%zu\n",
+            result.scene_entity_count,
+            result.scene_transform_count,
+            result.scene_camera_count,
+            result.animation_sampled_value_count,
+            result.material_texture_slot_count,
+            result.runtime_texture_upload_count,
+            result.completed_frame_count,
+            result.submitted_draw_count,
+            result.capture_bytes_written,
+            expected_capture_bytes);
+        return Fail("cooked visual proof route produced incomplete capture ledger");
+    }
+
+    return 0;
+}
+
+bool ExpectCookedVisualProofMissingLayer(
+    RuntimeAssetVisualProofRequest request,
+    RuntimeAssetDataStatus expected_status,
+    RuntimeAssetVisualProofMissingLayer expected_layer) {
+    RuntimeAssetVisualProofResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetCookedVisualProofRoute(request, &result);
+    if (status != expected_status ||
+        result.status != expected_status ||
+        result.first_missing_layer != expected_layer ||
+        result.completed_frame_count != 0U) {
+        std::fprintf(
+            stderr,
+            "expected=%s/%s actual=%s/%s completed=%u\n",
+            StatusName(expected_status),
+            VisualProofLayerName(expected_layer),
+            StatusName(status),
+            VisualProofLayerName(result.first_missing_layer),
+            result.completed_frame_count);
+        return FailStep("cooked visual proof did not report expected missing layer");
+    }
+
+    return true;
+}
+
+int RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers() {
+    {
+        CookedVisualProofContext context{};
+        if (!SetupCookedVisualProofContext("CookedVisualProofMissingModel", &context)) {
+            return Fail("missing model setup failed");
+        }
+
+        std::array<RuntimeAssetLoadedFile, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> loaded_files =
+            context.loaded_files;
+        loaded_files[0U].mesh_geometry_kind = yuengine::runtimeasset::RuntimeAssetMeshGeometryKind::Unknown;
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        request.loaded_files = std::span<const RuntimeAssetLoadedFile>(loaded_files.data(), loaded_files.size());
+        if (!ExpectCookedVisualProofMissingLayer(
+                request,
+                RuntimeAssetDataStatus::MissingDependency,
+                RuntimeAssetVisualProofMissingLayer::Model)) {
+            return Fail("missing model was not localized");
+        }
+    }
+
+    {
+        CookedVisualProofContext context{};
+        if (!SetupCookedVisualProofContext("CookedVisualProofMissingMaterialSlot", &context)) {
+            return Fail("missing material slot setup failed");
+        }
+
+        std::array<RuntimeAssetLoadedFile, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> loaded_files =
+            context.loaded_files;
+        loaded_files[3U].texture_slot_count = 0U;
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        request.loaded_files = std::span<const RuntimeAssetLoadedFile>(loaded_files.data(), loaded_files.size());
+        if (!ExpectCookedVisualProofMissingLayer(
+                request,
+                RuntimeAssetDataStatus::MissingDependency,
+                RuntimeAssetVisualProofMissingLayer::MaterialSlot)) {
+            return Fail("missing material slot was not localized");
+        }
+    }
+
+    {
+        CookedVisualProofContext context{};
+        if (!SetupCookedVisualProofContext("CookedVisualProofMissingShaderPipeline", &context)) {
+            return Fail("missing shader pipeline setup failed");
+        }
+
+        RuntimeAssetLoadedShaderProgramData shader_program = context.shader_program;
+        shader_program.vertex_bytecode_size = 0U;
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        request.shader_program = &shader_program;
+        if (!ExpectCookedVisualProofMissingLayer(
+                request,
+                RuntimeAssetDataStatus::RhiPipelineFailed,
+                RuntimeAssetVisualProofMissingLayer::ShaderPipeline)) {
+            return Fail("missing shader pipeline was not localized");
+        }
+    }
+
+    {
+        CookedVisualProofContext context{};
+        if (!SetupCookedVisualProofContext("CookedVisualProofMissingSceneTransform", &context)) {
+            return Fail("missing scene transform setup failed");
+        }
+
+        RuntimeAssetSceneLoaderOutput scene_output = context.scene_output;
+        scene_output.transform_count = 0U;
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        request.scene_output = &scene_output;
+        if (!ExpectCookedVisualProofMissingLayer(
+                request,
+                RuntimeAssetDataStatus::MissingDependency,
+                RuntimeAssetVisualProofMissingLayer::SceneTransform)) {
+            return Fail("missing scene transform was not localized");
+        }
+    }
+
+    {
+        CookedVisualProofContext context{};
+        if (!SetupCookedVisualProofContext("CookedVisualProofMissingCamera", &context)) {
+            return Fail("missing camera setup failed");
+        }
+
+        std::array<RuntimeAssetSceneCameraRecord, 1U> cameras = context.scene_cameras;
+        cameras[0U].is_active = false;
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        request.scene_cameras = std::span<const RuntimeAssetSceneCameraRecord>(cameras.data(), cameras.size());
+        if (!ExpectCookedVisualProofMissingLayer(
+                request,
+                RuntimeAssetDataStatus::MissingDependency,
+                RuntimeAssetVisualProofMissingLayer::Camera)) {
+            return Fail("missing camera was not localized");
+        }
+    }
+
+    {
+        CookedVisualProofContext context{};
+        if (!SetupCookedVisualProofContext("CookedVisualProofMissingRhiCapture", &context)) {
+            return Fail("missing rhi capture setup failed");
+        }
+
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        request.rhi_device = nullptr;
+        if (!ExpectCookedVisualProofMissingLayer(
+                request,
+                RuntimeAssetDataStatus::RhiCaptureFailed,
+                RuntimeAssetVisualProofMissingLayer::RhiCapture)) {
+            return Fail("missing RHI capture was not localized");
+        }
     }
 
     return 0;
@@ -6735,6 +7157,10 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataCookedMaterialSlotOverflowDoesNotMutateRenderSceneOutputs},
     {TEST_COOKED_RHI_CLEANUP,
      RuntimeAssetDataCookedRhiPartialCreationFailureDestroysTransientHandles},
+    {TEST_COOKED_VISUAL_PROOF,
+     RuntimeAssetDataCookedRecordsDriveRuntimeVisualProofThroughRenderCoreRhi},
+    {TEST_COOKED_VISUAL_PROOF_MISSING_LAYERS,
+     RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers},
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},
