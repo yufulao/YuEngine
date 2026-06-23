@@ -235,6 +235,8 @@ constexpr const char *TEST_LOADER_TRANSACTION_INVALID_SCHEMA =
     "RuntimeAssetData_LoaderRejectsMissingSchemaBeforeMutation";
 constexpr const char *TEST_LOADER_TRANSACTION_COMMIT_FAILURE =
     "RuntimeAssetData_LoaderCommitFailureReportsMutatedState";
+constexpr const char *TEST_LOADER_TRANSACTION_FILE_COUNT_PREFLIGHT =
+    "RuntimeAssetData_LoaderRejectsOversizedFileCountBeforeReadAndMutation";
 constexpr const char *TEST_SHADER_PROGRAM_DEPENDENCIES =
     "RuntimeAssetData_ShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
 constexpr const char *TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES =
@@ -3194,6 +3196,93 @@ int RuntimeAssetDataLoaderCommitFailureReportsMutatedState() {
     return 0;
 }
 
+int RuntimeAssetDataLoaderRejectsOversizedFileCountBeforeReadAndMutation() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("LoaderFileCountPreflightNoMutation"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const AssetSnapshot before_asset_snapshot = manager.Snapshot();
+
+    const std::uint32_t oversized_file_count = yuengine::resource::MAX_RESOURCE_COUNT;
+    std::vector<RuntimeAssetFileDesc> file_descs(oversized_file_count);
+    std::vector<RuntimeAssetLoadedFile> loaded_files(oversized_file_count);
+    std::vector<RuntimeAssetSceneResourceRef> scene_resource_refs(oversized_file_count);
+    std::array<RuntimeAssetSceneCameraRecord, 1U> scene_cameras{};
+    std::array<RuntimeAssetSceneEntityRecord, 1U> scene_entities{};
+    std::array<RuntimeAssetSceneTransformOutputRecord, 1U> scene_transforms{};
+    RuntimeAssetSceneLoaderOutput scene_output{};
+    scene_output.status = RuntimeAssetDataStatus::BudgetExceeded;
+    scene_resource_refs[0U].stable_id = 0xBAD0U;
+    loaded_files[0U].stable_id = 0xBAD1U;
+
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = &table;
+    load_request.mount = MountId(MOUNT_ID);
+    load_request.scene_path = VirtualPath("Scene/OversizedShouldNotRead.yuscene");
+    load_request.scene_resource_type = ResourceTypeId{RESOURCE_TYPE_SCENE};
+    load_request.scene_asset_type = AssetTypeId{ASSET_TYPE_SCENE};
+    load_request.scene_stable_id = 7001U;
+    load_request.files = file_descs.data();
+    load_request.file_count = oversized_file_count;
+    load_request.resource_registry = &registry;
+    load_request.asset_manager = &manager;
+    load_request.loaded_files = loaded_files.data();
+    load_request.loaded_file_capacity = oversized_file_count;
+    load_request.scene_resource_refs = scene_resource_refs.data();
+    load_request.scene_resource_ref_capacity = oversized_file_count;
+    load_request.scene_cameras = scene_cameras.data();
+    load_request.scene_camera_capacity = static_cast<std::uint32_t>(scene_cameras.size());
+    load_request.scene_entities = scene_entities.data();
+    load_request.scene_entity_capacity = static_cast<std::uint32_t>(scene_entities.size());
+    load_request.scene_transforms = scene_transforms.data();
+    load_request.scene_transform_capacity = static_cast<std::uint32_t>(scene_transforms.size());
+    load_request.scene_output = &scene_output;
+
+    RuntimeAssetGraphLoadResult load_result{};
+    const RuntimeAssetDataStatus status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+    if (status != RuntimeAssetDataStatus::CapacityExceeded ||
+        load_result.status != RuntimeAssetDataStatus::CapacityExceeded) {
+        return Fail("oversized file count was not rejected in request preflight");
+    }
+
+    if (load_result.transaction_plan.status != RuntimeAssetDataStatus::CapacityExceeded ||
+        load_result.transaction_plan.phase != RuntimeAssetLoadTransactionPhase::Preflight ||
+        load_result.transaction_result.status != RuntimeAssetDataStatus::CapacityExceeded ||
+        load_result.transaction_result.phase != RuntimeAssetLoadTransactionPhase::Preflight ||
+        load_result.transaction_result.mutated_state) {
+        return Fail("oversized file count did not report pre-read transaction diagnostics");
+    }
+
+    if (load_result.file_read_count != 0U ||
+        load_result.loaded_file_count != 0U ||
+        load_result.scene_registered ||
+        load_result.resource_dependency_count != 0U ||
+        load_result.asset_dependency_count != 0U) {
+        return Fail("oversized file count read or committed graph state before rejection");
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    const AssetSnapshot after_asset_snapshot = manager.Snapshot();
+    if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count ||
+        after_resource_snapshot.dependency_edge_count != before_resource_snapshot.dependency_edge_count ||
+        after_asset_snapshot.active_asset_count != before_asset_snapshot.active_asset_count ||
+        after_asset_snapshot.active_dependency_edge_count != before_asset_snapshot.active_dependency_edge_count) {
+        return Fail("oversized file count mutated registry or asset manager before rejection");
+    }
+
+    if (scene_output.status != RuntimeAssetDataStatus::BudgetExceeded ||
+        scene_resource_refs[0U].stable_id != 0xBAD0U ||
+        loaded_files[0U].stable_id != 0xBAD1U) {
+        return Fail("oversized file count mutated caller outputs before rejection");
+    }
+
+    return 0;
+}
+
 bool ExpectValidationStatus(
     std::string_view text,
     RuntimeAssetFileKind kind,
@@ -3500,7 +3589,9 @@ int RuntimeAssetDataHeaderParserRejectsPartialVersionsAndNoise() {
 int RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation() {
     constexpr const char *misleading_scene_path = "Scene/MisleadingScene.yuscene";
 
-    auto probe = [&](std::string_view scene_text, RuntimeAssetDataStatus expected_status) -> bool {
+    auto probe = [misleading_scene_path](
+                     std::string_view scene_text,
+                     RuntimeAssetDataStatus expected_status) -> bool {
         MountTable table;
         if (!CreateMountedTable(TestRoot("LoaderRejectsMetadata"), &table)) {
             return false;
@@ -5820,6 +5911,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation},
     {TEST_LOADER_TRANSACTION_INVALID_SCHEMA, RuntimeAssetDataLoaderRejectsMissingSchemaBeforeMutation},
     {TEST_LOADER_TRANSACTION_COMMIT_FAILURE, RuntimeAssetDataLoaderCommitFailureReportsMutatedState},
+    {TEST_LOADER_TRANSACTION_FILE_COUNT_PREFLIGHT,
+     RuntimeAssetDataLoaderRejectsOversizedFileCountBeforeReadAndMutation},
     {TEST_SHADER_PROGRAM_DEPENDENCIES, RuntimeAssetDataShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_SCENE_CAMERA_ANIMATION_DEPENDENCIES, RuntimeAssetDataSceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation},
     {TEST_ANIMATION_DEPENDENCIES, RuntimeAssetDataAnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs},

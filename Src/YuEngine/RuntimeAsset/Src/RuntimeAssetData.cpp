@@ -579,6 +579,11 @@ struct RuntimeAssetSceneEntityStageRow final {
     std::uint32_t sort_key = 0U;
 };
 
+struct RuntimeAssetGraphRequestCounts final {
+    std::uint32_t record_count = 0U;
+    std::uint32_t dependency_edge_count = 0U;
+};
+
 struct RuntimeAssetSceneLoaderStage final {
     std::array<RuntimeAssetSceneCameraRecord, RUNTIME_ASSET_MAX_SCENE_CAMERA_COUNT> cameras{};
     std::array<RuntimeAssetSceneEntityRecord, RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT> entities{};
@@ -637,14 +642,17 @@ RuntimeAssetDataStatus ParseSceneCameraRecord(
     record.camera_id = camera_id;
     if (active_value == "active" || active_value == "1" || active_value == "true") {
         record.is_active = true;
-    } else if (active_value == "inactive" || active_value == "0" || active_value == "false") {
-        record.is_active = false;
-    } else {
-        return RuntimeAssetDataStatus::InvalidDependency;
+        *out_record = record;
+        return RuntimeAssetDataStatus::Success;
     }
 
-    *out_record = record;
-    return RuntimeAssetDataStatus::Success;
+    if (active_value == "inactive" || active_value == "0" || active_value == "false") {
+        record.is_active = false;
+        *out_record = record;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    return RuntimeAssetDataStatus::InvalidDependency;
 }
 
 RuntimeAssetDataStatus ParseSceneCameras(
@@ -945,10 +953,14 @@ RuntimeAssetHeaderParseResult ParseRuntimeAssetHeader(
     if (magic == "YUASSET") {
         result.artifact_class = RuntimeAssetArtifactClass::Source;
         result.has_runtime_magic = true;
-    } else if (magic == "YUCOOKED") {
+    }
+
+    if (magic == "YUCOOKED") {
         result.artifact_class = RuntimeAssetArtifactClass::Cooked;
         result.has_runtime_magic = true;
-    } else {
+    }
+
+    if (!result.has_runtime_magic) {
         return result;
     }
 
@@ -2060,6 +2072,74 @@ RuntimeAssetDataStatus AddLoadedDependency(
     return RuntimeAssetDataStatus::Success;
 }
 
+bool CountExceedsCapacity(
+    std::uint32_t current_count,
+    std::uint32_t additional_count,
+    std::uint32_t capacity) {
+    if (current_count > capacity) {
+        return true;
+    }
+
+    return additional_count > (capacity - current_count);
+}
+
+RuntimeAssetDataStatus BuildGraphRequestCounts(
+    std::uint32_t file_count,
+    RuntimeAssetGraphRequestCounts *out_counts) {
+    if (out_counts == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (file_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (file_count > (std::numeric_limits<std::uint32_t>::max() - 1U)) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    if (file_count > (std::numeric_limits<std::uint32_t>::max() / 2U)) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    RuntimeAssetGraphRequestCounts counts{};
+    counts.record_count = file_count + 1U;
+    counts.dependency_edge_count = file_count * 2U;
+    *out_counts = counts;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateGraphRequestCounts(
+    const RuntimeAssetGraphLoadRequest &request,
+    RuntimeAssetGraphRequestCounts *out_counts) {
+    RuntimeAssetGraphRequestCounts counts{};
+    RuntimeAssetDataStatus status = BuildGraphRequestCounts(request.file_count, &counts);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    if (request.file_count > request.loaded_file_capacity) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    if (counts.record_count > yuengine::resource::MAX_RESOURCE_COUNT ||
+        counts.record_count > yuengine::resource::MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT ||
+        counts.record_count > yuengine::asset::MAX_ASSET_COUNT) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    if (request.file_count > yuengine::resource::MAX_DEPENDENCY_EDGE_COUNT ||
+        request.file_count > yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    if (out_counts != nullptr) {
+        *out_counts = counts;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
 RuntimeAssetDataStatus ValidateGraphRequest(const RuntimeAssetGraphLoadRequest &request) {
     if (request.mount_table == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
@@ -2085,8 +2165,10 @@ RuntimeAssetDataStatus ValidateGraphRequest(const RuntimeAssetGraphLoadRequest &
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    if (request.file_count > request.loaded_file_capacity) {
-        return RuntimeAssetDataStatus::CapacityExceeded;
+    RuntimeAssetGraphRequestCounts counts{};
+    const RuntimeAssetDataStatus count_status = ValidateGraphRequestCounts(request, &counts);
+    if (count_status != RuntimeAssetDataStatus::Success) {
+        return count_status;
     }
 
     if (request.scene_output != nullptr) {
@@ -3079,20 +3161,37 @@ bool HasDuplicateStableId(
 RuntimeAssetDataStatus PreflightRuntimeAssetCommitIntents(
     const RuntimeAssetGraphLoadRequest &request,
     const RuntimeAssetGraphTransactionData &transaction) {
-    const std::uint32_t record_count = request.file_count + 1U;
+    RuntimeAssetGraphRequestCounts counts{};
+    RuntimeAssetDataStatus status = BuildGraphRequestCounts(request.file_count, &counts);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
     const ResourceSnapshot resource_snapshot = request.resource_registry->Snapshot();
     const AssetSnapshot asset_snapshot = request.asset_manager->Snapshot();
-    if ((resource_snapshot.registered_resource_count + record_count) > yuengine::resource::MAX_RESOURCE_COUNT ||
-        (resource_snapshot.load_commit_record_count + record_count) >
-            yuengine::resource::MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT ||
-        (asset_snapshot.active_asset_count + record_count) > yuengine::asset::MAX_ASSET_COUNT) {
+    if (CountExceedsCapacity(
+            resource_snapshot.registered_resource_count,
+            counts.record_count,
+            yuengine::resource::MAX_RESOURCE_COUNT) ||
+        CountExceedsCapacity(
+            resource_snapshot.load_commit_record_count,
+            counts.record_count,
+            yuengine::resource::MAX_RESOURCE_LOAD_COMMIT_RECORD_COUNT) ||
+        CountExceedsCapacity(
+            asset_snapshot.active_asset_count,
+            counts.record_count,
+            yuengine::asset::MAX_ASSET_COUNT)) {
         return RuntimeAssetDataStatus::CapacityExceeded;
     }
 
-    if ((resource_snapshot.dependency_edge_count + request.file_count) >
-            yuengine::resource::MAX_DEPENDENCY_EDGE_COUNT ||
-        (asset_snapshot.active_dependency_edge_count + request.file_count) >
-            yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT) {
+    if (CountExceedsCapacity(
+            resource_snapshot.dependency_edge_count,
+            request.file_count,
+            yuengine::resource::MAX_DEPENDENCY_EDGE_COUNT) ||
+        CountExceedsCapacity(
+            asset_snapshot.active_dependency_edge_count,
+            request.file_count,
+            yuengine::asset::MAX_ASSET_DEPENDENCY_EDGE_COUNT)) {
         return RuntimeAssetDataStatus::CapacityExceeded;
     }
 
@@ -3174,20 +3273,28 @@ RuntimeAssetDataStatus PreflightRuntimeAssetCommitIntents(
     return RuntimeAssetDataStatus::Success;
 }
 
-void PlanRuntimeAssetCommitIntents(
+RuntimeAssetDataStatus PlanRuntimeAssetCommitIntents(
     const RuntimeAssetGraphLoadRequest &request,
     RuntimeAssetGraphTransactionData *transaction) {
-    transaction->plan.record_count = request.file_count + 1U;
-    transaction->plan.resource_commit_count = request.file_count + 1U;
-    transaction->plan.asset_commit_count = request.file_count + 1U;
-    transaction->plan.cache_payload_commit_count = request.file_count + 1U;
-    transaction->plan.dependency_edge_commit_count = request.file_count * 2U;
+    RuntimeAssetGraphRequestCounts counts{};
+    const RuntimeAssetDataStatus status = BuildGraphRequestCounts(request.file_count, &counts);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    transaction->plan.record_count = counts.record_count;
+    transaction->plan.resource_commit_count = counts.record_count;
+    transaction->plan.asset_commit_count = counts.record_count;
+    transaction->plan.cache_payload_commit_count = counts.record_count;
+    transaction->plan.dependency_edge_commit_count = counts.dependency_edge_count;
     for (std::uint32_t index = 0U; index < request.file_count; ++index) {
         if (request.files[index].decode_asset_class != ResourceDecodePlanAssetClass::Unknown) {
             ++transaction->plan.cache_payload_commit_count;
             ++transaction->plan.decoded_payload_commit_count;
         }
     }
+
+    return RuntimeAssetDataStatus::Success;
 }
 
 RuntimeAssetDataStatus BuildRuntimeAssetGraphTransactionPlan(
@@ -3205,7 +3312,12 @@ RuntimeAssetDataStatus BuildRuntimeAssetGraphTransactionPlan(
         return status;
     }
 
-    PlanRuntimeAssetCommitIntents(request, transaction);
+    status = PlanRuntimeAssetCommitIntents(request, transaction);
+    if (status != RuntimeAssetDataStatus::Success) {
+        SetTransactionFailure(transaction, status, RuntimeAssetLoadTransactionPhase::Preflight);
+        return status;
+    }
+
     SetTransactionPhase(transaction, RuntimeAssetLoadTransactionPhase::ReadBytes);
     status = ReadRuntimeAssetFile(request, request.scene_path, &transaction->scene_bytes);
     if (status != RuntimeAssetDataStatus::Success) {
@@ -3814,7 +3926,10 @@ void CleanupCookedTextureMaterialBridge(
         const RhiStatus status = request.rhi_device->DestroySampler(sampler);
         if (status == RhiStatus::Success) {
             ++result->cleanup_sampler_count;
-        } else if (result->rhi_status == RhiStatus::Success) {
+            continue;
+        }
+
+        if (result->rhi_status == RhiStatus::Success) {
             result->rhi_status = status;
         }
     }
@@ -3827,7 +3942,10 @@ void CleanupCookedTextureMaterialBridge(
         const RhiStatus status = request.rhi_device->DestroyTexture(texture);
         if (status == RhiStatus::Success) {
             ++result->cleanup_texture_count;
-        } else if (result->rhi_status == RhiStatus::Success) {
+            continue;
+        }
+
+        if (result->rhi_status == RhiStatus::Success) {
             result->rhi_status = status;
         }
     }
