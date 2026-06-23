@@ -14,6 +14,7 @@
 #include "YuEngine/RenderScene/RenderSceneRuntimeFrameStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRecord.h"
 #include "YuEngine/RenderScene/RenderSceneThreePrimitiveCaptureRoute.h"
+#include "YuEngine/ResourceBrowser/ResourceBrowserDiagnostics.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
 #include "YuEngine/World/WorldObjectId.h"
@@ -132,10 +133,19 @@ struct PreviewHostDiagnostic final {
         yuengine::runtimeasset::RuntimeAssetFileKind::Unknown;
     yuengine::runtimeasset::RuntimeAssetFileKind actual_kind =
         yuengine::runtimeasset::RuntimeAssetFileKind::Unknown;
+    yuengine::resourcebrowser::ResourceBrowserDiagnosticCode resource_browser_code =
+        yuengine::resourcebrowser::ResourceBrowserDiagnosticCode::None;
+    yuengine::resourcebrowser::ResourceBrowserDiagnosticSeverity resource_browser_severity =
+        yuengine::resourcebrowser::ResourceBrowserDiagnosticSeverity::Info;
+    yuengine::resourcebrowser::ResourceBrowserDiagnosticPhase resource_browser_phase =
+        yuengine::resourcebrowser::ResourceBrowserDiagnosticPhase::ImportSettings;
+    yuengine::resourcebrowser::ResourceBrowserDependencyState resource_browser_dependency_state =
+        yuengine::resourcebrowser::ResourceBrowserDependencyState::Unknown;
     std::uint64_t stable_id = 0U;
     std::uint32_t loaded_file_index = 0U;
     std::uint32_t resource_ref_index = 0U;
     std::uint32_t entity_index = 0U;
+    bool from_resource_browser_diagnostics = false;
 };
 
 struct PreviewHostHitRecord final {
@@ -161,6 +171,22 @@ struct PreviewHostCommandOutputRef final {
     const yuengine::runtimeasset::RuntimeAssetFileDesc *cooked_scene = nullptr;
     std::span<const yuengine::runtimeasset::RuntimeAssetFileDesc> cooked_files{};
     bool require_cooked_records = false;
+};
+
+struct PreviewHostResourceBrowserPreviewRequest final {
+    const yuengine::resourcebrowser::ResourceBrowserResourceEntry *entry = nullptr;
+    std::uint32_t entry_index = 0U;
+    std::span<const yuengine::resourcebrowser::ResourceBrowserDiagnosticRecord> diagnostics{};
+};
+
+struct PreviewHostResourceBrowserPreviewResult final {
+    PreviewHostStatus status = PreviewHostStatus::InvalidArgument;
+    PreviewHostDocumentKind document_kind = PreviewHostDocumentKind::Unknown;
+    PreviewHostDiagnostic diagnostic{};
+    std::uint32_t resource_browser_diagnostic_count = 0U;
+    bool accepted_resource_browser_entry = false;
+    bool preview_eligible = false;
+    bool used_locator_path_as_type_truth = false;
 };
 
 struct PreviewHostFrameRequest final {
@@ -228,6 +254,9 @@ public:
     PreviewHostStatus BuildFrame(
         const PreviewHostFrameRequest &request,
         PreviewHostFrameResult *out_result) const;
+    PreviewHostStatus ResolveResourceBrowserPreview(
+        const PreviewHostResourceBrowserPreviewRequest &request,
+        PreviewHostResourceBrowserPreviewResult *out_result) const;
 
 private:
     struct SessionSlot final {

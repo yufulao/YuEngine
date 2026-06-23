@@ -42,6 +42,7 @@
 #include "YuEngine/Resource/ResourceLogicalKey.h"
 #include "YuEngine/Resource/ResourceRegistry.h"
 #include "YuEngine/Resource/ResourceResidencyRequest.h"
+#include "YuEngine/ResourceBrowser/ResourceBrowserDiagnostics.h"
 #include "YuEngine/Rhi/NullRhiDevice.h"
 #include "YuEngine/Rhi/RhiBufferDesc.h"
 #include "YuEngine/Rhi/RhiColorTargetDesc.h"
@@ -94,6 +95,8 @@ using yuengine::previewhost::PreviewHostFrameFormat;
 using yuengine::previewhost::PreviewHostFrameRequest;
 using yuengine::previewhost::PreviewHostFrameResult;
 using yuengine::previewhost::PreviewHostHitRecord;
+using yuengine::previewhost::PreviewHostResourceBrowserPreviewRequest;
+using yuengine::previewhost::PreviewHostResourceBrowserPreviewResult;
 using yuengine::previewhost::PreviewHostSelectionRecord;
 using yuengine::previewhost::PreviewHostSessionDesc;
 using yuengine::previewhost::PreviewHostSessionId;
@@ -147,6 +150,16 @@ using yuengine::resource::ResourceResidencyStatus;
 using yuengine::resource::ResourceSnapshot;
 using yuengine::resource::ResourceStatus;
 using yuengine::resource::ResourceTypeId;
+using yuengine::resourcebrowser::BuildResourceBrowserRuntimeAssetDiagnostics;
+using yuengine::resourcebrowser::ResourceBrowserDependencyState;
+using yuengine::resourcebrowser::ResourceBrowserDiagnosticCode;
+using yuengine::resourcebrowser::ResourceBrowserDiagnosticPhase;
+using yuengine::resourcebrowser::ResourceBrowserDiagnosticRecord;
+using yuengine::resourcebrowser::ResourceBrowserDiagnosticsRequest;
+using yuengine::resourcebrowser::ResourceBrowserDiagnosticsResult;
+using yuengine::resourcebrowser::ResourceBrowserDiagnosticsStatus;
+using yuengine::resourcebrowser::ResourceBrowserDiagnosticSeverity;
+using yuengine::resourcebrowser::ResourceBrowserResourceEntry;
 using yuengine::runtimeasset::HashRuntimeAssetDataBytes;
 using yuengine::runtimeasset::BuildRuntimeAssetCookedVisualProofRoute;
 using yuengine::runtimeasset::BuildRuntimeAssetCookedShaderProgramPipeline;
@@ -351,6 +364,8 @@ constexpr const char *TEST_PREVIEW_HOST_COMMAND_OUTPUT =
     "PreviewHost_ConsumesImportCookCommandOutputs";
 constexpr const char *TEST_PREVIEW_HOST_DIAGNOSTICS =
     "PreviewHost_ReportsBoundedResourceDiagnostics";
+constexpr const char *TEST_PREVIEW_HOST_RESOURCE_BROWSER_DECISION =
+    "PreviewHost_UsesResourceBrowserDiagnosticsForPreviewDecision";
 constexpr const char *TEST_PREVIEW_HOST_STALE_SESSION =
     "PreviewHost_RejectsStaleSessionWithoutMutation";
 constexpr const char *TEST_PREVIEW_HOST_NOT_COOKED =
@@ -7338,6 +7353,133 @@ int PreviewHostReportsBoundedResourceDiagnostics() {
     return 0;
 }
 
+int PreviewHostUsesResourceBrowserDiagnosticsForPreviewDecision() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("PreviewHostResourceBrowserDecision"), &table)) {
+        return Fail("preview resource browser mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("preview resource browser fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("preview resource browser graph load failed");
+    }
+
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> descs{};
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        descs[index] = files[index].desc;
+    }
+
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 8U> resource_browser_diagnostics{};
+    ResourceBrowserDiagnosticsRequest diagnostics_request{};
+    diagnostics_request.mount_table = &table;
+    diagnostics_request.mount = MountId(MOUNT_ID);
+    diagnostics_request.files = descs.data();
+    diagnostics_request.file_count = static_cast<std::uint32_t>(descs.size());
+    diagnostics_request.loaded_files = graph.assets.data();
+    diagnostics_request.loaded_file_count = graph.load_result.loaded_file_count;
+    diagnostics_request.resource_registry = &registry;
+    diagnostics_request.asset_manager = &manager;
+    diagnostics_request.entries = entries.data();
+    diagnostics_request.entry_capacity = static_cast<std::uint32_t>(entries.size());
+    diagnostics_request.diagnostics = resource_browser_diagnostics.data();
+    diagnostics_request.diagnostic_capacity =
+        static_cast<std::uint32_t>(resource_browser_diagnostics.size());
+
+    ResourceBrowserDiagnosticsResult diagnostics_result{};
+    if (BuildResourceBrowserRuntimeAssetDiagnostics(diagnostics_request, &diagnostics_result) !=
+        ResourceBrowserDiagnosticsStatus::Success) {
+        return Fail("resource browser diagnostics did not build for preview decision");
+    }
+
+    PreviewHost host;
+    PreviewHostResourceBrowserPreviewRequest preview_request{};
+    preview_request.entry = &entries[0U];
+    preview_request.entry_index = 0U;
+    preview_request.diagnostics = std::span<const ResourceBrowserDiagnosticRecord>(
+        resource_browser_diagnostics.data(),
+        diagnostics_result.diagnostic_count);
+
+    PreviewHostResourceBrowserPreviewResult preview_result{};
+    if (host.ResolveResourceBrowserPreview(preview_request, &preview_result) != PreviewHostStatus::Success) {
+        return Fail("preview host rejected valid resource browser entry");
+    }
+
+    if (!preview_result.accepted_resource_browser_entry ||
+        !preview_result.preview_eligible ||
+        preview_result.document_kind != PreviewHostDocumentKind::Resource ||
+        preview_result.resource_browser_diagnostic_count != 0U ||
+        preview_result.used_locator_path_as_type_truth ||
+        preview_result.diagnostic.from_resource_browser_diagnostics) {
+        return Fail("preview host valid resource browser decision changed");
+    }
+
+    ResourceBrowserResourceEntry bad_entry = entries[0U];
+    bad_entry.import_settings.source_path = "Mesh/LocatorStillOnly.yumesh";
+    bad_entry.import_settings.target_kind = RuntimeAssetFileKind::Material;
+    bad_entry.validation.status = RuntimeAssetDataStatus::InvalidSchema;
+    bad_entry.validation.kind = RuntimeAssetFileKind::Mesh;
+    bad_entry.dependency_state = ResourceBrowserDependencyState::StaleSchema;
+
+    std::array<ResourceBrowserDiagnosticRecord, 1U> bad_diagnostics{};
+    bad_diagnostics[0U].code = ResourceBrowserDiagnosticCode::StaleSchema;
+    bad_diagnostics[0U].severity = ResourceBrowserDiagnosticSeverity::Error;
+    bad_diagnostics[0U].phase = ResourceBrowserDiagnosticPhase::Validate;
+    bad_diagnostics[0U].runtime_status = RuntimeAssetDataStatus::InvalidSchema;
+    bad_diagnostics[0U].source_path = bad_entry.import_settings.source_path;
+    bad_diagnostics[0U].expected_kind = RuntimeAssetFileKind::Material;
+    bad_diagnostics[0U].file_index = 0U;
+
+    preview_request.entry = &bad_entry;
+    preview_request.entry_index = 0U;
+    preview_request.diagnostics = std::span<const ResourceBrowserDiagnosticRecord>(
+        bad_diagnostics.data(),
+        bad_diagnostics.size());
+    if (host.ResolveResourceBrowserPreview(preview_request, &preview_result) !=
+        PreviewHostStatus::RuntimeAssetStatusFailed) {
+        return Fail("preview host did not preserve resource browser validation blocker");
+    }
+
+    if (preview_result.preview_eligible ||
+        preview_result.used_locator_path_as_type_truth ||
+        preview_result.diagnostic.code != PreviewHostDiagnosticCode::RuntimeAssetStatusFailed ||
+        preview_result.diagnostic.resource_browser_code != ResourceBrowserDiagnosticCode::StaleSchema ||
+        preview_result.diagnostic.resource_browser_phase != ResourceBrowserDiagnosticPhase::Validate ||
+        preview_result.diagnostic.runtime_asset_status != RuntimeAssetDataStatus::InvalidSchema ||
+        preview_result.diagnostic.expected_kind != RuntimeAssetFileKind::Material ||
+        preview_result.diagnostic.actual_kind != RuntimeAssetFileKind::Mesh ||
+        !preview_result.diagnostic.from_resource_browser_diagnostics) {
+        return Fail("preview host resource browser validation diagnostic lost lower detail");
+    }
+
+    ResourceBrowserResourceEntry not_loaded_entry = entries[1U];
+    not_loaded_entry.from_runtime_asset_load = false;
+    not_loaded_entry.from_resource_registry = false;
+    not_loaded_entry.from_asset_record = false;
+    preview_request.entry = &not_loaded_entry;
+    preview_request.entry_index = 1U;
+    preview_request.diagnostics = {};
+    if (host.ResolveResourceBrowserPreview(preview_request, &preview_result) !=
+        PreviewHostStatus::RuntimeAssetGraphStale) {
+        return Fail("preview host did not reject missing loaded record");
+    }
+
+    if (preview_result.preview_eligible ||
+        preview_result.diagnostic.code != PreviewHostDiagnosticCode::RuntimeAssetGraphStale ||
+        preview_result.diagnostic.resource_browser_dependency_state != ResourceBrowserDependencyState::Ready) {
+        return Fail("preview host missing loaded-record diagnostic changed");
+    }
+
+    return 0;
+}
+
 int PreviewHostRejectsStaleSessionWithoutMutation() {
     PreviewHost host;
     PreviewHostSessionResult start_result{};
@@ -7556,6 +7698,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_PREVIEW_HOST_CAPTURE, PreviewHostConsumesRuntimeAssetGraphAndCapturesThroughRhi},
     {TEST_PREVIEW_HOST_COMMAND_OUTPUT, PreviewHostConsumesImportCookCommandOutputs},
     {TEST_PREVIEW_HOST_DIAGNOSTICS, PreviewHostReportsBoundedResourceDiagnostics},
+    {TEST_PREVIEW_HOST_RESOURCE_BROWSER_DECISION, PreviewHostUsesResourceBrowserDiagnosticsForPreviewDecision},
     {TEST_PREVIEW_HOST_STALE_SESSION, PreviewHostRejectsStaleSessionWithoutMutation},
     {TEST_PREVIEW_HOST_NOT_COOKED, PreviewHostReportsNotCookedRuntimeAssetRef},
 };

@@ -21,6 +21,10 @@ using RuntimeAssetLoadedFile = yuengine::runtimeasset::RuntimeAssetLoadedFile;
 using RuntimeAssetSceneEntityRecord = yuengine::runtimeasset::RuntimeAssetSceneEntityRecord;
 using RuntimeAssetSceneLoaderOutput = yuengine::runtimeasset::RuntimeAssetSceneLoaderOutput;
 using RuntimeAssetSceneResourceRef = yuengine::runtimeasset::RuntimeAssetSceneResourceRef;
+using ResourceBrowserDependencyState = yuengine::resourcebrowser::ResourceBrowserDependencyState;
+using ResourceBrowserDiagnosticRecord = yuengine::resourcebrowser::ResourceBrowserDiagnosticRecord;
+using ResourceBrowserDiagnosticSeverity = yuengine::resourcebrowser::ResourceBrowserDiagnosticSeverity;
+using ResourceBrowserResourceEntry = yuengine::resourcebrowser::ResourceBrowserResourceEntry;
 using RenderScenePrimitiveGeometryKind = yuengine::renderscene::RenderScenePrimitiveGeometryKind;
 using RenderScenePrimitiveGeometryRecord = yuengine::renderscene::RenderScenePrimitiveGeometryRecord;
 using RenderSceneRuntimeFrameBuilder = yuengine::renderscene::RenderSceneRuntimeFrameBuilder;
@@ -419,6 +423,150 @@ bool CommandOutputRequired(const PreviewHostFrameRequest &request) {
     }
 
     return request.command_output.command != nullptr;
+}
+
+std::uint32_t ResourceBrowserSeverityRank(ResourceBrowserDiagnosticSeverity severity) {
+    switch (severity) {
+        case ResourceBrowserDiagnosticSeverity::Info:
+            return 0U;
+        case ResourceBrowserDiagnosticSeverity::Warning:
+            return 1U;
+        case ResourceBrowserDiagnosticSeverity::Error:
+            return 2U;
+        case ResourceBrowserDiagnosticSeverity::Blocker:
+            return 3U;
+    }
+
+    return 0U;
+}
+
+const ResourceBrowserDiagnosticRecord *HighestResourceBrowserDiagnostic(
+    const PreviewHostResourceBrowserPreviewRequest &request,
+    std::uint32_t *out_count) {
+    if (out_count != nullptr) {
+        *out_count = 0U;
+    }
+
+    const ResourceBrowserDiagnosticRecord *selected = nullptr;
+    for (const ResourceBrowserDiagnosticRecord &diagnostic : request.diagnostics) {
+        if (diagnostic.file_index != request.entry_index) {
+            continue;
+        }
+
+        if (out_count != nullptr) {
+            ++(*out_count);
+        }
+
+        if (selected == nullptr ||
+            ResourceBrowserSeverityRank(diagnostic.severity) >
+                ResourceBrowserSeverityRank(selected->severity)) {
+            selected = &diagnostic;
+        }
+    }
+
+    return selected;
+}
+
+PreviewHostDocumentKind DocumentKindForResourceBrowserKind(RuntimeAssetFileKind kind) {
+    switch (kind) {
+        case RuntimeAssetFileKind::Scene:
+            return PreviewHostDocumentKind::Scene;
+        case RuntimeAssetFileKind::Animation:
+            return PreviewHostDocumentKind::Animation;
+        case RuntimeAssetFileKind::Mesh:
+        case RuntimeAssetFileKind::Material:
+        case RuntimeAssetFileKind::Texture:
+        case RuntimeAssetFileKind::Shader:
+            return PreviewHostDocumentKind::Resource;
+        case RuntimeAssetFileKind::Unknown:
+            break;
+    }
+
+    return PreviewHostDocumentKind::Unknown;
+}
+
+PreviewHostStatus StatusForResourceBrowserDependency(ResourceBrowserDependencyState state) {
+    switch (state) {
+        case ResourceBrowserDependencyState::Ready:
+            return PreviewHostStatus::Success;
+        case ResourceBrowserDependencyState::Missing:
+            return PreviewHostStatus::MissingResourceRef;
+        case ResourceBrowserDependencyState::TypeMismatch:
+            return PreviewHostStatus::TypeMismatch;
+        case ResourceBrowserDependencyState::Duplicate:
+        case ResourceBrowserDependencyState::StaleHash:
+        case ResourceBrowserDependencyState::StaleSchema:
+            return PreviewHostStatus::RuntimeAssetGraphStale;
+        case ResourceBrowserDependencyState::Unsupported:
+            return PreviewHostStatus::UnsupportedPreviewRoute;
+        case ResourceBrowserDependencyState::CapacityExceeded:
+        case ResourceBrowserDependencyState::BudgetExceeded:
+            return PreviewHostStatus::OutputCapacityExceeded;
+        case ResourceBrowserDependencyState::Unknown:
+            break;
+    }
+
+    return PreviewHostStatus::RuntimeAssetGraphStale;
+}
+
+PreviewHostDiagnosticCode DiagnosticForResourceBrowserStatus(PreviewHostStatus status) {
+    switch (status) {
+        case PreviewHostStatus::Success:
+            return PreviewHostDiagnosticCode::None;
+        case PreviewHostStatus::RuntimeAssetStatusFailed:
+            return PreviewHostDiagnosticCode::RuntimeAssetStatusFailed;
+        case PreviewHostStatus::RuntimeAssetGraphStale:
+            return PreviewHostDiagnosticCode::RuntimeAssetGraphStale;
+        case PreviewHostStatus::MissingResourceRef:
+            return PreviewHostDiagnosticCode::MissingResourceRef;
+        case PreviewHostStatus::TypeMismatch:
+            return PreviewHostDiagnosticCode::TypeMismatch;
+        case PreviewHostStatus::NotCooked:
+            return PreviewHostDiagnosticCode::NotCooked;
+        case PreviewHostStatus::OutputCapacityExceeded:
+            return PreviewHostDiagnosticCode::OutputCapacityExceeded;
+        case PreviewHostStatus::UnsupportedDocumentKind:
+            return PreviewHostDiagnosticCode::UnsupportedDocumentKind;
+        case PreviewHostStatus::UnsupportedPreviewRoute:
+            return PreviewHostDiagnosticCode::UnsupportedPreviewRoute;
+        default:
+            break;
+    }
+
+    return PreviewHostDiagnosticCode::RuntimeAssetStatusFailed;
+}
+
+PreviewHostStatus EmitResourceBrowserDecisionFailure(
+    const PreviewHostResourceBrowserPreviewRequest &request,
+    PreviewHostResourceBrowserPreviewResult *result,
+    PreviewHostStatus status,
+    RuntimeAssetDataStatus runtime_status,
+    const ResourceBrowserDiagnosticRecord *resource_browser_diagnostic) {
+    if (result == nullptr || request.entry == nullptr) {
+        return PreviewHostStatus::InvalidArgument;
+    }
+
+    const ResourceBrowserResourceEntry &entry = *request.entry;
+    result->status = status;
+    result->preview_eligible = false;
+    result->accepted_resource_browser_entry = true;
+    result->document_kind = DocumentKindForResourceBrowserKind(entry.validation.kind);
+    result->diagnostic.code = DiagnosticForResourceBrowserStatus(status);
+    result->diagnostic.status = status;
+    result->diagnostic.runtime_asset_status = runtime_status;
+    result->diagnostic.expected_kind = entry.import_settings.target_kind;
+    result->diagnostic.actual_kind = entry.validation.kind;
+    result->diagnostic.stable_id = entry.import_settings.stable_id;
+    result->diagnostic.resource_browser_dependency_state = entry.dependency_state;
+
+    if (resource_browser_diagnostic != nullptr) {
+        result->diagnostic.resource_browser_code = resource_browser_diagnostic->code;
+        result->diagnostic.resource_browser_severity = resource_browser_diagnostic->severity;
+        result->diagnostic.resource_browser_phase = resource_browser_diagnostic->phase;
+        result->diagnostic.from_resource_browser_diagnostics = true;
+    }
+
+    return status;
 }
 
 PreviewHostStatus ValidateCommandOutput(
@@ -1236,6 +1384,94 @@ PreviewHostStatus PreviewHost::BuildFrame(
     result.submitted_render_scene_frame = true;
     result.captured_through_render_core_rhi = result.capture.capture_bytes_written > 0U;
     FillFeedback(request, &result, entity_count);
+    *out_result = result;
+    return result.status;
+}
+
+PreviewHostStatus PreviewHost::ResolveResourceBrowserPreview(
+    const PreviewHostResourceBrowserPreviewRequest &request,
+    PreviewHostResourceBrowserPreviewResult *out_result) const {
+    if (out_result == nullptr) {
+        return PreviewHostStatus::InvalidArgument;
+    }
+
+    PreviewHostResourceBrowserPreviewResult result{};
+    if (request.entry == nullptr) {
+        *out_result = result;
+        return result.status;
+    }
+
+    std::uint32_t diagnostic_count = 0U;
+    const ResourceBrowserDiagnosticRecord *diagnostic =
+        HighestResourceBrowserDiagnostic(request, &diagnostic_count);
+    result.resource_browser_diagnostic_count = diagnostic_count;
+
+    const ResourceBrowserResourceEntry &entry = *request.entry;
+    result.accepted_resource_browser_entry = true;
+    result.document_kind = DocumentKindForResourceBrowserKind(entry.validation.kind);
+    result.used_locator_path_as_type_truth = false;
+
+    if (entry.validation.status != RuntimeAssetDataStatus::Success) {
+        const PreviewHostStatus status = EmitResourceBrowserDecisionFailure(
+            request,
+            &result,
+            PreviewHostStatus::RuntimeAssetStatusFailed,
+            entry.validation.status,
+            diagnostic);
+        *out_result = result;
+        return status;
+    }
+
+    if (entry.dependency_state != ResourceBrowserDependencyState::Ready) {
+        const PreviewHostStatus status = EmitResourceBrowserDecisionFailure(
+            request,
+            &result,
+            StatusForResourceBrowserDependency(entry.dependency_state),
+            RuntimeAssetDataStatus::InvalidDependency,
+            diagnostic);
+        *out_result = result;
+        return status;
+    }
+
+    if (!entry.from_runtime_asset_load) {
+        const PreviewHostStatus status = EmitResourceBrowserDecisionFailure(
+            request,
+            &result,
+            PreviewHostStatus::RuntimeAssetGraphStale,
+            RuntimeAssetDataStatus::MissingDependency,
+            diagnostic);
+        *out_result = result;
+        return status;
+    }
+
+    if (!entry.from_resource_registry ||
+        !entry.from_asset_record ||
+        !entry.resource.IsValid() ||
+        !entry.asset.IsValid()) {
+        const PreviewHostStatus status = EmitResourceBrowserDecisionFailure(
+            request,
+            &result,
+            PreviewHostStatus::MissingResourceRef,
+            RuntimeAssetDataStatus::MissingDependency,
+            diagnostic);
+        *out_result = result;
+        return status;
+    }
+
+    if (result.document_kind == PreviewHostDocumentKind::Unknown) {
+        const PreviewHostStatus status = EmitResourceBrowserDecisionFailure(
+            request,
+            &result,
+            PreviewHostStatus::UnsupportedDocumentKind,
+            RuntimeAssetDataStatus::UnsupportedFieldValue,
+            diagnostic);
+        *out_result = result;
+        return status;
+    }
+
+    result.status = PreviewHostStatus::Success;
+    result.preview_eligible = true;
+    result.diagnostic.resource_browser_dependency_state = entry.dependency_state;
     *out_result = result;
     return result.status;
 }
