@@ -12,6 +12,7 @@
 #include "YuEngine/Asset/AssetStatus.h"
 #include "YuEngine/Asset/AssetTypeId.h"
 #include "YuEngine/Animation/AnimationRuntimeSampler.h"
+#include "YuEngine/File/FileStatus.h"
 #include "YuEngine/File/MountId.h"
 #include "YuEngine/File/VirtualPath.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRecord.h"
@@ -97,6 +98,7 @@ enum class RuntimeAssetDataStatus {
     CapacityExceeded,
     BudgetExceeded,
     FileReadFailed,
+    FileWriteFailed,
     ResourceRegistrationFailed,
     ResourceLoadCommitFailed,
     ResourceResidencyFailed,
@@ -113,6 +115,26 @@ enum class RuntimeAssetDataStatus {
     RhiTextureFailed,
     RhiSamplerFailed,
     RenderSceneMaterialFailed
+};
+
+/**
+ * @brief Import/cook command kinds exposed before editor UI work exists.
+ */
+enum class RuntimeAssetImportCookCommandKind {
+    Unknown,
+    GenerateDeterministicDiskFixture
+};
+
+/**
+ * @brief First engine layer that blocked an import/cook command.
+ */
+enum class RuntimeAssetImportCookMissingLayer {
+    None,
+    Command,
+    FileVfs,
+    RuntimeAssetData,
+    Resource,
+    Asset
 };
 
 /**
@@ -147,6 +169,63 @@ struct RuntimeAssetFileDesc final {
     yuengine::resource::ResourceDecodeResultClass decode_result_class =
         yuengine::resource::ResourceDecodeResultClass::Unknown;
     std::uint32_t decoded_byte_count = 0U;
+};
+
+constexpr std::uint32_t RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT = 9U;
+
+/**
+ * @brief Requests source/cooked RuntimeAsset fixture generation through File/VFS.
+ */
+struct RuntimeAssetDeterministicDiskFixtureRequest final {
+    yuengine::file::MountTable *mount_table = nullptr;
+    yuengine::file::MountId mount;
+    RuntimeAssetFileDesc *source_files = nullptr;
+    std::uint32_t source_file_capacity = 0U;
+    RuntimeAssetFileDesc *cooked_files = nullptr;
+    std::uint32_t cooked_file_capacity = 0U;
+};
+
+/**
+ * @brief Reports deterministic fixture paths, hashes, validation, and failure layer.
+ */
+struct RuntimeAssetDeterministicDiskFixtureResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    RuntimeAssetImportCookMissingLayer missing_layer = RuntimeAssetImportCookMissingLayer::None;
+    yuengine::file::FileStatus file_status = yuengine::file::FileStatus::Success;
+    RuntimeAssetDataStatus validation_status = RuntimeAssetDataStatus::Success;
+    RuntimeAssetFileKind first_failed_kind = RuntimeAssetFileKind::Unknown;
+    std::uint32_t first_failed_artifact_index = 0U;
+    RuntimeAssetFileDesc source_scene{};
+    RuntimeAssetFileDesc cooked_scene{};
+    std::uint32_t source_file_count = 0U;
+    std::uint32_t cooked_file_count = 0U;
+    std::uint32_t source_artifact_write_count = 0U;
+    std::uint32_t cooked_artifact_write_count = 0U;
+    std::uint32_t validation_count = 0U;
+    std::uint64_t source_scene_hash = 0U;
+    std::uint64_t cooked_scene_hash = 0U;
+    std::uint64_t source_graph_hash = 0U;
+    std::uint64_t cooked_graph_hash = 0U;
+    bool wrote_to_disk = false;
+    bool validated_source_files = false;
+    bool validated_cooked_files = false;
+};
+
+/**
+ * @brief Import/cook command request. The first command is deterministic fixture generation.
+ */
+struct RuntimeAssetImportCookCommandRequest final {
+    RuntimeAssetImportCookCommandKind command = RuntimeAssetImportCookCommandKind::Unknown;
+    RuntimeAssetDeterministicDiskFixtureRequest fixture{};
+};
+
+/**
+ * @brief Import/cook command result with explicit missing-layer diagnostics.
+ */
+struct RuntimeAssetImportCookCommandResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    RuntimeAssetImportCookMissingLayer missing_layer = RuntimeAssetImportCookMissingLayer::None;
+    RuntimeAssetDeterministicDiskFixtureResult fixture{};
 };
 
 /**
@@ -577,6 +656,24 @@ RuntimeAssetDataStatus ValidateRuntimeAssetDataBytes(
     std::span<const std::uint8_t> bytes,
     RuntimeAssetFileKind expected_kind,
     RuntimeAssetValidationResult *out_result);
+/**
+ * @brief Writes deterministic source and cooked RuntimeAsset fixture files through File/VFS.
+ * @param request Input mount and descriptor output buffers.
+ * @param out_result Output write, validation, and hash diagnostics.
+ * @return Explicit command status.
+ */
+RuntimeAssetDataStatus GenerateRuntimeAssetDeterministicDiskFixture(
+    const RuntimeAssetDeterministicDiskFixtureRequest &request,
+    RuntimeAssetDeterministicDiskFixtureResult *out_result);
+/**
+ * @brief Executes a RuntimeAsset import/cook command without editor UI dependencies.
+ * @param request Input command and command-specific request payload.
+ * @param out_result Output command diagnostics.
+ * @return Explicit command status.
+ */
+RuntimeAssetDataStatus ExecuteRuntimeAssetImportCookCommand(
+    const RuntimeAssetImportCookCommandRequest &request,
+    RuntimeAssetImportCookCommandResult *out_result);
 /**
  * @brief Decodes RuntimeAsset shader program bytes into bridge-owned data.
  * @param bytes Source/cooked program bytes.

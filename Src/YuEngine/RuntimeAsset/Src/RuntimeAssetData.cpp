@@ -19,6 +19,8 @@
 #include "YuEngine/Asset/AssetRecord.h"
 #include "YuEngine/File/FileReadRequest.h"
 #include "YuEngine/File/FileReadResult.h"
+#include "YuEngine/File/FileWriteRequest.h"
+#include "YuEngine/File/FileWriteResult.h"
 #include "YuEngine/File/MountTable.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialBuilder.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialConstants.h"
@@ -86,6 +88,8 @@ using yuengine::animation::AnimationRuntimeTransformApplyRequest;
 using yuengine::animation::AnimationRuntimeTransformApplyResult;
 using yuengine::file::FileReadRequest;
 using yuengine::file::FileReadResult;
+using yuengine::file::FileWriteRequest;
+using yuengine::file::FileWriteResult;
 using yuengine::file::MountTable;
 using yuengine::resource::ResourceCachePayloadRequest;
 using yuengine::resource::ResourceCachePayloadSnapshot;
@@ -113,6 +117,7 @@ using yuengine::resource::ResourceResidencyRequest;
 using yuengine::resource::ResourceResidencyStatus;
 using yuengine::resource::ResourceSnapshot;
 using yuengine::resource::ResourceStatus;
+using yuengine::resource::ResourceTypeId;
 using yuengine::renderscene::RenderSceneRuntimeMaterialBuilder;
 using yuengine::renderscene::RenderSceneRuntimeMaterialRecord;
 using yuengine::renderscene::RenderSceneRuntimeMaterialRequest;
@@ -986,6 +991,390 @@ std::uint64_t HashRuntimeAssetText(std::string_view text) {
     }
 
     return hash;
+}
+
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_MESH = 101U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_MATERIAL = 102U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_TEXTURE = 103U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_SHADER = 104U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_SCENE = 105U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_ANIMATION = 106U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_MESH = 201U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_MATERIAL = 202U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_TEXTURE = 203U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_SHADER = 204U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_SCENE = 205U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_ANIMATION = 206U;
+
+struct RuntimeAssetFixtureArtifact final {
+    RuntimeAssetFileDesc desc{};
+    std::string text{};
+};
+
+std::string RuntimeAssetFamilyNameLower(RuntimeAssetFileKind kind) {
+    switch (kind) {
+        case RuntimeAssetFileKind::Mesh:
+            return "mesh";
+        case RuntimeAssetFileKind::Material:
+            return "material";
+        case RuntimeAssetFileKind::Texture:
+            return "texture";
+        case RuntimeAssetFileKind::Shader:
+            return "shader";
+        case RuntimeAssetFileKind::Scene:
+            return "scene";
+        case RuntimeAssetFileKind::Animation:
+            return "animation";
+        case RuntimeAssetFileKind::Unknown:
+            break;
+    }
+
+    return "unknown";
+}
+
+RuntimeAssetFileDesc RuntimeAssetFixtureDesc(
+    const char *path,
+    RuntimeAssetFileKind kind,
+    std::uint64_t stable_id,
+    std::uint32_t decoded_byte_count) {
+    RuntimeAssetFileDesc desc{};
+    desc.path = path;
+    desc.kind = kind;
+    desc.stable_id = stable_id;
+    desc.decoded_byte_count = decoded_byte_count;
+    switch (kind) {
+        case RuntimeAssetFileKind::Mesh:
+            desc.resource_type = ResourceTypeId{RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_MESH};
+            desc.asset_type = yuengine::asset::AssetTypeId{RUNTIME_ASSET_FIXTURE_ASSET_TYPE_MESH};
+            desc.decode_asset_class = ResourceDecodePlanAssetClass::Mesh;
+            desc.decode_result_class = ResourceDecodeResultClass::Mesh;
+            break;
+        case RuntimeAssetFileKind::Material:
+            desc.resource_type = ResourceTypeId{RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_MATERIAL};
+            desc.asset_type = yuengine::asset::AssetTypeId{RUNTIME_ASSET_FIXTURE_ASSET_TYPE_MATERIAL};
+            desc.decode_asset_class = ResourceDecodePlanAssetClass::Material;
+            desc.decode_result_class = ResourceDecodeResultClass::Material;
+            break;
+        case RuntimeAssetFileKind::Texture:
+            desc.resource_type = ResourceTypeId{RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_TEXTURE};
+            desc.asset_type = yuengine::asset::AssetTypeId{RUNTIME_ASSET_FIXTURE_ASSET_TYPE_TEXTURE};
+            desc.decode_asset_class = ResourceDecodePlanAssetClass::Texture;
+            desc.decode_result_class = ResourceDecodeResultClass::Texture;
+            break;
+        case RuntimeAssetFileKind::Shader:
+            desc.resource_type = ResourceTypeId{RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_SHADER};
+            desc.asset_type = yuengine::asset::AssetTypeId{RUNTIME_ASSET_FIXTURE_ASSET_TYPE_SHADER};
+            break;
+        case RuntimeAssetFileKind::Scene:
+            desc.resource_type = ResourceTypeId{RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_SCENE};
+            desc.asset_type = yuengine::asset::AssetTypeId{RUNTIME_ASSET_FIXTURE_ASSET_TYPE_SCENE};
+            break;
+        case RuntimeAssetFileKind::Animation:
+            desc.resource_type = ResourceTypeId{RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_ANIMATION};
+            desc.asset_type = yuengine::asset::AssetTypeId{RUNTIME_ASSET_FIXTURE_ASSET_TYPE_ANIMATION};
+            break;
+        case RuntimeAssetFileKind::Unknown:
+            break;
+    }
+
+    return desc;
+}
+
+std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+RuntimeAssetSourceFixtureArtifacts() {
+    return std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>{
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Mesh/Cube.yumesh", RuntimeAssetFileKind::Mesh, 1001U, 96U),
+            "YUASSET MESH 1\nschema=rav0-source\nid=cube_mesh\nkind=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\n"},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Mesh/Cylinder.yumesh", RuntimeAssetFileKind::Mesh, 1002U, 96U),
+            "YUASSET MESH 1\nschema=rav0-source\nid=cylinder_mesh\nkind=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\n"},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Mesh/Cone.yumesh", RuntimeAssetFileKind::Mesh, 1003U, 96U),
+            "YUASSET MESH 1\nschema=rav0-source\nid=cone_mesh\nkind=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\n"},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Material/Shared.yumat", RuntimeAssetFileKind::Material, 2001U, 128U),
+            "YUASSET MATERIAL 1\nschema=rav0-source\nid=shared_material\nshader=Shader/RuntimeProgram.yuprogram\ntexture0=Texture/Albedo.yutex\ntexture1=Texture/Normal.yutex\ntexture2=Texture/Mask.yutex\n"},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Texture/Albedo.yutex", RuntimeAssetFileKind::Texture, 3001U, 16U),
+            "YUASSET TEXTURE 1\nschema=rav0-source\nid=albedo\nformat=rgba8\nextent=2x2\npayload=checker\n"},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Texture/Normal.yutex", RuntimeAssetFileKind::Texture, 3002U, 16U),
+            "YUASSET TEXTURE 1\nschema=rav0-source\nid=normal\nformat=rgba8\nextent=2x2\npayload=normal\n"},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Texture/Mask.yutex", RuntimeAssetFileKind::Texture, 3003U, 16U),
+            "YUASSET TEXTURE 1\nschema=rav0-source\nid=mask\nformat=rgba8\nextent=2x2\npayload=mask\n"},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Shader/RuntimeProgram.yuprogram", RuntimeAssetFileKind::Shader, 4001U, 0U),
+            "YUASSET SHADER 1\nschema=rav0-source\nid=runtime_program\nstage_vs=bytecode:runtime_program_vs\nstage_ps=bytecode:runtime_program_ps\ninput=layout:position,color\ntextures=3\n"},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Animation/Spin.yuanim", RuntimeAssetFileKind::Animation, 5001U, 0U),
+            "YUASSET ANIMATION 1\nschema=rav0-source\nid=spin\nclip=1\nduration=1\ntarget=scene_entity:101\ntrack=transform:rotation_y\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n"}};
+}
+
+RuntimeAssetFixtureArtifact RuntimeAssetSourceSceneArtifact() {
+    return RuntimeAssetFixtureArtifact{
+        RuntimeAssetFixtureDesc("Scene/CanonicalScene.yuscene", RuntimeAssetFileKind::Scene, 6001U, 0U),
+        "YUASSET SCENE 1\n"
+        "schema=rav0-source\n"
+        "id=scene\n"
+        "m0=Mesh/Cube.yumesh\n"
+        "m1=Mesh/Cylinder.yumesh\n"
+        "m2=Mesh/Cone.yumesh\n"
+        "mat=Material/Shared.yumat\n"
+        "t0=Texture/Albedo.yutex\n"
+        "prog=Shader/RuntimeProgram.yuprogram\n"
+        "anim=Animation/Spin.yuanim\n"
+        "cam=camera:orbit\n"
+        "e0=101:-2,0,0\n"
+        "e1=102:0,0,0\n"
+        "e2=103:2,0,0\n"};
+}
+
+std::string RuntimeAssetCookedText(
+    RuntimeAssetFileKind kind,
+    std::string_view id,
+    std::string_view payload,
+    std::string_view family_fields,
+    std::span<const std::string_view> dependency_rows,
+    std::uint32_t record_byte_count,
+    std::uint32_t payload_alignment) {
+    std::string text("YUCOOKED ");
+    text += RuntimeAssetFileKindName(kind);
+    text += " 1\nschema=rav1-cooked\nid=";
+    text += id;
+    text += "\nkind=";
+    text += RuntimeAssetFamilyNameLower(kind);
+    text += "\nsourceHash=";
+    text += std::to_string(HashRuntimeAssetText(id));
+    text += "\npayloadHash=";
+    text += std::to_string(HashRuntimeAssetText(payload));
+    text += "\ndependencyTable=";
+    text += std::to_string(dependency_rows.size());
+    text += "\nrecordTable=1\nrecordBytes=";
+    text += std::to_string(record_byte_count);
+    text += "\npayloadBytes=";
+    text += std::to_string(payload.size());
+    text += "\npayloadAlign=";
+    text += std::to_string(payload_alignment);
+    text += "\n";
+    for (std::size_t index = 0U; index < dependency_rows.size(); ++index) {
+        text += "dep";
+        text += std::to_string(index);
+        text += "=";
+        text += dependency_rows[index];
+        text += "\n";
+    }
+
+    text += family_fields;
+    text += "payload=";
+    text += payload;
+    text += "\n";
+    return text;
+}
+
+std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+RuntimeAssetCookedFixtureArtifacts() {
+    const std::array<std::string_view, 0U> no_deps{};
+    const std::array<std::string_view, 4U> material_deps{{
+        "shader:runtime_program:4001",
+        "texture:albedo:3001",
+        "texture:normal:3002",
+        "texture:mask:3003",
+    }};
+
+    return std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>{
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Mesh/Cube.racooked", RuntimeAssetFileKind::Mesh, 11001U, 96U),
+            RuntimeAssetCookedText(
+                RuntimeAssetFileKind::Mesh,
+                "cube_mesh_cooked",
+                "mesh-cube-payload",
+                "shape=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\n",
+                std::span<const std::string_view>(no_deps.data(), no_deps.size()),
+                96U,
+                4U)},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Mesh/Cylinder.racooked", RuntimeAssetFileKind::Mesh, 11002U, 96U),
+            RuntimeAssetCookedText(
+                RuntimeAssetFileKind::Mesh,
+                "cylinder_mesh_cooked",
+                "mesh-cylinder-payload",
+                "shape=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\n",
+                std::span<const std::string_view>(no_deps.data(), no_deps.size()),
+                96U,
+                4U)},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Mesh/Cone.racooked", RuntimeAssetFileKind::Mesh, 11003U, 96U),
+            RuntimeAssetCookedText(
+                RuntimeAssetFileKind::Mesh,
+                "cone_mesh_cooked",
+                "mesh-cone-payload",
+                "shape=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\n",
+                std::span<const std::string_view>(no_deps.data(), no_deps.size()),
+                96U,
+                4U)},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Material/Shared.racooked", RuntimeAssetFileKind::Material, 12001U, 128U),
+            RuntimeAssetCookedText(
+                RuntimeAssetFileKind::Material,
+                "shared_material_cooked",
+                "material-shared-payload",
+                "shader=Shader/RuntimeProgram.racooked\ntexture0=Texture/Albedo.racooked\ntexture1=Texture/Normal.racooked\ntexture2=Texture/Mask.racooked\n",
+                std::span<const std::string_view>(material_deps.data(), material_deps.size()),
+                128U,
+                4U)},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Texture/Albedo.racooked", RuntimeAssetFileKind::Texture, 13001U, 16U),
+            RuntimeAssetCookedText(
+                RuntimeAssetFileKind::Texture,
+                "albedo_cooked",
+                "checker",
+                "format=rgba8\nextent=2x2\n",
+                std::span<const std::string_view>(no_deps.data(), no_deps.size()),
+                64U,
+                4U)},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Texture/Normal.racooked", RuntimeAssetFileKind::Texture, 13002U, 16U),
+            RuntimeAssetCookedText(
+                RuntimeAssetFileKind::Texture,
+                "normal_cooked",
+                "normal",
+                "format=rgba8\nextent=2x2\n",
+                std::span<const std::string_view>(no_deps.data(), no_deps.size()),
+                64U,
+                4U)},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Texture/Mask.racooked", RuntimeAssetFileKind::Texture, 13003U, 16U),
+            RuntimeAssetCookedText(
+                RuntimeAssetFileKind::Texture,
+                "mask_cooked",
+                "mask",
+                "format=rgba8\nextent=2x2\n",
+                std::span<const std::string_view>(no_deps.data(), no_deps.size()),
+                64U,
+                4U)},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Shader/RuntimeProgram.racooked", RuntimeAssetFileKind::Shader, 14001U, 0U),
+            RuntimeAssetCookedText(
+                RuntimeAssetFileKind::Shader,
+                "runtime_program_cooked",
+                "shader-program-payload",
+                "stage_vs=bytecode:runtime_program_vs\nstage_ps=bytecode:runtime_program_ps\ninput=layout:position,color\ntextures=3\n",
+                std::span<const std::string_view>(no_deps.data(), no_deps.size()),
+                128U,
+                4U)},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Animation/Spin.racooked", RuntimeAssetFileKind::Animation, 15001U, 0U),
+            RuntimeAssetCookedText(
+                RuntimeAssetFileKind::Animation,
+                "spin_cooked",
+                "animation-spin-payload",
+                "target=scene_entity:101\ntrack=transform:rotation_y\nclip=1\nduration=1\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n",
+                std::span<const std::string_view>(no_deps.data(), no_deps.size()),
+                128U,
+                4U)}};
+}
+
+RuntimeAssetFixtureArtifact RuntimeAssetCookedSceneArtifact() {
+    const std::array<std::string_view, 8U> scene_deps{{
+        "mesh:cube_mesh_cooked:11001",
+        "mesh:cylinder_mesh_cooked:11002",
+        "mesh:cone_mesh_cooked:11003",
+        "material:shared_material_cooked:12001",
+        "texture:albedo_cooked:13001",
+        "shader:runtime_program_cooked:14001",
+        "animation:spin_cooked:15001",
+        "camera:orbit:6001",
+    }};
+
+    return RuntimeAssetFixtureArtifact{
+        RuntimeAssetFixtureDesc("Scene/CanonicalScene.racooked", RuntimeAssetFileKind::Scene, 16001U, 0U),
+        RuntimeAssetCookedText(
+            RuntimeAssetFileKind::Scene,
+            "scene_cooked",
+            "scene-runtime-payload",
+            "m0=Mesh/Cube.racooked\n"
+            "m1=Mesh/Cylinder.racooked\n"
+            "m2=Mesh/Cone.racooked\n"
+            "mat=Material/Shared.racooked\n"
+            "t0=Texture/Albedo.racooked\n"
+            "prog=Shader/RuntimeProgram.racooked\n"
+            "anim=Animation/Spin.racooked\n"
+            "cam=camera:orbit\n"
+            "e0=101:-2,0,0\n"
+            "e1=102:0,0,0\n"
+            "e2=103:2,0,0\n",
+            std::span<const std::string_view>(scene_deps.data(), scene_deps.size()),
+            256U,
+            4U)};
+}
+
+void AppendRuntimeAssetGraphHash(std::uint64_t *hash, std::string_view text) {
+    if (hash == nullptr) {
+        return;
+    }
+
+    for (const char character : text) {
+        *hash ^= static_cast<std::uint64_t>(static_cast<std::uint8_t>(character));
+        *hash *= FNV_PRIME;
+    }
+}
+
+RuntimeAssetDataStatus WriteAndValidateFixtureArtifact(
+    const RuntimeAssetDeterministicDiskFixtureRequest &request,
+    const RuntimeAssetFixtureArtifact &artifact,
+    std::uint32_t artifact_index,
+    std::uint64_t *graph_hash,
+    std::uint64_t *out_artifact_hash,
+    RuntimeAssetDeterministicDiskFixtureResult *result) {
+    if (result == nullptr || request.mount_table == nullptr || artifact.desc.path == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const std::span<const std::uint8_t> bytes(
+        reinterpret_cast<const std::uint8_t *>(artifact.text.data()),
+        artifact.text.size());
+    FileWriteRequest write_request{};
+    write_request.mount = request.mount;
+    write_request.path = yuengine::file::VirtualPath(artifact.desc.path);
+    write_request.bytes = bytes.data();
+    write_request.byte_count = bytes.size();
+    const FileWriteResult write_result = request.mount_table->Write(write_request);
+    if (!write_result.Succeeded()) {
+        result->status = RuntimeAssetDataStatus::FileWriteFailed;
+        result->missing_layer = RuntimeAssetImportCookMissingLayer::FileVfs;
+        result->file_status = write_result.status;
+        result->first_failed_kind = artifact.desc.kind;
+        result->first_failed_artifact_index = artifact_index;
+        return result->status;
+    }
+
+    RuntimeAssetValidationResult validation{};
+    const RuntimeAssetDataStatus validation_status =
+        ValidateRuntimeAssetDataBytes(bytes, artifact.desc.kind, &validation);
+    if (validation_status != RuntimeAssetDataStatus::Success) {
+        result->status = validation_status;
+        result->missing_layer = RuntimeAssetImportCookMissingLayer::RuntimeAssetData;
+        result->validation_status = validation_status;
+        result->first_failed_kind = artifact.desc.kind;
+        result->first_failed_artifact_index = artifact_index;
+        return validation_status;
+    }
+
+    ++result->validation_count;
+    if (out_artifact_hash != nullptr) {
+        *out_artifact_hash = validation.hash;
+    }
+
+    if (graph_hash != nullptr) {
+        AppendRuntimeAssetGraphHash(graph_hash, artifact.desc.path);
+        AppendRuntimeAssetGraphHash(graph_hash, "\n");
+        AppendRuntimeAssetGraphHash(graph_hash, artifact.text);
+        AppendRuntimeAssetGraphHash(graph_hash, "\n");
+    }
+
+    return RuntimeAssetDataStatus::Success;
 }
 
 bool ParseU64(std::string_view text, std::uint64_t *out_value) {
@@ -4172,6 +4561,146 @@ RuntimeAssetDataStatus ValidateRuntimeAssetDataBytes(
     }
 
     result.status = RuntimeAssetDataStatus::Success;
+    *out_result = result;
+    return result.status;
+}
+
+RuntimeAssetDataStatus GenerateRuntimeAssetDeterministicDiskFixture(
+    const RuntimeAssetDeterministicDiskFixtureRequest &request,
+    RuntimeAssetDeterministicDiskFixtureResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetDeterministicDiskFixtureResult result{};
+    result.source_file_count = RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT;
+    result.cooked_file_count = RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT;
+    result.source_scene = RuntimeAssetSourceSceneArtifact().desc;
+    result.cooked_scene = RuntimeAssetCookedSceneArtifact().desc;
+    result.source_graph_hash = FNV_OFFSET;
+    result.cooked_graph_hash = FNV_OFFSET;
+
+    if (request.mount_table == nullptr) {
+        result.status = RuntimeAssetDataStatus::InvalidArgument;
+        result.missing_layer = RuntimeAssetImportCookMissingLayer::FileVfs;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.source_files == nullptr || request.cooked_files == nullptr) {
+        result.status = RuntimeAssetDataStatus::InvalidArgument;
+        result.missing_layer = RuntimeAssetImportCookMissingLayer::RuntimeAssetData;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.source_file_capacity < RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
+        request.cooked_file_capacity < RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT) {
+        result.status = RuntimeAssetDataStatus::CapacityExceeded;
+        result.missing_layer = RuntimeAssetImportCookMissingLayer::RuntimeAssetData;
+        *out_result = result;
+        return result.status;
+    }
+
+    const std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> source_artifacts =
+        RuntimeAssetSourceFixtureArtifacts();
+    for (std::size_t index = 0U; index < source_artifacts.size(); ++index) {
+        request.source_files[index] = source_artifacts[index].desc;
+        const RuntimeAssetDataStatus status = WriteAndValidateFixtureArtifact(
+            request,
+            source_artifacts[index],
+            static_cast<std::uint32_t>(index),
+            &result.source_graph_hash,
+            nullptr,
+            &result);
+        if (status != RuntimeAssetDataStatus::Success) {
+            *out_result = result;
+            return status;
+        }
+
+        ++result.source_artifact_write_count;
+    }
+
+    const RuntimeAssetFixtureArtifact source_scene = RuntimeAssetSourceSceneArtifact();
+    result.source_scene = source_scene.desc;
+    RuntimeAssetDataStatus status = WriteAndValidateFixtureArtifact(
+        request,
+        source_scene,
+        RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT,
+        &result.source_graph_hash,
+        &result.source_scene_hash,
+        &result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return status;
+    }
+
+    ++result.source_artifact_write_count;
+    result.validated_source_files = true;
+
+    const std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> cooked_artifacts =
+        RuntimeAssetCookedFixtureArtifacts();
+    for (std::size_t index = 0U; index < cooked_artifacts.size(); ++index) {
+        request.cooked_files[index] = cooked_artifacts[index].desc;
+        const RuntimeAssetDataStatus cooked_status = WriteAndValidateFixtureArtifact(
+            request,
+            cooked_artifacts[index],
+            static_cast<std::uint32_t>(
+                RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U + index),
+            &result.cooked_graph_hash,
+            nullptr,
+            &result);
+        if (cooked_status != RuntimeAssetDataStatus::Success) {
+            *out_result = result;
+            return cooked_status;
+        }
+
+        ++result.cooked_artifact_write_count;
+    }
+
+    const RuntimeAssetFixtureArtifact cooked_scene = RuntimeAssetCookedSceneArtifact();
+    result.cooked_scene = cooked_scene.desc;
+    status = WriteAndValidateFixtureArtifact(
+        request,
+        cooked_scene,
+        (RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT * 2U) + 1U,
+        &result.cooked_graph_hash,
+        &result.cooked_scene_hash,
+        &result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return status;
+    }
+
+    ++result.cooked_artifact_write_count;
+    result.validated_cooked_files = true;
+    result.wrote_to_disk = true;
+    result.status = RuntimeAssetDataStatus::Success;
+    result.missing_layer = RuntimeAssetImportCookMissingLayer::None;
+    result.validation_status = RuntimeAssetDataStatus::Success;
+    *out_result = result;
+    return result.status;
+}
+
+RuntimeAssetDataStatus ExecuteRuntimeAssetImportCookCommand(
+    const RuntimeAssetImportCookCommandRequest &request,
+    RuntimeAssetImportCookCommandResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetImportCookCommandResult result{};
+    if (request.command != RuntimeAssetImportCookCommandKind::GenerateDeterministicDiskFixture) {
+        result.status = RuntimeAssetDataStatus::InvalidArgument;
+        result.missing_layer = RuntimeAssetImportCookMissingLayer::Command;
+        *out_result = result;
+        return result.status;
+    }
+
+    const RuntimeAssetDataStatus status =
+        GenerateRuntimeAssetDeterministicDiskFixture(request.fixture, &result.fixture);
+    result.status = status;
+    result.missing_layer = result.fixture.missing_layer;
     *out_result = result;
     return result.status;
 }

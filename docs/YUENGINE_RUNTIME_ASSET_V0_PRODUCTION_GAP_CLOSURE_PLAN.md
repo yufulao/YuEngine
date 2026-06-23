@@ -224,11 +224,17 @@ Acceptance shape:
 | RAV1-C | Cooked texture/material/shader payload bridge plan to RHI route | design slice consuming this contract |
 | RAV1-D | Bounded scene/animation record loader plan | design slice consuming this contract |
 | RAV1-E | Evidence matrix and acceptance commands | review/evidence slice before implementation authorization |
+| RAV2-A | Import/cook command contract and deterministic disk fixture generator | first engine-owned command/API slice; writes source+cooked disk fixtures through File/VFS and exposes descriptors for RuntimeAsset graph load |
 
 Every implementation task must restate that editor, Web, UI, Game Adapter,
 original package parser, and external authoring bridge work are out of scope.
 RAV1-A is not an implementation task; it only records the contract and gate that
 later slices must obey.
+
+RAV2-A is documented in
+`docs/YUENGINE_RUNTIME_ASSET_V0_IMPORT_COOK_COMMAND_CONTRACT.md`. It is not
+Resource Browser UI, Preview Host, original package parsing, Unity/UE importing,
+or final render closure.
 
 ## Downstream Blockers
 

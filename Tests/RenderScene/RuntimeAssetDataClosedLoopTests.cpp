@@ -124,7 +124,9 @@ using yuengine::runtimeasset::BuildRuntimeAssetCookedShaderProgramPipeline;
 using yuengine::runtimeasset::BuildRuntimeAssetCookedTextureMaterialBridge;
 using yuengine::runtimeasset::BuildRuntimeAssetShaderProgramPipeline;
 using yuengine::runtimeasset::DecodeRuntimeAssetShaderProgramData;
+using yuengine::runtimeasset::ExecuteRuntimeAssetImportCookCommand;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
+using yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT;
 using yuengine::runtimeasset::RuntimeAssetArtifactClass;
 using yuengine::runtimeasset::RuntimeAssetCookedMaterialSlotDesc;
 using yuengine::runtimeasset::RuntimeAssetCookedProgramDesc;
@@ -138,10 +140,15 @@ using yuengine::runtimeasset::RuntimeAssetCookedTextureMaterialBridgeRequest;
 using yuengine::runtimeasset::RuntimeAssetCookedTextureMaterialBridgeResult;
 using yuengine::runtimeasset::RuntimeAssetCookedTexturePayloadDesc;
 using yuengine::runtimeasset::RuntimeAssetDataStatus;
+using yuengine::runtimeasset::RuntimeAssetDeterministicDiskFixtureResult;
 using yuengine::runtimeasset::RuntimeAssetFileDesc;
 using yuengine::runtimeasset::RuntimeAssetFileKind;
 using yuengine::runtimeasset::RuntimeAssetGraphLoadRequest;
 using yuengine::runtimeasset::RuntimeAssetGraphLoadResult;
+using yuengine::runtimeasset::RuntimeAssetImportCookCommandKind;
+using yuengine::runtimeasset::RuntimeAssetImportCookCommandRequest;
+using yuengine::runtimeasset::RuntimeAssetImportCookCommandResult;
+using yuengine::runtimeasset::RuntimeAssetImportCookMissingLayer;
 using yuengine::runtimeasset::RuntimeAssetLoadedFile;
 using yuengine::runtimeasset::RuntimeAssetLoadedShaderProgramData;
 using yuengine::runtimeasset::RuntimeAssetLoadTransactionPhase;
@@ -191,6 +198,12 @@ using yuengine::world::WorldTransformState;
 
 constexpr const char *TEST_GENERATOR =
     "RuntimeAssetData_GeneratorWritesDeterministicFilesAndHashes";
+constexpr const char *TEST_IMPORT_COOK_COMMAND_WRITES =
+    "RuntimeAssetData_ImportCookCommandWritesSourceAndCookedDiskFixtures";
+constexpr const char *TEST_IMPORT_COOK_COMMAND_LOADS =
+    "RuntimeAssetData_ImportCookCommandLoadsGeneratedSourceAndCookedViaFileResourceRoute";
+constexpr const char *TEST_IMPORT_COOK_COMMAND_MISSING_LAYER =
+    "RuntimeAssetData_ImportCookCommandReportsMissingLayerStatus";
 constexpr const char *TEST_UNSUPPORTED_VERSION =
     "RuntimeAssetData_FormatHeaderRejectsUnsupportedVersion";
 constexpr const char *TEST_INVALID_BOUNDS =
@@ -653,6 +666,8 @@ const char *StatusName(RuntimeAssetDataStatus status) {
             return "BudgetExceeded";
         case RuntimeAssetDataStatus::FileReadFailed:
             return "FileReadFailed";
+        case RuntimeAssetDataStatus::FileWriteFailed:
+            return "FileWriteFailed";
         case RuntimeAssetDataStatus::ResourceRegistrationFailed:
             return "ResourceRegistrationFailed";
         case RuntimeAssetDataStatus::ResourceLoadCommitFailed:
@@ -2731,6 +2746,289 @@ int RuntimeAssetDataGeneratorWritesDeterministicFilesAndHashes() {
 
     if (!SceneReferencesRequiredAssets(first_scene)) {
         return Fail("scene did not reference required asset families");
+    }
+
+    return 0;
+}
+
+struct GeneratedFixtureCommandContext final {
+    MountTable table;
+    std::array<RuntimeAssetFileDesc, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> source_files{};
+    std::array<RuntimeAssetFileDesc, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> cooked_files{};
+    RuntimeAssetImportCookCommandResult command{};
+};
+
+bool ExecuteGeneratedFixtureCommand(std::string_view root_name, GeneratedFixtureCommandContext *out_context) {
+    if (out_context == nullptr) {
+        return FailStep("null generated fixture context");
+    }
+
+    GeneratedFixtureCommandContext context{};
+    if (!CreateMountedTable(TestRoot(root_name), &context.table)) {
+        return FailStep("generated fixture mount setup failed");
+    }
+
+    RuntimeAssetImportCookCommandRequest request{};
+    request.command = RuntimeAssetImportCookCommandKind::GenerateDeterministicDiskFixture;
+    request.fixture.mount_table = &context.table;
+    request.fixture.mount = MountId(MOUNT_ID);
+    request.fixture.source_files = context.source_files.data();
+    request.fixture.source_file_capacity = static_cast<std::uint32_t>(context.source_files.size());
+    request.fixture.cooked_files = context.cooked_files.data();
+    request.fixture.cooked_file_capacity = static_cast<std::uint32_t>(context.cooked_files.size());
+
+    const RuntimeAssetDataStatus status = ExecuteRuntimeAssetImportCookCommand(request, &context.command);
+    if (status != RuntimeAssetDataStatus::Success || context.command.status != RuntimeAssetDataStatus::Success) {
+        return FailStep("generated fixture command failed");
+    }
+
+    *out_context = context;
+    return true;
+}
+
+bool ReadAndValidateGeneratedArtifact(
+    MountTable &table,
+    const RuntimeAssetFileDesc &desc,
+    RuntimeAssetArtifactClass expected_class,
+    RuntimeAssetValidationResult *out_validation) {
+    std::vector<std::uint8_t> bytes{};
+    if (!ReadFile(table, desc.path, &bytes)) {
+        return FailStep("generated artifact was not written to disk");
+    }
+
+    RuntimeAssetValidationResult validation{};
+    const RuntimeAssetDataStatus status = ValidateRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+        desc.kind,
+        &validation);
+    if (status != RuntimeAssetDataStatus::Success || validation.artifact_class != expected_class) {
+        return FailStep("generated artifact validation failed");
+    }
+
+    if (out_validation != nullptr) {
+        *out_validation = validation;
+    }
+
+    return true;
+}
+
+bool LoadGeneratedRuntimeAssetGraph(
+    MountTable &table,
+    const RuntimeAssetFileDesc &scene_desc,
+    std::span<const RuntimeAssetFileDesc> files,
+    RuntimeAssetGraphLoadResult *out_result) {
+    if (out_result == nullptr) {
+        return FailStep("null generated load result");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<RuntimeAssetLoadedFile, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> loaded_files{};
+    std::array<RuntimeAssetSceneResourceRef, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> scene_refs{};
+    std::array<RuntimeAssetSceneCameraRecord, 1U> scene_cameras{};
+    std::array<RuntimeAssetSceneEntityRecord, 3U> scene_entities{};
+    std::array<RuntimeAssetSceneTransformOutputRecord, 3U> scene_transforms{};
+    RuntimeAssetSceneLoaderOutput scene_output{};
+
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = &table;
+    load_request.mount = MountId(MOUNT_ID);
+    load_request.scene_path = VirtualPath(scene_desc.path);
+    load_request.scene_resource_type = scene_desc.resource_type;
+    load_request.scene_asset_type = scene_desc.asset_type;
+    load_request.scene_stable_id = scene_desc.stable_id;
+    load_request.files = files.data();
+    load_request.file_count = static_cast<std::uint32_t>(files.size());
+    load_request.resource_registry = &registry;
+    load_request.asset_manager = &manager;
+    load_request.loaded_files = loaded_files.data();
+    load_request.loaded_file_capacity = static_cast<std::uint32_t>(loaded_files.size());
+    load_request.scene_resource_refs = scene_refs.data();
+    load_request.scene_resource_ref_capacity = static_cast<std::uint32_t>(scene_refs.size());
+    load_request.scene_cameras = scene_cameras.data();
+    load_request.scene_camera_capacity = static_cast<std::uint32_t>(scene_cameras.size());
+    load_request.scene_entities = scene_entities.data();
+    load_request.scene_entity_capacity = static_cast<std::uint32_t>(scene_entities.size());
+    load_request.scene_transforms = scene_transforms.data();
+    load_request.scene_transform_capacity = static_cast<std::uint32_t>(scene_transforms.size());
+    load_request.scene_output = &scene_output;
+    load_request.animation_frame_context.frame_index = 1U;
+    load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+
+    RuntimeAssetGraphLoadResult load_result{};
+    const RuntimeAssetDataStatus status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        std::fwrite(StatusName(status), sizeof(char), std::string_view(StatusName(status)).size(), stderr);
+        std::fputc('\n', stderr);
+        return FailStep("generated runtime asset graph load failed");
+    }
+
+    if (load_result.file_read_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U ||
+        load_result.loaded_file_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
+        !load_result.scene_registered ||
+        !load_result.scene_references_runtime_asset_families ||
+        load_result.transaction_result.status != RuntimeAssetDataStatus::Success ||
+        !load_result.transaction_result.mutated_state) {
+        return FailStep("generated runtime asset graph diagnostics changed");
+    }
+
+    *out_result = load_result;
+    return true;
+}
+
+int RuntimeAssetDataImportCookCommandWritesSourceAndCookedDiskFixtures() {
+    GeneratedFixtureCommandContext first{};
+    if (!ExecuteGeneratedFixtureCommand("ImportCookCommandA", &first)) {
+        return Fail("first import/cook command failed");
+    }
+
+    GeneratedFixtureCommandContext second{};
+    if (!ExecuteGeneratedFixtureCommand("ImportCookCommandB", &second)) {
+        return Fail("second import/cook command failed");
+    }
+
+    const RuntimeAssetDeterministicDiskFixtureResult &first_result = first.command.fixture;
+    const RuntimeAssetDeterministicDiskFixtureResult &second_result = second.command.fixture;
+    if (!first_result.wrote_to_disk ||
+        !first_result.validated_source_files ||
+        !first_result.validated_cooked_files ||
+        first_result.source_file_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
+        first_result.cooked_file_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
+        first_result.source_artifact_write_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U ||
+        first_result.cooked_artifact_write_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U ||
+        first_result.validation_count != (RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U) * 2U) {
+        return Fail("import/cook command did not report source+cooked disk generation");
+    }
+
+    if (first_result.source_graph_hash == 0U ||
+        first_result.cooked_graph_hash == 0U ||
+        first_result.source_graph_hash != second_result.source_graph_hash ||
+        first_result.cooked_graph_hash != second_result.cooked_graph_hash ||
+        first_result.source_scene_hash != second_result.source_scene_hash ||
+        first_result.cooked_scene_hash != second_result.cooked_scene_hash) {
+        return Fail("generated fixture hashes were not deterministic");
+    }
+
+    for (const RuntimeAssetFileDesc &desc : first.source_files) {
+        if (!ReadAndValidateGeneratedArtifact(first.table, desc, RuntimeAssetArtifactClass::Source, nullptr)) {
+            return Fail("generated source artifact did not validate");
+        }
+    }
+
+    for (const RuntimeAssetFileDesc &desc : first.cooked_files) {
+        if (!ReadAndValidateGeneratedArtifact(first.table, desc, RuntimeAssetArtifactClass::Cooked, nullptr)) {
+            return Fail("generated cooked artifact did not validate");
+        }
+    }
+
+    RuntimeAssetValidationResult source_scene_validation{};
+    RuntimeAssetValidationResult cooked_scene_validation{};
+    if (!ReadAndValidateGeneratedArtifact(
+            first.table,
+            first_result.source_scene,
+            RuntimeAssetArtifactClass::Source,
+            &source_scene_validation) ||
+        !ReadAndValidateGeneratedArtifact(
+            first.table,
+            first_result.cooked_scene,
+            RuntimeAssetArtifactClass::Cooked,
+            &cooked_scene_validation)) {
+        return Fail("generated scenes did not validate");
+    }
+
+    if (source_scene_validation.dependency_count == 0U ||
+        cooked_scene_validation.dependency_table_count == 0U ||
+        cooked_scene_validation.payload_hash == 0U) {
+        return Fail("generated scenes did not carry dependency/table/hash metadata");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataImportCookCommandLoadsGeneratedSourceAndCookedViaFileResourceRoute() {
+    GeneratedFixtureCommandContext context{};
+    if (!ExecuteGeneratedFixtureCommand("ImportCookCommandLoad", &context)) {
+        return Fail("import/cook command fixture setup failed");
+    }
+
+    RuntimeAssetGraphLoadResult source_load{};
+    if (!LoadGeneratedRuntimeAssetGraph(
+            context.table,
+            context.command.fixture.source_scene,
+            std::span<const RuntimeAssetFileDesc>(context.source_files.data(), context.source_files.size()),
+            &source_load)) {
+        return Fail("generated source graph did not load");
+    }
+
+    RuntimeAssetGraphLoadResult cooked_load{};
+    if (!LoadGeneratedRuntimeAssetGraph(
+            context.table,
+            context.command.fixture.cooked_scene,
+            std::span<const RuntimeAssetFileDesc>(context.cooked_files.data(), context.cooked_files.size()),
+            &cooked_load)) {
+        return Fail("generated cooked graph did not load");
+    }
+
+    if (source_load.resource_dependency_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
+        source_load.asset_dependency_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
+        cooked_load.resource_dependency_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT ||
+        cooked_load.asset_dependency_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT) {
+        return Fail("generated graph did not commit Resource/Asset dependency edges");
+    }
+
+    if (source_load.transaction_plan.resource_commit_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U ||
+        cooked_load.transaction_plan.resource_commit_count != RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT + 1U) {
+        return Fail("generated graph did not route through Resource commit plan");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataImportCookCommandReportsMissingLayerStatus() {
+    std::array<RuntimeAssetFileDesc, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> source_files{};
+    std::array<RuntimeAssetFileDesc, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> cooked_files{};
+
+    RuntimeAssetImportCookCommandRequest missing_file_vfs_request{};
+    missing_file_vfs_request.command = RuntimeAssetImportCookCommandKind::GenerateDeterministicDiskFixture;
+    missing_file_vfs_request.fixture.mount = MountId(MOUNT_ID);
+    missing_file_vfs_request.fixture.source_files = source_files.data();
+    missing_file_vfs_request.fixture.source_file_capacity = static_cast<std::uint32_t>(source_files.size());
+    missing_file_vfs_request.fixture.cooked_files = cooked_files.data();
+    missing_file_vfs_request.fixture.cooked_file_capacity = static_cast<std::uint32_t>(cooked_files.size());
+
+    RuntimeAssetImportCookCommandResult missing_file_vfs{};
+    const RuntimeAssetDataStatus missing_file_status =
+        ExecuteRuntimeAssetImportCookCommand(missing_file_vfs_request, &missing_file_vfs);
+    if (missing_file_status != RuntimeAssetDataStatus::InvalidArgument ||
+        missing_file_vfs.missing_layer != RuntimeAssetImportCookMissingLayer::FileVfs ||
+        missing_file_vfs.fixture.status != RuntimeAssetDataStatus::InvalidArgument) {
+        return Fail("missing File/VFS layer did not report explicit status");
+    }
+
+    RuntimeAssetImportCookCommandRequest unknown_request{};
+    RuntimeAssetImportCookCommandResult unknown_result{};
+    const RuntimeAssetDataStatus unknown_status =
+        ExecuteRuntimeAssetImportCookCommand(unknown_request, &unknown_result);
+    if (unknown_status != RuntimeAssetDataStatus::InvalidArgument ||
+        unknown_result.missing_layer != RuntimeAssetImportCookMissingLayer::Command) {
+        return Fail("unknown command did not report command layer");
+    }
+
+    RuntimeAssetImportCookCommandRequest small_capacity_request = missing_file_vfs_request;
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("ImportCookCommandCapacity"), &table)) {
+        return Fail("capacity mount setup failed");
+    }
+
+    small_capacity_request.fixture.mount_table = &table;
+    small_capacity_request.fixture.source_file_capacity = 1U;
+    RuntimeAssetImportCookCommandResult small_capacity{};
+    const RuntimeAssetDataStatus capacity_status =
+        ExecuteRuntimeAssetImportCookCommand(small_capacity_request, &small_capacity);
+    if (capacity_status != RuntimeAssetDataStatus::CapacityExceeded ||
+        small_capacity.missing_layer != RuntimeAssetImportCookMissingLayer::RuntimeAssetData) {
+        return Fail("descriptor capacity failure did not report RuntimeAssetData layer");
     }
 
     return 0;
@@ -5885,6 +6183,9 @@ int RuntimeAssetDataDoesNotDependOnEditorWebUiInputOrGdiViewer() {
 
 const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_GENERATOR, RuntimeAssetDataGeneratorWritesDeterministicFilesAndHashes},
+    {TEST_IMPORT_COOK_COMMAND_WRITES, RuntimeAssetDataImportCookCommandWritesSourceAndCookedDiskFixtures},
+    {TEST_IMPORT_COOK_COMMAND_LOADS, RuntimeAssetDataImportCookCommandLoadsGeneratedSourceAndCookedViaFileResourceRoute},
+    {TEST_IMPORT_COOK_COMMAND_MISSING_LAYER, RuntimeAssetDataImportCookCommandReportsMissingLayerStatus},
     {TEST_UNSUPPORTED_VERSION, RuntimeAssetDataFormatHeaderRejectsUnsupportedVersion},
     {TEST_INVALID_BOUNDS, RuntimeAssetDataValidatorRejectsInvalidBoundsWithoutOutputs},
     {TEST_TYPED_MESH_MATERIAL_TEXTURE, RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata},

@@ -350,6 +350,9 @@ Accepted proof:
 - deterministic disk files produced by a checked-in generator;
 - validator/cook/load records created from bytes read through approved engine
   file/resource paths;
+- RAV2-A import/cook command entry and deterministic source+cooked fixture
+  generator documented in
+  `docs/YUENGINE_RUNTIME_ASSET_V0_IMPORT_COOK_COMMAND_CONTRACT.md`;
 - no-mutation tests for rejected file, dependency, output, and budget cases;
 - Resource cache payload, Resource decoded payload, Resource dependency, and
   Asset dependency records written by runtime code, not private test helpers;
