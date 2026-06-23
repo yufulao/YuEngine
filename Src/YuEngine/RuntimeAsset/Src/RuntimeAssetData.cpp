@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <limits>
 #include <string>
@@ -147,7 +148,7 @@ constexpr std::uint64_t DECODE_PLAN_ID_OFFSET = 90000U;
 constexpr std::uint64_t DECODE_RESULT_ID_OFFSET = 100000U;
 constexpr std::uint64_t DECODED_PAYLOAD_ID_OFFSET = 110000U;
 constexpr std::uint32_t DEFAULT_RESIDENCY_BYTE_CAPACITY = 4096U;
-constexpr std::uint32_t DEFAULT_PAYLOAD_BYTE_CAPACITY = 4096U;
+constexpr std::uint32_t DEFAULT_PAYLOAD_BYTE_CAPACITY = 8192U;
 constexpr std::string_view RUNTIME_ASSET_SOURCE_SCHEMA = "rav0-source";
 constexpr std::string_view RUNTIME_ASSET_COOKED_SCHEMA = "rav1-cooked";
 constexpr std::string_view SHADER_BYTECODE_PREFIX = "bytecode:";
@@ -159,6 +160,12 @@ constexpr std::uint32_t MAX_RUNTIME_ASSET_DEPENDENCY_ROWS = 64U;
 constexpr std::uint32_t MAX_RUNTIME_ASSET_RECORD_TABLES = 16U;
 constexpr std::uint32_t MAX_RUNTIME_ASSET_RECORD_BYTES = 4096U;
 constexpr std::uint32_t MAX_RUNTIME_ASSET_PAYLOAD_BYTES = 4096U;
+constexpr std::uint32_t RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT = 64U;
+constexpr std::uint32_t RUNTIME_ASSET_MAX_SCENE_CAMERA_COUNT = 4U;
+constexpr std::uint32_t RUNTIME_ASSET_MAX_ANIMATION_CLIP_COUNT = 8U;
+constexpr std::uint32_t RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT = 128U;
+constexpr std::uint32_t RUNTIME_ASSET_MAX_ANIMATION_KEYFRAME_COUNT = 512U;
+constexpr std::uint32_t RUNTIME_ASSET_MAX_ANIMATION_SAMPLED_VALUE_COUNT = 128U;
 
 bool Contains(std::string_view text, std::string_view token) {
     return text.find(token) != std::string_view::npos;
@@ -237,6 +244,10 @@ bool ParseFloat(std::string_view text, float *out_value) {
         return false;
     }
 
+    if (!std::isfinite(parsed)) {
+        return false;
+    }
+
     *out_value = parsed;
     return true;
 }
@@ -255,6 +266,114 @@ bool ParseVec3(std::string_view text, float *out_x, float *out_y, float *out_z) 
     return ParseFloat(text.substr(0U, first_comma), out_x) &&
         ParseFloat(text.substr(first_comma + 1U, second_comma - first_comma - 1U), out_y) &&
         ParseFloat(text.substr(second_comma + 1U), out_z);
+}
+
+std::string_view RecordMainValue(std::string_view record) {
+    const std::size_t separator = record.find('|');
+    if (separator == std::string_view::npos) {
+        return record;
+    }
+
+    return record.substr(0U, separator);
+}
+
+std::string_view FieldValue(std::string_view record, std::string_view field) {
+    std::size_t offset = 0U;
+    while (offset < record.size()) {
+        const std::size_t segment_end = record.find('|', offset);
+        const std::size_t length =
+            segment_end == std::string_view::npos ? record.size() - offset : segment_end - offset;
+        const std::string_view segment = record.substr(offset, length);
+        if (StartsWith(segment, field)) {
+            return segment.substr(field.size());
+        }
+
+        if (segment_end == std::string_view::npos) {
+            return {};
+        }
+
+        offset = segment_end + 1U;
+    }
+
+    return {};
+}
+
+bool ParseOptionalU32Field(
+    std::string_view record,
+    std::string_view field,
+    std::uint32_t default_value,
+    std::uint32_t *out_value) {
+    if (out_value == nullptr) {
+        return false;
+    }
+
+    const std::string_view value = FieldValue(record, field);
+    if (value.empty()) {
+        *out_value = default_value;
+        return true;
+    }
+
+    return ParseU32(value, out_value);
+}
+
+bool ParseOptionalBoolField(
+    std::string_view record,
+    std::string_view field,
+    bool default_value,
+    bool *out_value) {
+    if (out_value == nullptr) {
+        return false;
+    }
+
+    const std::string_view value = FieldValue(record, field);
+    if (value.empty()) {
+        *out_value = default_value;
+        return true;
+    }
+
+    if (value == "1" || value == "true") {
+        *out_value = true;
+        return true;
+    }
+
+    if (value == "0" || value == "false") {
+        *out_value = false;
+        return true;
+    }
+
+    return false;
+}
+
+RuntimeAssetDataStatus ParseDeclaredCount(
+    std::string_view text,
+    std::string_view token,
+    std::uint32_t default_value,
+    std::uint32_t max_value,
+    std::uint32_t *out_value,
+    bool *out_declared) {
+    if (out_value == nullptr || out_declared == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const std::string_view value = ValueForToken(text, token);
+    if (value.empty()) {
+        *out_value = default_value;
+        *out_declared = false;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    std::uint32_t parsed = 0U;
+    if (!ParseU32(value, &parsed) || parsed == 0U) {
+        return RuntimeAssetDataStatus::InvalidCount;
+    }
+
+    if (parsed > max_value) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    *out_value = parsed;
+    *out_declared = true;
+    return RuntimeAssetDataStatus::Success;
 }
 
 bool ParseSceneEntityValue(
@@ -455,6 +574,270 @@ bool FindRefIndex(
     return false;
 }
 
+struct RuntimeAssetSceneEntityStageRow final {
+    RuntimeAssetSceneEntityRecord entity{};
+    std::uint32_t sort_key = 0U;
+};
+
+struct RuntimeAssetSceneLoaderStage final {
+    std::array<RuntimeAssetSceneCameraRecord, RUNTIME_ASSET_MAX_SCENE_CAMERA_COUNT> cameras{};
+    std::array<RuntimeAssetSceneEntityRecord, RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT> entities{};
+    std::array<RuntimeAssetSceneTransformOutputRecord, RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT> transforms{};
+    std::uint32_t camera_count = 0U;
+    std::uint32_t entity_count = 0U;
+    std::uint32_t transform_count = 0U;
+    std::uint32_t animation_sampled_value_count = 0U;
+    AnimationRuntimeStatus animation_sample_status = AnimationRuntimeStatus::MissingClip;
+    AnimationRuntimeStatus animation_apply_status = AnimationRuntimeStatus::MissingSample;
+};
+
+bool SceneStageHasWorldObject(
+    const RuntimeAssetSceneLoaderStage &stage,
+    WorldObjectId world_object_id) {
+    for (std::uint32_t index = 0U; index < stage.entity_count; ++index) {
+        if (stage.entities[index].world_object_id.value == world_object_id.value) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+RuntimeAssetDataStatus ResolveSceneEntityRef(
+    const RuntimeAssetGraphLoadRequest &request,
+    RuntimeAssetFileKind kind,
+    std::uint32_t ordinal,
+    std::uint32_t *out_index) {
+    if (!FindRefIndex(request.files, request.file_count, kind, ordinal, out_index)) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ParseSceneCameraRecord(
+    std::string_view value,
+    RuntimeAssetSceneCameraRecord *out_record) {
+    if (out_record == nullptr || value.empty()) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const std::size_t separator = value.find(':');
+    if (separator == std::string_view::npos) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    std::uint32_t camera_id = 0U;
+    if (!ParseU32(value.substr(0U, separator), &camera_id) || camera_id == 0U) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    const std::string_view active_value = value.substr(separator + 1U);
+    RuntimeAssetSceneCameraRecord record{};
+    record.camera_id = camera_id;
+    if (active_value == "active" || active_value == "1" || active_value == "true") {
+        record.is_active = true;
+    } else if (active_value == "inactive" || active_value == "0" || active_value == "false") {
+        record.is_active = false;
+    } else {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    *out_record = record;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ParseSceneCameras(
+    std::string_view scene_text,
+    std::uint32_t camera_count,
+    bool camera_count_declared,
+    RuntimeAssetSceneLoaderStage *stage) {
+    if (stage == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (!camera_count_declared) {
+        RuntimeAssetSceneCameraRecord camera{};
+        camera.camera_id = 1U;
+        camera.is_active = true;
+        stage->cameras[0U] = camera;
+        stage->camera_count = 1U;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    std::uint32_t active_count = 0U;
+    for (std::uint32_t index = 0U; index < camera_count; ++index) {
+        const std::string token = "camera" + std::to_string(index) + "=";
+        RuntimeAssetSceneCameraRecord camera{};
+        const RuntimeAssetDataStatus status =
+            ParseSceneCameraRecord(ValueForToken(scene_text, token), &camera);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+
+        if (camera.is_active) {
+            ++active_count;
+        }
+
+        stage->cameras[index] = camera;
+    }
+
+    if (active_count == 0U) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (active_count > 1U) {
+        return RuntimeAssetDataStatus::DuplicateDependency;
+    }
+
+    stage->camera_count = camera_count;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ParseSceneEntityStageRow(
+    const RuntimeAssetGraphLoadRequest &request,
+    std::string_view value,
+    std::uint32_t entity_index,
+    std::uint32_t camera_count,
+    bool bounded_record,
+    RuntimeAssetSceneEntityStageRow *out_row) {
+    if (out_row == nullptr || value.empty()) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const std::uint32_t default_mesh_ordinal =
+        entity_index < RUNTIME_ASSET_SCENE_ENTITY_COUNT ? entity_index : 0U;
+    std::uint32_t mesh_ordinal = 0U;
+    std::uint32_t material_ordinal = 0U;
+    std::uint32_t texture_ordinal = 0U;
+    std::uint32_t shader_ordinal = 0U;
+    std::uint32_t camera_index = 0U;
+    std::uint32_t animation_ordinal = 0U;
+    std::uint32_t sort_key = entity_index;
+    bool is_visible = true;
+    bool is_active = true;
+    if (!ParseOptionalU32Field(value, "mesh_ref=", default_mesh_ordinal, &mesh_ordinal) ||
+        !ParseOptionalU32Field(value, "material_ref=", 0U, &material_ordinal) ||
+        !ParseOptionalU32Field(value, "texture_ref=", 0U, &texture_ordinal) ||
+        !ParseOptionalU32Field(value, "shader_ref=", 0U, &shader_ordinal) ||
+        !ParseOptionalU32Field(value, "camera=", 0U, &camera_index) ||
+        !ParseOptionalU32Field(value, "animation_ref=", 0U, &animation_ordinal) ||
+        !ParseOptionalU32Field(value, "sort=", entity_index, &sort_key) ||
+        !ParseOptionalBoolField(value, "visible=", true, &is_visible) ||
+        !ParseOptionalBoolField(value, "active=", true, &is_active)) {
+        return bounded_record ? RuntimeAssetDataStatus::InvalidBounds :
+            RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    if (camera_index >= camera_count) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    std::uint32_t mesh_ref = 0U;
+    std::uint32_t material_ref = 0U;
+    std::uint32_t texture_ref = 0U;
+    std::uint32_t shader_ref = 0U;
+    std::uint32_t animation_ref = 0U;
+    RuntimeAssetDataStatus status =
+        ResolveSceneEntityRef(request, RuntimeAssetFileKind::Mesh, mesh_ordinal, &mesh_ref);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = ResolveSceneEntityRef(request, RuntimeAssetFileKind::Material, material_ordinal, &material_ref);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = ResolveSceneEntityRef(request, RuntimeAssetFileKind::Texture, texture_ordinal, &texture_ref);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = ResolveSceneEntityRef(request, RuntimeAssetFileKind::Shader, shader_ordinal, &shader_ref);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = ResolveSceneEntityRef(request, RuntimeAssetFileKind::Animation, animation_ordinal, &animation_ref);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    RuntimeAssetSceneEntityRecord entity{};
+    if (!ParseSceneEntityValue(
+            RecordMainValue(value),
+            entity_index + 1U,
+            mesh_ref,
+            material_ref,
+            texture_ref,
+            shader_ref,
+            camera_index,
+            animation_ref,
+            &entity)) {
+        return bounded_record ? RuntimeAssetDataStatus::InvalidBounds :
+            RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    entity.is_visible = is_visible;
+    entity.is_active = is_active;
+    out_row->entity = entity;
+    out_row->sort_key = sort_key;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ParseSceneEntities(
+    const RuntimeAssetGraphLoadRequest &request,
+    std::string_view scene_text,
+    std::uint32_t entity_count,
+    bool entity_count_declared,
+    RuntimeAssetSceneLoaderStage *stage) {
+    if (stage == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    std::array<RuntimeAssetSceneEntityStageRow, RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT> rows{};
+    for (std::uint32_t index = 0U; index < entity_count; ++index) {
+        const std::string token = "e" + std::to_string(index) + "=";
+        const RuntimeAssetDataStatus status = ParseSceneEntityStageRow(
+            request,
+            ValueForToken(scene_text, token),
+            index,
+            stage->camera_count,
+            entity_count_declared,
+            &rows[index]);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+    }
+
+    for (std::uint32_t index = 0U; index < entity_count; ++index) {
+        for (std::uint32_t other = index + 1U; other < entity_count; ++other) {
+            if (rows[index].entity.world_object_id.value == rows[other].entity.world_object_id.value) {
+                return RuntimeAssetDataStatus::DuplicateDependency;
+            }
+        }
+    }
+
+    std::sort(
+        rows.begin(),
+        rows.begin() + entity_count,
+        [](const RuntimeAssetSceneEntityStageRow &left, const RuntimeAssetSceneEntityStageRow &right) {
+            if (left.sort_key != right.sort_key) {
+                return left.sort_key < right.sort_key;
+            }
+
+            return left.entity.world_object_id.value < right.entity.world_object_id.value;
+        });
+
+    for (std::uint32_t index = 0U; index < entity_count; ++index) {
+        stage->entities[index] = rows[index].entity;
+    }
+
+    stage->entity_count = entity_count;
+    return RuntimeAssetDataStatus::Success;
+}
+
 std::string_view RuntimeAssetFamilyToken(RuntimeAssetFileKind kind) {
     switch (kind) {
         case RuntimeAssetFileKind::Mesh:
@@ -619,6 +1002,24 @@ bool ParseU64(std::string_view text, std::uint64_t *out_value) {
 
     *out_value = value;
     return true;
+}
+
+RuntimeAssetDataStatus ValidateOptionalDeclaredHash(std::string_view text) {
+    const std::string_view expected_hash_text = ValueForToken(text, "expected_hash=");
+    if (expected_hash_text.empty()) {
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    std::uint64_t expected_hash = 0U;
+    if (!ParseU64(expected_hash_text, &expected_hash)) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    if (expected_hash != HashRuntimeAssetText(text)) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    return RuntimeAssetDataStatus::Success;
 }
 
 bool ParseExtent(std::string_view text, std::uint32_t *out_width, std::uint32_t *out_height) {
@@ -890,18 +1291,6 @@ RuntimeAssetDataStatus ValidateCommonMetadata(
 struct DependencyRule final {
     std::string_view token;
     std::string_view expected_prefix;
-};
-
-struct RuntimeAssetSceneLoaderStage final {
-    std::array<RuntimeAssetSceneCameraRecord, RUNTIME_ASSET_SCENE_CAMERA_COUNT> cameras{};
-    std::array<RuntimeAssetSceneEntityRecord, RUNTIME_ASSET_SCENE_ENTITY_COUNT> entities{};
-    std::array<RuntimeAssetSceneTransformOutputRecord, RUNTIME_ASSET_SCENE_TRANSFORM_COUNT> transforms{};
-    std::uint32_t camera_count = 0U;
-    std::uint32_t entity_count = 0U;
-    std::uint32_t transform_count = 0U;
-    std::uint32_t animation_sampled_value_count = 0U;
-    AnimationRuntimeStatus animation_sample_status = AnimationRuntimeStatus::MissingClip;
-    AnimationRuntimeStatus animation_apply_status = AnimationRuntimeStatus::MissingSample;
 };
 
 RuntimeAssetDataStatus ValidateDependencyRules(
@@ -1709,9 +2098,9 @@ RuntimeAssetDataStatus ValidateGraphRequest(const RuntimeAssetGraphLoadRequest &
         }
 
         if (request.scene_resource_ref_capacity < request.file_count ||
-            request.scene_camera_capacity < RUNTIME_ASSET_SCENE_CAMERA_COUNT ||
-            request.scene_entity_capacity < RUNTIME_ASSET_SCENE_ENTITY_COUNT ||
-            request.scene_transform_capacity < RUNTIME_ASSET_SCENE_TRANSFORM_COUNT) {
+            request.scene_camera_capacity == 0U ||
+            request.scene_entity_capacity == 0U ||
+            request.scene_transform_capacity == 0U) {
             return RuntimeAssetDataStatus::CapacityExceeded;
         }
     }
@@ -1847,6 +2236,339 @@ RuntimeAssetDataStatus ValidateShaderProgramPipelineRequest(
     return RuntimeAssetDataStatus::Success;
 }
 
+RuntimeAssetDataStatus ParseAnimationClipRecord(
+    std::string_view value,
+    std::uint32_t track_count,
+    AnimationRuntimeClipRecord *out_clip) {
+    if (out_clip == nullptr || value.empty()) {
+        return RuntimeAssetDataStatus::InvalidCount;
+    }
+
+    std::uint32_t clip_id = 0U;
+    std::uint32_t first_track = 0U;
+    std::uint32_t clip_track_count = 0U;
+    float duration_seconds = 0.0F;
+    if (!ParseU32(FieldValue(value, "id="), &clip_id) || clip_id == 0U ||
+        !ParseU32(FieldValue(value, "first_track_index="), &first_track) ||
+        !ParseU32(FieldValue(value, "track_count="), &clip_track_count) ||
+        !ParseFloat(FieldValue(value, "duration="), &duration_seconds) ||
+        duration_seconds <= 0.0F ||
+        clip_track_count == 0U ||
+        first_track >= track_count ||
+        clip_track_count > track_count - first_track) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    AnimationRuntimeClipRecord clip{};
+    clip.clip_id = clip_id;
+    clip.duration_seconds = duration_seconds;
+    clip.first_track_index = first_track;
+    clip.track_count = clip_track_count;
+    clip.layer_count = 1U;
+    clip.is_valid = true;
+    *out_clip = clip;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ParseAnimationTrackRecord(
+    std::string_view value,
+    std::uint32_t keyframe_count,
+    const RuntimeAssetSceneLoaderStage &stage,
+    AnimationRuntimeTrackRecord *out_track) {
+    if (out_track == nullptr || value.empty()) {
+        return RuntimeAssetDataStatus::InvalidCount;
+    }
+
+    std::uint32_t track_id = 0U;
+    std::uint32_t first_key = 0U;
+    std::uint32_t track_key_count = 0U;
+    WorldObjectId target{};
+    AnimationRuntimeChannel channel = AnimationRuntimeChannel::TranslationX;
+    if (!ParseU32(FieldValue(value, "id="), &track_id) || track_id == 0U ||
+        !ParseU32(FieldValue(value, "first_key="), &first_key) ||
+        !ParseU32(FieldValue(value, "key_count="), &track_key_count) ||
+        track_key_count == 0U ||
+        first_key >= keyframe_count ||
+        track_key_count > keyframe_count - first_key) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (!ParseAnimationTarget(FieldValue(value, "target_ref="), &target)) {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    if (!SceneStageHasWorldObject(stage, target)) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    if (!ParseAnimationChannel(FieldValue(value, "channel="), &channel)) {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    const std::string_view interpolation = FieldValue(value, "interp=");
+    if (!interpolation.empty() && interpolation != "linear") {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    AnimationRuntimeTrackRecord track{};
+    track.track_id = track_id;
+    track.target = target;
+    track.channel = channel;
+    track.interpolation = AnimationRuntimeInterpolation::Linear;
+    track.first_keyframe_index = first_key;
+    track.keyframe_count = track_key_count;
+    track.is_valid = true;
+    *out_track = track;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ParseAnimationKeyframeRecord(
+    std::string_view value,
+    AnimationRuntimeKeyframeRecord *out_keyframe) {
+    if (!ParseKeyframe(value, out_keyframe)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateAnimationTrackKeyframes(
+    const AnimationRuntimeClipRecord &clip,
+    const AnimationRuntimeTrackRecord &track,
+    std::span<const AnimationRuntimeKeyframeRecord> keyframes) {
+    if (track.keyframe_count == 0U ||
+        track.first_keyframe_index >= keyframes.size() ||
+        track.keyframe_count > keyframes.size() - track.first_keyframe_index) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    float previous_time = -1.0F;
+    for (std::uint32_t index = 0U; index < track.keyframe_count; ++index) {
+        const AnimationRuntimeKeyframeRecord &keyframe =
+            keyframes[track.first_keyframe_index + index];
+        if (!keyframe.is_valid ||
+            !std::isfinite(keyframe.time_seconds) ||
+            !std::isfinite(keyframe.value) ||
+            keyframe.time_seconds < 0.0F ||
+            keyframe.time_seconds > clip.duration_seconds) {
+            return RuntimeAssetDataStatus::InvalidBounds;
+        }
+
+        if (index > 0U && keyframe.time_seconds <= previous_time) {
+            return RuntimeAssetDataStatus::InvalidBounds;
+        }
+
+        previous_time = keyframe.time_seconds;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ParseBoundedAnimationTables(
+    std::string_view animation_text,
+    const RuntimeAssetSceneLoaderStage &stage,
+    std::array<AnimationRuntimeClipRecord, RUNTIME_ASSET_MAX_ANIMATION_CLIP_COUNT> *out_clips,
+    std::uint32_t *out_clip_count,
+    std::array<AnimationRuntimeTrackRecord, RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT> *out_tracks,
+    std::uint32_t *out_track_count,
+    std::array<AnimationRuntimeKeyframeRecord, RUNTIME_ASSET_MAX_ANIMATION_KEYFRAME_COUNT> *out_keyframes,
+    std::uint32_t *out_keyframe_count) {
+    if (out_clips == nullptr || out_clip_count == nullptr ||
+        out_tracks == nullptr || out_track_count == nullptr ||
+        out_keyframes == nullptr || out_keyframe_count == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const bool legacy_animation_record =
+        ValueForToken(animation_text, "clips=").empty() &&
+        ValueForToken(animation_text, "keyframes=").empty() &&
+        !ValueForToken(animation_text, "clip=").empty();
+    if (legacy_animation_record) {
+        std::uint32_t clip_id = 0U;
+        float duration_seconds = 0.0F;
+        WorldObjectId animation_target{};
+        AnimationRuntimeChannel animation_channel = AnimationRuntimeChannel::TranslationX;
+        if (!ParseU32(ValueForToken(animation_text, "clip="), &clip_id) ||
+            !ParseFloat(ValueForToken(animation_text, "duration="), &duration_seconds) ||
+            !ParseAnimationTarget(ValueForToken(animation_text, "target="), &animation_target) ||
+            !ParseAnimationChannel(ValueForToken(animation_text, "track="), &animation_channel) ||
+            !ParseKeyframe(ValueForToken(animation_text, "key0="), &(*out_keyframes)[0U]) ||
+            !ParseKeyframe(ValueForToken(animation_text, "key1="), &(*out_keyframes)[1U])) {
+            return RuntimeAssetDataStatus::InvalidDependency;
+        }
+
+        if (!SceneStageHasWorldObject(stage, animation_target)) {
+            return RuntimeAssetDataStatus::InvalidDependency;
+        }
+
+        AnimationRuntimeClipRecord clip{};
+        clip.clip_id = clip_id;
+        clip.duration_seconds = duration_seconds;
+        clip.first_track_index = 0U;
+        clip.track_count = 1U;
+        clip.layer_count = 1U;
+        clip.is_valid = true;
+        (*out_clips)[0U] = clip;
+
+        AnimationRuntimeTrackRecord track{};
+        track.track_id = 1U;
+        track.target = animation_target;
+        track.channel = animation_channel;
+        track.interpolation = AnimationRuntimeInterpolation::Linear;
+        track.first_keyframe_index = 0U;
+        track.keyframe_count = 2U;
+        track.is_valid = true;
+        (*out_tracks)[0U] = track;
+
+        *out_clip_count = 1U;
+        *out_track_count = 1U;
+        *out_keyframe_count = 2U;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    bool clip_count_declared = false;
+    bool track_count_declared = false;
+    bool keyframe_count_declared = false;
+    std::uint32_t clip_count = 0U;
+    std::uint32_t track_count = 0U;
+    std::uint32_t keyframe_count = 0U;
+    RuntimeAssetDataStatus status = ParseDeclaredCount(
+        animation_text,
+        "clips=",
+        0U,
+        RUNTIME_ASSET_MAX_ANIMATION_CLIP_COUNT,
+        &clip_count,
+        &clip_count_declared);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = ParseDeclaredCount(
+        animation_text,
+        "tracks=",
+        0U,
+        RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT,
+        &track_count,
+        &track_count_declared);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = ParseDeclaredCount(
+        animation_text,
+        "keyframes=",
+        0U,
+        RUNTIME_ASSET_MAX_ANIMATION_KEYFRAME_COUNT,
+        &keyframe_count,
+        &keyframe_count_declared);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    if (!clip_count_declared || !track_count_declared || !keyframe_count_declared) {
+        return RuntimeAssetDataStatus::InvalidCount;
+    }
+
+    for (std::uint32_t index = 0U; index < clip_count; ++index) {
+        const std::string token = "clip" + std::to_string(index) + "=";
+        status = ParseAnimationClipRecord(
+            ValueForToken(animation_text, token),
+            track_count,
+            &(*out_clips)[index]);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+    }
+
+    for (std::uint32_t index = 0U; index < track_count; ++index) {
+        const std::string token = "track" + std::to_string(index) + "=";
+        status = ParseAnimationTrackRecord(
+            ValueForToken(animation_text, token),
+            keyframe_count,
+            stage,
+            &(*out_tracks)[index]);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+    }
+
+    for (std::uint32_t index = 0U; index < keyframe_count; ++index) {
+        const std::string token = "key" + std::to_string(index) + "=";
+        status = ParseAnimationKeyframeRecord(ValueForToken(animation_text, token), &(*out_keyframes)[index]);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+    }
+
+    for (std::uint32_t clip_index = 0U; clip_index < clip_count; ++clip_index) {
+        const AnimationRuntimeClipRecord &clip = (*out_clips)[clip_index];
+        for (std::uint32_t track_offset = 0U; track_offset < clip.track_count; ++track_offset) {
+            const AnimationRuntimeTrackRecord &track = (*out_tracks)[clip.first_track_index + track_offset];
+            status = ValidateAnimationTrackKeyframes(
+                clip,
+                track,
+                std::span<const AnimationRuntimeKeyframeRecord>(out_keyframes->data(), keyframe_count));
+            if (status != RuntimeAssetDataStatus::Success) {
+                return status;
+            }
+        }
+    }
+
+    *out_clip_count = clip_count;
+    *out_track_count = track_count;
+    *out_keyframe_count = keyframe_count;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus SampleAndApplyAnimationStage(
+    const RuntimeAssetGraphLoadRequest &request,
+    RuntimeAssetSceneLoaderStage *stage,
+    WorldTransformBridge *bridge,
+    std::span<const AnimationRuntimeClipRecord> clips,
+    std::span<const AnimationRuntimeTrackRecord> tracks,
+    std::span<const AnimationRuntimeKeyframeRecord> keyframes) {
+    if (stage == nullptr || bridge == nullptr || clips.empty()) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (tracks.size() > RUNTIME_ASSET_MAX_ANIMATION_SAMPLED_VALUE_COUNT) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    std::array<AnimationRuntimeSampledValue, RUNTIME_ASSET_MAX_ANIMATION_SAMPLED_VALUE_COUNT>
+        sampled_values{};
+    AnimationRuntimeSampleRequest sample_request{};
+    sample_request.clip_id = clips[0U].clip_id;
+    sample_request.clips = clips;
+    sample_request.tracks = tracks;
+    sample_request.keyframes = keyframes;
+    sample_request.frame_context = request.animation_frame_context;
+    sample_request.clip_start_time_nanoseconds = request.animation_clip_start_time_nanoseconds;
+
+    AnimationRuntimeSampleResult sample_result{};
+    const AnimationRuntimeSampler sampler;
+    stage->animation_sample_status = sampler.Sample(
+        sample_request,
+        std::span<AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
+        &sample_result);
+    stage->animation_sampled_value_count = static_cast<std::uint32_t>(sample_result.sampled_value_count);
+    if (stage->animation_sample_status != AnimationRuntimeStatus::Success) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    AnimationRuntimeTransformApplyResult apply_result{};
+    stage->animation_apply_status = sampler.ApplySampledTransform(
+        AnimationRuntimeTransformApplyRequest{bridge, std::span<const AnimationRuntimeSampledValue>(
+            sampled_values.data(),
+            sample_result.sampled_value_count)},
+        &apply_result);
+    if (stage->animation_apply_status != AnimationRuntimeStatus::Success) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
 RuntimeAssetDataStatus BuildSceneLoaderStage(
     const RuntimeAssetGraphLoadRequest &request,
     std::string_view scene_text,
@@ -1857,84 +2579,65 @@ RuntimeAssetDataStatus BuildSceneLoaderStage(
     }
 
     RuntimeAssetSceneLoaderStage stage{};
-    std::uint32_t cube_ref = 0U;
-    std::uint32_t cylinder_ref = 0U;
-    std::uint32_t cone_ref = 0U;
-    std::uint32_t material_ref = 0U;
-    std::uint32_t texture_ref = 0U;
-    std::uint32_t shader_ref = 0U;
-    std::uint32_t animation_ref = 0U;
-    if (!FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Mesh, 0U, &cube_ref) ||
-        !FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Mesh, 1U, &cylinder_ref) ||
-        !FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Mesh, 2U, &cone_ref) ||
-        !FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Material, 0U, &material_ref) ||
-        !FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Texture, 0U, &texture_ref) ||
-        !FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Shader, 0U, &shader_ref) ||
-        !FindRefIndex(request.files, request.file_count, RuntimeAssetFileKind::Animation, 0U, &animation_ref)) {
-        return RuntimeAssetDataStatus::MissingDependency;
+    RuntimeAssetDataStatus status = ValidateOptionalDeclaredHash(scene_text);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
     }
 
-    RuntimeAssetSceneCameraRecord camera{};
-    camera.camera_id = 1U;
-    camera.is_active = true;
-    stage.cameras[0U] = camera;
-    stage.camera_count = 1U;
-
-    if (!ParseSceneEntityValue(
-            ValueForToken(scene_text, "e0="),
-            1U,
-            cube_ref,
-            material_ref,
-            texture_ref,
-            shader_ref,
-            0U,
-            animation_ref,
-            &stage.entities[0U]) ||
-        !ParseSceneEntityValue(
-            ValueForToken(scene_text, "e1="),
-            2U,
-            cylinder_ref,
-            material_ref,
-            texture_ref,
-            shader_ref,
-            0U,
-            animation_ref,
-            &stage.entities[1U]) ||
-        !ParseSceneEntityValue(
-            ValueForToken(scene_text, "e2="),
-            3U,
-            cone_ref,
-            material_ref,
-            texture_ref,
-            shader_ref,
-            0U,
-            animation_ref,
-            &stage.entities[2U])) {
-        return RuntimeAssetDataStatus::InvalidDependency;
+    bool entity_count_declared = false;
+    bool camera_count_declared = false;
+    std::uint32_t entity_count = 0U;
+    std::uint32_t camera_count = 0U;
+    status = ParseDeclaredCount(
+        scene_text,
+        "entities=",
+        RUNTIME_ASSET_SCENE_ENTITY_COUNT,
+        RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT,
+        &entity_count,
+        &entity_count_declared);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
     }
-    stage.entity_count = RUNTIME_ASSET_SCENE_ENTITY_COUNT;
+
+    status = ParseDeclaredCount(
+        scene_text,
+        "cameras=",
+        RUNTIME_ASSET_SCENE_CAMERA_COUNT,
+        RUNTIME_ASSET_MAX_SCENE_CAMERA_COUNT,
+        &camera_count,
+        &camera_count_declared);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    if (request.scene_entity_capacity < entity_count ||
+        request.scene_transform_capacity < entity_count ||
+        request.scene_camera_capacity < camera_count) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    status = ParseSceneCameras(scene_text, camera_count, camera_count_declared, &stage);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = ParseSceneEntities(request, scene_text, entity_count, entity_count_declared, &stage);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
 
     if (animation_text.empty()) {
         return RuntimeAssetDataStatus::MissingDependency;
     }
 
-    std::uint32_t clip_id = 0U;
-    float duration_seconds = 0.0F;
-    WorldObjectId animation_target{};
-    AnimationRuntimeChannel animation_channel = AnimationRuntimeChannel::TranslationX;
-    std::array<AnimationRuntimeKeyframeRecord, 2U> keyframes{};
-    if (!ParseU32(ValueForToken(animation_text, "clip="), &clip_id) ||
-        !ParseFloat(ValueForToken(animation_text, "duration="), &duration_seconds) ||
-        !ParseAnimationTarget(ValueForToken(animation_text, "target="), &animation_target) ||
-        !ParseAnimationChannel(ValueForToken(animation_text, "track="), &animation_channel) ||
-        !ParseKeyframe(ValueForToken(animation_text, "key0="), &keyframes[0U]) ||
-        !ParseKeyframe(ValueForToken(animation_text, "key1="), &keyframes[1U])) {
-        return RuntimeAssetDataStatus::InvalidDependency;
+    status = ValidateOptionalDeclaredHash(animation_text);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
     }
 
     WorldInstance world;
-    WorldTransformBridge bridge(world, WorldTransformBridgeDesc{RUNTIME_ASSET_SCENE_ENTITY_COUNT});
-    for (std::uint32_t index = 0U; index < RUNTIME_ASSET_SCENE_ENTITY_COUNT; ++index) {
+    WorldTransformBridge bridge(world, WorldTransformBridgeDesc{entity_count});
+    for (std::uint32_t index = 0U; index < entity_count; ++index) {
         const RuntimeAssetSceneEntityRecord &entity = stage.entities[index];
         const WorldRegistrationResult registration =
             world.RegisterObject(WorldObjectDesc{entity.world_object_id, entity.is_active});
@@ -1947,57 +2650,37 @@ RuntimeAssetDataStatus BuildSceneLoaderStage(
         }
     }
 
-    AnimationRuntimeClipRecord clip{};
-    clip.clip_id = clip_id;
-    clip.duration_seconds = duration_seconds;
-    clip.first_track_index = 0U;
-    clip.track_count = 1U;
-    clip.layer_count = 1U;
-    clip.is_valid = true;
-
-    AnimationRuntimeTrackRecord track{};
-    track.track_id = 1U;
-    track.target = animation_target;
-    track.channel = animation_channel;
-    track.interpolation = AnimationRuntimeInterpolation::Linear;
-    track.first_keyframe_index = 0U;
-    track.keyframe_count = keyframes.size();
-    track.is_valid = true;
-
-    const std::array<AnimationRuntimeClipRecord, 1U> clips{clip};
-    const std::array<AnimationRuntimeTrackRecord, 1U> tracks{track};
-    std::array<AnimationRuntimeSampledValue, 1U> sampled_values{};
-
-    AnimationRuntimeSampleRequest sample_request{};
-    sample_request.clip_id = clip_id;
-    sample_request.clips = std::span<const AnimationRuntimeClipRecord>(clips.data(), clips.size());
-    sample_request.tracks = std::span<const AnimationRuntimeTrackRecord>(tracks.data(), tracks.size());
-    sample_request.keyframes = std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframes.size());
-    sample_request.frame_context = request.animation_frame_context;
-    sample_request.clip_start_time_nanoseconds = request.animation_clip_start_time_nanoseconds;
-
-    AnimationRuntimeSampleResult sample_result{};
-    const AnimationRuntimeSampler sampler;
-    stage.animation_sample_status = sampler.Sample(
-        sample_request,
-        std::span<AnimationRuntimeSampledValue>(sampled_values.data(), sampled_values.size()),
-        &sample_result);
-    stage.animation_sampled_value_count = static_cast<std::uint32_t>(sample_result.sampled_value_count);
-    if (stage.animation_sample_status != AnimationRuntimeStatus::Success) {
-        return RuntimeAssetDataStatus::InvalidDependency;
+    std::array<AnimationRuntimeClipRecord, RUNTIME_ASSET_MAX_ANIMATION_CLIP_COUNT> clips{};
+    std::array<AnimationRuntimeTrackRecord, RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT> tracks{};
+    std::array<AnimationRuntimeKeyframeRecord, RUNTIME_ASSET_MAX_ANIMATION_KEYFRAME_COUNT> keyframes{};
+    std::uint32_t clip_count = 0U;
+    std::uint32_t track_count = 0U;
+    std::uint32_t keyframe_count = 0U;
+    status = ParseBoundedAnimationTables(
+        animation_text,
+        stage,
+        &clips,
+        &clip_count,
+        &tracks,
+        &track_count,
+        &keyframes,
+        &keyframe_count);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
     }
 
-    AnimationRuntimeTransformApplyResult apply_result{};
-    stage.animation_apply_status = sampler.ApplySampledTransform(
-        AnimationRuntimeTransformApplyRequest{&bridge, std::span<const AnimationRuntimeSampledValue>(
-            sampled_values.data(),
-            sample_result.sampled_value_count)},
-        &apply_result);
-    if (stage.animation_apply_status != AnimationRuntimeStatus::Success) {
-        return RuntimeAssetDataStatus::InvalidDependency;
+    status = SampleAndApplyAnimationStage(
+        request,
+        &stage,
+        &bridge,
+        std::span<const AnimationRuntimeClipRecord>(clips.data(), clip_count),
+        std::span<const AnimationRuntimeTrackRecord>(tracks.data(), track_count),
+        std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframe_count));
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
     }
 
-    for (std::uint32_t index = 0U; index < RUNTIME_ASSET_SCENE_ENTITY_COUNT; ++index) {
+    for (std::uint32_t index = 0U; index < entity_count; ++index) {
         const WorldTransformResult transform_result =
             bridge.Query(stage.entities[index].world_object_id);
         if (transform_result.status != WorldTransformStatus::Success) {
@@ -2008,7 +2691,7 @@ RuntimeAssetDataStatus BuildSceneLoaderStage(
         stage.transforms[index].world_object_id = stage.entities[index].world_object_id;
         stage.transforms[index].transform = transform_result.transform_state;
     }
-    stage.transform_count = RUNTIME_ASSET_SCENE_TRANSFORM_COUNT;
+    stage.transform_count = entity_count;
 
     *out_stage = stage;
     return RuntimeAssetDataStatus::Success;
@@ -2057,15 +2740,15 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
         request.scene_resource_refs[index] = staged_resource_refs[index];
     }
 
-    for (std::uint32_t index = 0U; index < RUNTIME_ASSET_SCENE_CAMERA_COUNT; ++index) {
+    for (std::uint32_t index = 0U; index < stage.camera_count; ++index) {
         request.scene_cameras[index] = stage.cameras[index];
     }
 
-    for (std::uint32_t index = 0U; index < RUNTIME_ASSET_SCENE_ENTITY_COUNT; ++index) {
+    for (std::uint32_t index = 0U; index < stage.entity_count; ++index) {
         request.scene_entities[index] = stage.entities[index];
     }
 
-    for (std::uint32_t index = 0U; index < RUNTIME_ASSET_SCENE_TRANSFORM_COUNT; ++index) {
+    for (std::uint32_t index = 0U; index < stage.transform_count; ++index) {
         request.scene_transforms[index] = stage.transforms[index];
     }
 

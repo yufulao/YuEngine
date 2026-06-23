@@ -20,6 +20,9 @@
 #include "YuEngine/File/FileWriteResult.h"
 #include "YuEngine/File/MountTable.h"
 #include "YuEngine/RenderCore/RenderCameraProjectionKind.h"
+#include "YuEngine/RenderCore/RenderDrawableFramePipeline.h"
+#include "YuEngine/RenderCore/RenderDrawableFramePipelineRequest.h"
+#include "YuEngine/RenderCore/RenderDrawableFramePipelineStatus.h"
 #include "YuEngine/RenderScene/RenderSceneCameraFrameBinder.h"
 #include "YuEngine/RenderScene/RenderScenePrimitiveGeometryBuilder.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeFrameBuilder.h"
@@ -69,6 +72,9 @@ using yuengine::file::FileWriteRequest;
 using yuengine::file::MountId;
 using yuengine::file::MountTable;
 using yuengine::file::VirtualPath;
+using yuengine::rendercore::RenderDrawableFramePipeline;
+using yuengine::rendercore::RenderDrawableFramePipelineRequest;
+using yuengine::rendercore::RenderDrawableFramePipelineStatus;
 using yuengine::renderscene::RenderSceneCameraBindingRequest;
 using yuengine::renderscene::RenderSceneCameraBindingResult;
 using yuengine::renderscene::RenderSceneCameraFrameBinder;
@@ -230,6 +236,16 @@ constexpr const char *TEST_SCENE_LOADER_INVALID_ENTITY_NO_MUTATION =
     "RuntimeAssetData_SceneLoaderRejectsInvalidEntityWithoutOutputMutation";
 constexpr const char *TEST_SCENE_LOADER_INVALID_KEYFRAME_NO_MUTATION =
     "RuntimeAssetData_SceneLoaderRejectsInvalidKeyframesWithoutOutputMutation";
+constexpr const char *TEST_SCENE_ANIMATION_BOUNDED_N_ENTITY =
+    "RuntimeAssetData_SceneAnimationLoaderLoadsBoundedNEntityScene";
+constexpr const char *TEST_SCENE_ANIMATION_CAPACITY_NO_MUTATION =
+    "RuntimeAssetData_SceneAnimationLoaderRejectsEntityCapacityOverflowWithoutMutation";
+constexpr const char *TEST_SCENE_ANIMATION_REFS_NO_MUTATION =
+    "RuntimeAssetData_SceneAnimationLoaderRejectsMissingRefsWithoutMutation";
+constexpr const char *TEST_SCENE_ANIMATION_INVALID_RECORDS_NO_MUTATION =
+    "RuntimeAssetData_SceneAnimationLoaderRejectsInvalidRecordsWithoutMutation";
+constexpr const char *TEST_SCENE_ANIMATION_PATH_INDEPENDENT =
+    "RuntimeAssetData_SceneAnimationLoaderPathIndependentSceneAnimationDetection";
 constexpr const char *TEST_DECODED_PAYLOADS =
     "RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture";
 constexpr const char *TEST_TEXTURE_MATERIAL_SLOT_BRIDGE =
@@ -313,6 +329,19 @@ struct LoadedGraph final {
     bool material_slots_from_decoded_payloads = false;
     bool render_capture_completed = false;
     bool cpu_oracle_allowed = false;
+};
+
+struct BoundedLoadedGraph final {
+    std::array<RuntimeAssetLoadedFile, FIXTURE_FILE_COUNT> assets{};
+    std::array<RuntimeAssetSceneResourceRef, FIXTURE_FILE_COUNT> scene_resource_refs{};
+    std::array<RuntimeAssetSceneCameraRecord, 2U> scene_cameras{};
+    std::array<RuntimeAssetSceneEntityRecord, 4U> scene_entities{};
+    std::array<RuntimeAssetSceneTransformOutputRecord, 4U> scene_transforms{};
+    RuntimeAssetLoadedFile scene_asset{};
+    RuntimeAssetSceneLoaderOutput scene_output{};
+    RenderSceneRuntimeFrameResult frame_result{};
+    std::size_t render_result_count = 0U;
+    std::size_t capture_bytes_written = 0U;
 };
 
 enum class RuntimeTextureMaterialSlotBridgeStatus {
@@ -768,6 +797,48 @@ std::string SceneBytes() {
         "e2=103:2,0,0\n");
 }
 
+std::string BoundedSceneBytes() {
+    return std::string(
+        "YUASSET SCENE 1\n"
+        "schema=rav0-source\n"
+        "id=bounded_scene\n"
+        "m0=Mesh/C.yumesh\n"
+        "m1=Mesh/Y.yumesh\n"
+        "m2=Mesh/N.yumesh\n"
+        "mat=Material/M.yumat\n"
+        "t0=Texture/A.yutex\n"
+        "prog=Shader/P.yuprogram\n"
+        "anim=Animation/S.yuanim\n"
+        "cam=camera:orbit\n"
+        "entities=4\n"
+        "cameras=2\n"
+        "camera0=11:inactive\n"
+        "camera1=12:active\n"
+        "e0=101:-3,0,0|mesh_ref=0|material_ref=0|texture_ref=0|shader_ref=0|camera=1|animation_ref=0|sort=30\n"
+        "e1=102:-1,0,0|mesh_ref=1|material_ref=0|texture_ref=1|shader_ref=0|camera=1|animation_ref=0|sort=20\n"
+        "e2=103:1,0,0|mesh_ref=2|material_ref=0|texture_ref=2|shader_ref=0|camera=1|animation_ref=0|sort=40\n"
+        "e3=104:3,1,0|mesh_ref=0|material_ref=0|texture_ref=0|shader_ref=0|camera=1|animation_ref=0|sort=10\n");
+}
+
+std::string BoundedAnimationBytes() {
+    return std::string(
+        "YUASSET ANIMATION 1\n"
+        "schema=rav0-source\n"
+        "id=bounded_spin\n"
+        "target=scene_entity:101\n"
+        "track=transform:rotation_y\n"
+        "clips=1\n"
+        "tracks=2\n"
+        "keyframes=4\n"
+        "clip0=id=1|duration=1|first_track_index=0|track_count=2|sample_rate=30\n"
+        "track0=id=1|target_ref=scene_entity:101|channel=transform:rotation_y|first_key=0|key_count=2|interp=linear\n"
+        "track1=id=2|target_ref=scene_entity:104|channel=transform:translation_y|first_key=2|key_count=2|interp=linear\n"
+        "key0=0:0\n"
+        "key1=1:1\n"
+        "key2=0:1\n"
+        "key3=1:3\n");
+}
+
 std::string AlternateRuntimeFamilySceneBytes() {
     return std::string(
         "YUASSET SCENE 1\n"
@@ -896,6 +967,16 @@ bool Approx(float actual, float expected) {
     return std::fabs(actual - expected) < 0.001F;
 }
 
+std::string ReplaceFirst(std::string text, std::string_view from, std::string_view to) {
+    const std::size_t found = text.find(from);
+    if (found == std::string::npos) {
+        return text;
+    }
+
+    text.replace(found, from.size(), to);
+    return text;
+}
+
 bool WriteBytes(MountTable &table, const char *path, const std::vector<std::uint8_t> &bytes) {
     FileWriteRequest request{};
     request.mount = MountId(MOUNT_ID);
@@ -917,6 +998,18 @@ bool WriteCanonicalFixture(MountTable &table) {
 
     const std::vector<std::uint8_t> scene_bytes = BytesFromString(SceneBytes());
     return WriteBytes(table, SCENE_PATH, scene_bytes);
+}
+
+bool WriteBoundedFixture(MountTable &table) {
+    if (!WriteCanonicalFixture(table)) {
+        return false;
+    }
+
+    if (!WriteBytes(table, SCENE_PATH, BytesFromString(BoundedSceneBytes()))) {
+        return false;
+    }
+
+    return WriteBytes(table, "Animation/Spin.yuanim", BytesFromString(BoundedAnimationBytes()));
 }
 
 bool WriteAlternateRuntimeFamilyFixture(MountTable &table, const char *scene_path) {
@@ -1533,7 +1626,10 @@ RuntimeTextureMaterialSlotBridgeResult BuildMaterial(
     return result;
 }
 
-bool BuildCamera(IRhiDevice &device, RenderSceneCameraBindingResult *out_camera) {
+bool BuildCamera(
+    IRhiDevice &device,
+    RenderSceneCameraBindingResult *out_camera,
+    std::uint32_t camera_id = 1U) {
     if (out_camera == nullptr) {
         return false;
     }
@@ -1547,7 +1643,7 @@ bool BuildCamera(IRhiDevice &device, RenderSceneCameraBindingResult *out_camera)
     }
 
     RenderSceneRuntimeCameraRecord camera{};
-    camera.camera_id = 1U;
+    camera.camera_id = camera_id;
     camera.pose.position = {-4.0F, 2.0F, -6.0F};
     camera.pose.target = {0.0F, 0.0F, 0.0F};
     camera.pose.up = {0.0F, 1.0F, 0.0F};
@@ -1847,6 +1943,209 @@ bool LoadRuntimeAssetRecords(
     return true;
 }
 
+bool LoadBoundedRuntimeAssetRecords(
+    MountTable &table,
+    ResourceRegistry &registry,
+    AssetManager &manager,
+    BoundedLoadedGraph *out_graph) {
+    if (out_graph == nullptr) {
+        return FailStep("null bounded graph output");
+    }
+
+    BoundedLoadedGraph graph{};
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        file_descs[index] = files[index].desc;
+    }
+
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = &table;
+    load_request.mount = MountId(MOUNT_ID);
+    load_request.scene_path = VirtualPath(SCENE_PATH);
+    load_request.scene_resource_type = ResourceTypeId{RESOURCE_TYPE_SCENE};
+    load_request.scene_asset_type = AssetTypeId{ASSET_TYPE_SCENE};
+    load_request.scene_stable_id = 6002U;
+    load_request.files = file_descs.data();
+    load_request.file_count = static_cast<std::uint32_t>(file_descs.size());
+    load_request.resource_registry = &registry;
+    load_request.asset_manager = &manager;
+    load_request.loaded_files = graph.assets.data();
+    load_request.loaded_file_capacity = static_cast<std::uint32_t>(graph.assets.size());
+    load_request.scene_resource_refs = graph.scene_resource_refs.data();
+    load_request.scene_resource_ref_capacity = static_cast<std::uint32_t>(graph.scene_resource_refs.size());
+    load_request.scene_cameras = graph.scene_cameras.data();
+    load_request.scene_camera_capacity = static_cast<std::uint32_t>(graph.scene_cameras.size());
+    load_request.scene_entities = graph.scene_entities.data();
+    load_request.scene_entity_capacity = static_cast<std::uint32_t>(graph.scene_entities.size());
+    load_request.scene_transforms = graph.scene_transforms.data();
+    load_request.scene_transform_capacity = static_cast<std::uint32_t>(graph.scene_transforms.size());
+    load_request.scene_output = &graph.scene_output;
+    load_request.animation_frame_context.frame_index = 1U;
+    load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+
+    RuntimeAssetGraphLoadResult load_result{};
+    const RuntimeAssetDataStatus load_status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+    if (load_status != RuntimeAssetDataStatus::Success) {
+        std::fwrite(StatusName(load_status), sizeof(char), std::string_view(StatusName(load_status)).size(), stderr);
+        std::fputc('\n', stderr);
+        return FailStep("bounded runtime asset graph load failed");
+    }
+
+    graph.scene_asset = load_result.scene;
+    *out_graph = graph;
+    return true;
+}
+
+bool ExecuteBoundedRenderPath(
+    IRhiDevice &device,
+    ResourceRegistry &registry,
+    AssetManager &manager,
+    BoundedLoadedGraph *graph) {
+    if (graph == nullptr) {
+        return FailStep("null bounded graph render input");
+    }
+
+    RhiBufferHandle buffer_slot_guard{};
+    if (!CreateBuffer(device, RhiBufferUsage::Vertex, sizeof(float) * 2U, &buffer_slot_guard)) {
+        return FailStep("create bounded buffer slot guard failed");
+    }
+
+    RhiBufferHandle cube_vertex{};
+    RhiBufferHandle cube_index{};
+    RhiBufferHandle cylinder_vertex{};
+    RhiBufferHandle cylinder_index{};
+    RhiBufferHandle cone_vertex{};
+    RhiBufferHandle cone_index{};
+    if (!CreateBuffer(device, RhiBufferUsage::Vertex, sizeof(float) * 2U * 24U, &cube_vertex) ||
+        !CreateBuffer(device, RhiBufferUsage::Index, sizeof(std::uint16_t) * 36U, &cube_index) ||
+        !CreateBuffer(device, RhiBufferUsage::Vertex, sizeof(float) * 2U * 18U, &cylinder_vertex) ||
+        !CreateBuffer(device, RhiBufferUsage::Index, sizeof(std::uint16_t) * 96U, &cylinder_index) ||
+        !CreateBuffer(device, RhiBufferUsage::Vertex, sizeof(float) * 2U * 10U, &cone_vertex) ||
+        !CreateBuffer(device, RhiBufferUsage::Index, sizeof(std::uint16_t) * 48U, &cone_index)) {
+        return FailStep("create bounded render buffers failed");
+    }
+
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    if (!BuildGeometry(RenderScenePrimitiveGeometryKind::Cube, graph->assets[0U].asset, 21U,
+            VertexView(cube_vertex, 24U), IndexView(cube_index, 36U), &geometry[0U]) ||
+        !BuildGeometry(RenderScenePrimitiveGeometryKind::Cylinder, graph->assets[1U].asset, 22U,
+            VertexView(cylinder_vertex, 18U), IndexView(cylinder_index, 96U), &geometry[1U]) ||
+        !BuildGeometry(RenderScenePrimitiveGeometryKind::Cone, graph->assets[2U].asset, 23U,
+            VertexView(cone_vertex, 10U), IndexView(cone_index, 48U), &geometry[2U])) {
+        return FailStep("build bounded geometry failed");
+    }
+
+    const std::array<RuntimeAssetLoadedFile, RUNTIME_TEXTURE_SLOT_COUNT> texture_assets{
+        graph->assets[4U],
+        graph->assets[5U],
+        graph->assets[6U]};
+    RenderSceneRuntimeMaterialRecord material{};
+    const RuntimeTextureMaterialSlotBridgeResult material_result = BuildMaterial(
+        device,
+        registry,
+        manager,
+        graph->assets[3U].asset,
+        std::span<const RuntimeAssetLoadedFile>(texture_assets.data(), texture_assets.size()),
+        RuntimeTextureDesc(),
+        &material);
+    if (material_result.status != RuntimeTextureMaterialSlotBridgeStatus::Success) {
+        return FailStep("build bounded material failed");
+    }
+
+    std::uint32_t active_camera_id = 0U;
+    for (const RuntimeAssetSceneCameraRecord &camera : graph->scene_cameras) {
+        if (camera.is_active) {
+            active_camera_id = camera.camera_id;
+        }
+    }
+
+    RenderSceneCameraBindingResult camera{};
+    if (!BuildCamera(device, &camera, active_camera_id)) {
+        return FailStep("build bounded camera failed");
+    }
+
+    std::array<RenderSceneRuntimeFrameEntityRequest, 4U> frame_entities{};
+    for (std::size_t index = 0U; index < graph->scene_output.entity_count; ++index) {
+        const RuntimeAssetSceneEntityRecord &scene_entity = graph->scene_entities[index];
+        if (scene_entity.mesh_ref_index > 2U) {
+            return FailStep("bounded scene entity mesh ref escaped test geometry table");
+        }
+
+        frame_entities[index].world_object_id = scene_entity.world_object_id;
+        frame_entities[index].transform = scene_entity.transform;
+        frame_entities[index].geometry = geometry[scene_entity.mesh_ref_index];
+        frame_entities[index].is_visible = scene_entity.is_visible;
+        frame_entities[index].is_active = scene_entity.is_active;
+    }
+
+    std::array<RenderSceneRuntimeFrameDrawRecord, 4U> draws{};
+    RenderSceneRuntimeFrameRequest frame_request{};
+    frame_request.frame_id = FRAME_ID + 10U;
+    frame_request.camera = camera;
+    frame_request.material = material;
+    frame_request.entities = std::span<const RenderSceneRuntimeFrameEntityRequest>(
+        frame_entities.data(),
+        graph->scene_output.entity_count);
+    RenderSceneRuntimeFrameBuilder frame_builder;
+    const RenderSceneRuntimeFrameStatus frame_status = frame_builder.Build(
+        frame_request,
+        std::span<RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()),
+        &graph->frame_result);
+    if (frame_status != RenderSceneRuntimeFrameStatus::Success) {
+        return FailStep("build bounded frame failed");
+    }
+
+    std::array<
+        RhiSampledTextureBinding,
+        yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS> sampled_textures{};
+    std::array<
+        RhiSamplerBinding,
+        yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS> samplers{};
+    for (std::size_t index = 0U; index < material.texture_slot_count; ++index) {
+        sampled_textures[index] = material.texture_slots[index].sampled_texture;
+        samplers[index] = material.texture_slots[index].sampler;
+    }
+
+    std::array<std::uint8_t, CAPTURE_BYTES_PER_ENTITY * 4U> capture_bytes{};
+    for (std::size_t index = 0U; index < graph->frame_result.output_draw_count; ++index) {
+        const std::size_t capture_offset = index * CAPTURE_BYTES_PER_ENTITY;
+        RenderDrawableFramePipelineRequest render_request{};
+        render_request.rhi_device = &device;
+        render_request.pipeline = material.pipeline;
+        render_request.vertex_buffer = draws[index].draw.vertex_buffer;
+        render_request.index_buffer = draws[index].draw.index_buffer;
+        render_request.sampled_texture = sampled_textures[0U];
+        render_request.sampler = samplers[0U];
+        render_request.sampled_textures = std::span<const RhiSampledTextureBinding>(
+            sampled_textures.data(),
+            material.texture_slot_count);
+        render_request.samplers = std::span<const RhiSamplerBinding>(
+            samplers.data(),
+            material.texture_slot_count);
+        render_request.draw = draws[index].draw.draw;
+        render_request.clear_color = camera.camera.clear_color;
+        render_request.capture_output =
+            std::span<std::uint8_t>(capture_bytes.data() + capture_offset, CAPTURE_BYTES_PER_ENTITY);
+        render_request.capture_byte_budget = CAPTURE_BYTES_PER_ENTITY;
+        render_request.frame_id = FRAME_ID + 100U + static_cast<std::uint32_t>(index);
+        render_request.pass_id = draws[index].draw.pass_id + static_cast<std::uint32_t>(index);
+        render_request.material_id = material.material_id;
+
+        RenderDrawableFramePipeline render_pipeline;
+        const auto render_result = render_pipeline.Execute(render_request);
+        if (render_result.status != RenderDrawableFramePipelineStatus::Success) {
+            return FailStep("bounded render pipeline failed");
+        }
+
+        ++graph->render_result_count;
+        graph->capture_bytes_written += render_result.capture_bytes_written;
+    }
+
+    return true;
+}
+
 void SeedSceneLoaderFailureSentinels(
     std::array<RuntimeAssetSceneResourceRef, FIXTURE_FILE_COUNT> &refs,
     std::array<RuntimeAssetSceneCameraRecord, 1U> &cameras,
@@ -1957,6 +2256,108 @@ bool SceneLoaderFailureSentinelsUnchanged(
         output.animation_sample_status != AnimationRuntimeStatus::InvalidClip ||
         output.animation_apply_status != AnimationRuntimeStatus::InvalidTarget) {
         return FailStep("scene loader failure mutated loader output");
+    }
+
+    return true;
+}
+
+void SeedBoundedSceneLoaderFailureSentinels(
+    std::span<RuntimeAssetSceneResourceRef> refs,
+    std::span<RuntimeAssetSceneCameraRecord> cameras,
+    std::span<RuntimeAssetSceneEntityRecord> entities,
+    std::span<RuntimeAssetSceneTransformOutputRecord> transforms,
+    RuntimeAssetSceneLoaderOutput *output) {
+    for (std::size_t index = 0U; index < refs.size(); ++index) {
+        refs[index].kind = RuntimeAssetFileKind::Shader;
+        refs[index].stable_id = 17000U + index;
+        refs[index].loaded_file_index = 190U + static_cast<std::uint32_t>(index);
+        refs[index].resource = ResourceHandle{110U + static_cast<std::uint32_t>(index), 120U};
+        refs[index].asset = AssetHandle{130U + static_cast<std::uint32_t>(index), 140U};
+    }
+
+    for (std::size_t index = 0U; index < cameras.size(); ++index) {
+        cameras[index].camera_id = 210U + static_cast<std::uint32_t>(index);
+        cameras[index].is_active = index == 0U;
+    }
+
+    for (std::size_t index = 0U; index < entities.size(); ++index) {
+        entities[index].entity_id = 220U + static_cast<std::uint32_t>(index);
+        entities[index].world_object_id = WorldObjectId{230U + static_cast<std::uint32_t>(index)};
+        entities[index].transform.translation_x = 240.0F + static_cast<float>(index);
+        entities[index].transform.rotation_y = 250.0F + static_cast<float>(index);
+        entities[index].mesh_ref_index = 260U + static_cast<std::uint32_t>(index);
+        entities[index].is_visible = false;
+        entities[index].is_active = false;
+    }
+
+    for (std::size_t index = 0U; index < transforms.size(); ++index) {
+        transforms[index].world_object_id = WorldObjectId{270U + static_cast<std::uint32_t>(index)};
+        transforms[index].transform.translation_x = 280.0F + static_cast<float>(index);
+        transforms[index].transform.rotation_y = 290.0F + static_cast<float>(index);
+    }
+
+    if (output != nullptr) {
+        output->status = RuntimeAssetDataStatus::BudgetExceeded;
+        output->scene_id = 1777U;
+        output->entity_count = 1778U;
+        output->transform_count = 1779U;
+        output->camera_count = 1780U;
+        output->animation_sampled_value_count = 1781U;
+    }
+}
+
+bool BoundedSceneLoaderFailureSentinelsUnchanged(
+    std::span<const RuntimeAssetSceneResourceRef> refs,
+    std::span<const RuntimeAssetSceneCameraRecord> cameras,
+    std::span<const RuntimeAssetSceneEntityRecord> entities,
+    std::span<const RuntimeAssetSceneTransformOutputRecord> transforms,
+    const RuntimeAssetSceneLoaderOutput &output) {
+    for (std::size_t index = 0U; index < refs.size(); ++index) {
+        if (refs[index].kind != RuntimeAssetFileKind::Shader ||
+            refs[index].stable_id != 17000U + index ||
+            refs[index].loaded_file_index != 190U + index ||
+            refs[index].resource.slot != 110U + index ||
+            refs[index].resource.generation != 120U ||
+            refs[index].asset.slot != 130U + index ||
+            refs[index].asset.generation != 140U) {
+            return FailStep("bounded failure mutated resource refs");
+        }
+    }
+
+    for (std::size_t index = 0U; index < cameras.size(); ++index) {
+        if (cameras[index].camera_id != 210U + index ||
+            cameras[index].is_active != (index == 0U)) {
+            return FailStep("bounded failure mutated cameras");
+        }
+    }
+
+    for (std::size_t index = 0U; index < entities.size(); ++index) {
+        if (entities[index].entity_id != 220U + index ||
+            entities[index].world_object_id.value != 230U + index ||
+            !Approx(entities[index].transform.translation_x, 240.0F + static_cast<float>(index)) ||
+            !Approx(entities[index].transform.rotation_y, 250.0F + static_cast<float>(index)) ||
+            entities[index].mesh_ref_index != 260U + index ||
+            entities[index].is_visible ||
+            entities[index].is_active) {
+            return FailStep("bounded failure mutated entities");
+        }
+    }
+
+    for (std::size_t index = 0U; index < transforms.size(); ++index) {
+        if (transforms[index].world_object_id.value != 270U + index ||
+            !Approx(transforms[index].transform.translation_x, 280.0F + static_cast<float>(index)) ||
+            !Approx(transforms[index].transform.rotation_y, 290.0F + static_cast<float>(index))) {
+            return FailStep("bounded failure mutated transforms");
+        }
+    }
+
+    if (output.status != RuntimeAssetDataStatus::BudgetExceeded ||
+        output.scene_id != 1777U ||
+        output.entity_count != 1778U ||
+        output.transform_count != 1779U ||
+        output.camera_count != 1780U ||
+        output.animation_sampled_value_count != 1781U) {
+        return FailStep("bounded failure mutated scene output");
     }
 
     return true;
@@ -2115,6 +2516,120 @@ bool ProbeSceneLoaderFailureWithoutOutputMutation(
     }
 
     return true;
+}
+
+bool ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
+    MountTable &table,
+    RuntimeAssetDataStatus expected_status,
+    std::uint32_t entity_capacity = 4U,
+    std::uint32_t camera_capacity = 2U,
+    std::uint32_t transform_capacity = 4U) {
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        file_descs[index] = files[index].desc;
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const AssetSnapshot before_asset_snapshot = manager.Snapshot();
+    std::array<RuntimeAssetLoadedFile, FIXTURE_FILE_COUNT> loaded_files{};
+    std::array<RuntimeAssetSceneResourceRef, FIXTURE_FILE_COUNT> scene_resource_refs{};
+    std::array<RuntimeAssetSceneCameraRecord, 2U> scene_cameras{};
+    std::array<RuntimeAssetSceneEntityRecord, 4U> scene_entities{};
+    std::array<RuntimeAssetSceneTransformOutputRecord, 4U> scene_transforms{};
+    RuntimeAssetSceneLoaderOutput scene_output{};
+    SeedBoundedSceneLoaderFailureSentinels(
+        std::span<RuntimeAssetSceneResourceRef>(scene_resource_refs.data(), scene_resource_refs.size()),
+        std::span<RuntimeAssetSceneCameraRecord>(scene_cameras.data(), scene_cameras.size()),
+        std::span<RuntimeAssetSceneEntityRecord>(scene_entities.data(), scene_entities.size()),
+        std::span<RuntimeAssetSceneTransformOutputRecord>(scene_transforms.data(), scene_transforms.size()),
+        &scene_output);
+
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = &table;
+    load_request.mount = MountId(MOUNT_ID);
+    load_request.scene_path = VirtualPath(SCENE_PATH);
+    load_request.scene_resource_type = ResourceTypeId{RESOURCE_TYPE_SCENE};
+    load_request.scene_asset_type = AssetTypeId{ASSET_TYPE_SCENE};
+    load_request.scene_stable_id = 6002U;
+    load_request.files = file_descs.data();
+    load_request.file_count = static_cast<std::uint32_t>(file_descs.size());
+    load_request.resource_registry = &registry;
+    load_request.asset_manager = &manager;
+    load_request.loaded_files = loaded_files.data();
+    load_request.loaded_file_capacity = static_cast<std::uint32_t>(loaded_files.size());
+    load_request.scene_resource_refs = scene_resource_refs.data();
+    load_request.scene_resource_ref_capacity = static_cast<std::uint32_t>(scene_resource_refs.size());
+    load_request.scene_cameras = scene_cameras.data();
+    load_request.scene_camera_capacity = camera_capacity;
+    load_request.scene_entities = scene_entities.data();
+    load_request.scene_entity_capacity = entity_capacity;
+    load_request.scene_transforms = scene_transforms.data();
+    load_request.scene_transform_capacity = transform_capacity;
+    load_request.scene_output = &scene_output;
+    load_request.animation_frame_context.frame_index = 1U;
+    load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+
+    RuntimeAssetGraphLoadResult load_result{};
+    const RuntimeAssetDataStatus load_status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+    if (load_status != expected_status || load_result.status != expected_status) {
+        return FailStep("bounded scene loader failure did not return expected status");
+    }
+
+    if (!BoundedSceneLoaderFailureSentinelsUnchanged(
+            std::span<const RuntimeAssetSceneResourceRef>(scene_resource_refs.data(), scene_resource_refs.size()),
+            std::span<const RuntimeAssetSceneCameraRecord>(scene_cameras.data(), scene_cameras.size()),
+            std::span<const RuntimeAssetSceneEntityRecord>(scene_entities.data(), scene_entities.size()),
+            std::span<const RuntimeAssetSceneTransformOutputRecord>(scene_transforms.data(), scene_transforms.size()),
+            scene_output)) {
+        return false;
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count ||
+        after_resource_snapshot.dependency_edge_count != before_resource_snapshot.dependency_edge_count ||
+        after_resource_snapshot.load_commit_record_count != before_resource_snapshot.load_commit_record_count ||
+        after_resource_snapshot.loaded_resource_count != before_resource_snapshot.loaded_resource_count) {
+        return FailStep("bounded scene loader failure mutated Resource registry state");
+    }
+
+    const AssetSnapshot after_asset_snapshot = manager.Snapshot();
+    if (after_asset_snapshot.active_asset_count != before_asset_snapshot.active_asset_count ||
+        after_asset_snapshot.active_dependency_edge_count != before_asset_snapshot.active_dependency_edge_count ||
+        after_asset_snapshot.registered_asset_count != before_asset_snapshot.registered_asset_count ||
+        after_asset_snapshot.referenced_asset_count != before_asset_snapshot.referenced_asset_count) {
+        return FailStep("bounded scene loader failure mutated Asset manager state");
+    }
+
+    return true;
+}
+
+bool ProbeBoundedFailureCase(
+    const char *root_name,
+    const std::string &scene_text,
+    const std::string &animation_text,
+    RuntimeAssetDataStatus expected_status) {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot(root_name), &table)) {
+        return FailStep("bounded failure case mount setup failed");
+    }
+
+    if (!WriteBoundedFixture(table)) {
+        return FailStep("bounded failure case fixture write failed");
+    }
+
+    if (!WriteBytes(table, SCENE_PATH, BytesFromString(scene_text))) {
+        return FailStep("bounded failure case scene override failed");
+    }
+
+    if (!WriteBytes(table, "Animation/Spin.yuanim", BytesFromString(animation_text))) {
+        return FailStep("bounded failure case animation override failed");
+    }
+
+    return ProbeBoundedSceneLoaderFailureWithoutOutputMutation(table, expected_status);
 }
 
 bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
@@ -3820,6 +4335,237 @@ int RuntimeAssetDataSceneLoaderRejectsInvalidKeyframesWithoutOutputMutation() {
     return 0;
 }
 
+int RuntimeAssetDataSceneAnimationLoaderLoadsBoundedNEntityScene() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("BoundedNEntityScene"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteBoundedFixture(table)) {
+        return Fail("bounded fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    BoundedLoadedGraph graph{};
+    if (!LoadBoundedRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("bounded runtime asset records failed");
+    }
+
+    if (graph.scene_output.status != RuntimeAssetDataStatus::Success ||
+        graph.scene_output.entity_count != 4U ||
+        graph.scene_output.transform_count != 4U ||
+        graph.scene_output.camera_count != 2U ||
+        graph.scene_output.animation_sampled_value_count != 2U) {
+        return Fail("bounded scene loader output counts changed");
+    }
+
+    if (graph.scene_cameras[0U].camera_id != 11U ||
+        graph.scene_cameras[0U].is_active ||
+        graph.scene_cameras[1U].camera_id != 12U ||
+        !graph.scene_cameras[1U].is_active) {
+        return Fail("bounded camera table was not emitted");
+    }
+
+    if (graph.scene_entities[0U].world_object_id.value != 104U ||
+        graph.scene_entities[1U].world_object_id.value != 102U ||
+        graph.scene_entities[2U].world_object_id.value != 101U ||
+        graph.scene_entities[3U].world_object_id.value != 103U) {
+        return Fail("bounded entity deterministic sort order changed");
+    }
+
+    if (graph.scene_entities[0U].mesh_ref_index != 0U ||
+        graph.scene_entities[1U].mesh_ref_index != 1U ||
+        graph.scene_entities[3U].mesh_ref_index != 2U ||
+        graph.scene_entities[0U].camera_index != 1U) {
+        return Fail("bounded entity resource or camera refs changed");
+    }
+
+    if (!Approx(graph.scene_entities[2U].transform.rotation_y, 0.5F) ||
+        !Approx(graph.scene_entities[0U].transform.translation_y, 2.0F)) {
+        return Fail("bounded animation tracks did not sample/apply to scene transforms");
+    }
+
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("initialize bounded render rhi failed");
+    }
+
+    if (!ExecuteBoundedRenderPath(device, registry, manager, &graph)) {
+        return Fail("bounded render path failed");
+    }
+
+    if (graph.frame_result.output_draw_count != 4U ||
+        graph.render_result_count != 4U ||
+        graph.capture_bytes_written == 0U) {
+        return Fail("RenderScene/RenderCore/RHI did not consume bounded loader records");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataSceneAnimationLoaderRejectsEntityCapacityOverflowWithoutMutation() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("BoundedCapacityNoMutation"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteBoundedFixture(table)) {
+        return Fail("bounded fixture write failed");
+    }
+
+    if (!ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
+            table,
+            RuntimeAssetDataStatus::CapacityExceeded,
+            3U,
+            2U,
+            4U)) {
+        return Fail("bounded entity capacity overflow mutated outputs");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataSceneAnimationLoaderRejectsMissingRefsWithoutMutation() {
+    const std::string scene = ReplaceFirst(BoundedSceneBytes(), "mesh_ref=1", "mesh_ref=99");
+    if (!ProbeBoundedFailureCase(
+            "BoundedMissingRefsNoMutation",
+            scene,
+            BoundedAnimationBytes(),
+            RuntimeAssetDataStatus::MissingDependency)) {
+        return Fail("bounded missing ref failure mutated outputs");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataSceneAnimationLoaderRejectsInvalidRecordsWithoutMutation() {
+    if (!ProbeBoundedFailureCase(
+            "BoundedInvalidTransformNoMutation",
+            ReplaceFirst(BoundedSceneBytes(), "104:3,1,0", "104:3,nan,0"),
+            BoundedAnimationBytes(),
+            RuntimeAssetDataStatus::InvalidBounds)) {
+        return Fail("bounded invalid transform failure mutated outputs");
+    }
+
+    if (!ProbeBoundedFailureCase(
+            "BoundedInvalidTrackRangeNoMutation",
+            BoundedSceneBytes(),
+            ReplaceFirst(BoundedAnimationBytes(), "track_count=2", "track_count=3"),
+            RuntimeAssetDataStatus::InvalidBounds)) {
+        return Fail("bounded invalid track range failure mutated outputs");
+    }
+
+    if (!ProbeBoundedFailureCase(
+            "BoundedNonFiniteKeyframeNoMutation",
+            BoundedSceneBytes(),
+            ReplaceFirst(BoundedAnimationBytes(), "key3=1:3", "key3=1:nan"),
+            RuntimeAssetDataStatus::InvalidBounds)) {
+        return Fail("bounded non-finite keyframe failure mutated outputs");
+    }
+
+    if (!ProbeBoundedFailureCase(
+            "BoundedNonMonotonicKeyframeNoMutation",
+            BoundedSceneBytes(),
+            ReplaceFirst(BoundedAnimationBytes(), "key1=1:1", "key1=0:1"),
+            RuntimeAssetDataStatus::InvalidBounds)) {
+        return Fail("bounded non-monotonic keyframe failure mutated outputs");
+    }
+
+    if (!ProbeBoundedFailureCase(
+            "BoundedTargetMismatchNoMutation",
+            BoundedSceneBytes(),
+            ReplaceFirst(BoundedAnimationBytes(), "target_ref=scene_entity:104", "target_ref=scene_entity:999"),
+            RuntimeAssetDataStatus::InvalidDependency)) {
+        return Fail("bounded target mismatch failure mutated outputs");
+    }
+
+    if (!ProbeBoundedFailureCase(
+            "BoundedHashMismatchNoMutation",
+            ReplaceFirst(BoundedSceneBytes(), "id=bounded_scene\n", "id=bounded_scene\nexpected_hash=1\n"),
+            BoundedAnimationBytes(),
+            RuntimeAssetDataStatus::HashMismatch)) {
+        return Fail("bounded hash mismatch failure mutated outputs");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataSceneAnimationLoaderPathIndependentSceneAnimationDetection() {
+    constexpr const char *scene_path = "Scene/BoundedScene.payload";
+    constexpr const char *animation_path = "Animation/BoundedAnimation.payload";
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("BoundedPathIndependent"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        if (index == 8U) {
+            continue;
+        }
+
+        if (!WriteBytes(table, files[index].desc.path, BytesFromString(std::string(files[index].bytes)))) {
+            return Fail("path-independent bounded file write failed");
+        }
+    }
+
+    std::string scene_text = ReplaceFirst(BoundedSceneBytes(), "Animation/S.yuanim", animation_path);
+    if (!WriteBytes(table, scene_path, BytesFromString(scene_text)) ||
+        !WriteBytes(table, animation_path, BytesFromString(BoundedAnimationBytes()))) {
+        return Fail("path-independent bounded scene/animation write failed");
+    }
+
+    std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
+    for (std::size_t index = 0U; index < files.size(); ++index) {
+        file_descs[index] = files[index].desc;
+    }
+    file_descs[8U].path = animation_path;
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    BoundedLoadedGraph graph{};
+    RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = &table;
+    load_request.mount = MountId(MOUNT_ID);
+    load_request.scene_path = VirtualPath(scene_path);
+    load_request.scene_resource_type = ResourceTypeId{RESOURCE_TYPE_SCENE};
+    load_request.scene_asset_type = AssetTypeId{ASSET_TYPE_SCENE};
+    load_request.scene_stable_id = 6003U;
+    load_request.files = file_descs.data();
+    load_request.file_count = static_cast<std::uint32_t>(file_descs.size());
+    load_request.resource_registry = &registry;
+    load_request.asset_manager = &manager;
+    load_request.loaded_files = graph.assets.data();
+    load_request.loaded_file_capacity = static_cast<std::uint32_t>(graph.assets.size());
+    load_request.scene_resource_refs = graph.scene_resource_refs.data();
+    load_request.scene_resource_ref_capacity = static_cast<std::uint32_t>(graph.scene_resource_refs.size());
+    load_request.scene_cameras = graph.scene_cameras.data();
+    load_request.scene_camera_capacity = static_cast<std::uint32_t>(graph.scene_cameras.size());
+    load_request.scene_entities = graph.scene_entities.data();
+    load_request.scene_entity_capacity = static_cast<std::uint32_t>(graph.scene_entities.size());
+    load_request.scene_transforms = graph.scene_transforms.data();
+    load_request.scene_transform_capacity = static_cast<std::uint32_t>(graph.scene_transforms.size());
+    load_request.scene_output = &graph.scene_output;
+    load_request.animation_frame_context.frame_index = 1U;
+    load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+
+    RuntimeAssetGraphLoadResult load_result{};
+    const RuntimeAssetDataStatus load_status = LoadRuntimeAssetDataGraph(load_request, &load_result);
+    if (load_status != RuntimeAssetDataStatus::Success) {
+        return Fail("path-independent bounded scene/animation load failed");
+    }
+
+    if (graph.scene_output.entity_count != 4U ||
+        graph.scene_output.animation_sampled_value_count != 2U ||
+        !load_result.scene_references_runtime_asset_families) {
+        return Fail("path-independent bounded scene/animation detection changed");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("DecodedPayloads"), &table)) {
@@ -4672,6 +5418,16 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataSceneLoaderRejectsInvalidEntityWithoutOutputMutation},
     {TEST_SCENE_LOADER_INVALID_KEYFRAME_NO_MUTATION,
      RuntimeAssetDataSceneLoaderRejectsInvalidKeyframesWithoutOutputMutation},
+    {TEST_SCENE_ANIMATION_BOUNDED_N_ENTITY,
+     RuntimeAssetDataSceneAnimationLoaderLoadsBoundedNEntityScene},
+    {TEST_SCENE_ANIMATION_CAPACITY_NO_MUTATION,
+     RuntimeAssetDataSceneAnimationLoaderRejectsEntityCapacityOverflowWithoutMutation},
+    {TEST_SCENE_ANIMATION_REFS_NO_MUTATION,
+     RuntimeAssetDataSceneAnimationLoaderRejectsMissingRefsWithoutMutation},
+    {TEST_SCENE_ANIMATION_INVALID_RECORDS_NO_MUTATION,
+     RuntimeAssetDataSceneAnimationLoaderRejectsInvalidRecordsWithoutMutation},
+    {TEST_SCENE_ANIMATION_PATH_INDEPENDENT,
+     RuntimeAssetDataSceneAnimationLoaderPathIndependentSceneAnimationDetection},
     {TEST_DECODED_PAYLOADS, RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture},
     {TEST_TEXTURE_MATERIAL_SLOT_BRIDGE, RuntimeAssetDataDecodedTexturePayloadsDriveRhiMaterialSlots},
     {TEST_TEXTURE_MATERIAL_SLOT_BRIDGE_FAILURES,
