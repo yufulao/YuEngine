@@ -94,8 +94,9 @@ failures such as `NotCooked`, `MissingResourceRef`, or `TypeMismatch`.
 
 Remaining later work:
 
-- consume RAV2 Resource Browser query records when task #64 lands;
-- consume RAV2-A command/cook outputs when task #63 lands;
+- consume RAV2 Resource Browser query/diagnostic records in a later preview-host
+  wiring task; task #64 only supplies the lower Resource Browser contract;
+- consume RAV2-A command/cook outputs in a later preview-host wiring task;
 - broaden beyond the canonical three-primitive scene only after RuntimeAsset
   exposes production mesh/material/scene records for the wider route;
 - add editor service/panel integration in later tasks, not in #65.
