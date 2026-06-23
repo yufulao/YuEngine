@@ -8,6 +8,7 @@ Scope: shared editor preview host, viewport, resource preview, editor acceptance
 Related:
 
 - `docs/gates/EDITOR_GATE_001_RUNTIME_PREVIEW_HOST.md`
+- `docs/gates/EDITOR_GATE_002_SCENE_EDITOR_DEPENDENCY_GATE.md`
 - `docs/YUENGINE_UI_FRAMEWORK_EDITOR_PLAN.md`
 - `docs/YUENGINE_SCENE_EDITOR_PLAN.md`
 - `docs/YUENGINE_ANIMATION_EDITOR_PLAN.md`
