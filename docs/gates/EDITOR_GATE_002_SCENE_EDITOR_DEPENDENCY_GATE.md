@@ -155,6 +155,36 @@ Required acceptance for that slice:
 - original package parser, Unity/Unreal importer, or game-specific scene flow;
 - Web/canvas/static screenshot fallback.
 
+## `SE-DATA-001` Implementation Anchor
+
+The first implementation slice lands as the lower `YuWorld`
+`WorldSceneAuthoringDocument` contract and validator. It defines:
+
+- scene authoring header records with schema version, scene document id,
+  deterministic document hash, runtime-family counts, dependency count, sidecar
+  count, and explicit unsupported-runtime-field rejection;
+- runtime export records for ordered object identity, transform, component
+  attachment, component-resource binding, and cook-ready dependency records;
+- editor-only sidecar records for selection, foldout, viewport camera bookmark,
+  grid/snap, gizmo, panel layout, display filter, and undo selection cursor;
+- validation that rejects duplicate object ids/handles, duplicate transforms,
+  duplicate component/resource/dependency/sidecar tuples, missing transform or
+  component references, missing cook dependencies, capacity overflow,
+  unsupported runtime fields, invalid transform values, invalid resource
+  records, sidecar references to missing objects, and sidecar records marked for
+  runtime export.
+
+Successful validation copies only runtime record families and dependency records
+to caller-owned outputs. Editor-only sidecar records are counted and validated
+but are not exported into runtime outputs, RuntimeAsset input, Preview Host
+state, or RenderScene data. Failed validation does not mutate caller-owned
+runtime output records or output counts.
+
+This implementation still does not create a native Scene Editor surface,
+hierarchy, inspector, viewport, transform gizmo, Resource Browser UI, Preview
+Host bridge, original package parser, Unity/Unreal importer, Web surface, or
+final product visual closure.
+
 ## Blocked Later Slices
 
 The following slices remain blocked until their prerequisites close:
