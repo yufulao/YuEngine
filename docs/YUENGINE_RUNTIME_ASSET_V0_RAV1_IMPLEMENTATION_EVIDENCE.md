@@ -22,7 +22,7 @@ task #62 reviews once #56 through #60 have concrete commits and test results.
 | --- | --- | --- | --- | --- |
 | #56 RAV1-I0 | source/cooked parser and validator skeleton | #50 contract, #54 Phase A evidence | accepted: `232c911 Amend RuntimeAsset header parsing strictness` | focused parser/validator tests, suffix-free type truth, no-mutation failures, changed-path summary |
 | #57 RAV1-I1 | loader transaction core and commit semantics | #51 transaction plan, #54 Phase A evidence | accepted: `81c97be Harden RuntimeAsset graph transaction preflight` | preflight/commit tests, `mutated_state` or rollback ledger proof, registry/output no-mutation probes |
-| #58 RAV1-I2 | cooked texture/material payload bridge | #52 payload route, #54 Phase A evidence | pending | texture layout/hash/row-pitch tests, material slot resolution tests, RHI texture cleanup/no-output-mutation tests |
+| #58 RAV1-I2 | cooked texture/material payload bridge | #52 payload route, #54 Phase A evidence | accepted: `f32ee36 Bridge cooked texture payloads to material slots` | texture layout/hash/row-pitch tests, material slot resolution tests, RHI texture cleanup/no-output-mutation tests |
 | #59 RAV1-I3 | cooked shader/program payload bridge | #52 payload route, #54 Phase A evidence | pending | cooked bytecode descriptor tests, reflection/input-layout tests, module/pipeline cleanup tests |
 | #60 RAV1-I4 | bounded scene/animation record loader | #53 scene/animation plan, #54 Phase A evidence | pending | bounded N-entity success, capacity/ref/track/keyframe/target/hash failures without mutation, RenderScene consumption |
 | #61 Evidence | implementation evidence matrix and commands | #56-#60 delivery threads | this document | complete command matrix, off-scope scans, suffix scans, changed files, PASS/FAIL/blocker rows |
@@ -182,13 +182,93 @@ RuntimeAsset graph loader slice only. It is not rollback support, a complete
 binary parser, payload bridge approval, scene/animation loader approval, or
 final render closure.
 
+### #58 RAV1-I2 Cooked Texture/Material Payload Bridge
+
+Accepted anchor: `f32ee36 Bridge cooked texture payloads to material slots`
+
+Implementation note: #58 is reviewed as independent RuntimeAssetData delta
+`97d0364..f32ee36`. Later stack commits are not accepted by this row; in
+particular this does not accept #59 shader/program or #60 scene/animation
+scope.
+
+Changed files:
+
+- `CMakeLists.txt`
+- `Src/YuEngine/RuntimeAsset/Include/YuEngine/RuntimeAsset/RuntimeAssetData.h`
+- `Src/YuEngine/RuntimeAsset/Src/RuntimeAssetData.cpp`
+- `Tests/RenderScene/RuntimeAssetDataClosedLoopTests.cpp`
+
+Owner-reported verification at `f32ee36`:
+
+```powershell
+git diff --check
+git show --check --format=short HEAD
+cmake --preset windows-fast-gate
+cmake --build --preset windows-fast-gate --target YuRuntimeAssetDataClosedLoopTests -- /v:minimal
+ctest --preset windows-fast-gate -R RuntimeAssetData --output-on-failure
+cmake --build --preset windows-fast-gate -- /v:minimal
+ctest --preset windows-fast-gate --output-on-failure
+```
+
+Reported result: diff/show/configure/build PASS, RuntimeAssetData 40/40 PASS,
+full fast gate 1289/1289 PASS.
+
+Architecture local spot-check in the detached review worktree at `c746573`
+(code content includes later #60 implementation and #61 evidence updates):
+
+```powershell
+git diff --check 97d0364..f32ee36
+git show --check --format=short f32ee36
+cmake --preset windows-fast-gate
+cmake --build --preset windows-fast-gate --target YuRuntimeAssetDataClosedLoopTests -- /v:minimal
+ctest --preset windows-fast-gate -R "RuntimeAssetData_(CookedTexturePayloadTableValidatesLayoutHashAndRowPitch|CookedMaterialTextureSlotTableResolvesLoadedPayloads|CookedPayloadBridgeRejectsTextureFormatExtentSizeAlignmentHashWithoutMutation|CookedPayloadBridgeRejectsMissingDuplicateTypeMismatchDepsWithoutMutation|CookedMaterialSlotOverflowDoesNotMutateRenderSceneOutputs|CookedRhiPartialCreationFailureDestroysTransientHandles)$" --output-on-failure
+ctest --preset windows-fast-gate -R RuntimeAssetData --output-on-failure
+```
+
+Local result: diff/show/configure/build PASS, focused #58 tests 6/6 PASS,
+RuntimeAssetData 45/45 PASS.
+
+Additional local diff-limited scans:
+
+```powershell
+git diff --unified=0 97d0364..f32ee36 -- CMakeLists.txt Src\YuEngine\RuntimeAsset\Include\YuEngine\RuntimeAsset\RuntimeAssetData.h Src\YuEngine\RuntimeAsset\Src\RuntimeAssetData.cpp Tests\RenderScene\RuntimeAssetDataClosedLoopTests.cpp | rg -n "editor|Editor|Web|UI|input|Game Adapter|original package|TouhouNewWorld package|GDI|screenshot|manual inspection|direct struct"
+git diff --unified=0 97d0364..f32ee36 -- CMakeLists.txt Src\YuEngine\RuntimeAsset\Include\YuEngine\RuntimeAsset\RuntimeAssetData.h Src\YuEngine\RuntimeAsset\Src\RuntimeAssetData.cpp Tests\RenderScene\RuntimeAssetDataClosedLoopTests.cpp | rg -n "\.yu(mesh|mat|tex|program|scene|anim)|suffix|fixture name|type truth|internal metadata"
+```
+
+Local result: both diff-limited scans returned no #58 added matches.
+
+Scope accepted:
+
+- cooked texture payload descriptors cover loaded texture identity, RHI texture
+  descriptor, color space, row pitch, slice pitch, payload offset/count,
+  alignment, payload hash, decoded payload id, staging request id, and upload id;
+- cooked texture layout rejects unsupported format, invalid extent, invalid
+  size, invalid alignment, nonzero payload offset, missing hash, missing
+  staging/upload ids, decoded-payload miss, byte-count mismatch, and payload
+  hash mismatch before RHI mutation;
+- cooked material slot descriptors resolve typed texture payload refs and reject
+  missing refs, duplicate material/texture/sampler slots, duplicate payload refs,
+  binding-slot mismatch, unsupported color space, format mismatch, and
+  color-space mismatch before RHI mutation;
+- successful commit uploads decoded payloads through the Resource/Streaming RHI
+  texture bridge, creates samplers, builds a RenderScene runtime material, marks
+  texture assets ready, and publishes caller material output;
+- partial RHI creation failures report `mutated_state == true`, do not publish
+  material output, and clean transient texture/sampler handles with explicit
+  cleanup counters.
+
+Boundary: #58 proves the current cooked texture/material bridge route only. It
+is not shader/program payload approval, scene/animation loader approval, a
+complete binary parser, editor/import bridge, package parser, or final render
+closure.
+
 ## Focused Proof Rows
 
 | Proof area | Minimum focused tests or equivalents | Status |
 | --- | --- | --- |
 | Source/cooked parser | missing schema, wrong kind, unsupported version, invalid count/size/alignment/hash, misleading suffix | PASS at `232c911`: `RuntimeAssetData_HeaderParserRejectsPartialVersionsAndNoise`, `RuntimeAssetData_SourceCookedParserReportsBoundedMetadata`, `RuntimeAssetData_SourceCookedParserRejectsInvalidTablesHashesAndDependencies`, `RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation` |
 | Loader transaction | preflight failure no mutation, commit failure `mutated_state`, dependency/decoded-payload intent ordering | PASS at `81c97be`: `RuntimeAssetData_LoaderRejectsMissingSchemaBeforeMutation`, `RuntimeAssetData_LoaderCommitFailureReportsMutatedState`, `RuntimeAssetData_LoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation` |
-| Texture/material payload | cooked texture layout/hash/row pitch, slot resolution, invalid payload no output mutation, RHI texture cleanup | pending |
+| Texture/material payload | cooked texture layout/hash/row pitch, slot resolution, invalid payload no output mutation, RHI texture cleanup | PASS at `f32ee36`: `RuntimeAssetData_CookedTexturePayloadTableValidatesLayoutHashAndRowPitch`, `RuntimeAssetData_CookedMaterialTextureSlotTableResolvesLoadedPayloads`, `RuntimeAssetData_CookedPayloadBridgeRejectsTextureFormatExtentSizeAlignmentHashWithoutMutation`, `RuntimeAssetData_CookedPayloadBridgeRejectsMissingDuplicateTypeMismatchDepsWithoutMutation`, `RuntimeAssetData_CookedMaterialSlotOverflowDoesNotMutateRenderSceneOutputs`, `RuntimeAssetData_CookedRhiPartialCreationFailureDestroysTransientHandles` |
 | Shader/program payload | cooked stage bytecode, reflection/input-layout, hash/stage mismatch no mutation, module/pipeline cleanup | pending |
 | Scene/animation loader | bounded N entities, capacity overflow, invalid transforms/keyframes, target mismatch, path independence, RenderScene consumption | pending |
 | Final route | File/Mount/VFS -> Resource/Asset -> RenderScene/RenderCore/RHI from loaded RuntimeAsset records | pending |
