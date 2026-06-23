@@ -16,6 +16,7 @@
 #include "YuEngine/File/MountTable.h"
 #include "YuEngine/Resource/ResourceRegistry.h"
 #include "YuEngine/ResourceBrowser/ResourceBrowserDiagnostics.h"
+#include "YuEngine/ResourceBrowser/ResourceBrowserSurface.h"
 #include "YuEngine/RuntimeAsset/RuntimeAssetData.h"
 
 namespace {
@@ -38,6 +39,13 @@ using yuengine::resourcebrowser::ResourceBrowserDiagnosticsRequest;
 using yuengine::resourcebrowser::ResourceBrowserDiagnosticsResult;
 using yuengine::resourcebrowser::ResourceBrowserDiagnosticsStatus;
 using yuengine::resourcebrowser::ResourceBrowserResourceEntry;
+using yuengine::resourcebrowser::BuildResourceBrowserNativeSurface;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceDocumentKind;
+using yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceRequest;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceResult;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceRow;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceStatus;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
 using yuengine::runtimeasset::RuntimeAssetDataStatus;
 using yuengine::runtimeasset::RuntimeAssetFileDesc;
@@ -90,6 +98,12 @@ constexpr const char *TEST_FAILURE_CLASSIFICATION =
     "ResourceBrowserDiagnostics_ClassifiesMissingTypeMismatchStaleSchemaAndHash";
 constexpr const char *TEST_CAPACITY_BUDGET_READONLY =
     "ResourceBrowserDiagnostics_ClassifiesCapacityAndBudgetWithoutResourceAssetMutation";
+constexpr const char *TEST_SURFACE_ROWS =
+    "ResourceBrowserSurface_BuildsRowsWithStatusAndPreviewEligibility";
+constexpr const char *TEST_SURFACE_SUFFIX_BOUNDARY =
+    "ResourceBrowserSurface_DoesNotUseLocatorSuffixAsTypeTruth";
+constexpr const char *TEST_SURFACE_CAPACITY =
+    "ResourceBrowserSurface_RejectsSmallOutputWithoutPartialRows";
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -351,6 +365,21 @@ bool AssetSnapshotSame(const AssetSnapshot &left, const AssetSnapshot &right) {
         left.accepted_operation_count == right.accepted_operation_count;
 }
 
+ResourceBrowserSurfaceResult BuildSurfaceRows(
+    const std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> &entries,
+    const std::array<ResourceBrowserDiagnosticRecord, 16U> &diagnostics,
+    std::uint32_t diagnostic_count,
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> *rows) {
+    ResourceBrowserSurfaceRequest request{};
+    request.entries = std::span<const ResourceBrowserResourceEntry>(entries.data(), entries.size());
+    request.diagnostics = std::span<const ResourceBrowserDiagnosticRecord>(diagnostics.data(), diagnostic_count);
+    request.rows = std::span<ResourceBrowserSurfaceRow>(rows->data(), rows->size());
+
+    ResourceBrowserSurfaceResult result{};
+    BuildResourceBrowserNativeSurface(request, &result);
+    return result;
+}
+
 int ResourceBrowserDiagnosticsEntriesComeFromRuntimeAssetFileResourceAssetPath() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("EntriesFromRuntimePath"), &table) ||
@@ -569,11 +598,143 @@ int ResourceBrowserDiagnosticsClassifiesCapacityAndBudgetWithoutResourceAssetMut
     return 0;
 }
 
+int ResourceBrowserSurfaceBuildsRowsWithStatusAndPreviewEligibility() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("SurfaceRows"), &table) ||
+        !WriteCanonicalFixture(table)) {
+        return Fail("failed to create surface fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadCanonicalGraph(table, registry, manager, &graph)) {
+        return Fail("canonical graph load failed for surface rows");
+    }
+
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    const std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> descs = CanonicalDescs();
+    const ResourceBrowserDiagnosticsResult diagnostics_result =
+        BuildDiagnostics(table, descs, &graph, &registry, &manager, &entries, &diagnostics);
+    if (diagnostics_result.status != ResourceBrowserDiagnosticsStatus::Success ||
+        diagnostics_result.diagnostic_count != 0U) {
+        return Fail("surface input diagnostics were not clean");
+    }
+
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> rows{};
+    const ResourceBrowserSurfaceResult surface =
+        BuildSurfaceRows(entries, diagnostics, diagnostics_result.diagnostic_count, &rows);
+    if (surface.status != ResourceBrowserSurfaceStatus::Success ||
+        surface.row_count != FIXTURE_FILE_COUNT ||
+        surface.eligible_preview_count != FIXTURE_FILE_COUNT ||
+        surface.blocked_preview_count != 0U ||
+        surface.used_locator_path_as_type_truth) {
+        return Fail("surface did not expose eligible rows from backend diagnostics");
+    }
+
+    for (const ResourceBrowserSurfaceRow &row : rows) {
+        if (row.locator_path == nullptr ||
+            row.declared_kind == RuntimeAssetFileKind::Unknown ||
+            row.header_kind != row.declared_kind ||
+            row.schema_version != 1U ||
+            row.validation_status != RuntimeAssetDataStatus::Success ||
+            row.dependency_state != ResourceBrowserDependencyState::Ready ||
+            row.preview_state != ResourceBrowserSurfacePreviewState::Eligible ||
+            row.preview_document_kind == ResourceBrowserSurfaceDocumentKind::None ||
+            !row.has_runtime_loaded_record ||
+            !row.has_resource_asset_record ||
+            row.locator_path_is_type_truth) {
+            return Fail("surface row omitted required native Resource Browser fields");
+        }
+    }
+
+    return 0;
+}
+
+int ResourceBrowserSurfaceDoesNotUseLocatorSuffixAsTypeTruth() {
+    std::array<ResourceBrowserResourceEntry, 1U> entries{};
+    ResourceBrowserResourceEntry &entry = entries[0U];
+    entry.import_settings.source_path = "Texture/LocatorLooksLikeTexture.yutex";
+    entry.import_settings.target_kind = RuntimeAssetFileKind::Material;
+    entry.import_settings.stable_id = 9001U;
+    entry.validation.status = RuntimeAssetDataStatus::TypeMismatch;
+    entry.validation.kind = RuntimeAssetFileKind::Texture;
+    entry.validation.schema_version = 1U;
+    entry.dependency_state = ResourceBrowserDependencyState::TypeMismatch;
+
+    std::array<ResourceBrowserDiagnosticRecord, 1U> diagnostics{};
+    diagnostics[0U].code = ResourceBrowserDiagnosticCode::TypeMismatch;
+    diagnostics[0U].severity = yuengine::resourcebrowser::ResourceBrowserDiagnosticSeverity::Error;
+    diagnostics[0U].phase = yuengine::resourcebrowser::ResourceBrowserDiagnosticPhase::Validate;
+    diagnostics[0U].runtime_status = RuntimeAssetDataStatus::TypeMismatch;
+    diagnostics[0U].source_path = entry.import_settings.source_path;
+    diagnostics[0U].expected_kind = RuntimeAssetFileKind::Material;
+    diagnostics[0U].file_index = 0U;
+
+    std::array<ResourceBrowserSurfaceRow, 1U> rows{};
+    ResourceBrowserSurfaceRequest request{};
+    request.entries = std::span<const ResourceBrowserResourceEntry>(entries.data(), entries.size());
+    request.diagnostics = std::span<const ResourceBrowserDiagnosticRecord>(
+        diagnostics.data(),
+        diagnostics.size());
+    request.rows = std::span<ResourceBrowserSurfaceRow>(rows.data(), rows.size());
+
+    ResourceBrowserSurfaceResult result{};
+    BuildResourceBrowserNativeSurface(request, &result);
+    if (result.status != ResourceBrowserSurfaceStatus::Success ||
+        result.row_count != 1U ||
+        result.eligible_preview_count != 0U ||
+        result.blocked_preview_count != 1U ||
+        result.used_locator_path_as_type_truth) {
+        return Fail("surface suffix-boundary result was not blocked as expected");
+    }
+
+    const ResourceBrowserSurfaceRow &row = rows[0U];
+    if (row.declared_kind != RuntimeAssetFileKind::Material ||
+        row.header_kind != RuntimeAssetFileKind::Texture ||
+        row.preview_state != ResourceBrowserSurfacePreviewState::BlockedByValidation ||
+        row.first_diagnostic_code != ResourceBrowserDiagnosticCode::TypeMismatch ||
+        !row.has_blocking_diagnostic ||
+        row.locator_path_is_type_truth) {
+        return Fail("surface used locator suffix instead of declared/header type truth");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserSurfaceRejectsSmallOutputWithoutPartialRows() {
+    std::array<ResourceBrowserResourceEntry, 2U> entries{};
+    for (std::uint32_t index = 0U; index < entries.size(); ++index) {
+        entries[index].validation.status = RuntimeAssetDataStatus::Success;
+        entries[index].validation.kind = RuntimeAssetFileKind::Texture;
+        entries[index].dependency_state = ResourceBrowserDependencyState::Ready;
+    }
+
+    std::array<ResourceBrowserSurfaceRow, 1U> rows{};
+    ResourceBrowserSurfaceRequest request{};
+    request.entries = std::span<const ResourceBrowserResourceEntry>(entries.data(), entries.size());
+    request.rows = std::span<ResourceBrowserSurfaceRow>(rows.data(), rows.size());
+
+    ResourceBrowserSurfaceResult result{};
+    BuildResourceBrowserNativeSurface(request, &result);
+    if (result.status != ResourceBrowserSurfaceStatus::OutputCapacityExceeded ||
+        result.row_count != 0U ||
+        rows[0U].validation_status != RuntimeAssetDataStatus::InvalidArgument) {
+        return Fail("surface did not reject small output atomically");
+    }
+
+    return 0;
+}
+
 const std::unordered_map<std::string_view, TestFunction> &Tests() {
     static const std::unordered_map<std::string_view, TestFunction> tests{
         {TEST_ENTRIES_FROM_RUNTIME_PATH, ResourceBrowserDiagnosticsEntriesComeFromRuntimeAssetFileResourceAssetPath},
         {TEST_FAILURE_CLASSIFICATION, ResourceBrowserDiagnosticsClassifiesMissingTypeMismatchStaleSchemaAndHash},
         {TEST_CAPACITY_BUDGET_READONLY, ResourceBrowserDiagnosticsClassifiesCapacityAndBudgetWithoutResourceAssetMutation},
+        {TEST_SURFACE_ROWS, ResourceBrowserSurfaceBuildsRowsWithStatusAndPreviewEligibility},
+        {TEST_SURFACE_SUFFIX_BOUNDARY, ResourceBrowserSurfaceDoesNotUseLocatorSuffixAsTypeTruth},
+        {TEST_SURFACE_CAPACITY, ResourceBrowserSurfaceRejectsSmallOutputWithoutPartialRows},
     };
     return tests;
 }

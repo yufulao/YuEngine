@@ -81,3 +81,37 @@ These cover real mounted files, RuntimeAsset validation, loaded
 Resource/Asset handles, missing dependency, type mismatch, stale schema,
 stale hash, unsupported field, capacity failure, budget failure, and read-only
 Resource/Asset query behavior.
+
+## Native Surface Projection
+
+Task #72 adds `BuildResourceBrowserNativeSurface` as the first read-only native
+Resource Browser surface projection. It consumes only
+`ResourceBrowserResourceEntry` and `ResourceBrowserDiagnosticRecord` outputs; it
+does not read files, import assets, create runtime handles, render UI widgets,
+or call Preview Host.
+
+Each `ResourceBrowserSurfaceRow` exposes the fields the first native/editor
+surface needs to display:
+
+- locator path, kept as a locator only and never used as type truth;
+- declared `RuntimeAssetFileKind` from import settings;
+- header/runtime kind, artifact class, schema version, validation status, and
+  hash payload metadata from `YuRuntimeAsset`;
+- Resource/Asset handles and loaded-record provenance from the backend query;
+- first highest-severity diagnostic code/phase and diagnostic count;
+- preview eligibility and requested surface document kind.
+
+Preview eligibility is intentionally conservative. A row is eligible only when
+validation succeeds, dependencies are ready, a RuntimeAsset loaded record exists,
+Resource/Asset records are visible, and the validated runtime kind is one of the
+approved RuntimeAsset families. Otherwise the row records the exact blocker:
+validation, dependency, missing loaded record, missing Resource/Asset record, or
+unsupported kind. This is Resource Browser surface eligibility only; it does not
+claim final Preview Host behavior, Scene Editor workflow, package/run closure,
+external importer support, or product completeness.
+
+Additional focused tests:
+
+- `ResourceBrowserSurface_BuildsRowsWithStatusAndPreviewEligibility`
+- `ResourceBrowserSurface_DoesNotUseLocatorSuffixAsTypeTruth`
+- `ResourceBrowserSurface_RejectsSmallOutputWithoutPartialRows`
