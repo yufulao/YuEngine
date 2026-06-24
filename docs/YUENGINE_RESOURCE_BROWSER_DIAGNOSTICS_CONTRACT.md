@@ -12,6 +12,7 @@ Related:
 - `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
 - `docs/YUENGINE_RUNTIME_ASSET_V0_RAV1_IMPLEMENTATION_EVIDENCE.md`
 - `docs/YUENGINE_RUNTIME_ASSET_V0_RAV2_EVIDENCE_MATRIX.md`
+- `docs/YUENGINE_RESOURCE_BROWSER_RAV6_VISIBLE_WORKFLOW.md`
 
 ## Purpose
 
@@ -136,3 +137,27 @@ Additional focused tests:
 - `ResourceBrowserSurface_SelectionWorkflowRejectsInvalidSetting`
 - `ResourceBrowserSurface_DiagnosticBlocksPreviewEligibility`
 - `ResourceBrowserSurface_SelectionValidationDoesNotMutateResourceAssetMapping`
+
+## RAV6 Visible Workflow Projection
+
+Task #90 adds `BuildResourceBrowserVisibleWorkflowSurface` as the first
+visible workflow projection over the existing diagnostics, native surface rows,
+and structured selection state. The API emits caller-owned import setting rows,
+diagnostic rows, preview eligibility rows, and one selection ledger record.
+
+The selection ledger is the handoff contract for later Preview Host and editor
+workflow slices. A committed ledger means the selected
+`ResourceBrowserSurfaceSelectionState` is preview eligible, preserves
+Resource/Asset handles from the diagnostics path, and did not use a locator
+suffix as type truth. A rejected ledger keeps the exact setting or diagnostic
+blocker visible and does not create fake preview eligibility.
+
+Invalid import settings reject before any caller-owned visible workflow outputs
+are written.
+
+Additional focused tests:
+
+- `ResourceBrowserVisibleWorkflow_BuildsImportSettingAndPreviewRows`
+- `ResourceBrowserVisibleWorkflow_CommitsSelectionForPreviewHost`
+- `ResourceBrowserVisibleWorkflow_DiagnosticBlockRejectsPreview`
+- `ResourceBrowserVisibleWorkflow_InvalidSettingDoesNotMutateOutputs`

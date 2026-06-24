@@ -58,6 +58,14 @@ enum class ResourceBrowserSurfaceSettingValidationCode {
     TargetKindMismatch
 };
 
+enum class ResourceBrowserVisibleWorkflowStatus {
+    Success,
+    InvalidArgument,
+    OutputCapacityExceeded,
+    EntryOutOfRange,
+    InvalidImportSettings
+};
+
 struct ResourceBrowserSurfaceRow final {
     const char *locator_path = nullptr;
     yuengine::runtimeasset::RuntimeAssetFileKind declared_kind =
@@ -154,6 +162,100 @@ struct ResourceBrowserSurfaceSelectionResult final {
     }
 };
 
+struct ResourceBrowserVisibleImportSettingRow final {
+    const char *source_path = nullptr;
+    yuengine::runtimeasset::RuntimeAssetFileKind target_kind =
+        yuengine::runtimeasset::RuntimeAssetFileKind::Unknown;
+    yuengine::resource::ResourceTypeId resource_type;
+    yuengine::asset::AssetTypeId asset_type;
+    ResourceBrowserSurfaceSettingValidationCode validation =
+        ResourceBrowserSurfaceSettingValidationCode::None;
+    ResourceBrowserSurfacePreviewState preview_state =
+        ResourceBrowserSurfacePreviewState::Unknown;
+    std::uint64_t stable_id = 0U;
+    std::uint64_t expected_source_hash = 0U;
+    std::uint32_t importer_version = 0U;
+    std::uint32_t expected_schema_version = 0U;
+    bool selected = false;
+    bool source_hash_matches = false;
+    bool target_kind_matches_header = false;
+};
+
+struct ResourceBrowserVisibleDiagnosticRow final {
+    ResourceBrowserDiagnosticCode code = ResourceBrowserDiagnosticCode::None;
+    ResourceBrowserDiagnosticSeverity severity = ResourceBrowserDiagnosticSeverity::Info;
+    ResourceBrowserDiagnosticPhase phase = ResourceBrowserDiagnosticPhase::ImportSettings;
+    yuengine::runtimeasset::RuntimeAssetDataStatus runtime_status =
+        yuengine::runtimeasset::RuntimeAssetDataStatus::Success;
+    const char *source_path = nullptr;
+    std::uint32_t file_index = 0U;
+    std::uint32_t dependency_index = 0U;
+    std::uint64_t stable_id = 0U;
+    bool selected = false;
+    bool blocks_preview = false;
+};
+
+struct ResourceBrowserVisibleSelectionLedgerRecord final {
+    std::uint32_t selected_index = 0U;
+    ResourceBrowserSurfaceSelectionStatus selection_status =
+        ResourceBrowserSurfaceSelectionStatus::InvalidArgument;
+    ResourceBrowserSurfaceSettingValidationCode setting_validation =
+        ResourceBrowserSurfaceSettingValidationCode::None;
+    ResourceBrowserSurfacePreviewState preview_state =
+        ResourceBrowserSurfacePreviewState::Unknown;
+    ResourceBrowserDiagnosticCode blocking_diagnostic_code =
+        ResourceBrowserDiagnosticCode::None;
+    yuengine::resource::ResourceHandle resource;
+    yuengine::asset::AssetHandle asset;
+    std::uint64_t stable_id = 0U;
+    bool committed_to_preview_host = false;
+    bool rejected_preview_request = false;
+    bool preview_eligible = false;
+    bool diagnostic_blocks_preview = false;
+    bool resource_asset_mapping_preserved = false;
+    bool used_locator_path_as_type_truth = false;
+};
+
+struct ResourceBrowserVisibleWorkflowRequest final {
+    std::span<const ResourceBrowserResourceEntry> entries{};
+    std::span<const ResourceBrowserDiagnosticRecord> diagnostics{};
+    ResourceBrowserImportSettings import_settings{};
+    std::uint32_t selected_index = 0U;
+    bool validate_import_settings = false;
+    std::span<ResourceBrowserVisibleImportSettingRow> import_setting_rows{};
+    std::span<ResourceBrowserVisibleDiagnosticRow> diagnostic_rows{};
+    std::span<ResourceBrowserSurfaceRow> preview_rows{};
+    std::span<ResourceBrowserVisibleSelectionLedgerRecord> selection_ledger{};
+};
+
+struct ResourceBrowserVisibleWorkflowResult final {
+    ResourceBrowserVisibleWorkflowStatus status =
+        ResourceBrowserVisibleWorkflowStatus::InvalidArgument;
+    ResourceBrowserSurfaceStatus surface_status =
+        ResourceBrowserSurfaceStatus::InvalidArgument;
+    ResourceBrowserSurfaceSelectionStatus selection_status =
+        ResourceBrowserSurfaceSelectionStatus::InvalidArgument;
+    ResourceBrowserSurfaceSelectionState selection_state{};
+    std::uint32_t import_setting_row_count = 0U;
+    std::uint32_t diagnostic_row_count = 0U;
+    std::uint32_t preview_row_count = 0U;
+    std::uint32_t eligible_preview_count = 0U;
+    std::uint32_t blocked_preview_count = 0U;
+    std::uint32_t selection_ledger_count = 0U;
+    bool emitted_import_settings = false;
+    bool emitted_diagnostics = false;
+    bool emitted_preview_rows = false;
+    bool emitted_selection_ledger = false;
+    bool selection_committed = false;
+    bool selection_rejected = false;
+    bool consumed_preview_host_ready_selection = false;
+    bool used_locator_path_as_type_truth = false;
+
+    bool Succeeded() const {
+        return status == ResourceBrowserVisibleWorkflowStatus::Success;
+    }
+};
+
 ResourceBrowserSurfaceStatus BuildResourceBrowserNativeSurface(
     const ResourceBrowserSurfaceRequest &request,
     ResourceBrowserSurfaceResult *out_result);
@@ -161,5 +263,9 @@ ResourceBrowserSurfaceStatus BuildResourceBrowserNativeSurface(
 ResourceBrowserSurfaceSelectionStatus ResolveResourceBrowserSurfaceSelection(
     const ResourceBrowserSurfaceSelectionRequest &request,
     ResourceBrowserSurfaceSelectionResult *out_result);
+
+ResourceBrowserVisibleWorkflowStatus BuildResourceBrowserVisibleWorkflowSurface(
+    const ResourceBrowserVisibleWorkflowRequest &request,
+    ResourceBrowserVisibleWorkflowResult *out_result);
 
 }

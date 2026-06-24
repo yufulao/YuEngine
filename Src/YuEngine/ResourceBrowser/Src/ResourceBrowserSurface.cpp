@@ -245,15 +245,16 @@ bool IsValidSelectionRequest(const ResourceBrowserSurfaceSelectionRequest &reque
     return true;
 }
 
-void ApplySelectionDiagnostics(
-    const ResourceBrowserSurfaceSelectionRequest &request,
+void ApplySelectionDiagnosticsForIndex(
+    std::span<const ResourceBrowserDiagnosticRecord> diagnostics,
+    std::uint32_t selected_index,
     ResourceBrowserSurfaceSelectionState *state) {
     if (state == nullptr) {
         return;
     }
 
-    for (const ResourceBrowserDiagnosticRecord &diagnostic : request.diagnostics) {
-        if (diagnostic.file_index != request.selected_index) {
+    for (const ResourceBrowserDiagnosticRecord &diagnostic : diagnostics) {
+        if (diagnostic.file_index != selected_index) {
             continue;
         }
 
@@ -271,15 +272,18 @@ void ApplySelectionDiagnostics(
     }
 }
 
-ResourceBrowserSurfaceSelectionState BuildSelectionState(
-    const ResourceBrowserSurfaceSelectionRequest &request) {
-    const ResourceBrowserResourceEntry &entry = request.entries[request.selected_index];
-    const ResourceBrowserSurfaceRow &row = request.rows[request.selected_index];
+ResourceBrowserSurfaceSelectionState BuildSelectionStateFromRow(
+    const ResourceBrowserResourceEntry &entry,
+    const ResourceBrowserSurfaceRow &row,
+    std::span<const ResourceBrowserDiagnosticRecord> diagnostics,
+    std::uint32_t selected_index,
+    const ResourceBrowserImportSettings &import_settings,
+    bool validate_import_settings) {
     ResourceBrowserSurfaceSelectionState state{};
-    state.selected_index = request.selected_index;
+    state.selected_index = selected_index;
     state.import_settings = entry.import_settings;
-    if (request.validate_import_settings) {
-        state.import_settings = request.import_settings;
+    if (validate_import_settings) {
+        state.import_settings = import_settings;
     }
 
     state.preview_state = row.preview_state;
@@ -300,8 +304,186 @@ ResourceBrowserSurfaceSelectionState BuildSelectionState(
         state.asset.slot == entry.asset.slot &&
         state.asset.generation == entry.asset.generation;
     state.used_locator_path_as_type_truth = row.locator_path_is_type_truth;
-    ApplySelectionDiagnostics(request, &state);
+    ApplySelectionDiagnosticsForIndex(diagnostics, selected_index, &state);
     return state;
+}
+
+ResourceBrowserSurfaceSelectionState BuildSelectionState(
+    const ResourceBrowserSurfaceSelectionRequest &request) {
+    return BuildSelectionStateFromRow(
+        request.entries[request.selected_index],
+        request.rows[request.selected_index],
+        request.diagnostics,
+        request.selected_index,
+        request.import_settings,
+        request.validate_import_settings);
+}
+
+bool IsValidVisibleWorkflowRequest(const ResourceBrowserVisibleWorkflowRequest &request) {
+    if (!request.entries.empty() && request.entries.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.diagnostics.empty() && request.diagnostics.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.import_setting_rows.empty() && request.import_setting_rows.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.diagnostic_rows.empty() && request.diagnostic_rows.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.preview_rows.empty() && request.preview_rows.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.selection_ledger.empty() && request.selection_ledger.data() == nullptr) {
+        return false;
+    }
+
+    return true;
+}
+
+bool HasVisibleWorkflowOutputCapacity(const ResourceBrowserVisibleWorkflowRequest &request) {
+    if (request.import_setting_rows.size() < request.entries.size()) {
+        return false;
+    }
+
+    if (request.preview_rows.size() < request.entries.size()) {
+        return false;
+    }
+
+    if (request.diagnostic_rows.size() < request.diagnostics.size()) {
+        return false;
+    }
+
+    if (!request.entries.empty() && request.selection_ledger.empty()) {
+        return false;
+    }
+
+    return true;
+}
+
+ResourceBrowserSurfaceSelectionResult ResolveVisibleWorkflowSelection(
+    const ResourceBrowserVisibleWorkflowRequest &request) {
+    ResourceBrowserSurfaceSelectionResult result{};
+    ResourceBrowserSurfaceRequest surface_request{};
+    surface_request.entries = request.entries;
+    surface_request.diagnostics = request.diagnostics;
+    const ResourceBrowserSurfaceRow selected_row =
+        BuildRow(surface_request, request.entries[request.selected_index], request.selected_index);
+    result.state = BuildSelectionStateFromRow(
+        request.entries[request.selected_index],
+        selected_row,
+        request.diagnostics,
+        request.selected_index,
+        request.import_settings,
+        request.validate_import_settings);
+    result.state.setting_validation =
+        ValidateImportSettings(
+            result.state.import_settings,
+            request.entries[request.selected_index],
+            selected_row);
+    result.state.import_settings_valid =
+        result.state.setting_validation == ResourceBrowserSurfaceSettingValidationCode::None;
+    if (!result.state.import_settings_valid) {
+        result.state.preview_eligible = false;
+        result.state.preview_state = ResourceBrowserSurfacePreviewState::BlockedByValidation;
+        result.status = ResourceBrowserSurfaceSelectionStatus::InvalidImportSettings;
+        return result;
+    }
+
+    result.state.preview_state = PreviewBlockedByDiagnosticState(selected_row);
+    if (result.state.diagnostic_blocks_preview) {
+        if (result.state.preview_state == ResourceBrowserSurfacePreviewState::Eligible) {
+            result.state.preview_state = ResourceBrowserSurfacePreviewState::BlockedByDiagnostic;
+        }
+        result.state.preview_eligible = false;
+        result.status = ResourceBrowserSurfaceSelectionStatus::PreviewBlocked;
+        return result;
+    }
+
+    result.state.preview_eligible =
+        result.state.preview_state == ResourceBrowserSurfacePreviewState::Eligible;
+    result.status = result.state.preview_eligible
+        ? ResourceBrowserSurfaceSelectionStatus::Success
+        : ResourceBrowserSurfaceSelectionStatus::PreviewBlocked;
+    return result;
+}
+
+ResourceBrowserVisibleImportSettingRow BuildVisibleImportSettingRow(
+    const ResourceBrowserResourceEntry &entry,
+    const ResourceBrowserSurfaceRow &row,
+    const ResourceBrowserSurfaceSelectionState &selection,
+    std::uint32_t row_index) {
+    ResourceBrowserVisibleImportSettingRow visible{};
+    const bool selected = row_index == selection.selected_index;
+    visible.source_path = entry.import_settings.source_path;
+    visible.target_kind = entry.import_settings.target_kind;
+    visible.resource_type = entry.import_settings.resource_type;
+    visible.asset_type = entry.import_settings.asset_type;
+    visible.stable_id = entry.import_settings.stable_id;
+    visible.importer_version = entry.import_settings.importer_version;
+    visible.expected_schema_version = entry.import_settings.expected_schema_version;
+    visible.expected_source_hash = entry.import_settings.expected_source_hash;
+    visible.validation =
+        selected ? selection.setting_validation : ResourceBrowserSurfaceSettingValidationCode::None;
+    visible.preview_state = row.preview_state;
+    visible.selected = selected;
+    visible.source_hash_matches =
+        entry.import_settings.expected_source_hash == 0U ||
+        entry.import_settings.expected_source_hash == row.source_hash;
+    visible.target_kind_matches_header =
+        row.header_kind == RuntimeAssetFileKind::Unknown ||
+        entry.import_settings.target_kind == row.header_kind;
+    return visible;
+}
+
+ResourceBrowserVisibleDiagnosticRow BuildVisibleDiagnosticRow(
+    const ResourceBrowserDiagnosticRecord &diagnostic,
+    const ResourceBrowserVisibleWorkflowRequest &request) {
+    ResourceBrowserVisibleDiagnosticRow row{};
+    row.code = diagnostic.code;
+    row.severity = diagnostic.severity;
+    row.phase = diagnostic.phase;
+    row.runtime_status = diagnostic.runtime_status;
+    row.source_path = diagnostic.source_path;
+    row.file_index = diagnostic.file_index;
+    row.dependency_index = diagnostic.dependency_index;
+    row.selected = diagnostic.file_index == request.selected_index;
+    row.blocks_preview = IsBlockingSeverity(diagnostic.severity);
+    if (diagnostic.file_index < request.entries.size()) {
+        row.stable_id = request.entries[diagnostic.file_index].import_settings.stable_id;
+    }
+
+    return row;
+}
+
+ResourceBrowserVisibleSelectionLedgerRecord BuildVisibleSelectionLedger(
+    const ResourceBrowserSurfaceSelectionResult &selection_result) {
+    ResourceBrowserVisibleSelectionLedgerRecord record{};
+    record.selected_index = selection_result.state.selected_index;
+    record.selection_status = selection_result.status;
+    record.setting_validation = selection_result.state.setting_validation;
+    record.preview_state = selection_result.state.preview_state;
+    record.blocking_diagnostic_code = selection_result.state.blocking_diagnostic_code;
+    record.resource = selection_result.state.resource;
+    record.asset = selection_result.state.asset;
+    record.stable_id = selection_result.state.stable_id;
+    record.committed_to_preview_host =
+        selection_result.status == ResourceBrowserSurfaceSelectionStatus::Success;
+    record.rejected_preview_request =
+        selection_result.status == ResourceBrowserSurfaceSelectionStatus::PreviewBlocked;
+    record.preview_eligible = selection_result.state.preview_eligible;
+    record.diagnostic_blocks_preview = selection_result.state.diagnostic_blocks_preview;
+    record.resource_asset_mapping_preserved =
+        selection_result.state.resource_asset_mapping_preserved;
+    record.used_locator_path_as_type_truth =
+        selection_result.state.used_locator_path_as_type_truth;
+    return record;
 }
 
 }
@@ -407,6 +589,113 @@ ResourceBrowserSurfaceSelectionStatus ResolveResourceBrowserSurfaceSelection(
     result.status = result.state.preview_eligible
         ? ResourceBrowserSurfaceSelectionStatus::Success
         : ResourceBrowserSurfaceSelectionStatus::PreviewBlocked;
+    *out_result = result;
+    return result.status;
+}
+
+ResourceBrowserVisibleWorkflowStatus BuildResourceBrowserVisibleWorkflowSurface(
+    const ResourceBrowserVisibleWorkflowRequest &request,
+    ResourceBrowserVisibleWorkflowResult *out_result) {
+    if (out_result == nullptr) {
+        return ResourceBrowserVisibleWorkflowStatus::InvalidArgument;
+    }
+
+    ResourceBrowserVisibleWorkflowResult result{};
+    if (!IsValidVisibleWorkflowRequest(request)) {
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.selected_index >= request.entries.size()) {
+        result.status = ResourceBrowserVisibleWorkflowStatus::EntryOutOfRange;
+        result.selection_status = ResourceBrowserSurfaceSelectionStatus::EntryOutOfRange;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!HasVisibleWorkflowOutputCapacity(request)) {
+        result.status = ResourceBrowserVisibleWorkflowStatus::OutputCapacityExceeded;
+        result.surface_status = ResourceBrowserSurfaceStatus::OutputCapacityExceeded;
+        *out_result = result;
+        return result.status;
+    }
+
+    ResourceBrowserSurfaceSelectionResult preflight_selection =
+        ResolveVisibleWorkflowSelection(request);
+    result.selection_status = preflight_selection.status;
+    result.selection_state = preflight_selection.state;
+    if (preflight_selection.status == ResourceBrowserSurfaceSelectionStatus::InvalidImportSettings) {
+        result.status = ResourceBrowserVisibleWorkflowStatus::InvalidImportSettings;
+        *out_result = result;
+        return result.status;
+    }
+
+    ResourceBrowserSurfaceRequest surface_request{};
+    surface_request.entries = request.entries;
+    surface_request.diagnostics = request.diagnostics;
+    surface_request.rows = request.preview_rows;
+    ResourceBrowserSurfaceResult surface_result{};
+    BuildResourceBrowserNativeSurface(surface_request, &surface_result);
+    result.surface_status = surface_result.status;
+    if (!surface_result.Succeeded()) {
+        result.status = surface_result.status == ResourceBrowserSurfaceStatus::OutputCapacityExceeded
+            ? ResourceBrowserVisibleWorkflowStatus::OutputCapacityExceeded
+            : ResourceBrowserVisibleWorkflowStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    ResourceBrowserSurfaceSelectionRequest selection_request{};
+    selection_request.entries = request.entries;
+    selection_request.rows =
+        std::span<const ResourceBrowserSurfaceRow>(request.preview_rows.data(), request.entries.size());
+    selection_request.diagnostics = request.diagnostics;
+    selection_request.import_settings = request.import_settings;
+    selection_request.selected_index = request.selected_index;
+    selection_request.validate_import_settings = request.validate_import_settings;
+    ResourceBrowserSurfaceSelectionResult selection_result{};
+    ResolveResourceBrowserSurfaceSelection(selection_request, &selection_result);
+    result.selection_status = selection_result.status;
+    result.selection_state = selection_result.state;
+
+    for (std::uint32_t index = 0U; index < request.entries.size(); ++index) {
+        request.import_setting_rows[index] =
+            BuildVisibleImportSettingRow(
+                request.entries[index],
+                request.preview_rows[index],
+                result.selection_state,
+                index);
+    }
+
+    for (std::uint32_t index = 0U; index < request.diagnostics.size(); ++index) {
+        request.diagnostic_rows[index] =
+            BuildVisibleDiagnosticRow(request.diagnostics[index], request);
+    }
+
+    request.selection_ledger[0U] = BuildVisibleSelectionLedger(selection_result);
+
+    result.status = ResourceBrowserVisibleWorkflowStatus::Success;
+    result.import_setting_row_count = static_cast<std::uint32_t>(request.entries.size());
+    result.diagnostic_row_count = static_cast<std::uint32_t>(request.diagnostics.size());
+    result.preview_row_count = surface_result.row_count;
+    result.eligible_preview_count = surface_result.eligible_preview_count;
+    result.blocked_preview_count = surface_result.blocked_preview_count;
+    result.selection_ledger_count = 1U;
+    result.emitted_import_settings = result.import_setting_row_count > 0U;
+    result.emitted_diagnostics = result.diagnostic_row_count > 0U;
+    result.emitted_preview_rows = result.preview_row_count > 0U;
+    result.emitted_selection_ledger = true;
+    result.selection_committed =
+        selection_result.status == ResourceBrowserSurfaceSelectionStatus::Success;
+    result.selection_rejected =
+        selection_result.status == ResourceBrowserSurfaceSelectionStatus::PreviewBlocked;
+    result.consumed_preview_host_ready_selection =
+        result.selection_committed &&
+        result.selection_state.preview_eligible &&
+        result.selection_state.resource_asset_mapping_preserved &&
+        !result.selection_state.used_locator_path_as_type_truth;
+    result.used_locator_path_as_type_truth = surface_result.used_locator_path_as_type_truth ||
+        result.selection_state.used_locator_path_as_type_truth;
     *out_result = result;
     return result.status;
 }

@@ -38,6 +38,7 @@ using yuengine::resourcebrowser::ResourceBrowserDiagnosticRecord;
 using yuengine::resourcebrowser::ResourceBrowserDiagnosticsRequest;
 using yuengine::resourcebrowser::ResourceBrowserDiagnosticsResult;
 using yuengine::resourcebrowser::ResourceBrowserDiagnosticsStatus;
+using yuengine::resourcebrowser::ResourceBrowserImportSettings;
 using yuengine::resourcebrowser::ResourceBrowserResourceEntry;
 using yuengine::resourcebrowser::BuildResourceBrowserNativeSurface;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceDocumentKind;
@@ -50,6 +51,13 @@ using yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionResult;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionStatus;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceSettingValidationCode;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceStatus;
+using yuengine::resourcebrowser::BuildResourceBrowserVisibleWorkflowSurface;
+using yuengine::resourcebrowser::ResourceBrowserVisibleDiagnosticRow;
+using yuengine::resourcebrowser::ResourceBrowserVisibleImportSettingRow;
+using yuengine::resourcebrowser::ResourceBrowserVisibleSelectionLedgerRecord;
+using yuengine::resourcebrowser::ResourceBrowserVisibleWorkflowRequest;
+using yuengine::resourcebrowser::ResourceBrowserVisibleWorkflowResult;
+using yuengine::resourcebrowser::ResourceBrowserVisibleWorkflowStatus;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
 using yuengine::runtimeasset::RuntimeAssetDataStatus;
 using yuengine::runtimeasset::RuntimeAssetFileDesc;
@@ -116,6 +124,14 @@ constexpr const char *TEST_SURFACE_PREVIEW_GATING =
     "ResourceBrowserSurface_DiagnosticBlocksPreviewEligibility";
 constexpr const char *TEST_SURFACE_SELECTION_NO_MUTATION =
     "ResourceBrowserSurface_SelectionValidationDoesNotMutateResourceAssetMapping";
+constexpr const char *TEST_VISIBLE_IMPORT_ROWS =
+    "ResourceBrowserVisibleWorkflow_BuildsImportSettingAndPreviewRows";
+constexpr const char *TEST_VISIBLE_SELECTION_COMMIT =
+    "ResourceBrowserVisibleWorkflow_CommitsSelectionForPreviewHost";
+constexpr const char *TEST_VISIBLE_DIAGNOSTIC_BLOCK =
+    "ResourceBrowserVisibleWorkflow_DiagnosticBlockRejectsPreview";
+constexpr const char *TEST_VISIBLE_INVALID_SETTING_NO_MUTATION =
+    "ResourceBrowserVisibleWorkflow_InvalidSettingDoesNotMutateOutputs";
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -992,6 +1008,322 @@ int ResourceBrowserSurfaceSelectionValidationDoesNotMutateResourceAssetMapping()
     return 0;
 }
 
+ResourceBrowserVisibleWorkflowResult BuildVisibleWorkflow(
+    const std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> &entries,
+    const ResourceBrowserDiagnosticRecord *diagnostics,
+    std::uint32_t diagnostic_count,
+    std::uint32_t selected_index,
+    const ResourceBrowserImportSettings &import_settings,
+    std::array<ResourceBrowserVisibleImportSettingRow, FIXTURE_FILE_COUNT> *setting_rows,
+    std::array<ResourceBrowserVisibleDiagnosticRow, 16U> *diagnostic_rows,
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> *preview_rows,
+    std::array<ResourceBrowserVisibleSelectionLedgerRecord, 1U> *ledger) {
+    ResourceBrowserVisibleWorkflowRequest request{};
+    request.entries = std::span<const ResourceBrowserResourceEntry>(entries.data(), entries.size());
+    request.diagnostics = std::span<const ResourceBrowserDiagnosticRecord>(
+        diagnostics,
+        diagnostic_count);
+    request.selected_index = selected_index;
+    request.import_settings = import_settings;
+    request.validate_import_settings = true;
+    request.import_setting_rows =
+        std::span<ResourceBrowserVisibleImportSettingRow>(setting_rows->data(), setting_rows->size());
+    request.diagnostic_rows =
+        std::span<ResourceBrowserVisibleDiagnosticRow>(diagnostic_rows->data(), diagnostic_rows->size());
+    request.preview_rows =
+        std::span<ResourceBrowserSurfaceRow>(preview_rows->data(), preview_rows->size());
+    request.selection_ledger =
+        std::span<ResourceBrowserVisibleSelectionLedgerRecord>(ledger->data(), ledger->size());
+
+    ResourceBrowserVisibleWorkflowResult result{};
+    BuildResourceBrowserVisibleWorkflowSurface(request, &result);
+    return result;
+}
+
+bool BuildCanonicalResourceBrowserInputs(
+    std::string_view test_name,
+    MountTable *table,
+    ResourceRegistry *registry,
+    AssetManager *manager,
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> *entries,
+    std::array<ResourceBrowserDiagnosticRecord, 16U> *diagnostics,
+    ResourceBrowserDiagnosticsResult *out_diagnostics_result) {
+    if (table == nullptr ||
+        registry == nullptr ||
+        manager == nullptr ||
+        entries == nullptr ||
+        diagnostics == nullptr ||
+        out_diagnostics_result == nullptr) {
+        return false;
+    }
+
+    if (!CreateMountedTable(TestRoot(test_name), table) ||
+        !WriteCanonicalFixture(*table)) {
+        return false;
+    }
+
+    LoadedGraph graph{};
+    if (!LoadCanonicalGraph(*table, *registry, *manager, &graph)) {
+        return false;
+    }
+
+    const std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> descs = CanonicalDescs();
+    *out_diagnostics_result =
+        BuildDiagnostics(*table, descs, &graph, registry, manager, entries, diagnostics);
+    return out_diagnostics_result->status == ResourceBrowserDiagnosticsStatus::Success;
+}
+
+int ResourceBrowserVisibleWorkflowBuildsImportSettingAndPreviewRows() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    ResourceBrowserDiagnosticsResult diagnostics_result{};
+    if (!BuildCanonicalResourceBrowserInputs(
+            "VisibleWorkflowImportRows",
+            &table,
+            &registry,
+            &manager,
+            &entries,
+            &diagnostics,
+            &diagnostics_result)) {
+        return Fail("failed to build visible workflow canonical inputs");
+    }
+
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    std::array<ResourceBrowserVisibleImportSettingRow, FIXTURE_FILE_COUNT> setting_rows{};
+    std::array<ResourceBrowserVisibleDiagnosticRow, 16U> diagnostic_rows{};
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> preview_rows{};
+    std::array<ResourceBrowserVisibleSelectionLedgerRecord, 1U> ledger{};
+    ResourceBrowserImportSettings import_settings = entries[SELECTED_TEXTURE].import_settings;
+    import_settings.expected_source_hash = entries[SELECTED_TEXTURE].validation.source_hash;
+
+    const ResourceBrowserVisibleWorkflowResult result =
+        BuildVisibleWorkflow(
+            entries,
+            diagnostics.data(),
+            diagnostics_result.diagnostic_count,
+            SELECTED_TEXTURE,
+            import_settings,
+            &setting_rows,
+            &diagnostic_rows,
+            &preview_rows,
+            &ledger);
+    if (result.status != ResourceBrowserVisibleWorkflowStatus::Success ||
+        result.import_setting_row_count != FIXTURE_FILE_COUNT ||
+        result.preview_row_count != FIXTURE_FILE_COUNT ||
+        result.diagnostic_row_count != 0U ||
+        !result.emitted_import_settings ||
+        !result.emitted_preview_rows ||
+        result.emitted_diagnostics ||
+        result.blocked_preview_count != 0U ||
+        result.eligible_preview_count != FIXTURE_FILE_COUNT) {
+        return Fail("visible workflow did not emit import settings and preview rows");
+    }
+
+    const ResourceBrowserVisibleImportSettingRow &setting = setting_rows[SELECTED_TEXTURE];
+    const ResourceBrowserSurfaceRow &preview = preview_rows[SELECTED_TEXTURE];
+    if (!setting.selected ||
+        setting.source_path != entries[SELECTED_TEXTURE].import_settings.source_path ||
+        setting.target_kind != RuntimeAssetFileKind::Texture ||
+        setting.validation != ResourceBrowserSurfaceSettingValidationCode::None ||
+        !setting.source_hash_matches ||
+        !setting.target_kind_matches_header ||
+        preview.preview_state != ResourceBrowserSurfacePreviewState::Eligible ||
+        preview.preview_document_kind != ResourceBrowserSurfaceDocumentKind::Resource ||
+        preview.stable_id != entries[SELECTED_TEXTURE].import_settings.stable_id) {
+        return Fail("visible workflow rows omitted import setting or preview eligibility fields");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserVisibleWorkflowCommitsSelectionForPreviewHost() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    ResourceBrowserDiagnosticsResult diagnostics_result{};
+    if (!BuildCanonicalResourceBrowserInputs(
+            "VisibleWorkflowSelectionCommit",
+            &table,
+            &registry,
+            &manager,
+            &entries,
+            &diagnostics,
+            &diagnostics_result)) {
+        return Fail("failed to build selection commit canonical inputs");
+    }
+
+    constexpr std::uint32_t SELECTED_MATERIAL = 3U;
+    std::array<ResourceBrowserVisibleImportSettingRow, FIXTURE_FILE_COUNT> setting_rows{};
+    std::array<ResourceBrowserVisibleDiagnosticRow, 16U> diagnostic_rows{};
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> preview_rows{};
+    std::array<ResourceBrowserVisibleSelectionLedgerRecord, 1U> ledger{};
+    ResourceBrowserImportSettings import_settings = entries[SELECTED_MATERIAL].import_settings;
+    import_settings.expected_source_hash = entries[SELECTED_MATERIAL].validation.source_hash;
+
+    const ResourceBrowserVisibleWorkflowResult result =
+        BuildVisibleWorkflow(
+            entries,
+            diagnostics.data(),
+            diagnostics_result.diagnostic_count,
+            SELECTED_MATERIAL,
+            import_settings,
+            &setting_rows,
+            &diagnostic_rows,
+            &preview_rows,
+            &ledger);
+    if (!result.Succeeded() ||
+        result.selection_status != ResourceBrowserSurfaceSelectionStatus::Success ||
+        !result.selection_committed ||
+        result.selection_rejected ||
+        !result.consumed_preview_host_ready_selection ||
+        !result.selection_state.preview_eligible ||
+        result.selection_state.preview_state != ResourceBrowserSurfacePreviewState::Eligible ||
+        !result.selection_state.resource_asset_mapping_preserved ||
+        !ledger[0U].committed_to_preview_host ||
+        ledger[0U].rejected_preview_request ||
+        !ledger[0U].preview_eligible ||
+        !ResourceHandleSame(ledger[0U].resource, entries[SELECTED_MATERIAL].resource) ||
+        !AssetHandleSame(ledger[0U].asset, entries[SELECTED_MATERIAL].asset)) {
+        return Fail("visible workflow did not commit a Preview Host-ready selection");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserVisibleWorkflowDiagnosticBlockRejectsPreview() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    ResourceBrowserDiagnosticsResult diagnostics_result{};
+    if (!BuildCanonicalResourceBrowserInputs(
+            "VisibleWorkflowDiagnosticBlock",
+            &table,
+            &registry,
+            &manager,
+            &entries,
+            &diagnostics,
+            &diagnostics_result)) {
+        return Fail("failed to build diagnostic block canonical inputs");
+    }
+
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    diagnostics[0U].code = ResourceBrowserDiagnosticCode::StaleHash;
+    diagnostics[0U].severity = yuengine::resourcebrowser::ResourceBrowserDiagnosticSeverity::Error;
+    diagnostics[0U].phase = yuengine::resourcebrowser::ResourceBrowserDiagnosticPhase::Validate;
+    diagnostics[0U].runtime_status = RuntimeAssetDataStatus::HashMismatch;
+    diagnostics[0U].source_path = entries[SELECTED_TEXTURE].import_settings.source_path;
+    diagnostics[0U].expected_kind = RuntimeAssetFileKind::Texture;
+    diagnostics[0U].file_index = SELECTED_TEXTURE;
+
+    std::array<ResourceBrowserVisibleImportSettingRow, FIXTURE_FILE_COUNT> setting_rows{};
+    std::array<ResourceBrowserVisibleDiagnosticRow, 16U> diagnostic_rows{};
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> preview_rows{};
+    std::array<ResourceBrowserVisibleSelectionLedgerRecord, 1U> ledger{};
+    ResourceBrowserImportSettings import_settings = entries[SELECTED_TEXTURE].import_settings;
+    import_settings.expected_source_hash = entries[SELECTED_TEXTURE].validation.source_hash;
+
+    const ResourceBrowserVisibleWorkflowResult result =
+        BuildVisibleWorkflow(
+            entries,
+            diagnostics.data(),
+            1U,
+            SELECTED_TEXTURE,
+            import_settings,
+            &setting_rows,
+            &diagnostic_rows,
+            &preview_rows,
+            &ledger);
+    if (!result.Succeeded() ||
+        result.selection_status != ResourceBrowserSurfaceSelectionStatus::PreviewBlocked ||
+        result.selection_committed ||
+        !result.selection_rejected ||
+        result.consumed_preview_host_ready_selection ||
+        result.blocked_preview_count != 1U ||
+        result.eligible_preview_count != FIXTURE_FILE_COUNT - 1U ||
+        preview_rows[SELECTED_TEXTURE].preview_state != ResourceBrowserSurfacePreviewState::BlockedByDiagnostic ||
+        !diagnostic_rows[0U].selected ||
+        !diagnostic_rows[0U].blocks_preview ||
+        !ledger[0U].rejected_preview_request ||
+        ledger[0U].committed_to_preview_host ||
+        ledger[0U].preview_eligible) {
+        return Fail("visible workflow did not reject diagnostic-blocked preview");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserVisibleWorkflowInvalidSettingDoesNotMutateOutputs() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    ResourceBrowserDiagnosticsResult diagnostics_result{};
+    if (!BuildCanonicalResourceBrowserInputs(
+            "VisibleWorkflowInvalidSetting",
+            &table,
+            &registry,
+            &manager,
+            &entries,
+            &diagnostics,
+            &diagnostics_result)) {
+        return Fail("failed to build invalid setting canonical inputs");
+    }
+
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    diagnostics[0U].code = ResourceBrowserDiagnosticCode::Unsupported;
+    diagnostics[0U].severity = yuengine::resourcebrowser::ResourceBrowserDiagnosticSeverity::Info;
+    diagnostics[0U].phase = yuengine::resourcebrowser::ResourceBrowserDiagnosticPhase::ImportSettings;
+    diagnostics[0U].file_index = SELECTED_TEXTURE;
+
+    std::array<ResourceBrowserVisibleImportSettingRow, FIXTURE_FILE_COUNT> setting_rows{};
+    std::array<ResourceBrowserVisibleDiagnosticRow, 16U> diagnostic_rows{};
+    std::array<ResourceBrowserSurfaceRow, FIXTURE_FILE_COUNT> preview_rows{};
+    std::array<ResourceBrowserVisibleSelectionLedgerRecord, 1U> ledger{};
+    setting_rows[0U].source_path = "sentinel";
+    diagnostic_rows[0U].code = ResourceBrowserDiagnosticCode::BudgetExceeded;
+    preview_rows[0U].stable_id = 7007U;
+    ledger[0U].stable_id = 8008U;
+    ledger[0U].committed_to_preview_host = true;
+
+    ResourceBrowserImportSettings import_settings = entries[SELECTED_TEXTURE].import_settings;
+    import_settings.target_kind = RuntimeAssetFileKind::Material;
+
+    const ResourceBrowserVisibleWorkflowResult result =
+        BuildVisibleWorkflow(
+            entries,
+            diagnostics.data(),
+            1U,
+            SELECTED_TEXTURE,
+            import_settings,
+            &setting_rows,
+            &diagnostic_rows,
+            &preview_rows,
+            &ledger);
+    if (result.status != ResourceBrowserVisibleWorkflowStatus::InvalidImportSettings ||
+        result.selection_status != ResourceBrowserSurfaceSelectionStatus::InvalidImportSettings ||
+        result.import_setting_row_count != 0U ||
+        result.diagnostic_row_count != 0U ||
+        result.preview_row_count != 0U ||
+        result.selection_ledger_count != 0U ||
+        std::string_view(setting_rows[0U].source_path) != std::string_view("sentinel") ||
+        diagnostic_rows[0U].code != ResourceBrowserDiagnosticCode::BudgetExceeded ||
+        preview_rows[0U].stable_id != 7007U ||
+        ledger[0U].stable_id != 8008U ||
+        !ledger[0U].committed_to_preview_host) {
+        return Fail("visible workflow invalid setting mutated caller outputs");
+    }
+
+    return 0;
+}
+
 const std::unordered_map<std::string_view, TestFunction> &Tests() {
     static const std::unordered_map<std::string_view, TestFunction> tests{
         {TEST_ENTRIES_FROM_RUNTIME_PATH, ResourceBrowserDiagnosticsEntriesComeFromRuntimeAssetFileResourceAssetPath},
@@ -1004,6 +1336,10 @@ const std::unordered_map<std::string_view, TestFunction> &Tests() {
         {TEST_SURFACE_INVALID_SETTING, ResourceBrowserSurfaceSelectionWorkflowRejectsInvalidSetting},
         {TEST_SURFACE_PREVIEW_GATING, ResourceBrowserSurfaceDiagnosticBlocksPreviewEligibility},
         {TEST_SURFACE_SELECTION_NO_MUTATION, ResourceBrowserSurfaceSelectionValidationDoesNotMutateResourceAssetMapping},
+        {TEST_VISIBLE_IMPORT_ROWS, ResourceBrowserVisibleWorkflowBuildsImportSettingAndPreviewRows},
+        {TEST_VISIBLE_SELECTION_COMMIT, ResourceBrowserVisibleWorkflowCommitsSelectionForPreviewHost},
+        {TEST_VISIBLE_DIAGNOSTIC_BLOCK, ResourceBrowserVisibleWorkflowDiagnosticBlockRejectsPreview},
+        {TEST_VISIBLE_INVALID_SETTING_NO_MUTATION, ResourceBrowserVisibleWorkflowInvalidSettingDoesNotMutateOutputs},
     };
     return tests;
 }
