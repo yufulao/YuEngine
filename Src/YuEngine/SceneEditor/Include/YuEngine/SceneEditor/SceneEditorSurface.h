@@ -7,6 +7,8 @@
 #include <span>
 
 #include "YuEngine/Object/ObjectHandle.h"
+#include "YuEngine/PreviewHost/PreviewHost.h"
+#include "YuEngine/ResourceBrowser/ResourceBrowserSurface.h"
 #include "YuEngine/World/WorldComponentAttachmentSnapshotRecord.h"
 #include "YuEngine/World/WorldObjectId.h"
 #include "YuEngine/World/WorldSceneAuthoringDocument.h"
@@ -46,6 +48,28 @@ enum class SceneEditorTransformCommandBlockedLayer {
     Selection,
     TransformRecord,
     UndoRedoLedger,
+    Output
+};
+
+enum class SceneEditorWorkflowStatus {
+    Success,
+    InvalidArgument,
+    InvalidAuthoringDocument,
+    OutputCapacityExceeded,
+    SelectionRequired,
+    BlockedResourceBrowserSelection,
+    ViewportSessionFailed,
+    ViewportInteractionFailed,
+    TransformCommandFailed
+};
+
+enum class SceneEditorWorkflowBlockedLayer {
+    None,
+    AuthoringDocument,
+    ResourceBrowserSelection,
+    ViewportSession,
+    ViewportInteraction,
+    TransformCommand,
     Output
 };
 
@@ -161,6 +185,84 @@ struct SceneEditorTransformCommandResult final {
     }
 };
 
+struct SceneEditorWorkflowLedgerRecord final {
+    SceneEditorWorkflowStatus status = SceneEditorWorkflowStatus::InvalidArgument;
+    SceneEditorWorkflowBlockedLayer blocked_layer =
+        SceneEditorWorkflowBlockedLayer::AuthoringDocument;
+    SceneEditorTransformCommandMode transform_mode =
+        SceneEditorTransformCommandMode::Apply;
+    yuengine::world::WorldObjectId selected_world_object_id{};
+    std::uint32_t selected_hierarchy_index = 0U;
+    std::uint32_t viewport_selected_entity_index = 0U;
+    std::uint32_t transform_command_sequence = 0U;
+    bool consumed_resource_browser_selection = false;
+    bool consumed_viewport_session = false;
+    bool consumed_viewport_interaction = false;
+    bool matched_hierarchy_to_viewport_selection = false;
+    bool emitted_inspector_rows = false;
+    bool applied_transform_command = false;
+    bool replayed_undo = false;
+    bool replayed_redo = false;
+    bool committed_workflow = false;
+};
+
+struct SceneEditorWorkflowRequest final {
+    const yuengine::world::WorldSceneAuthoringDocument *document = nullptr;
+    const yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionState
+        *resource_browser_selection = nullptr;
+    const yuengine::previewhost::PreviewHostViewportSessionResult
+        *viewport_session = nullptr;
+    const yuengine::previewhost::PreviewHostEditorViewportInteractionResult
+        *viewport_interaction = nullptr;
+    yuengine::world::WorldTransformState requested_transform{};
+    const SceneEditorTransformLedgerRecord *history_record = nullptr;
+    SceneEditorTransformCommandMode transform_mode =
+        SceneEditorTransformCommandMode::Apply;
+    std::span<SceneEditorHierarchyRow> hierarchy_rows{};
+    std::span<SceneEditorInspectorRow> inspector_rows{};
+    std::span<yuengine::world::WorldSceneObjectTransformRestoreTransformRecord>
+        transform_output{};
+    std::span<SceneEditorTransformLedgerRecord> transform_ledger_output{};
+    std::span<SceneEditorWorkflowLedgerRecord> workflow_ledger_output{};
+};
+
+struct SceneEditorWorkflowResult final {
+    SceneEditorWorkflowStatus status = SceneEditorWorkflowStatus::InvalidArgument;
+    SceneEditorWorkflowBlockedLayer blocked_layer =
+        SceneEditorWorkflowBlockedLayer::AuthoringDocument;
+    SceneEditorSurfaceStatus surface_status = SceneEditorSurfaceStatus::InvalidArgument;
+    SceneEditorTransformCommandStatus transform_status =
+        SceneEditorTransformCommandStatus::InvalidArgument;
+    SceneEditorSurfaceResult surface{};
+    SceneEditorTransformCommandResult transform{};
+    yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState resource_preview_state =
+        yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState::Unknown;
+    yuengine::previewhost::PreviewHostStatus viewport_status =
+        yuengine::previewhost::PreviewHostStatus::InvalidArgument;
+    yuengine::previewhost::PreviewHostStatus viewport_interaction_status =
+        yuengine::previewhost::PreviewHostStatus::InvalidArgument;
+    yuengine::world::WorldObjectId selected_world_object_id{};
+    std::uint32_t selected_hierarchy_index = 0U;
+    std::uint32_t viewport_selected_entity_index = 0U;
+    std::uint32_t workflow_ledger_count = 0U;
+    bool consumed_authoring_document = false;
+    bool consumed_resource_browser_selection = false;
+    bool consumed_viewport_session = false;
+    bool consumed_viewport_interaction = false;
+    bool hierarchy_selection_matched_viewport = false;
+    bool emitted_hierarchy_rows = false;
+    bool emitted_inspector_rows = false;
+    bool applied_transform_command = false;
+    bool emitted_transform_ledger = false;
+    bool committed_workflow = false;
+    bool mutated_runtime_data = false;
+    bool opened_native_window = false;
+
+    bool Succeeded() const {
+        return status == SceneEditorWorkflowStatus::Success;
+    }
+};
+
 SceneEditorSurfaceStatus BuildSceneEditorNativeSurface(
     const SceneEditorSurfaceRequest &request,
     SceneEditorSurfaceResult *out_result);
@@ -168,5 +270,9 @@ SceneEditorSurfaceStatus BuildSceneEditorNativeSurface(
 SceneEditorTransformCommandStatus ApplySceneEditorTransformCommand(
     const SceneEditorTransformCommandRequest &request,
     SceneEditorTransformCommandResult *out_result);
+
+SceneEditorWorkflowStatus BuildSceneEditorUsableWorkflowSurface(
+    const SceneEditorWorkflowRequest &request,
+    SceneEditorWorkflowResult *out_result);
 
 }

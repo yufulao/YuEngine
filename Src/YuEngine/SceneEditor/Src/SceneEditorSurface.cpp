@@ -31,6 +31,15 @@ using WorldSceneObjectTransformRestoreIdentityRecord =
     yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord;
 using WorldSceneObjectTransformRestoreTransformRecord =
     yuengine::world::WorldSceneObjectTransformRestoreTransformRecord;
+using ResourceBrowserSurfaceSelectionState =
+    yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionState;
+using ResourceBrowserSurfacePreviewState =
+    yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState;
+using PreviewHostViewportSessionResult =
+    yuengine::previewhost::PreviewHostViewportSessionResult;
+using PreviewHostEditorViewportInteractionResult =
+    yuengine::previewhost::PreviewHostEditorViewportInteractionResult;
+using PreviewHostStatus = yuengine::previewhost::PreviewHostStatus;
 
 bool IsSpanStorageValid(std::span<SceneEditorHierarchyRow> rows) {
     if (rows.empty()) {
@@ -58,6 +67,14 @@ bool IsSpanStorageValid(
 }
 
 bool IsSpanStorageValid(std::span<SceneEditorTransformLedgerRecord> records) {
+    if (records.empty()) {
+        return true;
+    }
+
+    return records.data() != nullptr;
+}
+
+bool IsSpanStorageValid(std::span<SceneEditorWorkflowLedgerRecord> records) {
     if (records.empty()) {
         return true;
     }
@@ -422,6 +439,146 @@ SceneEditorTransformLedgerRecord BuildTransformLedgerRecord(
     return record;
 }
 
+WorldObjectId FirstSelectedWorldObjectId(const WorldSceneAuthoringDocument &document) {
+    std::uint32_t index = 0U;
+    while (index < document.header.sidecar_record_count) {
+        const WorldSceneEditorSidecarRecord &record = document.sidecar_records[index];
+        if (record.kind == WorldSceneEditorSidecarKind::Selection &&
+            record.world_object_id.IsValid()) {
+            return record.world_object_id;
+        }
+
+        ++index;
+    }
+
+    return WorldObjectId{};
+}
+
+std::uint32_t HierarchyIndexForObject(
+    const WorldSceneAuthoringDocument &document,
+    WorldObjectId world_object_id) {
+    std::uint32_t index = 0U;
+    while (index < document.header.identity_record_count) {
+        if (IsObjectEqual(document.identity_records[index].world_object_id, world_object_id)) {
+            return index;
+        }
+
+        ++index;
+    }
+
+    return 0U;
+}
+
+bool ResourceBrowserSelectionReady(const ResourceBrowserSurfaceSelectionState *selection) {
+    if (selection == nullptr) {
+        return false;
+    }
+
+    return selection->selected &&
+        selection->import_settings_valid &&
+        selection->preview_eligible &&
+        selection->preview_state == ResourceBrowserSurfacePreviewState::Eligible &&
+        selection->resource_asset_mapping_preserved &&
+        !selection->used_locator_path_as_type_truth;
+}
+
+bool ViewportSessionReady(const PreviewHostViewportSessionResult *session) {
+    if (session == nullptr) {
+        return false;
+    }
+
+    return session->status == PreviewHostStatus::Success &&
+        session->built_frame &&
+        session->consumed_resource_browser_selection &&
+        session->resource_browser_preview_eligible &&
+        session->resource_asset_mapping_preserved &&
+        session->selected_entity_available &&
+        !session->used_locator_path_as_type_truth;
+}
+
+bool ViewportInteractionReady(
+    const PreviewHostEditorViewportInteractionResult *interaction) {
+    if (interaction == nullptr) {
+        return false;
+    }
+
+    return interaction->status == PreviewHostStatus::Success &&
+        interaction->consumed_viewport_session &&
+        interaction->consumed_engine_viewport_frame &&
+        interaction->processed_selection_command &&
+        interaction->emitted_selection_feedback &&
+        interaction->emitted_transform_feedback &&
+        interaction->selected_world_object_id.IsValid() &&
+        !interaction->opened_native_window &&
+        !interaction->used_forbidden_preview_path;
+}
+
+bool WorkflowRequestStorageValid(const SceneEditorWorkflowRequest &request) {
+    return IsSpanStorageValid(request.hierarchy_rows) &&
+        IsSpanStorageValid(request.inspector_rows) &&
+        IsSpanStorageValid(request.transform_output) &&
+        IsSpanStorageValid(request.transform_ledger_output) &&
+        IsSpanStorageValid(request.workflow_ledger_output);
+}
+
+bool WorkflowOutputCapacityReady(
+    const SceneEditorWorkflowRequest &request,
+    const WorldSceneAuthoringDocument &document,
+    std::uint32_t selected_object_count) {
+    if (request.hierarchy_rows.size() < document.header.identity_record_count) {
+        return false;
+    }
+
+    if (request.inspector_rows.size() < selected_object_count) {
+        return false;
+    }
+
+    if (request.transform_output.size() < document.header.transform_record_count) {
+        return false;
+    }
+
+    if (request.transform_ledger_output.empty()) {
+        return false;
+    }
+
+    if (request.workflow_ledger_output.empty()) {
+        return false;
+    }
+
+    return true;
+}
+
+SceneEditorWorkflowLedgerRecord BuildWorkflowLedger(
+    const SceneEditorWorkflowRequest &request,
+    const SceneEditorWorkflowResult &result) {
+    SceneEditorWorkflowLedgerRecord record{};
+    record.status = result.status;
+    record.blocked_layer = result.blocked_layer;
+    record.transform_mode = request.transform_mode;
+    record.selected_world_object_id = result.selected_world_object_id;
+    record.selected_hierarchy_index = result.selected_hierarchy_index;
+    record.viewport_selected_entity_index = result.viewport_selected_entity_index;
+    record.transform_command_sequence = result.transform.ledger_record_count > 0U
+        ? request.transform_ledger_output[0U].command_sequence
+        : 0U;
+    record.consumed_resource_browser_selection =
+        result.consumed_resource_browser_selection;
+    record.consumed_viewport_session = result.consumed_viewport_session;
+    record.consumed_viewport_interaction = result.consumed_viewport_interaction;
+    record.matched_hierarchy_to_viewport_selection =
+        result.hierarchy_selection_matched_viewport;
+    record.emitted_inspector_rows = result.emitted_inspector_rows;
+    record.applied_transform_command = result.applied_transform_command;
+    record.replayed_undo =
+        request.transform_mode == SceneEditorTransformCommandMode::Undo &&
+        result.applied_transform_command;
+    record.replayed_redo =
+        request.transform_mode == SceneEditorTransformCommandMode::Redo &&
+        result.applied_transform_command;
+    record.committed_workflow = result.committed_workflow;
+    return record;
+}
+
 }
 
 SceneEditorSurfaceStatus BuildSceneEditorNativeSurface(
@@ -622,6 +779,162 @@ SceneEditorTransformCommandStatus ApplySceneEditorTransformCommand(
     result.emitted_undo_redo_ledger = true;
     result.blocked_layer = SceneEditorTransformCommandBlockedLayer::None;
     result.status = SceneEditorTransformCommandStatus::Success;
+    *out_result = result;
+    return result.status;
+}
+
+SceneEditorWorkflowStatus BuildSceneEditorUsableWorkflowSurface(
+    const SceneEditorWorkflowRequest &request,
+    SceneEditorWorkflowResult *out_result) {
+    if (out_result == nullptr) {
+        return SceneEditorWorkflowStatus::InvalidArgument;
+    }
+
+    SceneEditorWorkflowResult result{};
+    if (request.document == nullptr || !WorkflowRequestStorageValid(request)) {
+        *out_result = result;
+        return result.status;
+    }
+
+    const WorldSceneAuthoringDocument &document = *request.document;
+    result.consumed_authoring_document = true;
+    const WorldSceneAuthoringDocumentStatus authoring_status =
+        ValidateAuthoringDocument(document);
+    result.surface.authoring_status = authoring_status;
+    if (authoring_status != WorldSceneAuthoringDocumentStatus::Success) {
+        result.status = SceneEditorWorkflowStatus::InvalidAuthoringDocument;
+        result.blocked_layer = SceneEditorWorkflowBlockedLayer::AuthoringDocument;
+        result.surface_status = MapAuthoringStatus(authoring_status);
+        *out_result = result;
+        return result.status;
+    }
+
+    const std::uint32_t selected_object_count =
+        CountSidecarKind(document, WorldSceneEditorSidecarKind::Selection);
+    if (!WorkflowOutputCapacityReady(request, document, selected_object_count)) {
+        result.status = SceneEditorWorkflowStatus::OutputCapacityExceeded;
+        result.blocked_layer = SceneEditorWorkflowBlockedLayer::Output;
+        result.surface_status = SceneEditorSurfaceStatus::OutputCapacityExceeded;
+        result.transform_status = SceneEditorTransformCommandStatus::OutputCapacityExceeded;
+        *out_result = result;
+        return result.status;
+    }
+
+    const WorldObjectId selected_world_object_id = FirstSelectedWorldObjectId(document);
+    result.selected_world_object_id = selected_world_object_id;
+    result.selected_hierarchy_index = HierarchyIndexForObject(document, selected_world_object_id);
+    if (!selected_world_object_id.IsValid()) {
+        result.status = SceneEditorWorkflowStatus::SelectionRequired;
+        result.blocked_layer = SceneEditorWorkflowBlockedLayer::AuthoringDocument;
+        result.surface_status = SceneEditorSurfaceStatus::SelectionRequired;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.resource_preview_state = request.resource_browser_selection != nullptr
+        ? request.resource_browser_selection->preview_state
+        : ResourceBrowserSurfacePreviewState::Unknown;
+    if (!ResourceBrowserSelectionReady(request.resource_browser_selection)) {
+        result.status = SceneEditorWorkflowStatus::BlockedResourceBrowserSelection;
+        result.blocked_layer = SceneEditorWorkflowBlockedLayer::ResourceBrowserSelection;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.consumed_resource_browser_selection = true;
+    result.viewport_status = request.viewport_session != nullptr
+        ? request.viewport_session->status
+        : PreviewHostStatus::InvalidArgument;
+    if (!ViewportSessionReady(request.viewport_session)) {
+        result.status = SceneEditorWorkflowStatus::ViewportSessionFailed;
+        result.blocked_layer = SceneEditorWorkflowBlockedLayer::ViewportSession;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.consumed_viewport_session = true;
+    result.viewport_interaction_status = request.viewport_interaction != nullptr
+        ? request.viewport_interaction->status
+        : PreviewHostStatus::InvalidArgument;
+    if (!ViewportInteractionReady(request.viewport_interaction)) {
+        result.status = SceneEditorWorkflowStatus::ViewportInteractionFailed;
+        result.blocked_layer = SceneEditorWorkflowBlockedLayer::ViewportInteraction;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.consumed_viewport_interaction = true;
+    result.viewport_selected_entity_index =
+        request.viewport_interaction->selected_entity_index;
+    if (!IsObjectEqual(
+            selected_world_object_id,
+            request.viewport_interaction->selected_world_object_id)) {
+        result.status = SceneEditorWorkflowStatus::ViewportInteractionFailed;
+        result.blocked_layer = SceneEditorWorkflowBlockedLayer::ViewportInteraction;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.hierarchy_selection_matched_viewport = true;
+
+    std::array<
+        WorldSceneObjectTransformRestoreTransformRecord,
+        yuengine::world::MAX_WORLD_OBJECT_COUNT> staged_transform_output{};
+    std::array<SceneEditorTransformLedgerRecord, 1U> staged_transform_ledger{};
+    SceneEditorTransformCommandRequest transform_request{};
+    transform_request.document = &document;
+    transform_request.selected_world_object_id = selected_world_object_id;
+    transform_request.requested_transform = request.requested_transform;
+    transform_request.history_record = request.history_record;
+    transform_request.mode = request.transform_mode;
+    transform_request.transform_output =
+        std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+            staged_transform_output.data(),
+            staged_transform_output.size());
+    transform_request.ledger_output =
+        std::span<SceneEditorTransformLedgerRecord>(
+            staged_transform_ledger.data(),
+            staged_transform_ledger.size());
+    ApplySceneEditorTransformCommand(transform_request, &result.transform);
+    result.transform_status = result.transform.status;
+    if (!result.transform.Succeeded()) {
+        result.status = SceneEditorWorkflowStatus::TransformCommandFailed;
+        result.blocked_layer = SceneEditorWorkflowBlockedLayer::TransformCommand;
+        *out_result = result;
+        return result.status;
+    }
+
+    SceneEditorSurfaceRequest surface_request{};
+    surface_request.document = &document;
+    surface_request.hierarchy_rows = request.hierarchy_rows;
+    surface_request.inspector_rows = request.inspector_rows;
+    surface_request.require_selection = true;
+    BuildSceneEditorNativeSurface(surface_request, &result.surface);
+    result.surface_status = result.surface.status;
+    if (!result.surface.Succeeded()) {
+        result.status = SceneEditorWorkflowStatus::InvalidAuthoringDocument;
+        result.blocked_layer = SceneEditorWorkflowBlockedLayer::AuthoringDocument;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::uint32_t transform_index = 0U;
+    while (transform_index < result.transform.transform_record_count) {
+        request.transform_output[transform_index] =
+            staged_transform_output[transform_index];
+        ++transform_index;
+    }
+
+    request.transform_ledger_output[0U] = staged_transform_ledger[0U];
+    result.status = SceneEditorWorkflowStatus::Success;
+    result.blocked_layer = SceneEditorWorkflowBlockedLayer::None;
+    result.emitted_hierarchy_rows = result.surface.hierarchy_row_count > 0U;
+    result.emitted_inspector_rows = result.surface.inspector_row_count > 0U;
+    result.applied_transform_command = true;
+    result.emitted_transform_ledger = true;
+    result.committed_workflow = true;
+    result.workflow_ledger_count = 1U;
+    request.workflow_ledger_output[0U] = BuildWorkflowLedger(request, result);
     *out_result = result;
     return result.status;
 }

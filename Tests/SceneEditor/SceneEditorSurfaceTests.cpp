@@ -7,6 +7,8 @@
 #include <string_view>
 
 #include "YuEngine/Object/ObjectHandle.h"
+#include "YuEngine/PreviewHost/PreviewHost.h"
+#include "YuEngine/ResourceBrowser/ResourceBrowserSurface.h"
 #include "YuEngine/SceneEditor/SceneEditorSurface.h"
 #include "YuEngine/World/WorldComponentAttachmentSnapshotRecord.h"
 #include "YuEngine/World/WorldComponentResourceBindingSnapshotRecord.h"
@@ -17,11 +19,22 @@
 #include "YuEngine/World/WorldTransformState.h"
 
 namespace {
+using yuengine::asset::AssetHandle;
+using yuengine::asset::AssetTypeId;
 using yuengine::object::ObjectHandle;
 using yuengine::sceneeditor::ApplySceneEditorTransformCommand;
+using yuengine::previewhost::PreviewHostEditorViewportInteractionResult;
+using yuengine::previewhost::PreviewHostStatus;
+using yuengine::previewhost::PreviewHostViewportSessionResult;
 using yuengine::resource::ResourceHandle;
 using yuengine::resource::ResourceTypeId;
+using yuengine::resourcebrowser::ResourceBrowserDependencyState;
+using yuengine::resourcebrowser::ResourceBrowserImportSettings;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceDocumentKind;
+using yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState;
+using yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionState;
 using yuengine::sceneeditor::BuildSceneEditorNativeSurface;
+using yuengine::sceneeditor::BuildSceneEditorUsableWorkflowSurface;
 using yuengine::sceneeditor::SceneEditorHierarchyRow;
 using yuengine::sceneeditor::SceneEditorInspectorRow;
 using yuengine::sceneeditor::SceneEditorSurfaceRequest;
@@ -33,6 +46,13 @@ using yuengine::sceneeditor::SceneEditorTransformCommandRequest;
 using yuengine::sceneeditor::SceneEditorTransformCommandResult;
 using yuengine::sceneeditor::SceneEditorTransformCommandStatus;
 using yuengine::sceneeditor::SceneEditorTransformLedgerRecord;
+using yuengine::sceneeditor::SceneEditorWorkflowBlockedLayer;
+using yuengine::sceneeditor::SceneEditorWorkflowLedgerRecord;
+using yuengine::sceneeditor::SceneEditorWorkflowRequest;
+using yuengine::sceneeditor::SceneEditorWorkflowResult;
+using yuengine::sceneeditor::SceneEditorWorkflowStatus;
+using yuengine::runtimeasset::RuntimeAssetDataStatus;
+using yuengine::runtimeasset::RuntimeAssetFileKind;
 using yuengine::world::WorldComponentAttachmentSnapshotRecord;
 using yuengine::world::WorldComponentResourceBindingSnapshotRecord;
 using yuengine::world::WorldComponentSlotId;
@@ -66,6 +86,14 @@ constexpr const char *TEST_TRANSFORM_UNDO_REDO =
     "SceneEditorTransformCommand_UndoRedoReplaysLedgerDeterministically";
 constexpr const char *TEST_TRANSFORM_INVALID_SELECTION =
     "SceneEditorTransformCommand_RejectsInvalidSelectionWithoutMutation";
+constexpr const char *TEST_WORKFLOW_SELECTION_VIEWPORT =
+    "SceneEditorWorkflow_SelectionFeedsViewportAndTransformCommand";
+constexpr const char *TEST_WORKFLOW_INSPECTOR_TRANSFORM =
+    "SceneEditorWorkflow_InspectorSelectionAppliesTransformLedger";
+constexpr const char *TEST_WORKFLOW_UNDO_REDO =
+    "SceneEditorWorkflow_UndoRedoLedgerReplay";
+constexpr const char *TEST_WORKFLOW_BLOCKED_DEPENDENCY =
+    "SceneEditorWorkflow_BlockedDependencyDoesNotMutateOutputs";
 
 int Fail(const char *message) {
     std::fprintf(stderr, "%s\n", message);
@@ -85,6 +113,13 @@ ObjectHandle MakeObjectHandle(std::uint32_t slot, std::uint32_t generation) {
 
 ResourceHandle MakeResourceHandle(std::uint32_t slot, std::uint32_t generation) {
     ResourceHandle handle{};
+    handle.slot = slot;
+    handle.generation = generation;
+    return handle;
+}
+
+AssetHandle MakeAssetHandle(std::uint32_t slot, std::uint32_t generation) {
+    AssetHandle handle{};
     handle.slot = slot;
     handle.generation = generation;
     return handle;
@@ -209,6 +244,115 @@ bool SentinelLedgerUnchanged(const SceneEditorTransformLedgerRecord &record) {
         !record.applied &&
         !record.undone &&
         !record.redone;
+}
+
+bool SentinelWorkflowLedgerUnchanged(const SceneEditorWorkflowLedgerRecord &record) {
+    return record.selected_world_object_id.value == 994U &&
+        record.transform_command_sequence == 995U &&
+        !record.committed_workflow;
+}
+
+ResourceBrowserSurfaceSelectionState ReadyResourceSelection() {
+    ResourceBrowserSurfaceSelectionState state{};
+    state.selected_index = 0U;
+    state.import_settings.source_path = "/Game/Scene/ready.scene";
+    state.import_settings.target_kind = RuntimeAssetFileKind::Scene;
+    state.import_settings.resource_type = ResourceTypeId{51U};
+    state.import_settings.asset_type = AssetTypeId{61U};
+    state.import_settings.stable_id = 0xAABBCCDDU;
+    state.import_settings.expected_source_hash = 0x1010U;
+    state.setting_validation =
+        yuengine::resourcebrowser::ResourceBrowserSurfaceSettingValidationCode::None;
+    state.preview_state = ResourceBrowserSurfacePreviewState::Eligible;
+    state.preview_document_kind = ResourceBrowserSurfaceDocumentKind::Scene;
+    state.validation_status = RuntimeAssetDataStatus::Success;
+    state.dependency_state = ResourceBrowserDependencyState::Ready;
+    state.resource = MakeResourceHandle(21U, 31U);
+    state.asset = MakeAssetHandle(22U, 32U);
+    state.stable_id = state.import_settings.stable_id;
+    state.source_hash = state.import_settings.expected_source_hash;
+    state.selected = true;
+    state.import_settings_valid = true;
+    state.preview_eligible = true;
+    state.resource_asset_mapping_preserved = true;
+    return state;
+}
+
+PreviewHostViewportSessionResult ReadyViewportSession(std::uint32_t selected_entity_index) {
+    PreviewHostViewportSessionResult result{};
+    result.status = PreviewHostStatus::Success;
+    result.frame.status = PreviewHostStatus::Success;
+    result.frame.frame.frame_id = 80U;
+    result.frame.submitted_entity_count = 2U;
+    result.camera_state.camera_id = 1U;
+    result.camera_state.orbit_angle_radians = 0.25F;
+    result.camera_state.orbit_radius = 5.0F;
+    result.camera_state.orbit_height = 1.0F;
+    result.resource_browser_preview_state = ResourceBrowserSurfacePreviewState::Eligible;
+    result.resource_browser_document_kind = ResourceBrowserSurfaceDocumentKind::Scene;
+    result.selected_entity_index = selected_entity_index;
+    result.viewport_width = 1280U;
+    result.viewport_height = 720U;
+    result.consumed_viewport_controls = true;
+    result.consumed_resource_browser_selection = true;
+    result.resource_browser_preview_eligible = true;
+    result.resource_asset_mapping_preserved = true;
+    result.selected_entity_available = true;
+    result.built_frame = true;
+    result.emitted_hit_feedback = true;
+    result.emitted_selection_feedback = true;
+    result.emitted_transform_feedback = true;
+    return result;
+}
+
+PreviewHostEditorViewportInteractionResult ReadyViewportInteraction(
+    WorldObjectId world_object_id,
+    std::uint32_t selected_entity_index) {
+    PreviewHostEditorViewportInteractionResult result{};
+    result.status = PreviewHostStatus::Success;
+    result.selected_entity_index = selected_entity_index;
+    result.selected_world_object_id = world_object_id;
+    result.hit_record_count = 1U;
+    result.selection_record_count = 1U;
+    result.transform_feedback_count = 1U;
+    result.ledger_record_count = 1U;
+    result.consumed_viewport_session = true;
+    result.consumed_engine_viewport_frame = true;
+    result.processed_selection_command = true;
+    result.emitted_hit_feedback = true;
+    result.emitted_selection_feedback = true;
+    result.emitted_transform_feedback = true;
+    result.emitted_interaction_ledger = true;
+    return result;
+}
+
+SceneEditorWorkflowRequest MakeWorkflowRequest(
+    const WorldSceneAuthoringDocument *document,
+    const ResourceBrowserSurfaceSelectionState *selection,
+    const PreviewHostViewportSessionResult *session,
+    const PreviewHostEditorViewportInteractionResult *interaction,
+    WorldTransformState requested_transform,
+    const SceneEditorTransformLedgerRecord *history_record,
+    SceneEditorTransformCommandMode mode,
+    std::span<SceneEditorHierarchyRow> hierarchy_rows,
+    std::span<SceneEditorInspectorRow> inspector_rows,
+    std::span<WorldSceneObjectTransformRestoreTransformRecord> transform_output,
+    std::span<SceneEditorTransformLedgerRecord> transform_ledger_output,
+    std::span<SceneEditorWorkflowLedgerRecord> workflow_ledger_output) {
+    SceneEditorWorkflowRequest request{};
+    request.document = document;
+    request.resource_browser_selection = selection;
+    request.viewport_session = session;
+    request.viewport_interaction = interaction;
+    request.requested_transform = requested_transform;
+    request.history_record = history_record;
+    request.transform_mode = mode;
+    request.hierarchy_rows = hierarchy_rows;
+    request.inspector_rows = inspector_rows;
+    request.transform_output = transform_output;
+    request.transform_ledger_output = transform_ledger_output;
+    request.workflow_ledger_output = workflow_ledger_output;
+    return request;
 }
 
 int SceneEditorSurfaceBuildsHierarchyAndInspectorFromAuthoringDocument() {
@@ -734,6 +878,427 @@ int SceneEditorTransformCommandRejectsInvalidSelectionWithoutMutation() {
 
     return 0;
 }
+
+int SceneEditorWorkflowSelectionFeedsViewportAndTransformCommand() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 2U> identities{
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)},
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(2U), MakeObjectHandle(2U, 10U)}};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> transforms{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(1U), Transform(10.0F)},
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(2U), Transform(20.0F)}};
+    std::array<WorldSceneEditorSidecarRecord, 1U> sidecars{
+        SelectionSidecar(ObjectId(2U))};
+    const WorldSceneAuthoringDocument document = MakeDocument(
+        identities.data(),
+        2U,
+        transforms.data(),
+        2U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        sidecars.data(),
+        1U);
+
+    ResourceBrowserSurfaceSelectionState selection = ReadyResourceSelection();
+    PreviewHostViewportSessionResult session = ReadyViewportSession(1U);
+    PreviewHostEditorViewportInteractionResult interaction =
+        ReadyViewportInteraction(ObjectId(2U), 1U);
+    std::array<SceneEditorHierarchyRow, 2U> hierarchy_rows{};
+    std::array<SceneEditorInspectorRow, 1U> inspector_rows{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 2U> transform_output{};
+    std::array<SceneEditorTransformLedgerRecord, 1U> transform_ledger{};
+    std::array<SceneEditorWorkflowLedgerRecord, 1U> workflow_ledger{};
+
+    SceneEditorWorkflowResult result{};
+    const WorldTransformState requested = Transform(200.0F);
+    const SceneEditorWorkflowStatus status = BuildSceneEditorUsableWorkflowSurface(
+        MakeWorkflowRequest(
+            &document,
+            &selection,
+            &session,
+            &interaction,
+            requested,
+            nullptr,
+            SceneEditorTransformCommandMode::Apply,
+            std::span<SceneEditorHierarchyRow>(hierarchy_rows.data(), hierarchy_rows.size()),
+            std::span<SceneEditorInspectorRow>(inspector_rows.data(), inspector_rows.size()),
+            std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+                transform_output.data(),
+                transform_output.size()),
+            std::span<SceneEditorTransformLedgerRecord>(
+                transform_ledger.data(),
+                transform_ledger.size()),
+            std::span<SceneEditorWorkflowLedgerRecord>(
+                workflow_ledger.data(),
+                workflow_ledger.size())),
+        &result);
+
+    if (status != SceneEditorWorkflowStatus::Success ||
+        !result.Succeeded() ||
+        result.blocked_layer != SceneEditorWorkflowBlockedLayer::None ||
+        result.surface_status != SceneEditorSurfaceStatus::Success ||
+        result.transform_status != SceneEditorTransformCommandStatus::Success ||
+        !result.consumed_authoring_document ||
+        !result.consumed_resource_browser_selection ||
+        !result.consumed_viewport_session ||
+        !result.consumed_viewport_interaction ||
+        !result.hierarchy_selection_matched_viewport ||
+        !result.emitted_hierarchy_rows ||
+        !result.emitted_inspector_rows ||
+        !result.applied_transform_command ||
+        !result.emitted_transform_ledger ||
+        !result.committed_workflow ||
+        result.mutated_runtime_data ||
+        result.opened_native_window) {
+        return Fail("scene editor workflow result did not commit visible interaction loop");
+    }
+
+    if (result.selected_world_object_id.value != 2U ||
+        result.selected_hierarchy_index != 1U ||
+        result.viewport_selected_entity_index != 1U ||
+        result.workflow_ledger_count != 1U ||
+        result.resource_preview_state != ResourceBrowserSurfacePreviewState::Eligible ||
+        result.viewport_status != PreviewHostStatus::Success ||
+        result.viewport_interaction_status != PreviewHostStatus::Success) {
+        return Fail("scene editor workflow selection metadata mismatch");
+    }
+
+    if (!hierarchy_rows[1U].selected ||
+        hierarchy_rows[1U].world_object_id.value != 2U ||
+        !inspector_rows[0U].selected ||
+        inspector_rows[0U].world_object_id.value != 2U ||
+        !TransformMatches(inspector_rows[0U].transform, transforms[1U].transform_state)) {
+        return Fail("scene editor workflow did not bridge hierarchy selection into inspector");
+    }
+
+    if (!TransformMatches(transform_output[0U].transform_state, transforms[0U].transform_state) ||
+        !TransformMatches(transform_output[1U].transform_state, requested) ||
+        transform_ledger[0U].world_object_id.value != 2U ||
+        transform_ledger[0U].command_sequence != 1U ||
+        !transform_ledger[0U].applied ||
+        !transform_ledger[0U].undo_available ||
+        workflow_ledger[0U].selected_world_object_id.value != 2U ||
+        workflow_ledger[0U].selected_hierarchy_index != 1U ||
+        workflow_ledger[0U].viewport_selected_entity_index != 1U ||
+        workflow_ledger[0U].transform_command_sequence != 1U ||
+        !workflow_ledger[0U].consumed_resource_browser_selection ||
+        !workflow_ledger[0U].consumed_viewport_session ||
+        !workflow_ledger[0U].consumed_viewport_interaction ||
+        !workflow_ledger[0U].matched_hierarchy_to_viewport_selection ||
+        !workflow_ledger[0U].applied_transform_command ||
+        !workflow_ledger[0U].committed_workflow) {
+        return Fail("scene editor workflow transform or workflow ledger mismatch");
+    }
+
+    return 0;
+}
+
+int SceneEditorWorkflowInspectorSelectionAppliesTransformLedger() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)}};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(1U), Transform(10.0F)}};
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> attachments{
+        WorldComponentAttachmentSnapshotRecord{ObjectId(1U), WorldComponentTypeId{7U}, WorldComponentSlotId{1U}}};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> bindings{
+        WorldComponentResourceBindingSnapshotRecord{
+            ObjectId(1U),
+            WorldComponentTypeId{7U},
+            WorldComponentSlotId{1U},
+            MakeResourceHandle(3U, 11U),
+            ResourceTypeId{12U}}};
+    std::array<WorldSceneAuthoringDependencyRecord, 1U> dependencies{
+        WorldSceneAuthoringDependencyRecord{7001U, MakeResourceHandle(3U, 11U), ResourceTypeId{12U}}};
+    std::array<WorldSceneEditorSidecarRecord, 1U> sidecars{
+        SelectionSidecar(ObjectId(1U))};
+    const WorldSceneAuthoringDocument document = MakeDocument(
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U,
+        attachments.data(),
+        1U,
+        bindings.data(),
+        1U,
+        dependencies.data(),
+        1U,
+        sidecars.data(),
+        1U);
+
+    ResourceBrowserSurfaceSelectionState selection = ReadyResourceSelection();
+    PreviewHostViewportSessionResult session = ReadyViewportSession(0U);
+    PreviewHostEditorViewportInteractionResult interaction =
+        ReadyViewportInteraction(ObjectId(1U), 0U);
+    std::array<SceneEditorHierarchyRow, 1U> hierarchy_rows{};
+    std::array<SceneEditorInspectorRow, 1U> inspector_rows{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transform_output{};
+    std::array<SceneEditorTransformLedgerRecord, 1U> transform_ledger{};
+    std::array<SceneEditorWorkflowLedgerRecord, 1U> workflow_ledger{};
+    const WorldTransformState requested = Transform(70.0F);
+
+    SceneEditorWorkflowResult result{};
+    const SceneEditorWorkflowStatus status = BuildSceneEditorUsableWorkflowSurface(
+        MakeWorkflowRequest(
+            &document,
+            &selection,
+            &session,
+            &interaction,
+            requested,
+            nullptr,
+            SceneEditorTransformCommandMode::Apply,
+            std::span<SceneEditorHierarchyRow>(hierarchy_rows.data(), hierarchy_rows.size()),
+            std::span<SceneEditorInspectorRow>(inspector_rows.data(), inspector_rows.size()),
+            std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+                transform_output.data(),
+                transform_output.size()),
+            std::span<SceneEditorTransformLedgerRecord>(
+                transform_ledger.data(),
+                transform_ledger.size()),
+            std::span<SceneEditorWorkflowLedgerRecord>(
+                workflow_ledger.data(),
+                workflow_ledger.size())),
+        &result);
+
+    if (status != SceneEditorWorkflowStatus::Success ||
+        !result.Succeeded() ||
+        result.surface.inspector_row_count != 1U ||
+        result.transform.ledger_record_count != 1U ||
+        !result.emitted_inspector_rows ||
+        !result.applied_transform_command) {
+        return Fail("scene editor workflow inspector transform loop failed");
+    }
+
+    if (!inspector_rows[0U].has_transform ||
+        !inspector_rows[0U].has_component_attachments ||
+        !inspector_rows[0U].has_resource_bindings ||
+        !inspector_rows[0U].separated_runtime_and_editor_fields ||
+        inspector_rows[0U].component_count != 1U ||
+        inspector_rows[0U].resource_binding_count != 1U ||
+        !TransformMatches(inspector_rows[0U].transform, transforms[0U].transform_state)) {
+        return Fail("scene editor workflow inspector did not expose selected transform context");
+    }
+
+    if (!TransformMatches(transform_output[0U].transform_state, requested) ||
+        !TransformMatches(transform_ledger[0U].before_transform, transforms[0U].transform_state) ||
+        !TransformMatches(transform_ledger[0U].after_transform, requested) ||
+        transform_ledger[0U].world_object_id.value != 1U ||
+        !workflow_ledger[0U].emitted_inspector_rows ||
+        !workflow_ledger[0U].applied_transform_command) {
+        return Fail("scene editor workflow inspector transform ledger mismatch");
+    }
+
+    return 0;
+}
+
+int SceneEditorWorkflowUndoRedoLedgerReplay() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)}};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(1U), Transform(10.0F)}};
+    std::array<WorldSceneEditorSidecarRecord, 1U> sidecars{
+        SelectionSidecar(ObjectId(1U))};
+    const WorldSceneAuthoringDocument document = MakeDocument(
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        sidecars.data(),
+        1U);
+
+    SceneEditorTransformLedgerRecord history{};
+    history.world_object_id = ObjectId(1U);
+    history.before_transform = Transform(10.0F);
+    history.after_transform = Transform(50.0F);
+    history.command_sequence = 7U;
+    history.applied = true;
+    history.undo_available = true;
+
+    ResourceBrowserSurfaceSelectionState selection = ReadyResourceSelection();
+    PreviewHostViewportSessionResult session = ReadyViewportSession(0U);
+    PreviewHostEditorViewportInteractionResult interaction =
+        ReadyViewportInteraction(ObjectId(1U), 0U);
+    std::array<SceneEditorHierarchyRow, 1U> undo_hierarchy{};
+    std::array<SceneEditorInspectorRow, 1U> undo_inspector{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> undo_transform_output{};
+    std::array<SceneEditorTransformLedgerRecord, 1U> undo_transform_ledger{};
+    std::array<SceneEditorWorkflowLedgerRecord, 1U> undo_workflow_ledger{};
+
+    SceneEditorWorkflowResult undo_result{};
+    const SceneEditorWorkflowStatus undo_status = BuildSceneEditorUsableWorkflowSurface(
+        MakeWorkflowRequest(
+            &document,
+            &selection,
+            &session,
+            &interaction,
+            Transform(90.0F),
+            &history,
+            SceneEditorTransformCommandMode::Undo,
+            std::span<SceneEditorHierarchyRow>(undo_hierarchy.data(), undo_hierarchy.size()),
+            std::span<SceneEditorInspectorRow>(undo_inspector.data(), undo_inspector.size()),
+            std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+                undo_transform_output.data(),
+                undo_transform_output.size()),
+            std::span<SceneEditorTransformLedgerRecord>(
+                undo_transform_ledger.data(),
+                undo_transform_ledger.size()),
+            std::span<SceneEditorWorkflowLedgerRecord>(
+                undo_workflow_ledger.data(),
+                undo_workflow_ledger.size())),
+        &undo_result);
+
+    if (undo_status != SceneEditorWorkflowStatus::Success ||
+        !TransformMatches(undo_transform_output[0U].transform_state, history.before_transform) ||
+        !undo_transform_ledger[0U].undone ||
+        undo_transform_ledger[0U].command_sequence != 8U ||
+        !undo_workflow_ledger[0U].replayed_undo ||
+        undo_workflow_ledger[0U].replayed_redo ||
+        undo_workflow_ledger[0U].transform_command_sequence != 8U) {
+        return Fail("scene editor workflow undo replay mismatch");
+    }
+
+    std::array<SceneEditorHierarchyRow, 1U> redo_hierarchy{};
+    std::array<SceneEditorInspectorRow, 1U> redo_inspector{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> redo_transform_output{};
+    std::array<SceneEditorTransformLedgerRecord, 1U> redo_transform_ledger{};
+    std::array<SceneEditorWorkflowLedgerRecord, 1U> redo_workflow_ledger{};
+
+    SceneEditorWorkflowResult redo_result{};
+    const SceneEditorWorkflowStatus redo_status = BuildSceneEditorUsableWorkflowSurface(
+        MakeWorkflowRequest(
+            &document,
+            &selection,
+            &session,
+            &interaction,
+            Transform(90.0F),
+            &history,
+            SceneEditorTransformCommandMode::Redo,
+            std::span<SceneEditorHierarchyRow>(redo_hierarchy.data(), redo_hierarchy.size()),
+            std::span<SceneEditorInspectorRow>(redo_inspector.data(), redo_inspector.size()),
+            std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+                redo_transform_output.data(),
+                redo_transform_output.size()),
+            std::span<SceneEditorTransformLedgerRecord>(
+                redo_transform_ledger.data(),
+                redo_transform_ledger.size()),
+            std::span<SceneEditorWorkflowLedgerRecord>(
+                redo_workflow_ledger.data(),
+                redo_workflow_ledger.size())),
+        &redo_result);
+
+    if (redo_status != SceneEditorWorkflowStatus::Success ||
+        !TransformMatches(redo_transform_output[0U].transform_state, history.after_transform) ||
+        !redo_transform_ledger[0U].redone ||
+        redo_transform_ledger[0U].command_sequence != 8U ||
+        redo_workflow_ledger[0U].replayed_undo ||
+        !redo_workflow_ledger[0U].replayed_redo ||
+        redo_workflow_ledger[0U].transform_command_sequence != 8U) {
+        return Fail("scene editor workflow redo replay mismatch");
+    }
+
+    return 0;
+}
+
+int SceneEditorWorkflowBlockedDependencyDoesNotMutateOutputs() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)}};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(1U), Transform(10.0F)}};
+    std::array<WorldSceneEditorSidecarRecord, 1U> sidecars{
+        SelectionSidecar(ObjectId(1U))};
+    const WorldSceneAuthoringDocument document = MakeDocument(
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        sidecars.data(),
+        1U);
+
+    ResourceBrowserSurfaceSelectionState selection = ReadyResourceSelection();
+    selection.preview_state = ResourceBrowserSurfacePreviewState::BlockedByDiagnostic;
+    selection.preview_eligible = false;
+    selection.diagnostic_blocks_preview = true;
+    PreviewHostViewportSessionResult session = ReadyViewportSession(0U);
+    PreviewHostEditorViewportInteractionResult interaction =
+        ReadyViewportInteraction(ObjectId(1U), 0U);
+    std::array<SceneEditorHierarchyRow, 1U> hierarchy_rows{};
+    hierarchy_rows[0U].world_object_id = ObjectId(900U);
+    hierarchy_rows[0U].object_handle = MakeObjectHandle(90U, 1U);
+    hierarchy_rows[0U].row_index = 77U;
+    std::array<SceneEditorInspectorRow, 1U> inspector_rows{};
+    inspector_rows[0U].world_object_id = ObjectId(901U);
+    inspector_rows[0U].object_handle = MakeObjectHandle(91U, 1U);
+    inspector_rows[0U].component_count = 77U;
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transform_output{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(990U), Transform(991.0F)}};
+    std::array<SceneEditorTransformLedgerRecord, 1U> transform_ledger{};
+    transform_ledger[0U].world_object_id = ObjectId(992U);
+    transform_ledger[0U].command_sequence = 993U;
+    std::array<SceneEditorWorkflowLedgerRecord, 1U> workflow_ledger{};
+    workflow_ledger[0U].selected_world_object_id = ObjectId(994U);
+    workflow_ledger[0U].transform_command_sequence = 995U;
+
+    SceneEditorWorkflowResult result{};
+    const SceneEditorWorkflowStatus status = BuildSceneEditorUsableWorkflowSurface(
+        MakeWorkflowRequest(
+            &document,
+            &selection,
+            &session,
+            &interaction,
+            Transform(70.0F),
+            nullptr,
+            SceneEditorTransformCommandMode::Apply,
+            std::span<SceneEditorHierarchyRow>(hierarchy_rows.data(), hierarchy_rows.size()),
+            std::span<SceneEditorInspectorRow>(inspector_rows.data(), inspector_rows.size()),
+            std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+                transform_output.data(),
+                transform_output.size()),
+            std::span<SceneEditorTransformLedgerRecord>(
+                transform_ledger.data(),
+                transform_ledger.size()),
+            std::span<SceneEditorWorkflowLedgerRecord>(
+                workflow_ledger.data(),
+                workflow_ledger.size())),
+        &result);
+
+    if (status != SceneEditorWorkflowStatus::BlockedResourceBrowserSelection ||
+        result.blocked_layer != SceneEditorWorkflowBlockedLayer::ResourceBrowserSelection ||
+        result.resource_preview_state != ResourceBrowserSurfacePreviewState::BlockedByDiagnostic ||
+        !result.consumed_authoring_document ||
+        result.consumed_resource_browser_selection ||
+        result.consumed_viewport_session ||
+        result.consumed_viewport_interaction ||
+        result.emitted_hierarchy_rows ||
+        result.emitted_inspector_rows ||
+        result.applied_transform_command ||
+        result.committed_workflow) {
+        return Fail("scene editor workflow blocked dependency result mismatch");
+    }
+
+    if (!SentinelHierarchyUnchanged(hierarchy_rows[0U]) ||
+        !SentinelInspectorUnchanged(inspector_rows[0U]) ||
+        !SentinelTransformUnchanged(transform_output[0U]) ||
+        !SentinelLedgerUnchanged(transform_ledger[0U]) ||
+        !SentinelWorkflowLedgerUnchanged(workflow_ledger[0U])) {
+        return Fail("scene editor workflow blocked dependency mutated outputs");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -776,6 +1341,22 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_TRANSFORM_INVALID_SELECTION) {
         return SceneEditorTransformCommandRejectsInvalidSelectionWithoutMutation();
+    }
+
+    if (test_name == TEST_WORKFLOW_SELECTION_VIEWPORT) {
+        return SceneEditorWorkflowSelectionFeedsViewportAndTransformCommand();
+    }
+
+    if (test_name == TEST_WORKFLOW_INSPECTOR_TRANSFORM) {
+        return SceneEditorWorkflowInspectorSelectionAppliesTransformLedger();
+    }
+
+    if (test_name == TEST_WORKFLOW_UNDO_REDO) {
+        return SceneEditorWorkflowUndoRedoLedgerReplay();
+    }
+
+    if (test_name == TEST_WORKFLOW_BLOCKED_DEPENDENCY) {
+        return SceneEditorWorkflowBlockedDependencyDoesNotMutateOutputs();
     }
 
     return Fail("unknown test name");
