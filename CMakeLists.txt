@@ -454,6 +454,16 @@ target_include_directories(YuAnimationEditor
 )
 target_link_libraries(YuAnimationEditor PUBLIC YuAnimation YuPreviewHost)
 
+add_library(YuEditorPackageRun
+    Src/YuEngine/EditorPackageRun/Src/EditorPackageRunSmoke.cpp
+)
+yuengine_apply_compile_options(YuEditorPackageRun)
+target_include_directories(YuEditorPackageRun
+    PUBLIC
+        Src/YuEngine/EditorPackageRun/Include
+)
+target_link_libraries(YuEditorPackageRun PUBLIC YuSceneEditor YuAnimationEditor YuUiEditor YuRuntimeAsset)
+
 add_library(YuHardware
     Src/YuEngine/Hardware/Src/HardwareFrameHost.cpp
 )
@@ -2266,6 +2276,15 @@ yuengine_add_labeled_test(AnimationEditorWorkflow_PlaybackTickAdvancesSampleTime
 yuengine_add_labeled_test(AnimationEditorWorkflow_EmitsSelectedTrackAndKeyFeedback YuAnimationEditorSurfaceTests Fast ModuleFixture AnimationEditor Animation PreviewHost World EvidenceOracle)
 yuengine_add_labeled_test(AnimationEditorWorkflow_MissingPreviewFeedbackDoesNotMutateOutputs YuAnimationEditorSurfaceTests Fast ModuleFixture AnimationEditor Animation PreviewHost World EvidenceOracle)
 yuengine_add_labeled_test(AnimationEditorWorkflow_OutputCapacityFailureDoesNotMutateOutputs YuAnimationEditorSurfaceTests Fast ModuleFixture AnimationEditor Animation PreviewHost World EvidenceOracle)
+
+add_executable(YuEditorPackageRunSmokeTests
+    Tests/EditorPackageRun/EditorPackageRunSmokeTests.cpp
+)
+yuengine_apply_compile_options(YuEditorPackageRunSmokeTests)
+target_link_libraries(YuEditorPackageRunSmokeTests PRIVATE YuEditorPackageRun)
+yuengine_add_labeled_test(EditorPackageRun_ConsumesAuthoredWorkflowOutputsAndRunsProductCommand YuEditorPackageRunSmokeTests Fast ModuleFixture EditorPackageRun SceneEditor AnimationEditor UiEditor RuntimeAssetData ImportCook Package RuntimeApp File Resource Asset RenderScene RenderCore RHI L1 EvidenceOracle)
+yuengine_add_labeled_test(EditorPackageRun_MissingUiWorkflowStopsBeforePackageCommand YuEditorPackageRunSmokeTests Fast ModuleFixture EditorPackageRun SceneEditor AnimationEditor UiEditor RuntimeAssetData Package RuntimeApp File Resource Asset L1 EvidenceOracle)
+yuengine_add_labeled_test(EditorPackageRun_MissingPackageArtifactReportsFileLayerWithoutEntryPoint YuEditorPackageRunSmokeTests Fast ModuleFixture EditorPackageRun SceneEditor AnimationEditor UiEditor RuntimeAssetData ImportCook Package RuntimeApp File Resource Asset L1 EvidenceOracle)
 
 add_executable(YuAudioSceneTests
     Tests/AudioScene/AudioSceneContractQueueTests.cpp

@@ -3,6 +3,7 @@
 Status: RAV4-A file-backed Package artifact smoke
 Tasks: #76, #77
 Decision: `RUNTIME_ASSET_PACKAGE_ARTIFACT_PRODUCT_RUN_SMOKE`
+RAV6 authored editor data smoke: `docs/YUENGINE_EDITOR_PACKAGE_RUN_RAV6_AUTHORED_DATA_SMOKE.md`
 
 ## Purpose
 
