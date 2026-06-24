@@ -15,6 +15,7 @@
 namespace yuengine::uieditor {
 namespace {
 using PreviewHostFrameResult = yuengine::previewhost::PreviewHostFrameResult;
+using PreviewHostStatus = yuengine::previewhost::PreviewHostStatus;
 using UiNodeDesc = yuengine::uicore::UiNodeDesc;
 using UiNodeId = yuengine::uicore::UiNodeId;
 using UiNodeRecord = yuengine::uicore::UiNodeRecord;
@@ -234,6 +235,259 @@ UiEditorSurfaceStatus ValidateDocument(
 
     return UiEditorSurfaceStatus::Success;
 }
+
+UiEditorDesignWorkflowStatus MapDesignWorkflowStatus(UiEditorSurfaceStatus status) {
+    if (status == UiEditorSurfaceStatus::Success) {
+        return UiEditorDesignWorkflowStatus::Success;
+    }
+
+    if (status == UiEditorSurfaceStatus::InvalidDocument) {
+        return UiEditorDesignWorkflowStatus::InvalidDocument;
+    }
+
+    if (status == UiEditorSurfaceStatus::InvalidNode) {
+        return UiEditorDesignWorkflowStatus::InvalidNode;
+    }
+
+    if (status == UiEditorSurfaceStatus::MissingNode) {
+        return UiEditorDesignWorkflowStatus::MissingNode;
+    }
+
+    if (status == UiEditorSurfaceStatus::DuplicateNode) {
+        return UiEditorDesignWorkflowStatus::DuplicateNode;
+    }
+
+    if (status == UiEditorSurfaceStatus::OutputCapacityExceeded) {
+        return UiEditorDesignWorkflowStatus::OutputCapacityExceeded;
+    }
+
+    if (status == UiEditorSurfaceStatus::PreviewFeedbackMissing) {
+        return UiEditorDesignWorkflowStatus::PreviewFeedbackMissing;
+    }
+
+    if (status == UiEditorSurfaceStatus::UiCoreFailed) {
+        return UiEditorDesignWorkflowStatus::UiCoreFailed;
+    }
+
+    return UiEditorDesignWorkflowStatus::InvalidArgument;
+}
+
+UiEditorDesignWorkflowBlockedLayer MapDesignWorkflowLayer(
+    UiEditorSurfaceBlockedLayer layer) {
+    if (layer == UiEditorSurfaceBlockedLayer::None) {
+        return UiEditorDesignWorkflowBlockedLayer::None;
+    }
+
+    if (layer == UiEditorSurfaceBlockedLayer::RuntimeUiDocument) {
+        return UiEditorDesignWorkflowBlockedLayer::RuntimeUiDocument;
+    }
+
+    if (layer == UiEditorSurfaceBlockedLayer::UiCoreNodeTree) {
+        return UiEditorDesignWorkflowBlockedLayer::UiCoreNodeTree;
+    }
+
+    if (layer == UiEditorSurfaceBlockedLayer::PreviewHostFeedback) {
+        return UiEditorDesignWorkflowBlockedLayer::PreviewHostFeedback;
+    }
+
+    return UiEditorDesignWorkflowBlockedLayer::Output;
+}
+
+bool DesignWorkflowStorageValid(
+    const UiEditorDesignInspectorWorkflowRequest &request) {
+    return IsSpanStorageValid(request.hierarchy_output) &&
+        IsSpanStorageValid(request.design_surface_output) &&
+        IsSpanStorageValid(request.inspector_output) &&
+        IsSpanStorageValid(request.preview_feedback_output) &&
+        IsSpanStorageValid(request.staged_document_output) &&
+        IsSpanStorageValid(request.command_ledger_output);
+}
+
+bool DesignWorkflowOutputCapacityReady(
+    const UiEditorDesignInspectorWorkflowRequest &request,
+    std::size_t node_count) {
+    if (request.hierarchy_output.size() < node_count) {
+        return false;
+    }
+
+    if (request.design_surface_output.size() < node_count) {
+        return false;
+    }
+
+    if (request.inspector_output.size() < UI_EDITOR_INSPECTOR_FIELD_COUNT) {
+        return false;
+    }
+
+    if (request.preview_feedback_output.empty()) {
+        return false;
+    }
+
+    if (request.staged_document_output.size() < node_count) {
+        return false;
+    }
+
+    if (request.command_ledger_output.empty()) {
+        return false;
+    }
+
+    return true;
+}
+
+bool PreviewFeedbackReady(const PreviewHostFrameResult *preview_frame) {
+    if (preview_frame == nullptr) {
+        return false;
+    }
+
+    return preview_frame->status == PreviewHostStatus::Success &&
+        preview_frame->submitted_render_scene_frame;
+}
+
+std::uint32_t FindDocumentNodeIndex(
+    std::span<const UiEditorRuntimeNodeRecord> nodes,
+    UiNodeId node_id,
+    std::uint32_t node_count) {
+    std::uint32_t index = 0U;
+    while (index < node_count) {
+        if (nodes[index].node_id.value == node_id.value) {
+            return index;
+        }
+
+        ++index;
+    }
+
+    return node_count;
+}
+
+UiEditorDesignSurfaceRow BuildDesignSurfaceRow(
+    const UiEditorHierarchyRow &hierarchy_row,
+    const UiEditorRuntimeNodeRecord &node,
+    const UiEditorPreviewFeedbackRecord &preview_feedback) {
+    UiEditorDesignSurfaceRow row{};
+    row.document_id = hierarchy_row.document_id;
+    row.node_id = hierarchy_row.node_id;
+    row.parent_id = hierarchy_row.parent_id;
+    row.component_kind = hierarchy_row.component_kind;
+    row.world_rect = hierarchy_row.world_rect;
+    row.sibling_order = hierarchy_row.sibling_order;
+    row.depth = hierarchy_row.depth;
+    row.layer = hierarchy_row.layer;
+    row.preview_frame_id = preview_feedback.frame_id;
+    row.preview_status = preview_feedback.preview_status;
+    row.selected = hierarchy_row.selected;
+    row.visible = hierarchy_row.visible;
+    row.enabled = hierarchy_row.enabled;
+    row.hit_testable = node.hit_testable;
+    row.runtime_exported = hierarchy_row.runtime_exported;
+    row.preview_feedback_available = preview_feedback.feedback_from_preview_host;
+    return row;
+}
+
+UiEditorInspectorFieldRow InspectorFieldBase(
+    const UiEditorRuntimeDocumentHeader &header,
+    const UiEditorRuntimeNodeRecord &node,
+    UiEditorInspectorFieldKind kind) {
+    UiEditorInspectorFieldRow row{};
+    row.document_id = header.document_id;
+    row.node_id = node.node_id;
+    row.field_kind = kind;
+    row.component_kind = node.component_kind;
+    row.selected_node = true;
+    row.editable = true;
+    return row;
+}
+
+std::size_t BuildInspectorFields(
+    const UiEditorRuntimeDocumentHeader &header,
+    const UiEditorRuntimeNodeRecord &node,
+    std::span<UiEditorInspectorFieldRow> output) {
+    output[0U] =
+        InspectorFieldBase(header, node, UiEditorInspectorFieldKind::ComponentKind);
+    output[0U].int_value = static_cast<std::int32_t>(node.component_kind);
+    output[1U] = InspectorFieldBase(header, node, UiEditorInspectorFieldKind::Visible);
+    output[1U].bool_value = node.visible;
+    output[2U] = InspectorFieldBase(header, node, UiEditorInspectorFieldKind::Enabled);
+    output[2U].bool_value = node.enabled;
+    output[3U] =
+        InspectorFieldBase(header, node, UiEditorInspectorFieldKind::HitTestable);
+    output[3U].bool_value = node.hit_testable;
+    output[4U] =
+        InspectorFieldBase(header, node, UiEditorInspectorFieldKind::RuntimeExported);
+    output[4U].bool_value = node.runtime_exported;
+    output[5U] = InspectorFieldBase(header, node, UiEditorInspectorFieldKind::Layer);
+    output[5U].int_value = node.layer;
+    output[6U] =
+        InspectorFieldBase(header, node, UiEditorInspectorFieldKind::RectTransform);
+    output[6U].rect_transform = node.rect_transform;
+    return UI_EDITOR_INSPECTOR_FIELD_COUNT;
+}
+
+bool IsDesignCommandSupported(UiEditorDesignCommandKind kind) {
+    switch (kind) {
+        case UiEditorDesignCommandKind::None:
+        case UiEditorDesignCommandKind::SetVisible:
+        case UiEditorDesignCommandKind::SetEnabled:
+        case UiEditorDesignCommandKind::SetHitTestable:
+        case UiEditorDesignCommandKind::SetLayer:
+        case UiEditorDesignCommandKind::SetRectTransform:
+            return true;
+    }
+
+    return false;
+}
+
+UiEditorDesignCommandLedgerRecord BuildCommandLedger(
+    const UiEditorRuntimeDocumentHeader &header,
+    const UiEditorRuntimeNodeRecord &before,
+    const UiEditorRuntimeNodeRecord &after,
+    const UiEditorDesignCommand &command) {
+    UiEditorDesignCommandLedgerRecord record{};
+    record.document_id = header.document_id;
+    record.node_id = before.node_id;
+    record.command_kind = command.kind;
+    record.command_sequence = command.command_sequence;
+    record.component_kind = before.component_kind;
+    record.before_rect_transform = before.rect_transform;
+    record.after_rect_transform = after.rect_transform;
+    record.before_layer = before.layer;
+    record.after_layer = after.layer;
+    record.before_visible = before.visible;
+    record.after_visible = after.visible;
+    record.before_enabled = before.enabled;
+    record.after_enabled = after.enabled;
+    record.before_hit_testable = before.hit_testable;
+    record.after_hit_testable = after.hit_testable;
+    record.staged_document_update =
+        command.kind != UiEditorDesignCommandKind::None;
+    record.command_applied = record.staged_document_update;
+    return record;
+}
+
+UiEditorRuntimeNodeRecord ApplyDesignCommand(
+    const UiEditorRuntimeNodeRecord &node,
+    const UiEditorDesignCommand &command) {
+    UiEditorRuntimeNodeRecord updated = node;
+    if (command.kind == UiEditorDesignCommandKind::SetVisible) {
+        updated.visible = command.bool_value;
+    }
+
+    if (command.kind == UiEditorDesignCommandKind::SetEnabled) {
+        updated.enabled = command.bool_value;
+    }
+
+    if (command.kind == UiEditorDesignCommandKind::SetHitTestable) {
+        updated.hit_testable = command.bool_value;
+    }
+
+    if (command.kind == UiEditorDesignCommandKind::SetLayer) {
+        updated.layer = command.int_value;
+    }
+
+    if (command.kind == UiEditorDesignCommandKind::SetRectTransform) {
+        updated.rect_transform = command.rect_transform;
+    }
+
+    return updated;
+}
 }
 
 UiEditorSurfaceStatus BuildUiEditorRuntimeDocumentSurface(
@@ -360,6 +614,159 @@ UiEditorSurfaceStatus BuildUiEditorRuntimeDocumentSurface(
     result.hierarchy_row_count = document.header.node_count;
     result.preview_feedback_count = preview_feedback_count;
     result.emitted_preview_feedback = preview_feedback_count > 0U;
+    *out_result = result;
+    return result.status;
+}
+
+UiEditorDesignWorkflowStatus BuildUiEditorDesignInspectorWorkflowSurface(
+    const UiEditorDesignInspectorWorkflowRequest &request,
+    UiEditorDesignInspectorWorkflowResult *out_result) {
+    UiEditorDesignInspectorWorkflowResult result{};
+
+    if (out_result == nullptr) {
+        return UiEditorDesignWorkflowStatus::InvalidArgument;
+    }
+
+    if (request.document == nullptr || !DesignWorkflowStorageValid(request)) {
+        *out_result = result;
+        return result.status;
+    }
+
+    std::array<UiEditorHierarchyRow, MAX_UI_EDITOR_DOCUMENT_NODES> staged_hierarchy{};
+    std::array<UiEditorPreviewFeedbackRecord, 1U> staged_preview{};
+    UiEditorRuntimeDocumentSurfaceRequest surface_request{};
+    surface_request.document = request.document;
+    surface_request.selected_node_id = request.selected_node_id;
+    surface_request.preview_frame = request.preview_frame;
+    surface_request.require_preview_feedback = true;
+    surface_request.hierarchy_output =
+        std::span<UiEditorHierarchyRow>(
+            staged_hierarchy.data(),
+            staged_hierarchy.size());
+    surface_request.preview_feedback_output =
+        std::span<UiEditorPreviewFeedbackRecord>(
+            staged_preview.data(),
+            staged_preview.size());
+    UiEditorRuntimeDocumentSurfaceResult surface_result{};
+    const UiEditorSurfaceStatus surface_status =
+        BuildUiEditorRuntimeDocumentSurface(surface_request, &surface_result);
+    result.surface = surface_result;
+    result.surface_status = surface_status;
+    result.document_id = surface_result.document_id;
+    result.selected_node_id = request.selected_node_id;
+    result.consumed_runtime_ui_document =
+        surface_result.consumed_runtime_ui_document;
+    result.consumed_preview_host_feedback =
+        surface_result.consumed_preview_host_feedback;
+    if (surface_status != UiEditorSurfaceStatus::Success) {
+        result.status = MapDesignWorkflowStatus(surface_status);
+        result.blocked_layer = MapDesignWorkflowLayer(surface_result.blocked_layer);
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!PreviewFeedbackReady(request.preview_frame)) {
+        result.status = UiEditorDesignWorkflowStatus::PreviewFeedbackMissing;
+        result.blocked_layer = UiEditorDesignWorkflowBlockedLayer::PreviewHostFeedback;
+        *out_result = result;
+        return result.status;
+    }
+
+    const UiEditorRuntimeDocument &document = *request.document;
+    const std::uint32_t node_count = document.header.node_count;
+    if (!DesignWorkflowOutputCapacityReady(request, node_count)) {
+        result.status = UiEditorDesignWorkflowStatus::OutputCapacityExceeded;
+        result.blocked_layer = UiEditorDesignWorkflowBlockedLayer::Output;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!request.selected_node_id.IsValid()) {
+        result.status = UiEditorDesignWorkflowStatus::MissingNode;
+        result.blocked_layer = UiEditorDesignWorkflowBlockedLayer::InspectorSelection;
+        *out_result = result;
+        return result.status;
+    }
+
+    const std::uint32_t selected_index = FindDocumentNodeIndex(
+        document.nodes,
+        request.selected_node_id,
+        node_count);
+    if (selected_index == node_count) {
+        result.status = UiEditorDesignWorkflowStatus::MissingNode;
+        result.blocked_layer = UiEditorDesignWorkflowBlockedLayer::InspectorSelection;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!IsDesignCommandSupported(request.command.kind)) {
+        result.status = UiEditorDesignWorkflowStatus::CommandFailed;
+        result.blocked_layer = UiEditorDesignWorkflowBlockedLayer::Command;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::array<UiEditorDesignSurfaceRow, MAX_UI_EDITOR_DOCUMENT_NODES>
+        staged_design_rows{};
+    std::array<UiEditorInspectorFieldRow, UI_EDITOR_INSPECTOR_FIELD_COUNT>
+        staged_inspector_rows{};
+    std::array<UiEditorRuntimeNodeRecord, MAX_UI_EDITOR_DOCUMENT_NODES>
+        staged_nodes{};
+
+    std::uint32_t node_index = 0U;
+    while (node_index < node_count) {
+        staged_nodes[node_index] = document.nodes[node_index];
+        staged_design_rows[node_index] = BuildDesignSurfaceRow(
+            staged_hierarchy[node_index],
+            document.nodes[node_index],
+            staged_preview[0U]);
+        ++node_index;
+    }
+
+    const UiEditorRuntimeNodeRecord before_node = staged_nodes[selected_index];
+    staged_nodes[selected_index] =
+        ApplyDesignCommand(staged_nodes[selected_index], request.command);
+    const UiEditorRuntimeNodeRecord after_node = staged_nodes[selected_index];
+    const std::size_t inspector_count = BuildInspectorFields(
+        document.header,
+        after_node,
+        std::span<UiEditorInspectorFieldRow>(
+            staged_inspector_rows.data(),
+            staged_inspector_rows.size()));
+    const UiEditorDesignCommandLedgerRecord ledger =
+        BuildCommandLedger(document.header, before_node, after_node, request.command);
+
+    node_index = 0U;
+    while (node_index < node_count) {
+        request.hierarchy_output[node_index] = staged_hierarchy[node_index];
+        request.design_surface_output[node_index] = staged_design_rows[node_index];
+        request.staged_document_output[node_index] = staged_nodes[node_index];
+        ++node_index;
+    }
+
+    std::size_t field_index = 0U;
+    while (field_index < inspector_count) {
+        request.inspector_output[field_index] = staged_inspector_rows[field_index];
+        ++field_index;
+    }
+
+    request.preview_feedback_output[0U] = staged_preview[0U];
+    request.command_ledger_output[0U] = ledger;
+
+    result.status = UiEditorDesignWorkflowStatus::Success;
+    result.blocked_layer = UiEditorDesignWorkflowBlockedLayer::None;
+    result.hierarchy_row_count = node_count;
+    result.design_surface_row_count = node_count;
+    result.inspector_field_count = inspector_count;
+    result.preview_feedback_count = 1U;
+    result.staged_node_count = node_count;
+    result.command_ledger_count = 1U;
+    result.built_design_surface = true;
+    result.emitted_hierarchy_rows = true;
+    result.emitted_inspector_fields = true;
+    result.staged_document_update = ledger.staged_document_update;
+    result.emitted_command_ledger = true;
+    result.command_applied = ledger.command_applied;
     *out_result = result;
     return result.status;
 }
