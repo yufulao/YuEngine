@@ -53,6 +53,7 @@ using yuengine::resourcebrowser::ResourceBrowserSurfaceSettingValidationCode;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceStatus;
 using yuengine::resourcebrowser::BuildResourceBrowserVisibleWorkflowSurface;
 using yuengine::resourcebrowser::BuildResourceBrowserDepthWorkflowSurface;
+using yuengine::resourcebrowser::BuildResourceBrowserImporterCommitWorkflow;
 using yuengine::resourcebrowser::ResourceBrowserAssetManagerGap;
 using yuengine::resourcebrowser::ResourceBrowserAssetManagerGapRow;
 using yuengine::resourcebrowser::ResourceBrowserDepthCatalogRow;
@@ -60,6 +61,12 @@ using yuengine::resourcebrowser::ResourceBrowserDepthSelectionLedgerRecord;
 using yuengine::resourcebrowser::ResourceBrowserDepthWorkflowRequest;
 using yuengine::resourcebrowser::ResourceBrowserDepthWorkflowResult;
 using yuengine::resourcebrowser::ResourceBrowserDepthWorkflowStatus;
+using yuengine::resourcebrowser::ResourceBrowserExternalAuthoringSourceRow;
+using yuengine::resourcebrowser::ResourceBrowserImporterCommitRejectedLayer;
+using yuengine::resourcebrowser::ResourceBrowserImporterCommitSelectionLedgerRecord;
+using yuengine::resourcebrowser::ResourceBrowserImporterCommitWorkflowRequest;
+using yuengine::resourcebrowser::ResourceBrowserImporterCommitWorkflowResult;
+using yuengine::resourcebrowser::ResourceBrowserImporterCommitWorkflowStatus;
 using yuengine::resourcebrowser::ResourceBrowserImporterBoundaryRow;
 using yuengine::resourcebrowser::ResourceBrowserImporterReadiness;
 using yuengine::resourcebrowser::ResourceBrowserSourceBoundary;
@@ -69,8 +76,12 @@ using yuengine::resourcebrowser::ResourceBrowserVisibleSelectionLedgerRecord;
 using yuengine::resourcebrowser::ResourceBrowserVisibleWorkflowRequest;
 using yuengine::resourcebrowser::ResourceBrowserVisibleWorkflowResult;
 using yuengine::resourcebrowser::ResourceBrowserVisibleWorkflowStatus;
+using yuengine::runtimeasset::ExecuteRuntimeAssetImportCookCommand;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
 using yuengine::runtimeasset::RuntimeAssetDataStatus;
+using yuengine::runtimeasset::RuntimeAssetImportCookCommandKind;
+using yuengine::runtimeasset::RuntimeAssetImportCookCommandRequest;
+using yuengine::runtimeasset::RuntimeAssetImportCookCommandResult;
 using yuengine::runtimeasset::RuntimeAssetFileDesc;
 using yuengine::runtimeasset::RuntimeAssetFileKind;
 using yuengine::runtimeasset::RuntimeAssetGraphLoadRequest;
@@ -113,6 +124,36 @@ struct LoadedGraph final {
     RuntimeAssetGraphLoadResult result{};
 };
 
+struct ImportCookFixture final {
+    MountTable table;
+    std::array<RuntimeAssetFileDesc, yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        source_files{};
+    std::array<RuntimeAssetFileDesc, yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        cooked_files{};
+    RuntimeAssetImportCookCommandResult command{};
+};
+
+struct ImporterCommitBuffers final {
+    std::array<ResourceBrowserResourceEntry, yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 32U> diagnostics{};
+    std::array<RuntimeAssetLoadedFile, yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        loaded_files{};
+    std::array<RuntimeAssetSceneResourceRef, yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        scene_resource_refs{};
+    std::array<RuntimeAssetSceneCameraRecord, 1U> scene_cameras{};
+    std::array<RuntimeAssetSceneEntityRecord, 3U> scene_entities{};
+    std::array<RuntimeAssetSceneTransformOutputRecord, 3U> scene_transforms{};
+    RuntimeAssetSceneLoaderOutput scene_output{};
+    std::array<ResourceBrowserDepthCatalogRow, yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        catalog_rows{};
+    std::array<ResourceBrowserImporterBoundaryRow, yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        importer_rows{};
+    std::array<ResourceBrowserAssetManagerGapRow, yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        asset_gap_rows{};
+    std::array<ResourceBrowserImporterCommitSelectionLedgerRecord, 1U> ledger{};
+};
+
 using TestFunction = int (*)();
 
 constexpr const char *TEST_ENTRIES_FROM_RUNTIME_PATH =
@@ -153,6 +194,20 @@ constexpr const char *TEST_DEPTH_MISSING_RUNTIME_ASSET =
     "ResourceBrowserDepthWorkflow_ReportsMissingRuntimeAssetLoadAndAssetRecordGaps";
 constexpr const char *TEST_DEPTH_INVALID_SETTING_NO_MUTATION =
     "ResourceBrowserDepthWorkflow_InvalidSettingDoesNotMutateOutputs";
+constexpr const char *TEST_IMPORTER_COMMIT_EXTERNAL_READY =
+    "ResourceBrowserImporterCommitWorkflow_CommitsExternalManifestReadyRuntimeAssetGraph";
+constexpr const char *TEST_IMPORTER_COMMIT_ORIGINAL_PACKAGE =
+    "ResourceBrowserImporterCommitWorkflow_BlocksOriginalPackageWithoutMutation";
+constexpr const char *TEST_IMPORTER_COMMIT_UNSUPPORTED_EXTERNAL =
+    "ResourceBrowserImporterCommitWorkflow_RejectsUnsupportedExternalImportWithoutMutation";
+constexpr const char *TEST_IMPORTER_COMMIT_MISSING_PAYLOAD =
+    "ResourceBrowserImporterCommitWorkflow_RejectsMissingPayloadWithoutMutation";
+constexpr const char *TEST_IMPORTER_COMMIT_INVALID_DEPENDENCY =
+    "ResourceBrowserImporterCommitWorkflow_RejectsInvalidDependencyWithoutMutation";
+constexpr const char *TEST_IMPORTER_COMMIT_UNSUPPORTED_PREVIEW =
+    "ResourceBrowserImporterCommitWorkflow_RejectsUnsupportedPreviewKindWithoutMutation";
+constexpr const char *TEST_IMPORTER_COMMIT_INVALID_SETTING_NO_MUTATION =
+    "ResourceBrowserImporterCommitWorkflow_InvalidSettingDoesNotMutateOutputs";
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -315,6 +370,35 @@ std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> CanonicalDescs() {
     }
 
     return descs;
+}
+
+bool ExecuteImportCookFixture(std::string_view test_name, ImportCookFixture *out_fixture) {
+    if (out_fixture == nullptr) {
+        return FailStep("null import cook fixture output");
+    }
+
+    ImportCookFixture fixture{};
+    if (!CreateMountedTable(TestRoot(test_name), &fixture.table)) {
+        return false;
+    }
+
+    RuntimeAssetImportCookCommandRequest request{};
+    request.command = RuntimeAssetImportCookCommandKind::GenerateDeterministicDiskFixture;
+    request.fixture.mount_table = &fixture.table;
+    request.fixture.mount = MountId(MOUNT_ID);
+    request.fixture.source_files = fixture.source_files.data();
+    request.fixture.source_file_capacity = static_cast<std::uint32_t>(fixture.source_files.size());
+    request.fixture.cooked_files = fixture.cooked_files.data();
+    request.fixture.cooked_file_capacity = static_cast<std::uint32_t>(fixture.cooked_files.size());
+    const RuntimeAssetDataStatus status =
+        ExecuteRuntimeAssetImportCookCommand(request, &fixture.command);
+    if (status != RuntimeAssetDataStatus::Success ||
+        fixture.command.status != RuntimeAssetDataStatus::Success) {
+        return FailStep("import cook command failed");
+    }
+
+    *out_fixture = fixture;
+    return true;
 }
 
 bool LoadCanonicalGraph(
@@ -1093,6 +1177,93 @@ ResourceBrowserDepthWorkflowResult BuildDepthWorkflow(
     return result;
 }
 
+ResourceBrowserExternalAuthoringSourceRow ExternalSourceRowFor(
+    const RuntimeAssetFileDesc &desc,
+    std::uint32_t runtime_asset_index) {
+    ResourceBrowserExternalAuthoringSourceRow row{};
+    row.manifest_path = "External/BlenderExport.yuexport";
+    row.source_path = "external-import:Blender/Cube.fbx";
+    row.payload_path = desc.path;
+    row.target_kind = desc.kind;
+    row.stable_id = desc.stable_id;
+    row.runtime_asset_index = runtime_asset_index;
+    row.dependency_count = 1U;
+    row.manifest_readable = true;
+    row.payload_available = true;
+    row.dependencies_valid = true;
+    row.runtime_asset_descriptor_ready = true;
+    row.manifest_ready = true;
+    row.preview_supported = true;
+    row.selected = true;
+    return row;
+}
+
+ResourceBrowserImporterCommitWorkflowResult BuildImporterCommitWorkflow(
+    ImportCookFixture &fixture,
+    ResourceRegistry &registry,
+    AssetManager &manager,
+    std::uint32_t selected_index,
+    const ResourceBrowserImportSettings &import_settings,
+    std::span<const ResourceBrowserExternalAuthoringSourceRow> external_rows,
+    ImporterCommitBuffers *buffers) {
+    ResourceBrowserImporterCommitWorkflowRequest request{};
+    request.mount_table = &fixture.table;
+    request.mount = MountId(MOUNT_ID);
+    request.import_cook_result = &fixture.command;
+    request.scene = fixture.command.fixture.cooked_scene;
+    request.files =
+        std::span<const RuntimeAssetFileDesc>(fixture.cooked_files.data(), fixture.cooked_files.size());
+    request.external_source_rows = external_rows;
+    request.resource_registry = &registry;
+    request.asset_manager = &manager;
+    request.import_settings = import_settings;
+    request.selected_index = selected_index;
+    request.validate_import_settings = true;
+    request.entries =
+        std::span<ResourceBrowserResourceEntry>(buffers->entries.data(), buffers->entries.size());
+    request.diagnostics =
+        std::span<ResourceBrowserDiagnosticRecord>(buffers->diagnostics.data(), buffers->diagnostics.size());
+    request.loaded_files =
+        std::span<RuntimeAssetLoadedFile>(buffers->loaded_files.data(), buffers->loaded_files.size());
+    request.scene_resource_refs =
+        std::span<RuntimeAssetSceneResourceRef>(
+            buffers->scene_resource_refs.data(),
+            buffers->scene_resource_refs.size());
+    request.scene_cameras =
+        std::span<RuntimeAssetSceneCameraRecord>(
+            buffers->scene_cameras.data(),
+            buffers->scene_cameras.size());
+    request.scene_entities =
+        std::span<RuntimeAssetSceneEntityRecord>(
+            buffers->scene_entities.data(),
+            buffers->scene_entities.size());
+    request.scene_transforms =
+        std::span<RuntimeAssetSceneTransformOutputRecord>(
+            buffers->scene_transforms.data(),
+            buffers->scene_transforms.size());
+    request.scene_output = &buffers->scene_output;
+    request.catalog_rows =
+        std::span<ResourceBrowserDepthCatalogRow>(
+            buffers->catalog_rows.data(),
+            buffers->catalog_rows.size());
+    request.importer_rows =
+        std::span<ResourceBrowserImporterBoundaryRow>(
+            buffers->importer_rows.data(),
+            buffers->importer_rows.size());
+    request.asset_gap_rows =
+        std::span<ResourceBrowserAssetManagerGapRow>(
+            buffers->asset_gap_rows.data(),
+            buffers->asset_gap_rows.size());
+    request.selection_ledger =
+        std::span<ResourceBrowserImporterCommitSelectionLedgerRecord>(
+            buffers->ledger.data(),
+            buffers->ledger.size());
+
+    ResourceBrowserImporterCommitWorkflowResult result{};
+    BuildResourceBrowserImporterCommitWorkflow(request, &result);
+    return result;
+}
+
 bool BuildCanonicalResourceBrowserInputs(
     std::string_view test_name,
     MountTable *table,
@@ -1721,6 +1892,381 @@ int ResourceBrowserDepthWorkflowInvalidSettingDoesNotMutateOutputs() {
     return 0;
 }
 
+int ResourceBrowserImporterCommitWorkflowCommitsExternalManifestReadyRuntimeAssetGraph() {
+    ImportCookFixture fixture{};
+    if (!ExecuteImportCookFixture("ImporterCommitExternalReady", &fixture)) {
+        return Fail("failed to execute import cook fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    const ResourceSnapshot resource_before = registry.Snapshot();
+    const AssetSnapshot asset_before = manager.Snapshot();
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    ResourceBrowserExternalAuthoringSourceRow external =
+        ExternalSourceRowFor(fixture.cooked_files[SELECTED_TEXTURE], SELECTED_TEXTURE);
+    std::array<ResourceBrowserExternalAuthoringSourceRow, 1U> external_rows{external};
+    ResourceBrowserImportSettings import_settings{};
+    import_settings.source_path = external.source_path;
+    import_settings.target_kind = external.target_kind;
+    import_settings.resource_type = fixture.cooked_files[SELECTED_TEXTURE].resource_type;
+    import_settings.asset_type = fixture.cooked_files[SELECTED_TEXTURE].asset_type;
+    import_settings.stable_id = external.stable_id;
+    import_settings.importer_version = 1U;
+    import_settings.expected_schema_version = 1U;
+
+    ImporterCommitBuffers buffers{};
+    const ResourceBrowserImporterCommitWorkflowResult result =
+        BuildImporterCommitWorkflow(
+            fixture,
+            registry,
+            manager,
+            SELECTED_TEXTURE,
+            import_settings,
+            std::span<const ResourceBrowserExternalAuthoringSourceRow>(
+                external_rows.data(),
+                external_rows.size()),
+            &buffers);
+    const ResourceSnapshot resource_after = registry.Snapshot();
+    const AssetSnapshot asset_after = manager.Snapshot();
+    if (!result.Succeeded() ||
+        result.rejected_layer != ResourceBrowserImporterCommitRejectedLayer::None ||
+        result.loaded_file_count != fixture.cooked_files.size() ||
+        !result.preflighted_before_mutation ||
+        !result.mutation_allowed ||
+        !result.mutated_runtime_state ||
+        !result.committed_resource_registry ||
+        !result.committed_asset_manager ||
+        !result.selection_committed ||
+        result.selection_rejected ||
+        !result.external_manifest_ready ||
+        resource_after.registered_resource_count <= resource_before.registered_resource_count ||
+        asset_after.active_asset_count <= asset_before.active_asset_count) {
+        return Fail("importer commit workflow did not commit manifest-ready external graph");
+    }
+
+    if (buffers.catalog_rows[SELECTED_TEXTURE].source_boundary !=
+            ResourceBrowserSourceBoundary::ExternalImportBoundary ||
+        buffers.catalog_rows[SELECTED_TEXTURE].importer_readiness !=
+            ResourceBrowserImporterReadiness::Ready ||
+        buffers.catalog_rows[SELECTED_TEXTURE].asset_manager_gap !=
+            ResourceBrowserAssetManagerGap::None ||
+        !buffers.catalog_rows[SELECTED_TEXTURE].preview_request_ready ||
+        !buffers.importer_rows[SELECTED_TEXTURE].external_import_boundary ||
+        !buffers.importer_rows[SELECTED_TEXTURE].importer_ready ||
+        !buffers.asset_gap_rows[SELECTED_TEXTURE].asset_manager_ready ||
+        !buffers.ledger[0U].selection_committed ||
+        buffers.ledger[0U].selection_rejected ||
+        !buffers.ledger[0U].external_manifest_ready ||
+        !buffers.ledger[0U].committed_resource_registry ||
+        !buffers.ledger[0U].committed_asset_manager ||
+        !buffers.ledger[0U].mutated_runtime_state) {
+        return Fail("importer commit workflow committed row mismatch");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserImporterCommitWorkflowBlocksOriginalPackageWithoutMutation() {
+    ImportCookFixture fixture{};
+    if (!ExecuteImportCookFixture("ImporterCommitOriginalPackage", &fixture)) {
+        return Fail("failed to execute original package import cook fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    const ResourceSnapshot resource_before = registry.Snapshot();
+    const AssetSnapshot asset_before = manager.Snapshot();
+    constexpr std::uint32_t SELECTED_MATERIAL = 3U;
+    ResourceBrowserImportSettings import_settings{};
+    import_settings.source_path = "original-package:th075.dat";
+    import_settings.target_kind = fixture.cooked_files[SELECTED_MATERIAL].kind;
+    import_settings.resource_type = fixture.cooked_files[SELECTED_MATERIAL].resource_type;
+    import_settings.asset_type = fixture.cooked_files[SELECTED_MATERIAL].asset_type;
+    import_settings.stable_id = fixture.cooked_files[SELECTED_MATERIAL].stable_id;
+    import_settings.importer_version = 1U;
+    import_settings.expected_schema_version = 1U;
+
+    ImporterCommitBuffers buffers{};
+    const ResourceBrowserImporterCommitWorkflowResult result =
+        BuildImporterCommitWorkflow(
+            fixture,
+            registry,
+            manager,
+            SELECTED_MATERIAL,
+            import_settings,
+            std::span<const ResourceBrowserExternalAuthoringSourceRow>(),
+            &buffers);
+    if (result.status != ResourceBrowserImporterCommitWorkflowStatus::Rejected ||
+        result.rejected_layer != ResourceBrowserImporterCommitRejectedLayer::OriginalPackageSource ||
+        result.mutated_runtime_state ||
+        !ResourceSnapshotSame(resource_before, registry.Snapshot()) ||
+        !AssetSnapshotSame(asset_before, manager.Snapshot()) ||
+        !buffers.ledger[0U].original_package_rejected ||
+        !buffers.ledger[0U].selection_rejected ||
+        buffers.ledger[0U].selection_committed) {
+        return Fail("importer commit workflow did not reject original package without mutation");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserImporterCommitWorkflowRejectsUnsupportedExternalImportWithoutMutation() {
+    ImportCookFixture fixture{};
+    if (!ExecuteImportCookFixture("ImporterCommitUnsupportedExternal", &fixture)) {
+        return Fail("failed to execute unsupported external import cook fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    const ResourceSnapshot resource_before = registry.Snapshot();
+    const AssetSnapshot asset_before = manager.Snapshot();
+    constexpr std::uint32_t SELECTED_MESH = 0U;
+    ResourceBrowserExternalAuthoringSourceRow external =
+        ExternalSourceRowFor(fixture.cooked_files[SELECTED_MESH], SELECTED_MESH);
+    external.unsupported_feature_count = 1U;
+    std::array<ResourceBrowserExternalAuthoringSourceRow, 1U> external_rows{external};
+    ResourceBrowserImportSettings import_settings{};
+    import_settings.source_path = external.source_path;
+    import_settings.target_kind = external.target_kind;
+    import_settings.resource_type = fixture.cooked_files[SELECTED_MESH].resource_type;
+    import_settings.asset_type = fixture.cooked_files[SELECTED_MESH].asset_type;
+    import_settings.stable_id = external.stable_id;
+    import_settings.importer_version = 1U;
+    import_settings.expected_schema_version = 1U;
+
+    ImporterCommitBuffers buffers{};
+    const ResourceBrowserImporterCommitWorkflowResult result =
+        BuildImporterCommitWorkflow(
+            fixture,
+            registry,
+            manager,
+            SELECTED_MESH,
+            import_settings,
+            std::span<const ResourceBrowserExternalAuthoringSourceRow>(
+                external_rows.data(),
+                external_rows.size()),
+            &buffers);
+    if (result.status != ResourceBrowserImporterCommitWorkflowStatus::Rejected ||
+        result.rejected_layer != ResourceBrowserImporterCommitRejectedLayer::UnsupportedExternalImport ||
+        result.mutated_runtime_state ||
+        !ResourceSnapshotSame(resource_before, registry.Snapshot()) ||
+        !AssetSnapshotSame(asset_before, manager.Snapshot()) ||
+        !buffers.ledger[0U].unsupported_external_rejected ||
+        buffers.ledger[0U].external_manifest_ready ||
+        buffers.ledger[0U].selection_committed) {
+        return Fail("importer commit workflow did not reject unsupported external import");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserImporterCommitWorkflowRejectsMissingPayloadWithoutMutation() {
+    ImportCookFixture fixture{};
+    if (!ExecuteImportCookFixture("ImporterCommitMissingPayload", &fixture)) {
+        return Fail("failed to execute missing payload import cook fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    const ResourceSnapshot resource_before = registry.Snapshot();
+    const AssetSnapshot asset_before = manager.Snapshot();
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    fixture.cooked_files[SELECTED_TEXTURE].path = "Cooked/MissingPayload.yutex";
+    ResourceBrowserExternalAuthoringSourceRow external =
+        ExternalSourceRowFor(fixture.cooked_files[SELECTED_TEXTURE], SELECTED_TEXTURE);
+    std::array<ResourceBrowserExternalAuthoringSourceRow, 1U> external_rows{external};
+    ResourceBrowserImportSettings import_settings{};
+    import_settings.source_path = external.source_path;
+    import_settings.target_kind = external.target_kind;
+    import_settings.resource_type = fixture.cooked_files[SELECTED_TEXTURE].resource_type;
+    import_settings.asset_type = fixture.cooked_files[SELECTED_TEXTURE].asset_type;
+    import_settings.stable_id = external.stable_id;
+    import_settings.importer_version = 1U;
+    import_settings.expected_schema_version = 1U;
+
+    ImporterCommitBuffers buffers{};
+    const ResourceBrowserImporterCommitWorkflowResult result =
+        BuildImporterCommitWorkflow(
+            fixture,
+            registry,
+            manager,
+            SELECTED_TEXTURE,
+            import_settings,
+            std::span<const ResourceBrowserExternalAuthoringSourceRow>(
+                external_rows.data(),
+                external_rows.size()),
+            &buffers);
+    if (result.status != ResourceBrowserImporterCommitWorkflowStatus::Rejected ||
+        result.rejected_layer != ResourceBrowserImporterCommitRejectedLayer::MissingPayload ||
+        result.mutated_runtime_state ||
+        !ResourceSnapshotSame(resource_before, registry.Snapshot()) ||
+        !AssetSnapshotSame(asset_before, manager.Snapshot()) ||
+        !buffers.ledger[0U].missing_payload_rejected ||
+        buffers.ledger[0U].selection_committed) {
+        return Fail("importer commit workflow did not reject missing payload");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserImporterCommitWorkflowRejectsInvalidDependencyWithoutMutation() {
+    ImportCookFixture fixture{};
+    if (!ExecuteImportCookFixture("ImporterCommitInvalidDependency", &fixture)) {
+        return Fail("failed to execute invalid dependency import cook fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    const ResourceSnapshot resource_before = registry.Snapshot();
+    const AssetSnapshot asset_before = manager.Snapshot();
+    constexpr std::uint32_t SELECTED_MATERIAL = 3U;
+    ResourceBrowserExternalAuthoringSourceRow external =
+        ExternalSourceRowFor(fixture.cooked_files[SELECTED_MATERIAL], SELECTED_MATERIAL);
+    external.dependencies_valid = false;
+    std::array<ResourceBrowserExternalAuthoringSourceRow, 1U> external_rows{external};
+    ResourceBrowserImportSettings import_settings{};
+    import_settings.source_path = external.source_path;
+    import_settings.target_kind = external.target_kind;
+    import_settings.resource_type = fixture.cooked_files[SELECTED_MATERIAL].resource_type;
+    import_settings.asset_type = fixture.cooked_files[SELECTED_MATERIAL].asset_type;
+    import_settings.stable_id = external.stable_id;
+    import_settings.importer_version = 1U;
+    import_settings.expected_schema_version = 1U;
+
+    ImporterCommitBuffers buffers{};
+    const ResourceBrowserImporterCommitWorkflowResult result =
+        BuildImporterCommitWorkflow(
+            fixture,
+            registry,
+            manager,
+            SELECTED_MATERIAL,
+            import_settings,
+            std::span<const ResourceBrowserExternalAuthoringSourceRow>(
+                external_rows.data(),
+                external_rows.size()),
+            &buffers);
+    if (result.status != ResourceBrowserImporterCommitWorkflowStatus::Rejected ||
+        result.rejected_layer != ResourceBrowserImporterCommitRejectedLayer::InvalidDependency ||
+        result.mutated_runtime_state ||
+        !ResourceSnapshotSame(resource_before, registry.Snapshot()) ||
+        !AssetSnapshotSame(asset_before, manager.Snapshot()) ||
+        !buffers.ledger[0U].invalid_dependency_rejected ||
+        buffers.ledger[0U].selection_committed) {
+        return Fail("importer commit workflow did not reject invalid dependency");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserImporterCommitWorkflowRejectsUnsupportedPreviewKindWithoutMutation() {
+    ImportCookFixture fixture{};
+    if (!ExecuteImportCookFixture("ImporterCommitUnsupportedPreview", &fixture)) {
+        return Fail("failed to execute unsupported preview import cook fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    const ResourceSnapshot resource_before = registry.Snapshot();
+    const AssetSnapshot asset_before = manager.Snapshot();
+    constexpr std::uint32_t SELECTED_SHADER = 7U;
+    ResourceBrowserExternalAuthoringSourceRow external =
+        ExternalSourceRowFor(fixture.cooked_files[SELECTED_SHADER], SELECTED_SHADER);
+    external.preview_supported = false;
+    std::array<ResourceBrowserExternalAuthoringSourceRow, 1U> external_rows{external};
+    ResourceBrowserImportSettings import_settings{};
+    import_settings.source_path = external.source_path;
+    import_settings.target_kind = external.target_kind;
+    import_settings.resource_type = fixture.cooked_files[SELECTED_SHADER].resource_type;
+    import_settings.asset_type = fixture.cooked_files[SELECTED_SHADER].asset_type;
+    import_settings.stable_id = external.stable_id;
+    import_settings.importer_version = 1U;
+    import_settings.expected_schema_version = 1U;
+
+    ImporterCommitBuffers buffers{};
+    const ResourceBrowserImporterCommitWorkflowResult result =
+        BuildImporterCommitWorkflow(
+            fixture,
+            registry,
+            manager,
+            SELECTED_SHADER,
+            import_settings,
+            std::span<const ResourceBrowserExternalAuthoringSourceRow>(
+                external_rows.data(),
+                external_rows.size()),
+            &buffers);
+    if (result.status != ResourceBrowserImporterCommitWorkflowStatus::Rejected ||
+        result.rejected_layer != ResourceBrowserImporterCommitRejectedLayer::UnsupportedPreviewKind ||
+        result.mutated_runtime_state ||
+        !ResourceSnapshotSame(resource_before, registry.Snapshot()) ||
+        !AssetSnapshotSame(asset_before, manager.Snapshot()) ||
+        !buffers.ledger[0U].unsupported_preview_kind_rejected ||
+        buffers.ledger[0U].selection_committed) {
+        return Fail("importer commit workflow did not reject unsupported preview kind");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserImporterCommitWorkflowInvalidSettingDoesNotMutateOutputs() {
+    ImportCookFixture fixture{};
+    if (!ExecuteImportCookFixture("ImporterCommitInvalidSetting", &fixture)) {
+        return Fail("failed to execute invalid setting import cook fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    const ResourceSnapshot resource_before = registry.Snapshot();
+    const AssetSnapshot asset_before = manager.Snapshot();
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    ResourceBrowserExternalAuthoringSourceRow external =
+        ExternalSourceRowFor(fixture.cooked_files[SELECTED_TEXTURE], SELECTED_TEXTURE);
+    std::array<ResourceBrowserExternalAuthoringSourceRow, 1U> external_rows{external};
+    ResourceBrowserImportSettings import_settings{};
+    import_settings.source_path = external.source_path;
+    import_settings.target_kind = RuntimeAssetFileKind::Material;
+    import_settings.resource_type = fixture.cooked_files[SELECTED_TEXTURE].resource_type;
+    import_settings.asset_type = fixture.cooked_files[SELECTED_TEXTURE].asset_type;
+    import_settings.stable_id = external.stable_id;
+    import_settings.importer_version = 1U;
+    import_settings.expected_schema_version = 1U;
+
+    ImporterCommitBuffers buffers{};
+    buffers.catalog_rows[0U].stable_id = 7007U;
+    buffers.importer_rows[0U].source_path = "sentinel";
+    buffers.asset_gap_rows[0U].stable_id = 8008U;
+    buffers.ledger[0U].selection_committed = true;
+    const ResourceBrowserImporterCommitWorkflowResult result =
+        BuildImporterCommitWorkflow(
+            fixture,
+            registry,
+            manager,
+            SELECTED_TEXTURE,
+            import_settings,
+            std::span<const ResourceBrowserExternalAuthoringSourceRow>(
+                external_rows.data(),
+                external_rows.size()),
+            &buffers);
+    if (result.status != ResourceBrowserImporterCommitWorkflowStatus::InvalidImportSettings ||
+        result.selected_setting_validation !=
+            ResourceBrowserSurfaceSettingValidationCode::TargetKindMismatch ||
+        result.mutated_runtime_state ||
+        result.catalog_row_count != 0U ||
+        result.importer_row_count != 0U ||
+        result.asset_gap_row_count != 0U ||
+        result.selection_ledger_count != 0U ||
+        buffers.catalog_rows[0U].stable_id != 7007U ||
+        std::string_view(buffers.importer_rows[0U].source_path) != std::string_view("sentinel") ||
+        buffers.asset_gap_rows[0U].stable_id != 8008U ||
+        !buffers.ledger[0U].selection_committed ||
+        !ResourceSnapshotSame(resource_before, registry.Snapshot()) ||
+        !AssetSnapshotSame(asset_before, manager.Snapshot())) {
+        return Fail("importer commit workflow invalid setting mutated state or outputs");
+    }
+
+    return 0;
+}
+
 const std::unordered_map<std::string_view, TestFunction> &Tests() {
     static const std::unordered_map<std::string_view, TestFunction> tests{
         {TEST_ENTRIES_FROM_RUNTIME_PATH, ResourceBrowserDiagnosticsEntriesComeFromRuntimeAssetFileResourceAssetPath},
@@ -1742,6 +2288,20 @@ const std::unordered_map<std::string_view, TestFunction> &Tests() {
         {TEST_DEPTH_EXTERNAL_IMPORT, ResourceBrowserDepthWorkflowBlocksExternalImportBoundary},
         {TEST_DEPTH_MISSING_RUNTIME_ASSET, ResourceBrowserDepthWorkflowReportsMissingRuntimeAssetLoadAndAssetRecordGaps},
         {TEST_DEPTH_INVALID_SETTING_NO_MUTATION, ResourceBrowserDepthWorkflowInvalidSettingDoesNotMutateOutputs},
+        {TEST_IMPORTER_COMMIT_EXTERNAL_READY,
+         ResourceBrowserImporterCommitWorkflowCommitsExternalManifestReadyRuntimeAssetGraph},
+        {TEST_IMPORTER_COMMIT_ORIGINAL_PACKAGE,
+         ResourceBrowserImporterCommitWorkflowBlocksOriginalPackageWithoutMutation},
+        {TEST_IMPORTER_COMMIT_UNSUPPORTED_EXTERNAL,
+         ResourceBrowserImporterCommitWorkflowRejectsUnsupportedExternalImportWithoutMutation},
+        {TEST_IMPORTER_COMMIT_MISSING_PAYLOAD,
+         ResourceBrowserImporterCommitWorkflowRejectsMissingPayloadWithoutMutation},
+        {TEST_IMPORTER_COMMIT_INVALID_DEPENDENCY,
+         ResourceBrowserImporterCommitWorkflowRejectsInvalidDependencyWithoutMutation},
+        {TEST_IMPORTER_COMMIT_UNSUPPORTED_PREVIEW,
+         ResourceBrowserImporterCommitWorkflowRejectsUnsupportedPreviewKindWithoutMutation},
+        {TEST_IMPORTER_COMMIT_INVALID_SETTING_NO_MUTATION,
+         ResourceBrowserImporterCommitWorkflowInvalidSettingDoesNotMutateOutputs},
     };
     return tests;
 }

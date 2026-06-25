@@ -523,6 +523,109 @@ bool HasDepthWorkflowOutputCapacity(const ResourceBrowserDepthWorkflowRequest &r
     return true;
 }
 
+bool IsValidImporterCommitWorkflowRequest(
+    const ResourceBrowserImporterCommitWorkflowRequest &request) {
+    if (request.mount_table == nullptr ||
+        request.import_cook_result == nullptr ||
+        request.resource_registry == nullptr ||
+        request.asset_manager == nullptr ||
+        request.scene_output == nullptr) {
+        return false;
+    }
+
+    if (!request.files.empty() && request.files.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.external_source_rows.empty() && request.external_source_rows.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.entries.empty() && request.entries.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.diagnostics.empty() && request.diagnostics.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.loaded_files.empty() && request.loaded_files.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.scene_resource_refs.empty() && request.scene_resource_refs.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.scene_cameras.empty() && request.scene_cameras.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.scene_entities.empty() && request.scene_entities.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.scene_transforms.empty() && request.scene_transforms.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.catalog_rows.empty() && request.catalog_rows.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.importer_rows.empty() && request.importer_rows.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.asset_gap_rows.empty() && request.asset_gap_rows.data() == nullptr) {
+        return false;
+    }
+
+    if (!request.selection_ledger.empty() && request.selection_ledger.data() == nullptr) {
+        return false;
+    }
+
+    return true;
+}
+
+bool HasImporterCommitOutputCapacity(
+    const ResourceBrowserImporterCommitWorkflowRequest &request) {
+    if (request.entries.size() < request.files.size()) {
+        return false;
+    }
+
+    if (request.catalog_rows.size() < request.files.size()) {
+        return false;
+    }
+
+    if (request.importer_rows.size() < request.files.size()) {
+        return false;
+    }
+
+    if (request.asset_gap_rows.size() < request.files.size()) {
+        return false;
+    }
+
+    if (request.loaded_files.size() < request.files.size()) {
+        return false;
+    }
+
+    if (request.scene_resource_refs.size() < request.files.size()) {
+        return false;
+    }
+
+    if (request.scene_cameras.empty() || request.scene_entities.empty() ||
+        request.scene_transforms.empty()) {
+        return false;
+    }
+
+    if (!request.files.empty() && request.selection_ledger.empty()) {
+        return false;
+    }
+
+    return true;
+}
+
 ResourceBrowserImportSettings ImportSettingsForDepthRow(
     const ResourceBrowserDepthWorkflowRequest &request,
     std::uint32_t row_index) {
@@ -541,6 +644,110 @@ ResourceBrowserSurfaceSettingValidationCode ValidateDepthImportSettings(
         ImportSettingsForDepthRow(request, row_index),
         request.entries[row_index],
         row);
+}
+
+ResourceBrowserImportSettings ImportSettingsForImporterCommitRow(
+    const ResourceBrowserImporterCommitWorkflowRequest &request,
+    std::uint32_t row_index) {
+    if (request.validate_import_settings && row_index == request.selected_index) {
+        return request.import_settings;
+    }
+
+    return request.entries[row_index].import_settings;
+}
+
+ResourceBrowserSurfaceSettingValidationCode ValidateImporterCommitImportSettings(
+    const ResourceBrowserImporterCommitWorkflowRequest &request,
+    const ResourceBrowserSurfaceRow &row,
+    std::uint32_t row_index) {
+    return ValidateImportSettings(
+        ImportSettingsForImporterCommitRow(request, row_index),
+        request.entries[row_index],
+        row);
+}
+
+const ResourceBrowserExternalAuthoringSourceRow *FindExternalSourceRow(
+    const ResourceBrowserImporterCommitWorkflowRequest &request,
+    const ResourceBrowserImportSettings &settings) {
+    for (const ResourceBrowserExternalAuthoringSourceRow &row : request.external_source_rows) {
+        if (row.runtime_asset_index != request.selected_index) {
+            continue;
+        }
+
+        if (row.stable_id != settings.stable_id) {
+            continue;
+        }
+
+        if (row.target_kind != settings.target_kind) {
+            continue;
+        }
+
+        return &row;
+    }
+
+    return nullptr;
+}
+
+bool IsExternalManifestReady(const ResourceBrowserExternalAuthoringSourceRow *row) {
+    if (row == nullptr) {
+        return false;
+    }
+
+    return row->manifest_readable &&
+        row->payload_available &&
+        row->dependencies_valid &&
+        row->runtime_asset_descriptor_ready &&
+        row->manifest_ready &&
+        row->unsupported_feature_count == 0U &&
+        row->preview_supported;
+}
+
+ResourceBrowserImporterCommitRejectedLayer RejectedLayerForExternalSource(
+    const ResourceBrowserExternalAuthoringSourceRow *row) {
+    if (row == nullptr) {
+        return ResourceBrowserImporterCommitRejectedLayer::UnsupportedExternalImport;
+    }
+
+    if (!row->manifest_readable ||
+        !row->runtime_asset_descriptor_ready ||
+        !row->manifest_ready ||
+        row->unsupported_feature_count > 0U) {
+        return ResourceBrowserImporterCommitRejectedLayer::UnsupportedExternalImport;
+    }
+
+    if (!row->payload_available) {
+        return ResourceBrowserImporterCommitRejectedLayer::MissingPayload;
+    }
+
+    if (!row->dependencies_valid) {
+        return ResourceBrowserImporterCommitRejectedLayer::InvalidDependency;
+    }
+
+    if (!row->preview_supported) {
+        return ResourceBrowserImporterCommitRejectedLayer::UnsupportedPreviewKind;
+    }
+
+    return ResourceBrowserImporterCommitRejectedLayer::None;
+}
+
+ResourceBrowserImporterReadiness ImporterReadinessForCommit(
+    ResourceBrowserSourceBoundary boundary,
+    ResourceBrowserSurfaceSettingValidationCode validation,
+    const ResourceBrowserExternalAuthoringSourceRow *external_row) {
+    if (validation != ResourceBrowserSurfaceSettingValidationCode::None) {
+        return ImporterReadinessForValidation(validation);
+    }
+
+    if (boundary == ResourceBrowserSourceBoundary::OriginalPackageBoundary) {
+        return ResourceBrowserImporterReadiness::OriginalPackageBoundary;
+    }
+
+    if (boundary == ResourceBrowserSourceBoundary::ExternalImportBoundary &&
+        !IsExternalManifestReady(external_row)) {
+        return ResourceBrowserImporterReadiness::ExternalImportBoundary;
+    }
+
+    return ResourceBrowserImporterReadiness::Ready;
 }
 
 ResourceBrowserSurfaceSelectionResult ResolveVisibleWorkflowSelection(
@@ -764,6 +971,174 @@ ResourceBrowserDepthSelectionLedgerRecord BuildDepthSelectionLedger(
     record.blocked_by_asset_manager_gap = !catalog_row.asset_manager_ready;
     record.preview_request_ready = catalog_row.preview_request_ready;
     return record;
+}
+
+ResourceBrowserDiagnosticsResult BuildImporterCommitDiagnostics(
+    const ResourceBrowserImporterCommitWorkflowRequest &request,
+    const yuengine::runtimeasset::RuntimeAssetLoadedFile *loaded_files,
+    std::uint32_t loaded_file_count) {
+    ResourceBrowserDiagnosticsRequest diagnostics_request{};
+    diagnostics_request.mount_table = request.mount_table;
+    diagnostics_request.mount = request.mount;
+    diagnostics_request.files = request.files.data();
+    diagnostics_request.file_count = static_cast<std::uint32_t>(request.files.size());
+    diagnostics_request.loaded_files = loaded_files;
+    diagnostics_request.loaded_file_count = loaded_file_count;
+    diagnostics_request.resource_registry = request.resource_registry;
+    diagnostics_request.asset_manager = request.asset_manager;
+    diagnostics_request.entries = request.entries.data();
+    diagnostics_request.entry_capacity = static_cast<std::uint32_t>(request.entries.size());
+    diagnostics_request.diagnostics = request.diagnostics.data();
+    diagnostics_request.diagnostic_capacity =
+        static_cast<std::uint32_t>(request.diagnostics.size());
+
+    ResourceBrowserDiagnosticsResult result{};
+    BuildResourceBrowserRuntimeAssetDiagnostics(diagnostics_request, &result);
+    return result;
+}
+
+void EmitImporterCommitRows(
+    const ResourceBrowserImporterCommitWorkflowRequest &request,
+    const ResourceBrowserExternalAuthoringSourceRow *external_row,
+    ResourceBrowserImporterCommitWorkflowStatus status,
+    ResourceBrowserImporterCommitRejectedLayer rejected_layer,
+    ResourceBrowserImporterCommitWorkflowResult *result) {
+    if (result == nullptr) {
+        return;
+    }
+
+    ResourceBrowserSurfaceRequest surface_request{};
+    surface_request.entries =
+        std::span<const ResourceBrowserResourceEntry>(request.entries.data(), request.files.size());
+    surface_request.diagnostics =
+        std::span<const ResourceBrowserDiagnosticRecord>(
+            request.diagnostics.data(),
+            result->diagnostic_count);
+
+    for (std::uint32_t index = 0U; index < request.files.size(); ++index) {
+        const ResourceBrowserSurfaceRow surface_row =
+            BuildRow(surface_request, request.entries[index], index);
+        const ResourceBrowserImportSettings settings =
+            ImportSettingsForImporterCommitRow(request, index);
+        const ResourceBrowserSurfaceSettingValidationCode validation =
+            ValidateImporterCommitImportSettings(request, surface_row, index);
+        const ResourceBrowserSourceBoundary boundary =
+            SourceBoundaryFor(settings.source_path);
+        const ResourceBrowserExternalAuthoringSourceRow *row_external =
+            index == request.selected_index ? external_row : nullptr;
+        const ResourceBrowserImporterReadiness readiness =
+            ImporterReadinessForCommit(boundary, validation, row_external);
+        const ResourceBrowserAssetManagerGap asset_gap =
+            AssetManagerGapFor(request.entries[index], surface_row);
+
+        request.catalog_rows[index] =
+            BuildDepthCatalogRow(
+                request.entries[index],
+                surface_row,
+                settings,
+                boundary,
+                readiness,
+                asset_gap,
+                index,
+                request.selected_index);
+        request.importer_rows[index] =
+            BuildImporterBoundaryRow(
+                settings,
+                boundary,
+                readiness,
+                validation,
+                index,
+                request.selected_index);
+        request.asset_gap_rows[index] =
+            BuildAssetManagerGapRow(
+                request.entries[index],
+                surface_row,
+                asset_gap,
+                index,
+                request.selected_index);
+    }
+
+    const ResourceBrowserDepthCatalogRow &selected_row =
+        request.catalog_rows[request.selected_index];
+    ResourceBrowserImporterCommitSelectionLedgerRecord ledger{};
+    ledger.selected_index = request.selected_index;
+    ledger.status = status;
+    ledger.rejected_layer = rejected_layer;
+    ledger.source_boundary = selected_row.source_boundary;
+    ledger.importer_readiness = selected_row.importer_readiness;
+    ledger.asset_manager_gap = selected_row.asset_manager_gap;
+    ledger.setting_validation = result->selected_setting_validation;
+    ledger.runtime_status = result->runtime_status;
+    ledger.resource = selected_row.resource;
+    ledger.asset = selected_row.asset;
+    ledger.stable_id = selected_row.stable_id;
+    ledger.preflighted_before_mutation = result->preflighted_before_mutation;
+    ledger.mutation_allowed = result->mutation_allowed;
+    ledger.committed_resource_registry = result->committed_resource_registry;
+    ledger.committed_asset_manager = result->committed_asset_manager;
+    ledger.selection_committed = status == ResourceBrowserImporterCommitWorkflowStatus::Success &&
+        selected_row.preview_request_ready;
+    ledger.selection_rejected = !ledger.selection_committed;
+    ledger.mutated_runtime_state = result->mutated_runtime_state;
+    ledger.external_manifest_ready = IsExternalManifestReady(external_row);
+    ledger.original_package_rejected =
+        rejected_layer == ResourceBrowserImporterCommitRejectedLayer::OriginalPackageSource;
+    ledger.unsupported_external_rejected =
+        rejected_layer == ResourceBrowserImporterCommitRejectedLayer::UnsupportedExternalImport;
+    ledger.missing_payload_rejected =
+        rejected_layer == ResourceBrowserImporterCommitRejectedLayer::MissingPayload;
+    ledger.invalid_dependency_rejected =
+        rejected_layer == ResourceBrowserImporterCommitRejectedLayer::InvalidDependency;
+    ledger.unsupported_preview_kind_rejected =
+        rejected_layer == ResourceBrowserImporterCommitRejectedLayer::UnsupportedPreviewKind;
+    request.selection_ledger[0U] = ledger;
+
+    result->catalog_row_count = static_cast<std::uint32_t>(request.files.size());
+    result->importer_row_count = static_cast<std::uint32_t>(request.files.size());
+    result->asset_gap_row_count = static_cast<std::uint32_t>(request.files.size());
+    result->selection_ledger_count = 1U;
+    result->emitted_catalog_rows = result->catalog_row_count > 0U;
+    result->emitted_importer_rows = result->importer_row_count > 0U;
+    result->emitted_asset_gap_rows = result->asset_gap_row_count > 0U;
+    result->emitted_selection_ledger = true;
+    result->selection_committed = ledger.selection_committed;
+    result->selection_rejected = ledger.selection_rejected;
+    result->external_manifest_ready = ledger.external_manifest_ready;
+}
+
+ResourceBrowserImporterCommitRejectedLayer RejectedLayerForSelectedPreflight(
+    const ResourceBrowserImporterCommitWorkflowRequest &request,
+    const ResourceBrowserResourceEntry &entry,
+    const ResourceBrowserImportSettings &settings,
+    const ResourceBrowserExternalAuthoringSourceRow *external_row) {
+    const ResourceBrowserSourceBoundary boundary = SourceBoundaryFor(settings.source_path);
+    if (boundary == ResourceBrowserSourceBoundary::OriginalPackageBoundary) {
+        return ResourceBrowserImporterCommitRejectedLayer::OriginalPackageSource;
+    }
+
+    if (boundary == ResourceBrowserSourceBoundary::ExternalImportBoundary) {
+        const ResourceBrowserImporterCommitRejectedLayer external_rejected =
+            RejectedLayerForExternalSource(external_row);
+        if (external_rejected != ResourceBrowserImporterCommitRejectedLayer::None) {
+            return external_rejected;
+        }
+    }
+
+    if (!entry.from_file_vfs || !entry.from_runtime_asset_validation ||
+        entry.file_status != yuengine::file::FileStatus::Success ||
+        entry.validation.status == RuntimeAssetDataStatus::FileReadFailed) {
+        return ResourceBrowserImporterCommitRejectedLayer::MissingPayload;
+    }
+
+    if (entry.dependency_state != ResourceBrowserDependencyState::Ready) {
+        return ResourceBrowserImporterCommitRejectedLayer::InvalidDependency;
+    }
+
+    if (!IsPreviewSupportedKind(entry.validation.kind)) {
+        return ResourceBrowserImporterCommitRejectedLayer::UnsupportedPreviewKind;
+    }
+
+    return ResourceBrowserImporterCommitRejectedLayer::None;
 }
 
 }
@@ -1108,6 +1483,172 @@ ResourceBrowserDepthWorkflowStatus BuildResourceBrowserDepthWorkflowSurface(
     result.blocked_by_external_import = ledger.blocked_by_external_import;
     result.blocked_by_importer_gap = ledger.blocked_by_importer_gap;
     result.blocked_by_asset_manager_gap = ledger.blocked_by_asset_manager_gap;
+    *out_result = result;
+    return result.status;
+}
+
+ResourceBrowserImporterCommitWorkflowStatus BuildResourceBrowserImporterCommitWorkflow(
+    const ResourceBrowserImporterCommitWorkflowRequest &request,
+    ResourceBrowserImporterCommitWorkflowResult *out_result) {
+    if (out_result == nullptr) {
+        return ResourceBrowserImporterCommitWorkflowStatus::InvalidArgument;
+    }
+
+    ResourceBrowserImporterCommitWorkflowResult result{};
+    if (!IsValidImporterCommitWorkflowRequest(request)) {
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.files.empty() || request.selected_index >= request.files.size()) {
+        result.status = ResourceBrowserImporterCommitWorkflowStatus::EntryOutOfRange;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!HasImporterCommitOutputCapacity(request)) {
+        result.status = ResourceBrowserImporterCommitWorkflowStatus::OutputCapacityExceeded;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.import_cook_result->status != RuntimeAssetDataStatus::Success) {
+        result.status = ResourceBrowserImporterCommitWorkflowStatus::InvalidImportCookCommand;
+        result.rejected_layer = ResourceBrowserImporterCommitRejectedLayer::ImportCookCommand;
+        result.runtime_status = request.import_cook_result->status;
+        *out_result = result;
+        return result.status;
+    }
+
+    ResourceBrowserDiagnosticsResult preflight =
+        BuildImporterCommitDiagnostics(request, nullptr, 0U);
+    result.preflight_diagnostics_status = preflight.status;
+    result.entry_count = preflight.entry_count;
+    result.diagnostic_count = preflight.diagnostic_count;
+    result.preflighted_before_mutation = true;
+    if (preflight.status != ResourceBrowserDiagnosticsStatus::Success) {
+        result.status = ResourceBrowserImporterCommitWorkflowStatus::OutputCapacityExceeded;
+        *out_result = result;
+        return result.status;
+    }
+
+    ResourceBrowserSurfaceRequest surface_request{};
+    surface_request.entries =
+        std::span<const ResourceBrowserResourceEntry>(request.entries.data(), request.files.size());
+    surface_request.diagnostics =
+        std::span<const ResourceBrowserDiagnosticRecord>(
+            request.diagnostics.data(),
+            result.diagnostic_count);
+    const ResourceBrowserSurfaceRow selected_surface_row =
+        BuildRow(surface_request, request.entries[request.selected_index], request.selected_index);
+    const ResourceBrowserSurfaceSettingValidationCode selected_validation =
+        ValidateImporterCommitImportSettings(request, selected_surface_row, request.selected_index);
+    result.selected_setting_validation = selected_validation;
+    const ResourceBrowserImportSettings selected_settings =
+        ImportSettingsForImporterCommitRow(request, request.selected_index);
+    const ResourceBrowserExternalAuthoringSourceRow *external_row =
+        SourceBoundaryFor(selected_settings.source_path) ==
+                ResourceBrowserSourceBoundary::ExternalImportBoundary
+            ? FindExternalSourceRow(request, selected_settings)
+            : nullptr;
+    if (selected_validation != ResourceBrowserSurfaceSettingValidationCode::None) {
+        result.status = ResourceBrowserImporterCommitWorkflowStatus::InvalidImportSettings;
+        result.rejected_layer = ResourceBrowserImporterCommitRejectedLayer::None;
+        result.runtime_status = request.entries[request.selected_index].validation.status;
+        *out_result = result;
+        return result.status;
+    }
+
+    const ResourceBrowserImporterCommitRejectedLayer preflight_rejected =
+        RejectedLayerForSelectedPreflight(
+            request,
+            request.entries[request.selected_index],
+            selected_settings,
+            external_row);
+    if (preflight_rejected != ResourceBrowserImporterCommitRejectedLayer::None) {
+        result.status = ResourceBrowserImporterCommitWorkflowStatus::Rejected;
+        result.rejected_layer = preflight_rejected;
+        result.runtime_status = request.entries[request.selected_index].validation.status;
+        EmitImporterCommitRows(
+            request,
+            external_row,
+            result.status,
+            result.rejected_layer,
+            &result);
+        *out_result = result;
+        return result.status;
+    }
+
+    result.mutation_allowed = true;
+    yuengine::runtimeasset::RuntimeAssetGraphLoadRequest load_request{};
+    load_request.mount_table = request.mount_table;
+    load_request.mount = request.mount;
+    load_request.scene_path = yuengine::file::VirtualPath(request.scene.path);
+    load_request.scene_resource_type = request.scene.resource_type;
+    load_request.scene_asset_type = request.scene.asset_type;
+    load_request.scene_stable_id = request.scene.stable_id;
+    load_request.files = request.files.data();
+    load_request.file_count = static_cast<std::uint32_t>(request.files.size());
+    load_request.resource_registry = request.resource_registry;
+    load_request.asset_manager = request.asset_manager;
+    load_request.loaded_files = request.loaded_files.data();
+    load_request.loaded_file_capacity = static_cast<std::uint32_t>(request.loaded_files.size());
+    load_request.scene_resource_refs = request.scene_resource_refs.data();
+    load_request.scene_resource_ref_capacity =
+        static_cast<std::uint32_t>(request.scene_resource_refs.size());
+    load_request.scene_cameras = request.scene_cameras.data();
+    load_request.scene_camera_capacity = static_cast<std::uint32_t>(request.scene_cameras.size());
+    load_request.scene_entities = request.scene_entities.data();
+    load_request.scene_entity_capacity =
+        static_cast<std::uint32_t>(request.scene_entities.size());
+    load_request.scene_transforms = request.scene_transforms.data();
+    load_request.scene_transform_capacity =
+        static_cast<std::uint32_t>(request.scene_transforms.size());
+    load_request.scene_output = request.scene_output;
+
+    result.runtime_status =
+        yuengine::runtimeasset::LoadRuntimeAssetDataGraph(load_request, &result.graph_load_result);
+    result.loaded_file_count = result.graph_load_result.loaded_file_count;
+    result.mutated_runtime_state = result.graph_load_result.transaction_result.mutated_state;
+    if (result.runtime_status != RuntimeAssetDataStatus::Success) {
+        result.status = ResourceBrowserImporterCommitWorkflowStatus::RuntimeLoadFailed;
+        result.rejected_layer = ResourceBrowserImporterCommitRejectedLayer::RuntimeAssetLoad;
+        EmitImporterCommitRows(
+            request,
+            external_row,
+            result.status,
+            result.rejected_layer,
+            &result);
+        *out_result = result;
+        return result.status;
+    }
+
+    ResourceBrowserDiagnosticsResult post_commit =
+        BuildImporterCommitDiagnostics(
+            request,
+            request.loaded_files.data(),
+            result.graph_load_result.loaded_file_count);
+    result.post_commit_diagnostics_status = post_commit.status;
+    result.entry_count = post_commit.entry_count;
+    result.diagnostic_count = post_commit.diagnostic_count;
+    if (post_commit.status != ResourceBrowserDiagnosticsStatus::Success) {
+        result.status = ResourceBrowserImporterCommitWorkflowStatus::OutputCapacityExceeded;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.status = ResourceBrowserImporterCommitWorkflowStatus::Success;
+    result.rejected_layer = ResourceBrowserImporterCommitRejectedLayer::None;
+    result.committed_resource_registry =
+        result.graph_load_result.transaction_result.committed_resource_count > 0U;
+    result.committed_asset_manager =
+        result.graph_load_result.transaction_result.committed_asset_count > 0U;
+    EmitImporterCommitRows(
+        request,
+        external_row,
+        result.status,
+        result.rejected_layer,
+        &result);
     *out_result = result;
     return result.status;
 }
