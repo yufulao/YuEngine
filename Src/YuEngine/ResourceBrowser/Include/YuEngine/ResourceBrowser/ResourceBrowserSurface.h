@@ -66,6 +66,44 @@ enum class ResourceBrowserVisibleWorkflowStatus {
     InvalidImportSettings
 };
 
+enum class ResourceBrowserDepthWorkflowStatus {
+    Success,
+    InvalidArgument,
+    OutputCapacityExceeded,
+    EntryOutOfRange,
+    InvalidImportSettings
+};
+
+enum class ResourceBrowserSourceBoundary {
+    RuntimeAssetSource,
+    OriginalPackageBoundary,
+    ExternalImportBoundary
+};
+
+enum class ResourceBrowserImporterReadiness {
+    Ready,
+    MissingSourcePath,
+    MissingTargetKind,
+    MissingResourceType,
+    MissingAssetType,
+    MissingStableId,
+    UnsupportedImporterVersion,
+    UnsupportedSchemaVersion,
+    SourceHashMismatch,
+    TargetKindMismatch,
+    OriginalPackageBoundary,
+    ExternalImportBoundary
+};
+
+enum class ResourceBrowserAssetManagerGap {
+    None,
+    MissingRuntimeLoadRecord,
+    MissingResourceRegistryRecord,
+    MissingAssetRecord,
+    DependencyBlocked,
+    UnsupportedPreviewKind
+};
+
 struct ResourceBrowserSurfaceRow final {
     const char *locator_path = nullptr;
     yuengine::runtimeasset::RuntimeAssetFileKind declared_kind =
@@ -256,6 +294,139 @@ struct ResourceBrowserVisibleWorkflowResult final {
     }
 };
 
+struct ResourceBrowserDepthCatalogRow final {
+    const char *source_path = nullptr;
+    yuengine::runtimeasset::RuntimeAssetFileKind target_kind =
+        yuengine::runtimeasset::RuntimeAssetFileKind::Unknown;
+    yuengine::runtimeasset::RuntimeAssetFileKind runtime_kind =
+        yuengine::runtimeasset::RuntimeAssetFileKind::Unknown;
+    ResourceBrowserSourceBoundary source_boundary =
+        ResourceBrowserSourceBoundary::RuntimeAssetSource;
+    ResourceBrowserImporterReadiness importer_readiness =
+        ResourceBrowserImporterReadiness::MissingSourcePath;
+    ResourceBrowserAssetManagerGap asset_manager_gap =
+        ResourceBrowserAssetManagerGap::MissingRuntimeLoadRecord;
+    ResourceBrowserSurfacePreviewState preview_state =
+        ResourceBrowserSurfacePreviewState::Unknown;
+    ResourceBrowserDependencyState dependency_state =
+        ResourceBrowserDependencyState::Unknown;
+    yuengine::resource::ResourceHandle resource;
+    yuengine::asset::AssetHandle asset;
+    std::uint64_t stable_id = 0U;
+    std::uint64_t source_hash = 0U;
+    std::uint64_t payload_hash = 0U;
+    bool selected = false;
+    bool importer_ready = false;
+    bool asset_manager_ready = false;
+    bool preview_request_ready = false;
+};
+
+struct ResourceBrowserImporterBoundaryRow final {
+    const char *source_path = nullptr;
+    yuengine::runtimeasset::RuntimeAssetFileKind target_kind =
+        yuengine::runtimeasset::RuntimeAssetFileKind::Unknown;
+    ResourceBrowserSourceBoundary source_boundary =
+        ResourceBrowserSourceBoundary::RuntimeAssetSource;
+    ResourceBrowserImporterReadiness readiness =
+        ResourceBrowserImporterReadiness::MissingSourcePath;
+    ResourceBrowserSurfaceSettingValidationCode setting_validation =
+        ResourceBrowserSurfaceSettingValidationCode::None;
+    std::uint64_t stable_id = 0U;
+    bool selected = false;
+    bool original_package_boundary = false;
+    bool external_import_boundary = false;
+    bool importer_ready = false;
+};
+
+struct ResourceBrowserAssetManagerGapRow final {
+    const char *source_path = nullptr;
+    ResourceBrowserAssetManagerGap gap = ResourceBrowserAssetManagerGap::None;
+    ResourceBrowserDependencyState dependency_state =
+        ResourceBrowserDependencyState::Unknown;
+    yuengine::resource::ResourceHandle resource;
+    yuengine::asset::AssetHandle asset;
+    std::uint64_t stable_id = 0U;
+    bool selected = false;
+    bool has_runtime_loaded_record = false;
+    bool has_resource_registry_record = false;
+    bool has_asset_record = false;
+    bool resource_handle_valid = false;
+    bool asset_handle_valid = false;
+    bool asset_manager_ready = false;
+};
+
+struct ResourceBrowserDepthSelectionLedgerRecord final {
+    std::uint32_t selected_index = 0U;
+    ResourceBrowserDepthWorkflowStatus status =
+        ResourceBrowserDepthWorkflowStatus::InvalidArgument;
+    ResourceBrowserSourceBoundary source_boundary =
+        ResourceBrowserSourceBoundary::RuntimeAssetSource;
+    ResourceBrowserImporterReadiness importer_readiness =
+        ResourceBrowserImporterReadiness::MissingSourcePath;
+    ResourceBrowserAssetManagerGap asset_manager_gap =
+        ResourceBrowserAssetManagerGap::MissingRuntimeLoadRecord;
+    ResourceBrowserSurfacePreviewState preview_state =
+        ResourceBrowserSurfacePreviewState::Unknown;
+    yuengine::resource::ResourceHandle resource;
+    yuengine::asset::AssetHandle asset;
+    std::uint64_t stable_id = 0U;
+    bool selection_committed = false;
+    bool selection_rejected = false;
+    bool blocked_by_original_package = false;
+    bool blocked_by_external_import = false;
+    bool blocked_by_importer_gap = false;
+    bool blocked_by_asset_manager_gap = false;
+    bool preview_request_ready = false;
+    bool mutated_runtime_state = false;
+};
+
+struct ResourceBrowserDepthWorkflowRequest final {
+    std::span<const ResourceBrowserResourceEntry> entries{};
+    std::span<const ResourceBrowserDiagnosticRecord> diagnostics{};
+    ResourceBrowserImportSettings import_settings{};
+    std::uint32_t selected_index = 0U;
+    bool validate_import_settings = false;
+    std::span<ResourceBrowserDepthCatalogRow> catalog_rows{};
+    std::span<ResourceBrowserImporterBoundaryRow> importer_rows{};
+    std::span<ResourceBrowserAssetManagerGapRow> asset_gap_rows{};
+    std::span<ResourceBrowserDepthSelectionLedgerRecord> selection_ledger{};
+};
+
+struct ResourceBrowserDepthWorkflowResult final {
+    ResourceBrowserDepthWorkflowStatus status =
+        ResourceBrowserDepthWorkflowStatus::InvalidArgument;
+    ResourceBrowserSurfaceSelectionStatus selection_status =
+        ResourceBrowserSurfaceSelectionStatus::InvalidArgument;
+    ResourceBrowserSurfaceSettingValidationCode selected_setting_validation =
+        ResourceBrowserSurfaceSettingValidationCode::None;
+    std::uint32_t catalog_row_count = 0U;
+    std::uint32_t importer_row_count = 0U;
+    std::uint32_t asset_gap_row_count = 0U;
+    std::uint32_t selection_ledger_count = 0U;
+    std::uint32_t original_package_boundary_count = 0U;
+    std::uint32_t external_import_boundary_count = 0U;
+    std::uint32_t importer_ready_count = 0U;
+    std::uint32_t asset_manager_ready_count = 0U;
+    std::uint32_t preview_request_ready_count = 0U;
+    bool emitted_catalog_rows = false;
+    bool emitted_importer_rows = false;
+    bool emitted_asset_gap_rows = false;
+    bool emitted_selection_ledger = false;
+    bool selection_committed = false;
+    bool selection_rejected = false;
+    bool blocked_by_original_package = false;
+    bool blocked_by_external_import = false;
+    bool blocked_by_importer_gap = false;
+    bool blocked_by_asset_manager_gap = false;
+    bool mutated_runtime_state = false;
+    bool opened_native_window = false;
+    bool used_web_ui = false;
+
+    bool Succeeded() const {
+        return status == ResourceBrowserDepthWorkflowStatus::Success;
+    }
+};
+
 ResourceBrowserSurfaceStatus BuildResourceBrowserNativeSurface(
     const ResourceBrowserSurfaceRequest &request,
     ResourceBrowserSurfaceResult *out_result);
@@ -267,5 +438,9 @@ ResourceBrowserSurfaceSelectionStatus ResolveResourceBrowserSurfaceSelection(
 ResourceBrowserVisibleWorkflowStatus BuildResourceBrowserVisibleWorkflowSurface(
     const ResourceBrowserVisibleWorkflowRequest &request,
     ResourceBrowserVisibleWorkflowResult *out_result);
+
+ResourceBrowserDepthWorkflowStatus BuildResourceBrowserDepthWorkflowSurface(
+    const ResourceBrowserDepthWorkflowRequest &request,
+    ResourceBrowserDepthWorkflowResult *out_result);
 
 }

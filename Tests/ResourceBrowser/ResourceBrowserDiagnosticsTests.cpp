@@ -52,6 +52,17 @@ using yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionStatus;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceSettingValidationCode;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceStatus;
 using yuengine::resourcebrowser::BuildResourceBrowserVisibleWorkflowSurface;
+using yuengine::resourcebrowser::BuildResourceBrowserDepthWorkflowSurface;
+using yuengine::resourcebrowser::ResourceBrowserAssetManagerGap;
+using yuengine::resourcebrowser::ResourceBrowserAssetManagerGapRow;
+using yuengine::resourcebrowser::ResourceBrowserDepthCatalogRow;
+using yuengine::resourcebrowser::ResourceBrowserDepthSelectionLedgerRecord;
+using yuengine::resourcebrowser::ResourceBrowserDepthWorkflowRequest;
+using yuengine::resourcebrowser::ResourceBrowserDepthWorkflowResult;
+using yuengine::resourcebrowser::ResourceBrowserDepthWorkflowStatus;
+using yuengine::resourcebrowser::ResourceBrowserImporterBoundaryRow;
+using yuengine::resourcebrowser::ResourceBrowserImporterReadiness;
+using yuengine::resourcebrowser::ResourceBrowserSourceBoundary;
 using yuengine::resourcebrowser::ResourceBrowserVisibleDiagnosticRow;
 using yuengine::resourcebrowser::ResourceBrowserVisibleImportSettingRow;
 using yuengine::resourcebrowser::ResourceBrowserVisibleSelectionLedgerRecord;
@@ -132,6 +143,16 @@ constexpr const char *TEST_VISIBLE_DIAGNOSTIC_BLOCK =
     "ResourceBrowserVisibleWorkflow_DiagnosticBlockRejectsPreview";
 constexpr const char *TEST_VISIBLE_INVALID_SETTING_NO_MUTATION =
     "ResourceBrowserVisibleWorkflow_InvalidSettingDoesNotMutateOutputs";
+constexpr const char *TEST_DEPTH_GAP_ROWS =
+    "ResourceBrowserDepthWorkflow_EmitsCatalogImporterAndAssetGaps";
+constexpr const char *TEST_DEPTH_ORIGINAL_PACKAGE =
+    "ResourceBrowserDepthWorkflow_BlocksOriginalPackageBoundary";
+constexpr const char *TEST_DEPTH_EXTERNAL_IMPORT =
+    "ResourceBrowserDepthWorkflow_BlocksExternalImportBoundary";
+constexpr const char *TEST_DEPTH_MISSING_RUNTIME_ASSET =
+    "ResourceBrowserDepthWorkflow_ReportsMissingRuntimeAssetLoadAndAssetRecordGaps";
+constexpr const char *TEST_DEPTH_INVALID_SETTING_NO_MUTATION =
+    "ResourceBrowserDepthWorkflow_InvalidSettingDoesNotMutateOutputs";
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -1040,6 +1061,38 @@ ResourceBrowserVisibleWorkflowResult BuildVisibleWorkflow(
     return result;
 }
 
+ResourceBrowserDepthWorkflowResult BuildDepthWorkflow(
+    const std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> &entries,
+    const ResourceBrowserDiagnosticRecord *diagnostics,
+    std::uint32_t diagnostic_count,
+    std::uint32_t selected_index,
+    const ResourceBrowserImportSettings &import_settings,
+    std::array<ResourceBrowserDepthCatalogRow, FIXTURE_FILE_COUNT> *catalog_rows,
+    std::array<ResourceBrowserImporterBoundaryRow, FIXTURE_FILE_COUNT> *importer_rows,
+    std::array<ResourceBrowserAssetManagerGapRow, FIXTURE_FILE_COUNT> *asset_gap_rows,
+    std::array<ResourceBrowserDepthSelectionLedgerRecord, 1U> *ledger) {
+    ResourceBrowserDepthWorkflowRequest request{};
+    request.entries = std::span<const ResourceBrowserResourceEntry>(entries.data(), entries.size());
+    request.diagnostics = std::span<const ResourceBrowserDiagnosticRecord>(
+        diagnostics,
+        diagnostic_count);
+    request.selected_index = selected_index;
+    request.import_settings = import_settings;
+    request.validate_import_settings = true;
+    request.catalog_rows =
+        std::span<ResourceBrowserDepthCatalogRow>(catalog_rows->data(), catalog_rows->size());
+    request.importer_rows =
+        std::span<ResourceBrowserImporterBoundaryRow>(importer_rows->data(), importer_rows->size());
+    request.asset_gap_rows =
+        std::span<ResourceBrowserAssetManagerGapRow>(asset_gap_rows->data(), asset_gap_rows->size());
+    request.selection_ledger =
+        std::span<ResourceBrowserDepthSelectionLedgerRecord>(ledger->data(), ledger->size());
+
+    ResourceBrowserDepthWorkflowResult result{};
+    BuildResourceBrowserDepthWorkflowSurface(request, &result);
+    return result;
+}
+
 bool BuildCanonicalResourceBrowserInputs(
     std::string_view test_name,
     MountTable *table,
@@ -1324,6 +1377,350 @@ int ResourceBrowserVisibleWorkflowInvalidSettingDoesNotMutateOutputs() {
     return 0;
 }
 
+int ResourceBrowserDepthWorkflowEmitsCatalogImporterAndAssetGaps() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    ResourceBrowserDiagnosticsResult diagnostics_result{};
+    if (!BuildCanonicalResourceBrowserInputs(
+            "DepthWorkflowGapRows",
+            &table,
+            &registry,
+            &manager,
+            &entries,
+            &diagnostics,
+            &diagnostics_result)) {
+        return Fail("failed to build depth workflow canonical inputs");
+    }
+
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    std::array<ResourceBrowserDepthCatalogRow, FIXTURE_FILE_COUNT> catalog_rows{};
+    std::array<ResourceBrowserImporterBoundaryRow, FIXTURE_FILE_COUNT> importer_rows{};
+    std::array<ResourceBrowserAssetManagerGapRow, FIXTURE_FILE_COUNT> asset_gap_rows{};
+    std::array<ResourceBrowserDepthSelectionLedgerRecord, 1U> ledger{};
+    ResourceBrowserImportSettings import_settings = entries[SELECTED_TEXTURE].import_settings;
+    import_settings.expected_source_hash = entries[SELECTED_TEXTURE].validation.source_hash;
+
+    const ResourceBrowserDepthWorkflowResult result =
+        BuildDepthWorkflow(
+            entries,
+            diagnostics.data(),
+            diagnostics_result.diagnostic_count,
+            SELECTED_TEXTURE,
+            import_settings,
+            &catalog_rows,
+            &importer_rows,
+            &asset_gap_rows,
+            &ledger);
+    if (!result.Succeeded() ||
+        result.catalog_row_count != FIXTURE_FILE_COUNT ||
+        result.importer_row_count != FIXTURE_FILE_COUNT ||
+        result.asset_gap_row_count != FIXTURE_FILE_COUNT ||
+        result.importer_ready_count != FIXTURE_FILE_COUNT ||
+        result.asset_manager_ready_count != FIXTURE_FILE_COUNT ||
+        result.preview_request_ready_count != FIXTURE_FILE_COUNT ||
+        !result.selection_committed ||
+        result.selection_rejected ||
+        result.mutated_runtime_state ||
+        result.opened_native_window ||
+        result.used_web_ui) {
+        return Fail("depth workflow did not emit ready catalog/importer/asset gap rows");
+    }
+
+    if (!catalog_rows[SELECTED_TEXTURE].selected ||
+        std::string_view(catalog_rows[SELECTED_TEXTURE].source_path) !=
+            std::string_view(import_settings.source_path) ||
+        catalog_rows[SELECTED_TEXTURE].target_kind != import_settings.target_kind ||
+        catalog_rows[SELECTED_TEXTURE].source_boundary !=
+            ResourceBrowserSourceBoundary::RuntimeAssetSource ||
+        catalog_rows[SELECTED_TEXTURE].importer_readiness !=
+            ResourceBrowserImporterReadiness::Ready ||
+        catalog_rows[SELECTED_TEXTURE].asset_manager_gap !=
+            ResourceBrowserAssetManagerGap::None ||
+        !catalog_rows[SELECTED_TEXTURE].preview_request_ready ||
+        !importer_rows[SELECTED_TEXTURE].importer_ready ||
+        !asset_gap_rows[SELECTED_TEXTURE].asset_manager_ready ||
+        !ledger[0U].selection_committed ||
+        ledger[0U].blocked_by_importer_gap ||
+        ledger[0U].blocked_by_asset_manager_gap) {
+        return Fail("depth workflow selected ready row mismatch");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserDepthWorkflowBlocksOriginalPackageBoundary() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    ResourceBrowserDiagnosticsResult diagnostics_result{};
+    if (!BuildCanonicalResourceBrowserInputs(
+            "DepthWorkflowOriginalPackage",
+            &table,
+            &registry,
+            &manager,
+            &entries,
+            &diagnostics,
+            &diagnostics_result)) {
+        return Fail("failed to build original package canonical inputs");
+    }
+
+    constexpr std::uint32_t SELECTED_MATERIAL = 3U;
+    std::array<ResourceBrowserDepthCatalogRow, FIXTURE_FILE_COUNT> catalog_rows{};
+    std::array<ResourceBrowserImporterBoundaryRow, FIXTURE_FILE_COUNT> importer_rows{};
+    std::array<ResourceBrowserAssetManagerGapRow, FIXTURE_FILE_COUNT> asset_gap_rows{};
+    std::array<ResourceBrowserDepthSelectionLedgerRecord, 1U> ledger{};
+    ResourceBrowserImportSettings import_settings = entries[SELECTED_MATERIAL].import_settings;
+    import_settings.source_path = "original-package:th075.dat";
+    import_settings.expected_source_hash = entries[SELECTED_MATERIAL].validation.source_hash;
+
+    const ResourceBrowserDepthWorkflowResult result =
+        BuildDepthWorkflow(
+            entries,
+            diagnostics.data(),
+            diagnostics_result.diagnostic_count,
+            SELECTED_MATERIAL,
+            import_settings,
+            &catalog_rows,
+            &importer_rows,
+            &asset_gap_rows,
+            &ledger);
+    if (!result.Succeeded() ||
+        result.selection_committed ||
+        !result.selection_rejected ||
+        result.original_package_boundary_count != 1U ||
+        !result.blocked_by_original_package ||
+        result.blocked_by_external_import ||
+        !result.blocked_by_importer_gap ||
+        result.blocked_by_asset_manager_gap) {
+        return Fail("depth workflow did not block original package boundary");
+    }
+
+    if (catalog_rows[SELECTED_MATERIAL].source_boundary !=
+            ResourceBrowserSourceBoundary::OriginalPackageBoundary ||
+        std::string_view(catalog_rows[SELECTED_MATERIAL].source_path) !=
+            std::string_view("original-package:th075.dat") ||
+        catalog_rows[SELECTED_MATERIAL].importer_readiness !=
+            ResourceBrowserImporterReadiness::OriginalPackageBoundary ||
+        importer_rows[SELECTED_MATERIAL].source_boundary !=
+            ResourceBrowserSourceBoundary::OriginalPackageBoundary ||
+        std::string_view(importer_rows[SELECTED_MATERIAL].source_path) !=
+            std::string_view("original-package:th075.dat") ||
+        !importer_rows[SELECTED_MATERIAL].original_package_boundary ||
+        importer_rows[SELECTED_MATERIAL].external_import_boundary ||
+        ledger[0U].source_boundary !=
+            ResourceBrowserSourceBoundary::OriginalPackageBoundary ||
+        !ledger[0U].blocked_by_original_package ||
+        ledger[0U].preview_request_ready) {
+        return Fail("depth workflow original package ledger mismatch");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserDepthWorkflowBlocksExternalImportBoundary() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    ResourceBrowserDiagnosticsResult diagnostics_result{};
+    if (!BuildCanonicalResourceBrowserInputs(
+            "DepthWorkflowExternalImport",
+            &table,
+            &registry,
+            &manager,
+            &entries,
+            &diagnostics,
+            &diagnostics_result)) {
+        return Fail("failed to build external import canonical inputs");
+    }
+
+    constexpr std::uint32_t SELECTED_MESH = 0U;
+    std::array<ResourceBrowserDepthCatalogRow, FIXTURE_FILE_COUNT> catalog_rows{};
+    std::array<ResourceBrowserImporterBoundaryRow, FIXTURE_FILE_COUNT> importer_rows{};
+    std::array<ResourceBrowserAssetManagerGapRow, FIXTURE_FILE_COUNT> asset_gap_rows{};
+    std::array<ResourceBrowserDepthSelectionLedgerRecord, 1U> ledger{};
+    ResourceBrowserImportSettings import_settings = entries[SELECTED_MESH].import_settings;
+    import_settings.source_path = "external-import:Blender/Cube.fbx";
+    import_settings.expected_source_hash = entries[SELECTED_MESH].validation.source_hash;
+
+    const ResourceBrowserDepthWorkflowResult result =
+        BuildDepthWorkflow(
+            entries,
+            diagnostics.data(),
+            diagnostics_result.diagnostic_count,
+            SELECTED_MESH,
+            import_settings,
+            &catalog_rows,
+            &importer_rows,
+            &asset_gap_rows,
+            &ledger);
+    if (!result.Succeeded() ||
+        result.selection_committed ||
+        !result.selection_rejected ||
+        result.external_import_boundary_count != 1U ||
+        result.blocked_by_original_package ||
+        !result.blocked_by_external_import ||
+        !result.blocked_by_importer_gap ||
+        result.blocked_by_asset_manager_gap) {
+        return Fail("depth workflow did not block external import boundary");
+    }
+
+    if (catalog_rows[SELECTED_MESH].source_boundary !=
+            ResourceBrowserSourceBoundary::ExternalImportBoundary ||
+        std::string_view(catalog_rows[SELECTED_MESH].source_path) !=
+            std::string_view("external-import:Blender/Cube.fbx") ||
+        catalog_rows[SELECTED_MESH].importer_readiness !=
+            ResourceBrowserImporterReadiness::ExternalImportBoundary ||
+        importer_rows[SELECTED_MESH].source_boundary !=
+            ResourceBrowserSourceBoundary::ExternalImportBoundary ||
+        std::string_view(importer_rows[SELECTED_MESH].source_path) !=
+            std::string_view("external-import:Blender/Cube.fbx") ||
+        importer_rows[SELECTED_MESH].original_package_boundary ||
+        !importer_rows[SELECTED_MESH].external_import_boundary ||
+        ledger[0U].source_boundary !=
+            ResourceBrowserSourceBoundary::ExternalImportBoundary ||
+        !ledger[0U].blocked_by_external_import ||
+        ledger[0U].preview_request_ready) {
+        return Fail("depth workflow external import ledger mismatch");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserDepthWorkflowReportsMissingRuntimeAssetLoadAndAssetRecordGaps() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("DepthWorkflowMissingRuntimeAsset"), &table) ||
+        !WriteCanonicalFixture(table)) {
+        return Fail("failed to build missing runtime asset fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    const std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> descs = CanonicalDescs();
+    const ResourceBrowserDiagnosticsResult diagnostics_result =
+        BuildDiagnostics(table, descs, nullptr, &registry, &manager, &entries, &diagnostics);
+
+    constexpr std::uint32_t SELECTED_MESH = 0U;
+    std::array<ResourceBrowserDepthCatalogRow, FIXTURE_FILE_COUNT> catalog_rows{};
+    std::array<ResourceBrowserImporterBoundaryRow, FIXTURE_FILE_COUNT> importer_rows{};
+    std::array<ResourceBrowserAssetManagerGapRow, FIXTURE_FILE_COUNT> asset_gap_rows{};
+    std::array<ResourceBrowserDepthSelectionLedgerRecord, 1U> ledger{};
+    ResourceBrowserImportSettings import_settings = entries[SELECTED_MESH].import_settings;
+    import_settings.expected_source_hash = entries[SELECTED_MESH].validation.source_hash;
+
+    const ResourceBrowserDepthWorkflowResult result =
+        BuildDepthWorkflow(
+            entries,
+            diagnostics.data(),
+            diagnostics_result.diagnostic_count,
+            SELECTED_MESH,
+            import_settings,
+            &catalog_rows,
+            &importer_rows,
+            &asset_gap_rows,
+            &ledger);
+    if (!result.Succeeded() ||
+        result.selection_committed ||
+        !result.selection_rejected ||
+        result.importer_ready_count != FIXTURE_FILE_COUNT ||
+        result.asset_manager_ready_count != 0U ||
+        result.preview_request_ready_count != 0U ||
+        result.blocked_by_importer_gap ||
+        !result.blocked_by_asset_manager_gap) {
+        return Fail("depth workflow missing runtime asset gap counters mismatch");
+    }
+
+    if (catalog_rows[SELECTED_MESH].asset_manager_gap !=
+            ResourceBrowserAssetManagerGap::MissingRuntimeLoadRecord ||
+        catalog_rows[SELECTED_MESH].preview_request_ready ||
+        asset_gap_rows[SELECTED_MESH].has_runtime_loaded_record ||
+        asset_gap_rows[SELECTED_MESH].has_resource_registry_record ||
+        asset_gap_rows[SELECTED_MESH].has_asset_record ||
+        asset_gap_rows[SELECTED_MESH].resource_handle_valid ||
+        asset_gap_rows[SELECTED_MESH].asset_handle_valid ||
+        ledger[0U].asset_manager_gap !=
+            ResourceBrowserAssetManagerGap::MissingRuntimeLoadRecord ||
+        !ledger[0U].blocked_by_asset_manager_gap) {
+        return Fail("depth workflow missing runtime asset selected row mismatch");
+    }
+
+    return 0;
+}
+
+int ResourceBrowserDepthWorkflowInvalidSettingDoesNotMutateOutputs() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    std::array<ResourceBrowserResourceEntry, FIXTURE_FILE_COUNT> entries{};
+    std::array<ResourceBrowserDiagnosticRecord, 16U> diagnostics{};
+    ResourceBrowserDiagnosticsResult diagnostics_result{};
+    if (!BuildCanonicalResourceBrowserInputs(
+            "DepthWorkflowInvalidSetting",
+            &table,
+            &registry,
+            &manager,
+            &entries,
+            &diagnostics,
+            &diagnostics_result)) {
+        return Fail("failed to build depth invalid setting inputs");
+    }
+
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    std::array<ResourceBrowserDepthCatalogRow, FIXTURE_FILE_COUNT> catalog_rows{};
+    std::array<ResourceBrowserImporterBoundaryRow, FIXTURE_FILE_COUNT> importer_rows{};
+    std::array<ResourceBrowserAssetManagerGapRow, FIXTURE_FILE_COUNT> asset_gap_rows{};
+    std::array<ResourceBrowserDepthSelectionLedgerRecord, 1U> ledger{};
+    catalog_rows[0U].stable_id = 7007U;
+    catalog_rows[0U].preview_request_ready = true;
+    importer_rows[0U].source_path = "sentinel";
+    importer_rows[0U].importer_ready = true;
+    asset_gap_rows[0U].stable_id = 8008U;
+    asset_gap_rows[0U].asset_manager_ready = true;
+    ledger[0U].stable_id = 9009U;
+    ledger[0U].selection_committed = true;
+
+    ResourceBrowserImportSettings import_settings = entries[SELECTED_TEXTURE].import_settings;
+    import_settings.target_kind = RuntimeAssetFileKind::Material;
+
+    const ResourceBrowserDepthWorkflowResult result =
+        BuildDepthWorkflow(
+            entries,
+            diagnostics.data(),
+            diagnostics_result.diagnostic_count,
+            SELECTED_TEXTURE,
+            import_settings,
+            &catalog_rows,
+            &importer_rows,
+            &asset_gap_rows,
+            &ledger);
+    if (result.status != ResourceBrowserDepthWorkflowStatus::InvalidImportSettings ||
+        result.selection_status != ResourceBrowserSurfaceSelectionStatus::InvalidImportSettings ||
+        result.catalog_row_count != 0U ||
+        result.importer_row_count != 0U ||
+        result.asset_gap_row_count != 0U ||
+        result.selection_ledger_count != 0U ||
+        catalog_rows[0U].stable_id != 7007U ||
+        !catalog_rows[0U].preview_request_ready ||
+        std::string_view(importer_rows[0U].source_path) != std::string_view("sentinel") ||
+        !importer_rows[0U].importer_ready ||
+        asset_gap_rows[0U].stable_id != 8008U ||
+        !asset_gap_rows[0U].asset_manager_ready ||
+        ledger[0U].stable_id != 9009U ||
+        !ledger[0U].selection_committed) {
+        return Fail("depth workflow invalid setting mutated caller outputs");
+    }
+
+    return 0;
+}
+
 const std::unordered_map<std::string_view, TestFunction> &Tests() {
     static const std::unordered_map<std::string_view, TestFunction> tests{
         {TEST_ENTRIES_FROM_RUNTIME_PATH, ResourceBrowserDiagnosticsEntriesComeFromRuntimeAssetFileResourceAssetPath},
@@ -1340,6 +1737,11 @@ const std::unordered_map<std::string_view, TestFunction> &Tests() {
         {TEST_VISIBLE_SELECTION_COMMIT, ResourceBrowserVisibleWorkflowCommitsSelectionForPreviewHost},
         {TEST_VISIBLE_DIAGNOSTIC_BLOCK, ResourceBrowserVisibleWorkflowDiagnosticBlockRejectsPreview},
         {TEST_VISIBLE_INVALID_SETTING_NO_MUTATION, ResourceBrowserVisibleWorkflowInvalidSettingDoesNotMutateOutputs},
+        {TEST_DEPTH_GAP_ROWS, ResourceBrowserDepthWorkflowEmitsCatalogImporterAndAssetGaps},
+        {TEST_DEPTH_ORIGINAL_PACKAGE, ResourceBrowserDepthWorkflowBlocksOriginalPackageBoundary},
+        {TEST_DEPTH_EXTERNAL_IMPORT, ResourceBrowserDepthWorkflowBlocksExternalImportBoundary},
+        {TEST_DEPTH_MISSING_RUNTIME_ASSET, ResourceBrowserDepthWorkflowReportsMissingRuntimeAssetLoadAndAssetRecordGaps},
+        {TEST_DEPTH_INVALID_SETTING_NO_MUTATION, ResourceBrowserDepthWorkflowInvalidSettingDoesNotMutateOutputs},
     };
     return tests;
 }
