@@ -488,6 +488,274 @@ UiEditorRuntimeNodeRecord ApplyDesignCommand(
 
     return updated;
 }
+
+UiEditorRuntimePreviewWorkflowStatus MapRuntimePreviewWorkflowStatus(
+    UiEditorDesignWorkflowStatus status) {
+    if (status == UiEditorDesignWorkflowStatus::Success) {
+        return UiEditorRuntimePreviewWorkflowStatus::Success;
+    }
+
+    if (status == UiEditorDesignWorkflowStatus::InvalidDocument) {
+        return UiEditorRuntimePreviewWorkflowStatus::InvalidDocument;
+    }
+
+    if (status == UiEditorDesignWorkflowStatus::InvalidNode) {
+        return UiEditorRuntimePreviewWorkflowStatus::InvalidNode;
+    }
+
+    if (status == UiEditorDesignWorkflowStatus::MissingNode) {
+        return UiEditorRuntimePreviewWorkflowStatus::MissingNode;
+    }
+
+    if (status == UiEditorDesignWorkflowStatus::DuplicateNode) {
+        return UiEditorRuntimePreviewWorkflowStatus::DuplicateNode;
+    }
+
+    if (status == UiEditorDesignWorkflowStatus::OutputCapacityExceeded) {
+        return UiEditorRuntimePreviewWorkflowStatus::OutputCapacityExceeded;
+    }
+
+    if (status == UiEditorDesignWorkflowStatus::PreviewFeedbackMissing) {
+        return UiEditorRuntimePreviewWorkflowStatus::PreviewFeedbackMissing;
+    }
+
+    if (status == UiEditorDesignWorkflowStatus::UiCoreFailed) {
+        return UiEditorRuntimePreviewWorkflowStatus::UiCoreFailed;
+    }
+
+    if (status == UiEditorDesignWorkflowStatus::CommandFailed) {
+        return UiEditorRuntimePreviewWorkflowStatus::DesignCommandFailed;
+    }
+
+    return UiEditorRuntimePreviewWorkflowStatus::InvalidArgument;
+}
+
+UiEditorRuntimePreviewWorkflowBlockedLayer MapRuntimePreviewWorkflowLayer(
+    UiEditorDesignWorkflowBlockedLayer layer) {
+    if (layer == UiEditorDesignWorkflowBlockedLayer::None) {
+        return UiEditorRuntimePreviewWorkflowBlockedLayer::None;
+    }
+
+    if (layer == UiEditorDesignWorkflowBlockedLayer::RuntimeUiDocument) {
+        return UiEditorRuntimePreviewWorkflowBlockedLayer::RuntimeUiDocument;
+    }
+
+    if (layer == UiEditorDesignWorkflowBlockedLayer::UiCoreNodeTree) {
+        return UiEditorRuntimePreviewWorkflowBlockedLayer::UiCoreNodeTree;
+    }
+
+    if (layer == UiEditorDesignWorkflowBlockedLayer::PreviewHostFeedback) {
+        return UiEditorRuntimePreviewWorkflowBlockedLayer::PreviewHostFeedback;
+    }
+
+    if (layer == UiEditorDesignWorkflowBlockedLayer::Output) {
+        return UiEditorRuntimePreviewWorkflowBlockedLayer::Output;
+    }
+
+    return UiEditorRuntimePreviewWorkflowBlockedLayer::DesignWorkflow;
+}
+
+bool RuntimePreviewWorkflowStorageValid(
+    const UiEditorRuntimePreviewWorkflowRequest &request) {
+    return IsConstSpanStorageValid(request.style_template_state_records) &&
+        IsSpanStorageValid(request.hierarchy_output) &&
+        IsSpanStorageValid(request.design_surface_output) &&
+        IsSpanStorageValid(request.inspector_output) &&
+        IsSpanStorageValid(request.preview_feedback_output) &&
+        IsSpanStorageValid(request.staged_document_output) &&
+        IsSpanStorageValid(request.command_ledger_output) &&
+        IsSpanStorageValid(request.runtime_preview_output) &&
+        IsSpanStorageValid(request.style_template_state_ledger_output);
+}
+
+bool RuntimePreviewWorkflowOutputCapacityReady(
+    const UiEditorRuntimePreviewWorkflowRequest &request,
+    std::size_t node_count) {
+    if (request.hierarchy_output.size() < node_count) {
+        return false;
+    }
+
+    if (request.design_surface_output.size() < node_count) {
+        return false;
+    }
+
+    if (request.inspector_output.size() < UI_EDITOR_INSPECTOR_FIELD_COUNT) {
+        return false;
+    }
+
+    if (request.preview_feedback_output.empty()) {
+        return false;
+    }
+
+    if (request.staged_document_output.size() < node_count) {
+        return false;
+    }
+
+    if (request.command_ledger_output.empty()) {
+        return false;
+    }
+
+    if (request.runtime_preview_output.empty()) {
+        return false;
+    }
+
+    if (request.style_template_state_ledger_output.empty()) {
+        return false;
+    }
+
+    return true;
+}
+
+const UiEditorStyleTemplateStateRecord *FindStyleTemplateStateRecord(
+    std::span<const UiEditorStyleTemplateStateRecord> records,
+    UiNodeId node_id) {
+    if (!node_id.IsValid()) {
+        return nullptr;
+    }
+
+    for (const UiEditorStyleTemplateStateRecord &record : records) {
+        if (record.node_id.value == node_id.value) {
+            return &record;
+        }
+    }
+
+    return nullptr;
+}
+
+bool IsStyleTemplateStateRecordValid(
+    const UiEditorStyleTemplateStateRecord &record,
+    UiEditorComponentKind component_kind) {
+    if (!record.node_id.IsValid()) {
+        return false;
+    }
+
+    if (!IsComponentKindValid(record.component_kind)) {
+        return false;
+    }
+
+    if (record.component_kind != component_kind) {
+        return false;
+    }
+
+    if (record.style_key == 0U || record.template_key == 0U ||
+        record.state_revision == 0U) {
+        return false;
+    }
+
+    if (!record.runtime_state_valid || !record.style_resolved ||
+        !record.template_instanced) {
+        return false;
+    }
+
+    return true;
+}
+
+bool IsStyleTemplateStateCommandSupported(
+    const UiEditorStyleTemplateStateCommand &command) {
+    if (command.kind == UiEditorStyleTemplateStateCommandKind::None) {
+        return true;
+    }
+
+    if (command.kind == UiEditorStyleTemplateStateCommandKind::SetStyleKey) {
+        return command.style_key != 0U;
+    }
+
+    if (command.kind == UiEditorStyleTemplateStateCommandKind::SetTemplateKey) {
+        return command.template_key != 0U;
+    }
+
+    if (command.kind ==
+        UiEditorStyleTemplateStateCommandKind::SetInteractionState) {
+        return command.state_revision != 0U;
+    }
+
+    return false;
+}
+
+UiEditorStyleTemplateStateRecord ApplyStyleTemplateStateCommand(
+    const UiEditorStyleTemplateStateRecord &record,
+    const UiEditorStyleTemplateStateCommand &command) {
+    UiEditorStyleTemplateStateRecord updated = record;
+    if (command.kind == UiEditorStyleTemplateStateCommandKind::SetStyleKey) {
+        updated.style_key = command.style_key;
+    }
+
+    if (command.kind == UiEditorStyleTemplateStateCommandKind::SetTemplateKey) {
+        updated.template_key = command.template_key;
+    }
+
+    if (command.kind ==
+        UiEditorStyleTemplateStateCommandKind::SetInteractionState) {
+        updated.state_revision = command.state_revision;
+        updated.hovered = command.hovered;
+        updated.focused = command.focused;
+        updated.pressed = command.pressed;
+        updated.disabled = command.disabled;
+    }
+
+    return updated;
+}
+
+UiEditorRuntimePreviewStyleTemplateStateRow BuildRuntimePreviewStyleRow(
+    const UiEditorRuntimeDocumentHeader &header,
+    const UiEditorDesignSurfaceRow &design_row,
+    const UiEditorStyleTemplateStateRecord &record,
+    const UiEditorPreviewFeedbackRecord &preview_feedback) {
+    UiEditorRuntimePreviewStyleTemplateStateRow row{};
+    row.document_id = header.document_id;
+    row.node_id = record.node_id;
+    row.component_kind = record.component_kind;
+    row.world_rect = design_row.world_rect;
+    row.style_key = record.style_key;
+    row.template_key = record.template_key;
+    row.state_revision = record.state_revision;
+    row.preview_frame_id = preview_feedback.frame_id;
+    row.preview_status = preview_feedback.preview_status;
+    row.selected = design_row.selected;
+    row.hovered = record.hovered;
+    row.focused = record.focused;
+    row.pressed = record.pressed;
+    row.disabled = record.disabled;
+    row.runtime_state_valid = record.runtime_state_valid;
+    row.style_resolved = record.style_resolved;
+    row.template_instanced = record.template_instanced;
+    row.engine_runtime_preview =
+        preview_feedback.feedback_from_preview_host &&
+        preview_feedback.preview_frame_built;
+    row.preview_feedback_available = preview_feedback.feedback_from_preview_host;
+    row.editable = true;
+    return row;
+}
+
+UiEditorStyleTemplateStateLedgerRecord BuildStyleTemplateStateLedger(
+    const UiEditorRuntimeDocumentHeader &header,
+    const UiEditorStyleTemplateStateRecord &before,
+    const UiEditorStyleTemplateStateRecord &after,
+    const UiEditorStyleTemplateStateCommand &command) {
+    UiEditorStyleTemplateStateLedgerRecord record{};
+    record.document_id = header.document_id;
+    record.node_id = before.node_id;
+    record.command_kind = command.kind;
+    record.command_sequence = command.command_sequence;
+    record.before_style_key = before.style_key;
+    record.after_style_key = after.style_key;
+    record.before_template_key = before.template_key;
+    record.after_template_key = after.template_key;
+    record.before_state_revision = before.state_revision;
+    record.after_state_revision = after.state_revision;
+    record.before_hovered = before.hovered;
+    record.after_hovered = after.hovered;
+    record.before_focused = before.focused;
+    record.after_focused = after.focused;
+    record.before_pressed = before.pressed;
+    record.after_pressed = after.pressed;
+    record.before_disabled = before.disabled;
+    record.after_disabled = after.disabled;
+    record.staged_style_template_state_update =
+        command.kind != UiEditorStyleTemplateStateCommandKind::None;
+    record.command_applied = record.staged_style_template_state_update;
+    return record;
+}
 }
 
 UiEditorSurfaceStatus BuildUiEditorRuntimeDocumentSurface(
@@ -767,6 +1035,213 @@ UiEditorDesignWorkflowStatus BuildUiEditorDesignInspectorWorkflowSurface(
     result.staged_document_update = ledger.staged_document_update;
     result.emitted_command_ledger = true;
     result.command_applied = ledger.command_applied;
+    *out_result = result;
+    return result.status;
+}
+
+UiEditorRuntimePreviewWorkflowStatus
+BuildUiEditorRuntimePreviewStyleTemplateStateWorkflow(
+    const UiEditorRuntimePreviewWorkflowRequest &request,
+    UiEditorRuntimePreviewWorkflowResult *out_result) {
+    UiEditorRuntimePreviewWorkflowResult result{};
+
+    if (out_result == nullptr) {
+        return UiEditorRuntimePreviewWorkflowStatus::InvalidArgument;
+    }
+
+    if (request.document == nullptr ||
+        !RuntimePreviewWorkflowStorageValid(request)) {
+        *out_result = result;
+        return result.status;
+    }
+
+    result.selected_node_id = request.selected_node_id;
+    result.document_id = request.document->header.document_id;
+    result.style_template_state_record_count =
+        request.style_template_state_records.size();
+
+    std::array<UiEditorHierarchyRow, MAX_UI_EDITOR_DOCUMENT_NODES>
+        staged_hierarchy{};
+    std::array<UiEditorDesignSurfaceRow, MAX_UI_EDITOR_DOCUMENT_NODES>
+        staged_design{};
+    std::array<UiEditorInspectorFieldRow, UI_EDITOR_INSPECTOR_FIELD_COUNT>
+        staged_inspector{};
+    std::array<UiEditorPreviewFeedbackRecord, 1U> staged_preview{};
+    std::array<UiEditorRuntimeNodeRecord, MAX_UI_EDITOR_DOCUMENT_NODES>
+        staged_nodes{};
+    std::array<UiEditorDesignCommandLedgerRecord, 1U> staged_design_ledger{};
+
+    UiEditorDesignInspectorWorkflowRequest design_request{};
+    design_request.document = request.document;
+    design_request.selected_node_id = request.selected_node_id;
+    design_request.preview_frame = request.preview_frame;
+    design_request.command = request.design_command;
+    design_request.hierarchy_output =
+        std::span<UiEditorHierarchyRow>(
+            staged_hierarchy.data(),
+            staged_hierarchy.size());
+    design_request.design_surface_output =
+        std::span<UiEditorDesignSurfaceRow>(
+            staged_design.data(),
+            staged_design.size());
+    design_request.inspector_output =
+        std::span<UiEditorInspectorFieldRow>(
+            staged_inspector.data(),
+            staged_inspector.size());
+    design_request.preview_feedback_output =
+        std::span<UiEditorPreviewFeedbackRecord>(
+            staged_preview.data(),
+            staged_preview.size());
+    design_request.staged_document_output =
+        std::span<UiEditorRuntimeNodeRecord>(
+            staged_nodes.data(),
+            staged_nodes.size());
+    design_request.command_ledger_output =
+        std::span<UiEditorDesignCommandLedgerRecord>(
+            staged_design_ledger.data(),
+            staged_design_ledger.size());
+
+    UiEditorDesignInspectorWorkflowResult design_result{};
+    const UiEditorDesignWorkflowStatus design_status =
+        BuildUiEditorDesignInspectorWorkflowSurface(design_request, &design_result);
+    result.design_workflow = design_result;
+    result.document_id = design_result.document_id;
+    result.consumed_runtime_ui_document =
+        design_result.consumed_runtime_ui_document;
+    result.consumed_preview_host_feedback =
+        design_result.consumed_preview_host_feedback;
+    result.built_design_surface = design_result.built_design_surface;
+    if (design_status != UiEditorDesignWorkflowStatus::Success) {
+        result.status = MapRuntimePreviewWorkflowStatus(design_status);
+        result.blocked_layer =
+            MapRuntimePreviewWorkflowLayer(design_result.blocked_layer);
+        *out_result = result;
+        return result.status;
+    }
+
+    const UiEditorRuntimeDocument &document = *request.document;
+    const std::uint32_t node_count = document.header.node_count;
+    if (!RuntimePreviewWorkflowOutputCapacityReady(request, node_count)) {
+        result.status =
+            UiEditorRuntimePreviewWorkflowStatus::OutputCapacityExceeded;
+        result.blocked_layer = UiEditorRuntimePreviewWorkflowBlockedLayer::Output;
+        *out_result = result;
+        return result.status;
+    }
+
+    const std::uint32_t selected_index = FindDocumentNodeIndex(
+        document.nodes,
+        request.selected_node_id,
+        node_count);
+    if (selected_index == node_count) {
+        result.status = UiEditorRuntimePreviewWorkflowStatus::MissingNode;
+        result.blocked_layer =
+            UiEditorRuntimePreviewWorkflowBlockedLayer::DesignWorkflow;
+        *out_result = result;
+        return result.status;
+    }
+
+    const UiEditorRuntimeNodeRecord &selected_node = staged_nodes[selected_index];
+    const UiEditorStyleTemplateStateRecord *style_state =
+        FindStyleTemplateStateRecord(
+            request.style_template_state_records,
+            request.selected_node_id);
+    if (style_state == nullptr) {
+        result.status =
+            UiEditorRuntimePreviewWorkflowStatus::MissingStyleTemplateState;
+        result.blocked_layer =
+            UiEditorRuntimePreviewWorkflowBlockedLayer::StyleTemplateState;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!IsStyleTemplateStateRecordValid(*style_state, selected_node.component_kind)) {
+        result.status =
+            UiEditorRuntimePreviewWorkflowStatus::InvalidStyleTemplateState;
+        result.blocked_layer =
+            UiEditorRuntimePreviewWorkflowBlockedLayer::StyleTemplateState;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!IsStyleTemplateStateCommandSupported(
+        request.style_template_state_command)) {
+        result.status =
+            UiEditorRuntimePreviewWorkflowStatus::StyleTemplateStateCommandFailed;
+        result.blocked_layer =
+            UiEditorRuntimePreviewWorkflowBlockedLayer::StyleTemplateState;
+        *out_result = result;
+        return result.status;
+    }
+
+    const UiEditorStyleTemplateStateRecord before_style_state = *style_state;
+    const UiEditorStyleTemplateStateRecord after_style_state =
+        ApplyStyleTemplateStateCommand(
+            before_style_state,
+            request.style_template_state_command);
+    if (!IsStyleTemplateStateRecordValid(
+        after_style_state,
+        selected_node.component_kind)) {
+        result.status =
+            UiEditorRuntimePreviewWorkflowStatus::InvalidStyleTemplateState;
+        result.blocked_layer =
+            UiEditorRuntimePreviewWorkflowBlockedLayer::StyleTemplateState;
+        *out_result = result;
+        return result.status;
+    }
+
+    const UiEditorRuntimePreviewStyleTemplateStateRow runtime_preview_row =
+        BuildRuntimePreviewStyleRow(
+            document.header,
+            staged_design[selected_index],
+            after_style_state,
+            staged_preview[0U]);
+    const UiEditorStyleTemplateStateLedgerRecord style_ledger =
+        BuildStyleTemplateStateLedger(
+            document.header,
+            before_style_state,
+            after_style_state,
+            request.style_template_state_command);
+
+    std::uint32_t node_index = 0U;
+    while (node_index < node_count) {
+        request.hierarchy_output[node_index] = staged_hierarchy[node_index];
+        request.design_surface_output[node_index] = staged_design[node_index];
+        request.staged_document_output[node_index] = staged_nodes[node_index];
+        ++node_index;
+    }
+
+    std::size_t field_index = 0U;
+    while (field_index < design_result.inspector_field_count) {
+        request.inspector_output[field_index] = staged_inspector[field_index];
+        ++field_index;
+    }
+
+    request.preview_feedback_output[0U] = staged_preview[0U];
+    request.command_ledger_output[0U] = staged_design_ledger[0U];
+    request.runtime_preview_output[0U] = runtime_preview_row;
+    request.style_template_state_ledger_output[0U] = style_ledger;
+
+    result.status = UiEditorRuntimePreviewWorkflowStatus::Success;
+    result.blocked_layer = UiEditorRuntimePreviewWorkflowBlockedLayer::None;
+    result.hierarchy_row_count = design_result.hierarchy_row_count;
+    result.design_surface_row_count = design_result.design_surface_row_count;
+    result.inspector_field_count = design_result.inspector_field_count;
+    result.preview_feedback_count = design_result.preview_feedback_count;
+    result.staged_node_count = design_result.staged_node_count;
+    result.command_ledger_count = design_result.command_ledger_count;
+    result.runtime_preview_row_count = 1U;
+    result.style_template_state_ledger_count = 1U;
+    result.consumed_style_template_state = true;
+    result.built_engine_runtime_preview = true;
+    result.emitted_hierarchy_rows = true;
+    result.emitted_inspector_fields = true;
+    result.emitted_runtime_preview_row = true;
+    result.staged_document_update = design_result.staged_document_update;
+    result.emitted_command_ledger = true;
+    result.emitted_style_template_state_ledger = true;
+    result.design_command_applied = design_result.command_applied;
+    result.style_template_state_command_applied = style_ledger.command_applied;
     *out_result = result;
     return result.status;
 }

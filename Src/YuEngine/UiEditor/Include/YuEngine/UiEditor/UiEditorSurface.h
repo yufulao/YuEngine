@@ -69,6 +69,32 @@ enum class UiEditorDesignWorkflowBlockedLayer {
     Output
 };
 
+enum class UiEditorRuntimePreviewWorkflowStatus {
+    Success,
+    InvalidArgument,
+    InvalidDocument,
+    InvalidNode,
+    MissingNode,
+    DuplicateNode,
+    OutputCapacityExceeded,
+    PreviewFeedbackMissing,
+    UiCoreFailed,
+    DesignCommandFailed,
+    MissingStyleTemplateState,
+    InvalidStyleTemplateState,
+    StyleTemplateStateCommandFailed
+};
+
+enum class UiEditorRuntimePreviewWorkflowBlockedLayer {
+    None,
+    RuntimeUiDocument,
+    UiCoreNodeTree,
+    PreviewHostFeedback,
+    DesignWorkflow,
+    StyleTemplateState,
+    Output
+};
+
 enum class UiEditorInspectorFieldKind {
     Unknown,
     ComponentKind,
@@ -88,6 +114,13 @@ enum class UiEditorDesignCommandKind {
     SetHitTestable,
     SetLayer,
     SetRectTransform
+};
+
+enum class UiEditorStyleTemplateStateCommandKind {
+    None,
+    SetStyleKey,
+    SetTemplateKey,
+    SetInteractionState
 };
 
 struct UiEditorRuntimeDocumentHeader final {
@@ -209,6 +242,82 @@ struct UiEditorDesignCommandLedgerRecord final {
     bool command_applied = false;
 };
 
+struct UiEditorStyleTemplateStateRecord final {
+    yuengine::uicore::UiNodeId node_id{};
+    UiEditorComponentKind component_kind = UiEditorComponentKind::Unknown;
+    std::uint32_t style_key = 0U;
+    std::uint32_t template_key = 0U;
+    std::uint32_t state_revision = 0U;
+    bool hovered = false;
+    bool focused = false;
+    bool pressed = false;
+    bool disabled = false;
+    bool runtime_state_valid = false;
+    bool style_resolved = false;
+    bool template_instanced = false;
+};
+
+struct UiEditorStyleTemplateStateCommand final {
+    UiEditorStyleTemplateStateCommandKind kind =
+        UiEditorStyleTemplateStateCommandKind::None;
+    std::uint32_t command_sequence = 0U;
+    std::uint32_t style_key = 0U;
+    std::uint32_t template_key = 0U;
+    std::uint32_t state_revision = 0U;
+    bool hovered = false;
+    bool focused = false;
+    bool pressed = false;
+    bool disabled = false;
+};
+
+struct UiEditorRuntimePreviewStyleTemplateStateRow final {
+    std::uint32_t document_id = 0U;
+    yuengine::uicore::UiNodeId node_id{};
+    UiEditorComponentKind component_kind = UiEditorComponentKind::Unknown;
+    yuengine::uicore::UiRect world_rect{};
+    std::uint32_t style_key = 0U;
+    std::uint32_t template_key = 0U;
+    std::uint32_t state_revision = 0U;
+    std::uint32_t preview_frame_id = 0U;
+    yuengine::previewhost::PreviewHostStatus preview_status =
+        yuengine::previewhost::PreviewHostStatus::InvalidArgument;
+    bool selected = false;
+    bool hovered = false;
+    bool focused = false;
+    bool pressed = false;
+    bool disabled = false;
+    bool runtime_state_valid = false;
+    bool style_resolved = false;
+    bool template_instanced = false;
+    bool engine_runtime_preview = false;
+    bool preview_feedback_available = false;
+    bool editable = false;
+};
+
+struct UiEditorStyleTemplateStateLedgerRecord final {
+    std::uint32_t document_id = 0U;
+    yuengine::uicore::UiNodeId node_id{};
+    UiEditorStyleTemplateStateCommandKind command_kind =
+        UiEditorStyleTemplateStateCommandKind::None;
+    std::uint32_t command_sequence = 0U;
+    std::uint32_t before_style_key = 0U;
+    std::uint32_t after_style_key = 0U;
+    std::uint32_t before_template_key = 0U;
+    std::uint32_t after_template_key = 0U;
+    std::uint32_t before_state_revision = 0U;
+    std::uint32_t after_state_revision = 0U;
+    bool before_hovered = false;
+    bool after_hovered = false;
+    bool before_focused = false;
+    bool after_focused = false;
+    bool before_pressed = false;
+    bool after_pressed = false;
+    bool before_disabled = false;
+    bool after_disabled = false;
+    bool staged_style_template_state_update = false;
+    bool command_applied = false;
+};
+
 struct UiEditorRuntimeDocumentSurfaceRequest final {
     const UiEditorRuntimeDocument *document = nullptr;
     yuengine::uicore::UiNodeId selected_node_id{};
@@ -289,6 +398,62 @@ struct UiEditorDesignInspectorWorkflowResult final {
     }
 };
 
+struct UiEditorRuntimePreviewWorkflowRequest final {
+    const UiEditorRuntimeDocument *document = nullptr;
+    yuengine::uicore::UiNodeId selected_node_id{};
+    const yuengine::previewhost::PreviewHostFrameResult *preview_frame = nullptr;
+    UiEditorDesignCommand design_command{};
+    UiEditorStyleTemplateStateCommand style_template_state_command{};
+    std::span<const UiEditorStyleTemplateStateRecord> style_template_state_records{};
+    std::span<UiEditorHierarchyRow> hierarchy_output{};
+    std::span<UiEditorDesignSurfaceRow> design_surface_output{};
+    std::span<UiEditorInspectorFieldRow> inspector_output{};
+    std::span<UiEditorPreviewFeedbackRecord> preview_feedback_output{};
+    std::span<UiEditorRuntimeNodeRecord> staged_document_output{};
+    std::span<UiEditorDesignCommandLedgerRecord> command_ledger_output{};
+    std::span<UiEditorRuntimePreviewStyleTemplateStateRow> runtime_preview_output{};
+    std::span<UiEditorStyleTemplateStateLedgerRecord> style_template_state_ledger_output{};
+};
+
+struct UiEditorRuntimePreviewWorkflowResult final {
+    UiEditorRuntimePreviewWorkflowStatus status =
+        UiEditorRuntimePreviewWorkflowStatus::InvalidArgument;
+    UiEditorRuntimePreviewWorkflowBlockedLayer blocked_layer =
+        UiEditorRuntimePreviewWorkflowBlockedLayer::RuntimeUiDocument;
+    UiEditorDesignInspectorWorkflowResult design_workflow{};
+    yuengine::uicore::UiNodeId selected_node_id{};
+    std::uint32_t document_id = 0U;
+    std::size_t hierarchy_row_count = 0U;
+    std::size_t design_surface_row_count = 0U;
+    std::size_t inspector_field_count = 0U;
+    std::size_t preview_feedback_count = 0U;
+    std::size_t staged_node_count = 0U;
+    std::size_t command_ledger_count = 0U;
+    std::size_t runtime_preview_row_count = 0U;
+    std::size_t style_template_state_ledger_count = 0U;
+    std::size_t style_template_state_record_count = 0U;
+    bool consumed_runtime_ui_document = false;
+    bool consumed_preview_host_feedback = false;
+    bool consumed_style_template_state = false;
+    bool built_design_surface = false;
+    bool built_engine_runtime_preview = false;
+    bool emitted_hierarchy_rows = false;
+    bool emitted_inspector_fields = false;
+    bool emitted_runtime_preview_row = false;
+    bool staged_document_update = false;
+    bool emitted_command_ledger = false;
+    bool emitted_style_template_state_ledger = false;
+    bool design_command_applied = false;
+    bool style_template_state_command_applied = false;
+    bool mutated_runtime_data = false;
+    bool opened_native_window = false;
+    bool used_forbidden_preview_path = false;
+
+    bool Succeeded() const {
+        return status == UiEditorRuntimePreviewWorkflowStatus::Success;
+    }
+};
+
 UiEditorSurfaceStatus BuildUiEditorRuntimeDocumentSurface(
     const UiEditorRuntimeDocumentSurfaceRequest &request,
     UiEditorRuntimeDocumentSurfaceResult *out_result);
@@ -296,4 +461,9 @@ UiEditorSurfaceStatus BuildUiEditorRuntimeDocumentSurface(
 UiEditorDesignWorkflowStatus BuildUiEditorDesignInspectorWorkflowSurface(
     const UiEditorDesignInspectorWorkflowRequest &request,
     UiEditorDesignInspectorWorkflowResult *out_result);
+
+UiEditorRuntimePreviewWorkflowStatus
+BuildUiEditorRuntimePreviewStyleTemplateStateWorkflow(
+    const UiEditorRuntimePreviewWorkflowRequest &request,
+    UiEditorRuntimePreviewWorkflowResult *out_result);
 }

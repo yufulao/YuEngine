@@ -19,6 +19,7 @@ using yuengine::uicore::UiNodeId;
 using yuengine::uicore::UiRectTransform;
 using yuengine::uieditor::BuildUiEditorRuntimeDocumentSurface;
 using yuengine::uieditor::BuildUiEditorDesignInspectorWorkflowSurface;
+using yuengine::uieditor::BuildUiEditorRuntimePreviewStyleTemplateStateWorkflow;
 using yuengine::uieditor::UiEditorDesignCommand;
 using yuengine::uieditor::UiEditorDesignCommandKind;
 using yuengine::uieditor::UiEditorDesignCommandLedgerRecord;
@@ -37,6 +38,15 @@ using yuengine::uieditor::UiEditorRuntimeDocumentHeader;
 using yuengine::uieditor::UiEditorRuntimeDocumentSurfaceRequest;
 using yuengine::uieditor::UiEditorRuntimeDocumentSurfaceResult;
 using yuengine::uieditor::UiEditorRuntimeNodeRecord;
+using yuengine::uieditor::UiEditorRuntimePreviewStyleTemplateStateRow;
+using yuengine::uieditor::UiEditorRuntimePreviewWorkflowBlockedLayer;
+using yuengine::uieditor::UiEditorRuntimePreviewWorkflowRequest;
+using yuengine::uieditor::UiEditorRuntimePreviewWorkflowResult;
+using yuengine::uieditor::UiEditorRuntimePreviewWorkflowStatus;
+using yuengine::uieditor::UiEditorStyleTemplateStateCommand;
+using yuengine::uieditor::UiEditorStyleTemplateStateCommandKind;
+using yuengine::uieditor::UiEditorStyleTemplateStateLedgerRecord;
+using yuengine::uieditor::UiEditorStyleTemplateStateRecord;
 using yuengine::uieditor::UiEditorSurfaceBlockedLayer;
 using yuengine::uieditor::UiEditorSurfaceStatus;
 
@@ -59,6 +69,14 @@ constexpr const char *TEST_WORKFLOW_INVALID_COMPONENT =
     "UiEditorWorkflow_InvalidComponentDoesNotMutateOutputs";
 constexpr const char *TEST_WORKFLOW_CAPACITY =
     "UiEditorWorkflow_OutputCapacityDoesNotMutateOutputs";
+constexpr const char *TEST_RUNTIME_PREVIEW =
+    "UiEditorRuntimePreviewWorkflow_BuildsStyleTemplateStateRows";
+constexpr const char *TEST_RUNTIME_PREVIEW_MISSING_PREVIEW =
+    "UiEditorRuntimePreviewWorkflow_MissingPreviewFeedbackDoesNotMutateOutputs";
+constexpr const char *TEST_RUNTIME_PREVIEW_INVALID_STYLE =
+    "UiEditorRuntimePreviewWorkflow_InvalidStyleTemplateStateDoesNotMutateOutputs";
+constexpr const char *TEST_RUNTIME_PREVIEW_CAPACITY =
+    "UiEditorRuntimePreviewWorkflow_OutputCapacityDoesNotMutateOutputs";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint32_t DOCUMENT_ID = 5101U;
@@ -182,6 +200,56 @@ UiEditorDesignInspectorWorkflowRequest WorkflowRequest(
     return request;
 }
 
+UiEditorStyleTemplateStateRecord ButtonStyleState() {
+    UiEditorStyleTemplateStateRecord record{};
+    record.node_id = UiNodeId{2U};
+    record.component_kind = UiEditorComponentKind::Button;
+    record.style_key = 810U;
+    record.template_key = 920U;
+    record.state_revision = 7U;
+    record.hovered = true;
+    record.focused = false;
+    record.pressed = false;
+    record.disabled = false;
+    record.runtime_state_valid = true;
+    record.style_resolved = true;
+    record.template_instanced = true;
+    return record;
+}
+
+UiEditorRuntimePreviewWorkflowRequest RuntimePreviewWorkflowRequest(
+    const UiEditorRuntimeDocument &document,
+    UiNodeId selected_node_id,
+    const PreviewHostFrameResult *preview_frame,
+    const UiEditorDesignCommand &design_command,
+    const UiEditorStyleTemplateStateCommand &style_command,
+    std::span<const UiEditorStyleTemplateStateRecord> style_records,
+    std::span<UiEditorHierarchyRow> hierarchy_output,
+    std::span<UiEditorDesignSurfaceRow> design_output,
+    std::span<UiEditorInspectorFieldRow> inspector_output,
+    std::span<UiEditorPreviewFeedbackRecord> preview_output,
+    std::span<UiEditorRuntimeNodeRecord> staged_output,
+    std::span<UiEditorDesignCommandLedgerRecord> ledger_output,
+    std::span<UiEditorRuntimePreviewStyleTemplateStateRow> runtime_preview_output,
+    std::span<UiEditorStyleTemplateStateLedgerRecord> style_ledger_output) {
+    UiEditorRuntimePreviewWorkflowRequest request{};
+    request.document = &document;
+    request.selected_node_id = selected_node_id;
+    request.preview_frame = preview_frame;
+    request.design_command = design_command;
+    request.style_template_state_command = style_command;
+    request.style_template_state_records = style_records;
+    request.hierarchy_output = hierarchy_output;
+    request.design_surface_output = design_output;
+    request.inspector_output = inspector_output;
+    request.preview_feedback_output = preview_output;
+    request.staged_document_output = staged_output;
+    request.command_ledger_output = ledger_output;
+    request.runtime_preview_output = runtime_preview_output;
+    request.style_template_state_ledger_output = style_ledger_output;
+    return request;
+}
+
 bool SentinelHierarchyUnchanged(const UiEditorHierarchyRow &row) {
     return row.document_id == 9001U && row.node_id.value == 9002U && !row.selected;
 }
@@ -211,6 +279,20 @@ bool SentinelDesignLedgerUnchanged(
         !record.command_applied;
 }
 
+bool SentinelRuntimePreviewUnchanged(
+    const UiEditorRuntimePreviewStyleTemplateStateRow &row) {
+    return row.document_id == 9012U &&
+        row.node_id.value == 9013U &&
+        !row.engine_runtime_preview;
+}
+
+bool SentinelStyleLedgerUnchanged(
+    const UiEditorStyleTemplateStateLedgerRecord &record) {
+    return record.document_id == 9014U &&
+        record.command_sequence == 9015U &&
+        !record.command_applied;
+}
+
 void SeedWorkflowSentinels(
     std::span<UiEditorHierarchyRow> hierarchy_output,
     std::span<UiEditorDesignSurfaceRow> design_output,
@@ -235,6 +317,30 @@ void SeedWorkflowSentinels(
     ledger_output[0U].document_id = 9010U;
     ledger_output[0U].command_sequence = 9011U;
     ledger_output[0U].command_applied = false;
+}
+
+void SeedRuntimePreviewSentinels(
+    std::span<UiEditorHierarchyRow> hierarchy_output,
+    std::span<UiEditorDesignSurfaceRow> design_output,
+    std::span<UiEditorInspectorFieldRow> inspector_output,
+    std::span<UiEditorPreviewFeedbackRecord> preview_output,
+    std::span<UiEditorRuntimeNodeRecord> staged_output,
+    std::span<UiEditorDesignCommandLedgerRecord> ledger_output,
+    std::span<UiEditorRuntimePreviewStyleTemplateStateRow> runtime_preview_output,
+    std::span<UiEditorStyleTemplateStateLedgerRecord> style_ledger_output) {
+    SeedWorkflowSentinels(
+        hierarchy_output,
+        design_output,
+        inspector_output,
+        preview_output,
+        staged_output,
+        ledger_output);
+    runtime_preview_output[0U].document_id = 9012U;
+    runtime_preview_output[0U].node_id = UiNodeId{9013U};
+    runtime_preview_output[0U].engine_runtime_preview = false;
+    style_ledger_output[0U].document_id = 9014U;
+    style_ledger_output[0U].command_sequence = 9015U;
+    style_ledger_output[0U].command_applied = false;
 }
 
 int UiEditorSurfaceBuildsRuntimeDocumentHierarchyRows() {
@@ -711,6 +817,336 @@ int UiEditorWorkflowOutputCapacityDoesNotMutateOutputs() {
     return 0;
 }
 
+int UiEditorRuntimePreviewWorkflowBuildsStyleTemplateStateRows() {
+    const std::array<UiEditorRuntimeNodeRecord, 2U> nodes{RootNode(), ChildNode()};
+    const UiEditorRuntimeDocument document{Header(), nodes};
+    const PreviewHostFrameResult preview_frame = PreviewFrame();
+    const std::array<UiEditorStyleTemplateStateRecord, 1U> style_records{
+        ButtonStyleState()};
+    std::array<UiEditorHierarchyRow, 2U> hierarchy_output{};
+    std::array<UiEditorDesignSurfaceRow, 2U> design_output{};
+    std::array<UiEditorInspectorFieldRow, 7U> inspector_output{};
+    std::array<UiEditorPreviewFeedbackRecord, 1U> preview_output{};
+    std::array<UiEditorRuntimeNodeRecord, 2U> staged_output{};
+    std::array<UiEditorDesignCommandLedgerRecord, 1U> ledger_output{};
+    std::array<UiEditorRuntimePreviewStyleTemplateStateRow, 1U>
+        runtime_preview_output{};
+    std::array<UiEditorStyleTemplateStateLedgerRecord, 1U>
+        style_ledger_output{};
+    UiEditorDesignCommand design_command{};
+    design_command.kind = UiEditorDesignCommandKind::SetEnabled;
+    design_command.bool_value = false;
+    design_command.command_sequence = 17U;
+    UiEditorStyleTemplateStateCommand style_command{};
+    style_command.kind = UiEditorStyleTemplateStateCommandKind::SetInteractionState;
+    style_command.command_sequence = 18U;
+    style_command.state_revision = 8U;
+    style_command.hovered = true;
+    style_command.focused = true;
+    style_command.pressed = true;
+    style_command.disabled = false;
+
+    UiEditorRuntimePreviewWorkflowResult result{};
+    const UiEditorRuntimePreviewWorkflowStatus status =
+        BuildUiEditorRuntimePreviewStyleTemplateStateWorkflow(
+            RuntimePreviewWorkflowRequest(
+                document,
+                UiNodeId{2U},
+                &preview_frame,
+                design_command,
+                style_command,
+                style_records,
+                hierarchy_output,
+                design_output,
+                inspector_output,
+                preview_output,
+                staged_output,
+                ledger_output,
+                runtime_preview_output,
+                style_ledger_output),
+            &result);
+    if (status != UiEditorRuntimePreviewWorkflowStatus::Success ||
+        !result.Succeeded()) {
+        return Fail("ui editor runtime preview workflow failed");
+    }
+
+    if (result.hierarchy_row_count != 2U ||
+        result.design_surface_row_count != 2U ||
+        result.inspector_field_count != 7U ||
+        result.preview_feedback_count != 1U ||
+        result.staged_node_count != 2U ||
+        result.command_ledger_count != 1U ||
+        result.runtime_preview_row_count != 1U ||
+        result.style_template_state_ledger_count != 1U ||
+        !result.consumed_runtime_ui_document ||
+        !result.consumed_preview_host_feedback ||
+        !result.consumed_style_template_state ||
+        !result.built_design_surface ||
+        !result.built_engine_runtime_preview ||
+        !result.emitted_runtime_preview_row ||
+        !result.emitted_style_template_state_ledger ||
+        !result.design_command_applied ||
+        !result.style_template_state_command_applied ||
+        result.mutated_runtime_data ||
+        result.opened_native_window ||
+        result.used_forbidden_preview_path) {
+        return Fail("ui editor runtime preview counters mismatch");
+    }
+
+    if (staged_output[1U].enabled ||
+        ledger_output[0U].command_kind != UiEditorDesignCommandKind::SetEnabled ||
+        ledger_output[0U].command_sequence != 17U ||
+        !ledger_output[0U].before_enabled ||
+        ledger_output[0U].after_enabled) {
+        return Fail("ui editor runtime preview design command mismatch");
+    }
+
+    if (runtime_preview_output[0U].document_id != DOCUMENT_ID ||
+        runtime_preview_output[0U].node_id.value != 2U ||
+        runtime_preview_output[0U].component_kind != UiEditorComponentKind::Button ||
+        runtime_preview_output[0U].style_key != 810U ||
+        runtime_preview_output[0U].template_key != 920U ||
+        runtime_preview_output[0U].state_revision != 8U ||
+        runtime_preview_output[0U].preview_frame_id != 71U ||
+        runtime_preview_output[0U].preview_status != PreviewHostStatus::Success ||
+        !runtime_preview_output[0U].selected ||
+        !runtime_preview_output[0U].hovered ||
+        !runtime_preview_output[0U].focused ||
+        !runtime_preview_output[0U].pressed ||
+        runtime_preview_output[0U].disabled ||
+        !runtime_preview_output[0U].runtime_state_valid ||
+        !runtime_preview_output[0U].style_resolved ||
+        !runtime_preview_output[0U].template_instanced ||
+        !runtime_preview_output[0U].engine_runtime_preview ||
+        !runtime_preview_output[0U].preview_feedback_available ||
+        !runtime_preview_output[0U].editable) {
+        return Fail("ui editor runtime preview row mismatch");
+    }
+
+    if (style_ledger_output[0U].command_kind !=
+            UiEditorStyleTemplateStateCommandKind::SetInteractionState ||
+        style_ledger_output[0U].command_sequence != 18U ||
+        style_ledger_output[0U].before_state_revision != 7U ||
+        style_ledger_output[0U].after_state_revision != 8U ||
+        style_ledger_output[0U].before_focused ||
+        !style_ledger_output[0U].after_focused ||
+        style_ledger_output[0U].before_pressed ||
+        !style_ledger_output[0U].after_pressed ||
+        !style_ledger_output[0U].staged_style_template_state_update ||
+        !style_ledger_output[0U].command_applied) {
+        return Fail("ui editor runtime preview style ledger mismatch");
+    }
+
+    return 0;
+}
+
+int UiEditorRuntimePreviewWorkflowMissingPreviewFeedbackDoesNotMutateOutputs() {
+    const std::array<UiEditorRuntimeNodeRecord, 2U> nodes{RootNode(), ChildNode()};
+    const UiEditorRuntimeDocument document{Header(), nodes};
+    const std::array<UiEditorStyleTemplateStateRecord, 1U> style_records{
+        ButtonStyleState()};
+    std::array<UiEditorHierarchyRow, 2U> hierarchy_output{};
+    std::array<UiEditorDesignSurfaceRow, 2U> design_output{};
+    std::array<UiEditorInspectorFieldRow, 7U> inspector_output{};
+    std::array<UiEditorPreviewFeedbackRecord, 1U> preview_output{};
+    std::array<UiEditorRuntimeNodeRecord, 2U> staged_output{};
+    std::array<UiEditorDesignCommandLedgerRecord, 1U> ledger_output{};
+    std::array<UiEditorRuntimePreviewStyleTemplateStateRow, 1U>
+        runtime_preview_output{};
+    std::array<UiEditorStyleTemplateStateLedgerRecord, 1U>
+        style_ledger_output{};
+    SeedRuntimePreviewSentinels(
+        hierarchy_output,
+        design_output,
+        inspector_output,
+        preview_output,
+        staged_output,
+        ledger_output,
+        runtime_preview_output,
+        style_ledger_output);
+    UiEditorDesignCommand design_command{};
+    UiEditorStyleTemplateStateCommand style_command{};
+    style_command.kind = UiEditorStyleTemplateStateCommandKind::SetStyleKey;
+    style_command.style_key = 811U;
+
+    UiEditorRuntimePreviewWorkflowResult result{};
+    const UiEditorRuntimePreviewWorkflowStatus status =
+        BuildUiEditorRuntimePreviewStyleTemplateStateWorkflow(
+            RuntimePreviewWorkflowRequest(
+                document,
+                UiNodeId{2U},
+                nullptr,
+                design_command,
+                style_command,
+                style_records,
+                hierarchy_output,
+                design_output,
+                inspector_output,
+                preview_output,
+                staged_output,
+                ledger_output,
+                runtime_preview_output,
+                style_ledger_output),
+            &result);
+    if (status != UiEditorRuntimePreviewWorkflowStatus::PreviewFeedbackMissing ||
+        result.blocked_layer !=
+            UiEditorRuntimePreviewWorkflowBlockedLayer::PreviewHostFeedback ||
+        result.emitted_runtime_preview_row ||
+        result.style_template_state_command_applied) {
+        return Fail("ui editor runtime preview missing feedback result mismatch");
+    }
+
+    if (!SentinelHierarchyUnchanged(hierarchy_output[0U]) ||
+        !SentinelDesignUnchanged(design_output[0U]) ||
+        !SentinelInspectorUnchanged(inspector_output[0U]) ||
+        !SentinelPreviewUnchanged(preview_output[0U]) ||
+        !SentinelStagedNodeUnchanged(staged_output[0U]) ||
+        !SentinelDesignLedgerUnchanged(ledger_output[0U]) ||
+        !SentinelRuntimePreviewUnchanged(runtime_preview_output[0U]) ||
+        !SentinelStyleLedgerUnchanged(style_ledger_output[0U])) {
+        return Fail("ui editor runtime preview missing feedback mutated output");
+    }
+
+    return 0;
+}
+
+int UiEditorRuntimePreviewWorkflowInvalidStyleTemplateStateDoesNotMutateOutputs() {
+    const std::array<UiEditorRuntimeNodeRecord, 2U> nodes{RootNode(), ChildNode()};
+    const UiEditorRuntimeDocument document{Header(), nodes};
+    const PreviewHostFrameResult preview_frame = PreviewFrame();
+    UiEditorStyleTemplateStateRecord invalid_style = ButtonStyleState();
+    invalid_style.style_key = 0U;
+    const std::array<UiEditorStyleTemplateStateRecord, 1U> style_records{
+        invalid_style};
+    std::array<UiEditorHierarchyRow, 2U> hierarchy_output{};
+    std::array<UiEditorDesignSurfaceRow, 2U> design_output{};
+    std::array<UiEditorInspectorFieldRow, 7U> inspector_output{};
+    std::array<UiEditorPreviewFeedbackRecord, 1U> preview_output{};
+    std::array<UiEditorRuntimeNodeRecord, 2U> staged_output{};
+    std::array<UiEditorDesignCommandLedgerRecord, 1U> ledger_output{};
+    std::array<UiEditorRuntimePreviewStyleTemplateStateRow, 1U>
+        runtime_preview_output{};
+    std::array<UiEditorStyleTemplateStateLedgerRecord, 1U>
+        style_ledger_output{};
+    SeedRuntimePreviewSentinels(
+        hierarchy_output,
+        design_output,
+        inspector_output,
+        preview_output,
+        staged_output,
+        ledger_output,
+        runtime_preview_output,
+        style_ledger_output);
+    UiEditorDesignCommand design_command{};
+    UiEditorStyleTemplateStateCommand style_command{};
+
+    UiEditorRuntimePreviewWorkflowResult result{};
+    const UiEditorRuntimePreviewWorkflowStatus status =
+        BuildUiEditorRuntimePreviewStyleTemplateStateWorkflow(
+            RuntimePreviewWorkflowRequest(
+                document,
+                UiNodeId{2U},
+                &preview_frame,
+                design_command,
+                style_command,
+                style_records,
+                hierarchy_output,
+                design_output,
+                inspector_output,
+                preview_output,
+                staged_output,
+                ledger_output,
+                runtime_preview_output,
+                style_ledger_output),
+            &result);
+    if (status != UiEditorRuntimePreviewWorkflowStatus::InvalidStyleTemplateState ||
+        result.blocked_layer !=
+            UiEditorRuntimePreviewWorkflowBlockedLayer::StyleTemplateState) {
+        return Fail("ui editor runtime preview invalid style result mismatch");
+    }
+
+    if (!SentinelHierarchyUnchanged(hierarchy_output[0U]) ||
+        !SentinelDesignUnchanged(design_output[0U]) ||
+        !SentinelInspectorUnchanged(inspector_output[0U]) ||
+        !SentinelPreviewUnchanged(preview_output[0U]) ||
+        !SentinelStagedNodeUnchanged(staged_output[0U]) ||
+        !SentinelDesignLedgerUnchanged(ledger_output[0U]) ||
+        !SentinelRuntimePreviewUnchanged(runtime_preview_output[0U]) ||
+        !SentinelStyleLedgerUnchanged(style_ledger_output[0U])) {
+        return Fail("ui editor runtime preview invalid style mutated output");
+    }
+
+    return 0;
+}
+
+int UiEditorRuntimePreviewWorkflowOutputCapacityDoesNotMutateOutputs() {
+    const std::array<UiEditorRuntimeNodeRecord, 2U> nodes{RootNode(), ChildNode()};
+    const UiEditorRuntimeDocument document{Header(), nodes};
+    const PreviewHostFrameResult preview_frame = PreviewFrame();
+    const std::array<UiEditorStyleTemplateStateRecord, 1U> style_records{
+        ButtonStyleState()};
+    std::array<UiEditorHierarchyRow, 2U> hierarchy_output{};
+    std::array<UiEditorDesignSurfaceRow, 2U> design_output{};
+    std::array<UiEditorInspectorFieldRow, 7U> inspector_output{};
+    std::array<UiEditorPreviewFeedbackRecord, 1U> preview_output{};
+    std::array<UiEditorRuntimeNodeRecord, 2U> staged_output{};
+    std::array<UiEditorDesignCommandLedgerRecord, 1U> ledger_output{};
+    std::array<UiEditorRuntimePreviewStyleTemplateStateRow, 1U>
+        runtime_preview_output{};
+    std::array<UiEditorStyleTemplateStateLedgerRecord, 1U>
+        style_ledger_output{};
+    std::array<UiEditorRuntimePreviewStyleTemplateStateRow, 0U>
+        small_runtime_preview_output{};
+    SeedRuntimePreviewSentinels(
+        hierarchy_output,
+        design_output,
+        inspector_output,
+        preview_output,
+        staged_output,
+        ledger_output,
+        runtime_preview_output,
+        style_ledger_output);
+    UiEditorDesignCommand design_command{};
+    UiEditorStyleTemplateStateCommand style_command{};
+
+    UiEditorRuntimePreviewWorkflowResult result{};
+    const UiEditorRuntimePreviewWorkflowStatus status =
+        BuildUiEditorRuntimePreviewStyleTemplateStateWorkflow(
+            RuntimePreviewWorkflowRequest(
+                document,
+                UiNodeId{2U},
+                &preview_frame,
+                design_command,
+                style_command,
+                style_records,
+                hierarchy_output,
+                design_output,
+                inspector_output,
+                preview_output,
+                staged_output,
+                ledger_output,
+                small_runtime_preview_output,
+                style_ledger_output),
+            &result);
+    if (status != UiEditorRuntimePreviewWorkflowStatus::OutputCapacityExceeded ||
+        result.blocked_layer != UiEditorRuntimePreviewWorkflowBlockedLayer::Output) {
+        return Fail("ui editor runtime preview capacity result mismatch");
+    }
+
+    if (!SentinelHierarchyUnchanged(hierarchy_output[0U]) ||
+        !SentinelDesignUnchanged(design_output[0U]) ||
+        !SentinelInspectorUnchanged(inspector_output[0U]) ||
+        !SentinelPreviewUnchanged(preview_output[0U]) ||
+        !SentinelStagedNodeUnchanged(staged_output[0U]) ||
+        !SentinelDesignLedgerUnchanged(ledger_output[0U]) ||
+        !SentinelRuntimePreviewUnchanged(runtime_preview_output[0U]) ||
+        !SentinelStyleLedgerUnchanged(style_ledger_output[0U])) {
+        return Fail("ui editor runtime preview capacity mutated output");
+    }
+
+    return 0;
+}
+
 int RunNamedTest(std::string_view name) {
     if (name == TEST_DOCUMENT) {
         return UiEditorSurfaceBuildsRuntimeDocumentHierarchyRows();
@@ -746,6 +1182,22 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_WORKFLOW_CAPACITY) {
         return UiEditorWorkflowOutputCapacityDoesNotMutateOutputs();
+    }
+
+    if (name == TEST_RUNTIME_PREVIEW) {
+        return UiEditorRuntimePreviewWorkflowBuildsStyleTemplateStateRows();
+    }
+
+    if (name == TEST_RUNTIME_PREVIEW_MISSING_PREVIEW) {
+        return UiEditorRuntimePreviewWorkflowMissingPreviewFeedbackDoesNotMutateOutputs();
+    }
+
+    if (name == TEST_RUNTIME_PREVIEW_INVALID_STYLE) {
+        return UiEditorRuntimePreviewWorkflowInvalidStyleTemplateStateDoesNotMutateOutputs();
+    }
+
+    if (name == TEST_RUNTIME_PREVIEW_CAPACITY) {
+        return UiEditorRuntimePreviewWorkflowOutputCapacityDoesNotMutateOutputs();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);
