@@ -11,8 +11,15 @@
 
 namespace {
 using yuengine::animationeditor::AnimationEditorSurfaceStatus;
+using yuengine::animationeditor::AnimationEditorStateEventPlaybackWorkflowResult;
 using yuengine::animationeditor::AnimationEditorTimelineWorkflowResult;
+using yuengine::editorhost::BuildEditorHostApplicationLifecycle;
 using yuengine::editorhost::BuildEditorHostSessionShell;
+using yuengine::editorhost::EditorHostApplicationIntegrationKind;
+using yuengine::editorhost::EditorHostApplicationIntegrationRow;
+using yuengine::editorhost::EditorHostApplicationLifecyclePhase;
+using yuengine::editorhost::EditorHostApplicationLifecycleRequest;
+using yuengine::editorhost::EditorHostApplicationLifecycleResult;
 using yuengine::editorhost::EditorHostPanelDock;
 using yuengine::editorhost::EditorHostPanelKind;
 using yuengine::editorhost::EditorHostPanelStateRow;
@@ -28,8 +35,15 @@ using yuengine::editorhost::RestoreEditorHostSessionShell;
 using yuengine::editorpackagerun::AuthoredEditorPackageRunBlockedLayer;
 using yuengine::editorpackagerun::AuthoredEditorPackageRunResult;
 using yuengine::editorpackagerun::AuthoredEditorPackageRunStatus;
+using yuengine::previewhost::PreviewHostStatus;
+using yuengine::previewhost::PreviewHostViewportSessionResult;
+using yuengine::resourcebrowser::ResourceBrowserDepthWorkflowResult;
+using yuengine::resourcebrowser::ResourceBrowserDepthWorkflowStatus;
 using yuengine::runtimeasset::RuntimeAssetDataStatus;
 using yuengine::runtimeasset::RuntimeAssetPackageArtifactProductRunMissingLayer;
+using yuengine::sceneeditor::SceneEditorGizmoResourceSaveLoadWorkflowResult;
+using yuengine::sceneeditor::SceneEditorGizmoResourceWorkflowBlockedLayer;
+using yuengine::sceneeditor::SceneEditorGizmoResourceWorkflowStatus;
 using yuengine::sceneeditor::SceneEditorSurfaceStatus;
 using yuengine::sceneeditor::SceneEditorWorkflowBlockedLayer;
 using yuengine::sceneeditor::SceneEditorWorkflowResult;
@@ -38,6 +52,9 @@ using yuengine::uicore::UiNodeId;
 using yuengine::uieditor::UiEditorDesignInspectorWorkflowResult;
 using yuengine::uieditor::UiEditorDesignWorkflowBlockedLayer;
 using yuengine::uieditor::UiEditorDesignWorkflowStatus;
+using yuengine::uieditor::UiEditorRuntimePreviewWorkflowBlockedLayer;
+using yuengine::uieditor::UiEditorRuntimePreviewWorkflowResult;
+using yuengine::uieditor::UiEditorRuntimePreviewWorkflowStatus;
 using yuengine::uieditor::UiEditorSurfaceStatus;
 using yuengine::world::WorldObjectId;
 
@@ -51,6 +68,14 @@ constexpr const char *TEST_SMALL_PERSISTENCE =
     "EditorHostSession_RejectsSmallPersistenceOutputWithoutMutation";
 constexpr const char *TEST_INVALID_PERSISTED =
     "EditorHostSession_RejectsInvalidPersistedSessionWithoutMutation";
+constexpr const char *TEST_APP_OPEN_REFRESH =
+    "EditorHostApplicationLifecycle_OpenAndRefreshEmitIntegrationRows";
+constexpr const char *TEST_APP_RESTORE_CLOSE =
+    "EditorHostApplicationLifecycle_RestoreRequiresRuntimeRefreshAndClose";
+constexpr const char *TEST_APP_NATIVE_WINDOW_BLOCK =
+    "EditorHostApplicationLifecycle_NativeWindowRequestReturnsBlockedLayer";
+constexpr const char *TEST_APP_MISSING_PREVIEW =
+    "EditorHostApplicationLifecycle_MissingPreviewIntegrationDoesNotMutateOutputs";
 
 int Fail(const char *message) {
     std::fprintf(stderr, "%s\n", message);
@@ -170,6 +195,134 @@ AuthoredEditorPackageRunResult ReadyPackageRun() {
     return result;
 }
 
+ResourceBrowserDepthWorkflowResult ReadyResourceBrowserDepth() {
+    ResourceBrowserDepthWorkflowResult result{};
+    result.status = ResourceBrowserDepthWorkflowStatus::Success;
+    result.catalog_row_count = 2U;
+    result.importer_row_count = 1U;
+    result.asset_gap_row_count = 1U;
+    result.selection_ledger_count = 1U;
+    result.importer_ready_count = 1U;
+    result.asset_manager_ready_count = 1U;
+    result.preview_request_ready_count = 1U;
+    result.emitted_catalog_rows = true;
+    result.emitted_importer_rows = true;
+    result.emitted_asset_gap_rows = true;
+    result.emitted_selection_ledger = true;
+    result.selection_committed = true;
+    return result;
+}
+
+PreviewHostViewportSessionResult ReadyPreviewViewport() {
+    PreviewHostViewportSessionResult result{};
+    result.status = PreviewHostStatus::Success;
+    result.frame.status = PreviewHostStatus::Success;
+    result.frame.frame.frame_id = 710U;
+    result.frame.submitted_entity_count = 3U;
+    result.frame.hit_record_count = 1U;
+    result.frame.selection_record_count = 1U;
+    result.frame.transform_feedback_count = 1U;
+    result.selected_entity_index = 1U;
+    result.viewport_width = 1280U;
+    result.viewport_height = 720U;
+    result.consumed_viewport_controls = true;
+    result.consumed_resource_browser_selection = true;
+    result.resource_browser_preview_eligible = true;
+    result.resource_asset_mapping_preserved = true;
+    result.selected_entity_available = true;
+    result.built_frame = true;
+    result.emitted_hit_feedback = true;
+    result.emitted_selection_feedback = true;
+    result.emitted_transform_feedback = true;
+    return result;
+}
+
+SceneEditorGizmoResourceSaveLoadWorkflowResult ReadySceneGizmoWorkflow() {
+    SceneEditorGizmoResourceSaveLoadWorkflowResult result{};
+    result.status = SceneEditorGizmoResourceWorkflowStatus::Success;
+    result.blocked_layer = SceneEditorGizmoResourceWorkflowBlockedLayer::None;
+    result.viewport_status = PreviewHostStatus::Success;
+    result.viewport_interaction_status = PreviewHostStatus::Success;
+    result.selected_world_object_id = ObjectId(11U);
+    result.viewport_selected_entity_index = 1U;
+    result.gizmo_row_count = 1U;
+    result.resource_picker_row_count = 1U;
+    result.save_load_record_count = 1U;
+    result.loaded_identity_count = 2U;
+    result.loaded_transform_count = 2U;
+    result.consumed_authoring_document = true;
+    result.consumed_resource_browser_selection = true;
+    result.consumed_viewport_session = true;
+    result.consumed_viewport_interaction = true;
+    result.emitted_rendered_gizmo = true;
+    result.emitted_resource_picker = true;
+    result.wrote_scene_record_stream = true;
+    result.read_scene_record_stream = true;
+    result.skipped_editor_sidecars_for_runtime_stream = true;
+    result.committed_workflow = true;
+    return result;
+}
+
+AnimationEditorStateEventPlaybackWorkflowResult ReadyAnimationStateWorkflow() {
+    AnimationEditorStateEventPlaybackWorkflowResult result{};
+    result.status = AnimationEditorSurfaceStatus::Success;
+    result.blocked_layer =
+        yuengine::animationeditor::AnimationEditorSurfaceBlockedLayer::None;
+    result.state_id = 21U;
+    result.clip_id = 31U;
+    result.state_row_count = 1U;
+    result.event_row_count = 2U;
+    result.emitted_event_count = 1U;
+    result.track_row_count = 2U;
+    result.keyframe_marker_count = 4U;
+    result.preview_feedback_count = 1U;
+    result.selection_feedback_count = 1U;
+    result.consumed_state_records = true;
+    result.bound_state_to_clip = true;
+    result.consumed_event_records = true;
+    result.built_state_rows = true;
+    result.built_event_rows = true;
+    result.consumed_timeline_workflow = true;
+    result.consumed_preview_host_feedback = true;
+    result.emitted_preview_feedback = true;
+    result.emitted_event_timing_feedback = true;
+    result.built_visible_playback_feedback = true;
+    return result;
+}
+
+UiEditorRuntimePreviewWorkflowResult ReadyUiRuntimePreviewWorkflow() {
+    UiEditorRuntimePreviewWorkflowResult result{};
+    result.status = UiEditorRuntimePreviewWorkflowStatus::Success;
+    result.blocked_layer = UiEditorRuntimePreviewWorkflowBlockedLayer::None;
+    result.design_workflow = ReadyUiWorkflow();
+    result.design_workflow.surface.preview_status = PreviewHostStatus::Success;
+    result.selected_node_id = NodeId(41U);
+    result.document_id = 51U;
+    result.hierarchy_row_count = 2U;
+    result.design_surface_row_count = 2U;
+    result.inspector_field_count = 7U;
+    result.preview_feedback_count = 1U;
+    result.staged_node_count = 2U;
+    result.command_ledger_count = 1U;
+    result.runtime_preview_row_count = 1U;
+    result.style_template_state_ledger_count = 1U;
+    result.style_template_state_record_count = 1U;
+    result.consumed_runtime_ui_document = true;
+    result.consumed_preview_host_feedback = true;
+    result.consumed_style_template_state = true;
+    result.built_design_surface = true;
+    result.built_engine_runtime_preview = true;
+    result.emitted_hierarchy_rows = true;
+    result.emitted_inspector_fields = true;
+    result.emitted_runtime_preview_row = true;
+    result.staged_document_update = true;
+    result.emitted_command_ledger = true;
+    result.emitted_style_template_state_ledger = true;
+    result.design_command_applied = true;
+    result.style_template_state_command_applied = true;
+    return result;
+}
+
 EditorHostSessionShellRequest MakeRequest(
     const SceneEditorWorkflowResult *scene,
     const AnimationEditorTimelineWorkflowResult *animation,
@@ -191,6 +344,42 @@ EditorHostSessionShellRequest MakeRequest(
     return request;
 }
 
+EditorHostApplicationLifecycleRequest MakeApplicationRequest(
+    EditorHostApplicationLifecyclePhase phase,
+    const SceneEditorWorkflowResult *scene,
+    const AnimationEditorTimelineWorkflowResult *animation,
+    const UiEditorDesignInspectorWorkflowResult *ui,
+    const AuthoredEditorPackageRunResult *package_run,
+    const ResourceBrowserDepthWorkflowResult *resource_browser,
+    const PreviewHostViewportSessionResult *preview,
+    const SceneEditorGizmoResourceSaveLoadWorkflowResult *scene_integration,
+    const AnimationEditorStateEventPlaybackWorkflowResult *animation_integration,
+    const UiEditorRuntimePreviewWorkflowResult *ui_integration,
+    bool persist,
+    std::span<const EditorHostPersistedPanelRecord> restore_persisted,
+    std::span<EditorHostPanelStateRow> panel_output,
+    std::span<EditorHostPersistedPanelRecord> persisted_output,
+    std::span<EditorHostApplicationIntegrationRow> integration_output) {
+    EditorHostApplicationLifecycleRequest request{};
+    request.phase = phase;
+    request.shell_request = MakeRequest(
+        scene,
+        animation,
+        ui,
+        package_run,
+        persist,
+        panel_output,
+        persisted_output);
+    request.restore_persisted_panels = restore_persisted;
+    request.resource_browser_workflow = resource_browser;
+    request.preview_host_viewport = preview;
+    request.scene_workflow = scene_integration;
+    request.animation_workflow = animation_integration;
+    request.ui_workflow = ui_integration;
+    request.integration_output = integration_output;
+    return request;
+}
+
 bool SentinelPanelUnchanged(const EditorHostPanelStateRow &row) {
     return row.session_id == 91U &&
         row.kind == EditorHostPanelKind::PackageRun &&
@@ -203,6 +392,13 @@ bool SentinelPersistedUnchanged(const EditorHostPersistedPanelRecord &record) {
         record.kind == EditorHostPanelKind::UiEditor &&
         record.content_row_count == 94U &&
         record.forged_preview_output;
+}
+
+bool SentinelIntegrationUnchanged(const EditorHostApplicationIntegrationRow &row) {
+    return row.session_id == 95U &&
+        row.kind == EditorHostApplicationIntegrationKind::UiEditor &&
+        row.content_row_count == 96U &&
+        row.forged_preview_output;
 }
 
 int EditorHostSessionBuildsNativeShellPanelStateFromRav6Workflows() {
@@ -246,6 +442,7 @@ int EditorHostSessionBuildsNativeShellPanelStateFromRav6Workflows() {
 
     if (panels[0U].kind != EditorHostPanelKind::SceneEditor ||
         panels[0U].dock != EditorHostPanelDock::Center ||
+        panels[0U].navigation_index != 0U ||
         panels[0U].content_row_count != 3U ||
         panels[0U].selected_item_count != 1U ||
         panels[0U].ledger_record_count != 1U ||
@@ -288,8 +485,317 @@ int EditorHostSessionBuildsNativeShellPanelStateFromRav6Workflows() {
         persisted[0U].owns_runtime_truth ||
         persisted[0U].forged_preview_output ||
         persisted[0U].kind != EditorHostPanelKind::SceneEditor ||
+        persisted[0U].navigation_index != 0U ||
         persisted[3U].kind != EditorHostPanelKind::PackageRun) {
         return Fail("editor host persisted panel rows did not stay shell-only");
+    }
+
+    return 0;
+}
+
+int EditorHostApplicationLifecycleOpenAndRefreshEmitIntegrationRows() {
+    SceneEditorWorkflowResult scene = ReadySceneWorkflow();
+    AnimationEditorTimelineWorkflowResult animation = ReadyAnimationWorkflow();
+    UiEditorDesignInspectorWorkflowResult ui = ReadyUiWorkflow();
+    AuthoredEditorPackageRunResult package_run = ReadyPackageRun();
+    ResourceBrowserDepthWorkflowResult resource_browser = ReadyResourceBrowserDepth();
+    PreviewHostViewportSessionResult preview = ReadyPreviewViewport();
+    SceneEditorGizmoResourceSaveLoadWorkflowResult scene_integration =
+        ReadySceneGizmoWorkflow();
+    AnimationEditorStateEventPlaybackWorkflowResult animation_integration =
+        ReadyAnimationStateWorkflow();
+    UiEditorRuntimePreviewWorkflowResult ui_integration =
+        ReadyUiRuntimePreviewWorkflow();
+    std::array<EditorHostPanelStateRow, 4U> panels{};
+    std::array<EditorHostPersistedPanelRecord, 4U> persisted{};
+    std::array<EditorHostApplicationIntegrationRow, 5U> integrations{};
+    EditorHostApplicationLifecycleResult result{};
+    const EditorHostSessionStatus status = BuildEditorHostApplicationLifecycle(
+        MakeApplicationRequest(
+            EditorHostApplicationLifecyclePhase::Open,
+            &scene,
+            &animation,
+            &ui,
+            &package_run,
+            &resource_browser,
+            &preview,
+            &scene_integration,
+            &animation_integration,
+            &ui_integration,
+            true,
+            std::span<const EditorHostPersistedPanelRecord>{},
+            panels,
+            persisted,
+            integrations),
+        &result);
+
+    if (status != EditorHostSessionStatus::Success ||
+        !result.Succeeded() ||
+        !result.opened_session ||
+        result.refreshed_runtime_truth ||
+        result.integration_row_count != 5U ||
+        result.persisted_panel_count != 4U ||
+        !result.persisted_shell_state ||
+        !result.emitted_integration_rows ||
+        result.native_window_blocked ||
+        result.opened_native_window ||
+        result.owns_runtime_truth ||
+        result.mutated_runtime_data ||
+        result.forged_preview_output ||
+        result.used_forbidden_shell_path ||
+        result.used_forbidden_visual_fallback) {
+        return Fail("editor host application open lifecycle result mismatch");
+    }
+
+    if (integrations[0U].kind != EditorHostApplicationIntegrationKind::ResourceBrowser ||
+        integrations[0U].content_row_count != 4U ||
+        integrations[0U].selected_item_count != 1U ||
+        integrations[0U].ledger_record_count != 1U ||
+        !integrations[0U].runtime_truth_refresh_available ||
+        integrations[1U].kind != EditorHostApplicationIntegrationKind::PreviewHost ||
+        integrations[1U].preview_frame_id != 710U ||
+        integrations[1U].content_row_count != 3U ||
+        integrations[2U].kind != EditorHostApplicationIntegrationKind::SceneEditor ||
+        integrations[2U].content_row_count != 3U ||
+        integrations[3U].kind != EditorHostApplicationIntegrationKind::AnimationEditor ||
+        integrations[3U].content_row_count != 9U ||
+        integrations[4U].kind != EditorHostApplicationIntegrationKind::UiEditor ||
+        integrations[4U].content_row_count != 10U) {
+        return Fail("editor host application integration rows mismatch");
+    }
+
+    std::array<EditorHostPanelStateRow, 4U> refresh_panels{};
+    std::array<EditorHostPersistedPanelRecord, 4U> refresh_persisted{};
+    std::array<EditorHostApplicationIntegrationRow, 5U> refresh_integrations{};
+    EditorHostApplicationLifecycleResult refresh_result{};
+    const EditorHostSessionStatus refresh_status = BuildEditorHostApplicationLifecycle(
+        MakeApplicationRequest(
+            EditorHostApplicationLifecyclePhase::RefreshRuntimeTruth,
+            &scene,
+            &animation,
+            &ui,
+            &package_run,
+            &resource_browser,
+            &preview,
+            &scene_integration,
+            &animation_integration,
+            &ui_integration,
+            true,
+            std::span<const EditorHostPersistedPanelRecord>{},
+            refresh_panels,
+            refresh_persisted,
+            refresh_integrations),
+        &refresh_result);
+
+    if (refresh_status != EditorHostSessionStatus::Success ||
+        !refresh_result.refreshed_runtime_truth ||
+        refresh_result.opened_session ||
+        refresh_result.integration_row_count != 5U ||
+        refresh_integrations[1U].phase !=
+            EditorHostApplicationLifecyclePhase::RefreshRuntimeTruth ||
+        !refresh_integrations[1U].runtime_truth_refresh_available) {
+        return Fail("editor host application refresh lifecycle mismatch");
+    }
+
+    return 0;
+}
+
+int EditorHostApplicationLifecycleRestoreRequiresRuntimeRefreshAndClose() {
+    SceneEditorWorkflowResult scene = ReadySceneWorkflow();
+    AnimationEditorTimelineWorkflowResult animation = ReadyAnimationWorkflow();
+    UiEditorDesignInspectorWorkflowResult ui = ReadyUiWorkflow();
+    std::array<EditorHostPanelStateRow, 3U> build_panels{};
+    std::array<EditorHostPersistedPanelRecord, 3U> persisted{};
+    EditorHostSessionShellResult shell_result{};
+    const EditorHostSessionStatus shell_status = BuildEditorHostSessionShell(
+        MakeRequest(
+            &scene,
+            &animation,
+            &ui,
+            nullptr,
+            true,
+            build_panels,
+            persisted),
+        &shell_result);
+    if (shell_status != EditorHostSessionStatus::Success) {
+        return Fail("editor host restore setup failed");
+    }
+
+    std::array<EditorHostPanelStateRow, 3U> restored_panels{};
+    std::array<EditorHostPersistedPanelRecord, 1U> no_persist{};
+    std::array<EditorHostApplicationIntegrationRow, 5U> restored_integrations{};
+    EditorHostApplicationLifecycleResult restore_result{};
+    const EditorHostSessionStatus restore_status = BuildEditorHostApplicationLifecycle(
+        MakeApplicationRequest(
+            EditorHostApplicationLifecyclePhase::Restore,
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr,
+            false,
+            persisted,
+            restored_panels,
+            no_persist,
+            restored_integrations),
+        &restore_result);
+
+    if (restore_status != EditorHostSessionStatus::Success ||
+        !restore_result.restored_session ||
+        !restore_result.requires_runtime_refresh ||
+        restore_result.restored_panel_count != 3U ||
+        restore_result.integration_row_count != 5U ||
+        !restore_result.emitted_integration_rows ||
+        restored_integrations[0U].consumed_integration ||
+        !restored_integrations[0U].requires_runtime_refresh ||
+        restored_integrations[4U].kind != EditorHostApplicationIntegrationKind::UiEditor ||
+        !restored_panels[0U].requires_runtime_refresh ||
+        restored_panels[0U].navigation_index != 0U) {
+        return Fail("editor host application restore lifecycle mismatch");
+    }
+
+    EditorHostApplicationLifecycleRequest close_request{};
+    close_request.phase = EditorHostApplicationLifecyclePhase::Close;
+    close_request.shell_request.descriptor = Descriptor();
+    EditorHostApplicationLifecycleResult close_result{};
+    const EditorHostSessionStatus close_status =
+        BuildEditorHostApplicationLifecycle(close_request, &close_result);
+    if (close_status != EditorHostSessionStatus::Success ||
+        !close_result.closed_session ||
+        close_result.opened_session ||
+        close_result.restored_session ||
+        close_result.refreshed_runtime_truth ||
+        close_result.integration_row_count != 0U ||
+        close_result.opened_native_window ||
+        close_result.owns_runtime_truth) {
+        return Fail("editor host application close lifecycle mismatch");
+    }
+
+    return 0;
+}
+
+int EditorHostApplicationLifecycleNativeWindowRequestReturnsBlockedLayer() {
+    SceneEditorWorkflowResult scene = ReadySceneWorkflow();
+    AnimationEditorTimelineWorkflowResult animation = ReadyAnimationWorkflow();
+    UiEditorDesignInspectorWorkflowResult ui = ReadyUiWorkflow();
+    std::array<EditorHostPanelStateRow, 1U> panels{};
+    panels[0U].session_id = 91U;
+    panels[0U].kind = EditorHostPanelKind::PackageRun;
+    panels[0U].content_row_count = 92U;
+    panels[0U].forged_preview_output = true;
+    std::array<EditorHostPersistedPanelRecord, 1U> persisted{};
+    persisted[0U].session_id = 93U;
+    persisted[0U].kind = EditorHostPanelKind::UiEditor;
+    persisted[0U].content_row_count = 94U;
+    persisted[0U].forged_preview_output = true;
+    std::array<EditorHostApplicationIntegrationRow, 1U> integrations{};
+    integrations[0U].session_id = 95U;
+    integrations[0U].kind = EditorHostApplicationIntegrationKind::UiEditor;
+    integrations[0U].content_row_count = 96U;
+    integrations[0U].forged_preview_output = true;
+
+    EditorHostApplicationLifecycleRequest request = MakeApplicationRequest(
+        EditorHostApplicationLifecyclePhase::Open,
+        &scene,
+        &animation,
+        &ui,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        true,
+        std::span<const EditorHostPersistedPanelRecord>{},
+        panels,
+        persisted,
+        integrations);
+    request.request_native_window_launch = true;
+    EditorHostApplicationLifecycleResult result{};
+    const EditorHostSessionStatus status =
+        BuildEditorHostApplicationLifecycle(request, &result);
+
+    if (status != EditorHostSessionStatus::NativeWindowBlocked ||
+        result.blocked_layer != EditorHostSessionBlockedLayer::NativeWindow ||
+        !result.native_window_blocked ||
+        result.opened_native_window ||
+        result.opened_session) {
+        return Fail("native window blocked status mismatch");
+    }
+
+    if (!SentinelPanelUnchanged(panels[0U]) ||
+        !SentinelPersistedUnchanged(persisted[0U]) ||
+        !SentinelIntegrationUnchanged(integrations[0U])) {
+        return Fail("native window blocked path mutated caller outputs");
+    }
+
+    return 0;
+}
+
+int EditorHostApplicationLifecycleMissingPreviewIntegrationDoesNotMutateOutputs() {
+    SceneEditorWorkflowResult scene = ReadySceneWorkflow();
+    AnimationEditorTimelineWorkflowResult animation = ReadyAnimationWorkflow();
+    UiEditorDesignInspectorWorkflowResult ui = ReadyUiWorkflow();
+    AuthoredEditorPackageRunResult package_run = ReadyPackageRun();
+    ResourceBrowserDepthWorkflowResult resource_browser = ReadyResourceBrowserDepth();
+    SceneEditorGizmoResourceSaveLoadWorkflowResult scene_integration =
+        ReadySceneGizmoWorkflow();
+    AnimationEditorStateEventPlaybackWorkflowResult animation_integration =
+        ReadyAnimationStateWorkflow();
+    UiEditorRuntimePreviewWorkflowResult ui_integration =
+        ReadyUiRuntimePreviewWorkflow();
+    std::array<EditorHostPanelStateRow, 4U> panels{};
+    panels[0U].session_id = 91U;
+    panels[0U].kind = EditorHostPanelKind::PackageRun;
+    panels[0U].content_row_count = 92U;
+    panels[0U].forged_preview_output = true;
+    std::array<EditorHostPersistedPanelRecord, 4U> persisted{};
+    persisted[0U].session_id = 93U;
+    persisted[0U].kind = EditorHostPanelKind::UiEditor;
+    persisted[0U].content_row_count = 94U;
+    persisted[0U].forged_preview_output = true;
+    std::array<EditorHostApplicationIntegrationRow, 5U> integrations{};
+    integrations[0U].session_id = 95U;
+    integrations[0U].kind = EditorHostApplicationIntegrationKind::UiEditor;
+    integrations[0U].content_row_count = 96U;
+    integrations[0U].forged_preview_output = true;
+
+    EditorHostApplicationLifecycleResult result{};
+    const EditorHostSessionStatus status = BuildEditorHostApplicationLifecycle(
+        MakeApplicationRequest(
+            EditorHostApplicationLifecyclePhase::RefreshRuntimeTruth,
+            &scene,
+            &animation,
+            &ui,
+            &package_run,
+            &resource_browser,
+            nullptr,
+            &scene_integration,
+            &animation_integration,
+            &ui_integration,
+            true,
+            std::span<const EditorHostPersistedPanelRecord>{},
+            panels,
+            persisted,
+            integrations),
+        &result);
+
+    if (status != EditorHostSessionStatus::MissingPreviewHostIntegration ||
+        result.blocked_layer != EditorHostSessionBlockedLayer::PreviewHostIntegration ||
+        result.opened_session ||
+        result.refreshed_runtime_truth ||
+        result.emitted_integration_rows) {
+        return Fail("missing preview integration status mismatch");
+    }
+
+    if (!SentinelPanelUnchanged(panels[0U]) ||
+        !SentinelPersistedUnchanged(persisted[0U]) ||
+        !SentinelIntegrationUnchanged(integrations[0U])) {
+        return Fail("missing preview integration mutated caller outputs");
     }
 
     return 0;
@@ -506,6 +1012,22 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_INVALID_PERSISTED) {
         return EditorHostSessionRejectsInvalidPersistedSessionWithoutMutation();
+    }
+
+    if (test_name == TEST_APP_OPEN_REFRESH) {
+        return EditorHostApplicationLifecycleOpenAndRefreshEmitIntegrationRows();
+    }
+
+    if (test_name == TEST_APP_RESTORE_CLOSE) {
+        return EditorHostApplicationLifecycleRestoreRequiresRuntimeRefreshAndClose();
+    }
+
+    if (test_name == TEST_APP_NATIVE_WINDOW_BLOCK) {
+        return EditorHostApplicationLifecycleNativeWindowRequestReturnsBlockedLayer();
+    }
+
+    if (test_name == TEST_APP_MISSING_PREVIEW) {
+        return EditorHostApplicationLifecycleMissingPreviewIntegrationDoesNotMutateOutputs();
     }
 
     return Fail("unknown test name");

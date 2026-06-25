@@ -9,6 +9,8 @@
 
 #include "YuEngine/AnimationEditor/AnimationEditorSurface.h"
 #include "YuEngine/EditorPackageRun/EditorPackageRunSmoke.h"
+#include "YuEngine/PreviewHost/PreviewHost.h"
+#include "YuEngine/ResourceBrowser/ResourceBrowserSurface.h"
 #include "YuEngine/SceneEditor/SceneEditorSurface.h"
 #include "YuEngine/UiEditor/UiEditorSurface.h"
 
@@ -25,7 +27,16 @@ enum class EditorHostSessionStatus {
     MissingPackageRunWorkflow,
     PanelOutputCapacityExceeded,
     PersistenceOutputCapacityExceeded,
-    InvalidPersistedSession
+    InvalidPersistedSession,
+    NativeWindowBlocked,
+    MissingResourceBrowserIntegration,
+    MissingPreviewHostIntegration,
+    MissingSceneIntegration,
+    MissingAnimationIntegration,
+    MissingUiIntegration,
+    IntegrationOutputCapacityExceeded,
+    ShellLifecycleFailed,
+    RestoreLifecycleFailed
 };
 
 enum class EditorHostSessionBlockedLayer {
@@ -36,7 +47,14 @@ enum class EditorHostSessionBlockedLayer {
     UiEditorWorkflow,
     PackageRunWorkflow,
     PanelOutput,
-    PersistenceStore
+    PersistenceStore,
+    NativeWindow,
+    ResourceBrowserIntegration,
+    PreviewHostIntegration,
+    SceneEditorIntegration,
+    AnimationEditorIntegration,
+    UiEditorIntegration,
+    IntegrationOutput
 };
 
 enum class EditorHostPanelKind {
@@ -52,6 +70,21 @@ enum class EditorHostPanelDock {
     Center,
     Right,
     Bottom
+};
+
+enum class EditorHostApplicationLifecyclePhase {
+    Open,
+    Restore,
+    RefreshRuntimeTruth,
+    Close
+};
+
+enum class EditorHostApplicationIntegrationKind {
+    ResourceBrowser,
+    PreviewHost,
+    SceneEditor,
+    AnimationEditor,
+    UiEditor
 };
 
 struct EditorHostSessionDescriptor final {
@@ -74,6 +107,7 @@ struct EditorHostPanelStateRow final {
     std::uint32_t selected_item_count = 0U;
     std::uint32_t ledger_record_count = 0U;
     std::uint32_t preview_frame_id = 0U;
+    std::uint32_t navigation_index = 0U;
     bool visible = true;
     bool focused = false;
     bool dirty = false;
@@ -95,6 +129,7 @@ struct EditorHostPersistedPanelRecord final {
     std::uint32_t content_row_count = 0U;
     std::uint32_t selected_item_count = 0U;
     std::uint32_t ledger_record_count = 0U;
+    std::uint32_t navigation_index = 0U;
     bool visible = true;
     bool focused = false;
     bool dirty = false;
@@ -175,6 +210,80 @@ struct EditorHostSessionRestoreResult final {
     }
 };
 
+struct EditorHostApplicationIntegrationRow final {
+    std::uint64_t session_id = INVALID_EDITOR_HOST_SESSION_ID;
+    EditorHostApplicationLifecyclePhase phase =
+        EditorHostApplicationLifecyclePhase::Open;
+    EditorHostApplicationIntegrationKind kind =
+        EditorHostApplicationIntegrationKind::ResourceBrowser;
+    std::uint32_t order = 0U;
+    std::uint32_t navigation_index = 0U;
+    std::uint32_t content_row_count = 0U;
+    std::uint32_t selected_item_count = 0U;
+    std::uint32_t ledger_record_count = 0U;
+    std::uint32_t preview_frame_id = 0U;
+    bool visible = true;
+    bool consumed_integration = false;
+    bool runtime_truth_refresh_available = false;
+    bool requires_runtime_refresh = false;
+    bool shell_state_only = true;
+    bool owns_runtime_truth = false;
+    bool opened_native_window = false;
+    bool mutated_runtime_data = false;
+    bool forged_preview_output = false;
+};
+
+struct EditorHostApplicationLifecycleRequest final {
+    EditorHostApplicationLifecyclePhase phase =
+        EditorHostApplicationLifecyclePhase::Open;
+    EditorHostSessionShellRequest shell_request{};
+    std::span<const EditorHostPersistedPanelRecord> restore_persisted_panels{};
+    const yuengine::resourcebrowser::ResourceBrowserDepthWorkflowResult
+        *resource_browser_workflow = nullptr;
+    const yuengine::previewhost::PreviewHostViewportSessionResult
+        *preview_host_viewport = nullptr;
+    const yuengine::sceneeditor::SceneEditorGizmoResourceSaveLoadWorkflowResult
+        *scene_workflow = nullptr;
+    const yuengine::animationeditor::AnimationEditorStateEventPlaybackWorkflowResult
+        *animation_workflow = nullptr;
+    const yuengine::uieditor::UiEditorRuntimePreviewWorkflowResult *ui_workflow =
+        nullptr;
+    bool request_native_window_launch = false;
+    std::span<EditorHostApplicationIntegrationRow> integration_output{};
+};
+
+struct EditorHostApplicationLifecycleResult final {
+    EditorHostSessionStatus status = EditorHostSessionStatus::InvalidArgument;
+    EditorHostSessionBlockedLayer blocked_layer =
+        EditorHostSessionBlockedLayer::SessionDescriptor;
+    EditorHostApplicationLifecyclePhase phase =
+        EditorHostApplicationLifecyclePhase::Open;
+    EditorHostSessionShellResult shell{};
+    EditorHostSessionRestoreResult restore{};
+    std::uint64_t session_id = INVALID_EDITOR_HOST_SESSION_ID;
+    std::size_t integration_row_count = 0U;
+    std::size_t persisted_panel_count = 0U;
+    std::size_t restored_panel_count = 0U;
+    bool opened_session = false;
+    bool restored_session = false;
+    bool refreshed_runtime_truth = false;
+    bool closed_session = false;
+    bool persisted_shell_state = false;
+    bool emitted_integration_rows = false;
+    bool native_window_blocked = false;
+    bool requires_runtime_refresh = false;
+    bool owns_runtime_truth = false;
+    bool opened_native_window = false;
+    bool mutated_runtime_data = false;
+    bool forged_preview_output = false;
+    bool used_forbidden_shell_path = false;
+    bool used_forbidden_visual_fallback = false;
+
+    bool Succeeded() const {
+        return status == EditorHostSessionStatus::Success;
+    }
+};
+
 EditorHostSessionStatus BuildEditorHostSessionShell(
     const EditorHostSessionShellRequest &request,
     EditorHostSessionShellResult *out_result);
@@ -182,5 +291,9 @@ EditorHostSessionStatus BuildEditorHostSessionShell(
 EditorHostSessionStatus RestoreEditorHostSessionShell(
     const EditorHostSessionRestoreRequest &request,
     EditorHostSessionRestoreResult *out_result);
+
+EditorHostSessionStatus BuildEditorHostApplicationLifecycle(
+    const EditorHostApplicationLifecycleRequest &request,
+    EditorHostApplicationLifecycleResult *out_result);
 
 }
