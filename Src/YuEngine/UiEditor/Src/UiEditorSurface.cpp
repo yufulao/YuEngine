@@ -5,7 +5,16 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 
+#include "YuEngine/File/FileReadRequest.h"
+#include "YuEngine/File/FileReadResult.h"
+#include "YuEngine/File/FileWriteRequest.h"
+#include "YuEngine/File/FileWriteResult.h"
+#include "YuEngine/File/MountTable.h"
+#include "YuEngine/Serialize/SerializeReader.h"
+#include "YuEngine/Serialize/SerializeRecordId.h"
+#include "YuEngine/Serialize/SerializeWriter.h"
 #include "YuEngine/UiCore/UiNodeDesc.h"
 #include "YuEngine/UiCore/UiNodeRecord.h"
 #include "YuEngine/UiCore/UiNodeTree.h"
@@ -16,6 +25,17 @@ namespace yuengine::uieditor {
 namespace {
 using PreviewHostFrameResult = yuengine::previewhost::PreviewHostFrameResult;
 using PreviewHostStatus = yuengine::previewhost::PreviewHostStatus;
+using FileReadRequest = yuengine::file::FileReadRequest;
+using FileReadResult = yuengine::file::FileReadResult;
+using FileStatus = yuengine::file::FileStatus;
+using FileWriteRequest = yuengine::file::FileWriteRequest;
+using FileWriteResult = yuengine::file::FileWriteResult;
+using MountTable = yuengine::file::MountTable;
+using SerializeFieldId = yuengine::serialize::SerializeFieldId;
+using SerializeReader = yuengine::serialize::SerializeReader;
+using SerializeRecordId = yuengine::serialize::SerializeRecordId;
+using SerializeStatus = yuengine::serialize::SerializeStatus;
+using SerializeWriter = yuengine::serialize::SerializeWriter;
 using UiNodeDesc = yuengine::uicore::UiNodeDesc;
 using UiNodeId = yuengine::uicore::UiNodeId;
 using UiNodeRecord = yuengine::uicore::UiNodeRecord;
@@ -24,6 +44,42 @@ using UiNodeTreeDesc = yuengine::uicore::UiNodeTreeDesc;
 using UiNodeTreeResult = yuengine::uicore::UiNodeTreeResult;
 using UiNodeTreeStatus = yuengine::uicore::UiNodeTreeStatus;
 using UiRect = yuengine::uicore::UiRect;
+
+constexpr std::uint32_t UI_EDITOR_SERIALIZATION_BUFFER_SIZE = 512U;
+constexpr SerializeRecordId UI_EDITOR_SERIALIZATION_RECORD{1U};
+constexpr SerializeFieldId FIELD_DOCUMENT_ID{1U};
+constexpr SerializeFieldId FIELD_NODE_ID{2U};
+constexpr SerializeFieldId FIELD_COMPONENT_KIND{3U};
+constexpr SerializeFieldId FIELD_STYLE_KEY{4U};
+constexpr SerializeFieldId FIELD_THEME_KEY{5U};
+constexpr SerializeFieldId FIELD_TEMPLATE_KEY{6U};
+constexpr SerializeFieldId FIELD_STATE_REVISION{7U};
+constexpr SerializeFieldId FIELD_HOVERED{8U};
+constexpr SerializeFieldId FIELD_FOCUSED{9U};
+constexpr SerializeFieldId FIELD_PRESSED{10U};
+constexpr SerializeFieldId FIELD_DISABLED{11U};
+constexpr SerializeFieldId FIELD_RUNTIME_STATE_VALID{12U};
+constexpr SerializeFieldId FIELD_STYLE_RESOLVED{13U};
+constexpr SerializeFieldId FIELD_TEMPLATE_INSTANCED{14U};
+constexpr SerializeFieldId FIELD_PREVIEW_FRAME_ID{15U};
+
+struct SerializedStyleThemeTemplateValues final {
+    std::uint32_t document_id = 0U;
+    UiNodeId node_id{};
+    UiEditorComponentKind component_kind = UiEditorComponentKind::Unknown;
+    std::uint32_t style_key = 0U;
+    std::uint32_t theme_key = 0U;
+    std::uint32_t template_key = 0U;
+    std::uint32_t state_revision = 0U;
+    std::uint32_t preview_frame_id = 0U;
+    bool hovered = false;
+    bool focused = false;
+    bool pressed = false;
+    bool disabled = false;
+    bool runtime_state_valid = false;
+    bool style_resolved = false;
+    bool template_instanced = false;
+};
 
 template <typename T>
 bool IsSpanStorageValid(std::span<T> values) {
@@ -637,8 +693,8 @@ bool IsStyleTemplateStateRecordValid(
         return false;
     }
 
-    if (record.style_key == 0U || record.template_key == 0U ||
-        record.state_revision == 0U) {
+    if (record.style_key == 0U || record.theme_key == 0U ||
+        record.template_key == 0U || record.state_revision == 0U) {
         return false;
     }
 
@@ -660,6 +716,10 @@ bool IsStyleTemplateStateCommandSupported(
         return command.style_key != 0U;
     }
 
+    if (command.kind == UiEditorStyleTemplateStateCommandKind::SetThemeKey) {
+        return command.theme_key != 0U;
+    }
+
     if (command.kind == UiEditorStyleTemplateStateCommandKind::SetTemplateKey) {
         return command.template_key != 0U;
     }
@@ -678,6 +738,10 @@ UiEditorStyleTemplateStateRecord ApplyStyleTemplateStateCommand(
     UiEditorStyleTemplateStateRecord updated = record;
     if (command.kind == UiEditorStyleTemplateStateCommandKind::SetStyleKey) {
         updated.style_key = command.style_key;
+    }
+
+    if (command.kind == UiEditorStyleTemplateStateCommandKind::SetThemeKey) {
+        updated.theme_key = command.theme_key;
     }
 
     if (command.kind == UiEditorStyleTemplateStateCommandKind::SetTemplateKey) {
@@ -707,6 +771,7 @@ UiEditorRuntimePreviewStyleTemplateStateRow BuildRuntimePreviewStyleRow(
     row.component_kind = record.component_kind;
     row.world_rect = design_row.world_rect;
     row.style_key = record.style_key;
+    row.theme_key = record.theme_key;
     row.template_key = record.template_key;
     row.state_revision = record.state_revision;
     row.preview_frame_id = preview_feedback.frame_id;
@@ -739,6 +804,8 @@ UiEditorStyleTemplateStateLedgerRecord BuildStyleTemplateStateLedger(
     record.command_sequence = command.command_sequence;
     record.before_style_key = before.style_key;
     record.after_style_key = after.style_key;
+    record.before_theme_key = before.theme_key;
+    record.after_theme_key = after.theme_key;
     record.before_template_key = before.template_key;
     record.after_template_key = after.template_key;
     record.before_state_revision = before.state_revision;
@@ -755,6 +822,432 @@ UiEditorStyleTemplateStateLedgerRecord BuildStyleTemplateStateLedger(
         command.kind != UiEditorStyleTemplateStateCommandKind::None;
     record.command_applied = record.staged_style_template_state_update;
     return record;
+}
+
+UiEditorStyleThemeTemplateSerializationBlockedLayer MapSerializationWorkflowLayer(
+    UiEditorRuntimePreviewWorkflowBlockedLayer layer) {
+    if (layer == UiEditorRuntimePreviewWorkflowBlockedLayer::None) {
+        return UiEditorStyleThemeTemplateSerializationBlockedLayer::None;
+    }
+
+    if (layer == UiEditorRuntimePreviewWorkflowBlockedLayer::RuntimeUiDocument) {
+        return UiEditorStyleThemeTemplateSerializationBlockedLayer::RuntimeUiDocument;
+    }
+
+    if (layer == UiEditorRuntimePreviewWorkflowBlockedLayer::UiCoreNodeTree) {
+        return UiEditorStyleThemeTemplateSerializationBlockedLayer::UiCoreNodeTree;
+    }
+
+    if (layer == UiEditorRuntimePreviewWorkflowBlockedLayer::PreviewHostFeedback) {
+        return UiEditorStyleThemeTemplateSerializationBlockedLayer::PreviewHostFeedback;
+    }
+
+    if (layer == UiEditorRuntimePreviewWorkflowBlockedLayer::StyleTemplateState) {
+        return UiEditorStyleThemeTemplateSerializationBlockedLayer::StyleThemeTemplate;
+    }
+
+    if (layer == UiEditorRuntimePreviewWorkflowBlockedLayer::Output) {
+        return UiEditorStyleThemeTemplateSerializationBlockedLayer::Output;
+    }
+
+    return UiEditorStyleThemeTemplateSerializationBlockedLayer::DesignWorkflow;
+}
+
+bool SerializationWorkflowStorageValid(
+    const UiEditorStyleThemeTemplateSerializationWorkflowRequest &request) {
+    return IsConstSpanStorageValid(request.style_template_state_records) &&
+        IsSpanStorageValid(request.hierarchy_output) &&
+        IsSpanStorageValid(request.design_surface_output) &&
+        IsSpanStorageValid(request.inspector_output) &&
+        IsSpanStorageValid(request.preview_feedback_output) &&
+        IsSpanStorageValid(request.staged_document_output) &&
+        IsSpanStorageValid(request.command_ledger_output) &&
+        IsSpanStorageValid(request.runtime_preview_output) &&
+        IsSpanStorageValid(request.style_template_state_ledger_output) &&
+        IsSpanStorageValid(request.serialization_output);
+}
+
+bool SerializationWorkflowOutputCapacityReady(
+    const UiEditorStyleThemeTemplateSerializationWorkflowRequest &request,
+    std::size_t node_count) {
+    if (request.hierarchy_output.size() < node_count) {
+        return false;
+    }
+
+    if (request.design_surface_output.size() < node_count) {
+        return false;
+    }
+
+    if (request.inspector_output.size() < UI_EDITOR_INSPECTOR_FIELD_COUNT) {
+        return false;
+    }
+
+    if (request.preview_feedback_output.empty()) {
+        return false;
+    }
+
+    if (request.staged_document_output.size() < node_count) {
+        return false;
+    }
+
+    if (request.command_ledger_output.empty()) {
+        return false;
+    }
+
+    if (request.runtime_preview_output.empty()) {
+        return false;
+    }
+
+    if (request.style_template_state_ledger_output.empty()) {
+        return false;
+    }
+
+    if (request.serialization_output.empty()) {
+        return false;
+    }
+
+    return true;
+}
+
+bool FileVfsRequestAvailable(
+    const UiEditorStyleThemeTemplateSerializationWorkflowRequest &request) {
+    if (request.file_mount_table == nullptr) {
+        return false;
+    }
+
+    if (!request.file_mount.IsValid()) {
+        return false;
+    }
+
+    return request.file_path.ByteLength() > 0U;
+}
+
+std::uint32_t BoolFieldValue(bool value) {
+    if (value) {
+        return 1U;
+    }
+
+    return 0U;
+}
+
+bool BoolFromFieldValue(std::uint32_t value) {
+    return value != 0U;
+}
+
+SerializedStyleThemeTemplateValues ValuesFromRuntimePreviewRow(
+    const UiEditorRuntimePreviewStyleTemplateStateRow &row) {
+    SerializedStyleThemeTemplateValues values{};
+    values.document_id = row.document_id;
+    values.node_id = row.node_id;
+    values.component_kind = row.component_kind;
+    values.style_key = row.style_key;
+    values.theme_key = row.theme_key;
+    values.template_key = row.template_key;
+    values.state_revision = row.state_revision;
+    values.preview_frame_id = row.preview_frame_id;
+    values.hovered = row.hovered;
+    values.focused = row.focused;
+    values.pressed = row.pressed;
+    values.disabled = row.disabled;
+    values.runtime_state_valid = row.runtime_state_valid;
+    values.style_resolved = row.style_resolved;
+    values.template_instanced = row.template_instanced;
+    return values;
+}
+
+SerializeStatus WriteStyleThemeTemplateStream(
+    const SerializedStyleThemeTemplateValues &values,
+    std::span<std::uint8_t> output_bytes,
+    std::uint32_t *out_byte_count) {
+    if (out_byte_count == nullptr) {
+        return SerializeStatus::InvalidArgument;
+    }
+
+    *out_byte_count = 0U;
+    SerializeWriter writer(output_bytes.data(), static_cast<std::uint32_t>(output_bytes.size()));
+    SerializeStatus status = writer.BeginStream();
+    if (status == SerializeStatus::Success) {
+        status = writer.BeginRecord(UI_EDITOR_SERIALIZATION_RECORD);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(FIELD_DOCUMENT_ID, values.document_id);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(FIELD_NODE_ID, values.node_id.value);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(
+            FIELD_COMPONENT_KIND,
+            static_cast<std::uint32_t>(values.component_kind));
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(FIELD_STYLE_KEY, values.style_key);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(FIELD_THEME_KEY, values.theme_key);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(FIELD_TEMPLATE_KEY, values.template_key);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(FIELD_STATE_REVISION, values.state_revision);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(FIELD_HOVERED, BoolFieldValue(values.hovered));
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(FIELD_FOCUSED, BoolFieldValue(values.focused));
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(FIELD_PRESSED, BoolFieldValue(values.pressed));
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(FIELD_DISABLED, BoolFieldValue(values.disabled));
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(
+            FIELD_RUNTIME_STATE_VALID,
+            BoolFieldValue(values.runtime_state_valid));
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(
+            FIELD_STYLE_RESOLVED,
+            BoolFieldValue(values.style_resolved));
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(
+            FIELD_TEMPLATE_INSTANCED,
+            BoolFieldValue(values.template_instanced));
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = writer.WriteUInt32(FIELD_PREVIEW_FRAME_ID, values.preview_frame_id);
+    }
+
+    if (status == SerializeStatus::Success) {
+        *out_byte_count = writer.Snapshot().committed_byte_count;
+    }
+
+    return status;
+}
+
+SerializeStatus ReadUInt32Field(
+    SerializeReader &reader,
+    SerializeFieldId field,
+    std::uint32_t *out_value) {
+    if (out_value == nullptr) {
+        return SerializeStatus::InvalidArgument;
+    }
+
+    return reader.ReadUInt32(UI_EDITOR_SERIALIZATION_RECORD, field, *out_value);
+}
+
+SerializeStatus ReadStyleThemeTemplateStream(
+    std::span<const std::uint8_t> bytes,
+    SerializedStyleThemeTemplateValues *out_values) {
+    if (out_values == nullptr) {
+        return SerializeStatus::InvalidArgument;
+    }
+
+    SerializedStyleThemeTemplateValues values{};
+    SerializeReader reader(bytes.data(), static_cast<std::uint32_t>(bytes.size()));
+    SerializeStatus status = reader.OpenStream();
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_DOCUMENT_ID, &values.document_id);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_NODE_ID, &values.node_id.value);
+    }
+
+    std::uint32_t component_kind = 0U;
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_COMPONENT_KIND, &component_kind);
+    }
+
+    if (status == SerializeStatus::Success) {
+        values.component_kind = static_cast<UiEditorComponentKind>(component_kind);
+        status = ReadUInt32Field(reader, FIELD_STYLE_KEY, &values.style_key);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_THEME_KEY, &values.theme_key);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_TEMPLATE_KEY, &values.template_key);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_STATE_REVISION, &values.state_revision);
+    }
+
+    std::uint32_t bool_value = 0U;
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_HOVERED, &bool_value);
+        values.hovered = BoolFromFieldValue(bool_value);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_FOCUSED, &bool_value);
+        values.focused = BoolFromFieldValue(bool_value);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_PRESSED, &bool_value);
+        values.pressed = BoolFromFieldValue(bool_value);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_DISABLED, &bool_value);
+        values.disabled = BoolFromFieldValue(bool_value);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_RUNTIME_STATE_VALID, &bool_value);
+        values.runtime_state_valid = BoolFromFieldValue(bool_value);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_STYLE_RESOLVED, &bool_value);
+        values.style_resolved = BoolFromFieldValue(bool_value);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_TEMPLATE_INSTANCED, &bool_value);
+        values.template_instanced = BoolFromFieldValue(bool_value);
+    }
+
+    if (status == SerializeStatus::Success) {
+        status = ReadUInt32Field(reader, FIELD_PREVIEW_FRAME_ID, &values.preview_frame_id);
+    }
+
+    if (status == SerializeStatus::Success) {
+        *out_values = values;
+    }
+
+    return status;
+}
+
+bool SerializedValuesMatch(
+    const SerializedStyleThemeTemplateValues &left,
+    const SerializedStyleThemeTemplateValues &right) {
+    if (left.document_id != right.document_id) {
+        return false;
+    }
+
+    if (left.node_id.value != right.node_id.value) {
+        return false;
+    }
+
+    if (left.component_kind != right.component_kind) {
+        return false;
+    }
+
+    if (left.style_key != right.style_key || left.theme_key != right.theme_key ||
+        left.template_key != right.template_key ||
+        left.state_revision != right.state_revision) {
+        return false;
+    }
+
+    if (left.hovered != right.hovered || left.focused != right.focused ||
+        left.pressed != right.pressed || left.disabled != right.disabled) {
+        return false;
+    }
+
+    if (left.runtime_state_valid != right.runtime_state_valid ||
+        left.style_resolved != right.style_resolved ||
+        left.template_instanced != right.template_instanced) {
+        return false;
+    }
+
+    return left.preview_frame_id == right.preview_frame_id;
+}
+
+UiEditorStyleThemeTemplateSerializationRow BuildSerializationBoundaryRow(
+    const SerializedStyleThemeTemplateValues &source,
+    const SerializedStyleThemeTemplateValues &loaded,
+    std::size_t serialized_byte_count,
+    std::size_t saved_byte_count,
+    std::size_t loaded_byte_count) {
+    UiEditorStyleThemeTemplateSerializationRow row{};
+    row.document_id = source.document_id;
+    row.node_id = source.node_id;
+    row.component_kind = source.component_kind;
+    row.source_style_key = source.style_key;
+    row.source_theme_key = source.theme_key;
+    row.source_template_key = source.template_key;
+    row.source_state_revision = source.state_revision;
+    row.runtime_asset_style_key = loaded.style_key;
+    row.runtime_asset_theme_key = loaded.theme_key;
+    row.runtime_asset_template_key = loaded.template_key;
+    row.runtime_asset_state_revision = loaded.state_revision;
+    row.ui_runtime_style_key = loaded.style_key;
+    row.ui_runtime_theme_key = loaded.theme_key;
+    row.ui_runtime_template_key = loaded.template_key;
+    row.ui_runtime_state_revision = loaded.state_revision;
+    row.serialized_byte_count = serialized_byte_count;
+    row.saved_byte_count = saved_byte_count;
+    row.loaded_byte_count = loaded_byte_count;
+    row.saved_through_file_vfs = true;
+    row.loaded_through_file_vfs = true;
+    row.serialized_runtime_ui_data = true;
+    row.deserialized_runtime_ui_data = true;
+    row.runtime_asset_boundary_preserved = SerializedValuesMatch(source, loaded);
+    row.ui_runtime_boundary_preserved = row.runtime_asset_boundary_preserved;
+    row.component_template_state_provenance_preserved =
+        source.component_kind == loaded.component_kind &&
+        source.template_key == loaded.template_key &&
+        source.state_revision == loaded.state_revision;
+    return row;
+}
+
+void CopySerializationWorkflowOutputs(
+    const UiEditorStyleThemeTemplateSerializationWorkflowRequest &request,
+    std::span<const UiEditorHierarchyRow> staged_hierarchy,
+    std::span<const UiEditorDesignSurfaceRow> staged_design,
+    std::span<const UiEditorInspectorFieldRow> staged_inspector,
+    std::span<const UiEditorRuntimeNodeRecord> staged_nodes,
+    const UiEditorPreviewFeedbackRecord &staged_preview,
+    const UiEditorDesignCommandLedgerRecord &staged_design_ledger,
+    const UiEditorRuntimePreviewStyleTemplateStateRow &runtime_preview_row,
+    const UiEditorStyleTemplateStateLedgerRecord &style_ledger,
+    const UiEditorStyleThemeTemplateSerializationRow &serialization_row,
+    std::size_t node_count,
+    std::size_t inspector_count) {
+    std::size_t node_index = 0U;
+    while (node_index < node_count) {
+        request.hierarchy_output[node_index] = staged_hierarchy[node_index];
+        request.design_surface_output[node_index] = staged_design[node_index];
+        request.staged_document_output[node_index] = staged_nodes[node_index];
+        ++node_index;
+    }
+
+    std::size_t field_index = 0U;
+    while (field_index < inspector_count) {
+        request.inspector_output[field_index] = staged_inspector[field_index];
+        ++field_index;
+    }
+
+    request.preview_feedback_output[0U] = staged_preview;
+    request.command_ledger_output[0U] = staged_design_ledger;
+    request.runtime_preview_output[0U] = runtime_preview_row;
+    request.style_template_state_ledger_output[0U] = style_ledger;
+    request.serialization_output[0U] = serialization_row;
 }
 }
 
@@ -1242,6 +1735,268 @@ BuildUiEditorRuntimePreviewStyleTemplateStateWorkflow(
     result.emitted_style_template_state_ledger = true;
     result.design_command_applied = design_result.command_applied;
     result.style_template_state_command_applied = style_ledger.command_applied;
+    *out_result = result;
+    return result.status;
+}
+
+UiEditorStyleThemeTemplateSerializationStatus
+BuildUiEditorStyleThemeTemplateSerializationWorkflow(
+    const UiEditorStyleThemeTemplateSerializationWorkflowRequest &request,
+    UiEditorStyleThemeTemplateSerializationWorkflowResult *out_result) {
+    UiEditorStyleThemeTemplateSerializationWorkflowResult result{};
+
+    if (out_result == nullptr) {
+        return UiEditorStyleThemeTemplateSerializationStatus::InvalidArgument;
+    }
+
+    if (request.document == nullptr ||
+        !SerializationWorkflowStorageValid(request)) {
+        *out_result = result;
+        return result.status;
+    }
+
+    result.selected_node_id = request.selected_node_id;
+    result.document_id = request.document->header.document_id;
+
+    std::array<UiEditorHierarchyRow, MAX_UI_EDITOR_DOCUMENT_NODES>
+        staged_hierarchy{};
+    std::array<UiEditorDesignSurfaceRow, MAX_UI_EDITOR_DOCUMENT_NODES>
+        staged_design{};
+    std::array<UiEditorInspectorFieldRow, UI_EDITOR_INSPECTOR_FIELD_COUNT>
+        staged_inspector{};
+    std::array<UiEditorPreviewFeedbackRecord, 1U> staged_preview{};
+    std::array<UiEditorRuntimeNodeRecord, MAX_UI_EDITOR_DOCUMENT_NODES>
+        staged_nodes{};
+    std::array<UiEditorDesignCommandLedgerRecord, 1U> staged_design_ledger{};
+    std::array<UiEditorRuntimePreviewStyleTemplateStateRow, 1U>
+        staged_runtime_preview{};
+    std::array<UiEditorStyleTemplateStateLedgerRecord, 1U>
+        staged_style_ledger{};
+
+    UiEditorRuntimePreviewWorkflowRequest runtime_preview_request{};
+    runtime_preview_request.document = request.document;
+    runtime_preview_request.selected_node_id = request.selected_node_id;
+    runtime_preview_request.preview_frame = request.preview_frame;
+    runtime_preview_request.design_command = request.design_command;
+    runtime_preview_request.style_template_state_command =
+        request.style_template_state_command;
+    runtime_preview_request.style_template_state_records =
+        request.style_template_state_records;
+    runtime_preview_request.hierarchy_output =
+        std::span<UiEditorHierarchyRow>(
+            staged_hierarchy.data(),
+            staged_hierarchy.size());
+    runtime_preview_request.design_surface_output =
+        std::span<UiEditorDesignSurfaceRow>(
+            staged_design.data(),
+            staged_design.size());
+    runtime_preview_request.inspector_output =
+        std::span<UiEditorInspectorFieldRow>(
+            staged_inspector.data(),
+            staged_inspector.size());
+    runtime_preview_request.preview_feedback_output =
+        std::span<UiEditorPreviewFeedbackRecord>(
+            staged_preview.data(),
+            staged_preview.size());
+    runtime_preview_request.staged_document_output =
+        std::span<UiEditorRuntimeNodeRecord>(
+            staged_nodes.data(),
+            staged_nodes.size());
+    runtime_preview_request.command_ledger_output =
+        std::span<UiEditorDesignCommandLedgerRecord>(
+            staged_design_ledger.data(),
+            staged_design_ledger.size());
+    runtime_preview_request.runtime_preview_output =
+        std::span<UiEditorRuntimePreviewStyleTemplateStateRow>(
+            staged_runtime_preview.data(),
+            staged_runtime_preview.size());
+    runtime_preview_request.style_template_state_ledger_output =
+        std::span<UiEditorStyleTemplateStateLedgerRecord>(
+            staged_style_ledger.data(),
+            staged_style_ledger.size());
+
+    UiEditorRuntimePreviewWorkflowResult runtime_preview_result{};
+    const UiEditorRuntimePreviewWorkflowStatus runtime_preview_status =
+        BuildUiEditorRuntimePreviewStyleTemplateStateWorkflow(
+            runtime_preview_request,
+            &runtime_preview_result);
+    result.runtime_preview_workflow = runtime_preview_result;
+    result.document_id = runtime_preview_result.document_id;
+    result.consumed_runtime_ui_document =
+        runtime_preview_result.consumed_runtime_ui_document;
+    result.consumed_preview_host_feedback =
+        runtime_preview_result.consumed_preview_host_feedback;
+    result.consumed_style_template_state =
+        runtime_preview_result.consumed_style_template_state;
+    result.built_engine_runtime_preview =
+        runtime_preview_result.built_engine_runtime_preview;
+    if (runtime_preview_status != UiEditorRuntimePreviewWorkflowStatus::Success) {
+        result.status =
+            UiEditorStyleThemeTemplateSerializationStatus::RuntimePreviewWorkflowFailed;
+        result.blocked_layer =
+            MapSerializationWorkflowLayer(runtime_preview_result.blocked_layer);
+        *out_result = result;
+        return result.status;
+    }
+
+    const std::size_t node_count = runtime_preview_result.staged_node_count;
+    if (!SerializationWorkflowOutputCapacityReady(request, node_count)) {
+        result.status =
+            UiEditorStyleThemeTemplateSerializationStatus::OutputCapacityExceeded;
+        result.blocked_layer =
+            UiEditorStyleThemeTemplateSerializationBlockedLayer::Output;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!FileVfsRequestAvailable(request)) {
+        result.status =
+            UiEditorStyleThemeTemplateSerializationStatus::FileVfsUnavailable;
+        result.blocked_layer =
+            UiEditorStyleThemeTemplateSerializationBlockedLayer::FileVfs;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::array<std::uint8_t, UI_EDITOR_SERIALIZATION_BUFFER_SIZE>
+        serialized_bytes{};
+    std::uint32_t serialized_byte_count = 0U;
+    const SerializedStyleThemeTemplateValues source_values =
+        ValuesFromRuntimePreviewRow(staged_runtime_preview[0U]);
+    const SerializeStatus write_status =
+        WriteStyleThemeTemplateStream(
+            source_values,
+            std::span<std::uint8_t>(
+                serialized_bytes.data(),
+                serialized_bytes.size()),
+            &serialized_byte_count);
+    result.serialize_write_status = write_status;
+    result.serialized_byte_count = serialized_byte_count;
+    if (write_status != SerializeStatus::Success) {
+        result.status =
+            UiEditorStyleThemeTemplateSerializationStatus::SerializeFailed;
+        result.blocked_layer =
+            UiEditorStyleThemeTemplateSerializationBlockedLayer::Serialize;
+        *out_result = result;
+        return result.status;
+    }
+
+    MountTable &mount_table = *request.file_mount_table;
+    FileWriteRequest write_request{};
+    write_request.mount = request.file_mount;
+    write_request.path = request.file_path;
+    write_request.bytes = serialized_bytes.data();
+    write_request.byte_count = serialized_byte_count;
+    const FileWriteResult write_result = mount_table.Write(write_request);
+    result.file_write_status = write_result.status;
+    result.saved_byte_count = write_result.byte_count;
+    if (!write_result.Succeeded()) {
+        result.status =
+            UiEditorStyleThemeTemplateSerializationStatus::FileVfsFailed;
+        result.blocked_layer =
+            UiEditorStyleThemeTemplateSerializationBlockedLayer::FileVfs;
+        *out_result = result;
+        return result.status;
+    }
+
+    FileReadRequest read_request{};
+    read_request.mount = request.file_mount;
+    read_request.path = request.file_path;
+    const FileReadResult read_result = mount_table.Read(read_request);
+    result.file_read_status = read_result.status;
+    result.loaded_byte_count = read_result.bytes.size();
+    if (!read_result.Succeeded()) {
+        result.status =
+            UiEditorStyleThemeTemplateSerializationStatus::FileVfsFailed;
+        result.blocked_layer =
+            UiEditorStyleThemeTemplateSerializationBlockedLayer::FileVfs;
+        *out_result = result;
+        return result.status;
+    }
+
+    SerializedStyleThemeTemplateValues loaded_values{};
+    const SerializeStatus read_status =
+        ReadStyleThemeTemplateStream(
+            std::span<const std::uint8_t>(
+                read_result.bytes.data(),
+                read_result.bytes.size()),
+            &loaded_values);
+    result.serialize_read_status = read_status;
+    if (read_status != SerializeStatus::Success) {
+        result.status =
+            UiEditorStyleThemeTemplateSerializationStatus::DeserializeFailed;
+        result.blocked_layer =
+            UiEditorStyleThemeTemplateSerializationBlockedLayer::Serialize;
+        *out_result = result;
+        return result.status;
+    }
+
+    const UiEditorStyleThemeTemplateSerializationRow serialization_row =
+        BuildSerializationBoundaryRow(
+            source_values,
+            loaded_values,
+            serialized_byte_count,
+            write_result.byte_count,
+            read_result.bytes.size());
+    if (!serialization_row.runtime_asset_boundary_preserved ||
+        !serialization_row.ui_runtime_boundary_preserved ||
+        !serialization_row.component_template_state_provenance_preserved) {
+        result.status =
+            UiEditorStyleThemeTemplateSerializationStatus::ProvenanceMismatch;
+        result.blocked_layer =
+            UiEditorStyleThemeTemplateSerializationBlockedLayer::RuntimeAssetBoundary;
+        *out_result = result;
+        return result.status;
+    }
+
+    CopySerializationWorkflowOutputs(
+        request,
+        std::span<const UiEditorHierarchyRow>(
+            staged_hierarchy.data(),
+            staged_hierarchy.size()),
+        std::span<const UiEditorDesignSurfaceRow>(
+            staged_design.data(),
+            staged_design.size()),
+        std::span<const UiEditorInspectorFieldRow>(
+            staged_inspector.data(),
+            staged_inspector.size()),
+        std::span<const UiEditorRuntimeNodeRecord>(
+            staged_nodes.data(),
+            staged_nodes.size()),
+        staged_preview[0U],
+        staged_design_ledger[0U],
+        staged_runtime_preview[0U],
+        staged_style_ledger[0U],
+        serialization_row,
+        node_count,
+        runtime_preview_result.inspector_field_count);
+
+    result.status = UiEditorStyleThemeTemplateSerializationStatus::Success;
+    result.blocked_layer =
+        UiEditorStyleThemeTemplateSerializationBlockedLayer::None;
+    result.hierarchy_row_count = runtime_preview_result.hierarchy_row_count;
+    result.design_surface_row_count =
+        runtime_preview_result.design_surface_row_count;
+    result.inspector_field_count = runtime_preview_result.inspector_field_count;
+    result.preview_feedback_count = runtime_preview_result.preview_feedback_count;
+    result.staged_node_count = runtime_preview_result.staged_node_count;
+    result.command_ledger_count = runtime_preview_result.command_ledger_count;
+    result.runtime_preview_row_count =
+        runtime_preview_result.runtime_preview_row_count;
+    result.style_template_state_ledger_count =
+        runtime_preview_result.style_template_state_ledger_count;
+    result.serialization_row_count = 1U;
+    result.saved_through_file_vfs = true;
+    result.loaded_through_file_vfs = true;
+    result.serialized_runtime_ui_data = true;
+    result.deserialized_runtime_ui_data = true;
+    result.runtime_asset_boundary_preserved =
+        serialization_row.runtime_asset_boundary_preserved;
+    result.ui_runtime_boundary_preserved =
+        serialization_row.ui_runtime_boundary_preserved;
+    result.component_template_state_provenance_preserved =
+        serialization_row.component_template_state_provenance_preserved;
+    result.emitted_serialization_row = true;
     *out_result = result;
     return result.status;
 }

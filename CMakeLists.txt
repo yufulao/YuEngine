@@ -376,7 +376,7 @@ target_include_directories(YuUiEditor
     PUBLIC
         Src/YuEngine/UiEditor/Include
 )
-target_link_libraries(YuUiEditor PUBLIC YuPreviewHost YuUiCore)
+target_link_libraries(YuUiEditor PUBLIC YuFile YuPreviewHost YuSerialize YuUiCore)
 
 add_library(YuAudioScene
     Src/YuEngine/AudioScene/Src/AudioSceneContractQueue.cpp
@@ -1934,6 +1934,9 @@ yuengine_add_labeled_test(UiEditorRuntimePreviewWorkflow_BuildsStyleTemplateStat
 yuengine_add_labeled_test(UiEditorRuntimePreviewWorkflow_MissingPreviewFeedbackDoesNotMutateOutputs YuUiEditorSurfaceTests Fast ModuleFixture UiEditor UiCore PreviewHost UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiEditorRuntimePreviewWorkflow_InvalidStyleTemplateStateDoesNotMutateOutputs YuUiEditorSurfaceTests Fast ModuleFixture UiEditor UiCore PreviewHost UI L1 EvidenceOracle)
 yuengine_add_labeled_test(UiEditorRuntimePreviewWorkflow_OutputCapacityDoesNotMutateOutputs YuUiEditorSurfaceTests Fast ModuleFixture UiEditor UiCore PreviewHost UI L1 EvidenceOracle)
+yuengine_add_labeled_test(UiEditorStyleThemeTemplateSerializationWorkflow_RoundTripsThroughFileVfs YuUiEditorSurfaceTests Fast ModuleFixture UiEditor UiCore PreviewHost UI Serialize File L1 EvidenceOracle)
+yuengine_add_labeled_test(UiEditorStyleThemeTemplateSerializationWorkflow_MissingFileVfsDoesNotMutateOutputs YuUiEditorSurfaceTests Fast ModuleFixture UiEditor UiCore PreviewHost UI Serialize File L1 EvidenceOracle)
+yuengine_add_labeled_test(UiEditorStyleThemeTemplateSerializationWorkflow_OutputCapacityDoesNotMutateOutputs YuUiEditorSurfaceTests Fast ModuleFixture UiEditor UiCore PreviewHost UI Serialize File L1 EvidenceOracle)
 
 add_executable(YuUiRenderCoreBridgeTests
     Tests/UiRenderCoreBridge/UiRenderCoreBridgeTests.cpp

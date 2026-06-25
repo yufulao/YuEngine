@@ -4,22 +4,33 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <span>
 #include <string_view>
 
+#include "YuEngine/File/MountId.h"
+#include "YuEngine/File/MountTable.h"
+#include "YuEngine/File/VirtualPath.h"
 #include "YuEngine/PreviewHost/PreviewHost.h"
+#include "YuEngine/Serialize/SerializeStatus.h"
 #include "YuEngine/UiCore/UiNodeId.h"
 #include "YuEngine/UiCore/UiRectTransform.h"
 #include "YuEngine/UiEditor/UiEditorSurface.h"
 
+using yuengine::file::FileStatus;
+using yuengine::file::MountId;
+using yuengine::file::MountTable;
+using yuengine::file::VirtualPath;
 using yuengine::previewhost::PreviewHostFrameFormat;
 using yuengine::previewhost::PreviewHostFrameResult;
 using yuengine::previewhost::PreviewHostStatus;
+using yuengine::serialize::SerializeStatus;
 using yuengine::uicore::UiNodeId;
 using yuengine::uicore::UiRectTransform;
 using yuengine::uieditor::BuildUiEditorRuntimeDocumentSurface;
 using yuengine::uieditor::BuildUiEditorDesignInspectorWorkflowSurface;
 using yuengine::uieditor::BuildUiEditorRuntimePreviewStyleTemplateStateWorkflow;
+using yuengine::uieditor::BuildUiEditorStyleThemeTemplateSerializationWorkflow;
 using yuengine::uieditor::UiEditorDesignCommand;
 using yuengine::uieditor::UiEditorDesignCommandKind;
 using yuengine::uieditor::UiEditorDesignCommandLedgerRecord;
@@ -47,6 +58,11 @@ using yuengine::uieditor::UiEditorStyleTemplateStateCommand;
 using yuengine::uieditor::UiEditorStyleTemplateStateCommandKind;
 using yuengine::uieditor::UiEditorStyleTemplateStateLedgerRecord;
 using yuengine::uieditor::UiEditorStyleTemplateStateRecord;
+using yuengine::uieditor::UiEditorStyleThemeTemplateSerializationBlockedLayer;
+using yuengine::uieditor::UiEditorStyleThemeTemplateSerializationRow;
+using yuengine::uieditor::UiEditorStyleThemeTemplateSerializationStatus;
+using yuengine::uieditor::UiEditorStyleThemeTemplateSerializationWorkflowRequest;
+using yuengine::uieditor::UiEditorStyleThemeTemplateSerializationWorkflowResult;
 using yuengine::uieditor::UiEditorSurfaceBlockedLayer;
 using yuengine::uieditor::UiEditorSurfaceStatus;
 
@@ -77,10 +93,18 @@ constexpr const char *TEST_RUNTIME_PREVIEW_INVALID_STYLE =
     "UiEditorRuntimePreviewWorkflow_InvalidStyleTemplateStateDoesNotMutateOutputs";
 constexpr const char *TEST_RUNTIME_PREVIEW_CAPACITY =
     "UiEditorRuntimePreviewWorkflow_OutputCapacityDoesNotMutateOutputs";
+constexpr const char *TEST_SERIALIZATION =
+    "UiEditorStyleThemeTemplateSerializationWorkflow_RoundTripsThroughFileVfs";
+constexpr const char *TEST_SERIALIZATION_MISSING_FILE =
+    "UiEditorStyleThemeTemplateSerializationWorkflow_MissingFileVfsDoesNotMutateOutputs";
+constexpr const char *TEST_SERIALIZATION_CAPACITY =
+    "UiEditorStyleThemeTemplateSerializationWorkflow_OutputCapacityDoesNotMutateOutputs";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint32_t DOCUMENT_ID = 5101U;
 constexpr float TOLERANCE = 0.0001F;
+constexpr const char *UI_EDITOR_TEST_MOUNT = "UiEditor";
+constexpr const char *UI_EDITOR_SERIALIZATION_PATH = "Runtime/StyleThemeTemplate.bin";
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -158,6 +182,11 @@ PreviewHostFrameResult PreviewFrame() {
     return result;
 }
 
+std::filesystem::path SerializationFixtureRoot() {
+    return std::filesystem::temp_directory_path() /
+        "YuEngineUiEditorSerializationTests";
+}
+
 UiEditorRuntimeDocumentSurfaceRequest SurfaceRequest(
     const UiEditorRuntimeDocument &document,
     UiNodeId selected_node_id,
@@ -205,6 +234,7 @@ UiEditorStyleTemplateStateRecord ButtonStyleState() {
     record.node_id = UiNodeId{2U};
     record.component_kind = UiEditorComponentKind::Button;
     record.style_key = 810U;
+    record.theme_key = 875U;
     record.template_key = 920U;
     record.state_revision = 7U;
     record.hovered = true;
@@ -250,6 +280,45 @@ UiEditorRuntimePreviewWorkflowRequest RuntimePreviewWorkflowRequest(
     return request;
 }
 
+UiEditorStyleThemeTemplateSerializationWorkflowRequest SerializationWorkflowRequest(
+    const UiEditorRuntimeDocument &document,
+    UiNodeId selected_node_id,
+    const PreviewHostFrameResult *preview_frame,
+    const UiEditorDesignCommand &design_command,
+    const UiEditorStyleTemplateStateCommand &style_command,
+    std::span<const UiEditorStyleTemplateStateRecord> style_records,
+    MountTable *mount_table,
+    std::span<UiEditorHierarchyRow> hierarchy_output,
+    std::span<UiEditorDesignSurfaceRow> design_output,
+    std::span<UiEditorInspectorFieldRow> inspector_output,
+    std::span<UiEditorPreviewFeedbackRecord> preview_output,
+    std::span<UiEditorRuntimeNodeRecord> staged_output,
+    std::span<UiEditorDesignCommandLedgerRecord> ledger_output,
+    std::span<UiEditorRuntimePreviewStyleTemplateStateRow> runtime_preview_output,
+    std::span<UiEditorStyleTemplateStateLedgerRecord> style_ledger_output,
+    std::span<UiEditorStyleThemeTemplateSerializationRow> serialization_output) {
+    UiEditorStyleThemeTemplateSerializationWorkflowRequest request{};
+    request.document = &document;
+    request.selected_node_id = selected_node_id;
+    request.preview_frame = preview_frame;
+    request.design_command = design_command;
+    request.style_template_state_command = style_command;
+    request.style_template_state_records = style_records;
+    request.file_mount_table = mount_table;
+    request.file_mount = MountId(UI_EDITOR_TEST_MOUNT);
+    request.file_path = VirtualPath(UI_EDITOR_SERIALIZATION_PATH);
+    request.hierarchy_output = hierarchy_output;
+    request.design_surface_output = design_output;
+    request.inspector_output = inspector_output;
+    request.preview_feedback_output = preview_output;
+    request.staged_document_output = staged_output;
+    request.command_ledger_output = ledger_output;
+    request.runtime_preview_output = runtime_preview_output;
+    request.style_template_state_ledger_output = style_ledger_output;
+    request.serialization_output = serialization_output;
+    return request;
+}
+
 bool SentinelHierarchyUnchanged(const UiEditorHierarchyRow &row) {
     return row.document_id == 9001U && row.node_id.value == 9002U && !row.selected;
 }
@@ -291,6 +360,13 @@ bool SentinelStyleLedgerUnchanged(
     return record.document_id == 9014U &&
         record.command_sequence == 9015U &&
         !record.command_applied;
+}
+
+bool SentinelSerializationUnchanged(
+    const UiEditorStyleThemeTemplateSerializationRow &row) {
+    return row.document_id == 9016U &&
+        row.node_id.value == 9017U &&
+        !row.saved_through_file_vfs;
 }
 
 void SeedWorkflowSentinels(
@@ -341,6 +417,30 @@ void SeedRuntimePreviewSentinels(
     style_ledger_output[0U].document_id = 9014U;
     style_ledger_output[0U].command_sequence = 9015U;
     style_ledger_output[0U].command_applied = false;
+}
+
+void SeedSerializationSentinels(
+    std::span<UiEditorHierarchyRow> hierarchy_output,
+    std::span<UiEditorDesignSurfaceRow> design_output,
+    std::span<UiEditorInspectorFieldRow> inspector_output,
+    std::span<UiEditorPreviewFeedbackRecord> preview_output,
+    std::span<UiEditorRuntimeNodeRecord> staged_output,
+    std::span<UiEditorDesignCommandLedgerRecord> ledger_output,
+    std::span<UiEditorRuntimePreviewStyleTemplateStateRow> runtime_preview_output,
+    std::span<UiEditorStyleTemplateStateLedgerRecord> style_ledger_output,
+    std::span<UiEditorStyleThemeTemplateSerializationRow> serialization_output) {
+    SeedRuntimePreviewSentinels(
+        hierarchy_output,
+        design_output,
+        inspector_output,
+        preview_output,
+        staged_output,
+        ledger_output,
+        runtime_preview_output,
+        style_ledger_output);
+    serialization_output[0U].document_id = 9016U;
+    serialization_output[0U].node_id = UiNodeId{9017U};
+    serialization_output[0U].saved_through_file_vfs = false;
 }
 
 int UiEditorSurfaceBuildsRuntimeDocumentHierarchyRows() {
@@ -905,6 +1005,7 @@ int UiEditorRuntimePreviewWorkflowBuildsStyleTemplateStateRows() {
         runtime_preview_output[0U].node_id.value != 2U ||
         runtime_preview_output[0U].component_kind != UiEditorComponentKind::Button ||
         runtime_preview_output[0U].style_key != 810U ||
+        runtime_preview_output[0U].theme_key != 875U ||
         runtime_preview_output[0U].template_key != 920U ||
         runtime_preview_output[0U].state_revision != 8U ||
         runtime_preview_output[0U].preview_frame_id != 71U ||
@@ -926,6 +1027,8 @@ int UiEditorRuntimePreviewWorkflowBuildsStyleTemplateStateRows() {
     if (style_ledger_output[0U].command_kind !=
             UiEditorStyleTemplateStateCommandKind::SetInteractionState ||
         style_ledger_output[0U].command_sequence != 18U ||
+        style_ledger_output[0U].before_theme_key != 875U ||
+        style_ledger_output[0U].after_theme_key != 875U ||
         style_ledger_output[0U].before_state_revision != 7U ||
         style_ledger_output[0U].after_state_revision != 8U ||
         style_ledger_output[0U].before_focused ||
@@ -1147,6 +1250,299 @@ int UiEditorRuntimePreviewWorkflowOutputCapacityDoesNotMutateOutputs() {
     return 0;
 }
 
+int UiEditorStyleThemeTemplateSerializationWorkflowRoundTripsThroughFileVfs() {
+    const std::filesystem::path root =
+        SerializationFixtureRoot() / "RoundTrip";
+    std::filesystem::remove_all(root);
+    MountTable mount_table;
+    const FileStatus mount_status =
+        mount_table.RegisterLooseMount(MountId(UI_EDITOR_TEST_MOUNT), root);
+    if (mount_status != FileStatus::Success) {
+        return Fail("ui editor serialization mount setup failed");
+    }
+
+    const std::array<UiEditorRuntimeNodeRecord, 2U> nodes{RootNode(), ChildNode()};
+    const UiEditorRuntimeDocument document{Header(), nodes};
+    const PreviewHostFrameResult preview_frame = PreviewFrame();
+    const std::array<UiEditorStyleTemplateStateRecord, 1U> style_records{
+        ButtonStyleState()};
+    std::array<UiEditorHierarchyRow, 2U> hierarchy_output{};
+    std::array<UiEditorDesignSurfaceRow, 2U> design_output{};
+    std::array<UiEditorInspectorFieldRow, 7U> inspector_output{};
+    std::array<UiEditorPreviewFeedbackRecord, 1U> preview_output{};
+    std::array<UiEditorRuntimeNodeRecord, 2U> staged_output{};
+    std::array<UiEditorDesignCommandLedgerRecord, 1U> ledger_output{};
+    std::array<UiEditorRuntimePreviewStyleTemplateStateRow, 1U>
+        runtime_preview_output{};
+    std::array<UiEditorStyleTemplateStateLedgerRecord, 1U>
+        style_ledger_output{};
+    std::array<UiEditorStyleThemeTemplateSerializationRow, 1U>
+        serialization_output{};
+    UiEditorDesignCommand design_command{};
+    UiEditorStyleTemplateStateCommand style_command{};
+    style_command.kind = UiEditorStyleTemplateStateCommandKind::SetThemeKey;
+    style_command.command_sequence = 27U;
+    style_command.theme_key = 876U;
+
+    UiEditorStyleThemeTemplateSerializationWorkflowResult result{};
+    const UiEditorStyleThemeTemplateSerializationStatus status =
+        BuildUiEditorStyleThemeTemplateSerializationWorkflow(
+            SerializationWorkflowRequest(
+                document,
+                UiNodeId{2U},
+                &preview_frame,
+                design_command,
+                style_command,
+                style_records,
+                &mount_table,
+                hierarchy_output,
+                design_output,
+                inspector_output,
+                preview_output,
+                staged_output,
+                ledger_output,
+                runtime_preview_output,
+                style_ledger_output,
+                serialization_output),
+            &result);
+    if (status != UiEditorStyleThemeTemplateSerializationStatus::Success ||
+        !result.Succeeded()) {
+        std::filesystem::remove_all(root);
+        return Fail("ui editor serialization workflow failed");
+    }
+
+    if (result.blocked_layer !=
+            UiEditorStyleThemeTemplateSerializationBlockedLayer::None ||
+        result.serialize_write_status != SerializeStatus::Success ||
+        result.serialize_read_status != SerializeStatus::Success ||
+        result.file_write_status != FileStatus::Success ||
+        result.file_read_status != FileStatus::Success ||
+        result.serialization_row_count != 1U ||
+        result.serialized_byte_count == 0U ||
+        result.saved_byte_count != result.serialized_byte_count ||
+        result.loaded_byte_count != result.serialized_byte_count ||
+        !result.saved_through_file_vfs ||
+        !result.loaded_through_file_vfs ||
+        !result.serialized_runtime_ui_data ||
+        !result.deserialized_runtime_ui_data ||
+        !result.runtime_asset_boundary_preserved ||
+        !result.ui_runtime_boundary_preserved ||
+        !result.component_template_state_provenance_preserved ||
+        !result.emitted_serialization_row ||
+        result.mutated_runtime_data ||
+        result.opened_native_window ||
+        result.used_forbidden_preview_path) {
+        std::filesystem::remove_all(root);
+        return Fail("ui editor serialization counters mismatch");
+    }
+
+    if (runtime_preview_output[0U].theme_key != 876U ||
+        style_ledger_output[0U].command_kind !=
+            UiEditorStyleTemplateStateCommandKind::SetThemeKey ||
+        style_ledger_output[0U].before_theme_key != 875U ||
+        style_ledger_output[0U].after_theme_key != 876U ||
+        style_records[0U].theme_key != 875U) {
+        std::filesystem::remove_all(root);
+        return Fail("ui editor serialization theme ledger mismatch");
+    }
+
+    const UiEditorStyleThemeTemplateSerializationRow &row =
+        serialization_output[0U];
+    if (row.document_id != DOCUMENT_ID ||
+        row.node_id.value != 2U ||
+        row.component_kind != UiEditorComponentKind::Button ||
+        row.source_style_key != 810U ||
+        row.source_theme_key != 876U ||
+        row.source_template_key != 920U ||
+        row.source_state_revision != 7U ||
+        row.runtime_asset_style_key != 810U ||
+        row.runtime_asset_theme_key != 876U ||
+        row.runtime_asset_template_key != 920U ||
+        row.runtime_asset_state_revision != 7U ||
+        row.ui_runtime_style_key != 810U ||
+        row.ui_runtime_theme_key != 876U ||
+        row.ui_runtime_template_key != 920U ||
+        row.ui_runtime_state_revision != 7U ||
+        row.serialized_byte_count != result.serialized_byte_count ||
+        row.saved_byte_count != result.saved_byte_count ||
+        row.loaded_byte_count != result.loaded_byte_count ||
+        !row.saved_through_file_vfs ||
+        !row.loaded_through_file_vfs ||
+        !row.serialized_runtime_ui_data ||
+        !row.deserialized_runtime_ui_data ||
+        !row.runtime_asset_boundary_preserved ||
+        !row.ui_runtime_boundary_preserved ||
+        !row.component_template_state_provenance_preserved) {
+        std::filesystem::remove_all(root);
+        return Fail("ui editor serialization row mismatch");
+    }
+
+    std::filesystem::remove_all(root);
+    return 0;
+}
+
+int UiEditorStyleThemeTemplateSerializationWorkflowMissingFileVfsDoesNotMutateOutputs() {
+    const std::array<UiEditorRuntimeNodeRecord, 2U> nodes{RootNode(), ChildNode()};
+    const UiEditorRuntimeDocument document{Header(), nodes};
+    const PreviewHostFrameResult preview_frame = PreviewFrame();
+    const std::array<UiEditorStyleTemplateStateRecord, 1U> style_records{
+        ButtonStyleState()};
+    std::array<UiEditorHierarchyRow, 2U> hierarchy_output{};
+    std::array<UiEditorDesignSurfaceRow, 2U> design_output{};
+    std::array<UiEditorInspectorFieldRow, 7U> inspector_output{};
+    std::array<UiEditorPreviewFeedbackRecord, 1U> preview_output{};
+    std::array<UiEditorRuntimeNodeRecord, 2U> staged_output{};
+    std::array<UiEditorDesignCommandLedgerRecord, 1U> ledger_output{};
+    std::array<UiEditorRuntimePreviewStyleTemplateStateRow, 1U>
+        runtime_preview_output{};
+    std::array<UiEditorStyleTemplateStateLedgerRecord, 1U>
+        style_ledger_output{};
+    std::array<UiEditorStyleThemeTemplateSerializationRow, 1U>
+        serialization_output{};
+    SeedSerializationSentinels(
+        hierarchy_output,
+        design_output,
+        inspector_output,
+        preview_output,
+        staged_output,
+        ledger_output,
+        runtime_preview_output,
+        style_ledger_output,
+        serialization_output);
+    UiEditorDesignCommand design_command{};
+    UiEditorStyleTemplateStateCommand style_command{};
+
+    UiEditorStyleThemeTemplateSerializationWorkflowResult result{};
+    const UiEditorStyleThemeTemplateSerializationStatus status =
+        BuildUiEditorStyleThemeTemplateSerializationWorkflow(
+            SerializationWorkflowRequest(
+                document,
+                UiNodeId{2U},
+                &preview_frame,
+                design_command,
+                style_command,
+                style_records,
+                nullptr,
+                hierarchy_output,
+                design_output,
+                inspector_output,
+                preview_output,
+                staged_output,
+                ledger_output,
+                runtime_preview_output,
+                style_ledger_output,
+                serialization_output),
+            &result);
+    if (status != UiEditorStyleThemeTemplateSerializationStatus::FileVfsUnavailable ||
+        result.blocked_layer !=
+            UiEditorStyleThemeTemplateSerializationBlockedLayer::FileVfs) {
+        return Fail("ui editor serialization missing file result mismatch");
+    }
+
+    if (!SentinelHierarchyUnchanged(hierarchy_output[0U]) ||
+        !SentinelDesignUnchanged(design_output[0U]) ||
+        !SentinelInspectorUnchanged(inspector_output[0U]) ||
+        !SentinelPreviewUnchanged(preview_output[0U]) ||
+        !SentinelStagedNodeUnchanged(staged_output[0U]) ||
+        !SentinelDesignLedgerUnchanged(ledger_output[0U]) ||
+        !SentinelRuntimePreviewUnchanged(runtime_preview_output[0U]) ||
+        !SentinelStyleLedgerUnchanged(style_ledger_output[0U]) ||
+        !SentinelSerializationUnchanged(serialization_output[0U])) {
+        return Fail("ui editor serialization missing file mutated output");
+    }
+
+    return 0;
+}
+
+int UiEditorStyleThemeTemplateSerializationWorkflowOutputCapacityDoesNotMutateOutputs() {
+    const std::filesystem::path root =
+        SerializationFixtureRoot() / "Capacity";
+    std::filesystem::remove_all(root);
+    MountTable mount_table;
+    const FileStatus mount_status =
+        mount_table.RegisterLooseMount(MountId(UI_EDITOR_TEST_MOUNT), root);
+    if (mount_status != FileStatus::Success) {
+        return Fail("ui editor serialization capacity mount setup failed");
+    }
+
+    const std::array<UiEditorRuntimeNodeRecord, 2U> nodes{RootNode(), ChildNode()};
+    const UiEditorRuntimeDocument document{Header(), nodes};
+    const PreviewHostFrameResult preview_frame = PreviewFrame();
+    const std::array<UiEditorStyleTemplateStateRecord, 1U> style_records{
+        ButtonStyleState()};
+    std::array<UiEditorHierarchyRow, 2U> hierarchy_output{};
+    std::array<UiEditorDesignSurfaceRow, 2U> design_output{};
+    std::array<UiEditorInspectorFieldRow, 7U> inspector_output{};
+    std::array<UiEditorPreviewFeedbackRecord, 1U> preview_output{};
+    std::array<UiEditorRuntimeNodeRecord, 2U> staged_output{};
+    std::array<UiEditorDesignCommandLedgerRecord, 1U> ledger_output{};
+    std::array<UiEditorRuntimePreviewStyleTemplateStateRow, 1U>
+        runtime_preview_output{};
+    std::array<UiEditorStyleTemplateStateLedgerRecord, 1U>
+        style_ledger_output{};
+    std::array<UiEditorStyleThemeTemplateSerializationRow, 1U>
+        serialization_output{};
+    std::array<UiEditorStyleThemeTemplateSerializationRow, 0U>
+        small_serialization_output{};
+    SeedSerializationSentinels(
+        hierarchy_output,
+        design_output,
+        inspector_output,
+        preview_output,
+        staged_output,
+        ledger_output,
+        runtime_preview_output,
+        style_ledger_output,
+        serialization_output);
+    UiEditorDesignCommand design_command{};
+    UiEditorStyleTemplateStateCommand style_command{};
+
+    UiEditorStyleThemeTemplateSerializationWorkflowResult result{};
+    const UiEditorStyleThemeTemplateSerializationStatus status =
+        BuildUiEditorStyleThemeTemplateSerializationWorkflow(
+            SerializationWorkflowRequest(
+                document,
+                UiNodeId{2U},
+                &preview_frame,
+                design_command,
+                style_command,
+                style_records,
+                &mount_table,
+                hierarchy_output,
+                design_output,
+                inspector_output,
+                preview_output,
+                staged_output,
+                ledger_output,
+                runtime_preview_output,
+                style_ledger_output,
+                small_serialization_output),
+            &result);
+    if (status !=
+            UiEditorStyleThemeTemplateSerializationStatus::OutputCapacityExceeded ||
+        result.blocked_layer !=
+            UiEditorStyleThemeTemplateSerializationBlockedLayer::Output) {
+        std::filesystem::remove_all(root);
+        return Fail("ui editor serialization capacity result mismatch");
+    }
+
+    if (!SentinelHierarchyUnchanged(hierarchy_output[0U]) ||
+        !SentinelDesignUnchanged(design_output[0U]) ||
+        !SentinelInspectorUnchanged(inspector_output[0U]) ||
+        !SentinelPreviewUnchanged(preview_output[0U]) ||
+        !SentinelStagedNodeUnchanged(staged_output[0U]) ||
+        !SentinelDesignLedgerUnchanged(ledger_output[0U]) ||
+        !SentinelRuntimePreviewUnchanged(runtime_preview_output[0U]) ||
+        !SentinelStyleLedgerUnchanged(style_ledger_output[0U]) ||
+        !SentinelSerializationUnchanged(serialization_output[0U])) {
+        std::filesystem::remove_all(root);
+        return Fail("ui editor serialization capacity mutated output");
+    }
+
+    std::filesystem::remove_all(root);
+    return 0;
+}
+
 int RunNamedTest(std::string_view name) {
     if (name == TEST_DOCUMENT) {
         return UiEditorSurfaceBuildsRuntimeDocumentHierarchyRows();
@@ -1198,6 +1594,18 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_RUNTIME_PREVIEW_CAPACITY) {
         return UiEditorRuntimePreviewWorkflowOutputCapacityDoesNotMutateOutputs();
+    }
+
+    if (name == TEST_SERIALIZATION) {
+        return UiEditorStyleThemeTemplateSerializationWorkflowRoundTripsThroughFileVfs();
+    }
+
+    if (name == TEST_SERIALIZATION_MISSING_FILE) {
+        return UiEditorStyleThemeTemplateSerializationWorkflowMissingFileVfsDoesNotMutateOutputs();
+    }
+
+    if (name == TEST_SERIALIZATION_CAPACITY) {
+        return UiEditorStyleThemeTemplateSerializationWorkflowOutputCapacityDoesNotMutateOutputs();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

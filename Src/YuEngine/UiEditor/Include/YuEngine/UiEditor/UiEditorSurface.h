@@ -7,11 +7,19 @@
 #include <cstdint>
 #include <span>
 
+#include "YuEngine/File/FileStatus.h"
+#include "YuEngine/File/MountId.h"
+#include "YuEngine/File/VirtualPath.h"
 #include "YuEngine/PreviewHost/PreviewHost.h"
+#include "YuEngine/Serialize/SerializeStatus.h"
 #include "YuEngine/UiCore/UiNodeId.h"
 #include "YuEngine/UiCore/UiNodeTreeStatus.h"
 #include "YuEngine/UiCore/UiRect.h"
 #include "YuEngine/UiCore/UiRectTransform.h"
+
+namespace yuengine::file {
+class MountTable;
+}
 
 namespace yuengine::uieditor {
 constexpr std::size_t MAX_UI_EDITOR_DOCUMENT_NODES = 32U;
@@ -119,8 +127,34 @@ enum class UiEditorDesignCommandKind {
 enum class UiEditorStyleTemplateStateCommandKind {
     None,
     SetStyleKey,
+    SetThemeKey,
     SetTemplateKey,
     SetInteractionState
+};
+
+enum class UiEditorStyleThemeTemplateSerializationStatus {
+    Success,
+    InvalidArgument,
+    RuntimePreviewWorkflowFailed,
+    OutputCapacityExceeded,
+    SerializeFailed,
+    FileVfsUnavailable,
+    FileVfsFailed,
+    DeserializeFailed,
+    ProvenanceMismatch
+};
+
+enum class UiEditorStyleThemeTemplateSerializationBlockedLayer {
+    None,
+    RuntimeUiDocument,
+    UiCoreNodeTree,
+    PreviewHostFeedback,
+    DesignWorkflow,
+    StyleThemeTemplate,
+    Serialize,
+    FileVfs,
+    RuntimeAssetBoundary,
+    Output
 };
 
 struct UiEditorRuntimeDocumentHeader final {
@@ -246,6 +280,7 @@ struct UiEditorStyleTemplateStateRecord final {
     yuengine::uicore::UiNodeId node_id{};
     UiEditorComponentKind component_kind = UiEditorComponentKind::Unknown;
     std::uint32_t style_key = 0U;
+    std::uint32_t theme_key = 0U;
     std::uint32_t template_key = 0U;
     std::uint32_t state_revision = 0U;
     bool hovered = false;
@@ -262,6 +297,7 @@ struct UiEditorStyleTemplateStateCommand final {
         UiEditorStyleTemplateStateCommandKind::None;
     std::uint32_t command_sequence = 0U;
     std::uint32_t style_key = 0U;
+    std::uint32_t theme_key = 0U;
     std::uint32_t template_key = 0U;
     std::uint32_t state_revision = 0U;
     bool hovered = false;
@@ -276,6 +312,7 @@ struct UiEditorRuntimePreviewStyleTemplateStateRow final {
     UiEditorComponentKind component_kind = UiEditorComponentKind::Unknown;
     yuengine::uicore::UiRect world_rect{};
     std::uint32_t style_key = 0U;
+    std::uint32_t theme_key = 0U;
     std::uint32_t template_key = 0U;
     std::uint32_t state_revision = 0U;
     std::uint32_t preview_frame_id = 0U;
@@ -302,6 +339,8 @@ struct UiEditorStyleTemplateStateLedgerRecord final {
     std::uint32_t command_sequence = 0U;
     std::uint32_t before_style_key = 0U;
     std::uint32_t after_style_key = 0U;
+    std::uint32_t before_theme_key = 0U;
+    std::uint32_t after_theme_key = 0U;
     std::uint32_t before_template_key = 0U;
     std::uint32_t after_template_key = 0U;
     std::uint32_t before_state_revision = 0U;
@@ -415,6 +454,55 @@ struct UiEditorRuntimePreviewWorkflowRequest final {
     std::span<UiEditorStyleTemplateStateLedgerRecord> style_template_state_ledger_output{};
 };
 
+struct UiEditorStyleThemeTemplateSerializationRow final {
+    std::uint32_t document_id = 0U;
+    yuengine::uicore::UiNodeId node_id{};
+    UiEditorComponentKind component_kind = UiEditorComponentKind::Unknown;
+    std::uint32_t source_style_key = 0U;
+    std::uint32_t source_theme_key = 0U;
+    std::uint32_t source_template_key = 0U;
+    std::uint32_t source_state_revision = 0U;
+    std::uint32_t runtime_asset_style_key = 0U;
+    std::uint32_t runtime_asset_theme_key = 0U;
+    std::uint32_t runtime_asset_template_key = 0U;
+    std::uint32_t runtime_asset_state_revision = 0U;
+    std::uint32_t ui_runtime_style_key = 0U;
+    std::uint32_t ui_runtime_theme_key = 0U;
+    std::uint32_t ui_runtime_template_key = 0U;
+    std::uint32_t ui_runtime_state_revision = 0U;
+    std::size_t serialized_byte_count = 0U;
+    std::size_t saved_byte_count = 0U;
+    std::size_t loaded_byte_count = 0U;
+    bool saved_through_file_vfs = false;
+    bool loaded_through_file_vfs = false;
+    bool serialized_runtime_ui_data = false;
+    bool deserialized_runtime_ui_data = false;
+    bool runtime_asset_boundary_preserved = false;
+    bool ui_runtime_boundary_preserved = false;
+    bool component_template_state_provenance_preserved = false;
+};
+
+struct UiEditorStyleThemeTemplateSerializationWorkflowRequest final {
+    const UiEditorRuntimeDocument *document = nullptr;
+    yuengine::uicore::UiNodeId selected_node_id{};
+    const yuengine::previewhost::PreviewHostFrameResult *preview_frame = nullptr;
+    UiEditorDesignCommand design_command{};
+    UiEditorStyleTemplateStateCommand style_template_state_command{};
+    std::span<const UiEditorStyleTemplateStateRecord> style_template_state_records{};
+    yuengine::file::MountTable *file_mount_table = nullptr;
+    yuengine::file::MountId file_mount{};
+    yuengine::file::VirtualPath file_path{};
+    std::span<UiEditorHierarchyRow> hierarchy_output{};
+    std::span<UiEditorDesignSurfaceRow> design_surface_output{};
+    std::span<UiEditorInspectorFieldRow> inspector_output{};
+    std::span<UiEditorPreviewFeedbackRecord> preview_feedback_output{};
+    std::span<UiEditorRuntimeNodeRecord> staged_document_output{};
+    std::span<UiEditorDesignCommandLedgerRecord> command_ledger_output{};
+    std::span<UiEditorRuntimePreviewStyleTemplateStateRow> runtime_preview_output{};
+    std::span<UiEditorStyleTemplateStateLedgerRecord> style_template_state_ledger_output{};
+    std::span<UiEditorStyleThemeTemplateSerializationRow> serialization_output{};
+};
+
 struct UiEditorRuntimePreviewWorkflowResult final {
     UiEditorRuntimePreviewWorkflowStatus status =
         UiEditorRuntimePreviewWorkflowStatus::InvalidArgument;
@@ -454,6 +542,55 @@ struct UiEditorRuntimePreviewWorkflowResult final {
     }
 };
 
+struct UiEditorStyleThemeTemplateSerializationWorkflowResult final {
+    UiEditorStyleThemeTemplateSerializationStatus status =
+        UiEditorStyleThemeTemplateSerializationStatus::InvalidArgument;
+    UiEditorStyleThemeTemplateSerializationBlockedLayer blocked_layer =
+        UiEditorStyleThemeTemplateSerializationBlockedLayer::RuntimeUiDocument;
+    UiEditorRuntimePreviewWorkflowResult runtime_preview_workflow{};
+    yuengine::serialize::SerializeStatus serialize_write_status =
+        yuengine::serialize::SerializeStatus::InvalidArgument;
+    yuengine::serialize::SerializeStatus serialize_read_status =
+        yuengine::serialize::SerializeStatus::InvalidArgument;
+    yuengine::file::FileStatus file_write_status =
+        yuengine::file::FileStatus::WriteFailure;
+    yuengine::file::FileStatus file_read_status =
+        yuengine::file::FileStatus::ReadFailure;
+    yuengine::uicore::UiNodeId selected_node_id{};
+    std::uint32_t document_id = 0U;
+    std::size_t hierarchy_row_count = 0U;
+    std::size_t design_surface_row_count = 0U;
+    std::size_t inspector_field_count = 0U;
+    std::size_t preview_feedback_count = 0U;
+    std::size_t staged_node_count = 0U;
+    std::size_t command_ledger_count = 0U;
+    std::size_t runtime_preview_row_count = 0U;
+    std::size_t style_template_state_ledger_count = 0U;
+    std::size_t serialization_row_count = 0U;
+    std::size_t serialized_byte_count = 0U;
+    std::size_t saved_byte_count = 0U;
+    std::size_t loaded_byte_count = 0U;
+    bool consumed_runtime_ui_document = false;
+    bool consumed_preview_host_feedback = false;
+    bool consumed_style_template_state = false;
+    bool built_engine_runtime_preview = false;
+    bool saved_through_file_vfs = false;
+    bool loaded_through_file_vfs = false;
+    bool serialized_runtime_ui_data = false;
+    bool deserialized_runtime_ui_data = false;
+    bool runtime_asset_boundary_preserved = false;
+    bool ui_runtime_boundary_preserved = false;
+    bool component_template_state_provenance_preserved = false;
+    bool emitted_serialization_row = false;
+    bool mutated_runtime_data = false;
+    bool opened_native_window = false;
+    bool used_forbidden_preview_path = false;
+
+    bool Succeeded() const {
+        return status == UiEditorStyleThemeTemplateSerializationStatus::Success;
+    }
+};
+
 UiEditorSurfaceStatus BuildUiEditorRuntimeDocumentSurface(
     const UiEditorRuntimeDocumentSurfaceRequest &request,
     UiEditorRuntimeDocumentSurfaceResult *out_result);
@@ -466,4 +603,9 @@ UiEditorRuntimePreviewWorkflowStatus
 BuildUiEditorRuntimePreviewStyleTemplateStateWorkflow(
     const UiEditorRuntimePreviewWorkflowRequest &request,
     UiEditorRuntimePreviewWorkflowResult *out_result);
+
+UiEditorStyleThemeTemplateSerializationStatus
+BuildUiEditorStyleThemeTemplateSerializationWorkflow(
+    const UiEditorStyleThemeTemplateSerializationWorkflowRequest &request,
+    UiEditorStyleThemeTemplateSerializationWorkflowResult *out_result);
 }
