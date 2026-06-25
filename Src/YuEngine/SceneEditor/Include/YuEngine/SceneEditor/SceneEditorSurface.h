@@ -13,6 +13,7 @@
 #include "YuEngine/World/WorldObjectId.h"
 #include "YuEngine/World/WorldSceneAuthoringDocument.h"
 #include "YuEngine/World/WorldTransformState.h"
+#include "YuEngine/World/WorldSceneRecordValueStreamStatus.h"
 
 namespace yuengine::sceneeditor {
 
@@ -70,6 +71,32 @@ enum class SceneEditorWorkflowBlockedLayer {
     ViewportSession,
     ViewportInteraction,
     TransformCommand,
+    Output
+};
+
+enum class SceneEditorGizmoResourceWorkflowStatus {
+    Success,
+    InvalidArgument,
+    InvalidAuthoringDocument,
+    OutputCapacityExceeded,
+    SelectionRequired,
+    BlockedResourceBrowserSelection,
+    ViewportSessionFailed,
+    ViewportInteractionFailed,
+    GizmoUnavailable,
+    ResourceBindingUnavailable,
+    SaveLoadFailed
+};
+
+enum class SceneEditorGizmoResourceWorkflowBlockedLayer {
+    None,
+    AuthoringDocument,
+    ResourceBrowserSelection,
+    ViewportSession,
+    ViewportInteraction,
+    GizmoSidecar,
+    ResourceBinding,
+    SaveLoad,
     Output
 };
 
@@ -263,6 +290,118 @@ struct SceneEditorWorkflowResult final {
     }
 };
 
+struct SceneEditorRenderedGizmoRow final {
+    yuengine::world::WorldObjectId world_object_id{};
+    yuengine::world::WorldTransformState transform{};
+    std::uint64_t gizmo_mode = 0U;
+    std::uint32_t viewport_selected_entity_index = 0U;
+    bool selected = false;
+    bool transform_available = false;
+    bool consumed_preview_host_feedback = false;
+    bool rendered_from_engine_viewport = false;
+};
+
+struct SceneEditorResourcePickerRow final {
+    yuengine::world::WorldObjectId world_object_id{};
+    yuengine::world::WorldComponentTypeId component_type_id{};
+    yuengine::world::WorldComponentSlotId component_slot_id{};
+    yuengine::resource::ResourceHandle current_resource{};
+    yuengine::resource::ResourceTypeId expected_resource_type{};
+    yuengine::resource::ResourceHandle selected_resource{};
+    yuengine::resource::ResourceTypeId selected_resource_type{};
+    bool current_binding_available = false;
+    bool resource_browser_selection_ready = false;
+    bool resource_asset_mapping_preserved = false;
+    bool selected_resource_matches_binding_type = false;
+};
+
+struct SceneEditorSaveLoadProofRecord final {
+    yuengine::world::WorldSceneRecordValueStreamStatus write_status =
+        yuengine::world::WorldSceneRecordValueStreamStatus::InvalidWriter;
+    yuengine::world::WorldSceneRecordValueStreamStatus read_status =
+        yuengine::world::WorldSceneRecordValueStreamStatus::InvalidReader;
+    std::uint32_t saved_identity_count = 0U;
+    std::uint32_t saved_transform_count = 0U;
+    std::uint32_t saved_attachment_count = 0U;
+    std::uint32_t saved_binding_count = 0U;
+    std::uint32_t loaded_identity_count = 0U;
+    std::uint32_t loaded_transform_count = 0U;
+    std::uint32_t loaded_attachment_count = 0U;
+    std::uint32_t loaded_binding_count = 0U;
+    std::uint32_t committed_byte_count = 0U;
+    std::uint32_t skipped_editor_sidecar_count = 0U;
+    bool wrote_scene_records = false;
+    bool read_scene_records = false;
+    bool preserved_runtime_record_counts = false;
+    bool kept_editor_sidecars_out_of_runtime_stream = false;
+};
+
+struct SceneEditorGizmoResourceSaveLoadWorkflowRequest final {
+    const yuengine::world::WorldSceneAuthoringDocument *document = nullptr;
+    const yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionState
+        *resource_browser_selection = nullptr;
+    const yuengine::previewhost::PreviewHostViewportSessionResult
+        *viewport_session = nullptr;
+    const yuengine::previewhost::PreviewHostEditorViewportInteractionResult
+        *viewport_interaction = nullptr;
+    std::span<std::uint8_t> persistence_buffer{};
+    std::span<SceneEditorRenderedGizmoRow> gizmo_rows{};
+    std::span<SceneEditorResourcePickerRow> resource_picker_rows{};
+    std::span<SceneEditorSaveLoadProofRecord> save_load_records{};
+    std::span<yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord>
+        loaded_identity_output{};
+    std::span<yuengine::world::WorldSceneObjectTransformRestoreTransformRecord>
+        loaded_transform_output{};
+    std::span<yuengine::world::WorldComponentAttachmentSnapshotRecord>
+        loaded_attachment_output{};
+    std::span<yuengine::world::WorldComponentResourceBindingSnapshotRecord>
+        loaded_binding_output{};
+};
+
+struct SceneEditorGizmoResourceSaveLoadWorkflowResult final {
+    SceneEditorGizmoResourceWorkflowStatus status =
+        SceneEditorGizmoResourceWorkflowStatus::InvalidArgument;
+    SceneEditorGizmoResourceWorkflowBlockedLayer blocked_layer =
+        SceneEditorGizmoResourceWorkflowBlockedLayer::AuthoringDocument;
+    yuengine::world::WorldSceneAuthoringDocumentStatus authoring_status =
+        yuengine::world::WorldSceneAuthoringDocumentStatus::Success;
+    yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState resource_preview_state =
+        yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState::Unknown;
+    yuengine::previewhost::PreviewHostStatus viewport_status =
+        yuengine::previewhost::PreviewHostStatus::InvalidArgument;
+    yuengine::previewhost::PreviewHostStatus viewport_interaction_status =
+        yuengine::previewhost::PreviewHostStatus::InvalidArgument;
+    yuengine::world::WorldSceneRecordValueStreamStatus save_status =
+        yuengine::world::WorldSceneRecordValueStreamStatus::InvalidWriter;
+    yuengine::world::WorldSceneRecordValueStreamStatus load_status =
+        yuengine::world::WorldSceneRecordValueStreamStatus::InvalidReader;
+    yuengine::world::WorldObjectId selected_world_object_id{};
+    std::uint32_t viewport_selected_entity_index = 0U;
+    std::uint32_t gizmo_row_count = 0U;
+    std::uint32_t resource_picker_row_count = 0U;
+    std::uint32_t save_load_record_count = 0U;
+    std::uint32_t loaded_identity_count = 0U;
+    std::uint32_t loaded_transform_count = 0U;
+    std::uint32_t loaded_attachment_count = 0U;
+    std::uint32_t loaded_binding_count = 0U;
+    bool consumed_authoring_document = false;
+    bool consumed_resource_browser_selection = false;
+    bool consumed_viewport_session = false;
+    bool consumed_viewport_interaction = false;
+    bool emitted_rendered_gizmo = false;
+    bool emitted_resource_picker = false;
+    bool wrote_scene_record_stream = false;
+    bool read_scene_record_stream = false;
+    bool skipped_editor_sidecars_for_runtime_stream = false;
+    bool committed_workflow = false;
+    bool mutated_runtime_data = false;
+    bool opened_native_window = false;
+
+    bool Succeeded() const {
+        return status == SceneEditorGizmoResourceWorkflowStatus::Success;
+    }
+};
+
 SceneEditorSurfaceStatus BuildSceneEditorNativeSurface(
     const SceneEditorSurfaceRequest &request,
     SceneEditorSurfaceResult *out_result);
@@ -274,5 +413,9 @@ SceneEditorTransformCommandStatus ApplySceneEditorTransformCommand(
 SceneEditorWorkflowStatus BuildSceneEditorUsableWorkflowSurface(
     const SceneEditorWorkflowRequest &request,
     SceneEditorWorkflowResult *out_result);
+
+SceneEditorGizmoResourceWorkflowStatus BuildSceneEditorGizmoResourceSaveLoadWorkflow(
+    const SceneEditorGizmoResourceSaveLoadWorkflowRequest &request,
+    SceneEditorGizmoResourceSaveLoadWorkflowResult *out_result);
 
 }
