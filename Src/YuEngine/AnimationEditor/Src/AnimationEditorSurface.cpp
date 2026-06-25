@@ -25,6 +25,7 @@ using PreviewHostTransformFeedback = yuengine::previewhost::PreviewHostTransform
 using WorldObjectId = yuengine::world::WorldObjectId;
 
 constexpr std::uint64_t NANOSECONDS_PER_SECOND = 1000000000ULL;
+constexpr float EVENT_TIME_TOLERANCE_SECONDS = 0.0001F;
 
 template <typename T>
 bool IsSpanStorageValid(std::span<T> values) {
@@ -90,6 +91,16 @@ AnimationEditorSurfaceBlockedLayer BlockedLayerForStatus(
 
     if (status == AnimationEditorSurfaceStatus::OutputCapacityExceeded) {
         return AnimationEditorSurfaceBlockedLayer::TimelineOutput;
+    }
+
+    if (status == AnimationEditorSurfaceStatus::MissingState ||
+        status == AnimationEditorSurfaceStatus::InvalidState) {
+        return AnimationEditorSurfaceBlockedLayer::StatePreviewRecords;
+    }
+
+    if (status == AnimationEditorSurfaceStatus::MissingEvent ||
+        status == AnimationEditorSurfaceStatus::InvalidEvent) {
+        return AnimationEditorSurfaceBlockedLayer::EventRecords;
     }
 
     if (status == AnimationEditorSurfaceStatus::SampleFailed) {
@@ -274,6 +285,7 @@ bool ConvertSecondsToNanoseconds(float seconds, std::uint64_t *out_nanoseconds) 
 
 AnimationEditorSurfaceStatus ResolveWorkflowSampleTime(
     const AnimationEditorTimelineWorkflowRequest &request,
+    const AnimationRuntimeClipRecord &clip,
     float *out_sample_time_seconds) {
     if (out_sample_time_seconds == nullptr) {
         return AnimationEditorSurfaceStatus::InvalidArgument;
@@ -285,9 +297,15 @@ AnimationEditorSurfaceStatus ResolveWorkflowSampleTime(
             sample_time_seconds = request.requested_sample_time_seconds;
             break;
         case AnimationEditorTimelineWorkflowCommand::PlaybackTick:
+            if (!std::isfinite(request.playback_speed_multiplier) ||
+                request.playback_speed_multiplier <= 0.0F) {
+                return AnimationEditorSurfaceStatus::InvalidTime;
+            }
+
             sample_time_seconds =
                 request.current_sample_time_seconds +
-                ConvertNanosecondsToSeconds(request.frame_context.delta_time_nanoseconds);
+                (ConvertNanosecondsToSeconds(request.frame_context.delta_time_nanoseconds) *
+                    request.playback_speed_multiplier);
             break;
         default:
             return AnimationEditorSurfaceStatus::InvalidArgument;
@@ -295,6 +313,17 @@ AnimationEditorSurfaceStatus ResolveWorkflowSampleTime(
 
     if (!std::isfinite(sample_time_seconds) || sample_time_seconds < 0.0F) {
         return AnimationEditorSurfaceStatus::InvalidTime;
+    }
+
+    if (request.loop_playback && sample_time_seconds > clip.duration_seconds) {
+        if (!std::isfinite(clip.duration_seconds) || clip.duration_seconds <= 0.0F) {
+            return AnimationEditorSurfaceStatus::InvalidClip;
+        }
+
+        sample_time_seconds = std::fmod(sample_time_seconds, clip.duration_seconds);
+        if (!std::isfinite(sample_time_seconds)) {
+            return AnimationEditorSurfaceStatus::InvalidTime;
+        }
     }
 
     *out_sample_time_seconds = sample_time_seconds;
@@ -460,6 +489,210 @@ void CopyWorkflowResultFromSurface(
     workflow_result->consumed_preview_host_feedback =
         surface_result.consumed_preview_host_feedback;
     workflow_result->emitted_preview_feedback = surface_result.emitted_preview_feedback;
+}
+
+const AnimationEditorStatePreviewRecord *FindStatePreviewRecord(
+    std::span<const AnimationEditorStatePreviewRecord> states,
+    std::uint32_t state_id) {
+    for (const AnimationEditorStatePreviewRecord &state : states) {
+        if (state.state_id != state_id) {
+            continue;
+        }
+
+        return &state;
+    }
+
+    return nullptr;
+}
+
+bool IsStatePreviewRecordValid(const AnimationEditorStatePreviewRecord &state) {
+    if (!state.is_valid || state.state_id == 0U || state.clip_id == 0U) {
+        return false;
+    }
+
+    if (!std::isfinite(state.speed_multiplier) || state.speed_multiplier <= 0.0F) {
+        return false;
+    }
+
+    return true;
+}
+
+bool IsEventMarkerForClip(
+    const AnimationEditorEventMarkerRecord &event_marker,
+    std::uint32_t clip_id) {
+    return event_marker.clip_id == clip_id;
+}
+
+bool IsEventMarkerRecordValid(
+    const AnimationEditorEventMarkerRecord &event_marker,
+    const AnimationRuntimeClipRecord &clip) {
+    if (!event_marker.is_valid || event_marker.event_id == 0U ||
+        event_marker.clip_id != clip.clip_id) {
+        return false;
+    }
+
+    if (!std::isfinite(event_marker.time_seconds) || event_marker.time_seconds < 0.0F) {
+        return false;
+    }
+
+    if (event_marker.time_seconds > clip.duration_seconds) {
+        return false;
+    }
+
+    return true;
+}
+
+float NormalizeLoopTime(float time_seconds, float duration_seconds, bool loop_playback) {
+    if (!loop_playback) {
+        return time_seconds;
+    }
+
+    if (time_seconds <= duration_seconds) {
+        return time_seconds;
+    }
+
+    return std::fmod(time_seconds, duration_seconds);
+}
+
+bool IsEventInsidePlaybackWindow(
+    AnimationEditorTimelineWorkflowCommand command,
+    float window_start_seconds,
+    float window_end_seconds,
+    bool window_wrapped,
+    float event_time_seconds) {
+    if (command == AnimationEditorTimelineWorkflowCommand::Scrub) {
+        return std::fabs(event_time_seconds - window_end_seconds) <=
+            EVENT_TIME_TOLERANCE_SECONDS;
+    }
+
+    if (command != AnimationEditorTimelineWorkflowCommand::PlaybackTick) {
+        return false;
+    }
+
+    if (window_wrapped) {
+        if (event_time_seconds > window_start_seconds) {
+            return true;
+        }
+
+        return event_time_seconds <= window_end_seconds;
+    }
+
+    if (event_time_seconds <= window_start_seconds) {
+        return false;
+    }
+
+    return event_time_seconds <= window_end_seconds;
+}
+
+AnimationEditorStatePlaybackRow BuildStatePlaybackRow(
+    const AnimationEditorStatePreviewRecord &state,
+    float sample_time_seconds,
+    std::size_t event_marker_count,
+    std::size_t emitted_event_count,
+    bool preview_feedback_visible) {
+    AnimationEditorStatePlaybackRow row{};
+    row.state_id = state.state_id;
+    row.clip_id = state.clip_id;
+    row.sample_time_seconds = sample_time_seconds;
+    row.speed_multiplier = state.speed_multiplier;
+    row.event_marker_count = event_marker_count;
+    row.emitted_event_count = emitted_event_count;
+    row.selected = true;
+    row.active = true;
+    row.loop_playback = state.loop_playback;
+    row.runtime_valid = state.is_valid;
+    row.clip_bound = true;
+    row.preview_feedback_visible = preview_feedback_visible;
+    return row;
+}
+
+AnimationEditorEventMarkerRow BuildEventMarkerRow(
+    const AnimationEditorEventMarkerRecord &event_marker,
+    float sample_time_seconds,
+    bool emitted_this_frame) {
+    AnimationEditorEventMarkerRow row{};
+    row.event_id = event_marker.event_id;
+    row.clip_id = event_marker.clip_id;
+    row.payload_id = event_marker.payload_id;
+    row.time_seconds = event_marker.time_seconds;
+    row.valid = event_marker.is_valid;
+    row.visible_on_timeline = true;
+    row.at_or_before_sample_time = event_marker.time_seconds <= sample_time_seconds;
+    row.emitted_this_frame = emitted_this_frame;
+    row.active_state = true;
+    return row;
+}
+
+void CopySelectionFeedbackRows(
+    const std::array<AnimationEditorTimelineSelectionFeedbackRecord, 1U> &selection_rows,
+    std::span<AnimationEditorTimelineSelectionFeedbackRecord> selection_output,
+    std::size_t selection_count) {
+    for (std::size_t index = 0U; index < selection_count; ++index) {
+        selection_output[index] = selection_rows[index];
+    }
+}
+
+void CopyStateRows(
+    const std::array<AnimationEditorStatePlaybackRow, MAX_ANIMATION_EDITOR_STATE_ROWS>
+        &state_rows,
+    std::span<AnimationEditorStatePlaybackRow> state_output,
+    std::size_t state_count) {
+    for (std::size_t index = 0U; index < state_count; ++index) {
+        state_output[index] = state_rows[index];
+    }
+}
+
+void CopyEventRows(
+    const std::array<AnimationEditorEventMarkerRow, MAX_ANIMATION_EDITOR_EVENT_MARKERS>
+        &event_rows,
+    std::span<AnimationEditorEventMarkerRow> event_output,
+    std::size_t event_count) {
+    for (std::size_t index = 0U; index < event_count; ++index) {
+        event_output[index] = event_rows[index];
+    }
+}
+
+bool TimelineWorkflowOutputCapacityAvailable(
+    const AnimationEditorStateEventPlaybackWorkflowRequest &request,
+    const AnimationEditorTimelineWorkflowResult &timeline_result) {
+    if (request.clip_rows.size() < timeline_result.clip_row_count) {
+        return false;
+    }
+
+    if (request.track_rows.size() < timeline_result.track_row_count) {
+        return false;
+    }
+
+    if (request.keyframe_markers.size() < timeline_result.keyframe_marker_count) {
+        return false;
+    }
+
+    if (request.preview_feedback_output.size() < timeline_result.preview_feedback_count) {
+        return false;
+    }
+
+    if (request.selection_feedback_output.size() <
+        timeline_result.selection_feedback_count) {
+        return false;
+    }
+
+    return true;
+}
+
+void CopyStateEventResultFromTimeline(
+    const AnimationEditorTimelineWorkflowResult &timeline_result,
+    AnimationEditorStateEventPlaybackWorkflowResult *state_event_result) {
+    state_event_result->timeline_workflow = timeline_result;
+    state_event_result->animation_status = timeline_result.animation_status;
+    state_event_result->sample_time_seconds = timeline_result.sample_time_seconds;
+    state_event_result->clip_row_count = timeline_result.clip_row_count;
+    state_event_result->track_row_count = timeline_result.track_row_count;
+    state_event_result->keyframe_marker_count = timeline_result.keyframe_marker_count;
+    state_event_result->preview_feedback_count = timeline_result.preview_feedback_count;
+    state_event_result->selection_feedback_count = timeline_result.selection_feedback_count;
+    state_event_result->consumed_preview_host_feedback =
+        timeline_result.consumed_preview_host_feedback;
+    state_event_result->emitted_preview_feedback = timeline_result.emitted_preview_feedback;
 }
 }
 
@@ -667,9 +900,25 @@ AnimationEditorSurfaceStatus BuildAnimationEditorTimelineWorkflow(
         return result.status;
     }
 
+    const AnimationRuntimeClipRecord *clip = FindClip(request.clips, request.clip_id);
+    if (clip == nullptr) {
+        result.status = AnimationEditorSurfaceStatus::MissingClip;
+        result.blocked_layer = AnimationEditorSurfaceBlockedLayer::RuntimeAnimationRecords;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!clip->is_valid || clip->clip_id == 0U ||
+        !std::isfinite(clip->duration_seconds) || clip->duration_seconds <= 0.0F) {
+        result.status = AnimationEditorSurfaceStatus::InvalidClip;
+        result.blocked_layer = AnimationEditorSurfaceBlockedLayer::RuntimeAnimationRecords;
+        *out_result = result;
+        return result.status;
+    }
+
     float workflow_sample_time_seconds = 0.0F;
     AnimationEditorSurfaceStatus status =
-        ResolveWorkflowSampleTime(request, &workflow_sample_time_seconds);
+        ResolveWorkflowSampleTime(request, *clip, &workflow_sample_time_seconds);
     if (status != AnimationEditorSurfaceStatus::Success) {
         result.status = status;
         result.blocked_layer = BlockedLayerForStatus(status);
@@ -824,6 +1073,262 @@ AnimationEditorSurfaceStatus BuildAnimationEditorTimelineWorkflow(
     result.selection_feedback_count = 1U;
     result.emitted_selected_track_feedback = true;
     result.emitted_selected_key_feedback = true;
+    *out_result = result;
+    return result.status;
+}
+
+AnimationEditorSurfaceStatus BuildAnimationEditorStateEventPlaybackWorkflow(
+    const AnimationEditorStateEventPlaybackWorkflowRequest &request,
+    AnimationEditorStateEventPlaybackWorkflowResult *out_result) {
+    AnimationEditorStateEventPlaybackWorkflowResult result{};
+    result.state_id = request.state_id;
+
+    if (out_result == nullptr) {
+        return AnimationEditorSurfaceStatus::InvalidArgument;
+    }
+
+    if (!IsConstSpanStorageValid(request.states) ||
+        !IsConstSpanStorageValid(request.event_markers) ||
+        !IsConstSpanStorageValid(request.clips) ||
+        !IsConstSpanStorageValid(request.tracks) ||
+        !IsConstSpanStorageValid(request.keyframes) ||
+        !IsConstSpanStorageValid(request.preview_transform_feedback) ||
+        !IsSpanStorageValid(request.state_rows) ||
+        !IsSpanStorageValid(request.event_rows) ||
+        !IsSpanStorageValid(request.clip_rows) ||
+        !IsSpanStorageValid(request.track_rows) ||
+        !IsSpanStorageValid(request.keyframe_markers) ||
+        !IsSpanStorageValid(request.preview_feedback_output) ||
+        !IsSpanStorageValid(request.selection_feedback_output)) {
+        result.status = AnimationEditorSurfaceStatus::InvalidArgument;
+        result.blocked_layer = AnimationEditorSurfaceBlockedLayer::StatePreviewRecords;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.state_id == 0U) {
+        result.status = AnimationEditorSurfaceStatus::MissingState;
+        result.blocked_layer = AnimationEditorSurfaceBlockedLayer::StatePreviewRecords;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.consumed_state_records = !request.states.empty();
+    const AnimationEditorStatePreviewRecord *state =
+        FindStatePreviewRecord(request.states, request.state_id);
+    if (state == nullptr) {
+        result.status = AnimationEditorSurfaceStatus::MissingState;
+        result.blocked_layer = AnimationEditorSurfaceBlockedLayer::StatePreviewRecords;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.clip_id = state->clip_id;
+    if (!IsStatePreviewRecordValid(*state)) {
+        result.status = AnimationEditorSurfaceStatus::InvalidState;
+        result.blocked_layer = AnimationEditorSurfaceBlockedLayer::StatePreviewRecords;
+        *out_result = result;
+        return result.status;
+    }
+
+    const AnimationRuntimeClipRecord *clip = FindClip(request.clips, state->clip_id);
+    if (clip == nullptr) {
+        result.status = AnimationEditorSurfaceStatus::MissingClip;
+        result.blocked_layer = AnimationEditorSurfaceBlockedLayer::RuntimeAnimationRecords;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!clip->is_valid || clip->clip_id == 0U ||
+        !std::isfinite(clip->duration_seconds) || clip->duration_seconds <= 0.0F) {
+        result.status = AnimationEditorSurfaceStatus::InvalidClip;
+        result.blocked_layer = AnimationEditorSurfaceBlockedLayer::RuntimeAnimationRecords;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.bound_state_to_clip = true;
+
+    std::size_t event_count = 0U;
+    for (const AnimationEditorEventMarkerRecord &event_marker : request.event_markers) {
+        if (!IsEventMarkerForClip(event_marker, state->clip_id)) {
+            continue;
+        }
+
+        result.consumed_event_records = true;
+        if (event_count >= MAX_ANIMATION_EDITOR_EVENT_MARKERS) {
+            result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
+            result.blocked_layer = AnimationEditorSurfaceBlockedLayer::EventRecords;
+            *out_result = result;
+            return result.status;
+        }
+
+        if (!IsEventMarkerRecordValid(event_marker, *clip)) {
+            result.status = AnimationEditorSurfaceStatus::InvalidEvent;
+            result.blocked_layer = AnimationEditorSurfaceBlockedLayer::EventRecords;
+            *out_result = result;
+            return result.status;
+        }
+
+        ++event_count;
+    }
+
+    if (event_count == 0U) {
+        result.status = AnimationEditorSurfaceStatus::MissingEvent;
+        result.blocked_layer = AnimationEditorSurfaceBlockedLayer::EventRecords;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.state_rows.empty()) {
+        result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
+        result.blocked_layer = AnimationEditorSurfaceBlockedLayer::StatePreviewRecords;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.event_rows.size() < event_count) {
+        result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
+        result.blocked_layer = AnimationEditorSurfaceBlockedLayer::EventRecords;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::array<AnimationEditorTimelineClipRow, 1U> staged_clip_rows{};
+    std::array<AnimationEditorTimelineTrackRow, MAX_ANIMATION_EDITOR_TIMELINE_TRACKS>
+        staged_track_rows{};
+    std::array<AnimationEditorTimelineKeyframeMarker, MAX_ANIMATION_EDITOR_TIMELINE_KEYFRAMES>
+        staged_keyframe_markers{};
+    std::array<AnimationEditorPreviewFeedbackRecord, MAX_ANIMATION_EDITOR_TIMELINE_TRACKS>
+        staged_preview_feedback{};
+    std::array<AnimationEditorTimelineSelectionFeedbackRecord, 1U>
+        staged_selection_feedback{};
+
+    AnimationEditorTimelineWorkflowRequest workflow_request{};
+    workflow_request.command = request.command;
+    workflow_request.clip_id = state->clip_id;
+    workflow_request.clips = request.clips;
+    workflow_request.tracks = request.tracks;
+    workflow_request.keyframes = request.keyframes;
+    workflow_request.frame_context = request.frame_context;
+    workflow_request.current_sample_time_seconds = request.current_sample_time_seconds;
+    workflow_request.requested_sample_time_seconds = request.requested_sample_time_seconds;
+    workflow_request.playback_speed_multiplier = state->speed_multiplier;
+    workflow_request.loop_playback = state->loop_playback;
+    workflow_request.selected_track_id = request.selected_track_id;
+    workflow_request.selected_keyframe_index = request.selected_keyframe_index;
+    workflow_request.preview_transform_feedback = request.preview_transform_feedback;
+    workflow_request.clip_rows = staged_clip_rows;
+    workflow_request.track_rows = staged_track_rows;
+    workflow_request.keyframe_markers = staged_keyframe_markers;
+    workflow_request.preview_feedback_output = staged_preview_feedback;
+    workflow_request.selection_feedback_output = staged_selection_feedback;
+
+    AnimationEditorTimelineWorkflowResult workflow_result{};
+    AnimationEditorSurfaceStatus status =
+        BuildAnimationEditorTimelineWorkflow(workflow_request, &workflow_result);
+    CopyStateEventResultFromTimeline(workflow_result, &result);
+    if (status != AnimationEditorSurfaceStatus::Success) {
+        result.status = status;
+        result.blocked_layer = workflow_result.blocked_layer;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!TimelineWorkflowOutputCapacityAvailable(request, workflow_result)) {
+        result.status = AnimationEditorSurfaceStatus::OutputCapacityExceeded;
+        result.blocked_layer = AnimationEditorSurfaceBlockedLayer::TimelineOutput;
+        *out_result = result;
+        return result.status;
+    }
+
+    float event_window_start_seconds = workflow_result.sample_time_seconds;
+    if (request.command == AnimationEditorTimelineWorkflowCommand::PlaybackTick) {
+        event_window_start_seconds =
+            NormalizeLoopTime(
+                request.current_sample_time_seconds,
+                clip->duration_seconds,
+                state->loop_playback);
+    }
+
+    const float event_window_end_seconds = workflow_result.sample_time_seconds;
+    const bool event_window_wrapped =
+        request.command == AnimationEditorTimelineWorkflowCommand::PlaybackTick &&
+        state->loop_playback &&
+        event_window_end_seconds < event_window_start_seconds;
+
+    std::array<AnimationEditorEventMarkerRow, MAX_ANIMATION_EDITOR_EVENT_MARKERS>
+        staged_event_rows{};
+    std::size_t staged_event_count = 0U;
+    std::size_t emitted_event_count = 0U;
+    for (const AnimationEditorEventMarkerRecord &event_marker : request.event_markers) {
+        if (!IsEventMarkerForClip(event_marker, state->clip_id)) {
+            continue;
+        }
+
+        const bool emitted_this_frame =
+            IsEventInsidePlaybackWindow(
+                request.command,
+                event_window_start_seconds,
+                event_window_end_seconds,
+                event_window_wrapped,
+                event_marker.time_seconds);
+        if (emitted_this_frame) {
+            ++emitted_event_count;
+        }
+
+        staged_event_rows[staged_event_count] =
+            BuildEventMarkerRow(
+                event_marker,
+                workflow_result.sample_time_seconds,
+                emitted_this_frame);
+        ++staged_event_count;
+    }
+
+    std::array<AnimationEditorStatePlaybackRow, MAX_ANIMATION_EDITOR_STATE_ROWS>
+        staged_state_rows{};
+    staged_state_rows[0U] =
+        BuildStatePlaybackRow(
+            *state,
+            workflow_result.sample_time_seconds,
+            event_count,
+            emitted_event_count,
+            workflow_result.emitted_preview_feedback);
+
+    CopyTimelineRows(
+        staged_clip_rows,
+        request.clip_rows,
+        staged_track_rows,
+        request.track_rows,
+        workflow_result.track_row_count,
+        staged_keyframe_markers,
+        request.keyframe_markers,
+        workflow_result.keyframe_marker_count);
+    CopyPreviewFeedbackRows(
+        staged_preview_feedback,
+        request.preview_feedback_output,
+        workflow_result.preview_feedback_count);
+    CopySelectionFeedbackRows(
+        staged_selection_feedback,
+        request.selection_feedback_output,
+        workflow_result.selection_feedback_count);
+    CopyStateRows(staged_state_rows, request.state_rows, 1U);
+    CopyEventRows(staged_event_rows, request.event_rows, staged_event_count);
+
+    result.status = AnimationEditorSurfaceStatus::Success;
+    result.blocked_layer = AnimationEditorSurfaceBlockedLayer::None;
+    result.event_window_start_seconds = event_window_start_seconds;
+    result.event_window_end_seconds = event_window_end_seconds;
+    result.state_row_count = 1U;
+    result.event_row_count = staged_event_count;
+    result.emitted_event_count = emitted_event_count;
+    result.built_state_rows = true;
+    result.built_event_rows = true;
+    result.consumed_timeline_workflow = true;
+    result.emitted_event_timing_feedback = emitted_event_count > 0U;
+    result.built_visible_playback_feedback =
+        workflow_result.emitted_preview_feedback && emitted_event_count > 0U;
+    result.event_window_wrapped = event_window_wrapped;
     *out_result = result;
     return result.status;
 }

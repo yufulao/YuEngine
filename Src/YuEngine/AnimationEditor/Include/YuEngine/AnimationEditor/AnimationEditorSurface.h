@@ -16,6 +16,8 @@
 namespace yuengine::animationeditor {
 constexpr std::size_t MAX_ANIMATION_EDITOR_TIMELINE_TRACKS = 16U;
 constexpr std::size_t MAX_ANIMATION_EDITOR_TIMELINE_KEYFRAMES = 64U;
+constexpr std::size_t MAX_ANIMATION_EDITOR_STATE_ROWS = 8U;
+constexpr std::size_t MAX_ANIMATION_EDITOR_EVENT_MARKERS = 32U;
 
 enum class AnimationEditorSurfaceStatus {
     Success,
@@ -26,6 +28,10 @@ enum class AnimationEditorSurfaceStatus {
     InvalidTrack,
     MissingKeyframe,
     InvalidKeyframe,
+    MissingState,
+    InvalidState,
+    MissingEvent,
+    InvalidEvent,
     InvalidTime,
     UnsupportedInterpolation,
     UnsupportedChannel,
@@ -37,6 +43,8 @@ enum class AnimationEditorSurfaceStatus {
 enum class AnimationEditorSurfaceBlockedLayer {
     None,
     RuntimeAnimationRecords,
+    StatePreviewRecords,
+    EventRecords,
     TimelineOutput,
     RuntimeSampler,
     PreviewHostFeedback
@@ -120,6 +128,49 @@ struct AnimationEditorTimelineSelectionFeedbackRecord final {
     bool feedback_from_preview_host = false;
 };
 
+struct AnimationEditorStatePreviewRecord final {
+    std::uint32_t state_id = 0U;
+    std::uint32_t clip_id = 0U;
+    float speed_multiplier = 1.0F;
+    bool loop_playback = false;
+    bool is_valid = false;
+};
+
+struct AnimationEditorEventMarkerRecord final {
+    std::uint32_t event_id = 0U;
+    std::uint32_t clip_id = 0U;
+    std::uint32_t payload_id = 0U;
+    float time_seconds = 0.0F;
+    bool is_valid = false;
+};
+
+struct AnimationEditorStatePlaybackRow final {
+    std::uint32_t state_id = 0U;
+    std::uint32_t clip_id = 0U;
+    float sample_time_seconds = 0.0F;
+    float speed_multiplier = 1.0F;
+    std::size_t event_marker_count = 0U;
+    std::size_t emitted_event_count = 0U;
+    bool selected = false;
+    bool active = false;
+    bool loop_playback = false;
+    bool runtime_valid = false;
+    bool clip_bound = false;
+    bool preview_feedback_visible = false;
+};
+
+struct AnimationEditorEventMarkerRow final {
+    std::uint32_t event_id = 0U;
+    std::uint32_t clip_id = 0U;
+    std::uint32_t payload_id = 0U;
+    float time_seconds = 0.0F;
+    bool valid = false;
+    bool visible_on_timeline = false;
+    bool at_or_before_sample_time = false;
+    bool emitted_this_frame = false;
+    bool active_state = false;
+};
+
 struct AnimationEditorTimelineSurfaceRequest final {
     std::uint32_t clip_id = 0U;
     std::span<const yuengine::animation::AnimationRuntimeClipRecord> clips{};
@@ -173,6 +224,8 @@ struct AnimationEditorTimelineWorkflowRequest final {
     yuengine::kernel::RuntimeFrameContext frame_context{};
     float current_sample_time_seconds = 0.0F;
     float requested_sample_time_seconds = 0.0F;
+    float playback_speed_multiplier = 1.0F;
+    bool loop_playback = false;
     std::uint32_t selected_track_id = 0U;
     std::size_t selected_keyframe_index = 0U;
     std::span<const yuengine::previewhost::PreviewHostTransformFeedback>
@@ -221,6 +274,73 @@ struct AnimationEditorTimelineWorkflowResult final {
     }
 };
 
+struct AnimationEditorStateEventPlaybackWorkflowRequest final {
+    AnimationEditorTimelineWorkflowCommand command =
+        AnimationEditorTimelineWorkflowCommand::Scrub;
+    std::uint32_t state_id = 0U;
+    std::span<const AnimationEditorStatePreviewRecord> states{};
+    std::span<const AnimationEditorEventMarkerRecord> event_markers{};
+    std::span<const yuengine::animation::AnimationRuntimeClipRecord> clips{};
+    std::span<const yuengine::animation::AnimationRuntimeTrackRecord> tracks{};
+    std::span<const yuengine::animation::AnimationRuntimeKeyframeRecord> keyframes{};
+    yuengine::kernel::RuntimeFrameContext frame_context{};
+    float current_sample_time_seconds = 0.0F;
+    float requested_sample_time_seconds = 0.0F;
+    std::uint32_t selected_track_id = 0U;
+    std::size_t selected_keyframe_index = 0U;
+    std::span<const yuengine::previewhost::PreviewHostTransformFeedback>
+        preview_transform_feedback{};
+    std::span<AnimationEditorStatePlaybackRow> state_rows{};
+    std::span<AnimationEditorEventMarkerRow> event_rows{};
+    std::span<AnimationEditorTimelineClipRow> clip_rows{};
+    std::span<AnimationEditorTimelineTrackRow> track_rows{};
+    std::span<AnimationEditorTimelineKeyframeMarker> keyframe_markers{};
+    std::span<AnimationEditorPreviewFeedbackRecord> preview_feedback_output{};
+    std::span<AnimationEditorTimelineSelectionFeedbackRecord>
+        selection_feedback_output{};
+};
+
+struct AnimationEditorStateEventPlaybackWorkflowResult final {
+    AnimationEditorSurfaceStatus status = AnimationEditorSurfaceStatus::InvalidArgument;
+    yuengine::animation::AnimationRuntimeStatus animation_status =
+        yuengine::animation::AnimationRuntimeStatus::Success;
+    AnimationEditorSurfaceBlockedLayer blocked_layer =
+        AnimationEditorSurfaceBlockedLayer::StatePreviewRecords;
+    AnimationEditorTimelineWorkflowResult timeline_workflow{};
+    std::uint32_t state_id = 0U;
+    std::uint32_t clip_id = 0U;
+    float sample_time_seconds = 0.0F;
+    float event_window_start_seconds = 0.0F;
+    float event_window_end_seconds = 0.0F;
+    std::size_t state_row_count = 0U;
+    std::size_t event_row_count = 0U;
+    std::size_t emitted_event_count = 0U;
+    std::size_t clip_row_count = 0U;
+    std::size_t track_row_count = 0U;
+    std::size_t keyframe_marker_count = 0U;
+    std::size_t preview_feedback_count = 0U;
+    std::size_t selection_feedback_count = 0U;
+    bool consumed_state_records = false;
+    bool bound_state_to_clip = false;
+    bool consumed_event_records = false;
+    bool built_state_rows = false;
+    bool built_event_rows = false;
+    bool consumed_timeline_workflow = false;
+    bool consumed_preview_host_feedback = false;
+    bool emitted_preview_feedback = false;
+    bool emitted_event_timing_feedback = false;
+    bool built_visible_playback_feedback = false;
+    bool event_window_wrapped = false;
+    bool mutated_runtime_data = false;
+    bool opened_native_window = false;
+    bool used_web_timeline = false;
+    bool used_gameplay_fsm = false;
+
+    bool Succeeded() const {
+        return status == AnimationEditorSurfaceStatus::Success;
+    }
+};
+
 AnimationEditorSurfaceStatus BuildAnimationEditorTimelineSurface(
     const AnimationEditorTimelineSurfaceRequest &request,
     AnimationEditorTimelineSurfaceResult *out_result);
@@ -228,4 +348,8 @@ AnimationEditorSurfaceStatus BuildAnimationEditorTimelineSurface(
 AnimationEditorSurfaceStatus BuildAnimationEditorTimelineWorkflow(
     const AnimationEditorTimelineWorkflowRequest &request,
     AnimationEditorTimelineWorkflowResult *out_result);
+
+AnimationEditorSurfaceStatus BuildAnimationEditorStateEventPlaybackWorkflow(
+    const AnimationEditorStateEventPlaybackWorkflowRequest &request,
+    AnimationEditorStateEventPlaybackWorkflowResult *out_result);
 }
