@@ -6,6 +6,9 @@
 #include <cstdint>
 #include <span>
 
+#include "YuEngine/File/FileStatus.h"
+#include "YuEngine/File/MountId.h"
+#include "YuEngine/File/VirtualPath.h"
 #include "YuEngine/Object/ObjectHandle.h"
 #include "YuEngine/PreviewHost/PreviewHost.h"
 #include "YuEngine/ResourceBrowser/ResourceBrowserSurface.h"
@@ -14,6 +17,10 @@
 #include "YuEngine/World/WorldSceneAuthoringDocument.h"
 #include "YuEngine/World/WorldTransformState.h"
 #include "YuEngine/World/WorldSceneRecordValueStreamStatus.h"
+
+namespace yuengine::file {
+class MountTable;
+}
 
 namespace yuengine::sceneeditor {
 
@@ -97,6 +104,7 @@ enum class SceneEditorGizmoResourceWorkflowBlockedLayer {
     GizmoSidecar,
     ResourceBinding,
     SaveLoad,
+    FilePersistence,
     Output
 };
 
@@ -329,9 +337,18 @@ struct SceneEditorSaveLoadProofRecord final {
     std::uint32_t loaded_attachment_count = 0U;
     std::uint32_t loaded_binding_count = 0U;
     std::uint32_t committed_byte_count = 0U;
+    std::uint32_t persisted_file_byte_count = 0U;
+    std::uint32_t read_file_byte_count = 0U;
     std::uint32_t skipped_editor_sidecar_count = 0U;
+    yuengine::file::FileStatus file_write_status =
+        yuengine::file::FileStatus::WriteFailure;
+    yuengine::file::FileStatus file_read_status =
+        yuengine::file::FileStatus::ReadFailure;
     bool wrote_scene_records = false;
     bool read_scene_records = false;
+    bool wrote_file_scene_artifact = false;
+    bool read_file_scene_artifact = false;
+    bool persisted_through_file_vfs = false;
     bool preserved_runtime_record_counts = false;
     bool kept_editor_sidecars_out_of_runtime_stream = false;
 };
@@ -402,6 +419,83 @@ struct SceneEditorGizmoResourceSaveLoadWorkflowResult final {
     }
 };
 
+struct SceneEditorGizmoResourceFilePersistenceWorkflowRequest final {
+    const yuengine::world::WorldSceneAuthoringDocument *document = nullptr;
+    const yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionState
+        *resource_browser_selection = nullptr;
+    const yuengine::previewhost::PreviewHostViewportSessionResult
+        *viewport_session = nullptr;
+    const yuengine::previewhost::PreviewHostEditorViewportInteractionResult
+        *viewport_interaction = nullptr;
+    yuengine::file::MountTable *scene_persistence_mount_table = nullptr;
+    yuengine::file::MountId scene_persistence_mount{};
+    yuengine::file::VirtualPath scene_persistence_path{};
+    std::span<std::uint8_t> persistence_buffer{};
+    std::span<SceneEditorRenderedGizmoRow> gizmo_rows{};
+    std::span<SceneEditorResourcePickerRow> resource_picker_rows{};
+    std::span<SceneEditorSaveLoadProofRecord> save_load_records{};
+    std::span<yuengine::world::WorldSceneObjectTransformRestoreIdentityRecord>
+        loaded_identity_output{};
+    std::span<yuengine::world::WorldSceneObjectTransformRestoreTransformRecord>
+        loaded_transform_output{};
+    std::span<yuengine::world::WorldComponentAttachmentSnapshotRecord>
+        loaded_attachment_output{};
+    std::span<yuengine::world::WorldComponentResourceBindingSnapshotRecord>
+        loaded_binding_output{};
+};
+
+struct SceneEditorGizmoResourceFilePersistenceWorkflowResult final {
+    SceneEditorGizmoResourceWorkflowStatus status =
+        SceneEditorGizmoResourceWorkflowStatus::InvalidArgument;
+    SceneEditorGizmoResourceWorkflowBlockedLayer blocked_layer =
+        SceneEditorGizmoResourceWorkflowBlockedLayer::AuthoringDocument;
+    yuengine::world::WorldSceneAuthoringDocumentStatus authoring_status =
+        yuengine::world::WorldSceneAuthoringDocumentStatus::Success;
+    yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState resource_preview_state =
+        yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState::Unknown;
+    yuengine::previewhost::PreviewHostStatus viewport_status =
+        yuengine::previewhost::PreviewHostStatus::InvalidArgument;
+    yuengine::previewhost::PreviewHostStatus viewport_interaction_status =
+        yuengine::previewhost::PreviewHostStatus::InvalidArgument;
+    yuengine::world::WorldSceneRecordValueStreamStatus save_status =
+        yuengine::world::WorldSceneRecordValueStreamStatus::InvalidWriter;
+    yuengine::world::WorldSceneRecordValueStreamStatus load_status =
+        yuengine::world::WorldSceneRecordValueStreamStatus::InvalidReader;
+    yuengine::file::FileStatus file_write_status =
+        yuengine::file::FileStatus::WriteFailure;
+    yuengine::file::FileStatus file_read_status =
+        yuengine::file::FileStatus::ReadFailure;
+    yuengine::world::WorldObjectId selected_world_object_id{};
+    std::uint32_t viewport_selected_entity_index = 0U;
+    std::uint32_t gizmo_row_count = 0U;
+    std::uint32_t resource_picker_row_count = 0U;
+    std::uint32_t save_load_record_count = 0U;
+    std::uint32_t loaded_identity_count = 0U;
+    std::uint32_t loaded_transform_count = 0U;
+    std::uint32_t loaded_attachment_count = 0U;
+    std::uint32_t loaded_binding_count = 0U;
+    std::uint32_t persisted_file_byte_count = 0U;
+    std::uint32_t read_file_byte_count = 0U;
+    bool consumed_authoring_document = false;
+    bool consumed_resource_browser_selection = false;
+    bool consumed_viewport_session = false;
+    bool consumed_viewport_interaction = false;
+    bool emitted_rendered_gizmo = false;
+    bool emitted_resource_picker = false;
+    bool wrote_scene_record_stream = false;
+    bool wrote_file_scene_artifact = false;
+    bool read_file_scene_artifact = false;
+    bool read_scene_record_stream = false;
+    bool skipped_editor_sidecars_for_runtime_stream = false;
+    bool committed_workflow = false;
+    bool mutated_runtime_data = false;
+    bool opened_native_window = false;
+
+    bool Succeeded() const {
+        return status == SceneEditorGizmoResourceWorkflowStatus::Success;
+    }
+};
+
 SceneEditorSurfaceStatus BuildSceneEditorNativeSurface(
     const SceneEditorSurfaceRequest &request,
     SceneEditorSurfaceResult *out_result);
@@ -417,5 +511,9 @@ SceneEditorWorkflowStatus BuildSceneEditorUsableWorkflowSurface(
 SceneEditorGizmoResourceWorkflowStatus BuildSceneEditorGizmoResourceSaveLoadWorkflow(
     const SceneEditorGizmoResourceSaveLoadWorkflowRequest &request,
     SceneEditorGizmoResourceSaveLoadWorkflowResult *out_result);
+
+SceneEditorGizmoResourceWorkflowStatus BuildSceneEditorGizmoResourceFilePersistenceWorkflow(
+    const SceneEditorGizmoResourceFilePersistenceWorkflowRequest &request,
+    SceneEditorGizmoResourceFilePersistenceWorkflowResult *out_result);
 
 }

@@ -4,8 +4,11 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
+#include <string>
 #include <string_view>
 
+#include "YuEngine/File/MountTable.h"
 #include "YuEngine/Object/ObjectHandle.h"
 #include "YuEngine/PreviewHost/PreviewHost.h"
 #include "YuEngine/ResourceBrowser/ResourceBrowserSurface.h"
@@ -21,6 +24,10 @@
 namespace {
 using yuengine::asset::AssetHandle;
 using yuengine::asset::AssetTypeId;
+using yuengine::file::FileStatus;
+using yuengine::file::MountId;
+using yuengine::file::MountTable;
+using yuengine::file::VirtualPath;
 using yuengine::object::ObjectHandle;
 using yuengine::sceneeditor::ApplySceneEditorTransformCommand;
 using yuengine::previewhost::PreviewHostEditorViewportInteractionResult;
@@ -33,12 +40,15 @@ using yuengine::resourcebrowser::ResourceBrowserImportSettings;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceDocumentKind;
 using yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionState;
+using yuengine::sceneeditor::BuildSceneEditorGizmoResourceFilePersistenceWorkflow;
 using yuengine::sceneeditor::BuildSceneEditorGizmoResourceSaveLoadWorkflow;
 using yuengine::sceneeditor::BuildSceneEditorNativeSurface;
 using yuengine::sceneeditor::BuildSceneEditorUsableWorkflowSurface;
 using yuengine::sceneeditor::SceneEditorGizmoResourceSaveLoadWorkflowRequest;
 using yuengine::sceneeditor::SceneEditorGizmoResourceSaveLoadWorkflowResult;
 using yuengine::sceneeditor::SceneEditorGizmoResourceWorkflowBlockedLayer;
+using yuengine::sceneeditor::SceneEditorGizmoResourceFilePersistenceWorkflowRequest;
+using yuengine::sceneeditor::SceneEditorGizmoResourceFilePersistenceWorkflowResult;
 using yuengine::sceneeditor::SceneEditorGizmoResourceWorkflowStatus;
 using yuengine::sceneeditor::SceneEditorHierarchyRow;
 using yuengine::sceneeditor::SceneEditorInspectorRow;
@@ -108,10 +118,32 @@ constexpr const char *TEST_GIZMO_MISSING_SIDECAR =
     "SceneEditorGizmoWorkflow_MissingGizmoSidecarDoesNotMutateOutputs";
 constexpr const char *TEST_GIZMO_SAVE_LOAD_FAILURE =
     "SceneEditorGizmoWorkflow_SaveLoadFailureDoesNotCommitRows";
+constexpr const char *TEST_FILE_PERSISTENCE =
+    "SceneEditorFilePersistenceWorkflow_WritesSceneArtifactAndLoadsFromFileVfs";
+constexpr const char *TEST_FILE_PERSISTENCE_MISSING_MOUNT =
+    "SceneEditorFilePersistenceWorkflow_MissingMountDoesNotCommitRows";
+constexpr const char *SCENE_PERSISTENCE_MOUNT = "SceneEditorPersistence";
+constexpr const char *SCENE_PERSISTENCE_PATH = "scenes/rav8_editor_scene.yuscene";
 
 int Fail(const char *message) {
     std::fprintf(stderr, "%s\n", message);
     return 1;
+}
+
+std::filesystem::path ScenePersistenceRoot(std::string_view test_name) {
+    std::filesystem::path root = std::filesystem::temp_directory_path();
+    root /= "YuEngineSceneEditorFilePersistenceTests";
+    root /= std::string(test_name);
+    return root;
+}
+
+MountTable CreateScenePersistenceTable(std::string_view test_name) {
+    const std::filesystem::path root = ScenePersistenceRoot(test_name);
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    MountTable table;
+    table.RegisterLooseMount(MountId(SCENE_PERSISTENCE_MOUNT), root);
+    return table;
 }
 
 WorldObjectId ObjectId(std::uint32_t value) {
@@ -1717,6 +1749,276 @@ int SceneEditorGizmoWorkflowSaveLoadFailureDoesNotCommitRows() {
 
     return 0;
 }
+
+int SceneEditorFilePersistenceWorkflowWritesSceneArtifactAndLoadsFromFileVfs() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)}};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(1U), Transform(10.0F)}};
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> attachments{
+        WorldComponentAttachmentSnapshotRecord{ObjectId(1U), WorldComponentTypeId{7U}, WorldComponentSlotId{1U}}};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> bindings{
+        WorldComponentResourceBindingSnapshotRecord{
+            ObjectId(1U),
+            WorldComponentTypeId{7U},
+            WorldComponentSlotId{1U},
+            MakeResourceHandle(21U, 31U),
+            ResourceTypeId{51U}}};
+    std::array<WorldSceneAuthoringDependencyRecord, 1U> dependencies{
+        WorldSceneAuthoringDependencyRecord{7001U, MakeResourceHandle(21U, 31U), ResourceTypeId{51U}}};
+    std::array<WorldSceneEditorSidecarRecord, 2U> sidecars{
+        SelectionSidecar(ObjectId(1U)),
+        GizmoModeSidecar(ObjectId(1U), 3U)};
+    const WorldSceneAuthoringDocument document = MakeDocument(
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U,
+        attachments.data(),
+        1U,
+        bindings.data(),
+        1U,
+        dependencies.data(),
+        1U,
+        sidecars.data(),
+        static_cast<std::uint32_t>(sidecars.size()));
+
+    ResourceBrowserSurfaceSelectionState selection = ReadyResourceSelection();
+    PreviewHostViewportSessionResult session = ReadyViewportSession(0U);
+    PreviewHostEditorViewportInteractionResult interaction =
+        ReadyViewportInteraction(ObjectId(1U), 0U);
+    MountTable table = CreateScenePersistenceTable(TEST_FILE_PERSISTENCE);
+    std::array<std::uint8_t, 8192U> persistence_buffer{};
+    std::array<SceneEditorRenderedGizmoRow, 1U> gizmo_rows{};
+    std::array<SceneEditorResourcePickerRow, 1U> picker_rows{};
+    std::array<SceneEditorSaveLoadProofRecord, 1U> save_load_records{};
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> loaded_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> loaded_transforms{};
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> loaded_attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> loaded_bindings{};
+
+    SceneEditorGizmoResourceFilePersistenceWorkflowRequest request{};
+    request.document = &document;
+    request.resource_browser_selection = &selection;
+    request.viewport_session = &session;
+    request.viewport_interaction = &interaction;
+    request.scene_persistence_mount_table = &table;
+    request.scene_persistence_mount = MountId(SCENE_PERSISTENCE_MOUNT);
+    request.scene_persistence_path = VirtualPath(SCENE_PERSISTENCE_PATH);
+    request.persistence_buffer =
+        std::span<std::uint8_t>(persistence_buffer.data(), persistence_buffer.size());
+    request.gizmo_rows =
+        std::span<SceneEditorRenderedGizmoRow>(gizmo_rows.data(), gizmo_rows.size());
+    request.resource_picker_rows =
+        std::span<SceneEditorResourcePickerRow>(picker_rows.data(), picker_rows.size());
+    request.save_load_records =
+        std::span<SceneEditorSaveLoadProofRecord>(
+            save_load_records.data(),
+            save_load_records.size());
+    request.loaded_identity_output =
+        std::span<WorldSceneObjectTransformRestoreIdentityRecord>(
+            loaded_identities.data(),
+            loaded_identities.size());
+    request.loaded_transform_output =
+        std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+            loaded_transforms.data(),
+            loaded_transforms.size());
+    request.loaded_attachment_output =
+        std::span<WorldComponentAttachmentSnapshotRecord>(
+            loaded_attachments.data(),
+            loaded_attachments.size());
+    request.loaded_binding_output =
+        std::span<WorldComponentResourceBindingSnapshotRecord>(
+            loaded_bindings.data(),
+            loaded_bindings.size());
+
+    SceneEditorGizmoResourceFilePersistenceWorkflowResult result{};
+    const SceneEditorGizmoResourceWorkflowStatus status =
+        BuildSceneEditorGizmoResourceFilePersistenceWorkflow(request, &result);
+
+    if (status != SceneEditorGizmoResourceWorkflowStatus::Success ||
+        !result.Succeeded() ||
+        result.blocked_layer != SceneEditorGizmoResourceWorkflowBlockedLayer::None ||
+        result.file_write_status != FileStatus::Success ||
+        result.file_read_status != FileStatus::Success ||
+        !result.wrote_scene_record_stream ||
+        !result.wrote_file_scene_artifact ||
+        !result.read_file_scene_artifact ||
+        !result.read_scene_record_stream ||
+        !result.emitted_rendered_gizmo ||
+        !result.emitted_resource_picker ||
+        !result.committed_workflow ||
+        result.mutated_runtime_data ||
+        result.opened_native_window) {
+        return Fail("scene editor file persistence workflow did not commit expected loop");
+    }
+
+    if (result.persisted_file_byte_count == 0U ||
+        result.read_file_byte_count != result.persisted_file_byte_count ||
+        save_load_records[0U].committed_byte_count != result.persisted_file_byte_count ||
+        !save_load_records[0U].wrote_file_scene_artifact ||
+        !save_load_records[0U].read_file_scene_artifact ||
+        !save_load_records[0U].persisted_through_file_vfs ||
+        save_load_records[0U].file_write_status != FileStatus::Success ||
+        save_load_records[0U].file_read_status != FileStatus::Success) {
+        return Fail("scene editor file persistence proof mismatch");
+    }
+
+    const auto snapshot = table.Snapshot();
+    if (snapshot.write_byte_count != result.persisted_file_byte_count ||
+        snapshot.read_byte_count != result.read_file_byte_count ||
+        snapshot.last_write_status != FileStatus::Success ||
+        snapshot.last_read_status != FileStatus::Success) {
+        return Fail("scene editor file persistence did not exercise MountTable");
+    }
+
+    if (gizmo_rows[0U].world_object_id.value != 1U ||
+        gizmo_rows[0U].gizmo_mode != 3U ||
+        !gizmo_rows[0U].rendered_from_engine_viewport ||
+        !TransformMatches(gizmo_rows[0U].transform, transforms[0U].transform_state)) {
+        return Fail("scene editor file persistence gizmo row mismatch");
+    }
+
+    if (picker_rows[0U].selected_resource.slot != selection.resource.slot ||
+        !picker_rows[0U].resource_asset_mapping_preserved ||
+        !picker_rows[0U].selected_resource_matches_binding_type) {
+        return Fail("scene editor file persistence picker row mismatch");
+    }
+
+    if (loaded_identities[0U].world_object_id.value != 1U ||
+        !TransformMatches(loaded_transforms[0U].transform_state, transforms[0U].transform_state) ||
+        loaded_attachments[0U].component_slot_id.value != 1U ||
+        loaded_bindings[0U].resource_handle.slot != 21U) {
+        return Fail("scene editor file persistence loaded record mismatch");
+    }
+
+    return 0;
+}
+
+int SceneEditorFilePersistenceWorkflowMissingMountDoesNotCommitRows() {
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> identities{
+        WorldSceneObjectTransformRestoreIdentityRecord{ObjectId(1U), MakeObjectHandle(1U, 10U)}};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> transforms{
+        WorldSceneObjectTransformRestoreTransformRecord{ObjectId(1U), Transform(10.0F)}};
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> attachments{
+        WorldComponentAttachmentSnapshotRecord{ObjectId(1U), WorldComponentTypeId{7U}, WorldComponentSlotId{1U}}};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> bindings{
+        WorldComponentResourceBindingSnapshotRecord{
+            ObjectId(1U),
+            WorldComponentTypeId{7U},
+            WorldComponentSlotId{1U},
+            MakeResourceHandle(21U, 31U),
+            ResourceTypeId{51U}}};
+    std::array<WorldSceneAuthoringDependencyRecord, 1U> dependencies{
+        WorldSceneAuthoringDependencyRecord{7001U, MakeResourceHandle(21U, 31U), ResourceTypeId{51U}}};
+    std::array<WorldSceneEditorSidecarRecord, 2U> sidecars{
+        SelectionSidecar(ObjectId(1U)),
+        GizmoModeSidecar(ObjectId(1U), 1U)};
+    const WorldSceneAuthoringDocument document = MakeDocument(
+        identities.data(),
+        1U,
+        transforms.data(),
+        1U,
+        attachments.data(),
+        1U,
+        bindings.data(),
+        1U,
+        dependencies.data(),
+        1U,
+        sidecars.data(),
+        static_cast<std::uint32_t>(sidecars.size()));
+
+    ResourceBrowserSurfaceSelectionState selection = ReadyResourceSelection();
+    PreviewHostViewportSessionResult session = ReadyViewportSession(0U);
+    PreviewHostEditorViewportInteractionResult interaction =
+        ReadyViewportInteraction(ObjectId(1U), 0U);
+    MountTable table;
+    std::array<std::uint8_t, 8192U> persistence_buffer{};
+    persistence_buffer[0U] = 123U;
+    persistence_buffer[1U] = 124U;
+    std::array<SceneEditorRenderedGizmoRow, 1U> gizmo_rows{};
+    gizmo_rows[0U].world_object_id = ObjectId(996U);
+    gizmo_rows[0U].gizmo_mode = 997U;
+    std::array<SceneEditorResourcePickerRow, 1U> picker_rows{};
+    picker_rows[0U].world_object_id = ObjectId(998U);
+    picker_rows[0U].component_type_id = WorldComponentTypeId{999U};
+    std::array<SceneEditorSaveLoadProofRecord, 1U> save_load_records{};
+    save_load_records[0U].saved_identity_count = 111U;
+    save_load_records[0U].committed_byte_count = 112U;
+    std::array<WorldSceneObjectTransformRestoreIdentityRecord, 1U> loaded_identities{};
+    std::array<WorldSceneObjectTransformRestoreTransformRecord, 1U> loaded_transforms{};
+    std::array<WorldComponentAttachmentSnapshotRecord, 1U> loaded_attachments{};
+    std::array<WorldComponentResourceBindingSnapshotRecord, 1U> loaded_bindings{};
+
+    SceneEditorGizmoResourceFilePersistenceWorkflowRequest request{};
+    request.document = &document;
+    request.resource_browser_selection = &selection;
+    request.viewport_session = &session;
+    request.viewport_interaction = &interaction;
+    request.scene_persistence_mount_table = &table;
+    request.scene_persistence_mount = MountId(SCENE_PERSISTENCE_MOUNT);
+    request.scene_persistence_path = VirtualPath(SCENE_PERSISTENCE_PATH);
+    request.persistence_buffer =
+        std::span<std::uint8_t>(persistence_buffer.data(), persistence_buffer.size());
+    request.gizmo_rows =
+        std::span<SceneEditorRenderedGizmoRow>(gizmo_rows.data(), gizmo_rows.size());
+    request.resource_picker_rows =
+        std::span<SceneEditorResourcePickerRow>(picker_rows.data(), picker_rows.size());
+    request.save_load_records =
+        std::span<SceneEditorSaveLoadProofRecord>(
+            save_load_records.data(),
+            save_load_records.size());
+    request.loaded_identity_output =
+        std::span<WorldSceneObjectTransformRestoreIdentityRecord>(
+            loaded_identities.data(),
+            loaded_identities.size());
+    request.loaded_transform_output =
+        std::span<WorldSceneObjectTransformRestoreTransformRecord>(
+            loaded_transforms.data(),
+            loaded_transforms.size());
+    request.loaded_attachment_output =
+        std::span<WorldComponentAttachmentSnapshotRecord>(
+            loaded_attachments.data(),
+            loaded_attachments.size());
+    request.loaded_binding_output =
+        std::span<WorldComponentResourceBindingSnapshotRecord>(
+            loaded_bindings.data(),
+            loaded_bindings.size());
+
+    SceneEditorGizmoResourceFilePersistenceWorkflowResult result{};
+    const SceneEditorGizmoResourceWorkflowStatus status =
+        BuildSceneEditorGizmoResourceFilePersistenceWorkflow(request, &result);
+
+    if (status != SceneEditorGizmoResourceWorkflowStatus::SaveLoadFailed ||
+        result.blocked_layer != SceneEditorGizmoResourceWorkflowBlockedLayer::FilePersistence ||
+        result.file_write_status != FileStatus::MountNotFound ||
+        !result.wrote_scene_record_stream ||
+        result.wrote_file_scene_artifact ||
+        result.read_file_scene_artifact ||
+        result.read_scene_record_stream ||
+        result.emitted_rendered_gizmo ||
+        result.emitted_resource_picker ||
+        result.committed_workflow) {
+        return Fail("scene editor file persistence missing mount metadata mismatch");
+    }
+
+    if (!SentinelGizmoUnchanged(gizmo_rows[0U]) ||
+        !SentinelResourcePickerUnchanged(picker_rows[0U]) ||
+        !SentinelSaveLoadUnchanged(save_load_records[0U]) ||
+        persistence_buffer[0U] != 123U ||
+        persistence_buffer[1U] != 124U) {
+        return Fail("scene editor file persistence missing mount committed outputs");
+    }
+
+    const auto snapshot = table.Snapshot();
+    if (snapshot.write_byte_count != 0U ||
+        snapshot.read_byte_count != 0U ||
+        snapshot.last_write_status != FileStatus::MountNotFound) {
+        return Fail("scene editor file persistence missing mount snapshot mismatch");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char **argv) {
@@ -1787,6 +2089,14 @@ int main(int argc, char **argv) {
 
     if (test_name == TEST_GIZMO_SAVE_LOAD_FAILURE) {
         return SceneEditorGizmoWorkflowSaveLoadFailureDoesNotCommitRows();
+    }
+
+    if (test_name == TEST_FILE_PERSISTENCE) {
+        return SceneEditorFilePersistenceWorkflowWritesSceneArtifactAndLoadsFromFileVfs();
+    }
+
+    if (test_name == TEST_FILE_PERSISTENCE_MISSING_MOUNT) {
+        return SceneEditorFilePersistenceWorkflowMissingMountDoesNotCommitRows();
     }
 
     return Fail("unknown test name");

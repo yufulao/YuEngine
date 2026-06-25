@@ -5,7 +5,9 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
+#include "YuEngine/File/MountTable.h"
 #include "YuEngine/Serialize/SerializeReader.h"
 #include "YuEngine/Serialize/SerializeWriter.h"
 #include "YuEngine/World/WorldSceneRecordValueStreamBridge.h"
@@ -50,6 +52,10 @@ using PreviewHostViewportSessionResult =
 using PreviewHostEditorViewportInteractionResult =
     yuengine::previewhost::PreviewHostEditorViewportInteractionResult;
 using PreviewHostStatus = yuengine::previewhost::PreviewHostStatus;
+using FileReadRequest = yuengine::file::FileReadRequest;
+using FileReadResult = yuengine::file::FileReadResult;
+using FileWriteRequest = yuengine::file::FileWriteRequest;
+using FileWriteResult = yuengine::file::FileWriteResult;
 using SerializeReader = yuengine::serialize::SerializeReader;
 using SerializeWriter = yuengine::serialize::SerializeWriter;
 
@@ -624,6 +630,18 @@ bool SaveLoadWorkflowRequestStorageValid(
         IsSpanStorageValid(request.loaded_binding_output);
 }
 
+bool FilePersistenceWorkflowRequestStorageValid(
+    const SceneEditorGizmoResourceFilePersistenceWorkflowRequest &request) {
+    return IsSpanStorageValid(request.persistence_buffer) &&
+        IsSpanStorageValid(request.gizmo_rows) &&
+        IsSpanStorageValid(request.resource_picker_rows) &&
+        IsSpanStorageValid(request.save_load_records) &&
+        IsSpanStorageValid(request.loaded_identity_output) &&
+        IsSpanStorageValid(request.loaded_transform_output) &&
+        IsSpanStorageValid(request.loaded_attachment_output) &&
+        IsSpanStorageValid(request.loaded_binding_output);
+}
+
 bool WorkflowOutputCapacityReady(
     const SceneEditorWorkflowRequest &request,
     const WorldSceneAuthoringDocument &document,
@@ -653,6 +671,60 @@ bool WorkflowOutputCapacityReady(
 
 bool SaveLoadWorkflowOutputCapacityReady(
     const SceneEditorGizmoResourceSaveLoadWorkflowRequest &request,
+    const WorldSceneAuthoringDocument &document) {
+    if (request.gizmo_rows.empty()) {
+        return false;
+    }
+
+    if (request.resource_picker_rows.empty()) {
+        return false;
+    }
+
+    if (request.save_load_records.empty()) {
+        return false;
+    }
+
+    if (request.persistence_buffer.empty()) {
+        return false;
+    }
+
+    if (request.loaded_identity_output.size() < document.header.identity_record_count) {
+        return false;
+    }
+
+    if (request.loaded_transform_output.size() < document.header.transform_record_count) {
+        return false;
+    }
+
+    if (request.loaded_attachment_output.size() < document.header.attachment_record_count) {
+        return false;
+    }
+
+    if (request.loaded_binding_output.size() < document.header.binding_record_count) {
+        return false;
+    }
+
+    if (request.loaded_identity_output.empty()) {
+        return false;
+    }
+
+    if (request.loaded_transform_output.empty()) {
+        return false;
+    }
+
+    if (request.loaded_attachment_output.empty()) {
+        return false;
+    }
+
+    if (request.loaded_binding_output.empty()) {
+        return false;
+    }
+
+    return true;
+}
+
+bool FilePersistenceWorkflowOutputCapacityReady(
+    const SceneEditorGizmoResourceFilePersistenceWorkflowRequest &request,
     const WorldSceneAuthoringDocument &document) {
     if (request.gizmo_rows.empty()) {
         return false;
@@ -1378,6 +1450,341 @@ SceneEditorGizmoResourceWorkflowStatus BuildSceneEditorGizmoResourceSaveLoadWork
         result.blocked_layer = SceneEditorGizmoResourceWorkflowBlockedLayer::SaveLoad;
         *out_result = result;
         return result.status;
+    }
+
+    request.gizmo_rows[0U] = staged_gizmo;
+    request.resource_picker_rows[0U] = staged_picker;
+    request.save_load_records[0U] = staged_save_load;
+    result.loaded_identity_count = loaded_identity_count;
+    result.loaded_transform_count = loaded_transform_count;
+    result.loaded_attachment_count = loaded_attachment_count;
+    result.loaded_binding_count = loaded_binding_count;
+    result.gizmo_row_count = 1U;
+    result.resource_picker_row_count = 1U;
+    result.save_load_record_count = 1U;
+    result.read_scene_record_stream = true;
+    result.skipped_editor_sidecars_for_runtime_stream =
+        staged_save_load.kept_editor_sidecars_out_of_runtime_stream;
+    result.emitted_rendered_gizmo = true;
+    result.emitted_resource_picker = true;
+    result.committed_workflow = true;
+    result.status = SceneEditorGizmoResourceWorkflowStatus::Success;
+    result.blocked_layer = SceneEditorGizmoResourceWorkflowBlockedLayer::None;
+    *out_result = result;
+    return result.status;
+}
+
+SceneEditorGizmoResourceWorkflowStatus BuildSceneEditorGizmoResourceFilePersistenceWorkflow(
+    const SceneEditorGizmoResourceFilePersistenceWorkflowRequest &request,
+    SceneEditorGizmoResourceFilePersistenceWorkflowResult *out_result) {
+    if (out_result == nullptr) {
+        return SceneEditorGizmoResourceWorkflowStatus::InvalidArgument;
+    }
+
+    SceneEditorGizmoResourceFilePersistenceWorkflowResult result{};
+    if (request.document == nullptr ||
+        !FilePersistenceWorkflowRequestStorageValid(request)) {
+        *out_result = result;
+        return result.status;
+    }
+
+    const WorldSceneAuthoringDocument &document = *request.document;
+    result.consumed_authoring_document = true;
+    const WorldSceneAuthoringDocumentStatus authoring_status =
+        ValidateAuthoringDocument(document);
+    result.authoring_status = authoring_status;
+    if (authoring_status != WorldSceneAuthoringDocumentStatus::Success) {
+        result.status = SceneEditorGizmoResourceWorkflowStatus::InvalidAuthoringDocument;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::AuthoringDocument;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (!FilePersistenceWorkflowOutputCapacityReady(request, document)) {
+        result.status = SceneEditorGizmoResourceWorkflowStatus::OutputCapacityExceeded;
+        result.blocked_layer = SceneEditorGizmoResourceWorkflowBlockedLayer::Output;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.scene_persistence_mount_table == nullptr ||
+        !request.scene_persistence_mount.IsValid() ||
+        request.scene_persistence_path.ByteLength() == 0U) {
+        result.status = SceneEditorGizmoResourceWorkflowStatus::SaveLoadFailed;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::FilePersistence;
+        *out_result = result;
+        return result.status;
+    }
+
+    const WorldObjectId selected_world_object_id = FirstSelectedWorldObjectId(document);
+    result.selected_world_object_id = selected_world_object_id;
+    if (!selected_world_object_id.IsValid()) {
+        result.status = SceneEditorGizmoResourceWorkflowStatus::SelectionRequired;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::AuthoringDocument;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.resource_preview_state = request.resource_browser_selection != nullptr
+        ? request.resource_browser_selection->preview_state
+        : ResourceBrowserSurfacePreviewState::Unknown;
+    if (!ResourceBrowserSelectionReady(request.resource_browser_selection)) {
+        result.status =
+            SceneEditorGizmoResourceWorkflowStatus::BlockedResourceBrowserSelection;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::ResourceBrowserSelection;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.consumed_resource_browser_selection = true;
+    result.viewport_status = request.viewport_session != nullptr
+        ? request.viewport_session->status
+        : PreviewHostStatus::InvalidArgument;
+    if (!ViewportSessionReady(request.viewport_session)) {
+        result.status = SceneEditorGizmoResourceWorkflowStatus::ViewportSessionFailed;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::ViewportSession;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.consumed_viewport_session = true;
+    result.viewport_interaction_status = request.viewport_interaction != nullptr
+        ? request.viewport_interaction->status
+        : PreviewHostStatus::InvalidArgument;
+    if (!ViewportInteractionReady(request.viewport_interaction)) {
+        result.status =
+            SceneEditorGizmoResourceWorkflowStatus::ViewportInteractionFailed;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::ViewportInteraction;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.consumed_viewport_interaction = true;
+    result.viewport_selected_entity_index =
+        request.viewport_interaction->selected_entity_index;
+    if (!IsObjectEqual(
+            selected_world_object_id,
+            request.viewport_interaction->selected_world_object_id)) {
+        result.status =
+            SceneEditorGizmoResourceWorkflowStatus::ViewportInteractionFailed;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::ViewportInteraction;
+        *out_result = result;
+        return result.status;
+    }
+
+    const WorldSceneEditorSidecarRecord *gizmo_sidecar = FindSidecar(
+        document,
+        WorldSceneEditorSidecarKind::GizmoMode,
+        selected_world_object_id);
+    if (gizmo_sidecar == nullptr || gizmo_sidecar->value == 0U) {
+        result.status = SceneEditorGizmoResourceWorkflowStatus::GizmoUnavailable;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::GizmoSidecar;
+        *out_result = result;
+        return result.status;
+    }
+
+    const WorldComponentResourceBindingSnapshotRecord *binding =
+        FindFirstBinding(document, selected_world_object_id);
+    if (binding == nullptr) {
+        result.status =
+            SceneEditorGizmoResourceWorkflowStatus::ResourceBindingUnavailable;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::ResourceBinding;
+        *out_result = result;
+        return result.status;
+    }
+
+    SceneEditorRenderedGizmoRow staged_gizmo = BuildRenderedGizmoRow(
+        document,
+        *request.viewport_interaction,
+        *gizmo_sidecar);
+    SceneEditorResourcePickerRow staged_picker = BuildResourcePickerRow(
+        *request.resource_browser_selection,
+        *binding);
+    if (!staged_gizmo.transform_available ||
+        !staged_picker.selected_resource.IsValid() ||
+        !staged_picker.selected_resource_matches_binding_type) {
+        result.status =
+            SceneEditorGizmoResourceWorkflowStatus::ResourceBindingUnavailable;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::ResourceBinding;
+        *out_result = result;
+        return result.status;
+    }
+
+    WorldSceneRecordValueStreamBridge stream_bridge;
+    std::vector<std::uint8_t> staged_persistence(request.persistence_buffer.size());
+    SerializeWriter writer(
+        staged_persistence.data(),
+        static_cast<std::uint32_t>(staged_persistence.size()));
+    const WorldSceneRecordValueStreamResult write_result =
+        stream_bridge.WriteSceneRecords(
+            &writer,
+            document.identity_records,
+            document.header.identity_record_count,
+            document.transform_records,
+            document.header.transform_record_count,
+            document.attachment_records,
+            document.header.attachment_record_count,
+            document.binding_records,
+            document.header.binding_record_count);
+    result.save_status = write_result.status;
+    if (!write_result.Succeeded()) {
+        result.status = SceneEditorGizmoResourceWorkflowStatus::SaveLoadFailed;
+        result.blocked_layer = SceneEditorGizmoResourceWorkflowBlockedLayer::SaveLoad;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.wrote_scene_record_stream = true;
+    FileWriteRequest file_write_request{};
+    file_write_request.mount = request.scene_persistence_mount;
+    file_write_request.path = request.scene_persistence_path;
+    file_write_request.bytes = staged_persistence.data();
+    file_write_request.byte_count = write_result.state.committed_byte_count;
+    const FileWriteResult file_write_result =
+        request.scene_persistence_mount_table->Write(file_write_request);
+    result.file_write_status = file_write_result.status;
+    if (!file_write_result.Succeeded()) {
+        result.status = SceneEditorGizmoResourceWorkflowStatus::SaveLoadFailed;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::FilePersistence;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.wrote_file_scene_artifact = true;
+    result.persisted_file_byte_count =
+        static_cast<std::uint32_t>(file_write_result.byte_count);
+    FileReadRequest file_read_request{};
+    file_read_request.mount = request.scene_persistence_mount;
+    file_read_request.path = request.scene_persistence_path;
+    const FileReadResult file_read_result =
+        request.scene_persistence_mount_table->Read(file_read_request);
+    result.file_read_status = file_read_result.status;
+    if (!file_read_result.Succeeded()) {
+        result.status = SceneEditorGizmoResourceWorkflowStatus::SaveLoadFailed;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::FilePersistence;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.read_file_scene_artifact = true;
+    result.read_file_byte_count =
+        static_cast<std::uint32_t>(file_read_result.bytes.size());
+    if (file_read_result.bytes.size() != write_result.state.committed_byte_count) {
+        result.status = SceneEditorGizmoResourceWorkflowStatus::SaveLoadFailed;
+        result.blocked_layer =
+            SceneEditorGizmoResourceWorkflowBlockedLayer::FilePersistence;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::array<
+        WorldSceneObjectTransformRestoreIdentityRecord,
+        yuengine::world::MAX_WORLD_OBJECT_COUNT> staged_loaded_identities{};
+    std::array<
+        WorldSceneObjectTransformRestoreTransformRecord,
+        yuengine::world::MAX_WORLD_OBJECT_COUNT> staged_loaded_transforms{};
+    std::array<
+        WorldComponentAttachmentSnapshotRecord,
+        yuengine::world::MAX_WORLD_OBJECT_COUNT> staged_loaded_attachments{};
+    std::array<
+        WorldComponentResourceBindingSnapshotRecord,
+        yuengine::world::MAX_WORLD_OBJECT_COUNT> staged_loaded_bindings{};
+    std::uint32_t loaded_identity_count = 0U;
+    std::uint32_t loaded_transform_count = 0U;
+    std::uint32_t loaded_attachment_count = 0U;
+    std::uint32_t loaded_binding_count = 0U;
+    SerializeReader reader(
+        file_read_result.bytes.data(),
+        static_cast<std::uint32_t>(file_read_result.bytes.size()));
+    const WorldSceneRecordValueStreamResult read_result =
+        stream_bridge.ReadSceneRecords(
+            &reader,
+            staged_loaded_identities.data(),
+            static_cast<std::uint32_t>(staged_loaded_identities.size()),
+            &loaded_identity_count,
+            staged_loaded_transforms.data(),
+            static_cast<std::uint32_t>(staged_loaded_transforms.size()),
+            &loaded_transform_count,
+            staged_loaded_attachments.data(),
+            static_cast<std::uint32_t>(staged_loaded_attachments.size()),
+            &loaded_attachment_count,
+            staged_loaded_bindings.data(),
+            static_cast<std::uint32_t>(staged_loaded_bindings.size()),
+            &loaded_binding_count);
+    result.load_status = read_result.status;
+    if (!read_result.Succeeded()) {
+        result.status = SceneEditorGizmoResourceWorkflowStatus::SaveLoadFailed;
+        result.blocked_layer = SceneEditorGizmoResourceWorkflowBlockedLayer::SaveLoad;
+        *out_result = result;
+        return result.status;
+    }
+
+    SceneEditorSaveLoadProofRecord staged_save_load = BuildSaveLoadProofRecord(
+        document,
+        write_result,
+        read_result,
+        loaded_identity_count,
+        loaded_transform_count,
+        loaded_attachment_count,
+        loaded_binding_count);
+    staged_save_load.file_write_status = file_write_result.status;
+    staged_save_load.file_read_status = file_read_result.status;
+    staged_save_load.persisted_file_byte_count = result.persisted_file_byte_count;
+    staged_save_load.read_file_byte_count = result.read_file_byte_count;
+    staged_save_load.wrote_file_scene_artifact = true;
+    staged_save_load.read_file_scene_artifact = true;
+    staged_save_load.persisted_through_file_vfs = true;
+    if (!staged_save_load.preserved_runtime_record_counts) {
+        result.status = SceneEditorGizmoResourceWorkflowStatus::SaveLoadFailed;
+        result.blocked_layer = SceneEditorGizmoResourceWorkflowBlockedLayer::SaveLoad;
+        *out_result = result;
+        return result.status;
+    }
+
+    std::uint32_t persisted_index = 0U;
+    while (persisted_index < write_result.state.committed_byte_count) {
+        request.persistence_buffer[persisted_index] = staged_persistence[persisted_index];
+        ++persisted_index;
+    }
+
+    std::uint32_t loaded_index = 0U;
+    while (loaded_index < loaded_identity_count) {
+        request.loaded_identity_output[loaded_index] =
+            staged_loaded_identities[loaded_index];
+        ++loaded_index;
+    }
+
+    loaded_index = 0U;
+    while (loaded_index < loaded_transform_count) {
+        request.loaded_transform_output[loaded_index] =
+            staged_loaded_transforms[loaded_index];
+        ++loaded_index;
+    }
+
+    loaded_index = 0U;
+    while (loaded_index < loaded_attachment_count) {
+        request.loaded_attachment_output[loaded_index] =
+            staged_loaded_attachments[loaded_index];
+        ++loaded_index;
+    }
+
+    loaded_index = 0U;
+    while (loaded_index < loaded_binding_count) {
+        request.loaded_binding_output[loaded_index] =
+            staged_loaded_bindings[loaded_index];
+        ++loaded_index;
     }
 
     request.gizmo_rows[0U] = staged_gizmo;

@@ -287,7 +287,7 @@ target_include_directories(YuSceneEditor
     PUBLIC
         Src/YuEngine/SceneEditor/Include
 )
-target_link_libraries(YuSceneEditor PUBLIC YuWorld YuResourceBrowser YuPreviewHost)
+target_link_libraries(YuSceneEditor PUBLIC YuWorld YuResourceBrowser YuPreviewHost YuFile)
 
 add_library(YuRenderCore
     Src/YuEngine/RenderCore/Src/MaterialBindingFixture.cpp
@@ -1118,6 +1118,8 @@ yuengine_add_labeled_test(SceneEditorWorkflow_BlockedDependencyDoesNotMutateOutp
 yuengine_add_labeled_test(SceneEditorGizmoWorkflow_RendersGizmoPicksResourceAndRoundTripsSceneRecords YuSceneEditorSurfaceTests Fast ModuleFixture SceneEditor World ResourceBrowser PreviewHost Serialize L1 EvidenceOracle)
 yuengine_add_labeled_test(SceneEditorGizmoWorkflow_MissingGizmoSidecarDoesNotMutateOutputs YuSceneEditorSurfaceTests Fast ModuleFixture SceneEditor World ResourceBrowser PreviewHost Serialize L1 EvidenceOracle)
 yuengine_add_labeled_test(SceneEditorGizmoWorkflow_SaveLoadFailureDoesNotCommitRows YuSceneEditorSurfaceTests Fast ModuleFixture SceneEditor World ResourceBrowser PreviewHost Serialize L1 EvidenceOracle)
+yuengine_add_labeled_test(SceneEditorFilePersistenceWorkflow_WritesSceneArtifactAndLoadsFromFileVfs YuSceneEditorSurfaceTests Fast ModuleFixture SceneEditor World ResourceBrowser PreviewHost Serialize File L1 EvidenceOracle)
+yuengine_add_labeled_test(SceneEditorFilePersistenceWorkflow_MissingMountDoesNotCommitRows YuSceneEditorSurfaceTests Fast ModuleFixture SceneEditor World ResourceBrowser PreviewHost Serialize File L1 EvidenceOracle)
 
 add_executable(YuWorldIdentityBaselineTests
     Tests/World/WorldIdentityBaselineTests.cpp
