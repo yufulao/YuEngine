@@ -12,6 +12,7 @@ RAV5 runtime UI document slice: `docs/YUENGINE_UI_EDITOR_RAV5_RUNTIME_DOCUMENT_P
 RAV6 design/inspector workflow slice: `docs/YUENGINE_UI_EDITOR_RAV6_DESIGN_INSPECTOR_WORKFLOW.md`
 RAV6 authored editor package/run smoke: `docs/YUENGINE_EDITOR_PACKAGE_RUN_RAV6_AUTHORED_DATA_SMOKE.md`
 RAV5 review gate: `docs/YUENGINE_RAV5_EDITOR_SURFACE_REVIEW_EVIDENCE.md`
+RAV6 review gate: `docs/YUENGINE_RAV6_EDITOR_MVP_WORKFLOW_REVIEW_EVIDENCE.md`
 
 ## 1. Correction
 
