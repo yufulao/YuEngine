@@ -8,6 +8,7 @@ Related evidence:
 
 - `docs/YUENGINE_RUNTIME_ASSET_V0_RAV2_EVIDENCE_MATRIX.md`
 - `docs/YUENGINE_RUNTIME_ASSET_PACKAGE_COOK_RUN_SMOKE_GATE.md`
+- `docs/YUENGINE_EXTERNAL_AUTHORING_BRIDGE_RAV7_CONTRACT.md`
 
 ## Purpose
 
@@ -25,7 +26,10 @@ RuntimeAsset import/cook command
 ```
 
 It is not an editor workflow, original package parser, Unity/UE importer,
-Resource Browser UI, Preview Host, or render evidence path.
+Resource Browser UI, Preview Host, or render evidence path. External authoring
+exports must first pass the boundary contract in
+`docs/YUENGINE_EXTERNAL_AUTHORING_BRIDGE_RAV7_CONTRACT.md` before they become
+inputs to this command.
 
 ## Public API
 

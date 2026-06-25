@@ -93,7 +93,9 @@ Still missing:
 - a complete UI Editor with style/theme/template/state workflows, component
   library breadth, final engine UI runtime visual preview, and runtime
   serialization closure;
-- external Unity/Unreal/DCC authoring bridge into YuEngine RuntimeAsset data;
+- external Unity/Unreal/DCC authoring bridge into YuEngine RuntimeAsset data
+  beyond the boundary contract in
+  `docs/YUENGINE_EXTERNAL_AUTHORING_BRIDGE_RAV7_CONTRACT.md`;
 - final product-grade visual proof, game content, launcher/installer/release
   delivery, and original TouhouNewWorld package compatibility.
 

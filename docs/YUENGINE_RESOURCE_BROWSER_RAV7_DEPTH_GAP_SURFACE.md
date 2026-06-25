@@ -5,6 +5,10 @@ Target: `YuResourceBrowser`
 Status: implementation slice
 Task: #97
 
+Related:
+
+- `docs/YUENGINE_EXTERNAL_AUTHORING_BRIDGE_RAV7_CONTRACT.md`
+
 ## Purpose
 
 This slice extends the RAV6 visible workflow with a bounded depth surface for
@@ -45,6 +49,11 @@ The surface does not read files, parse original game archives, run external DCC
 importers, mint Resource/Asset handles, or write to AssetManager. It preserves
 the lower provenance from diagnostics and validates the selected import setting
 before writing any caller-owned outputs.
+
+External-import rows use the boundary vocabulary from
+`docs/YUENGINE_EXTERNAL_AUTHORING_BRIDGE_RAV7_CONTRACT.md`: Resource Browser may
+display an external authoring export as an import candidate, but blocked rows
+must remain diagnostics and must not mint handles or preview requests.
 
 ## Acceptance
 

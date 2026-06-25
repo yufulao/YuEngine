@@ -20,6 +20,7 @@ Related documents:
 - `docs/YUENGINE_UI_STAGE1_VALIDATION.md`
 - `docs/YUENGINE_UI_STAGE2_VALIDATION.md`
 - `docs/YUENGINE_UI_STAGE3_VALIDATION.md`
+- `docs/YUENGINE_EXTERNAL_AUTHORING_BRIDGE_RAV7_CONTRACT.md`
 
 ## Purpose
 
@@ -36,6 +37,10 @@ runtime data files
 -> YuEngine runtime viewport, frame, status, and diagnostics
 -> native/engine editor panels and commands
 ```
+
+External Unity, Unreal, and DCC authoring may feed this chain only through the
+external authoring bridge contract. Those tools are source authors/converters,
+not runtime/editor dependencies and not alternate Preview Host proof paths.
 
 This document does not approve editor implementation, CMake targets, native
 editor apps, preview-host code, Resource Browser code, runtime asset expansion,
