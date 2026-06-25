@@ -464,6 +464,16 @@ target_include_directories(YuEditorPackageRun
 )
 target_link_libraries(YuEditorPackageRun PUBLIC YuSceneEditor YuAnimationEditor YuUiEditor YuRuntimeAsset)
 
+add_library(YuEditorHost
+    Src/YuEngine/EditorHost/Src/EditorHostSession.cpp
+)
+yuengine_apply_compile_options(YuEditorHost)
+target_include_directories(YuEditorHost
+    PUBLIC
+        Src/YuEngine/EditorHost/Include
+)
+target_link_libraries(YuEditorHost PUBLIC YuEditorPackageRun)
+
 add_library(YuHardware
     Src/YuEngine/Hardware/Src/HardwareFrameHost.cpp
 )
@@ -2285,6 +2295,17 @@ target_link_libraries(YuEditorPackageRunSmokeTests PRIVATE YuEditorPackageRun)
 yuengine_add_labeled_test(EditorPackageRun_ConsumesAuthoredWorkflowOutputsAndRunsProductCommand YuEditorPackageRunSmokeTests Fast ModuleFixture EditorPackageRun SceneEditor AnimationEditor UiEditor RuntimeAssetData ImportCook Package RuntimeApp File Resource Asset RenderScene RenderCore RHI L1 EvidenceOracle)
 yuengine_add_labeled_test(EditorPackageRun_MissingUiWorkflowStopsBeforePackageCommand YuEditorPackageRunSmokeTests Fast ModuleFixture EditorPackageRun SceneEditor AnimationEditor UiEditor RuntimeAssetData Package RuntimeApp File Resource Asset L1 EvidenceOracle)
 yuengine_add_labeled_test(EditorPackageRun_MissingPackageArtifactReportsFileLayerWithoutEntryPoint YuEditorPackageRunSmokeTests Fast ModuleFixture EditorPackageRun SceneEditor AnimationEditor UiEditor RuntimeAssetData ImportCook Package RuntimeApp File Resource Asset L1 EvidenceOracle)
+
+add_executable(YuEditorHostSessionTests
+    Tests/EditorHost/EditorHostSessionTests.cpp
+)
+yuengine_apply_compile_options(YuEditorHostSessionTests)
+target_link_libraries(YuEditorHostSessionTests PRIVATE YuEditorHost)
+yuengine_add_labeled_test(EditorHostSession_BuildsNativeShellPanelStateFromRav6Workflows YuEditorHostSessionTests Fast ModuleFixture EditorHost SceneEditor AnimationEditor UiEditor EditorPackageRun L1 EvidenceOracle)
+yuengine_add_labeled_test(EditorHostSession_PersistsAndRestoresPanelStateWithoutRuntimeTruth YuEditorHostSessionTests Fast ModuleFixture EditorHost SceneEditor AnimationEditor UiEditor Persistence L1 EvidenceOracle)
+yuengine_add_labeled_test(EditorHostSession_RejectsMissingSceneWorkflowWithoutMutation YuEditorHostSessionTests Fast ModuleFixture EditorHost SceneEditor L1 EvidenceOracle)
+yuengine_add_labeled_test(EditorHostSession_RejectsSmallPersistenceOutputWithoutMutation YuEditorHostSessionTests Fast ModuleFixture EditorHost Persistence L1 EvidenceOracle)
+yuengine_add_labeled_test(EditorHostSession_RejectsInvalidPersistedSessionWithoutMutation YuEditorHostSessionTests Fast ModuleFixture EditorHost Persistence L1 EvidenceOracle)
 
 add_executable(YuAudioSceneTests
     Tests/AudioScene/AudioSceneContractQueueTests.cpp
