@@ -139,6 +139,15 @@ The future slice must not require external tools to be installed for the normal
 `windows-fast-gate` path. Tool-specific integration tests, if added, must be
 separate opt-in evidence.
 
+## RAV8 Implementation Slice
+
+The first implementation slice is
+`docs/YUENGINE_EXTERNAL_AUTHORING_BRIDGE_RAV8_MANIFEST_IMPORT_FIXTURE.md`.
+It adds a deterministic manifest parser, File/VFS payload checks, mapping and
+dependency validation, no-mutation rejection tests, and RuntimeAsset
+import/cook command input emission without Unity, Unreal, DCC, live sync, or
+external viewport dependencies.
+
 ## Non-Goals
 
 This contract does not implement:
