@@ -298,6 +298,7 @@ Current slice status:
 | 16. scene/animation loader no-mutation failures | PASS |
 | 17. package/product run command smoke | PASS |
 | 18. mesh layout/topology loaded records | PASS |
+| 19. decoded mesh payload to geometry buffers | PASS |
 
 Current RuntimeAssetData proof names that future slices must keep passing or
 supersede with approved equivalents:
@@ -305,6 +306,7 @@ supersede with approved equivalents:
 - `RuntimeAssetData_MeshMaterialTextureTypedValidatorsAcceptStructuredMetadata`
 - `RuntimeAssetData_MeshPayloadPolicyRejectsSizeHashAndSplitMismatch`
 - `RuntimeAssetData_MeshLayoutTopologyDecodesIntoLoadedRecords`
+- `RuntimeAssetData_ImportedMeshPayloadBytesFeedRenderGeometryBuffers`
 - `RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs`
 - `RuntimeAssetData_MaterialParameterSemanticsLoadIntoRuntimeRecords`
 - `RuntimeAssetData_TextureValidatorRejectsInvalidFormatExtentPayload`
@@ -343,7 +345,8 @@ This gate records these mainline implementation slices:
 | RAV1-I | Shader import policy | PASS; source/cooked shader files validate import language, target, entries, profiles, compile flags, and loaded policy identity before RHI bridge |
 | RAV1-J | Scene camera family failure diagnostics | PASS; bounded scene camera table duplicate active, missing active, invalid row, and invalid entity camera ref failures return exact status without output mutation |
 | RAV1-K | Mesh layout/topology decode | PASS; source/cooked mesh files validate and load `position,texcoord` input layout, vertex/index stride, `uint16` index format, and triangle-list topology before RenderScene/RenderCore/RHI geometry proof consumes loaded records |
-| Next slice | Production hardening | imported mesh payload decoding, real shader compiler backend, broader shader reflection semantics, render material constant binding, broader material variants, broader scene/animation production variants |
+| RAV1-L | Mesh decoded payload geometry buffers | PASS; RenderScene/RenderCore/RHI geometry proof reads Resource decoded mesh payloads, validates payload hash and vertex/index byte split, and reports exact Model-layer failures for missing decoded payload or hash mismatch |
+| Next slice | Production hardening | real shader compiler backend, broader shader reflection semantics, render material constant binding, broader material variants, broader scene/animation production variants |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer

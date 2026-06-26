@@ -768,10 +768,14 @@ struct RuntimeAssetVisualProofResult final {
     std::uint32_t animation_sampled_value_count = 0U;
     std::uint32_t material_texture_slot_count = 0U;
     std::uint32_t runtime_texture_upload_count = 0U;
+    std::uint32_t mesh_decoded_payload_count = 0U;
+    std::size_t mesh_vertex_payload_byte_count = 0U;
+    std::size_t mesh_index_payload_byte_count = 0U;
     std::uint32_t submitted_draw_count = 0U;
     std::uint32_t completed_frame_count = 0U;
     std::size_t capture_bytes_written = 0U;
     bool loaded_records_verified = false;
+    bool mesh_buffers_from_decoded_payloads = false;
     bool shader_pipeline_from_runtime_asset = false;
     bool material_slots_from_cooked_payloads = false;
     bool scene_transforms_from_animation_sampling = false;

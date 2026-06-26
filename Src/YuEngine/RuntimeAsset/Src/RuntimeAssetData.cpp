@@ -5932,32 +5932,124 @@ RuntimeAssetDataStatus CreateVisualProofBuffer(
     return status == RhiStatus::Success ? RuntimeAssetDataStatus::Success : RuntimeAssetDataStatus::RhiCaptureFailed;
 }
 
-RuntimeAssetDataStatus BuildVisualProofIndexBytes(
-    std::uint32_t index_count,
-    std::array<std::uint8_t, yuengine::rhi::MAX_RHI_BUFFER_BYTES> *out_bytes,
-    std::size_t *out_byte_count) {
-    if (out_bytes == nullptr || out_byte_count == nullptr || index_count == 0U) {
+struct RuntimeAssetVisualProofMeshPayload final {
+    std::vector<std::uint8_t> bytes{};
+    std::uint32_t vertex_byte_count = 0U;
+    std::uint32_t index_byte_count = 0U;
+};
+
+RuntimeAssetDataStatus ResolveVisualProofMeshPayloadByteCounts(
+    const RuntimeAssetLoadedFile &mesh,
+    std::uint32_t *out_vertex_byte_count,
+    std::uint32_t *out_index_byte_count) {
+    if (out_vertex_byte_count == nullptr || out_index_byte_count == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    const std::size_t byte_count = sizeof(std::uint16_t) * static_cast<std::size_t>(index_count);
-    if (byte_count > out_bytes->size()) {
+    if (mesh.vertex_count == 0U ||
+        mesh.index_count == 0U ||
+        mesh.mesh_vertex_stride_bytes == 0U ||
+        mesh.mesh_index_stride_bytes == 0U ||
+        mesh.decoded_byte_count == 0U ||
+        mesh.payload_byte_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    const std::uint64_t vertex_byte_count =
+        static_cast<std::uint64_t>(mesh.vertex_count) *
+        static_cast<std::uint64_t>(mesh.mesh_vertex_stride_bytes);
+    const std::uint64_t index_byte_count =
+        static_cast<std::uint64_t>(mesh.index_count) *
+        static_cast<std::uint64_t>(mesh.mesh_index_stride_bytes);
+    const std::uint64_t payload_byte_count = vertex_byte_count + index_byte_count;
+    const std::uint64_t max_u32 = static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max());
+    if (vertex_byte_count > max_u32 ||
+        index_byte_count > max_u32 ||
+        payload_byte_count > max_u32) {
         return RuntimeAssetDataStatus::BudgetExceeded;
     }
 
-    std::fill(out_bytes->begin(), out_bytes->end(), std::uint8_t{0U});
-    for (std::uint32_t index = 0U; index < index_count; ++index) {
-        const std::uint16_t value = static_cast<std::uint16_t>(index % 3U);
-        const std::size_t byte_offset = static_cast<std::size_t>(index) * sizeof(std::uint16_t);
-        (*out_bytes)[byte_offset] = static_cast<std::uint8_t>(value & 0xFFU);
-        (*out_bytes)[byte_offset + 1U] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
+    if (payload_byte_count != static_cast<std::uint64_t>(mesh.payload_byte_count) ||
+        payload_byte_count != static_cast<std::uint64_t>(mesh.decoded_byte_count)) {
+        return RuntimeAssetDataStatus::InvalidSize;
     }
 
-    *out_byte_count = byte_count;
+    *out_vertex_byte_count = static_cast<std::uint32_t>(vertex_byte_count);
+    *out_index_byte_count = static_cast<std::uint32_t>(index_byte_count);
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ReadVisualProofDecodedMeshPayload(
+    ResourceRegistry &registry,
+    const RuntimeAssetLoadedFile &mesh,
+    RuntimeAssetVisualProofMeshPayload *out_payload) {
+    if (out_payload == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    *out_payload = RuntimeAssetVisualProofMeshPayload{};
+    if (mesh.kind != RuntimeAssetFileKind::Mesh ||
+        mesh.payload_hash == 0U ||
+        !mesh.decoded_payload_stored ||
+        mesh.decode_plan_payload_id == 0U ||
+        mesh.decode_plan_id == 0U ||
+        mesh.decode_result_id == 0U ||
+        mesh.decoded_payload_id == 0U ||
+        mesh.decode_asset_class != ResourceDecodePlanAssetClass::Mesh ||
+        mesh.decode_result_class != ResourceDecodeResultClass::Mesh) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    std::uint32_t vertex_byte_count = 0U;
+    std::uint32_t index_byte_count = 0U;
+    RuntimeAssetDataStatus status = ResolveVisualProofMeshPayloadByteCounts(
+        mesh,
+        &vertex_byte_count,
+        &index_byte_count);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    std::vector<std::uint8_t> bytes{};
+    bytes.assign(mesh.decoded_byte_count, 0U);
+
+    ResourceDecodedPayloadRequest request{};
+    request.resource = mesh.resource;
+    request.expected_type = mesh.resource_type;
+    request.payload_id = mesh.decode_plan_payload_id;
+    request.decode_plan_id = mesh.decode_plan_id;
+    request.decode_result_id = mesh.decode_result_id;
+    request.decoded_payload_id = mesh.decoded_payload_id;
+    request.asset_class = mesh.decode_asset_class;
+    request.result_class = mesh.decode_result_class;
+    request.decoded_byte_count = mesh.decoded_byte_count;
+
+    std::uint32_t read_byte_count = 0U;
+    const std::uint32_t byte_capacity = static_cast<std::uint32_t>(bytes.size());
+    const ResourceDecodedPayloadStatus payload_status = registry.ReadDecodedPayload(
+        request,
+        bytes.data(),
+        byte_capacity,
+        &read_byte_count);
+    if (payload_status != ResourceDecodedPayloadStatus::Success ||
+        read_byte_count != mesh.decoded_byte_count) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    const std::span<const std::uint8_t> decoded_bytes(bytes.data(), bytes.size());
+    const std::uint64_t payload_hash = HashRuntimeAssetDataBytes(decoded_bytes);
+    if (payload_hash != mesh.payload_hash) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    out_payload->bytes = std::move(bytes);
+    out_payload->vertex_byte_count = vertex_byte_count;
+    out_payload->index_byte_count = index_byte_count;
     return RuntimeAssetDataStatus::Success;
 }
 
 RuntimeAssetDataStatus BuildVisualProofGeometry(
+    ResourceRegistry &registry,
     const RuntimeAssetLoadedFile &mesh,
     std::uint32_t index,
     IRhiDevice &device,
@@ -5993,31 +6085,39 @@ RuntimeAssetDataStatus BuildVisualProofGeometry(
             result);
     }
 
+    RuntimeAssetVisualProofMeshPayload mesh_payload{};
+    RuntimeAssetDataStatus status = ReadVisualProofDecodedMeshPayload(
+        registry,
+        mesh,
+        &mesh_payload);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::Model, result);
+    }
+
+    const std::size_t vertex_byte_count = static_cast<std::size_t>(mesh_payload.vertex_byte_count);
+    const std::size_t index_byte_count = static_cast<std::size_t>(mesh_payload.index_byte_count);
+    const std::uint8_t *payload_data = mesh_payload.bytes.data();
+    const std::uint8_t *index_payload_data = payload_data + vertex_byte_count;
+    const std::span<const std::uint8_t> vertex_initial_bytes(payload_data, vertex_byte_count);
+    const std::span<const std::uint8_t> index_initial_bytes(index_payload_data, index_byte_count);
+
     RhiBufferHandle vertex_buffer{};
-    const std::span<const std::uint8_t> empty_initial_bytes{};
-    RuntimeAssetDataStatus status = CreateVisualProofBuffer(
+    status = CreateVisualProofBuffer(
         device,
         RhiBufferUsage::Vertex,
-        vertex_stride_bytes * vertex_count,
-        empty_initial_bytes,
+        vertex_byte_count,
+        vertex_initial_bytes,
         &vertex_buffer);
     if (status != RuntimeAssetDataStatus::Success) {
         return FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::RhiCapture, result);
-    }
-
-    std::array<std::uint8_t, yuengine::rhi::MAX_RHI_BUFFER_BYTES> index_initial_bytes{};
-    std::size_t index_initial_byte_count = 0U;
-    status = BuildVisualProofIndexBytes(index_count, &index_initial_bytes, &index_initial_byte_count);
-    if (status != RuntimeAssetDataStatus::Success) {
-        return FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::Model, result);
     }
 
     RhiBufferHandle index_buffer{};
     status = CreateVisualProofBuffer(
         device,
         RhiBufferUsage::Index,
-        sizeof(std::uint16_t) * index_count,
-        std::span<const std::uint8_t>(index_initial_bytes.data(), index_initial_byte_count),
+        index_byte_count,
+        index_initial_bytes,
         &index_buffer);
     if (status != RuntimeAssetDataStatus::Success) {
         return FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::RhiCapture, result);
@@ -6034,11 +6134,11 @@ RuntimeAssetDataStatus BuildVisualProofGeometry(
         vertex_buffer,
         0U,
         vertex_stride_bytes,
-        vertex_stride_bytes * vertex_count};
+        vertex_byte_count};
     request.index_buffer = RhiIndexBufferView{
         index_buffer,
         0U,
-        sizeof(std::uint16_t) * index_count,
+        index_byte_count,
         RhiIndexFormat::Uint16};
 
     RenderScenePrimitiveGeometryBuilder builder;
@@ -6048,6 +6148,12 @@ RuntimeAssetDataStatus BuildVisualProofGeometry(
             RuntimeAssetDataStatus::MissingDependency,
             RuntimeAssetVisualProofMissingLayer::Model,
             result);
+    }
+
+    if (result != nullptr) {
+        ++result->mesh_decoded_payload_count;
+        result->mesh_vertex_payload_byte_count += vertex_byte_count;
+        result->mesh_index_payload_byte_count += index_byte_count;
     }
 
     return RuntimeAssetDataStatus::Success;
@@ -7154,17 +7260,27 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
             return status;
         }
 
-    status = BuildVisualProofGeometry(
-        *mesh,
-        index,
-        *request.rhi_device,
-        &geometry[index],
-        &result);
+        status = BuildVisualProofGeometry(
+            *request.resource_registry,
+            *mesh,
+            index,
+            *request.rhi_device,
+            &geometry[index],
+            &result);
         if (status != RuntimeAssetDataStatus::Success) {
             *out_result = result;
             return status;
         }
     }
+
+    const bool mesh_payload_count_ready =
+        result.mesh_decoded_payload_count == RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT;
+    const bool mesh_payload_bytes_ready =
+        result.mesh_vertex_payload_byte_count > 0U &&
+        result.mesh_index_payload_byte_count > 0U;
+    result.mesh_buffers_from_decoded_payloads =
+        mesh_payload_count_ready &&
+        mesh_payload_bytes_ready;
 
     RenderSceneRuntimeMaterialRecord material{};
     status = BuildVisualProofMaterial(request, &material, &result);

@@ -261,6 +261,7 @@ C++ in-memory construction alone.
 | Camera/tween descriptor file | PASS | `RuntimeAssetData_CameraTweenDescriptorLoadsFromDiskSceneReference` validates and loads `Camera/Main.yucamera` and cooked camera records through the runtime graph; ResourceBrowser surface/depth workflows consume the same 10-file graph |
 | Mesh vertex/index payload policy | PASS | `RuntimeAssetData_MeshPayloadPolicyRejectsSizeHashAndSplitMismatch` validates bounded mesh payload bytes, payload alignment, payload hash, and vertex/index split sums for generated source and cooked mesh files |
 | Mesh layout/topology records | PASS | `RuntimeAssetData_MeshLayoutTopologyDecodesIntoLoadedRecords` validates input layout, vertex/index stride, `uint16` index format, triangle-list topology, and loaded record propagation for cube/cylinder/cone disk mesh files |
+| Mesh payload to geometry buffers | PASS | `RuntimeAssetData_ImportedMeshPayloadBytesFeedRenderGeometryBuffers` reads Resource decoded mesh payload records, validates payload hash and vertex/index byte split, feeds decoded bytes into RHI vertex/index buffers, and reports exact Model-layer failures for missing payload or hash mismatch |
 | Material parameter semantics | PASS | `RuntimeAssetData_MaterialParameterSemanticsLoadIntoRuntimeRecords` validates and loads base color RGBA, emissive strength, metallic, roughness, opacity, alpha mode, and parameter count from disk material records |
 | Shader import policy | PASS | `RuntimeAssetData_ShaderImportPolicyValidatesSourceCookedAndLoadedRecords` validates source/cooked shader import language, target, entries, profiles, compile flags, and loaded record policy identity |
 | Scene camera family failures | PASS | `RuntimeAssetData_SceneAnimationLoaderRejectsCameraFamilyFailuresWithoutMutation` validates duplicate active camera, no active camera, invalid camera row, and invalid entity camera ref failures without Resource/Asset/RenderScene output mutation |
@@ -271,11 +272,11 @@ C++ in-memory construction alone.
 | Upper-layer dependency guard | PASS | `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` |
 
 These slices are not a complete asset system. Current RuntimeAssetData coverage
-accepts decoded texture material slots, loaded shader bytecode, cooked shader
-payloads, disk animation sampling, staged scene loader output, package/cook/run,
-and product-run smoke as the current mainline closed loop. The remaining work is
-production hardening for imported mesh payload decoding, real shader compiler
-backend integration, broader shader reflection semantics, render
+accepts decoded mesh payload geometry buffers, decoded texture material slots,
+loaded shader bytecode, cooked shader payloads, disk animation sampling, staged
+scene loader output, package/cook/run, and product-run smoke as the current
+mainline closed loop. The remaining work is production hardening for real shader
+compiler backend integration, broader shader reflection semantics, render
 material constant binding, broader material variants, and scene/animation/camera
 production variants beyond the canonical cube/cylinder/cone graph.
 

@@ -334,6 +334,8 @@ constexpr const char *TEST_MESH_PAYLOAD_POLICY =
     "RuntimeAssetData_MeshPayloadPolicyRejectsSizeHashAndSplitMismatch";
 constexpr const char *TEST_MESH_LAYOUT_TOPOLOGY =
     "RuntimeAssetData_MeshLayoutTopologyDecodesIntoLoadedRecords";
+constexpr const char *TEST_MESH_PAYLOAD_DECODED_BUFFERS =
+    "RuntimeAssetData_ImportedMeshPayloadBytesFeedRenderGeometryBuffers";
 constexpr const char *TEST_MATERIAL_TYPED_REFS =
     "RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
 constexpr const char *TEST_MATERIAL_PARAMETER_SEMANTICS =
@@ -4386,6 +4388,7 @@ int RuntimeAssetDataCookedRecordsDriveRuntimeVisualProofThroughRenderCoreRhi() {
     }
 
     if (!result.shader_pipeline_from_runtime_asset ||
+        !result.mesh_buffers_from_decoded_payloads ||
         !result.material_slots_from_cooked_payloads ||
         !result.scene_transforms_from_animation_sampling ||
         !result.render_scene_routed ||
@@ -4418,6 +4421,95 @@ int RuntimeAssetDataCookedRecordsDriveRuntimeVisualProofThroughRenderCoreRhi() {
             result.capture_bytes_written,
             expected_capture_bytes);
         return Fail("cooked visual proof route produced incomplete capture ledger");
+    }
+
+    return 0;
+}
+
+bool ExpectCookedVisualProofMissingLayer(
+    RuntimeAssetVisualProofRequest request,
+    RuntimeAssetDataStatus expected_status,
+    RuntimeAssetVisualProofMissingLayer expected_layer);
+
+int RuntimeAssetDataImportedMeshPayloadBytesFeedRenderGeometryBuffers() {
+    std::size_t expected_vertex_payload_bytes = 0U;
+    expected_vertex_payload_bytes += MeshVertexPayloadByteCount(24U);
+    expected_vertex_payload_bytes += MeshVertexPayloadByteCount(18U);
+    expected_vertex_payload_bytes += MeshVertexPayloadByteCount(10U);
+
+    std::size_t expected_index_payload_bytes = 0U;
+    expected_index_payload_bytes += MeshIndexPayloadByteCount(36U);
+    expected_index_payload_bytes += MeshIndexPayloadByteCount(96U);
+    expected_index_payload_bytes += MeshIndexPayloadByteCount(48U);
+
+    {
+        CookedVisualProofContext context{};
+        if (!SetupCookedVisualProofContext("DecodedMeshPayloadGeometryBuffers", &context)) {
+            return Fail("decoded mesh payload visual proof setup failed");
+        }
+
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context);
+        RuntimeAssetVisualProofResult result{};
+        const RuntimeAssetDataStatus status = BuildRuntimeAssetCookedVisualProofRoute(request, &result);
+        if (status != RuntimeAssetDataStatus::Success ||
+            result.status != RuntimeAssetDataStatus::Success ||
+            result.first_missing_layer != RuntimeAssetVisualProofMissingLayer::None) {
+            return Fail("decoded mesh payload visual route did not close");
+        }
+
+        if (!result.mesh_buffers_from_decoded_payloads ||
+            result.mesh_decoded_payload_count != 3U ||
+            result.mesh_vertex_payload_byte_count != expected_vertex_payload_bytes ||
+            result.mesh_index_payload_byte_count != expected_index_payload_bytes) {
+            std::fprintf(
+                stderr,
+                "mesh_payloads=%u vertex=%zu expected_vertex=%zu index=%zu expected_index=%zu decoded=%u\n",
+                result.mesh_buffers_from_decoded_payloads ? 1U : 0U,
+                result.mesh_vertex_payload_byte_count,
+                expected_vertex_payload_bytes,
+                result.mesh_index_payload_byte_count,
+                expected_index_payload_bytes,
+                result.mesh_decoded_payload_count);
+            return Fail("decoded mesh payload bytes did not feed geometry buffers");
+        }
+    }
+
+    {
+        CookedVisualProofContext context{};
+        if (!SetupCookedVisualProofContext("DecodedMeshPayloadMissingPayload", &context)) {
+            return Fail("decoded mesh missing payload setup failed");
+        }
+
+        std::array<RuntimeAssetLoadedFile, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> loaded_files =
+            context.loaded_files;
+        loaded_files[0U].decoded_payload_id += 700000U;
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        request.loaded_files = std::span<const RuntimeAssetLoadedFile>(loaded_files.data(), loaded_files.size());
+        if (!ExpectCookedVisualProofMissingLayer(
+                request,
+                RuntimeAssetDataStatus::MissingDependency,
+                RuntimeAssetVisualProofMissingLayer::Model)) {
+            return Fail("missing mesh decoded payload was not localized");
+        }
+    }
+
+    {
+        CookedVisualProofContext context{};
+        if (!SetupCookedVisualProofContext("DecodedMeshPayloadHashMismatch", &context)) {
+            return Fail("decoded mesh hash mismatch setup failed");
+        }
+
+        std::array<RuntimeAssetLoadedFile, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> loaded_files =
+            context.loaded_files;
+        loaded_files[0U].payload_hash ^= 1ULL;
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        request.loaded_files = std::span<const RuntimeAssetLoadedFile>(loaded_files.data(), loaded_files.size());
+        if (!ExpectCookedVisualProofMissingLayer(
+                request,
+                RuntimeAssetDataStatus::HashMismatch,
+                RuntimeAssetVisualProofMissingLayer::Model)) {
+            return Fail("mesh decoded payload hash mismatch was not localized");
+        }
     }
 
     return 0;
@@ -4466,6 +4558,7 @@ int RuntimeAssetDataD3D11HardwareCookedRecordsDriveDeviceBackedVisualProof() {
         static_cast<std::size_t>(result.submitted_draw_count) * RUNTIME_TEXTURE_BYTE_COUNT;
     if (!result.loaded_records_verified ||
         !result.shader_pipeline_from_runtime_asset ||
+        !result.mesh_buffers_from_decoded_payloads ||
         !result.material_slots_from_cooked_payloads ||
         !result.scene_transforms_from_animation_sampling ||
         !result.render_scene_routed ||
@@ -10002,6 +10095,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_TYPED_MESH_MATERIAL_TEXTURE, RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata},
     {TEST_MESH_PAYLOAD_POLICY, RuntimeAssetDataMeshPayloadPolicyRejectsSizeHashAndSplitMismatch},
     {TEST_MESH_LAYOUT_TOPOLOGY, RuntimeAssetDataMeshLayoutTopologyDecodesIntoLoadedRecords},
+    {TEST_MESH_PAYLOAD_DECODED_BUFFERS, RuntimeAssetDataImportedMeshPayloadBytesFeedRenderGeometryBuffers},
     {TEST_MATERIAL_TYPED_REFS, RuntimeAssetDataMaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_MATERIAL_PARAMETER_SEMANTICS, RuntimeAssetDataMaterialParameterSemanticsLoadIntoRuntimeRecords},
     {TEST_TEXTURE_TYPED_METADATA, RuntimeAssetDataTextureValidatorRejectsInvalidFormatExtentPayload},
