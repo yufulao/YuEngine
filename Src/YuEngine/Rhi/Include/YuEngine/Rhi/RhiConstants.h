@@ -20,7 +20,7 @@ constexpr std::size_t MAX_RHI_SAMPLER_SLOTS = 4U;
 constexpr std::size_t MAX_RHI_SHADER_MODULES = 8U;
 constexpr std::size_t MAX_RHI_PIPELINES = 4U;
 constexpr std::size_t MAX_RHI_PRIMITIVE_RETIREMENTS = 16U;
-constexpr std::size_t MAX_RHI_BUFFER_BYTES = 256U;
+constexpr std::size_t MAX_RHI_BUFFER_BYTES = 1024U;
 constexpr std::size_t MAX_RHI_SHADER_BYTECODE_BYTES = 8192U;
 constexpr std::size_t RHI_CONSTANT_BUFFER_ALIGNMENT = 16U;
 }

@@ -272,6 +272,9 @@ bridge proof shape for this closed-loop slice:
     bytecode mismatch, slot overflow, and partial RHI creation failures leave
     Resource/Asset transactions, RenderScene outputs, and published RHI handles
     unmutated.
+18. disk mesh records carry input layout, vertex/index stride, index format, and
+    topology into loaded records before RenderScene/RenderCore/RHI geometry
+    proof consumes them.
 
 Current slice status:
 
@@ -294,12 +297,14 @@ Current slice status:
 | 15. cooked shader/program RHI bridge | PASS |
 | 16. scene/animation loader no-mutation failures | PASS |
 | 17. package/product run command smoke | PASS |
+| 18. mesh layout/topology loaded records | PASS |
 
 Current RuntimeAssetData proof names that future slices must keep passing or
 supersede with approved equivalents:
 
 - `RuntimeAssetData_MeshMaterialTextureTypedValidatorsAcceptStructuredMetadata`
 - `RuntimeAssetData_MeshPayloadPolicyRejectsSizeHashAndSplitMismatch`
+- `RuntimeAssetData_MeshLayoutTopologyDecodesIntoLoadedRecords`
 - `RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs`
 - `RuntimeAssetData_MaterialParameterSemanticsLoadIntoRuntimeRecords`
 - `RuntimeAssetData_TextureValidatorRejectsInvalidFormatExtentPayload`
@@ -337,7 +342,8 @@ This gate records these mainline implementation slices:
 | RAV1-H | Material parameter semantics | PASS; source/cooked material files validate and load base color RGBA, emissive strength, metallic, roughness, opacity, alpha mode, and parameter count |
 | RAV1-I | Shader import policy | PASS; source/cooked shader files validate import language, target, entries, profiles, compile flags, and loaded policy identity before RHI bridge |
 | RAV1-J | Scene camera family failure diagnostics | PASS; bounded scene camera table duplicate active, missing active, invalid row, and invalid entity camera ref failures return exact status without output mutation |
-| Next slice | Production hardening | real mesh layout/topology decoding, real shader compiler backend, broader shader reflection semantics, render material constant binding, broader material variants, broader scene/animation production variants |
+| RAV1-K | Mesh layout/topology decode | PASS; source/cooked mesh files validate and load `position,texcoord` input layout, vertex/index stride, `uint16` index format, and triangle-list topology before RenderScene/RenderCore/RHI geometry proof consumes loaded records |
+| Next slice | Production hardening | imported mesh payload decoding, real shader compiler backend, broader shader reflection semantics, render material constant binding, broader material variants, broader scene/animation production variants |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer

@@ -260,6 +260,34 @@ std::uint64_t HashText(std::string_view text) {
     return hash;
 }
 
+constexpr std::uint32_t MESH_VERTEX_STRIDE_BYTES = 16U;
+constexpr std::uint32_t MESH_INDEX_STRIDE_BYTES = 2U;
+
+constexpr std::uint32_t MeshVertexPayloadByteCount(std::uint32_t vertex_count) {
+    return vertex_count * MESH_VERTEX_STRIDE_BYTES;
+}
+
+constexpr std::uint32_t MeshIndexPayloadByteCount(std::uint32_t index_count) {
+    return index_count * MESH_INDEX_STRIDE_BYTES;
+}
+
+constexpr std::uint32_t MeshPayloadByteCount(
+    std::uint32_t vertex_count,
+    std::uint32_t index_count) {
+    return MeshVertexPayloadByteCount(vertex_count) + MeshIndexPayloadByteCount(index_count);
+}
+
+std::string MeshLayoutFields() {
+    std::string text(
+        "input=layout:position,texcoord\n"
+        "vertexStrideBytes=");
+    text += std::to_string(MESH_VERTEX_STRIDE_BYTES);
+    text += "\nindexFormat=uint16\nindexStrideBytes=";
+    text += std::to_string(MESH_INDEX_STRIDE_BYTES);
+    text += "\ntopology=triangle_list\n";
+    return text;
+}
+
 std::string MeshPayload(char seed, std::uint32_t byte_count) {
     std::string payload{};
     payload.reserve(byte_count);
@@ -292,7 +320,9 @@ std::string SourceMeshText(
     text += std::to_string(vertex_payload_byte_count);
     text += "\nindexPayloadBytes=";
     text += std::to_string(index_payload_byte_count);
-    text += "\npayloadBytes=";
+    text += "\n";
+    text += MeshLayoutFields();
+    text += "payloadBytes=";
     text += std::to_string(payload.size());
     text += "\npayloadAlign=4\npayloadHash=";
     text += std::to_string(HashText(payload));
@@ -352,9 +382,33 @@ std::string SourceShaderText() {
 }
 
 std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
-    const std::string cube_payload = MeshPayload('A', 96U);
-    const std::string cylinder_payload = MeshPayload('K', 96U);
-    const std::string cone_payload = MeshPayload('U', 96U);
+    constexpr std::uint32_t cube_vertex_count = 24U;
+    constexpr std::uint32_t cube_index_count = 36U;
+    constexpr std::uint32_t cylinder_vertex_count = 18U;
+    constexpr std::uint32_t cylinder_index_count = 96U;
+    constexpr std::uint32_t cone_vertex_count = 10U;
+    constexpr std::uint32_t cone_index_count = 48U;
+    constexpr std::uint32_t cube_vertex_payload_byte_count =
+        MeshVertexPayloadByteCount(cube_vertex_count);
+    constexpr std::uint32_t cube_index_payload_byte_count =
+        MeshIndexPayloadByteCount(cube_index_count);
+    constexpr std::uint32_t cylinder_vertex_payload_byte_count =
+        MeshVertexPayloadByteCount(cylinder_vertex_count);
+    constexpr std::uint32_t cylinder_index_payload_byte_count =
+        MeshIndexPayloadByteCount(cylinder_index_count);
+    constexpr std::uint32_t cone_vertex_payload_byte_count =
+        MeshVertexPayloadByteCount(cone_vertex_count);
+    constexpr std::uint32_t cone_index_payload_byte_count =
+        MeshIndexPayloadByteCount(cone_index_count);
+    constexpr std::uint32_t cube_payload_byte_count =
+        MeshPayloadByteCount(cube_vertex_count, cube_index_count);
+    constexpr std::uint32_t cylinder_payload_byte_count =
+        MeshPayloadByteCount(cylinder_vertex_count, cylinder_index_count);
+    constexpr std::uint32_t cone_payload_byte_count =
+        MeshPayloadByteCount(cone_vertex_count, cone_index_count);
+    const std::string cube_payload = MeshPayload('A', cube_payload_byte_count);
+    const std::string cylinder_payload = MeshPayload('K', cylinder_payload_byte_count);
+    const std::string cone_payload = MeshPayload('U', cone_payload_byte_count);
 
     return std::array<FixtureFile, FIXTURE_FILE_COUNT>{
         FixtureFile{
@@ -364,7 +418,14 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_MESH},
                 AssetTypeId{ASSET_TYPE_MESH},
                 1001U},
-            SourceMeshText("cube_mesh", "cube", 24U, 36U, 48U, 48U, cube_payload)},
+            SourceMeshText(
+                "cube_mesh",
+                "cube",
+                cube_vertex_count,
+                cube_index_count,
+                cube_vertex_payload_byte_count,
+                cube_index_payload_byte_count,
+                cube_payload)},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Mesh/Cylinder.yumesh",
@@ -372,7 +433,14 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_MESH},
                 AssetTypeId{ASSET_TYPE_MESH},
                 1002U},
-            SourceMeshText("cylinder_mesh", "cylinder", 18U, 96U, 32U, 64U, cylinder_payload)},
+            SourceMeshText(
+                "cylinder_mesh",
+                "cylinder",
+                cylinder_vertex_count,
+                cylinder_index_count,
+                cylinder_vertex_payload_byte_count,
+                cylinder_index_payload_byte_count,
+                cylinder_payload)},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Mesh/Cone.yumesh",
@@ -380,7 +448,14 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_MESH},
                 AssetTypeId{ASSET_TYPE_MESH},
                 1003U},
-            SourceMeshText("cone_mesh", "cone", 10U, 48U, 48U, 48U, cone_payload)},
+            SourceMeshText(
+                "cone_mesh",
+                "cone",
+                cone_vertex_count,
+                cone_index_count,
+                cone_vertex_payload_byte_count,
+                cone_index_payload_byte_count,
+                cone_payload)},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Material/Shared.yumat",

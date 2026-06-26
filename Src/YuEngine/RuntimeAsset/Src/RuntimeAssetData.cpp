@@ -214,6 +214,8 @@ constexpr std::uint32_t DEFAULT_RESIDENCY_BYTE_CAPACITY = 16384U;
 constexpr std::uint32_t DEFAULT_PAYLOAD_BYTE_CAPACITY = 8192U;
 constexpr std::uint32_t RUNTIME_ASSET_MATERIAL_PARAMETER_COUNT = 5U;
 constexpr std::uint32_t RUNTIME_ASSET_SHADER_IMPORT_POLICY_FIELD_COUNT = 7U;
+constexpr std::uint32_t RUNTIME_ASSET_MESH_VERTEX_STRIDE_BYTES = 16U;
+constexpr std::uint32_t RUNTIME_ASSET_MESH_INDEX_STRIDE_BYTES = 2U;
 constexpr std::string_view RUNTIME_ASSET_SOURCE_SCHEMA = "rav0-source";
 constexpr std::string_view RUNTIME_ASSET_COOKED_SCHEMA = "rav1-cooked";
 constexpr std::string_view SHADER_BYTECODE_PREFIX = "bytecode:";
@@ -1181,6 +1183,32 @@ std::string RuntimeAssetMeshPayload(char seed, std::uint32_t byte_count) {
     return payload;
 }
 
+constexpr std::uint32_t RuntimeAssetMeshVertexPayloadByteCount(std::uint32_t vertex_count) {
+    return vertex_count * RUNTIME_ASSET_MESH_VERTEX_STRIDE_BYTES;
+}
+
+constexpr std::uint32_t RuntimeAssetMeshIndexPayloadByteCount(std::uint32_t index_count) {
+    return index_count * RUNTIME_ASSET_MESH_INDEX_STRIDE_BYTES;
+}
+
+constexpr std::uint32_t RuntimeAssetMeshPayloadByteCount(
+    std::uint32_t vertex_count,
+    std::uint32_t index_count) {
+    return RuntimeAssetMeshVertexPayloadByteCount(vertex_count) +
+           RuntimeAssetMeshIndexPayloadByteCount(index_count);
+}
+
+std::string RuntimeAssetMeshLayoutFields() {
+    std::string text(
+        "input=layout:position,texcoord\n"
+        "vertexStrideBytes=");
+    text += std::to_string(RUNTIME_ASSET_MESH_VERTEX_STRIDE_BYTES);
+    text += "\nindexFormat=uint16\nindexStrideBytes=";
+    text += std::to_string(RUNTIME_ASSET_MESH_INDEX_STRIDE_BYTES);
+    text += "\ntopology=triangle_list\n";
+    return text;
+}
+
 std::string RuntimeAssetSourceMeshText(
     std::string_view id,
     std::string_view shape,
@@ -1201,7 +1229,9 @@ std::string RuntimeAssetSourceMeshText(
     text += std::to_string(vertex_payload_byte_count);
     text += "\nindexPayloadBytes=";
     text += std::to_string(index_payload_byte_count);
-    text += "\npayloadBytes=";
+    text += "\n";
+    text += RuntimeAssetMeshLayoutFields();
+    text += "payloadBytes=";
     text += std::to_string(payload.size());
     text += "\npayloadAlign=4\npayloadHash=";
     text += std::to_string(HashRuntimeAssetText(payload));
@@ -1262,19 +1292,79 @@ std::string RuntimeAssetSourceShaderText() {
 
 std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
 RuntimeAssetSourceFixtureArtifacts() {
-    const std::string cube_payload = RuntimeAssetMeshPayload('A', 96U);
-    const std::string cylinder_payload = RuntimeAssetMeshPayload('K', 96U);
-    const std::string cone_payload = RuntimeAssetMeshPayload('U', 96U);
+    constexpr std::uint32_t cube_vertex_count = 24U;
+    constexpr std::uint32_t cube_index_count = 36U;
+    constexpr std::uint32_t cylinder_vertex_count = 18U;
+    constexpr std::uint32_t cylinder_index_count = 96U;
+    constexpr std::uint32_t cone_vertex_count = 10U;
+    constexpr std::uint32_t cone_index_count = 48U;
+    constexpr std::uint32_t cube_vertex_payload_byte_count =
+        RuntimeAssetMeshVertexPayloadByteCount(cube_vertex_count);
+    constexpr std::uint32_t cube_index_payload_byte_count =
+        RuntimeAssetMeshIndexPayloadByteCount(cube_index_count);
+    constexpr std::uint32_t cylinder_vertex_payload_byte_count =
+        RuntimeAssetMeshVertexPayloadByteCount(cylinder_vertex_count);
+    constexpr std::uint32_t cylinder_index_payload_byte_count =
+        RuntimeAssetMeshIndexPayloadByteCount(cylinder_index_count);
+    constexpr std::uint32_t cone_vertex_payload_byte_count =
+        RuntimeAssetMeshVertexPayloadByteCount(cone_vertex_count);
+    constexpr std::uint32_t cone_index_payload_byte_count =
+        RuntimeAssetMeshIndexPayloadByteCount(cone_index_count);
+    constexpr std::uint32_t cube_payload_byte_count =
+        RuntimeAssetMeshPayloadByteCount(cube_vertex_count, cube_index_count);
+    constexpr std::uint32_t cylinder_payload_byte_count =
+        RuntimeAssetMeshPayloadByteCount(cylinder_vertex_count, cylinder_index_count);
+    constexpr std::uint32_t cone_payload_byte_count =
+        RuntimeAssetMeshPayloadByteCount(cone_vertex_count, cone_index_count);
+    const std::string cube_payload =
+        RuntimeAssetMeshPayload('A', cube_payload_byte_count);
+    const std::string cylinder_payload =
+        RuntimeAssetMeshPayload('K', cylinder_payload_byte_count);
+    const std::string cone_payload =
+        RuntimeAssetMeshPayload('U', cone_payload_byte_count);
     return std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>{
         RuntimeAssetFixtureArtifact{
-            RuntimeAssetFixtureDesc("Mesh/Cube.yumesh", RuntimeAssetFileKind::Mesh, 1001U, 96U),
-            RuntimeAssetSourceMeshText("cube_mesh", "cube", 24U, 36U, 48U, 48U, cube_payload)},
+            RuntimeAssetFixtureDesc(
+                "Mesh/Cube.yumesh",
+                RuntimeAssetFileKind::Mesh,
+                1001U,
+                cube_payload_byte_count),
+            RuntimeAssetSourceMeshText(
+                "cube_mesh",
+                "cube",
+                cube_vertex_count,
+                cube_index_count,
+                cube_vertex_payload_byte_count,
+                cube_index_payload_byte_count,
+                cube_payload)},
         RuntimeAssetFixtureArtifact{
-            RuntimeAssetFixtureDesc("Mesh/Cylinder.yumesh", RuntimeAssetFileKind::Mesh, 1002U, 96U),
-            RuntimeAssetSourceMeshText("cylinder_mesh", "cylinder", 18U, 96U, 32U, 64U, cylinder_payload)},
+            RuntimeAssetFixtureDesc(
+                "Mesh/Cylinder.yumesh",
+                RuntimeAssetFileKind::Mesh,
+                1002U,
+                cylinder_payload_byte_count),
+            RuntimeAssetSourceMeshText(
+                "cylinder_mesh",
+                "cylinder",
+                cylinder_vertex_count,
+                cylinder_index_count,
+                cylinder_vertex_payload_byte_count,
+                cylinder_index_payload_byte_count,
+                cylinder_payload)},
         RuntimeAssetFixtureArtifact{
-            RuntimeAssetFixtureDesc("Mesh/Cone.yumesh", RuntimeAssetFileKind::Mesh, 1003U, 96U),
-            RuntimeAssetSourceMeshText("cone_mesh", "cone", 10U, 48U, 48U, 48U, cone_payload)},
+            RuntimeAssetFixtureDesc(
+                "Mesh/Cone.yumesh",
+                RuntimeAssetFileKind::Mesh,
+                1003U,
+                cone_payload_byte_count),
+            RuntimeAssetSourceMeshText(
+                "cone_mesh",
+                "cone",
+                cone_vertex_count,
+                cone_index_count,
+                cone_vertex_payload_byte_count,
+                cone_index_payload_byte_count,
+                cone_payload)},
         RuntimeAssetFixtureArtifact{
             RuntimeAssetFixtureDesc("Material/Shared.yumat", RuntimeAssetFileKind::Material, 2001U, 128U),
             RuntimeAssetSourceMaterialText()},
@@ -1378,9 +1468,57 @@ RuntimeAssetCookedFixtureArtifacts() {
         "texture:normal:3002",
         "texture:mask:3003",
     }};
-    const std::string cube_payload = RuntimeAssetMeshPayload('A', 96U);
-    const std::string cylinder_payload = RuntimeAssetMeshPayload('K', 96U);
-    const std::string cone_payload = RuntimeAssetMeshPayload('U', 96U);
+    constexpr std::uint32_t cube_vertex_count = 24U;
+    constexpr std::uint32_t cube_index_count = 36U;
+    constexpr std::uint32_t cylinder_vertex_count = 18U;
+    constexpr std::uint32_t cylinder_index_count = 96U;
+    constexpr std::uint32_t cone_vertex_count = 10U;
+    constexpr std::uint32_t cone_index_count = 48U;
+    constexpr std::uint32_t cube_vertex_payload_byte_count =
+        RuntimeAssetMeshVertexPayloadByteCount(cube_vertex_count);
+    constexpr std::uint32_t cube_index_payload_byte_count =
+        RuntimeAssetMeshIndexPayloadByteCount(cube_index_count);
+    constexpr std::uint32_t cylinder_vertex_payload_byte_count =
+        RuntimeAssetMeshVertexPayloadByteCount(cylinder_vertex_count);
+    constexpr std::uint32_t cylinder_index_payload_byte_count =
+        RuntimeAssetMeshIndexPayloadByteCount(cylinder_index_count);
+    constexpr std::uint32_t cone_vertex_payload_byte_count =
+        RuntimeAssetMeshVertexPayloadByteCount(cone_vertex_count);
+    constexpr std::uint32_t cone_index_payload_byte_count =
+        RuntimeAssetMeshIndexPayloadByteCount(cone_index_count);
+    constexpr std::uint32_t cube_payload_byte_count =
+        RuntimeAssetMeshPayloadByteCount(cube_vertex_count, cube_index_count);
+    constexpr std::uint32_t cylinder_payload_byte_count =
+        RuntimeAssetMeshPayloadByteCount(cylinder_vertex_count, cylinder_index_count);
+    constexpr std::uint32_t cone_payload_byte_count =
+        RuntimeAssetMeshPayloadByteCount(cone_vertex_count, cone_index_count);
+    const std::string cube_payload =
+        RuntimeAssetMeshPayload('A', cube_payload_byte_count);
+    const std::string cylinder_payload =
+        RuntimeAssetMeshPayload('K', cylinder_payload_byte_count);
+    const std::string cone_payload =
+        RuntimeAssetMeshPayload('U', cone_payload_byte_count);
+    std::string cube_mesh_fields(
+        "shape=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\nvertexPayloadBytes=");
+    cube_mesh_fields += std::to_string(cube_vertex_payload_byte_count);
+    cube_mesh_fields += "\nindexPayloadBytes=";
+    cube_mesh_fields += std::to_string(cube_index_payload_byte_count);
+    cube_mesh_fields += "\n";
+    cube_mesh_fields += RuntimeAssetMeshLayoutFields();
+    std::string cylinder_mesh_fields(
+        "shape=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\nvertexPayloadBytes=");
+    cylinder_mesh_fields += std::to_string(cylinder_vertex_payload_byte_count);
+    cylinder_mesh_fields += "\nindexPayloadBytes=";
+    cylinder_mesh_fields += std::to_string(cylinder_index_payload_byte_count);
+    cylinder_mesh_fields += "\n";
+    cylinder_mesh_fields += RuntimeAssetMeshLayoutFields();
+    std::string cone_mesh_fields(
+        "shape=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\nvertexPayloadBytes=");
+    cone_mesh_fields += std::to_string(cone_vertex_payload_byte_count);
+    cone_mesh_fields += "\nindexPayloadBytes=";
+    cone_mesh_fields += std::to_string(cone_index_payload_byte_count);
+    cone_mesh_fields += "\n";
+    cone_mesh_fields += RuntimeAssetMeshLayoutFields();
     std::string material_fields(
         "shader=Shader/RuntimeProgram.racooked\n"
         "texture0=Texture/Albedo.racooked\n"
@@ -1391,34 +1529,46 @@ RuntimeAssetCookedFixtureArtifacts() {
 
     return std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>{
         RuntimeAssetFixtureArtifact{
-            RuntimeAssetFixtureDesc("Mesh/Cube.racooked", RuntimeAssetFileKind::Mesh, 11001U, 96U),
+            RuntimeAssetFixtureDesc(
+                "Mesh/Cube.racooked",
+                RuntimeAssetFileKind::Mesh,
+                11001U,
+                cube_payload_byte_count),
             RuntimeAssetCookedText(
                 RuntimeAssetFileKind::Mesh,
                 "cube_mesh_cooked",
                 cube_payload,
-                "shape=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\nvertexPayloadBytes=48\nindexPayloadBytes=48\n",
+                cube_mesh_fields,
                 std::span<const std::string_view>(no_deps.data(), no_deps.size()),
-                96U,
+                cube_payload_byte_count,
                 4U)},
         RuntimeAssetFixtureArtifact{
-            RuntimeAssetFixtureDesc("Mesh/Cylinder.racooked", RuntimeAssetFileKind::Mesh, 11002U, 96U),
+            RuntimeAssetFixtureDesc(
+                "Mesh/Cylinder.racooked",
+                RuntimeAssetFileKind::Mesh,
+                11002U,
+                cylinder_payload_byte_count),
             RuntimeAssetCookedText(
                 RuntimeAssetFileKind::Mesh,
                 "cylinder_mesh_cooked",
                 cylinder_payload,
-                "shape=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\nvertexPayloadBytes=32\nindexPayloadBytes=64\n",
+                cylinder_mesh_fields,
                 std::span<const std::string_view>(no_deps.data(), no_deps.size()),
-                96U,
+                cylinder_payload_byte_count,
                 4U)},
         RuntimeAssetFixtureArtifact{
-            RuntimeAssetFixtureDesc("Mesh/Cone.racooked", RuntimeAssetFileKind::Mesh, 11003U, 96U),
+            RuntimeAssetFixtureDesc(
+                "Mesh/Cone.racooked",
+                RuntimeAssetFileKind::Mesh,
+                11003U,
+                cone_payload_byte_count),
             RuntimeAssetCookedText(
                 RuntimeAssetFileKind::Mesh,
                 "cone_mesh_cooked",
                 cone_payload,
-                "shape=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\nvertexPayloadBytes=48\nindexPayloadBytes=48\n",
+                cone_mesh_fields,
                 std::span<const std::string_view>(no_deps.data(), no_deps.size()),
-                96U,
+                cone_payload_byte_count,
                 4U)},
         RuntimeAssetFixtureArtifact{
             RuntimeAssetFixtureDesc("Material/Shared.racooked", RuntimeAssetFileKind::Material, 12001U, 128U),
@@ -2168,6 +2318,48 @@ RuntimeAssetDataStatus ValidateSourcePayloadPolicy(
     return RuntimeAssetDataStatus::Success;
 }
 
+RuntimeAssetDataStatus DecodeRuntimeInputLayout(
+    std::string_view input,
+    yuengine::rhi::RhiInputLayoutDesc *out_layout);
+
+RuntimeAssetDataStatus DecodeMeshIndexFormat(
+    std::string_view text,
+    yuengine::rhi::RhiIndexFormat *out_format,
+    std::uint32_t *out_stride_bytes) {
+    if (out_format == nullptr || out_stride_bytes == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (text == "uint16") {
+        *out_format = yuengine::rhi::RhiIndexFormat::Uint16;
+        *out_stride_bytes = 2U;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    if (text == "uint32") {
+        *out_format = yuengine::rhi::RhiIndexFormat::Uint32;
+        *out_stride_bytes = 4U;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    return RuntimeAssetDataStatus::UnsupportedFieldValue;
+}
+
+RuntimeAssetDataStatus DecodeMeshTopology(
+    std::string_view text,
+    yuengine::rhi::RhiPrimitiveTopology *out_topology) {
+    if (out_topology == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (text == "triangle_list") {
+        *out_topology = yuengine::rhi::RhiPrimitiveTopology::TriangleList;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    return RuntimeAssetDataStatus::UnsupportedFieldValue;
+}
+
 RuntimeAssetDataStatus ValidateMeshPayloadPolicy(
     std::string_view text,
     std::uint32_t vertex_count,
@@ -2177,6 +2369,49 @@ RuntimeAssetDataStatus ValidateMeshPayloadPolicy(
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
+    yuengine::rhi::RhiInputLayoutDesc input_layout{};
+    RuntimeAssetDataStatus layout_status =
+        DecodeRuntimeInputLayout(ValueForToken(text, "input="), &input_layout);
+    if (layout_status != RuntimeAssetDataStatus::Success) {
+        return layout_status;
+    }
+
+    if (input_layout.element_count == 0U || input_layout.stride_bytes == 0U) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    std::uint32_t vertex_stride_bytes = 0U;
+    if (!ParseU32(ValueForToken(text, "vertexStrideBytes="), &vertex_stride_bytes)) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    if (static_cast<std::size_t>(vertex_stride_bytes) != input_layout.stride_bytes) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    yuengine::rhi::RhiIndexFormat index_format = yuengine::rhi::RhiIndexFormat::Unsupported;
+    std::uint32_t index_stride_from_format = 0U;
+    layout_status =
+        DecodeMeshIndexFormat(ValueForToken(text, "indexFormat="), &index_format, &index_stride_from_format);
+    if (layout_status != RuntimeAssetDataStatus::Success) {
+        return layout_status;
+    }
+
+    std::uint32_t index_stride_bytes = 0U;
+    if (!ParseU32(ValueForToken(text, "indexStrideBytes="), &index_stride_bytes)) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    if (index_stride_bytes != index_stride_from_format) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
+    yuengine::rhi::RhiPrimitiveTopology topology = yuengine::rhi::RhiPrimitiveTopology::Unsupported;
+    layout_status = DecodeMeshTopology(ValueForToken(text, "topology="), &topology);
+    if (layout_status != RuntimeAssetDataStatus::Success) {
+        return layout_status;
+    }
+
     std::uint32_t vertex_payload_byte_count = 0U;
     std::uint32_t index_payload_byte_count = 0U;
     if (!ParseU32(ValueForToken(text, "vertexPayloadBytes="), &vertex_payload_byte_count) ||
@@ -2184,13 +2419,21 @@ RuntimeAssetDataStatus ValidateMeshPayloadPolicy(
         return RuntimeAssetDataStatus::InvalidSize;
     }
 
-    (void)vertex_count;
-    (void)index_count;
-
     if (vertex_payload_byte_count == 0U ||
         index_payload_byte_count == 0U ||
         vertex_payload_byte_count > MAX_RUNTIME_ASSET_PAYLOAD_BYTES ||
         index_payload_byte_count > MAX_RUNTIME_ASSET_PAYLOAD_BYTES) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    const std::uint64_t expected_vertex_payload_byte_count =
+        static_cast<std::uint64_t>(vertex_count) *
+        static_cast<std::uint64_t>(vertex_stride_bytes);
+    const std::uint64_t expected_index_payload_byte_count =
+        static_cast<std::uint64_t>(index_count) *
+        static_cast<std::uint64_t>(index_stride_bytes);
+    if (expected_vertex_payload_byte_count != vertex_payload_byte_count ||
+        expected_index_payload_byte_count != index_payload_byte_count) {
         return RuntimeAssetDataStatus::InvalidSize;
     }
 
@@ -2226,6 +2469,11 @@ RuntimeAssetDataStatus ValidateMeshPayloadPolicy(
         return RuntimeAssetDataStatus::HashMismatch;
     }
 
+    out_result->mesh_input_layout = input_layout;
+    out_result->mesh_index_format = index_format;
+    out_result->mesh_topology = topology;
+    out_result->mesh_vertex_stride_bytes = vertex_stride_bytes;
+    out_result->mesh_index_stride_bytes = index_stride_bytes;
     return RuntimeAssetDataStatus::Success;
 }
 
@@ -2825,7 +3073,7 @@ RuntimeAssetDataStatus CopyHexShaderBytecodePayload(
     return RuntimeAssetDataStatus::Success;
 }
 
-RuntimeAssetDataStatus DecodeShaderInputLayout(
+RuntimeAssetDataStatus DecodeRuntimeInputLayout(
     std::string_view input,
     yuengine::rhi::RhiInputLayoutDesc *out_layout) {
     if (out_layout == nullptr) {
@@ -3044,7 +3292,7 @@ RuntimeAssetDataStatus ValidateShaderProgramMetadata(
     }
 
     yuengine::rhi::RhiInputLayoutDesc input_layout{};
-    status = DecodeShaderInputLayout(ValueForToken(text, "input="), &input_layout);
+    status = DecodeRuntimeInputLayout(ValueForToken(text, "input="), &input_layout);
     if (status != RuntimeAssetDataStatus::Success) {
         return status;
     }
@@ -3223,6 +3471,11 @@ void CopyValidationMetadataToLoadedFile(
     out_record->vertex_count = validation.vertex_count;
     out_record->index_count = validation.index_count;
     out_record->mesh_geometry_kind = validation.mesh_geometry_kind;
+    out_record->mesh_input_layout = validation.mesh_input_layout;
+    out_record->mesh_index_format = validation.mesh_index_format;
+    out_record->mesh_topology = validation.mesh_topology;
+    out_record->mesh_vertex_stride_bytes = validation.mesh_vertex_stride_bytes;
+    out_record->mesh_index_stride_bytes = validation.mesh_index_stride_bytes;
     out_record->texture_width = validation.texture_width;
     out_record->texture_height = validation.texture_height;
     out_record->texture_slot_count = validation.texture_slot_count;
@@ -5707,17 +5960,29 @@ RuntimeAssetDataStatus BuildVisualProofIndexBytes(
 RuntimeAssetDataStatus BuildVisualProofGeometry(
     const RuntimeAssetLoadedFile &mesh,
     std::uint32_t index,
-    std::size_t vertex_stride_bytes,
     IRhiDevice &device,
     RenderScenePrimitiveGeometryRecord *out_geometry,
     RuntimeAssetVisualProofResult *result) {
-    if (out_geometry == nullptr || vertex_stride_bytes == 0U) {
+    if (out_geometry == nullptr) {
         return FailVisualProof(
             RuntimeAssetDataStatus::InvalidArgument,
             RuntimeAssetVisualProofMissingLayer::Model,
             result);
     }
 
+    if (!IsInputLayoutValid(mesh.mesh_input_layout) ||
+        mesh.mesh_input_layout.stride_bytes == 0U ||
+        mesh.mesh_topology != yuengine::rhi::RhiPrimitiveTopology::TriangleList ||
+        mesh.mesh_index_format != RhiIndexFormat::Uint16 ||
+        static_cast<std::size_t>(mesh.mesh_vertex_stride_bytes) != mesh.mesh_input_layout.stride_bytes ||
+        mesh.mesh_index_stride_bytes != sizeof(std::uint16_t)) {
+        return FailVisualProof(
+            RuntimeAssetDataStatus::InvalidInputLayout,
+            RuntimeAssetVisualProofMissingLayer::Model,
+            result);
+    }
+
+    const std::size_t vertex_stride_bytes = mesh.mesh_input_layout.stride_bytes;
     std::uint32_t segment_count = 0U;
     std::uint32_t vertex_count = 0U;
     std::uint32_t index_count = 0U;
@@ -6615,7 +6880,7 @@ RuntimeAssetDataStatus DecodeRuntimeAssetShaderProgramData(
         return data.status;
     }
 
-    status = DecodeShaderInputLayout(ValueForToken(text, "input="), &data.input_layout);
+    status = DecodeRuntimeInputLayout(ValueForToken(text, "input="), &data.input_layout);
     if (status != RuntimeAssetDataStatus::Success) {
         data.status = status;
         *out_data = data;
@@ -6875,7 +7140,6 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
     }
 
     std::array<RenderScenePrimitiveGeometryRecord, RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT> geometry{};
-    const std::size_t vertex_stride_bytes = sizeof(float) * 2U;
     for (std::uint32_t index = 0U; index < geometry.size(); ++index) {
         const RuntimeAssetLoadedFile *mesh = nullptr;
         status = RequireVisualProofRecord(
@@ -6890,13 +7154,12 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
             return status;
         }
 
-        status = BuildVisualProofGeometry(
-            *mesh,
-            index,
-            vertex_stride_bytes,
-            *request.rhi_device,
-            &geometry[index],
-            &result);
+    status = BuildVisualProofGeometry(
+        *mesh,
+        index,
+        *request.rhi_device,
+        &geometry[index],
+        &result);
         if (status != RuntimeAssetDataStatus::Success) {
             *out_result = result;
             return status;

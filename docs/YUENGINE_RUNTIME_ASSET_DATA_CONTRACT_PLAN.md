@@ -72,6 +72,12 @@ and no-mutation failure coverage. These floors close the previous
 hardening, not a reason to reopen editor, Web, UI, input, or external authoring
 scope as acceptance.
 
+The current mesh slice also validates and loads `position,texcoord` input
+layout records, vertex/index stride, `uint16` index format, and triangle-list
+topology from disk mesh files. The RenderScene/RenderCore/RHI proof consumes
+the loaded layout records and the Resource/RHI fixture budgets now allow the
+canonical cube/cylinder/cone payload sizes required by that typed layout.
+
 The following evidence is useful but insufficient on its own:
 
 - C++ tests that construct mesh, material, texture, shader, scene, camera, or
@@ -254,6 +260,7 @@ C++ in-memory construction alone.
 | Resource/Asset dependency edges | PASS | `RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges` records scene dependencies in both registries |
 | Camera/tween descriptor file | PASS | `RuntimeAssetData_CameraTweenDescriptorLoadsFromDiskSceneReference` validates and loads `Camera/Main.yucamera` and cooked camera records through the runtime graph; ResourceBrowser surface/depth workflows consume the same 10-file graph |
 | Mesh vertex/index payload policy | PASS | `RuntimeAssetData_MeshPayloadPolicyRejectsSizeHashAndSplitMismatch` validates bounded mesh payload bytes, payload alignment, payload hash, and vertex/index split sums for generated source and cooked mesh files |
+| Mesh layout/topology records | PASS | `RuntimeAssetData_MeshLayoutTopologyDecodesIntoLoadedRecords` validates input layout, vertex/index stride, `uint16` index format, triangle-list topology, and loaded record propagation for cube/cylinder/cone disk mesh files |
 | Material parameter semantics | PASS | `RuntimeAssetData_MaterialParameterSemanticsLoadIntoRuntimeRecords` validates and loads base color RGBA, emissive strength, metallic, roughness, opacity, alpha mode, and parameter count from disk material records |
 | Shader import policy | PASS | `RuntimeAssetData_ShaderImportPolicyValidatesSourceCookedAndLoadedRecords` validates source/cooked shader import language, target, entries, profiles, compile flags, and loaded record policy identity |
 | Scene camera family failures | PASS | `RuntimeAssetData_SceneAnimationLoaderRejectsCameraFamilyFailuresWithoutMutation` validates duplicate active camera, no active camera, invalid camera row, and invalid entity camera ref failures without Resource/Asset/RenderScene output mutation |
@@ -267,8 +274,8 @@ These slices are not a complete asset system. Current RuntimeAssetData coverage
 accepts decoded texture material slots, loaded shader bytecode, cooked shader
 payloads, disk animation sampling, staged scene loader output, package/cook/run,
 and product-run smoke as the current mainline closed loop. The remaining work is
-production hardening for real mesh vertex/index layout decoding, real shader
-compiler backend integration, broader shader reflection semantics, render
+production hardening for imported mesh payload decoding, real shader compiler
+backend integration, broader shader reflection semantics, render
 material constant binding, broader material variants, and scene/animation/camera
 production variants beyond the canonical cube/cylinder/cone graph.
 

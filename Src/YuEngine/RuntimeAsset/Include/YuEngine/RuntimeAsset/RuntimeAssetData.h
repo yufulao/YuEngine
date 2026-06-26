@@ -37,8 +37,10 @@
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiFormat.h"
+#include "YuEngine/Rhi/RhiIndexFormat.h"
 #include "YuEngine/Rhi/RhiInputLayoutDesc.h"
 #include "YuEngine/Rhi/RhiPipelineDesc.h"
+#include "YuEngine/Rhi/RhiPrimitiveTopology.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiSamplerDesc.h"
 #include "YuEngine/Rhi/RhiShaderModuleHandle.h"
@@ -282,6 +284,12 @@ struct RuntimeAssetValidationResult final {
     std::uint32_t vertex_count = 0U;
     std::uint32_t index_count = 0U;
     RuntimeAssetMeshGeometryKind mesh_geometry_kind = RuntimeAssetMeshGeometryKind::Unknown;
+    yuengine::rhi::RhiInputLayoutDesc mesh_input_layout{};
+    yuengine::rhi::RhiIndexFormat mesh_index_format = yuengine::rhi::RhiIndexFormat::Unsupported;
+    yuengine::rhi::RhiPrimitiveTopology mesh_topology =
+        yuengine::rhi::RhiPrimitiveTopology::Unsupported;
+    std::uint32_t mesh_vertex_stride_bytes = 0U;
+    std::uint32_t mesh_index_stride_bytes = 0U;
     std::uint32_t texture_width = 0U;
     std::uint32_t texture_height = 0U;
     std::uint32_t texture_slot_count = 0U;
@@ -322,6 +330,12 @@ struct RuntimeAssetLoadedFile final {
     std::uint32_t vertex_count = 0U;
     std::uint32_t index_count = 0U;
     RuntimeAssetMeshGeometryKind mesh_geometry_kind = RuntimeAssetMeshGeometryKind::Unknown;
+    yuengine::rhi::RhiInputLayoutDesc mesh_input_layout{};
+    yuengine::rhi::RhiIndexFormat mesh_index_format = yuengine::rhi::RhiIndexFormat::Unsupported;
+    yuengine::rhi::RhiPrimitiveTopology mesh_topology =
+        yuengine::rhi::RhiPrimitiveTopology::Unsupported;
+    std::uint32_t mesh_vertex_stride_bytes = 0U;
+    std::uint32_t mesh_index_stride_bytes = 0U;
     std::uint32_t texture_width = 0U;
     std::uint32_t texture_height = 0U;
     std::uint32_t texture_slot_count = 0U;

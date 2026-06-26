@@ -332,6 +332,8 @@ constexpr const char *TEST_TYPED_MESH_MATERIAL_TEXTURE =
     "RuntimeAssetData_MeshMaterialTextureTypedValidatorsAcceptStructuredMetadata";
 constexpr const char *TEST_MESH_PAYLOAD_POLICY =
     "RuntimeAssetData_MeshPayloadPolicyRejectsSizeHashAndSplitMismatch";
+constexpr const char *TEST_MESH_LAYOUT_TOPOLOGY =
+    "RuntimeAssetData_MeshLayoutTopologyDecodesIntoLoadedRecords";
 constexpr const char *TEST_MATERIAL_TYPED_REFS =
     "RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
 constexpr const char *TEST_MATERIAL_PARAMETER_SEMANTICS =
@@ -1022,6 +1024,25 @@ std::filesystem::path TestRoot(std::string_view test_name) {
     return root;
 }
 
+constexpr std::uint32_t MESH_VERTEX_STRIDE_BYTES = 16U;
+constexpr std::uint32_t MESH_INDEX_STRIDE_BYTES = 2U;
+constexpr std::uint32_t MESH_TEXCOORD_OFFSET_BYTES = 8U;
+
+constexpr std::uint32_t MeshVertexPayloadByteCount(std::uint32_t vertex_count) {
+    return vertex_count * MESH_VERTEX_STRIDE_BYTES;
+}
+
+constexpr std::uint32_t MeshIndexPayloadByteCount(std::uint32_t index_count) {
+    return index_count * MESH_INDEX_STRIDE_BYTES;
+}
+
+constexpr std::uint32_t MeshPayloadByteCount(
+    std::uint32_t vertex_count,
+    std::uint32_t index_count) {
+    return MeshVertexPayloadByteCount(vertex_count) +
+           MeshIndexPayloadByteCount(index_count);
+}
+
 std::string MeshPayload(char seed, std::uint32_t byte_count);
 std::string SourceMeshText(
     std::string_view header_line,
@@ -1036,9 +1057,33 @@ std::string SourceMaterialText();
 std::string SourceShaderText();
 
 std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
-    const std::string cube_payload = MeshPayload('A', 96U);
-    const std::string cylinder_payload = MeshPayload('K', 96U);
-    const std::string cone_payload = MeshPayload('U', 96U);
+    constexpr std::uint32_t cube_vertex_count = 24U;
+    constexpr std::uint32_t cube_index_count = 36U;
+    constexpr std::uint32_t cylinder_vertex_count = 18U;
+    constexpr std::uint32_t cylinder_index_count = 96U;
+    constexpr std::uint32_t cone_vertex_count = 10U;
+    constexpr std::uint32_t cone_index_count = 48U;
+    constexpr std::uint32_t cube_payload_byte_count =
+        MeshPayloadByteCount(cube_vertex_count, cube_index_count);
+    constexpr std::uint32_t cylinder_payload_byte_count =
+        MeshPayloadByteCount(cylinder_vertex_count, cylinder_index_count);
+    constexpr std::uint32_t cone_payload_byte_count =
+        MeshPayloadByteCount(cone_vertex_count, cone_index_count);
+    constexpr std::uint32_t cube_vertex_payload_byte_count =
+        MeshVertexPayloadByteCount(cube_vertex_count);
+    constexpr std::uint32_t cube_index_payload_byte_count =
+        MeshIndexPayloadByteCount(cube_index_count);
+    constexpr std::uint32_t cylinder_vertex_payload_byte_count =
+        MeshVertexPayloadByteCount(cylinder_vertex_count);
+    constexpr std::uint32_t cylinder_index_payload_byte_count =
+        MeshIndexPayloadByteCount(cylinder_index_count);
+    constexpr std::uint32_t cone_vertex_payload_byte_count =
+        MeshVertexPayloadByteCount(cone_vertex_count);
+    constexpr std::uint32_t cone_index_payload_byte_count =
+        MeshIndexPayloadByteCount(cone_index_count);
+    const std::string cube_payload = MeshPayload('A', cube_payload_byte_count);
+    const std::string cylinder_payload = MeshPayload('K', cylinder_payload_byte_count);
+    const std::string cone_payload = MeshPayload('U', cone_payload_byte_count);
     return std::array<FixtureFile, FIXTURE_FILE_COUNT>{
         FixtureFile{
             RuntimeAssetFileDesc{
@@ -1049,8 +1094,16 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 1001U,
                 yuengine::resource::ResourceDecodePlanAssetClass::Mesh,
                 yuengine::resource::ResourceDecodeResultClass::Mesh,
-                96U},
-            SourceMeshText("YUASSET MESH 1", "cube_mesh", "cube", 24U, 36U, 48U, 48U, cube_payload)},
+                cube_payload_byte_count},
+            SourceMeshText(
+                "YUASSET MESH 1",
+                "cube_mesh",
+                "cube",
+                cube_vertex_count,
+                cube_index_count,
+                cube_vertex_payload_byte_count,
+                cube_index_payload_byte_count,
+                cube_payload)},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Mesh/Cylinder.yumesh",
@@ -1060,8 +1113,16 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 1002U,
                 yuengine::resource::ResourceDecodePlanAssetClass::Mesh,
                 yuengine::resource::ResourceDecodeResultClass::Mesh,
-                96U},
-            SourceMeshText("YUASSET MESH 1", "cylinder_mesh", "cylinder", 18U, 96U, 32U, 64U, cylinder_payload)},
+                cylinder_payload_byte_count},
+            SourceMeshText(
+                "YUASSET MESH 1",
+                "cylinder_mesh",
+                "cylinder",
+                cylinder_vertex_count,
+                cylinder_index_count,
+                cylinder_vertex_payload_byte_count,
+                cylinder_index_payload_byte_count,
+                cylinder_payload)},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Mesh/Cone.yumesh",
@@ -1071,8 +1132,16 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 1003U,
                 yuengine::resource::ResourceDecodePlanAssetClass::Mesh,
                 yuengine::resource::ResourceDecodeResultClass::Mesh,
-                96U},
-            SourceMeshText("YUASSET MESH 1", "cone_mesh", "cone", 10U, 48U, 48U, 48U, cone_payload)},
+                cone_payload_byte_count},
+            SourceMeshText(
+                "YUASSET MESH 1",
+                "cone_mesh",
+                "cone",
+                cone_vertex_count,
+                cone_index_count,
+                cone_vertex_payload_byte_count,
+                cone_index_payload_byte_count,
+                cone_payload)},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Material/Shared.yumat",
@@ -1289,6 +1358,11 @@ std::string SourceMeshText(
     text += std::to_string(vertex_payload_byte_count);
     text += "\nindexPayloadBytes=";
     text += std::to_string(index_payload_byte_count);
+    text += "\ninput=layout:position,texcoord\nvertexStrideBytes=";
+    text += std::to_string(MESH_VERTEX_STRIDE_BYTES);
+    text += "\nindexFormat=uint16\nindexStrideBytes=";
+    text += std::to_string(MESH_INDEX_STRIDE_BYTES);
+    text += "\ntopology=triangle_list";
     text += "\npayloadBytes=";
     text += std::to_string(payload.size());
     text += "\npayloadAlign=4\npayloadHash=";
@@ -1300,8 +1374,24 @@ std::string SourceMeshText(
 }
 
 std::string SourceMeshText(std::string_view header_line) {
-    const std::string payload = MeshPayload('A', 96U);
-    return SourceMeshText(header_line, "cube_mesh", "cube", 24U, 36U, 48U, 48U, payload);
+    constexpr std::uint32_t vertex_count = 24U;
+    constexpr std::uint32_t index_count = 36U;
+    constexpr std::uint32_t vertex_payload_byte_count =
+        MeshVertexPayloadByteCount(vertex_count);
+    constexpr std::uint32_t index_payload_byte_count =
+        MeshIndexPayloadByteCount(index_count);
+    constexpr std::uint32_t payload_byte_count =
+        MeshPayloadByteCount(vertex_count, index_count);
+    const std::string payload = MeshPayload('A', payload_byte_count);
+    return SourceMeshText(
+        header_line,
+        "cube_mesh",
+        "cube",
+        vertex_count,
+        index_count,
+        vertex_payload_byte_count,
+        index_payload_byte_count,
+        payload);
 }
 
 std::string MaterialParameterFields() {
@@ -5521,7 +5611,9 @@ bool ExpectLoaderRejectsAlbedoTextureWithoutMutation(
 
 int RuntimeAssetDataSourceCookedParserReportsBoundedMetadata() {
     RuntimeAssetValidationResult source_result{};
-    const std::string source_payload = MeshPayload('A', 96U);
+    constexpr std::uint32_t source_payload_byte_count =
+        MeshPayloadByteCount(24U, 36U);
+    const std::string source_payload = MeshPayload('A', source_payload_byte_count);
     const std::string source_text = SourceMeshText("YUASSET MESH 1");
     if (!ValidateText(source_text, RuntimeAssetFileKind::Mesh, &source_result)) {
         return Fail("source parser rejected canonical mesh");
@@ -5791,16 +5883,26 @@ int RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation() {
         return Fail("loader did not reject missing scene schema before mutation");
     }
 
+    constexpr std::uint32_t misleading_mesh_vertex_count = 24U;
+    constexpr std::uint32_t misleading_mesh_index_count = 36U;
+    constexpr std::uint32_t misleading_mesh_vertex_payload_byte_count =
+        MeshVertexPayloadByteCount(misleading_mesh_vertex_count);
+    constexpr std::uint32_t misleading_mesh_index_payload_byte_count =
+        MeshIndexPayloadByteCount(misleading_mesh_index_count);
+    constexpr std::uint32_t misleading_mesh_payload_byte_count =
+        MeshPayloadByteCount(misleading_mesh_vertex_count, misleading_mesh_index_count);
+    const std::string misleading_mesh_payload =
+        MeshPayload('A', misleading_mesh_payload_byte_count);
     if (!probe(
             SourceMeshText(
                 "YUASSET MESH 1",
                 "mesh_inside_yuscene_path",
                 "cube",
-                24U,
-                36U,
-                48U,
-                48U,
-                MeshPayload('A', 96U)),
+                misleading_mesh_vertex_count,
+                misleading_mesh_index_count,
+                misleading_mesh_vertex_payload_byte_count,
+                misleading_mesh_index_payload_byte_count,
+                misleading_mesh_payload),
             RuntimeAssetDataStatus::InvalidKind)) {
         return Fail("loader trusted misleading .yuscene suffix over internal kind");
     }
@@ -5810,7 +5912,9 @@ int RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation() {
 
 int RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata() {
     RuntimeAssetValidationResult mesh_result{};
-    const std::string mesh_payload = MeshPayload('A', 96U);
+    constexpr std::uint32_t mesh_payload_byte_count =
+        MeshPayloadByteCount(24U, 36U);
+    const std::string mesh_payload = MeshPayload('A', mesh_payload_byte_count);
     const std::string mesh_text = SourceMeshText("YUASSET MESH 1");
     if (!ValidateText(mesh_text, RuntimeAssetFileKind::Mesh, &mesh_result)) {
         return Fail("mesh metadata validator rejected valid mesh");
@@ -5829,6 +5933,17 @@ int RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata()
         mesh_result.payload_alignment != 4U ||
         mesh_result.payload_hash != HashText(mesh_payload)) {
         return Fail("mesh payload metadata was not parsed");
+    }
+
+    if (mesh_result.mesh_input_layout.element_count != 2U ||
+        mesh_result.mesh_input_layout.stride_bytes != MESH_VERTEX_STRIDE_BYTES ||
+        mesh_result.mesh_input_layout.elements[0U].semantic != RhiInputElementSemantic::Position ||
+        mesh_result.mesh_input_layout.elements[1U].semantic != RhiInputElementSemantic::TexCoord ||
+        mesh_result.mesh_index_format != RhiIndexFormat::Uint16 ||
+        mesh_result.mesh_topology != RhiPrimitiveTopology::TriangleList ||
+        mesh_result.mesh_vertex_stride_bytes != MESH_VERTEX_STRIDE_BYTES ||
+        mesh_result.mesh_index_stride_bytes != MESH_INDEX_STRIDE_BYTES) {
+        return Fail("mesh layout topology metadata was not parsed");
     }
 
     RuntimeAssetValidationResult material_result{};
@@ -5871,12 +5986,118 @@ int RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata()
     return 0;
 }
 
-int RuntimeAssetDataMeshPayloadPolicyRejectsSizeHashAndSplitMismatch() {
-    const std::string payload = MeshPayload('A', 96U);
-    const std::string valid_text =
-        SourceMeshText("YUASSET MESH 1", "cube_mesh", "cube", 24U, 36U, 48U, 48U, payload);
+bool ExpectLoadedMeshLayout(
+    const RuntimeAssetLoadedFile &mesh,
+    yuengine::runtimeasset::RuntimeAssetMeshGeometryKind expected_geometry_kind,
+    std::uint32_t expected_vertex_count,
+    std::uint32_t expected_index_count,
+    std::uint32_t expected_payload_byte_count) {
+    if (mesh.kind != RuntimeAssetFileKind::Mesh ||
+        mesh.mesh_geometry_kind != expected_geometry_kind ||
+        mesh.vertex_count != expected_vertex_count ||
+        mesh.index_count != expected_index_count ||
+        mesh.payload_byte_count != expected_payload_byte_count ||
+        mesh.decoded_byte_count != expected_payload_byte_count) {
+        return FailStep("loaded mesh record did not preserve identity counts or payload size");
+    }
 
-    const std::string bad_payload_size = ReplaceFirst(valid_text, "payloadBytes=96", "payloadBytes=95");
+    if (mesh.mesh_input_layout.element_count != 2U ||
+        mesh.mesh_input_layout.stride_bytes != MESH_VERTEX_STRIDE_BYTES ||
+        mesh.mesh_input_layout.elements[0U].semantic != RhiInputElementSemantic::Position ||
+        mesh.mesh_input_layout.elements[0U].format != RhiInputElementFormat::Float32x2 ||
+        mesh.mesh_input_layout.elements[0U].offset_bytes != 0U ||
+        mesh.mesh_input_layout.elements[1U].semantic != RhiInputElementSemantic::TexCoord ||
+        mesh.mesh_input_layout.elements[1U].format != RhiInputElementFormat::Float32x2 ||
+        mesh.mesh_input_layout.elements[1U].offset_bytes != MESH_TEXCOORD_OFFSET_BYTES) {
+        return FailStep("loaded mesh record did not preserve input layout");
+    }
+
+    if (mesh.mesh_index_format != RhiIndexFormat::Uint16 ||
+        mesh.mesh_topology != RhiPrimitiveTopology::TriangleList ||
+        mesh.mesh_vertex_stride_bytes != MESH_VERTEX_STRIDE_BYTES ||
+        mesh.mesh_index_stride_bytes != MESH_INDEX_STRIDE_BYTES) {
+        return FailStep("loaded mesh record did not preserve index format or topology");
+    }
+
+    return true;
+}
+
+int RuntimeAssetDataMeshLayoutTopologyDecodesIntoLoadedRecords() {
+    constexpr std::uint32_t cube_payload_byte_count =
+        MeshPayloadByteCount(24U, 36U);
+    constexpr std::uint32_t cylinder_payload_byte_count =
+        MeshPayloadByteCount(18U, 96U);
+    constexpr std::uint32_t cone_payload_byte_count =
+        MeshPayloadByteCount(10U, 48U);
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("MeshLayoutTopologyLoadedRecords"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("canonical fixture write failed");
+    }
+
+    LoadedGraph graph{};
+    if (!LoadGraph(table, &graph)) {
+        return Fail("canonical graph load failed");
+    }
+
+    if (!ExpectLoadedMeshLayout(
+            graph.assets[0U],
+            yuengine::runtimeasset::RuntimeAssetMeshGeometryKind::Cube,
+            24U,
+            36U,
+            cube_payload_byte_count)) {
+        return Fail("cube mesh layout topology record mismatch");
+    }
+
+    if (!ExpectLoadedMeshLayout(
+            graph.assets[1U],
+            yuengine::runtimeasset::RuntimeAssetMeshGeometryKind::Cylinder,
+            18U,
+            96U,
+            cylinder_payload_byte_count)) {
+        return Fail("cylinder mesh layout topology record mismatch");
+    }
+
+    if (!ExpectLoadedMeshLayout(
+            graph.assets[2U],
+            yuengine::runtimeasset::RuntimeAssetMeshGeometryKind::Cone,
+            10U,
+            48U,
+            cone_payload_byte_count)) {
+        return Fail("cone mesh layout topology record mismatch");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataMeshPayloadPolicyRejectsSizeHashAndSplitMismatch() {
+    constexpr std::uint32_t vertex_count = 24U;
+    constexpr std::uint32_t index_count = 36U;
+    constexpr std::uint32_t vertex_payload_byte_count =
+        MeshVertexPayloadByteCount(vertex_count);
+    constexpr std::uint32_t index_payload_byte_count =
+        MeshIndexPayloadByteCount(index_count);
+    constexpr std::uint32_t payload_byte_count =
+        MeshPayloadByteCount(vertex_count, index_count);
+    const std::string payload = MeshPayload('A', payload_byte_count);
+    const std::string valid_text =
+        SourceMeshText(
+            "YUASSET MESH 1",
+            "cube_mesh",
+            "cube",
+            vertex_count,
+            index_count,
+            vertex_payload_byte_count,
+            index_payload_byte_count,
+            payload);
+
+    const std::string payload_size_token =
+        "payloadBytes=" + std::to_string(payload_byte_count);
+    const std::string bad_payload_size =
+        ReplaceFirst(valid_text, payload_size_token, "payloadBytes=95");
     if (!ExpectValidationStatus(
             bad_payload_size,
             RuntimeAssetFileKind::Mesh,
@@ -5893,7 +6114,10 @@ int RuntimeAssetDataMeshPayloadPolicyRejectsSizeHashAndSplitMismatch() {
         return Fail("mesh payload hash mismatch was not rejected");
     }
 
-    const std::string bad_split_sum = ReplaceFirst(valid_text, "indexPayloadBytes=48", "indexPayloadBytes=47");
+    const std::string index_payload_token =
+        "indexPayloadBytes=" + std::to_string(index_payload_byte_count);
+    const std::string bad_split_sum =
+        ReplaceFirst(valid_text, index_payload_token, "indexPayloadBytes=47");
     if (!ExpectValidationStatus(
             bad_split_sum,
             RuntimeAssetFileKind::Mesh,
@@ -5901,12 +6125,51 @@ int RuntimeAssetDataMeshPayloadPolicyRejectsSizeHashAndSplitMismatch() {
         return Fail("mesh payload split sum mismatch was not rejected");
     }
 
-    const std::string bad_zero_vertex_split = ReplaceFirst(valid_text, "vertexPayloadBytes=48", "vertexPayloadBytes=0");
+    const std::string vertex_payload_token =
+        "vertexPayloadBytes=" + std::to_string(vertex_payload_byte_count);
+    const std::string bad_zero_vertex_split =
+        ReplaceFirst(valid_text, vertex_payload_token, "vertexPayloadBytes=0");
     if (!ExpectValidationStatus(
             bad_zero_vertex_split,
             RuntimeAssetFileKind::Mesh,
             RuntimeAssetDataStatus::InvalidSize)) {
         return Fail("mesh zero vertex payload split was not rejected");
+    }
+
+    const std::string bad_layout =
+        ReplaceFirst(valid_text, "input=layout:position,texcoord", "input=layout:color,texcoord");
+    if (!ExpectValidationStatus(
+            bad_layout,
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetDataStatus::InvalidInputLayout)) {
+        return Fail("mesh input layout without position was not rejected");
+    }
+
+    const std::string bad_vertex_stride =
+        ReplaceFirst(valid_text, "vertexStrideBytes=16", "vertexStrideBytes=12");
+    if (!ExpectValidationStatus(
+            bad_vertex_stride,
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetDataStatus::InvalidInputLayout)) {
+        return Fail("mesh vertex stride mismatch was not rejected");
+    }
+
+    const std::string bad_index_format =
+        ReplaceFirst(valid_text, "indexFormat=uint16", "indexFormat=uint8");
+    if (!ExpectValidationStatus(
+            bad_index_format,
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetDataStatus::UnsupportedFieldValue)) {
+        return Fail("mesh unsupported index format was not rejected");
+    }
+
+    const std::string bad_topology =
+        ReplaceFirst(valid_text, "topology=triangle_list", "topology=line_list");
+    if (!ExpectValidationStatus(
+            bad_topology,
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetDataStatus::UnsupportedFieldValue)) {
+        return Fail("mesh unsupported topology was not rejected");
     }
 
     return 0;
@@ -9738,6 +10001,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_INVALID_BOUNDS, RuntimeAssetDataValidatorRejectsInvalidBoundsWithoutOutputs},
     {TEST_TYPED_MESH_MATERIAL_TEXTURE, RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata},
     {TEST_MESH_PAYLOAD_POLICY, RuntimeAssetDataMeshPayloadPolicyRejectsSizeHashAndSplitMismatch},
+    {TEST_MESH_LAYOUT_TOPOLOGY, RuntimeAssetDataMeshLayoutTopologyDecodesIntoLoadedRecords},
     {TEST_MATERIAL_TYPED_REFS, RuntimeAssetDataMaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_MATERIAL_PARAMETER_SEMANTICS, RuntimeAssetDataMaterialParameterSemanticsLoadIntoRuntimeRecords},
     {TEST_TEXTURE_TYPED_METADATA, RuntimeAssetDataTextureValidatorRejectsInvalidFormatExtentPayload},
