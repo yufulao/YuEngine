@@ -445,6 +445,10 @@ constexpr const char *TEST_LOADED_RENDER_RECORDS =
     "RuntimeAssetData_LoadCreatesRenderSceneRuntimeRecords";
 constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION =
     "RuntimeAssetData_GenericRenderSceneSubmissionBuildsFrameFromLoadedSceneRecords";
+constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_ACTIVE_CAMERA =
+    "RuntimeAssetData_GenericRenderSceneSubmissionBindsActiveCameraIntoFrame";
+constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MISSING_CAMERA =
+    "RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingCameraWithoutMutation";
 constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MESH_REFS =
     "RuntimeAssetData_GenericRenderSceneSubmissionUsesMeshRefsNotEntityOrder";
 constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MISSING_TRANSFORM =
@@ -8508,6 +8512,144 @@ int RuntimeAssetDataGenericRenderSceneSubmissionBuildsFrameFromLoadedSceneRecord
     return 0;
 }
 
+int RuntimeAssetDataGenericRenderSceneSubmissionBindsActiveCameraIntoFrame() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    RuntimeAssetRhiDevice device;
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneCameraBindingResult camera{};
+    std::array<RuntimeAssetRenderSceneGeometryBinding, 3U> geometry_bindings{};
+    RuntimeAssetRenderSceneMaterialBinding material_binding{};
+    if (!LoadGenericRenderSceneSubmissionInputs(
+            "GenericRenderSceneSubmissionActiveCamera",
+            &table,
+            &registry,
+            &manager,
+            &graph,
+            &device,
+            &geometry,
+            &material,
+            &camera,
+            &geometry_bindings,
+            &material_binding)) {
+        return Fail("generic render scene submission active camera inputs failed");
+    }
+
+    constexpr std::uint32_t ACTIVE_CAMERA_ID = 42U;
+    if (!BuildCamera(device, &camera, ACTIVE_CAMERA_ID)) {
+        return Fail("generic render scene submission active camera build failed");
+    }
+
+    std::array<RuntimeAssetRenderSceneMaterialBinding, 1U> material_bindings{material_binding};
+    std::array<RenderSceneRuntimeFrameEntityRequest, 3U> frame_entities{};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 3U> draws{};
+    RuntimeAssetRenderSceneSubmissionRequest request = BuildGenericRenderSceneSubmissionRequest(
+        graph,
+        std::span<const RuntimeAssetSceneEntityRecord>(graph.scene_entities.data(), graph.scene_entities.size()),
+        std::span<const RuntimeAssetSceneTransformOutputRecord>(graph.scene_transforms.data(), graph.scene_transforms.size()),
+        std::span<const RuntimeAssetRenderSceneGeometryBinding>(geometry_bindings.data(), geometry_bindings.size()),
+        std::span<const RuntimeAssetRenderSceneMaterialBinding>(material_bindings.data(), material_bindings.size()),
+        camera,
+        std::span<RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+        std::span<RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()));
+
+    RuntimeAssetRenderSceneSubmissionResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetRenderSceneSubmission(request, &result);
+    if (status != RuntimeAssetDataStatus::Success ||
+        result.status != RuntimeAssetDataStatus::Success ||
+        result.frame_status != RenderSceneRuntimeFrameStatus::Success) {
+        return Fail("generic render scene submission active camera submit failed");
+    }
+
+    if (result.frame_result.camera_id != ACTIVE_CAMERA_ID) {
+        return Fail("generic render scene submission active camera id changed");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataGenericRenderSceneSubmissionRejectsMissingCameraWithoutMutation() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    RuntimeAssetRhiDevice device;
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneCameraBindingResult camera{};
+    std::array<RuntimeAssetRenderSceneGeometryBinding, 3U> geometry_bindings{};
+    RuntimeAssetRenderSceneMaterialBinding material_binding{};
+    if (!LoadGenericRenderSceneSubmissionInputs(
+            "GenericRenderSceneSubmissionMissingCamera",
+            &table,
+            &registry,
+            &manager,
+            &graph,
+            &device,
+            &geometry,
+            &material,
+            &camera,
+            &geometry_bindings,
+            &material_binding)) {
+        return Fail("generic render scene submission missing camera inputs failed");
+    }
+
+    RenderSceneCameraBindingResult missing_camera = camera;
+    missing_camera.status = RenderSceneStatus::MissingCamera;
+    missing_camera.camera.is_active = false;
+
+    std::array<RuntimeAssetRenderSceneMaterialBinding, 1U> material_bindings{material_binding};
+    std::array<RenderSceneRuntimeFrameEntityRequest, 3U> frame_entities{};
+    std::array<RenderSceneRuntimeMaterialRecord, 1U> frame_materials{};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 3U> draws{};
+    SeedGenericRenderSceneSubmissionSentinels(
+        std::span<RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+        std::span<RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()));
+    SeedGenericRenderSceneSubmissionMaterialSentinels(
+        std::span<RenderSceneRuntimeMaterialRecord>(frame_materials.data(), frame_materials.size()));
+    RuntimeAssetRenderSceneSubmissionRequest request = BuildGenericRenderSceneSubmissionRequest(
+        graph,
+        std::span<const RuntimeAssetSceneEntityRecord>(graph.scene_entities.data(), graph.scene_entities.size()),
+        std::span<const RuntimeAssetSceneTransformOutputRecord>(graph.scene_transforms.data(), graph.scene_transforms.size()),
+        std::span<const RuntimeAssetRenderSceneGeometryBinding>(geometry_bindings.data(), geometry_bindings.size()),
+        std::span<const RuntimeAssetRenderSceneMaterialBinding>(material_bindings.data(), material_bindings.size()),
+        missing_camera,
+        std::span<RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+        std::span<RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()));
+    request.require_shared_material = false;
+    request.out_frame_materials =
+        std::span<RenderSceneRuntimeMaterialRecord>(frame_materials.data(), frame_materials.size());
+
+    RuntimeAssetRenderSceneSubmissionResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetRenderSceneSubmission(request, &result);
+    if (status != RuntimeAssetDataStatus::MissingDependency ||
+        result.status != RuntimeAssetDataStatus::MissingDependency ||
+        result.frame_status != RenderSceneRuntimeFrameStatus::MissingCamera ||
+        result.first_failed_entity_index != 0xFFFFFFFFU ||
+        result.first_missing_resource_ref_index != 0xFFFFFFFFU ||
+        result.submitted_entity_count != 0U ||
+        result.output_draw_count != 0U ||
+        result.frame_result.output_draw_count != 0U) {
+        return Fail("generic render scene submission missing camera diagnostics changed");
+    }
+
+    if (!GenericRenderSceneSubmissionSentinelsUnchanged(
+            std::span<const RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+            std::span<const RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()))) {
+        return Fail("generic render scene submission missing camera mutated frame outputs");
+    }
+
+    if (!GenericRenderSceneSubmissionMaterialSentinelsUnchanged(
+            std::span<const RenderSceneRuntimeMaterialRecord>(frame_materials.data(), frame_materials.size()))) {
+        return Fail("generic render scene submission missing camera mutated material outputs");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataGenericRenderSceneSubmissionUsesMeshRefsNotEntityOrder() {
     MountTable table;
     ResourceRegistry registry;
@@ -12277,6 +12419,10 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_LOADED_RENDER_RECORDS, RuntimeAssetDataLoadCreatesRenderSceneRuntimeRecords},
     {TEST_GENERIC_RENDER_SCENE_SUBMISSION,
      RuntimeAssetDataGenericRenderSceneSubmissionBuildsFrameFromLoadedSceneRecords},
+    {TEST_GENERIC_RENDER_SCENE_SUBMISSION_ACTIVE_CAMERA,
+     RuntimeAssetDataGenericRenderSceneSubmissionBindsActiveCameraIntoFrame},
+    {TEST_GENERIC_RENDER_SCENE_SUBMISSION_MISSING_CAMERA,
+     RuntimeAssetDataGenericRenderSceneSubmissionRejectsMissingCameraWithoutMutation},
     {TEST_GENERIC_RENDER_SCENE_SUBMISSION_MESH_REFS,
      RuntimeAssetDataGenericRenderSceneSubmissionUsesMeshRefsNotEntityOrder},
     {TEST_GENERIC_RENDER_SCENE_SUBMISSION_MISSING_TRANSFORM,

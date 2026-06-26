@@ -7040,6 +7040,32 @@ void SetRenderSceneSubmissionFailure(
     result->first_missing_resource_ref_index = resource_ref_index;
 }
 
+RuntimeAssetDataStatus ValidateRenderSceneSubmissionCamera(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    RuntimeAssetRenderSceneSubmissionResult *result) {
+    if (request.camera.status != RenderSceneStatus::Success) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::MissingDependency,
+            RenderSceneRuntimeFrameStatus::MissingCamera,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (!request.camera.camera.is_active || request.camera.camera.camera_id == 0U) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::MissingDependency,
+            RenderSceneRuntimeFrameStatus::MissingCamera,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
 bool IsSameSubmissionTransform(
     const WorldTransformState &left,
     const WorldTransformState &right) {
@@ -7612,6 +7638,11 @@ RuntimeAssetDataStatus ValidateRenderSceneSubmissionRequest(
     }
 
     RuntimeAssetDataStatus status = ValidateRenderSceneSubmissionStorage(request, result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = ValidateRenderSceneSubmissionCamera(request, result);
     if (status != RuntimeAssetDataStatus::Success) {
         return status;
     }
