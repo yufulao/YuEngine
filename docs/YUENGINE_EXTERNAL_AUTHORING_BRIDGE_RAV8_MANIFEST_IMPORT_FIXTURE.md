@@ -91,6 +91,25 @@ caller-provided descriptor buffers. This proves the external-authoring preflight
 can hand off to the engine-owned RuntimeAsset import/cook API without external
 tooling.
 
+## Downstream Resource Browser Closure
+
+Mainline anchor `4e2cfe8` adds the first downstream closure from the actual
+bridge output rows:
+
+```text
+YuExternalAuthoringExport manifest
+-> BuildExternalAuthoringRuntimeAssetImportBridge
+-> bridge-owned RuntimeAsset input row
+-> bridge-emitted RuntimeAsset import/cook command
+-> deterministic cooked RuntimeAsset graph
+-> BuildResourceBrowserImporterCommitWorkflow
+-> Resource/Asset commit evidence
+```
+
+This is intentionally test-only integration linkage. It verifies that
+Resource Browser can consume bridge rows without adding a production dependency
+from `YuResourceBrowser` back to `YuExternalAuthoring`.
+
 ## Tests
 
 Focused tests:
@@ -102,6 +121,7 @@ ExternalAuthoringBridge_RejectsInvalidDependencyWithoutMutation
 ExternalAuthoringBridge_RejectsUnsupportedFeatureWithoutMutation
 ExternalAuthoringBridge_RejectsUnsupportedMappingPolicyWithoutMutation
 ExternalAuthoringBridge_RejectsOutputCapacityWithoutMutation
+ResourceBrowserImporterCommitWorkflow_CommitsExternalAuthoringBridgeRowsThroughRuntimeAssetGraph
 ```
 
 Gate commands:
@@ -110,6 +130,7 @@ Gate commands:
 cmake --preset windows-fast-gate
 cmake --build --preset windows-fast-gate --target YuExternalAuthoringBridgeTests -- /v:minimal
 ctest --preset windows-fast-gate -R "^ExternalAuthoringBridge_" --output-on-failure
+ctest --preset windows-fast-gate -R "ResourceBrowserImporterCommitWorkflow_CommitsExternalAuthoringBridgeRowsThroughRuntimeAssetGraph" --output-on-failure
 ```
 
 ## Boundary

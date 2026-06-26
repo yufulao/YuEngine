@@ -4,7 +4,7 @@ Status: evidence package for RAV2 review
 Owner: Architecture / Evidence
 Task: #67
 Baseline: RAV1 implementation package `origin/main@d1a1b86`
-Current accepted anchor: `origin/main@97bcd66`
+Current accepted anchor: `origin/main@4e2cfe8`
 Review gate: task #68
 
 ## Purpose
@@ -48,6 +48,7 @@ is opened.
 | Preview Host value/session layer | PASS | #65 adds `YuPreviewHost` value/session/frame diagnostics and canonical capture route consumption of RuntimeAsset graph outputs. |
 | Preview Host wiring to Resource Browser query outputs | NOT YET | #65 documents this as later wiring. #64 lower contract is not proof that Preview Host consumes Resource Browser query records. |
 | Preview Host wiring to command/cook outputs | NOT YET | #65 documents this as later wiring. #63 command output is not automatically Preview Host input wiring. |
+| ExternalAuthoring bridge rows into Resource Browser commit | PASS | `4e2cfe8` proves actual `BuildExternalAuthoringRuntimeAssetImportBridge` output rows can feed Resource Browser importer commit, then load cooked RuntimeAsset graph through Resource/Asset mutation. |
 | Cooked RuntimeAsset structural visual route | PASS | #66 proves cooked records from #63 import/cook outputs can feed RuntimeAsset validation, scene loader + animation sampling, cooked texture/material/shader payload bridges, RenderScene, RenderCore, and RHI capture route in fast gate. |
 | D3D11 texture/render-core hardware smoke support | PASS | Existing D3D11 texture sampling and RenderCore drawable-frame texture capture hardware smoke tests pass as supporting evidence. |
 | Device-backed RuntimeAsset route final closure | NOT CLOSED | #66 explicitly does not prove a hardware device directly running the RuntimeAsset visual route as final product closure. This needs a later explicit task/gate if required. |
@@ -187,6 +188,38 @@ Boundary: #66 is fast-gate structural proof plus existing D3D11 texture and
 RenderCore hardware smoke support. It is not final device-backed RuntimeAsset
 hardware visual product closure and does not implement Resource Browser UX or
 Preview Host behavior.
+
+### Main Trunk ExternalAuthoring -> ResourceBrowser Commit Closure
+
+Anchor: `origin/main@4e2cfe8`
+
+Focused commands run by architecture:
+
+```powershell
+cmake --build --preset windows-fast-gate --target YuResourceBrowserDiagnosticsTests -- /v:minimal
+ctest --preset windows-fast-gate -R "ResourceBrowserImporterCommitWorkflow_(CommitsExternalAuthoringBridgeRowsThroughRuntimeAssetGraph|CommitsExternalManifestReadyRuntimeAssetGraph|RejectsMissingPayloadWithoutMutation|RejectsInvalidDependencyWithoutMutation)$" --output-on-failure
+ctest --preset windows-fast-gate -R "ExternalAuthoringBridge_AcceptsManifestAndEmitsRuntimeAssetImportCookInputs|RuntimeAssetData_ImportCookCommand" --output-on-failure
+cmake --build --preset windows-fast-gate -- /v:minimal
+ctest --preset windows-fast-gate --output-on-failure
+```
+
+Result: target build PASS; ResourceBrowser importer commit focused tests PASS
+4/4; ExternalAuthoring/RuntimeAsset import-cook focused tests PASS 4/4; full
+fast gate PASS 1429/1429.
+
+Accepted scope:
+
+- actual `BuildExternalAuthoringRuntimeAssetImportBridge` manifest/payload
+  output rows feed `BuildResourceBrowserImporterCommitWorkflow`;
+- the bridge-emitted `RuntimeAssetImportCookCommandRequest` writes deterministic
+  source/cooked fixtures through File/VFS;
+- Resource Browser validates the external manifest boundary, then loads cooked
+  RuntimeAsset graph and commits Resource/Asset records;
+- test-only linkage verifies the integration without adding a production
+  `YuResourceBrowser -> YuExternalAuthoring` dependency.
+
+Boundary: this is still not a Unity/Unreal/DCC importer, Resource Browser UI,
+Preview Host UI, original package parser, or final hardware product proof.
 
 ## Required #68 Review Questions
 
