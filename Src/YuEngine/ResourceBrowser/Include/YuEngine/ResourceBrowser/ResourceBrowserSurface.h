@@ -442,7 +442,7 @@ struct ResourceBrowserDepthWorkflowResult final {
     bool blocked_by_asset_manager_gap = false;
     bool mutated_runtime_state = false;
     bool opened_native_window = false;
-    bool used_web_ui = false;
+    bool used_deprecated_surface = false;
 
     bool Succeeded() const {
         return status == ResourceBrowserDepthWorkflowStatus::Success;

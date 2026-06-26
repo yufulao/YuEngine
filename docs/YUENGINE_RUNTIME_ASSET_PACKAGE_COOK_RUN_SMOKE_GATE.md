@@ -103,7 +103,7 @@ This gate does not accept:
 - original TouhouNewWorld package compatibility;
 - Unity/UE/DCC import bridge;
 - Resource Browser UI or import settings UI;
-- Scene Editor, Animation Editor, UI Editor, Web, or editor input;
+- Scene Editor, Animation Editor, UI Editor, rejected editor route, or editor input;
 - screenshots, manual inspection, CPU PPM, GDI, or software raster as final
   proof;
 - device-backed visual closure beyond the existing RAV3-A route unless the

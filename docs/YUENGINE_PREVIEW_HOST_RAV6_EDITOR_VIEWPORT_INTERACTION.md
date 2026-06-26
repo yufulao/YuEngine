@@ -37,7 +37,7 @@ PreviewHostViewportSessionResult
 ```
 
 The surface requires the viewport session to have already submitted an engine
-frame through Preview Host. It does not create a native window, use Web/HTML/
+frame through Preview Host. It does not create a native window, use rejected editor route/static form /
 canvas, use GDI, use manual screenshots, or use a CPU oracle as a preview route.
 
 ## Acceptance

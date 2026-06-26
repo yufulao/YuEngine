@@ -37,7 +37,7 @@ deterministic fixture generator
 -> cube/cylinder/cone render and capture proof
 ```
 
-The contract is not an editor, Web, UI, input, or Game Adapter contract. It is
+The contract is not an editor, rejected editor route, UI, input, or Game Adapter contract. It is
 also not a package compatibility contract for the original game. Original-game
 resource facts may later become validation inputs only after a separate
 evidence-approved package/parser gate.
@@ -69,7 +69,7 @@ staged scene loader output, package/cook/run smoke, product-run command
 consumption, first-class camera tween descriptor source/cooked file loading,
 and no-mutation failure coverage. These floors close the previous
 "smoke only" blockers for the current slice. The remaining production work is
-hardening, not a reason to reopen editor, Web, UI, input, or external authoring
+hardening, not a reason to reopen editor, rejected editor route, UI, input, or external authoring
 scope as acceptance.
 
 The current mesh slice also validates and loads `position,texcoord` input
@@ -281,7 +281,7 @@ C++ in-memory construction alone.
 | Generic RenderScene CPU submission | PASS | `RuntimeAssetData_GenericRenderSceneSubmissionBuildsFrameFromLoadedSceneRecords`, `RuntimeAssetData_GenericRenderSceneSubmissionUsesMeshRefsNotEntityOrder`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingTransformWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMeshRefWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMaterialRefWithoutMutation`, and `RuntimeAssetData_GenericRenderSceneSubmissionReportsMaterialVariantsUntilFrameApiSupportsThem` prove loaded scene records can build RenderScene frame records with bounded no-mutation failures |
 | RenderCore/RHI capture | PASS | `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi` |
 | CPU oracle guard | PASS | `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` |
-| Upper-layer dependency guard | PASS | `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` |
+| Upper-layer dependency guard | PASS | `RuntimeAssetData_DoesNotDependOnEditorUiInputOrGdiViewer` |
 
 These slices are not a complete asset system. Current RuntimeAssetData coverage
 accepts decoded mesh payload geometry buffers, decoded texture material slots,
@@ -377,7 +377,7 @@ Reviewers should answer these before the next implementation slice starts:
 
 The following are blocking violations:
 
-- using editor, Web, UI, input, or Game Adapter behavior as part of the closed
+- using editor, rejected editor route, UI, input, or Game Adapter behavior as part of the closed
   runtime data proof;
 - using `YuRuntimeVisualCameraTweenViewer`, GDI, software rasterization, CPU
   semantic PPM, image artifact output, screenshots, reports, logs, or manual

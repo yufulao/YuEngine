@@ -29,7 +29,7 @@ AnimationRuntimeClipRecord / TrackRecord / KeyframeRecord
 ```
 
 The surface does not create a native editor shell. It also does not open a
-window, draw a timeline, mutate runtime data, use Web/HTML/canvas, or own
+window, draw a timeline, mutate runtime data, use rejected editor route/static form /canvas, or own
 RuntimeAsset/ResourceBrowser/RenderScene/RHI behavior.
 
 ## Acceptance
@@ -40,7 +40,7 @@ The accepted behavior is:
 - scrub time is resolved through `RuntimeFrameContext`
 - Preview Host transform feedback is required when requested
 - missing Preview Host feedback rejects without writing partial timeline output
-- boundary flags remain false for runtime mutation, native window, and Web
+- boundary flags remain false for runtime mutation, native window, and rejected editor route
 
 This is not Animation Editor completion. Remaining work includes playback
 controls, event markers, state preview, visible target workflow, Resource

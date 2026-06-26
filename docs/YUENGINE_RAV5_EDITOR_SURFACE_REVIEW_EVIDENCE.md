@@ -29,7 +29,7 @@ Reviewed commits:
 | #84 Scene hierarchy/inspector surface | PASS | `BuildSceneEditorNativeSurface` consumes `WorldSceneAuthoringDocument` and emits caller-owned hierarchy/inspector rows. Inspector rows expose runtime-export and editor-only sidecar field counts. Tests cover invalid authoring document, selection-required, grouping, and no runtime mutation. | Not viewport, gizmo, drag/drop, undo-redo, Resource Browser picker, or full native editor. |
 | #85 transform command and undo/redo ledger | PASS | `ApplySceneEditorTransformCommand` stages transform output and emits one ledger record after validation. Tests cover apply, undo/redo replay, invalid selection, and output no-mutation. | Not gizmo UI, not viewport interaction, not full command stack. |
 | #86 Animation Editor timeline feedback | PASS | `BuildAnimationEditorTimelineSurface` consumes runtime animation clip/track/keyframe records, samples through `AnimationRuntimeSampler`, and requires Preview Host transform feedback when requested. Tests cover timeline rows, Preview Host feedback, and missing feedback no-mutation. | Not full Animation Editor, not event/state preview, not playback controls, not visible timeline UI. |
-| #87 UI Editor runtime document feedback | PASS | `BuildUiEditorRuntimeDocumentSurface` consumes runtime UI document/node records, resolves rects through `UiCore::UiNodeTree`, and emits Preview Host frame feedback when requested. Tests cover hierarchy rows, Preview Host feedback, and missing feedback no-mutation. | Not complete UI Editor, not visible design surface, not Web/HTML/canvas/static screenshot fallback. |
+| #87 UI Editor runtime document feedback | PASS | `BuildUiEditorRuntimeDocumentSurface` consumes runtime UI document/node records, resolves rects through `UiCore::UiNodeTree`, and emits Preview Host frame feedback when requested. Tests cover hierarchy rows, Preview Host feedback, and missing feedback no-mutation. | Not complete UI Editor, not visible design surface, not rejected editor route/static form /canvas/static screenshot fallback. |
 
 ## Validation Commands
 
@@ -68,11 +68,11 @@ PASS/no matches
 rg -n "\belse\b|\[&\]|\[=\]" Src/YuEngine/UiEditor Tests/UiEditor
 PASS/no matches
 
-rg -n "RuntimeAsset|ResourceBrowser|RenderScene|RHI|D3D11|GDI|Web|HTML|CSS|canvas|native window" Src/YuEngine/UiEditor Tests/UiEditor
+rg -n "RuntimeAsset|ResourceBrowser|RenderScene|RHI|D3D11|GDI|rejected editor route|rejected markup|rejected style|canvas|native window" Src/YuEngine/UiEditor Tests/UiEditor
 PASS/no matches
 ```
 
-The wider RAV5 source review found no Web, HTML, CSS, canvas, GDI, manual
+The wider RAV5 source review found no rejected editor route, rejected markup, rejected style, canvas, GDI, manual
 screenshot, CPU-oracle, or static-screenshot path replacing the accepted engine
 data and Preview Host routes. Documentation mentions those terms only as
 explicit exclusions.

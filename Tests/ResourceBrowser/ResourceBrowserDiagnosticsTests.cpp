@@ -1940,7 +1940,7 @@ int ResourceBrowserDepthWorkflowEmitsCatalogImporterAndAssetGaps() {
         result.selection_rejected ||
         result.mutated_runtime_state ||
         result.opened_native_window ||
-        result.used_web_ui) {
+        result.used_deprecated_surface) {
         return Fail("depth workflow did not emit ready catalog/importer/asset gap rows");
     }
 

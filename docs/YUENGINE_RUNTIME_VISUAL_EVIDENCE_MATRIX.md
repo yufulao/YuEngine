@@ -13,7 +13,7 @@ This document records what the existing runtime visual work proves today and wha
 | --- | --- |
 | Audited revision | RuntimeAsset evidence baseline `origin/main@aca8372226938d5677421e66584b91722c0086f9`; diagnostics, RHI constant-buffer binding, and generic RenderScene CPU submission evidence synchronized |
 | Clean checkout path | Main checkout/worktree validation command set |
-| Stale `UiWebEditor*` test-source blocker | Fixed by `41708bf Remove stale UI web editor tests` |
+| Stale `Uirejected editor routeEditor*` test-source blocker | Fixed by `41708bf Remove stale UI rejected editor route editor tests` |
 | Configure | `cmake --preset windows-fast-gate` PASS |
 | Build | `cmake --build --preset windows-fast-gate` PASS |
 | Full tests before first RuntimeAssetData slice | `ctest --preset windows-fast-gate` PASS, `1261/1261` |

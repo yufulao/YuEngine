@@ -58,7 +58,7 @@ RAV0 at `4b846aa` is reusable as evidence for these floors:
 | Shader/program RHI floor | Loaded shader/program data can create RHI shader modules and a pipeline, with cleanup on invalid data paths. | Later bridge must use cooked bytecode payload records and minimal reflection, not `bytecode:` source fixture text. |
 | Scene loader staging | Scene and animation bytes are preflighted before Resource/Asset registration, and caller outputs commit after success. | Later loader must generalize to bounded N records while preserving preflight and commit semantics. |
 | Animation sampling floor | Disk animation sampling feeds scene transforms through the runtime sampler and World transform bridge. | Later plan must validate clip/track/keyframe/binding tables and target resolution before mutation. |
-| Upper-layer exclusion | Tests/docs exclude editor, Web, UI, input, Game Adapter, GDI viewer, screenshots, and CPU helper images as final proof. | Later implementation reviews must keep these as blockers or auxiliary evidence only. |
+| Upper-layer exclusion | Tests/docs exclude editor, rejected editor route, UI, input, Game Adapter, GDI viewer, screenshots, and CPU helper images as final proof. | Later implementation reviews must keep these as blockers or auxiliary evidence only. |
 
 ## Smoke-Only Boundaries
 
@@ -119,7 +119,7 @@ The package must not authorize upper-layer or bypass proof. Run these scans over
 the RuntimeAsset RAV1 docs touched by Phase A:
 
 ```powershell
-rg -n "editor|Editor|Web|UI|input|Game Adapter|original package|TouhouNewWorld package|GDI|screenshot|manual inspection" docs\YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md docs\gates\L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md docs\YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md docs\YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_SCENE_ANIMATION_LOADER_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md
+rg -n "editor|Editor|rejected editor route|UI|input|Game Adapter|original package|TouhouNewWorld package|GDI|screenshot|manual inspection" docs\YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md docs\gates\L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md docs\YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_FORMAT_POLICY_AND_VALIDATOR_VOCABULARY.md docs\YUENGINE_RUNTIME_ASSET_V0_LOADER_TRANSACTION_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_SCENE_ANIMATION_LOADER_PLAN.md docs\YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md
 ```
 
 Matches are allowed only when they define hard exclusions, blockers, or

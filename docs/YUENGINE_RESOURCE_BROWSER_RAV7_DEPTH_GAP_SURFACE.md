@@ -81,6 +81,6 @@ ctest --preset windows-fast-gate -R "(ResourceBrowserDiagnostics_|ResourceBrowse
 
 This slice does not complete a full Resource Browser UI, original package
 parser, external DCC importer, drag/drop import, AssetManager mutation, native
-window launch, Web/canvas/browser preview, static screenshot oracle, CPU/GDI
+window launch, rejected editor route/canvas/browser preview, static screenshot oracle, CPU/GDI
 fixture oracle, Preview Host rendering, Scene Editor, Animation Editor, UI
 Editor, package/run validation, or final product visual closure.

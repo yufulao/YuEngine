@@ -133,7 +133,7 @@ Resource Browser tooling does not own:
   bots, marketplace, plugin ecosystem, or public package distribution;
 - original TouhouNewWorld package compatibility, old editor/runtime flow,
   reports, oracle output, screenshots, or Game Adapter behavior;
-- deprecated Web/editor compatibility paths.
+- deprecated deprecated editor compatibility paths.
 
 ## 5. Records
 
@@ -282,7 +282,7 @@ Do not build any of the following from this task:
 - Preview Host implementation;
 - RuntimeAssetData, Resource, Asset, Package, RenderScene, or RHI code changes;
 - original-game package parser or compatibility layer;
-- deprecated Web/frontend/browser/canvas route.
+- deprecated rejected editor route/editor route/browser/canvas route.
 
 If a future task needs one of these, it needs a separate gate and explicit
 approval.

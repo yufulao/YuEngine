@@ -25,9 +25,9 @@ Define the shared editor runtime preview host boundary before UI, Scene, and
 Animation editor work claims usable editor progress.
 
 This gate is architecture and reference guidance only. It does not authorize
-implementation and does not create a native editor application. Deprecated Web,
-HTML/CSS, 2D canvas sketches, or static screenshots must not become
-authoritative runtime preview. Web is retained only as deprecated historical
+implementation and does not create a native editor application. Deprecated rejected editor route,
+rejected form layout, 2D canvas sketches, or static screenshots must not become
+authoritative runtime preview. rejected editor route is retained only as deprecated historical
 wording.
 
 The preview host is the bridge between editor tooling and YuEngine
@@ -47,7 +47,7 @@ L7 editor tooling over approved runtime modules.
 
 The preview host may call approved engine runtime surfaces to build an isolated
 preview session. It must not become a lower-layer dependency and must not make
-shipped runtime modules depend on editor-only code. Deprecated Web editor code
+shipped runtime modules depend on editor-only code. Deprecated rejected editor route editor code
 must not be a runtime dependency.
 
 ## L0/L1 Boundary
@@ -88,7 +88,7 @@ metadata, or fill gaps with editor-only fixture structures.
 
 If #36 records a production gap for the canonical scene route, the MVP preview
 host must report that exact gap as a blocker or partial status. It must not route
-around the gap through in-memory fixture structs, Web/editor mock data,
+around the gap through in-memory fixture structs, deprecated editor mock data,
 screenshots, or report/oracle output.
 
 ## Reference Boundary
@@ -143,8 +143,8 @@ This gate does not own:
 
 - editor panel layout, hierarchy, inspector, resource browser, timeline,
   shortcuts, drag/drop, undo/redo, or workflow behavior;
-- a native editor app, immediate-mode editor fallback, or deprecated C++ Web editor shell;
-- forbidden HTML/CSS/DOM/canvas as authoritative game/editor preview;
+- a native editor app, immediate-mode editor fallback, or deprecated C++ rejected editor route editor shell;
+- forbidden rejected form layout/rejected document tree/canvas as authoritative game/editor preview;
 - UI runtime implementation, Scene runtime implementation, Animation runtime
   implementation, RenderScene, AudioScene, Resource, Package, or File expansion;
 - material graph editing, shader tooling, animation graph authoring,
@@ -160,7 +160,7 @@ This gate does not own:
 
 1. Editor tooling is a client, not preview authority.
 2. Local editor service routes load/save/validate/cook/preview commands. It must
-   not own frontend panels or runtime behavior.
+   not own editor route panels or runtime behavior.
 3. Preview host sessions are isolated from the normal game runtime and must be
    explicitly started and stopped.
 4. Runtime data is the source of truth. Editor-only state must be sidecar data.
@@ -175,7 +175,7 @@ This gate does not own:
 9. Animation preview must use runtime clip/player/sample/event output, not only
    timeline drawing.
 10. Scene preview must use engine-rendered or engine-headless scene outputs, not
-    a standalone deprecated Web canvas mock.
+    a standalone deprecated rejected editor route canvas mock.
 11. L0/L1 pass, RHI fixture pass, RenderCore fixture pass, and isolated sample
     screenshots must never be reported as Preview Host pass.
 12. Failures must be explicit and no-mutation where applicable.
@@ -237,7 +237,7 @@ to:
 - `EditorPreviewHost_HeadlessOutputWritesBoundedDiagnostics`
 - `EditorPreviewHost_CameraStateChangesFrameSequenceOrStatus`
 - `EditorPreviewHost_ResourceRefFailureReportsDiagnostic`
-- `EditorPreviewHost_WebOverlayStateDoesNotExportAsRuntimeData`
+- `EditorPreviewHost_rejected editor routeOverlayStateDoesNotExportAsRuntimeData`
 - `EditorPreviewHost_ShutdownReleasesSessionCapacity`
 - `EditorPreviewHost_CanonicalScene_CapturesCubeCylinderConeOrbitSequence`
 - `EditorPreviewHost_UsesRuntimeAssetV0LoadedGraphWithoutDefiningFormats`
@@ -303,13 +303,13 @@ The following are blocking violations:
 - claiming L0/L1 plan completion, RHI fixture capture, RenderCore fixture pass,
   RenderScene packet values, or isolated sample screenshots satisfy Preview Host
   or editor visual capability;
-- accepting deprecated Web shell, form UI, DOM/CSS, 2D canvas sketches, or static
+- accepting deprecated rejected editor route shell, form UI, rejected document tree/rejected style, 2D canvas sketches, or static
   screenshots as authoritative runtime preview;
 - claiming RuntimeAsset v0 smoke closes the production asset contract or lets
   Preview Host define source asset formats;
 - calling UI, Scene, or Animation editor usable before engine preview host
   output exists for the relevant runtime behavior;
-- making deprecated Web editor code a dependency of runtime modules;
+- making deprecated rejected editor route editor code a dependency of runtime modules;
 - making runtime modules depend on editor-only state;
 - using fake preview data that cannot pass cook/package/runtime validation;
 - using in-memory fixture structs, editor-only mock data, or helper/oracle output
@@ -335,9 +335,9 @@ This gate is ready for review when:
   capability acceptance;
 - the first slice remains explicitly unapproved until review lanes close;
 - the plan keeps editor tooling, local service, and preview host
-  responsibilities separate, with Web retained only as deprecated historical
+  responsibilities separate, with rejected editor route retained only as deprecated historical
   wording;
 - the task #36/#37/#39/#40 interfaces are named so MVP scope cannot silently
   absorb asset, reference-audit, resource-browser, or editor-chain ownership;
-- hard blocks prevent deprecated Web-only editor pages from being counted as usable editor
+- hard blocks prevent deprecated deprecated editor-route-only editor pages from being counted as usable editor
   completion.

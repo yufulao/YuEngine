@@ -25,8 +25,8 @@ Related:
 
 ## 1. Correction
 
-The editor direction is not "build Web forms first and improve them later".
-Web is no longer a YuEngine editor direction.
+The editor direction is not "build rejected editor route forms first and improve them later".
+rejected editor route is no longer a YuEngine editor direction.
 
 For UI, Scene, and Animation, the editor is only credible when it is a visual
 entry point into YuEngine runtime capability:
@@ -41,9 +41,9 @@ runtime data
 
 The editor surface is native/engine-hosted tooling: hierarchy, inspector,
 resource browser, timeline, validation panels, command routing, and workflow.
-Web shells are deprecated historical scaffolding and are not editor direction.
+rejected editor route shells are deprecated historical scaffolding and are not editor direction.
 
-Forbidden HTML/CSS, 2D canvas sketches, browser-only output, static screenshots, and
+Forbidden rejected form layout, 2D canvas sketches, editor-route-only output, static screenshots, and
 administrative-form style pages are not acceptable core preview capability for a
 game engine editor.
 
@@ -182,7 +182,7 @@ Owns:
 
 Does not own:
 
-- frontend panels or workflow
+- editor route panels or workflow
 - runtime behavior
 - renderer shortcuts that bypass engine systems
 
@@ -200,7 +200,7 @@ Owns:
 
 The host must be an engine capability. It may expose frames, snapshots, IDs,
 diagnostics, and hit/selection results to the editor surface, but browser or
-deprecated Web output must not fake these as authoritative runtime output.
+deprecated rejected editor route output must not fake these as authoritative runtime output.
 
 ## 4. Required Landing Order
 
@@ -228,7 +228,7 @@ may keep data-schema preparation work, but they must not claim usable editor
 progress until their runtime data can pass validation and the shared preview host
 can return authoritative runtime output or an exact blocker.
 
-Removed Web workspace scaffolding is residual cleanup context only. It is not
+Removed rejected editor route workspace scaffolding is residual cleanup context only. It is not
 usable-editor progress; engine UI runtime preview must be visible and validated
 through the host.
 
@@ -240,7 +240,7 @@ Animation work can keep clip/event data scaffolding, but it is not
 usable-editor progress until playback, scrub, event timing, and keyframe
 feedback are visible against a model, sprite, or other runtime preview target.
 
-## 5. Deprecated Web Slices
+## 5. Deprecated rejected editor route Slices
 
 Removed historical browser-editor folders are deprecated scaffolding. They must
 not be connected forward as an editor compatibility path and must not be
@@ -248,11 +248,11 @@ reported as usable editor completion.
 
 In particular:
 
-- a deprecated UI Web page without engine UI runtime rendering is not usable UI
+- a deprecated UI rejected editor route page without engine UI runtime rendering is not usable UI
   Editor progress
-- a deprecated Scene Web canvas without engine-rendered model/material/texture
+- a deprecated Scene rejected editor route canvas without engine-rendered model/material/texture
   viewport is not usable Scene Editor progress
-- a deprecated Animation Web timeline without visible runtime playback target
+- a deprecated Animation rejected editor route timeline without visible runtime playback target
   is not usable Animation Editor progress
 
 ## 6. First Preview Host Batch
@@ -280,7 +280,7 @@ Later editor-facing batches:
 | ID | Work item | Acceptance |
 | --- | --- | --- |
 | EPV-LATER-001 | Resource Browser / Import Settings integration | shared browser and typed import settings consume preview diagnostics without owning runtime truth |
-| EPV-LATER-002 | UI runtime preview hook | UI layout renders through engine UI runtime, not HTML/CSS |
+| EPV-LATER-002 | UI runtime preview hook | UI layout renders through engine UI runtime, not rejected form layout |
 | EPV-LATER-003 | Animation playback preview hook | play/pause/scrub/step returns sampled state and visible target feedback |
 | EPV-LATER-004 | Scene viewport command bridge | transform gizmo and viewport commands update runtime data through approved scene/world gates |
 | EPV-LATER-005 | Cook/package/run smoke bridge | previewed data can be validated as cook/package/run input after owning asset/package gates close |
@@ -293,15 +293,15 @@ These are blocking violations:
   isolated sample screenshots satisfy editor preview capability
 - claiming RuntimeAsset v0 smoke closes the full production asset contract or
   lets Preview Host define source asset formats
-- accepting deprecated Web shell, form UI, 2D canvas sketches, or static screenshots as
+- accepting deprecated rejected editor route shell, form UI, 2D canvas sketches, or static screenshots as
   core editor preview
-- treating CSS/HTML visual output as the game editor's authoritative preview
+- treating rejected style/rejected markup visual output as the game editor's authoritative preview
 - calling Scene Editor usable without model/texture/material loading entry,
   camera controls, transform gizmo, and engine-rendered viewport
 - calling Animation Editor usable without visible playback, scrub, keyframe or
   event feedback on a runtime preview target
 - calling UI Editor usable without engine UI runtime render preview
-- optimizing a deprecated Web-form surface instead of adding engine preview capability
+- optimizing a deprecated rejected editor route-form surface instead of adding engine preview capability
 - using fake preview data that cannot be cooked, packaged, and loaded by runtime
 - bypassing loaded runtime files with in-memory fixture structs, editor-only mock
   data, report/oracle output, or screenshots for the canonical scene proof

@@ -4,7 +4,7 @@ Status: corrective replacement
 Baseline: `origin/main@ba7ff24`
 Source plan: `docs/YUENGINE_UI_FRAMEWORK_EDITOR_PLAN.md`
 Scope: boundary freeze for generic UI Framework and engine-runtime editor
-direction after Web removal.
+direction after rejected editor route removal.
 
 ## 1. Purpose
 
@@ -19,7 +19,7 @@ UIManager runtime framework
 engine runtime editor host direction
 ```
 
-The engine-stage UI scope is not old game-window work and is not a deprecated Web editor
+The engine-stage UI scope is not old game-window work and is not a deprecated rejected editor route editor
 surface.
 
 ## 2. Naming
@@ -107,12 +107,12 @@ preview-process control. The game runtime must not depend on editor code.
 Hierarchy, inspector, viewport, resource picker, component templates,
 style/theme editing, state preview, drag/drop, shortcuts, and visual workflow
 must be backed by runtime data and engine preview output. They are not accepted
-through HTML/CSS, browser-only canvas, React/Vite, or other deprecated Web shell work.
+through rejected form layout, editor-route-only canvas, rejected editor toolchain, or other deprecated rejected editor route shell work.
 
 C++ is allowed for stable runtime/editor-host contracts: runtime schema
 validation, local file/service bridge, cook/asset validation bridge, and
-engine preview host protocol. C++ must not reintroduce a deprecated Web editor shell,
-browser panel model, React/Vite workflow, or HTML/CSS preview path.
+engine preview host protocol. C++ must not reintroduce a deprecated rejected editor route editor shell,
+browser panel model, rejected editor toolchain workflow, or rejected form layout preview path.
 
 ## 4. Reference Inputs
 
@@ -126,7 +126,7 @@ Allowed references:
 | Unity UGUI | common rect/component vocabulary | Unity object model |
 | TextMeshPro | font asset and glyph fallback concepts | full TMP implementation |
 | Unreal Slate/UMG | invalidation and UI performance vocabulary | Unreal editor/runtime architecture |
-| Deprecated Web editor attempt | historical anti-pattern showing why browser shells, DOM controls, and HTML/CSS preview are not editor direction | any active Web editor route, backlog, gate, workflow, or acceptance |
+| Deprecated rejected editor route editor attempt | historical anti-pattern showing why browser shells, rejected document tree controls, and rejected form layout preview are not editor direction | any active rejected editor route editor route, backlog, gate, workflow, or acceptance |
 
 Every landing task must state:
 
@@ -142,10 +142,10 @@ YuEngine-specific acceptance:
 - UI Core excludes lifecycle.
 - UIManager runtime owns lifecycle and stacks.
 - Config tables are deferred.
-- Web Editor is rejected as an editor direction.
+- rejected editor route Editor is rejected as an editor direction.
 - Native/engine runtime preview host is the only editor direction.
 - No native app editor path is retained.
-- No deprecated C++ Web editor shell/panel/template/theme/state-preview path is retained.
+- No deprecated C++ rejected editor route editor shell/panel/template/theme/state-preview path is retained.
 - No old game windows are used as validation samples.
 - No old game-window matrix is part of UI Framework progress.
 - List/GridView is virtualized.
@@ -187,5 +187,5 @@ Stage 3 may implement UIManager runtime framework only.
 
 Editor work must start from runtime data schemas, Resource/Asset/Cook
 validation, native/engine preview host output, and runtime diagnostics. It must
-not add deprecated Web schema/frontend/workspace/protocol tasks, and it must not
-model a deprecated Web frontend as C++ libraries.
+not add deprecated rejected editor route schema/editor route/workspace/protocol tasks, and it must not
+model a deprecated rejected editor route editor route as C++ libraries.

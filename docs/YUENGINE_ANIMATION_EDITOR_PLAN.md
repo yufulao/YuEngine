@@ -73,7 +73,7 @@ Animation Editor does not own:
 - a full Animator Controller or Blueprint-like visual scripting system
 - character movement FSMs, customer/player/stall states, quest triggers, or any
   gameplay behavior graph
-- a forbidden track-only Web page as core animation preview
+- a forbidden track-only rejected editor route page as core animation preview
 - old Unity `Animator`, `Animation`, or `AnimationCurve` API shape
 - old project animation helpers as runtime API shape
 - asset codec implementation beyond approved Resource/import gates
@@ -122,7 +122,7 @@ Reference use is constrained to behavior lessons.
 | Unreal Animation/Sequencer | separation of source asset, runtime playback, notify/event tracks, preview tooling | Sequencer scope, Blueprint/AnimGraph API, editor extensibility |
 | YuEngine Resource/Package gates | asset identity, import/cook/package validation | package expansion, old package compatibility |
 | YuEngine World/Scene gates | preview attachment to scene objects and resource bindings | gameplay component behavior or scene editor ownership |
-| YuEngine editor preview host | visible playback target, frame/status output, resource diagnostics | deprecated track-only Web timeline or fake playback |
+| YuEngine editor preview host | visible playback target, frame/status output, resource diagnostics | deprecated track-only rejected editor route timeline or fake playback |
 
 Each implementation task must record:
 
@@ -187,7 +187,7 @@ Owns:
 - editor-only selection, snapping, zoom, track colors, and panel state
 
 Timeline drawing is not core preview. Playback feedback must come from the
-engine preview host. Deprecated Web timeline, HTML/CSS, browser-only canvas, and
+engine preview host. Deprecated rejected editor route timeline, rejected form layout, editor-route-only canvas, and
 static screenshots are forbidden as preview correctness proof.
 
 ### 5.4 Local Animation Editor Service
@@ -202,7 +202,7 @@ Owns backend support only:
 - exposing a local API for the native/engine editor host
 
 The service must not encode browser timeline widgets, graph layout, shortcut
-behavior, deprecated Web workflow, or state-preview UI in C++.
+behavior, deprecated rejected editor route workflow, or state-preview UI in C++.
 
 ### 5.5 Runtime Preview
 
@@ -232,7 +232,7 @@ Required:
 - document that source DCC authoring remains external
 - forbid full Animator/Sequencer clone scope
 - forbid gameplay FSM scope
-- forbid deprecated timeline-only Web pages as usable animation preview
+- forbid deprecated timeline-only rejected editor route pages as usable animation preview
 - define initial runtime animation document families
 - align with shared Resource Browser, cook/package validator, and runtime
   preview loop
@@ -310,7 +310,7 @@ Work items:
 | AN-EW-007 | Scrub/play controls | uses runtime preview protocol for sample/event result |
 | AN-EW-008 | Keyframe feedback | key/sample edits produce visible runtime target changes |
 | AN-EW-009 | Validation panel | shows import, schema, event, sampling, and package diagnostics |
-| AN-EW-010 | Editor surface test route | editor UI/data tests prove runtime-data edits without deprecated Web acceptance |
+| AN-EW-010 | Editor surface test route | editor UI/data tests prove runtime-data edits without deprecated rejected editor route acceptance |
 
 ### Stage 5: Scene Preview Integration
 
@@ -337,16 +337,16 @@ These are blocking violations:
 - making game-specific character/customer/stall/player FSMs part of Animation
   Editor scope
 - using old project animation helpers as runtime API shape
-- accepting a deprecated Web timeline, 2D canvas, HTML/CSS forms, or static screenshots as
+- accepting a deprecated rejected editor route timeline, 2D canvas, rejected form layout forms, or static screenshots as
   animation preview
 - calling Animation Editor usable before visible playback, scrub/step, keyframe
   feedback, and event timing feedback exist on a runtime preview target
 - adding a native animation editor app or immediate-mode fallback
-- making deprecated Web editor logic part of shipped runtime
+- making deprecated rejected editor route editor logic part of shipped runtime
 - hiding runtime state in editor-only timeline or graph layout data
 - validating progress only by drawing a timeline or node graph
 - expanding Resource/Package/File/Scene behavior without approved gates
-- requiring deprecated Web editor work for ordinary timeline, graph, template, or
+- requiring deprecated rejected editor route editor work for ordinary timeline, graph, template, or
   inspector changes
 
 ## 8. Verification
@@ -371,7 +371,7 @@ Focused future routes should include:
 ctest --preset windows-fast-gate -R "(Animation|Resource|Package|WorldScene|RenderScene)" --output-on-failure
 ```
 
-Deprecated Web editor commands are not active acceptance routes. Editor surface
+Deprecated rejected editor route editor commands are not active acceptance routes. Editor surface
 tests must prove runtime-data edits and preview-host integration.
 
 ## 9. Completion Definition

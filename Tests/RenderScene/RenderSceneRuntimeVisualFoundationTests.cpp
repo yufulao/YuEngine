@@ -306,7 +306,7 @@ constexpr const char *TEST_L1_SAMPLE_018_TRANSPARENT_PANEL_BLEND =
 constexpr const char *TEST_L1_SAMPLE_019_TEXTURED_GLASS_EMISSIVE_METAL =
     "RenderScene_L1Sample019RendersTexturedGlassEmissiveMetalMaterials";
 constexpr const char *TEST_BOUNDARY =
-    "RenderScene_RuntimeVisualFoundationNoEditorWebUiInputDependency";
+    "RenderScene_RuntimeVisualFoundationNoEditorUiInputDependency";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr char L1_VIS_001_OUTPUT_PATH[] = "Artifacts/L1Vis001/StaticOneCube.rvf";
@@ -4908,7 +4908,7 @@ int RenderSceneL1Vis002ReportsGeometryMissingLayerForCylinder() {
     return 0;
 }
 
-int RenderSceneRuntimeVisualFoundationNoEditorWebUiInputDependency() {
+int RenderSceneRuntimeVisualFoundationNoEditorUiInputDependency() {
     RenderSceneCameraFrameBinder binder;
     RenderScenePrimitiveGeometryBuilder builder;
     RenderSceneRuntimeFrameBuilder frame_builder;
@@ -5099,7 +5099,7 @@ int RunNamedTest(std::string_view name) {
     }
 
     if (name == TEST_BOUNDARY) {
-        return RenderSceneRuntimeVisualFoundationNoEditorWebUiInputDependency();
+        return RenderSceneRuntimeVisualFoundationNoEditorUiInputDependency();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

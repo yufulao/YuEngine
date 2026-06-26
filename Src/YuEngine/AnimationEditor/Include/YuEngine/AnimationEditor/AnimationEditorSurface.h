@@ -207,7 +207,7 @@ struct AnimationEditorTimelineSurfaceResult final {
     bool emitted_preview_feedback = false;
     bool mutated_runtime_data = false;
     bool opened_native_window = false;
-    bool used_web_timeline = false;
+    bool used_deprecated_timeline = false;
 
     bool Succeeded() const {
         return status == AnimationEditorSurfaceStatus::Success;
@@ -267,7 +267,7 @@ struct AnimationEditorTimelineWorkflowResult final {
     bool emitted_selected_key_feedback = false;
     bool mutated_runtime_data = false;
     bool opened_native_window = false;
-    bool used_web_timeline = false;
+    bool used_deprecated_timeline = false;
 
     bool Succeeded() const {
         return status == AnimationEditorSurfaceStatus::Success;
@@ -333,7 +333,7 @@ struct AnimationEditorStateEventPlaybackWorkflowResult final {
     bool event_window_wrapped = false;
     bool mutated_runtime_data = false;
     bool opened_native_window = false;
-    bool used_web_timeline = false;
+    bool used_deprecated_timeline = false;
     bool used_gameplay_fsm = false;
 
     bool Succeeded() const {

@@ -69,5 +69,5 @@ ctest --preset windows-fast-gate -R "(UiEditor|UiCore_|UiRuntime_|PreviewHostEdi
 ## Boundaries
 
 This slice does not complete a full UI Editor, style/theme system, template
-editor, Web/canvas designer, native editor shell, package/run validation,
+editor, rejected editor route/canvas designer, native editor shell, package/run validation,
 Scene Editor, Animation Editor, or final product visual closure.

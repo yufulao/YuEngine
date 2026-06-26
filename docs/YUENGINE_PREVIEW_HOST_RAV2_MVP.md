@@ -90,7 +90,7 @@ The capture proof uses the existing RuntimeAsset disk fixture generator and
 loader path, then validates loaded graph/status/ref records before calling the
 RenderScene three-primitive capture route. The successful path captures through
 RenderCore/RHI in the fast gate. No GDI viewer, CPU PPM substitute, screenshot,
-report, Web output, or editor mock scene is part of the acceptance route.
+report, rejected editor route output, or editor mock scene is part of the acceptance route.
 
 ## Current Blockers
 

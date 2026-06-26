@@ -168,7 +168,7 @@ into L0 completion.
 The L0 sample acceptance path must not:
 
 - introduce UI, GameAdapter, gameplay, or product-specific scene behavior;
-- require an editor, Web preview host, UI surface, or input handling to prove
+- require an editor, rejected editor route preview host, UI surface, or input handling to prove
   the pure runtime visual scene sample;
 - use old package runtime compatibility as sample proof;
 - expose D3D11, XAudio2, XInput, Win32, or other backend-native types through

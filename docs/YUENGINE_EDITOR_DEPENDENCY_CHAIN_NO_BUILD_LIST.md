@@ -49,9 +49,9 @@ document.
 
 ## Current Evidence Baseline
 
-The Web editor cleanup baseline is `540f986`. Deprecated browser/editor-web
-source, tests, and active wording have been removed or tombstoned by the Web
-cleanup task group. Web, HTML/CSS, DOM, React/Vite, browser-only canvas, static
+The rejected editor route editor cleanup baseline is `540f986`. Deprecated deprecated editor/editor route
+source, tests, and active wording have been removed or tombstoned by the rejected editor route
+cleanup task group. rejected editor route, rejected form layout, rejected document tree, rejected editor toolchain, editor-route-only canvas, static
 screenshots, and administrative-form pages are not active editor routes.
 
 `YuRuntimeAsset` now proves a first smoke route for deterministic files,
@@ -219,7 +219,7 @@ event timing, and visible target feedback or accepted headless sample output.
 
 UI preview needs YuEngine UI runtime layout/render output, resource diagnostics
 for sprites/textures/fonts/atlases/materials, coordinate adapter records, and
-runtime-layout parity tests. HTML/CSS layout is not an authority.
+runtime-layout parity tests. rejected form layout layout is not an authority.
 
 ### 7. Native/Engine Editor Panels
 
@@ -246,11 +246,11 @@ accepted. They are listed so future task creation can stay parallel and narrow.
 
 | Family | First batch after prerequisites | Must not include |
 | --- | --- | --- |
-| Scene | document header, object identity, transform records, editor-only sidecar split, duplicate/missing-id validation | native scene editor app, Web/canvas viewport, transform gizmo implementation, model/material/texture preview claims |
+| Scene | document header, object identity, transform records, editor-only sidecar split, duplicate/missing-id validation | native scene editor app, rejected editor route/canvas viewport, transform gizmo implementation, model/material/texture preview claims |
 | Animation | document header, clip metadata, track descriptors, event markers, editor-only sidecar split | gameplay FSM, state-machine editor, timeline-only UI, playback claims without runtime target feedback |
-| UI | UI file schema, node tree/layout/style/resource records, editor-only sidecar split, duplicate/missing-ref validation, coordinate spec | HTML/CSS preview, native app shell, game-specific windows, normal editor iteration requiring CMake rebuilds |
+| UI | UI file schema, node tree/layout/style/resource records, editor-only sidecar split, duplicate/missing-ref validation, coordinate spec | rejected form layout preview, native app shell, game-specific windows, normal editor iteration requiring CMake rebuilds |
 | Resource Browser | resource identity/type records, import settings vocabulary, diagnostics records, cook command boundary | asset database clone, old package parser, Game Adapter flow, UI-only resource picker with no runtime validation |
-| Preview Host | session lifecycle, frame/headless descriptor, camera state, resource diagnostics, selection/hit records, canonical scene proof contract | editor panels, UI runtime implementation, Scene runtime expansion, Animation runtime expansion, Web compatibility layer |
+| Preview Host | session lifecycle, frame/headless descriptor, camera state, resource diagnostics, selection/hit records, canonical scene proof contract | editor panels, UI runtime implementation, Scene runtime expansion, Animation runtime expansion, rejected editor route compatibility layer |
 
 ## No-Build-Yet List
 
@@ -267,7 +267,7 @@ sample binaries for the following until an explicit later gate approves them.
 - no immediate-mode native editor fallback target yet;
 - no editor plugin, extension, or launcher target yet;
 - no shared editor panel framework target yet;
-- no Web compatibility, browser shell, React/Vite, HTML/CSS, DOM, or canvas
+- no rejected editor route compatibility, browser shell, rejected editor toolchain, rejected form layout, rejected document tree, or canvas
   preview target under a new name;
 - no editor heartbeat, polling, or preview status path that enters durable
   runtime event streams.
@@ -303,7 +303,7 @@ sample binaries for the following until an explicit later gate approves them.
 - no scene hierarchy, inspector, viewport, transform gizmo, or drag/drop
   implementation yet;
 - no editor-only scene graph as source of truth;
-- no Web/canvas/static scene viewport fallback;
+- no rejected editor route/canvas/static scene viewport fallback;
 - no usable Scene Editor claim before model, texture, material, camera,
   transform feedback, and engine-rendered viewport or accepted headless preview
   are available through the shared preview host;
@@ -331,7 +331,7 @@ sample binaries for the following until an explicit later gate approves them.
 - no UI Editor native/engine surface target yet;
 - no hierarchy, inspector, template browser, theme editor, state-preview panel,
   coordinate adapter, or engine UI viewport implementation yet;
-- no HTML/CSS, DOM, browser canvas, or static screenshot preview under a
+- no rejected form layout, rejected document tree, browser canvas, or static screenshot preview under a
   different name;
 - no game-specific window migration or game-window validation samples;
 - no editor-only module dependency from shipped UI runtime;
@@ -355,7 +355,7 @@ Before any future editor implementation task is created, the task must state:
 - validator/cook/package/run evidence route;
 - focused tests and off-scope dependency scans;
 - exact blocker name for any missing lower runtime layer;
-- reason the task does not resurrect Web, native-app fallback, game-specific
+- reason the task does not resurrect rejected editor route, native-app fallback, game-specific
   migration, or editor-only runtime dependency.
 
 If the task cannot state those items, it remains documentation or review work.
@@ -370,7 +370,7 @@ The following work can continue without creating editor implementation targets:
 - preview-host implementation-gate review;
 - Resource Browser/import/cook diagnostics scope review;
 - Scene, Animation, and UI runtime document schema review;
-- audits that prove no deprecated Web route, native app fallback, or
+- audits that prove no deprecated rejected editor route route, native app fallback, or
   game-specific migration route is being revived.
 
 ## Verification For This Document

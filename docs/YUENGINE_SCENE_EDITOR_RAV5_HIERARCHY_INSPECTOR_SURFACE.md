@@ -53,7 +53,7 @@ This slice does not implement:
 - Resource Browser picker or import settings panel;
 - RuntimeAsset cook/load, package, original package compatibility, or product
   visual closure;
-- Web, canvas, HTML, CSS, GDI, manual screenshot, or report-only acceptance.
+- rejected editor route, canvas, rejected markup, rejected style, GDI, manual screenshot, or report-only acceptance.
 
 `YuSceneEditor` depends on `YuWorld` records. Lower runtime modules do not depend
 on `YuSceneEditor`.

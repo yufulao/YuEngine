@@ -84,7 +84,7 @@ accept:
 - remote cook service;
 - Unity/UE/DCC import bridge;
 - Resource Browser UI, Preview Host UI, Scene Editor, Animation Editor, UI
-  Editor, Web, or editor input;
+  Editor, rejected editor route, or editor input;
 - screenshots, manual inspection, CPU PPM, GDI, or software raster as final
   proof.
 

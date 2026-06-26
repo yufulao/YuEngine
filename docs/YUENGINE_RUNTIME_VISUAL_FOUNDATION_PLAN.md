@@ -17,7 +17,7 @@ that cannot produce view/capture proof, a scene system that cannot place
 objects, a material system that cannot bind texture slots, or an animation
 runtime that cannot interpolate keyframes is not a closed engine foundation.
 
-This is not editor scope, input scope, UI scope, Web scope, or gameplay scope.
+This is not editor scope, input scope, UI scope, rejected editor route scope, or gameplay scope.
 
 ## 1. Principle
 

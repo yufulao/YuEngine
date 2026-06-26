@@ -46,7 +46,7 @@ The current implementation proves these useful floors:
 | Cook/decode smoke | cache payloads and deterministic decoded payload records are stored for mesh/material/texture families |
 | Render path | loaded handles feed RenderScene records and RenderCore/RHI captures cube/cylinder/cone |
 | Oracle guard | CPU helper output is guarded behind runtime capture |
-| Upper-layer guard | editor, Web, UI, input, and GDI viewer dependencies are excluded from the smoke |
+| Upper-layer guard | editor, rejected editor route, UI, input, and GDI viewer dependencies are excluded from the smoke |
 
 These floors are enough to reject pure test-struct and helper-image claims. They
 are not enough to call RuntimeAsset v0 production-ready.
@@ -226,7 +226,7 @@ Acceptance shape:
 | RAV1-E | Evidence matrix and acceptance commands | review/evidence slice before implementation authorization |
 | RAV2-A | Import/cook command contract and deterministic disk fixture generator | first engine-owned command/API slice; writes source+cooked disk fixtures through File/VFS and exposes descriptors for RuntimeAsset graph load |
 
-Every implementation task must restate that editor, Web, UI, Game Adapter,
+Every implementation task must restate that editor, rejected editor route, UI, Game Adapter,
 original package parser, and external authoring bridge work are out of scope.
 RAV1-A is not an implementation task; it only records the contract and gate that
 later slices must obey.
@@ -280,7 +280,7 @@ RuntimeAsset v0 before this plan's exit criteria are met.
 Do not include in RuntimeAsset v0:
 
 - editor preview host implementation;
-- Web editor, browser canvas, UI editor, native editor shell, or viewport overlay;
+- rejected editor route editor, browser canvas, UI editor, native editor shell, or viewport overlay;
 - Game Adapter behavior;
 - old TouhouNewWorld package parser or original package compatibility;
 - external ecosystem, plugin-marketplace, or commercial-engine format
@@ -310,6 +310,6 @@ RuntimeAsset v0 RAV1 implementation split is ready only when:
 7. production scene loader output records feed RenderScene without test-private
    bridges;
 8. focused RuntimeAssetData tests and full `windows-fast-gate` pass;
-9. dependency scans prove no editor, Web, UI, Game Adapter, original package
+9. dependency scans prove no editor, rejected editor route, UI, Game Adapter, original package
    parser, external authoring bridge, report, screenshot, GDI viewer, or helper
    image path is part of acceptance.

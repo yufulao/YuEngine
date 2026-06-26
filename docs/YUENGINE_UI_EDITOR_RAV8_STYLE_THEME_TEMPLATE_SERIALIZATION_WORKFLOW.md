@@ -106,7 +106,7 @@ This slice still does not complete the full UI Editor. Remaining work includes:
 
 ## Boundaries
 
-This slice does not add a browser DOM/CSS/HTML/canvas designer, native shell
+This slice does not add a browser rejected document tree/rejected style/static form /canvas designer, native shell
 ownership, package/release closure, or final product visual closure.
 
 It does not accept static screenshots, manual visual claims, CPU/GDI oracle

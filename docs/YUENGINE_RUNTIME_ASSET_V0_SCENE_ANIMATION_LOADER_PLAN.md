@@ -258,7 +258,7 @@ RAV1-D does not authorize:
 - external DCC/FBX/glTF import policy;
 - gameplay object spawning, script VM/native bridge, save-game policy, or
   general World scene persistence;
-- Web, UI editor, Game Adapter, report/oracle ownership, screenshot/manual
+- rejected editor route, UI editor, Game Adapter, report/oracle ownership, screenshot/manual
   inspection, or GDI/software viewer acceptance.
 
 The loader may use existing World/Animation value contracts for preflight, but

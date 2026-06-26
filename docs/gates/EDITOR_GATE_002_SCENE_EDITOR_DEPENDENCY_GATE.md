@@ -116,7 +116,7 @@ Preview Host status.
 | Native/engine UI surface for editor panels | Yes for surface | BLOCKED | UI runtime evidence exists, but no Scene Editor native surface target is approved |
 | Scene hierarchy, inspector, gizmo, drag/drop, undo/redo | Yes for surface | BLOCKED | Editor workflow implementation is not approved by this gate |
 | Cook/package/run smoke for authored scenes | Before shippable editor claim | BLOCKED | Not required for the first scene-data slice, required before shippable editor data |
-| Deprecated Web editor, browser canvas, HTML/CSS, screenshots | No | NOT-REQUIRED-NOW | Explicitly rejected as authoritative preview or editor progress |
+| Deprecated rejected editor route editor, browser canvas, rejected form layout, screenshots | No | NOT-REQUIRED-NOW | Explicitly rejected as authoritative preview or editor progress |
 | Original package parser | No | NOT-REQUIRED-NOW | Later evidence/package gate only; not a first native scene prerequisite |
 | Unity/Unreal importer | No | NOT-REQUIRED-NOW | Reference separation only; no copied importer/API shape |
 | Final device-backed product visual closure | No | NOT-REQUIRED-NOW | Useful later, not a prerequisite for the first native scene gate |
@@ -153,7 +153,7 @@ Required acceptance for that slice:
 - Resource Browser UI;
 - Preview Host implementation changes unless a separate gate names a bridge;
 - original package parser, Unity/Unreal importer, or game-specific scene flow;
-- Web/canvas/static screenshot fallback.
+- rejected editor route/canvas/static screenshot fallback.
 
 ## `SE-DATA-001` Implementation Anchor
 
@@ -182,7 +182,7 @@ runtime output records or output counts.
 
 This implementation still does not create a native Scene Editor surface,
 hierarchy, inspector, viewport, transform gizmo, Resource Browser UI, Preview
-Host bridge, original package parser, Unity/Unreal importer, Web surface, or
+Host bridge, original package parser, Unity/Unreal importer, rejected editor route surface, or
 final product visual closure.
 
 ## Blocked Later Slices
@@ -209,7 +209,7 @@ Any future Scene Editor task must state:
 - no-mutation behavior for invalid data and small outputs;
 - validation/cook/load/preview evidence route;
 - focused tests and off-scope scans;
-- why the task does not revive Web, screenshots, original package parsing,
+- why the task does not revive rejected editor route, screenshots, original package parsing,
   Unity/Unreal importer shape, or product-layer scene flow.
 
 If the task cannot state these items, it remains architecture or review work.
@@ -224,7 +224,7 @@ The following are blocking violations:
 - claiming Resource Browser backend diagnostics are Resource Browser UI;
 - claiming a native Scene Editor is usable before resource selection,
   diagnostics, camera/viewport output, and transform feedback are integrated;
-- accepting Web, 2D canvas, HTML/CSS, CPU/GDI output, manual screenshots,
+- accepting rejected editor route, 2D canvas, rejected form layout, CPU/GDI output, manual screenshots,
   report/oracle output, or standalone samples as authoritative scene preview;
 - making RuntimeAsset, Resource, RenderScene, RenderCore, RHI, or World depend
   on editor-only code;
@@ -258,5 +258,5 @@ This gate is ready for review when:
 - the only first task-ready slice is the narrow `SE-DATA-001` scene document
   and sidecar split;
 - native Scene Editor surface, Resource Browser UI, original package parsing,
-  Unity/Unreal importers, Web editor, CPU/GDI/manual screenshot proof, and final
+  Unity/Unreal importers, rejected editor route editor, CPU/GDI/manual screenshot proof, and final
   device-backed product closure remain outside this task.

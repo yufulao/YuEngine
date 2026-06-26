@@ -54,7 +54,7 @@ launcher, original package compatibility, or broad editor tooling.
 L1 runtime data contract over lower File/VFS/Resource/RenderCore/RHI paths and
 L1 Asset/RenderScene/World/Animation runtime records.
 
-The gate is below editor, Web, UI, input, gameplay, and Game Adapter work. It is
+The gate is below editor, rejected editor route, UI, input, gameplay, and Game Adapter work. It is
 above individual lower-engine fixtures because it requires a cross-module data
 graph loaded from disk and consumed by the runtime render path.
 
@@ -114,7 +114,7 @@ This gate owns the proposal for:
 
 This gate does not own:
 
-- editor preview host sessions, Web editor panels, UI editor behavior, input
+- editor preview host sessions, rejected editor route editor panels, UI editor behavior, input
   routes, viewport overlays, or native editor shells;
 - old TouhouNewWorld package compatibility, original package parsers, original
   renderer layout, old report schemas, old runtime services, or Game Adapter
@@ -253,8 +253,8 @@ The implementation must prove the following in order:
    `BlockedByEnv` only for target display/D3D11 constraints.
 12. `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` proves CPU image
    helpers run only after the RHI/RenderCore capture source exists.
-13. `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` proves no
-    editor, Web, UI, input, GDI viewer, or software raster dependency is part of
+13. `RuntimeAssetData_DoesNotDependOnEditorUiInputOrGdiViewer` proves no
+    editor, rejected editor route, UI, input, GDI viewer, or software raster dependency is part of
     the closed-loop proof.
 
 RAV1-C through the current product-run slices now provide the required payload
@@ -308,7 +308,7 @@ Current slice status:
 | 10. Resource/Asset dependency edges | PASS |
 | 11. RenderCore/RHI capture | PASS |
 | 12. CPU oracle guard | PASS |
-| 13. no editor/Web/UI/input/GDI viewer dependency | PASS |
+| 13. no editor/rejected editor route/UI/input/GDI viewer dependency | PASS |
 | 14. cooked texture/material payload bridge | PASS |
 | 15. cooked shader/program RHI bridge | PASS |
 | 16. scene/animation loader no-mutation failures | PASS |
@@ -407,7 +407,7 @@ Implementation evidence for the next slice must include:
 - label discovery for File, Resource, Asset, RenderScene, RenderCore, RHI,
   Animation, RuntimeVisualScene, Fast, PerformanceSmoke, EvidenceOracle, and
   default HardwareSmoke isolation;
-- public-header and production dependency scans proving no editor/Web/UI/input,
+- public-header and production dependency scans proving no editor/rejected editor route/UI/input,
   Game Adapter, backend-native public leak, GDI viewer, report, screenshot, or
   original-game parser dependency;
 - artifact hygiene proving generated files are ignored or explicitly approved
@@ -471,7 +471,7 @@ The following are blocking violations:
 
 - starting implementation before the clean `main` baseline and current evidence
   matrix are resolved or explicitly waived in the task thread;
-- depending on editor, Web, UI, input, Game Adapter, old runtime reports, or
+- depending on editor, rejected editor route, UI, input, Game Adapter, old runtime reports, or
   original package compatibility;
 - using `YuRuntimeVisualCameraTweenViewer`, GDI, software raster, CPU semantic
   PPM, image artifacts, screenshots, reports, logs, sleeps, or manual

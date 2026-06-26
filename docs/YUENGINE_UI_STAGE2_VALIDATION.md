@@ -21,7 +21,7 @@ Included:
 Excluded:
 
 - `UI-S3-001+` UIManager runtime framework.
-- deprecated Web Editor backlog work.
+- deprecated rejected editor route Editor backlog work.
 - native editor runtime/backend import.
 - RHI, D3D11, RenderCore, or backend handles in `Src/YuEngine/UiCore`.
 - game-specific window work and UIManager lifecycle policy.
@@ -142,9 +142,9 @@ Generic UIManager runtime and runtime editor host work remain future stages:
   cache/release policy begin at `UI-S3-001+`.
 - Runtime editor host work starts from schema, local backend service, engine
   preview host output, and runtime diagnostics.
-- Deprecated Web Editor work, TypeScript/React-style frontend workspace, and
+- Deprecated rejected editor route Editor work, editor script/editor-route-style editor route workspace, and
   browser preview protocol tasks are not active acceptance routes.
 - Normal hierarchy/inspector/viewport/template/theme/state-preview iteration
-  must write runtime data and must not be modeled as deprecated Web shell targets.
+  must write runtime data and must not be modeled as deprecated rejected editor route shell targets.
 - Native app editors, immediate-mode editor fallbacks, and game-window migration
   are out of scope.

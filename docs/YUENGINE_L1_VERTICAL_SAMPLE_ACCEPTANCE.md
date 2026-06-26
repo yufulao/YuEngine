@@ -32,7 +32,7 @@ scope.
 
 The current value-contract sample is necessary but not sufficient for L1
 runtime visual closure. L1 must also carry a pure runtime visual sample that
-does not depend on editor, Web, UI, or input work.
+does not depend on editor, rejected editor route, UI, or input work.
 
 That visual sample must be built from the shallow-to-deep foundation ladder in
 `docs/YUENGINE_RUNTIME_VISUAL_FOUNDATION_PLAN.md`. Camera capture, scene
@@ -116,7 +116,7 @@ section 3.
 | `L1-SAMPLE-008` | Sample state roundtrips through value streams | `Sample_L1VerticalPrep_RoundTripsStateAndCleansActiveRecords` covers serialize/reload proof | Pass | `ctest --preset windows-fast-gate -R "^Sample_L1VerticalPrep_RoundTripsStateAndCleansActiveRecords$" --output-on-failure` | File/profile persistence policy remains outside Serialize core | File/Package dependency inside Serialize, old save compatibility, object construction by Serialize |
 | `L1-SAMPLE-009` | Shutdown and cleanup leave no active records | Cleanup proof covers world/runtime/resource/asset active records or explicit unavailable states | Pass | `Sample_L1VerticalPrep_RoundTripsStateAndCleansActiveRecords` | Native device shutdown proof stays in L0 sample/hardware rows | Hidden partial cleanup, generated-output proof, sample-owned lower lifecycles |
 | `L1-SAMPLE-010` | Debug/Release/Fast validation route is documented | Fast route passes `13/13`; Release `YuSampleTests` route passes `6/6`; native Debug/Release sample scripts print accepted PASS lines with explicit `gamepad=graded_skip` | StageClose | Fast command row in section 3; Release command row in section 3; native L0 sample route from `docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md` | Strict XInput hardware proof remains `BlockedByEnv`; generated outputs must remain ignored | Treating Debug-only evidence as complete, missing release command, debug overlay as runtime dependency |
-| `L1-SAMPLE-011` | Runtime visual scene captures a deterministic multi-object camera-tween sequence | RVF-016/018/019 and RuntimeAssetData device-backed visual/product-run rows provide checked-in runtime visual evidence | Pass | `ctest --preset windows-fast-gate -R "RenderScene_L1Sample(016|018|019)" --output-on-failure`; RuntimeAssetData visual/product-run focused commands; hardware RuntimeAssetData D3D11 smoke on target machine | Target D3D11/display can be `BlockedByEnv` only on unsupported machines; current machine passes the device-backed RuntimeAsset visual row | Editor/Web/UI/input dependency, standalone D3D sample bypass, manual-only screenshot proof, product gameplay scene, sample-only animation math presented as animation runtime |
+| `L1-SAMPLE-011` | Runtime visual scene captures a deterministic multi-object camera-tween sequence | RVF-016/018/019 and RuntimeAssetData device-backed visual/product-run rows provide checked-in runtime visual evidence | Pass | `ctest --preset windows-fast-gate -R "RenderScene_L1Sample(016|018|019)" --output-on-failure`; RuntimeAssetData visual/product-run focused commands; hardware RuntimeAssetData D3D11 smoke on target machine | Target D3D11/display can be `BlockedByEnv` only on unsupported machines; current machine passes the device-backed RuntimeAsset visual row | Editor/rejected editor route/UI/input dependency, standalone D3D sample bypass, manual-only screenshot proof, product gameplay scene, sample-only animation math presented as animation runtime |
 | `L1-SAMPLE-012` | Runtime visual blocker report names the missing layer exactly | Missing-layer diagnostics exist for camera, geometry/model, material slots, shader/pipeline, scene placement, animation, transform application, RenderScene, RenderCore/RHI, capture, resource resolution, and camera tween sampling | Pass | Same route as `L1-SAMPLE-011`; on failure report one exact layer such as camera, geometry/model path, material texture slots, shader/pipeline, scene placement, animation interpolation, transform application, RenderScene multi-entity, RenderCore multi-draw, RHI capture, camera tween sampling, or resource resolution | None for semantic blockers | Hiding missing visual layer behind L0/L1 value pass, generic "not supported" without owner layer |
 
 ## 6. Relationship To L0 Sample Acceptance
@@ -135,7 +135,7 @@ The boundary is:
 - an L1 prep line printed by `YuAssetSmokeDemo` is additional evidence only and
   does not replace the L1 fast/release value-contract command rows;
 - the runtime visual scene route is an L1 closure requirement and must not be
-  deferred to editor work, UI work, Web preview work, or input work;
+  deferred to editor work, UI work, rejected editor route preview work, or input work;
 - the runtime visual scene route must consume the foundation ladder from
   `docs/YUENGINE_RUNTIME_VISUAL_FOUNDATION_PLAN.md` rather than appearing as a
   one-off demo.
@@ -176,7 +176,7 @@ blocker.
 The L1 vertical sample acceptance path must not:
 
 - introduce UI, GameAdapter, gameplay, or product-specific scene behavior;
-- require editor, Web, UI, or input work to satisfy the pure runtime visual
+- require editor, rejected editor route, UI, or input work to satisfy the pure runtime visual
   scene sample;
 - claim the final visual sample is valid without first proving or explicitly
   blocking camera, scene placement, geometry/model, material texture slots,
@@ -215,7 +215,7 @@ The L1 vertical sample acceptance path must not:
 7. It requires the runtime visual foundation ladder for L1 closure before the
    final scene route.
 8. It requires a pure runtime visual scene route for L1 closure and does not
-   defer that route to editor, Web, UI, or input work.
+   defer that route to editor, rejected editor route, UI, or input work.
 9. It preserves the forbidden scope from the L0 matrix, bridge audit, L1
    runtime matrix, and L0 sample acceptance document.
 10. `ENG-178VQ` verifies this document together with

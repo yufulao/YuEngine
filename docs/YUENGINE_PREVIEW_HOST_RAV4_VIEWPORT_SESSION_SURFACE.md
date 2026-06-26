@@ -8,7 +8,7 @@ Status: Implementation slice
 
 This slice adds the first bounded viewport-session surface over the accepted
 Preview Host frame path. It is still local engine tooling, not a native editor
-application and not a web/canvas/static screenshot surface.
+application and not a rejected editor route/canvas/static screenshot surface.
 
 The surface consumes:
 

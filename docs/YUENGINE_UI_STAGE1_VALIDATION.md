@@ -19,7 +19,7 @@ Excluded:
 
 - Stage2 Text/Image/Button/Slider/GridView component implementation.
 - UIManager runtime lifecycle/config/window stack.
-- deprecated Web Editor runtime preview protocol.
+- deprecated rejected editor route Editor runtime preview protocol.
 - native editor runtime import.
 - RHI, D3D11, or backend handles in `Src/YuEngine/UiCore`.
 

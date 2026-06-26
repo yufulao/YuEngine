@@ -532,7 +532,7 @@ constexpr const char *TEST_LOAD_RENDER =
 constexpr const char *TEST_CPU_ORACLE =
     "RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore";
 constexpr const char *TEST_NO_UPPER =
-    "RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer";
+    "RuntimeAssetData_DoesNotDependOnEditorUiInputOrGdiViewer";
 constexpr const char *TEST_PREVIEW_HOST_CAPTURE =
     "PreviewHost_ConsumesRuntimeAssetGraphAndCapturesThroughRhi";
 constexpr const char *TEST_PREVIEW_HOST_COMMAND_OUTPUT =
@@ -10679,7 +10679,7 @@ int RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore() {
     return 0;
 }
 
-int RuntimeAssetDataDoesNotDependOnEditorWebUiInputOrGdiViewer() {
+int RuntimeAssetDataDoesNotDependOnEditorUiInputOrGdiViewer() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("NoUpper"), &table)) {
         return Fail("mount setup failed");
@@ -12305,7 +12305,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_RUNTIME_DEPENDENCIES, RuntimeAssetDataLoadRegistersResourceAndAssetDependencyEdges},
     {TEST_LOAD_RENDER, RuntimeAssetDataRenderClosedLoopCapturesCubeCylinderConeThroughRhi},
     {TEST_CPU_ORACLE, RuntimeAssetDataCpuPpmOracleDoesNotBypassRhiRenderCore},
-    {TEST_NO_UPPER, RuntimeAssetDataDoesNotDependOnEditorWebUiInputOrGdiViewer},
+    {TEST_NO_UPPER, RuntimeAssetDataDoesNotDependOnEditorUiInputOrGdiViewer},
     {TEST_PREVIEW_HOST_CAPTURE, PreviewHostConsumesRuntimeAssetGraphAndCapturesThroughRhi},
     {TEST_PREVIEW_HOST_COMMAND_OUTPUT, PreviewHostConsumesImportCookCommandOutputs},
     {TEST_PREVIEW_HOST_DIAGNOSTICS, PreviewHostReportsBoundedResourceDiagnostics},

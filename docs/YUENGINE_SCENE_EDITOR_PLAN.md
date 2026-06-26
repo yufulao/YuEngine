@@ -30,7 +30,7 @@ Related:
 
 Scene Editor work must be a narrow scene-assembly data editor and validator
 with a real engine viewport. It is not a full Unity or Unreal editor clone, but
-the minimum usable floor is a Unity-like operational editor, not a 2D web mock.
+the minimum usable floor is a Unity-like operational editor, not a 2D rejected editor route mock.
 
 The useful first direction is:
 
@@ -77,7 +77,7 @@ Scene Editor does not own:
 
 - a general editor plugin ecosystem
 - a native C++ editor app or immediate-mode fallback
-- a 2D canvas or HTML page as core scene preview
+- a 2D canvas or rejected markup page as core scene preview
 - a copied Unity Scene/GameObject/Component editor model
 - a copied Unreal World/Actor/Component editor model
 - gameplay scene flow, quest triggers, player spawn policy, save-slot policy, or
@@ -173,7 +173,7 @@ Owns:
 
 The scene image must come from the engine preview host. Editor overlays may
 draw selection/gizmo guides, but they must not fake the scene viewport with
-forbidden HTML/CSS, a browser-only canvas, or static screenshots.
+forbidden rejected form layout, a editor-route-only canvas, or static screenshots.
 
 ### 5.3 Local Scene Editor Service
 
@@ -187,8 +187,8 @@ Owns backend support only:
 - runtime preview session control
 - local editor-host API or IPC contract
 
-The service must not encode frontend panels, hierarchy composition, gizmo
-behavior, browser panels, deprecated Web workflow, or editor templates in C++.
+The service must not encode editor route panels, hierarchy composition, gizmo
+behavior, browser panels, deprecated rejected editor route workflow, or editor templates in C++.
 
 ### 5.4 Runtime Preview
 
@@ -214,14 +214,14 @@ Those overlays are never runtime scene data.
 ### Stage 0: Boundary Freeze
 
 Goal: prevent scene editor work from becoming a full editor ecosystem or a
-forbidden Web mock.
+forbidden rejected editor route mock.
 
 Required:
 
 - document Scene Editor as a runtime-data editor, not a copied Unity/Unreal
   editor
 - forbid a native C++ editor shell fallback
-- forbid Web, 2D canvas, HTML/CSS, and static screenshot preview as core
+- forbid rejected editor route, 2D canvas, rejected form layout, and static screenshot preview as core
   acceptance
 - identify exact runtime scene records that are editable
 - identify editor-only state that must not export
@@ -276,7 +276,7 @@ Work items:
 | ID | Work item | Acceptance |
 | --- | --- | --- |
 | SE-EW-001 | Scene hierarchy | create, delete, duplicate, reorder, and select runtime object records |
-| SE-EW-002 | Transform inspector | edits runtime transform fields, not CSS or editor-only placement |
+| SE-EW-002 | Transform inspector | edits runtime transform fields, not rejected style or editor-only placement |
 | SE-EW-003 | Component inspector | edits generic component attachment/resource binding records only |
 | SE-EW-004 | Resource picker | uses shared Resource Browser and typed Import Settings |
 | SE-EW-005 | Engine viewport bridge | viewport image/status comes from engine preview host |
@@ -285,7 +285,7 @@ Work items:
 | SE-EW-008 | Model/material/texture entry | mesh/material/texture refs can be selected through Resource Browser and previewed |
 | SE-EW-009 | Undo/redo commands | command log mutates runtime document data deterministically |
 | SE-EW-010 | Validation panel | shows schema, resource, package, restore-plan, and preview diagnostics |
-| SE-EW-011 | Editor surface test route | editor UI/data tests prove runtime-data edits without deprecated Web acceptance |
+| SE-EW-011 | Editor surface test route | editor UI/data tests prove runtime-data edits without deprecated rejected editor route acceptance |
 
 ### Stage 4: Runtime Preview And Diagnostics
 
@@ -327,14 +327,14 @@ These are blocking violations:
   policy into Scene Editor scope
 - using old project scene managers as runtime API shape
 - adding a native scene editor app or immediate-mode fallback
-- accepting deprecated Web, 2D canvas, HTML/CSS forms, or static screenshots as scene
+- accepting deprecated rejected editor route, 2D canvas, rejected form layout forms, or static screenshots as scene
   preview
 - accepting L0/L1 completion, RHI fixture captures, RenderCore fixture passes,
   RenderScene packet values, or isolated sample screenshots as Scene Editor
   viewport proof
 - calling Scene Editor usable before model/texture/material loading entry,
   camera controls, transform gizmo, and engine viewport exist
-- making the runtime depend on deprecated Web editor code
+- making the runtime depend on deprecated rejected editor route editor code
 - making editor-only selection/camera/gizmo state part of runtime scene data
 - bypassing scene restore plan and apply-time proof for preview
 - making RenderScene, AudioScene, Resource, Package, or File expand outside
@@ -364,7 +364,7 @@ Focused future routes should include:
 ctest --preset windows-fast-gate -R "(WorldScene|RenderScene|AudioScene|Resource|Package)" --output-on-failure
 ```
 
-Deprecated Web editor commands are not active acceptance routes. Editor surface
+Deprecated rejected editor route editor commands are not active acceptance routes. Editor surface
 tests must prove runtime-data edits and preview-host integration.
 
 ## 9. Completion Definition

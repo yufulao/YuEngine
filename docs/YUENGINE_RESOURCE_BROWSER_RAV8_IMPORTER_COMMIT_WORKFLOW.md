@@ -60,5 +60,5 @@ ctest --preset windows-fast-gate -R "(ResourceBrowserDiagnostics_|ResourceBrowse
 ## Boundaries
 
 This slice does not implement an original package parser, broad DCC importer,
-drag/drop UI, native window launch, Web preview, external Unity/Unreal/DCC SDK
+drag/drop UI, native window launch, rejected editor route preview, external Unity/Unreal/DCC SDK
 dependency, final visual proof, or product completeness claim.

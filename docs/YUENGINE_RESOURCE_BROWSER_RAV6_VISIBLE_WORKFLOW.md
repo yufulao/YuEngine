@@ -66,6 +66,6 @@ ctest --preset windows-fast-gate -R "(ResourceBrowserSurface_|ResourceBrowserVis
 ## Boundaries
 
 This slice does not complete a full Resource Browser UI, asset manager,
-original package importer, drag/drop DCC import, Unity/UE bridge, Web UI,
+original package importer, drag/drop DCC import, Unity/UE bridge, rejected editor route UI,
 native editor shell, Preview Host rendering, Scene Editor, Animation Editor,
 UI Editor, package/run validation, or final product visual closure.

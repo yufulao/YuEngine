@@ -27,7 +27,7 @@ UiEditorRuntimeDocument
 -> UiEditor preview feedback records
 ```
 
-The slice does not create a native UI Editor shell, design surface, Web page,
+The slice does not create a native UI Editor shell, design surface, rejected editor route page,
 browser canvas, template editor, style/theme editor, or package/cook workflow.
 It also does not mutate runtime data.
 
@@ -41,7 +41,7 @@ The accepted behavior is:
 - Preview Host frame feedback is required when requested
 - missing Preview Host feedback does not write partial hierarchy or preview
   records
-- boundary flags stay false for runtime mutation, native window, and Web/canvas
+- boundary flags stay false for runtime mutation, native window, and rejected editor route/canvas
 
 This is not UI Editor completion. Remaining work includes full inspector
 editing, resource picker/import settings, state preview, component editing,

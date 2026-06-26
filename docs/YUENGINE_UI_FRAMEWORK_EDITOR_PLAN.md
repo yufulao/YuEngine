@@ -40,9 +40,9 @@ The following are explicitly out of scope:
 - making config tables part of the current UI scope
 - making editor-only code part of shipped game runtime
 - making the game runtime depend on editor-only code
-- forbidden restoration of deprecated Web Editor, deprecated Web frontend workspace, React/Vite workflow, or
-  HTML/CSS/browser-only preview as active editor direction
-- forbidden acceptance of HTML/CSS, form UI, 2D canvas sketches, or static screenshots as
+- forbidden restoration of deprecated rejected editor route Editor, deprecated rejected editor route editor route workspace, rejected editor toolchain workflow, or
+  rejected form layout/editor-route-only preview as active editor direction
+- forbidden acceptance of rejected form layout, form UI, 2D canvas sketches, or static screenshots as
   core UI editor preview
 
 The only allowed use of the old framework is as a reference for generic
@@ -136,8 +136,8 @@ Does not own:
 ## 3. UI Runtime Editor Direction
 
 The UI Editor direction is native/engine runtime preview host over runtime UI
-data. Web is no longer a YuEngine editor direction. The earlier Web Editor,
-deprecated Web frontend workspace, TypeScript/React/Vite, HTML/CSS, and browser-only canvas
+data. rejected editor route is no longer a YuEngine editor direction. The earlier rejected editor route Editor,
+deprecated rejected editor route editor route workspace, rejected editor toolchain, rejected form layout, and editor-route-only canvas
 approach is retained only as a deprecated anti-pattern.
 
 The editor architecture is:
@@ -155,8 +155,8 @@ runtime UI records and preview-host output. Editing hierarchy panels, inspector
 controls, templates, themes, state-preview UI, drag/drop, shortcuts, and
 workflow must write runtime data that can validate, cook, preview, and package.
 
-HTML/CSS output, administrative-form styling, React/Vite pages, or a
-browser-only canvas mock is not acceptable core UI preview.
+rejected form layout output, administrative-form styling, rejected editor toolchain pages, or a
+editor-route-only canvas mock is not acceptable core UI preview.
 
 C++ is allowed for stable runtime/editor-host contracts:
 
@@ -165,8 +165,8 @@ C++ is allowed for stable runtime/editor-host contracts:
 - cook/asset validation bridge
 - runtime preview protocol and preview-host control
 
-C++ must not reintroduce a deprecated Web editor shell, browser panel model, React/Vite
-template catalog, HTML/CSS style/theme workflow, or browser-only state-preview
+C++ must not reintroduce a deprecated rejected editor route editor shell, browser panel model, rejected editor toolchain
+template catalog, rejected form layout style/theme workflow, or editor-route-only state-preview
 path.
 
 ### 3.1 Editor Surface
@@ -185,7 +185,7 @@ Owns:
 - keyboard shortcuts and editor workflow
 
 The editor surface edits runtime data files. It must not become a game runtime
-dependency, and it must not be implemented as a deprecated Web shell or browser-only
+dependency, and it must not be implemented as a deprecated rejected editor route shell or editor-route-only
 preview path.
 
 ### 3.2 Local Editor Service
@@ -204,7 +204,7 @@ Owns:
 The service is tooling. It is not part of shipped runtime.
 It may be implemented in C++ where it directly touches YuEngine runtime
 contracts, but it must expose stable editor-host APIs instead of encoding
-browser panels or deprecated Web catalogs in C++.
+browser panels or deprecated rejected editor route catalogs in C++.
 
 ### 3.3 Engine Preview
 
@@ -220,18 +220,18 @@ Allowed preview modes:
 
 Not allowed:
 
-- reimplementing runtime layout rules in deprecated Web code
-- making deprecated Web DOM the game UI runtime
-- forbidden acceptance of an HTML/CSS-styled page as the UI editor preview
-- adding a deprecated Web editor compatibility fallback
+- reimplementing runtime layout rules in deprecated rejected editor route code
+- making deprecated rejected editor route rejected document tree the game UI runtime
+- forbidden acceptance of an rejected form layout-styled page as the UI editor preview
+- adding a deprecated rejected editor route editor compatibility fallback
 
 ### 3.4 Layout Coordinate Boundary
 
-This is a required boundary because HTML/CSS and engine UI layout do not share
+This is a required boundary because rejected form layout and engine UI layout do not share
 the same model.
 
-HTML/CSS must not be used as the editor preview or layout authority. CSS
-`border-box`, DOM `left/top`, flex, grid, browser padding, and browser border
+rejected form layout must not be used as the editor preview or layout authority. rejected style
+`border-box`, rejected document tree `left/top`, flex, grid, browser padding, and browser border
 behavior are not YuEngine runtime layout semantics.
 
 YuEngine runtime layout data is the source of truth:
@@ -261,8 +261,8 @@ editorViewportHeight = runtimeHeight * scale
 
 The inverse conversion is required for drag and resize operations. Dragging a
 node updates runtime layout fields according to the current anchor preset; it
-must not infer anchor semantics from display rect fields alone. CSS
-`left/top/width/height` is a forbidden historical Web representation, not an
+must not infer anchor semantics from display rect fields alone. rejected style
+`left/top/width/height` is a forbidden historical rejected editor route representation, not an
 editor data contract.
 
 Required rules:
@@ -274,7 +274,7 @@ Required rules:
 - stretch-edge drags update min/max offsets
 - selection boxes, resize handles, guides, and borders are editor overlays
   and never part of runtime rect data
-- browser fast preview and JavaScript/TypeScript rect solvers are deprecated and
+- browser fast preview and JavaScript/editor script rect solvers are deprecated and
   must not be used as acceptance
 - runtime/headless preview is authoritative when any editor overlay disagrees
   with engine layout
@@ -294,9 +294,9 @@ Reference use is constrained to generic behavior.
 | Unity UGUI | rect/anchor/pivot, common component behavior | Canvas rebuild model as-is, Unity object model |
 | TextMeshPro | font asset/glyph/fallback concepts | full TMP feature parity in first slice |
 | Unreal Slate/UMG | invalidation, retainer-like caching, UI performance vocabulary | Unreal editor/runtime architecture |
-| Deprecated Web editor attempt | historical anti-pattern for browser shell and DOM preview limits | active Web editor route, React/Vite workflow, HTML/CSS preview, or runtime layout semantics |
-| YuEngine `UiRectTransform` and runtime rect math | authoritative anchors, offsets, pivot, margin, padding, DPI, safe-area, engine rect/content rect semantics | CSS box model, browser layout policy, DOM coordinate semantics |
-| YuEngine editor preview host | engine-rendered viewport/frame/status/diagnostics for UI runtime data | browser-only visual fake, static screenshot, or HTML admin surface |
+| Deprecated rejected editor route editor attempt | historical anti-pattern for browser shell and rejected document tree preview limits | active rejected editor route editor route, rejected editor toolchain workflow, rejected form layout preview, or runtime layout semantics |
+| YuEngine `UiRectTransform` and runtime rect math | authoritative anchors, offsets, pivot, margin, padding, DPI, safe-area, engine rect/content rect semantics | rejected style box model, browser layout policy, rejected document tree coordinate semantics |
+| YuEngine editor preview host | engine-rendered viewport/frame/status/diagnostics for UI runtime data | editor-route-only visual fake, static screenshot, or rejected markup admin surface |
 
 Each landing task must record:
 
@@ -319,7 +319,7 @@ Required:
 - remove game-window sample controllers and tests
 - remove the old game-window matrix
 - rewrite validation to cover only generic UIManager runtime records
-- document Deprecated Web Editor as rejected historical direction
+- document Deprecated rejected editor route Editor as rejected historical direction
 - document native/engine preview host as the only editor direction
 - keep existing UI Core, component, and UIManager generic runtime tests
 
@@ -392,7 +392,7 @@ and accepted.
 ### Stage 4: Runtime Editor Foundation And Preview
 
 Goal: start UI editor tooling around runtime files and connect it to the engine
-UI runtime preview path without Web as an editor direction.
+UI runtime preview path without rejected editor route as an editor direction.
 
 Work items:
 
@@ -409,7 +409,7 @@ Work items:
 | UI-EW-009 | Layout coordinate spec | documents engine runtime rects, native/editor viewport overlay rects, y-axis conversion, pan/zoom, DPI, safe-area, border/overlay exclusion |
 | UI-EW-010 | Coordinate adapter | converts engine rects to editor viewport rects and back; drag/resize updates runtime offsets instead of display-only fields |
 | UI-EW-011 | Runtime layout parity tests | editor overlay solver matches YuEngine runtime golden fixtures; engine preview result is authoritative |
-| UI-EW-012 | Engine UI viewport | UI layout/style/resource data renders through YuEngine UI runtime, not HTML/CSS |
+| UI-EW-012 | Engine UI viewport | UI layout/style/resource data renders through YuEngine UI runtime, not rejected form layout |
 | UI-EW-013 | UI resource preview | sprites, textures, fonts, atlases, materials, and missing-resource diagnostics are visible through engine preview |
 
 ## 6. Hard Blocks
@@ -421,21 +421,21 @@ These are blocking violations:
 - recreating the old game-window matrix
 - adding native app/editor targets as engine capabilities
 - keeping a native editor shell fallback
-- adding C++ targets for deprecated Web editor shell, panel model, template catalog,
+- adding C++ targets for deprecated rejected editor route editor shell, panel model, template catalog,
   style/theme editing, or state-preview workflow
 - moving window lifecycle into UI Core
 - making UI runtime depend on editor-only modules
-- making deprecated Web Editor logic part of shipped runtime
+- making deprecated rejected editor route Editor logic part of shipped runtime
 - requiring CMake/C++ rebuild for normal editor UI, template, theme, or state
   preview changes
-- accepting deprecated Web shell, HTML/CSS, 2D canvas sketches, or static screenshots as
+- accepting deprecated rejected editor route shell, rejected form layout, 2D canvas sketches, or static screenshots as
   core UI editor preview
 - calling UI Editor usable before engine UI runtime viewport/frame/diagnostics
   are available
-- using HTML/CSS border-box as runtime layout semantics
-- exporting DOM `left/top/width/height` as authoritative runtime layout without
+- using rejected form layout border-box as runtime layout semantics
+- exporting rejected document tree `left/top/width/height` as authoritative runtime layout without
   anchor/offset/pivot conversion
-- letting deprecated Web preview disagree with the runtime layout solver without a failing
+- letting deprecated rejected editor route preview disagree with the runtime layout solver without a failing
   parity test
 - making config tables mandatory for current UI Framework work
 - implementing Grid/List by materializing all items
@@ -473,13 +473,13 @@ The UI Framework first round is complete only when:
 - static atlas path is primary and dynamic atlas path is bounded
 - UIManager runtime records pass lifecycle, layer, map, stack, args, and release
   tests
-- Web Editor foundation is tombstoned as a rejected direction
+- rejected editor route Editor foundation is tombstoned as a rejected direction
 - UI Editor has an engine UI runtime viewport/frame/status path through the
   shared preview host
 - sprites, textures, fonts, atlas refs, style refs, and missing-resource
   diagnostics are visible through engine preview
 - UI Editor layout uses a documented coordinate adapter instead of treating
-  HTML/CSS border-box as runtime layout
+  rejected form layout border-box as runtime layout
 - editor overlay preview is covered by runtime-layout parity tests against the
   YuEngine authoritative layout solver
 - no native app/editor engine capability remains
@@ -503,5 +503,5 @@ Not allowed:
 - implement a named old game window
 - validate UI Framework using a game-specific panel
 - build native app editor shell
-- keep a deprecated Web fallback editor path
-- add a deprecated C++ Web editor shell/panel/template/theme/state-preview target
+- keep a deprecated rejected editor route fallback editor path
+- add a deprecated C++ rejected editor route editor shell/panel/template/theme/state-preview target

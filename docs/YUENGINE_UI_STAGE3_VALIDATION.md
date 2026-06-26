@@ -23,7 +23,7 @@ Excluded:
 - game-specific windows
 - old game-window batches
 - native app/editor targets
-- deprecated Web Editor implementation details
+- deprecated rejected editor route Editor implementation details
 - config table integration
 - gameplay manager adapters
 - moving lifecycle into UI Core
@@ -73,7 +73,7 @@ Rejected:
 - using old game windows as validation samples
 - treating game-window work as UI Framework progress
 - adding native app/editor code as engine capability
-- retaining a deprecated Web fallback editor path
+- retaining a deprecated rejected editor route fallback editor path
 
 ## 5. Focused Validation Command
 
@@ -98,5 +98,5 @@ UiRuntime_PanelParameter_*
 This validation document does not imply UI Framework completion. It only records
 that the generic UIManager runtime framework first slice has evidence. UI Core,
 components, Grid/List virtualization, invalidation, atlas, batching, and runtime
-editor-host work still have their own gates. Deprecated Web Editor work is not
+editor-host work still have their own gates. Deprecated rejected editor route Editor work is not
 an active gate.

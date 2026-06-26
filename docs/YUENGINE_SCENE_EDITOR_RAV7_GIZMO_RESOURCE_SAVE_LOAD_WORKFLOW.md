@@ -62,7 +62,7 @@ The accepted behavior is:
 - editor-only sidecars are counted as skipped for runtime stream proof;
 - missing gizmo sidecar and save/load failures reject without committing gizmo,
   picker, or save/load rows;
-- no native window, Web/canvas fallback, CPU oracle, manual screenshot, or
+- no native window, rejected editor route/canvas fallback, CPU oracle, manual screenshot, or
   external Unity/Unreal/DCC bridge is introduced.
 
 ## Validation

@@ -392,7 +392,7 @@ int AnimationEditorSurfaceBuildsClipTrackTimelineFromRuntimeRecords() {
     }
 
     if (result.mutated_runtime_data || result.opened_native_window ||
-        result.used_web_timeline) {
+        result.used_deprecated_timeline) {
         return Fail("animation editor boundary flags changed");
     }
 
@@ -896,7 +896,7 @@ int AnimationEditorStateEventWorkflowBindsVisiblePlaybackStateAndEvents() {
         !result.consumed_event_records || !result.consumed_timeline_workflow ||
         !result.built_visible_playback_feedback ||
         result.used_gameplay_fsm || result.opened_native_window ||
-        result.used_web_timeline || result.mutated_runtime_data) {
+        result.used_deprecated_timeline || result.mutated_runtime_data) {
         return Fail("animation editor state event workflow flags mismatch");
     }
 
