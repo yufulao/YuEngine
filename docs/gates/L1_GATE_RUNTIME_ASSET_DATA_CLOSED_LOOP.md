@@ -239,33 +239,36 @@ The implementation must prove the following in order:
 6. `RuntimeAssetData_SceneReferencesMeshMaterialTextureShader` proves the scene
    file references mesh, material, texture, shader/program, camera, and
    animation data by typed ids.
-7. `RuntimeAssetData_LoadCreatesRenderSceneRuntimeRecords` proves loaded data
+7. `RuntimeAssetData_CameraTweenDescriptorLoadsFromDiskSceneReference` proves
+   camera/tween is a first-class source/cooked disk descriptor and loaded graph
+   resource, not an inline scene token.
+8. `RuntimeAssetData_LoadCreatesRenderSceneRuntimeRecords` proves loaded data
    becomes RenderScene geometry, material, camera, entity, and frame records.
-8. `RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture` proves
+9. `RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture` proves
    mesh/material/texture families produce Resource decoded payload records.
-9. `RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges` proves scene
+10. `RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges` proves scene
    dependencies are represented in both Resource and Asset dependency graphs.
-10. `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi`
+11. `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi`
    executes through RenderCore/RHI and captures the canonical scene, or reports
    `BlockedByEnv` only for target display/D3D11 constraints.
-11. `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` proves CPU image
+12. `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` proves CPU image
    helpers run only after the RHI/RenderCore capture source exists.
-12. `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` proves no
+13. `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` proves no
     editor, Web, UI, input, GDI viewer, or software raster dependency is part of
     the closed-loop proof.
 
 RAV1-C through the current product-run slices now provide the required payload
 bridge proof shape for this closed-loop slice:
 
-13. cooked texture payload records carry descriptor, row-pitch, byte-count,
+14. cooked texture payload records carry descriptor, row-pitch, byte-count,
     alignment, and hash ownership before RHI texture creation;
-14. cooked material records resolve bounded texture/sampler slot tables into
+15. cooked material records resolve bounded texture/sampler slot tables into
     RenderScene material slots only after every referenced texture payload is
     validated and uploaded;
-15. cooked shader/program records create RHI shader modules and pipelines from
+16. cooked shader/program records create RHI shader modules and pipelines from
     owned stage bytecode, hashes, minimal reflection, input layout, and slot
     counts rather than `bytecode:` source-text fixtures;
-16. invalid format, extent, size, alignment, hash, missing/duplicate deps,
+17. invalid format, extent, size, alignment, hash, missing/duplicate deps,
     bytecode mismatch, slot overflow, and partial RHI creation failures leave
     Resource/Asset transactions, RenderScene outputs, and published RHI handles
     unmutated.
@@ -280,16 +283,17 @@ Current slice status:
 | 4. dependency missing/duplicate validator | PASS |
 | 5. loader uses File/VFS/Resource | PASS |
 | 6. scene references mesh/material/texture/shader/camera/animation | PASS; scene camera records and bounded animation clip/track/keyframe tables are parsed, validated, loaded, sampled, and applied through typed runtime records |
-| 7. loaded data creates RenderScene runtime records | PASS |
-| 8. mesh/material/texture decoded payload records | PASS |
-| 9. Resource/Asset dependency edges | PASS |
-| 10. RenderCore/RHI capture | PASS |
-| 11. CPU oracle guard | PASS |
-| 12. no editor/Web/UI/input/GDI viewer dependency | PASS |
-| 13. cooked texture/material payload bridge | PASS |
-| 14. cooked shader/program RHI bridge | PASS |
-| 15. scene/animation loader no-mutation failures | PASS |
-| 16. package/product run command smoke | PASS |
+| 7. first-class camera/tween descriptor file | PASS |
+| 8. loaded data creates RenderScene runtime records | PASS |
+| 9. mesh/material/texture decoded payload records | PASS |
+| 10. Resource/Asset dependency edges | PASS |
+| 11. RenderCore/RHI capture | PASS |
+| 12. CPU oracle guard | PASS |
+| 13. no editor/Web/UI/input/GDI viewer dependency | PASS |
+| 14. cooked texture/material payload bridge | PASS |
+| 15. cooked shader/program RHI bridge | PASS |
+| 16. scene/animation loader no-mutation failures | PASS |
+| 17. package/product run command smoke | PASS |
 
 Current RuntimeAssetData proof names that future slices must keep passing or
 supersede with approved equivalents:
@@ -298,6 +302,7 @@ supersede with approved equivalents:
 - `RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs`
 - `RuntimeAssetData_TextureValidatorRejectsInvalidFormatExtentPayload`
 - `RuntimeAssetData_ShaderSceneAnimationRequireSourceSchema`
+- `RuntimeAssetData_CameraTweenDescriptorLoadsFromDiskSceneReference`
 - `RuntimeAssetData_SceneFamilyDetectionIsPathIndependent`
 - `RuntimeAssetData_ShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs`
 - `RuntimeAssetData_SceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation`
@@ -323,7 +328,8 @@ This gate records these mainline implementation slices:
 | RAV1-C | Cooked texture/material/shader payload bridge | PASS; decoded texture, material slots, shader bytecode, and RHI program route stay loaded-data-owned |
 | RAV1-D | Bounded scene/animation record loader | PASS for canonical cube/cylinder/cone graph; broader family coverage remains hardening |
 | RAV1-E | Evidence matrix and acceptance commands | PASS; current matrix must be kept in sync with `RuntimeAssetData` focused rows |
-| Next slice | Production hardening | first-class camera/tween file, richer mesh payload policy, shader compiler/import policy, broader material parameters |
+| RAV1-F | First-class camera/tween descriptor | PASS; source/cooked camera files are generated, validated, read, staged into Resource/Asset refs, and surfaced through ResourceBrowser workflows |
+| Next slice | Production hardening | richer mesh payload policy, shader compiler/import policy, broader material parameters, broader scene/animation/camera families |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer

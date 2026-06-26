@@ -73,7 +73,8 @@ enum class RuntimeAssetFileKind {
     Texture,
     Shader,
     Scene,
-    Animation
+    Animation,
+    Camera
 };
 
 /**
@@ -192,7 +193,7 @@ struct RuntimeAssetFileDesc final {
     std::uint32_t decoded_byte_count = 0U;
 };
 
-constexpr std::uint32_t RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT = 9U;
+constexpr std::uint32_t RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT = 10U;
 
 /**
  * @brief Requests source/cooked RuntimeAsset fixture generation through File/VFS.

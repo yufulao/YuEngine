@@ -210,7 +210,7 @@ constexpr std::uint64_t PLAN_PAYLOAD_ID_OFFSET = 80000U;
 constexpr std::uint64_t DECODE_PLAN_ID_OFFSET = 90000U;
 constexpr std::uint64_t DECODE_RESULT_ID_OFFSET = 100000U;
 constexpr std::uint64_t DECODED_PAYLOAD_ID_OFFSET = 110000U;
-constexpr std::uint32_t DEFAULT_RESIDENCY_BYTE_CAPACITY = 4096U;
+constexpr std::uint32_t DEFAULT_RESIDENCY_BYTE_CAPACITY = 16384U;
 constexpr std::uint32_t DEFAULT_PAYLOAD_BYTE_CAPACITY = 8192U;
 constexpr std::string_view RUNTIME_ASSET_SOURCE_SCHEMA = "rav0-source";
 constexpr std::string_view RUNTIME_ASSET_COOKED_SCHEMA = "rav1-cooked";
@@ -942,6 +942,8 @@ std::string_view RuntimeAssetFamilyToken(RuntimeAssetFileKind kind) {
             return "scene";
         case RuntimeAssetFileKind::Animation:
             return "animation";
+        case RuntimeAssetFileKind::Camera:
+            return "camera";
         case RuntimeAssetFileKind::Unknown:
             break;
         default:
@@ -1076,12 +1078,14 @@ constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_TEXTURE = 103U;
 constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_SHADER = 104U;
 constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_SCENE = 105U;
 constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_ANIMATION = 106U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_CAMERA = 107U;
 constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_MESH = 201U;
 constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_MATERIAL = 202U;
 constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_TEXTURE = 203U;
 constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_SHADER = 204U;
 constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_SCENE = 205U;
 constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_ANIMATION = 206U;
+constexpr std::uint32_t RUNTIME_ASSET_FIXTURE_ASSET_TYPE_CAMERA = 207U;
 
 struct RuntimeAssetFixtureArtifact final {
     RuntimeAssetFileDesc desc{};
@@ -1102,6 +1106,8 @@ std::string RuntimeAssetFamilyNameLower(RuntimeAssetFileKind kind) {
             return "scene";
         case RuntimeAssetFileKind::Animation:
             return "animation";
+        case RuntimeAssetFileKind::Camera:
+            return "camera";
         case RuntimeAssetFileKind::Unknown:
             break;
     }
@@ -1150,6 +1156,10 @@ RuntimeAssetFileDesc RuntimeAssetFixtureDesc(
             desc.resource_type = ResourceTypeId{RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_ANIMATION};
             desc.asset_type = yuengine::asset::AssetTypeId{RUNTIME_ASSET_FIXTURE_ASSET_TYPE_ANIMATION};
             break;
+        case RuntimeAssetFileKind::Camera:
+            desc.resource_type = ResourceTypeId{RUNTIME_ASSET_FIXTURE_RESOURCE_TYPE_CAMERA};
+            desc.asset_type = yuengine::asset::AssetTypeId{RUNTIME_ASSET_FIXTURE_ASSET_TYPE_CAMERA};
+            break;
         case RuntimeAssetFileKind::Unknown:
             break;
     }
@@ -1186,7 +1196,10 @@ RuntimeAssetSourceFixtureArtifacts() {
             "YUASSET SHADER 1\nschema=rav0-source\nid=runtime_program\nstage_vs=bytecode:runtime_program_vs\nstage_ps=bytecode:runtime_program_ps\ninput=layout:position,color\ntextures=3\n"},
         RuntimeAssetFixtureArtifact{
             RuntimeAssetFixtureDesc("Animation/Spin.yuanim", RuntimeAssetFileKind::Animation, 5001U, 0U),
-            "YUASSET ANIMATION 1\nschema=rav0-source\nid=spin\nclip=1\nduration=1\ntarget=scene_entity:101\ntrack=transform:rotation_y\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n"}};
+            "YUASSET ANIMATION 1\nschema=rav0-source\nid=spin\nclip=1\nduration=1\ntarget=scene_entity:101\ntrack=transform:rotation_y\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n"},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Camera/Main.yucamera", RuntimeAssetFileKind::Camera, 7001U, 0U),
+            "YUASSET CAMERA 1\nschema=rav0-source\nid=main_camera\nprojection=perspective\nfov_degrees=55\nnear=0.1\nfar=100\nkeyframes=3\nkey0=0:-4,2,-6:0,0,0\nkey1=0.5:0,3,-5:0,0,0\nkey2=1:4,2,-6:0,0,0\n"}};
 }
 
 RuntimeAssetFixtureArtifact RuntimeAssetSourceSceneArtifact() {
@@ -1202,7 +1215,7 @@ RuntimeAssetFixtureArtifact RuntimeAssetSourceSceneArtifact() {
         "t0=Texture/Albedo.yutex\n"
         "prog=Shader/RuntimeProgram.yuprogram\n"
         "anim=Animation/Spin.yuanim\n"
-        "cam=camera:orbit\n"
+        "cam=Camera/Main.yucamera\n"
         "e0=101:-2,0,0\n"
         "e1=102:0,0,0\n"
         "e2=103:2,0,0\n"};
@@ -1360,6 +1373,16 @@ RuntimeAssetCookedFixtureArtifacts() {
                 "target=scene_entity:101\ntrack=transform:rotation_y\nclip=1\nduration=1\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n",
                 std::span<const std::string_view>(no_deps.data(), no_deps.size()),
                 128U,
+                4U)},
+        RuntimeAssetFixtureArtifact{
+            RuntimeAssetFixtureDesc("Camera/Main.racooked", RuntimeAssetFileKind::Camera, 17001U, 0U),
+            RuntimeAssetCookedText(
+                RuntimeAssetFileKind::Camera,
+                "main_camera_cooked",
+                "camera-tween-payload",
+                "projection=perspective\nfov_degrees=55\nnear=0.1\nfar=100\nkeyframes=3\nkey0=0:-4,2,-6:0,0,0\nkey1=0.5:0,3,-5:0,0,0\nkey2=1:4,2,-6:0,0,0\n",
+                std::span<const std::string_view>(no_deps.data(), no_deps.size()),
+                128U,
                 4U)}};
 }
 
@@ -1372,7 +1395,7 @@ RuntimeAssetFixtureArtifact RuntimeAssetCookedSceneArtifact() {
         "texture:albedo_cooked:13001",
         "shader:runtime_program_cooked:14001",
         "animation:spin_cooked:15001",
-        "camera:orbit:6001",
+        "camera:main_camera_cooked:17001",
     }};
 
     return RuntimeAssetFixtureArtifact{
@@ -1388,7 +1411,7 @@ RuntimeAssetFixtureArtifact RuntimeAssetCookedSceneArtifact() {
             "t0=Texture/Albedo.racooked\n"
             "prog=Shader/RuntimeProgram.racooked\n"
             "anim=Animation/Spin.racooked\n"
-            "cam=camera:orbit\n"
+            "cam=Camera/Main.racooked\n"
             "e0=101:-2,0,0\n"
             "e1=102:0,0,0\n"
             "e2=103:2,0,0\n",
@@ -1823,7 +1846,7 @@ RuntimeAssetDataStatus ValidateSceneDependencies(
         {"mat=", "Material/"},
         {"t0=", "Texture/"},
         {"prog=", "Shader/"},
-        {"cam=", "camera:"},
+        {"cam=", "Camera/"},
         {"anim=", "Animation/"},
     }};
 
@@ -1852,6 +1875,104 @@ RuntimeAssetDataStatus ValidateAnimationDependencies(
     }};
 
     return ValidateDependencyRules(text, std::span<const DependencyRule>(rules.data(), rules.size()), out_result);
+}
+
+RuntimeAssetDataStatus ValidateCameraTweenKeyframe(std::string_view value) {
+    const std::size_t first_separator = value.find(':');
+    if (first_separator == std::string_view::npos) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    const std::size_t second_separator = value.find(':', first_separator + 1U);
+    if (second_separator == std::string_view::npos) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    if (value.find(':', second_separator + 1U) != std::string_view::npos) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    float time = 0.0F;
+    if (!ParseFloat(value.substr(0U, first_separator), &time)) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    if (time < 0.0F || time > 1.0F) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    float eye_x = 0.0F;
+    float eye_y = 0.0F;
+    float eye_z = 0.0F;
+    if (!ParseVec3(value.substr(first_separator + 1U, second_separator - first_separator - 1U), &eye_x, &eye_y, &eye_z)) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    float target_x = 0.0F;
+    float target_y = 0.0F;
+    float target_z = 0.0F;
+    if (!ParseVec3(value.substr(second_separator + 1U), &target_x, &target_y, &target_z)) {
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateCameraMetadata(
+    std::string_view text,
+    RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (ValueForToken(text, "projection=") != "perspective") {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    float fov_degrees = 0.0F;
+    if (!ParseFloat(ValueForToken(text, "fov_degrees="), &fov_degrees)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (fov_degrees < 1.0F || fov_degrees > 170.0F) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    float near_plane = 0.0F;
+    float far_plane = 0.0F;
+    if (!ParseFloat(ValueForToken(text, "near="), &near_plane) ||
+        !ParseFloat(ValueForToken(text, "far="), &far_plane)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (near_plane <= 0.0F || far_plane <= near_plane) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    std::uint32_t keyframe_count = 0U;
+    if (!ParseU32(ValueForToken(text, "keyframes="), &keyframe_count)) {
+        return RuntimeAssetDataStatus::InvalidCount;
+    }
+
+    if (keyframe_count < 2U || keyframe_count > 16U) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    std::uint32_t index = 0U;
+    while (index < keyframe_count) {
+        const std::string token = "key" + std::to_string(index) + "=";
+        const std::string_view keyframe = ValueForToken(text, token);
+        const RuntimeAssetDataStatus status = ValidateCameraTweenKeyframe(keyframe);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+
+        ++index;
+    }
+
+    out_result->dependency_count = keyframe_count;
+    out_result->dependency_table_count = keyframe_count;
+    return RuntimeAssetDataStatus::Success;
 }
 
 RuntimeAssetDataStatus ValidateMeshMetadata(
@@ -2558,7 +2679,7 @@ bool SceneReferencesRuntimeFamilies(std::string_view scene_text) {
         return false;
     }
 
-    if (!TokenValueStartsWith(scene_text, "cam=", "camera:")) {
+    if (!TokenValueStartsWith(scene_text, "cam=", "Camera/")) {
         return false;
     }
 
@@ -5763,6 +5884,8 @@ const char *RuntimeAssetFileKindName(RuntimeAssetFileKind kind) {
             return "SCENE";
         case RuntimeAssetFileKind::Animation:
             return "ANIMATION";
+        case RuntimeAssetFileKind::Camera:
+            return "CAMERA";
         case RuntimeAssetFileKind::Unknown:
         default:
             break;
@@ -5833,6 +5956,12 @@ RuntimeAssetDataStatus ValidateRuntimeAssetDataBytes(
 
     if (expected_kind == RuntimeAssetFileKind::Animation) {
         result.status = ValidateAnimationDependencies(text, &result);
+        *out_result = result;
+        return result.status;
+    }
+
+    if (expected_kind == RuntimeAssetFileKind::Camera) {
+        result.status = ValidateCameraMetadata(text, &result);
         *out_result = result;
         return result.status;
     }

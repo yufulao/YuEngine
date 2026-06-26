@@ -107,15 +107,18 @@ constexpr std::uint32_t RESOURCE_TYPE_TEXTURE = 103U;
 constexpr std::uint32_t RESOURCE_TYPE_SHADER = 104U;
 constexpr std::uint32_t RESOURCE_TYPE_SCENE = 105U;
 constexpr std::uint32_t RESOURCE_TYPE_ANIMATION = 106U;
+constexpr std::uint32_t RESOURCE_TYPE_CAMERA = 107U;
 constexpr std::uint32_t ASSET_TYPE_MESH = 201U;
 constexpr std::uint32_t ASSET_TYPE_MATERIAL = 202U;
 constexpr std::uint32_t ASSET_TYPE_TEXTURE = 203U;
 constexpr std::uint32_t ASSET_TYPE_SHADER = 204U;
 constexpr std::uint32_t ASSET_TYPE_SCENE = 205U;
 constexpr std::uint32_t ASSET_TYPE_ANIMATION = 206U;
+constexpr std::uint32_t ASSET_TYPE_CAMERA = 207U;
 constexpr const char *SCENE_PATH = "Scene/Main.yuscene";
 constexpr const char *EXTERNAL_AUTHORING_MANIFEST_PATH = "External/RuntimeAssetExport.yuauthoring";
-constexpr std::size_t FIXTURE_FILE_COUNT = 9U;
+constexpr std::size_t FIXTURE_FILE_COUNT =
+    yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT;
 
 struct FixtureFile final {
     RuntimeAssetFileDesc desc{};
@@ -315,7 +318,15 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_ANIMATION},
                 AssetTypeId{ASSET_TYPE_ANIMATION},
                 5001U},
-            "YUASSET ANIMATION 1\nschema=rav0-source\nid=spin\nclip=1\nduration=1\ntarget=scene_entity:101\ntrack=transform:rotation_y\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n"}};
+            "YUASSET ANIMATION 1\nschema=rav0-source\nid=spin\nclip=1\nduration=1\ntarget=scene_entity:101\ntrack=transform:rotation_y\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n"},
+        FixtureFile{
+            RuntimeAssetFileDesc{
+                "Camera/Main.yucamera",
+                RuntimeAssetFileKind::Camera,
+                ResourceTypeId{RESOURCE_TYPE_CAMERA},
+                AssetTypeId{ASSET_TYPE_CAMERA},
+                7001U},
+            "YUASSET CAMERA 1\nschema=rav0-source\nid=main_camera\nprojection=perspective\nfov_degrees=55\nnear=0.1\nfar=100\nkeyframes=3\nkey0=0:-4,2,-6:0,0,0\nkey1=0.5:0,3,-5:0,0,0\nkey2=1:4,2,-6:0,0,0\n"}};
 }
 
 std::string SceneBytes() {
@@ -330,7 +341,7 @@ std::string SceneBytes() {
         "t0=Texture/Albedo.yutex\n"
         "prog=Shader/RuntimeProgram.yuprogram\n"
         "anim=Animation/Spin.yuanim\n"
-        "cam=camera:orbit\n"
+        "cam=Camera/Main.yucamera\n"
         "e0=101:-2,0,0\n"
         "e1=102:0,0,0\n"
         "e2=103:2,0,0\n");

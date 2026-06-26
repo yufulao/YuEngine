@@ -58,6 +58,7 @@ bool IsPreviewSupportedKind(RuntimeAssetFileKind kind) {
         case RuntimeAssetFileKind::Shader:
         case RuntimeAssetFileKind::Scene:
         case RuntimeAssetFileKind::Animation:
+        case RuntimeAssetFileKind::Camera:
             return true;
         case RuntimeAssetFileKind::Unknown:
             break;
@@ -76,6 +77,7 @@ ResourceBrowserSurfaceDocumentKind DocumentKindFor(RuntimeAssetFileKind kind) {
         case RuntimeAssetFileKind::Material:
         case RuntimeAssetFileKind::Texture:
         case RuntimeAssetFileKind::Shader:
+        case RuntimeAssetFileKind::Camera:
             return ResourceBrowserSurfaceDocumentKind::Resource;
         case RuntimeAssetFileKind::Unknown:
             break;

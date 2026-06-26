@@ -354,6 +354,8 @@ constexpr const char *TEST_LOADER_FILE_RESOURCE =
     "RuntimeAssetData_LoaderUsesFileResourcePathNotInMemoryStructs";
 constexpr const char *TEST_SCENE_REFERENCES =
     "RuntimeAssetData_SceneReferencesMeshMaterialTextureShader";
+constexpr const char *TEST_CAMERA_TWEEN_DESCRIPTOR =
+    "RuntimeAssetData_CameraTweenDescriptorLoadsFromDiskSceneReference";
 constexpr const char *TEST_SCENE_FAMILY_PATH_INDEPENDENT =
     "RuntimeAssetData_SceneFamilyDetectionIsPathIndependent";
 constexpr const char *TEST_SOURCE_COOKED_METADATA =
@@ -482,13 +484,15 @@ constexpr std::uint32_t RESOURCE_TYPE_TEXTURE = 103U;
 constexpr std::uint32_t RESOURCE_TYPE_SHADER = 104U;
 constexpr std::uint32_t RESOURCE_TYPE_SCENE = 105U;
 constexpr std::uint32_t RESOURCE_TYPE_ANIMATION = 106U;
+constexpr std::uint32_t RESOURCE_TYPE_CAMERA = 107U;
 constexpr std::uint32_t ASSET_TYPE_MESH = 201U;
 constexpr std::uint32_t ASSET_TYPE_MATERIAL = 202U;
 constexpr std::uint32_t ASSET_TYPE_TEXTURE = 203U;
 constexpr std::uint32_t ASSET_TYPE_SHADER = 204U;
 constexpr std::uint32_t ASSET_TYPE_SCENE = 205U;
 constexpr std::uint32_t ASSET_TYPE_ANIMATION = 206U;
-constexpr std::size_t FIXTURE_FILE_COUNT = 9U;
+constexpr std::uint32_t ASSET_TYPE_CAMERA = 207U;
+constexpr std::size_t FIXTURE_FILE_COUNT = 10U;
 constexpr std::size_t CAPTURE_BYTES_PER_ENTITY = 64U;
 constexpr std::size_t TOTAL_CAPTURE_BYTES = CAPTURE_BYTES_PER_ENTITY * 3U;
 constexpr std::uint32_t AUTHORING_SENTINEL_COUNT = 0xCAFEU;
@@ -1097,7 +1101,15 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_ANIMATION},
                 AssetTypeId{ASSET_TYPE_ANIMATION},
                 5001U},
-            "YUASSET ANIMATION 1\nschema=rav0-source\nid=spin\nclip=1\nduration=1\ntarget=scene_entity:101\ntrack=transform:rotation_y\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n"}};
+            "YUASSET ANIMATION 1\nschema=rav0-source\nid=spin\nclip=1\nduration=1\ntarget=scene_entity:101\ntrack=transform:rotation_y\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n"},
+        FixtureFile{
+            RuntimeAssetFileDesc{
+                "Camera/Main.yucamera",
+                RuntimeAssetFileKind::Camera,
+                ResourceTypeId{RESOURCE_TYPE_CAMERA},
+                AssetTypeId{ASSET_TYPE_CAMERA},
+                7001U},
+            "YUASSET CAMERA 1\nschema=rav0-source\nid=main_camera\nprojection=perspective\nfov_degrees=55\nnear=0.1\nfar=100\nkeyframes=3\nkey0=0:-4,2,-6:0,0,0\nkey1=0.5:0,3,-5:0,0,0\nkey2=1:4,2,-6:0,0,0\n"}};
 }
 
 std::string SceneBytes() {
@@ -1112,7 +1124,7 @@ std::string SceneBytes() {
         "t0=Texture/A.yutex\n"
         "prog=Shader/P.yuprogram\n"
         "anim=Animation/S.yuanim\n"
-        "cam=camera:orbit\n"
+        "cam=Camera/Main.yucamera\n"
         "e0=101:-2,0,0\n"
         "e1=102:0,0,0\n"
         "e2=103:2,0,0\n");
@@ -1130,7 +1142,7 @@ std::string BoundedSceneBytes() {
         "t0=Texture/A.yutex\n"
         "prog=Shader/P.yuprogram\n"
         "anim=Animation/S.yuanim\n"
-        "cam=camera:orbit\n"
+        "cam=Camera/Main.yucamera\n"
         "entities=4\n"
         "cameras=2\n"
         "camera0=11:inactive\n"
@@ -1172,7 +1184,7 @@ std::string AlternateRuntimeFamilySceneBytes() {
         "t0=Texture/T.alt\n"
         "prog=Shader/P.alt\n"
         "anim=Animation/A.alt\n"
-        "cam=camera:orbit\n"
+        "cam=Camera/Main.alt\n"
         "e0=101:-2,0,0\n"
         "e1=102:0,0,0\n"
         "e2=103:2,0,0\n");
@@ -1194,6 +1206,7 @@ std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> AlternateRuntimeFamilyFileD
     descs[6U].path = "Texture/K.alt";
     descs[7U].path = "Shader/P.alt";
     descs[8U].path = "Animation/A.alt";
+    descs[9U].path = "Camera/Main.alt";
     return descs;
 }
 
@@ -1405,7 +1418,7 @@ bool SceneReferencesRequiredAssets(const std::vector<std::uint8_t> &scene_bytes)
         return FailStep("missing shader dependency");
     }
 
-    if (!Contains(scene, "cam=camera:orbit")) {
+    if (!Contains(scene, "cam=Camera/Main.yucamera")) {
         return FailStep("missing camera dependency");
     }
 
@@ -4820,10 +4833,35 @@ int RuntimeAssetDataShaderSceneAnimationRequireSourceSchema() {
             "t0=Texture/Albedo.yutex\n"
             "prog=Shader/RuntimeProgram.yuprogram\n"
             "anim=Animation/Spin.yuanim\n"
-            "cam=camera:orbit\n",
+            "cam=Camera/Main.yucamera\n",
             RuntimeAssetFileKind::Scene,
             RuntimeAssetDataStatus::InvalidSchema)) {
         return Fail("scene without source schema was not rejected");
+    }
+
+    RuntimeAssetValidationResult camera_result{};
+    if (!ValidateText(files[9U].bytes, RuntimeAssetFileKind::Camera, &camera_result)) {
+        return Fail("camera schema validator rejected canonical camera");
+    }
+
+    if (camera_result.schema_version != 1U || camera_result.identity_hash == 0U) {
+        return Fail("camera schema metadata was not recorded");
+    }
+
+    if (!ExpectValidationStatus(
+            "YUASSET CAMERA 1\n"
+            "id=main_camera\n"
+            "projection=perspective\n"
+            "fov_degrees=55\n"
+            "near=0.1\n"
+            "far=100\n"
+            "keyframes=3\n"
+            "key0=0:-4,2,-6:0,0,0\n"
+            "key1=0.5:0,3,-5:0,0,0\n"
+            "key2=1:4,2,-6:0,0,0\n",
+            RuntimeAssetFileKind::Camera,
+            RuntimeAssetDataStatus::InvalidSchema)) {
+        return Fail("camera without source schema was not rejected");
     }
 
     if (!ExpectValidationStatus(
@@ -4901,6 +4939,62 @@ int RuntimeAssetDataSceneReferencesMeshMaterialTextureShader() {
 
     if (!SceneReferencesRequiredAssets(scene_bytes)) {
         return Fail("scene did not reference required asset families");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataCameraTweenDescriptorLoadsFromDiskSceneReference() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("CameraTweenDescriptor"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("generator write failed");
+    }
+
+    std::vector<std::uint8_t> camera_bytes{};
+    if (!ReadFile(table, "Camera/Main.yucamera", &camera_bytes)) {
+        return Fail("camera file read failed");
+    }
+
+    RuntimeAssetValidationResult camera_result{};
+    const RuntimeAssetDataStatus camera_status = ValidateRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(camera_bytes.data(), camera_bytes.size()),
+        RuntimeAssetFileKind::Camera,
+        &camera_result);
+    if (camera_status != RuntimeAssetDataStatus::Success) {
+        return Fail("camera descriptor validator failed");
+    }
+
+    if (camera_result.dependency_count != 3U ||
+        camera_result.schema_version != 1U ||
+        camera_result.identity_hash == 0U) {
+        return Fail("camera tween descriptor metadata changed");
+    }
+
+    LoadedGraph graph{};
+    if (!LoadGraph(table, &graph)) {
+        return Fail("loaded graph failed");
+    }
+
+    if (graph.load_result.loaded_file_count != FIXTURE_FILE_COUNT ||
+        graph.scene_output.resource_ref_count != FIXTURE_FILE_COUNT) {
+        return Fail("camera descriptor was not loaded into runtime graph");
+    }
+
+    if (graph.assets[9U].kind != RuntimeAssetFileKind::Camera ||
+        graph.assets[9U].stable_id != 7001U ||
+        !graph.assets[9U].cache_payload_stored) {
+        return Fail("camera descriptor loaded file identity changed");
+    }
+
+    if (graph.scene_resource_refs[9U].kind != RuntimeAssetFileKind::Camera ||
+        graph.scene_resource_refs[9U].stable_id != 7001U ||
+        !graph.scene_resource_refs[9U].resource.IsValid() ||
+        !graph.scene_resource_refs[9U].asset.IsValid()) {
+        return Fail("camera descriptor resource ref was not staged");
     }
 
     return 0;
@@ -5574,7 +5668,7 @@ int RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation() {
             "mat=Material/Shared.yumat\n"
             "t0=Texture/Albedo.yutex\n"
             "prog=Shader/RuntimeProgram.yuprogram\n"
-            "cam=camera:orbit\n"
+            "cam=Camera/Main.yucamera\n"
             "anim=Animation/Spin.yuanim\n",
             RuntimeAssetDataStatus::InvalidSchema)) {
         return Fail("loader did not reject missing scene schema before mutation");
@@ -6437,7 +6531,7 @@ int RuntimeAssetDataSceneCameraAnimationDependencyValidatorRejectsTypeMismatchWi
             "t0=Texture/Albedo.yutex\n"
             "prog=Shader/RuntimeProgram.yuprogram\n"
             "anim=Texture/Albedo.yutex\n"
-            "cam=camera:orbit\n",
+            "cam=Camera/Main.yucamera\n",
             RuntimeAssetFileKind::Scene,
             RuntimeAssetDataStatus::TypeMismatch)) {
         return Fail("scene animation type mismatch was not rejected");
@@ -6583,14 +6677,16 @@ int RuntimeAssetDataProductionSceneLoaderOutputsDeterministicRecords() {
         graph.scene_resource_refs[3U].kind != RuntimeAssetFileKind::Material ||
         graph.scene_resource_refs[4U].kind != RuntimeAssetFileKind::Texture ||
         graph.scene_resource_refs[7U].kind != RuntimeAssetFileKind::Shader ||
-        graph.scene_resource_refs[8U].kind != RuntimeAssetFileKind::Animation) {
+        graph.scene_resource_refs[8U].kind != RuntimeAssetFileKind::Animation ||
+        graph.scene_resource_refs[9U].kind != RuntimeAssetFileKind::Camera) {
         return Fail("production scene loader resource refs changed");
     }
 
     if (!graph.scene_resource_refs[0U].resource.IsValid() ||
         !graph.scene_resource_refs[0U].asset.IsValid() ||
         graph.scene_resource_refs[0U].stable_id != 1001U ||
-        graph.scene_resource_refs[8U].stable_id != 5001U) {
+        graph.scene_resource_refs[8U].stable_id != 5001U ||
+        graph.scene_resource_refs[9U].stable_id != 7001U) {
         return Fail("production scene loader resource ref identity changed");
     }
 
@@ -6684,7 +6780,7 @@ int RuntimeAssetDataSceneLoaderRejectsInvalidEntityWithoutOutputMutation() {
         "t0=Texture/A.yutex\n"
         "prog=Shader/P.yuprogram\n"
         "anim=Animation/S.yuanim\n"
-        "cam=camera:orbit\n"
+        "cam=Camera/Main.yucamera\n"
         "e0=101:-2,0,0\n"
         "e1=102:bad,0,0\n"
         "e2=103:2,0,0\n";
@@ -9278,6 +9374,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataCookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles},
     {TEST_LOADER_FILE_RESOURCE, RuntimeAssetDataLoaderUsesFileResourcePathNotInMemoryStructs},
     {TEST_SCENE_REFERENCES, RuntimeAssetDataSceneReferencesMeshMaterialTextureShader},
+    {TEST_CAMERA_TWEEN_DESCRIPTOR, RuntimeAssetDataCameraTweenDescriptorLoadsFromDiskSceneReference},
     {TEST_SCENE_FAMILY_PATH_INDEPENDENT, RuntimeAssetDataSceneFamilyDetectionIsPathIndependent},
     {TEST_SOURCE_COOKED_METADATA, RuntimeAssetDataSourceCookedParserReportsBoundedMetadata},
     {TEST_SOURCE_COOKED_REJECTS, RuntimeAssetDataSourceCookedParserRejectsInvalidTablesHashesAndDependencies},
