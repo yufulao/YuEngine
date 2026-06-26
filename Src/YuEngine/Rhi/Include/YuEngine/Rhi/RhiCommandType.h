@@ -12,6 +12,7 @@ enum class RhiCommandType {
     BindIndexBuffer,
     BindSampledTexture,
     BindSampler,
+    BindConstantBuffer,
     BindBlendState,
     Draw,
     DrawIndexed,

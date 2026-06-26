@@ -38,6 +38,7 @@ using yuengine::rhi::RhiCapabilities;
 using yuengine::rhi::RhiColor;
 using yuengine::rhi::RhiColorTargetDesc;
 using yuengine::rhi::RhiCommandList;
+using yuengine::rhi::RhiConstantBufferBinding;
 using yuengine::rhi::RhiDeviceDesc;
 using yuengine::rhi::RhiDeviceSnapshot;
 using yuengine::rhi::RhiDrawDesc;
@@ -202,6 +203,10 @@ public:
     }
 
     RhiStatus RecordBindSampler(RhiCommandList &, const RhiSamplerBinding &) override {
+        return RhiStatus::UnsupportedBackend;
+    }
+
+    RhiStatus RecordBindConstantBuffer(RhiCommandList &, const RhiConstantBufferBinding &) override {
         return RhiStatus::UnsupportedBackend;
     }
 

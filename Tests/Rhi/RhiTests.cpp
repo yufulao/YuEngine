@@ -16,6 +16,7 @@
 #include "YuEngine/Rhi/RhiBufferHandle.h"
 #include "YuEngine/Rhi/RhiBufferUsage.h"
 #include "YuEngine/Rhi/RhiCapabilities.h"
+#include "YuEngine/Rhi/RhiConstantBufferBinding.h"
 #include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiDeviceFactory.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
@@ -59,6 +60,7 @@ using RhiCapabilities = yuengine::rhi::RhiCapabilities;
 using RhiColor = yuengine::rhi::RhiColor;
 using RhiColorTargetDesc = yuengine::rhi::RhiColorTargetDesc;
 using RhiCommandList = yuengine::rhi::RhiCommandList;
+using RhiConstantBufferBinding = yuengine::rhi::RhiConstantBufferBinding;
 using RhiDeviceCreateResult = yuengine::rhi::RhiDeviceCreateResult;
 using RhiDeviceDesc = yuengine::rhi::RhiDeviceDesc;
 using RhiDeviceFactory = yuengine::rhi::RhiDeviceFactory;
@@ -103,6 +105,7 @@ using yuengine::rhi::MAX_COLOR_TARGET_EXTENT;
 using yuengine::rhi::MAX_COLOR_TARGETS;
 using yuengine::rhi::MAX_RHI_BUFFERS;
 using yuengine::rhi::MAX_RHI_BUFFER_BYTES;
+using yuengine::rhi::MAX_RHI_CONSTANT_BUFFER_SLOTS;
 using yuengine::rhi::MAX_RHI_PIPELINES;
 using yuengine::rhi::MAX_RHI_PRIMITIVE_RETIREMENTS;
 using yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS;
@@ -195,6 +198,15 @@ constexpr const char *TEST_SAMPLER_REQUIRES_TEXTURE = "RHI_SubmitSamplerRejectsM
 constexpr const char *TEST_TEXTURE_SAMPLING_STALE_TEXTURE = "RHI_SubmitTextureSamplingRejectsStaleTextureHandle";
 constexpr const char *TEST_TEXTURE_SAMPLING_STALE_SAMPLER = "RHI_SubmitTextureSamplingRejectsStaleSamplerHandle";
 constexpr const char *TEST_TEXTURE_SAMPLING_SNAPSHOT = "RHI_SubmitTextureSampling_UpdatesNullSnapshot";
+constexpr const char *TEST_CONSTANT_BUFFER_BIND_DEFAULTS = "RHI_ConstantBufferBinding_DefaultsAreBoundedValues";
+constexpr const char *TEST_RECORD_CONSTANT_BUFFER_BIND =
+    "RHI_CommandList_RecordsConstantBufferBindingWithinCapacity";
+constexpr const char *TEST_CONSTANT_BUFFER_SLOT_OVERFLOW =
+    "RHI_ConstantBufferSlotOverflow_DoesNotMutate";
+constexpr const char *TEST_CONSTANT_BUFFER_SNAPSHOT =
+    "RHI_SubmitConstantBufferBinding_UpdatesNullSnapshot";
+constexpr const char *TEST_CONSTANT_BUFFER_STALE =
+    "RHI_SubmitConstantBufferBindingRejectsStaleHandle";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr const char* REINIT_TARGET_CREATION_MESSAGE = "target creation failed";
@@ -433,6 +445,27 @@ bool CreateSamplerPrimitive(IRhiDevice &device, RhiSamplerHandle &out_handle) {
     return device.CreateSampler(desc, out_handle) == RhiStatus::Success;
 }
 
+bool CreateConstantBuffer(IRhiDevice &device, RhiBufferHandle &out_handle) {
+    const std::array<std::uint8_t, 16U> bytes{
+        1U, 2U, 3U, 4U,
+        5U, 6U, 7U, 8U,
+        9U, 10U, 11U, 12U,
+        13U, 14U, 15U, 16U};
+    RhiBufferDesc desc{};
+    desc.usage = RhiBufferUsage::Constant;
+    desc.size_bytes = bytes.size();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    return device.CreateBuffer(desc, byte_span, out_handle) == RhiStatus::Success;
+}
+
+RhiConstantBufferBinding ConstantBufferBindingFor(RhiBufferHandle handle) {
+    RhiConstantBufferBinding binding{};
+    binding.buffer = handle;
+    binding.stage = RhiShaderStage::Pixel;
+    binding.slot = 0U;
+    return binding;
+}
+
 RhiPrimitiveRetirementRequest BufferRetirementRequest(std::uint64_t request_id, RhiBufferHandle handle) {
     RhiPrimitiveRetirementRequest request{};
     request.request_id = request_id;
@@ -576,6 +609,49 @@ RhiStatus RecordSampledIndexedTriangleDrawFrame(
     return command_list.EndFrame();
 }
 
+RhiStatus RecordConstantBufferIndexedTriangleDrawFrame(
+    IRhiDevice &device,
+    RhiCommandList &command_list,
+    RhiTextureHandle target,
+    RhiPipelineHandle pipeline,
+    const RhiVertexBufferView &vertex_buffer,
+    const RhiIndexBufferView &index_buffer,
+    RhiBufferHandle constant_buffer,
+    const RhiDrawIndexedDesc &draw) {
+    RhiStatus status = command_list.BeginFrame(target);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordBindPipeline(command_list, pipeline);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordBindVertexBuffer(command_list, vertex_buffer);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordBindIndexBuffer(command_list, index_buffer);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    const RhiConstantBufferBinding constant_buffer_binding = ConstantBufferBindingFor(constant_buffer);
+    status = device.RecordBindConstantBuffer(command_list, constant_buffer_binding);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    status = device.RecordDrawIndexed(command_list, draw);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    return command_list.EndFrame();
+}
+
 RhiStatus ClearSubmitPresent(NullRhiDevice& device, RhiTextureHandle target, RhiColor color) {
     RhiCommandList command_list(MAX_COMMANDS);
     RhiStatus status = command_list.BeginFrame(target);
@@ -697,6 +773,10 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
         return false;
     }
 
+    if (left.submitted_constant_buffer_bind_count != right.submitted_constant_buffer_bind_count) {
+        return false;
+    }
+
     if (left.rejected_indexed_draw_count != right.rejected_indexed_draw_count) {
         return false;
     }
@@ -706,6 +786,10 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
     }
 
     if (left.rejected_sampler_bind_count != right.rejected_sampler_bind_count) {
+        return false;
+    }
+
+    if (left.rejected_constant_buffer_bind_count != right.rejected_constant_buffer_bind_count) {
         return false;
     }
 
@@ -722,6 +806,14 @@ bool DeviceSnapshotsEqual(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot
     }
 
     if (left.last_bound_sampler_slot != right.last_bound_sampler_slot) {
+        return false;
+    }
+
+    if (left.last_bound_constant_buffer_slot != right.last_bound_constant_buffer_slot) {
+        return false;
+    }
+
+    if (left.last_bound_constant_buffer_stage != right.last_bound_constant_buffer_stage) {
         return false;
     }
 
@@ -4048,6 +4140,231 @@ int RhiSubmitTextureSamplingUpdatesNullSnapshot() {
 
     return 0;
 }
+
+int RhiConstantBufferBindingDefaultsAreBoundedValues() {
+    const RhiConstantBufferBinding binding{};
+    if (binding.buffer.generation != 0U) {
+        return Fail("default constant buffer handle was not empty");
+    }
+
+    if (binding.stage != RhiShaderStage::Unsupported) {
+        return Fail("default constant buffer stage was not unsupported");
+    }
+
+    if (binding.slot != 0U) {
+        return Fail("default constant buffer slot was not zero");
+    }
+
+    static_assert(MAX_RHI_CONSTANT_BUFFER_SLOTS > 0U, "constant buffer slot capacity was zero");
+    return 0;
+}
+
+int RhiCommandListRecordsConstantBufferBindingWithinCapacity() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiBufferHandle constant_buffer{};
+    if (!CreateConstantBuffer(device_interface, constant_buffer)) {
+        return Fail("constant buffer creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    RhiStatus status = command_list.BeginFrame(target);
+    if (status != RhiStatus::Success) {
+        return Fail("begin frame failed");
+    }
+
+    const RhiConstantBufferBinding binding = ConstantBufferBindingFor(constant_buffer);
+    status = device_interface.RecordBindConstantBuffer(command_list, binding);
+    if (status != RhiStatus::Success) {
+        return Fail("constant buffer bind recording failed");
+    }
+
+    const auto snapshot = command_list.Snapshot();
+    if (snapshot.command_count != 2U) {
+        return Fail("constant buffer bind command count changed total command count unexpectedly");
+    }
+
+    if (snapshot.constant_buffer_bind_command_count != 1U) {
+        return Fail("constant buffer bind command was not tracked");
+    }
+
+    return 0;
+}
+
+int RhiConstantBufferSlotOverflowDoesNotMutate() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiBufferHandle constant_buffer{};
+    if (!CreateConstantBuffer(device_interface, constant_buffer)) {
+        return Fail("constant buffer creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    RhiConstantBufferBinding binding = ConstantBufferBindingFor(constant_buffer);
+    binding.slot = static_cast<std::uint32_t>(MAX_RHI_CONSTANT_BUFFER_SLOTS);
+    const auto before_snapshot = device.Snapshot();
+    const RhiStatus status = device_interface.RecordBindConstantBuffer(command_list, binding);
+    if (status != RhiStatus::InvalidDescriptor) {
+        return Fail("constant buffer slot overflow did not return invalid descriptor");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.recorded_command_count != before_snapshot.recorded_command_count) {
+        return Fail("constant buffer slot overflow recorded a command");
+    }
+
+    if (after_snapshot.rejected_constant_buffer_bind_count !=
+        before_snapshot.rejected_constant_buffer_bind_count + 1U) {
+        return Fail("constant buffer slot overflow was not tracked");
+    }
+
+    return 0;
+}
+
+int RhiSubmitConstantBufferBindingUpdatesNullSnapshot() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiBufferHandle index_buffer{};
+    if (!CreateTriangleIndexBuffer(device_interface, index_buffer)) {
+        return Fail("triangle index buffer creation failed");
+    }
+
+    RhiBufferHandle constant_buffer{};
+    if (!CreateConstantBuffer(device_interface, constant_buffer)) {
+        return Fail("constant buffer creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    const RhiStatus record_status = RecordConstantBufferIndexedTriangleDrawFrame(
+        device_interface,
+        command_list,
+        target,
+        pipeline,
+        TriangleVertexBufferViewFor(vertex_buffer),
+        TriangleIndexBufferViewFor(index_buffer),
+        constant_buffer,
+        TriangleDrawIndexedDesc());
+    if (record_status != RhiStatus::Success) {
+        return Fail("constant buffer command recording failed");
+    }
+
+    const RhiStatus submit_status = device_interface.Submit(command_list);
+    if (submit_status != RhiStatus::Success) {
+        return Fail("constant buffer command submit failed");
+    }
+
+    const auto snapshot = device.Snapshot();
+    if (snapshot.submitted_constant_buffer_bind_count != 1U) {
+        return Fail("submitted constant buffer bind count was not tracked");
+    }
+
+    if (snapshot.rejected_constant_buffer_bind_count != 0U) {
+        return Fail("successful constant buffer binding changed rejection count");
+    }
+
+    if (snapshot.submitted_indexed_draw_count != 1U) {
+        return Fail("constant buffer submit did not reach indexed draw");
+    }
+
+    if (snapshot.last_bound_constant_buffer_slot != 0U) {
+        return Fail("last constant buffer slot was not tracked");
+    }
+
+    if (snapshot.last_bound_constant_buffer_stage != RhiShaderStage::Pixel) {
+        return Fail("last constant buffer shader stage was not tracked");
+    }
+
+    return 0;
+}
+
+int RhiSubmitConstantBufferBindingRejectsStaleHandle() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RhiTextureHandle target{};
+    if (!CreateTarget(device, target)) {
+        return Fail("target creation failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreateTrianglePipeline(device_interface, pipeline)) {
+        return Fail("triangle pipeline creation failed");
+    }
+
+    RhiBufferHandle vertex_buffer{};
+    if (!CreateTriangleBuffer(device_interface, vertex_buffer)) {
+        return Fail("triangle vertex buffer creation failed");
+    }
+
+    RhiBufferHandle index_buffer{};
+    if (!CreateTriangleIndexBuffer(device_interface, index_buffer)) {
+        return Fail("triangle index buffer creation failed");
+    }
+
+    RhiBufferHandle constant_buffer{};
+    if (!CreateConstantBuffer(device_interface, constant_buffer)) {
+        return Fail("constant buffer creation failed");
+    }
+
+    RhiCommandList command_list(MAX_COMMANDS);
+    const RhiStatus record_status = RecordConstantBufferIndexedTriangleDrawFrame(
+        device_interface,
+        command_list,
+        target,
+        pipeline,
+        TriangleVertexBufferViewFor(vertex_buffer),
+        TriangleIndexBufferViewFor(index_buffer),
+        constant_buffer,
+        TriangleDrawIndexedDesc());
+    if (record_status != RhiStatus::Success) {
+        return Fail("constant buffer command recording failed");
+    }
+
+    if (device_interface.DestroyBuffer(constant_buffer) != RhiStatus::Success) {
+        return Fail("constant buffer destroy failed");
+    }
+
+    const auto before_snapshot = device.Snapshot();
+    const RhiStatus submit_status = device_interface.Submit(command_list);
+    if (submit_status != RhiStatus::InvalidHandle) {
+        return Fail("stale constant buffer did not return invalid handle");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.rejected_constant_buffer_bind_count !=
+        before_snapshot.rejected_constant_buffer_bind_count + 1U) {
+        return Fail("stale constant buffer rejection was not tracked");
+    }
+
+    if (after_snapshot.submit_count != before_snapshot.submit_count) {
+        return Fail("stale constant buffer changed submit count");
+    }
+
+    if (after_snapshot.submitted_constant_buffer_bind_count != before_snapshot.submitted_constant_buffer_bind_count) {
+        return Fail("stale constant buffer changed submitted bind count");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -4135,6 +4452,11 @@ int main(int argc, char** argv) {
         {TEST_TEXTURE_SAMPLING_STALE_TEXTURE, RhiSubmitTextureSamplingRejectsStaleTextureHandle},
         {TEST_TEXTURE_SAMPLING_STALE_SAMPLER, RhiSubmitTextureSamplingRejectsStaleSamplerHandle},
         {TEST_TEXTURE_SAMPLING_SNAPSHOT, RhiSubmitTextureSamplingUpdatesNullSnapshot},
+        {TEST_CONSTANT_BUFFER_BIND_DEFAULTS, RhiConstantBufferBindingDefaultsAreBoundedValues},
+        {TEST_RECORD_CONSTANT_BUFFER_BIND, RhiCommandListRecordsConstantBufferBindingWithinCapacity},
+        {TEST_CONSTANT_BUFFER_SLOT_OVERFLOW, RhiConstantBufferSlotOverflowDoesNotMutate},
+        {TEST_CONSTANT_BUFFER_SNAPSHOT, RhiSubmitConstantBufferBindingUpdatesNullSnapshot},
+        {TEST_CONSTANT_BUFFER_STALE, RhiSubmitConstantBufferBindingRejectsStaleHandle},
         {TEST_NO_FORBIDDEN_DEPENDENCY, RhiNoResourceFileUploadShaderUiDependency}};
 
     const std::string_view test_name(argv[1]);

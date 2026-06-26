@@ -3,8 +3,10 @@
 
 #include "YuEngine/RenderCore/RenderDrawableFramePipeline.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 
 #include "YuEngine/RenderCore/MaterialBindingFixtureStatus.h"
@@ -12,11 +14,17 @@
 #include "YuEngine/RenderCore/RenderFixturePassRequest.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureRequest.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureStatus.h"
+#include "YuEngine/RenderCore/RenderMaterialConstants.h"
 #include "YuEngine/RenderCore/RenderMaterialRequest.h"
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureRequest.h"
 #include "YuEngine/RenderCore/RenderViewPacketRequest.h"
 #include "YuEngine/RenderCore/RenderViewPacketStatus.h"
+#include "YuEngine/Rhi/RhiBufferDesc.h"
+#include "YuEngine/Rhi/RhiBufferUsage.h"
+#include "YuEngine/Rhi/RhiConstantBufferBinding.h"
+#include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiDeviceSnapshot.h"
+#include "YuEngine/Rhi/RhiShaderStage.h"
 
 namespace yuengine::rendercore {
 namespace {
@@ -54,6 +62,30 @@ bool IsSwapchainValid(const yuengine::rhi::RhiSwapchainSnapshot &snapshot) {
     }
 
     return snapshot.color_target.generation != 0U;
+}
+
+std::size_t AlignConstantBufferByteCount(std::size_t byte_count) {
+    const std::size_t remainder = byte_count % yuengine::rhi::RHI_CONSTANT_BUFFER_ALIGNMENT;
+    if (remainder == 0U) {
+        return byte_count;
+    }
+
+    return byte_count + yuengine::rhi::RHI_CONSTANT_BUFFER_ALIGNMENT - remainder;
+}
+
+yuengine::rhi::RhiStatus DestroyMaterialConstantBuffer(
+    yuengine::rhi::IRhiDevice *device,
+    yuengine::rhi::RhiBufferHandle handle,
+    bool has_buffer) {
+    if (!has_buffer) {
+        return yuengine::rhi::RhiStatus::Success;
+    }
+
+    if (device == nullptr) {
+        return yuengine::rhi::RhiStatus::InvalidHandle;
+    }
+
+    return device->DestroyBuffer(handle);
 }
 
 MaterialBindingFixtureStatus MaterialStatusToBindingStatus(RenderMaterialStatus status) {
@@ -175,6 +207,43 @@ RenderDrawableFramePipelineResult RenderDrawableFramePipeline::Execute(
         return result;
     }
 
+    std::array<std::uint8_t, MAX_RENDER_MATERIAL_CONSTANT_BYTES> material_constant_buffer_bytes{};
+    std::array<yuengine::rhi::RhiConstantBufferBinding, 1U> material_constant_buffers{};
+    yuengine::rhi::RhiBufferHandle material_constant_buffer{};
+    bool has_material_constant_buffer = false;
+    if (!request.material_constant_bytes.empty()) {
+        const std::size_t aligned_constant_byte_count =
+            AlignConstantBufferByteCount(request.material_constant_bytes.size());
+        std::copy(
+            request.material_constant_bytes.begin(),
+            request.material_constant_bytes.end(),
+            material_constant_buffer_bytes.begin());
+
+        yuengine::rhi::RhiBufferDesc constant_buffer_desc{};
+        constant_buffer_desc.usage = yuengine::rhi::RhiBufferUsage::Constant;
+        constant_buffer_desc.size_bytes = aligned_constant_byte_count;
+        const std::span<const std::uint8_t> initial_bytes(
+            material_constant_buffer_bytes.data(),
+            aligned_constant_byte_count);
+        rhi_status = request.rhi_device->CreateBuffer(
+            constant_buffer_desc,
+            initial_bytes,
+            material_constant_buffer);
+        if (rhi_status != yuengine::rhi::RhiStatus::Success) {
+            result.status = RenderDrawableFramePipelineStatus::RhiFailure;
+            result.rhi_status = rhi_status;
+            RecordRhiFailureResult(result);
+            return result;
+        }
+
+        material_constant_buffers[0U].buffer = material_constant_buffer;
+        material_constant_buffers[0U].stage = yuengine::rhi::RhiShaderStage::Pixel;
+        material_constant_buffers[0U].slot = 0U;
+        pass_request.constant_buffers =
+            std::span<const yuengine::rhi::RhiConstantBufferBinding>(material_constant_buffers.data(), 1U);
+        has_material_constant_buffer = true;
+    }
+
     std::array<RenderFixturePassRequest, RENDER_DRAWABLE_FRAME_PASS_COUNT> pass_requests{};
     std::array<RenderFixturePassResult, RENDER_DRAWABLE_FRAME_PASS_COUNT> pass_results{};
     pass_requests[0U] = pass_request;
@@ -195,9 +264,20 @@ RenderDrawableFramePipelineResult RenderDrawableFramePipeline::Execute(
     result.recorded_command_count = result.pass_result.recorded_command_count;
     result.capture_bytes_written = result.pass_result.capture_bytes_written;
     result.capture_extent = result.pass_result.capture_extent;
+    const yuengine::rhi::RhiStatus destroy_status = DestroyMaterialConstantBuffer(
+        request.rhi_device,
+        material_constant_buffer,
+        has_material_constant_buffer);
     if (result.frame_result.status != RenderFramePacketFixtureStatus::Success) {
         result.status = RenderDrawableFramePipelineStatus::FramePacketFailed;
         RecordFrameFailureResult(result);
+        return result;
+    }
+
+    if (destroy_status != yuengine::rhi::RhiStatus::Success) {
+        result.status = RenderDrawableFramePipelineStatus::RhiFailure;
+        result.rhi_status = destroy_status;
+        RecordRhiFailureResult(result);
         return result;
     }
 

@@ -9,6 +9,7 @@
 
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/RhiColor.h"
+#include "YuEngine/Rhi/RhiConstantBufferBinding.h"
 #include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
@@ -31,6 +32,7 @@ struct RenderFixturePassRequest final {
     yuengine::rhi::RhiSamplerBinding sampler{};
     std::span<const yuengine::rhi::RhiSampledTextureBinding> sampled_textures{};
     std::span<const yuengine::rhi::RhiSamplerBinding> samplers{};
+    std::span<const yuengine::rhi::RhiConstantBufferBinding> constant_buffers{};
     yuengine::rhi::RhiDrawIndexedDesc draw{};
     yuengine::rhi::RhiColor clear_color{};
     std::span<std::uint8_t> capture_output{};

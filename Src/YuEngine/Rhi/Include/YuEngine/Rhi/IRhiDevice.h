@@ -13,6 +13,7 @@
 #include "YuEngine/Rhi/RhiCaptureResult.h"
 #include "YuEngine/Rhi/RhiColorTargetDesc.h"
 #include "YuEngine/Rhi/RhiCommandList.h"
+#include "YuEngine/Rhi/RhiConstantBufferBinding.h"
 #include "YuEngine/Rhi/RhiDeviceDesc.h"
 #include "YuEngine/Rhi/RhiDeviceSnapshot.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
@@ -125,6 +126,15 @@ public:
      * @return 显式操作状态。
      */
     virtual RhiStatus RecordBindSampler(RhiCommandList &command_list, const RhiSamplerBinding &binding) = 0;
+    /**
+     * @comment 记录 constant buffer 绑定。
+     * @param command_list 函数写入的命令列表。
+     * @param binding 输入绑定。
+     * @return 显式操作状态。
+     */
+    virtual RhiStatus RecordBindConstantBuffer(
+        RhiCommandList &command_list,
+        const RhiConstantBufferBinding &binding) = 0;
     /**
      * @comment 记录 blend state 绑定。
      * @param command_list 函数写入的命令列表。

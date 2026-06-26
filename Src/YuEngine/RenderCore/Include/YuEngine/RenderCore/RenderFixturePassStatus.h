@@ -16,6 +16,7 @@ enum class RenderFixturePassStatus {
     MissingIndexBuffer,
     InvalidTextureBinding,
     InvalidSamplerBinding,
+    InvalidConstantBufferBinding,
     InvalidDraw,
     InsufficientCaptureStorage,
     CommandCapacityExceeded,

@@ -15,6 +15,14 @@ constexpr std::uint32_t INVALID_GENERATION = 0U;
 using SampledTextureSlotMask = std::array<bool, MAX_RHI_SAMPLED_TEXTURE_SLOTS>;
 using SamplerSlotMask = std::array<bool, MAX_RHI_SAMPLER_SLOTS>;
 
+bool IsConstantBufferShaderStageValid(RhiShaderStage stage) {
+    if (stage == RhiShaderStage::Vertex) {
+        return true;
+    }
+
+    return stage == RhiShaderStage::Pixel;
+}
+
 std::size_t InputElementFormatByteCount(RhiInputElementFormat format) {
     if (format == RhiInputElementFormat::Float32x2) {
         return sizeof(float) * 2U;
@@ -410,6 +418,35 @@ RhiStatus NullRhiDevice::RecordBindSampler(RhiCommandList &command_list, const R
     return RhiStatus::Success;
 }
 
+RhiStatus NullRhiDevice::RecordBindConstantBuffer(
+    RhiCommandList &command_list,
+    const RhiConstantBufferBinding &binding) {
+    if (binding.slot >= MAX_RHI_CONSTANT_BUFFER_SLOTS) {
+        return RecordConstantBufferBindFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    if (!IsConstantBufferShaderStageValid(binding.stage)) {
+        return RecordConstantBufferBindFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    if (!IsBufferHandleValid(binding.buffer)) {
+        return RecordConstantBufferBindFailure(RhiStatus::InvalidHandle);
+    }
+
+    const NullBufferSlot &slot = buffers_[binding.buffer.slot];
+    if (slot.desc.usage != RhiBufferUsage::Constant) {
+        return RecordConstantBufferBindFailure(RhiStatus::InvalidDescriptor);
+    }
+
+    const RhiStatus status = command_list.RecordBindConstantBuffer(binding);
+    if (status != RhiStatus::Success) {
+        return RecordConstantBufferBindFailure(status);
+    }
+
+    ++snapshot_.recorded_command_count;
+    return RhiStatus::Success;
+}
+
 RhiStatus NullRhiDevice::RecordBindBlendState(RhiCommandList &command_list, const RhiBlendStateDesc &desc) {
     if (!IsBlendStateDescValid(desc)) {
         return RecordBlendStateBindFailure(RhiStatus::InvalidDescriptor);
@@ -478,11 +515,14 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
     std::uint64_t submitted_indexed_draw_count = 0U;
     std::uint64_t submitted_sampled_texture_bind_count = 0U;
     std::uint64_t submitted_sampler_bind_count = 0U;
+    std::uint64_t submitted_constant_buffer_bind_count = 0U;
     std::uint64_t submitted_blend_state_bind_count = 0U;
     std::uint32_t last_draw_vertex_count = 0U;
     std::uint32_t last_indexed_draw_index_count = 0U;
     std::uint32_t last_bound_sampled_texture_slot = 0U;
     std::uint32_t last_bound_sampler_slot = 0U;
+    std::uint32_t last_bound_constant_buffer_slot = 0U;
+    RhiShaderStage last_bound_constant_buffer_stage = RhiShaderStage::Unsupported;
     RhiBlendStateDesc bound_blend_state{};
     for (std::size_t index = 0U; index < command_list.CommandCount(); ++index) {
         const RhiCommandRecord &command = command_list.CommandAt(index);
@@ -549,6 +589,29 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
             has_sampler[slot] = true;
             ++submitted_sampler_bind_count;
             last_bound_sampler_slot = command.sampler.slot;
+            continue;
+        }
+
+        if (command.type == RhiCommandType::BindConstantBuffer) {
+            if (!IsConstantBufferBindingValid(command.constant_buffer)) {
+                if (command.constant_buffer.slot >= MAX_RHI_CONSTANT_BUFFER_SLOTS) {
+                    return RecordConstantBufferBindFailure(RhiStatus::InvalidDescriptor);
+                }
+
+                if (!IsConstantBufferShaderStageValid(command.constant_buffer.stage)) {
+                    return RecordConstantBufferBindFailure(RhiStatus::InvalidDescriptor);
+                }
+
+                if (!IsBufferHandleValid(command.constant_buffer.buffer)) {
+                    return RecordConstantBufferBindFailure(RhiStatus::InvalidHandle);
+                }
+
+                return RecordConstantBufferBindFailure(RhiStatus::InvalidDescriptor);
+            }
+
+            ++submitted_constant_buffer_bind_count;
+            last_bound_constant_buffer_slot = command.constant_buffer.slot;
+            last_bound_constant_buffer_stage = command.constant_buffer.stage;
             continue;
         }
 
@@ -654,6 +717,7 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
     snapshot_.submitted_indexed_draw_count += submitted_indexed_draw_count;
     snapshot_.submitted_sampled_texture_bind_count += submitted_sampled_texture_bind_count;
     snapshot_.submitted_sampler_bind_count += submitted_sampler_bind_count;
+    snapshot_.submitted_constant_buffer_bind_count += submitted_constant_buffer_bind_count;
     snapshot_.submitted_blend_state_bind_count += submitted_blend_state_bind_count;
     snapshot_.last_draw_vertex_count = last_draw_vertex_count;
     snapshot_.last_indexed_draw_index_count = last_indexed_draw_index_count;
@@ -663,6 +727,11 @@ RhiStatus NullRhiDevice::Submit(const RhiCommandList &command_list) {
 
     if (submitted_sampler_bind_count > 0U) {
         snapshot_.last_bound_sampler_slot = last_bound_sampler_slot;
+    }
+
+    if (submitted_constant_buffer_bind_count > 0U) {
+        snapshot_.last_bound_constant_buffer_slot = last_bound_constant_buffer_slot;
+        snapshot_.last_bound_constant_buffer_stage = last_bound_constant_buffer_stage;
     }
 
     if (submitted_blend_state_bind_count > 0U) {
@@ -1141,6 +1210,11 @@ RhiStatus NullRhiDevice::RecordSamplerBindFailure(RhiStatus status) {
     return RecordFailure(status);
 }
 
+RhiStatus NullRhiDevice::RecordConstantBufferBindFailure(RhiStatus status) {
+    ++snapshot_.rejected_constant_buffer_bind_count;
+    return RecordFailure(status);
+}
+
 RhiStatus NullRhiDevice::RecordBlendStateBindFailure(RhiStatus status) {
     ++snapshot_.rejected_blend_state_bind_count;
     return RecordFailure(status);
@@ -1551,6 +1625,23 @@ bool NullRhiDevice::IsSamplerBindingValid(const RhiSamplerBinding &binding) cons
     }
 
     return IsSamplerHandleValid(binding.sampler);
+}
+
+bool NullRhiDevice::IsConstantBufferBindingValid(const RhiConstantBufferBinding &binding) const {
+    if (binding.slot >= MAX_RHI_CONSTANT_BUFFER_SLOTS) {
+        return false;
+    }
+
+    if (!IsConstantBufferShaderStageValid(binding.stage)) {
+        return false;
+    }
+
+    if (!IsBufferHandleValid(binding.buffer)) {
+        return false;
+    }
+
+    const NullBufferSlot &slot = buffers_[binding.buffer.slot];
+    return slot.desc.usage == RhiBufferUsage::Constant;
 }
 
 bool NullRhiDevice::IsBlendStateDescValid(const RhiBlendStateDesc &desc) const {

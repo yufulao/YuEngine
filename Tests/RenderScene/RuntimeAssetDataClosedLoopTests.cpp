@@ -290,6 +290,7 @@ using yuengine::rhi::RhiBufferHandle;
 using yuengine::rhi::RhiBufferUsage;
 using yuengine::rhi::RhiColor;
 using yuengine::rhi::RhiColorTargetDesc;
+using yuengine::rhi::RhiConstantBufferBinding;
 using yuengine::rhi::RhiDeviceCreateResult;
 using yuengine::rhi::RhiDeviceDesc;
 using yuengine::rhi::RhiDeviceFactory;
@@ -694,6 +695,12 @@ public:
         yuengine::rhi::RhiCommandList &command_list,
         const RhiSamplerBinding &binding) override {
         return device_.RecordBindSampler(command_list, binding);
+    }
+
+    RhiStatus RecordBindConstantBuffer(
+        yuengine::rhi::RhiCommandList &command_list,
+        const RhiConstantBufferBinding &binding) override {
+        return device_.RecordBindConstantBuffer(command_list, binding);
     }
 
     RhiStatus RecordBindBlendState(

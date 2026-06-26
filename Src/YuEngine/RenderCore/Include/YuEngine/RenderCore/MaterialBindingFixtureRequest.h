@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <span>
 
+#include "YuEngine/Rhi/RhiConstantBufferBinding.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiSampledTextureBinding.h"
 #include "YuEngine/Rhi/RhiSamplerBinding.h"
@@ -21,6 +22,7 @@ struct MaterialBindingFixtureRequest final {
     yuengine::rhi::RhiSamplerBinding sampler{};
     std::span<const yuengine::rhi::RhiSampledTextureBinding> sampled_textures{};
     std::span<const yuengine::rhi::RhiSamplerBinding> samplers{};
+    std::span<const yuengine::rhi::RhiConstantBufferBinding> constant_buffers{};
     std::span<const std::uint8_t> constant_bytes{};
     std::uint32_t pass_id = 0U;
 };

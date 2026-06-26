@@ -54,6 +54,7 @@
 #include "YuEngine/Rhi/RhiColor.h"
 #include "YuEngine/Rhi/RhiColorTargetDesc.h"
 #include "YuEngine/Rhi/RhiCommandList.h"
+#include "YuEngine/Rhi/RhiConstantBufferBinding.h"
 #include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiDeviceDesc.h"
 #include "YuEngine/Rhi/RhiDeviceSnapshot.h"
@@ -168,16 +169,19 @@ using yuengine::renderscene::RenderSceneThreePrimitiveCaptureStatus;
 using yuengine::renderscene::RenderSceneThreePrimitiveEntityRequest;
 using yuengine::renderscene::RENDER_SCENE_THREE_PRIMITIVE_ENTITY_COUNT;
 using yuengine::rhi::IRhiDevice;
+using yuengine::rhi::MAX_RHI_CONSTANT_BUFFER_SLOTS;
 using yuengine::rhi::RhiBlendMode;
 using yuengine::rhi::RhiBlendStateDesc;
 using yuengine::rhi::RhiBackendKind;
 using yuengine::rhi::RhiBufferDesc;
 using yuengine::rhi::RhiBufferHandle;
+using yuengine::rhi::RhiBufferUsage;
 using yuengine::rhi::RhiCapabilities;
 using yuengine::rhi::RhiCaptureResult;
 using yuengine::rhi::RhiColor;
 using yuengine::rhi::RhiColorTargetDesc;
 using yuengine::rhi::RhiCommandList;
+using yuengine::rhi::RhiConstantBufferBinding;
 using yuengine::rhi::RhiDeviceDesc;
 using yuengine::rhi::RhiDeviceSnapshot;
 using yuengine::rhi::RhiDrawDesc;
@@ -197,6 +201,7 @@ using yuengine::rhi::RhiSamplerBinding;
 using yuengine::rhi::RhiSamplerDesc;
 using yuengine::rhi::RhiSamplerHandle;
 using yuengine::rhi::RhiSampledTextureBinding;
+using yuengine::rhi::RhiShaderStage;
 using yuengine::rhi::RhiShaderModuleDesc;
 using yuengine::rhi::RhiShaderModuleHandle;
 using yuengine::rhi::RhiStatus;
@@ -205,6 +210,7 @@ using yuengine::rhi::RhiSwapchainResizeResult;
 using yuengine::rhi::RhiTextureDesc;
 using yuengine::rhi::RhiTextureHandle;
 using yuengine::rhi::RhiVertexBufferView;
+using yuengine::rhi::RHI_CONSTANT_BUFFER_ALIGNMENT;
 using yuengine::rhi::MAX_CAPTURE_FIXTURE_EXTENT;
 using yuengine::rhi::MAX_COLOR_TARGET_EXTENT;
 using yuengine::rhi::MAX_COMMANDS;
@@ -647,6 +653,41 @@ public:
         return RhiStatus::Success;
     }
 
+    RhiStatus RecordBindConstantBuffer(
+        RhiCommandList &command_list,
+        const RhiConstantBufferBinding &binding) override {
+        if (binding.slot >= MAX_RHI_CONSTANT_BUFFER_SLOTS) {
+            ++snapshot_.failed_operation_count;
+            ++snapshot_.rejected_constant_buffer_bind_count;
+            return RhiStatus::InvalidDescriptor;
+        }
+
+        if (binding.stage != RhiShaderStage::Vertex && binding.stage != RhiShaderStage::Pixel) {
+            ++snapshot_.failed_operation_count;
+            ++snapshot_.rejected_constant_buffer_bind_count;
+            return RhiStatus::InvalidDescriptor;
+        }
+
+        if (!constant_buffer_active_ ||
+            binding.buffer.slot != constant_buffer_.slot ||
+            binding.buffer.generation != constant_buffer_.generation) {
+            ++snapshot_.failed_operation_count;
+            ++snapshot_.rejected_constant_buffer_bind_count;
+            return RhiStatus::InvalidHandle;
+        }
+
+        const RhiStatus status = command_list.RecordBindConstantBuffer(binding);
+        if (status != RhiStatus::Success) {
+            ++snapshot_.failed_operation_count;
+            ++snapshot_.rejected_constant_buffer_bind_count;
+            return status;
+        }
+
+        last_constant_buffer_binding_ = binding;
+        ++snapshot_.recorded_command_count;
+        return RhiStatus::Success;
+    }
+
     RhiStatus RecordBindBlendState(RhiCommandList &command_list, const RhiBlendStateDesc &desc) override {
         if (!IsBlendStateDescValid(desc)) {
             ++snapshot_.failed_operation_count;
@@ -704,8 +745,14 @@ public:
         snapshot_.submitted_indexed_draw_count += command_snapshot.indexed_draw_command_count;
         snapshot_.submitted_sampled_texture_bind_count += command_snapshot.sampled_texture_bind_command_count;
         snapshot_.submitted_sampler_bind_count += command_snapshot.sampler_bind_command_count;
+        snapshot_.submitted_constant_buffer_bind_count += command_snapshot.constant_buffer_bind_command_count;
         snapshot_.submitted_blend_state_bind_count += command_snapshot.blend_state_bind_command_count;
         snapshot_.last_indexed_draw_index_count = last_draw_index_count_;
+        if (command_snapshot.constant_buffer_bind_command_count > 0U) {
+            snapshot_.last_bound_constant_buffer_slot = last_constant_buffer_binding_.slot;
+            snapshot_.last_bound_constant_buffer_stage = last_constant_buffer_binding_.stage;
+        }
+
         if (command_snapshot.blend_state_bind_command_count > 0U) {
             snapshot_.last_alpha_blend_enabled = last_blend_state_.mode == RhiBlendMode::AlphaOver;
             snapshot_.last_blend_constant_alpha = last_blend_state_.constant_alpha;
@@ -756,11 +803,35 @@ public:
     }
 
     RhiStatus CreateBuffer(
-        const RhiBufferDesc &,
-        std::span<const std::uint8_t>,
+        const RhiBufferDesc &desc,
+        std::span<const std::uint8_t> initial_bytes,
         RhiBufferHandle &out_handle) override {
         out_handle = RhiBufferHandle{};
-        return RhiStatus::UnsupportedBackend;
+        if (desc.usage != RhiBufferUsage::Constant) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidDescriptor;
+        }
+
+        if (desc.size_bytes == 0U || (desc.size_bytes % RHI_CONSTANT_BUFFER_ALIGNMENT) != 0U) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidDescriptor;
+        }
+
+        if (initial_bytes.size() > desc.size_bytes) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidDescriptor;
+        }
+
+        if (constant_buffer_active_) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::CapacityExceeded;
+        }
+
+        constant_buffer_active_ = true;
+        out_handle = constant_buffer_;
+        ++snapshot_.resources.buffer_count;
+        ++snapshot_.resources.created_primitive_count;
+        return RhiStatus::Success;
     }
 
     RhiStatus UpdateBuffer(
@@ -771,8 +842,18 @@ public:
         return RhiStatus::UnsupportedBackend;
     }
 
-    RhiStatus DestroyBuffer(RhiBufferHandle) override {
-        return RhiStatus::UnsupportedBackend;
+    RhiStatus DestroyBuffer(RhiBufferHandle handle) override {
+        if (!constant_buffer_active_ ||
+            handle.slot != constant_buffer_.slot ||
+            handle.generation != constant_buffer_.generation) {
+            ++snapshot_.failed_operation_count;
+            return RhiStatus::InvalidHandle;
+        }
+
+        constant_buffer_active_ = false;
+        --snapshot_.resources.buffer_count;
+        ++snapshot_.resources.destroyed_primitive_count;
+        return RhiStatus::Success;
     }
 
     RhiStatus CreateTexture(
@@ -870,6 +951,7 @@ private:
         pipeline_ = RhiPipelineHandle{4U, 1U};
         vertex_buffer_ = RhiBufferHandle{1U, 1U};
         index_buffer_ = RhiBufferHandle{2U, 1U};
+        constant_buffer_ = RhiBufferHandle{3U, 1U};
         snapshot_ = RhiDeviceSnapshot{};
         snapshot_.color_target_capacity = 1U;
         snapshot_.color_target_count = 1U;
@@ -882,6 +964,8 @@ private:
         last_clear_color_ = RhiColor{};
         last_draw_index_count_ = 0U;
         last_blend_state_ = RhiBlendStateDesc{};
+        last_constant_buffer_binding_ = RhiConstantBufferBinding{};
+        constant_buffer_active_ = false;
         submitted_ = false;
         presented_ = false;
     }
@@ -899,9 +983,12 @@ private:
     RhiPipelineHandle pipeline_{};
     RhiBufferHandle vertex_buffer_{};
     RhiBufferHandle index_buffer_{};
+    RhiBufferHandle constant_buffer_{};
     RhiColor last_clear_color_{};
     RhiBlendStateDesc last_blend_state_{};
+    RhiConstantBufferBinding last_constant_buffer_binding_{};
     std::uint32_t last_draw_index_count_ = 0U;
+    bool constant_buffer_active_ = false;
     bool submitted_ = false;
     bool presented_ = false;
 };

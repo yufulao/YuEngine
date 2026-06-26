@@ -394,6 +394,7 @@ void RenderViewPacket::FillPassRequest(
     out_request->sampler = request.material.sampler;
     out_request->sampled_textures = request.material.sampled_textures;
     out_request->samplers = request.material.samplers;
+    out_request->constant_buffers = request.material.constant_buffers;
     out_request->draw = request.draw.draw;
     out_request->clear_color = request.clear_color;
     out_request->capture_output = request.capture_output;

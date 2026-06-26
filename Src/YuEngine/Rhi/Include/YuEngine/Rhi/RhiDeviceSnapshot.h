@@ -9,6 +9,7 @@
 #include "YuEngine/Rhi/RhiAccountingStatus.h"
 #include "YuEngine/Rhi/RhiExtent2D.h"
 #include "YuEngine/Rhi/RhiResourceSnapshot.h"
+#include "YuEngine/Rhi/RhiShaderStage.h"
 #include "YuEngine/Rhi/RhiSwapchainSnapshot.h"
 
 namespace yuengine::rhi {
@@ -24,10 +25,12 @@ struct RhiDeviceSnapshot final {
     std::uint64_t submitted_indexed_draw_count = 0U;
     std::uint64_t submitted_sampled_texture_bind_count = 0U;
     std::uint64_t submitted_sampler_bind_count = 0U;
+    std::uint64_t submitted_constant_buffer_bind_count = 0U;
     std::uint64_t submitted_blend_state_bind_count = 0U;
     std::uint64_t rejected_indexed_draw_count = 0U;
     std::uint64_t rejected_sampled_texture_bind_count = 0U;
     std::uint64_t rejected_sampler_bind_count = 0U;
+    std::uint64_t rejected_constant_buffer_bind_count = 0U;
     std::uint64_t rejected_blend_state_bind_count = 0U;
     std::uint64_t submit_count = 0U;
     std::uint64_t present_count = 0U;
@@ -37,8 +40,10 @@ struct RhiDeviceSnapshot final {
     std::uint32_t last_indexed_draw_index_count = 0U;
     std::uint32_t last_bound_sampled_texture_slot = 0U;
     std::uint32_t last_bound_sampler_slot = 0U;
+    std::uint32_t last_bound_constant_buffer_slot = 0U;
     std::uint8_t last_blend_constant_alpha = 255U;
     bool last_alpha_blend_enabled = false;
+    RhiShaderStage last_bound_constant_buffer_stage = RhiShaderStage::Unsupported;
     std::size_t last_bound_index_buffer_offset_bytes = 0U;
     std::size_t last_bound_index_buffer_size_bytes = 0U;
     std::size_t last_capture_bytes_written = 0U;

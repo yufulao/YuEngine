@@ -253,6 +253,7 @@ void MaterialBindingFixture::FillPassRequest(
     pass_request->sampler = request.sampler;
     pass_request->sampled_textures = request.sampled_textures;
     pass_request->samplers = request.samplers;
+    pass_request->constant_buffers = request.constant_buffers;
     pass_request->material_id = request.material_id;
     pass_request->material_constant_byte_count = request.constant_bytes.size();
     pass_request->pass_id = request.pass_id;

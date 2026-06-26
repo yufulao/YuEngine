@@ -41,6 +41,14 @@ bool IsSamplerHandleSet(yuengine::rhi::RhiSamplerHandle handle) {
     return handle.generation != 0U;
 }
 
+bool IsConstantBufferShaderStageValid(yuengine::rhi::RhiShaderStage stage) {
+    if (stage == yuengine::rhi::RhiShaderStage::Vertex) {
+        return true;
+    }
+
+    return stage == yuengine::rhi::RhiShaderStage::Pixel;
+}
+
 bool IsVertexBufferViewValid(const yuengine::rhi::RhiVertexBufferView &view) {
     if (!IsBufferHandleSet(view.buffer)) {
         return false;
@@ -81,6 +89,18 @@ bool IsSamplerBindingValid(const yuengine::rhi::RhiSamplerBinding &binding) {
     return binding.slot < yuengine::rhi::MAX_RHI_SAMPLER_SLOTS;
 }
 
+bool IsConstantBufferBindingValid(const yuengine::rhi::RhiConstantBufferBinding &binding) {
+    if (!IsBufferHandleSet(binding.buffer)) {
+        return false;
+    }
+
+    if (!IsConstantBufferShaderStageValid(binding.stage)) {
+        return false;
+    }
+
+    return binding.slot < yuengine::rhi::MAX_RHI_CONSTANT_BUFFER_SLOTS;
+}
+
 bool UsesBindingSpans(const RenderFixturePassRequest &request) {
     if (!request.sampled_textures.empty()) {
         return true;
@@ -110,7 +130,7 @@ std::span<const yuengine::rhi::RhiSamplerBinding> SamplerBindings(
 std::size_t RequiredCommandCount(const RenderFixturePassRequest &request) {
     const std::size_t binding_count = SampledTextureBindings(request).size();
     const std::size_t extra_binding_count = binding_count > 0U ? binding_count - 1U : 0U;
-    return RENDER_FIXTURE_PASS_COMMAND_COUNT + extra_binding_count * 2U;
+    return RENDER_FIXTURE_PASS_COMMAND_COUNT + extra_binding_count * 2U + request.constant_buffers.size();
 }
 
 bool AreBindingSpansValid(const RenderFixturePassRequest &request) {
@@ -140,6 +160,28 @@ bool AreBindingSpansValid(const RenderFixturePassRequest &request) {
 
     if (request.samplers.size() > yuengine::rhi::MAX_RHI_SAMPLER_SLOTS) {
         return false;
+    }
+
+    return true;
+}
+
+bool AreConstantBufferBindingsValid(const RenderFixturePassRequest &request) {
+    if (request.constant_buffers.empty()) {
+        return true;
+    }
+
+    if (request.constant_buffers.data() == nullptr) {
+        return false;
+    }
+
+    if (request.constant_buffers.size() > yuengine::rhi::MAX_RHI_CONSTANT_BUFFER_SLOTS) {
+        return false;
+    }
+
+    for (const yuengine::rhi::RhiConstantBufferBinding &binding : request.constant_buffers) {
+        if (!IsConstantBufferBindingValid(binding)) {
+            return false;
+        }
     }
 
     return true;
@@ -265,6 +307,16 @@ RenderFixturePassResult RenderFixturePass::Execute(const RenderFixturePassReques
         }
     }
 
+    for (const yuengine::rhi::RhiConstantBufferBinding &binding : request.constant_buffers) {
+        rhi_status = request.rhi_device->RecordBindConstantBuffer(command_list_, binding);
+        if (rhi_status != yuengine::rhi::RhiStatus::Success) {
+            result.rhi_status = rhi_status;
+            result.recorded_command_count = command_list_.CommandCount();
+            RecordRhiFailureResult(&result);
+            return result;
+        }
+    }
+
     rhi_status = request.rhi_device->RecordDrawIndexed(command_list_, request.draw);
     if (rhi_status != yuengine::rhi::RhiStatus::Success) {
         result.rhi_status = rhi_status;
@@ -368,6 +420,10 @@ RenderFixturePassStatus RenderFixturePass::ValidateRequest(const RenderFixturePa
 
     if (sampled_textures.size() != samplers.size()) {
         return RenderFixturePassStatus::InvalidSamplerBinding;
+    }
+
+    if (!AreConstantBufferBindingsValid(request)) {
+        return RenderFixturePassStatus::InvalidConstantBufferBinding;
     }
 
     if (!IsDrawValid(request.draw)) {

@@ -10,6 +10,7 @@
 #include "YuEngine/Rhi/RhiColor.h"
 #include "YuEngine/Rhi/RhiCommandListSnapshot.h"
 #include "YuEngine/Rhi/RhiCommandRecord.h"
+#include "YuEngine/Rhi/RhiConstantBufferBinding.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
 #include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
@@ -78,6 +79,12 @@ public:
      */
     RhiStatus RecordBindSampler(const RhiSamplerBinding &binding);
     /**
+     * @comment 记录 constant buffer 绑定。
+     * @param binding 输入绑定。
+     * @return 显式操作状态。
+     */
+    RhiStatus RecordBindConstantBuffer(const RhiConstantBufferBinding &binding);
+    /**
      * @comment 记录 blend state 绑定。
      * @param desc 输入 blend state 描述。
      * @return 显式操作状态。
@@ -142,6 +149,7 @@ private:
     std::size_t indexed_draw_command_count_;
     std::size_t sampled_texture_bind_command_count_;
     std::size_t sampler_bind_command_count_;
+    std::size_t constant_buffer_bind_command_count_;
     std::size_t blend_state_bind_command_count_;
     bool is_recording_;
     bool is_complete_;

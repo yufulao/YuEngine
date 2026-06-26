@@ -228,6 +228,7 @@ void RenderMaterial::FillBindingRequest(
     out_request->sampler = request.sampler;
     out_request->sampled_textures = request.sampled_textures;
     out_request->samplers = request.samplers;
+    out_request->constant_buffers = request.constant_buffers;
     out_request->constant_bytes = request.constant_bytes;
     out_request->pass_id = request.pass_id;
 }

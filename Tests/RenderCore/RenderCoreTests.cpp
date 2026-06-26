@@ -32,6 +32,8 @@
 #include "YuEngine/Rhi/RhiBufferHandle.h"
 #include "YuEngine/Rhi/RhiBufferUsage.h"
 #include "YuEngine/Rhi/RhiColorTargetDesc.h"
+#include "YuEngine/Rhi/RhiConstantBufferBinding.h"
+#include "YuEngine/Rhi/RhiConstants.h"
 #include "YuEngine/Rhi/RhiDeviceDesc.h"
 #include "YuEngine/Rhi/RhiDeviceSnapshot.h"
 #include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
@@ -81,6 +83,7 @@ using RhiBufferHandle = yuengine::rhi::RhiBufferHandle;
 using yuengine::rhi::RhiBufferUsage;
 using RhiColor = yuengine::rhi::RhiColor;
 using RhiColorTargetDesc = yuengine::rhi::RhiColorTargetDesc;
+using RhiConstantBufferBinding = yuengine::rhi::RhiConstantBufferBinding;
 using RhiDeviceDesc = yuengine::rhi::RhiDeviceDesc;
 using RhiDeviceSnapshot = yuengine::rhi::RhiDeviceSnapshot;
 using RhiDrawIndexedDesc = yuengine::rhi::RhiDrawIndexedDesc;
@@ -114,6 +117,7 @@ constexpr const char *TEST_MISSING_VERTEX = "RenderCore_FixturePass_RejectsMissi
 constexpr const char *TEST_MISSING_INDEX = "RenderCore_FixturePass_RejectsMissingIndexBufferWithoutMutation";
 constexpr const char *TEST_INVALID_TEXTURE = "RenderCore_FixturePass_RejectsInvalidTextureBindingWithoutMutation";
 constexpr const char *TEST_INVALID_SAMPLER = "RenderCore_FixturePass_RejectsInvalidSamplerBindingWithoutMutation";
+constexpr const char *TEST_CONSTANT_BUFFER_BIND = "RenderCore_FixturePass_BindsConstantBuffer";
 constexpr const char *TEST_INVALID_DRAW = "RenderCore_FixturePass_RejectsInvalidDrawWithoutMutation";
 constexpr const char *TEST_SMALL_CAPTURE = "RenderCore_FixturePass_RejectsSmallCaptureStorageWithoutMutation";
 constexpr const char *TEST_COMMAND_CAPACITY = "RenderCore_FixturePass_RejectsCommandCapacityWithoutRhiMutation";
@@ -124,6 +128,8 @@ constexpr const char *TEST_MATERIAL_BIND = "Material_BindingFixture_BindsValuesT
 constexpr const char *TEST_MATERIAL_INVALID_PIPELINE = "Material_BindingFixture_RejectsInvalidPipelineWithoutMutation";
 constexpr const char *TEST_MATERIAL_INVALID_TEXTURE = "Material_BindingFixture_RejectsInvalidTextureBindingWithoutMutation";
 constexpr const char *TEST_MATERIAL_INVALID_SAMPLER = "Material_BindingFixture_RejectsInvalidSamplerBindingWithoutMutation";
+constexpr const char *TEST_MATERIAL_CONSTANT_BUFFER_BIND =
+    "Material_BindingFixture_PropagatesConstantBufferBindings";
 constexpr const char *TEST_MATERIAL_OVERSIZED_CONSTANTS = "Material_BindingFixture_RejectsOversizedConstantsWithoutMutation";
 constexpr const char *TEST_MATERIAL_DUPLICATE = "Material_BindingFixture_RejectsDuplicateMaterialIdWithoutMutation";
 constexpr const char *TEST_MATERIAL_CAPACITY = "Material_BindingFixture_RejectsCapacityOverflowWithoutMutation";
@@ -309,6 +315,23 @@ bool CreateSamplerPrimitive(IRhiDevice &device, RhiSamplerHandle &out_handle) {
     return device.CreateSampler(desc, out_handle) == RhiStatus::Success;
 }
 
+bool CreateConstantBuffer(IRhiDevice &device, RhiBufferHandle &out_handle) {
+    const std::array<std::uint8_t, yuengine::rhi::RHI_CONSTANT_BUFFER_ALIGNMENT> bytes{};
+    RhiBufferDesc desc{};
+    desc.usage = RhiBufferUsage::Constant;
+    desc.size_bytes = bytes.size();
+    const std::span<const std::uint8_t> byte_span(bytes.data(), bytes.size());
+    return device.CreateBuffer(desc, byte_span, out_handle) == RhiStatus::Success;
+}
+
+RhiConstantBufferBinding ConstantBufferBindingFor(RhiBufferHandle handle) {
+    RhiConstantBufferBinding binding{};
+    binding.buffer = handle;
+    binding.stage = RhiShaderStage::Pixel;
+    binding.slot = 0U;
+    return binding;
+}
+
 bool FillValidFixture(NullRhiDevice &device, RenderFixturePassRequest &request, std::vector<std::uint8_t> &capture) {
     IRhiDevice &device_interface = device;
     RhiTextureHandle target{};
@@ -375,6 +398,14 @@ bool WorkCountersMatch(const RhiDeviceSnapshot &left, const RhiDeviceSnapshot &r
         return false;
     }
 
+    if (left.submitted_constant_buffer_bind_count != right.submitted_constant_buffer_bind_count) {
+        return false;
+    }
+
+    if (left.rejected_constant_buffer_bind_count != right.rejected_constant_buffer_bind_count) {
+        return false;
+    }
+
     if (left.present_count != right.present_count) {
         return false;
     }
@@ -426,6 +457,22 @@ bool SamplerBindingMatches(RhiSamplerBinding left, RhiSamplerBinding right) {
     return left.slot == right.slot;
 }
 
+bool ConstantBufferBindingMatches(RhiConstantBufferBinding left, RhiConstantBufferBinding right) {
+    if (left.buffer.slot != right.buffer.slot) {
+        return false;
+    }
+
+    if (left.buffer.generation != right.buffer.generation) {
+        return false;
+    }
+
+    if (left.stage != right.stage) {
+        return false;
+    }
+
+    return left.slot == right.slot;
+}
+
 bool MaterialPassFieldsMatch(const RenderFixturePassRequest &left, const RenderFixturePassRequest &right) {
     if (!PipelineHandleMatches(left.pipeline, right.pipeline)) {
         return false;
@@ -445,6 +492,16 @@ bool MaterialPassFieldsMatch(const RenderFixturePassRequest &left, const RenderF
 
     if (left.material_constant_byte_count != right.material_constant_byte_count) {
         return false;
+    }
+
+    if (left.constant_buffers.size() != right.constant_buffers.size()) {
+        return false;
+    }
+
+    for (std::size_t index = 0U; index < left.constant_buffers.size(); ++index) {
+        if (!ConstantBufferBindingMatches(left.constant_buffers[index], right.constant_buffers[index])) {
+            return false;
+        }
     }
 
     return left.pass_id == right.pass_id;
@@ -681,6 +738,47 @@ int RenderCoreFixturePassExecutesSampledIndexedPass() {
 
     if (rhi_snapshot.submitted_sampled_texture_bind_count != 1U || rhi_snapshot.submitted_sampler_bind_count != 1U) {
         return Fail("fixture pass did not submit texture and sampler bindings");
+    }
+
+    return 0;
+}
+
+int RenderCoreFixturePassBindsConstantBuffer() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RenderFixturePassRequest request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    RhiBufferHandle constant_buffer{};
+    if (!CreateConstantBuffer(device_interface, constant_buffer)) {
+        return Fail("constant buffer creation failed");
+    }
+
+    const std::array<RhiConstantBufferBinding, 1U> constant_buffers{
+        ConstantBufferBindingFor(constant_buffer)};
+    request.constant_buffers =
+        std::span<const RhiConstantBufferBinding>(constant_buffers.data(), constant_buffers.size());
+
+    RenderFixturePass pass;
+    const auto result = pass.Execute(request);
+    if (result.status != RenderFixturePassStatus::Success) {
+        return Fail("fixture pass with constant buffer did not succeed");
+    }
+
+    if (result.recorded_command_count != RENDER_FIXTURE_PASS_COMMAND_COUNT + 1U) {
+        return Fail("fixture pass did not record constant buffer bind command");
+    }
+
+    const RhiDeviceSnapshot rhi_snapshot = device.Snapshot();
+    if (rhi_snapshot.submitted_constant_buffer_bind_count != 1U) {
+        return Fail("fixture pass did not submit constant buffer bind");
+    }
+
+    if (rhi_snapshot.last_bound_constant_buffer_stage != RhiShaderStage::Pixel) {
+        return Fail("fixture pass did not track constant buffer shader stage");
     }
 
     return 0;
@@ -978,6 +1076,45 @@ int MaterialBindingFixtureBindsValuesToRenderFixtureRequest() {
     const auto snapshot = fixture.Snapshot();
     if (snapshot.accepted_binding_count != 1U || snapshot.binding_record_count != 1U) {
         return Fail("material binding fixture did not track accepted binding");
+    }
+
+    return 0;
+}
+
+int MaterialBindingFixturePropagatesConstantBufferBindings() {
+    NullRhiDevice device = CreateInitializedDevice();
+    IRhiDevice &device_interface = device;
+    RenderFixturePassRequest pass_request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, pass_request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    RhiBufferHandle constant_buffer{};
+    if (!CreateConstantBuffer(device_interface, constant_buffer)) {
+        return Fail("constant buffer creation failed");
+    }
+
+    const std::array<RhiConstantBufferBinding, 1U> constant_buffers{
+        ConstantBufferBindingFor(constant_buffer)};
+    const std::array<std::uint8_t, 4U> constants = MaterialConstantBytes();
+    const std::span<const std::uint8_t> constant_span(constants.data(), constants.size());
+    MaterialBindingFixtureRequest material_request = MaterialRequestFrom(pass_request, constant_span);
+    material_request.constant_buffers =
+        std::span<const RhiConstantBufferBinding>(constant_buffers.data(), constant_buffers.size());
+
+    MaterialBindingFixture fixture;
+    const auto result = fixture.Bind(material_request, &pass_request);
+    if (result.status != MaterialBindingFixtureStatus::Success) {
+        return Fail("material binding fixture did not bind constant buffer values");
+    }
+
+    if (pass_request.constant_buffers.size() != constant_buffers.size()) {
+        return Fail("material binding fixture did not propagate constant buffer count");
+    }
+
+    if (!ConstantBufferBindingMatches(pass_request.constant_buffers[0U], constant_buffers[0U])) {
+        return Fail("material binding fixture did not propagate constant buffer binding");
     }
 
     return 0;
@@ -2197,6 +2334,10 @@ int RunNamedTest(std::string_view name) {
         return RenderCoreFixturePassRejectsInvalidSamplerBindingWithoutMutation();
     }
 
+    if (name == TEST_CONSTANT_BUFFER_BIND) {
+        return RenderCoreFixturePassBindsConstantBuffer();
+    }
+
     if (name == TEST_INVALID_DRAW) {
         return RenderCoreFixturePassRejectsInvalidDrawWithoutMutation();
     }
@@ -2235,6 +2376,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_MATERIAL_INVALID_SAMPLER) {
         return MaterialBindingFixtureRejectsInvalidSamplerBindingWithoutMutation();
+    }
+
+    if (name == TEST_MATERIAL_CONSTANT_BUFFER_BIND) {
+        return MaterialBindingFixturePropagatesConstantBufferBindings();
     }
 
     if (name == TEST_MATERIAL_OVERSIZED_CONSTANTS) {

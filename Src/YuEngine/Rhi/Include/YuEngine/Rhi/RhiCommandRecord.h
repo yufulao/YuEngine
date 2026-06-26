@@ -6,6 +6,7 @@
 #include "YuEngine/Rhi/RhiBlendStateDesc.h"
 #include "YuEngine/Rhi/RhiColor.h"
 #include "YuEngine/Rhi/RhiCommandType.h"
+#include "YuEngine/Rhi/RhiConstantBufferBinding.h"
 #include "YuEngine/Rhi/RhiDrawDesc.h"
 #include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
@@ -25,6 +26,7 @@ struct RhiCommandRecord final {
     RhiIndexBufferView index_buffer{};
     RhiSampledTextureBinding sampled_texture{};
     RhiSamplerBinding sampler{};
+    RhiConstantBufferBinding constant_buffer{};
     RhiBlendStateDesc blend_state{};
     RhiDrawDesc draw{};
     RhiDrawIndexedDesc draw_indexed{};

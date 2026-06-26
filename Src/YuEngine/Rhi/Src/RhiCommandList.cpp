@@ -12,6 +12,7 @@ RhiCommandList::RhiCommandList(std::size_t capacity)
       indexed_draw_command_count_(0U),
       sampled_texture_bind_command_count_(0U),
       sampler_bind_command_count_(0U),
+      constant_buffer_bind_command_count_(0U),
       blend_state_bind_command_count_(0U),
       is_recording_(false),
       is_complete_(false) {
@@ -24,6 +25,7 @@ RhiStatus RhiCommandList::Reset() {
     indexed_draw_command_count_ = 0U;
     sampled_texture_bind_command_count_ = 0U;
     sampler_bind_command_count_ = 0U;
+    constant_buffer_bind_command_count_ = 0U;
     blend_state_bind_command_count_ = 0U;
     is_recording_ = false;
     is_complete_ = false;
@@ -153,6 +155,28 @@ RhiStatus RhiCommandList::RecordBindSampler(const RhiSamplerBinding &binding) {
     return RhiStatus::Success;
 }
 
+RhiStatus RhiCommandList::RecordBindConstantBuffer(const RhiConstantBufferBinding &binding) {
+    if (!is_recording_) {
+        return RhiStatus::InvalidLifecycle;
+    }
+
+    if (is_complete_) {
+        return RhiStatus::InvalidLifecycle;
+    }
+
+    RhiCommandRecord record{};
+    record.type = RhiCommandType::BindConstantBuffer;
+    record.target = target_handle_;
+    record.constant_buffer = binding;
+    const RhiStatus status = Append(record);
+    if (status != RhiStatus::Success) {
+        return status;
+    }
+
+    ++constant_buffer_bind_command_count_;
+    return RhiStatus::Success;
+}
+
 RhiStatus RhiCommandList::RecordBindBlendState(const RhiBlendStateDesc &desc) {
     if (!is_recording_) {
         return RhiStatus::InvalidLifecycle;
@@ -246,6 +270,7 @@ RhiCommandListSnapshot RhiCommandList::Snapshot() const {
         indexed_draw_command_count_,
         sampled_texture_bind_command_count_,
         sampler_bind_command_count_,
+        constant_buffer_bind_command_count_,
         blend_state_bind_command_count_,
         is_recording_,
         is_complete_};
