@@ -401,6 +401,8 @@ constexpr const char *TEST_SHADER_COMPILER_BACKEND =
     "RuntimeAssetData_ShaderCompilerBackendProducesProgramReflection";
 constexpr const char *TEST_SHADER_PROGRAM_PIPELINE_BRIDGE =
     "RuntimeAssetData_ShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode";
+constexpr const char *TEST_SHADER_PROGRAM_VARIABLE_TEXTURE_SLOTS =
+    "RuntimeAssetData_ShaderProgramBridgeAcceptsVariableTextureSlotReflection";
 constexpr const char *TEST_SHADER_PROGRAM_PIPELINE_REJECTS =
     "RuntimeAssetData_ShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation";
 constexpr const char *TEST_COOKED_SHADER_STAGE_MODULES =
@@ -7750,6 +7752,54 @@ bool ExpectShaderBridgeRejectedWithoutRhiMutation(
     return true;
 }
 
+int RuntimeAssetDataShaderProgramBridgeAcceptsVariableTextureSlotReflection() {
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("variable texture slot shader bridge rhi init failed");
+    }
+
+    const std::string variable_slot_text = SourceShaderTextWithBody(
+        "stage_vs=bytecode:runtime_program_vs\n"
+        "stage_ps=bytecode:runtime_program_ps\n"
+        "input=layout:position,color\n"
+        "textures=2\n");
+    RuntimeAssetLoadedShaderProgramData program{};
+    if (DecodeShaderProgramText(variable_slot_text, &program) != RuntimeAssetDataStatus::Success) {
+        return Fail("variable texture slot shader program decode failed");
+    }
+
+    if (program.texture_slot_count != 2U ||
+        program.validation.texture_slot_count != 2U ||
+        program.validation.dependency_count != 4U) {
+        return Fail("variable texture slot shader reflection metadata changed");
+    }
+
+    const RuntimeAssetShaderProgramPipelineRequest request = ProgramPipelineRequest(&device, &program);
+    RuntimeAssetShaderProgramPipelineResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetShaderProgramPipeline(request, &result);
+    if (status != RuntimeAssetDataStatus::Success ||
+        result.texture_slot_count != 2U ||
+        result.pipeline.generation == 0U) {
+        return Fail("variable texture slot shader pipeline build failed");
+    }
+
+    std::string overflow_body(
+        "stage_vs=bytecode:runtime_program_vs\n"
+        "stage_ps=bytecode:runtime_program_ps\n"
+        "input=layout:position,color\n"
+        "textures=");
+    overflow_body += std::to_string(yuengine::rhi::MAX_RHI_SAMPLED_TEXTURE_SLOTS + 1U);
+    overflow_body += "\n";
+    const std::string overflow_text = SourceShaderTextWithBody(overflow_body);
+    if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
+            overflow_text,
+            RuntimeAssetDataStatus::BudgetExceeded)) {
+        return Fail("oversized texture slot shader program mutated RHI");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation() {
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
             SourceShaderTextWithBody(
@@ -12198,6 +12248,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_SHADER_IMPORT_POLICY, RuntimeAssetDataShaderImportPolicyValidatesSourceCookedAndLoadedRecords},
     {TEST_SHADER_COMPILER_BACKEND, RuntimeAssetDataShaderCompilerBackendProducesProgramReflection},
     {TEST_SHADER_PROGRAM_PIPELINE_BRIDGE, RuntimeAssetDataShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode},
+    {TEST_SHADER_PROGRAM_VARIABLE_TEXTURE_SLOTS,
+     RuntimeAssetDataShaderProgramBridgeAcceptsVariableTextureSlotReflection},
     {TEST_SHADER_PROGRAM_PIPELINE_REJECTS, RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation},
     {TEST_COOKED_SHADER_STAGE_MODULES, RuntimeAssetDataCookedShaderStagePayloadsCreateRhiModules},
     {TEST_COOKED_PROGRAM_PIPELINE_REFLECTION,

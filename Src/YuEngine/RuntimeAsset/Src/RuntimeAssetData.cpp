@@ -2336,7 +2336,7 @@ RuntimeAssetDataStatus ValidateShaderProgramDependencies(
         {"stage_vs=", "bytecode:"},
         {"stage_ps=", "bytecode:"},
         {"input=", "layout:"},
-        {"textures=", "3"},
+        {"textures=", ""},
     }};
 
     return ValidateDependencyRules(text, std::span<const DependencyRule>(rules.data(), rules.size()), out_result);
