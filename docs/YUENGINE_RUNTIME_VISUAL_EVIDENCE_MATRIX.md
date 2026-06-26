@@ -11,7 +11,7 @@ This document records what the existing runtime visual work proves today and wha
 
 | Item | Result |
 | --- | --- |
-| Audited revision | Current main worktree at `origin/main@26c4e57`; material constants CTest registration and command-surface discovery counts synchronized |
+| Audited revision | RuntimeAsset evidence baseline `origin/main@26c4e57`; material constants CTest registration and command-surface discovery counts synchronized |
 | Clean checkout path | Main checkout/worktree validation command set |
 | Stale `UiWebEditor*` test-source blocker | Fixed by `41708bf Remove stale UI web editor tests` |
 | Configure | `cmake --preset windows-fast-gate` PASS |
