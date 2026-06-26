@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# 从脚本所在目录定位示例根目录。
+# Resolve the sample root from the script location.
 $root = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($root)) {
     $root = Split-Path -Parent $PSCommandPath
@@ -27,13 +27,13 @@ if (-not [string]::IsNullOrWhiteSpace($EngineRoot)) {
     $configureArgs += "-DYU_ASSET_SMOKE_ENGINE_ROOT=$EngineRoot"
 }
 
-# 先配置和构建示例目标，避免依赖仓库中预提交的可执行文件或 DLL。
-cmake @configureArgs
+# Configure and build the sample target from source.
+& cmake @configureArgs
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-cmake --build $build --config $Configuration --target YuAssetSmokeDemo
+& cmake --build $build --config $Configuration --target YuAssetSmokeDemo
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
@@ -44,7 +44,7 @@ if (-not (Test-Path -LiteralPath $exe)) {
     exit 1
 }
 
-# 运行示例资源并输出一次截图，截图文件由 .gitignore 保护。
+# Run sample assets and emit one ignored capture output.
 $assets = Join-Path $root 'Assets'
 $music = Join-Path $assets 'Music\FormalBgm.ogg'
 $capture = Join-Path $root 'FormalOggCapture.bmp'
