@@ -245,6 +245,10 @@ constexpr const char *TEST_MATERIAL_INVALID_SAMPLER =
     "RenderScene_RuntimeMaterialReportsInvalidSamplerBinding";
 constexpr const char *TEST_MATERIAL_INVALID_PIPELINE =
     "RenderScene_RuntimeMaterialReportsInvalidPipeline";
+constexpr const char *TEST_MATERIAL_CONSTANTS =
+    "RenderScene_RuntimeMaterialCopiesMaterialConstants";
+constexpr const char *TEST_MATERIAL_CONSTANT_OVERFLOW =
+    "RenderScene_RuntimeMaterialRejectsOversizedMaterialConstants";
 constexpr const char *TEST_FRAME_THREE_ENTITIES =
     "RenderScene_RuntimeFrameSubmitsThreeEntitiesWithSharedMaterial";
 constexpr const char *TEST_FRAME_DUPLICATE_TRANSFORM =
@@ -335,6 +339,7 @@ constexpr std::uint32_t PASS_ID = 9401U;
 constexpr std::uint32_t MATERIAL_ID = 9501U;
 constexpr std::uint32_t MATERIAL_ASSET_SLOT = 9601U;
 constexpr std::uint32_t TEXTURE_ASSET_SLOT = 9701U;
+constexpr std::size_t MATERIAL_CONSTANT_BYTE_COUNT = 16U;
 constexpr std::uint32_t L1_VIS_004_CLIP_ID = 9801U;
 constexpr std::uint32_t L1_VIS_004_TRACK_ID = 9901U;
 constexpr std::size_t VERTEX_STRIDE_BYTES = 32U;
@@ -986,6 +991,20 @@ RenderSceneRuntimeMaterialRequest MakeMaterialRequest(
     request.pipeline = MakePipelineHandle();
     request.texture_slots = slots;
     return request;
+}
+
+std::array<std::uint8_t, MATERIAL_CONSTANT_BYTE_COUNT> MakeMaterialConstants() {
+    std::array<std::uint8_t, MATERIAL_CONSTANT_BYTE_COUNT> constants{};
+    constants[0U] = 0x20U;
+    constants[1U] = 0x30U;
+    constants[2U] = 0x40U;
+    constants[3U] = 0xC0U;
+    constants[4U] = 0x40U;
+    constants[5U] = 0x80U;
+    constants[6U] = 0x60U;
+    constants[7U] = 0xC0U;
+    constants[8U] = 0x02U;
+    return constants;
 }
 
 RenderSceneCameraBindingResult MakeCameraBinding() {
@@ -2537,6 +2556,67 @@ int RenderSceneRuntimeMaterialReportsInvalidPipeline() {
     const RenderSceneRuntimeMaterialStatus status = builder.Build(request, &record);
     if (status != RenderSceneRuntimeMaterialStatus::InvalidPipeline) {
         return Fail("runtime material did not report invalid pipeline");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeMaterialCopiesMaterialConstants() {
+    const std::array<RenderSceneRuntimeMaterialTextureSlot, 3U> slots{
+        MakeMaterialTextureSlot(0U),
+        MakeMaterialTextureSlot(1U),
+        MakeMaterialTextureSlot(2U)};
+    const std::array<std::uint8_t, MATERIAL_CONSTANT_BYTE_COUNT> constants =
+        MakeMaterialConstants();
+    RenderSceneRuntimeMaterialRequest request = MakeMaterialRequest(slots);
+    request.material_constant_bytes = std::span<const std::uint8_t>(constants.data(), constants.size());
+
+    RenderSceneRuntimeMaterialBuilder builder;
+    RenderSceneRuntimeMaterialRecord record{};
+    const RenderSceneRuntimeMaterialStatus status = builder.Build(request, &record);
+    if (status != RenderSceneRuntimeMaterialStatus::Success) {
+        return Fail("runtime material constants build failed");
+    }
+
+    if (record.material_constant_byte_count != constants.size()) {
+        return Fail("runtime material constant count mismatch");
+    }
+
+    for (std::size_t index = 0U; index < constants.size(); ++index) {
+        if (record.material_constant_bytes[index] != constants[index]) {
+            return Fail("runtime material constants were not copied");
+        }
+    }
+
+    if (builder.Validate(record) != RenderSceneRuntimeMaterialStatus::Success) {
+        return Fail("runtime material constants validation failed");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeMaterialRejectsOversizedMaterialConstants() {
+    constexpr std::size_t OVERSIZED_CONSTANT_BYTES =
+        yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_CONSTANT_BYTES + 1U;
+    const std::array<RenderSceneRuntimeMaterialTextureSlot, 3U> slots{
+        MakeMaterialTextureSlot(0U),
+        MakeMaterialTextureSlot(1U),
+        MakeMaterialTextureSlot(2U)};
+    std::array<std::uint8_t, OVERSIZED_CONSTANT_BYTES> constants{};
+    RenderSceneRuntimeMaterialRequest request = MakeMaterialRequest(slots);
+    request.material_constant_bytes = std::span<const std::uint8_t>(constants.data(), constants.size());
+
+    RenderSceneRuntimeMaterialBuilder builder;
+    RenderSceneRuntimeMaterialRecord record{};
+    record.material_id = 77U;
+    record.is_resolved = true;
+    const RenderSceneRuntimeMaterialStatus status = builder.Build(request, &record);
+    if (status != RenderSceneRuntimeMaterialStatus::MaterialConstantCapacityExceeded) {
+        return Fail("runtime material accepted oversized constants");
+    }
+
+    if (record.material_id != 77U || record.texture_slot_count != 0U) {
+        return Fail("runtime material oversized constants mutated output");
     }
 
     return 0;
@@ -4737,6 +4817,14 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_MATERIAL_INVALID_PIPELINE) {
         return RenderSceneRuntimeMaterialReportsInvalidPipeline();
+    }
+
+    if (name == TEST_MATERIAL_CONSTANTS) {
+        return RenderSceneRuntimeMaterialCopiesMaterialConstants();
+    }
+
+    if (name == TEST_MATERIAL_CONSTANT_OVERFLOW) {
+        return RenderSceneRuntimeMaterialRejectsOversizedMaterialConstants();
     }
 
     if (name == TEST_FRAME_THREE_ENTITIES) {

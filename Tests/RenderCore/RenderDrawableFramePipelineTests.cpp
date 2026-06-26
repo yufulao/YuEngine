@@ -1,6 +1,7 @@
 // 模块：Tests RenderCore
 // 文件：Tests/RenderCore/RenderDrawableFramePipelineTests.cpp
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -16,6 +17,7 @@
 #include "YuEngine/RenderCore/RenderDrawableFramePipelineStatus.h"
 #include "YuEngine/RenderCore/RenderFixturePassStatus.h"
 #include "YuEngine/RenderCore/RenderFramePacketFixtureStatus.h"
+#include "YuEngine/RenderCore/RenderMaterialConstants.h"
 #include "YuEngine/RenderCore/RenderViewPacketStatus.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/RhiBackendKind.h"
@@ -45,6 +47,7 @@ using yuengine::rendercore::RenderDrawableFramePipelineStatus;
 using yuengine::rendercore::RenderFixturePassStatus;
 using yuengine::rendercore::RenderFramePacketFixtureStatus;
 using yuengine::rendercore::RenderViewPacketStatus;
+using yuengine::rendercore::MAX_RENDER_MATERIAL_CONSTANT_BYTES;
 using yuengine::rhi::IRhiDevice;
 using yuengine::rhi::RhiBackendKind;
 using yuengine::rhi::RhiBlendStateDesc;
@@ -94,6 +97,9 @@ constexpr const char *TEST_INVALID_MATERIAL = "RenderCore_DrawableFramePipeline_
 constexpr const char *TEST_INVALID_DRAW = "RenderCore_DrawableFramePipeline_RejectsInvalidDrawThroughViewPacket";
 constexpr const char *TEST_DUPLICATE_FRAME = "RenderCore_DrawableFramePipeline_RejectsDuplicateFrameThroughFramePacket";
 constexpr const char *TEST_COMMAND_CAPACITY = "RenderCore_DrawableFramePipeline_PropagatesFixtureCommandCapacityFailure";
+constexpr const char *TEST_MATERIAL_CONSTANTS = "RenderCore_DrawableFramePipeline_PropagatesMaterialConstants";
+constexpr const char *TEST_MATERIAL_CONSTANT_REJECTS =
+    "RenderCore_DrawableFramePipeline_RejectsOversizedMaterialConstantsWithoutMutation";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint32_t FRAME_ID = 1U;
@@ -104,6 +110,7 @@ constexpr std::uint32_t MATERIAL_ID = 21U;
 constexpr std::uint32_t NEXT_MATERIAL_ID = 22U;
 constexpr std::uint16_t DEFAULT_EXTENT = 2U;
 constexpr std::uint8_t SENTINEL_BYTE = 0xCCU;
+constexpr std::size_t MATERIAL_CONSTANT_BYTE_COUNT = 16U;
 
 int Fail(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
@@ -545,6 +552,20 @@ bool CaptureWasWritten(const std::vector<std::uint8_t> &capture) {
     return false;
 }
 
+std::array<std::uint8_t, MATERIAL_CONSTANT_BYTE_COUNT> MakeMaterialConstants() {
+    std::array<std::uint8_t, MATERIAL_CONSTANT_BYTE_COUNT> constants{};
+    constants[0U] = 0x20U;
+    constants[1U] = 0x30U;
+    constants[2U] = 0x40U;
+    constants[3U] = 0xC0U;
+    constants[4U] = 0x40U;
+    constants[5U] = 0x80U;
+    constants[6U] = 0x60U;
+    constants[7U] = 0xC0U;
+    constants[8U] = 0x02U;
+    return constants;
+}
+
 int RenderCoreDrawableFramePipelineExecutesMaterialFrameDrawCapture() {
     FakeDrawableRhiDevice device;
     std::vector<std::uint8_t> capture(CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT), SENTINEL_BYTE);
@@ -595,6 +616,69 @@ int RenderCoreDrawableFramePipelineExecutesMaterialFrameDrawCapture() {
     if (snapshot.last_capture_extent.width != DEFAULT_EXTENT ||
         snapshot.last_capture_extent.height != DEFAULT_EXTENT) {
         return Fail("drawable frame pipeline snapshot did not track capture extent");
+    }
+
+    return 0;
+}
+
+int RenderCoreDrawableFramePipelinePropagatesMaterialConstants() {
+    FakeDrawableRhiDevice device;
+    std::vector<std::uint8_t> capture(CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT), SENTINEL_BYTE);
+    RenderDrawableFramePipeline pipeline;
+    const std::array<std::uint8_t, MATERIAL_CONSTANT_BYTE_COUNT> constants =
+        MakeMaterialConstants();
+    RenderDrawableFramePipelineRequest request = MakeRequest(device, capture);
+    request.material_constant_bytes = std::span<const std::uint8_t>(constants.data(), constants.size());
+
+    const auto result = pipeline.Execute(request);
+    if (result.status != RenderDrawableFramePipelineStatus::Success) {
+        return Fail("drawable frame pipeline rejected material constants");
+    }
+
+    if (result.material_result.constant_byte_count != constants.size() ||
+        result.view_result.constant_byte_count != constants.size()) {
+        return Fail("drawable frame pipeline did not propagate material constant count");
+    }
+
+    const RenderDrawableFramePipelineSnapshot snapshot = pipeline.Snapshot();
+    if (snapshot.last_status != RenderDrawableFramePipelineStatus::Success ||
+        snapshot.last_recorded_command_count != 9U) {
+        return Fail("drawable frame pipeline constants changed snapshot success state");
+    }
+
+    if (!CaptureWasWritten(capture)) {
+        return Fail("drawable frame pipeline constants path did not write capture");
+    }
+
+    return 0;
+}
+
+int RenderCoreDrawableFramePipelineRejectsOversizedMaterialConstantsWithoutMutation() {
+    constexpr std::size_t OVERSIZED_CONSTANT_BYTES = MAX_RENDER_MATERIAL_CONSTANT_BYTES + 1U;
+    FakeDrawableRhiDevice device;
+    std::vector<std::uint8_t> capture(CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT), SENTINEL_BYTE);
+    RenderDrawableFramePipeline pipeline;
+    std::array<std::uint8_t, OVERSIZED_CONSTANT_BYTES> constants{};
+    RenderDrawableFramePipelineRequest request = MakeRequest(device, capture);
+    request.material_constant_bytes = std::span<const std::uint8_t>(constants.data(), constants.size());
+
+    const auto result = pipeline.Execute(request);
+    if (result.status != RenderDrawableFramePipelineStatus::MaterialBindingFailed) {
+        return Fail("drawable frame pipeline accepted oversized material constants");
+    }
+
+    if (result.material_result.status != MaterialBindingFixtureStatus::OversizedConstants ||
+        result.material_result.constant_byte_count != constants.size()) {
+        return Fail("drawable frame pipeline reported wrong material constant failure");
+    }
+
+    if (device.Snapshot().submit_count != 0U || CaptureWasWritten(capture)) {
+        return Fail("oversized material constants mutated render output");
+    }
+
+    const RenderDrawableFramePipelineSnapshot snapshot = pipeline.Snapshot();
+    if (snapshot.material_failure_count != 1U || snapshot.completed_frame_count != 0U) {
+        return Fail("oversized material constants updated wrong failure counters");
     }
 
     return 0;
@@ -741,6 +825,14 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_COMMAND_CAPACITY) {
         return RenderCoreDrawableFramePipelinePropagatesFixtureCommandCapacityFailure();
+    }
+
+    if (name == TEST_MATERIAL_CONSTANTS) {
+        return RenderCoreDrawableFramePipelinePropagatesMaterialConstants();
+    }
+
+    if (name == TEST_MATERIAL_CONSTANT_REJECTS) {
+        return RenderCoreDrawableFramePipelineRejectsOversizedMaterialConstantsWithoutMutation();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

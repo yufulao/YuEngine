@@ -631,6 +631,19 @@ struct RuntimeAssetCookedMaterialSlotDesc final {
     yuengine::rhi::RhiSamplerDesc sampler_desc{};
 };
 
+constexpr std::size_t RUNTIME_ASSET_PACKED_MATERIAL_CONSTANT_BYTES = 16U;
+
+/**
+ * @brief Packed material parameter bytes ready for RenderScene and RenderCore material requests.
+ */
+struct RuntimeAssetPackedMaterialConstants final {
+    std::array<
+        std::uint8_t,
+        yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_CONSTANT_BYTES> bytes{};
+    std::size_t byte_count = 0U;
+    std::uint64_t hash = 0U;
+};
+
 /**
  * @brief Requests a cooked texture payload bridge into RHI textures and RenderScene material slots.
  */
@@ -638,6 +651,7 @@ struct RuntimeAssetCookedTextureMaterialBridgeRequest final {
     yuengine::resource::ResourceRegistry *resource_registry = nullptr;
     yuengine::asset::AssetManager *asset_manager = nullptr;
     yuengine::rhi::IRhiDevice *rhi_device = nullptr;
+    const RuntimeAssetLoadedFile *loaded_material = nullptr;
     yuengine::asset::AssetHandle material_asset{};
     std::uint32_t material_id = 0U;
     yuengine::rhi::RhiPipelineHandle pipeline{};
@@ -662,6 +676,8 @@ struct RuntimeAssetCookedTextureMaterialBridgeResult final {
         yuengine::renderscene::RenderSceneRuntimeMaterialStatus::Success;
     std::uint32_t runtime_texture_upload_count = 0U;
     std::uint32_t material_texture_slot_count = 0U;
+    std::size_t material_constant_byte_count = 0U;
+    std::uint64_t material_constant_hash = 0U;
     std::uint32_t cleanup_texture_count = 0U;
     std::uint32_t cleanup_sampler_count = 0U;
     bool mutated_state = false;
@@ -955,6 +971,15 @@ const char *RuntimeAssetFileKindName(RuntimeAssetFileKind kind);
  * @return Stable hash value.
  */
 std::uint64_t HashRuntimeAssetDataBytes(std::span<const std::uint8_t> bytes);
+/**
+ * @brief Packs loaded RuntimeAsset material parameters into RenderScene material constant bytes.
+ * @param material Loaded material record.
+ * @param out_constants Output packed constants.
+ * @return Explicit pack status.
+ */
+RuntimeAssetDataStatus PackRuntimeAssetMaterialConstants(
+    const RuntimeAssetLoadedFile &material,
+    RuntimeAssetPackedMaterialConstants *out_constants);
 /**
  * @brief Validates runtime asset bytes without mutating runtime output state.
  * @param bytes Input byte span.

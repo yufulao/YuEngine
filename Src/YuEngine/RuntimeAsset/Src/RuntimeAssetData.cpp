@@ -5522,6 +5522,20 @@ RuntimeAssetDataStatus ValidateCookedTextureMaterialBridgeRequest(
         return RuntimeAssetDataStatus::MissingDependency;
     }
 
+    if (request.loaded_material != nullptr) {
+        if (request.loaded_material->asset.slot != request.material_asset.slot ||
+            request.loaded_material->asset.generation != request.material_asset.generation) {
+            return RuntimeAssetDataStatus::TypeMismatch;
+        }
+
+        RuntimeAssetPackedMaterialConstants material_constants{};
+        const RuntimeAssetDataStatus material_status =
+            PackRuntimeAssetMaterialConstants(*request.loaded_material, &material_constants);
+        if (material_status != RuntimeAssetDataStatus::Success) {
+            return material_status;
+        }
+    }
+
     for (const RuntimeAssetCookedTexturePayloadDesc &texture : request.textures) {
         RuntimeAssetDataStatus status = ValidateLoadedCookedTexture(*request.asset_manager, texture, result);
         if (status != RuntimeAssetDataStatus::Success) {
@@ -5605,6 +5619,16 @@ ResourceDecodedTextureBridgeRequest BuildCookedTextureBridgeRequest(
 RuntimeAssetDataStatus BuildCookedTextureMaterialCommit(
     const RuntimeAssetCookedTextureMaterialBridgeRequest &request,
     RuntimeAssetCookedTextureMaterialBridgeResult *result) {
+    RuntimeAssetPackedMaterialConstants material_constants{};
+    if (request.loaded_material != nullptr) {
+        const RuntimeAssetDataStatus material_status =
+            PackRuntimeAssetMaterialConstants(*request.loaded_material, &material_constants);
+        if (material_status != RuntimeAssetDataStatus::Success) {
+            result->status = material_status;
+            return result->status;
+        }
+    }
+
     std::array<RhiTextureHandle, yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS>
         transient_textures{};
     std::array<RhiSamplerHandle, yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS>
@@ -5675,6 +5699,9 @@ RuntimeAssetDataStatus BuildCookedTextureMaterialCommit(
     material_request.texture_slots = std::span<const RenderSceneRuntimeMaterialTextureSlot>(
         render_slots.data(),
         request.material_slots.size());
+    material_request.material_constant_bytes = std::span<const std::uint8_t>(
+        material_constants.bytes.data(),
+        material_constants.byte_count);
 
     RenderSceneRuntimeMaterialBuilder builder;
     const RenderSceneRuntimeMaterialStatus material_status =
@@ -5710,6 +5737,8 @@ RuntimeAssetDataStatus BuildCookedTextureMaterialCommit(
     *request.out_material = material;
     result->runtime_texture_upload_count = uploaded_count;
     result->material_texture_slot_count = static_cast<std::uint32_t>(material.texture_slot_count);
+    result->material_constant_byte_count = material_constants.byte_count;
+    result->material_constant_hash = material_constants.hash;
     result->published_material = true;
     result->status = RuntimeAssetDataStatus::Success;
     return result->status;
@@ -6388,6 +6417,7 @@ RuntimeAssetDataStatus BuildVisualProofMaterial(
     material_request.resource_registry = request.resource_registry;
     material_request.asset_manager = request.asset_manager;
     material_request.rhi_device = request.rhi_device;
+    material_request.loaded_material = material;
     material_request.material_asset = material->asset;
     material_request.material_id = RUNTIME_ASSET_VISUAL_PROOF_MATERIAL_ID;
     material_request.pipeline = result->shader_pipeline_result.pipeline;
@@ -6719,6 +6749,59 @@ std::uint64_t HashRuntimeAssetDataBytes(std::span<const std::uint8_t> bytes) {
     }
 
     return hash;
+}
+
+RuntimeAssetDataStatus PackRuntimeAssetMaterialConstants(
+    const RuntimeAssetLoadedFile &material,
+    RuntimeAssetPackedMaterialConstants *out_constants) {
+    if (out_constants == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetPackedMaterialConstants constants{};
+    if (material.kind != RuntimeAssetFileKind::Material) {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    if (!material.asset.IsValid()) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (material.material_parameter_count != RUNTIME_ASSET_MATERIAL_PARAMETER_COUNT) {
+        return RuntimeAssetDataStatus::InvalidCount;
+    }
+
+    if (material.material_alpha_mode == RuntimeAssetMaterialAlphaMode::Unknown) {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    if (material.material_emissive_strength > 255U ||
+        material.material_metallic > 255U ||
+        material.material_roughness > 255U ||
+        material.material_opacity > 255U) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    static_assert(
+        RUNTIME_ASSET_PACKED_MATERIAL_CONSTANT_BYTES <=
+        yuengine::renderscene::MAX_RENDER_SCENE_RUNTIME_MATERIAL_CONSTANT_BYTES,
+        "packed material constants must fit render scene material constants");
+    constexpr std::uint32_t BYTE_MASK = 0xFFU;
+    constants.byte_count = RUNTIME_ASSET_PACKED_MATERIAL_CONSTANT_BYTES;
+    constants.bytes[0U] = static_cast<std::uint8_t>((material.material_base_color_rgba >> 24U) & BYTE_MASK);
+    constants.bytes[1U] = static_cast<std::uint8_t>((material.material_base_color_rgba >> 16U) & BYTE_MASK);
+    constants.bytes[2U] = static_cast<std::uint8_t>((material.material_base_color_rgba >> 8U) & BYTE_MASK);
+    constants.bytes[3U] = static_cast<std::uint8_t>(material.material_base_color_rgba & BYTE_MASK);
+    constants.bytes[4U] = static_cast<std::uint8_t>(material.material_emissive_strength);
+    constants.bytes[5U] = static_cast<std::uint8_t>(material.material_metallic);
+    constants.bytes[6U] = static_cast<std::uint8_t>(material.material_roughness);
+    constants.bytes[7U] = static_cast<std::uint8_t>(material.material_opacity);
+    constants.bytes[8U] = static_cast<std::uint8_t>(material.material_alpha_mode);
+    constants.hash = HashRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(constants.bytes.data(), constants.byte_count));
+
+    *out_constants = constants;
+    return RuntimeAssetDataStatus::Success;
 }
 
 RuntimeAssetDataStatus ValidateRuntimeAssetDataBytes(

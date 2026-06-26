@@ -7,6 +7,7 @@
 #include <span>
 
 #include "YuEngine/Asset/AssetHandle.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeMaterialConstants.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 
@@ -16,5 +17,6 @@ struct RenderSceneRuntimeMaterialRequest final {
     std::uint32_t material_id = 0U;
     yuengine::rhi::RhiPipelineHandle pipeline{};
     std::span<const RenderSceneRuntimeMaterialTextureSlot> texture_slots{};
+    std::span<const std::uint8_t> material_constant_bytes{};
 };
 }

@@ -225,6 +225,8 @@ using yuengine::runtimeasset::CompileRuntimeAssetShaderProgram;
 using yuengine::runtimeasset::DecodeRuntimeAssetShaderProgramData;
 using yuengine::runtimeasset::ExecuteRuntimeAssetImportCookCommand;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
+using yuengine::runtimeasset::PackRuntimeAssetMaterialConstants;
+using yuengine::runtimeasset::RUNTIME_ASSET_PACKED_MATERIAL_CONSTANT_BYTES;
 using yuengine::runtimeasset::RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT;
 using yuengine::runtimeasset::RuntimeAssetArtifactClass;
 using yuengine::runtimeasset::RuntimeAssetCookedMaterialSlotDesc;
@@ -251,6 +253,7 @@ using yuengine::runtimeasset::RuntimeAssetImportCookMissingLayer;
 using yuengine::runtimeasset::RuntimeAssetLoadedFile;
 using yuengine::runtimeasset::RuntimeAssetLoadedShaderProgramData;
 using yuengine::runtimeasset::RuntimeAssetLoadTransactionPhase;
+using yuengine::runtimeasset::RuntimeAssetPackedMaterialConstants;
 using yuengine::runtimeasset::RuntimeAssetPackageArtifactProductRunMissingLayer;
 using yuengine::runtimeasset::RuntimeAssetPackageArtifactProductRunRequest;
 using yuengine::runtimeasset::RuntimeAssetPackageArtifactProductRunResult;
@@ -344,6 +347,8 @@ constexpr const char *TEST_MATERIAL_TYPED_REFS =
     "RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
 constexpr const char *TEST_MATERIAL_PARAMETER_SEMANTICS =
     "RuntimeAssetData_MaterialParameterSemanticsLoadIntoRuntimeRecords";
+constexpr const char *TEST_MATERIAL_CONSTANT_PACK =
+    "RuntimeAssetData_MaterialConstantsPackLoadedParameters";
 constexpr const char *TEST_TEXTURE_TYPED_METADATA =
     "RuntimeAssetData_TextureValidatorRejectsInvalidFormatExtentPayload";
 constexpr const char *TEST_SHADER_SCENE_ANIMATION_SCHEMA =
@@ -426,6 +431,10 @@ constexpr const char *TEST_COOKED_TEXTURE_PAYLOAD_LAYOUT =
     "RuntimeAssetData_CookedTexturePayloadTableValidatesLayoutHashAndRowPitch";
 constexpr const char *TEST_COOKED_MATERIAL_SLOT_TABLE =
     "RuntimeAssetData_CookedMaterialTextureSlotTableResolvesLoadedPayloads";
+constexpr const char *TEST_COOKED_MATERIAL_CONSTANTS =
+    "RuntimeAssetData_CookedMaterialConstantsBridgeToRenderSceneRecord";
+constexpr const char *TEST_COOKED_MATERIAL_CONSTANT_REJECTS =
+    "RuntimeAssetData_CookedMaterialConstantsRejectInvalidLoadedMaterialWithoutMutation";
 constexpr const char *TEST_COOKED_PAYLOAD_DESCRIPTOR_REJECTS =
     "RuntimeAssetData_CookedPayloadBridgeRejectsTextureFormatExtentSizeAlignmentHashWithoutMutation";
 constexpr const char *TEST_COOKED_SLOT_DEPENDENCY_REJECTS =
@@ -896,6 +905,68 @@ bool FailStep(std::string_view message) {
     std::fwrite(message.data(), sizeof(char), message.size(), stderr);
     std::fputc('\n', stderr);
     return false;
+}
+
+std::array<std::uint8_t, RUNTIME_ASSET_PACKED_MATERIAL_CONSTANT_BYTES> ExpectedPackedMaterialConstants() {
+    std::array<std::uint8_t, RUNTIME_ASSET_PACKED_MATERIAL_CONSTANT_BYTES> constants{};
+    constants[0U] = 0x20U;
+    constants[1U] = 0x30U;
+    constants[2U] = 0x40U;
+    constants[3U] = 0xC0U;
+    constants[4U] = static_cast<std::uint8_t>(MATERIAL_EMISSIVE_STRENGTH);
+    constants[5U] = static_cast<std::uint8_t>(MATERIAL_METALLIC);
+    constants[6U] = static_cast<std::uint8_t>(MATERIAL_ROUGHNESS);
+    constants[7U] = static_cast<std::uint8_t>(MATERIAL_OPACITY);
+    constants[8U] = 0x02U;
+    return constants;
+}
+
+bool ExpectPackedMaterialConstants(const RuntimeAssetPackedMaterialConstants &constants) {
+    const std::array<std::uint8_t, RUNTIME_ASSET_PACKED_MATERIAL_CONSTANT_BYTES> expected =
+        ExpectedPackedMaterialConstants();
+    if (constants.byte_count != expected.size()) {
+        return FailStep("packed material constant byte count mismatch");
+    }
+
+    for (std::size_t index = 0U; index < expected.size(); ++index) {
+        if (constants.bytes[index] != expected[index]) {
+            return FailStep("packed material constant bytes mismatch");
+        }
+    }
+
+    const std::uint64_t expected_hash = HashRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(constants.bytes.data(), constants.byte_count));
+    if (constants.hash == 0U || constants.hash != expected_hash) {
+        return FailStep("packed material constant hash mismatch");
+    }
+
+    return true;
+}
+
+bool ExpectRenderSceneMaterialConstants(
+    const RenderSceneRuntimeMaterialRecord &material,
+    std::uint64_t expected_hash) {
+    const std::array<std::uint8_t, RUNTIME_ASSET_PACKED_MATERIAL_CONSTANT_BYTES> expected =
+        ExpectedPackedMaterialConstants();
+    if (material.material_constant_byte_count != expected.size()) {
+        return FailStep("render scene material constant byte count mismatch");
+    }
+
+    for (std::size_t index = 0U; index < expected.size(); ++index) {
+        if (material.material_constant_bytes[index] != expected[index]) {
+            return FailStep("render scene material constant bytes mismatch");
+        }
+    }
+
+    const std::uint64_t actual_hash = HashRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(
+            material.material_constant_bytes.data(),
+            material.material_constant_byte_count));
+    if (actual_hash != expected_hash) {
+        return FailStep("render scene material constant hash mismatch");
+    }
+
+    return true;
 }
 
 const char *StatusName(RuntimeAssetDataStatus status) {
@@ -1870,11 +1941,12 @@ std::array<RuntimeAssetCookedMaterialSlotDesc, RUNTIME_TEXTURE_SLOT_COUNT> Cooke
     return slots;
 }
 
-RuntimeAssetCookedTextureMaterialBridgeResult InvokeCookedMaterialBridge(
+RuntimeAssetCookedTextureMaterialBridgeResult InvokeCookedMaterialBridgeWithMaterial(
     IRhiDevice &device,
     ResourceRegistry &registry,
     AssetManager &manager,
     AssetHandle material_asset,
+    const RuntimeAssetLoadedFile *loaded_material,
     RhiPipelineHandle pipeline,
     std::span<const RuntimeAssetCookedTexturePayloadDesc> textures,
     std::span<const RuntimeAssetCookedMaterialSlotDesc> slots,
@@ -1884,6 +1956,7 @@ RuntimeAssetCookedTextureMaterialBridgeResult InvokeCookedMaterialBridge(
     request.resource_registry = &registry;
     request.asset_manager = &manager;
     request.rhi_device = &device;
+    request.loaded_material = loaded_material;
     request.material_asset = material_asset;
     request.material_id = MATERIAL_ID;
     request.pipeline = pipeline;
@@ -1895,6 +1968,27 @@ RuntimeAssetCookedTextureMaterialBridgeResult InvokeCookedMaterialBridge(
     RuntimeAssetCookedTextureMaterialBridgeResult result{};
     BuildRuntimeAssetCookedTextureMaterialBridge(request, &result);
     return result;
+}
+
+RuntimeAssetCookedTextureMaterialBridgeResult InvokeCookedMaterialBridge(
+    IRhiDevice &device,
+    ResourceRegistry &registry,
+    AssetManager &manager,
+    AssetHandle material_asset,
+    RhiPipelineHandle pipeline,
+    std::span<const RuntimeAssetCookedTexturePayloadDesc> textures,
+    std::span<const RuntimeAssetCookedMaterialSlotDesc> slots,
+    RenderSceneRuntimeMaterialRecord *out_material) {
+    return InvokeCookedMaterialBridgeWithMaterial(
+        device,
+        registry,
+        manager,
+        material_asset,
+        nullptr,
+        pipeline,
+        textures,
+        slots,
+        out_material);
 }
 
 RuntimeAssetCookedTextureMaterialBridgeResult BuildCookedMaterial(
@@ -6414,6 +6508,50 @@ int RuntimeAssetDataMaterialParameterSemanticsLoadIntoRuntimeRecords() {
     return 0;
 }
 
+int RuntimeAssetDataMaterialConstantsPackLoadedParameters() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("MaterialConstantPack"), &table)) {
+        return Fail("material constant pack mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("material constant pack fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("material constant pack graph load failed");
+    }
+
+    RuntimeAssetPackedMaterialConstants constants{};
+    const RuntimeAssetDataStatus status =
+        PackRuntimeAssetMaterialConstants(graph.assets[3U], &constants);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return Fail("material constant pack failed");
+    }
+
+    if (!ExpectPackedMaterialConstants(constants)) {
+        return Fail("material constant pack did not preserve expected bytes");
+    }
+
+    RuntimeAssetPackedMaterialConstants bad_output{};
+    RuntimeAssetLoadedFile bad_material = graph.assets[3U];
+    bad_material.material_parameter_count = MATERIAL_PARAMETER_COUNT + 1U;
+    const RuntimeAssetDataStatus bad_status =
+        PackRuntimeAssetMaterialConstants(bad_material, &bad_output);
+    if (bad_status != RuntimeAssetDataStatus::InvalidCount) {
+        return Fail("material constant pack accepted invalid parameter count");
+    }
+
+    if (bad_output.byte_count != 0U || bad_output.hash != 0U) {
+        return Fail("material constant pack failure mutated output constants");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataTextureValidatorRejectsInvalidFormatExtentPayload() {
     LoadedGraph graph{};
     graph.file_read_count = 41U;
@@ -8322,6 +8460,129 @@ int RuntimeAssetDataCookedMaterialTextureSlotTableResolvesLoadedPayloads() {
     return 0;
 }
 
+int RuntimeAssetDataCookedMaterialConstantsBridgeToRenderSceneRecord() {
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    std::array<RuntimeAssetLoadedFile, RUNTIME_TEXTURE_SLOT_COUNT> texture_assets{};
+    std::array<RuntimeAssetCookedTexturePayloadDesc, RUNTIME_TEXTURE_SLOT_COUNT> textures{};
+    if (!LoadCookedTextureMaterialFixture(
+            "CookedMaterialConstants",
+            registry,
+            manager,
+            &graph,
+            &texture_assets,
+            &textures)) {
+        return Fail("cooked material constant fixture failed");
+    }
+
+    const std::array<RuntimeAssetCookedMaterialSlotDesc, RUNTIME_TEXTURE_SLOT_COUNT> slots =
+        CookedMaterialSlots();
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("initialize cooked material constant rhi failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreatePipeline(device, &pipeline)) {
+        return Fail("create cooked material constant pipeline failed");
+    }
+
+    RuntimeAssetPackedMaterialConstants constants{};
+    if (PackRuntimeAssetMaterialConstants(graph.assets[3U], &constants) != RuntimeAssetDataStatus::Success ||
+        !ExpectPackedMaterialConstants(constants)) {
+        return Fail("cook material constant expected pack failed");
+    }
+
+    RenderSceneRuntimeMaterialRecord material{};
+    const RuntimeAssetCookedTextureMaterialBridgeResult result = InvokeCookedMaterialBridgeWithMaterial(
+        device,
+        registry,
+        manager,
+        graph.assets[3U].asset,
+        &graph.assets[3U],
+        pipeline,
+        std::span<const RuntimeAssetCookedTexturePayloadDesc>(textures.data(), textures.size()),
+        std::span<const RuntimeAssetCookedMaterialSlotDesc>(slots.data(), slots.size()),
+        &material);
+    if (result.status != RuntimeAssetDataStatus::Success ||
+        !result.published_material ||
+        result.material_constant_byte_count != constants.byte_count ||
+        result.material_constant_hash != constants.hash) {
+        return Fail("cooked material constants did not bridge");
+    }
+
+    if (!ExpectRenderSceneMaterialConstants(material, constants.hash)) {
+        return Fail("cooked material constants did not reach render scene record");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataCookedMaterialConstantsRejectInvalidLoadedMaterialWithoutMutation() {
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    std::array<RuntimeAssetLoadedFile, RUNTIME_TEXTURE_SLOT_COUNT> texture_assets{};
+    std::array<RuntimeAssetCookedTexturePayloadDesc, RUNTIME_TEXTURE_SLOT_COUNT> textures{};
+    if (!LoadCookedTextureMaterialFixture(
+            "CookedMaterialConstantRejects",
+            registry,
+            manager,
+            &graph,
+            &texture_assets,
+            &textures)) {
+        return Fail("cooked material constant reject fixture failed");
+    }
+
+    const std::array<RuntimeAssetCookedMaterialSlotDesc, RUNTIME_TEXTURE_SLOT_COUNT> slots =
+        CookedMaterialSlots();
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("initialize cooked material constant reject rhi failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreatePipeline(device, &pipeline)) {
+        return Fail("create cooked material constant reject pipeline failed");
+    }
+
+    RuntimeAssetLoadedFile bad_material = graph.assets[3U];
+    bad_material.material_parameter_count = MATERIAL_PARAMETER_COUNT + 1U;
+    const auto before_snapshot = device.Snapshot();
+    RenderSceneRuntimeMaterialRecord material{};
+    material.material_id = 77U;
+    const RuntimeAssetCookedTextureMaterialBridgeResult result = InvokeCookedMaterialBridgeWithMaterial(
+        device,
+        registry,
+        manager,
+        graph.assets[3U].asset,
+        &bad_material,
+        pipeline,
+        std::span<const RuntimeAssetCookedTexturePayloadDesc>(textures.data(), textures.size()),
+        std::span<const RuntimeAssetCookedMaterialSlotDesc>(slots.data(), slots.size()),
+        &material);
+    if (result.status != RuntimeAssetDataStatus::InvalidCount ||
+        result.mutated_state ||
+        result.published_material ||
+        result.material_constant_byte_count != 0U ||
+        result.material_constant_hash != 0U) {
+        return Fail("invalid material constants bridge did not fail before mutation");
+    }
+
+    if (material.material_id != 77U || material.is_resolved || material.texture_slot_count != 0U) {
+        return Fail("invalid material constants bridge mutated render scene output");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.resources.texture_count != before_snapshot.resources.texture_count ||
+        after_snapshot.resources.sampler_count != before_snapshot.resources.sampler_count) {
+        return Fail("invalid material constants bridge mutated rhi primitives");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataCookedPayloadBridgeRejectsTextureFormatExtentSizeAlignmentHashWithoutMutation() {
     ResourceRegistry registry;
     AssetManager manager;
@@ -10206,6 +10467,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_MESH_PAYLOAD_DECODED_BUFFERS, RuntimeAssetDataImportedMeshPayloadBytesFeedRenderGeometryBuffers},
     {TEST_MATERIAL_TYPED_REFS, RuntimeAssetDataMaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_MATERIAL_PARAMETER_SEMANTICS, RuntimeAssetDataMaterialParameterSemanticsLoadIntoRuntimeRecords},
+    {TEST_MATERIAL_CONSTANT_PACK, RuntimeAssetDataMaterialConstantsPackLoadedParameters},
     {TEST_TEXTURE_TYPED_METADATA, RuntimeAssetDataTextureValidatorRejectsInvalidFormatExtentPayload},
     {TEST_SHADER_SCENE_ANIMATION_SCHEMA, RuntimeAssetDataShaderSceneAnimationRequireSourceSchema},
     {TEST_INVALID_DEPENDENCY, RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs},
@@ -10263,6 +10525,10 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataCookedTexturePayloadTableValidatesLayoutHashAndRowPitch},
     {TEST_COOKED_MATERIAL_SLOT_TABLE,
      RuntimeAssetDataCookedMaterialTextureSlotTableResolvesLoadedPayloads},
+    {TEST_COOKED_MATERIAL_CONSTANTS,
+     RuntimeAssetDataCookedMaterialConstantsBridgeToRenderSceneRecord},
+    {TEST_COOKED_MATERIAL_CONSTANT_REJECTS,
+     RuntimeAssetDataCookedMaterialConstantsRejectInvalidLoadedMaterialWithoutMutation},
     {TEST_COOKED_PAYLOAD_DESCRIPTOR_REJECTS,
      RuntimeAssetDataCookedPayloadBridgeRejectsTextureFormatExtentSizeAlignmentHashWithoutMutation},
     {TEST_COOKED_SLOT_DEPENDENCY_REJECTS,

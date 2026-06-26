@@ -16,6 +16,7 @@ enum class RenderSceneRuntimeMaterialStatus {
     InvalidSamplerBinding,
     DuplicateTextureSlot,
     TextureSlotCapacityExceeded,
+    MaterialConstantCapacityExceeded,
     MissingMaterialRecord
 };
 }

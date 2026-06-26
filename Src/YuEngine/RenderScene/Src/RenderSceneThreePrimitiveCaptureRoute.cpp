@@ -262,6 +262,9 @@ RenderSceneThreePrimitiveCaptureStatus RenderSceneThreePrimitiveCaptureRoute::Ex
         render_request.clear_color = request.camera.camera.clear_color;
         render_request.capture_output = capture_output;
         render_request.capture_byte_budget = request.capture_byte_budget_per_entity;
+        render_request.material_constant_bytes = std::span<const std::uint8_t>(
+            request.material.material_constant_bytes.data(),
+            request.material.material_constant_byte_count);
         render_request.frame_id = request.frame_id + static_cast<std::uint32_t>(index);
         render_request.pass_id = draws[index].draw.pass_id + static_cast<std::uint32_t>(index);
         render_request.material_id = request.material.material_id;

@@ -3,6 +3,7 @@
 
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialBuilder.h"
 
+#include <algorithm>
 #include <cstddef>
 
 #include "YuEngine/Rhi/RhiConstants.h"
@@ -50,6 +51,12 @@ RenderSceneRuntimeMaterialStatus RenderSceneRuntimeMaterialBuilder::Build(
         InsertTextureSlotSorted(texture_slot, &record);
     }
 
+    const std::span<const std::uint8_t> material_constants = request.material_constant_bytes;
+    std::copy(
+        material_constants.begin(),
+        material_constants.end(),
+        record.material_constant_bytes.begin());
+    record.material_constant_byte_count = material_constants.size();
     record.is_resolved = true;
     *out_record = record;
     return RenderSceneRuntimeMaterialStatus::Success;
@@ -79,6 +86,10 @@ RenderSceneRuntimeMaterialStatus RenderSceneRuntimeMaterialBuilder::Validate(
 
     if (record.texture_slot_count > MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS) {
         return RenderSceneRuntimeMaterialStatus::TextureSlotCapacityExceeded;
+    }
+
+    if (record.material_constant_byte_count > MAX_RENDER_SCENE_RUNTIME_MATERIAL_CONSTANT_BYTES) {
+        return RenderSceneRuntimeMaterialStatus::MaterialConstantCapacityExceeded;
     }
 
     for (std::size_t index = 0U; index < record.texture_slot_count; ++index) {
@@ -120,6 +131,15 @@ RenderSceneRuntimeMaterialStatus RenderSceneRuntimeMaterialBuilder::ValidateRequ
 
     if (request.texture_slots.size() > MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS) {
         return RenderSceneRuntimeMaterialStatus::TextureSlotCapacityExceeded;
+    }
+
+    if (request.material_constant_bytes.size() > MAX_RENDER_SCENE_RUNTIME_MATERIAL_CONSTANT_BYTES) {
+        return RenderSceneRuntimeMaterialStatus::MaterialConstantCapacityExceeded;
+    }
+
+    if (request.material_constant_bytes.size() != 0U &&
+        request.material_constant_bytes.data() == nullptr) {
+        return RenderSceneRuntimeMaterialStatus::NullPointer;
     }
 
     for (std::size_t index = 0U; index < request.texture_slots.size(); ++index) {

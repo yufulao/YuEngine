@@ -21,6 +21,8 @@ struct RenderSceneRuntimeMaterialRecord final {
         RenderSceneRuntimeMaterialTextureSlot,
         MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS> texture_slots{};
     std::size_t texture_slot_count = 0U;
+    std::array<std::uint8_t, MAX_RENDER_SCENE_RUNTIME_MATERIAL_CONSTANT_BYTES> material_constant_bytes{};
+    std::size_t material_constant_byte_count = 0U;
     bool is_resolved = false;
 };
 }

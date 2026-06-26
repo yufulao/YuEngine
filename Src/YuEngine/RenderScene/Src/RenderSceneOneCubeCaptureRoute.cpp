@@ -147,6 +147,9 @@ RenderSceneOneCubeCaptureStatus RenderSceneOneCubeCaptureRoute::Execute(
     render_request.clear_color = request.camera.camera.clear_color;
     render_request.capture_output = request.capture_output;
     render_request.capture_byte_budget = request.capture_byte_budget;
+    render_request.material_constant_bytes = std::span<const std::uint8_t>(
+        request.material.material_constant_bytes.data(),
+        request.material.material_constant_byte_count);
     render_request.frame_id = request.frame_id;
     render_request.pass_id = result.draw_record.draw.pass_id;
     render_request.material_id = request.material.material_id;
