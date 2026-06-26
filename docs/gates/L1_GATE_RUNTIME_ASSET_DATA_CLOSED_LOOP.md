@@ -283,7 +283,14 @@ bridge proof shape for this closed-loop slice:
     rejection, and transient RHI cleanup on partial creation failure.
 21. RuntimeAsset material records pack deterministic material constant bytes,
     bridge them into RenderScene material records, and reject invalid/oversized
-    constant data before mutation or RHI command/list scope.
+    constant data at the RenderScene material record boundary.
+22. RHI constant-buffer binding records bounded command/list slots, submit
+    snapshots, stale-handle rejection, and RenderCore fixture/material
+    propagation.
+23. Generic RenderScene CPU submission builds frame records from loaded scene
+    records, uses mesh refs instead of entity order, rejects missing
+    transform/mesh/material refs without mutation, and reports material variants
+    until the frame API supports them.
 
 Current slice status:
 
@@ -311,6 +318,8 @@ Current slice status:
 | 20. shader compiler backend boundary | PASS |
 | 21. cooked shader program failure and cleanup proofs | PASS |
 | 22. material constants CTest registration and closed-loop bridge | PASS |
+| 23. RHI constant-buffer command/list binding | PASS |
+| 24. generic RenderScene CPU submission builder | PASS |
 
 Current RuntimeAssetData proof names that future slices must keep passing or
 supersede with approved equivalents:
@@ -347,6 +356,12 @@ supersede with approved equivalents:
 - `RuntimeAssetData_DecodedTexturePayloadsDriveRhiMaterialSlots`
 - `RuntimeAssetData_TextureMaterialSlotBridgeFailuresDoNotMutateRenderSceneOutputs`
 - `RuntimeAssetData_PackageCookRunSmokeRunsPackagedRuntimeEntryPoint`
+- `RuntimeAssetData_GenericRenderSceneSubmissionBuildsFrameFromLoadedSceneRecords`
+- `RuntimeAssetData_GenericRenderSceneSubmissionUsesMeshRefsNotEntityOrder`
+- `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingTransformWithoutMutation`
+- `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMeshRefWithoutMutation`
+- `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMaterialRefWithoutMutation`
+- `RuntimeAssetData_GenericRenderSceneSubmissionReportsMaterialVariantsUntilFrameApiSupportsThem`
 
 ## Accepted Current Slices And Next Slice
 
@@ -368,7 +383,9 @@ This gate records these mainline implementation slices:
 | RAV1-L | Mesh decoded payload geometry buffers | PASS; RenderScene/RenderCore/RHI geometry proof reads Resource decoded mesh payloads, validates payload hash and vertex/index byte split, and reports exact Model-layer failures for missing decoded payload or hash mismatch |
 | RAV1-M | Shader compiler backend boundary | PASS; RuntimeAsset owns deterministic backend selection, import policy identity, stage bytecode hash identity, input layout reflection, texture slot reflection, cooked stage module creation, cooked reflection/input-layout pipeline use, no-mutation mismatch rejection, partial RHI cleanup, RHI pipeline bridge consumption, and unknown-backend/policy-mismatch failures |
 | RAV1-N | Material constants closed loop | PASS; RuntimeAsset packs loaded material parameters into deterministic constant bytes, bridges cooked material constants into RenderScene material records, rejects invalid constants without mutation, and registers the material constants proof tests in CTest |
-| Next slice | Production hardening | RHI GPU constant-buffer command/list binding, broader material variants, non-fixture shader compiler integration, broader shader reflection semantics, broader scene/animation production variants |
+| RAV1-O | RHI constant-buffer binding | PASS; RHI command/list records bounded constant-buffer slots, rejects overflow and stale handles, submits null-device snapshots, and propagates RenderCore fixture/material bindings |
+| RAV1-P | Generic RenderScene CPU submission builder | PASS; RuntimeAsset builds frame records from loaded scene records, validates transform/mesh/material refs without mutation, and reports material variants until frame API support lands |
+| Next slice | Production hardening | broader material variants and per-entity RenderScene material table, non-fixture shader compiler integration, broader shader reflection semantics, reusable animation runtime record tables, broader scene/animation production variants |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer

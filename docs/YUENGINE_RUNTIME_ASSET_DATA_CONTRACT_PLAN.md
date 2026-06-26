@@ -263,11 +263,12 @@ C++ in-memory construction alone.
 | Mesh layout/topology records | PASS | `RuntimeAssetData_MeshLayoutTopologyDecodesIntoLoadedRecords` validates input layout, vertex/index stride, `uint16` index format, triangle-list topology, and loaded record propagation for cube/cylinder/cone disk mesh files |
 | Mesh payload to geometry buffers | PASS | `RuntimeAssetData_ImportedMeshPayloadBytesFeedRenderGeometryBuffers` reads Resource decoded mesh payload records, validates payload hash and vertex/index byte split, feeds decoded bytes into RHI vertex/index buffers, and reports exact Model-layer failures for missing payload or hash mismatch |
 | Material parameter semantics | PASS | `RuntimeAssetData_MaterialParameterSemanticsLoadIntoRuntimeRecords` validates and loads base color RGBA, emissive strength, metallic, roughness, opacity, alpha mode, and parameter count from disk material records |
-| RenderCore material constants | PASS | `RenderCore_DrawableFramePipeline_PropagatesMaterialConstants` and `RenderCore_DrawableFramePipeline_RejectsOversizedMaterialConstantsWithoutMutation` prove drawable frame material constant propagation and oversize rejection |
-| RenderScene material constants | PASS | `RenderScene_RuntimeMaterialCopiesMaterialConstants` and `RenderScene_RuntimeMaterialRejectsOversizedMaterialConstants` prove runtime material constant copy and no-mutation oversize rejection before RHI command/list scope |
+| RenderCore material constants | PASS | `RenderCore_DrawableFramePipeline_PropagatesMaterialConstants`, `RenderCore_DrawableFramePipeline_RejectsOversizedMaterialConstantsWithoutMutation`, `RenderCore_FixturePass_BindsConstantBuffer`, and `Material_BindingFixture_PropagatesConstantBufferBindings` prove drawable frame material constant propagation, oversize rejection, and constant-buffer binding propagation |
+| RenderScene material constants | PASS | `RenderScene_RuntimeMaterialCopiesMaterialConstants` and `RenderScene_RuntimeMaterialRejectsOversizedMaterialConstants` prove runtime material constant copy and no-mutation oversize rejection at the RenderScene material record boundary |
 | RuntimeAsset material constant bytes | PASS | `RuntimeAssetData_MaterialConstantsPackLoadedParameters` packs loaded material parameters into deterministic material constant bytes |
 | Cooked material constants bridge | PASS | `RuntimeAssetData_CookedMaterialConstantsBridgeToRenderSceneRecord` bridges cooked loaded material constants into RenderScene material records |
 | Cooked material constants no-mutation | PASS | `RuntimeAssetData_CookedMaterialConstantsRejectInvalidLoadedMaterialWithoutMutation` rejects invalid loaded material constants without mutating RenderScene/RHI output |
+| RHI constant-buffer binding | PASS | `RHI_ConstantBufferBinding_DefaultsAreBoundedValues`, `RHI_CommandList_RecordsConstantBufferBindingWithinCapacity`, `RHI_ConstantBufferSlotOverflow_DoesNotMutate`, `RHI_SubmitConstantBufferBinding_UpdatesNullSnapshot`, and `RHI_SubmitConstantBufferBindingRejectsStaleHandle` prove bounded command/list binding and stale-handle rejection |
 | Shader import policy | PASS | `RuntimeAssetData_ShaderImportPolicyValidatesSourceCookedAndLoadedRecords` validates source/cooked shader import language, target, entries, profiles, compile flags, and loaded record policy identity |
 | Shader compiler backend boundary | PASS | `RuntimeAssetData_ShaderCompilerBackendProducesProgramReflection` compiles deterministic disk program bytes into loaded program data, reports import policy, stage, bytecode hash, input layout, and texture slot reflection identity, feeds the RHI pipeline bridge, and rejects unknown backend or policy mismatch |
 | Cooked shader stage modules | PASS | `RuntimeAssetData_CookedShaderStagePayloadsCreateRhiModules` creates RHI shader modules from owned cooked stage bytecode and validates stage payload identity |
@@ -277,21 +278,24 @@ C++ in-memory construction alone.
 | Scene camera family failures | PASS | `RuntimeAssetData_SceneAnimationLoaderRejectsCameraFamilyFailuresWithoutMutation` validates duplicate active camera, no active camera, invalid camera row, and invalid entity camera ref failures without Resource/Asset/RenderScene output mutation |
 | Mesh/material/texture cook payloads | PASS | `RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture` stores decoded payload records for seven decodable runtime records |
 | RenderScene records | PASS | loaded handles feed cube/cylinder/cone geometry, shared material, camera, and frame records |
+| Generic RenderScene CPU submission | PASS | `RuntimeAssetData_GenericRenderSceneSubmissionBuildsFrameFromLoadedSceneRecords`, `RuntimeAssetData_GenericRenderSceneSubmissionUsesMeshRefsNotEntityOrder`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingTransformWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMeshRefWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMaterialRefWithoutMutation`, and `RuntimeAssetData_GenericRenderSceneSubmissionReportsMaterialVariantsUntilFrameApiSupportsThem` prove loaded scene records can build RenderScene frame records with bounded no-mutation failures |
 | RenderCore/RHI capture | PASS | `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi` |
 | CPU oracle guard | PASS | `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` |
 | Upper-layer dependency guard | PASS | `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` |
 
 These slices are not a complete asset system. Current RuntimeAssetData coverage
 accepts decoded mesh payload geometry buffers, decoded texture material slots,
-loaded material constant bytes into RenderScene records, loaded shader bytecode,
-shader compiler backend identity, cooked shader module creation, cooked
-reflection/input-layout bridge, cooked shader no-mutation failures, disk
-animation sampling, staged scene loader output, package/cook/run, and
+loaded material constant bytes into RenderScene records, RHI constant-buffer
+command/list binding, loaded shader bytecode, shader compiler backend identity,
+cooked shader module creation, cooked reflection/input-layout bridge, cooked
+shader no-mutation failures, disk animation sampling, staged scene loader
+output, generic RenderScene CPU submission records, package/cook/run, and
 product-run smoke as the current mainline closed loop. The remaining work is
-production hardening for RHI GPU constant-buffer command/list binding, broader
-material variants, non-fixture shader compiler integration, broader shader
-reflection semantics, and scene/animation/camera production variants beyond the
-canonical cube/cylinder/cone graph.
+production hardening for broader material variants and per-entity RenderScene
+material tables, non-fixture shader compiler integration, broader shader
+reflection semantics, reusable animation runtime record tables, and
+scene/animation/camera production variants beyond the canonical
+cube/cylinder/cone graph.
 
 ## Validator, Cook, Load, Render
 
