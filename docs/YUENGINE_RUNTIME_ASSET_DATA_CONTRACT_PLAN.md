@@ -253,6 +253,7 @@ C++ in-memory construction alone.
 | Resource/Asset registration | PASS | scene and all generated asset families register synthetic Resource descriptors and runtime Asset handles |
 | Resource/Asset dependency edges | PASS | `RuntimeAssetData_LoadRegistersResourceAndAssetDependencyEdges` records scene dependencies in both registries |
 | Camera/tween descriptor file | PASS | `RuntimeAssetData_CameraTweenDescriptorLoadsFromDiskSceneReference` validates and loads `Camera/Main.yucamera` and cooked camera records through the runtime graph; ResourceBrowser surface/depth workflows consume the same 10-file graph |
+| Mesh vertex/index payload policy | PASS | `RuntimeAssetData_MeshPayloadPolicyRejectsSizeHashAndSplitMismatch` validates bounded mesh payload bytes, payload alignment, payload hash, and vertex/index split sums for generated source and cooked mesh files |
 | Mesh/material/texture cook payloads | PASS | `RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture` stores decoded payload records for seven decodable runtime records |
 | RenderScene records | PASS | loaded handles feed cube/cylinder/cone geometry, shared material, camera, and frame records |
 | RenderCore/RHI capture | PASS | `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi` |
@@ -263,7 +264,7 @@ These slices are not a complete asset system. Current RuntimeAssetData coverage
 accepts decoded texture material slots, loaded shader bytecode, cooked shader
 payloads, disk animation sampling, staged scene loader output, package/cook/run,
 and product-run smoke as the current mainline closed loop. The remaining work is
-production hardening for richer mesh vertex/index payload policy, shader
+production hardening for real mesh vertex/index layout decoding, shader
 compiler/import policy, broader material parameter semantics, and
 scene/animation/camera family coverage beyond the canonical cube/cylinder/cone
 graph.

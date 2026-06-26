@@ -99,6 +99,8 @@ using yuengine::runtimeasset::RuntimeAssetSceneEntityRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneLoaderOutput;
 using yuengine::runtimeasset::RuntimeAssetSceneResourceRef;
 using yuengine::runtimeasset::RuntimeAssetSceneTransformOutputRecord;
+using yuengine::runtimeasset::RuntimeAssetValidationResult;
+using yuengine::runtimeasset::ValidateRuntimeAssetDataBytes;
 
 constexpr const char *MOUNT_ID = "resource-browser";
 constexpr std::uint32_t RESOURCE_TYPE_MESH = 101U;
@@ -122,7 +124,7 @@ constexpr std::size_t FIXTURE_FILE_COUNT =
 
 struct FixtureFile final {
     RuntimeAssetFileDesc desc{};
-    const char *bytes = nullptr;
+    std::string bytes{};
 };
 
 struct LoadedGraph final {
@@ -245,7 +247,66 @@ std::vector<std::uint8_t> BytesFromString(const std::string &text) {
     return std::vector<std::uint8_t>(text.begin(), text.end());
 }
 
+constexpr std::uint64_t FNV_OFFSET = 14695981039346656037ULL;
+constexpr std::uint64_t FNV_PRIME = 1099511628211ULL;
+
+std::uint64_t HashText(std::string_view text) {
+    std::uint64_t hash = FNV_OFFSET;
+    for (const char character : text) {
+        hash ^= static_cast<std::uint64_t>(static_cast<std::uint8_t>(character));
+        hash *= FNV_PRIME;
+    }
+
+    return hash;
+}
+
+std::string MeshPayload(char seed, std::uint32_t byte_count) {
+    std::string payload{};
+    payload.reserve(byte_count);
+    for (std::uint32_t index = 0U; index < byte_count; ++index) {
+        const int payload_value = static_cast<int>(seed) + static_cast<int>(index % 10U);
+        const char value = static_cast<char>(payload_value);
+        payload.push_back(value);
+    }
+
+    return payload;
+}
+
+std::string SourceMeshText(
+    std::string_view id,
+    std::string_view shape,
+    std::uint32_t vertex_count,
+    std::uint32_t index_count,
+    std::uint32_t vertex_payload_byte_count,
+    std::uint32_t index_payload_byte_count,
+    std::string_view payload) {
+    std::string text("YUASSET MESH 1\nschema=rav0-source\nid=");
+    text += id;
+    text += "\nkind=";
+    text += shape;
+    text += "\nvertices=";
+    text += std::to_string(vertex_count);
+    text += "\nindices=";
+    text += std::to_string(index_count);
+    text += "\nbounds=-1,-1,-1,1,1,1\nvertexPayloadBytes=";
+    text += std::to_string(vertex_payload_byte_count);
+    text += "\nindexPayloadBytes=";
+    text += std::to_string(index_payload_byte_count);
+    text += "\npayloadBytes=";
+    text += std::to_string(payload.size());
+    text += "\npayloadAlign=4\npayloadHash=";
+    text += std::to_string(HashText(payload));
+    text += "\npayload=";
+    text += payload;
+    text += "\n";
+    return text;
+}
+
 std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
+    const std::string cube_payload = MeshPayload('A', 96U);
+    const std::string cylinder_payload = MeshPayload('K', 96U);
+    const std::string cone_payload = MeshPayload('U', 96U);
+
     return std::array<FixtureFile, FIXTURE_FILE_COUNT>{
         FixtureFile{
             RuntimeAssetFileDesc{
@@ -254,7 +315,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_MESH},
                 AssetTypeId{ASSET_TYPE_MESH},
                 1001U},
-            "YUASSET MESH 1\nschema=rav0-source\nid=cube_mesh\nkind=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\n"},
+            SourceMeshText("cube_mesh", "cube", 24U, 36U, 48U, 48U, cube_payload)},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Mesh/Cylinder.yumesh",
@@ -262,7 +323,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_MESH},
                 AssetTypeId{ASSET_TYPE_MESH},
                 1002U},
-            "YUASSET MESH 1\nschema=rav0-source\nid=cylinder_mesh\nkind=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\n"},
+            SourceMeshText("cylinder_mesh", "cylinder", 18U, 96U, 32U, 64U, cylinder_payload)},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Mesh/Cone.yumesh",
@@ -270,7 +331,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_MESH},
                 AssetTypeId{ASSET_TYPE_MESH},
                 1003U},
-            "YUASSET MESH 1\nschema=rav0-source\nid=cone_mesh\nkind=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\n"},
+            SourceMeshText("cone_mesh", "cone", 10U, 48U, 48U, 48U, cone_payload)},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Material/Shared.yumat",
@@ -565,6 +626,35 @@ bool LoadCanonicalGraph(
     request.scene_output = &out_graph->scene_output;
 
     const RuntimeAssetDataStatus status = LoadRuntimeAssetDataGraph(request, &out_graph->result);
+    if (status != RuntimeAssetDataStatus::Success ||
+        out_graph->result.loaded_file_count != descs.size()) {
+        const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
+        for (const FixtureFile &file : files) {
+            RuntimeAssetValidationResult validation{};
+            const std::vector<std::uint8_t> bytes = BytesFromString(file.bytes);
+            const RuntimeAssetDataStatus validation_status =
+                ValidateRuntimeAssetDataBytes(
+                    std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+                    file.desc.kind,
+                    &validation);
+            if (validation_status != RuntimeAssetDataStatus::Success) {
+                std::fprintf(
+                    stderr,
+                    "canonical file path=%s status=%u\n",
+                    file.desc.path,
+                    static_cast<unsigned>(validation_status));
+            }
+        }
+
+        std::fprintf(
+            stderr,
+            "canonical graph status=%u loaded=%u expected=%zu scene_status=%u\n",
+            static_cast<unsigned>(status),
+            out_graph->result.loaded_file_count,
+            descs.size(),
+            static_cast<unsigned>(out_graph->scene_output.status));
+    }
+
     return status == RuntimeAssetDataStatus::Success &&
         out_graph->result.loaded_file_count == descs.size();
 }

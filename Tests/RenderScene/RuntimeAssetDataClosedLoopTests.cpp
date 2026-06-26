@@ -330,6 +330,8 @@ constexpr const char *TEST_INVALID_BOUNDS =
     "RuntimeAssetData_ValidatorRejectsInvalidBoundsWithoutOutputs";
 constexpr const char *TEST_TYPED_MESH_MATERIAL_TEXTURE =
     "RuntimeAssetData_MeshMaterialTextureTypedValidatorsAcceptStructuredMetadata";
+constexpr const char *TEST_MESH_PAYLOAD_POLICY =
+    "RuntimeAssetData_MeshPayloadPolicyRejectsSizeHashAndSplitMismatch";
 constexpr const char *TEST_MATERIAL_TYPED_REFS =
     "RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
 constexpr const char *TEST_TEXTURE_TYPED_METADATA =
@@ -500,7 +502,7 @@ constexpr int SKIP_RETURN_CODE = 77;
 
 struct FixtureFile final {
     RuntimeAssetFileDesc desc{};
-    const char *bytes = nullptr;
+    std::string bytes{};
 };
 
 struct LoadedGraph final {
@@ -1007,7 +1009,21 @@ std::filesystem::path TestRoot(std::string_view test_name) {
     return root;
 }
 
+std::string MeshPayload(char seed, std::uint32_t byte_count);
+std::string SourceMeshText(
+    std::string_view header_line,
+    std::string_view id,
+    std::string_view shape,
+    std::uint32_t vertex_count,
+    std::uint32_t index_count,
+    std::uint32_t vertex_payload_byte_count,
+    std::uint32_t index_payload_byte_count,
+    std::string_view payload);
+
 std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
+    const std::string cube_payload = MeshPayload('A', 96U);
+    const std::string cylinder_payload = MeshPayload('K', 96U);
+    const std::string cone_payload = MeshPayload('U', 96U);
     return std::array<FixtureFile, FIXTURE_FILE_COUNT>{
         FixtureFile{
             RuntimeAssetFileDesc{
@@ -1019,7 +1035,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 yuengine::resource::ResourceDecodePlanAssetClass::Mesh,
                 yuengine::resource::ResourceDecodeResultClass::Mesh,
                 96U},
-            "YUASSET MESH 1\nschema=rav0-source\nid=cube_mesh\nkind=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\n"},
+            SourceMeshText("YUASSET MESH 1", "cube_mesh", "cube", 24U, 36U, 48U, 48U, cube_payload)},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Mesh/Cylinder.yumesh",
@@ -1030,7 +1046,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 yuengine::resource::ResourceDecodePlanAssetClass::Mesh,
                 yuengine::resource::ResourceDecodeResultClass::Mesh,
                 96U},
-            "YUASSET MESH 1\nschema=rav0-source\nid=cylinder_mesh\nkind=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\n"},
+            SourceMeshText("YUASSET MESH 1", "cylinder_mesh", "cylinder", 18U, 96U, 32U, 64U, cylinder_payload)},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Mesh/Cone.yumesh",
@@ -1041,7 +1057,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 yuengine::resource::ResourceDecodePlanAssetClass::Mesh,
                 yuengine::resource::ResourceDecodeResultClass::Mesh,
                 96U},
-            "YUASSET MESH 1\nschema=rav0-source\nid=cone_mesh\nkind=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\n"},
+            SourceMeshText("YUASSET MESH 1", "cone_mesh", "cone", 10U, 48U, 48U, 48U, cone_payload)},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Material/Shared.yumat",
@@ -1224,17 +1240,53 @@ std::uint64_t HashText(std::string_view text) {
     return hash;
 }
 
-std::string SourceMeshText(std::string_view header_line) {
+std::string MeshPayload(char seed, std::uint32_t byte_count) {
+    std::string payload{};
+    payload.reserve(byte_count);
+    for (std::uint32_t index = 0U; index < byte_count; ++index) {
+        const int payload_value = static_cast<int>(seed) + static_cast<int>(index % 10U);
+        const char value = static_cast<char>(payload_value);
+        payload.push_back(value);
+    }
+
+    return payload;
+}
+
+std::string SourceMeshText(
+    std::string_view header_line,
+    std::string_view id,
+    std::string_view shape,
+    std::uint32_t vertex_count,
+    std::uint32_t index_count,
+    std::uint32_t vertex_payload_byte_count,
+    std::uint32_t index_payload_byte_count,
+    std::string_view payload) {
     std::string text(header_line);
-    text +=
-        "\n"
-        "schema=rav0-source\n"
-        "id=cube_mesh\n"
-        "kind=cube\n"
-        "vertices=24\n"
-        "indices=36\n"
-        "bounds=-1,-1,-1,1,1,1\n";
+    text += "\nschema=rav0-source\nid=";
+    text += id;
+    text += "\nkind=";
+    text += shape;
+    text += "\nvertices=";
+    text += std::to_string(vertex_count);
+    text += "\nindices=";
+    text += std::to_string(index_count);
+    text += "\nbounds=-1,-1,-1,1,1,1\nvertexPayloadBytes=";
+    text += std::to_string(vertex_payload_byte_count);
+    text += "\nindexPayloadBytes=";
+    text += std::to_string(index_payload_byte_count);
+    text += "\npayloadBytes=";
+    text += std::to_string(payload.size());
+    text += "\npayloadAlign=4\npayloadHash=";
+    text += std::to_string(HashText(payload));
+    text += "\npayload=";
+    text += payload;
+    text += "\n";
     return text;
+}
+
+std::string SourceMeshText(std::string_view header_line) {
+    const std::string payload = MeshPayload('A', 96U);
+    return SourceMeshText(header_line, "cube_mesh", "cube", 24U, 36U, 48U, 48U, payload);
 }
 
 std::string CookedTextureTextWithHeader(
@@ -5401,14 +5453,8 @@ bool ExpectLoaderRejectsAlbedoTextureWithoutMutation(
 
 int RuntimeAssetDataSourceCookedParserReportsBoundedMetadata() {
     RuntimeAssetValidationResult source_result{};
-    const std::string source_text =
-        "YUASSET MESH 1\n"
-        "schema=rav0-source\n"
-        "id=cube_mesh\n"
-        "kind=cube\n"
-        "vertices=24\n"
-        "indices=36\n"
-        "bounds=-1,-1,-1,1,1,1\n";
+    const std::string source_payload = MeshPayload('A', 96U);
+    const std::string source_text = SourceMeshText("YUASSET MESH 1");
     if (!ValidateText(source_text, RuntimeAssetFileKind::Mesh, &source_result)) {
         return Fail("source parser rejected canonical mesh");
     }
@@ -5417,6 +5463,9 @@ int RuntimeAssetDataSourceCookedParserReportsBoundedMetadata() {
         source_result.source_hash != source_result.hash ||
         source_result.record_table_count != 1U ||
         source_result.record_table_byte_count != source_text.size() ||
+        source_result.payload_byte_count != source_payload.size() ||
+        source_result.payload_alignment != 4U ||
+        source_result.payload_hash != HashText(source_payload) ||
         source_result.identity_hash == 0U) {
         return Fail("source parser did not report bounded source metadata");
     }
@@ -5675,13 +5724,15 @@ int RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation() {
     }
 
     if (!probe(
-            "YUASSET MESH 1\n"
-            "schema=rav0-source\n"
-            "id=mesh_inside_yuscene_path\n"
-            "kind=cube\n"
-            "vertices=24\n"
-            "indices=36\n"
-            "bounds=-1,-1,-1,1,1,1\n",
+            SourceMeshText(
+                "YUASSET MESH 1",
+                "mesh_inside_yuscene_path",
+                "cube",
+                24U,
+                36U,
+                48U,
+                48U,
+                MeshPayload('A', 96U)),
             RuntimeAssetDataStatus::InvalidKind)) {
         return Fail("loader trusted misleading .yuscene suffix over internal kind");
     }
@@ -5691,16 +5742,9 @@ int RuntimeAssetDataLoaderRejectsSchemaKindAndMisleadingSuffixBeforeMutation() {
 
 int RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata() {
     RuntimeAssetValidationResult mesh_result{};
-    if (!ValidateText(
-            "YUASSET MESH 1\n"
-            "schema=rav0-source\n"
-            "id=cube_mesh\n"
-            "kind=cube\n"
-            "vertices=24\n"
-            "indices=36\n"
-            "bounds=-1,-1,-1,1,1,1\n",
-            RuntimeAssetFileKind::Mesh,
-            &mesh_result)) {
+    const std::string mesh_payload = MeshPayload('A', 96U);
+    const std::string mesh_text = SourceMeshText("YUASSET MESH 1");
+    if (!ValidateText(mesh_text, RuntimeAssetFileKind::Mesh, &mesh_result)) {
         return Fail("mesh metadata validator rejected valid mesh");
     }
 
@@ -5711,6 +5755,12 @@ int RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata()
 
     if (mesh_result.vertex_count != 24U || mesh_result.index_count != 36U) {
         return Fail("mesh metadata counts were not parsed");
+    }
+
+    if (mesh_result.payload_byte_count != mesh_payload.size() ||
+        mesh_result.payload_alignment != 4U ||
+        mesh_result.payload_hash != HashText(mesh_payload)) {
+        return Fail("mesh payload metadata was not parsed");
     }
 
     RuntimeAssetValidationResult material_result{};
@@ -5746,6 +5796,47 @@ int RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata()
 
     if (texture_result.texture_width != 2U || texture_result.texture_height != 2U) {
         return Fail("texture extent metadata was not parsed");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataMeshPayloadPolicyRejectsSizeHashAndSplitMismatch() {
+    const std::string payload = MeshPayload('A', 96U);
+    const std::string valid_text =
+        SourceMeshText("YUASSET MESH 1", "cube_mesh", "cube", 24U, 36U, 48U, 48U, payload);
+
+    const std::string bad_payload_size = ReplaceFirst(valid_text, "payloadBytes=96", "payloadBytes=95");
+    if (!ExpectValidationStatus(
+            bad_payload_size,
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetDataStatus::InvalidSize)) {
+        return Fail("mesh payload size mismatch was not rejected");
+    }
+
+    const std::string hash_token = "payloadHash=" + std::to_string(HashText(payload));
+    const std::string bad_payload_hash = ReplaceFirst(valid_text, hash_token, "payloadHash=1");
+    if (!ExpectValidationStatus(
+            bad_payload_hash,
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetDataStatus::HashMismatch)) {
+        return Fail("mesh payload hash mismatch was not rejected");
+    }
+
+    const std::string bad_split_sum = ReplaceFirst(valid_text, "indexPayloadBytes=48", "indexPayloadBytes=47");
+    if (!ExpectValidationStatus(
+            bad_split_sum,
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetDataStatus::InvalidSize)) {
+        return Fail("mesh payload split sum mismatch was not rejected");
+    }
+
+    const std::string bad_zero_vertex_split = ReplaceFirst(valid_text, "vertexPayloadBytes=48", "vertexPayloadBytes=0");
+    if (!ExpectValidationStatus(
+            bad_zero_vertex_split,
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetDataStatus::InvalidSize)) {
+        return Fail("mesh zero vertex payload split was not rejected");
     }
 
     return 0;
@@ -9359,6 +9450,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_UNSUPPORTED_VERSION, RuntimeAssetDataFormatHeaderRejectsUnsupportedVersion},
     {TEST_INVALID_BOUNDS, RuntimeAssetDataValidatorRejectsInvalidBoundsWithoutOutputs},
     {TEST_TYPED_MESH_MATERIAL_TEXTURE, RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata},
+    {TEST_MESH_PAYLOAD_POLICY, RuntimeAssetDataMeshPayloadPolicyRejectsSizeHashAndSplitMismatch},
     {TEST_MATERIAL_TYPED_REFS, RuntimeAssetDataMaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
     {TEST_TEXTURE_TYPED_METADATA, RuntimeAssetDataTextureValidatorRejectsInvalidFormatExtentPayload},
     {TEST_SHADER_SCENE_ANIMATION_SCHEMA, RuntimeAssetDataShaderSceneAnimationRequireSourceSchema},

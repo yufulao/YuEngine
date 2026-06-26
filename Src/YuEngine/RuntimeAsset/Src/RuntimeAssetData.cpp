@@ -1167,18 +1167,63 @@ RuntimeAssetFileDesc RuntimeAssetFixtureDesc(
     return desc;
 }
 
+std::string RuntimeAssetMeshPayload(char seed, std::uint32_t byte_count) {
+    std::string payload{};
+    payload.reserve(byte_count);
+    for (std::uint32_t index = 0U; index < byte_count; ++index) {
+        const int payload_value = static_cast<int>(seed) + static_cast<int>(index % 10U);
+        const char value = static_cast<char>(payload_value);
+        payload.push_back(value);
+    }
+
+    return payload;
+}
+
+std::string RuntimeAssetSourceMeshText(
+    std::string_view id,
+    std::string_view shape,
+    std::uint32_t vertex_count,
+    std::uint32_t index_count,
+    std::uint32_t vertex_payload_byte_count,
+    std::uint32_t index_payload_byte_count,
+    std::string_view payload) {
+    std::string text("YUASSET MESH 1\nschema=rav0-source\nid=");
+    text += id;
+    text += "\nkind=";
+    text += shape;
+    text += "\nvertices=";
+    text += std::to_string(vertex_count);
+    text += "\nindices=";
+    text += std::to_string(index_count);
+    text += "\nbounds=-1,-1,-1,1,1,1\nvertexPayloadBytes=";
+    text += std::to_string(vertex_payload_byte_count);
+    text += "\nindexPayloadBytes=";
+    text += std::to_string(index_payload_byte_count);
+    text += "\npayloadBytes=";
+    text += std::to_string(payload.size());
+    text += "\npayloadAlign=4\npayloadHash=";
+    text += std::to_string(HashRuntimeAssetText(payload));
+    text += "\npayload=";
+    text += payload;
+    text += "\n";
+    return text;
+}
+
 std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
 RuntimeAssetSourceFixtureArtifacts() {
+    const std::string cube_payload = RuntimeAssetMeshPayload('A', 96U);
+    const std::string cylinder_payload = RuntimeAssetMeshPayload('K', 96U);
+    const std::string cone_payload = RuntimeAssetMeshPayload('U', 96U);
     return std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>{
         RuntimeAssetFixtureArtifact{
             RuntimeAssetFixtureDesc("Mesh/Cube.yumesh", RuntimeAssetFileKind::Mesh, 1001U, 96U),
-            "YUASSET MESH 1\nschema=rav0-source\nid=cube_mesh\nkind=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\n"},
+            RuntimeAssetSourceMeshText("cube_mesh", "cube", 24U, 36U, 48U, 48U, cube_payload)},
         RuntimeAssetFixtureArtifact{
             RuntimeAssetFixtureDesc("Mesh/Cylinder.yumesh", RuntimeAssetFileKind::Mesh, 1002U, 96U),
-            "YUASSET MESH 1\nschema=rav0-source\nid=cylinder_mesh\nkind=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\n"},
+            RuntimeAssetSourceMeshText("cylinder_mesh", "cylinder", 18U, 96U, 32U, 64U, cylinder_payload)},
         RuntimeAssetFixtureArtifact{
             RuntimeAssetFixtureDesc("Mesh/Cone.yumesh", RuntimeAssetFileKind::Mesh, 1003U, 96U),
-            "YUASSET MESH 1\nschema=rav0-source\nid=cone_mesh\nkind=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\n"},
+            RuntimeAssetSourceMeshText("cone_mesh", "cone", 10U, 48U, 48U, 48U, cone_payload)},
         RuntimeAssetFixtureArtifact{
             RuntimeAssetFixtureDesc("Material/Shared.yumat", RuntimeAssetFileKind::Material, 2001U, 128U),
             "YUASSET MATERIAL 1\nschema=rav0-source\nid=shared_material\nshader=Shader/RuntimeProgram.yuprogram\ntexture0=Texture/Albedo.yutex\ntexture1=Texture/Normal.yutex\ntexture2=Texture/Mask.yutex\n"},
@@ -1281,6 +1326,9 @@ RuntimeAssetCookedFixtureArtifacts() {
         "texture:normal:3002",
         "texture:mask:3003",
     }};
+    const std::string cube_payload = RuntimeAssetMeshPayload('A', 96U);
+    const std::string cylinder_payload = RuntimeAssetMeshPayload('K', 96U);
+    const std::string cone_payload = RuntimeAssetMeshPayload('U', 96U);
     const std::string visual_proof_shader_fields = RuntimeAssetCookedVisualProofShaderFields();
 
     return std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>{
@@ -1289,8 +1337,8 @@ RuntimeAssetCookedFixtureArtifacts() {
             RuntimeAssetCookedText(
                 RuntimeAssetFileKind::Mesh,
                 "cube_mesh_cooked",
-                "mesh-cube-payload",
-                "shape=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\n",
+                cube_payload,
+                "shape=cube\nvertices=24\nindices=36\nbounds=-1,-1,-1,1,1,1\nvertexPayloadBytes=48\nindexPayloadBytes=48\n",
                 std::span<const std::string_view>(no_deps.data(), no_deps.size()),
                 96U,
                 4U)},
@@ -1299,8 +1347,8 @@ RuntimeAssetCookedFixtureArtifacts() {
             RuntimeAssetCookedText(
                 RuntimeAssetFileKind::Mesh,
                 "cylinder_mesh_cooked",
-                "mesh-cylinder-payload",
-                "shape=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\n",
+                cylinder_payload,
+                "shape=cylinder\nvertices=18\nindices=96\nbounds=-1,-1,-1,1,1,1\nvertexPayloadBytes=32\nindexPayloadBytes=64\n",
                 std::span<const std::string_view>(no_deps.data(), no_deps.size()),
                 96U,
                 4U)},
@@ -1309,8 +1357,8 @@ RuntimeAssetCookedFixtureArtifacts() {
             RuntimeAssetCookedText(
                 RuntimeAssetFileKind::Mesh,
                 "cone_mesh_cooked",
-                "mesh-cone-payload",
-                "shape=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\n",
+                cone_payload,
+                "shape=cone\nvertices=10\nindices=48\nbounds=-1,-1,-1,1,1,1\nvertexPayloadBytes=48\nindexPayloadBytes=48\n",
                 std::span<const std::string_view>(no_deps.data(), no_deps.size()),
                 96U,
                 4U)},
@@ -1975,6 +2023,109 @@ RuntimeAssetDataStatus ValidateCameraMetadata(
     return RuntimeAssetDataStatus::Success;
 }
 
+RuntimeAssetDataStatus ValidateSourcePayloadPolicy(
+    std::string_view text,
+    RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    std::uint32_t payload_byte_count = 0U;
+    if (!ParseU32(ValueForToken(text, "payloadBytes="), &payload_byte_count)) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (payload_byte_count == 0U || payload_byte_count > MAX_RUNTIME_ASSET_PAYLOAD_BYTES) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    std::uint32_t payload_alignment = 0U;
+    if (!ParseU32(ValueForToken(text, "payloadAlign="), &payload_alignment) ||
+        !IsSupportedPayloadAlignment(payload_alignment)) {
+        return RuntimeAssetDataStatus::InvalidAlignment;
+    }
+
+    std::uint64_t payload_hash = 0U;
+    if (!ParseU64(ValueForToken(text, "payloadHash="), &payload_hash)) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    const std::string_view payload = ValueForToken(text, "payload=");
+    if (payload.empty() || payload.size() != payload_byte_count) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (HashRuntimeAssetText(payload) != payload_hash) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    out_result->payload_byte_count = payload_byte_count;
+    out_result->payload_alignment = payload_alignment;
+    out_result->payload_hash = payload_hash;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateMeshPayloadPolicy(
+    std::string_view text,
+    std::uint32_t vertex_count,
+    std::uint32_t index_count,
+    RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    std::uint32_t vertex_payload_byte_count = 0U;
+    std::uint32_t index_payload_byte_count = 0U;
+    if (!ParseU32(ValueForToken(text, "vertexPayloadBytes="), &vertex_payload_byte_count) ||
+        !ParseU32(ValueForToken(text, "indexPayloadBytes="), &index_payload_byte_count)) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    (void)vertex_count;
+    (void)index_count;
+
+    if (vertex_payload_byte_count == 0U ||
+        index_payload_byte_count == 0U ||
+        vertex_payload_byte_count > MAX_RUNTIME_ASSET_PAYLOAD_BYTES ||
+        index_payload_byte_count > MAX_RUNTIME_ASSET_PAYLOAD_BYTES) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    const std::uint64_t expected_payload_byte_count =
+        static_cast<std::uint64_t>(vertex_payload_byte_count) +
+        static_cast<std::uint64_t>(index_payload_byte_count);
+    if (expected_payload_byte_count > MAX_RUNTIME_ASSET_PAYLOAD_BYTES) {
+        return RuntimeAssetDataStatus::BudgetExceeded;
+    }
+
+    if (out_result->artifact_class == RuntimeAssetArtifactClass::Source) {
+        const RuntimeAssetDataStatus status = ValidateSourcePayloadPolicy(text, out_result);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+    }
+
+    if (out_result->payload_byte_count != expected_payload_byte_count) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (out_result->payload_alignment == 0U ||
+        !IsSupportedPayloadAlignment(out_result->payload_alignment)) {
+        return RuntimeAssetDataStatus::InvalidAlignment;
+    }
+
+    const std::string_view payload = ValueForToken(text, "payload=");
+    if (payload.empty() || payload.size() != out_result->payload_byte_count) {
+        return RuntimeAssetDataStatus::InvalidSize;
+    }
+
+    if (HashRuntimeAssetText(payload) != out_result->payload_hash) {
+        return RuntimeAssetDataStatus::HashMismatch;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
 RuntimeAssetDataStatus ValidateMeshMetadata(
     std::string_view text,
     RuntimeAssetValidationResult *out_result) {
@@ -2029,6 +2180,12 @@ RuntimeAssetDataStatus ValidateMeshMetadata(
     const std::string_view bounds = ValueForToken(text, "bounds=");
     if (CountToken(bounds, ",") != 5U) {
         return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    const RuntimeAssetDataStatus payload_status =
+        ValidateMeshPayloadPolicy(text, vertex_count, index_count, out_result);
+    if (payload_status != RuntimeAssetDataStatus::Success) {
+        return payload_status;
     }
 
     out_result->vertex_count = vertex_count;
@@ -2773,6 +2930,24 @@ std::vector<std::uint8_t> BuildDecodedBytes(
     return decoded_bytes;
 }
 
+std::vector<std::uint8_t> BuildDecodedBytesForAsset(
+    RuntimeAssetFileKind kind,
+    std::span<const std::uint8_t> source_bytes,
+    std::uint32_t decoded_byte_count) {
+    if (kind != RuntimeAssetFileKind::Mesh) {
+        return BuildDecodedBytes(source_bytes, decoded_byte_count);
+    }
+
+    const char *source_text_data = reinterpret_cast<const char *>(source_bytes.data());
+    const std::string_view source_text(source_text_data, source_bytes.size());
+    const std::string_view payload = ValueForToken(source_text, "payload=");
+    if (payload.size() != decoded_byte_count) {
+        return BuildDecodedBytes(source_bytes, decoded_byte_count);
+    }
+
+    return std::vector<std::uint8_t>(payload.begin(), payload.end());
+}
+
 void CopyValidationMetadataToLoadedFile(
     const RuntimeAssetValidationResult &validation,
     RuntimeAssetLoadedFile *out_record) {
@@ -2879,7 +3054,8 @@ RuntimeAssetDataStatus StoreDecodedPayload(
         return RuntimeAssetDataStatus::DecodeResultFailed;
     }
 
-    const std::vector<std::uint8_t> decoded_bytes = BuildDecodedBytes(source_bytes, desc.decoded_byte_count);
+    const std::vector<std::uint8_t> decoded_bytes =
+        BuildDecodedBytesForAsset(desc.kind, source_bytes, desc.decoded_byte_count);
     ResourceDecodedPayloadRequest decoded_request{};
     decoded_request.resource = resource;
     decoded_request.expected_type = desc.resource_type;
