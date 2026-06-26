@@ -17,7 +17,13 @@
 #include "YuEngine/File/VirtualPath.h"
 #include "YuEngine/Kernel/RuntimeAppDesc.h"
 #include "YuEngine/Kernel/RuntimeAppRunResult.h"
+#include "YuEngine/RenderScene/RenderSceneCameraBindingResult.h"
 #include "YuEngine/RenderScene/RenderScenePrimitiveGeometryKind.h"
+#include "YuEngine/RenderScene/RenderScenePrimitiveGeometryRecord.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameDrawRecord.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameEntityRequest.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameResult.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRecord.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialStatus.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
@@ -844,6 +850,58 @@ struct RuntimeAssetVisualProofResult final {
 };
 
 /**
+ * @brief Maps a loaded RuntimeAsset scene resource ref to a RenderScene geometry record.
+ */
+struct RuntimeAssetRenderSceneGeometryBinding final {
+    std::uint32_t resource_ref_index = 0U;
+    yuengine::renderscene::RenderScenePrimitiveGeometryRecord geometry{};
+};
+
+/**
+ * @brief Maps a loaded RuntimeAsset scene resource ref to a RenderScene material record.
+ */
+struct RuntimeAssetRenderSceneMaterialBinding final {
+    std::uint32_t resource_ref_index = 0U;
+    yuengine::renderscene::RenderSceneRuntimeMaterialRecord material{};
+};
+
+/**
+ * @brief Builds a CPU-side RenderScene frame submission from loaded RuntimeAsset scene records.
+ */
+struct RuntimeAssetRenderSceneSubmissionRequest final {
+    const RuntimeAssetSceneLoaderOutput *scene_output = nullptr;
+    std::span<const RuntimeAssetSceneEntityRecord> scene_entities{};
+    std::span<const RuntimeAssetSceneTransformOutputRecord> scene_transforms{};
+    std::span<const RuntimeAssetRenderSceneGeometryBinding> geometry_bindings{};
+    std::span<const RuntimeAssetRenderSceneMaterialBinding> material_bindings{};
+    yuengine::renderscene::RenderSceneCameraBindingResult camera{};
+    std::span<yuengine::renderscene::RenderSceneRuntimeFrameEntityRequest> out_frame_entities{};
+    std::span<yuengine::renderscene::RenderSceneRuntimeFrameDrawRecord> out_draws{};
+    std::uint32_t frame_id = 0U;
+    bool require_shared_material = true;
+};
+
+/**
+ * @brief Reports CPU-side RuntimeAsset scene submission into RenderScene frame records.
+ */
+struct RuntimeAssetRenderSceneSubmissionResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    yuengine::renderscene::RenderSceneRuntimeFrameStatus frame_status =
+        yuengine::renderscene::RenderSceneRuntimeFrameStatus::InvalidFrameId;
+    yuengine::renderscene::RenderSceneRuntimeFrameResult frame_result{};
+    std::uint32_t frame_id = 0U;
+    std::uint32_t submitted_entity_count = 0U;
+    std::uint32_t skipped_entity_count = 0U;
+    std::uint32_t output_draw_count = 0U;
+    std::uint32_t resolved_geometry_count = 0U;
+    std::uint32_t resolved_material_count = 0U;
+    std::uint32_t material_variant_count = 0U;
+    std::uint32_t shared_material_ref_index = 0xFFFFFFFFU;
+    std::uint32_t first_failed_entity_index = 0xFFFFFFFFU;
+    std::uint32_t first_missing_resource_ref_index = 0xFFFFFFFFU;
+};
+
+/**
  * @brief First layer that can block a packaged RuntimeAsset run entrypoint.
  */
 enum class RuntimeAssetPackagedRunBlockedLayer {
@@ -1079,6 +1137,15 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedShaderProgramPipeline(
 RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
     const RuntimeAssetVisualProofRequest &request,
     RuntimeAssetVisualProofResult *out_result);
+/**
+ * @brief Builds RenderScene frame records from loaded RuntimeAsset scene records.
+ * @param request Loaded scene records, geometry/material bindings, camera, and output storage.
+ * @param out_result Output submission result.
+ * @return Explicit RuntimeAsset submission status.
+ */
+RuntimeAssetDataStatus BuildRuntimeAssetRenderSceneSubmission(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    RuntimeAssetRenderSceneSubmissionResult *out_result);
 /**
  * @brief Runs a Package-load-plan backed RuntimeAsset graph through RuntimeApp.
  * @param request Package load plan, graph buffers, RHI, and RuntimeApp descriptor.

@@ -36,6 +36,7 @@
 #include "YuEngine/RenderScene/RenderScenePrimitiveGeometryBuilder.h"
 #include "YuEngine/RenderScene/RenderScenePrimitiveGeometryRequest.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeCameraRecord.h"
+#include "YuEngine/RenderScene/RenderSceneRuntimeFrameBuilder.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialBuilder.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialConstants.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialRequest.h"
@@ -159,6 +160,10 @@ using yuengine::renderscene::RenderScenePrimitiveGeometryRecord;
 using yuengine::renderscene::RenderScenePrimitiveGeometryRequest;
 using yuengine::renderscene::RenderScenePrimitiveGeometryStatus;
 using yuengine::renderscene::RenderSceneRuntimeCameraRecord;
+using yuengine::renderscene::RenderSceneRuntimeFrameBuilder;
+using yuengine::renderscene::RenderSceneRuntimeFrameEntityRequest;
+using yuengine::renderscene::RenderSceneRuntimeFrameRequest;
+using yuengine::renderscene::RenderSceneRuntimeFrameStatus;
 using yuengine::renderscene::RenderSceneRuntimeMaterialBuilder;
 using yuengine::renderscene::RenderSceneRuntimeMaterialRecord;
 using yuengine::renderscene::RenderSceneRuntimeMaterialRequest;
@@ -6862,6 +6867,580 @@ RuntimeAssetDataStatus ExecuteVisualProofCaptureFrames(
     result->render_core_rhi_capture_routed = result->capture_bytes_written > 0U;
     return RuntimeAssetDataStatus::Success;
 }
+
+constexpr std::uint32_t RUNTIME_ASSET_SUBMISSION_INVALID_INDEX = 0xFFFFFFFFU;
+
+struct RuntimeAssetRenderSceneSubmissionValidation final {
+    const RenderSceneRuntimeMaterialRecord *shared_material = nullptr;
+    std::uint32_t shared_material_ref_index = RUNTIME_ASSET_SUBMISSION_INVALID_INDEX;
+    std::uint32_t submitted_entity_count = 0U;
+    std::uint32_t skipped_entity_count = 0U;
+    std::uint32_t resolved_geometry_count = 0U;
+    std::uint32_t resolved_material_count = 0U;
+    std::uint32_t material_variant_count = 0U;
+};
+
+bool IsRenderSceneSubmissionEntityActive(const RuntimeAssetSceneEntityRecord &entity) {
+    if (!entity.is_active) {
+        return false;
+    }
+
+    return entity.is_visible;
+}
+
+RenderSceneRuntimeFrameStatus MapSubmissionGeometryStatus(
+    RenderScenePrimitiveGeometryStatus status) {
+    if (status == RenderScenePrimitiveGeometryStatus::MissingGeometryRecord) {
+        return RenderSceneRuntimeFrameStatus::MissingGeometryRecord;
+    }
+
+    return RenderSceneRuntimeFrameStatus::InvalidGeometryRecord;
+}
+
+RenderSceneRuntimeFrameStatus MapSubmissionMaterialStatus(
+    RenderSceneRuntimeMaterialStatus status) {
+    if (status == RenderSceneRuntimeMaterialStatus::MissingMaterialRecord) {
+        return RenderSceneRuntimeFrameStatus::MissingMaterialRecord;
+    }
+
+    return RenderSceneRuntimeFrameStatus::InvalidMaterialRecord;
+}
+
+RuntimeAssetDataStatus MapSubmissionFrameStatus(
+    RenderSceneRuntimeFrameStatus status) {
+    if (status == RenderSceneRuntimeFrameStatus::Success) {
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    if (status == RenderSceneRuntimeFrameStatus::OutputCapacityExceeded) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    if (status == RenderSceneRuntimeFrameStatus::DuplicateWorldObject ||
+        status == RenderSceneRuntimeFrameStatus::DuplicateTransform) {
+        return RuntimeAssetDataStatus::DuplicateDependency;
+    }
+
+    if (status == RenderSceneRuntimeFrameStatus::MissingCamera ||
+        status == RenderSceneRuntimeFrameStatus::MissingEntity ||
+        status == RenderSceneRuntimeFrameStatus::MissingGeometryRecord ||
+        status == RenderSceneRuntimeFrameStatus::MissingMaterialRecord) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    return RuntimeAssetDataStatus::InvalidDependency;
+}
+
+void SetRenderSceneSubmissionFailure(
+    RuntimeAssetRenderSceneSubmissionResult *result,
+    RuntimeAssetDataStatus status,
+    RenderSceneRuntimeFrameStatus frame_status,
+    std::uint32_t entity_index,
+    std::uint32_t resource_ref_index) {
+    if (result == nullptr) {
+        return;
+    }
+
+    result->status = status;
+    result->frame_status = frame_status;
+    result->first_failed_entity_index = entity_index;
+    result->first_missing_resource_ref_index = resource_ref_index;
+}
+
+bool IsSameSubmissionTransform(
+    const WorldTransformState &left,
+    const WorldTransformState &right) {
+    if (left.translation_x != right.translation_x) {
+        return false;
+    }
+
+    if (left.translation_y != right.translation_y) {
+        return false;
+    }
+
+    if (left.translation_z != right.translation_z) {
+        return false;
+    }
+
+    if (left.rotation_x != right.rotation_x) {
+        return false;
+    }
+
+    if (left.rotation_y != right.rotation_y) {
+        return false;
+    }
+
+    if (left.rotation_z != right.rotation_z) {
+        return false;
+    }
+
+    if (left.rotation_w != right.rotation_w) {
+        return false;
+    }
+
+    if (left.scale_x != right.scale_x) {
+        return false;
+    }
+
+    if (left.scale_y != right.scale_y) {
+        return false;
+    }
+
+    return left.scale_z == right.scale_z;
+}
+
+const RuntimeAssetSceneTransformOutputRecord *FindRenderSceneSubmissionTransform(
+    std::span<const RuntimeAssetSceneTransformOutputRecord> transforms,
+    std::uint32_t transform_count,
+    WorldObjectId world_object_id) {
+    for (std::uint32_t index = 0U; index < transform_count; ++index) {
+        const RuntimeAssetSceneTransformOutputRecord &transform = transforms[index];
+        if (transform.world_object_id.value == world_object_id.value) {
+            return &transform;
+        }
+    }
+
+    return nullptr;
+}
+
+const RuntimeAssetRenderSceneGeometryBinding *FindRenderSceneSubmissionGeometry(
+    std::span<const RuntimeAssetRenderSceneGeometryBinding> bindings,
+    std::uint32_t resource_ref_index) {
+    for (const RuntimeAssetRenderSceneGeometryBinding &binding : bindings) {
+        if (binding.resource_ref_index == resource_ref_index) {
+            return &binding;
+        }
+    }
+
+    return nullptr;
+}
+
+const RuntimeAssetRenderSceneMaterialBinding *FindRenderSceneSubmissionMaterial(
+    std::span<const RuntimeAssetRenderSceneMaterialBinding> bindings,
+    std::uint32_t resource_ref_index) {
+    for (const RuntimeAssetRenderSceneMaterialBinding &binding : bindings) {
+        if (binding.resource_ref_index == resource_ref_index) {
+            return &binding;
+        }
+    }
+
+    return nullptr;
+}
+
+bool HasDuplicateRenderSceneSubmissionGeometryBinding(
+    std::span<const RuntimeAssetRenderSceneGeometryBinding> bindings,
+    std::uint32_t *out_resource_ref_index) {
+    if (out_resource_ref_index == nullptr) {
+        return false;
+    }
+
+    for (std::size_t left = 0U; left < bindings.size(); ++left) {
+        const std::uint32_t ref_index = bindings[left].resource_ref_index;
+        for (std::size_t right = left + 1U; right < bindings.size(); ++right) {
+            if (bindings[right].resource_ref_index == ref_index) {
+                *out_resource_ref_index = ref_index;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool HasDuplicateRenderSceneSubmissionMaterialBinding(
+    std::span<const RuntimeAssetRenderSceneMaterialBinding> bindings,
+    std::uint32_t *out_resource_ref_index) {
+    if (out_resource_ref_index == nullptr) {
+        return false;
+    }
+
+    for (std::size_t left = 0U; left < bindings.size(); ++left) {
+        const std::uint32_t ref_index = bindings[left].resource_ref_index;
+        for (std::size_t right = left + 1U; right < bindings.size(); ++right) {
+            if (bindings[right].resource_ref_index == ref_index) {
+                *out_resource_ref_index = ref_index;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool HasPriorRenderSceneSubmissionWorldObject(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    std::uint32_t current_index,
+    WorldObjectId world_object_id) {
+    for (std::uint32_t index = 0U; index < current_index; ++index) {
+        const RuntimeAssetSceneEntityRecord &entity = request.scene_entities[index];
+        if (!IsRenderSceneSubmissionEntityActive(entity)) {
+            continue;
+        }
+
+        if (entity.world_object_id.value == world_object_id.value) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool HasPriorRenderSceneSubmissionTransform(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    std::uint32_t current_index,
+    const WorldTransformState &transform) {
+    const std::uint32_t transform_count = request.scene_output->transform_count;
+    for (std::uint32_t index = 0U; index < current_index; ++index) {
+        const RuntimeAssetSceneEntityRecord &entity = request.scene_entities[index];
+        if (!IsRenderSceneSubmissionEntityActive(entity)) {
+            continue;
+        }
+
+        const RuntimeAssetSceneTransformOutputRecord *prior_transform =
+            FindRenderSceneSubmissionTransform(
+                request.scene_transforms,
+                transform_count,
+                entity.world_object_id);
+        if (prior_transform == nullptr) {
+            continue;
+        }
+
+        if (IsSameSubmissionTransform(prior_transform->transform, transform)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+RuntimeAssetDataStatus ValidateRenderSceneSubmissionStorage(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    RuntimeAssetRenderSceneSubmissionResult *result) {
+    if (request.scene_output == nullptr) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::InvalidArgument,
+            RenderSceneRuntimeFrameStatus::NullPointer,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (request.scene_output->status != RuntimeAssetDataStatus::Success) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::MissingDependency,
+            RenderSceneRuntimeFrameStatus::MissingEntity,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    const std::size_t entity_count = static_cast<std::size_t>(request.scene_output->entity_count);
+    const std::size_t transform_count = static_cast<std::size_t>(request.scene_output->transform_count);
+    if (entity_count == 0U ||
+        request.scene_entities.size() < entity_count ||
+        request.scene_transforms.size() < transform_count ||
+        request.scene_entities.data() == nullptr ||
+        request.scene_transforms.data() == nullptr) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::MissingDependency,
+            RenderSceneRuntimeFrameStatus::MissingEntity,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (request.frame_id == 0U) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::InvalidArgument,
+            RenderSceneRuntimeFrameStatus::InvalidFrameId,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (request.geometry_bindings.empty() ||
+        request.material_bindings.empty() ||
+        request.geometry_bindings.data() == nullptr ||
+        request.material_bindings.data() == nullptr) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::MissingDependency,
+            RenderSceneRuntimeFrameStatus::MissingGeometryRecord,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (request.out_frame_entities.data() == nullptr || request.out_draws.data() == nullptr) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::InvalidArgument,
+            RenderSceneRuntimeFrameStatus::NullPointer,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (!request.require_shared_material) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::UnsupportedFieldValue,
+            RenderSceneRuntimeFrameStatus::InvalidMaterialRecord,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    std::uint32_t duplicate_ref_index = 0U;
+    if (HasDuplicateRenderSceneSubmissionGeometryBinding(request.geometry_bindings, &duplicate_ref_index)) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::DuplicateDependency,
+            RenderSceneRuntimeFrameStatus::InvalidGeometryRecord,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            duplicate_ref_index);
+        return RuntimeAssetDataStatus::DuplicateDependency;
+    }
+
+    if (HasDuplicateRenderSceneSubmissionMaterialBinding(request.material_bindings, &duplicate_ref_index)) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::DuplicateDependency,
+            RenderSceneRuntimeFrameStatus::InvalidMaterialRecord,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            duplicate_ref_index);
+        return RuntimeAssetDataStatus::DuplicateDependency;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateRenderSceneSubmissionEntity(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    std::uint32_t entity_index,
+    RuntimeAssetRenderSceneSubmissionValidation *validation,
+    RuntimeAssetRenderSceneSubmissionResult *result) {
+    if (validation == nullptr || result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const RuntimeAssetSceneEntityRecord &entity = request.scene_entities[entity_index];
+    if (!IsRenderSceneSubmissionEntityActive(entity)) {
+        ++validation->skipped_entity_count;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    if (!entity.world_object_id.IsValid()) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::InvalidDependency,
+            RenderSceneRuntimeFrameStatus::InvalidEntityRecord,
+            entity_index,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::InvalidDependency;
+    }
+
+    if (HasPriorRenderSceneSubmissionWorldObject(request, entity_index, entity.world_object_id)) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::DuplicateDependency,
+            RenderSceneRuntimeFrameStatus::DuplicateWorldObject,
+            entity_index,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::DuplicateDependency;
+    }
+
+    const RuntimeAssetSceneTransformOutputRecord *transform =
+        FindRenderSceneSubmissionTransform(
+            request.scene_transforms,
+            request.scene_output->transform_count,
+            entity.world_object_id);
+    if (transform == nullptr) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::MissingDependency,
+            RenderSceneRuntimeFrameStatus::MissingEntity,
+            entity_index,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (HasPriorRenderSceneSubmissionTransform(request, entity_index, transform->transform)) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::DuplicateDependency,
+            RenderSceneRuntimeFrameStatus::DuplicateTransform,
+            entity_index,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::DuplicateDependency;
+    }
+
+    const RuntimeAssetRenderSceneGeometryBinding *geometry =
+        FindRenderSceneSubmissionGeometry(request.geometry_bindings, entity.mesh_ref_index);
+    if (geometry == nullptr) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::MissingDependency,
+            RenderSceneRuntimeFrameStatus::MissingGeometryRecord,
+            entity_index,
+            entity.mesh_ref_index);
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    RenderScenePrimitiveGeometryBuilder geometry_builder;
+    const RenderScenePrimitiveGeometryStatus geometry_status =
+        geometry_builder.Validate(geometry->geometry);
+    if (geometry_status != RenderScenePrimitiveGeometryStatus::Success) {
+        const RenderSceneRuntimeFrameStatus frame_status =
+            MapSubmissionGeometryStatus(geometry_status);
+        SetRenderSceneSubmissionFailure(
+            result,
+            MapSubmissionFrameStatus(frame_status),
+            frame_status,
+            entity_index,
+            entity.mesh_ref_index);
+        return result->status;
+    }
+
+    const RuntimeAssetRenderSceneMaterialBinding *material =
+        FindRenderSceneSubmissionMaterial(request.material_bindings, entity.material_ref_index);
+    if (material == nullptr) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::MissingDependency,
+            RenderSceneRuntimeFrameStatus::MissingMaterialRecord,
+            entity_index,
+            entity.material_ref_index);
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    RenderSceneRuntimeMaterialBuilder material_builder;
+    const RenderSceneRuntimeMaterialStatus material_status =
+        material_builder.Validate(material->material);
+    if (material_status != RenderSceneRuntimeMaterialStatus::Success) {
+        const RenderSceneRuntimeFrameStatus frame_status =
+            MapSubmissionMaterialStatus(material_status);
+        SetRenderSceneSubmissionFailure(
+            result,
+            MapSubmissionFrameStatus(frame_status),
+            frame_status,
+            entity_index,
+            entity.material_ref_index);
+        return result->status;
+    }
+
+    if (validation->shared_material == nullptr) {
+        validation->shared_material = &material->material;
+        validation->shared_material_ref_index = entity.material_ref_index;
+        validation->material_variant_count = 1U;
+    }
+
+    if (validation->shared_material_ref_index != entity.material_ref_index) {
+        validation->material_variant_count = 2U;
+        result->material_variant_count = validation->material_variant_count;
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::UnsupportedFieldValue,
+            RenderSceneRuntimeFrameStatus::InvalidMaterialRecord,
+            entity_index,
+            entity.material_ref_index);
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    ++validation->submitted_entity_count;
+    ++validation->resolved_geometry_count;
+    validation->resolved_material_count = validation->material_variant_count;
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateRenderSceneSubmissionRequest(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    RuntimeAssetRenderSceneSubmissionValidation *validation,
+    RuntimeAssetRenderSceneSubmissionResult *result) {
+    if (validation == nullptr || result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetDataStatus status = ValidateRenderSceneSubmissionStorage(request, result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    const std::uint32_t entity_count = request.scene_output->entity_count;
+    for (std::uint32_t index = 0U; index < entity_count; ++index) {
+        status = ValidateRenderSceneSubmissionEntity(request, index, validation, result);
+        if (status != RuntimeAssetDataStatus::Success) {
+            return status;
+        }
+    }
+
+    if (validation->submitted_entity_count == 0U) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::MissingDependency,
+            RenderSceneRuntimeFrameStatus::MissingEntity,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (validation->submitted_entity_count > request.out_frame_entities.size() ||
+        validation->submitted_entity_count > request.out_draws.size()) {
+        SetRenderSceneSubmissionFailure(
+            result,
+            RuntimeAssetDataStatus::CapacityExceeded,
+            RenderSceneRuntimeFrameStatus::OutputCapacityExceeded,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
+            RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    result->submitted_entity_count = validation->submitted_entity_count;
+    result->skipped_entity_count = validation->skipped_entity_count;
+    result->resolved_geometry_count = validation->resolved_geometry_count;
+    result->resolved_material_count = validation->resolved_material_count;
+    result->material_variant_count = validation->material_variant_count;
+    result->shared_material_ref_index = validation->shared_material_ref_index;
+    return RuntimeAssetDataStatus::Success;
+}
+
+void FillRenderSceneSubmissionEntities(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    std::uint32_t submitted_entity_count) {
+    std::uint32_t output_index = 0U;
+    for (std::uint32_t index = 0U; index < request.scene_output->entity_count; ++index) {
+        const RuntimeAssetSceneEntityRecord &entity = request.scene_entities[index];
+        if (!IsRenderSceneSubmissionEntityActive(entity)) {
+            continue;
+        }
+
+        const RuntimeAssetSceneTransformOutputRecord *transform =
+            FindRenderSceneSubmissionTransform(
+                request.scene_transforms,
+                request.scene_output->transform_count,
+                entity.world_object_id);
+        const RuntimeAssetRenderSceneGeometryBinding *geometry =
+            FindRenderSceneSubmissionGeometry(request.geometry_bindings, entity.mesh_ref_index);
+        if (transform == nullptr || geometry == nullptr) {
+            return;
+        }
+
+        RenderSceneRuntimeFrameEntityRequest &out_entity = request.out_frame_entities[output_index];
+        out_entity.world_object_id = entity.world_object_id;
+        out_entity.transform = transform->transform;
+        out_entity.geometry = geometry->geometry;
+        out_entity.is_visible = entity.is_visible;
+        out_entity.is_active = entity.is_active;
+        ++output_index;
+        if (output_index == submitted_entity_count) {
+            return;
+        }
+    }
+}
 }
 
 const char *RuntimeAssetFileKindName(RuntimeAssetFileKind kind) {
@@ -7614,6 +8193,61 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
         result.texture_record_count >= RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT;
     result.status = RuntimeAssetDataStatus::Success;
     result.first_missing_layer = RuntimeAssetVisualProofMissingLayer::None;
+    *out_result = result;
+    return result.status;
+}
+
+RuntimeAssetDataStatus BuildRuntimeAssetRenderSceneSubmission(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    RuntimeAssetRenderSceneSubmissionResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetRenderSceneSubmissionResult result{};
+    result.frame_id = request.frame_id;
+    RuntimeAssetRenderSceneSubmissionValidation validation{};
+    result.status = ValidateRenderSceneSubmissionRequest(request, &validation, &result);
+    if (result.status != RuntimeAssetDataStatus::Success) {
+        *out_result = result;
+        return result.status;
+    }
+
+    if (validation.shared_material == nullptr) {
+        result.status = RuntimeAssetDataStatus::MissingDependency;
+        result.frame_status = RenderSceneRuntimeFrameStatus::MissingMaterialRecord;
+        *out_result = result;
+        return result.status;
+    }
+
+    FillRenderSceneSubmissionEntities(request, validation.submitted_entity_count);
+
+    RenderSceneRuntimeFrameRequest frame_request{};
+    frame_request.frame_id = request.frame_id;
+    frame_request.camera = request.camera;
+    frame_request.material = *validation.shared_material;
+    frame_request.entities = request.out_frame_entities.subspan(
+        0U,
+        static_cast<std::size_t>(validation.submitted_entity_count));
+
+    RenderSceneRuntimeFrameBuilder frame_builder;
+    result.frame_status = frame_builder.Build(
+        frame_request,
+        request.out_draws,
+        &result.frame_result);
+    result.output_draw_count =
+        static_cast<std::uint32_t>(result.frame_result.output_draw_count);
+    if (result.frame_status != RenderSceneRuntimeFrameStatus::Success) {
+        result.status = MapSubmissionFrameStatus(result.frame_status);
+        *out_result = result;
+        return result.status;
+    }
+
+    result.status = RuntimeAssetDataStatus::Success;
+    result.submitted_entity_count =
+        static_cast<std::uint32_t>(result.frame_result.submitted_entity_count);
+    result.skipped_entity_count +=
+        static_cast<std::uint32_t>(result.frame_result.skipped_entity_count);
     *out_result = result;
     return result.status;
 }
