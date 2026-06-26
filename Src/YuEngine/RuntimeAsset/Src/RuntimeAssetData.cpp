@@ -6174,11 +6174,18 @@ RuntimeAssetDataStatus BuildVisualProofShaderPipeline(
         return status;
     }
 
+    if (request.shader_program != nullptr &&
+        request.shader_program->status != RuntimeAssetDataStatus::Success) {
+        return FailVisualProof(
+            request.shader_program->status,
+            RuntimeAssetVisualProofMissingLayer::ShaderPipeline,
+            result);
+    }
+
     if (shader == nullptr ||
         shader->shader_stage_count < 2U ||
         shader->shader_bytecode_byte_count == 0U ||
         request.shader_program == nullptr ||
-        request.shader_program->status != RuntimeAssetDataStatus::Success ||
         request.shader_program->validation.artifact_class == RuntimeAssetArtifactClass::Unknown ||
         (request.require_cooked_records &&
             request.shader_program->validation.artifact_class != RuntimeAssetArtifactClass::Cooked) ||
@@ -6997,6 +7004,66 @@ RuntimeAssetDataStatus DecodeRuntimeAssetShaderProgramData(
     data.status = RuntimeAssetDataStatus::Success;
     *out_data = data;
     return data.status;
+}
+
+RuntimeAssetDataStatus CompileRuntimeAssetShaderProgram(
+    const RuntimeAssetShaderCompilerBackendRequest &request,
+    RuntimeAssetShaderCompilerBackendResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    RuntimeAssetShaderCompilerBackendResult result{};
+    result.backend_kind = request.backend_kind;
+    if (request.backend_kind != RuntimeAssetShaderCompilerBackendKind::DeterministicFixture) {
+        result.status = RuntimeAssetDataStatus::UnsupportedFieldValue;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.source_bytes.empty()) {
+        result.status = RuntimeAssetDataStatus::InvalidSize;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.program_id == 0U) {
+        result.status = RuntimeAssetDataStatus::InvalidArgument;
+        *out_result = result;
+        return result.status;
+    }
+
+    RuntimeAssetLoadedShaderProgramData program{};
+    RuntimeAssetDataStatus status = DecodeRuntimeAssetShaderProgramData(
+        request.source_bytes,
+        request.program_id,
+        &program);
+    result.program = program;
+    result.import_policy_hash = program.validation.shader_import_policy_hash;
+    result.compiled_shader_stage_count = program.validation.shader_stage_count;
+    result.reflection_input_element_count =
+        static_cast<std::uint32_t>(program.input_layout.element_count);
+    result.reflection_texture_slot_count = program.texture_slot_count;
+    result.vertex_bytecode_hash = program.vertex_bytecode_hash;
+    result.pixel_bytecode_hash = program.pixel_bytecode_hash;
+    if (status != RuntimeAssetDataStatus::Success) {
+        result.status = status;
+        *out_result = result;
+        return result.status;
+    }
+
+    if (request.expected_import_policy_hash != 0U &&
+        request.expected_import_policy_hash != result.import_policy_hash) {
+        result.status = RuntimeAssetDataStatus::HashMismatch;
+        result.program.status = result.status;
+        *out_result = result;
+        return result.status;
+    }
+
+    result.compiled_program = true;
+    result.status = RuntimeAssetDataStatus::Success;
+    *out_result = result;
+    return result.status;
 }
 
 RuntimeAssetDataStatus LoadRuntimeAssetDataGraph(

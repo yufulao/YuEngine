@@ -533,6 +533,42 @@ struct RuntimeAssetLoadedShaderProgramData final {
 };
 
 /**
+ * @brief RuntimeAsset-owned shader compiler backend kind.
+ */
+enum class RuntimeAssetShaderCompilerBackendKind {
+    Unknown,
+    DeterministicFixture
+};
+
+/**
+ * @brief Request for compiling a runtime shader source record into loaded program data.
+ */
+struct RuntimeAssetShaderCompilerBackendRequest final {
+    RuntimeAssetShaderCompilerBackendKind backend_kind =
+        RuntimeAssetShaderCompilerBackendKind::Unknown;
+    std::span<const std::uint8_t> source_bytes{};
+    std::uint32_t program_id = 0U;
+    std::uint64_t expected_import_policy_hash = 0U;
+};
+
+/**
+ * @brief Reports RuntimeAsset shader compiler output and reflection identity.
+ */
+struct RuntimeAssetShaderCompilerBackendResult final {
+    RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidArgument;
+    RuntimeAssetShaderCompilerBackendKind backend_kind =
+        RuntimeAssetShaderCompilerBackendKind::Unknown;
+    std::uint64_t import_policy_hash = 0U;
+    std::uint64_t vertex_bytecode_hash = 0U;
+    std::uint64_t pixel_bytecode_hash = 0U;
+    std::uint32_t compiled_shader_stage_count = 0U;
+    std::uint32_t reflection_input_element_count = 0U;
+    std::uint32_t reflection_texture_slot_count = 0U;
+    bool compiled_program = false;
+    RuntimeAssetLoadedShaderProgramData program{};
+};
+
+/**
  * @brief Requests a RuntimeAsset-owned shader program bridge into RHI primitives.
  */
 struct RuntimeAssetShaderProgramPipelineRequest final {
@@ -959,6 +995,15 @@ RuntimeAssetDataStatus DecodeRuntimeAssetShaderProgramData(
     std::span<const std::uint8_t> bytes,
     std::uint32_t program_id,
     RuntimeAssetLoadedShaderProgramData *out_data);
+/**
+ * @brief Compiles RuntimeAsset shader source through a runtime-owned backend boundary.
+ * @param request Input source bytes, backend kind, and expected policy identity.
+ * @param out_result Output compiler, reflection, and loaded program data.
+ * @return Explicit compiler status.
+ */
+RuntimeAssetDataStatus CompileRuntimeAssetShaderProgram(
+    const RuntimeAssetShaderCompilerBackendRequest &request,
+    RuntimeAssetShaderCompilerBackendResult *out_result);
 /**
  * @brief Loads a runtime asset graph from File/VFS into Resource and Asset records.
  * @param request Input graph load request.

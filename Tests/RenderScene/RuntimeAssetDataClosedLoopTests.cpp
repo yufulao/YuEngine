@@ -221,6 +221,7 @@ using yuengine::runtimeasset::BuildRuntimeAssetCookedVisualProofRoute;
 using yuengine::runtimeasset::BuildRuntimeAssetCookedShaderProgramPipeline;
 using yuengine::runtimeasset::BuildRuntimeAssetCookedTextureMaterialBridge;
 using yuengine::runtimeasset::BuildRuntimeAssetShaderProgramPipeline;
+using yuengine::runtimeasset::CompileRuntimeAssetShaderProgram;
 using yuengine::runtimeasset::DecodeRuntimeAssetShaderProgramData;
 using yuengine::runtimeasset::ExecuteRuntimeAssetImportCookCommand;
 using yuengine::runtimeasset::LoadRuntimeAssetDataGraph;
@@ -261,6 +262,9 @@ using yuengine::runtimeasset::RuntimeAssetSceneEntityRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneLoaderOutput;
 using yuengine::runtimeasset::RuntimeAssetSceneResourceRef;
 using yuengine::runtimeasset::RuntimeAssetSceneTransformOutputRecord;
+using yuengine::runtimeasset::RuntimeAssetShaderCompilerBackendKind;
+using yuengine::runtimeasset::RuntimeAssetShaderCompilerBackendRequest;
+using yuengine::runtimeasset::RuntimeAssetShaderCompilerBackendResult;
 using yuengine::runtimeasset::RuntimeAssetShaderProgramPipelineRequest;
 using yuengine::runtimeasset::RuntimeAssetShaderProgramPipelineResult;
 using yuengine::runtimeasset::RuntimeAssetValidationResult;
@@ -348,6 +352,8 @@ constexpr const char *TEST_INVALID_DEPENDENCY =
     "RuntimeAssetData_DependencyGraphRejectsMissingAndDuplicateRefs";
 constexpr const char *TEST_SHADER_IMPORT_POLICY =
     "RuntimeAssetData_ShaderImportPolicyValidatesSourceCookedAndLoadedRecords";
+constexpr const char *TEST_SHADER_COMPILER_BACKEND =
+    "RuntimeAssetData_ShaderCompilerBackendProducesProgramReflection";
 constexpr const char *TEST_SHADER_PROGRAM_PIPELINE_BRIDGE =
     "RuntimeAssetData_ShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode";
 constexpr const char *TEST_SHADER_PROGRAM_PIPELINE_REJECTS =
@@ -4687,6 +4693,24 @@ int RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers() {
 
     {
         CookedVisualProofContext context{};
+        if (!SetupCookedVisualProofContext("CookedVisualProofShaderCompilerMismatch", &context)) {
+            return Fail("shader compiler mismatch setup failed");
+        }
+
+        RuntimeAssetLoadedShaderProgramData shader_program = context.shader_program;
+        shader_program.status = RuntimeAssetDataStatus::HashMismatch;
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        request.shader_program = &shader_program;
+        if (!ExpectCookedVisualProofMissingLayer(
+                request,
+                RuntimeAssetDataStatus::HashMismatch,
+                RuntimeAssetVisualProofMissingLayer::ShaderPipeline)) {
+            return Fail("shader compiler mismatch was not localized");
+        }
+    }
+
+    {
+        CookedVisualProofContext context{};
         if (!SetupCookedVisualProofContext("CookedVisualProofMissingSceneTransform", &context)) {
             return Fail("missing scene transform setup failed");
         }
@@ -6599,6 +6623,90 @@ RuntimeAssetShaderProgramPipelineRequest ProgramPipelineRequest(
     request.device = device;
     request.program = program;
     return request;
+}
+
+int RuntimeAssetDataShaderCompilerBackendProducesProgramReflection() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("ShaderCompilerBackend"), &table)) {
+        return Fail("shader compiler backend mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("shader compiler backend fixture write failed");
+    }
+
+    std::vector<std::uint8_t> source_bytes{};
+    if (!ReadFile(table, "Shader/RuntimeProgram.yuprogram", &source_bytes)) {
+        return Fail("shader compiler backend source read failed");
+    }
+
+    RuntimeAssetShaderCompilerBackendRequest compile_request{};
+    compile_request.backend_kind = RuntimeAssetShaderCompilerBackendKind::DeterministicFixture;
+    compile_request.source_bytes = std::span<const std::uint8_t>(
+        source_bytes.data(),
+        source_bytes.size());
+    compile_request.program_id = 4001U;
+    compile_request.expected_import_policy_hash = HashText(ShaderImportPolicyFields());
+
+    RuntimeAssetShaderCompilerBackendResult compile_result{};
+    const RuntimeAssetDataStatus compile_status =
+        CompileRuntimeAssetShaderProgram(compile_request, &compile_result);
+    if (compile_status != RuntimeAssetDataStatus::Success ||
+        compile_result.status != RuntimeAssetDataStatus::Success ||
+        !compile_result.compiled_program ||
+        compile_result.program.status != RuntimeAssetDataStatus::Success) {
+        return Fail("shader compiler backend rejected canonical source shader");
+    }
+
+    if (compile_result.import_policy_hash != compile_request.expected_import_policy_hash ||
+        compile_result.compiled_shader_stage_count != 2U ||
+        compile_result.reflection_input_element_count != 2U ||
+        compile_result.reflection_texture_slot_count != 3U ||
+        compile_result.vertex_bytecode_hash == 0U ||
+        compile_result.pixel_bytecode_hash == 0U ||
+        compile_result.vertex_bytecode_hash == compile_result.pixel_bytecode_hash) {
+        return Fail("shader compiler backend did not report policy, stage, or reflection identity");
+    }
+
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("shader compiler backend rhi init failed");
+    }
+
+    const RuntimeAssetShaderProgramPipelineRequest pipeline_request =
+        ProgramPipelineRequest(&device, &compile_result.program);
+    RuntimeAssetShaderProgramPipelineResult pipeline_result{};
+    const RuntimeAssetDataStatus pipeline_status =
+        BuildRuntimeAssetShaderProgramPipeline(pipeline_request, &pipeline_result);
+    if (pipeline_status != RuntimeAssetDataStatus::Success ||
+        pipeline_result.pipeline.generation == 0U ||
+        pipeline_result.pipeline_desc.input_layout.element_count != 2U ||
+        pipeline_result.texture_slot_count != 3U) {
+        return Fail("shader compiler backend output did not feed RHI pipeline bridge");
+    }
+
+    RuntimeAssetShaderCompilerBackendRequest unknown_backend_request = compile_request;
+    unknown_backend_request.backend_kind = RuntimeAssetShaderCompilerBackendKind::Unknown;
+    RuntimeAssetShaderCompilerBackendResult unknown_backend_result{};
+    const RuntimeAssetDataStatus unknown_backend_status =
+        CompileRuntimeAssetShaderProgram(unknown_backend_request, &unknown_backend_result);
+    if (unknown_backend_status != RuntimeAssetDataStatus::UnsupportedFieldValue ||
+        unknown_backend_result.compiled_program) {
+        return Fail("shader compiler backend accepted unknown backend kind");
+    }
+
+    RuntimeAssetShaderCompilerBackendRequest policy_mismatch_request = compile_request;
+    policy_mismatch_request.expected_import_policy_hash = 1U;
+    RuntimeAssetShaderCompilerBackendResult policy_mismatch_result{};
+    const RuntimeAssetDataStatus policy_mismatch_status =
+        CompileRuntimeAssetShaderProgram(policy_mismatch_request, &policy_mismatch_result);
+    if (policy_mismatch_status != RuntimeAssetDataStatus::HashMismatch ||
+        policy_mismatch_result.compiled_program ||
+        policy_mismatch_result.program.status != RuntimeAssetDataStatus::HashMismatch) {
+        return Fail("shader compiler backend accepted import policy hash mismatch");
+    }
+
+    return 0;
 }
 
 int RuntimeAssetDataShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode() {
@@ -10102,6 +10210,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_SHADER_SCENE_ANIMATION_SCHEMA, RuntimeAssetDataShaderSceneAnimationRequireSourceSchema},
     {TEST_INVALID_DEPENDENCY, RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs},
     {TEST_SHADER_IMPORT_POLICY, RuntimeAssetDataShaderImportPolicyValidatesSourceCookedAndLoadedRecords},
+    {TEST_SHADER_COMPILER_BACKEND, RuntimeAssetDataShaderCompilerBackendProducesProgramReflection},
     {TEST_SHADER_PROGRAM_PIPELINE_BRIDGE, RuntimeAssetDataShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode},
     {TEST_SHADER_PROGRAM_PIPELINE_REJECTS, RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation},
     {TEST_COOKED_SHADER_STAGE_MODULES, RuntimeAssetDataCookedShaderStagePayloadsCreateRhiModules},
