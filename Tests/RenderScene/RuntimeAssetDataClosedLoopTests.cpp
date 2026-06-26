@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -5418,15 +5419,15 @@ bool ExpectCookedVisualProofMissingLayer(
 
 int RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers() {
     {
-        CookedVisualProofContext context{};
-        if (!SetupCookedVisualProofContext("CookedVisualProofMissingModel", &context)) {
+        auto context = std::make_unique<CookedVisualProofContext>();
+        if (!SetupCookedVisualProofContext("CookedVisualProofMissingModel", context.get())) {
             return Fail("missing model setup failed");
         }
 
         std::array<RuntimeAssetLoadedFile, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> loaded_files =
-            context.loaded_files;
+            context->loaded_files;
         loaded_files[0U].mesh_geometry_kind = yuengine::runtimeasset::RuntimeAssetMeshGeometryKind::Unknown;
-        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(*context, 1U);
         request.loaded_files = std::span<const RuntimeAssetLoadedFile>(loaded_files.data(), loaded_files.size());
         if (!ExpectCookedVisualProofMissingLayer(
                 request,
@@ -5437,15 +5438,15 @@ int RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers() {
     }
 
     {
-        CookedVisualProofContext context{};
-        if (!SetupCookedVisualProofContext("CookedVisualProofMissingMaterialSlot", &context)) {
+        auto context = std::make_unique<CookedVisualProofContext>();
+        if (!SetupCookedVisualProofContext("CookedVisualProofMissingMaterialSlot", context.get())) {
             return Fail("missing material slot setup failed");
         }
 
         std::array<RuntimeAssetLoadedFile, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT> loaded_files =
-            context.loaded_files;
+            context->loaded_files;
         loaded_files[3U].texture_slot_count = 0U;
-        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(*context, 1U);
         request.loaded_files = std::span<const RuntimeAssetLoadedFile>(loaded_files.data(), loaded_files.size());
         if (!ExpectCookedVisualProofMissingLayer(
                 request,
@@ -5456,14 +5457,14 @@ int RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers() {
     }
 
     {
-        CookedVisualProofContext context{};
-        if (!SetupCookedVisualProofContext("CookedVisualProofMissingShaderPipeline", &context)) {
+        auto context = std::make_unique<CookedVisualProofContext>();
+        if (!SetupCookedVisualProofContext("CookedVisualProofMissingShaderPipeline", context.get())) {
             return Fail("missing shader pipeline setup failed");
         }
 
-        RuntimeAssetLoadedShaderProgramData shader_program = context.shader_program;
+        RuntimeAssetLoadedShaderProgramData shader_program = context->shader_program;
         shader_program.vertex_bytecode_size = 0U;
-        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(*context, 1U);
         request.shader_program = &shader_program;
         if (!ExpectCookedVisualProofMissingLayer(
                 request,
@@ -5474,14 +5475,14 @@ int RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers() {
     }
 
     {
-        CookedVisualProofContext context{};
-        if (!SetupCookedVisualProofContext("CookedVisualProofShaderCompilerMismatch", &context)) {
+        auto context = std::make_unique<CookedVisualProofContext>();
+        if (!SetupCookedVisualProofContext("CookedVisualProofShaderCompilerMismatch", context.get())) {
             return Fail("shader compiler mismatch setup failed");
         }
 
-        RuntimeAssetLoadedShaderProgramData shader_program = context.shader_program;
+        RuntimeAssetLoadedShaderProgramData shader_program = context->shader_program;
         shader_program.status = RuntimeAssetDataStatus::HashMismatch;
-        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(*context, 1U);
         request.shader_program = &shader_program;
         if (!ExpectCookedVisualProofMissingLayer(
                 request,
@@ -5492,14 +5493,14 @@ int RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers() {
     }
 
     {
-        CookedVisualProofContext context{};
-        if (!SetupCookedVisualProofContext("CookedVisualProofMissingSceneTransform", &context)) {
+        auto context = std::make_unique<CookedVisualProofContext>();
+        if (!SetupCookedVisualProofContext("CookedVisualProofMissingSceneTransform", context.get())) {
             return Fail("missing scene transform setup failed");
         }
 
-        RuntimeAssetSceneLoaderOutput scene_output = context.scene_output;
+        RuntimeAssetSceneLoaderOutput scene_output = context->scene_output;
         scene_output.transform_count = 0U;
-        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(*context, 1U);
         request.scene_output = &scene_output;
         if (!ExpectCookedVisualProofMissingLayer(
                 request,
@@ -5510,14 +5511,14 @@ int RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers() {
     }
 
     {
-        CookedVisualProofContext context{};
-        if (!SetupCookedVisualProofContext("CookedVisualProofMissingCamera", &context)) {
+        auto context = std::make_unique<CookedVisualProofContext>();
+        if (!SetupCookedVisualProofContext("CookedVisualProofMissingCamera", context.get())) {
             return Fail("missing camera setup failed");
         }
 
-        std::array<RuntimeAssetSceneCameraRecord, 1U> cameras = context.scene_cameras;
+        std::array<RuntimeAssetSceneCameraRecord, 1U> cameras = context->scene_cameras;
         cameras[0U].is_active = false;
-        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(*context, 1U);
         request.scene_cameras = std::span<const RuntimeAssetSceneCameraRecord>(cameras.data(), cameras.size());
         if (!ExpectCookedVisualProofMissingLayer(
                 request,
@@ -5528,12 +5529,12 @@ int RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers() {
     }
 
     {
-        CookedVisualProofContext context{};
-        if (!SetupCookedVisualProofContext("CookedVisualProofMissingRhiCapture", &context)) {
+        auto context = std::make_unique<CookedVisualProofContext>();
+        if (!SetupCookedVisualProofContext("CookedVisualProofMissingRhiCapture", context.get())) {
             return Fail("missing rhi capture setup failed");
         }
 
-        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(context, 1U);
+        RuntimeAssetVisualProofRequest request = CookedVisualProofRequest(*context, 1U);
         request.rhi_device = nullptr;
         if (!ExpectCookedVisualProofMissingLayer(
                 request,

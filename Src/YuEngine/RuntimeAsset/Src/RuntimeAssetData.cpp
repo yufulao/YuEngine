@@ -5426,6 +5426,14 @@ bool IsPipelineHandleSet(yuengine::rhi::RhiPipelineHandle handle) {
     return handle.generation != 0U;
 }
 
+bool IsShaderModuleHandleSet(yuengine::rhi::RhiShaderModuleHandle handle) {
+    return handle.generation != 0U;
+}
+
+bool IsBufferHandleSet(RhiBufferHandle handle) {
+    return handle.generation != 0U;
+}
+
 bool IsTextureHandleSet(RhiTextureHandle handle) {
     return handle.generation != 0U;
 }
@@ -7027,6 +7035,52 @@ RuntimeAssetDataStatus ExecuteVisualProofCaptureFrames(
     return RuntimeAssetDataStatus::Success;
 }
 
+void CleanupVisualProofFailureResources(
+    const RuntimeAssetVisualProofRequest &request,
+    RhiBufferHandle buffer_slot_guard,
+    RuntimeAssetVisualProofResult *result) {
+    if (request.rhi_device == nullptr || result == nullptr) {
+        return;
+    }
+
+    if (IsBufferHandleSet(buffer_slot_guard)) {
+        request.rhi_device->DestroyBuffer(buffer_slot_guard);
+    }
+
+    RuntimeAssetShaderProgramPipelineResult *pipeline_result = &result->shader_pipeline_result;
+    if (IsPipelineHandleSet(pipeline_result->pipeline)) {
+        request.rhi_device->DestroyPipeline(pipeline_result->pipeline);
+        pipeline_result->pipeline = {};
+    }
+
+    if (IsShaderModuleHandleSet(pipeline_result->pixel_shader)) {
+        request.rhi_device->DestroyShaderModule(pipeline_result->pixel_shader);
+        pipeline_result->pixel_shader = {};
+    }
+
+    if (IsShaderModuleHandleSet(pipeline_result->vertex_shader)) {
+        request.rhi_device->DestroyShaderModule(pipeline_result->vertex_shader);
+        pipeline_result->vertex_shader = {};
+    }
+}
+
+RuntimeAssetDataStatus PublishVisualProofRouteResult(
+    const RuntimeAssetVisualProofRequest &request,
+    RhiBufferHandle buffer_slot_guard,
+    RuntimeAssetVisualProofResult *result,
+    RuntimeAssetVisualProofResult *out_result) {
+    if (result == nullptr || out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (result->status != RuntimeAssetDataStatus::Success) {
+        CleanupVisualProofFailureResources(request, buffer_slot_guard, result);
+    }
+
+    *out_result = *result;
+    return result->status;
+}
+
 constexpr std::uint32_t RUNTIME_ASSET_SUBMISSION_INVALID_INDEX = 0xFFFFFFFFU;
 
 struct RuntimeAssetRenderSceneSubmissionValidation final {
@@ -8453,6 +8507,7 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
     }
 
     RuntimeAssetVisualProofResult result{};
+    RhiBufferHandle buffer_slot_guard{};
     SeedVisualProofLedger(request, &result);
 
     if (request.resource_registry == nullptr ||
@@ -8464,30 +8519,25 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
         request.scene_cameras.data() == nullptr ||
         request.scratch_bytes.data() == nullptr) {
         result.status = RuntimeAssetDataStatus::InvalidArgument;
-        *out_result = result;
-        return result.status;
+        return PublishVisualProofRouteResult(request, buffer_slot_guard, &result, out_result);
     }
 
     if (request.rhi_device == nullptr) {
         result.status = RuntimeAssetDataStatus::RhiCaptureFailed;
         result.first_missing_layer = RuntimeAssetVisualProofMissingLayer::RhiCapture;
-        *out_result = result;
-        return result.status;
+        return PublishVisualProofRouteResult(request, buffer_slot_guard, &result, out_result);
     }
 
     RuntimeAssetDataStatus status = ValidateVisualProofSceneOutputs(request, &result);
     if (status != RuntimeAssetDataStatus::Success) {
-        *out_result = result;
-        return status;
+        return PublishVisualProofRouteResult(request, buffer_slot_guard, &result, out_result);
     }
 
     status = BuildVisualProofShaderPipeline(request, &result);
     if (status != RuntimeAssetDataStatus::Success) {
-        *out_result = result;
-        return status;
+        return PublishVisualProofRouteResult(request, buffer_slot_guard, &result, out_result);
     }
 
-    RhiBufferHandle buffer_slot_guard{};
     status = CreateVisualProofBuffer(
         *request.rhi_device,
         RhiBufferUsage::Vertex,
@@ -8496,8 +8546,7 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
         &buffer_slot_guard);
     if (status != RuntimeAssetDataStatus::Success) {
         FailVisualProof(status, RuntimeAssetVisualProofMissingLayer::RhiCapture, &result);
-        *out_result = result;
-        return status;
+        return PublishVisualProofRouteResult(request, buffer_slot_guard, &result, out_result);
     }
 
     std::array<RenderScenePrimitiveGeometryRecord, RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT> geometry{};
@@ -8511,8 +8560,7 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
             &mesh,
             &result);
         if (status != RuntimeAssetDataStatus::Success) {
-            *out_result = result;
-            return status;
+            return PublishVisualProofRouteResult(request, buffer_slot_guard, &result, out_result);
         }
 
         status = BuildVisualProofGeometry(
@@ -8523,8 +8571,7 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
             &geometry[index],
             &result);
         if (status != RuntimeAssetDataStatus::Success) {
-            *out_result = result;
-            return status;
+            return PublishVisualProofRouteResult(request, buffer_slot_guard, &result, out_result);
         }
     }
 
@@ -8540,8 +8587,7 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
     RenderSceneRuntimeMaterialRecord material{};
     status = BuildVisualProofMaterial(request, &material, &result);
     if (status != RuntimeAssetDataStatus::Success) {
-        *out_result = result;
-        return status;
+        return PublishVisualProofRouteResult(request, buffer_slot_guard, &result, out_result);
     }
 
     std::array<RenderSceneThreePrimitiveEntityRequest, RUNTIME_ASSET_VISUAL_PROOF_ENTITY_COUNT> entities{};
@@ -8551,8 +8597,7 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
         &entities,
         &result);
     if (status != RuntimeAssetDataStatus::Success) {
-        *out_result = result;
-        return status;
+        return PublishVisualProofRouteResult(request, buffer_slot_guard, &result, out_result);
     }
 
     status = ExecuteVisualProofCaptureFrames(
@@ -8561,8 +8606,7 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
         std::span<const RenderSceneThreePrimitiveEntityRequest>(entities.data(), entities.size()),
         &result);
     if (status != RuntimeAssetDataStatus::Success) {
-        *out_result = result;
-        return status;
+        return PublishVisualProofRouteResult(request, buffer_slot_guard, &result, out_result);
     }
 
     result.loaded_records_verified =
@@ -8572,8 +8616,7 @@ RuntimeAssetDataStatus BuildRuntimeAssetCookedVisualProofRoute(
         result.texture_record_count >= RUNTIME_ASSET_VISUAL_PROOF_TEXTURE_SLOT_COUNT;
     result.status = RuntimeAssetDataStatus::Success;
     result.first_missing_layer = RuntimeAssetVisualProofMissingLayer::None;
-    *out_result = result;
-    return result.status;
+    return PublishVisualProofRouteResult(request, buffer_slot_guard, &result, out_result);
 }
 
 RuntimeAssetDataStatus BuildRuntimeAssetRenderSceneSubmission(
