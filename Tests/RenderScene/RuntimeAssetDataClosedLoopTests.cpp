@@ -459,6 +459,8 @@ constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE_ORDER 
     "RuntimeAssetData_GenericRenderSceneSubmissionUsesMaterialRefOrderNotEntityOrder";
 constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE_CAPACITY =
     "RuntimeAssetData_GenericRenderSceneSubmissionRejectsSmallMaterialTableWithoutMutation";
+constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_DUPLICATE_MATERIAL_ID =
+    "RuntimeAssetData_GenericRenderSceneSubmissionRejectsDuplicateMaterialIdWithoutMutation";
 constexpr const char *TEST_PRODUCTION_SCENE_LOADER_OUTPUT =
     "RuntimeAssetData_ProductionSceneLoaderOutputsDeterministicRecords";
 constexpr const char *TEST_DISK_ANIMATION_SAMPLING =
@@ -9036,6 +9038,91 @@ int RuntimeAssetDataGenericRenderSceneSubmissionRejectsSmallMaterialTableWithout
     return 0;
 }
 
+int RuntimeAssetDataGenericRenderSceneSubmissionRejectsDuplicateMaterialIdWithoutMutation() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    RuntimeAssetRhiDevice device;
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneCameraBindingResult camera{};
+    std::array<RuntimeAssetRenderSceneGeometryBinding, 3U> geometry_bindings{};
+    RuntimeAssetRenderSceneMaterialBinding material_binding{};
+    if (!LoadGenericRenderSceneSubmissionInputs(
+            "GenericRenderSceneSubmissionDuplicateMaterialId",
+            &table,
+            &registry,
+            &manager,
+            &graph,
+            &device,
+            &geometry,
+            &material,
+            &camera,
+            &geometry_bindings,
+            &material_binding)) {
+        return Fail("generic render scene submission duplicate material id inputs failed");
+    }
+
+    std::array<RuntimeAssetSceneEntityRecord, 3U> scene_entities = graph.scene_entities;
+    const std::uint32_t variant_material_ref_index =
+        graph.scene_entities[0U].material_ref_index + 100U;
+    scene_entities[1U].material_ref_index = variant_material_ref_index;
+    RuntimeAssetRenderSceneMaterialBinding variant_material_binding{};
+    variant_material_binding.resource_ref_index = variant_material_ref_index;
+    variant_material_binding.material = material;
+    std::array<RuntimeAssetRenderSceneMaterialBinding, 2U> material_bindings{
+        material_binding,
+        variant_material_binding};
+    std::array<RenderSceneRuntimeFrameEntityRequest, 3U> frame_entities{};
+    std::array<RenderSceneRuntimeMaterialRecord, 2U> frame_materials{};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 3U> draws{};
+    SeedGenericRenderSceneSubmissionSentinels(
+        std::span<RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+        std::span<RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()));
+    SeedGenericRenderSceneSubmissionMaterialSentinels(
+        std::span<RenderSceneRuntimeMaterialRecord>(frame_materials.data(), frame_materials.size()));
+    RuntimeAssetRenderSceneSubmissionRequest request = BuildGenericRenderSceneSubmissionRequest(
+        graph,
+        std::span<const RuntimeAssetSceneEntityRecord>(scene_entities.data(), scene_entities.size()),
+        std::span<const RuntimeAssetSceneTransformOutputRecord>(graph.scene_transforms.data(), graph.scene_transforms.size()),
+        std::span<const RuntimeAssetRenderSceneGeometryBinding>(geometry_bindings.data(), geometry_bindings.size()),
+        std::span<const RuntimeAssetRenderSceneMaterialBinding>(material_bindings.data(), material_bindings.size()),
+        camera,
+        std::span<RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+        std::span<RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()));
+    request.require_shared_material = false;
+    request.out_frame_materials =
+        std::span<RenderSceneRuntimeMaterialRecord>(frame_materials.data(), frame_materials.size());
+
+    RuntimeAssetRenderSceneSubmissionResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetRenderSceneSubmission(request, &result);
+    if (status != RuntimeAssetDataStatus::DuplicateDependency ||
+        result.status != RuntimeAssetDataStatus::DuplicateDependency ||
+        result.frame_status != RenderSceneRuntimeFrameStatus::DuplicateMaterialRecord ||
+        result.first_failed_entity_index != 1U ||
+        result.first_missing_resource_ref_index != variant_material_ref_index ||
+        result.material_variant_count != 2U ||
+        result.material_table_count != 2U ||
+        result.submitted_entity_count != 0U ||
+        result.frame_result.output_draw_count != 0U) {
+        return Fail("generic render scene submission duplicate material id diagnostics changed");
+    }
+
+    if (!GenericRenderSceneSubmissionSentinelsUnchanged(
+            std::span<const RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+            std::span<const RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()))) {
+        return Fail("generic render scene submission duplicate material id mutated frame outputs");
+    }
+
+    if (!GenericRenderSceneSubmissionMaterialSentinelsUnchanged(
+            std::span<const RenderSceneRuntimeMaterialRecord>(frame_materials.data(), frame_materials.size()))) {
+        return Fail("generic render scene submission duplicate material id mutated material outputs");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataProductionSceneLoaderOutputsDeterministicRecords() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("ProductionSceneLoaderOutput"), &table)) {
@@ -12154,6 +12241,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataGenericRenderSceneSubmissionUsesMaterialRefOrderNotEntityOrder},
     {TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE_CAPACITY,
      RuntimeAssetDataGenericRenderSceneSubmissionRejectsSmallMaterialTableWithoutMutation},
+    {TEST_GENERIC_RENDER_SCENE_SUBMISSION_DUPLICATE_MATERIAL_ID,
+     RuntimeAssetDataGenericRenderSceneSubmissionRejectsDuplicateMaterialIdWithoutMutation},
     {TEST_PRODUCTION_SCENE_LOADER_OUTPUT, RuntimeAssetDataProductionSceneLoaderOutputsDeterministicRecords},
     {TEST_DISK_ANIMATION_SAMPLING, RuntimeAssetDataDiskAnimationSamplingFeedsSceneTransforms},
     {TEST_SCENE_LOADER_INVALID_ENTITY_NO_MUTATION,

@@ -7224,6 +7224,34 @@ bool HasPriorRenderSceneSubmissionMaterialRef(
     return false;
 }
 
+bool HasPriorRenderSceneSubmissionMaterialId(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    std::uint32_t current_index,
+    std::uint32_t material_id) {
+    for (std::uint32_t index = 0U; index < current_index; ++index) {
+        const RuntimeAssetSceneEntityRecord &entity = request.scene_entities[index];
+        if (!IsRenderSceneSubmissionEntityActive(entity)) {
+            continue;
+        }
+
+        if (HasPriorRenderSceneSubmissionMaterialRef(request, index, entity.material_ref_index)) {
+            continue;
+        }
+
+        const RuntimeAssetRenderSceneMaterialBinding *material =
+            FindRenderSceneSubmissionMaterial(request.material_bindings, entity.material_ref_index);
+        if (material == nullptr) {
+            continue;
+        }
+
+        if (material->material.material_id == material_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 std::uint32_t FindRenderSceneSubmissionMaterialTableIndex(
     const RuntimeAssetRenderSceneSubmissionRequest &request,
     std::uint32_t current_index) {
@@ -7543,6 +7571,18 @@ RuntimeAssetDataStatus ValidateRenderSceneSubmissionEntity(
     }
 
     if (!HasPriorRenderSceneSubmissionMaterialRef(request, entity_index, entity.material_ref_index)) {
+        if (HasPriorRenderSceneSubmissionMaterialId(request, entity_index, material->material.material_id)) {
+            result->material_variant_count = validation->material_variant_count + 1U;
+            result->material_table_count = result->material_variant_count;
+            SetRenderSceneSubmissionFailure(
+                result,
+                RuntimeAssetDataStatus::DuplicateDependency,
+                RenderSceneRuntimeFrameStatus::DuplicateMaterialRecord,
+                entity_index,
+                entity.material_ref_index);
+            return RuntimeAssetDataStatus::DuplicateDependency;
+        }
+
         ++validation->material_variant_count;
         validation->material_table_count = validation->material_variant_count;
         if (static_cast<std::size_t>(validation->material_table_count) > request.out_frame_materials.size()) {
