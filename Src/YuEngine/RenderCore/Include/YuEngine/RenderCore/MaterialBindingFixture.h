@@ -63,6 +63,7 @@ private:
     struct Record final {
         std::uint32_t material_id = 0U;
         yuengine::rhi::RhiPipelineHandle pipeline{};
+        yuengine::rhi::RhiBlendStateDesc blend_state{};
         yuengine::rhi::RhiSampledTextureBinding sampled_texture{};
         yuengine::rhi::RhiSamplerBinding sampler{};
         std::array<std::uint8_t, MAX_MATERIAL_BINDING_FIXTURE_CONSTANT_BYTES> constant_bytes{};

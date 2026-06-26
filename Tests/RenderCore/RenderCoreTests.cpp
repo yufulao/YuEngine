@@ -28,6 +28,7 @@
 #include "YuEngine/RenderCore/RenderSubmissionBatchFixtureStatus.h"
 #include "YuEngine/Rhi/IRhiDevice.h"
 #include "YuEngine/Rhi/NullRhiDevice.h"
+#include "YuEngine/Rhi/RhiBlendStateDesc.h"
 #include "YuEngine/Rhi/RhiBufferDesc.h"
 #include "YuEngine/Rhi/RhiBufferHandle.h"
 #include "YuEngine/Rhi/RhiBufferUsage.h"
@@ -78,6 +79,8 @@ using RenderSubmissionBatchFixtureResult = yuengine::rendercore::RenderSubmissio
 using yuengine::rendercore::RenderSubmissionBatchFixtureStatus;
 using IRhiDevice = yuengine::rhi::IRhiDevice;
 using NullRhiDevice = yuengine::rhi::NullRhiDevice;
+using yuengine::rhi::RhiBlendMode;
+using RhiBlendStateDesc = yuengine::rhi::RhiBlendStateDesc;
 using RhiBufferDesc = yuengine::rhi::RhiBufferDesc;
 using RhiBufferHandle = yuengine::rhi::RhiBufferHandle;
 using yuengine::rhi::RhiBufferUsage;
@@ -118,6 +121,9 @@ constexpr const char *TEST_MISSING_INDEX = "RenderCore_FixturePass_RejectsMissin
 constexpr const char *TEST_INVALID_TEXTURE = "RenderCore_FixturePass_RejectsInvalidTextureBindingWithoutMutation";
 constexpr const char *TEST_INVALID_SAMPLER = "RenderCore_FixturePass_RejectsInvalidSamplerBindingWithoutMutation";
 constexpr const char *TEST_CONSTANT_BUFFER_BIND = "RenderCore_FixturePass_BindsConstantBuffer";
+constexpr const char *TEST_BLEND_STATE_BIND = "RenderCore_FixturePass_BindsAlphaBlendState";
+constexpr const char *TEST_INVALID_BLEND_STATE =
+    "RenderCore_FixturePass_RejectsInvalidBlendStateBeforeCommandRecording";
 constexpr const char *TEST_INVALID_DRAW = "RenderCore_FixturePass_RejectsInvalidDrawWithoutMutation";
 constexpr const char *TEST_SMALL_CAPTURE = "RenderCore_FixturePass_RejectsSmallCaptureStorageWithoutMutation";
 constexpr const char *TEST_COMMAND_CAPACITY = "RenderCore_FixturePass_RejectsCommandCapacityWithoutRhiMutation";
@@ -473,8 +479,20 @@ bool ConstantBufferBindingMatches(RhiConstantBufferBinding left, RhiConstantBuff
     return left.slot == right.slot;
 }
 
+bool BlendStateMatches(const RhiBlendStateDesc &left, const RhiBlendStateDesc &right) {
+    if (left.mode != right.mode) {
+        return false;
+    }
+
+    return left.constant_alpha == right.constant_alpha;
+}
+
 bool MaterialPassFieldsMatch(const RenderFixturePassRequest &left, const RenderFixturePassRequest &right) {
     if (!PipelineHandleMatches(left.pipeline, right.pipeline)) {
+        return false;
+    }
+
+    if (!BlendStateMatches(left.blend_state, right.blend_state)) {
         return false;
     }
 
@@ -513,6 +531,7 @@ MaterialBindingFixtureRequest MaterialRequestFrom(
     MaterialBindingFixtureRequest request{};
     request.material_id = MATERIAL_ID;
     request.pipeline = pass_request.pipeline;
+    request.blend_state = pass_request.blend_state;
     request.sampled_texture = pass_request.sampled_texture;
     request.sampler = pass_request.sampler;
     request.constant_bytes = constants;
@@ -784,6 +803,40 @@ int RenderCoreFixturePassBindsConstantBuffer() {
     return 0;
 }
 
+int RenderCoreFixturePassBindsAlphaBlendState() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RenderFixturePassRequest request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    request.blend_state.mode = RhiBlendMode::AlphaOver;
+    request.blend_state.constant_alpha = static_cast<std::uint8_t>(128U);
+
+    RenderFixturePass pass;
+    const auto result = pass.Execute(request);
+    if (result.status != RenderFixturePassStatus::Success) {
+        return Fail("fixture pass with alpha blend state did not succeed");
+    }
+
+    if (result.recorded_command_count != RENDER_FIXTURE_PASS_COMMAND_COUNT + 1U) {
+        return Fail("fixture pass did not record blend state bind command");
+    }
+
+    const RhiDeviceSnapshot rhi_snapshot = device.Snapshot();
+    if (rhi_snapshot.submitted_blend_state_bind_count != 1U) {
+        return Fail("fixture pass did not submit blend state bind");
+    }
+
+    if (!rhi_snapshot.last_alpha_blend_enabled ||
+        rhi_snapshot.last_blend_constant_alpha != static_cast<std::uint8_t>(128U)) {
+        return Fail("fixture pass did not track alpha blend state");
+    }
+
+    return 0;
+}
+
 int RenderCoreFixturePassRejectsNullRhiDeviceWithoutMutation() {
     NullRhiDevice device = CreateInitializedDevice();
     RenderFixturePassRequest request{};
@@ -818,6 +871,18 @@ int RenderCoreFixturePassRejectsInvalidPipelineWithoutMutation() {
 
     request.pipeline = RhiPipelineHandle{};
     return ExpectValidationFailure(RenderFixturePassStatus::InvalidPipeline, request, device, capture);
+}
+
+int RenderCoreFixturePassRejectsInvalidBlendStateBeforeCommandRecording() {
+    NullRhiDevice device = CreateInitializedDevice();
+    RenderFixturePassRequest request{};
+    std::vector<std::uint8_t> capture(CAPTURE_BYTES, SENTINEL_BYTE);
+    if (!FillValidFixture(device, request, capture)) {
+        return Fail("fixture setup failed");
+    }
+
+    request.blend_state.mode = static_cast<RhiBlendMode>(255);
+    return ExpectValidationFailure(RenderFixturePassStatus::InvalidBlendState, request, device, capture);
 }
 
 int RenderCoreFixturePassRejectsMissingVertexBufferWithoutMutation() {
@@ -1045,6 +1110,8 @@ int MaterialBindingFixtureBindsValuesToRenderFixtureRequest() {
     const std::array<std::uint8_t, 4U> constants = MaterialConstantBytes();
     const std::span<const std::uint8_t> constant_span(constants.data(), constants.size());
     MaterialBindingFixtureRequest material_request = MaterialRequestFrom(pass_request, constant_span);
+    material_request.blend_state.mode = RhiBlendMode::AlphaOver;
+    material_request.blend_state.constant_alpha = static_cast<std::uint8_t>(96U);
     MaterialBindingFixture fixture;
     const auto result = fixture.Bind(material_request, &pass_request);
     if (result.status != MaterialBindingFixtureStatus::Success) {
@@ -1053,6 +1120,10 @@ int MaterialBindingFixtureBindsValuesToRenderFixtureRequest() {
 
     if (!PipelineHandleMatches(pass_request.pipeline, material_request.pipeline)) {
         return Fail("material binding fixture did not set pipeline");
+    }
+
+    if (!BlendStateMatches(pass_request.blend_state, material_request.blend_state)) {
+        return Fail("material binding fixture did not set blend state");
     }
 
     if (!SampledTextureBindingMatches(pass_request.sampled_texture, material_request.sampled_texture)) {
@@ -2336,6 +2407,14 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_CONSTANT_BUFFER_BIND) {
         return RenderCoreFixturePassBindsConstantBuffer();
+    }
+
+    if (name == TEST_BLEND_STATE_BIND) {
+        return RenderCoreFixturePassBindsAlphaBlendState();
+    }
+
+    if (name == TEST_INVALID_BLEND_STATE) {
+        return RenderCoreFixturePassRejectsInvalidBlendStateBeforeCommandRecording();
     }
 
     if (name == TEST_INVALID_DRAW) {

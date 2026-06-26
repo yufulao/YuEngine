@@ -101,6 +101,10 @@ MaterialBindingFixtureStatus MaterialStatusToBindingStatus(RenderMaterialStatus 
         return MaterialBindingFixtureStatus::InvalidPipeline;
     }
 
+    if (status == RenderMaterialStatus::InvalidBlendState) {
+        return MaterialBindingFixtureStatus::InvalidBlendState;
+    }
+
     if (status == RenderMaterialStatus::InvalidTextureBinding) {
         return MaterialBindingFixtureStatus::InvalidTextureBinding;
     }
@@ -174,6 +178,7 @@ RenderDrawableFramePipelineResult RenderDrawableFramePipeline::Execute(
     view_request.material.material_id = request.material_id;
     view_request.material.program_id = request.material_id;
     view_request.material.pipeline = request.pipeline;
+    view_request.material.blend_state = request.blend_state;
     view_request.material.sampled_texture = request.sampled_texture;
     view_request.material.sampler = request.sampler;
     view_request.material.sampled_textures = request.sampled_textures;

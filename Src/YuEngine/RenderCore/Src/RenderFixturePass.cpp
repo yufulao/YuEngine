@@ -37,6 +37,18 @@ bool IsPipelineHandleSet(yuengine::rhi::RhiPipelineHandle handle) {
     return handle.generation != 0U;
 }
 
+bool IsBlendStateValid(const yuengine::rhi::RhiBlendStateDesc &blend_state) {
+    if (blend_state.mode == yuengine::rhi::RhiBlendMode::Opaque) {
+        return true;
+    }
+
+    return blend_state.mode == yuengine::rhi::RhiBlendMode::AlphaOver;
+}
+
+bool ShouldBindBlendState(const yuengine::rhi::RhiBlendStateDesc &blend_state) {
+    return blend_state.mode == yuengine::rhi::RhiBlendMode::AlphaOver;
+}
+
 bool IsSamplerHandleSet(yuengine::rhi::RhiSamplerHandle handle) {
     return handle.generation != 0U;
 }
@@ -130,7 +142,11 @@ std::span<const yuengine::rhi::RhiSamplerBinding> SamplerBindings(
 std::size_t RequiredCommandCount(const RenderFixturePassRequest &request) {
     const std::size_t binding_count = SampledTextureBindings(request).size();
     const std::size_t extra_binding_count = binding_count > 0U ? binding_count - 1U : 0U;
-    return RENDER_FIXTURE_PASS_COMMAND_COUNT + extra_binding_count * 2U + request.constant_buffers.size();
+    const std::size_t blend_state_command_count = ShouldBindBlendState(request.blend_state) ? 1U : 0U;
+    return RENDER_FIXTURE_PASS_COMMAND_COUNT +
+        extra_binding_count * 2U +
+        request.constant_buffers.size() +
+        blend_state_command_count;
 }
 
 bool AreBindingSpansValid(const RenderFixturePassRequest &request) {
@@ -317,6 +333,16 @@ RenderFixturePassResult RenderFixturePass::Execute(const RenderFixturePassReques
         }
     }
 
+    if (ShouldBindBlendState(request.blend_state)) {
+        rhi_status = request.rhi_device->RecordBindBlendState(command_list_, request.blend_state);
+        if (rhi_status != yuengine::rhi::RhiStatus::Success) {
+            result.rhi_status = rhi_status;
+            result.recorded_command_count = command_list_.CommandCount();
+            RecordRhiFailureResult(&result);
+            return result;
+        }
+    }
+
     rhi_status = request.rhi_device->RecordDrawIndexed(command_list_, request.draw);
     if (rhi_status != yuengine::rhi::RhiStatus::Success) {
         result.rhi_status = rhi_status;
@@ -389,6 +415,10 @@ RenderFixturePassStatus RenderFixturePass::ValidateRequest(const RenderFixturePa
 
     if (!IsPipelineHandleSet(request.pipeline)) {
         return RenderFixturePassStatus::InvalidPipeline;
+    }
+
+    if (!IsBlendStateValid(request.blend_state)) {
+        return RenderFixturePassStatus::InvalidBlendState;
     }
 
     if (!IsVertexBufferViewValid(request.vertex_buffer)) {

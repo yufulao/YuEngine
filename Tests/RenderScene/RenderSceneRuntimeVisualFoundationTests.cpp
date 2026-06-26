@@ -255,6 +255,10 @@ constexpr const char *TEST_MATERIAL_CONSTANTS =
     "RenderScene_RuntimeMaterialCopiesMaterialConstants";
 constexpr const char *TEST_MATERIAL_CONSTANT_OVERFLOW =
     "RenderScene_RuntimeMaterialRejectsOversizedMaterialConstants";
+constexpr const char *TEST_MATERIAL_BLEND_STATE =
+    "RenderScene_RuntimeMaterialCopiesBlendState";
+constexpr const char *TEST_MATERIAL_INVALID_BLEND_STATE =
+    "RenderScene_RuntimeMaterialRejectsInvalidBlendStateWithoutMutation";
 constexpr const char *TEST_FRAME_THREE_ENTITIES =
     "RenderScene_RuntimeFrameSubmitsThreeEntitiesWithSharedMaterial";
 constexpr const char *TEST_FRAME_PER_ENTITY_MATERIALS =
@@ -2719,6 +2723,62 @@ int RenderSceneRuntimeMaterialRejectsOversizedMaterialConstants() {
     return 0;
 }
 
+int RenderSceneRuntimeMaterialCopiesBlendState() {
+    const std::array<RenderSceneRuntimeMaterialTextureSlot, 3U> slots{
+        MakeMaterialTextureSlot(0U),
+        MakeMaterialTextureSlot(1U),
+        MakeMaterialTextureSlot(2U)};
+    RenderSceneRuntimeMaterialRequest request = MakeMaterialRequest(slots);
+    request.blend_state.mode = RhiBlendMode::AlphaOver;
+    request.blend_state.constant_alpha = static_cast<std::uint8_t>(128U);
+
+    RenderSceneRuntimeMaterialBuilder builder;
+    RenderSceneRuntimeMaterialRecord record{};
+    const RenderSceneRuntimeMaterialStatus status = builder.Build(request, &record);
+    if (status != RenderSceneRuntimeMaterialStatus::Success) {
+        return Fail("runtime material blend state build failed");
+    }
+
+    if (record.blend_state.mode != RhiBlendMode::AlphaOver ||
+        record.blend_state.constant_alpha != 128U) {
+        return Fail("runtime material did not copy blend state");
+    }
+
+    if (builder.Validate(record) != RenderSceneRuntimeMaterialStatus::Success) {
+        return Fail("runtime material blend state validation failed");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeMaterialRejectsInvalidBlendStateWithoutMutation() {
+    const std::array<RenderSceneRuntimeMaterialTextureSlot, 3U> slots{
+        MakeMaterialTextureSlot(0U),
+        MakeMaterialTextureSlot(1U),
+        MakeMaterialTextureSlot(2U)};
+    RenderSceneRuntimeMaterialRequest request = MakeMaterialRequest(slots);
+    request.blend_state.mode = static_cast<RhiBlendMode>(255);
+
+    RenderSceneRuntimeMaterialBuilder builder;
+    RenderSceneRuntimeMaterialRecord record{};
+    record.material_id = 77U;
+    record.blend_state.mode = RhiBlendMode::AlphaOver;
+    record.blend_state.constant_alpha = static_cast<std::uint8_t>(64U);
+    const RenderSceneRuntimeMaterialStatus status = builder.Build(request, &record);
+    if (status != RenderSceneRuntimeMaterialStatus::InvalidBlendState) {
+        return Fail("runtime material accepted invalid blend state");
+    }
+
+    if (record.material_id != 77U ||
+        record.texture_slot_count != 0U ||
+        record.blend_state.mode != RhiBlendMode::AlphaOver ||
+        record.blend_state.constant_alpha != 64U) {
+        return Fail("runtime material invalid blend state mutated output");
+    }
+
+    return 0;
+}
+
 int RenderSceneRuntimeFrameSubmitsThreeEntitiesWithSharedMaterial() {
     const RenderSceneCameraBindingResult camera = MakeCameraBinding();
     const RenderSceneRuntimeMaterialRecord material = MakeRuntimeMaterialRecord();
@@ -4996,6 +5056,14 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_MATERIAL_CONSTANT_OVERFLOW) {
         return RenderSceneRuntimeMaterialRejectsOversizedMaterialConstants();
+    }
+
+    if (name == TEST_MATERIAL_BLEND_STATE) {
+        return RenderSceneRuntimeMaterialCopiesBlendState();
+    }
+
+    if (name == TEST_MATERIAL_INVALID_BLEND_STATE) {
+        return RenderSceneRuntimeMaterialRejectsInvalidBlendStateWithoutMutation();
     }
 
     if (name == TEST_FRAME_THREE_ENTITIES) {

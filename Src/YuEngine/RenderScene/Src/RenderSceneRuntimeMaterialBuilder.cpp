@@ -29,6 +29,14 @@ bool IsTextureSlotInRange(std::uint32_t slot) {
 bool IsSamplerSlotInRange(std::uint32_t slot) {
     return slot < yuengine::rhi::MAX_RHI_SAMPLER_SLOTS;
 }
+
+bool IsBlendStateValid(const yuengine::rhi::RhiBlendStateDesc &blend_state) {
+    if (blend_state.mode == yuengine::rhi::RhiBlendMode::Opaque) {
+        return true;
+    }
+
+    return blend_state.mode == yuengine::rhi::RhiBlendMode::AlphaOver;
+}
 }
 
 RenderSceneRuntimeMaterialStatus RenderSceneRuntimeMaterialBuilder::Build(
@@ -47,6 +55,7 @@ RenderSceneRuntimeMaterialStatus RenderSceneRuntimeMaterialBuilder::Build(
     record.material_asset = request.material_asset;
     record.material_id = request.material_id;
     record.pipeline = request.pipeline;
+    record.blend_state = request.blend_state;
     for (const RenderSceneRuntimeMaterialTextureSlot &texture_slot : request.texture_slots) {
         InsertTextureSlotSorted(texture_slot, &record);
     }
@@ -78,6 +87,10 @@ RenderSceneRuntimeMaterialStatus RenderSceneRuntimeMaterialBuilder::Validate(
 
     if (!IsPipelineHandleSet(record.pipeline)) {
         return RenderSceneRuntimeMaterialStatus::InvalidPipeline;
+    }
+
+    if (!IsBlendStateValid(record.blend_state)) {
+        return RenderSceneRuntimeMaterialStatus::InvalidBlendState;
     }
 
     if (record.texture_slot_count < MIN_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS) {
@@ -123,6 +136,10 @@ RenderSceneRuntimeMaterialStatus RenderSceneRuntimeMaterialBuilder::ValidateRequ
 
     if (!IsPipelineHandleSet(request.pipeline)) {
         return RenderSceneRuntimeMaterialStatus::InvalidPipeline;
+    }
+
+    if (!IsBlendStateValid(request.blend_state)) {
+        return RenderSceneRuntimeMaterialStatus::InvalidBlendState;
     }
 
     if (request.texture_slots.size() < MIN_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS) {

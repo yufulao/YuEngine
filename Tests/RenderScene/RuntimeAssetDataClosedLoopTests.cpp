@@ -271,6 +271,7 @@ using yuengine::runtimeasset::RuntimeAssetImportCookCommandRequest;
 using yuengine::runtimeasset::RuntimeAssetImportCookCommandResult;
 using yuengine::runtimeasset::RuntimeAssetImportCookMissingLayer;
 using yuengine::runtimeasset::RuntimeAssetLoadedFile;
+using yuengine::runtimeasset::RuntimeAssetMaterialAlphaMode;
 using yuengine::runtimeasset::RuntimeAssetLoadedShaderProgramData;
 using yuengine::runtimeasset::RuntimeAssetLoadTransactionPhase;
 using yuengine::runtimeasset::RuntimeAssetPackedMaterialConstants;
@@ -309,6 +310,7 @@ using yuengine::rhi::IRhiDevice;
 using yuengine::rhi::MAX_COMMANDS;
 using yuengine::rhi::NullRhiDevice;
 using yuengine::rhi::RhiBackendKind;
+using yuengine::rhi::RhiBlendMode;
 using yuengine::rhi::RhiBufferDesc;
 using yuengine::rhi::RhiBufferHandle;
 using yuengine::rhi::RhiBufferUsage;
@@ -461,6 +463,8 @@ constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_VARIANTS =
     "RuntimeAssetData_GenericRenderSceneSubmissionReportsMaterialVariantsUntilFrameApiSupportsThem";
 constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE =
     "RuntimeAssetData_GenericRenderSceneSubmissionBuildsPerEntityMaterialTableFromRefs";
+constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_BLEND_STATE =
+    "RuntimeAssetData_GenericRenderSceneSubmissionPreservesPerEntityMaterialBlendState";
 constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE_ORDER =
     "RuntimeAssetData_GenericRenderSceneSubmissionUsesMaterialRefOrderNotEntityOrder";
 constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE_CAPACITY =
@@ -509,6 +513,10 @@ constexpr const char *TEST_COOKED_MATERIAL_CONSTANTS =
     "RuntimeAssetData_CookedMaterialConstantsBridgeToRenderSceneRecord";
 constexpr const char *TEST_COOKED_MATERIAL_CONSTANT_REJECTS =
     "RuntimeAssetData_CookedMaterialConstantsRejectInvalidLoadedMaterialWithoutMutation";
+constexpr const char *TEST_COOKED_MATERIAL_BLEND_STATE =
+    "RuntimeAssetData_CookedMaterialAlphaBlendStateBridgeToRenderSceneRecord";
+constexpr const char *TEST_COOKED_MATERIAL_BLEND_STATE_REJECTS =
+    "RuntimeAssetData_CookedMaterialAlphaBlendRejectsInvalidLoadedMaterialWithoutMutation";
 constexpr const char *TEST_COOKED_PAYLOAD_DESCRIPTOR_REJECTS =
     "RuntimeAssetData_CookedPayloadBridgeRejectsTextureFormatExtentSizeAlignmentHashWithoutMutation";
 constexpr const char *TEST_COOKED_SLOT_DEPENDENCY_REJECTS =
@@ -9277,6 +9285,91 @@ int RuntimeAssetDataGenericRenderSceneSubmissionBuildsPerEntityMaterialTableFrom
     return 0;
 }
 
+int RuntimeAssetDataGenericRenderSceneSubmissionPreservesPerEntityMaterialBlendState() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    RuntimeAssetRhiDevice device;
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneCameraBindingResult camera{};
+    std::array<RuntimeAssetRenderSceneGeometryBinding, 3U> geometry_bindings{};
+    RuntimeAssetRenderSceneMaterialBinding material_binding{};
+    if (!LoadGenericRenderSceneSubmissionInputs(
+            "GenericRenderSceneSubmissionMaterialBlendState",
+            &table,
+            &registry,
+            &manager,
+            &graph,
+            &device,
+            &geometry,
+            &material,
+            &camera,
+            &geometry_bindings,
+            &material_binding)) {
+        return Fail("generic render scene submission material blend inputs failed");
+    }
+
+    material.blend_state.mode = RhiBlendMode::Opaque;
+    material.blend_state.constant_alpha = static_cast<std::uint8_t>(255U);
+    material_binding.material = material;
+
+    std::array<RuntimeAssetSceneEntityRecord, 3U> scene_entities = graph.scene_entities;
+    const std::uint32_t base_material_ref_index = graph.scene_entities[0U].material_ref_index;
+    const std::uint32_t variant_material_ref_index = base_material_ref_index + 100U;
+    scene_entities[1U].material_ref_index = variant_material_ref_index;
+    RuntimeAssetRenderSceneMaterialBinding variant_material_binding{};
+    variant_material_binding.resource_ref_index = variant_material_ref_index;
+    variant_material_binding.material =
+        MakeGenericRenderSceneSubmissionVariantMaterial(material, material.material_id + 100U);
+    variant_material_binding.material.blend_state.mode = RhiBlendMode::AlphaOver;
+    variant_material_binding.material.blend_state.constant_alpha =
+        static_cast<std::uint8_t>(MATERIAL_OPACITY);
+    std::array<RuntimeAssetRenderSceneMaterialBinding, 2U> material_bindings{
+        material_binding,
+        variant_material_binding};
+    std::array<RenderSceneRuntimeFrameEntityRequest, 3U> frame_entities{};
+    std::array<RenderSceneRuntimeMaterialRecord, 2U> frame_materials{};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 3U> draws{};
+    RuntimeAssetRenderSceneSubmissionRequest request = BuildGenericRenderSceneSubmissionRequest(
+        graph,
+        std::span<const RuntimeAssetSceneEntityRecord>(scene_entities.data(), scene_entities.size()),
+        std::span<const RuntimeAssetSceneTransformOutputRecord>(graph.scene_transforms.data(), graph.scene_transforms.size()),
+        std::span<const RuntimeAssetRenderSceneGeometryBinding>(geometry_bindings.data(), geometry_bindings.size()),
+        std::span<const RuntimeAssetRenderSceneMaterialBinding>(material_bindings.data(), material_bindings.size()),
+        camera,
+        std::span<RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+        std::span<RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()));
+    request.require_shared_material = false;
+    request.out_frame_materials =
+        std::span<RenderSceneRuntimeMaterialRecord>(frame_materials.data(), frame_materials.size());
+
+    RuntimeAssetRenderSceneSubmissionResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetRenderSceneSubmission(request, &result);
+    if (status != RuntimeAssetDataStatus::Success ||
+        result.status != RuntimeAssetDataStatus::Success ||
+        result.frame_status != RenderSceneRuntimeFrameStatus::Success) {
+        return Fail("generic render scene submission material blend build failed");
+    }
+
+    if (frame_materials[0U].blend_state.mode != RhiBlendMode::Opaque ||
+        frame_materials[0U].blend_state.constant_alpha != static_cast<std::uint8_t>(255U)) {
+        return Fail("generic render scene submission changed base material blend state");
+    }
+
+    if (frame_materials[1U].blend_state.mode != RhiBlendMode::AlphaOver ||
+        frame_materials[1U].blend_state.constant_alpha != static_cast<std::uint8_t>(MATERIAL_OPACITY)) {
+        return Fail("generic render scene submission lost variant material blend state");
+    }
+
+    if (draws[1U].draw.material_id != variant_material_binding.material.material_id) {
+        return Fail("generic render scene submission material blend routing changed");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataGenericRenderSceneSubmissionUsesMaterialRefOrderNotEntityOrder() {
     MountTable table;
     ResourceRegistry registry;
@@ -10644,6 +10737,57 @@ int RuntimeAssetDataCookedMaterialConstantsBridgeToRenderSceneRecord() {
     return 0;
 }
 
+int RuntimeAssetDataCookedMaterialAlphaBlendStateBridgeToRenderSceneRecord() {
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    std::array<RuntimeAssetLoadedFile, RUNTIME_TEXTURE_SLOT_COUNT> texture_assets{};
+    std::array<RuntimeAssetCookedTexturePayloadDesc, RUNTIME_TEXTURE_SLOT_COUNT> textures{};
+    if (!LoadCookedTextureMaterialFixture(
+            "CookedMaterialAlphaBlend",
+            registry,
+            manager,
+            &graph,
+            &texture_assets,
+            &textures)) {
+        return Fail("cooked material alpha blend fixture failed");
+    }
+
+    const std::array<RuntimeAssetCookedMaterialSlotDesc, RUNTIME_TEXTURE_SLOT_COUNT> slots =
+        CookedMaterialSlots();
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("initialize cooked material alpha blend rhi failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreatePipeline(device, &pipeline)) {
+        return Fail("create cooked material alpha blend pipeline failed");
+    }
+
+    RenderSceneRuntimeMaterialRecord material{};
+    const RuntimeAssetCookedTextureMaterialBridgeResult result = InvokeCookedMaterialBridgeWithMaterial(
+        device,
+        registry,
+        manager,
+        graph.assets[3U].asset,
+        &graph.assets[3U],
+        pipeline,
+        std::span<const RuntimeAssetCookedTexturePayloadDesc>(textures.data(), textures.size()),
+        std::span<const RuntimeAssetCookedMaterialSlotDesc>(slots.data(), slots.size()),
+        &material);
+    if (result.status != RuntimeAssetDataStatus::Success || !result.published_material) {
+        return Fail("cooked material alpha blend did not bridge");
+    }
+
+    if (material.blend_state.mode != RhiBlendMode::AlphaOver ||
+        material.blend_state.constant_alpha != static_cast<std::uint8_t>(MATERIAL_OPACITY)) {
+        return Fail("cooked material alpha blend did not reach render scene record");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataCookedMaterialConstantsRejectInvalidLoadedMaterialWithoutMutation() {
     ResourceRegistry registry;
     AssetManager manager;
@@ -10703,6 +10847,76 @@ int RuntimeAssetDataCookedMaterialConstantsRejectInvalidLoadedMaterialWithoutMut
     if (after_snapshot.resources.texture_count != before_snapshot.resources.texture_count ||
         after_snapshot.resources.sampler_count != before_snapshot.resources.sampler_count) {
         return Fail("invalid material constants bridge mutated rhi primitives");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataCookedMaterialAlphaBlendRejectsInvalidLoadedMaterialWithoutMutation() {
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    std::array<RuntimeAssetLoadedFile, RUNTIME_TEXTURE_SLOT_COUNT> texture_assets{};
+    std::array<RuntimeAssetCookedTexturePayloadDesc, RUNTIME_TEXTURE_SLOT_COUNT> textures{};
+    if (!LoadCookedTextureMaterialFixture(
+            "CookedMaterialAlphaBlendRejects",
+            registry,
+            manager,
+            &graph,
+            &texture_assets,
+            &textures)) {
+        return Fail("cooked material alpha blend reject fixture failed");
+    }
+
+    const std::array<RuntimeAssetCookedMaterialSlotDesc, RUNTIME_TEXTURE_SLOT_COUNT> slots =
+        CookedMaterialSlots();
+    RuntimeAssetRhiDevice device;
+    if (device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("initialize cooked material alpha blend reject rhi failed");
+    }
+
+    RhiPipelineHandle pipeline{};
+    if (!CreatePipeline(device, &pipeline)) {
+        return Fail("create cooked material alpha blend reject pipeline failed");
+    }
+
+    RuntimeAssetLoadedFile bad_material = graph.assets[3U];
+    bad_material.material_alpha_mode = static_cast<RuntimeAssetMaterialAlphaMode>(255);
+    const auto before_snapshot = device.Snapshot();
+    RenderSceneRuntimeMaterialRecord material{};
+    material.material_id = 77U;
+    material.blend_state.mode = RhiBlendMode::AlphaOver;
+    material.blend_state.constant_alpha = static_cast<std::uint8_t>(64U);
+    const RuntimeAssetCookedTextureMaterialBridgeResult result = InvokeCookedMaterialBridgeWithMaterial(
+        device,
+        registry,
+        manager,
+        graph.assets[3U].asset,
+        &bad_material,
+        pipeline,
+        std::span<const RuntimeAssetCookedTexturePayloadDesc>(textures.data(), textures.size()),
+        std::span<const RuntimeAssetCookedMaterialSlotDesc>(slots.data(), slots.size()),
+        &material);
+    if (result.status != RuntimeAssetDataStatus::UnsupportedFieldValue ||
+        result.mutated_state ||
+        result.published_material ||
+        result.material_constant_byte_count != 0U ||
+        result.material_constant_hash != 0U) {
+        return Fail("invalid alpha blend material bridge did not fail before mutation");
+    }
+
+    if (material.material_id != 77U ||
+        material.is_resolved ||
+        material.texture_slot_count != 0U ||
+        material.blend_state.mode != RhiBlendMode::AlphaOver ||
+        material.blend_state.constant_alpha != static_cast<std::uint8_t>(64U)) {
+        return Fail("invalid alpha blend bridge mutated render scene output");
+    }
+
+    const auto after_snapshot = device.Snapshot();
+    if (after_snapshot.resources.texture_count != before_snapshot.resources.texture_count ||
+        after_snapshot.resources.sampler_count != before_snapshot.resources.sampler_count) {
+        return Fail("invalid alpha blend bridge mutated rhi primitives");
     }
 
     return 0;
@@ -12648,6 +12862,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataGenericRenderSceneSubmissionReportsMaterialVariantsUntilFrameApiSupportsThem},
     {TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE,
      RuntimeAssetDataGenericRenderSceneSubmissionBuildsPerEntityMaterialTableFromRefs},
+    {TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_BLEND_STATE,
+     RuntimeAssetDataGenericRenderSceneSubmissionPreservesPerEntityMaterialBlendState},
     {TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE_ORDER,
      RuntimeAssetDataGenericRenderSceneSubmissionUsesMaterialRefOrderNotEntityOrder},
     {TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE_CAPACITY,
@@ -12690,6 +12906,10 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataCookedMaterialConstantsBridgeToRenderSceneRecord},
     {TEST_COOKED_MATERIAL_CONSTANT_REJECTS,
      RuntimeAssetDataCookedMaterialConstantsRejectInvalidLoadedMaterialWithoutMutation},
+    {TEST_COOKED_MATERIAL_BLEND_STATE,
+     RuntimeAssetDataCookedMaterialAlphaBlendStateBridgeToRenderSceneRecord},
+    {TEST_COOKED_MATERIAL_BLEND_STATE_REJECTS,
+     RuntimeAssetDataCookedMaterialAlphaBlendRejectsInvalidLoadedMaterialWithoutMutation},
     {TEST_COOKED_PAYLOAD_DESCRIPTOR_REJECTS,
      RuntimeAssetDataCookedPayloadBridgeRejectsTextureFormatExtentSizeAlignmentHashWithoutMutation},
     {TEST_COOKED_SLOT_DEPENDENCY_REJECTS,

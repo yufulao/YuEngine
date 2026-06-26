@@ -12,6 +12,7 @@ enum class MaterialBindingFixtureStatus {
     InvalidArgument,
     InvalidMaterialId,
     InvalidPipeline,
+    InvalidBlendState,
     InvalidTextureBinding,
     InvalidSamplerBinding,
     OversizedConstants,

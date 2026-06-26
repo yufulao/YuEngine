@@ -10,6 +10,7 @@
 #include "YuEngine/Asset/AssetHandle.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialConstants.h"
 #include "YuEngine/RenderScene/RenderSceneRuntimeMaterialTextureSlot.h"
+#include "YuEngine/Rhi/RhiBlendStateDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 
 namespace yuengine::renderscene {
@@ -17,6 +18,7 @@ struct RenderSceneRuntimeMaterialRecord final {
     yuengine::asset::AssetHandle material_asset{};
     std::uint32_t material_id = 0U;
     yuengine::rhi::RhiPipelineHandle pipeline{};
+    yuengine::rhi::RhiBlendStateDesc blend_state{};
     std::array<
         RenderSceneRuntimeMaterialTextureSlot,
         MAX_RENDER_SCENE_RUNTIME_MATERIAL_TEXTURE_SLOTS> texture_slots{};

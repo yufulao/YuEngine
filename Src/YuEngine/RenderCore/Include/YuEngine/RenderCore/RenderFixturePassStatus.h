@@ -12,6 +12,7 @@ enum class RenderFixturePassStatus {
     InvalidArgument,
     InvalidTarget,
     InvalidPipeline,
+    InvalidBlendState,
     MissingVertexBuffer,
     MissingIndexBuffer,
     InvalidTextureBinding,

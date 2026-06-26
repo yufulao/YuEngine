@@ -7,6 +7,7 @@
 #include <span>
 
 #include "YuEngine/Rhi/RhiConstantBufferBinding.h"
+#include "YuEngine/Rhi/RhiBlendStateDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiSampledTextureBinding.h"
 #include "YuEngine/Rhi/RhiSamplerBinding.h"
@@ -18,6 +19,7 @@ namespace yuengine::rendercore {
 struct MaterialBindingFixtureRequest final {
     std::uint32_t material_id = 0U;
     yuengine::rhi::RhiPipelineHandle pipeline{};
+    yuengine::rhi::RhiBlendStateDesc blend_state{};
     yuengine::rhi::RhiSampledTextureBinding sampled_texture{};
     yuengine::rhi::RhiSamplerBinding sampler{};
     std::span<const yuengine::rhi::RhiSampledTextureBinding> sampled_textures{};

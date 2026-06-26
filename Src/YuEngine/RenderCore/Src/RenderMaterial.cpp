@@ -31,6 +31,14 @@ bool IsSamplerHandleSet(yuengine::rhi::RhiSamplerHandle handle) {
     return handle.generation != 0U;
 }
 
+bool IsBlendStateValid(const yuengine::rhi::RhiBlendStateDesc &blend_state) {
+    if (blend_state.mode == yuengine::rhi::RhiBlendMode::Opaque) {
+        return true;
+    }
+
+    return blend_state.mode == yuengine::rhi::RhiBlendMode::AlphaOver;
+}
+
 bool IsSampledTextureBindingValid(const yuengine::rhi::RhiSampledTextureBinding &binding) {
     if (!IsTextureHandleSet(binding.texture)) {
         return false;
@@ -167,6 +175,10 @@ RenderMaterialStatus RenderMaterial::ValidateRequest(const RenderMaterialRequest
         return RenderMaterialStatus::InvalidPipeline;
     }
 
+    if (!IsBlendStateValid(request.blend_state)) {
+        return RenderMaterialStatus::InvalidBlendState;
+    }
+
     if (!AreBindingSpansValid(request)) {
         return RenderMaterialStatus::InvalidTextureBinding;
     }
@@ -224,6 +236,7 @@ void RenderMaterial::FillBindingRequest(
 
     out_request->material_id = request.material_id;
     out_request->pipeline = request.pipeline;
+    out_request->blend_state = request.blend_state;
     out_request->sampled_texture = request.sampled_texture;
     out_request->sampler = request.sampler;
     out_request->sampled_textures = request.sampled_textures;
@@ -244,6 +257,7 @@ void RenderMaterial::RecordAcceptedMaterial(
     record.material_id = request.material_id;
     record.program_id = request.program_id;
     record.pipeline = request.pipeline;
+    record.blend_state = request.blend_state;
     record.sampled_texture = request.sampled_texture;
     record.sampler = request.sampler;
     record.constant_byte_count = request.constant_bytes.size();

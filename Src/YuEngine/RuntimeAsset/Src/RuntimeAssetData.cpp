@@ -185,6 +185,8 @@ using yuengine::rhi::RhiColorTargetDesc;
 using yuengine::rhi::RhiFormat;
 using yuengine::rhi::RhiIndexBufferView;
 using yuengine::rhi::RhiIndexFormat;
+using yuengine::rhi::RhiBlendMode;
+using yuengine::rhi::RhiBlendStateDesc;
 using yuengine::rhi::RhiPipelineHandle;
 using yuengine::rhi::RhiSamplerBinding;
 using yuengine::rhi::RhiSamplerDesc;
@@ -5727,6 +5729,39 @@ RuntimeAssetDataStatus ValidateCookedMaterialSlots(
     return RuntimeAssetDataStatus::Success;
 }
 
+RuntimeAssetDataStatus BuildRuntimeAssetMaterialBlendState(
+    const RuntimeAssetLoadedFile &material,
+    RhiBlendStateDesc *out_blend_state) {
+    if (out_blend_state == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (material.kind != RuntimeAssetFileKind::Material) {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    if (material.material_opacity > 255U) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    RhiBlendStateDesc blend_state{};
+    if (material.material_alpha_mode == RuntimeAssetMaterialAlphaMode::Opaque) {
+        blend_state.mode = RhiBlendMode::Opaque;
+        blend_state.constant_alpha = static_cast<std::uint8_t>(255U);
+        *out_blend_state = blend_state;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    if (material.material_alpha_mode == RuntimeAssetMaterialAlphaMode::Blend) {
+        blend_state.mode = RhiBlendMode::AlphaOver;
+        blend_state.constant_alpha = static_cast<std::uint8_t>(material.material_opacity);
+        *out_blend_state = blend_state;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    return RuntimeAssetDataStatus::UnsupportedFieldValue;
+}
+
 RuntimeAssetDataStatus ValidateCookedTextureMaterialBridgeRequest(
     const RuntimeAssetCookedTextureMaterialBridgeRequest &request,
     RuntimeAssetCookedTextureMaterialBridgeResult *result) {
@@ -5778,6 +5813,13 @@ RuntimeAssetDataStatus ValidateCookedTextureMaterialBridgeRequest(
             PackRuntimeAssetMaterialConstants(*request.loaded_material, &material_constants);
         if (material_status != RuntimeAssetDataStatus::Success) {
             return material_status;
+        }
+
+        RhiBlendStateDesc blend_state{};
+        const RuntimeAssetDataStatus blend_status =
+            BuildRuntimeAssetMaterialBlendState(*request.loaded_material, &blend_state);
+        if (blend_status != RuntimeAssetDataStatus::Success) {
+            return blend_status;
         }
     }
 
@@ -5865,11 +5907,19 @@ RuntimeAssetDataStatus BuildCookedTextureMaterialCommit(
     const RuntimeAssetCookedTextureMaterialBridgeRequest &request,
     RuntimeAssetCookedTextureMaterialBridgeResult *result) {
     RuntimeAssetPackedMaterialConstants material_constants{};
+    RhiBlendStateDesc material_blend_state{};
     if (request.loaded_material != nullptr) {
         const RuntimeAssetDataStatus material_status =
             PackRuntimeAssetMaterialConstants(*request.loaded_material, &material_constants);
         if (material_status != RuntimeAssetDataStatus::Success) {
             result->status = material_status;
+            return result->status;
+        }
+
+        const RuntimeAssetDataStatus blend_status =
+            BuildRuntimeAssetMaterialBlendState(*request.loaded_material, &material_blend_state);
+        if (blend_status != RuntimeAssetDataStatus::Success) {
+            result->status = blend_status;
             return result->status;
         }
     }
@@ -5941,6 +5991,7 @@ RuntimeAssetDataStatus BuildCookedTextureMaterialCommit(
     material_request.material_asset = request.material_asset;
     material_request.material_id = request.material_id;
     material_request.pipeline = request.pipeline;
+    material_request.blend_state = material_blend_state;
     material_request.texture_slots = std::span<const RenderSceneRuntimeMaterialTextureSlot>(
         render_slots.data(),
         request.material_slots.size());
@@ -7824,7 +7875,8 @@ RuntimeAssetDataStatus PackRuntimeAssetMaterialConstants(
         return RuntimeAssetDataStatus::InvalidCount;
     }
 
-    if (material.material_alpha_mode == RuntimeAssetMaterialAlphaMode::Unknown) {
+    if (material.material_alpha_mode != RuntimeAssetMaterialAlphaMode::Opaque &&
+        material.material_alpha_mode != RuntimeAssetMaterialAlphaMode::Blend) {
         return RuntimeAssetDataStatus::UnsupportedFieldValue;
     }
 

@@ -8,6 +8,7 @@
 #include <span>
 
 #include "YuEngine/Rhi/IRhiDevice.h"
+#include "YuEngine/Rhi/RhiBlendStateDesc.h"
 #include "YuEngine/Rhi/RhiColor.h"
 #include "YuEngine/Rhi/RhiDrawIndexedDesc.h"
 #include "YuEngine/Rhi/RhiIndexBufferView.h"
@@ -23,6 +24,7 @@ namespace yuengine::rendercore {
 struct RenderDrawableFramePipelineRequest final {
     yuengine::rhi::IRhiDevice *rhi_device = nullptr;
     yuengine::rhi::RhiPipelineHandle pipeline{};
+    yuengine::rhi::RhiBlendStateDesc blend_state{};
     yuengine::rhi::RhiVertexBufferView vertex_buffer{};
     yuengine::rhi::RhiIndexBufferView index_buffer{};
     yuengine::rhi::RhiSampledTextureBinding sampled_texture{};

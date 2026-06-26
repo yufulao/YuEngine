@@ -13,6 +13,7 @@ enum class RenderMaterialStatus {
     InvalidMaterialId,
     InvalidProgramId,
     InvalidPipeline,
+    InvalidBlendState,
     InvalidTextureBinding,
     InvalidSamplerBinding,
     OversizedConstants,

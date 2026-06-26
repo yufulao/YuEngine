@@ -53,6 +53,7 @@ private:
         std::uint32_t material_id = 0U;
         std::uint32_t program_id = 0U;
         yuengine::rhi::RhiPipelineHandle pipeline{};
+        yuengine::rhi::RhiBlendStateDesc blend_state{};
         yuengine::rhi::RhiSampledTextureBinding sampled_texture{};
         yuengine::rhi::RhiSamplerBinding sampler{};
         std::array<std::uint8_t, MAX_RENDER_MATERIAL_CONSTANT_BYTES> constant_bytes{};

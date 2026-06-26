@@ -52,6 +52,7 @@ using yuengine::rendercore::MAX_RENDER_MATERIAL_CONSTANT_BYTES;
 using yuengine::rhi::IRhiDevice;
 using yuengine::rhi::MAX_RHI_CONSTANT_BUFFER_SLOTS;
 using yuengine::rhi::RhiBackendKind;
+using yuengine::rhi::RhiBlendMode;
 using yuengine::rhi::RhiBlendStateDesc;
 using yuengine::rhi::RhiBufferDesc;
 using yuengine::rhi::RhiBufferHandle;
@@ -106,6 +107,7 @@ constexpr const char *TEST_COMMAND_CAPACITY = "RenderCore_DrawableFramePipeline_
 constexpr const char *TEST_MATERIAL_CONSTANTS = "RenderCore_DrawableFramePipeline_PropagatesMaterialConstants";
 constexpr const char *TEST_MATERIAL_CONSTANT_REJECTS =
     "RenderCore_DrawableFramePipeline_RejectsOversizedMaterialConstantsWithoutMutation";
+constexpr const char *TEST_BLEND_STATE = "RenderCore_DrawableFramePipeline_PropagatesAlphaBlendState";
 constexpr const char *ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char *ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr std::uint32_t FRAME_ID = 1U;
@@ -307,8 +309,23 @@ public:
         return RhiStatus::Success;
     }
 
-    RhiStatus RecordBindBlendState(RhiCommandList &, const RhiBlendStateDesc &) override {
-        return RhiStatus::UnsupportedBackend;
+    RhiStatus RecordBindBlendState(RhiCommandList &command_list, const RhiBlendStateDesc &desc) override {
+        if (!IsBlendStateDescValid(desc)) {
+            ++snapshot_.failed_operation_count;
+            ++snapshot_.rejected_blend_state_bind_count;
+            return RhiStatus::InvalidDescriptor;
+        }
+
+        const RhiStatus status = command_list.RecordBindBlendState(desc);
+        if (status != RhiStatus::Success) {
+            ++snapshot_.failed_operation_count;
+            ++snapshot_.rejected_blend_state_bind_count;
+            return status;
+        }
+
+        last_blend_state_ = desc;
+        ++snapshot_.recorded_command_count;
+        return RhiStatus::Success;
     }
 
     RhiStatus RecordDraw(RhiCommandList &, const RhiDrawDesc &) override {
@@ -350,10 +367,16 @@ public:
         snapshot_.submitted_sampled_texture_bind_count += command_snapshot.sampled_texture_bind_command_count;
         snapshot_.submitted_sampler_bind_count += command_snapshot.sampler_bind_command_count;
         snapshot_.submitted_constant_buffer_bind_count += command_snapshot.constant_buffer_bind_command_count;
+        snapshot_.submitted_blend_state_bind_count += command_snapshot.blend_state_bind_command_count;
         snapshot_.last_indexed_draw_index_count = last_draw_index_count_;
         if (command_snapshot.constant_buffer_bind_command_count > 0U) {
             snapshot_.last_bound_constant_buffer_slot = last_constant_buffer_binding_.slot;
             snapshot_.last_bound_constant_buffer_stage = last_constant_buffer_binding_.stage;
+        }
+
+        if (command_snapshot.blend_state_bind_command_count > 0U) {
+            snapshot_.last_alpha_blend_enabled = last_blend_state_.mode == RhiBlendMode::AlphaOver;
+            snapshot_.last_blend_constant_alpha = last_blend_state_.constant_alpha;
         }
 
         ++snapshot_.submit_count;
@@ -583,10 +606,19 @@ private:
         snapshot_.swapchain.color_target = target_;
         last_clear_color_ = RhiColor{};
         last_constant_buffer_binding_ = RhiConstantBufferBinding{};
+        last_blend_state_ = RhiBlendStateDesc{};
         last_draw_index_count_ = 0U;
         constant_buffer_active_ = false;
         submitted_ = false;
         presented_ = false;
+    }
+
+    bool IsBlendStateDescValid(const RhiBlendStateDesc &desc) const {
+        if (desc.mode == RhiBlendMode::Opaque) {
+            return true;
+        }
+
+        return desc.mode == RhiBlendMode::AlphaOver;
     }
 
     RhiDeviceSnapshot snapshot_{};
@@ -599,6 +631,7 @@ private:
     RhiSamplerHandle sampler_{};
     RhiColor last_clear_color_{};
     RhiConstantBufferBinding last_constant_buffer_binding_{};
+    RhiBlendStateDesc last_blend_state_{};
     std::uint32_t last_draw_index_count_ = 0U;
     bool constant_buffer_active_ = false;
     bool submitted_ = false;
@@ -748,6 +781,41 @@ int RenderCoreDrawableFramePipelinePropagatesMaterialConstants() {
 
     if (!CaptureWasWritten(capture)) {
         return Fail("drawable frame pipeline constants path did not write capture");
+    }
+
+    return 0;
+}
+
+int RenderCoreDrawableFramePipelinePropagatesAlphaBlendState() {
+    FakeDrawableRhiDevice device;
+    std::vector<std::uint8_t> capture(CaptureByteCount(DEFAULT_EXTENT, DEFAULT_EXTENT), SENTINEL_BYTE);
+    RenderDrawableFramePipeline pipeline;
+    RenderDrawableFramePipelineRequest request = MakeRequest(device, capture);
+    request.blend_state.mode = RhiBlendMode::AlphaOver;
+    request.blend_state.constant_alpha = static_cast<std::uint8_t>(128U);
+
+    const auto result = pipeline.Execute(request);
+    if (result.status != RenderDrawableFramePipelineStatus::Success) {
+        return Fail("drawable frame pipeline rejected alpha blend state");
+    }
+
+    if (result.recorded_command_count != 10U ||
+        result.pass_result.recorded_command_count != 10U) {
+        return Fail("drawable frame pipeline did not record blend state command");
+    }
+
+    const RhiDeviceSnapshot rhi_snapshot = device.Snapshot();
+    if (rhi_snapshot.submitted_blend_state_bind_count != 1U) {
+        return Fail("drawable frame pipeline did not submit blend state bind");
+    }
+
+    if (!rhi_snapshot.last_alpha_blend_enabled ||
+        rhi_snapshot.last_blend_constant_alpha != static_cast<std::uint8_t>(128U)) {
+        return Fail("drawable frame pipeline did not propagate alpha blend state");
+    }
+
+    if (!CaptureWasWritten(capture)) {
+        return Fail("drawable frame pipeline blend state path did not write capture");
     }
 
     return 0;
@@ -933,6 +1001,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_MATERIAL_CONSTANT_REJECTS) {
         return RenderCoreDrawableFramePipelineRejectsOversizedMaterialConstantsWithoutMutation();
+    }
+
+    if (name == TEST_BLEND_STATE) {
+        return RenderCoreDrawableFramePipelinePropagatesAlphaBlendState();
     }
 
     return Fail(ERROR_UNKNOWN_TEST_NAME);

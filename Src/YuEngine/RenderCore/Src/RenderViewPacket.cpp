@@ -37,6 +37,14 @@ bool IsSamplerHandleSet(yuengine::rhi::RhiSamplerHandle handle) {
     return handle.generation != 0U;
 }
 
+bool IsBlendStateValid(const yuengine::rhi::RhiBlendStateDesc &blend_state) {
+    if (blend_state.mode == yuengine::rhi::RhiBlendMode::Opaque) {
+        return true;
+    }
+
+    return blend_state.mode == yuengine::rhi::RhiBlendMode::AlphaOver;
+}
+
 bool IsSampledTextureBindingValid(const yuengine::rhi::RhiSampledTextureBinding &binding) {
     if (!IsTextureHandleSet(binding.texture)) {
         return false;
@@ -117,6 +125,10 @@ RenderMaterialStatus ValidateMaterialRequest(const RenderMaterialRequest &reques
 
     if (!IsPipelineHandleSet(request.pipeline)) {
         return RenderMaterialStatus::InvalidPipeline;
+    }
+
+    if (!IsBlendStateValid(request.blend_state)) {
+        return RenderMaterialStatus::InvalidBlendState;
     }
 
     if (!AreBindingSpansValid(request)) {
@@ -388,6 +400,7 @@ void RenderViewPacket::FillPassRequest(
 
     out_request->target = request.target;
     out_request->pipeline = request.material.pipeline;
+    out_request->blend_state = request.material.blend_state;
     out_request->vertex_buffer = request.draw.vertex_buffer;
     out_request->index_buffer = request.draw.index_buffer;
     out_request->sampled_texture = request.material.sampled_texture;

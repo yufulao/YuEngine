@@ -10,6 +10,7 @@ enum class RenderSceneRuntimeMaterialStatus {
     InvalidMaterialAsset,
     InvalidMaterialId,
     InvalidPipeline,
+    InvalidBlendState,
     MissingTextureSlot,
     InvalidTextureAsset,
     InvalidTextureBinding,

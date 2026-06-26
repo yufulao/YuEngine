@@ -15,6 +15,7 @@
 #include "YuEngine/RenderCore/RenderMaterialDesc.h"
 #include "YuEngine/RenderCore/RenderMaterialRequest.h"
 #include "YuEngine/RenderCore/RenderMaterialStatus.h"
+#include "YuEngine/Rhi/RhiBlendStateDesc.h"
 #include "YuEngine/Rhi/RhiPipelineHandle.h"
 #include "YuEngine/Rhi/RhiSampledTextureBinding.h"
 #include "YuEngine/Rhi/RhiSamplerBinding.h"
@@ -31,6 +32,7 @@ using RenderMaterialDesc = yuengine::rendercore::RenderMaterialDesc;
 using RenderMaterialRequest = yuengine::rendercore::RenderMaterialRequest;
 using yuengine::rendercore::RenderCameraProjectionKind;
 using yuengine::rendercore::RenderMaterialStatus;
+using yuengine::rhi::RhiBlendMode;
 using yuengine::rhi::RhiPipelineHandle;
 using yuengine::rhi::RhiSampledTextureBinding;
 using yuengine::rhi::RhiSamplerBinding;
@@ -40,6 +42,7 @@ using yuengine::rhi::RhiTextureHandle;
 namespace {
 constexpr const char *TEST_BUILDS_BINDING = "RenderCore_MaterialBuildsBindingRequest";
 constexpr const char *TEST_CAMERA_CONSTANTS = "RenderCore_MaterialAcceptsCameraShaderConstants";
+constexpr const char *TEST_BLEND_STATE = "RenderCore_MaterialCopiesBlendState";
 constexpr const char *TEST_INVALID_PROGRAM = "RenderCore_MaterialRejectsInvalidProgramIdWithoutOutputMutation";
 constexpr const char *TEST_OVERSIZED_CONSTANTS = "RenderCore_MaterialRejectsOversizedConstantsWithoutOutputMutation";
 constexpr const char *TEST_DUPLICATE_ID = "RenderCore_MaterialRejectsDuplicateMaterialId";
@@ -108,6 +111,8 @@ MaterialBindingFixtureRequest SentinelBindingRequest() {
     MaterialBindingFixtureRequest request{};
     request.material_id = 77U;
     request.pipeline = RhiPipelineHandle{77U, 77U};
+    request.blend_state.mode = RhiBlendMode::AlphaOver;
+    request.blend_state.constant_alpha = static_cast<std::uint8_t>(99U);
     request.pass_id = 77U;
     return request;
 }
@@ -118,6 +123,11 @@ bool BindingRequestMatchesSentinel(const MaterialBindingFixtureRequest &request)
     }
 
     if (request.pipeline.slot != 77U || request.pipeline.generation != 77U) {
+        return false;
+    }
+
+    if (request.blend_state.mode != RhiBlendMode::AlphaOver ||
+        request.blend_state.constant_alpha != 99U) {
         return false;
     }
 
@@ -168,6 +178,27 @@ int RenderCoreMaterialAcceptsCameraShaderConstants() {
 
     if (binding_request.constant_bytes.size() != byte_count) {
         return Fail("render material changed camera constant byte count");
+    }
+
+    return 0;
+}
+
+int RenderCoreMaterialCopiesBlendState() {
+    const auto constants = SmallConstants();
+    RenderMaterialRequest request = DefaultRequest(constants);
+    request.blend_state.mode = RhiBlendMode::AlphaOver;
+    request.blend_state.constant_alpha = static_cast<std::uint8_t>(128U);
+
+    RenderMaterial material;
+    MaterialBindingFixtureRequest binding_request{};
+    const auto result = material.BuildBindingRequest(request, &binding_request);
+    if (result.status != RenderMaterialStatus::Success) {
+        return Fail("render material rejected alpha blend state");
+    }
+
+    if (binding_request.blend_state.mode != RhiBlendMode::AlphaOver ||
+        binding_request.blend_state.constant_alpha != 128U) {
+        return Fail("render material did not copy blend state");
     }
 
     return 0;
@@ -308,6 +339,10 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_CAMERA_CONSTANTS) {
         return RenderCoreMaterialAcceptsCameraShaderConstants();
+    }
+
+    if (name == TEST_BLEND_STATE) {
+        return RenderCoreMaterialCopiesBlendState();
     }
 
     if (name == TEST_INVALID_PROGRAM) {
