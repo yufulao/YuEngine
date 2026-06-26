@@ -20,6 +20,7 @@ using yuengine::input::InputBridge;
 using yuengine::input::InputBridgeDesc;
 using yuengine::input::InputBridgeEvent;
 using yuengine::input::InputBridgeEventType;
+using yuengine::input::InputBridgeSnapshot;
 using yuengine::input::InputDeviceKind;
 using yuengine::input::InputGamepadConnection;
 using yuengine::input::InputStatus;
@@ -74,6 +75,85 @@ bool IsStrictXInputSmokeRequired() {
     }
 
     return IsEnabledEnvironmentValue(value.data());
+}
+
+const char *InputStatusName(InputStatus status) {
+    switch (status) {
+        case InputStatus::Success:
+            return "Success";
+        case InputStatus::DuplicateBinding:
+            return "DuplicateBinding";
+        case InputStatus::CapacityExceeded:
+            return "CapacityExceeded";
+        case InputStatus::UnknownDeviceControl:
+            return "UnknownDeviceControl";
+        case InputStatus::UnknownAction:
+            return "UnknownAction";
+        case InputStatus::UnknownContext:
+            return "UnknownContext";
+        case InputStatus::InvalidAxisValue:
+            return "InvalidAxisValue";
+        case InputStatus::InvalidEvent:
+            return "InvalidEvent";
+        case InputStatus::EndOfReplay:
+            return "EndOfReplay";
+        case InputStatus::NotInitialized:
+            return "NotInitialized";
+        case InputStatus::AlreadyInitialized:
+            return "AlreadyInitialized";
+        case InputStatus::InvalidDescriptor:
+            return "InvalidDescriptor";
+        case InputStatus::UnsupportedBackend:
+            return "UnsupportedBackend";
+        case InputStatus::DeviceUnavailable:
+            return "DeviceUnavailable";
+        case InputStatus::FocusLost:
+            return "FocusLost";
+        case InputStatus::NullPointer:
+            return "NullPointer";
+        case InputStatus::OutputBufferFull:
+            return "OutputBufferFull";
+        case InputStatus::BackendError:
+            return "BackendError";
+        default:
+            break;
+    }
+
+    return "Unknown";
+}
+
+const char *GamepadConnectionName(InputGamepadConnection connection) {
+    switch (connection) {
+        case InputGamepadConnection::Unknown:
+            return "Unknown";
+        case InputGamepadConnection::Unavailable:
+            return "Unavailable";
+        case InputGamepadConnection::Connected:
+            return "Connected";
+        default:
+            break;
+    }
+
+    return "Unknown";
+}
+
+void PrintXInputSmokeStatus(
+    const char *prefix,
+    InputStatus poll_status,
+    const InputBridgeSnapshot &snapshot,
+    std::size_t event_count) {
+    std::fprintf(
+        stdout,
+        "%s poll_status=%s last_status=%s connection=%s poll_count=%zu connected_poll_count=%zu unavailable_poll_count=%zu event_count=%zu\n",
+        prefix,
+        InputStatusName(poll_status),
+        InputStatusName(snapshot.last_status),
+        GamepadConnectionName(snapshot.gamepad_connection),
+        snapshot.gamepad_poll_count,
+        snapshot.gamepad_connected_poll_count,
+        snapshot.gamepad_unavailable_poll_count,
+        event_count);
+    std::fflush(stdout);
 }
 
 std::intptr_t MakePointValue(std::int16_t x, std::int16_t y) {
@@ -167,11 +247,13 @@ int InputHardwareBridgePollsXInputGamepad() {
 
     const InputStatus poll_status = bridge.PollGamepad(0U);
     if (poll_status == InputStatus::DeviceUnavailable) {
+        const auto snapshot = bridge.Snapshot();
+        PrintXInputSmokeStatus("xinput gamepad hardware smoke unavailable", poll_status, snapshot, 0U);
         if (IsStrictXInputSmokeRequired()) {
             return Fail("xinput gamepad hardware smoke requires a connected controller");
         }
 
-        return Skip("xinput gamepad hardware smoke skipped because no controller is connected");
+        return Skip("xinput gamepad hardware smoke skipped with explicit device unavailable status");
     }
 
     if (poll_status != InputStatus::Success) {
@@ -207,6 +289,7 @@ int InputHardwareBridgePollsXInputGamepad() {
         }
     }
 
+    PrintXInputSmokeStatus("xinput gamepad hardware smoke connected", poll_status, snapshot, event_count);
     return 0;
 }
 }
