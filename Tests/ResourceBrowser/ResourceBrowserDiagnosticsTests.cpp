@@ -326,6 +326,31 @@ std::string SourceMaterialText() {
     return text;
 }
 
+std::string ShaderImportPolicyFields() {
+    return std::string(
+        "importLanguage=hlsl\n"
+        "importTarget=d3d11\n"
+        "entry_vs=VSMain\n"
+        "entry_ps=PSMain\n"
+        "profile_vs=vs_5_0\n"
+        "profile_ps=ps_5_0\n"
+        "compileFlags=deterministic\n");
+}
+
+std::string SourceShaderText() {
+    std::string text(
+        "YUASSET SHADER 1\n"
+        "schema=rav0-source\n"
+        "id=runtime_program\n");
+    text += ShaderImportPolicyFields();
+    text +=
+        "stage_vs=bytecode:runtime_program_vs\n"
+        "stage_ps=bytecode:runtime_program_ps\n"
+        "input=layout:position,color\n"
+        "textures=3\n";
+    return text;
+}
+
 std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
     const std::string cube_payload = MeshPayload('A', 96U);
     const std::string cylinder_payload = MeshPayload('K', 96U);
@@ -395,7 +420,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_SHADER},
                 AssetTypeId{ASSET_TYPE_SHADER},
                 4001U},
-            "YUASSET SHADER 1\nschema=rav0-source\nid=runtime_program\nstage_vs=bytecode:runtime_program_vs\nstage_ps=bytecode:runtime_program_ps\ninput=layout:position,color\ntextures=3\n"},
+            SourceShaderText()},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Animation/Spin.yuanim",

@@ -294,6 +294,8 @@ struct RuntimeAssetValidationResult final {
     RuntimeAssetMaterialAlphaMode material_alpha_mode = RuntimeAssetMaterialAlphaMode::Unknown;
     std::uint32_t shader_stage_count = 0U;
     std::uint32_t shader_bytecode_byte_count = 0U;
+    std::uint32_t shader_import_policy_count = 0U;
+    std::uint64_t shader_import_policy_hash = 0U;
 };
 
 /**
@@ -332,6 +334,8 @@ struct RuntimeAssetLoadedFile final {
     RuntimeAssetMaterialAlphaMode material_alpha_mode = RuntimeAssetMaterialAlphaMode::Unknown;
     std::uint32_t shader_stage_count = 0U;
     std::uint32_t shader_bytecode_byte_count = 0U;
+    std::uint32_t shader_import_policy_count = 0U;
+    std::uint64_t shader_import_policy_hash = 0U;
     std::uint64_t cache_payload_id = 0U;
     std::uint64_t decode_plan_payload_id = 0U;
     std::uint64_t decode_plan_id = 0U;

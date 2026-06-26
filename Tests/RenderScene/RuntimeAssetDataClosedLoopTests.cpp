@@ -342,6 +342,8 @@ constexpr const char *TEST_SHADER_SCENE_ANIMATION_SCHEMA =
     "RuntimeAssetData_ShaderSceneAnimationRequireSourceSchema";
 constexpr const char *TEST_INVALID_DEPENDENCY =
     "RuntimeAssetData_DependencyGraphRejectsMissingAndDuplicateRefs";
+constexpr const char *TEST_SHADER_IMPORT_POLICY =
+    "RuntimeAssetData_ShaderImportPolicyValidatesSourceCookedAndLoadedRecords";
 constexpr const char *TEST_SHADER_PROGRAM_PIPELINE_BRIDGE =
     "RuntimeAssetData_ShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode";
 constexpr const char *TEST_SHADER_PROGRAM_PIPELINE_REJECTS =
@@ -507,6 +509,7 @@ constexpr std::uint32_t MATERIAL_EMISSIVE_STRENGTH = 64U;
 constexpr std::uint32_t MATERIAL_METALLIC = 128U;
 constexpr std::uint32_t MATERIAL_ROUGHNESS = 96U;
 constexpr std::uint32_t MATERIAL_OPACITY = 192U;
+constexpr std::uint32_t SHADER_IMPORT_POLICY_FIELD_COUNT = 7U;
 
 struct FixtureFile final {
     RuntimeAssetFileDesc desc{};
@@ -1028,6 +1031,7 @@ std::string SourceMeshText(
     std::uint32_t index_payload_byte_count,
     std::string_view payload);
 std::string SourceMaterialText();
+std::string SourceShaderText();
 
 std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
     const std::string cube_payload = MeshPayload('A', 96U);
@@ -1118,7 +1122,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_SHADER},
                 AssetTypeId{ASSET_TYPE_SHADER},
                 4001U},
-            "YUASSET SHADER 1\nschema=rav0-source\nid=runtime_program\nstage_vs=bytecode:runtime_program_vs\nstage_ps=bytecode:runtime_program_ps\ninput=layout:position,color\ntextures=3\n"},
+            SourceShaderText()},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Animation/Spin.yuanim",
@@ -1320,6 +1324,35 @@ std::string SourceMaterialText() {
         "texture2=Texture/Mask.yutex\n");
     text += MaterialParameterFields();
     return text;
+}
+
+std::string ShaderImportPolicyFields() {
+    return std::string(
+        "importLanguage=hlsl\n"
+        "importTarget=d3d11\n"
+        "entry_vs=VSMain\n"
+        "entry_ps=PSMain\n"
+        "profile_vs=vs_5_0\n"
+        "profile_ps=ps_5_0\n"
+        "compileFlags=deterministic\n");
+}
+
+std::string SourceShaderTextWithBody(std::string_view body) {
+    std::string text(
+        "YUASSET SHADER 1\n"
+        "schema=rav0-source\n"
+        "id=runtime_program\n");
+    text += ShaderImportPolicyFields();
+    text += body;
+    return text;
+}
+
+std::string SourceShaderText() {
+    return SourceShaderTextWithBody(
+        "stage_vs=bytecode:runtime_program_vs\n"
+        "stage_ps=bytecode:runtime_program_ps\n"
+        "input=layout:position,color\n"
+        "textures=3\n");
 }
 
 std::string CookedTextureTextWithHeader(
@@ -6078,6 +6111,129 @@ RuntimeAssetDataStatus DecodeShaderProgramText(
         out_program);
 }
 
+int RuntimeAssetDataShaderImportPolicyValidatesSourceCookedAndLoadedRecords() {
+    const std::string valid_source = SourceShaderText();
+    RuntimeAssetValidationResult source_result{};
+    if (!ValidateText(valid_source, RuntimeAssetFileKind::Shader, &source_result)) {
+        return Fail("shader import policy rejected canonical source shader");
+    }
+
+    const std::uint64_t policy_hash = HashText(ShaderImportPolicyFields());
+    if (source_result.shader_import_policy_count != SHADER_IMPORT_POLICY_FIELD_COUNT ||
+        source_result.shader_import_policy_hash != policy_hash ||
+        source_result.shader_stage_count != 2U ||
+        source_result.texture_slot_count != 3U) {
+        return Fail("shader import policy metadata was not parsed");
+    }
+
+    const std::string missing_policy = ReplaceFirst(valid_source, ShaderImportPolicyFields(), "");
+    if (!ExpectValidationStatus(
+            missing_policy,
+            RuntimeAssetFileKind::Shader,
+            RuntimeAssetDataStatus::UnsupportedFieldValue)) {
+        return Fail("missing shader import policy was not rejected");
+    }
+
+    const std::string bad_language = ReplaceFirst(valid_source, "importLanguage=hlsl", "importLanguage=glsl");
+    if (!ExpectValidationStatus(
+            bad_language,
+            RuntimeAssetFileKind::Shader,
+            RuntimeAssetDataStatus::UnsupportedFieldValue)) {
+        return Fail("unsupported shader language was not rejected");
+    }
+
+    const std::string bad_target = ReplaceFirst(valid_source, "importTarget=d3d11", "importTarget=vulkan");
+    if (!ExpectValidationStatus(
+            bad_target,
+            RuntimeAssetFileKind::Shader,
+            RuntimeAssetDataStatus::UnsupportedFieldValue)) {
+        return Fail("unsupported shader target was not rejected");
+    }
+
+    const std::string bad_entry = ReplaceFirst(valid_source, "entry_vs=VSMain", "entry_vs=WrongMain");
+    if (!ExpectValidationStatus(
+            bad_entry,
+            RuntimeAssetFileKind::Shader,
+            RuntimeAssetDataStatus::TypeMismatch)) {
+        return Fail("shader vertex entry mismatch was not rejected");
+    }
+
+    const std::string bad_profile = ReplaceFirst(valid_source, "profile_ps=ps_5_0", "profile_ps=ps_4_0");
+    if (!ExpectValidationStatus(
+            bad_profile,
+            RuntimeAssetFileKind::Shader,
+            RuntimeAssetDataStatus::TypeMismatch)) {
+        return Fail("shader pixel profile mismatch was not rejected");
+    }
+
+    const std::string bad_flags = ReplaceFirst(valid_source, "compileFlags=deterministic", "compileFlags=debug");
+    if (!ExpectValidationStatus(
+            bad_flags,
+            RuntimeAssetFileKind::Shader,
+            RuntimeAssetDataStatus::UnsupportedFieldValue)) {
+        return Fail("shader compile flags mismatch was not rejected");
+    }
+
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("ShaderImportPolicySourceLoad"), &table)) {
+        return Fail("shader import policy source mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("shader import policy source fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("shader import policy graph load failed");
+    }
+
+    const RuntimeAssetLoadedFile &source_shader = graph.assets[7U];
+    if (source_shader.kind != RuntimeAssetFileKind::Shader ||
+        source_shader.shader_import_policy_count != SHADER_IMPORT_POLICY_FIELD_COUNT ||
+        source_shader.shader_import_policy_hash != policy_hash) {
+        return Fail("shader import policy did not reach loaded source record");
+    }
+
+    GeneratedFixtureCommandContext context{};
+    if (!ExecuteGeneratedFixtureCommand("ShaderImportPolicyCookedLoad", &context)) {
+        return Fail("shader import policy cooked fixture generation failed");
+    }
+
+    const RuntimeAssetFileDesc *shader_desc = nullptr;
+    for (const RuntimeAssetFileDesc &desc : context.cooked_files) {
+        if (desc.kind == RuntimeAssetFileKind::Shader) {
+            shader_desc = &desc;
+            break;
+        }
+    }
+
+    if (shader_desc == nullptr) {
+        return Fail("shader import policy cooked fixture did not include shader");
+    }
+
+    std::vector<std::uint8_t> cooked_bytes{};
+    if (!ReadFile(context.table, shader_desc->path, &cooked_bytes)) {
+        return Fail("shader import policy cooked shader read failed");
+    }
+
+    RuntimeAssetValidationResult cooked_result{};
+    const RuntimeAssetDataStatus cooked_status = ValidateRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(cooked_bytes.data(), cooked_bytes.size()),
+        RuntimeAssetFileKind::Shader,
+        &cooked_result);
+    if (cooked_status != RuntimeAssetDataStatus::Success ||
+        cooked_result.artifact_class != RuntimeAssetArtifactClass::Cooked ||
+        cooked_result.shader_import_policy_count != SHADER_IMPORT_POLICY_FIELD_COUNT ||
+        cooked_result.shader_import_policy_hash != policy_hash) {
+        return Fail("shader import policy did not validate generated cooked shader");
+    }
+
+    return 0;
+}
+
 RuntimeAssetShaderProgramPipelineRequest ProgramPipelineRequest(
     RuntimeAssetRhiDevice *device,
     const RuntimeAssetLoadedShaderProgramData *program) {
@@ -6172,74 +6328,62 @@ bool ExpectShaderBridgeRejectedWithoutRhiMutation(
 
 int RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation() {
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
-            "YUASSET SHADER 1\n"
-            "schema=rav0-source\n"
-            "id=runtime_program\n"
+            SourceShaderTextWithBody(
             "stage_vs=Texture/Albedo.yutex\n"
             "stage_ps=bytecode:runtime_program_ps\n"
             "input=layout:position,color\n"
-            "textures=3\n",
+            "textures=3\n"),
             RuntimeAssetDataStatus::TypeMismatch)) {
         return Fail("runtime asset shader bridge accepted invalid stage refs");
     }
 
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
-            "YUASSET SHADER 1\n"
-            "schema=rav0-source\n"
-            "id=runtime_program\n"
+            SourceShaderTextWithBody(
             "stage_vs=bytecode:\n"
             "stage_ps=bytecode:runtime_program_ps\n"
             "input=layout:position,color\n"
-            "textures=3\n",
+            "textures=3\n"),
             RuntimeAssetDataStatus::InvalidSize)) {
         return Fail("runtime asset shader bridge accepted missing bytecode");
     }
 
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
-            "YUASSET SHADER 1\n"
-            "schema=rav0-source\n"
-            "id=runtime_program\n"
+            SourceShaderTextWithBody(
             "stage_vs=bytecode:runtime_program_vs\n"
             "stage_ps=bytecode:runtime_program_ps\n"
             "stage_vs_hash=1\n"
             "input=layout:position,color\n"
-            "textures=3\n",
+            "textures=3\n"),
             RuntimeAssetDataStatus::HashMismatch)) {
         return Fail("runtime asset shader bridge accepted hash mismatch");
     }
 
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
-            "YUASSET SHADER 1\n"
-            "schema=rav0-source\n"
-            "id=runtime_program\n"
+            SourceShaderTextWithBody(
             "stage_vs=bytecode:runtime_program_vs\n"
             "stage_ps=bytecode:runtime_program_ps\n"
             "input=layout:color\n"
-            "textures=3\n",
+            "textures=3\n"),
             RuntimeAssetDataStatus::InvalidInputLayout)) {
         return Fail("runtime asset shader bridge accepted input-layout mismatch");
     }
 
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
-            "YUASSET SHADER 1\n"
-            "schema=rav0-source\n"
-            "id=runtime_program\n"
+            SourceShaderTextWithBody(
             "stage_vs=bytecode:runtime_program_vs\n"
             "stage_ps=bytecode:runtime_program_ps\n"
             "input=layout:position,normal\n"
-            "textures=3\n",
+            "textures=3\n"),
             RuntimeAssetDataStatus::UnsupportedFieldValue)) {
         return Fail("runtime asset shader bridge accepted unsupported semantic");
     }
 
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
-            "YUASSET SHADER 1\n"
-            "schema=rav0-source\n"
-            "id=runtime_program\n"
+            SourceShaderTextWithBody(
             "stage_vs=bytecode:runtime_program_vs\n"
             "stage_ps=bytecode:runtime_program_ps\n"
             "input=layout:position,color,texcoord\n"
-            "textures=3\n",
+            "textures=3\n"),
             RuntimeAssetDataStatus::CapacityExceeded)) {
         return Fail("runtime asset shader bridge accepted layout capacity overflow");
     }
@@ -9557,6 +9701,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_TEXTURE_TYPED_METADATA, RuntimeAssetDataTextureValidatorRejectsInvalidFormatExtentPayload},
     {TEST_SHADER_SCENE_ANIMATION_SCHEMA, RuntimeAssetDataShaderSceneAnimationRequireSourceSchema},
     {TEST_INVALID_DEPENDENCY, RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs},
+    {TEST_SHADER_IMPORT_POLICY, RuntimeAssetDataShaderImportPolicyValidatesSourceCookedAndLoadedRecords},
     {TEST_SHADER_PROGRAM_PIPELINE_BRIDGE, RuntimeAssetDataShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode},
     {TEST_SHADER_PROGRAM_PIPELINE_REJECTS, RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation},
     {TEST_COOKED_SHADER_STAGE_MODULES, RuntimeAssetDataCookedShaderStagePayloadsCreateRhiModules},

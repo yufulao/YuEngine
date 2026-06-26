@@ -213,6 +213,7 @@ constexpr std::uint64_t DECODED_PAYLOAD_ID_OFFSET = 110000U;
 constexpr std::uint32_t DEFAULT_RESIDENCY_BYTE_CAPACITY = 16384U;
 constexpr std::uint32_t DEFAULT_PAYLOAD_BYTE_CAPACITY = 8192U;
 constexpr std::uint32_t RUNTIME_ASSET_MATERIAL_PARAMETER_COUNT = 5U;
+constexpr std::uint32_t RUNTIME_ASSET_SHADER_IMPORT_POLICY_FIELD_COUNT = 7U;
 constexpr std::string_view RUNTIME_ASSET_SOURCE_SCHEMA = "rav0-source";
 constexpr std::string_view RUNTIME_ASSET_COOKED_SCHEMA = "rav1-cooked";
 constexpr std::string_view SHADER_BYTECODE_PREFIX = "bytecode:";
@@ -1234,6 +1235,31 @@ std::string RuntimeAssetSourceMaterialText() {
     return text;
 }
 
+std::string RuntimeAssetShaderImportPolicyFields() {
+    return std::string(
+        "importLanguage=hlsl\n"
+        "importTarget=d3d11\n"
+        "entry_vs=VSMain\n"
+        "entry_ps=PSMain\n"
+        "profile_vs=vs_5_0\n"
+        "profile_ps=ps_5_0\n"
+        "compileFlags=deterministic\n");
+}
+
+std::string RuntimeAssetSourceShaderText() {
+    std::string text(
+        "YUASSET SHADER 1\n"
+        "schema=rav0-source\n"
+        "id=runtime_program\n");
+    text += RuntimeAssetShaderImportPolicyFields();
+    text +=
+        "stage_vs=bytecode:runtime_program_vs\n"
+        "stage_ps=bytecode:runtime_program_ps\n"
+        "input=layout:position,color\n"
+        "textures=3\n";
+    return text;
+}
+
 std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
 RuntimeAssetSourceFixtureArtifacts() {
     const std::string cube_payload = RuntimeAssetMeshPayload('A', 96U);
@@ -1263,7 +1289,7 @@ RuntimeAssetSourceFixtureArtifacts() {
             "YUASSET TEXTURE 1\nschema=rav0-source\nid=mask\nformat=rgba8\nextent=2x2\npayload=mask\n"},
         RuntimeAssetFixtureArtifact{
             RuntimeAssetFixtureDesc("Shader/RuntimeProgram.yuprogram", RuntimeAssetFileKind::Shader, 4001U, 0U),
-            "YUASSET SHADER 1\nschema=rav0-source\nid=runtime_program\nstage_vs=bytecode:runtime_program_vs\nstage_ps=bytecode:runtime_program_ps\ninput=layout:position,color\ntextures=3\n"},
+            RuntimeAssetSourceShaderText()},
         RuntimeAssetFixtureArtifact{
             RuntimeAssetFixtureDesc("Animation/Spin.yuanim", RuntimeAssetFileKind::Animation, 5001U, 0U),
             "YUASSET ANIMATION 1\nschema=rav0-source\nid=spin\nclip=1\nduration=1\ntarget=scene_entity:101\ntrack=transform:rotation_y\nkey0=0:0\nkey1=1:1\ntracks=1\nsample_rate=30\n"},
@@ -1334,7 +1360,8 @@ std::string RuntimeAssetCookedText(
 }
 
 std::string RuntimeAssetCookedVisualProofShaderFields() {
-    std::string text("stage_vs=bytecode:b64:");
+    std::string text = RuntimeAssetShaderImportPolicyFields();
+    text += "stage_vs=bytecode:b64:";
     text += RUNTIME_ASSET_D3D11_VISUAL_PROOF_VERTEX_SHADER_BASE64;
     text += "\nstage_ps=bytecode:b64:";
     text += RUNTIME_ASSET_D3D11_VISUAL_PROOF_PIXEL_SHADER_BASE64;
@@ -1943,6 +1970,51 @@ RuntimeAssetDataStatus ValidateShaderProgramDependencies(
     }};
 
     return ValidateDependencyRules(text, std::span<const DependencyRule>(rules.data(), rules.size()), out_result);
+}
+
+std::uint64_t RuntimeAssetShaderImportPolicyHash() {
+    const std::string fields = RuntimeAssetShaderImportPolicyFields();
+    return HashRuntimeAssetText(fields);
+}
+
+RuntimeAssetDataStatus ValidateShaderImportPolicyMetadata(
+    std::string_view text,
+    RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (ValueForToken(text, "importLanguage=") != "hlsl") {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    if (ValueForToken(text, "importTarget=") != "d3d11") {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    if (ValueForToken(text, "entry_vs=") != "VSMain") {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    if (ValueForToken(text, "entry_ps=") != "PSMain") {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    if (ValueForToken(text, "profile_vs=") != "vs_5_0") {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    if (ValueForToken(text, "profile_ps=") != "ps_5_0") {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    if (ValueForToken(text, "compileFlags=") != "deterministic") {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    out_result->shader_import_policy_count = RUNTIME_ASSET_SHADER_IMPORT_POLICY_FIELD_COUNT;
+    out_result->shader_import_policy_hash = RuntimeAssetShaderImportPolicyHash();
+    return RuntimeAssetDataStatus::Success;
 }
 
 RuntimeAssetDataStatus ValidateAnimationDependencies(
@@ -2929,6 +3001,11 @@ RuntimeAssetDataStatus ValidateShaderProgramMetadata(
         return status;
     }
 
+    status = ValidateShaderImportPolicyMetadata(text, out_result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
     std::uint32_t texture_slot_count = 0U;
     if (!ParseU32(ValueForToken(text, "textures="), &texture_slot_count)) {
         return RuntimeAssetDataStatus::InvalidBounds;
@@ -3158,6 +3235,8 @@ void CopyValidationMetadataToLoadedFile(
     out_record->material_alpha_mode = validation.material_alpha_mode;
     out_record->shader_stage_count = validation.shader_stage_count;
     out_record->shader_bytecode_byte_count = validation.shader_bytecode_byte_count;
+    out_record->shader_import_policy_count = validation.shader_import_policy_count;
+    out_record->shader_import_policy_hash = validation.shader_import_policy_hash;
 }
 
 RuntimeAssetDataStatus StoreSourcePayload(
