@@ -46,8 +46,8 @@ is opened.
 | Resource Browser diagnostics backend | PASS | #64 validates mounted RuntimeAsset files and projects Resource/Asset/loaded-record diagnostics without mutating Resource/Asset state. |
 | Resource Browser UI | NOT IN SCOPE | #64 is backend contract only. No panel, UX, selection, import-settings UI, or editor surface is accepted here. |
 | Preview Host value/session layer | PASS | #65 adds `YuPreviewHost` value/session/frame diagnostics and canonical capture route consumption of RuntimeAsset graph outputs. |
-| Preview Host wiring to Resource Browser query outputs | NOT YET | #65 documents this as later wiring. #64 lower contract is not proof that Preview Host consumes Resource Browser query records. |
-| Preview Host wiring to command/cook outputs | NOT YET | #65 documents this as later wiring. #63 command output is not automatically Preview Host input wiring. |
+| Preview Host wiring to Resource Browser query outputs | PASS | `PreviewHost_ConsumesResourceBrowserImporterCommitOutputs` proves Resource Browser importer commit entries/diagnostics/selection state feed Preview Host viewport build. |
+| Preview Host wiring to command/cook outputs | PASS | `PreviewHost_ConsumesResourceBrowserImporterCommitOutputs` combines importer commit selection with `PreviewHostCommandOutputRef` and RHI capture in one frame. |
 | ExternalAuthoring bridge rows into Resource Browser commit | PASS | `4e2cfe8` proves actual `BuildExternalAuthoringRuntimeAssetImportBridge` output rows can feed Resource Browser importer commit, then load cooked RuntimeAsset graph through Resource/Asset mutation. |
 | Cooked RuntimeAsset structural visual route | PASS | #66 proves cooked records from #63 import/cook outputs can feed RuntimeAsset validation, scene loader + animation sampling, cooked texture/material/shader payload bridges, RenderScene, RenderCore, and RHI capture route in fast gate. |
 | D3D11 texture/render-core hardware smoke support | PASS | Existing D3D11 texture sampling and RenderCore drawable-frame texture capture hardware smoke tests pass as supporting evidence. |
@@ -220,6 +220,41 @@ Accepted scope:
 
 Boundary: this is still not a Unity/Unreal/DCC importer, Resource Browser UI,
 Preview Host UI, original package parser, or final hardware product proof.
+
+### Main Trunk ResourceBrowser -> PreviewHost Importer Commit Closure
+
+Anchor base: `origin/main@45e1470`
+
+Focused commands run by architecture:
+
+```powershell
+cmake --build --preset windows-fast-gate --target YuRuntimeAssetDataClosedLoopTests -- /v:minimal
+ctest --preset windows-fast-gate -R "PreviewHost_ConsumesResourceBrowserImporterCommitOutputs" --output-on-failure
+ctest --preset windows-fast-gate -R "PreviewHost_(ConsumesResourceBrowserImporterCommitOutputs|BuildsViewportSessionSurfaceFromResourceBrowserSelection|ConsumesImportCookCommandOutputs|ConsumesRuntimeAssetGraphAndCapturesThroughRhi)|ResourceBrowserImporterCommitWorkflow_(CommitsExternalAuthoringBridgeRowsThroughRuntimeAssetGraph|CommitsExternalManifestReadyRuntimeAssetGraph)" --output-on-failure
+git diff --check
+rg -n "\t|\belse\b|\[&\]|\[=\]" Tests\RenderScene\RuntimeAssetDataClosedLoopTests.cpp CMakeLists.txt
+cmake --build --preset windows-fast-gate
+ctest --preset windows-fast-gate --output-on-failure
+```
+
+Result: target build PASS; new PreviewHost importer-commit focused test PASS
+1/1; adjacent PreviewHost/ResourceBrowser focused tests PASS 6/6; diff/style
+scan PASS; full fast gate PASS 1430/1430.
+
+Accepted scope:
+
+- Resource Browser importer commit loads cooked RuntimeAsset graph and commits
+  Resource/Asset records before Preview Host consumption;
+- Resource Browser entries, diagnostics, surface rows, and selection state feed
+  `PreviewHost::BuildViewportSessionSurface`;
+- the same frame also consumes `PreviewHostCommandOutputRef` from the
+  import/cook result, loaded files, scene refs, scene entities, material slots,
+  geometry records, and RHI device;
+- Preview Host submits RenderScene frame and captures through RenderCore/RHI.
+
+Boundary: this is a runtime/data contract closure. It is not Resource Browser UI,
+Preview Host UI, editor UX, external authoring tool import fidelity, original
+package parsing, or final hardware product proof.
 
 ## Required #68 Review Questions
 
