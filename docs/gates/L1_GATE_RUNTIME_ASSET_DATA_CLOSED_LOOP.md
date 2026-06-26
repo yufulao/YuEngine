@@ -301,6 +301,7 @@ supersede with approved equivalents:
 - `RuntimeAssetData_MeshMaterialTextureTypedValidatorsAcceptStructuredMetadata`
 - `RuntimeAssetData_MeshPayloadPolicyRejectsSizeHashAndSplitMismatch`
 - `RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs`
+- `RuntimeAssetData_MaterialParameterSemanticsLoadIntoRuntimeRecords`
 - `RuntimeAssetData_TextureValidatorRejectsInvalidFormatExtentPayload`
 - `RuntimeAssetData_ShaderSceneAnimationRequireSourceSchema`
 - `RuntimeAssetData_CameraTweenDescriptorLoadsFromDiskSceneReference`
@@ -331,7 +332,8 @@ This gate records these mainline implementation slices:
 | RAV1-E | Evidence matrix and acceptance commands | PASS; current matrix must be kept in sync with `RuntimeAssetData` focused rows |
 | RAV1-F | First-class camera/tween descriptor | PASS; source/cooked camera files are generated, validated, read, staged into Resource/Asset refs, and surfaced through ResourceBrowser workflows |
 | RAV1-G | Mesh vertex/index payload policy | PASS; source/cooked mesh files carry bounded payload bytes, alignment, hash, and vertex/index split validation |
-| Next slice | Production hardening | real mesh layout/topology decoding, shader compiler/import policy, broader material parameters, broader scene/animation/camera families |
+| RAV1-H | Material parameter semantics | PASS; source/cooked material files validate and load base color RGBA, emissive strength, metallic, roughness, opacity, alpha mode, and parameter count |
+| Next slice | Production hardening | real mesh layout/topology decoding, shader compiler/import policy, render material constant binding, broader material variants, broader scene/animation/camera families |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer

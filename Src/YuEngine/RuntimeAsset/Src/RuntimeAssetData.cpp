@@ -212,6 +212,7 @@ constexpr std::uint64_t DECODE_RESULT_ID_OFFSET = 100000U;
 constexpr std::uint64_t DECODED_PAYLOAD_ID_OFFSET = 110000U;
 constexpr std::uint32_t DEFAULT_RESIDENCY_BYTE_CAPACITY = 16384U;
 constexpr std::uint32_t DEFAULT_PAYLOAD_BYTE_CAPACITY = 8192U;
+constexpr std::uint32_t RUNTIME_ASSET_MATERIAL_PARAMETER_COUNT = 5U;
 constexpr std::string_view RUNTIME_ASSET_SOURCE_SCHEMA = "rav0-source";
 constexpr std::string_view RUNTIME_ASSET_COOKED_SCHEMA = "rav1-cooked";
 constexpr std::string_view SHADER_BYTECODE_PREFIX = "bytecode:";
@@ -1209,6 +1210,30 @@ std::string RuntimeAssetSourceMeshText(
     return text;
 }
 
+std::string RuntimeAssetMaterialParameterFields() {
+    return std::string(
+        "parameterCount=5\n"
+        "baseColorRgba=32,48,64,192\n"
+        "emissiveStrength=64\n"
+        "metallic=128\n"
+        "roughness=96\n"
+        "opacity=192\n"
+        "alphaMode=blend\n");
+}
+
+std::string RuntimeAssetSourceMaterialText() {
+    std::string text(
+        "YUASSET MATERIAL 1\n"
+        "schema=rav0-source\n"
+        "id=shared_material\n"
+        "shader=Shader/RuntimeProgram.yuprogram\n"
+        "texture0=Texture/Albedo.yutex\n"
+        "texture1=Texture/Normal.yutex\n"
+        "texture2=Texture/Mask.yutex\n");
+    text += RuntimeAssetMaterialParameterFields();
+    return text;
+}
+
 std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
 RuntimeAssetSourceFixtureArtifacts() {
     const std::string cube_payload = RuntimeAssetMeshPayload('A', 96U);
@@ -1226,7 +1251,7 @@ RuntimeAssetSourceFixtureArtifacts() {
             RuntimeAssetSourceMeshText("cone_mesh", "cone", 10U, 48U, 48U, 48U, cone_payload)},
         RuntimeAssetFixtureArtifact{
             RuntimeAssetFixtureDesc("Material/Shared.yumat", RuntimeAssetFileKind::Material, 2001U, 128U),
-            "YUASSET MATERIAL 1\nschema=rav0-source\nid=shared_material\nshader=Shader/RuntimeProgram.yuprogram\ntexture0=Texture/Albedo.yutex\ntexture1=Texture/Normal.yutex\ntexture2=Texture/Mask.yutex\n"},
+            RuntimeAssetSourceMaterialText()},
         RuntimeAssetFixtureArtifact{
             RuntimeAssetFixtureDesc("Texture/Albedo.yutex", RuntimeAssetFileKind::Texture, 3001U, 16U),
             "YUASSET TEXTURE 1\nschema=rav0-source\nid=albedo\nformat=rgba8\nextent=2x2\npayload=checker\n"},
@@ -1329,6 +1354,12 @@ RuntimeAssetCookedFixtureArtifacts() {
     const std::string cube_payload = RuntimeAssetMeshPayload('A', 96U);
     const std::string cylinder_payload = RuntimeAssetMeshPayload('K', 96U);
     const std::string cone_payload = RuntimeAssetMeshPayload('U', 96U);
+    std::string material_fields(
+        "shader=Shader/RuntimeProgram.racooked\n"
+        "texture0=Texture/Albedo.racooked\n"
+        "texture1=Texture/Normal.racooked\n"
+        "texture2=Texture/Mask.racooked\n");
+    material_fields += RuntimeAssetMaterialParameterFields();
     const std::string visual_proof_shader_fields = RuntimeAssetCookedVisualProofShaderFields();
 
     return std::array<RuntimeAssetFixtureArtifact, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>{
@@ -1368,7 +1399,7 @@ RuntimeAssetCookedFixtureArtifacts() {
                 RuntimeAssetFileKind::Material,
                 "shared_material_cooked",
                 "material-shared-payload",
-                "shader=Shader/RuntimeProgram.racooked\ntexture0=Texture/Albedo.racooked\ntexture1=Texture/Normal.racooked\ntexture2=Texture/Mask.racooked\n",
+                material_fields,
                 std::span<const std::string_view>(material_deps.data(), material_deps.size()),
                 128U,
                 4U)},
@@ -2194,9 +2225,150 @@ RuntimeAssetDataStatus ValidateMeshMetadata(
     return RuntimeAssetDataStatus::Success;
 }
 
+bool ParseMaterialU8(std::string_view text, std::uint32_t *out_value) {
+    if (out_value == nullptr) {
+        return false;
+    }
+
+    std::uint32_t value = 0U;
+    if (!ParseU32(text, &value)) {
+        return false;
+    }
+
+    if (value > 255U) {
+        return false;
+    }
+
+    *out_value = value;
+    return true;
+}
+
+bool ParseMaterialRgba(std::string_view text, std::uint32_t *out_rgba) {
+    if (out_rgba == nullptr) {
+        return false;
+    }
+
+    const std::size_t first_comma = text.find(',');
+    if (first_comma == std::string_view::npos) {
+        return false;
+    }
+
+    const std::size_t second_comma = text.find(',', first_comma + 1U);
+    if (second_comma == std::string_view::npos) {
+        return false;
+    }
+
+    const std::size_t third_comma = text.find(',', second_comma + 1U);
+    if (third_comma == std::string_view::npos) {
+        return false;
+    }
+
+    if (text.find(',', third_comma + 1U) != std::string_view::npos) {
+        return false;
+    }
+
+    std::uint32_t red = 0U;
+    std::uint32_t green = 0U;
+    std::uint32_t blue = 0U;
+    std::uint32_t alpha = 0U;
+    const std::string_view red_text = text.substr(0U, first_comma);
+    const std::string_view green_text = text.substr(first_comma + 1U, second_comma - first_comma - 1U);
+    const std::string_view blue_text = text.substr(second_comma + 1U, third_comma - second_comma - 1U);
+    const std::string_view alpha_text = text.substr(third_comma + 1U);
+    if (!ParseMaterialU8(red_text, &red) ||
+        !ParseMaterialU8(green_text, &green) ||
+        !ParseMaterialU8(blue_text, &blue) ||
+        !ParseMaterialU8(alpha_text, &alpha)) {
+        return false;
+    }
+
+    const std::uint32_t packed_red = red << 24U;
+    const std::uint32_t packed_green = green << 16U;
+    const std::uint32_t packed_blue = blue << 8U;
+    *out_rgba = packed_red | packed_green | packed_blue | alpha;
+    return true;
+}
+
+RuntimeAssetDataStatus ParseMaterialAlphaMode(
+    std::string_view text,
+    RuntimeAssetMaterialAlphaMode *out_mode) {
+    if (out_mode == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (text == "opaque") {
+        *out_mode = RuntimeAssetMaterialAlphaMode::Opaque;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    if (text == "blend") {
+        *out_mode = RuntimeAssetMaterialAlphaMode::Blend;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    return RuntimeAssetDataStatus::UnsupportedFieldValue;
+}
+
+RuntimeAssetDataStatus ValidateMaterialParameterMetadata(
+    std::string_view text,
+    RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    std::uint32_t parameter_count = 0U;
+    if (!ParseU32(ValueForToken(text, "parameterCount="), &parameter_count)) {
+        return RuntimeAssetDataStatus::InvalidCount;
+    }
+
+    if (parameter_count != RUNTIME_ASSET_MATERIAL_PARAMETER_COUNT) {
+        return RuntimeAssetDataStatus::InvalidCount;
+    }
+
+    std::uint32_t base_color_rgba = 0U;
+    if (!ParseMaterialRgba(ValueForToken(text, "baseColorRgba="), &base_color_rgba)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    std::uint32_t emissive_strength = 0U;
+    std::uint32_t metallic = 0U;
+    std::uint32_t roughness = 0U;
+    std::uint32_t opacity = 0U;
+    if (!ParseMaterialU8(ValueForToken(text, "emissiveStrength="), &emissive_strength) ||
+        !ParseMaterialU8(ValueForToken(text, "metallic="), &metallic) ||
+        !ParseMaterialU8(ValueForToken(text, "roughness="), &roughness) ||
+        !ParseMaterialU8(ValueForToken(text, "opacity="), &opacity)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    RuntimeAssetMaterialAlphaMode alpha_mode = RuntimeAssetMaterialAlphaMode::Unknown;
+    const RuntimeAssetDataStatus alpha_status =
+        ParseMaterialAlphaMode(ValueForToken(text, "alphaMode="), &alpha_mode);
+    if (alpha_status != RuntimeAssetDataStatus::Success) {
+        return alpha_status;
+    }
+
+    if (opacity < 255U && alpha_mode != RuntimeAssetMaterialAlphaMode::Blend) {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    out_result->material_parameter_count = parameter_count;
+    out_result->material_base_color_rgba = base_color_rgba;
+    out_result->material_emissive_strength = emissive_strength;
+    out_result->material_metallic = metallic;
+    out_result->material_roughness = roughness;
+    out_result->material_opacity = opacity;
+    out_result->material_alpha_mode = alpha_mode;
+    return RuntimeAssetDataStatus::Success;
+}
+
 RuntimeAssetDataStatus ValidateMaterialMetadata(
     std::string_view text,
     RuntimeAssetValidationResult *out_result) {
+    if (out_result == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
     constexpr std::array<DependencyRule, 4U> rules{{
         {"shader=", "Shader/"},
         {"texture0=", "Texture/"},
@@ -2215,6 +2387,11 @@ RuntimeAssetDataStatus ValidateMaterialMetadata(
     const std::string_view texture2 = ValueForToken(text, "texture2=");
     if (texture0 == texture1 || texture0 == texture2 || texture1 == texture2) {
         return RuntimeAssetDataStatus::DuplicateDependency;
+    }
+
+    status = ValidateMaterialParameterMetadata(text, out_result);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
     }
 
     out_result->texture_slot_count = 3U;
@@ -2972,6 +3149,13 @@ void CopyValidationMetadataToLoadedFile(
     out_record->texture_width = validation.texture_width;
     out_record->texture_height = validation.texture_height;
     out_record->texture_slot_count = validation.texture_slot_count;
+    out_record->material_parameter_count = validation.material_parameter_count;
+    out_record->material_base_color_rgba = validation.material_base_color_rgba;
+    out_record->material_emissive_strength = validation.material_emissive_strength;
+    out_record->material_metallic = validation.material_metallic;
+    out_record->material_roughness = validation.material_roughness;
+    out_record->material_opacity = validation.material_opacity;
+    out_record->material_alpha_mode = validation.material_alpha_mode;
     out_record->shader_stage_count = validation.shader_stage_count;
     out_record->shader_bytecode_byte_count = validation.shader_bytecode_byte_count;
 }

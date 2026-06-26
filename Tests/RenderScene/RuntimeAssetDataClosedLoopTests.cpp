@@ -334,6 +334,8 @@ constexpr const char *TEST_MESH_PAYLOAD_POLICY =
     "RuntimeAssetData_MeshPayloadPolicyRejectsSizeHashAndSplitMismatch";
 constexpr const char *TEST_MATERIAL_TYPED_REFS =
     "RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs";
+constexpr const char *TEST_MATERIAL_PARAMETER_SEMANTICS =
+    "RuntimeAssetData_MaterialParameterSemanticsLoadIntoRuntimeRecords";
 constexpr const char *TEST_TEXTURE_TYPED_METADATA =
     "RuntimeAssetData_TextureValidatorRejectsInvalidFormatExtentPayload";
 constexpr const char *TEST_SHADER_SCENE_ANIMATION_SCHEMA =
@@ -499,6 +501,12 @@ constexpr std::size_t CAPTURE_BYTES_PER_ENTITY = 64U;
 constexpr std::size_t TOTAL_CAPTURE_BYTES = CAPTURE_BYTES_PER_ENTITY * 3U;
 constexpr std::uint32_t AUTHORING_SENTINEL_COUNT = 0xCAFEU;
 constexpr int SKIP_RETURN_CODE = 77;
+constexpr std::uint32_t MATERIAL_PARAMETER_COUNT = 5U;
+constexpr std::uint32_t MATERIAL_BASE_COLOR_RGBA = 0x203040C0U;
+constexpr std::uint32_t MATERIAL_EMISSIVE_STRENGTH = 64U;
+constexpr std::uint32_t MATERIAL_METALLIC = 128U;
+constexpr std::uint32_t MATERIAL_ROUGHNESS = 96U;
+constexpr std::uint32_t MATERIAL_OPACITY = 192U;
 
 struct FixtureFile final {
     RuntimeAssetFileDesc desc{};
@@ -1019,6 +1027,7 @@ std::string SourceMeshText(
     std::uint32_t vertex_payload_byte_count,
     std::uint32_t index_payload_byte_count,
     std::string_view payload);
+std::string SourceMaterialText();
 
 std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
     const std::string cube_payload = MeshPayload('A', 96U);
@@ -1068,7 +1077,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 yuengine::resource::ResourceDecodePlanAssetClass::Material,
                 yuengine::resource::ResourceDecodeResultClass::Material,
                 128U},
-            "YUASSET MATERIAL 1\nschema=rav0-source\nid=shared_material\nshader=Shader/RuntimeProgram.yuprogram\ntexture0=Texture/Albedo.yutex\ntexture1=Texture/Normal.yutex\ntexture2=Texture/Mask.yutex\n"},
+            SourceMaterialText()},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Texture/Albedo.yutex",
@@ -1287,6 +1296,30 @@ std::string SourceMeshText(
 std::string SourceMeshText(std::string_view header_line) {
     const std::string payload = MeshPayload('A', 96U);
     return SourceMeshText(header_line, "cube_mesh", "cube", 24U, 36U, 48U, 48U, payload);
+}
+
+std::string MaterialParameterFields() {
+    return std::string(
+        "parameterCount=5\n"
+        "baseColorRgba=32,48,64,192\n"
+        "emissiveStrength=64\n"
+        "metallic=128\n"
+        "roughness=96\n"
+        "opacity=192\n"
+        "alphaMode=blend\n");
+}
+
+std::string SourceMaterialText() {
+    std::string text(
+        "YUASSET MATERIAL 1\n"
+        "schema=rav0-source\n"
+        "id=shared_material\n"
+        "shader=Shader/RuntimeProgram.yuprogram\n"
+        "texture0=Texture/Albedo.yutex\n"
+        "texture1=Texture/Normal.yutex\n"
+        "texture2=Texture/Mask.yutex\n");
+    text += MaterialParameterFields();
+    return text;
 }
 
 std::string CookedTextureTextWithHeader(
@@ -5764,21 +5797,23 @@ int RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata()
     }
 
     RuntimeAssetValidationResult material_result{};
-    if (!ValidateText(
-            "YUASSET MATERIAL 1\n"
-            "schema=rav0-source\n"
-            "id=shared_material\n"
-            "shader=Shader/RuntimeProgram.yuprogram\n"
-            "texture0=Texture/Albedo.yutex\n"
-            "texture1=Texture/Normal.yutex\n"
-            "texture2=Texture/Mask.yutex\n",
-            RuntimeAssetFileKind::Material,
-            &material_result)) {
+    const std::string material_text = SourceMaterialText();
+    if (!ValidateText(material_text, RuntimeAssetFileKind::Material, &material_result)) {
         return Fail("material metadata validator rejected valid material");
     }
 
     if (material_result.dependency_count != 4U || material_result.texture_slot_count != 3U) {
         return Fail("material dependency metadata was not parsed");
+    }
+
+    if (material_result.material_parameter_count != MATERIAL_PARAMETER_COUNT ||
+        material_result.material_base_color_rgba != MATERIAL_BASE_COLOR_RGBA ||
+        material_result.material_emissive_strength != MATERIAL_EMISSIVE_STRENGTH ||
+        material_result.material_metallic != MATERIAL_METALLIC ||
+        material_result.material_roughness != MATERIAL_ROUGHNESS ||
+        material_result.material_opacity != MATERIAL_OPACITY ||
+        material_result.material_alpha_mode != yuengine::runtimeasset::RuntimeAssetMaterialAlphaMode::Blend) {
+        return Fail("material parameter metadata was not parsed");
     }
 
     RuntimeAssetValidationResult texture_result{};
@@ -5893,6 +5928,72 @@ int RuntimeAssetDataMaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs(
 
     if (graph.frame_result.output_draw_count != 0U) {
         return Fail("material validator produced frame draws");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataMaterialParameterSemanticsLoadIntoRuntimeRecords() {
+    const std::string valid_text = SourceMaterialText();
+    const std::string bad_count = ReplaceFirst(valid_text, "parameterCount=5", "parameterCount=4");
+    if (!ExpectValidationStatus(
+            bad_count,
+            RuntimeAssetFileKind::Material,
+            RuntimeAssetDataStatus::InvalidCount)) {
+        return Fail("material parameter count mismatch was not rejected");
+    }
+
+    const std::string bad_color = ReplaceFirst(valid_text, "baseColorRgba=32,48,64,192", "baseColorRgba=32,48,64");
+    if (!ExpectValidationStatus(
+            bad_color,
+            RuntimeAssetFileKind::Material,
+            RuntimeAssetDataStatus::InvalidBounds)) {
+        return Fail("material color component mismatch was not rejected");
+    }
+
+    const std::string bad_opacity = ReplaceFirst(valid_text, "opacity=192", "opacity=300");
+    if (!ExpectValidationStatus(
+            bad_opacity,
+            RuntimeAssetFileKind::Material,
+            RuntimeAssetDataStatus::InvalidBounds)) {
+        return Fail("material opacity range mismatch was not rejected");
+    }
+
+    const std::string bad_alpha_mode = ReplaceFirst(valid_text, "alphaMode=blend", "alphaMode=mask");
+    if (!ExpectValidationStatus(
+            bad_alpha_mode,
+            RuntimeAssetFileKind::Material,
+            RuntimeAssetDataStatus::UnsupportedFieldValue)) {
+        return Fail("material alpha mode mismatch was not rejected");
+    }
+
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("MaterialParameters"), &table)) {
+        return Fail("material parameter mount setup failed");
+    }
+
+    if (!WriteCanonicalFixture(table)) {
+        return Fail("material parameter fixture write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    if (!LoadRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("material parameter graph load failed");
+    }
+
+    const RuntimeAssetLoadedFile &material = graph.assets[3U];
+    if (material.kind != RuntimeAssetFileKind::Material ||
+        material.texture_slot_count != 3U ||
+        material.material_parameter_count != MATERIAL_PARAMETER_COUNT ||
+        material.material_base_color_rgba != MATERIAL_BASE_COLOR_RGBA ||
+        material.material_emissive_strength != MATERIAL_EMISSIVE_STRENGTH ||
+        material.material_metallic != MATERIAL_METALLIC ||
+        material.material_roughness != MATERIAL_ROUGHNESS ||
+        material.material_opacity != MATERIAL_OPACITY ||
+        material.material_alpha_mode != yuengine::runtimeasset::RuntimeAssetMaterialAlphaMode::Blend) {
+        return Fail("material parameters did not reach loaded runtime record");
     }
 
     return 0;
@@ -9452,6 +9553,7 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_TYPED_MESH_MATERIAL_TEXTURE, RuntimeAssetDataMeshMaterialTextureTypedValidatorsAcceptStructuredMetadata},
     {TEST_MESH_PAYLOAD_POLICY, RuntimeAssetDataMeshPayloadPolicyRejectsSizeHashAndSplitMismatch},
     {TEST_MATERIAL_TYPED_REFS, RuntimeAssetDataMaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs},
+    {TEST_MATERIAL_PARAMETER_SEMANTICS, RuntimeAssetDataMaterialParameterSemanticsLoadIntoRuntimeRecords},
     {TEST_TEXTURE_TYPED_METADATA, RuntimeAssetDataTextureValidatorRejectsInvalidFormatExtentPayload},
     {TEST_SHADER_SCENE_ANIMATION_SCHEMA, RuntimeAssetDataShaderSceneAnimationRequireSourceSchema},
     {TEST_INVALID_DEPENDENCY, RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs},

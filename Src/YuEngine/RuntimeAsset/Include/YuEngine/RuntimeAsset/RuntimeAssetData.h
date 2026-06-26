@@ -88,6 +88,15 @@ enum class RuntimeAssetMeshGeometryKind {
 };
 
 /**
+ * @brief Runtime material alpha mode parsed from RuntimeAsset material records.
+ */
+enum class RuntimeAssetMaterialAlphaMode {
+    Unknown,
+    Opaque,
+    Blend
+};
+
+/**
  * @brief RuntimeAsset v0 artifact class parsed from internal metadata.
  */
 enum class RuntimeAssetArtifactClass {
@@ -276,6 +285,13 @@ struct RuntimeAssetValidationResult final {
     std::uint32_t texture_width = 0U;
     std::uint32_t texture_height = 0U;
     std::uint32_t texture_slot_count = 0U;
+    std::uint32_t material_parameter_count = 0U;
+    std::uint32_t material_base_color_rgba = 0U;
+    std::uint32_t material_emissive_strength = 0U;
+    std::uint32_t material_metallic = 0U;
+    std::uint32_t material_roughness = 0U;
+    std::uint32_t material_opacity = 0U;
+    RuntimeAssetMaterialAlphaMode material_alpha_mode = RuntimeAssetMaterialAlphaMode::Unknown;
     std::uint32_t shader_stage_count = 0U;
     std::uint32_t shader_bytecode_byte_count = 0U;
 };
@@ -307,6 +323,13 @@ struct RuntimeAssetLoadedFile final {
     std::uint32_t texture_width = 0U;
     std::uint32_t texture_height = 0U;
     std::uint32_t texture_slot_count = 0U;
+    std::uint32_t material_parameter_count = 0U;
+    std::uint32_t material_base_color_rgba = 0U;
+    std::uint32_t material_emissive_strength = 0U;
+    std::uint32_t material_metallic = 0U;
+    std::uint32_t material_roughness = 0U;
+    std::uint32_t material_opacity = 0U;
+    RuntimeAssetMaterialAlphaMode material_alpha_mode = RuntimeAssetMaterialAlphaMode::Unknown;
     std::uint32_t shader_stage_count = 0U;
     std::uint32_t shader_bytecode_byte_count = 0U;
     std::uint64_t cache_payload_id = 0U;

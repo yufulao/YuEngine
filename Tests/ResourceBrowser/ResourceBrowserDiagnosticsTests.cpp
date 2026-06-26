@@ -302,6 +302,30 @@ std::string SourceMeshText(
     return text;
 }
 
+std::string MaterialParameterFields() {
+    return std::string(
+        "parameterCount=5\n"
+        "baseColorRgba=32,48,64,192\n"
+        "emissiveStrength=64\n"
+        "metallic=128\n"
+        "roughness=96\n"
+        "opacity=192\n"
+        "alphaMode=blend\n");
+}
+
+std::string SourceMaterialText() {
+    std::string text(
+        "YUASSET MATERIAL 1\n"
+        "schema=rav0-source\n"
+        "id=shared_material\n"
+        "shader=Shader/RuntimeProgram.yuprogram\n"
+        "texture0=Texture/Albedo.yutex\n"
+        "texture1=Texture/Normal.yutex\n"
+        "texture2=Texture/Mask.yutex\n");
+    text += MaterialParameterFields();
+    return text;
+}
+
 std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
     const std::string cube_payload = MeshPayload('A', 96U);
     const std::string cylinder_payload = MeshPayload('K', 96U);
@@ -339,7 +363,7 @@ std::array<FixtureFile, FIXTURE_FILE_COUNT> CanonicalFiles() {
                 ResourceTypeId{RESOURCE_TYPE_MATERIAL},
                 AssetTypeId{ASSET_TYPE_MATERIAL},
                 2001U},
-            "YUASSET MATERIAL 1\nschema=rav0-source\nid=shared_material\nshader=Shader/RuntimeProgram.yuprogram\ntexture0=Texture/Albedo.yutex\ntexture1=Texture/Normal.yutex\ntexture2=Texture/Mask.yutex\n"},
+            SourceMaterialText()},
         FixtureFile{
             RuntimeAssetFileDesc{
                 "Texture/Albedo.yutex",
