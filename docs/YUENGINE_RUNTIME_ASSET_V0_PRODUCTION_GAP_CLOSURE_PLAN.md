@@ -280,7 +280,7 @@ RuntimeAsset v0 before this plan's exit criteria are met.
 Do not include in RuntimeAsset v0:
 
 - editor preview host implementation;
-- rejected editor route editor, browser canvas, UI editor, native editor shell, or viewport overlay;
+- rejected editor route editor, rejected canvas, UI editor, native editor shell, or viewport overlay;
 - Game Adapter behavior;
 - old TouhouNewWorld package parser or original package compatibility;
 - external ecosystem, plugin-marketplace, or commercial-engine format

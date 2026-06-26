@@ -28,7 +28,7 @@ UiEditorRuntimeDocument
 ```
 
 The slice does not create a native UI Editor shell, design surface, rejected editor route page,
-browser canvas, template editor, style/theme editor, or package/cook workflow.
+rejected canvas, template editor, style/theme editor, or package/cook workflow.
 It also does not mutate runtime data.
 
 ## Acceptance

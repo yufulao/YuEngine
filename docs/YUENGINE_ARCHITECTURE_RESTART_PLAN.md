@@ -128,10 +128,10 @@ Initial UE5 modules to inspect:
 
 Unity official references captured for boundary comparison:
 
-- GameObject/component model: <https://docs.unity3d.com/6000.4/Documentation/Manual/GameObjects.html>
-- Scenes as content containers: <https://docs.unity3d.com/6000.4/Documentation/Manual/CreatingScenes.html>
-- Scriptable Render Pipeline concepts: <https://docs.unity3d.com/6000.4/Documentation/Manual/scriptable-render-pipeline-introduction.html>
-- Input System package boundary: <https://docs.unity3d.com/6000.0/Documentation/Manual/com.unity.inputsystem.html>
+- GameObject/component model: `Unity manual reference`
+- Scenes as content containers: `Unity manual reference`
+- Scriptable Render Pipeline concepts: `Unity manual reference`
+- Input System package boundary: `Unity manual reference`
 
 YuEngine decisions from these references:
 

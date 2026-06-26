@@ -91,5 +91,5 @@ runtime serialization, package/run validation, integrated native editor shell,
 external Unity/Unreal/DCC bridge, final product visual closure, or original
 package compatibility.
 
-It does not use rejected editor route, browser canvas, static screenshots, CPU oracles, GDI
+It does not use rejected editor route, rejected canvas, static screenshots, CPU oracles, GDI
 viewers, or manual visual claims as acceptance.

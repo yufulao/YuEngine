@@ -47,7 +47,7 @@ L7 editor tooling over approved runtime modules.
 
 The preview host may call approved engine runtime surfaces to build an isolated
 preview session. It must not become a lower-layer dependency and must not make
-shipped runtime modules depend on editor-only code. Deprecated rejected editor route editor code
+shipped runtime modules depend on editor-only code. Rejected editor route code
 must not be a runtime dependency.
 
 ## L0/L1 Boundary
@@ -171,7 +171,7 @@ This gate does not own:
    production loader gaps.
 7. Preview cannot bypass approved restore/preflight/proof gates when Scene or
    World data is involved.
-8. UI preview must use YuEngine UI runtime output, not browser layout.
+8. UI preview must use YuEngine UI runtime output, not rejected layout.
 9. Animation preview must use runtime clip/player/sample/event output, not only
    timeline drawing.
 10. Scene preview must use engine-rendered or engine-headless scene outputs, not
@@ -309,7 +309,7 @@ The following are blocking violations:
   Preview Host define source asset formats;
 - calling UI, Scene, or Animation editor usable before engine preview host
   output exists for the relevant runtime behavior;
-- making deprecated rejected editor route editor code a dependency of runtime modules;
+- making rejected editor route code a dependency of runtime modules;
 - making runtime modules depend on editor-only state;
 - using fake preview data that cannot pass cook/package/runtime validation;
 - using in-memory fixture structs, editor-only mock data, or helper/oracle output

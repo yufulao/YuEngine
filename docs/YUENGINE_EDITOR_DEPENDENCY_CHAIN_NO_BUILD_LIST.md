@@ -267,7 +267,7 @@ sample binaries for the following until an explicit later gate approves them.
 - no immediate-mode native editor fallback target yet;
 - no editor plugin, extension, or launcher target yet;
 - no shared editor panel framework target yet;
-- no rejected editor route compatibility, browser shell, rejected editor toolchain, rejected form layout, rejected document tree, or canvas
+- no rejected editor route compatibility, rejected editor shell, rejected editor toolchain, rejected form layout, rejected document tree, or canvas
   preview target under a new name;
 - no editor heartbeat, polling, or preview status path that enters durable
   runtime event streams.
@@ -331,7 +331,7 @@ sample binaries for the following until an explicit later gate approves them.
 - no UI Editor native/engine surface target yet;
 - no hierarchy, inspector, template browser, theme editor, state-preview panel,
   coordinate adapter, or engine UI viewport implementation yet;
-- no rejected form layout, rejected document tree, browser canvas, or static screenshot preview under a
+- no rejected form layout, rejected document tree, rejected canvas, or static screenshot preview under a
   different name;
 - no game-specific window migration or game-window validation samples;
 - no editor-only module dependency from shipped UI runtime;

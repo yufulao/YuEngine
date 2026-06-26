@@ -19,7 +19,7 @@ UIManager runtime framework
 engine runtime editor host direction
 ```
 
-The engine-stage UI scope is not old game-window work and is not a deprecated rejected editor route editor
+The engine-stage UI scope is not old game-window work and is not a rejected editor route
 surface.
 
 ## 2. Naming
@@ -111,8 +111,8 @@ through rejected form layout, editor-route-only canvas, rejected editor toolchai
 
 C++ is allowed for stable runtime/editor-host contracts: runtime schema
 validation, local file/service bridge, cook/asset validation bridge, and
-engine preview host protocol. C++ must not reintroduce a deprecated rejected editor route editor shell,
-browser panel model, rejected editor toolchain workflow, or rejected form layout preview path.
+engine preview host protocol. C++ must not reintroduce a rejected editor route shell,
+rejected panel model, rejected editor toolchain workflow, or rejected form layout preview path.
 
 ## 4. Reference Inputs
 
@@ -126,7 +126,7 @@ Allowed references:
 | Unity UGUI | common rect/component vocabulary | Unity object model |
 | TextMeshPro | font asset and glyph fallback concepts | full TMP implementation |
 | Unreal Slate/UMG | invalidation and UI performance vocabulary | Unreal editor/runtime architecture |
-| Deprecated rejected editor route editor attempt | historical anti-pattern showing why browser shells, rejected document tree controls, and rejected form layout preview are not editor direction | any active rejected editor route editor route, backlog, gate, workflow, or acceptance |
+| Rejected editor route attempt | historical anti-pattern showing why rejected editor shells, rejected document tree controls, and rejected form layout preview are not editor direction | any active rejected editor route editor route, backlog, gate, workflow, or acceptance |
 
 Every landing task must state:
 
@@ -188,4 +188,4 @@ Stage 3 may implement UIManager runtime framework only.
 Editor work must start from runtime data schemas, Resource/Asset/Cook
 validation, native/engine preview host output, and runtime diagnostics. It must
 not add deprecated rejected editor route schema/editor route/workspace/protocol tasks, and it must not
-model a deprecated rejected editor route editor route as C++ libraries.
+model a rejected editor route route as C++ libraries.

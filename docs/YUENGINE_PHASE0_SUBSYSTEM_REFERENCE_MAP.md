@@ -48,19 +48,19 @@ UE5 source areas sampled for boundary shape:
 
 Unity official documentation anchors:
 
-- Platform and builds: <https://docs.unity3d.com/6000.4/Documentation/Manual/PlatformSpecific.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/building-introduction.html>
-- GameObjects/components/object model: <https://docs.unity3d.com/6000.4/Documentation/Manual/GameObjects.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/Components.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/fundamental-unity-types.html>
-- Script lifecycle: <https://docs.unity3d.com/6000.4/Documentation/Manual/class-MonoBehaviour.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/execution-order.html>
-- Scenes: <https://docs.unity3d.com/6000.4/Documentation/Manual/CreatingScenes.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/scenes-working-with.html>
-- Rendering/SRP: <https://docs.unity3d.com/6000.4/Documentation/Manual/scriptable-render-pipeline-introduction.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/render-pipelines-overview.html>
-- Assets/packages: <https://docs.unity3d.com/6000.4/Documentation/Manual/AssetDatabase.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/ImportingAssets.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/PackagesList.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/AssetBundlesIntro.html>
-- Audio: <https://docs.unity3d.com/6000.4/Documentation/Manual/Audio.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/AudioOverview.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/AudioMixerOverview.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/class-AudioSource.html>
-- Input: <https://docs.unity3d.com/6000.4/Documentation/Manual/Input.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/com.unity.inputsystem.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/UIE-Runtime-Event-System.html>
-- UI: <https://docs.unity3d.com/6000.4/Documentation/Manual/UIToolkits.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/UIElements.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/UI-system-compare.html>
-- Animation: <https://docs.unity3d.com/6000.4/Documentation/Manual/AnimationSection.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/AnimationOverview.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/class-AnimatorController.html>
-- Physics: <https://docs.unity3d.com/6000.4/Documentation/Manual/PhysicsSection.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/PhysicsOverview.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/class-PhysicsManager.html>
-- Diagnostics/profiling: <https://docs.unity3d.com/6000.4/Documentation/Manual/Profiler.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/ProfilerMemory.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/ProfilerRendering.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/log-files.html>
-- Testing: <https://docs.unity3d.com/6000.4/Documentation/Manual/cus-tests.html>, <https://docs.unity3d.com/6000.4/Documentation/Manual/test-framework/edit-mode-vs-play-mode-tests.html>
+- Platform and builds: `Unity manual reference`, `Unity manual reference`
+- GameObjects/components/object model: `Unity manual reference`, `Unity manual reference`, `Unity manual reference`
+- Script lifecycle: `Unity manual reference`, `Unity manual reference`
+- Scenes: `Unity manual reference`, `Unity manual reference`
+- Rendering/SRP: `Unity manual reference`, `Unity manual reference`
+- Assets/packages: `Unity manual reference`, `Unity manual reference`, `Unity manual reference`, `Unity manual reference`
+- Audio: `Unity manual reference`, `Unity manual reference`, `Unity manual reference`, `Unity manual reference`
+- Input: `Unity manual reference`, `Unity manual reference`, `Unity manual reference`
+- UI: `Unity manual reference`, `Unity manual reference`, `Unity manual reference`
+- Animation: `Unity manual reference`, `Unity manual reference`, `Unity manual reference`
+- Physics: `Unity manual reference`, `Unity manual reference`, `Unity manual reference`
+- Diagnostics/profiling: `Unity manual reference`, `Unity manual reference`, `Unity manual reference`, `Unity manual reference`
+- Testing: `Unity manual reference`, `Unity manual reference`
 
 ## Boundary Rules Derived From References
 

@@ -188,7 +188,7 @@ Owns backend support only:
 - local editor-host API or IPC contract
 
 The service must not encode editor route panels, hierarchy composition, gizmo
-behavior, browser panels, deprecated rejected editor route workflow, or editor templates in C++.
+behavior, rejected panels, rejected editor route workflow, or editor templates in C++.
 
 ### 5.4 Runtime Preview
 
@@ -334,7 +334,7 @@ These are blocking violations:
   viewport proof
 - calling Scene Editor usable before model/texture/material loading entry,
   camera controls, transform gizmo, and engine viewport exist
-- making the runtime depend on deprecated rejected editor route editor code
+- making the runtime depend on rejected editor route code
 - making editor-only selection/camera/gizmo state part of runtime scene data
 - bypassing scene restore plan and apply-time proof for preview
 - making RenderScene, AudioScene, Resource, Package, or File expand outside
@@ -364,7 +364,7 @@ Focused future routes should include:
 ctest --preset windows-fast-gate -R "(WorldScene|RenderScene|AudioScene|Resource|Package)" --output-on-failure
 ```
 
-Deprecated rejected editor route editor commands are not active acceptance routes. Editor surface
+Rejected editor route commands are not active acceptance routes. Editor surface
 tests must prove runtime-data edits and preview-host integration.
 
 ## 9. Completion Definition

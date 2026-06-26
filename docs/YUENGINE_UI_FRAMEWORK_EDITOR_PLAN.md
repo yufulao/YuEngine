@@ -40,7 +40,7 @@ The following are explicitly out of scope:
 - making config tables part of the current UI scope
 - making editor-only code part of shipped game runtime
 - making the game runtime depend on editor-only code
-- forbidden restoration of deprecated rejected editor route Editor, deprecated rejected editor route editor route workspace, rejected editor toolchain workflow, or
+- forbidden restoration of deprecated rejected editor route Editor, rejected editor route route workspace, rejected editor toolchain workflow, or
   rejected form layout/editor-route-only preview as active editor direction
 - forbidden acceptance of rejected form layout, form UI, 2D canvas sketches, or static screenshots as
   core UI editor preview
@@ -137,7 +137,7 @@ Does not own:
 
 The UI Editor direction is native/engine runtime preview host over runtime UI
 data. rejected editor route is no longer a YuEngine editor direction. The earlier rejected editor route Editor,
-deprecated rejected editor route editor route workspace, rejected editor toolchain, rejected form layout, and editor-route-only canvas
+rejected editor route route workspace, rejected editor toolchain, rejected form layout, and editor-route-only canvas
 approach is retained only as a deprecated anti-pattern.
 
 The editor architecture is:
@@ -165,7 +165,7 @@ C++ is allowed for stable runtime/editor-host contracts:
 - cook/asset validation bridge
 - runtime preview protocol and preview-host control
 
-C++ must not reintroduce a deprecated rejected editor route editor shell, browser panel model, rejected editor toolchain
+C++ must not reintroduce a rejected editor route shell, rejected panel model, rejected editor toolchain
 template catalog, rejected form layout style/theme workflow, or editor-route-only state-preview
 path.
 
@@ -204,7 +204,7 @@ Owns:
 The service is tooling. It is not part of shipped runtime.
 It may be implemented in C++ where it directly touches YuEngine runtime
 contracts, but it must expose stable editor-host APIs instead of encoding
-browser panels or deprecated rejected editor route catalogs in C++.
+rejected panels or rejected editor route catalogs in C++.
 
 ### 3.3 Engine Preview
 
@@ -223,7 +223,7 @@ Not allowed:
 - reimplementing runtime layout rules in deprecated rejected editor route code
 - making deprecated rejected editor route rejected document tree the game UI runtime
 - forbidden acceptance of an rejected form layout-styled page as the UI editor preview
-- adding a deprecated rejected editor route editor compatibility fallback
+- adding a rejected editor route compatibility fallback
 
 ### 3.4 Layout Coordinate Boundary
 
@@ -294,8 +294,8 @@ Reference use is constrained to generic behavior.
 | Unity UGUI | rect/anchor/pivot, common component behavior | Canvas rebuild model as-is, Unity object model |
 | TextMeshPro | font asset/glyph/fallback concepts | full TMP feature parity in first slice |
 | Unreal Slate/UMG | invalidation, retainer-like caching, UI performance vocabulary | Unreal editor/runtime architecture |
-| Deprecated rejected editor route editor attempt | historical anti-pattern for browser shell and rejected document tree preview limits | active rejected editor route editor route, rejected editor toolchain workflow, rejected form layout preview, or runtime layout semantics |
-| YuEngine `UiRectTransform` and runtime rect math | authoritative anchors, offsets, pivot, margin, padding, DPI, safe-area, engine rect/content rect semantics | rejected style box model, browser layout policy, rejected document tree coordinate semantics |
+| Rejected editor route attempt | historical anti-pattern for rejected editor shell and rejected document tree preview limits | active rejected editor route editor route, rejected editor toolchain workflow, rejected form layout preview, or runtime layout semantics |
+| YuEngine `UiRectTransform` and runtime rect math | authoritative anchors, offsets, pivot, margin, padding, DPI, safe-area, engine rect/content rect semantics | rejected style box model, rejected layout policy, rejected document tree coordinate semantics |
 | YuEngine editor preview host | engine-rendered viewport/frame/status/diagnostics for UI runtime data | editor-route-only visual fake, static screenshot, or rejected markup admin surface |
 
 Each landing task must record:
@@ -421,7 +421,7 @@ These are blocking violations:
 - recreating the old game-window matrix
 - adding native app/editor targets as engine capabilities
 - keeping a native editor shell fallback
-- adding C++ targets for deprecated rejected editor route editor shell, panel model, template catalog,
+- adding C++ targets for rejected editor route shell, panel model, template catalog,
   style/theme editing, or state-preview workflow
 - moving window lifecycle into UI Core
 - making UI runtime depend on editor-only modules

@@ -6,7 +6,7 @@ Task: #45 rejected editor route cleanup B
 ## Decision
 
 This file previously instructed the team to continue with a deprecated rejected editor route
-Editor, deprecated rejected editor route editor route, rejected editor toolchain-style editor route workspace, rejected form layout
+Editor, rejected editor route route, rejected editor toolchain-style editor route workspace, rejected form layout
 editing surface, and deprecated IPC/IPC preview protocol. That instruction is
 revoked.
 
@@ -36,7 +36,7 @@ Do not restore:
   acceptance;
 - forbidden rejected form layout, rejected document tree, editor-route-only canvas, or static screenshots as runtime preview;
 - forbidden deprecated IPC protocol work as proof of editor viewport capability;
-- browser shell work as YuEngine editor progress.
+- rejected editor shell work as YuEngine editor progress.
 
 Future architecture prompts must route UI/Scene/Animation editor work through
 runtime data, native/engine preview host, Resource/Asset/Cook validation,

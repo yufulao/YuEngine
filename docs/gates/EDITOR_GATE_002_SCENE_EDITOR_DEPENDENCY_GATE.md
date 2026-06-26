@@ -116,7 +116,7 @@ Preview Host status.
 | Native/engine UI surface for editor panels | Yes for surface | BLOCKED | UI runtime evidence exists, but no Scene Editor native surface target is approved |
 | Scene hierarchy, inspector, gizmo, drag/drop, undo/redo | Yes for surface | BLOCKED | Editor workflow implementation is not approved by this gate |
 | Cook/package/run smoke for authored scenes | Before shippable editor claim | BLOCKED | Not required for the first scene-data slice, required before shippable editor data |
-| Deprecated rejected editor route editor, browser canvas, rejected form layout, screenshots | No | NOT-REQUIRED-NOW | Explicitly rejected as authoritative preview or editor progress |
+| Rejected editor route, rejected canvas, rejected form layout, screenshots | No | NOT-REQUIRED-NOW | Explicitly rejected as authoritative preview or editor progress |
 | Original package parser | No | NOT-REQUIRED-NOW | Later evidence/package gate only; not a first native scene prerequisite |
 | Unity/Unreal importer | No | NOT-REQUIRED-NOW | Reference separation only; no copied importer/API shape |
 | Final device-backed product visual closure | No | NOT-REQUIRED-NOW | Useful later, not a prerequisite for the first native scene gate |
