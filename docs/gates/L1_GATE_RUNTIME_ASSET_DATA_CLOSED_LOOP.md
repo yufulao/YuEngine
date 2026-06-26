@@ -1,8 +1,8 @@
 # L1-GATE: Runtime Asset Data Closed Loop
 
-Status: RuntimeAsset module and RAV0 validator/cook/load floors implemented; RAV1 production contract gate in review
-Requested decision: `RAV1_PHASE_A_CONTRACT_REVIEW`
-Current decision: `RAV1_DOCS_GATE_NOT_IMPLEMENTATION_APPROVED`
+Status: RuntimeAsset data closed loop implemented through current RAV4 product-run smoke
+Requested decision: `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_REVIEW`
+Current decision: `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_PASS`
 Owner: Architecture
 Task: #73 baseline; #50 RAV1 production contract amendment
 Related plan: `docs/YUENGINE_RUNTIME_ASSET_DATA_CONTRACT_PLAN.md`
@@ -36,14 +36,18 @@ fixture generator writes disk files
 -> RenderCore/RHI renders and captures the cube/cylinder/cone scene
 ```
 
-This gate now records the first smoke, validator, and `YuRuntimeAsset` module
-implementation slices plus the RAV0 production floors for typed validators,
-path-independent family detection, shader/program bytecode to RHI pipeline,
-decoded texture payload to material slots, disk animation sampling, deterministic
-scene loader output, and scene loader no-mutation failures.
+This gate now records the implemented smoke, validator, `YuRuntimeAsset`, RAV0,
+RAV1, RAV2, RAV3, and current RAV4 product-run slices. The accepted floors cover
+typed validators, path-independent family detection, shader/program bytecode to
+RHI pipeline, decoded texture payload to material slots, disk animation
+sampling, deterministic scene loader output, scene loader no-mutation failures,
+package load-plan consumption, and file-backed package artifact product-run
+command smoke.
 
-Task #50 adds the RAV1 Phase A contract/gate layer only. It does not approve
-new runtime implementation by itself.
+The earlier Phase A docs-only decision has been superseded by implementation
+evidence. Future work must still be separately scoped when it moves beyond the
+current deterministic package artifact/product-run smoke into final installer,
+launcher, original package compatibility, or broad editor tooling.
 
 ## Layer
 
@@ -73,13 +77,11 @@ through File/VFS, `YuRuntimeAsset`, Resource, Asset, RenderScene, RenderCore, an
 RHI before capture. They also reject unsupported versions, invalid mesh bounds,
 and missing/duplicate scene dependencies before runtime output mutation.
 `YuRuntimeAsset` now stores cache payloads, deterministic decoded payload records
-for mesh/material/texture, and Resource/Asset dependency edges. RAV0 also added
-decoded texture upload consumption by RenderScene materials, shader
-bytecode/program ownership into RHI modules/pipeline, disk animation sampling,
-and staged scene loader output as smoke floors. The remaining RAV1 work is the
-production source/cooked artifact contract, loader transaction/no-mutation API,
-cooked payload bridge contract, bounded scene/animation record plan, and
-evidence matrix before implementation authorization.
+for mesh/material/texture, and Resource/Asset dependency edges. Later slices
+added decoded texture upload consumption by RenderScene materials,
+shader bytecode/program ownership into RHI modules/pipeline, disk animation
+sampling, staged scene loader output, package load-plan consumption by
+RuntimeApp, and a file-backed package artifact product-run command smoke.
 
 ## Owns
 
@@ -417,11 +419,11 @@ The following are blocking violations:
 
 ## Exit Criteria
 
-This gate is ready for the next implementation slice when:
+This gate stays ready for the next implementation slice when:
 
 1. this document and the paired plan are committed;
 2. both documents record the current decision
-   `RAV1_DOCS_GATE_NOT_IMPLEMENTATION_APPROVED`;
+   `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_PASS`;
 3. task #71 and task #72 are listed as prerequisites;
 4. data families cover mesh, material, texture descriptor/payload reference,
    shader/program descriptor, scene data, and animation clip/sampled transform
