@@ -1107,7 +1107,7 @@ void EmitImporterCommitRows(
 }
 
 ResourceBrowserImporterCommitRejectedLayer RejectedLayerForSelectedPreflight(
-    const ResourceBrowserImporterCommitWorkflowRequest &request,
+    const ResourceBrowserImporterCommitWorkflowRequest &,
     const ResourceBrowserResourceEntry &entry,
     const ResourceBrowserImportSettings &settings,
     const ResourceBrowserExternalAuthoringSourceRow *external_row) {

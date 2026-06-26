@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "YuEngine/Asset/AssetManager.h"
+#include "YuEngine/ExternalAuthoring/ExternalAuthoringBridge.h"
 #include "YuEngine/File/FileWriteRequest.h"
 #include "YuEngine/File/MountTable.h"
 #include "YuEngine/Resource/ResourceRegistry.h"
@@ -23,6 +24,12 @@ namespace {
 using yuengine::asset::AssetManager;
 using yuengine::asset::AssetSnapshot;
 using yuengine::asset::AssetTypeId;
+using yuengine::externalauthoring::BuildExternalAuthoringRuntimeAssetImportBridge;
+using yuengine::externalauthoring::ExternalAuthoringBridgeBlockedLayer;
+using yuengine::externalauthoring::ExternalAuthoringBridgeRequest;
+using yuengine::externalauthoring::ExternalAuthoringBridgeResult;
+using yuengine::externalauthoring::ExternalAuthoringBridgeStatus;
+using yuengine::externalauthoring::ExternalAuthoringRuntimeAssetInputRow;
 using yuengine::file::FileStatus;
 using yuengine::file::FileWriteRequest;
 using yuengine::file::MountId;
@@ -107,6 +114,7 @@ constexpr std::uint32_t ASSET_TYPE_SHADER = 204U;
 constexpr std::uint32_t ASSET_TYPE_SCENE = 205U;
 constexpr std::uint32_t ASSET_TYPE_ANIMATION = 206U;
 constexpr const char *SCENE_PATH = "Scene/Main.yuscene";
+constexpr const char *EXTERNAL_AUTHORING_MANIFEST_PATH = "External/RuntimeAssetExport.yuauthoring";
 constexpr std::size_t FIXTURE_FILE_COUNT = 9U;
 
 struct FixtureFile final {
@@ -196,6 +204,8 @@ constexpr const char *TEST_DEPTH_INVALID_SETTING_NO_MUTATION =
     "ResourceBrowserDepthWorkflow_InvalidSettingDoesNotMutateOutputs";
 constexpr const char *TEST_IMPORTER_COMMIT_EXTERNAL_READY =
     "ResourceBrowserImporterCommitWorkflow_CommitsExternalManifestReadyRuntimeAssetGraph";
+constexpr const char *TEST_IMPORTER_COMMIT_BRIDGE_ROWS =
+    "ResourceBrowserImporterCommitWorkflow_CommitsExternalAuthoringBridgeRowsThroughRuntimeAssetGraph";
 constexpr const char *TEST_IMPORTER_COMMIT_ORIGINAL_PACKAGE =
     "ResourceBrowserImporterCommitWorkflow_BlocksOriginalPackageWithoutMutation";
 constexpr const char *TEST_IMPORTER_COMMIT_UNSUPPORTED_EXTERNAL =
@@ -395,6 +405,115 @@ bool ExecuteImportCookFixture(std::string_view test_name, ImportCookFixture *out
     if (status != RuntimeAssetDataStatus::Success ||
         fixture.command.status != RuntimeAssetDataStatus::Success) {
         return FailStep("import cook command failed");
+    }
+
+    *out_fixture = fixture;
+    return true;
+}
+
+std::string ExternalAuthoringTextureManifest() {
+    return std::string(
+        "YuExternalAuthoringExport v1\n"
+        "tool=Unity\n"
+        "export_id=resource_browser_bridge_rows\n"
+        "unit_scale=1\n"
+        "handedness=right\n"
+        "up_axis=y\n"
+        "transform_bake=world\n"
+        "material_policy=yu_material_v0\n"
+        "animation_policy=sampled_clip_v0\n"
+        "unsupported_feature_count=0\n"
+        "entry_count=1\n"
+        "entry.0.kind=Texture\n"
+        "entry.0.stable_id=3001\n"
+        "entry.0.payload=Texture/Albedo.yutex\n"
+        "entry.0.content_hash=0\n"
+        "entry.0.dependency_count=0\n");
+}
+
+ResourceBrowserExternalAuthoringSourceRow ExternalSourceRowForBridgeRow(
+    const ExternalAuthoringRuntimeAssetInputRow &bridge_row,
+    std::uint32_t runtime_asset_index) {
+    ResourceBrowserExternalAuthoringSourceRow row{};
+    row.manifest_path = bridge_row.manifest_path;
+    row.source_path = bridge_row.manifest_path;
+    row.payload_path = bridge_row.payload_path;
+    row.target_kind = bridge_row.target_kind;
+    row.stable_id = bridge_row.stable_id;
+    row.content_hash = bridge_row.content_hash;
+    row.runtime_asset_index = runtime_asset_index;
+    row.dependency_count = bridge_row.dependency_count;
+    row.unsupported_feature_count = bridge_row.unsupported_feature_count;
+    row.manifest_readable = bridge_row.manifest_readable;
+    row.payload_available = bridge_row.payload_available;
+    row.dependencies_valid = bridge_row.dependencies_valid;
+    row.runtime_asset_descriptor_ready = bridge_row.runtime_asset_descriptor_ready;
+    row.manifest_ready = bridge_row.manifest_ready;
+    row.preview_supported = bridge_row.preview_supported;
+    row.selected = bridge_row.selected;
+    return row;
+}
+
+bool ExecuteExternalAuthoringBridgeImportCookFixture(
+    std::string_view test_name,
+    ImportCookFixture *out_fixture,
+    std::array<ExternalAuthoringRuntimeAssetInputRow, 2U> *out_bridge_rows,
+    ExternalAuthoringBridgeResult *out_bridge_result) {
+    if (out_fixture == nullptr ||
+        out_bridge_rows == nullptr ||
+        out_bridge_result == nullptr) {
+        return FailStep("null external authoring bridge output");
+    }
+
+    ImportCookFixture fixture{};
+    if (!CreateMountedTable(TestRoot(test_name), &fixture.table)) {
+        return false;
+    }
+
+    if (!WriteBytes(
+            fixture.table,
+            EXTERNAL_AUTHORING_MANIFEST_PATH,
+            BytesFromString(ExternalAuthoringTextureManifest()))) {
+        return FailStep("write external authoring manifest failed");
+    }
+
+    const std::string payload =
+        "YUASSET TEXTURE 1\nschema=rav0-source\nid=albedo\nformat=rgba8\nextent=2x2\npayload=checker\n";
+    if (!WriteBytes(fixture.table, "Texture/Albedo.yutex", BytesFromString(payload))) {
+        return FailStep("write external authoring payload failed");
+    }
+
+    RuntimeAssetImportCookCommandRequest command_request{};
+    ExternalAuthoringBridgeRequest bridge_request{};
+    bridge_request.mount_table = &fixture.table;
+    bridge_request.mount = MountId(MOUNT_ID);
+    bridge_request.manifest_path = VirtualPath(EXTERNAL_AUTHORING_MANIFEST_PATH);
+    bridge_request.runtime_asset_inputs =
+        std::span<ExternalAuthoringRuntimeAssetInputRow>(
+            out_bridge_rows->data(),
+            out_bridge_rows->size());
+    bridge_request.import_cook_request = &command_request;
+    bridge_request.import_cook_source_files = fixture.source_files.data();
+    bridge_request.import_cook_source_file_capacity =
+        static_cast<std::uint32_t>(fixture.source_files.size());
+    bridge_request.import_cook_cooked_files = fixture.cooked_files.data();
+    bridge_request.import_cook_cooked_file_capacity =
+        static_cast<std::uint32_t>(fixture.cooked_files.size());
+
+    const ExternalAuthoringBridgeStatus bridge_status =
+        BuildExternalAuthoringRuntimeAssetImportBridge(bridge_request, out_bridge_result);
+    if (bridge_status != ExternalAuthoringBridgeStatus::Success ||
+        out_bridge_result->blocked_layer != ExternalAuthoringBridgeBlockedLayer::None ||
+        !out_bridge_result->emitted_import_cook_request ||
+        out_bridge_result->runtime_asset_input_count != 1U) {
+        return FailStep("external authoring bridge did not emit import cook inputs");
+    }
+
+    const RuntimeAssetDataStatus command_status =
+        ExecuteRuntimeAssetImportCookCommand(command_request, &fixture.command);
+    if (command_status != RuntimeAssetDataStatus::Success ||
+        fixture.command.status != RuntimeAssetDataStatus::Success) {
+        return FailStep("external authoring import cook command failed");
     }
 
     *out_fixture = fixture;
@@ -1967,6 +2086,88 @@ int ResourceBrowserImporterCommitWorkflowCommitsExternalManifestReadyRuntimeAsse
     return 0;
 }
 
+int ResourceBrowserImporterCommitWorkflowCommitsExternalAuthoringBridgeRowsThroughRuntimeAssetGraph() {
+    ImportCookFixture fixture{};
+    std::array<ExternalAuthoringRuntimeAssetInputRow, 2U> bridge_rows{};
+    ExternalAuthoringBridgeResult bridge_result{};
+    if (!ExecuteExternalAuthoringBridgeImportCookFixture(
+            "ImporterCommitBridgeRows",
+            &fixture,
+            &bridge_rows,
+            &bridge_result)) {
+        return Fail("failed to execute external authoring bridge import cook fixture");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    const ResourceSnapshot resource_before = registry.Snapshot();
+    const AssetSnapshot asset_before = manager.Snapshot();
+    constexpr std::uint32_t SELECTED_TEXTURE = 4U;
+    ResourceBrowserExternalAuthoringSourceRow external =
+        ExternalSourceRowForBridgeRow(bridge_rows[0U], SELECTED_TEXTURE);
+    std::array<ResourceBrowserExternalAuthoringSourceRow, 1U> external_rows{external};
+    ResourceBrowserImportSettings import_settings{};
+    import_settings.source_path = external.source_path;
+    import_settings.target_kind = external.target_kind;
+    import_settings.resource_type = fixture.cooked_files[SELECTED_TEXTURE].resource_type;
+    import_settings.asset_type = fixture.cooked_files[SELECTED_TEXTURE].asset_type;
+    import_settings.stable_id = external.stable_id;
+    import_settings.importer_version = 1U;
+    import_settings.expected_schema_version = 1U;
+
+    ImporterCommitBuffers buffers{};
+    const ResourceBrowserImporterCommitWorkflowResult result =
+        BuildImporterCommitWorkflow(
+            fixture,
+            registry,
+            manager,
+            SELECTED_TEXTURE,
+            import_settings,
+            std::span<const ResourceBrowserExternalAuthoringSourceRow>(
+                external_rows.data(),
+                external_rows.size()),
+            &buffers);
+    const ResourceSnapshot resource_after = registry.Snapshot();
+    const AssetSnapshot asset_after = manager.Snapshot();
+    if (!result.Succeeded() ||
+        result.rejected_layer != ResourceBrowserImporterCommitRejectedLayer::None ||
+        result.loaded_file_count != fixture.cooked_files.size() ||
+        !result.preflighted_before_mutation ||
+        !result.mutation_allowed ||
+        !result.mutated_runtime_state ||
+        !result.committed_resource_registry ||
+        !result.committed_asset_manager ||
+        !result.selection_committed ||
+        result.selection_rejected ||
+        !result.external_manifest_ready ||
+        resource_after.registered_resource_count <= resource_before.registered_resource_count ||
+        asset_after.active_asset_count <= asset_before.active_asset_count) {
+        return Fail("importer commit workflow did not commit bridge rows through runtime asset graph");
+    }
+
+    if (bridge_result.payload_read_count != 1U ||
+        std::string_view(external.manifest_path) !=
+            std::string_view(EXTERNAL_AUTHORING_MANIFEST_PATH) ||
+        std::string_view(external.payload_path) != std::string_view("Texture/Albedo.yutex") ||
+        external.content_hash == 0U ||
+        external.stable_id != bridge_rows[0U].stable_id ||
+        buffers.catalog_rows[SELECTED_TEXTURE].source_boundary !=
+            ResourceBrowserSourceBoundary::ExternalImportBoundary ||
+        buffers.catalog_rows[SELECTED_TEXTURE].importer_readiness !=
+            ResourceBrowserImporterReadiness::Ready ||
+        buffers.catalog_rows[SELECTED_TEXTURE].asset_manager_gap !=
+            ResourceBrowserAssetManagerGap::None ||
+        !buffers.importer_rows[SELECTED_TEXTURE].external_import_boundary ||
+        !buffers.importer_rows[SELECTED_TEXTURE].importer_ready ||
+        !buffers.ledger[0U].external_manifest_ready ||
+        !buffers.ledger[0U].selection_committed ||
+        buffers.ledger[0U].selection_rejected) {
+        return Fail("importer commit workflow bridge row evidence mismatch");
+    }
+
+    return 0;
+}
+
 int ResourceBrowserImporterCommitWorkflowBlocksOriginalPackageWithoutMutation() {
     ImportCookFixture fixture{};
     if (!ExecuteImportCookFixture("ImporterCommitOriginalPackage", &fixture)) {
@@ -2290,6 +2491,8 @@ const std::unordered_map<std::string_view, TestFunction> &Tests() {
         {TEST_DEPTH_INVALID_SETTING_NO_MUTATION, ResourceBrowserDepthWorkflowInvalidSettingDoesNotMutateOutputs},
         {TEST_IMPORTER_COMMIT_EXTERNAL_READY,
          ResourceBrowserImporterCommitWorkflowCommitsExternalManifestReadyRuntimeAssetGraph},
+        {TEST_IMPORTER_COMMIT_BRIDGE_ROWS,
+         ResourceBrowserImporterCommitWorkflowCommitsExternalAuthoringBridgeRowsThroughRuntimeAssetGraph},
         {TEST_IMPORTER_COMMIT_ORIGINAL_PACKAGE,
          ResourceBrowserImporterCommitWorkflowBlocksOriginalPackageWithoutMutation},
         {TEST_IMPORTER_COMMIT_UNSUPPORTED_EXTERNAL,
