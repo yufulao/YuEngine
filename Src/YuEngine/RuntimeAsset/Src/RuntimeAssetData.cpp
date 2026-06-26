@@ -679,9 +679,15 @@ struct RuntimeAssetSceneLoaderStage final {
     std::array<RuntimeAssetSceneCameraRecord, RUNTIME_ASSET_MAX_SCENE_CAMERA_COUNT> cameras{};
     std::array<RuntimeAssetSceneEntityRecord, RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT> entities{};
     std::array<RuntimeAssetSceneTransformOutputRecord, RUNTIME_ASSET_MAX_SCENE_ENTITY_COUNT> transforms{};
+    std::array<AnimationRuntimeClipRecord, RUNTIME_ASSET_MAX_ANIMATION_CLIP_COUNT> animation_clips{};
+    std::array<AnimationRuntimeTrackRecord, RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT> animation_tracks{};
+    std::array<AnimationRuntimeKeyframeRecord, RUNTIME_ASSET_MAX_ANIMATION_KEYFRAME_COUNT> animation_keyframes{};
     std::uint32_t camera_count = 0U;
     std::uint32_t entity_count = 0U;
     std::uint32_t transform_count = 0U;
+    std::uint32_t animation_clip_count = 0U;
+    std::uint32_t animation_track_count = 0U;
+    std::uint32_t animation_keyframe_count = 0U;
     std::uint32_t animation_sampled_value_count = 0U;
     AnimationRuntimeStatus animation_sample_status = AnimationRuntimeStatus::MissingClip;
     AnimationRuntimeStatus animation_apply_status = AnimationRuntimeStatus::MissingSample;
@@ -697,6 +703,74 @@ bool SceneStageHasWorldObject(
     }
 
     return false;
+}
+
+bool HasAnimationRuntimeOutputRequest(const RuntimeAssetGraphLoadRequest &request) {
+    if (request.animation_clips != nullptr) {
+        return true;
+    }
+
+    if (request.animation_tracks != nullptr) {
+        return true;
+    }
+
+    if (request.animation_keyframes != nullptr) {
+        return true;
+    }
+
+    if (request.animation_clip_capacity != 0U) {
+        return true;
+    }
+
+    if (request.animation_track_capacity != 0U) {
+        return true;
+    }
+
+    return request.animation_keyframe_capacity != 0U;
+}
+
+RuntimeAssetDataStatus ValidateAnimationRuntimeOutputRequest(
+    const RuntimeAssetGraphLoadRequest &request,
+    std::uint32_t clip_count,
+    std::uint32_t track_count,
+    std::uint32_t keyframe_count) {
+    if (!HasAnimationRuntimeOutputRequest(request)) {
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    if (request.animation_clips == nullptr ||
+        request.animation_tracks == nullptr ||
+        request.animation_keyframes == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (request.animation_clip_capacity < clip_count ||
+        request.animation_track_capacity < track_count ||
+        request.animation_keyframe_capacity < keyframe_count) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+void CommitAnimationRuntimeTables(
+    const RuntimeAssetGraphLoadRequest &request,
+    const RuntimeAssetSceneLoaderStage &stage) {
+    if (!HasAnimationRuntimeOutputRequest(request)) {
+        return;
+    }
+
+    for (std::uint32_t index = 0U; index < stage.animation_clip_count; ++index) {
+        request.animation_clips[index] = stage.animation_clips[index];
+    }
+
+    for (std::uint32_t index = 0U; index < stage.animation_track_count; ++index) {
+        request.animation_tracks[index] = stage.animation_tracks[index];
+    }
+
+    for (std::uint32_t index = 0U; index < stage.animation_keyframe_count; ++index) {
+        request.animation_keyframes[index] = stage.animation_keyframes[index];
+    }
 }
 
 RuntimeAssetDataStatus ResolveSceneEntityRef(
@@ -4773,21 +4847,24 @@ RuntimeAssetDataStatus BuildSceneLoaderStage(
         }
     }
 
-    std::array<AnimationRuntimeClipRecord, RUNTIME_ASSET_MAX_ANIMATION_CLIP_COUNT> clips{};
-    std::array<AnimationRuntimeTrackRecord, RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT> tracks{};
-    std::array<AnimationRuntimeKeyframeRecord, RUNTIME_ASSET_MAX_ANIMATION_KEYFRAME_COUNT> keyframes{};
-    std::uint32_t clip_count = 0U;
-    std::uint32_t track_count = 0U;
-    std::uint32_t keyframe_count = 0U;
     status = ParseBoundedAnimationTables(
         animation_text,
         stage,
-        &clips,
-        &clip_count,
-        &tracks,
-        &track_count,
-        &keyframes,
-        &keyframe_count);
+        &stage.animation_clips,
+        &stage.animation_clip_count,
+        &stage.animation_tracks,
+        &stage.animation_track_count,
+        &stage.animation_keyframes,
+        &stage.animation_keyframe_count);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = ValidateAnimationRuntimeOutputRequest(
+        request,
+        stage.animation_clip_count,
+        stage.animation_track_count,
+        stage.animation_keyframe_count);
     if (status != RuntimeAssetDataStatus::Success) {
         return status;
     }
@@ -4796,9 +4873,15 @@ RuntimeAssetDataStatus BuildSceneLoaderStage(
         request,
         &stage,
         &bridge,
-        std::span<const AnimationRuntimeClipRecord>(clips.data(), clip_count),
-        std::span<const AnimationRuntimeTrackRecord>(tracks.data(), track_count),
-        std::span<const AnimationRuntimeKeyframeRecord>(keyframes.data(), keyframe_count));
+        std::span<const AnimationRuntimeClipRecord>(
+            stage.animation_clips.data(),
+            stage.animation_clip_count),
+        std::span<const AnimationRuntimeTrackRecord>(
+            stage.animation_tracks.data(),
+            stage.animation_track_count),
+        std::span<const AnimationRuntimeKeyframeRecord>(
+            stage.animation_keyframes.data(),
+            stage.animation_keyframe_count));
     if (status != RuntimeAssetDataStatus::Success) {
         return status;
     }
@@ -4835,11 +4918,17 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
     output.transform_count = stage.transform_count;
     output.resource_ref_count = request.file_count;
     output.camera_count = stage.camera_count;
+    output.animation_clip_count = stage.animation_clip_count;
+    output.animation_track_count = stage.animation_track_count;
+    output.animation_keyframe_count = stage.animation_keyframe_count;
     output.animation_sampled_value_count = stage.animation_sampled_value_count;
     output.entity_capacity = request.scene_entity_capacity;
     output.transform_capacity = request.scene_transform_capacity;
     output.resource_ref_capacity = request.scene_resource_ref_capacity;
     output.camera_capacity = request.scene_camera_capacity;
+    output.animation_clip_capacity = request.animation_clip_capacity;
+    output.animation_track_capacity = request.animation_track_capacity;
+    output.animation_keyframe_capacity = request.animation_keyframe_capacity;
     output.file_read_count = load_result.file_read_count;
     output.dependency_count = load_result.resource_dependency_count + load_result.asset_dependency_count;
     output.cache_payload_count = load_result.cache_payload_count;
@@ -4874,6 +4963,8 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
     for (std::uint32_t index = 0U; index < stage.transform_count; ++index) {
         request.scene_transforms[index] = stage.transforms[index];
     }
+
+    CommitAnimationRuntimeTables(request, stage);
 
     output.status = RuntimeAssetDataStatus::Success;
     *request.scene_output = output;
@@ -8598,6 +8689,12 @@ RuntimeAssetGraphLoadRequest BuildRuntimeAssetPackagedGraphLoadRequest(
     load_request.scene_entity_capacity = request.scene_entity_capacity;
     load_request.scene_transforms = request.scene_transforms;
     load_request.scene_transform_capacity = request.scene_transform_capacity;
+    load_request.animation_clips = request.animation_clips;
+    load_request.animation_clip_capacity = request.animation_clip_capacity;
+    load_request.animation_tracks = request.animation_tracks;
+    load_request.animation_track_capacity = request.animation_track_capacity;
+    load_request.animation_keyframes = request.animation_keyframes;
+    load_request.animation_keyframe_capacity = request.animation_keyframe_capacity;
     load_request.scene_output = request.scene_output;
     load_request.animation_frame_context = request.animation_frame_context;
     load_request.animation_clip_start_time_nanoseconds =
