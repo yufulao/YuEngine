@@ -278,6 +278,9 @@ bridge proof shape for this closed-loop slice:
 19. RuntimeAsset-owned shader compiler backend records deterministic policy,
     stage, bytecode hash, input layout, and texture slot reflection identity
     before loaded shader program data feeds the RHI pipeline bridge.
+20. cooked shader/program records prove stage module creation, loaded reflection
+    and input-layout pipeline use, no-mutation bytecode/reflection mismatch
+    rejection, and transient RHI cleanup on partial creation failure.
 
 Current slice status:
 
@@ -303,6 +306,7 @@ Current slice status:
 | 18. mesh layout/topology loaded records | PASS |
 | 19. decoded mesh payload to geometry buffers | PASS |
 | 20. shader compiler backend boundary | PASS |
+| 21. cooked shader program failure and cleanup proofs | PASS |
 
 Current RuntimeAssetData proof names that future slices must keep passing or
 supersede with approved equivalents:
@@ -317,6 +321,10 @@ supersede with approved equivalents:
 - `RuntimeAssetData_ShaderSceneAnimationRequireSourceSchema`
 - `RuntimeAssetData_ShaderImportPolicyValidatesSourceCookedAndLoadedRecords`
 - `RuntimeAssetData_ShaderCompilerBackendProducesProgramReflection`
+- `RuntimeAssetData_CookedShaderStagePayloadsCreateRhiModules`
+- `RuntimeAssetData_CookedProgramPipelineUsesLoadedReflectionAndInputLayout`
+- `RuntimeAssetData_CookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation`
+- `RuntimeAssetData_CookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles`
 - `RuntimeAssetData_CameraTweenDescriptorLoadsFromDiskSceneReference`
 - `RuntimeAssetData_SceneFamilyDetectionIsPathIndependent`
 - `RuntimeAssetData_ShaderProgramDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs`
@@ -351,7 +359,7 @@ This gate records these mainline implementation slices:
 | RAV1-J | Scene camera family failure diagnostics | PASS; bounded scene camera table duplicate active, missing active, invalid row, and invalid entity camera ref failures return exact status without output mutation |
 | RAV1-K | Mesh layout/topology decode | PASS; source/cooked mesh files validate and load `position,texcoord` input layout, vertex/index stride, `uint16` index format, and triangle-list topology before RenderScene/RenderCore/RHI geometry proof consumes loaded records |
 | RAV1-L | Mesh decoded payload geometry buffers | PASS; RenderScene/RenderCore/RHI geometry proof reads Resource decoded mesh payloads, validates payload hash and vertex/index byte split, and reports exact Model-layer failures for missing decoded payload or hash mismatch |
-| RAV1-M | Shader compiler backend boundary | PASS; RuntimeAsset owns deterministic backend selection, import policy identity, stage bytecode hash identity, input layout reflection, texture slot reflection, RHI pipeline bridge consumption, and unknown-backend/policy-mismatch failures |
+| RAV1-M | Shader compiler backend boundary | PASS; RuntimeAsset owns deterministic backend selection, import policy identity, stage bytecode hash identity, input layout reflection, texture slot reflection, cooked stage module creation, cooked reflection/input-layout pipeline use, no-mutation mismatch rejection, partial RHI cleanup, RHI pipeline bridge consumption, and unknown-backend/policy-mismatch failures |
 | Next slice | Production hardening | render material constant binding, broader material variants, non-fixture shader compiler integration, broader shader reflection semantics, broader scene/animation production variants |
 
 The slice may split implementation tasks later, but those tasks must stay

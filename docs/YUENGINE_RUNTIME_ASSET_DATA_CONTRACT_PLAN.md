@@ -265,6 +265,10 @@ C++ in-memory construction alone.
 | Material parameter semantics | PASS | `RuntimeAssetData_MaterialParameterSemanticsLoadIntoRuntimeRecords` validates and loads base color RGBA, emissive strength, metallic, roughness, opacity, alpha mode, and parameter count from disk material records |
 | Shader import policy | PASS | `RuntimeAssetData_ShaderImportPolicyValidatesSourceCookedAndLoadedRecords` validates source/cooked shader import language, target, entries, profiles, compile flags, and loaded record policy identity |
 | Shader compiler backend boundary | PASS | `RuntimeAssetData_ShaderCompilerBackendProducesProgramReflection` compiles deterministic disk program bytes into loaded program data, reports import policy, stage, bytecode hash, input layout, and texture slot reflection identity, feeds the RHI pipeline bridge, and rejects unknown backend or policy mismatch |
+| Cooked shader stage modules | PASS | `RuntimeAssetData_CookedShaderStagePayloadsCreateRhiModules` creates RHI shader modules from owned cooked stage bytecode and validates stage payload identity |
+| Cooked program reflection/input layout | PASS | `RuntimeAssetData_CookedProgramPipelineUsesLoadedReflectionAndInputLayout` builds the cooked program pipeline from loaded reflection and input-layout data |
+| Cooked shader mismatch no-mutation | PASS | `RuntimeAssetData_CookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation` rejects stage bytecode hash and reflection mismatch before mutating Resource/Asset/RHI output |
+| Cooked shader partial RHI cleanup | PASS | `RuntimeAssetData_CookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles` destroys transient RHI handles on partial program creation failure |
 | Scene camera family failures | PASS | `RuntimeAssetData_SceneAnimationLoaderRejectsCameraFamilyFailuresWithoutMutation` validates duplicate active camera, no active camera, invalid camera row, and invalid entity camera ref failures without Resource/Asset/RenderScene output mutation |
 | Mesh/material/texture cook payloads | PASS | `RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture` stores decoded payload records for seven decodable runtime records |
 | RenderScene records | PASS | loaded handles feed cube/cylinder/cone geometry, shared material, camera, and frame records |
@@ -274,8 +278,9 @@ C++ in-memory construction alone.
 
 These slices are not a complete asset system. Current RuntimeAssetData coverage
 accepts decoded mesh payload geometry buffers, decoded texture material slots,
-loaded shader bytecode, shader compiler backend identity, cooked shader
-payloads, disk animation sampling, staged scene loader output, package/cook/run,
+loaded shader bytecode, shader compiler backend identity, cooked shader module
+creation, cooked reflection/input-layout bridge, cooked shader no-mutation
+failures, disk animation sampling, staged scene loader output, package/cook/run,
 and product-run smoke as the current mainline closed loop. The remaining work is
 production hardening for render material constant binding, broader material
 variants, non-fixture shader compiler integration, broader shader reflection
