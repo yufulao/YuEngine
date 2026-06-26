@@ -25,6 +25,12 @@ Stop optimizing for: UE/Unity ecosystem breadth
 Optimize for: a clean internal commercial engine for one known game team
 ```
 
+Focused-first verification is the default for direct-main slices. Use
+`Tools/RunFocusedTests.ps1` to list or run named tests, module labels, or labels
+derived from changed paths before considering any broad CTest surface. Full
+CTest gates are reserved for explicit quality, release, or shared-contract
+decisions.
+
 UE and Unity remain reference engines for responsibility boundaries, failure
 models, production tooling, and performance discipline. YuEngine should not
 copy their public ecosystem, universal plugin surface, editor extension market,
