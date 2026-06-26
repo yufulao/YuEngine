@@ -402,6 +402,8 @@ constexpr const char *TEST_SCENE_ANIMATION_REFS_NO_MUTATION =
     "RuntimeAssetData_SceneAnimationLoaderRejectsMissingRefsWithoutMutation";
 constexpr const char *TEST_SCENE_ANIMATION_INVALID_RECORDS_NO_MUTATION =
     "RuntimeAssetData_SceneAnimationLoaderRejectsInvalidRecordsWithoutMutation";
+constexpr const char *TEST_SCENE_CAMERA_FAMILY_NO_MUTATION =
+    "RuntimeAssetData_SceneAnimationLoaderRejectsCameraFamilyFailuresWithoutMutation";
 constexpr const char *TEST_SCENE_ANIMATION_PATH_INDEPENDENT =
     "RuntimeAssetData_SceneAnimationLoaderPathIndependentSceneAnimationDetection";
 constexpr const char *TEST_DECODED_PAYLOADS =
@@ -7326,6 +7328,46 @@ int RuntimeAssetDataSceneAnimationLoaderRejectsInvalidRecordsWithoutMutation() {
     return 0;
 }
 
+int RuntimeAssetDataSceneAnimationLoaderRejectsCameraFamilyFailuresWithoutMutation() {
+    if (!ProbeBoundedFailureCase(
+            "BoundedDuplicateActiveCameraNoMutation",
+            ReplaceFirst(BoundedSceneBytes(), "camera0=11:inactive", "camera0=11:active"),
+            BoundedAnimationBytes(),
+            RuntimeAssetDataStatus::DuplicateDependency)) {
+        return Fail("bounded duplicate active camera failure mutated outputs");
+    }
+
+    if (!ProbeBoundedFailureCase(
+            "BoundedNoActiveCameraNoMutation",
+            ReplaceFirst(BoundedSceneBytes(), "camera1=12:active", "camera1=12:inactive"),
+            BoundedAnimationBytes(),
+            RuntimeAssetDataStatus::MissingDependency)) {
+        return Fail("bounded no active camera failure mutated outputs");
+    }
+
+    if (!ProbeBoundedFailureCase(
+            "BoundedInvalidCameraRowNoMutation",
+            ReplaceFirst(BoundedSceneBytes(), "camera1=12:active", "camera1=12:maybe"),
+            BoundedAnimationBytes(),
+            RuntimeAssetDataStatus::InvalidDependency)) {
+        return Fail("bounded invalid camera row failure mutated outputs");
+    }
+
+    const char *valid_camera_ref =
+        "camera=1|animation_ref=0|sort=10";
+    const char *invalid_camera_ref =
+        "camera=2|animation_ref=0|sort=10";
+    if (!ProbeBoundedFailureCase(
+            "BoundedInvalidCameraRefNoMutation",
+            ReplaceFirst(BoundedSceneBytes(), valid_camera_ref, invalid_camera_ref),
+            BoundedAnimationBytes(),
+            RuntimeAssetDataStatus::InvalidDependency)) {
+        return Fail("bounded invalid camera ref failure mutated outputs");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataSceneAnimationLoaderPathIndependentSceneAnimationDetection() {
     constexpr const char *scene_path = "Scene/BoundedScene.payload";
     constexpr const char *animation_path = "Animation/BoundedAnimation.payload";
@@ -9742,6 +9784,8 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataSceneAnimationLoaderRejectsMissingRefsWithoutMutation},
     {TEST_SCENE_ANIMATION_INVALID_RECORDS_NO_MUTATION,
      RuntimeAssetDataSceneAnimationLoaderRejectsInvalidRecordsWithoutMutation},
+    {TEST_SCENE_CAMERA_FAMILY_NO_MUTATION,
+     RuntimeAssetDataSceneAnimationLoaderRejectsCameraFamilyFailuresWithoutMutation},
     {TEST_SCENE_ANIMATION_PATH_INDEPENDENT,
      RuntimeAssetDataSceneAnimationLoaderPathIndependentSceneAnimationDetection},
     {TEST_DECODED_PAYLOADS, RuntimeAssetDataCookStoresDecodedPayloadsForMeshMaterialTexture},

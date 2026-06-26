@@ -256,6 +256,7 @@ C++ in-memory construction alone.
 | Mesh vertex/index payload policy | PASS | `RuntimeAssetData_MeshPayloadPolicyRejectsSizeHashAndSplitMismatch` validates bounded mesh payload bytes, payload alignment, payload hash, and vertex/index split sums for generated source and cooked mesh files |
 | Material parameter semantics | PASS | `RuntimeAssetData_MaterialParameterSemanticsLoadIntoRuntimeRecords` validates and loads base color RGBA, emissive strength, metallic, roughness, opacity, alpha mode, and parameter count from disk material records |
 | Shader import policy | PASS | `RuntimeAssetData_ShaderImportPolicyValidatesSourceCookedAndLoadedRecords` validates source/cooked shader import language, target, entries, profiles, compile flags, and loaded record policy identity |
+| Scene camera family failures | PASS | `RuntimeAssetData_SceneAnimationLoaderRejectsCameraFamilyFailuresWithoutMutation` validates duplicate active camera, no active camera, invalid camera row, and invalid entity camera ref failures without Resource/Asset/RenderScene output mutation |
 | Mesh/material/texture cook payloads | PASS | `RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture` stores decoded payload records for seven decodable runtime records |
 | RenderScene records | PASS | loaded handles feed cube/cylinder/cone geometry, shared material, camera, and frame records |
 | RenderCore/RHI capture | PASS | `RuntimeAssetData_RenderClosedLoop_CapturesCubeCylinderConeThroughRhi` |
@@ -269,7 +270,7 @@ and product-run smoke as the current mainline closed loop. The remaining work is
 production hardening for real mesh vertex/index layout decoding, real shader
 compiler backend integration, broader shader reflection semantics, render
 material constant binding, broader material variants, and scene/animation/camera
-family coverage beyond the canonical cube/cylinder/cone graph.
+production variants beyond the canonical cube/cylinder/cone graph.
 
 ## Validator, Cook, Load, Render
 

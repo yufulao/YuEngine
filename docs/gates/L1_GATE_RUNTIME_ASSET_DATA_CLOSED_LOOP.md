@@ -316,6 +316,7 @@ supersede with approved equivalents:
 - `RuntimeAssetData_DiskAnimationSamplingFeedsSceneTransforms`
 - `RuntimeAssetData_SceneLoaderRejectsInvalidEntityWithoutOutputMutation`
 - `RuntimeAssetData_SceneLoaderRejectsInvalidKeyframesWithoutOutputMutation`
+- `RuntimeAssetData_SceneAnimationLoaderRejectsCameraFamilyFailuresWithoutMutation`
 - `RuntimeAssetData_DecodedTexturePayloadsDriveRhiMaterialSlots`
 - `RuntimeAssetData_TextureMaterialSlotBridgeFailuresDoNotMutateRenderSceneOutputs`
 - `RuntimeAssetData_PackageCookRunSmokeRunsPackagedRuntimeEntryPoint`
@@ -335,7 +336,8 @@ This gate records these mainline implementation slices:
 | RAV1-G | Mesh vertex/index payload policy | PASS; source/cooked mesh files carry bounded payload bytes, alignment, hash, and vertex/index split validation |
 | RAV1-H | Material parameter semantics | PASS; source/cooked material files validate and load base color RGBA, emissive strength, metallic, roughness, opacity, alpha mode, and parameter count |
 | RAV1-I | Shader import policy | PASS; source/cooked shader files validate import language, target, entries, profiles, compile flags, and loaded policy identity before RHI bridge |
-| Next slice | Production hardening | real mesh layout/topology decoding, real shader compiler backend, broader shader reflection semantics, render material constant binding, broader material variants, broader scene/animation/camera families |
+| RAV1-J | Scene camera family failure diagnostics | PASS; bounded scene camera table duplicate active, missing active, invalid row, and invalid entity camera ref failures return exact status without output mutation |
+| Next slice | Production hardening | real mesh layout/topology decoding, real shader compiler backend, broader shader reflection semantics, render material constant binding, broader material variants, broader scene/animation production variants |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer
