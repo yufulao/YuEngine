@@ -963,6 +963,11 @@ struct RuntimeAssetPackagedRunRequest final {
     std::uint64_t animation_clip_start_time_nanoseconds = 0U;
     std::span<std::uint8_t> scratch_bytes{};
     std::span<std::uint8_t> capture_output{};
+    std::span<RuntimeAssetRenderSceneGeometryBinding> generic_geometry_bindings{};
+    std::span<RuntimeAssetRenderSceneMaterialBinding> generic_material_bindings{};
+    std::span<yuengine::renderscene::RenderSceneRuntimeFrameEntityRequest> generic_frame_entities{};
+    std::span<yuengine::renderscene::RenderSceneRuntimeMaterialRecord> generic_frame_materials{};
+    std::span<yuengine::renderscene::RenderSceneRuntimeFrameDrawRecord> generic_draws{};
     std::size_t capture_byte_budget_per_entity = 0U;
     std::uint32_t first_frame_id = 0U;
     std::uint32_t visual_frame_count = 1U;
@@ -982,6 +987,7 @@ struct RuntimeAssetPackagedRunResult final {
         yuengine::package::PackageStatus::NotFound;
     RuntimeAssetGraphLoadResult graph_load_result{};
     RuntimeAssetVisualProofResult visual_proof_result{};
+    RuntimeAssetRenderSceneSubmissionResult generic_submission_result{};
     yuengine::kernel::RuntimeAppRunResult runtime_app_result{};
     std::uint32_t package_load_plan_record_count = 0U;
     std::uint32_t loaded_file_count = 0U;
@@ -993,6 +999,7 @@ struct RuntimeAssetPackagedRunResult final {
     bool resource_asset_registration_success = false;
     bool shader_program_decoded = false;
     bool render_scene_render_core_rhi_success = false;
+    bool generic_render_scene_submission_success = false;
     bool runtime_app_frame_loop_success = false;
     bool packaged_runtime_entrypoint_available = false;
 };

@@ -86,6 +86,9 @@ using yuengine::resourcebrowser::ResourceBrowserDependencyState;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceDocumentKind;
 using yuengine::resourcebrowser::ResourceBrowserSurfacePreviewState;
 using yuengine::resourcebrowser::ResourceBrowserSurfaceSelectionState;
+using yuengine::renderscene::RenderSceneRuntimeFrameDrawRecord;
+using yuengine::renderscene::RenderSceneRuntimeFrameEntityRequest;
+using yuengine::renderscene::RenderSceneRuntimeMaterialRecord;
 using yuengine::rhi::IRhiDevice;
 using yuengine::rhi::NullRhiDevice;
 using yuengine::rhi::RhiBlendStateDesc;
@@ -134,6 +137,8 @@ using yuengine::runtimeasset::RuntimeAssetPackageArtifactProductRunMissingLayer;
 using yuengine::runtimeasset::RuntimeAssetPackageArtifactProductRunRequest;
 using yuengine::runtimeasset::RuntimeAssetPackagedRunBlockedLayer;
 using yuengine::runtimeasset::RuntimeAssetPackagedRunRequest;
+using yuengine::runtimeasset::RuntimeAssetRenderSceneGeometryBinding;
+using yuengine::runtimeasset::RuntimeAssetRenderSceneMaterialBinding;
 using yuengine::runtimeasset::RuntimeAssetSceneCameraRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneEntityRecord;
 using yuengine::runtimeasset::RuntimeAssetSceneLoaderOutput;
@@ -919,6 +924,14 @@ struct ProductRunContext final {
     RuntimeAssetLoadedShaderProgramData shader_program{};
     std::array<std::uint8_t, 16U> scratch_bytes{};
     std::array<std::uint8_t, TOTAL_CAPTURE_BYTES * 2U> capture_bytes{};
+    std::array<RuntimeAssetRenderSceneGeometryBinding, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        generic_geometry_bindings{};
+    std::array<RuntimeAssetRenderSceneMaterialBinding, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        generic_material_bindings{};
+    std::array<RenderSceneRuntimeFrameEntityRequest, 3U> generic_frame_entities{};
+    std::array<RenderSceneRuntimeMaterialRecord, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        generic_frame_materials{};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 3U> generic_draws{};
 };
 
 bool BuildRuntimeAssetPackageEntryDescriptor(
@@ -1030,6 +1043,21 @@ RuntimeAssetPackagedRunRequest BuildPackagedRunRequest(ProductRunContext *contex
     request.animation_frame_context.phase = RuntimeFramePhase::LoadOrCommitResources;
     request.scratch_bytes = context->scratch_bytes;
     request.capture_output = context->capture_bytes;
+    request.generic_geometry_bindings = std::span<RuntimeAssetRenderSceneGeometryBinding>(
+        context->generic_geometry_bindings.data(),
+        context->generic_geometry_bindings.size());
+    request.generic_material_bindings = std::span<RuntimeAssetRenderSceneMaterialBinding>(
+        context->generic_material_bindings.data(),
+        context->generic_material_bindings.size());
+    request.generic_frame_entities = std::span<RenderSceneRuntimeFrameEntityRequest>(
+        context->generic_frame_entities.data(),
+        context->generic_frame_entities.size());
+    request.generic_frame_materials = std::span<RenderSceneRuntimeMaterialRecord>(
+        context->generic_frame_materials.data(),
+        context->generic_frame_materials.size());
+    request.generic_draws = std::span<RenderSceneRuntimeFrameDrawRecord>(
+        context->generic_draws.data(),
+        context->generic_draws.size());
     request.capture_byte_budget_per_entity = CAPTURE_BYTES_PER_ENTITY;
     request.first_frame_id = 9700U;
     request.visual_frame_count = 2U;

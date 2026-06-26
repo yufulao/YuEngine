@@ -525,6 +525,12 @@ constexpr const char *TEST_COOKED_VISUAL_PROOF_MISSING_LAYERS =
     "RuntimeAssetData_CookedRuntimeVisualProofReportsExactMissingLayers";
 constexpr const char *TEST_PACKAGE_COOK_RUN_SMOKE =
     "RuntimeAssetData_PackageCookRunSmokeRunsPackagedRuntimeEntryPoint";
+constexpr const char *TEST_PACKAGE_RUN_GENERIC_SUBMISSION_LEDGER =
+    "RuntimeAssetData_PackageRunEmitsGenericRenderSceneSubmissionLedger";
+constexpr const char *TEST_PRODUCT_RUN_GENERIC_SUBMISSION_LEDGER =
+    "RuntimeAssetData_ProductRunCommandReportsGenericRenderSceneSubmissionLedger";
+constexpr const char *TEST_PACKAGE_RUN_GENERIC_SUBMISSION_CAPACITY =
+    "RuntimeAssetData_PackageRunRejectsGenericSubmissionCapacityWithoutMutation";
 constexpr const char *TEST_PACKAGE_ARTIFACT_PRODUCT_RUN =
     "RuntimeAssetData_PackageArtifactCookRunSmokeRunsProductRuntimeEntryPoint";
 constexpr const char *TEST_PRODUCT_RUN_COMMAND =
@@ -4700,6 +4706,14 @@ struct CookedVisualProofContext final {
     RuntimeAssetRhiDevice device;
     std::array<std::uint8_t, RUNTIME_TEXTURE_BYTE_COUNT> scratch_bytes{};
     std::array<std::uint8_t, TOTAL_CAPTURE_BYTES * 2U> capture_bytes{};
+    std::array<RuntimeAssetRenderSceneGeometryBinding, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        generic_geometry_bindings{};
+    std::array<RuntimeAssetRenderSceneMaterialBinding, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        generic_material_bindings{};
+    std::array<RenderSceneRuntimeFrameEntityRequest, 3U> generic_frame_entities{};
+    std::array<RenderSceneRuntimeMaterialRecord, RUNTIME_ASSET_DETERMINISTIC_FIXTURE_FILE_COUNT>
+        generic_frame_materials{};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 3U> generic_draws{};
 };
 
 bool DecodeCookedVisualProofShader(CookedVisualProofContext *context) {
@@ -5029,6 +5043,21 @@ RuntimeAssetPackagedRunRequest BuildPackagedRunRequest(CookedVisualProofContext 
     request.animation_frame_context.phase = RuntimeFramePhase::LoadOrCommitResources;
     request.scratch_bytes = std::span<std::uint8_t>(context.scratch_bytes.data(), context.scratch_bytes.size());
     request.capture_output = std::span<std::uint8_t>(context.capture_bytes.data(), context.capture_bytes.size());
+    request.generic_geometry_bindings = std::span<RuntimeAssetRenderSceneGeometryBinding>(
+        context.generic_geometry_bindings.data(),
+        context.generic_geometry_bindings.size());
+    request.generic_material_bindings = std::span<RuntimeAssetRenderSceneMaterialBinding>(
+        context.generic_material_bindings.data(),
+        context.generic_material_bindings.size());
+    request.generic_frame_entities = std::span<RenderSceneRuntimeFrameEntityRequest>(
+        context.generic_frame_entities.data(),
+        context.generic_frame_entities.size());
+    request.generic_frame_materials = std::span<RenderSceneRuntimeMaterialRecord>(
+        context.generic_frame_materials.data(),
+        context.generic_frame_materials.size());
+    request.generic_draws = std::span<RenderSceneRuntimeFrameDrawRecord>(
+        context.generic_draws.data(),
+        context.generic_draws.size());
     request.capture_byte_budget_per_entity = CAPTURE_BYTES_PER_ENTITY;
     request.first_frame_id = FRAME_ID + 700U;
     request.visual_frame_count = 2U;
@@ -5619,6 +5648,190 @@ int RuntimeAssetDataPackageCookRunSmokeRunsPackagedRuntimeEntryPoint() {
             run.runtime_app_completed_frame_count,
             static_cast<unsigned>(run.runtime_app_result.last_frame_context.phase));
         return Fail("package smoke RuntimeApp frame-loop floor failed");
+    }
+
+    return 0;
+}
+
+bool ExpectGenericRenderSceneSubmissionLedger(
+    const RuntimeAssetPackagedRunResult &run,
+    const char *label) {
+    const RuntimeAssetRenderSceneSubmissionResult &ledger = run.generic_submission_result;
+    if (!run.generic_render_scene_submission_success ||
+        ledger.status != RuntimeAssetDataStatus::Success ||
+        ledger.frame_status != RenderSceneRuntimeFrameStatus::Success ||
+        ledger.frame_id == 0U ||
+        ledger.submitted_entity_count != 3U ||
+        ledger.skipped_entity_count != 0U ||
+        ledger.output_draw_count != 3U ||
+        ledger.resolved_geometry_count != 3U ||
+        ledger.resolved_material_count != 1U ||
+        ledger.material_variant_count != 1U ||
+        ledger.material_table_count != 1U ||
+        ledger.shared_material_ref_index == 0xFFFFFFFFU) {
+        std::fprintf(
+            stderr,
+            "%s generic=%u status=%s frame=%u submitted=%u draws=%u geom=%u mat=%u variants=%u table=%u shared=%u\n",
+            label,
+            run.generic_render_scene_submission_success ? 1U : 0U,
+            StatusName(ledger.status),
+            static_cast<unsigned>(ledger.frame_status),
+            ledger.submitted_entity_count,
+            ledger.output_draw_count,
+            ledger.resolved_geometry_count,
+            ledger.resolved_material_count,
+            ledger.material_variant_count,
+            ledger.material_table_count,
+            ledger.shared_material_ref_index);
+        return false;
+    }
+
+    return true;
+}
+
+int RuntimeAssetDataPackageRunEmitsGenericRenderSceneSubmissionLedger() {
+    PackageCookRunSmokeLedger ledger{};
+    CookedVisualProofContext context{};
+    if (!ExecuteGeneratedFixtureCommand("PackageRunGenericSubmissionLedger", &context.fixture)) {
+        return Fail("package generic submission ledger fixture setup failed");
+    }
+
+    if (!BuildRuntimeAssetCookedPackagePlan(context, &ledger)) {
+        return Fail("package generic submission ledger package plan failed");
+    }
+
+    if (context.device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("package generic submission ledger rhi init failed");
+    }
+
+    RuntimeAssetPackagedRunRequest request = BuildPackagedRunRequest(context, ledger);
+    RuntimeAssetPackagedRunResult run{};
+    const RuntimeAssetDataStatus status = RunRuntimeAssetPackagedEntryPoint(request, &run);
+    if (status != RuntimeAssetDataStatus::Success ||
+        run.status != RuntimeAssetDataStatus::Success ||
+        run.blocked_layer != RuntimeAssetPackagedRunBlockedLayer::None) {
+        std::fprintf(
+            stderr,
+            "status=%s result=%s layer=%s\n",
+            StatusName(status),
+            StatusName(run.status),
+            PackagedRunBlockedLayerName(run.blocked_layer));
+        return Fail("package generic submission ledger run failed");
+    }
+
+    if (!ExpectGenericRenderSceneSubmissionLedger(run, "package run")) {
+        return Fail("package run did not expose generic submission ledger");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataProductRunCommandReportsGenericRenderSceneSubmissionLedger() {
+    PackageCookRunSmokeLedger ledger{};
+    CookedVisualProofContext context{};
+    if (!ExecuteGeneratedFixtureCommand("ProductRunGenericSubmissionLedger", &context.fixture)) {
+        return Fail("product generic submission ledger fixture setup failed");
+    }
+
+    if (!BuildRuntimeAssetCookedPackagePlan(context, &ledger)) {
+        return Fail("product generic submission ledger package plan failed");
+    }
+
+    if (context.device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("product generic submission ledger rhi init failed");
+    }
+
+    RuntimeAssetPackageArtifactProductRunRequest request =
+        BuildProductRunCommandRequest(context, ledger);
+    RuntimeAssetPackageArtifactProductRunResult result{};
+    const RuntimeAssetDataStatus status =
+        RunRuntimeAssetPackageArtifactProductCommand(request, &result);
+    if (status != RuntimeAssetDataStatus::Success ||
+        result.status != RuntimeAssetDataStatus::Success ||
+        result.missing_layer != RuntimeAssetPackageArtifactProductRunMissingLayer::None) {
+        std::fprintf(
+            stderr,
+            "status=%s result=%s layer=%u\n",
+            StatusName(status),
+            StatusName(result.status),
+            static_cast<unsigned>(result.missing_layer));
+        return Fail("product generic submission ledger command failed");
+    }
+
+    if (!ExpectGenericRenderSceneSubmissionLedger(result.packaged_run, "product run")) {
+        return Fail("product run did not expose generic submission ledger");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataPackageRunRejectsGenericSubmissionCapacityWithoutMutation() {
+    PackageCookRunSmokeLedger ledger{};
+    CookedVisualProofContext context{};
+    if (!ExecuteGeneratedFixtureCommand("PackageRunGenericSubmissionCapacity", &context.fixture)) {
+        return Fail("package generic submission capacity fixture setup failed");
+    }
+
+    if (!BuildRuntimeAssetCookedPackagePlan(context, &ledger)) {
+        return Fail("package generic submission capacity package plan failed");
+    }
+
+    if (context.device.Initialize(RhiDeviceDesc{}) != RhiStatus::Success) {
+        return Fail("package generic submission capacity rhi init failed");
+    }
+
+    SeedGenericRenderSceneSubmissionSentinels(
+        std::span<RenderSceneRuntimeFrameEntityRequest>(
+            context.generic_frame_entities.data(),
+            context.generic_frame_entities.size()),
+        std::span<RenderSceneRuntimeFrameDrawRecord>(
+            context.generic_draws.data(),
+            context.generic_draws.size()));
+    SeedGenericRenderSceneSubmissionMaterialSentinels(
+        std::span<RenderSceneRuntimeMaterialRecord>(
+            context.generic_frame_materials.data(),
+            context.generic_frame_materials.size()));
+
+    RuntimeAssetPackagedRunRequest request = BuildPackagedRunRequest(context, ledger);
+    request.generic_frame_materials =
+        std::span<RenderSceneRuntimeMaterialRecord>(context.generic_frame_materials.data(), 0U);
+
+    RuntimeAssetPackagedRunResult run{};
+    const RuntimeAssetDataStatus status = RunRuntimeAssetPackagedEntryPoint(request, &run);
+    if (status != RuntimeAssetDataStatus::CapacityExceeded ||
+        run.status != RuntimeAssetDataStatus::CapacityExceeded ||
+        run.blocked_layer != RuntimeAssetPackagedRunBlockedLayer::RenderSceneRenderCoreRhi ||
+        run.generic_render_scene_submission_success ||
+        run.generic_submission_result.status != RuntimeAssetDataStatus::CapacityExceeded ||
+        run.generic_submission_result.frame_status != RenderSceneRuntimeFrameStatus::OutputCapacityExceeded ||
+        run.packaged_runtime_entrypoint_available) {
+        std::fprintf(
+            stderr,
+            "status=%s result=%s layer=%s generic=%u frame=%u available=%u\n",
+            StatusName(status),
+            StatusName(run.status),
+            PackagedRunBlockedLayerName(run.blocked_layer),
+            run.generic_render_scene_submission_success ? 1U : 0U,
+            static_cast<unsigned>(run.generic_submission_result.frame_status),
+            run.packaged_runtime_entrypoint_available ? 1U : 0U);
+        return Fail("package generic submission capacity was not rejected by ledger");
+    }
+
+    if (!GenericRenderSceneSubmissionSentinelsUnchanged(
+            std::span<const RenderSceneRuntimeFrameEntityRequest>(
+                context.generic_frame_entities.data(),
+                context.generic_frame_entities.size()),
+            std::span<const RenderSceneRuntimeFrameDrawRecord>(
+                context.generic_draws.data(),
+                context.generic_draws.size()))) {
+        return Fail("package generic submission capacity mutated frame outputs");
+    }
+
+    if (!GenericRenderSceneSubmissionMaterialSentinelsUnchanged(
+            std::span<const RenderSceneRuntimeMaterialRecord>(
+                context.generic_frame_materials.data(),
+                context.generic_frame_materials.size()))) {
+        return Fail("package generic submission capacity mutated material outputs");
     }
 
     return 0;
@@ -12493,6 +12706,12 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataCookedRuntimeVisualProofReportsExactMissingLayers},
     {TEST_PACKAGE_COOK_RUN_SMOKE,
      RuntimeAssetDataPackageCookRunSmokeRunsPackagedRuntimeEntryPoint},
+    {TEST_PACKAGE_RUN_GENERIC_SUBMISSION_LEDGER,
+     RuntimeAssetDataPackageRunEmitsGenericRenderSceneSubmissionLedger},
+    {TEST_PRODUCT_RUN_GENERIC_SUBMISSION_LEDGER,
+     RuntimeAssetDataProductRunCommandReportsGenericRenderSceneSubmissionLedger},
+    {TEST_PACKAGE_RUN_GENERIC_SUBMISSION_CAPACITY,
+     RuntimeAssetDataPackageRunRejectsGenericSubmissionCapacityWithoutMutation},
     {TEST_SCENE_ANIMATION_PACKAGE_OUTPUT_TABLES,
      RuntimeAssetDataPackageRunEmitsReusableRuntimeAnimationTables},
     {TEST_PACKAGE_ARTIFACT_PRODUCT_RUN,
