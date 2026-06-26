@@ -277,7 +277,7 @@ Current first-slice status:
 | 3. invalid-bounds no-output validator | PASS |
 | 4. dependency missing/duplicate validator | PASS |
 | 5. loader uses File/VFS/Resource | PASS |
-| 6. scene references mesh/material/texture/shader | PASS for smoke; camera/animation are checked as scene tokens and need fuller typed descriptor records |
+| 6. scene references mesh/material/texture/shader/camera/animation | PASS; scene camera records and bounded animation clip/track/keyframe tables are parsed, validated, loaded, sampled, and applied through typed runtime records |
 | 7. loaded data creates RenderScene runtime records | PASS |
 | 8. mesh/material/texture decoded payload records | PASS |
 | 9. Resource/Asset dependency edges | PASS |

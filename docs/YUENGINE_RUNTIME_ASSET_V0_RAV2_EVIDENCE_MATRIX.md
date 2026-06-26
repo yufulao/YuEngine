@@ -4,7 +4,7 @@ Status: evidence package for RAV2 review
 Owner: Architecture / Evidence
 Task: #67
 Baseline: RAV1 implementation package `origin/main@d1a1b86`
-Current accepted anchor: `origin/main@30be48c`
+Current accepted anchor: `origin/main@22f8652`
 Review gate: task #68
 
 ## Purpose
@@ -52,6 +52,7 @@ is opened.
 | Preview Host wiring to command/cook outputs | PASS | `PreviewHost_ConsumesResourceBrowserImporterCommitOutputs` combines importer commit selection with `PreviewHostCommandOutputRef` and RHI capture in one frame. |
 | ExternalAuthoring bridge rows into Resource Browser commit | PASS | `4e2cfe8` proves actual `BuildExternalAuthoringRuntimeAssetImportBridge` output rows can feed Resource Browser importer commit, then load cooked RuntimeAsset graph through Resource/Asset mutation. |
 | Cooked RuntimeAsset structural visual route | PASS | #66 proves cooked records from #63 import/cook outputs can feed RuntimeAsset validation, scene loader + animation sampling, cooked texture/material/shader payload bridges, RenderScene, RenderCore, and RHI capture route in fast gate. |
+| Typed scene camera/animation descriptor records | PASS | Scene `cameras=`/`cameraN=` records and animation `clips=`/`tracks=`/`keyframes=` tables are parsed, validated, loaded, sampled, and applied through RuntimeAsset/Animation/World records. |
 | D3D11 texture/render-core hardware smoke support | PASS | Existing D3D11 texture sampling and RenderCore drawable-frame texture capture hardware smoke tests pass as supporting evidence. |
 | Device-backed RuntimeAsset route final closure | PASS | `RuntimeAssetData_D3D11Hardware_CookedRecordsDriveDeviceBackedVisualProof` directly runs the cooked RuntimeAsset route on D3D11 hardware and verifies RenderScene/RenderCore/RHI submit/present/capture ledger on this machine. |
 | Editor surface completion | NOT STARTED | Scene Editor, Animation Editor, UI Editor, Resource Browser UI, native editor shell, and packaging workflow are not complete. |
@@ -225,6 +226,33 @@ Accepted scope:
 Boundary: hardware-smoke tests keep `SKIP_RETURN_CODE 77`; on an unsupported
 machine this must be reported as hardware environment skip/blocker, not counted
 as semantic runtime/data closure failure and not silently called PASS.
+
+### Main Trunk Typed Camera/Animation Descriptor Closure
+
+Anchor base: `origin/main@22f8652`
+
+Focused command run by architecture:
+
+```powershell
+ctest --preset windows-fast-gate -R "RuntimeAssetData_(SceneCameraAnimationDependencyValidatorRejectsTypeMismatchWithoutMutation|AnimationDependencyValidatorRejectsMissingDuplicateAndTypeMismatchRefs|DiskAnimationSamplingFeedsSceneTransforms|SceneAnimationLoaderLoadsBoundedNEntityScene|SceneAnimationLoaderRejectsEntityCapacityOverflowWithoutMutation|SceneAnimationLoaderRejectsMissingRefsWithoutMutation|SceneAnimationLoaderRejectsInvalidRecordsWithoutMutation|SceneAnimationLoaderPathIndependentSceneAnimationDetection|ShaderSceneAnimationRequireSourceSchema)" --output-on-failure
+```
+
+Result: RuntimeAsset camera/animation descriptor focused tests PASS 9/9.
+
+Accepted scope:
+
+- scene source supports typed `cameras=` and `cameraN=` records;
+- bounded scene loader validates entity camera indices and typed dependency
+  refs before output mutation;
+- animation source supports bounded `clips=`, `tracks=`, and `keyframes=`
+  tables;
+- animation tracks validate target entity refs, channel, interpolation, keyframe
+  ranges, time bounds, and target availability;
+- Animation sampler and transform apply feed RuntimeAsset scene transform output
+  records consumed by RenderScene/RuntimeAsset visual routes.
+
+Boundary: this does not add an editor animation timeline, external authoring
+importer, or original package animation parser.
 
 ### Main Trunk ExternalAuthoring -> ResourceBrowser Commit Closure
 
