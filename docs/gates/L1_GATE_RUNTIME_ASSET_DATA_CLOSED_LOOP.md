@@ -14,8 +14,8 @@ RAV1 evidence matrix: `docs/YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md`
 RAV3-F package/cook/run smoke gate: `docs/YUENGINE_RUNTIME_ASSET_PACKAGE_COOK_RUN_SMOKE_GATE.md`
 Depends on:
 
-- task #71 `RVF Recovery 0: restore clean windows-fast-gate configure/build/test`
-- task #72 `RVF Recovery 1: produce runtime visual evidence matrix for current RVF implementation`
+- clean `main` configure/build/test baseline
+- current runtime visual evidence matrix
 - File/VFS, Resource, Package, Asset, RenderScene, RenderCore, RHI, World,
   Animation, and runtime visual foundation contracts already accepted or
   explicitly blocked by name
@@ -254,8 +254,8 @@ The implementation must prove the following in order:
     editor, Web, UI, input, GDI viewer, or software raster dependency is part of
     the closed-loop proof.
 
-RAV1-C adds the required production payload bridge proof shape for later
-implementation:
+RAV1-C through the current product-run slices now provide the required payload
+bridge proof shape for this closed-loop slice:
 
 13. cooked texture payload records carry descriptor, row-pitch, byte-count,
     alignment, and hash ownership before RHI texture creation;
@@ -270,7 +270,7 @@ implementation:
     Resource/Asset transactions, RenderScene outputs, and published RHI handles
     unmutated.
 
-Current first-slice status:
+Current slice status:
 
 | Proof | Status |
 | --- | --- |
@@ -286,9 +286,13 @@ Current first-slice status:
 | 10. RenderCore/RHI capture | PASS |
 | 11. CPU oracle guard | PASS |
 | 12. no editor/Web/UI/input/GDI viewer dependency | PASS |
+| 13. cooked texture/material payload bridge | PASS |
+| 14. cooked shader/program RHI bridge | PASS |
+| 15. scene/animation loader no-mutation failures | PASS |
+| 16. package/product run command smoke | PASS |
 
-RAV0 added additional proof names that RAV1 must keep passing or supersede with
-approved equivalents:
+Current RuntimeAssetData proof names that future slices must keep passing or
+supersede with approved equivalents:
 
 - `RuntimeAssetData_MeshMaterialTextureTypedValidatorsAcceptStructuredMetadata`
 - `RuntimeAssetData_MaterialValidatorRejectsMissingDuplicateAndTypeMismatchRefs`
@@ -308,18 +312,18 @@ approved equivalents:
 - `RuntimeAssetData_TextureMaterialSlotBridgeFailuresDoNotMutateRenderSceneOutputs`
 - `RuntimeAssetData_PackageCookRunSmokeRunsPackagedRuntimeEntryPoint`
 
-## Candidate First Slice
+## Accepted Current Slices And Next Slice
 
-This gate recommends this RAV1 implementation routing after Phase A review:
+This gate records these mainline implementation slices:
 
 | ID | Work item | Acceptance direction |
 | --- | --- | --- |
-| RAV1-A | Production contract and gate | docs-only contract/gate amendment; no runtime implementation approval |
-| RAV1-B | Suffix-free loader transaction design | no path suffix family inference; staged no-mutation transaction semantics |
-| RAV1-C | Cooked texture/material/shader payload bridge plan | decoded texture, material slots, shader bytecode, RHI program route stays loaded-data-owned |
-| RAV1-D | Bounded scene/animation record loader plan | beyond fixed three-entity fixture; explicit capacities and sample/output semantics |
-| RAV1-E | Evidence matrix and acceptance commands | maps current tests, changed paths, off-scope scans, and required commands |
-| RAV1 review gate | Architecture/code/perf/evidence review | required before any implementation authorization |
+| RAV1-A | Production contract and gate | PASS |
+| RAV1-B | Suffix-free loader transaction design | PASS; no path suffix family inference; staged no-mutation transaction semantics |
+| RAV1-C | Cooked texture/material/shader payload bridge | PASS; decoded texture, material slots, shader bytecode, and RHI program route stay loaded-data-owned |
+| RAV1-D | Bounded scene/animation record loader | PASS for canonical cube/cylinder/cone graph; broader family coverage remains hardening |
+| RAV1-E | Evidence matrix and acceptance commands | PASS; current matrix must be kept in sync with `RuntimeAssetData` focused rows |
+| Next slice | Production hardening | first-class camera/tween file, richer mesh payload policy, shader compiler/import policy, broader material parameters |
 
 The slice may split implementation tasks later, but those tasks must stay
 parallelizable by file family or stage and must not authorize upper-layer
@@ -327,11 +331,11 @@ editor or Game Adapter work.
 
 ## Test And Evidence Policy
 
-Implementation evidence for a later approval must include:
+Implementation evidence for the next slice must include:
 
-- clean task #71 configure/build/test baseline before implementation starts;
-- task #72 matrix mapping current RVF layers to reusable, rework, or rejected
-  evidence;
+- clean `main` configure/build/test baseline before implementation starts;
+- current matrix mapping existing RuntimeAssetData layers to reusable, rework,
+  or rejected evidence;
 - changed-path/offscope audit;
 - `git diff --check` for touched files;
 - configure and build for `windows-fast-gate`;
@@ -388,22 +392,23 @@ Before any remaining implementation slice is created:
 2. Engine-reference review confirms the split between file data, resource
    identity, asset runtime records, scene records, render scheduling, and editor
    tooling matches mature-engine responsibility separation.
-3. Evidence review confirms current RVF layers from task #72 are classified
-   correctly and original-game facts do not define the first contract.
+3. Evidence review confirms current RuntimeAssetData layers are classified
+   correctly and original-game facts do not define the current contract.
 4. Performance review approves file-size bounds, dependency graph bounds,
    validator/cook/load capacities, and no hidden allocation/growth on runtime
    frame paths.
 5. Implementability review confirms the tests can be enforced without
    widening lower modules or relying on viewer/image helper output.
-6. PM/final gate state must issue explicit `APPROVED_FOR_FIRST_SLICE` or
-   `APPROVED_FOR_NEXT_SLICE` after the RAV1 review gate closes.
+6. PM/final gate state must keep the current decision at
+   `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_PASS` before the next slice
+   starts.
 
 ## Hard Blocks
 
 The following are blocking violations:
 
-- starting implementation before task #71 and task #72 prerequisites are
-  resolved or explicitly waived in the task thread;
+- starting implementation before the clean `main` baseline and current evidence
+  matrix are resolved or explicitly waived in the task thread;
 - depending on editor, Web, UI, input, Game Adapter, old runtime reports, or
   original package compatibility;
 - using `YuRuntimeVisualCameraTweenViewer`, GDI, software raster, CPU semantic
@@ -424,7 +429,7 @@ This gate stays ready for the next implementation slice when:
 1. this document and the paired plan are committed;
 2. both documents record the current decision
    `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_PASS`;
-3. task #71 and task #72 are listed as prerequisites;
+3. clean `main` baseline and the current matrix are listed as prerequisites;
 4. data families cover mesh, material, texture descriptor/payload reference,
    shader/program descriptor, scene data, and animation clip/sampled transform
    refs;

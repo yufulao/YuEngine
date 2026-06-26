@@ -1,6 +1,6 @@
 # YuEngine Runtime Asset Data Contract Plan
 
-Status: RuntimeAsset module and RAV0 validator/cook/load floors implemented; RAV1 production contract gate in review
+Status: RuntimeAssetData current slice PASS; production hardening remains on main
 Owner: Architecture
 Task: #73 baseline; #50 RAV1 production contract amendment
 Production-gap closure: `docs/YUENGINE_RUNTIME_ASSET_V0_PRODUCTION_GAP_CLOSURE_PLAN.md`
@@ -12,9 +12,9 @@ Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
 Resource Browser scope: `docs/YUENGINE_RESOURCE_BROWSER_IMPORT_COOK_DIAGNOSTICS_SCOPE.md`
 Prerequisites:
 
-- task #71 restores clean configure, build, and test for the main line.
-- task #72 records which current RVF layers can be reused and which must be
-  reworked before they count as runtime asset/data evidence.
+- clean `main` configure, build, and test stay green before each next slice.
+- the runtime visual evidence matrix records which current layers are reusable
+  and which must be reworked before they count as runtime asset/data evidence.
 - user scope correction approved continuing with the first RuntimeAssetData
   implementation slice after the review-only plan and matrix landed.
 
@@ -49,7 +49,8 @@ animation, RenderScene, RenderCore, RHI, and capture floors. The repository also
 has current `RenderSceneRuntimeVisualSceneProofRoute` and RVF tests for the
 cube/cylinder/cone route.
 
-The first smoke, validator, and minimal cook/decode gaps are now partly closed by
+The first smoke, validator, and minimal cook/decode gaps are now closed for the
+current slice by
 `YuRuntimeAsset` plus `YuRuntimeAssetDataClosedLoopTests`: a
 deterministic generator writes mesh/material/texture/shader/scene/animation
 records to disk, `YuRuntimeAsset` reads them through `MountTable`, validates
@@ -60,15 +61,15 @@ captures through RenderCore/RHI. The validator smoke rejects unsupported
 versions, invalid mesh bounds without output mutation, and missing/duplicate
 scene dependencies.
 
-The RAV0 implementation wave then added the first production floors for typed
-family validators, path-independent family detection, shader/program dependency
-validation and RHI pipeline creation from loaded bytecode, decoded texture
-payloads driving material slots, disk animation sampling into scene transforms,
-and deterministic staged scene loader output with no-mutation failure coverage.
-Those floors close the previous "smoke only" blockers, but RAV1 still needs this
-contract and the paired gate to freeze exactly what counts as source artifact,
-cooked artifact, cook/load/render closure, and accepted evidence before further
-implementation waves treat RuntimeAsset v0 as stable.
+Later RAV slices added typed family validators, path-independent family
+detection, shader/program dependency validation and RHI pipeline creation from
+loaded bytecode, cooked shader stage payloads, decoded texture payloads driving
+material slots, disk animation sampling into scene transforms, deterministic
+staged scene loader output, package/cook/run smoke, product-run command
+consumption, and no-mutation failure coverage. These floors close the previous
+"smoke only" blockers for the current slice. The remaining production work is
+hardening, not a reason to reopen editor, Web, UI, input, or external authoring
+scope as acceptance.
 
 The following evidence is useful but insufficient on its own:
 
@@ -255,12 +256,14 @@ C++ in-memory construction alone.
 | CPU oracle guard | PASS | `RuntimeAssetData_CpuPpmOracleDoesNotBypassRhiRenderCore` |
 | Upper-layer dependency guard | PASS | `RuntimeAssetData_DoesNotDependOnEditorWebUiInputOrGdiViewer` |
 
-These slices are not a complete asset system. RAV0 #44/#45/#46 are accepted as
-smoke floors for decoded texture material slots, loaded shader bytecode, disk
-animation sampling, and staged scene loader output. The production cooked
-payload bridge route, transaction boundary, bounded record contracts, and later
-test matrix remain RAV1 planning work; the texture/material/shader route is
-defined in `docs/YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROUTE_PLAN.md`.
+These slices are not a complete asset system. Current RuntimeAssetData coverage
+accepts decoded texture material slots, loaded shader bytecode, cooked shader
+payloads, disk animation sampling, staged scene loader output, package/cook/run,
+and product-run smoke as the current mainline closed loop. The remaining work is
+production hardening for first-class camera/tween files, richer mesh
+vertex/index payload policy, shader compiler/import policy, broader material
+parameter semantics, and scene/animation family coverage beyond the canonical
+cube/cylinder/cone graph.
 
 ## Validator, Cook, Load, Render
 
@@ -321,11 +324,11 @@ contract: it may display source/import/cook state and route commands, but it
 must not redefine RuntimeAssetData file families, validator semantics, Resource
 or Asset ownership, or runtime output records.
 
-## First Review Questions
+## Next Slice Questions
 
-Reviewers should answer these before implementation is authorized:
+Reviewers should answer these before the next implementation slice starts:
 
-1. Which current RVF layers from task #72 can be reused unchanged?
+1. Which current RuntimeAssetData layers can be reused unchanged?
 2. Which RVF layers must be reworked because they are test-side struct
    construction, CPU helper image generation, GDI/software viewer output, or
    non-File/VFS/Resource bypasses?
@@ -335,8 +338,8 @@ Reviewers should answer these before implementation is authorized:
    generated outputs must stay under ignored artifact directories?
 5. Which File/VFS/Resource/Package path owns source bytes, cooked bytes, and
    runtime records in the first slice?
-6. What status names and no-mutation tests are mandatory before the gate can
-   request `APPROVED_FOR_FIRST_SLICE`?
+6. What status names and no-mutation tests are mandatory before the next slice
+   can keep `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_PASS`?
 
 ## Hard Blocks
 
@@ -356,12 +359,12 @@ The following are blocking violations:
 
 ## Exit Criteria
 
-This plan is ready for RAV1-A docs/gate acceptance when:
+This plan is current-slice accepted when:
 
-1. the paired gate records `RAV1_DOCS_GATE_NOT_IMPLEMENTATION_APPROVED`;
-2. implementation split still waits for #51-#55, RAV1 review gate acceptance,
-   and explicit `APPROVED_FOR_FIRST_SLICE` or `APPROVED_FOR_NEXT_SLICE`;
-3. task #71 and task #72 are recorded as prerequisites and remain passing;
+1. the paired gate records `RUNTIME_ASSET_DATA_CLOSED_LOOP_CURRENT_SLICE_PASS`;
+2. implementation stays on `main` and does not require branch-only evidence;
+3. clean configure, build, focused RuntimeAssetData tests, and full fast gate
+   remain passing;
 4. every runtime data family lists version/header, bounds, dependencies,
    deterministic identity/hash/size, coordinate rules, statuses, and validator
    behavior;
