@@ -15,6 +15,7 @@ struct RenderSceneRuntimeFrameRequest final {
     std::uint32_t frame_id = 0U;
     RenderSceneCameraBindingResult camera{};
     RenderSceneRuntimeMaterialRecord material{};
+    std::span<const RenderSceneRuntimeMaterialRecord> materials{};
     std::span<const RenderSceneRuntimeFrameEntityRequest> entities{};
 };
 }

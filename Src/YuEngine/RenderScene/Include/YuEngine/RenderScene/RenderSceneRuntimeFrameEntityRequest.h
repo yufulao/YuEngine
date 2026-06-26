@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "YuEngine/RenderScene/RenderScenePrimitiveGeometryRecord.h"
 #include "YuEngine/World/WorldObjectId.h"
 #include "YuEngine/World/WorldTransformState.h"
@@ -14,5 +16,6 @@ struct RenderSceneRuntimeFrameEntityRequest final {
     RenderScenePrimitiveGeometryRecord geometry{};
     bool is_visible = true;
     bool is_active = true;
+    std::uint32_t material_table_index = 0U;
 };
 }

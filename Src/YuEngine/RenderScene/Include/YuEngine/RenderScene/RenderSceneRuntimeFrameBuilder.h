@@ -29,9 +29,25 @@ private:
     RenderSceneRuntimeFrameStatus ValidateRequest(
         const RenderSceneRuntimeFrameRequest &request,
         std::span<RenderSceneRuntimeFrameDrawRecord> out_draws,
-        std::size_t *out_visible_entity_count) const;
+        std::span<const RenderSceneRuntimeMaterialRecord> materials,
+        std::size_t *out_visible_entity_count,
+        RenderSceneRuntimeFrameResult *out_result) const;
+    RenderSceneRuntimeFrameStatus ValidateMaterials(
+        std::span<const RenderSceneRuntimeMaterialRecord> materials,
+        RenderSceneRuntimeFrameResult *out_result) const;
     RenderSceneRuntimeFrameStatus ValidateEntity(
-        const RenderSceneRuntimeFrameEntityRequest &entity) const;
+        const RenderSceneRuntimeFrameEntityRequest &entity,
+        std::span<const RenderSceneRuntimeMaterialRecord> materials,
+        std::uint32_t entity_index,
+        RenderSceneRuntimeFrameResult *out_result) const;
+    std::span<const RenderSceneRuntimeMaterialRecord> MaterialTableFor(
+        const RenderSceneRuntimeFrameRequest &request) const;
+    const RenderSceneRuntimeMaterialRecord *MaterialForEntity(
+        const RenderSceneRuntimeFrameEntityRequest &entity,
+        std::span<const RenderSceneRuntimeMaterialRecord> materials) const;
+    bool HasDuplicateMaterialId(
+        std::span<const RenderSceneRuntimeMaterialRecord> materials,
+        std::size_t current_index) const;
     bool IsActiveEntity(const RenderSceneRuntimeFrameEntityRequest &entity) const;
     bool HasDuplicateWorldObject(
         const RenderSceneRuntimeFrameRequest &request,

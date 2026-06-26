@@ -427,6 +427,12 @@ constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MISSING_MATERIAL =
     "RuntimeAssetData_GenericRenderSceneSubmissionRejectsMissingMaterialRefWithoutMutation";
 constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_VARIANTS =
     "RuntimeAssetData_GenericRenderSceneSubmissionReportsMaterialVariantsUntilFrameApiSupportsThem";
+constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE =
+    "RuntimeAssetData_GenericRenderSceneSubmissionBuildsPerEntityMaterialTableFromRefs";
+constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE_ORDER =
+    "RuntimeAssetData_GenericRenderSceneSubmissionUsesMaterialRefOrderNotEntityOrder";
+constexpr const char *TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE_CAPACITY =
+    "RuntimeAssetData_GenericRenderSceneSubmissionRejectsSmallMaterialTableWithoutMutation";
 constexpr const char *TEST_PRODUCTION_SCENE_LOADER_OUTPUT =
     "RuntimeAssetData_ProductionSceneLoaderOutputsDeterministicRecords";
 constexpr const char *TEST_DISK_ANIMATION_SAMPLING =
@@ -2295,6 +2301,7 @@ void SeedGenericRenderSceneSubmissionSentinels(
         entity.world_object_id = WorldObjectId{9000U + static_cast<std::uint32_t>(index)};
         entity.transform.translation_x = 9100.0F + static_cast<float>(index);
         entity.geometry.kind = RenderScenePrimitiveGeometryKind::Cone;
+        entity.material_table_index = 9500U + static_cast<std::uint32_t>(index);
         entity.is_visible = false;
         entity.is_active = false;
     }
@@ -2316,6 +2323,7 @@ bool GenericRenderSceneSubmissionSentinelsUnchanged(
         if (entity.world_object_id.value != 9000U + index ||
             !Approx(entity.transform.translation_x, 9100.0F + static_cast<float>(index)) ||
             entity.geometry.kind != RenderScenePrimitiveGeometryKind::Cone ||
+            entity.material_table_index != 9500U + static_cast<std::uint32_t>(index) ||
             entity.is_visible ||
             entity.is_active) {
             return FailStep("generic render scene submission failure mutated entity output");
@@ -2333,6 +2341,40 @@ bool GenericRenderSceneSubmissionSentinelsUnchanged(
     }
 
     return true;
+}
+
+void SeedGenericRenderSceneSubmissionMaterialSentinels(
+    std::span<RenderSceneRuntimeMaterialRecord> materials) {
+    for (std::size_t index = 0U; index < materials.size(); ++index) {
+        RenderSceneRuntimeMaterialRecord &material = materials[index];
+        material.material_id = 9600U + static_cast<std::uint32_t>(index);
+        material.material_constant_byte_count = index;
+    }
+}
+
+bool GenericRenderSceneSubmissionMaterialSentinelsUnchanged(
+    std::span<const RenderSceneRuntimeMaterialRecord> materials) {
+    for (std::size_t index = 0U; index < materials.size(); ++index) {
+        const RenderSceneRuntimeMaterialRecord &material = materials[index];
+        if (material.material_id != 9600U + static_cast<std::uint32_t>(index) ||
+            material.material_constant_byte_count != index) {
+            return FailStep("generic render scene submission failure mutated material output");
+        }
+    }
+
+    return true;
+}
+
+RenderSceneRuntimeMaterialRecord MakeGenericRenderSceneSubmissionVariantMaterial(
+    const RenderSceneRuntimeMaterialRecord &material,
+    std::uint32_t material_id) {
+    RenderSceneRuntimeMaterialRecord variant = material;
+    variant.material_id = material_id;
+    if (variant.material_constant_byte_count > 0U) {
+        ++variant.material_constant_bytes[0U];
+    }
+
+    return variant;
 }
 
 bool BuildPreviewHostResourceBrowserSelection(
@@ -8247,6 +8289,269 @@ int RuntimeAssetDataGenericRenderSceneSubmissionReportsMaterialVariantsUntilFram
     return 0;
 }
 
+int RuntimeAssetDataGenericRenderSceneSubmissionBuildsPerEntityMaterialTableFromRefs() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    RuntimeAssetRhiDevice device;
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneCameraBindingResult camera{};
+    std::array<RuntimeAssetRenderSceneGeometryBinding, 3U> geometry_bindings{};
+    RuntimeAssetRenderSceneMaterialBinding material_binding{};
+    if (!LoadGenericRenderSceneSubmissionInputs(
+            "GenericRenderSceneSubmissionMaterialTable",
+            &table,
+            &registry,
+            &manager,
+            &graph,
+            &device,
+            &geometry,
+            &material,
+            &camera,
+            &geometry_bindings,
+            &material_binding)) {
+        return Fail("generic render scene submission material table inputs failed");
+    }
+
+    std::array<RuntimeAssetSceneEntityRecord, 3U> scene_entities = graph.scene_entities;
+    const std::uint32_t base_material_ref_index = graph.scene_entities[0U].material_ref_index;
+    const std::uint32_t variant_material_ref_index = base_material_ref_index + 100U;
+    scene_entities[1U].material_ref_index = variant_material_ref_index;
+    RuntimeAssetRenderSceneMaterialBinding variant_material_binding{};
+    variant_material_binding.resource_ref_index = variant_material_ref_index;
+    variant_material_binding.material =
+        MakeGenericRenderSceneSubmissionVariantMaterial(material, material.material_id + 100U);
+    std::array<RuntimeAssetRenderSceneMaterialBinding, 2U> material_bindings{
+        material_binding,
+        variant_material_binding};
+    std::array<RenderSceneRuntimeFrameEntityRequest, 3U> frame_entities{};
+    std::array<RenderSceneRuntimeMaterialRecord, 2U> frame_materials{};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 3U> draws{};
+    RuntimeAssetRenderSceneSubmissionRequest request = BuildGenericRenderSceneSubmissionRequest(
+        graph,
+        std::span<const RuntimeAssetSceneEntityRecord>(scene_entities.data(), scene_entities.size()),
+        std::span<const RuntimeAssetSceneTransformOutputRecord>(graph.scene_transforms.data(), graph.scene_transforms.size()),
+        std::span<const RuntimeAssetRenderSceneGeometryBinding>(geometry_bindings.data(), geometry_bindings.size()),
+        std::span<const RuntimeAssetRenderSceneMaterialBinding>(material_bindings.data(), material_bindings.size()),
+        camera,
+        std::span<RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+        std::span<RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()));
+    request.require_shared_material = false;
+    request.out_frame_materials =
+        std::span<RenderSceneRuntimeMaterialRecord>(frame_materials.data(), frame_materials.size());
+
+    RuntimeAssetRenderSceneSubmissionResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetRenderSceneSubmission(request, &result);
+    if (status != RuntimeAssetDataStatus::Success ||
+        result.status != RuntimeAssetDataStatus::Success ||
+        result.frame_status != RenderSceneRuntimeFrameStatus::Success) {
+        return Fail("generic render scene submission material table build failed");
+    }
+
+    if (result.material_variant_count != 2U ||
+        result.material_table_count != 2U ||
+        result.resolved_material_count != 2U ||
+        result.frame_result.material_count != 2U ||
+        result.frame_result.material_variant_count != 2U) {
+        return Fail("generic render scene submission material table counts changed");
+    }
+
+    if (frame_entities[0U].material_table_index != 0U ||
+        frame_entities[1U].material_table_index != 1U ||
+        frame_entities[2U].material_table_index != 0U) {
+        return Fail("generic render scene submission material table indexes changed");
+    }
+
+    if (frame_materials[0U].material_id != material.material_id ||
+        frame_materials[1U].material_id != variant_material_binding.material.material_id ||
+        draws[0U].draw.material_id != material.material_id ||
+        draws[1U].draw.material_id != variant_material_binding.material.material_id ||
+        draws[2U].draw.material_id != material.material_id) {
+        return Fail("generic render scene submission material table routing changed");
+    }
+
+    if (frame_materials[1U].material_constant_byte_count !=
+        variant_material_binding.material.material_constant_byte_count) {
+        return Fail("generic render scene submission material constants count changed");
+    }
+
+    if (frame_materials[1U].material_constant_byte_count > 0U &&
+        frame_materials[1U].material_constant_bytes[0U] !=
+        variant_material_binding.material.material_constant_bytes[0U]) {
+        return Fail("generic render scene submission material constants bytes changed");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataGenericRenderSceneSubmissionUsesMaterialRefOrderNotEntityOrder() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    RuntimeAssetRhiDevice device;
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneCameraBindingResult camera{};
+    std::array<RuntimeAssetRenderSceneGeometryBinding, 3U> geometry_bindings{};
+    RuntimeAssetRenderSceneMaterialBinding material_binding{};
+    if (!LoadGenericRenderSceneSubmissionInputs(
+            "GenericRenderSceneSubmissionMaterialTableOrder",
+            &table,
+            &registry,
+            &manager,
+            &graph,
+            &device,
+            &geometry,
+            &material,
+            &camera,
+            &geometry_bindings,
+            &material_binding)) {
+        return Fail("generic render scene submission material table order inputs failed");
+    }
+
+    std::array<RuntimeAssetSceneEntityRecord, 3U> scene_entities = graph.scene_entities;
+    const std::uint32_t base_material_ref_index = graph.scene_entities[0U].material_ref_index;
+    const std::uint32_t variant_material_ref_index = base_material_ref_index + 100U;
+    scene_entities[0U].material_ref_index = variant_material_ref_index;
+    scene_entities[1U].material_ref_index = base_material_ref_index;
+    scene_entities[2U].material_ref_index = variant_material_ref_index;
+    RuntimeAssetRenderSceneMaterialBinding variant_material_binding{};
+    variant_material_binding.resource_ref_index = variant_material_ref_index;
+    variant_material_binding.material =
+        MakeGenericRenderSceneSubmissionVariantMaterial(material, material.material_id + 100U);
+    std::array<RuntimeAssetRenderSceneMaterialBinding, 2U> reversed_material_bindings{
+        variant_material_binding,
+        material_binding};
+    std::array<RenderSceneRuntimeFrameEntityRequest, 3U> frame_entities{};
+    std::array<RenderSceneRuntimeMaterialRecord, 2U> frame_materials{};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 3U> draws{};
+    RuntimeAssetRenderSceneSubmissionRequest request = BuildGenericRenderSceneSubmissionRequest(
+        graph,
+        std::span<const RuntimeAssetSceneEntityRecord>(scene_entities.data(), scene_entities.size()),
+        std::span<const RuntimeAssetSceneTransformOutputRecord>(graph.scene_transforms.data(), graph.scene_transforms.size()),
+        std::span<const RuntimeAssetRenderSceneGeometryBinding>(geometry_bindings.data(), geometry_bindings.size()),
+        std::span<const RuntimeAssetRenderSceneMaterialBinding>(
+            reversed_material_bindings.data(),
+            reversed_material_bindings.size()),
+        camera,
+        std::span<RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+        std::span<RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()));
+    request.require_shared_material = false;
+    request.out_frame_materials =
+        std::span<RenderSceneRuntimeMaterialRecord>(frame_materials.data(), frame_materials.size());
+
+    RuntimeAssetRenderSceneSubmissionResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetRenderSceneSubmission(request, &result);
+    if (status != RuntimeAssetDataStatus::Success ||
+        result.frame_status != RenderSceneRuntimeFrameStatus::Success) {
+        return Fail("generic render scene submission material table order build failed");
+    }
+
+    if (frame_materials[0U].material_id != material.material_id ||
+        frame_materials[1U].material_id != variant_material_binding.material.material_id) {
+        return Fail("generic render scene submission material table used binding or entity order");
+    }
+
+    if (frame_entities[0U].material_table_index != 1U ||
+        frame_entities[1U].material_table_index != 0U ||
+        frame_entities[2U].material_table_index != 1U) {
+        return Fail("generic render scene submission material ref indexes changed");
+    }
+
+    if (draws[0U].draw.material_id != variant_material_binding.material.material_id ||
+        draws[1U].draw.material_id != material.material_id ||
+        draws[2U].draw.material_id != variant_material_binding.material.material_id) {
+        return Fail("generic render scene submission material ref draw routing changed");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataGenericRenderSceneSubmissionRejectsSmallMaterialTableWithoutMutation() {
+    MountTable table;
+    ResourceRegistry registry;
+    AssetManager manager;
+    LoadedGraph graph{};
+    RuntimeAssetRhiDevice device;
+    std::array<RenderScenePrimitiveGeometryRecord, 3U> geometry{};
+    RenderSceneRuntimeMaterialRecord material{};
+    RenderSceneCameraBindingResult camera{};
+    std::array<RuntimeAssetRenderSceneGeometryBinding, 3U> geometry_bindings{};
+    RuntimeAssetRenderSceneMaterialBinding material_binding{};
+    if (!LoadGenericRenderSceneSubmissionInputs(
+            "GenericRenderSceneSubmissionMaterialTableCapacity",
+            &table,
+            &registry,
+            &manager,
+            &graph,
+            &device,
+            &geometry,
+            &material,
+            &camera,
+            &geometry_bindings,
+            &material_binding)) {
+        return Fail("generic render scene submission material table capacity inputs failed");
+    }
+
+    std::array<RuntimeAssetSceneEntityRecord, 3U> scene_entities = graph.scene_entities;
+    const std::uint32_t variant_material_ref_index =
+        graph.scene_entities[0U].material_ref_index + 100U;
+    scene_entities[1U].material_ref_index = variant_material_ref_index;
+    RuntimeAssetRenderSceneMaterialBinding variant_material_binding{};
+    variant_material_binding.resource_ref_index = variant_material_ref_index;
+    variant_material_binding.material =
+        MakeGenericRenderSceneSubmissionVariantMaterial(material, material.material_id + 100U);
+    std::array<RuntimeAssetRenderSceneMaterialBinding, 2U> material_bindings{
+        material_binding,
+        variant_material_binding};
+    std::array<RenderSceneRuntimeFrameEntityRequest, 3U> frame_entities{};
+    std::array<RenderSceneRuntimeMaterialRecord, 1U> frame_materials{};
+    std::array<RenderSceneRuntimeFrameDrawRecord, 3U> draws{};
+    SeedGenericRenderSceneSubmissionSentinels(
+        std::span<RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+        std::span<RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()));
+    SeedGenericRenderSceneSubmissionMaterialSentinels(
+        std::span<RenderSceneRuntimeMaterialRecord>(frame_materials.data(), frame_materials.size()));
+    RuntimeAssetRenderSceneSubmissionRequest request = BuildGenericRenderSceneSubmissionRequest(
+        graph,
+        std::span<const RuntimeAssetSceneEntityRecord>(scene_entities.data(), scene_entities.size()),
+        std::span<const RuntimeAssetSceneTransformOutputRecord>(graph.scene_transforms.data(), graph.scene_transforms.size()),
+        std::span<const RuntimeAssetRenderSceneGeometryBinding>(geometry_bindings.data(), geometry_bindings.size()),
+        std::span<const RuntimeAssetRenderSceneMaterialBinding>(material_bindings.data(), material_bindings.size()),
+        camera,
+        std::span<RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+        std::span<RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()));
+    request.require_shared_material = false;
+    request.out_frame_materials =
+        std::span<RenderSceneRuntimeMaterialRecord>(frame_materials.data(), frame_materials.size());
+
+    RuntimeAssetRenderSceneSubmissionResult result{};
+    const RuntimeAssetDataStatus status = BuildRuntimeAssetRenderSceneSubmission(request, &result);
+    if (status != RuntimeAssetDataStatus::CapacityExceeded ||
+        result.first_failed_entity_index != 1U ||
+        result.first_missing_resource_ref_index != variant_material_ref_index ||
+        result.material_variant_count != 2U ||
+        result.frame_status != RenderSceneRuntimeFrameStatus::OutputCapacityExceeded) {
+        return Fail("generic render scene submission material table capacity diagnostics changed");
+    }
+
+    if (!GenericRenderSceneSubmissionSentinelsUnchanged(
+            std::span<const RenderSceneRuntimeFrameEntityRequest>(frame_entities.data(), frame_entities.size()),
+            std::span<const RenderSceneRuntimeFrameDrawRecord>(draws.data(), draws.size()))) {
+        return Fail("generic render scene submission material table capacity mutated frame outputs");
+    }
+
+    if (!GenericRenderSceneSubmissionMaterialSentinelsUnchanged(
+            std::span<const RenderSceneRuntimeMaterialRecord>(frame_materials.data(), frame_materials.size()))) {
+        return Fail("generic render scene submission material table capacity mutated material outputs");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataProductionSceneLoaderOutputsDeterministicRecords() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("ProductionSceneLoaderOutput"), &table)) {
@@ -11193,6 +11498,12 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataGenericRenderSceneSubmissionRejectsMissingMaterialRefWithoutMutation},
     {TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_VARIANTS,
      RuntimeAssetDataGenericRenderSceneSubmissionReportsMaterialVariantsUntilFrameApiSupportsThem},
+    {TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE,
+     RuntimeAssetDataGenericRenderSceneSubmissionBuildsPerEntityMaterialTableFromRefs},
+    {TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE_ORDER,
+     RuntimeAssetDataGenericRenderSceneSubmissionUsesMaterialRefOrderNotEntityOrder},
+    {TEST_GENERIC_RENDER_SCENE_SUBMISSION_MATERIAL_TABLE_CAPACITY,
+     RuntimeAssetDataGenericRenderSceneSubmissionRejectsSmallMaterialTableWithoutMutation},
     {TEST_PRODUCTION_SCENE_LOADER_OUTPUT, RuntimeAssetDataProductionSceneLoaderOutputsDeterministicRecords},
     {TEST_DISK_ANIMATION_SAMPLING, RuntimeAssetDataDiskAnimationSamplingFeedsSceneTransforms},
     {TEST_SCENE_LOADER_INVALID_ENTITY_NO_MUTATION,

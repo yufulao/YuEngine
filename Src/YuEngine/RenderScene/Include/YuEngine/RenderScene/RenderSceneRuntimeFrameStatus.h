@@ -15,6 +15,8 @@ enum class RenderSceneRuntimeFrameStatus {
     InvalidGeometryRecord,
     MissingMaterialRecord,
     InvalidMaterialRecord,
+    MaterialIndexOutOfRange,
+    DuplicateMaterialRecord,
     DuplicateWorldObject,
     DuplicateTransform,
     OutputCapacityExceeded

@@ -257,6 +257,10 @@ constexpr const char *TEST_MATERIAL_CONSTANT_OVERFLOW =
     "RenderScene_RuntimeMaterialRejectsOversizedMaterialConstants";
 constexpr const char *TEST_FRAME_THREE_ENTITIES =
     "RenderScene_RuntimeFrameSubmitsThreeEntitiesWithSharedMaterial";
+constexpr const char *TEST_FRAME_PER_ENTITY_MATERIALS =
+    "RenderScene_RuntimeFrameSubmitsEntitiesWithPerEntityMaterials";
+constexpr const char *TEST_FRAME_MATERIAL_INDEX_RANGE =
+    "RenderScene_RuntimeFrameRejectsMaterialTableIndexOutOfRange";
 constexpr const char *TEST_FRAME_DUPLICATE_TRANSFORM =
     "RenderScene_RuntimeFrameRejectsDuplicateTransforms";
 constexpr const char *TEST_FRAME_OUTPUT_CAPACITY =
@@ -1117,6 +1121,12 @@ RenderSceneRuntimeMaterialRecord MakeRuntimeMaterialRecord() {
     RenderSceneRuntimeMaterialBuilder builder;
     RenderSceneRuntimeMaterialRecord record{};
     builder.Build(MakeMaterialRequest(slots), &record);
+    return record;
+}
+
+RenderSceneRuntimeMaterialRecord MakeRuntimeMaterialRecordWithId(std::uint32_t material_id) {
+    RenderSceneRuntimeMaterialRecord record = MakeRuntimeMaterialRecord();
+    record.material_id = material_id;
     return record;
 }
 
@@ -2744,6 +2754,80 @@ int RenderSceneRuntimeFrameSubmitsThreeEntitiesWithSharedMaterial() {
 
     if (draws[1U].draw.draw.index_count != 192U) {
         return Fail("runtime frame cylinder draw range mismatch");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeFrameSubmitsEntitiesWithPerEntityMaterials() {
+    const RenderSceneCameraBindingResult camera = MakeCameraBinding();
+    const std::array<RenderSceneRuntimeMaterialRecord, 2U> materials{
+        MakeRuntimeMaterialRecordWithId(MATERIAL_ID),
+        MakeRuntimeMaterialRecordWithId(MATERIAL_ID + 1U)};
+    std::array<RenderSceneRuntimeFrameEntityRequest, 3U> entities{
+        MakeRuntimeFrameEntity(101U, MakeTransform(-2.0F, 0.0F, 0.0F), RenderScenePrimitiveGeometryKind::Cube),
+        MakeRuntimeFrameEntity(102U, MakeTransform(0.0F, 1.0F, 0.0F), RenderScenePrimitiveGeometryKind::Cylinder),
+        MakeRuntimeFrameEntity(103U, MakeTransform(2.0F, 0.0F, 1.0F), RenderScenePrimitiveGeometryKind::Cone)};
+    entities[0U].material_table_index = 1U;
+    entities[1U].material_table_index = 0U;
+    entities[2U].material_table_index = 1U;
+
+    RenderSceneRuntimeFrameRequest request =
+        MakeRuntimeFrameRequest(camera, materials[0U], entities);
+    request.materials = std::span<const RenderSceneRuntimeMaterialRecord>(
+        materials.data(),
+        materials.size());
+
+    std::array<RenderSceneRuntimeFrameDrawRecord, 3U> draws{};
+    RenderSceneRuntimeFrameResult result{};
+    RenderSceneRuntimeFrameBuilder builder;
+    const RenderSceneRuntimeFrameStatus status = builder.Build(request, draws, &result);
+    if (status != RenderSceneRuntimeFrameStatus::Success) {
+        return Fail("runtime frame per entity material submission failed");
+    }
+
+    if (result.output_draw_count != 3U ||
+        result.material_count != 2U ||
+        result.material_variant_count != 2U) {
+        return Fail("runtime frame per entity material counts changed");
+    }
+
+    if (draws[0U].draw.material_id != MATERIAL_ID + 1U ||
+        draws[1U].draw.material_id != MATERIAL_ID ||
+        draws[2U].draw.material_id != MATERIAL_ID + 1U) {
+        return Fail("runtime frame per entity material routing changed");
+    }
+
+    return 0;
+}
+
+int RenderSceneRuntimeFrameRejectsMaterialTableIndexOutOfRange() {
+    const RenderSceneCameraBindingResult camera = MakeCameraBinding();
+    const std::array<RenderSceneRuntimeMaterialRecord, 1U> materials{
+        MakeRuntimeMaterialRecordWithId(MATERIAL_ID)};
+    std::array<RenderSceneRuntimeFrameEntityRequest, 1U> entities{
+        MakeRuntimeFrameEntity(101U, MakeTransform(0.0F, 0.0F, 0.0F), RenderScenePrimitiveGeometryKind::Cube)};
+    entities[0U].material_table_index = 1U;
+
+    RenderSceneRuntimeFrameRequest request =
+        MakeRuntimeFrameRequest(camera, materials[0U], entities);
+    request.materials = std::span<const RenderSceneRuntimeMaterialRecord>(
+        materials.data(),
+        materials.size());
+
+    std::array<RenderSceneRuntimeFrameDrawRecord, 1U> draws{};
+    RenderSceneRuntimeFrameResult result{};
+    RenderSceneRuntimeFrameBuilder builder;
+    const RenderSceneRuntimeFrameStatus status = builder.Build(request, draws, &result);
+    if (status != RenderSceneRuntimeFrameStatus::MaterialIndexOutOfRange) {
+        return Fail("runtime frame accepted invalid material table index");
+    }
+
+    if (result.first_failed_entity_index != 0U ||
+        result.first_failed_material_index != 1U ||
+        result.output_draw_count != 0U ||
+        draws[0U].draw.material_id != 0U) {
+        return Fail("runtime frame material table index diagnostics changed");
     }
 
     return 0;
@@ -4916,6 +5000,14 @@ int RunNamedTest(std::string_view name) {
 
     if (name == TEST_FRAME_THREE_ENTITIES) {
         return RenderSceneRuntimeFrameSubmitsThreeEntitiesWithSharedMaterial();
+    }
+
+    if (name == TEST_FRAME_PER_ENTITY_MATERIALS) {
+        return RenderSceneRuntimeFrameSubmitsEntitiesWithPerEntityMaterials();
+    }
+
+    if (name == TEST_FRAME_MATERIAL_INDEX_RANGE) {
+        return RenderSceneRuntimeFrameRejectsMaterialTableIndexOutOfRange();
     }
 
     if (name == TEST_FRAME_DUPLICATE_TRANSFORM) {

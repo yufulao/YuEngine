@@ -876,6 +876,7 @@ struct RuntimeAssetRenderSceneSubmissionRequest final {
     std::span<const RuntimeAssetRenderSceneMaterialBinding> material_bindings{};
     yuengine::renderscene::RenderSceneCameraBindingResult camera{};
     std::span<yuengine::renderscene::RenderSceneRuntimeFrameEntityRequest> out_frame_entities{};
+    std::span<yuengine::renderscene::RenderSceneRuntimeMaterialRecord> out_frame_materials{};
     std::span<yuengine::renderscene::RenderSceneRuntimeFrameDrawRecord> out_draws{};
     std::uint32_t frame_id = 0U;
     bool require_shared_material = true;
@@ -896,6 +897,7 @@ struct RuntimeAssetRenderSceneSubmissionResult final {
     std::uint32_t resolved_geometry_count = 0U;
     std::uint32_t resolved_material_count = 0U;
     std::uint32_t material_variant_count = 0U;
+    std::uint32_t material_table_count = 0U;
     std::uint32_t shared_material_ref_index = 0xFFFFFFFFU;
     std::uint32_t first_failed_entity_index = 0xFFFFFFFFU;
     std::uint32_t first_missing_resource_ref_index = 0xFFFFFFFFU;

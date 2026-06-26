@@ -6878,6 +6878,7 @@ struct RuntimeAssetRenderSceneSubmissionValidation final {
     std::uint32_t resolved_geometry_count = 0U;
     std::uint32_t resolved_material_count = 0U;
     std::uint32_t material_variant_count = 0U;
+    std::uint32_t material_table_count = 0U;
 };
 
 bool IsRenderSceneSubmissionEntityActive(const RuntimeAssetSceneEntityRecord &entity) {
@@ -6917,7 +6918,8 @@ RuntimeAssetDataStatus MapSubmissionFrameStatus(
     }
 
     if (status == RenderSceneRuntimeFrameStatus::DuplicateWorldObject ||
-        status == RenderSceneRuntimeFrameStatus::DuplicateTransform) {
+        status == RenderSceneRuntimeFrameStatus::DuplicateTransform ||
+        status == RenderSceneRuntimeFrameStatus::DuplicateMaterialRecord) {
         return RuntimeAssetDataStatus::DuplicateDependency;
     }
 
@@ -7113,6 +7115,94 @@ bool HasPriorRenderSceneSubmissionTransform(
     return false;
 }
 
+bool HasPriorRenderSceneSubmissionMaterialRef(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    std::uint32_t current_index,
+    std::uint32_t material_ref_index) {
+    for (std::uint32_t index = 0U; index < current_index; ++index) {
+        const RuntimeAssetSceneEntityRecord &entity = request.scene_entities[index];
+        if (!IsRenderSceneSubmissionEntityActive(entity)) {
+            continue;
+        }
+
+        if (entity.material_ref_index == material_ref_index) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+std::uint32_t FindRenderSceneSubmissionMaterialTableIndex(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    std::uint32_t current_index) {
+    const RuntimeAssetSceneEntityRecord &current_entity = request.scene_entities[current_index];
+    bool found_current_ref = false;
+    std::uint32_t table_index = 0U;
+    for (std::uint32_t index = 0U; index < request.scene_output->entity_count; ++index) {
+        const RuntimeAssetSceneEntityRecord &entity = request.scene_entities[index];
+        if (!IsRenderSceneSubmissionEntityActive(entity)) {
+            continue;
+        }
+
+        if (HasPriorRenderSceneSubmissionMaterialRef(request, index, entity.material_ref_index)) {
+            continue;
+        }
+
+        if (entity.material_ref_index < current_entity.material_ref_index) {
+            ++table_index;
+            continue;
+        }
+
+        if (entity.material_ref_index == current_entity.material_ref_index) {
+            found_current_ref = true;
+        }
+    }
+
+    if (found_current_ref) {
+        return table_index;
+    }
+
+    return RUNTIME_ASSET_SUBMISSION_INVALID_INDEX;
+}
+
+bool FindNextRenderSceneSubmissionMaterialRef(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    bool has_lower_bound,
+    std::uint32_t lower_bound_ref_index,
+    std::uint32_t *out_ref_index) {
+    if (out_ref_index == nullptr) {
+        return false;
+    }
+
+    bool found = false;
+    std::uint32_t best_ref_index = RUNTIME_ASSET_SUBMISSION_INVALID_INDEX;
+    for (std::uint32_t index = 0U; index < request.scene_output->entity_count; ++index) {
+        const RuntimeAssetSceneEntityRecord &entity = request.scene_entities[index];
+        if (!IsRenderSceneSubmissionEntityActive(entity)) {
+            continue;
+        }
+
+        if (has_lower_bound && entity.material_ref_index <= lower_bound_ref_index) {
+            continue;
+        }
+
+        if (found && entity.material_ref_index >= best_ref_index) {
+            continue;
+        }
+
+        best_ref_index = entity.material_ref_index;
+        found = true;
+    }
+
+    if (!found) {
+        return false;
+    }
+
+    *out_ref_index = best_ref_index;
+    return true;
+}
+
 RuntimeAssetDataStatus ValidateRenderSceneSubmissionStorage(
     const RuntimeAssetRenderSceneSubmissionRequest &request,
     RuntimeAssetRenderSceneSubmissionResult *result) {
@@ -7185,14 +7275,14 @@ RuntimeAssetDataStatus ValidateRenderSceneSubmissionStorage(
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    if (!request.require_shared_material) {
+    if (!request.require_shared_material && request.out_frame_materials.data() == nullptr) {
         SetRenderSceneSubmissionFailure(
             result,
-            RuntimeAssetDataStatus::UnsupportedFieldValue,
-            RenderSceneRuntimeFrameStatus::InvalidMaterialRecord,
+            RuntimeAssetDataStatus::CapacityExceeded,
+            RenderSceneRuntimeFrameStatus::OutputCapacityExceeded,
             RUNTIME_ASSET_SUBMISSION_INVALID_INDEX,
             RUNTIME_ASSET_SUBMISSION_INVALID_INDEX);
-        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        return RuntimeAssetDataStatus::CapacityExceeded;
     }
 
     std::uint32_t duplicate_ref_index = 0U;
@@ -7336,24 +7426,49 @@ RuntimeAssetDataStatus ValidateRenderSceneSubmissionEntity(
     if (validation->shared_material == nullptr) {
         validation->shared_material = &material->material;
         validation->shared_material_ref_index = entity.material_ref_index;
-        validation->material_variant_count = 1U;
+        if (request.require_shared_material) {
+            validation->material_variant_count = 1U;
+        }
     }
 
-    if (validation->shared_material_ref_index != entity.material_ref_index) {
-        validation->material_variant_count = 2U;
-        result->material_variant_count = validation->material_variant_count;
-        SetRenderSceneSubmissionFailure(
-            result,
-            RuntimeAssetDataStatus::UnsupportedFieldValue,
-            RenderSceneRuntimeFrameStatus::InvalidMaterialRecord,
-            entity_index,
-            entity.material_ref_index);
-        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    if (request.require_shared_material) {
+        if (validation->shared_material_ref_index != entity.material_ref_index) {
+            validation->material_variant_count = 2U;
+            result->material_variant_count = validation->material_variant_count;
+            SetRenderSceneSubmissionFailure(
+                result,
+                RuntimeAssetDataStatus::UnsupportedFieldValue,
+                RenderSceneRuntimeFrameStatus::InvalidMaterialRecord,
+                entity_index,
+                entity.material_ref_index);
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
+
+        ++validation->submitted_entity_count;
+        ++validation->resolved_geometry_count;
+        validation->resolved_material_count = validation->material_variant_count;
+        validation->material_table_count = validation->material_variant_count;
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    if (!HasPriorRenderSceneSubmissionMaterialRef(request, entity_index, entity.material_ref_index)) {
+        ++validation->material_variant_count;
+        validation->material_table_count = validation->material_variant_count;
+        if (static_cast<std::size_t>(validation->material_table_count) > request.out_frame_materials.size()) {
+            result->material_variant_count = validation->material_variant_count;
+            SetRenderSceneSubmissionFailure(
+                result,
+                RuntimeAssetDataStatus::CapacityExceeded,
+                RenderSceneRuntimeFrameStatus::OutputCapacityExceeded,
+                entity_index,
+                entity.material_ref_index);
+            return RuntimeAssetDataStatus::CapacityExceeded;
+        }
     }
 
     ++validation->submitted_entity_count;
     ++validation->resolved_geometry_count;
-    validation->resolved_material_count = validation->material_variant_count;
+    validation->resolved_material_count = validation->material_table_count;
     return RuntimeAssetDataStatus::Success;
 }
 
@@ -7404,6 +7519,7 @@ RuntimeAssetDataStatus ValidateRenderSceneSubmissionRequest(
     result->resolved_geometry_count = validation->resolved_geometry_count;
     result->resolved_material_count = validation->resolved_material_count;
     result->material_variant_count = validation->material_variant_count;
+    result->material_table_count = validation->material_table_count;
     result->shared_material_ref_index = validation->shared_material_ref_index;
     return RuntimeAssetDataStatus::Success;
 }
@@ -7433,12 +7549,44 @@ void FillRenderSceneSubmissionEntities(
         out_entity.world_object_id = entity.world_object_id;
         out_entity.transform = transform->transform;
         out_entity.geometry = geometry->geometry;
+        out_entity.material_table_index = 0U;
+        if (!request.require_shared_material) {
+            out_entity.material_table_index =
+                FindRenderSceneSubmissionMaterialTableIndex(request, index);
+        }
         out_entity.is_visible = entity.is_visible;
         out_entity.is_active = entity.is_active;
         ++output_index;
         if (output_index == submitted_entity_count) {
             return;
         }
+    }
+}
+
+void FillRenderSceneSubmissionMaterials(
+    const RuntimeAssetRenderSceneSubmissionRequest &request,
+    std::uint32_t material_table_count) {
+    bool has_lower_bound = false;
+    std::uint32_t lower_bound_ref_index = 0U;
+    for (std::uint32_t output_index = 0U; output_index < material_table_count; ++output_index) {
+        std::uint32_t material_ref_index = 0U;
+        if (!FindNextRenderSceneSubmissionMaterialRef(
+                request,
+                has_lower_bound,
+                lower_bound_ref_index,
+                &material_ref_index)) {
+            return;
+        }
+
+        const RuntimeAssetRenderSceneMaterialBinding *material =
+            FindRenderSceneSubmissionMaterial(request.material_bindings, material_ref_index);
+        if (material == nullptr) {
+            return;
+        }
+
+        request.out_frame_materials[output_index] = material->material;
+        lower_bound_ref_index = material_ref_index;
+        has_lower_bound = true;
     }
 }
 }
@@ -8229,6 +8377,15 @@ RuntimeAssetDataStatus BuildRuntimeAssetRenderSceneSubmission(
     frame_request.entities = request.out_frame_entities.subspan(
         0U,
         static_cast<std::size_t>(validation.submitted_entity_count));
+    if (!request.require_shared_material) {
+        FillRenderSceneSubmissionMaterials(request, validation.material_table_count);
+        frame_request.materials = request.out_frame_materials.subspan(
+            0U,
+            static_cast<std::size_t>(validation.material_table_count));
+        if (!frame_request.materials.empty()) {
+            frame_request.material = frame_request.materials[0U];
+        }
+    }
 
     RenderSceneRuntimeFrameBuilder frame_builder;
     result.frame_status = frame_builder.Build(
