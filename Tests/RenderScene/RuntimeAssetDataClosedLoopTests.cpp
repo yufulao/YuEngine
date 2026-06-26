@@ -355,6 +355,14 @@ constexpr const char *TEST_SHADER_SCENE_ANIMATION_SCHEMA =
     "RuntimeAssetData_ShaderSceneAnimationRequireSourceSchema";
 constexpr const char *TEST_INVALID_DEPENDENCY =
     "RuntimeAssetData_DependencyGraphRejectsMissingAndDuplicateRefs";
+constexpr const char *TEST_VALIDATOR_MISSING_DEPENDENCY_TOKEN =
+    "RuntimeAssetData_ValidatorReportsMissingDependencyToken";
+constexpr const char *TEST_VALIDATOR_DUPLICATE_DEPENDENCY_TOKEN =
+    "RuntimeAssetData_ValidatorReportsDuplicateDependencyToken";
+constexpr const char *TEST_VALIDATOR_TYPE_MISMATCH_EXPECTED_ACTUAL =
+    "RuntimeAssetData_ValidatorReportsTypeMismatchExpectedActual";
+constexpr const char *TEST_COOKED_DEPENDENCY_FAILED_DEP_INDEX =
+    "RuntimeAssetData_CookedDependencyRowsReportFailedDepIndex";
 constexpr const char *TEST_SHADER_IMPORT_POLICY =
     "RuntimeAssetData_ShaderImportPolicyValidatesSourceCookedAndLoadedRecords";
 constexpr const char *TEST_SHADER_COMPILER_BACKEND =
@@ -5746,6 +5754,135 @@ bool ValidateText(
     return true;
 }
 
+bool ExpectValidationFailureDiagnostic(
+    std::string_view text,
+    RuntimeAssetFileKind kind,
+    RuntimeAssetDataStatus expected_status,
+    std::uint32_t expected_dependency_index,
+    std::uint32_t expected_token_index,
+    RuntimeAssetFileKind expected_kind,
+    RuntimeAssetFileKind actual_kind) {
+    const std::vector<std::uint8_t> bytes = BytesFromString(std::string(text));
+    RuntimeAssetValidationResult result{};
+    const RuntimeAssetDataStatus status = ValidateRuntimeAssetDataBytes(
+        std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+        kind,
+        &result);
+    if (status != expected_status || result.status != expected_status) {
+        return false;
+    }
+
+    if (result.first_failed_dependency_status != expected_status) {
+        return false;
+    }
+
+    if (result.first_failed_dependency_index != expected_dependency_index ||
+        result.first_failed_dependency_token_index != expected_token_index) {
+        return false;
+    }
+
+    if (result.first_failed_expected_kind != expected_kind ||
+        result.first_failed_actual_kind != actual_kind) {
+        return false;
+    }
+
+    return true;
+}
+
+int RuntimeAssetDataValidatorReportsMissingDependencyToken() {
+    constexpr std::string_view text =
+        "YUASSET SCENE 1\n"
+        "schema=rav0-source\n"
+        "id=missing_scene_ref\n"
+        "m1=Mesh/Cylinder.yumesh\n"
+        "m2=Mesh/Cone.yumesh\n"
+        "mat=Material/Shared.yumat\n"
+        "t0=Texture/Albedo.yutex\n"
+        "prog=Shader/RuntimeProgram.yuprogram\n"
+        "cam=Camera/Main.yucamera\n"
+        "anim=Animation/Spin.yuanim\n";
+    if (!ExpectValidationFailureDiagnostic(
+            text,
+            RuntimeAssetFileKind::Scene,
+            RuntimeAssetDataStatus::MissingDependency,
+            0U,
+            0U,
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetFileKind::Unknown)) {
+        return Fail("missing dependency diagnostic did not report first token");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataValidatorReportsDuplicateDependencyToken() {
+    constexpr std::string_view text =
+        "YUASSET SCENE 1\n"
+        "schema=rav0-source\n"
+        "id=duplicate_scene_ref\n"
+        "m0=Mesh/Cube.yumesh\n"
+        "m0=Mesh/Cube.yumesh\n"
+        "m1=Mesh/Cylinder.yumesh\n"
+        "m2=Mesh/Cone.yumesh\n"
+        "mat=Material/Shared.yumat\n"
+        "t0=Texture/Albedo.yutex\n"
+        "prog=Shader/RuntimeProgram.yuprogram\n"
+        "cam=Camera/Main.yucamera\n"
+        "anim=Animation/Spin.yuanim\n";
+    if (!ExpectValidationFailureDiagnostic(
+            text,
+            RuntimeAssetFileKind::Scene,
+            RuntimeAssetDataStatus::DuplicateDependency,
+            0U,
+            0U,
+            RuntimeAssetFileKind::Mesh,
+            RuntimeAssetFileKind::Mesh)) {
+        return Fail("duplicate dependency diagnostic did not report first token");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataValidatorReportsTypeMismatchExpectedActual() {
+    constexpr std::string_view text =
+        "YUASSET MATERIAL 1\n"
+        "schema=rav0-source\n"
+        "id=shared_material\n"
+        "shader=Texture/Albedo.yutex\n"
+        "texture0=Texture/Albedo.yutex\n"
+        "texture1=Texture/Normal.yutex\n"
+        "texture2=Texture/Mask.yutex\n";
+    if (!ExpectValidationFailureDiagnostic(
+            text,
+            RuntimeAssetFileKind::Material,
+            RuntimeAssetDataStatus::TypeMismatch,
+            0U,
+            0U,
+            RuntimeAssetFileKind::Shader,
+            RuntimeAssetFileKind::Texture)) {
+        return Fail("type mismatch diagnostic did not report expected and actual kinds");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataCookedDependencyRowsReportFailedDepIndex() {
+    const std::string text =
+        CookedTextureText("checker", 2U, 1U, 64U, 4U, HashText("checker"));
+    if (!ExpectValidationFailureDiagnostic(
+            text,
+            RuntimeAssetFileKind::Texture,
+            RuntimeAssetDataStatus::MissingDependency,
+            1U,
+            1U,
+            RuntimeAssetFileKind::Unknown,
+            RuntimeAssetFileKind::Unknown)) {
+        return Fail("cooked dependency diagnostic did not report failed dep index");
+    }
+
+    return 0;
+}
+
 bool ExpectLoaderRejectsAlbedoTextureWithoutMutation(
     std::string_view texture_text,
     RuntimeAssetDataStatus expected_status) {
@@ -10471,6 +10608,10 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
     {TEST_TEXTURE_TYPED_METADATA, RuntimeAssetDataTextureValidatorRejectsInvalidFormatExtentPayload},
     {TEST_SHADER_SCENE_ANIMATION_SCHEMA, RuntimeAssetDataShaderSceneAnimationRequireSourceSchema},
     {TEST_INVALID_DEPENDENCY, RuntimeAssetDataDependencyGraphRejectsMissingAndDuplicateRefs},
+    {TEST_VALIDATOR_MISSING_DEPENDENCY_TOKEN, RuntimeAssetDataValidatorReportsMissingDependencyToken},
+    {TEST_VALIDATOR_DUPLICATE_DEPENDENCY_TOKEN, RuntimeAssetDataValidatorReportsDuplicateDependencyToken},
+    {TEST_VALIDATOR_TYPE_MISMATCH_EXPECTED_ACTUAL, RuntimeAssetDataValidatorReportsTypeMismatchExpectedActual},
+    {TEST_COOKED_DEPENDENCY_FAILED_DEP_INDEX, RuntimeAssetDataCookedDependencyRowsReportFailedDepIndex},
     {TEST_SHADER_IMPORT_POLICY, RuntimeAssetDataShaderImportPolicyValidatesSourceCookedAndLoadedRecords},
     {TEST_SHADER_COMPILER_BACKEND, RuntimeAssetDataShaderCompilerBackendProducesProgramReflection},
     {TEST_SHADER_PROGRAM_PIPELINE_BRIDGE, RuntimeAssetDataShaderProgramBridgeCreatesRhiPipelineFromLoadedBytecode},

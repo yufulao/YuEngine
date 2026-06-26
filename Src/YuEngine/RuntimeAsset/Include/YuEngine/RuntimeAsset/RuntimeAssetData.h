@@ -277,6 +277,11 @@ struct RuntimeAssetValidationResult final {
     std::size_t byte_count = 0U;
     std::size_t dependency_count = 0U;
     std::uint32_t dependency_table_count = 0U;
+    RuntimeAssetDataStatus first_failed_dependency_status = RuntimeAssetDataStatus::Success;
+    std::uint32_t first_failed_dependency_index = 0U;
+    std::uint32_t first_failed_dependency_token_index = 0U;
+    RuntimeAssetFileKind first_failed_expected_kind = RuntimeAssetFileKind::Unknown;
+    RuntimeAssetFileKind first_failed_actual_kind = RuntimeAssetFileKind::Unknown;
     std::uint32_t record_table_count = 0U;
     std::uint32_t record_table_byte_count = 0U;
     std::uint32_t payload_byte_count = 0U;

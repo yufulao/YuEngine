@@ -1820,6 +1820,16 @@ bool ParseExtent(std::string_view text, std::uint32_t *out_width, std::uint32_t 
     return true;
 }
 
+RuntimeAssetFileKind DependencyKindForValue(std::string_view value);
+
+void SetValidationDependencyFailure(
+    RuntimeAssetValidationResult *out_result,
+    RuntimeAssetDataStatus status,
+    std::uint32_t dependency_index,
+    std::uint32_t token_index,
+    RuntimeAssetFileKind expected_kind,
+    RuntimeAssetFileKind actual_kind);
+
 RuntimeAssetDataStatus ValidateCookedDependencyRows(
     std::string_view text,
     std::uint32_t dependency_count,
@@ -1837,11 +1847,27 @@ RuntimeAssetDataStatus ValidateCookedDependencyRows(
         const std::string token = "dep" + std::to_string(index) + "=";
         const std::size_t token_count = CountToken(text, token);
         if (token_count == 0U) {
-            return RuntimeAssetDataStatus::MissingDependency;
+            const RuntimeAssetDataStatus status = RuntimeAssetDataStatus::MissingDependency;
+            SetValidationDependencyFailure(
+                out_result,
+                status,
+                index,
+                index,
+                RuntimeAssetFileKind::Unknown,
+                RuntimeAssetFileKind::Unknown);
+            return status;
         }
 
         if (token_count > 1U) {
-            return RuntimeAssetDataStatus::DuplicateDependency;
+            const RuntimeAssetDataStatus status = RuntimeAssetDataStatus::DuplicateDependency;
+            SetValidationDependencyFailure(
+                out_result,
+                status,
+                index,
+                index,
+                RuntimeAssetFileKind::Unknown,
+                DependencyKindForValue(ValueForToken(text, token)));
+            return status;
         }
 
         const std::string_view row = ValueForToken(text, token);
@@ -1854,13 +1880,29 @@ RuntimeAssetDataStatus ValidateCookedDependencyRows(
             second_separator == std::string_view::npos ||
             first_separator == 0U ||
             second_separator + 1U >= row.size()) {
-            return RuntimeAssetDataStatus::InvalidDependency;
+            const RuntimeAssetDataStatus status = RuntimeAssetDataStatus::InvalidDependency;
+            SetValidationDependencyFailure(
+                out_result,
+                status,
+                index,
+                index,
+                RuntimeAssetFileKind::Unknown,
+                DependencyKindForValue(row));
+            return status;
         }
 
         std::uint64_t dependency_hash = 0U;
         if (!ParseU64(row.substr(second_separator + 1U), &dependency_hash) ||
             dependency_hash == 0U) {
-            return RuntimeAssetDataStatus::HashMismatch;
+            const RuntimeAssetDataStatus status = RuntimeAssetDataStatus::HashMismatch;
+            SetValidationDependencyFailure(
+                out_result,
+                status,
+                index,
+                index,
+                RuntimeAssetFileKind::Unknown,
+                DependencyKindForValue(row));
+            return status;
         }
 
         ++index;
@@ -2060,6 +2102,79 @@ struct DependencyRule final {
     std::string_view expected_prefix;
 };
 
+RuntimeAssetFileKind DependencyKindForPrefix(std::string_view prefix) {
+    if (prefix == "Mesh/" || prefix == "mesh:") {
+        return RuntimeAssetFileKind::Mesh;
+    }
+
+    if (prefix == "Material/" || prefix == "material:") {
+        return RuntimeAssetFileKind::Material;
+    }
+
+    if (prefix == "Texture/" || prefix == "texture:") {
+        return RuntimeAssetFileKind::Texture;
+    }
+
+    if (prefix == "Shader/" || prefix == "shader:") {
+        return RuntimeAssetFileKind::Shader;
+    }
+
+    if (prefix == "Scene/" || prefix == "scene:") {
+        return RuntimeAssetFileKind::Scene;
+    }
+
+    if (prefix == "Animation/" || prefix == "animation:") {
+        return RuntimeAssetFileKind::Animation;
+    }
+
+    if (prefix == "Camera/" || prefix == "camera:") {
+        return RuntimeAssetFileKind::Camera;
+    }
+
+    return RuntimeAssetFileKind::Unknown;
+}
+
+RuntimeAssetFileKind DependencyKindForValue(std::string_view value) {
+    constexpr std::array<std::string_view, 14U> prefixes{{
+        "Mesh/",
+        "mesh:",
+        "Material/",
+        "material:",
+        "Texture/",
+        "texture:",
+        "Shader/",
+        "shader:",
+        "Scene/",
+        "scene:",
+        "Animation/",
+        "animation:",
+        "Camera/",
+        "camera:",
+    }};
+
+    for (const std::string_view prefix : prefixes) {
+        if (StartsWith(value, prefix)) {
+            return DependencyKindForPrefix(prefix);
+        }
+    }
+
+    return RuntimeAssetFileKind::Unknown;
+}
+
+void SetValidationDependencyFailure(
+    RuntimeAssetValidationResult *out_result,
+    RuntimeAssetDataStatus status,
+    std::uint32_t dependency_index,
+    std::uint32_t token_index,
+    RuntimeAssetFileKind expected_kind,
+    RuntimeAssetFileKind actual_kind) {
+    out_result->first_failed_dependency_status = status;
+    out_result->first_failed_dependency_index = dependency_index;
+    out_result->first_failed_dependency_token_index = token_index;
+    out_result->first_failed_expected_kind = expected_kind;
+    out_result->first_failed_actual_kind = actual_kind;
+}
+
 RuntimeAssetDataStatus ValidateDependencyRules(
     std::string_view text,
     std::span<const DependencyRule> rules,
@@ -2068,20 +2183,46 @@ RuntimeAssetDataStatus ValidateDependencyRules(
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
-    for (const DependencyRule &rule : rules) {
+    for (std::uint32_t rule_index = 0U; rule_index < rules.size(); ++rule_index) {
+        const DependencyRule &rule = rules[rule_index];
+        const RuntimeAssetFileKind expected_kind = DependencyKindForPrefix(rule.expected_prefix);
         const std::size_t count = CountToken(text, rule.token);
         if (count == 0U) {
-            return RuntimeAssetDataStatus::MissingDependency;
+            const RuntimeAssetDataStatus status = RuntimeAssetDataStatus::MissingDependency;
+            SetValidationDependencyFailure(
+                out_result,
+                status,
+                rule_index,
+                rule_index,
+                expected_kind,
+                RuntimeAssetFileKind::Unknown);
+            return status;
         }
 
         if (count > 1U) {
-            return RuntimeAssetDataStatus::DuplicateDependency;
+            const RuntimeAssetDataStatus status = RuntimeAssetDataStatus::DuplicateDependency;
+            SetValidationDependencyFailure(
+                out_result,
+                status,
+                rule_index,
+                rule_index,
+                expected_kind,
+                DependencyKindForValue(ValueForToken(text, rule.token)));
+            return status;
         }
 
         if (!rule.expected_prefix.empty()) {
             const std::string_view value = ValueForToken(text, rule.token);
             if (!StartsWith(value, rule.expected_prefix)) {
-                return RuntimeAssetDataStatus::TypeMismatch;
+                const RuntimeAssetDataStatus status = RuntimeAssetDataStatus::TypeMismatch;
+                SetValidationDependencyFailure(
+                    out_result,
+                    status,
+                    rule_index,
+                    rule_index,
+                    expected_kind,
+                    DependencyKindForValue(value));
+                return status;
             }
         }
 
@@ -4966,7 +5107,12 @@ RuntimeAssetDataStatus BuildRuntimeAssetGraphTransactionPlan(
         RuntimeAssetFileKind::Scene,
         &scene_validation);
     if (status != RuntimeAssetDataStatus::Success) {
-        SetTransactionFailure(transaction, status, RuntimeAssetLoadTransactionPhase::ValidateRecord);
+        SetTransactionFailure(
+            transaction,
+            status,
+            RuntimeAssetLoadTransactionPhase::ValidateRecord,
+            0U,
+            scene_validation.first_failed_dependency_index);
         return status;
     }
 
@@ -5021,7 +5167,8 @@ RuntimeAssetDataStatus BuildRuntimeAssetGraphTransactionPlan(
                 transaction,
                 status,
                 RuntimeAssetLoadTransactionPhase::ValidateRecord,
-                file_index + 1U);
+                file_index + 1U,
+                validation.first_failed_dependency_index);
             return status;
         }
 
