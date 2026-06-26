@@ -11,7 +11,7 @@ This document records what the existing runtime visual work proves today and wha
 
 | Item | Result |
 | --- | --- |
-| Audited revision | Current main worktree at `origin/main@d14750b`; material constants CTest registration and current committed discovery counts synchronized |
+| Audited revision | Current main worktree at `origin/main@26c4e57`; material constants CTest registration and current committed discovery counts synchronized |
 | Clean checkout path | Main checkout/worktree validation command set |
 | Stale `UiWebEditor*` test-source blocker | Fixed by `41708bf Remove stale UI web editor tests` |
 | Configure | `cmake --preset windows-fast-gate` PASS |
@@ -25,7 +25,8 @@ This document records what the existing runtime visual work proves today and wha
 | Full tests after RuntimeAssetData scene camera family failure slice | `ctest --preset windows-fast-gate --output-on-failure` PASS, `1435/1435` |
 | Full tests after RuntimeAssetData mesh layout topology slice | `ctest --preset windows-fast-gate --output-on-failure` PASS, `1436/1436` |
 | Full tests after RuntimeAssetData imported mesh payload decode slice | `ctest --preset windows-fast-gate --output-on-failure` PASS, `1437/1437` |
-| Full tests after RuntimeAssetData material constants CTest registration | `ctest --preset windows-fast-gate --output-on-failure` PASS, current committed discovery `1461/1461` |
+| Full tests after RuntimeAssetData material constants CTest registration, preset surface | `ctest --preset windows-fast-gate --output-on-failure` PASS, preset discovery surface `1445/1445` |
+| Full tests after RuntimeAssetData material constants CTest registration, build-directory surface | `ctest --test-dir build/windows-fast-gate-vs -C Debug -N` discovery surface `1461/1461` |
 
 ## Evidence Classes
 
@@ -44,8 +45,10 @@ This document records what the existing runtime visual work proves today and wha
 | Clean `main` checkout or worktree validation | PASS | Branch removal completed; `origin/main` is the only remote development branch |
 | `cmake --preset windows-fast-gate` | PASS | Configure/regenerate now succeeds |
 | `cmake --build --preset windows-fast-gate` | PASS | Full Debug build succeeds |
-| `ctest --preset windows-fast-gate --output-on-failure` | PASS | Current committed discovery reports `1461/1461` tests after RuntimeAssetData material constants CTest registration |
-| Focused runtime asset visual tests | PASS | `ctest --preset windows-fast-gate -R "RuntimeAssetData" --output-on-failure`, current committed discovery `71/71` |
+| `ctest --preset windows-fast-gate --output-on-failure` | PASS | Preset discovery surface reports `1445/1445` tests after RuntimeAssetData material constants CTest registration |
+| `ctest --test-dir build/windows-fast-gate-vs -C Debug -N` | PASS | Current build-directory discovery surface reports `1461/1461` tests after RuntimeAssetData material constants CTest registration |
+| Focused runtime asset visual tests, preset surface | PASS | `ctest --preset windows-fast-gate -R "RuntimeAssetData"` reports `70/70` |
+| Focused runtime asset visual tests, build-directory surface | PASS | `ctest --test-dir build/windows-fast-gate-vs -C Debug -N -R "RuntimeAssetData"` reports `71/71` |
 
 ## Matrix
 
