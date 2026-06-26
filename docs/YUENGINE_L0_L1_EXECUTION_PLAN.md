@@ -106,7 +106,7 @@ runtime app/session
 -> shader/pipeline binding
 -> RenderScene multi-entity submission
 -> RenderCore/RHI multi-draw frame
--> camera time/orbit update
+-> camera tween sampling/update
 -> bounded capture set written by runtime
 ```
 
@@ -117,7 +117,8 @@ The minimum visual sample is:
 - per-object rotation driven by runtime frame time;
 - one material record applied to all three objects;
 - at least three distinct texture inputs bound by that material record;
-- an orbit camera that captures one full turn as a bounded screenshot/frame set;
+- explicit camera tween keyframes that move the perspective camera around the
+  object group as a bounded screenshot/frame set;
 - deterministic status/diagnostics that name the exact missing layer if the
   sample cannot run.
 
@@ -1654,7 +1655,7 @@ engine capabilities.
 | L1-VIS-002 | Three-primitive placed scene | L1-VIS-001, L1-RSCENE-006 | cube/cylinder/cone submit as three entities with fixed-seed transforms |
 | L1-VIS-003 | Shared three-texture material scene | L1-VIS-002, L1-MAT-001 | all primitives use one material with three distinct texture inputs |
 | L1-VIS-004 | Animated transform scene | L1-VIS-002, L1-ANIM-004 | object rotations are driven by runtime animation or the command reports `L1-ANIM-*` blocker |
-| L1-VIS-005 | Orbit capture sequence | L1-VIS-003, L1-VIS-004 | one full camera orbit emits bounded frame/capture set |
+| L1-VIS-005 | Camera tween capture sequence | L1-VIS-003, L1-VIS-004 | explicit perspective camera tween keyframes emit bounded frame/capture set |
 | L1-VIS-006 | Missing-layer diagnostic route | L1-VIS-005 | failure names the exact missing layer: camera, geometry/model, material, shader/pipeline, scene placement, animation, RenderScene, RenderCore/RHI, capture, or resource resolution |
 
 ### 12.16 L1 Audio Scene Backlog
@@ -1715,8 +1716,8 @@ engine capabilities.
 | L1-SAMPLE-008 | Serialize and reload snapshot | L1-SER-004, L1-SAMPLE-003 | sample state roundtrips through value streams without File/Package dependency in Serialize |
 | L1-SAMPLE-009 | Shutdown and cleanup proof | all L1 sample tasks | world/runtime/resources shut down with no leaked active records |
 | L1-SAMPLE-010 | Debug/Release/Fast validation | all L1 sample tasks | fast gate plus sample smoke pass; release validation command is documented |
-| L1-SAMPLE-011 | Runtime visual scene proof | L1-VIS-005, L1-RSCENE-006, L1-ASSET-005, L1-OBJ-003 | cube/cylinder/cone scene renders with deterministic placement, animation-driven or explicitly blocked per-object rotation, shared three-texture material, orbit camera, and bounded capture set |
-| L1-SAMPLE-012 | Runtime visual blocker report | L1-SAMPLE-011 | if the visual scene cannot run, output names the missing layer exactly: camera, geometry/model path, material texture slots, shader/pipeline, scene placement, animation interpolation, transform application, RenderScene multi-entity, RenderCore multi-draw, RHI capture, camera orbit, or resource resolution |
+| L1-SAMPLE-011 | Runtime visual scene proof | L1-VIS-005, L1-RSCENE-006, L1-ASSET-005, L1-OBJ-003 | cube/cylinder/cone scene renders with deterministic placement, animation-driven or explicitly blocked per-object rotation, shared three-texture material, explicit perspective camera tween, and bounded capture set |
+| L1-SAMPLE-012 | Runtime visual blocker report | L1-SAMPLE-011 | if the visual scene cannot run, output names the missing layer exactly: camera, geometry/model path, material texture slots, shader/pipeline, scene placement, animation interpolation, transform application, RenderScene multi-entity, RenderCore multi-draw, RHI capture, camera tween sampling, or resource resolution |
 
 ## 13. Guardrails
 

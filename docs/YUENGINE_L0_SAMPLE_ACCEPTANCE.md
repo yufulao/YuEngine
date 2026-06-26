@@ -39,8 +39,9 @@ The sample acceptance intent is:
 The current L0 sample may render one textured mesh and emit capture output, but
 that only proves a lower-layer native smoke route. It is not accepted as proof
 that YuEngine can render a runtime scene with multiple objects, a shared
-multi-texture material, runtime object rotation, orbit camera, and bounded
-capture sequence. That requirement belongs to L1 runtime visual sample closure.
+multi-texture material, runtime object rotation, explicit camera tween
+keyframes, and bounded capture sequence. That requirement belongs to L1
+runtime visual sample closure.
 The shallow-to-deep module floors for that closure are defined in
 `docs/YUENGINE_RUNTIME_VISUAL_FOUNDATION_PLAN.md`.
 
@@ -67,6 +68,20 @@ Missing hardware or local codec dependencies must never be rewritten as
 | Hardware smoke | Prove native D3D11/XAudio2/XInput/HardwareFrameHost paths on a supported machine | `ctest --preset windows-hardware-smoke --output-on-failure` | Hardware rows pass on supported production Windows hardware, or report explicit unavailable status on unsupported machines | `BlockedByEnv` for unsupported adapter/display/device/audio/gamepad state only |
 | Strict hardware smoke | Prevent silent hardware absence from being treated as closure | `ctest --preset windows-strict-hardware-smoke --output-on-failure` | Strict D3D11/XAudio2/XInput/HardwareFrameHost rows pass on the target machine selected for closure | May be `BlockedByEnv` before target hardware review; must not be called complete on a machine missing required hardware |
 | Generated-output hygiene | Prove the sample command did not require committed generated artifacts | `git status --short --ignored Samples/AssetSmokeDemo`; `git diff --check -- docs/YUENGINE_L0_SAMPLE_ACCEPTANCE.md` | No generated sample executable, DLL, log, capture, or `Build/` output is staged; this document has clean whitespace | None |
+
+## 3.1 Current Command Results
+
+Current main checkpoint: `origin/main@c663125b516d17593fdb748eacb7783ee3d6b0d8`.
+
+| Row | Current result | Evidence |
+| --- | --- | --- |
+| Fast sample value route | `PASS` | `cmake --build --preset windows-fast-gate --target YuSampleTests YuDiagnosticsTests -- /v:minimal`; `ctest --preset windows-fast-gate -R "^(Sample_L1VerticalPrep_|Diagnostics_OverlayHook|Diagnostics_RuntimeCounters_)" --output-on-failure` passed `13/13`. |
+| Debug sample smoke | `PASS with graded XInput skip` | `.\Samples\AssetSmokeDemo\RunAssetSmokeDemo.ps1 -Configuration Debug -Seconds 1` prints `YuAssetSmokeDemo PASS`, `YuAssetSmokeDemo L0_ENGINE PASS ... gamepad=graded_skip audio=pass resize=pass shutdown=pass`, and `YuAssetSmokeDemo L1_PREP PASS ...`. |
+| Release sample smoke | `PASS with graded XInput skip` | `.\Samples\AssetSmokeDemo\RunAssetSmokeDemo.ps1 -Configuration Release -Seconds 1` prints the same accepted PASS lines with `gamepad=graded_skip` and `audio=pass`. |
+| L0 filtered gate | `PASS` | `ctest --preset windows-dev-gate --output-on-failure` and `ctest --preset windows-l0-gate --output-on-failure` passed. |
+| Hardware smoke | `PASS with explicit XInput skip` | `ctest --preset windows-hardware-smoke --output-on-failure` passed `15/16` executed rows and skipped only `Input_HardwareBridge_PollsXInputGamepad`. |
+| Strict hardware smoke | `BlockedByEnv` | `ctest --preset windows-strict-hardware-smoke --output-on-failure` fails only `Input_HardwareBridge_PollsXInputGamepad` with `xinput gamepad hardware smoke requires a connected controller`. |
+| Generated-output hygiene | `PASS` | `git status --short --ignored Samples\AssetSmokeDemo` lists generated `Build/` and capture output as ignored-only rows. |
 
 ## 4. Required Sample Output
 

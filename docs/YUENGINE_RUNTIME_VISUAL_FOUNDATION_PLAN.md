@@ -46,7 +46,7 @@ the first step.
 | RVF-008 | Animation interpolation | L1 Animation | bounded keyframe tracks interpolate scalar/vector/rotation or transform channels at deterministic times | per-frame sample-only math, editor timeline, gameplay behavior |
 | RVF-009 | Runtime transform application | L1 Animation + World/Transform | sampled animation output applies to object transform records before RenderScene consumes them | direct mutation inside RenderCore/RHI |
 | RVF-010 | Multi-entity render submission | L1 RenderScene + L0 RenderCore | three entities submit as bounded draw records in one runtime frame with shared material and distinct transforms | RenderScene packet-only value tests without draw submission |
-| RVF-011 | Orbit capture sequence | Runtime sample | camera completes one deterministic orbit and emits a bounded frame/capture set with per-frame status | single still image, editor preview, manual capture |
+| RVF-011 | Camera tween capture sequence | Runtime sample | explicit perspective camera tween keyframes emit a bounded frame/capture set with per-frame status | single still image, editor preview, manual capture |
 | RVF-012 | Missing-layer diagnostics | Runtime sample | failure names one of camera, geometry/model, material slots, shader/pipeline, scene placement, animation interpolation, RenderScene submission, RenderCore/RHI draw/capture, or resource resolution | generic "unsupported", "not implemented", or environment skip for semantic gaps |
 
 ## 3. Required Module Floors
@@ -161,14 +161,14 @@ Each step must be independently runnable or explicitly recorded as a blocker.
 | L1-VIS-002 | Three-primitive placed scene | L1-VIS-001, L1-RSCENE-006 | cube/cylinder/cone submit as three entities with fixed-seed transforms |
 | L1-VIS-003 | Shared three-texture material scene | L1-VIS-002, L1-MAT-001 | all primitives use one material with three distinct texture inputs |
 | L1-VIS-004 | Animated transform scene | L1-VIS-002, L1-ANIM-004 | object rotations are driven by runtime animation or the command reports `L1-ANIM-*` blocker |
-| L1-VIS-005 | Orbit capture sequence | L1-VIS-003, L1-VIS-004 | one full camera orbit emits bounded frame/capture set |
+| L1-VIS-005 | Camera tween capture sequence | L1-VIS-003, L1-VIS-004 | explicit perspective camera tween keyframes emit bounded frame/capture set |
 | L1-VIS-006 | Missing-layer diagnostic route | L1-VIS-005 | failure names the exact missing layer from section 2 |
 
 ## 6. Closure Rule
 
 L0/L1 may not be called complete by saying "the final sample is planned." The
 module floors above must either pass in order or produce explicit blocker rows.
-The final cube/cylinder/cone orbit capture is valid only when it is the
+The final cube/cylinder/cone camera tween capture is valid only when it is the
 composition of these module floors.
 
 If the final scene claims runtime asset/data loading, it must also satisfy the
