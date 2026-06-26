@@ -364,6 +364,9 @@ Accepted proof:
   Asset dependency records written by runtime code, not private test helpers;
 - runtime records/resources consumed by RenderScene/RenderCore/RHI;
 - canonical scene capture from the loaded graph.
+- device-backed D3D11 cooked RuntimeAsset visual route evidence when target
+  hardware is available, with unsupported target machines reported through the
+  configured hardware-smoke skip/status path rather than silent success.
 
 Rejected proof:
 

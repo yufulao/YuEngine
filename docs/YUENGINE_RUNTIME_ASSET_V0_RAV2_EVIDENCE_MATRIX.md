@@ -4,7 +4,7 @@ Status: evidence package for RAV2 review
 Owner: Architecture / Evidence
 Task: #67
 Baseline: RAV1 implementation package `origin/main@d1a1b86`
-Current accepted anchor: `origin/main@4e2cfe8`
+Current accepted anchor: `origin/main@30be48c`
 Review gate: task #68
 
 ## Purpose
@@ -12,8 +12,10 @@ Review gate: task #68
 This document records the concrete RAV2 evidence after the RAV1 RuntimeAsset
 implementation package.
 
-It is not a claim that YuEngine is complete. It is not editor completion. It is
-not final device-backed RuntimeAsset product visual closure.
+It is not a claim that YuEngine is complete. It is not editor completion or
+full product runtime completion. Device-backed RuntimeAsset visual closure is
+accepted only for the current D3D11 target-machine hardware-smoke route listed
+below.
 
 The package proves only the next RuntimeAsset-oriented slices:
 
@@ -51,7 +53,7 @@ is opened.
 | ExternalAuthoring bridge rows into Resource Browser commit | PASS | `4e2cfe8` proves actual `BuildExternalAuthoringRuntimeAssetImportBridge` output rows can feed Resource Browser importer commit, then load cooked RuntimeAsset graph through Resource/Asset mutation. |
 | Cooked RuntimeAsset structural visual route | PASS | #66 proves cooked records from #63 import/cook outputs can feed RuntimeAsset validation, scene loader + animation sampling, cooked texture/material/shader payload bridges, RenderScene, RenderCore, and RHI capture route in fast gate. |
 | D3D11 texture/render-core hardware smoke support | PASS | Existing D3D11 texture sampling and RenderCore drawable-frame texture capture hardware smoke tests pass as supporting evidence. |
-| Device-backed RuntimeAsset route final closure | NOT CLOSED | #66 explicitly does not prove a hardware device directly running the RuntimeAsset visual route as final product closure. This needs a later explicit task/gate if required. |
+| Device-backed RuntimeAsset route final closure | PASS | `RuntimeAssetData_D3D11Hardware_CookedRecordsDriveDeviceBackedVisualProof` directly runs the cooked RuntimeAsset route on D3D11 hardware and verifies RenderScene/RenderCore/RHI submit/present/capture ledger on this machine. |
 | Editor surface completion | NOT STARTED | Scene Editor, Animation Editor, UI Editor, Resource Browser UI, native editor shell, and packaging workflow are not complete. |
 | Original package parser / Unity / UE importer | NOT IN SCOPE | No original-game package parser or external-authoring importer is accepted by this package. |
 | CPU PPM / GDI / manual screenshot as final proof | REJECTED | These remain non-closure evidence. They cannot replace RenderScene/RenderCore/RHI proof or final hardware RuntimeAsset route proof. |
@@ -163,11 +165,12 @@ rg -n "\belse\b|\[&\]|\[=\]" Src/YuEngine/RuntimeAsset Tests/RenderScene/Runtime
 cmake --build --preset windows-fast-gate --target YuRuntimeAssetDataClosedLoopTests -- /v:minimal
 ctest --preset windows-fast-gate -R "RuntimeAssetData_Cooked.*VisualProof" --output-on-failure
 ctest --preset windows-fast-gate -R "RuntimeAssetData" --output-on-failure
-ctest --preset windows-hardware-smoke -R "RHI_D3D11Hardware_TextureSamplingCaptureBytes|RenderCore_D3D11Hardware_DrawableFramePipelineTextureSamplingCapture" --output-on-failure
+ctest --preset windows-hardware-smoke -R "RuntimeAssetData_D3D11Hardware_CookedRecordsDriveDeviceBackedVisualProof|RHI_D3D11Hardware_(TextureSamplingCaptureBytes|IndexedStaticMeshCaptureBytes|VisibleTriangleCaptureBytes)|RenderCore_D3D11Hardware_DrawableFramePipelineTextureSamplingCapture" --output-on-failure
 ```
 
 Result: diff/show/style/build PASS; cooked visual proof tests PASS 2/2;
-RuntimeAssetData PASS 55/55; D3D11 hardware smoke PASS 2/2.
+RuntimeAssetData PASS 55/55; D3D11 hardware smoke PASS 5/5 on the current
+target machine.
 
 Accepted scope:
 
@@ -181,13 +184,47 @@ Accepted scope:
 - scene transform comes from scene loader and animation sampling;
 - route builds RenderScene geometry/material/entities and uses the
   RenderScene three-primitive capture route;
+- `RuntimeAssetData_D3D11Hardware_CookedRecordsDriveDeviceBackedVisualProof`
+  swaps the route from Null/fast-gate RHI to a D3D11 device and verifies
+  submitted indexed draw count, present count, capture count, capture bytes,
+  and capture extent;
 - exact missing-layer diagnostics cover model, material slot, shader pipeline,
   scene transform, camera, and RHI capture.
 
-Boundary: #66 is fast-gate structural proof plus existing D3D11 texture and
-RenderCore hardware smoke support. It is not final device-backed RuntimeAsset
-hardware visual product closure and does not implement Resource Browser UX or
-Preview Host behavior.
+Boundary: #66 plus the current hardware-smoke run closes the device-backed
+RuntimeAsset visual route for this D3D11 target machine. It does not implement
+Resource Browser UX, Preview Host UI, editor UX, original package parsing, or a
+guarantee that machines without D3D11/display support pass instead of reporting
+the configured hardware skip.
+
+### Main Trunk Device-backed RuntimeAsset Hardware Closure
+
+Anchor base: `origin/main@30be48c`
+
+Focused command run by architecture:
+
+```powershell
+ctest --preset windows-hardware-smoke -R "RuntimeAssetData_D3D11Hardware_CookedRecordsDriveDeviceBackedVisualProof|RHI_D3D11Hardware_(TextureSamplingCaptureBytes|IndexedStaticMeshCaptureBytes|VisibleTriangleCaptureBytes)|RenderCore_D3D11Hardware_DrawableFramePipelineTextureSamplingCapture" --output-on-failure
+```
+
+Result: D3D11/RHI/RenderCore/RuntimeAsset device-backed focused hardware smoke
+PASS 5/5.
+
+Accepted scope:
+
+- RHI D3D11 visible triangle, indexed static mesh, and texture sampling capture
+  all pass;
+- RenderCore D3D11 drawable frame pipeline texture sampling capture passes;
+- cooked RuntimeAsset scene records drive the RuntimeAsset visual route on the
+  D3D11 device;
+- the RuntimeAsset route verifies runtime-loaded records, shader pipeline,
+  cooked material slots, animation transforms, RenderScene routing, RenderCore
+  RHI capture routing, submitted draw count, present count, capture count, and
+  capture extent.
+
+Boundary: hardware-smoke tests keep `SKIP_RETURN_CODE 77`; on an unsupported
+machine this must be reported as hardware environment skip/blocker, not counted
+as semantic runtime/data closure failure and not silently called PASS.
 
 ### Main Trunk ExternalAuthoring -> ResourceBrowser Commit Closure
 
