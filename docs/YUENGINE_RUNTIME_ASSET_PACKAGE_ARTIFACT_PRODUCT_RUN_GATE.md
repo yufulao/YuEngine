@@ -55,6 +55,12 @@ Focused product-run command seam:
 ctest --preset windows-fast-gate -R "RuntimeAssetData_ProductRunCommand" --output-on-failure
 ```
 
+Focused generic RenderScene submission ledger through package/product entrypoints:
+
+```powershell
+ctest --preset windows-fast-gate -R "RuntimeAssetData_(PackageRunEmitsGenericRenderSceneSubmissionLedger|ProductRunCommandReportsGenericRenderSceneSubmissionLedger|PackageRunRejectsGenericSubmissionCapacityWithoutMutation)" --output-on-failure
+```
+
 Related package/cook confidence:
 
 ```powershell
@@ -90,6 +96,7 @@ accept:
 
 ## Next Slice
 
-The next slice must be separately scoped. Likely candidates are a product run
-command/executable boundary or a richer package artifact manifest, but neither
-is approved by this gate.
+The product-run command and generic RenderScene submission ledger are now covered
+by focused RuntimeAssetData rows. The next slice must stay separately scoped and
+should not broaden this gate into installer, launcher, package signing,
+original-game package compatibility, or final product executable ownership.

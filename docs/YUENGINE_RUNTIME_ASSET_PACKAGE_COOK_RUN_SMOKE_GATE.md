@@ -80,6 +80,7 @@ Related package/cook/render confidence:
 
 ```powershell
 ctest --preset windows-fast-gate -R "RuntimeAssetData_(ImportCookCommand|CookedRecordsDriveRuntimeVisualProof|PackageCookRunSmoke)" --output-on-failure
+ctest --preset windows-fast-gate -R "RuntimeAssetData_(PackageRunEmitsGenericRenderSceneSubmissionLedger|PackageRunRejectsGenericSubmissionCapacityWithoutMutation)" --output-on-failure
 ctest --preset windows-fast-gate -R "Package_" --output-on-failure
 ctest --preset windows-fast-gate -R "Kernel_RuntimeApp" --output-on-failure
 ```
@@ -126,5 +127,5 @@ Package artifact / manifest
 RAV3-G does not authorize that broader package artifact or final product visual
 closure work.
 
-RAV4-A is tracked separately in
-`docs/YUENGINE_RUNTIME_ASSET_PACKAGE_ARTIFACT_PRODUCT_RUN_GATE.md`.
+RAV4-A and the product-run/generic submission ledger rows are tracked
+separately in `docs/YUENGINE_RUNTIME_ASSET_PACKAGE_ARTIFACT_PRODUCT_RUN_GATE.md`.
