@@ -560,7 +560,8 @@ struct RuntimeAssetLoadedShaderProgramData final {
  */
 enum class RuntimeAssetShaderCompilerBackendKind {
     Unknown,
-    DeterministicFixture
+    DeterministicFixture,
+    NativeHlsl
 };
 
 /**

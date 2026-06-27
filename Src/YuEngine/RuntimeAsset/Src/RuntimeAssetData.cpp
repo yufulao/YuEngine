@@ -3521,6 +3521,10 @@ RuntimeAssetDataStatus ValidateShaderProgramMetadata(
         return status;
     }
 
+    if (input_layout.element_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidInputLayout;
+    }
+
     out_result->shader_bytecode_byte_count =
         static_cast<std::uint32_t>(vertex_byte_count + pixel_byte_count);
     return RuntimeAssetDataStatus::Success;

@@ -7811,6 +7811,37 @@ RuntimeAssetShaderProgramPipelineRequest ProgramPipelineRequest(
     return request;
 }
 
+bool ShaderCompilerBackendRejectedWithoutReflection(
+    const RuntimeAssetShaderCompilerBackendResult &result,
+    RuntimeAssetShaderCompilerBackendKind expected_backend_kind) {
+    if (result.status != RuntimeAssetDataStatus::UnsupportedFieldValue) {
+        return false;
+    }
+
+    if (result.backend_kind != expected_backend_kind) {
+        return false;
+    }
+
+    if (result.compiled_program) {
+        return false;
+    }
+
+    if (result.program.status != RuntimeAssetDataStatus::InvalidArgument) {
+        return false;
+    }
+
+    if (result.import_policy_hash != 0U ||
+        result.vertex_bytecode_hash != 0U ||
+        result.pixel_bytecode_hash != 0U ||
+        result.compiled_shader_stage_count != 0U ||
+        result.reflection_input_element_count != 0U ||
+        result.reflection_texture_slot_count != 0U) {
+        return false;
+    }
+
+    return true;
+}
+
 int RuntimeAssetDataShaderCompilerBackendProducesProgramReflection() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("ShaderCompilerBackend"), &table)) {
@@ -7877,8 +7908,22 @@ int RuntimeAssetDataShaderCompilerBackendProducesProgramReflection() {
     const RuntimeAssetDataStatus unknown_backend_status =
         CompileRuntimeAssetShaderProgram(unknown_backend_request, &unknown_backend_result);
     if (unknown_backend_status != RuntimeAssetDataStatus::UnsupportedFieldValue ||
-        unknown_backend_result.compiled_program) {
+        !ShaderCompilerBackendRejectedWithoutReflection(
+            unknown_backend_result,
+            RuntimeAssetShaderCompilerBackendKind::Unknown)) {
         return Fail("shader compiler backend accepted unknown backend kind");
+    }
+
+    RuntimeAssetShaderCompilerBackendRequest native_backend_request = compile_request;
+    native_backend_request.backend_kind = RuntimeAssetShaderCompilerBackendKind::NativeHlsl;
+    RuntimeAssetShaderCompilerBackendResult native_backend_result{};
+    const RuntimeAssetDataStatus native_backend_status =
+        CompileRuntimeAssetShaderProgram(native_backend_request, &native_backend_result);
+    if (native_backend_status != RuntimeAssetDataStatus::UnsupportedFieldValue ||
+        !ShaderCompilerBackendRejectedWithoutReflection(
+            native_backend_result,
+            RuntimeAssetShaderCompilerBackendKind::NativeHlsl)) {
+        return Fail("shader compiler backend accepted native backend kind");
     }
 
     RuntimeAssetShaderCompilerBackendRequest policy_mismatch_request = compile_request;
@@ -8009,6 +8054,38 @@ int RuntimeAssetDataShaderProgramBridgeAcceptsVariableTextureSlotReflection() {
         return Fail("variable texture slot shader pipeline build failed");
     }
 
+    const std::string texcoord_layout_text = SourceShaderTextWithBody(
+        "stage_vs=bytecode:runtime_program_vs\n"
+        "stage_ps=bytecode:runtime_program_ps\n"
+        "input=layout:position,texcoord\n"
+        "textures=0\n");
+    RuntimeAssetLoadedShaderProgramData texcoord_program{};
+    const RuntimeAssetDataStatus texcoord_decode_status =
+        DecodeShaderProgramText(texcoord_layout_text, &texcoord_program);
+    if (texcoord_decode_status != RuntimeAssetDataStatus::Success) {
+        return Fail("texcoord shader reflection decode failed");
+    }
+
+    if (texcoord_program.input_layout.element_count != 2U ||
+        texcoord_program.input_layout.elements[1U].semantic != RhiInputElementSemantic::TexCoord ||
+        texcoord_program.texture_slot_count != 0U ||
+        texcoord_program.validation.texture_slot_count != 0U ||
+        texcoord_program.validation.dependency_count != 4U) {
+        return Fail("texcoord shader reflection metadata changed");
+    }
+
+    const RuntimeAssetShaderProgramPipelineRequest texcoord_request =
+        ProgramPipelineRequest(&device, &texcoord_program);
+    RuntimeAssetShaderProgramPipelineResult texcoord_result{};
+    const RuntimeAssetDataStatus texcoord_status =
+        BuildRuntimeAssetShaderProgramPipeline(texcoord_request, &texcoord_result);
+    if (texcoord_status != RuntimeAssetDataStatus::Success ||
+        texcoord_result.pipeline_desc.input_layout.element_count != 2U ||
+        texcoord_result.texture_slot_count != 0U ||
+        texcoord_result.pipeline.generation == 0U) {
+        return Fail("texcoord shader pipeline build failed");
+    }
+
     std::string overflow_body(
         "stage_vs=bytecode:runtime_program_vs\n"
         "stage_ps=bytecode:runtime_program_ps\n"
@@ -8066,6 +8143,16 @@ int RuntimeAssetDataShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutati
             "textures=3\n"),
             RuntimeAssetDataStatus::InvalidInputLayout)) {
         return Fail("runtime asset shader bridge accepted input-layout mismatch");
+    }
+
+    if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
+            SourceShaderTextWithBody(
+            "stage_vs=bytecode:runtime_program_vs\n"
+            "stage_ps=bytecode:runtime_program_ps\n"
+            "input=layout:none\n"
+            "textures=3\n"),
+            RuntimeAssetDataStatus::InvalidInputLayout)) {
+        return Fail("runtime asset shader bridge accepted empty input layout");
     }
 
     if (!ExpectShaderBridgeRejectedWithoutRhiMutation(
