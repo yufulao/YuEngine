@@ -486,6 +486,10 @@ constexpr const char *TEST_SCENE_ANIMATION_OUTPUT_TABLES =
     "RuntimeAssetData_SceneAnimationLoaderEmitsReusableRuntimeAnimationTables";
 constexpr const char *TEST_SCENE_ANIMATION_PACKAGE_OUTPUT_TABLES =
     "RuntimeAssetData_PackageRunEmitsReusableRuntimeAnimationTables";
+constexpr const char *TEST_SCENE_ANIMATION_SELECTED_CLIP =
+    "RuntimeAssetData_SceneAnimationLoaderSamplesExplicitSelectedClip";
+constexpr const char *TEST_SCENE_ANIMATION_MISSING_SELECTED_CLIP_NO_MUTATION =
+    "RuntimeAssetData_SceneAnimationLoaderRejectsMissingSelectedClipWithoutMutation";
 constexpr const char *TEST_SCENE_ANIMATION_TABLE_CAPACITY_NO_MUTATION =
     "RuntimeAssetData_SceneAnimationLoaderRejectsAnimationTableCapacityWithoutMutation";
 constexpr const char *TEST_SCENE_ANIMATION_OUTPUT_TABLE_RESAMPLE =
@@ -660,9 +664,9 @@ struct BoundedLoadedGraph final {
     std::array<RuntimeAssetSceneCameraRecord, 2U> scene_cameras{};
     std::array<RuntimeAssetSceneEntityRecord, 4U> scene_entities{};
     std::array<RuntimeAssetSceneTransformOutputRecord, 4U> scene_transforms{};
-    std::array<AnimationRuntimeClipRecord, 1U> animation_clips{};
-    std::array<AnimationRuntimeTrackRecord, 2U> animation_tracks{};
-    std::array<AnimationRuntimeKeyframeRecord, 4U> animation_keyframes{};
+    std::array<AnimationRuntimeClipRecord, 2U> animation_clips{};
+    std::array<AnimationRuntimeTrackRecord, 3U> animation_tracks{};
+    std::array<AnimationRuntimeKeyframeRecord, 6U> animation_keyframes{};
     RuntimeAssetLoadedFile scene_asset{};
     RuntimeAssetSceneLoaderOutput scene_output{};
     RenderSceneRuntimeFrameResult frame_result{};
@@ -1450,6 +1454,29 @@ std::string BoundedAnimationBytes() {
         "key1=1:1\n"
         "key2=0:1\n"
         "key3=1:3\n");
+}
+
+std::string BoundedMultiClipAnimationBytes() {
+    return std::string(
+        "YUASSET ANIMATION 1\n"
+        "schema=rav0-source\n"
+        "id=bounded_spin\n"
+        "target=scene_entity:101\n"
+        "track=transform:rotation_y\n"
+        "clips=2\n"
+        "tracks=3\n"
+        "keyframes=6\n"
+        "clip0=id=1|duration=1|first_track_index=0|track_count=2|sample_rate=30\n"
+        "clip1=id=7|duration=1|first_track_index=2|track_count=1|sample_rate=30\n"
+        "track0=id=1|target_ref=scene_entity:101|channel=transform:rotation_y|first_key=0|key_count=2|interp=linear\n"
+        "track1=id=2|target_ref=scene_entity:104|channel=transform:translation_y|first_key=2|key_count=2|interp=linear\n"
+        "track2=id=3|target_ref=scene_entity:101|channel=transform:rotation_y|first_key=4|key_count=2|interp=linear\n"
+        "key0=0:0\n"
+        "key1=1:1\n"
+        "key2=0:1\n"
+        "key3=1:3\n"
+        "key4=0:0\n"
+        "key5=1:2\n");
 }
 
 std::string AlternateRuntimeFamilySceneBytes() {
@@ -3089,7 +3116,8 @@ bool LoadBoundedRuntimeAssetRecords(
     MountTable &table,
     ResourceRegistry &registry,
     AssetManager &manager,
-    BoundedLoadedGraph *out_graph) {
+    BoundedLoadedGraph *out_graph,
+    std::uint32_t selected_animation_clip_id = 0U) {
     if (out_graph == nullptr) {
         return FailStep("null bounded graph output");
     }
@@ -3132,6 +3160,7 @@ bool LoadBoundedRuntimeAssetRecords(
     load_request.animation_frame_context.frame_index = 1U;
     load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
     load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.selected_animation_clip_id = selected_animation_clip_id;
 
     RuntimeAssetGraphLoadResult load_result{};
     const RuntimeAssetDataStatus load_status = LoadRuntimeAssetDataGraph(load_request, &load_result);
@@ -3722,6 +3751,7 @@ void SeedBoundedSceneLoaderFailureSentinels(
         output->transform_count = 1779U;
         output->camera_count = 1780U;
         output->animation_sampled_value_count = 1781U;
+        output->selected_animation_clip_id = 1782U;
     }
 }
 
@@ -3775,7 +3805,8 @@ bool BoundedSceneLoaderFailureSentinelsUnchanged(
         output.entity_count != 1778U ||
         output.transform_count != 1779U ||
         output.camera_count != 1780U ||
-        output.animation_sampled_value_count != 1781U) {
+        output.animation_sampled_value_count != 1781U ||
+        output.selected_animation_clip_id != 1782U) {
         return FailStep("bounded failure mutated scene output");
     }
 
@@ -4013,7 +4044,8 @@ bool ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
     std::uint32_t transform_capacity = 4U,
     std::uint32_t animation_clip_capacity = 0U,
     std::uint32_t animation_track_capacity = 0U,
-    std::uint32_t animation_keyframe_capacity = 0U) {
+    std::uint32_t animation_keyframe_capacity = 0U,
+    std::uint32_t selected_animation_clip_id = 0U) {
     const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
     std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
     for (std::size_t index = 0U; index < files.size(); ++index) {
@@ -4029,9 +4061,9 @@ bool ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
     std::array<RuntimeAssetSceneCameraRecord, 2U> scene_cameras{};
     std::array<RuntimeAssetSceneEntityRecord, 4U> scene_entities{};
     std::array<RuntimeAssetSceneTransformOutputRecord, 4U> scene_transforms{};
-    std::array<AnimationRuntimeClipRecord, 1U> animation_clips{};
-    std::array<AnimationRuntimeTrackRecord, 2U> animation_tracks{};
-    std::array<AnimationRuntimeKeyframeRecord, 4U> animation_keyframes{};
+    std::array<AnimationRuntimeClipRecord, 2U> animation_clips{};
+    std::array<AnimationRuntimeTrackRecord, 3U> animation_tracks{};
+    std::array<AnimationRuntimeKeyframeRecord, 6U> animation_keyframes{};
     RuntimeAssetSceneLoaderOutput scene_output{};
     SeedBoundedSceneLoaderFailureSentinels(
         std::span<RuntimeAssetSceneResourceRef>(scene_resource_refs.data(), scene_resource_refs.size()),
@@ -4083,6 +4115,7 @@ bool ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
     load_request.animation_frame_context.frame_index = 1U;
     load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
     load_request.animation_frame_context.fixed_time_nanoseconds = HALF_SECOND_NANOSECONDS;
+    load_request.selected_animation_clip_id = selected_animation_clip_id;
 
     RuntimeAssetGraphLoadResult load_result{};
     const RuntimeAssetDataStatus load_status = LoadRuntimeAssetDataGraph(load_request, &load_result);
@@ -10017,6 +10050,54 @@ int RuntimeAssetDataSceneAnimationLoaderEmitsReusableRuntimeAnimationTables() {
     return 0;
 }
 
+int RuntimeAssetDataSceneAnimationLoaderSamplesExplicitSelectedClip() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("BoundedSelectedAnimationClip"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteBoundedFixture(table)) {
+        return Fail("bounded fixture write failed");
+    }
+
+    const std::vector<std::uint8_t> animation_bytes = BytesFromString(BoundedMultiClipAnimationBytes());
+    if (!WriteBytes(table, "Animation/Spin.yuanim", animation_bytes)) {
+        return Fail("bounded multi clip animation write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    BoundedLoadedGraph graph{};
+    if (!LoadBoundedRuntimeAssetRecords(table, registry, manager, &graph, 7U)) {
+        return Fail("bounded selected clip runtime asset records failed");
+    }
+
+    if (graph.scene_output.selected_animation_clip_id != 7U ||
+        graph.scene_output.animation_clip_count != 2U ||
+        graph.scene_output.animation_track_count != 3U ||
+        graph.scene_output.animation_keyframe_count != 6U ||
+        graph.scene_output.animation_sampled_value_count != 1U ||
+        graph.scene_output.animation_sample_status != AnimationRuntimeStatus::Success ||
+        graph.scene_output.animation_apply_status != AnimationRuntimeStatus::Success) {
+        return Fail("bounded selected clip scene output changed");
+    }
+
+    if (graph.animation_clips[1U].clip_id != 7U ||
+        graph.animation_tracks[2U].track_id != 3U) {
+        return Fail("bounded selected clip animation tables changed");
+    }
+
+    if (!Approx(graph.scene_entities[2U].transform.rotation_y, 1.0F)) {
+        return Fail("bounded selected clip did not drive target rotation");
+    }
+
+    if (!Approx(graph.scene_entities[0U].transform.translation_y, 1.0F)) {
+        return Fail("bounded selected clip sampled the wrong clip tracks");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataRuntimeAnimationTablesResampleAndFeedRenderSceneSubmission() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("BoundedAnimationOutputTableResample"), &table)) {
@@ -10119,6 +10200,37 @@ int RuntimeAssetDataRuntimeAnimationTablesResampleAndFeedRenderSceneSubmission()
         !Approx(frame_entities[0U].transform.translation_y, 2.5F) ||
         !Approx(frame_entities[2U].transform.rotation_y, 0.75F)) {
         return Fail("RenderScene submission did not consume resampled transforms");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataSceneAnimationLoaderRejectsMissingSelectedClipWithoutMutation() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("BoundedMissingSelectedClipNoMutation"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteBoundedFixture(table)) {
+        return Fail("bounded fixture write failed");
+    }
+
+    const std::vector<std::uint8_t> animation_bytes = BytesFromString(BoundedMultiClipAnimationBytes());
+    if (!WriteBytes(table, "Animation/Spin.yuanim", animation_bytes)) {
+        return Fail("bounded multi clip animation write failed");
+    }
+
+    if (!ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
+            table,
+            RuntimeAssetDataStatus::InvalidDependency,
+            4U,
+            2U,
+            4U,
+            2U,
+            3U,
+            6U,
+            99U)) {
+        return Fail("bounded missing selected clip mutated outputs");
     }
 
     return 0;
@@ -12968,10 +13080,14 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataSceneAnimationLoaderLoadsBoundedNEntityScene},
     {TEST_SCENE_ANIMATION_OUTPUT_TABLES,
      RuntimeAssetDataSceneAnimationLoaderEmitsReusableRuntimeAnimationTables},
+    {TEST_SCENE_ANIMATION_SELECTED_CLIP,
+     RuntimeAssetDataSceneAnimationLoaderSamplesExplicitSelectedClip},
     {TEST_SCENE_ANIMATION_OUTPUT_TABLE_RESAMPLE,
      RuntimeAssetDataRuntimeAnimationTablesResampleAndFeedRenderSceneSubmission},
     {TEST_SCENE_ANIMATION_CAPACITY_NO_MUTATION,
      RuntimeAssetDataSceneAnimationLoaderRejectsEntityCapacityOverflowWithoutMutation},
+    {TEST_SCENE_ANIMATION_MISSING_SELECTED_CLIP_NO_MUTATION,
+     RuntimeAssetDataSceneAnimationLoaderRejectsMissingSelectedClipWithoutMutation},
     {TEST_SCENE_ANIMATION_TABLE_CAPACITY_NO_MUTATION,
      RuntimeAssetDataSceneAnimationLoaderRejectsAnimationTableCapacityWithoutMutation},
     {TEST_SCENE_ANIMATION_REFS_NO_MUTATION,

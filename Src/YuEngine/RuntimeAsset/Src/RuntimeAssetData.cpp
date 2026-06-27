@@ -693,6 +693,7 @@ struct RuntimeAssetSceneLoaderStage final {
     std::uint32_t animation_track_count = 0U;
     std::uint32_t animation_keyframe_count = 0U;
     std::uint32_t animation_sampled_value_count = 0U;
+    std::uint32_t selected_animation_clip_id = 0U;
     AnimationRuntimeStatus animation_sample_status = AnimationRuntimeStatus::MissingClip;
     AnimationRuntimeStatus animation_apply_status = AnimationRuntimeStatus::MissingSample;
 };
@@ -1538,7 +1539,7 @@ std::string RuntimeAssetCookedVisualProofShaderFields() {
     text += RUNTIME_ASSET_D3D11_VISUAL_PROOF_VERTEX_SHADER_BASE64;
     text += "\nstage_ps=bytecode:b64:";
     text += RUNTIME_ASSET_D3D11_VISUAL_PROOF_PIXEL_SHADER_BASE64;
-    text += "\ninput=layout:none\ntextures=3\n";
+    text += "\ninput=layout:position,texcoord\ntextures=3\n";
     return text;
 }
 
@@ -4725,6 +4726,20 @@ RuntimeAssetDataStatus ParseBoundedAnimationTables(
     return RuntimeAssetDataStatus::Success;
 }
 
+std::uint32_t ResolveAnimationSampleClipId(
+    const RuntimeAssetGraphLoadRequest &request,
+    std::span<const AnimationRuntimeClipRecord> clips) {
+    if (request.selected_animation_clip_id != 0U) {
+        return request.selected_animation_clip_id;
+    }
+
+    if (clips.empty()) {
+        return 0U;
+    }
+
+    return clips[0U].clip_id;
+}
+
 RuntimeAssetDataStatus SampleAndApplyAnimationStage(
     const RuntimeAssetGraphLoadRequest &request,
     RuntimeAssetSceneLoaderStage *stage,
@@ -4740,10 +4755,13 @@ RuntimeAssetDataStatus SampleAndApplyAnimationStage(
         return RuntimeAssetDataStatus::CapacityExceeded;
     }
 
+    const std::uint32_t clip_id = ResolveAnimationSampleClipId(request, clips);
+    stage->selected_animation_clip_id = clip_id;
+
     std::array<AnimationRuntimeSampledValue, RUNTIME_ASSET_MAX_ANIMATION_SAMPLED_VALUE_COUNT>
         sampled_values{};
     AnimationRuntimeSampleRequest sample_request{};
-    sample_request.clip_id = clips[0U].clip_id;
+    sample_request.clip_id = clip_id;
     sample_request.clips = clips;
     sample_request.tracks = tracks;
     sample_request.keyframes = keyframes;
@@ -4930,6 +4948,7 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
     output.animation_track_count = stage.animation_track_count;
     output.animation_keyframe_count = stage.animation_keyframe_count;
     output.animation_sampled_value_count = stage.animation_sampled_value_count;
+    output.selected_animation_clip_id = stage.selected_animation_clip_id;
     output.entity_capacity = request.scene_entity_capacity;
     output.transform_capacity = request.scene_transform_capacity;
     output.resource_ref_capacity = request.scene_resource_ref_capacity;
@@ -8884,6 +8903,7 @@ RuntimeAssetGraphLoadRequest BuildRuntimeAssetPackagedGraphLoadRequest(
     load_request.animation_keyframe_capacity = request.animation_keyframe_capacity;
     load_request.scene_output = request.scene_output;
     load_request.animation_frame_context = request.animation_frame_context;
+    load_request.selected_animation_clip_id = request.selected_animation_clip_id;
     load_request.animation_clip_start_time_nanoseconds =
         request.animation_clip_start_time_nanoseconds;
     return load_request;

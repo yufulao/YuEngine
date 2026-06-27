@@ -436,6 +436,7 @@ struct RuntimeAssetSceneLoaderOutput final {
     std::uint32_t animation_track_count = 0U;
     std::uint32_t animation_keyframe_count = 0U;
     std::uint32_t animation_sampled_value_count = 0U;
+    std::uint32_t selected_animation_clip_id = 0U;
     std::uint32_t entity_capacity = 0U;
     std::uint32_t transform_capacity = 0U;
     std::uint32_t resource_ref_capacity = 0U;
@@ -485,6 +486,7 @@ struct RuntimeAssetGraphLoadRequest final {
     std::uint32_t animation_keyframe_capacity = 0U;
     RuntimeAssetSceneLoaderOutput *scene_output = nullptr;
     yuengine::kernel::RuntimeFrameContext animation_frame_context{};
+    std::uint32_t selected_animation_clip_id = 0U;
     std::uint64_t animation_clip_start_time_nanoseconds = 0U;
 };
 
@@ -961,6 +963,7 @@ struct RuntimeAssetPackagedRunRequest final {
     RuntimeAssetSceneLoaderOutput *scene_output = nullptr;
     RuntimeAssetLoadedShaderProgramData *shader_program = nullptr;
     yuengine::kernel::RuntimeFrameContext animation_frame_context{};
+    std::uint32_t selected_animation_clip_id = 0U;
     std::uint64_t animation_clip_start_time_nanoseconds = 0U;
     std::span<std::uint8_t> scratch_bytes{};
     std::span<std::uint8_t> capture_output{};
