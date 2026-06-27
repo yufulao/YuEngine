@@ -271,10 +271,10 @@ C++ in-memory construction alone.
 | Material alpha blend-state bridge | PASS | `RenderCore_FixturePass_BindsAlphaBlendState`, `RenderCore_FixturePass_RejectsInvalidBlendStateBeforeCommandRecording`, `RenderCore_MaterialCopiesBlendState`, `RenderCore_DrawableFramePipeline_PropagatesAlphaBlendState`, `RenderScene_RuntimeMaterialCopiesBlendState`, `RenderScene_RuntimeMaterialRejectsInvalidBlendStateWithoutMutation`, `RuntimeAssetData_GenericRenderSceneSubmissionPreservesPerEntityMaterialBlendState`, `RuntimeAssetData_CookedMaterialAlphaBlendStateBridgeToRenderSceneRecord`, and `RuntimeAssetData_CookedMaterialAlphaBlendRejectsInvalidLoadedMaterialWithoutMutation` prove material alpha/opacity reaches `RhiBlendStateDesc` through RuntimeAsset, RenderScene, RenderCore, and RHI-facing command paths with no-mutation invalid failures |
 | RHI constant-buffer binding | PASS | `RHI_ConstantBufferBinding_DefaultsAreBoundedValues`, `RHI_CommandList_RecordsConstantBufferBindingWithinCapacity`, `RHI_ConstantBufferSlotOverflow_DoesNotMutate`, `RHI_SubmitConstantBufferBinding_UpdatesNullSnapshot`, and `RHI_SubmitConstantBufferBindingRejectsStaleHandle` prove bounded command/list binding and stale-handle rejection |
 | Shader import policy | PASS | `RuntimeAssetData_ShaderImportPolicyValidatesSourceCookedAndLoadedRecords` validates source/cooked shader import language, target, entries, profiles, compile flags, and loaded record policy identity |
-| Shader compiler backend boundary | PASS | `RuntimeAssetData_ShaderCompilerBackendProducesProgramReflection` compiles deterministic disk program bytes into loaded program data, reports import policy, stage, bytecode hash, input layout, and texture slot reflection identity, feeds the RHI pipeline bridge, and rejects unknown backend or policy mismatch |
+| Shader compiler backend boundary | PASS | `RuntimeAssetData_ShaderCompilerBackendProducesProgramReflection` compiles deterministic disk program bytes into loaded program data, reports import policy, stage, bytecode hash, input layout, and texture slot reflection identity, feeds the RHI pipeline bridge, and rejects unknown or `NativeHlsl` backends before publishing compiled program, reflection, or hash counts |
 | Cooked shader stage modules | PASS | `RuntimeAssetData_CookedShaderStagePayloadsCreateRhiModules` creates RHI shader modules from owned cooked stage bytecode and validates stage payload identity |
-| Cooked program reflection/input layout | PASS | `RuntimeAssetData_CookedProgramPipelineUsesLoadedReflectionAndInputLayout` builds the cooked program pipeline from loaded reflection and input-layout data |
-| Cooked shader mismatch no-mutation | PASS | `RuntimeAssetData_CookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation` rejects stage bytecode hash and reflection mismatch before mutating Resource/Asset/RHI output |
+| Cooked program reflection/input layout | PASS | `RuntimeAssetData_CookedProgramPipelineUsesLoadedReflectionAndInputLayout` and `RuntimeAssetData_ShaderProgramBridgeAcceptsVariableTextureSlotReflection` build the cooked program pipeline from loaded reflection and input-layout data, including non-canonical `position,texcoord` input and `textures=0` success |
+| Cooked shader mismatch no-mutation | PASS | `RuntimeAssetData_CookedShaderPayloadRejectsStageBytecodeHashAndReflectionMismatchWithoutMutation` rejects stage bytecode hash and reflection mismatch before mutating Resource/Asset/RHI output; `RuntimeAssetData_ShaderProgramBridgeRejectsInvalidProgramDataWithoutRhiMutation` rejects `input=layout:none` as `InvalidInputLayout` before RHI mutation |
 | Cooked shader partial RHI cleanup | PASS | `RuntimeAssetData_CookedShaderProgramRhiPartialCreationFailureDestroysTransientHandles` destroys transient RHI handles on partial program creation failure |
 | Scene camera family failures | PASS | `RuntimeAssetData_SceneAnimationLoaderRejectsCameraFamilyFailuresWithoutMutation` validates duplicate active camera, no active camera, invalid camera row, and invalid entity camera ref failures without Resource/Asset/RenderScene output mutation |
 | Mesh/material/texture cook payloads | PASS | `RuntimeAssetData_CookStoresDecodedPayloadsForMeshMaterialTexture` stores decoded payload records for seven decodable runtime records |
@@ -289,15 +289,16 @@ These slices are not a complete asset system. Current RuntimeAssetData coverage
 accepts decoded mesh payload geometry buffers, decoded texture material slots,
 loaded material constant bytes and alpha blend state into RenderScene records,
 RHI constant-buffer command/list binding, loaded shader bytecode, shader
-compiler backend identity, cooked shader module creation, cooked
-reflection/input-layout bridge, cooked shader no-mutation failures, disk
-animation sampling, staged scene loader output, generic RenderScene CPU
-submission records, per-entity material tables, package/cook/run ledgers, and
-product-run smoke as the current mainline closed loop. The remaining work is
-production hardening for broader material and scene variants, non-fixture shader
-compiler integration, broader shader reflection semantics, reusable animation
-runtime record tables, and scene/animation/camera production variants beyond the
-canonical cube/cylinder/cone graph.
+compiler backend identity, unsupported native backend prevalidation, cooked
+shader module creation, cooked reflection/input-layout bridge, shader
+reflection hardening for variable input/texture-slot counts, cooked shader
+no-mutation failures, disk animation sampling, staged scene loader output,
+generic RenderScene CPU submission records, per-entity material tables,
+package/cook/run ledgers, and product-run smoke as the current mainline closed
+loop. The remaining work is production hardening for broader material and scene
+variants, native/non-fixture shader compiler integration, reusable animation
+runtime record tables, and scene/animation/camera production variants beyond
+the canonical cube/cylinder/cone graph.
 
 ## Validator, Cook, Load, Render
 
