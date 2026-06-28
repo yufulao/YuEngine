@@ -5,6 +5,8 @@ Owner: 八云紫, 总架构师
 Requested: 2026-06-19
 Current observed code checkpoint: `0a9144b0e30cbede56a5dbf04b232f3e5b763802`
 Scope: progress adjustment, L0 closure plan, L1 runtime-core plan
+Canonical entry point: `docs/README.md`
+Parent plan: `docs/YUENGINE_LONG_PLAN_TEAM_EXECUTION.md`
 
 ## 0. Production Target And Reference Bar
 

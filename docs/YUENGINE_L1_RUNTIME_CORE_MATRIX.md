@@ -12,6 +12,8 @@ Aligned documents:
 Source plan: `docs/YUENGINE_L0_L1_EXECUTION_PLAN.md` sections 6, 10, 11, and 12
 Scope: L1 runtime subsystem ownership, dependencies, forbidden scope, required
 evidence, vertical sample linkage, and deferred or environment blockers
+Canonical entry point: `docs/README.md`
+Parent plan: `docs/YUENGINE_LONG_PLAN_TEAM_EXECUTION.md`
 
 ## 1. Purpose
 

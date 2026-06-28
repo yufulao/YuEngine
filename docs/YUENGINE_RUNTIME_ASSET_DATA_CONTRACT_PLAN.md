@@ -10,6 +10,8 @@ Payload bridge RHI route: `docs/YUENGINE_RUNTIME_ASSET_V0_PAYLOAD_BRIDGE_RHI_ROU
 RAV1 evidence matrix: `docs/YUENGINE_RUNTIME_ASSET_V0_RAV1_EVIDENCE_MATRIX.md`
 Related gate: `docs/gates/L1_GATE_RUNTIME_ASSET_DATA_CLOSED_LOOP.md`
 Resource Browser scope: `docs/YUENGINE_RESOURCE_BROWSER_IMPORT_COOK_DIAGNOSTICS_SCOPE.md`
+Canonical entry point: `docs/README.md`
+Parent plan: `docs/YUENGINE_LONG_PLAN_TEAM_EXECUTION.md`
 Prerequisites:
 
 - clean `main` configure, build, and test stay green before each next slice.

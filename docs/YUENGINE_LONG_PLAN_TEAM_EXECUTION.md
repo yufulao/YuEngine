@@ -5,6 +5,25 @@ Owner: Architect, lead engineer
 Started: 2026-06-11
 Current planning checkpoint: `origin/main@0a9144b0e30cbede56a5dbf04b232f3e5b763802`
 Reference product target: `C:\Steam\steamapps\common\TouhouNewWorld`
+Canonical entry point: `docs/README.md`
+
+## 0. New Team Handoff Rule
+
+Start from `docs/README.md`, then read this file. This document is the current
+long-horizon plan. Older phase, RAV, editor, bridge, preview, resource-browser,
+and UI documents are historical/evidence context unless this file or
+`docs/README.md` explicitly promotes them back into the active plan.
+
+If context is compacted or a new team takes over, preserve these facts first:
+
+- YuEngine targets a small-team native commercial engine, not a toy engine or
+  a UE/Unity clone.
+- Package, Resource, and RuntimeAsset are the production spine.
+- RuntimeAsset must define asset-internal targets before deeper animation,
+  model, scene, or WorldObject binding.
+- The current nearest stage is RuntimeAsset spine correction.
+- The current coordinator goal is paused/report-only until the human lead
+  explicitly resumes coordination.
 
 ## 1. Final Product Target
 
