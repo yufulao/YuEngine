@@ -3,6 +3,7 @@
 
 #include "YuEngine/File/MountTable.h"
 
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -106,6 +107,34 @@ PathNormalizationResult NormalizePathValue(std::string_view value) {
 
     return PathNormalizationResult::Success(NormalizedPath(std::move(normalized_value)));
 }
+
+bool UInt64AddOverflows(std::uint64_t left, std::uint64_t right) {
+    return left > std::numeric_limits<std::uint64_t>::max() - right;
+}
+
+FileStatus ValidateReadRangeRequest(const FileReadRequest& request) {
+    if (!request.use_range) {
+        return FileStatus::Success;
+    }
+
+    if (request.range_byte_size == 0ULL) {
+        return FileStatus::InvalidRange;
+    }
+
+    if (UInt64AddOverflows(request.range_byte_offset, request.range_byte_size)) {
+        return FileStatus::InvalidRange;
+    }
+
+    return FileStatus::Success;
+}
+
+bool IsRangeFailureStatus(FileStatus status) {
+    if (status == FileStatus::InvalidRange) {
+        return true;
+    }
+
+    return status == FileStatus::RangeOutOfBounds;
+}
 }
 
 MountTable::MountTable()
@@ -154,6 +183,13 @@ PathNormalizationResult MountTable::Normalize(VirtualPath path) {
 }
 
 FileReadResult MountTable::Read(FileReadRequest request) {
+    const FileStatus range_request_status = ValidateReadRangeRequest(request);
+    if (range_request_status != FileStatus::Success) {
+        RecordLastReadStatus(range_request_status);
+        return FileReadResult::Failure(range_request_status);
+    }
+
+    const FileSnapshot snapshot_before_read = snapshot_;
     PathNormalizationResult normalized_path = Normalize(std::move(request.path));
     if (!normalized_path.Succeeded()) {
         RecordLastReadStatus(normalized_path.status);
@@ -171,7 +207,17 @@ FileReadResult MountTable::Read(FileReadRequest request) {
         return FileReadResult::Failure(FileStatus::MountNotFound);
     }
 
-    FileReadResult result = mounts_[*mount_index].Source().Read(normalized_path.path);
+    FileReadResult result = mounts_[*mount_index].Source().Read(
+        normalized_path.path,
+        request.use_range,
+        request.range_byte_offset,
+        request.range_byte_size);
+    if (!result.Succeeded() && IsRangeFailureStatus(result.status)) {
+        snapshot_ = snapshot_before_read;
+        RecordLastReadStatus(result.status);
+        return result;
+    }
+
     if (result.Succeeded()) {
         snapshot_.read_byte_count += result.bytes.size();
     }

@@ -4,6 +4,7 @@
 #include "YuEngine/File/LooseFileSource.h"
 
 #include <fstream>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -122,6 +123,53 @@ bool IsPathInsideRoot(const std::filesystem::path& root_path, const std::filesys
 
     return true;
 }
+
+bool UInt64AddOverflows(std::uint64_t left, std::uint64_t right) {
+    return left > std::numeric_limits<std::uint64_t>::max() - right;
+}
+
+FileStatus ResolveReadWindow(
+    std::uint64_t file_byte_count,
+    bool use_range,
+    std::uint64_t range_byte_offset,
+    std::uint64_t range_byte_size,
+    std::uint64_t *out_byte_offset,
+    std::uint64_t *out_byte_count) {
+    if (out_byte_offset == nullptr) {
+        return FileStatus::InvalidRange;
+    }
+
+    if (out_byte_count == nullptr) {
+        return FileStatus::InvalidRange;
+    }
+
+    *out_byte_offset = 0ULL;
+    *out_byte_count = file_byte_count;
+    if (!use_range) {
+        return FileStatus::Success;
+    }
+
+    if (range_byte_size == 0ULL) {
+        return FileStatus::InvalidRange;
+    }
+
+    if (UInt64AddOverflows(range_byte_offset, range_byte_size)) {
+        return FileStatus::InvalidRange;
+    }
+
+    const std::uint64_t range_end = range_byte_offset + range_byte_size;
+    if (range_byte_offset > file_byte_count) {
+        return FileStatus::RangeOutOfBounds;
+    }
+
+    if (range_end > file_byte_count) {
+        return FileStatus::RangeOutOfBounds;
+    }
+
+    *out_byte_offset = range_byte_offset;
+    *out_byte_count = range_byte_size;
+    return FileStatus::Success;
+}
 }
 
 LooseFileSource::LooseFileSource()
@@ -132,7 +180,11 @@ LooseFileSource::LooseFileSource(std::filesystem::path root_path)
     : root_path_(std::move(root_path)) {
 }
 
-FileReadResult LooseFileSource::Read(NormalizedPath path) const {
+FileReadResult LooseFileSource::Read(
+    NormalizedPath path,
+    bool use_range,
+    std::uint64_t range_byte_offset,
+    std::uint64_t range_byte_size) const {
     const FileStatus path_status = ValidatePublicNormalizedPath(path.Value());
     if (path_status != FileStatus::Success) {
         return FileReadResult::Failure(path_status);
@@ -179,7 +231,29 @@ FileReadResult LooseFileSource::Read(NormalizedPath path) const {
         return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
-    if (file_size > MAX_FIXTURE_READ_SIZE) {
+    if (file_size > std::numeric_limits<std::uint64_t>::max()) {
+        return FileReadResult::Failure(FileStatus::ReadTooLarge);
+    }
+
+    const std::uint64_t file_byte_count = static_cast<std::uint64_t>(file_size);
+    std::uint64_t read_byte_offset = 0ULL;
+    std::uint64_t read_byte_count = 0ULL;
+    const FileStatus range_status = ResolveReadWindow(
+        file_byte_count,
+        use_range,
+        range_byte_offset,
+        range_byte_size,
+        &read_byte_offset,
+        &read_byte_count);
+    if (range_status != FileStatus::Success) {
+        return FileReadResult::Failure(range_status);
+    }
+
+    if (read_byte_count > static_cast<std::uint64_t>(MAX_FIXTURE_READ_SIZE)) {
+        return FileReadResult::Failure(FileStatus::ReadTooLarge);
+    }
+
+    if (read_byte_offset > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max())) {
         return FileReadResult::Failure(FileStatus::ReadTooLarge);
     }
 
@@ -188,7 +262,14 @@ FileReadResult LooseFileSource::Read(NormalizedPath path) const {
         return FileReadResult::Failure(FileStatus::ReadFailure);
     }
 
-    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(file_size));
+    if (read_byte_offset > 0ULL) {
+        file.seekg(static_cast<std::streamoff>(read_byte_offset), std::ios::beg);
+        if (!file.good()) {
+            return FileReadResult::Failure(FileStatus::ReadFailure);
+        }
+    }
+
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(read_byte_count));
     if (!bytes.empty()) {
         file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }

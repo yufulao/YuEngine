@@ -15,6 +15,8 @@ enum class FileStatus {
     MountNotFound,
     FileNotFound,
     InvalidBuffer,
+    InvalidRange,
+    RangeOutOfBounds,
     ReadFailure,
     ReadTooLarge,
     WriteFailure,

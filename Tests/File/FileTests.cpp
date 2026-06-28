@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <cstdio>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -22,6 +23,7 @@ using AsyncFileReadQueue = yuengine::file::AsyncFileReadQueue;
 using AsyncFileReadRequest = yuengine::file::AsyncFileReadRequest;
 using AsyncFileReadResult = yuengine::file::AsyncFileReadResult;
 using yuengine::file::AsyncFileReadStatus;
+using FileReadRequest = yuengine::file::FileReadRequest;
 using LooseFileSource = yuengine::file::LooseFileSource;
 using yuengine::memory::MemoryAccountingStatus;
 using MountId = yuengine::file::MountId;
@@ -38,6 +40,9 @@ constexpr const char* TEST_DUPLICATE_MOUNT = "File_MountTable_RejectsDuplicateMo
 constexpr const char* TEST_PRIORITY_ORDER = "File_MountTable_UsesDeterministicPriorityOrder";
 constexpr const char* TEST_MISSING = "File_MountTable_ReportsMissingMountOrFile";
 constexpr const char* TEST_READ = "File_LooseFixtureRead_ReturnsExactBytes";
+constexpr const char* TEST_RANGE_READ = "File_RangedRead_ReturnsExactWindowAndSnapshotBytes";
+constexpr const char* TEST_RANGE_INVALID = "File_RangedRead_RejectsInvalidRangeWithoutSnapshotMutation";
+constexpr const char* TEST_RANGE_BOUNDS = "File_RangedRead_RejectsOutOfBoundsWithoutSnapshotMutation";
 constexpr const char* TEST_FORGED_NORMALIZED_PATH = "File_LooseFileSourceRejectsForgedNormalizedPathEscape";
 constexpr const char* TEST_WRITE = "File_LooseFixtureWrite_RoundTripsExactBytes";
 constexpr const char* TEST_WRITE_REJECTS = "File_LooseFixtureWrite_RejectsForgedPathAndOversizedBuffer";
@@ -48,6 +53,7 @@ constexpr const char* TEST_ASYNC_READ = "File_AsyncReadQueue_ReadsFixtureIntoCal
 constexpr const char* TEST_ASYNC_CAPACITY = "File_AsyncReadQueue_RejectsCapacityOverflow";
 constexpr const char* TEST_ASYNC_FAILURE = "File_AsyncReadQueue_ReportsReadFailureCompletion";
 constexpr const char* TEST_ASYNC_SMALL_OUTPUT = "File_AsyncReadQueue_RejectsSmallOutputWithoutOverrun";
+constexpr const char* TEST_ASYNC_RANGE_SMALL_OUTPUT = "File_AsyncReadQueue_RangedOutputTooSmallDoesNotCopyPartialBytes";
 constexpr const char* TEST_ASYNC_SHUTDOWN = "File_AsyncReadQueue_ShutdownRejectsSubmission";
 constexpr const char* TEST_ASYNC_SNAPSHOT = "File_AsyncReadQueue_SnapshotReportsBoundedCounters";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
@@ -61,6 +67,9 @@ constexpr const char* MISSING_MOUNT = "missing";
 constexpr const char* NORMALIZED_PATH = "Nested/FixtureFile.txt";
 constexpr const char* FIXTURE_TEXT = "yuengine file fixture\n";
 constexpr const char* MISSING_PATH = "missing.txt";
+constexpr std::uint64_t RANGE_BYTE_OFFSET = 9ULL;
+constexpr std::uint64_t RANGE_BYTE_SIZE = 4ULL;
+constexpr const char* RANGE_TEXT = "file";
 constexpr std::size_t ASYNC_OUTPUT_CAPACITY = 64U;
 using TestFunction = int (*)();
 
@@ -98,13 +107,32 @@ AsyncFileReadRequest CreateAsyncRequest(
     std::uint64_t request_index,
     const char *path,
     std::uint8_t *output_bytes,
-    std::size_t output_capacity) {
+    std::size_t output_capacity,
+    bool use_range=false,
+    std::uint64_t range_byte_offset=0ULL,
+    std::uint64_t range_byte_size=0ULL) {
     AsyncFileReadRequest request;
     request.mount_table = &table;
     request.read_request = {MountId(PRIMARY_MOUNT), VirtualPath(path)};
+    request.read_request.use_range = use_range;
+    request.read_request.range_byte_offset = range_byte_offset;
+    request.read_request.range_byte_size = range_byte_size;
     request.request_index = request_index;
     request.output_bytes = output_bytes;
     request.output_capacity = output_capacity;
+    return request;
+}
+
+FileReadRequest CreateRangeReadRequest(
+    const char *path,
+    std::uint64_t range_byte_offset,
+    std::uint64_t range_byte_size) {
+    FileReadRequest request;
+    request.mount = MountId(PRIMARY_MOUNT);
+    request.path = VirtualPath(path);
+    request.use_range = true;
+    request.range_byte_offset = range_byte_offset;
+    request.range_byte_size = range_byte_size;
     return request;
 }
 
@@ -260,6 +288,111 @@ int FileLooseFixtureReadReturnsExactBytes() {
     const std::string text(result.bytes.begin(), result.bytes.end());
     if (text != FIXTURE_TEXT) {
         return Fail("fixture bytes did not match expected content");
+    }
+
+    return 0;
+}
+
+int FileRangedReadReturnsExactWindowAndSnapshotBytes() {
+    MountTable table = CreateMountedTable();
+    const FileReadRequest request = CreateRangeReadRequest(NORMALIZED_PATH, RANGE_BYTE_OFFSET, RANGE_BYTE_SIZE);
+    const auto result = table.Read(request);
+    if (!result.Succeeded()) {
+        return Fail("ranged fixture read failed");
+    }
+
+    const std::string text(result.bytes.begin(), result.bytes.end());
+    if (text != RANGE_TEXT) {
+        return Fail("ranged fixture read returned the wrong window");
+    }
+
+    const auto snapshot = table.Snapshot();
+    if (snapshot.read_byte_count != RANGE_BYTE_SIZE) {
+        return Fail("ranged fixture read recorded the wrong byte count");
+    }
+
+    if (snapshot.last_read_status != FileStatus::Success) {
+        return Fail("ranged fixture read did not record success");
+    }
+
+    return 0;
+}
+
+int FileRangedReadRejectsInvalidRangeWithoutSnapshotMutation() {
+    MountTable table = CreateMountedTable();
+    const auto before_snapshot = table.Snapshot();
+    const FileReadRequest zero_request = CreateRangeReadRequest(NORMALIZED_PATH, RANGE_BYTE_OFFSET, 0ULL);
+    const auto zero_result = table.Read(zero_request);
+    if (zero_result.status != FileStatus::InvalidRange) {
+        return Fail("zero range did not return invalid range");
+    }
+
+    const auto zero_snapshot = table.Snapshot();
+    if (zero_snapshot.path_normalization_count != before_snapshot.path_normalization_count) {
+        return Fail("zero range changed normalization count");
+    }
+
+    if (zero_snapshot.lookup_count != before_snapshot.lookup_count) {
+        return Fail("zero range changed lookup count");
+    }
+
+    if (zero_snapshot.read_byte_count != before_snapshot.read_byte_count) {
+        return Fail("zero range changed read byte count");
+    }
+
+    const FileReadRequest overflow_request = CreateRangeReadRequest(
+        NORMALIZED_PATH,
+        std::numeric_limits<std::uint64_t>::max(),
+        1ULL);
+    const auto overflow_result = table.Read(overflow_request);
+    if (overflow_result.status != FileStatus::InvalidRange) {
+        return Fail("overflow range did not return invalid range");
+    }
+
+    const auto overflow_snapshot = table.Snapshot();
+    if (overflow_snapshot.path_normalization_count != before_snapshot.path_normalization_count) {
+        return Fail("overflow range changed normalization count");
+    }
+
+    if (overflow_snapshot.lookup_count != before_snapshot.lookup_count) {
+        return Fail("overflow range changed lookup count");
+    }
+
+    if (overflow_snapshot.read_byte_count != before_snapshot.read_byte_count) {
+        return Fail("overflow range changed read byte count");
+    }
+
+    if (overflow_snapshot.last_read_status != FileStatus::InvalidRange) {
+        return Fail("invalid range status was not recorded");
+    }
+
+    return 0;
+}
+
+int FileRangedReadRejectsOutOfBoundsWithoutSnapshotMutation() {
+    MountTable table = CreateMountedTable();
+    const auto before_snapshot = table.Snapshot();
+    const FileReadRequest request = CreateRangeReadRequest(NORMALIZED_PATH, 1000ULL, 1ULL);
+    const auto result = table.Read(request);
+    if (result.status != FileStatus::RangeOutOfBounds) {
+        return Fail("out of bounds range did not return explicit status");
+    }
+
+    const auto snapshot = table.Snapshot();
+    if (snapshot.path_normalization_count != before_snapshot.path_normalization_count) {
+        return Fail("out of bounds range changed normalization count");
+    }
+
+    if (snapshot.lookup_count != before_snapshot.lookup_count) {
+        return Fail("out of bounds range changed lookup count");
+    }
+
+    if (snapshot.read_byte_count != before_snapshot.read_byte_count) {
+        return Fail("out of bounds range changed read byte count");
+    }
+
+    if (snapshot.last_read_status != FileStatus::RangeOutOfBounds) {
+        return Fail("out of bounds range status was not recorded");
     }
 
     return 0;
@@ -616,6 +749,54 @@ int FileAsyncReadQueueRejectsSmallOutputWithoutOverrun() {
     return 0;
 }
 
+int FileAsyncReadQueueRangedOutputTooSmallDoesNotCopyPartialBytes() {
+    MountTable table = CreateMountedTable();
+    AsyncFileReadQueue queue;
+    queue.Initialize(2U, 2U);
+    queue.Start();
+
+    std::array<std::uint8_t, 2U> output_bytes{};
+    output_bytes[0U] = 55U;
+    output_bytes[1U] = 66U;
+
+    AsyncFileReadRequest request = CreateAsyncRequest(
+        table,
+        10U,
+        NORMALIZED_PATH,
+        output_bytes.data(),
+        output_bytes.size(),
+        true,
+        RANGE_BYTE_OFFSET,
+        RANGE_BYTE_SIZE);
+    queue.Submit(request);
+    queue.Shutdown(false);
+
+    std::array<AsyncFileReadResult, 1U> results{};
+    std::size_t written_count = 0U;
+    queue.DrainCompletions(results.data(), results.size(), &written_count);
+    if (written_count != 1U) {
+        return Fail("ranged small output completion count was wrong");
+    }
+
+    if (results[0U].status != AsyncFileReadStatus::OutputTooSmall) {
+        return Fail("ranged small output did not return output-too-small");
+    }
+
+    if (results[0U].byte_count != RANGE_BYTE_SIZE) {
+        return Fail("ranged small output did not report window byte count");
+    }
+
+    if (output_bytes[0U] != 55U) {
+        return Fail("ranged small output buffer was overwritten");
+    }
+
+    if (output_bytes[1U] != 66U) {
+        return Fail("ranged small output buffer tail was overwritten");
+    }
+
+    return 0;
+}
+
 int FileAsyncReadQueueShutdownRejectsSubmission() {
     MountTable table = CreateMountedTable();
     AsyncFileReadQueue queue;
@@ -705,6 +886,9 @@ int main(int argc, char** argv) {
         {TEST_PRIORITY_ORDER, FileMountTableUsesDeterministicPriorityOrder},
         {TEST_MISSING, FileMountTableReportsMissingMountOrFile},
         {TEST_READ, FileLooseFixtureReadReturnsExactBytes},
+        {TEST_RANGE_READ, FileRangedReadReturnsExactWindowAndSnapshotBytes},
+        {TEST_RANGE_INVALID, FileRangedReadRejectsInvalidRangeWithoutSnapshotMutation},
+        {TEST_RANGE_BOUNDS, FileRangedReadRejectsOutOfBoundsWithoutSnapshotMutation},
         {TEST_FORGED_NORMALIZED_PATH, FileLooseFileSourceRejectsForgedNormalizedPathEscape},
         {TEST_WRITE, FileLooseFixtureWriteRoundTripsExactBytes},
         {TEST_WRITE_REJECTS, FileLooseFixtureWriteRejectsForgedPathAndOversizedBuffer},
@@ -715,6 +899,7 @@ int main(int argc, char** argv) {
         {TEST_ASYNC_CAPACITY, FileAsyncReadQueueRejectsCapacityOverflow},
         {TEST_ASYNC_FAILURE, FileAsyncReadQueueReportsReadFailureCompletion},
         {TEST_ASYNC_SMALL_OUTPUT, FileAsyncReadQueueRejectsSmallOutputWithoutOverrun},
+        {TEST_ASYNC_RANGE_SMALL_OUTPUT, FileAsyncReadQueueRangedOutputTooSmallDoesNotCopyPartialBytes},
         {TEST_ASYNC_SHUTDOWN, FileAsyncReadQueueShutdownRejectsSubmission},
         {TEST_ASYNC_SNAPSHOT, FileAsyncReadQueueSnapshotReportsBoundedCounters}};
 

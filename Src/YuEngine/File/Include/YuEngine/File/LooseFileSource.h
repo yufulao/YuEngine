@@ -29,7 +29,11 @@ public:
      * @param path 输入 path。
      * @return 显式操作结果。
      */
-    FileReadResult Read(NormalizedPath path) const;
+    FileReadResult Read(
+        NormalizedPath path,
+        bool use_range=false,
+        std::uint64_t range_byte_offset=0ULL,
+        std::uint64_t range_byte_size=0ULL) const;
     /**
      * @comment 写入 字节 到 操作。
      * @param path 输入 path。
