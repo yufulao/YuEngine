@@ -24,7 +24,8 @@ shipped-content pressure examples
 -> hash coverage and dependency table contract
 -> File/VFS ranged IO contract
 -> Resource payload window/reference contract
--> RuntimeAsset packaged validation and transaction proof
+-> RuntimeAsset packaged validation bridge
+-> RuntimeAsset transaction proof
 ```
 
 ## Current Reality
@@ -119,8 +120,8 @@ The follow-up split from this contract is:
 | RTSPINE-008D | File/VFS ranged IO | PASS at `origin/main@c67e9710ab39f49ea01f0c194d2e5b44cbf3b97e`; File/VFS ranged request/status, no-mutation, and async small-output contract |
 | RTSPINE-008E | Resource payload window/reference budget | PASS at `origin/main@8bb8eff9c98d2a0aa5050c5da6ad94049fa894be`; Resource cache/decoded payload window and reference-budget contract |
 | RTSPINE-008F | Package dependency closure and budgeted load plan | PASS at `origin/main@8509f7e1b6ba15e79c574357a465ddfff4d80e10`; Package dependency closure, de-dup/order, record budget, and archive byte budget no-mutation evidence |
-| RTSPINE-008G | RuntimeAsset packaged validation bridge | After RTSPINE-004 implementation and QA are stable, and after lower Package/File/Resource gates have evidence |
-| RTSPINE-008H | RuntimeAsset transaction rollback/proof | After RTSPINE-008G |
+| RTSPINE-008G | RuntimeAsset packaged validation bridge | PASS at `origin/main@175b6542cf8460b279d1de8a5499e2cbd508c80a`; RuntimeAsset packaged archive byte-range/hash preflight, payload hash validation, duplicate load-plan rejection, and ProductRun validation failure reporting without graph mutation |
+| RTSPINE-008H | RuntimeAsset transaction rollback/proof | After RTSPINE-008G docs/VQ closure |
 
 RTSPINE-008C focused QA task `ba135e38-b73e-4294-b449-97a04b33b982` reports
 `YuPackageTests` build PASS, `^Package_` discovery/execution `35/35` PASS, exact
@@ -128,31 +129,43 @@ new integrity rows `2/2` PASS, `git diff --check` PASS, added-line hygiene PASS,
 Package-only boundary scans PASS, and no broad/full CTest. This 008C evidence
 did not itself release File/VFS or Resource payload windows; the separate 008D
 and 008E gates below do, and the separate 008F gate below covers Package
-dependency closure. It still does not release RTSPINE-008G/H or RuntimeAsset
-packaged validation.
+dependency closure. It did not itself release the RuntimeAsset packaged
+validation bridge; the separate 008G gate below does. It does not release
+RTSPINE-008H.
 
 RTSPINE-008D focused QA task `aebd28c5-f688-4ccc-abaf-1a3bd61879cb` reports
 `YuFileTests` build PASS, `^File_` discovery/execution `23/23` PASS, ranged
 subset `4/4` PASS, `git diff --check` PASS, added-line hygiene PASS, File-only
 boundary scans PASS, and no broad/full CTest. This releases only the File/VFS
 ranged IO contract. It did not itself release Resource payload windows; the
-separate 008E gate below does. It still does not release RTSPINE-008G/H or
-RuntimeAsset packaged validation.
+separate 008E gate below does. It does not release RTSPINE-008H or RuntimeAsset
+packaged validation bridge by itself; the separate 008G gate below does.
 
 RTSPINE-008E focused QA task `b4fa51c3-aefc-4714-b5d8-062f8a933ac9` reports
 `YuResourceTests` build PASS, Resource window/reference discovery exactly `7`
 rows, execution `7/7` PASS, commit-level `git diff --check` PASS, added-line
 hygiene PASS, non-goal boundary scans PASS, and no broad/full CTest. This
 releases only the Resource payload window/reference budget contract and does not
-release RTSPINE-008G/H or RuntimeAsset packaged validation.
+release RTSPINE-008H or RuntimeAsset packaged validation bridge by itself.
 
 RTSPINE-008F focused QA task `4f199c8e-99a4-43b4-a776-8960285ffdaf` reports
 allowed Package/CMake scope, `YuPackageTests` build PASS, exact 008F rows `4/4`
 PASS, `^Package_` focused suite `39/39` PASS, `git diff --check` PASS,
 added-line hygiene/scope scan PASS, no broad/full CTest, and no QA edits,
 staging, or commits. This releases only the Package dependency closure and
-budgeted load-plan contract and does not release RTSPINE-008G/H or RuntimeAsset
-packaged validation.
+budgeted load-plan contract and does not release RTSPINE-008H or RuntimeAsset
+packaged validation bridge by itself.
+
+RTSPINE-008G focused QA task `35fdc7a2-c09d-416a-95aa-b4aabdb05d0f` reports
+`origin/main@175b6542cf8460b279d1de8a5499e2cbd508c80a` RuntimeAsset packaged
+validation bridge PASS: focused `YuRuntimeAssetDataClosedLoopTests` build PASS,
+exact RTSPINE-008G rows `5/5` PASS, adjacent packaged/product rows `8/8` PASS,
+committed scope limited to `CMakeLists.txt`, `RuntimeAssetData.h/.cpp`, and
+`RuntimeAssetDataClosedLoopTests.cpp`, `git diff --check` PASS, no broad/full
+CTest, and clean read-only QA. This releases only the RuntimeAsset packaged
+validation bridge and does not release RTSPINE-008H transaction rollback/proof,
+broader Resource/File/VFS follow-through, WorldObject/editor/importer/RHI/
+RenderScene expansion, or unrelated animation mapping.
 
 ## Forbidden Scope
 

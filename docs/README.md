@@ -128,9 +128,17 @@ At the latest handoff:
   `YuPackageTests` build PASS, exact 008F rows `4/4` PASS, `^Package_`
   focused suite `39/39` PASS, diff/hygiene/scope scan PASS, no broad/full
   CTest, and no QA edits/staging/commits;
-- RuntimeAsset packaged validation, WorldObject-facing runtime instance
-  mapping, and RTSPINE-008G/H remain blocked until their own gates are
-  released.
+- RTSPINE-008G RuntimeAsset packaged validation bridge implementation is PASS
+  at `175b6542cf8460b279d1de8a5499e2cbd508c80a`; focused QA task
+  `35fdc7a2-c09d-416a-95aa-b4aabdb05d0f` reports focused
+  `YuRuntimeAssetDataClosedLoopTests` build PASS, exact packaged validation
+  rows `5/5` PASS, adjacent packaged/product rows `8/8` PASS, committed scope
+  limited to `CMakeLists.txt`, `RuntimeAssetData.h/.cpp`, and
+  `RuntimeAssetDataClosedLoopTests.cpp`, `git diff --check` PASS, and no
+  broad/full CTest;
+- WorldObject-facing runtime instance mapping, RTSPINE-008H transaction
+  rollback/proof, and broader Resource/File/VFS follow-through remain blocked
+  until their own gates are released.
 
 Live workspace state is still authoritative for task ownership and current
 status. This file records the handoff baseline, not a replacement for the task
