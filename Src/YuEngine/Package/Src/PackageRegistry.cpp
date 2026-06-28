@@ -25,13 +25,53 @@ std::uint32_t ClampCapacity(std::uint32_t requested_capacity, std::uint32_t maxi
     return requested_capacity;
 }
 
-bool ByteRangeIsWithinBounds(std::uint32_t byte_offset, std::uint32_t byte_size) {
+bool ByteRangeIsWithinBounds(std::uint64_t byte_offset, std::uint64_t byte_size) {
+    if (byte_size == 0ULL) {
+        return false;
+    }
+
     if (byte_size > MAX_DECLARED_ENTRY_SIZE) {
         return false;
     }
 
-    const std::uint64_t end_offset = static_cast<std::uint64_t>(byte_offset) + static_cast<std::uint64_t>(byte_size);
-    return end_offset <= std::numeric_limits<std::uint32_t>::max();
+    const std::uint64_t max_offset = std::numeric_limits<std::uint64_t>::max();
+    return byte_offset <= max_offset - byte_size;
+}
+
+std::uint64_t GetArchiveByteOffset(const PackageEntryDescriptor& descriptor) {
+    if (descriptor.archive_byte_size > 0ULL) {
+        return descriptor.archive_byte_offset;
+    }
+
+    return descriptor.byte_offset;
+}
+
+std::uint64_t GetArchiveByteSize(const PackageEntryDescriptor& descriptor) {
+    if (descriptor.archive_byte_size > 0ULL) {
+        return descriptor.archive_byte_size;
+    }
+
+    return descriptor.byte_size;
+}
+
+std::uint32_t MakeLegacyByteValue(std::uint64_t value) {
+    const std::uint64_t max_legacy_value = std::numeric_limits<std::uint32_t>::max();
+    if (value > max_legacy_value) {
+        return 0U;
+    }
+
+    return static_cast<std::uint32_t>(value);
+}
+
+PackageEntryDescriptor NormalizeEntryDescriptor(const PackageEntryDescriptor& descriptor) {
+    const std::uint64_t archive_byte_offset = GetArchiveByteOffset(descriptor);
+    const std::uint64_t archive_byte_size = GetArchiveByteSize(descriptor);
+    PackageEntryDescriptor normalized = descriptor;
+    normalized.byte_offset = MakeLegacyByteValue(archive_byte_offset);
+    normalized.byte_size = MakeLegacyByteValue(archive_byte_size);
+    normalized.archive_byte_offset = archive_byte_offset;
+    normalized.archive_byte_size = archive_byte_size;
+    return normalized;
 }
 
 std::uint32_t MixHash(std::uint32_t hash, std::uint32_t value) {
@@ -207,14 +247,15 @@ PackageRegistrationResult PackageRegistry::RegisterEntry(const PackageEntryDescr
             continue;
         }
 
-        entry.descriptor = descriptor;
+        const PackageEntryDescriptor stored_descriptor = NormalizeEntryDescriptor(descriptor);
+        entry.descriptor = stored_descriptor;
         entry.is_active = true;
-        AddEntryIndex(descriptor.package, descriptor.entry, index);
-        AddResourceIndex(descriptor.package, descriptor.type, descriptor.logical_key, index);
-        AddResourceKeyIndex(descriptor.package, descriptor.logical_key, index);
+        AddEntryIndex(stored_descriptor.package, stored_descriptor.entry, index);
+        AddResourceIndex(stored_descriptor.package, stored_descriptor.type, stored_descriptor.logical_key, index);
+        AddResourceKeyIndex(stored_descriptor.package, stored_descriptor.logical_key, index);
         ++snapshot_.entry_count;
         RecordSuccess();
-        return PackageRegistrationResult::EntrySuccess(descriptor.package, descriptor.entry);
+        return PackageRegistrationResult::EntrySuccess(stored_descriptor.package, stored_descriptor.entry);
     }
 
     return PackageRegistrationResult::Failure(RecordFailure(PackageStatus::EntryCapacityExceeded));
@@ -423,7 +464,9 @@ PackageStatus PackageRegistry::ValidateEntryDescriptor(const PackageEntryDescrip
         return PackageStatus::InvalidSourceKey;
     }
 
-    if (!ByteRangeIsWithinBounds(descriptor.byte_offset, descriptor.byte_size)) {
+    const std::uint64_t archive_byte_offset = GetArchiveByteOffset(descriptor);
+    const std::uint64_t archive_byte_size = GetArchiveByteSize(descriptor);
+    if (!ByteRangeIsWithinBounds(archive_byte_offset, archive_byte_size)) {
         return PackageStatus::ByteRangeOutOfBounds;
     }
 
@@ -548,14 +591,20 @@ std::uint32_t PackageRegistry::CountDirectDependencies(PackageId package, Packag
 }
 
 void PackageRegistry::AppendRecord(PackageLoadPlan& plan, const PackageEntryDescriptor& descriptor) const {
+    const std::uint64_t archive_byte_offset = GetArchiveByteOffset(descriptor);
+    const std::uint64_t archive_byte_size = GetArchiveByteSize(descriptor);
+    const std::uint32_t legacy_byte_offset = MakeLegacyByteValue(archive_byte_offset);
+    const std::uint32_t legacy_byte_size = MakeLegacyByteValue(archive_byte_size);
     plan.records[plan.record_count] = PackageLoadPlanRecord{
         descriptor.package,
         descriptor.entry,
         descriptor.type,
         descriptor.logical_key,
         descriptor.source_key,
-        descriptor.byte_offset,
-        descriptor.byte_size};
+        legacy_byte_offset,
+        legacy_byte_size,
+        archive_byte_offset,
+        archive_byte_size};
     ++plan.record_count;
 }
 

@@ -5,6 +5,7 @@
 
 #include <array>
 #include <charconv>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -38,6 +39,31 @@ PackageStatus ValidateArtifactRecordCounts(std::uint32_t entry_count, std::uint3
     }
 
     return PackageStatus::Success;
+}
+
+std::uint64_t GetArchiveByteOffset(const PackageEntryDescriptor &entry) {
+    if (entry.archive_byte_size > 0ULL) {
+        return entry.archive_byte_offset;
+    }
+
+    return entry.byte_offset;
+}
+
+std::uint64_t GetArchiveByteSize(const PackageEntryDescriptor &entry) {
+    if (entry.archive_byte_size > 0ULL) {
+        return entry.archive_byte_size;
+    }
+
+    return entry.byte_size;
+}
+
+std::uint32_t MakeLegacyByteValue(std::uint64_t value) {
+    const std::uint64_t max_legacy_value = std::numeric_limits<std::uint32_t>::max();
+    if (value > max_legacy_value) {
+        return 0U;
+    }
+
+    return static_cast<std::uint32_t>(value);
 }
 
 PackageStatus BuildRegistryFromRecords(
@@ -100,13 +126,15 @@ std::string BuildArtifactText(
     output << "dependencies|" << dependency_count << '\n';
     for (std::uint32_t index = 0U; index < entry_count; ++index) {
         const PackageEntryDescriptor &entry = entries[index];
+        const std::uint64_t archive_byte_offset = GetArchiveByteOffset(entry);
+        const std::uint64_t archive_byte_size = GetArchiveByteSize(entry);
         output << "entry|"
                << entry.entry.value << '|'
                << entry.type.value << '|'
                << entry.logical_key.Value() << '|'
                << entry.source_key.Value() << '|'
-               << entry.byte_offset << '|'
-               << entry.byte_size << '\n';
+               << archive_byte_offset << '|'
+               << archive_byte_size << '\n';
     }
 
     for (std::uint32_t index = 0U; index < dependency_count; ++index) {
@@ -168,6 +196,23 @@ bool ParseUInt32(std::string_view text, std::uint32_t *out_value) {
     return true;
 }
 
+bool ParseUInt64(std::string_view text, std::uint64_t *out_value) {
+    if (text.empty() || out_value == nullptr) {
+        return false;
+    }
+
+    std::uint64_t value = 0ULL;
+    const char *first = text.data();
+    const char *last = text.data() + text.size();
+    const std::from_chars_result result = std::from_chars(first, last, value);
+    if (result.ec != std::errc{} || result.ptr != last) {
+        return false;
+    }
+
+    *out_value = value;
+    return true;
+}
+
 PackageStatus ParseHeaderCountLine(
     const std::string &line,
     std::string_view expected_token,
@@ -212,14 +257,17 @@ PackageStatus ParseEntryLine(
 
     std::uint32_t entry_value = 0U;
     std::uint32_t type_value = 0U;
-    std::uint32_t byte_offset = 0U;
-    std::uint32_t byte_size = 0U;
+    std::uint64_t byte_offset = 0ULL;
+    std::uint64_t byte_size = 0ULL;
     if (!ParseUInt32(fields[1], &entry_value) ||
         !ParseUInt32(fields[2], &type_value) ||
-        !ParseUInt32(fields[5], &byte_offset) ||
-        !ParseUInt32(fields[6], &byte_size)) {
+        !ParseUInt64(fields[5], &byte_offset) ||
+        !ParseUInt64(fields[6], &byte_size)) {
         return PackageStatus::ArtifactParseFailure;
     }
+
+    const std::uint32_t legacy_byte_offset = MakeLegacyByteValue(byte_offset);
+    const std::uint32_t legacy_byte_size = MakeLegacyByteValue(byte_size);
 
     *out_entry = PackageEntryDescriptor{
         package,
@@ -227,6 +275,8 @@ PackageStatus ParseEntryLine(
         yuengine::resource::ResourceTypeId{type_value},
         yuengine::resource::ResourceLogicalKey(fields[3]),
         PackageSourceKey(fields[4]),
+        legacy_byte_offset,
+        legacy_byte_size,
         byte_offset,
         byte_size};
     return PackageStatus::Success;

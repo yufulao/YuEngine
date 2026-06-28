@@ -30,6 +30,7 @@ using yuengine::package::PackageArtifactWriteRequest;
 using yuengine::package::PackageEntryDescriptor;
 using yuengine::package::PackageEntryId;
 using yuengine::package::PackageId;
+using yuengine::package::PackageLoadPlanRecord;
 using yuengine::package::PackageLoadPlanResult;
 using yuengine::package::PackageRegistrationResult;
 using PackageRegistry = yuengine::package::PackageRegistry;
@@ -59,6 +60,8 @@ constexpr const char* TEST_MANIFEST_CAPACITY = "Package_ManifestCapacityOverflow
 constexpr const char* TEST_ENTRY_CAPACITY = "Package_EntryCapacityOverflow_DoesNotMutate";
 constexpr const char* TEST_OVERSIZED_KEYS = "Package_RegisterEntryRejectsOversizedKeysWithoutMutation";
 constexpr const char* TEST_OVERSIZED_BYTE_RANGE = "Package_RegisterEntryRejectsOversizedByteRangeWithoutMutation";
+constexpr const char* TEST_LARGE_BYTE_RANGE_INDEX =
+    "Package_RegisterEntryAcceptsLargeByteRangeAndResolvePreservesIndexMetadata";
 constexpr const char* TEST_RESOLVE = "Package_ResolveEntryByResourceKey_ReturnsDeterministicLoadPlan";
 constexpr const char* TEST_RESOLVE_RESOURCE_KEY_TUPLE = "Package_ResolveEntryByResourceKey_UsesTypeAndLogicalKeyTuple";
 constexpr const char* TEST_INDEXED_LOOKUPS = "Package_IndexedLookupsPreserveStatusOrderAndCapacities";
@@ -74,6 +77,8 @@ constexpr const char* TEST_DISABLED_DIAGNOSTICS = "Package_DisabledDiagnosticsDo
 constexpr const char* TEST_NO_FILE_ORIGINAL = "Package_NoFileReadOriginalPackageOrGameAdapterDependency";
 constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Package_NoHiddenAllocation_UsesYuMemorySignal";
 constexpr const char* TEST_ARTIFACT_ROUND_TRIP = "Package_FileBackedArtifactRoundTripsLoadPlanThroughFileVfs";
+constexpr const char* TEST_ARTIFACT_LARGE_BYTE_RANGE =
+    "Package_FileBackedArtifactRoundTripsLargeByteRangeMetadata";
 constexpr const char* TEST_ARTIFACT_INVALID = "Package_FileBackedArtifactRejectsInvalidBytesWithoutMutation";
 constexpr const char* TEST_ARTIFACT_MANIFEST_VALIDATION =
     "Package_FileBackedArtifactRejectsManifestParseAndSectionErrorsWithoutMutation";
@@ -125,6 +130,7 @@ constexpr ResourceTypeId TYPE_TEXTURE{1U};
 constexpr ResourceTypeId TYPE_MATERIAL{2U};
 constexpr ResourceTypeId TYPE_AUDIO{3U};
 constexpr ResourceTypeId TYPE_EFFECT{4U};
+constexpr std::uint64_t LARGE_ARCHIVE_BYTE_OFFSET = 0x100000400ULL;
 using TestFunction = int (*)();
 
 std::filesystem::path PackageArtifactRoot(std::string_view test_name) {
@@ -164,14 +170,27 @@ PackageEntryDescriptor Entry(
     ResourceTypeId type,
     const char* logical_key,
     const char* source_key,
-    std::uint32_t byte_offset = 0U,
-    std::uint32_t byte_size = 16U) {
+    std::uint64_t byte_offset = 0ULL,
+    std::uint64_t byte_size = 16ULL) {
+    std::uint32_t legacy_byte_offset = 0U;
+    std::uint32_t legacy_byte_size = 0U;
+    const std::uint64_t max_legacy_value = std::numeric_limits<std::uint32_t>::max();
+    if (byte_offset <= max_legacy_value) {
+        legacy_byte_offset = static_cast<std::uint32_t>(byte_offset);
+    }
+
+    if (byte_size <= max_legacy_value) {
+        legacy_byte_size = static_cast<std::uint32_t>(byte_size);
+    }
+
     return PackageEntryDescriptor{
         package,
         entry,
         type,
         ResourceLogicalKey(logical_key),
         PackageSourceKey(source_key),
+        legacy_byte_offset,
+        legacy_byte_size,
         byte_offset,
         byte_size};
 }
@@ -186,8 +205,8 @@ PackageRegistrationResult RegisterEntry(
     ResourceTypeId type,
     const char* logical_key,
     const char* source_key,
-    std::uint32_t byte_offset = 0U,
-    std::uint32_t byte_size = 16U) {
+    std::uint64_t byte_offset = 0ULL,
+    std::uint64_t byte_size = 16ULL) {
     return registry.RegisterEntry(Entry(PACKAGE_A, entry, type, logical_key, source_key, byte_offset, byte_size));
 }
 
@@ -478,9 +497,21 @@ int PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation() {
         "texture_a",
         "textures/texture_a.bin",
         0U,
-        MAX_DECLARED_ENTRY_SIZE + 1U);
+        MAX_DECLARED_ENTRY_SIZE + 1ULL);
     if (too_large.status != PackageStatus::ByteRangeOutOfBounds) {
         return Fail("oversized byte range did not return explicit status");
+    }
+
+    const PackageRegistrationResult zero_size = RegisterEntry(
+        registry,
+        ENTRY_TEXTURE,
+        TYPE_TEXTURE,
+        "texture_a",
+        "textures/texture_a.bin",
+        0U,
+        0U);
+    if (zero_size.status != PackageStatus::ByteRangeOutOfBounds) {
+        return Fail("zero-size byte range did not return explicit status");
     }
 
     const PackageRegistrationResult overflow = RegisterEntry(
@@ -489,7 +520,7 @@ int PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation() {
         TYPE_TEXTURE,
         "texture_a",
         "textures/texture_a.bin",
-        std::numeric_limits<std::uint32_t>::max(),
+        std::numeric_limits<std::uint64_t>::max(),
         1U);
     if (overflow.status != PackageStatus::ByteRangeOutOfBounds) {
         return Fail("overflow byte range did not return explicit status");
@@ -497,6 +528,44 @@ int PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation() {
 
     if (registry.Snapshot().entry_count != before_snapshot.entry_count) {
         return Fail("oversized byte range changed entry count");
+    }
+
+    return 0;
+}
+
+int PackageRegisterEntryAcceptsLargeByteRangeAndResolvePreservesIndexMetadata() {
+    PackageRegistry registry;
+    RegisterManifest(registry);
+
+    const PackageRegistrationResult entry_result = RegisterEntry(
+        registry,
+        ENTRY_TEXTURE,
+        TYPE_TEXTURE,
+        "texture_large_range",
+        "textures/texture_large_range.bin",
+        LARGE_ARCHIVE_BYTE_OFFSET,
+        MAX_DECLARED_ENTRY_SIZE);
+    if (!entry_result.Succeeded()) {
+        return Fail("large byte-range entry did not register");
+    }
+
+    const PackageLoadPlanResult plan =
+        registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_large_range"));
+    if (!plan.Succeeded()) {
+        return Fail("large byte-range entry did not resolve through package index");
+    }
+
+    if (plan.plan.record_count != 1U) {
+        return Fail("large byte-range load plan returned unexpected record count");
+    }
+
+    const PackageLoadPlanRecord& record = plan.plan.records[0U];
+    if (record.archive_byte_offset != LARGE_ARCHIVE_BYTE_OFFSET) {
+        return Fail("large byte-range offset was not preserved");
+    }
+
+    if (record.archive_byte_size != MAX_DECLARED_ENTRY_SIZE) {
+        return Fail("large byte-range size was not preserved");
     }
 
     return 0;
@@ -1019,6 +1088,56 @@ int PackageFileBackedArtifactRoundTripsLoadPlanThroughFileVfs() {
     return 0;
 }
 
+int PackageFileBackedArtifactRoundTripsLargeByteRangeMetadata() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_LARGE_BYTE_RANGE);
+    const std::array<PackageEntryDescriptor, 1U> entries{
+        Entry(
+            PACKAGE_A,
+            ENTRY_TEXTURE,
+            TYPE_TEXTURE,
+            "texture_large_range",
+            "textures/texture_large_range.bin",
+            LARGE_ARCHIVE_BYTE_OFFSET,
+            128U)};
+
+    PackageArtifactWriteRequest write_request{};
+    write_request.mount_table = &table;
+    write_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    write_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    write_request.package = PACKAGE_A;
+    write_request.entries = entries.data();
+    write_request.entry_count = static_cast<std::uint32_t>(entries.size());
+    const PackageArtifactResult write_result = WritePackageArtifact(write_request);
+    if (write_result.status != PackageStatus::Success || !write_result.wrote_artifact) {
+        return Fail("large byte-range artifact did not write");
+    }
+
+    PackageRegistry artifact_registry;
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = &table;
+    read_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    read_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    read_request.registry = &artifact_registry;
+    const PackageArtifactResult read_result = ReadPackageArtifact(read_request);
+    if (read_result.status != PackageStatus::Success || !read_result.rebuilt_registry) {
+        return Fail("large byte-range artifact did not rebuild registry");
+    }
+
+    const PackageLoadPlanResult plan =
+        artifact_registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_large_range"));
+    if (!plan.Succeeded() || plan.plan.record_count != 1U) {
+        return Fail("large byte-range artifact did not resolve");
+    }
+
+    const PackageLoadPlanRecord& record = plan.plan.records[0U];
+    if (record.archive_byte_offset != LARGE_ARCHIVE_BYTE_OFFSET || record.archive_byte_size != 128ULL) {
+        return Fail("large byte-range artifact metadata changed");
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_LARGE_BYTE_RANGE));
+    return 0;
+}
+
 int PackageFileBackedArtifactRejectsInvalidBytesWithoutMutation() {
     MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_INVALID);
     const std::string invalid_artifact = "not-a-package-artifact\n";
@@ -1146,9 +1265,13 @@ int PackageFileBackedArtifactRejectsEntryMetadataWithoutMutation() {
     const std::string invalid_source =
         std::string(PACKAGE_ARTIFACT_MAGIC) +
         "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|texture_a|Textures/texture_a.bin|0|16\nend\n";
-    const std::string bad_range =
+    const std::string zero_range =
         std::string(PACKAGE_ARTIFACT_MAGIC) +
-        "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|4294967295|1\nend\n";
+        "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|0|0\nend\n";
+    const std::string overflow_range =
+        std::string(PACKAGE_ARTIFACT_MAGIC) +
+        "\npackage|1\nentries|1\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|"
+        "18446744073709551615|1\nend\n";
     const std::string duplicate_entry =
         std::string(PACKAGE_ARTIFACT_MAGIC) +
         "\npackage|1\nentries|2\ndependencies|0\nentry|1|1|texture_a|textures/texture_a.bin|0|16\n"
@@ -1203,9 +1326,17 @@ int PackageFileBackedArtifactRejectsEntryMetadataWithoutMutation() {
 
     if (ExpectInvalidArtifactRead(
             table,
-            bad_range,
+            zero_range,
             PackageStatus::ByteRangeOutOfBounds,
-            "artifact byte range did not return explicit status") != 0) {
+            "artifact zero byte range did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            overflow_range,
+            PackageStatus::ByteRangeOutOfBounds,
+            "artifact overflow byte range did not return explicit status") != 0) {
         return 1;
     }
 
@@ -1381,6 +1512,7 @@ int main(int argc, char** argv) {
         {TEST_ENTRY_CAPACITY, PackageEntryCapacityOverflowDoesNotMutate},
         {TEST_OVERSIZED_KEYS, PackageRegisterEntryRejectsOversizedKeysWithoutMutation},
         {TEST_OVERSIZED_BYTE_RANGE, PackageRegisterEntryRejectsOversizedByteRangeWithoutMutation},
+        {TEST_LARGE_BYTE_RANGE_INDEX, PackageRegisterEntryAcceptsLargeByteRangeAndResolvePreservesIndexMetadata},
         {TEST_RESOLVE, PackageResolveEntryByResourceKeyReturnsDeterministicLoadPlan},
         {TEST_RESOLVE_RESOURCE_KEY_TUPLE, PackageResolveEntryByResourceKeyUsesTypeAndLogicalKeyTuple},
         {TEST_INDEXED_LOOKUPS, PackageIndexedLookupsPreserveStatusOrderAndCapacities},
@@ -1396,6 +1528,7 @@ int main(int argc, char** argv) {
         {TEST_NO_FILE_ORIGINAL, PackageNoFileReadOriginalPackageOrGameAdapterDependency},
         {TEST_NO_HIDDEN_ALLOCATION, PackageNoHiddenAllocationUsesYuMemorySignal},
         {TEST_ARTIFACT_ROUND_TRIP, PackageFileBackedArtifactRoundTripsLoadPlanThroughFileVfs},
+        {TEST_ARTIFACT_LARGE_BYTE_RANGE, PackageFileBackedArtifactRoundTripsLargeByteRangeMetadata},
         {TEST_ARTIFACT_INVALID, PackageFileBackedArtifactRejectsInvalidBytesWithoutMutation},
         {TEST_ARTIFACT_MANIFEST_VALIDATION,
          PackageFileBackedArtifactRejectsManifestParseAndSectionErrorsWithoutMutation},

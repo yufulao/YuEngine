@@ -23,5 +23,7 @@ struct PackageLoadPlanRecord final {
     PackageSourceKey source_key;
     std::uint32_t byte_offset = 0U;
     std::uint32_t byte_size = 0U;
+    std::uint64_t archive_byte_offset = 0ULL;
+    std::uint64_t archive_byte_size = 0ULL;
 };
 }
