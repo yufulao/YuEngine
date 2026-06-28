@@ -385,6 +385,13 @@ private:
     ResourceCachePayloadStatus ValidateCachePayloadRequest(
         const ResourceCachePayloadRequest &request,
         std::size_t *out_slot_index) const;
+    ResourceCachePayloadStatus ValidateCachePayloadStoreWindow(
+        const ResourceCachePayloadRequest &request) const;
+    ResourceCachePayloadStatus ResolveCachePayloadReadWindow(
+        const ResourceCachePayloadRequest &request,
+        const ResourceCachePayloadRecord &record,
+        std::uint32_t *out_byte_offset,
+        std::uint32_t *out_byte_count) const;
     ResourceDecodePlanStatus ValidateDecodePlanRequest(
         const ResourceDecodePlanRequest &request,
         std::size_t *out_slot_index) const;
@@ -401,6 +408,13 @@ private:
     ResourceDecodedPayloadStatus ValidateDecodedPayloadRequest(
         const ResourceDecodedPayloadRequest &request,
         std::size_t *out_slot_index) const;
+    ResourceDecodedPayloadStatus ValidateDecodedPayloadStoreWindow(
+        const ResourceDecodedPayloadRequest &request) const;
+    ResourceDecodedPayloadStatus ResolveDecodedPayloadReadWindow(
+        const ResourceDecodedPayloadRequest &request,
+        const ResourceDecodedPayloadRecord &record,
+        std::uint32_t *out_byte_offset,
+        std::uint32_t *out_byte_count) const;
     ResourceDecodedPayloadStatus ValidateDecodedPayloadResult(
         const ResourceDecodedPayloadRequest &request,
         const ResourceDecodeResultRecord &decode_result_record) const;

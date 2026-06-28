@@ -17,6 +17,8 @@ struct ResourceCachePayloadRecord final {
     ResourceHandle resource;
     ResourceTypeId expected_type;
     std::uint64_t payload_id = 0U;
+    std::uint64_t payload_window_byte_offset = 0U;
+    std::uint64_t payload_window_byte_size = 0U;
     std::uint32_t payload_byte_count = 0U;
     std::uint32_t cache_slot_index = INVALID_RESOURCE_SLOT;
     ResourceCachePayloadStatus status = ResourceCachePayloadStatus::Success;

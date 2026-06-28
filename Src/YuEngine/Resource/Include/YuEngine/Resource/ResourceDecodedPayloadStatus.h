@@ -32,8 +32,10 @@ enum class ResourceDecodedPayloadStatus {
     DecodedByteCountMismatch,
     EmptyPayload,
     OutputBufferTooSmall,
+    PayloadWindowOutOfBounds,
     CapacityExceeded,
-    BudgetExceeded
+    BudgetExceeded,
+    ReferenceBudgetExceeded
 };
 
 } // namespace yuengine::resource

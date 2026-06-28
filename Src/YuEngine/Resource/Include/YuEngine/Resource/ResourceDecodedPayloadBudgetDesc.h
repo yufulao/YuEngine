@@ -15,6 +15,7 @@ namespace yuengine::resource {
  */
 struct ResourceDecodedPayloadBudgetDesc {
     std::uint32_t decoded_byte_capacity = MAX_RESOURCE_DECODED_PAYLOAD_TOTAL_BYTES;
+    std::uint32_t payload_reference_capacity = MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT;
 };
 
 } // namespace yuengine::resource

@@ -10,5 +10,6 @@
 namespace yuengine::resource {
 struct ResourceCachePayloadBudgetDesc final {
     std::uint32_t byte_capacity = MAX_RESOURCE_CACHE_PAYLOAD_TOTAL_BYTES;
+    std::uint32_t payload_reference_capacity = MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT;
 };
 }

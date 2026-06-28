@@ -18,7 +18,9 @@ enum class ResourceCachePayloadStatus {
     MissingPayload,
     EmptyPayload,
     OutputBufferTooSmall,
+    PayloadWindowOutOfBounds,
     CapacityExceeded,
-    BudgetExceeded
+    BudgetExceeded,
+    ReferenceBudgetExceeded
 };
 }

@@ -45,6 +45,39 @@ bool MatchesDecodeResultClass(
 
     return false;
 }
+
+bool HasExplicitPayloadWindow(std::uint64_t payload_window_byte_offset, std::uint64_t payload_window_byte_size) {
+    if (payload_window_byte_offset != 0U) {
+        return true;
+    }
+
+    return payload_window_byte_size != 0U;
+}
+
+bool PayloadWindowEndOverflows(std::uint64_t payload_window_byte_offset, std::uint64_t payload_window_byte_size) {
+    const std::uint64_t maximum_size = std::numeric_limits<std::uint64_t>::max() - payload_window_byte_offset;
+    return payload_window_byte_size > maximum_size;
+}
+
+std::uint64_t EffectivePayloadWindowByteOffset(
+    std::uint64_t payload_window_byte_offset,
+    std::uint64_t payload_window_byte_size) {
+    if (payload_window_byte_size == 0U) {
+        return 0U;
+    }
+
+    return payload_window_byte_offset;
+}
+
+std::uint64_t EffectivePayloadWindowByteSize(
+    std::uint64_t payload_window_byte_size,
+    std::uint32_t payload_byte_count) {
+    if (payload_window_byte_size == 0U) {
+        return payload_byte_count;
+    }
+
+    return payload_window_byte_size;
+}
 }
 
 ResourceRegistry::ResourceRegistry()
@@ -582,6 +615,20 @@ ResourceCachePayloadStatus ResourceRegistry::SetCachePayloadBudget(ResourceCache
             ResourceCachePayloadStatus::InvalidArgument);
     }
 
+    if (desc.payload_reference_capacity == 0U) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::ConfigureBudget,
+            request,
+            ResourceCachePayloadStatus::InvalidArgument);
+    }
+
+    if (desc.payload_reference_capacity > MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::ConfigureBudget,
+            request,
+            ResourceCachePayloadStatus::InvalidArgument);
+    }
+
     if (desc.byte_capacity < cache_payload_snapshot_.cached_byte_count) {
         return RecordCachePayloadRejected(
             ResourceCachePayloadOperation::ConfigureBudget,
@@ -589,7 +636,15 @@ ResourceCachePayloadStatus ResourceRegistry::SetCachePayloadBudget(ResourceCache
             ResourceCachePayloadStatus::BudgetExceeded);
     }
 
+    if (desc.payload_reference_capacity < cache_payload_snapshot_.cached_payload_count) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::ConfigureBudget,
+            request,
+            ResourceCachePayloadStatus::ReferenceBudgetExceeded);
+    }
+
     cache_payload_snapshot_.budget_byte_capacity = desc.byte_capacity;
+    cache_payload_snapshot_.budget_payload_reference_capacity = desc.payload_reference_capacity;
     RecordCachePayloadSuccess(
         ResourceCachePayloadOperation::ConfigureBudget,
         request,
@@ -626,11 +681,23 @@ ResourceCachePayloadStatus ResourceRegistry::StoreCachePayload(const ResourceCac
             ResourceCachePayloadStatus::CapacityExceeded);
     }
 
+    const ResourceCachePayloadStatus window_status = ValidateCachePayloadStoreWindow(request);
+    if (window_status != ResourceCachePayloadStatus::Success) {
+        return RecordCachePayloadRejected(ResourceCachePayloadOperation::Store, request, window_status);
+    }
+
     if (HasCachePayloadId(request.payload_id)) {
         return RecordCachePayloadRejected(
             ResourceCachePayloadOperation::Store,
             request,
             ResourceCachePayloadStatus::DuplicatePayloadId);
+    }
+
+    if (cache_payload_snapshot_.cached_payload_count >= cache_payload_snapshot_.budget_payload_reference_capacity) {
+        return RecordCachePayloadRejected(
+            ResourceCachePayloadOperation::Store,
+            request,
+            ResourceCachePayloadStatus::ReferenceBudgetExceeded);
     }
 
     if (cache_payload_snapshot_.cached_payload_count >= MAX_RESOURCE_CACHE_PAYLOAD_RECORD_COUNT) {
@@ -668,6 +735,12 @@ ResourceCachePayloadStatus ResourceRegistry::StoreCachePayload(const ResourceCac
     record.resource = request.resource;
     record.expected_type = request.expected_type;
     record.payload_id = request.payload_id;
+    record.payload_window_byte_offset = EffectivePayloadWindowByteOffset(
+        request.payload_window_byte_offset,
+        request.payload_window_byte_size);
+    record.payload_window_byte_size = EffectivePayloadWindowByteSize(
+        request.payload_window_byte_size,
+        request.payload_byte_count);
     record.payload_byte_count = request.payload_byte_count;
     record.cache_slot_index = static_cast<std::uint32_t>(record_index);
     record.status = ResourceCachePayloadStatus::Success;
@@ -718,7 +791,18 @@ ResourceCachePayloadStatus ResourceRegistry::ReadCachePayload(
     }
 
     const ResourceCachePayloadRecord &record = cache_payload_records_[record_index];
-    if (output_byte_capacity < record.payload_byte_count) {
+    std::uint32_t read_byte_offset = 0U;
+    std::uint32_t read_byte_count = 0U;
+    const ResourceCachePayloadStatus window_status = ResolveCachePayloadReadWindow(
+        request,
+        record,
+        &read_byte_offset,
+        &read_byte_count);
+    if (window_status != ResourceCachePayloadStatus::Success) {
+        return RecordCachePayloadRejected(ResourceCachePayloadOperation::Read, request, window_status);
+    }
+
+    if (output_byte_capacity < read_byte_count) {
         return RecordCachePayloadRejected(
             ResourceCachePayloadOperation::Read,
             request,
@@ -726,17 +810,18 @@ ResourceCachePayloadStatus ResourceRegistry::ReadCachePayload(
     }
 
     std::uint32_t byte_index = 0U;
-    while (byte_index < record.payload_byte_count) {
-        output_bytes[byte_index] = cache_payload_bytes_[record_index][byte_index];
+    while (byte_index < read_byte_count) {
+        const std::uint32_t source_byte_index = read_byte_offset + byte_index;
+        output_bytes[byte_index] = cache_payload_bytes_[record_index][source_byte_index];
         ++byte_index;
     }
 
-    *output_byte_count = record.payload_byte_count;
+    *output_byte_count = read_byte_count;
     RecordCachePayloadSuccess(
         ResourceCachePayloadOperation::Read,
         request,
         record.cache_slot_index,
-        record.payload_byte_count);
+        read_byte_count);
     return ResourceCachePayloadStatus::Success;
 }
 
@@ -1129,6 +1214,20 @@ ResourceDecodedPayloadStatus ResourceRegistry::SetDecodedPayloadBudget(ResourceD
             ResourceDecodedPayloadStatus::InvalidArgument);
     }
 
+    if (desc.payload_reference_capacity == 0U) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::ConfigureBudget,
+            request,
+            ResourceDecodedPayloadStatus::InvalidArgument);
+    }
+
+    if (desc.payload_reference_capacity > MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::ConfigureBudget,
+            request,
+            ResourceDecodedPayloadStatus::InvalidArgument);
+    }
+
     if (desc.decoded_byte_capacity < decoded_payload_snapshot_.stored_decoded_byte_count) {
         return RecordDecodedPayloadRejected(
             ResourceDecodedPayloadOperation::ConfigureBudget,
@@ -1136,7 +1235,15 @@ ResourceDecodedPayloadStatus ResourceRegistry::SetDecodedPayloadBudget(ResourceD
             ResourceDecodedPayloadStatus::BudgetExceeded);
     }
 
+    if (desc.payload_reference_capacity < decoded_payload_snapshot_.active_payload_count) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::ConfigureBudget,
+            request,
+            ResourceDecodedPayloadStatus::ReferenceBudgetExceeded);
+    }
+
     decoded_payload_snapshot_.budget_decoded_byte_capacity = desc.decoded_byte_capacity;
+    decoded_payload_snapshot_.budget_payload_reference_capacity = desc.payload_reference_capacity;
     RecordDecodedPayloadSuccess(
         ResourceDecodedPayloadOperation::ConfigureBudget,
         request,
@@ -1165,6 +1272,11 @@ ResourceDecodedPayloadStatus ResourceRegistry::StoreDecodedPayload(const Resourc
             ResourceDecodedPayloadOperation::Store,
             request,
             ResourceDecodedPayloadStatus::CapacityExceeded);
+    }
+
+    const ResourceDecodedPayloadStatus window_status = ValidateDecodedPayloadStoreWindow(request);
+    if (window_status != ResourceDecodedPayloadStatus::Success) {
+        return RecordDecodedPayloadRejected(ResourceDecodedPayloadOperation::Store, request, window_status);
     }
 
     std::size_t cache_payload_record_index = 0U;
@@ -1209,6 +1321,13 @@ ResourceDecodedPayloadStatus ResourceRegistry::StoreDecodedPayload(const Resourc
             ResourceDecodedPayloadStatus::DuplicateDecodedPayloadId);
     }
 
+    if (decoded_payload_snapshot_.active_payload_count >= decoded_payload_snapshot_.budget_payload_reference_capacity) {
+        return RecordDecodedPayloadRejected(
+            ResourceDecodedPayloadOperation::Store,
+            request,
+            ResourceDecodedPayloadStatus::ReferenceBudgetExceeded);
+    }
+
     if (decoded_payload_snapshot_.active_payload_count >= MAX_RESOURCE_DECODED_PAYLOAD_RECORD_COUNT) {
         return RecordDecodedPayloadRejected(
             ResourceDecodedPayloadOperation::Store,
@@ -1247,6 +1366,12 @@ ResourceDecodedPayloadStatus ResourceRegistry::StoreDecodedPayload(const Resourc
     record.decode_plan_id = request.decode_plan_id;
     record.decode_result_id = request.decode_result_id;
     record.decoded_payload_id = request.decoded_payload_id;
+    record.payload_window_byte_offset = EffectivePayloadWindowByteOffset(
+        request.payload_window_byte_offset,
+        request.payload_window_byte_size);
+    record.payload_window_byte_size = EffectivePayloadWindowByteSize(
+        request.payload_window_byte_size,
+        request.decoded_byte_count);
     record.asset_class = request.asset_class;
     record.result_class = request.result_class;
     record.decoded_byte_count = request.decoded_byte_count;
@@ -1348,7 +1473,18 @@ ResourceDecodedPayloadStatus ResourceRegistry::ReadDecodedPayload(
     }
 
     const ResourceDecodedPayloadRecord &record = decoded_payload_records_[record_index];
-    if (output_byte_capacity < record.decoded_byte_count) {
+    std::uint32_t read_byte_offset = 0U;
+    std::uint32_t read_byte_count = 0U;
+    const ResourceDecodedPayloadStatus window_status = ResolveDecodedPayloadReadWindow(
+        request,
+        record,
+        &read_byte_offset,
+        &read_byte_count);
+    if (window_status != ResourceDecodedPayloadStatus::Success) {
+        return RecordDecodedPayloadRejected(ResourceDecodedPayloadOperation::Read, request, window_status);
+    }
+
+    if (output_byte_capacity < read_byte_count) {
         return RecordDecodedPayloadRejected(
             ResourceDecodedPayloadOperation::Read,
             request,
@@ -1356,18 +1492,19 @@ ResourceDecodedPayloadStatus ResourceRegistry::ReadDecodedPayload(
     }
 
     std::uint32_t byte_index = 0U;
-    while (byte_index < record.decoded_byte_count) {
-        output_bytes[byte_index] = decoded_payload_bytes_[record_index][byte_index];
+    while (byte_index < read_byte_count) {
+        const std::uint32_t source_byte_index = read_byte_offset + byte_index;
+        output_bytes[byte_index] = decoded_payload_bytes_[record_index][source_byte_index];
         ++byte_index;
     }
 
-    *output_byte_count = record.decoded_byte_count;
+    *output_byte_count = read_byte_count;
     RecordDecodedPayloadSuccess(
         ResourceDecodedPayloadOperation::Read,
         request,
         record.decode_result_slot_index,
         record.decoded_payload_slot_index,
-        record.decoded_byte_count);
+        read_byte_count);
     return ResourceDecodedPayloadStatus::Success;
 }
 
@@ -1576,11 +1713,21 @@ ResourceCachePayloadStatus ResourceRegistry::RecordCachePayloadRejected(
         ++cache_payload_snapshot_.budget_rejected_payload_count;
     }
 
+    if (status == ResourceCachePayloadStatus::ReferenceBudgetExceeded) {
+        ++cache_payload_snapshot_.reference_budget_rejected_payload_count;
+    }
+
+    if (status == ResourceCachePayloadStatus::PayloadWindowOutOfBounds) {
+        ++cache_payload_snapshot_.payload_window_rejected_count;
+    }
+
     ++snapshot_.failed_operation_count;
     cache_payload_snapshot_.last_operation = operation;
     cache_payload_snapshot_.last_status = status;
     cache_payload_snapshot_.last_resource = request.resource;
     cache_payload_snapshot_.last_payload_id = request.payload_id;
+    cache_payload_snapshot_.last_payload_window_byte_offset = request.payload_window_byte_offset;
+    cache_payload_snapshot_.last_payload_window_byte_size = request.payload_window_byte_size;
     cache_payload_snapshot_.last_cache_slot_index = INVALID_RESOURCE_SLOT;
     cache_payload_snapshot_.last_payload_byte_count = request.payload_byte_count;
     snapshot_.last_status = MapCachePayloadStatus(status);
@@ -1612,6 +1759,12 @@ void ResourceRegistry::RecordCachePayloadSuccess(
     cache_payload_snapshot_.last_status = ResourceCachePayloadStatus::Success;
     cache_payload_snapshot_.last_resource = request.resource;
     cache_payload_snapshot_.last_payload_id = request.payload_id;
+    cache_payload_snapshot_.last_payload_window_byte_offset = EffectivePayloadWindowByteOffset(
+        request.payload_window_byte_offset,
+        request.payload_window_byte_size);
+    cache_payload_snapshot_.last_payload_window_byte_size = EffectivePayloadWindowByteSize(
+        request.payload_window_byte_size,
+        payload_byte_count);
     cache_payload_snapshot_.last_cache_slot_index = cache_slot_index;
     cache_payload_snapshot_.last_payload_byte_count = payload_byte_count;
     snapshot_.last_status = ResourceStatus::Success;
@@ -1773,6 +1926,14 @@ ResourceDecodedPayloadStatus ResourceRegistry::RecordDecodedPayloadRejected(
         ++decoded_payload_snapshot_.budget_rejected_payload_count;
     }
 
+    if (status == ResourceDecodedPayloadStatus::ReferenceBudgetExceeded) {
+        ++decoded_payload_snapshot_.reference_budget_rejected_payload_count;
+    }
+
+    if (status == ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds) {
+        ++decoded_payload_snapshot_.payload_window_rejected_count;
+    }
+
     if (status == ResourceDecodedPayloadStatus::OutputBufferTooSmall) {
         ++decoded_payload_snapshot_.output_buffer_too_small_count;
     }
@@ -1785,6 +1946,8 @@ ResourceDecodedPayloadStatus ResourceRegistry::RecordDecodedPayloadRejected(
     decoded_payload_snapshot_.last_decode_plan_id = request.decode_plan_id;
     decoded_payload_snapshot_.last_decode_result_id = request.decode_result_id;
     decoded_payload_snapshot_.last_decoded_payload_id = request.decoded_payload_id;
+    decoded_payload_snapshot_.last_payload_window_byte_offset = request.payload_window_byte_offset;
+    decoded_payload_snapshot_.last_payload_window_byte_size = request.payload_window_byte_size;
     decoded_payload_snapshot_.last_asset_class = request.asset_class;
     decoded_payload_snapshot_.last_result_class = request.result_class;
     decoded_payload_snapshot_.last_decoded_byte_count = request.decoded_byte_count;
@@ -1826,6 +1989,12 @@ void ResourceRegistry::RecordDecodedPayloadSuccess(
     decoded_payload_snapshot_.last_decode_plan_id = request.decode_plan_id;
     decoded_payload_snapshot_.last_decode_result_id = request.decode_result_id;
     decoded_payload_snapshot_.last_decoded_payload_id = request.decoded_payload_id;
+    decoded_payload_snapshot_.last_payload_window_byte_offset = EffectivePayloadWindowByteOffset(
+        request.payload_window_byte_offset,
+        request.payload_window_byte_size);
+    decoded_payload_snapshot_.last_payload_window_byte_size = EffectivePayloadWindowByteSize(
+        request.payload_window_byte_size,
+        decoded_byte_count);
     decoded_payload_snapshot_.last_asset_class = request.asset_class;
     decoded_payload_snapshot_.last_result_class = request.result_class;
     decoded_payload_snapshot_.last_decoded_byte_count = decoded_byte_count;
@@ -1954,6 +2123,99 @@ ResourceCachePayloadStatus ResourceRegistry::ValidateCachePayloadRequest(
         return ResourceCachePayloadStatus::NotResident;
     }
 
+    return ResourceCachePayloadStatus::Success;
+}
+
+ResourceCachePayloadStatus ResourceRegistry::ValidateCachePayloadStoreWindow(
+    const ResourceCachePayloadRequest &request) const {
+    const bool has_payload_window = HasExplicitPayloadWindow(
+        request.payload_window_byte_offset,
+        request.payload_window_byte_size);
+    if (!has_payload_window) {
+        return ResourceCachePayloadStatus::Success;
+    }
+
+    if (request.payload_window_byte_size == 0U) {
+        return ResourceCachePayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    if (PayloadWindowEndOverflows(request.payload_window_byte_offset, request.payload_window_byte_size)) {
+        return ResourceCachePayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    const std::uint64_t payload_byte_count = request.payload_byte_count;
+    if (request.payload_window_byte_size != payload_byte_count) {
+        return ResourceCachePayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    return ResourceCachePayloadStatus::Success;
+}
+
+ResourceCachePayloadStatus ResourceRegistry::ResolveCachePayloadReadWindow(
+    const ResourceCachePayloadRequest &request,
+    const ResourceCachePayloadRecord &record,
+    std::uint32_t *out_byte_offset,
+    std::uint32_t *out_byte_count) const {
+    if (out_byte_offset == nullptr) {
+        return ResourceCachePayloadStatus::InvalidArgument;
+    }
+
+    if (out_byte_count == nullptr) {
+        return ResourceCachePayloadStatus::InvalidArgument;
+    }
+
+    *out_byte_offset = 0U;
+    *out_byte_count = 0U;
+    const bool has_payload_window = HasExplicitPayloadWindow(
+        request.payload_window_byte_offset,
+        request.payload_window_byte_size);
+    if (!has_payload_window) {
+        *out_byte_count = record.payload_byte_count;
+        return ResourceCachePayloadStatus::Success;
+    }
+
+    if (request.payload_window_byte_size == 0U) {
+        return ResourceCachePayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    if (PayloadWindowEndOverflows(request.payload_window_byte_offset, request.payload_window_byte_size)) {
+        return ResourceCachePayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    if (PayloadWindowEndOverflows(record.payload_window_byte_offset, record.payload_window_byte_size)) {
+        return ResourceCachePayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    const std::uint64_t requested_window_end =
+        request.payload_window_byte_offset + request.payload_window_byte_size;
+    const std::uint64_t record_window_end = record.payload_window_byte_offset + record.payload_window_byte_size;
+    if (request.payload_window_byte_offset < record.payload_window_byte_offset) {
+        return ResourceCachePayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    if (requested_window_end > record_window_end) {
+        return ResourceCachePayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    const std::uint64_t relative_byte_offset =
+        request.payload_window_byte_offset - record.payload_window_byte_offset;
+    if (relative_byte_offset > record.payload_byte_count) {
+        return ResourceCachePayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    const std::uint64_t remaining_byte_count =
+        static_cast<std::uint64_t>(record.payload_byte_count) - relative_byte_offset;
+    if (request.payload_window_byte_size > remaining_byte_count) {
+        return ResourceCachePayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    const std::uint64_t maximum_read_byte_count = std::numeric_limits<std::uint32_t>::max();
+    if (request.payload_window_byte_size > maximum_read_byte_count) {
+        return ResourceCachePayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    *out_byte_offset = static_cast<std::uint32_t>(relative_byte_offset);
+    *out_byte_count = static_cast<std::uint32_t>(request.payload_window_byte_size);
     return ResourceCachePayloadStatus::Success;
 }
 
@@ -2226,6 +2488,99 @@ ResourceDecodedPayloadStatus ResourceRegistry::ValidateDecodedPayloadRequest(
     return ResourceDecodedPayloadStatus::Success;
 }
 
+ResourceDecodedPayloadStatus ResourceRegistry::ValidateDecodedPayloadStoreWindow(
+    const ResourceDecodedPayloadRequest &request) const {
+    const bool has_payload_window = HasExplicitPayloadWindow(
+        request.payload_window_byte_offset,
+        request.payload_window_byte_size);
+    if (!has_payload_window) {
+        return ResourceDecodedPayloadStatus::Success;
+    }
+
+    if (request.payload_window_byte_size == 0U) {
+        return ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    if (PayloadWindowEndOverflows(request.payload_window_byte_offset, request.payload_window_byte_size)) {
+        return ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    const std::uint64_t decoded_byte_count = request.decoded_byte_count;
+    if (request.payload_window_byte_size != decoded_byte_count) {
+        return ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    return ResourceDecodedPayloadStatus::Success;
+}
+
+ResourceDecodedPayloadStatus ResourceRegistry::ResolveDecodedPayloadReadWindow(
+    const ResourceDecodedPayloadRequest &request,
+    const ResourceDecodedPayloadRecord &record,
+    std::uint32_t *out_byte_offset,
+    std::uint32_t *out_byte_count) const {
+    if (out_byte_offset == nullptr) {
+        return ResourceDecodedPayloadStatus::InvalidArgument;
+    }
+
+    if (out_byte_count == nullptr) {
+        return ResourceDecodedPayloadStatus::InvalidArgument;
+    }
+
+    *out_byte_offset = 0U;
+    *out_byte_count = 0U;
+    const bool has_payload_window = HasExplicitPayloadWindow(
+        request.payload_window_byte_offset,
+        request.payload_window_byte_size);
+    if (!has_payload_window) {
+        *out_byte_count = record.decoded_byte_count;
+        return ResourceDecodedPayloadStatus::Success;
+    }
+
+    if (request.payload_window_byte_size == 0U) {
+        return ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    if (PayloadWindowEndOverflows(request.payload_window_byte_offset, request.payload_window_byte_size)) {
+        return ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    if (PayloadWindowEndOverflows(record.payload_window_byte_offset, record.payload_window_byte_size)) {
+        return ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    const std::uint64_t requested_window_end =
+        request.payload_window_byte_offset + request.payload_window_byte_size;
+    const std::uint64_t record_window_end = record.payload_window_byte_offset + record.payload_window_byte_size;
+    if (request.payload_window_byte_offset < record.payload_window_byte_offset) {
+        return ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    if (requested_window_end > record_window_end) {
+        return ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    const std::uint64_t relative_byte_offset =
+        request.payload_window_byte_offset - record.payload_window_byte_offset;
+    if (relative_byte_offset > record.decoded_byte_count) {
+        return ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    const std::uint64_t remaining_byte_count =
+        static_cast<std::uint64_t>(record.decoded_byte_count) - relative_byte_offset;
+    if (request.payload_window_byte_size > remaining_byte_count) {
+        return ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    const std::uint64_t maximum_read_byte_count = std::numeric_limits<std::uint32_t>::max();
+    if (request.payload_window_byte_size > maximum_read_byte_count) {
+        return ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds;
+    }
+
+    *out_byte_offset = static_cast<std::uint32_t>(relative_byte_offset);
+    *out_byte_count = static_cast<std::uint32_t>(request.payload_window_byte_size);
+    return ResourceDecodedPayloadStatus::Success;
+}
+
 ResourceDecodedPayloadStatus ResourceRegistry::ValidateDecodedPayloadResult(
     const ResourceDecodedPayloadRequest &request,
     const ResourceDecodeResultRecord &decode_result_record) const {
@@ -2365,7 +2720,9 @@ ResourceStatus ResourceRegistry::MapCachePayloadStatus(ResourceCachePayloadStatu
             return ResourceStatus::NotFound;
         case ResourceCachePayloadStatus::CapacityExceeded:
         case ResourceCachePayloadStatus::BudgetExceeded:
+        case ResourceCachePayloadStatus::ReferenceBudgetExceeded:
         case ResourceCachePayloadStatus::OutputBufferTooSmall:
+        case ResourceCachePayloadStatus::PayloadWindowOutOfBounds:
             return ResourceStatus::CapacityExceeded;
         case ResourceCachePayloadStatus::Pinned:
             return ResourceStatus::StillReferenced;
@@ -2516,7 +2873,9 @@ ResourceStatus ResourceRegistry::MapDecodedPayloadStatus(ResourceDecodedPayloadS
             return ResourceStatus::DuplicateResource;
         case ResourceDecodedPayloadStatus::CapacityExceeded:
         case ResourceDecodedPayloadStatus::BudgetExceeded:
+        case ResourceDecodedPayloadStatus::ReferenceBudgetExceeded:
         case ResourceDecodedPayloadStatus::OutputBufferTooSmall:
+        case ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds:
             return ResourceStatus::CapacityExceeded;
         case ResourceDecodedPayloadStatus::InvalidArgument:
         case ResourceDecodedPayloadStatus::NotUploaded:

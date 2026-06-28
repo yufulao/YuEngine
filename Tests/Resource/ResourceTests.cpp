@@ -165,6 +165,12 @@ constexpr const char *TEST_CACHE_PAYLOAD_BUDGET =
     "Resource_CachePayload_RejectsBudgetOverflow";
 constexpr const char *TEST_CACHE_PAYLOAD_OUTPUT_SMALL =
     "Resource_CachePayload_ReadRejectsOutputBufferTooSmall";
+constexpr const char *TEST_CACHE_PAYLOAD_WINDOW_REFERENCE =
+    "Resource_CachePayload_StoresWindowMetadataAndReferenceBudget";
+constexpr const char *TEST_CACHE_PAYLOAD_WINDOW_OVERFLOW =
+    "Resource_CachePayload_RejectsWindowOverflowWithoutMutation";
+constexpr const char *TEST_CACHE_PAYLOAD_REFERENCE_BUDGET =
+    "Resource_CachePayload_RejectsReferenceBudgetWithoutMutation";
 constexpr const char *TEST_CACHE_PAYLOAD_FAILED_VALIDATION =
     "Resource_CachePayload_FailedValidationDoesNotMutateResourceState";
 constexpr const char *TEST_CACHE_PAYLOAD_PINNED_RELEASE =
@@ -237,6 +243,12 @@ constexpr const char *TEST_DECODED_PAYLOAD_EMPTY =
     "Resource_DecodedPayload_RejectsEmptyPayload";
 constexpr const char *TEST_DECODED_PAYLOAD_OUTPUT_SMALL =
     "Resource_DecodedPayload_ReadRejectsOutputBufferTooSmall";
+constexpr const char *TEST_DECODED_PAYLOAD_WINDOW_REFERENCE =
+    "Resource_DecodedPayload_StoresWindowMetadataAndReferenceBudget";
+constexpr const char *TEST_DECODED_PAYLOAD_WINDOW_MISMATCH =
+    "Resource_DecodedPayload_RejectsWindowMismatchWithoutMutation";
+constexpr const char *TEST_DECODED_PAYLOAD_REFERENCE_BUDGET =
+    "Resource_DecodedPayload_RejectsReferenceBudgetWithoutMutation";
 constexpr const char *TEST_DECODED_PAYLOAD_DUPLICATE =
     "Resource_DecodedPayload_RejectsDuplicatePayloadId";
 constexpr const char *TEST_DECODED_PAYLOAD_CAPACITY =
@@ -263,6 +275,8 @@ constexpr const char *TEST_DECODED_PAYLOAD_CACHE_RELEASE =
     "Resource_DecodedPayload_ReleasingCachePayloadClearsPayload";
 constexpr const char *TEST_DECODED_PAYLOAD_FAILED_VALIDATION =
     "Resource_DecodedPayload_FailedValidationDoesNotMutateResourceState";
+constexpr const char *TEST_PAYLOAD_WINDOW_REFERENCE_STABILITY =
+    "Resource_PayloadWindow_DoesNotChangeResourceReferenceCountOrResidency";
 constexpr const char* ERROR_EXPECTED_ONE_TEST_NAME = "expected one test name";
 constexpr const char* ERROR_UNKNOWN_TEST_NAME = "unknown test name";
 constexpr ResourceTypeId TYPE_TEXTURE{1U};
@@ -395,6 +409,25 @@ ResourceCachePayloadRequest CachePayloadRequest(
     return request;
 }
 
+ResourceCachePayloadRequest CachePayloadWindowRequest(
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint64_t payload_id,
+    const std::uint8_t *payload_bytes,
+    std::uint32_t payload_byte_count,
+    std::uint64_t payload_window_byte_offset,
+    std::uint64_t payload_window_byte_size) {
+    ResourceCachePayloadRequest request = CachePayloadRequest(
+        resource,
+        expected_type,
+        payload_id,
+        payload_bytes,
+        payload_byte_count);
+    request.payload_window_byte_offset = payload_window_byte_offset;
+    request.payload_window_byte_size = payload_window_byte_size;
+    return request;
+}
+
 void WriteU32LittleEndian(
     std::array<std::uint8_t, DECODE_PLAN_PAYLOAD_BYTE_COUNT> &bytes,
     std::uint32_t offset,
@@ -494,6 +527,35 @@ ResourceDecodedPayloadRequest DecodedPayloadRequest(
     request.result_class = result_class;
     request.decoded_bytes = decoded_bytes;
     request.decoded_byte_count = decoded_byte_count;
+    return request;
+}
+
+ResourceDecodedPayloadRequest DecodedPayloadWindowRequest(
+    ResourceHandle resource,
+    ResourceTypeId expected_type,
+    std::uint64_t payload_id,
+    std::uint64_t decode_plan_id,
+    std::uint64_t decode_result_id,
+    std::uint64_t decoded_payload_id,
+    ResourceDecodePlanAssetClass asset_class,
+    ResourceDecodeResultClass result_class,
+    const std::uint8_t *decoded_bytes,
+    std::uint32_t decoded_byte_count,
+    std::uint64_t payload_window_byte_offset,
+    std::uint64_t payload_window_byte_size) {
+    ResourceDecodedPayloadRequest request = DecodedPayloadRequest(
+        resource,
+        expected_type,
+        payload_id,
+        decode_plan_id,
+        decode_result_id,
+        decoded_payload_id,
+        asset_class,
+        result_class,
+        decoded_bytes,
+        decoded_byte_count);
+    request.payload_window_byte_offset = payload_window_byte_offset;
+    request.payload_window_byte_size = payload_window_byte_size;
     return request;
 }
 
@@ -599,6 +661,16 @@ bool ConfigureCachePayloadBudget(ResourceRegistry &registry, std::uint32_t byte_
     return registry.SetCachePayloadBudget(budget) == ResourceCachePayloadStatus::Success;
 }
 
+bool ConfigureCachePayloadBudget(
+    ResourceRegistry &registry,
+    std::uint32_t byte_capacity,
+    std::uint32_t payload_reference_capacity) {
+    ResourceCachePayloadBudgetDesc budget;
+    budget.byte_capacity = byte_capacity;
+    budget.payload_reference_capacity = payload_reference_capacity;
+    return registry.SetCachePayloadBudget(budget) == ResourceCachePayloadStatus::Success;
+}
+
 bool ConfigureDecodeResultBudget(ResourceRegistry &registry, std::uint32_t byte_capacity) {
     ResourceDecodeResultBudgetDesc budget;
     budget.decoded_byte_capacity = byte_capacity;
@@ -608,6 +680,16 @@ bool ConfigureDecodeResultBudget(ResourceRegistry &registry, std::uint32_t byte_
 bool ConfigureDecodedPayloadBudget(ResourceRegistry &registry, std::uint32_t byte_capacity) {
     ResourceDecodedPayloadBudgetDesc budget;
     budget.decoded_byte_capacity = byte_capacity;
+    return registry.SetDecodedPayloadBudget(budget) == ResourceDecodedPayloadStatus::Success;
+}
+
+bool ConfigureDecodedPayloadBudget(
+    ResourceRegistry &registry,
+    std::uint32_t byte_capacity,
+    std::uint32_t payload_reference_capacity) {
+    ResourceDecodedPayloadBudgetDesc budget;
+    budget.decoded_byte_capacity = byte_capacity;
+    budget.payload_reference_capacity = payload_reference_capacity;
     return registry.SetDecodedPayloadBudget(budget) == ResourceDecodedPayloadStatus::Success;
 }
 
@@ -2512,6 +2594,215 @@ int ResourceCachePayloadReadRejectsOutputBufferTooSmall() {
     return 0;
 }
 
+int ResourceCachePayloadStoresWindowMetadataAndReferenceBudget() {
+    ResourceRegistry registry;
+    if (!ConfigureCachePayloadBudget(registry, 128U, 1U)) {
+        return Fail("window cache payload budget configuration failed");
+    }
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_window");
+    if (!result.Succeeded()) {
+        return Fail("window cache payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("window cache payload fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{41U, 42U, 43U, 44U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const std::uint64_t payload_window_byte_offset = 1024U;
+    const std::uint64_t payload_window_byte_size = payload_byte_count;
+    const ResourceCachePayloadRequest store_request = CachePayloadWindowRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count,
+        payload_window_byte_offset,
+        payload_window_byte_size);
+    if (registry.StoreCachePayload(store_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("window cache payload store failed");
+    }
+
+    const ResourceCachePayloadSnapshot store_snapshot = registry.CachePayloadSnapshot();
+    if (store_snapshot.budget_payload_reference_capacity != 1U) {
+        return Fail("window cache payload reference budget was not configured");
+    }
+
+    if (store_snapshot.last_payload_window_byte_offset != payload_window_byte_offset) {
+        return Fail("window cache payload offset was not tracked");
+    }
+
+    if (store_snapshot.last_payload_window_byte_size != payload_window_byte_size) {
+        return Fail("window cache payload size was not tracked");
+    }
+
+    std::array<std::uint8_t, 4U> whole_output{};
+    std::uint32_t whole_output_byte_count = 0U;
+    const ResourceCachePayloadRequest whole_read_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        nullptr,
+        0U);
+    if (registry.ReadCachePayload(
+        whole_read_request,
+        whole_output.data(),
+        static_cast<std::uint32_t>(whole_output.size()),
+        &whole_output_byte_count) != ResourceCachePayloadStatus::Success) {
+        return Fail("window cache payload whole read failed");
+    }
+
+    if (!BytesMatch(payload.data(), whole_output.data(), payload_byte_count)) {
+        return Fail("window cache payload whole read returned wrong bytes");
+    }
+
+    std::array<std::uint8_t, 2U> output{};
+    std::uint32_t output_byte_count = 0U;
+    const ResourceCachePayloadRequest read_request = CachePayloadWindowRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        nullptr,
+        0U,
+        payload_window_byte_offset + 1U,
+        static_cast<std::uint64_t>(output.size()));
+    const ResourceCachePayloadStatus read_status = registry.ReadCachePayload(
+        read_request,
+        output.data(),
+        static_cast<std::uint32_t>(output.size()),
+        &output_byte_count);
+    if (read_status != ResourceCachePayloadStatus::Success) {
+        return Fail("window cache payload sub read failed");
+    }
+
+    if (output_byte_count != static_cast<std::uint32_t>(output.size())) {
+        return Fail("window cache payload sub read returned wrong byte count");
+    }
+
+    if (output[0U] != payload[1U]) {
+        return Fail("window cache payload sub read returned wrong first byte");
+    }
+
+    if (output[1U] != payload[2U]) {
+        return Fail("window cache payload sub read returned wrong second byte");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadRejectsWindowOverflowWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_window_overflow");
+    if (!result.Succeeded()) {
+        return Fail("window overflow cache payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("window overflow cache payload fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{45U, 46U, 47U, 48U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const ResourceResidencySnapshot before_residency_snapshot = registry.ResidencySnapshot();
+    const ResourceCachePayloadSnapshot before_cache_snapshot = registry.CachePayloadSnapshot();
+    const ResourceCachePayloadRequest request = CachePayloadWindowRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count,
+        std::numeric_limits<std::uint64_t>::max(),
+        payload_byte_count);
+    const ResourceCachePayloadStatus status = registry.StoreCachePayload(request);
+    if (status != ResourceCachePayloadStatus::PayloadWindowOutOfBounds) {
+        return Fail("window overflow cache payload returned wrong status");
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count) {
+        return Fail("window overflow cache payload changed registered count");
+    }
+
+    const ResourceResidencySnapshot after_residency_snapshot = registry.ResidencySnapshot();
+    if (after_residency_snapshot.resident_resource_count != before_residency_snapshot.resident_resource_count) {
+        return Fail("window overflow cache payload changed resident count");
+    }
+
+    const ResourceCachePayloadSnapshot after_cache_snapshot = registry.CachePayloadSnapshot();
+    if (after_cache_snapshot.cached_payload_count != before_cache_snapshot.cached_payload_count) {
+        return Fail("window overflow cache payload changed active count");
+    }
+
+    if (after_cache_snapshot.cached_byte_count != before_cache_snapshot.cached_byte_count) {
+        return Fail("window overflow cache payload changed cached bytes");
+    }
+
+    if (after_cache_snapshot.payload_window_rejected_count != 1U) {
+        return Fail("window overflow cache payload was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceCachePayloadRejectsReferenceBudgetWithoutMutation() {
+    ResourceRegistry registry;
+    if (!ConfigureCachePayloadBudget(registry, 128U, 1U)) {
+        return Fail("reference budget cache payload budget configuration failed");
+    }
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_reference_budget");
+    if (!result.Succeeded()) {
+        return Fail("reference budget cache payload fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("reference budget cache payload fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, 4U> first_payload{{49U, 50U, 51U, 52U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(first_payload.size());
+    const ResourceCachePayloadRequest first_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        first_payload.data(),
+        payload_byte_count);
+    if (registry.StoreCachePayload(first_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("reference budget first cache payload store failed");
+    }
+
+    const ResourceCachePayloadSnapshot before_snapshot = registry.CachePayloadSnapshot();
+    const std::array<std::uint8_t, 4U> second_payload{{53U, 54U, 55U, 56U}};
+    const ResourceCachePayloadRequest second_request = CachePayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_TWO,
+        second_payload.data(),
+        payload_byte_count);
+    const ResourceCachePayloadStatus status = registry.StoreCachePayload(second_request);
+    if (status != ResourceCachePayloadStatus::ReferenceBudgetExceeded) {
+        return Fail("reference budget cache payload returned wrong status");
+    }
+
+    const ResourceCachePayloadSnapshot after_snapshot = registry.CachePayloadSnapshot();
+    if (after_snapshot.cached_payload_count != before_snapshot.cached_payload_count) {
+        return Fail("reference budget cache payload changed active count");
+    }
+
+    if (after_snapshot.cached_byte_count != before_snapshot.cached_byte_count) {
+        return Fail("reference budget cache payload changed cached bytes");
+    }
+
+    if (after_snapshot.reference_budget_rejected_payload_count != 1U) {
+        return Fail("reference budget cache payload was not counted");
+    }
+
+    return 0;
+}
+
 int ResourceCachePayloadFailedValidationDoesNotMutateResourceState() {
     ResourceRegistry registry;
     const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_cache_validation");
@@ -4402,6 +4693,222 @@ int ResourceDecodedPayloadReadRejectsOutputBufferTooSmall() {
     return 0;
 }
 
+int ResourceDecodedPayloadStoresWindowMetadataAndReferenceBudget() {
+    ResourceRegistry registry;
+    if (!ConfigureDecodedPayloadBudget(registry, 256U, 1U)) {
+        return Fail("window decoded payload budget configuration failed");
+    }
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_window");
+    if (!result.Succeeded()) {
+        return Fail("window decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("window decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x48U);
+    const std::uint64_t payload_window_byte_offset = 4096U;
+    const std::uint64_t payload_window_byte_size = DECODED_PAYLOAD_BYTE_COUNT;
+    const ResourceDecodedPayloadRequest request = DecodedPayloadWindowRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT,
+        payload_window_byte_offset,
+        payload_window_byte_size);
+    if (registry.StoreDecodedPayload(request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("window decoded payload store failed");
+    }
+
+    ResourceDecodedPayloadRecord record;
+    if (registry.QueryDecodedPayload(request, &record) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("window decoded payload query failed");
+    }
+
+    if (record.payload_window_byte_offset != payload_window_byte_offset) {
+        return Fail("window decoded payload query returned wrong offset");
+    }
+
+    if (record.payload_window_byte_size != payload_window_byte_size) {
+        return Fail("window decoded payload query returned wrong size");
+    }
+
+    const ResourceDecodedPayloadSnapshot store_snapshot = registry.DecodedPayloadSnapshot();
+    if (store_snapshot.budget_payload_reference_capacity != 1U) {
+        return Fail("window decoded payload reference budget was not configured");
+    }
+
+    std::array<std::uint8_t, 3U> output{};
+    std::uint32_t output_byte_count = 0U;
+    const ResourceDecodedPayloadRequest read_request = DecodedPayloadWindowRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        nullptr,
+        DECODED_PAYLOAD_BYTE_COUNT,
+        payload_window_byte_offset + 2U,
+        static_cast<std::uint64_t>(output.size()));
+    const ResourceDecodedPayloadStatus read_status = registry.ReadDecodedPayload(
+        read_request,
+        output.data(),
+        static_cast<std::uint32_t>(output.size()),
+        &output_byte_count);
+    if (read_status != ResourceDecodedPayloadStatus::Success) {
+        return Fail("window decoded payload sub read failed");
+    }
+
+    if (output_byte_count != static_cast<std::uint32_t>(output.size())) {
+        return Fail("window decoded payload sub read returned wrong byte count");
+    }
+
+    if (output[0U] != bytes[2U]) {
+        return Fail("window decoded payload sub read returned wrong first byte");
+    }
+
+    if (output[2U] != bytes[4U]) {
+        return Fail("window decoded payload sub read returned wrong last byte");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsWindowMismatchWithoutMutation() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_window_mismatch");
+    if (!result.Succeeded()) {
+        return Fail("window mismatch decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("window mismatch decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> bytes = DecodedPayloadBytes(0x58U);
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const ResourceResidencySnapshot before_residency_snapshot = registry.ResidencySnapshot();
+    const ResourceDecodedPayloadSnapshot before_decoded_snapshot = registry.DecodedPayloadSnapshot();
+    const ResourceDecodedPayloadRequest request = DecodedPayloadWindowRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT,
+        8192U,
+        DECODED_PAYLOAD_BYTE_COUNT - 1U);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(request);
+    if (status != ResourceDecodedPayloadStatus::PayloadWindowOutOfBounds) {
+        return Fail("window mismatch decoded payload returned wrong status");
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count) {
+        return Fail("window mismatch decoded payload changed registered count");
+    }
+
+    const ResourceResidencySnapshot after_residency_snapshot = registry.ResidencySnapshot();
+    if (after_residency_snapshot.resident_resource_count != before_residency_snapshot.resident_resource_count) {
+        return Fail("window mismatch decoded payload changed resident count");
+    }
+
+    const ResourceDecodedPayloadSnapshot after_decoded_snapshot = registry.DecodedPayloadSnapshot();
+    if (after_decoded_snapshot.active_payload_count != before_decoded_snapshot.active_payload_count) {
+        return Fail("window mismatch decoded payload changed active count");
+    }
+
+    if (after_decoded_snapshot.stored_decoded_byte_count != before_decoded_snapshot.stored_decoded_byte_count) {
+        return Fail("window mismatch decoded payload changed decoded bytes");
+    }
+
+    if (after_decoded_snapshot.payload_window_rejected_count != 1U) {
+        return Fail("window mismatch decoded payload was not counted");
+    }
+
+    return 0;
+}
+
+int ResourceDecodedPayloadRejectsReferenceBudgetWithoutMutation() {
+    ResourceRegistry registry;
+    if (!ConfigureDecodedPayloadBudget(registry, 256U, 1U)) {
+        return Fail("reference budget decoded payload budget configuration failed");
+    }
+
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_reference_budget");
+    if (!result.Succeeded()) {
+        return Fail("reference budget decoded payload fixture registration failed");
+    }
+
+    if (!CreateTextureDecodeResultChain(registry, result.handle, DECODED_PAYLOAD_BYTE_COUNT)) {
+        return Fail("reference budget decoded payload fixture chain failed");
+    }
+
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> first_bytes = DecodedPayloadBytes(0x68U);
+    const ResourceDecodedPayloadRequest first_request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_ONE,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        first_bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    if (registry.StoreDecodedPayload(first_request) != ResourceDecodedPayloadStatus::Success) {
+        return Fail("reference budget first decoded payload store failed");
+    }
+
+    const ResourceDecodedPayloadSnapshot before_snapshot = registry.DecodedPayloadSnapshot();
+    const std::array<std::uint8_t, DECODED_PAYLOAD_BYTE_COUNT> second_bytes = DecodedPayloadBytes(0x70U);
+    const ResourceDecodedPayloadRequest second_request = DecodedPayloadRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        DECODE_PLAN_ONE,
+        DECODE_RESULT_ONE,
+        DECODED_PAYLOAD_TWO,
+        ResourceDecodePlanAssetClass::Texture,
+        ResourceDecodeResultClass::Texture,
+        second_bytes.data(),
+        DECODED_PAYLOAD_BYTE_COUNT);
+    const ResourceDecodedPayloadStatus status = registry.StoreDecodedPayload(second_request);
+    if (status != ResourceDecodedPayloadStatus::ReferenceBudgetExceeded) {
+        return Fail("reference budget decoded payload returned wrong status");
+    }
+
+    const ResourceDecodedPayloadSnapshot after_snapshot = registry.DecodedPayloadSnapshot();
+    if (after_snapshot.active_payload_count != before_snapshot.active_payload_count) {
+        return Fail("reference budget decoded payload changed active count");
+    }
+
+    if (after_snapshot.stored_decoded_byte_count != before_snapshot.stored_decoded_byte_count) {
+        return Fail("reference budget decoded payload changed stored bytes");
+    }
+
+    if (after_snapshot.reference_budget_rejected_payload_count != 1U) {
+        return Fail("reference budget decoded payload was not counted");
+    }
+
+    return 0;
+}
+
 int ResourceDecodedPayloadRejectsDuplicatePayloadId() {
     ResourceRegistry registry;
     const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_decoded_payload_duplicate");
@@ -5039,6 +5546,73 @@ int ResourceDecodedPayloadFailedValidationDoesNotMutateResourceState() {
 
     return 0;
 }
+
+int ResourcePayloadWindowDoesNotChangeResourceReferenceCountOrResidency() {
+    ResourceRegistry registry;
+    const ResourceRegistrationResult result = Register(registry, TYPE_TEXTURE, "texture_payload_window_stability");
+    if (!result.Succeeded()) {
+        return Fail("payload window stability fixture registration failed");
+    }
+
+    if (!AdmitUploadedResident(registry, result.handle, TYPE_TEXTURE, COMMIT_ONE, UPLOAD_ONE)) {
+        return Fail("payload window stability fixture residency failed");
+    }
+
+    const std::array<std::uint8_t, 4U> payload{{57U, 58U, 59U, 60U}};
+    const std::uint32_t payload_byte_count = static_cast<std::uint32_t>(payload.size());
+    const std::uint64_t payload_window_byte_offset = 16384U;
+    const ResourceCachePayloadRequest store_request = CachePayloadWindowRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        payload.data(),
+        payload_byte_count,
+        payload_window_byte_offset,
+        payload_byte_count);
+    if (registry.StoreCachePayload(store_request) != ResourceCachePayloadStatus::Success) {
+        return Fail("payload window stability cache store failed");
+    }
+
+    const ResourceSnapshot before_resource_snapshot = registry.Snapshot();
+    const ResourceResidencySnapshot before_residency_snapshot = registry.ResidencySnapshot();
+    std::array<std::uint8_t, 2U> output{};
+    std::uint32_t output_byte_count = 0U;
+    const ResourceCachePayloadRequest read_request = CachePayloadWindowRequest(
+        result.handle,
+        TYPE_TEXTURE,
+        PAYLOAD_ONE,
+        nullptr,
+        0U,
+        payload_window_byte_offset + 1U,
+        static_cast<std::uint64_t>(output.size()));
+    if (registry.ReadCachePayload(
+        read_request,
+        output.data(),
+        static_cast<std::uint32_t>(output.size()),
+        &output_byte_count) != ResourceCachePayloadStatus::Success) {
+        return Fail("payload window stability read failed");
+    }
+
+    const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
+    if (after_resource_snapshot.acquired_handle_count != before_resource_snapshot.acquired_handle_count) {
+        return Fail("payload window read acquired a resource handle");
+    }
+
+    if (after_resource_snapshot.released_handle_count != before_resource_snapshot.released_handle_count) {
+        return Fail("payload window read released a resource handle");
+    }
+
+    const ResourceResidencySnapshot after_residency_snapshot = registry.ResidencySnapshot();
+    if (after_residency_snapshot.resident_resource_count != before_residency_snapshot.resident_resource_count) {
+        return Fail("payload window read changed resident count");
+    }
+
+    if (after_residency_snapshot.resident_byte_count != before_residency_snapshot.resident_byte_count) {
+        return Fail("payload window read changed resident bytes");
+    }
+
+    return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -5093,6 +5667,9 @@ int main(int argc, char** argv) {
         {TEST_CACHE_PAYLOAD_CAPACITY, ResourceCachePayloadRejectsCapacityOverflow},
         {TEST_CACHE_PAYLOAD_BUDGET, ResourceCachePayloadRejectsBudgetOverflow},
         {TEST_CACHE_PAYLOAD_OUTPUT_SMALL, ResourceCachePayloadReadRejectsOutputBufferTooSmall},
+        {TEST_CACHE_PAYLOAD_WINDOW_REFERENCE, ResourceCachePayloadStoresWindowMetadataAndReferenceBudget},
+        {TEST_CACHE_PAYLOAD_WINDOW_OVERFLOW, ResourceCachePayloadRejectsWindowOverflowWithoutMutation},
+        {TEST_CACHE_PAYLOAD_REFERENCE_BUDGET, ResourceCachePayloadRejectsReferenceBudgetWithoutMutation},
         {TEST_CACHE_PAYLOAD_FAILED_VALIDATION, ResourceCachePayloadFailedValidationDoesNotMutateResourceState},
         {TEST_CACHE_PAYLOAD_PINNED_RELEASE, ResourceCachePayloadReleaseRejectsPinnedWithoutMutation},
         {TEST_DECODE_PLAN_CREATE_QUERY_RELEASE, ResourceDecodePlanCreatesQueriesAndReleasesMetadata},
@@ -5129,6 +5706,9 @@ int main(int argc, char** argv) {
         {TEST_DECODED_PAYLOAD_NULL_INPUT, ResourceDecodedPayloadRejectsNullInputBytes},
         {TEST_DECODED_PAYLOAD_EMPTY, ResourceDecodedPayloadRejectsEmptyPayload},
         {TEST_DECODED_PAYLOAD_OUTPUT_SMALL, ResourceDecodedPayloadReadRejectsOutputBufferTooSmall},
+        {TEST_DECODED_PAYLOAD_WINDOW_REFERENCE, ResourceDecodedPayloadStoresWindowMetadataAndReferenceBudget},
+        {TEST_DECODED_PAYLOAD_WINDOW_MISMATCH, ResourceDecodedPayloadRejectsWindowMismatchWithoutMutation},
+        {TEST_DECODED_PAYLOAD_REFERENCE_BUDGET, ResourceDecodedPayloadRejectsReferenceBudgetWithoutMutation},
         {TEST_DECODED_PAYLOAD_DUPLICATE, ResourceDecodedPayloadRejectsDuplicatePayloadId},
         {TEST_DECODED_PAYLOAD_CAPACITY, ResourceDecodedPayloadRejectsCapacityOverflow},
         {TEST_DECODED_PAYLOAD_BUDGET, ResourceDecodedPayloadRejectsBudgetOverflow},
@@ -5141,7 +5721,8 @@ int main(int argc, char** argv) {
         {TEST_DECODED_PAYLOAD_RESULT_RELEASE, ResourceDecodedPayloadReleasingResultClearsPayload},
         {TEST_DECODED_PAYLOAD_PLAN_RELEASE, ResourceDecodedPayloadReleasingPlanClearsPayload},
         {TEST_DECODED_PAYLOAD_CACHE_RELEASE, ResourceDecodedPayloadReleasingCachePayloadClearsPayload},
-        {TEST_DECODED_PAYLOAD_FAILED_VALIDATION, ResourceDecodedPayloadFailedValidationDoesNotMutateResourceState}};
+        {TEST_DECODED_PAYLOAD_FAILED_VALIDATION, ResourceDecodedPayloadFailedValidationDoesNotMutateResourceState},
+        {TEST_PAYLOAD_WINDOW_REFERENCE_STABILITY, ResourcePayloadWindowDoesNotChangeResourceReferenceCountOrResidency}};
 
     const std::string_view test_name(argv[1]);
     const auto test_entry = test_registry.find(test_name);
