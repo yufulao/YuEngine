@@ -22,8 +22,11 @@ If context is compacted or a new team takes over, preserve these facts first:
 - RuntimeAsset must define asset-internal targets before deeper animation,
   model, scene, or WorldObject binding.
 - The current nearest stage is RuntimeAsset spine correction.
-- The current coordinator goal is paused/report-only until the human lead
-  explicitly resumes coordination.
+- The human lead has resumed continuous execution. The coordinator must keep the
+  team moving until the L0/L1 stop condition is met.
+- The architect should preserve context for architecture, dependency control,
+  task design, and evidence governance, not spend the main lane on routine
+  frontline implementation.
 
 ## 1. Final Product Target
 
@@ -239,9 +242,11 @@ Current scene-animation evidence gate state:
 - implementation: done;
 - QA: done;
 - docs: done;
-- VQ consistency audit: pending, held until human resumes coordination.
+- VQ consistency audit: pending and should run now as a read-only gate.
 
-This gate must close before opening a new implementation lane.
+This gate must close before opening a new implementation write lane. Independent
+read-only architecture, code-surface scouting, and pressure-audit lanes may run
+in parallel when they cannot mutate the same evidence gate.
 
 ### 5.2 Correct RuntimeAsset Dependency Order
 
@@ -295,6 +300,57 @@ Specialist agents execute only when a task has:
 - exact non-goals;
 - expected evidence;
 - failure/blocker policy.
+
+### 6.1 Continuous Multi-Agent Execution
+
+The coordinator must not stop after a single task while accepted work remains.
+The default behavior is to keep the goal active, set timers, and keep assigning
+the next independent work surface until the stop condition is met or a real
+blocker is recorded.
+
+Every shared task must include:
+
+- AI ETA;
+- owner and role fit;
+- exact scope;
+- exact read/write surface;
+- non-goals;
+- expected evidence;
+- stale-owner timeout and reroute rule.
+
+The architect must avoid routine frontline implementation unless the work is a
+small architecture patch, an unblocker, or there is no viable owner. This keeps
+the architect's context budget available for global dependency control, risk
+triage, task decomposition, and evidence review.
+
+### 6.2 True Parallelism Rule
+
+Parallel work is useful only when it reduces calendar time without corrupting
+contracts. A lane can run in parallel when it is read-only, writes to disjoint
+files, or owns an isolated module boundary with no shared-contract mutation.
+
+Do not split one serial dependency into fake parallel work such as separate
+"test 1", "test 2", and "full test" lanes when each lane must wait for the same
+implementation or produces duplicate evidence. That burns tokens and does not
+increase throughput.
+
+Allowed parallel lanes in the current stage:
+
+- VQ evidence consistency audit for the completed scene-animation gate;
+- read-only RuntimeAsset target-identity design surface;
+- read-only package/resource index pressure audit;
+- read-only implementation-surface scouting for the next RTSPINE contracts;
+- read-only quality and risk audit that identifies safe implementation splits.
+
+Forbidden parallel lanes in the current stage:
+
+- any write lane that changes RuntimeAsset contracts before VQ accepts the
+  current evidence gate;
+- editor, UI, gameplay, or WorldObject binding expansion;
+- duplicate QA lanes that only repeat the same focused evidence without a new
+  risk question;
+- broad full-suite testing without an explicit shared-contract or release
+  reason.
 
 QA and evidence tasks may run in parallel only when they are read-only or when
 their write surfaces are disjoint. Implementation lanes do not overlap if they

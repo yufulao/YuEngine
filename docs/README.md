@@ -54,10 +54,14 @@ At the latest handoff:
   `0a9144b0e30cbede56a5dbf04b232f3e5b763802`;
 - long-term planning correction is complete at
   `705f8ba94fee8ccbb9330d2c37f14bb47114e0d1`;
-- VQ evidence consistency audit `aa4ea04f` remains held until the human lead
-  resumes coordination;
-- the coordinator goal is paused/report-only by human instruction;
-- no next implementation lane is open.
+- documentation entry cleanup is complete at
+  `b0d96b0dece4009e753dd15307235e2e8b8badac`;
+- the human lead has resumed execution and requires continuous multi-agent
+  coordination until the L0/L1 stop condition is actually met;
+- VQ evidence consistency audit `aa4ea04f` is the next evidence gate and must
+  close before the next write lane;
+- no next implementation lane is open until VQ accepts the current evidence
+  gate.
 
 Live workspace state is still authoritative for task ownership and current
 status. This file records the handoff baseline, not a replacement for the task
@@ -114,8 +118,28 @@ Stop and return to architecture if any future work:
 - uses old TouhouNewWorld compatibility to define first-class L0/L1 contracts;
 - expands editor/UI/gameplay before runtime contracts are stable.
 
-## 8. Resume Rule
+## 8. Continuous Execution Rule
 
-The coordinator goal is paused because the human lead asked for report-first
-planning. Resume execution only after the human lead explicitly says to continue
-coordination.
+The coordinator must continue driving the accepted plan until the L0/L1 stop
+condition is met. Do not stop after one task, and do not wait for the human lead
+to say "continue" while accepted work remains.
+
+Required execution discipline:
+
+- keep the architect on coordination, dependency control, design decisions, and
+  evidence governance rather than routine frontline implementation;
+- split real parallel work only when tasks have independent read or write
+  surfaces and do not depend on each other;
+- do not create fake parallel QA lanes that only serialize one dependency chain
+  or burn review tokens without increasing throughput;
+- every shared task must state scope, non-goals, expected evidence, AI ETA, and
+  stale-owner timeout behavior;
+- set workspace timers for owner checkpoints and reroute stale work instead of
+  waiting indefinitely;
+- focused evidence is the default; broad full-suite testing is reserved for
+  explicit shared-contract, release, or high-risk decisions;
+- never open a write lane that can invalidate an active evidence gate.
+
+The current safe pattern is: keep VQ read-only, open independent read-only
+architecture/prep lanes in parallel, then release the next implementation lane
+only after the evidence gate closes.

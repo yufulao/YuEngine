@@ -136,6 +136,44 @@ target identity work.
 | RTSPINE-007 | Design instance mapping gate | asset target to runtime instance mapping is designed before implementation touches WorldObject |
 | RTSPINE-008 | Define package/resource pressure gate | archive/index/hash/budget requirements are checked against the 6 GB plus product content target |
 
+## 1.3 Continuous Multi-Agent Execution Governance
+
+The coordinator must keep driving accepted L0/L1 work until the stop condition
+is met. Do not stop after finishing one task. Do not wait for the human lead to
+say "continue" while the active plan still has open work.
+
+The architect should stay on architecture, dependency control, task design,
+evidence governance, and rerouting. Routine implementation should go to
+specialist agents whenever a clear owner exists, because the architect's context
+budget is a project-level asset.
+
+Every shared task must include:
+
+- AI ETA;
+- exact owner and role fit;
+- exact scope and file or module surface;
+- explicit non-goals;
+- expected evidence;
+- stale-owner timeout and reroute rule.
+
+True parallelism means independent work surfaces. The team should run read-only
+design audits, code-surface scouting, pressure gates, and disjoint implementation
+lanes in parallel. The team must not split one serial dependency into duplicate
+QA or full-test lanes that do not reduce calendar time.
+
+Current immediate parallel pattern:
+
+```text
+VQ read-only scene-animation evidence audit
++ RuntimeAsset target identity design surface
++ package/resource index pressure audit
++ next-implementation file-surface scout
++ parallelization and risk audit
+```
+
+The next implementation write lane remains blocked until VQ accepts the current
+scene-animation evidence gate.
+
 
 ## 2. Current Progress Assessment
 
