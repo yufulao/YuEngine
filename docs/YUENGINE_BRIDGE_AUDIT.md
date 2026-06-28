@@ -43,10 +43,30 @@ The audit is aligned to `YUENGINE_L0_COMPLETION_MATRIX.md`:
 | `ResourceUploadQueue` | Staging completion to RHI upload request/completion | Streaming owns staging completion | RHI owns backend resource creation; Resource receives completion later | Streaming owns upload pending/completion slots | `ResourceUploadStatus`, `ResourceStatus`, `RhiStatus` | `MAX_RESOURCE_UPLOAD_REQUEST_COUNT`, byte range, completion output capacity | `Streaming_ResourceUpload_*` | `Done` | `Medium` | Keep Resource from owning RHI device lifecycle; hardware backend proof stays separate |
 | `ResourceUploadCommitQueue` | RHI upload completion to Resource load/residency commit | Streaming owns upload completion | Resource owns registry state transition | Streaming owns commit pending/completion slots | `ResourceUploadCommitStatus`, `ResourceStatus`, load/residency statuses | `MAX_RESOURCE_UPLOAD_COMMIT_REQUEST_COUNT`, completion output capacity | `Streaming_ResourceUploadCommit_*` | `Done` | `Medium` | Keep commit as explicit value transition, not implicit Resource cache mutation |
 | `ResourceStreamingPipeline` | Package/File staging through RHI upload to Resource commit | Streaming composes staging, upload, and commit queues | Resource/RHI receive only their public request values | Streaming owns pipeline progress and snapshot | `ResourceStreamingPipelineStatus` plus child queue statuses | One active request, child queue capacities, completion storage | `Streaming_ResourceStreamingPipeline_FixtureBufferReadUploadCommit` | `Done` | `Medium` | Keep as L0 pipeline adapter; do not add Asset or sample policy here |
-| `ResourceDecodedTextureBridge` | Resource decoded texture payload to Streaming/RHI upload request | Resource owns decoded payload and sampled texture metadata | Streaming/RHI consume upload request; RenderCore consumes texture binding values | Streaming bridge owns scratch/result snapshot only | `ResourceDecodedTextureBridgeStatus`, `ResourceStatus`, upload statuses | Scratch byte storage, sampled texture slot, texture byte count | `Streaming_ResourceDecodedTextureBridge_*` | `Done` | `Medium` | Keep decoded payload ownership with Resource; no RHI lifecycle ownership in Resource |
+| `ResourceDecodedTextureBridge` | Resource decoded texture payload to Streaming/RHI upload request | Resource owns decoded payload and sampled texture metadata | Streaming/RHI consume upload request; RenderCore consumes texture binding values | Streaming bridge owns scratch/result snapshot only | `ResourceDecodedTextureBridgeStatus`, `ResourceStatus`, upload statuses | Scratch byte storage, sampled texture slot, texture byte count | `Streaming_ResourceDecodedTextureBridge_*`, `Streaming_ResourceUpload_.*Texture` | `Done` | `Medium` | Keep decoded payload ownership with Resource; no RHI lifecycle ownership in Resource |
 | `RenderSwapchainFramePipeline` | RenderCore clear/present/capture request to RHI swapchain | RenderCore owns frame request values | RHI owns swapchain and backend handles | RenderCore owns frame records; RHI owns device/swapchain lifecycle | `RenderSwapchainFramePipelineStatus`, `RhiStatus` | `MAX_RENDER_SWAPCHAIN_FRAME_RECORDS`, command capacity, capture storage | `RenderCore_SwapchainFramePipeline_*`, D3D11 swapchain hardware smoke | RHI hardware `BlockedByEnv` | `Medium` | Keep swapchain lifecycle in RHI; target D3D11 proof remains required |
 | `RenderDrawableFramePipeline` | RenderCore material/view/frame packets to RHI drawable frame | RenderCore owns packet/material/view values | RHI owns backend draw execution | RenderCore owns frame records; RHI owns device resources | `RenderDrawableFramePipelineStatus`, material/view/frame packet statuses, `RhiStatus` | `MAX_RENDER_DRAWABLE_FRAME_RECORDS`, command/pass/packet capacities | `RenderCore_DrawableFramePipeline_*`, D3D11 drawable smoke | RHI hardware `BlockedByEnv` | `Medium` | Keep material and view policy value-only; no scene traversal or native public leak |
 | `L0EngineEvidence` sample helper | Sample command gathers L0 module proof values | Platform/RHI/Resource/Audio/Input modules own engine behavior | Sample owns evidence aggregation | Sample owns local evidence result only | Boolean result plus explicit sample evidence flags | Caller-provided result storage and sample fixture bounds | `Sample_*`, `RunAssetSmokeDemo.ps1` debug/release routes | Engine sample `BlockedByEnv` | `Medium` | Keep generated artifacts ignored; sample proof must not replace module tests |
+
+## 3.1 L0-RES-005 Evidence Sync
+
+L0-RES-005 texture bridge to RHI closure is PASS at
+`18030b201c69452a2a7da44fc3d08a4462c3d34f`. Readiness task `6fc3d241`
+records that existing `ResourceDecodedTextureBridge` maps decoded texture
+payloads to `ResourceUploadKind::CreateTexture` and sampled texture binding
+values while Resource does not own RHI lifecycle.
+
+Focused QA task `261fa423-28aa-498f-944f-c4eb44cf9d23` reports a read-only
+clean workspace, `YuStreamingTests` focused build PASS,
+`Streaming_ResourceDecodedTextureBridge_` discovery/execution `5/5` PASS,
+`Streaming_ResourceUpload_.*Texture` discovery/execution `2/2` PASS, and RHI
+texture/sampler/sampling dependency discovery count `10`. The RHI dependency
+set was not executed, RHI closure is unchanged, and this sync does not claim
+RuntimeAsset bridge/CMake cross-proof, RenderScene/RHI implementation,
+World/editor/importer, old-package compatibility, real codec/parser,
+Package/Resource public API expansion, L0-RES-006 PCM bridge, L0-RES-007 sample
+texture/mesh path, adjacent/full Resource/Streaming, screenshots/reports/manual
+proof, or broad/full CTest completion.
 
 ## 4. L1 Runtime Bridge Audit
 

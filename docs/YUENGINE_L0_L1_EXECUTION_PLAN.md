@@ -270,10 +270,22 @@ pin/unpin/eviction, and stale/invalid handle no-mutation. QA did not build or
 execute `YuRHITests`, RHI 38-row dependency execution, adjacent/full Resource,
 full `^Resource_`, or broad/full CTest. RHI primitive evidence remains a
 dependency note because `L0-RHI-003` is not separately table-closed here.
-L0-RES-005 texture bridge, Package/Resource public API expansion,
-RuntimeAsset/CMake cross-proof, RenderScene/RHI implementation,
-WorldObject/editor/importer, old-package compatibility, real codec/parser,
-unrelated animation mapping, and broad/full CTest stay outside this closure.
+L0-RES-005 texture bridge to RHI closure is PASS at
+`18030b201c69452a2a7da44fc3d08a4462c3d34f`: readiness task `6fc3d241`
+records that existing `ResourceDecodedTextureBridge` maps decoded texture
+payloads to `ResourceUploadKind::CreateTexture` and sampled texture binding
+values while Resource does not own RHI lifecycle; focused QA task
+`261fa423-28aa-498f-944f-c4eb44cf9d23` reports a read-only clean workspace,
+`YuStreamingTests` focused build PASS, `Streaming_ResourceDecodedTextureBridge_`
+discovery/execution `5/5` PASS, `Streaming_ResourceUpload_.*Texture`
+discovery/execution `2/2` PASS, and RHI texture/sampler/sampling dependency
+discovery count `10`. The RHI dependency set was not executed, RHI closure is
+unchanged, and no adjacent/full Resource/Streaming or broad/full CTest was run.
+L0-RES-006 PCM bridge, L0-RES-007 sample texture/mesh asset path,
+Package/Resource public API expansion, RuntimeAsset/CMake cross-proof,
+RenderScene/RHI implementation, WorldObject/editor/importer, old-package
+compatibility, real codec/parser, unrelated animation mapping, and broad/full
+CTest stay outside this closure.
 
 
 ## 2. Current Progress Assessment
@@ -1935,7 +1947,7 @@ backlog or from phase-sized batches, not only from the first few rows.
 | L0-RES-002 | Close Package load-plan/staging baseline | L0-RES-001 | PASS at `origin/main@4714199579469a9b1b5e1307b6370fe8f39ce994`: existing `YuPackage` manifest/load-plan value contracts and `YuStreaming` `PackageResourceStaging*` value/status records cover the baseline without a new implementation commit; readiness task `da4f455c` and focused QA task `6aea6396-7af5-43ed-be9a-901e888914d2` report `YuPackageTests` and `YuStreamingTests` build PASS, `^Package_` discovery/execution `39/39` PASS, `^Streaming_PackageResourceStaging_` discovery/execution `10/10` PASS, clean read-only QA, no broad/full CTest, and no old-package compatibility claim |
 | L0-RES-003 | Close Resource cache/decode chain | current Resource first slices | PASS at `origin/main@8c3a200d813173efe1607e594777afd6f029cc7c`: existing `YuResource` cache payload, decode plan, decode result, decoded payload ownership, release/dependent clear, budget/capacity, and no-mutation records cover the baseline; readiness task `ba6025e8`, implementation fix task `abfdb2d1`, and focused QA task `ca5c3c1b-e61a-4095-8e3c-2e0dfccc2b40` report `ResourceRegistry.cpp`-only status-priority fix, `YuResourceTests` build PASS, exact decoded-payload capacity row `1/1` PASS, focused cache/decode discovery/execution `65/65` PASS, clean read-only QA, and no adjacent/full Resource or broad/full CTest |
 | L0-RES-004 | Close Resource residency/upload chain | L0-RES-003, L0-RHI-003 | Closed at `origin/main@45f91f6cda02e42f0dce7eae7ff3df6db3616467`: focused QA task `2917323c-9869-4a1c-a9fb-67a90b513a23` reports successful `YuStreamingTests` and `YuResourceTests` builds, `Streaming_ResourceUpload_` `17/17`, `Streaming_ResourceUploadCommit_` `9/9`, `Resource_LoadCommit_`/`Resource_Residency_` `18/18`, combined focused execution `44/44`, and a clean read-only QA workspace; readiness task `d88846fd` records existing Resource/Streaming/RHI value/status records for upload queue, upload commit, Resource load commit, residency budget/state, pin/unpin/eviction, and stale/invalid handle no-mutation; QA did not build or execute `YuRHITests`, RHI 38-row dependency execution, adjacent/full Resource, full `^Resource_`, or broad/full CTest; `L0-RHI-003` stays a dependency row, not a completion claim from this evidence sync |
-| L0-RES-005 | Close texture bridge to RHI | L0-RES-004, L0-RHI-003 | decoded texture payload maps to upload request without Resource owning RHI lifecycle |
+| L0-RES-005 | Close texture bridge to RHI | L0-RES-004, L0-RHI-003 | Closed at `origin/main@18030b201c69452a2a7da44fc3d08a4462c3d34f`: readiness task `6fc3d241` records existing `ResourceDecodedTextureBridge` mapping from decoded texture payload to `ResourceUploadKind::CreateTexture` and sampled texture binding values without Resource owning RHI lifecycle; focused QA task `261fa423-28aa-498f-944f-c4eb44cf9d23` reports read-only clean workspace, successful `YuStreamingTests` focused build, `Streaming_ResourceDecodedTextureBridge_` `5/5`, `Streaming_ResourceUpload_.*Texture` `2/2`, and RHI texture/sampler/sampling dependency discovery count `10`; the RHI dependency set was not executed, RHI closure is unchanged, and there is no adjacent/full Resource/Streaming or broad/full CTest claim |
 | L0-RES-006 | Close PCM bridge to Audio | L0-RES-003, L0-AUD-002 | decoded audio metadata maps to PCM request without Audio parsing Resource payloads |
 | L0-RES-007 | Add sample texture/mesh asset path | L0-RES-001, L0-RES-003, L0-RES-005 | sample asset reaches RenderCore/RHI through YuEngine modules |
 
@@ -1946,11 +1958,14 @@ cache/decode value/status records plus the narrow `StoreDecodedPayload`
 status-priority fix in `ResourceRegistry.cpp`. L0-RES-004 evidence is based on
 existing Resource/Streaming/RHI value/status records plus focused
 Resource/Streaming execution, and it leaves `L0-RHI-003` as a dependency row.
-L0-RES-005 texture bridge, Package/Resource public API expansion,
-RuntimeAsset/CMake cross-proof, RenderScene/RHI implementation,
+L0-RES-005 evidence is based on existing `ResourceDecodedTextureBridge` and
+focused Streaming texture bridge execution, with RHI texture/sampler/sampling
+rows used as discovery-only dependency evidence. L0-RES-006 PCM bridge,
+L0-RES-007 sample texture/mesh asset path, Package/Resource public API
+expansion, RuntimeAsset/CMake cross-proof, RenderScene/RHI implementation,
 WorldObject/editor/importer, old-package compatibility, real codec/parser,
-unrelated animation mapping, adjacent/full Resource, RHI dependency execution,
-full `^Resource_`, and broad/full CTest stay outside these closures.
+unrelated animation mapping, adjacent/full Resource/Streaming, RHI dependency
+execution, full `^Resource_`, and broad/full CTest stay outside these closures.
 
 ### 12.6 L0 Audio Backlog
 

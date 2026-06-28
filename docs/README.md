@@ -185,6 +185,18 @@ At the latest handoff:
   RHI 38-row dependency execution, adjacent/full Resource, full `^Resource_`,
   or broad/full CTest; RHI primitive evidence remains a dependency note because
   `L0-RHI-003` is not separately table-closed here;
+- L0-RES-005 texture bridge to RHI closure is PASS at
+  `18030b201c69452a2a7da44fc3d08a4462c3d34f`; readiness task `6fc3d241`
+  records that existing `ResourceDecodedTextureBridge` maps decoded texture
+  payloads to `ResourceUploadKind::CreateTexture` and sampled texture binding
+  values while Resource does not own RHI lifecycle; focused QA task
+  `261fa423-28aa-498f-944f-c4eb44cf9d23` reports a read-only clean workspace,
+  `YuStreamingTests` focused build PASS, `Streaming_ResourceDecodedTextureBridge_`
+  discovery/execution `5/5` PASS, `Streaming_ResourceUpload_.*Texture`
+  discovery/execution `2/2` PASS, and RHI texture/sampler/sampling dependency
+  discovery count `10`; the RHI dependency set was not executed, RHI closure is
+  unchanged, and no adjacent/full Resource/Streaming or broad/full CTest was
+  run;
 - WorldObject-facing runtime instance mapping and broader Resource/File/VFS
   follow-through remain blocked until their own gates are released.
 
