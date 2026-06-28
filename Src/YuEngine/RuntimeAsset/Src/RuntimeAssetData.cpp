@@ -603,6 +603,112 @@ bool ParseAnimationChannel(std::string_view value, AnimationRuntimeChannel *out_
     return false;
 }
 
+bool ParseRuntimeAssetAnimationTargetProperty(
+    std::string_view value,
+    RuntimeAssetAnimationTargetProperty *out_property) {
+    if (out_property == nullptr) {
+        return false;
+    }
+
+    if (value == "transform:translation_x") {
+        *out_property = RuntimeAssetAnimationTargetProperty::TransformTranslationX;
+        return true;
+    }
+
+    if (value == "transform:translation_y") {
+        *out_property = RuntimeAssetAnimationTargetProperty::TransformTranslationY;
+        return true;
+    }
+
+    if (value == "transform:translation_z") {
+        *out_property = RuntimeAssetAnimationTargetProperty::TransformTranslationZ;
+        return true;
+    }
+
+    if (value == "transform:rotation_x") {
+        *out_property = RuntimeAssetAnimationTargetProperty::TransformRotationX;
+        return true;
+    }
+
+    if (value == "transform:rotation_y") {
+        *out_property = RuntimeAssetAnimationTargetProperty::TransformRotationY;
+        return true;
+    }
+
+    if (value == "transform:rotation_z") {
+        *out_property = RuntimeAssetAnimationTargetProperty::TransformRotationZ;
+        return true;
+    }
+
+    if (value == "transform:rotation_w") {
+        *out_property = RuntimeAssetAnimationTargetProperty::TransformRotationW;
+        return true;
+    }
+
+    if (value == "transform:scale_x") {
+        *out_property = RuntimeAssetAnimationTargetProperty::TransformScaleX;
+        return true;
+    }
+
+    if (value == "transform:scale_y") {
+        *out_property = RuntimeAssetAnimationTargetProperty::TransformScaleY;
+        return true;
+    }
+
+    if (value == "transform:scale_z") {
+        *out_property = RuntimeAssetAnimationTargetProperty::TransformScaleZ;
+        return true;
+    }
+
+    return false;
+}
+
+bool RuntimeAssetAnimationTargetPropertyToChannel(
+    RuntimeAssetAnimationTargetProperty property,
+    AnimationRuntimeChannel *out_channel) {
+    if (out_channel == nullptr) {
+        return false;
+    }
+
+    switch (property) {
+        case RuntimeAssetAnimationTargetProperty::TransformTranslationX:
+            *out_channel = AnimationRuntimeChannel::TranslationX;
+            return true;
+        case RuntimeAssetAnimationTargetProperty::TransformTranslationY:
+            *out_channel = AnimationRuntimeChannel::TranslationY;
+            return true;
+        case RuntimeAssetAnimationTargetProperty::TransformTranslationZ:
+            *out_channel = AnimationRuntimeChannel::TranslationZ;
+            return true;
+        case RuntimeAssetAnimationTargetProperty::TransformRotationX:
+            *out_channel = AnimationRuntimeChannel::RotationX;
+            return true;
+        case RuntimeAssetAnimationTargetProperty::TransformRotationY:
+            *out_channel = AnimationRuntimeChannel::RotationY;
+            return true;
+        case RuntimeAssetAnimationTargetProperty::TransformRotationZ:
+            *out_channel = AnimationRuntimeChannel::RotationZ;
+            return true;
+        case RuntimeAssetAnimationTargetProperty::TransformRotationW:
+            *out_channel = AnimationRuntimeChannel::RotationW;
+            return true;
+        case RuntimeAssetAnimationTargetProperty::TransformScaleX:
+            *out_channel = AnimationRuntimeChannel::ScaleX;
+            return true;
+        case RuntimeAssetAnimationTargetProperty::TransformScaleY:
+            *out_channel = AnimationRuntimeChannel::ScaleY;
+            return true;
+        case RuntimeAssetAnimationTargetProperty::TransformScaleZ:
+            *out_channel = AnimationRuntimeChannel::ScaleZ;
+            return true;
+        case RuntimeAssetAnimationTargetProperty::Unknown:
+        default:
+            break;
+    }
+
+    return false;
+}
+
 bool ParseAnimationTarget(std::string_view value, WorldObjectId *out_target) {
     if (out_target == nullptr) {
         return false;
@@ -687,6 +793,8 @@ struct RuntimeAssetSceneLoaderStage final {
     std::array<RuntimeAssetTargetIdentityRecord, RUNTIME_ASSET_MAX_TARGET_IDENTITY_COUNT> target_identities{};
     std::array<AnimationRuntimeClipRecord, RUNTIME_ASSET_MAX_ANIMATION_CLIP_COUNT> animation_clips{};
     std::array<AnimationRuntimeTrackRecord, RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT> animation_tracks{};
+    std::array<RuntimeAssetAnimationTrackTargetBindingRecord, RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT>
+        animation_target_bindings{};
     std::array<AnimationRuntimeKeyframeRecord, RUNTIME_ASSET_MAX_ANIMATION_KEYFRAME_COUNT> animation_keyframes{};
     std::uint32_t camera_count = 0U;
     std::uint32_t entity_count = 0U;
@@ -694,6 +802,7 @@ struct RuntimeAssetSceneLoaderStage final {
     std::uint32_t target_identity_count = 0U;
     std::uint32_t animation_clip_count = 0U;
     std::uint32_t animation_track_count = 0U;
+    std::uint32_t animation_target_binding_count = 0U;
     std::uint32_t animation_keyframe_count = 0U;
     std::uint32_t animation_sampled_value_count = 0U;
     std::uint32_t selected_animation_clip_id = 0U;
@@ -706,6 +815,18 @@ bool SceneStageHasWorldObject(
     WorldObjectId world_object_id) {
     for (std::uint32_t index = 0U; index < stage.entity_count; ++index) {
         if (stage.entities[index].world_object_id.value == world_object_id.value) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool SceneStageHasRuntimeAnimationTarget(
+    const RuntimeAssetSceneLoaderStage &stage,
+    std::uint32_t target_value) {
+    for (std::uint32_t index = 0U; index < stage.entity_count; ++index) {
+        if (stage.entities[index].world_object_id.value == target_value) {
             return true;
         }
     }
@@ -763,6 +884,14 @@ bool HasAnimationRuntimeOutputRequest(const RuntimeAssetGraphLoadRequest &reques
     return request.animation_keyframe_capacity != 0U;
 }
 
+bool HasAnimationTargetBindingOutputRequest(const RuntimeAssetGraphLoadRequest &request) {
+    if (request.animation_target_bindings != nullptr) {
+        return true;
+    }
+
+    return request.animation_target_binding_capacity != 0U;
+}
+
 RuntimeAssetDataStatus ValidateAnimationRuntimeOutputRequest(
     const RuntimeAssetGraphLoadRequest &request,
     std::uint32_t clip_count,
@@ -781,6 +910,24 @@ RuntimeAssetDataStatus ValidateAnimationRuntimeOutputRequest(
     if (request.animation_clip_capacity < clip_count ||
         request.animation_track_capacity < track_count ||
         request.animation_keyframe_capacity < keyframe_count) {
+        return RuntimeAssetDataStatus::CapacityExceeded;
+    }
+
+    return RuntimeAssetDataStatus::Success;
+}
+
+RuntimeAssetDataStatus ValidateAnimationTargetBindingOutputRequest(
+    const RuntimeAssetGraphLoadRequest &request,
+    std::uint32_t binding_count) {
+    if (!HasAnimationTargetBindingOutputRequest(request)) {
+        return RuntimeAssetDataStatus::Success;
+    }
+
+    if (request.animation_target_bindings == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (request.animation_target_binding_capacity < binding_count) {
         return RuntimeAssetDataStatus::CapacityExceeded;
     }
 
@@ -816,6 +963,18 @@ void CommitAnimationRuntimeTables(
 
     for (std::uint32_t index = 0U; index < stage.animation_keyframe_count; ++index) {
         request.animation_keyframes[index] = stage.animation_keyframes[index];
+    }
+}
+
+void CommitAnimationTargetBindingRecords(
+    const RuntimeAssetGraphLoadRequest &request,
+    const RuntimeAssetSceneLoaderStage &stage) {
+    if (!HasAnimationTargetBindingOutputRequest(request)) {
+        return;
+    }
+
+    for (std::uint32_t index = 0U; index < stage.animation_target_binding_count; ++index) {
+        request.animation_target_bindings[index] = stage.animation_target_bindings[index];
     }
 }
 
@@ -1951,6 +2110,18 @@ bool SceneStageHasEntityId(
     return false;
 }
 
+const RuntimeAssetSceneEntityRecord *FindSceneStageEntityById(
+    const RuntimeAssetSceneLoaderStage &stage,
+    std::uint32_t scene_entity_id) {
+    for (std::uint32_t index = 0U; index < stage.entity_count; ++index) {
+        if (stage.entities[index].entity_id == scene_entity_id) {
+            return &stage.entities[index];
+        }
+    }
+
+    return nullptr;
+}
+
 const RuntimeAssetTargetIdentityRecord *FindTargetIdentityRecord(
     std::span<const RuntimeAssetTargetIdentityRecord> identities,
     std::uint64_t target_id) {
@@ -1961,6 +2132,44 @@ const RuntimeAssetTargetIdentityRecord *FindTargetIdentityRecord(
     }
 
     return nullptr;
+}
+
+RuntimeAssetDataStatus ResolveAnimationTrackTargetBinding(
+    const RuntimeAssetSceneLoaderStage &stage,
+    std::uint64_t target_id,
+    RuntimeAssetAnimationTargetProperty property,
+    const RuntimeAssetSceneEntityRecord **out_entity,
+    AnimationRuntimeChannel *out_channel) {
+    if (out_entity == nullptr || out_channel == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    const RuntimeAssetTargetIdentityRecord *identity = FindTargetIdentityRecord(
+        std::span<const RuntimeAssetTargetIdentityRecord>(
+            stage.target_identities.data(),
+            stage.target_identity_count),
+        target_id);
+    if (identity == nullptr) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    if (identity->kind != RuntimeAssetTargetIdentityKind::SceneNode) {
+        return RuntimeAssetDataStatus::TypeMismatch;
+    }
+
+    const RuntimeAssetSceneEntityRecord *entity = FindSceneStageEntityById(stage, identity->scene_entity_id);
+    if (entity == nullptr) {
+        return RuntimeAssetDataStatus::MissingDependency;
+    }
+
+    AnimationRuntimeChannel channel = AnimationRuntimeChannel::TranslationX;
+    if (!RuntimeAssetAnimationTargetPropertyToChannel(property, &channel)) {
+        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    }
+
+    *out_entity = entity;
+    *out_channel = channel;
+    return RuntimeAssetDataStatus::Success;
 }
 
 bool TargetIdentityParentKindMatches(
@@ -4728,35 +4937,106 @@ RuntimeAssetDataStatus ParseAnimationTrackRecord(
     std::string_view value,
     std::uint32_t keyframe_count,
     const RuntimeAssetSceneLoaderStage &stage,
-    AnimationRuntimeTrackRecord *out_track) {
-    if (out_track == nullptr || value.empty()) {
+    AnimationRuntimeTrackRecord *out_track,
+    RuntimeAssetAnimationTrackTargetBindingRecord *out_binding,
+    bool *out_has_binding) {
+    if (out_track == nullptr || out_has_binding == nullptr) {
+        return RuntimeAssetDataStatus::InvalidArgument;
+    }
+
+    if (value.empty()) {
         return RuntimeAssetDataStatus::InvalidCount;
     }
 
+    *out_has_binding = false;
     std::uint32_t track_id = 0U;
     std::uint32_t first_key = 0U;
     std::uint32_t track_key_count = 0U;
     WorldObjectId target{};
     AnimationRuntimeChannel channel = AnimationRuntimeChannel::TranslationX;
-    if (!ParseU32(FieldValue(value, "id="), &track_id) || track_id == 0U ||
-        !ParseU32(FieldValue(value, "first_key="), &first_key) ||
-        !ParseU32(FieldValue(value, "key_count="), &track_key_count) ||
-        track_key_count == 0U ||
-        first_key >= keyframe_count ||
-        track_key_count > keyframe_count - first_key) {
+    if (!ParseU32(FieldValue(value, "id="), &track_id)) {
         return RuntimeAssetDataStatus::InvalidBounds;
     }
 
-    if (!ParseAnimationTarget(FieldValue(value, "target_ref="), &target)) {
-        return RuntimeAssetDataStatus::TypeMismatch;
+    if (track_id == 0U) {
+        return RuntimeAssetDataStatus::InvalidBounds;
     }
 
-    if (!SceneStageHasWorldObject(stage, target)) {
-        return RuntimeAssetDataStatus::InvalidDependency;
+    if (!ParseU32(FieldValue(value, "first_key="), &first_key)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
     }
 
-    if (!ParseAnimationChannel(FieldValue(value, "channel="), &channel)) {
-        return RuntimeAssetDataStatus::UnsupportedFieldValue;
+    if (!ParseU32(FieldValue(value, "key_count="), &track_key_count)) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (track_key_count == 0U) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (first_key >= keyframe_count) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    if (track_key_count > keyframe_count - first_key) {
+        return RuntimeAssetDataStatus::InvalidBounds;
+    }
+
+    const std::string_view target_id_value = FieldValue(value, "target_id=");
+    const std::string_view property_value = FieldValue(value, "property=");
+    const bool uses_target_binding = !target_id_value.empty() || !property_value.empty();
+    if (uses_target_binding) {
+        if (out_binding == nullptr) {
+            return RuntimeAssetDataStatus::InvalidArgument;
+        }
+
+        if (target_id_value.empty() || property_value.empty()) {
+            return RuntimeAssetDataStatus::InvalidBounds;
+        }
+
+        std::uint64_t target_id = 0U;
+        if (!ParseU64(target_id_value, &target_id)) {
+            return RuntimeAssetDataStatus::InvalidBounds;
+        }
+
+        if (target_id == 0U) {
+            return RuntimeAssetDataStatus::InvalidBounds;
+        }
+
+        RuntimeAssetAnimationTargetProperty property = RuntimeAssetAnimationTargetProperty::Unknown;
+        if (!ParseRuntimeAssetAnimationTargetProperty(property_value, &property)) {
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
+
+        const RuntimeAssetSceneEntityRecord *target_entity = nullptr;
+        const RuntimeAssetDataStatus binding_status =
+            ResolveAnimationTrackTargetBinding(stage, target_id, property, &target_entity, &channel);
+        if (binding_status != RuntimeAssetDataStatus::Success) {
+            return binding_status;
+        }
+
+        target = target_entity->world_object_id;
+        RuntimeAssetAnimationTrackTargetBindingRecord binding{};
+        binding.track_id = track_id;
+        binding.target_id = target_id;
+        binding.property = property;
+        binding.is_valid = true;
+        *out_binding = binding;
+        *out_has_binding = true;
+    }
+
+    if (!uses_target_binding) {
+        if (!ParseAnimationTarget(FieldValue(value, "target_ref="), &target)) {
+            return RuntimeAssetDataStatus::TypeMismatch;
+        }
+
+        if (!SceneStageHasRuntimeAnimationTarget(stage, target.value)) {
+            return RuntimeAssetDataStatus::InvalidDependency;
+        }
+
+        if (!ParseAnimationChannel(FieldValue(value, "channel="), &channel)) {
+            return RuntimeAssetDataStatus::UnsupportedFieldValue;
+        }
     }
 
     const std::string_view interpolation = FieldValue(value, "interp=");
@@ -4825,14 +5105,18 @@ RuntimeAssetDataStatus ParseBoundedAnimationTables(
     std::uint32_t *out_clip_count,
     std::array<AnimationRuntimeTrackRecord, RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT> *out_tracks,
     std::uint32_t *out_track_count,
+    std::array<RuntimeAssetAnimationTrackTargetBindingRecord, RUNTIME_ASSET_MAX_ANIMATION_TRACK_COUNT> *out_bindings,
+    std::uint32_t *out_binding_count,
     std::array<AnimationRuntimeKeyframeRecord, RUNTIME_ASSET_MAX_ANIMATION_KEYFRAME_COUNT> *out_keyframes,
     std::uint32_t *out_keyframe_count) {
     if (out_clips == nullptr || out_clip_count == nullptr ||
         out_tracks == nullptr || out_track_count == nullptr ||
+        out_bindings == nullptr || out_binding_count == nullptr ||
         out_keyframes == nullptr || out_keyframe_count == nullptr) {
         return RuntimeAssetDataStatus::InvalidArgument;
     }
 
+    *out_binding_count = 0U;
     const bool legacy_animation_record =
         ValueForToken(animation_text, "clips=").empty() &&
         ValueForToken(animation_text, "keyframes=").empty() &&
@@ -4934,15 +5218,25 @@ RuntimeAssetDataStatus ParseBoundedAnimationTables(
         }
     }
 
+    std::uint32_t binding_count = 0U;
     for (std::uint32_t index = 0U; index < track_count; ++index) {
         const std::string token = "track" + std::to_string(index) + "=";
+        RuntimeAssetAnimationTrackTargetBindingRecord binding{};
+        bool has_binding = false;
         status = ParseAnimationTrackRecord(
             ValueForToken(animation_text, token),
             keyframe_count,
             stage,
-            &(*out_tracks)[index]);
+            &(*out_tracks)[index],
+            &binding,
+            &has_binding);
         if (status != RuntimeAssetDataStatus::Success) {
             return status;
+        }
+
+        if (has_binding) {
+            (*out_bindings)[binding_count] = binding;
+            ++binding_count;
         }
     }
 
@@ -4970,6 +5264,7 @@ RuntimeAssetDataStatus ParseBoundedAnimationTables(
 
     *out_clip_count = clip_count;
     *out_track_count = track_count;
+    *out_binding_count = binding_count;
     *out_keyframe_count = keyframe_count;
     return RuntimeAssetDataStatus::Success;
 }
@@ -5138,6 +5433,8 @@ RuntimeAssetDataStatus BuildSceneLoaderStage(
         &stage.animation_clip_count,
         &stage.animation_tracks,
         &stage.animation_track_count,
+        &stage.animation_target_bindings,
+        &stage.animation_target_binding_count,
         &stage.animation_keyframes,
         &stage.animation_keyframe_count);
     if (status != RuntimeAssetDataStatus::Success) {
@@ -5149,6 +5446,13 @@ RuntimeAssetDataStatus BuildSceneLoaderStage(
         stage.animation_clip_count,
         stage.animation_track_count,
         stage.animation_keyframe_count);
+    if (status != RuntimeAssetDataStatus::Success) {
+        return status;
+    }
+
+    status = ValidateAnimationTargetBindingOutputRequest(
+        request,
+        stage.animation_target_binding_count);
     if (status != RuntimeAssetDataStatus::Success) {
         return status;
     }
@@ -5205,6 +5509,7 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
     output.target_identity_count = stage.target_identity_count;
     output.animation_clip_count = stage.animation_clip_count;
     output.animation_track_count = stage.animation_track_count;
+    output.animation_target_binding_count = stage.animation_target_binding_count;
     output.animation_keyframe_count = stage.animation_keyframe_count;
     output.animation_sampled_value_count = stage.animation_sampled_value_count;
     output.selected_animation_clip_id = stage.selected_animation_clip_id;
@@ -5215,6 +5520,7 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
     output.target_identity_capacity = request.target_identity_capacity;
     output.animation_clip_capacity = request.animation_clip_capacity;
     output.animation_track_capacity = request.animation_track_capacity;
+    output.animation_target_binding_capacity = request.animation_target_binding_capacity;
     output.animation_keyframe_capacity = request.animation_keyframe_capacity;
     output.file_read_count = load_result.file_read_count;
     output.dependency_count = load_result.resource_dependency_count + load_result.asset_dependency_count;
@@ -5253,6 +5559,7 @@ RuntimeAssetDataStatus CommitSceneLoaderOutput(
 
     CommitTargetIdentityRecords(request, stage);
     CommitAnimationRuntimeTables(request, stage);
+    CommitAnimationTargetBindingRecords(request, stage);
 
     output.status = RuntimeAssetDataStatus::Success;
     *request.scene_output = output;
@@ -9162,6 +9469,8 @@ RuntimeAssetGraphLoadRequest BuildRuntimeAssetPackagedGraphLoadRequest(
     load_request.animation_clip_capacity = request.animation_clip_capacity;
     load_request.animation_tracks = request.animation_tracks;
     load_request.animation_track_capacity = request.animation_track_capacity;
+    load_request.animation_target_bindings = request.animation_target_bindings;
+    load_request.animation_target_binding_capacity = request.animation_target_binding_capacity;
     load_request.animation_keyframes = request.animation_keyframes;
     load_request.animation_keyframe_capacity = request.animation_keyframe_capacity;
     load_request.scene_output = request.scene_output;

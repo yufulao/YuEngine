@@ -444,6 +444,33 @@ struct RuntimeAssetTargetIdentityRecord final {
 };
 
 /**
+ * @brief Asset-internal animation target property bound by RuntimeAsset tracks.
+ */
+enum class RuntimeAssetAnimationTargetProperty {
+    Unknown,
+    TransformTranslationX,
+    TransformTranslationY,
+    TransformTranslationZ,
+    TransformRotationX,
+    TransformRotationY,
+    TransformRotationZ,
+    TransformRotationW,
+    TransformScaleX,
+    TransformScaleY,
+    TransformScaleZ
+};
+
+/**
+ * @brief RuntimeAsset track binding from animation track id to target id and property.
+ */
+struct RuntimeAssetAnimationTrackTargetBindingRecord final {
+    std::uint32_t track_id = 0U;
+    std::uint64_t target_id = 0U;
+    RuntimeAssetAnimationTargetProperty property = RuntimeAssetAnimationTargetProperty::Unknown;
+    bool is_valid = false;
+};
+
+/**
  * @brief Deterministic RuntimeAsset scene loader output and diagnostics.
  */
 struct RuntimeAssetSceneLoaderOutput final {
@@ -457,6 +484,7 @@ struct RuntimeAssetSceneLoaderOutput final {
     std::uint32_t target_identity_count = 0U;
     std::uint32_t animation_clip_count = 0U;
     std::uint32_t animation_track_count = 0U;
+    std::uint32_t animation_target_binding_count = 0U;
     std::uint32_t animation_keyframe_count = 0U;
     std::uint32_t animation_sampled_value_count = 0U;
     std::uint32_t selected_animation_clip_id = 0U;
@@ -467,6 +495,7 @@ struct RuntimeAssetSceneLoaderOutput final {
     std::uint32_t target_identity_capacity = 0U;
     std::uint32_t animation_clip_capacity = 0U;
     std::uint32_t animation_track_capacity = 0U;
+    std::uint32_t animation_target_binding_capacity = 0U;
     std::uint32_t animation_keyframe_capacity = 0U;
     std::uint32_t file_read_count = 0U;
     std::uint32_t dependency_count = 0U;
@@ -508,6 +537,8 @@ struct RuntimeAssetGraphLoadRequest final {
     std::uint32_t animation_clip_capacity = 0U;
     yuengine::animation::AnimationRuntimeTrackRecord *animation_tracks = nullptr;
     std::uint32_t animation_track_capacity = 0U;
+    RuntimeAssetAnimationTrackTargetBindingRecord *animation_target_bindings = nullptr;
+    std::uint32_t animation_target_binding_capacity = 0U;
     yuengine::animation::AnimationRuntimeKeyframeRecord *animation_keyframes = nullptr;
     std::uint32_t animation_keyframe_capacity = 0U;
     RuntimeAssetSceneLoaderOutput *scene_output = nullptr;
@@ -986,6 +1017,8 @@ struct RuntimeAssetPackagedRunRequest final {
     std::uint32_t animation_clip_capacity = 0U;
     yuengine::animation::AnimationRuntimeTrackRecord *animation_tracks = nullptr;
     std::uint32_t animation_track_capacity = 0U;
+    RuntimeAssetAnimationTrackTargetBindingRecord *animation_target_bindings = nullptr;
+    std::uint32_t animation_target_binding_capacity = 0U;
     yuengine::animation::AnimationRuntimeKeyframeRecord *animation_keyframes = nullptr;
     std::uint32_t animation_keyframe_capacity = 0U;
     RuntimeAssetSceneLoaderOutput *scene_output = nullptr;

@@ -271,6 +271,8 @@ using yuengine::runtimeasset::RuntimeAssetImportCookCommandKind;
 using yuengine::runtimeasset::RuntimeAssetImportCookCommandRequest;
 using yuengine::runtimeasset::RuntimeAssetImportCookCommandResult;
 using yuengine::runtimeasset::RuntimeAssetImportCookMissingLayer;
+using yuengine::runtimeasset::RuntimeAssetAnimationTargetProperty;
+using yuengine::runtimeasset::RuntimeAssetAnimationTrackTargetBindingRecord;
 using yuengine::runtimeasset::RuntimeAssetLoadedFile;
 using yuengine::runtimeasset::RuntimeAssetMaterialAlphaMode;
 using yuengine::runtimeasset::RuntimeAssetLoadedShaderProgramData;
@@ -496,6 +498,14 @@ constexpr const char *TEST_TARGET_IDENTITY_MISSING_PARENT_NO_MUTATION =
     "RuntimeAssetData_TargetIdentityTableRejectsMissingParentWithoutMutation";
 constexpr const char *TEST_TARGET_IDENTITY_CAPACITY_NO_MUTATION =
     "RuntimeAssetData_TargetIdentityTableRejectsCapacityOverflowWithoutMutation";
+constexpr const char *TEST_ANIMATION_TARGET_BINDING =
+    "RuntimeAssetData_AnimationTrackTargetBindingResolvesTargetIdAndProperty";
+constexpr const char *TEST_ANIMATION_TARGET_BINDING_MISSING_TARGET =
+    "RuntimeAssetData_AnimationTrackTargetBindingRejectsMissingTargetWithoutMutation";
+constexpr const char *TEST_ANIMATION_TARGET_BINDING_UNSUPPORTED_PROPERTY =
+    "RuntimeAssetData_AnimationTrackTargetBindingRejectsUnsupportedPropertyWithoutMutation";
+constexpr const char *TEST_ANIMATION_TARGET_BINDING_CAPACITY =
+    "RuntimeAssetData_AnimationTrackTargetBindingRejectsCapacityOverflowWithoutMutation";
 constexpr const char *TEST_SCENE_ANIMATION_SELECTED_CLIP =
     "RuntimeAssetData_SceneAnimationLoaderSamplesExplicitSelectedClip";
 constexpr const char *TEST_SCENE_ANIMATION_MISSING_SELECTED_CLIP_NO_MUTATION =
@@ -649,6 +659,7 @@ struct LoadedGraph final {
     std::array<RuntimeAssetTargetIdentityRecord, 3U> target_identities{};
     std::array<AnimationRuntimeClipRecord, 1U> animation_clips{};
     std::array<AnimationRuntimeTrackRecord, 1U> animation_tracks{};
+    std::array<RuntimeAssetAnimationTrackTargetBindingRecord, 1U> animation_target_bindings{};
     std::array<AnimationRuntimeKeyframeRecord, 2U> animation_keyframes{};
     RuntimeAssetLoadedFile scene_asset{};
     RuntimeAssetSceneLoaderOutput scene_output{};
@@ -678,6 +689,7 @@ struct BoundedLoadedGraph final {
     std::array<RuntimeAssetTargetIdentityRecord, 3U> target_identities{};
     std::array<AnimationRuntimeClipRecord, 2U> animation_clips{};
     std::array<AnimationRuntimeTrackRecord, 3U> animation_tracks{};
+    std::array<RuntimeAssetAnimationTrackTargetBindingRecord, 3U> animation_target_bindings{};
     std::array<AnimationRuntimeKeyframeRecord, 6U> animation_keyframes{};
     RuntimeAssetLoadedFile scene_asset{};
     RuntimeAssetSceneLoaderOutput scene_output{};
@@ -1466,6 +1478,25 @@ std::string BoundedAnimationBytes() {
         "clip0=id=1|duration=1|first_track_index=0|track_count=2|sample_rate=30\n"
         "track0=id=1|target_ref=scene_entity:101|channel=transform:rotation_y|first_key=0|key_count=2|interp=linear\n"
         "track1=id=2|target_ref=scene_entity:104|channel=transform:translation_y|first_key=2|key_count=2|interp=linear\n"
+        "key0=0:0\n"
+        "key1=1:1\n"
+        "key2=0:1\n"
+        "key3=1:3\n");
+}
+
+std::string BoundedTargetBindingAnimationBytes() {
+    return std::string(
+        "YUASSET ANIMATION 1\n"
+        "schema=rav0-source\n"
+        "id=bounded_target_binding\n"
+        "target=scene_entity:101\n"
+        "track=transform:rotation_y\n"
+        "clips=1\n"
+        "tracks=2\n"
+        "keyframes=4\n"
+        "clip0=id=1|duration=1|first_track_index=0|track_count=2|sample_rate=30\n"
+        "track0=id=1|target_id=1001|property=transform:rotation_y|first_key=0|key_count=2|interp=linear\n"
+        "track1=id=2|target_id=1001|property=transform:translation_y|first_key=2|key_count=2|interp=linear\n"
         "key0=0:0\n"
         "key1=1:1\n"
         "key2=0:1\n"
@@ -3086,6 +3117,9 @@ bool LoadRuntimeAssetRecords(
     load_request.animation_clip_capacity = static_cast<std::uint32_t>(graph.animation_clips.size());
     load_request.animation_tracks = graph.animation_tracks.data();
     load_request.animation_track_capacity = static_cast<std::uint32_t>(graph.animation_tracks.size());
+    load_request.animation_target_bindings = graph.animation_target_bindings.data();
+    load_request.animation_target_binding_capacity =
+        static_cast<std::uint32_t>(graph.animation_target_bindings.size());
     load_request.animation_keyframes = graph.animation_keyframes.data();
     load_request.animation_keyframe_capacity = static_cast<std::uint32_t>(graph.animation_keyframes.size());
     load_request.scene_output = &graph.scene_output;
@@ -3174,6 +3208,9 @@ bool LoadBoundedRuntimeAssetRecords(
     load_request.animation_clip_capacity = static_cast<std::uint32_t>(graph.animation_clips.size());
     load_request.animation_tracks = graph.animation_tracks.data();
     load_request.animation_track_capacity = static_cast<std::uint32_t>(graph.animation_tracks.size());
+    load_request.animation_target_bindings = graph.animation_target_bindings.data();
+    load_request.animation_target_binding_capacity =
+        static_cast<std::uint32_t>(graph.animation_target_bindings.size());
     load_request.animation_keyframes = graph.animation_keyframes.data();
     load_request.animation_keyframe_capacity = static_cast<std::uint32_t>(graph.animation_keyframes.size());
     load_request.scene_output = &graph.scene_output;
@@ -3334,6 +3371,46 @@ bool BoundedTargetIdentityOutputTableMatches(const BoundedLoadedGraph &graph) {
         skeleton_joint.ordinal != 5U ||
         !skeleton_joint.is_valid) {
         return FailStep("bounded skeleton joint target identity changed");
+    }
+
+    return true;
+}
+
+bool BoundedAnimationTargetBindingOutputTableMatches(const BoundedLoadedGraph &graph) {
+    if (graph.scene_output.animation_target_binding_count != 2U ||
+        graph.scene_output.animation_target_binding_capacity !=
+            static_cast<std::uint32_t>(graph.animation_target_bindings.size())) {
+        return FailStep("bounded animation target binding output counts changed");
+    }
+
+    const RuntimeAssetAnimationTrackTargetBindingRecord &rotation_binding = graph.animation_target_bindings[0U];
+    if (rotation_binding.track_id != 1U ||
+        rotation_binding.target_id != 1001U ||
+        rotation_binding.property != RuntimeAssetAnimationTargetProperty::TransformRotationY ||
+        !rotation_binding.is_valid) {
+        return FailStep("bounded rotation target binding changed");
+    }
+
+    const RuntimeAssetAnimationTrackTargetBindingRecord &translation_binding = graph.animation_target_bindings[1U];
+    if (translation_binding.track_id != 2U ||
+        translation_binding.target_id != 1001U ||
+        translation_binding.property != RuntimeAssetAnimationTargetProperty::TransformTranslationY ||
+        !translation_binding.is_valid) {
+        return FailStep("bounded translation target binding changed");
+    }
+
+    const AnimationRuntimeTrackRecord &rotation_track = graph.animation_tracks[0U];
+    if (rotation_track.target.value != 101U ||
+        rotation_track.channel != AnimationRuntimeChannel::RotationY ||
+        !rotation_track.is_valid) {
+        return FailStep("bounded target binding did not resolve rotation track");
+    }
+
+    const AnimationRuntimeTrackRecord &translation_track = graph.animation_tracks[1U];
+    if (translation_track.target.value != 101U ||
+        translation_track.channel != AnimationRuntimeChannel::TranslationY ||
+        !translation_track.is_valid) {
+        return FailStep("bounded target binding did not resolve translation track");
     }
 
     return true;
@@ -3965,6 +4042,30 @@ bool AnimationTableFailureSentinelsUnchanged(
     return true;
 }
 
+void SeedAnimationTargetBindingFailureSentinels(
+    std::span<RuntimeAssetAnimationTrackTargetBindingRecord> bindings) {
+    for (std::size_t index = 0U; index < bindings.size(); ++index) {
+        bindings[index].track_id = 9101U + static_cast<std::uint32_t>(index);
+        bindings[index].target_id = 9201U + static_cast<std::uint64_t>(index);
+        bindings[index].property = RuntimeAssetAnimationTargetProperty::TransformScaleZ;
+        bindings[index].is_valid = true;
+    }
+}
+
+bool AnimationTargetBindingFailureSentinelsUnchanged(
+    std::span<const RuntimeAssetAnimationTrackTargetBindingRecord> bindings) {
+    for (std::size_t index = 0U; index < bindings.size(); ++index) {
+        if (bindings[index].track_id != 9101U + static_cast<std::uint32_t>(index) ||
+            bindings[index].target_id != 9201U + static_cast<std::uint64_t>(index) ||
+            bindings[index].property != RuntimeAssetAnimationTargetProperty::TransformScaleZ ||
+            !bindings[index].is_valid) {
+            return FailStep("animation target binding failure mutated output");
+        }
+    }
+
+    return true;
+}
+
 bool ProbeSceneLoaderFailureWithoutOutputMutation(
     MountTable &table,
     RuntimeAssetDataStatus expected_status,
@@ -4130,7 +4231,8 @@ bool ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
     std::uint32_t animation_track_capacity = 0U,
     std::uint32_t animation_keyframe_capacity = 0U,
     std::uint32_t selected_animation_clip_id = 0U,
-    std::uint32_t target_identity_capacity = 0U) {
+    std::uint32_t target_identity_capacity = 0U,
+    std::uint32_t animation_target_binding_capacity = 0U) {
     const std::array<FixtureFile, FIXTURE_FILE_COUNT> files = CanonicalFiles();
     std::array<RuntimeAssetFileDesc, FIXTURE_FILE_COUNT> file_descs{};
     for (std::size_t index = 0U; index < files.size(); ++index) {
@@ -4149,6 +4251,7 @@ bool ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
     std::array<RuntimeAssetTargetIdentityRecord, 3U> target_identities{};
     std::array<AnimationRuntimeClipRecord, 2U> animation_clips{};
     std::array<AnimationRuntimeTrackRecord, 3U> animation_tracks{};
+    std::array<RuntimeAssetAnimationTrackTargetBindingRecord, 3U> animation_target_bindings{};
     std::array<AnimationRuntimeKeyframeRecord, 6U> animation_keyframes{};
     RuntimeAssetSceneLoaderOutput scene_output{};
     SeedBoundedSceneLoaderFailureSentinels(
@@ -4162,12 +4265,17 @@ bool ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
         std::span<AnimationRuntimeClipRecord>(animation_clips.data(), animation_clips.size()),
         std::span<AnimationRuntimeTrackRecord>(animation_tracks.data(), animation_tracks.size()),
         std::span<AnimationRuntimeKeyframeRecord>(animation_keyframes.data(), animation_keyframes.size()));
+    SeedAnimationTargetBindingFailureSentinels(
+        std::span<RuntimeAssetAnimationTrackTargetBindingRecord>(
+            animation_target_bindings.data(),
+            animation_target_bindings.size()));
 
     const bool request_animation_output =
         animation_clip_capacity != 0U ||
         animation_track_capacity != 0U ||
         animation_keyframe_capacity != 0U;
     const bool request_target_identity_output = target_identity_capacity != 0U;
+    const bool request_animation_target_binding_output = animation_target_binding_capacity != 0U;
 
     RuntimeAssetGraphLoadRequest load_request{};
     load_request.mount_table = &table;
@@ -4204,6 +4312,11 @@ bool ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
         load_request.animation_keyframe_capacity = animation_keyframe_capacity;
     }
 
+    if (request_animation_target_binding_output) {
+        load_request.animation_target_bindings = animation_target_bindings.data();
+        load_request.animation_target_binding_capacity = animation_target_binding_capacity;
+    }
+
     load_request.scene_output = &scene_output;
     load_request.animation_frame_context.frame_index = 1U;
     load_request.animation_frame_context.delta_time_nanoseconds = HALF_SECOND_NANOSECONDS;
@@ -4234,6 +4347,14 @@ bool ProbeBoundedSceneLoaderFailureWithoutOutputMutation(
         return false;
     }
 
+    if (request_animation_target_binding_output &&
+        !AnimationTargetBindingFailureSentinelsUnchanged(
+            std::span<const RuntimeAssetAnimationTrackTargetBindingRecord>(
+                animation_target_bindings.data(),
+                animation_target_bindings.size()))) {
+        return false;
+    }
+
     const ResourceSnapshot after_resource_snapshot = registry.Snapshot();
     if (after_resource_snapshot.registered_resource_count != before_resource_snapshot.registered_resource_count ||
         after_resource_snapshot.dependency_edge_count != before_resource_snapshot.dependency_edge_count ||
@@ -4258,7 +4379,8 @@ bool ProbeBoundedFailureCase(
     const std::string &scene_text,
     const std::string &animation_text,
     RuntimeAssetDataStatus expected_status,
-    std::uint32_t target_identity_capacity = 0U) {
+    std::uint32_t target_identity_capacity = 0U,
+    std::uint32_t animation_target_binding_capacity = 0U) {
     MountTable table;
     if (!CreateMountedTable(TestRoot(root_name), &table)) {
         return FailStep("bounded failure case mount setup failed");
@@ -4286,7 +4408,8 @@ bool ProbeBoundedFailureCase(
         0U,
         0U,
         0U,
-        target_identity_capacity);
+        target_identity_capacity,
+        animation_target_binding_capacity);
 }
 
 bool LoadGraph(MountTable &table, LoadedGraph *out_graph) {
@@ -10240,6 +10363,86 @@ int RuntimeAssetDataTargetIdentityTableRejectsCapacityOverflowWithoutMutation() 
     return 0;
 }
 
+int RuntimeAssetDataAnimationTrackTargetBindingResolvesTargetIdAndProperty() {
+    MountTable table;
+    if (!CreateMountedTable(TestRoot("BoundedAnimationTargetBinding"), &table)) {
+        return Fail("mount setup failed");
+    }
+
+    if (!WriteBoundedFixture(table)) {
+        return Fail("bounded fixture write failed");
+    }
+
+    if (!WriteBytes(table, "Animation/Spin.yuanim", BytesFromString(BoundedTargetBindingAnimationBytes()))) {
+        return Fail("bounded target binding animation write failed");
+    }
+
+    ResourceRegistry registry;
+    AssetManager manager;
+    BoundedLoadedGraph graph{};
+    if (!LoadBoundedRuntimeAssetRecords(table, registry, manager, &graph)) {
+        return Fail("bounded target binding runtime asset records failed");
+    }
+
+    if (!BoundedAnimationTargetBindingOutputTableMatches(graph)) {
+        return Fail("bounded animation target binding table changed");
+    }
+
+    if (graph.scene_output.animation_sampled_value_count != 2U ||
+        !Approx(graph.scene_entities[2U].transform.rotation_y, 0.5F) ||
+        !Approx(graph.scene_entities[2U].transform.translation_y, 2.0F)) {
+        return Fail("bounded target binding did not update expected scene target");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataAnimationTrackTargetBindingRejectsMissingTargetWithoutMutation() {
+    const std::string animation =
+        ReplaceFirst(BoundedTargetBindingAnimationBytes(), "target_id=1001", "target_id=9001");
+    if (!ProbeBoundedFailureCase(
+            "BoundedAnimationTargetBindingMissingNoMutation",
+            BoundedSceneBytes(),
+            animation,
+            RuntimeAssetDataStatus::MissingDependency,
+            3U,
+            3U)) {
+        return Fail("bounded missing animation target binding failure mutated outputs");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataAnimationTrackTargetBindingRejectsUnsupportedPropertyWithoutMutation() {
+    const std::string animation =
+        ReplaceFirst(BoundedTargetBindingAnimationBytes(), "property=transform:rotation_y", "property=material:opacity");
+    if (!ProbeBoundedFailureCase(
+            "BoundedAnimationTargetBindingUnsupportedNoMutation",
+            BoundedSceneBytes(),
+            animation,
+            RuntimeAssetDataStatus::UnsupportedFieldValue,
+            3U,
+            3U)) {
+        return Fail("bounded unsupported animation target property failure mutated outputs");
+    }
+
+    return 0;
+}
+
+int RuntimeAssetDataAnimationTrackTargetBindingRejectsCapacityOverflowWithoutMutation() {
+    if (!ProbeBoundedFailureCase(
+            "BoundedAnimationTargetBindingCapacityNoMutation",
+            BoundedSceneBytes(),
+            BoundedTargetBindingAnimationBytes(),
+            RuntimeAssetDataStatus::CapacityExceeded,
+            3U,
+            1U)) {
+        return Fail("bounded animation target binding capacity failure mutated outputs");
+    }
+
+    return 0;
+}
+
 int RuntimeAssetDataSceneAnimationLoaderSamplesExplicitSelectedClip() {
     MountTable table;
     if (!CreateMountedTable(TestRoot("BoundedSelectedAnimationClip"), &table)) {
@@ -13278,6 +13481,14 @@ const std::unordered_map<std::string_view, TestFunction> TESTS = {
      RuntimeAssetDataTargetIdentityTableRejectsMissingParentWithoutMutation},
     {TEST_TARGET_IDENTITY_CAPACITY_NO_MUTATION,
      RuntimeAssetDataTargetIdentityTableRejectsCapacityOverflowWithoutMutation},
+    {TEST_ANIMATION_TARGET_BINDING,
+     RuntimeAssetDataAnimationTrackTargetBindingResolvesTargetIdAndProperty},
+    {TEST_ANIMATION_TARGET_BINDING_MISSING_TARGET,
+     RuntimeAssetDataAnimationTrackTargetBindingRejectsMissingTargetWithoutMutation},
+    {TEST_ANIMATION_TARGET_BINDING_UNSUPPORTED_PROPERTY,
+     RuntimeAssetDataAnimationTrackTargetBindingRejectsUnsupportedPropertyWithoutMutation},
+    {TEST_ANIMATION_TARGET_BINDING_CAPACITY,
+     RuntimeAssetDataAnimationTrackTargetBindingRejectsCapacityOverflowWithoutMutation},
     {TEST_SCENE_ANIMATION_SELECTED_CLIP,
      RuntimeAssetDataSceneAnimationLoaderSamplesExplicitSelectedClip},
     {TEST_SCENE_ANIMATION_OUTPUT_TABLE_RESAMPLE,
