@@ -19,6 +19,19 @@
 namespace yuengine::package {
 namespace {
 constexpr std::string_view PACKAGE_ARTIFACT_MAGIC = "YUPACKAGE_ARTIFACT_V1";
+constexpr std::uint64_t ARTIFACT_HASH_OFFSET = 14695981039346656037ULL;
+constexpr std::uint64_t ARTIFACT_HASH_MULTIPLIER = 1099511628211ULL;
+
+struct ParsedArtifactEntry final {
+    PackageEntryDescriptor descriptor;
+    std::uint64_t metadata_hash = 0ULL;
+    bool has_integrity_hashes = false;
+};
+
+struct ArtifactIntegrityRecord final {
+    std::uint64_t dependency_table_hash = 0ULL;
+    std::uint64_t package_table_hash = 0ULL;
+};
 
 PackageArtifactResult PackageArtifactFailure(
     PackageStatus package_status,
@@ -64,6 +77,85 @@ std::uint32_t MakeLegacyByteValue(std::uint64_t value) {
     }
 
     return static_cast<std::uint32_t>(value);
+}
+
+std::uint64_t MakeNonZeroHash(std::uint64_t hash) {
+    if (hash == 0ULL) {
+        return ARTIFACT_HASH_OFFSET;
+    }
+
+    return hash;
+}
+
+std::uint64_t MixArtifactHash(std::uint64_t hash, std::uint64_t value) {
+    hash ^= value;
+    return hash * ARTIFACT_HASH_MULTIPLIER;
+}
+
+std::uint64_t HashArtifactText(std::uint64_t hash, std::string_view text) {
+    for (const char character : text) {
+        hash = MixArtifactHash(hash, static_cast<std::uint64_t>(static_cast<unsigned char>(character)));
+    }
+
+    return hash;
+}
+
+std::uint64_t GetEntryPayloadHash(const PackageEntryDescriptor &entry) {
+    if (entry.payload_hash != 0ULL) {
+        return entry.payload_hash;
+    }
+
+    std::uint64_t hash = ARTIFACT_HASH_OFFSET;
+    hash = HashArtifactText(hash, entry.source_key.Value());
+    hash = MixArtifactHash(hash, GetArchiveByteOffset(entry));
+    hash = MixArtifactHash(hash, GetArchiveByteSize(entry));
+    return MakeNonZeroHash(hash);
+}
+
+std::uint64_t ComputeEntryMetadataHash(const PackageEntryDescriptor &entry) {
+    std::uint64_t hash = ARTIFACT_HASH_OFFSET;
+    hash = MixArtifactHash(hash, entry.package.value);
+    hash = MixArtifactHash(hash, entry.entry.value);
+    hash = MixArtifactHash(hash, entry.type.value);
+    hash = HashArtifactText(hash, entry.logical_key.Value());
+    hash = HashArtifactText(hash, entry.source_key.Value());
+    hash = MixArtifactHash(hash, GetArchiveByteOffset(entry));
+    hash = MixArtifactHash(hash, GetArchiveByteSize(entry));
+    hash = MixArtifactHash(hash, GetEntryPayloadHash(entry));
+    return MakeNonZeroHash(hash);
+}
+
+std::uint64_t ComputeDependencyTableHash(
+    const PackageArtifactDependency *dependencies,
+    std::uint32_t dependency_count) {
+    std::uint64_t hash = ARTIFACT_HASH_OFFSET;
+    hash = MixArtifactHash(hash, dependency_count);
+    for (std::uint32_t index = 0U; index < dependency_count; ++index) {
+        hash = MixArtifactHash(hash, dependencies[index].dependent.value);
+        hash = MixArtifactHash(hash, dependencies[index].dependency.value);
+    }
+
+    return MakeNonZeroHash(hash);
+}
+
+std::uint64_t ComputePackageTableHash(
+    PackageId package,
+    const PackageEntryDescriptor *entries,
+    std::uint32_t entry_count,
+    const PackageArtifactDependency *dependencies,
+    std::uint32_t dependency_count) {
+    std::uint64_t hash = ARTIFACT_HASH_OFFSET;
+    hash = MixArtifactHash(hash, package.value);
+    hash = MixArtifactHash(hash, entry_count);
+    hash = MixArtifactHash(hash, dependency_count);
+    for (std::uint32_t index = 0U; index < entry_count; ++index) {
+        hash = MixArtifactHash(hash, entries[index].entry.value);
+        hash = MixArtifactHash(hash, GetEntryPayloadHash(entries[index]));
+        hash = MixArtifactHash(hash, ComputeEntryMetadataHash(entries[index]));
+    }
+
+    hash = MixArtifactHash(hash, ComputeDependencyTableHash(dependencies, dependency_count));
+    return MakeNonZeroHash(hash);
 }
 
 PackageStatus BuildRegistryFromRecords(
@@ -119,22 +211,32 @@ std::string BuildArtifactText(
     std::uint32_t entry_count,
     const PackageArtifactDependency *dependencies,
     std::uint32_t dependency_count) {
+    std::array<PackageEntryDescriptor, MAX_PACKAGE_ENTRY_COUNT> normalized_entries{};
+    for (std::uint32_t index = 0U; index < entry_count; ++index) {
+        normalized_entries[index] = entries[index];
+        normalized_entries[index].payload_hash = GetEntryPayloadHash(entries[index]);
+    }
+
     std::ostringstream output;
     output << PACKAGE_ARTIFACT_MAGIC << '\n';
     output << "package|" << package.value << '\n';
     output << "entries|" << entry_count << '\n';
     output << "dependencies|" << dependency_count << '\n';
     for (std::uint32_t index = 0U; index < entry_count; ++index) {
-        const PackageEntryDescriptor &entry = entries[index];
+        const PackageEntryDescriptor &entry = normalized_entries[index];
         const std::uint64_t archive_byte_offset = GetArchiveByteOffset(entry);
         const std::uint64_t archive_byte_size = GetArchiveByteSize(entry);
+        const std::uint64_t payload_hash = GetEntryPayloadHash(entry);
+        const std::uint64_t metadata_hash = ComputeEntryMetadataHash(entry);
         output << "entry|"
                << entry.entry.value << '|'
                << entry.type.value << '|'
                << entry.logical_key.Value() << '|'
                << entry.source_key.Value() << '|'
                << archive_byte_offset << '|'
-               << archive_byte_size << '\n';
+               << archive_byte_size << '|'
+               << payload_hash << '|'
+               << metadata_hash << '\n';
     }
 
     for (std::uint32_t index = 0U; index < dependency_count; ++index) {
@@ -143,6 +245,15 @@ std::string BuildArtifactText(
                << dependencies[index].dependency.value << '\n';
     }
 
+    const std::uint64_t dependency_table_hash = ComputeDependencyTableHash(dependencies, dependency_count);
+    const std::uint64_t package_table_hash = ComputePackageTableHash(
+        package,
+        normalized_entries.data(),
+        entry_count,
+        dependencies,
+        dependency_count);
+    output << "dependency_table_hash|" << dependency_table_hash << '\n';
+    output << "package_table_hash|" << package_table_hash << '\n';
     output << "end\n";
     return output.str();
 }
@@ -245,13 +356,13 @@ PackageStatus ParsePackageLine(const std::string &line, std::uint32_t *out_value
 PackageStatus ParseEntryLine(
     const std::string &line,
     PackageId package,
-    PackageEntryDescriptor *out_entry) {
+    ParsedArtifactEntry *out_entry) {
     if (out_entry == nullptr) {
         return PackageStatus::InvalidArtifactEntryTable;
     }
 
     const std::vector<std::string_view> fields = SplitFields(line);
-    if (fields.size() != 7U || fields[0] != "entry") {
+    if ((fields.size() != 7U && fields.size() != 9U) || fields[0] != "entry") {
         return PackageStatus::InvalidArtifactEntryTable;
     }
 
@@ -259,6 +370,8 @@ PackageStatus ParseEntryLine(
     std::uint32_t type_value = 0U;
     std::uint64_t byte_offset = 0ULL;
     std::uint64_t byte_size = 0ULL;
+    std::uint64_t payload_hash = 0ULL;
+    std::uint64_t metadata_hash = 0ULL;
     if (!ParseUInt32(fields[1], &entry_value) ||
         !ParseUInt32(fields[2], &type_value) ||
         !ParseUInt64(fields[5], &byte_offset) ||
@@ -266,10 +379,19 @@ PackageStatus ParseEntryLine(
         return PackageStatus::ArtifactParseFailure;
     }
 
+    bool has_integrity_hashes = false;
+    if (fields.size() == 9U) {
+        if (!ParseUInt64(fields[7], &payload_hash) || !ParseUInt64(fields[8], &metadata_hash)) {
+            return PackageStatus::ArtifactParseFailure;
+        }
+
+        has_integrity_hashes = true;
+    }
+
     const std::uint32_t legacy_byte_offset = MakeLegacyByteValue(byte_offset);
     const std::uint32_t legacy_byte_size = MakeLegacyByteValue(byte_size);
 
-    *out_entry = PackageEntryDescriptor{
+    out_entry->descriptor = PackageEntryDescriptor{
         package,
         PackageEntryId{entry_value},
         yuengine::resource::ResourceTypeId{type_value},
@@ -278,7 +400,10 @@ PackageStatus ParseEntryLine(
         legacy_byte_offset,
         legacy_byte_size,
         byte_offset,
-        byte_size};
+        byte_size,
+        payload_hash};
+    out_entry->metadata_hash = metadata_hash;
+    out_entry->has_integrity_hashes = has_integrity_hashes;
     return PackageStatus::Success;
 }
 
@@ -301,6 +426,107 @@ PackageStatus ParseDependencyLine(
     }
 
     *out_dependency = PackageArtifactDependency{PackageEntryId{dependent}, PackageEntryId{dependency}};
+    return PackageStatus::Success;
+}
+
+PackageStatus ParseArtifactHashLine(
+    const std::string &line,
+    std::string_view expected_token,
+    std::uint64_t *out_hash) {
+    if (out_hash == nullptr) {
+        return PackageStatus::InvalidArtifactIntegrityTable;
+    }
+
+    const std::vector<std::string_view> fields = SplitFields(line);
+    if (fields.size() != 2U || fields[0] != expected_token) {
+        return PackageStatus::InvalidArtifactIntegrityTable;
+    }
+
+    if (!ParseUInt64(fields[1], out_hash)) {
+        return PackageStatus::ArtifactParseFailure;
+    }
+
+    if (*out_hash == 0ULL) {
+        return PackageStatus::ArtifactHashMismatch;
+    }
+
+    return PackageStatus::Success;
+}
+
+PackageStatus ParseArtifactIntegrityLines(
+    const std::vector<std::string> &lines,
+    std::size_t *line_index,
+    ArtifactIntegrityRecord *out_integrity) {
+    if (line_index == nullptr || out_integrity == nullptr) {
+        return PackageStatus::InvalidArtifactIntegrityTable;
+    }
+
+    if (*line_index >= lines.size()) {
+        return PackageStatus::ArtifactTruncated;
+    }
+
+    PackageStatus parse_status = ParseArtifactHashLine(
+        lines[*line_index],
+        "dependency_table_hash",
+        &out_integrity->dependency_table_hash);
+    if (parse_status != PackageStatus::Success) {
+        return parse_status;
+    }
+
+    ++(*line_index);
+    if (*line_index >= lines.size()) {
+        return PackageStatus::ArtifactTruncated;
+    }
+
+    parse_status = ParseArtifactHashLine(lines[*line_index], "package_table_hash", &out_integrity->package_table_hash);
+    if (parse_status != PackageStatus::Success) {
+        return parse_status;
+    }
+
+    ++(*line_index);
+    return PackageStatus::Success;
+}
+
+PackageStatus ValidateArtifactIntegrity(
+    PackageId package,
+    const ParsedArtifactEntry *entries,
+    std::uint32_t entry_count,
+    const PackageArtifactDependency *dependencies,
+    std::uint32_t dependency_count,
+    const ArtifactIntegrityRecord &integrity) {
+    if (entries == nullptr) {
+        return PackageStatus::InvalidArtifactEntryTable;
+    }
+
+    std::array<PackageEntryDescriptor, MAX_PACKAGE_ENTRY_COUNT> descriptors{};
+    for (std::uint32_t index = 0U; index < entry_count; ++index) {
+        if (!entries[index].has_integrity_hashes) {
+            return PackageStatus::InvalidArtifactIntegrityTable;
+        }
+
+        if (entries[index].descriptor.payload_hash == 0ULL) {
+            return PackageStatus::ArtifactHashMismatch;
+        }
+
+        const std::uint64_t metadata_hash = ComputeEntryMetadataHash(entries[index].descriptor);
+        if (entries[index].metadata_hash != metadata_hash) {
+            return PackageStatus::ArtifactHashMismatch;
+        }
+
+        descriptors[index] = entries[index].descriptor;
+    }
+
+    const std::uint64_t dependency_table_hash = ComputeDependencyTableHash(dependencies, dependency_count);
+    if (integrity.dependency_table_hash != dependency_table_hash) {
+        return PackageStatus::ArtifactHashMismatch;
+    }
+
+    const std::uint64_t package_table_hash =
+        ComputePackageTableHash(package, descriptors.data(), entry_count, dependencies, dependency_count);
+    if (integrity.package_table_hash != package_table_hash) {
+        return PackageStatus::ArtifactHashMismatch;
+    }
+
     return PackageStatus::Success;
 }
 
@@ -348,34 +574,30 @@ PackageArtifactResult ReadArtifactText(
         return PackageArtifactFailure(parse_status);
     }
 
-    const std::size_t required_line_count =
-        5U + static_cast<std::size_t>(entry_count) + static_cast<std::size_t>(dependency_count);
-    if (lines.size() < required_line_count) {
-        return PackageArtifactFailure(PackageStatus::ArtifactTruncated);
-    }
-
-    if (lines[required_line_count - 1U] != "end") {
-        return PackageArtifactFailure(PackageStatus::ArtifactTruncated);
-    }
-
-    if (lines.size() > required_line_count) {
-        return PackageArtifactFailure(PackageStatus::ArtifactUnknownSection);
-    }
-
+    std::array<ParsedArtifactEntry, MAX_PACKAGE_ENTRY_COUNT> parsed_entries{};
     std::array<PackageEntryDescriptor, MAX_PACKAGE_ENTRY_COUNT> entries{};
     std::array<PackageArtifactDependency, MAX_PACKAGE_DEPENDENCY_EDGE_COUNT> dependencies{};
     const PackageId package{package_value};
     std::size_t line_index = 4U;
     for (std::uint32_t index = 0U; index < entry_count; ++index) {
-        parse_status = ParseEntryLine(lines[line_index], package, &entries[index]);
+        if (line_index >= lines.size()) {
+            return PackageArtifactFailure(PackageStatus::ArtifactTruncated);
+        }
+
+        parse_status = ParseEntryLine(lines[line_index], package, &parsed_entries[index]);
         if (parse_status != PackageStatus::Success) {
             return PackageArtifactFailure(parse_status);
         }
 
+        entries[index] = parsed_entries[index].descriptor;
         ++line_index;
     }
 
     for (std::uint32_t index = 0U; index < dependency_count; ++index) {
+        if (line_index >= lines.size()) {
+            return PackageArtifactFailure(PackageStatus::ArtifactTruncated);
+        }
+
         parse_status = ParseDependencyLine(lines[line_index], &dependencies[index]);
         if (parse_status != PackageStatus::Success) {
             return PackageArtifactFailure(parse_status);
@@ -394,6 +616,36 @@ PackageArtifactResult ReadArtifactText(
         dependency_count);
     if (build_status != PackageStatus::Success) {
         return PackageArtifactFailure(build_status);
+    }
+
+    ArtifactIntegrityRecord integrity{};
+    parse_status = ParseArtifactIntegrityLines(lines, &line_index, &integrity);
+    if (parse_status != PackageStatus::Success) {
+        return PackageArtifactFailure(parse_status);
+    }
+
+    parse_status = ValidateArtifactIntegrity(
+        package,
+        parsed_entries.data(),
+        entry_count,
+        dependencies.data(),
+        dependency_count,
+        integrity);
+    if (parse_status != PackageStatus::Success) {
+        return PackageArtifactFailure(parse_status);
+    }
+
+    if (line_index >= lines.size()) {
+        return PackageArtifactFailure(PackageStatus::ArtifactTruncated);
+    }
+
+    if (lines[line_index] != "end") {
+        return PackageArtifactFailure(PackageStatus::ArtifactTruncated);
+    }
+
+    ++line_index;
+    if (line_index < lines.size()) {
+        return PackageArtifactFailure(PackageStatus::ArtifactUnknownSection);
     }
 
     *registry = staged_registry;

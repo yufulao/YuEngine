@@ -29,10 +29,12 @@ enum class PackageStatus {
     InvalidArtifactManifest,
     InvalidArtifactEntryTable,
     InvalidArtifactDependencyTable,
+    InvalidArtifactIntegrityTable,
     ArtifactUnknownSection,
     ArtifactTruncated,
     ArtifactBadCount,
     ArtifactParseFailure,
+    ArtifactHashMismatch,
     ArtifactCapacityExceeded,
     FileReadFailed,
     FileWriteFailed

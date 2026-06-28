@@ -25,5 +25,6 @@ struct PackageLoadPlanRecord final {
     std::uint32_t byte_size = 0U;
     std::uint64_t archive_byte_offset = 0ULL;
     std::uint64_t archive_byte_size = 0ULL;
+    std::uint64_t payload_hash = 0ULL;
 };
 }

@@ -79,6 +79,10 @@ constexpr const char* TEST_NO_HIDDEN_ALLOCATION = "Package_NoHiddenAllocation_Us
 constexpr const char* TEST_ARTIFACT_ROUND_TRIP = "Package_FileBackedArtifactRoundTripsLoadPlanThroughFileVfs";
 constexpr const char* TEST_ARTIFACT_LARGE_BYTE_RANGE =
     "Package_FileBackedArtifactRoundTripsLargeByteRangeMetadata";
+constexpr const char* TEST_ARTIFACT_HASH_ROUND_TRIP =
+    "Package_FileBackedArtifactRoundTripsHashAndDependencyIntegrity";
+constexpr const char* TEST_ARTIFACT_HASH_VALIDATION =
+    "Package_FileBackedArtifactRejectsHashMismatchesWithoutMutation";
 constexpr const char* TEST_ARTIFACT_INVALID = "Package_FileBackedArtifactRejectsInvalidBytesWithoutMutation";
 constexpr const char* TEST_ARTIFACT_MANIFEST_VALIDATION =
     "Package_FileBackedArtifactRejectsManifestParseAndSectionErrorsWithoutMutation";
@@ -156,6 +160,72 @@ bool WriteRawPackageArtifact(MountTable& table, std::string_view artifact_text) 
         reinterpret_cast<const std::uint8_t *>(artifact_text.data()),
         artifact_text.size()});
     return write_result.Succeeded();
+}
+
+std::string ReadRawPackageArtifact(MountTable& table) {
+    const auto read_result = table.Read({MountId(PACKAGE_ARTIFACT_MOUNT), VirtualPath(PACKAGE_ARTIFACT_PATH)});
+    if (!read_result.Succeeded()) {
+        return std::string();
+    }
+
+    return std::string(
+        reinterpret_cast<const char *>(read_result.bytes.data()),
+        read_result.bytes.size());
+}
+
+bool ReplaceHashLineValue(std::string *artifact_text, std::string_view prefix, std::string_view replacement) {
+    if (artifact_text == nullptr) {
+        return false;
+    }
+
+    const std::string search_text = "\n" + std::string(prefix);
+    std::size_t line_start = artifact_text->find(search_text);
+    if (line_start == std::string::npos) {
+        return false;
+    }
+
+    line_start += search_text.size();
+    const std::size_t line_end = artifact_text->find('\n', line_start);
+    if (line_end == std::string::npos) {
+        return false;
+    }
+
+    artifact_text->replace(line_start, line_end - line_start, replacement);
+    return true;
+}
+
+bool ReplaceFirstEntryHashField(
+    std::string *artifact_text,
+    std::uint32_t hash_field_index,
+    std::string_view replacement) {
+    if (artifact_text == nullptr) {
+        return false;
+    }
+
+    const std::string entry_prefix = "entry|1|1|texture_a|textures/texture_a.bin|0|16|";
+    std::size_t field_start = artifact_text->find(entry_prefix);
+    if (field_start == std::string::npos) {
+        return false;
+    }
+
+    field_start += entry_prefix.size();
+    if (hash_field_index > 0U) {
+        const std::size_t payload_separator = artifact_text->find('|', field_start);
+        if (payload_separator == std::string::npos) {
+            return false;
+        }
+
+        field_start = payload_separator + 1U;
+    }
+
+    const char separator = hash_field_index == 0U ? '|' : '\n';
+    const std::size_t field_end = artifact_text->find(separator, field_start);
+    if (field_end == std::string::npos) {
+        return false;
+    }
+
+    artifact_text->replace(field_start, field_end - field_start, replacement);
+    return true;
 }
 
 int Fail(const std::string& message) {
@@ -1138,6 +1208,146 @@ int PackageFileBackedArtifactRoundTripsLargeByteRangeMetadata() {
     return 0;
 }
 
+int PackageFileBackedArtifactRoundTripsHashAndDependencyIntegrity() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_HASH_ROUND_TRIP);
+    const std::array<PackageEntryDescriptor, 3U> entries{
+        Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin", 0U, 16U),
+        Entry(PACKAGE_A, ENTRY_AUDIO, TYPE_AUDIO, "audio_a", "audio/audio_a.bin", 16U, 32U),
+        Entry(PACKAGE_A, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin", 48U, 24U)};
+    const std::array<PackageArtifactDependency, 2U> dependencies{
+        PackageArtifactDependency{ENTRY_TEXTURE, ENTRY_AUDIO},
+        PackageArtifactDependency{ENTRY_TEXTURE, ENTRY_MATERIAL}};
+
+    PackageArtifactWriteRequest write_request{};
+    write_request.mount_table = &table;
+    write_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    write_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    write_request.package = PACKAGE_A;
+    write_request.entries = entries.data();
+    write_request.entry_count = static_cast<std::uint32_t>(entries.size());
+    write_request.dependencies = dependencies.data();
+    write_request.dependency_count = static_cast<std::uint32_t>(dependencies.size());
+    const PackageArtifactResult write_result = WritePackageArtifact(write_request);
+    if (write_result.status != PackageStatus::Success || !write_result.wrote_artifact) {
+        return Fail("hash integrity artifact did not write");
+    }
+
+    const std::string artifact_text = ReadRawPackageArtifact(table);
+    if (artifact_text.find("dependency_table_hash|") == std::string::npos ||
+        artifact_text.find("package_table_hash|") == std::string::npos) {
+        return Fail("hash integrity artifact did not include table hashes");
+    }
+
+    PackageRegistry artifact_registry;
+    PackageArtifactReadRequest read_request{};
+    read_request.mount_table = &table;
+    read_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    read_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    read_request.registry = &artifact_registry;
+    const PackageArtifactResult read_result = ReadPackageArtifact(read_request);
+    if (read_result.status != PackageStatus::Success || !read_result.rebuilt_registry) {
+        return Fail("hash integrity artifact did not rebuild registry");
+    }
+
+    const PackageLoadPlanResult plan =
+        artifact_registry.ResolveEntryByResourceKey(PACKAGE_A, TYPE_TEXTURE, ResourceLogicalKey("texture_a"));
+    if (!plan.Succeeded() || plan.plan.record_count != 3U) {
+        return Fail("hash integrity artifact did not resolve dependency plan");
+    }
+
+    if (plan.plan.records[0U].payload_hash == 0ULL ||
+        plan.plan.records[1U].payload_hash == 0ULL ||
+        plan.plan.records[2U].payload_hash == 0ULL) {
+        return Fail("hash integrity artifact did not preserve payload hashes");
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_HASH_ROUND_TRIP));
+    return 0;
+}
+
+int PackageFileBackedArtifactRejectsHashMismatchesWithoutMutation() {
+    MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_HASH_VALIDATION);
+    const std::array<PackageEntryDescriptor, 2U> entries{
+        Entry(PACKAGE_A, ENTRY_TEXTURE, TYPE_TEXTURE, "texture_a", "textures/texture_a.bin", 0U, 16U),
+        Entry(PACKAGE_A, ENTRY_MATERIAL, TYPE_MATERIAL, "material_a", "materials/material_a.bin", 16U, 24U)};
+    const std::array<PackageArtifactDependency, 1U> dependencies{
+        PackageArtifactDependency{ENTRY_TEXTURE, ENTRY_MATERIAL}};
+
+    PackageArtifactWriteRequest write_request{};
+    write_request.mount_table = &table;
+    write_request.mount = MountId(PACKAGE_ARTIFACT_MOUNT);
+    write_request.artifact_path = VirtualPath(PACKAGE_ARTIFACT_PATH);
+    write_request.package = PACKAGE_A;
+    write_request.entries = entries.data();
+    write_request.entry_count = static_cast<std::uint32_t>(entries.size());
+    write_request.dependencies = dependencies.data();
+    write_request.dependency_count = static_cast<std::uint32_t>(dependencies.size());
+    const PackageArtifactResult write_result = WritePackageArtifact(write_request);
+    if (write_result.status != PackageStatus::Success || !write_result.wrote_artifact) {
+        return Fail("hash validation artifact did not write");
+    }
+
+    const std::string artifact_text = ReadRawPackageArtifact(table);
+    if (artifact_text.empty()) {
+        return Fail("hash validation fixture read failed");
+    }
+
+    std::string payload_hash_mismatch = artifact_text;
+    if (!ReplaceFirstEntryHashField(&payload_hash_mismatch, 0U, "0")) {
+        return Fail("hash validation fixture payload edit failed");
+    }
+
+    std::string metadata_hash_mismatch = artifact_text;
+    if (!ReplaceFirstEntryHashField(&metadata_hash_mismatch, 1U, "0")) {
+        return Fail("hash validation fixture metadata edit failed");
+    }
+
+    std::string dependency_hash_mismatch = artifact_text;
+    if (!ReplaceHashLineValue(&dependency_hash_mismatch, "dependency_table_hash|", "0")) {
+        return Fail("hash validation fixture dependency edit failed");
+    }
+
+    std::string package_hash_mismatch = artifact_text;
+    if (!ReplaceHashLineValue(&package_hash_mismatch, "package_table_hash|", "0")) {
+        return Fail("hash validation fixture package edit failed");
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            payload_hash_mismatch,
+            PackageStatus::ArtifactHashMismatch,
+            "artifact payload hash mismatch did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            metadata_hash_mismatch,
+            PackageStatus::ArtifactHashMismatch,
+            "artifact metadata hash mismatch did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            dependency_hash_mismatch,
+            PackageStatus::ArtifactHashMismatch,
+            "artifact dependency hash mismatch did not return explicit status") != 0) {
+        return 1;
+    }
+
+    if (ExpectInvalidArtifactRead(
+            table,
+            package_hash_mismatch,
+            PackageStatus::ArtifactHashMismatch,
+            "artifact package hash mismatch did not return explicit status") != 0) {
+        return 1;
+    }
+
+    std::filesystem::remove_all(PackageArtifactRoot(TEST_ARTIFACT_HASH_VALIDATION));
+    return 0;
+}
+
 int PackageFileBackedArtifactRejectsInvalidBytesWithoutMutation() {
     MountTable table = CreatePackageArtifactTable(TEST_ARTIFACT_INVALID);
     const std::string invalid_artifact = "not-a-package-artifact\n";
@@ -1238,7 +1448,7 @@ int PackageFileBackedArtifactRejectsManifestParseAndSectionErrorsWithoutMutation
     if (ExpectInvalidArtifactRead(
             table,
             extra_section,
-            PackageStatus::ArtifactUnknownSection,
+            PackageStatus::InvalidArtifactIntegrityTable,
             "artifact extra section did not return explicit status") != 0) {
         return 1;
     }
@@ -1529,6 +1739,8 @@ int main(int argc, char** argv) {
         {TEST_NO_HIDDEN_ALLOCATION, PackageNoHiddenAllocationUsesYuMemorySignal},
         {TEST_ARTIFACT_ROUND_TRIP, PackageFileBackedArtifactRoundTripsLoadPlanThroughFileVfs},
         {TEST_ARTIFACT_LARGE_BYTE_RANGE, PackageFileBackedArtifactRoundTripsLargeByteRangeMetadata},
+        {TEST_ARTIFACT_HASH_ROUND_TRIP, PackageFileBackedArtifactRoundTripsHashAndDependencyIntegrity},
+        {TEST_ARTIFACT_HASH_VALIDATION, PackageFileBackedArtifactRejectsHashMismatchesWithoutMutation},
         {TEST_ARTIFACT_INVALID, PackageFileBackedArtifactRejectsInvalidBytesWithoutMutation},
         {TEST_ARTIFACT_MANIFEST_VALIDATION,
          PackageFileBackedArtifactRejectsManifestParseAndSectionErrorsWithoutMutation},

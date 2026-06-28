@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <string_view>
 
 #include "YuEngine/Memory/MemoryAccountingStatus.h"
 
@@ -16,6 +17,8 @@ using memory::MemoryAccountingStatus;
 constexpr std::uint32_t INVALID_INDEX = 0xFFFFFFFFU;
 constexpr std::uint32_t HASH_OFFSET = 2166136261U;
 constexpr std::uint32_t HASH_MULTIPLIER = 16777619U;
+constexpr std::uint64_t PAYLOAD_HASH_OFFSET = 14695981039346656037ULL;
+constexpr std::uint64_t PAYLOAD_HASH_MULTIPLIER = 1099511628211ULL;
 
 std::uint32_t ClampCapacity(std::uint32_t requested_capacity, std::uint32_t maximum_capacity) {
     if (requested_capacity > maximum_capacity) {
@@ -63,6 +66,31 @@ std::uint32_t MakeLegacyByteValue(std::uint64_t value) {
     return static_cast<std::uint32_t>(value);
 }
 
+std::uint64_t MixPayloadHash(std::uint64_t hash, std::uint64_t value) {
+    hash ^= value;
+    return hash * PAYLOAD_HASH_MULTIPLIER;
+}
+
+std::uint64_t HashPayloadText(std::uint64_t hash, std::string_view text) {
+    for (const char character : text) {
+        hash = MixPayloadHash(hash, static_cast<std::uint64_t>(static_cast<unsigned char>(character)));
+    }
+
+    return hash;
+}
+
+std::uint64_t MakeEntryPayloadHash(const PackageEntryDescriptor& descriptor) {
+    std::uint64_t hash = PAYLOAD_HASH_OFFSET;
+    hash = HashPayloadText(hash, descriptor.source_key.Value());
+    hash = MixPayloadHash(hash, GetArchiveByteOffset(descriptor));
+    hash = MixPayloadHash(hash, GetArchiveByteSize(descriptor));
+    if (hash == 0ULL) {
+        return PAYLOAD_HASH_OFFSET;
+    }
+
+    return hash;
+}
+
 PackageEntryDescriptor NormalizeEntryDescriptor(const PackageEntryDescriptor& descriptor) {
     const std::uint64_t archive_byte_offset = GetArchiveByteOffset(descriptor);
     const std::uint64_t archive_byte_size = GetArchiveByteSize(descriptor);
@@ -71,6 +99,10 @@ PackageEntryDescriptor NormalizeEntryDescriptor(const PackageEntryDescriptor& de
     normalized.byte_size = MakeLegacyByteValue(archive_byte_size);
     normalized.archive_byte_offset = archive_byte_offset;
     normalized.archive_byte_size = archive_byte_size;
+    if (normalized.payload_hash == 0ULL) {
+        normalized.payload_hash = MakeEntryPayloadHash(normalized);
+    }
+
     return normalized;
 }
 
@@ -604,7 +636,8 @@ void PackageRegistry::AppendRecord(PackageLoadPlan& plan, const PackageEntryDesc
         legacy_byte_offset,
         legacy_byte_size,
         archive_byte_offset,
-        archive_byte_size};
+        archive_byte_size,
+        descriptor.payload_hash};
     ++plan.record_count;
 }
 
